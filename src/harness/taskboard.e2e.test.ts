@@ -64,7 +64,7 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
       capabilities: { chat: true },
       chat: async () => cards[step++]!(),
     } as unknown as ModelAdapter;
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false, onEvent });
+    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent });
     const r = await h.reactor.run({ goal: '完成板上任务并收尾' }, { maxSteps: 12 });
     assert.equal(r.done, true);
     assert.equal(r.reply, 'board closed');
@@ -103,7 +103,7 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
 test('e2e:lead-only 不变量——主链面五件套在场,SubagentRunner 派生子面剔除', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbe2e-lead-'));
   try {
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model: new ScriptedAdapter([]), learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
     // 主链注册面与全量克隆面均持有五件套
     assert.ok(TASKBOARD_TOOL_NAMES.every((n) => h.tools.get(n) !== undefined), '主链工具面应持有 taskboard 五件套');
     const fullClone = h.tools.derive({ exclude: [] });

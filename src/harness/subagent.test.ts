@@ -257,7 +257,7 @@ interface Harness {
 
 function makeHarness(tmp: string): Harness {
   const store = new FileStore(path.join(tmp, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
@@ -530,7 +530,7 @@ test('同名并发消歧：后到者 label #N 后缀，事件与结论行一致�
 test('exec background:true 提交即返回，观察行含任务 ID 与输出路径，输出落任务日志', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgexec-'));
   try {
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
     for (const t of builtinTools(safety, root, { tasks })) registry.register(t);
@@ -571,7 +571,7 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgtimeout-'));
   let stop: (() => void) | undefined;
   try {
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new QuickTimeoutSandbox(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new QuickTimeoutSandbox(), root);
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
     for (const t of builtinTools(safety, root, { tasks })) registry.register(t);
@@ -596,7 +596,7 @@ test('前台 exec 触超时转后台：观察行含 moved to background、任务
 test('sleep 开头命令超时不转后台：EXEC_TIMEOUT 照旧失败（规格 D5 豁免）', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sleepexc-'));
   try {
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new QuickTimeoutSandbox(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new QuickTimeoutSandbox(), root);
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
     for (const t of builtinTools(safety, root, { tasks })) registry.register(t);

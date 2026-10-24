@@ -25,7 +25,7 @@ function makeReactor(
   activeRoot?: () => string | null,
 ): { reactor: Reactor; prompts: string[]; requests: ChatRequest[]; context: ContextManager } {
   const store = new FileStore(path.join(tmp, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   const tools = builtinTools(safety, tmp);
   for (const t of reverseTools ? [...tools].reverse() : tools) registry.register(t);

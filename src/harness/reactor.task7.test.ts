@@ -23,7 +23,7 @@ function fixture(): { tmp: string; cm: ContextManager; registry: ToolRegistry; s
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshine-t7-'));
   const cm = new ContextManager(tmp, new FileStore(tmp));
   const registry = new ToolRegistry();
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   return { tmp, cm, registry, safety };
 }
 

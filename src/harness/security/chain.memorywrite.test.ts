@@ -29,7 +29,7 @@ function withChain(
   try {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     fn(chain, root, tmp);
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
@@ -78,9 +78,9 @@ test('总开关 off → 记忆路径 write 被拒', () => {
       const d = chain.evaluate('Write', { path: path.join(dataDir, 'memory', 'a.md') });
       assert.equal(d.allowed, false, 'auto_memory=off 时写面先被总开关拦下');
       if (!d.allowed) assert.ok(d.reason.includes('COMMAND_DENIED'), `拒绝文案格式不变：${d.reason}`);
-      // 总开关只收写窄口，不改判界其它分支（spec 5.1 写分支：dontAsk 档信任域外放行，D2 行为变更①）
+      // 总开关只收写窄口，不改判界其它分支（spec 5.1 写分支：full-access 档信任域外放行，D2 行为变更①）
       const outside = chain.evaluate('Write', { path: '/tmp/sunshinex-mw-outside.md' });
-      assert.equal(outside.allowed, true, '外部路径按写分支档位放行（dontAsk）');
+      assert.equal(outside.allowed, true, '外部路径按写分支档位放行（full-access）');
     },
     'off',
   );
@@ -160,7 +160,7 @@ test('dataDir 自身经符号链接传入 → 记忆写窄口按真实路径判�
 
     const root = path.join(real, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
 
     const target = path.join(link, 'memory', 'a.md'); // 经链接路径写记忆子树
     const d = chain.evaluate('Write', { path: target });
@@ -201,7 +201,7 @@ test('数据目录回退 <root>/.data（HOME 不可写）→ 记忆写仍受总�
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
     assert.equal(resolveDataDir(root), path.join(root, '.data'), '前提：HOME 不可写 → 数据目录回退项目内 .data');
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     const memoryFile = path.join(root, '.data', 'memory', 'a.md');
     const plain = path.join(root, 'plain.txt');
 

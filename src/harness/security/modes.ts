@@ -1,10 +1,15 @@
 /**
- * 权限模式：
- * - manual：询问用户（阶段一 CLI 未实现交互，降级为只读白名单放行、写操作拒绝）
- * - plan：仅只读操作放行
- * - dontAsk：不询问，自动批准未 deny 的操作（deny 规则仍拦截）——「最大权限」，供稳定测试/受信场景
+ * 权限档（2026-10-24 重构，spec docs/superpowers/specs/2026-10-24-plan-mode-redesign-design.md §3.1）：
+ * - read-only：仅非变异操作放行（Read/Grep/Glob + ask_question/todo_write/worktree list），拒绝消息带出路提示；
+ * - acceptEdits：信任域内 Write/Edit 直放、域外写与命令类 ask（沿原 manual 语义，正名）；
+ * - full-access：未 deny 一律自动放行（deny 规则与破坏性底线保留；沿原 dontAsk 语义，正名——
+ *   CC 的 dontAsk=「该问不问直接拒」，勿再混用该词）。
+ * plan 不是档：它是流程标记（planFlow），权限面由流程临时覆盖 read-only 承载。
  */
-export type PermissionMode = 'manual' | 'plan' | 'dontAsk';
+export type PermissionMode = 'read-only' | 'acceptEdits' | 'full-access';
+
+/** read-only 档拒绝文案单点（guard 只读闸门/worktree 分支与 chain 写分支共用，防漂移；括号内即出路提示） */
+export const READONLY_DENY = 'COMMAND_DENIED: read-only mode allows read-only operations only (ask the user to switch permission modes to make changes)';
 
 /** 安全链规范名族（tools.ts CANONICAL_TOOL_NAMES 映射后的形态，guard/chain 共用单一权威）：
  *  PATH=需路径边界判界的文件工具；WRITE=文件写入/编辑两件(write/edit)——settings/.git/记忆窄口/worktree 主根四道硬底线、

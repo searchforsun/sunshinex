@@ -39,7 +39,7 @@ const mktmp = (prefix: string): string => fs.mkdtempSync(path.join(os.tmpdir(), 
 
 /** 装配真依赖(builtinTools + 假 lead 工具族),并在 registry 上挂 derive 间谍捕获产品派生点产物 */
 function makeFaceDeps(root: string): { deps: LoopDeps; faces: ToolRegistry[] } {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   // 假件(spawn/send_message/六件套):证明确实被派生剔除,而非本就不在场
@@ -87,7 +87,7 @@ test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支�
   const tmp = mktmp('sunshinex-forkface-sub-');
   let h: Harness | undefined;
   try {
-    h = new Harness({ root: tmp, mode: 'dontAsk', model: new ScriptedAdapter([]), learnSkills: false });
+    h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
     for (const name of FORK_EXCLUDED_TOOLS) {
       assert.notEqual(h.tools.get(name), undefined, `lead 主面应有 ${name}(剔除应发生在派生点)`);
     }

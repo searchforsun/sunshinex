@@ -27,7 +27,7 @@ class BucketEmbedding implements EmbeddingProvider {
 
 function setup(kb?: KnowledgeBase): { registry: ToolRegistry; safety: SafetyChain; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-kbtool-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root, { kb })) registry.register(t);
   return { registry, safety, root };

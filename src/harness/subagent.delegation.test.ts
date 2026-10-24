@@ -17,7 +17,7 @@ import { SessionEvent } from '../types';
 
 function assemble(model: ScriptedAdapter, events: SessionEvent[], root: string): SubagentRunner {
   const store = new FileStore(path.join(root, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   const context = new ContextManager(root, store);

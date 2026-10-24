@@ -10,7 +10,7 @@ import { ProcessSandbox } from './sandbox';
 
 /**
  * settings.json 两级硬保护 + ~/.sunshinex 子树放行：
- * - 两级 settings.json（项目级 <root>/.sunshinex/settings.json、全局 <userConfigDir>/settings.json）Write 拒绝，dontAsk 不豁免；
+ * - 两级 settings.json（项目级 <root>/.sunshinex/settings.json、全局 <userConfigDir>/settings.json）Write 拒绝，full-access 不豁免；
  * - ~/.sunshinex 其余子树（全局技能根等）Write 放行（模型可自助安装技能）；
  * - 放行置记忆写窄口之后：缺省数据目录落在 ~/.sunshinex/projects 下，记忆总开关关闭时写 memory 仍拒（放行不越权）；
  * - 子树外的外部路径拒绝语义不变。
@@ -27,7 +27,7 @@ function withChain(fn: (chain: SafetyChain, root: string, userCfg: string) => vo
     fs.mkdirSync(userCfg, { recursive: true });
     const dataDir = path.join(userCfg, 'projects', 'p', 'data');
     process.env.SUNSHINEX_DATA_DIR = dataDir;
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     fn(chain, root, userCfg);
     fs.rmSync(root, { recursive: true, force: true });
   } finally {
@@ -67,8 +67,8 @@ test('~/.sunshinex 子树放行：全局技能根 Write/Read 放行，子树外�
 
     const outside = path.join(path.dirname(userCfg), 'elsewhere.txt');
     const dOut = chain.evaluate('Write', { path: outside });
-    // spec 5.1 写分支（计划行为变更③）：信任域外写按档位定论——dontAsk 放行，不再一律拒
-    assert.equal(dOut.allowed, true, '配置根之外的域外写：dontAsk 档按写分支放行');
+    // spec 5.1 写分支（计划行为变更③）：信任域外写按档位定论——full-access 放行，不再一律拒
+    assert.equal(dOut.allowed, true, '配置根之外的域外写：full-access 档按写分支放行');
   });
 });
 
@@ -83,7 +83,7 @@ test('放行不越记忆窄口：数据目录在 ~/.sunshinex/projects 下且总
     const userCfg = path.join(home, '.sunshinex');
     fs.mkdirSync(userCfg, { recursive: true });
     process.env.SUNSHINEX_DATA_DIR = path.join(userCfg, 'projects', 'p', 'data');
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     const d = chain.evaluate('Write', { path: path.join(userCfg, 'projects', 'p', 'data', 'memory', 'x.md') });
     assert.equal(d.allowed, false, '记忆总开关关闭时写 memory 应拒（不被 ~/.sunshinex 放行绕过）');
     assert.ok(!d.allowed && d.reason.includes('memory write denied'), `拒绝原因应可辨识：${!d.allowed ? d.reason : ''}`);

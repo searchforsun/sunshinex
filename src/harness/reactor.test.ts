@@ -29,7 +29,7 @@ function makeReactor(
   onEvent?: (e: SessionEvent) => void,
 ): Reactor {
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
@@ -100,7 +100,7 @@ test('Read 成功后 trackFile 登记路径（recentFiles 含该文件）', asyn
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor6-'));
   fs.writeFileSync(path.join(tmp, 'note.txt'), '笔记内容');
   const adapter = new ScriptedAdapter(['{"tool":"read","input":{"path":"note.txt"},"done":false}', '{"done":true}']);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -131,7 +131,7 @@ test('压缩闭环：摘要回流、重读最近文件、水位线截断旧 hist
       return parseScriptStep(replies[Math.min(call++, replies.length - 1)]);
     },
   };
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -156,7 +156,7 @@ test('压缩协调：折叠的链前缀裁出会话链，压缩块与链永不�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor8-'));
   try {
     const prompts: string[] = [];
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, new FileStore(tmp));
@@ -267,7 +267,7 @@ test('模型回复携带 tier 字段被忽略（自调通道已摘除）', async
 
 test('会话作用域收束回写：done 形态——种子链行保留、步骤与结论行尾追入链', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-done-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -294,7 +294,7 @@ test('会话作用域收束回写：done 形态——种子链行保留、步骤
 
 test('会话作用域收束回写：maxSteps 耗尽形态——步骤行与未完成补丁行入链', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-1e-max-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -324,7 +324,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   ];
   let call = 0;
   const model = { provider: 'capture', chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return replies[call++]; }) };
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -359,7 +359,7 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   ];
   let call = 0;
   const model = { provider: 'capture', chat: textReplyToChatFace(async (p: string) => { prompts.push(p); return replies[call++]; }) };
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -429,7 +429,7 @@ test('Reactor：phase 约定行注入 prompt，链行回喂照旧（phase 上屏
       return { finish: 'stop' as const, content: 'ok', toolCalls: [] };
     },
   };
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -466,7 +466,7 @@ test('Reactor 单一权威源：叙述只走 token 通道——流式轮 delta�
       return { finish: 'stop' as const, content: '完成', toolCalls: [] };
     },
   };
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
@@ -518,8 +518,8 @@ test('Reactor 支持一轮并行多个工具（非 exec）：Promise.all 执行�
   const events: string[] = [];
   const r = await new Promise<Awaited<ReturnType<Reactor['run']>>>((resolve, reject) => {
     const rr = new Reactor({
-      registry: (() => { const reg = new ToolRegistry(); for (const t of builtinTools(new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp), tmp)) reg.register(t); return reg; })(),
-      safety: new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp),
+      registry: (() => { const reg = new ToolRegistry(); for (const t of builtinTools(new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp), tmp)) reg.register(t); return reg; })(),
+      safety: new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp),
       context: new ContextManager(tmp, new FileStore(tmp)),
       model: adapter,
       onEvent: (e) => events.push(e.type),
@@ -613,7 +613,7 @@ test('混合批按序串行：task_stop（显式注册）与 read 同批真实�
   ]);
   // 显式注册 task_stop（category: 'task'）：默认装配不含它，覆盖真实类别缝
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   registry.register(makeTaskStopTool(new TaskRegistry(tmp)));
@@ -645,7 +645,7 @@ test('并行放宽为非 exec 均可：write 与 network 类同轮并行不被�
     `{"tools":[{"tool":"write","input":{"path":${JSON.stringify(outPath)},"content":"hello"}},{"tool":"net-probe","input":{}}],"done":false}`,
     '{"done":true,"reply":"已并行写探"}',
   ]);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   registry.register({
@@ -803,7 +803,7 @@ test('模型驱动压缩：压缩块正文为模型六节摘要，链折叠语�
         return parseScriptStep(replies[Math.min(call++, replies.length - 1)]);
       },
     };
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, new FileStore(tmp));
@@ -848,7 +848,7 @@ test('纯并行批含 todo_write：整批并发执行，todo_write 不再触发�
   ]);
   const events: { type: string; at: number }[] = [];
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   // 慢速并行安全探针：非独占类（read 域），sleep 后返回——独占分类器误伤即整批串行、本探针结果被拖到 1.2s 后

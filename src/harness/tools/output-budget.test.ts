@@ -15,7 +15,7 @@ import { Harness } from '../index';
 import { resolveDataDir } from '../../config/data-dir';
 
 function safetyFor(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
 }
 
 function registryWith(root: string, dir: string): ToolRegistry {
@@ -126,7 +126,7 @@ test('A-2 webfetch：超预算正文截断落盘（统一预算取代 100k slice
 
 test('A-2 装配契约：Harness 缺省装配含出口预算（防漏接）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-budget-'));
-  const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+  const harness = new Harness({ root: tmp, mode: 'full-access' });
   fs.writeFileSync(path.join(tmp, 'huge.txt'), 'h'.repeat(TOOL_OUTPUT_CHAR_LIMIT + 5_000));
   const r = await harness.tools.execute('read', { path: 'huge.txt' }, harness.safety);
   assert.ok(r.ok);

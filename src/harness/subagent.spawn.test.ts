@@ -11,7 +11,7 @@ import type { ModelAdapter } from '../model/adapter';
 
 const SPAWN_ENVELOPE = JSON.stringify({ tool: 'spawn', input: { prompt: '子任务：产出报告', label: 'w' } });
 
-test('spawn 端到端：同步报告 = 该轮工具观察，Runner 结论行入主链（dontAsk）', async () => {
+test('spawn 端到端：同步报告 = 该轮工具观察，Runner 结论行入主链（full-access）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-e2e-'));
   try {
     const model = new ScriptedAdapter([
@@ -19,7 +19,7 @@ test('spawn 端到端：同步报告 = 该轮工具观察，Runner 结论行入�
       JSON.stringify({ done: true, reply: '子任务报告' }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true);
     const spawnResultRow = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('子任务报告'));
@@ -34,22 +34,22 @@ test('spawn 端到端：同步报告 = 该轮工具观察，Runner 结论行入�
   }
 });
 
-test('spawn 免审批：manual 模式不弹审批卡照常派生（asker 零调用；子面无 spawn 防递归）', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-manual-'));
+test('spawn 免审批：acceptEdits 模式不弹审批卡照常派生（asker 零调用；子面无 spawn 防递归）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-acceptedits-'));
   try {
     const model = new ScriptedAdapter([
       SPAWN_ENVELOPE,
       JSON.stringify({ done: true, reply: '子任务报告' }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
-    const h = new Harness({ root: tmp, mode: 'manual', model, learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'acceptEdits', model, learnSkills: false });
     let asks = 0;
     h.security.setAsker(async () => {
       asks++;
       return 'deny';
     });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
-    assert.equal(r.done, true, 'manual 下 spawn 免审批应照常完成');
+    assert.equal(r.done, true, 'acceptEdits 下 spawn 免审批应照常完成');
     assert.equal(asks, 0, 'asker 不得被调用（spawn 无直接 IO 副作用）');
     // 子智能体工具面收口：Runner 子面恒无 spawn（Task 3 deriveChildRegistry 已测）；此处验证主链面 spawn 存在
     assert.ok(h.tools.has('spawn'), '主链工具面持有 spawn');
@@ -58,12 +58,12 @@ test('spawn 免审批：manual 模式不弹审批卡照常派生（asker 零调�
   }
 });
 
-test('plan 模式：spawn 被只读闸门拦截（子智能体可产生写副作用，不属于只读面）', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-plan-'));
+test('read-only 模式：spawn 被只读闸门拦截（子智能体可产生写副作用，不属于只读面）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-readonly-'));
   try {
-    const h = new Harness({ root: tmp, mode: 'plan', model: new ScriptedAdapter([]), learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'read-only', model: new ScriptedAdapter([]), learnSkills: false });
     const r = await h.tools.execute('spawn', { prompt: 'x' }, h.safety);
-    assert.ok(!r.ok && r.error.code === 'COMMAND_DENIED', `plan 模式应拒绝 spawn，实际 ${JSON.stringify(r)}`);
+    assert.ok(!r.ok && r.error.code === 'COMMAND_DENIED', `read-only 模式应拒绝 spawn，实际 ${JSON.stringify(r)}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -72,7 +72,7 @@ test('plan 模式：spawn 被只读闸门拦截（子智能体可产生写副作
 test('spawn 输入校验：双缺 INVALID_ARG / background 两段式开通（D6）/ tools 未知名 INVALID_ARG', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-spawn-args-'));
   try {
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model: new ScriptedAdapter([]), learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
     const spawn = h.tools.get('spawn');
     assert.ok(spawn, 'spawn 应已注册');
     await assert.rejects(
@@ -116,7 +116,7 @@ test('同轮 8 个 spawn 并行：批上限与并发上限同量级对齐，8 �
         return JSON.stringify({ done: true, reply: '主链完成' });
       }),
     } as ModelAdapter;
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     const runP = h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     // 确定性等待：等主链 1 帧 + 8 个子智能体全部进入挂起（calls>=9）再放闸，替代固定 50ms 在高并发下的竞态窗口
     for (let i = 0; i < 200 && calls < 9; i++) await new Promise((res) => setTimeout(res, 10));

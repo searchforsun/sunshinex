@@ -18,7 +18,7 @@ setToolDisplayMeta({ ask_question: { verb: 'ASK', targetFields: ['question'] } }
 
 const OPTIONS2 = [{ label: 'Yes' }, { label: 'No' }];
 
-function makeSafety(root: string, mode: 'manual' | 'dontAsk' | 'plan' = 'dontAsk'): SafetyChain {
+function makeSafety(root: string, mode: 'acceptEdits' | 'full-access' | 'read-only' = 'full-access'): SafetyChain {
   return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), root);
 }
 
@@ -120,10 +120,10 @@ test('ask_question：allowCustom 合成 Other… 末项并携带 customIndex；m
   }
 });
 
-test('ask_question：三模式安全链放行——manual 免审批 / plan 允许澄清提问 / dontAsk 照常', () => {
+test('ask_question：三模式安全链放行——acceptEdits 免审批 / read-only 允许澄清提问 / full-access 照常', () => {
   const root = tmpDir('sunshinex-askq-guard-');
   try {
-    for (const mode of ['manual', 'plan', 'dontAsk'] as const) {
+    for (const mode of ['acceptEdits', 'read-only', 'full-access'] as const) {
       const g = new SecurityGuard(new PolicyEngine(), mode).preToolUse('ask_question', { question: 'q', options: OPTIONS2 });
       assert.equal(g.allowed, true, `${mode} 下 ask_question 应放行（问询即通道本身）`);
     }

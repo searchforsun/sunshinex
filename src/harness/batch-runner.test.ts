@@ -34,7 +34,7 @@ interface Fixture {
 /** 装配桩：真实 registry/safety + 记账/事件收集口（emit 为旁路函数注入——抽出件不捕 Reactor 的可测性证明） */
 function makeFixture(registry: ToolRegistry): Fixture {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-batch-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const rows: string[] = [];
   const files: string[] = [];
   const events: { type: 'tool-call' | 'tool-result'; text: string; payload: Record<string, unknown> }[] = [];

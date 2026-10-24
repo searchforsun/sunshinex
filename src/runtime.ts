@@ -104,7 +104,7 @@ export type HarnessAssemblyOpts = Omit<Partial<HarnessOptions>, 'kb'>;
  * 一份构造，TUI 侧漏接 kb 为首个可见症状）。
  * 共用面：root、kb（resolveKnowledgeBase 调用点随本函数归一为全仓唯一生产调用点）。
  * 差异面由两侧 opts 注入（接缝语义逐一保留）：
- * - CLI（buildDeps）：mode:'dontAsk' 恒定 + createCliAskSeam 问询；模型不进 Harness（h.model 恒 Stub，
+ * - CLI（buildDeps）：mode:'full-access' 恒定（原 dontAsk，2026-10-24 档改名，语义不变）+ createCliAskSeam 问询；模型不进 Harness（h.model 恒 Stub，
  *   真实模型只进 LoopDeps.model——既有 CLI 形态，零行为变化）；
  * - 内核运行时（createKernelRuntime）：ask/model/mode/onEvent/todos 按需注入。
  * selfcheck 为诊断入口非交互面，保持直接 new Harness（自带 kbError 分支语义，不属 D27 双轨）。
@@ -140,7 +140,7 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     seamAsks += 1;
     return baseAsk(req);
   };
-  const h = buildHarness(root, { mode: 'dontAsk', ask: countedAsk, addDirs });
+  const h = buildHarness(root, { mode: 'full-access', ask: countedAsk, addDirs });
   const router = buildTierRouter(flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {

@@ -29,7 +29,7 @@ import { ScriptedAdapter } from '../model/adapter';
 
 function makeRealDeps(root: string): GraphDeps {
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
+    new SecurityGuard(new PolicyEngine(), 'full-access'),
     new ProcessSandbox(),
     root,
   );

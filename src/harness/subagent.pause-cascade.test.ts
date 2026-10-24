@@ -43,7 +43,7 @@ class HangingAdapter implements ModelAdapter {
 }
 
 function makeRunner(model: ModelAdapter, tmp: string, opts?: { tasks?: TaskRegistry }): SubagentRunner {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(path.join(tmp, '.data')));

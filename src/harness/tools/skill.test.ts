@@ -17,7 +17,7 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 's
 
 function fixture(): { root: string; safety: SafetyChain; registry: ToolRegistry } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skilltool-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root, { skills: createSkillsFacade(root) })) registry.register(t);
   return { root, safety, registry };
@@ -87,7 +87,7 @@ test('skill 工具：缺 id 报 INVALID_ARG；未装配技能门面报 skill_not
   assert.equal(bad.ok, false);
   if (!bad.ok) assert.equal(bad.error.code, 'INVALID_ARG');
 
-  const safety2 = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety2 = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const bare = new ToolRegistry();
   for (const t of builtinTools(safety2, root)) bare.register(t);
   const r = await bare.execute('skill', { id: 'x' }, safety2);
@@ -95,12 +95,12 @@ test('skill 工具：缺 id 报 INVALID_ARG；未装配技能门面报 skill_not
   if (!r.ok) assert.equal(r.error.code, 'skill_not_configured');
 });
 
-test('skill 工具：manual 模式免审批（只读族语义，与 Read 同档）', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skilltool-manual-'));
+test('skill 工具：acceptEdits 模式免审批（只读族语义，与 Read 同档）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skilltool-acceptedits-'));
   writeSkill(root, 'greet', 'name: Greet\ndescription: 问候\nversion: 1.0.0', '正文');
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root, { skills: createSkillsFacade(root) })) registry.register(t);
   const r = await registry.execute('skill', { id: 'greet' }, safety);
-  assert.equal(r.ok, true, 'manual 模式经 registry 规范名映射后免审批放行');
+  assert.equal(r.ok, true, 'acceptEdits 模式经 registry 规范名映射后免审批放行');
 });

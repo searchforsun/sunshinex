@@ -31,7 +31,7 @@ test('ROLE_PRESETS：与 AgentRole 全集一致且框定非空（英文单语）
 
 /** GraphDeps 装配样板（对齐 nodes.test.ts makeRealDeps）：真实安全链/注册表/上下文 + 注入模型桩 */
 function makeGraphDeps(root: string, model: ModelAdapter): GraphDeps {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   return { safety, registry, context: new ContextManager(root, new FileStore(root)), model };

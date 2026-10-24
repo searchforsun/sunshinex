@@ -40,7 +40,7 @@ class UsageAdapter implements ModelAdapter {
 }
 
 function makeDeps(tmp: string, model: ModelAdapter): GraphDeps {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   return { safety, registry, context: new ContextManager(tmp, new FileStore(tmp)), model };

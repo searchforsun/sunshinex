@@ -30,7 +30,7 @@ function startServer(body: string): Promise<{ url: string; close: () => void }> 
 function registryFor(): { registry: ToolRegistry; safety: SafetyChain; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-webfetch-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
+    new SecurityGuard(new PolicyEngine(), 'full-access'),
     new ProcessSandbox(),
     root,
   );
@@ -40,7 +40,7 @@ function registryFor(): { registry: ToolRegistry; safety: SafetyChain; root: str
 }
 
 function safetyFor(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
 }
 
 test('webfetch：http 端点抓取成功', async () => {
@@ -104,7 +104,7 @@ test('Harness 装配：无 SUNSHINE.md 时 webfetch 开箱可用', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-nowl-'));
   const srv = await startServer('ok-data');
   try {
-    const h = new Harness({ root, mode: 'dontAsk' });
+    const h = new Harness({ root, mode: 'full-access' });
     const r = await h.tools.execute('webfetch', { url: srv.url }, h.safety);
     assert.ok(r.ok);
     assert.equal(r.value.stdout, 'ok-data');

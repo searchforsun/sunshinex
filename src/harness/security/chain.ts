@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { GuardDecision, SecurityGuard } from './guard';
-import { PATH_TOOL_NAMES, WRITE_TOOL_NAMES } from './modes';
+import { PATH_TOOL_NAMES, WRITE_TOOL_NAMES, READONLY_DENY } from './modes';
 import { matchAnyRule } from '../../config/permissions';
 import type { PermissionsConfig } from '../../config/permissions';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
@@ -78,7 +78,7 @@ export class SafetyChain {
     return this.decideWithGuard(this.guard.preToolUse(tool, input), tool, raw);
   }
 
-  /** 异步决策（生产执行入口）：guard 段走 preToolUseAsync，判定骨架复用同步面同一单点；manual 审批请求
+  /** 异步决策（生产执行入口）：guard 段走 preToolUseAsync，判定骨架复用同步面同一单点；acceptEdits 审批请求
    *  经 guard.resolveAsk 路由（spec 5.1 写/读分支：'always' 目录登记，会话内同目录后续读写免批；
    *  asker 缺失/失败维持原拒绝，宁停不误）。非路径工具语义不变。 */
   async evaluateAsync(tool: string, input: unknown): Promise<GuardDecision> {
@@ -106,9 +106,9 @@ export class SafetyChain {
     return false;
   }
 
-  /** fence 触发后的读判据（spec 5.1 读分支：manual=ask、其余档=拒） */
+  /** fence 触发后的读判据（spec 5.1 读分支：acceptEdits=ask、其余档=拒） */
   private readFenceDecision(real: string): GuardDecision {
-    if (this.guard.mode === 'manual') {
+    if (this.guard.mode === 'acceptEdits') {
       return {
         allowed: false,
         ask: true,
@@ -142,8 +142,8 @@ export class SafetyChain {
    * 异常按拒绝处理不放行（spec 2.1 兜底条款）。求值序：settings.json → .git → 记忆写窄口（字面∪real 双查）→
    * worktree 主根拒写 → 用户 deny → 会话目录放行 → 用户 allow → 读分支 → 写分支（信任域放行 → 隔离链根外恒拒 → 数据目录只读 → 档位）。
    * 产品硬底线先于用户规则（规则只可收窄不可放宽）；
-   * 读分支（D1）信任域内直放、域外缺省全放（fence 开启才收窄：manual=ask、其余档=拒）；
-   * 写分支（D2/D3）信任域放行、域外按档位（manual=ask 且 askDir 记目录），隔离链根外恒拒；
+   * 读分支（D1）信任域内直放、域外缺省全放（fence 开启才收窄：acceptEdits=ask、其余档=拒）；
+   * 写分支（D2/D3）信任域放行、域外按档位（acceptEdits=ask 且 askDir 记目录），隔离链根外恒拒；
    * 数据目录只读在写分支信任域之后求值：root/活动工作树落在 dataDir 子树内的布局（SUNSHINEX_DATA_DIR 重定向、
    * worktreesRoot 归 dataDir）不得被只读条款误伤——信任域命中即放行，仅两域之外的 dataDir 子树保持只读定性。
    */
@@ -203,7 +203,7 @@ export class SafetyChain {
       const inMainRoot = real === this.rootReal || isWithin(this.rootReal, real);
       const inAdditional = this.additionalDirs.some((d) => real === d || isWithin(d, real));
 
-      // 读分支（D1）：信任域内直放；域外全盘放行，fence 开启时收窄（manual=ask、其余档=拒）
+      // 读分支（D1）：信任域内直放；域外全盘放行，fence 开启时收窄（acceptEdits=ask、其余档=拒）
       // （写族走下方写分支——edit 与 write 同审批/同档位语义，不得借读分支域外直放）
       if (!WRITE_TOOL_NAMES.has(tool)) {
         if (inUserConfig || inActiveRoot || inAdditional || inMainRoot) return { allowed: true, safePath: real };
@@ -226,8 +226,8 @@ export class SafetyChain {
         };
       }
       const mode = this.guard.mode;
-      if (mode === 'plan') return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
-      if (mode === 'dontAsk') return { allowed: true, safePath: real };
+      if (mode === 'read-only') return { allowed: false, reason: READONLY_DENY };
+      if (mode === 'full-access') return { allowed: true, safePath: real };
       return {
         allowed: false,
         ask: true,

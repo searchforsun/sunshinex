@@ -18,7 +18,7 @@ test('spawn 两段式：立即返回任务记录，结论行落任务日志、�
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgspawn-'));
   const h = new Harness({
     root,
-    mode: 'dontAsk',
+    mode: 'full-access',
     model: new ScriptedAdapter([
       JSON.stringify({ tool: 'spawn', input: { prompt: '背景调研：统计 dist 目录', background: true } }),
       JSON.stringify({ done: true, reply: '已提交后台子智能体' }),
@@ -43,7 +43,7 @@ test('spawn background:true 前置校验：双缺报 INVALID_ARG（fail-fast 禁
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgspawn-noguard-'));
   const h = new Harness({
     root,
-    mode: 'dontAsk',
+    mode: 'full-access',
     model: new ScriptedAdapter([
       JSON.stringify({ tool: 'spawn', input: {} }),
       JSON.stringify({ done: true, reply: 'ok' }),

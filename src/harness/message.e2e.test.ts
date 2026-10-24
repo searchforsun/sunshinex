@@ -1,4 +1,4 @@
-/** T4(P2 agent-message e2e):双向消息零产品码——真 Harness(dontAsk/learnSkills false/tmp root)+
+/** T4(P2 agent-message e2e):双向消息零产品码——真 Harness(full-access/learnSkills false/tmp root)+
  * 计数捕获 fake 模型(T3 teammate.test.ts 同款:req.messages 逐轮捕获)。数据目录经 SUNSHINEX_DATA_DIR
  * 钉位 tmp(inbox 即 <tmp>/teams/main/inbox,与装配面同路径),team 帽摘除防宿主耦合(team.e2e 同款)。
  * ① lead→teammate 回合边界:spawn w1(mode team)→ 主链真工具面 send_message(回执 delivered + 落档)
@@ -73,7 +73,7 @@ test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered +
   let h: Harness | undefined;
   try {
     const model = new CountingAdapter();
-    h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     // spawn w1(mode 'team')——经真 spawn 工具执行面(与模型出牌同一条链;team.e2e 同款)
     const sp = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
@@ -110,7 +110,7 @@ test('e2e teammate→lead:派生面直测 send_message → lead.jsonl 落档(fro
   let h: Harness | undefined;
   try {
     const events: SessionEvent[] = [];
-    h = new Harness({ root: tmp, mode: 'dontAsk', model: new CountingAdapter(), learnSkills: false, onEvent: (e) => events.push(e) });
+    h = new Harness({ root: tmp, mode: 'full-access', model: new CountingAdapter(), learnSkills: false, onEvent: (e) => events.push(e) });
     const sp = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
     // 裁定(T4 计划):teammate 面工具执行不经 fake model 驱动,直测工具——deriveTeammateRegistry 同

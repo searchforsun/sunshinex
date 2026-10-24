@@ -23,7 +23,7 @@ function writeProjectMcpJson(root: string, servers: Record<string, unknown>): vo
 test('Harness MCP 装配接线：两级配置 → mcpReady 注册 mcp__ 工具 → guard 放行', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
   writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
-  const h = new Harness({ root, mode: 'dontAsk' });
+  const h = new Harness({ root, mode: 'full-access' });
   try {
     await h.mcpReady();
     assert.ok(h.tools.get('mcp__fs__echo'), 'mcp__fs__echo 应注册进主链注册表');
@@ -40,7 +40,7 @@ test('Harness MCP 降级语义：坏服务器 mcpReady 不拒绝，警告单可�
     bad: { url: 'http://127.0.0.1:1/mcp', transport: 'http' },
     fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] },
   });
-  const h = new Harness({ root, mode: 'dontAsk' });
+  const h = new Harness({ root, mode: 'full-access' });
   try {
     await h.mcpReady(); // 降级语义：不拒绝
     assert.ok(h.tools.get('mcp__fs__echo'), '坏服务器不影响好服务器注册');
@@ -54,7 +54,7 @@ test('Harness MCP 降级语义：坏服务器 mcpReady 不拒绝，警告单可�
 
 test('Harness MCP 收口幂等：未连接时 close 为 no-op，连接后 close 后可重连', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
-  const h = new Harness({ root, mode: 'dontAsk' });
+  const h = new Harness({ root, mode: 'full-access' });
   await h.mcpReady(); // 空配置零开销直通
   await h.mcpClose();
   await h.mcpClose(); // 幂等
@@ -64,7 +64,7 @@ test('Harness MCP 收口幂等：未连接时 close 为 no-op，连接后 close 
 test('Harness MCP 闸门：未登记 server 的 mcp__ 工具被 guard 拒绝', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
   writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
-  const h = new Harness({ root, mode: 'dontAsk' });
+  const h = new Harness({ root, mode: 'full-access' });
   const d = h.security.preToolUse('mcp__other__tool', {});
   assert.equal(d.allowed, false);
   assert.match(d.reason ?? '', /not registered/);
@@ -72,7 +72,7 @@ test('Harness MCP 闸门：未登记 server 的 mcp__ 工具被 guard 拒绝', (
 
 /** 引擎级就绪门槛用例夹具：最小 LoopDeps */
 function engineDeps(root: string, extra: Partial<LoopDeps>): { deps: LoopDeps } {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   return {
     deps: {

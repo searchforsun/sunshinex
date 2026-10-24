@@ -15,10 +15,10 @@ import { ContextManager } from '../harness/context';
 import { FileStore } from '../storage/adapter';
 import { ScriptedAdapter } from '../model/adapter';
 
-/** 五件套装配：dontAsk 模式（E2E 需要写文件；deny 底线仍生效） */
+/** 五件套装配：full-access 模式（E2E 需要写文件；deny 底线仍生效） */
 function makeDeps(root: string, model: ScriptedAdapter): LoopDeps {
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
+    new SecurityGuard(new PolicyEngine(), 'full-access'),
     new ProcessSandbox(),
     root,
   );

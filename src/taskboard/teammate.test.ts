@@ -92,7 +92,7 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     ...(withTeam ? { team } : {}),
   });
   board.init();
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const tools = new ToolRegistry();
   const inbox = new FileInbox(path.join(tmp, 'teams', 'main', 'inbox'));
   const depsOf = (name: string, model: CountingAdapter, depInbox?: Inbox) => ({

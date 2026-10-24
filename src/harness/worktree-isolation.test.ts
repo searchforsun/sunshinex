@@ -93,7 +93,7 @@ test('T5-1 frontmatter 声明 → 建树执行、干净树自动删且零 note �
         return JSON.stringify({ done: true, reply: 'parent done' });
       }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
       assert.equal(r.done, true, `run 应完成：${String(r.stopReason ?? '')}`);
       assert.equal(prompts.length, 3, `帧数应为 父/子/父=3：${prompts.length}`);
@@ -123,7 +123,7 @@ test('T5-2 入参通道：普通 agent + spawn 入参 isolation=worktree 同样�
         return JSON.stringify({ done: true, reply: 'parent done' });
       }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
       assert.equal(r.done, true);
       const childCwd = cwdOf(prompts[1]!);
@@ -149,7 +149,7 @@ test('T5-3 收口：子智能体有改动 → 树保留 + keptReason=dirty + 补
         return JSON.stringify({ done: true, reply: 'parent done' });
       }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
       assert.equal(r.done, true, `run 应完成：${String(r.stopReason ?? '')}`);
       const childCwd = cwdOf(prompts[1]!);
@@ -181,7 +181,7 @@ test('T5-4 非 git 仓 → 静默兜底：不建树、零 note、主工作区正
           return JSON.stringify({ done: true, reply: 'parent done' });
         }),
       };
-      const h = new Harness({ root: plain, mode: 'dontAsk', model, learnSkills: false });
+      const h = new Harness({ root: plain, mode: 'full-access', model, learnSkills: false });
       return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
         assert.equal(r.done, true, '父任务正常完成');
         const childCwd = cwdOf(prompts[1]!);
@@ -199,7 +199,7 @@ test('T5-4 非 git 仓 → 静默兜底：不建树、零 note、主工作区正
 test('T5-5a 缺项目根 → 同静默兜底：正常执行、零链行', async () =>
   withIso(async (tmp) => {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);
@@ -224,7 +224,7 @@ test('T5-5b 是仓但 unborn HEAD → 建树失败 fail-bounded：补丁行回�
         return JSON.stringify({ done: true, reply: 'parent survived' });
       }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
       assert.equal(r.done, true, '父任务不炸：run 应完成');
       const chain = h.context.chainView();
@@ -253,7 +253,7 @@ test('T5-6 隔离子智能体 exec 锚树：cwd=树、树内 git 放行、越树
         return JSON.stringify({ done: true, reply: 'parent done' });
       }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
       assert.equal(r.done, true);
       const childCwd = cwdOf(prompts[1]!);
@@ -284,7 +284,7 @@ test('T5-7 回归锚：未声明 isolation 的 spawn 行为零变化', () =>
     };
     fs.mkdirSync(path.join(repo, 'agents', 'plain'), { recursive: true });
     fs.writeFileSync(path.join(repo, 'agents', 'plain', 'agent.md'), '---\nname: Plain\ndescription: no isolation\n---\nwork.');
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
       assert.equal(r.done, true);
       assert.equal(cwdOf(prompts[1]!), repo, '无声明：子智能体 cwd=主根');
@@ -316,7 +316,7 @@ test('T5-8 并行批两棵专属树互不撞名，双双干净收口', () =>
         return JSON.stringify({ done: true, reply: 'parent done' });
       }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
       assert.equal(r.done, true);
       const cwdA = cwdOf(prompts.find((p) => p.includes('Child A task'))!);

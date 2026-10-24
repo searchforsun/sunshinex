@@ -34,7 +34,7 @@ async function withRegistry(
     const realRoot = path.join(tmp, 'real-root');
     fs.mkdirSync(realRoot, { recursive: true });
     const root = rootOverride ?? realRoot;
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, root)) registry.register(t);
     await fn({ registry, safety, root });

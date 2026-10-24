@@ -12,8 +12,8 @@
  *    形态会吞下一个非 `--` 起始词，T3 用例钉 `--worktree=<name>` 紧凑形态为唯一取值通道。
  * 4. 安全链工具名为大写形态（'Read'/'Write'/'Grep'，PATH_TOOLS 集合 chain.ts 顶部）；读面恒开放名单 =
  *    非 'Write' 工具；记忆窄口判定先于活动根判定（2026-09-18 审查裁决序，序不破）。
- * 5. guard.ts manual 免审批先例 = `if (tool === 'spawn') return { allowed: true }`；plan 只读闸门 =
- *    `if (this.mode === 'plan')` 只读白名单段；T4 worktree 分支沿 spawn 落点追加。
+ * 5. guard.ts acceptEdits 免审批先例 = `if (tool === 'spawn') return { allowed: true }`；read-only 闸门 =
+ *    `if (this.mode === 'read-only')` 只读白名单段；T4 worktree 分支沿 spawn 落点追加。
  * 6. reactor.ts 并行闸门两处判定（批量执行与执行面校验），谓词「exec and ask must run exclusively」——
  *    T4 worktree 与 exec/ask 同列单发独占，谓词同处扩展。
  */

@@ -11,7 +11,7 @@ import { ProcessSandbox } from './sandbox';
 
 interface Fixture { chain: SafetyChain; guard: SecurityGuard; root: string; home: string; restore: () => void }
 
-function withChain(mode: 'manual' | 'dontAsk' | 'plan', fn: (f: Fixture) => void | Promise<void>): Promise<void> | void {
+function withChain(mode: 'acceptEdits' | 'full-access' | 'read-only', fn: (f: Fixture) => void | Promise<void>): Promise<void> | void {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-home-'));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-root-'));
   const prevHome = process.env.HOME;
@@ -34,8 +34,8 @@ function withChain(mode: 'manual' | 'dontAsk' | 'plan', fn: (f: Fixture) => void
   restore();
 }
 
-test('D1：root 外读缺省全放（manual 档亦放）', async () => {
-  withChain('manual', ({ chain, root }) => {
+test('D1：root 外读缺省全放（acceptEdits 档亦放）', async () => {
+  withChain('acceptEdits', ({ chain, root }) => {
     const outside = path.join(path.dirname(root), 'outside.txt');
     fs.writeFileSync(outside, 'x');
     const d = chain.evaluate('Read', { path: outside });
@@ -43,15 +43,15 @@ test('D1：root 外读缺省全放（manual 档亦放）', async () => {
   });
 });
 
-test('D1：fence 开启时 root 外读 manual=ask，askDir 记目录；dontAsk=拒', async () => {
-  withChain('manual', async ({ chain, root }) => {
+test('D1：fence 开启时 root 外读 acceptEdits=ask，askDir 记目录；full-access=拒', async () => {
+  withChain('acceptEdits', async ({ chain, root }) => {
     process.env.SUNSHINEX_READ_FENCE = 'on';
     const outside = path.join(path.dirname(root), 'secret.txt');
     const d = await chain.evaluateAsync('Read', { path: outside });
     assert.equal(d.allowed, false);
     assert.ok(!d.allowed && d.ask === true && d.askDir === path.dirname(outside));
   });
-  withChain('dontAsk', ({ chain, root }) => {
+  withChain('full-access', ({ chain, root }) => {
     process.env.SUNSHINEX_READ_FENCE = 'on';
     const outside = path.join(path.dirname(root), 'secret.txt');
     const d = chain.evaluate('Read', { path: outside });
@@ -60,8 +60,8 @@ test('D1：fence 开启时 root 外读 manual=ask，askDir 记目录；dontAsk=�
   });
 });
 
-test('D2：root 外写 manual=ask（askDir=目录）；\'always\' 经 evaluateAsync 登记目录后同目录免批', async () => {
-  withChain('manual', async ({ chain, guard, root }) => {
+test('D2：root 外写 acceptEdits=ask（askDir=目录）；\'always\' 经 evaluateAsync 登记目录后同目录免批', async () => {
+  withChain('acceptEdits', async ({ chain, guard, root }) => {
     const dir = path.join(path.dirname(root), 'granted');
     fs.mkdirSync(dir, { recursive: true });
     const d1 = await chain.evaluateAsync('Write', { path: path.join(dir, 'a.txt') });
@@ -79,18 +79,29 @@ test('D2：root 外写 manual=ask（askDir=目录）；\'always\' 经 evaluateAs
   });
 });
 
-test('D2：root 外写 dontAsk=放行；信任域内 manual 亦直放', () => {
-  withChain('dontAsk', ({ chain, root }) => {
+test('D2：root 外写 full-access=放行；信任域内 acceptEdits 亦直放', () => {
+  withChain('full-access', ({ chain, root }) => {
     const outside = path.join(path.dirname(root), 'w.txt');
     assert.equal(chain.evaluate('Write', { path: outside }).allowed, true);
   });
-  withChain('manual', ({ chain, root }) => {
+  withChain('acceptEdits', ({ chain, root }) => {
     assert.equal(chain.evaluate('Write', { path: path.join(root, 'in.txt') }).allowed, true);
   });
 });
 
+test('read-only 档拒绝消息带出路提示（判别力锚：换回旧文案即红）', () => {
+  withChain('read-only', ({ chain, root }) => {
+    const d = chain.evaluate('Write', { path: path.join(root, 'x.txt') });
+    assert.equal(d.allowed, false);
+    if (!d.allowed) {
+      assert.match(d.reason, /read-only mode allows read-only operations only/);
+      assert.match(d.reason, /switch permission modes/);
+    }
+  });
+});
+
 test('D6：.git 任一段写拒（仓库 .git 目录与指针文件同护）', () => {
-  withChain('dontAsk', ({ chain, root }) => {
+  withChain('full-access', ({ chain, root }) => {
     assert.ok(!chain.evaluate('Write', { path: path.join(root, '.git', 'config') }).allowed);
     assert.ok(!chain.evaluate('Write', { path: path.join(root, 'sub', '.git', 'HEAD') }).allowed);
     assert.ok(chain.evaluate('Write', { path: path.join(root, 'github-like', 'a.txt') }).allowed);
@@ -98,7 +109,7 @@ test('D6：.git 任一段写拒（仓库 .git 目录与指针文件同护）', (
 });
 
 test('D6：.git 硬底线先于用户 allow 规则（规则不可放宽）', () => {
-  withChain('dontAsk', ({ chain, root }) => {
+  withChain('full-access', ({ chain, root }) => {
     chain.setPermissions({ deny: [], allow: ['Write(**/.git/**)'], additionalDirs: [] });
     const d = chain.evaluate('Write', { path: path.join(root, '.git', 'config') });
     assert.equal(d.allowed, false);
@@ -106,7 +117,7 @@ test('D6：.git 硬底线先于用户 allow 规则（规则不可放宽）', () 
 });
 
 test('D5：用户 deny 命中即拒、allow 信任域外免批', () => {
-  withChain('manual', ({ chain, root }) => {
+  withChain('acceptEdits', ({ chain, root }) => {
     chain.setPermissions({ deny: ['Write(**/.env)'], allow: ['Write(**/allow.txt)'], additionalDirs: [] });
     assert.ok(!chain.evaluate('Write', { path: path.join(root, 'sub', '.env') }).allowed);
     const outside = path.join(path.dirname(root), 'allow.txt');
@@ -117,7 +128,7 @@ test('D5：用户 deny 命中即拒、allow 信任域外免批', () => {
 });
 
 test('D3：信任目录读写放行（setAdditionalDirs 归一 + addAdditionalDir 追加）', () => {
-  withChain('manual', ({ chain, root }) => {
+  withChain('acceptEdits', ({ chain, root }) => {
     const trust = path.join(path.dirname(root), 'trusted');
     fs.mkdirSync(trust, { recursive: true });
     const link = path.join(root, '..', path.basename(trust)); // 相对形态注入
@@ -129,7 +140,7 @@ test('D3：信任目录读写放行（setAdditionalDirs 归一 + addAdditionalDi
 });
 
 test('withRoot 克隆共享 permissions/additionalDirs；隔离链根外写恒拒', () => {
-  withChain('dontAsk', ({ chain, root }) => {
+  withChain('full-access', ({ chain, root }) => {
     const tree = path.join(path.dirname(root), 'wt-tree');
     fs.mkdirSync(tree, { recursive: true });
     const trust = path.join(path.dirname(root), 'shared-dir');

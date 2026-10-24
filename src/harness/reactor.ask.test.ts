@@ -21,7 +21,7 @@ process.env.SUNSHINEX_USER_SKILLS_DIR = process.env.SUNSHINEX_USER_SKILLS_DIR ??
 
 function makeReactorWithAsk(tmp: string, steps: string[], ask: AskUserSeam): Reactor {
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp, { ask })) registry.register(t);
   const context = new ContextManager(tmp, store);

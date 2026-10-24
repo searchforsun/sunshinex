@@ -38,7 +38,7 @@ class RecordingAdapter implements ModelAdapter {
 
 function makeRealDeps(root: string, model: ModelAdapter = new ScriptedAdapter(['{"done":true,"reply":"ok"}'])): GraphDeps {
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
+    new SecurityGuard(new PolicyEngine(), 'full-access'),
     new ProcessSandbox(),
     root,
   );

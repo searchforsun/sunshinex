@@ -15,7 +15,7 @@ function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'write-snap-'));
 }
 function makeSafety(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
 }
 function registry(root: string, sink?: ReturnType<typeof makeWriteSnapshotSink>): { registry: ToolRegistry; safety: SafetyChain } {
   const safety = makeSafety(root);
@@ -84,7 +84,7 @@ test('makeWriteSnapshotSink: 相对路径按 root 解析、root 外跳过', () =
   }
 });
 
-test('builtin write 执行后 sink 收到 pre-image（dontAsk 免审批直写）', async () => {
+test('builtin write 执行后 sink 收到 pre-image（full-access 免审批直写）', async () => {
   const root = tmp();
   try {
     const sink = makeWriteSnapshotSink(path.join(root, 'data'), root);

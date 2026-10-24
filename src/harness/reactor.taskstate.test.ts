@@ -17,7 +17,7 @@ import { SessionEvent } from '../types';
 
 function makeReactor(tmp: string, adapter: ModelAdapter, onEvent?: (e: SessionEvent) => void): Reactor {
   const store = new FileStore(path.join(tmp, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);

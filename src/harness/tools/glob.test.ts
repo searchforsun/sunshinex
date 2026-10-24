@@ -10,7 +10,7 @@ import { SafetyChain } from '../security/chain';
 import { builtinTools } from './builtin';
 
 function setup(root: string): { registry: ToolRegistry; safety: SafetyChain } {
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   return { registry, safety };
@@ -114,7 +114,7 @@ test('worktree 会话 glob 锚活动根：列树内文件、不列主区（D19-b
   fs.writeFileSync(path.join(tree, 'tree-only.txt'), 'x\n');
   try {
     // 装配形态同 Harness：activeRoot 接缝直取 safety.activeRoot；缺省态（主区）先钉基线
-    const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), root);
+    const safety = new SafetyChain(new SecurityGuard(undefined, 'full-access'), new ProcessSandbox(), root);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, root, { activeRoot: () => safety.activeRoot })) registry.register(t);
 

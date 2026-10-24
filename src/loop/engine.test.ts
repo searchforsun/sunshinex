@@ -38,7 +38,7 @@ class FlakyJudgeAdapter implements ModelAdapter {
 
 /** 测试装配：真实安全链/注册表/上下文 + 注入的模型适配器（对齐 reactor.test.ts 样板） */
 function makeDeps(tmp: string, model: ModelAdapter, router?: ModelRouter): LoopDeps {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'manual'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'acceptEdits'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   return { safety, registry, context: new ContextManager(tmp, new FileStore(tmp)), model, ...(router ? { router } : {}) };

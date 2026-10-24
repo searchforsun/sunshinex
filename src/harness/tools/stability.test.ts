@@ -15,10 +15,10 @@ function tmpdir(): string {
 }
 
 function registryWith(root: string): { registry: ToolRegistry; safety: SafetyChain } {
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
-  // dontAsk：最大权限，验证工具执行链本身而非权限拦截
+  // full-access：最大权限，验证工具执行链本身而非权限拦截
   return { registry, safety };
 }
 
@@ -89,7 +89,7 @@ test('read 落点跟随安全链 root（safePath 消费自 evaluate）', async (
   const dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-roota-'));
   const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-rootb-'));
   fs.writeFileSync(path.join(dirA, 'in-a.txt'), 'A-content');
-  const safety = new SafetyChain(new SecurityGuard(undefined, 'manual'), new ProcessSandbox(), dirA);
+  const safety = new SafetyChain(new SecurityGuard(undefined, 'acceptEdits'), new ProcessSandbox(), dirA);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, dirB)) registry.register(t);
   const r = await registry.execute('read', { path: 'in-a.txt' }, safety);

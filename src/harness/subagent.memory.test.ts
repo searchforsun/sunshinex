@@ -39,7 +39,7 @@ function makeHarness(tmp: string): Harness {
   const root = path.join(tmp, 'root');
   fs.mkdirSync(root, { recursive: true });
   const store = new FileStore(path.join(root, '.data'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root, { memory: guardMemoryWrite })) registry.register(t);
   const context = new ContextManager(root, store);

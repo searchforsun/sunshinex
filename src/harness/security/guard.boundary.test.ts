@@ -12,30 +12,30 @@ function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-guard-b-'));
 }
 
-test('manual 档 Write 下放安全链：guard 不再逐次 ask（spec 5.1 写分支）', () => {
-  const g = new SecurityGuard(new PolicyEngine(), 'manual');
+test('acceptEdits 档 Write 下放安全链：guard 不再逐次 ask（spec 5.1 写分支）', () => {
+  const g = new SecurityGuard(new PolicyEngine(), 'acceptEdits');
   const d = g.preToolUse('Write', { path: path.join(tmpDir(), 'a.txt') });
   assert.equal(d.allowed, true);
 });
 
-test('plan 闸门先于 allow 短路：allow 规则不放宽 plan 只读', () => {
+test('read-only 闸门先于 allow 短路：allow 规则不放宽 read-only 只读', () => {
   const policy = new PolicyEngine();
   policy.add('allow', 'Write');
-  const g = new SecurityGuard(policy, 'plan');
+  const g = new SecurityGuard(policy, 'read-only');
   const d = g.preToolUse('Write', { path: 'a.txt' });
   assert.equal(d.allowed, false);
-  assert.ok(!d.allowed && d.reason.includes('plan mode allows read-only operations only'));
+  assert.ok(!d.allowed && d.reason.includes('read-only mode allows read-only operations only'));
 });
 
-test('allow 规则在非 plan 档免批', () => {
+test('allow 规则在非 read-only 档免批', () => {
   const policy = new PolicyEngine();
   policy.add('allow', 'Bash(npm*)');
-  const g = new SecurityGuard(policy, 'manual');
+  const g = new SecurityGuard(policy, 'acceptEdits');
   assert.equal(g.preToolUse('Bash', 'npm test').allowed, true);
 });
 
 test('会话目录登记与判定（含自身；clear 同步清理）', () => {
-  const g = new SecurityGuard(new PolicyEngine(), 'manual');
+  const g = new SecurityGuard(new PolicyEngine(), 'acceptEdits');
   const dir = tmpDir();
   g.allowSessionDir(dir);
   assert.equal(g.sessionDirAllowed(dir), true);
@@ -46,14 +46,14 @@ test('会话目录登记与判定（含自身；clear 同步清理）', () => {
   assert.equal(g.sessionDirAllowed(dir), false);
 });
 
-test('manual 档账本操作免审批：task_stop / task_wait 直放（零直接 IO 副作用，对齐 spawn 先例）', () => {
-  const g = new SecurityGuard(new PolicyEngine(), 'manual');
+test('acceptEdits 档账本操作免审批：task_stop / task_wait 直放（零直接 IO 副作用，对齐 spawn 先例）', () => {
+  const g = new SecurityGuard(new PolicyEngine(), 'acceptEdits');
   assert.equal(g.preToolUse('task_stop', { taskId: 'b1' }).allowed, true, 'task_stop 账本状态操作免审批');
   assert.equal(g.preToolUse('task_wait', { taskIds: ['b1'], timeoutSeconds: 30 }).allowed, true, 'task_wait 账本读操作免审批');
 });
 
 test('resolveAsk：无 asker 返回 null（宁停不误）；有 asker 原样回传决策', async () => {
-  const g = new SecurityGuard(new PolicyEngine(), 'manual');
+  const g = new SecurityGuard(new PolicyEngine(), 'acceptEdits');
   const req: ApprovalRequest = { id: g.nextApprovalId(), kind: 'write', subject: '/tmp/x/a.txt', reason: 'r' };
   assert.equal(await g.resolveAsk(req), null);
   g.setAsker(async () => 'allow');

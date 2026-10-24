@@ -26,7 +26,7 @@ import { ApprovalDecision, ApprovalRequest } from '../../types';
  * ①落盘单点 `writeMemoryFact` 与批量提取共用同一条准入链（扫描 → SUNSHINE.md 去重 → store.add 三级归一去重）
  * ②重复写幂等：返回既有 slug（`existed: true`）且零新增
  * ③闸门不绕过：时间词/注入/不可见字符/SUNSHINE 重叠一律带码失败且零落盘；autoMemory=off 同样零落盘零副作用
- * ④安全链同族：canonical `Write`——manual 走审批（无 asker 拒绝 / deny 拒绝 / allow 放行）、dontAsk 放行、plan 拒绝
+ * ④安全链同族：canonical `Write`——acceptEdits 走审批（无 asker 拒绝 / deny 拒绝 / allow 放行）、full-access 放行、read-only 拒绝
  * ⑤观察行单行契约（reactor 渲染 `${step}: ${action} -> ${observation}`）：近满提醒以 ` | ` 拼接，不得换行
  * ⑥审批 subject 可读且恒非空（`type:description` 兜底）：会话放行按内容分键，不跨内容、不跨工具族
  * ⑦记忆 scope（子智能体隔离）：接缝承载链侧 scope → 落盘走 `agents/<id>` 子目录，主记忆目录零污染
@@ -180,7 +180,7 @@ test('memory_write：类型非法与正文空 → 带码失败且零落盘', asy
 
 test('memory_write：工具注册与清单（category=write、英文单语 description、缺省第 8 参清单零变化）', async () => {
   await withRoot(({ root }) => {
-    const { registry } = registryFor({ root, mode: 'dontAsk' });
+    const { registry } = registryFor({ root, mode: 'full-access' });
     const names = registry.list().map((t) => t.name);
     assert.deepEqual(names, [...BUILTIN_NAMES.slice(0, -1), 'memory_write', 'worktree'], '声明序：第 8 参接缝项居基线九具与 worktree 尾具之间');
     assert.equal(registry.get('memory_write')?.category, 'write', '与 write 同族');
@@ -193,7 +193,7 @@ test('memory_write：工具注册与清单（category=write、英文单语 descr
     assert.equal(/[\u4e00-\u9fff]/.test(desc), false, 'description 英文单语（CLAUDE.md §15）');
 
     // 缺省不注入第 8 参 → 工具清单逐字节零变化（对齐第 7 参两态不变式）
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     const bare = new ToolRegistry();
     for (const t of builtinTools(safety, root)) bare.register(t);
     assert.deepEqual(bare.list().map((t) => t.name), BUILTIN_NAMES);
@@ -201,23 +201,23 @@ test('memory_write：工具注册与清单（category=write、英文单语 descr
   });
 });
 
-test('memory_write：manual 模式走审批——无 asker 拒绝、deny 拒绝、allow 放行落盘', async () => {
+test('memory_write：acceptEdits 模式走审批——无 asker 拒绝、deny 拒绝、allow 放行落盘', async () => {
   await withRoot(async ({ root, dataDir }) => {
-    const noAsker = registryFor({ root, mode: 'manual' });
+    const noAsker = registryFor({ root, mode: 'acceptEdits' });
     const denied = await noAsker.registry.execute('memory_write', { ...FACT }, noAsker.safety);
-    assert.equal(denied.ok, false, 'manual 无 asker 维持拒绝');
+    assert.equal(denied.ok, false, 'acceptEdits 无 asker 维持拒绝');
     if (!denied.ok) assert.equal(denied.error.code, 'COMMAND_DENIED');
     assert.deepEqual(recordFiles(dataDir), [], '审批未过零落盘');
 
     const seen: ApprovalRequest[] = [];
-    const denyAsker = registryFor({ root, mode: 'manual', asker: async (req) => { seen.push(req); return 'deny'; } });
+    const denyAsker = registryFor({ root, mode: 'acceptEdits', asker: async (req) => { seen.push(req); return 'deny'; } });
     const rejected = await denyAsker.registry.execute('memory_write', { ...FACT }, denyAsker.safety);
     assert.equal(rejected.ok, false);
     if (!rejected.ok) assert.match(rejected.error.message, /rejected by user/);
     assert.equal(seen[0].kind, 'write', '写族审批 kind=write');
     assert.deepEqual(recordFiles(dataDir), []);
 
-    const allowAsker = registryFor({ root, mode: 'manual', asker: async () => 'allow' });
+    const allowAsker = registryFor({ root, mode: 'acceptEdits', asker: async () => 'allow' });
     const approved = await allowAsker.registry.execute('memory_write', { ...FACT }, allowAsker.safety);
     assert.equal(approved.ok, true, `审批放行后应落盘：${approved.ok ? '' : approved.error.message}`);
     if (approved.ok) assert.equal(approved.value.stdout, `Saved memory: ${FACT_SLUG}`, '观察行含 slug');
@@ -225,22 +225,22 @@ test('memory_write：manual 模式走审批——无 asker 拒绝、deny 拒绝�
   });
 });
 
-test('memory_write：plan 模式拒绝（Write 族在 plan 下非只读）', async () => {
+test('memory_write：read-only 模式拒绝（Write 族在 read-only 下非只读）', async () => {
   await withRoot(async ({ root, dataDir }) => {
-    const { registry, safety } = registryFor({ root, mode: 'plan' });
+    const { registry, safety } = registryFor({ root, mode: 'read-only' });
     const r = await registry.execute('memory_write', { ...FACT }, safety);
     assert.equal(r.ok, false);
     if (!r.ok) {
       assert.equal(r.error.code, 'COMMAND_DENIED');
-      assert.match(r.error.message, /plan mode allows read-only operations only/);
+      assert.match(r.error.message, /read-only mode allows read-only operations only/);
     }
-    assert.deepEqual(recordFiles(dataDir), [], 'plan 拒绝零落盘');
+    assert.deepEqual(recordFiles(dataDir), [], 'read-only 拒绝零落盘');
   });
 });
 
-test('memory_write：dontAsk 直通落盘、重复写回执带 (already exists)、观察行单行', async () => {
+test('memory_write：full-access 直通落盘、重复写回执带 (already exists)、观察行单行', async () => {
   await withRoot(async ({ root, dataDir }) => {
-    const { registry, safety } = registryFor({ root, mode: 'dontAsk' });
+    const { registry, safety } = registryFor({ root, mode: 'full-access' });
     const first = await registry.execute('memory_write', { ...FACT }, safety);
     assert.equal(first.ok, true, `应成功：${first.ok ? '' : first.error.message}`);
     if (first.ok) assert.equal(first.value.stdout, `Saved memory: ${FACT_SLUG}`);
@@ -263,7 +263,7 @@ test('memory_write：近满提醒以 " | " 拼接（观察行恒单行，不得�
       const seeded = store.add({ type: 'project', description: `seeded topic ${i}`, body: `seeded body ${i}` });
       assert.ok(seeded.ok, `seed ${i}`);
     }
-    const { registry, safety } = registryFor({ root, mode: 'dontAsk' });
+    const { registry, safety } = registryFor({ root, mode: 'full-access' });
     const r = await registry.execute('memory_write', { ...FACT }, safety);
     assert.equal(r.ok, true);
     if (!r.ok) return;
@@ -283,7 +283,7 @@ test('memory_write：记忆未启用（autoMemory=off）→ 工具报错且零�
         assert.equal(direct.error.code, 'MEMORY_DISABLED');
         assert.match(direct.error.message, /auto memory is off/);
       }
-      const { registry, safety } = registryFor({ root, mode: 'dontAsk' });
+      const { registry, safety } = registryFor({ root, mode: 'full-access' });
       const viaTool = await registry.execute('memory_write', { ...FACT }, safety);
       assert.equal(viaTool.ok, false);
       if (!viaTool.ok) assert.equal(viaTool.error.code, 'MEMORY_DISABLED');
@@ -298,7 +298,7 @@ test('memory_write：记忆未启用（autoMemory=off）→ 工具报错且零�
 
 test('memory_write：reactor 工具清单段按名升序渲染且含 memory_write（渲染面真断言）', async () => {
   await withRoot(async ({ root }) => {
-    const { registry, safety } = registryFor({ root, mode: 'dontAsk' });
+    const { registry, safety } = registryFor({ root, mode: 'full-access' });
     const requests: ChatRequest[] = [];
     const capture: ModelAdapter = {
       provider: 'capture',
@@ -326,7 +326,7 @@ test('memory_write：审批 subject 取 type:description（卡片可读、恒非
     const seen: ApprovalRequest[] = [];
     const { registry, safety } = registryFor({
       root,
-      mode: 'manual',
+      mode: 'acceptEdits',
       asker: async (req) => {
         seen.push(req);
         return 'always';
@@ -358,7 +358,7 @@ test('memory_write：审批 subject 取 type:description（卡片可读、恒非
 test('memory_write：scope 收窄落盘子智能体自有目录（接缝承载链侧 scope，主记忆目录零污染）', async () => {
   await withRoot(async ({ root, dataDir }) => {
     const ownDir = path.join(dataDir, 'memory', 'agents', 'reviewer');
-    const scoped = registryFor({ root, mode: 'dontAsk', memoryScope: 'agents/reviewer' });
+    const scoped = registryFor({ root, mode: 'full-access', memoryScope: 'agents/reviewer' });
     const r = await scoped.registry.execute('memory_write', { ...FACT }, scoped.safety);
     assert.equal(r.ok, true, `子智能体链应写入自有目录：${r.ok ? '' : r.error.message}`);
     assert.deepEqual(mdFilesIn(ownDir), [`${FACT_SLUG}.md`], '落盘在 agents/<id> 子目录（与 subagent.agentMemory 同目录形态）');
@@ -375,7 +375,7 @@ test('memory_write：scope 收窄落盘子智能体自有目录（接缝承载�
     assert.equal(fs.existsSync(path.join(dataDir, 'memory', 'agents', 'other')), false, '模型自选 scope 不得改变落点');
 
     // 主链（无 scope）= 主记忆目录；两侧各自独立（同 body 不互相去重）
-    const main = registryFor({ root, mode: 'dontAsk' });
+    const main = registryFor({ root, mode: 'full-access' });
     const m = await main.registry.execute(
       'memory_write',
       { type: 'project', content: 'Main chain writes stay in the main memory dir', description: 'main chain fact' },
@@ -441,7 +441,7 @@ test('memory_write：update 目标不存在 MEMORY_NOT_FOUND；delete 缺 slug I
     const upd = writeMemoryFact({ root, type: 'project', content: 'x', slug: 'no-such-slug', action: 'update' });
     assert.equal(upd.ok, false);
     if (!upd.ok) assert.equal(upd.error.code, 'MEMORY_NOT_FOUND');
-    const reg = registryFor({ root, mode: 'dontAsk' });
+    const reg = registryFor({ root, mode: 'full-access' });
     const bad = await reg.registry.execute('memory_write', { action: 'delete', slug: null, type: 'project', content: null, description: null }, reg.safety);
     assert.equal(bad.ok, false, 'delete 缺 slug 拒绝');
   });

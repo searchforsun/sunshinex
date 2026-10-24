@@ -26,7 +26,7 @@ test('装配：settings permissions 注入后链侧生效 + permissionWarnings �
     fs.writeFileSync(path.join(root, '.sunshinex', 'settings.json'), JSON.stringify({
       permissions: { deny: ['Write(**/.env)'] },
     }));
-    const h = new Harness({ root, mode: 'dontAsk' });
+    const h = new Harness({ root, mode: 'full-access' });
     const d = h.safety.evaluate('Write', { path: path.join(root, '.env') });
     assert.equal(d.allowed, false);
     assert.ok(h.permissionWarnings().length >= 1, '全局级 permissions 形状非法须走 warnings 通道');
@@ -47,7 +47,7 @@ test('addAdditionalDir：运行期扩目录读写放行，缺失路径报错', (
   const prevHome = process.env.HOME;
   process.env.HOME = home;
   try {
-    const h = new Harness({ root, mode: 'manual' });
+    const h = new Harness({ root, mode: 'acceptEdits' });
     const bad = h.addAdditionalDir(path.join(root, 'no-such-dir'));
     assert.equal(bad.ok, false);
     const ok = h.addAdditionalDir(trust);

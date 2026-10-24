@@ -23,7 +23,7 @@ export function canSymlink(): boolean {
   }
 }
 
-function chain(root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-')), mode: 'manual' | 'dontAsk' = 'manual'): SafetyChain {
+function chain(root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-chain-')), mode: 'acceptEdits' | 'full-access' = 'acceptEdits'): SafetyChain {
   return new SafetyChain(new SecurityGuard(new PolicyEngine(), mode), new ProcessSandbox(), root);
 }
 
@@ -47,17 +47,17 @@ test('evaluate 对 Read 越界相对路径放行（spec 5.1 读分支 D1：域�
   assert.equal(d.allowed, true);
 });
 
-test('evaluate 对绝对路径越出 root 的 Write 按 dontAsk 放行（spec 5.1 写分支 D2：root 外写审批化，dontAsk=放行）', () => {
+test('evaluate 对绝对路径越出 root 的 Write 按 full-access 放行（spec 5.1 写分支 D2：root 外写审批化，full-access=放行）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-outside-'));
-  const d = chain(root, 'dontAsk').evaluate('Write', { path: path.join(outside, 'x.txt') });
+  const d = chain(root, 'full-access').evaluate('Write', { path: path.join(outside, 'x.txt') });
   assert.equal(d.allowed, true);
   if (d.allowed) assert.equal(d.safePath, path.join(outside, 'x.txt'));
 });
 
 test('evaluate 界内路径 allow 并返回绝对 safePath', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-boundary-'));
-  const d = chain(root, 'dontAsk').evaluate('Write', { path: 'sub/a.txt' });
+  const d = chain(root, 'full-access').evaluate('Write', { path: 'sub/a.txt' });
   assert.equal(d.allowed, true);
   if (d.allowed) assert.equal(d.safePath, path.join(root, 'sub', 'a.txt'));
 });
@@ -102,15 +102,15 @@ test('evaluate 对 root 内符号链接指向 root 外目标的 Read 放行（D1
   if (d.allowed) assert.match(d.safePath ?? '', /secret\.txt/);
 });
 
-test('evaluate 对符号链接父目录下的 Write 放行（manual=ask 且 askDir 记链接目标目录）', { skip: !canSymlink() }, () => {
+test('evaluate 对符号链接父目录下的 Write 放行（acceptEdits=ask 且 askDir 记链接目标目录）', { skip: !canSymlink() }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-out-'));
   fs.symlinkSync(outside, path.join(root, 'escdir'));
-  const d = chain(root, 'dontAsk').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
+  const d = chain(root, 'full-access').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
   assert.equal(d.allowed, true);
-  const manual = chain(root, 'manual').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
-  assert.ok(!manual.allowed && manual.ask === true);
-  if (!manual.allowed) assert.equal(manual.askDir, outside);
+  const acceptEdits = chain(root, 'acceptEdits').evaluate('Write', { path: 'escdir/x.txt', content: 'pwn' });
+  assert.ok(!acceptEdits.allowed && acceptEdits.ask === true);
+  if (!acceptEdits.allowed) assert.equal(acceptEdits.askDir, outside);
 });
 
 test('evaluate 对指向 root 内目标的符号链接路径放行（反向场景）', { skip: !canSymlink() }, () => {
@@ -124,7 +124,7 @@ test('evaluate 对指向 root 内目标的符号链接路径放行（反向场�
 
 test('evaluate 对多级新建路径的 Write 放行（逐级上溯回归）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sym-'));
-  const d = chain(root, 'dontAsk').evaluate('Write', { path: 'a/b/c.txt', content: 'x' });
+  const d = chain(root, 'full-access').evaluate('Write', { path: 'a/b/c.txt', content: 'x' });
   assert.equal(d.allowed, true);
   if (d.allowed) assert.equal(d.safePath, path.join(root, 'a/b/c.txt'));
 });

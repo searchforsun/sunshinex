@@ -55,7 +55,7 @@ test('装配：收口零等待入队，drain 后落盘并经 notify 双通道各
     const extractionCalls = { n: 0 };
     const h = new Harness({
       root,
-      mode: 'dontAsk',
+      mode: 'full-access',
       model: slowExtractionModel(extractionCalls),
       onEvent: (e) => events.push(e as { type: string; text?: string }),
     });
@@ -81,7 +81,7 @@ test('装配：/memory off 会话覆盖贯通到后台消费（逐项判门，�
     const extractionCalls = { n: 0 };
     const h = new Harness({
       root,
-      mode: 'dontAsk',
+      mode: 'full-access',
       model: slowExtractionModel(extractionCalls),
       memoryOverride: false,
     });

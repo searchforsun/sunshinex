@@ -25,7 +25,7 @@ test('稳定段携带 SKILLS_INSTALL_LINE 且相邻步前缀逐字节稳定', as
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-skills-line-'));
   try {
     const store = new FileStore(path.join(tmp, '.data'));
-    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
     const registry = new ToolRegistry();
     for (const t of builtinTools(safety, tmp)) registry.register(t);
     const context = new ContextManager(tmp, store);

@@ -47,7 +47,7 @@ class ChatStub implements ModelAdapter {
 
 function makeReactor(tmp: string, model: ModelAdapter): Reactor {
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
@@ -210,7 +210,7 @@ test('思考贯穿：轮思考随链行入档并回传续轮请求；新任务�
     stop('task two done'),
   ]);
   const store = new FileStore(tmp);
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);

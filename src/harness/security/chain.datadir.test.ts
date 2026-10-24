@@ -21,7 +21,7 @@ function withChain(fn: (chain: SafetyChain, root: string, dataDir: string) => vo
   try {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     fn(chain, root, tmp);
   } finally {
     delete process.env.SUNSHINEX_DATA_DIR;

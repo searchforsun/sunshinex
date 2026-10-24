@@ -20,7 +20,7 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
       TEAM_ENVELOPE,
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
-    h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true, '主链应正常收束');
     const obs = r.steps.map((s) => s.observation).join('\n');
@@ -85,7 +85,7 @@ test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队�
       JSON.stringify({ tool: 'create_teammate', input: { name: 'ee', agent_id: 'ee' } }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
-    h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true);
     const obs = r.steps.map((s) => s.observation).join('\n');
@@ -102,7 +102,7 @@ test('mode 缺席 + 无 frontmatter executor:普通 fork 路径原样(team 零�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-3-'));
   let h: Harness | undefined;
   try {
-    h = new Harness({ root: tmp, mode: 'dontAsk', model: new ScriptedAdapter([]), learnSkills: false });
+    h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
     // 无预算源(reactor run 外直执):fork 路径确定性 INVALID_STATE 回执——证明走的是 SubagentRunner 而非 team 分流
     const r = await h.tools.execute('spawn', { prompt: 'x' }, h.safety);
     assert.ok(r.ok && r.value.exitCode === 1 && r.value.stdout.includes('budget source not attached'), `应走 fork 路径,实际:${JSON.stringify(r)}`);

@@ -43,7 +43,7 @@ async function spawnMock(mode: 'http' | 'sse'): Promise<{ proc: ChildProcess; po
 async function runE2E(mode: 'http' | 'sse'): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-e2e-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk', ['fs-http']),
+    new SecurityGuard(new PolicyEngine(), 'full-access', ['fs-http']),
     new ProcessSandbox(),
     root,
   );

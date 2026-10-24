@@ -40,7 +40,7 @@ test('未注册工具返回 TOOL_NOT_FOUND', async () => {
 test('read 敏感文件内容经 execute 出口已脱敏', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mask-'));
   fs.writeFileSync(path.join(root, 'secret.env'), 'TEST_API_KEY=sk-abcdefghijklmnopqrst1234\n');
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   const r = await registry.execute('read', { path: 'secret.env' }, safety);
@@ -65,7 +65,7 @@ test('exec 回显密钥经 execute 出口已脱敏', async () => {
 
 test('文件工具经统一后端执行（write 走 backend.writeFile）', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tw-1d-'));
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), dir);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), dir);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, dir)) registry.register(t);
 
@@ -86,7 +86,7 @@ test('D2 后端可替换：探针 stub 注入即换', async () => {
     writeFile: (p, c) => { calls.push(`write:${p}`); return real.writeFile(p, c); },
     listFiles: (root, pattern) => { calls.push(`glob:${pattern}`); return real.listFiles(root, pattern); },
   };
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), probe, dir);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), probe, dir);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, dir)) registry.register(t);
 

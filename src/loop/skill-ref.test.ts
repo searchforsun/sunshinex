@@ -34,7 +34,7 @@ function makeFixture(): { deps: LoopDeps; context: RecordingContext } {
     path.join(root, '.sunshinex', 'skills', 'greet', 'skill.md'),
     '---\nname: Greet\nversion: 0.1.0\nkind: prompt\nparams: name tone\n---\n\n# Hello {{name}}\n\nTone: {{tone}}。',
   );
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
   const context = new RecordingContext(root, new FileStore(path.join(root, '.data')));

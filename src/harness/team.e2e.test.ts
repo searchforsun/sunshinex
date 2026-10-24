@@ -108,7 +108,7 @@ function makeBoardRig(tmp: string, opts?: { teamTokenCap?: number; externalExecu
     ...(opts?.externalExecutor !== undefined ? { externalExecutor: opts.externalExecutor } : {}),
   });
   board.init();
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const tools = new ToolRegistry();
   const makeTeammate = (name: string): Teammate =>
     new Teammate({
@@ -133,7 +133,7 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/rev
   const events: SessionEvent[] = [];
   try {
     const model = new CountingAdapter();
-    h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false, onEvent: (e) => events.push(e) });
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent: (e) => events.push(e) });
     // spawn×3(mode 'team',label w1/w2/w3)——经真 spawn 工具执行面(与模型出牌同一条链)
     for (const w of ['w1', 'w2', 'w3']) {
       const r = await h.tools.execute('create_teammate', { name: w, prompt: `worker ${w}: claim board tasks and finish each` }, h.safety);

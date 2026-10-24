@@ -85,7 +85,7 @@ class StubProvider implements WebSearchProvider {
 function registryFor(provider?: WebSearchProvider): { registry: ToolRegistry; safety: SafetyChain } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-websearch-'));
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
+    new SecurityGuard(new PolicyEngine(), 'full-access'),
     new ProcessSandbox(),
     root,
   );
@@ -128,7 +128,7 @@ test('websearch：Harness 零配置 + 端点覆盖，全链路走本地 mock', a
   try {
     await withEnv({ SUNSHINEX_WEBSEARCH_ENDPOINT: srv.url }, async () => {
       const { Harness } = await import('../index');
-      const h = new Harness({ root, mode: 'dontAsk' });
+      const h = new Harness({ root, mode: 'full-access' });
       const r = await h.tools.execute('websearch', { query: 'sunshine' }, h.safety);
       assert.ok(r.ok);
       if (r.ok) {

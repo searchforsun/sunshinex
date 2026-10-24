@@ -38,7 +38,7 @@ class RecordingAdapter implements ModelAdapter {
 function makeDeps(root: string, model: ModelAdapter, tokensPerCall = 0): { deps: GraphDeps; recording: RecordingAdapter } {
   const recording = new RecordingAdapter(model, tokensPerCall);
   const safety = new SafetyChain(
-    new SecurityGuard(new PolicyEngine(), 'dontAsk'),
+    new SecurityGuard(new PolicyEngine(), 'full-access'),
     new ProcessSandbox(),
     root,
   );

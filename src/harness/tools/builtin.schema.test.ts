@@ -25,7 +25,7 @@ import { ProcessSandbox } from '../security/sandbox';
  */
 
 function makeSafety(root: string): SafetyChain {
-  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  return new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
 }
 
 function tmpDir(prefix: string): string {

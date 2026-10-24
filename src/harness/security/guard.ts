@@ -1,18 +1,18 @@
 import { PolicyEngine } from './policy';
-import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PIPE, WRITE_TOOL_NAMES } from './modes';
+import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_PIPE, WRITE_TOOL_NAMES, READONLY_DENY } from './modes';
 import { resolveWebSearchEndpoint } from './websearch-endpoint';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 import { isWithin } from '../../paths';
 
 export type GuardDecision =
   | { allowed: true; safePath?: string }
-  | { allowed: false; reason: string; /** manual 模式 ask 标记：非硬底线拒绝，可被 asker 交互豁免 */ ask?: boolean; askDir?: string; safePath?: string };
+  | { allowed: false; reason: string; /** acceptEdits 模式 ask 标记：非硬底线拒绝，可被 asker 交互豁免 */ ask?: boolean; askDir?: string; safePath?: string };
 
 /** PreToolUse 决策点（enforcement 层） */
 export class SecurityGuard {
   constructor(
     private policy: PolicyEngine = new PolicyEngine(),
-    private modeName: PermissionMode = 'manual',
+    private modeName: PermissionMode = 'acceptEdits',
     /** 已登记 MCP 服务器名（源自项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json，项目遮蔽全局）；空 = mcp__ 工具全禁 */
     private mcpServers: string[] = [],
   ) {}
@@ -25,7 +25,7 @@ export class SecurityGuard {
     if (tool === 'Bash' && this.isDestructiveCommand(specifier)) {
       return { allowed: false, reason: `COMMAND_DENIED: destructive command blocked by safety floor: ${specifier.slice(0, 80)}` };
     }
-    // 类别硬底线与破坏性命令同级：先于 allow 规则求值，策略规则不可豁免；dontAsk 模式同样不豁免（免审批 ≠ 免策略）
+    // 类别硬底线与破坏性命令同级：先于 allow 规则求值，策略规则不可豁免；full-access 模式同样不豁免（免审批 ≠ 免策略）
     if (tool === 'WebFetch') {
       const denied = this.checkWebFetch(input);
       if (denied) return denied;
@@ -41,47 +41,47 @@ export class SecurityGuard {
         return { allowed: false, reason: `COMMAND_DENIED: MCP server not registered, external tools denied by default: ${server || '(empty)'}` };
       }
     }
-    // ask_question 即问询通道本身（零 IO 副作用，AskQuestion 线 D4/D7）：三模式放行——
-    // plan 下的澄清式提问是对标 CC AskUserQuestion 的核心场景；deny 规则与破坏性硬底线仍先行
+    // ask_question 即问询通道本身（零 IO 副作用，AskQuestion 线 D4/D7）：三档放行——
+    // read-only 下的澄清式提问是对标 CC AskUserQuestion 的核心场景；deny 规则与破坏性硬底线仍先行
     if (tool === 'ask_question') return { allowed: true };
-    // todo_write（todo_write 规格 D4）：零 IO 副作用的进程内状态写，三模式放行（对标 ask_question/spawn 先例）；
+    // todo_write（todo_write 规格 D4）：零 IO 副作用的进程内状态写，三档放行（对标 ask_question/spawn 先例）；
     // deny 规则与破坏性硬底线仍先行
     if (tool === 'todo_write') return { allowed: true };
     // worktree 工具（规格 D7）：deny 规则仍先行；单发独占由 reactor 并行闸门承载；
-    // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；plan 只读闸门：
+    // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；read-only 闸门：
     // create/exit 拦截（写语义：建树+切换活动根），list 只读放行（与 Read/Grep/Glob 同列白名单语义）
     if (tool === 'worktree') {
       const action = typeof input === 'object' && input !== null ? String((input as { action?: unknown }).action ?? '') : '';
       if (action === 'list') return { allowed: true };
-      if (this.modeName === 'plan') return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+      if (this.modeName === 'read-only') return { allowed: false, reason: READONLY_DENY };
       return { allowed: true };
     }
-    // plan 只读闸门：先于 allow 短路求值——allow 免批规则不放宽 plan 只读（task 1 ⑤a）
-    if (this.modeName === 'plan') {
+    // read-only 只读闸门：先于 allow 短路求值——allow 免批规则不放宽 read-only 只读（task 1 ⑤a）
+    if (this.modeName === 'read-only') {
       if (tool !== 'Read' && tool !== 'Grep' && tool !== 'Glob') {
-        return { allowed: false, reason: 'COMMAND_DENIED: plan mode allows read-only operations only' };
+        return { allowed: false, reason: READONLY_DENY };
       }
       return { allowed: true };
     }
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'
-    // O3 观测面（干预需求口径）：ask 决策发生即计数——dontAsk 自动放行形态也计（基准集「人工干预次数」
+    // O3 观测面（干预需求口径）：ask 决策发生即计数——full-access 自动放行形态也计（基准集「人工干预次数」
     // 的权限面：headless 下审批不真实发生,计的是「若有实时审批会有几次打断」）；deny 不计（非干预）
     this.askDecisions += 1;
-    // dontAsk：不询问用户，自动批准未 deny 的操作（deny 规则仍拦截），即「最大权限」
-    if (this.modeName === 'dontAsk') return { allowed: true };
-    // manual 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
+    // full-access：不询问用户，自动批准未 deny 的操作（deny 规则仍拦截），即「最大权限」
+    if (this.modeName === 'full-access') return { allowed: true };
+    // acceptEdits 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
     if (tool === 'Bash' && this.isReadonlyCommand(specifier)) return { allowed: true };
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
-    // 行为变更①（spec 5.1 写分支）：path 形态的写族（write/edit）直放——manual 审批下放安全链（链持归一路径与目录粒度会话放行）。
+    // 行为变更①（spec 5.1 写分支）：path 形态的写族（write/edit）直放——acceptEdits 审批下放安全链（链持归一路径与目录粒度会话放行）。
     // 仅限带 path 的路径写工具；无 path 的结构化入参（memory_write 同族形态）保留 guard 层 ask（同族非别名，逐字任务口径）
     if (WRITE_TOOL_NAMES.has(tool) && this.hasPathInput(input)) return { allowed: true };
-    // spawn 无直接 IO 副作用（派生即编排；子智能体内部每个工具调用独立过安全链），manual 下免审批放行
+    // spawn 无直接 IO 副作用（派生即编排；子智能体内部每个工具调用独立过安全链），acceptEdits 下免审批放行
     if (tool === 'spawn') return { allowed: true };
-    // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），manual 下免审批对齐 spawn 先例
+    // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），acceptEdits 下免审批对齐 spawn 先例
     if (tool === 'task_stop') return { allowed: true };
-    // task_wait：等待面回执读账本已登记的任务日志，零直接 IO 副作用，manual 下免审批对齐 task_stop 先例
+    // task_wait：等待面回执读账本已登记的任务日志，零直接 IO 副作用，acceptEdits 下免审批对齐 task_stop 先例
     if (tool === 'task_wait') return { allowed: true };
     return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual mode requires interactive confirmation' };
   }
@@ -135,7 +135,7 @@ export class SecurityGuard {
     return `ap-${++this.seq}`;
   }
 
-  /** ask 决策计数（O3 观测面）：policy 判 ask 的次数，含 dontAsk 自动放行形态——「人工干预次数」
+  /** ask 决策计数（O3 观测面）：policy 判 ask 的次数，含 full-access 自动放行形态——「人工干预次数」
    *  权限面口径（run-loop 结果 JSON approvals 字段数据源）；deny/allow 不计 */
   askCount(): number {
     return this.askDecisions;
@@ -160,7 +160,7 @@ export class SecurityGuard {
     this.sessionDirAllows.clear();
   }
 
-  /** 异步决策：与 preToolUse 同口径；仅 manual ask 标记拒绝接入 asker（deny/硬底线不被交互豁免，宁停不误） */
+  /** 异步决策：与 preToolUse 同口径；仅 acceptEdits ask 标记拒绝接入 asker（deny/硬底线不被交互豁免，宁停不误） */
   async preToolUseAsync(tool: string, input: unknown): Promise<GuardDecision> {
     const sync = this.preToolUse(tool, input);
     if (sync.allowed) return sync;

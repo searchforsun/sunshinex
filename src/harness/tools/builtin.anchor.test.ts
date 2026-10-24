@@ -10,7 +10,7 @@ import { PolicyEngine } from '../security/policy';
 import { builtinTools } from './builtin';
 
 function makeTools(root: string) {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   return builtinTools(safety, root);
 }
 

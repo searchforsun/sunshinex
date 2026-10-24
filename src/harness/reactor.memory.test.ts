@@ -30,7 +30,7 @@ const memCount = (root: string): number => new MemoryStore(root).count();
 test('done 任务收口触发提取：openai 记录桩候选落盘', async () => {
   await withRoot(async (root) => {
     const model = dualStub([{ type: 'project', description: 'deploy via pnpm', content: 'deploys run through pnpm scripts' }]);
-    const h = new Harness({ root, mode: 'dontAsk', model });
+    const h = new Harness({ root, mode: 'full-access', model });
     const r = await h.reactor.run({ goal: 'deploy the app' }, { maxSteps: 3 });
     assert.ok(r.done);
     // G14.92：learned 通道证据密度门挡后零模型调用，后台 worker 消费快于 run 返回——
@@ -56,7 +56,7 @@ test('中止路径（max-steps 未完成）同样触发一次提取，reply 归�
         return { finish: 'tool_calls', content: '', toolCalls: [{ id: 'call_1', name: 'read', argsJson: '{"path":"notes.txt"}' }] };
       },
     };
-    const h = new Harness({ root, mode: 'dontAsk', model });
+    const h = new Harness({ root, mode: 'full-access', model });
     const r = await h.reactor.run({ goal: 'impossible goal' }, { maxSteps: 1 });
     assert.ok(!r.done, '前提：任务未完成');
     assert.equal(r.stopReason, 'max-steps');
@@ -73,7 +73,7 @@ test('Stub 门禁：任务正常完成、零提取零副作用', async () => {
   await withRoot(async (root) => {
     let calls = 0;
     const model: ModelAdapter = { provider: 'stub', chat: textReplyToChatFace(async () => { calls += 1; return '{"done":true,"reply":"ok"}'; }) };
-    const h = new Harness({ root, mode: 'dontAsk', model });
+    const h = new Harness({ root, mode: 'full-access', model });
     await h.reactor.run({ goal: 'simple task' }, { maxSteps: 3 });
     assert.equal(calls, 1, '仅主链一次调用');
     assert.equal(memCount(root), 0, 'Stub 不产记忆');
@@ -92,7 +92,7 @@ test('提取失败（模型抛错）不倒灌任务成败', async () => {
         return '{"done":true,"reply":"all good"}';
       }),
     };
-    const h = new Harness({ root, mode: 'dontAsk', model });
+    const h = new Harness({ root, mode: 'full-access', model });
     const r = await h.reactor.run({ goal: 'task with failing memory extraction' }, { maxSteps: 3 });
     assert.ok(mainCalled, '前提：主链已走 openai 通道');
     assert.ok(r.done, '任务仍 done（旁路纪律）');

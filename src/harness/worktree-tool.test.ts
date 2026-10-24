@@ -12,8 +12,8 @@ import type { ModelAdapter } from '../model/adapter';
 
 /**
  * 入口二：worktree 模型工具（计划 T4，规格 §8/D2/D7）：
- * 含状态类调用混批时整轮按出牌顺序串行（reactor 执行面闸门）、manual 免审批（spawn 先例；deny 规则仍先行）、
- * plan 只读闸门对 create/exit 拦截、list 放行；工具 create/exit 直调 safety.enterWorktree/exitWorktree
+ * 含状态类调用混批时整轮按出牌顺序串行（reactor 执行面闸门）、acceptEdits 免审批（spawn 先例；deny 规则仍先行）、
+ * read-only 闸门对 create/exit 拦截、list 放行；工具 create/exit 直调 safety.enterWorktree/exitWorktree
  * （chain 层单点，D19-c 裁决：Harness 侧会话记账接缝已删）；
  * 活动根在场：write/glob 相对路径锚活动根（安全链判界/工具锚点同源切换）、exec cwd 锚活动根（builtin 装配 root 单点）。
  * 工具清单 +1 = 一次全量前缀断点（规格 D2 已裁决即论据）。
@@ -38,7 +38,7 @@ function makeRepo(): string {
   return root;
 }
 
-function withHarness(mode: 'dontAsk' | 'manual' | 'plan', model: ModelAdapter, fn: (h: Harness, repo: string, tmp: string) => void | Promise<void>): Promise<void> {
+function withHarness(mode: 'full-access' | 'acceptEdits' | 'read-only', model: ModelAdapter, fn: (h: Harness, repo: string, tmp: string) => void | Promise<void>): Promise<void> {
   return (async () => {
     const tmp = mktmp('sunshinex-t4-h-');
     const prev = process.env.SUNSHINEX_DATA_DIR;
@@ -56,16 +56,16 @@ function withHarness(mode: 'dontAsk' | 'manual' | 'plan', model: ModelAdapter, f
 }
 
 test('T4-1 装配后工具清单含 worktree，类别 worktree，description 恒英文单语', () =>
-  withHarness('dontAsk', new ScriptedAdapter([]), (h) => {
+  withHarness('full-access', new ScriptedAdapter([]), (h) => {
     const t = h.tools.get('worktree');
     assert.ok(t, 'worktree 工具应已注册');
-    assert.equal(t && t.category, 'worktree', '类别应登记为 worktree（并行闸门与 plan 闸门的判定键）');
+    assert.equal(t && t.category, 'worktree', '类别应登记为 worktree（并行闸门与 read-only 闸门的判定键）');
     assert.ok(t && /^[\x20-\x7E]+$/.test(t.description), `description 恒英文单语：${t && t.description.slice(0, 40)}`);
   }));
 
 test('T4-2 create 端到端：观察含路径与分支；glob 锚树/write 相对路径落 worktree（活动根生效）', () =>
   withHarness(
-    'dontAsk',
+    'full-access',
     new ScriptedAdapter([
       JSON.stringify({ tool: 'worktree', input: { action: 'create', name: 'sess' } }),
       JSON.stringify({ tool: 'glob', input: { pattern: '*' } }),
@@ -91,7 +91,7 @@ test('T4-2 create 端到端：观察含路径与分支；glob 锚树/write 相�
   ));
 
 test('T4-3 未激活 exit：WORKTREE_NOT_ACTIVE 显式拒绝（不静默）', () =>
-  withHarness('dontAsk', new ScriptedAdapter([]), (h) =>
+  withHarness('full-access', new ScriptedAdapter([]), (h) =>
     h.tools.execute('worktree', { action: 'exit' }, h.safety).then((r) => {
       assert.ok(!r.ok && r.error.code === 'WORKTREE_NOT_ACTIVE', `应报 WORKTREE_NOT_ACTIVE：${JSON.stringify(r.ok ? r.value : r.error)}`);
     }),
@@ -99,7 +99,7 @@ test('T4-3 未激活 exit：WORKTREE_NOT_ACTIVE 显式拒绝（不静默）', ()
 
 test('T4-4 list：观察行输出登记表摘要（name/branch/dirty）', () =>
   withHarness(
-    'dontAsk',
+    'full-access',
     new ScriptedAdapter([JSON.stringify({ tool: 'worktree', input: { action: 'list' } }), JSON.stringify({ done: true, reply: 'ok' })]),
     (h, repo, tmp) => {
       const c = createWorktree(repo, tmp, 'listing', {});
@@ -116,7 +116,7 @@ test('T4-4 list：观察行输出登记表摘要（name/branch/dirty）', () =>
 
 test('T4-5 并行闸门：worktree 与 read 同批按序串行执行（混合批不拒绝）', () =>
   withHarness(
-    'dontAsk',
+    'full-access',
     new ScriptedAdapter([
       JSON.stringify({
         tools: [
@@ -136,23 +136,23 @@ test('T4-5 并行闸门：worktree 与 read 同批按序串行执行（混合批
     },
   ));
 
-test('T4-6 plan 模式：create/exit 拒绝、list 放行', () =>
-  withHarness('plan', new ScriptedAdapter([]), async (h) => {
+test('T4-6 read-only 模式：create/exit 拒绝、list 放行', () =>
+  withHarness('read-only', new ScriptedAdapter([]), async (h) => {
     await Promise.all([
       h.tools.execute('worktree', { action: 'create', name: 'x' }, h.safety).then((r) => {
-        assert.ok(!r.ok, 'plan 下 create 应拒');
+        assert.ok(!r.ok, 'read-only 下 create 应拒');
       }),
       h.tools.execute('worktree', { action: 'exit' }, h.safety).then((r) => {
-        assert.ok(!r.ok, 'plan 下 exit 应拒');
+        assert.ok(!r.ok, 'read-only 下 exit 应拒');
       }),
       h.tools.execute('worktree', { action: 'list' }, h.safety).then((r) => {
-        assert.ok(r.ok, `plan 下 list 应放行：${r.ok ? '' : r.error.message}`);
+        assert.ok(r.ok, `read-only 下 list 应放行：${r.ok ? '' : r.error.message}`);
       }),
     ]);
   }));
 
-test('T4-7 manual 模式：worktree 全动作免审批（deny 规则仍先行）', () =>
-  withHarness('manual', new ScriptedAdapter([]), (h) => {
+test('T4-7 acceptEdits 模式：worktree 全动作免审批（deny 规则仍先行）', () =>
+  withHarness('acceptEdits', new ScriptedAdapter([]), (h) => {
     let asks = 0;
     h.security.setAsker(async () => {
       asks++;
@@ -160,13 +160,13 @@ test('T4-7 manual 模式：worktree 全动作免审批（deny 规则仍先行）
     });
     return h.tools.execute('worktree', { action: 'create', name: 'm1' }, h.safety).then((r) => {
       assert.equal(asks, 0, 'asker 不得被调用（免审批先例同 spawn）');
-      assert.ok(r.ok, `manual 下 create 免审批应成功：${r.ok ? '' : r.error.message}`);
+      assert.ok(r.ok, `acceptEdits 下 create 免审批应成功：${r.ok ? '' : r.error.message}`);
     });
   }));
 
 test('T4-8 活动根在场：exec cwd 锚活动根（相对命令执行位置切换）', () =>
   withHarness(
-    'dontAsk',
+    'full-access',
     new ScriptedAdapter([JSON.stringify({ tool: 'exec', input: { command: 'pwd' } }), JSON.stringify({ done: true, reply: 'ok' })]),
     (h, repo, tmp) => {
       const c = createWorktree(repo, tmp, 'cwdx', {});
@@ -200,7 +200,7 @@ test('T6-N2 create→exit 事实行随活动根翻转；同环境段内相邻帧
         }),
   };
   const factOf = (p: string) => /Current working directory \(project root\): (.*)/.exec(p)?.[1]?.trim();
-  return withHarness('dontAsk', model, (h, repo) =>
+  return withHarness('full-access', model, (h, repo) =>
     h.reactor.run({ goal: 'g' }, { maxSteps: 8 }).then((r) => {
       assert.equal(r.done, true);
       assert.equal(prompts.length, 5, `帧数应为 create/read/read/exit/done=5：${prompts.length}`);

@@ -137,7 +137,7 @@ export class Harness {
     const policy = new PolicyEngine();
     for (const rule of perms.config.deny) policy.add('deny', rule);
     for (const rule of perms.config.allow) policy.add('allow', rule);
-    this.security = new SecurityGuard(policy, opts.mode ?? 'dontAsk', mcpServers.map((s) => s.name));
+    this.security = new SecurityGuard(policy, opts.mode ?? 'full-access', mcpServers.map((s) => s.name));
     this.safety = new SafetyChain(this.security, this.sandbox, base);
     this.safety.setPermissions(perms.config);
     this.safety.setAdditionalDirs([...perms.config.additionalDirs, ...(opts.addDirs ?? [])]);

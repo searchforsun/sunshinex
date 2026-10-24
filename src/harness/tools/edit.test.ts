@@ -13,7 +13,7 @@ import { makeWriteSnapshotSink } from './write-snapshot';
 import type { ApprovalDecision } from '../../types';
 
 /** edit 工具业务面回归（2026-10-22 立项）：精确替换/唯一性/replace_all/字面语义与四道写族硬底线
- *  （settings/.git/记忆窄口/worktree 主根）+ manual 链侧审批 + 规则名域语义 + 影子快照继承。 */
+ *  （settings/.git/记忆窄口/worktree 主根）+ acceptEdits 链侧审批 + 规则名域语义 + 影子快照继承。 */
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'edit-tool-'));
@@ -21,9 +21,9 @@ function tmp(): string {
 
 function makeRegistry(
   root: string,
-  opts: { mode?: 'manual' | 'plan' | 'dontAsk'; sink?: ReturnType<typeof makeWriteSnapshotSink>; asker?: (req: { subject: string; kind: string }) => ApprovalDecision } = {},
+  opts: { mode?: 'acceptEdits' | 'read-only' | 'full-access'; sink?: ReturnType<typeof makeWriteSnapshotSink>; asker?: (req: { subject: string; kind: string }) => ApprovalDecision } = {},
 ): { registry: ToolRegistry; safety: SafetyChain } {
-  const guard = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'dontAsk');
+  const guard = new SecurityGuard(new PolicyEngine(), opts.mode ?? 'full-access');
   if (opts.asker !== undefined) guard.setAsker(async (req) => opts.asker!(req));
   const safety = new SafetyChain(guard, new ProcessSandbox(), root);
   const r = new ToolRegistry();
@@ -114,14 +114,14 @@ test('edit：写族硬底线——settings.json 与 .git 路径拒绝（与 writ
   }
 });
 
-test('edit：manual 档信任域外 → 链侧审批（deny 拒 / always 放行且文件落盘）', async () => {
+test('edit：acceptEdits 档信任域外 → 链侧审批（deny 拒 / always 放行且文件落盘）', async () => {
   const root = tmp();
   const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-outside-'));
   try {
     const outside = path.join(outsideDir, 'notes.md');
     fs.writeFileSync(outside, 'hello world\n');
     const denied = makeRegistry(root, {
-      mode: 'manual',
+      mode: 'acceptEdits',
       asker: () => 'deny',
     });
     const d = await denied.registry.execute('edit', { path: outside, oldString: 'hello', newString: 'hi', replaceAll: null }, denied.safety);
@@ -131,7 +131,7 @@ test('edit：manual 档信任域外 → 链侧审批（deny 拒 / always 放行�
 
     let askKind = '';
     const allowed = makeRegistry(root, {
-      mode: 'manual',
+      mode: 'acceptEdits',
       asker: (req) => {
         askKind = req.kind;
         return 'always';
@@ -147,23 +147,23 @@ test('edit：manual 档信任域外 → 链侧审批（deny 拒 / always 放行�
   }
 });
 
-test('edit：plan 档拒绝；规则名域——Edit(deny) 命中 edit、Write 规则不波及 edit', async () => {
+test('edit：read-only 档拒绝；规则名域——Edit(deny) 命中 edit、Write 规则不波及 edit', async () => {
   const root = tmp();
   try {
     writeRoot(root, 'cert.pem', 'key data\n');
     writeRoot(root, 'free.txt', 'free\n');
-    const plan = makeRegistry(root, { mode: 'plan' });
+    const plan = makeRegistry(root, { mode: 'read-only' });
     const p = await plan.registry.execute('edit', { path: 'free.txt', oldString: 'free', newString: 'busy', replaceAll: null }, plan.safety);
-    assert.ok(!p.ok, 'plan 档 edit 拒绝');
-    if (!p.ok) assert.match(p.error.message, /plan mode allows read-only/);
+    assert.ok(!p.ok, 'read-only 档 edit 拒绝');
+    if (!p.ok) assert.match(p.error.message, /read-only mode allows read-only/);
 
-    const ruled = makeRegistry(root, { mode: 'dontAsk' });
+    const ruled = makeRegistry(root, { mode: 'full-access' });
     ruled.safety.setPermissions({ deny: ['Edit(*.pem)'], allow: [], additionalDirs: [] });
     const r1 = await ruled.registry.execute('edit', { path: 'cert.pem', oldString: 'key', newString: 'x', replaceAll: null }, ruled.safety);
     assert.ok(!r1.ok && /denied by user permissions rule/.test(r1.error.message), 'Edit(*.pem) deny 命中');
     const r2 = await ruled.registry.execute('edit', { path: 'free.txt', oldString: 'free', newString: 'busy', replaceAll: null }, ruled.safety);
     assert.ok(r2.ok, '非命中文件不受规则波及');
-    const writeOnly = makeRegistry(root, { mode: 'dontAsk' });
+    const writeOnly = makeRegistry(root, { mode: 'full-access' });
     writeOnly.safety.setPermissions({ deny: ['Write(**/*.pem)'], allow: [], additionalDirs: [] });
     const r3 = await writeOnly.registry.execute('edit', { path: 'cert.pem', oldString: 'key', newString: 'x', replaceAll: null }, writeOnly.safety);
     assert.ok(r3.ok, '规则按规范名域匹配——Write deny 不拦 edit（名域语义，与 MANUAL 6.2 三件套分列一致）');

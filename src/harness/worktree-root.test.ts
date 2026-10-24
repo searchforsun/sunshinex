@@ -55,7 +55,7 @@ function withChain(fn: (chain: SafetyChain, root: string, tmp: string) => void):
     const root = path.join(tmp, 'root');
     fs.mkdirSync(path.join(root, 'app'), { recursive: true });
     fs.writeFileSync(path.join(root, 'app', 'main.txt'), 'main\n');
-    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+    const chain = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
     fn(chain, root, tmp);
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
@@ -142,7 +142,7 @@ test('T2-4 活动根接缝单点=安全链：同一链实例切换即生效；h.
   process.env.SUNSHINEX_DATA_DIR = tmp;
   try {
     const repo = makeRepo();
-    const h = new Harness({ root: repo, mode: 'dontAsk', model: new ScriptedAdapter([]), learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
     assert.equal(h.activeRoot, null, '缺省无活动根');
 
     const created = createWorktree(repo, tmp, 'sess', { sessionId: 's-1' });
@@ -184,7 +184,7 @@ test('T2-5 fork 工作目录事实=活动根（rootProvider 镜像链单点）',
       return JSON.stringify({ done: true, reply: 'child done' });
             }),
     };
-    const h = new Harness({ root: repo, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: repo, mode: 'full-access', model, learnSkills: false });
 
     const own = createWorktree(repo, tmp, 'own', {});
     assert.ok(own.ok, `own 创建失败：${own.ok ? '' : own.error.message}`);

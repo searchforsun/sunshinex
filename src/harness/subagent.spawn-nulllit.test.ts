@@ -20,7 +20,7 @@ test('agent_id 字符串 "null" 归一为内联 spawn（不抛 Subagent not foun
       JSON.stringify({ done: true, reply: '子任务报告' }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     const spawnRow = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('子任务报告'));
     assert.ok(spawnRow, `"null" agent_id 应回落内联形态完成派发，实际观察行：${JSON.stringify(r.steps.map((s) => s.observation))}`);
@@ -40,7 +40,7 @@ test('isolation 真 JSON null 归一为无隔离（不抛 INVALID_ARG "Unknown i
       JSON.stringify({ done: true, reply: '子任务报告' }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
-    const h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.ok(
       !r.steps.some((s) => s.observation.includes('Unknown isolation')),

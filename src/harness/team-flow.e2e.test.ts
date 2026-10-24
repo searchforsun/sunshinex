@@ -40,7 +40,7 @@ test('团队业务流:create_teammate→指派+依赖任务→get_board→task_w
         return { finish: 'stop', content: `ok ${n}`, toolCalls: [] };
       },
     } as unknown as ModelAdapter;
-    h = new Harness({ root: tmp, mode: 'dontAsk', model, learnSkills: false, onEvent: (e) => events.push(e) });
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent: (e) => events.push(e) });
 
     // ① 创建智能体团队成员(独立动词,长驻上下文承载体)
     const tm = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);

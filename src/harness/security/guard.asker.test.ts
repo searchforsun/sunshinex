@@ -5,10 +5,10 @@ import { PolicyEngine } from './policy';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 
 function manualGuard(policy?: PolicyEngine): SecurityGuard {
-  return new SecurityGuard(policy ?? new PolicyEngine(), 'manual');
+  return new SecurityGuard(policy ?? new PolicyEngine(), 'acceptEdits');
 }
 
-test('asker：manual 非白名单操作走交互裁决（allow/deny/always 三态 + 会话级登记）', async () => {
+test('asker：acceptEdits 非白名单操作走交互裁决（allow/deny/always 三态 + 会话级登记）', async () => {
   const script: ApprovalDecision[] = ['allow', 'deny', 'always'];
   const seen: ApprovalRequest[] = [];
   const g = manualGuard();
@@ -68,7 +68,7 @@ test('asker：deny 规则与破坏性命令不因交互放行（硬底线先行�
   if (!d2.allowed) assert.match(d2.reason, /destructive command blocked by safety floor/);
 });
 
-test('asker：manual 档 path 写直放安全链，guard 不再逐次 ask（行为变更①：asker 零调用）', async () => {
+test('asker：acceptEdits 档 path 写直放安全链，guard 不再逐次 ask（行为变更①：asker 零调用）', async () => {
   const g = manualGuard();
   const seen: ApprovalRequest[] = [];
   g.setAsker(async (req) => {
@@ -76,7 +76,7 @@ test('asker：manual 档 path 写直放安全链，guard 不再逐次 ask（行�
     return 'deny';
   });
   const d = await g.preToolUseAsync('Write', { path: 'a.txt' });
-  assert.equal(d.allowed, true, 'manual 档 Write 在 guard 层直接放行，审批下放安全链');
+  assert.equal(d.allowed, true, 'acceptEdits 档 Write 在 guard 层直接放行，审批下放安全链');
   assert.equal(seen.length, 0, 'asker 零调用');
 });
 
@@ -124,7 +124,7 @@ test('asker：allowKey 对空 subject 并入工具规范名（键空间至少含
 
 test('asker：空 subject 不跨族放行（一次 always 只登记该工具的键）', async () => {
   const seen: ApprovalRequest[] = [];
-  const g = new SecurityGuard(new PolicyEngine(), 'manual', ['github']);
+  const g = new SecurityGuard(new PolicyEngine(), 'acceptEdits', ['github']);
   g.setAsker(async (req) => {
     seen.push(req);
     return 'always';

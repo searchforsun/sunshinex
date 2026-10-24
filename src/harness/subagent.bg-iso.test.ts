@@ -52,7 +52,7 @@ test('后台 spawn 入参 isolation="null" 字面量归一（不再 Unknown isol
         JSON.stringify({ tool: 'spawn', input: { prompt: '只读调研：列出目录结构', label: 'probe', background: true, isolation: 'null' } }),
         JSON.stringify({ done: true, reply: '主链完成' }),
       ]);
-      const h = new Harness({ root, mode: 'dontAsk', model, learnSkills: false });
+      const h = new Harness({ root, mode: 'full-access', model, learnSkills: false });
       const r = await h.reactor.run({ goal: 'g' }, { maxSteps: 5 });
       assert.ok(
         !r.steps.some((s) => s.observation.includes('Unknown isolation')),
@@ -68,7 +68,7 @@ test('后台子智能体结论全文落任务日志（多行报告不再只留�
     const root = makeRepo();
     try {
       const report = ['## 结论一', '细节 A', '细节 B'].join('\n');
-      const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), root);
+      const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
       const registry = new ToolRegistry();
       for (const t of builtinTools(safety, root)) registry.register(t);
       registry.unregister('spawn');
