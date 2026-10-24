@@ -57,6 +57,7 @@
   --thread-gutter: 16px;
   --row-h: 29px;
   --toolbar-h: 40px; /* 2026-10-24 用户裁定:顶栏/菜单头/窗控簇三行同高对齐(簇 fixed 高 40,中心 y=20) */
+  --menu-toggle-align: 26px; /* 顶栏 [|] 与窗控同款尺寸 */
   /* 语法高亮(Codex dark 表) */
   --syntax-comment: #b9b9b9;
   --syntax-keyword: #f8a6c8;
@@ -107,13 +108,17 @@
    窗控簇,左缘圆角+投影示悬浮层级);宽度仍走 inline(渲染期钳制)。注:本规则上方曾有孤儿
    注释尾巴(开头 /* 在往返编辑中丢失),裸文本致浏览器错误恢复吞掉本条——浮窗整模式静默
    半残(抽屉恒占布局宽,dock 补偿却按悬浮让位),2026-10-24 用户实测截图定位 */
-.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 96; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-win) 0 0 var(--radius-win); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24 用户裁定:抽屉圆角对齐客户端 */
+.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; /* z 96→80:窗控簇(z90)常驻其上, [|] −□× 可见可点(用户裁定) */ border-left: 1px solid var(--border); border-radius: var(--radius-win) 0 0 var(--radius-win); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24 用户裁定:抽屉圆角对齐客户端 */
 /* 2026-10-24 三轮裁定:左菜单抽屉(<856 手动重开态)——fixed 左满高悬浮,宽走 --menu-w(渲染
    钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
 .sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 96; width: var(--menu-w); padding-top: 0; /* 2026-10-24 用户裁定:抽屉头与窗控簇同高对齐(旧 G10-C13 padding-top:8 下移 8.8 视觉) */ max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */
 .sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
 /* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏) */
 .sx-menu-reopen { position: absolute; top: 10px; left: 10px; z-index: 50; }
+/* 顶栏 [|](菜单切换)与右侧窗控同款 26px;左缘镜像 right:8(顶栏 padding 12 → 负 margin 4) */
+.chat-topbar > .sx-menu-toggle { width: 26px; height: 26px; margin-left: -4px; }
+/* 菜单头拖拽条:brand 与收起钮之间空白区承担窗拖拽(抽屉打开顶部可拖动应用);与按钮不相交 */
+.sx-head-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
 /* 浮窗态 dock 无任何让位规则(2026-10-24 用户裁定「抽屉是上浮的」):composer 恒按分栏态
    几何(left:50% 居中/main−32)铺满主栏,抽屉 z-80 直接盖在右缘——曾有 inset 让位与
    left:50%−w/2 位移公式,均因挤占/错位 composer 被裁撤 */

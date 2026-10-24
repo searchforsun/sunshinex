@@ -223,7 +223,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         {menuClosed === true && (
           <button
             type="button"
-            className="sx-iconbtn"
+            className="sx-winbtn sx-menu-toggle"
             aria-label="toggle menu"
             data-tip={t('Open menu', '打开菜单')}
             onClick={onToggleMenu}
