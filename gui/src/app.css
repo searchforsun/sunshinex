@@ -98,19 +98,9 @@
 /* G14.33:右栏与主面对话同底色(原 surface-under 明度差退役);中缝细条 = 左缘 1px 分割线,
    兼作拖宽把手落点(sx-resizer 仍在,hover 提亮);G14.2xx 用户裁定:无固定最大宽——视口护栏
    max-width = 视口−菜单−320 结构性禁止越视口(中栏触底即停;持久化超宽/窗口缩窄同被钳) */.sx-sidebar { flex: none; max-width: calc(100vw - var(--menu-w, 260px) - 320px); background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; user-select: none; }.sx-resizer:hover, .sx-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-/* 2026-10-24 用户裁定:窄视口(<1000,壳级 sx-sidebar-float)右栏从分栏抽屉切浮窗抽屉——
-   fixed 右满高盖正文(z 80:正文之上/窗控簇 90 之下),不占布局宽(主栏吃满);左缘圆角+投影
    示悬浮层级;宽度仍走 inline(渲染期钳制)与拖宽边条,阈值宽自动还原分栏 */
-.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); }
-.sx-shell.sx-sidebar-float .chat-dock { left: calc(50% - var(--sidebar-float-w, 0px) / 2); } /* 2026-10-24:dock 在可见区(扣浮窗宽)内居中,两侧边距恒等 */
 /* 2026-10-24 用户裁定:窄视口(<780)左菜单浮层化——不占布局宽(240 菜单+281 抽屉会把 600 视口吃到 24px),
    ☰ 呼出(z 96)/遮罩点击即收;宽视口还原内联分栏。菜单拖宽手柄浮层态无意义,隐藏 */
-.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 85; width: var(--menu-w, 260px); min-width: 0; max-width: 86vw; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
-.sx-shell.sx-menu-float:not(.sx-menu-open) .sx-menu { display: none; }
-.sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
-.sx-menu-scrim { position: fixed; inset: 0; z-index: 84; background: rgba(0, 0, 0, 0.35); }
-.sx-menu-float-toggle { position: fixed; left: 10px; top: 8px; z-index: 96; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--fg-secondary); }
-.sx-menu-float-toggle:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G12 左栏拖宽手柄:flex 件 + 负 margin 自覆盖在 nav 右缘(零布局占位),与右栏手柄同语言 */.sx-menu-resizer { flex: none; width: 8px; margin-left: -8px; cursor: col-resize; z-index: 5; user-select: none; }.sx-menu-resizer:hover, .sx-menu-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
 /* 标签条(T3 消费;G8d U-D21 圆润 polish) */.sx-tabstrip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; overflow-x: auto; flex: none; }.sx-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: var(--radius-md); /* G14.103 */ color: var(--fg-secondary); white-space: nowrap; }.sx-tab:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
@@ -127,7 +117,7 @@
 /* 2026-10-24 圆点统一(用户裁定:全前端指示点 6px 纯圆):border-radius:50% 在根 zoom+flex 交叉轴
  *  小数取整下会被拉椭(tb-status-dot 同款教训)——实心点/空芯环全改 radial-gradient(circle Rpx)
  *  几何圆构造,半径两轴同值,盒取整不变形 */
-.sx-session-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); }.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); }.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
+.sx-session-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); }.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
    open=accent 实心/connecting·reconnecting=warn 描边空芯/closed(离线)=灰 */
 .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: radial-gradient(circle 3px at 50% 50%, var(--fg-secondary) 2.5px, transparent 2.9px); }.conn-dot.conn-open { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.5px, transparent 2.9px); }.conn-dot.conn-connecting, .conn-dot.conn-reconnecting { background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--warn) 2px 2.7px, transparent 3.1px); }
 /* G8e-T1 补:左栏「+ 添加工作区」区(G8a 挂名) */.sx-menu-add { border-top: 1px solid var(--border); padding: 8px 12px; }.sx-add-workspace { display: block; width: 100%; padding: 4px 8px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--fg-secondary); }.sx-add-workspace:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }.sx-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--fg-secondary); }
@@ -743,12 +733,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg-secondary); font-size: 13px; cursor: pointer; white-space: nowrap; min-width: 0;
 }.composer-pill:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* 2026-10-24 用户裁定(废阈值切割线):模式 pill 塌缩改底栏实测溢出驱动(ComposerPillsRight RO 挂 pills-tight),无固定宽度切割线 */
-/* 2026-10-24 用户裁定:模型名窄栏恒显(只右缘隐现省略),强度徽标/箭头让位 *//* 2026-10-24 用户裁定(废阈值切割线改实测):底栏溢出时挂 pills-tight(ComposerPills RO)——
-   收「完全访问」标签/箭头与 effort 徽标;模型名恒显,真被挤压时右缘省略号,宽则全文 */
-.sx-composer-foot.pills-tight .composer-pills:not(.composer-pills-right) .pill-label,
-.sx-composer-foot.pills-tight .composer-pills:not(.composer-pills-right) .pill-chevron,
-.sx-composer-foot.pills-tight .model-effort-chip,
-.sx-composer-foot.pills-tight .model-pill .pill-chevron { display: none; }
+/* 2026-10-24 用户裁定(实测驱动,无固定切割线):主 dock 底栏溢出才挂 pills-tight(ComposerPillsRight RO)——收「完全访问」标签/箭头与 effort 徽标;模型名恒显(窄栏亦只右缘隐现省略,mask 让位),真被挤压时右缘省略号,宽则全文 */
+.chat-dock .sx-composer-foot.pills-tight .composer-pills:not(.composer-pills-right) .pill-label,
+.chat-dock .sx-composer-foot.pills-tight .composer-pills:not(.composer-pills-right) .pill-chevron,
+.chat-dock .sx-composer-foot.pills-tight .model-effort-chip,
+.chat-dock .sx-composer-foot.pills-tight .model-pill .pill-chevron { display: none; }
 .composer-pills-right .model-pill .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 2026-10-24 用户裁定:composer「+」=正方形圆角矩形(等宽高居中,不随 10px 横 padding 拉成长条) */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; /* 固定 8px:28px 高下全局 22px 弧=整圆,读不出「方形圆角矩形」(2026-10-24 裁定) */ }
 /* 2026-10-24 用户裁定:pill 文本永不折行(「完全访/问」「glm-5.3-/flash」断字难看),窄端走省略号;模型名不隐藏只省略 */
@@ -1396,7 +1385,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.28 展开钮已退役(2026-10-23:[|] 迁右上窗控簇) */
 
 /* G14.30 辅助对话窄面板:贴地壳(composer 钉底)+ pill 单行省略不换行;G14.2xx composer 与
-   主对话 dock 同式(与流列同 token 对齐 +2px),面板宽时随阶梯限宽居中 */.sx-sidechat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }.sx-sidechat .chat { flex: 1; min-height: 0; }.sx-sidechat .composer { width: min(calc(100% - 28px), calc(var(--chat-max) + 2px)); max-width: none; margin: 0 auto var(--thread-gutter); }.sx-sidechat .composer-pills { flex-wrap: nowrap; min-width: 0; }.sx-sidechat .composer-pill { white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+   主对话 dock 同式(与流列同 token 对齐 +2px),面板宽时随阶梯限宽居中 */.sx-sidechat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }.sx-sidechat .chat { flex: 1; min-height: 0; }.sx-sidechat .composer { width: min(calc(100% - 28px), calc(var(--chat-max) + 2px)); max-width: none; margin: 0 auto var(--thread-gutter); }.sx-sidechat .composer-pills { flex-wrap: nowrap; min-width: 0; }.sx-sidechat .sx-composer-foot { flex-wrap: wrap; row-gap: 6px; } /* 2026-10-24 用户实测:右栏 208 窄端 foot 两行折放,发送钮不越界 */.sx-sidechat .composer-pill { white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
 .sx-sidechat .composer-pill .pill-label,.sx-sidechat .composer-pill .model-effort-chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* G14.31 轮折叠:sealed Worked 行即开关(hover 显 chevron:> 折叠/⌄ 展开;键盘可达) */.entry-run.sealed[role='button'] { cursor: pointer; }.entry-run .run-chev { display: inline-flex; opacity: 0; color: var(--fg-tertiary); transition: opacity var(--dur-basic) var(--ease-enter); }.entry-run.sealed:hover .run-chev, .entry-run.sealed:focus-visible .run-chev { opacity: 1; }

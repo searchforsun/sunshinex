@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
-import { GitCompare, MessageCircle, ListTodo, FolderTree, Copy, Menu, Minus, PanelRight, Square, X } from 'lucide-react';
+import { GitCompare, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, X } from 'lucide-react';
 import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
@@ -522,27 +522,14 @@ function AppShell(): JSX.Element {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  /** 浮窗抽屉切换(2026-10-24 用户裁定):视口宽(视觉/zoom 归一)窄于 1000 时,右栏从占布局
-   *  宽度的分栏抽屉切为悬浮抽屉(position:fixed 右满高,盖在正文上,z 低于窗控簇)——三栏挤在
-   *  窄视口互相踩,浮窗态主栏吃满菜单以右全宽。宽度过阈值自动还原分栏 */
-  const sidebarFloating = viewportW / zoomScale() < 1000;
-  /** 左菜单浮层化(2026-10-24 用户裁定「浮窗态开侧栏也能缩到 600」配套):窄视口左菜单不再
-   *  占布局宽(240px 菜单+281px 抽屉会把 600 视口吃到只剩 24px),转 ☰ 呼出的左浮层——
-   *  点会话行/遮罩即收。宽视口恒内联分栏 */
-  const menuFloating = viewportW / zoomScale() < 780;
-  const [menuOverlayOpen, setMenuOverlayOpen] = useState(false);
-  useEffect(() => {
-    if (!menuFloating) setMenuOverlayOpen(false); // 还原宽视口:浮层态自动退场
-  }, [menuFloating]);
-  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(覆盖正文不可接受);浮窗态=覆盖层,只留 24px
-   *  边距(2026-10-24 用户裁定:浮窗态开侧栏也能缩到 600 窗宽,抽屉恒保持可用宽)。下限 0
-   *  (MAIN_MIN 托底会窄窗抬回溢出);视觉/本地换算 /zoomScale() 契约同前 */
+  /** 右栏渲染期钳制宽=min(持久宽, 视口/zoom−菜单−主栏最小宽)——分栏布局;视觉/本地换算
+   *  /zoomScale() 契约(ui-zoom.ts);下限 0 防窄窗托底溢出 */
   const sidebarRenderW = Math.min(
     tabState.width,
-    Math.max(0, viewportW / zoomScale() - menuWidth - (sidebarFloating ? 24 : MAIN_MIN_WIDTH)),
+    Math.max(0, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed && !sidebarFloating ? sidebarRenderW : 0;
+  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? sidebarRenderW : 0;
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
@@ -556,10 +543,7 @@ function AppShell(): JSX.Element {
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    // 拖拽上界随态:分栏=视口−菜单−主栏最小宽;浮窗=覆盖层只留 24px 边距(起拖时定格浮窗态,
-    // 拖拽中无窗口 resize 事件则模式不翻转)
-    const floating = sidebarFloating;
-    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - (floating ? 24 : MAIN_MIN_WIDTH);
+    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - MAIN_MIN_WIDTH;
     const startWidth = Math.min(tabState.width, cap());
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
@@ -610,54 +594,21 @@ function AppShell(): JSX.Element {
         IS_SHELL ? 'sx-shell sx-desktop' : 'sx-shell',
         // 浮窗抽屉面(2026-10-24 用户裁定):窄视口右栏悬浮不占布局宽,主栏吃满
         // (模式 pill 塌缩已改底栏实测溢出驱动 pills-tight,壳级不再派生 sx-main-narrow)
-        sidebarFloating ? 'sx-sidebar-float' : '',
-        // 左菜单浮层化(2026-10-24 配套):窄视口菜单转 ☰ 呼出的左浮层,默认收起
-        menuFloating ? 'sx-menu-float' : '',
-        menuFloating && menuOverlayOpen ? 'sx-menu-open' : '',
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{
         '--menu-w': `${menuWidth}px`,
         '--sidebar-w': `${sidebarOccupied}px`,
-        // 浮窗态:dock/正文列在「可见区」内居中(左移抽屉宽的一半),两侧边距恒等——否则抽屉
-        // 盖住 dock 右半,视觉左大右小(2026-10-24 用户裁定「两侧边距一致,右边挨着边线」)
-        '--sidebar-float-w': `${sidebarFloating ? sidebarRenderW : 0}px`,
       } as CSSProperties}
     >
-      {/* 左菜单浮层态:遮罩(点击即收,z 84 菜单 85 之下)+ ☰ 呼出钮(z 96,常驻窄视口左上) */}
-      {menuFloating && menuOverlayOpen && (
-        <div
-          className="sx-menu-scrim"
-          onClick={() => setMenuOverlayOpen(false)}
-          role="presentation"
-        />
-      )}
-      {menuFloating && (
-        <button
-          type="button"
-          className="sx-menu-float-toggle"
-          aria-label="toggle menu"
-          aria-expanded={menuOverlayOpen}
-          data-tip={t('菜单', '菜单')}
-          onClick={() => setMenuOverlayOpen((v) => !v)}
-        >
-          <Menu size={16} strokeWidth={1.75} />
-        </button>
-      )}
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
         <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} />
       ) : (
         <>
-          {/* 左栏:项目分组(Home 职能内化;装配中占位)。浮层态点会话行即收浮层(display:contents
-              包装——菜单保持壳层直接子件,浮层态 fixed 定位不受包装层影响) */}
-          <div
-            style={menuFloating ? { display: 'contents' } : undefined}
-            onClickCapture={(e) => {
-              if (menuFloating && (e.target as Element).closest('[data-session-row]')) setMenuOverlayOpen(false);
-            }}
-          >
+          {/* 左栏:项目分组(Home 职能内化;装配中占位) */
+          }
           {connInstance !== null ? (
             <ProjectMenu
               conn={connInstance}
@@ -683,9 +634,7 @@ function AppShell(): JSX.Element {
               <p className="home-loading">{t('Connecting…', '连接装配中…')}</p>
             </nav>
           )}
-          </div>
-          {/* G12 左栏拖宽手柄:overlay 在 nav 右缘(负 margin 零布局占位),拖动改 --menu-w。
-              浮层态菜单宽度固定,手柄无意义——CSS 隐藏 */}
+          {/* G12 左栏拖宽手柄:overlay 在 nav 右缘(负 margin 零布局占位),拖动改 --menu-w */}
           <div
             className="sx-menu-resizer"
             role="separator"
