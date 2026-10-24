@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Folder, MoreHorizontal, PanelLeft, Search } from 'lucide-react';
+import { MoreHorizontal, PanelLeft } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
@@ -98,15 +98,12 @@ export interface ChatTopbarProps {
   readonly root?: string;
   /** 会话数据变更上抛(置顶/归档/标记未读后,宿主 bump 侧栏联动刷新) */
   readonly onSessionsMutated?: () => void;
-  /** 2026-10-24 用户裁定:左菜单可关闭——关闭后顶栏前插 [产品logo(呼出菜单)|搜索] 两图标,
-   *  其后既有 文件夹图标+会话名 照旧(logo=重开菜单,搜索=重开菜单并自动展开其搜索面板) */
-  readonly menuClosed?: boolean;
-  readonly onReopenMenu?: () => void;
-  readonly onMenuSearch?: () => void;
+  /** 2026-10-24 用户裁定:[|] 菜单切换钮常驻顶栏(开/关左菜单;两侧抽屉互斥由宿主管) */
+  readonly onToggleMenu?: () => void;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onReopenMenu, onMenuSearch } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, onToggleMenu } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -208,48 +205,48 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   ];
   return (
     <header className="chat-topbar">
-        {/* 2026-10-24 用户裁定:菜单关闭态顶栏前插 展开钮(PanelLeft 镜像,呼出菜单)+搜索钮 */}
-        {menuClosed === true && (
-          <>
-            <button type="button" className="sx-iconbtn" aria-label="toggle menu" data-tip={t('Open menu', '打开菜单')} onClick={onReopenMenu}>
-              <PanelLeft size={16} strokeWidth={1.75} />
-            </button>
-            <button type="button" className="sx-iconbtn" aria-label="search" data-tip={t('Search projects & sessions', '搜索项目与会话')} onClick={onMenuSearch}>
-              <Search size={16} strokeWidth={1.75} />
-            </button>
-          </>
-        )}
+        {/* 2026-10-24 用户裁定:[|] 菜单切换钮常驻(原文件夹图标位,开/关左菜单);搜索恢复菜单头原位;
+            会话名不再点击改名(改名入口收敛 ⋯ 菜单→弹窗),显示长度随主栏宽度 flex 收放 */}
+        <button
+          type="button"
+          className="sx-iconbtn"
+          aria-label="toggle menu"
+          data-tip={t('Toggle menu', '切换菜单')}
+          onClick={onToggleMenu}
+        >
+          <PanelLeft size={16} strokeWidth={1.75} />
+        </button>
         {fixedTitle === '' ? (
           // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
           <span className="chat-title" />
         ) : titleEditing ? (
-          <input
-            className="chat-title-input"
-            value={titleDraft}
-            maxLength={40}
-            autoFocus
-            aria-label={t('Session title', '会话标题')}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitTitle();
-              if (e.key === 'Escape') setTitleEditing(false);
-            }}
-          />
+          /* 2026-10-24 用户裁定:改名=弹窗(⋯ 菜单「重命名会话」触发),内联输入退役 */
+          <div className="modal-overlay" onClick={() => setTitleEditing(false)}>
+            <div className="modal-body rename-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="dirpicker-head">{t('Rename session', '重命名会话')}</div>
+              <input
+                className="chat-title-input"
+                value={titleDraft}
+                maxLength={40}
+                autoFocus
+                aria-label={t('Session title', '会话标题')}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitTitle();
+                  if (e.key === 'Escape') setTitleEditing(false);
+                }}
+              />
+              <div className="dirpicker-foot">
+                <button onClick={() => setTitleEditing(false)}>{t('Cancel', '取消')}</button>
+                <button className="primary" onClick={commitTitle}>{t('Confirm', '确认')}</button>
+              </div>
+            </div>
+          </div>
         ) : (
           <span className="chat-title" data-tip={`${sessionId} · ${tokens} tokens · ${steps} steps${running ? ' · 运行中' : ''}`}>
-            <button
-              type="button"
-              className="chat-title-btn"
-              data-tip={t('Click to rename', '点击重命名')}
-              onClick={() => {
-                setTitleDraft(displayTitle);
-                setTitleEditing(true);
-              }}
-            >
-              <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span className="chat-title-btn">
               <span className="chat-title-text">{displayTitle}</span>
-            </button>
+            </span>
             {/* G14.52:运行态圆点迁侧栏会话行左缘(顶栏不再双显) */}
           </span>
         )}

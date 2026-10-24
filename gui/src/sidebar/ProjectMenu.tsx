@@ -85,8 +85,6 @@ export interface ProjectMenuProps {
   readonly onOpenDirectory: (root: string) => void;
   /** 2026-10-24 用户裁定:菜单头收起钮(PanelLeft,搜索钮右侧)=宿主收起菜单(抽屉/关闭态由宿主管) */
   readonly onCollapse?: () => void;
-  /** >0 时自动展开搜索面板(菜单以抽屉重开且来源是顶栏搜索钮;消费后宿主无须回收,值仅作信号) */
-  readonly searchRequest?: number;
 }
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
@@ -141,14 +139,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   groupShowAllRef.current = groupShowAll;
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
-  // 2026-10-24 顶栏搜索钮信号:抽屉重开时自动展开搜索面板
-  useEffect(() => {
-    if ((props.searchRequest ?? 0) > 0) setSearchOpen(true);
-  }, [props.searchRequest]);
-  // 2026-10-24 顶栏搜索钮信号:抽屉重开时自动展开搜索面板(值仅作沿触发)
-  useEffect(() => {
-    if ((props.searchRequest ?? 0) > 0) setSearchOpen(true);
-  }, [props.searchRequest]);
   /** G14.75 聚合搜索:全部工作区的会话扁平集(打开搜索时聚合一次,rows 变化重拉) */
   const [allSessions, setAllSessions] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [query, setQuery] = useState('');

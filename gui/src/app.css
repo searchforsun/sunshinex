@@ -944,7 +944,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* G10-C7 会话标题:可点击改名(文件夹图标+省略号),编辑态为描边输入框 */.chat-title-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  min-width: 0; max-width: 360px; padding: 3px 8px;
+  min-width: 0; max-width: min(60%, 560px); padding: 3px 8px; /* 2026-10-24 用户裁定:显示长度随主栏宽度收放(旧 360 固定上限偏短) */
   border: none; border-radius: var(--radius-sm);
   color: var(--fg); font-size: 14px; font-weight: 500;
 }.chat-title-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.chat-title-btn svg { flex: none; color: var(--fg-secondary); }.chat-title-text { min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); } /* 2026-10-24 用户裁定:标题隐现同模型名(右缘 24px 渐隐,非省略号) */.chat-title-input {

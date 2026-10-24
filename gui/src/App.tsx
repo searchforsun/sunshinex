@@ -531,8 +531,6 @@ function AppShell(): JSX.Element {
   const menuFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
   /** 菜单关闭态(手动点品牌收起/<856 自动关;顶栏 logo 重开) */
   const [menuClosed, setMenuClosed] = useState(false);
-  /** 顶栏搜索钮信号:重开菜单抽屉并自动展开其搜索面板(仅作沿触发) */
-  const [menuSearchRequest, setMenuSearchRequest] = useState(0);
   const prevMenuFloating = useRef(false);
   useEffect(() => {
     // 越过 856 下探沿:菜单自动关闭(重开视口不自动恢复,用户手动)
@@ -666,7 +664,6 @@ function AppShell(): JSX.Element {
                 setPage('welcome');
               }}
               onCollapse={() => setMenuClosed(true)}
-              searchRequest={menuSearchRequest}
             />
           ) : (
             <nav className="sx-menu" aria-label="projects">
@@ -687,9 +684,14 @@ function AppShell(): JSX.Element {
             {page === 'chat' && connInstance !== null ? (
               <Chat
                 key={openSessionId}
-                menuClosed={menuClosed}
-                onReopenMenu={() => { setMenuClosed(false); }}
-                onMenuSearch={() => { setMenuClosed(false); setMenuSearchRequest((n) => n + 1); }}
+                onToggleMenu={() => {
+                  const opening = menuClosed;
+                  setMenuClosed(!menuClosed);
+                  // 两侧抽屉互斥(2026-10-24 用户裁定):开菜单抽屉即收右抽屉
+                  if (opening && sidebarFloating && !tabState.collapsed) {
+                    setTabStates((s) => setCollapsed(s, openSessionId, true));
+                  }
+                }}
                 conn={connInstance}
                 sessionId={openSessionId}
                 journalId={openJournalId}
@@ -830,7 +832,12 @@ function AppShell(): JSX.Element {
       )}
       {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
-      <WindowControls showSideToggle={page === 'chat' && !settingsOpen} onToggleRightSidebar={() => setTabStates((s) => setCollapsed(s, openSessionId, !(s[openSessionId]?.collapsed ?? false)))} />
+      <WindowControls showSideToggle={page === 'chat' && !settingsOpen} onToggleRightSidebar={() => {
+        const opening = tabState.collapsed;
+        setTabStates((s) => setCollapsed(s, openSessionId, !opening));
+        // 两侧抽屉互斥(2026-10-24 用户裁定):浮窗态开右抽屉即收菜单抽屉
+        if (opening && sidebarFloating) setMenuClosed(true);
+      }} />
     </div>
   );
 }
