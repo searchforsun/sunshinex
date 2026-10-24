@@ -81,10 +81,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   void app.whenReady().then(async () => {
-    // 窗口最小宽按系统 DPI 缩放折算 DIP(2026-10-24 用户实测「minWidth 296 实际 ~500 下不去」:
-    // minWidth 是 DIP,150% 显示缩放下 296 DIP=444 物理px)。296=150% 倍率下右侧侧栏最小宽(视觉)
+    // 窗口最小宽按系统 DPI 缩放折算 DIP(minWidth 是 DIP,150% 显示缩放下数值×1.5 才是物理px)。
+    // 手调入口(2026-10-24 用户裁定):改 PHYSICAL_MIN_W 一个数即改物理px 下限,当前 500
+    const PHYSICAL_MIN_W = 500;
     const dpiScale = Math.max(1, screen.getPrimaryDisplay()?.scaleFactor ?? 1);
-    const minWinWidth = Math.round(296 / dpiScale);
+    const minWinWidth = Math.round(PHYSICAL_MIN_W / dpiScale);
     try {
       // 两态路径：打包态以 resourcesPath 为根；开发态 getAppPath()=shell 目录（仓根直接子包），
       // 上溯一级即仓库根（T4 冒烟红首因：原上溯两级落到仓父目录，dist 解析必 404）
@@ -126,7 +127,7 @@ if (!app.requestSingleInstanceLock()) {
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
-      minWidth: minWinWidth, // 2026-10-24 用户裁定:=侧栏最小宽 296 物理 px(按 DPI 折算 DIP);极窄时主面 min-width 有视口守卫钳制不越界
+      minWidth: minWinWidth, // 物理px 下限=PHYSICAL_MIN_W(手调入口见上);极窄时主面 min-width 有视口守卫钳制不越界
       minHeight: 600,
       icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),
       titleBarStyle: 'hidden',
