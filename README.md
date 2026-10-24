@@ -57,7 +57,7 @@ shell/       # Electron 桌面壳工作区包（托盘驻留、全局快捷键�
 ```bash
 corepack enable                # 启用 Node 自带 corepack（pnpm 版本由 package.json 钉定）
 pnpm install                   # .npmrc 已把 store 固定到仓内，依赖安装不依赖外部缓存目录
-pnpm cli                       # 构建并启动交互式终端（缺省 manual 权限模式）
+pnpm cli                       # 构建并启动交互式终端（缺省 acceptEdits 权限模式）
 ```
 
 模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥；任意 OpenAI 协议兼容供应商均可，如 BigModel、DeepSeek、OpenRouter、vLLM 本地部署等）：
@@ -86,7 +86,7 @@ pnpm cli                       # 构建并启动交互式终端（缺省 manual 
 ```bash
 sunshinex                      # 当前工作区进终端（需全局安装，见下节）
 sunshinex ../my-project        # 指定项目目录启动（路径形态位置参数；或 --workdir=../my-project）
-sunshinex --mode=manual|dontAsk|plan   # 权限模式
+sunshinex --mode=read-only|acceptEdits|full-access   # 权限模式（TUI 内 /plan <目标> 进计划流程）
 sunshinex --language=zh        # 界面语言（缺省 en；提示词恒英文单语不受影响）
 sunshinex <目录> --worktree[=<name>]  # 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置）
                                # 会话内亦可经 worktree 工具 create/exit/list 管理隔离树；子智能体经 agent.md `isolation: worktree` 声明获得独立树

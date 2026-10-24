@@ -65,6 +65,7 @@ src/
     sunshine-init.ts  # /init 目标构造器（纯函数产出 goal 文本，模型驱动生成/完善 SUNSHINE.md）
     reactor.ts        # 最小闭环引擎（observe→think→act）
     batch-runner.ts   # 批次执行器（签名去重/串并行政策/执行扇出/批后记账，reactor 消费）
+    plan-flow.ts      # 计划流程编排单点（planning→awaiting-approval→approved/revising 状态机；TUI/serve 薄壳消费，纯流程零 IO）
     guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
     skills.ts         # 技能装载与调度（五根兼容链+全局+学习级、resolve 回退链、清单注入）
@@ -276,7 +277,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - **版本下限**：Node.js ≥ 22.9（`package.json` `engines` 为准；脚本统一 `node --test` 与 `node:` 内置模块），实测基线 22 LTS 与 24.x。
 - **工程约束（编码时强制）**：路径一律 `path.join` / `path.resolve` / `path.relative`，禁止手拼分隔符；**路径子树包含判定一律走 `isWithin`（`src/paths.ts`，叶子模块避免模块环）**；工具命令执行收敛在 `ProcessSandbox` 单点，命令执行的平台分支只允许出现在该文件——登记的既有收敛单点例外：工具型 git 直调（`skills-install` 浅克隆 / `worktree.execGit` / `serve/session-changes`，均参数数组零 shell）与 GUI 终端 pty 接缝（`src/serve/pty.ts`，§5 台账在册——PTY 是终端仿真非沙箱命令，收敛面登记见 `docs/PLATFORM.md`）；pnpm scripts 保持零 shell 语法依赖（仅 `&&`）；glob 匹配与产物统一 `/` 分隔（`listFiles` 先归一化再匹配）。
 - **契约的机器强制**：① CI 矩阵 ubuntu + windows × Node 22/24（`fail-fast: false`）；② `.gitattributes` + `.editorconfig` 双管入库/检出与编辑器落盘字节（LF 契约）；③ 脚本层子进程启动统一 `spawn(ComSpec, ['/c', cmd, ...args])`，不用 `shell: true` 与 `args` 并用（DEP0190）。
-- **Landlock exec 写围栏**：Linux-only（内核 ABI 功能探测），macOS/Windows 为 host 口径（manual 档审批流兜底）；隔离口径三态 `landlock | container | host`，auto 探测、selfcheck 上屏；`SUNSHINEX_SANDBOX=off` 一键关。
+- **Landlock exec 写围栏**：Linux-only（内核 ABI 功能探测），macOS/Windows 为 host 口径（ask 审批流兜底）；隔离口径三态 `landlock | container | host`，auto 探测、selfcheck 上屏；`SUNSHINEX_SANDBOX=off` 一键关。
 - **平台相关改动纪律**：新增任何平台相关行为（路径、进程、信号、权限）须在本节登记差异与结论，并同步复核 `docs/PLATFORM.md`。
 - **测试命令形态对 shell 中立**：断言前提一律以脚本文件（`node script.js`）或跨 shell 命令承载；shell 语义用例集中在 `security/sandbox.test.ts`（平台分支唯一落点），其余测试只断言工具链行为。
 

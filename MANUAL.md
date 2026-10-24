@@ -38,7 +38,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 | `sunshinex selfcheck` | 骨架自检 |
 | `sunshinex run <dir> --goal="..."` | 标准验收修正环（非 done 退出码 1） |
 | `sunshinex pipeline <dir> --goal="..." [--yes]` | 五节点流水线 gate 审批（`--yes` 跳过交互直接批准） |
-| `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 manual 权限模式装配；详见 [MANUAL-GUI](MANUAL-GUI.md)） |
+| `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 acceptEdits 权限档装配；详见 [MANUAL-GUI](MANUAL-GUI.md)） |
 | `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
 | `sunshinex kb-index [目录]` | 构建知识库索引（对目录内 md/txt 走计费 embedding；缺省当前工作区，`node_modules` 与隐藏目录跳过；`kb_search` 检索源，见第二节 KB 配置） |
 
@@ -46,7 +46,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 
 | 参数 | 说明 |
 | --- | --- |
-| `--mode=manual\|plan\|dontAsk` | 权限模式，缺省 `manual`（见第六节） |
+| `--mode=read-only\|acceptEdits\|full-access` | 权限档，缺省 `acceptEdits`（见第六节） |
 | `--language=en\|zh` | 界面语言，缺省 `en`；只影响界面，模型侧文本恒英文 |
 | `--tier=small\|medium\|large` | 模型档位，缺省 `medium`；会话内可用 `/model-tier` 切换 |
 | `--effort=none\|minimal\|low\|medium\|high\|xhigh\|max` | 缺省思考强度（reasoning_effort）；端点不支持时按阶梯自动降级，会话内可用 `/model-effort` 切换 |
@@ -157,7 +157,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   },
 
   // ── 安全语义键 ────────────────────────────────────────
-  "readFence": "off",                                // 开启后信任域外读取也需审批（manual 档）/ 拒绝（其余档）
+  "readFence": "off",                                // 开启后信任域外读取也需审批（acceptEdits 档）/ 拒绝（其余档）
   "sandbox": "on",                                   // Linux 下 exec 经 Landlock 内核围栏；off 一键关
   "isolation": "",                                   // 隔离口径声明 landlock|container|host；留空自动探测（selfcheck 上屏）
 
@@ -379,13 +379,15 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 **流水线**：`sunshinex pipeline "<目标>"`（计划→开发→测试→评审→交付，交付前 `y/n`）。
 
-## 六、权限模式与审批
+## 六、权限档与审批
 
-| 模式 | 语义 |
+| 档 | 语义 |
 | --- | --- |
-| `manual`（缺省） | 只读自动放行；写文件 / 联网 / 执行命令弹审批卡 |
-| `plan` | 只读模式，写操作直接拒绝 |
-| `dontAsk` | 自动批准（受信场景） |
+| `read-only` | 仅非变异操作放行（读 / 搜索 / 问询 / 待办 / worktree 列表）；写与变异命令直接拒绝并附切档提示 |
+| `acceptEdits`（缺省） | 信任域内写文件直放；域外写 / 联网 / 执行命令弹审批卡 |
+| `full-access` | 未命中 deny 规则一律自动批准（受信场景；deny 规则与破坏性命令底线仍生效） |
+
+**计划流程**：TUI 内 `/plan <目标>` 进入计划模式——规划期权限临时覆盖为只读，产出计划书（Markdown）经确认卡批准后逐步执行，拒绝可附反馈重规划；`plan` 是流程标记而非权限档。
 
 审批卡与确认卡均为选择器形态（对标 Claude Code）：`↑` / `↓` 移动高亮，`Space` / `Enter` 选定，数字 `1`–`3` 直达；单键快捷 `y` 放行一次 · `a` 本会话放行 · `n` 拒绝 仍然可用，`Esc` = 拒绝。
 
@@ -396,8 +398,8 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 | 面 | 行为 |
 | --- | --- |
-| 读取 | 缺省全盘开放；`readFence` 开启后信任域外读取同样走审批（manual 档）/ 拒绝（其余档） |
-| 写入 | 信任项目根与信任目录；越界写按权限模式：manual 审批 / plan 拒 / dontAsk 放行 |
+| 读取 | 缺省全盘开放；`readFence` 开启后信任域外读取同样走审批（acceptEdits 档）/ 拒绝（其余档） |
+| 写入 | 信任项目根与信任目录；越界写按权限档：acceptEdits 审批 / read-only 拒 / full-access 放行 |
 | 会话放行 | 写审批选 `a`（本会话放行）按**目录**登记，同目录后续写免批 |
 
 信任目录运行期追加：TUI 内 `/add-dir <目录>`，或启动参数 `--add-dir=<目录>`（可重复）；也可配置进 `settings.json` 的 `permissions.additionalDirs`。
@@ -479,7 +481,7 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | --- | --- |
 | 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `model`、`baseUrl` 与 `env.SUNSHINEX_API_KEY`（全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽 |
 | 输入没反应 | 正在等待审批或计划确认：按 `y` / `a` / `n` |
-| 写操作总被拒 | 当前是 `plan` 只读模式：重启换 `--mode=manual` |
+| 写操作总被拒 | 当前是 `read-only` 档：重启以 `--mode=acceptEdits`（或缺省档）启动 |
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |
 | 窗口缩放后花屏 / 残影 | 微调窗口大小再触发一次整屏重绘 |
 | 想回看很久之前的内容 | 终端滚动缓冲保留全部输出；`Tab` / `Ctrl+O` 展开查看 |
