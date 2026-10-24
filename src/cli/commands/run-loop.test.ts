@@ -42,6 +42,10 @@ test('run-loop：ScriptedAdapter 驱动 test-loop 修正环 done（离线端到�
   const r = await tpl.engine.run('修正测试断言（验收标准：c1=断言 add(1,2)===3）');
   assert.equal(r.status, 'done');
   assert.equal(r.tokensUsed, 0);
+  // O3 观测面:askStats 双计数接线——write 过 policy ask（dontAsk 自动放行仍计数）,全程零 ask_question
+  const stats = deps.askStats();
+  assert.ok(stats.approvals >= 1, '写操作经 policy ask 决策（自动放行形态）');
+  assert.equal(stats.asks, 0, '无 ask_question 调用');
 });
 
 test('buildModel：缺省 openai 且带展示标签，--model=stub 走占位适配器', () => {

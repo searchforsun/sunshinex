@@ -35,6 +35,25 @@ test('manual 档白名单对照：无重定向只读命令仍免审批直放', (
   }
 });
 
+// O3 观测面：ask 决策计数（人工干预次数权限面口径）——dontAsk 自动放行形态也计,allow/deny 不计
+test('askCount：dontAsk 下 ask 决策自动放行仍计数；allow/deny 不计', () => {
+  const g = new SecurityGuard(new PolicyEngine(), 'dontAsk'); // 无规则命中缺省 ask
+  assert.equal(g.askCount(), 0);
+  assert.equal(g.preToolUse('Bash', { command: 'node a.js' }).allowed, true);
+  assert.equal(g.preToolUse('Bash', { command: 'node b.js' }).allowed, true);
+  assert.equal(g.askCount(), 2, '每次 ask 决策 +1（自动放行不减免）');
+  const pa = new PolicyEngine();
+  pa.add('allow', 'Bash(echo *)');
+  const ga = new SecurityGuard(pa, 'dontAsk');
+  assert.equal(ga.preToolUse('Bash', { command: 'echo hi' }).allowed, true);
+  assert.equal(ga.askCount(), 0, 'allow 决策非干预不计');
+  const pd = new PolicyEngine();
+  pd.add('deny', 'Bash(rm *)');
+  const gd = new SecurityGuard(pd, 'dontAsk');
+  assert.equal(gd.preToolUse('Bash', { command: 'rm -rf /' }).allowed, false);
+  assert.equal(gd.askCount(), 0, 'deny 决策非干预不计');
+});
+
 test('plan 模式下写工具被拒', () => {
   const g = new SecurityGuard(new PolicyEngine(), 'plan');
   const r = g.preToolUse('Write', { path: 'x', content: 'y' });

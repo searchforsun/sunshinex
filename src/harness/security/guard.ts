@@ -66,6 +66,9 @@ export class SecurityGuard {
     if (decision === 'allow') return { allowed: true };
 
     // decision === 'ask'
+    // O3 观测面（干预需求口径）：ask 决策发生即计数——dontAsk 自动放行形态也计（基准集「人工干预次数」
+    // 的权限面：headless 下审批不真实发生,计的是「若有实时审批会有几次打断」）；deny 不计（非干预）
+    this.askDecisions += 1;
     // dontAsk：不询问用户，自动批准未 deny 的操作（deny 规则仍拦截），即「最大权限」
     if (this.modeName === 'dontAsk') return { allowed: true };
     // manual 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
@@ -98,6 +101,8 @@ export class SecurityGuard {
     return base === '' ? `${tool}:` : base;
   }
   private seq = 0;
+  /** ask 决策累计（askCount 数据源；进程内生命周期） */
+  private askDecisions = 0;
 
   /** 终端化审批注入（TUI/GUI 装配点）；传 undefined 即卸载回阶段一语义 */
   private readonly sessionDirAllows = new Set<string>();
@@ -128,6 +133,12 @@ export class SecurityGuard {
   /** 审批请求 id 单点（链侧发起的 ask 复用同一序号空间） */
   nextApprovalId(): string {
     return `ap-${++this.seq}`;
+  }
+
+  /** ask 决策计数（O3 观测面）：policy 判 ask 的次数，含 dontAsk 自动放行形态——「人工干预次数」
+   *  权限面口径（run-loop 结果 JSON approvals 字段数据源）；deny/allow 不计 */
+  askCount(): number {
+    return this.askDecisions;
   }
 
   /** 链侧发起的 ask 决策通道（spec 5.1 写/读分支）：asker 缺失返回 null（宁停不误，调用方维持原拒绝） */

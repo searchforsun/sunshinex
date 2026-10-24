@@ -126,12 +126,21 @@ export interface CliRunDeps extends LoopDeps {
   /** 任务板协调器透传（P2/T6）：pipeline 命令板路径消费——模板任务集落板/settle 收敛/审批映射 review；
    *  与 Harness 内建板同实例（事件/持久化同源），不另起装配 */
   taskboard: TaskBoard;
+  /** O3 观测面：干预双计数快照（approvals=guard ask 决策数 / asks=问询接缝调用数）——run-loop 结果 JSON 承载 */
+  askStats: () => { approvals: number; asks: number };
 }
 
 export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): CliRunDeps {
   // 共享装配单点（D27）：Harness 构造经 buildHarness（root/kb 共用面收编其内）；CLI 差异面 =
   // 恒 dontAsk + CLI 问询接缝（TTY 编号输入/非 TTY dismissed）；模型不进 Harness（只进下方 deps.model）
-  const h = buildHarness(root, { mode: 'dontAsk', ask: createCliAskSeam(), addDirs });
+  // O3 观测面：问询接缝计数包装——ask_question 被调即 +1（dismissed 也计,「模型主动想问人」的干预需求口径）
+  let seamAsks = 0;
+  const baseAsk = createCliAskSeam();
+  const countedAsk: AskUserSeam = async (req) => {
+    seamAsks += 1;
+    return baseAsk(req);
+  };
+  const h = buildHarness(root, { mode: 'dontAsk', ask: countedAsk, addDirs });
   const router = buildTierRouter(flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {
@@ -142,6 +151,8 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     skills: h.skills,
     root,
     runner: h.runner,
+    // O3 观测面：干预双计数（权限面=guard ask 决策数 / 问询面=seam 调用数）——run-loop 结果 JSON 承载
+    askStats: () => ({ approvals: h.security.askCount(), asks: seamAsks }),
     // 后台沉淀管线透传（规格 §3.5）：CLI 命令收尾 await drain，退出前清空队列
     pipeline: h.pipeline,
     // 后台任务收口透传（D24 接线）：命令终态停全部 running（stop 句柄 kill + 终态行），任务日志不留半截
