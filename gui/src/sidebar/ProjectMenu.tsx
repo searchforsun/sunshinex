@@ -493,7 +493,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       <header className="sx-menu-head">
         <span className="sx-brand">Sunshinex</span>
         {/* 2026-10-24 用户裁定:收起钮=原面板展开图标镜像(PanelLeft),菜单头右上;顶栏 [|] 与之互斥不双显 */}
-        <button type="button" aria-label="collapse menu" className="sx-iconbtn" data-tip={t('Close menu', '收起菜单')} onClick={props.onCollapse}>
+        <button type="button" aria-label="collapse menu" className="sx-winbtn" data-tip={t('Close menu', '收起菜单')} onClick={props.onCollapse}>
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>
       </header>

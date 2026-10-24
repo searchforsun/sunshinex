@@ -9,6 +9,7 @@ import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import { Chat } from './pages/Chat';
 import type { ChatSink } from './pages/Chat';
 import { ProjectMenu } from './sidebar/ProjectMenu';
+import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
@@ -535,6 +536,13 @@ function AppShell(): JSX.Element {
   const closeMenuDrawer = (): void => {
     if (menuFloating && !menuClosed) setMenuClosed(true);
   };
+  /** 缩窗抽屉沿(2026-10-24 四轮裁定):先左菜单(<856)后右栏(<616)相继转抽屉,后显者自动关先显者——
+   *  右抽屉出现沿=关菜单抽屉;加宽回分栏不自动恢复抽屉态(用户手动)。 */
+  const prevSbFloating = useRef(false);
+  useEffect(() => {
+    if (sidebarFloating && !prevSbFloating.current) setMenuClosed(true);
+    prevSbFloating.current = sidebarFloating;
+  }, [sidebarFloating]);
   /** 菜单渲染期钳制(2026-10-24 用户裁定压缩顺序:右缘缩窗=侧栏→主栏→菜单→浮窗):视口装不下
    *  右栏最小 296+主栏最小 320 时,菜单先让出富余宽(拖宽态 menuWidth 不丢,只钳渲染),下限 240 */
   const menuRenderW = Math.min(menuWidth, Math.max(240, viewportW / zoomScale() - MAIN_MIN_WIDTH - MIN_TAB_WIDTH));
@@ -731,6 +739,19 @@ function AppShell(): JSX.Element {
                 }}
               />
             ) : connInstance !== null ? (
+              <>
+              {page === 'welcome' && menuClosed && (
+                /* 2026-10-24 用户裁定:欢迎页无顶栏,菜单关闭态左上角浮出呼出钮(否则无入口) */
+                <button
+                  type="button"
+                  className="sx-iconbtn sx-menu-reopen"
+                  aria-label="toggle menu"
+                  data-tip={t('Open menu', '打开菜单')}
+                  onClick={() => setMenuClosed(false)}
+                >
+                  <PanelLeft size={16} strokeWidth={1.75} />
+                </button>
+              )}
               <WelcomeComposer
                 conn={connInstance}
                 presetRoot={composePresetRoot ?? undefined}
@@ -739,6 +760,7 @@ function AppShell(): JSX.Element {
                   openSession(sessionId, root);
                 }}
               />
+              </>
             ) : (
               <div className="sx-welcome-brand">Sunshinex</div>
             )}

@@ -31,6 +31,7 @@
   --radius-sm: 22px; /* G14.204 四轮定版(用户裁定):sm 及以上全局对标输入框 22px——hover 行/菜单项/按钮/卡片/内容块/浮层一律同弧度 */
   --radius-md: 22px;
   --radius-lg: 22px;
+  --radius-win: 8px; /* 2026-10-24 用户裁定:窗缘面对角与客户端圆角对齐(Win11 窗圆角同量级) */
   --radius-xl: 22px;
   --radius-2xl: 22px;
   --radius-composer: 22px;
@@ -105,8 +106,10 @@
 .sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); }
 /* 2026-10-24 三轮裁定:左菜单抽屉(<856 手动重开态)——fixed 左满高悬浮,宽走 --menu-w(渲染
    钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
-.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 85; max-width: min(86vw, calc(100vw - 340px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); }
+.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 85; max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); }
 .sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
+/* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏) */
+.sx-menu-reopen { position: absolute; top: 10px; left: 10px; z-index: 50; }
 /* 浮窗态 dock 无任何让位规则(2026-10-24 用户裁定「抽屉是上浮的」):composer 恒按分栏态
    几何(left:50% 居中/main−32)铺满主栏,抽屉 z-80 直接盖在右缘——曾有 inset 让位与
    left:50%−w/2 位移公式,均因挤占/错位 composer 被裁撤 */
@@ -1421,7 +1424,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    连成一张包裹面,主对话 surface 卡片左上大圆角压其上(基础规则即此形态,此处不再覆盖) */
 
 /* G14.67:回归 2px 纯菜单底色包边(加深色违和,用户裁定);主对话四角统一 radius-lg
-   (原本仅左上大圆角、其余直角,包边随异形圆角走显得歪);侧栏左缘免重 */.sx-main { position: relative; border: 2px solid var(--surface-under); border-radius: var(--radius-lg); }
+   (原本仅左上大圆角、其余直角,包边随异形圆角走显得歪);侧栏左缘免重。2026-10-24 用户裁定:
+   主面四角=窗缘角,与客户端圆角对齐(--radius-win) */.sx-main { position: relative; border: 2px solid var(--surface-under); border-radius: var(--radius-win); }
 /* G14.72/74:主对话滚动条延伸到面板底——composer 悬浮于流区之上(chat 通高);
    dock=实心底(盖掉输入框下侧透出的内容)+上沿渐隐(标识下面还有内容)+回到底部钮 */.sx-main > .chat { padding-bottom: calc(var(--thread-gutter) + 132px); border-radius: var(--radius-md); }
 /* G14.74b:composer 居中限宽(与内容列对齐,不再全宽);渐隐层只盖内容列(不遮右缘滚动条);
@@ -1439,7 +1443,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   width: 32px; height: 32px; border-radius: 999px;
   background: var(--surface-elevated); border: 1px solid var(--border);
   box-shadow: var(--elev-prominent); color: var(--fg-secondary);
-}.jump-down:hover { color: var(--fg); }.sx-sidebar { border: 2px solid var(--surface-under); border-left: none; border-radius: var(--radius-lg); overflow: hidden; } /* G14.103 四角与主对话一致 */
+}.jump-down:hover { color: var(--fg); }.sx-sidebar { border: 2px solid var(--surface-under); border-left: none; border-radius: var(--radius-win); overflow: hidden; } /* G14.103 四角与主对话一致;2026-10-24 对齐客户端圆角 */
 
 /* ===== G14.37 思考流式两件套(G14.52 速率去):秒数计数 / 内容右向流动窗(思考行占满整行) ===== */.thinking-flow {
   flex: 1; min-width: 0; overflow: hidden; white-space: nowrap;
