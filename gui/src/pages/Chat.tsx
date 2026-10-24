@@ -403,6 +403,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
       <MessageList
         entries={chat.entries}
+        structureVersion={chat.structureVersion}
+        seedGen={chat.seedGen}
         hiddenKeys={hiddenKeys}
         callIdOf={callIdOf}
         conn={conn}

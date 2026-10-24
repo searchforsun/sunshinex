@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -24,6 +24,9 @@ import { ToolSegBlock } from './ToolGroups';
  *  字段(callIdOf 寻址注入保留,info 旁路注入退役)。 */
 export interface MessageListProps {
   readonly entries: ChatEntry[];
+  /** P1 派生冻结键(chat.structureVersion/seedGen 直穿):日分组骨架 memo 依赖,见组件内 daySkeleton */
+  readonly structureVersion: number;
+  readonly seedGen: number;
   readonly hiddenKeys: ReadonlySet<string>;
   readonly callIdOf: (entry: ChatEntry) => string | undefined;
   readonly conn: Connection;
@@ -51,7 +54,7 @@ export interface MessageListProps {
 }
 
 export function MessageList(props: MessageListProps): JSX.Element {
-  const { entries, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -84,6 +87,20 @@ export function MessageList(props: MessageListProps): JSX.Element {
     const el = chatScrollRef.current;
     if (el !== null && el.scrollTop <= 0) showEarlier();
   };
+  /** P1 派生冻结:日分组骨架 memo(区间切分随骨架缓存),成员数组 dayGroups 逐渲染按区间
+   *  slice 重绑最新条目引用(流式尾行实时)——语义与逐帧全量分组等价,省去逐帧 Intl 构造 */
+  const daySkeleton = useMemo(() => {
+    const gs = groupEntriesByDay(visible);
+    let start = 0;
+    return gs.map((g) => {
+      const s = { key: g.key, label: g.label, start, end: start + g.entries.length };
+      start = s.end;
+      return s;
+    });
+    // 依赖=骨架判据四元组(visible 的切分只随 sv/seedGen/visibleCount/hiddenKeys 变)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structureVersion, seedGen, visibleCount, hiddenKeys]);
+  const dayGroups = daySkeleton.map((s) => ({ key: s.key, label: s.label, entries: visible.slice(s.start, s.end) }));
   return (
     <main
       className="chat"
@@ -107,8 +124,12 @@ export function MessageList(props: MessageListProps): JSX.Element {
           </button>
         )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);
-            G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留) */}
-        {groupEntriesByDay(visible).flatMap((g) => {
+            G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留)。
+            P1 派生冻结:分组骨架(key/label/区间)只依赖成员集(structureVersion+seedGen 防重置
+            等值碰撞)/尾窗(visibleCount)/折叠边界(hiddenKeys 参与 cut 回退)——纯内容帧零重算
+            (逐帧 Intl 构造是热点大头)。骨架命中时成员数组逐渲染按区间 slice 重绑最新条目引用:
+            缓存组持旧引用会冻结流式尾行(尾条目逐 token 换新身份),骨架+重绑是冻结与实时性的合流点 */}
+        {dayGroups.flatMap((g) => {
           const nodes: ReactNode[] = [];
           if (g.label !== '') {
             nodes.push(

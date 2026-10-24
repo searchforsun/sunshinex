@@ -67,7 +67,9 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskActive: number;
 } {
   const { chat, board, onTodoBatches, onTurnGoal } = deps;
-  const taskNameOf = useMemo(() => taskNameResolverOf(chat.entries, board), [chat.entries, board]);
+  /** P1 派生冻结:依赖改成员集键(structureVersion+seedGen 防重置等值碰撞)——纯内容帧
+   *  (token/thinking delta)引用恒定,成员/种子变更才重算(下方 todoBatches/turnGoal 同口径) */
+  const taskNameOf = useMemo(() => taskNameResolverOf(chat.entries, board), [chat.structureVersion, chat.seedGen, board]);
   /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
    *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
    *  P11 T7 字段单源:清单直读 entry.input.todos(内核条目 name/input 全量随档,旁路/md
@@ -98,7 +100,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
       if (prev === undefined || b.ts >= prev.ts) bySig.set(sig, b);
     }
     return [...bySig.values()].sort((a, b) => a.ts - b.ts);
-  }, [chat.entries]);
+  }, [chat.structureVersion, chat.seedGen]);
 
   /** G14.177 顶栏动态计数:待办=末批(最新)未完成条目;任务板=pending+claimed 任务 */
   const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;
@@ -110,7 +112,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
       if (e.kind === 'user') return stripGoal(e.md);
     }
     return '';
-  }, [chat.entries]);
+  }, [chat.structureVersion, chat.seedGen]);
 
   // 上报去重(性能面):entries 每 token 帧都换新引用——序列化签名不变就不上报,
   // 否则 App 级 setState 跟着每帧放大重渲染(稳定条 md 计数上涨,G14.174 回归)

@@ -107,7 +107,7 @@ const toggleRun = useCallback((key: string): void => {
     return next;
   });
 }, []);
-const hiddenKeys = useMemo(() => collapsedHiddenKeys(chat.entries, collapsedRuns), [chat.entries, collapsedRuns]);
+const hiddenKeys = useMemo(() => collapsedHiddenKeys(chat.entries, collapsedRuns), [chat.structureVersion, chat.seedGen, collapsedRuns]);
 
 /** G14.48 展开/折叠不闪动:贴地(阅读位在底)→ 钉底,内容整体上移;未贴地 → 锚定被点行,
  *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;
