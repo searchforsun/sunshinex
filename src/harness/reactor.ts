@@ -11,7 +11,7 @@ import { stableSegmentOf } from './prompts/shared';
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
-import { reactorMaxStepsEnv, resolveRunWindow, subagentTokenCapEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, reciteEveryEnv, resolveRunWindow, subagentTokenCapEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -218,6 +218,21 @@ export class Reactor {
           const injected = lines.map((line, i) => ({ step: base + 1 + i, action: 'task' as const, observation: line }));
           steps.push(...injected);
           this.emit('step', 'task', { step: injected[injected.length - 1].step });
+        }
+      }
+      // O4 recitation（SUNSHINEX_RECITE_EVERY,缺省关——形态待长任务 A/B 实验,HARNESS-BACKLOG O4）：
+      // 长循环周期性目标重申——Manus todo.md 对标,对抗长任务 lost-in-the-middle。尾追 task 链行
+      // （与穿插行同款形态,合法尾追零前缀击穿）;内容=链上最后一条 task 行（goal 是标签不进提示词,
+      // 重申「要做什么」的指令文本——Task 注）。重申行占一个步号（guardrail 口径同穿插行,N≥5 时噪声级）
+      const reciteEvery = reciteEveryEnv();
+      if (reciteEvery > 0) {
+        const doneSteps = steps.length - seedLen;
+        if (doneSteps > 0 && doneSteps % reciteEvery === 0) {
+          const instruction = this.deps.context.lastInstruction();
+          if (instruction !== undefined) {
+            steps.push({ step: steps[steps.length - 1].step + 1, action: 'task' as const, observation: `[goal reminder] ${instruction}` });
+            this.emit('step', 'task', { step: steps[steps.length - 1].step });
+          }
         }
       }
       const step = steps.length > 0 ? steps[steps.length - 1].step + 1 : 1;

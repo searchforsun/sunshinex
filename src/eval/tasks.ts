@@ -171,6 +171,27 @@ export const BENCH_TASKS: readonly BenchTask[] = [
       return Object.keys(cfg).length === 6 ? null : `键总数漂移：${Object.keys(cfg).length}（应 6）`;
     },
   },
+  {
+    id: 'T6-long-loop',
+    title: '长循环多步创建（12 文件+清单,O4 实验载体）',
+    goal: '创建 data 目录（mkdir），在 data 下创建 12 个文件 f01.txt 到 f12.txt，每个文件的内容恰好为其自身文件名（如 f01.txt 的内容为 f01）；然后在当前目录创建 manifest.txt，内容为 12 个文件名按升序排列、每行一个（验收标准：m1=data 下 f01.txt..f12.txt 共 12 个文件且内容逐字为各自文件名；m2=manifest.txt 存在且恰含 12 行升序文件名）',
+    fixtures: () => {},
+    verify: (dir) => {
+      for (let i = 1; i <= 12; i += 1) {
+        const name = `f${String(i).padStart(2, '0')}.txt`;
+        const p = path.join(dir, 'data', name);
+        if (!fs.existsSync(p)) return `${name} 不存在`;
+        if (readFile(p).replace(/\r/g, '').trim() !== name.slice(0, 3)) return `${name} 内容不符`;
+      }
+      const manifest = path.join(dir, 'manifest.txt');
+      if (!fs.existsSync(manifest)) return 'manifest.txt 不存在';
+      const lines = readFile(manifest).replace(/\r/g, '').trim().split('\n');
+      const expected = Array.from({ length: 12 }, (_, i) => `f${String(i + 1).padStart(2, '0')}.txt`);
+      return lines.length === 12 && lines.every((l, i) => l.trim() === expected[i])
+        ? null
+        : `manifest 不符：${JSON.stringify(lines)}`;
+    },
+  },
 ];
 
 /** 测试/工具面共享常量（黄金解与期望值导出——bench.test 双态对照与 wiring 断言不重抄字面量） */

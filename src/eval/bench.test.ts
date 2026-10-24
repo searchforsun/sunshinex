@@ -37,6 +37,14 @@ const GOLDEN: Record<string, (dir: string) => void> = {
     cfg.retries = 5;
     fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg, null, 2) + '\n');
   },
+  'T6-long-loop': (dir) => {
+    fs.mkdirSync(path.join(dir, 'data'));
+    for (let i = 1; i <= 12; i += 1) {
+      const name = `f${String(i).padStart(2, '0')}`;
+      fs.writeFileSync(path.join(dir, 'data', `${name}.txt`), name);
+    }
+    fs.writeFileSync(path.join(dir, 'manifest.txt'), `${Array.from({ length: 12 }, (_, i) => `f${String(i + 1).padStart(2, '0')}.txt`).join('\n')}\n`);
+  },
 };
 
 function tmp(): string {

@@ -84,3 +84,14 @@ export function modelTimeoutMsEnv(env: NodeJS.ProcessEnv = process.env): number 
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
+
+/** O4 recitation 旋钮：SUNSHINEX_RECITE_EVERY 正整数 N = 每 N 新步在链尾追一条目标重申行；
+ * 未设/空/非法 = 0（**缺省关**——形态待长任务 A/B 小实验验证后再定缺省,HARNESS-BACKLOG O4）。
+ * 刻意软旋钮口径（同 modelTimeoutMsEnv,不 fail-fast）：纯观测/提示增强,误配不应炸装配。
+ * 消费点 reactor 步边界（每步解析一次,env 运行期不变先例同款） */
+export function reciteEveryEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.SUNSHINEX_RECITE_EVERY;
+  if (raw === undefined || raw.trim() === '') return 0;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}

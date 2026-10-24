@@ -184,6 +184,17 @@ export class ContextManager {
     return notices;
   }
 
+  /** 链尾最后一条 task 行（O4 recitation 内容源）：goal 不进提示词（Task 注）,重申「要做什么」的
+   *  文本=链上最近指令/穿插行;压缩水位后的存续视图内倒查（指令行已被压缩代表时取压缩后最近者——
+   *  重申「当前已知任务」语义仍成立）。无 task 行（空链/纯 notice）返回 undefined（不重申） */
+  lastInstruction(): string | undefined {
+    const rows = this.ledger.view();
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      if (rows[i]!.action === 'task') return rows[i]!.observation;
+    }
+    return undefined;
+  }
+
   /** 压缩协调：压缩块已代表的链前缀条目数，推进水位防「链+压缩块」双份（薄委托后组合 compact 事件） */
   trimChainFront(n: number): void {
     if (n <= 0) return;
