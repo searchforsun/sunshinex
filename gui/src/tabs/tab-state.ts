@@ -79,8 +79,8 @@ export type TabStates = Readonly<Record<string, TabSessionState>>;
 export const DEFAULT_TAB_WIDTH = 520;
 
 /** 拖拽调宽边界:只钳最小(spec §1 旧 200-720 上界退役;G14.2xx 用户裁定:三栏只留最小宽
- *  钳制,右栏可任意拖宽)——模块私有,setWidth 单点执行 */
-const MIN_TAB_WIDTH = 208; // 2026-10-24 用户裁定 440→240→208 再收窄:搜索弹窗(280+视口钳制)不截断;页签条窄端页签逐个滚动
+ *  钳制,右栏可任意拖宽)——setWidth 单点执行;浮窗态渲染钳制下限(App.tsx)同值联动 */
+export const MIN_TAB_WIDTH = 296; // 2026-10-24 用户裁定 440→240→208→296:终值=主对话最小宽 320−24(浮窗边距同构);旧 208 档搜索弹窗/页签面已被后续收敛取代
 
 /**
  * 判重/单例探针:T3 的 TAB_REGISTRY 装配真实现(registryProbe),测试桩同口径注入。
@@ -237,7 +237,7 @@ export function patchTabMeta(
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
 
-/** 调宽:只钳最小 440(无最大宽——G14.2xx 用户裁定);钳后未变/会话缺席 → 原引用返回 */
+/** 调宽:只钳最小 MIN_TAB_WIDTH(无最大宽——G14.2xx 用户裁定);钳后未变/会话缺席 → 原引用返回 */
 export function setWidth(states: TabStates, sessionId: string, width: number): TabStates {
   const cur = states[sessionId];
   if (cur === undefined) return states;

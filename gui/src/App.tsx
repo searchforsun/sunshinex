@@ -13,7 +13,7 @@ import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { tabEntry, registryProbe } from './tabs/registry';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession, MIN_TAB_WIDTH } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { applyAgentEvent } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
@@ -525,11 +525,15 @@ function AppShell(): JSX.Element {
   /** 浮窗抽屉切换(2026-10-24 用户裁定):视口宽(视觉/zoom 归一)窄于 1000 时,右栏从占布局
    *  宽度的分栏抽屉切为悬浮抽屉(position:fixed 右满高,盖在正文上,z 低于窗控簇)。宽度过阈值自动还原分栏 */
   const sidebarFloating = viewportW / zoomScale() < 1000;
-  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320);浮窗态=覆盖层只留 24px 边距(用户裁定:
-   *  浮窗态开侧栏也能缩到 600 窗宽,抽屉恒保持可用宽)。视觉/本地换算 /zoomScale() 契约同前 */
+  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320);浮窗态=覆盖层,主栏仍保标准最小宽
+   *  (2026-10-24 用户实测「浮窗下主/辅 composer 双双变窄」:抽屉拖宽曾只留 24px,主 dock 被
+   *  右侧 inset 挤到 0),抽屉下限 MIN_TAB_WIDTH=296(=320−24,极窄窗抽屉保底可用主栏让位)。
+   *  视觉/本地换算 /zoomScale() 契约同前 */
   const sidebarRenderW = Math.min(
     tabState.width,
-    Math.max(0, viewportW / zoomScale() - menuWidth - (sidebarFloating ? 24 : MAIN_MIN_WIDTH)),
+    sidebarFloating
+      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH)
+      : Math.max(0, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
   const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed && !sidebarFloating ? sidebarRenderW : 0;
@@ -546,9 +550,9 @@ function AppShell(): JSX.Element {
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    // 拖拽上界随态:分栏预留主栏最小宽;浮窗只留 24px 边距(起拖定格,拖拽中无 resize 事件模式不翻转)
-    const floating = sidebarFloating;
-    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - (floating ? 24 : MAIN_MIN_WIDTH);
+    // 拖拽上界随态:分栏/浮窗都预留主栏最小宽(浮窗=覆盖层但主 dock 仍保可用宽,渲染钳制同式);
+    // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)
+    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - MAIN_MIN_WIDTH;
     const startWidth = Math.min(tabState.width, cap());
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
