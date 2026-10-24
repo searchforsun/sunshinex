@@ -286,6 +286,10 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
         {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
+        {/* 2026-10-24 拖拽重构:顶栏窗拖拽单点落本空白带(顶栏左聚布局,钮全在带左,带吸右侧余量)——
+            旧「容器 drag+按钮挖孔」在 CSS zoom 下拖拽位图挖孔坐标错位,抽屉态窗控簇([|]−□×)真实
+            按下被吞(用户实测「抽屉态 [|] 点不动」根因);空白带与一切按钮几何互斥,无孔可挖 */}
+        <div className="sx-topbar-drag" aria-hidden="true" />
         {menu !== null && fixedTitle !== '' && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
         )}

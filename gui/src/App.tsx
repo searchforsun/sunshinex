@@ -650,6 +650,13 @@ function AppShell(): JSX.Element {
         '--sidebar-w': `${sidebarOccupied}px`,
       } as CSSProperties}
     >
+      {IS_SHELL && !settingsOpen && page !== 'chat' && (
+        /* 2026-10-24 拖拽重构:欢迎/连接页不渲染 TabStrip/ChatTopbar,整窗零 drag 把手(用户实测
+           「欢迎页顶部无法拖窗」根因)。几何隔离 drag 轨:left+44 避让菜单关闭态呼出钮、right:148
+           避让窗控簇(簇左缘 118+30 安全边)——drag 矩形与一切按钮互斥,无挖孔,CSS zoom 下拖拽
+           位图错位也咬不到按钮;抽屉态左缘移至抽屉浮层右缘之外(CSS sx-menu-float 分支) */
+        <div className="sx-dragrail" aria-hidden="true" />
+      )}
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */

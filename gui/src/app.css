@@ -146,7 +146,12 @@
 .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: radial-gradient(circle 3px at 50% 50%, var(--fg-secondary) 2.5px, transparent 2.9px); }.conn-dot.conn-open { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.5px, transparent 2.9px); }.conn-dot.conn-connecting, .conn-dot.conn-reconnecting { background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--warn) 2px 2.7px, transparent 3.1px); }
 /* G8e-T1 补:左栏「+ 添加工作区」区(G8a 挂名) */.sx-menu-add { border-top: 1px solid var(--border); padding: 8px 12px; }.sx-add-workspace { display: block; width: 100%; padding: 4px 8px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--fg-secondary); }.sx-add-workspace:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }.sx-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--fg-secondary); }
 
-/* ---- G8c T8 设置态(特批白名单:设置样式并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */.sx-settings-head { display: flex; align-items: center; gap: 8px; }.sx-settings-back { color: var(--fg-secondary); padding: 2px 6px; border-radius: var(--radius-md); }.sx-settings-back:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-settings-project { padding: 8px 12px; border-bottom: 1px solid var(--border); }.sx-settings-project select { width: 100%; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 6px; font: inherit; }.sx-settings-nav { flex: 0 1 auto; min-width: min-content; overflow-y: auto; overflow-x: hidden; padding: 6px 0; list-style: none; margin: 0; } /* 2026-10-24 用户实测:width:220 钉死致菜单缩窄时导航不跟——随菜单列宽收窄,下限=最长项宽 */ /* 2026-10-24 用户裁定:随页宽收窄,最窄=最长项「知识库与搜索」宽度 */.sx-settings-nav-item { display: block; width: 100%; text-align: left; padding: 5px 12px; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.sx-settings-nav-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+/* ---- G8c T8 设置态(特批白名单:设置样式并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */.sx-settings-head { display: flex; align-items: center; gap: 8px; }.sx-settings-back { color: var(--fg-secondary); padding: 2px 6px; border-radius: var(--radius-md); }.sx-settings-back:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-settings-project { padding: 8px 12px; border-bottom: 1px solid var(--border); }.sx-settings-project select { width: 100%; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 6px; font: inherit; }.sx-settings-nav { flex: 0 1 auto; min-width: min-content; overflow-y: auto; overflow-x: hidden; padding: 6px 0; list-style: none; margin: 0; }/* 2026-10-25 用户裁定:设置态菜单列随窗收窄(flex 可缩,覆写 .sx-menu 的 flex:none 与
+   min-width:--menu-min-w 钉值)——下限=导航最长项「知识库与搜索」min-content(item nowrap
+   的 min-content=完整文本宽,收窄途中逐项保持单行);窄窗先压左栏到导航可读下限,右侧表单
+   (240px 控件列)不再被挤压逐字断行。会话态菜单列(拖宽 --menu-w 钉值+抽屉机制)不受影响 */
+.sx-menu.sx-settings-menu { flex: 0 1 auto; min-width: min-content; }
+/* 2026-10-24 用户实测:width:220 钉死致菜单缩窄时导航不跟——随菜单列宽收窄,下限=最长项宽 */ /* 2026-10-24 用户裁定:随页宽收窄,最窄=最长项「知识库与搜索」宽度 */.sx-settings-nav-item { display: block; width: 100%; text-align: left; padding: 5px 12px; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.sx-settings-nav-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8d-T1 补(裁定①):竖 accent 条标恢复(G8c 先例回归)——活动/悬停可辨 */.sx-settings-nav-item.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 
 /* 设置面板表单(主区;G8d 面板 padding 统一 12px) */.sx-settings-form { flex: 1; overflow-y: auto; padding: 12px; max-width: 640px; display: flex; flex-direction: column; gap: 10px; }.sx-settings-form h2 { margin: 0 0 4px; font-size: 15px; }.sx-memory-stats { margin: 0; color: var(--fg-secondary); }.sx-settings-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }.sx-setting-row { display: grid; grid-template-columns: 64px minmax(120px, 200px) 1fr; align-items: center; gap: 8px; }.sx-setting-label { color: var(--fg); font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }.sx-setting-input { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: 12px var(--font-mono); width: 100%; }.sx-settings-save { align-self: flex-start; margin-top: 6px; padding: 5px 16px; background: var(--fg); border: none; border-radius: var(--radius-md); color: var(--fg-on-solid); font-weight: 500; }.sx-settings-save:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); color: var(--fg-on-solid); }
@@ -2192,15 +2197,23 @@ input.sx-setting-input { width: 100%; }
 .workspace-row > .workspace-toggle.sx-group-head:hover { background: transparent; }
 /* ===== 2026-10-23 桌面壳(用户裁定):原生菜单/标题栏退役,−□× 走 WCO 嵌入右上;
    品牌行只显「SUNSHINEX」文字(logo 仅欢迎页/桌面图标/托盘),行即窗口拖拽区 ===== */
-.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; } /* 2026-10-24 用户裁定:菜单头退出拖拽区——zoom 下 drag 位图 no-drag 挖孔坐标错位,头内按钮恒被吞点击(合成 .click 有效/真实无效);窗口拖拽由页签条/顶栏承担 */
-/* 2026-10-24 用户实测「还是无法点击」深因:Electron zoom 下 drag 区的 no-drag 挖孔坐标错位
-   (孔挖在别处,按钮像素仍属拖拽区,真实点击被吞;合成 .click() 却有效)。抽屉态头部整体
-   退出拖拽区(浮层不承担窗拖拽),确定性可点 */
+/* 2026-10-24 拖拽重构(用户实测三点:欢迎页顶部无法拖窗/非抽屉顶部拖不动/抽屉态 [|] 点不动):
+   根因=「容器 drag+按钮 no-drag 挖孔」在 CSS zoom 下拖拽位图挖孔坐标错位(a488537 实证),
+   且欢迎页无 TabStrip/ChatTopbar 整窗零把手;2ea1eac 恢复抽屉态顶栏 drag 复吸窗控。
+   对策=drag 只声明在「与一切按钮几何互斥的空白带」上,容器一律 no-drag——无孔可挖,
+   zoom 错位至多平移空白带边缘,咬不到任何按钮:
+   ① sx-dragrail 欢迎页/连接页顶部整条(left+44 避呼出钮,right:148 避窗控簇=118+30 安全边);
+   ② sx-topbar-drag 顶栏空白带(左聚布局钮全在带左,带吸右侧余量;抽屉态把手=其未被浮层
+     盖住的可见部分);③ sx-menu-head-drag 菜单头空隙带(品牌字与收起钮之间,两侧 margin 避让) */
+.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; } /* 头内按钮安全兜底;拖拽由头内空白带承担 */
 .sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: no-drag; } /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
-/* 抽屉态顶栏 drag 保留(用户实测「无法拖动上侧」):可见右部是抽屉态唯一窗拖拽把手,按钮 no-drag 不受累 */
-.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; padding-right: 150px; }
+.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; padding-right: 150px; } /* 撤容器 drag(挖孔式,zoom 下吞窗控);padding 右留窗控簇位 */
 .sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 44px); right: 148px; z-index: 1; -webkit-app-region: drag; }
+.sx-shell.sx-desktop.sx-menu-float .sx-dragrail { left: calc(var(--menu-w, 240px) + 12px); } /* 抽屉态让位浮层(width:--menu-w z96),拖拽走顶栏空白带可见部 */
+.sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; margin-left: 24px; -webkit-app-region: drag; } /* margin-left=zoom 位图错位安全边(带左紧邻 ChatDynButtons) */
+.sx-shell.sx-desktop .sx-menu-head-drag { flex: 1; align-self: stretch; margin: 0 24px 0 16px; -webkit-app-region: drag; } /* 右 24 避收起钮;左 16 避品牌字——右单侧,钮仍贴右缘 */
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 .entry .entry-stream-tail { margin: 0; padding: 0; background: transparent; border: none; border-radius: 0; font: inherit; color: inherit; white-space: pre-wrap; }
@@ -2208,7 +2221,7 @@ input.sx-setting-input { width: 100%; }
    sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; -webkit-app-region: no-drag; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖)——2026-10-23 [|] 入簇:簇=|+−□× 四钮
    (4×26+3×2=110,right:8 → 簇左缘=W-118),让位 92→120 */
-.sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; -webkit-app-region: drag; } /* 桌面:右留 [|]+−□× 四钮簇位 */
+.sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; -webkit-app-region: no-drag; } /* 2026-10-24 拖拽重构:页签条容器 drag 退役——真 zoom1.1 实测其 no-drag 挖孔错位吞 fixed 右上窗控簇([|] 真实点击变拖窗,与顶栏同机制);页签空档不再拖窗,拖拽单点走顶栏空白带/菜单头带/rail */
 .sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 40px; } /* web:固定 [|] 钉窗口右缘(占 W-34..W-8),页签内容止步让位 */
 .sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }
 /* 2026-10-24 用户实测:页签搜索弹窗行是 div[role=button](非真 button),落拖拽区致桌面点击变拖窗——

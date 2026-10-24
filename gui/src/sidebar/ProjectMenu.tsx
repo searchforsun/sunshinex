@@ -492,9 +492,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head">
         <span className="sx-brand">Sunshinex</span>
-        {/* 收起钮=原面板展开图标镜像(PanelLeft),菜单头右上;顶栏 [|] 与之互斥不双显。
-            (拖窗:菜单头 app-region 已整体退役——zoom 下 drag 位图挖孔错位吞按钮点击,实证无解;
-            抽屉打开时窗口拖拽走顶栏/页签条未被抽屉盖住的可见部分) */}
+        {/* 2026-10-24 拖拽重构:头部窗拖拽把手=本空白带(品牌字与收起钮的 space-between 空隙,
+            margin 安全边两侧避让)——旧「容器 drag+挖孔」在 zoom 下位图错位吞收起钮(实证),
+            故当年裁定头部整体退出拖拽区,「菜单头区域拖不动窗」即其代价;空白带几何互斥两全 */}
+        <div className="sx-menu-head-drag" aria-hidden="true" />
+        {/* 收起钮=原面板展开图标镜像(PanelLeft),菜单头右上;顶栏 [|] 与之互斥不双显。 */}
         <button type="button" aria-label="collapse menu" className="sx-winbtn" data-tip={t('Close menu', '收起菜单')} onClick={props.onCollapse}>
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>

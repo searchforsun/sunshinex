@@ -114,7 +114,10 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
 
   return (
     <>
-      <nav className="sx-menu" aria-label={t('settings', '设置')}>
+      {/* sx-settings-menu(2026-10-25 用户裁定):设置态菜单列随窗收窄可缩(flex 0 1 auto),
+          下限=导航最长项「知识库与搜索」min-content——窄窗先压左栏到导航可读下限,右侧表单
+          (240px 控件列)不再被挤压逐字断行;会话态菜单列保持 flex:none 拖宽钉值不受此影响 */}
+      <nav className="sx-menu sx-settings-menu" aria-label={t('settings', '设置')}>
         <header className="sx-menu-head sx-settings-head">
           <button type="button" className="sx-settings-back" onClick={onBack}>
             {t('← Back', '← 返回')}
