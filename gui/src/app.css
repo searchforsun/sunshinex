@@ -759,7 +759,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    (模型 pill)走 flex 压缩+mask 渐隐(规则见上 model-pill 段),不省略号 */
 .composer-pills-right .composer-pill { min-width: 0; flex: 0 1 auto; }
 .sx-menuitem.current { color: var(--accent); }
-.sx-menuitem.current::before { content: '✓ '; font-size: 11px; }
+.sx-menuitem.current::after { content: '✓'; font-size: 12px; margin-left: auto; padding-left: 12px; } /* 2026-10-24 用户裁定:✓ 靠行最右(menuitem 为 flex),选中项强调色统一——会话页 disabled 灰曾盖过强调色(disabled 已摘,重选同模型无副作用) */
 /* pill 弹层:锚 .pill-anchor/.composer-pills,按钮正上方。显式清掉 .sx-menu-pop 的 top:36px/
    right:8px 缺省(双 top/bottom 拉伸令弹层塌缩错位——「下拉框不在按钮上侧」的根因) */.pill-pop { position: absolute; top: auto; right: auto; bottom: calc(100% + 4px); left: 0; z-index: 20; min-width: 160px; }
 /* 右组 pill(模型)的弹层:锚右缘向左展开,不越出卡右沿 */.pill-pop-right { left: auto; right: 0; }

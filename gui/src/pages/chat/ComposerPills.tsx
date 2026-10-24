@@ -163,7 +163,6 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                       type="button"
                       role="menuitem"
                       className={`sx-menuitem${baseModelName(c.id) === baseModelName(modelInfo?.current) ? ' current' : ''}`}
-                      disabled={c.id === modelInfo?.current}
                       data-tip={c.id}
                       onClick={() => {
                         setModelInfo((m) => (m === null ? m : { ...m, current: c.id }));
