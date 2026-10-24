@@ -93,10 +93,10 @@
 |---|---|---|---|---|---|
 | O1 | P1 | webfetch 加超时 + 下载量上限 | ③⑤ | builtin.ts:151 裸 fetch 无 AbortSignal，res.text() 先全量读入再截断；业界基线：网络调用必带超时；修复一行级 | closed（2026-10-24：AbortSignal 超时 30s〔SUNSHINEX_WEBFETCH_TIMEOUT_MS 旋钮〕+ 2MB 流式截断 readBodyCapped 连接早断；测试 2 例〔慢端点超时/3MB 端点早断〕） |
 | O2 | P1 | 模型调用自动重试（指数退避，仅 recoverable 类） | ⑤ | 主链 model-error 直终局 vs 判据侧 MAX_JUDGE_RETRIES=3 先例；收 adapter.ts 单点，长任务抗端点抖动 | closed（2026-10-24：doFetch 单点重试——瞬时网络错/5xx/429 退避 3 次上限〔retryDelayMs cfg 旋钮〕；fatal 4xx/本端硬顶超时/外部中断不重试；测试 3 例含判别力锚） |
-| O3 | P1 | 长任务基准集最小版（3–5 个固定任务 + 完成率/人工干预次数脚本化） | ④ | 决策载体已有：GOAL.md L31、ROADMAP L23/L130；五要素唯一结构性短板，从 0 未动工 | open |
+| O3 | P1 | 长任务基准集最小版（3–5 个固定任务 + 完成率/人工干预次数脚本化） | ④ | 决策载体已有：GOAL.md L31、ROADMAP L23/L130；五要素唯一结构性短板，从 0 未动工 | closed（2026-10-24：5 固定任务库 src/eval/tasks.ts〔脚本验盘权威〕+ scripts/eval-run.mjs 手动门 + 干预双计数〔guard ask 决策/ask_question 调用〕；wiring 门禁进 pnpm test；glm-5.3-flash 首轮真跑 5/5≈29.4 万 tokens；首轮即抓出答案键错一例——模型算对 total_ms=2834 而初版判据写死 1234,验盘修后复跑绿） |
 | O4 | P2 | Recitation：长循环周期性 goal 重申行（尾追承载） | ② | Manus todo.md 对标；零前缀击穿；先小实验验证收益再定形态 | open |
 | O5 | P2 | ledger.summary() 增量化 | ④ | 逐 id 全量重读 O(n)；随基准集批次顺手做 | closed（2026-10-24：runs/_summary 缓存档 record 增量维护、summary 单读 O(1)；校验面=索引长度,旧档无缓存/半写一次性重算回填自愈；测试 2 例〔零 run 文件读取判别力锚/迁移+自愈〕） |
-| O6 | P3 | 工具误用观测（模型用错工具的数据回流） | ①④ | Anthropic ACI 测试建议；依赖 O3 先落地 | open |
+| O6 | P3 | 工具误用观测（模型用错工具的数据回流） | ①④ | Anthropic ACI 测试建议；依赖 O3 先落地——O3 已落地（干预双计数/步数/token 观测点在座,run 结果 JSON 可消费） | open |
 | O7 | 登记 | OS 级沙箱（dockerode 容器执行） | ③ | 已在 GUI 可选增强登记，本机个人工具形态下保持登记不动 | 登记 |
 | O8 | 登记 | 并行生成/筛查分离 guardrail | ③ | Anthropic 模式；单机通用 agent 属过度设计，不做 | 不做 |
 

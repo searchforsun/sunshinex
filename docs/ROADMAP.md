@@ -130,7 +130,7 @@ flowchart TB
 **目标**：全量测试、性能优化、打包发布。
 
 - [x] 全量测试体系（node:test 全量 1800+ 用例，tsc strict 零报错 + pnpm selfcheck 双门禁，CI 双平台矩阵）
-- [ ] 长任务基准集（目标形态可靠性口径）：固定任务库量化完成率与人工干预次数，可自动判定走脚本化、需人工判定走观察台账，不入提交门禁（防端点抖动污染 CI）
+- [x] 长任务基准集（目标形态可靠性口径）：固定任务库量化完成率与人工干预次数，可自动判定走脚本化、需人工判定走观察台账，不入提交门禁（防端点抖动污染 CI）——2026-10-24 落地：5 固定任务库（src/eval/tasks.ts,脚本验盘权威）+ scripts/eval-run.mjs 手动门 + 干预双计数（guard ask 决策/ask_question 调用）；glm-5.3-flash 首轮真跑 5/5（约 29.4 万 tokens）
 - [ ] 性能优化：缓存命中率观测（探针口径已建）、响应速度、内存占用
 - [ ] 跨平台打包：CLI 全局包 + GitHub Release 发版链已交付（release.mjs），GUI 桌面端三平台安装包随 5B
 - [x] 使用手册拆分：MANUAL.md（CLI + TUI）+ MANUAL-GUI.md（GUI 桌面端/浏览器），开发文档以 CLAUDE.md / docs/ 承载
