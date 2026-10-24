@@ -1,5 +1,5 @@
 import type { SessionEvent } from '../../src/types';
-import type { ConnectionState, WsFrame, GuiApprovalReq, GuiAskReq } from './connection-types';
+import type { ConnectionState, WsFrame, GuiApprovalReq, GuiAskReq, GuiPlanApprovalReq } from './connection-types';
 
 /** WS 传输状态机（D32 批A′ 拆分自 connection.ts）：连接/退避重连/代次失效/单调 seq 过滤/挂起帧
  *  去重分发——RPC 面仅消费 state/generation/lastSeqBySession/currentSocket/close 五面；事件流、挂起
@@ -10,6 +10,8 @@ export interface TransportCallbacks {
   onEvent(sessionId: string, e: SessionEvent, seq: number): void;
   onApproval?(sessionId: string, pid: string, req: GuiApprovalReq): void;
   onAsk?(sessionId: string, pid: string, req: GuiAskReq): void;
+  /** 阶段三 plan-arm(spec §5.1):plan-approval 挂起帧同通道分发(同 pid 去重/重连重发幂等) */
+  onPlanApproval?(sessionId: string, pid: string, req: GuiPlanApprovalReq): void;
   onReset(): void;
   onResetSession?(sessionId: string): void;
   onStateChange?(next: ConnectionState): void;
@@ -66,13 +68,15 @@ function deliver(sessionId: string, seq: number, e: SessionEvent): void {
 }
 
 /** G4 挂起帧单点（无 seq，不入单调序列）：pid 去重后按 kind 回调——同 pid 重复帧（含重连
- *  重发）只回调一次；reset 通知不走此径（帧帧回调，见 onmessage） */
-function deliverPending(sessionId: string, pid: string, req: unknown, kind: 'approval' | 'ask'): void {
+ *  重发）只回调一次；reset 通知不走此径（帧帧回调，见 onmessage）。阶段三 plan-arm(spec §5.1)
+ *  增 plan-approval 分支——三 kind 同表同去重口径 */
+function deliverPending(sessionId: string, pid: string, req: unknown, kind: 'approval' | 'ask' | 'plan-approval'): void {
   if (typeof req !== 'object' || req === null) return; // 坏载荷忽略
   if (seenPids.has(pid)) return; // 重连重发/重复帧幂等
   seenPids.add(pid);
   if (kind === 'approval') cb.onApproval?.(sessionId, pid, req as GuiApprovalReq);
-  else cb.onAsk?.(sessionId, pid, req as GuiAskReq);
+  else if (kind === 'ask') cb.onAsk?.(sessionId, pid, req as GuiAskReq);
+  else cb.onPlanApproval?.(sessionId, pid, req as GuiPlanApprovalReq);
 }
 
 function detach(sock: WebSocket): void {
@@ -132,8 +136,8 @@ function connect(): void {
       if (typeof frame.sessionId === 'string' && frame.sessionId.length > 0) cb.onResetSession?.(frame.sessionId);
       return;
     }
-    // G4 审批/问询挂起帧：无 seq——pid 去重后回调（寻址键=帧顶层 pid）
-    if (frame.kind === 'approval' || frame.kind === 'ask') {
+    // G4 审批/问询挂起帧 + 阶段三 plan-approval 挂起帧：无 seq——pid 去重后回调（寻址键=帧顶层 pid）
+    if (frame.kind === 'approval' || frame.kind === 'ask' || frame.kind === 'plan-approval') {
       if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
       if (typeof frame.pid !== 'string' || frame.pid.length === 0) return;
       deliverPending(frame.sessionId, frame.pid, frame.req, frame.kind);

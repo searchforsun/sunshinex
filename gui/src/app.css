@@ -1062,13 +1062,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border-color: var(--accent); color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }.ask-dock .ask-actions button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
-/* G14.90 审批确认卡同 dock 面:图标+标题卡头,按钮右下;提到渐隐层上;圆角与输入框一致 */.chat-dock .approval-card { position: relative; z-index: 1; border-radius: var(--radius-composer); }.approval-card .card-head { display: flex; align-items: center; gap: 8px; }.approval-card .card-head-icon { display: inline-flex; color: var(--warn); flex: none; }.approval-card .card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }.approval-card .card-actions button {
+/* G14.90 审批确认卡同 dock 面:图标+标题卡头,按钮右下;提到渐隐层上;圆角与输入框一致。
+   plan-card(task 10,spec §5.2 计划确认卡)按钮面与 approval-card 共享同一右下双钮款 */
+.chat-dock .approval-card { position: relative; z-index: 1; border-radius: var(--radius-composer); }.approval-card .card-head { display: flex; align-items: center; gap: 8px; }.approval-card .card-head-icon { display: inline-flex; color: var(--warn); flex: none; }.approval-card .card-actions, .plan-card .card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }.approval-card .card-actions button, .plan-card .card-actions button {
   padding: 5px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--surface-soft); color: var(--fg); font-size: 12px; cursor: pointer;
-}.approval-card .card-actions button.primary {
+}.approval-card .card-actions button.primary, .plan-card .card-actions button.primary {
   border-color: var(--accent); color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
+/* 计划确认卡体(task 10):步骤只读清单(accent 序号)+反馈输入(plan-approval 拒绝路径的
+   feedback 面板;输入款沿 card-custom 口径);计划书 md 井复用 .tool-md 面(零新增) */
+.plan-card-items { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg); }.plan-card-items li::marker { color: var(--accent); }.plan-card-feedback { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }.plan-card-feedback-input { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; font: inherit; font-size: 12px; resize: vertical; }.plan-card-feedback-input::placeholder { color: var(--fg-tertiary); }
 
 /* G14.84:ask_question 记录体——问题+回答结果(或已跳过),普通展开区域包裹(tool-md 同排版) */.tool-ask { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 4px; }.tool-ask .ask-q { font-size: 13px; font-weight: 600; color: var(--fg); }
 /* G14.102 回答行:回答/自定义=accent 内容;skip=灰斜体;无前缀 */.tool-ask .ask-answer { display: flex; align-items: center; gap: 6px; margin-top: 2px; padding-top: 6px; border-top: 1px dashed var(--border); font-size: 12px; }.tool-ask .ask-answer .ask-answer-text { color: var(--fg); }.tool-ask .ask-answer.kind-answer .ask-answer-text, .tool-ask .ask-answer.kind-custom .ask-answer-text { color: var(--accent); }.tool-ask .ask-answer.kind-dismissed .ask-answer-text { color: var(--fg-tertiary); font-style: italic; }.tool-ask .ask-answer-icon { display: inline-flex; color: var(--accent); }.tool-ask .ask-answer-text { color: var(--fg); }

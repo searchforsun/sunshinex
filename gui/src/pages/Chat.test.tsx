@@ -294,7 +294,7 @@ describe('MermaidBlock(G11 §5.4)', () => {
 });
 
 describe('composer pills 与排队 chips(G10-C4)', () => {
-  it('权限 pill 四项菜单:plan 置顶置灰(点击不派发,data-tip 即将可用)+分隔线+三权限档;切工作区编辑调 setSessionMode(acceptEdits)', async () => {
+  it('权限 pill 四项菜单:plan 置顶可选(置灰解除,task 10——arm 语义:批准落工作区编辑,拒绝保持)+分隔线+三权限档;切计划/工作区编辑调 setSessionMode', async () => {
     const setSessionMode = vi.fn(() => Promise.resolve());
     const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: 'a' }]);
     (conn as unknown as Record<string, unknown>).setSessionMode = setSessionMode;
@@ -303,12 +303,36 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(screen.getAllByRole('menuitem')).toHaveLength(4); // 四项两段:plan + sep + 只读/工作区编辑/完全访问
     expect(document.querySelector('.mode-pop .mode-pop-sep')).not.toBeNull(); // 分组线沿既有样式类
     const plan = screen.getByRole('menuitem', { name: /Plan mode|计划模式/ });
-    expect(plan.getAttribute('aria-disabled')).toBe('true'); // 置灰(阶段一不可选,阶段三 plan-arm 接通)
-    expect(plan.getAttribute('data-tip')).toMatch(/Coming soon|即将可用/);
+    expect(plan.getAttribute('aria-disabled')).toBeNull(); // 置灰解除(阶段三 plan-arm 接通,spec §5.2)
+    expect(plan.textContent).toMatch(/Plan first — approve before execution|先规划，批准后执行/); // desc 正式文案(「即将可用」退役)
     fireEvent.click(plan);
-    expect(setSessionMode).not.toHaveBeenCalled(); // 置灰行点击不派发
+    expect(setSessionMode).toHaveBeenCalledWith('s1', 'plan'); // 单选即派发(批准后 daemon 落 acceptEdits 快照回填)
+    fireEvent.click(screen.getByRole('button', { name: 'session mode' })); // 选中收口后重开菜单(旧置灰态点击不收口,故旧锚无需此步)
     fireEvent.click(screen.getByRole('menuitem', { name: /Workspace edits|工作区编辑/ })); // G14.98 双行(名称+解释)→可访问名含解释,正则匹配
     expect(setSessionMode).toHaveBeenCalledWith('s1', 'acceptEdits');
+  });
+
+  it('plan-approval 挂起:快照 pending 段重建计划确认卡(reseed 复现沿 approval 卡先例),批准回执 replyPlanApproval({approved:true}) 并移卡', async () => {
+    const replyPlanApproval = vi.fn(() => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).replyPlanApproval = replyPlanApproval;
+    (conn as unknown as Record<string, unknown>).sessionSnapshot = () =>
+      Promise.resolve({
+        messages: [],
+        status: 'running',
+        board: { tasks: [] },
+        delegations: [],
+        team: [],
+        pending: [{ pid: 'p-plan-1', kind: 'plan-approval', req: { doc: '# 计划书', items: ['第一步', '第二步'] } }],
+        lastSeq: 0,
+      });
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    expect(await screen.findByText(/Plan approval|计划确认/)).toBeTruthy(); // 卡复现(快照挂起段重建)
+    expect(screen.getByRole('heading', { level: 1, name: '计划书' })).toBeTruthy(); // 计划书 markdown 渲染
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['第一步', '第二步']); // 步骤只读清单
+    fireEvent.click(screen.getByText(/Approve|批准/));
+    await waitFor(() => expect(replyPlanApproval).toHaveBeenCalledWith('p-plan-1', { approved: true })); // 决策体走 plan-approval 通道
+    await waitFor(() => expect(screen.queryByText(/Plan approval|计划确认/)).toBeNull()); // 回执落定移卡(dock 还 composer)
   });
 
   it('排队 chips:snapshot.queued 回显渲染,撤回钮调 cancelSteer(seq)', async () => {

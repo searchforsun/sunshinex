@@ -11,6 +11,7 @@ import type {
   DiffResp,
   FileResp,
   GuiAskAnswer,
+  GuiPlanDecision,
   McpProbeResult,
   McpRow,
   McpRowInput,
@@ -136,6 +137,10 @@ export interface Connection {
   replyApproval(pid: string, decision: string): Promise<void>;
   /** POST /ask/:pid/reply {answer}（G4）：answer 三态（GuiAskAnswer）；404 面同上 */
   replyAsk(pid: string, answer: GuiAskAnswer): Promise<void>;
+  /** POST /plan-approval/:pid {approved,feedback?}（阶段三 plan-arm,spec §5.1）：planFlow 裁决
+   *  回执——approved=true 批准(批准落工作区编辑自动解除),false(+feedback)拒绝保持 armed 进修订
+   *  轮;未知/已决/kind 不符 pid 404（GUI 侧失败也移卡,approval 同口径） */
+  replyPlanApproval(pid: string, decision: GuiPlanDecision): Promise<void>;
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）:gate 双语义(gated 审批
    *  解锁 / in-review 关单)——Board 页 onReview 装配点;400 面=未知任务/状态不符 */
   boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void>;
@@ -210,7 +215,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
   const { baseUrl, token, onEvent, onReset } = opts;
   /** 鉴权头(G10:token 空=免鉴权档,不发 authorization) */
   const authHeaders: Record<string, string> = token === '' || token === undefined ? {} : { authorization: `Bearer ${token}` };
-  const { onApproval, onAsk, onResetSession } = opts;
+  const { onApproval, onAsk, onPlanApproval, onResetSession } = opts;
   const onStateChange = opts.onStateChange;
   const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
   const base = baseUrl.replace(/\/+$/, '');
@@ -219,6 +224,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     onEvent,
     onApproval,
     onAsk,
+    onPlanApproval,
     onReset,
     onResetSession,
     onStateChange,
@@ -463,6 +469,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     replyAsk(pid: string, answer: GuiAskAnswer): Promise<void> {
       return post(`/ask/${encodeURIComponent(pid)}/reply`, { answer });
+    },
+    replyPlanApproval(pid: string, decision: GuiPlanDecision): Promise<void> {
+      return post(`/plan-approval/${encodeURIComponent(pid)}`, decision);
     },
     boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
       return post(`/session/${encodeURIComponent(sessionId)}/board/review`, { taskId, approved });

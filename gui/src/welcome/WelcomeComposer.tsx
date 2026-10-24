@@ -212,8 +212,10 @@ export function WelcomeComposer({
         if (selModel !== undefined) void conn.setSessionModel(sessionId, selModel).catch(() => undefined);
         if (selEffort !== undefined) void conn.setSessionEffort(sessionId, selEffort).catch(() => undefined);
         // read-only 档建后补切(newSession mode 参数只收执行两档,spec §3.2;失败降级缺省档,
-        // 快照回显自纠——降级口径同上)
+        // 快照回显自纠——降级口径同上)。plan 档同族补切(task 10 置灰解除,spec §5.2): armed
+        // 提交经 planFlow 规划流程,批准落工作区编辑/拒绝保持
         if (mode === 'read-only') void conn.setSessionMode(sessionId, 'read-only').catch(() => undefined);
+        if (mode === 'plan') void conn.setSessionMode(sessionId, 'plan').catch(() => undefined);
         onOpened(sessionId, target, g);
       })
       .catch((err: unknown) => {
@@ -335,9 +337,9 @@ export function WelcomeComposer({
   const modeLabel = mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'read-only' ? t('Read-only', '只读模式') : mode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
   /** 权限菜单行形(spec §3.4 四项两段):separator 行渲染 mode-pop-sep 分组线;disabled 行置灰不可选 */
   type ModeMenuRow = { separator: true } | { m: 'plan' | 'read-only' | 'acceptEdits' | 'full-access'; label: string; desc: string; icon: JSX.Element; disabled?: boolean };
-  // 菜单四项两段(spec §3.4):与会话内 mode-pop 同构——plan 置顶置灰(阶段三 plan-arm 接通)+分组线+三权限档
+  // 菜单四项两段(spec §3.4):与会话内 mode-pop 同构——plan 置顶(阶段三 plan-arm 接通正式开放)+分组线+三权限档
   const modeRows: ModeMenuRow[] = [
-    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — coming soon', '先规划后执行（即将可用）'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" />, disabled: true },
+    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — approve before execution', '先规划，批准后执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { separator: true },
     { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read and analyze only — no changes', '只读取和分析，不改动任何文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Edits inside the workspace run directly; outside asks', '工作区内直接编辑，超出工作区的操作需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },

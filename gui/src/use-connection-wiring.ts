@@ -123,6 +123,15 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         }
         chatSinkRef.current?.onAsk(pid, req);
       },
+      // 阶段三 plan-arm(spec §5.1):plan-approval 挂起帧同 approval/ask 装配形态——本会话过滤后
+      // 转投 Chat sink(卡片区);他会话挂起不显
+      onPlanApproval: (sessionId, pid, req) => {
+        if (sessionId !== sessionRef.current) {
+          sideSinksRef.current.get(sessionId)?.current?.onPlanApproval(pid, req);
+          return;
+        }
+        chatSinkRef.current?.onPlanApproval(pid, req);
+      },
       onResetSession: (sessionId) => {
         if (sessionId !== sessionRef.current) {
           sideSinksRef.current.get(sessionId)?.current?.resetSession();

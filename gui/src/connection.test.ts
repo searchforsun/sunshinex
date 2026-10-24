@@ -47,6 +47,10 @@ class WsStub {
   recvAsk(sessionId: string, pid: string, req: unknown): void {
     this.onmessage?.({ data: JSON.stringify({ kind: 'ask', sessionId, pid, req }) });
   }
+  /** 阶段三 plan-arm 计划审批挂起帧(顶层 pid + req {doc,items};对齐 serve PlanApprovalFrame 形) */
+  recvPlanApproval(sessionId: string, pid: string, req: unknown): void {
+    this.onmessage?.({ data: JSON.stringify({ kind: 'plan-approval', sessionId, pid, req }) });
+  }
   /** G4 reset 通知帧(只挂 kind+sessionId,无 seq/pid) */
   recvReset(sessionId: string): void {
     this.onmessage?.({ data: JSON.stringify({ kind: 'reset', sessionId }) });
@@ -431,6 +435,47 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     ws2.recvAsk('s2', 'p-ask', askReq);
     expect(approvals).toHaveLength(2);
     expect(asks).toHaveLength(1);
+  });
+
+  it('⑧b 阶段三 plan-arm plan-approval 挂起帧路由+回执 HTTP 面(spec §5.1):同 approval/ask 通道加 kind 分支——pid 去重/坏形态忽略/POST /plan-approval/:pid 决策体 {approved,feedback?}', async () => {
+    const plans: Array<[string, string, unknown]> = [];
+    conn = createConnection({
+      baseUrl: 'http://x',
+      token: 't',
+      onEvent: () => {},
+      onReset: () => {},
+      onPlanApproval: (sessionId, pid, req) => plans.push([sessionId, pid, req]),
+      backoffBaseMs: 1,
+    });
+    const ws = last();
+    ws.openNow();
+    // —— 挂起帧:payload {doc,items} 原文透传 ——
+    const req = { doc: '# 计划', items: ['A', 'B'] };
+    ws.recvPlanApproval('s1', 'p-plan', req);
+    expect(plans).toEqual([['s1', 'p-plan', req]]);
+    // —— pid 去重:同 pid 重复帧(重连重发)只回调一次 ——
+    ws.recvPlanApproval('s1', 'p-plan', req);
+    expect(plans).toHaveLength(1);
+    // —— 异 pid 照常投 ——
+    ws.recvPlanApproval('s1', 'p-plan2', req);
+    expect(plans).toHaveLength(2);
+    // —— 坏形态忽略:无 sessionId / 无 pid / req 非对象 ——
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'plan-approval', pid: 'p-x', req }) });
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'plan-approval', sessionId: 's1', req }) });
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'plan-approval', sessionId: 's1', pid: 'p-z' }) });
+    expect(plans).toHaveLength(2);
+    // —— 回执 HTTP 面:POST /plan-approval/:pid,决策体 {approved,feedback?} 原样落 body;404 抛错含 status ——
+    fetchQueue.push(ok(), ok(), errResp(404));
+    await conn.replyPlanApproval('p 1', { approved: true });
+    await conn.replyPlanApproval('p 2', { approved: false, feedback: '第二步拆细' });
+    await expect(conn.replyPlanApproval('p 3', { approved: true })).rejects.toThrow(/404/);
+    expect(
+      fetchLog.slice(-3).map((f) => ({ url: f.url, body: JSON.parse(String(f.init?.body ?? '{}')) })),
+    ).toEqual([
+      { url: 'http://x/plan-approval/p%201', body: { approved: true } },
+      { url: 'http://x/plan-approval/p%202', body: { approved: false, feedback: '第二步拆细' } },
+      { url: 'http://x/plan-approval/p%203', body: { approved: true } },
+    ]);
   });
 
   it('⑨ G4 回执/回收 HTTP 面:replyApproval/replyAsk/deleteSession 的 URL/method/body;非 2xx 抛错含 status', async () => {

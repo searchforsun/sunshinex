@@ -29,9 +29,9 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
   const { pillOpen, setPillOpen, sessMode, setSessMode, conn, sessionId } = props;
   // pill 回显文案四态(data-tip 与 pill-label 同源;窄视口 CSS 塌缩面 sx-main-narrow 不变)
   const modeLabel = sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'read-only' ? t('Read-only', '只读模式') : sessMode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
-  // 菜单四项两段(spec §3.4):plan 置顶置灰(阶段三 plan-arm 接通)+分组线+只读/工作区编辑/完全访问
+  // 菜单四项两段(spec §3.4):plan 置顶(阶段三 plan-arm 接通正式开放)+分组线+只读/工作区编辑/完全访问
   const modeRows: ModeMenuRow[] = [
-    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — coming soon', '先规划后执行（即将可用）'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" />, disabled: true },
+    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — approve before execution', '先规划，批准后执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { separator: true },
     { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read and analyze only — no changes', '只读取和分析，不改动任何文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Edits inside the workspace run directly; outside asks', '工作区内直接编辑，超出工作区的操作需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },

@@ -62,6 +62,20 @@ export interface GuiAskReq {
   filterable?: boolean;
 }
 
+/** 阶段三 plan-arm 计划审批挂起请求(对齐 serve PlanApprovalFrame.req 字面,spec §5.1):
+ *  doc=计划书 markdown 全文,items=步骤清单——PlanCard 渲染载荷,回执寻址仍统一帧顶层 pid */
+export interface GuiPlanApprovalReq {
+  doc: string;
+  items: string[];
+}
+
+/** 阶段三 plan-arm 决策体(与 serve harness PlanDecision 同构):approved=false 可携 feedback
+ *  进修订轮;feedback 空=纯拒绝。POST /plan-approval/:pid 请求体字面 */
+export interface GuiPlanDecision {
+  approved: boolean;
+  feedback?: string;
+}
+
 /** G4 问询回执三态(对齐 AskUserAnswer):勾选 / 自定义文本 / 放弃(放弃属正常观察非错误) */
 export type GuiAskAnswer =
   | { type: 'selected'; labels: string[] }
@@ -87,7 +101,8 @@ export interface SnapshotResponse {
   effort?: string;
   queued?: Array<{ seq: number; text: string }>;
   team?: Array<{ name: string; busy: boolean }>;
-  pending?: Array<{ pid: string; kind: 'approval' | 'ask'; req?: unknown }>;
+  /** 挂起段 kind 三值(阶段三 plan-arm 增 plan-approval):reseed 据此重建挂起卡(卡内容唯一来源) */
+  pending?: Array<{ pid: string; kind: 'approval' | 'ask' | 'plan-approval'; req?: unknown }>;
   /** 2026-10-21 归档态:旁车 meta archived 回读(顶栏归档钮/徽标三态播种);可选防旧 daemon(无此字段=未归档面) */
   archived?: boolean;
 }
@@ -344,6 +359,9 @@ export interface ConnectionOpts {
   onApproval?: (sessionId: string, pid: string, req: GuiApprovalReq) => void;
   /** G4 问询挂起帧回调（同上 pid 去重；AskUserRequest 无 id 字段——pid 单点承载寻址） */
   onAsk?: (sessionId: string, pid: string, req: GuiAskReq) => void;
+  /** 阶段三 plan-arm 计划审批挂起帧回调（同 approval/ask 通道加 kind 分支——pid 去重/重连重发
+   *  幂等同口径；req={doc,items} 计划书+步骤，PlanCard 渲染载荷） */
+  onPlanApproval?: (sessionId: string, pid: string, req: GuiPlanApprovalReq) => void;
   /** G4 会话 reset 通知帧回调（不去重——每帧都回调：一次 HTTP reset = 一次通知；上层清该
    *  会话投影重播种） */
   onResetSession?: (sessionId: string) => void;

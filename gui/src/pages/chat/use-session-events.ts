@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
-import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq, SnapshotResponse } from '../../connection';
+import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq, GuiPlanApprovalReq, GuiPlanDecision, SnapshotResponse } from '../../connection';
 import type { ChatState } from '../../chat-reducer';
 import { applyChatEvent, initialChatState, seedChatFromSnapshot } from '../../chat-reducer';
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { ChatSink } from '../Chat';
 
-/** 挂起卡(approval/ask 判别联合;pid 为 daemon 级寻址键) */
+/** 挂起卡(approval/ask/plan-approval 判别联合;pid 为 daemon 级寻址键)。plan-approval=阶段三
+ *  plan-arm 裁决卡(spec §5.1,req {doc,items} 计划书+步骤) */
 export type PendingCard =
   | { kind: 'approval'; pid: string; req: GuiApprovalReq }
-  | { kind: 'ask'; pid: string; req: GuiAskReq };
+  | { kind: 'ask'; pid: string; req: GuiAskReq }
+  | { kind: 'plan-approval'; pid: string; req: GuiPlanApprovalReq };
 
 /** 会话事件面 hook（D32 批C 拆分自 Chat.tsx）：播种门/种子窗帧缓冲/挂起卡列表/事件分流 sink
  *  装配（G14.137 todo 上抛、G14.89 done 刷队列）+ G5 idle 清卡。投影态
@@ -55,6 +57,8 @@ export function useSessionEvents(deps: {
   seeding: boolean;
   sendApproval: (pid: string, decision: string) => void;
   sendAsk: (pid: string, answer: GuiAskAnswer) => void;
+  /** 阶段三 plan-arm 裁决回执(approval/ask 同口径:成功移卡,失败 404 也移) */
+  sendPlanApproval: (pid: string, decision: GuiPlanDecision) => void;
 } {
   const {
     conn,
@@ -153,11 +157,13 @@ export function useSessionEvents(deps: {
           submitTextRef.current(pg.goal).catch(() => undefined);
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
-        // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清)
+        // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清);
+        // plan-approval 分支=阶段三 plan-arm——快照挂起行 req={doc,items},reseed 后 PlanCard 复现
         for (const row of snap.pending ?? []) {
           if (typeof row?.pid !== 'string' || row.pid.length === 0) continue;
           if (row.kind === 'approval') addCard({ kind: 'approval', pid: row.pid, req: (row.req ?? {}) as GuiApprovalReq });
           else if (row.kind === 'ask') addCard({ kind: 'ask', pid: row.pid, req: (row.req ?? {}) as GuiAskReq });
+          else if (row.kind === 'plan-approval') addCard({ kind: 'plan-approval', pid: row.pid, req: (row.req ?? { doc: '', items: [] }) as GuiPlanApprovalReq });
         }
       },
       (err: unknown) => {
@@ -184,6 +190,17 @@ export function useSessionEvents(deps: {
   const sendAsk = useCallback(
     (pid: string, answer: GuiAskAnswer): void => {
       void conn.replyAsk(pid, answer).then(
+        () => removeCard(pid),
+        () => removeCard(pid),
+      );
+    },
+    [conn, removeCard],
+  );
+  /** 阶段三 plan-arm 裁决回执:沿 approval/ask 回执通道同口径——成功移卡,失败(404 已决/kind
+   *  不符等)也移,不悬挂 */
+  const sendPlanApproval = useCallback(
+    (pid: string, decision: GuiPlanDecision): void => {
+      void conn.replyPlanApproval(pid, decision).then(
         () => removeCard(pid),
         () => removeCard(pid),
       );
@@ -241,6 +258,7 @@ export function useSessionEvents(deps: {
       reset: () => reseed(),
       onApproval: (pid, req) => addCard({ kind: 'approval', pid, req }),
       onAsk: (pid, req) => addCard({ kind: 'ask', pid, req }),
+      onPlanApproval: (pid, req) => addCard({ kind: 'plan-approval', pid, req }),
       resetSession: () => {
         setCards([]); // daemon reset 已 deny/dismissed 回填该会话全部挂起——本地卡随之清
         reseed();
@@ -265,5 +283,5 @@ export function useSessionEvents(deps: {
     if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards([]);
   }, [chat.status]);
 
-  return { cards, seeding, sendApproval, sendAsk };
+  return { cards, seeding, sendApproval, sendAsk, sendPlanApproval };
 }

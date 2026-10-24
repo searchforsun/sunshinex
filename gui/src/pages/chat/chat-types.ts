@@ -1,5 +1,5 @@
 import type { MutableRefObject } from 'react';
-import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, SnapshotResponse } from '../../connection';
+import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, GuiPlanApprovalReq, SnapshotResponse } from '../../connection';
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { TaskBoardState } from '../../projection';
 import type { TodoBatch } from './ToolEntry';
@@ -18,6 +18,8 @@ export interface ChatSink {
   onApproval(pid: string, req: GuiApprovalReq): void;
   /** G4 问询挂起帧(同上) */
   onAsk(pid: string, req: GuiAskReq): void;
+  /** 阶段三 plan-arm 计划审批挂起帧(同 approval/ask 装配形态;pid=回执寻址键) */
+  onPlanApproval(pid: string, req: GuiPlanApprovalReq): void;
   /** G4 会话 reset 通知帧(本会话):清卡(daemon 已 deny/dismissed 回填) + 清投影重播种 */
   resetSession(): void;
 }

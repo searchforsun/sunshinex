@@ -36,6 +36,7 @@ import { MessageList } from './chat/MessageList';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
+import { PlanCard } from './chat/PlanCard';
 import { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
@@ -194,7 +195,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const submitTextRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   /** 会话事件 hook(D32 批C):播种门/种子窗缓冲/挂起卡/事件分流 sink 装配 + G5 idle 清卡——
    *  投影态与队列/pill 设定器注入(G6 工具 input 旁路暂存 P11 T7 退役);行为零变化(Chat.test 为锚) */
-  const { cards, seeding, sendApproval, sendAsk } = useSessionEvents({
+  const { cards, seeding, sendApproval, sendAsk, sendPlanApproval } = useSessionEvents({
     conn,
     sessionId,
     sinkRef,
@@ -265,6 +266,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [askCards.length]);
   /** G14.88 审批卡 dock 化:挂起时 dock 变确认框(输入框/队列隐藏),确认后恢复——与 ask 同形 */
   const approvalCards = cards.filter((c) => c.kind === 'approval');
+  /** 阶段三 plan-arm(spec §5.2):plan-approval 裁决卡——PlanCard(计划书 markdown+步骤+批准/反馈),
+   *  dock 挂载与 approval 同形;回执经 sendPlanApproval(批准落工作区编辑自动解除,拒绝保持) */
+  const planCards = cards.filter((c) => c.kind === 'plan-approval');
   const lastLiveRun = running
     ? [...chat.entries].reverse().find((e) => e.kind === 'run' && e.streaming === true)
     : undefined;
@@ -427,7 +431,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       <div className="chat-dock" ref={dockRef}>
         <div className="chat-dock-fade" aria-hidden="true" />
       {/* G14.88 审批挂起时队列条隐藏(dock 整体让位确认框),确认/拒绝后恢复 */}
-      {queued.length > 0 && approvalCards.length === 0 && (
+      {queued.length > 0 && approvalCards.length === 0 && planCards.length === 0 && (
         <SteerQueue
           queued={queued}
           queueFolded={queueFolded}
@@ -454,7 +458,15 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             <ArrowDown size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         )}
-        {approvalCards.length > 0 ? (
+        {planCards.length > 0 ? (
+          /* 阶段三 plan-arm(spec §5.2):计划确认卡 dock(与 approval/ask 同容器形态)——批准/
+            反馈回执后移卡恢复输入框;裁决期间 composer 由 dock 顶替(同 G14.88 审批挂起口径) */
+          <div className="ask-dock">
+            {planCards.map((c) => (
+              <PlanCard key={c.pid} doc={c.req.doc} items={c.req.items} onDecide={(d) => sendPlanApproval(c.pid, d)} />
+            ))}
+          </div>
+        ) : approvalCards.length > 0 ? (
           /* G14.88:审批挂起时输入框变为确认框(与 ask 同形)——Allow/Deny/Always 回执后恢复输入框 */
           <div className="ask-dock">
             {approvalCards.map((c) => (
