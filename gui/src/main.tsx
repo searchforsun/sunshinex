@@ -96,26 +96,39 @@ createRoot(root).render(
 // 2026-10-24 用户裁定(实测驱动,无固定切割线):composer 底栏溢出管理器——三处 composer
 // (主 dock/欢迎/辅助对话同走 ComposerCard 的 .sx-composer-foot)统一监听:溢出>1px 挂
 // pills-tight(收「完全访问」标签/箭头与 effort 徽标,模型名转右缘渐隐省略);无溢出且距上次
-// 切换>400ms 时试摘(摘后复溢会被下一帧 RO 再挂,400ms 最小保持防抖)。
+// 切换>400ms 时试摘——试摘前隐藏克隆量「展开态实际宽度」,展开装得下才真摘(否则塌缩态装得
+// 下→摘→复溢→重挂 400ms 频闪;旧「靠下一帧 RO 回收」在 foot 自身盒不变时恒成立不了)。
 (() => {
   const managed = new WeakSet<Element>();
   let lastToggle = 0;
   const ro = new ResizeObserver((entries) => {
     for (const entry of entries) judge(entry.target as HTMLElement);
   });
+  /** 展开态(摘 pills-tight)内容实际宽:克隆脱流 max-content 量宽——scrollWidth 只对可见
+   *  flex 线有意义,塌缩态下量不出展开宽;position:absolute+width:max-content 解除容器钳 */
+  const expandedOverflows = (el: HTMLElement): boolean => {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.classList.remove('pills-tight');
+    clone.setAttribute('aria-hidden', 'true');
+    clone.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:max-content;left:0;top:0;';
+    el.parentElement?.appendChild(clone);
+    const w = clone.scrollWidth;
+    clone.remove();
+    return w > el.clientWidth + 1;
+  };
   const judge = (el: HTMLElement): void => {
     const over = el.scrollWidth - el.clientWidth;
     const tight = el.classList.contains('pills-tight');
     if (!tight && over > 1) {
       el.classList.add('pills-tight');
       lastToggle = Date.now();
-    } else if (tight && over <= 1 && Date.now() - lastToggle > 400) {
-      el.classList.remove('pills-tight'); // 试摘:摘后复溢由下一帧 RO 再挂(宽容差回收)
+    } else if (tight && over <= 1 && Date.now() - lastToggle > 400 && !expandedOverflows(el)) {
+      el.classList.remove('pills-tight'); // 展开确能装下才摘(400ms 最小保持防抖)
       lastToggle = Date.now();
     }
   };
   const scan = (): void => {
-    for (const foot of document.querySelectorAll('.sx-composer-foot')) {
+    for (const foot of document.querySelectorAll<HTMLElement>('.sx-composer-foot')) {
       if (managed.has(foot)) continue;
       managed.add(foot);
       ro.observe(foot);

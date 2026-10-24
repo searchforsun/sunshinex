@@ -718,10 +718,12 @@ export function WelcomeComposer({
                   data-tip={mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
                   onClick={() => setModeOpen((v) => !v)}
                 >
-                  {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役 */}
+                  {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役;
+                      标签/箭头走 pill-label/pill-chevron 类:pills-tight 实测塌缩按类收,
+                      裸文本无类收不到(600 窗欢迎页「完全访问」不塌的根因),文案由 data-tip 承载 */}
                   <ModeIcon mode={mode} />
-                  {mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}
-                  <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <span className="pill-label">{mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}</span>
+                  <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 {modeOpen && (
                   <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="approval mode menu">
@@ -769,7 +771,7 @@ export function WelcomeComposer({
               >
                 {baseModelName(selModel ?? defaultModel)}
                 {selEffort !== undefined && <EffortChip effort={selEffort} />}
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {modelOpen && (
                 <div className="sx-menu-pop pill-pop pill-pop-right" role="menu" aria-label="model menu">
@@ -778,7 +780,9 @@ export function WelcomeComposer({
                       key={c.id}
                       type="button"
                       role="menuitem"
-                      className={`sx-menuitem${(selModel ?? defaultModel) !== undefined && c.id === (selModel ?? defaultModel) ? ' active' : ''}`}
+                      // 当前项 ✓+强调色(current 类,样式单点 app.css);显示名比对——defaultModel
+                      // 带前缀/变体尾串而 choice id 裸名,精确 id 比对恒 false(会话内同款修法)
+                      className={`sx-menuitem${(selModel ?? defaultModel) !== undefined && baseModelName(c.id) === baseModelName(selModel ?? defaultModel) ? ' current' : ''}`}
                       data-tip={c.id}
                       onClick={() => {
                         setSelModel(c.id);

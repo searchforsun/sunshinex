@@ -26,6 +26,10 @@ export function readZoomPref(): UiZoom {
 
 export function applyZoom(pref: UiZoom): void {
   document.documentElement.style.zoom = pref === '1' ? '' : pref;
+  // 同步落 --ui-zoom 数值:CSS 里「视觉 px 设计常量」(如 .sx-main min-width 320)须 /zoom 归一
+  // 成本地 px——zoom 子树内 px 是本地值,不除则 flex 最小宽×zoom 越视口(600 窗 zoom1.1 实测
+  // 主栏右溢 16px,输入卡居中偏右贴窗沿)。除数须纯数字 token,calc 除法才合法
+  document.documentElement.style.setProperty('--ui-zoom', String(parseFloat(pref)) || '1');
   try {
     localStorage.setItem(KEY, pref);
   } catch {
