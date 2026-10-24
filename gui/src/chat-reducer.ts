@@ -66,10 +66,13 @@ export interface ChatState {
 /** 内部记账（勿消费）：run-open 基线（seq → 当时累计 steps/tokens）——open run 条「本轮」减数。
  *  P9:usage 水位记账已上收内核统计面(ChatState 不再持) */
   runBases: Record<number, { steps: number; tokens: number }>;
+  /** 成员变更计数(派生冻结 memo key,见 P1 spec §3.3):仅在条目成员集变化(增/删/重播)时 +1,
+   *  纯内容帧(token/thinking delta、状态翻转)恒定;0=未播种(initialChatState),1=新种子 */
+  structureVersion: number;
 }
 
 export function initialChatState(): ChatState {
-  return { k: initialKernelState(), entries: [], status: 'idle', tokens: 0, steps: 0, cacheTokens: 0, runBases: {} };
+  return { k: initialKernelState(), entries: [], status: 'idle', tokens: 0, steps: 0, cacheTokens: 0, runBases: {}, structureVersion: 0 };
 }
 
 /** snapshot.messages 载荷形态（gui 侧契约声明;P2 起即内核条目形,meta 对位 RunMeta） */
@@ -171,7 +174,7 @@ export function seedChatFromSnapshot(
   // P10:status 读内核游标(openRun>=0 即 running)——快照 status 参数退役
   const status: ChatState['status'] = cursors.openRun >= 0 ? 'running' : 'idle';
   // cast 依据:快照转录档即内核条目的盘面直录(v3 seg 行=kernelEventRows 单点映射),形状契约由装载侧背书
-  const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {} };
+  const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {}, structureVersion: 1 };
   s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
   // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起
   const seeded: ChatState = { ...s, tokens: s.k.stats.sessionTotalTokens, steps: s.k.stats.sessionSteps, cacheTokens: s.k.stats.sessionCacheTokens };
@@ -210,5 +213,9 @@ export function applySubagentChatEvent(s: ChatState, e: SessionEvent): ChatState
   ) {
     return s;
   }
-  return { ...next, entries: mapEntries(next.k, next.runBases) };
+  // P1 structureVersion:成员变更 O(1) 差分——内核 append-only,长度/首键不变即成员集不变
+  // (seed 整替不经此路,自身置 1);空→空不算变更。纯内容帧计数恒定,派生冻结 memo key(spec §3.3)
+  const entries = mapEntries(next.k, next.runBases);
+  const structureVersion = next.structureVersion + (entries.length !== next.entries.length || entries[0]?.key !== next.entries[0]?.key ? 1 : 0);
+  return { ...next, entries, structureVersion };
 }

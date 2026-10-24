@@ -498,3 +498,29 @@ describe('queue 面板事件(P5:不入转录投影)', () => {
     expect(next.entries[1]!.streaming).toBe(true);
   });
 });
+
+describe('structureVersion(P1 成员变更计数,派生冻结 memo key——spec §3.3)', () => {
+  it('纯内容帧不递增,成员帧递增,种子重置为 1', () => {
+    let s = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });
+    expect(s.structureVersion).toBe(1);
+    s = applyChatEvent(s, ev('model-start')); // run 条入列(成员帧)
+    const svRun = s.structureVersion;
+    expect(svRun).toBe(2);
+    s = applyChatEvent(s, ev('token', '开头')); // 首个 token 开流式条=成员帧(合法递增——防 Task 2 过度冻结)
+    const svOpen = s.structureVersion;
+    expect(svOpen).toBe(svRun + 1);
+    for (let i = 0; i < 5; i++) s = applyChatEvent(s, ev('token', 'x'));
+    expect(s.structureVersion).toBe(svOpen); // token burst 落在已开条上:纯内容帧,不递增
+    s = applyChatEvent(s, ev('tool-result', '孤儿输出')); // 无 callId 配对 → 孤儿 tool 条入列(成员帧)
+    expect(s.structureVersion).toBe(svOpen + 1);
+  });
+
+  it('零变更透传帧(model-start 重复/queue)不动计数;空→空不算变更', () => {
+    const s0 = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });
+    expect(applyChatEvent(s0, ev('route'))).toBe(s0); // 透传帧连引用都不换,计数自然恒定
+    const s1 = applyChatEvent(s0, ev('model-start'));
+    expect(s1.structureVersion).toBe(2);
+    const s2 = applyChatEvent(s1, ev('model-start')); // 已 running:内核零变更透传(run 不重复入列)
+    expect(s2.structureVersion).toBe(s1.structureVersion);
+  });
+});
