@@ -49,6 +49,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     ]) as never,
     deleteSession: vi.fn(async () => undefined), // 受控删除(归档区红删除确认面)
     locateWorkspace: async () => ({ path: null }),
+    gitBranches: async () => ({ current: '', branches: [] }),
   };
   return conn;
 }

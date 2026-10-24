@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal, PanelLeft } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
@@ -98,16 +98,29 @@ export interface ChatTopbarProps {
   readonly root?: string;
   /** 会话数据变更上抛(置顶/归档/标记未读后,宿主 bump 侧栏联动刷新) */
   readonly onSessionsMutated?: () => void;
-  /** 2026-10-24 用户裁定:[|] 菜单切换钮常驻顶栏(开/关左菜单;两侧抽屉互斥由宿主管) */
+  /** 2026-10-24 用户裁定:[|] 切换钮=菜单关闭态显示在会话名左(呼出);菜单开着时收起钮在菜单头右上(不双显) */
+  readonly menuClosed?: boolean;
   readonly onToggleMenu?: () => void;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, onToggleMenu } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
   const [askArchive, setAskArchive] = useState<{ x: number; y: number } | null>(null);
+  // 2026-10-24 用户裁定「能显示全就显示全」:标题隐现 mask 仅在真溢出时挂(RO 判 scrollWidth)
+  const titleRef = useRef<HTMLSpanElement | null>(null);
+  const [titleClipped, setTitleClipped] = useState(false);
+  useEffect(() => {
+    const el = titleRef.current;
+    if (el === null) return;
+    const judge = (): void => setTitleClipped(el.scrollWidth > el.clientWidth + 1);
+    judge();
+    const ro = new ResizeObserver(judge);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [displayTitle]);
   const [pinned, setPinned] = useState(false);
   const loadPinned = (): void => {
     if (journalId === undefined) return;
@@ -205,17 +218,19 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   ];
   return (
     <header className="chat-topbar">
-        {/* 2026-10-24 用户裁定:[|] 菜单切换钮常驻(原文件夹图标位,开/关左菜单);搜索恢复菜单头原位;
-            会话名不再点击改名(改名入口收敛 ⋯ 菜单→弹窗),显示长度随主栏宽度 flex 收放 */}
-        <button
-          type="button"
-          className="sx-iconbtn"
-          aria-label="toggle menu"
-          data-tip={t('Toggle menu', '切换菜单')}
-          onClick={onToggleMenu}
-        >
-          <PanelLeft size={16} strokeWidth={1.75} />
-        </button>
+        {/* 2026-10-24 用户裁定(二轮修正):[|] 仅菜单关闭态显示在会话名左(呼出);菜单开着时收起钮
+            在菜单头右上,不双显。会话名不点击改名(⋯ 菜单→弹窗),长度随主栏 flex 收放 */}
+        {menuClosed === true && (
+          <button
+            type="button"
+            className="sx-iconbtn"
+            aria-label="toggle menu"
+            data-tip={t('Open menu', '打开菜单')}
+            onClick={onToggleMenu}
+          >
+            <PanelLeft size={16} strokeWidth={1.75} />
+          </button>
+        )}
         {fixedTitle === '' ? (
           // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
           <span className="chat-title" />
@@ -245,7 +260,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         ) : (
           <span className="chat-title" data-tip={`${sessionId} · ${tokens} tokens · ${steps} steps${running ? ' · 运行中' : ''}`}>
             <span className="chat-title-btn">
-              <span className="chat-title-text">{displayTitle}</span>
+              <span className={`chat-title-text${titleClipped ? ' clipped' : ''}`} ref={titleRef}>{displayTitle}</span>
             </span>
             {/* G14.52:运行态圆点迁侧栏会话行左缘(顶栏不再双显) */}
           </span>

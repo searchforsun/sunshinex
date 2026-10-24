@@ -50,6 +50,8 @@ export interface ProjectMenuConn {
   hideWorkspace(slug: string): Promise<void>;
   /** G14.69 原生选择定位:按标记文件找所选目录绝对路径 */
   locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
+  /** 2026-10-24 用户裁定:会话行 hover tooltip 分支信息(source=gitBranches.current) */
+  gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
   /** T6 归档/撤销(Connection 结构化子集):侧栏行归档钮落库面(归档行由服务端列表滤除) */
@@ -94,6 +96,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const recentVersion = props.recentVersion ?? 0;
   const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
+  /** 2026-10-24 用户裁定:会话行 hover tooltip 附分支信息(如 dev1)——按工作区 root 拉 gitBranches
+   *  current 缓存(失败落 '' 防重试风暴);ProjectsSection 消费 */
+  const [branchByRoot, setBranchByRoot] = useState<Record<string, string>>({});
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [recentsOpen, setRecentsOpen] = useState(true);
@@ -190,6 +195,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       (list) => {
         setRows(list);
         setListError('');
+        // 分支缓存补拉:每个未缓存的 root 一次(缓存守卫防风暴;失败落空串标记已试)
+        for (const w of list) {
+          const rt = w.root;
+          if (!rt || branchByRoot[rt] !== undefined) continue;
+          conn.gitBranches(rt).then(
+            (r) => { if (r.current) setBranchByRoot((m) => (m[rt] === undefined ? { ...m, [rt]: r.current } : m)); },
+            () => setBranchByRoot((m) => ({ ...m, [rt]: '' })),
+          );
+        }
       },
       (err: unknown) => setListError(err instanceof Error ? err.message : String(err)),
     );
@@ -214,7 +228,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     loadPins();
     loadArchived(); // 2026-10-23 置顶组滤除已归档钉:归档集与钉档同拍重拉
     loadSeen(); // 2026-10-23 已读/未读态落底层:与钉档同拍重拉(顶栏标记为未读经 recentVersion bump 驱动)
-  }, [loadWorkspaces, loadPins, loadArchived, loadSeen, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+  }, [loadWorkspaces, loadPins, loadArchived, loadSeen, recentVersion, branchByRoot]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
 
   /** 移除工作区(2026-10-23):conn.hideWorkspace 落库后刷新清单;展开组若是它即收起。
    *  数据保留——重新「添加工作区」即原地加回 */
@@ -478,10 +492,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head">
         <span className="sx-brand">Sunshinex</span>
-        <button type="button" aria-label="search" className="sx-iconbtn" data-tip={t('Search projects & sessions', '搜索项目与会话')} onClick={() => setSearchOpen((v) => !v)}>
-          <Search size={16} strokeWidth={1.75} />
-        </button>
-        {/* 2026-10-24 用户裁定:收起钮=原有面板展开图标的镜像(PanelLeft),列搜索钮右侧;点击收起菜单 */}
+        {/* 2026-10-24 用户裁定:收起钮=原面板展开图标镜像(PanelLeft),菜单头右上;顶栏 [|] 与之互斥不双显 */}
         <button type="button" aria-label="collapse menu" className="sx-iconbtn" data-tip={t('Close menu', '收起菜单')} onClick={props.onCollapse}>
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>
@@ -494,6 +505,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       >
         <SquarePen size={16} strokeWidth={1.75} />
         <span>{t('New chat', '新对话')}</span>
+      </button>
+      {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
+      <button
+        type="button"
+        className="sx-new-chat"
+        aria-label="search"
+        onClick={() => setSearchOpen((v) => !v)}
+      >
+        <Search size={16} strokeWidth={1.75} />
+        <span>{t('Search', '搜索')}</span>
       </button>
       {searchOpen && (
         <ProjectSearch
@@ -531,6 +552,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onToggleProjects={() => setProjectsOpen((v) => !v)}
           onRemoveWorkspace={removeWorkspace}
           onOpenDirectory={onOpenDirectory}
+          branchByRoot={branchByRoot}
           busy={busy}
           archiveMode={archiveOpen}
           onExitArchive={() => setArchiveOpen(false)}

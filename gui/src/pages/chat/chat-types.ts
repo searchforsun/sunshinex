@@ -75,7 +75,8 @@ export interface ChatProps {
   onRenamed?: () => void;
   /** 会话数据变更上抛(2026-10-22:顶栏 ⋯ 菜单置顶/归档/标记未读后,App bump recentVersion → 侧栏联动刷新) */
   onSessionsMutated?: () => void;
-  /** 2026-10-24 用户裁定:[|] 菜单切换钮常驻顶栏(开/关左菜单;两侧抽屉互斥由宿主管) */
+  /** 2026-10-24 用户裁定:[|] 切换钮=菜单关闭态显示在会话名左(呼出);菜单开着时收起钮在菜单头右上(不双显) */
+  menuClosed?: boolean;
   onToggleMenu?: () => void;
   /** G14.29 输入 /btw /side 拦截:开辅助对话旁路标签(不动 daemon 提交面) */
   onSideChat?: () => void;

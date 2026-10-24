@@ -102,10 +102,11 @@ export const RECENT_VISIBLE_STEP = 10;
 /** 会话统计行(G14.17 回溯面):旁车 meta 有几段拼几段——轮/步/建档时刻;RECENTS 与搜索行
  *  tooltip 消费,空 meta 返回 ''(行 tooltip 退化为标题+id)。结构面签名(轮/步/建档时刻,
  *  本地时区单点——项目组行原 UTC 切片分叉已收编) */
-export function sessionMetaLine(r: { runs?: number; steps?: number; createdAt?: string }): string {
+export function sessionMetaLine(r: { runs?: number; steps?: number; createdAt?: string }, branch?: string): string {
   // G14.106 会话行 tooltip 收敛两行:会话名称(调用方拼)+「N 轮 M 步 · 创建于 时间」——
-  // tokens/缓存/上文/模型/孤立 id 等全家桶退役
+  // tokens/缓存/上文/模型/孤立 id 等全家桶退役。2026-10-24 用户裁定:前插分支信息(如 dev1,有则显)
   const parts: string[] = [];
+  if (branch) parts.push(branch);
   if (r.runs !== undefined) parts.push(t(`${r.runs} run${r.runs === 1 ? '' : 's'}`, `${r.runs} 轮`));
   if (r.steps !== undefined) parts.push(t(`${r.steps} step${r.steps === 1 ? '' : 's'}`, `${r.steps} 步`));
   if (r.createdAt !== undefined) parts.push(t(`created ${shortLocalTime(r.createdAt)}`, `创建于 ${shortLocalTime(r.createdAt)}`));

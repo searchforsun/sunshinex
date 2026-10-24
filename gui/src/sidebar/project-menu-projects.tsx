@@ -27,6 +27,8 @@ export interface ProjectsSectionProps {
   readonly onRemoveWorkspace: (slug: string) => void;
   /** 目录页签(2026-10-23 用户裁定):组头目录钮——开当前会话/项目第一会话的目录页签 */
   readonly onOpenDirectory: (root: string) => void;
+  /** 2026-10-24 用户裁定:会话行 hover tooltip 分支信息(root→current branch;ProjectMenu 缓存拉取) */
+  readonly branchByRoot?: Record<string, string>;
   readonly sessionsError: string;
   readonly activeRoot: string;
   readonly activeSessionId: string;
@@ -244,7 +246,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               key={sr.id}
                               rowId={sr.id}
                               label={label}
-                              meta={sessionMetaLine(sr)}
+                              meta={sessionMetaLine(sr, root !== undefined ? props.branchByRoot?.[root] : undefined)}
                               updatedAt={sr.updatedAt}
                               active={active}
                               running={running}

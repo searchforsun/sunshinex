@@ -531,12 +531,6 @@ function AppShell(): JSX.Element {
   const menuFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
   /** 菜单关闭态(手动点品牌收起/<856 自动关;顶栏 logo 重开) */
   const [menuClosed, setMenuClosed] = useState(false);
-  const prevMenuFloating = useRef(false);
-  useEffect(() => {
-    // 越过 856 下探沿:菜单自动关闭(重开视口不自动恢复,用户手动)
-    if (menuFloating && !prevMenuFloating.current) setMenuClosed(true);
-    prevMenuFloating.current = menuFloating;
-  }, [menuFloating]);
   /** 抽屉选中即收(会话/设置/新会话/目录;仅浮窗沿有效) */
   const closeMenuDrawer = (): void => {
     if (menuFloating && !menuClosed) setMenuClosed(true);
@@ -684,6 +678,7 @@ function AppShell(): JSX.Element {
             {page === 'chat' && connInstance !== null ? (
               <Chat
                 key={openSessionId}
+                menuClosed={menuClosed}
                 onToggleMenu={() => {
                   const opening = menuClosed;
                   setMenuClosed(!menuClosed);
