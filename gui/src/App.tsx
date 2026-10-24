@@ -533,9 +533,12 @@ function AppShell(): JSX.Element {
     tabState.width,
     Math.max(0, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH),
   );
-  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings 态)——落壳级 --sidebar-w 供 .sx-menu 的
-   *  视口护栏消费(G14.2xx 结构性禁止越视口:两拖拽护栏各消费对方栏宽,零布局反馈环) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? sidebarRenderW : 0;
+  /** 浮窗抽屉切换(2026-10-24 用户裁定):视口宽(视觉/zoom 归一)窄于 1000 时,右栏从占布局
+   *  宽度的分栏抽屉切为悬浮抽屉(position:fixed 右满高,盖在正文上,z 低于窗控簇)——三栏挤在
+   *  窄视口互相踩,浮窗态主栏吃满菜单以右全宽。宽度过阈值自动还原分栏 */
+  const sidebarFloating = viewportW / zoomScale() < 1000;
+  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
+  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed && !sidebarFloating ? sidebarRenderW : 0;
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
@@ -605,6 +608,8 @@ function AppShell(): JSX.Element {
         // 纯图标(阈值 420→480:带标签态 composer ~460 起折行,塌缩须先于折行)。渲染期派生——
         // viewportW(resize 重渲)/menuWidth/tabStates(拖拽重渲)/换页全走渲染,无 RO 重挂间隙漏事件面
         viewportW / zoomScale() - menuWidth - sidebarOccupied < 480 ? 'sx-main-narrow' : '',
+        // 浮窗抽屉面(2026-10-24 用户裁定):窄视口右栏悬浮不占布局宽,主栏吃满
+        sidebarFloating ? 'sx-sidebar-float' : '',
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{ '--menu-w': `${menuWidth}px`, '--sidebar-w': `${sidebarOccupied}px` } as CSSProperties}
