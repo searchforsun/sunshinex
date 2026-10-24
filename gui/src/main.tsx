@@ -95,6 +95,28 @@ createRoot(root).render(
 
 // 2026-10-24 用户裁定(实测驱动,无固定切割线):composer 底栏溢出管理器——三处 composer
 // (主 dock/欢迎/辅助对话同走 ComposerCard 的 .sx-composer-foot)统一监听:溢出>1px 挂
+// 弹层视口钳位器(2026-10-24 用户裁定「弹窗尽量动态显示在视口内,可左右移动」):开出的
+// 弹层(.sx-menu-pop/.pill-pop/.proj-pop)若越出视口缘,水平 translate 平移回视口内(动态左右
+// 移动,不改锚定语义);关开/缩窗经 MO+resize 重扫,复位不残留。
+(() => {
+  const clampPop = (el: Element): void => {
+    const h = el as HTMLElement;
+    const b = h.getBoundingClientRect();
+    if (b.width === 0) return;
+    let dx = 0;
+    if (b.right > window.innerWidth - 4) dx = window.innerWidth - 4 - b.right;
+    if (b.left + dx < 4) dx = 4 - b.left;
+    h.style.translate = dx !== 0 ? `${dx}px 0` : '';
+  };
+  const scan = (): void => {
+    document.querySelectorAll('.sx-menu-pop, .pill-pop, .proj-pop').forEach(clampPop);
+  };
+  const mo = new MutationObserver(() => scan());
+  mo.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('resize', scan);
+  scan();
+})();
+
 // pills-tight(收「完全访问」标签/箭头与 effort 徽标,模型名转右缘渐隐省略);无溢出且距上次
 // 切换>400ms 时试摘——试摘前隐藏克隆量「展开态实际宽度」,展开装得下才真摘(否则塌缩态装得
 // 下→摘→复溢→重挂 400ms 频闪;旧「靠下一帧 RO 回收」在 foot 自身盒不变时恒成立不了)。

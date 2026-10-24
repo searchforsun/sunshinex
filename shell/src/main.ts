@@ -122,7 +122,7 @@ if (!app.requestSingleInstanceLock()) {
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
-      minWidth: 320, // 2026-10-24 用户裁定 480→320:缩窗链终态=左菜单抽屉(<856)+右栏抽屉(<616)相继浮出互斥,主栏恒保最小宽 320 视觉——窗口最小宽即主对话最小宽
+      minWidth: 296, // 2026-10-24 用户裁定 320→296:150% 倍率下右侧侧栏最小宽;极窄时主面 min-width 有视口守卫钳制不越界
       minHeight: 600,
       icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),
       titleBarStyle: 'hidden',
