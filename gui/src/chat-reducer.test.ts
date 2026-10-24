@@ -524,3 +524,12 @@ describe('structureVersion(P1 成员变更计数,派生冻结 memo key——spec
     expect(s2.structureVersion).toBe(s1.structureVersion);
   });
 });
+
+describe('seedGen(种子代次——reseed 恒换新值,防 structureVersion 等值碰撞漏检)', () => {
+  it('seedGen: 每次种子代次递增,structureVersion 保持种子语义', () => {
+    const a = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });
+    const b = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });
+    expect(b.seedGen).toBe(a.seedGen + 1);
+    expect(b.structureVersion).toBe(1);
+  });
+});
