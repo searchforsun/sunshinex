@@ -67,6 +67,21 @@ export function stripNullInputArgs(input: ToolInput): ToolInput {
 /** 统一执行面：工具注册表（工具只声明，不直接执行） */
 export class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
+  /** O6 工具误用观测（Anthropic ACI「test how the model uses your tools」）：执行面结果分桶计数——
+   *  ok=成功;错误码桶（INVALID_ARG=模型传参误用主信号/COMMAND_DENIED=策略拒绝/TOOL_NOT_FOUND=
+   *  工具名幻觉/EXEC_FAILED=运行失败）随 run 结果 JSON 出报,经基准集回流工具描述与提示词迭代。
+   *  实例独立计数（derive 子面自带,子智能体调用不聚合进父面——聚合面留后续批次） */
+  private usage = { calls: 0, byOutcome: {} as Record<string, number> };
+
+  private countOutcome(outcome: string): void {
+    this.usage.calls += 1;
+    this.usage.byOutcome[outcome] = (this.usage.byOutcome[outcome] ?? 0) + 1;
+  }
+
+  /** 执行面观测快照（O6）：run-loop 结果 JSON 与基准集报告的消费源 */
+  usageStats(): { calls: number; byOutcome: Record<string, number> } {
+    return { calls: this.usage.calls, byOutcome: { ...this.usage.byOutcome } };
+  }
 
   register(spec: RegisteredTool): void {
     this.tools.set(spec.name, spec);
@@ -114,14 +129,20 @@ export class ToolRegistry {
 
   async execute(name: string, rawInput: ToolInput, safety: SafetyChain): Promise<Result<ExecResult>> {
     const tool = this.tools.get(name);
-    if (!tool) return fail('TOOL_NOT_FOUND', `Tool not registered: ${name}`);
+    if (!tool) {
+      this.countOutcome('TOOL_NOT_FOUND');
+      return fail('TOOL_NOT_FOUND', `Tool not registered: ${name}`);
+    }
 
     // null 键剥离（schema 可选项缺省标记）：安全链与 executor 前单点归一（2026-10-03 真机
     // 「INVALID_ARG: Unknown isolation: null」——严格守约端点按 enum:['worktree',null] 必发字面 null）
     const input = stripNullInputArgs(rawInput);
     const canonical = CANONICAL_TOOL_NAMES[name] ?? name;
     const decision = await safety.evaluateAsync(canonical, input);
-    if (!decision.allowed) return fail('COMMAND_DENIED', decision.reason ?? 'Command denied by security policy');
+    if (!decision.allowed) {
+      this.countOutcome('COMMAND_DENIED');
+      return fail('COMMAND_DENIED', decision.reason ?? 'Command denied by security policy');
+    }
 
     // 文件工具：evaluate 已校验并返回 safePath（绝对路径），executor 直接消费，消除二次解析双轨
     const execInput: ToolInput = decision.safePath !== undefined ? { ...input, path: decision.safePath } : input;
@@ -133,9 +154,14 @@ export class ToolRegistry {
       // `?? null` 收口可选契约的 undefined 余量（RuntimeSafetyGate 契约 Promise<wrap|null>；Task 5 台账 parked 承接）
       const runtimeSafety = { execCwd: () => safety.execCwd(), execCommandAllowed: (cmd: string) => safety.execCommandAllowed(cmd), execWrap: async (cmd: string) => (await safety.execWrap(cmd)) ?? null, run: (cmd: string, opts?: ExecOpts) => safety.run(cmd, opts) };
       const result = await tool.executor(execInput, runtimeSafety);
+      this.countOutcome('ok');
       return ok(safety.maskResult(canonical, result));
     } catch (e) {
-      if (e instanceof CodedToolError) return fail(e.code, e.message);
+      if (e instanceof CodedToolError) {
+        this.countOutcome(e.code);
+        return fail(e.code, e.message);
+      }
+      this.countOutcome('EXEC_FAILED');
       return fail('EXEC_FAILED', e instanceof Error ? e.message : 'Tool execution failed');
     }
   }

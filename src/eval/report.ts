@@ -11,6 +11,8 @@ export interface TaskRunResult {
   readonly durationMs: number;
   readonly approvals: number;
   readonly asks: number;
+  /** O6 工具误用观测：执行面结果分桶（ok/INVALID_ARG/COMMAND_DENIED/...随 run 结果 JSON 回流） */
+  readonly toolUsage?: { calls: number; byOutcome: Record<string, number> };
 }
 
 export interface BenchReport {
@@ -22,12 +24,21 @@ export interface BenchReport {
   readonly approvals: number;
   readonly asks: number;
   readonly durationMs: number;
+  /** O6 工具执行分桶合计（跨任务;误用信号=非 ok 桶） */
+  readonly toolUsage: { calls: number; byOutcome: Record<string, number> };
   readonly tasks: readonly TaskRunResult[];
 }
 
 export function aggregate(results: readonly TaskRunResult[]): BenchReport {
   const passed = results.filter((r) => r.pass).length;
   const total = results.length;
+  const byOutcome: Record<string, number> = {};
+  let toolCalls = 0;
+  for (const r of results) {
+    if (!r.toolUsage) continue;
+    toolCalls += r.toolUsage.calls;
+    for (const [k, v] of Object.entries(r.toolUsage.byOutcome)) byOutcome[k] = (byOutcome[k] ?? 0) + v;
+  }
   return {
     total,
     passed,
@@ -36,6 +47,7 @@ export function aggregate(results: readonly TaskRunResult[]): BenchReport {
     approvals: results.reduce((a, r) => a + r.approvals, 0),
     asks: results.reduce((a, r) => a + r.asks, 0),
     durationMs: results.reduce((a, r) => a + r.durationMs, 0),
+    toolUsage: { calls: toolCalls, byOutcome },
     tasks: results,
   };
 }

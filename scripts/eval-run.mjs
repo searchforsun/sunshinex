@@ -70,15 +70,18 @@ for (const task of tasks) {
     durationMs,
     approvals: result?.approvals ?? 0,
     asks: result?.asks ?? 0,
+    toolUsage: result?.toolUsage ?? { calls: 0, byOutcome: {} },
   };
   results.push(row);
-  console.log(`${pass ? 'PASS' : 'FAIL'} (${(durationMs / 1000).toFixed(1)}s, ${row.tokensUsed ?? '?'} tokens, 干预 a=${row.approvals}/q=${row.asks})`);
+  const tu = row.toolUsage;
+  const errBucket = Object.entries(tu.byOutcome).filter(([k]) => k !== 'ok').map(([k, v]) => `${k}=${v}`).join(',') || 'none';
+  console.log(`${pass ? 'PASS' : 'FAIL'} (${(durationMs / 1000).toFixed(1)}s, ${row.tokensUsed ?? '?'} tokens, 干预 a=${row.approvals}/q=${row.asks}, 工具 ${tu.calls} 次[错: ${errBucket}])`);
   if (!pass) console.error(`  ↳ ${row.status}${row.problem ? ` | ${row.problem}` : ''}`);
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
 const report = aggregate(results);
-console.log(`\n[eval] 完成率 ${report.passed}/${report.total} (${Math.round(report.passRate * 100)}%) · tokens ${report.tokensUsed} · 干预 approvals=${report.approvals} asks=${report.asks} · 总时长 ${(report.durationMs / 1000).toFixed(1)}s`);
+console.log(`\n[eval] 完成率 ${report.passed}/${report.total} (${Math.round(report.passRate * 100)}%) · tokens ${report.tokensUsed} · 干预 approvals=${report.approvals} asks=${report.asks} · 工具 ${report.toolUsage.calls} 次 · 总时长 ${(report.durationMs / 1000).toFixed(1)}s`);
 const outDir = path.join(ROOT, 'eval-results');
 fs.mkdirSync(outDir, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

@@ -87,13 +87,13 @@ test('O3 wiring：ScriptedAdapter 驱动 T1 全链（goal→引擎→write 落�
   }
 });
 
-test('O3 报告聚合：完成率/干预合计/成本合计', () => {
+test('O3/O6 报告聚合：完成率/干预合计/成本合计/工具分桶', () => {
   const r = aggregate([
-    { id: 'a', pass: true, iterations: 2, tokensUsed: 100, durationMs: 10, approvals: 3, asks: 1 },
-    { id: 'b', pass: false, problem: 'x', iterations: 5, tokensUsed: 50, durationMs: 30, approvals: 0, asks: 2 },
+    { id: 'a', pass: true, iterations: 2, tokensUsed: 100, durationMs: 10, approvals: 3, asks: 1, toolUsage: { calls: 4, byOutcome: { ok: 3, INVALID_ARG: 1 } } },
+    { id: 'b', pass: false, problem: 'x', iterations: 5, tokensUsed: 50, durationMs: 30, approvals: 0, asks: 2, toolUsage: { calls: 2, byOutcome: { ok: 2 } } },
   ]);
   assert.deepEqual(
     { ...r, tasks: undefined },
-    { total: 2, passed: 1, passRate: 0.5, tokensUsed: 150, approvals: 3, asks: 3, durationMs: 40, tasks: undefined },
+    { total: 2, passed: 1, passRate: 0.5, tokensUsed: 150, approvals: 3, asks: 3, durationMs: 40, toolUsage: { calls: 6, byOutcome: { ok: 5, INVALID_ARG: 1 } }, tasks: undefined },
   );
 });

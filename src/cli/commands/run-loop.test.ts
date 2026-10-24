@@ -46,6 +46,10 @@ test('run-loop：ScriptedAdapter 驱动 test-loop 修正环 done（离线端到�
   const stats = deps.askStats();
   assert.ok(stats.approvals >= 1, '写操作经 policy ask 决策（自动放行形态）');
   assert.equal(stats.asks, 0, '无 ask_question 调用');
+  // O6 观测面:工具执行分桶——write 一次经执行面 ok 桶
+  const usage = deps.registry.usageStats();
+  assert.ok(usage.calls >= 1, '工具执行计数在座');
+  assert.ok((usage.byOutcome.ok ?? 0) >= 1, 'write 落 ok 桶');
 });
 
 test('buildModel：缺省 openai 且带展示标签，--model=stub 走占位适配器', () => {

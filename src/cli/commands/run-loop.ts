@@ -35,9 +35,9 @@ export async function runLoop(args: CliArgs): Promise<void> {
   // fork 模型（CLAUDE.md §11）：goal 槽取消，任务指令以链行承载（单发 run 空链起，行为对外不变）
   deps.context.appendInstructionLine(goal);
   const r = await tpl.engine.run(goal);
-  // O3 观测面：干预双计数随结果出报（approvals=guard ask 决策数/asks=问询接缝调用数——基准集指标面）
+  // O3/O6 观测面：干预双计数 + 工具执行分桶随结果出报（基准集指标面/工具误用数据回流）
   const stats = deps.askStats();
-  console.log(JSON.stringify({ status: r.status, iterations: r.iterations, tokensUsed: r.tokensUsed, criteria: r.criteria, reply: r.reply, error: r.error, approvals: stats.approvals, asks: stats.asks }, null, 2));
+  console.log(JSON.stringify({ status: r.status, iterations: r.iterations, tokensUsed: r.tokensUsed, criteria: r.criteria, reply: r.reply, error: r.error, approvals: stats.approvals, asks: stats.asks, toolUsage: deps.registry.usageStats() }, null, 2));
   // 收尾统一收口（批A R2）：drain/MCP 警告/连接关闭/退出码判定与 pipeline 命令共用单点
   await teardownCliRun(deps, r.status);
 }
