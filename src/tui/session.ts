@@ -42,6 +42,7 @@ import { resumeFlow, btwFlow, branchFlow, unarchiveFlow, resumeLatest as resumeL
 import { applyDelegation } from '../delegation/projection';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import { boardEventFrom } from '../taskboard/translate';
+import { runPlanFlow, PLAN_MAX_ROUNDS } from '../harness/plan-flow';
 
 // D17 拆分件（docs/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
 // 命令族迁 commands-*.ts、子智能体面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
@@ -357,8 +358,18 @@ export class SessionController {
   pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费；unref 不阻塞进程退出 */
   private kickTimer?: ReturnType<typeof setInterval>;
-  /** 挂起的计划确认卡（/plan 流程）；confirmPlan 裁决后清除——公开 = 拆分件 approval 中断放弃路径消费 */
-  pendingPlan?: { items: string[] };
+  /** 挂起的计划确认卡（/plan 流程,spec §4.3 重造=计划书全文+步骤清单）；confirmPlan 裁决后清除——
+   *  公开 = 拆分件 approval 中断路径消费 */
+  pendingPlan?: { doc: string; items: string[] };
+  /** planFlow 裁决回填口（awaitApproval 接缝的宿主侧单点,confirmPlan 回填）；壳收尾清空防悬空 */
+  private planDecide?: (d: { approved: boolean; feedback?: string }) => void;
+  /** planFlow 消费壳在途标记：公开 = 拆分件 approval 中断路径消费（rider:awaiting-approval 期间中断必须
+   *  转为 confirmPlan(false) 裁决回填——abort 信号与 approved 决定竞态时 planFlow 仍会注入产物并返回,
+   *  放任即「中断后继续执行」;转裁决回填后流程凭中止信号走 aborted-interrupted 收尾） */
+  planFlowRunning = false;
+  /** 计划卡反馈输入态（n 进入,confirmPlan 提交出清）：公开 = 组件层 use-approval-keys 键面让位 +
+   *  submit 入口拦截为 confirmPlan(false, text)（spec §4.3 拒绝反馈环） */
+  planFeedbackMode?: boolean;
   /** 最近一次压缩事件时的 ctx 水位（自动压缩留痕 before → after 用；/compact 路径不消费） */
   private compactWatermark = 0;
   /** compact 事件序号（1-based）：一次压缩 = applyCompaction + trimChainFront 恰两条，留痕按序配对消歧 */
@@ -476,6 +487,13 @@ export class SessionController {
   async submit(input: string): Promise<void> {
     const text = input.trim();
     if (!text) return;
+    // 计划卡反馈输入态（spec §4.3 拒绝反馈环）：composer 复用输入即反馈文本,Enter 提交=带反馈驳回。
+    // 空文本在组件层（use-line-edit）就不成提交——空提交路径天然不可达;Esc 无反馈驳回走 approval 中断拦截
+    if (this.planFeedbackMode) {
+      this.planFeedbackMode = undefined;
+      await this.confirmPlan(false, text);
+      return;
+    }
     // 会话日志（规格 D4/D6）：user 事件=输入历史还原源，先于分流入志；v3 建档(P11-T2 零兼容)
     const j = this.ensureJournal();
     j.start(3);
@@ -556,30 +574,32 @@ export class SessionController {
     }
   }
 
-  /** 计划确认卡裁决：true 逐项执行（待办同步勾选），false 放弃回 idle */
-  async confirmPlan(yes: boolean): Promise<void> {
+  /** 计划确认卡裁决（spec §4.2-4.4 重造）：决策回填单点——decide 回填驱动 planFlow 循环。
+   *  批准后的续段（漂移探测/acceptEdits 回执/逐项执行）与在途拒绝的重入（修订轮/超限收尾）都由
+   *  产物持有方 startPlanFlow 壳单点续跑：confirmPlan 侧续段会与 planFlow 的 chainAppendPlan 微任务
+   *  竞序（决定回填后链序必须=计划书行先于执行指令行）,故此处只回填;流程不在途的悬卡拒绝=旧式放弃（防御路径） */
+  async confirmPlan(yes: boolean, feedback?: string): Promise<void> {
     const pending = this.pendingPlan;
     if (!pending) return;
     this.pendingPlan = undefined;
-    if (!yes) {
+    this.planFeedbackMode = undefined;
+    const decide = this.planDecide;
+    this.planDecide = undefined;
+    decide?.({ approved: yes, feedback });
+    if (!yes && !this.planFlowRunning) {
       this.state = { ...this.state, status: 'idle', pauseConfirm: undefined }; // 同 closeTask 状态出口清卡（规划轮挂的卡可走到这）
       this.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
       return;
     }
-    // 确认项过期/冲突检测（规范 N1 动态改动尾追，对标 CC）：计划起草到确认之间磁盘会话常量可能已变化——
-    // 执行前主动探测并把差异尾追进链（模型面）+ 回执（用户面），以最新为准；基线随探测前进，后续任务起点不重复告知
-    const notices = this.runtime.harness.context.checkConstantsDrift();
-    for (const n of notices) this.runtime.harness.context.appendChain([{ action: 'notice', observation: n }]);
-    if (notices.length > 0) {
-      this.pushMsg('system', t(
-        `Session constants changed since the plan was drafted; the latest version applies:\n${notices.join('\n')}`,
-        `计划起草后会话常量已变化，执行以最新为准：\n${notices.join('\n')}`,
-      ), { level: 'warn' });
-    }
-    await this.runPlanItems(pending.items);
+    // 批准与在途拒绝：planFlow 消费壳自行续段（批准=漂移探测+落 acceptEdits+逐项执行;拒绝=修订重入/超限收尾）,
+    // 这里不清状态——状态出清归壳与 aborted 事件臂
   }
 
-  private async startPlanFlow(goal: string): Promise<void> {
+  /** /plan 规划流程壳（spec §4.2-4.4 重造）：runPlanFlow 纯流程编排的宿主消费,IO 全走接缝。
+   *  submit 半径只到用户裁决点：首轮规划在本方法返回的「门」promise 内跑到 awaiting-approval（或中断/终态）
+   *  放行 await submit;裁决后续段（批准=漂移探测+落 acceptEdits+逐项执行;拒绝=修订重入/超限收尾）脱离
+   *  submit 半径,由 confirmPlan 的 decide 回填驱动后台续跑——「提交后停在确认卡」的既有公开语义不变。 */
+  private startPlanFlow(goal: string): Promise<void> {
     this.state = {
       ...this.state,
       status: 'running',
@@ -588,55 +608,119 @@ export class SessionController {
     this.turnMissHinted = false; // 新任务轮：轮首 miss 判定重置（观测小件）
     this.taskAbort = new AbortController();
     this.notify();
-    let planText = '';
+    this.planFlowRunning = true;
+    let openGate!: () => void;
+    const gate = new Promise<void>((resolve) => { openGate = resolve; });
+    let gated = false;
+    const openGateOnce = (): void => { if (!gated) { gated = true; openGate(); } };
+    // 规划轮终稿不重复入档：计划正文仅以确认卡形态上屏一次（每轮规划同此）;批准执行段前复位,
+    // 否则步骤正文会被归档抑制位吞掉
     this.md.planReplyNoArchive = true;
-    try {
-      // 规划段与执行段同链（H1）：经主链的 Loop 长任务模板。
-      // 原实现是裸调 graph 角色节点——手工构造的 termination 无人读取（装饰性），
-      // 且 loop → graph 会形成反向依赖；角色框定改为提示词级（依赖方向保持 graph → loop → harness）。
-      // 规划段 fork 隔离：verbose 规划提示词与规划结论不进会话链（§11 边界登记——链只承载任务与执行轨迹），
-      // 执行段（runPlanItems）才逐条指令行入链；角色框定保持提示词级（依赖方向 graph → loop → harness）
-      const verbosePlanningPrompt = `${PLAN_TASK_LABEL} for the goal below, one step per line formatted "1. step"; output only step lines, no explanations, no code fences.\nGoal: ${goal}`;
-      const r = await this.runInternalTask(verbosePlanningPrompt, PLAN_TASK_LABEL);
-      if (!r.done) {
-        // 用户中断（Esc/Ctrl+C）打断规划段：与主链任务同语义——中断回执+回 idle，不落 error 粘滞；
-        // planReplyNoArchive 必须复位，否则中断后新任务的正文会被归档抑制位吞掉
-        if (r.stopReason === 'interrupted') {
-          this.md.planReplyNoArchive = false;
-          pushInterruptedNotice(this);
-          this.closeTask();
-          return;
+    // 前轮计划书宿主侧留存（spec §4.3 rider：驳回环重入,revising 轮拼进规划提示词前部——plan-flow 模块不动,
+    // 拼装在宿主接缝实现内）;revising 事件臂置位、awaiting-approval 臂复位
+    let lastPlanDoc: string | undefined;
+    let revising = false;
+    void (async () => {
+      try {
+        const r = await runPlanFlow(goal, {
+          // 中断信号沿 runInternalTask 既有的 taskAbort 透传,第三参对齐接缝签名（同源信号显式传递）
+          runPlanningTask: (prompt, signal) => {
+            // 驳回环重入：前轮计划书拼进提示词前部（英文单语,§15 提示词面不进语言轴）+ 模块自带的反馈段
+            const full = revising && lastPlanDoc
+              ? `Previous plan document (rejected — revise it per the feedback below):\n${lastPlanDoc}\n\n${prompt}`
+              : prompt;
+            return this.runInternalTask(full, PLAN_TASK_LABEL, signal);
+          },
+          enterReadOnly: () => this.runtime.harness.security.enterModeOverride('read-only'),
+          exitReadOnly: () => this.runtime.harness.security.exitModeOverride(),
+          todosSnapshot: () => this.getState().todos.map((td) => ({ text: td.text, status: td.status })),
+          chainAppendPlan: (doc) => {
+            // 计划书入链（spec §4.4,ChainAction 'plan',批准后一次）。'plan' 行**不进** lastTaskIdx 推理轮半径
+            // （messages.ts lastTaskIdx 只锚 'task'）——裁定：计划书入链后,执行段第一步的 runTask 经 seedHistory
+            // 语义天然读到计划书（同链）,推理轮半径无需纳入 'plan' 行。
+            this.runtime.harness.context.appendChain([{ action: 'plan', observation: doc }]);
+          },
+          emit: (e) => {
+            if (e.type === 'planning') return; // 状态置 running 已在入口沿现实现完成
+            if (e.type === 'awaiting-approval') {
+              lastPlanDoc = e.doc; // 前轮计划书留存（revising 轮拼提示词用）
+              revising = false;
+              this.pendingPlan = { doc: e.doc, items: e.items };
+              const card = [
+                t('Plan confirmation (/plan)', '计划确认卡（/plan）'),
+                e.doc,
+                '---',
+                ...e.items.map((item, i) => `${i + 1}. ${item}`),
+                t(`${e.items.length} items; y approve / n reject with feedback / Esc discard`, `${e.items.length} 项；y 批准 / n 拒绝（附反馈）/ Esc 放弃`),
+              ].join('\n');
+              this.pushMsg('system', card);
+              this.state = { ...this.state, status: 'awaiting-plan' };
+              this.notify();
+              openGateOnce(); // submit 半径到此为止：裁决后续段由 confirmPlan 驱动
+              return;
+            }
+            if (e.type === 'revising') {
+              revising = true;
+              this.pushMsg('system', t(`Revising plan with your feedback (round ${e.round}/${PLAN_MAX_ROUNDS})`, `按反馈修订计划中（第 ${e.round}/${PLAN_MAX_ROUNDS} 轮）`));
+              this.state = { ...this.state, status: 'running' }; // 状态卫生：修订轮规划在途,旧确认卡随裁决已出清
+              this.notify();
+              return;
+            }
+            if (e.type === 'aborted') {
+              const why = e.reason === 'interrupted'
+                ? t('Planning interrupted', '规划已中断')
+                : e.reason === 'exhausted'
+                  ? t('Plan rejected 3 times — stopped, nothing executed', '计划已被拒 3 轮——已停止，未执行任何步骤')
+                  : t('Planning produced no steps — cancelled', '规划未产出步骤——已取消');
+              this.pushMsg('system', why, { level: 'warn' });
+              // 失败路径不产出收尾统计行（规格 §3.2 边界,沿旧 empty/interrupted 路径语义）
+              this.taskStatsSuppressed = true;
+              this.closeTask();
+              openGateOnce(); // 无裁决点路径（中断/超限/无产物）也放行 submit 半径
+              return;
+            }
+            // approved：产物经返回值 r 承载,续段在下方 r 分支
+          },
+          awaitApproval: () => new Promise((resolve) => { this.planDecide = resolve; }),
+          signal: this.taskAbort?.signal,
+        });
+        this.md.planReplyNoArchive = false; // 规划段出口即复位：执行段/后续任务正文不再被抑制
+        if (r) {
+          // 批准续段（单点,自旧 confirmPlan 前移）：确认项过期/冲突探测 → 落 acceptEdits 回执 → 逐项执行。
+          // 链序保证：planFlow 已先 chainAppendPlan 再返回——计划书行严格先于本段的执行指令行入链
+          const notices = this.runtime.harness.context.checkConstantsDrift();
+          for (const n of notices) this.runtime.harness.context.appendChain([{ action: 'notice', observation: n }]);
+          if (notices.length > 0) {
+            this.pushMsg('system', t(
+              `Session constants changed since the plan was drafted; the latest version applies:\n${notices.join('\n')}`,
+              `计划起草后会话常量已变化，执行以最新为准：\n${notices.join('\n')}`,
+            ), { level: 'warn' });
+          }
+          this.landAcceptEdits();
+          await this.runPlanItems(r.items);
         }
-        throw new Error(describeIncomplete(r.stopReason) || t('Planning incomplete', '规划未完成'));
+        // aborted：三分支回执与 closeTask 已在 emit 臂如实落地,此处零事务（防双份文案）
+      } catch (e) {
+        this.md.planReplyNoArchive = false;
+        this.pushMsg('system', t('Planning failed: ', '规划失败：') + (e instanceof Error ? e.message : String(e)), { level: 'error' });
+        this.closeTask();
+      } finally {
+        this.planFlowRunning = false;
+        this.planDecide = undefined;
+        this.md.planReplyNoArchive = false;
+        this.planFeedbackMode = undefined;
+        openGateOnce(); // 防御：任何出口都放行 submit 半径
       }
-      planText = r.reply ?? '';
-    } catch (e) {
-      this.pushMsg('system', t('Planning failed: ', '规划失败：') + (e instanceof Error ? e.message : String(e)), { level: 'error' });
-      this.closeTask();
-      return;
-    } finally {
-      this.md.planReplyNoArchive = false;
-    }
-    const items = planText
-      .split('\n')
-      .map((l) => l.trim())
-      .map((l) => l.replace(/^\d+[.、]\s*/, '').trim())
-      .filter((l) => l.length > 0);
-    if (items.length === 0) {
-      this.pushMsg('system', t('No numbered steps produced (each line must be "1. xxx"), cancelled', '规划未产出编号步骤（每行需形如「1. xxx」），已取消'), { level: 'warn' });
-      this.taskStats = undefined; // 失败路径不产出收尾统计行（规格 §3.2 边界）
-      this.closeTask();
-      return;
-    }
-    this.pendingPlan = { items };
-    const card = [
-      t('Plan confirmation (/plan)', '计划确认卡（/plan）'),
-      ...items.map((item, i) => i + 1 + '. ' + item),
-      t(items.length + ' items; confirm to execute step by step', '共 ' + items.length + ' 项，确认后逐项执行'),
-    ].join('\n');
-    this.pushMsg('system', card);
-    this.state = { ...this.state, status: 'awaiting-plan' };
-    this.notify();
+    })();
+    return gate;
+  }
+
+  /** 批准后落 acceptEdits（spec §4.4,TUI 侧最小实现）：会话档本就 acceptEdits 时无操作;
+   *  否则回执提示。TUI 无运行时改 guard 基档 modeName 的现成通道（构造期定死无 setter）——
+   *  宁停不造新接缝,不直改档位,档位切换沿既有模式命令通道（装配期 --mode）,回执先行（裁定,报告留痕） */
+  private landAcceptEdits(): void {
+    if (this.runtime.harness.security.mode === 'acceptEdits') return;
+    this.pushMsg('system', t('Switched to workspace edit mode', '已切换到工作区编辑档'));
   }
 
   /** 逐项执行计划：每项一个 run，完成即勾选待办（宁停不误：单项失败即暂停，剩余保持未完成） */
@@ -820,16 +904,19 @@ export class SessionController {
     this.notify();
   }
 
-  /** 内部 verbose 任务（/init）：fork 隔离执行——提示词不进会话链（§11 边界登记），终态零主链回写 */
-  private async runInternalTask(prompt: string, label: string): Promise<RunOutcome> {
+  /** 内部 verbose 任务（/init）：fork 隔离执行——提示词不进会话链（§11 边界登记），终态零主链回写。
+   *  第三参 signal：planFlow 接缝显式传递（与 this.taskAbort 同源,签名对齐 PlanFlowSeams.runPlanningTask）;
+   *  缺省回落 taskAbort——既有调用方零改动 */
+  private async runInternalTask(prompt: string, label: string, signal?: AbortSignal): Promise<RunOutcome> {
     const ctx = this.runtime.harness.context;
     const base = ctx.chainView();
+    const abort = signal ?? this.taskAbort?.signal;
     return this.runtime.runTask(label, {
       scope: 'fork',
       seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt }],
       ...(this.state.tier ? { tier: this.state.tier } : {}),
       ...(this.state.effort ? { effort: this.state.effort } : {}),
-      ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
+      ...(abort ? { signal: abort } : {}),
     });
   }
 

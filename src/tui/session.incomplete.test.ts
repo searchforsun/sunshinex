@@ -80,6 +80,9 @@ test('会话层：规划项未完成不得报成功（runPlanItems）', async ()
     await ctrl.submit('/plan 做两件事');
     assert.equal(ctrl.getState().status, 'awaiting-plan', '应先产出计划确认卡');
     await ctrl.confirmPlan(true);
+    // 重造后 confirmPlan 只做裁决回填（decide 单点）,批准续段（逐项执行）由 planFlow 消费壳后台续跑——
+    // 等待收尾再断言（旧实现 confirmPlan await 到逐项执行完成,语义随 §4.2-4.4 更新）
+    await ctrl.waitIdle();
     const st = ctrl.getState();
     const texts = st.messages.map((m) => m.text).join('\n');
     assert.match(texts, /Incomplete: token budget exhausted/);

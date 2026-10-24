@@ -63,7 +63,7 @@ export function buildSlashMenu(buffer: string, skills: readonly SlashMenuSkillSo
 function inputPlaceholder(status: TuiState['status']): string {
   switch (status) {
     case 'awaiting-approval': return t('Awaiting approval: y approve once / a allow for session / n deny', '等待审批：y 放行一次 / a 本会话放行 / n 拒绝');
-    case 'awaiting-plan': return t('Plan awaiting confirmation: y execute / n discard', '计划待确认：y 执行 / n 放弃');
+    case 'awaiting-plan': return t('Plan awaiting confirmation: y approve / n reject with feedback / Esc discard', '计划待确认：y 批准 / n 拒绝（附反馈）/ Esc 放弃');
     case 'awaiting-question': return t('Answer the question above: up/down move · space select · enter submit · esc dismiss', '请回答上方问题：↑/↓ 移动 · 空格选定 · 回车提交 · Esc 放弃');
     case 'running': return t('Running… (input will queue)', '运行中…（输入将排队）');
     case 'error': return t('Previous task failed; enter a new task to continue', '上次任务出错；输入新任务继续');
@@ -366,7 +366,8 @@ export function App({
    * 8. Esc 全局分流（App 保留）：暂停卡撤卡 → interrupt 可达即中断 → 输入非空=清空（空输入无操作，不退出）
    * 9. 审批卡 awaiting-approval（use-approval-keys，模态恒吞键）：y/a/n 快捷；Esc=deny；↑↓；
    *     Space/Enter=光标行裁决；数字 1-3 快选
-   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y/n；Esc=放弃；↑↓；Space/Enter；1-2 快选
+   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y 批准；n=进入反馈输入态（键面让位 composer——
+   *     Enter 经 submit 入口拦截=confirmPlan(false,反馈文本)、Esc=全局中断位转 confirmPlan(false)）；↑↓；Space/Enter；1-2 快选
    * 11. Tab 分流（App 保留）：/ 前缀=斜杠补全（exact 词池内循环邻位+空格 / 补面板选中项+空格）；
    *     否则=expandAll+todoExpanded 同步翻转（store 先写）并 recordView
    * 12. Ctrl+O（App 保留）：latestFull 内容深度翻转并 recordView
@@ -576,7 +577,7 @@ export function App({
           options={planSelectorOptions()}
           cursor={pCursorState}
           picked={[]}
-          hint={t('y execute · n discard · esc discard', 'y 执行 · n 放弃 · Esc 放弃')}
+          hint={t('y approve · n reject with feedback · esc discard', 'y 批准 · n 拒绝（附反馈）· Esc 放弃')}
         />
       ) : null}
       {state.question ? (

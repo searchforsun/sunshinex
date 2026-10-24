@@ -63,10 +63,14 @@ export function useApprovalKeys({
       if (Number.isInteger(an) && an >= 1 && an <= 3) { controller.resolveApproval(approvalDecisionByIndex(an - 1)); return true; }
       return true;
     }
-    // plan 确认卡（T3 选择器迁移）：y/n 单键并存，↑↓ 移动 / Space·Enter 提交 / 1-2 快选 / Esc=放弃
+    // plan 确认卡（spec §4.2-4.4 重造）：y 批准；n=进入反馈输入态（不再直接放弃）；↑↓ 移动 / Space·Enter 提交 /
+    // 1-2 快选。Esc 分支不可达（App 判定序全局 Esc 在本层之前截获——中断路径经 approval 拦截转 confirmPlan(false)）。
+    // 反馈输入态（n 之后）：键面让位 composer——本 hook 放行（return false）,可打印/编辑键落输入缓冲；
+    // Enter 经输入行编辑→controller.submit 入口拦截为 confirmPlan(false, 反馈文本),Esc 走全局中断位同上
     if (status === 'awaiting-plan') {
+      if (controller.planFeedbackMode === true) return false;
       if (input === 'y') { void controller.confirmPlan(true); return true; }
-      if (input === 'n') { void controller.confirmPlan(false); return true; }
+      if (input === 'n') { controller.planFeedbackMode = true; return true; }
       if (key.escape) { void controller.confirmPlan(false); return true; }
       if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, 2, -1)); return true; }
       if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, 2, 1)); return true; }

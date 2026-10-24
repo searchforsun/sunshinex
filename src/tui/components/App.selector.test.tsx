@@ -113,22 +113,29 @@ test('App：plan 确认选择器——Enter（首项）执行计划', async () =
   }
 });
 
-test('App：plan 确认 n 快捷放弃（回归钉）', async () => {
+test('App：plan 确认 n=进入反馈输入态（键让位 composer）,Esc 中断流程回 idle（spec §4.2-4.4 回归钉）', async () => {
   const tmp = tmpDir('sunshinex-appsel4-');
   let term: ReturnType<typeof render> | undefined;
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"1. step one"}']),
+      model: new ScriptedAdapter(['{"done":true,"reply":"1. step one"}', '{"done":true,"reply":"done"}']),
     });
     const p = ctrl.submit('/plan anything');
     await waitFor(() => ctrl.getState().status === 'awaiting-plan');
     term = render(<App controller={ctrl} />);
-    term.write('n');
+    term.write('n'); // 不再直接放弃：进入反馈输入态
+    await flushKey(term);
+    assert.equal(ctrl.getState().status, 'awaiting-plan', 'n 进入反馈态,流程仍在途');
+    term.write('make it shorter'); // 键面让位 composer:文本落输入缓冲
+    await flushKey(term);
+    assert.ok((term?.lastFrame() ?? '').includes('make it shorter'), '反馈态键入应落入 composer 缓冲');
+    term.write('\u001B'); // Esc=全局中断位→approval 拦截转 confirmPlan(false)→中止信号收尾
     await p;
     await ctrl.waitIdle();
-    assert.equal(ctrl.getState().status, 'idle', 'n 放弃后回输入态');
-    assert.ok(messageTexts(ctrl).includes('Plan discarded'), '放弃回执上屏');
+    assert.equal(ctrl.getState().status, 'idle', '中断后回输入态');
+    assert.ok(messageTexts(ctrl).includes('Planning interrupted'), '中断回执上屏（不走旧式放弃回执）');
+    assert.equal(ctrl.getState().todos.length, 0, '中断不执行不建待办');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -105,8 +105,15 @@ export function interrupt(ctrl: SessionController): boolean {
     ctrl.state = { ...ctrl.state, question: undefined };
     pendingQ.resolve({ type: 'dismissed' });
   }
-  // 待确认计划：中断即放弃（与 confirmPlan(false) 同语义）
+  // 待确认计划：planFlow 在途=中断转裁决回填语义（rider:signal 边界——awaitApproval 期间 signal 中止后,
+  // 若放任 approved 决定,runPlanFlow 仍会 chainAppendPlan 注入产物并返回给壳续跑执行段;故此处必须转为
+  // confirmPlan(false)：decide 回填后流程凭已置位的中止信号走 aborted-interrupted 收尾,产物不注入、执行不启动）；
+  // 流程不在途的悬卡=旧式放弃（防御路径,沿既有出清）
   if (ctrl.pendingPlan) {
+    if (ctrl.planFlowRunning) {
+      void ctrl.confirmPlan(false);
+      return true;
+    }
     ctrl.pendingPlan = undefined;
     ctrl.state = { ...ctrl.state, status: 'idle' };
     ctrl.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
