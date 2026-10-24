@@ -53,11 +53,11 @@ export class SecurityGuard {
     if (tool === 'worktree') {
       const action = typeof input === 'object' && input !== null ? String((input as { action?: unknown }).action ?? '') : '';
       if (action === 'list') return { allowed: true };
-      if (this.modeName === 'read-only') return { allowed: false, reason: READONLY_DENY };
+      if (this.mode === 'read-only') return { allowed: false, reason: READONLY_DENY };
       return { allowed: true };
     }
     // read-only 只读闸门：先于 allow 短路求值——allow 免批规则不放宽 read-only 只读（task 1 ⑤a）
-    if (this.modeName === 'read-only') {
+    if (this.mode === 'read-only') {
       if (tool !== 'Read' && tool !== 'Grep' && tool !== 'Glob') {
         return { allowed: false, reason: READONLY_DENY };
       }
@@ -70,7 +70,7 @@ export class SecurityGuard {
     // 的权限面：headless 下审批不真实发生,计的是「若有实时审批会有几次打断」）；deny 不计（非干预）
     this.askDecisions += 1;
     // full-access：不询问用户，自动批准未 deny 的操作（deny 规则仍拦截），即「最大权限」
-    if (this.modeName === 'full-access') return { allowed: true };
+    if (this.mode === 'full-access') return { allowed: true };
     // acceptEdits 模式：只读白名单放行，其余 ask（阶段一 CLI 未实现交互，ask 视为放行只读、拒绝写）
     if (tool === 'Bash' && this.isReadonlyCommand(specifier)) return { allowed: true };
     if (tool === 'Read' || tool === 'Grep' || tool === 'Glob') return { allowed: true };
@@ -107,9 +107,15 @@ export class SecurityGuard {
   /** 终端化审批注入（TUI/GUI 装配点）；传 undefined 即卸载回阶段一语义 */
   private readonly sessionDirAllows = new Set<string>();
 
-  /** 当前权限模式（链侧消费：读/写分支按档位定论，spec 5.1） */
+  /** 档位临时覆盖（planFlow 规划轮 read-only;enter/exit 配对,try/finally 由调用方保证）：
+   *  判定面按覆盖值;轻量字段不重建 runtime,运行中模式切换本就 409/禁用,覆盖期无并发源（spec §4.1） */
+  private override: PermissionMode | undefined;
+  enterModeOverride(mode: PermissionMode): void { this.override = mode; }
+  exitModeOverride(): void { this.override = undefined; }
+
+  /** 当前权限模式（链侧消费：读/写分支按档位定论，spec 5.1）：覆盖优先，缺省回落基档 modeName */
   get mode(): PermissionMode {
-    return this.modeName;
+    return this.override ?? this.modeName;
   }
 
   /** 'always' 目录登记（spec 5.1 会话放行集；链侧 realpath 归一后传入） */

@@ -112,3 +112,14 @@ test('todo_write 三模式放行（零 IO 副作用，规格 D4）；deny 规则
     assert.equal(new SecurityGuard(new PolicyEngine(), mode).preToolUse('todo_write', { todos: [] }).allowed, true, `${mode} 下缺省放行`);
   }
 });
+
+test('档位临时覆盖：覆盖期 read-only 拒写,exit 后恢复基档', () => {
+  const guard = new SecurityGuard(new PolicyEngine(), 'full-access');
+  guard.enterModeOverride('read-only');
+  assert.equal(guard.mode, 'read-only');
+  const r = guard.preToolUse('Write', { path: '/tmp/x.txt', content: 'hi' });
+  assert.equal(r.allowed, false, '覆盖期写操作必须被只读闸门拒绝');
+  guard.exitModeOverride();
+  assert.equal(guard.mode, 'full-access');
+  assert.equal(guard.preToolUse('Write', { path: '/tmp/x.txt', content: 'hi' }).allowed, true);
+});
