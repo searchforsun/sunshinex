@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
@@ -81,6 +81,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   void app.whenReady().then(async () => {
+    // 窗口最小宽按系统 DPI 缩放折算 DIP(2026-10-24 用户实测「minWidth 296 实际 ~500 下不去」:
+    // minWidth 是 DIP,150% 显示缩放下 296 DIP=444 物理px)。296=150% 倍率下右侧侧栏最小宽(视觉)
+    const dpiScale = Math.max(1, screen.getPrimaryDisplay()?.scaleFactor ?? 1);
+    const minWinWidth = Math.round(296 / dpiScale);
     try {
       // 两态路径：打包态以 resourcesPath 为根；开发态 getAppPath()=shell 目录（仓根直接子包），
       // 上溯一级即仓库根（T4 冒烟红首因：原上溯两级落到仓父目录，dist 解析必 404）
@@ -122,7 +126,7 @@ if (!app.requestSingleInstanceLock()) {
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
-      minWidth: 296, // 2026-10-24 用户裁定 320→296:150% 倍率下右侧侧栏最小宽;极窄时主面 min-width 有视口守卫钳制不越界
+      minWidth: minWinWidth, // 2026-10-24 用户裁定:=侧栏最小宽 296 物理 px(按 DPI 折算 DIP);极窄时主面 min-width 有视口守卫钳制不越界
       minHeight: 600,
       icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),
       titleBarStyle: 'hidden',
