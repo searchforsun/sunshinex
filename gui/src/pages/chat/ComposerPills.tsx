@@ -1,4 +1,5 @@
 import { ArrowUp, ChevronDown, ListTodo, ShieldCheck, Square, Unlock } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import { ContextRing } from '../../context-ring';
@@ -112,8 +113,24 @@ interface PillsRightProps {
 
 export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
   const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding } = props;
+  /** 2026-10-24 用户裁定(废固定阈值改实测):监听 composer 底栏实际溢出——溢出>1px 即给底栏
+   *  挂 pills-tight(收「完全访问」标签/箭头+effort 徽标,模型名恒显走省略号);余量 >100px
+   *  (≈标签宽+迟滞)才摘标还原全文。任何宽度/模型名/字号变化经 RO 重算,无阈值切割线 */
+  const rightRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const foot = rightRef.current?.closest('.sx-composer-foot') as HTMLElement | null;
+    if (foot === null) return;
+    const ro = new ResizeObserver(() => {
+      const over = foot.scrollWidth - foot.clientWidth;
+      const tight = foot.classList.contains('pills-tight');
+      if (!tight && over > 1) foot.classList.add('pills-tight');
+      else if (tight && over < -100) foot.classList.remove('pills-tight'); // 迟滞≈标签宽,防摘/挂抖动
+    });
+    ro.observe(foot);
+    return () => ro.disconnect();
+  }, []);
   return (
-          <div className="composer-pills composer-pills-right">
+          <div className="composer-pills composer-pills-right" ref={rightRef}>
             {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存 */}
             <ContextRing
               used={ctxInfo?.total ?? 0}
