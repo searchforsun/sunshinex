@@ -302,5 +302,6 @@ export function shouldPumpOnIdleBeat(status: string, hasPendingApproval: boolean
   return status === 'idle' && !hasPendingApproval && !hasPendingQuestion && pending > 0;
 }
 
-/** /plan 规划轮内部任务标签：规划提示词与 runInternalTask label 共用（D10：防两处漂移） */
-export const PLAN_TASK_LABEL = 'Produce a numbered step plan';
+/** /plan 规划轮任务标签（D10：单源自 harness/plan-flow——规划提示词与宿主任务标签共用;此处 re-export 保持
+ *  既有导入面零改动,依赖方向 tui→harness 合法,harness 不得反向 import tui） */
+export { PLAN_TASK_LABEL } from '../harness/plan-flow';
