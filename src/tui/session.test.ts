@@ -75,7 +75,7 @@ test('会话控制器：manual 审批挂起可观测，resolveApproval 放行后
     // 不注入外部 asker：走键盘裁决路径，awaiting-approval 持续到 resolveApproval 回填（即时 asker 的挂起窗口微秒级，轮询不可观测）
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch s-ok.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',
@@ -287,7 +287,7 @@ test('会话控制器：命令词不在清单 → 当普通文本发布（G14.95
 test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；档位对后续任务生效', async () => {
   const tmp = tmpdir('sunshinex-sess-model-');
   try {
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const seen: Array<string | undefined> = [];
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
     const fake: KernelRuntime = {
@@ -321,7 +321,7 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
 test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 + modelId 落档），Esc 取消零变化；default 清除回主模型', async () => {
   const tmp = tmpdir('sunshinex-sess-modelsw-');
   try {
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
     const fake: KernelRuntime = {
       harness,
@@ -389,7 +389,7 @@ test('会话控制器：未配置 providers 时 /model 给配置指引（warn）
 test('会话控制器：/model-effort 八项单选即选即切，default 清除覆盖', async () => {
   const tmp = tmpdir('sunshinex-sess-effort-');
   try {
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const seenEfforts: Array<string | undefined> = [];
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
     const fake: KernelRuntime = {
@@ -433,7 +433,7 @@ test('会话控制器：/model-effort 八项单选即选即切，default 清除�
 test('会话控制器：装配级 tier 作为初始档位并下传任务', async () => {
   const tmp = tmpdir('sunshinex-sess-tier0-');
   try {
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const seen: Array<string | undefined> = [];
     const fake: KernelRuntime = {
       harness,
@@ -573,7 +573,7 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
   try {
     const harness = new Harness({
       root: tmp,
-      mode: 'dontAsk',
+      mode: 'full-access',
       model: {
         provider: 'openai',
         capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
@@ -698,7 +698,7 @@ test('会话控制器：turns/steps 会话累计——跨任务累加、done 帧
   try {
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'dontAsk',
+      mode: 'full-access',
       model: usageModel([
         { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务一：直答，零工具步
         { cache: 900, prompt: 1000, reply: '{"tool":"read","input":{"path":"b.txt"}}' }, // 任务二步 1：读工具

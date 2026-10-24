@@ -76,7 +76,7 @@ test('createRuntime：manual 模式 + onApproval 脚本应答 → 非白名单�
     let asked = 0;
     const rt = createKernelRuntime({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch tui-ok.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',
@@ -99,7 +99,7 @@ test('createRuntime：不传 onApproval 时 manual 保持阶段一拒绝语义�
   try {
     const rt = createKernelRuntime({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
     });
     const r = await rt.runTask('只说不做');

@@ -403,19 +403,19 @@ test('⑦ POST /session/:id/delete：未跑(无 journal) 404；running 409；未
   });
 });
 
-test('⑧ /session/new mode 白名单：白名单外值 400 {error:"invalid mode"}；manual/dontAsk/缺省 200', async () => {
+test('⑧ /session/new mode 白名单：白名单外值 400 {error:"invalid mode"}；acceptEdits/full-access/缺省 200', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const { base, tmp } = ctx;
     const root = path.join(tmp, 'root-mode');
     fs.mkdirSync(root, { recursive: true });
-    // 白名单外（undefined|dontAsk|manual 之外）→ 400 恒定文案
-    for (const mode of ['xxxx', 'auto', '', 42, null]) {
+    // 白名单外（undefined|full-access|acceptEdits 之外，含退役旧值）→ 400 恒定文案
+    for (const mode of ['xxxx', 'auto', '', 42, null, 'manual', 'dontAsk']) {
       const r = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, mode }) });
       assert.equal(r.status, 400, `mode=${JSON.stringify(mode)} 白名单外应 400`);
       assert.deepEqual(await r.json(), { error: 'invalid mode' }, `mode=${JSON.stringify(mode)} 恒定文案`);
     }
-    // 白名单内三形态照常 200（manual 透传 / dontAsk 显式 / 缺省）
-    for (const mode of ['manual', 'dontAsk', undefined]) {
+    // 白名单内三形态照常 200（acceptEdits 透传 / full-access 显式 / 缺省）
+    for (const mode of ['acceptEdits', 'full-access', undefined]) {
       const r = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: AUTH,

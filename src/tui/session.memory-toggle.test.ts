@@ -76,7 +76,7 @@ test('任务运行中拒绝 /memory-on|/memory-off（守卫覆盖开关命令）
   await withRoot(async (root) => {
     const ctrl = new SessionController({
       root,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch toggle-running.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',

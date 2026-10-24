@@ -177,7 +177,7 @@ test('/memory 运行中拒绝（/compact 同款守卫）', async () => {
   await withRoot(async (root) => {
     const ctrl = new SessionController({
       root,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch mem-ok.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',

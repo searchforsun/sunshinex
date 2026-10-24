@@ -9,11 +9,11 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter, UsageHooks } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
 
-/** G4 挂起面测试（daemon 级）：manual 会话的审批/问询闭环——WS approval/ask 帧 → HTTP 回执 → run 继续；
+/** G4 挂起面测试（daemon 级）：acceptEdits 会话的审批/问询闭环——WS approval/ask 帧 → HTTP 回执 → run 继续；
  *  interrupt deny 回填（表清 + 写被拒观察）；重连重发未决挂起（pid 同）；404 双路（未知/重复/kind 不符）；
  *  reset 通知帧。dontAsk 零行为变化由既有 daemon.test/ws.test/contract 套件覆盖（计划裁定：不重测）。
  *
- *  链路现场（实现核）：write 工具（canonical 'Write'）在 manual 下走 chain.evaluateAsync 的链侧 ask
+ *  链路现场（实现核）：write 工具（canonical 'Write'）在 acceptEdits 下走 chain.evaluateAsync 的链侧 ask
  *  （chain.ts:86-98——写越信任域 resolveSafe 回 ask → guard.resolveAsk → asker），故挂起触发的 write
  *  目标必须在会话 root 之外（root 内写属信任域直放，chain.ts:216）——用例以会话外 out 目录承接真文件。
  *  ask_question 经 onAskUser 接缝（guard 三模式放行，builtin ask seam 挂起）。 */
@@ -47,8 +47,8 @@ interface Ctx {
   ws: string;
   /** 会话 root（daemon 预选同一 tmp） */
   root: string;
-  /** 手工 manual 会话（daemon 级 API：/session/new 尚无 mode 面——计划裁定 2 的 CLI 预选同源形态） */
-  manual: () => string;
+  /** 手工 acceptEdits 会话（daemon 级 API：/session/new 尚无 mode 面——计划裁定 2 的 CLI 预选同源形态） */
+  acceptEdits: () => string;
   /** 按会话维提交：POST /session/:id/submit（202 断言内建） */
   post: (goal: string, sid: string) => Promise<void>;
   /** 鉴权头（JSON 面） */
@@ -58,7 +58,7 @@ interface Ctx {
 }
 
 /** 装配样板（环境隔离同 daemon.ws.test.ts）：SUNSHINEX_DATA_DIR 钉 tmp，token 固定 test-token，port 0；
- *  manual 会话经 daemon.createSession(root, {mode:'manual'}) 直构（HTTP 面未开 mode 时的 daemon 级契约）。
+ *  acceptEdits 会话经 daemon.createSession(root, {mode:'acceptEdits'}) 直构（HTTP 面未开 mode 时的 daemon 级契约）。
  *  model 经工厂注入——卡序里的写目标路径需会话外 out 目录，先建目录再装适配器 */
 async function withPendingDaemon(makeModel: (out: string) => ModelAdapter, fn: (ctx: Ctx) => Promise<void>): Promise<void> {
   const tmp = tmpdir('sunshinex-serve-pending-');
@@ -70,8 +70,8 @@ async function withPendingDaemon(makeModel: (out: string) => ModelAdapter, fn: (
     const s = await daemon.start({ port: 0, token: 'test-token' });
     const http = `http://127.0.0.1:${s.port}`;
     const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' } as Record<string, string>;
-    const manual = (): string => {
-      const r = daemon.createSession(tmp, { mode: 'manual' });
+    const acceptEdits = (): string => {
+      const r = daemon.createSession(tmp, { mode: 'acceptEdits' });
       if (!r.ok) throw new Error(`createSession failed: ${r.error.message}`);
       return r.value.sessionId;
     };
@@ -80,7 +80,7 @@ async function withPendingDaemon(makeModel: (out: string) => ModelAdapter, fn: (
       assert.equal(r.status, 202, 'submit 应 202');
     };
     try {
-      await fn({ daemon, http, ws: `ws://127.0.0.1:${s.port}`, root: tmp, manual, post, H, out });
+      await fn({ daemon, http, ws: `ws://127.0.0.1:${s.port}`, root: tmp, acceptEdits, post, H, out });
     } finally {
       await s.close();
     }
@@ -130,11 +130,11 @@ function askCard(question: string, labels: string[]): string {
   });
 }
 
-test('① 审批闭环：manual write 挂起 → WS approval 帧（req 字段）→ POST /approval/:pid allow → 写落盘 + done + notice', async () => {
+test('① 审批闭环：acceptEdits write 挂起 → WS approval 帧（req 字段）→ POST /approval/:pid allow → 写落盘 + done + notice', async () => {
   await withPendingDaemon(
     (out) => new ScriptedAdapter([writeCard(out, 'pending-approval.txt', 'hello-approval'), '{"done":true,"reply":"written"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       const { ws, frames } = await openCollecting(ctx.ws);
       try {
         await ctx.post('写个文件', sid);
@@ -167,11 +167,11 @@ test('① 审批闭环：manual write 挂起 → WS approval 帧（req 字段）
   );
 });
 
-test('② ask 闭环：manual ask_question 挂起 → WS ask 帧（req 字段）→ POST /ask/:pid/reply selected → done + notice', async () => {
+test('② ask 闭环：acceptEdits ask_question 挂起 → WS ask 帧（req 字段）→ POST /ask/:pid/reply selected → done + notice', async () => {
   await withPendingDaemon(
     () => new ScriptedAdapter([askCard('Pick one', ['x', 'y']), '{"done":true,"reply":"asked"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       const { ws, frames } = await openCollecting(ctx.ws);
       try {
         await ctx.post('问一下', sid);
@@ -204,7 +204,7 @@ test('③ interrupt deny 回填：挂起中中止 → approval 以 deny 回填�
   await withPendingDaemon(
     (out) => new ScriptedAdapter([writeCard(out, 'pending-interrupt.txt', 'nope'), '{"done":true,"reply":"never"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       const { ws, frames } = await openCollecting(ctx.ws);
       try {
         await ctx.post('写个文件然后被中止', sid);
@@ -231,7 +231,7 @@ test('④ 重连重发未决挂起：挂起中断连重连 → approval 帧再�
   await withPendingDaemon(
     (out) => new ScriptedAdapter([writeCard(out, 'pending-resend.txt', 'resend'), '{"done":true,"reply":"ok"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       const a = await openCollecting(ctx.ws);
       let pidA: string | undefined;
       try {
@@ -266,7 +266,7 @@ test('⑤ 回执 404/400 面：未知 pid 双端点 404；重复回执 404；kin
     (out) =>
       new ScriptedAdapter([writeCard(out, 'pending-404.txt', 'x'), askCard('Q', ['a', 'b']), '{"done":true,"reply":"done"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       // 未知 pid：两端点均 404
       const u1 = await fetch(`${ctx.http}/approval/nope`, { method: 'POST', headers: ctx.H, body: JSON.stringify({ decision: 'allow' }) });
       assert.equal(u1.status, 404, '未知 pid approval 回执 404');
@@ -309,7 +309,7 @@ test('⑥ reset 通知帧：POST /session/:id/reset 尾部广播 {kind:"reset", 
   await withPendingDaemon(
     () => new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       await ctx.post('跑一轮', sid);
       await waitIdle(ctx.http, ctx.H, sid);
       const { ws, frames } = await openCollecting(ctx.ws);
@@ -327,11 +327,11 @@ test('⑥ reset 通知帧：POST /session/:id/reset 尾部广播 {kind:"reset", 
   );
 });
 
-test('⑦ snapshot.pending 段:manual 挂起中含本会话 {pid,kind:"approval",req}(req 直序列化含 subject)→ 回执后空', { timeout: 30_000 }, async () => {
+test('⑦ snapshot.pending 段:acceptEdits 挂起中含本会话 {pid,kind:"approval",req}(req 直序列化含 subject)→ 回执后空', { timeout: 30_000 }, async () => {
   await withPendingDaemon(
     (out) => new ScriptedAdapter([writeCard(out, 'pending-snap.txt', 'snap'), '{"done":true,"reply":"ok"}']),
     async (ctx) => {
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       const { ws, frames } = await openCollecting(ctx.ws);
       try {
         await ctx.post('写个文件', sid);
@@ -352,8 +352,8 @@ test('⑦ snapshot.pending 段:manual 挂起中含本会话 {pid,kind:"approval"
         assert.equal(rows[0]!.req?.kind, 'write', 'req 直序列化(kind=链侧 ask 形态)');
         assert.ok(String(rows[0]!.req?.subject ?? '').includes('pending-snap.txt'), 'req 含 subject(写目标路径)');
         assert.equal(rows[0]!.req?.id, frames.find((f) => f.kind === 'approval')!.req?.id, 'req 与首播帧同源(entry.req 单点)');
-        // 跨会话过滤:另开 manual 会话(无挂起)——pid 全局铸造但段面按 sessionId 过滤
-        const other = ctx.manual();
+        // 跨会话过滤:另开 acceptEdits 会话(无挂起)——pid 全局铸造但段面按 sessionId 过滤
+        const other = ctx.acceptEdits();
         assert.deepEqual((await snapOf(other)).pending, [], '他会话 snapshot.pending 不串流(sessionId 过滤)');
         // 回执后:表清,段空
         const r = await fetch(`${ctx.http}/approval/${pid}`, { method: 'POST', headers: ctx.H, body: JSON.stringify({ decision: 'allow' }) });
@@ -406,7 +406,7 @@ test('⑧ ghost-pending 硬化：interrupt 后模型回包触发 write → asker
     },
     async (ctx) => {
       const gate = holder.gate!;
-      const sid = ctx.manual();
+      const sid = ctx.acceptEdits();
       const { ws, frames } = await openCollecting(ctx.ws);
       try {
         await ctx.post('写个文件然后被中止', sid);

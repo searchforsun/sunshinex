@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { parseArgs, flagList } from './index';
 
 test('parseArgs：--add-dir 可重复收集为数组，其余 flag 语义不变', () => {
-  const args = parseArgs(['run', '.', '--add-dir=/a', '--add-dir=/b', '--mode=manual', '--yes']);
+  const args = parseArgs(['run', '.', '--add-dir=/a', '--add-dir=/b', '--mode=acceptEdits', '--yes']);
   assert.deepEqual(flagList(args.flags, 'add-dir'), ['/a', '/b']);
-  assert.equal(args.flags.mode, 'manual');
+  assert.equal(args.flags.mode, 'acceptEdits');
   assert.equal(args.flags.yes, true);
 });
 

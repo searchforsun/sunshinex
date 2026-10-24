@@ -1,6 +1,7 @@
 import type { AskUserSeam } from '../types';
 import { Harness } from '../harness';
 import { buildHarness } from '../runtime';
+import type { PermissionMode } from '../harness/security/modes';
 import { setToolDisplayMeta } from '../tui/tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
@@ -14,8 +15,9 @@ export interface KernelRuntimeOpts {
   model?: ModelAdapter;
   /** 事件流旁路注入：TUI 渲染层经 SessionController 消费；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;
-  /** 权限模式（缺省 dontAsk）；manual 时配合 onApproval 走终端化审批 */
-  mode?: 'dontAsk' | 'manual' | 'plan';
+  /** 权限模式（缺省 full-access）；acceptEdits 时配合 onApproval 走终端化审批——内核档位恒三档，
+   *  'plan' 只存在于 serve SessionMode 层（流程标记），装配映射后传入（spec §3.2） */
+  mode?: PermissionMode;
   /** D3：CLI --add-dir 透传（与 settings permissions.additionalDirs 合并，三面同源） */
   addDirs?: string[];
   /** 用户级模型档位（run 级常量，对标 Claude Code 的模型选择）：/model-tier 会话内切换经 runTask 逐次覆盖 */
@@ -54,7 +56,7 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
   });
-  if (opts.mode === 'manual' && opts.onApproval) harness.security.setAsker(opts.onApproval);
+  if (opts.mode === 'acceptEdits' && opts.onApproval) harness.security.setAsker(opts.onApproval);
   // 工具呈现表接线（D26/J1）：注册表 display 元数据下泄 TUI 呈现层（工具动词/代表字段随注册走，
   // harness 增改工具零跟表）；display 为纯呈现数据，不进模型侧 tools schema（SessionController 构造前）
   setToolDisplayMeta(harness.tools.displayMeta());

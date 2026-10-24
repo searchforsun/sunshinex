@@ -41,7 +41,7 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
     const seen: string[] = [];
     const harness = new Harness({
       root: tmp,
-      mode: 'dontAsk',
+      mode: 'full-access',
       model: {
         provider: 'openai',
         capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）
@@ -89,7 +89,7 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
     const seen: string[] = [];
     const harness = new Harness({
       root: tmp,
-      mode: 'dontAsk',
+      mode: 'full-access',
       model: {
         provider: 'openai',
         capabilities: { chat: true }, // J2：真实模型夹具声明能力位（isModelSummarizer 门禁判据，字符串探针退役）

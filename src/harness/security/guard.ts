@@ -83,7 +83,7 @@ export class SecurityGuard {
     if (tool === 'task_stop') return { allowed: true };
     // task_wait：等待面回执读账本已登记的任务日志，零直接 IO 副作用，acceptEdits 下免审批对齐 task_stop 先例
     if (tool === 'task_wait') return { allowed: true };
-    return { allowed: false, ask: true, reason: 'COMMAND_DENIED: manual mode requires interactive confirmation' };
+    return { allowed: false, ask: true, reason: 'COMMAND_DENIED: acceptEdits mode requires interactive confirmation' };
   }
 
   private asker?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
@@ -173,7 +173,7 @@ export class SecurityGuard {
       id: this.nextApprovalId(),
       kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : tool === 'WebSearch' ? 'websearch' : 'write',
       subject,
-      reason: 'manual mode requires interactive confirmation',
+      reason: 'acceptEdits mode requires interactive confirmation',
     };
     let d: ApprovalDecision;
     try {

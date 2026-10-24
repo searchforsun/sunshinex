@@ -112,12 +112,12 @@ export async function runServe(args: CliArgs): Promise<void> {
   // active session 行；缺省无预选——空注册表启动，会话经 GUI 首页 / POST /session/new 创建。
   // 预选目录非法（不存在/非目录）fail-fast：用户显式给的路径必须成立，静默空跑更糟
   if (preselect !== undefined) {
-    // --manual（G4）：预选会话走 manual 权限模式（审批/问询经 WS 挂起帧 + HTTP 回执闭环）；
-    // 缺省 dontAsk 零行为变化。计划裁定 2：flag 只作用于预选会话——GUI 首页新建会话的 mode 面归后续任务。
-    // G5：--mode=manual 与 --manual 同义（解析后等价——mode 白名单 manual|plan|dontAsk 已由 CLI 单点
-    // 校验，此处只认 manual；plan/dontAsk 对 serve 预选会话无 manual 语义，维持 dontAsk 缺省）
-    const manual = args.flags.manual === true || args.flags.mode === 'manual';
-    const r = daemon.createSession(preselect, manual ? { mode: 'manual' } : undefined);
+    // --manual（G4）：预选会话走 acceptEdits 权限模式（审批/问询经 WS 挂起帧 + HTTP 回执闭环；manual→acceptEdits 正名,spec §3.2）；
+    // 缺省 full-access 零行为变化。计划裁定 2：flag 只作用于预选会话——GUI 首页新建会话的 mode 面归后续任务。
+    // G5：--mode=acceptEdits 与 --manual 同义（解析后等价——mode 白名单 read-only|acceptEdits|full-access 已由 CLI
+    // 单点校验，此处只认 acceptEdits；其余值对 serve 预选会话无 acceptEdits 语义，维持 full-access 缺省）
+    const acceptEdits = args.flags.manual === true || args.flags.mode === 'acceptEdits';
+    const r = daemon.createSession(preselect, acceptEdits ? { mode: 'acceptEdits' } : undefined);
     if (!r.ok) {
       console.error(t(`Invalid root: ${preselect} (${r.error.message})`, `非法的根目录：${preselect}（${r.error.message}）`));
       await daemon.close();

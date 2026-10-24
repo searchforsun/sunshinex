@@ -36,7 +36,7 @@ export { isShadowEvent } from '../session/kernel';
 /**
  * 会话运行时（G3 会话中心 T1）：从 daemon 单会话态整体平移的每会话单元——按会话 root 独立装配
  * `createRuntime`（独立泵/影子投影/转录/run 票据），daemon 只持注册表与全局面（seq 计数/WS 连接）。
- * 装配零旁路：与 TUI 同一 `createKernelRuntime` 单点（mode 缺省 dontAsk；P6 §4 挂起接缝无条件注入——
+ * 装配零旁路：与 TUI 同一 `createKernelRuntime` 单点（mode 缺省 full-access；P6 §4 挂起接缝无条件注入——
  * 审批/问询挂起表在会话,daemon 只注入 mintPid/broadcast 网络寻址两接缝）。
  */
 
@@ -118,9 +118,9 @@ export interface SessionRuntimeOpts {
   /** 泵广播面：帧经 daemon WS 层序列化后发全部连接（连接层按 sessionId 分发/过滤，T3）。
    *  P6 放宽至 DaemonFrame 全并集——事件帧与挂起帧同路（挂起帧由会话自己组帧广播） */
   broadcast: (frame: DaemonFrame) => void;
-  /** 权限模式（G4 manual 接线）：缺省 dontAsk（GUI v1 无终端交互面）；manual 时 guard asker 走
-   *  本会话挂起表（suspendApproval 内判定——P6 §4 下沉后装配接缝在 assemble() 无条件注入） */
-  mode?: 'dontAsk' | 'manual';
+  /** 权限模式（G4 manual 接线）：缺省 full-access（GUI v1 无终端交互面,沿原 dontAsk 地位正名）；acceptEdits 时
+   *  guard asker 走本会话挂起表（suspendApproval 内判定——P6 §4 下沉后装配接缝在 assemble() 无条件注入） */
+  mode?: SessionMode;
   /** 挂起 id 铸造接缝（P6 §4）：daemon 级单调 `p<n>`（跨会话全局唯一——回执端点寻址键），
    *  会话注册挂起时调用；铸造权留 daemon（网络寻址面职责，spec §4 裁定） */
   mintPid: () => string;
@@ -145,9 +145,10 @@ export interface SnapshotPendingRow {
   req: unknown;
 }
 
-/** 会话权限模式（G10-C1b）：dontAsk/manual 为 createRuntime 权限态；plan 为提交通道标记
- *  （计划模式提交经 command 通道走 planFlow,运行时权限态保持 dontAsk/manual 语义） */
-export type SessionMode = 'dontAsk' | 'manual' | 'plan';
+/** 会话模式（G10-C1b，spec §3.2）：read-only/acceptEdits/full-access 为权限档（=PermissionMode）；
+ *  plan 为**流程标记**（阶段三 plan-arm——armed 态提交经 planFlow 走规划流程,权限面恒三档,
+ *  装配映射 plan→acceptEdits,内核闲置于 acceptEdits） */
+export type SessionMode = 'read-only' | 'acceptEdits' | 'full-access' | 'plan';
 
 /** 运行中切换面(G10-C1b/C2b):tier/effort per-run 注入 runTask opts(与 TUI ctrl.state 同语义,下一轮生效) */
 export type SessionTier = ModelTier;
@@ -195,16 +196,16 @@ export class SessionRuntime {
     return this.kernel.count();
   }
 
-  /** 运行档外窥（G14.90）：daemon 挂起闭包按当前档判定——pill 切 manual 后新建会话无需重建注入面 */
-  isManual(): boolean {
-    return this.currentMode === 'manual';
+  /** 运行档外窥（G14.90）：daemon 挂起闭包按当前档判定——pill 切 acceptEdits 后新建会话无需重建注入面 */
+  isAcceptEdits(): boolean {
+    return this.currentMode === 'acceptEdits';
   }
 
   constructor(opts: SessionRuntimeOpts) {
     this.opts = opts;
     this.id = opts.id;
     this.root = opts.root;
-    this.currentMode = opts.mode ?? 'dontAsk';
+    this.currentMode = opts.mode ?? 'full-access';
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.runtimeImpl = this.assemble();
   }
@@ -278,14 +279,15 @@ export class SessionRuntime {
     this.kernel.steerRestore(items);
   }
 
-  /** 装配单点：与 TUI 同一 createKernelRuntime（mode 缺省 dontAsk）——onEvent 接本会话泵,reset 复用
-   *  同点换新。P6 §4 挂起接缝无条件注入（守卫在 suspend* 内）：manual 审批走本会话挂起表
-   *  （isManual 判定),ask_question 任意档挂起（G14.93 裁定）,ghost 窗（isAborted）直接回落不入表 */
+  /** 装配单点：与 TUI 同一 createKernelRuntime（mode 缺省 full-access）——onEvent 接本会话泵,reset 复用
+   *  同点换新。P6 §4 挂起接缝无条件注入（守卫在 suspend* 内）：acceptEdits 审批走本会话挂起表
+   *  （isAcceptEdits 判定),ask_question 任意档挂起（G14.93 裁定）,ghost 窗（isAborted）直接回落不入表 */
   private assemble(): KernelRuntime {
     const rt = createKernelRuntime({
       root: this.opts.root,
       model: this.opts.model,
-      mode: this.currentMode === 'plan' ? 'dontAsk' : this.currentMode,
+      // plan-arm 态内核闲置于 acceptEdits——替换旧 plan→dontAsk 假映射,内核档位恒三档（spec §3.2）
+      mode: this.currentMode === 'plan' ? 'acceptEdits' : this.currentMode,
       onEvent: (e) => this.pump(e),
       onApproval: (req) => this.suspendApproval(req),
       onAskUser: (req) => this.suspendAsk(req),
@@ -296,11 +298,11 @@ export class SessionRuntime {
 
   // ---- 挂起表（P6 §4 下沉）：注册/回执/回填/外窥,daemon 只做寻址与传输 ----
 
-  /** manual 审批挂起（guard asker 注入位）：dontAsk 自动放行语义由 guard 前置（不到这里）,到这里的
-   *  非 manual 视为拒绝兜底;ghost（run 已中止——interrupt/reset/delete 的 denyPending 回填发生在
+  /** acceptEdits 审批挂起（guard asker 注入位）：full-access 自动放行语义由 guard 前置（不到这里）,到这里的
+   *  非 acceptEdits 视为拒绝兜底;ghost（run 已中止——interrupt/reset/delete 的 denyPending 回填发生在
    *  abort 时点,其后的迟到 asker 调用即幽灵）直接 deny 不入表不广播（G14.10） */
   private suspendApproval(req: ApprovalRequest): Promise<ApprovalDecision> {
-    if (this.isAborted() || !this.isManual()) return Promise.resolve('deny');
+    if (this.isAborted() || !this.isAcceptEdits()) return Promise.resolve('deny');
     return new Promise((resolve) => {
       const pid = this.opts.mintPid();
       this.pending.set(pid, { kind: 'approval', req, resolve });
@@ -840,7 +842,7 @@ export class SessionRuntime {
     };
   }
 
-  /** run 中止态外窥（G5 ghost 硬化）：current 在场且 abort 信号已发——daemon 侧 manual asker 闭包
+  /** run 中止态外窥（G5 ghost 硬化）：current 在场且 abort 信号已发——daemon 侧 acceptEdits asker 闭包
    *  在注册挂起前查此位（interrupt/reset 已回填过旧表，abort 之后到达的 ask 是 ghost：无人再回填，
    *  直接 deny/dismissed 不入表不广播） */
   isAborted(): boolean {

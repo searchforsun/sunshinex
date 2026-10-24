@@ -4,7 +4,7 @@ import { parseArgs, resolveInvocation, assertValidFlagValues, usageText } from '
 import { setLanguage, parseLanguage } from '../i18n';
 
 test('flag 值校验：合法值四键全过、不抛', () => {
-  assert.doesNotThrow(() => assertValidFlagValues(resolveInvocation(parseArgs(['--mode=dontAsk', '--language=zh', '--tier=large', '--effort=high']))));
+  assert.doesNotThrow(() => assertValidFlagValues(resolveInvocation(parseArgs(['--mode=acceptEdits', '--language=zh', '--tier=large', '--effort=high']))));
   assert.doesNotThrow(() => assertValidFlagValues(parseArgs([])));
   assert.doesNotThrow(() => assertValidFlagValues(parseArgs(['--effort=MAX']))); // effort 大小写不敏感（沿 parseEffort 口径）
   assert.doesNotThrow(() => assertValidFlagValues(parseArgs(['--model=scripted', '--model=openai', '--model=stub']))); // J9a：--model 三白名单
@@ -12,7 +12,7 @@ test('flag 值校验：合法值四键全过、不抛', () => {
 
 test('flag 值校验：非法值 fail-fast 报错退出（含原值与 help 指引）', () => {
   for (const argv of [
-    ['--mode=dontask'], // 小写静默回落 manual 的历史坑点
+    ['--mode=dontask'], // 小写静默回落 acceptEdits 的历史坑点（改名前为 manual）
     ['--mode=auto'],
     ['--language=cn'],
     ['--model=typo'], // J9a：此前静默按 openai 装配，违背本函数 fail-fast 纪律
@@ -24,6 +24,19 @@ test('flag 值校验：非法值 fail-fast 报错退出（含原值与 help 指�
       (e: Error) => /Invalid flag value/.test(e.message) && /sunshinex help/.test(e.message),
       `${argv.join(' ')} 应 fail-fast`,
     );
+  }
+});
+
+test('--mode 旧值报 invalid 且附改名指引', () => {
+  for (const legacy of ['manual', 'dontAsk', 'plan']) {
+    assert.throws(
+      () => assertValidFlagValues({ command: '', flags: { mode: legacy }, positional: [] }),
+      /acceptEdits|read-only|full-access/,
+      `旧值 ${legacy} 应 fail-fast 并提示新档名`,
+    );
+  }
+  for (const cur of ['read-only', 'acceptEdits', 'full-access']) {
+    assert.doesNotThrow(() => assertValidFlagValues({ command: '', flags: { mode: cur }, positional: [] }));
   }
 });
 

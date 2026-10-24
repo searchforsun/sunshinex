@@ -131,8 +131,9 @@ export function usageText(): string {
                                           install skills into the global skills root (~/.sunshinex/skills)
   sunshinex kb-index [dir]                build the knowledge-base index for md/txt files (billed embedding; kb_search source)
   flags:
-  --mode=manual|plan|dontAsk              permission mode (default manual)
-  --manual / --mode=manual                serve, preselected session uses manual permission mode (approvals/asks via GUI)
+  --mode=read-only|acceptEdits|full-access
+                                          permission mode (default acceptEdits)
+  --manual / --mode=acceptEdits           serve, preselected session uses acceptEdits permission mode (approvals/asks via GUI)
   --language=en|zh                        UI language (default en)
   --version                               print CLI version and exit
   --model=openai|scripted|stub            model backend (default openai)
@@ -158,8 +159,9 @@ export function usageText(): string {
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   sunshinex kb-index [目录]               构建知识库索引（对目录内 md/txt 走计费 embedding；kb_search 检索源）
   flags：
-  --mode=manual|plan|dontAsk              权限模式（缺省 manual）
-  --manual / --mode=manual                serve，预选会话走 manual 权限模式（审批/问询经 GUI 挂起回执）
+  --mode=read-only|acceptEdits|full-access
+                                          权限模式（缺省 acceptEdits）
+  --manual / --mode=acceptEdits           serve，预选会话走 acceptEdits 权限模式（审批/问询经 GUI 挂起回执）
   --language=en|zh                        界面语言（缺省 en）
   --model=openai|scripted|stub            模型后端（缺省 openai）
   --tier=small|medium|large               模型档位（用户级，会话内恒定）
@@ -180,7 +182,8 @@ export function assertValidFlagValues(args: CliArgs): void {
   const invalid: string[] = [];
   const single = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
   const mode = single(args.flags.mode);
-  if (mode !== undefined && mode !== 'manual' && mode !== 'plan' && mode !== 'dontAsk') invalid.push(`--mode=${mode}`);
+  if (mode !== undefined && mode !== 'read-only' && mode !== 'acceptEdits' && mode !== 'full-access')
+    invalid.push(`--mode=${mode}(旧值 manual/dontAsk/plan 已退役:manual→acceptEdits、dontAsk→full-access、plan 已退为流程标记)`);
   const language = single(args.flags.language);
   if (language !== undefined && language !== 'en' && language !== 'zh') invalid.push(`--language=${language}`);
   // --model 白名单对齐 buildModel 消费面（runtime.ts：openai|scripted|stub，缺省 openai）——

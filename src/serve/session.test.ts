@@ -58,7 +58,7 @@ interface Ctx {
 }
 
 /** 装配样板（环境隔离同 daemon.test.ts）：SUNSHINEX_DATA_DIR 钉 tmp；nextSeq 本地计数器（daemon 级
- *  全局单调的注入面）；broadcast 收集帧。extra 透传 mode/asker/onAskUser（G4 manual 接线）。
+ *  全局单调的注入面）；broadcast 收集帧。extra 透传 mode/asker/onAskUser（G4 acceptEdits 接线）。
  *  finally 兜 teardown——断言失败也不留悬挂 run/事件循环 */
 async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>, extra?: Partial<SessionRuntimeOpts>): Promise<void> {
   const tmp = tmpdir('sunshinex-session-');
@@ -233,7 +233,7 @@ test('⑤ teardown 平移面：signal 无视的悬挂 run 有界收口（≤3s�
   }
 });
 
-test('⑥ 挂起表下沉（G4/P6 §4）：manual 会话 write 越信任域挂起 approval（帧+表+快照同源）→deny 回执写被拒;ask_question 挂起 ask→dismissed;dontAsk 写直放、ask 仍挂起（G14.93）', async () => {
+test('⑥ 挂起表下沉（G4/P6 §4）：acceptEdits 会话 write 越信任域挂起 approval（帧+表+快照同源）→deny 回执写被拒;ask_question 挂起 ask→dismissed;full-access 写直放、ask 仍挂起（G14.93）', async () => {
   // 写目标在会话 root 之外（chain.resolveSafe 写分支：信任域内直放——挂起链只在越域时触发，chain.ts 现场核）
   const out = tmpdir('sunshinex-session-manual-out-');
   const script = (): ScriptedAdapter =>
@@ -277,19 +277,19 @@ test('⑥ 挂起表下沉（G4/P6 §4）：manual 会话 write 越信任域挂�
         assert.ok(notices.some((n) => n.md.includes(`approval ${apRow.pid} resolved: deny`)), 'approval 回执 notice 入转录');
         assert.ok(notices.some((n) => n.md.includes(`ask ${askRow.pid} answered`)), 'ask 回执 notice 入转录');
       },
-      { mode: 'manual' },
+      { mode: 'acceptEdits' },
     );
-    // 对照组 dontAsk:写直放落盘(guard 自动放行前置,零 approval 帧/表);ask_question 仍挂起(G14.93 任意档)
+    // 对照组 full-access:写直放落盘(guard 自动放行前置,零 approval 帧/表);ask_question 仍挂起(G14.93 任意档)
     fs.rmSync(path.join(out, 'manual.txt'), { force: true });
     await withSession(script(), async (ctx) => {
       assert.deepEqual(ctx.session.submit('再写再问'), { ok: true });
       await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'ask'), 10_000);
-      assert.equal(ctx.frames.filter((f) => f.kind === 'approval').length, 0, 'dontAsk 零 approval(guard 前置放行)');
-      assert.equal(ctx.session.pendingSnapshot().filter((r) => r.kind === 'approval').length, 0, 'dontAsk 零 approval 表项');
+      assert.equal(ctx.frames.filter((f) => f.kind === 'approval').length, 0, 'full-access 零 approval(guard 前置放行)');
+      assert.equal(ctx.session.pendingSnapshot().filter((r) => r.kind === 'approval').length, 0, 'full-access 零 approval 表项');
       const row = ctx.session.pendingSnapshot().find((r) => r.kind === 'ask')!;
       assert.equal(ctx.session.resolvePendingAsk(row.pid, { type: 'dismissed' }), true);
       await waitFor(() => ctx.session.status() === 'idle', 10_000);
-      assert.equal(fs.existsSync(path.join(out, 'manual.txt')), true, 'dontAsk 写直放落盘');
+      assert.equal(fs.existsSync(path.join(out, 'manual.txt')), true, 'full-access 写直放落盘');
     });
   } finally {
     fs.rmSync(out, { recursive: true, force: true });

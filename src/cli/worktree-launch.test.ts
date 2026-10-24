@@ -173,7 +173,7 @@ test('T6-N1 旗标会话首帧事实行=树路径且整场恒定（规格 §12 �
       return replies[Math.min(i++, replies.length - 1)];
             }),
     };
-    const h = new Harness({ root, mode: 'dontAsk', model, learnSkills: false });
+    const h = new Harness({ root, mode: 'full-access', model, learnSkills: false });
     return h.reactor.run({ goal: 'g' }, { maxSteps: 4 }).then((r) => {
       assert.equal(r.done, true);
       assert.equal(prompts.length, 2, `帧数应为 read/done=2：${prompts.length}`);

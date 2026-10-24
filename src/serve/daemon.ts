@@ -7,6 +7,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ModelAdapter, parseEffort } from '../model/adapter';
+import { resolveModeAlias } from '../harness/security/modes';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime, isShadowEvent } from './session';
@@ -198,8 +199,8 @@ export class GuiDaemon {
    * root——落档供 GET /workspaces 读回真 root；历史工作区无此档降级 slug-only）。落档尽力而为：
    * 数据面不可写（只读 projects 根）不挡会话创建，/workspaces 对该工作区降级 slug-only 行。Result
    * 面：daemon 级 API（serve --root 预选/后续工作区注册表消费），HTTP 面映射 400/200。
-   * G4：opts.mode='manual' 时向会话注入审批/问询两闭包——resolve 挂在 daemon 挂起表条目上 + 广播
-   *  挂起帧（WS 消费面回执 POST /approval/:pid / /ask/:pid/reply）；缺省 dontAsk 零行为变化。
+   * G4：opts.mode='acceptEdits' 时向会话注入审批/问询两闭包——resolve 挂在 daemon 挂起表条目上 + 广播
+   *  挂起帧（WS 消费面回执 POST /approval/:pid / /ask/:pid/reply）；缺省 full-access 零行为变化（沿原 dontAsk 地位正名,spec §3.2）。
    * T2：出生即挂新 SessionJournal（`new SessionJournal(dataDir)` 惰性建档——首 run 首条 chain append
    *  才落盘建新档，档 id 同源 newSessionId()；空会话零文件，TUI 惰性先例同构）——首 run 起链持久，
    *  后续 /sessions 列档与 attach 重开（chain 派生转录）可消费。
@@ -224,7 +225,7 @@ export class GuiDaemon {
     }
   }
 
-  createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }> {
+  createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
     const abs = root === 'default' ? this.defaultScratchRoot() : path.resolve(root);
     let st: fs.Stats;
     try {
@@ -255,7 +256,7 @@ export class GuiDaemon {
         return this.seqCounter;
       },
       broadcast: (frame) => this.broadcastFrame(frame),
-      ...(opts?.mode === 'manual' ? { mode: 'manual' as const } : {}),
+      ...(opts?.mode !== undefined ? { mode: opts.mode } : {}),
       mintPid: () => {
         this.pendingSeq += 1;
         return `p${this.pendingSeq}`;
@@ -310,7 +311,13 @@ export class GuiDaemon {
     const selMeta = readSessionMeta(dataDir, journalId);
     if (selMeta.effort !== undefined) session.setEffort(selMeta.effort);
     if (selMeta.model !== undefined) session.setModel(selMeta.model);
-    if (selMeta.mode === 'dontAsk' || selMeta.mode === 'manual' || selMeta.mode === 'plan') session.setMode(selMeta.mode);
+    if (selMeta.mode !== undefined) {
+      // 旧档/别名→现档单点(resolveModeAlias,spec §3.3):manual→acceptEdits、dontAsk→full-access、
+      // 旧 plan 档安全落 acceptEdits(绝不落全自动)、现值透传;未知值 undefined=回落缺省档+warn
+      const aliased = resolveModeAlias(selMeta.mode);
+      if (aliased !== undefined) session.setMode(aliased);
+      else console.warn(`[serve] unknown session mode in meta: ${String(selMeta.mode)} — falling back to default`);
+    }
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
     session.attachJournal(journal);
@@ -892,8 +899,8 @@ export class GuiDaemon {
   }
 
   /** POST /session/new {root, mode?}（spec §4.1）：root 必填（无 root 400+迁移提示——旧裸软重置语义让位
-   *  /session/:id/reset）；可选 mode:'manual' 透传 createSession（G4 补面：HTTP 建 manual 会话——CLI
-   *  --manual 只作用预选会话,无此面 e2e/客户端无法经 HTTP 装配 manual;其余值含缺省 = dontAsk 零变化）；
+   *  /session/:id/reset）；可选 mode:'acceptEdits' 透传 createSession（G4 补面：HTTP 建 acceptEdits 会话——CLI
+   *  --manual 只作用预选会话,无此面 e2e/客户端无法经 HTTP 装配 acceptEdits;其余值含缺省 = full-access 零变化）；
    *  createSession 单点（存在性/目录校验 INVALID_ARG → 400）→ 200 {ok,sessionId} */
 
   /** submit 处理（会话维 + 裸别名共用）：goal 非空 string 校验 → 会话 run 锁（409 拒二次提交）→

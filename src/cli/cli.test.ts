@@ -6,10 +6,10 @@ test('parseArgs：无参数回退空命令（裸命令 sunshinex 由 resolveInvo
   assert.equal(parseArgs([]).command, '');
 });
 
-test('parseArgs：裸命令带 flag 直进 TUI（sunshinex --mode=manual 形态）', () => {
-  const a = resolveInvocation(parseArgs(['--mode=manual']));
+test('parseArgs：裸命令带 flag 直进 TUI（sunshinex --mode=acceptEdits 形态）', () => {
+  const a = resolveInvocation(parseArgs(['--mode=acceptEdits']));
   assert.equal(a.command, 'tui');
-  assert.equal(a.flags.mode, 'manual');
+  assert.equal(a.flags.mode, 'acceptEdits');
   assert.deepEqual(a.positional, []);
 });
 
@@ -28,11 +28,11 @@ test('parseArgs：positional 与布尔 flag', () => {
 });
 
 test('parseArgs：--flag=value 与裸 positional 混排', () => {
-  const a = parseArgs(['run', './demo-project', '--goal', 'g', '--mode', 'dontAsk']);
+  const a = parseArgs(['run', './demo-project', '--goal', 'g', '--mode', 'acceptEdits']);
   assert.equal(a.command, 'run');
   assert.deepEqual(a.positional, ['./demo-project']);
   assert.equal(a.flags.goal, 'g');
-  assert.equal(a.flags.mode, 'dontAsk');
+  assert.equal(a.flags.mode, 'acceptEdits');
 });
 
 test('resolveInvocation：裸命令归一为 tui（当前工作区）', () => {

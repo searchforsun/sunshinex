@@ -72,7 +72,7 @@ export async function runTui(args: CliArgs): Promise<void> {
   // 入口一（规格 §7/D5）：--worktree 装配前解析（fail-fast 于建树失败/互斥冲突），root 替换后走既有装配链
   const launchRoot = resolveWorktreeLaunchRoot(args, root);
   const modeFlag = typeof args.flags.mode === 'string' ? args.flags.mode : undefined;
-  const mode = modeFlag === 'dontAsk' || modeFlag === 'plan' ? modeFlag : 'manual';
+  const mode = modeFlag === 'read-only' || modeFlag === 'acceptEdits' || modeFlag === 'full-access' ? modeFlag : 'acceptEdits';
   // 多源多模型装配（settings providers 键 → /model 选择卡数据面）：切换器在场即为主模型适配器，
   // /model 换内芯即时贯通 reactor/子智能体/压缩；warnings 经 stderr 双语透出（外观通道，库内零打印）
   const providers = loadProviders(launchRoot);

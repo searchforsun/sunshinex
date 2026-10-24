@@ -84,7 +84,7 @@ test('App 键提示条：审批卡在场条退场（卡 hint 承载不双显）'
   try {
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter(['{"tool":"exec","input":{"command":"touch approval-probe.txt"},"done":false}', '{"done":true,"reply":"ok"}']),
     });
     const p = ctrl.submit('go');

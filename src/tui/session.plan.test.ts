@@ -107,7 +107,7 @@ test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () 
   try {
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch p.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',

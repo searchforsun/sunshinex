@@ -35,7 +35,7 @@ function tmpdir(prefix: string): string {
 test('会话层：未完成终止必须上屏（R3）', async () => {
   const tmp = tmpdir('sunshinex-inc-');
   try {
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const ctrl = new SessionController({
       root: tmp,
       runtime: fakeRuntime(harness, { done: false, tokensUsed: 0, stopReason: 'deadline' }),
@@ -53,7 +53,7 @@ test('会话层：未完成终止必须上屏（R3）', async () => {
 test('会话层：完成后不追加未完成提示', async () => {
   const tmp = tmpdir('sunshinex-inc2-');
   try {
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const ctrl = new SessionController({
       root: tmp,
       runtime: fakeRuntime(harness, { done: true, reply: '好了', tokensUsed: 3, stopReason: 'done' }),
@@ -72,7 +72,7 @@ test('会话层：规划项未完成不得报成功（runPlanItems）', async ()
   try {
     // 规划轮由假 runtime 按 goal 分流兑现（回编号步骤计划，见 fakeRuntime）；
     // 仅计划项执行回未完成 outcome——本用例断言的是后者不得被报成功
-    const harness = new Harness({ root: tmp, mode: 'dontAsk' });
+    const harness = new Harness({ root: tmp, mode: 'full-access' });
     const ctrl = new SessionController({
       root: tmp,
       runtime: fakeRuntime(harness, { done: false, tokensUsed: 0, stopReason: 'budget' }),

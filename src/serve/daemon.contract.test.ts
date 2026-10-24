@@ -368,3 +368,26 @@ test('⑥ 静态挂载：GET / 回 index.html（html mime）、/app.js 回 js mi
     assert.deepEqual(await nf.json(), { error: 'not found', hint: GUI_HINT }, '无静态产物时 404 hint 原样');
   });
 });
+
+test('⑦ POST /session/:id/mode 契约（spec §3.2）：新四值合法 200、旧值 400', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const postMode = async (m: string): Promise<Response> =>
+      fetch(`${ctx.http}/session/${ctx.sid}/mode`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: m }),
+      });
+    // 新四值（三权限档 + plan 流程标记）逐一合法
+    for (const m of ['read-only', 'acceptEdits', 'full-access', 'plan']) {
+      const r = await postMode(m);
+      assert.equal(r.status, 200, `mode=${m} 新值应 200`);
+      assert.deepEqual(await r.json(), { ok: true, mode: m }, `mode=${m} 回显请求值`);
+    }
+    // 旧档名退役：fail-fast 400（manual→acceptEdits、dontAsk→full-access 已改名，不再静默收留）
+    for (const legacy of ['manual', 'dontAsk']) {
+      const r = await postMode(legacy);
+      assert.equal(r.status, 400, `mode=${legacy} 旧值应 400`);
+      assert.deepEqual(await r.json(), { error: 'invalid mode' }, `mode=${legacy} 恒定文案`);
+    }
+  });
+});

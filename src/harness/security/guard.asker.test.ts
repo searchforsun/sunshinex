@@ -44,7 +44,7 @@ test('asker：只读白名单不询问；无 asker 维持拒绝；asker 异常�
   const g2 = manualGuard();
   const d1 = await g2.preToolUseAsync('Bash', { command: 'touch x.txt' });
   assert.equal(d1.allowed, false, '无 asker 维持阶段一拒绝');
-  if (!d1.allowed) assert.match(d1.reason, /manual mode requires interactive confirmation/);
+  if (!d1.allowed) assert.match(d1.reason, /acceptEdits mode requires interactive confirmation/);
 
   const g3 = manualGuard();
   g3.setAsker(async () => {

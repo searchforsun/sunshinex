@@ -54,7 +54,7 @@ export interface HarnessOptions {
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
   root?: string;
   model?: ModelAdapter;
-  /** 权限模式，默认 dontAsk：不询问、自动批准未 deny 的操作（最大权限，供测试/受信场景） */
+  /** 权限模式，默认 full-access（原 dontAsk,2026-10-24 档改名）：不询问、自动批准未 deny 的操作（最大权限，供测试/受信场景） */
   mode?: PermissionMode;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;

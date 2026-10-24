@@ -132,7 +132,8 @@ export interface CliRunDeps extends LoopDeps {
 
 export function buildDeps(root: string, flags: Record<string, string | boolean | string[]>, addDirs?: string[]): CliRunDeps {
   // 共享装配单点（D27）：Harness 构造经 buildHarness（root/kb 共用面收编其内）；CLI 差异面 =
-  // 恒 dontAsk + CLI 问询接缝（TTY 编号输入/非 TTY dismissed）；模型不进 Harness（只进下方 deps.model）
+  // 恒 full-access（原 dontAsk,2026-10-24 档改名,语义不变——非交互面自动放行,deny 规则与破坏性底线保留）
+  // + CLI 问询接缝（TTY 编号输入/非 TTY dismissed）；模型不进 Harness（只进下方 deps.model）
   // O3 观测面：问询接缝计数包装——ask_question 被调即 +1（dismissed 也计,「模型主动想问人」的干预需求口径）
   let seamAsks = 0;
   const baseAsk = createCliAskSeam();

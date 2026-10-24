@@ -38,7 +38,7 @@ export interface SessionHandlerIo {
   broadcastFrame(frame: DaemonFrame): void;
   model: ModelAdapter;
   attach(id: string, journalId: string): Result<{ sessionId: string }>;
-  createSession(root: string, opts?: { mode?: 'dontAsk' | 'manual' }): Result<{ sessionId: string }>;
+  createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }>;
   defaultScratchRoot(): string;
   /** 挂起回执路由（P6 §4：表在会话）——daemon 迭代会话表寻址,命中 false 即 404 */
   resolveApproval(pid: string, decision: 'allow' | 'always' | 'deny'): boolean;
@@ -363,12 +363,12 @@ export async function handleSessionModel(io: SessionHandlerIo, req: http.Incomin
 }
 
 
-/** POST /session/:id/mode {mode}(G10-C1b):dontAsk/manual/plan;运行中 409 busy */
+/** POST /session/:id/mode {mode}(G10-C1b,spec §3.2):read-only/acceptEdits/full-access 三权限档+plan 流程标记(阶段三 plan-arm);运行中 409 busy */
 export async function handleSessionMode(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
   const mode = (parsed.body as { mode?: unknown }).mode;
-  if (mode !== 'dontAsk' && mode !== 'manual' && mode !== 'plan') return io.send(res, 400, { error: 'invalid mode' });
+  if (mode !== 'read-only' && mode !== 'acceptEdits' && mode !== 'full-access' && mode !== 'plan') return io.send(res, 400, { error: 'invalid mode' });
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
   if (session.setMode(mode) === 'busy') return io.send(res, 409, { error: 'session is running' });
@@ -450,13 +450,13 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     }
   }
   const mode = (parsed.body as { mode?: unknown } | null)?.mode;
-  // G5 白名单收紧：undefined|'dontAsk'|'manual' 之外一律 400 恒定文案（此前静默按 dontAsk 装配——
-  //  传 mode:'auto' 的客户端拿到的是 dontAsk 会话，审批行为与预期不符且无提示）
-  if (mode !== undefined && mode !== 'manual' && mode !== 'dontAsk') {
+  // G5 白名单收紧：undefined|'full-access'|'acceptEdits' 之外一律 400 恒定文案（此前静默按 full-access 装配——
+  //  传 mode:'auto' 的客户端拿到的是 full-access 会话，审批行为与预期不符且无提示；旧值 manual/dontAsk 随全链改名退役）
+  if (mode !== undefined && mode !== 'acceptEdits' && mode !== 'full-access') {
     io.send(res, 400, { error: 'invalid mode' });
     return;
   }
-  const r = io.createSession(root, mode === 'manual' ? { mode: 'manual' } : undefined);
+  const r = io.createSession(root, mode === 'acceptEdits' ? { mode: 'acceptEdits' } : undefined);
   if (!r.ok) {
     io.send(res, 400, { error: r.error.message });
     return;

@@ -32,7 +32,7 @@ test('App：manual 审批流终态渲染（消息流/工具卡/助手答复/状�
   try {
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"write","input":{"path":"a.txt","content":"hi"},"done":false}',
         '{"done":true,"reply":"ok"}',
@@ -108,7 +108,7 @@ test('App：键盘 y 在审批卡上裁决放行（write 真实落盘）', async
     // 非只读 Bash 命令（mkdir）触发，按键裁决交互零变化
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"mkdir kb-dir"},"done":false}',
         '{"done":true,"reply":"kb-ok"}',
@@ -140,7 +140,7 @@ test('App：manual 档 root 内写自动落盘（键盘提交、无审批卡，�
   try {
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"write","input":{"path":"auto.txt","content":"auto"},"done":false}',
         '{"done":true,"reply":"auto-ok"}',

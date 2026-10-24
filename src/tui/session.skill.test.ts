@@ -162,7 +162,7 @@ test('/skill：空清单回执不弹卡；运行中拒绝；带参形态无法�
     writeSkill(root, 'greet', 'Greet', 'Say hello');
     const guarded = new SessionController({
       root,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter(['{"tool":"exec","input":{"command":"mkdir run-guard"},"done":false}', '{"done":true,"reply":"ok"}']),
     });
     const task = guarded.submit('跑个命令');

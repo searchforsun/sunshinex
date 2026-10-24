@@ -54,11 +54,13 @@ test('model 切换:switchTo 透传 + snapshot 回显;unknown id false 不动现�
   assert.equal(s.snapshotResponse().model, undefined);
 });
 
-test('mode 切换:idle 下三态循环回显;snapshot.mode 随之', () => {
+test('mode 切换:idle 下四值循环回显;snapshot.mode 随之(缺省 full-access=原 dontAsk 地位)', () => {
   const s = makeSession();
-  assert.equal(s.snapshotResponse().mode, 'dontAsk');
-  assert.equal(s.setMode('manual'), 'ok');
-  assert.equal(s.snapshotResponse().mode, 'manual');
+  assert.equal(s.snapshotResponse().mode, 'full-access');
+  assert.equal(s.setMode('read-only'), 'ok');
+  assert.equal(s.snapshotResponse().mode, 'read-only');
+  assert.equal(s.setMode('acceptEdits'), 'ok');
+  assert.equal(s.snapshotResponse().mode, 'acceptEdits');
   assert.equal(s.setMode('plan'), 'ok');
   assert.equal(s.snapshotResponse().mode, 'plan');
   assert.equal(s.setMode('plan'), 'ok'); // 幂等

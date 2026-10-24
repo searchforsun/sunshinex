@@ -207,7 +207,7 @@ test('attach 回放选择面:运行中 setMode/setEffort 落 meta,新 daemon 重
     resp = await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: 'run' }) });
     assert.equal(resp.status, 202);
     await waitFor(() => daemonA.get(sessionId)!.status() === 'idle', 20_000);
-    resp = await fetch(`${base}/session/${sessionId}/mode`, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'manual' }) });
+    resp = await fetch(`${base}/session/${sessionId}/mode`, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'acceptEdits' }) });
     assert.equal(resp.status, 200);
     resp = await fetch(`${base}/session/${sessionId}/effort`, { method: 'POST', headers: AUTH, body: JSON.stringify({ effort: 'high' }) });
     assert.equal(resp.status, 200);
@@ -227,7 +227,7 @@ test('attach 回放选择面:运行中 setMode/setEffort 落 meta,新 daemon 重
     // 选择面归位:snapshot.mode=manual + effort=high——重启不再回落缺省(审计缺口闭合)
     resp = await fetch(`${base}/session/${sid2}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
     const snap = (await resp.json()) as { mode?: string; effort?: string };
-    assert.equal(snap.mode, 'manual', 'mode 回放');
+    assert.equal(snap.mode, 'acceptEdits', 'mode 回放');
     assert.equal(snap.effort, 'high', 'effort 回放');
     await handle.close();
   } finally {

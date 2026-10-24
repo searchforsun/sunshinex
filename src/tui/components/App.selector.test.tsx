@@ -36,7 +36,7 @@ test('App：审批卡选择器——↓+Enter=本会话放行（always），同�
     // 非只读 Bash 命令（mkdir）触发；写落盘经第二个 Bash 任务承载
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"mkdir sub"},"done":false}',
         '{"done":true,"reply":"first ok"}',
@@ -69,7 +69,7 @@ test('App：审批卡 y/a/n 单键快捷并存——y 即放行一次（回归�
     // 行为变更①：write 已不弹审批卡——单键快捷机制改用非只读 Bash 命令（mkdir）触发
     const ctrl = new SessionController({
       root: tmp,
-      mode: 'manual',
+      mode: 'acceptEdits',
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"mkdir q-dir"},"done":false}',
         '{"done":true,"reply":"ok"}',

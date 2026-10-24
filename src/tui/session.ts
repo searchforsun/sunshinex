@@ -413,7 +413,7 @@ export class SessionController {
     });
     this.autoAsker = opts.asker;
     // 终端化审批闭包迁拆分件 approval（挂起语义不变：guard ask → 挂起 → 裁决回填 → 继续）
-    if (opts.mode === 'manual') this.runtime.harness.security.setAsker(suspendAskerFor(this));
+    if (opts.mode === 'acceptEdits') this.runtime.harness.security.setAsker(suspendAskerFor(this));
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
     if (opts.tier) this.state = { ...this.state, tier: opts.tier };
     if (opts.effort) this.state = { ...this.state, effort: opts.effort };

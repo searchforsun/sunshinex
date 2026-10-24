@@ -12,8 +12,8 @@ const CANONICAL_TOOL_NAMES: Record<string, string> = {
   glob: 'Glob',
   webfetch: 'WebFetch',
   websearch: 'WebSearch',
-  skill: 'Read', // 技能正文加载=只读读取技能文件，归 Read 族（plan 可读、manual 免审批）
-  // 记忆写入与 Write 同族（规格 §3.7）：manual 走审批（无 asker 拒绝）、dontAsk 放行、plan 只读闸门拒绝；
+  skill: 'Read', // 技能正文加载=只读读取技能文件，归 Read 族（read-only 可读、acceptEdits 免审批）
+  // 记忆写入与 Write 同族（规格 §3.7）：acceptEdits 走审批（无 asker 拒绝）、full-access 放行、read-only 只读闸门拒绝；
   // 不新增安全族——写窄口/审批/plan 语义全部沿用既有一份实现
   memory_write: 'Write',
 };

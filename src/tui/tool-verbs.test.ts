@@ -17,7 +17,7 @@ import type { TaskRegistry } from '../harness/tasks';
 // J1 装配期接线（同产线 createRuntime 形态）：真实注册表 displayMeta → TUI 呈现表。既有断言值即
 // 迁移前旧 VERBS/TARGET_FIELD 表值——本接线即「值随注册下泄、呈现零跟表」的特征化对照
 function wireProductionMeta(): void {
-  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'dontAsk'), new ProcessSandbox(), process.cwd());
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), process.cwd());
   const registry = new ToolRegistry();
   const stubMemoryWrite = () => ({ ok: true as const, value: { slug: 'stub-slug', existed: false, notice: null } });
   const stubAsk = async () => ({ type: 'dismissed' as const });
