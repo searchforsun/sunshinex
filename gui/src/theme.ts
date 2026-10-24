@@ -3,6 +3,8 @@
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
+import { notifyUiPref } from './ui-pref-sync';
+
 const KEY = 'sunshinex.theme';
 
 export function readThemePref(): ThemePref {
@@ -21,6 +23,7 @@ function systemDark(): boolean {
 }
 
 export function applyTheme(pref: ThemePref): void {
+  notifyUiPref('theme', pref);
   const dark = pref === 'dark' || (pref === 'system' && systemDark());
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   try {

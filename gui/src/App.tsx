@@ -21,7 +21,9 @@ import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { chatMaxFor, MAIN_MIN_WIDTH } from './thread-width';
-import { zoomScale } from './ui-zoom';
+import { zoomScale, applyZoom, type UiZoom } from './ui-zoom';
+import { applyTheme, type ThemePref } from './theme';
+import { initUiPrefSync } from './ui-pref-sync';
 import { useMenuResize } from './use-menu-resize';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
 
@@ -194,6 +196,16 @@ function AppShell(): JSX.Element {
       },
       () => {},
     );
+  }, [connInstance]);
+
+  /** 公共持久化偏好上收(2026-10-24 用户裁定「能放到公共持久化的务必放」):连接就绪即拉
+   *  /app/gui-state 公共档覆盖本地(ui-zoom/theme),此后变更经 notifyUiPref 去抖双写 */
+  useEffect(() => {
+    if (connInstance === null) return;
+    initUiPrefSync(connInstance, {
+      zoom: (v) => applyZoom(v as UiZoom),
+      theme: (v) => applyTheme(v as ThemePref),
+    });
   }, [connInstance]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);

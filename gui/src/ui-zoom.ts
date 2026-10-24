@@ -12,6 +12,8 @@
  */
 export type UiZoom = '0.9' | '1' | '1.1' | '1.25' | '1.5';
 
+import { notifyUiPref } from './ui-pref-sync';
+
 const KEY = 'sunshinex.ui-zoom';
 const VALID: readonly string[] = ['0.9', '1', '1.1', '1.25', '1.5'];
 
@@ -35,6 +37,8 @@ export function applyZoom(pref: UiZoom): void {
   } catch {
     /* 隐私模式等持久化失败:仅内存态生效,不阻断 */
   }
+  // 公共持久化上收(2026-10-24 用户裁定):偏好变更双写 /app/gui-state(公共档权威,跨端共用)
+  notifyUiPref('uiZoom', pref);
   // 画布面(xterm/monaco)重排通知:zoom 变更改变布局尺寸,容器尺寸观测面即刻重算
   window.dispatchEvent(new Event('resize'));
 }
