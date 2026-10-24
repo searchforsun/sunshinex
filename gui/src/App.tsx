@@ -522,17 +522,17 @@ function AppShell(): JSX.Element {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  /** 浮窗抽屉切换(2026-10-24 用户裁定):视口宽(视觉/zoom 归一)窄于 1000 时,右栏从占布局
-   *  宽度的分栏抽屉切为悬浮抽屉(position:fixed 右满高,盖在正文上,z 低于窗控簇)。宽度过阈值自动还原分栏 */
-  const sidebarFloating = viewportW / zoomScale() < 1000;
-  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320);浮窗态=覆盖层,主栏仍保标准最小宽
-   *  (2026-10-24 用户实测「浮窗下主/辅 composer 双双变窄」:抽屉拖宽曾只留 24px,主 dock 被
-   *  右侧 inset 挤到 0),抽屉下限 MIN_TAB_WIDTH=296(=320−24,极窄窗抽屉保底可用主栏让位)。
-   *  视觉/本地换算 /zoomScale() 契约同前 */
+  /** 浮窗抽屉切换(2026-10-24 二轮裁定):三栏全部触底才浮——视口(本地/zoom)窄于菜单最小 240
+   *  +主栏最小 320+抽屉最小 296=856 时右栏转悬浮抽屉(fixed 右满高盖正文,z 低于窗控簇),
+   *  否则恒分栏。压缩顺序(用户裁定):右缘起=侧栏→主栏→菜单→浮窗;左缘反向;展开只吃主栏宽 */
+  const sidebarFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
+  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320);浮窗态=纯覆盖层,**不挤占主栏/composer**
+   *  (2026-10-24 用户裁定「抽屉是上浮的,为什么占输入框宽度」——dock 不让位,抽屉盖在上面),
+   *  上界只留 24px 边距,下限 MIN_TAB_WIDTH=296。视觉/本地换算 /zoomScale() 契约同前 */
   const sidebarRenderW = Math.min(
     tabState.width,
     sidebarFloating
-      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH)
+      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuWidth - 24)
       : Math.max(0, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
@@ -550,9 +550,10 @@ function AppShell(): JSX.Element {
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    // 拖拽上界随态:分栏/浮窗都预留主栏最小宽(浮窗=覆盖层但主 dock 仍保可用宽,渲染钳制同式);
+    // 拖拽上界随态:分栏预留主栏最小宽;浮窗=覆盖层只留 24px 边距(不挤 composer,见 sidebarRenderW);
     // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)
-    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - MAIN_MIN_WIDTH;
+    const floating = sidebarFloating;
+    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - (floating ? 24 : MAIN_MIN_WIDTH);
     const startWidth = Math.min(tabState.width, cap());
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
@@ -609,10 +610,6 @@ function AppShell(): JSX.Element {
       style={{
         '--menu-w': `${menuWidth}px`,
         '--sidebar-w': `${sidebarOccupied}px`,
-        // 浮窗态:dock 在可见区(扣浮窗宽)内居中,两侧边距恒等(2026-10-24 用户裁定)。
-        // 折叠态必须零补偿:抽屉未渲染而恒取渲染宽,dock 会对着不存在的抽屉左漂半个身位
-        // 进菜单底下(2026-10-24 用户实测「输入框跑到左侧菜单里面」根因)
-        '--sidebar-float-w': `${sidebarFloating && !tabState.collapsed ? sidebarRenderW : 0}px`,
       } as CSSProperties}
     >
       {settingsOpen && connInstance !== null ? (
