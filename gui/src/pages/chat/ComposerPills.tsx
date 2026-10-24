@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, ListTodo, ShieldCheck, Square, Unlock } from 'lucide-react';
+import { ArrowUp, ChevronDown, Eye, ListTodo, ShieldCheck, Square, Unlock } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import { ContextRing } from '../../context-ring';
@@ -16,14 +16,27 @@ import { ModeIcon } from '../Chat';
 interface PillsLeftProps {
   readonly pillOpen: 'mode' | 'model' | 'plus' | null;
   readonly setPillOpen: Dispatch<SetStateAction<'mode' | 'model' | 'plus' | null>>;
-  readonly sessMode: 'dontAsk' | 'manual' | 'plan';
-  readonly setSessMode: Dispatch<SetStateAction<'dontAsk' | 'manual' | 'plan'>>;
+  readonly sessMode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan';
+  readonly setSessMode: Dispatch<SetStateAction<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>>;
   readonly conn: Connection;
   readonly sessionId: string;
 }
 
+/** 权限菜单行形(spec §3.4 四项两段):separator 行渲染 mode-pop-sep 分组线;disabled 行置灰不可选 */
+type ModeMenuRow = { separator: true } | { m: 'plan' | 'read-only' | 'acceptEdits' | 'full-access'; label: string; desc: string; icon: JSX.Element; disabled?: boolean };
+
 export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
   const { pillOpen, setPillOpen, sessMode, setSessMode, conn, sessionId } = props;
+  // pill 回显文案四态(data-tip 与 pill-label 同源;窄视口 CSS 塌缩面 sx-main-narrow 不变)
+  const modeLabel = sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'read-only' ? t('Read-only', '只读模式') : sessMode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
+  // 菜单四项两段(spec §3.4):plan 置顶置灰(阶段三 plan-arm 接通)+分组线+只读/工作区编辑/完全访问
+  const modeRows: ModeMenuRow[] = [
+    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — coming soon', '先规划后执行（即将可用）'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" />, disabled: true },
+    { separator: true },
+    { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read and analyze only — no changes', '只读取和分析，不改动任何文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
+    { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Edits inside the workspace run directly; outside asks', '工作区内直接编辑，超出工作区的操作需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
+    { m: 'full-access' as const, label: t('Full access', '完全访问'), desc: t('Everything auto-approved; destructive commands still blocked', '全部自动执行，仅拦截破坏性命令'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
+  ];
   return (
           <div className="composer-pills">
             {/* 与欢迎页同构(G12 三轮):+ 开附加面板(卡顶同宽浮层:命令/技能/文件) */}
@@ -44,40 +57,42 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
                 className="composer-pill"
                 aria-label="session mode"
                 aria-expanded={pillOpen === 'mode'}
-                data-tip={sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
+                data-tip={modeLabel}
                 onClick={() => setPillOpen((v) => (v === 'mode' ? null : 'mode'))}
               >
                 <ModeIcon mode={sessMode} />
                 {/* 2026-10-24 用户裁定:主栏窄于阈值时标签/箭头 CSS 塌缩(sx-main-narrow),纯图标+tooltip 承载文案 */}
-                <span className="pill-label">{sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}</span>
+                <span className="pill-label">{modeLabel}</span>
                 <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className="pill-chevron" />
               </button>
               {pillOpen === 'mode' && (
                 <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="session mode menu">
-                  {([
-                    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — no changes until you approve', '先规划方案,经你确认后才执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                    { m: 'dontAsk' as const, label: t('Full access', '完全访问'), desc: t('Full permissions — no confirmation prompts', '完全权限,操作不再逐一确认'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                    { m: 'manual' as const, label: t('Confirm changes', '变更确认'), desc: t('Writes and commands ask first', '写入与命令需逐一确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                  ]).map((row, idx) => (
-                    <div key={row.m} className="mode-pop-group">
-                      {idx === 1 && <div className="mode-pop-sep" />}
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={`mode-item${sessMode === row.m ? ' active' : ''}`}
-                        onClick={() => {
-                          setPillOpen(null);
-                          setSessMode(row.m);
-                          // 乐观置选;失败不回滚——模式属会话级低危偏好,权威态经下次会话快照/事件回填自纠
-                          conn.setSessionMode(sessionId, row.m).catch(() => {});
-                        }}
-                      >
-                        <span className="mode-item-icon">{row.icon}</span>
-                        <span className="mode-item-body">
-                          <span className="mode-item-name">{row.label}</span>
-                          <span className="mode-item-desc">{row.desc}</span>
-                        </span>
-                      </button>
+                  {modeRows.map((row, idx) => (
+                    <div key={'separator' in row ? `sep-${idx}` : row.m} className="mode-pop-group">
+                      {'separator' in row ? (
+                        <div className="mode-pop-sep" aria-hidden="true" />
+                      ) : (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={`mode-item${!row.disabled && sessMode === row.m ? ' active' : ''}`}
+                          aria-disabled={row.disabled === true ? true : undefined}
+                          data-tip={row.disabled === true ? t('Coming soon', '即将可用') : undefined}
+                          onClick={() => {
+                            if (row.disabled === true) return; // 阶段一 plan 置灰:点击不派发(阶段三 plan-arm 接通)
+                            setPillOpen(null);
+                            setSessMode(row.m);
+                            // 乐观置选;失败不回滚——模式属会话级低危偏好,权威态经下次会话快照/事件回填自纠
+                            conn.setSessionMode(sessionId, row.m).catch(() => {});
+                          }}
+                        >
+                          <span className="mode-item-icon">{row.icon}</span>
+                          <span className="mode-item-body">
+                            <span className="mode-item-name">{row.label}</span>
+                            <span className="mode-item-desc">{row.desc}</span>
+                          </span>
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

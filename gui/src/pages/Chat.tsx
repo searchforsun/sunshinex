@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { ArrowDown, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import { ArrowDown, Eye, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
@@ -55,10 +55,10 @@ import type { ChatProps } from './chat/chat-types';
 
 
 
-/** G14.133 审批模式三档统一图标(pill 与菜单同源——静态 Hand 两套渲染退役):
- *  plan=ListTodo / dontAsk=Unlock / manual=ShieldCheck */
-export function ModeIcon({ mode, size = 13 }: { mode: 'dontAsk' | 'manual' | 'plan'; size?: number }): JSX.Element {
-  const Icon = mode === 'plan' ? ListTodo : mode === 'manual' ? ShieldCheck : Unlock;
+/** G14.133 权限档统一图标(pill 与菜单同源——静态 Hand 两套渲染退役;权限档改名对齐后端):
+ *  plan=ListTodo / read-only=Eye / acceptEdits=ShieldCheck / full-access=Unlock(plan 阶段一置灰流程标记) */
+export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan'; size?: number }): JSX.Element {
+  const Icon = mode === 'plan' ? ListTodo : mode === 'read-only' ? Eye : mode === 'acceptEdits' ? ShieldCheck : Unlock;
   return <Icon size={size} strokeWidth={1.75} aria-hidden="true" />;
 }
 
@@ -130,8 +130,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
 
   const [input, setInput] = useState('');
-  /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新) */
-  const [sessMode, setSessMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
+  /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新);缺省 full-access(serve 缺省档) */
+  const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
   /** 归档态(2026-10-21):快照播种对齐(sessMode 同链,use-session-events reseed 回填)——顶栏归档钮/徽标三态 */
   const [archived, setArchived] = useState(false);

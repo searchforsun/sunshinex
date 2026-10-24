@@ -7,7 +7,8 @@ import { DirPicker } from './pages/DirPicker';
  * DirPicker 组件桩测(G8e-T3 回迁):G8a-T5 删 home.test.tsx 时本 describe 随文件退役——组件
  * 本体尚在(ProjectMenu「+ 添加工作区」模态消费),组件级 props/行为契约回归独立成档。conn 全桩
  * (仅 dirpicker 面,不出网),App/e2e 面的装配链各归其档。props 契约:conn(只要 dirpicker)/
- * onConfirm(path, manual)/onCancel——与 G8a 前等价(G6 mode 面起 onConfirm 带 manual 勾选态)。
+ * onConfirm(path, mode)/onCancel——与 G8a 前等价(G6 mode 面起 onConfirm 带勾选态;权限档改名后
+ * mode ∈ 'acceptEdits' | 'full-access',勾选=工作区编辑会话)。
  */
 
 describe('DirPicker 组件(独立 props)', () => {
@@ -70,21 +71,21 @@ describe('DirPicker 组件(独立 props)', () => {
     expect(confirmed).toEqual(['/home/dev', 'D:/elsewhere']);
   });
 
-  it('G6 manual 勾选:缺省不勾 → onConfirm(path, false);勾选 → onConfirm(path, true)', async () => {
+  it('G6 mode 勾选:缺省不勾 → onConfirm(path, \'full-access\');勾选 → onConfirm(path, \'acceptEdits\')', async () => {
     const { conn } = dirConn([{ path: '/home/dev', parent: '/home', dirs: [] }]);
-    const confirmed: Array<[string, boolean]> = [];
+    const confirmed: Array<[string, 'acceptEdits' | 'full-access']> = [];
     render(<DirPicker conn={conn} onConfirm={(p, m) => confirmed.push([p, m])} onCancel={() => {}} />);
     await screen.findByText('/home/dev');
-    const box = screen.getByLabelText('Manual approvals') as HTMLInputElement;
+    const box = screen.getByLabelText(bi('Workspace edits', '工作区编辑')) as HTMLInputElement;
     expect(box.checked).toBe(false); // 缺省不勾
     fireEvent.click(screen.getByRole('button', { name: bi('Choose this directory', '选择此目录') }));
-    expect(confirmed).toEqual([['/home/dev', false]]);
+    expect(confirmed).toEqual([['/home/dev', 'full-access']]);
     fireEvent.click(box); // 勾选
     expect(box.checked).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: bi('Choose this directory', '选择此目录') }));
     expect(confirmed).toEqual([
-      ['/home/dev', false],
-      ['/home/dev', true],
+      ['/home/dev', 'full-access'],
+      ['/home/dev', 'acceptEdits'],
     ]);
   });
 

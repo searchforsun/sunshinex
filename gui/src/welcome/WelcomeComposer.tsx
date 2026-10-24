@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
-import { ArrowUp, ChevronDown, Folder, GitBranch, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import { ArrowUp, ChevronDown, Eye, Folder, GitBranch, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { pathBasename, pickWorkspaceFolder } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
@@ -45,8 +45,8 @@ export function WelcomeComposer({
   const [dirOpen, setDirOpen] = useState(false);
   /** + 附加面板(G12 三轮):命令/技能列表浮层(卡顶同宽);文件区需会话,欢迎页不渲染 */
   const [plusOpen, setPlusOpen] = useState(false);
-  /** 审批模式(G10-C16):新会话创建时带出;缺省 dontAsk(TUI 默认权限) */
-  const [mode, setMode] = useState<'dontAsk' | 'manual' | 'plan'>('dontAsk');
+  /** 审批模式(G10-C16):新会话创建时带出;缺省 full-access(serve 缺省档;权限档改名对齐后端) */
+  const [mode, setMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [modeOpen, setModeOpen] = useState(false);
   const [hint, setHint] = useState('');
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
@@ -204,13 +204,16 @@ export function WelcomeComposer({
     setBusy(true);
     setError('');
     conn
-      .newSession(target, mode === 'manual' ? 'manual' : undefined)
+      .newSession(target, mode === 'acceptEdits' ? 'acceptEdits' : undefined)
       .then(({ sessionId }) => {
         // G14.10:欢迎页选定的模型/思考强度随会话创建下发(会话未建前无 /session/:id 面)
         // 随建下发失败降级为缺省模型/强度继续开session(会话已建,回滚无意义);选择面下次可再切——
         // 降级可见面=模型 pill 实际档位,非静默丢失(轻口径,D30 收口口径)
         if (selModel !== undefined) void conn.setSessionModel(sessionId, selModel).catch(() => undefined);
         if (selEffort !== undefined) void conn.setSessionEffort(sessionId, selEffort).catch(() => undefined);
+        // read-only 档建后补切(newSession mode 参数只收执行两档,spec §3.2;失败降级缺省档,
+        // 快照回显自纠——降级口径同上)
+        if (mode === 'read-only') void conn.setSessionMode(sessionId, 'read-only').catch(() => undefined);
         onOpened(sessionId, target, g);
       })
       .catch((err: unknown) => {
@@ -328,6 +331,18 @@ export function WelcomeComposer({
       })
       .catch((err: unknown) => setHint(err instanceof Error ? err.message : String(err)));
   };
+  // pill 回显文案四态(data-tip 与 pill-label 同源;窄视口 CSS 塌缩面 sx-main-narrow 不变)
+  const modeLabel = mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'read-only' ? t('Read-only', '只读模式') : mode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
+  /** 权限菜单行形(spec §3.4 四项两段):separator 行渲染 mode-pop-sep 分组线;disabled 行置灰不可选 */
+  type ModeMenuRow = { separator: true } | { m: 'plan' | 'read-only' | 'acceptEdits' | 'full-access'; label: string; desc: string; icon: JSX.Element; disabled?: boolean };
+  // 菜单四项两段(spec §3.4):与会话内 mode-pop 同构——plan 置顶置灰(阶段三 plan-arm 接通)+分组线+三权限档
+  const modeRows: ModeMenuRow[] = [
+    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — coming soon', '先规划后执行（即将可用）'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" />, disabled: true },
+    { separator: true },
+    { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read and analyze only — no changes', '只读取和分析，不改动任何文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
+    { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Edits inside the workspace run directly; outside asks', '工作区内直接编辑，超出工作区的操作需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
+    { m: 'full-access' as const, label: t('Full access', '完全访问'), desc: t('Everything auto-approved; destructive commands still blocked', '全部自动执行，仅拦截破坏性命令'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
+  ];
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
@@ -715,41 +730,43 @@ export function WelcomeComposer({
                   aria-label="approval mode"
                   aria-expanded={modeOpen}
                   // D51 G-4:窄栏塌缩(sx-main-narrow)时 tooltip 承载当前模式名——与会话内 pill 同构
-                  data-tip={mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'manual' ? t('Confirm changes', '变更确认') : t('Full access', '完全访问')}
+                  data-tip={modeLabel}
                   onClick={() => setModeOpen((v) => !v)}
                 >
                   {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役;
                       标签/箭头走 pill-label/pill-chevron 类:pills-tight 实测塌缩按类收,
                       裸文本无类收不到(600 窗欢迎页「完全访问」不塌的根因),文案由 data-tip 承载 */}
                   <ModeIcon mode={mode} />
-                  <span className="pill-label">{mode === 'manual' ? t('Confirm changes', '变更确认') : mode === 'plan' ? t('Plan mode', '计划模式') : t('Full access', '完全访问')}</span>
+                  <span className="pill-label">{modeLabel}</span>
                   <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 {modeOpen && (
                   <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="approval mode menu">
-                    {/* G14.113 与会话内 mode-pop 同构:Plan 首位+横线+两执行档;图标+双行(名称+解释) */}
-                    {([
-                      { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first — no changes until you approve', '先规划方案,经你确认后才执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                      { m: 'dontAsk' as const, label: t('Full access', '完全访问'), desc: t('Full permissions — no confirmation prompts', '完全权限,操作不再逐一确认'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                      { m: 'manual' as const, label: t('Confirm changes', '变更确认'), desc: t('Writes and commands ask first', '写入与命令需逐一确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
-                    ]).map((row, idx) => (
-                      <div key={row.m} className="mode-pop-group">
-                        {idx === 1 && <div className="mode-pop-sep" />}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className={`mode-item${mode === row.m ? ' active' : ''}`}
-                          onClick={() => {
-                            setMode(row.m);
-                            setModeOpen(false);
-                          }}
-                        >
-                          <span className="mode-item-icon">{row.icon}</span>
-                          <span className="mode-item-body">
-                            <span className="mode-item-name">{row.label}</span>
-                            <span className="mode-item-desc">{row.desc}</span>
-                          </span>
-                        </button>
+                    {/* G14.113 与会话内 mode-pop 同构:四项两段——Plan 首位(置灰)+横线+三权限档;图标+双行(名称+解释) */}
+                    {modeRows.map((row, idx) => (
+                      <div key={'separator' in row ? `sep-${idx}` : row.m} className="mode-pop-group">
+                        {'separator' in row ? (
+                          <div className="mode-pop-sep" aria-hidden="true" />
+                        ) : (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className={`mode-item${!row.disabled && mode === row.m ? ' active' : ''}`}
+                            aria-disabled={row.disabled === true ? true : undefined}
+                            data-tip={row.disabled === true ? t('Coming soon', '即将可用') : undefined}
+                            onClick={() => {
+                              if (row.disabled === true) return; // 阶段一 plan 置灰:不可选(阶段三 plan-arm 接通)
+                              setMode(row.m);
+                              setModeOpen(false);
+                            }}
+                          >
+                            <span className="mode-item-icon">{row.icon}</span>
+                            <span className="mode-item-body">
+                              <span className="mode-item-name">{row.label}</span>
+                              <span className="mode-item-desc">{row.desc}</span>
+                            </span>
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

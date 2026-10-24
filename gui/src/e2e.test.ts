@@ -550,21 +550,21 @@ describe('G3 冒烟④:静态挂载(daemon staticRoot 指 dist-gui)', () => {
 });
 
 /* ============================================================
- * G4 无头验收(spec §12 G4 行:manual 模式审批闭环经 HTTP 回执)——UI 全链:
- * ①manual 会话经 G6 UI 真面建立:DirPicker 确认面板「Manual approvals」勾选 → Home
- *   newSession(root, 'manual')(G6 前的 fetch body 注入包装器退役——mode 字段由真 UI 面
+ * G4 无头验收(spec §12 G4 行:工作区编辑档审批闭环经 HTTP 回执)——UI 全链:
+ * ①工作区编辑(acceptEdits)会话经 G6 UI 真面建立:欢迎页审批选择器切「Workspace edits」
+ *   → newSession(root, 'acceptEdits')(G6 前的 fetch body 注入包装器退役——mode 字段由真 UI 面
  *   发出;本套仅保留不改写任何请求的观察 spy 钉 body 断言);
  * ②ScriptedAdapter write envelope(目标=会话外第二 tmp 真文件——越信任域才触发链侧 ask,
- *   T1 先例)→ manual 挂起 → approval 帧经 WS → ApprovalCard 渲染;
+ *   T1 先例)→ acceptEdits 挂起 → approval 帧经 WS → ApprovalCard 渲染;
  * ③Allow 按钮即 HTTP 回执(Chat.sendApproval 经 App 连接 POST /approval/:pid,寻址帧顶层
  *   pid)→ 回执 200 后卡移除 + run 续进:写落盘 + notice 归档 + done 终答 + idle。
  * delete 流(轻)见下一 describe。
  * ============================================================ */
 
-describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂起卡 → Allow 回执 → 写落盘/done/卡消失', () => {
-  it('New session(勾 Manual approvals)→ newSession body mode:manual → 提交挂起 → ApprovalCard → Allow → 落盘 + done 收束', async () => {
+describe('G4/G6 工作区编辑审批闭环:UI 切 Workspace edits 建会话 → 挂起卡 → Allow 回执 → 写落盘/done/卡消失', () => {
+  it('New session(切 Workspace edits)→ newSession body mode:acceptEdits → 提交挂起 → ApprovalCard → Allow → 落盘 + done 收束', async () => {
     const WRITE_NAME = 'g4-e2e-approval.txt';
-    const WRITE_CONTENT = 'manual-allow-payload';
+    const WRITE_CONTENT = 'acceptEdits-allow-payload';
     const env = await startDaemon(
       (out) =>
         new ScriptedAdapter([
@@ -574,7 +574,7 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
     );
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
-      // 观察面(零改写):记录 /session/new body——真 UI 勾选链的 mode:'manual' 断言;
+      // 观察面(零改写):记录 /session/new body——真 UI 选择链的 mode:'acceptEdits' 断言;
       // 请求原样透传(非 G6 前的 body 注入包装器)
       const realFetch = globalThis.fetch.bind(globalThis);
       const newBodies: Array<Record<string, unknown>> = [];
@@ -596,20 +596,20 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:项目下拉选测试工作区 → 审批选择器切「Confirm changes」(manual)
+      // —— 工作区编辑会话经 UI 真面建立:项目下拉选测试工作区 → 审批选择器切「Workspace edits」(acceptEdits)
       //    → 目标提交。提交前等注册表就绪(picked 落定,G14.51:过早 Enter 会因 target='' 早退)——
       await waitFor(() => expect(screen.getByText('Default workspace', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByLabelText('Choose project'));
       fireEvent.click(await screen.findByRole('menuitem', { name: 'root' })); // env.root 尾段=测试工作区行
       fireEvent.click(screen.getByLabelText('approval mode'));
-      fireEvent.click(await screen.findByText(/Confirm changes|变更确认/));
+      fireEvent.click(await screen.findByText(/Workspace edits|工作区编辑/));
       const goal = screen.getByLabelText('welcome goal');
-      fireEvent.change(goal, { target: { value: 'manual 写一个文件' } });
+      fireEvent.change(goal, { target: { value: '工作区编辑 写一个文件' } });
       fireEvent.keyDown(goal, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
-      expect(newBodies.some((b) => b.mode === 'manual' && b.root === env.root)).toBe(true); // newSession body mode 断言
+      expect(newBodies.some((b) => b.mode === 'acceptEdits' && b.root === env.root)).toBe(true); // newSession body mode 断言
 
-      // —— 首轮模型轮 → write envelope 越信任域 → manual 挂起 → approval 帧经 WS → ApprovalCard ——
+      // —— 首轮模型轮 → write envelope 越信任域 → acceptEdits 挂起 → approval 帧经 WS → ApprovalCard ——
       await waitFor(() => expect(container.querySelector('.approval-card')).not.toBeNull(), { timeout: 10_000 });
       const title = container.querySelector('.approval-card .card-title');
       expect(title?.textContent?.startsWith('[approval write]')).toBe(true); // req.kind=write(链侧 ask 形态)
@@ -636,7 +636,7 @@ describe('G4/G6 manual 审批闭环:UI 勾选 Manual approvals 建会话 → 挂
       );
       expect(container.querySelector('.pending-cards')).toBeNull(); // 卡区整体退场
       expect(container.querySelector('.status-idle')).toBeDefined();
-      expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('manual 写一个文件'); // P10 前缀剥除
+      expect(container.querySelector('.entry-user')?.textContent?.trim()).toContain('工作区编辑 写一个文件'); // P10 前缀剥除
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -807,14 +807,14 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
 
 /* ============================================================
  * G7 收口 e2e 两场景(spec §12 G7 行):①write 执行 → 工具条展开 → fetchDiff 双列
- * (dontAsk 域内直写——判界内写信任域直放,无挂起;预置 tmp 文件 old 内容 → 模型 write
+ * (full-access 域内直写——判界内写信任域直放,无挂起;预置 tmp 文件 old 内容 → 模型 write
  * envelope 新内容 → 展开断言 old=pre-image blob/new=磁盘现文件双列);②挂起中断线重连 →
- * 卡恢复(manual 会话 + 越域 write 挂起,挂起点经 gate 钉在断线窗内——approval 广播零客户端,
+ * 卡恢复(工作区编辑会话 + 越域 write 挂起,挂起点经 gate 钉在断线窗内——approval 广播零客户端,
  * 卡不可能在断线前到达;重连后在场即恢复面实证:daemon 挂起重发帧与 snapshot.pending req
  * 双源合流,addCard pid 防重;单源钉死在 App.test 桩面)→ Allow 回执闭环。
  * ============================================================ */
 
-describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)→ 工具条展开 → old/new 双内容', () => {
+describe('G7 write 执行 + fetchDiff 双列:full-access 域内写(预置旧文件)→ 工具条展开 → old/new 双内容', () => {
   it('预置 old → 模型 write 域内直写 → done → 展开工具条 → diff 面板 old/new 双列', async () => {
     const REL = 'g7-e2e-diff.txt'; // 相对会话 root(域内)——write 信任域直放,无挂起卡
     const OLD = 'old body line'; // pre-image 源(写前态 blob)
@@ -831,7 +831,7 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— dontAsk 会话经 UI 真面建立(DirPicker 缺省不勾 manual;G8a:经「+ 添加工作区」)——
+      // —— full-access 会话经 UI 真面建立(缺省档,不勾工作区编辑;G8a:经「+ 添加工作区」)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
     await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
@@ -850,7 +850,7 @@ describe('G7 write 执行 + fetchDiff 双列:dontAsk 域内写(预置旧文件)�
         { timeout: 10_000 },
       );
       expect(fs.readFileSync(path.join(env.root, REL), 'utf8')).toBe(NEW); // 磁盘现文件 = 新内容
-      expect(container.querySelector('.approval-card')).toBeNull(); // dontAsk 域内写零挂起
+      expect(container.querySelector('.approval-card')).toBeNull(); // full-access 域内写零挂起
       expect(container.querySelector('.status-idle')).toBeDefined();
 
       // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffLines 行级 old/new 双行 ——
@@ -935,12 +935,12 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
-      // —— manual 会话经 UI 真面建立:审批模式选「变更确认」→ 欢迎页目标提交(mode:manual 随会话带出)——
+      // —— 工作区编辑会话经 UI 真面建立:审批模式选「工作区编辑」→ 欢迎页目标提交(mode:acceptEdits 随会话带出)——
       //    首轮模型轮挂在 Gated adapter 的 gate 上(run 进行中)。提交前等注册表就绪
       //    (picked 落定,G14.51:过早 Enter 会因 target='' 早退)——
       await waitFor(() => expect(screen.getByText('Default workspace', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'approval mode' }));
-      fireEvent.click(await screen.findByRole('menuitem', { name: /变更确认|confirm changes/i }));
+      fireEvent.click(await screen.findByRole('menuitem', { name: /工作区编辑|workspace edits/i }));
       const goal = screen.getByLabelText('welcome goal');
       fireEvent.change(goal, { target: { value: '挂起重连目标' } });
       fireEvent.keyDown(goal, { key: 'Enter' });
@@ -951,7 +951,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
       appSock.close();
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:重连就绪以 home 钮代之
 
-      // —— 放行:write envelope 越域 → manual 挂起 → approval 广播零客户端 ——
+      // —— 放行:write envelope 越域 → acceptEdits 挂起 → approval 广播零客户端 ——
       gated!.release();
       const H = {} as Record<string, string>;
       const [reconnectSid] = await liveSessionIds(env.port);
@@ -1030,7 +1030,7 @@ const tabsByTitle = (container: HTMLElement, title: string | RegExp): Element[] 
 
 describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务页) + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走 +菜单)', () => {
   it('建会话 → 「任务」默认在场且活动 → write path 钮 → Diff 标签开且活动(title=文件名)→ 双列 → 再点同 path 判重 → +菜单「文件」+路径输入补文件预览', async () => {
-    const REL = 'g8d-e2e-diff-tab.txt'; // 会话 root 域内相对路径(dontAsk 直写,无挂起卡)
+    const REL = 'g8d-e2e-diff-tab.txt'; // 会话 root 域内相对路径(full-access 直写,无挂起卡)
     const OLD = 'diff tab old line'; // pre-image 源(G7 fixture 复用:真 daemon write 影子快照的 old 列)
     const NEW = 'diff tab new line'; // 模型 write envelope 新内容(磁盘现文件/new 列)
     const env = await startDaemon(
@@ -1443,7 +1443,7 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
 
       // —— 建会话(「+ 添加工作区」桌面壳桩回路径 → 登记即回欢迎页预选该项目;G10-C16 起
-      //    组内 + 的 mode 弹层面由欢迎页审批选择器取代,缺省 auto=dontAsk)→ 目标提交 → chat。
+      //    组内 + 的 mode 弹层面由欢迎页审批选择器取代,缺省档=full-access)→ 目标提交 → chat。
       //    等选择条示项目名(picked 落定)再提交——过早 Enter 会因 target='' 早退(G14.51)——
             Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));

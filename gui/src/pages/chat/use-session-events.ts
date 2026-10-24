@@ -40,7 +40,7 @@ export function useSessionEvents(deps: {
   /** 队列面(reseed 回显 snapshot.queued;P5 起 queue 帧实时推) */
   setQueued: Dispatch<SetStateAction<Array<{ seq: number; text: string }>>>;
   /** 会话 pill(snapshot 回显面) */
-  setSessMode: Dispatch<SetStateAction<'dontAsk' | 'manual' | 'plan'>>;
+  setSessMode: Dispatch<SetStateAction<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>>;
   setSessEffort: Dispatch<SetStateAction<string | undefined>>;
   /** 归档态播种(2026-10-21:snapshot.archived 回填——顶栏归档钮/徽标三态;旧 daemon 无字段=未归档面) */
   setArchived: Dispatch<SetStateAction<boolean>>;
@@ -122,7 +122,7 @@ export function useSessionEvents(deps: {
       (snap) => {
         if (seedGenRef.current !== gen) return; // 后继 reseed 已接管(在途窗内重连)
         setQueued(snap.queued ?? []);
-        if (typeof snap.mode === 'string') setSessMode(snap.mode as 'dontAsk' | 'manual' | 'plan');
+        if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
         setSessEffort(snap.effort);
         setArchived(snap.archived === true); // 2026-10-21 归档态播种(sessMode 同链;缺字段=未归档面)
         // P10:status 读内核游标(seed 内派生),快照 status 字段不再入参

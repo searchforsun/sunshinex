@@ -82,7 +82,7 @@ export interface SnapshotResponse {
   status: 'idle' | 'running';
   /** G10 切换/队列回显段 */
   model?: string;
-  mode?: 'dontAsk' | 'manual' | 'plan';
+  mode?: 'read-only' | 'acceptEdits' | 'full-access' | 'plan';
   tier?: 'small' | 'medium' | 'large';
   effort?: string;
   queued?: Array<{ seq: number; text: string }>;

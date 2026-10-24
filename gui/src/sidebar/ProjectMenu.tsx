@@ -26,8 +26,8 @@ export { FolderAddIcon } from './project-menu-util';
 /**
  * 左栏项目分组菜单(G8a-T4,spec §1):Home 页职能内化——工作区=项目组,一项目一工作区。
  * 组列表(GET /workspaces):组头(chevron+Folder+slug+会话数)点击展开惰拉 GET /sessions?root=
- * (slug 守卫照搬 Home——openSlugRef 过期应答丢弃);root 缺场历史组禁用不可展开;组内「+」弹
- * mode 菜单(auto/manual)→ newSession(root, mode) 直进;会话行 Attach 两步(newSession 装配壳
+ * (slug 守卫照搬 Home——openSlugRef 过期应答丢弃);root 缺场历史组禁用不可展开;组内「+」
+ * 回欢迎页预选该项目(审批模式由欢迎页选择器承载,G10-C16);会话行 Attach 两步(newSession 装配壳
  * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开原生文件选择器(选完自动建项目, G10-C11);品牌行查找钮开项目/会话搜索面板 + 30s 定时自动刷新(G10-C13);
  * Home 的 modal-overlay 结构原样)。连接态显示退役(G10:一体本地,无连接语义可显)。
  * activeRoot 组自动展开(T5 App 壳传当前活动工作区;与手动展开共用同一 openSlug 态)。
@@ -43,7 +43,7 @@ export interface ProjectMenuConn {
   /** 跨工作区扁平最近会话(G10-C2 侧栏 Recents 区;daemon /sessions/recent 聚合) */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
-  newSession(root: string, mode?: 'manual'): Promise<{ sessionId: string }>;
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   /** 移除工作区(2026-10-23):仅摘出侧栏,数据保留;重新 create 即原地加回 */
@@ -79,8 +79,8 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
   readonly onNewChat: () => void;
-  /** 项目行「+」:回欢迎页并预选该项目与审批模式(G10-C16) */
-  readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
+  /** 项目行「+」:回欢迎页并预选该项目(G10-C16;审批模式由欢迎页选择器承载,旧 auto/manual 直进面退役) */
+  readonly onComposeIn: (root: string) => void;
   /** 组头目录钮(2026-10-23 用户裁定):开当前会话/项目第一会话的目录页签(宿主解析会话+开页签) */
   readonly onOpenDirectory: (root: string) => void;
 }

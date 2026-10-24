@@ -19,7 +19,7 @@ export interface ProjectSearchProps {
   readonly busy: boolean;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
-  readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
+  readonly onComposeIn: (root: string) => void;
 }
 
 export function ProjectSearch(props: ProjectSearchProps): JSX.Element {

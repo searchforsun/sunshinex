@@ -30,7 +30,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     recentSessions: async () =>
       [{ id: 'j1', firstUser: 'demo goal', updatedAt: FIXED_TS, root: 'D:/w/p1', slug: 'p1' }] as never,
     dirpicker: async () => ({ path: 'D:/w', parent: 'D:', dirs: ['p1'] }),
-    newSession: async (root: string, mode?: 'manual') => ({ sessionId: `new-${root}${mode ? '-m' : ''}` }),
+    newSession: async (root: string, mode?: 'acceptEdits' | 'full-access') => ({ sessionId: `new-${root}${mode ? '-m' : ''}` }),
     createWorkspace: vi.fn(async (body: { name?: string; path?: string }) => ({
       ok: true as const,
       root: body.path ?? `D:/MyWorkStation/sunshinex/${body.name ?? 'project'}`,

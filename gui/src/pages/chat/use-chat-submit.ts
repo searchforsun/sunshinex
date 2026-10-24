@@ -11,7 +11,7 @@ export function useChatSubmit(deps: {
   readonly conn: Connection;
   readonly sessionId: string;
   readonly running: boolean;
-  readonly sessMode: 'dontAsk' | 'manual' | 'plan';
+  readonly sessMode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan';
   readonly root: string | undefined;
   readonly resolveFileRef: (name: string) => string | undefined;
   readonly cmdData: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null;

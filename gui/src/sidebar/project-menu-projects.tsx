@@ -34,7 +34,7 @@ export interface ProjectsSectionProps {
   readonly journalOfSession: ReadonlyMap<string, string>;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly onToggleGroup: (row: WorkspaceRow) => void;
-  readonly onComposeIn: (root: string, mode?: 'auto' | 'manual') => void;
+  readonly onComposeIn: (root: string) => void;
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
   /** T6 行内归档(落库 + 宿主重拉;确认 morph 由本组件行级 confirmId 承载) */
   readonly onArchiveRow: (id: string, archived: boolean) => void;

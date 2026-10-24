@@ -294,14 +294,21 @@ describe('MermaidBlock(G11 §5.4)', () => {
 });
 
 describe('composer pills 与排队 chips(G10-C4)', () => {
-  it('权限 pill 三态菜单:切换 manual 调 setSessionMode(manual)', async () => {
+  it('权限 pill 四项菜单:plan 置顶置灰(点击不派发,data-tip 即将可用)+分隔线+三权限档;切工作区编辑调 setSessionMode(acceptEdits)', async () => {
     const setSessionMode = vi.fn(() => Promise.resolve());
     const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: 'a' }]);
     (conn as unknown as Record<string, unknown>).setSessionMode = setSessionMode;
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     fireEvent.click(await screen.findByRole('button', { name: 'session mode' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Confirm changes/ })); // G14.98 双行(名称+解释)→可访问名含解释,正则匹配
-    expect(setSessionMode).toHaveBeenCalledWith('s1', 'manual');
+    expect(screen.getAllByRole('menuitem')).toHaveLength(4); // 四项两段:plan + sep + 只读/工作区编辑/完全访问
+    expect(document.querySelector('.mode-pop .mode-pop-sep')).not.toBeNull(); // 分组线沿既有样式类
+    const plan = screen.getByRole('menuitem', { name: /Plan mode|计划模式/ });
+    expect(plan.getAttribute('aria-disabled')).toBe('true'); // 置灰(阶段一不可选,阶段三 plan-arm 接通)
+    expect(plan.getAttribute('data-tip')).toMatch(/Coming soon|即将可用/);
+    fireEvent.click(plan);
+    expect(setSessionMode).not.toHaveBeenCalled(); // 置灰行点击不派发
+    fireEvent.click(screen.getByRole('menuitem', { name: /Workspace edits|工作区编辑/ })); // G14.98 双行(名称+解释)→可访问名含解释,正则匹配
+    expect(setSessionMode).toHaveBeenCalledWith('s1', 'acceptEdits');
   });
 
   it('排队 chips:snapshot.queued 回显渲染,撤回钮调 cancelSteer(seq)', async () => {

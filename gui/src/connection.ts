@@ -54,7 +54,7 @@ export interface Connection {
   setSessionModel(id: string, model?: string): Promise<void>;
   setSessionTier(id: string, tier?: 'small' | 'medium' | 'large'): Promise<void>;
   setSessionEffort(id: string, effort?: string): Promise<void>;
-  setSessionMode(id: string, mode: 'dontAsk' | 'manual' | 'plan'): Promise<void>;
+  setSessionMode(id: string, mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan'): Promise<void>;
   /** POST /session/:id/steer/cancel:撤回排队插话(G10-C1d) */
   cancelSteer(id: string, seq: number): Promise<void>;
   /** G14.83 排队条目重排(拖拽排序)/置首(插入发送=下一轮立即注入) */
@@ -117,8 +117,8 @@ export interface Connection {
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
-   *  ('manual' 审批问询挂起 / 'dontAsk' 缺省)——缺省不发 body 字段(旧 daemon 兼容) */
-  newSession(root: string, mode?: 'dontAsk' | 'manual'): Promise<{ sessionId: string }>;
+   *  ('acceptEdits' 工作区编辑 / 缺省 'full-access')——缺省不发 body 字段(旧 daemon 兼容) */
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }>;
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId(可能异于入参) */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
@@ -317,7 +317,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async setSessionEffort(id: string, effort?: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/effort', { effort });
     },
-    async setSessionMode(id: string, mode: 'dontAsk' | 'manual' | 'plan'): Promise<void> {
+    async setSessionMode(id: string, mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan'): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/mode', { mode });
     },
     async cancelSteer(id: string, seq: number): Promise<void> {
@@ -434,7 +434,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    async newSession(root: string, mode?: 'dontAsk' | 'manual'): Promise<{ sessionId: string }> {
+    async newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
