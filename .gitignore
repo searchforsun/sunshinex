@@ -46,3 +46,6 @@ default/
 
 # gui 页签布局运行时数据(桌面/本地 GUI 按工作区落盘的 tabState,运行时产物不入库)
 gui/sessions/
+
+# O3 基准集真跑报告(scripts/eval-run.mjs 落档,每次带时间戳;数据入台账不入库)
+eval-results/
