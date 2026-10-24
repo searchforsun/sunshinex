@@ -18,6 +18,9 @@ const LOCAL_KEYS = {
 let conn: UiPrefConn | null = null;
 let pending: Partial<Record<keyof typeof LOCAL_KEYS, string>> = {};
 let flushTimer: number | undefined;
+/** 远程值应用中(抑制 notify 回环:appliers→applyZoom→notify 会把服务端旧值重新入队,
+ *  旧值反过来覆盖新值——「放大缩小失效,每次都回 110%」根因) */
+let applyingRemote = false;
 /** boot 拉取后的应用回调(宿主注入——避免本模块反向依赖 ui-zoom/theme 造成环) */
 let appliers: { zoom: (v: string) => void; theme: (v: string) => void } | null = null;
 
@@ -30,6 +33,7 @@ export function initUiPrefSync(c: UiPrefConn, apply: { zoom: (v: string) => void
 
 /** 偏好变更上抛(去抖合并;未连接时仅队列,连接建立后冲刷) */
 export function notifyUiPref(key: keyof typeof LOCAL_KEYS, value: string): void {
+  if (applyingRemote) return; // 远程应用引发的 setItem/apply 不回环入队
   pending[key] = value;
   if (conn === null) return;
   window.clearTimeout(flushTimer);
@@ -42,33 +46,34 @@ async function flush(): Promise<void> {
     const { state } = await conn.appGuiState();
     const blob = state !== null && typeof state === 'object' && !Array.isArray(state) ? { ...state } as Record<string, unknown> : {};
     let changed = false;
-    for (const short of Object.keys(LOCAL_KEYS) as Array<keyof typeof LOCAL_KEYS>) {
-      const local = localStorage.getItem(LOCAL_KEYS[short]);
-      const server = blob[short];
-      if (typeof server === 'string' && server !== '') {
-        // 公共权威:服务端有值覆盖本地(并应用)
-        if (local !== server) {
-          localStorage.setItem(LOCAL_KEYS[short], server);
-          if (short === 'uiZoom') appliers?.zoom(server);
-          if (short === 'theme') appliers?.theme(server);
-        }
-      } else if (local !== null && local !== '') {
-        // 服务端缺键:本地回填上收(旧档/首联)
-        blob[short] = local;
-        changed = true;
-      }
-    }
-    // 队列中的新值最后落(覆盖上面拉回的旧值)
+    // ① 本地 pending 优先(=用户最新意图,先落 blob+本地)
     for (const short of Object.keys(pending) as Array<keyof typeof LOCAL_KEYS>) {
       const v = pending[short];
-      if (v !== undefined && blob[short] !== v) {
+      if (v !== undefined) {
         blob[short] = v;
         localStorage.setItem(LOCAL_KEYS[short], v);
         changed = true;
       }
     }
     pending = {};
-    if (changed) await conn.saveAppGuiState(blob);
+    // ② 服务端权威仅补无 pending 的键;应用远程值时 applyingRemote 抑制回环
+    applyingRemote = true;
+    for (const short of Object.keys(LOCAL_KEYS) as Array<keyof typeof LOCAL_KEYS>) {
+      const server = blob[short];
+      const local = localStorage.getItem(LOCAL_KEYS[short]);
+      if (typeof server === 'string' && server !== '') {
+        if (local !== server) {
+          localStorage.setItem(LOCAL_KEYS[short], server);
+          if (short === 'uiZoom') appliers?.zoom(server);
+          if (short === 'theme') appliers?.theme(server);
+        }
+      } else if (local !== null && local !== '') {
+        blob[short] = local; // 服务端缺键:本地回填上收(旧档/首联)
+        changed = true;
+      }
+    }
+    applyingRemote = false;
+    if (changed || true) await conn.saveAppGuiState(blob); // blob 可能因①②变化,恒回写(幂等)
   } catch {
     // 断链/旧 daemon 无端点:静默——本地层自足,下一拍重试
     window.clearTimeout(flushTimer);
