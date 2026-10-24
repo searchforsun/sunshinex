@@ -522,10 +522,27 @@ function AppShell(): JSX.Element {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  /** 浮窗抽屉切换(2026-10-24 二轮裁定):三栏全部触底才浮——视口(本地/zoom)窄于菜单最小 240
-   *  +主栏最小 320+抽屉最小 296=856 时右栏转悬浮抽屉(fixed 右满高盖正文,z 低于窗控簇),
-   *  否则恒分栏。压缩顺序(用户裁定):右缘起=侧栏→主栏→菜单→浮窗;左缘反向;展开只吃主栏宽 */
-  const sidebarFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
+  /** 右栏浮窗切换(2026-10-24 三轮裁定):右栏浮窗下移为「主栏+抽屉双触底」——视口(本地/zoom)
+   *  <320+296=616 才浮;856~616 区间=菜单已自动关闭(见 menuFloating),主栏吃满,侧栏仍分栏 */
+  const sidebarFloating = viewportW / zoomScale() < MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
+  /** 左菜单浮窗/自动关闭(2026-10-24 用户裁定):视口 <240+320+296=856 时菜单自动关闭;手动重开
+   *  (顶栏 logo/搜索)后以悬浮抽屉呈现,选中会话/设置/新会话/搜索选会话即自动收——产品可缩到
+   *  主栏+侧栏双触底 616。压缩顺序:右缘缩=侧栏→主栏→菜单→菜单关闭;左缘反向 */
+  const menuFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
+  /** 菜单关闭态(手动点品牌收起/<856 自动关;顶栏 logo 重开) */
+  const [menuClosed, setMenuClosed] = useState(false);
+  /** 顶栏搜索钮信号:重开菜单抽屉并自动展开其搜索面板(仅作沿触发) */
+  const [menuSearchRequest, setMenuSearchRequest] = useState(0);
+  const prevMenuFloating = useRef(false);
+  useEffect(() => {
+    // 越过 856 下探沿:菜单自动关闭(重开视口不自动恢复,用户手动)
+    if (menuFloating && !prevMenuFloating.current) setMenuClosed(true);
+    prevMenuFloating.current = menuFloating;
+  }, [menuFloating]);
+  /** 抽屉选中即收(会话/设置/新会话/目录;仅浮窗沿有效) */
+  const closeMenuDrawer = (): void => {
+    if (menuFloating && !menuClosed) setMenuClosed(true);
+  };
   /** 菜单渲染期钳制(2026-10-24 用户裁定压缩顺序:右缘缩窗=侧栏→主栏→菜单→浮窗):视口装不下
    *  右栏最小 296+主栏最小 320 时,菜单先让出富余宽(拖宽态 menuWidth 不丢,只钳渲染),下限 240 */
   const menuRenderW = Math.min(menuWidth, Math.max(240, viewportW / zoomScale() - MAIN_MIN_WIDTH - MIN_TAB_WIDTH));
@@ -609,10 +626,12 @@ function AppShell(): JSX.Element {
         // 浮窗抽屉面(2026-10-24 用户裁定):窄视口右栏悬浮不占布局宽,主栏吃满
         // (模式 pill 塌缩已改底栏实测溢出驱动 pills-tight,壳级不再派生 sx-main-narrow)
         sidebarFloating ? 'sx-sidebar-float' : '',
+        // 左菜单抽屉面(2026-10-24 三轮裁定):<856 菜单自动关闭;手动重开=悬浮抽屉(fixed 左满高)
+        menuFloating && !menuClosed ? 'sx-menu-float' : '',
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{
-        '--menu-w': `${menuRenderW}px`,
+        '--menu-w': `${menuClosed ? 0 : menuRenderW}px`,
         '--sidebar-w': `${sidebarOccupied}px`,
       } as CSSProperties}
     >
@@ -622,9 +641,10 @@ function AppShell(): JSX.Element {
         <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} />
       ) : (
         <>
-          {/* 左栏:项目分组(Home 职能内化;装配中占位) */
+          {/* 左栏:项目分组(Home 职能内化;装配中占位)。关闭态不渲染(顶栏 logo 呼出);
+              浮窗抽屉态选中会话/设置/新会话/目录即自动收(各回调前挂 closeMenuDrawer) */
           }
-          {connInstance !== null ? (
+          {!menuClosed && (connInstance !== null ? (
             <ProjectMenu
               conn={connInstance}
               connState={connState}
@@ -632,23 +652,27 @@ function AppShell(): JSX.Element {
               activeRoot={openRoot}
               recentVersion={recentVersion}
               runningIds={runningIds}
-              onOpenSession={openSession}
-              onOpenDirectory={openProjectDirectory}
-              onOpenSettings={openSettings}
+              onOpenSession={(sessionId, root, journalId) => { closeMenuDrawer(); openSession(sessionId, root, journalId); }}
+              onOpenDirectory={(root) => { closeMenuDrawer(); openProjectDirectory(root); }}
+              onOpenSettings={() => { closeMenuDrawer(); openSettings(); }}
               onNewChat={() => {
+                closeMenuDrawer();
                 setComposePresetRoot(null);
                 setPage('welcome');
               }}
               onComposeIn={(root) => {
+                closeMenuDrawer();
                 setComposePresetRoot(root);
                 setPage('welcome');
               }}
+              onCollapse={() => setMenuClosed(true)}
+              searchRequest={menuSearchRequest}
             />
           ) : (
             <nav className="sx-menu" aria-label="projects">
               <p className="home-loading">{t('Connecting…', '连接装配中…')}</p>
             </nav>
-          )}
+          ))}
           {/* G12 左栏拖宽手柄:overlay 在 nav 右缘(负 margin 零布局占位),拖动改 --menu-w */}
           <div
             className="sx-menu-resizer"
@@ -663,6 +687,9 @@ function AppShell(): JSX.Element {
             {page === 'chat' && connInstance !== null ? (
               <Chat
                 key={openSessionId}
+                menuClosed={menuClosed}
+                onReopenMenu={() => { setMenuClosed(false); }}
+                onMenuSearch={() => { setMenuClosed(false); setMenuSearchRequest((n) => n + 1); }}
                 conn={connInstance}
                 sessionId={openSessionId}
                 journalId={openJournalId}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
-import { Search, Settings, SquarePen } from 'lucide-react';
+import { PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { DirPicker } from '../pages/DirPicker';
 import {
   loadSeenMap,
@@ -83,6 +83,10 @@ export interface ProjectMenuProps {
   readonly onComposeIn: (root: string) => void;
   /** 组头目录钮(2026-10-23 用户裁定):开当前会话/项目第一会话的目录页签(宿主解析会话+开页签) */
   readonly onOpenDirectory: (root: string) => void;
+  /** 2026-10-24 用户裁定:菜单头收起钮(PanelLeft,搜索钮右侧)=宿主收起菜单(抽屉/关闭态由宿主管) */
+  readonly onCollapse?: () => void;
+  /** >0 时自动展开搜索面板(菜单以抽屉重开且来源是顶栏搜索钮;消费后宿主无须回收,值仅作信号) */
+  readonly searchRequest?: number;
 }
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
@@ -137,6 +141,14 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   groupShowAllRef.current = groupShowAll;
   /** 查找面板(G10-C13):项目 + 会话历史搜索 */
   const [searchOpen, setSearchOpen] = useState(false);
+  // 2026-10-24 顶栏搜索钮信号:抽屉重开时自动展开搜索面板
+  useEffect(() => {
+    if ((props.searchRequest ?? 0) > 0) setSearchOpen(true);
+  }, [props.searchRequest]);
+  // 2026-10-24 顶栏搜索钮信号:抽屉重开时自动展开搜索面板(值仅作沿触发)
+  useEffect(() => {
+    if ((props.searchRequest ?? 0) > 0) setSearchOpen(true);
+  }, [props.searchRequest]);
   /** G14.75 聚合搜索:全部工作区的会话扁平集(打开搜索时聚合一次,rows 变化重拉) */
   const [allSessions, setAllSessions] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [query, setQuery] = useState('');
@@ -478,6 +490,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <span className="sx-brand">Sunshinex</span>
         <button type="button" aria-label="search" className="sx-iconbtn" data-tip={t('Search projects & sessions', '搜索项目与会话')} onClick={() => setSearchOpen((v) => !v)}>
           <Search size={16} strokeWidth={1.75} />
+        </button>
+        {/* 2026-10-24 用户裁定:收起钮=原有面板展开图标的镜像(PanelLeft),列搜索钮右侧;点击收起菜单 */}
+        <button type="button" aria-label="collapse menu" className="sx-iconbtn" data-tip={t('Close menu', '收起菜单')} onClick={props.onCollapse}>
+          <PanelLeft size={16} strokeWidth={1.75} />
         </button>
       </header>
       <button

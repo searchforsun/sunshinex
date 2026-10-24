@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Folder, MoreHorizontal } from 'lucide-react';
+import { Folder, MoreHorizontal, PanelLeft, Search } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
@@ -98,10 +98,15 @@ export interface ChatTopbarProps {
   readonly root?: string;
   /** 会话数据变更上抛(置顶/归档/标记未读后,宿主 bump 侧栏联动刷新) */
   readonly onSessionsMutated?: () => void;
+  /** 2026-10-24 用户裁定:左菜单可关闭——关闭后顶栏前插 [产品logo(呼出菜单)|搜索] 两图标,
+   *  其后既有 文件夹图标+会话名 照旧(logo=重开菜单,搜索=重开菜单并自动展开其搜索面板) */
+  readonly menuClosed?: boolean;
+  readonly onReopenMenu?: () => void;
+  readonly onMenuSearch?: () => void;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onReopenMenu, onMenuSearch } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -203,6 +208,17 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   ];
   return (
     <header className="chat-topbar">
+        {/* 2026-10-24 用户裁定:菜单关闭态顶栏前插 展开钮(PanelLeft 镜像,呼出菜单)+搜索钮 */}
+        {menuClosed === true && (
+          <>
+            <button type="button" className="sx-iconbtn" aria-label="toggle menu" data-tip={t('Open menu', '打开菜单')} onClick={onReopenMenu}>
+              <PanelLeft size={16} strokeWidth={1.75} />
+            </button>
+            <button type="button" className="sx-iconbtn" aria-label="search" data-tip={t('Search projects & sessions', '搜索项目与会话')} onClick={onMenuSearch}>
+              <Search size={16} strokeWidth={1.75} />
+            </button>
+          </>
+        )}
         {fixedTitle === '' ? (
           // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
           <span className="chat-title" />

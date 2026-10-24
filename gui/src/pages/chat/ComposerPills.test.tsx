@@ -54,10 +54,10 @@ describe('ComposerPillsRight(模型 pill 菜单 current 判定,L-1 锚)', () => 
     expect(miss.className).not.toContain('current');
   });
 
-  it('current=完整带前缀 id(与 choice id 全等):同款命中,disabled 守卫仍按 id 全等', () => {
+  it('current=完整带前缀 id(与 choice id 全等):同款命中,不禁用(2026-10-24 裁定:disabled 灰盖强调色,重选同模型无副作用)', () => {
     mountModelPill('provider-a/glm-5.3-flash');
     expect(screen.getByRole('menuitem', { name: 'glm-5.3-flash' }).className).toContain('current');
-    expect(screen.getByRole('menuitem', { name: 'glm-5.3-flash' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('menuitem', { name: 'glm-5.3-flash' }).hasAttribute('disabled')).toBe(false);
     expect(screen.getByRole('menuitem', { name: 'model-x' }).className).not.toContain('current');
   });
 });

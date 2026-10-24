@@ -103,6 +103,10 @@
    注释尾巴(开头 /* 在往返编辑中丢失),裸文本致浏览器错误恢复吞掉本条——浮窗整模式静默
    半残(抽屉恒占布局宽,dock 补偿却按悬浮让位),2026-10-24 用户实测截图定位 */
 .sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); }
+/* 2026-10-24 三轮裁定:左菜单抽屉(<856 手动重开态)——fixed 左满高悬浮,宽走 --menu-w(渲染
+   钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
+.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 85; max-width: min(86vw, calc(100vw - 340px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); }
+.sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
 /* 浮窗态 dock 无任何让位规则(2026-10-24 用户裁定「抽屉是上浮的」):composer 恒按分栏态
    几何(left:50% 居中/main−32)铺满主栏,抽屉 z-80 直接盖在右缘——曾有 inset 让位与
    left:50%−w/2 位移公式,均因挤占/错位 composer 被裁撤 */
@@ -943,7 +947,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   min-width: 0; max-width: 360px; padding: 3px 8px;
   border: none; border-radius: var(--radius-sm);
   color: var(--fg); font-size: 14px; font-weight: 500;
-}.chat-title-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.chat-title-btn svg { flex: none; color: var(--fg-secondary); }.chat-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chat-title-input {
+}.chat-title-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.chat-title-btn svg { flex: none; color: var(--fg-secondary); }.chat-title-text { min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); } /* 2026-10-24 用户裁定:标题隐现同模型名(右缘 24px 渐隐,非省略号) */.chat-title-input {
   height: 26px; width: 280px; padding: 0 8px;
   border: 1px solid var(--accent); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--fg);

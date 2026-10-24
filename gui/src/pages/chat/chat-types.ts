@@ -75,6 +75,10 @@ export interface ChatProps {
   onRenamed?: () => void;
   /** 会话数据变更上抛(2026-10-22:顶栏 ⋯ 菜单置顶/归档/标记未读后,App bump recentVersion → 侧栏联动刷新) */
   onSessionsMutated?: () => void;
+  /** 2026-10-24 用户裁定:左菜单关闭态顶栏前插 logo/搜索两图标(见 ChatTopbar 同名段) */
+  menuClosed?: boolean;
+  onReopenMenu?: () => void;
+  onMenuSearch?: () => void;
   /** G14.29 输入 /btw /side 拦截:开辅助对话旁路标签(不动 daemon 提交面) */
   onSideChat?: () => void;
   /** G14.148 /memory(-rm) 拦截:开记忆标签(GUI 的删除面;daemon 命令通道不支持 TUI 交互多选) */
