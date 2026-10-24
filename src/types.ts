@@ -438,6 +438,7 @@ export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget
  *  消费面（messages.ts buildMessages）按动作分流——note/notice 同义分裂由此可检 */
 export type ChainAction =
   | 'task' /* 指令行：任务/plan 步/goal（reactor/subagent/tui/context/graph） */
+  | 'plan' /* 计划书全文（planFlow 批准后注入,一次;messages 按 task 同形态透出） */
   | 'reply' /* 收束正文（reactor） */
   | 'note' /* 运行备注（reactor/subagent/tui/graph） */
   | 'notice' /* 用户可见提示（reactor/loop/harness/context/tui） */

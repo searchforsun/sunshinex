@@ -7,6 +7,7 @@ import type { ChatMessage, ContextItem, HistoryStep, ToolCallSpec } from '../../
  *
  * 链行动作词汇（T4 接线约定）：
  * - task      → user（指令行：任务/plan 步/goal）
+ * - plan      → user（计划书全文行：planFlow 批准后注入,一次；与 task 同形态）
  * - reply     → assistant（收束正文）
  * - phase     → 待挂旁白：并入下一个工具批的 assistant content（无批则在链尾降级为纯 content assistant 消息）
  * - tool-call → 工具调用行（formatToolCallLine 单行格式）；连续行聚合为一个批 → assistant+tool_calls（id 按序合成 call_N）
@@ -136,11 +137,12 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
       if (row.reasoning !== undefined && inCurrentTurn(idx)) pendingReasoning = row.reasoning;
       continue;
     }
-    // task/reply/notice/note/deficit/node/memory/role/skill（ChainAction 闭集内全部剩余词汇）：批先闭合，reply→assistant，其余（含指令与元信息行）→user
+    // task/plan/reply/notice/note/deficit/node/memory/role/skill（ChainAction 闭集内全部剩余词汇）：批先闭合，reply→assistant，其余（含指令/计划书行与元信息行）→user
     flushBatch();
     if (action === 'reply') {
       msgs.push({ role: 'assistant', content: row.observation });
     } else {
+      // 'plan' 与 'task' 并列本分支（spec §4.4）：计划书全文行按指令行同形态（user）透出
       msgs.push({ role: 'user', content: row.observation });
     }
   }

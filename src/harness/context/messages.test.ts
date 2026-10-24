@@ -69,6 +69,16 @@ test('notice/note/deficit/node 行→user 元信息消息', () => {
   }
 });
 
+test("ChainAction 'plan'：计划书行按 task 同等透出", () => {
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: chain([{ action: 'plan', observation: '# 计划书\n1. 步骤A' }]),
+  });
+  assert.ok(msgs.some((m) => m.role === 'user' && m.content.includes('# 计划书')), '计划书应入消息视图');
+});
+
 test('tool-call 批→assistant+tool_calls（id 按序合成）；tool-result→role:tool 按序配对；phase 行并入 assistant content', () => {
   const msgs = buildMessages({
     stableSegment: STABLE,
