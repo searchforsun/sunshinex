@@ -29,14 +29,6 @@ export const DESTRUCTIVE_COMMANDS = ['dd', 'fdisk', 'shutdown', 'reboot', 'power
 /** 下载执行管道模式：curl/wget 输出直接交 shell 执行 */
 export const DESTRUCTIVE_PIPE = /\b(?:curl|wget)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b/;
 
-/** 旧档/别名→现档单点（meta 旁车与 journal mode 行读路径共用;写路径恒写现值）。
- *  返回域=三权限档之一,永不含 'plan'——serve 的 plan 流程标记不经本函数（mode 端点与 daemon attach
- *  分路自处理:端点面先行判 'plan' 直透 setMode,attach 回放把 mode:'plan' 交本函数安全落 acceptEdits）。
- *  权限档语义一律映射为三档之一——旧 plan 档(真身 dontAsk)安全落 acceptEdits,回放绝不落全自动。
- *  未知值 undefined,调用方回落缺省档+warn。 */
-export function resolveModeAlias(raw: string): PermissionMode | undefined {
-  if (raw === 'read-only' || raw === 'acceptEdits' || raw === 'full-access') return raw;
-  if (raw === 'manual' || raw === 'plan') return 'acceptEdits';
-  if (raw === 'dontAsk') return 'full-access';
-  return undefined;
-}
+/** 旧档/别名兼容层已摘除（2026-10-24 用户裁定「不要有兼容逻辑,旧会话记录可以删」）：
+ *  meta 旁车 mode 回放只认现值三档,旧值/未知回落缺省档+warn（daemon.ts 装载序）,沿 MANUAL-GUI
+ *  「不保旧档」开发期先例;'plan' 是流程标记非档,照写不照回——arm 不跨重启（spec §5.2）。 */

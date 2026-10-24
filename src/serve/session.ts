@@ -1056,8 +1056,8 @@ export class SessionRuntime {
    *  转录/影子投影独立字段不受损;换新 runtime 后重挂 journal 落盘订阅（hookJournalSink 单槽幂等）。
    *  plan 流程标记（阶段三 plan-arm）：setMode('plan') 即 armed——本方法即「手动切档解除」路径
    *  （切离 plan 档=disarm）;setMode('plan')/『/plan 命令』为武装位。回放语义（spec §5.2,跨重启不恢复
-   *  arm）：本路径经 persistSelection 照写 mode:'plan' 落 meta 旁车,但 attach 回放走 resolveModeAlias
-   *  （daemon.ts 装载序,plan→acceptEdits）——armed 天然不跨重启,无需新增持久化;已批准的计划书随链
+   *  arm）：本路径经 persistSelection 照写 mode:'plan' 落 meta 旁车,但 attach 回放只认现值三档
+   *  （daemon.ts 装载序,'plan' 照写不照回）——armed 天然不跨重启,无需新增持久化;已批准的计划书随链
    *  （'plan' 行）回放。
    *  disarm 收口（终审修复 b）：plan 流程在途时切离 plan,卡挂起期锁已放行（idle）——旧形态只查 idle
    *  即实切,在途 planFlow 被孤儿化（用户点旧卡驱动续段与新任务并发跑;拒绝路径 revising 的 read-only

@@ -7,7 +7,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ModelAdapter, parseEffort } from '../model/adapter';
-import { resolveModeAlias } from '../harness/security/modes';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime, isShadowEvent } from './session';
@@ -312,14 +311,15 @@ export class GuiDaemon {
     if (selMeta.effort !== undefined) session.setEffort(selMeta.effort);
     if (selMeta.model !== undefined) session.setModel(selMeta.model);
     if (selMeta.mode !== undefined) {
-      // 旧档/别名→现档单点(resolveModeAlias,spec §3.3):manual→acceptEdits、dontAsk→full-access、
-      // 旧 plan 档安全落 acceptEdits(绝不落全自动)、现值透传;未知值 undefined=回落缺省档+warn。
+      // 权限档回放只认现值三档(2026-10-24 用户裁定「不要有兼容逻辑,旧会话记录可以删」:旧值
+      // manual/dontAsk 一律回落缺省档+warn,沿 MANUAL-GUI「不保旧档」开发期先例);'plan' 是流程
+      // 标记非档,照写不照回——arm 不跨重启(spec §5.2),静默落缺省档。
       // setMode 异步化后(终审修复:disarm 收口)此处 fire-and-forget 仍同步生效——attach 只落在从未
       // 附档的新会话(idle+plan 流程必不在途,复附有上 guard 拦),setMode 无 await 点直落换新,随后的
       // attachJournal 挂的就是换新后的运行时;带流程在途的 setMode 只经 mode 端点(async)行走
-      const aliased = resolveModeAlias(selMeta.mode);
-      if (aliased !== undefined) void session.setMode(aliased);
-      else console.warn(`[serve] unknown session mode in meta: ${String(selMeta.mode)} — falling back to default`);
+      const mode = selMeta.mode;
+      if (mode === 'read-only' || mode === 'acceptEdits' || mode === 'full-access') void session.setMode(mode);
+      else if (mode !== 'plan') console.warn(`[serve] session mode in meta not restorable: ${String(mode)} — falling back to default`);
     }
     const journal = new SessionJournal(dataDir);
     journal.attach(journalId);
