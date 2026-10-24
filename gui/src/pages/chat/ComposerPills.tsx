@@ -138,7 +138,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                 <span className="pill-label">{baseModelName(modelInfo?.current)}</span>
                 {/* 思考强度随名(G13 反馈轮):`模型 · effort` 同 pill,Codex 同形 */}
                 <EffortChip effort={sessEffort ?? 'medium'} />
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {pillOpen === 'model' && (
                 <div className="sx-menu-pop pill-pop pill-pop-right pill-pop-tall" role="menu" aria-label="session model menu">
