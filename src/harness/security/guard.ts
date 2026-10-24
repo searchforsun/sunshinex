@@ -113,6 +113,10 @@ export class SecurityGuard {
   enterModeOverride(mode: PermissionMode): void { this.override = mode; }
   exitModeOverride(): void { this.override = undefined; }
 
+  /** 基档切换通道（spec §4.4 批准落档:planFlow 批准续段/宿主消费;Task8 审查裁定——只回执不实切被推翻）：
+   *  运行中模式切换的 409 纪律由宿主保证（guard 判定面无并发写源） */
+  setBaseMode(mode: PermissionMode): void { this.modeName = mode; }
+
   /** 当前权限模式（链侧消费：读/写分支按档位定论，spec 5.1）：覆盖优先，缺省回落基档 modeName */
   get mode(): PermissionMode {
     return this.override ?? this.modeName;

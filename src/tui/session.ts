@@ -715,11 +715,12 @@ export class SessionController {
     return gate;
   }
 
-  /** 批准后落 acceptEdits（spec §4.4,TUI 侧最小实现）：会话档本就 acceptEdits 时无操作;
-   *  否则回执提示。TUI 无运行时改 guard 基档 modeName 的现成通道（构造期定死无 setter）——
-   *  宁停不造新接缝,不直改档位,档位切换沿既有模式命令通道（装配期 --mode）,回执先行（裁定,报告留痕） */
+  /** 批准后落 acceptEdits（spec §4.4 绑定性权威:真切换,Task8 审查推翻「只回执不实切」旧裁定）：
+   *  guard 基档经 setBaseMode 通道实切（运行中模式切换 409 纪律由宿主保证——批准点在任务轮收口前,无并发源）;
+   *  会话档本就 acceptEdits 时无操作,否则切换+如实回执 */
   private landAcceptEdits(): void {
     if (this.runtime.harness.security.mode === 'acceptEdits') return;
+    this.runtime.harness.security.setBaseMode('acceptEdits');
     this.pushMsg('system', t('Switched to workspace edit mode', '已切换到工作区编辑档'));
   }
 

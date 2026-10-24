@@ -533,10 +533,10 @@ test('/plan：3 轮拒绝超限回 idle 不执行（驳回环收口）', async (
   }
 });
 
-test('/plan：批准后落 acceptEdits——回执上屏（TUI 无 guard 基档运行时通道,只回执不实切=裁定钉）', async () => {
+test('/plan：批准后落 acceptEdits——基档真切换+回执上屏（spec §4.4 绑定,审查推翻「只回执」旧裁定）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-mode-'));
   try {
-    // 缺省 mode → harness 缺省基档 full-access：批准后档位面应有 acceptEdits 回执
+    // 缺省 mode → harness 缺省基档 full-access：批准后应真切换到 acceptEdits
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
@@ -544,6 +544,8 @@ test('/plan：批准后落 acceptEdits——回执上屏（TUI 无 guard 基档�
         '{"done":true,"reply":"步骤A 完成"}',
       ]),
     });
+    const guard = (ctrl as unknown as { runtime: { harness: { security: { mode: string; preToolUse(t: string, i: unknown): { allowed: boolean; ask?: boolean } } } } }).runtime.harness.security;
+    assert.equal(guard.mode, 'full-access', '批准前基档=缺省 full-access');
     await ctrl.submit('/plan 做一件事');
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
@@ -552,8 +554,10 @@ test('/plan：批准后落 acceptEdits——回执上屏（TUI 无 guard 基档�
       /Switched to workspace edit mode|已切换到工作区编辑档/,
       '批准后落 acceptEdits 回执（spec §4.4）',
     );
-    const mode = (ctrl as unknown as { runtime: { harness: { security: { mode: string } } } }).runtime.harness.security.mode;
-    assert.equal(mode, 'full-access', 'guard 无 setMode 运行时通道——只回执不实切（宁停不造新接缝,裁定钉）');
+    assert.equal(guard.mode, 'acceptEdits', '批准后基档真切换（不再只回执）');
+    // acceptEdits 语义判别：非只读 Bash 从 full-access 自动放行变为 ask 标记（后续任务 guard 判定按新档）
+    const d = guard.preToolUse('Bash', { command: 'curl example.com' });
+    assert.ok(d.allowed === false && d.ask === true, `非只读命令应转 ask（acceptEdits 语义）,实得 ${JSON.stringify(d)}`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
