@@ -605,8 +605,10 @@ function AppShell(): JSX.Element {
       style={{
         '--menu-w': `${menuWidth}px`,
         '--sidebar-w': `${sidebarOccupied}px`,
-        // 浮窗态:dock 在可见区(扣浮窗宽)内居中,两侧边距恒等(2026-10-24 用户裁定)
-        '--sidebar-float-w': `${sidebarFloating ? sidebarRenderW : 0}px`,
+        // 浮窗态:dock 在可见区(扣浮窗宽)内居中,两侧边距恒等(2026-10-24 用户裁定)。
+        // 折叠态必须零补偿:抽屉未渲染而恒取渲染宽,dock 会对着不存在的抽屉左漂半个身位
+        // 进菜单底下(2026-10-24 用户实测「输入框跑到左侧菜单里面」根因)
+        '--sidebar-float-w': `${sidebarFloating && !tabState.collapsed ? sidebarRenderW : 0}px`,
       } as CSSProperties}
     >
       {settingsOpen && connInstance !== null ? (

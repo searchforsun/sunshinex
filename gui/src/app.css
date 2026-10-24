@@ -98,9 +98,16 @@
 /* G14.33:右栏与主面对话同底色(原 surface-under 明度差退役);中缝细条 = 左缘 1px 分割线,
    兼作拖宽把手落点(sx-resizer 仍在,hover 提亮);G14.2xx 用户裁定:无固定最大宽——视口护栏
    max-width = 视口−菜单−320 结构性禁止越视口(中栏触底即停;持久化超宽/窗口缩窄同被钳) */.sx-sidebar { flex: none; max-width: calc(100vw - var(--menu-w, 260px) - 320px); background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; user-select: none; }.sx-resizer:hover, .sx-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-   示悬浮层级;宽度仍走 inline(渲染期钳制)与拖宽边条,阈值宽自动还原分栏 */
+/* 浮窗抽屉(2026-10-24 用户裁定):视口窄于 1000 右栏转悬浮抽屉(fixed 右满高盖正文,z 低于
+   窗控簇,左缘圆角+投影示悬浮层级);宽度仍走 inline(渲染期钳制)。注:本规则上方曾有孤儿
+   注释尾巴(开头 /* 在往返编辑中丢失),裸文本致浏览器错误恢复吞掉本条——浮窗整模式静默
+   半残(抽屉恒占布局宽,dock 补偿却按悬浮让位),2026-10-24 用户实测截图定位 */
 .sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; border-left: 1px solid var(--border); border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); }
-.sx-shell.sx-sidebar-float .chat-dock { left: calc(50% - var(--sidebar-float-w, 0px) / 2); } /* dock 在可见区(扣浮窗宽)内居中,两侧边距恒等 */
+/* 浮窗态 dock 两侧 inset 锚定:左 16 / 右(浮窗宽+16),卡随 dock 满宽=可见区内 16px 等边距
+   (与分栏态 main−32 同几何)。不用 left:50%−w/2 位移公式——%基线×transform×浮窗 fixed×根
+   zoom 四者耦合下几何失真,实测 dock 钻进左菜单底下(2026-10-24 用户截图);inset 只依赖布局
+   宽,收起态(float-w=0,App 侧条件落值)与分栏态逐像素一致 */
+.sx-shell.sx-sidebar-float .chat-dock { left: 16px; right: calc(var(--sidebar-float-w, 0px) + 16px); width: auto; transform: none; }
 /* 2026-10-24 用户裁定:窄视口(<780)左菜单浮层化——不占布局宽(240 菜单+281 抽屉会把 600 视口吃到 24px),
    ☰ 呼出(z 96)/遮罩点击即收;宽视口还原内联分栏。菜单拖宽手柄浮层态无意义,隐藏 */
 /* G12 左栏拖宽手柄:flex 件 + 负 margin 自覆盖在 nav 右缘(零布局占位),与右栏手柄同语言 */.sx-menu-resizer { flex: none; width: 8px; margin-left: -8px; cursor: col-resize; z-index: 5; user-select: none; }.sx-menu-resizer:hover, .sx-menu-resizer.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
