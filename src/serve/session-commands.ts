@@ -158,7 +158,8 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
     // planFlow(TUI /plan 同构:规划→确认卡→批准落档→逐项执行)。档位切换 busy(运行中)/提交 409
     // (流程在途)统一 busy 面归 HTTP 409;裸 /plan(缺目标)=只武装不提交(TUI 用法提示同构——后续
     // 空闲提交经 armed 拦截自然进入规划流程)
-    if (s.setMode('plan') !== 'ok') return 'busy';
+    // setMode 异步化(终审修复:disarm 收口)后武装位照常 await——arm 至 plan 不触收口(同档幂等/无流程即直落)
+    if ((await s.setMode('plan')) !== 'ok') return 'busy';
     const goal = line.trim().split(/\s+/).slice(1).join(' ').trim();
     if (goal.length === 0) {
       notice(

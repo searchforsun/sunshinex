@@ -9,6 +9,7 @@ import { parseJournalFile, sessionsDir } from './session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import { getLanguage, setLanguage } from '../i18n';
 import { createKernelRuntime } from '../session/runtime';
+import type { KernelRuntime, RunOutcome } from '../session/runtime';
 import { ScriptedAdapter } from '../model/adapter';
 import { Reactor, ReactorOpts } from '../harness/reactor';
 import { LONG_TASK_TIMEOUT_MS } from '../loop/templates';
@@ -533,7 +534,7 @@ test('/plan：3 轮拒绝超限回 idle 不执行（驳回环收口）', async (
   }
 });
 
-test('/plan：批准后落 acceptEdits——基档真切换+回执上屏（spec §4.4 绑定,审查推翻「只回执」旧裁定）', async () => {
+test('/plan：批准后落 acceptEdits——基档真切换+回执上屏+asker 接线补位（spec §4.4 绑定,审查推翻「只回执」旧裁定）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-mode-'));
   try {
     // 缺省 mode → harness 缺省基档 full-access：批准后应真切换到 acceptEdits
@@ -544,7 +545,13 @@ test('/plan：批准后落 acceptEdits——基档真切换+回执上屏（spec 
         '{"done":true,"reply":"步骤A 完成"}',
       ]),
     });
-    const guard = (ctrl as unknown as { runtime: { harness: { security: { mode: string; preToolUse(t: string, i: unknown): { allowed: boolean; ask?: boolean } } } } }).runtime.harness.security;
+    type GuardFace = {
+      mode: string;
+      preToolUse(t: string, i: unknown): { allowed: boolean; ask?: boolean };
+      nextApprovalId(): string;
+      resolveAsk(req: { id: string; kind: 'write'; subject: string; reason?: string }): Promise<'allow' | 'always' | 'deny' | null>;
+    };
+    const guard = (ctrl as unknown as { runtime: { harness: { security: GuardFace } } }).runtime.harness.security;
     assert.equal(guard.mode, 'full-access', '批准前基档=缺省 full-access');
     await ctrl.submit('/plan 做一件事');
     await ctrl.confirmPlan(true);
@@ -558,6 +565,15 @@ test('/plan：批准后落 acceptEdits——基档真切换+回执上屏（spec 
     // acceptEdits 语义判别：非只读 Bash 从 full-access 自动放行变为 ask 标记（后续任务 guard 判定按新档）
     const d = guard.preToolUse('Bash', { command: 'curl example.com' });
     assert.ok(d.allowed === false && d.ask === true, `非只读命令应转 ask（acceptEdits 语义）,实得 ${JSON.stringify(d)}`);
+    // asker 接线判别（终审修复）：非 acceptEdits 启动的会话构造器不挂 asker——批准实切后必须补挂
+    // suspendAsker,否则 ask 分支宁停硬拒（resolveAsk null）、批准续段写步骤必停。可观测面沿
+    // guard.boundary 先例:接线后 resolveAsk 不再 null 直返,而是经 asker 挂起等回填（挂起登记可观测）
+    let decided: 'allow' | 'always' | 'deny' | null | 'unset' = 'unset';
+    const askP = guard.resolveAsk({ id: guard.nextApprovalId(), kind: 'write', subject: path.join(tmp, 'a.txt'), reason: 'r' }).then((r) => { decided = r; });
+    await waitFor(() => (ctrl as unknown as { pendingApproval?: unknown }).pendingApproval !== undefined, 'asker 挂起登记（接线生效,非 null 硬拒）');
+    await ctrl.resolveApproval('deny');
+    await askP;
+    assert.equal(decided, 'deny', 'ask 决策经 asker 解析回传（不再 null）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -588,6 +604,43 @@ test('/plan：等待批准中中断——流程中止回 idle,产物不注入不
     assert.ok(
       ctrl.getState().messages.some((m) => m.role === 'assistant' && m.text.includes('新任务完成')),
       '中断后新任务正文应正常入档',
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/plan：执行段中断检查在循环顶——被跳过步骤的指令行不入链（竞窗:步骤完成后信号落地,终审修复）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-abort-top-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}', // 规划包:两步
+        '{"done":true,"reply":"步骤A 完成"}', // 执行包 A
+        '{"done":true,"reply":"步骤B 完成"}', // 执行包 B(竞窗中止后不应到达)
+      ]),
+    });
+    // 竞窗注入:runTask 返回后（reactor 末次信号检查已过、stopReason 仍 done）信号才落地——
+    // 复现「上一步完成后中断」的真实窗口;第 1 次调用是规划轮,第 2 次是执行段步骤 A
+    const orig = ctrl.runtime.runTask.bind(ctrl.runtime);
+    let calls = 0;
+    ctrl.runtime.runTask = (goal: string, opts?: Parameters<KernelRuntime['runTask']>[1]): Promise<RunOutcome> =>
+      (orig(goal, opts) as Promise<RunOutcome>).then((r) => {
+        calls += 1;
+        if (calls === 2) (ctrl as unknown as { taskAbort?: AbortController }).taskAbort?.abort();
+        return r;
+      });
+    await ctrl.submit('/plan 做一件事');
+    await ctrl.confirmPlan(true);
+    await ctrl.waitIdle();
+    const chain = chainOf(ctrl);
+    assert.ok(chain.some((s) => s.action === 'task' && s.observation.includes('步骤A')), '步骤 A 指令行入链（已执行）');
+    assert.ok(!chain.some((s) => s.action === 'task' && s.observation.includes('步骤B')), '被跳过步骤 B 的指令行不入链（检查在循环顶,旧形态留孤儿链行）');
+    assert.deepEqual(
+      ctrl.getState().todos.map((t) => ({ text: t.text, status: t.status })),
+      [{ text: '步骤A', status: 'completed' }, { text: '步骤B', status: 'pending' }],
+      '步骤 B 保持 pending（旧形态先标 in_progress 再查中断）',
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -10,7 +10,9 @@ export type PlanFlowEvent =
   | { type: 'awaiting-approval'; doc: string; items: string[] }
   | { type: 'revising'; round: number }
   | { type: 'approved'; doc: string; items: string[] }
-  | { type: 'aborted'; reason: 'interrupted' | 'exhausted' | 'empty' };
+  /** aborted：中断/超限/无产物/规划任务非中断失败。stopReason=规划 run 的原始终止原因透传
+   *  （spec §7 如实回执——宿主回执措辞据此区分「已中断」与「规划失败: <原因>」,不再一律谎报 interrupted） */
+  | { type: 'aborted'; reason: 'interrupted' | 'exhausted' | 'empty' | 'failed'; stopReason?: string };
 
 export interface PlanDecision { approved: boolean; feedback?: string }
 
@@ -64,8 +66,14 @@ export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?:
     } finally {
       seams.exitReadOnly();
     }
-    if (!out.done || out.stopReason === 'interrupted' || seams.signal?.aborted) {
-      seams.emit({ type: 'aborted', reason: 'interrupted' });
+    // 判定拆分（终审修复,spec §7 如实回执）：信号置位/中断 → interrupted;其余未完成（model-error/
+    // max-steps/deadline/budget…）→ failed 并透传 stopReason——不再一律谎报 interrupted
+    if (seams.signal?.aborted || out.stopReason === 'interrupted') {
+      seams.emit({ type: 'aborted', reason: 'interrupted', ...(out.stopReason !== undefined ? { stopReason: out.stopReason } : {}) });
+      return null;
+    }
+    if (!out.done) {
+      seams.emit({ type: 'aborted', reason: 'failed', ...(out.stopReason !== undefined ? { stopReason: out.stopReason } : {}) });
       return null;
     }
     const doc = out.reply ?? '';

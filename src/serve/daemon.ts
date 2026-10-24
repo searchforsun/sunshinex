@@ -313,9 +313,12 @@ export class GuiDaemon {
     if (selMeta.model !== undefined) session.setModel(selMeta.model);
     if (selMeta.mode !== undefined) {
       // 旧档/别名→现档单点(resolveModeAlias,spec §3.3):manual→acceptEdits、dontAsk→full-access、
-      // 旧 plan 档安全落 acceptEdits(绝不落全自动)、现值透传;未知值 undefined=回落缺省档+warn
+      // 旧 plan 档安全落 acceptEdits(绝不落全自动)、现值透传;未知值 undefined=回落缺省档+warn。
+      // setMode 异步化后(终审修复:disarm 收口)此处 fire-and-forget 仍同步生效——attach 只落在从未
+      // 附档的新会话(idle+plan 流程必不在途,复附有上 guard 拦),setMode 无 await 点直落换新,随后的
+      // attachJournal 挂的就是换新后的运行时;带流程在途的 setMode 只经 mode 端点(async)行走
       const aliased = resolveModeAlias(selMeta.mode);
-      if (aliased !== undefined) session.setMode(aliased);
+      if (aliased !== undefined) void session.setMode(aliased);
       else console.warn(`[serve] unknown session mode in meta: ${String(selMeta.mode)} — falling back to default`);
     }
     const journal = new SessionJournal(dataDir);

@@ -619,11 +619,13 @@ export class SessionRuntime {
    * 标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源） */
   submit(goal: string): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
+    // plan flow 在途一律 409（终审修复 a：不论 armed——disarm 收口窗口/中断后 settle 前的提交也拒,
+    // 沿既有文案口径。主路径防并发:planFlow 无内部串行化,放行即与续跑段竞写）
+    if (this.planFlowRunning) return { ok: false, status: 409, error: 'plan flow in progress' };
     // plan-arm 提交通道（spec §5.1）：mode==='plan' 即 armed——armed 空闲提交经 planFlow 规划流程
     // （TUI /plan 同构:规划→确认卡→批准落档→逐项执行）;流程在途（含裁决点挂卡——idle+planFlowRunning）
     // 一律 409 不排队,裁决走挂起表回执端点。批准自动解除（续段 setMode 切走）/手动切档解除/拒绝保持。
     if (this.planArmed()) {
-      if (this.planFlowRunning) return { ok: false, status: 409, error: 'plan flow in progress' };
       this.runPlanArm(goal);
       return { ok: true };
     }
@@ -754,13 +756,12 @@ export class SessionRuntime {
 
   /** 中止当前 run：步边界/在途模型调用经 signal 即刻中止（reactor 既有语义），runTask 以
    *  stopReason=interrupted 收束后 finally 清锁。plan 流程在途（规划轮/裁决点挂卡/执行段）同为
-   *  中断面：流程信号中止 + 挂卡拒绝回填（TUI approval.ts interrupt→confirmPlan(false) 语义对齐——
-   *  decide 回填后流程凭已置位的中止信号走 aborted 收尾,产物不注入执行不启动） */
+   *  中断面：共用 abortPlanFlowAndSettle 单点（信号中止+挂卡拒绝回填+有界等收束,fire-and-forget——
+   *  收尾可观测面由流程自身的 aborted 回执承载;settle 等待的强制的只在 reset/teardown/disarm） */
   interrupt(): SessionInterruptResult {
     if (!this.current && !this.planFlowRunning) return { ok: false, error: 'no run in progress' };
     this.current?.abort.abort();
-    this.planAbort?.abort();
-    this.denyPlanPendings();
+    void this.abortPlanFlowAndSettle();
     return { ok: true };
   }
 
@@ -840,11 +841,14 @@ export class SessionRuntime {
               return;
             }
             if (e.type === 'aborted') {
+              // failed 臂如实措辞（终审修复,spec §7：规划失败不再谎报 interrupted,stopReason 透传入文）
               const why = e.reason === 'interrupted'
                 ? 'Planning interrupted'
                 : e.reason === 'exhausted'
                   ? 'Plan rejected 3 times — stopped, nothing executed'
-                  : 'Planning produced no steps — cancelled';
+                  : e.reason === 'empty'
+                    ? 'Planning produced no steps — cancelled'
+                    : `Planning failed: ${e.stopReason ?? 'unknown'}`;
               this.pump({ type: 'notice', text: why, ts: Date.now() });
               releaseGateOnce(); // 无裁决点路径（中断/超限/无产物）也放行 submit 半径
               return;
@@ -864,10 +868,16 @@ export class SessionRuntime {
           // 落 acceptEdits（spec §4.4/§5.1 绑定：真切换,arm 解除）。idle 时刻合法（锁已在裁决点放行;
           // busy 面 unreachable——planFlowRunning 挡新提交,流程外无并发 run 源）。重建 runtime 后新
           // guard 基档即 acceptEdits、asker 接线经装配单点自动就位（isAcceptEdits 判定）——serve 相对
-          // TUI 的优势：TUI 需 setBaseMode 手动通道,serve 装配映射单点承接
+          // TUI 的优势：TUI 需 setBaseMode 手动通道,serve 装配映射单点承接。
+          // planFlowInternal 旁路：流程内切换不得自触 disarm 收口（abortPlanFlowAndSettle 会中止自己）;
+          // busy 即中止流程（终审修复 c：防御纵深——旧形态忽略返回值,busy 也照跑执行段;即便 a/b 已封
+          // 主路径,此处不再带病续跑）
           const ctx = this.runtimeImpl.harness.context;
           const carry = { chain: ctx.chainView(), chainFrom: ctx.chainFromView(), compacted: ctx.compactedView() };
-          this.setMode('acceptEdits');
+          if ((await this.setMode('acceptEdits', { planFlowInternal: true })) === 'busy') {
+            this.pump({ type: 'notice', text: 'Plan approved — execution cancelled (mode switch failed)', ts: Date.now() });
+            return;
+          }
           // setMode 换新运行时=换上下文链（reset 同路径）——批准续段必须站在含计划书的原链上执行：
           // 快照-换新-restoreSession 回种（daemon attach 同构;直注入不触发订阅,零双写）
           this.runtimeImpl.harness.context.restoreSession(carry);
@@ -925,11 +935,13 @@ export class SessionRuntime {
     // 计划纪律走链（只增不改;§15 写链面英文单语,TUI 同一行文案）
     ctx.appendChain([{ action: 'note', observation: 'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.' }]);
     for (let i = 0; i < items.length; i++) {
+      // 中断检查在循环体首行（终审修复,与 TUI 同构）：「上一步完成后信号才落地」的竞窗下,被跳过
+      // 步骤的指令行不再入链、待办不再误标 in_progress（旧形态先 append/标 in_progress 再查）
+      if (abort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
       this.pump({ type: 'notice', text: `Step ${i + 1}/${items.length} — ${items[i]}`, ts: Date.now() });
       this.setTodos(this.todos.map((td) => (td.text === items[i] && td.status === 'pending' ? { ...td, status: 'in_progress' } : td)));
       ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
       try {
-        if (abort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
         const r: RunOutcome = await this.runtimeImpl.runTask(items[i], {
           ...(this.tier ? { tier: this.tier } : {}),
           ...(this.effort ? { effort: this.effort } : {}),
@@ -1046,10 +1058,19 @@ export class SessionRuntime {
    *  （切离 plan 档=disarm）;setMode('plan')/『/plan 命令』为武装位。回放语义（spec §5.2,跨重启不恢复
    *  arm）：本路径经 persistSelection 照写 mode:'plan' 落 meta 旁车,但 attach 回放走 resolveModeAlias
    *  （daemon.ts 装载序,plan→acceptEdits）——armed 天然不跨重启,无需新增持久化;已批准的计划书随链
-   *  （'plan' 行）回放 */
-  setMode(mode: SessionMode): 'ok' | 'busy' {
+   *  （'plan' 行）回放。
+   *  disarm 收口（终审修复 b）：plan 流程在途时切离 plan,卡挂起期锁已放行（idle）——旧形态只查 idle
+   *  即实切,在途 planFlow 被孤儿化（用户点旧卡驱动续段与新任务并发跑;拒绝路径 revising 的 read-only
+   *  覆盖还会拒掉用户任务的写操作）。现切离前先经 abortPlanFlowAndSettle 单点中止流程（信号+挂卡
+   *  拒绝回填+有界等收束）再换新运行时;批准续段自身的落档切换走 planFlowInternal 旁路（流程内切换
+   *  不得自中止）。异步化即为此等待;setMode('plan') 同档幂等早退,不触收口。 */
+  async setMode(mode: SessionMode, opts?: { planFlowInternal?: boolean }): Promise<'ok' | 'busy'> {
     if (this.status() !== 'idle') return 'busy';
     if (mode === this.currentMode) return 'ok';
+    if (this.planFlowRunning && !opts?.planFlowInternal) {
+      await this.abortPlanFlowAndSettle();
+      if (this.status() !== 'idle') return 'busy'; // 防御:收束窗口内有新 run 起跑则拒切（不换新运行时压 run）
+    }
     this.currentMode = mode;
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) this.hookJournalSink();
@@ -1144,26 +1165,41 @@ export class SessionRuntime {
   /** 收口步骤 0：在跑 run 即刻中止（T1 评审裁定：悬挂 run 的 promise 会拖住事件循环/测试收口；路径同
    *  /interrupt）→ 被中止 run 的 settle 钩子（沉淀入队）需收口后才进 drain——2000ms 有界防 signal
    *  无视的工具悬挂 teardown（终审裁定）；done 先胜即清残留 timer，不给事件循环留 2s 尾巴。
-   *  plan 流程在途同断面：流程信号中止 + 挂卡拒绝回填（denyPlanPendings——流程凭中止信号走 aborted
-   *  收尾）+ 有界等流程整体收束（裁决点挂卡期 current 已放行,planFlowSettled 是唯一等待锚——防
+   *  plan 流程在途同断面：abortPlanFlowAndSettle 单点先行（流程整体收束后再等 run settle——防
    *  reset 换新运行时与续跑段竞写） */
   async abortAndSettle(): Promise<void> {
     this.current?.abort.abort();
-    this.planAbort?.abort();
-    this.denyPlanPendings();
-    if (!this.current && !this.planFlowRunning) return;
+    await this.abortPlanFlowAndSettle();
+    if (!this.current) return;
     const current = this.current;
-    const flowSettled = this.planFlowSettled;
     let settleTimer: NodeJS.Timeout | undefined;
     const bail = new Promise<void>((resolve) => {
       settleTimer = setTimeout(resolve, ABORTED_RUN_SETTLE_MS);
     });
     // race 面吞拒：done 的拒绝（中止收尾落档的写失败等）已经 p.catch 倒 error 帧可见化——
     // settle 等待的语义是「等其落定」而非「随其失败」，拒绝不得拖垮 teardown/close 序
-    await Promise.race([
-      Promise.all([current?.done.catch(() => undefined) ?? Promise.resolve(), flowSettled?.catch(() => undefined) ?? Promise.resolve()]),
-      bail,
-    ]);
+    await Promise.race([current.done.catch(() => undefined), bail]);
+    clearTimeout(settleTimer);
+  }
+
+  /** plan 流程在途中止单点（终审修复 b：镜像 abortAndSettle 形态收敛为一个内部操作）——
+   *  planAbort.abort()（流程信号:规划轮在途调用/执行段逐项 run/挂卡期中止判定共用）+
+   *  denyPlanPendings()（挂卡拒绝回填——decide 回填后流程凭已置位的中止信号走 aborted 收尾,
+   *  产物不注入执行不启动）+ 有界等 planFlowSettled（≤2s;挂卡期 current 已放行,流程收束 promise
+   *  是唯一等待锚——防调用方换新运行时与续跑段竞写）。interrupt（fire-and-forget）/abortAndSettle
+   *  （reset/teardown 前置）/setMode 切离 plan（disarm）各路共用;流程不在途零事务幂等 */
+  private async abortPlanFlowAndSettle(): Promise<void> {
+    if (!this.planFlowRunning) return;
+    this.planAbort?.abort();
+    this.denyPlanPendings();
+    const flowSettled = this.planFlowSettled;
+    if (flowSettled === undefined) return;
+    let settleTimer: NodeJS.Timeout | undefined;
+    const bail = new Promise<void>((resolve) => {
+      settleTimer = setTimeout(resolve, ABORTED_RUN_SETTLE_MS);
+    });
+    // race 面吞拒同 abortAndSettle：等「落定」不随其失败
+    await Promise.race([flowSettled.catch(() => undefined), bail]);
     clearTimeout(settleTimer);
   }
 

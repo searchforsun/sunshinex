@@ -1,5 +1,5 @@
 import type { AskUserAnswer, AskUserRequest } from '../types';
-import { ApprovalDecision, ApprovalRequest, SessionEvent } from '../types';
+import { ApprovalDecision, ApprovalRequest, SessionEvent, StopReason } from '../types';
 import { t } from '../i18n';
 import { formatContextBreakdown } from './format';
 import { RunOutcome, KernelRuntime, createKernelRuntime } from '../session/runtime';
@@ -73,6 +73,15 @@ import type { SessionOpts } from './chat-model';
 // boardEventFrom 迁出(G3 Task 2):翻译单点已抽纯模块 taskboard/translate.ts(gui 投影实时化消费 +
 // 防浏览器 bundle 拉入 TUI 模块图);此处转发导出保持既有导入面零改(daemon/mirror.test 等既有消费方不迁)
 export { boardEventFrom } from '../taskboard/translate';
+
+/** 规划失败如实回执单点（终审修复,spec §7：aborted failed 不再谎报 interrupted）：
+ *  沿 describeIncomplete 文案形态拼「规划失败: <未完成原因>」（done/model-error 无未完成可讲,回落原始值） */
+function failedPlanningText(stopReason: string | undefined): string {
+  const note = describeIncomplete(stopReason as StopReason | undefined);
+  return note.length > 0
+    ? t(`Planning failed: ${note}`, `规划失败：${note}`)
+    : t(`Planning failed (${stopReason ?? 'unknown'})`, `规划失败（${stopReason ?? '未知'}）`);
+}
 
 /** 会话控制器：事件进 → 状态变更（渲染层订阅）；斜杠命令解析、FIFO 排队、审批挂起/回填；纯逻辑可独立单测 */
 export class SessionController {
@@ -667,11 +676,15 @@ export class SessionController {
               return;
             }
             if (e.type === 'aborted') {
+              // failed 臂如实措辞（终审修复:spec §7 规划失败不再谎报 interrupted）——沿 describeIncomplete
+              // 文案形态拼「规划失败: <未完成原因>」;describeIncomplete 对 model-error 回空串,回落原始值
               const why = e.reason === 'interrupted'
                 ? t('Planning interrupted', '规划已中断')
                 : e.reason === 'exhausted'
                   ? t('Plan rejected 3 times — stopped, nothing executed', '计划已被拒 3 轮——已停止，未执行任何步骤')
-                  : t('Planning produced no steps — cancelled', '规划未产出步骤——已取消');
+                  : e.reason === 'empty'
+                    ? t('Planning produced no steps — cancelled', '规划未产出步骤——已取消')
+                    : failedPlanningText(e.stopReason);
               this.pushMsg('system', why, { level: 'warn' });
               // 失败路径不产出收尾统计行（规格 §3.2 边界,沿旧 empty/interrupted 路径语义）
               this.taskStatsSuppressed = true;
@@ -717,10 +730,14 @@ export class SessionController {
 
   /** 批准后落 acceptEdits（spec §4.4 绑定性权威:真切换,Task8 审查推翻「只回执不实切」旧裁定）：
    *  guard 基档经 setBaseMode 通道实切（运行中模式切换 409 纪律由宿主保证——批准点在任务轮收口前,无并发源）;
-   *  会话档本就 acceptEdits 时无操作,否则切换+如实回执 */
+   *  会话档本就 acceptEdits 时无操作,否则切换+如实回执。
+   *  asker 接线随实切补位（终审修复）：非 acceptEdits 启动的会话构造器不挂 asker——实切后 ask 分支
+   *  宁停硬拒（resolveAsk null）,批准续段的写步骤必停。setAsker(suspendAskerFor(this)) 幂等无害
+   *  （acceptEdits 会话构造器已挂同款闭包,本路径不重入;挂起裁决面沿既有 approval.ts 管线） */
   private landAcceptEdits(): void {
     if (this.runtime.harness.security.mode === 'acceptEdits') return;
     this.runtime.harness.security.setBaseMode('acceptEdits');
+    this.runtime.harness.security.setAsker(suspendAskerFor(this));
     this.pushMsg('system', t('Switched to workspace edit mode', '已切换到工作区编辑档'));
   }
 
@@ -734,12 +751,14 @@ export class SessionController {
     // 计划纪律走链（只增不改）：每轮只完成最后一条当前指令，不执行/预判/重排后续任务
     ctx.appendChain([{ action: 'note', observation: 'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.' }]);
     for (let i = 0; i < items.length; i++) {
+      // 中断检查在循环体首行（终审修复）：「上一步完成后信号才落地」的竞窗下,被跳过步骤的指令行
+      // 不再入链、待办不再误标 in_progress（旧形态先 append/标 in_progress 再查,留孤儿链行）
+      if (this.taskAbort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
       this.pushMsg('step', `Step ${i + 1}/${items.length} — ${items[i]}`);
       this.notify(); // 轮窗起点/计数由内核 model-start 统计面承载(P9),此处只剩步骤行通知
       this.setTodos(this.state.todos.map((td) => (td.text === items[i] && td.status === 'pending' ? { ...td, status: 'in_progress' } : td)));
       ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
       try {
-        if (this.taskAbort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
         const r: RunOutcome = await this.runtime.runTask(items[i], {
           ...(this.state.tier ? { tier: this.state.tier } : {}),
           ...(this.state.effort ? { effort: this.state.effort } : {}),

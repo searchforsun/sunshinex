@@ -373,7 +373,9 @@ export async function handleSessionMode(io: SessionHandlerIo, req: http.Incoming
   if (mode !== 'read-only' && mode !== 'acceptEdits' && mode !== 'full-access' && mode !== 'plan') return io.send(res, 400, { error: 'invalid mode' });
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  if (session.setMode(mode) === 'busy') return io.send(res, 409, { error: 'session is running' });
+  // setMode 异步化(终审修复:disarm 收口——切离 plan 先中止在途流程再实切)后本端点 await 等其落定,
+  // 409 busy 面语义不变;disarm 收束窗口内被并发 run 抢跑同样归 busy
+  if ((await session.setMode(mode)) === 'busy') return io.send(res, 409, { error: 'session is running' });
   io.send(res, 200, { ok: true, mode });
 }
 

@@ -8,6 +8,9 @@ import type { DaemonFrame } from './daemon-wire';
 import type { SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
+import * as runtimeMod from '../session/runtime';
+import type { KernelRuntime } from '../session/runtime';
+import type { RunOutcome } from '../types';
 
 /** serve plan-arm e2e（spec §5.1-5.2,阶段三 Task 9）：mode='plan' 即 armed——submit 入口拦截转
  *  planFlow（接缝同构 TUI startPlanFlow）;挂起表新增 kind='plan-approval'（payload 计划书+items）,
@@ -193,7 +196,7 @@ test('serve plan-arm：等待批准中中断——拒绝回填走 aborted,产物
       assert.ok(!chainOf(ctx.session).some((st) => st.action === 'plan'), '中断路径产物不注入链(rider:signal 边界)');
       assert.ok(ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'notice' && String(f.e.text ?? '').includes('Planning interrupted')), '中断如实回执(notice 事件面)');
       // 手动切档解除(arm 三解除路径之三):idle 下 setMode 真切换,armed 拦截随之解除
-      assert.equal(ctx.session.setMode('acceptEdits'), 'ok');
+      assert.equal(await ctx.session.setMode('acceptEdits'), 'ok');
       assert.equal(ctx.session.snapshotResponse().mode, 'acceptEdits');
       assert.deepEqual(ctx.session.submit('新任务'), { ok: true });
       await waitFor(() => ctx.session.status() === 'idle', 10_000);
@@ -202,4 +205,97 @@ test('serve plan-arm：等待批准中中断——拒绝回填走 aborted,产物
     },
     { mode: 'plan' },
   );
+});
+
+test('serve plan-arm：挂卡期切档(disarm)=中止在途流程——卡被拒+aborted 收尾+后续提交走普通任务(终审修复)', async () => {
+  const model = new ScriptedAdapter([
+    '{"done":true,"reply":"# 计划\\n1. 步骤A"}', // 规划包
+    '{"tool":"write","input":{"path":"after-disarm.txt","content":"ok"},"done":false}', // 普通任务:acceptEdits 域内写直放
+    '{"done":true,"reply":"普通任务完成"}',
+  ]);
+  await withSession(
+    model,
+    async (ctx) => {
+      assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
+      planCard(ctx.session, ctx.frames);
+      assert.equal(ctx.session.status(), 'idle', '前提:卡挂起期锁已放行(idle)——旧形态在此 setMode 即孤儿化在途流程');
+      // 挂卡期切档(disarm)：先中止在途流程(挂卡拒绝回填+信号中止+有界等收束)再实切——
+      // 旧形态只查 idle 即实切,旧卡续段与新提交并发跑、revising 的 read-only 覆盖拒用户写
+      assert.equal(await ctx.session.setMode('acceptEdits'), 'ok', 'disarm 受理(idle 面)');
+      await waitFor(
+        () => ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'notice' && String(f.e.text ?? '').includes('Planning interrupted')),
+        10_000,
+        '流程 aborted 如实回执',
+      );
+      await waitFor(() => ctx.session.pendingSnapshot().length === 0, 10_000, '挂卡被拒清表');
+      assert.equal(ctx.session.snapshotResponse().mode, 'acceptEdits', 'disarm 实切');
+      assert.ok(!chainOf(ctx.session).some((st) => st.action === 'plan'), '中止路径产物不注入链(不执行)');
+      // disarm 后提交走普通任务:不再 409、不进 planFlow 零新卡;acceptEdits 域内写直放——
+      // 若流程孤儿化续跑(read-only 覆盖在座/并发竞写),此写即被拒或文件不落盘
+      assert.deepEqual(ctx.session.submit('普通任务'), { ok: true }, 'disarm 后普通提交直受理');
+      await waitFor(() => ctx.session.status() === 'idle', 10_000, '普通任务收尾');
+      assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '零新计划卡(无并发无泄漏)');
+      assert.ok(fs.existsSync(path.join(ctx.tmp, 'after-disarm.txt')), 'acceptEdits 域内写落盘(read-only 覆盖零泄漏)');
+      assert.ok(chainOf(ctx.session).some((st) => st.observation.includes('普通任务完成')), '普通任务执行入链');
+    },
+    { mode: 'plan' },
+  );
+});
+
+test('serve plan-arm：执行段中断检查在循环顶——被跳过步骤的指令行不入链(竞窗:步骤完成后信号落地,终审修复)', async () => {
+  const model = new ScriptedAdapter([
+    '{"done":true,"reply":"# 计划\\n1. 步骤A\\n2. 步骤B"}', // 规划包:两步
+    '{"done":true,"reply":"步骤A 完成"}', // 执行包 A
+    '{"done":true,"reply":"步骤B 完成"}', // 执行包 B(竞窗中止后不应到达)
+  ]);
+  // 竞窗注入:包装 createKernelRuntime(批准续段 setMode 换新运行时,实例级补丁会被甩掉——包装工厂两层
+  // 全拦截)。runTask 返回后(reactor 末次信号检查已过、stopReason 仍 done)信号才落地:第 1 次调用=
+  // 规划轮,第 2 次=执行段步骤 A——此刻 interrupt,复现「上一步完成后中断」的真实窗口
+  const origCreate = runtimeMod.createKernelRuntime;
+  let calls = 0;
+  let sessionRef: SessionRuntime | undefined;
+  (runtimeMod as unknown as { createKernelRuntime: typeof origCreate }).createKernelRuntime = (...args: Parameters<typeof origCreate>) => {
+    const rt = origCreate(...args);
+    const origRun = rt.runTask.bind(rt);
+    (rt as unknown as { runTask: unknown }).runTask = (goal: string, opts?: Parameters<KernelRuntime['runTask']>[1]): Promise<RunOutcome> =>
+      (origRun(goal, opts) as Promise<RunOutcome>).then((r) => {
+        calls += 1;
+        if (calls === 2 && sessionRef !== undefined) {
+          assert.deepEqual(sessionRef.interrupt(), { ok: true }, '竞窗中止受理(执行段在途)');
+        }
+        return r;
+      });
+    return rt;
+  };
+  try {
+    await withSession(
+      model,
+      async (ctx) => {
+        sessionRef = ctx.session;
+        assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
+        await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
+        const card = planCard(ctx.session, ctx.frames);
+        assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: true }), true, '批准回执命中');
+        // 等待锚=批准续段的可观测里程碑:卡挂起期 status 恒 idle(锁已放行),idle 不可作收尾判据——
+        // 先等 disarm 实切(mode 翻转=续段已过 setMode),再等执行段首步起跑(Step 1/2 notice)与
+        // 竞窗中止落地(wrapper calls=2,即步骤 A 的 runTask 已返回),小窗让收尾微任务排空
+        await waitFor(() => ctx.session.snapshotResponse().mode === 'acceptEdits', 10_000, '批准落档实切');
+        await waitFor(() => ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'notice' && String(f.e.text ?? '').includes('Step 1/2')), 10_000, '执行段首步起跑');
+        await waitFor(() => calls >= 2, 10_000, '步骤 A run 返回(竞窗中止落地)');
+        await new Promise((r) => setTimeout(r, 100)); // 收尾微任务排空窗
+        const chain = chainOf(ctx.session);
+        assert.ok(chain.some((st) => st.action === 'task' && st.observation.includes('步骤A')), '步骤 A 指令行入链(已执行)');
+        assert.ok(!chain.some((st) => st.action === 'task' && st.observation.includes('步骤B')), '被跳过步骤 B 的指令行不入链(检查在循环顶)');
+        assert.equal(
+          ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'notice' && String(f.e.text ?? '').includes('Step 2/2')),
+          false,
+          '被跳过步骤不再发 Step 2/2 起跑通知(旧形态通知先行于中断检查)',
+        );
+      },
+      { mode: 'plan' },
+    );
+  } finally {
+    (runtimeMod as unknown as { createKernelRuntime: typeof origCreate }).createKernelRuntime = origCreate;
+  }
 });

@@ -30,9 +30,11 @@ export const DESTRUCTIVE_COMMANDS = ['dd', 'fdisk', 'shutdown', 'reboot', 'power
 export const DESTRUCTIVE_PIPE = /\b(?:curl|wget)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b/;
 
 /** 旧档/别名→现档单点（meta 旁车与 journal mode 行读路径共用;写路径恒写现值）。
- *  返回 'plan' 仅供 serve 流程标记透传(阶段三 plan-arm);权限档语义一律映射为三档之一——
- *  旧 plan 档(真身 dontAsk)安全落 acceptEdits,回放绝不落全自动。未知值 undefined,调用方回落缺省档+warn。 */
-export function resolveModeAlias(raw: string): PermissionMode | 'plan' | undefined {
+ *  返回域=三权限档之一,永不含 'plan'——serve 的 plan 流程标记不经本函数（mode 端点与 daemon attach
+ *  分路自处理:端点面先行判 'plan' 直透 setMode,attach 回放把 mode:'plan' 交本函数安全落 acceptEdits）。
+ *  权限档语义一律映射为三档之一——旧 plan 档(真身 dontAsk)安全落 acceptEdits,回放绝不落全自动。
+ *  未知值 undefined,调用方回落缺省档+warn。 */
+export function resolveModeAlias(raw: string): PermissionMode | undefined {
   if (raw === 'read-only' || raw === 'acceptEdits' || raw === 'full-access') return raw;
   if (raw === 'manual' || raw === 'plan') return 'acceptEdits';
   if (raw === 'dontAsk') return 'full-access';
