@@ -42,6 +42,21 @@ pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
 
 总入口 `node scripts/release.mjs --bump patch`（`--dry-run` 只验证不触网；`--no-gui` 跳过桌面包；同版本重发加 `--clobber`）：先过全量门禁（主仓全量 → selfcheck → GUI 全量 → 壳单测 → `shell:smoke`），再出两类产物——TUI tgz（npm pack + GitHub Release）与 GUI 桌面包（`pnpm shell:dist`：三包版本单源 → 三端 build → esbuild → electron-builder 出 NSIS 安装包 → 静默安装冒烟；非 Windows 主机无 wine 出不了 win 包，`--no-gui` 跳过时 GUI 门禁仍照跑）。发版参数、上传通道与凭据细节见 README「发版（维护者）」；CI 门禁与平台矩阵见 §14 与 `docs/PLATFORM.md`；npm publish 经 `prepublishOnly` 钩子强制 `pnpm test` + `selfcheck`。
 
+### 桌面端本地测试重装（.exe）
+
+纯 `gui/` 渲染层改动免重装（`pnpm gui:build` 后刷新即生效，见「本地测试」节）；改 `shell/` 源码（Electron 主进程/preload/打包配置，如窗口 minWidth）时改动落在安装目录 app.asar 内，须重建安装包静默重装：
+
+```bash
+NODE_OPTIONS=--use-system-ca pnpm shell:dist          # 全链单命令：版本同步→主仓 build→gui build→壳 esbuild→electron-builder 出 NSIS 包
+./shell/release/sunshinex-<version>-setup.exe /S      # 静默重装（沿用上次安装目录，装毕自启新实例）
+```
+
+- **必须带 `NODE_OPTIONS=--use-system-ca`**：electron-builder 打包期要下载打包组件，走 Node TLS；缺它证书校验失败 `ELIFECYCLE exit 1`（本机代理环境实测）。
+- **整链必须走根 `shell:dist`**：壳包自身的 `dist` 脚本只含 prepare-pty-resource + electron-builder，不含 esbuild——单跑它拿旧 `out/main.cjs` 打包，装出来是旧主进程束。
+- **退出码勿经管道取**：`| tail` 会吞 electron-builder 的非零退出码（管道退出码取自末段），重定向到文件后查 `EXIT=$?`。
+- **装新先杀旧**：重装前结束全部运行实例；装毕自启的才是新束实例。
+- **装配校验**：`npx asar extract-file <安装目录>/resources/app.asar out/main.cjs` 后 grep 本次改动标志串，确认新束真进了安装目录（asar 无压缩，`grep -a` 亦可直查二进制）；安装目录=NSIS 记忆的上次安装目录，本机为 `D:\MyWorkSoftware\Sunshinex`。
+
 ## 3. 目录结构
 
 ```text
