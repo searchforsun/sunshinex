@@ -122,7 +122,7 @@ if (!app.requestSingleInstanceLock()) {
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
-      minWidth: 960,
+      minWidth: 600, // 2026-10-24 用户裁定 960→600:右栏收起(浮窗/关闭)时布局下限=菜单240+主栏320=560,窗口最小宽放到 600 让窄窗可用(浮窗抽屉态已全覆盖)
       minHeight: 600,
       icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),
       titleBarStyle: 'hidden',
