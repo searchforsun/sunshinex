@@ -92,3 +92,37 @@ createRoot(root).render(
   });
   domObs.observe(document.body, { childList: true, subtree: true });
 })();
+
+// 2026-10-24 用户裁定(实测驱动,无固定切割线):composer 底栏溢出管理器——三处 composer
+// (主 dock/欢迎/辅助对话同走 ComposerCard 的 .sx-composer-foot)统一监听:溢出>1px 挂
+// pills-tight(收「完全访问」标签/箭头与 effort 徽标,模型名转右缘渐隐省略);无溢出且距上次
+// 切换>400ms 时试摘(摘后复溢会被下一帧 RO 再挂,400ms 最小保持防抖)。
+(() => {
+  const managed = new WeakSet<Element>();
+  let lastToggle = 0;
+  const ro = new ResizeObserver((entries) => {
+    for (const entry of entries) judge(entry.target as HTMLElement);
+  });
+  const judge = (el: HTMLElement): void => {
+    const over = el.scrollWidth - el.clientWidth;
+    const tight = el.classList.contains('pills-tight');
+    if (!tight && over > 1) {
+      el.classList.add('pills-tight');
+      lastToggle = Date.now();
+    } else if (tight && over <= 1 && Date.now() - lastToggle > 400) {
+      el.classList.remove('pills-tight'); // 试摘:摘后复溢由下一帧 RO 再挂(宽容差回收)
+      lastToggle = Date.now();
+    }
+  };
+  const scan = (): void => {
+    for (const foot of document.querySelectorAll('.sx-composer-foot')) {
+      if (managed.has(foot)) continue;
+      managed.add(foot);
+      ro.observe(foot);
+      judge(foot);
+    }
+  };
+  const mo = new MutationObserver(() => scan());
+  mo.observe(document.body, { childList: true, subtree: true });
+  scan();
+})();

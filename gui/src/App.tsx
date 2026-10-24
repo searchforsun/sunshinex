@@ -522,14 +522,17 @@ function AppShell(): JSX.Element {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  /** 右栏渲染期钳制宽=min(持久宽, 视口/zoom−菜单−主栏最小宽)——分栏布局;视觉/本地换算
-   *  /zoomScale() 契约(ui-zoom.ts);下限 0 防窄窗托底溢出 */
+  /** 浮窗抽屉切换(2026-10-24 用户裁定):视口宽(视觉/zoom 归一)窄于 1000 时,右栏从占布局
+   *  宽度的分栏抽屉切为悬浮抽屉(position:fixed 右满高,盖在正文上,z 低于窗控簇)。宽度过阈值自动还原分栏 */
+  const sidebarFloating = viewportW / zoomScale() < 1000;
+  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320);浮窗态=覆盖层只留 24px 边距(用户裁定:
+   *  浮窗态开侧栏也能缩到 600 窗宽,抽屉恒保持可用宽)。视觉/本地换算 /zoomScale() 契约同前 */
   const sidebarRenderW = Math.min(
     tabState.width,
-    Math.max(0, viewportW / zoomScale() - menuWidth - MAIN_MIN_WIDTH),
+    Math.max(0, viewportW / zoomScale() - menuWidth - (sidebarFloating ? 24 : MAIN_MIN_WIDTH)),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed ? sidebarRenderW : 0;
+  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed && !sidebarFloating ? sidebarRenderW : 0;
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
@@ -543,7 +546,9 @@ function AppShell(): JSX.Element {
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - MAIN_MIN_WIDTH;
+    // 拖拽上界随态:分栏预留主栏最小宽;浮窗只留 24px 边距(起拖定格,拖拽中无 resize 事件模式不翻转)
+    const floating = sidebarFloating;
+    const cap = (): number => window.innerWidth / zoomScale() - menuWidth - (floating ? 24 : MAIN_MIN_WIDTH);
     const startWidth = Math.min(tabState.width, cap());
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
@@ -594,11 +599,14 @@ function AppShell(): JSX.Element {
         IS_SHELL ? 'sx-shell sx-desktop' : 'sx-shell',
         // 浮窗抽屉面(2026-10-24 用户裁定):窄视口右栏悬浮不占布局宽,主栏吃满
         // (模式 pill 塌缩已改底栏实测溢出驱动 pills-tight,壳级不再派生 sx-main-narrow)
+        sidebarFloating ? 'sx-sidebar-float' : '',
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{
         '--menu-w': `${menuWidth}px`,
         '--sidebar-w': `${sidebarOccupied}px`,
+        // 浮窗态:dock 在可见区(扣浮窗宽)内居中,两侧边距恒等(2026-10-24 用户裁定)
+        '--sidebar-float-w': `${sidebarFloating ? sidebarRenderW : 0}px`,
       } as CSSProperties}
     >
       {settingsOpen && connInstance !== null ? (
