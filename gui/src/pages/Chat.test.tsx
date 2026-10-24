@@ -304,7 +304,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(document.querySelector('.mode-pop .mode-pop-sep')).not.toBeNull(); // 分组线沿既有样式类
     const plan = screen.getByRole('menuitem', { name: /Plan mode|计划模式/ });
     expect(plan.getAttribute('aria-disabled')).toBeNull(); // 置灰解除(阶段三 plan-arm 接通,spec §5.2)
-    expect(plan.textContent).toMatch(/Plan first — approve before execution|先规划，批准后执行/); // desc 正式文案(「即将可用」退役)
+    expect(plan.textContent).toMatch(/Plan first, execute on approval|先规划，批准后执行/); // desc 正式文案(「即将可用」退役)
     fireEvent.click(plan);
     expect(setSessionMode).toHaveBeenCalledWith('s1', 'plan'); // 单选即派发(批准后 daemon 落 acceptEdits 快照回填)
     fireEvent.click(screen.getByRole('button', { name: 'session mode' })); // 选中收口后重开菜单(旧置灰态点击不收口,故旧锚无需此步)
