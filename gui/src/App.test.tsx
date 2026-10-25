@@ -370,8 +370,9 @@ vi.mock('./connection', () => ({ createConnection: (opts: ConnectionOpts) => new
 /** highlight.js 抛错注入桩(T1 评审回落收口测):仅含 marker 的输入抛错,其余透传真实现——
  *  既有 Files 页断言(.hljs-keyword 真高亮)不受染 */
 const hljsStub = vi.hoisted(() => ({ marker: 'HLJS-THROW-MARKER' }));
-vi.mock('highlight.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('highlight.js')>();
+// P1 Task 5 起 highlight.ts 导入面为 highlight.js/lib/common——mock 指向同面方能拦截(主入口 mock 已脱钩)
+vi.mock('highlight.js/lib/common', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('highlight.js/lib/common')>();
   const real = actual.default;
   const throwing = (code: string, opts: { language: string }): { value: string } => {
     if (code.includes(hljsStub.marker)) throw new Error('hljs exploded (injected)');
@@ -1422,7 +1423,7 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
     expect(document.querySelector('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')?.classList.contains('active')).toBe(true);
     expect(screen.getByLabelText('task board')).toBeDefined();
-    const row = screen.getByRole('button', { name: 't1 [pending] searcher 分析' });
+    const row = await screen.findByRole('button', { name: 't1 [pending] searcher 分析' }); // P1 Task 8:live 板帧 100ms 尾随,findBy 轮询过窗
     expect(row.textContent).toContain('searcher'); // 执行子智能体名(委派 label)
     expect(row.closest('.tb-task-row')?.className).toContain('task-status-pending'); // 状态点=灰(等待)
     // G14.164 点行开只读转录页:agent 标签(title=显示名定格;页内无输入框),转录=工具行+token 行
@@ -1452,7 +1453,7 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-    const row = screen.getByRole('button', { name: 't2 [pending] reviewer 审阅' });
+    const row = await screen.findByRole('button', { name: 't2 [pending] reviewer 审阅' }); // P1 Task 8:live 板帧过窗
     expect(row.textContent).toContain('reviewer'); // 执行子智能体名(已执行态显)
     fireEvent.click(row);
     await waitFor(
@@ -1614,7 +1615,8 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }));
     fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }));
     // G8d T5:⚠ 已 Badge 化(sx-badge-warn span,⚠ 文本在内)——行文本断言剥 ⚠,徽标单独断言
-    expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined(); // 任务板随事件直显(状态图标+任务名+@w1)
+    // P1 Task 8:live 板帧 100ms 尾随——waitFor 过窗后三断言同拍成立
+    await waitFor(() => expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined()); // 任务板随事件直显(状态图标+任务名+@w1)
     expect(document.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠');
     expect(screen.getByRole('button', { name: 't2 [pending] Next' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Approve t1' }));
@@ -1636,7 +1638,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
     fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev', title: 'Demo' }));
-    const devRow = screen.getByRole('button', { name: 't1 [pending] Demo' });
+    const devRow = await screen.findByRole('button', { name: 't1 [pending] Demo' }); // P1 Task 8:live 板帧过窗
     expect(devRow.textContent).toContain('dev'); // 执行子智能体名(委派 label)在任务行
     fireResetSession(conn, 's9'); // 他会话:板投影不动
     expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined();
@@ -1651,7 +1653,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     openConn(conn);
     openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
-    expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined();
+    await waitFor(() => expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined()); // P1 Task 8:live 板帧过窗
     // —— back → 开 s2:openSession 清板投影 + s2 快照(空)回填——无 s1 残留(左栏组仍展开,会话行直点)——
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
@@ -1720,7 +1722,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('dev'); // 委派重放:行带子智能体名
     // 窗后帧直投(不再缓冲)
     fire(conn, taskEv('t2', 'Live'), 10);
-    expect(screen.getByRole('button', { name: 't2 [pending] Live' })).toBeDefined();
+    await waitFor(() => expect(screen.getByRole('button', { name: 't2 [pending] Live' })).toBeDefined()); // P1 Task 8:live 板帧过窗
     unmount();
   });
 

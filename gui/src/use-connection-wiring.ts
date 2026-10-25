@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { createConnection, type ConnectionState, type Connection } from './connection';
+import { createTrailingQueue } from './trailing-queue';
 import type { SessionEvent } from '../../src/types';
 import type { AgentActivities } from './tabs/agent-activity';
 import { applyAgentEvent } from './tabs/agent-activity';
@@ -10,6 +11,16 @@ import type { ChatSink } from './pages/Chat';
 /** D34 串态收口的投影空态(D42 自 App.tsx 随连接装配迁入导出——openSession/backHome 清零与
  *  连接回调 onReset/onResetSession 整替共此一口径) */
 export const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(), sessionTodos: [], delegations: [], team: [] });
+
+/** P1 Task 8 live 帧节流窗(毫秒):100ms 尾随——突发 token/工具帧期间板/委派/子智能体投影至多
+ *  每 100ms 一次 setState */
+const LIVE_THROTTLE_MS = 100;
+
+/** 活帧节流队列对(板/委派投影 + 子智能体桶折叠) */
+interface LiveThrottles {
+  board: ReturnType<typeof createTrailingQueue<SessionEvent>>;
+  acts: ReturnType<typeof createTrailingQueue<{ sessionId: string; fold: (a: AgentActivities) => AgentActivities }>>;
+}
 
 /** 连接装配依赖面(D42 外提):路由/投影回调闭包取首渲染值(装配一次 []),会话切换经
  *  sessionRef/各 ref 免闭包陈旧——与原 AppShell 内联 effect 同口径 */
@@ -43,6 +54,27 @@ export interface ConnectionWiringDeps {
  */
 export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | null {
   const [connInstance, setConnInstance] = useState<Connection | null>(null);
+  // P1 Task 8 live 帧节流队列(装配一次,回调闭包取首渲染值同 effect 口径):板/委派投影事件与
+  // 子智能体桶折叠各自 100ms 尾随合并——流式突发帧的高频 setState 收敛;水合/播种回放路径旁路直投
+  const throttleRef = useRef<LiveThrottles | null>(null);
+  if (throttleRef.current === null) {
+    throttleRef.current = {
+      board: createTrailingQueue<SessionEvent>((events) => {
+        deps.setProjection((p) => {
+          let { board, delegations } = p;
+          for (const e of events) {
+            if (e.type.startsWith('delegation-')) delegations = applyDelegation(delegations, e);
+            else board = applyBoardEvent(board, boardEventFrom(e));
+          }
+          return { ...p, board, delegations };
+        });
+      }, LIVE_THROTTLE_MS),
+      acts: createTrailingQueue<{ sessionId: string; fold: (a: AgentActivities) => AgentActivities }>((items) => {
+        for (const it of items) deps.bumpActs(it.sessionId, it.fold);
+      }, LIVE_THROTTLE_MS),
+    };
+  }
+  const throttles = throttleRef.current;
   useEffect(() => {
     const {
       sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
@@ -65,16 +97,16 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
-          else setProjection((p) => ({ ...p, board: applyBoardEvent(p.board, boardEventFrom(e)) }));
+          else throttles.board.push(e); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)
           return;
         }
         if (e.type.startsWith('delegation-')) {
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else {
-            setProjection((p) => ({ ...p, delegations: applyDelegation(p.delegations, e) }));
+            throttles.board.push(e);
             // G8d:delegation 起止无 subagent 标签——payload.label 命中既有卡才改状态(Runner 权威
             // 终语:ended failed → error·done → done;未建卡原引用返回,React 同引用即免重渲染)
-            bumpActs(sessionId, (a) => applyAgentEvent(a, e));
+            throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
           }
         }
         if (typeof e.payload?.subagent === 'string') {
@@ -86,12 +118,15 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           }
           // G8d 子智能体事件另轨(Agents 标签聚合):不投 chat——chat reducer 入口另有同判过滤兜底
           // (种子重放等路径仍过 reducer,零害保留);建卡/行化/水位在此单点归约
-          bumpActs(sessionId, (a) => applyAgentEvent(a, e));
+          throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
           return;
         }
         chatSinkRef.current?.on(e, seq);
       },
       onReset: () => {
+        // P1 Task 8:节流窗内挂起帧先落(信息保留),随后的权威清零覆盖——顺序不可倒(清零在先会丢窗内帧)
+        throttles.board.flush();
+        throttles.acts.flush();
         // 重连/首连同路径:板/委派投影清零 + 播种窗重开(随补发帧经 onSeeded 过滤重放;Chat 投影
         // 由 sink.reset 清+本会话重播种;welcome 无 sink 时帧被会话过滤,窗恒空悬挂至下次 openSession)
         reopenBoardSeedWindow();
@@ -139,6 +174,8 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         }
         // G3.5 交接 d 收口(G5):会话维 reset 清 board/delegations 投影(仅连接级 onReset 清的缺口
         //  ——会话 reset 后旧任务悬挂)+ 播种窗重开清缓冲(窗内帧属旧板,弃);Chat 卡区清+重播种经 sink
+        throttles.board.flush(); // P1 Task 8:窗内挂起帧先落再清(同 onReset 顺序纪律)
+        throttles.acts.flush();
         reopenBoardSeedWindow();
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之一随收口补齐(纪律落实)
         setTodoBatches([]);
@@ -154,6 +191,8 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
       connRef.current = null;
       setConnInstance(null);
       conn.close();
+      throttles.board.dispose(); // P1 Task 8:卸载弃节流缓冲(在途窗不再 apply)
+      throttles.acts.dispose();
     };
     // 装配一次:回调闭包固定取首渲染值,可变面全经 ref 转发(原 AppShell 内联 effect 同口径)
   }, []);
