@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionKernel } from './kernel';
-import { applyEvent, initialKernelState } from './entry';
+import { applyEvent, applySeed, initialKernelState } from './entry';
 import type { KernelEntry } from './entry';
 import type { SessionEvent } from '../types';
 
@@ -545,4 +545,23 @@ test('⑯ 面事件透传落档(G14.2xx 内核层落库):task-/gate-/delegation-
     ev('user', '普通消息'), // user 走 seg 面,不发 shadow
   );
   assert.deepEqual(events.map((e) => e.t), ['shadow', 'shadow', 'shadow', 'shadow', 'seg-open'], '面事件各发一次 shadow,user 走 seg');
+});
+
+test('⓲ 迟到 result 同 callId 原位配对(2026-10-25 重连/重启 healed):快照条(status running)不在 pending 池,result 不再裂新条', () => {
+  // 重播种面:live 配对后 pending 清空,seed 重建(等价 GUI 重连/daemon 重启后)——在列 running 条+迟到 result
+  let s = initialKernelState();
+  s = applySeed(s, [{ seq: 7, ts: 1000, kind: 'tool', md: '', callId: 'c7', name: 'task_wait', input: { taskIds: ['t1'] }, status: 'running' }]);
+  s = reduce(s, ev('tool-result', 'timeout after 1800s', { callId: 'c7', ok: true, tool: 'task_wait' }, 2000));
+  assert.equal(s.entries.length, 1, '不裂占位新条');
+  assert.equal(s.entries[0]!.seq, 7, '原位回填');
+  assert.equal(s.entries[0]!.status, undefined, '终态字段省略');
+  assert.equal(s.entries[0]!.result?.text, 'timeout after 1800s');
+  assert.equal(s.pending.length, 0, '不进配对池');
+  // live 面回归:正常 call→result 配对路径不受扰动
+  const k = new SessionKernel();
+  pump(k, ev('tool-call', 'task_wait', { callId: 'c8', input: {}, status: 'running' }, 100));
+  assert.equal(k.replay()[0]!.status, 'running');
+  pump(k, ev('tool-result', 'done receipt', { callId: 'c8', ok: true }, 200));
+  assert.equal(k.replay().length, 1);
+  assert.equal(k.replay()[0]!.result?.text, 'done receipt');
 });

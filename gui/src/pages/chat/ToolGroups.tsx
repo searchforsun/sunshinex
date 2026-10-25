@@ -3,12 +3,11 @@ import { ChevronRight, FolderSearch, Hourglass, SquareTerminal, type LucideIcon 
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 
-/** G14.215 工具聚合行（用户裁决；2026-10-22 再裁定「运行中直进组、计数实时增、成员在跑头显
- *  流光」与「编辑/写入行不聚合」——取消「执行行→完成后 ghost 归并」的展开再进入动作）：同类型
- *  相邻工具行折为一条聚合头（「查询了 N 次文件」形），运行中段 1 条即成组（头显流光、计数随出
- *  牌实时递增）；完成段 >1 折为组（单行保持原生行）。点击展开=成员工具行平级铺开（成员即原生
- *  工具行，非嵌套壳——展开容器仅作高度动画用，零视觉盒子）；禁止重排——分组只在相邻段内做、
- *  成员保持出牌顺序，非同类行/思考行天然切断分组；编辑/写入行携 diff 统计与文件身份，恒独立
+/** G14.215 工具聚合行（用户裁决；2026-10-25 再裁定「聚合计数不小于 2」——单条（含运行中）恒原生
+ *  行,第二个同类工具行出牌才成组,组头流光/计数随出牌实时递增;「编辑/写入行不聚合」不变）：同类型
+ *  相邻工具行折为一条聚合头（「查询了 N 次文件」形,N≥2）;点击展开=成员工具行平级铺开（成员即原生
+ *  工具行,非嵌套壳——展开容器仅作高度动画用,零视觉盒子）;禁止重排——分组只在相邻段内做、
+ *  成员保持出牌顺序,非同类行/思考行天然切断分组;编辑/写入行携 diff 统计与文件身份,恒独立
  *  不聚合（2026-10-22 用户裁定） */
 export type ToolGroupKind = 'query' | 'exec' | 'wait';
 
@@ -41,15 +40,15 @@ type SegNode =
   | { type: 'tool'; entry: ChatEntry }
   | { type: 'group'; kind: ToolGroupKind; gkey: string; entries: ChatEntry[] };
 
-/** 段内相邻折叠（纯函数，出牌顺序即成员顺序）：连续同类已完成工具行 >1 折成组，其余保持单行 */
+/** 段内相邻折叠（纯函数，出牌顺序即成员顺序）：连续同类工具行 >1 折成组，其余保持单行。
+ *  2026-10-25 用户裁定（替代「运行中段 1 条即成组」）：单条（含运行中）恒原生行——执行中单行
+ *  自带流光标签；第二个同类工具行出牌才成组，聚合计数不小于 2 */
 export function buildSegNodes(seg: ChatEntry[]): SegNode[] {
   const nodes: SegNode[] = [];
   let open: { kind: ToolGroupKind; entries: ChatEntry[] } | null = null;
   const flush = (): void => {
     if (open === null) return;
-    // 运行中段 1 条即成组（头显流光、计数实时递增——用户裁定取消「执行行→归并」动作）；
-    // 完成段 >1 才成组，单行保持原生行
-    if (open.entries.length > 1 || open.entries.some(executingOf)) {
+    if (open.entries.length > 1) {
       nodes.push({ type: 'group', kind: open.kind, gkey: `group:${open.kind}:${open.entries[0]!.key}`, entries: open.entries });
     } else {
       nodes.push({ type: 'tool', entry: open.entries[0]! });

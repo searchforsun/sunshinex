@@ -15,10 +15,19 @@ import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
  *  工厂(keepUrl/buildUserMdComponents/buildMdComponents/renderUserMd)与 token 工具留 Chat
  *  原路径消费。行为零变化(Chat.test 转录组为锚)。 */
 
-/** 秒数格式(G14.118 中文单位):<60s 「34秒」;≥60s 「1分10秒」(状态行/尾条共用;en 恒英文单位) */
+/** 秒数格式(G14.118 中文单位,2026-10-25 扩时日档):<60s 「34秒」;≥60s 「5分 20秒」;≥1h 「6小时 1分」;
+ *  ≥1d 「2天 3小时」(状态行/尾条共用;en 恒英文单位)——长任务(361分)不再挤在分钟档 */
 function runElapsed(seconds: number): string {
   if (seconds < 60) return t(`${seconds}s`, `${seconds}秒`);
-  return t(`${Math.floor(seconds / 60)}m ${seconds % 60}s`, `${Math.floor(seconds / 60)}分 ${seconds % 60}秒`); // G14.185b 分秒之间加间隙
+  if (seconds < 3600) return t(`${Math.floor(seconds / 60)}m ${seconds % 60}s`, `${Math.floor(seconds / 60)}分 ${seconds % 60}秒`); // G14.185b 分秒之间加间隙
+  if (seconds < 86_400) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return t(`${h}h ${m}m`, `${h}小时 ${m}分`);
+  }
+  const d = Math.floor(seconds / 86_400);
+  const h = Math.floor((seconds % 86_400) / 3600);
+  return t(`${d}d ${h}h`, `${d}天 ${h}小时`);
 }
 
 /** 模型显示名(G12 二轮):剥 provider 前缀——'openai/gpt-5.2' → 'gpt-5.2'(id 全文留 title);

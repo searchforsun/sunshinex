@@ -46,8 +46,8 @@ export interface TabServices {
   /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
    *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
-  /** G14.2xx web 标签元数据回写(页内导航 url/页名 → 标签 params;App 落 patchTabMeta) */
-  readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }) => void;
+  /** G14.2xx web 标签元数据回写(页内导航 url/页名/站标 → 标签 params;App 落 patchTabMeta) */
+  readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
 }
 
 export interface TabRenderProps {
@@ -249,7 +249,12 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: (params) => (params.url !== undefined ? normalizeWebUrl(params.url) : ''),
     singleton: false,
     render: (p) => (
-      <WebTab params={p.params} uid={p.uid} onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)} />
+      <WebTab
+        conn={p.conn}
+        params={p.params}
+        uid={p.uid}
+        onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)}
+      />
     ),
   },
   {

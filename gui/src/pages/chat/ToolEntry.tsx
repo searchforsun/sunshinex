@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from 'react';
 import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
-import { highlightCode } from '../../highlight';
+import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
@@ -383,7 +383,9 @@ export const ToolEntryView = memo(function ToolEntryView({
             data-tip={t('View subagent', '查看子智能体')}
             onClick={(e) => {
               e.stopPropagation(); // 不触发行展开
-              onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : undefined);
+              // 2026-10-25 用户裁定:任务说明禁止截断——fork 型子智能体无 taskBand,页签任务带即此
+              // prompt,截断即「任务说明被拦腰砍」(展示文本=开档参数全量,模型侧本就全量)
+              onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
             }}
           >
             {' '}{spawnAgentName}
@@ -401,7 +403,7 @@ export const ToolEntryView = memo(function ToolEntryView({
             data-tip={t('View teammate', '查看队友')}
             onClick={(e) => {
               e.stopPropagation(); // 不触发行展开
-              onOpenAgent(teammateName, teammateName, typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : undefined);
+              onOpenAgent(teammateName, teammateName, typeof input.prompt === 'string' ? input.prompt : undefined); // 任务说明不截断(同 spawn,2026-10-25 裁定)
             }}
           >
             {' '}{teammateName}
@@ -531,18 +533,19 @@ export const ToolEntryView = memo(function ToolEntryView({
     );
   } else if (command !== undefined) {
     body = (
-      // G14.50:命令与输出合一区(终端形态:$ 行高亮 + 输出同块,不再分输入/输出两段)
+      // G14.50:命令与输出合一区(终端形态:$ 行命令着色 + 输出同块次级灰——2026-10-25 用户裁定
+      // 「结果再偏灰一点,方便区分命令行和结果」;输出剥 ANSI 转义(终端色码渲染即乱码))
       <div className="tool-exec">
         <pre className="tool-io-pre">
           <span className="exec-prompt" aria-hidden="true">$ </span>
-          <code dangerouslySetInnerHTML={{ __html: highlightCode(command, 'cmd.sh') }} />
+          <code dangerouslySetInnerHTML={{ __html: highlightCommand(command) }} />
           {'\n'}
-          {fullResult !== '' ? fullResult : t('(no result)', '(无结果)')}
+          <span className="exec-output">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</span>
         </pre>
       </div>
     );
   } else {
-    body = <pre className="tool-io-pre">{fullResult !== '' ? fullResult : t('(no result)', '(无结果)')}</pre>;
+    body = <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>;
   }
 
   return (

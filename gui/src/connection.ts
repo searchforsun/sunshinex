@@ -86,6 +86,9 @@ export interface Connection {
   /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先;
    *  dirs=尾斜杠目录清单(@面板滤出文件夹/目录引用面;旧 daemon 无此字段 → undefined) */
   workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
+  /** 2026-10-25 Web 标签页名/站标(daemon 服务端代取——iframe 跨域拒访):title 空串=解析不出
+   *  (GUI 退 host);icon 空串=无站标声明(退地球图标)。尽力而为展示面,失败不报错 */
+  fetchWebMeta(url: string): Promise<{ title: string; icon: string }>;
   /** G14.2xx GUI 面私有态存取(标签页等,按会话键;daemon 落 <slug>/gui/sessions/<id>.json) */
   guiState(id: string): Promise<{ state: unknown }>;
   saveGuiState(id: string, state: object): Promise<void>;
@@ -382,6 +385,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     workspaceFiles(root: string) {
       return getJson(`/workspace/files?root=${encodeURIComponent(root)}`);
+    },
+    fetchWebMeta(url: string) {
+      return getJson<{ title: string; icon: string }>(`/web/meta?url=${encodeURIComponent(url)}`);
     },
     async gitCheckout(root: string, branch: string) {
       await post('/git/checkout', { root, branch });

@@ -6,13 +6,23 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { X, Plus, FileText, ChevronsDown } from 'lucide-react';
+import { X, Plus, FileText, ChevronsDown, Globe } from 'lucide-react';
 import { t } from '../i18n';
 import { zoomScale } from '../ui-zoom';
 import { FileIcon, hasFileTypeIcon } from '../file-icon';
 import { TAB_REGISTRY, TAB_ICONS, tabEntry } from './registry';
 import { disambiguateTabTitles, type ClosedTab } from './tab-state';
 import { TabSearchPop } from './TabSearchPop';
+
+/** 2026-10-25 web 站标(用户报障「页签只有地球图标,应显网站图标」):daemon /web/meta 代取的
+ *  favicon URL;加载失败(防盗链/离线)退地球图标。img 独立组件——onError 是逐标签的本地态 */
+function WebFavicon({ src }: { src: string }): JSX.Element {
+  const [failed, setFailed] = useState(false);
+  // 换页 favicon 变更即重试(error 态不复位会钉死在地球)
+  useEffect(() => setFailed(false), [src]);
+  if (failed) return <Globe size={16} strokeWidth={1.75} aria-hidden="true" />;
+  return <img className="sx-tab-fav" src={src} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
+}
 
 export interface TabStripProps {
   readonly tabs: readonly import('./tab-state').TabInstance[];
@@ -186,6 +196,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           >
             {useFileIcon && filePath !== undefined ? (
               <FileIcon path={filePath} size={16} />
+            ) : t.type === 'web' && t.params.pageIcon !== undefined && t.params.pageIcon !== '' ? (
+              <WebFavicon src={t.params.pageIcon} />
             ) : (
               <Icon size={16} strokeWidth={1.75} />
             )}

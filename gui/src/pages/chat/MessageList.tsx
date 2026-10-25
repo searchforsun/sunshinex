@@ -74,8 +74,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  逐渲染恒定;宿主重装配/会话切换由 ref 取最新(免闭包陈旧,对齐 App sessionRef 手法)。
    *  opt():可选回调底层缺省时透传 undefined——行组件按「prop 在场」分支渲染(如 spawn 行
    *  onOpenAgent 在场才出链接),包装恒函数会伪造在场;两分支引用各自恒定,memo 判等不破。
-   *  renderTool/renderThinking/renderAssistant deps 仅稳定集:ToolSegBlock 比较器
-   *  (segPropsEqual)据此跨帧 bail-out */
+   *  renderTool/renderThinking/renderAssistant deps 仅 conn/sessionId(会话级常量):
+   *  ToolSegBlock 比较器(segPropsEqual)据此跨帧 bail-out */
   const propsRef = useRef(props);
   propsRef.current = props;
   const opt = <T,>(wrapper: T, raw: T | undefined): T | undefined => (raw === undefined ? undefined : wrapper);

@@ -311,6 +311,14 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
             };
           }
         }
+        // 迟到配对(2026-10-25 用户报障「等待结果显示在两行,等待行恒运行中」):同 callId 的在列
+        // 未决条目原位回填——pending 池是内存态,GUI 重连重播种/daemon 重启后快照条(status running)
+        // 不在池,迟到 result 走占位新条即裂两行且原行永卡运行中;按 callId 回寻 heals 重连/重启两面
+        const li = sealed.entries.findIndex((x) => x.kind === 'tool' && x.callId === callId && x.result === undefined);
+        if (li >= 0) {
+          const cur = sealed.entries[li]!;
+          return { ...sealed, entries: replaceAt(sealed.entries, li, fill(cur, cur.name ?? PLACEHOLDER)) };
+        }
         // result 先到:占位条即刻入列(callId 留账,等 call 回填 name)——有 result 即终态,无 status
         const next = appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', callId, result });
         return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, callId, name: PLACEHOLDER }] };

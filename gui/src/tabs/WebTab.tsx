@@ -18,12 +18,14 @@ import { t } from '../i18n';
  */
 
 export interface WebTabProps {
+  /** daemon 连接(2026-10-25 页名/站标服务端代取——iframe 跨域拒访,fetchWebMeta 尽力而为) */
+  readonly conn: import('../connection').Connection;
   /** 开档参数:url 可选(带 url 开档即直开;「+」菜单裸开 = 空态引导面) */
   readonly params: TabParams;
   /** 标签实例 uid(回写寻址) */
   readonly uid: string;
-  /** 元数据回写(url/pageTitle 合并进标签 params;registry 绑定 sessionId,App 落 tab-state) */
-  readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string }) => void;
+  /** 元数据回写(url/pageTitle/pageIcon 合并进标签 params;registry 绑定 sessionId,App 落 tab-state) */
+  readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
 }
 
 /** url 规范化:去首尾空白;无 :// 前缀(无 scheme)补 https:// */
@@ -50,7 +52,7 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element {
   const [nav, setNav] = useState<WebHistory>(() => {
     const raw = (params.url ?? '').trim();
     return raw === '' ? { urls: [], index: -1 } : { urls: [normalizeWebUrl(raw)], index: 0 };
@@ -75,6 +77,9 @@ export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
   const [wrapSize, setWrapSize] = useState({ w: 0, h: 0 });
 
   const active = nav.index >= 0 ? (nav.urls[nav.index] ?? null) : null;
+  /** meta 回写竞态守卫(async 应答 vs 已导航):恒指最新 active(渲染期直写,MessageList propsRef 手法) */
+  const activeRef = useRef<string | null>(active);
+  activeRef.current = active;
 
   // 历史位移(back/forward)时输入框随 active 同步(VSCode 同形)
   useEffect(() => {
@@ -126,20 +131,45 @@ export function WebTab({ params, uid, onMeta }: WebTabProps): JSX.Element {
   const back = (): void => setNav((n) => (n.index > 0 ? { ...n, index: n.index - 1 } : n));
   const forward = (): void => setNav((n) => (n.index < n.urls.length - 1 ? { ...n, index: n.index + 1 } : n));
   const reload = (): void => setNonce((v) => v + 1);
+  // 2026-10-25 用户报障:window.open 在 Electron 里只开自家子窗(同 daemon 域新 BrowserWindow),
+  // 不是系统默认浏览器——桌面壳走 preload 桥 shell.openExternal(OS 默认浏览器承接,用户配置的
+  // Chrome);浏览器态(无桥)回落 window.open。
   const openExternal = (): void => {
-    if (active !== null) window.open(active, '_blank', 'noopener,noreferrer');
+    if (active === null) return;
+    const bridge = (window as unknown as { sunshinexWindow?: { openExternal?: (url: string) => Promise<{ ok: boolean }> } }).sunshinexWindow;
+    if (bridge?.openExternal !== undefined) void bridge.openExternal(active).catch(() => {});
+    else window.open(active, '_blank', 'noopener,noreferrer');
   };
 
-  /** 页名精化:load 后取 document.title(跨域帧不可读,SecurityError 静默)——空/失败退 host */
+  /** 页名/站标精化(2026-10-25 用户报障「页签只显 host+地球,应显网页标题+站标」):跨域帧
+   *  contentDocument 拒访(syncPageTitle 恒空),改 daemon /web/meta 服务端代取——title+favicon
+   *  尽力而为,失败退 host/地球。竞态守卫:回写前校验 active 仍为发起时的 url(导航/重载作废) */
+  const syncPageMeta = (url: string): void => {
+    conn
+      .fetchWebMeta(url)
+      .then((meta) => {
+        if (activeRef.current !== url) return; // 已导航/刷新:过期应答弃
+        onMeta(uid, {
+          ...(meta.title !== '' ? { pageTitle: meta.title } : {}),
+          ...(meta.icon !== '' ? { pageIcon: meta.icon } : {}),
+        });
+      })
+      .catch(() => undefined);
+  };
+
+  /** 页名精化:load 后取 document.title(跨域帧不可读,SecurityError 静默)——空/失败退 host;
+   *  2026-10-25 起站标/页名以服务端代取为主(上方 syncPageMeta),本函数保留同源帧的即时页名 */
   const syncPageTitle = (): void => {
     if (active === null) return;
+    const url = active;
+    syncPageMeta(url);
     let title = '';
     try {
       title = frameRef.current?.contentDocument?.title?.trim() ?? '';
     } catch {
       title = ''; // 跨域:contentDocument 拒访
     }
-    onMeta(uid, { pageTitle: title !== '' ? title : webPageName(active) });
+    if (title !== '') onMeta(uid, { pageTitle: title });
   };
 
   /** 宽高草稿提交:非法/过小丢弃;≥16 取整生效 */

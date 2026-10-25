@@ -420,16 +420,15 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(row).toContain('Arch-Plan.md'); // 目标路径(P11 字段单源:entry.input 直映,md 记号不回归)
   });
 
-  it('P11 种子条三态渲染:running 单条即成组(头流光计数+成员行路径同行),done 折叠行=动词+路径(字段单源)', async () => {
+  it('P11 种子条三态渲染:running 单条=原生行(流光标签,2026-10-25 裁定聚合计数不小于2),done 折叠行=动词+路径(字段单源)', async () => {
     const base = { seq: 1, ts: DAY1, kind: 'tool', md: '', callId: 'c1', name: 'read', input: { path: 'docs/Arch-Plan.md' } };
     const first = render(<Chat conn={connOf([{ ...base, status: 'running' } as unknown as Seed])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed();
-    // 运行中 1 条即成组(2026-10-22 裁定):头=流光计数,成员行=流光标签+路径同行
-    const head = document.querySelector('.tool-group-head')!;
-    expect(head.querySelector('.exec-running-text')?.textContent).toContain('Queried files ×1');
-    const member = document.querySelector('.tool-group-members .tool-summary')!;
-    expect(member.textContent).toContain('Reading file');
-    expect(member.textContent).toContain('Arch-Plan.md');
+    // 单条运行中=原生行(自带流光标签),不再 1 条成组(聚合计数不小于 2)
+    expect(document.querySelector('.tool-group-head')).toBeNull();
+    const running = document.querySelector('.seg-inner > .entry-tool .tool-summary')!;
+    expect(running.querySelector('.exec-running-text')?.textContent).toContain('Reading file');
+    expect(running.textContent).toContain('Arch-Plan.md');
     first.unmount();
     // done 终态(status 缺省=终态):折叠行=动词+路径——executing 读 status(非 md 占位判定),
     // 字段单源(md 退役后旧占位判定恒执行中,此断言钉死直映)
@@ -487,9 +486,10 @@ describe('工具行展开分型(G14:exec=$ 命令+输出,无 Input/Output 分节
     fireEvent.click(document.querySelector('.tool-summary')!);
     const exec = document.querySelector('.tool-exec');
     expect(exec).not.toBeNull();
-    // G14.50:命令+输出同块(pre.tool-io-pre 单区;$ 行 bash 高亮)
+    // G14.50:命令+输出同块(pre.tool-io-pre 单区;$ 行命令着色,2026-10-25 tok-* 令牌)
     expect(exec?.querySelector('.tool-io-pre .exec-prompt')?.textContent).toContain('$');
-    expect(exec?.querySelector('.tool-io-pre code')?.innerHTML).toContain('hljs'); // bash 高亮在场
+    expect(exec?.querySelector('.tool-io-pre code')?.innerHTML).toContain('tok-cmd'); // 命令着色在场
+    expect(exec?.querySelector('.tool-io-pre .exec-output')?.textContent).toContain('file2'); // 输出独立灰档
     expect(exec?.querySelector('.tool-io-pre')?.textContent).toContain('ls -la');
     expect(exec?.querySelector('.tool-io-pre')?.textContent).toContain('file2');
   });
@@ -800,6 +800,24 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     await ghostsSettled();
   });
 
+  it('G14.215 2026-10-25 裁定:运行中单条=原生行,第二个同类出牌才成组(计数≥2,头流光)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['t1'] } } });
+    // 单条等待任务=原生行(流光「正在等待任务」),不聚合
+    expect(document.querySelector('.tool-group-head')).toBeNull();
+    const solo = document.querySelector('.seg-inner > .entry-tool .tool-summary')!;
+    expect(solo.querySelector('.exec-running-text')?.textContent).toContain('Waiting for tasks');
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w2', input: { taskIds: ['t2'] } } });
+    // 第二个同类执行时才成组:计数 ×2+头流光
+    const head = document.querySelector('.tool-group-head')!;
+    expect(head.textContent).toMatch(/Waited on tasks ×2|等待了 2 次任务/);
+    expect(head.querySelector('.exec-running-text')).not.toBeNull();
+    expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(2);
+    await ghostsSettled(); // solo→member 归并 ghost 到点卸载
+    expect(document.querySelector('.tool-ghost')).toBeNull();
+  });
+
   it('G14.215 运行中直进组(计数实时增+头流光;2026-10-22 裁定取消「执行行→归并」动作);ghost 只承载完成单行归并', async () => {
     mountChat([]);
     await flushed();
@@ -942,6 +960,17 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 'sp2', input: { prompt: 'x', label: '分析' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'sp2' } });
     expect(document.querySelector('.tool-agent-link')).toBeNull();
+  });
+
+  it('2026-10-25 裁定:spawn 行点击上抛的 prompt 全量不截断(>2000 字任务说明原样透传,agent 页签任务带完整)', async () => {
+    const onOpenAgent = vi.fn();
+    render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
+    await flushed();
+    const longPrompt = 'A'.repeat(2500) + 'NOTE: the working tree is the source of truth';
+    fire({ type: 'tool-call', text: 'spawn', ts: Date.now(), payload: { callId: 'sp3', input: { prompt: longPrompt, label: '评审' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'sp3' } });
+    fireEvent.click(document.querySelector('.tool-agent-link')!);
+    expect(onOpenAgent).toHaveBeenCalledWith('评审', '评审', longPrompt); // 尾段在场=未被 slice(0,2000) 截断
   });
 
   it('freshView:种子历史不落屏(辅助对话全新视图)', async () => {

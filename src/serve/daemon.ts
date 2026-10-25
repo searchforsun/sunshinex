@@ -27,6 +27,7 @@ import {
   resetSelfFilledSlots,
 } from '../config/settings';
 import { PtyManager } from './pty';
+import { fetchWebMeta } from './web-meta';
 import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
 import { findJournalOwner, validSessionId } from './session-handlers';
@@ -692,6 +693,13 @@ export class GuiDaemon {
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
         const idx = await workspaceFiles(path.resolve(root));
         this.send(res, 200, { files: idx.files, dirs: idx.dirs });
+      } },
+    // Web 标签页名/站标(2026-10-25 用户报障「页签只显 host+地球图标」):iframe 跨域拒访,页名/
+    // 图标服务端代取——尽力而为面,解析失败回空字段(GUI 退 host/地球,不报错)
+    { method: 'GET', path: '/web/meta', auth: true, run: async (req, res) => {
+        const target = urlOf(req).searchParams.get('url') ?? '';
+        if (target === '') return this.send(res, 400, { error: 'url query param required' });
+        this.send(res, 200, (await fetchWebMeta(target)) ?? { title: '', icon: '' });
       } },
     { method: 'POST', path: '/git/checkout', auth: true, run: async (req, res) => {
         const parsed = await this.readJson(req);

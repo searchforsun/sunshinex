@@ -12,6 +12,8 @@ import type { TodoBatch } from './ToolEntry';
  *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表。
  *  P11 T7:标题直读 entry.input(name/input 内核字段全量随档);P11 T8:任务 id 取 result
  *  回执文本(text 优先,full 兜底)——tool md 恒空,回执不再落 md。
+ *  2026-10-25 后台 exec 命令映射:`task <id> started` / 超时转后台 `task <id> (output:` → 完整命令
+ *  (input.command)——等待行显完整命令而非命令头标签(用户裁定「不要只显示命令头」)。
  *  G14.2xx b:抽纯函数单点——主对话 hook 与子智能体转录页(activities.chat.entries)同源消费 */
 function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
   const m = new Map<string, string>();
@@ -24,6 +26,16 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
       m.set(created[1]!, title);
       m.set(`task-${created[1]!}`, title);
     }
+  }
+  for (const e of entries) {
+    if (e.kind !== 'tool' || e.name !== 'exec') continue;
+    const command = typeof e.input?.command === 'string' ? e.input.command.trim().replace(/\s+/g, ' ') : '';
+    if (command === '') continue;
+    const receipt = e.result?.text ?? e.result?.full ?? '';
+    const started = /task (\S+) started/.exec(receipt);
+    if (started !== null) m.set(started[1]!, command);
+    const moved = /command moved to background after timeout: task (\S+)/.exec(receipt);
+    if (moved !== null) m.set(moved[1]!, command);
   }
   return m;
 }

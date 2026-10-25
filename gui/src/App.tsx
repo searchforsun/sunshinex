@@ -448,7 +448,7 @@ function AppShell(): JSX.Element {
    *  G8d 子智能体活动聚合(agent 只读转录页只读) */
   /** G14.2xx web 标签元数据回写:页内导航 url/页名 → patchTabMeta(标签条标题/判重键同源演进,
    *  浏览器原生标签形);useCallback 零依赖稳定——services useMemo 不因回写重建 */
-  const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string }): void => {
+  const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }): void => {
     setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
   }, []);
   /** G14.2xx b create_task 行任务名定位(子智能体转录页与 Chat onOpenTask 同一口径):开任务板页签
@@ -894,6 +894,8 @@ interface SunshinexWindowBridge {
   minimize: () => void;
   toggleMaximize: () => void;
   close: () => void;
+  /** 2026-10-25:Web 标签「在系统浏览器打开」——shell.openExternal,OS 默认浏览器承接(非 Electron 子窗) */
+  openExternal?: (url: string) => Promise<{ ok: boolean }>;
   onMaximizedChange: (cb: (v: boolean) => void) => () => void;
 }
 const winBridge = (): SunshinexWindowBridge | undefined =>

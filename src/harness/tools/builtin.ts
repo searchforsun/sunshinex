@@ -57,10 +57,13 @@ async function readBodyCapped(res: Response, cap: number): Promise<string> {
   return text;
 }
 
-/** exec 账本业务标签单点：命令首词（trim + 空白分段首段，空命令回退整串）——直接启动与超时转后台
- *  两条登记路径共用，防两处 `cmd.trim().split(...)` 各自漂移 */
+/** exec 账本业务标签单点：完整命令（拍平空白;超长中段省略——2026-10-25 用户裁定「后台任务回执/等待行
+ *  显完整命令,不要只显示命令头」;id 业务段仍走 slugify ≤16 截断不受影响）——直接启动与超时转后台
+ *  两条登记路径共用 */
 function execLabel(cmd: string): string {
-  return cmd.trim().split(/\s+/)[0] ?? cmd;
+  const flat = cmd.trim().replace(/\s+/g, ' ');
+  if (flat.length <= 96) return flat;
+  return `${flat.slice(0, 72)}…${flat.slice(-20)}`;
 }
 
 /** §9.3 触发判据：目标是否为项目根的 SUNSHINE.md。两侧同基准：file 已是安全链 realpath 归一的绝对路径（safePath 注入），

@@ -317,8 +317,33 @@ export class SessionRuntime {
         this.todos = items;
       },
     });
-    rt.harness.steerSource = () => this.kernel.steerDrain();
+    // 插入发送（front 置首条目）步边界消费口：取走即回显——user 帧（live 气泡）+ kernel user 条
+    // （journal/快照,重连后不缺席）。此前 front 注入只落 steps 链,GUI 全程无气泡（2026-10-25 用户报障）
+    rt.harness.steerSource = () => {
+      const lines = this.kernel.steerDrain();
+      for (const text of lines) {
+        this.kernel.submit(text); // journal user 条（kernel 事件只走落档面,不广播——帧在下）
+        this.broadcastUserEcho(text);
+      }
+      return lines;
+    };
     return rt;
+  }
+
+  /** user 回显纯帧广播（emitQueueFrame 同形,不经 kernel.pump——泵路回显曾致转录双气泡+journal
+   *  双行,G14.2xx 实测;条目本体由 kernel.submit 写面承载,本帧只管 live 视图） */
+  private broadcastUserEcho(text: string): void {
+    const seq = this.opts.nextSeq();
+    this.lastSeqNum = seq;
+    const frame: EventFrame = {
+      kind: 'event',
+      sessionId: this.id,
+      seq,
+      e: { type: 'user', text, ts: Date.now() },
+    };
+    this.frames.push(frame);
+    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
+    this.opts.broadcast(frame);
   }
 
   // ---- 挂起表（P6 §4 下沉）：注册/回执/回填/外窥,daemon 只做寻址与传输 ----
@@ -727,19 +752,9 @@ export class SessionRuntime {
           if (pending.length > 0) {
             for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text);
             // G14.89 user 回显帧:GUI 运行中入队不本地回显,气泡靠此帧。回显必须走纯帧广播
-            // (emitQueueFrame 同形,不经 kernel.pump)——内部续发的 kernel.submit 自身会写 user 段,
+            // (不经 kernel.pump)——内部续发的 kernel.submit 自身会写 user 段,
             // 泵路回显曾致转录双气泡+journal 双行(G14.2xx 实测)
-            const seq = this.opts.nextSeq();
-            this.lastSeqNum = seq;
-            const frame: EventFrame = {
-              kind: 'event',
-              sessionId: this.id,
-              seq,
-              e: { type: 'user', text: pending[0]!.text, ts: Date.now() },
-            };
-            this.frames.push(frame);
-            if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
-            this.opts.broadcast(frame);
+            this.broadcastUserEcho(pending[0]!.text);
             this.submit(pending[0]!.text);
           }
         }

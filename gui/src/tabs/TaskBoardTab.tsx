@@ -112,8 +112,9 @@ function TaskCard({
                   data-tip={agentName !== '' ? t('View subagent', '查看子智能体') : undefined}
                   onClick={() => {
                     if (d === undefined) return; // 等待态:无执行子智能体,不跳转
+                    // 2026-10-25 用户裁定:任务说明禁止截断——页签任务带=板任务说明全量
                     const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                    onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText.slice(0, 2000));
+                    onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText);
                   }}
                 >
                   <span className={`tb-status-dot task-status-${task.status}`} aria-hidden="true" />
@@ -161,9 +162,9 @@ function TaskCard({
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return;
                   const d = agentOfTask(task, delegations);
-                  if (d === undefined) return; // 等待态:无执行子智能体,不跳转
+                  if (d === undefined) return; // 等待态:无执行子智能体,不可点
                   const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                  onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText.slice(0, 2000));
+                  onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText); // 任务说明不截断(2026-10-25 裁定)
                 }}
               />
             </Suspense>

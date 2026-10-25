@@ -78,6 +78,17 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(handlers.onClose).toHaveBeenCalledWith('file:a.ts');
   });
 
+  it('2026-10-25 web 标签页名+站标:pageTitle 优先(百度一下),pageIcon 渲染 favicon img,加载失败退地球', () => {
+    let s = ensureSession({}, 's1', registryProbe());
+    s = openTab(s, 's1', 'web', { url: 'baidu.com', pageTitle: '百度一下，你就知道', pageIcon: 'https://www.baidu.com/img/baidu.ico' }, registryProbe());
+    render(<TabStrip {...{ ...base, onSelect: vi.fn(), onClose: vi.fn() }} tabs={s.s1.tabs} activeUid={s.s1.activeUid} />);
+    expect(screen.getByText('百度一下，你就知道')).toBeTruthy();
+    const fav = document.querySelector('.sx-tab .sx-tab-fav') as HTMLImageElement | null;
+    expect(fav?.getAttribute('src')).toBe('https://www.baidu.com/img/baidu.ico');
+    fireEvent.error(fav!); // 加载失败退地球(lucide svg)
+    expect(document.querySelector('.sx-tab .sx-tab-fav')).toBeNull();
+  });
+
   it('「+」弹类型菜单,选中回调 onOpenType(折叠钮已迁右上窗控簇)', () => {
     const handlers = { ...base };
     render(<TabStrip {...handlers} tabs={[]} activeUid={null} />);

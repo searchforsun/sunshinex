@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
@@ -167,6 +167,21 @@ if (!app.requestSingleInstanceLock()) {
         action: 'allow',
         overrideBrowserWindowOptions: { width: 1100, height: 800 },
       };
+    });
+
+    // 「在系统浏览器打开」（2026-10-25 用户报障:该钮走 window.open 落进 Electron 子窗,不是系统
+    // 默认浏览器）:renderer 经 preload 桥调 shell.openExternal——由 OS 默认浏览器承接(用户配置
+    // 的 Chrome)。仅放行 http(s),其余协议(向 shell 交给系统的 file:/自定义协议面)不外抛。
+    ipcMain.handle('shell:open-external', async (_event, url: unknown): Promise<{ ok: boolean }> => {
+      if (typeof url !== 'string' || url === '') return { ok: false };
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false };
+        await shell.openExternal(url);
+        return { ok: true };
+      } catch {
+        return { ok: false };
+      }
     });
 
     // 驻留序（H-D2）：非退出流程中关窗=preventDefault+hide（会话/PTY 不中断），退出流程放行真关闭

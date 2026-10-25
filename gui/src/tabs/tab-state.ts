@@ -38,6 +38,8 @@ export interface TabParams {
   readonly task?: string;
   /** G14.2xx web 页名回写(WebTab onLoad 取 document.title;标签条标题派生 title() 优先消费) */
   readonly pageTitle?: string;
+  /** 2026-10-25 web 站标 URL(daemon /web/meta 服务端代取;标签条渲染 favicon,缺席/加载失败退地球) */
+  readonly pageIcon?: string;
   /** G14.2xx 终端 pty 定址(分配即落参数,随 gui-state 落盘)——刷新后凭此直连旧 pty
    *  (replay 环缓冲重建屏幕);pty 已死(daemon 重启/超时)由 TerminalTab 一次性回退新开 */
   readonly ptyId?: string;
@@ -220,20 +222,25 @@ export function setCollapsed(states: TabStates, sessionId: string, collapsed: bo
   return { ...states, [sessionId]: { ...cur, collapsed } };
 }
 
-/** G14.2xx web 标签元数据回写(浏览器原生标签形):页内导航/取到页名后合并进 params——
+/** G14.2xx web 标签元数据回写(浏览器原生标签形):页内导航/取到页名/站标后合并进 params——
  *  标签条标题(title() 派生)与判重键(resolveKey=url)随页演进,同一标签换页不换 uid。
- *  会话/标签缺席或 url+pageTitle 均未变 → 原引用返回 */
+ *  会话/标签缺席或 url+pageTitle+pageIcon+ptyId 均未变 → 原引用返回 */
 export function patchTabMeta(
   states: TabStates,
   sessionId: string,
   uid: string,
-  patch: { url?: string; pageTitle?: string; ptyId?: string },
+  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string },
 ): TabStates {
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
   if (cur === undefined || target === undefined) return states;
   const params: TabParams = { ...target.params, ...patch };
-  if (target.params.url === params.url && target.params.pageTitle === params.pageTitle && target.params.ptyId === params.ptyId) return states;
+  if (
+    target.params.url === params.url
+    && target.params.pageTitle === params.pageTitle
+    && target.params.pageIcon === params.pageIcon
+    && target.params.ptyId === params.ptyId
+  ) return states;
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
 
