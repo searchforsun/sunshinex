@@ -946,6 +946,18 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelector('.entry-assistant')?.textContent?.startsWith('质能方程')).toBe(true);
   });
 
+  it('2026-10-25 扩展语法:==高亮== 出 mark,<u> 行内 HTML 经 raw+sanitize 出 u(script 仍被滤)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'done', text: '普通文本。==高亮文本==、<u>下划线</u>。', ts: Date.now() });
+    await flushed();
+    expect(document.querySelector('.entry-assistant mark')?.textContent).toBe('高亮文本');
+    expect(document.querySelector('.entry-assistant u')?.textContent).toBe('下划线');
+    // sanitize 纪律:script 标签不落地
+    expect(document.querySelector('.entry-assistant script')).toBeNull();
+  });
+
   it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {
     mountChat([]);
     await flushed();

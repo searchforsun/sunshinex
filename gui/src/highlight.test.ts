@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { highlightByLang, highlightCommand, stripAnsi } from './highlight';
+import { highlightByLang, highlightCommand, highlightFence, stripAnsi } from './highlight';
 
 /** G11 §5.2:围栏语言直给 hljs;未知语言/异常回落转义原文(注入面纪律) */
 
@@ -71,5 +71,22 @@ describe('stripAnsi(工具输出 ANSI 剥离)', () => {
     expect(stripAnsi('plain text')).toBe('plain text');
     expect(stripAnsi('a\u001b[2Kb')).toBe('ab');
     expect(stripAnsi('x\u001b]0;title\u0007y')).toBe('xy');
+  });
+});
+
+describe('highlightFence(2026-10-25 围栏脚本高亮分派)', () => {
+  it('shell 家族走命令行着色器(env 赋值/命令词/注释)——hljs bash 对命令行几乎零令牌', () => {
+    const html = highlightFence('NODE_OPTIONS=--use-system-ca pnpm shell:dist # build', 'bash');
+    expect(html).toContain('tok-var">NODE_OPTIONS=<');
+    expect(html).toContain('tok-cmd">pnpm<');
+    expect(html).toContain('tok-cmt'); // 注释灰斜
+    expect(html).not.toContain('hljs-'); // 不走 hljs
+  });
+
+  it('非脚本语言维持 hljs;cmd/powershell 斜杠旗标', () => {
+    expect(highlightFence('const a = 1;', 'ts')).toContain('hljs-');
+    expect(highlightFence('dir /b', 'cmd')).toContain('tok-flag">/b<');
+    expect(highlightFence('Get-ChildItem -Recurse', 'powershell')).toContain('tok-flag">-Recurse<');
+    expect(highlightFence('plain', 'nope-lang')).toBe('plain');
   });
 });

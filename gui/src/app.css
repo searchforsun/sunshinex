@@ -340,7 +340,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-tree-crumb-dir { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; min-width: 0; color: var(--fg-secondary); }
 .sx-tree-crumb-sep { flex: none; color: var(--fg-tertiary); padding: 0 3px; font-size: 11px; }
 .sx-tree-crumb > .sx-tree-name { flex: none; }
-.sx-tree-row.sx-tree-ignored .sx-tree-crumb-dir, .sx-tree-row.sx-tree-ignored .sx-tree-crumb-sep { color: #8c8c8c; }
+.sx-tree-row.sx-tree-ignored .sx-tree-crumb-dir, .sx-tree-row.sx-tree-ignored .sx-tree-crumb-sep { color: var(--fg-tertiary); }
 /* 高级 raw 编辑告警条(warn 边) */.sx-raw-warnings { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: var(--radius-md); color: var(--warn); font-size: 12px; }.sx-raw-warnings p { margin: 0; }
 /* 退役 Home 遗留行(ProjectMenu 组列表/装配占位/模态内错误行暗色化);.no-sessions 单一定义
    在侧栏归档区段(2026-10-22 裁定缩进 x=34 与「显示更多」对齐) */.home-loading, .home-empty, .sessions-loading { list-style: none; padding: 4px 12px; color: var(--fg-secondary); font-size: 12px; }.home-error { list-style: none; padding: 4px 12px; color: var(--err); font-size: 12px; }.modal-body .home-error { padding: 0; margin: 8px 0 0; }
@@ -2116,6 +2116,9 @@ input.sx-setting-input { width: 100%; }
 /* G14.2xx 标题截断隐现(chrome 同形):无省略号——溢出时右缘渐隐以标识被截,未溢出无效果(data-cut 由 TabStrip 逐标题量溢出打点) */
 .sx-tab .sx-tab-title { text-overflow: clip; }
 .sx-tab .sx-tab-title[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }.sx-tab > .iconify, .sx-tab > svg { flex: none; }
+/* 2026-10-25 扩展语法面:mark 高亮(<mark>/==...==)/u 下划线——主题化,不吃浏览器默认黄 */
+.entry-md mark, .tool-md mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; padding: 0 3px; border-radius: 3px; }
+.entry-md u, .tool-md u { text-underline-offset: 3px; }
 /* 2026-10-25 web 站标(页签 favicon,daemon /web/meta 代取;失败退地球) */
 .sx-tab .sx-tab-fav { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
 

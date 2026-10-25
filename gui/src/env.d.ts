@@ -16,3 +16,9 @@ interface Window {
     pickFolder?: () => Promise<string | null>;
   };
 }
+
+/** unified 类型面(react-markdown 传递依赖,gui 未直连——MD_* 插件常量类型锚点) */
+declare module 'unified' {
+  export type Pluggable = unknown;
+  export type PluggableList = Pluggable[];
+}

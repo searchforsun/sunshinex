@@ -88,8 +88,9 @@ function span(cls: string, text: string): string {
   return `<span class="${cls}">${escapeHtml(text)}</span>`;
 }
 
-/** 命令词后的子词也保持可读:命令位=行首/&& || | ; & ( 之后 */
-export function highlightCommand(code: string): string {
+/** 命令词后的子词也保持可读:命令位=行首/&& || | ; & ( 之后。
+ *  slashFlags(2026-10-25):cmd/powershell 变体——`/b` 形旗标同 `-b` 着色(DOS 路径用 \,无误伤面) */
+export function highlightCommand(code: string, slashFlags = false): string {
   let out = '';
   let i = 0;
   let cmdPos = true; // 下一词是否处于命令位
@@ -182,8 +183,8 @@ export function highlightCommand(code: string): string {
       lineStart = false;
       continue;
     }
-    // 旗标:-x --xx(含 =值);数字起(如 -8)同样
-    if (c === '-' && /[A-Za-z0-9]/.test(code[i + 1] ?? '')) {
+    // 旗标:-x --xx(含 =值);数字起(如 -8)同样;cmd/powershell 变体另收 /x
+    if ((c === '-' || (slashFlags && c === '/')) && /[A-Za-z0-9]/.test(code[i + 1] ?? '')) {
       let j = i + 1;
       while (j < n && /[\w.=-]/.test(code[j]!)) j += 1;
       out += span('tok-flag', code.slice(i, j));
@@ -232,4 +233,19 @@ export function highlightCommand(code: string): string {
 export function stripAnsi(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-_]/g, '');
+}
+
+/** 围栏脚本高亮分派(2026-10-25 用户裁定「代码块脚本命令复用命令行着色器」):shell 家族
+ *  (hljs bash 对命令行几乎零令牌)走 highlightCommand;cmd/powershell 用斜杠旗标变体;
+ *  其余(py/js/…)维持 hljs。语言名大小写不敏感,未登记语言回落 hljs/plaintext */
+const CMD_FENCES: ReadonlySet<string> = new Set([
+  'bash', 'sh', 'shell', 'zsh', 'shell-session', 'console', 'sh-session',
+  'powershell', 'pwsh', 'ps1', 'cmd', 'batch', 'bat',
+]);
+const SLASH_FLAG_FENCES: ReadonlySet<string> = new Set(['powershell', 'pwsh', 'ps1', 'cmd', 'batch', 'bat']);
+
+export function highlightFence(code: string, lang?: string): string {
+  const l = (lang ?? '').toLowerCase();
+  if (CMD_FENCES.has(l)) return highlightCommand(code, SLASH_FLAG_FENCES.has(l));
+  return highlightByLang(code, lang);
 }

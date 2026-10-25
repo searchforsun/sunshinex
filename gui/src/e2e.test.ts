@@ -70,7 +70,7 @@ async function liveSessionIds(port: number): Promise<string[]> {
  *  idle 会话不走 liveSessionId 面(liveSessionByJournal 只收 running),DOM 反查 running/idle 通吃 */
 function openSessionId(): string {
   const tip = document.querySelector('.chat-title')?.getAttribute('data-tip') ?? '';
-  const id = tip.slice(0, tip.indexOf(' ·'));
+  const id = tip.split(' · ')[1] ?? ''; // 2026-10-25 tip=标题·id·tokens·steps(标题先行,id 取第二段)
   if (!/^sun-[0-9a-f]{12}-[0-9a-f]{8}$/.test(id)) throw new Error(`title tip 无会话 id: ${tip}`);
   return id;
 }

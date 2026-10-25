@@ -265,7 +265,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             </div>
           </div>
         ) : (
-          <span className="chat-title" data-tip={`${sessionId} · ${tokens} tokens · ${steps} steps${running ? ' · 运行中' : ''}`}>
+          <span className="chat-title" data-tip={`${displayTitle} · ${sessionId} · ${tokens} tokens · ${steps} steps${running ? ' · 运行中' : ''}`} /* 2026-10-25 用户裁定:hover 显完整会话名(标题截断后全名只在悬浮);sessionId 留中段(e2e openSessionId 解析锚点) */>
             <span className="chat-title-btn">
               <span className={`chat-title-text${titleClipped ? ' clipped' : ''}`} ref={titleRef}>{displayTitle}</span>
             </span>

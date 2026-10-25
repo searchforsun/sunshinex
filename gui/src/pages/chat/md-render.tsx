@@ -4,8 +4,10 @@ import { Check, Copy, Maximize2, Square, WrapText } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { t } from '../../i18n';
-import { highlightByLang } from '../../highlight';
+import { highlightFence } from '../../highlight';
 import { zoomScale } from '../../ui-zoom';
 import { openExternalUrl } from '../../ui-util';
 import { Mermaid } from '../../Mermaid';
@@ -13,11 +15,71 @@ import { FileIcon } from '../../file-icon';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import { TipButton } from './RunFooter';
 
-/** md 渲染插件单点(2026-10-25 用户报障「数学公式没有渲染」):gfm+math/katex 全管线统一——
+/** md 渲染插件单点(2026-10-25 用户报障「数学公式没有渲染」+「特殊显示未渲染」):
+ *  remark:gfm+math;rehype:raw(行内 HTML 如 <u>)+mark(==高亮==,自写文本切分;~下标~^上标^与 GFM 单波浪删除线语法冲突,不收录)+
+ *  sanitize(注:protocols 删除——文件路径 href(C:/ 相对路径)不过协议滤网,导航面由 a
+ *  组件全量拦截(openExternalUrl/file-link span),javascript: 不可达)+katex(throwOnError
+ *  false+errorColor inherit——流式半截公式不闪红错,落定前以正文色呈现)。
  *  全部 ReactMarkdown 消费面(正文/气泡/尾块/技能体/计划卡/Files/agent 转录)共用同一引用
- *  (数组身份恒定,memo 内面比较不破)。行内 $...$ 与块级 $$...$$ 经 rehype-katex 出 KaTeX */
-export const MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
-export const MD_REHYPE_PLUGINS = [rehypeKatex];
+ *  (数组身份恒定,memo 内面比较不破)。 */
+/** ==高亮== → <mark>(2026-10-25 扩展语法):rehype 文本节点切分,零依赖手写遍历——
+ *  remark-ins 语义是 <ins>(插入)且外件(sub-super 等)与当前 unified 不兼容,不引;后置执行
+ *  (sanitize 之后,mark 在 tagNames 白名单) */
+function rehypeMark(): (tree: unknown) => void {
+  interface MdNode {
+    type: string;
+    value?: string;
+    tagName?: string;
+    properties?: Record<string, unknown>;
+    children?: MdNode[];
+  }
+  const walk = (node: MdNode): void => {
+    const kids = node.children;
+    if (kids === undefined) return;
+    for (let i = kids.length - 1; i >= 0; i -= 1) {
+      const child = kids[i]!;
+      if (child.type === 'element' || child.type === 'root') {
+        walk(child);
+        continue;
+      }
+      if (child.type !== 'text' || typeof child.value !== 'string' || !child.value.includes('==')) continue;
+      const parts = child.value.split(/==([^=]+)==/);
+      if (parts.length === 1) continue;
+      const out: MdNode[] = [];
+      parts.forEach((seg, idx) => {
+        if (seg === '') return;
+        out.push(idx % 2 === 1 ? { type: 'element', tagName: 'mark', properties: {}, children: [{ type: 'text', value: seg }] } : { type: 'text', value: seg });
+      });
+      kids.splice(i, 1, ...out);
+    }
+  };
+  return (tree: unknown) => walk(tree as MdNode);
+}
+
+export const MD_REMARK_PLUGINS: import('unified').PluggableList = [remarkGfm, remarkMath];
+export const MD_REHYPE_PLUGINS: import('unified').PluggableList = [
+  rehypeRaw,
+  [
+    rehypeSanitize,
+    {
+      ...defaultSchema,
+      tagNames: [...(defaultSchema.tagNames ?? []), 'u', 'mark', 'sub', 'sup', 'details', 'summary'],
+      attributes: {
+        ...defaultSchema.attributes,
+        '*': [...(defaultSchema.attributes?.['*'] ?? []), 'className'],
+        code: [...(defaultSchema.attributes?.code ?? []), 'className'],
+        span: [...(defaultSchema.attributes?.span ?? []), 'className'],
+        div: [...(defaultSchema.attributes?.div ?? []), 'className'],
+      },
+      protocols: undefined,
+    } as typeof defaultSchema,
+  ],
+  rehypeMark,
+  [
+    rehypeKatex,
+    { throwOnError: false, errorColor: 'inherit', strict: 'ignore' },
+  ],
+];
 
 /** md 渲染域（D32 批C-5 拆分自 Chat.tsx）：链接放行/无链接组件面单例/文件 token 显形名/
  *  用户气泡与通用 md 组件工厂/代码块卡/Mermaid 容器（lightbox 缩放平移）。Files 页与
@@ -175,7 +237,7 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
   // G14.205 自动换行切换:默认横向滚动,开启后 pre-wrap 纵向排布(无横向滚动条)
   const [wrap, setWrap] = useState(false);
   const { status, copy } = useCopyFeedback();
-  const html = useMemo(() => highlightByLang(code, lang), [code, lang]);
+  const html = useMemo(() => highlightFence(code, lang), [code, lang]);
   return (
     <div className="code-block">
       <div className="code-head">
