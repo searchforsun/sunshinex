@@ -90,3 +90,14 @@ describe('highlightFence(2026-10-25 围栏脚本高亮分派)', () => {
     expect(highlightFence('plain', 'nope-lang')).toBe('plain');
   });
 });
+
+/** P1 Task 5 防回归钉子:highlight.ts 收敛 lib/common + 显式补注册 jsx/tsx/toml 后,
+ *  EXT_LANG 表内语言全集必须仍可解析(删注册即此用例红——表完整性由测试钉住) */
+describe('highlight.js 注册面(lib/common + 显式补注册)', () => {
+  it('EXT_LANG 表内语言全部可解析', async () => {
+    const hljs = (await import('highlight.js/lib/common')).default;
+    for (const lang of ['typescript', 'tsx', 'javascript', 'jsx', 'json', 'markdown', 'css', 'xml', 'python', 'rust', 'java', 'bash', 'yaml', 'toml']) {
+      expect(hljs.getLanguage(lang), lang).toBeDefined();
+    }
+  });
+});

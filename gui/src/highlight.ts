@@ -1,9 +1,12 @@
-import hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/common';
 
 /**
  * G6 代码高亮渲染助手（Files 页消费）：文件名 → highlight.js 语言的映射单点 + HTML 产出。
- * 与主仓 TUI highlight.ts 同源库（highlight.js@^11 全量包——toml/tsx 等不在 common 子集内，
- * 全量导入换映射表完整性；GUI 打包面可后续按需收敛，语义优先）。
+ * 与主仓 TUI highlight.ts 同源库（highlight.js@^11）——P1 Task 5 收敛 lib/common 子集
+ * （36 语言，全量 193；体积约 1MB→约 200KB）。EXT_LANG 表内 tsx/jsx/toml 三语言在
+ * 11.12.0 由别名承载（tsx/typescript、jsx/javascript 别名，toml/ini 别名——独立
+ * tsx.js/jsx.js/toml.js 模块在该版本不存在），common 子集内全集可解析；表完整性由
+ * highlight.test.ts 注册面用例钉住（退 core-only 即红）。
  *
  * 产出为 HTML 字符串（`hljs.highlight(code, {language}).value`）——消费面以
  * dangerouslySetInnerHTML 注入 <code>：内容经 hljs 转义（highlight.js 的 emit 流程对原文
