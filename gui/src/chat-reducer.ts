@@ -66,7 +66,8 @@ export interface ChatState {
 /** 内部记账（勿消费）：run-open 基线（seq → 当时累计 steps/tokens）——open run 条「本轮」减数。
  *  P9:usage 水位记账已上收内核统计面(ChatState 不再持) */
   runBases: Record<number, { steps: number; tokens: number }>;
-  /** 成员变更计数(派生冻结 memo key,见 P1 spec §3.3):仅在条目成员集变化(增/删/重播)时 +1,
+  /** 成员变更计数(派生冻结 memo key,见 P1 spec §3.3):成员集变化(增/删/重播)或尾条目 result
+   *  配对(tool-result 原位写入,长度/首键不变但 result 引用 undefined→对象跃迁)时 +1;
    *  纯内容帧(token/thinking delta、状态翻转)恒定;0=未播种(initialChatState),1=新种子 */
   structureVersion: number;
   /** 种子代次(reseed 恒换新值):与 structureVersion 并用作派生 memo 依赖,防 sv 等值碰撞
@@ -220,9 +221,19 @@ export function applySubagentChatEvent(s: ChatState, e: SessionEvent): ChatState
   ) {
     return s;
   }
-  // P1 structureVersion:成员变更 O(1) 差分——内核 append-only,长度/首键不变即成员集不变
-  // (seed 整替不经此路,自身置 1);空→空不算变更。纯内容帧计数恒定,派生冻结 memo key(spec §3.3)
+  // P1 structureVersion:成员变更 O(1) 差分——内核 append-only,长度/首键不变即成员集不变;
+  // 第三条件:尾条目 result 引用跃迁(tool-result 原位配对——内核换条目对象、视图重映射后
+  // result undefined→对象,长度与首键均不变,create_task 等标题自 result.text 读出,漏检即
+  // taskNameOf 冻结陈旧到下一成员帧)。token replaceAt 只换 md,result 恒 undefined===undefined,
+  // 冻结面不受影响(seed 整替不经此路,自身置 1);空→空不算变更。纯内容帧计数恒定,派生冻结 memo key(spec §3.3)
   const entries = mapEntries(next.k, next.runBases);
-  const structureVersion = next.structureVersion + (entries.length !== next.entries.length || entries[0]?.key !== next.entries[0]?.key ? 1 : 0);
+  const nextLast = entries[entries.length - 1];
+  const prevLast = next.entries[next.entries.length - 1];
+  const structureVersion = next.structureVersion
+    + (entries.length !== next.entries.length
+      || entries[0]?.key !== next.entries[0]?.key
+      || nextLast?.result !== prevLast?.result
+      ? 1
+      : 0);
   return { ...next, entries, structureVersion };
 }

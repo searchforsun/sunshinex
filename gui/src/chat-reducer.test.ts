@@ -523,6 +523,24 @@ describe('structureVersion(P1 成员变更计数,派生冻结 memo key——spec
     const s2 = applyChatEvent(s1, ev('model-start')); // 已 running:内核零变更透传(run 不重复入列)
     expect(s2.structureVersion).toBe(s1.structureVersion);
   });
+
+  it('tool-result 配对帧递增(result 引用跃迁),token burst 仍恒定', () => {
+    let s = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });
+    s = applyChatEvent(s, ev('model-start')); // run 条入列(成员帧)
+    const svRun = s.structureVersion;
+    s = applyChatEvent(s, ev('tool-call', 'read', { callId: 'c-pair' })); // pending tool 条入列(成员帧)
+    const svCall = s.structureVersion;
+    expect(svCall).toBe(svRun + 1);
+    expect(s.entries[s.entries.length - 1]!.result).toBeUndefined(); // 尾条=pending tool,结果未配对
+    s = applyChatEvent(s, ev('tool-result', '42 chars', { callId: 'c-pair', ok: true }));
+    expect(s.entries[s.entries.length - 1]!.result?.text).toBe('42 chars'); // 原位配对落定
+    expect(s.structureVersion).toBe(svCall + 1); // 修复点:长度/首键均不变,result 引用跃迁须递增(否则 taskNameOf 冻结陈旧)
+    s = applyChatEvent(s, ev('token', '后续')); // 配对后首 token 开新流式条=成员帧(合法递增)
+    const svOpen = s.structureVersion;
+    expect(svOpen).toBe(svCall + 2);
+    for (let i = 0; i < 5; i++) s = applyChatEvent(s, ev('token', 'x'));
+    expect(s.structureVersion).toBe(svOpen); // token burst 仍恒定——第三条件不破坏冻结面
+  });
 });
 
 describe('seedGen(种子代次——reseed 恒换新值,防 structureVersion 等值碰撞漏检)', () => {
