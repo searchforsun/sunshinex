@@ -8,8 +8,7 @@ import type { Connection } from '../../connection';
 import { DiffLines } from '../../diff-lines';
 import { FileIcon } from '../../file-icon';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { keepUrl, mdComponentsPlain } from '../Chat';
+import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import type { DiffResp } from '../../connection';
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);G14.168 taskboard 六工具专属图标(去扳手默认) */
@@ -505,7 +504,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   } else if (toolName === 'skill') {
     body = (
       <div className="tool-md">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdComponentsPlain}>{fullResult}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>{fullResult}</ReactMarkdown>
       </div>
     );
   } else if (toolName === 'ask_question' && askInput !== null) {

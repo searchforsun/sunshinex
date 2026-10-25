@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { ListTodo } from 'lucide-react';
 import { t } from '../../i18n';
-import { keepUrl, mdComponentsPlain } from './md-render';
+import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
 
 /** 计划确认卡(task 10,spec §5.2 阶段三 plan-arm GUI 面):planFlow 裁决卡的渲染件——
  *  计划书 markdown(沿 GUI 既有 markdown 通道,mdComponentsPlain 无链接版+keepUrl,ToolEntry
@@ -36,7 +35,7 @@ export function PlanCard({ doc, items, onDecide }: { doc: string; items: string[
         <div className="card-title">{t('Plan approval', '计划确认')}</div>
       </div>
       <div className="plan-card-doc tool-md">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdComponentsPlain}>
+        <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>
           {doc}
         </ReactMarkdown>
       </div>

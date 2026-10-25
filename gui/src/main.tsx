@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { applyZoom, readZoomPref } from './ui-zoom';
 import './app.css';
+import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+rehype-katex):字体与排版样式全局一份
 
 /**
  * G3 挂载点：App 自装配（无 props）——token 门面（URL ?token= / localStorage 持久）与

@@ -930,6 +930,22 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelector('.entry-assistant blockquote')).not.toBeNull();
   });
 
+  it('2026-10-25 数学公式管线:行内 $...$ 与块级 $$...$$ 经 remark-math+rehype-katex 出 KaTeX(此前裸文)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'token', text: '质能方程 $E = mc^2$。\n\n$$ \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2} $$', ts: Date.now() });
+    await flushed();
+    // 流式尾块即渲染(行内公式在尾块,块级随流生长)
+    expect(document.querySelector('.entry-assistant .katex')).not.toBeNull();
+    fire({ type: 'done', text: '质能方程 $E = mc^2$。\n\n$$ \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2} $$', ts: Date.now() });
+    await flushed();
+    // done 终渲染:行内+块级两枚 KaTeX,定界符消失(textContent 含 MathML annotation 源码属 katex 正常结构)
+    expect(document.querySelectorAll('.entry-assistant .katex').length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelector('.entry-assistant')?.textContent).not.toContain('$$');
+    expect(document.querySelector('.entry-assistant')?.textContent?.startsWith('质能方程')).toBe(true);
+  });
+
   it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {
     mountChat([]);
     await flushed();

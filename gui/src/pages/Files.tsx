@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { ChevronRight, CodeXml, Copy, Eye, WrapText } from 'lucide-react';
 import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
@@ -9,7 +8,7 @@ import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { t } from '../i18n';
 import { useCopyFeedback } from '../use-copy-feedback';
-import { buildMdComponents, keepUrl } from './Chat';
+import { buildMdComponents, keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './Chat';
 
 /**
  * G6 Files 页（会话内文件只读预览）——G14.5 起 VSCode 形态（用户裁定）：**顶部文件路径面包屑**
@@ -256,7 +255,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                * (href 相对当前 md 所在目录解析为绝对路径),web 链接新窗浏览器 */
               <div className="files-md" aria-label="file content">
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS}
                   urlTransform={keepUrl}
                   components={previewComponents}
                 >

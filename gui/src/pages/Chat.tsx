@@ -40,7 +40,7 @@ import { PlanCard } from './chat/PlanCard';
 import { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
-export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock } from './chat/md-render';
+export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
 import { DirResolverContext } from './chat/md-render';
 export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';

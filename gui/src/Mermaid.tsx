@@ -84,12 +84,20 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
   /** G14.94 渲染失败态:错误消息(红)+源代码同框——修复有据 */
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
+  /** 尝试节流戳(2026-10-25 用户报障「mermaid 等输出完源码才渲染」):原 250ms 去抖在连续 token
+   *  流下恒被 cleanup 取消重排——渲染尝试直到流间歇/收束才发第一次,部分源码合法也不渐进成图。
+   *  改节流:距上次尝试不足间隔也保尾随一次,流式期间每 ~250ms 必试,源码合法即现图 */
+  const lastAttemptRef = useRef(0);
   /** G14.2xx 流式静默:上一版成功图形(失败时不 clear,保图形在屏);稳定重试仍败才落错误态 */
   const lastGoodRef = useRef<{ chart: string; svg: string } | null>(null);
   /** 稳定判定窗:chart 停止变化达该时长后仍失败才示错(流式期间静默) */
   const STABLE_MS = 1200;
   /** 主题切换触发器:data-theme 属性变化即重渲(否则图停留在旧配色直到 chart 变更) */
   const [themeTick, setThemeTick] = useState(0);
+  /** onStatus 经 ref 取最新(2026-10-25):消费方传内联箭头时身份逐渲染换新,进 deps 会使渲染
+   *  尝试链被无关重渲反复打断(重试窗清零/静默回调时序错乱)——事件回调不该是重渲依赖 */
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   useEffect(() => {
     return watchThemeChange(() => setThemeTick((v) => v + 1));
@@ -110,15 +118,17 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
     if (cached !== undefined) {
       setSvg(cached);
       setFailed(null);
-      onStatus?.(true);
+      onStatusRef.current?.(true);
       return () => {
         alive = false;
       };
     }
-    // G14.2xx 去抖:流式期间 chart 每帧都在长,逐 token 重渲渲染成本高——静默期后统一尝试
-    const debounce = window.setTimeout(run, 250);
+    // 尝试节流(见 lastAttemptRef 注):去抖改节流——连续流中也保尾随尝试,渐进成图
+    const wait = Math.max(0, 250 - (Date.now() - lastAttemptRef.current));
+    const debounce = window.setTimeout(run, wait);
     function run(): void {
       if (!alive) return;
+      lastAttemptRef.current = Date.now();
       (async () => {
         try {
           const mod = await mermaidReady;
@@ -134,11 +144,11 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
             lastGoodRef.current = { chart, svg: r.svg };
             setSvg(r.svg);
             setFailed(null);
-            onStatus?.(true); // G14.122 渲染成败上抛(消费方按态收放放大钮)
+            onStatusRef.current?.(true); // G14.122 渲染成败上抛(消费方按态收放放大钮)
           }
         } catch (e) {
           if (!alive) return;
-          onStatus?.(false);
+          onStatusRef.current?.(false);
           // G14.2xx 流式静默:不稳定期间的失败不示错、不清图形——上一版图保留在屏,源码静默兜底;
           // 稳定(STABLE_MS 内 chart 未再变)后重试一次,仍败才落错误态(真非法图才示错)
           if (lastGoodRef.current !== null) {
@@ -162,14 +172,14 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
                   setSvg(r.svg);
                   lastGoodRef.current = { chart, svg: r.svg };
                   setFailed(null);
-                  onStatus?.(true);
+                  onStatusRef.current?.(true);
                 }
               } catch (e2) {
                 if (alive) {
                   const raw = e2 instanceof Error ? e2.message : String(e2);
                   const msg = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed';
                   setFailed(msg);
-                  onStatus?.(false, msg); // 2026-10-25 错误文案随状态上抛(消费方复制钮:报错+源码同复制)
+                  onStatusRef.current?.(false, msg); // 2026-10-25 错误文案随状态上抛(消费方复制钮:报错+源码同复制)
                 }
               }
             })();
@@ -181,7 +191,7 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
       alive = false;
       window.clearTimeout(debounce);
     };
-  }, [chart, themeTick, onStatus]);
+  }, [chart, themeTick]); // onStatus 走 ref(事件回调不进重渲依赖,见 onStatusRef 注)
 
   if (failed !== null) {
     return (

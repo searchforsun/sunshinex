@@ -1705,8 +1705,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* G14.152 运行/未读圆点随文字列右移(文字 x=34,圆点右缘 28 留 6px 间隙,不再贴左缘)。
    G14.213 运行环与圆点同位——此前 running 单独 left 26 右缘恰贴正文 x=34(「太贴」) */
-.sx-side-scroll .sx-session-dot { left: 14px; } /* 2026-10-22 用户裁定:与工作区文件夹图标中心线对齐 */
-.sx-side-scroll .sx-session-dot.running { left: 20px; }
+/* 2026-10-25 用户报障「运行态转圈没和上下图标居中对齐」:中心线统一钉在工作区文件夹图标
+   中心(groups 4px 缩进+行 10px 内边距+16px 图标 → 中线 x=22)——8px 环左 18/6px 点左 19,
+   此前环 20(中心 24 偏右)/点 14(中心 17 偏左),两态还互不对齐 */
+.sx-side-scroll .sx-session-dot { left: 19px; }
+.sx-side-scroll .sx-session-dot.running { left: 18px; }
 
 
 /* G14.154 文件选区悬浮工具条(双动作):跟随选区上方,ReactDOM 面非 monaco overlay */
@@ -2115,9 +2118,6 @@ input.sx-setting-input { width: 100%; }
 .sx-tab .sx-tab-title[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }.sx-tab > .iconify, .sx-tab > svg { flex: none; }
 /* 2026-10-25 web 站标(页签 favicon,daemon /web/meta 代取;失败退地球) */
 .sx-tab .sx-tab-fav { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
-/* 2026-10-25 用户裁定:web 页签恒定宽(200px,不随页名长度伸缩)——页内导航换题/站标回写
-   不再引起页签宽度跳动;长题省略号+悬浮全名,溢出由条内既有横向滚动接管 */
-.sx-tabstrip .sx-tab[data-type='web'] { flex: 0 0 200px; min-width: 200px; max-width: 200px; }
 
 /* ---- G14.2xx 标签搜索弹窗(chrome「搜索标签页」同位;最左触发,纵向两节:打开的/最近关闭的) ---- */
 .sx-tabsearch { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 280px; max-width: min(86vw, calc(100vw - var(--menu-occ, 0px) - 24px)); max-height: 70vh; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }

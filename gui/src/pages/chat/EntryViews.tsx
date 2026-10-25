@@ -1,13 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X } from 'lucide-react';
 import { t } from '../../i18n';
 import { pathBasename } from '../../ui-util';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
-import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver } from '../Chat';
+import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
@@ -312,7 +311,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
       <CollapsibleBubble
         text={entry.md}
         render={(md) => (
-          <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdComponents}>{renderUserMd(md)}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponents}>{renderUserMd(md)}</ReactMarkdown>
         )}
       />
       <div className="user-actions">
@@ -389,7 +388,7 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
 const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string; components: Components }): JSX.Element {
   if (md === '') return <></>;
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={components}>
+    <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={components}>
       {md}
     </ReactMarkdown>
   );
@@ -426,14 +425,14 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
               {/* 在途尾块恒进解析器(2026-10-25 上层统一裁定:实时渲染不枚举结构前缀) */}
               {tailMd !== '' && (
                 <div className="entry-stream-tail-md">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>
+                  <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdc}>
                     {tailMd}
                   </ReactMarkdown>
                 </div>
               )}
             </>
           ) : (
-            <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
           )}
         </div>
       </div>

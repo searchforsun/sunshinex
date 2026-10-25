@@ -1,6 +1,9 @@
 import { memo, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, Copy, Maximize2, Square, WrapText } from 'lucide-react';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { t } from '../../i18n';
 import { highlightByLang } from '../../highlight';
 import { zoomScale } from '../../ui-zoom';
@@ -9,6 +12,12 @@ import { Mermaid } from '../../Mermaid';
 import { FileIcon } from '../../file-icon';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import { TipButton } from './RunFooter';
+
+/** md 渲染插件单点(2026-10-25 用户报障「数学公式没有渲染」):gfm+math/katex 全管线统一——
+ *  全部 ReactMarkdown 消费面(正文/气泡/尾块/技能体/计划卡/Files/agent 转录)共用同一引用
+ *  (数组身份恒定,memo 内面比较不破)。行内 $...$ 与块级 $$...$$ 经 rehype-katex 出 KaTeX */
+export const MD_REMARK_PLUGINS = [remarkGfm, remarkMath];
+export const MD_REHYPE_PLUGINS = [rehypeKatex];
 
 /** md 渲染域（D32 批C-5 拆分自 Chat.tsx）：链接放行/无链接组件面单例/文件 token 显形名/
  *  用户气泡与通用 md 组件工厂/代码块卡/Mermaid 容器（lightbox 缩放平移）。Files 页与
