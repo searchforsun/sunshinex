@@ -934,12 +934,12 @@ export class GuiDaemon {
   }
 
   /** body 读取 + JSON 解析：解析失败/超限统一以 {status, error} 回执，不抛出（dispatch 已兜 500，此处提前收口带准确码） */
-  private async readJson(req: http.IncomingMessage): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }> {
+  private async readJson(req: http.IncomingMessage, cap: number = MAX_BODY_BYTES): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }> {
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of req) {
       size += (chunk as Buffer).length;
-      if (size > MAX_BODY_BYTES) return { ok: false, status: 413, error: 'payload too large' };
+      if (size > cap) return { ok: false, status: 413, error: 'payload too large' };
       chunks.push(chunk as Buffer);
     }
     try {
@@ -1163,7 +1163,7 @@ export class GuiDaemon {
   private get configIo(): ConfigHandlerIo {
     return {
       send: (res, status, body) => this.send(res, status, body),
-      readJson: (req) => this.readJson(req),
+      readJson: (req, cap) => this.readJson(req, cap),
       reloadSettingsChain: (root) => this.reloadSettingsChain(root),
     };
   }
@@ -1241,7 +1241,7 @@ export class GuiDaemon {
   private get sessionIo(): SessionHandlerIo {
     return {
       send: (res, status, body) => this.send(res, status, body),
-      readJson: (req) => this.readJson(req),
+      readJson: (req, cap) => this.readJson(req, cap),
       sessionFor: (res, id) => this.sessionFor(res, id),
       sessions: this.sessions,
       denyPendingFor: (sessionId) => this.denyPendingFor(sessionId),
@@ -1269,14 +1269,14 @@ export class GuiDaemon {
   private get workspaceIo(): WorkspaceHandlerIo {
     return {
       send: (res, status, body) => this.send(res, status, body),
-      readJson: (req) => this.readJson(req),
+      readJson: (req, cap) => this.readJson(req, cap),
     };
   }
 
   private get ptyIo(): PtyHandlerIo {
     return {
       send: (res, status, body) => this.send(res, status, body),
-      readJson: (req) => this.readJson(req),
+      readJson: (req, cap) => this.readJson(req, cap),
       sessionFor: (res, id) => this.sessionFor(res, id),
       ptyManager: this.ptyManager,
       nextPtyId: () => `pty-${(this.ptySeq += 1)}`,

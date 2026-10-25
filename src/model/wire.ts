@@ -6,7 +6,8 @@ import type { ChatMessage, ChatResult, ChatTool, ToolCallSpec } from '../types';
 /** 消息视图 → wire 形态（assistant.toolCalls → tool_calls；tool → role:tool + tool_call_id）。
  *  assistant.reasoning 原样回传为 reasoning_content：交错思考端点（DeepSeek/Qwen 系思考模式）的
  *  硬约束是**字段在场**——实测空串 200、缺字段 400 "must be passed back"（思考模式默认开但模型偶尔
- *  整轮零思考，buildMessages 对当轮批消息兜底空串）；字段未定义（旧任务轮/非思考端点）零穿参 */
+ *  整轮零思考，buildMessages 对当轮批消息兜底空串）；字段未定义（旧任务轮/非思考端点）零穿参。
+ *  user.images（用户随行附件，dataURL）→ OpenAI vision 形态 content 块数组（text + image_url×N） */
 export function toWireMessages(messages: ChatMessage[]): Array<Record<string, unknown>> {
   return messages.map((m) => {
     if (m.role === 'assistant') {
@@ -20,6 +21,12 @@ export function toWireMessages(messages: ChatMessage[]): Array<Record<string, un
       };
     }
     if (m.role === 'tool') return { role: 'tool', content: m.content, tool_call_id: m.toolCallId };
+    if (m.role === 'user' && m.images !== undefined && m.images.length > 0) {
+      return {
+        role: 'user',
+        content: [{ type: 'text', text: m.content }, ...m.images.map((url) => ({ type: 'image_url', image_url: { url } }))],
+      };
+    }
     return { role: m.role, content: m.content };
   });
 }

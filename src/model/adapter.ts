@@ -78,6 +78,9 @@ export interface LLMConfig {
   contextWindow?: number;
   /** 缺省思考强度（SUNSHINEX_REASONING_EFFORT）：非法值忽略回缺省态（零穿参） */
   reasoningEffort?: ReasoningEffort;
+  /** 该模型是否支持图片输入（providers supportsImages 声明；undefined = 未声明按支持放行——
+   *  声明 false 且请求携带 images 时此处 fail-fast 报清晰错误，不再打无效请求） */
+  supportsImages?: boolean;
   /** O2 重试退避基值（毫秒,缺省 1000,指数 ×2 序列 1s/2s/4s）：测试/低延迟环境旋钮,生产恒缺省 */
   retryDelayMs?: number;
 }
@@ -97,6 +100,8 @@ export class OpenAIAdapter implements ModelAdapter {
   private timeoutMs: number;
   private retryDelayMs: number;
   private effort: ReasoningEffort | undefined;
+  /** 图片输入能力位（providers supportsImages；undefined=未声明按支持放行） */
+  private readonly supportsImages: boolean | undefined;
   /** effort 探测缓存（进程内会话级）：请求档 → 端点实际生效档；换请求档自动失效按新序列重探 */
   private effortResolved?: { requested: ReasoningEffort; resolved: ReasoningEffort };
   /** 已判不支持 reasoning_effort 的档位（逐档记忆，跨请求档共享，防重复打无效请求） */
@@ -111,6 +116,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.timeoutMs = cfg.timeoutMs ?? 600_000;
     this.retryDelayMs = cfg.retryDelayMs ?? 1000;
     this.effort = cfg.reasoningEffort ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
+    this.supportsImages = cfg.supportsImages;
   }
 
   /** 当前生效的缺省思考强度（undefined=未配置，请求零穿参） */
@@ -201,9 +207,18 @@ export class OpenAIAdapter implements ModelAdapter {
     hooks?.onUsage?.(extractUsage(data));
   }
 
+  /** 图片输入守卫：模型声明不支持（providers supportsImages:false）而请求携带 images 即 fail-fast——
+   *  打必败请求只会换来端点含混 4xx，此处直接给可行动文案（daemon 侧英文,GUI 拦截面另有双语提示） */
+  private guardImages(req: ChatRequest): void {
+    if (this.supportsImages === false && req.messages.some((m) => m.role === 'user' && m.images !== undefined && m.images.length > 0)) {
+      throw new Error(`model ${this.model} does not support image input`);
+    }
+  }
+
   /** function calling 轮面：messages + tools 下发（tool_choice 缺省 auto），请求体不带 response_format；usage 三钩子回传与流式路同源 */
   async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
+    this.guardImages(req);
     try {
       const body: Record<string, unknown> = {
         model: this.model,
@@ -227,6 +242,7 @@ export class OpenAIAdapter implements ModelAdapter {
   /** 流式轮面：content 增量照旧回调、reasoning 增量经 hooks 回传；tool_calls 增量按 index 分片聚合（乱序到达按 index 拼装、arguments 逐片拼接） */
   async chatStream(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
     if (!this.apiKey) throw new Error('SUNSHINEX_API_KEY is not configured');
+    this.guardImages(req);
     try {
       const body: Record<string, unknown> = {
         model: this.model,

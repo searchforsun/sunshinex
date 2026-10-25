@@ -24,6 +24,8 @@ export interface ChatEntry {
   key: string;
   kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error' | 'thinking' | 'run';
   md: string;
+  /** user 专用:随行图片附件(dataURL,≤8 张;内核条目直映——气泡缩略图数据源) */
+  images?: string[];
   streaming?: boolean;
   /** thinking 专用：段耗时秒（内核封段计首尾 ts 差） */
   seconds?: number;
@@ -109,6 +111,18 @@ export interface SnapshotTranscriptEntry {
  *  只换变动的末段条目,未变行引用身份保持(渲染面 memo 不破) */
 const viewCache = new WeakMap<KernelEntry, { sig: string; view: ChatEntry }>();
 
+/** 映射级缓存(2026-10-26 性能轮,长会话流式主热收口):并行数组逐位复用——此前每帧对全量
+ *  内核条目跑 sig 串构造+WeakMap 探测+密集数组分配(2k 条会话 ≈ 每帧 80KB 垃圾,33 批/秒
+ *  即 2.6MB/s GC 压力=卡顿源)。三级:①同内核态(纯统计帧)零重算直返;②引用逐位对比
+ *  (指针比较,零分配)未变位直取上次产物,仅变更位走单条映射;③结构变化(增删/播种)全量。
+ *  notice 过滤以 null 占位保持 kernel↔mapped 对位。键=KernelState(每会话独立态) */
+const mapCache = new WeakMap<KernelState, {
+  runBases: Record<number, { steps: number; tokens: number }>;
+  kernel: readonly KernelEntry[];
+  parallel: Array<ChatEntry | null>;
+  mapped: ChatEntry[];
+}>();
+
 /** 种子代次计数:每次 seedChatFromSnapshot 递增,随 ChatState.seedGen 下发——派生 memo 与
  *  structureVersion 并用作依赖,防 reseed 时 sv 等值(旧 1→新 1)漏检整列条目替换 */
 let seedGenCounter = 0;
@@ -116,17 +130,12 @@ let seedGenCounter = 0;
 /** G14.90/G14.106 显示过滤:P10 起裁定单点在内核(isQuietNotice),TUI/GUI 同源——本模块只消费 */
 /** 内核态 → 视图条目(纯映射):key=`k<seq>`;streaming=openSeg/openRun 派生(§3.1b 派生态);
  *  run meta→view 字段(steps=runSteps 优先「本轮」口径)+open run 注入基线;delegation 已被内核滤除 */
-function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
-  const out: ChatEntry[] = [];
-  for (const e of k.entries) {
-    if (e.kind === 'notice' && isQuietNotice(e.md)) continue;
-    const open = e.kind === 'run' ? k.openRun === e.seq : k.openSeg === e.seq;
-    const base = runBases[e.seq];
+function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: number } | undefined): ChatEntry {
+  {
     const sig = `${open ? 'o' : '-'}|${e.kind === 'run' && base !== undefined ? 'b' : '-'}`;
     const hit = viewCache.get(e);
     if (hit !== undefined && hit.sig === sig) {
-      out.push(hit.view);
-      continue;
+      return hit.view;
     }
     // P11 渲染中立条目:user md 内核写面恒裸文(v3),直透零归一(剥 `> ` 前缀分支退役——
     // 与 TUI restore 同向);error 补 `Error: ` 前缀(前缀归渲染面——与 TUI live/restore 同形)
@@ -138,6 +147,7 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
       ...(e.ts !== undefined && e.ts > 0 ? { ts: e.ts } : {}),
       streaming: open ? true : undefined, // 键恒在场(消费面 toMatchObject/条件渲染两相宜)
       ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+      ...(e.images !== undefined && e.images.length > 0 ? { images: e.images } : {}),
       ...(e.callId !== undefined ? { callId: e.callId } : {}),
       ...(e.name !== undefined ? { name: e.name } : {}),
       ...(e.input !== undefined ? { input: e.input } : {}),
@@ -160,15 +170,44 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
       }
     }
     viewCache.set(e, { sig, view });
+    return view;
+  }
+}
+
+function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
+  const hit = mapCache.get(k);
+  if (hit !== undefined && hit.runBases === runBases) return hit.mapped; // ①纯统计帧:零重算
+  const prev = hit;
+  const out: ChatEntry[] = [];
+  const parallel: Array<ChatEntry | null> = new Array(k.entries.length).fill(null);
+  for (let i = 0; i < k.entries.length; i += 1) {
+    const e = k.entries[i]!;
+    if (e.kind === 'notice' && isQuietNotice(e.md)) continue;
+    // ②部分变更帧:未变位(内核条目引用相等⇒派生标相等——不可变条目)直取上次产物
+    if (prev !== undefined && prev.kernel[i] === e) {
+      const reuse = prev.parallel[i];
+      if (reuse !== null) {
+        parallel[i] = reuse;
+        out.push(reuse);
+        continue;
+      }
+    }
+    // ③变更位/全量(增删/播种):单条映射
+    const open = e.kind === 'run' ? k.openRun === e.seq : k.openSeg === e.seq;
+    const base = runBases[e.seq];
+    const view = mapOne(e, open, base);
+    parallel[i] = view;
     out.push(view);
   }
+  mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped: out });
   return out;
 }
 
 /** 用户提交的本地回显条（合成 user 事件入核——HTTP 提交路径 daemon 不产 user 帧,G14.89 同口径;
  *  resync 后由快照条取代） */
-export function appendUserMessage(s: ChatState, text: string, ts?: number): ChatState {
-  return applyChatEvent(s, { type: 'user', text, ts: ts ?? Date.now() });
+export function appendUserMessage(s: ChatState, text: string, ts?: number, images?: string[]): ChatState {
+  const imgs = images !== undefined && images.length > 0 ? { images } : {};
+  return applyChatEvent(s, { type: 'user', text, ts: ts ?? Date.now(), ...imgs });
 }
 
 /** onResync 基线：snapshot.messages（内核条目）直 seed——转录投影零推导;计数器自 run meta 求和

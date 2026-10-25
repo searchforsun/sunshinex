@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -18,7 +18,7 @@ import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from '.
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
 
-/** 会话流列表(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):空态/按日分组/段折叠聚合
+/** 会话流列表(D32 第六批批F-3 自 Chat.tsx 平移):空态/按日分组/段折叠聚合
  *  (ToolSegBlock)/run·user·assistant 行派发/运行状态行。滚动容器 ref 与贴底旁路 ref 留宿主
  *  (归底 effects 消费),onScroll 存档逻辑留宿主经 props 注入;P11 T7 起 tool 行全走 entry
  *  字段(callIdOf 寻址注入保留,info 旁路注入退役)。 */
@@ -44,6 +44,8 @@ export interface MessageListProps {
   readonly onEntryRestore: (p: string) => void;
   readonly onFork?: () => void;
   readonly onEntryToggleClick: (e: ReactMouseEvent<HTMLDivElement>) => void;
+  /** 2026-10-26 图片功能(并行):气泡图片条点击 → lightbox(App 持 src 态) */
+  readonly onOpenImage?: (src: string) => void;
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
   readonly onScroll: (e: { currentTarget: HTMLElement }) => void;
   readonly onWheel: (e: { deltaY: number }) => void;
@@ -54,10 +56,148 @@ export interface MessageListProps {
   readonly liveTokens: number;
 }
 
+/** 2026-10-26 性能轮:按日分组块级 memo——此前每帧(30ms 批)重建全部可见行元素(300 行
+ *  createElement+对照,流式期间持续 CPU 占用)。组内行仍是行级 memo;组级比较器按
+ *  「条目逐位引用+冻结回调」判定——未变组整块跳过(元素都不建),只有流式尾所在组重建。
+ *  条目引用身份由 chat-reducer 映射缓存保证(未变行恒同引用);组边界由 daySkeleton 冻结
+ *  (structureVersion 键),位置对位成立 */
+interface DayGroupProps {
+  readonly label: string;
+  readonly entries: readonly ChatEntry[];
+  readonly hiddenKeys: ReadonlySet<string>;
+  readonly collapsedRuns: ReadonlySet<string>;
+  readonly callIdOf: (entry: ChatEntry) => string | undefined;
+  readonly conn: Connection;
+  readonly sessionId: string;
+  readonly onOpenFile?: (p: string) => void;
+  readonly onOpenDiff?: (callId: string, p: string) => void;
+  readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  readonly onOpenTask?: (ref: string) => void;
+  readonly taskNameOf: (id: string) => string;
+  readonly toggleRun: (key: string) => void;
+  readonly submitText: (text: string) => Promise<void>;
+  readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
+  readonly onEntryOpenDiff: (p: string) => void;
+  readonly onEntryRestore: (p: string) => void;
+  readonly onFork?: () => void;
+  readonly onOpenImage?: (src: string) => void;
+}
+
+const DayGroupBlock = memo(
+  function DayGroupBlock(props: DayGroupProps): JSX.Element {
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage } = props;
+    const renderTool = useCallback((e2: ChatEntry) => (
+      <ToolEntryView
+        key={e2.key}
+        entry={e2}
+        conn={conn}
+        sessionId={sessionId}
+        callId={callIdOf(e2)}
+        onOpenFile={onOpenFile}
+        onOpenDiff={onOpenDiff}
+        onOpenAgent={onOpenAgent}
+        onOpenTask={onOpenTask}
+        taskNameOf={taskNameOf}
+      />
+    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf]);
+    const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
+    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} />, [onEntryOpenDiff]);
+    const nodes: ReactNode[] = [];
+    if (label !== '') {
+      nodes.push(
+        <div key={`day:${label}`} className="chat-day-sep" role="separator" aria-label={label}>
+          {label}
+        </div>,
+      );
+    }
+    /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
+     *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
+    let seg: ChatEntry[] = [];
+    const flushSeg = (): void => {
+      if (seg.length === 0) return;
+      const segEntries = seg;
+      nodes.push(
+        <ToolSegBlock
+          key={`seg:${segEntries[0]!.key}`}
+          seg={segEntries}
+          closed={hiddenKeys.has(segEntries[0]!.key)}
+          renderTool={renderTool}
+          renderThinking={renderThinking}
+          renderAssistant={renderAssistant}
+        />,
+      );
+      seg = [];
+    };
+    for (const entry of entries) {
+      // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
+      if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
+        seg.push(entry);
+        continue;
+      }
+      flushSeg();
+      if (entry.kind === 'run') {
+        nodes.push(
+          <RunEntryView
+            key={entry.key}
+            entry={entry}
+            collapsed={collapsedRuns.has(entry.key)}
+            onToggle={entry.streaming === true ? undefined : toggleRun}
+          />,
+        );
+      } else if (entry.kind === 'user') {
+        nodes.push(
+          <UserEntryView
+            key={entry.key}
+            entry={entry}
+            onSend={submitText}
+            onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
+            onOpenImage={onOpenImage}
+          />,
+        );
+      } else {
+        nodes.push(
+          <ChatEntryView
+            key={entry.key}
+            entry={entry}
+            footerRun={runFooterByEntry.get(entry.key)}
+            onOpenDiff={onEntryOpenDiff}
+            onRestore={onEntryRestore}
+            onFork={onFork}
+            onOpenFile={onOpenFile}
+          />,
+        );
+      }
+    }
+    flushSeg();
+    return <>{nodes}</>;
+  },
+  (prev, next) =>
+    prev.label === next.label
+    && prev.entries.length === next.entries.length
+    && prev.entries.every((e, i) => e === next.entries[i])
+    && prev.hiddenKeys === next.hiddenKeys
+    && prev.collapsedRuns === next.collapsedRuns
+    && prev.runFooterByEntry === next.runFooterByEntry
+    && prev.callIdOf === next.callIdOf
+    && prev.conn === next.conn
+    && prev.sessionId === next.sessionId
+    && prev.onOpenFile === next.onOpenFile
+    && prev.onOpenDiff === next.onOpenDiff
+    && prev.onOpenAgent === next.onOpenAgent
+    && prev.onOpenTask === next.onOpenTask
+    && prev.taskNameOf === next.taskNameOf
+    && prev.toggleRun === next.toggleRun
+    && prev.submitText === next.submitText
+    && prev.onEntryOpenDiff === next.onEntryOpenDiff
+    && prev.onEntryRestore === next.onEntryRestore
+    && prev.onFork === next.onFork
+    && prev.onOpenImage === next.onOpenImage,
+);
+
 export function MessageList(props: MessageListProps): JSX.Element {
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -71,22 +211,18 @@ export function MessageList(props: MessageListProps): JSX.Element {
     el.scrollTop += el.scrollHeight - saved.h;
   }, [visibleCount, chatScrollRef]);
   /** P1 回调稳定化(Task 3):宿主回调 ref 镜像 + 零依赖稳定包装——行组件 memo 判等的回调引用
-   *  逐渲染恒定;宿主重装配/会话切换由 ref 取最新(免闭包陈旧,对齐 App sessionRef 手法)。
+   *  逐渲染恒定;宿主重装配/会话切换由 ref 取最新(免闭包陈旧,对齐 App.tsx sessionRef 手法)。
    *  opt():可选回调底层缺省时透传 undefined——行组件按「prop 在场」分支渲染(如 spawn 行
-   *  onOpenAgent 在场才出链接),包装恒函数会伪造在场;两分支引用各自恒定,memo 判等不破。
-   *  renderTool/renderThinking/renderAssistant deps 仅 conn/sessionId(会话级常量):
-   *  ToolSegBlock 比较器(segPropsEqual)据此跨帧 bail-out */
+   *  onOpenAgent 在场才出链接),包装恒函数会伪造在场;两分支引用各自恒定,memo 判等不破 */
   const propsRef = useRef(props);
   propsRef.current = props;
   const opt = <T,>(wrapper: T, raw: T | undefined): T | undefined => (raw === undefined ? undefined : wrapper);
   const onOpenFileStable = useCallback((p: string) => propsRef.current.onOpenFile?.(p), []);
   const onOpenDiffStable = useCallback((callId: string, p: string) => propsRef.current.onOpenDiff?.(callId, p), []);
-  const onOpenDiffSelfStable = useCallback((p: string) => propsRef.current.onOpenDiff?.('', p), []);
   const onOpenAgentStable = useCallback((label: string, agentTitle: string, task?: string) => propsRef.current.onOpenAgent?.(label, agentTitle, task), []);
   const onOpenTaskStable = useCallback((ref: string) => propsRef.current.onOpenTask?.(ref), []);
   const onForkStable = useCallback(() => propsRef.current.onFork?.(), []);
-  /** 可选回调在场判定同样走 ref(getter 零依赖稳定;返回值=包装或 undefined,两支引用各自恒定)——
-   *  renderTool deps 保持纯稳定集,宿主每帧重建可选 prop 不回传渲染闭包身份 */
+  /** 可选回调在场判定同样走 ref(getter 零依赖稳定;返回值=包装或 undefined,两支引用各自恒定) */
   const onOpenFileOpt = useCallback(() => opt(onOpenFileStable, propsRef.current.onOpenFile), [onOpenFileStable]);
   const onOpenDiffOpt = useCallback(() => opt(onOpenDiffStable, propsRef.current.onOpenDiff), [onOpenDiffStable]);
   const onOpenAgentOpt = useCallback(() => opt(onOpenAgentStable, propsRef.current.onOpenAgent), [onOpenAgentStable]);
@@ -98,22 +234,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const submitTextStable = useCallback((text: string) => propsRef.current.submitText(text), []);
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
-  const renderTool = useCallback((e2: ChatEntry) => (
-    <ToolEntryView
-      key={e2.key}
-      entry={e2}
-      conn={conn}
-      sessionId={sessionId}
-      callId={callIdOfStable(e2)}
-      onOpenFile={onOpenFileOpt()}
-      onOpenDiff={onOpenDiffOpt()}
-      onOpenAgent={onOpenAgentOpt()}
-      onOpenTask={onOpenTaskOpt()}
-      taskNameOf={taskNameOfStable}
-    />
-  ), [conn, sessionId, callIdOfStable, onOpenFileOpt, onOpenDiffOpt, onOpenAgentOpt, onOpenTaskOpt, taskNameOfStable]);
-  const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-  const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onOpenDiffSelfStable} />, [onOpenDiffSelfStable]);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
    *  折叠组随头完整保留 */
   let cut = entries.length - visibleCount;
@@ -147,7 +267,13 @@ export function MessageList(props: MessageListProps): JSX.Element {
     // 依赖=骨架判据四元组(visible 的切分只随 sv/seedGen/visibleCount/hiddenKeys 变)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structureVersion, seedGen, visibleCount, hiddenKeys]);
-  const dayGroups = daySkeleton.map((s) => ({ key: s.key, label: s.label, entries: visible.slice(s.start, s.end) }));
+  /** 组级装配(2026-10-26 性能轮):回调全部走稳定化包装,DayGroupBlock 比较器条目逐位
+   *  引用判等——未变组零元素构建,只有流式尾所在组重建 */
+  const dayGroups = daySkeleton.map((s) => ({
+    key: s.key,
+    label: s.label,
+    entries: visible.slice(s.start, s.end),
+  }));
   return (
     <main
       className="chat"
@@ -171,81 +297,32 @@ export function MessageList(props: MessageListProps): JSX.Element {
             {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}
           </button>
         )}
-        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染);
-            G14.31 折叠轮:sealed run 头点击 → 其后工具/思考行隐藏(用户/回复/旁白保留)。
-            P1 派生冻结:分组骨架(key/label/区间)只依赖成员集(structureVersion+seedGen 防重置
-            等值碰撞)/尾窗(visibleCount)/折叠边界(hiddenKeys 参与 cut 回退)——纯内容帧零重算
-            (逐帧 Intl 构造是热点大头)。骨架命中时成员数组逐渲染按区间 slice 重绑最新条目引用:
-            缓存组持旧引用会冻结流式尾行(尾条目逐 token 换新身份),骨架+重绑是冻结与实时性的合流点 */}
-        {dayGroups.flatMap((g) => {
-          const nodes: ReactNode[] = [];
-          if (g.label !== '') {
-            nodes.push(
-              <div key={`day:${g.key}`} className="chat-day-sep" role="separator" aria-label={g.label}>
-                {g.label}
-              </div>,
-            );
-          }
-          /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
-           *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
-          let seg: ChatEntry[] = [];
-          const flushSeg = (): void => {
-            if (seg.length === 0) return;
-            const segEntries = seg;
-            nodes.push(
-              <ToolSegBlock
-                key={`seg:${segEntries[0]!.key}`}
-                seg={segEntries}
-                closed={hiddenKeys.has(segEntries[0]!.key)}
-                renderTool={renderTool}
-                renderThinking={renderThinking}
-                renderAssistant={renderAssistant}
-              />,
-            );
-            seg = [];
-          };
-          for (const entry of g.entries) {
-            // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
-            if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
-              seg.push(entry);
-              continue;
-            }
-            flushSeg();
-            if (entry.kind === 'run') {
-              nodes.push(
-                <RunEntryView
-                  key={entry.key}
-                  entry={entry}
-                  collapsed={collapsedRuns.has(entry.key)}
-                  onToggle={entry.streaming === true ? undefined : toggleRunStable}
-                />,
-              );
-            } else if (entry.kind === 'user') {
-              nodes.push(
-                <UserEntryView
-                  key={entry.key}
-                  entry={entry}
-                  onSend={submitTextStable}
-                  onOpenFile={onOpenFileOpt()} // G14.110 气泡内 @文件 token 点击开 file 标签
-                />,
-              );
-            } else {
-              nodes.push(
-                <ChatEntryView
-                  key={entry.key}
-                  entry={entry}
-                  footerRun={runFooterByEntry.get(entry.key)}
-                  onOpenDiff={onEntryOpenDiffStable}
-                  onRestore={onEntryRestoreStable}
-                  onFork={onForkOpt()}
-                  onOpenFile={onOpenFileOpt()}
-                />,
-              );
-            }
-          }
-          flushSeg();
-          return nodes;
-        })}
+        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染)。
+            G14.31 折叠轮/组级 memo 见 DayGroupBlock 注 */}
+        {dayGroups.map((g) => (
+          <DayGroupBlock
+            key={`grp:${g.key}`}
+            label={g.label}
+            entries={g.entries}
+            hiddenKeys={hiddenKeys}
+            collapsedRuns={collapsedRuns}
+            callIdOf={callIdOfStable}
+            conn={conn}
+            sessionId={sessionId}
+            onOpenFile={onOpenFileOpt()}
+            onOpenDiff={onOpenDiffOpt()}
+            onOpenAgent={onOpenAgentOpt()}
+            onOpenTask={onOpenTaskOpt()}
+            taskNameOf={taskNameOfStable}
+            toggleRun={toggleRunStable}
+            submitText={submitTextStable}
+            runFooterByEntry={runFooterByEntry}
+            onEntryOpenDiff={onEntryOpenDiffStable}
+            onEntryRestore={onEntryRestoreStable}
+            onFork={onForkOpt()}
+            onOpenImage={onOpenImage}
+          />
+        ))}
         {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
             原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
         {running && (

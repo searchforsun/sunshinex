@@ -8,6 +8,7 @@ import {
   NodeOutput,
   SessionEvent,
   SkillRef,
+  SteerLine,
   StopReason,
 } from '../types';
 import { guardrailStop, describeGuardrailHit } from '../harness/guardrail';
@@ -54,7 +55,7 @@ export interface LoopDeps {
   /** 用户中断信号（Esc/Ctrl+C）：agent 节点下传 Reactor；判据模型调用同样尊重（见 nodes.ts modelJudge） */
   signal?: AbortSignal;
   /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向）：下传循环内构造的 Reactor，session 主链步边界 drain 消费；fork 私有面不消费（reactor 侧 scope 闸门） */
-  steer?: () => string[];
+  steer?: () => SteerLine[];
   /** 作用域：session=主链追加（缺省）；fork=私有执行（零主链回写，graph loop 节点用） */
   scope?: 'session' | 'fork';
   /** 子智能体执行单元（harness 装配注入，内联 import 规避模块环）：贯通到循环内构造的 Reactor（spawn 预算源挂载） */

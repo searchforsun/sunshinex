@@ -418,7 +418,7 @@ test('⓯b 队列消费语义:steerDrain 仅取走 front 条(步边界注入);st
     { seq: 2, text: '丙', front: false },
   ]);
   assert.equal(events.length, 0, '装载回种不发事件(防双写)');
-  assert.deepEqual(k.steerDrain(), ['乙'], 'drain 只取置首');
+  assert.deepEqual(k.steerDrain(), [{ text: '乙' }], 'drain 只取置首(text+images 载荷形——images 缺省不落键)');
   assert.deepEqual(k.steerPendingItems().map((x) => x.text), ['甲', '丙'], '普通条目留队并重排');
   assert.deepEqual(k.steerTakePending().map((x) => x.text), ['甲', '丙'], 'takePending 全取');
   assert.deepEqual(k.steerDrain(), []);

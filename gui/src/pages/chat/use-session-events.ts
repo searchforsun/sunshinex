@@ -242,9 +242,14 @@ export function useSessionEvents(deps: {
             setQueued(
               arr
                 .filter((o) => o !== null && typeof o === 'object')
-                .map((o) => o as { seq?: unknown; text?: unknown })
+                .map((o) => o as { seq?: unknown; text?: unknown; images?: unknown })
                 .filter((o) => typeof o.text === 'string' && typeof o.seq === 'number')
-                .map((o) => ({ seq: o.seq as number, text: o.text as string })),
+                // images 随行透传(2026-10-26 图片附件):队列行小图与「放回输入框」回填数据源
+                .map((o) => ({
+                  seq: o.seq as number,
+                  text: o.text as string,
+                  ...(Array.isArray(o.images) && o.images.length > 0 && o.images.every((x) => typeof x === 'string') ? { images: o.images as string[] } : {}),
+                })),
             );
           }
           return; // 队列面事件不入转录投影(applyChatEvent 有守卫,此为省一趟)

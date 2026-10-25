@@ -4,9 +4,12 @@ import type { Connection } from '../../connection';
 import { applyChatEvent, appendUserMessage } from '../../chat-reducer';
 import { expandFileRefs } from './mention';
 
-/** §7 提交路径单点(D32 第六批批F-7a 自 Chat.tsx 平移,行为零变化):idle→submit/running→steer/
- *  plan→/plan;/btw /side 拦截/命令通道 supported 白名单/失败倒 error 条再 rethrow(编辑卡保卡
- *  保草稿)。send=Enter 分流壳;interrupt=停止。submitTextRef 赋值留宿主(事件 hook 消费面)。 */
+/** §7 提交路径单点(D32 第六批批F-7a 自 Chat.tsx 平移):idle→submit/running→steer/plan→/plan;
+ *  /btw /side 拦截/命令通道 supported 白名单/失败倒 error 条再 rethrow(编辑卡保卡
+ *  保草稿)。send=Enter 分流壳;interrupt=停止。submitTextRef 赋值留宿主(事件 hook 消费面)。
+ *  图片附件(2026-10-26):submitText 第二参 images(dataURL 列)——随 submit/steer 透传;携图时
+ *  跳过 /btw·命令通道(命令/旁路面不承载图片,直走 sessionSubmit——daemon plan-arm 提交通道
+ *  自行分流),空文+纯图合法(图片即消息)。 */
 export function useChatSubmit(deps: {
   readonly conn: Connection;
   readonly sessionId: string;
@@ -20,31 +23,36 @@ export function useChatSubmit(deps: {
   readonly refreshQueued: () => void;
   readonly input: string;
   readonly setInput: Dispatch<SetStateAction<string>>;
+  /** composer 待发图片附件(dataURL 列,≤8 张;send 发送即清) */
+  readonly images: string[];
+  readonly setImages: Dispatch<SetStateAction<string[]>>;
 }): {
-  submitText: (text: string) => Promise<void>;
+  submitText: (text: string, images?: string[]) => Promise<void>;
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, setChat, onSideChat, refreshQueued, input, setInput } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages } = deps;
 /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
- *  (spec §9:提交失败草稿不丢);成功 resolve;空文本 resolve 忽略 */
+ *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
 const submitText = useCallback(
-  (text: string): Promise<void> => {
+  (text: string, imgs?: string[]): Promise<void> => {
+    const hasImages = imgs !== undefined && imgs.length > 0;
     // G14.124 @短写 → md 绝对链接(模型/正文/气泡统一 md 链接口径);命令面(/开头)不展开
     const expanded = expandFileRefs(text, root, resolveFileRef).trim();
     const trimmed = expanded.trim();
-    if (trimmed === '') return Promise.resolve();
-    // G14.29:/btw /side 输入拦截——开辅助对话旁路标签(Codex 同款;不占主链提交面)
-    if (/^\/(btw|side)(\s|$)/.test(trimmed)) {
+    if (trimmed === '' && !hasImages) return Promise.resolve();
+    // G14.29:/btw /side 输入拦截——开辅助对话旁路标签(Codex 同款;不占主链提交面);携图不拦(图片走主链)
+    if (!hasImages && /^\/(btw|side)(\s|$)/.test(trimmed)) {
       onSideChat?.();
       return Promise.resolve();
     }
     // G14.89 运行中入队不本地回显:气泡等轮收束自动发送时由 submit 回显(队列语义=还没发生);
     // idle/plan 提交即发生,照旧回显
-    if (!running) setChat((c) => appendUserMessage(c, trimmed));
+    if (!running) setChat((c) => appendUserMessage(c, trimmed, undefined, imgs));
     let req: Promise<void>;
-    if (running) req = conn.sessionSteer(sessionId, trimmed).then(() => refreshQueued(), () => {});
+    if (running) req = conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
+    else if (hasImages) req = conn.sessionSubmit(sessionId, trimmed, imgs); // 携图:直走提交面(daemon plan-arm 通道自动分流;命令/plan /plan 拼接不承载图片)
     else if (sessMode === 'plan') req = conn.runCommand(sessionId, `/plan ${trimmed}`);
     else if (/^\/[a-z][\w-]*(\s|$)/i.test(trimmed)) {
       // G14.213 skills 回归纯文本:仅「daemon supported 清单内」的 / 词走命令通道,skills/
@@ -74,12 +82,13 @@ const submitText = useCallback(
 
 const send = (): void => {
   const text = input.trim();
-  if (text === '') return;
+  if (text === '' && images.length === 0) return;
   setInput('');
+  setImages([]);
   // fire-and-forget 语义不变:错误面已在 submitText 内倒 error 条;显式吞 rethrow——纯 `void`
   // 不消化 rejection,会留 unhandled rejection(改动前 rejection 被 req.catch 全消费)
     // 补全路径命令执行失败=无输出行(可重试);错误条可见化由主提交路径承担
-  submitText(text).catch(() => undefined);
+  submitText(text, images).catch(() => undefined);
 };
 
 const interrupt = (): void => {

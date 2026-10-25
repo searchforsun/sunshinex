@@ -8,7 +8,7 @@ import type { PtyManager } from './pty';
 
 export interface PtyHandlerIo {
   send(res: http.ServerResponse, status: number, body: object): void;
-  readJson(req: http.IncomingMessage): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
+  readJson(req: http.IncomingMessage, cap?: number): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
   sessionFor(res: http.ServerResponse, id: string | undefined): SessionRuntime | undefined;
   ptyManager: PtyManager;
   nextPtyId(): string;

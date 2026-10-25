@@ -199,6 +199,27 @@ interface UserEntryOpts {
   /** §7 编辑卡发送回调(=Chat.submitText,Promise:void:resolve 关卡,reject 保卡保草稿——
    *  spec §9 提交失败草稿不丢):未配不渲染 Edit 钮(测试桩免配) */
   onSend?: (text: string) => Promise<void>;
+  /** 气泡缩略图点击开查看浮层(2026-10-26 图片功能;未配=缩略图不可点) */
+  onOpenImage?: (src: string) => void;
+}
+
+/** 用户气泡图片条(2026-10-26 图片功能):文本上方横排缩略图(截图口径——图上文下);
+ *  点击开 lightbox(缩放/复制/下载)。空图不渲染 */
+function UserImageStrip({ images, onOpen }: { images: readonly string[]; onOpen?: (src: string) => void }): JSX.Element | null {
+  if (images.length === 0) return null;
+  return (
+    <div className="user-img-strip">
+      {images.map((src, i) => (
+        <img
+          key={`${i}:${src.slice(-24)}`}
+          src={src}
+          alt={`${t('Attached image', '附件图片')} ${i + 1}`}
+          className={onOpen !== undefined ? 'clickable' : undefined}
+          onClick={onOpen !== undefined ? () => onOpen(src) : undefined}
+        />
+      ))}
+    </div>
+  );
 }
 /** G14.181/G14.202 用户气泡限高折叠:默认 168px;折叠态最后一行渐变隐现(加强);
  *  展开钮在气泡下侧居中(独占一行不占内容);展开钮=气泡下侧居中独钮;复制归各页自有动作行 */
@@ -251,7 +272,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend, onOpenFile }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
+export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
   const isDir = useDirResolver();
   const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir), [onOpenFile, isDir]);
   const { status: copied, copy: copyText } = useCopyFeedback();
@@ -319,7 +340,13 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
       <CollapsibleBubble
         text={entry.md}
         render={(md) => (
-          <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponents}>{renderUserMd(md)}</ReactMarkdown>
+          <>
+            {/* 图片条在文本上方(截图口径);空文+纯图时气泡只显图 */}
+            <UserImageStrip images={entry.images ?? []} onOpen={onOpenImage} />
+            {md.trim() !== '' && (
+              <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponents}>{renderUserMd(md)}</ReactMarkdown>
+            )}
+          </>
         )}
       />
       <div className="user-actions">

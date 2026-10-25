@@ -45,7 +45,7 @@ import { loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, Sk
 
 export interface ConfigHandlerIo {
   send(res: http.ServerResponse, status: number, body: object): void;
-  readJson(req: http.IncomingMessage): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
+  readJson(req: http.IncomingMessage, cap?: number): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
   reloadSettingsChain(root: string | undefined): void;
 }
 

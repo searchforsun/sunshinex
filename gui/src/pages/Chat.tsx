@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowDown, Eye, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import { ImageLightbox } from '../ImageLightbox';
+import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
@@ -293,6 +295,45 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [atBottom, setAtBottom] = useState(scrollRestoreRef.current === null); // G14.212 恢复中非贴底:跳底钮即显
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
+  /** 图片附件(2026-10-26):composer 待发 dataURL 列(≤8 张)——粘贴/附件选择装载,send 发送即清;
+   *  查看浮层(lightbox)与提示条(超限/模型不支持)同挂本页 */
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [lightboxSrc, setLightboxSrc] = useState<string | undefined>(undefined);
+  const [imgHint, setImgHint] = useState<string | undefined>(undefined);
+  const imgHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (imgHintTimer.current !== null) clearTimeout(imgHintTimer.current);
+  }, []);
+  const showImgHint = useCallback((text: string): void => {
+    setImgHint(text);
+    if (imgHintTimer.current !== null) clearTimeout(imgHintTimer.current);
+    imgHintTimer.current = setTimeout(() => setImgHint(undefined), 2600);
+  }, []);
+  /** 当前模型图片能力(乐观缺省=支持):sessionModel choices supportsImages 显式 false 才拦 */
+  const modelSupportsImages = (() => {
+    const cur = modelInfo?.current;
+    if (cur === undefined || cur === '') return true;
+    return modelInfo?.choices.find((c) => c.id === cur)?.supportsImages !== false;
+  })();
+  /** 附件承接单点(粘贴/文件选择共用):不支持模型先拦;装载(转码)→ ≤8 张钳制→溢出提示 */
+  const addImageFiles = useCallback(
+    (files: File[]): void => {
+      if (!modelSupportsImages) {
+        showImgHint(t('Current model does not support image input', '当前模型不支持图片输入'));
+        return;
+      }
+      void loadImages(files).then((imgs) => {
+        if (imgs.length === 0) return;
+        setPendingImages((cur) => {
+          const { images, overflow } = appendImages(cur, imgs);
+          if (overflow > 0) showImgHint(t(`Up to ${MAX_IMAGES} images per message`, `每条消息最多 ${MAX_IMAGES} 张图片`));
+          return images;
+        });
+      });
+    },
+    [modelSupportsImages, showImgHint],
+  );
+
   /** G7 write 展开的 diff 寻址键:条目 callId 直取(无 callId 面 undefined——不拉 diff,恒单列现内容) */
   const callIdOf = (entry: ChatEntry): string | undefined => {
     const cid = entry.callId;
@@ -353,6 +394,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     refreshQueued,
     input,
     setInput,
+    images: pendingImages,
+    setImages: setPendingImages,
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
@@ -451,6 +494,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         running={running}
         liveSteps={liveSteps}
         liveTokens={liveTokens}
+        onOpenImage={setLightboxSrc}
       />
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
@@ -469,6 +513,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           refreshQueued={refreshQueued}
           pauseAndSend={pauseAndSend}
           setInput={setInput}
+          setImages={setPendingImages}
         />
       )}
         {!atBottom && (
@@ -506,6 +551,17 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         <ComposerCard
           className="chat-composer"
           label="message input"
+        images={pendingImages}
+        onRemoveImage={(i) => setPendingImages((cur) => cur.filter((_, idx) => idx !== i))}
+        onImageOpen={setLightboxSrc}
+        onPasteFiles={addImageFiles}
+        belowInput={
+          imgHint !== undefined ? (
+            <div className="sx-img-hint" role="status">{imgHint}</div>
+          ) : pendingImages.length > 0 && !modelSupportsImages ? (
+            <div className="sx-img-hint warn" role="status">{t('Current model does not support image input', '当前模型不支持图片输入')}</div>
+          ) : undefined
+        }
         value={input}
         rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
         placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : sideChat === true ? t('Ask something…', '问点什么…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
@@ -750,6 +806,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               conn={conn}
               sessionId={sessionId}
               root={root}
+              onAttachImages={addImageFiles}
               onInsert={(text) => {
                 setInput((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
                 setPillOpen(null);
@@ -831,6 +888,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         )
         }
       </div>
+      {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
     </DirResolverContext.Provider>
   );
 }

@@ -35,7 +35,7 @@ export interface Connection {
   /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切) */
-  sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number }> }>;
+  sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number; supportsImages?: boolean }> }>;
   /** 模型总结会话标题(G10-C7):text=首条用户消息;daemon 一次 chat 调用回 ≤20 字标题(503=模型未接线) */
   sessionTitle(id: string, text: string): Promise<{ title: string }>;
   /** 会话名持久化(G14.16 标题统一流):POST /session/:id/rename 落旁车 meta——顶栏/侧栏同源 */
@@ -126,10 +126,11 @@ export interface Connection {
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId(可能异于入参) */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
-  /** POST /session/:id/submit {goal}：会话提交（202 受理；409 拒二次提交） */
-  sessionSubmit(id: string, goal: string): Promise<void>;
-  /** POST /session/:id/steer {text}：运行中插话（排队语义）；HTTP 失败抛错（消息含 status） */
-  sessionSteer(id: string, text: string): Promise<void>;
+  /** POST /session/:id/submit {goal}：会话提交（202 受理；409 拒二次提交）。
+   *  images=随行图片附件(dataURL,≤8 张);空列不落字段——旧 daemon 按纯文本受理(兼容) */
+  sessionSubmit(id: string, goal: string, images?: string[]): Promise<void>;
+  /** POST /session/:id/steer {text}：运行中插话（排队语义）；HTTP 失败抛错（消息含 status）；images 同 submit */
+  sessionSteer(id: string, text: string, images?: string[]): Promise<void>;
   /** POST /session/:id/interrupt：中止在跑 run（无在跑 409） */
   sessionInterrupt(id: string): Promise<void>;
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
@@ -458,11 +459,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async attach(sessionId: string, journalId: string): Promise<{ sessionId: string }> {
       return postJson<{ sessionId: string }>(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });
     },
-    sessionSubmit(id: string, goal: string): Promise<void> {
-      return post(`/session/${encodeURIComponent(id)}/submit`, { goal });
+    sessionSubmit(id: string, goal: string, images?: string[]): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/submit`, { goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });
     },
-    sessionSteer(id: string, text: string): Promise<void> {
-      return post(`/session/${encodeURIComponent(id)}/steer`, { text });
+    sessionSteer(id: string, text: string, images?: string[]): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/steer`, { text, ...(images !== undefined && images.length > 0 ? { images } : {}) });
     },
     sessionInterrupt(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/interrupt`);

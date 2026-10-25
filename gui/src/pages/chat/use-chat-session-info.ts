@@ -10,14 +10,14 @@ export function useChatSessionInfo(deps: {
   readonly sessionId: string;
   readonly chat: ChatState;
 }): {
-  modelInfo: { current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null;
-  setModelInfo: Dispatch<SetStateAction<{ current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null>>;
+  modelInfo: { current?: string; choices: Array<{ id: string; model: string; effort?: string; supportsImages?: boolean }> } | null;
+  setModelInfo: Dispatch<SetStateAction<{ current?: string; choices: Array<{ id: string; model: string; effort?: string; supportsImages?: boolean }> } | null>>;
   ctxInfo: { total: number; window: number; parts: Array<{ id: string; tokens: number; count: number }> } | null;
   refreshCtx: () => void;
   runCount: number;
 } {
   const { conn, sessionId, chat } = deps;
-  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null>(null);
+  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; effort?: string; supportsImages?: boolean }> } | null>(null);
 /** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏) */
 useEffect(() => {
   conn.sessionModel(sessionId).then(

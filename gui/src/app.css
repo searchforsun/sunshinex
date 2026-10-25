@@ -2249,6 +2249,11 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 /* 2026-10-25 尾块恒进解析器(上层统一裁定:实时渲染不枚举结构前缀),纯文本直出分支退役——本条 <pre> 回零规则随之删除 */
+/* 2026-10-26 性能轮:离屏条目跳过渲染排布(CSS 原生虚拟化,Chromium 引擎)——长会话数百行
+   代码块/表格离屏不再参与 layout/paint;contain-intrinsic-size auto 先用估算高、渲染过一次
+   记住真高(回滚不跳)。jsdom 不实现该属性,测试面零影响 */
+.entry { content-visibility: auto; contain-intrinsic-size: auto 40px; }
+
 /* ===== 2026-10-23 用户裁定:自绘窗控簇(撤 WCO 方块)——[|] 侧栏开关 + − □ ×,
    sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; -webkit-app-region: no-drag; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖)——2026-10-23 [|] 入簇:簇=|+−□× 四钮
@@ -2265,3 +2270,28 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23 实测根因:「+」弹层向左伸出右栏边界被 overflow:hidden 裁切(z-index 无关,
    elementFromPoint 证实切缘外命中中栏正文)——右栏圆角保留,裁切放开(tabbody 自滚动自contain) */
 .sx-sidebar { overflow: visible; }
+
+/* ===== 图片附件(2026-10-26):composer 缩略图条/用户气泡图条/队列行小图/lightbox/提示条 ===== */
+.sx-img-strip{display:flex;flex-wrap:wrap;gap:8px;padding:2px 2px 0}
+.sx-img-thumb{position:relative;width:96px;height:96px;border-radius:12px;overflow:hidden;background:var(--bubble-user);flex:none}
+.sx-img-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.sx-img-remove{position:absolute;top:4px;right:4px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s;padding:0}
+.sx-img-thumb:hover .sx-img-remove,.sx-img-remove:focus-visible{opacity:1}
+.sx-img-hint{margin:4px 2px 0;font-size:12px;color:var(--fg);opacity:.65}
+.sx-img-hint.warn{color:#e5484d;opacity:.9}
+.user-img-strip{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px;justify-content:flex-end}
+.user-img-strip img{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--bubble-user)}
+.user-img-strip img.clickable{cursor:zoom-in}
+.sx-plus-file-input{display:none}
+.steer-img-thumbs{display:inline-flex;gap:4px;margin-right:6px;vertical-align:middle}
+.steer-img-thumbs img{width:28px;height:28px;border-radius:6px;object-fit:cover;display:block}
+.steer-img-more{font-size:11px;opacity:.6;align-self:center}
+.steer-img-only{opacity:.6;display:inline-flex;align-items:center;gap:4px}
+.sx-lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center}
+.sx-lightbox-img{max-width:92vw;max-height:84vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);cursor:grab;touch-action:none}
+.sx-lightbox-img:active{cursor:grabbing}
+.sx-lightbox-bar{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:2px;background:var(--surface-elevated);border-radius:12px;padding:6px 8px;box-shadow:var(--elev-composer);color:var(--fg)}
+.sx-lightbox-act{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:inherit;border-radius:8px;cursor:pointer;text-decoration:none}
+.sx-lightbox-act:hover{background:var(--bubble-user)}
+.sx-lightbox-pct{min-width:46px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;opacity:.85}
+.sx-lightbox-sep{width:1px;height:16px;background:var(--fg);opacity:.15;margin:0 4px}

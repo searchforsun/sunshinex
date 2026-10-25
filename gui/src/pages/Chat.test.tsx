@@ -428,29 +428,31 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(cancelSteer).toHaveBeenCalledWith('s1', 0);
   });
 
-  it('P5 queue 帧:变更帧实时回显 chips(替代轮询);不入转录投影(零条目);内联编辑钮调 editSteer(seq,text)', async () => {
-    const editSteer = vi.fn(() => Promise.resolve());
+  it('P5 queue 帧:变更帧实时回显 chips(替代轮询);不入转录投影(零条目);队列编辑统一走输入框(2026-10-26 裁定:内联编辑退役,放回输入框带图回填)', async () => {
+    const cancelSteer = vi.fn(() => Promise.resolve());
     const conn = connOf([]);
-    (conn as unknown as Record<string, unknown>).editSteer = editSteer;
+    (conn as unknown as Record<string, unknown>).cancelSteer = cancelSteer;
     (conn as unknown as Record<string, unknown>).sessionSnapshot = () =>
       Promise.resolve({ messages: [], status: 'running', board: { tasks: [] }, delegations: [], team: [], pending: [], lastSeq: 0, queued: [{ seq: 0, text: '排队一' }] });
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed();
     expect(screen.getByText('排队一')).toBeTruthy();
     // queue 帧:全量列表权威回显(替换快照态)
-    fire({ type: 'queue', ts: Date.now(), payload: { items: [{ seq: 0, text: '排队一改', front: false }, { seq: 1, text: '新条', front: false }] } });
+    fire({ type: 'queue', ts: Date.now(), payload: { items: [{ seq: 0, text: '排队一改', front: false, images: ['data:image/png;base64,QQ=='] }, { seq: 1, text: '新条', front: false }] } });
     expect(await screen.findByText('排队一改')).toBeTruthy();
     expect(screen.getByText('新条')).toBeTruthy();
     expect(document.querySelector('.steer-fold')?.textContent).toContain('2');
     // 队列帧不进转录(零条目)
     expect(document.querySelectorAll('.entry-user, .entry-notice').length).toBe(0);
-    // 内联编辑:Pencil 钮 → 行变输入框 → 改文回车 → editSteer(seq,text)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit inline' })[0]);
-    const input = screen.getByLabelText('Edit queued message') as HTMLInputElement;
-    expect(input.value).toBe('排队一改');
-    fireEvent.change(input, { target: { value: '改后文本' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect(editSteer).toHaveBeenCalledWith('s1', 0, '改后文本');
+    // 内联编辑退役:无 Pencil 内联钮/无行内输入框(editSteer 通道随裁定下线)
+    expect(screen.queryByRole('button', { name: 'Edit inline' })).toBeNull();
+    expect(screen.queryByLabelText('Edit queued message')).toBeNull();
+    // 队列编辑=放回输入框:文本+随行图片一并回填 composer,队列条目本地移除+daemon cancel
+    const ta = screen.getByLabelText('message input') as HTMLTextAreaElement;
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit in input box' })[0]);
+    expect(ta.value).toBe('排队一改');
+    expect(document.querySelector('.sx-img-strip img')).not.toBeNull();
+    expect(cancelSteer).toHaveBeenCalled();
   });
 
   it('P4.1 种子 tool 条:entry 字段直映——折叠行带目标(读取+路径),不再退裸 md', async () => {

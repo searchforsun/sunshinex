@@ -54,7 +54,7 @@ export type JournalEvent =
   // ===== v3 段级行(session-kernel spec §3.2,journal v3 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
   /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖)。
    *  v3 写面单形态(P11-T2 渲染中立):user md=裸文、tool md 恒 ''(字段单源,读侧零归一) */
-  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number }
+  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; images?: string[]; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number }
   /** 工具条回填行(重放按 seq upsert:name/input/result 缺面回填——纯字段回填,无 md 重算) */
   | { t: 'seg-update'; seq: number; ts: number; name?: string; input?: Record<string, unknown>; result?: { text: string; ok: boolean } }
   /** run 条开启行(md='' 条目;收尾统计由 runmeta 行对位,悬空 run-open 重放标 stopped) */
@@ -62,7 +62,7 @@ export type JournalEvent =
   /** 视界截断行(rewind/compact/reset;upToSeq=0 即全清;重放在流中位置即时生效) */
   | { t: 'truncate'; upToSeq: number }
   /** 等待队列行(P5 内核化 spec §12;整列重写——每次变更一行全量,重放取末行为准;reduceJournal 忽略) */
-  | { t: 'steer'; items: Array<{ seq: number; text: string; front: boolean }> }
+  | { t: 'steer'; items: Array<{ seq: number; text: string; front: boolean; images?: string[] }> }
   /** 板面影子投影行(G14.2xx 内核层落库):task-/gate- 面事件原件落档(内核 shadow 透传)——attach 回种
    *  影子投影时经 boardEventFrom 翻译折叠,重启/重连/换渲染层后板面不再空;reduceJournal 忽略 */
   | { t: 'board'; e: SessionEvent }

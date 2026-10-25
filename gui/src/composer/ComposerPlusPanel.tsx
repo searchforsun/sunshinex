@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ImagePlus } from 'lucide-react';
 import { t } from '../i18n';
+import { IMAGE_ACCEPT } from '../images';
 import { FileIcon } from '../file-icon';
 
 /**
  * 「+」附加面板(G12 统一 composer):浮在输入卡上方、与卡同宽(absolute left/right 0,锚
- * `.sx-composer`,经 ComposerCard overlays 槽渲染)。三区列表:
+ * `.sx-composer`,经 ComposerCard overlays 槽渲染)。四区列表:
+ * - 附件(2026-10-26 图片功能,置首):图片选择——系统文件资源管理器(input type=file
+ *   accept=image/*),多选;调用面 onAttachImages 承接装载与 ≤8 张钳制。欢迎页不传不渲染;
  * - 命令:GET /commands,点击插入 `/cmd `(回车执行——会话内走 / 命令通道);
  * - 技能:GET /settings/skills 三源(project/user/learned)按 id 去重合并,点击插入 `/<id>`
  *   (G14.213 skills 纯文本语义:不再走 /skill <id> 命令形态——daemon 已 400);
@@ -33,6 +37,7 @@ export function ComposerPlusPanel({
   sessionId,
   root,
   onInsert,
+  onAttachImages,
 }: {
   conn: PlusPanelConn;
   /** 在场 = 会话内:文件区可浏览(tree);欢迎页不传 → 文件区不渲染 */
@@ -40,6 +45,8 @@ export function ComposerPlusPanel({
   /** 工作区 root(skills 的 project 组源);缺省只拉 user/learned */
   root?: string;
   onInsert: (text: string) => void;
+  /** 图片附件(2026-10-26 置首区):文件选择承接(装载+钳制在调用面);未配不渲染附件区 */
+  onAttachImages?: (files: File[]) => void;
 }): JSX.Element {
   const [cmds, setCmds] = useState<Array<{ name: string; desc: string }> | null>(null);
   const [skills, setSkills] = useState<Array<{ id: string; desc: string }> | null>(null);
@@ -47,6 +54,7 @@ export function ComposerPlusPanel({
   const [path, setPath] = useState('');
   const [entries, setEntries] = useState<Array<{ name: string; kind: 'dir' | 'file' }> | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const filePickRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -147,6 +155,36 @@ export function ComposerPlusPanel({
 
   return (
     <div className="sx-plus-panel" role="menu" aria-label={t('Add context', '添加附件')}>
+      {/* 附件区(2026-10-26 置首):图片选择开系统文件资源管理器;隐藏 input 承接 onChange */}
+      {onAttachImages !== undefined && (
+        <>
+          <div className="sx-plus-sec">{t('Attach', '附件')}</div>
+          <button
+            type="button"
+            role="menuitem"
+            className="sx-plus-row"
+            onClick={() => filePickRef.current?.click()}
+          >
+            <ImagePlus size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span className="sx-plus-name">{t('Images…', '图片…')}</span>
+            <span className="sx-plus-desc">{t('Open file picker, up to 8', '打开文件选择器,最多 8 张')}</span>
+          </button>
+          <input
+            ref={filePickRef}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            multiple
+            className="sx-plus-file-input"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = ''; // 重置:同批文件可重复选择
+              if (files.length > 0) onAttachImages(files);
+            }}
+          />
+        </>
+      )}
       <div className="sx-plus-sec">{t('Commands', '命令')}</div>
       {cmds === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {cmds !== null && cmds.length === 0 && <div className="sx-plus-empty">{t('No commands', '暂无命令')}</div>}

@@ -42,6 +42,7 @@ export function choiceAdapterConfig(
     ...(defs.timeoutMs !== undefined ? { timeoutMs: defs.timeoutMs } : {}),
     ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),
     ...(choice.reasoningEffort !== undefined ? { reasoningEffort: choice.reasoningEffort } : defs.reasoningEffort !== undefined ? { reasoningEffort: defs.reasoningEffort } : {}),
+    ...(choice.supportsImages !== undefined ? { supportsImages: choice.supportsImages } : {}),
   };
 }
 

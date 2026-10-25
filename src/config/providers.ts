@@ -26,6 +26,9 @@ export interface ModelChoice {
   /** 该模型缺省思考强度（同两级优先级；undefined = 回退全局 reasoningEffort 键 / 端点缺省）。
    *  会话内 /model-effort 覆盖仍最高（请求级参数压适配器缺省） */
   reasoningEffort?: ReasoningEffort;
+  /** 该模型是否支持图片输入（models 条目对象形态 supportsImages > 源级 supportsImages 缺省；
+   *  undefined = 未声明按支持处理——乐观缺省，未声明端点由服务端自然报错） */
+  supportsImages?: boolean;
 }
 
 /** 源名 → 专用密钥槽名：非字母数字段折叠为单下划线（"my-provider" → SUNSHINEX_API_KEY_MY_PROVIDER） */
@@ -69,7 +72,7 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
       warnings.push(`settings.json providers 条目须为对象（${origin}），已跳过`);
       continue;
     }
-    const e = entry as { name?: unknown; baseUrl?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; models?: unknown };
+    const e = entry as { name?: unknown; baseUrl?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; models?: unknown };
     const name = typeof e.name === 'string' ? e.name.trim() : '';
     if (name === '') {
       warnings.push(`settings.json providers 条目缺 name（${origin}），已跳过`);
@@ -102,14 +105,23 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
         warnings.push(`settings.json providers.${name} reasoningEffort 须为 ${EFFORT_ORDER.join('|')}（${origin}），已忽略`);
       }
     }
+    let providerImages: boolean | undefined;
+    if (e.supportsImages !== undefined) {
+      if (typeof e.supportsImages === 'boolean') {
+        providerImages = e.supportsImages;
+      } else {
+        warnings.push(`settings.json providers.${name} supportsImages 须为布尔（${origin}），已忽略`);
+      }
+    }
     for (const item of e.models as unknown[]) {
       let model: string | undefined;
       let itemWindow: number | undefined;
       let itemEffort: ReasoningEffort | undefined;
+      let itemImages: boolean | undefined;
       if (typeof item === 'string') {
         model = item.trim();
       } else if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-        const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown };
+        const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown };
         model = typeof o.model === 'string' ? o.model.trim() : undefined;
         if (o.contextWindow !== undefined) {
           if (typeof o.contextWindow === 'number' && Number.isFinite(o.contextWindow) && o.contextWindow > 0) {
@@ -124,6 +136,13 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
             itemEffort = parsedEffort;
           } else {
             warnings.push(`settings.json providers.${name} models 条目 reasoningEffort 须为 ${EFFORT_ORDER.join('|')}（${origin}），该强度已忽略`);
+          }
+        }
+        if (o.supportsImages !== undefined) {
+          if (typeof o.supportsImages === 'boolean') {
+            itemImages = o.supportsImages;
+          } else {
+            warnings.push(`settings.json providers.${name} models 条目 supportsImages 须为布尔（${origin}），已忽略`);
           }
         }
       }
@@ -142,6 +161,7 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
         apiKeyEnv: providerApiKeyEnv(name),
         ...(itemWindow !== undefined ? { contextWindow: itemWindow } : providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
         ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
+        ...(itemImages !== undefined ? { supportsImages: itemImages } : providerImages !== undefined ? { supportsImages: providerImages } : {}),
       });
     }
   }

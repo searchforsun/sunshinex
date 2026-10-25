@@ -27,21 +27,43 @@ export function useAgentBuckets(): {
   const [agentActivitiesBySession, setAgentActivitiesBySession] = useState<Record<string, AgentActivities>>({});
   /** 子智能体桶 LRU 触碰序(上限 ACTS_LRU_MAX=8):最近使用的会话桶保留,久不用的淘汰——内存有界 */
   const actsLRURef = useRef<string[]>([]);
-  /** 子智能体桶统一写入口:LRU 触碰 + 淘汰超限桶(非当前会话);fold=对桶的纯归约 */
-  const bumpActs = useCallback((sessionId: string, fold: (a: AgentActivities) => AgentActivities): void => {
-    const lru = actsLRURef.current.filter((k) => k !== sessionId);
-    lru.push(sessionId);
-    actsLRURef.current = lru;
+  /** 2026-10-26 性能轮(规格三期设计 §3.7 App 级帧隔离落地):子智能体帧此前逐帧 setState——
+   *  每个子代理 token 都让整个 App(侧栏/页签/主面对照)以 token 帧率重渲,「有子智能体的会话
+   *  更卡」主因。fold 聚攒 100ms trailing 合并上抛(批量合帧 30ms 窗内的多帧归并为一次
+   *  setState);LRU 触碰即时(ref 零渲染面)。活动页签延迟 100ms 视觉无感 */
+  const pendingFoldsRef = useRef<Map<string, Array<(a: AgentActivities) => AgentActivities>>>(new Map());
+  const flushTimerRef = useRef<number | undefined>(undefined);
+  const flushActs = useCallback((): void => {
+    flushTimerRef.current = undefined;
+    const pending = pendingFoldsRef.current;
+    if (pending.size === 0) return;
+    pendingFoldsRef.current = new Map();
     setAgentActivitiesBySession((m) => {
+      const lru = actsLRURef.current;
       const next: Record<string, AgentActivities> = {};
       for (const k of lru) {
         if (lru.length > ACTS_LRU_MAX && k === lru[0]) continue; // 最旧且超限:淘汰
         next[k] = m[k] ?? {};
       }
-      next[sessionId] = fold(m[sessionId] ?? {});
+      for (const [sid, folds] of pending) {
+        let a = m[sid] ?? {};
+        for (const f of folds) a = f(a);
+        next[sid] = a;
+      }
       return next;
     });
   }, []);
+  /** 子智能体桶统一写入口:LRU 触碰 + 淘汰超限桶(非当前会话);fold=对桶的纯归约(聚攒合并) */
+  const bumpActs = useCallback((sessionId: string, fold: (a: AgentActivities) => AgentActivities): void => {
+    const lru = actsLRURef.current.filter((k) => k !== sessionId);
+    lru.push(sessionId);
+    actsLRURef.current = lru;
+    const pending = pendingFoldsRef.current.get(sessionId);
+    pendingFoldsRef.current.set(sessionId, pending !== undefined ? [...pending, fold] : [fold]);
+    if (flushTimerRef.current === undefined) {
+      flushTimerRef.current = window.setTimeout(flushActs, 100);
+    }
+  }, [flushActs]);
   return { agentActivitiesBySession, bumpActs };
 }
 

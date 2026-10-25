@@ -3,6 +3,7 @@ import type { ModelAdapter } from '../model/adapter';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Reactor } from './reactor';
+import { SteerLine } from '../types';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -29,7 +30,9 @@ function makeReactor(
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, store);
-  const reactor = new Reactor({ registry, safety, context, model: adapter, ...(steer ? { steer } : {}) });
+  // steer 钩子本测试面用纯文本形（SteerLine.text 单字段映射；images 载荷由 serve/kernel 面测试覆盖）
+  const lines = steer === undefined ? undefined : (): SteerLine[] => steer().map((text) => ({ text }));
+  const reactor = new Reactor({ registry, safety, context, model: adapter, ...(lines ? { steer: lines } : {}) });
   return { reactor, context };
 }
 

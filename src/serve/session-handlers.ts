@@ -31,7 +31,8 @@ export { validSessionId } from './session-id';
 
 export interface SessionHandlerIo {
   send(res: http.ServerResponse, status: number, body: object): void;
-  readJson(req: http.IncomingMessage): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
+  /** cap=body 字节上限（缺省 1MB）；submit/steer 携图请求传 MAX_IMAGE_BODY_BYTES */
+  readJson(req: http.IncomingMessage, cap?: number): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
   sessionFor(res: http.ServerResponse, id: string | undefined): SessionRuntime | undefined;
   sessions: Map<string, SessionRuntime>;
   denyPendingFor(sessionId: string): void;
@@ -47,20 +48,47 @@ export interface SessionHandlerIo {
   resolvePlanApproval(pid: string, decision: { approved: boolean; feedback?: string }): boolean;
 }
 
+/** 图片附件载荷上限（张）：GUI 侧同值钳制；HTTP 面拒绝超出（400） */
+export const MAX_IMAGES = 8;
+/** 单张图片 dataURL 字符上限（≈6MB 二进制）：GUI 压缩后正常远低于此；防单张巨型载荷 */
+export const MAX_IMAGE_CHARS = 8 * 1024 * 1024;
+/** submit/steer 携图请求的 body 上限：8 张 × 单张上限 × JSON 转义余量 */
+export const MAX_IMAGE_BODY_BYTES = 32 * 1024 * 1024;
+/** dataURL 形态校验（png/jpeg/webp/gif；GUI 端压缩产物恒此四类） */
+const IMAGE_DURL_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+
+/** 提交载荷 images 字段净化：合法回 dataURL 串数组（原样贯穿，零转码）；非法回错误文案（HTTP 400 面） */
+export function parseImagesParam(raw: unknown): { ok: true; images?: string[] } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true };
+  if (!Array.isArray(raw)) return { ok: false, error: 'images must be an array of data URLs' };
+  if (raw.length > MAX_IMAGES) return { ok: false, error: `too many images (max ${MAX_IMAGES})` };
+  for (const img of raw) {
+    if (typeof img !== 'string' || !IMAGE_DURL_RE.test(img)) return { ok: false, error: 'images must be data:image/{png|jpeg|webp|gif};base64,... URLs' };
+    if (img.length > MAX_IMAGE_CHARS) return { ok: false, error: 'image too large (max 6MB each)' };
+  }
+  return { ok: true, images: raw.length > 0 ? (raw as string[]) : undefined };
+}
+
 export async function handleSubmit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
-  const parsed = await io.readJson(req);
+  const parsed = await io.readJson(req, MAX_IMAGE_BODY_BYTES);
   if (!parsed.ok) {
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const goal = (parsed.body as { goal?: unknown } | null)?.goal;
-  if (typeof goal !== 'string' || goal.length === 0) {
+  const body = (parsed.body ?? {}) as { goal?: unknown; images?: unknown };
+  const goal = body.goal;
+  const imgs = parseImagesParam(body.images);
+  if (!imgs.ok) {
+    io.send(res, 400, { error: imgs.error });
+    return;
+  }
+  if (typeof goal !== 'string' || (goal.length === 0 && imgs.images === undefined)) {
     io.send(res, 400, { error: 'goal must be a non-empty string' });
     return;
   }
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  const r = session.submit(goal);
+  const r = session.submit(goal, imgs.images);
   if (!r.ok) {
     io.send(res, r.status, { error: r.error });
     return;
@@ -81,19 +109,25 @@ export function handleInterrupt(io: SessionHandlerIo, res: http.ServerResponse, 
 }
 
 export async function handleSteer(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
-  const parsed = await io.readJson(req);
+  const parsed = await io.readJson(req, MAX_IMAGE_BODY_BYTES);
   if (!parsed.ok) {
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const text = (parsed.body as { text?: unknown } | null)?.text;
-  if (typeof text !== 'string' || text.trim().length === 0) {
+  const body = (parsed.body ?? {}) as { text?: unknown; images?: unknown };
+  const text = body.text;
+  const imgs = parseImagesParam(body.images);
+  if (!imgs.ok) {
+    io.send(res, 400, { error: imgs.error });
+    return;
+  }
+  if (typeof text !== 'string' || (text.trim().length === 0 && imgs.images === undefined)) {
     io.send(res, 400, { error: 'text must be a non-empty string' });
     return;
   }
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  session.steer(text);
+  session.steer(text, imgs.images);
   io.send(res, 200, { ok: true });
 }
 
@@ -346,7 +380,7 @@ export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResp
   io.send(res, 200, {
     current: sw.currentId() ?? (envDefault !== '' ? envDefault : undefined),
     explicitDefault: sw.hasExplicitDefault(),
-    choices: sw.choices().map((c) => ({ id: c.id, model: c.model, baseUrl: c.baseUrl, effort: c.reasoningEffort, contextWindow: c.contextWindow })),
+    choices: sw.choices().map((c) => ({ id: c.id, model: c.model, baseUrl: c.baseUrl, effort: c.reasoningEffort, contextWindow: c.contextWindow, supportsImages: c.supportsImages })),
   });
 }
 

@@ -33,12 +33,14 @@ import type { Delegation } from '../../src/delegation/projection';
  */
 
 /** 粗粒度转录条目(对齐主仓 src/serve/transcript.ts TranscriptEntry;G4 对齐五 kind——
- *  notice/error 归档面在档,三 kind 子集声明会静默窄化种子数据) */
+ *  notice/error 归档面在档,三 kind 子集声明会静默窄化种子数据)。images=user 条随行图片附件
+ *  (dataURL 形态,daemon KernelEntry 直映——气泡缩略图数据源) */
 export interface SnapshotMessage {
   seq: number;
   ts: number;
   kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
   md: string;
+  images?: string[];
 }
 
 /** G4 审批挂起请求(gui 侧契约声明;对齐 daemon ApprovalFrame.req 即 src/types ApprovalRequest
@@ -99,7 +101,7 @@ export interface SnapshotResponse {
   mode?: 'read-only' | 'acceptEdits' | 'full-access' | 'plan';
   tier?: 'small' | 'medium' | 'large';
   effort?: string;
-  queued?: Array<{ seq: number; text: string }>;
+  queued?: Array<{ seq: number; text: string; images?: string[] }>;
   team?: Array<{ name: string; busy: boolean }>;
   /** 挂起段 kind 三值(阶段三 plan-arm 增 plan-approval):reseed 据此重建挂起卡(卡内容唯一来源) */
   pending?: Array<{ pid: string; kind: 'approval' | 'ask' | 'plan-approval'; req?: unknown }>;

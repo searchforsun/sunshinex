@@ -1,5 +1,7 @@
 import { useRef } from 'react';
 import type { ClipboardEvent, CompositionEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactNode } from 'react';
+import { X } from 'lucide-react';
+import { t } from '../i18n';
 
 /**
  * 统一 composer 卡(G12 用户裁定「不要两个版本」):欢迎页与会话中共用同一份输入卡实现——
@@ -46,6 +48,13 @@ export interface ComposerCardProps {
   onInputClick?: () => void;
   /** G14.144 目录树文件拖入:rel 路径落输入框(自动 @文件) */
   onDropFile?: (rel: string) => void;
+  /** 图片附件(2026-10-26):待发 dataURL 列(缺省/空=无条);缩略图条在输入框上方 */
+  images?: string[];
+  onRemoveImage?: (index: number) => void;
+  /** 缩略图点击开查看浮层(缩放/复制/下载) */
+  onImageOpen?: (src: string) => void;
+  /** 粘贴图片文件(clipboardData.files 含图即接管,e.preventDefault 后回调;非图粘贴走 token 守卫) */
+  onPasteFiles?: (files: File[]) => void;
 }
 
 export function ComposerCard({
@@ -63,6 +72,10 @@ export function ComposerCard({
   onCompositionEndGuard,
   onInputClick,
   onDropFile,
+  images,
+  onRemoveImage,
+  onImageOpen,
+  onPasteFiles,
   className,
   overlays,
   belowInput,
@@ -72,9 +85,40 @@ export function ComposerCard({
   highlight,
 }: ComposerCardProps): JSX.Element {
   const hlRef = useRef<HTMLDivElement | null>(null);
+  /** 粘贴分流:剪贴板带图片文件即接管(图片不进文本,token 守卫无意义);纯文本粘贴走守卫 */
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
+    const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
+    if (files.length > 0 && onPasteFiles !== undefined) {
+      e.preventDefault();
+      onPasteFiles(files);
+      return;
+    }
+    onPasteGuard?.(e);
+  };
+  const strip = images !== undefined && images.length > 0;
   return (
     <div className={className !== undefined ? `sx-composer ${className}` : 'sx-composer'}>
       {overlays}
+      {strip && (
+        <div className="sx-img-strip" aria-label={t('Attached images', '附件图片')}>
+          {images!.map((src, i) => (
+            <div key={`${i}:${src.slice(-24)}`} className="sx-img-thumb">
+              <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} onClick={() => onImageOpen?.(src)} />
+              {onRemoveImage !== undefined && (
+                <button
+                  type="button"
+                  className="sx-img-remove"
+                  aria-label={t('Remove image', '移除图片')}
+                  data-tip={t('Remove', '移除')}
+                  onClick={() => onRemoveImage(i)}
+                >
+                  <X size={11} strokeWidth={2} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {highlight !== undefined ? (
         /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
            天然无错位(此前 inset 挂卡根,少卡的 padding 位移 → 文字偏左上) */
@@ -93,7 +137,7 @@ export function ComposerCard({
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             onBeforeInput={onBeforeInput}
-            onPaste={onPasteGuard}
+            onPaste={handlePaste}
             onCompositionStart={onCompositionGuard}
             onCompositionEnd={onCompositionEndGuard}
             onSelect={onSelectGuard}
@@ -130,7 +174,7 @@ export function ComposerCard({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           onBeforeInput={onBeforeInput}
-          onPaste={onPasteGuard}
+          onPaste={handlePaste}
           onCompositionStart={onCompositionGuard}
           onCompositionEnd={onCompositionEndGuard}
           onSelect={onSelectGuard}

@@ -16,7 +16,7 @@ import type { WorkspaceRow } from './daemon';
 
 export interface WorkspaceHandlerIo {
   send(res: http.ServerResponse, status: number, body: object): void;
-  readJson(req: http.IncomingMessage): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
+  readJson(req: http.IncomingMessage, cap?: number): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
 }
 
 export async function handleWorkspaceLocate(io: WorkspaceHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
