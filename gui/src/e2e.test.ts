@@ -66,12 +66,12 @@ async function liveSessionIds(port: number): Promise<string[]> {
   return out;
 }
 
-/** 当前打开会话的 daemon id:顶栏 title data-tip 前缀即 sessionId(如 «<id> · 123 tokens ·…»);
- *  idle 会话不走 liveSessionId 面(liveSessionByJournal 只收 running),DOM 反查 running/idle 通吃 */
+/** 当前打开会话的 daemon id:顶栏 title 的 data-session-id 属性(2026-10-25 起 tooltip 只显
+ *  完整会话名,id 改走隐形属性);idle 会话不走 liveSessionId 面(liveSessionByJournal 只收
+ *  running),DOM 反查 running/idle 通吃 */
 function openSessionId(): string {
-  const tip = document.querySelector('.chat-title')?.getAttribute('data-tip') ?? '';
-  const id = tip.split(' · ')[1] ?? ''; // 2026-10-25 tip=标题·id·tokens·steps(标题先行,id 取第二段)
-  if (!/^sun-[0-9a-f]{12}-[0-9a-f]{8}$/.test(id)) throw new Error(`title tip 无会话 id: ${tip}`);
+  const id = document.querySelector('.chat-title')?.getAttribute('data-session-id') ?? '';
+  if (!/^sun-[0-9a-f]{12}-[0-9a-f]{8}$/.test(id)) throw new Error(`chat-title 无 data-session-id: ${id}`);
   return id;
 }
 

@@ -656,7 +656,10 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     expect(screen.getByText('✻ dev started')).toBeDefined();
     expect(screen.getByText('Error: boom')).toBeDefined(); // P10:error 前缀归渲染面(与 TUI live/restore 同形)
     expect(document.querySelector('.entry-user')?.textContent).toContain('build the widget');
-    expect((document.querySelector('.chat-title') as HTMLElement).getAttribute('data-tip')).toContain('运行中');
+    // 2026-10-25 裁定:tooltip 只显完整会话名(运行中标记归侧栏会话行圆点,顶栏不双显);id 走隐形属性
+    const tipEl = document.querySelector('.chat-title') as HTMLElement;
+    expect(tipEl.getAttribute('data-tip')).toBe('build the widget');
+    expect(tipEl.getAttribute('data-session-id')).toBe('s1'); // 夹具 id 原样镜像(真实面=sun-*,e2e openSessionId 持严格格式校验)
     unmount();
   });
 
@@ -776,9 +779,10 @@ describe('G8d T5 交互清单:输入区自增高/流式光标/状态条图标数
     fire(conn, ev('model-start'));
     fire(conn, ev('usage', undefined, { turnTotal: 77 }));
     fire(conn, ev('step', 'x'));
+    // 2026-10-25 裁定:tooltip 只显会话名(tokens/steps 指标归上下文圆环 hover 弹层,见 G14.18 用例)
     const title = (document.querySelector('.chat-title') as HTMLElement | null)?.getAttribute('data-tip') ?? '';
-    expect(title).toContain('77 tokens'); // 指标收进 hover tooltip(G10 去常显文字)
-    expect(title).toContain('1 steps');
+    expect(title).not.toContain('77 tokens');
+    expect(title).not.toContain('tokens');
     unmount();
   });
 });

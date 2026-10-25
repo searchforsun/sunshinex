@@ -108,7 +108,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -265,7 +265,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             </div>
           </div>
         ) : (
-          <span className="chat-title" data-tip={`${displayTitle} · ${sessionId} · ${tokens} tokens · ${steps} steps${running ? ' · 运行中' : ''}`} /* 2026-10-25 用户裁定:hover 显完整会话名(标题截断后全名只在悬浮);sessionId 留中段(e2e openSessionId 解析锚点) */>
+          <span className="chat-title" data-tip={displayTitle} /* 2026-10-25 用户裁定:hover 只显完整会话名,不缀 sessionId/tokens/steps */
+            data-session-id={sessionId} /* 机器可读面(e2e openSessionId 解析锚点,视觉零影响) */>
             <span className="chat-title-btn">
               <span className={`chat-title-text${titleClipped ? ' clipped' : ''}`} ref={titleRef}>{displayTitle}</span>
             </span>
