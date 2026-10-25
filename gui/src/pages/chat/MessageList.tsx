@@ -46,6 +46,7 @@ export interface MessageListProps {
   readonly onEntryToggleClick: (e: ReactMouseEvent<HTMLDivElement>) => void;
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
   readonly onScroll: (e: { currentTarget: HTMLElement }) => void;
+  readonly onWheel: (e: { deltaY: number }) => void;
   /** G14.2xx 辅助对话空态文案(sidechat 页签) */
   readonly sideChat?: boolean;
   readonly running: boolean;
@@ -56,7 +57,7 @@ export interface MessageListProps {
 export function MessageList(props: MessageListProps): JSX.Element {
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -153,6 +154,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       aria-label="chat"
       ref={chatScrollRef}
       onClickCapture={onEntryToggleClick}
+      onWheel={onWheel}
       onScroll={(e) => {
         onScroll(e);
         maybeReplayEarlier();

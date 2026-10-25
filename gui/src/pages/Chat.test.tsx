@@ -835,6 +835,48 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelector('.chat-earlier')).toBeNull();
   });
 
+  it('G14.2xx 流式期间滚轮上翻立即脱离贴底跟随(wheel 意图直判,80px 窗口不再吞滚轮)', async () => {
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 2000 });
+    try {
+      mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
+      await flushed();
+      const el = document.querySelector('.chat') as HTMLElement;
+      // 回归锚:80px 窗口内(距底 50)未上翻时贴底跟随在场——重渲归底拉回
+      el.scrollTop = 1450;
+      fire({ type: 'token', text: '答1', ts: Date.now() });
+      await flushed();
+      expect(el.scrollTop).toBe(2000);
+      // 滚轮上翻意图:立即放手——后续流式重渲不再拉回(scrollTop 保持用户位置)
+      el.scrollTop = 1450;
+      fireEvent.wheel(el, { deltaY: -100 });
+      fire({ type: 'token', text: '答2', ts: Date.now() });
+      await flushed();
+      expect(el.scrollTop).toBe(1450);
+    } finally {
+      delete proto.clientHeight;
+      delete proto.scrollHeight;
+    }
+  });
+
+  it('G14.2xx 流式行结构块实时晋升:表格分隔行落定即渲染 <table>,行到行显;散文尾块保持纯文本', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'token', text: '前置段一。\n\n| 名 | 值 |\n| --- | --- |\n', ts: Date.now() });
+    await flushed();
+    // 表格骨架实时可见(不再等整块流完才现形)
+    expect(document.querySelector('.entry-assistant table')).not.toBeNull();
+    fire({ type: 'token', text: '| a | 1 |\n', ts: Date.now() });
+    await flushed();
+    expect(document.querySelectorAll('.entry-assistant tbody tr')).toHaveLength(1);
+    // 散文尾块(未完成段落)保持纯文本直出——不逐行拆段、无半截结构翻转
+    fire({ type: 'token', text: '\n\n这是一段还没写完', ts: Date.now() });
+    await flushed();
+    expect(document.querySelector('.entry-assistant .entry-stream-tail')?.textContent).toBe('这是一段还没写完');
+  });
+
   it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {
     mountChat([]);
     await flushed();

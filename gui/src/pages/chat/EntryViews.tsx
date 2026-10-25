@@ -374,6 +374,14 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
  *  已完成块=整块 markdown(memo——头串稳定即跳过重解析),在途尾块=纯文本直出(块边界整块晋升)
  *  ——半截结构(未闭合围栏/半张表/断词换行)不进解析器,流式高度单调增,贴底/状态行无抖动;
  *  done 后整段 markdown 终渲染 */
+/** G14.2xx 在途尾块结构探测:首行带行结构标记(表格/列表/围栏/标题/引用)的尾块整块进解析器
+ *  实时晋升——表格分隔行落定即现形、行到行显,代码围栏逐行生长;标记在块首即稳定,渲染模式
+ *  无中途翻转。散文尾块保持纯文本直出(段落语义跨单换行,逐行进解析器会拆段,维持块边界晋升);
+ *  尾块只含当前在途块,逐 token 重解析成本有界 */
+function tailIsStructured(tail: string): boolean {
+  return /^(\s*\||([-*+]|\d{1,9}[.)])\s|`{3,}|~{3,}|#{1,6}(\s|$)|>)/.exec(tail) !== null;
+}
+
 const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string; components: Components }): JSX.Element {
   if (md === '') return <></>;
   return (
@@ -411,11 +419,18 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
           {streaming ? (
             <>
               <MarkdownHead md={headMd} components={mdc} />
-              {tailMd !== '' && (
-                <pre className="entry-stream-tail" style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
-                  {tailMd}
-                </pre>
-              )}
+              {tailMd !== '' &&
+                (tailIsStructured(tailMd) ? (
+                  <div className="entry-stream-tail-md">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>
+                      {tailMd}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="entry-stream-tail" style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                    {tailMd}
+                  </pre>
+                ))}
             </>
           ) : (
             <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>

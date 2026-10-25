@@ -373,6 +373,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       saveScrollPos(archiveKey, stick ? 0 : el.scrollHeight - el.scrollTop - el.clientHeight);
     }
   };
+  /** G14.2xx 滚轮上翻立即脱离贴底跟随:80px 判定窗内流式重渲的归底赋值会逐帧抵消用户滚动
+   *  (滚轮失效感),wheel 是明确的用户意图信号——deltaY<0 直接放手,不等距离窗;
+   *  只写 ref 零重渲,回触底恢复仍走 handleChatScroll 的距离判定 */
+  const handleChatWheel = (e: { deltaY: number }): void => {
+    if (e.deltaY < 0) chatStickRef.current = false;
+  };
 
   return (
     <DirResolverContext.Provider value={isDirRef}>
@@ -425,6 +431,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         sideChat={sideChat}
         chatScrollRef={chatScrollRef}
         onScroll={handleChatScroll}
+        onWheel={handleChatWheel}
         running={running}
         liveSteps={liveSteps}
         liveTokens={liveTokens}

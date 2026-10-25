@@ -13,7 +13,8 @@ export function useChatScroll(deps: {
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
   const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen } = deps;
 /** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;上翻 >80px 放手,
- *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护 */
+ *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护;上翻 80px 窗口
+ *  内的滚轮失效由 Chat 的 wheel 意图直判兜住(渲染期归底赋值与用户滚动的竞争单点在 stick ref) */
 useEffect(() => {
   const el = chatScrollRef.current;
   // 聚合头锚定窗口（ToolGroups dataset 旗）内挂起贴底回钉——折叠/展开期间头钮逐帧自钉视口位
