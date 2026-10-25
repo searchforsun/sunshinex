@@ -55,16 +55,22 @@ interface Ctx {
   post: (goal: string, sid?: string) => Promise<Response>;
   /** POST /session/new（root 缺省 daemon tmp）——双会话用例自建第二会话 */
   newSession: (root?: string) => Promise<string>;
+  /** P1 Task 6 审批闭环面：daemon 句柄 + acceptEdits 会话直构（root=daemon tmp）+ 会话外写目标目录 */
+  acceptEdits: () => string;
+  out: string;
+  /** 鉴权+JSON 头（helper 内铸，token 字面不进用例面） */
+  H: Record<string, string>;
 }
 
 /** 装配样板（环境隔离同 daemon.test.ts）：SUNSHINEX_DATA_DIR 钉 tmp，token 固定 test-token，port 0；
  *  会话中心形态——daemon 空注册表启动，helper 内建首会话（root=tmp），既有单会话用例打 :id 端点 */
-async function withWsDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>): Promise<void> {
+async function withWsDaemon(model: ModelAdapter | ((out: string) => ModelAdapter), fn: (ctx: Ctx) => Promise<void>): Promise<void> {
   const tmp = tmpdir('sunshinex-serve-ws-');
+  const out = tmpdir('sunshinex-serve-ws-out-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
   try {
-    const daemon = new GuiDaemon({ model });
+    const daemon = new GuiDaemon({ model: typeof model === 'function' ? model(out) : model });
     const s = await daemon.start({ port: 0, token: 'test-token' });
     const http = `http://127.0.0.1:${s.port}`;
     const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' } as Record<string, string>;
@@ -79,8 +85,13 @@ async function withWsDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>
       assert.equal(r.status, 202, 'submit 应 202');
       return r;
     };
+    const acceptEdits = (): string => {
+      const r = daemon.createSession(tmp, { mode: 'acceptEdits' });
+      if (!r.ok) throw new Error(`createSession failed: ${r.error.message}`);
+      return r.value.sessionId;
+    };
     try {
-      await fn({ http, ws: `ws://127.0.0.1:${s.port}`, sid, post, newSession });
+      await fn({ http, ws: `ws://127.0.0.1:${s.port}`, sid, post, newSession, acceptEdits, out, H });
     } finally {
       await s.close();
     }
@@ -88,6 +99,7 @@ async function withWsDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(out, { recursive: true, force: true });
   }
 }
 
@@ -395,3 +407,95 @@ async function waitForAsync(pred: () => Promise<boolean>, timeoutMs: number): Pr
     await new Promise((r) => setTimeout(r, 20));
   }
 }
+
+/* ===== P1 Task 6:daemon 泵合帧(batch=1 门控) ===== */
+
+/** batch 帧宽松形态（事件帧数组内嵌,序保持） */
+interface BatchFrame {
+  kind: 'batch';
+  frames: Frame[];
+}
+type AnyFrame = Frame | BatchFrame | { kind: string; pid?: string };
+const isBatch = (f: AnyFrame): f is BatchFrame => f.kind === 'batch';
+/** 展平事件帧:batch 内嵌 + 顶层 event 兜底(batch 客户端语义下顶层 event 应恒零,断言面用) */
+const eventFramesOf = (frames: AnyFrame[]): Frame[] =>
+  frames.flatMap((f) => (isBatch(f) ? f.frames : f.kind === 'event' ? [f as Frame] : []));
+
+test('⑥ batch=1 客户端:同窗事件收单 batch 帧(序保持),零散 event 帧不再出现', async () => {
+  await withWsDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { ws, frames } = (await openCollecting(`${ctx.ws}/?batch=1`)) as { ws: WebSocket; frames: AnyFrame[] };
+    try {
+      await ctx.post('第一问');
+      await waitFor(() => eventFramesOf(frames).some((f) => f.e.type === 'done'), 10_000);
+      // 合批完备:全部事件都在 batch 帧内(顶层散帧 event 零出现)
+      assert.ok(frames.every((f) => f.kind === 'batch'), 'batch 客户端只收 batch 帧');
+      const inner = eventFramesOf(frames);
+      assert.ok(inner.some((f) => f.e.type === 'token'), 'token 事件在场');
+      assert.ok(inner.some((f) => f.e.type === 'done'), 'done 事件在场');
+      // 帧序保持:batch 内嵌数组 seq 严格递增
+      for (let i = 1; i < inner.length; i++) assert.ok(inner[i]!.seq > inner[i - 1]!.seq, 'seq 递增');
+      assert.equal(inner.filter((f) => f.e.type === 'token').map((f) => f.e.text ?? '').join(''), 'ok', 'token 拼接=reply 正文');
+    } finally {
+      ws.close();
+    }
+  });
+});
+
+test('⑥.1 老客户端(无 query)不受合帧影响:逐帧 event 到达,零 batch 帧', async () => {
+  await withWsDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { ws, frames } = (await openCollecting(ctx.ws)) as { ws: WebSocket; frames: AnyFrame[] };
+    try {
+      await ctx.post('第一问');
+      await waitFor(() => frames.some((f) => f.kind === 'event' && (f as Frame).e.type === 'done'), 10_000);
+      assert.ok(frames.every((f) => f.kind === 'event'), '老客户端只收 event 帧零 batch 帧');
+      const ev = frames as Frame[];
+      assert.equal(ev.filter((f) => f.e.type === 'token').map((f) => f.e.text ?? '').join(''), 'ok', 'token 拼接=reply 正文');
+    } finally {
+      ws.close();
+    }
+  });
+});
+
+test('⑥.2 挂起帧绕过合批直发;batch 客户端断线重连补发完整成批(seq 连续无丢失)', async () => {
+  await withWsDaemon(
+    (out) =>
+      new ScriptedAdapter([
+        JSON.stringify({ tool: 'write', input: { path: path.join(out, 'batch-approval.txt'), content: 'hello-batch' } }),
+        '{"done":true,"reply":"written"}',
+      ]),
+    async (ctx) => {
+      const sid = ctx.acceptEdits();
+      const a = (await openCollecting(`${ctx.ws}/?batch=1`)) as { ws: WebSocket; frames: AnyFrame[] };
+      try {
+        await ctx.post('写个文件', sid);
+        // 挂起帧绕过合批窗直发:顶层 approval 帧即时到场(不裹进 batch)
+        await waitFor(() => a.frames.some((f) => f.kind === 'approval'), 10_000);
+        assert.ok(a.frames.some((f) => f.kind === 'approval'), 'approval 帧顶层直发');
+        assert.ok(a.frames.every((f) => f.kind === 'batch' || f.kind === 'approval'), '事件全在 batch 内');
+        // 断线重连(同 batch=1):补发环形缓冲全部事件(成批)+挂起帧重发
+        a.ws.terminate();
+        await waitFor(() => a.ws.readyState === WebSocket.CLOSED, 2000);
+        const b = (await openCollecting(`${ctx.ws}/?batch=1`)) as { ws: WebSocket; frames: AnyFrame[] };
+        try {
+          await waitFor(() => b.frames.some((f) => f.kind === 'approval'), 5000);
+          assert.ok(b.frames.some((f) => f.kind === 'approval'), '重连后挂起帧重发(顶层直发)');
+          const bApproval = b.frames.find((f) => f.kind === 'approval') as { kind: string; pid: string };
+          // 回执放行 → run 收尾:done 经 batch 到场(鉴权头复用 helper 的 H,token 字面不进用例)
+          const r = await fetch(`${ctx.http}/approval/${bApproval.pid}`, { method: 'POST', headers: ctx.H, body: JSON.stringify({ decision: 'allow' }) });
+          assert.equal(r.status, 200, '回执应 200');
+          await waitFor(() => eventFramesOf(b.frames).some((f) => f.e.type === 'done'), 10_000);
+          // 无丢失:补发+实时事件帧 seq 自 1 起连续升列(单会话 daemon,全局 seq 无跨会话占号)
+          const seqs = eventFramesOf(b.frames).map((f) => f.seq);
+          assert.ok(seqs.length >= 2, '事件帧非空');
+          assert.equal(seqs[0], 1, '首帧 seq=1(补发自缓冲头)');
+          for (let i = 1; i < seqs.length; i++) assert.equal(seqs[i], seqs[i - 1]! + 1, `seq 连续无丢失 @${i}`);
+          assert.ok(b.frames.every((f) => f.kind === 'batch' || f.kind === 'approval'), '重连面也零散帧 event');
+        } finally {
+          b.ws.close();
+        }
+      } finally {
+        a.ws.close();
+      }
+    },
+  );
+});

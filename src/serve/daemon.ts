@@ -9,7 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ModelAdapter, parseEffort } from '../model/adapter';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
-import { SessionRuntime, isShadowEvent } from './session';
+import { SessionRuntime, isShadowEvent, type EventFrame } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { SessionJournal, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir } from "../tui/session-journal";
 import { reduceSteerRows, reduceSegRows } from '../session/seglog';
@@ -48,6 +48,7 @@ import {
 import {
   urlOf,
   LOOPBACK_HOST,
+  BATCH_FLUSH_MS,
   type DaemonFrame,
 } from './daemon-wire';
 
@@ -165,9 +166,11 @@ export class GuiDaemon {
   private server?: http.Server;
   /** 幂等收口：首调落链，后续调用复用同一 Promise（close 链只走一遍） */
   private closePromise?: Promise<void>;
-  /** WS 面：noServer 挂 http server upgrade；连接 Set=pump 广播面 */
+  /** WS 面：noServer 挂 http server upgrade；连接 Map=pump 广播面（P1 Task 6：值挂合帧态——
+   *  batch=1 客户端事件帧进 30ms 合批窗，老客户端单序列化快路逐帧零变化） */
   private wss?: WebSocketServer;
-  private readonly wsClients = new Set<WebSocket>();
+  /** batch 客户端每连接合帧态：buf=窗内事件帧缓冲，timer=在途 flush 定时器（挂载即起表,flush 时清） */
+  private readonly wsClients = new Map<WebSocket, { batch: boolean; buf: EventFrame[]; timer: NodeJS.Timeout | null }>();
   /** 每 pong 时间戳（WeakMap 旁挂，不入连接对象）：ping 心跳判活依据 */
   private readonly wsLastPong = new WeakMap<WebSocket, number>();
   private pingTimer?: NodeJS.Timeout;
@@ -376,11 +379,42 @@ export class GuiDaemon {
 
   /** 泵广播面（daemon 级单点）：帧序列化一次逐连接 send——同一连接的帧恒按 pump 调用序到达（ws
    *  内部发送缓冲有序，无需额外队列）；连接层按 sessionId 分发/过滤（T3）。G4：签名放宽至 DaemonFrame
-   *  全并集（挂起/reset 帧与事件帧共用本序列化路径） */
+   *  全并集（挂起/reset 帧与事件帧共用本序列化路径）。
+   *  P1 Task 6 分路：batch=1 客户端的事件帧进 30ms 合批窗（buf+timer，flush 打包单帧），挂起/reset
+   *  帧与老客户端走原路直发——老客户端零行为变化（daemon.ws.test ⑥.1 为锚） */
   private broadcastFrame(frame: DaemonFrame): void {
     if (this.wsClients.size === 0) return;
     const json = JSON.stringify(frame);
-    for (const ws of this.wsClients) ws.send(json);
+    for (const [ws, st] of this.wsClients) {
+      if (st.batch && frame.kind === 'event') this.enqueueBatch(ws, st, frame);
+      else ws.send(json);
+    }
+  }
+
+  /** batch 客户端事件帧入窗：首帧入窗即起 flush 表（在途则跳过），窗内连发攒一帧 */
+  private enqueueBatch(ws: WebSocket, st: { batch: boolean; buf: EventFrame[]; timer: NodeJS.Timeout | null }, frame: EventFrame): void {
+    st.buf.push(frame);
+    if (st.timer === null) {
+      st.timer = setTimeout(() => {
+        st.timer = null;
+        this.flushBatch(ws);
+      }, BATCH_FLUSH_MS);
+    }
+  }
+
+  /** 合批窗收口：缓冲 splice 整帧下发（帧序=pump 序，内嵌数组保持）；连接已退场由 detach 清表兜底 */
+  private flushBatch(ws: WebSocket): void {
+    const st = this.wsClients.get(ws);
+    if (st === undefined || st.buf.length === 0) return;
+    ws.send(JSON.stringify({ kind: 'batch', frames: st.buf.splice(0) }));
+  }
+
+  /** 单连接帧投递（连接生命周期补发面）：batch 客户端事件帧走合帧窗，其余直发——挂起重发（无 seq
+   *  幂等帧）不经窗，审批即时性优先 */
+  private deliverTo(ws: WebSocket, frame: DaemonFrame): void {
+    const st = this.wsClients.get(ws);
+    if (st !== undefined && st.batch && frame.kind === 'event') this.enqueueBatch(ws, st, frame);
+    else ws.send(JSON.stringify(frame));
   }
 
   /**
@@ -432,7 +466,7 @@ export class GuiDaemon {
         wss.handleUpgrade(req, socket, head, (ws) => this.onPtyConnection(ws, safeDecode(m[1]), safeDecode(m[2])));
         return;
       }
-      wss.handleUpgrade(req, socket, head, (ws) => this.onWsConnection(ws));
+      wss.handleUpgrade(req, socket, head, (ws) => this.onWsConnection(ws, urlOf(req).searchParams.get('batch') === '1'));
     });
     this.pingTimer = setInterval(() => this.heartbeat(), PING_INTERVAL_MS);
     return wss;
@@ -446,23 +480,30 @@ export class GuiDaemon {
    *  G14.2xx b shadow 帧不走红窗：板面/委派/子智能体帧（512 环窗对长会话子智能体流必溢出,且 GUI 刷新
    *  时本连接建立常先于会话 attach——回放面够不着）改由 HTTP /session/:id/shadow-events 水合恢复
    *  （会话打开/重连时 GUI 拉取 journal 全量）,本面只放实时与主链补发窗。 */
-  private onWsConnection(ws: WebSocket): void {
-    this.wsClients.add(ws);
+  private onWsConnection(ws: WebSocket, batch = false): void {
+    this.wsClients.set(ws, { batch, buf: [], timer: null });
     this.wsLastPong.set(ws, Date.now());
     ws.on('pong', () => this.wsLastPong.set(ws, Date.now()));
     // error 必须挂 listener（EventEmitter 契约）：socket 错误细节不倒面，close 统一走清理
     ws.on('error', () => {});
-    ws.on('close', () => this.wsClients.delete(ws));
+    ws.on('close', () => this.detachWs(ws));
     for (const session of this.sessions.values()) {
       // G14.2xx b shadow 帧不走红窗补发(512 环窗对长会话子智能体流必溢出,且 GUI 刷新时本连接
       // 建立常先于会话 attach——回放面够不着):恢复唯一入口=HTTP /session/:id/shadow-events
       // 水合(会话打开/重连时 GUI 拉取),本面只放实时与主链补发窗
       for (const f of session.bufferedFrames()) {
         if (isShadowEvent(f.e)) continue;
-        ws.send(JSON.stringify(f));
+        this.deliverTo(ws, f); // batch 客户端经合帧窗(重连补发即成批,≤30ms),老客户端逐帧
       }
-      for (const frame of session.pendingFrames()) ws.send(JSON.stringify(frame)); // 挂起重发(P6 §4:表在会话)
+      for (const frame of session.pendingFrames()) this.deliverTo(ws, frame); // 挂起重发(P6 §4:表在会话)
     }
+  }
+
+  /** 连接退场清理：合帧窗在途定时器先收（防 flush 触已死连接），再摘 Map 项（close 面单点） */
+  private detachWs(ws: WebSocket): void {
+    const st = this.wsClients.get(ws);
+    if (st !== undefined && st.timer !== null) clearTimeout(st.timer);
+    this.wsClients.delete(ws);
   }
 
   /** pty 专用 WS 连接生命周期（G8b T3，帧协议逐字 spec §终端目录）：
@@ -531,7 +572,7 @@ export class GuiDaemon {
    *  G8b T3：pty 专用 WS 共用本面（ptySockets 独立 Set + 同一 wsLastPong 计时） */
   private heartbeat(): void {
     const now = Date.now();
-    for (const ws of this.wsClients) this.beat(ws, now);
+    for (const ws of this.wsClients.keys()) this.beat(ws, now);
     for (const ws of this.ptySockets) this.beat(ws, now);
   }
 
@@ -574,7 +615,11 @@ export class GuiDaemon {
     }
     const wss = this.wss;
     if (wss) {
-      for (const ws of this.wsClients) ws.close(1001);
+      for (const ws of this.wsClients.keys()) {
+        const st = this.wsClients.get(ws);
+        if (st !== undefined && st.timer !== null) clearTimeout(st.timer);
+        ws.close(1001);
+      }
       for (const ws of this.ptySockets) ws.close(1001);
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       this.wsClients.clear();

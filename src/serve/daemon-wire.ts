@@ -54,6 +54,17 @@ export interface ResetFrame {
 /** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset 帧（无 seq）——广播面单点共用序列化 */
 export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | PlanApprovalFrame | ResetFrame;
 
+/** P1 Task 6 batch=1 客户端合帧形态：30ms 合批窗内连发的事件帧打包单帧下行（内嵌数组序保持）——
+ *  挂起/reset 帧绕过合批直发（审批即时性优先）。仅下行合成帧，不经 broadcastFrame 入参（泵输入
+ *  并集保持精确，客户端帧并集 = DaemonFrame | WsBatchFrame） */
+export interface WsBatchFrame {
+  kind: 'batch';
+  frames: EventFrame[];
+}
+
+/** batch 客户端合批窗（毫秒）：窗内连发事件攒一帧，首帧入窗即起表 */
+export const BATCH_FLUSH_MS = 30;
+
 /** AskUserAnswer 回执载荷校验（G4）：三态字面核验——selected 需 string[]、custom 需非空 text、
  *  dismissed 无参；非法形态回 null（HTTP 面 400）。labels 空数组放行——类型面合法，工具执行面
  *  自行降级为 dismissed 观察文案（builtin.ts ask_question executor 既有口径） */
