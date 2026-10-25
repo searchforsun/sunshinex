@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -54,7 +54,9 @@ export interface MessageListProps {
 }
 
 export function MessageList(props: MessageListProps): JSX.Element {
-  const { entries, structureVersion, seedGen, hiddenKeys, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, collapsedRuns, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
+  // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
+  // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, running, liveSteps, liveTokens, sideChat } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -67,6 +69,50 @@ export function MessageList(props: MessageListProps): JSX.Element {
     if (el === null) return;
     el.scrollTop += el.scrollHeight - saved.h;
   }, [visibleCount, chatScrollRef]);
+  /** P1 回调稳定化(Task 3):宿主回调 ref 镜像 + 零依赖稳定包装——行组件 memo 判等的回调引用
+   *  逐渲染恒定;宿主重装配/会话切换由 ref 取最新(免闭包陈旧,对齐 App sessionRef 手法)。
+   *  opt():可选回调底层缺省时透传 undefined——行组件按「prop 在场」分支渲染(如 spawn 行
+   *  onOpenAgent 在场才出链接),包装恒函数会伪造在场;两分支引用各自恒定,memo 判等不破。
+   *  renderTool/renderThinking/renderAssistant deps 仅稳定集:ToolSegBlock 比较器
+   *  (segPropsEqual)据此跨帧 bail-out */
+  const propsRef = useRef(props);
+  propsRef.current = props;
+  const opt = <T,>(wrapper: T, raw: T | undefined): T | undefined => (raw === undefined ? undefined : wrapper);
+  const onOpenFileStable = useCallback((p: string) => propsRef.current.onOpenFile?.(p), []);
+  const onOpenDiffStable = useCallback((callId: string, p: string) => propsRef.current.onOpenDiff?.(callId, p), []);
+  const onOpenDiffSelfStable = useCallback((p: string) => propsRef.current.onOpenDiff?.('', p), []);
+  const onOpenAgentStable = useCallback((label: string, agentTitle: string, task?: string) => propsRef.current.onOpenAgent?.(label, agentTitle, task), []);
+  const onOpenTaskStable = useCallback((ref: string) => propsRef.current.onOpenTask?.(ref), []);
+  const onForkStable = useCallback(() => propsRef.current.onFork?.(), []);
+  /** 可选回调在场判定同样走 ref(getter 零依赖稳定;返回值=包装或 undefined,两支引用各自恒定)——
+   *  renderTool deps 保持纯稳定集,宿主每帧重建可选 prop 不回传渲染闭包身份 */
+  const onOpenFileOpt = useCallback(() => opt(onOpenFileStable, propsRef.current.onOpenFile), [onOpenFileStable]);
+  const onOpenDiffOpt = useCallback(() => opt(onOpenDiffStable, propsRef.current.onOpenDiff), [onOpenDiffStable]);
+  const onOpenAgentOpt = useCallback(() => opt(onOpenAgentStable, propsRef.current.onOpenAgent), [onOpenAgentStable]);
+  const onOpenTaskOpt = useCallback(() => opt(onOpenTaskStable, propsRef.current.onOpenTask), [onOpenTaskStable]);
+  const onForkOpt = useCallback(() => opt(onForkStable, propsRef.current.onFork), [onForkStable]);
+  const taskNameOfStable = useCallback((id: string) => propsRef.current.taskNameOf(id), []);
+  const callIdOfStable = useCallback((e: ChatEntry) => propsRef.current.callIdOf(e), []);
+  const toggleRunStable = useCallback((key: string) => propsRef.current.toggleRun(key), []);
+  const submitTextStable = useCallback((text: string) => propsRef.current.submitText(text), []);
+  const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
+  const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
+  const renderTool = useCallback((e2: ChatEntry) => (
+    <ToolEntryView
+      key={e2.key}
+      entry={e2}
+      conn={conn}
+      sessionId={sessionId}
+      callId={callIdOfStable(e2)}
+      onOpenFile={onOpenFileOpt()}
+      onOpenDiff={onOpenDiffOpt()}
+      onOpenAgent={onOpenAgentOpt()}
+      onOpenTask={onOpenTaskOpt()}
+      taskNameOf={taskNameOfStable}
+    />
+  ), [conn, sessionId, callIdOfStable, onOpenFileOpt, onOpenDiffOpt, onOpenAgentOpt, onOpenTaskOpt, taskNameOfStable]);
+  const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
+  const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onOpenDiffSelfStable} />, [onOpenDiffSelfStable]);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
    *  折叠组随头完整保留 */
   let cut = entries.length - visibleCount;
@@ -149,22 +195,9 @@ export function MessageList(props: MessageListProps): JSX.Element {
                 key={`seg:${segEntries[0]!.key}`}
                 seg={segEntries}
                 closed={hiddenKeys.has(segEntries[0]!.key)}
-                renderTool={(e2) => (
-                  <ToolEntryView
-                    key={e2.key}
-                    entry={e2}
-                    conn={conn}
-                    sessionId={sessionId}
-                    callId={callIdOf(e2)}
-                    onOpenFile={onOpenFile}
-                    onOpenDiff={onOpenDiff}
-                    onOpenAgent={onOpenAgent}
-                    onOpenTask={onOpenTask}
-                    taskNameOf={taskNameOf}
-                  />
-                )}
-                renderThinking={(e2) => <ThinkingEntryView key={e2.key} entry={e2} />}
-                renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={(p) => onOpenDiff?.('', p)} />}
+                renderTool={renderTool}
+                renderThinking={renderThinking}
+                renderAssistant={renderAssistant}
               />,
             );
             seg = [];
@@ -182,7 +215,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
                   key={entry.key}
                   entry={entry}
                   collapsed={collapsedRuns.has(entry.key)}
-                  onToggle={entry.streaming === true ? undefined : toggleRun}
+                  onToggle={entry.streaming === true ? undefined : toggleRunStable}
                 />,
               );
             } else if (entry.kind === 'user') {
@@ -190,8 +223,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
                 <UserEntryView
                   key={entry.key}
                   entry={entry}
-                  onSend={submitText}
-                  onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
+                  onSend={submitTextStable}
+                  onOpenFile={onOpenFileOpt()} // G14.110 气泡内 @文件 token 点击开 file 标签
                 />,
               );
             } else {
@@ -200,10 +233,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
                   key={entry.key}
                   entry={entry}
                   footerRun={runFooterByEntry.get(entry.key)}
-                  onOpenDiff={onEntryOpenDiff}
-                  onRestore={onEntryRestore}
-                  onFork={onFork}
-                  onOpenFile={onOpenFile}
+                  onOpenDiff={onEntryOpenDiffStable}
+                  onRestore={onEntryRestoreStable}
+                  onFork={onForkOpt()}
+                  onOpenFile={onOpenFileOpt()}
                 />,
               );
             }

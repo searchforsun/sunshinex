@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCode } from '../../highlight';
@@ -138,7 +138,10 @@ export function writeStatOf(result: string): { added?: string; removed?: string 
  *  Input/Output 双段(G11 §2:input JSON + result 全文,各段 280px 内滚)。P11 T7 字段单源:
  *  name/input/result/status 直映 entry 字段(旁路 info prop 随工具 input 暂存退役——G6 双通道
  *  归一),md 解析全数退役。折叠壳 grid 化(0fr→1fr 生长):展开面常挂 DOM,折叠仅 CSS 收起。 */
-export function ToolEntryView({
+/** P1 行级 memo(Task 3):entry 身份由 chat-reducer WeakMap 视图缓存保证(未变行引用恒定),
+ *  MessageList 侧回调经 ref 稳定化——token 帧重渲染时本组件 props 全等即 bail-out,
+ *  行体(含 exec 高亮 highlightCode 调用)零执行。导出名不变(AgentTranscriptTab 等消费面无感) */
+export const ToolEntryView = memo(function ToolEntryView({
   entry,
   conn,
   sessionId,
@@ -562,4 +565,4 @@ export function ToolEntryView({
       </div>
     </div>
   );
-}
+});

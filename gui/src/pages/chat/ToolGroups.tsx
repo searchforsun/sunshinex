@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight, FolderSearch, Hourglass, SquareTerminal, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
@@ -83,22 +83,39 @@ const GHOST_MS = 420;
  *  ——折叠/展开只动头下内容，头部视口位恒定（用户裁定：上侧不动、下侧工具行向上吸附） */
 const ANCHOR_MS = 420;
 
-/** 会话折叠段块（Chat flushSeg 抽件，G14.73 seg-collapse 壳不变）：段内条目经 buildSegNodes 聚合——
- *  聚合头（图标+计数文案+chevron）点击展开/收起；归并动画=上一帧单行/执行中、本帧成组员的条目
- *  在组尾渲染渐收 ghost（挂载即播收合动画，到点卸载；首帧/种子回放批量落位不动画） */
-export function ToolSegBlock({
-  seg,
-  closed,
-  renderTool,
-  renderThinking,
-  renderAssistant,
-}: {
+/** P1 seg 逐位判等(Task 3):seg 数组每帧新身份,条目对象身份才是真身份——viewCache 契约
+ *  (chat-reducer WeakMap)未变行引用恒定、内容变更行(key 同)换新对象,身份逐位相等即
+ *  「成员集与内容双重未变」;closed 变化=折叠切换必须重渲;三个 render 回调引用由 MessageList
+ *  ref 稳定化保证跨帧恒定——全等即整段 bail-out,段内成员行(renderTool 逐员执行)零重跑。
+ *  (按 key 判等会把「运行中→完成」的内容更新一并 bail-out,错误——身份才是内容指纹) */
+function segPropsEqual(prev: ToolSegBlockProps, next: ToolSegBlockProps): boolean {
+  return prev.seg.length === next.seg.length
+    && prev.seg.every((e, i) => e === next.seg[i])
+    && prev.closed === next.closed
+    && prev.renderTool === next.renderTool
+    && prev.renderThinking === next.renderThinking
+    && prev.renderAssistant === next.renderAssistant;
+}
+
+interface ToolSegBlockProps {
   seg: ChatEntry[];
   closed: boolean;
   renderTool: (e: ChatEntry) => ReactNode;
   renderThinking: (e: ChatEntry) => ReactNode;
   renderAssistant: (e: ChatEntry) => ReactNode;
-}): JSX.Element {
+}
+
+/** 会话折叠段块（Chat flushSeg 抽件，G14.73 seg-collapse 壳不变）：段内条目经 buildSegNodes 聚合——
+ *  聚合头（图标+计数文案+chevron）点击展开/收起；归并动画=上一帧单行/执行中、本帧成组员的条目
+ *  在组尾渲染渐收 ghost（挂载即播收合动画，到点卸载；首帧/种子回放批量落位不动画）。
+ *  P1 行级 memo(Task 3):segPropsEqual 逐位判等——token 帧重渲染时段块整体 bail-out */
+export const ToolSegBlock = memo(function ToolSegBlock({
+  seg,
+  closed,
+  renderTool,
+  renderThinking,
+  renderAssistant,
+}: ToolSegBlockProps): JSX.Element {
   const nodes = buildSegNodes(seg);
   /** 展开态（聚合头点击）：gkey 集合——键含首成员 key，计数增长键不变、展开态跨渲染保持 */
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -214,4 +231,4 @@ export function ToolSegBlock({
       </div>
     </div>
   );
-}
+}, segPropsEqual);

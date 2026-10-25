@@ -22,14 +22,35 @@ vi.mock('@monaco-editor/react', () => ({
     <div className="mock-monaco-diff" data-original={props.original} data-modified={props.modified} />
   ),
 }));
+// P1 render-count 计数缝:highlightCode 是 ToolEntry exec 行体内每渲染必调的纯函数
+// (ToolEntry.tsx:535 inline JSX),且 highlight.ts 零循环依赖——vi.mock 在此可靠生效。
+// 被调用 ⇒ 行函数体真执行;memo 命中(任一层 bail-out)⇒ 计数不增。
+// (不 mock ToolEntry 本身:ToolEntry→Chat→MessageList→ToolEntry 循环依赖使该 mock 静默失效)
+vi.mock('../highlight', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../highlight')>();
+  let calls = 0;
+  return {
+    ...mod,
+    highlightCode: (code: string, filename?: string): string => {
+      calls += 1;
+      return mod.highlightCode(code, filename);
+    },
+    __calls: (): number => calls,
+    __reset: (): void => { calls = 0; },
+  };
+});
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { setLanguage } from '../../src/i18n';
+import * as highlightMock from '../highlight';
 import { Chat, expandFileRefs, rankFileHits, renderMentionSpans, tokenDeleteRange } from './Chat';
 import type { ReactElement, ReactNode } from 'react';
 import { mermaidCacheClear } from '../Mermaid';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
 import type { SessionEvent } from '../../../src/types';
+
+/** P1 计数缝访问器:mock 工厂返回的 __calls/__reset 不在真实模块类型上,运行时经命名空间取 */
+const hlCounters = highlightMock as unknown as { __calls(): number; __reset(): void };
 
 /** G9-B3b 会话流 Codex 形:用户右胶囊(+hover 复制)/跨日居中日期分隔(DOM 契约:
  *  .entry-user>.user-bubble+.user-actions>.user-action[aria-label=Copy];.chat-day-sep[role=separator]) */
@@ -1034,5 +1055,49 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     const seen = JSON.parse(window.localStorage.getItem('sunshinex.seen-sessions') ?? '{}') as Record<string, number>;
     expect(typeof seen.j1).toBe('number'); // 已读戳已压到钉档时刻
     expect(saveAppSeen).toHaveBeenCalledTimes(1); // 落底层双写
+  });
+});
+
+describe('P1 行级 memo render-count(Task 3):token 突发/交错帧已落位 tool 行零重渲染', () => {
+  it('token 突发期间已落位 tool 行零重渲染', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'c1', input: { path: 'src/a.ts' } } });
+    fire({ type: 'tool-result', text: 'content', ts: Date.now(), payload: { callId: 'c1' } });
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'c2', input: { command: 'ls' } } });
+    fire({ type: 'tool-result', text: 'file1', ts: Date.now(), payload: { callId: 'c2' } });
+    await flushed();
+    expect(document.querySelectorAll('.tool-summary').length).toBe(2); // 两行已落位(exec 行=计数缝载体)
+    hlCounters.__reset();
+    for (let i = 0; i < 5; i += 1) {
+      await act(async () => {
+        fire({ type: 'token', text: `答案第${i}段。`, ts: Date.now() });
+      });
+    }
+    expect(hlCounters.__calls()).toBe(0); // memo 全程 bail-out——exec 行体内的 highlightCode 零调用
+  });
+
+  it('流式中折叠 run 后续 token 帧不击穿隐藏 tool 行 memo(交错帧)', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'c1', input: { command: 'ls' } } });
+    fire({ type: 'tool-result', text: 'file1', ts: Date.now(), payload: { callId: 'c1' } });
+    fire({ type: 'token', text: '前文。', ts: Date.now() });
+    await act(async () => {
+      fire({ type: 'done', ts: Date.now(), payload: { steps: 2 } });
+    });
+    await flushed();
+    await flushed(); // sealed 自动折叠(useAutoCollapseRuns)落定
+    expect(document.querySelector('.tool-summary')).not.toBeNull(); // 隐藏行仍挂载(G14.31)
+    hlCounters.__reset();
+    fire({ type: 'model-start', ts: Date.now() }); // 新成员帧:骨架重算但折叠组身份不变
+    for (let i = 0; i < 3; i += 1) {
+      await act(async () => {
+        fire({ type: 'token', text: `次轮${i}。`, ts: Date.now() });
+      });
+    }
+    expect(hlCounters.__calls()).toBe(0); // 折叠隐藏的 exec 行不因后续帧重渲染
   });
 });
