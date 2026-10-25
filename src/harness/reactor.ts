@@ -1,4 +1,4 @@
-import { ChainAction, ContextItem, ModelTier, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, StopReason, ChatRequest, ChatResult } from '../types';
+import { ChainAction, ContextItem, ModelTier, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, SteerLine, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { ModelAdapter, ModelRouter, RouteHint, UsageHooks } from '../model/adapter';
@@ -67,8 +67,8 @@ export interface ReactorDeps {
   settle?: (r: SettlePayload) => string | void | Promise<string | void>;
   /** 记忆提取挂点（auto memory §4）：与 settle 同点、全终态触发一次（失败/中止任务同样入队）；返回的说明行尾追为链尾 notice 行（规格 §10）；旁路纪律=失败不倒灌任务成败（reactor 侧再兜一层 catch） */
   settleMemory?: (r: SettlePayload) => string | void | Promise<string | void>;
-  /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向、非模型工具面）：每个步边界 drain 一次，返回待投递的用户穿插行（按入队序、取走即消费）；缺省无通道 */
-  steer?: () => string[];
+  /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向、非模型工具面）：每个步边界 drain 一次，返回待投递的用户穿插行（text+随行 images，按入队序、取走即消费）；缺省无通道 */
+  steer?: () => SteerLine[];
   /** per-run 成本账本（可选）：run 收尾聚合落 runs/<id>；缺省不落账 */
   ledger?: RunLedger;
   /** 事件流旁路（TUI/GUI 公共地基）：发射即旁路，不注入零副作用；主链/账本语义不受影响 */
@@ -212,10 +212,10 @@ export class Reactor {
       // 消费门=本 run 已起步（≥1 新步）：起步前穿插留通道，避免吞进零新步 done 终稿；
       // 仅 session 主链消费：fork 私有面不回写主链，穿插行落进去即静默丢失——交会话层收口兜底补跑
       if (this.deps.steer && scope === 'session' && steps.length > seedLen) {
-        const lines = this.deps.steer().filter((l) => l.trim().length > 0);
+        const lines = this.deps.steer().filter((l) => l.text.trim().length > 0);
         if (lines.length > 0) {
           const base = steps.length > 0 ? steps[steps.length - 1].step : seedLastStep;
-          const injected = lines.map((line, i) => ({ step: base + 1 + i, action: 'task' as const, observation: line }));
+          const injected = lines.map((line, i) => ({ step: base + 1 + i, action: 'task' as const, observation: line.text, ...(line.images !== undefined && line.images.length > 0 ? { images: line.images } : {}) }));
           steps.push(...injected);
           this.emit('step', 'task', { step: injected[injected.length - 1].step });
         }

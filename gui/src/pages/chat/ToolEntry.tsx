@@ -555,7 +555,10 @@ export const ToolEntryView = memo(function ToolEntryView({
         aria-expanded={isRead ? undefined : expanded}
         onClick={() => {
           if (isRead) onOpenFile?.(path!);
-          else setExpanded((v) => !v);
+          else {
+            setExpanded((v) => !v);
+            window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
+          }
         }}
       >
         <ToolIcon verb={toolName} />

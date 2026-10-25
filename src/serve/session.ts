@@ -72,8 +72,8 @@ export interface SessionSnapshot {
   /** G10-C2b 档位/思考强度覆盖(undefined=缺省) */
   tier?: SessionTier;
   effort?: ReasoningEffort;
-  /** G10-C1d 排队插话段(steering FIFO 快照;seq=队列下标,cancel 寻址键) */
-  queued: Array<{ seq: number; text: string }>;
+  /** G10-C1d 排队插话段(steering FIFO 快照;seq=队列下标,cancel 寻址键);images=随行图片附件 */
+  queued: Array<{ seq: number; text: string; images?: string[] }>;
   /** 归档态(2026-10-21):旁车 meta archived 回读——GUI 顶栏归档钮/徽标三态播种;未附 journal 恒 false */
   archived: boolean;
 }
@@ -321,9 +321,9 @@ export class SessionRuntime {
     // （journal/快照,重连后不缺席）。此前 front 注入只落 steps 链,GUI 全程无气泡（2026-10-25 用户报障）
     rt.harness.steerSource = () => {
       const lines = this.kernel.steerDrain();
-      for (const text of lines) {
-        this.kernel.submit(text); // journal user 条（kernel 事件只走落档面,不广播——帧在下）
-        this.broadcastUserEcho(text);
+      for (const line of lines) {
+        this.kernel.submit(line.text, line.images); // journal user 条（kernel 事件只走落档面,不广播——帧在下）
+        this.broadcastUserEcho(line.text, line.images);
       }
       return lines;
     };
@@ -332,14 +332,14 @@ export class SessionRuntime {
 
   /** user 回显纯帧广播（emitQueueFrame 同形,不经 kernel.pump——泵路回显曾致转录双气泡+journal
    *  双行,G14.2xx 实测;条目本体由 kernel.submit 写面承载,本帧只管 live 视图） */
-  private broadcastUserEcho(text: string): void {
+  private broadcastUserEcho(text: string, images?: string[]): void {
     const seq = this.opts.nextSeq();
     this.lastSeqNum = seq;
     const frame: EventFrame = {
       kind: 'event',
       sessionId: this.id,
       seq,
-      e: { type: 'user', text, ts: Date.now() },
+      e: { type: 'user', text, ...(images !== undefined && images.length > 0 ? { images } : {}), ts: Date.now() },
     };
     this.frames.push(frame);
     if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
@@ -642,7 +642,7 @@ export class SessionRuntime {
    * 倒面），finally 清锁。user 条入转录在锁检查之后——409 拒绝的提交不留痕。任务文本经链尾指令行
    * 进模型上下文（appendInstructionLine——TUI /goal 同构，tui/session.ts 先例：goal 自身只是观测
    * 标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源） */
-  submit(goal: string): SessionSubmitResult {
+  submit(goal: string, images?: string[]): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     // plan flow 在途一律 409（终审修复 a：不论 armed——disarm 收口窗口/中断后 settle 前的提交也拒,
     // 沿既有文案口径。主路径防并发:planFlow 无内部串行化,放行即与续跑段竞写）
@@ -651,7 +651,7 @@ export class SessionRuntime {
     // （TUI /plan 同构:规划→确认卡→批准落档→逐项执行）;流程在途（含裁决点挂卡——idle+planFlowRunning）
     // 一律 409 不排队,裁决走挂起表回执端点。批准自动解除（续段 setMode 切走）/手动切档解除/拒绝保持。
     if (this.planArmed()) {
-      this.runPlanArm(goal);
+      this.runPlanArm(goal, images);
       return { ok: true };
     }
     const abort = new AbortController();
@@ -668,8 +668,9 @@ export class SessionRuntime {
     this.runCtxUsed = undefined;
     this.runDoneSteps = undefined;
     this.runRunSteps = undefined;
-    this.kernel.submit(goal);
-    this.runtimeImpl.harness.context.appendInstructionLine(goal);
+    const hasImages = images !== undefined && images.length > 0;
+    this.kernel.submit(goal, images);
+    this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
     const p: Promise<void> = this.runtimeImpl
       .runTask(goal, {
@@ -750,12 +751,12 @@ export class SessionRuntime {
         if (runOutcome?.stopReason !== 'interrupted') {
           const pending = this.kernel.steerTakePending();
           if (pending.length > 0) {
-            for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text);
+            for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text, it.images);
             // G14.89 user 回显帧:GUI 运行中入队不本地回显,气泡靠此帧。回显必须走纯帧广播
             // (不经 kernel.pump)——内部续发的 kernel.submit 自身会写 user 段,
             // 泵路回显曾致转录双气泡+journal 双行(G14.2xx 实测)
-            this.broadcastUserEcho(pending[0]!.text);
-            this.submit(pending[0]!.text);
+            this.broadcastUserEcho(pending[0]!.text, pending[0]!.images);
+            this.submit(pending[0]!.text, pending[0]!.images);
           }
         }
       });
@@ -794,13 +795,13 @@ export class SessionRuntime {
    *  跑到 awaiting-approval（或中断/超限/无产物终态）——卡登记+广播后放行锁（idle 时刻合法是批准续段
    *  setMode 的前置）;裁决后续段（批准=落 acceptEdits+逐项执行;拒绝=修订重入/超限收尾）脱离 submit
    *  半径,由 resolvePendingPlanApproval 的回执驱动后台续跑——「提交后停在确认卡」的公开语义不变。 */
-  private runPlanArm(goal: string): void {
+  private runPlanArm(goal: string, images?: string[]): void {
     this.planFlowRunning = true;
     const abort = new AbortController();
     this.planAbort = abort;
     // 用户目标回显（kernel.submit 单点：user 段入转录+WS 广播+journal 行;TUI /plan 输入回显同构）——
     // 目标自身不进链（TUI 同裁定：goal 只是观测标签,规划提示词经 fork seedHistory 承载）
-    this.kernel.submit(goal);
+    this.kernel.submit(goal, images);
     let openGate!: () => void;
     const gate = new Promise<void>((resolve) => {
       openGate = resolve;
@@ -832,7 +833,7 @@ export class SessionRuntime {
             const full = revising && lastPlanDoc
               ? `Previous plan document (rejected — revise it per the feedback below):\n${lastPlanDoc}\n\n${prompt}`
               : prompt;
-            return this.runPlanningTask(full, signal);
+            return this.runPlanningTask(full, signal, revising ? undefined : images); // 用户随行图片仅首轮规划透传（修订轮提示词已含旧计划书全文,图片随首轮 seed 已在链）
           },
           enterReadOnly: () => this.runtimeImpl.harness.security.enterModeOverride('read-only'),
           exitReadOnly: () => this.runtimeImpl.harness.security.exitModeOverride(),
@@ -929,12 +930,13 @@ export class SessionRuntime {
 
   /** 规划轮任务（TUI runInternalTask 同构）：fork 隔离执行——提示词不进会话链（§11 边界登记）,终态零
    *  主链回写。第二参 signal：planFlow 接缝显式传递（与流程中断源同源,签名对齐 PlanFlowSeams） */
-  private runPlanningTask(prompt: string, signal?: AbortSignal): Promise<RunOutcome> {
+  private runPlanningTask(prompt: string, signal?: AbortSignal, images?: string[]): Promise<RunOutcome> {
     const ctx = this.runtimeImpl.harness.context;
     const base = ctx.chainView();
+    const hasImages = images !== undefined && images.length > 0;
     return this.runtimeImpl.runTask(PLAN_TASK_LABEL, {
       scope: 'fork',
-      seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt }],
+      seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt, ...(hasImages ? { images } : {}) }],
       ...(this.tier ? { tier: this.tier } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
       ...(signal ? { signal } : {}),
@@ -986,8 +988,8 @@ export class SessionRuntime {
   /** 运行中穿插（G3 steer 平移）：队列态在内核(P5)——enqueue 不做运行态检查，运行中步边界
    *  drain 消费、空闲入队下一轮生效（排队语义即承诺，恒 200 由 HTTP 面承担）;steer 行落档与
    *  queue 帧广播经 onKernelEvent 单槽随发 */
-  steer(text: string): void {
-    this.kernel.steerEnqueue(text);
+  steer(text: string, images?: string[]): void {
+    this.kernel.steerEnqueue(text, images);
   }
 
   /**
@@ -1127,8 +1129,8 @@ export class SessionRuntime {
   }
 
   /** 排队插话(G10-C1d):内核队列快照(P5),seq=位置下标(每次变更重排,cancel 寻址键) */
-  private queuedSteer(): Array<{ seq: number; text: string }> {
-    return this.kernel.steerPendingItems().map(({ seq, text }) => ({ seq, text }));
+  private queuedSteer(): Array<{ seq: number; text: string; images?: string[] }> {
+    return this.kernel.steerPendingItems().map(({ seq, text, images }) => ({ seq, text, ...(images !== undefined ? { images } : {}) }));
   }
 
   /** 撤回排队插话(G10-C1d):按下标撤;越界 false */

@@ -1,4 +1,4 @@
-import type { SessionEvent } from '../types';
+import type { SessionEvent, SteerLine } from '../types';
 import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState, type SessionStats } from './entry';
 
 /** 影子事件判定(单点):板面(task-)/审批门(gate-)/委派(delegation-)与带 subagent 标签的子智能体流。
@@ -15,11 +15,13 @@ export function isShadowEvent(e: SessionEvent): boolean {
 }
 
 /** 等待队列条目(P5 内核化,spec §12):seq=位置下标(每次变更整列重排,端点寻址键);
- *  front=插入发送(reactor 步边界 drain 注入当前轮),false 仅排队等轮收束补跑。 */
+ *  front=插入发送(reactor 步边界 drain 注入当前轮),false 仅排队等轮收束补跑。images=随行图片附件
+ *  (dataURL 形态,types.ts SteerLine 同载荷——入队/续发/链行原样贯穿) */
 export interface SteerItem {
   seq: number;
   text: string;
   front: boolean;
+  images?: string[];
 }
 
 /** 内核事件(spec §3.1b 词汇收缩——视图/持久化层只消费这些,token 级遥测不出内核):
@@ -56,8 +58,8 @@ export class SessionKernel {
   }
 
   /** 提交回显(collector.submit 平移):user 条 `> <goal>`——与 user 事件同路径,事件语义单点 */
-  submit(goal: string): void {
-    this.pump({ type: 'user', text: goal, ts: Date.now() });
+  submit(goal: string, images?: string[]): void {
+    this.pump({ type: 'user', text: goal, ...(images !== undefined && images.length > 0 ? { images } : {}), ts: Date.now() });
   }
 
   /** 事件泵单点:apply 后差分前后态发段级事件——新条目 → seg-open;条目引用变且非开启段 →
@@ -148,11 +150,12 @@ export class SessionKernel {
 
   // ---- 等待队列(P5 内核化,spec §12):变更即发 steer 事件(整列快照),读面不外抛 ----
 
-  /** 入队一条用户穿插行(空白忽略,保持入队序;缺省仅排队——轮收束自动发下一轮) */
-  steerEnqueue(text: string): void {
+  /** 入队一条用户穿插行(空白忽略,保持入队序;缺省仅排队——轮收束自动发下一轮;images 随行) */
+  steerEnqueue(text: string, images?: string[]): void {
     const t = text.trim();
-    if (!t) return;
-    this.steerItems = [...this.steerItems, { seq: this.steerItems.length, text: t, front: false }];
+    if (!t && (images === undefined || images.length === 0)) return;
+    const imgs = images !== undefined && images.length > 0 ? images : undefined;
+    this.steerItems = [...this.steerItems, { seq: this.steerItems.length, text: t, front: false, ...(imgs !== undefined ? { images: imgs } : {}) }];
     this.emitSteer();
   }
 
@@ -197,10 +200,12 @@ export class SessionKernel {
     return true;
   }
 
-  /** 步边界 drain(reactor 消费口):仅取走置首条目按序返回文本——普通排队条目留待轮收束补跑 */
-  steerDrain(): string[] {
+  /** 步边界 drain(reactor 消费口):仅取走置首条目按序返回(text+随行 images)——普通排队条目留待轮收束补跑 */
+  steerDrain(): SteerLine[] {
     if (!this.steerItems.some((x) => x.front)) return [];
-    const out = this.steerItems.filter((x) => x.front).map((x) => x.text);
+    const out = this.steerItems
+      .filter((x) => x.front)
+      .map((x) => ({ text: x.text, ...(x.images !== undefined ? { images: x.images } : {}) }));
     this.steerItems = this.steerItems.filter((x) => !x.front);
     this.emitSteer();
     return out;

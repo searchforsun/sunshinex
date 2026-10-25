@@ -32,6 +32,8 @@ export function openExternalUrl(url: string): void {
 
 /** tokens 格式(G14.17 自 Chat.tsx 导出共享):8400 → 8.4k tokens;840 → 840 tokens */
 export function fmtTokens(n: number): string {
+  // 2026-10-26 用户报障「64802.0k tokens」:加 m 档(≥1e6),k/m 一位小数
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m tokens`;
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
 }
 

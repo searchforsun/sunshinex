@@ -139,24 +139,28 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
           onMouseEnter={show}
           onMouseLeave={hide}
         >
-          {/* G14.97 三分区横线分割:上下文(构成含 token+百分比) / 轮次步数 / 缓存命中率(含具体量) */}
+          {/* G14.97 三分区横线分割:上下文(构成含 token+百分比) / 轮次步数 / 缓存命中率(含具体量)。
+              2026-10-26 用户裁定:数值改 `234k/1m(23.4%)` 括号形态、尾缀条数去掉、「上下文组成」
+              节标题去掉改逐段百分比条(圆环色阶同源:常 accent/70+ warn/90+ err) */}
           <div className="ctx-pop-row">
             <span className="k">{t('Context', '上下文')}</span>
-            <span className="v">{`${fmt(used)} / ${fmt(win)} · ${pct1((used / Math.max(1, win)) * 100)}`}</span>
+            <span className="v">{`${fmt(used)}/${fmt(win)}(${pct1((used / Math.max(1, win)) * 100)})`}</span>
           </div>
           {parts.length > 0 && (
-            <>
-              <div className="ctx-pop-sec">{t('Composition', '上下文组成')}</div>
-              {parts.map((p) => (
-                <div className="ctx-pop-row sub" key={p.id}>
-                  <span className="k">{partName(p.id)}</span>
-                  <span className="v">
-                    {`${fmt(p.tokens)} · ${pct1((p.tokens / Math.max(1, used)) * 100)}`}
-                    {p.count > 1 ? <span className="dim">{` · ${p.count}`}</span> : null}
-                  </span>
+            parts.map((p) => {
+              const partPct = Math.min(100, (p.tokens / Math.max(1, used)) * 100);
+              return (
+                <div className="ctx-pop-part" key={p.id}>
+                  <div className="ctx-pop-row sub">
+                    <span className="k">{partName(p.id)}</span>
+                    <span className="v">{`${fmt(p.tokens)}(${pct1(partPct)})`}</span>
+                  </div>
+                  <div className="ctx-pop-bar" aria-hidden="true">
+                    <span className={`ctx-pop-bar-fill lv${level(partPct)}`} style={{ width: `${partPct}%` }} />
+                  </div>
                 </div>
-              ))}
-            </>
+              );
+            })
           )}
           <div className="ctx-pop-sep" />
           <div className="ctx-pop-row">

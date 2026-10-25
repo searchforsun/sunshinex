@@ -28,7 +28,7 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
       {onFork !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={onFork} />}
       {(run?.steps !== undefined || run?.tokens !== undefined) && (
         <span className="run-stats">
-          {run?.steps !== undefined && <span>{run.steps === 1 ? t('1 step', '1 步') : `${run.steps} steps`}</span>}
+          {run?.steps !== undefined && <span>{t(`${run.steps} steps`, `${run.steps} 步`)}</span>}
           {run?.tokens !== undefined && <span>{fmtTokens(run.tokens)}</span>}
           {time !== undefined && <span>{time}</span>}
         </span>

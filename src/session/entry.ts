@@ -37,6 +37,8 @@ export interface KernelEntry {
   ts: number;
   kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'run' | 'notice' | 'error';
   md: string;
+  /** user:随行图片附件（dataURL 形态，≤8 张）——快照/seg 行/wire 全链原样承载 */
+  images?: string[];
   /** tool:调用关联面(input 全量随档——折叠/图标/diff 寻址零推导) */
   callId?: string;
   name?: string;
@@ -343,7 +345,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     }
     case 'user': {
       const sealed = sealSeg(state, e.ts);
-      return appendEntry(sealed, { ts: e.ts, kind: 'user', md: e.text ?? '' });
+      const imgs = e.images;
+      return appendEntry(sealed, { ts: e.ts, kind: 'user', md: e.text ?? '', ...(imgs !== undefined && imgs.length > 0 ? { images: imgs } : {}) });
     }
     case 'notice': {
       const sealed = sealSeg(state, e.ts);

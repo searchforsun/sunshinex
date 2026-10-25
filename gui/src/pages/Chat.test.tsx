@@ -689,15 +689,17 @@ describe('G14.18 上下文圆环', () => {
     });
     fireEvent.mouseEnter(ring);
     const pop = document.querySelector('.ctx-pop')!;
-    // G14.77 k/m 单位化;G14.97 百分比一位小数+分区横线;构成含具体 token
-    expect(pop.textContent).toContain('6.6k / 1m · 0.7%');
-    expect(pop.textContent).toContain('429 · 6.5%'); // 构成项=token 数+百分比并存
+    // G14.77 k/m 单位化;2026-10-26 裁定:数值=「tok/win(%)」括号形态、条数缀退役、
+    // 「上下文组成」节标题退役改逐段百分比条
+    expect(pop.textContent).toContain('6.6k/1m(0.7%)');
+    expect(pop.textContent).toContain('429(6.5%)'); // 构成项=token(百分比)
+    expect(pop.textContent).not.toContain('上下文组成'); // 节标题退役(en 位本无文案,防御 zh 回归)
+    expect(pop.querySelectorAll('.ctx-pop-bar')).toHaveLength(pop.querySelectorAll('.ctx-pop-part').length); // 每段一条百分比条
     expect(pop.querySelectorAll('.ctx-pop-sep').length).toBe(2); // 上下文/轮次/缓存三分区
     expect(pop.textContent).toContain('Turns / Steps');
     expect(pop.textContent).toContain('System');
-    expect(pop.textContent).toContain('%'); // 细项相对占比
     expect(pop.textContent).toContain('Chain');
-    expect(pop.textContent).toContain('· 3'); // 条数缀
+    expect(pop.textContent).not.toContain('· 3'); // 条数缀退役
     expect(pop.textContent).toMatch(/缓存命中率|Cache hit rate/);
     expect(pop.textContent).not.toContain('Model'); // 模型行去除(pill 在侧,冗余)
     fireEvent.mouseLeave(ring);

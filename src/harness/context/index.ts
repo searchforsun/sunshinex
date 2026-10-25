@@ -164,7 +164,7 @@ export class ContextManager {
   /** 会话链尾追（唯一写入口，薄委托 ChainLedger.append 后组合 append 事件）；行号由链内序号定死，追加后不重排（裁剪后允许跳号）；
    *  reasoning（该轮模型思考原文）随行透传——思考模式续轮回传载荷的持久化通道；
    *  action 收窄为 ChainAction 闭集（types.ts N11③ 单点登记）——新动作进链前须先在登记处扩员 */
-  appendChain(entries: Array<{ action?: ChainAction; observation: string; reasoning?: string; thinkSeconds?: number }>): void {
+  appendChain(entries: Array<{ action?: ChainAction; observation: string; images?: string[]; reasoning?: string; thinkSeconds?: number }>): void {
     const pushed = this.ledger.append(entries);
     if (pushed.length > 0) this.changeSink?.({ kind: 'append', steps: pushed });
   }
@@ -176,11 +176,12 @@ export class ContextManager {
   }
 
   /** 指令行单点（规范 N1 / 规格 §9.1）：先尾追会话常量漂移说明行，再尾追任务指令行——指令恒为链尾最后一行。
-   *  返回本次说明文本（交互面据此落用户可见回执，M8 消费）。所有指令行落点统一走此处，杜绝多调用处漂移。 */
-  appendInstructionLine(observation: string): string[] {
+   *  返回本次说明文本（交互面据此落用户可见回执，M8 消费）。所有指令行落点统一走此处，杜绝多调用处漂移。
+   *  images（用户随行图片附件）随任务行同载——buildMessages 透出 image_url 内容块的链行通道 */
+  appendInstructionLine(observation: string, images?: string[]): string[] {
     const notices = this.checkConstantsDrift();
     for (const n of notices) this.appendChain([{ action: 'notice', observation: n }]);
-    this.appendChain([{ action: 'task', observation }]);
+    this.appendChain([{ action: 'task', observation, ...(images !== undefined && images.length > 0 ? { images } : {}) }]);
     return notices;
   }
 

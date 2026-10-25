@@ -142,8 +142,15 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
     if (action === 'reply') {
       msgs.push({ role: 'assistant', content: row.observation });
     } else {
-      // 'plan' 与 'task' 并列本分支（spec §4.4）：计划书全文行按指令行同形态（user）透出
-      msgs.push({ role: 'user', content: row.observation });
+      // 'plan' 与 'task' 并列本分支（spec §4.4）：计划书全文行按指令行同形态（user）透出；
+      // 行载 images（用户随行附件）即带 image_url 内容块的多模态 user 消息（文本恒在——空文行兜底占位）
+      const images = row.images;
+      if (images !== undefined && images.length > 0) {
+        const text = row.observation.trim() !== '' ? row.observation : '(image)';
+        msgs.push({ role: 'user', content: text, images });
+      } else {
+        msgs.push({ role: 'user', content: row.observation });
+      }
     }
   }
   flushBatch();

@@ -1,4 +1,4 @@
-import type { AskUserSeam, OutputStyle, SubagentSpawnInput, TodoItem } from '../types';
+import type { AskUserSeam, OutputStyle, SteerLine, SubagentSpawnInput, TodoItem } from '../types';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { CodedToolError, ToolRegistry } from './tools';
@@ -109,8 +109,8 @@ export class Harness {
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
   readonly pipeline: MemoryPipeline;
   /** 步边界穿插源(P5 内核化,spec §12):等待队列态归会话内核(SteeringChannel 退役),会话层装配时
-   *  挂入取走口(缺省空——不挂即无穿插);Reactor 步边界经此取走置首条目文本注入当前轮 */
-  steerSource: () => string[] = () => [];
+   *  挂入取走口(缺省空——不挂即无穿插);Reactor 步边界经此取走置首条目(text+随行 images)注入当前轮 */
+  steerSource: () => SteerLine[] = () => [];
   /** 沉淀双钩子单点（规格 §3.1/§3.5）：单发 Reactor 与 loop 内构造的 Reactor 同源透传，防两处拼装漂移 */
   readonly settleHooks: {
     settle: (r: SettlePayload) => string | undefined;

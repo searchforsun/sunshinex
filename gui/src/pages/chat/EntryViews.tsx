@@ -116,7 +116,15 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
   const flow = streaming ? entry.md.slice(-220) : ''; // G14.79:加宽尾窗,宽行下思考内容充满整行
   return (
     <div className={`entry entry-thinking${open ? ' open' : ''}`}>
-      <button type="button" className="thinking-summary" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        className="thinking-summary"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((v) => !v);
+          window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
+        }}
+      >
         <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
         <span className="thinking-label">
           {streaming ? (

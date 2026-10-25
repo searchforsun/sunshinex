@@ -251,7 +251,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {running && (
           <div className="run-live-line" role="status" aria-label="run status">
             <span className="run-spinner" aria-hidden="true" />
-            <span>{`${liveSteps} steps`}</span>
+            <span>{t(`${liveSteps} steps`, `${liveSteps} 步`)}</span>
             <span>{fmtTokens(liveTokens)}</span>
           </div>
         )}

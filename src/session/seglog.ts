@@ -27,7 +27,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
     return [{ t: 'subagent', e }];
   }
   if (ev.t === 'truncate') return [{ t: 'truncate', upToSeq: ev.upToSeq }];
-  if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front })) }];
+  if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front, ...(x.images !== undefined ? { images: x.images } : {}) })) }];
   if (ev.t === 'stats') return []; // 统计面不落档(P9):非转录,装载自 run meta 重建
   const e = ev.entry;
   if (ev.t === 'seg-open') {
@@ -40,6 +40,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
         md: e.md,
         ts: e.ts,
         seq: e.seq,
+        ...(e.images !== undefined ? { images: e.images } : {}),
         ...(e.callId !== undefined ? { callId: e.callId } : {}),
         ...(e.name !== undefined ? { name: e.name } : {}),
         ...(e.input !== undefined ? { input: e.input } : {}),
@@ -58,6 +59,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
         md: e.md,
         ts: e.ts,
         seq: e.seq,
+        ...(e.images !== undefined ? { images: e.images } : {}),
         ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
       },
     ];
@@ -81,6 +83,8 @@ export interface SegRowLike {
   md?: unknown;
   ts?: unknown;
   seq?: unknown;
+  /** user 行随行图片附件（dataURL 串数组；行面字段不予信任——imagesOf 净化回落） */
+  images?: unknown;
   callId?: unknown;
   name?: unknown;
   input?: unknown;
@@ -104,6 +108,13 @@ export interface SegRowLike {
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+
+/** 行面 images 净化（dataURL 串数组；非串项丢弃、空列回落 undefined——行面字段不予信任） */
+function imagesOf(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.filter((x): x is string => typeof x === 'string' && x.startsWith('data:image/'));
+  return out.length > 0 ? out : undefined;
+}
 
 /** runmeta 净化合入(行面字段不予信任;seconds 等数值面缺省即不覆盖) */
 function runMetaOf(row: SegRowLike, prev: RunMeta | undefined): RunMeta {
@@ -154,11 +165,13 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
       const name = str(row.name);
       const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as Record<string, unknown>) : undefined;
       const seconds = num(row.seconds);
+      const images = kind === 'user' ? imagesOf(row.images) : undefined;
       entries.push({
         seq,
         ts: num(row.ts) ?? 0,
         kind,
         md: str(row.md) ?? '',
+        ...(images !== undefined ? { images } : {}),
         ...(callId !== undefined ? { callId } : {}),
         ...(name !== undefined ? { name } : {}),
         ...(input !== undefined ? { input } : {}),
@@ -216,11 +229,12 @@ export function reduceSteerRows(rows: ReadonlyArray<SegRowLike>): SteerItem[] {
     let seq = 0;
     for (const raw of row.items) {
       if (raw === null || typeof raw !== 'object') continue;
-      const o = raw as { seq?: unknown; text?: unknown; front?: unknown };
+      const o = raw as { seq?: unknown; text?: unknown; front?: unknown; images?: unknown };
       const text = str(o.text);
+      const images = imagesOf(o.images);
       if (text === undefined || text.trim() === '') continue;
       const s = num(o.seq);
-      next.push({ seq: s !== undefined && s >= 0 ? s : seq, text, front: o.front === true });
+      next.push({ seq: s !== undefined && s >= 0 ? s : seq, text, front: o.front === true, ...(images !== undefined ? { images } : {}) });
       seq += 1;
     }
     items = next;

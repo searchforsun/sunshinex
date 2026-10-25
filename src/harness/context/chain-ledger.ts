@@ -15,10 +15,10 @@ export class ChainLedger {
    *  reasoning（该轮模型思考原文）随行透传——思考模式续轮回传载荷的持久化通道；
    *  action 收窄为 ChainAction 闭集（types.ts N11③ 单点登记）——新动作进链前须先在登记处扩员。
    *  返回实际推入的步（空入参零追加；是否发 append 事件由门面按返回值决定）。 */
-  append(entries: Array<{ action?: ChainAction; observation: string; reasoning?: string; thinkSeconds?: number }>): HistoryStep[] {
+  append(entries: Array<{ action?: ChainAction; observation: string; images?: string[]; reasoning?: string; thinkSeconds?: number }>): HistoryStep[] {
     const pushed: HistoryStep[] = [];
     for (const e of entries) {
-      const step: HistoryStep = { step: ++this.seq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation, ...(e.reasoning !== undefined ? { reasoning: e.reasoning } : {}), ...(e.thinkSeconds !== undefined ? { thinkSeconds: e.thinkSeconds } : {}) };
+      const step: HistoryStep = { step: ++this.seq, ...(e.action !== undefined ? { action: e.action } : {}), observation: e.observation, ...(e.images !== undefined ? { images: e.images } : {}), ...(e.reasoning !== undefined ? { reasoning: e.reasoning } : {}), ...(e.thinkSeconds !== undefined ? { thinkSeconds: e.thinkSeconds } : {}) };
       this.chain.push(step);
       pushed.push(step);
     }

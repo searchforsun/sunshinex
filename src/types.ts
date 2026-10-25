@@ -30,9 +30,17 @@ export interface ToolCallSpec {
  *  OpenAI 本尊无此字段） */
 export type ChatMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; images?: string[] }
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[]; reasoning?: string }
   | { role: 'tool'; content: string; toolCallId: string };
+
+/** 用户穿插行（GUI/TUI 提交与等待队列共载形）：text 正文；images 随行图片附件。
+ *  图片一律 dataURL 形态（`data:image/<fmt>;base64,<b64>`，上限 8 张）——自 HTTP 提交面起原样贯穿
+ *  转录条目/链 task 行/wire image_url 块，任何一层不再二次转码 */
+export interface SteerLine {
+  text: string;
+  images?: string[];
+}
 
 /** function calling 的 tools 字段下发形态（注册表 parameters 逐工具映射） */
 export interface ChatTool {
@@ -279,6 +287,8 @@ export interface SessionEvent {
   type: SessionEventType;
   /** token/reasoning 增量文本 / step 动作摘要 / error 原因 */
   text?: string;
+  /** user 事件随行图片附件（dataURL 形态，≤8 张）：转录 user 条原样承载（快照/回放/链行全链贯通） */
+  images?: string[];
   /** 结构化载荷：tool 名与输入摘要、RouteDecision、done 统计等 */
   payload?: Record<string, unknown>;
   ts: number;
@@ -455,6 +465,9 @@ export interface HistoryStep {
   step: number;
   action?: ChainAction;
   observation: string;
+  /** 该行随行图片附件（用户任务行/穿插行；dataURL 形态）：buildMessages 按 task/plan 行透出为
+   *  image_url 内容块；随 journal chain 行整对象落档——restore 后旧轮图片同样回放 */
+  images?: string[];
   /** 该轮模型思考原文（思考模式端点的 reasoning_content）：工具调用续轮回传的载荷载体，
    *  挂在 phase 行（在场时）或批首 tool-call 行；buildMessages 仅当前任务轮透出（旧轮剥离防膨胀） */
   reasoning?: string;

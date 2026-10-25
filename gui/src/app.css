@@ -1410,6 +1410,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   padding: 3px 12px; font-size: 12px; line-height: 18px;
 }.ctx-pop-row .k { color: var(--fg-secondary); white-space: nowrap; }.ctx-pop-row .v { color: var(--fg); font-variant-numeric: tabular-nums; text-align: right; }
+/* 2026-10-26 用户裁定:「上下文组成」节标题退役,逐段改百分比条(圆环色阶同源) */
+.ctx-pop-part { padding: 0; }
+.ctx-pop-bar { margin: 0 12px 4px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 10%, transparent); overflow: hidden; }
+.ctx-pop-bar-fill { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.ctx-pop-bar-fill.lv1 { background: var(--warn); }
+.ctx-pop-bar-fill.lv2 { background: var(--err); }
 /* G14.21 构成明细:分组小标 + 逐段子行(半档字号,条数缀暗化) */.ctx-pop-sec {
   padding: 5px 12px 2px; font-size: 10px; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-tertiary);
@@ -2082,8 +2088,7 @@ input.sx-setting-input { width: 100%; }
 
 /* G14.215 工具聚合行:同类相邻已完成工具行 >1 折为聚合头(图标+计数文案+chevron),
    展开成员平级铺开(透明网格容器仅作高度动画,零视觉嵌套);ghost=归并渐收行 */
-.tool-group { display: flex; flex-direction: column; animation: tool-group-in var(--dur-relaxed) var(--ease-enter); }
-@keyframes tool-group-in { from { opacity: 0; transform: translateY(-4px); } }
+.tool-group { display: flex; flex-direction: column; } /* 2026-10-26 用户裁定:聚合行原地产生,去渐入动画(逐帧 translateY 撑动上方工具/思考行上下抖动) */
 .tool-group-head {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
   padding: 2px 8px; border-radius: var(--radius-sm); color: var(--fg-secondary);

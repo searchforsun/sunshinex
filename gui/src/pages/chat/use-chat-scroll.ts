@@ -58,6 +58,30 @@ useEffect(() => {
   return () => cancelAnimationFrame(raf);
 }, [seeding, entriesLen]);
 
+/** 2026-10-26 用户报障「贴地时打开思考/工具行,内容向下长看不见」:行展开是行组件本地 state
+ *  不触发本组件渲染,逐渲染归底收不到信号——行组件切换时派 sx-row-toggle,贴地态在此逐帧
+ *  钉底 450ms(覆盖 grid 0fr→1fr 过渡全程):展开内容即整体向上生长入视口(=内容上移);
+ *  非贴底(用户已上翻)不接管,展开向下生长不动视口 */
+useEffect(() => {
+  let raf = 0;
+  const onToggle = (): void => {
+    if (!chatStickRef.current) return;
+    cancelAnimationFrame(raf);
+    const t0 = Date.now();
+    const step = (): void => {
+      const el = chatScrollRef.current;
+      if (el !== null) el.scrollTop = el.scrollHeight;
+      if (Date.now() - t0 < 450) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  };
+  window.addEventListener('sx-row-toggle', onToggle);
+  return () => {
+    window.removeEventListener('sx-row-toggle', onToggle);
+    cancelAnimationFrame(raf);
+  };
+}, []);
+
 /** G14.2xx mermaid 异步撑高补归底:图渲染落定是 Mermaid 组件内 state,不触发本组件重渲染,
  *  上方逐渲染归底收不到信号——监听落定广播,贴底态 rAF 合并补归底(进场多图连发只归一次) */
 useEffect(() => {

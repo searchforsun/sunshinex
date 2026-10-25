@@ -130,7 +130,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [archiveKey, chatMem]);
 
 
-  const [input, setInput] = useState('');
+  /** 2026-10-26 用户裁定:输入草稿按会话持久化(localStorage 键=journalId 优先同滚动存档口径)——
+   *  切会话/重启回来都能恢复未发送文本;发送置空即清档。Chat 以 key={sessionId} 挂载,会话隔离=键隔离 */
+  const [input, setInput] = useState<string>(() => {
+    try {
+      return localStorage.getItem(`sx-draft:${archiveKey}`) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(`sx-draft:${archiveKey}`, input);
+    } catch {
+      // 隐私模式等写失败静默:草稿是尽力而为的会话便利,不入错误面
+    }
+  }, [input, archiveKey]);
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新);缺省 full-access(serve 缺省档) */
   const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
