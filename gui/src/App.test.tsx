@@ -1675,6 +1675,25 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined(); // 快照回填的权威板
     unmount();
   });
+
+  it('P1 Task 8 串写竞态:切换后陈会话节流帧不入新会话板(队列项带会话标签,flush 丢陈)', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    openTasksTab();
+    fire(conn, taskCreated('t1', 'Demo')); // s1 live 帧入尾随窗(未落投影)
+    // 同窗内切换到 s2 后再投 s2 帧(在途 timer 覆盖两帧,drain 同拍):陈会话帧必须被弃(D34 串态收口)
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
+    await screen.findByLabelText('welcome');
+    conn.nextSessionId = 's2';
+    await clickSessionRow();
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false)); // 播种窗关(快照落定)——窗内帧走缓冲不入队
+    openTasksTab(); // 页签集会话私有:s2 侧重开任务板(否则投影落板也不可见)
+    act(() => conn.opts.onEvent('s2', taskCreated('t2', 'B-only'), 5)); // s2 帧共窗
+    await waitFor(() => expect(screen.getByRole('button', { name: 't2 [pending] B-only' })).toBeDefined()); // 窗尾 drain:s2 帧落板
+    expect(screen.queryByRole('button', { name: 't1 [pending] Demo' })).toBeNull(); // 陈会话 t1 不串写 s2 板
+    unmount();
+  });
 });
 
 describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放(G5 交接 b——丢一帧增量根修)', () => {

@@ -16,9 +16,9 @@ export const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(),
  *  每 100ms 一次 setState */
 const LIVE_THROTTLE_MS = 100;
 
-/** 活帧节流队列对(板/委派投影 + 子智能体桶折叠) */
+/** 活帧节流队列对(板/委派投影 + 子智能体桶折叠);板队项带会话标签——flush 时按当前会话过滤 */
 interface LiveThrottles {
-  board: ReturnType<typeof createTrailingQueue<SessionEvent>>;
+  board: ReturnType<typeof createTrailingQueue<{ sessionId: string; e: SessionEvent }>>;
   acts: ReturnType<typeof createTrailingQueue<{ sessionId: string; fold: (a: AgentActivities) => AgentActivities }>>;
 }
 
@@ -59,10 +59,14 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
   const throttleRef = useRef<LiveThrottles | null>(null);
   if (throttleRef.current === null) {
     throttleRef.current = {
-      board: createTrailingQueue<SessionEvent>((events) => {
+      board: createTrailingQueue<{ sessionId: string; e: SessionEvent }>((items) => {
         deps.setProjection((p) => {
           let { board, delegations } = p;
-          for (const e of events) {
+          for (const it of items) {
+            // 终审 Important 修:切换后窗尾 drain 的陈会话事件弃用——切会话不清队,无标签则 A 的事件
+            // 套进 B 的板(D34 串态收口破口);按 flush 时当前会话过滤,陈帧丢弃(权威态重播种自愈)
+            if (it.sessionId !== deps.sessionRef.current) continue;
+            const e = it.e;
             if (e.type.startsWith('delegation-')) delegations = applyDelegation(delegations, e);
             else board = applyBoardEvent(board, boardEventFrom(e));
           }
@@ -97,13 +101,13 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
-          else throttles.board.push(e); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)
+          else throttles.board.push({ sessionId, e }); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)
           return;
         }
         if (e.type.startsWith('delegation-')) {
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else {
-            throttles.board.push(e);
+            throttles.board.push({ sessionId, e });
             // G8d:delegation 起止无 subagent 标签——payload.label 命中既有卡才改状态(Runner 权威
             // 终语:ended failed → error·done → done;未建卡原引用返回,React 同引用即免重渲染)
             throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
