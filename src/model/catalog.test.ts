@@ -109,6 +109,12 @@ test('切换后调用走新内芯（持有者引用不变即生效——外壳�
 });
 
 test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 装配级全局缺省）+ 窗口/密钥槽同源', () => {
+  // 密钥槽隔离：specific 未设回退主槽 SUNSHINEX_API_KEY——开发者 shell 常年带着真实主槽,断言即被污染
+  const prevMain = process.env.SUNSHINEX_API_KEY;
+  const prevX = process.env.SUNSHINEX_API_KEY_X;
+  delete process.env.SUNSHINEX_API_KEY;
+  delete process.env.SUNSHINEX_API_KEY_X;
+  try {
   const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X' } as const;
   assert.deepEqual(
     choiceAdapterConfig({ ...base, reasoningEffort: 'low' }, { reasoningEffort: 'high' }),
@@ -126,6 +132,10 @@ test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 
     '两级均未配置 = cfg 零穿参（适配器构造期回退 SUNSHINEX_REASONING_EFFORT）',
   );
   assert.equal(choiceAdapterConfig({ ...base, contextWindow: 128000 }, {}).contextWindow, 128000, '窗口透传');
+  } finally {
+    if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;else process.env.SUNSHINEX_API_KEY = prevMain;
+    if (prevX === undefined) delete process.env.SUNSHINEX_API_KEY_X;else process.env.SUNSHINEX_API_KEY_X = prevX;
+  }
 });
 
 // ── D26 尾巴（2026-10-04）：/model 切换路径接超时旋钮（buildAdapter 装配期经 modelTimeoutMsEnv

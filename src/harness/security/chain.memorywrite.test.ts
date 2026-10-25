@@ -192,9 +192,11 @@ test('数据目录回退 <root>/.data（HOME 不可写）→ 记忆写仍受总�
   const prevAutoMemory = process.env.SUNSHINEX_AUTO_MEMORY;
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
     delete process.env.SUNSHINEX_AUTO_MEMORY;
+    delete process.env.SUNSHINEX_PROJECTS_DIR; // 机器级 projects 根覆盖=权威不回退,前提断言即被污染——钉槽去机器相关
     process.env.HOME = blocked;
     process.env.USERPROFILE = blocked;
 
@@ -224,6 +226,7 @@ test('数据目录回退 <root>/.data（HOME 不可写）→ 记忆写仍受总�
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevDataDir;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
     if (prevAutoMemory === undefined) delete process.env.SUNSHINEX_AUTO_MEMORY;
     else process.env.SUNSHINEX_AUTO_MEMORY = prevAutoMemory;
     if (prevHome === undefined) delete process.env.HOME;

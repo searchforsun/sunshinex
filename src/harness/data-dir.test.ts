@@ -13,8 +13,10 @@ test('Harness：运行时数据落 ~/.sunshinex/projects/<工作区>/data，工�
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevOvr = process.env.SUNSHINEX_DATA_DIR;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
+    delete process.env.SUNSHINEX_PROJECTS_DIR; // 机器级 projects 根覆盖优先——钉槽去机器相关(同 config/data-dir.test 首测)
     process.env.HOME = fakeHome;
     process.env.USERPROFILE = fakeHome;
     const h = new Harness({ root, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
@@ -30,6 +32,7 @@ test('Harness：运行时数据落 ~/.sunshinex/projects/<工作区>/data，工�
     if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(fakeHome, { recursive: true, force: true });
   }

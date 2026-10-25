@@ -43,8 +43,10 @@ test('resolveDataDir：HOME 可写时落 ~/.sunshinex/projects/<slug>/data，按
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevOvr = process.env.SUNSHINEX_DATA_DIR;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   try {
     delete process.env.SUNSHINEX_DATA_DIR;
+    delete process.env.SUNSHINEX_PROJECTS_DIR; // 机器级 projects 根覆盖优先于 HOME 推导——测试钉槽去机器相关
     process.env.HOME = fakeHome;
     process.env.USERPROFILE = fakeHome;
     const dirA = resolveDataDir(rootA);
@@ -58,6 +60,7 @@ test('resolveDataDir：HOME 可写时落 ~/.sunshinex/projects/<slug>/data，按
     if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOvr === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevOvr;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
     fs.rmSync(rootA, { recursive: true, force: true });
     fs.rmSync(rootB, { recursive: true, force: true });
     fs.rmSync(fakeHome, { recursive: true, force: true });
