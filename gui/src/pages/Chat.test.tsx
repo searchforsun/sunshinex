@@ -91,6 +91,34 @@ function mountChat(messages: Seed[]): void {
 async function flushed(): Promise<void> {
   await act(async () => {});
 }
+/** rAF 可控 stub:记录调度数、回调入队手动 flush——归底 rAF 化(Task 4)后 jsdom 帧永不自走,
+ *  断言赋值时机须显式排水;cancel 记入丢弃集供断言。restore() 还原原实现 */
+function installRafStub(): { count: () => number; drain: () => void; cancelled: () => number; restore: () => void } {
+  const origRaf = globalThis.requestAnimationFrame;
+  const origCaf = globalThis.cancelAnimationFrame;
+  const queue: Array<() => void> = [];
+  let scheduled = 0;
+  let cancelledCount = 0;
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    scheduled += 1;
+    queue.push(() => cb(0));
+    return scheduled;
+  }) as typeof requestAnimationFrame;
+  globalThis.cancelAnimationFrame = (() => {
+    cancelledCount += 1;
+  }) as typeof cancelAnimationFrame;
+  return {
+    count: () => scheduled,
+    cancelled: () => cancelledCount,
+    drain: () => {
+      while (queue.length > 0) (queue.shift() as () => void)();
+    },
+    restore: () => {
+      globalThis.requestAnimationFrame = origRaf;
+      globalThis.cancelAnimationFrame = origCaf;
+    },
+  };
+}
 /** 投递本会话帧(seq 恒 1——页面不过滤 seq,连接层职责) */
 function fire(e: SessionEvent): void {
   act(() => sinkRef.current!.on(e, 1));
@@ -875,6 +903,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
     Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
     Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 2000 });
+    const raf = installRafStub(); // 归底 rAF 化后赋值在帧回调——排水确定性触发,不靠 jsdom 帧时钟
     try {
       mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
       await flushed();
@@ -883,14 +912,46 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       el.scrollTop = 1450;
       fire({ type: 'token', text: '答1', ts: Date.now() });
       await flushed();
+      raf.drain();
       expect(el.scrollTop).toBe(2000);
-      // 滚轮上翻意图:立即放手——后续流式重渲不再拉回(scrollTop 保持用户位置)
+      // 滚轮上翻意图:立即放手——后续流式重渲不再拉回(scrollTop 保持用户位置);
+      // 在途回调 flush 时重核 stick,放手即弃
       el.scrollTop = 1450;
       fireEvent.wheel(el, { deltaY: -100 });
       fire({ type: 'token', text: '答2', ts: Date.now() });
       await flushed();
+      raf.drain();
       expect(el.scrollTop).toBe(1450);
     } finally {
+      raf.restore();
+      delete proto.clientHeight;
+      delete proto.scrollHeight;
+    }
+  });
+
+  it('G14.2xx 贴底归底收进 rAF:同帧多次渲染只调度一次,flush 前不赋值', async () => {
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 2000 });
+    const raf = installRafStub();
+    try {
+      mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
+      await flushed();
+      const el = document.querySelector('.chat') as HTMLElement;
+      // 同帧三次渲染(三次 act,均先于帧回调排水):在途守卫令调度恒 1 次
+      fire({ type: 'token', text: '一', ts: Date.now() });
+      await flushed();
+      fire({ type: 'token', text: '二', ts: Date.now() });
+      await flushed();
+      fire({ type: 'token', text: '三', ts: Date.now() });
+      await flushed();
+      expect(raf.count()).toBe(1);
+      // flush 前不赋值(同步归底已退役)——贴底态高度读取推迟到动画帧
+      expect(el.scrollTop).toBe(0);
+      raf.drain();
+      expect(el.scrollTop).toBe(2000);
+    } finally {
+      raf.restore();
       delete proto.clientHeight;
       delete proto.scrollHeight;
     }

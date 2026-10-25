@@ -12,14 +12,28 @@ export function useChatScroll(deps: {
   readonly entriesLen: number;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
   const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen } = deps;
+  /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
+   *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
+  const bottomRafRef = useRef<number | null>(null);
 /** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;上翻 >80px 放手,
  *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护;上翻 80px 窗口
- *  内的滚轮失效由 Chat 的 wheel 意图直判兜住(渲染期归底赋值与用户滚动的竞争单点在 stick ref) */
+ *  内的滚轮失效由 Chat 的 wheel 意图直判兜住(渲染期归底赋值与用户滚动的竞争单点在 stick ref)。
+ *  P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop 赋值收进动画帧——同帧多渲染调度一次,
+ *  消灭逐渲染强制 reflow(布局读取与写入各至多每帧一次);回调内重核 stick,放手即弃 */
 useEffect(() => {
-  const el = chatScrollRef.current;
-  // 聚合头锚定窗口（ToolGroups dataset 旗）内挂起贴底回钉——折叠/展开期间头钮逐帧自钉视口位
-  if (el !== null && chatStickRef.current && el.dataset.groupAnchor !== '1') el.scrollTop = el.scrollHeight;
+  if (bottomRafRef.current !== null) return;
+  bottomRafRef.current = requestAnimationFrame(() => {
+    bottomRafRef.current = null;
+    const el = chatScrollRef.current;
+    // 聚合头锚定窗口（ToolGroups dataset 旗）内挂起贴底回钉——折叠/展开期间头钮逐帧自钉视口位
+    if (el !== null && chatStickRef.current && el.dataset.groupAnchor !== '1') el.scrollTop = el.scrollHeight;
+  });
 });
+// 卸载收尾:取消在途回调(挂载期一次性 cleanup;每渲染 cleanup 会在渲染间隙取消在途调度,
+// 使在途守卫失效退回逐渲染调度——与 Produces 目标相悖,故不随渲染 effect 返回)
+useEffect(() => () => {
+  if (bottomRafRef.current !== null) cancelAnimationFrame(bottomRafRef.current);
+}, []);
 
 /** G14.212/G14.213 存档位恢复:种子落定(非 seeding 且条目非空)后 rAF 收敛滚动到存档距底位。
  *  内容尚不足高(mermaid/代码高亮等懒渲染还在撑)不硬落——clamp 会错落到顶;逐帧等到位再落,
