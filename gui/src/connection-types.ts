@@ -334,7 +334,8 @@ export interface SkillsGroup {
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
 /** WS 下行帧：`{kind:'event', sessionId, seq, e}`（T1 会话维）；G4 挂起/reset 帧无 seq 不入单调
- *  序列（approval/ask 带 pid+req，reset 只挂 sessionId）；其余 kind（hello 等）/无 seq/
+ *  序列（approval/ask 带 pid+req，reset 只挂 sessionId）；P1 Task 7 batch 合帧（`?batch=1` 声明面，
+ *  对齐 serve WsBatchFrame 线格式）内嵌事件帧数组序保持；其余 kind（hello 等）/无 seq/
  *  无 sessionId 帧不入单调序列，忽略 */
 export interface WsFrame {
   kind: string;
@@ -343,6 +344,7 @@ export interface WsFrame {
   e?: SessionEvent;
   pid?: string;
   req?: unknown;
+  frames?: Array<{ kind: string; sessionId?: string; seq?: number; e?: SessionEvent }>;
 }
 
 export interface ConnectionOpts {

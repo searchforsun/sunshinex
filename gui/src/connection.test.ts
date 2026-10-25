@@ -51,6 +51,10 @@ class WsStub {
   recvPlanApproval(sessionId: string, pid: string, req: unknown): void {
     this.onmessage?.({ data: JSON.stringify({ kind: 'plan-approval', sessionId, pid, req }) });
   }
+  /** P1 Task 7 batch 合帧(对齐 daemon WsBatchFrame 线格式:内嵌事件帧数组,序保持) */
+  recvBatch(frames: Array<{ sessionId: string; seq: number; e: SessionEvent }>): void {
+    this.onmessage?.({ data: JSON.stringify({ kind: 'batch', frames: frames.map((f) => ({ kind: 'event', ...f })) }) });
+  }
   /** G4 reset 通知帧(只挂 kind+sessionId,无 seq/pid) */
   recvReset(sessionId: string): void {
     this.onmessage?.({ data: JSON.stringify({ kind: 'reset', sessionId }) });
@@ -144,7 +148,7 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     });
     expect(conn.state()).toBe('connecting');
     const ws = last();
-    expect(ws.url).toBe('ws://127.0.0.1:7788/events');
+    expect(ws.url).toBe('ws://127.0.0.1:7788/events?batch=1');
     expect(ws.protocols).toEqual(['bearer.tok-1']);
     // 建立:先 onReset(上层清投影)再进 open 态;建立后帧即投(无快照等待窗)
     ws.openNow();
@@ -757,5 +761,36 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     // 非 2xx 透传既有惯例:running 归档 409 → 错误消息含路径与 status
     fetchQueue.push(errResp(409));
     await expect(conn.archiveSession('s1', true)).rejects.toThrow('/session/s1/archive -> 409');
+  });
+
+  // P1 Task 7:batch 合帧解包(transport 对上层回调面零变化——onEvent 逐帧,单调 seq 过滤复用 deliver)
+  it('⑨ batch 帧:内嵌事件逐帧过 deliver 且单调 seq 过滤生效;批次序保持;URL 声明 batch=1', async () => {
+    const got: Array<[string, number]> = [];
+    conn = createConnection({
+      baseUrl: 'http://127.0.0.1:7788/',
+      onEvent: (sessionId, _e, seq) => got.push([sessionId, seq]),
+      onReset: () => {},
+      backoffBaseMs: 1,
+    });
+    const ws = last();
+    // wsUrl 声明合帧能力(daemon 据此分路;老 URL 语义不变)
+    expect(ws.url).toBe('ws://127.0.0.1:7788/events?batch=1');
+    ws.openNow();
+    // 同批内 [1,2,1]:1/2 投,重复 1 丢(单调过滤复用);批次序保持
+    ws.recvBatch([
+      { sessionId: 's1', seq: 1, e: ev('token', 1) },
+      { sessionId: 's2', seq: 2, e: ev('token', 2) },
+      { sessionId: 's1', seq: 1, e: ev('token', 3) },
+    ]);
+    expect(got).toEqual([['s1', 1], ['s2', 2]]);
+    // 批后基线前进:续批 [1(丢,s1 基线等值),3(投)] 同会话单调
+    ws.recvBatch([
+      { sessionId: 's1', seq: 1, e: ev('token', 4) },
+      { sessionId: 's1', seq: 3, e: ev('token', 5) },
+    ]);
+    expect(got).toEqual([['s1', 1], ['s2', 2], ['s1', 3]]);
+    // 坏形态防御:内嵌非 event 形态帧跳过,不投不炸
+    ws.onmessage?.({ data: JSON.stringify({ kind: 'batch', frames: [{ kind: 'hello' }, { kind: 'event', sessionId: 's1', seq: 9, e: ev('done', 6) }] }) });
+    expect(got).toEqual([['s1', 1], ['s2', 2], ['s1', 3], ['s1', 9]]);
   });
 });

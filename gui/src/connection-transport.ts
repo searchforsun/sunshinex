@@ -37,7 +37,9 @@ export const DEFAULT_BACKOFF_BASE_MS = 1_000;
 
 function wsUrl(baseUrl: string): string {
   let url = baseUrl.replace(/\/+$/, '');
-  return `${toWsUrl(url)}/events`;
+  // P1 Task 7:?batch=1 声明合帧能力(daemon 据此分路——事件帧 30ms 窗打包,挂起帧直发;
+  // 老客户端不带此参行为逐字节不变)
+  return `${toWsUrl(url)}/events?batch=1`;
 }
 
 export function createConnectionTransport(base: string, token: string | undefined, backoffBaseMs: number, cb: TransportCallbacks): ConnectionTransport {
@@ -77,6 +79,21 @@ function deliverPending(sessionId: string, pid: string, req: unknown, kind: 'app
   if (kind === 'approval') cb.onApproval?.(sessionId, pid, req as GuiApprovalReq);
   else if (kind === 'ask') cb.onAsk?.(sessionId, pid, req as GuiAskReq);
   else cb.onPlanApproval?.(sessionId, pid, req as GuiPlanApprovalReq);
+}
+
+/** 事件/挂起帧处理单点（P1 Task 7 自 onmessage 抽出——batch 解包循环逐帧复用同一条通道）：
+ *  挂起帧 pid 去重回调；事件帧过 deliver 单调 seq 过滤；其余形态忽略 */
+function handleEventFrame(frame: WsFrame): void {
+  // G4 审批/问询挂起帧 + 阶段三 plan-approval 挂起帧：无 seq——pid 去重后回调（寻址键=帧顶层 pid）
+  if (frame.kind === 'approval' || frame.kind === 'ask' || frame.kind === 'plan-approval') {
+    if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
+    if (typeof frame.pid !== 'string' || frame.pid.length === 0) return;
+    deliverPending(frame.sessionId, frame.pid, frame.req, frame.kind);
+    return;
+  }
+  if (frame.kind !== 'event' || typeof frame.seq !== 'number' || !frame.e) return;
+  if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
+  deliver(frame.sessionId, frame.seq, frame.e);
 }
 
 function detach(sock: WebSocket): void {
@@ -136,16 +153,14 @@ function connect(): void {
       if (typeof frame.sessionId === 'string' && frame.sessionId.length > 0) cb.onResetSession?.(frame.sessionId);
       return;
     }
-    // G4 审批/问询挂起帧 + 阶段三 plan-approval 挂起帧：无 seq——pid 去重后回调（寻址键=帧顶层 pid）
-    if (frame.kind === 'approval' || frame.kind === 'ask' || frame.kind === 'plan-approval') {
-      if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
-      if (typeof frame.pid !== 'string' || frame.pid.length === 0) return;
-      deliverPending(frame.sessionId, frame.pid, frame.req, frame.kind);
+    // P1 Task 7 batch 合帧解包：内嵌事件帧逐帧过同一条 deliver 通道（单调 seq 过滤/pid 去重语义
+    // 不变），对上层回调面零变化；坏内嵌形态跳过。同步循环多次 setState 由 React 18 自动批处理
+    // 合并单次渲染，无需额外微任务缓冲
+    if (frame.kind === 'batch' && Array.isArray(frame.frames)) {
+      for (const f of frame.frames) handleEventFrame(f);
       return;
     }
-    if (frame.kind !== 'event' || typeof frame.seq !== 'number' || !frame.e) return;
-    if (typeof frame.sessionId !== 'string' || frame.sessionId.length === 0) return;
-    deliver(frame.sessionId, frame.seq, frame.e);
+    handleEventFrame(frame);
   };
   sock.onclose = () => onLost(sock, gen);
   sock.onerror = () => onLost(sock, gen);

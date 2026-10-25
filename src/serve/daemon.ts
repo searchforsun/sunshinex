@@ -493,10 +493,14 @@ export class GuiDaemon {
       // 水合(会话打开/重连时 GUI 拉取),本面只放实时与主链补发窗
       for (const f of session.bufferedFrames()) {
         if (isShadowEvent(f.e)) continue;
-        this.deliverTo(ws, f); // batch 客户端经合帧窗(重连补发即成批,≤30ms),老客户端逐帧
+        this.deliverTo(ws, f); // batch 客户端经合帧窗(重连补发即成批),老客户端逐帧
       }
       for (const frame of session.pendingFrames()) this.deliverTo(ws, frame); // 挂起重发(P6 §4:表在会话)
     }
+    // batch 客户端连接期补发即时收口：补发帧与老客户端同拍抵达(先于/同拍 open)——若留在 30ms 窗,
+    // 补发将晚于上层 snapshot 水合(基线已抬高)到达,被客户端单调 seq 过滤丢弃(重连丢帧——e2e T4δ
+    // 实证)。成批语义保持(整段补发单 batch 帧),30ms 窗只作用于实时泵帧
+    this.flushBatch(ws);
   }
 
   /** 连接退场清理：合帧窗在途定时器先收（防 flush 触已死连接），再摘 Map 项（close 面单点） */

@@ -346,8 +346,13 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       await new Promise((r) => setTimeout(r, 150)); // 收起态落定再展开(jsdom 同拍双击会命中旧闭包 handler)
       fireEvent.click(await findGroupByRoot(env.root));
       const groupList = await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 });
-      const rows = [...groupList.querySelectorAll('[data-session-row]')];
-      await waitFor(() => expect(rows.length).toBeGreaterThanOrEqual(2), { timeout: 5_000 }); // s1 播种档 + s2 新建档(T2 即挂)
+      // P1 Task 7:活查询轮询(冻结快照数组观察不到 sessionsOf 重拉——30ms 合帧扰动暴露的
+      // 测试固有竞态;断言语义不变:列表最终收齐 s1 播种档 + s2 新建档)
+      await waitFor(
+        () => expect(screen.getByRole('list', { name: 'sessions' }).querySelectorAll('[data-session-row]').length).toBeGreaterThanOrEqual(2),
+        { timeout: 5_000 },
+      ); // s1 播种档 + s2 新建档(T2 即挂)
+      const rows = [...screen.getByRole('list', { name: 'sessions' }).querySelectorAll('[data-session-row]')];
       // G8f:journal id 在摘要 title——定位走 summary title
       const s1Row = rows.find(
         (r) => r.querySelector('.session-summary')?.getAttribute('data-id')?.includes(s1Journal),
