@@ -1443,6 +1443,9 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
     let unmount: (() => void) | undefined;
     try {
       d1 = await boot();
+      // 语言槽让位:startDaemon 钉 en(防机器泄漏)与设置重构轮的 envOverride 禁编相克——env 覆盖行
+      // Select 恒 disabled,本场景主题即改 language,摘槽后行回 project 来源可编;env.stop() 恢复
+      delete process.env.SUNSHINEX_LANGUAGE;
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${d1.port}`);
       unmount = render(createElement(App)).unmount;
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之

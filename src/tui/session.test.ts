@@ -320,6 +320,10 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
 
 test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 + modelId 落档），Esc 取消零变化；default 清除回主模型', async () => {
   const tmp = tmpdir('sunshinex-sess-modelsw-');
+  // 窗口槽隔离：settings 装载链会把全局 settings 的 contextWindow 写进 env 槽（槽=运行时载体），
+  // 用户机器全局配置带窗口时本断言（无窗口声明模型 modelWindow 不落）即被污染——测试钉槽
+  const prevCtx = process.env.SUNSHINEX_CONTEXT_WINDOW;
+  delete process.env.SUNSHINEX_CONTEXT_WINDOW;
   try {
     const harness = new Harness({ root: tmp, mode: 'full-access' });
     const base: RunOutcome = { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
@@ -368,6 +372,7 @@ test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 
     assert.equal(ctrl.getState().modelId, undefined, 'modelId 清除');
     assert.equal(ctrl.getState().modelWindow, undefined, 'modelWindow 一并清除');
   } finally {
+    if (prevCtx === undefined) delete process.env.SUNSHINEX_CONTEXT_WINDOW;else process.env.SUNSHINEX_CONTEXT_WINDOW = prevCtx;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
