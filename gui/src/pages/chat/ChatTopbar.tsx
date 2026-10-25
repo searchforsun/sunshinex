@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { MoreHorizontal, PanelLeft } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
+import type { NavControls } from '../../nav-history';
+import { NavButtons } from '../../NavButtons';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
 import { loadSeenMap, persistSeenMap, stampSeen } from '../../sidebar/project-menu-util';
 
@@ -101,10 +103,12 @@ export interface ChatTopbarProps {
   /** 2026-10-24 用户裁定:[|] 切换钮=菜单关闭态显示在会话名左(呼出);菜单开着时收起钮在菜单头右上(不双显) */
   readonly menuClosed?: boolean;
   readonly onToggleMenu?: () => void;
+  /** 2026-10-25 应用级导航(前进/后退)控制面(App 壳持历史);缺场不渲染钮对(旁路 Chat 免配) */
+  readonly nav?: NavControls;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, tokens, steps, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -218,6 +222,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   ];
   return (
     <header className="chat-topbar">
+        {/* 2026-10-25 应用级导航(前进/后退):最左(菜单呼出钮/会话名之前)——跨会话回跳主入口 */}
+        {nav !== undefined && <NavButtons nav={nav} />}
         {/* 2026-10-24 用户裁定(二轮修正):[|] 仅菜单关闭态显示在会话名左(呼出);菜单开着时收起钮
             在菜单头右上,不双显。会话名不点击改名(⋯ 菜单→弹窗),长度随主栏 flex 收放 */}
         {menuClosed === true && (

@@ -115,8 +115,10 @@
    钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
 .sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 96; width: var(--menu-w); padding-top: 0; /* 2026-10-24 用户裁定:抽屉头与窗控簇同高对齐(旧 G10-C13 padding-top:8 下移 8.8 视觉) */ max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */
 .sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
-/* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏) */
-.sx-menu-reopen { position: absolute; top: 10px; left: 10px; z-index: 50; }
+/* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏)。2026-10-25 前进/后退:
+   呼出钮入浮出簇(导航钮对+呼出同排),定位由簇容器承载;z50 盖 welcome 页 dragrail */
+.sx-welcome-nav { position: absolute; top: 10px; left: 10px; z-index: 50; display: flex; align-items: center; gap: 4px; }
+.sx-navbtns { display: flex; align-items: center; gap: 2px; }
 /* 顶栏 [|](菜单切换)与右侧窗控同款 26px;左缘镜像 right:8(顶栏 padding 12 → 负 margin 4) */
 .chat-topbar > .sx-menu-toggle { width: 26px; height: 26px; margin-left: -4px; }
 /* 菜单头拖拽条:brand 与收起钮之间空白区承担窗拖拽(抽屉打开顶部可拖动应用);与按钮不相交 */
@@ -2215,7 +2217,7 @@ input.sx-setting-input { width: 100%; }
    且欢迎页无 TabStrip/ChatTopbar 整窗零把手;2ea1eac 恢复抽屉态顶栏 drag 复吸窗控。
    对策=drag 只声明在「与一切按钮几何互斥的空白带」上,容器一律 no-drag——无孔可挖,
    zoom 错位至多平移空白带边缘,咬不到任何按钮:
-   ① sx-dragrail 欢迎页/连接页顶部整条(left+44 避呼出钮,right:148 避窗控簇=118+30 安全边);
+   ① sx-dragrail 欢迎页/连接页顶部整条(left+104 避左上浮出簇=后退/前进钮对+呼出钮,right:148 避窗控簇=118+30 安全边);
    ② sx-topbar-drag 顶栏空白带(左聚布局钮全在带左,带吸右侧余量;抽屉态把手=其未被浮层
      盖住的可见部分);③ sx-menu-head-drag 菜单头空隙带(品牌字与收起钮之间,两侧 margin 避让) */
 .sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; } /* 头内按钮安全兜底;拖拽由头内空白带承担 */
@@ -2223,13 +2225,15 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: no-drag; } /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
 .sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; padding-right: 150px; } /* 撤容器 drag(挖孔式,zoom 下吞窗控);padding 右留窗控簇位 */
 .sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 44px); right: 148px; z-index: 1; -webkit-app-region: drag; }
+/* left+104 避让菜单关闭态左上浮出簇(2026-10-25:后退/前进钮对+呼出钮,簇宽 10+84=94)—
+   drag 矩形与一切按钮几何互斥不变,zoom 错位平移仍咬不到钮 */
+.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: 148px; z-index: 1; -webkit-app-region: drag; }
 .sx-shell.sx-desktop.sx-menu-float .sx-dragrail { left: calc(var(--menu-w, 240px) + 12px); } /* 抽屉态让位浮层(width:--menu-w z96),拖拽走顶栏空白带可见部 */
 .sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; margin-left: 24px; -webkit-app-region: drag; } /* margin-left=zoom 位图错位安全边(带左紧邻 ChatDynButtons) */
 .sx-shell.sx-desktop .sx-menu-head-drag { flex: 1; align-self: stretch; margin: 0 24px 0 16px; -webkit-app-region: drag; } /* 右 24 避收起钮;左 16 避品牌字——右单侧,钮仍贴右缘 */
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
-.entry .entry-stream-tail { margin: 0; padding: 0; background: transparent; border: none; border-radius: 0; font: inherit; color: inherit; white-space: pre-wrap; }
+/* 2026-10-25 尾块恒进解析器(上层统一裁定:实时渲染不枚举结构前缀),纯文本直出分支退役——本条 <pre> 回零规则随之删除 */
 /* ===== 2026-10-23 用户裁定:自绘窗控簇(撤 WCO 方块)——[|] 侧栏开关 + − □ ×,
    sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; -webkit-app-region: no-drag; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖)——2026-10-23 [|] 入簇:簇=|+−□× 四钮

@@ -3,6 +3,7 @@ import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, GuiPlanApp
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { TaskBoardState } from '../../projection';
 import type { TodoBatch } from './ToolEntry';
+import type { NavControls } from '../../nav-history';
 
 /** Chat 公开类型面(D32 第六批批F-7c 自 Chat.tsx 平移):ChatSink/ChatProps——
  *  Chat.tsx 原路径再导出(App/测试消费零迁移),宿主 type-import 回引。
@@ -91,6 +92,9 @@ export interface ChatProps {
   /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
    *  (每次重开经 newSession+attach 重新发号,s165→s167),按它存档永远失配;未配回落 sessionId */
   journalId?: string;
+  /** 2026-10-25 应用级导航(前进/后退)控制面:App 壳持历史,顶栏左聚钮对消费;可选防测试
+   *  桩/旁路 Chat(辅助对话页签)免配——缺场顶栏不渲染钮对 */
+  nav?: NavControls;
   /** G14.2xx b 转录内存缓存(App LRU 面):挂载命中即以缓存态直渲(快照播种落定无缝整替),
    *  卸载写回最新投影——切会话回来不再白屏等快照往返。缺省(测试桩/旁路面)不缓存 */
   chatMem?: { get(key: string): import('../../chat-reducer').ChatState | undefined; put(key: string, state: import('../../chat-reducer').ChatState): void };

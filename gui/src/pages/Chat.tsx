@@ -116,7 +116,7 @@ export const slashTokenAt = (text: string, caret: number): { query: string; from
   return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
 };
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -405,6 +405,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onSessionsMutated={onSessionsMutated}
         menuClosed={menuClosed}
         onToggleMenu={onToggleMenu}
+        nav={nav}
       />
 
       <MessageList

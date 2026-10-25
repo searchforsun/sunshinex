@@ -380,17 +380,12 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | nul
  *  比较恢复命中),组件内在场时自渲染 RunFooter;终审前传 ReactNode 每帧新建元素击穿 memo,长会话
  *  每 token 触发历史末条全文重解析 */
 /** 流式分域渲染(对齐 TUI 块缓冲口径,2026-10-22 用户报障「正文流式期间状态行向下抖动」):
- *  已完成块=整块 markdown(memo——头串稳定即跳过重解析),在途尾块=纯文本直出(块边界整块晋升)
- *  ——半截结构(未闭合围栏/半张表/断词换行)不进解析器,流式高度单调增,贴底/状态行无抖动;
- *  done 后整段 markdown 终渲染 */
-/** G14.2xx 在途尾块结构探测:首行带行结构标记(表格/列表/围栏/标题/引用)的尾块整块进解析器
- *  实时晋升——表格分隔行落定即现形、行到行显,代码围栏逐行生长;标记在块首即稳定,渲染模式
- *  无中途翻转。散文尾块保持纯文本直出(段落语义跨单换行,逐行进解析器会拆段,维持块边界晋升);
- *  尾块只含当前在途块,逐 token 重解析成本有界 */
-function tailIsStructured(tail: string): boolean {
-  return /^(\s*\||([-*+]|\d{1,9}[.)])\s|`{3,}|~{3,}|#{1,6}(\s|$)|>)/.exec(tail) !== null;
-}
-
+ *  已完成块=整块 markdown(memo——头串稳定即跳过重解析),在途尾块=markdown 实时渲染。
+ *  2026-10-25 用户裁定「实时渲染从上层统一定,穷尽不完」:结构前缀枚举(tailIsStructured)
+ *  退役——代码块/mermaid/引用行/任务清单/行内代码在围栏未闭合、分隔行未落定时即随 token
+ *  逐帧成形(未闭合围栏内代码逐行生长、表分隔行落定即成表、mermaid 半截按组件既有降级
+ *  回落原文);纯文本直出分支退役,散文/结构尾块同一解析器同一样式,done 后终渲染不变。
+ *  尾块只含当前在途块(最后空行以降),逐 token 重解析成本有界;晋升即并入 memo 头 */
 const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string; components: Components }): JSX.Element {
   if (md === '') return <></>;
   return (
@@ -408,7 +403,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   const isDir = useDirResolver();
   const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined), isDir), [onOpenFile, isDir]);
   const streaming = entry.streaming === true;
-  // 块缓冲切分:最后一个空行为界——前段=已完成块(整块 md),尾段=在途块(纯文本,剥首部换行防双空隙)
+  // 块缓冲切分:最后一个空行为界——前段=已完成块(整块 md,memo),尾段=在途块(markdown 实时渲染,剥首部换行防双空隙)
   let headMd = '';
   let tailMd = '';
   if (streaming && accent === null) {
@@ -428,18 +423,14 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
           {streaming ? (
             <>
               <MarkdownHead md={headMd} components={mdc} />
-              {tailMd !== '' &&
-                (tailIsStructured(tailMd) ? (
-                  <div className="entry-stream-tail-md">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>
-                      {tailMd}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <pre className="entry-stream-tail" style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+              {/* 在途尾块恒进解析器(2026-10-25 上层统一裁定:实时渲染不枚举结构前缀) */}
+              {tailMd !== '' && (
+                <div className="entry-stream-tail-md">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>
                     {tailMd}
-                  </pre>
-                ))}
+                  </ReactMarkdown>
+                </div>
+              )}
             </>
           ) : (
             <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>

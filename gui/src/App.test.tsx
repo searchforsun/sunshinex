@@ -555,6 +555,68 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
   });
 });
 
+describe('应用级导航历史:前进/后退(2026-10-25)', () => {
+  it('s1→New chat(welcome)→后退回 s1(零 attach 链——会话常驻直接重开)→前进回 welcome;两端禁用', async () => {
+    const { conn, unmount } = await enterChat();
+    const navBtn = (name: string): HTMLButtonElement => screen.getByRole('button', { name }) as HTMLButtonElement;
+    // s1 为历史起点:后退/前进皆到边界,双钮禁用
+    expect(navBtn('nav back').disabled).toBe(true);
+    expect(navBtn('nav forward').disabled).toBe(true);
+    // New chat → welcome(记 welcome 位);菜单仍开——收起菜单,浮出簇(导航钮对)显形
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
+    await screen.findByLabelText('welcome');
+    fireEvent.click(screen.getByRole('button', { name: 'collapse menu' }));
+    await waitFor(() => expect(document.querySelector('.sx-welcome-nav')).not.toBeNull());
+    expect(navBtn('nav back').disabled).toBe(false);
+    expect(navBtn('nav forward').disabled).toBe(true);
+    // 后退:回 s1——不经 newSession/attach(记录的 sessionId 仍常驻 daemon)
+    const attachBefore = conn.attachCalls.length;
+    const newSessionsBefore = conn.newSessionCalls.length;
+    fireEvent.click(navBtn('nav back'));
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
+    expect(conn.newSessionCalls.length).toBe(newSessionsBefore);
+    expect(conn.attachCalls.length).toBe(attachBefore);
+    expect(navBtn('nav back').disabled).toBe(true);
+    expect(navBtn('nav forward').disabled).toBe(false);
+    // 前进:回 welcome(菜单关闭态不左栏重开,纯壳层路由)
+    fireEvent.click(navBtn('nav forward'));
+    await screen.findByLabelText('welcome');
+    expect(navBtn('nav forward').disabled).toBe(true);
+    unmount();
+  });
+
+  it('跨两会话键盘回放(Alt+←/→):s1→welcome→s2 双双后退再前进;回放零 attach;越界按键 no-op', async () => {
+    const { conn, unmount } = mount();
+    openConn(conn);
+    fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
+    await clickSessionRow();
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
+    await screen.findByLabelText('welcome');
+    conn.nextSessionId = 's2';
+    await clickSessionRow();
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
+    // [s1, w, s2]:两步后退落 s1,两步前进回 s2——全经键盘,回放零新 attach
+    const keyNav = (key: 'ArrowLeft' | 'ArrowRight'): void => {
+      fireEvent.keyDown(window, { key, altKey: true });
+    };
+    keyNav('ArrowLeft');
+    await screen.findByLabelText('welcome');
+    keyNav('ArrowLeft');
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
+    keyNav('ArrowLeft'); // 越界 no-op
+    expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined();
+    keyNav('ArrowRight');
+    await screen.findByLabelText('welcome');
+    keyNav('ArrowRight');
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
+    keyNav('ArrowRight'); // 越界 no-op
+    expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined();
+    expect(conn.attachCalls).toEqual([['s1', 'j1'], ['s2', 'j1']]);
+    unmount();
+  });
+});
+
 
 /** G14.66:悬浮提示统一 data-tip——会话行经 [data-tip=打开会话] 定位 */
 async function clickSessionRow(): Promise<void> {
@@ -591,15 +653,15 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     unmount();
   });
 
-  it('token 流式:在途尾块纯文本直出(分域渲染);done 收段整段 markdown 终渲染', async () => {
+  it('token 流式:在途尾块 markdown 实时渲染(2026-10-25 裁定:实时渲染从上层统一定);done 收段终渲染不变', async () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('model-start'));
     fire(conn, ev('token', 'widget '));
     fire(conn, ev('token', '**done**'));
     const entry = document.querySelector('.entry-assistant');
-    expect(entry?.textContent).toBe('widget **done**'); // 在途尾块纯文本直出(半截块不进解析器,分域渲染)
-    expect(entry?.querySelector('strong')).toBeNull();
+    expect(entry?.textContent).toBe('widget done'); // 尾块恒进解析器:**done** 流中即粗体(实时渲染统一裁定)
+    expect(entry?.querySelector('strong')?.textContent).toBe('done');
     expect(document.querySelector('.entry-assistant.streaming')).not.toBeNull();
     fire(conn, ev('done', 'widget **done**')); // 终稿=已累积(流即原文 md)
     expect(document.querySelector('.entry-assistant.streaming')).toBeNull();
@@ -646,17 +708,17 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     expect(screen.getByLabelText('welcome')).toBeDefined();
   });
 
-  it('条目 React.memo:流式 token 帧零 md 重解析(分域渲染:稳定条不涨,在途尾块纯文本也不进解析器)', async () => {
+  it('条目 React.memo:流式 token 帧只有流式条重渲染(尾块恒进解析器实时渲染,稳定条零重解析)', async () => {
     const { conn } = await enterChat();
     openConn(conn);
     type('stable');
     pressEnter(); // user 条 → 1 次 md 渲染
     fire(conn, ev('model-start'));
-    fire(conn, ev('token', 'a')); // 流式条开条 → 在途尾块纯文本直出,零 md 渲染
+    fire(conn, ev('token', 'a')); // 流式条开条 → 尾块 markdown 实时渲染(+1)
     const before = md.renders;
-    fire(conn, ev('token', 'b')); // 流式增量:稳定条 memo 跳过,尾块不进解析器(2026-10-22 分域架构)
-    fire(conn, ev('token', 'c'));
-    expect(md.renders).toBe(before);
+    fire(conn, ev('token', 'b')); // 流式增量:尾块重解析(2026-10-25 恒进解析器裁定)——恰 +1/帧;
+    fire(conn, ev('token', 'c')); // 稳定条(user)memo 跳过零重跑,若破 memo 会是 +2/帧
+    expect(md.renders).toBe(before + 2);
     expect(document.querySelector('.entry-assistant')?.textContent).toBe('abc');
     expect(document.querySelector('.entry-user')?.textContent).toContain('stable');
   });

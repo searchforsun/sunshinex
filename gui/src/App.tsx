@@ -26,6 +26,9 @@ import { applyTheme, type ThemePref } from './theme';
 import { initUiPrefSync } from './ui-pref-sync';
 import { useMenuResize } from './use-menu-resize';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
+import { NavButtons } from './NavButtons';
+import { emptyNavHistory, pushNav } from './nav-history';
+import type { NavControls, NavHistory, NavLoc } from './nav-history';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -92,6 +95,17 @@ function AppShell(): JSX.Element {
   const [openJournalId, setOpenJournalId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
   const [openRoot, setOpenRoot] = useState<string>('');
+  /** 2026-10-25 应用级导航历史(前进/后退,浏览器形):壳层位置流(welcome/会话)——openSession/
+   *  backHome/New chat 各记录,navBack/navForward 位次回放。navLock=回放期抑制记录(回放复用
+   *  openSession 本体,不锁即回放被当新导航记二次);回调动词挂 ref(每渲染刷新,零过期闭包) */
+  const [nav, setNav] = useState<NavHistory>(emptyNavHistory);
+  const navLockRef = useRef(false);
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const recordNav = (loc: NavLoc): void => {
+    if (navLockRef.current) return;
+    setNav((h) => pushNav(h, loc));
+  };
   /** G14.16 标题统一流联动:rename 落盘后 bump → ProjectMenu 重拉 recentSessions(侧栏即时同名) */
   const [recentVersion, setRecentVersion] = useState(0);
   /** G14.52 活动会话运行态(GUI 本地权威):model-start 置位,done/error 复位——侧栏运行圆点消费 */
@@ -233,8 +247,9 @@ function AppShell(): JSX.Element {
 
   const openSession = (sessionId: string, root: string, journalId?: string): void => {
     sessionRef.current = sessionId;
+    const jid = journalId !== undefined && journalId !== '' ? journalId : sessionId;
     setOpenSessionId(sessionId);
-    setOpenJournalId(journalId !== undefined && journalId !== '' ? journalId : sessionId);
+    setOpenJournalId(jid);
     setOpenRoot(root);
     setTabStates((s) => ensureSession(s, sessionId, PROBE));
     reopenBoardSeedWindow();
@@ -247,6 +262,7 @@ function AppShell(): JSX.Element {
     shadowHydratedRef.current.delete(sessionId);
     shadowHydrateRef.current?.(sessionId);
     setPage('chat');
+    recordNav({ k: 'chat', sessionId, root, journalId: jid }); // 导航史记录(navLock 回放期自抑制)
     // G14.2xx 恢复现场指针:打开即记应用级档(lastRoot+journal;新会话无 journal 记空——
     // 重启后只回落工作区,不凭空造会话);刷新/重开浏览器据此重放打开链
     void connRef.current
@@ -277,10 +293,8 @@ function AppShell(): JSX.Element {
     // eslint 不入依赖(openSession/connRef 恒稳,恢复链仅启动一次)
   }, [connInstance, connState]);
 
-  /** 返回欢迎态:会话关窗(Chat 卸毁本地态;连接保持,再开经左栏重播种)+ 板投影/team 清零
-   *  (无会话期无帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗);tabStates 保留(每会话
-   *  独立留存,spec §1——重开同会话标签还原) */
-  const backHome = (): void => {
+  /** 返回欢迎态的壳层清场(记录面分离:backHome 记史,导航回放经 applyNav 复用本函数) */
+  const leaveToWelcome = (): void => {
     sessionRef.current = '';
     setOpenSessionId('');
     setOpenJournalId('');
@@ -292,6 +306,65 @@ function AppShell(): JSX.Element {
     // G14.2xx b 子智能体聚合不清(按会话分桶=内存缓存,重开同会话直接命中)
     setPage('welcome');
   };
+
+  /** 返回欢迎态:会话关窗(Chat 卸毁本地态;连接保持,再开经左栏重播种)+ 板投影/team 清零
+   *  (无会话期无帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗);tabStates 保留(每会话
+   *  独立留存,spec §1——重开同会话标签还原) */
+  const backHome = (): void => {
+    leaveToWelcome();
+    recordNav({ k: 'welcome' });
+  };
+
+  /** 导航回放(前进/后退落点应用):welcome 位=壳层清场;chat 位=直接 openSession(会话常驻
+   *  daemon,GUI 端点全按 :id 寻址——零 newSession/attach,无 journal 档的新会话亦可回跳)。
+   *  navLock 全程落位:回放引发的 openSession/leaveToWelcome 不再记史(位次由回调动词改) */
+  const applyNavRef = useRef<(loc: NavLoc) => void>(() => undefined);
+  applyNavRef.current = (loc: NavLoc): void => {
+    navLockRef.current = true;
+    try {
+      if (loc.k === 'welcome') leaveToWelcome();
+      else openSession(loc.sessionId, loc.root, loc.journalId);
+    } finally {
+      navLockRef.current = false;
+    }
+  };
+  /** 回调动词(零依赖恒稳):位次先改、落点随 apply——目标位必与当前位异键(相邻去重保证) */
+  const navBack = useCallback((): void => {
+    const h = navRef.current;
+    const loc = h.stack[h.idx - 1];
+    if (h.idx <= 0 || loc === undefined) return;
+    applyNavRef.current(loc);
+    setNav({ ...h, idx: h.idx - 1 });
+  }, []);
+  const navForward = useCallback((): void => {
+    const h = navRef.current;
+    const loc = h.stack[h.idx + 1];
+    if (h.idx >= h.stack.length - 1 || loc === undefined) return;
+    applyNavRef.current(loc);
+    setNav({ ...h, idx: h.idx + 1 });
+  }, []);
+  /** 控制面(顶栏/欢迎页钮对 + Alt+←/→ 快捷键):nav 史变化即新对象(钮可用性随史) */
+  const navControls = useMemo<NavControls>(
+    () => ({ canBack: nav.idx > 0, canForward: nav.idx < nav.stack.length - 1, back: navBack, forward: navForward }),
+    [nav, navBack, navForward],
+  );
+  const navControlsRef = useRef(navControls);
+  navControlsRef.current = navControls;
+  /** Alt+←/→(浏览器惯例):preventDefault 免浏览器态吞作自身历史导航;设置页整壳替换无钮,键面同封 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (settingsOpen) return;
+      const c = navControlsRef.current;
+      if (e.key === 'ArrowLeft' ? !c.canBack : !c.canForward) return;
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') c.back();
+      else c.forward();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [settingsOpen]);
 
   /** G8c-T8 开设置态:settingsRoot 快照当前 openRoot(无会话=''=仅全局);connInstance 在场才
    *  可达(设置钮只在 ProjectMenu 底栏,其渲染前提即连接装配完成) */
@@ -681,11 +754,13 @@ function AppShell(): JSX.Element {
                 closeMenuDrawer();
                 setComposePresetRoot(null);
                 setPage('welcome');
+                recordNav({ k: 'welcome' });
               }}
               onComposeIn={(root) => {
                 closeMenuDrawer();
                 setComposePresetRoot(root);
                 setPage('welcome');
+                recordNav({ k: 'welcome' });
               }}
               onCollapse={() => setMenuClosed(true)}
             />
@@ -708,6 +783,7 @@ function AppShell(): JSX.Element {
             {page === 'chat' && connInstance !== null ? (
               <Chat
                 key={openSessionId}
+                nav={navControls}
                 menuClosed={menuClosed}
                 onToggleMenu={() => {
                   const opening = menuClosed;
@@ -763,16 +839,21 @@ function AppShell(): JSX.Element {
             ) : connInstance !== null ? (
               <>
               {page === 'welcome' && menuClosed && (
-                /* 2026-10-24 用户裁定:欢迎页无顶栏,菜单关闭态左上角浮出呼出钮(否则无入口) */
-                <button
-                  type="button"
-                  className="sx-iconbtn sx-menu-reopen"
-                  aria-label="toggle menu"
-                  data-tip={t('Open menu', '打开菜单')}
-                  onClick={() => setMenuClosed(false)}
-                >
-                  <PanelLeft size={16} strokeWidth={1.75} />
-                </button>
+                /* 2026-10-24 用户裁定:欢迎页无顶栏,菜单关闭态左上角浮出呼出钮(否则无入口)。
+                   2026-10-25 前进/后退:同簇左聚(导航史跨 welcome/会话可达——New chat 落此页
+                   正是「后退回上一会话」的主场景);定位由簇容器承载(z50 盖 dragrail) */
+                <div className="sx-welcome-nav">
+                  <NavButtons nav={navControls} />
+                  <button
+                    type="button"
+                    className="sx-winbtn sx-menu-reopen"
+                    aria-label="toggle menu"
+                    data-tip={t('Open menu', '打开菜单')}
+                    onClick={() => setMenuClosed(false)}
+                  >
+                    <PanelLeft size={16} strokeWidth={1.75} />
+                  </button>
+                </div>
               )}
               <WelcomeComposer
                 conn={connInstance}

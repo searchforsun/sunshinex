@@ -878,7 +878,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
-  it('G14.2xx 流式行结构块实时晋升:表格分隔行落定即渲染 <table>,行到行显;散文尾块保持纯文本', async () => {
+  it('G14.2xx 流式行结构块实时晋升:表格分隔行落定即渲染 <table>,行到行显', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'model-start', ts: Date.now() });
@@ -889,10 +889,27 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'token', text: '| a | 1 |\n', ts: Date.now() });
     await flushed();
     expect(document.querySelectorAll('.entry-assistant tbody tr')).toHaveLength(1);
-    // 散文尾块(未完成段落)保持纯文本直出——不逐行拆段、无半截结构翻转
-    fire({ type: 'token', text: '\n\n这是一段还没写完', ts: Date.now() });
+  });
+
+  it('2026-10-25 裁定:在途尾块恒进解析器(实时渲染从上层统一定,不枚举结构前缀)——代码块/行内代码/引用行/散文逐 token 成形', async () => {
+    mountChat([]);
     await flushed();
-    expect(document.querySelector('.entry-assistant .entry-stream-tail')?.textContent).toBe('这是一段还没写完');
+    fire({ type: 'model-start', ts: Date.now() });
+    // 未闭合代码围栏:流中即渲染 <pre><code>(此前要等空行晋升到头才高亮)
+    fire({ type: 'token', text: '看代码：\n\n```ts\nconst a = ', ts: Date.now() });
+    await flushed();
+    expect(document.querySelector('.entry-assistant .entry-stream-tail-md pre code')).not.toBeNull();
+    // 散文尾块同样走 markdown:行内代码实时成形(此前纯文本直出);引用行晋升到头后保持
+    fire({ type: 'token', text: '1;\n```\n\n> 引用一行\n\n结论：用 `tailIsStructured` 已删', ts: Date.now() });
+    await flushed();
+    const tailCodes = Array.from(document.querySelectorAll('.entry-assistant .entry-stream-tail-md code'));
+    expect(tailCodes.some((c) => c.textContent?.includes('tailIsStructured'))).toBe(true);
+    expect(document.querySelector('.entry-assistant blockquote')).not.toBeNull();
+    // 晋升后(done):整段终渲染,围栏块与引用保持
+    fire({ type: 'done', text: '看代码：\n\n```ts\nconst a = 1;\n```\n\n> 引用一行\n\n结论：用 `tailIsStructured` 已删', ts: Date.now() });
+    await flushed();
+    expect(document.querySelector('.entry-assistant pre code')).not.toBeNull();
+    expect(document.querySelector('.entry-assistant blockquote')).not.toBeNull();
   });
 
   it('G14.215 禁止重排:非同类行切断分组,组只吃相邻同类(布局顺序=出牌顺序)', async () => {
