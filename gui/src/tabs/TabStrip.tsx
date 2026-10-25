@@ -176,6 +176,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
             className={`sx-tab${t.uid === activeUid ? ' active' : ''}`}
             data-title={title}
             data-tip={title}
+            data-type={t.type}
             disabled={disabled}
             draggable={!disabled}
             onDragStart={(e) => {

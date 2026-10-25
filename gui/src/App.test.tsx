@@ -562,11 +562,16 @@ describe('应用级导航历史:前进/后退(2026-10-25)', () => {
     // s1 为历史起点:后退/前进皆到边界,双钮禁用
     expect(navBtn('nav back').disabled).toBe(true);
     expect(navBtn('nav forward').disabled).toBe(true);
+    // 菜单开着:钮对驻菜单头(2026-10-25 用户裁定),顶栏无副本
+    expect(document.querySelector('.sx-menu-head .sx-navbtns')).not.toBeNull();
+    expect(document.querySelector('.chat-topbar .sx-navbtns')).toBeNull();
     // New chat → welcome(记 welcome 位);菜单仍开——收起菜单,浮出簇(导航钮对)显形
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
     fireEvent.click(screen.getByRole('button', { name: 'collapse menu' }));
     await waitFor(() => expect(document.querySelector('.sx-welcome-nav')).not.toBeNull());
+    // 菜单收起:菜单头退场,浮出簇接管(单点不双显)
+    expect(document.querySelector('.sx-menu-head')).toBeNull();
     expect(navBtn('nav back').disabled).toBe(false);
     expect(navBtn('nav forward').disabled).toBe(true);
     // 后退:回 s1——不经 newSession/attach(记录的 sessionId 仍常驻 daemon)
@@ -576,6 +581,8 @@ describe('应用级导航历史:前进/后退(2026-10-25)', () => {
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     expect(conn.newSessionCalls.length).toBe(newSessionsBefore);
     expect(conn.attachCalls.length).toBe(attachBefore);
+    // 菜单关闭态回会话页:顶栏最左接管
+    expect(document.querySelector('.chat-topbar .sx-navbtns')).not.toBeNull();
     expect(navBtn('nav back').disabled).toBe(true);
     expect(navBtn('nav forward').disabled).toBe(false);
     // 前进:回 welcome(菜单关闭态不左栏重开,纯壳层路由)

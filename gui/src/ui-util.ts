@@ -20,6 +20,16 @@ export function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** 系统默认浏览器外开单点(2026-10-25 用户裁定:正文 URL/WebTab 外开都走 OS 默认浏览器):
+ *  桌面壳经 preload 桥 shell.openExternal(OS 按默认浏览器关联承接,用户配置的 Chrome);
+ *  window.open 在 Electron 里只开自家子窗,不是系统浏览器。浏览器态(无桥)回落 window.open。
+ *  消费面:md 链接组件(正文/气泡 a 点击)、WebTab ↗ 钮 */
+export function openExternalUrl(url: string): void {
+  const bridge = (window as unknown as { sunshinexWindow?: { openExternal?: (url: string) => Promise<{ ok: boolean }> } }).sunshinexWindow;
+  if (bridge?.openExternal !== undefined) void bridge.openExternal(url).catch(() => {});
+  else window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 /** tokens 格式(G14.17 自 Chat.tsx 导出共享):8400 → 8.4k tokens;840 → 840 tokens */
 export function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;

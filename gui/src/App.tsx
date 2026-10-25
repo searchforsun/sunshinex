@@ -747,6 +747,12 @@ function AppShell(): JSX.Element {
               activeRoot={openRoot}
               recentVersion={recentVersion}
               runningIds={runningIds}
+              nav={(() => {
+                // 菜单头钮对(全局史):浮窗抽屉态导航即收抽屉(会话/设置同类「选中即收」口径)
+                const back = (): void => { closeMenuDrawer(); navControls.back(); };
+                const forward = (): void => { closeMenuDrawer(); navControls.forward(); };
+                return { canBack: navControls.canBack, canForward: navControls.canForward, back, forward };
+              })()}
               onOpenSession={(sessionId, root, journalId) => { closeMenuDrawer(); openSession(sessionId, root, journalId); }}
               onOpenDirectory={(root) => { closeMenuDrawer(); openProjectDirectory(root); }}
               onOpenSettings={() => { closeMenuDrawer(); openSettings(); }}

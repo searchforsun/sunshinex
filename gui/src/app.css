@@ -119,8 +119,10 @@
    呼出钮入浮出簇(导航钮对+呼出同排),定位由簇容器承载;z50 盖 welcome 页 dragrail */
 .sx-welcome-nav { position: absolute; top: 10px; left: 10px; z-index: 50; display: flex; align-items: center; gap: 4px; }
 .sx-navbtns { display: flex; align-items: center; gap: 2px; }
-/* 顶栏 [|](菜单切换)与右侧窗控同款 26px;左缘镜像 right:8(顶栏 padding 12 → 负 margin 4) */
-.chat-topbar > .sx-menu-toggle { width: 26px; height: 26px; margin-left: -4px; }
+.sx-menu-head .sx-navbtns { margin-left: 8px; } /* 菜单头驻位:品牌字与钮对间距 */
+/* 顶栏 [|](菜单切换)与右侧窗控同款 26px;左缘镜像 right:8(顶栏 padding 12 → 负 margin 4)。
+   2026-10-25 前进/后退钮对先于其渲染(菜单关闭态):负边距只认首元素位,其后随 topbar gap */
+.chat-topbar > .sx-menu-toggle:first-child { width: 26px; height: 26px; margin-left: -4px; }
 /* 菜单头拖拽条:brand 与收起钮之间空白区承担窗拖拽(抽屉打开顶部可拖动应用);与按钮不相交 */
 .sx-head-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
 /* 浮窗态 dock 无任何让位规则(2026-10-24 用户裁定「抽屉是上浮的」):composer 恒按分栏态
@@ -2113,6 +2115,9 @@ input.sx-setting-input { width: 100%; }
 .sx-tab .sx-tab-title[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }.sx-tab > .iconify, .sx-tab > svg { flex: none; }
 /* 2026-10-25 web 站标(页签 favicon,daemon /web/meta 代取;失败退地球) */
 .sx-tab .sx-tab-fav { width: 16px; height: 16px; flex: none; border-radius: 3px; object-fit: contain; }
+/* 2026-10-25 用户裁定:web 页签恒定宽(200px,不随页名长度伸缩)——页内导航换题/站标回写
+   不再引起页签宽度跳动;长题省略号+悬浮全名,溢出由条内既有横向滚动接管 */
+.sx-tabstrip .sx-tab[data-type='web'] { flex: 0 0 200px; min-width: 200px; max-width: 200px; }
 
 /* ---- G14.2xx 标签搜索弹窗(chrome「搜索标签页」同位;最左触发,纵向两节:打开的/最近关闭的) ---- */
 .sx-tabsearch { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: 280px; max-width: min(86vw, calc(100vw - var(--menu-occ, 0px) - 24px)); max-height: 70vh; overflow-y: auto; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35); }

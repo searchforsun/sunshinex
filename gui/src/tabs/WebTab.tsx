@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, RotateCw } from 'lucide-react';
 import type { TabParams } from './tab-state';
 import { t } from '../i18n';
+import { openExternalUrl } from '../ui-util';
 
 /**
  * G8d Web 标签体(T4)——G14.6 对齐 VSCode Simple Browser(用户裁定:用 vscode 原生浏览器组件
@@ -131,14 +132,10 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
   const back = (): void => setNav((n) => (n.index > 0 ? { ...n, index: n.index - 1 } : n));
   const forward = (): void => setNav((n) => (n.index < n.urls.length - 1 ? { ...n, index: n.index + 1 } : n));
   const reload = (): void => setNonce((v) => v + 1);
-  // 2026-10-25 用户报障:window.open 在 Electron 里只开自家子窗(同 daemon 域新 BrowserWindow),
-  // 不是系统默认浏览器——桌面壳走 preload 桥 shell.openExternal(OS 默认浏览器承接,用户配置的
-  // Chrome);浏览器态(无桥)回落 window.open。
+  // 2026-10-25 用户报障:window.open 在 Electron 里只开自家子窗,不是系统默认浏览器——
+  // openExternalUrl 单点(桌面壳走 preload 桥 shell.openExternal,OS 默认浏览器承接;浏览器态回落 window.open)
   const openExternal = (): void => {
-    if (active === null) return;
-    const bridge = (window as unknown as { sunshinexWindow?: { openExternal?: (url: string) => Promise<{ ok: boolean }> } }).sunshinexWindow;
-    if (bridge?.openExternal !== undefined) void bridge.openExternal(active).catch(() => {});
-    else window.open(active, '_blank', 'noopener,noreferrer');
+    if (active !== null) openExternalUrl(active);
   };
 
   /** 页名/站标精化(2026-10-25 用户报障「页签只显 host+地球,应显网页标题+站标」):跨域帧

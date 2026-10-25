@@ -222,8 +222,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   ];
   return (
     <header className="chat-topbar">
-        {/* 2026-10-25 应用级导航(前进/后退):最左(菜单呼出钮/会话名之前)——跨会话回跳主入口 */}
-        {nav !== undefined && <NavButtons nav={nav} />}
+        {/* 2026-10-25 应用级导航(前进/后退):菜单关闭态才驻顶栏最左——菜单开着时由菜单头承载
+            (2026-10-25 用户裁定「菜单存在显示在菜单里,收起才显示在当前位置」,单点不双显) */}
+        {nav !== undefined && menuClosed === true && <NavButtons nav={nav} />}
         {/* 2026-10-24 用户裁定(二轮修正):[|] 仅菜单关闭态显示在会话名左(呼出);菜单开着时收起钮
             在菜单头右上,不双显。会话名不点击改名(⋯ 菜单→弹窗),长度随主栏 flex 收放 */}
         {menuClosed === true && (

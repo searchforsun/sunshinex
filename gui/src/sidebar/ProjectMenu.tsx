@@ -4,6 +4,8 @@ import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
 import { PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { DirPicker } from '../pages/DirPicker';
+import { NavButtons } from '../NavButtons';
+import type { NavControls } from '../nav-history';
 import {
   loadSeenMap,
   persistSeenMap,
@@ -87,6 +89,9 @@ export interface ProjectMenuProps {
   readonly onOpenDirectory: (root: string) => void;
   /** 2026-10-24 用户裁定:菜单头收起钮(PanelLeft,搜索钮右侧)=宿主收起菜单(抽屉/关闭态由宿主管) */
   readonly onCollapse?: () => void;
+  /** 2026-10-25 应用级导航(前进/后退)控制面(全局史):菜单开着时钮对驻菜单头(用户裁定——
+   *  菜单存在=菜单里承载,收起才回落顶栏/欢迎浮出簇);缺省不渲染(独立装配面免配) */
+  readonly nav?: NavControls;
 }
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
@@ -492,6 +497,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head">
         <span className="sx-brand">Sunshinex</span>
+        {/* 2026-10-25 前进/后退(全局导航史):品牌右侧左聚(浏览器/IDE 惯例位);菜单收起时
+            由顶栏/欢迎浮出簇接管(宿主 ChatTopbar/Welcome 簇,单点不双显) */}
+        {props.nav !== undefined && <NavButtons nav={props.nav} />}
         {/* 2026-10-24 拖拽重构:头部窗拖拽把手=本空白带(品牌字与收起钮的 space-between 空隙,
             margin 安全边两侧避让)——旧「容器 drag+挖孔」在 zoom 下位图错位吞收起钮(实证),
             故当年裁定头部整体退出拖拽区,「菜单头区域拖不动窗」即其代价;空白带几何互斥两全 */}

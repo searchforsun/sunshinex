@@ -312,6 +312,24 @@ describe('MermaidBlock(G11 §5.4)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'copy mermaid' }));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('graph TD; A-->B');
   });
+
+  it('2026-10-25:渲染失败态复制钮=报错+源码同复制(此前报错不可复制;错误展示面不变)', async () => {
+    const mermaidMod = await import('mermaid');
+    const renderMock = mermaidMod.default.render as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    renderMock.mockImplementation(() => Promise.reject(new Error('Parse error on line 7: Expecting SQE, got SQS')));
+    try {
+      mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: ['图:', '', '```mermaid', 'flowchart TD', 'A-->B', '```'].join('\n') }]);
+      // 失败落定:防抖 250ms+稳定窗重试仍败——错误态(红字+原文,展示面照旧)
+      expect(await screen.findByTestId('mermaid-error', {}, { timeout: 5_000 })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'copy mermaid' }));
+      const copied = (navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as string;
+      expect(copied).toContain('Parse error on line 7'); // 报错信息在场
+      expect(copied).toContain('flowchart TD'); // 源码同文(报错+源码一并复制)
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
+  });
 });
 
 describe('composer pills 与排队 chips(G10-C4)', () => {

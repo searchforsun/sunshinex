@@ -78,7 +78,7 @@ export function repairMermaid(chart: string): string {
   );
 }
 
-export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: boolean) => void }): JSX.Element {
+export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: boolean, errorMsg?: string) => void }): JSX.Element {
   /** G14.2xx 缓存直出:命中即同步首绘(无 pending 态、无进场撑高跳变),未命中走异步现渲 */
   const [svg, setSvg] = useState<string | null>(() => svgCache.get(cacheKey(currentTheme(), chart)) ?? null);
   /** G14.94 渲染失败态:错误消息(红)+源代码同框——修复有据 */
@@ -167,8 +167,9 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
               } catch (e2) {
                 if (alive) {
                   const raw = e2 instanceof Error ? e2.message : String(e2);
-                  setFailed(raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed');
-                  onStatus?.(false);
+                  const msg = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed';
+                  setFailed(msg);
+                  onStatus?.(false, msg); // 2026-10-25 错误文案随状态上抛(消费方复制钮:报错+源码同复制)
                 }
               }
             })();

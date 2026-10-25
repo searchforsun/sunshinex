@@ -4,6 +4,7 @@ import { Check, Copy, Maximize2, Square, WrapText } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightByLang } from '../../highlight';
 import { zoomScale } from '../../ui-zoom';
+import { openExternalUrl } from '../../ui-util';
 import { Mermaid } from '../../Mermaid';
 import { FileIcon } from '../../file-icon';
 import { useCopyFeedback } from '../../use-copy-feedback';
@@ -40,13 +41,23 @@ export function useDirResolver(): (p: string) => boolean {
 export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
   return {
     ...mdComponentsPlain,
-    // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点;web 链接新窗)
+    // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点;web 链接 2026-10-25 起
+    // 点击走系统默认浏览器——与正文链接同拦截,Electron 内默认行为是开自家子窗)
     a(props: { href?: string; children?: ReactNode }) {
       const href = props.href ?? '';
       if (onOpenFile === undefined || href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
       if (/^(https?:|\/\/)/i.test(href)) {
         return (
-          <a href={href} target="_blank" rel="noreferrer">
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openExternalUrl(href);
+            }}
+          >
             {props.children}
           </a>
         );
@@ -102,13 +113,23 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
       );
     },
     // G14.124 md 原生超链接 → 文件引用:非 web 协议 href 视为文件路径,渲染 icon+文件名
-    // (token 同款 file-link),点击/回车开侧栏 file 标签;web 链接新窗 <a>
+    // (token 同款 file-link),点击/回车开侧栏 file 标签;web 链接 2026-10-25 起点击走系统
+    // 默认浏览器(preventDefault+openExternalUrl——Electron 内默认行为是开自家子窗)
     a(props: { href?: string; children?: ReactNode }) {
       const href = props.href ?? '';
       if (href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
       if (/^(https?:|\/\/)/i.test(href)) {
         return (
-          <a href={href} target="_blank" rel="noreferrer">
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openExternalUrl(href);
+            }}
+          >
             {props.children}
           </a>
         );
@@ -183,6 +204,8 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
   const [zoom, setZoom] = useState(false);
   /** 渲染成败(null=在途):false 即收放大钮 */
   const [renderOk, setRenderOk] = useState<boolean | null>(null);
+  /** 2026-10-25 错误文案(Mermaid 上抛,展示面不變):在场时复制钮=报错+源码同复制(此前报错不可复制) */
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   /** G14.2xx 复制回显:useCopyFeedback 单点——图标换 ✓ + tooltip 变「已复制」,1.5s 自回 */
   const { status, copy: copyChart } = useCopyFeedback();
   // G14.107 lightbox 视图态:缩放(s)/平移(x,y);滚轮缩放+拖动平移+按钮组(+ % − [] X)
@@ -314,7 +337,13 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
   return (
     <div className="mermaid-block">
       <div ref={inlineRef} className="mermaid-inline">
-        <Mermaid chart={chart} onStatus={setRenderOk} />
+        <Mermaid
+          chart={chart}
+          onStatus={(ok, msg) => {
+            setRenderOk(ok);
+            setErrorMsg(ok ? null : (msg ?? null)); // 成功即清(流式静默路径无 msg,不误存)
+          }}
+        />
       </div>
       <div className="mermaid-actions">
         {renderOk !== false && (
@@ -325,7 +354,7 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
           tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
           label="copy mermaid"
           icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-          onClick={() => copyChart(chart)}
+          onClick={() => copyChart(errorMsg !== null ? `${errorMsg}\n\n${chart}` : chart)}
         />
       </div>
       {zoom && (
