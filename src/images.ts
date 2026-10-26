@@ -38,3 +38,21 @@ export function appendImages(current: readonly string[], incoming: readonly stri
   const merged = [...current, ...incoming].slice(0, MAX_IMAGES);
   return { images: merged, overflow: current.length + incoming.length - merged.length };
 }
+
+/** 图片扩展名 → MIME（读取面单源：read 工具按扩展名识别图片文件 / Files 预览同判） */
+export const IMAGE_EXT_MIME: Readonly<Record<string, string>> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+/** 路径按扩展名取图片 MIME（非图片扩展名回 undefined——调用方回落文本路径） */
+export function imageMimeOf(p: string): string | undefined {
+  const m = /\.([a-z0-9]+)$/i.exec(p);
+  return m !== null ? IMAGE_EXT_MIME[m[1]!.toLowerCase()] : undefined;
+}
+
+/** 读取面单文件内联字节帽（raw 字节；read 工具/Files 预览同值）：超帽不内联，提示裁剪/转格式 */
+export const READ_IMAGE_MAX_BYTES = 20 * 1024 * 1024;

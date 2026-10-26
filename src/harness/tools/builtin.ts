@@ -3,6 +3,7 @@ import type { SnapshotEntry } from '../../tui/session-journal';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';
+import { imageMimeOf, READ_IMAGE_MAX_BYTES } from '../../images';
 import { SafetyChain } from '../security/chain';
 import { ExecResult, ToolInput, TodoStatus } from '../../types';
 import { Result } from '../../result';
@@ -229,7 +230,31 @@ export function builtinTools(
       category: 'read',
       display: { verb: 'READ', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
-        const content = backend.readFile(resolveProjectPath(root, String(input.path)));
+        const abs = resolveProjectPath(root, String(input.path));
+        // 图片文件分支（2026-10-26 读取图片）：扩展名识别 → dataURL 随 ExecResult.images 下发——
+        // 模型视觉（批后伴随 user 帧入 wire）与 GUI 工具行缩略图（tool-result 事件 payload.images）
+        // 共用既有通道；文本通道读二进制只会出 mojibake，故图片扩展名在此截流。
+        // 缺档/读失败落文本路径继承 backend 原错误语义；超帽出文本指引不内联（journal 行也免巨型 base64）
+        const imageMime = imageMimeOf(abs);
+        if (imageMime !== undefined) {
+          let buf: Buffer | null = null;
+          try {
+            buf = fs.readFileSync(abs);
+          } catch {
+            /* 缺档/权限：null 落文本路径，backend.readFile 抛原始错误 */
+          }
+          if (buf !== null) {
+            if (buf.length > READ_IMAGE_MAX_BYTES) {
+              return execOut(`[image] ${path.basename(abs)} (${imageMime}, ${(buf.length / 1048576).toFixed(1)} MB) exceeds the ${Math.round(READ_IMAGE_MAX_BYTES / 1048576)} MB inline cap — crop it or convert to a smaller format, then re-read`);
+            }
+            const rangeNote = input.range !== undefined && input.range !== null && String(input.range).trim() !== '' && String(input.range) !== 'null' ? '; range ignored for image files' : '';
+            return {
+              ...execOut(`[image] ${path.basename(abs)} (${imageMime}, ${Math.max(1, Math.round(buf.length / 1024))} KB) — content attached as image for visual inspection${rangeNote}`),
+              images: [`data:${imageMime};base64,${buf.toString('base64')}`],
+            };
+          }
+        }
+        const content = backend.readFile(abs);
         // 空语义归一单点：undefined / JSON null / "null"·"undefined" 字符串字面量（模型把可空联合当字符串传的形态）均按整文件处理
         const range = input.range === undefined || input.range === null || input.range === 'null' || input.range === 'undefined' ? '' : String(input.range).trim();
         if (range === '') return execOut(fitOut('read', content));

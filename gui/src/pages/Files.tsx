@@ -155,6 +155,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
 
   const segments = load.file !== null ? breadcrumbSegments(load.file.path, root) : [];
   const isMd = load.file !== null && /\.md$/i.test(load.file.path);
+  /** 2026-10-26 侧栏预览:图片扩展名(type=image 载荷)→ dataURL 直显替代源码视图 */
+  const isImage = load.file !== null && load.file.type === 'image' && typeof load.file.mime === 'string' && typeof load.file.data === 'string';
   /** G14.125 预览组件面:md 内标准超链接按当前 md 目录解析为绝对路径后开内部 file 标签 */
   const previewComponents = useMemo(
     () =>
@@ -234,7 +236,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                   {preview ? <CodeXml size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
                 </button>
               )}
-              {!isMd && (
+              {!isMd && !isImage && (
                 /* G14.2xx 自动换行钮(正文代码块同款):仅源码视图在场——md 预览本就纵向排布 */
                 <button
                   type="button"
@@ -246,17 +248,31 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                   <WrapText size={13} strokeWidth={1.75} className={wrap ? 'code-wrap-on' : undefined} />
                 </button>
               )}
-              <button
-                type="button"
-                className="files-act"
-                aria-label={copied === 'ok' ? 'copied' : 'copy content'}
-                data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-                onClick={copyContent}
-              >
-                <Copy size={13} strokeWidth={1.75} />
-              </button>
+              {!isImage && (
+                <button
+                  type="button"
+                  className="files-act"
+                  aria-label={copied === 'ok' ? 'copied' : 'copy content'}
+                  data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
+                  onClick={copyContent}
+                >
+                  <Copy size={13} strokeWidth={1.75} />
+                </button>
+              )}
             </div>
-            {preview && isMd ? (
+            {isImage ? (
+              /* 2026-10-26 侧栏预览:图片文件 dataURL 直显(适配视口,灯箱级交互不需要——
+                 复制/换行/md 预览钮对图片无意义,全部让位) */
+              <div className="files-md" aria-label="file content">
+                <img
+                  src={`data:${load.file.mime};base64,${load.file.data}`}
+                  alt={load.file.path}
+                  loading="lazy"
+                  decoding="async"
+                  style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 200px)', objectFit: 'contain', display: 'block', margin: '8px auto' }}
+                />
+              </div>
+            ) : preview && isMd ? (
               /* G14.125 md 格式化渲染:mermaid/代码块/表格与正文同源;标准超链接跳内部文件标签
                * (href 相对当前 md 所在目录解析为绝对路径),web 链接新窗浏览器 */
               <div className="files-md" aria-label="file content">

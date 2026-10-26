@@ -159,10 +159,14 @@ export interface DirPickerResp {
  *  truncated=true 表示原文超 512KB、content 为首 512KB 截断（预览语义非全文） */
 export interface FileResp {
   path: string;
-  /** G14.2xx 目录路径回执:path 为目录时 type=directory(content 缺省)——Files 页移交目录页签定位 */
-  type?: 'file' | 'directory';
+  /** G14.2xx 目录路径回执:path 为目录时 type=directory(content 缺省);图片扩展名 type=image
+   *  (2026-10-26 侧栏预览:mime+base64 载荷,无 content——Files 页 dataURL 直显) */
+  type?: 'file' | 'directory' | 'image';
   content: string;
   truncated?: boolean;
+  /** 图片预览载荷(type='image'):MIME(如 image/png)+base64 裸串(非 dataURL 前缀) */
+  mime?: string;
+  data?: string;
 }
 
 /** GET /session/:id/diff?callId= 载荷（G7 收口交接）：write 调用 pre-image ↔ 磁盘现文件双内容——

@@ -6,6 +6,7 @@ import type { SessionRuntime } from './session';
 import { MAX_PREVIEW_BYTES, insideTrustedRoots, realPathOf, readFileBounded } from './daemon-static';
 import { urlOf } from './daemon-wire';
 import { resolveDataDir } from '../config/data-dir';
+import { imageMimeOf, READ_IMAGE_MAX_BYTES } from '../images';
 
 /** 会话文件面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：/file 只读预览（信任根判界+有界读+
  *  变更集定位）、/diff 双变更对比、/tree 工作区树——io 仅 send/sessionFor 两面，判界与有界读原语
@@ -220,6 +221,25 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     console.error(`[file 403] root=${session.root} dataRoot=${dataRoot} real=${real}`);
     io.send(res, 403, { error: 'path outside trusted roots' });
     return;
+  }
+  // 图片预览分支（2026-10-26 侧栏预览）：图片扩展名 → base64 随 JSON 回（Files 页 dataURL 直显）。
+  // 帽内直读；缺档/目录落下方既有 404/directory 面（readFileBounded 语义不变）；超帽 415 指引裁剪
+  const previewMime = imageMimeOf(abs);
+  if (previewMime !== undefined) {
+    let imgBuf: Buffer | null = null;
+    try {
+      imgBuf = fs.readFileSync(abs);
+    } catch {
+      /* 缺档：null 落下方 readFileBounded 的 404/directory 语义 */
+    }
+    if (imgBuf !== null) {
+      if (imgBuf.length > READ_IMAGE_MAX_BYTES) {
+        io.send(res, 415, { error: `image too large to preview (>${Math.round(READ_IMAGE_MAX_BYTES / 1048576)} MB)` });
+        return;
+      }
+      io.send(res, 200, { path: abs, type: 'image', mime: previewMime, data: imgBuf.toString('base64') });
+      return;
+    }
   }
   const read = readFileBounded(abs);
   if (read === 'missing') {

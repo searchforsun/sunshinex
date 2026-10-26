@@ -127,3 +127,52 @@ test('GET /session/:id/file:判界/404/415/截断/400 全分支', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+/** 2026-10-26 侧栏预览:图片扩展名 → 200 {type:'image',mime,data(base64)};超帽 415;目录/文本面不回归 */
+test('GET /session/:id/file:图片扩展名 base64 预览分支', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-file-img-'));
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+  delete process.env.SUNSHINEX_DATA_DIR;
+  const root = path.join(tmp, 'root');
+  fs.mkdirSync(root, { recursive: true });
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16, 3)]);
+  fs.writeFileSync(path.join(root, 'shot.png'), png);
+  fs.writeFileSync(path.join(root, 'big.png'), Buffer.alloc(21 * 1024 * 1024, 1));
+  const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{}']) as unknown as ModelAdapter });
+  const handle = await daemon.start({ port: 0, token: 'test-token' });
+  const base = `http://127.0.0.1:${handle.port}`;
+  try {
+    const r = await fetch(`${base}/session/new`, {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ root }),
+    });
+    assert.equal(r.status, 200);
+    const { sessionId } = (await r.json()) as { sessionId: string };
+    const file = async (q: string): Promise<Response> =>
+      fetch(`${base}/session/${sessionId}/file?path=${encodeURIComponent(q)}`, { headers: AUTH });
+
+    // 图片扩展名:200 {type:'image',mime,data=base64 裸串}
+    const resp = await file('shot.png');
+    assert.equal(resp.status, 200);
+    const body = (await resp.json()) as { type?: string; mime?: string; data?: string; content?: string };
+    assert.equal(body.type, 'image');
+    assert.equal(body.mime, 'image/png');
+    assert.equal(Buffer.from(body.data ?? '', 'base64').toString('hex'), png.toString('hex'), 'base64 解码逐字节还原');
+    assert.equal(body.content, undefined, '图片载荷无文本 content');
+
+    // 超帽(>20MB):415 指引裁剪
+    const big = await file('big.png');
+    assert.equal(big.status, 415);
+    assert.match(((await big.json()) as { error: string }).error, /too large to preview/);
+  } finally {
+    await handle.close();
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+    else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
