@@ -994,7 +994,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none; border-radius: var(--radius-sm);
   color: var(--fg); font-size: 14px; font-weight: 500;
 }.chat-title-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.chat-title-btn svg { flex: none; color: var(--fg-secondary); }.chat-title-text { min-width: 0; overflow: hidden; white-space: nowrap; }.chat-title-text.clipped { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); } /* 2026-10-24 用户裁定:隐现仅真溢出时(宿主 RO 判 scrollWidth 挂 clipped)——能显示全就显示全 */.chat-title-input {
-  height: 26px; width: 280px; padding: 0 8px;
+  height: 26px; width: 100%; box-sizing: border-box; padding: 0 8px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--fg);
   font-size: 13px; font-weight: 500; outline: none;
@@ -2325,7 +2325,7 @@ input.sx-setting-input { width: 100%; }
   display: flex; flex-direction: column; justify-content: center;
   overflow: visible; pointer-events: none;
 }
-.sx-rail-list { display: flex; flex-direction: column; gap: 4px; margin: auto 0; }
+.sx-rail-list { display: flex; flex-direction: column; gap: 2px; margin: auto 0; } /* 十轮:间距 4→2 调小一档 */
 .sx-rail-tick {
   pointer-events: auto; position: relative; display: flex; align-items: center;
   height: 12px; padding: 0; border: none; background: transparent; cursor: pointer; flex: none;
@@ -2430,13 +2430,6 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-hint{margin:4px 0 0;color:var(--fg-tertiary);font-size:11px}
 .sx-mcp-offcount{color:var(--fg-tertiary)}
 .sx-mcp-json{width:100%;box-sizing:border-box;font:11px/1.5 var(--font-mono);white-space:pre;resize:vertical}
-/* 2026-10-26 MCP JSON 编辑模态(用户裁定:内联卡→居中弹窗,同 rename-dialog modal-overlay/body 面):
-   宽度档 560,标题行复用 dirpicker-head(× 关闭同款),textarea 沿表单输入灰底 */
-.sx-mcp-json-dialog{width:min(560px,calc((100vw - 48px) / var(--ui-zoom,1)));display:flex;flex-direction:column;gap:10px}
-/* 2026-10-26 用户裁定:设置页按钮惯例在左——JSON 弹窗按钮左对齐(其他弹窗仍右下) */
-.sx-mcp-json-dialog .dirpicker-foot{justify-content:flex-start}
-.sx-mcp-json-dialog h3{margin:0;font-size:14px}
-.sx-mcp-json-dialog .sx-mcp-json{background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--radius-md);padding:8px 10px;color:var(--fg)}
 
 /* ===== 2026-10-26 插件 pane(Task 12,spec §6):卡面/开关/告警条复用 sx-mcp-*·sx-agent-* 既有类,
    新增仅 config 只读 JSON 预格式块(沿 sx-agent-body pre 语法面) ===== */
