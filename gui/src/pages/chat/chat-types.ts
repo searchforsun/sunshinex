@@ -68,7 +68,7 @@ export interface ChatProps {
   /** G10-C4 分叉新会话(从最近任务轮;/fork 底层);App 接 forkSession+openSession;可选 */
   onFork?: () => void;
   /** G10 欢迎页接力:播种完成后提交的 welcome 目标(setWelcomeGoal 写入;提交即回调清位) */
-  pendingGoal?: { root: string; goal: string };
+  pendingGoal?: { root: string; goal: string; images?: string[] };
   onPendingGoalDone?: () => void;
   /** 会话所属工作区 root(G10 项目条显示;default 会话='default') */
   root?: string;

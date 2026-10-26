@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ArrowDown, Eye, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { ImageLightbox } from '../ImageLightbox';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
+import { loadDraftImages, saveDraftImages } from '../draft-images';
 import { initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
@@ -204,7 +205,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds } = useCommandPalette(conn, sessionId);
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
-  const submitTextRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
+  const submitTextRef = useRef<(text: string, images?: string[]) => Promise<void>>(() => Promise.resolve());
   /** 会话事件 hook(D32 批C):播种门/种子窗缓冲/挂起卡/事件分流 sink 装配 + G5 idle 清卡——
    *  投影态与队列/pill 设定器注入(G6 工具 input 旁路暂存 P11 T7 退役);行为零变化(Chat.test 为锚) */
   const { cards, seeding, sendApproval, sendAsk, sendPlanApproval } = useSessionEvents({
@@ -293,6 +294,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** 图片附件(2026-10-26):composer 待发 dataURL 列(≤8 张)——粘贴/附件选择装载,send 发送即清;
    *  查看浮层(lightbox)与提示条(超限/模型不支持)同挂本页 */
   const [pendingImages, setPendingImages] = useState<string[]>([]);
+  // 草稿图持久化（用户裁定「发送前放到草稿中,和队列一样」）：按 journalId 稳定身份落 IndexedDB——
+  // 切换会话/重启回来不丢;发送即清。载入完成前跳过回写（防空初值覆盖已存档）。
+  const draftLoadedRef = useRef(false);
+  useEffect(() => {
+    draftLoadedRef.current = false;
+    let alive = true;
+    void loadDraftImages(archiveKey).then((imgs) => {
+      if (!alive) return;
+      setPendingImages(imgs);
+      draftLoadedRef.current = true;
+    });
+    return () => { alive = false; };
+  }, [archiveKey]);
+  useEffect(() => {
+    if (draftLoadedRef.current) void saveDraftImages(archiveKey, pendingImages);
+  }, [archiveKey, pendingImages]);
   const [lightboxSrc, setLightboxSrc] = useState<string | undefined>(undefined);
   const [imgHint, setImgHint] = useState<string | undefined>(undefined);
   const imgHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

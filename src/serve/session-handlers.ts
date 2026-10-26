@@ -399,11 +399,11 @@ export async function handleSessionMode(io: SessionHandlerIo, req: http.Incoming
 }
 
 
-export function handleSnapshot(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined): void {
+export function handleSnapshot(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined, page?: import('../serve/session').SessionSnapshotPage): void {
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  // P6 §4:挂起段由会话自产（表下沉后快照合并零过滤）
-  io.send(res, 200, { ...session.snapshotResponse(), pending: session.pendingSnapshot() });
+  // P6 §4:挂起段由会话自产（表下沉后快照合并零过滤）;2026-10-26 三期:page 透传分页(缺省尾窗 200)
+  io.send(res, 200, { ...session.snapshotResponse(page), pending: session.pendingSnapshot() });
 }
 
 export async function handleBoardReview(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {

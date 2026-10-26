@@ -30,7 +30,7 @@ export function useSessionEvents(deps: {
   /** G14.31 辅助对话全新视图:种子历史不落屏 */
   freshView?: boolean;
   /** G10 欢迎页接力:播种完成后提交的 welcome 目标(提交即回调清位) */
-  pendingGoal?: { root: string; goal: string };
+  pendingGoal?: { root: string; goal: string; images?: string[] };
   onPendingGoalDone?: () => void;
   /** G5 快照落定回调(App 借此取 snapshot.team) */
   onSeeded?: (snap: SnapshotResponse) => void;
@@ -47,7 +47,7 @@ export function useSessionEvents(deps: {
   /** 归档态播种(2026-10-21:snapshot.archived 回填——顶栏归档钮/徽标三态;旧 daemon 无字段=未归档面) */
   setArchived: Dispatch<SetStateAction<boolean>>;
   /** G14.213 欢迎页接力取用(ref 跳板,声明在 Chat、赋值随 submitText 定义) */
-  submitTextRef: MutableRefObject<(text: string) => Promise<void>>;
+  submitTextRef: MutableRefObject<(text: string, images?: string[]) => Promise<void>>;
   /** G14.212 滚动位存档落盘(unmount 兜底;滚动子系统留 Chat,函数注入) */
   flushScrollMem: () => void;
 }): {
@@ -154,7 +154,7 @@ export function useSessionEvents(deps: {
           // G14.213 走 submitText 单点(命令门控随行):欢迎页 /命令 目标建会话后按 supported
           // 清单走命令通道,skills/普通文本照文本提交——此前裸 sessionSubmit,/命令全成纯文本
           // 外层吞错属良性:submitText 内部已倒 error 条(失败可见),此处仅吸收 rejection 形态
-          submitTextRef.current(pg.goal).catch(() => undefined);
+          submitTextRef.current(pg.goal, pg.images).catch(() => undefined);
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
         // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清);

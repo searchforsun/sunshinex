@@ -391,3 +391,44 @@ test('⑦ POST /session/:id/mode 契约（spec §3.2）：新四值合法 200、
     }
   });
 });
+
+test('⓿ snapshot 分页(2026-10-26 三期):缺省尾窗 200+full 恒剥;tail/before 显式页;互斥/非法 400;观测按需端点', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    // 种 ≥3 条转录(每条 user 轮 1 条;3 轮 3 user 条+assistant 条)
+    for (const goal of ['g1', 'g2', 'g3']) {
+      await ctx.post(goal, ctx.sid);
+      await waitFor(() => ctx.daemon.get(ctx.sid)!.status() === 'idle', 10000);
+    }
+    const get = async (q: string): Promise<{ status: number; body: Record<string, unknown> }> => {
+      const r = await fetch(`${ctx.http}/session/${ctx.sid}/snapshot${q}`, { headers: { authorization: 'Bearer test-token' } });
+      return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+    };
+    // 缺省:尾窗 200(3 轮全在),total/oldestSeq/hasMore 齐,full 恒剥
+    const def = await get('');
+    const defMsgs = def.body.messages as Array<{ seq: number; result?: { full?: string }; md: string }>;
+    assert.ok(defMsgs.length >= 6, `前置:3 轮转录 ≥6 条,实际 ${defMsgs.length}`);
+    assert.equal(def.body.total, defMsgs.length);
+    assert.equal(def.body.hasMore, false, '3 轮 < 200:头部已到');
+    assert.ok(defMsgs.every((m) => m.result?.full === undefined), 'full 恒剥');
+    // 显式 tail=2:最新 2 条
+    const t2 = await get('?tail=2');
+    assert.equal((t2.body.messages as unknown[]).length, 2);
+    assert.equal(t2.body.hasMore, true);
+    // before 游标
+    const oldest = (def.body.oldestSeq as number);
+    const page = await get(`?before=${oldest}&limit=2`);
+    assert.equal(page.status, 200);
+    // 互斥 400
+    const bad = await get('?tail=2&before=3');
+    assert.equal(bad.status, 400);
+    // 非法 400
+    const bad2 = await get('?tail=abc');
+    assert.equal(bad2.status, 400);
+    // 观测按需端点:取任一 tool 条 seq(3 轮 scripted 回执无 tool——用 user 条缺观测验 404/空面)
+    const firstUserSeq = (def.body.messages as Array<{ seq: number; kind: string }>)[0]!.seq;
+    const obs = await fetch(`${ctx.http}/session/${ctx.sid}/entry/${firstUserSeq}/observation`, { headers: { authorization: 'Bearer test-token' } });
+    assert.equal(obs.status, 200, '在列 seq 200(无观测字段为 undefined 值)');
+    const obs404 = await fetch(`${ctx.http}/session/${ctx.sid}/entry/999999/observation`, { headers: { authorization: 'Bearer test-token' } });
+    assert.equal(obs404.status, 404, '越界 seq 404');
+  });
+});

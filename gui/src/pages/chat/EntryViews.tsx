@@ -197,8 +197,9 @@ interface UserEntryOpts {
   /** G14.110 气泡内 @文件 token 点击 → 打开 file 标签(未配=无行为) */
   onOpenFile?: (p: string) => void;
   /** §7 编辑卡发送回调(=Chat.submitText,Promise:void:resolve 关卡,reject 保卡保草稿——
-   *  spec §9 提交失败草稿不丢):未配不渲染 Edit 钮(测试桩免配) */
-  onSend?: (text: string) => Promise<void>;
+   *  spec §9 提交失败草稿不丢):未配不渲染 Edit 钮(测试桩免配);images=随行图片附件
+   *  (2026-10-26 图片功能:编辑卡预填原条图片,重发随行) */
+  onSend?: (text: string, images?: string[]) => Promise<void>;
   /** 气泡缩略图点击开查看浮层(2026-10-26 图片功能;未配=缩略图不可点) */
   onOpenImage?: (src: string) => void;
 }
@@ -282,17 +283,19 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
   };
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [draftImages, setDraftImages] = useState<string[]>([]);
   const openEdit = (): void => {
     setDraft(entry.md);
+    setDraftImages(entry.images ?? []); // 编辑卡预填原条图片（随行重发/可移除）
     setEditing(true);
   };
   const sendEdit = (): void => {
     const text = draft.trim();
-    if (text === '') {
-      setEditing(false); // 空文本:关卡不发(现状保持)
+    if (text === '' && draftImages.length === 0) {
+      setEditing(false); // 空文本且无图:关卡不发(现状保持;纯图允许——图片即消息)
       return;
     }
-    const result = onSend?.(text);
+    const result = onSend?.(text, draftImages.length > 0 ? draftImages : undefined);
     if (result === undefined) {
       setEditing(false); // 未配 onSend 的测试桩:直接关卡
       return;
@@ -307,6 +310,24 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     return (
       <div className="entry entry-user">
         <div className="user-edit-card">
+          {draftImages.length > 0 && (
+            <div className="sx-img-strip">
+              {draftImages.map((src, i) => (
+                <div key={`${i}:${src.slice(-24)}`} className="sx-img-thumb">
+                  <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} />
+                  <button
+                    type="button"
+                    className="sx-img-remove"
+                    aria-label={t('Remove image', '移除图片')}
+                    data-tip={t('Remove', '移除')}
+                    onClick={() => setDraftImages((cur) => cur.filter((_, idx) => idx !== i))}
+                  >
+                    <X size={11} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <textarea
             aria-label="edit message"
             className="user-edit-input"

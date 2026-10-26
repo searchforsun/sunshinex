@@ -6,6 +6,7 @@ import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
 import { CommandPalette, filterCommands } from '../CommandPalette';
 import { ComposerCard } from '../composer/ComposerCard';
+import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { EffortChip, EffortSlider } from '../effort-slider';
 import { FolderAddIcon } from '../sidebar/ProjectMenu';
@@ -15,10 +16,12 @@ import type { WelcomeComposerConn } from './welcome-conn';
 /** 欢迎页 composer 独立模块（D32 中口径件批App-1 自 App.tsx 平移,行为零变化;
  *  模块私有件转公开导出——消费方仅 App.tsx 一处）。 */
 /** 思考强度档位(G14.10):滑动块 0..5 与档位一一对应(daemon effort 白名单序) */
-/** 欢迎页 goal 接力态:welcome 输入的目标,openSession 后由 Chat 播种完成时提交 */
+/** 欢迎页 goal 接力态:welcome 输入的目标,openSession 后由 Chat 播种完成时提交;
+ *  images=随行图片附件（2026-10-26,欢迎页粘贴/+面板附件,随首条消息带图发送） */
 export interface WelcomeGoal {
   root: string;
   goal: string;
+  images?: string[];
 }
 
 /** 欢迎页 composer(Codex home 形,G10 用户裁定二轮):
@@ -33,7 +36,7 @@ export function WelcomeComposer({
   conn: WelcomeComposerConn;
   /** 预选工作区(G10-C16):项目行「+」带来的 preset */
   presetRoot?: string;
-  onOpened: (sessionId: string, root: string, goal: string) => void;
+  onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
 }): JSX.Element {
   const [rows, setRows] = useState<Array<{ slug: string; root?: string; sessionCount: number }>>([]);
   const [picked, setPicked] = useState('');
@@ -45,6 +48,18 @@ export function WelcomeComposer({
   const [dirOpen, setDirOpen] = useState(false);
   /** + 附加面板(G12 三轮):命令/技能列表浮层(卡顶同宽);文件区需会话,欢迎页不渲染 */
   const [plusOpen, setPlusOpen] = useState(false);
+  /** 待发图片附件（dataURL,≤8 张;2026-10-26 图片功能——欢迎页粘贴/+面板附件,随首条消息发送） */
+  const [images, setImages] = useState<string[]>([]);
+  const attachImages = (files: File[]): void => {
+    void loadImages(files).then((imgs) => {
+      if (imgs.length === 0) return;
+      setImages((cur) => {
+        const { images: merged, overflow } = appendImages(cur, imgs);
+        if (overflow > 0) setHint(t(`Up to ${MAX_IMAGES} images per message`, `每条消息最多 ${MAX_IMAGES} 张图片`));
+        return merged;
+      });
+    });
+  };
   /** 审批模式(G10-C16):新会话创建时带出;缺省 full-access(serve 缺省档;权限档改名对齐后端) */
   const [mode, setMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [modeOpen, setModeOpen] = useState(false);
@@ -200,7 +215,8 @@ export function WelcomeComposer({
       if (picked !== undefined) return picked;
       return filePalFiles.find((f) => (pathBasename(f)) === name);
     }).trim();
-    if (g === '' || target === '' || busy) return;
+    if ((g === '' && images.length === 0) || target === '' || busy) return;
+    const imgs = images.length > 0 ? images : undefined;
     setBusy(true);
     setError('');
     conn
@@ -216,7 +232,8 @@ export function WelcomeComposer({
         // 提交经 planFlow 规划流程,批准落工作区编辑/拒绝保持
         if (mode === 'read-only') void conn.setSessionMode(sessionId, 'read-only').catch(() => undefined);
         if (mode === 'plan') void conn.setSessionMode(sessionId, 'plan').catch(() => undefined);
-        onOpened(sessionId, target, g);
+        setImages([]); // 图片随首条消息接力发出（pendingGoal 携图）,草稿即清
+        onOpened(sessionId, target, g, imgs);
       })
       .catch((err: unknown) => {
         setBusy(false);
@@ -446,6 +463,9 @@ export function WelcomeComposer({
         <ComposerCard
           label="welcome goal"
           inputRef={goalRef}
+          images={images}
+          onRemoveImage={(i) => setImages((cur) => cur.filter((_, idx) => idx !== i))}
+          onPasteFiles={attachImages}
           highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n))}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
@@ -703,6 +723,7 @@ export function WelcomeComposer({
               <ComposerPlusPanel
                 conn={conn}
                 root={picked !== '' ? picked : undefined}
+                onAttachImages={attachImages}
                 onInsert={(text) => {
                   setGoal((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
                   setPlusOpen(false);
@@ -821,7 +842,7 @@ export function WelcomeComposer({
                 className="send"
                 aria-label="send"
                 data-tip={t('Send', '发送')}
-                disabled={busy || goal.trim() === '' || picked === ''}
+                disabled={busy || (goal.trim() === '' && images.length === 0) || picked === ''}
                 onClick={send}
               >
                 <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />

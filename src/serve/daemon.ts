@@ -651,7 +651,17 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/steer', auth: true, run: (req, res, p) => this.handleSteer(req, res, p.id) },
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
-    { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (_req, res, p) => this.handleSnapshot(res, p.id) },
+    { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (req, res, p) => this.handleSnapshot(req, res, p.id) },
+    // 2026-10-26 三期 §4.5:按需全量观测(快照分页剥 full 后,工具行展开按 seq 单条拉)
+    { method: 'GET', path: '/session/:id/entry/:seq/observation', auth: true, run: async (_req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const seq = Number(p.seq);
+        if (!Number.isInteger(seq) || seq <= 0) return this.send(res, 400, { error: 'invalid seq' });
+        const obs = session.entryObservation(seq);
+        if (obs === undefined) return this.send(res, 404, { error: 'no such entry' });
+        this.send(res, 200, obs);
+      } },
     { method: 'GET', path: '/session/:id/model', auth: true, run: async (_req, res, p) => this.handleSessionModelGet(res, p.id) },
     { method: 'POST', path: '/session/:id/model', auth: true, run: (req, res, p) => this.handleSessionModel(req, res, p.id) },
     { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
@@ -842,7 +852,7 @@ export class GuiDaemon {
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
     { method: 'POST', path: '/interrupt', auth: true, run: async (_req, res) => this.handleInterrupt(res, undefined) },
-    { method: 'GET', path: '/snapshot', auth: true, run: async (_req, res) => this.handleSnapshot(res, undefined) },
+    { method: 'GET', path: '/snapshot', auth: true, run: async (req, res) => this.handleSnapshot(req, res, undefined) },
   ];
 
   /** 路由匹配（段参数 :name）：段数与字面段全等才命中；参数段解码（失败按字面处理，不命中） */
@@ -1384,8 +1394,23 @@ export class GuiDaemon {
     sessionHandlers.handleAnchors(this.sessionIo, res, id);
   }
 
-  private handleSnapshot(res: http.ServerResponse, id: string | undefined): void {
-    sessionHandlers.handleSnapshot(this.sessionIo, res, id);
+  private handleSnapshot(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): void {
+    // 2026-10-26 三期分页:tail(缺省 200)/before+limit(补全页)。校验失败 400;tail 与 before 互斥
+    const q = urlOf(req).searchParams;
+    const numOf = (k: string): number | undefined => {
+      const v = q.get(k);
+      if (v === null || v === '') return undefined;
+      const n = Number(v);
+      return Number.isInteger(n) && n > 0 ? n : NaN;
+    };
+    const tail = numOf('tail');
+    const before = numOf('before');
+    const limit = numOf('limit');
+    if (Number.isNaN(tail) || Number.isNaN(before) || Number.isNaN(limit) || (tail !== undefined && before !== undefined)) {
+      this.send(res, 400, { error: 'invalid snapshot paging params' });
+      return;
+    }
+    sessionHandlers.handleSnapshot(this.sessionIo, res, id, tail !== undefined || before !== undefined ? { ...(tail !== undefined ? { tail } : {}), ...(before !== undefined ? { before, ...(limit !== undefined ? { limit } : {}) } : {}) } : undefined);
   }
 
   private async handleSteerMove(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {

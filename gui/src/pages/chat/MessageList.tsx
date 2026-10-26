@@ -38,7 +38,7 @@ export interface MessageListProps {
   readonly taskNameOf: (id: string) => string;
   readonly collapsedRuns: ReadonlySet<string>;
   readonly toggleRun: (key: string) => void;
-  readonly submitText: (text: string) => Promise<void>;
+  readonly submitText: (text: string, images?: string[]) => Promise<void>;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
@@ -231,7 +231,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const taskNameOfStable = useCallback((id: string) => propsRef.current.taskNameOf(id), []);
   const callIdOfStable = useCallback((e: ChatEntry) => propsRef.current.callIdOf(e), []);
   const toggleRunStable = useCallback((key: string) => propsRef.current.toggleRun(key), []);
-  const submitTextStable = useCallback((text: string) => propsRef.current.submitText(text), []);
+  const submitTextStable = useCallback((text: string, images?: string[]) => propsRef.current.submitText(text, images), []);
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,

@@ -295,3 +295,48 @@ test('⑥ 挂起表下沉（G4/P6 §4）：acceptEdits 会话 write 越信任域
     fs.rmSync(out, { recursive: true, force: true });
   }
 });
+
+test('⓿ snapshot 缺省尾窗(200):total/oldestSeq/hasMore 齐、full 恒剥;tail/before 显式分页', async () => {
+  await withSession(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    // 种 5 条(seq 1..5),奇数条带 result.full:tool-call/tool-result 成对携 full
+    for (let i = 1; i <= 5; i += 1) {
+      ctx.session.pump({ type: 'tool-call', text: 'read', ts: i * 10, payload: { callId: `c${i}`, input: { path: `f${i}` }, status: 'pending' } } as never);
+      ctx.session.pump({ type: 'tool-result', text: `out ${i}`, ts: i * 10 + 5, payload: { callId: `c${i}`, ok: true, full: `FULL ${i}` } } as never);
+    }
+    // 缺省(无参):尾窗 200 → 5 条全在(不足尾窗);total/oldestSeq/hasMore 齐;full 恒剥
+    const snap = ctx.session.snapshotResponse();
+    assert.equal(snap.messages.length, 5, '5 条 < 200:全量即尾窗(call+result 配对成单条)');
+    assert.equal(snap.total, 5);
+    assert.equal(snap.oldestSeq, snap.messages[0]!.seq);
+    assert.equal(snap.hasMore, false, '头部已到');
+    for (const m of snap.messages) {
+      assert.equal((m as { result?: { full?: string } }).result?.full, undefined, 'full 恒剥');
+      assert.equal((m as { result?: { text?: string } }).result?.text, `out ${m!.seq}`, 'text 保留');
+    }
+    // 显式 tail=3:取最新 3 条(seq 3,4,5),hasMore=true
+    const tail = ctx.session.snapshotResponse({ tail: 3 });
+    assert.equal(tail.messages.length, 3);
+    assert.deepEqual(tail.messages.map((m) => m.seq), [3, 4, 5]);
+    assert.equal(tail.hasMore, true);
+    // before 游标:seq<4 取 2 条 → seq 2,3;头部未到 hasMore=true
+    const page = ctx.session.snapshotResponse({ before: 4, limit: 2 });
+    assert.deepEqual(page.messages.map((m) => m.seq), [2, 3]);
+    assert.equal(page.hasMore, true);
+    // before 到头:seq<2 → 仅 seq 1,hasMore=false
+    const head = ctx.session.snapshotResponse({ before: 2, limit: 2 });
+    assert.deepEqual(head.messages.map((m) => m.seq), [1]);
+    assert.equal(head.hasMore, false);
+  });
+});
+
+test('⓿b entryObservation:按 seq 取全量观测(按需端点数据源)', async () => {
+  await withSession(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    ctx.session.pump({ type: 'tool-call', text: 'read', ts: 10, payload: { callId: 'c1', input: {}, status: 'pending' } } as never);
+    ctx.session.pump({ type: 'tool-result', text: 'short', ts: 15, payload: { callId: 'c1', ok: true, full: 'THE FULL OBSERVATION' } } as never);
+    const seq = ctx.session.sessionKernel.replay().find((m) => m.kind === 'tool')!.seq;
+    const obs = ctx.session.entryObservation(seq);
+    assert.equal(obs?.full, 'THE FULL OBSERVATION');
+    assert.equal(obs?.text, 'short');
+    assert.equal(ctx.session.entryObservation(99999), undefined);
+  });
+});

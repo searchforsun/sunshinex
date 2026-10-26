@@ -137,6 +137,45 @@ describe('Chat 图片流', () => {
     expect((conn.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls[0]![2]).toBeUndefined();
   });
 
+  it('编辑卡:预填原条图片(可移除)+重发随行 images;纯图空文亦可发送', async () => {
+    const conn = connOf();
+    const r1 = render(<Chat conn={conn} sessionId="se1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    // 编辑卡预填原条图片缩略图;移除后发送不带 images
+    expect(document.querySelectorAll('.user-edit-card .sx-img-thumb').length).toBe(1);
+    fireEvent.click(document.querySelector('.user-edit-card .sx-img-remove')!);
+    expect(document.querySelectorAll('.user-edit-card .sx-img-thumb').length).toBe(0);
+    const ta = screen.getByLabelText('edit message') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '改后文本' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+    await waitFor(() => expect(conn.sessionSubmit).toHaveBeenCalled());
+    expect((conn.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls.at(-1)![2]).toBeUndefined();
+    r1.unmount();
+    // 不移除原样发送 → sessionSubmit 收到原 images
+    const conn2 = connOf();
+    const r2 = render(<Chat conn={conn2} sessionId="se2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    const ta2 = screen.getByLabelText('edit message') as HTMLTextAreaElement;
+    fireEvent.change(ta2, { target: { value: '带图重发' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+    await waitFor(() => expect(conn2.sessionSubmit).toHaveBeenCalled());
+    expect((conn2.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls.at(-1)![2]).toEqual([PNG]);
+    r2.unmount();
+    // 纯图空文编辑:文本清空仅留图 → 亦可发送(图片即消息)
+    const conn3 = connOf();
+    render(<Chat conn={conn3} sessionId="se3" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    const ta3 = screen.getByLabelText('edit message') as HTMLTextAreaElement;
+    fireEvent.change(ta3, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+    await waitFor(() => expect(conn3.sessionSubmit).toHaveBeenCalled());
+    expect((conn3.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls.at(-1)![1]).toBe('');
+    expect((conn3.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls.at(-1)![2]).toEqual([PNG]);
+  });
+
   it('用户气泡缩略图(快照 images 直映,图上文下)+点击开 lightbox(倍数显形/复制/下载动作面)', async () => {
     render(<Chat conn={connOf()} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed();

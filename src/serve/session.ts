@@ -56,11 +56,23 @@ export interface EventFrame {
 /** GET /session/:id/snapshot 载荷（G2 Ruling 1 两轨分工的归档面快照）；G5 增 team 段（teammate
  *  投影——harness.team 同源），pending 段由 daemon 侧合并（挂起表 daemon 级资产，session 不持——
  *  见 daemon.handleSnapshot） */
+/** 分页形态(2026-10-26 三期):缺省尾窗 200;before/limit 向前翻页。tail 与 before 互斥 */
+export interface SessionSnapshotPage {
+  tail?: number;
+  before?: number;
+  limit?: number;
+}
+
 export interface SessionSnapshot {
   messages: KernelEntry[];
   /** 内核流式游标(G14.51 归位):快照时刻的 openRun/openSeg——客户端装载直用,不再从条目反推 */
   openRun: number;
   openSeg: number;
+  /** 分页元数据(2026-10-26 三期,恒在):total=内核条目全量数;oldestSeq=本页最旧 seq
+   *  (客户端向前翻页游标);hasMore=本页之前仍有更早条目 */
+  total: number;
+  oldestSeq?: number;
+  hasMore: boolean;
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';
@@ -1138,9 +1150,31 @@ export class SessionRuntime {
     return this.kernel.steerRemoveAt(seq);
   }
 
-  snapshotResponse(): SessionSnapshot {
+  snapshotResponse(page?: SessionSnapshotPage): SessionSnapshot {
+    const full = this.kernel.replay();
+    // 2026-10-26 三期:缺省尾窗 200(首屏);before/limit 向前翻页(补全页,缺省 600 上限 2000)。
+    // result.full 恒剥(载荷瘦身,全量观测走 entry/observation 按需端点);journal 落盘不动
+    const tail = page?.tail ?? 200;
+    const before = page?.before;
+    const limit = Math.min(Math.max(page?.limit ?? 600, 1), 2000);
+    let messages: readonly KernelEntry[];
+    let hasMore: boolean;
+    if (before !== undefined) {
+      const headEnd = full.findIndex((m) => m.seq >= before);
+      const head = headEnd < 0 ? full : full.slice(0, headEnd);
+      const start = Math.max(0, head.length - limit);
+      messages = head.slice(start);
+      hasMore = start > 0;
+    } else {
+      const start = Math.max(0, full.length - tail);
+      messages = full.slice(start);
+      hasMore = start > 0;
+    }
     return {
-      messages: this.kernel.replay(),
+      messages: messages.map((m) => (m.result?.full === undefined ? m : { ...m, result: { text: m.result.text, ok: m.result.ok } })),
+      total: full.length,
+      ...(messages.length > 0 ? { oldestSeq: messages[0]!.seq } : {}),
+      hasMore,
       openRun: this.kernel.openRun(),
       openSeg: this.kernel.openSeg(),
       board: this.board,
@@ -1160,6 +1194,14 @@ export class SessionRuntime {
         busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,
       })),
     };
+  }
+
+  /** 按需全量观测(2026-10-26 三期 §4.5):快照分页剥 result.full 后,工具行展开按 seq 单条拉取——
+   *  kernel 内存直取零盘读;未命中(undefined)=seq 越界/已截断,客户端回落 result.text */
+  entryObservation(seq: number): { seq: number; text?: string; full?: string } | undefined {
+    const e = this.kernel.replay().find((m) => m.seq === seq);
+    if (e === undefined) return undefined;
+    return { seq, text: e.result?.text, full: e.result?.full };
   }
 
   /** run 中止态外窥（G5 ghost 硬化）：current 在场且 abort 信号已发——daemon 侧 acceptEdits asker 闭包

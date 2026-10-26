@@ -864,8 +864,8 @@ function AppShell(): JSX.Element {
               <WelcomeComposer
                 conn={connInstance}
                 presetRoot={composePresetRoot ?? undefined}
-                onOpened={(sessionId, root, goal) => {
-                  setWelcomeGoal({ root, goal });
+                onOpened={(sessionId, root, goal, images) => {
+                  setWelcomeGoal({ root, goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });
                   openSession(sessionId, root);
                 }}
               />
