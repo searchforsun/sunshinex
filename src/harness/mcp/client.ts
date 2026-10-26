@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { ToolRegistry, CodedToolError, RegisteredTool } from '../tools';
-import { ExecResult, McpServerConfig, ToolCategory, ToolInput } from '../../types';
+import { ExecResult, JsonSchema, McpServerConfig, ToolCategory, ToolInput } from '../../types';
 import { MAX_IMAGES } from '../../images';
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
@@ -80,6 +80,16 @@ function mergedChildEnv(cfg: McpServerConfig): Record<string, string> {
     if (v !== undefined) merged[k] = v;
   }
   return { ...merged, ...(cfg.env ?? {}) };
+}
+
+/** MCP tools/list 的 inputSchema → 主仓 JsonSchema（松散结构透传，2026-10-26 browser-use 装配联调裁定）：
+ *  无 schema 注册会让模型面对无参工具——真机探活实测（Playwright MCP）参数化调用（browser_navigate {url} 等）
+ *  全部以「expected string, received undefined」败退、仅零参调用可达；直击 executor 复现已排除传输面
+ *  （args 原样到 server），根因即模型侧拿不到参数契约。形状非对象时丢弃（宁少配不可错配——无 schema
+ *  工具仍注册可用，只是模型面参数降级为自由文本）。 */
+function toToolSpecParameters(input: unknown): JsonSchema | undefined {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return undefined;
+  return input as JsonSchema;
 }
 
 export class McpHost {
@@ -161,7 +171,7 @@ export class McpHost {
         const disabled = new Set(cfg.disabledTools ?? []);
         for (const t of listed.tools) {
           if (disabled.has(t.name)) continue; // 逐工具停用（短名过滤）：装配期不注册即模型不可见
-          this.registry.register(this.makeTool(cfg.name, client, t.name, t.description));
+          this.registry.register(this.makeTool(cfg.name, client, t.name, { description: t.description, inputSchema: t.inputSchema }));
           report.registered += 1;
         }
       } catch (e) {
@@ -181,12 +191,14 @@ export class McpHost {
   }
 
   /** 单工具注册面：执行器做参数体积闸门与超时收束，安全闸门（登记制/模式豁免）统一在 guard */
-  private makeTool(server: string, client: Client, toolName: string, description?: string): RegisteredTool {
+  private makeTool(server: string, client: Client, toolName: string, tool?: { description?: string; inputSchema?: unknown }): RegisteredTool {
     const fqName = `mcp__${server}__${toolName}`;
     const timeoutMs = this.opts.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    const parameters = toToolSpecParameters(tool?.inputSchema);
     return {
       name: fqName,
-      description: description ?? `MCP tool ${toolName} (server ${server})`,
+      description: tool?.description ?? `MCP tool ${toolName} (server ${server})`,
+      ...(parameters !== undefined ? { parameters } : {}),
       category: 'external' as ToolCategory,
       executor: async (input: ToolInput): Promise<ExecResult> => {
         const args = input ?? {};

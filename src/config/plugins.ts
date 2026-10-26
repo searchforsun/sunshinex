@@ -300,8 +300,9 @@ export interface PluginMcpAssembly {
  * - server 名两级去重：先撞用户 mcp.json 名单（userServerNames）→ 告警跳过（用户遮蔽插件）；
  *   再撞已见名单 → 告警跳过（插件间撞名，字典序先到先得）；
  * - config 展开：configDefaults 与 settings 插件 config 浅合并（用户 config 覆盖缺省）后逐键展开——
- *   configArgs 值 undefined 整键跳过；pattern 含 `{value}` 占位替换（值 String 化），
- *   不含 `{value}` 仅在值为布尔 true 时追加（旗标模式——非 true 值不得把字符串当旗标落参）；
+ *   configArgs 值 undefined 整键跳过；pattern（string[] 整体裁决）含 `{value}` 逐元素展开（占位替换、
+ *   非占位元素原样透传，如 ["--browser","{value}"]），不含 `{value}` 仅在值为布尔 true 时追加
+ *   （旗标模式——非 true 值不得把字符串当旗标落参）；
  *   configEnv 展开为 env 键 ← String(config 值)；
  * - cwd：manifest '.' = 插件目录 → 解析为插件根绝对路径后落 McpServerConfig.cwd（stdio spawn 消费）；
  * - safety 逐 server 收集（未声明不落键）；装载告警与合成告警聚合单张警告单返回。
@@ -325,9 +326,13 @@ export function pluginMcpServers(projectRoot: string | undefined, opts: Paramete
       for (const [key, patterns] of Object.entries(cfg.configArgs ?? {})) {
         const v = merged[key];
         if (v === undefined) continue;
-        for (const pat of patterns) {
-          if (pat.includes('{value}')) args.push(pat.replace('{value}', String(v)));
-          else if (v === true) args.push(pat);
+        // pattern（configArgs 值 = string[]）为整体裁决单位：含 {value} 的 pattern 逐元素展开
+        // （占位替换 + 非占位元素原样透传——"--browser","{value}" 空格双元素形态）；不含 {value} 的
+        // 旗标 pattern 仅布尔 true 追加（非 true 值不得把字符串当旗标落参）
+        if (patterns.some((pat) => pat.includes('{value}'))) {
+          for (const pat of patterns) args.push(pat.includes('{value}') ? pat.replace('{value}', String(v)) : pat);
+        } else if (v === true) {
+          args.push(...patterns);
         }
       }
       const env: Record<string, string> = { ...(cfg.env ?? {}) };

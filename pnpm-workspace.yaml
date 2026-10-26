@@ -2,6 +2,7 @@
 packages:
   - gui
   - shell
+  - plugins/*
 
 # pnpm10 默认禁跑依赖 install 脚本；electron 二进制下载（postinstall）须显式放行，esbuild 一并放行以执行其校验脚本
 onlyBuiltDependencies:

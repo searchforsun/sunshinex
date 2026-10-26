@@ -31,6 +31,8 @@ test('McpHost 注册链：handshake → tools/list → 规范名注册（mcp__fs
     const spec = registry.get('mcp__fs__echo');
     assert.ok(spec, '规范名 mcp__fs__echo 应已注册');
     assert.equal(spec.category, 'external');
+    assert.deepEqual(spec.parameters, { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      'tools/list 的 inputSchema 须透传为 ToolSpec.parameters（2026-10-26 联调裁定：无 schema 则模型参数化调用全败）');
   } finally {
     await host.close();
   }

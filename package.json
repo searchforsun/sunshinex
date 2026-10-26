@@ -50,6 +50,7 @@
     "README.md",
     "MANUAL.md",
     "gui-dist",
-    "MANUAL-GUI.md"
+    "MANUAL-GUI.md",
+    "plugins"
   ]
 }

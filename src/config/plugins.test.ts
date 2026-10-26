@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, existsSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { loadEffectivePlugins, parsePluginManifest, pluginMcpServers } from './plugins';
@@ -284,6 +284,29 @@ test('configArgs 展开：缺省 config 只吃 configDefaults；布尔 true 走�
   assert.deepEqual(off.servers[0]!.args, ['x', '--browser=chrome']);
 });
 
+test('configArgs 空格双元素形态（["--browser","{value}"]）：旗标与值两元素均落参（browser-use 真实 manifest 钉面）', () => {
+  const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
+  mkPluginIn(bRoot, 'demo', {
+    defaultEnabled: true,
+    mcpServers: {
+      b: {
+        command: 'node', args: ['cli.js'], cwd: '.',
+        configArgs: { browser: ['--browser', '{value}'], headless: ['--headless'], caps: ['--caps', '{value}'] },
+        configDefaults: { browser: 'chrome' },
+      },
+    },
+  });
+  const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
+  const r = pluginMcpServers(undefined, { builtinRoot: bRoot, userRoot: uRoot, settingsReader: () => null });
+  assert.deepEqual(r.servers[0]!.args, ['cli.js', '--browser', 'chrome'], '{value} pattern 整体裁决：非占位旗标元素原样透传');
+  const withCfg = pluginMcpServers(undefined, {
+    builtinRoot: bRoot,
+    userRoot: uRoot,
+    settingsReader: () => ({ plugins: { demo: { config: { caps: 'vision' } } } }),
+  });
+  assert.deepEqual(withCfg.servers[0]!.args, ['cli.js', '--browser', 'chrome', '--caps', 'vision']);
+});
+
 test('configEnv 展开：env 键 ← config 值字符串化（数字同理）；env 全空不落键', () => {
   const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
   mkPluginIn(bRoot, 'demo', {
@@ -346,4 +369,26 @@ test('safety 收集：server 名 → 三类声明；禁用与平台不可用插�
   assert.deepEqual(r.servers.map((s) => s.name), ['s4', 's1'], '禁用（off）与平台不可用（plat）整机不出；遍历序 = id 字典序（nos < on）');
   assert.deepEqual(Object.keys(r.safety), ['s1'], 'safety 仅收启用且平台可用插件的声明');
   assert.deepEqual(r.safety.s1, { act: ['click'], confirm: ['buy'], observe: ['read'] });
+});
+
+// ---- 真实内置根装载钉（plugins/browser-use 随仓落地，Task 15 装配联调）----
+// builtinRoot 锚真实仓内 plugins/（dist 面两级上溯同式），用户根/设置注入隔离保持确定性
+
+test('真实内置根装载 browser-use：未启用不出 server；enabled 后合成 server 且 args 含 --browser chrome（configDefaults 兜底）', () => {
+  const builtinRoot = path.resolve(__dirname, '../../plugins');
+  const userRoot = mkdtempSync(path.join(tmpdir(), 'plug-real-u-')); // 不读真 HOME 用户根，免环境漂移
+  const off = pluginMcpServers(undefined, { builtinRoot, userRoot, settingsReader: () => null });
+  assert.equal(off.servers.some((s) => s.name === 'browser-use'), false, 'defaultEnabled=false → 未启用不出 server');
+  const r = pluginMcpServers(undefined, {
+    builtinRoot,
+    userRoot,
+    settingsReader: () => ({ plugins: { 'browser-use': { enabled: true } } }),
+  });
+  assert.deepEqual(r.warnings, [], '随仓 manifest 合法装载零告警（坏钉即测红）');
+  const srv = r.servers.find((s) => s.name === 'browser-use');
+  assert.ok(srv, 'enabled 后 pluginMcpServers 出 browser-use server');
+  assert.equal(srv!.command, 'node');
+  const i = srv!.args!.indexOf('--browser');
+  assert.ok(i >= 0 && srv!.args![i + 1] === 'chrome', 'configDefaults browser=chrome → args 含 --browser chrome');
+  assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'node_modules/@playwright/mcp/cli.js')), 'cwd "." 解析为插件根，@playwright/mcp 随 workspace 安装在位');
 });
