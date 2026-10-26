@@ -54,8 +54,8 @@
   --dur-relaxed: 0.3s;
   /* 尺度(G12 协调:流区与输入卡同宽令,正文升 14px 档)——--chat-max 在主对话区/右栏内联覆写:
      App ResizeObserver 按各区实时宽度落值(G14.2xx 限宽阶梯,主对话/欢迎页/辅助对话/子智能体
-     同一策略),此处 880px 只作 JS 落值前的首帧回退 */
-  --chat-max: 880px;
+     同一策略),此处 820px 只作 JS 落值前的首帧回退(2026-10-27 第一档 880→820 同步) */
+  --chat-max: 820px;
   --thread-gutter: 16px;
   --row-h: 29px;
   --toolbar-h: 40px; /* 2026-10-24 用户裁定:顶栏/菜单头/窗控簇三行同高对齐(簇 fixed 高 40,中心 y=20) */
@@ -140,7 +140,7 @@
 /* G8e-T1 三面①组头 active(row.root===activeRoot 加类):竖 accent 条+bg-2——会话行 active 同款 */.sx-group-head.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8e-T1 补:chevron 旋转过渡(旋角由组件内联 transform 落,类只承载过渡) */.sx-chevron { display: inline-flex; flex: none; color: var(--fg-secondary); transition: transform 0.15s ease; }.sx-group-head .sx-count { color: var(--fg-secondary); font-size: 12px; margin-left: auto; border-radius: var(--radius-sm); background: var(--surface-soft); padding: 0 8px; }.sx-session-row { display: flex; width: 100%; align-items: center; gap: 6px; padding: 4px 12px 4px 34px; color: var(--fg); text-align: left; border-radius: var(--radius-sm); }
 /* G14.2xx 组内「显示更多」尾行:与会话行同位(left 4/pad 24)、弱化灰 */
-.session-more { display: block; width: 100%; text-align: left; padding: 4px 12px 4px 34px; color: var(--fg-tertiary); font-size: 12px; cursor: pointer; border-radius: var(--radius-sm); } .session-more:hover { color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 6%, transparent); } /* G14.190 文字 x=38 与项目名 s 对齐 */ color: var(--fg); text-align: left; border-radius: var(--radius-sm); }.sx-session-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.session-more { display: block; width: 100%; text-align: left; padding: 4px 12px 4px 34px; color: var(--fg-tertiary); font-size: 12px; cursor: pointer; border-radius: var(--radius-sm); } .session-more:hover { color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 6%, transparent); } /* G14.190 文字 x=38 与项目名 s 对齐;2026-10-27 修编辑残缺:此处曾残留 .sx-session-row 的孤儿声明体+悬空闭括号(141 行同名规则已有同款声明),postcss 解析整表失败 */.sx-session-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8d-T1 补(裁定①):竖 accent 条标恢复(G8a 先例回归)——悬停=bg-2 无条,活动=bg-2+条,可辨 */.sx-session-row.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8e-T1 三面②会话行状态点:运行中会话(行 id===activeSessionId)=accent 实心,其余灰空心 */
 /* 2026-10-24 圆点统一(用户裁定:全前端指示点 6px 纯圆):border-radius:50% 在根 zoom+flex 交叉轴
@@ -1068,6 +1068,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: var(--surface-elevated); box-shadow: var(--elev-prominent);
   color: var(--fg-secondary); font-size: 11px; line-height: 1.4;
   white-space: pre-line; max-width: 340px; overflow-wrap: anywhere;
+} /* 2026-10-27 补回丢失的收括号:下面 sess-card 段曾被吞进 #global-tip 规则体(CSS 嵌套
+   解析为 #global-tip 后代选择器),行内悬浮卡样式全部落空——会话行 tooltip 不显示的根因 */
 /* 2026-10-26 会话行四段悬浮卡(SessionRow hover,文本 data-tip 退役):固定宽 280(px 级,
    zoom>1 视觉膨胀由 JS 落位时 /zoomScale 与视口钳制归一,余量不足缩到 min 160);
    ①会话名可换行 ②分支 ③轮次·步数 ④建档时刻——②③④单行尾部省略 */
@@ -1082,7 +1084,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-sess-card-row { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
 .sx-sess-card-row svg { flex: none; color: var(--fg-tertiary); }
 .sx-sess-card-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-}
+/* (2026-10-27 摘除:#global-tip 收括号前移后此处遗留的孤儿闭括号) */
 /* G14.80/G14.91:ask_question 选择题表单(dock 形态)——卡列表内滚+底部隐现提示+固定提交区;
    选项卡片化(整卡可点,选中 accent 边+浅底+勾图标);Other 与自由输入合二为一(默认项,✎+输入框);
    position:relative 提到 dock 渐隐层上(否则卡文被渐变吃掉);圆角与输入框一致(radius-composer) */.ask-dock { position: relative; display: flex; flex-direction: column; width: 100%; }
@@ -2313,19 +2315,20 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 /* 2026-10-25 尾块恒进解析器(上层统一裁定:实时渲染不枚举结构前缀),纯文本直出分支退役——本条 <pre> 回零规则随之删除 */
-/* ===== 2026-10-26 对话刻度导航条(八轮重设计):贴窗口左缘 6px;每条用户消息一枚 12×1.5
-   等长短横,hover 变长 18px 且上下相邻 15px 成弧形过渡;hover 右侧浮出 280px 固定宽预览卡
-   (8 行封顶);余量 ≥24(放下变长刻度)且 ≥2 条用户消息才显示;10vh..90vh 垂直居中;
-   跳转无闪框(用户裁定太割裂)。inner fixed 左偏移由组件按面板左缘实测注入 ===== */
+/* ===== 2026-10-26 对话刻度导航条(八轮重设计,十一轮门控/居中修订):贴滚动口左缘 6px;每条
+   用户消息一枚 12×1.5 等长短横,hover 变长 24px 且上下相邻 18px 成弧形过渡;hover 右侧浮出
+   280px 固定宽预览卡(8 行封顶);实测余量 ≥34(放下 hover 刻度+贴边+呼吸)且 ≥2 条用户消息
+   才显示;刻度串中线=滚动口实测中线,translateY(-50%) 精确居中(10vh..90vh 视口带是假居中:
+   顶栏/composer 上下不对称)。inner fixed left/top 由组件按实测注入 ===== */
 .sx-rail { position: sticky; top: 0; height: 0; overflow: visible; pointer-events: none; z-index: 5; }
 .sx-rail-inner {
-  /* fixed 锚面板左缘(组件注入 left):fixed 不受滚动影响恒可见,居中 10vh..90vh;
+  /* fixed 锚滚动口左缘+中线(组件注入 left/top):fixed 不受滚动影响恒可见;
      旧 absolute+translate 方案锚内容列,减掉全部 padding 后会探进侧栏底下(实测 x=163<侧栏 260) */
-  position: fixed; top: 10vh; height: 80vh; width: auto;
-  display: flex; flex-direction: column; justify-content: center;
+  position: fixed; width: auto;
+  transform: translateY(-50%);
   overflow: visible; pointer-events: none;
 }
-.sx-rail-list { display: flex; flex-direction: column; gap: 2px; margin: auto 0; } /* 十轮:间距 4→2 调小一档 */
+.sx-rail-list { display: flex; flex-direction: column; gap: 2px; } /* 间距 2px(十轮 4→2);无限高:overflow 裁剪容器会切掉刻度的绝对定位预览卡(十一轮裁定保预览) */
 .sx-rail-tick {
   pointer-events: auto; position: relative; display: flex; align-items: center;
   height: 12px; padding: 0; border: none; background: transparent; cursor: pointer; flex: none;

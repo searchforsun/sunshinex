@@ -2,21 +2,24 @@ import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
 import { zoomScale } from '../../ui-zoom';
-import { THREAD_COL_BASE } from '../../thread-width';
 
 /**
- * 对话刻度导航条(2026-10-26 九轮微调):
- * - 位置:贴主对话左缘(面板边框+固定呼吸距 6px),不随主对话宽度变化;
+ * 对话刻度导航条(2026-10-27 十一轮):
+ * - 位置:贴主对话滚动口左缘(边框+固定呼吸距 6px),实测视觉坐标 /zoomScale 归一注入 fixed 子树;
  * - 刻度:每条用户消息一枚等长短横(12×1.5);hover 变长为默认两倍(24px),相邻 18px 成弧形;
  *   当前滚动位置正对的刻度加重显色(不加长,长度变化只在 hover);
- * - 预览:hover 刻度右侧浮出固定宽 280px 预览卡(视觉对齐全局 data-tip 卡:elev-prominent
- *   阴影/lg 圆角/无边框),高度随内容 8 行封顶;
- * - 显隐:余量 ≥24(放下变长刻度)且 ≥2 条用户消息;垂直 10vh..90vh 居中。
+ * - 预览:hover 刻度右侧浮出固定宽 280px 预览卡(视觉对齐全局 data-tip 卡),高度随内容 8 行封顶;
+ * - 显隐:列左实测余量 ≥34(放下 hover 刻度 24+贴边 6+呼吸 4)且 ≥2 条用户消息——余量=
+ *   滚动容器 padding-left−18(限宽由对称 padding 承担,满宽档/平台档同口径;2026-10-27 用户裁定
+ *   提前显示,弃十轮档位门控);
+ * - 居中:刻度串几何中线=滚动口视觉中线(rect 中心 /zoomScale),inner translateY(-50%) 精确
+ *   落中线(弃 10vh..90vh 视口带,顶栏/composer 不对称致假居中)。不做列高上限:overflow 裁剪
+ *   容器会切掉刻度按钮的绝对定位预览卡(2026-10-27 裁定保预览)。
  */
 
 /** 呼吸参数(单一出处:组件测量门控与 CSS 视觉同口径) */
 const HUG_LEFT = 6; // 贴边距
-const SHOW_MIN_MARGIN = 24; // 余量门控:能放下 hover 刻度(贴 6+长 18)+呼吸;刻度长度视觉值在 CSS 同口径
+const SHOW_MIN_MARGIN = 34; // 余量门控:hover 刻度 24+贴边 6+呼吸 4(2026-10-27 用户裁定:放得下就显示)
 const MIN_USERS = 2;
 
 /** 气泡文本 → 预览文本:剥 markdown 痕迹,限 200 字(预览卡 8 行封顶,CSS line-clamp 兜底) */
@@ -40,20 +43,27 @@ export function ChatRail(props: {
   readonly sideChat?: boolean;
 }): JSX.Element {
   const { entries, chatScrollRef, sideChat } = props;
-  // 余量实测:贴左 6px + hover 刻度 18px + 呼吸 → 余量 ≥24 才显示(用户裁定:放得下边长刻度才显示)。
-  // 贴边锚点=面板左缘实测(RO 双值:余量判显隐 + 面板左 x 供 fixed 定位)
+  // 显隐+锚点+中线实测(RO 三值):余量=paddingLeft−18 判显隐;滚动口左缘/中线视觉坐标除以
+  // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
   const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
-  const [geo, setGeo] = useState<{ margin: number; left: number }>({ margin: 0, left: HUG_LEFT });
+  const [geo, setGeo] = useState<{ show: boolean; left: number; top: number }>({
+    show: false,
+    left: HUG_LEFT,
+    top: 0,
+  });
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null || typeof ResizeObserver === 'undefined') return;
     const measure = (): void => {
-      const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
+      const cs = getComputedStyle(el);
+      const pad = Number.parseFloat(cs.paddingLeft);
       const rect = el.getBoundingClientRect();
+      const z = zoomScale() || 1;
       setGeo({
-        margin: Number.isFinite(pad) ? Math.max(0, pad - 18) : 0,
-        left: Math.round(rect.left + HUG_LEFT),
+        show: Number.isFinite(pad) && pad - 18 >= SHOW_MIN_MARGIN,
+        left: Number.isFinite(rect.left) ? Math.round(rect.left / z + HUG_LEFT) : HUG_LEFT,
+        top: Number.isFinite(rect.top) ? Math.round((rect.top + rect.height / 2) / z) : 0,
       });
     };
     measure();
@@ -69,7 +79,9 @@ export function ChatRail(props: {
     if (el === null) return;
     let raf = 0;
     const onScroll = (): void => {
-      if (raf !== 0) return;
+      // 隐藏态(辅助对话/消息不足)不排动画帧:贴底跟随测试以 rAF 计数为不变量面,
+      // 且隐藏态 activeIdx 无意义;可见性随 users.length 变化由 effect 依赖重跑承接
+      if (raf !== 0 || sideChat === true || users.length < MIN_USERS) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
         const nodes = el.querySelectorAll('.entry-user');
@@ -90,7 +102,7 @@ export function ChatRail(props: {
   }, [chatScrollRef, users.length]);
 
   // 辅助对话/<2 条用户消息/余量不足放不下变长刻度:整条不渲染(用户裁定)
-  if (sideChat === true || users.length < MIN_USERS || geo.margin < SHOW_MIN_MARGIN) return <></>;
+  if (sideChat === true || users.length < MIN_USERS || !geo.show) return <></>;
 
 
   const jump = (index: number): void => {
@@ -105,12 +117,12 @@ export function ChatRail(props: {
 
   return (
     <div className="sx-rail" aria-hidden="true">
-      {/* 贴窗口左缘:fixed 锚面板左缘实测 x+6(滚动/缩放随 RO 实时跟随;恒居中 10vh..90vh) */}
+      {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y(滚动/缩放随 RO 实时跟随;translateY(-50%) 落中线) */}
       <div
         className="sx-rail-inner"
         role="navigation"
         aria-label="会话刻度导航"
-        style={{ left: `${geo.left}px` }}
+        style={{ left: `${geo.left}px`, top: `${geo.top}px` }}
       >
         <div className="sx-rail-list">
           {users.map((u, i) => (
