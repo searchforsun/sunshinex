@@ -54,8 +54,8 @@
   --dur-relaxed: 0.3s;
   /* 尺度(G12 协调:流区与输入卡同宽令,正文升 14px 档)——--chat-max 在主对话区/右栏内联覆写:
      App ResizeObserver 按各区实时宽度落值(G14.2xx 限宽阶梯,主对话/欢迎页/辅助对话/子智能体
-     同一策略),此处 720px 只作 JS 落值前的首帧回退(2026-10-27 第一档 880→820→720 同步) */
-  --chat-max: 720px;
+     同一策略),此处 750px 只作 JS 落值前的首帧回退(2026-10-27 第一档 880→820→720→750 同步) */
+  --chat-max: 750px;
   --thread-gutter: 16px;
   --row-h: 29px;
   --toolbar-h: 40px; /* 2026-10-24 用户裁定:顶栏/菜单头/窗控簇三行同高对齐(簇 fixed 高 40,中心 y=20) */
@@ -2328,10 +2328,10 @@ input.sx-setting-input { width: 100%; }
   transform: translateY(-50%);
   overflow: visible; pointer-events: none;
 }
-.sx-rail-list { display: flex; flex-direction: column; gap: 2px; } /* 间距 2px(十轮 4→2);无限高:overflow 裁剪容器会切掉刻度的绝对定位预览卡(十一轮裁定保预览) */
+.sx-rail-list { display: flex; flex-direction: column; gap: 1px; } /* 十二轮半:间距实砍——上轮仅 gap 4→2,但条到条视觉节距=盒高(12)+gap+条高(1.5)≈14px 主导,用户看不出;盒高 12→8+gap→1,节距≈9px */
 .sx-rail-tick {
   pointer-events: auto; position: relative; display: flex; align-items: center;
-  height: 12px; padding: 0; border: none; background: transparent; cursor: pointer; flex: none;
+  height: 8px; padding: 0; border: none; background: transparent; cursor: pointer; flex: none;
 }
 .sx-rail-bar {
   display: block; width: 12px; height: 1.5px; border-radius: 1px;

@@ -146,9 +146,20 @@ export function ChatRail(props: {
     if (el === null) return;
     const nodes = el.querySelectorAll('.entry-user');
     const node = nodes[index];
-    if (node !== undefined) {
-      node.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }
+    if (node === undefined) return;
+    // 落点要准(十二轮半用户裁定,不要平滑滑动):.entry 挂 content-visibility:auto,离屏条目
+    // 只有估算高(contain-intrinsic-size),scrollIntoView 一次到位按估算高算滚动量必落偏——
+    // 即时跳到位后按目标真实盒位置迭代校正,收敛(偏差≤2px)或封顶即停
+    el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    let tries = 0;
+    const correct = (): void => {
+      if (!el.isConnected) return;
+      const delta = node.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      if (Math.abs(delta) <= 2 || tries++ > 24) return;
+      el.scrollTop += delta;
+      requestAnimationFrame(correct);
+    };
+    requestAnimationFrame(correct);
   };
 
   return (
