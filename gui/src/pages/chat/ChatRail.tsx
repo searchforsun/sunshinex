@@ -3,13 +3,13 @@ import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
 
 /**
- * 对话刻度导航条(2026-10-26 八轮重设计):
- * - 位置:贴主对话左缘窗口边框(hug 左 6px),不随内容列缩进;
- * - 刻度:每条用户消息一枚等长短横(缩小一号 12×1.5),hover 变长(18px)且上下相邻刻度
- *   跟着变长(15px)成弧形过渡;≥2 条用户消息才显示;
- * - 预览:hover 在刻度右侧浮出固定宽度(280px)预览卡,高度随内容自适应(8 行封顶);
- * - 显隐:左侧余量能放下「变长后的刻度」(余量 ≥24px)才显示,余量不足整条隐藏;
- * - 垂直:占流区 80%(10vh..90vh)居中;跳转无闪框(用户裁定:太割裂)。
+ * 对话刻度导航条(2026-10-26 九轮微调):
+ * - 位置:贴主对话左缘(面板边框+固定呼吸距 6px),不随主对话宽度变化;
+ * - 刻度:每条用户消息一枚等长短横(12×1.5);hover 变长为默认两倍(24px),相邻 18px 成弧形;
+ *   当前滚动位置正对的刻度加重显色(不加长,长度变化只在 hover);
+ * - 预览:hover 刻度右侧浮出固定宽 280px 预览卡(视觉对齐全局 data-tip 卡:elev-prominent
+ *   阴影/lg 圆角/无边框),高度随内容 8 行封顶;
+ * - 显隐:余量 ≥24(放下变长刻度)且 ≥2 条用户消息;垂直 10vh..90vh 居中。
  */
 
 /** 呼吸参数(单一出处:组件测量门控与 CSS 视觉同口径) */
@@ -40,6 +40,8 @@ export function ChatRail(props: {
   const { entries, chatScrollRef, sideChat } = props;
   // 余量实测:贴左 6px + hover 刻度 18px + 呼吸 → 余量 ≥24 才显示(用户裁定:放得下边长刻度才显示)。
   // 贴边锚点=面板左缘实测(RO 双值:余量判显隐 + 面板左 x 供 fixed 定位)
+
+  const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
   const [geo, setGeo] = useState<{ margin: number; left: number }>({ margin: 0, left: HUG_LEFT });
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -57,10 +59,37 @@ export function ChatRail(props: {
     ro.observe(el);
     return () => ro.disconnect();
   }, [chatScrollRef]);
+  /** 当前滚动位置正对的刻度(九轮):视口顶下 120px 分界——最后一条顶边越线的用户气泡;
+   *  scroll rAF 节流单点,加重显色不加长(长度变化只在 hover) */
+  const [activeIdx, setActiveIdx] = useState(-1);
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    let raf = 0;
+    const onScroll = (): void => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const nodes = el.querySelectorAll('.entry-user');
+        const line = el.getBoundingClientRect().top + 120;
+        let idx = -1;
+        nodes.forEach((n, i) => {
+          if (n.getBoundingClientRect().top <= line) idx = i;
+        });
+        setActiveIdx(idx);
+      });
+    };
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf !== 0) cancelAnimationFrame(raf);
+    };
+  }, [chatScrollRef, users.length]);
 
-  const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
   // 辅助对话/<2 条用户消息/余量不足放不下变长刻度:整条不渲染(用户裁定)
   if (sideChat === true || users.length < MIN_USERS || geo.margin < SHOW_MIN_MARGIN) return <></>;
+
 
   const jump = (index: number): void => {
     const el = chatScrollRef.current;
@@ -83,7 +112,7 @@ export function ChatRail(props: {
       >
         <div className="sx-rail-list">
           {users.map((u, i) => (
-            <button key={u.key} type="button" className="sx-rail-tick" aria-label={`第 ${i + 1} 条消息`} onClick={() => jump(i)}>
+            <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={`第 ${i + 1} 条消息`} onClick={() => jump(i)}>
               <span className="sx-rail-preview">{previewText(u.md)}</span>
               <span className="sx-rail-bar" />
             </button>
