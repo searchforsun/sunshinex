@@ -143,3 +143,26 @@ export async function pickWorkspaceFolder(
     return 'denied'; // 权限/落文件被拒(含用户拒绝授权)
   }
 }
+
+/** 跳底迭代校正(2026-10-27):正文条目挂 content-visibility:auto,离屏只有估算高——一次
+ *  scrollTo(scrollHeight) 落点偏短,且滚动中条目陆续水合、高度继续增长,要连点多次才真贴底
+ *  (用户实测「回到底部要点几次」)。按贴底差逐帧追平,连续 2 帧差≤1px 收口,150 帧封顶
+ *  (同 ChatRail 跳转校正口径);主对话与子智能体转录页两处回到底部钮共用 */
+export function chaseScrollBottom(el: HTMLElement): void {
+  let tries = 0;
+  let stable = 0;
+  const step = (): void => {
+    if (!el.isConnected || tries > 150) return;
+    tries += 1;
+    const delta = el.scrollHeight - el.clientHeight - el.scrollTop;
+    if (delta <= 1) {
+      stable += 1;
+      if (stable >= 2) return;
+    } else {
+      stable = 0;
+      el.scrollTop += delta;
+    }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}

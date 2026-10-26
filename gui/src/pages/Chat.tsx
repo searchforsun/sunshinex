@@ -9,7 +9,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { loadStoredMap, pathBasename, persistCappedMap } from '../ui-util';
+import { chaseScrollBottom, loadStoredMap, pathBasename, persistCappedMap } from '../ui-util';
 import { stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
@@ -231,7 +231,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived
    *  (P11 T7 起字段单源:工具 input 暂存注入随旁路退役) */
-  const { taskNameOf, todoActive, taskActive } = useChatDerived({
+  const { taskNameOf, todoActive, taskActive, computerUseActive } = useChatDerived({
     chat,
     board,
     onTodoBatches,
@@ -517,6 +517,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         running={running}
         todoActive={todoActive}
         taskActive={taskActive}
+        computerUseActive={computerUseActive}
         conn={conn}
         onOpenTab={onOpenTab}
         archived={archived}
@@ -617,7 +618,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             data-tip={t('Scroll to bottom', '回到底部')}
             onClick={() => {
               const el = chatScrollRef.current;
-              if (el !== null) el.scrollTo({ top: el.scrollHeight }); // G14.74:直接跳底(用户裁定)
+              // G14.74 跳底 + 迭代校正(2026-10-27):CV 估算高一次 scrollTo 落点偏短要连点多次,追平收口
+              if (el !== null) chaseScrollBottom(el);
             }}
           >
             <ArrowDown size={16} strokeWidth={2} aria-hidden="true" />

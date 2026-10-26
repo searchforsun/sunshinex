@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
 import { zoomScale } from '../../ui-zoom';
@@ -21,6 +21,19 @@ import { zoomScale } from '../../ui-zoom';
 const HUG_LEFT = 6; // 贴边距
 const SHOW_MIN_MARGIN = 17; // 余量门控:上一轮 34 减半(2026-10-27 用户裁定「缩到当前间距的一半就开启」)
 const MIN_USERS = 2;
+
+/** 滚动口实测锚(单点):show=余量门控;left/top=贴滚动口左缘+中线(视觉坐标 /zoomScale 归一,D50 契约) */
+function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number } | null {
+  const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
+  if (!Number.isFinite(pad)) return null;
+  const rect = el.getBoundingClientRect();
+  const z = zoomScale() || 1;
+  return {
+    show: pad - 18 >= SHOW_MIN_MARGIN,
+    left: Number.isFinite(rect.left) ? Math.round(rect.left / z + HUG_LEFT) : HUG_LEFT,
+    top: Number.isFinite(rect.top) ? Math.round((rect.top + rect.height / 2) / z) : 0,
+  };
+}
 
 /** 气泡文本 → 预览文本:剥 markdown 痕迹,限 200 字(预览卡 8 行封顶,CSS line-clamp 兜底) */
 function previewText(md: string): string {
@@ -47,35 +60,31 @@ export function ChatRail(props: {
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
   const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
-  const [geo, setGeo] = useState<{ show: boolean; left: number; top: number }>({
-    show: false,
-    left: HUG_LEFT,
-    top: 0,
-  });
+  // 锚点直写 style 不经 React 提交(十三轮半,果冻效应根因):left/top 若走 state,重渲染
+  // 落地比测量晚一拍——拖三栏滑动线/开关菜单时锚点追着布局跑,刻度悬在半空不落新边框。
+  // show 仍走 state(挂卸载决策,翻转由 layout effect 当帧补锚)
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [show, setShow] = useState(false);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
     let raf = 0;
-    // 测量单点(多通道汇入):读值全部现取(padding/rect 强制同步布局),setGeo 带同值守卫
+    // 测量单点(多通道汇入):读值全部现取(padding/rect 强制同步布局),锚点直写,show 同值守卫
     const measure = (): void => {
-      const cs = getComputedStyle(el);
-      const pad = Number.parseFloat(cs.paddingLeft);
-      const rect = el.getBoundingClientRect();
-      const z = zoomScale() || 1;
-      setGeo((prev) => {
-        const next = {
-          show: Number.isFinite(pad) && pad - 18 >= SHOW_MIN_MARGIN,
-          left: Number.isFinite(rect.left) ? Math.round(rect.left / z + HUG_LEFT) : HUG_LEFT,
-          top: Number.isFinite(rect.top) ? Math.round((rect.top + rect.height / 2) / z) : 0,
-        };
-        return prev.show === next.show && prev.left === next.left && prev.top === next.top ? prev : next;
-      });
+      const a = railAnchor(el);
+      if (a === null) return;
+      const inner = innerRef.current;
+      if (inner !== null) {
+        inner.style.left = `${a.left}px`;
+        inner.style.top = `${a.top}px`;
+      }
+      setShow((prev) => (prev === a.show ? prev : a.show));
     };
     // 显隐/锚点滞后一拍的三种来源各配一条触发线(十二轮半:单挂 RO 时,交互拖拽/渲染步
     // 节流期间 RO 交付停滞,刻度状态整段拖到偶发交付才更新——缩/涨两向滞后到越过阈值很远):
     // ①RO:盒尺寸变化(三栏拖拽/视口/折叠);②resize:窗口级变化的兜底通道(rAF 去抖);
     // ③MutationObserver:App RO 直写 .sx-main 等的 --chat-max 内联值——微任务通道,
-    //   渲染步冻结时也送达,专治 RO 停摆段;自身 left/top 写回会同值自愈(setGeo 守卫截停)
+    //   渲染步冻结时也送达,专治 RO 停摆段;自身 left/top 写回同值自愈(setGeo 守卫截停)
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -107,6 +116,18 @@ export function ChatRail(props: {
       mo?.disconnect();
     };
   }, [chatScrollRef]);
+  // 挂载/重挂当帧补锚(show 翻转重渲染后,绘制前同步写 left/top,避免 fixed auto 位置闪帧)
+  useLayoutEffect(() => {
+    if (!show) return;
+    const el = chatScrollRef.current;
+    const inner = innerRef.current;
+    if (el === null || inner === null) return;
+    const a = railAnchor(el);
+    if (a !== null) {
+      inner.style.left = `${a.left}px`;
+      inner.style.top = `${a.top}px`;
+    }
+  }, [show, chatScrollRef]);
   /** 当前滚动位置正对的刻度(九轮):视口顶下 120px 分界——最后一条顶边越线的用户气泡;
    *  scroll rAF 节流单点,加重显色不加长(长度变化只在 hover)。
    *  十二轮半:DOM .entry-user 与刻度序列不再同序同长(纯图/空 md 用户气泡进 DOM 不进刻度),
@@ -144,7 +165,7 @@ export function ChatRail(props: {
   }, [chatScrollRef, users.length]);
 
   // 辅助对话/<2 条用户消息/余量不足放不下变长刻度:整条不渲染(用户裁定)
-  if (sideChat === true || users.length < MIN_USERS || !geo.show) return <></>;
+  if (sideChat === true || users.length < MIN_USERS || !show) return <></>;
 
 
   const jump = (index: number): void => {
@@ -181,13 +202,8 @@ export function ChatRail(props: {
 
   return (
     <div className="sx-rail" aria-hidden="true">
-      {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y(滚动/缩放随 RO 实时跟随;translateY(-50%) 落中线) */}
-      <div
-        className="sx-rail-inner"
-        role="navigation"
-        aria-label="会话刻度导航"
-        style={{ left: `${geo.left}px`, top: `${geo.top}px` }}
-      >
+      {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y 直写 style(测量同帧落位;translateY(-50%) 落中线) */}
+      <div ref={innerRef} className="sx-rail-inner" role="navigation" aria-label="会话刻度导航">
         <div className="sx-rail-list">
           {users.map((u, i) => (
             <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={`第 ${i + 1} 条消息`} onClick={() => jump(i)}>

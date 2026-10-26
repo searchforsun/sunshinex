@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, Check, Copy } from 'lucide-react';
 import { t } from '../i18n';
-import { fmtTokens } from '../ui-util';
+import { chaseScrollBottom, fmtTokens } from '../ui-util';
 import type { AgentActivity } from './agent-activity';
 import type { TaskBoardState } from '../projection';
 import type { Connection } from '../connection';
@@ -204,7 +204,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
           data-tip={t('Scroll to bottom', '回到底部')}
           onClick={() => {
             const el = bodyRef.current;
-            if (el !== null) el.scrollTo({ top: el.scrollHeight });
+            // 迭代校正(2026-10-27 同主对话):CV 估算高一次 scrollTo 落点偏短要连点多次
+            if (el !== null) chaseScrollBottom(el);
           }}
         >
           <ArrowDown size={16} strokeWidth={2} aria-hidden="true" />
