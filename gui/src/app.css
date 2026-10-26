@@ -2468,5 +2468,6 @@ input.sx-setting-input { width: 100%; }
 .sx-font-pv-code { font-family: var(--font-mono); color: var(--fg-secondary); background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-xs); align-self: stretch; }
 /* 2026-10-26 用户裁定:预设卡单行横排(4 列等宽铺满行宽),预览文本单行省略不折行 */
 .sx-font-row.sx-setting-row { flex-direction: column; gap: 8px; }
-.sx-font-ctl { width: 100%; max-width: none; grid-template-columns: repeat(4, 1fr); }
+.sx-font-ctl { width: 100%; max-width: none; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sx-font-preset-card { min-width: 0; }
 .sx-font-pv, .sx-font-pv-tool, .sx-font-pv-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
