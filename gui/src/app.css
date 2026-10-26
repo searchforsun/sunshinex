@@ -1932,7 +1932,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-card-rows .sx-setting-row:not(:first-child) { border-top: 1px solid var(--border-subtle); }
 .sx-setting-main { min-width: 0; padding-top: 5px; }
 .sx-setting-title { display: flex; align-items: center; gap: 7px; }
-.sx-setting-label { font-family: var(--font-mono); font-size: 12.5px; font-weight: 500; color: var(--fg); overflow-wrap: anywhere; }
+.sx-setting-label { font-family: var(--font-ui); font-size: 13px; font-weight: 500; color: var(--fg); overflow-wrap: anywhere; } /* 2026-10-26 用户裁定:行标题等宽小字退役——无衬线 13px 与卡片/预设名同档 */
 .sx-setting-desc { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--fg-tertiary); }
 .sx-setting-ctl { flex: none; width: 300px; max-width: 46%; }
 
