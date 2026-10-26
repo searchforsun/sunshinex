@@ -17,6 +17,10 @@ Playwright MCP（`@playwright/mcp`）驱动的浏览器自动化：以可访问�
 
 ## Profile 与安全注记（spec §4.3）
 
-浏览器 profile 即**高价值凭据面**：持久 `userDataDir` 内含登录态 cookie 与站点凭据，页面内脚本理论上可触达同域凭据。默认关闭即出于此——启用前请确认信任目标站点；如需持久登录态，把 `userDataDir` 指到专用目录而非日常浏览器 profile，避免与个人浏览环境混用。该插件未声明 safety 三类，全部工具走通用 MCP 审批问线（fail-closed 兜底）。
+浏览器 profile 即**高价值凭据面**：持久 `userDataDir` 内含登录态 cookie 与站点凭据，页面内脚本理论上可触达同域凭据。默认关闭即出于此——启用前请确认信任目标站点；如需持久登录态，把 `userDataDir` 指到专用目录而非日常浏览器 profile，避免与个人浏览环境混用。该插件未声明 safety 三类，全部工具走通用 MCP 审批问线（fail-closed 兜底）；`browser_run_code_unsafe`（server 进程任意 JS，RCE 等价）与 `browser_evaluate` 在不受信场景建议入 `permissions.deny`（见技能正文示例）。
 
-详细使用文档见 MANUAL.md 插件章节；插件开发规范见 PLUGIN-DEV.md。
+## 随附技能
+
+`skills/web-testing/`：面向模型的 Web 测试教程技能（snapshot→按 ref 定位→操作→verify 标准循环、caps 能力组、敏感面 deny 示例），插件启用后经技能装载链自动并入清单（id `web-testing`）。
+
+详细使用文档见 MANUAL.md 插件章节（含**目标机首次启用前的依赖补装步骤**：`pnpm --dir plugins/browser-use install`）；插件开发规范见 PLUGIN-DEV.md。

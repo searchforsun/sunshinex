@@ -446,6 +446,14 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 内置 | `<安装目录>/plugins/<id>/` | 随包分发 |
 | 用户级 | `~/.sunshinex/plugins/<id>/` | 自装插件；同 id 遮蔽内置 |
 
+**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json），内置插件声明的第三方依赖须在目标机**首次启用前**补装。以 browser-use（依赖 `@playwright/mcp`）为例：
+
+```bash
+pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包用 npm --prefix <包内 plugins/browser-use 路径> install
+```
+
+跳过该步的表现：启用插件后会话装配时该 server 连接失败，警告单出现 `assembly failed (browser-use): …`——降级语义，只损失此单 server 的工具，会话照常不中断；补装后**新开会话**即恢复。浏览器内核方面，缺省 `browser=chrome` 走系统已装的 Chrome/Edge 等品牌通道，无须另下内核；换 `chromium` 才需 `npx playwright install chromium`。
+
 **启用/禁用**（改完对新会话生效，运行中会话不热切换）：
 
 | 方式 | 操作 |
