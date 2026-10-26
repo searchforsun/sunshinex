@@ -4,7 +4,8 @@
 - 状态：设计已确认（brainstorming 产出，用户裁定合并二期/三期一起实施；参数尾窗 600/TTL 60min）
 - 范围：gui/（registry/App 壳/标签装配/attach 播种/prepend 归约/后台加载链/chatMem TTL）+ src/serve/（snapshot 分页参数与载荷瘦身）
 - 前置关系：一期（原规格 P1 快赢 + 2026-10-26 二轮补强：映射缓存/组级 memo/App 帧隔离/content-visibility）已交付（0bb44ca 系）。本设计 = 原规格 P2（分包 keep-alive）+ P3（历史链分页，按用户裁定演化为「自动后台分段补全」形态）合并实施。
-- 参数裁定（2026-10-26 用户）：尾窗 **600** 条（渲染尾窗 RENDER_WINDOW 同步 600 对齐）；chatMem TTL **60 分钟**。
+- 参数裁定（2026-10-26 用户 + 复核修正）：**首屏尾窗 200 / 补全页 600 / 渲染窗 RENDER_WINDOW 600**（600 作渲染跨度与补全页合理；作首屏偏重——200 条 ≈200KB 解析个位数 ms 真秒开，1-2 页补全即填满渲染窗）；chatMem TTL **60 分钟**。
+- 兼容裁定（2026-10-26 用户）：**去掉兼容项**——snapshot 缺省即尾窗形态，不留无参全量旧路径；`result.full` 在所有快照响应中剥离，§4.5 观测按需端点与批 1 同步交付。
 
 ## 1. 背景与实测现状
 
@@ -27,11 +28,11 @@
 | 主包体积 | 9.4MB | < 1.5MB（Monaco/xterm/hljs 各自独立 chunk 按需加载） |
 | 同型标签互切 | 100-300ms（Monaco 重建） | < 50ms（零重建） |
 | 终端标签切回 | WS 重连 + replay 往返 | 零往返（实例保活屏幕原样） |
-| 进会话首屏可用 | 全量下载+解析+seed（随历史线性变慢） | 仅尾窗 600 条，体感恒定 |
-| 快照载荷 | 全量（含 result.full 全量观测） | 尾窗/补全页 ≤ 600 条且不带 full |
+| 进会话首屏可用 | 全量下载+解析+seed（随历史线性变慢） | 仅首屏尾窗 200 条，体感恒定 |
+| 快照载荷 | 全量（含 result.full 全量观测） | 一律不带 full；首屏 200 条/补全页 600 条 |
 | 老历史补全 | 无（一次性全量） | 后台自动逐段直到头部（完成态标记），切走暂停切回续跑 |
 | 会话缓存 | LRU-4 无时间界 | LRU-4 + 60min TTL（运行中不剔） |
-| 兼容 | — | 无分页参数的老调用行为不变（契约测试钉住） |
+| 兼容 | — | **已去除**（用户裁定）：缺省即尾窗形态 |
 
 全量门禁：`pnpm test`（daemon 契约）+ `pnpm --dir gui run test` + typecheck + `pnpm gui:build` 产物体积复核。
 
@@ -43,15 +44,15 @@
 
 ### 4.1 daemon：snapshot 分页参数（传输面增量，向后兼容）
 
-- `GET /session/:id/snapshot?tail=600`：返回最后 600 条 + `total` + `oldestSeq` + `hasMore`；
-- `GET /session/:id/snapshot?before=<seq>&limit=600`：返回 seq < before 的前 600 条 + `hasMore`（journal 条目 seq 单调且不可变——天然游标）；
-- 缺省无参 = 现状全量（老客户端/TUI 逐字节不变，daemon.contract.test 增补）；
+- `GET /session/:id/snapshot`：缺省返回**最后 200 条**（首屏尾窗）+ `total/oldestSeq/hasMore`；
+- `GET /session/:id/snapshot?tail=N`：自定义尾窗；`?before=<seq>&limit=600`：返回 seq < before 的前 limit 条 + `hasMore`（journal 条目 seq 单调且不可变——天然游标）；
+- **无兼容旧路径**（用户裁定）：所有响应一律分页形态 + 剥 `result.full`；契约测试钉「缺省尾窗/参数校验/full 恒剥」；
 - **载荷瘦身随分页走**：分页响应条目只带 `result.text`（既有 200 字符截断），剥 `result.full`——全量观测按需另拉（§4.5）。kernel 内存面仍持全量（daemon 内不受影响），裁剪只发生在快照序列化出口；
 - 前置核对（实施批内第一步）：TUI 恢复路径确认不经 GUI 快照出口；若共用读取面则裁剪收窄到带 `gui=1` 客户端声明。
 
 ### 4.2 gui：attach 尾窗播种 + prepend 归约
 
-- attach 只以尾窗 seed（`tail=600`，渲染尾窗 RENDER_WINDOW_DEFAULT 同步 600）；快照响应带 `total/oldestSeq/hasMore` 入 ChatState 供加载链消费；
+- attach 只以首屏尾窗 seed（缺省 tail=200）；渲染尾窗 RENDER_WINDOW_DEFAULT 同步 600；快照响应带 `total/oldestSeq/hasMore` 入 ChatState 供加载链消费；
 - reducer 增 `prependSeed(state, entries, meta)`：头部插入 + structureVersion 递增；不动尾部与 openRun/openSeg 游标（游标引用尾部 seq，头部插入无扰）；
 - mapCache：头部插入走全量重映射路径（页级频率可接受）；尾部流式帧仍走快速路径；
 - 渲染尾窗语义：老数据到达**不自动扩可视窗**——滚顶按既有「自动回放」机制扩窗（数据已在内存，扩窗零等待）；背景补全是「备货」不是「上货架」。

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 无分页参数的 snapshot 调用行为逐字节不变（daemon.contract.test 钉住）；
+- snapshot 缺省即尾窗形态（200），无全量旧路径（兼容项已由用户裁定去除）；`result.full` 恒剥离，观测按需端点（Task 2b）与剥离同批交付；
 - journal 落盘形态不动；`result.full` 裁剪只发生在快照序列化出口，TUI 读取面不动；
 - prepend 不得扰动 openRun/openSeg 游标与尾部渲染；structureVersion 在头部插入时递增；
 - 分页参数校验：tail/before/limit 为正整数，limit ≤ 2000；tail 与 before 互斥（同给 400）；
@@ -33,20 +33,15 @@
 - [ ] **Step 1: 写失败测试**（session.test.ts 追加；测试直接构造 sessionRuntime 或沿用文件内既有 session 构造夹具——先看文件内现有 snapshot 用例怎么拿 session，复用同款夹具）
 
 ```ts
-test('⓿ snapshot 分页:tail 取尾窗+total/oldestSeq/hasMore+剥 full;无参行为不变', () => {
-  // 夹具:种子 5 条(seq 1..5,奇数条带 result.full);直接调 runtime.snapshotResponse
+test('⓿ snapshot 缺省尾窗 200:total/oldestSeq/hasMore+full 恒剥', () => {
+  // 夹具:种子 5 条(seq 1..5,均带 result.full);直接调 runtime.snapshotResponse
   const rt = /* 沿用本文件既有 session runtime 夹具 */;
-  const full = rt.snapshotResponse();
-  assert.equal(full.messages.length, 5);
-  assert.ok((full.messages[0] as { result?: { full?: string } }).result?.full !== undefined, '无参:full 保留(逐字节不变)');
-
-  const tail = rt.snapshotResponse({ tail: 3 });
-  assert.equal(tail.messages.length, 3);
-  assert.equal(tail.total, 5);
-  assert.equal(tail.oldestSeq, tail.messages[0]!.seq);
-  assert.equal(tail.hasMore, true);
-  assert.equal((tail.messages[0] as { result?: { full?: string } }).result?.full, undefined, '分页:full 剥离');
-  assert.equal(tail.messages[2]!.seq, 5, '尾窗取最新');
+  const snap = rt.snapshotResponse();
+  assert.equal(snap.messages.length, 5, '5 条 < 200:全量即尾窗');
+  assert.equal(snap.total, 5);
+  assert.equal(snap.oldestSeq, 1);
+  assert.equal(snap.hasMore, false);
+  for (const m of snap.messages) assert.equal((m as { result?: { full?: string } }).result?.full, undefined, 'full 恒剥');
 });
 
 test('⓿b snapshot 分页:before 游标+hasMore 收口', () => {
