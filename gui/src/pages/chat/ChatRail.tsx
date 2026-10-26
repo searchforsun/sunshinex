@@ -49,8 +49,10 @@ export function ChatRail(props: {
   }, [chatScrollRef]);
 
   const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
-  // 空会话/辅助对话/单条/余量不足:一律不渲染(挂都不挂,零布局参与)
-  if (sideChat === true || !gutterOk || users.length < 2) return <></>;
+  // 空会话/辅助对话/余量不足:一律不渲染(挂都不挂,零布局参与)。
+  // 2026-10-26 四轮裁定:显示门槛=有用户气泡即可(≥1)——旧 ≥2 是 v1 自拟,与「正文渲染
+  // 多少就显示多少条」相悖,单条会话(新测试会话)整条消失被用户当成坏了
+  if (sideChat === true || !gutterOk || users.length === 0) return <></>;
 
   const jump = (index: number): void => {
     const el = chatScrollRef.current;
