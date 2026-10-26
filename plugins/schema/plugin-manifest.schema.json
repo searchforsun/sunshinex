@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "plugin-manifest.schema.json",
+  "title": "SunshineX 插件 manifest（manifestVersion 1）",
+  "description": "插件 manifest 校验规则单源（JSON Schema draft-07）：装载器、校验 CLI、编辑器补全/第三方预检同源消费（spec §2.2）。容错纪律与运行时解析器（src/config/plugins.ts 手写类型守卫，不引 ajv）一致：未知顶层字段/保留贡献点出现 = 告警忽略（不拒载），故顶层不设 additionalProperties:false；mcpServers 坏条目跳过+告警、不整插件拒（宁可少配不可错配）。本 schema 只描述合法形状，宽松度以解析器为准。",
+  "type": "object",
+  "required": ["manifestVersion", "id", "name", "version", "description"],
+  "properties": {
+    "manifestVersion": { "const": 1, "description": "前向兼容锚：未知 major 拒载；同 major 演进走可选字段" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "与技能 id 同规范；须等于插件目录名（不符告警）" },
+    "name": { "type": "string", "description": "展示名" },
+    "version": { "type": "string", "minLength": 1, "description": "semver 口径（展示与排序用，运行时不做严格 semver 校验）" },
+    "description": { "type": "string", "description": "一句话描述" },
+    "platforms": { "type": "array", "items": { "type": "string" }, "description": "process.platform 值；缺省全平台，不匹配 = 插件不可用（设置页置灰）。元素只校验字符串，不锁枚举——Node 平台名集合随运行时变化" },
+    "defaultEnabled": { "type": "boolean", "default": false, "description": "缺省 false；仅 settings 未配置时作初值" },
+    "mcpServers": {
+      "type": "object",
+      "description": "键 = server 名，值 = 贡献条目（McpServerConfig 形态 + safety/configArgs/configEnv/configDefaults 贡献扩展）；v1 仅 stdio（transport 出现 http/sse 该条告警跳过，远程 server 支持后置）",
+      "additionalProperties": { "$ref": "#/definitions/mcpServerContrib" }
+    },
+    "skills": { "type": "array", "items": { "type": "string" }, "description": "插件内技能目录（相对插件根），并入技能装载链（优先级最低）" },
+    "configSchema": {
+      "type": "object",
+      "description": "config 键 → {type, description}；v1 仅设置页展示，不强校验 config 值",
+      "additionalProperties": {
+        "type": "object",
+        "properties": { "type": { "type": "string" }, "description": { "type": "string" } },
+        "required": ["type"]
+      }
+    },
+    "config": { "type": "object", "description": "settings 语义键 plugins[id].config 的镜像载体（浅对象，键值自由；值可被装配期与 configDefaults 合并消费）" },
+    "commands": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" },
+    "hooks": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" },
+    "agents": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" },
+    "tools": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" }
+  },
+  "definitions": {
+    "mcpServerContrib": {
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1, "description": "stdio 启动命令（必填；transport v1 仅 stdio）" },
+        "args": { "type": "array", "items": { "type": "string" }, "description": "启动参数" },
+        "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "子进程环境（叠加继承宿主环境，cfg 键覆盖宿主同名）" },
+        "transport": { "const": "stdio", "description": "v1 仅 stdio；缺省 stdio，出现 http/sse 该条告警跳过" },
+        "cwd": { "type": "string", "description": "子进程工作目录；\".\" = 插件目录" },
+        "safety": {
+          "type": "object",
+          "description": "声明式安全三类（spec §2.4）：值为工具短名清单；未声明的工具走通用 MCP 审批行为（fail-closed 兜底）。解析器纪律：safety 在场但形状矛盾 = 整条跳过（不落半份声明）",
+          "properties": {
+            "act": { "type": "array", "items": { "type": "string" }, "description": "直接执行类：免问线" },
+            "confirm": { "type": "array", "items": { "type": "string" }, "description": "硬确认类：每次执行须用户确认" },
+            "observe": { "type": "array", "items": { "type": "string" }, "description": "只读观察类" }
+          }
+        },
+        "configArgs": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } }, "description": "config 键 → 参数模板清单（{value} 占位替换；布尔 true → 纯旗标），装配期随 settings 插件 config 展开" },
+        "configEnv": { "type": "object", "additionalProperties": { "type": "string" }, "description": "环境变量键 → config 键（值装配期字符串化透传子进程）" },
+        "configDefaults": { "type": "object", "description": "config 键 → settings 未配置时的缺省值（plugin.config 浅合并覆盖）" }
+      }
+    }
+  }
+}
