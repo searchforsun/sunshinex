@@ -2296,7 +2296,10 @@ input.sx-setting-input { width: 100%; }
    余量不足自动隐藏(组件内 RO 实测 padding) ===== */
 .sx-rail { position: sticky; top: 0; height: 0; overflow: visible; pointer-events: none; z-index: 5; }
 .sx-rail-inner {
-  position: absolute; left: 0; top: 10%; height: 80%; width: 40px;
+  /* 2026-10-26 六轮根修:top/height 改 vh 基准——sticky 容器(sx-rail)恒 0 高,百分比 10%/80%
+     恒解析为 0px,inner 成 0 高滚动容器把刻度列表整条裁掉(DOM 有盒、像素无色,CDP 截屏实测,
+     v1 起从未真正显示过);视口基准 10vh/80vh = 设计本意「居中+占流区 80%」的正确实现 */
+  position: absolute; left: 0; top: 10vh; height: 80vh; width: 40px;
   transform: translateX(-100%); /* 锚内容列左缘向左展开:transform 不产生横向滚动域 */
   display: flex; flex-direction: column; align-items: flex-end;
   padding-right: 10px; overflow-y: auto; scrollbar-width: none; pointer-events: none;
