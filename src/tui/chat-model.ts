@@ -36,6 +36,9 @@ export interface ChatItem {
   /** markdansi 渲染结果条目（2026-09-30 替换批次）：text 承载 ANSI（非 markdown 源），渲染层直嵌 <Text>；
    *  journal 按原样序列化，resume 回放照显 */
   ansi?: true;
+  /** user 行随行图片附件（dataURL，≤8 张；2026-10-26 图片功能）：渲染面显 [Image 1] 占位标记
+   *  （Claude Code 对标），图片本体不入终端——转录/模型面全链 dataURL 透传 */
+  images?: string[];
   /** 段中续块（2026-09-30 完整流式裁决）：本 assistant 块由上一块逐行入档续接而来（上一块不以空行结尾=
    *  同一 Markdown 段）——渲染层折叠块间 marginBottom，逐行块与整段块呈现恒等 */
   cont?: true;

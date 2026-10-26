@@ -48,26 +48,11 @@ export interface SessionHandlerIo {
   resolvePlanApproval(pid: string, decision: { approved: boolean; feedback?: string }): boolean;
 }
 
-/** 图片附件载荷上限（张）：GUI 侧同值钳制；HTTP 面拒绝超出（400） */
-export const MAX_IMAGES = 8;
-/** 单张图片 dataURL 字符上限（≈6MB 二进制）：GUI 压缩后正常远低于此；防单张巨型载荷 */
-export const MAX_IMAGE_CHARS = 8 * 1024 * 1024;
+/** 图片附件常量/校验单源在 src/images.ts（serve HTTP 面与 TUI 剪贴板面共用；本件只作消费方） */
+import { parseImagesParam } from '../images';
+
 /** submit/steer 携图请求的 body 上限：8 张 × 单张上限 × JSON 转义余量 */
 export const MAX_IMAGE_BODY_BYTES = 32 * 1024 * 1024;
-/** dataURL 形态校验（png/jpeg/webp/gif；GUI 端压缩产物恒此四类） */
-const IMAGE_DURL_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
-
-/** 提交载荷 images 字段净化：合法回 dataURL 串数组（原样贯穿，零转码）；非法回错误文案（HTTP 400 面） */
-export function parseImagesParam(raw: unknown): { ok: true; images?: string[] } | { ok: false; error: string } {
-  if (raw === undefined) return { ok: true };
-  if (!Array.isArray(raw)) return { ok: false, error: 'images must be an array of data URLs' };
-  if (raw.length > MAX_IMAGES) return { ok: false, error: `too many images (max ${MAX_IMAGES})` };
-  for (const img of raw) {
-    if (typeof img !== 'string' || !IMAGE_DURL_RE.test(img)) return { ok: false, error: 'images must be data:image/{png|jpeg|webp|gif};base64,... URLs' };
-    if (img.length > MAX_IMAGE_CHARS) return { ok: false, error: 'image too large (max 6MB each)' };
-  }
-  return { ok: true, images: raw.length > 0 ? (raw as string[]) : undefined };
-}
 
 export async function handleSubmit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
   const parsed = await io.readJson(req, MAX_IMAGE_BODY_BYTES);

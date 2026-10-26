@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
 import { theme } from '../theme';
+import { imageMarkers } from '../../images';
 
 /**
  * 常驻边框输入框：❯ 提示符 + 缓冲/占位。
@@ -11,16 +12,21 @@ export function InputBox({
   placeholder,
   active,
   cursor = buffer.length,
+  attachments,
 }: {
   buffer: string;
   placeholder: string;
   active: boolean;
   cursor?: number;
+  /** 待发图片附件 chips（2026-10-26 图片功能，Ctrl+V 贴图）：[Image 1] [Image 2] … 置于输入行上侧 */
+  attachments?: readonly string[];
 }): JSX.Element {
   const pos = Math.min(Math.max(0, cursor), buffer.length);
+  const chips = attachments !== undefined && attachments.length > 0 ? imageMarkers(attachments.length) : undefined;
   if (buffer.length === 0) {
     return (
       <Box borderStyle="round" borderColor={active ? 'cyan' : 'gray'} flexDirection="column" paddingX={1}>
+        {chips !== undefined && <Text dimColor>{chips}</Text>}
         <Text>
           <Text color={theme.accent}>❯ </Text>
           <Text dimColor>{placeholder}</Text>
@@ -44,6 +50,7 @@ export function InputBox({
   }
   return (
     <Box borderStyle="round" borderColor={active ? 'cyan' : 'gray'} flexDirection="column" paddingX={1}>
+      {chips !== undefined && <Text dimColor>{chips}</Text>}
       {lines.map((l, i) => {
         const onCursor = active && i === lineIdx;
         return (

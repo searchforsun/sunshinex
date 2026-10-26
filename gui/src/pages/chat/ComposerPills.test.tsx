@@ -27,9 +27,10 @@ function mountModelPill(current: string | undefined): void {
       cacheTokens={0}
       modelInfo={{
         current,
+        explicitDefault: false,
         choices: [
-          { id: 'provider-a/glm-5.3-flash', model: 'glm-5.3-flash' },
-          { id: 'provider-b/model-x', model: 'model-x' },
+          { id: 'provider-a/glm-5.3-flash', model: 'glm-5.3-flash', baseUrl: 'https://a/v1' },
+          { id: 'provider-b/model-x', model: 'model-x', baseUrl: 'https://b/v1' },
         ],
       }}
       setModelInfo={() => {}}

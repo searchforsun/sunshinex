@@ -184,7 +184,7 @@ export function useQueueKeys({
             if (controller.getState().status === 'idle') break;
             await new Promise((r) => setTimeout(r, 100));
           }
-          await controller.submit(sel.text);
+          await controller.submit(sel.text, sel.images);
         })();
         return true;
       }

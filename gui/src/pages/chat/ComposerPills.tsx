@@ -4,6 +4,7 @@ import { t } from '../../i18n';
 import { ContextRing } from '../../context-ring';
 import { EffortChip, EffortSlider } from '../../effort-slider';
 import type { Connection, ConnectionState } from '../../connection';
+type SessionModelInfo = Awaited<ReturnType<Connection['sessionModel']>>;
 import { baseModelName } from './EntryViews';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
 // ModeIcon 值回引宿主(调用期解绑,EntryViews 同款先例;Chat 原路径再导出保 WelcomeComposer 消费)
@@ -113,8 +114,9 @@ interface PillsRightProps {
   readonly steps: number;
   readonly tokens: number;
   readonly cacheTokens: number;
-  readonly modelInfo: { current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null;
-  readonly setModelInfo: Dispatch<SetStateAction<{ current?: string; choices: Array<{ id: string; model: string; effort?: string }> } | null>>;
+  /** 形态单源：sessionModel 返回类型直推（含 explicitDefault/图片能力位，防内联窄化漂移） */
+  readonly modelInfo: SessionModelInfo | null;
+  readonly setModelInfo: Dispatch<SetStateAction<SessionModelInfo | null>>;
   readonly sessEffort: string | undefined;
   readonly setSessEffort: Dispatch<SetStateAction<string | undefined>>;
   readonly running: boolean;

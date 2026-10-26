@@ -70,10 +70,11 @@ src/
   textmatch.ts        # 文本匹配原语单点（escapeRegExp/globToRegex，permissions/rules/sandbox 共用）
   slug.ts             # slug 折叠单点（ASCII 小写折叠，tasks/worktree/learned 三方言共用）
   i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
+  images.ts           # 图片附件共享面（MAX_IMAGES ≤8/parseImagesParam 校验/appendImages 钳制/imageMarkers 占位标记；serve HTTP + TUI + GUI 单源，dataURL 形态全链零转码）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
-  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）
+  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
   harness/
     index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）

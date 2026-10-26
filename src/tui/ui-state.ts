@@ -23,6 +23,8 @@ export interface RetainedUiState {
   inspectExpanded: boolean;
   history: string[];
   histIdx: number;
+  /** 待发图片附件（dataURL，≤8 张；2026-10-26 图片功能）：跨重挂保留（与 buffer 同口径——打字/贴图过半不丢） */
+  attachments?: string[];
   /** 打印账本（2026-09-30 方案 A）：跨重挂存续——tui-loop 读其 plan 定夺尾部原位重写，
    *  MessageList 逐渲染记账；全量重放路径由挂载端重建 */
   tailLedger?: TailLedger;

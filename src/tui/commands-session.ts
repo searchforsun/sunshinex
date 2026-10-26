@@ -115,8 +115,9 @@ export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () 
   for (const e of entries) {
     const seq = items.length + 1;
     if (e.kind === 'user') {
-      // user 裸文直读(v3 写面单形态,P11-T2 零读侧归一——旧 `> ` 剥前缀随 v2 退役)
-      items.push({ role: 'user', text: e.md, ts: e.ts, seq });
+      // user 裸文直读(v3 写面单形态,P11-T2 零读侧归一——旧 `> ` 剥前缀随 v2 退役);
+      // images 随行透传(2026-10-26 图片功能),渲染面显 [Image N] 占位标记
+      items.push({ role: 'user', text: e.md, ts: e.ts, seq, ...(e.images !== undefined && e.images.length > 0 ? { images: e.images } : {}) });
       continue;
     }
     if (e.kind === 'assistant') {

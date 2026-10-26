@@ -16,6 +16,8 @@ import type { RepaintMode } from '../tui-loop';
 import { BannerInfo, buildBannerInfo } from '../banner-info';
 import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
+import { readClipboardImage } from '../clipboard-image';
+import { MAX_IMAGES, appendImages } from '../../images';
 import { TodoList } from './TodoList';
 import { StatusBar } from './StatusBar';
 import { Spinner } from './Spinner';
@@ -117,6 +119,7 @@ export function App({
   retain,
   onRequestRepaint,
   onExit,
+  readPasteImage,
 }: {
   controller: SessionController;
   banner?: BannerInfo;
@@ -126,6 +129,8 @@ export function App({
   onRequestRepaint?: (mode?: RepaintMode) => void;
   /** 空闲态 Ctrl+C 的退出请求出口（entry 注入优雅退出：flush→dispose→unmount→exit）；缺省无退出通道 */
   onExit?: () => void;
+  /** 剪贴板读图接缝（2026-10-26 图片功能；测试注入钉 Ctrl+V 面，缺省走系统剪贴板真实读取） */
+  readPasteImage?: () => Promise<string | undefined>;
 }): JSX.Element {
   const localRetain = React.useRef<RetainedUiState>(initialRetained());
   const store = retain ?? localRetain.current;
@@ -156,6 +161,10 @@ export function App({
   const { aCursor: aCursorState, pCursor: pCursorState, handleKey: handleApprovalKey } = useApprovalKeys({ controller, status: state.status });
   const [buffer, setBuffer] = React.useState(store.buffer);
   const [cursor, setCursor] = React.useState(store.cursor);
+  // 待发图片附件（2026-10-26 图片功能，Ctrl+V 贴图；dataURL ≤8 张）：跨重挂经 retain 保留（buffer 同口径）
+  const [attachments, setAttachments] = React.useState<string[]>(store.attachments ?? []);
+  const attachmentsRef = React.useRef(attachments);
+  attachmentsRef.current = attachments;
   // 两层展开视图（Tab/Ctrl+O 正交，均经 tui-loop 卸载→清屏→重挂整屏重放，视口永远只有一份历史）：
   // expandAll=第一层行折叠开关，缺省 true=全行展开（2026-09-30 用户裁决：主链运行中不自动折叠工具行、
   // 折叠重写即闪屏源，是否折叠由用户 Tab 决定——Tab 翻转进入折叠形态）；
@@ -210,6 +219,8 @@ export function App({
     setSlashCursor,
     initialHistory: store.history,
     initialHistIdx: store.histIdx,
+    attachments,
+    setAttachments,
   });
   React.useEffect(() => controller.onState(() => setState({ ...controller.getState() })), [controller]);
   // 输入框回填（/rewind //fork，规格 §7）：锚点轮输入取回输入框可编辑重发；每帧检查、takeBackfill 幂等（无回填 no-op，无重渲染环）
@@ -224,6 +235,7 @@ export function App({
   React.useEffect(() => {
     store.buffer = buffer;
     store.cursor = cursor;
+    store.attachments = attachments;
     store.expandAll = expandAll;
     store.latestFull = latestFull;
     store.todoExpanded = todoExpanded;
@@ -476,6 +488,22 @@ export function App({
       return;
     }
 
+    // 判定序第 12.5 位：Ctrl+V 粘贴图片（2026-10-26 图片功能，Claude Code 对标）——直读系统剪贴板图片
+    // 转 [Image N] 附件 chip；≤8 张钳制溢出提示、无图出系统行。异步读取不阻键流（void 吞 rejection，
+    // 读取失败在 readClipboardImage 内部归一 undefined）
+    if (key.ctrl && input === 'v') {
+      void (async () => {
+        const src = await (readPasteImage ?? readClipboardImage)();
+        if (src === undefined) {
+          controller.pushMsg('system', t('No image in clipboard', '剪贴板中没有图片'));
+          return;
+        }
+        const { images, overflow } = appendImages(attachmentsRef.current, [src]);
+        setAttachments(images);
+        if (overflow > 0) controller.pushMsg('system', t(`Up to ${MAX_IMAGES} images per message`, `每条消息最多 ${MAX_IMAGES} 张图片`));
+      })();
+      return;
+    }
     // 判定序第 13 位（终点）：输入行编辑与提交——Home/End/⌦/Ctrl+A/E、左右光标、斜杠菜单在场 ↑↓、
     // 运行中撤回排队 ↑、输入历史 ↑↓、Shift/Alt+Enter 换行、Enter（菜单提交/续行/整行提交）、退格与 ⌦、
     // 可打印插入（分支与 history/histIdx 状态收编 use-line-edit；到达即终结，恒 true）
@@ -625,6 +653,7 @@ export function App({
         cursor={cursor}
         placeholder={inputPlaceholder(state.status)}
         active={state.status === 'idle' || state.status === 'error'}
+        attachments={attachments}
       />
       <TodoList todos={state.todos} expanded={state.status !== 'running' || todoExpanded} columns={columns} />
       <StatusBar

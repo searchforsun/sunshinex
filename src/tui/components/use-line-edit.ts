@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { SessionController, TuiState } from '../session';
+import { imageFilePathFromPasteText, imageFileToDataURL } from '../clipboard-image';
 import { moveCursor } from './OptionSelector';
 import type { SlashMenuEntry } from './SlashMenu';
 import type { RawKey } from './use-input';
@@ -26,6 +27,8 @@ export function useLineEditKeys({
   setSlashCursor,
   initialHistory,
   initialHistIdx,
+  attachments = [],
+  setAttachments,
 }: {
   controller: SessionController;
   /** 主输入缓冲（App useState 真值，共享不复制） */
@@ -41,6 +44,9 @@ export function useLineEditKeys({
   /** retain 现场初值（store.history / store.histIdx）：跨重挂输入历史与召回指针不丢 */
   initialHistory: string[];
   initialHistIdx: number;
+  /** 待发图片附件（2026-10-26 图片功能；App useState 真值共享）：Enter 提交随行、退格空缓冲弹出 */
+  attachments?: string[];
+  setAttachments?: React.Dispatch<React.SetStateAction<string[]>>;
 }): {
   /** 输入历史（App 回写 retain 用；hook 内部提交时追加） */
   history: string[];
@@ -140,6 +146,7 @@ export function useLineEditKeys({
         setCursor(0);
         setHistIdx(-1);
         setHistory((h) => [...h.filter((x) => x !== picked), picked].slice(-100));
+        setAttachments?.([]); // 斜杠命令不承载图片——待发附件就地作废（防陈旧残留串到下一条）
         controller.submit(picked);
         return true;
       }
@@ -150,12 +157,15 @@ export function useLineEditKeys({
         return true;
       }
       const text = buffer.trim();
+      const imgs = attachments.length > 0 ? attachments : undefined;
       setBuffer('');
       setCursor(0);
       setHistIdx(-1);
-      if (text) {
-        setHistory((h) => [...h.filter((x) => x !== text), text].slice(-100));
-        controller.submit(text);
+      if (text || imgs !== undefined) {
+        // 纯图无文本亦成提交（图片即消息）；提交即清附件（随行已入队/入转录）
+        if (text) setHistory((h) => [...h.filter((x) => x !== text), text].slice(-100));
+        setAttachments?.([]);
+        void controller.submit(text, imgs);
       }
       return true;
     }
@@ -166,6 +176,11 @@ export function useLineEditKeys({
         return true;
       }
       // 退格（\u007F / Ctrl+H）：删光标前字符
+      if (cursor === 0 && buffer === '' && attachments.length > 0) {
+        // 空缓冲有附件：退格弹出最后一个 [Image N] chip（Claude Code 对标——图片 chip 的删除通道）
+        setAttachments?.(attachments.slice(0, -1));
+        return true;
+      }
       if (cursor > 0) {
         setBuffer((b) => b.slice(0, cursor - 1) + b.slice(cursor));
         setCursor((c) => Math.max(0, c - 1));
@@ -173,6 +188,16 @@ export function useLineEditKeys({
       return true;
     }
     if (input && !key.ctrl && !key.meta) {
+      // 终端粘贴图片文件路径（Windows 复制文件后终端粘贴的是路径文本；引号形态兼容）：整块可解析为
+      // 现存图片文件即转附件 chip，不落文本（2026-10-26 图片功能，与 Ctrl+V 直读剪贴板双通道互补）
+      const path = imageFilePathFromPasteText(input);
+      if (path !== undefined && setAttachments !== undefined) {
+        const durl = imageFileToDataURL(path);
+        if (durl !== undefined) {
+          setAttachments((cur) => [...cur, durl]);
+          return true;
+        }
+      }
       setBuffer((b) => b.slice(0, cursor) + input + b.slice(cursor));
       setCursor((c) => c + input.length);
     }

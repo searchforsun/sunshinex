@@ -39,8 +39,8 @@ import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
-import { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
-export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+import { expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, slashTokenAt } from './chat/mention';
+export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, slashTokenAt, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
 import { DirResolverContext } from './chat/md-render';
@@ -49,6 +49,7 @@ export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } fr
 import type { AskPick } from './chat/PendingCards';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
 import { useQueue } from './chat/use-queue';
+import { useComposerKeys } from './chat/use-composer-keys';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
 export type { ChatSink, ChatProps } from './chat/chat-types';
@@ -110,13 +111,7 @@ function peekScrollPos(id: string): number | null {
   return out;
 }
 
-/** G14.95 slash 面板令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能)。
- *  模块层导出(App 欢迎页 /命令 目标分流复用) */
-export const slashTokenAt = (text: string, caret: number): { query: string; from: number; atStart: boolean } | null => {
-  const m = /\/([\w-]*)$/.exec(text.slice(0, caret));
-  if (m === null) return null;
-  return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
-};
+/** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
 export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
@@ -408,6 +403,32 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     onOpenFile,
   });
 
+  // composer 输入面键分发与守卫（token 原子性三面/@ 面板//面板/Enter 分流）——分支本体收编
+  // use-composer-keys（D32 批G 补批，行为零变化）；共享状态经参数传入，渲染面留宿主
+  const composerKeys = useComposerKeys({
+    input,
+    setInput,
+    inputRef,
+    composingRef,
+    filePal,
+    setFilePal,
+    filePalFiles,
+    setFilePalFiles,
+    filePalActive,
+    setFilePalActive,
+    loadWorkspaceFiles,
+    pickRelRef,
+    cmdData,
+    setCmdData,
+    skillCmds,
+    cmdActive,
+    setCmdActive,
+    conn,
+    sessionId,
+    send,
+    onOpenMemory,
+  });
+
 
 
   /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关) */
@@ -580,200 +601,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             setFilePal(null);
           }
         }}
-        onKeyDown={(e) => {
-          // G14.212 token 原子性:不可在 token 中间落字(字符键/空格/IME Process)——阻止并把
-          // 光标钉到 token 尾,下一击落边界;边界编辑(:L 行锚续写)放行
-          if ((e.key.length === 1 || e.key === 'Process') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const taA = e.currentTarget as HTMLTextAreaElement;
-            const cs = taA.selectionStart ?? input.length;
-            const ce = taA.selectionEnd ?? cs;
-            const [as, ae] = atomicRange(input, cs, ce);
-            if (as !== cs || ae !== ce) {
-              e.preventDefault();
-              taA.setSelectionRange(ae, ae);
-              return;
-            }
-          }
-          // G14.213 ←/→ 单击跨整个 token(尾→头 / 头→尾,不逐字走进中间);有选区时原生移动
-          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            const taA = e.currentTarget as HTMLTextAreaElement;
-            const c = taA.selectionStart ?? 0;
-            const ce = taA.selectionEnd ?? c;
-            if (c === ce) {
-              const dir = e.key === 'ArrowLeft' ? -1 : 1;
-              const nc = c + dir;
-              if (nc >= 0 && nc <= taA.value.length) {
-                const span = tokenSpanAt(taA.value, nc);
-                if (span !== null) {
-                  e.preventDefault();
-                  const to = dir < 0 ? span[0] : span[1];
-                  taA.setSelectionRange(to, to);
-                }
-              }
-            }
-          }
-          if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) composingRef.current = false; // 组合结束兜底复位(合成事件无 isComposing,取原生)
-          // G14.148 /memory(-rm) 精确输入 + Enter → 开记忆标签(不进面板补全循环/命令通道;
-          // TUI 交互多选在 GUI 的同位=记忆标签的勾选删除面)
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && /^\/memory(-rm)?\s*$/.test(input)) {
-            e.preventDefault();
-            setInput('');
-            onOpenMemory?.();
-            return;
-          }
-          // G14.156 @/技能 token 整体删除:无选区时 token 内 Backspace/Delete 整删不逐字符
-          if (e.key === 'Backspace' || e.key === 'Delete') {
-            const ta = e.currentTarget as HTMLTextAreaElement;
-            const caret = ta.selectionStart ?? input.length;
-            if (ta.selectionStart === ta.selectionEnd) {
-              const range = tokenDeleteRange(input, caret, e.key);
-              if (range !== null) {
-                e.preventDefault();
-                const [s, e2] = range;
-                setInput((prev) => prev.slice(0, s) + prev.slice(e2));
-                requestAnimationFrame(() => { inputRef.current?.setSelectionRange(s, s); });
-                return;
-              }
-            }
-          }
-          // G14.85 @ 工作区文件选择:光标前 @token → 文件面板(方向循环/Enter 选中/Esc 关闭)
-          // G14.121 token 兼容绝对路径(:\ /);选中插入绝对路径(底层索引统一绝对路径口径)
-          // G14.211 面板活性=锚点仍在(input[filePal.from]==='@'):键面 preventDefault 直改
-          // 输入(token 整删等)不触发 onChange,残锚面板在此收口——否则空输入仍按残 query
-          // 命中旧文件,面板滞留且 Enter 可幽灵插入
-          const taEl = e.currentTarget as HTMLTextAreaElement;
-          const caret = taEl.selectionStart ?? input.length;
-          const atMatch = /@([\w./:\\-]*)$/.exec(input.slice(0, caret));
-          if (atMatch !== null) {
-            setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
-            void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
-          } else if (filePal !== null && input[filePal.from] !== '@') {
-            setFilePal(null);
-          }
-          if (atMatch !== null || (filePal !== null && input[filePal.from] === '@')) {
-            const items = rankFileHits(filePalFiles, filePal?.query ?? '');
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              e.preventDefault();
-              if (items.length > 0) {
-                setFilePalActive((a) => (e.key === 'ArrowDown' ? (a + 1) % items.length : (a - 1 + items.length) % items.length));
-                setFilePal((fp) => fp ?? { query: '', from: 0 });
-              }
-              return;
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              setFilePal(null);
-              return;
-            }
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && items.length > 0) {
-              e.preventDefault();
-              const rel = items[Math.min(filePalActive, items.length - 1)];
-              // G14.126 选中只插短写 @文件名(输入框显形=图标+文件名);相对路径记入账本,
-              // 发送期 expandFileRefs 据此展开为 md 绝对链接;按 @token 区间替换。
-              // 目录项(尾斜杠内部标记):插入文本不带斜杠,记账保标记——芯片/展开面判目录
-              const base = pathBasename(rel);
-              pickRelRef.current.set(base, rel);
-              const atFrom = filePal?.from ?? caret - (atMatch?.[1]?.length ?? 0) - 1;
-              const atEnd = atFrom + 1 + (filePal?.query ?? '').length;
-              setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-              setFilePal(null);
-              return;
-            }
-          }
-          // G14.95 / 面板:开头=命令+技能;中间=仅技能;无匹配(items 空)面板不开=自动关
-          const slashToken = atMatch === null ? slashTokenAt(input, caret) : null;
-          const slashItems = slashItemsFor(cmdData, skillCmds, slashToken);
-          if (slashToken !== null && slashItems.length > 0) {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              e.preventDefault();
-              setCmdActive((a) => (e.key === 'ArrowDown' ? (a + 1) % slashItems.length : (a - 1 + slashItems.length) % slashItems.length));
-              return;
-            }
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              setCmdData(null); // 本次收起(重开输入 / 即回)
-              return;
-            }
-            if (e.key === 'Tab') {
-              e.preventDefault();
-              const item = slashItems[cmdActive];
-              if (item !== undefined) setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret));
-              return;
-            }
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              const item: CmdItem | undefined = slashItems[cmdActive];
-              // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单);skill 项不在此列——
-              // 落底部纯文本发送(daemon 已 400,skills 普通文本语义)
-              if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {
-                e.preventDefault();
-                setInput('');
-                // 命令回执/错误经 WS notice 帧可见化(命令气泡已入档);catch 只兜 HTTP 层——网络失败=命令未执行零回执,输入已清空的轻损失(D30 口径:可见化由主提交路径承担)
-                conn.runCommand(sessionId, input).catch(() => {});
-                return;
-              }
-              // 补全仅当 / 词尚未敲完(无参数);skill 项参数已敲同样落底部纯文本发送
-              if (item !== undefined && !input.includes(' ')) {
-                e.preventDefault();
-                setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret)); // 补全,面板续开收参数
-                return;
-              }
-            }
-          }
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault(); // 提交不分流换行进内容面(受控清空,防闪换行)
-            send();
-          }
-        }}
-        onBeforeInput={(e) => {
-          // G14.212 token 原子性兜底面:键入/IME/粘贴/拖放的 beforeinput 部分命中 token 即拦
-          // (插入=光标钉 token 尾;删除=扩整删)——keydown 网之外的编辑面在此收口
-          const ev = e.nativeEvent as InputEvent;
-          const ta = e.currentTarget;
-          const s = ta.selectionStart ?? 0;
-          const en = ta.selectionEnd ?? 0;
-          const v = tokenGuardVerdict(input, s, en, ev.inputType ?? '');
-          if (v.action === 'redirectEnd') {
-            e.preventDefault();
-            ta.setSelectionRange(v.to, v.to);
-          } else if (v.action === 'splice') {
-            e.preventDefault();
-            setInput((prev) => prev.slice(0, v.s) + prev.slice(v.e));
-            requestAnimationFrame(() => ta.setSelectionRange(v.s, v.s));
-          }
-        }}
-        onPasteGuard={(e) => {
-          const ta = e.currentTarget;
-          const s = ta.selectionStart ?? 0;
-          const en = ta.selectionEnd ?? 0;
-          const [as, ae] = atomicRange(input, s, en);
-          if (as !== s || ae !== en) {
-            e.preventDefault();
-            ta.setSelectionRange(ae, ae);
-          }
-        }}
-        onCompositionGuard={(e) => {
-          composingRef.current = true; // G14.213 组合中:onSelect 归位跳过
-          const ta = e.currentTarget;
-          const s = ta.selectionStart ?? 0;
-          const en = ta.selectionEnd ?? 0;
-          const [as, ae] = atomicRange(input, s, en);
-          if (as !== s || ae !== en) e.preventDefault();
-        }}
-        onCompositionEndGuard={() => {
-          composingRef.current = false;
-        }}
-        onSelectGuard={() => {
-          // G14.213 光标不落 token 中间:↑↓/Home/End 等原生移动后的兜底归位(钉 token 尾;
-          // ←→ 在 keydown 已跨 token);IME 组合中跳过防打断
-          if (composingRef.current) return;
-          const ta = inputRef.current;
-          if (ta === null) return;
-          const s = ta.selectionStart ?? 0;
-          const en = ta.selectionEnd ?? 0;
-          if (s !== en) return;
-          const span = tokenSpanAt(ta.value, s);
-          if (span !== null) ta.setSelectionRange(span[1], span[1]);
-        }}
+        onKeyDown={composerKeys.onKeyDown}
+        onBeforeInput={composerKeys.onBeforeInput}
+        onPasteGuard={composerKeys.onPasteGuard}
+        onCompositionGuard={composerKeys.onCompositionGuard}
+        onCompositionEndGuard={composerKeys.onCompositionEndGuard}
+        onSelectGuard={composerKeys.onSelectGuard}
         overlays={
           // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染;
           // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染

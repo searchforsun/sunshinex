@@ -3,6 +3,7 @@ import { Box, Static, Text } from 'ink';
 import { ChatItem, LiveBlock } from '../session';
 import { buildTranscriptDecisions } from '../transcript-view';
 import { bandLines } from '../text-band';
+import { imageMarkers } from '../../images';
 import { BannerInfo } from '../banner-info';
 import { Banner } from './Banner';
 import { ToolRow } from './ToolRow';
@@ -254,9 +255,15 @@ const MessageRow = React.memo(function MessageRow({
   // 旧档回放 assistant：烘焙产物直嵌（与 ansi 条目同通道）；step 行不走此提前出口——▶ 前缀分支在下方
   if (baked !== undefined && item.role === 'assistant') return <Text>{baked}</Text>;
   if (item.role === 'user') {
+    // 随行图片 → [Image N] 占位标记行（2026-10-26 图片功能，Claude Code 对标；图片本体不入终端，
+    // dataURL 全链在模型/转录面透传）。有文=标记行在上；纯图=仅标记行
+    const imgs = item.images;
+    const label = imgs !== undefined && imgs.length > 0 ? imageMarkers(imgs.length) : undefined;
+    const full = label !== undefined ? (item.text !== '' ? `${label}
+${item.text}` : label) : item.text;
     return (
       <Box flexDirection="column">
-        {bandLines(item.text, columns).map((line, i) => (
+        {bandLines(full, columns).map((line, i) => (
           <Text key={i} backgroundColor="gray">
             {line}
           </Text>

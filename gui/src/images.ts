@@ -1,12 +1,12 @@
 /**
- * 图片附件工具(2026-10-26 图片功能):文件→dataURL 装载与 ≤8 张上限钳制。
- * dataURL 形态自 GUI 起原样贯穿(HTTP images 字段→转录条目→链行→wire image_url 块,daemon
- * 侧零转码)——此处是唯一转码点:小文件原样读(保 GIF 动画/PNG 透明),大文件 canvas 降采样
- * (长边 1568px/JPEG q0.85,vision 端点友好体积)。
+ * 图片附件 GUI 装载面(2026-10-26 图片功能):文件→dataURL 装载——GUI 唯一转码点:小文件原样读
+ * (保 GIF 动画/PNG 透明),大文件 canvas 降采样(长边 1568px/JPEG q0.85,vision 端点友好体积)。
+ * dataURL 形态自此原样贯穿(HTTP images 字段→转录条目→链行→wire image_url 块,daemon 侧零转码)。
+ * 常量与追加钳制(MAX_IMAGES/appendImages)单源在主仓 src/images.ts(serve/TUI/GUI 同值同实现),
+ * 此处再导出保既有导入面(`../images` 消费方零改动)。
  */
+export { MAX_IMAGES, appendImages } from '../../src/images';
 
-/** 单条消息图片上限(GUI 与 daemon HTTP 面同值;超出拒收并提示) */
-export const MAX_IMAGES = 8;
 /** 附件文件选择器的接受类型(与 daemon 校验白名单同面) */
 export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif';
 
@@ -55,10 +55,4 @@ export async function loadImages(files: File[], convert: (f: File) => Promise<st
     if (durl !== undefined) out.push(durl);
   }
   return out;
-}
-
-/** 追加钳制:合并后超出 MAX_IMAGES 即截断,返回溢出张数(调用方出「最多 8 张」提示) */
-export function appendImages(current: readonly string[], incoming: readonly string[]): { images: string[]; overflow: number } {
-  const merged = [...current, ...incoming].slice(0, MAX_IMAGES);
-  return { images: merged, overflow: current.length + incoming.length - merged.length };
 }

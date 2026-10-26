@@ -259,6 +259,14 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  daemon 相对会话根解析;纯文件名 token 经 resolve 解析(选中记账/最近索引兜底),解析不到原样保留。
  *  目录引用(token 尾斜杠 `@src/`,或 resolve 命中带尾斜杠的索引目录项):href 保尾斜杠——
  *  气泡链接面(FileIcon 尾斜杠判目录)显黄目录,点击交 Files 目录移交;头名剥尾斜杠 */
+/** / 令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能)。原 Chat.tsx 模块层导出
+ *  (App 欢迎页 /命令 目标分流复用)下沉本件——与 atomicRange/tokenSpanAt 同族原语单点 */
+export const slashTokenAt = (text: string, caret: number): { query: string; from: number; atStart: boolean } | null => {
+  const m = /\/([\w-]*)$/.exec(text.slice(0, caret));
+  if (m === null) return null;
+  return { query: m[1] ?? '', from: m.index, atStart: m.index === 0 };
+};
+
 export function expandFileRefs(
   text: string,
   root: string | undefined,

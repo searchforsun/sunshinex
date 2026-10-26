@@ -118,6 +118,7 @@ export function keyHintsFor(s: {
     const items: KeyHintItem[] = [
       { key: 'Ctrl+C', action: t('pause', '暂停') },
       { key: 'Shift+Enter', action: t('newline', '换行') },
+      { key: 'Ctrl+V', action: t('paste image', '贴图') },
       { key: 'Tab', action: t('todo', '待办') },
       { key: 'Ctrl+O', action: t('detail', '详情') },
     ];
@@ -141,6 +142,7 @@ export function keyHintsFor(s: {
     items: [
       { key: 'Shift+Enter', action: t('newline', '换行') },
       { key: '↑', action: t('history', '历史') },
+      { key: 'Ctrl+V', action: t('paste image', '贴图') },
       { key: 'Ctrl+B', action: t('subagents', '子智能体') },
       { key: 'Ctrl+T', action: t('tasks', '任务') },
       { key: 'Ctrl+Q', action: t('queued', '队列') },

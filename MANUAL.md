@@ -97,8 +97,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
       "contextWindow": 64000,                        // 源级缺省窗口
       "reasoningEffort": "high",                     // 源级缺省思考强度 none|minimal|low|medium|high|xhigh|max
       "models": [
-        "deepseek-chat",                             // 字符串形态：窗口/强度回退源级
-        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low" }  // 对象形态：逐项覆盖源级
+        "deepseek-chat",                             // 字符串形态：窗口/强度/图片能力回退源级
+        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low", "supportsImages": false }  // 对象形态：逐项覆盖源级（supportsImages=false 声明纯文本模型，GUI/TUI 拦截图片附件）
       ]
     },
     {
@@ -172,7 +172,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 ```
 
 - 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`model` ≡ `SUNSHINEX_MODEL`），环境变量仍最高优先。
-- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；主模型未显式配置（无 `model` 键）时缺省取清单首项，`default` 选项仅在主模型显式配置时露出。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`）。
+- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；主模型未显式配置（无 `model` 键）时缺省取清单首项，`default` 选项仅在主模型显式配置时露出。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
@@ -251,6 +251,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | 状态栏 | tokens · ctx 占用 · turns·steps · 模型名 · effort · cache 命中 · todo 进度 · 状态（耗时只在上方活动行以可读时长显示，如 1h 21m 30s） |
 
 - 提交：回车；行尾单个 `\` 回车为多行续行；`Shift+Enter` / `Alt+Enter` 插入换行不提交（Shift+Enter 需终端键位绑定——Windows Terminal 首次用 `/terminal-setup` 自动配置，kitty 协议终端原生支持）；运行中继续输入自动排队。
+- 图片附件：`Ctrl+V` 直读剪贴板图片（Windows 经 PowerShell/macOS 经 osascript/Linux 经 wl-paste→xclip 回退），或整行粘贴图片文件路径（复制文件后终端粘贴的路径文本自动转附件）；附件以 `[Image 1] [Image 2]` chips 显于输入行上侧，空缓冲 `Backspace` 逐个弹出，上限 8 张（溢出提示）；纯图无文本也可发送。发出后消息区按 Claude Code 形态显示 `[Image 1]` 占位标记（图上文下），图片本体经 dataURL 随消息进模型上下文（终端不渲染图片内容）；运行中带图输入自动排队，轮收束补跑不丢图。
 - 历史回看：`Tab` 折叠/展开过程行（按正文与阶段分段折叠），`Ctrl+O` 展开当前一个轮次（自最近一次输入起）的全部工具与思考行详情全文。
 
 **会话命令**（输入 `/` 后按 `Tab` 补全；命令只认裸形式，带参枚举形态与不在清单的命令统一回执「无法识别命令，使用 /help 查看使用方法」）
@@ -465,6 +466,8 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | --- | --- |
 | `Enter` | 提交（行尾 `\` 续行） |
 | `Shift+Enter` / `Alt+Enter` | 插入换行不提交（Shift+Enter 需终端键位绑定，Windows Terminal 首次用 `/terminal-setup` 自动配置；kitty 协议终端原生支持） |
+| `Ctrl+V` | 粘贴图片：直读系统剪贴板图片转为附件 chip（`[Image 1]`…，≤8 张）；剪贴板无图给提示。粘贴图片**文件路径**文本同样自动转附件 |
+| `Backspace`（空输入时） | 弹出最后一个图片附件 chip |
 | `Tab` | `/` 开头时补全命令；否则切换历史折叠 / 展开（含待办卡） |
 | `Ctrl+O` | 展开当前一个轮次（自最近一次输入起）的全部工具与思考行全文 |
 | `Ctrl+B` | 子智能体浏览模式：`↑/↓` 在 SPAWN 调用行间移动高亮，`Enter` 展开/折叠该行（思考与工具转录），`Esc` 退出；运行中不可进入 |

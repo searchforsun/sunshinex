@@ -3,6 +3,9 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { ChatState } from '../../chat-reducer';
 
+/** 模型 pill 数据形态单源：sessionModel 返回类型直推（choices 内含 supportsImages 图片能力位），防三处内联漂移 */
+type SessionModelInfo = Awaited<ReturnType<Connection['sessionModel']>>;
+
 /** 模型 pill 与上下文圆环数据面(D32 第六批批F-6 自 Chat.tsx 平移,行为零变化):sessionModel
  *  挂载拉取/sessionContext 四路触发(挂载/idle 收尾/运行中 4s 轮询/悬停展开)/run 轮数计数。 */
 export function useChatSessionInfo(deps: {
@@ -10,19 +13,19 @@ export function useChatSessionInfo(deps: {
   readonly sessionId: string;
   readonly chat: ChatState;
 }): {
-  modelInfo: { current?: string; choices: Array<{ id: string; model: string; effort?: string; supportsImages?: boolean }> } | null;
-  setModelInfo: Dispatch<SetStateAction<{ current?: string; choices: Array<{ id: string; model: string; effort?: string; supportsImages?: boolean }> } | null>>;
+  modelInfo: SessionModelInfo | null;
+  setModelInfo: Dispatch<SetStateAction<SessionModelInfo | null>>;
   ctxInfo: { total: number; window: number; parts: Array<{ id: string; tokens: number; count: number }> } | null;
   refreshCtx: () => void;
   runCount: number;
 } {
   const { conn, sessionId, chat } = deps;
-  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; effort?: string; supportsImages?: boolean }> } | null>(null);
+  const [modelInfo, setModelInfo] = useState<SessionModelInfo | null>(null);
 /** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏) */
 useEffect(() => {
   conn.sessionModel(sessionId).then(
-    (info) => setModelInfo({ current: info.current, choices: info.choices }),
-    () => setModelInfo({ choices: [] }),
+    (info) => setModelInfo(info),
+    () => setModelInfo({ current: undefined, explicitDefault: false, choices: [] }),
   );
 }, [conn, sessionId]);
 

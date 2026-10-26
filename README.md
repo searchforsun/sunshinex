@@ -110,7 +110,7 @@ npm pack && npm install -g ./sunshinex-agent-0.5.0.tgz
 
 > npm ≥ 12 走 ① 报 `EALLOWREMOTE`（`allow-remote` 缺省禁止从 URL 取包）：加 `--allow-remote=all`，或先 `curl -LO` 下载 tarball 再按 ③ 本地安装（不受该限制）。
 
-> **端点要求**：工具调用恒走原生 function calling（`tools` 字段下发），要求所配端点支持 function calling——模型不支持就换模型，产品侧无文本协议回退。探针实测：open.bigmodel.cn · glm-5.3-flash 于 2026-09-20 五项全过（tools 下发 / 并行 tool_calls / role:tool 回喂 / usage 三字段 / 前缀缓存）。
+> **端点要求**：工具调用恒走原生 function calling（`tools` 字段下发），要求所配端点支持 function calling——模型不支持就换模型，产品侧无文本协议回退。探针实测：open.bigmodel.cn · glm-5.3-flash 于 2026-09-20 五项全过（tools 下发 / 并行 tool_calls / role:tool 回喂 / usage 三字段 / 前缀缓存）。图片附件（GUI 粘贴/+ 面板、TUI Ctrl+V）走 OpenAI vision 形态 `image_url` 内容块下发，仅对纯文本模型在 settings `providers` 显式 `"supportsImages": false` 关闭拦截。
 
 ## 发版（维护者）
 

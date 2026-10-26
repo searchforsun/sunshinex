@@ -85,7 +85,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                   type="button"
                   className="steer-act"
                   data-tip={t('Pause current round and start next with this', '暂停当前轮次,直接开启下一轮发送本条')}
-                  onClick={() => pauseAndSend(q)}
+                  onClick={() => void pauseAndSend(q)}
                 >
                   <ArrowUpToLine size={12} strokeWidth={1.75} aria-hidden="true" />
                   {t('Now', '立即')}
