@@ -27,13 +27,10 @@ function tickLabel(md: string): string {
 export function ChatRail(props: {
   /** 可见窗内的条目(与 DOM 渲染集一致——点击按序反查 .entry-user) */
   readonly entries: readonly ChatEntry[];
-  /** 窗口前还有多少未渲染(>0 显示「更早」引导刻度,点击步进回放) */
-  readonly hiddenCount: number;
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
-  readonly onEarlier: () => void;
   readonly sideChat?: boolean;
 }): JSX.Element {
-  const { entries, hiddenCount, chatScrollRef, onEarlier, sideChat } = props;
+  const { entries, chatScrollRef, sideChat } = props;
   const [gutterOk, setGutterOk] = useState(false);
   // 余量实测:流区限宽=对称 padding(>18px 段即余量),余量 ≥ 64px(刻度 44+呼吸)才显示
   useEffect(() => {
@@ -70,16 +67,6 @@ export function ChatRail(props: {
     <div className="sx-rail" aria-hidden="true">
       <div className="sx-rail-inner" role="navigation" aria-label={t('Conversation outline', '会话刻度导航')}>
         <div className="sx-rail-list">
-        {hiddenCount > 0 && (
-          <button
-            type="button"
-            className="sx-rail-tick more"
-            data-tip={t('Show earlier entries', '显示更早的条目')}
-            onClick={onEarlier}
-          >
-            <span className="sx-rail-bar" />
-          </button>
-        )}
         {users.map((u, i) => (
           <button
             key={u.key}
@@ -88,7 +75,7 @@ export function ChatRail(props: {
             data-tip={tickLabel(u.md)}
             onClick={() => jump(i)}
           >
-            <span className="sx-rail-bar" style={{ width: `${Math.min(28, 12 + u.md.length / 8)}px` }} />
+            <span className="sx-rail-bar" />
           </button>
         ))}
         </div>

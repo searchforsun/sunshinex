@@ -288,7 +288,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       }}
     >
         {/* 2026-10-26 对话刻度导航条:左侧 sticky 悬浮(不参与内容流),余量自适应显隐 */}
-        <ChatRail entries={visible} hiddenCount={hiddenCount} chatScrollRef={chatScrollRef} onEarlier={showEarlier} sideChat={sideChat} />
+        <ChatRail entries={visible} chatScrollRef={chatScrollRef} sideChat={sideChat} />
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
             <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
