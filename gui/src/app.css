@@ -98,7 +98,7 @@
 * { box-sizing: border-box; }html, body, #root { height: 100%; margin: 0; }body {
   background: var(--surface-under);
   color: var(--fg);
-  font: 14px/1.6 var(--font-ui);
+  font: var(--f-base-size, 14px)/var(--f-base-lh, 1.6) var(--font-ui); /* 字体预设全局管线:基础排版走根令牌(font-preset.ts),全 UI 字号行高自此派生 */
 }button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }button:disabled { opacity: 0.5; pointer-events: none; }:focus-visible { outline: 2px solid color-mix(in srgb, var(--fg) 55%, transparent); outline-offset: 1px; }
 
 /* 三栏壳(T5 消费;G12 左栏宽度可调:--menu-w 由 App 拖拽落值,clamp/持久化在壳) */.sx-shell { display: flex; height: 100%; overflow: clip; } /* 2026-10-23 越视口防线:三栏行超宽也只裁剪不横移(fixed 簇/弹层非文档流不受剪),与渲染期钳制双保险 */.sx-menu { width: var(--menu-w, 260px); min-width: var(--menu-min-w); max-width: calc(100vw - var(--sidebar-w, 0px) - var(--main-min-w)); /* 视口护栏:结构性禁止越视口(余量=中栏最小宽 320;非固定档位上限,G14.2xx 用户裁定) */ flex: none; background: var(--surface-under); display: flex; flex-direction: column; }

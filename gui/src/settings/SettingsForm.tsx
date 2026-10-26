@@ -207,10 +207,12 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
 /** 字体预设行(2026-10-26 用户裁定):四预设卡片,每卡内嵌迷你实时预览(正文行/工具行/代码行
  *  按该预设的字号行高内联渲染),点击即全局生效并持久化(theme/ui-zoom 同通路)。GUI 本地偏好,
  *  非 settings 键 */
+/** 四款风格发散(2026-10-26 全局管线版):紧凑系统黑体/衬线阅读(宋体·Georgia)/终端等宽(Cascadia
+ *  全局)/宽松(黑体+现代等宽+大字)。旧 cozy/cozyMono 由 readFontPreset 迁移映射 */
 const FONT_PRESETS: ReadonlyArray<{ v: FontPreset; l: { en: string; zh: string } }> = [
   { v: 'default', l: { en: 'Compact (default)', zh: '紧凑(默认)' } },
-  { v: 'cozy', l: { en: 'Comfortable', zh: '舒适' } },
-  { v: 'cozyMono', l: { en: 'Comfortable + modern mono', zh: '舒适 + 现代等宽' } },
+  { v: 'serif', l: { en: 'Serif reading', zh: '衬线阅读' } },
+  { v: 'mono', l: { en: 'Terminal mono', zh: '终端等宽' } },
   { v: 'roomy', l: { en: 'Roomy', zh: '宽松' } },
 ];
 
@@ -240,7 +242,10 @@ function FontRow(): JSX.Element {
               }}
             >
               <span className="sx-font-preset-name">{t(p.l.en, p.l.zh)}</span>
-              <span className="sx-font-pv" style={{ lineHeight: v['--f-body-lh'] ?? '1.6' }}>
+              <span
+                className="sx-font-pv"
+                style={{ lineHeight: v['--f-body-lh'] ?? '1.6', fontSize: v['--f-base-size'], fontFamily: v['--font-ui'] }}
+              >
                 {t('Body text reads here. 正文预览。', 'Body text reads here. 正文预览。')}
               </span>
               <span className="sx-font-pv-tool" style={{ fontSize: v['--f-tool'] ?? '11px', fontFamily: v['--font-mono'] ? undefined : undefined, lineHeight: v['--f-tool-lh'] ?? 'normal' }}>
