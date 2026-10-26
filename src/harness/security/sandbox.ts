@@ -19,6 +19,12 @@ export class ProcessSandbox implements ToolBackend {
     this.runSignal = signal;
   }
 
+  /** 在跑 run 信号外窥（2026-10-26 立即暂停）：前台阻塞型工具（task_wait 等）经工厂 getter 接入
+   *  中断面——用户中断即刻穿透阻塞,不再挂满等待时长;无 run 在途 undefined */
+  get currentRunSignal(): AbortSignal | undefined {
+    return this.runSignal;
+  }
+
   /** 中止收割:杀进程树(win32 taskkill /T /F;POSIX SIGKILL),打中止标记,摘出活表 */
   private abortKill(child: ChildProcess): void {
     this.liveChildren.delete(child);

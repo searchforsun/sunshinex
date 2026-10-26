@@ -34,7 +34,7 @@ function receiptBody(t: BackgroundTask): string {
   return `${head}\n${readTail(t.outputFilePath, RECEIPT_TAIL_LINES)}`;
 }
 
-export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): RegisteredTool {
+export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunSignal?: () => AbortSignal | undefined): RegisteredTool {
   return {
     parameters: {
       type: 'object',
@@ -115,6 +115,10 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
           );
         }
       }
+      // 2026-10-26 立即暂停:run 中止信号穿透阻塞等待——用户中断(Esc/停止钮/新轮次强停)时
+      // task_wait 即刻返回当前快照(不再挂满 timeoutSeconds,前台轮次卡在「正在等待任务」是
+      // pauseAndSend 409 的根因);后台任务本体不追杀(独立于 run 存活,既有裁定)
+      const signal = getRunSignal?.();
       const timeoutSeconds = rawTimeout === null ? DEFAULT_TIMEOUT_SECONDS : rawTimeout;
       if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
         throw new CodedToolError('INVALID_ARG', `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`);
@@ -126,10 +130,14 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
         boardWaitIds.filter((id) => !['in-review', 'done', 'failed', 'cancelled'].includes(boardStatus(id) ?? ''));
       let result: Awaited<ReturnType<TaskRegistry['waitUntilSettled']>>;
       if (boardWaitIds.length === 0) {
-        result = await tasks.waitUntilSettled(ids, timeoutSeconds * 1000);
+        result = await tasks.waitUntilSettled(ids, timeoutSeconds * 1000, signal);
       } else {
         const deadline = Date.now() + timeoutSeconds * 1000;
         for (;;) {
+          if (signal?.aborted) {
+            result = { settled: false, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
+            break;
+          }
           const ledgerRunning = ids.filter((id) => tasks.get(id)?.status === 'running');
           if (ledgerRunning.length === 0 && boardPending().length === 0) {
             result = { settled: true, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
@@ -150,7 +158,9 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard): Regist
       }
       const head = result.settled
         ? `all target tasks finished (${ids.length + boardWaitIds.length})`
-        : timeoutSeconds === 0
+        : signal?.aborted === true
+          ? 'aborted by user; tasks still running are marked below'
+          : timeoutSeconds === 0
           ? 'status peek (timeoutSeconds=0, non-blocking); tasks still running are marked below'
           : `timeout after ${timeoutSeconds}s; tasks still running are marked below`;
       return { exitCode: 0, stdout: [head, ...lines].join('\n'), stderr: '', timedOut: false };

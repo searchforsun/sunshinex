@@ -329,7 +329,8 @@ export class Harness {
     this.taskboard.init();
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配;
     // 板引用后置注册(2026-10-19 未派发板任务可等——板态轮询,注册须在 taskboard 装配之后)
-    this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard), display: { verb: 'TASK_WAIT' } });
+    // 第三参 run 信号 getter(2026-10-26 立即暂停):task_wait 阻塞期响应 run 中断,即刻穿透返回
+    this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
     // create_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
     // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
     this.tools.register({
