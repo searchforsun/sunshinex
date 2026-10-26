@@ -597,6 +597,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   gap: 4px;
   opacity: 0;
   transition: opacity var(--dur-basic) var(--ease-enter);
+  z-index: 3; /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」:后续 .entry(content-visibility=paint containment) 原子层盖住本条绝对定位后代——提层 */
 }.entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }.entry-user .user-action {
   display: inline-flex;
   align-items: center;
@@ -722,7 +723,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: var(--surface-elevated); border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent); backdrop-filter: blur(16px); padding: 4px;
   display: flex; flex-direction: column;
-}.sx-plus-sec { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary); }.sx-plus-row { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); color: var(--fg); }.sx-plus-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-plus-name { font-family: var(--font-mono); font-size: 12px; flex: none; }.sx-plus-desc { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-plus-empty { padding: 4px 10px; font-size: 12px; color: var(--fg-tertiary); }
+}.sx-plus-sec { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary); }.sx-plus-row { display: flex; align-items: center; gap: 8px; /* 2026-10-26 baseline→center:图标与文字垂直居中对齐(用户截图「选择图片」图标显高) */ width: 100%; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); color: var(--fg); }.sx-plus-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-plus-name { font-family: var(--font-mono); font-size: 12px; flex: none; }.sx-plus-desc { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-plus-empty { padding: 4px 10px; font-size: 12px; color: var(--fg-tertiary); }
 
 /* ===== G9-B5 打磨收尾(spec §5):弹层浮面制/动效统一/reduced-motion ===== */.sx-menu-pop {
   border: none;
@@ -2294,6 +2295,10 @@ input.sx-setting-input { width: 100%; }
   padding-right: 10px; overflow-y: auto; scrollbar-width: none; pointer-events: none;
 }
 .sx-rail-inner::-webkit-scrollbar { display: none; }
+/* 2026-10-26 五轮裁定 tight 紧凑态:零余量窗口(DPI 缩放后内容列占满)刻度条不再隐藏——
+   右缩进收到 3px,刻度整条落进 18px 内边距带(不裁不遮正文);hover 突出同步关闭(突出即出带被裁) */
+.sx-rail-inner.tight { padding-right: 3px; }
+.sx-rail-inner.tight .sx-rail-bar { transform: none !important; }
 .sx-rail-list { margin: auto 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .sx-rail-tick {
   pointer-events: auto; display: flex; align-items: center; justify-content: flex-end;

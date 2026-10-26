@@ -6,8 +6,8 @@ import type { ChatEntry } from '../../chat-reducer';
 /**
  * 对话刻度导航条(2026-10-26 用户需求):主对话左侧一枚轮刻度——每个用户气泡一枚刻度,
  * hover 刻度伸长并滑出气泡文本预览(过长截断),点击滚动到对应气泡。刻度列表垂直居中、
- * 占流区高度 80%,超出即条内滚动。**显隐门=余量自适应**:仅当主对话两侧余量能完整放下
- * 刻度条时才显示(流区限宽由对称 padding 承担,余量=paddingLeft-基础 18px,RO 实测)。
+ * 占流区高度 80%,超出即条内滚动。**余量充足=常规态(缩进 10px);余量不足=tight 紧凑态**
+ * (缩进收到 3px,刻度落进 18px 内边距带,hover 突出关闭)——恒显示不隐藏(五轮裁定)。
  * 贴地实现:sticky+height 0 悬浮于滚动容器内,不参与内容流;pointer-events 只在刻度上。
  */
 
@@ -31,16 +31,17 @@ export function ChatRail(props: {
   readonly sideChat?: boolean;
 }): JSX.Element {
   const { entries, chatScrollRef, sideChat } = props;
-  const [gutterOk, setGutterOk] = useState(false);
-  // 余量实测:流区限宽=对称 padding(>18px 段即余量)。v2 等长刻度后真实占位=inner 盒 40px
-  // (border-box,padding-right 10px 已含)+hover 左突 4px=44px——阈值随 v2 足迹收紧(旧 64 是
-  // v1 文本刻度 44px+呼吸的遗留,窄窗下把放得下的刻度条误藏)
+  // 余量实测:流区限宽=对称 padding(>18px 段即余量)。2026-10-26 五轮裁定:余量不足不再隐藏——
+  // 用户主用窗口(DPI 150% 缩放,CSS 宽 ~1170)内容列占满零余量,按旧门控刻度条永久消失被当坏了
+  // (CDP 实测桌面现场 chatWidth 836/padding 18)。改紧凑模式(tight):inner 右缩进收到 3px,
+  // 刻度整条落进 18px 内边距带,hover 突出关闭——任何宽度都有刻度条
+  const [tight, setTight] = useState(false);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null || typeof ResizeObserver === 'undefined') return;
     const measure = (): void => {
       const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
-      setGutterOk(Number.isFinite(pad) && pad - 18 >= 44);
+      setTight(!(Number.isFinite(pad) && pad - 18 >= 44));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -49,10 +50,8 @@ export function ChatRail(props: {
   }, [chatScrollRef]);
 
   const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
-  // 空会话/辅助对话/余量不足:一律不渲染(挂都不挂,零布局参与)。
-  // 2026-10-26 四轮裁定:显示门槛=有用户气泡即可(≥1)——旧 ≥2 是 v1 自拟,与「正文渲染
-  // 多少就显示多少条」相悖,单条会话(新测试会话)整条消失被用户当成坏了
-  if (sideChat === true || !gutterOk || users.length === 0) return <></>;
+  // 空会话/辅助对话:不渲染(挂都不挂,零布局参与);余量走 tight 紧凑态不再隐藏(五轮裁定)
+  if (sideChat === true || users.length === 0) return <></>;
 
   const jump = (index: number): void => {
     const el = chatScrollRef.current;
@@ -69,7 +68,7 @@ export function ChatRail(props: {
 
   return (
     <div className="sx-rail" aria-hidden="true">
-      <div className="sx-rail-inner" role="navigation" aria-label={t('Conversation outline', '会话刻度导航')}>
+      <div className={`sx-rail-inner${tight ? ' tight' : ''}`} role="navigation" aria-label={t('Conversation outline', '会话刻度导航')}>
         <div className="sx-rail-list">
         {users.map((u, i) => (
           <button
