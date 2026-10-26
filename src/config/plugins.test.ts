@@ -392,3 +392,29 @@ test('真实内置根装载 browser-use：未启用不出 server；enabled 后�
   assert.ok(i >= 0 && srv!.args![i + 1] === 'chrome', 'configDefaults browser=chrome → args 含 --browser chrome');
   assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'node_modules/@playwright/mcp/cli.js')), 'cwd "." 解析为插件根，@playwright/mcp 随 workspace 安装在位');
 });
+
+// ---- 真实内置根装载钉：computer-use（Task 21，safety 三类声明随仓 manifest 落地）----
+
+test('真实内置根装载 computer-use：未启用不出；enabled 后合成 server（cwd=插件根且 server/index.js 在位）+ safety 三类声明进表', () => {
+  const builtinRoot = path.resolve(__dirname, '../../plugins');
+  const userRoot = mkdtempSync(path.join(tmpdir(), 'plug-cu-u-'));
+  const off = pluginMcpServers(undefined, { builtinRoot, userRoot, settingsReader: () => null });
+  assert.equal(off.servers.some((s) => s.name === 'computer-use'), false, 'defaultEnabled=false → 未启用不出 server');
+  const r = pluginMcpServers(undefined, {
+    builtinRoot,
+    userRoot,
+    settingsReader: () => ({ plugins: { 'computer-use': { enabled: true } } }),
+  });
+  assert.deepEqual(r.warnings, [], '随仓 manifest 合法装载零告警（坏钉即测红）');
+  const srv = r.servers.find((s) => s.name === 'computer-use');
+  assert.ok(srv, 'enabled 后 pluginMcpServers 出 computer-use server');
+  assert.equal(srv!.command, 'node');
+  assert.deepEqual(srv!.args, ['server/index.js'], 'args 指向插件内平铺构建产物（Task 17 布局）');
+  assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'server', 'index.js')), 'cwd "." 解析为插件根且可直跑产物在位');
+  // safety 三类逐字对齐 spec §2.2 示例（guard 问线驱动面；缺类/错名即测红）
+  assert.deepEqual(r.safety['computer-use'], {
+    act: ['click', 'type', 'key', 'scroll', 'drag', 'app'],
+    confirm: ['screenshot'],
+    observe: ['uia_snapshot', 'window_list'],
+  });
+});

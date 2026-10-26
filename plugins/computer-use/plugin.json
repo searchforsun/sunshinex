@@ -1,0 +1,8 @@
+{ "manifestVersion": 1, "id": "computer-use", "name": "桌面操作", "version": "0.1.0",
+  "description": "Windows 桌面观察与操作（UIA 结构化优先 + 截屏兜底）",
+  "platforms": ["win32"],
+  "defaultEnabled": false,
+  "mcpServers": { "computer-use": { "command": "node", "cwd": ".",
+    "args": ["server/index.js"],
+    "safety": { "act": ["click", "type", "key", "scroll", "drag", "app"], "confirm": ["screenshot"], "observe": ["uia_snapshot", "window_list"] } } },
+  "skills": ["skills"] }
