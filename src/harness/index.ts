@@ -136,7 +136,8 @@ export class Harness {
     // enabled=false 整机停用（2026-10-26）：guard 名单与装配面同跳过——停用服务器的工具既不注册也不放行
     // （插件贡献 server 无 enabled 键，不受此滤影响；停用走 settings plugins.<id>.enabled 整插件面）
     const userServers = loadMcpServers(base);
-    // safety: Task 9 guard 接线——pluginMcp.safety（server 名 → 三类声明）保留在本局部量上不丢失
+    // safety 声明合成（Task 9 接线）：pluginMcp.safety（server 名 → act/confirm/observe 三类声明，仅启用且平台
+    // 可用插件、未声明 server 不落键）注入 guard 问线驱动面
     const pluginMcp = pluginMcpServers(base, { userServerNames: new Set(userServers.map((s) => s.name)) });
     const mcpServers = [...userServers, ...pluginMcp.servers].filter((s) => s.enabled !== false);
     // 用户权限规则面（spec 5.2）：两级装载合并不遮蔽；非路径通道（Bash/mcp/web）注入 PolicyEngine，路径通道由链消费
@@ -145,6 +146,9 @@ export class Harness {
     for (const rule of perms.config.deny) policy.add('deny', rule);
     for (const rule of perms.config.allow) policy.add('allow', rule);
     this.security = new SecurityGuard(policy, opts.mode ?? 'full-access', mcpServers.map((s) => s.name));
+    // safety 表注入（Task 9）：与 mcpServers 名单同一装配单点——插件贡献 server 的三类安全声明驱动 guard 问线
+    // （act 强制 ask 绕档位/observe 白名单/confirm 走通用 ask+always）；未声明 server 不落键，guard 行为零变化
+    this.security.setMcpSafety(pluginMcp.safety);
     this.safety = new SafetyChain(this.security, this.sandbox, base);
     this.safety.setPermissions(perms.config);
     this.safety.setAdditionalDirs([...perms.config.additionalDirs, ...(opts.addDirs ?? [])]);

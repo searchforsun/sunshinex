@@ -3,6 +3,7 @@ import { READONLY_WHITELIST, PermissionMode, DESTRUCTIVE_COMMANDS, DESTRUCTIVE_P
 import { resolveWebSearchEndpoint } from './websearch-endpoint';
 import { ApprovalDecision, ApprovalRequest } from '../../types';
 import { isWithin } from '../../paths';
+import type { McpSafetyDecl } from '../../config/plugins';
 
 export type GuardDecision =
   | { allowed: true; safePath?: string }
@@ -16,6 +17,28 @@ export class SecurityGuard {
     /** 已登记 MCP 服务器名（源自项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json，项目遮蔽全局）；空 = mcp__ 工具全禁 */
     private mcpServers: string[] = [],
   ) {}
+
+  /** 插件 safety 声明表（spec §2.4 声明式安全三类；Task 9 接线：harness 构造期注入 pluginMcpServers 合成产物）。
+   *  空表 = 全部 mcp__ 工具走通用 MCP 审批面（用户 mcp.json 的 server 与未声明插件零变化）。 */
+  private mcpSafety: Record<string, McpSafetyDecl> = {};
+  setMcpSafety(map: Record<string, McpSafetyDecl>): void {
+    this.mcpSafety = map;
+  }
+
+  /** `mcp__<server>__<tool>` 拆解后按 server 声明归类三类：act → confirm → observe（同工具名落入多类时取最严问线，
+   *  fail-closed 取向）。server 未声明或工具名三类均未命中返回 undefined——调用方落穿通用面，未声明路径零变化。 */
+  private mcpSafetyClass(tool: string): 'act' | 'confirm' | 'observe' | undefined {
+    const rest = tool.slice('mcp__'.length);
+    const sp = rest.indexOf('__');
+    if (sp < 0) return undefined;
+    const decl = this.mcpSafety[rest.slice(0, sp)];
+    if (decl === undefined) return undefined;
+    const name = rest.slice(sp + 2);
+    if (decl.act?.includes(name)) return 'act';
+    if (decl.confirm?.includes(name)) return 'confirm';
+    if (decl.observe?.includes(name)) return 'observe';
+    return undefined;
+  }
 
   preToolUse(tool: string, input: unknown): GuardDecision {
     const specifier = this.extractSpecifier(tool, input);
@@ -40,6 +63,19 @@ export class SecurityGuard {
       if (!this.mcpServers.includes(server)) {
         return { allowed: false, reason: `COMMAND_DENIED: MCP server not registered, external tools denied by default: ${server || '(empty)'}` };
       }
+      // 声明式插件安全契约（spec §2.4，Task 9）：safety 三类的通用消费单点。次序依据：deny 规则已在函数开头
+      // policy.decide 处先行返回（observe 早退不越过 deny）；本早退先于后段档位处理（read-only 闸门/allow 短路/
+      // ask 面）——act 的「full-access 不豁免」即此机制
+      const cls = this.mcpSafetyClass(tool);
+      if (cls === 'observe') return { allowed: true };
+      if (cls === 'act') {
+        if (this.mode === 'read-only') return { allowed: false, reason: 'COMMAND_DENIED: read-only mode denies plugin action tools' };
+        // 强制 ask（直执行类恒问线，任何档位不自动放行）：ask 标记由 preToolUseAsync 既有通道消费
+        // （asker 交互 + 会话 always，用户显式 always 即意图）；不计数 askDecisions（O3 口径为 policy 判 ask 面）
+        return { allowed: false, ask: true, reason: 'COMMAND_DENIED: plugin action tools always require approval' };
+      }
+      // confirm 不在此处理：落穿既有 policy ask 面（read-only 闸门拒/full-access 自动放行/acceptEdits ask+会话
+      // always，经 preToolUseAsync 复用既有 sessionAllows），零新状态
     }
     // ask_question 即问询通道本身（零 IO 副作用，AskQuestion 线 D4/D7）：三档放行——
     // read-only 下的澄清式提问是对标 CC AskUserQuestion 的核心场景；deny 规则与破坏性硬底线仍先行
