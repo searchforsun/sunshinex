@@ -647,6 +647,26 @@ function AppShell(): JSX.Element {
   const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed && !sidebarFloating ? sidebarRenderW : 0;
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
+  /** 2026-10-26 二期 keep-alive LRU:重标签保留上限 4,超限自动关最久未触的非活动标签 */
+  const HEAVY_TAB_TYPES = new Set<string>(['terminal', 'file', 'diff', 'taskboard', 'directory']);
+  const heavyTouchRef = useRef<string[]>([]);
+  const activeUidNow = activeTab?.uid ?? null;
+  const activeTabType = activeTab?.type;
+  useEffect(() => {
+    if (activeUidNow === null || activeTabType === undefined || !HEAVY_TAB_TYPES.has(activeTabType)) return;
+    heavyTouchRef.current = [...heavyTouchRef.current.filter((u) => u !== activeUidNow), activeUidNow];
+  }, [activeUidNow, activeTabType]);
+  useEffect(() => {
+    const heavy = tabState.tabs.filter((t) => HEAVY_TAB_TYPES.has(t.type)).map((t) => t.uid);
+    for (const u of heavy) if (!heavyTouchRef.current.includes(u)) heavyTouchRef.current.push(u);
+    const order = heavyTouchRef.current.filter((u) => heavy.includes(u));
+    const excess = order.slice(0, Math.max(0, order.length - 4)).filter((u) => u !== activeUidNow);
+    for (const u of excess) {
+      if (tabState.tabs.some((t) => t.uid === u)) closeTabInSession(u);
+    }
+  }, [tabState.tabs, activeUidNow, closeTabInSession]);
+
+
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
    *  tab-state.setWidth 单点,拖拽上界=视口−菜单−440——无固定最大宽但不越视口,G14.2xx 用户
    *  裁定),mouseup 解绑 + 移 active 类;每次 move 直接落态(React 批处理兜底);sessionId
@@ -903,32 +923,38 @@ function AppShell(): JSX.Element {
                 if (uid !== null) closeTabInSession(uid);
               }}
             />
-            {page === 'chat' && !tabState.collapsed && connInstance !== null && activeTab !== null && (
-              // key={activeTab.uid}:同型标签(file→file)互切强制重挂——React 同树位同元素类型会复用
-              // 一个 Files 实例(initialPath 自动加载 effect no-op,空标签串上一标签内容/路径输入)
-              <div className="sx-tabbody" key={activeTab.uid}>
-
-                {/* 2026-10-26 二期分包:标签体 lazy——Suspense 骨架承接首开 chunk 加载 */}
-                <Suspense fallback={<TabSkeleton />}>
-                {tabEntry(activeTab.type).render({
-                  conn: connInstance,
-                  sessionId: openSessionId,
-                  root: openRoot,
-                  params: activeTab.params,
-                  services,
-                  uid: activeTab.uid,
-                  // G8b T7:标签体自治跳转面(DirectoryTab 文件行 → file 标签;Chat onOpenFile 同源)
-                  openTab: openTabInSession,
-                  // G14.2xx 标签自关面(file 页签探测到目录:移交 directory 页签后自关)
-                  closeTab: closeTabInSession,
-                  startSideChat,
-                  ptyIdFor,
-                  onPtyAllocated: handlePtyAllocated,
-                  // G14.29 辅助对话:按 sideId 注入旁路 sink(App onEvent 同键路由帧)
-                  chatSinkRef: activeTab.params.sideId !== undefined ? sideSinksRef.current.get(activeTab.params.sideId) : undefined,
-                })}
-                </Suspense>
-              </div>
+            {page === 'chat' && !tabState.collapsed && connInstance !== null && (
+              // 2026-10-26 二期 keep-alive:全部 open 标签常挂,非活动 display:none+inert——
+              // DOM/状态/滚动位/终端屏完整保留,互切零重建;重标签 LRU-4 超限自动关(下方 effect)
+              tabState.tabs.map((t) => {
+                const hidden = activeTab === null || t.uid !== activeTab.uid;
+                return (
+                  <div
+                    key={t.uid}
+                    className="sx-tabbody"
+                    style={hidden ? { display: 'none' } : undefined}
+                    {...(hidden ? { inert: '' as unknown as boolean } : {})}
+                  >
+                    {/* 二期分包:标签体 lazy——Suspense 骨架承接首开 chunk 加载 */}
+                    <Suspense fallback={<TabSkeleton />}>
+                    {tabEntry(t.type).render({
+                      conn: connInstance,
+                      sessionId: openSessionId,
+                      root: openRoot,
+                      params: t.params,
+                      services,
+                      uid: t.uid,
+                      openTab: openTabInSession,
+                      closeTab: closeTabInSession,
+                      startSideChat,
+                      ptyIdFor,
+                      onPtyAllocated: handlePtyAllocated,
+                      chatSinkRef: t.params.sideId !== undefined ? sideSinksRef.current.get(t.params.sideId) : undefined,
+                    })}
+                    </Suspense>
+                  </div>
+                );
+              })
             )}
             {page === 'chat' && !tabState.collapsed && activeTab === null && (
               // G14.27 零标签空态=Codex 推荐项:标题+副题+常用页卡(点击即开,不再默认开任务页);

@@ -137,9 +137,15 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
     [conn, sessionId, onOpenDirectory],
   );
 
-  /** initialPath 到场自动加载（跳转面：依赖含 initialPath——已挂载时新跳转同样触发） */
+  /** initialPath 到场自动加载（跳转面：依赖含 initialPath——已挂载时新跳转同样触发）。
+   *  2026-10-26 keep-alive 去重:同路径不重拉——keep-alive 下隐藏标签随上游回调身份变化
+   *  重渲染,无去重即 fetch 风暴(实测 a.ts×3);跨实例互不影响(ref 为实例私有) */
+  const lastFetchedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialPath !== undefined && initialPath !== '') fetchFile(initialPath);
+    if (initialPath === undefined || initialPath === '') return;
+    if (lastFetchedRef.current === initialPath) return;
+    lastFetchedRef.current = initialPath;
+    fetchFile(initialPath);
   }, [initialPath, fetchFile]);
 
   // G14.121 换文件即回源码形态(预览态不跨文件延续)

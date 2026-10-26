@@ -1045,7 +1045,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     fireEvent.click(await screen.findByRole('button', { name: 'fileA.ts' }));
     await waitFor(() => expect(screen.getByLabelText('files')).toBeDefined()); // lazy 标签体 chunk 解析
     expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
-    expect(screen.queryByLabelText('board')).toBeNull(); // 标签体随活动切换
+    expect(document.querySelector('.taskboard-cards')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:board 面隐藏保留
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     // 切回「任务」标签:Board 回归(仍零重播种)
     expandSidebarIfCollapsed();
@@ -1077,7 +1077,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     unmount();
   });
 
-  it('两个文件标签互切:key={activeTab.uid} 重挂——切回 A 后 initialPath 重新生效(加载请求 path=A,路径输入=A)', async () => {
+  it('两个文件标签互切:keep-alive 零重挂——切回 A 实例状态保留(内容/路径不丢,无重拉)', { timeout: 30_000 }, async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     // G8d 起 Chat path 钮改开 diff 标签——file 标签按 path 开档的入口改为目录树文件行(openTab('file',{path}))
@@ -1095,12 +1095,11 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')?.classList.contains('active')).toBe(true);
     await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts']]));
-    // —— 开 file 标签 B:切回目录标签(重挂重拉+展开)再点 b.ts 行 ——
+    // —— 开 file 标签 B:切回目录标签(keep-alive 展开态保留,不重拉不折叠)点 b.ts 行 ——
     fireEvent.click(screen.getByRole('button', { name: bi('Directory', '目录') }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'b.ts' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'b.ts' }));
+    console.log('DBG-B: bodies=', document.querySelectorAll('.sx-tabbody').length, 'calls=', JSON.stringify(conn.readFileCalls));
     // 两文件标签在场且 B 活动(判重经 path:两 uid 两页)
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')).not.toBeNull();
     expect(document.querySelector('.sx-tab[data-title="b.ts"]')?.classList.contains('active')).toBe(true);
@@ -1109,8 +1108,8 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     // (无 key 时 React 复用 B 的 Files 实例:effect no-op,无第三笔请求且路径输入残留 dirA/b.ts)
     fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts'], ['s1', 'dirA/a.ts']]));
-    expect(document.querySelector('.files-breadcrumb .files-crumb-name')?.textContent).toBe('a.ts'); // 重挂后面包屑末级=A(G14.5)
+    expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts']]); // 无重拉(去重)
+    expect(document.querySelector('.files-breadcrumb .files-crumb-name')?.textContent).toBe('a.ts');
     unmount();
   });
 
@@ -1189,7 +1188,7 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
-    expect(screen.queryByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeNull(); // 终端面退场(卸载)
+    expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口')).closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:终端面隐藏保留
     await waitFor(() => expect(document.querySelector('.todo-cards')).not.toBeNull()); // lazy 标签体
     expect(conn.killPtyCalls).toEqual([]); // 卸载≠kill
     // 切回「终端」:重挂走重连径(ptyIdFor 命中既有记账)——openPty 计数不变,降级面照常

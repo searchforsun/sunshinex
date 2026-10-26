@@ -1181,7 +1181,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       await waitFor(() => expect(tabsByTitle(container, bi('Directory', '目录')).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, bi('Directory', '目录'))[0]!.className).toContain('active');
       expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).not.toContain('active');
-      expect(container.querySelector('.sx-tabbody .taskboard-cards')).toBeNull(); // 标签体随活动切换
+      expect(container.querySelector('.sx-tabbody .taskboard-cards')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留
 
       // —— 切回「任务」标签 → 看板消费:任务行文本在场(既有 Board 断言面)+ 委派侧栏 ——
       fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')!);
