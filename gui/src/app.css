@@ -2396,3 +2396,15 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-hint{margin:4px 0 0;color:var(--fg-tertiary);font-size:11px}
 .sx-mcp-offcount{color:var(--fg-tertiary)}
 .sx-mcp-json{width:100%;box-sizing:border-box;font:11px/1.5 var(--font-mono);white-space:pre;resize:vertical}
+
+/* ===== 2026-10-26 用户裁定:正文呼吸感再放大一档——区块间距(段/标题/代码块/表格/分割线)
+   与列表项行距各 +一档,列表项与普通换行拉开区分;行高 1.65→1.7。只动 .entry 正文域 ===== */
+.entry { line-height: 1.7; }
+.entry p { margin: 0 0 14px; }
+.entry h1, .entry h2, .entry h3, .entry h4 { margin: 28px 0 10px; }
+.entry ul, .entry ol { margin: 12px 0; }
+.entry li + li { margin-top: 6px; } /* 列表项之间 6px(旧 3px)——与普通换行可区分 */
+.entry li > ul, .entry li > ol { margin: 4px 0; } /* 嵌套列表贴主项,不吃满档 */
+.entry pre { margin: 14px 0; }
+.entry table { margin: 14px 0; }
+.entry hr { margin: 16px 0; }
