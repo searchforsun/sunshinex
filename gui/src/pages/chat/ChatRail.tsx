@@ -54,22 +54,58 @@ export function ChatRail(props: {
   });
   useEffect(() => {
     const el = chatScrollRef.current;
-    if (el === null || typeof ResizeObserver === 'undefined') return;
+    if (el === null) return;
+    let raf = 0;
+    // 测量单点(多通道汇入):读值全部现取(padding/rect 强制同步布局),setGeo 带同值守卫
     const measure = (): void => {
       const cs = getComputedStyle(el);
       const pad = Number.parseFloat(cs.paddingLeft);
       const rect = el.getBoundingClientRect();
       const z = zoomScale() || 1;
-      setGeo({
-        show: Number.isFinite(pad) && pad - 18 >= SHOW_MIN_MARGIN,
-        left: Number.isFinite(rect.left) ? Math.round(rect.left / z + HUG_LEFT) : HUG_LEFT,
-        top: Number.isFinite(rect.top) ? Math.round((rect.top + rect.height / 2) / z) : 0,
+      setGeo((prev) => {
+        const next = {
+          show: Number.isFinite(pad) && pad - 18 >= SHOW_MIN_MARGIN,
+          left: Number.isFinite(rect.left) ? Math.round(rect.left / z + HUG_LEFT) : HUG_LEFT,
+          top: Number.isFinite(rect.top) ? Math.round((rect.top + rect.height / 2) / z) : 0,
+        };
+        return prev.show === next.show && prev.left === next.left && prev.top === next.top ? prev : next;
       });
     };
+    // 显隐/锚点滞后一拍的三种来源各配一条触发线(十二轮半:单挂 RO 时,交互拖拽/渲染步
+    // 节流期间 RO 交付停滞,刻度状态整段拖到偶发交付才更新——缩/涨两向滞后到越过阈值很远):
+    // ①RO:盒尺寸变化(三栏拖拽/视口/折叠);②resize:窗口级变化的兜底通道(rAF 去抖);
+    // ③MutationObserver:App RO 直写 .sx-main 等的 --chat-max 内联值——微任务通道,
+    //   渲染步冻结时也送达,专治 RO 停摆段;自身 left/top 写回会同值自愈(setGeo 守卫截停)
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    const onResize = (): void => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    window.addEventListener('resize', onResize);
+    const mo =
+      typeof MutationObserver === 'undefined'
+        ? null
+        : new MutationObserver((muts) => {
+            for (const m of muts) {
+              const t = m.target instanceof HTMLElement ? m.target : null;
+              if (t !== null && t.style.getPropertyValue('--chat-max') !== '') {
+                measure();
+                return;
+              }
+            }
+          });
+    mo?.observe(document.documentElement, { attributes: true, attributeFilter: ['style'], subtree: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+      if (raf !== 0) cancelAnimationFrame(raf);
+      mo?.disconnect();
+    };
   }, [chatScrollRef]);
   /** 当前滚动位置正对的刻度(九轮):视口顶下 120px 分界——最后一条顶边越线的用户气泡;
    *  scroll rAF 节流单点,加重显色不加长(长度变化只在 hover) */
