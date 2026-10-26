@@ -94,3 +94,45 @@ test('loadMcpServers：非法 JSON 与非法条目跳过不抛（宁少配不错
     { name: 'mixed', url: 'http://x.example.com', transport: 'http' },
   ]);
 });
+
+test('loadMcpServers：第三种主流形态 url+headers+enabled(gitnexus 风格)——无 scheme 补 http://,headers/enabled/disabledTools 全解析(2026-10-26 用户实测)', () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, '.sunshinex'), { recursive: true });
+  // 用户原样配置(节选):url 无 scheme + headers Bearer + enabled 显式布尔
+  fs.writeFileSync(
+    path.join(dir, '.sunshinex', 'mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        gitnexus: {
+          url: '192.168.66.73:3000/api/mcp',
+          enabled: true,
+          headers: { Authorization: 'Bearer JKZtc53Q5aJUjXCXzfG2kMZDd7ybO54Nf09dzKsQpfDt35i2' },
+        },
+        'feishu-mcp': { url: 'https://mcp.feishu.cn/mcp/x' },
+        FeishuProjectMcp: {
+          command: 'npx',
+          args: ['-y', '@lark-project/mcp', '--domain', 'https://project.feishu.cn'],
+          env: { MCP_USER_TOKEN: 'm-x', NODE_OPTIONS: '--use-system-ca' },
+        },
+        off: { command: 'node', enabled: false, disabledTools: ['b', 'a'] },
+      },
+    }),
+  );
+  assert.deepEqual(loadMcpServers(dir), [
+    {
+      name: 'gitnexus',
+      url: 'http://192.168.66.73:3000/api/mcp',
+      transport: 'http',
+      headers: { Authorization: 'Bearer JKZtc53Q5aJUjXCXzfG2kMZDd7ybO54Nf09dzKsQpfDt35i2' },
+      enabled: true,
+    },
+    { name: 'feishu-mcp', url: 'https://mcp.feishu.cn/mcp/x', transport: 'http' },
+    {
+      name: 'FeishuProjectMcp',
+      command: 'npx',
+      args: ['-y', '@lark-project/mcp', '--domain', 'https://project.feishu.cn'],
+      env: { MCP_USER_TOKEN: 'm-x', NODE_OPTIONS: '--use-system-ca' },
+    },
+    { name: 'off', command: 'node', enabled: false, disabledTools: ['b', 'a'] },
+  ]);
+});
