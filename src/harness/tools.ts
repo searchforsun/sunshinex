@@ -42,7 +42,12 @@ export interface RegisteredTool extends ToolSpec {
 
 /** 工具域带码错误：executor 以业务错误码中止执行（registry 转译为同码 Result.fail，降级语义不再笼统 EXEC_FAILED） */
 export class CodedToolError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+    /** isError 随行图片（dataURL，MCP isError 截屏回流）：错误结果亦可带图，图片通道（Task 2 BatchRunner 回发）据错误对象提取 */
+    readonly images?: string[],
+  ) {
     super(message);
   }
 }

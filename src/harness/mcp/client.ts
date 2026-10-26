@@ -37,6 +37,17 @@ export function contentOf(content: unknown): { text: string; images?: string[] }
   return { text, ...(images.length > 0 ? { images } : {}) };
 }
 
+/** CallToolResult → ExecResult 结果映射单点：isError 抛 CodedToolError 保失败语义（BatchRunner 据错误码置 failed/分桶），
+ *  images 随错误对象随行不丢（错误亦可带图）；成功态 text/images 收进 ExecResult。抽导出即测：makeTool 私有 executor 的映射逻辑钉点 */
+export function execResultFromMcp(fqName: string, res: unknown): ExecResult {
+  const r = (res ?? {}) as { content?: unknown; isError?: unknown };
+  const { text, images } = contentOf(r.content);
+  if (r.isError === true) {
+    throw new CodedToolError('MCP_TOOL_ERROR', text || `MCP tool returned an error: ${fqName}`, images);
+  }
+  return { exitCode: 0, stdout: text, stderr: '', timedOut: false, ...(images !== undefined ? { images } : {}) };
+}
+
 /** 超时收束：竞速拒绝转 CodedToolError，计时器必清 */
 function withTimeout<T>(p: Promise<T>, ms: number, code: string, message: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -169,16 +180,7 @@ export class McpHost {
           'MCP_TIMEOUT',
           `MCP call timed out (${timeoutMs}ms): ${fqName}`,
         );
-        const { text, images } = contentOf(res.content);
-        // isError 不再抛 CodedToolError（会丢随行图片）：错误文案留 stdout、exitCode 收 1，images 原样随行
-        const isError = res.isError === true;
-        return {
-          exitCode: isError ? 1 : 0,
-          stdout: text,
-          stderr: isError ? 'tool reported error' : '',
-          timedOut: false,
-          ...(images !== undefined ? { images } : {}),
-        };
+        return execResultFromMcp(fqName, res);
       },
     };
   }
