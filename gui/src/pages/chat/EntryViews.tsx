@@ -215,6 +215,10 @@ function UserImageStrip({ images, onOpen }: { images: readonly string[]; onOpen?
           key={`${i}:${src.slice(-24)}`}
           src={src}
           alt={`${t('Attached image', '附件图片')} ${i + 1}`}
+          /* 2026-10-26 滚动卡点修复:懒加载+异步解码——大截图首滚入视口时的同步主线程解码
+             (4K 图 30-100ms+)正是「路过气泡处鼠标失灵式冻结一下」的来源;async 把解码挪出关键路径 */
+          loading="lazy"
+          decoding="async"
           className={onOpen !== undefined ? 'clickable' : undefined}
           onClick={onOpen !== undefined ? () => onOpen(src) : undefined}
         />
@@ -314,7 +318,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
             <div className="sx-img-strip">
               {draftImages.map((src, i) => (
                 <div key={`${i}:${src.slice(-24)}`} className="sx-img-thumb">
-                  <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} />
+                  <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} decoding="async" />
                   <button
                     type="button"
                     className="sx-img-remove"

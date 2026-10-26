@@ -167,3 +167,13 @@ export function runFooterMapOf(entries: ChatEntry[], status: ChatState['status']
   }
   return runFooterByEntry;
 }
+
+/** 2026-10-26 滚动卡点修复:runFooter 投影的引用稳定化——流式帧每帧换 entries,逐渲染 new Map 令
+ *  组级 memo 比较器恒失配(整个可见窗 600 条每帧全重建);此包装在键值对浅等时复用旧 Map(条目
+ *  引用由 reducer 保稳定,浅等=语义等值),配对真变(段收口/封条)才换身份。O(map) 每帧,可忽略 */
+export function runFooterMapOfStable(prev: ReadonlyMap<string, ChatEntry>, entries: ChatEntry[], status: ChatState['status']): ReadonlyMap<string, ChatEntry> {
+  const next = runFooterMapOf(entries, status);
+  if (prev.size !== next.size) return next;
+  for (const [k, v] of next) if (prev.get(k) !== v) return next;
+  return prev;
+}

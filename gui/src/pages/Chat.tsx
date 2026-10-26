@@ -27,7 +27,7 @@ import { useCommandPalette } from './chat/use-command-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
 import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
-import { useChatDerived, runFooterMapOf } from './chat/use-chat-derived';
+import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
 import { useChatScroll } from './chat/use-chat-scroll';
 import { useChatTitle } from './chat/use-chat-title';
 import { useChatSessionInfo } from './chat/use-chat-session-info';
@@ -237,7 +237,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     onTodoBatches,
     onTurnGoal,
   });
-  const runFooterByEntry = runFooterMapOf(chat.entries, chat.status);
+  // 2026-10-26 滚动卡点修复:runFooter 投影引用稳定化——此前逐渲染 new Map,组级 memo 比较器恒失配,
+  // 轮询/流式重渲染把整个可见窗 600 条全量重建(滚动中撞上=「鼠标失灵」式冻结);浅等复用旧 Map,
+  // 配对真变(段收口/封条)才换身份
+  const runFooterPrevRef = useRef<ReadonlyMap<string, ChatEntry>>(new Map());
+  runFooterPrevRef.current = runFooterMapOfStable(runFooterPrevRef.current, chat.entries, chat.status);
+  const runFooterByEntry = runFooterPrevRef.current;
 
   // 滚动四 effects + 轮次折叠簇(批F-5):refs 宿主持有,行为零变化
   const { dockRef } = useChatScroll({

@@ -93,6 +93,7 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
         alt={name ?? ''}
         className="sx-lightbox-img"
         draggable={false}
+        decoding="async"
         style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e: ReactPointerEvent<HTMLImageElement>) => {
