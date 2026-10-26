@@ -9,6 +9,8 @@ import { applyTheme, readThemePref, watchSystemTheme } from '../theme';
 import type { ThemePref } from '../theme';
 import { applyZoom, readZoomPref } from '../ui-zoom';
 import type { UiZoom } from '../ui-zoom';
+import { applyFontPreset, presetVars, readFontPreset } from '../font-preset';
+import type { FontPreset } from '../font-preset';
 
 /**
  * G8c T8 通用键值表单引擎(设置自动保存轮):mount/effect 拉 conn.settings(root)→按 pane 分组
@@ -46,6 +48,7 @@ export interface SettingsGroupDef {
   readonly fields: readonly SettingsFieldDef[];
   readonly themeRow?: boolean;
   readonly zoomRow?: boolean;
+  readonly fontRow?: boolean;
 }
 
 /** 面板配置:id(导航/重挂键)+title(导航项与面板标题双语对)+groups(分组卡列)+记忆概览行开关 */
@@ -125,7 +128,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: 'general',
     title: { en: 'General', zh: '通用' },
     groups: [
-      { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, fields: [sel('language', [
+      { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, fontRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
       ])] },
@@ -200,6 +203,67 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     ],
   },
 ];
+
+/** 字体预设行(2026-10-26 用户裁定):四预设卡片,每卡内嵌迷你实时预览(正文行/工具行/代码行
+ *  按该预设的字号行高内联渲染),点击即全局生效并持久化(theme/ui-zoom 同通路)。GUI 本地偏好,
+ *  非 settings 键 */
+const FONT_PRESETS: ReadonlyArray<{ v: FontPreset; l: { en: string; zh: string } }> = [
+  { v: 'default', l: { en: 'Compact (default)', zh: '紧凑(默认)' } },
+  { v: 'cozy', l: { en: 'Comfortable', zh: '舒适' } },
+  { v: 'cozyMono', l: { en: 'Comfortable + modern mono', zh: '舒适 + 现代等宽' } },
+  { v: 'roomy', l: { en: 'Roomy', zh: '宽松' } },
+];
+
+function FontRow(): JSX.Element {
+  const [pref, setPref] = useState<FontPreset>(readFontPreset);
+  return (
+    <div className="sx-setting-row sx-font-row">
+      <div className="sx-setting-main">
+        <div className="sx-setting-title">
+          <span className="sx-setting-label">{t('Font preset', '字体预设')}</span>
+        </div>
+        <p className="sx-setting-desc">{t('Body / thinking / tool / code typography — click a preset to apply', '正文/思考/工具/代码的字体排版——点击卡片即生效')}</p>
+      </div>
+      <div className="sx-setting-ctl sx-font-ctl">
+        {FONT_PRESETS.map((p) => {
+          const v = presetVars(p.v);
+          return (
+            <button
+              key={p.v}
+              type="button"
+              className={`sx-font-preset-card${pref === p.v ? ' active' : ''}`}
+              aria-pressed={pref === p.v}
+              aria-label={t(p.l.en, p.l.zh)}
+              onClick={() => {
+                setPref(p.v);
+                applyFontPreset(p.v);
+              }}
+            >
+              <span className="sx-font-preset-name">{t(p.l.en, p.l.zh)}</span>
+              <span className="sx-font-pv" style={{ lineHeight: v['--f-body-lh'] ?? '1.6' }}>
+                {t('Body text reads here. 正文预览。', 'Body text reads here. 正文预览。')}
+              </span>
+              <span className="sx-font-pv-tool" style={{ fontSize: v['--f-tool'] ?? '11px', fontFamily: v['--font-mono'] ? undefined : undefined, lineHeight: v['--f-tool-lh'] ?? 'normal' }}>
+                <span style={v['--font-mono'] !== undefined ? { fontFamily: v['--font-mono'] } : undefined}>run pnpm test --filter gui</span>
+              </span>
+              <span
+                className="sx-font-pv-code"
+                style={{
+                  fontSize: v['--f-code'] ?? '11px',
+                  lineHeight: v['--f-code-lh'] ?? 'normal',
+                  padding: v['--f-code-pad'] ?? '6px 8px',
+                  fontFamily: v['--font-mono'],
+                }}
+              >
+                {'const x = 1;'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /** 外观主题行(GUI 本地偏好,非 settings 键;G9 三态持久,system 跟随系统) */
 function ThemeRow(): JSX.Element {
@@ -477,6 +541,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && <ThemeRow />}
                 {g.zoomRow && <ZoomRow />}
+                {g.fontRow && <FontRow />}
                 {visible.map((fd) => {
                   const row = rows[fd.key]!;
                   const desc = KEY_DESCRIPTIONS[fd.key];

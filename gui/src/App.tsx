@@ -25,6 +25,7 @@ import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { chatMaxFor, MAIN_MIN_WIDTH } from './thread-width';
 import { zoomScale, applyZoom, type UiZoom } from './ui-zoom';
 import { applyTheme, type ThemePref } from './theme';
+import { applyFontPreset, type FontPreset } from './font-preset';
 import { initUiPrefSync } from './ui-pref-sync';
 import { useMenuResize } from './use-menu-resize';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
@@ -221,6 +222,7 @@ function AppShell(): JSX.Element {
     initUiPrefSync(connInstance, {
       zoom: (v) => applyZoom(v as UiZoom),
       theme: (v) => applyTheme(v as ThemePref),
+      fontPreset: (v) => applyFontPreset(v as FontPreset),
     });
   }, [connInstance]);
 

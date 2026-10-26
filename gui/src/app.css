@@ -2448,3 +2448,20 @@ input.sx-setting-input { width: 100%; }
 .table-wrap table { margin: 0; } /* 包内表格由 wrap 承担外距(16px)——本档 .entry table 14px 排其后会覆写 margin:0 造双倍边距,此处归零 */
 .table-wrap { margin: 16px 0; }
 .entry hr { margin: 16px 0; }
+
+/* ===== 2026-10-26 字体预设(设置-通用四预设卡,点击即生效;消费点缺省=原值,未选零漂移) =====
+   变量由 font-preset.ts 按预设落根内联(default 清空回落此处缺省) */
+.entry { line-height: var(--f-body-lh, 1.6); }
+.entry p { margin: 0 0 var(--f-para-gap, 6px); }
+.entry-tool { font-size: var(--f-tool, 11px); line-height: var(--f-tool-lh, normal); }
+.entry pre { font: var(--f-code, 11px)/var(--f-code-lh, normal) var(--font-mono); padding: var(--f-code-pad, 6px 8px); }
+.entry-thinking .thinking-summary, .entry-thinking .thinking-detail { line-height: var(--f-think-lh, 1.55); }
+/* 预设卡(设置行内 2×2 网格;迷你预览=该预设变量直映内联,选中=灰描边+soft 底,单色系) */
+.sx-font-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sx-font-preset-card { display: flex; flex-direction: column; gap: 5px; text-align: left; padding: 9px 11px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
+.sx-font-preset-card:hover:not(.active) { border-color: var(--border-strong); }
+.sx-font-preset-card.active { border-color: var(--border-strong); background: var(--surface-soft); }
+.sx-font-preset-name { font-size: 12px; font-weight: 600; color: var(--fg); }
+.sx-font-pv { font-size: 12.5px; color: var(--fg-secondary); }
+.sx-font-pv-tool { font-family: var(--font-mono); font-size: 11px; color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-xs); padding: 1px 6px; align-self: flex-start; }
+.sx-font-pv-code { font-family: var(--font-mono); color: var(--fg-secondary); background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-xs); align-self: stretch; }

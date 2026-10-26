@@ -13,6 +13,7 @@ type UiPrefConn = {
 const LOCAL_KEYS = {
   uiZoom: 'sunshinex.ui-zoom',
   theme: 'sunshinex.theme',
+  fontPreset: 'sunshinex.font-preset',
 } as const;
 
 let conn: UiPrefConn | null = null;
@@ -22,10 +23,10 @@ let flushTimer: number | undefined;
  *  旧值反过来覆盖新值——「放大缩小失效,每次都回 110%」根因) */
 let applyingRemote = false;
 /** boot 拉取后的应用回调(宿主注入——避免本模块反向依赖 ui-zoom/theme 造成环) */
-let appliers: { zoom: (v: string) => void; theme: (v: string) => void } | null = null;
+let appliers: { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void } | null = null;
 
 /** 连接就绪后调用一次:拉公共档覆盖本地,并回填本地缺键 */
-export function initUiPrefSync(c: UiPrefConn, apply: { zoom: (v: string) => void; theme: (v: string) => void }): void {
+export function initUiPrefSync(c: UiPrefConn, apply: { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void }): void {
   conn = c;
   appliers = apply;
   void flush();
@@ -66,6 +67,7 @@ async function flush(): Promise<void> {
           localStorage.setItem(LOCAL_KEYS[short], server);
           if (short === 'uiZoom') appliers?.zoom(server);
           if (short === 'theme') appliers?.theme(server);
+          if (short === 'fontPreset') appliers?.fontPreset(server);
         }
       } else if (local !== null && local !== '') {
         blob[short] = local; // 服务端缺键:本地回填上收(旧档/首联)
