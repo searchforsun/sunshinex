@@ -139,7 +139,7 @@
 
 ### 2.7 明确不做（YAGNI）
 
-插件市场/安装命令、进程内原生工具贡献 API（方案 B，保留键已留位）、hooks/commands/agents 贡献面、插件间依赖、版本协商、运行中会话热插拔。上述留扩展点不实现。
+插件市场/安装命令、进程内原生工具贡献 API（方案 B，保留键已留位）、hooks/commands/agents 贡献面、插件间依赖、版本协商、运行中会话热插拔；`running`（装配态可视化，`GET /settings/plugins` 字段）后置——需跨会话装配态查询，属 v1.1。上述留扩展点不实现。
 
 ## 3. 工具结果图片通道（M0'，两能力共同前置）
 
@@ -237,7 +237,7 @@
 ## 6. 设置页「插件」pane
 
 - **端点**（`src/serve/config-handlers.ts`，对标 MCP pane 先例 G8c-T4）：
-  - `GET /settings/plugins?root=`：`loadEffectivePlugins` 两级合并清单 + 每项 `source`（builtin/user）/`platformSupported`/`running`（该 harness 实例是否已装配）。
+  - `GET /settings/plugins?root=`：`loadEffectivePlugins` 两级合并清单 + 每项 `source`（builtin/user）/`platformSupported`。
   - `PUT /settings/plugins` `{root?, id, enabled?, config?}`：校验插件存在 → settings 语义键结构化原子写（`surgicalSettingsUpdate` 既有面）→ 生效语义 = **下次会话装配生效**（运行中会话不热切换——进程生命周期属 McpHost，热插拔后置）。
 - **UI**（Settings 页新增 pane，与 MCP/Agents 并列）：插件卡片 = 图标 + 名称/版本 + 描述 + 来源徽标（内置/用户）+ 平台不支持置灰 + 启用开关 + config 展开区（v1 只读 JSON 展示）。开关态写 settings，与 MCP pane 同交互语言。
 - **异常可见性**：manifest 非法被跳过的插件以告警徽标列于 pane 尾（「N 个插件加载失败」展开原因）——装载告警三出口（daemon 日志 / plugins CLI / 设置页）之一。

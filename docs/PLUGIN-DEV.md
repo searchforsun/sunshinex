@@ -79,7 +79,6 @@ sunshinex plugins list                                       # id/version/来源
 | `mcpServers` | 否 | 键 = server 名，值 = 贡献条目（§4.1） |
 | `skills` | 否 | 插件内技能目录（相对插件根，§4.2） |
 | `configSchema` | 否 | 键 → `{type, description}`；v1 仅设置页展示，不强校验 config 值（§5） |
-| `config` | 否 | settings 语义键 `plugins[id].config` 的镜像载体（浅对象，键值自由） |
 | `commands` / `hooks` / `agents` / `tools` | — | 保留贡献点名（v1 未实现）：出现即告警「已忽略」，名字留作前向兼容 |
 
 **JSON Schema artifact**：`plugins/schema/plugin-manifest.schema.json`（JSON Schema draft-07，随包分发）——装载器、校验 CLI、编辑器补全/第三方预检同源消费。编辑器补全用法：VS Code 工作区设置配 `"json.schemas": [{ "fileMatch": ["plugin.json"], "url": "./plugins/schema/plugin-manifest.schema.json" }]`；或在 manifest 内直接写 `"$schema"` 指向该文件（解析器按未知字段告警忽略，不拒载）。
@@ -187,6 +186,8 @@ discovered   两级根扫描发现，manifest 合法入表（非法整插件跳�
 | 会话 / daemon 面 | 装配告警（遮蔽/撞名/坏记录/manifest 告警）并入 harness 警告单——会话面以警示行透出，`selfcheck` 同屏 |
 
 写入端点（设置页背后）：`PUT /settings/plugins {root?, id, enabled?, config?}`——settings 结构化原子写（记录级整面替换）；id 缺失/坏形 → 400；未知 id → 404；目标文件含注释/畸形 JSON/version≠1 → 409（引流 raw 编辑器）。生效语义同上：下次会话装配。
+
+探活：`POST /settings/mcp/probe` `{root?, name}`——对合并清单中同名 server 同源探活（临时装配 + 握手 + tools/list），插件工具装载失败时的第一诊断（root 缺省 = 仅全局清单，与 GET 同裁定；探活名 = 插件贡献的 server 名）。
 
 常见装载失败对照表：
 

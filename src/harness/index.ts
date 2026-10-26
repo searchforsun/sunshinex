@@ -38,10 +38,12 @@ import { resolveDataDir } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { teamTokenCapEnv } from '../config/termination-config';
+import { DEFAULT_IMAGE_HISTORY_LIMIT } from '../config/image-history';
 import { RunLedger } from './ledger';
 import { loadMcpServers } from '../config';
 import { pluginMcpServers } from '../config/plugins';
 import { loadPermissions } from '../config/permissions';
+import { resolveImageHistoryLimit } from '../config/image-history';
 import * as fs from 'fs';
 import { McpHost } from './mcp/client';
 import type { KnowledgeBase } from './knowledge';
@@ -375,6 +377,11 @@ export class Harness {
     // P7:稳定段观测面装配口径缓存(outputStyle 是 run 级常量)——harness.stableSegment 与 reactor
     // 构造行同源,不引入第二份 deps 面
     this.stableOutputStyle = opts.outputStyle;
+    // imageHistoryLimit（spec §3.2 settings 键接线）：装配期两级解析一次（0-50 整数，非法/缺省回 3），
+    // 注入单发 Reactor 并经只读面暴露给 LoopDeps 装配点（loop 主链 Reactor 同源消费）；告警走 selfcheck 面
+    const imageHistory = resolveImageHistoryLimit(base);
+    this.imageHistoryLimit = imageHistory.value;
+    this.imageHistoryWarningList = imageHistory.warnings;
     this.reactor = new Reactor({
       registry: this.tools,
       safety: this.safety,
@@ -385,6 +392,7 @@ export class Harness {
       activeRoot: () => this.safety.activeRoot,
       ledger,
       runner: this.runner,
+      imageHistoryLimit: imageHistory.value,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.outputStyle ? { outputStyle: opts.outputStyle } : {}),
       // 运行中穿插（对标 CC queued messages）：步边界 drain 单点；未消费行由会话层收口兜底补跑
@@ -410,6 +418,16 @@ export class Harness {
   /** permissions 装载告警（spec 5.2 单级形状非法跳过）；selfcheck 上屏 */
   permissionWarnings(): string[] {
     return [...this.permissionWarningList];
+  }
+
+  /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit 装配期解析值）：LoopDeps 装配点透传 loop 主链 Reactor */
+  readonly imageHistoryLimit: number = DEFAULT_IMAGE_HISTORY_LIMIT;
+
+  private imageHistoryWarningList: string[] = [];
+
+  /** imageHistoryLimit 装载告警（settings 键形状非法回缺省）；selfcheck 上屏 */
+  imageHistoryWarnings(): string[] {
+    return [...this.imageHistoryWarningList];
   }
 
   /** /add-dir 运行期通道（spec 5.3）：realpath 归一后并入信任目录集 */

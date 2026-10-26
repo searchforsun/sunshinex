@@ -136,6 +136,21 @@ test('GET 无 root：仅全局面——项目 settings 的 enabled 覆盖不入�
   });
 });
 
+test('GET：settings 畸形 JSON 不 fail-fast 穿透——尽力而为视图（空清单+顶层告警），与 PUT 409 对称裁量', async () => {
+  await withFakeHome(async (home) => {
+    mkUserPlugin(home, 'demo');
+    fs.mkdirSync(path.join(home, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), '{oops');
+    const r = await pluginsGet();
+    assert.equal(r.status, 200, '清单面是尽力而为视图，装载失败不 500');
+    assert.deepEqual(r.body.plugins, [], 'settings 装载失败 → 空清单');
+    assert.ok(
+      r.body.warnings.some((w) => w.includes('settings 装载失败')),
+      '顶层告警点名装载失败（原因随告警透出，设置页可见）',
+    );
+  });
+});
+
 test('PUT enabled → 写项目 settings 语义键 plugins.demo.enabled（原子写：尾随换行+无 tmp 残片）→ 两级读取生效 + reloadSettingsChain(root)', async () => {
   await withFakeHome(async (home) => {
     mkUserPlugin(home, 'demo', { defaultEnabled: false });

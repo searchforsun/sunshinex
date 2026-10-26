@@ -58,7 +58,8 @@ interface BuildMessagesInput {
 
 /** 链序列 → 消息序列（确定性纯函数；相邻调用仅尾部增长——前缀稳定回归钉子见 messages.test.ts）。
  *  imageHistoryLimit：渲染期图片历史半径——链序上仅最近 N 个带图行保图，更早行剥图加 `[image elided]`
- *  文本标记（journal 全量留档不受影响）；settings 接线在调用方面任务，本函数只做参数。 */
+ *  文本标记（journal 全量留档不受影响）；settings 键 imageHistoryLimit 经 config/image-history.ts 解析后
+ *  由调用方（reactor chatRound，ReactorDeps 注入）透传，本函数只做参数。 */
 export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = 3): ChatMessage[] {
   const msgs: ChatMessage[] = [{ role: 'system', content: input.stableSegment }];
   if (input.snapshot.length > 0) {

@@ -49,7 +49,7 @@ export const TOOLS: ToolDef[] = [
           maxItems: 4,
           description: 'Optional capture region [left, top, right, bottom] in physical screen pixels; null captures the full virtual screen',
         },
-        display: { type: ['integer', 'null'], description: 'Optional 0-based display index; null uses the primary display' },
+        display: { type: ['integer', 'null'], description: 'Optional 0-based display index; null captures the whole virtual screen; selecting a display is not implemented yet' },
       },
     },
   },

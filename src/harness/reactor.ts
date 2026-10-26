@@ -80,6 +80,9 @@ export interface ReactorDeps {
   signal?: AbortSignal;
   /** 输出样式分叉（交互面级 run 常量，进稳定段）：装配面注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定、前缀基线字节不变 */
   outputStyle?: OutputStyle;
+  /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，config/image-history.ts 装配期解析注入）：
+   *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
+  imageHistoryLimit?: number;
 }
 
 /** 收口沉淀载荷（规格 §3.2）：outcome = 终态归一值（done/failed/stopped）；无最终答复时 reply 归一为空串 */
@@ -473,7 +476,7 @@ export class Reactor {
       // 压缩水位过滤：压缩点前的链行已折叠进压缩块，不得双份回流（runCompaction 契约）
       chain: steps.filter((s) => s.step > fromStep),
       pendingSkill: skill,
-    });
+    }, this.deps.imageHistoryLimit ?? 3);
     const tools = [...this.deps.registry.list()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) } }));

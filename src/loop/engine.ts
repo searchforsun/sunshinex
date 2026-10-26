@@ -71,6 +71,8 @@ export interface LoopDeps {
   /** 沉淀双钩子透传（harness 装配注入）：loop 内构造的 Reactor 与单发 Reactor 同语义——收口零等待入队、全终态触发 */
   settle?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
   settleMemory?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
+  /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，harness 装配期解析注入）：agent 节点随 deps 下传循环内构造的 Reactor */
+  imageHistoryLimit?: number;
 }
 
 /** Loop 运行结果：终态三分 done/failed/paused；paused 仅用于预算超支（不伪造完成） */

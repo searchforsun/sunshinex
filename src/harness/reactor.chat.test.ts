@@ -261,3 +261,31 @@ test('思考贯穿·零思考轮：模型整轮无思考时续轮请求 assistan
   assert.equal(asst?.reasoning, '', '零思考轮的 assistant 消息 reasoning 兜底空串（字段在场）');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('imageHistoryLimit deps 注入：渲染半径随装配面解析值透传 buildMessages（settings 键接线）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-imglim-'));
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  // 预置 3 条带图 tool-result 链行（截图回流形态）：journal 全量留档不受渲染剪枝影响
+  context.appendChain([
+    { action: 'task', observation: 'take screenshots' },
+    { action: 'tool-result', observation: '[tool] screenshot {}', images: ['data:image/png;base64,AAA'] },
+    { action: 'tool-result', observation: '[tool] screenshot {}', images: ['data:image/png;base64,BBB'] },
+    { action: 'tool-result', observation: '[tool] screenshot {}', images: ['data:image/png;base64,CCC'] },
+  ]);
+  const adapter = new ChatStub([stop('done.')]);
+  const reactor = new Reactor({ registry, safety, context, model: adapter, imageHistoryLimit: 1 });
+  const r = await reactor.run({ goal: 'g' });
+  assert.equal(r.done, true);
+  const msgs = adapter.requests[0]!.messages;
+  const imgFrames = msgs.filter((m): m is Extract<ChatRequest['messages'][number], { role: 'user' }> => m.role === 'user' && m.images !== undefined);
+  assert.equal(imgFrames.length, 1, '半径 1：仅链序最近 1 个带图行保图（缺省 3 时应为 3——此钉防透传断线回缺省）');
+  assert.deepEqual(imgFrames[0]!.images, ['data:image/png;base64,CCC']);
+  const elided = msgs.filter((m) => typeof m.content === 'string' && m.content.includes('[image elided]'));
+  assert.equal(elided.length, 2, '更早 2 行剥图加标记（无批可挂降级 user 形态）');
+  assert.equal(context.chainView().filter((s) => s.images !== undefined).length, 3, 'journal 全量留档不受影响');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});

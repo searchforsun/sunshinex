@@ -76,6 +76,8 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     steer: () => harness.steerSource(),
     // 沉淀双钩子与收尾管线（规格 §3.1/§3.5）：TUI 主链经 loop 构造 Reactor，钩子必须随 LoopDeps 透传才会触发
     ...harness.settleHooks,
+    // 渲染期图片历史半径透传（spec §3.2 settings 键）：loop 内构造的 Reactor 与单发 Reactor 同源消费
+    imageHistoryLimit: harness.imageHistoryLimit,
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），dispose 收口防 stdio 子进程悬挂
     mcpReady: harness.mcpReady,
     mcpClose: harness.mcpClose,

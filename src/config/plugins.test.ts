@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, existsSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { loadEffectivePlugins, parsePluginManifest, pluginMcpServers } from './plugins';
+import { KNOWN_KEYS, RESERVED, loadEffectivePlugins, parsePluginManifest, pluginMcpServers } from './plugins';
 
 function tmpPlugin(manifest: unknown): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'plug-'));
@@ -113,22 +113,26 @@ test('mcpServers 可选字段坏值：该键告警忽略，条目保留', () => 
   assert.ok(r.warnings.some((w) => w.includes('mcpServers.s.configDefaults')));
   assert.ok(r.warnings.some((w) => w.includes('mcpServers.s.cwd')));
 });
-test('顶层可选字段坏值（platforms/skills/defaultEnabled/config/configSchema）逐键告警忽略，manifest 仍在', () => {
+test('顶层可选字段坏值（platforms/skills/defaultEnabled/configSchema）逐键告警忽略，manifest 仍在', () => {
   const r = parsePluginManifest(tmpPlugin({
     manifestVersion: 1, id: 'demo', name: 'Demo', version: '0.1.0', description: 'd',
-    platforms: ['win32', 42], skills: 'skills', defaultEnabled: 'yes', config: 'nope', configSchema: [],
+    platforms: ['win32', 42], skills: 'skills', defaultEnabled: 'yes', configSchema: [],
   }));
   assert.equal(r.errors.length, 0);
   assert.notEqual(r.manifest, null);
   assert.equal(r.manifest!.platforms, undefined);
   assert.equal(r.manifest!.skills, undefined);
   assert.equal(r.manifest!.defaultEnabled, undefined);
-  assert.equal(r.manifest!.config, undefined);
   assert.equal(r.manifest!.configSchema, undefined);
   assert.ok(r.warnings.some((w) => w.includes('platforms')));
   assert.ok(r.warnings.some((w) => w.includes('skills')));
   assert.ok(r.warnings.some((w) => w.includes('defaultEnabled')));
-  assert.ok(r.warnings.some((w) => w.includes('config')));
+});
+test('manifest config 死字段退役（终审 Fix 4，无消费者）：出现即走未知字段告警忽略、不进产物', () => {
+  const r = parsePluginManifest(tmpPlugin({ manifestVersion: 1, id: 'demo', name: 'D', version: '0.1.0', description: 'd', config: { k: 'v' } }));
+  assert.notEqual(r.manifest, null);
+  assert.equal((r.manifest as unknown as Record<string, unknown>).config, undefined, 'config 不进解析产物');
+  assert.ok(r.warnings.some((w) => w.includes('未知字段 config')), '诚实告警：config 已是未知字段');
 });
 test('platforms 合法值（元素均字符串）原样保留，值合法性不校验枚举', () => {
   const r = parsePluginManifest(tmpPlugin({ manifestVersion: 1, id: 'demo', name: 'Demo', version: '0.1.0', description: 'd', platforms: ['win32', 'darwin'] }));
@@ -417,4 +421,30 @@ test('真实内置根装载 computer-use：未启用不出；enabled 后合成 s
     confirm: ['screenshot'],
     observe: ['uia_snapshot', 'window_list'],
   });
+});
+
+// ---- schema↔解析器对拍钉（终审 Fix 7，防 Critical#1「schema 描述与解析器语义反写」复发）----
+// 校验 artifact（plugins/schema/plugin-manifest.schema.json）与手写解析器（本文件被测单点）必须同源同义：
+// 键集漂移即测红（新增/删除顶层字段两边不同步），安全三类 description 文字漂移即测红（语义反写拦在测试面）。
+// schema 读取路径沿本文件既有真实内置根钉同式（__dirname dist 面两级上溯，src 面同级成立）。
+
+const SCHEMA_PATH = path.resolve(__dirname, '../../plugins/schema/plugin-manifest.schema.json');
+
+test('schema 顶层 properties 键集 ≡ KNOWN_KEYS ∪ RESERVED（单源对拍，漂移即测红）', () => {
+  const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')) as { properties: Record<string, unknown> };
+  assert.deepEqual(
+    Object.keys(schema.properties).sort(),
+    [...KNOWN_KEYS, ...RESERVED].map(String).sort(),
+    'schema properties 与解析器 KNOWN_KEYS∪RESERVED 键集须一一对应（缺位/多位都说明两源漂移）',
+  );
+});
+
+test('schema safety 三类 description 语义关键词钉（act 强制审批 / confirm 一次放行 / observe 只读）', () => {
+  const schema = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')) as {
+    definitions: { mcpServerContrib: { properties: { safety: { properties: Record<string, { description: string }> } } } };
+  };
+  const safety = schema.definitions.mcpServerContrib.properties.safety.properties;
+  assert.ok(safety.act!.description.includes('强制'), 'act 须表述「强制用户审批」语义（任何档位不豁免）——写反成免问线即测红');
+  assert.ok(safety.confirm!.description.includes('一次放行'), 'confirm 须表述「会话内一次放行」语义——写反成每次执行确认即测红');
+  assert.ok(safety.observe!.description.includes('只读'), 'observe 须表述「只读」语义');
 });

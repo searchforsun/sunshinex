@@ -69,6 +69,8 @@ interface SettingsDoc {
   providers?: unknown;
   /** plugins 结构化语义键原值（插件启用态与 config，两级装载合并见 config/plugins.ts）：形状裁决在 config/plugins.ts，不经 flatten/env 槽 */
   plugins?: unknown;
+  /** imageHistoryLimit 结构化语义键原值（图片历史渲染半径，spec §3.2）：形状裁决在 config/image-history.ts，不经 flatten/env 槽 */
+  imageHistoryLimit?: unknown;
 }
 
 /**
@@ -151,6 +153,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   let permissions: unknown = undefined;
   let providers: unknown = undefined;
   let plugins: unknown = undefined;
+  let imageHistoryLimit: unknown = undefined;
   for (const [key, value] of Object.entries(root)) {
     if (key === 'version' || key === 'env') continue;
     if (key === 'permissions') {
@@ -163,6 +166,10 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
     }
     if (key === 'plugins') {
       plugins = root[key] as unknown;
+      continue;
+    }
+    if (key === 'imageHistoryLimit') {
+      imageHistoryLimit = root[key] as unknown;
       continue;
     }
     semantic[key] = value;
@@ -178,7 +185,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
       // 非字符串值静默忽略：env 块定位是环境变量透传，数字/布尔无对应语义
     }
   }
-  return { semantic, env, permissions, providers, plugins };
+  return { semantic, env, permissions, providers, plugins, imageHistoryLimit };
 }
 
 interface FlattenResult {

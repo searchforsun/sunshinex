@@ -28,7 +28,6 @@
         "required": ["type"]
       }
     },
-    "config": { "type": "object", "description": "settings 语义键 plugins[id].config 的镜像载体（浅对象，键值自由；值可被装配期与 configDefaults 合并消费）" },
     "commands": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" },
     "hooks": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" },
     "agents": { "deprecated": true, "description": "保留贡献点：v1 未实现，出现即告警「已忽略」（名字留作前向兼容）" },
@@ -48,9 +47,9 @@
           "type": "object",
           "description": "声明式安全三类（spec §2.4）：值为工具短名清单；未声明的工具走通用 MCP 审批行为（fail-closed 兜底）。解析器纪律：safety 在场但形状矛盾 = 整条跳过（不落半份声明）",
           "properties": {
-            "act": { "type": "array", "items": { "type": "string" }, "description": "直接执行类：免问线" },
-            "confirm": { "type": "array", "items": { "type": "string" }, "description": "硬确认类：每次执行须用户确认" },
-            "observe": { "type": "array", "items": { "type": "string" }, "description": "只读观察类" }
+            "act": { "type": "array", "items": { "type": "string" }, "description": "副作用动作类：任何权限档位强制用户审批（full-access 不豁免；read-only 档直接拒）" },
+            "confirm": { "type": "array", "items": { "type": "string" }, "description": "敏感观察类（读但隐私敏感）：缺省审批、会话内一次放行；full-access 档自动放行" },
+            "observe": { "type": "array", "items": { "type": "string" }, "description": "纯只读观察类：只读白名单资格（各档位直放）" }
           }
         },
         "configArgs": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } }, "description": "config 键 → 参数模板清单（{value} 占位替换；布尔 true → 纯旗标），装配期随 settings 插件 config 展开" },

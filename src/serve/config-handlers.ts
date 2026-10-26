@@ -486,7 +486,16 @@ export function handlePluginsGet(io: ConfigHandlerIo, req: http.IncomingMessage,
   const url = urlOf(req);
   const rootParam = url.searchParams.get('root');
   const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-  const loaded = loadEffectivePlugins(root);
+  // settings 畸形 JSON/version≠1 时 parseSettingsFile fail-fast 抛错：清单面是尽力而为视图，
+  // 不让异常穿透成 500（与 PUT 面「结构化写不越权处置畸形文件」的 409 对称裁量）——回空清单 +
+  // 顶层告警点名装载失败（原因随告警透出，设置页 pane 尾可见），零盘上副作用
+  let loaded: ReturnType<typeof loadEffectivePlugins>;
+  try {
+    loaded = loadEffectivePlugins(root);
+  } catch (e) {
+    io.send(res, 200, { plugins: [], warnings: [`settings 装载失败: ${e instanceof Error ? e.message : String(e)}`] });
+    return;
+  }
   io.send(res, 200, {
     plugins: loaded.plugins.map((p) => ({
       id: p.manifest.id,

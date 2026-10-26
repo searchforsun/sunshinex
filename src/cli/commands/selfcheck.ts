@@ -71,6 +71,10 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   for (const w of h.permissionWarnings()) {
     console.log(`permissions warn: ${w}`);
   }
+  // imageHistoryLimit 装载告警上屏（spec §3.2 settings 键形状非法回缺省——同上不静默）
+  for (const w of h.imageHistoryWarnings()) {
+    console.log(`imageHistoryLimit warn: ${w}`);
+  }
   // 隔离口径上屏（spec 5.5）：auto 语义 = 缺省探测（显式声明优先，此处只消费探测结果），真实内核探针不入库
   const isolation = await resolveIsolation();
   console.log(`isolation : ${isolation}${sandboxEnabled() ? '' : ' (sandbox off)'}`);

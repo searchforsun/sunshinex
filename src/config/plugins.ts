@@ -10,11 +10,11 @@ import type { McpServerConfig } from '../types';
  *  容错纪律沿 parseMcpJsonFile（src/config.ts）：文件缺失/非法 JSON/必填缺失/类型矛盾 → errors + manifest null（整插件跳过）；
  *  可选字段坏值/坏条目 → 告警 + 忽略该键或该条（宁可少配不可错配）。 */
 export interface McpSafetyDecl {
-  /** 直接执行类：免问线工具短名清单 */
+  /** 副作用动作类（任何权限档位强制用户审批，full-access 不豁免；read-only 档直接拒）工具短名清单 */
   act?: string[];
-  /** 硬确认类：每次执行须用户确认 */
+  /** 敏感观察类（读但隐私敏感）：缺省审批、会话内一次放行；full-access 档自动放行 */
   confirm?: string[];
-  /** 只读观察类 */
+  /** 纯只读观察类：只读白名单资格（各档位直放） */
   observe?: string[];
 }
 
@@ -53,13 +53,12 @@ export interface PluginManifest {
   skills?: string[];
   /** 设置页展示用 config 键说明（v1 仅展示，不强校验 config 值，故条目形状不深校验） */
   configSchema?: Record<string, { type: string; description?: string }>;
-  /** settings 语义键 plugins[id].config 的镜像载体（浅对象，键值自由） */
-  config?: Record<string, unknown>;
 }
 
-const KNOWN_KEYS = new Set(['manifestVersion', 'id', 'name', 'version', 'description', 'platforms', 'defaultEnabled', 'mcpServers', 'skills', 'configSchema', 'config']);
+/** 已知顶层键（导出供 schema↔解析器对拍钉消费，plugins.test 终审 Fix 7）：键集漂移在测试面拦下 */
+export const KNOWN_KEYS = new Set(['manifestVersion', 'id', 'name', 'version', 'description', 'platforms', 'defaultEnabled', 'mcpServers', 'skills', 'configSchema']);
 /** 保留贡献点名（v1 未实现）：出现即告警「已忽略」，名字留作前向兼容（进程内工具贡献/hooks 等留位） */
-const RESERVED = ['commands', 'hooks', 'agents', 'tools'] as const;
+export const RESERVED = ['commands', 'hooks', 'agents', 'tools'] as const;
 const REQUIRED: Array<keyof PluginManifest> = ['manifestVersion', 'id', 'name', 'version', 'description'];
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -179,8 +178,6 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
   // configSchema 只守卫对象形状，条目不深校验（v1 仅设置页展示）——类型面按声明收窄
   const configSchema = o.configSchema === undefined ? undefined : (objRecord(o.configSchema) as Record<string, { type: string; description?: string }> | undefined);
   if (o.configSchema !== undefined && !configSchema) warnings.push('configSchema: 须为对象，已忽略该键');
-  const config = o.config === undefined ? undefined : objRecord(o.config);
-  if (o.config !== undefined && !config) warnings.push('config: 须为对象，已忽略该键');
   let mcpServers: Record<string, Omit<McpServerContrib, 'name'>> | undefined;
   if (o.mcpServers !== undefined) {
     const entries = objRecord(o.mcpServers);
@@ -205,7 +202,6 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
     ...(mcpServers !== undefined ? { mcpServers } : {}),
     ...(skills !== undefined ? { skills } : {}),
     ...(configSchema !== undefined ? { configSchema } : {}),
-    ...(config !== undefined ? { config } : {}),
   };
   return { manifest, warnings, errors };
 }
@@ -215,7 +211,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 /** 装载产物：manifest + 落位与启用态裁决（spec §2 插件装载面）。
  *  - enabled：defaultEnabled 作初值，settings 语义键 plugins[id].enabled 在场即覆盖（两级合并见 loadEffectivePlugins）；
- *  - config：settings 语义键 plugins[id].config 原值（浅对象；manifest.config 是其镜像载体，缺省空对象）；
+ *  - config：settings 语义键 plugins[id].config 原值（浅对象，缺省空对象；manifest 无 config 载体字段——settings 语义键是插件配置的唯一入口）；
  *  - platformSupported：platforms 缺省全平台；不匹配 = 不可用（消费面据此剔除——设置页置灰、装配跳过），装载层只标记不丢弃；
  *  - warnings：该插件 manifest 解析告警原值（顶层聚合警告带 `[builtin:id]`/`[user:id]` 前缀，见 loadEffectivePlugins）。 */
 export interface EffectivePlugin {

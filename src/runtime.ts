@@ -166,6 +166,8 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     mcpWarnings: h.mcpWarnings,
     // 沉淀双钩子透传（规格 §3.1）：loop 内构造的 Reactor 收口同样零等待入队（此前 loop 路径未接＝真缺口）
     ...h.settleHooks,
+    // 渲染期图片历史半径透传（spec §3.2 settings 键）：loop 内构造的 Reactor 与单发 Reactor 同源消费
+    imageHistoryLimit: h.imageHistoryLimit,
     // 显式按档绑定才注入 router（reactor 按用户级档位取对应适配器）；--tier 注入 run 级档位常量
     ...(router ? { router } : {}),
     ...(tier ? { tier } : {}),
