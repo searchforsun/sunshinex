@@ -16,6 +16,11 @@ import type { ChatMessage, ContextItem, HistoryStep, ToolCallSpec } from '../../
  *
  * id 合成口径：端点只要求 role:'tool' 消息内 tool_call_id 与前序 assistant.tool_calls[].id 自洽，
  * 不要求复现端点原 id；按全链序 running 计数（call_1, call_2, …）保证「链尾追一行 → 既有 id 零位移」（前缀稳定）。
+ *
+ * 图片渲染期剪枝（spec §3.2）：带图链行按链序仅最近 imageHistoryLimit（缺省 3）行保图，更早行剥图并在文本加
+ * `\n[image elided]` 标记——journal 全量留档不受影响（本函数是纯派生视图，剪枝只发生在消息投影上）。
+ * tool-result 行图片以**批收口后**的合成 user 帧（content '(tool image)'）透出，不插在批内 role:tool 之间
+ * （OpenAI 严格端点 assistant(tool_calls)↔role:tool pairing 风险）。
  */
 
 /** 链行动作词汇（T4 写入方按此登记；本单点为唯一权威） */
@@ -51,8 +56,10 @@ interface BuildMessagesInput {
   pendingSkill?: string | null;
 }
 
-/** 链序列 → 消息序列（确定性纯函数；相邻调用仅尾部增长——前缀稳定回归钉子见 messages.test.ts） */
-export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
+/** 链序列 → 消息序列（确定性纯函数；相邻调用仅尾部增长——前缀稳定回归钉子见 messages.test.ts）。
+ *  imageHistoryLimit：渲染期图片历史半径——链序上仅最近 N 个带图行保图，更早行剥图加 `[image elided]`
+ *  文本标记（journal 全量留档不受影响）；settings 接线在调用方面任务，本函数只做参数。 */
+export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = 3): ChatMessage[] {
   const msgs: ChatMessage[] = [{ role: 'system', content: input.stableSegment }];
   if (input.snapshot.length > 0) {
     msgs.push({ role: 'system', content: input.snapshot.map((s) => s.content).join('\n') });
@@ -60,6 +67,29 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
   for (const c of input.compacted) {
     msgs.push({ role: 'user', content: c.content });
   }
+
+  // 渲染期图片历史剪枝（spec §3.2）——journal 全量留档不受影响：带图行按链序仅最近 N 行保图，被剪行
+  // 剥图（imgsOf → undefined）并在文本加 `\n[image elided]` 标记（elided）。keepImages 按链行对象引用
+  // 判定（链行对象唯一，引用即身份）；剪枝输入仅本链内容，同一输入恒同输出（确定性不引入时变）。
+  const imgRows = input.chain.filter((r) => r.images !== undefined && r.images.length > 0);
+  const keepImages = new Set(imgRows.slice(Math.max(0, imgRows.length - imageHistoryLimit)));
+  const imgsOf = (row: HistoryStep): string[] | undefined => {
+    if (row.images === undefined || row.images.length === 0) return undefined;
+    return keepImages.has(row) ? row.images : undefined;
+  };
+  const elided = (row: HistoryStep): string =>
+    row.images !== undefined && row.images.length > 0 && !keepImages.has(row) ? `${row.observation}\n[image elided]` : row.observation;
+  // 带图 user 行统一透出（task/plan/元信息行与无批可挂的降级观察行同形态）：images 取剪枝后形态，
+  // 文本用带标记版；空文兜底占位 `(image)` 的判定用在剥图**前**的原 observation 上
+  const pushUserRow = (row: HistoryStep): void => {
+    const imgs = imgsOf(row);
+    if (imgs === undefined && (row.images === undefined || row.images.length === 0)) {
+      msgs.push({ role: 'user', content: row.observation });
+      return;
+    }
+    const text = row.observation.trim() !== '' ? elided(row) : '(image)';
+    msgs.push(imgs !== undefined ? { role: 'user', content: text, images: imgs } : { role: 'user', content: text });
+  };
 
   // reasoning_content 回传半径 = 当前任务轮（末 task 指令行之后的行）：交错思考端点（DeepSeek/Qwen 系）
   // 的工具续轮硬约束是**字段在场**（实测 2026-10-03：空串 200、缺字段 400 "must be passed back"——
@@ -76,6 +106,8 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
   let pendingPhase: string | null = null;
   let pendingReasoning: string | undefined = undefined;
   let batch: { calls: ToolCallSpec[]; consumed: number; emitted: number; current: boolean; reasoning?: string } | null = null;
+  // tool-result 行图片的伴随帧缓冲：批内所有结果收齐前只缓冲不透出——user 帧不得插在批内 role:tool 之间
+  let pendingFrames: Array<{ images: string[] }> = [];
 
   // wire 序不变量：assistant(tool_calls) 必须先于其配对的 role:tool 消息上链——
   // 批的 assistant 消息在首个结果回填前发出（挂 pendingPhase），不得延迟到批闭合
@@ -95,6 +127,9 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
     const rest = batch.calls.slice(batch.emitted);
     if (rest.length > 0) emitAssistant(rest, batch.reasoning ?? pendingReasoning, batch.current);
     batch = null;
+    // 悬挂伴随帧兜底 flush（批未收齐即闭合/链尾收口两条路径都覆盖）：合成 user 帧恒排在全部 role:tool 之后
+    for (const f of pendingFrames) msgs.push({ role: 'user', content: '(tool image)', images: f.images });
+    pendingFrames = [];
   };
 
   for (let idx = 0; idx < input.chain.length; idx++) {
@@ -124,11 +159,18 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
         }
         const id = batch.calls[batch.consumed].id;
         batch.consumed += 1;
-        msgs.push({ role: 'tool', content: row.observation, toolCallId: id });
+        // 观察行文本恒在（剥图行加 [image elided] 标记）；图片缓冲为伴随帧，批收口后统一 flush——
+        // user 帧不得插在批内 role:tool 之间（OpenAI 严格端点 pairing）
+        msgs.push({ role: 'tool', content: elided(row), toolCallId: id });
+        const imgs = imgsOf(row);
+        if (imgs !== undefined) pendingFrames.push({ images: imgs });
+        // 批内所有结果收齐：flushBatch 统一透出伴随帧（此时 rest 恒空——assistant 已在首个结果前整批发出）
+        if (batch.consumed >= batch.calls.length) flushBatch();
         continue;
       }
       flushBatch();
-      msgs.push({ role: 'user', content: row.observation });
+      // 无批可挂降级 user：与元信息行同形态（images 取剪枝后形态，文本用带标记版）
+      pushUserRow(row);
       continue;
     }
     if (action === PHASE_ACTION) {
@@ -143,14 +185,9 @@ export function buildMessages(input: BuildMessagesInput): ChatMessage[] {
       msgs.push({ role: 'assistant', content: row.observation });
     } else {
       // 'plan' 与 'task' 并列本分支（spec §4.4）：计划书全文行按指令行同形态（user）透出；
-      // 行载 images（用户随行附件）即带 image_url 内容块的多模态 user 消息（文本恒在——空文行兜底占位）
-      const images = row.images;
-      if (images !== undefined && images.length > 0) {
-        const text = row.observation.trim() !== '' ? row.observation : '(image)';
-        msgs.push({ role: 'user', content: text, images });
-      } else {
-        msgs.push({ role: 'user', content: row.observation });
-      }
+      // 行载 images（用户随行附件）即带 image_url 内容块的多模态 user 消息（文本恒在——空文行兜底占位；
+      // 剪枝后形态与 [image elided] 标记统一在 pushUserRow 收口）
+      pushUserRow(row);
     }
   }
   flushBatch();
