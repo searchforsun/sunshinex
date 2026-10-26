@@ -585,7 +585,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G9-B3 会话流(spec §3):用户右胶囊/日期分隔/流区限宽 ===== */.entry-user { position: relative; display: flex; flex-direction: column; align-items: flex-end; font-weight: 400; }.entry-user .user-bubble {
   max-width: 80%;
-  background: transparent; /* 2026-10-26 用户裁定:用户气泡去灰底(图片已分离到气泡外,文字裸排) */
+  background: var(--bubble-user); /* 2026-10-26 用户裁定改回:文字气泡恢复灰底(去底后暗底看不清);纯图消息本就不渲染气泡(图片条独立成行),不受影响 */
   border-radius: var(--radius-composer); /* G14.203/G14.204 全局对标输入框(四轮定版回统一) */
   padding: 8px 12px;
 }.entry-user .user-bubble blockquote { margin: 0; padding: 0; border: none; }
