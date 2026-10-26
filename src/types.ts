@@ -361,6 +361,8 @@ export interface McpServerConfig {
   args?: string[];
   /** 仅 stdio 传输使用（子进程环境，叠加继承宿主环境，cfg 键覆盖宿主同名）；http/sse 无子进程不消费 */
   env?: Record<string, string>;
+  /** 仅插件贡献 server 使用（用户 mcp.json 无此面）：manifest 中 '.' 表示插件目录，名单合成期（pluginMcpServers）已解析为插件根绝对路径，此处直传 stdio spawn */
+  cwd?: string;
   transport?: 'stdio' | 'http' | 'sse';
   url?: string;
   /** 仅 http/sse 传输使用：随请求透传的 HTTP 头（Authorization 等），值域 string→string */

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseSettingsFile, loadGlobalSettings, loadProjectSettings } from './settings';
 import { userConfigDir } from './env';
+import type { McpServerConfig } from '../types';
 
 /** 插件 manifest 规范（manifestVersion 1）解析与类型单点——两级装载、MCP 名单合成、校验 CLI 同源消费。
  *  校验规则 artifact：plugins/schema/plugin-manifest.schema.json（draft-07，随包分发供编辑器补全/第三方预检）；
@@ -249,6 +250,9 @@ export function loadEffectivePlugins(projectRoot: string | undefined, opts: { bu
     for (const d of fs.readdirSync(root, { withFileTypes: true })) {
       if (!d.isDirectory()) continue;
       const dir = path.join(root, d.name);
+      // 目录缺 plugin.json = 非插件条目（如随包分发的 plugins/schema 校验 artifact），静默跳过不告警——
+      // 内置根常驻非插件子目录，逐目录缺档告警会让每次装配（harness 构造期消费 warnings）制造固定噪声
+      if (!fs.existsSync(path.join(dir, 'plugin.json'))) continue;
       const r = parsePluginManifest(dir);
       warnings.push(...r.warnings.map((w) => `[${source}:${d.name}] ${w}`));
       if (r.manifest === null) { warnings.push(...r.errors.map((e) => `[${source}:${d.name}] ${e}`)); continue; }
@@ -278,4 +282,68 @@ export function loadEffectivePlugins(projectRoot: string | undefined, opts: { bu
     return { ...p, enabled, config };
   });
   return { plugins, warnings };
+}
+
+/** 合成产物：可装配 server 名单 + 声明式安全表 + 警告单（harness 构造期与 guard 同源消费，Task 9 接 safety）。
+ *  servers 中 env 空对象不落键（缺省语义不变）；cwd 已解析为绝对路径（manifest '.' = 插件目录）。 */
+export interface PluginMcpAssembly {
+  servers: McpServerConfig[];
+  /** server 名 → 三类安全声明（仅启用且平台可用插件；guard 问线驱动面，未声明 server 走通用 MCP 审批） */
+  safety: Record<string, McpSafetyDecl>;
+  /** 装载告警（loadEffectivePlugins 原值）+ 合成告警（用户遮蔽/插件撞名）聚合 */
+  warnings: string[];
+}
+
+/**
+ * 插件 MCP 名单合成单点（spec §2.4 装配面；与 loadEffectivePlugins 同源，供 harness 一次调用合成用户∪插件名单）：
+ * - 遍历序 = 插件 id 字典序（确定性，同名撞车先到先得可复现）；仅取 enabled 且 platformSupported 的插件；
+ * - server 名两级去重：先撞用户 mcp.json 名单（userServerNames）→ 告警跳过（用户遮蔽插件）；
+ *   再撞已见名单 → 告警跳过（插件间撞名，字典序先到先得）；
+ * - config 展开：configDefaults 与 settings 插件 config 浅合并（用户 config 覆盖缺省）后逐键展开——
+ *   configArgs 值 undefined 整键跳过；pattern 含 `{value}` 占位替换（值 String 化），
+ *   不含 `{value}` 仅在值为布尔 true 时追加（旗标模式——非 true 值不得把字符串当旗标落参）；
+ *   configEnv 展开为 env 键 ← String(config 值)；
+ * - cwd：manifest '.' = 插件目录 → 解析为插件根绝对路径后落 McpServerConfig.cwd（stdio spawn 消费）；
+ * - safety 逐 server 收集（未声明不落键）；装载告警与合成告警聚合单张警告单返回。
+ * opts 沿 loadEffectivePlugins 注入面（builtinRoot/userRoot/settingsReader/platform）原样透传 + userServerNames。
+ */
+export function pluginMcpServers(projectRoot: string | undefined, opts: Parameters<typeof loadEffectivePlugins>[1] & { userServerNames?: ReadonlySet<string> } = {}): PluginMcpAssembly {
+  const { userServerNames, ...loadOpts } = opts;
+  const { plugins, warnings } = loadEffectivePlugins(projectRoot, loadOpts);
+  const servers: McpServerConfig[] = [];
+  const safety: Record<string, McpSafetyDecl> = {};
+  const seen = new Set<string>();
+  const sorted = [...plugins].sort((a, b) => (a.manifest.id < b.manifest.id ? -1 : a.manifest.id > b.manifest.id ? 1 : 0));
+  for (const p of sorted) {
+    if (!p.enabled || !p.platformSupported) continue;
+    for (const [name, cfg] of Object.entries(p.manifest.mcpServers ?? {})) {
+      if (userServerNames?.has(name)) { warnings.push(`插件 server ${name}（${p.manifest.id}）被用户 mcp.json 遮蔽，跳过`); continue; }
+      if (seen.has(name)) { warnings.push(`插件 server ${name} 撞名（${p.manifest.id}），字典序后者跳过`); continue; }
+      seen.add(name);
+      const merged = { ...cfg.configDefaults, ...p.config };
+      const args = [...(cfg.args ?? [])];
+      for (const [key, patterns] of Object.entries(cfg.configArgs ?? {})) {
+        const v = merged[key];
+        if (v === undefined) continue;
+        for (const pat of patterns) {
+          if (pat.includes('{value}')) args.push(pat.replace('{value}', String(v)));
+          else if (v === true) args.push(pat);
+        }
+      }
+      const env: Record<string, string> = { ...(cfg.env ?? {}) };
+      for (const [envKey, confKey] of Object.entries(cfg.configEnv ?? {})) {
+        const v = merged[confKey];
+        if (v !== undefined) env[envKey] = String(v);
+      }
+      servers.push({
+        name,
+        command: cfg.command,
+        args,
+        ...(Object.keys(env).length > 0 ? { env } : {}),
+        ...(cfg.cwd !== undefined ? { cwd: cfg.cwd === '.' ? p.dir : cfg.cwd } : {}),
+      });
+      if (cfg.safety !== undefined) safety[name] = cfg.safety;
+    }
+  }
+  return { servers, safety, warnings };
 }

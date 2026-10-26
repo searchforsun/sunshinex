@@ -40,6 +40,7 @@ import { resolveMemoryConfig } from '../config/memory-config';
 import { teamTokenCapEnv } from '../config/termination-config';
 import { RunLedger } from './ledger';
 import { loadMcpServers } from '../config';
+import { pluginMcpServers } from '../config/plugins';
 import { loadPermissions } from '../config/permissions';
 import * as fs from 'fs';
 import { McpHost } from './mcp/client';
@@ -130,9 +131,14 @@ export class Harness {
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
     this.sandbox = new ProcessSandbox();
-    // MCP 登记制闸门构造期同步注入（两级 mcp.json，项目遮蔽全局；本地 JSON 读零 IO 延迟）：guard 在工具注册前即持名单。
+    // MCP 登记制闸门构造期同步注入（两级 mcp.json ∪ 插件贡献，一次合成避免双算——userServerNames 传用户名单名集合，
+    // 插件同名 server 被用户遮蔽）：guard 在工具注册前即持名单。
     // enabled=false 整机停用（2026-10-26）：guard 名单与装配面同跳过——停用服务器的工具既不注册也不放行
-    const mcpServers = loadMcpServers(base).filter((s) => s.enabled !== false);
+    // （插件贡献 server 无 enabled 键，不受此滤影响；停用走 settings plugins.<id>.enabled 整插件面）
+    const userServers = loadMcpServers(base);
+    // safety: Task 9 guard 接线——pluginMcp.safety（server 名 → 三类声明）保留在本局部量上不丢失
+    const pluginMcp = pluginMcpServers(base, { userServerNames: new Set(userServers.map((s) => s.name)) });
+    const mcpServers = [...userServers, ...pluginMcp.servers].filter((s) => s.enabled !== false);
     // 用户权限规则面（spec 5.2）：两级装载合并不遮蔽；非路径通道（Bash/mcp/web）注入 PolicyEngine，路径通道由链消费
     const perms = loadPermissions(base);
     const policy = new PolicyEngine();
@@ -181,14 +187,14 @@ export class Harness {
     });
     // MCP 装配链（两级 mcp.json → McpHost）：注册链 fail-fast（连接/握手/拉取任一失败即 run 入口转确定性失败），guard 名单已构造期注入；懒连接——首次 run 前才发起，空配置零开销
     let mcpHost: McpHost | undefined;
-    let mcpWarnings: string[] = [];
+    let mcpWarnings: string[] = [...pluginMcp.warnings]; // 合成期告警（用户遮蔽/插件撞名/装载告警）并入既有警告单通道
     this.mcpReady = async () => {
       if (mcpServers.length === 0) return;
       if (!mcpHost) {
         mcpHost = new McpHost(mcpServers, this.tools);
         try {
           const report = await mcpHost.registerTools();
-          mcpWarnings = report.warnings;
+          mcpWarnings = [...pluginMcp.warnings, ...report.warnings];
         } catch (e) {
           mcpHost = undefined; // 注册链失败复位，下次 run 重试连接（失败经 run 入口转确定性 failed，不静默直通）
           throw e;

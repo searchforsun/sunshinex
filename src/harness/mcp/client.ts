@@ -114,7 +114,13 @@ export class McpHost {
       case 'stdio':
       default:
         if (!cfg.command) throw fail('stdio transport requires a command');
-        return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [], env: mergedChildEnv(cfg) });
+        // cwd 仅插件贡献 server 携带（合成期已解析为绝对路径）；SDK 1.30 StdioServerParameters 原生支持，缺省不落键保持既有 spawn 语义
+        return new StdioClientTransport({
+          command: cfg.command,
+          args: cfg.args ?? [],
+          env: mergedChildEnv(cfg),
+          ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
+        });
     }
   }
 

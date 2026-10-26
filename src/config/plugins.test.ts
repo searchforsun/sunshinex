@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { loadEffectivePlugins, parsePluginManifest } from './plugins';
+import { loadEffectivePlugins, parsePluginManifest, pluginMcpServers } from './plugins';
 
 function tmpPlugin(manifest: unknown): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'plug-'));
@@ -232,4 +232,118 @@ test('plugins 顶层非对象 → 整键忽略不致命；装载根缺失 → �
   });
   assert.deepEqual(empty.plugins, []);
   assert.deepEqual(empty.warnings, []);
+});
+
+test('装载根下缺 plugin.json 的目录（schema artifact 类非插件条目）静默跳过不告警', () => {
+  const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
+  mkdirSync(path.join(bRoot, 'schema'), { recursive: true }); // 非插件目录（随包 artifact 形态）
+  writeFileSync(path.join(bRoot, 'schema', 'plugin-manifest.schema.json'), '{}');
+  mkPluginIn(bRoot, 'demo');
+  const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
+  const r = loadEffectivePlugins(undefined, { builtinRoot: bRoot, userRoot: uRoot, settingsReader: () => null });
+  assert.deepEqual(r.warnings, [], '非插件目录零告警（harness 装配期噪声钉点）');
+  assert.deepEqual(r.plugins.map((p) => p.manifest.id), ['demo']);
+});
+
+// ---- pluginMcpServers（MCP 名单合成：configArgs/configEnv 展开 + 用户遮蔽/撞名字典序 + safety 收集）----
+// 装载 opts（builtinRoot/userRoot/settingsReader/platform）经同名注入面透传，免真写 HOME 与平台断言跳变
+
+test('configArgs 展开：缺省 config 只吃 configDefaults；布尔 true 走旗标；{value} 占位替换；cwd "." 解析为插件目录', () => {
+  const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
+  const dir = mkPluginIn(bRoot, 'demo', {
+    defaultEnabled: true,
+    mcpServers: {
+      b: {
+        command: 'node',
+        args: ['x'],
+        cwd: '.',
+        // 旗标口径（控制器裁定/预检记录）：不含 {value} 的 pattern 仅值为布尔 true 才追加——非 true 值不落伴旗标
+        configArgs: { headless: ['--headless'], browser: ['--browser={value}'] },
+        configDefaults: { browser: 'chrome' },
+      },
+    },
+  });
+  const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
+  // settings 未配 → configDefaults 兜底（browser=chrome），headless 无值整键跳过
+  const noCfg = pluginMcpServers(undefined, { builtinRoot: bRoot, userRoot: uRoot, settingsReader: () => null });
+  assert.deepEqual(noCfg.servers, [{ name: 'b', command: 'node', args: ['x', '--browser=chrome'], cwd: dir }]);
+  // settings 配置覆盖缺省：headless=true 走旗标追加，browser={value} 替换为 firefox
+  const withCfg = pluginMcpServers(undefined, {
+    builtinRoot: bRoot,
+    userRoot: uRoot,
+    settingsReader: () => ({ plugins: { demo: { config: { headless: true, browser: 'firefox' } } } }),
+  });
+  assert.deepEqual(withCfg.servers[0]!.args, ['x', '--headless', '--browser=firefox']);
+  assert.deepEqual(withCfg.warnings, []);
+  // 布尔 false：旗标不追加（true 才落参）；{value} 键无 config 覆盖时吃缺省
+  const off = pluginMcpServers(undefined, {
+    builtinRoot: bRoot,
+    userRoot: uRoot,
+    settingsReader: () => ({ plugins: { demo: { config: { headless: false } } } }),
+  });
+  assert.deepEqual(off.servers[0]!.args, ['x', '--browser=chrome']);
+});
+
+test('configEnv 展开：env 键 ← config 值字符串化（数字同理）；env 全空不落键', () => {
+  const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
+  mkPluginIn(bRoot, 'demo', {
+    defaultEnabled: true,
+    mcpServers: {
+      e: { command: 'node', env: { BASE: '1' }, configEnv: { CU_WORKER: 'worker', PORT: 'port' }, configDefaults: { worker: 'pwsh' } },
+      bare: { command: 'node' },
+    },
+  });
+  const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
+  const r = pluginMcpServers(undefined, {
+    builtinRoot: bRoot,
+    userRoot: uRoot,
+    settingsReader: () => ({ plugins: { demo: { config: { port: 3000 } } } }),
+  });
+  const e = r.servers.find((s) => s.name === 'e')!;
+  assert.deepEqual(e.env, { BASE: '1', CU_WORKER: 'pwsh', PORT: '3000' }, 'settings 值字符串化 + configDefaults 兜底');
+  const bare = r.servers.find((s) => s.name === 'bare')!;
+  assert.equal('env' in bare, false, 'env 空对象不落键（缺省语义不变）');
+});
+
+test('用户 mcp.json 同名遮蔽插件 server；插件间撞名按 id 字典序先到先得+告警', () => {
+  const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
+  mkPluginIn(bRoot, 'a-plug', { defaultEnabled: true, mcpServers: { shared: { command: 'node', args: ['a'] } } });
+  mkPluginIn(bRoot, 'b-plug', { defaultEnabled: true, mcpServers: { shared: { command: 'node', args: ['b'] }, mine: { command: 'node' } } });
+  mkPluginIn(bRoot, 'c-plug', { defaultEnabled: true, mcpServers: { userown: { command: 'node' } } });
+  const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
+  // 无用户名单：shared 归 a-plug（字典序先到先得），b-plug 的 shared 跳过并告警
+  const r = pluginMcpServers(undefined, { builtinRoot: bRoot, userRoot: uRoot, settingsReader: () => null });
+  assert.deepEqual(r.servers.filter((s) => s.name === 'shared').map((s) => s.args), [['a']]);
+  assert.ok(r.warnings.some((w) => w.includes('b-plug') && w.includes('shared') && w.includes('撞名')));
+  // 用户名单遮蔽：shared 全体与 userown 均告警跳过，仅 mine 存活
+  const r2 = pluginMcpServers(undefined, {
+    builtinRoot: bRoot,
+    userRoot: uRoot,
+    settingsReader: () => null,
+    userServerNames: new Set(['shared', 'userown']),
+  });
+  assert.deepEqual(r2.servers.map((s) => s.name), ['mine']);
+  assert.ok(r2.warnings.some((w) => w.includes('userown') && w.includes('遮蔽')));
+  assert.equal(r2.warnings.filter((w) => w.includes('遮蔽')).length, 3, 'a/b/c 三插件各一条遮蔽告警');
+});
+
+test('safety 收集：server 名 → 三类声明；禁用与平台不可用插件的 server/safety 均不出', () => {
+  const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
+  mkPluginIn(bRoot, 'on', {
+    defaultEnabled: true,
+    mcpServers: { s1: { command: 'node', safety: { act: ['click'], confirm: ['buy'], observe: ['read'] } } },
+  });
+  mkPluginIn(bRoot, 'off', { defaultEnabled: true, mcpServers: { s2: { command: 'node', safety: { act: ['x'] } } } });
+  mkPluginIn(bRoot, 'plat', { defaultEnabled: true, platforms: ['darwin'], mcpServers: { s3: { command: 'node', safety: { observe: ['y'] } } } });
+  mkPluginIn(bRoot, 'nos', { defaultEnabled: true, mcpServers: { s4: { command: 'node' } } });
+  const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
+  const r = pluginMcpServers(undefined, {
+    builtinRoot: bRoot,
+    userRoot: uRoot,
+    platform: 'win32',
+    settingsReader: () => ({ plugins: { off: { enabled: false } } }),
+  });
+  assert.deepEqual(r.servers.map((s) => s.name), ['s4', 's1'], '禁用（off）与平台不可用（plat）整机不出；遍历序 = id 字典序（nos < on）');
+  assert.deepEqual(Object.keys(r.safety), ['s1'], 'safety 仅收启用且平台可用插件的声明');
+  assert.deepEqual(r.safety.s1, { act: ['click'], confirm: ['buy'], observe: ['read'] });
 });
