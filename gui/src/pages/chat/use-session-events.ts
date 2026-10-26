@@ -3,7 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq, GuiPlanApprovalReq, GuiPlanDecision, SnapshotResponse } from '../../connection';
 import type { ChatState } from '../../chat-reducer';
-import { applyChatEvent, initialChatState, seedChatFromSnapshot } from '../../chat-reducer';
+import { applyChatEvent, initialChatState, prependSeed, seedChatFromSnapshot } from '../../chat-reducer';
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { ChatSink } from '../Chat';
 
@@ -136,7 +136,10 @@ export function useSessionEvents(deps: {
         });
         if (freshView === true) {
           // G14.31 辅助对话:全新视图——种子历史清零不落屏(上下文只在模型侧,新帧照常续推)
-          next = { ...next, entries: [], tokens: 0, steps: 0, cacheTokens: 0 };
+          next = { ...next, entries: [], tokens: 0, steps: 0, cacheTokens: 0, history: undefined };
+        } else if (snap.hasMore !== undefined) {
+          // 2026-10-26 三期历史链:尾窗播种(服务端缺省 200)元数据入态——后台加载链(下方 effect)消费
+          next = { ...next, history: { total: snap.total ?? snap.messages.length, oldestSeq: snap.oldestSeq ?? 0, hasMore: snap.hasMore === true, complete: snap.hasMore !== true } };
         }
         for (const f of pendingRef.current) {
           if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)
@@ -279,6 +282,30 @@ export function useSessionEvents(deps: {
       // 防 backHome→重开窗口内陈旧会话快照经 onSeeded 污染 App 态(team/board——旧板落新壳)
     };
   }, [sinkRef, reseed, addCard]);
+
+  /** 2026-10-26 三期历史链(先上车再补票):尾窗播种落定即自动分段补更老——一页一 effect 轮
+   *  (页成 history 换新重触发),失败退避三试置 failed(指示器可点重试重启);freshView 不补
+   *  (全新视图历史不落屏);Chat 按 sessionId 重挂=切走即暂停,切回断点续跑 */
+  useEffect(() => {
+    const h = deps.chat.history;
+    if (h === undefined || h.complete || h.failed === true || deps.freshView === true) return;
+    let alive = true;
+    const step = async (): Promise<void> => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const page = await conn.sessionSnapshot(sessionId, { before: h.oldestSeq, limit: 600 }).catch(() => undefined);
+        if (!alive) return;
+        if (page !== undefined) {
+          setChat((c) => prependSeed(c, page.messages, { oldestSeq: page.oldestSeq ?? 0, hasMore: page.hasMore === true }));
+          return; // history 换新重触发本 effect(下一页)
+        }
+        await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
+        if (!alive) return;
+      }
+      setChat((c) => ({ ...c, history: c.history ? { ...c.history, failed: true } : c.history }));
+    };
+    void step();
+    return () => { alive = false; };
+  }, [deps.chat.history, conn, sessionId, deps.freshView]);
 
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
    *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */

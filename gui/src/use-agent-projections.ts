@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { applyAgentEvent } from './tabs/agent-activity';
 import type { AgentActivities } from './tabs/agent-activity';
@@ -8,6 +8,8 @@ import type { ChatState } from './chat-reducer';
 
 const ACTS_LRU_MAX = 8;
 const CHAT_MEM_LRU_MAX = 4;
+/** chatMem TTL(2026-10-26 用户裁定 60min):不活跃会话转录缓存剔除阈值 */
+const CHAT_MEM_TTL_MS = 3_600_000;
 
 /**
  * 子智能体投影域三件（D42 自 App.tsx 钩子化，行搬运零逻辑变化）：
@@ -71,27 +73,51 @@ export function useAgentBuckets(): {
  *  (stale-while-revalidate——先见缓存转录,快照播种落定无缝整替校准),切会话回来不再白屏等
  *  快照往返。键=journalId(跨重启稳定)。内核条目引用跨快照共享,单会话转录条目 ≤2000 条,
  *  4 会话上限内存有界;同会话反复进出只触碰 LRU 不复制 */
-export function useChatMemory(): {
+export function useChatMemory(isRunning: (key: string) => boolean = () => false): {
   chatMemGet: (key: string) => ChatState | undefined;
   chatMemPut: (key: string, state: ChatState) => void;
 } {
   const chatMemRef = useRef<Map<string, ChatState>>(new Map());
   const chatMemLRURef = useRef<string[]>([]);
+  /** 2026-10-26 三期:桶触时间(60min TTL,用户裁定)——不活跃会话剔除转录缓存,重进走尾窗
+   *  快照(权威路径代价近零);运行中会话豁免(活跃流不值得省,剔了反添重播种抖动) */
+  const chatMemTouchRef = useRef<Map<string, number>>(new Map());
   const chatMemGet = useCallback((key: string): ChatState | undefined => {
     const hit = chatMemRef.current.get(key);
-    if (hit !== undefined) chatMemLRURef.current = [...chatMemLRURef.current.filter((k) => k !== key), key];
+    if (hit !== undefined) {
+      chatMemLRURef.current = [...chatMemLRURef.current.filter((k) => k !== key), key];
+      chatMemTouchRef.current.set(key, Date.now());
+    }
     return hit;
   }, []);
   const chatMemPut = useCallback((key: string, state: ChatState): void => {
     chatMemRef.current.set(key, state);
+    chatMemTouchRef.current.set(key, Date.now());
     const lru = chatMemLRURef.current.filter((k) => k !== key);
     lru.push(key);
     while (lru.length > CHAT_MEM_LRU_MAX) {
       const evict = lru.shift();
-      if (evict !== undefined) chatMemRef.current.delete(evict);
+      if (evict !== undefined) {
+        chatMemRef.current.delete(evict);
+        chatMemTouchRef.current.delete(evict);
+      }
     }
     chatMemLRURef.current = lru;
   }, []);
+  // TTL 周期清理(60s):60min 未触且非运行中 → 剔(重进=尾窗快照权威路径)
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      for (const [key, touch] of chatMemTouchRef.current) {
+        if (now - touch > CHAT_MEM_TTL_MS && !isRunning(key)) {
+          chatMemRef.current.delete(key);
+          chatMemTouchRef.current.delete(key);
+          chatMemLRURef.current = chatMemLRURef.current.filter((k) => k !== key);
+        }
+      }
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [isRunning]);
   return { chatMemGet, chatMemPut };
 }
 

@@ -1,0 +1,13 @@
+{
+  "goal": "识别这张 v3 图",
+  "done": true,
+  "steps": 1,
+  "tokensUsed": 0,
+  "durationMs": 60065,
+  "route": {
+    "tier": "medium",
+    "reason": "default:medium fallback:default"
+  },
+  "id": "run-mvoqsnyy-8taujg",
+  "createdAt": "2026-10-26T04:14:18.202Z"
+}

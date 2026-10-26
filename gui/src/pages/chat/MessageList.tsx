@@ -12,7 +12,7 @@ function fmtTokens(n: number): string {
 /** D48 尾部窗口:会话流只全量渲染尾部窗口条目,更早条目折叠为头部「显示更早」行渐进回放
  *  (对齐主仓 TUI tail-rewrite 上限口径;立项与切点回退设计见 docs/superpowers/plans/
  *  2026-10-23-messagelist-tail-window.md) */
-const RENDER_WINDOW_DEFAULT = 300;
+const RENDER_WINDOW_DEFAULT = 600; // 2026-10-26 三期:尾窗同步 600(用户裁定;content-visibility/组级 memo 兜渲染成本)
 const RENDER_WINDOW_STEP = 300;
 import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';

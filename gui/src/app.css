@@ -1415,6 +1415,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .ctx-pop-bar-fill { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s ease; }
 .ctx-pop-bar-fill.lv1 { background: var(--warn); }
 .ctx-pop-bar-fill.lv2 { background: var(--err); }
+
+/* 2026-10-26 三期历史链指示器:补全中细条(贴流区顶) / 失败可点重试 */
+.chat-history-tip { padding: 4px 16px; font-size: 12px; color: var(--fg-tertiary); text-align: center; }
+.chat-history-tip .chat-history-retry { color: var(--warn); font-size: 12px; cursor: pointer; }
+.chat-history-tip .chat-history-retry:hover { text-decoration: underline; }
 .ctx-pop-row .ctx-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .ctx-dot.c0 { background: var(--accent); }
 .ctx-dot.c1 { background: #b897f4; }

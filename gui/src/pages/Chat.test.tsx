@@ -712,15 +712,15 @@ describe('G14.18 上下文圆环', () => {
 
 describe('会话流尾部窗口(D48)', () => {
   it('长会话:窗口外条目折叠为「显示更早」头(计数正确),点击步进回放且全部回放后头消失', async () => {
-    const many = Array.from({ length: 320 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
+    const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
     mountChat(many as unknown as Seed[]);
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(300); // 窗口内全量(D48)
+    expect(document.querySelectorAll('.entry-user')).toHaveLength(600); // 窗口内全量(D48;2026-10-26 三期尾窗同步 600)
     const earlier = document.querySelector('.chat-earlier')!;
     expect(earlier.textContent).toContain('20'); // 窗口外 20 条
     fireEvent.click(earlier); // 渐进回放:步进 +300 ≥ 20 → 全部回放
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(320);
+    expect(document.querySelectorAll('.entry-user')).toHaveLength(620);
     expect(document.querySelector('.chat-earlier')).toBeNull(); // 全部回放后头消失
   });
 });
@@ -894,13 +894,13 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0);
   });
   it('滚动到顶自动回放(批2):scroll 事件硬顶触发步进,无需点击', async () => {
-    const many = Array.from({ length: 320 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `auto${i + 1}` }));
+    const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `auto${i + 1}` }));
     mountChat(many as unknown as Seed[]);
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(300);
+    expect(document.querySelectorAll('.entry-user')).toHaveLength(600);
     fireEvent.scroll(document.querySelector('.chat')!); // 硬顶 scrollTop=0 触发
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(320);
+    expect(document.querySelectorAll('.entry-user')).toHaveLength(620);
     expect(document.querySelector('.chat-earlier')).toBeNull();
   });
 

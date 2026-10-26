@@ -504,6 +504,36 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         nav={nav}
       />
 
+      {chat.history !== undefined && !chat.history.complete && (
+
+        <div className="chat-history-tip" role="status">
+
+          {chat.history.failed === true ? (
+
+            <button
+
+              type="button"
+
+              className="chat-history-retry"
+
+              onClick={() => setChat((c) => (c.history ? { ...c, history: { ...c.history, failed: false } } : c))}
+
+            >
+
+              {t('Older history failed to load — click to retry', '更早的会话加载失败——点击重试')}
+
+            </button>
+
+          ) : (
+
+            t('Loading earlier history…', '正在加载更早的会话…')
+
+          )}
+
+        </div>
+
+      )}
+
       <MessageList
         entries={chat.entries}
         structureVersion={chat.structureVersion}

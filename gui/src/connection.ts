@@ -136,6 +136,8 @@ export interface Connection {
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
    *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
   sessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }>;
+  /** 2026-10-26 三期 §4.5:按需全量观测(快照分页剥 full 后,工具行展开按 seq 单条拉) */
+  fetchObservation(id: string, seq: number): Promise<{ seq: number; text?: string; full?: string }>;
   /** POST /approval/:pid {decision}（G4）：decision ∈ 'allow'|'always'|'deny'——回执寻址用帧
    *  顶层 pid（非 req.id）；未知/已决/kind 不符 pid 404（GUI 侧失败也移卡） */
   replyApproval(pid: string, decision: string): Promise<void>;
@@ -471,6 +473,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }> {
       return fetchSessionSnapshot(id, page);
+    },
+    fetchObservation(id: string, seq: number) {
+      return getJson<{ seq: number; text?: string; full?: string }>(`/session/${encodeURIComponent(id)}/entry/${seq}/observation`);
     },
     replyApproval(pid: string, decision: string): Promise<void> {
       return post(`/approval/${encodeURIComponent(pid)}`, { decision });

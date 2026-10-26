@@ -231,6 +231,30 @@ export function seedChatFromSnapshot(
   return { ...seeded, entries: mapEntries(seeded.k, seeded.runBases) };
 }
 
+/** 2026-10-26 三期历史链:头部插入更早条目(后台补全页)——seq 游标闭合(页内 seq 均小于现存
+ *  最旧),流式尾部(openRun/openSeg 引用尾部 seq)无扰;空页仅更新 history 元数据(引用相等,
+ *  加载链以 history 变更驱动)。头部插入走 mapCache 全量重映射路径(页级频率可接受) */
+export function prependSeed(
+  s: ChatState,
+  entries: ReadonlyArray<SnapshotTranscriptEntry>,
+  meta: { oldestSeq: number; hasMore: boolean },
+): ChatState {
+  const history = { total: Math.max(s.history?.total ?? 0, meta.oldestSeq + s.entries.length), oldestSeq: meta.oldestSeq, hasMore: meta.hasMore, complete: !meta.hasMore, failed: false };
+  if (entries.length === 0) {
+    // 空页:元数据同值即原样返回(引用相等——加载链完成态重复收口不再触发渲染)
+    const cur = s.history;
+    if (cur !== undefined && cur.oldestSeq === history.oldestSeq && cur.hasMore === history.hasMore && cur.complete === history.complete && cur.failed === history.failed) return s;
+    return { ...s, history };
+  }
+  // 直构头部插入(不用 applySeed——它尾部追加且会重算统计,prepend 两者都不该):
+  // 页内 seq 由加载链 before 游标闭合(恒小于现存最旧);old run 条不带基线,mapOne 按 undefined 走缺省
+  const seeded: KernelEntry[] = entries.map((e) => ({ ...(e as unknown as KernelEntry) })).sort((a, b) => a.seq - b.seq);
+  const merged = [...seeded, ...s.k.entries].slice(-2000); // 对齐内核 CAP 2000 环形口径
+  const k: KernelState = { ...s.k, entries: merged };
+  const mapped = mapEntries(k, s.runBases);
+  return { ...s, k, entries: mapped, history, structureVersion: s.structureVersion + 1 }; // 头部插入=结构变更
+}
+
 /** 事件面单点：内核归约(转录投影)+ 计数器归约会话统计 → 物化视图重映射。
  *  status: model-start 置 running(水位重置仅在 run 边界——model-start 每模型轮一次,run 内续轮
  *  不重置,否则多轮 run tokens 虚增)、done 回 idle;error 不动(G14.51:done 必发,收口让位) */

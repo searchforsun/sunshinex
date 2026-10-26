@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SessionEvent } from '../../src/types';
-import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot } from './chat-reducer';
+import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot, prependSeed } from './chat-reducer';
 
 /**
  * G3 chat reducer 纯测：流式 token 拼接 / done 收段（重叠覆盖+不重叠补入）/ 工具 callId 配对
@@ -549,5 +549,35 @@ describe('seedGen(种子代次——reseed 恒换新值,防 structureVersion 等
     const b = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });
     expect(b.seedGen).toBe(a.seedGen + 1);
     expect(b.structureVersion).toBe(1);
+  });
+});
+
+describe('prependSeed(2026-10-26 三期历史链)', () => {
+  it('头部插入不扰尾部;hasMore=false 置 complete;空页原样返回', () => {
+    let s = seedChatFromSnapshot(
+      [
+        { seq: 10, ts: 1, kind: 'user', md: '新1' },
+        { seq: 11, ts: 2, kind: 'assistant', md: '答' },
+      ],
+      { openRun: -1, openSeg: -1 },
+    );
+    s = { ...s, history: { total: 20, oldestSeq: 10, hasMore: true, complete: false } };
+    const tailK = s.k;
+    const out = prependSeed(
+      s,
+      [
+        { seq: 8, ts: 0, kind: 'user', md: '老1' },
+        { seq: 9, ts: 0, kind: 'user', md: '老2' },
+      ],
+      { oldestSeq: 8, hasMore: false },
+    );
+    expect(out.entries.length).toBe(4);
+    expect(out.entries.map((e) => e.md)).toEqual(['老1', '老2', '新1', '答']);
+    expect(out.history?.complete).toBe(true);
+    expect(out.k.entries[0]!.seq).toBe(8);
+    expect(out.k.openRun).toBe(tailK.openRun);
+    expect(out.structureVersion).toBeGreaterThan(s.structureVersion);
+    const empty = prependSeed(out, [], { oldestSeq: 8, hasMore: false });
+    expect(empty).toBe(out);
   });
 });

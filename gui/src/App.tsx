@@ -140,7 +140,7 @@ function AppShell(): JSX.Element {
    *  services.agentActivities 消费) */
   const { agentActivitiesBySession, bumpActs } = useAgentBuckets();
   /** G14.2xx b 转录内存缓存(use-agent-projections 单点):Chat 卸载写回/重挂缓存直渲 */
-  const { chatMemGet, chatMemPut } = useChatMemory();
+  const { chatMemGet, chatMemPut } = useChatMemory((key) => runningIds.has(key)); // TTL 豁免:运行中会话不剔(60min,2026-10-26)
   /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
   const [todoBatches, setTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
   const [turnGoal, setTurnGoal] = useState('');

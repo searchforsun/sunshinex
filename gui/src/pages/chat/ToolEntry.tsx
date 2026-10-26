@@ -165,6 +165,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   taskNameOf?: (id: string) => string;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  /** 2026-10-26 三期 §4.5:快照分页剥 result.full——展开且缺 full 时按 seq 单条拉观测端点;
+   *  ''=已拉且无 full(回落 text),undefined=未拉。live 帧自带 full 不触发 */
+  const [fetchedFull, setFetchedFull] = useState<string | undefined>(undefined);
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
    *  对象=成功(diff2html 面板)。拉一次缓存——折叠再展开不重拉 */
   const [diff, setDiff] = useState<DiffResp | null | undefined>(undefined);
@@ -172,7 +175,25 @@ export const ToolEntryView = memo(function ToolEntryView({
   // 双通道全退役,渲染记号与截断全是本组件职责
   const toolName = entry.name ?? '';
   const input: Record<string, unknown> = entry.input ?? {};
-  const resultText = entry.result?.full ?? entry.result?.text ?? '';
+  const entrySeq = entry.key.startsWith('k') ? Number(entry.key.slice(1)) : NaN;
+  useEffect(() => {
+    if (!expanded || fetchedFull !== undefined) return;
+    if (entry.result?.full !== undefined || !Number.isInteger(entrySeq) || entrySeq <= 0) return;
+    if (typeof conn.fetchObservation !== 'function') return; // 测试桩/旧 daemon:优雅回落 text
+    let alive = true;
+    void conn.fetchObservation(sessionId, entrySeq).then(
+      (o) => {
+        if (alive) setFetchedFull(o.full ?? '');
+      },
+      () => {
+        if (alive) setFetchedFull('');
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [expanded, entrySeq, fetchedFull, entry.result?.full, conn, sessionId]);
+  const resultText = entry.result?.full ?? (expanded ? fetchedFull : undefined) ?? entry.result?.text ?? '';
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
   const target = toolTargetOf(toolName, input);
