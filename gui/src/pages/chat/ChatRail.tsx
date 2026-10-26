@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
+import { zoomScale } from '../../ui-zoom';
+import { THREAD_COL_BASE } from '../../thread-width';
 
 /**
  * 对话刻度导航条(2026-10-26 九轮微调):
