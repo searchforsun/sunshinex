@@ -179,12 +179,14 @@ export function useComposerKeys(deps: {
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const item = slashItems[cmdActive];
+        // 2026-10-26 用户报障「/ 面板回车直接发送」:cmdActive 是上次面板残留索引,过滤后
+        // 列表变短即越界 undefined→Enter 两分支全跳过落 send()。取值一律钳制到界内
+        const item = slashItems[Math.min(cmdActive, slashItems.length - 1)];
         if (item !== undefined) setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret));
         return;
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-        const item: CmdItem | undefined = slashItems[cmdActive];
+        const item: CmdItem | undefined = slashItems[Math.min(cmdActive, slashItems.length - 1)];
         // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单);skill 项不在此列——
         // 落底部纯文本发送(daemon 已 400,skills 普通文本语义)
         if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {

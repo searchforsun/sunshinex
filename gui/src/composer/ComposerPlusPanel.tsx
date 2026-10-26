@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ImagePlus } from 'lucide-react';
-import { t } from '../i18n';
+import { t, getLanguage } from '../i18n';
 import { IMAGE_ACCEPT } from '../images';
 import { FileIcon } from '../file-icon';
 
@@ -31,6 +31,42 @@ function parentOf(path: string): string {
   parts.pop();
   return parts.join('/');
 }
+
+/** 内置命令描述 zh 面(2026-10-26 用户报障「命令要显示中文」):daemon /commands 描述随
+ *  **daemon** 语言(settings 链)装配,GUI 语言独立时英文穿透——本表按 GUI 语言取词,
+ *  zh 命中即用,en 回落 daemon 原文;键=去斜杠命令词,与 src/tui/slash-commands.ts 同源口径 */
+const CMD_DESC_ZH: Record<string, string> = {
+  help: '查看可用命令',
+  init: '分析生成/完善 SUNSHINE.md',
+  status: '会话与账本摘要',
+  'terminal-setup': '配置终端键位（Shift+Enter 换行，Windows Terminal）',
+  tasks: '列出后台任务',
+  skill: '加载技能进上下文',
+  new: '新会话（软重置）',
+  resume: '恢复已保存会话',
+  rewind: '回退到更早的任务轮',
+  fork: '分叉出平行会话',
+  btw: '辅助问答（fork 旁路，不进主链）：/btw <问题>',
+  side: '辅助问答（/btw 别名）',
+  archive: '归档当前会话（移出主列表）',
+  unarchive: '撤销归档（选择卡）',
+  delete: '删除当前会话（须先归档）',
+  compact: '压缩上下文',
+  context: '上下文各段占比与大小',
+  plan: '先规划后执行',
+  goal: '运行完整验收修正环',
+  model: '切换模型（多源清单）',
+  'model-tier': '切换模型档位',
+  'model-effort': '切换思考强度',
+  'add-dir': '扩展信任目录',
+  'kb-index': '构建知识库索引',
+  memory: '列出持久记忆',
+  'memory-add': '添加记忆',
+  'memory-rm': '删除记忆（多选卡）',
+  'memory-gc': '立即整理记忆',
+  'memory-on': '本会话开启持久记忆',
+  'memory-off': '本会话关闭持久记忆',
+};
 
 export function ComposerPlusPanel({
   conn,
@@ -66,7 +102,7 @@ export function ComposerPlusPanel({
         setCmds(
           r.commands
             .filter((c) => supported.length === 0 || supported.includes(c))
-            .map((c) => ({ name: c, desc: r.descriptions[c] ?? r.descriptions[c.replace(/^\//, '')] ?? '' })),
+            .map((c) => { const bare = c.replace(/^\//, ''); const daemonDesc = r.descriptions[c] ?? r.descriptions[bare] ?? ''; return { name: c, desc: getLanguage() === 'zh' ? (CMD_DESC_ZH[bare] ?? daemonDesc) : daemonDesc }; }),
         );
       },
       () => {
@@ -163,11 +199,11 @@ export function ComposerPlusPanel({
             type="button"
             role="menuitem"
             className="sx-plus-row"
+            data-tip={t('Open file picker, up to 8', '打开文件选择器,最多 8 张')}
             onClick={() => filePickRef.current?.click()}
           >
             <ImagePlus size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span className="sx-plus-name">{t('Images…', '图片…')}</span>
-            <span className="sx-plus-desc">{t('Open file picker, up to 8', '打开文件选择器,最多 8 张')}</span>
+            <span className="sx-plus-name">{t('Select images', '选择图片')}</span>
           </button>
           <input
             ref={filePickRef}
