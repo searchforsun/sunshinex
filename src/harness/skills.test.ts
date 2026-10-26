@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SkillManifest } from '../types';
-import { createSkillsFacade, formatSkillsIndex, parseSkillFrontmatter, loadSkills, skillHeader } from './skills';
+import { createSkillsFacade, formatSkillsIndex, parseSkillFrontmatter, loadSkills, priorityChain, skillHeader } from './skills';
 
 test('parseSkillFrontmatter：--- 块内 key: value 提取', () => {
   const m = parseSkillFrontmatter('---\nname: TUI 技能\ndescription: 终端交互\nversion: 1.2.0\n---\n正文');
@@ -254,6 +254,98 @@ test('resolveSkill：命中条目读取时不可用 → 报未注册（回退链
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- 插件 skills 并入装载链（Task 10）：最低优先级根，启用且平台可用才并入 ----
+
+/** 插件夹具：tmp 家目录下落 plugin.json（manifestVersion 1）+ skills/{id}/SKILL.md——
+ *  用户插件根（userConfigDir()/plugins = $HOME/.sunshinex/plugins）随 HOME 重定向保持用例封闭；
+ *  extra 逐字段覆写 manifest 基形（defaultEnabled/platforms 等裁决键由用例注入） */
+function writeHomePlugin(home: string, id: string, extra: Record<string, unknown>, skillId: string, name: string): string {
+  const plug = path.join(home, '.sunshinex', 'plugins', id);
+  fs.mkdirSync(path.join(plug, 'skills', skillId), { recursive: true });
+  fs.writeFileSync(
+    path.join(plug, 'plugin.json'),
+    JSON.stringify({ manifestVersion: 1, id, name: id, version: '0.1.0', description: 'd', defaultEnabled: true, skills: ['skills'], ...extra }),
+  );
+  fs.writeFileSync(path.join(plug, 'skills', skillId, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} 说明\nversion: 1.0.0\n---\n${name} 正文`);
+  return plug;
+}
+
+/** 插件用例环境复原三口：数据目录 / 全局技能根 / HOME（Windows 缺省无 HOME，undefined 须删回） */
+function restorePluginEnv(prevData: string | undefined, prevUser: string | undefined, prevHome: string | undefined): void {
+  if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+  if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+  if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
+}
+
+test('priorityChain：pluginSkillDirs 注入尾参恒在链尾（五根 > 全局 > 学习 > 插件），缺省与既有链逐位一致', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-chain-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
+  process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  try {
+    const plugA = path.join(dir, 'plug-a', 'skills');
+    const plugB = path.join(dir, 'plug-b', 'skills');
+    const chain = priorityChain(path.join(dir, 'proj'), [plugA, plugB]);
+    assert.deepEqual(chain.slice(-2), [plugA, plugB], '插件目录恒在链尾（最低优先级，学习根之后）');
+    assert.deepEqual(chain.slice(0, -2), priorityChain(path.join(dir, 'proj')), '不传尾参时与既有链逐位一致');
+  } finally {
+    restorePluginEnv(prevData, prevUser, process.env.HOME);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('插件 skills 无冲突入清单可 resolve；未启用/平台不符不并入', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-plugin-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  const prevHome = process.env.HOME;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
+  process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  process.env.HOME = path.join(dir, 'home');
+  try {
+    const root = path.join(dir, 'proj');
+    const live = writeHomePlugin(path.join(dir, 'home'), 'live', {}, 'plug-skill', 'PlugSkill');
+    writeHomePlugin(path.join(dir, 'home'), 'off', { defaultEnabled: false }, 'off-skill', 'OffSkill');
+    writeHomePlugin(path.join(dir, 'home'), 'alien', { platforms: ['sunos'] }, 'alien-skill', 'AlienSkill');
+    const list = loadSkills(root);
+    const ids = list.map((s) => s.id);
+    assert.ok(ids.includes('plug-skill'), '启用且平台可用插件的技能入清单');
+    assert.equal(list.find((s) => s.id === 'plug-skill')?.sourceRoot, path.join(live, 'skills', 'plug-skill'), 'sourceRoot 指向插件内技能目录（伴随文件按此解析）');
+    assert.ok(!ids.includes('off-skill'), '未启用插件（defaultEnabled false 且无 settings 覆盖）技能不并入');
+    assert.ok(!ids.includes('alien-skill'), '平台不符插件技能不并入');
+    const r = createSkillsFacade(root).resolve('plug-skill');
+    assert.ok(r.ok, 'resolve 回退链覆盖插件根');
+    if (r.ok) assert.ok(r.value.body.includes('PlugSkill 正文'));
+  } finally {
+    restorePluginEnv(prevData, prevUser, prevHome);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('插件 skills 同 id 遮蔽：项目根就近遮蔽插件根（最低优先级让位），list 恒一', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-plugin-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  const prevHome = process.env.HOME;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
+  process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  process.env.HOME = path.join(dir, 'home');
+  try {
+    const root = path.join(dir, 'proj');
+    writeHomePlugin(path.join(dir, 'home'), 'live', {}, 'dup', 'PlugDup');
+    fs.mkdirSync(path.join(root, '.sunshinex', 'skills', 'dup'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.sunshinex', 'skills', 'dup', 'SKILL.md'), '---\nname: ProjDup\ndescription: 项目版\nversion: 1.0.0\n---\n项目版正文');
+    const hits = loadSkills(root).filter((s) => s.id === 'dup');
+    assert.equal(hits.length, 1, '同 id list 恒一（被遮蔽者静默让位）');
+    assert.equal(hits[0].name, 'ProjDup', '项目根就近遮蔽插件根');
+    assert.equal(hits[0].sourceRoot, path.join(root, '.sunshinex', 'skills', 'dup'), '命中项目根目录而非插件目录');
+  } finally {
+    restorePluginEnv(prevData, prevUser, prevHome);
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

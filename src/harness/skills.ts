@@ -3,6 +3,7 @@ import * as path from 'path';
 import { SkillManifest } from '../types';
 import { Result, ok, fail } from '../result';
 import { projectsRoot, resolveDataDir, userSkillsDir } from '../config/data-dir';
+import { loadEffectivePlugins } from '../config/plugins';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
@@ -87,9 +88,20 @@ function loadSkillsFrom(dir: string): SkillManifest[] {
   return out;
 }
 
-/** 装载/解析优先级链（降序）：项目级五根（.sunshinex > .agents > .claude > .codex > .cursor）→ 全局根 → 学习根 */
-function priorityChain(root: string): string[] {
-  return [...projectSkillDirs(root)].reverse().concat([userSkillsDir(), learnedSkillsDir(root)]);
+/** 插件 skills 目录收集单点（装载入口一次调用）：启用且平台可用的插件，把 manifest.skills（相对插件根）
+ *  解析为绝对目录，作为最低优先级根并入装载链。尽力而为口径：loadEffectivePlugins 的 warnings 不入技能链
+ *  （技能装载静默容忍，沿装配面既有口径），目录不存在/为空由 loadSkillsFrom 容错跳过 */
+function pluginSkillDirs(root: string): string[] {
+  return loadEffectivePlugins(root).plugins
+    .filter((p) => p.enabled && p.platformSupported)
+    .flatMap((p) => (p.manifest.skills ?? []).map((rel) => path.join(p.dir, rel)));
+}
+
+/** 装载/解析优先级链（降序）：项目级五根（.sunshinex > .agents > .claude > .codex > .cursor）→ 全局根 → 学习根
+ *  → 插件 skills 根（最低优先级，启用且平台可用的插件贡献，装载入口经 pluginSkillDirs 注入）。
+ *  pluginSkillDirs 为可选尾参保持纯函数可测（测试钉目录免真写插件根）；不传时与既有链逐位一致 */
+export function priorityChain(root: string, pluginSkillDirs: string[] = []): string[] {
+  return [...projectSkillDirs(root)].reverse().concat([userSkillsDir(), learnedSkillsDir(root)], pluginSkillDirs);
 }
 
 /** 多根链装载单点（R6 同族收敛）：按入参目录序（=优先级降序）装载，id 撞名就近遮蔽（先装者留、
@@ -108,9 +120,10 @@ function loadSkillsChain(dirs: string[]): SkillManifest[] {
   return out;
 }
 
-/** 技能清单（规格 v2）：按优先级链降序装载，id 撞名就近遮蔽（被遮蔽者静默让位不抛） */
+/** 技能清单（规格 v2）：按优先级链降序装载，id 撞名就近遮蔽（被遮蔽者静默让位不抛）；
+ *  链尾并入插件 skills 根（最低优先级，启用且平台可用才并入） */
 export function loadSkills(root: string): SkillManifest[] {
-  return loadSkillsChain(priorityChain(root));
+  return loadSkillsChain(priorityChain(root, pluginSkillDirs(root)));
 }
 
 /** 技能三源分组（G8c T6 /settings/skills 数据源）：source 三段对齐装载优先级链的三个语义级——
@@ -230,7 +243,7 @@ export interface SkillsFacade {
 
 export function createSkillsFacade(root: string): SkillsFacade {
   const learnedDir = learnedSkillsDir(root);
-  const chain = priorityChain(root);
+  const chain = priorityChain(root, pluginSkillDirs(root));
   return {
     list: () => loadSkills(root),
     get: (id) => loadSkills(root).find((s) => s.id === id),
