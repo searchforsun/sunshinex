@@ -91,7 +91,9 @@ export class McpHost {
     private opts: McpHostOptions = {},
   ) {}
 
-  /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输） */
+  /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输）。
+   *  2026-10-26：cfg.headers 随 http/sse 请求透传（requestInit.headers——Bearer 鉴权面，gitnexus
+   *  风格 `{url, headers}` 主流形态）；SDK 对 SSE 的 GET 流同样吃 requestInit 头 */
   private makeTransport(cfg: McpServerConfig): Transport {
     const fail = (msg: string): CodedToolError =>
       new CodedToolError('MCP_CONNECT_FAILED', `MCP server connection failed (${cfg.name}): ${msg}`);
@@ -101,7 +103,10 @@ export class McpHost {
         if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
         try {
           const url = new URL(cfg.url);
-          return cfg.transport === 'sse' ? new SSEClientTransport(url) : new StreamableHTTPClientTransport(url);
+          const reqInit = cfg.headers !== undefined ? { requestInit: { headers: cfg.headers } } : undefined;
+          return cfg.transport === 'sse'
+            ? new SSEClientTransport(url, reqInit)
+            : new StreamableHTTPClientTransport(url, reqInit);
         } catch (e) {
           throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -113,12 +118,19 @@ export class McpHost {
     }
   }
 
-  /** 逐服务器连接并注册工具：单台失败只损失该服务器工具（降级语义），失败收进警告单返回、不中断其余服务器装配 */
+  /** 逐服务器连接并注册工具：单台失败只损失该服务器工具（降级语义），失败收进警告单返回、不中断其余服务器装配。
+   *  2026-10-26 两处放宽（用户实测主流服务器被拦）：①enabled=false 整机跳过（不连接不注册，软提示）；
+   *  ②握手身份不符不再硬拒——serverInfo.name 与配置键不同是主流服务器的常态（lark-project-mcp 等），
+   *  主流客户端均不做此校验，改为软提示照常注册（guard 名单按配置键，冒名面本就由登记制承载） */
   async registerTools(): Promise<McpAssemblyReport> {
     const report: McpAssemblyReport = { registered: 0, warnings: [] };
     for (const cfg of this.servers) {
       if (this.conns.has(cfg.name)) {
         report.warnings.push(`duplicate MCP server name (${cfg.name}) skipped`);
+        continue;
+      }
+      if (cfg.enabled === false) {
+        report.warnings.push(`server disabled (${cfg.name}): enabled=false, skipped`);
         continue;
       }
       try {
@@ -135,13 +147,14 @@ export class McpHost {
         }
         const actual = client.getServerVersion()?.name;
         if (actual !== cfg.name) {
-          await client.close().catch(() => {});
-          report.warnings.push(`handshake identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`);
-          continue;
+          // 身份软提示（不再跳过）：照常 listTools+注册，差异上屏供诊断
+          report.warnings.push(`identity note (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'} (accepted)`);
         }
         this.conns.set(cfg.name, { client, config: cfg });
         const listed = await client.listTools();
+        const disabled = new Set(cfg.disabledTools ?? []);
         for (const t of listed.tools) {
+          if (disabled.has(t.name)) continue; // 逐工具停用（短名过滤）：装配期不注册即模型不可见
           this.registry.register(this.makeTool(cfg.name, client, t.name, t.description));
           report.registered += 1;
         }

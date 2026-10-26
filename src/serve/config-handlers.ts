@@ -414,7 +414,24 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
       io.send(res, 400, { error: `servers[${i}].env must be an object of string → string` });
       return;
     }
-    record[r.name] = row; // 输入原样（含 env 全值与未知字段——写面不擅自裁剪）
+    // 2026-10-26 新字段形态闸门：headers（http/sse 请求头，string→string）/ enabled（布尔整机开关）/
+    // disabledTools（停用工具短名数组）——写面虽原样透传未知字段，这三键装载面消费，坏形在此拦
+    if (
+      r.headers !== undefined &&
+      (typeof r.headers !== 'object' || r.headers === null || Array.isArray(r.headers) || !Object.values(r.headers).every((v) => typeof v === 'string'))
+    ) {
+      io.send(res, 400, { error: `servers[${i}].headers must be an object of string → string` });
+      return;
+    }
+    if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
+      io.send(res, 400, { error: `servers[${i}].enabled must be a boolean` });
+      return;
+    }
+    if (r.disabledTools !== undefined && (!Array.isArray(r.disabledTools) || !r.disabledTools.every((a) => typeof a === 'string'))) {
+      io.send(res, 400, { error: `servers[${i}].disabledTools must be an array of strings` });
+      return;
+    }
+    record[r.name] = row; // 输入原样（含 env/headers 全值与未知字段——写面不擅自裁剪）
   }
   const root = path.resolve(rootRaw);
   const target = path.join(root, '.sunshinex', 'mcp.json');

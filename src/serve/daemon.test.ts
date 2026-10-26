@@ -1474,6 +1474,8 @@ interface ProbeBody {
   ok: boolean;
   tools?: Array<{ name: string; description?: string }>;
   error?: string;
+  /** 2026-10-26 身份软提示(serverInfo.name ≠ 配置键,不再算失败) */
+  note?: string;
 }
 
 /** probe 夹具:最小 stdio MCP server(行读 stdin JSON-RPC;id 原样回执;通知不回包)。
@@ -1539,14 +1541,14 @@ describe('G8c T4 /settings/mcp 端点族', () => {
       assert.equal(sharedRows.length, 2, '同名两行:project 行+被遮蔽 global 行(序:项目先全局后)');
       assert.deepEqual(sharedRows[0], {
         name: 'shared', transport: 'stdio', command: 'node', args: ['a.js'],
-        envKeys: ['SECRET_A', 'SECRET_B'], source: 'project', shadowed: false,
-      }, '项目条目:source=project/shadowed=false/env 折键名列表');
+        envKeys: ['SECRET_A', 'SECRET_B'], headerKeys: [], source: 'project', shadowed: false,
+      }, '项目条目:source=project/shadowed=false/env·headers 折键名列表');
       assert.deepEqual(sharedRows[1], {
         name: 'shared', transport: 'http', url: 'https://global.example/mcp',
-        envKeys: [], source: 'global', shadowed: true,
+        envKeys: [], headerKeys: [], source: 'global', shadowed: true,
       }, '全局同名被项目遮蔽→shadowed=true 仍列示');
       assert.deepEqual(body.servers.find((s) => s.name === 'only'), {
-        name: 'only', transport: 'stdio', command: 'node', envKeys: ['G'], source: 'global', shadowed: false,
+        name: 'only', transport: 'stdio', command: 'node', envKeys: ['G'], headerKeys: [], source: 'global', shadowed: false,
       }, '未被遮蔽的全局条目:source=global/shadowed=false');
       assert.ok(!JSON.stringify(body).includes('"va"') && !JSON.stringify(body).includes('"vb"'), 'env 值不回传(只键名)');
 
@@ -1585,7 +1587,7 @@ describe('G8c T4 /settings/mcp 端点族', () => {
     });
   });
 
-  test('㉚ probe 失败态:command 不存在→{ok:false,error 含 connection};serverInfo 名不符→{ok:false,error 含 identity mismatch}', async () => {
+  test('㉚ probe 失败态:command 不存在→{ok:false,error 含 connection};serverInfo 名不符→降级 ok:true+note(2026-10-26 主流服务器常态)', async () => {
     await withSettingsDaemon(async ({ base, tmp }) => {
       const proj = path.join(tmp, 'proj');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
@@ -1607,8 +1609,11 @@ describe('G8c T4 /settings/mcp 端点族', () => {
       assert.ok(ghost.error !== undefined && /connection|失败|ENOENT|spawn/i.test(ghost.error), `error 含连接失败义: ${ghost.error}`);
 
       const mism = await probe('probe-fixture');
-      assert.equal(mism.ok, false, 'serverInfo.name !== 配置名 → 拒(防冒名)');
-      assert.ok(mism.error !== undefined && mism.error.includes('identity mismatch'), `error 含 identity mismatch: ${mism.error}`);
+      // 2026-10-26 身份降级:serverInfo.name ≠ 配置键是主流服务器常态(lark-project-mcp 等)——
+      // 不再 ok:false,ok:true + note 软提示(状态圆点恒绿,能列工具即可用)
+      assert.equal(mism.ok, true, '身份不符照常列出工具');
+      assert.deepEqual(mism.tools, [{ name: 'echo', description: 'fixture tool' }]);
+      assert.ok(mism.note !== undefined && mism.note.includes('other-server'), `note 含实际 serverInfo.name: ${mism.note}`);
     });
   });
 

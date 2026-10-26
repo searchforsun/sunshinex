@@ -2113,7 +2113,7 @@ input.sx-setting-input { width: 100%; }
    Electron(Chromium) 渲染,moz 伪元素直接不写 */
 .todo-dot, .sx-session-dot, .sx-status-dot, .sx-tree-dot, .sx-api-dot, .sx-welcome-dot,
 .conn-dot, .tb-status-dot, .ctx-pop-row .ctx-dot, .ctx-ring-btn, .run-spinner,
-.sx-img-remove, .sx-pin-btn, .sx-src-badge::before,
+.sx-img-remove, .sx-pin-btn, .sx-src-badge::before, .sx-mcp-dot, .sx-mcp-switch .knob,
 .effort-slider input[type="range"]::-webkit-slider-thumb { corner-shape: initial; }
 
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
@@ -2359,3 +2359,28 @@ input.sx-setting-input { width: 100%; }
 .tool-images{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
 .tool-image-thumb{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--surface-soft);cursor:zoom-in;transition:filter var(--dur-basic) var(--ease-enter)}
 .tool-image-thumb:hover{filter:brightness(1.15)}
+
+/* ===== 2026-10-26 MCP 面四轮改版:状态圆点(绿=连接正常/红=连接失败/灰=探测中/灰环=停用,
+   几何圆构造同 sx-api-dot——zoom 取整拉椭免疫;radial-gradient 画在盒内 corner-shape 裁不到) +
+   整机/逐工具开关(pill+knob)+ 工具清单 + JSON 编辑窗 ===== */
+.sx-mcp-dot{width:6px;height:6px;border-radius:50%;flex:none}
+.sx-mcp-dot.ok{background:radial-gradient(circle 3px at 50% 50%,var(--ok) 2.5px,transparent 2.9px)}
+.sx-mcp-dot.err{background:radial-gradient(circle 3px at 50% 50%,var(--err) 2.5px,transparent 2.9px)}
+.sx-mcp-dot.probe{background:radial-gradient(circle 3px at 50% 50%,transparent 1.5px,var(--fg-tertiary) 2px 2.7px,transparent 3.1px)}
+.sx-mcp-dot.off{background:radial-gradient(circle 3px at 50% 50%,transparent 1.2px,color-mix(in srgb,var(--fg) 34%,transparent) 1.7px 2.4px,transparent 2.8px)}
+.sx-mcp-card.disabled{opacity:0.62}
+.sx-mcp-switch{width:26px;height:15px;border-radius:8px;border:none;padding:0;cursor:pointer;flex:none;position:relative;background:color-mix(in srgb,var(--fg) 20%,transparent);transition:background var(--dur-basic) var(--ease-enter);margin-left:auto}
+.sx-mcp-switch .knob{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--surface-elevated);box-shadow:0 0 0 1px color-mix(in srgb,var(--fg) 24%,transparent);transition:left var(--dur-basic) var(--ease-enter)}
+.sx-mcp-switch.on{background:var(--ok)}
+.sx-mcp-switch.on .knob{left:13px}
+.sx-mcp-switch:disabled{cursor:default;opacity:0.55}
+.sx-mcp-tools{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.sx-mcp-tool{display:flex;align-items:center;gap:8px;padding:1px 4px;border-radius:var(--radius-sm)}
+.sx-mcp-tool:hover{background:color-mix(in srgb,var(--fg) 5%,transparent)}
+.sx-mcp-tool .sx-mcp-switch{margin-left:0}
+.sx-mcp-tool-name{font:11px var(--font-mono);color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sx-mcp-tool-name.off{color:var(--fg-tertiary);text-decoration:line-through}
+.sx-mcp-note{margin:4px 0 0;color:var(--warn);font-size:11px}
+.sx-mcp-hint{margin:4px 0 0;color:var(--fg-tertiary);font-size:11px}
+.sx-mcp-offcount{color:var(--fg-tertiary)}
+.sx-mcp-json{width:100%;box-sizing:border-box;font:11px/1.5 var(--font-mono);white-space:pre;resize:vertical}

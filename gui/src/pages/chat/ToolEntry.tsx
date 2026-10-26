@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -22,7 +22,20 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
 };
 
+/** MCP 工具名拆解单点(2026-10-26 用户裁定:MCP 工具行显业界通用图标+短工具名,参数/返回值同其他工具):
+ *  登记名 `mcp__<server>__<tool>` → { server, tool };非 MCP 名返回 null。server 段取首个 `__` 前
+ *  (server 键不含 `__`——配置名即文件/清单键),tool 段为余量(可含 `__`) */
+export function mcpToolParts(name: string): { server: string; tool: string } | null {
+  if (!name.startsWith('mcp__')) return null;
+  const rest = name.slice(5);
+  const i = rest.indexOf('__');
+  if (i <= 0 || i >= rest.length - 2) return null;
+  return { server: rest.slice(0, i), tool: rest.slice(i + 2) };
+}
+
 function ToolIcon({ verb }: { verb: string }): JSX.Element {
+  // MCP 工具=Puzzle 拼图件(业界 MCP 集成的通用视觉母题,区别于内置工具的扳手兜底)
+  if (mcpToolParts(verb) !== null) return <Puzzle size={12} strokeWidth={1.75} aria-hidden="true" />;
   const Icon = TOOL_ICONS[verb] ?? Wrench;
   return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
@@ -49,12 +62,23 @@ const TOOL_VERB_ZH: Record<string, string> = {
   create_teammate: '创建队友',
 };
 export function zhToolName(name: string): string {
+  // MCP 工具显短名(去 mcp__server__ 前缀;server 面在展开体/工具清单承载,折叠行不重复)
+  const mcp = mcpToolParts(name);
+  if (mcp !== null) return mcp.tool;
   const zh = TOOL_VERB_ZH[name];
   return zh === undefined ? name : t(name, zh);
 }
 
-/** 折叠行目标字段(工具展示元数据同口径):各内置工具取其主字段;换行拍平,超长中段省略 */
+/** 折叠行目标字段(工具展示元数据同口径):各内置工具取其主字段;换行拍平,超长中段省略。
+ *  MCP 工具无固定主字段——入参整体压单行 JSON 摘要(与 exec 命令行同级的目标信息) */
 export function toolTargetOf(name: string, input: Record<string, unknown>): string | undefined {
+  if (mcpToolParts(name) !== null) {
+    const keys = Object.keys(input);
+    if (keys.length === 0) return undefined;
+    const flat = JSON.stringify(input);
+    if (flat.length <= 72) return flat;
+    return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
+  }
   const key =
     name === 'exec'
       ? 'command'
@@ -262,6 +286,9 @@ export const ToolEntryView = memo(function ToolEntryView({
     // G14.214 task_* 运行态带任务名——「正在复审 架构评审」替代泛文案（taskOpName 已在场即有值）
     const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
     if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
+    // 2026-10-26 MCP 工具运行态带短工具名——「正在调用 send_message」(与完成态短名同口径)
+    const mcp = mcpToolParts(toolName);
+    if (mcp !== null) return t(`Calling ${mcp.tool}`, `正在调用 ${mcp.tool}`);
     const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
     return t(pair[0], pair[1]);
   })();
@@ -563,6 +590,26 @@ export const ToolEntryView = memo(function ToolEntryView({
         <pre className="tool-io-pre">
           <span className="exec-prompt" aria-hidden="true">$ </span>
           <code dangerouslySetInnerHTML={{ __html: highlightCommand(command) }} />
+          {'\n'}
+          <span className="exec-output">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</span>
+        </pre>
+      </div>
+    );
+  } else if (mcpToolParts(toolName) !== null) {
+    // 2026-10-26 MCP 工具展开面(用户裁定「参数和返回值显示和其他工具一样」):server·tool 标识行 +
+    // params JSON(入参全量,空参显 {})+ 返回值,终端块同形态($ 行/输出 的 MCP 对位)
+    const mcp = mcpToolParts(toolName)!;
+    const params = Object.keys(input).length > 0 ? JSON.stringify(input, null, 2) : '{}';
+    body = (
+      <div className="tool-exec">
+        <pre className="tool-io-pre">
+          <span className="exec-prompt" aria-hidden="true">mcp </span>
+          <code>{mcp.server}</code>
+          {' · '}
+          <code>{mcp.tool}</code>
+          {'\n'}
+          <span className="exec-prompt" aria-hidden="true">params </span>
+          <code>{params}</code>
           {'\n'}
           <span className="exec-output">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</span>
         </pre>

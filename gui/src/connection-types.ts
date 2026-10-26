@@ -262,7 +262,7 @@ export interface SettingsView {
   warnings?: string[];
 }
 
-/** GET /settings/mcp 行（T4 两级遮蔽视图）：env 打码折叠为键名列表（env 值不回传——PUT 结构化写
+/** GET /settings/mcp 行（T4 两级遮蔽视图）：env/headers 打码折叠为键名列表（值不回传——PUT 结构化写
  *  全值回写、raw 面另有无打码原文）；transport 缺省归一显形 'stdio'；shadowed=被项目同名遮蔽 */
 export interface McpRow {
   name: string;
@@ -271,11 +271,16 @@ export interface McpRow {
   args?: string[];
   url?: string;
   envKeys: string[];
+  /** http/sse 请求头键名列表（值打码） */
+  headerKeys: string[];
+  enabled?: boolean;
+  /** 停用工具短名清单（装配期过滤不注册） */
+  disabledTools?: string[];
   source: 'project' | 'global';
   shadowed: boolean;
 }
 
-/** PUT /settings/mcp servers 行（T4 结构化写输入）：与 McpRow 的差面=写面收 env 全值（文件本就
+/** PUT /settings/mcp servers 行（T4 结构化写输入）：与 McpRow 的差面=写面收 env/headers 全值（文件本就
  *  承载）、无 source/shadowed（写恒项目级、遮蔽是装载态）；transport 可缺省（daemon 归一 stdio） */
 export interface McpRowInput {
   name: string;
@@ -284,11 +289,17 @@ export interface McpRowInput {
   args?: string[];
   url?: string;
   env?: Record<string, string>;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+  disabledTools?: string[];
 }
 
-/** POST /settings/mcp/probe 联合应答：ok:true 携 tools 清单；ok:false 携 error（连接失败/身份
- *  不符/超时截断文）——探测是诊断面，失败即结果，同为 200 非 HTTP 错误码 */
-export type McpProbeResult = { ok: true; tools: Array<{ name: string; description?: string }> } | { ok: false; error: string };
+/** POST /settings/mcp/probe 联合应答：ok:true 携 tools 清单（note=身份软提示——serverInfo.name 与
+ *  配置键不同不再算失败）；ok:false 携 error（连接失败/超时截断文）——探测是诊断面，失败即结果，
+ *  同为 200 非 HTTP 错误码 */
+export type McpProbeResult =
+  | { ok: true; tools: Array<{ name: string; description?: string }>; note?: string }
+  | { ok: false; error: string };
 
 /** GET /settings/agents builtins 行（T5 四预设角色平铺）：role=AgentRole 字面量（gui 侧宽化为
  *  string——呈现面不消费枚举闭包），name/framing 取 ROLE_PRESETS */

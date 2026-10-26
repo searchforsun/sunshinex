@@ -130,8 +130,9 @@ export class Harness {
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
     this.sandbox = new ProcessSandbox();
-    // MCP 登记制闸门构造期同步注入（两级 mcp.json，项目遮蔽全局；本地 JSON 读零 IO 延迟）：guard 在工具注册前即持名单
-    const mcpServers = loadMcpServers(base);
+    // MCP 登记制闸门构造期同步注入（两级 mcp.json，项目遮蔽全局；本地 JSON 读零 IO 延迟）：guard 在工具注册前即持名单。
+    // enabled=false 整机停用（2026-10-26）：guard 名单与装配面同跳过——停用服务器的工具既不注册也不放行
+    const mcpServers = loadMcpServers(base).filter((s) => s.enabled !== false);
     // 用户权限规则面（spec 5.2）：两级装载合并不遮蔽；非路径通道（Bash/mcp/web）注入 PolicyEngine，路径通道由链消费
     const perms = loadPermissions(base);
     const policy = new PolicyEngine();

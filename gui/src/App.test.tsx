@@ -122,6 +122,8 @@ const h = vi.hoisted(() => {
     skillsGroupsCalls: Array<[string, boolean]> = [];
     /** G8c T9 raw 面:读取应答/双拒可编程;调用记录 [scope, root 归一 '', file](+content) */
     rawResp: { content: string | null } = { content: null };
+    /** G8c MCP raw 面(file='mcp' 应答;与 settings 原文分立——McpPane JSON 编辑窗数据源) */
+    rawMcpResp: { content: string | null } = { content: null };
     rawReject: Error | null = null;
     settingsRawCalls: Array<['project' | 'global', string, 'settings' | 'mcp']> = [];
     putSettingsRawCalls: Array<['project' | 'global', string, 'settings' | 'mcp', string]> = [];
@@ -325,7 +327,7 @@ const h = vi.hoisted(() => {
       if (this.rawReject !== null) return Promise.reject(this.rawReject);
       const gate = this.rawGate;
       this.rawGate = Promise.resolve(); // 单发:只拦 hold 后首发一笔,后续直通
-      const resp = this.rawResp; // 应答体调用时定格(慢应答迟到仍回旧内容)
+      const resp = file === 'mcp' ? this.rawMcpResp : this.rawResp; // 应答体调用时定格(慢应答迟到仍回旧内容)
       return gate.then(() => resp);
     }
     putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void> {
@@ -2009,155 +2011,160 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     unmount();
   });
 
-  it('MCP:两级清单卡(shadowed 灰显+遮蔽标+envKeys 打码)+ 测试连接 ok:false error 行内 + 添加表单 putMcpServers 整块提交', async () => {
+  it('MCP:两级清单卡(shadowed 灰显+遮蔽标+envKeys 打码)+ 挂载自动探测 + 测试连接 error 行内 + JSON 编辑添加(raw 写)', async () => {
     const { conn, unmount } = await enterChat();
     conn.mcpServersResp = {
       servers: [
-        { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-fs'], envKeys: ['MCP_FS_TOKEN'], source: 'project', shadowed: false },
-        { name: 'fs', transport: 'http', url: 'https://global/fs', envKeys: [], source: 'global', shadowed: true },
-        { name: 'web', transport: 'sse', url: 'https://global/web', envKeys: [], source: 'global', shadowed: false },
+        { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-fs'], envKeys: ['MCP_FS_TOKEN'], headerKeys: [], source: 'project', shadowed: false },
+        { name: 'fs', transport: 'http', url: 'https://global/fs', envKeys: [], headerKeys: [], source: 'global', shadowed: true },
+        { name: 'web', transport: 'sse', url: 'https://global/web', envKeys: [], headerKeys: [], source: 'global', shadowed: false },
       ],
     };
     conn.mcpProbeResp = { ok: false, error: 'connect timeout after 10s' };
+    conn.rawMcpResp = {
+      content: JSON.stringify({ mcpServers: { fs: { command: 'npx', args: ['-y', 'mcp-fs'], env: { MCP_FS_TOKEN: 'secret' } } } }),
+    };
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a']));
+    // 挂载自动探测(状态圆点数据源):非停用全部唯一名各一探
+    await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'fs'], ['/w/root-a', 'web']]));
     // shadowed 全局卡灰显 + 「被项目遮蔽」标 + env 键名列表(值打码不回传)
     expect(document.querySelector('.sx-mcp-card.shadowed')).not.toBeNull();
     expect(screen.getByText('Shadowed by project')).toBeDefined();
     expect(screen.getByText('MCP_FS_TOKEN')).toBeDefined();
     // shadowed 全局卡:删除钮禁用(写面恒项目级)
     expect((screen.getByRole('button', { name: 'Delete fs(Global)' }) as HTMLButtonElement).disabled).toBe(true);
-    // 测试连接 → mcpProbe(root, name);ok:false → 卡内 error 文本行
+    // 手动重探 web → probe error 行内
     fireEvent.click(screen.getByRole('button', { name: 'Test connection web' }));
-    await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'web']]));
-    await waitFor(() => expect(screen.getByText('connect timeout after 10s')).toBeDefined());
-    // + 添加服务器:表单 → 保存 = putMcpServers(root, 现项目清单 + 新机;全局卡不入清单)
+    await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'fs'], ['/w/root-a', 'web'], ['/w/root-a', 'web']]));
+    await waitFor(() => expect(screen.getAllByText('connect timeout after 10s').length).toBeGreaterThan(0));
+    // + 添加服务器:JSON 编辑窗(mcp.json 兼容片段)→ 保存 = raw 读改写(非 putMcpServers;
+    //   整块结构化写会丢其他行 env 值——raw 路径根治)
     fireEvent.click(screen.getByRole('button', { name: '+ Add server' }));
-    fireEvent.change(screen.getByLabelText('mcp name'), { target: { value: 'search' } });
-    fireEvent.change(screen.getByLabelText('mcp command'), { target: { value: 'npx' } });
-    fireEvent.change(screen.getByLabelText('mcp args'), { target: { value: '-y, mcp-search' } });
+    const ta = (await screen.findByLabelText('mcp json editor')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: JSON.stringify({ search: { command: 'npx', args: ['-y', 'mcp-search'] } }, null, 2) } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() =>
-      expect(conn.putMcpServersCalls).toEqual([
-        [
-          '/w/root-a',
-          [
-            { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-fs'] },
-            { name: 'search', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-search'] },
-          ],
-        ],
-      ]),
-    );
+    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
+    const [scope, rroot, file, content] = conn.putSettingsRawCalls[0]!;
+    expect(scope).toBe('project');
+    expect(rroot).toBe('/w/root-a');
+    expect(file).toBe('mcp');
+    const saved = JSON.parse(content) as { mcpServers: Record<string, unknown> };
+    expect(saved.mcpServers.search).toEqual({ command: 'npx', args: ['-y', 'mcp-search'] });
+    // 原文条目原样保留(env 值零丢失)
+    expect(saved.mcpServers.fs).toEqual({ command: 'npx', args: ['-y', 'mcp-fs'], env: { MCP_FS_TOKEN: 'secret' } });
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉
     unmount();
   });
 
-  it('MCP:删除项目卡 → putMcpServers 清单减一', async () => {
+  it('MCP:删除项目卡 → raw 改写条目减一(全局卡不在项目文件)', async () => {
     const { conn, unmount } = await enterChat();
     conn.mcpServersResp = {
       servers: [
-        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], source: 'project', shadowed: false },
-        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], source: 'global', shadowed: false },
+        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], headerKeys: [], source: 'project', shadowed: false },
+        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], headerKeys: [], source: 'global', shadowed: false },
       ],
     };
+    conn.rawMcpResp = { content: JSON.stringify({ mcpServers: { fs: { command: 'npx' } } }) };
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await screen.findByText('fs');
     fireEvent.click(screen.getByRole('button', { name: 'Delete fs(Project)' }));
-    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', []]])); // 全局卡不入项目清单
+    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
+    expect(JSON.parse(conn.putSettingsRawCalls[0]![3]).mcpServers).toEqual({}); // fs 已删
     await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a']));
     unmount();
   });
 
-  it('MCP 修复环 C1:编辑带 envKeys 卡不改 env(勾选确认移除)→ 断参服务器行无 env 键;填 KEY=v → env 含全值', async () => {
+  it('MCP JSON 编辑:预填自 raw 原文(env 值不打码)→ 保存改单键零丢失;改名=换键', async () => {
     const { conn, unmount } = await enterChat();
     conn.mcpServersResp = {
-      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['MCP_FS_TOKEN'], source: 'project', shadowed: false }],
+      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['MCP_FS_TOKEN'], headerKeys: [], source: 'project', shadowed: false }],
+    };
+    conn.rawMcpResp = {
+      content: JSON.stringify({
+        mcpServers: {
+          fs: { command: 'npx', env: { MCP_FS_TOKEN: 'secret' } },
+          other: { url: 'http://x/api' },
+        },
+      }),
     };
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await screen.findByText('fs');
-    // 编辑:env 预填「KEY=」空值行(值视图打码不可知)——不改 env 直接保存:env 丢失确认门拦
-    // (终审 B:未勾选确认→保存 disabled;勾选=显式确认丢键)→ 空值条目跳过,行无 env 键
-    // (daemon 原样写盘——env:{KEY:''} 空值坏文件的根除判据)
-    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
-    expect((screen.getByLabelText('mcp env') as HTMLTextAreaElement).value).toBe('MCP_FS_TOKEN=');
-    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true); // 未勾选确认:保存禁用
-    fireEvent.click(screen.getByLabelText('confirm env drop'));
-    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit JSON fs(Project)' }));
+    const ta = (await screen.findByLabelText('mcp json editor')) as HTMLTextAreaElement;
+    // 预填=raw 原文该卡条目(env 全值在场——视图打码面不再经手,env 丢失确认门随之退役)
+    expect(JSON.parse(ta.value)).toEqual({ fs: { command: 'npx', env: { MCP_FS_TOKEN: 'secret' } } });
+    // 改 command 保存:仅该键更新,other 条目原样
+    fireEvent.change(ta, { target: { value: JSON.stringify({ fs: { command: 'node', env: { MCP_FS_TOKEN: 'secret' } } }, null, 2) } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
-    // 重填值保存 → env 含 {KEY:'v'}(全值回写;原键全覆盖→确认门不出现)
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
-    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
-    fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'MCP_FS_TOKEN=v' } });
-    expect(screen.queryByLabelText('confirm env drop')).toBeNull(); // 无键将丢失:确认 checkbox 不渲染
+    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
+    const saved = JSON.parse(conn.putSettingsRawCalls[0]![3]) as { mcpServers: Record<string, unknown> };
+    expect(saved.mcpServers.fs).toEqual({ command: 'node', env: { MCP_FS_TOKEN: 'secret' } });
+    expect(saved.mcpServers.other).toEqual({ url: 'http://x/api' });
+    // 改名:键 fs2 替换 fs(旧键删除)
+    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a']));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit JSON fs(Project)' }));
+    const ta2 = (await screen.findByLabelText('mcp json editor')) as HTMLTextAreaElement;
+    fireEvent.change(ta2, { target: { value: JSON.stringify({ fs2: { command: 'npx', env: { MCP_FS_TOKEN: 'secret' } } }, null, 2) } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() =>
-      expect(conn.putMcpServersCalls).toEqual([
-        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
-        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx', env: { MCP_FS_TOKEN: 'v' } }]],
-      ]),
-    );
+    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(2));
+    const saved2 = JSON.parse(conn.putSettingsRawCalls[1]![3]) as { mcpServers: Record<string, unknown> };
+    expect(saved2.mcpServers.fs2).toEqual({ command: 'npx', env: { MCP_FS_TOKEN: 'secret' } });
+    expect(saved2.mcpServers.fs).toBeUndefined();
+    expect(saved2.mcpServers.other).toEqual({ url: 'http://x/api' });
     unmount();
   });
 
-  it('MCP 终审 B:编辑带 2 envKeys 卡不动 env → 保存 disabled;勾选确认 → putMcp 调用且 env 缺席;重填 1 键+勾选 → env 含该 1 键', async () => {
+  it('MCP 工具清单与开关:探测 ok → 工具数+逐工具开关(切换写 disabledTools);整机开关写 enabled', async () => {
     const { conn, unmount } = await enterChat();
     conn.mcpServersResp = {
-      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['K1', 'K2'], source: 'project', shadowed: false }],
+      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], headerKeys: [], disabledTools: ['b'], source: 'project', shadowed: false }],
     };
+    conn.mcpProbeResp = { ok: true, tools: [{ name: 'a' }, { name: 'b' }] };
+    conn.rawMcpResp = { content: JSON.stringify({ mcpServers: { fs: { command: 'npx' } } }) };
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    await screen.findByText('fs');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
-    // 2 键均未重填:确认 checkbox 在场(计数=2)+ 保存 disabled + 零写调用(静默丢 env 根除)
-    expect(screen.getByText('Confirm removal of 2 unfilled env keys')).toBeDefined();
-    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(conn.putMcpServersCalls).toEqual([]);
-    // 勾选确认 → 放行:putMcpServers 调用且断参行 env 缺席
-    fireEvent.click(screen.getByLabelText('confirm env drop'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putMcpServersCalls).toEqual([['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]]]));
-    // 重填 1 键(另 1 键仍将丢失→checkbox 计 1+仍须勾选)→ env 恰含该 1 键
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉落定
-    fireEvent.click(screen.getByRole('button', { name: 'Edit fs(Project)' }));
-    fireEvent.change(screen.getByLabelText('mcp env'), { target: { value: 'K1=v1' } });
-    expect(screen.getByText('Confirm removal of 1 unfilled env keys')).toBeDefined();
-    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByLabelText('confirm env drop'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() =>
-      expect(conn.putMcpServersCalls).toEqual([
-        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx' }]],
-        ['/w/root-a', [{ name: 'fs', transport: 'stdio', command: 'npx', env: { K1: 'v1' } }]],
-      ]),
-    );
+    // 探测 ok:状态点绿 + 工具数(details 缺省展开)+ 停用计数(span 拆分——匹配首段文本节点)
+    await screen.findByText('Connected · 2 tools');
+    expect(screen.getByText(/1 disabled/)).toBeDefined();
+    // 逐工具开关:b 在 disabledTools → off;点 a(启用态)→ 切停用,raw 写 disabledTools 排序全量
+    const swA = screen.getByRole('switch', { name: 'a' }) as HTMLButtonElement;
+    expect(swA.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(swA);
+    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
+    const saved = JSON.parse(conn.putSettingsRawCalls[0]![3]) as { mcpServers: Record<string, { disabledTools?: string[] }> };
+    expect(saved.mcpServers.fs.disabledTools).toEqual(['a', 'b']);
+    // 整机开关:关 → enabled:false 落盘
+    const swServer = screen.getByRole('switch', { name: 'Enable fs' }) as HTMLButtonElement;
+    expect(swServer.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(swServer);
+    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(2));
+    const saved2 = JSON.parse(conn.putSettingsRawCalls[1]![3]) as { mcpServers: Record<string, { enabled?: boolean }> };
+    expect(saved2.mcpServers.fs.enabled).toBe(false);
     unmount();
   });
 
-  it('MCP 修复环 I2:全局卡(含被遮蔽)编辑钮禁用 + title 引流 raw;项目卡编辑钮可用', async () => {
+  it('MCP 修复环 I2:全局卡(含被遮蔽)JSON 编辑钮禁用 + 引流 raw;项目卡可用', async () => {
     const { conn, unmount } = await enterChat();
     conn.mcpServersResp = {
       servers: [
-        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], source: 'project', shadowed: false },
-        { name: 'fs', transport: 'http', url: 'https://g/fs', envKeys: [], source: 'global', shadowed: true },
-        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], source: 'global', shadowed: false },
+        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], headerKeys: [], source: 'project', shadowed: false },
+        { name: 'fs', transport: 'http', url: 'https://g/fs', envKeys: [], headerKeys: [], source: 'global', shadowed: true },
+        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], headerKeys: [], source: 'global', shadowed: false },
       ],
     };
     openSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
     await screen.findByText('web');
-    // 全局卡(未遮蔽/被遮蔽)编辑钮均禁用——写面恒项目级(编辑全局会替换项目同名卡,错路径根除);
-    // title 同删除钮口径:全局级经高级 raw 编辑
-    for (const label of ['Edit fs(Global)', 'Edit web(Global)']) {
+    for (const label of ['Edit JSON fs(Global)', 'Edit JSON web(Global)']) {
       const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
       expect(btn.getAttribute('data-tip')).toBe('Global-level — edit via Advanced raw');
     }
-    // 项目卡编辑钮不受染(可用)
-    expect((screen.getByRole('button', { name: 'Edit fs(Project)' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Edit JSON fs(Project)' }) as HTMLButtonElement).disabled).toBe(false);
     unmount();
   });
 
@@ -2364,7 +2371,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"'));
     expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
     // 切文件(自绘下拉):同步回未读取态(content 清 + 保存禁),随即自动读取新文件
-    conn.rawResp = { content: '{\n  "mcpServers": {}\n}\n' };
+    conn.rawMcpResp = { content: '{\n  "mcpServers": {}\n}\n' }; // file='mcp' 走 mcp 专用应答
     fireEvent.click(screen.getByLabelText('raw file'));
     fireEvent.click(screen.getByRole('option', { name: 'mcp.json' }));
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
@@ -2387,7 +2394,7 @@ describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/
     expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
     expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(true);
     // 在途窗切文件:同步回未读取态(自动重读直通落定 mcp 原文)
-    conn.rawResp = { content: '{\n  "mcpServers": {}\n}\n' };
+    conn.rawMcpResp = { content: '{\n  "mcpServers": {}\n}\n' }; // file='mcp' 走 mcp 专用应答
     fireEvent.click(screen.getByLabelText('raw file'));
     fireEvent.click(screen.getByRole('option', { name: 'mcp.json' }));
     await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('mcpServers'));

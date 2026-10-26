@@ -97,8 +97,8 @@ export function validateMcpRawContent(content: string, target: string): void {
 
 // ---------- G8c T4：/settings/mcp 面模块级助手（两级遮蔽视图行 + 单台真探测装配） ----------
 
-/** GET /settings/mcp 行：装载面 McpServerConfig 的打码视图——env 折叠为键名列表（env 值不回传：
- *  文件本就承载 env 全值，PUT 结构化写全值回写、raw 面另有无打码原文，GET 只供清单呈现）。
+/** GET /settings/mcp 行：装载面 McpServerConfig 的打码视图——env/headers 均折叠为键名列表（值不回传：
+ *  文件本就承载全值，PUT 结构化写全值回写、raw 面另有无打码原文，GET 只供清单呈现）。
  *  transport 归一：装载面缺省条目（无 transport 字段的 stdio）不带该键，视图面统一显形 'stdio' */
 export interface McpServerRow {
   name: string;
@@ -107,6 +107,10 @@ export interface McpServerRow {
   args?: string[];
   url?: string;
   envKeys: string[];
+  /** http/sse 请求头键名列表（值打码——Authorization 等鉴权值不回传） */
+  headerKeys: string[];
+  enabled?: boolean;
+  disabledTools?: string[];
   source: 'project' | 'global';
   shadowed: boolean;
 }
@@ -119,6 +123,9 @@ export function mcpRow(cfg: McpServerConfig, source: 'project' | 'global', shado
     ...(cfg.args !== undefined ? { args: cfg.args } : {}),
     ...(cfg.url !== undefined ? { url: cfg.url } : {}),
     envKeys: Object.keys(cfg.env ?? {}),
+    headerKeys: Object.keys(cfg.headers ?? {}),
+    ...(cfg.enabled !== undefined ? { enabled: cfg.enabled } : {}),
+    ...(cfg.disabledTools !== undefined ? { disabledTools: cfg.disabledTools } : {}),
     source,
     shadowed,
   };
@@ -135,7 +142,7 @@ function probeChildEnv(cfg: McpServerConfig): Record<string, string> {
 }
 
 /** probe 临时传输装配：照 McpHost.makeTransport 三分支抄（探测面无 ToolRegistry/CodedToolError 收束，
- *  plain Error 同文案形；形态字段缺失或 url 非法与连接失败同语义） */
+ *  plain Error 同文案形；形态字段缺失或 url 非法与连接失败同语义）；cfg.headers 随 http/sse 透传（同装配面） */
 function makeProbeTransport(cfg: McpServerConfig): Transport {
   const fail = (msg: string): Error => new Error(`MCP server connection failed (${cfg.name}): ${msg}`);
   switch (cfg.transport ?? 'stdio') {
@@ -144,7 +151,10 @@ function makeProbeTransport(cfg: McpServerConfig): Transport {
       if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
       try {
         const url = new URL(cfg.url);
-        return cfg.transport === 'sse' ? new SSEClientTransport(url) : new StreamableHTTPClientTransport(url);
+        const reqInit = cfg.headers !== undefined ? { requestInit: { headers: cfg.headers } } : undefined;
+        return cfg.transport === 'sse'
+          ? new SSEClientTransport(url, reqInit)
+          : new StreamableHTTPClientTransport(url, reqInit);
       } catch (e) {
         throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -159,13 +169,14 @@ function makeProbeTransport(cfg: McpServerConfig): Transport {
 export const PROBE_CONNECT_TIMEOUT_MS = 10_000;
 
 /** 单台真探测（POST /settings/mcp/probe 核心）：临时 Client → connect（10s 竞速超时，计时器必清）
- *  → serverInfo.name !== 配置名 → identity mismatch（防冒名，与 McpHost 握手同门）→ listTools →
- *  tools 映射 {name, description?}。失败面全收敛 200 {ok:false, error 截 120}：连接失败包
- *  connection failed 前缀（与 McpHost 警告单同文案形）；finally 恒 close——半开传输收口（stdio
- *  子进程残留/SSE EventSource 重连循环都会挂住 daemon 进程） */
+ *  → listTools → tools 映射 {name, description?}。失败面全收敛 200 {ok:false, error 截 120}：
+ *  连接失败包 connection failed 前缀（与 McpHost 警告单同文案形）；finally 恒 close——半开传输收口
+ *  （stdio 子进程残留/SSE EventSource 重连循环都会挂住 daemon 进程）。
+ *  2026-10-26 身份校验降级为软提示（与 McpHost 装配同门裁定）：serverInfo.name ≠ 配置键是主流服务器
+ *  常态（lark-project-mcp 等），不再 ok:false——ok:true + note 上屏，状态圆点恒绿（能列工具即可用） */
 export async function probeMcpServer(
   cfg: McpServerConfig,
-): Promise<{ ok: true; tools: Array<{ name: string; description?: string }> } | { ok: false; error: string }> {
+): Promise<{ ok: true; tools: Array<{ name: string; description?: string }>; note?: string } | { ok: false; error: string }> {
   const clip = (msg: string): string => (msg.length > 120 ? msg.slice(0, 120) : msg);
   let client: Client | undefined;
   try {
@@ -186,13 +197,12 @@ export async function probeMcpServer(
       if (timer !== undefined) clearTimeout(timer);
     }
     const actual = client.getServerVersion()?.name;
-    if (actual !== cfg.name) {
-      return { ok: false, error: clip(`identity mismatch (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'}`) };
-    }
+    const note = actual !== cfg.name ? `identity note: serverInfo.name=${actual ?? '(unknown)'} (accepted)` : undefined;
     const listed = await client.listTools();
     return {
       ok: true,
       tools: listed.tools.map((t) => ({ name: t.name, ...(t.description !== undefined ? { description: t.description } : {}) })),
+      ...(note !== undefined ? { note } : {}),
     };
   } catch (e) {
     return { ok: false, error: clip(e instanceof Error ? e.message : String(e)) };

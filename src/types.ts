@@ -352,7 +352,9 @@ export interface SkillRef {
   params?: Record<string, string>;
 }
 
-/** MCP 服务器装配配置（项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json 的 `mcpServers` 键解析产物，项目级 id 撞名遮蔽全局）。transport 缺省 = stdio；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用 */
+/** MCP 服务器装配配置（项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json 的 `mcpServers` 键解析产物，项目级 id 撞名遮蔽全局）。transport 缺省 = stdio；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用。
+ *  2026-10-26 用户实测第三种主流形态：`{ url, headers, enabled }`（gitnexus 风格）——headers 随 http/sse
+ *  请求透传（Bearer 鉴权面）、enabled=false 整机停用（装配与 guard 名单同跳过）、无 scheme url 容错补 http:// */
 export interface McpServerConfig {
   name: string;
   command?: string;
@@ -361,6 +363,12 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   transport?: 'stdio' | 'http' | 'sse';
   url?: string;
+  /** 仅 http/sse 传输使用：随请求透传的 HTTP 头（Authorization 等），值域 string→string */
+  headers?: Record<string, string>;
+  /** false = 整机停用：装配跳过（工具不注册）；缺省/true = 启用 */
+  enabled?: boolean;
+  /** 停用的工具名清单（短名，非 mcp__server__tool 全名）：装配期过滤不注册 */
+  disabledTools?: string[];
 }
 
 /** Embedding 供给端接缝（阶段四向量知识库：local-json 后端与未来远端实现均实现此接口） */

@@ -1,77 +1,43 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
-import type { McpRow, McpRowInput, McpProbeResult } from '../connection';
+import type { McpRow, McpProbeResult } from '../connection';
 import { SourceBadge } from './SourceBadge';
 
 /**
- * G8c T9 MCP 面板:两级遮蔽清单 + 单台真探测 + 项目级整块写。
- * - mount 拉 conn.mcpServers(root) → 卡列表(name/transport/command+args 或 url/envKeys
- *   键名列表——值打码不回传/SourceBadge;shadowed 全局卡灰显+「被项目遮蔽」标)。
- * - 「测试连接」→ conn.mcpProbe(root, name) → 卡内结果行:ok:true → tools 名折叠列表;
- *   ok:false → error 文本(探测是诊断面,失败即结果——同为行内呈现)。
- * - 「+ 添加服务器」/卡「编辑」→ 受控表单(name/transport select(stdio/http/sse)/command+
- *   args(逗号分隔)/url/env(键=值 行编辑));「保存」=conn.putMcpServers(root, 新清单=
- *   现项目清单替换该名或追加)→ 重拉;400/409 行内错误条。
- * - 写面恒项目级(root 缺省禁写:添加/编辑/删除禁用+提示「选择项目」;全局卡编辑钮同禁——
- *   未遮蔽全局卡编辑=整块原样提交会静默消失、被遮蔽全局卡编辑=替换项目同名卡,均为错路径,
- *   title「全局级经高级 raw 编辑」引流;表单在途时 root 被清空→保存放行空 root 由服务端 400 示出)。
- *   编辑既有卡时 env 值不可知(视图打码)——env 文本域预填「KEY=」空值行提示重填;未填则该
- *   行 env 整体省略(daemon 接受可选 env;原文编辑面是无打码的兜底路径)。
- * - env 丢失确认门(G8c 终审 B):编辑卡原 env 键未全部重填(整块替换会把未重填键从 mcp.json
- *   删掉)→ 表单渲染确认 checkbox「确认移除未重填的 N 个 env 键」,未勾选保存钮 disabled
- *   (save 守卫拦 Enter 提交径);勾选=显式确认丢键放行。
- * - 删除=项目清单滤除该名后整块提交;全局卡(含被遮蔽)不在项目文件内——删除钮禁用。
+ * G8c T9 MCP 面板 → 2026-10-26 四轮改版(用户裁定):
+ * ①状态圆点:挂载即逐台真探测——绿=连接正常(可列工具),红=连接失败,灰=探测中/整机停用;
+ *   身份不符(serverInfo.name ≠ 配置键)降级为软提示行,不再算失败(主流服务器常态,装配面同门)。
+ * ②探测结果内联工具清单:工具数+逐工具开关(disabledTools 短名过滤,装配期不注册即模型不可见)。
+ * ③整机开关(enabled):关=装配跳过(guard 名单同步剔除);开关变更「新会话生效」(mcpServers 是
+ *   Harness 构造期快照,daemon.ts 装配链注释)。
+ * ④JSON 编辑:添加/编辑打开 mcp.json 兼容片段编辑窗(`{ "<name>": {command|url|headers|env|…} }`),
+ *   预填取自 raw 原文(值不打码——GET 视图 env/headers 折键名会丢值);保存=读 raw→改单键→PUT raw
+ *   (validateMcpRawContent 同门校验)。所有结构化变更(开关/删除/编辑)一律走 raw 读改写——
+ *   旧 putMcpServers 整块替换会丢其他行的 env/headers 值(视图打码不可知),raw 路径根治;
+ *   文件含注释/畸形 JSON → 行内报错引流高级 raw 编辑(与 daemon 409 同口径)。
+ * 写面恒项目级(root='' 只读);全局卡只读不变。
  */
 
-/** MCP 面连接面(结构满足即收,App 传整只 Connection) */
+/** MCP 面连接面(结构满足即收,App 传整只 Connection);settingsRaw/putSettingsRaw 签名与 RawPane
+ *  同宽(file: 'settings'|'mcp'——SettingsShell 同时 extends 两面,窄化会撞签名) */
 export interface McpPaneConn {
   mcpServers(root?: string): Promise<{ servers: McpRow[] }>;
   mcpProbe(root: string | undefined, name: string): Promise<McpProbeResult>;
-  putMcpServers(root: string, servers: McpRowInput[]): Promise<void>;
+  settingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp'): Promise<{ content: string | null }>;
+  putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void>;
 }
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-/** 表单态(editing=原卡 name——name 是清单键,编辑期锁定防改名追加成双卡;origEnvKeys=编辑播种的
- *  原卡 env 键名——env 丢失确认门(G8c 终审 B)判据:整块替换写面会把未重填的键从 mcp.json 删掉) */
-interface McpFormState {
-  readonly editing: boolean;
-  readonly name: string;
-  transport: 'stdio' | 'http' | 'sse';
-  command: string;
-  args: string;
-  url: string;
-  env: string;
-  /** 编辑卡原 env 键名(新增/原卡无 env = 空) */
-  readonly origEnvKeys: readonly string[];
-  /** 「确认移除未重填的 env 键」勾选态(有键将丢失时须显式勾选才可保存) */
-  confirmEnvDrop: boolean;
-}
+/** 状态点三态:ok=绿(连接正常)/err=红(连接失败)/probe=灰(探测中)/off=灰环(整机停用,不探测) */
+type McpDotState = 'ok' | 'err' | 'probe' | 'off';
 
-const emptyForm = (): McpFormState => ({ editing: false, name: '', transport: 'stdio', command: '', args: '', url: '', env: '', origEnvKeys: [], confirmEnvDrop: false });
-
-/** env 文本域 → 已重填键集(与 buildInput 同词法:空值行跳过——「KEY=」预填未重填即视同未覆盖) */
-function filledEnvKeys(envText: string): Set<string> {
-  const keys = new Set<string>();
-  for (const line of envText.split('\n')) {
-    const t = line.trim();
-    if (t === '') continue;
-    const eq = t.indexOf('=');
-    if (eq <= 0) continue;
-    if (t.slice(eq + 1).trim() === '') continue;
-    keys.add(t.slice(0, eq).trim());
+const ADD_TEMPLATE = `{
+  "new-server": {
+    "command": "npx",
+    "args": ["-y", "mcp-server"]
   }
-  return keys;
-}
-
-/** 现清单项目行 → 写面行(env 值打码不可知:省略 env 键,不写空值坏文件) */
-function rowToInput(s: McpRow): McpRowInput {
-  const out: McpRowInput = { name: s.name, transport: s.transport };
-  if (s.command !== undefined) out.command = s.command;
-  if (s.args !== undefined) out.args = [...s.args];
-  if (s.url !== undefined) out.url = s.url;
-  return out;
-}
+}`;
 
 export interface McpPaneProps {
   readonly conn: McpPaneConn;
@@ -82,12 +48,14 @@ export interface McpPaneProps {
 export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
   const [servers, setServers] = useState<McpRow[] | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [form, setForm] = useState<McpFormState | null>(null);
-  const [formError, setFormError] = useState('');
-  const [saving, setSaving] = useState(false);
-  /** 探测结果按名落位(卡内结果行);HTTP 层失败也归一为 ok:false 行内呈现 */
+  /** 探测结果按名落位(卡内状态点+工具清单);HTTP 层失败也归一为 ok:false 行内呈现 */
   const [probes, setProbes] = useState<Record<string, McpProbeResult>>({});
   const [probing, setProbing] = useState<string[]>([]);
+  /** JSON 编辑窗:editing=原卡 name(重命名=新键替换旧键);null=添加 */
+  const [jsonEd, setJsonEd] = useState<{ editing: string | null } | null>(null);
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState('');
+  const [saving, setSaving] = useState(false);
   const r = root === '' ? undefined : root;
 
   const load = useCallback((): void => {
@@ -104,95 +72,210 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     load();
   }, [load]);
 
-  const probe = (name: string): void => {
-    setProbing((p) => [...p, name]);
-    conn.mcpProbe(r, name).then(
-      (res) => {
-        setProbing((p) => p.filter((n) => n !== name));
-        setProbes((prev) => ({ ...prev, [name]: res }));
-      },
-      (err: unknown) => {
-        setProbing((p) => p.filter((n) => n !== name));
-        setProbes((prev) => ({ ...prev, [name]: { ok: false, error: errText(err) } }));
-      },
-    );
-  };
+  const probe = useCallback(
+    (name: string): void => {
+      setProbing((p) => (p.includes(name) ? p : [...p, name]));
+      conn.mcpProbe(r, name).then(
+        (res) => {
+          setProbing((p) => p.filter((n) => n !== name));
+          setProbes((prev) => ({ ...prev, [name]: res }));
+        },
+        (err: unknown) => {
+          setProbing((p) => p.filter((n) => n !== name));
+          setProbes((prev) => ({ ...prev, [name]: { ok: false, error: errText(err) } }));
+        },
+      );
+    },
+    [conn, r],
+  );
 
-  /** 表单行 → McpRowInput(空字段省键;args 逗号分隔;env 逐行 K=V) */
-  const buildInput = (f: McpFormState): McpRowInput | string => {
-    const name = f.name.trim();
-    if (name === '') return t('Name is required', '名称不能为空');
-    const out: McpRowInput = { name, transport: f.transport };
-    if (f.transport === 'stdio') {
-      const cmd = f.command.trim();
-      if (cmd === '') return t('stdio transport requires command', 'stdio 传输需要 command');
-      out.command = cmd;
-    } else {
-      const url = f.url.trim();
-      if (url === '') return t(`${f.transport} transport requires url`, `${f.transport} 传输需要 url`);
-      out.url = url;
+  /** 挂载自动探测(状态圆点数据源):每名一次,重拉清单不重探(手动「测试连接」可重探) */
+  const autoProbed = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (servers === null) return;
+    for (const s of servers) {
+      if (s.enabled === false || autoProbed.current.has(s.name)) continue;
+      autoProbed.current.add(s.name);
+      probe(s.name);
     }
-    const args = f.args.split(',').map((a) => a.trim()).filter((a) => a !== '');
-    if (args.length > 0) out.args = args;
-    const env: Record<string, string> = {};
-    for (const line of f.env.split('\n')) {
-      const ln = line.trim();
-      if (ln === '') continue;
-      const eq = ln.indexOf('=');
-      if (eq <= 0) return t(`env line must be KEY=VALUE: ${ln}`, `env 行格式应为 KEY=VALUE: ${ln}`);
-      const v = ln.slice(eq + 1).trim();
-      if (v === '') continue; // KEY= 或 KEY=空白:编辑预填的未重填提示行——空值条目跳过(daemon 原样写盘,{"KEY":""} 是坏文件)
-      env[ln.slice(0, eq).trim()] = v;
-    }
-    if (Object.keys(env).length > 0) out.env = env; // 全部空 → env 键整体省略
-    return out;
-  };
+  }, [servers, probe]);
 
-  /** 编辑卡将有丢失的原 env 键(env 文本域未重填值的键)——确认门渲染与 save 守卫共用 */
-  const lostEnvKeys: readonly string[] = form === null ? [] : form.origEnvKeys.filter((k) => !filledEnvKeys(form.env).has(k));
-  /** env 丢失确认门阻断态(G8c 终审 B):原卡有 env 键且将有键丢失且未勾选确认 */
-  const envDropBlocked = form !== null && form.editing && form.origEnvKeys.length > 0 && lostEnvKeys.length > 0 && !form.confirmEnvDrop;
+  /** raw 读改写单点:读项目 mcp.json 原文→mutator 改 mcpServers→PUT raw(严格 JSON 校验+原子写)。
+   *  注释/畸形文件在此抛错(friendly 文案),由调用方行内示出——引流高级 raw 编辑 */
+  const mutateProjectMcp = useCallback(
+    async (mutate: (srv: Record<string, unknown>) => void): Promise<void> => {
+      const { content } = await conn.settingsRaw('project', root, 'mcp');
+      let doc: Record<string, unknown> = {};
+      if (content !== null) {
+        try {
+          const parsed: unknown = JSON.parse(content);
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) doc = parsed as Record<string, unknown>;
+        } catch {
+          throw new Error(t('mcp.json contains comments or invalid JSON — use the Advanced raw editor', 'mcp.json 含注释或非法 JSON——请用「高级」raw 编辑'));
+        }
+      }
+      const empty = Object.create(null) as Record<string, unknown>;
+      const srv: Record<string, unknown> =
+        doc.mcpServers !== null && typeof doc.mcpServers === 'object' && !Array.isArray(doc.mcpServers)
+          ? (doc.mcpServers as Record<string, unknown>)
+          : empty;
+      mutate(srv);
+      doc.mcpServers = srv;
+      await conn.putSettingsRaw('project', root, 'mcp', `${JSON.stringify(doc, null, 2)}\n`);
+    },
+    [conn, root],
+  );
 
-  const save = (): void => {
-    if (form === null || saving) return; // root='' 在途表单不静默:空 root 放行,服务端 400 行内示出(AgentsPane 同口径)
-    /** env 丢失确认门:钮已 disabled,此守卫拦表单 Enter 提交径(不勾选绝不放行丢键写盘) */
-    if (envDropBlocked) {
-      setFormError(t(`${lostEnvKeys.length} original env keys were not refilled; saving removes them from mcp.json — check the confirmation box below to save`, `有 ${lostEnvKeys.length} 个原 env 键未重填,保存将从 mcp.json 移除——勾选下方确认项后方可保存`));
-      return;
-    }
-    const input = buildInput(form);
-    if (typeof input === 'string') {
-      setFormError(input);
-      return;
-    }
-    /** 新清单 = 现项目清单(编辑:替换该名;新增:追加)——全局卡不入(写面恒项目级) */
-    const current = (servers ?? []).filter((s) => s.source === 'project').map(rowToInput);
-    const next = form.editing ? current.map((s) => (s.name === form.name ? input : s)) : [...current, input];
+  /** 整机开关(写 enabled 显式布尔;root='' 与全局卡禁用) */
+  const toggleServer = (s: McpRow): void => {
+    if (root === '' || s.source !== 'project' || saving) return;
+    const next = s.enabled === false;
     setSaving(true);
-    setFormError('');
-    conn.putMcpServers(root, next).then(
-      () => {
+    mutateProjectMcp((srv) => {
+      const e = srv[s.name];
+      if (e !== null && typeof e === 'object' && !Array.isArray(e)) {
+        (e as Record<string, unknown>).enabled = next;
+      }
+    })
+      .then(() => {
         setSaving(false);
-        setForm(null);
-        load(); // 保存后重拉(两级遮蔽重算)
-      },
-      (err: unknown) => {
+        // 开关即时反馈:probes 保留(重探测可手动);autoProbed 放行重探
+        autoProbed.current.delete(s.name);
+        load();
+      })
+      .catch((err: unknown) => {
         setSaving(false);
-        setFormError(errText(err)); // 400 形状/409 注释守卫原文行内
-      },
-    );
+        setLoadError(errText(err));
+      });
+  };
+
+  /** 逐工具开关:disabledTools 短名增删,空数组整键移除(文件干净) */
+  const toggleTool = (s: McpRow, tool: string): void => {
+    if (root === '' || s.source !== 'project' || saving) return;
+    const cur = new Set(s.disabledTools ?? []);
+    if (cur.has(tool)) cur.delete(tool);
+    else cur.add(tool);
+    setSaving(true);
+    mutateProjectMcp((srv) => {
+      const e = srv[s.name];
+      if (e !== null && typeof e === 'object' && !Array.isArray(e)) {
+        const o = e as Record<string, unknown>;
+        if (cur.size === 0) delete o.disabledTools;
+        else o.disabledTools = [...cur].sort();
+      }
+    })
+      .then(() => {
+        setSaving(false);
+        load();
+      })
+      .catch((err: unknown) => {
+        setSaving(false);
+        setLoadError(errText(err));
+      });
   };
 
   const remove = (name: string): void => {
-    if (root === '') return;
-    const next = (servers ?? []).filter((s) => s.source === 'project' && s.name !== name).map(rowToInput);
-    conn.putMcpServers(root, next).then(
-      () => load(),
-      (err: unknown) => setLoadError(errText(err)),
-    );
+    if (root === '' || saving) return;
+    setSaving(true);
+    mutateProjectMcp((srv) => {
+      delete srv[name];
+    })
+      .then(() => {
+        setSaving(false);
+        load();
+      })
+      .catch((err: unknown) => {
+        setSaving(false);
+        setLoadError(errText(err));
+      });
   };
 
-  const scopeTag = (s: McpRow): string => (s.source === 'project' ? t('Project', '项目') : t('Global', '全局'));
+  /** JSON 编辑窗打开:预填取 raw 原文该卡条目(值不打码;全局卡/无 root 禁用,添加给模板) */
+  const openJson = async (s: McpRow | null): Promise<void> => {
+    if (root === '') return;
+    setJsonError('');
+    if (s === null) {
+      setJsonEd({ editing: null });
+      setJsonText(ADD_TEMPLATE);
+      return;
+    }
+    try {
+      const { content } = await conn.settingsRaw('project', root, 'mcp');
+      let entry: unknown;
+      if (content !== null) {
+        const doc = JSON.parse(content) as { mcpServers?: Record<string, unknown> };
+        entry = doc?.mcpServers?.[s.name];
+      }
+      setJsonEd({ editing: s.name });
+      setJsonText(JSON.stringify({ [s.name]: entry ?? { command: '' } }, null, 2));
+    } catch {
+      // raw 不可解析(注释/畸形):给模板兜底,保存时会再报同错——提示用户走高级 raw
+      setJsonEd({ editing: s.name });
+      setJsonText(JSON.stringify({ [s.name]: { command: '' } }, null, 2));
+      setJsonError(t('mcp.json could not be parsed for prefill (comments?) — the editor starts from a template; saving preserves other entries via raw rewrite', 'mcp.json 预填失败(可能含注释)——编辑窗从模板起步;保存经 raw 改写保留其他条目'));
+    }
+  };
+
+  /** JSON 保存:严格解析→单键(=服务器名)→形态门(command/url 至少其一)→raw 改单键落盘。
+   *  编辑期改名=新键换旧键;其余条目原文保留(env/headers 零丢失) */
+  const saveJson = (): void => {
+    if (jsonEd === null || saving) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      setJsonError(t(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`, `JSON 非法: ${e instanceof Error ? e.message : String(e)}`));
+      return;
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      setJsonError(t('Expected an object: { "<name>": { … } }', '应为对象形态: { "<名称>": { … } }'));
+      return;
+    }
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length !== 1) {
+      setJsonError(t('Exactly one server entry expected (top-level key = server name)', '只能有一个服务器条目(顶层键=服务器名)'));
+      return;
+    }
+    const [name, cfg] = entries[0]!;
+    if (name.trim() === '') {
+      setJsonError(t('Server name must be non-empty', '服务器名不能为空'));
+      return;
+    }
+    if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) {
+      setJsonError(t('Server config must be an object', '服务器配置必须是对象'));
+      return;
+    }
+    const c = cfg as Record<string, unknown>;
+    if (typeof c.command !== 'string' && typeof c.url !== 'string') {
+      setJsonError(t('Config needs "command" (stdio) or "url" (http/sse)', '配置需要 "command"(stdio) 或 "url"(http/sse)'));
+      return;
+    }
+    setSaving(true);
+    setJsonError('');
+    const oldName = jsonEd.editing;
+    mutateProjectMcp((srv) => {
+      if (oldName !== null && oldName !== name) delete srv[oldName]; // 改名=换键
+      srv[name] = cfg;
+    })
+      .then(() => {
+        setSaving(false);
+        setJsonEd(null);
+        autoProbed.current.delete(name);
+        load();
+      })
+      .catch((err: unknown) => {
+        setSaving(false);
+        setJsonError(errText(err));
+      });
+  };
+
+  const dotOf = (s: McpRow): McpDotState => {
+    if (s.enabled === false) return 'off';
+    if (probing.includes(s.name)) return 'probe';
+    const res = probes[s.name];
+    if (res === undefined) return 'probe';
+    return res.ok ? 'ok' : 'err';
+  };
 
   return (
     <section className="sx-settings-form" aria-label="settings pane MCP">
@@ -204,12 +287,28 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
         <ul className="sx-mcp-list">
           {servers.map((s) => {
             const res = probes[s.name];
+            const dot = dotOf(s);
+            const enabled = s.enabled !== false;
             return (
-              <li key={`${s.source}:${s.name}`} className={`sx-mcp-card${s.shadowed ? ' shadowed' : ''}`}>
+              <li key={`${s.source}:${s.name}`} className={`sx-mcp-card${s.shadowed ? ' shadowed' : ''}${enabled ? '' : ' disabled'}`}>
                 <div className="sx-mcp-head">
+                  <span className={`sx-mcp-dot ${dot}`} aria-hidden="true" data-tip={t('Connected', '连接正常')} />
                   <span className="sx-mcp-name">{s.name}</span>
                   <SourceBadge source={s.source} />
                   {s.shadowed && <span className="sx-shadow-tag">{t('Shadowed by project', '被项目遮蔽')}</span>}
+                  {/* 整机开关(用户裁定②):绿=启用,灰=停用(enabled=false 装配跳过);仅项目卡可切 */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enabled}
+                    aria-label={`${t('Enable', '启用')} ${s.name}`}
+                    data-tip={root === '' || s.source !== 'project' ? t('Project-level write required', '需项目级写权限') : t('Takes effect on next session', '新会话生效')}
+                    disabled={root === '' || s.source !== 'project' || saving}
+                    className={`sx-mcp-switch${enabled ? ' on' : ''}`}
+                    onClick={() => toggleServer(s)}
+                  >
+                    <span className="knob" aria-hidden="true" />
+                  </button>
                 </div>
                 <dl className="sx-mcp-meta">
                   <dt>{t('Transport', '传输')}</dt>
@@ -235,6 +334,12 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                       <dd>{s.envKeys.join(', ')}</dd>
                     </>
                   )}
+                  {s.headerKeys.length > 0 && (
+                    <>
+                      <dt>{t('Header keys', '请求头')}</dt>
+                      <dd>{s.headerKeys.join(', ')}</dd>
+                    </>
+                  )}
                 </dl>
                 <div className="sx-card-actions">
                   <button type="button" aria-label={`${t('Test connection', '测试连接')} ${s.name}`} disabled={probing.includes(s.name)} onClick={() => probe(s.name)}>
@@ -242,31 +347,16 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                   </button>
                   <button
                     type="button"
-                    aria-label={`${t('Edit', '编辑')} ${s.name}(${scopeTag(s)})`}
+                    aria-label={`${t('Edit JSON', 'JSON 编辑')} ${s.name}(${s.source === 'project' ? t('Project', '项目') : t('Global', '全局')})`}
                     disabled={s.source !== 'project' || root === ''}
                     data-tip={s.source !== 'project' ? t('Global-level — edit via Advanced raw', '全局级经高级 raw 编辑') : undefined}
-                    onClick={() => {
-                      setForm({
-                        editing: true,
-                        name: s.name,
-                        transport: s.transport,
-                        command: s.command ?? '',
-                        args: s.args !== undefined ? s.args.join(', ') : '',
-                        url: s.url ?? '',
-                        /** env 值视图打码不可知——预填「KEY=」空值行提示重填(raw 面是原文兜底);
-                          origEnvKeys 登记原键(env 丢失确认门判据) */
-                        env: s.envKeys.map((k) => `${k}=`).join('\n'),
-                        origEnvKeys: [...s.envKeys],
-                        confirmEnvDrop: false,
-                      });
-                      setFormError('');
-                    }}
+                    onClick={() => void openJson(s)}
                   >
-                    {t('Edit', '编辑')}
+                    {t('Edit JSON', 'JSON 编辑')}
                   </button>
                   <button
                     type="button"
-                    aria-label={`${t('Delete', '删除')} ${s.name}(${scopeTag(s)})`}
+                    aria-label={`${t('Delete', '删除')} ${s.name}(${s.source === 'project' ? t('Project', '项目') : t('Global', '全局')})`}
                     disabled={s.source !== 'project' || root === ''}
                     data-tip={s.source !== 'project' ? t('Global card not in project file (edit globally via Advanced)', '全局卡不在项目文件内(全局编辑走「高级」)') : undefined}
                     onClick={() => remove(s.name)}
@@ -276,13 +366,39 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
                 </div>
                 {res !== undefined &&
                   (res.ok ? (
-                    <details className="sx-mcp-probe">
-                      <summary>{t(`Connected · ${res.tools.length} tools`, `连接正常 · 工具 ×${res.tools.length}`)}</summary>
-                      <ul>
-                        {res.tools.map((t) => (
-                          <li key={t.name}>{t.name}</li>
-                        ))}
+                    <details className="sx-mcp-probe" open>
+                      <summary>
+                        {t(`Connected · ${res.tools.length} tools`, `连接正常 · 工具 ×${res.tools.length}`)}
+                        {s.disabledTools !== undefined && s.disabledTools.length > 0 && (
+                          <span className="sx-mcp-offcount">{t(` · ${s.disabledTools.length} disabled`, ` · 停用 ${s.disabledTools.length}`)}</span>
+                        )}
+                      </summary>
+                      {res.note !== undefined && <p className="sx-mcp-note">{res.note}</p>}
+                      <ul className="sx-mcp-tools">
+                        {res.tools.map((tl) => {
+                          const off = (s.disabledTools ?? []).includes(tl.name);
+                          return (
+                            <li key={tl.name} className="sx-mcp-tool">
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={!off}
+                                aria-label={`${tl.name}`}
+                                data-tip={tl.description !== undefined && tl.description !== '' ? tl.description : undefined}
+                                disabled={root === '' || s.source !== 'project' || saving}
+                                className={`sx-mcp-switch${off ? '' : ' on'}`}
+                                onClick={() => toggleTool(s, tl.name)}
+                              >
+                                <span className="knob" aria-hidden="true" />
+                              </button>
+                              <span className={`sx-mcp-tool-name${off ? ' off' : ''}`}>{tl.name}</span>
+                            </li>
+                          );
+                        })}
                       </ul>
+                      {(root !== '' && s.source === 'project') && (
+                        <p className="sx-mcp-hint">{t('Toggles take effect on next session', '开关变更对新会话生效')}</p>
+                      )}
                     </details>
                   ) : (
                     <p className="home-error" role="alert">{res.error}</p>
@@ -292,64 +408,36 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
           })}
         </ul>
       )}
-      {form !== null && (
+      {jsonEd !== null && (
         <form
           className="sx-card-form"
           onSubmit={(e) => {
             e.preventDefault();
-            save();
+            saveJson();
           }}
         >
-          <h3>{form.editing ? t(`Edit ${form.name}`, `编辑 ${form.name}`) : t('Add server (project)', '添加服务器(项目级)')}</h3>
-          <label>
-            {t('Name', '名称')}
-            <input aria-label="mcp name" value={form.name} readOnly={form.editing} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </label>
-          <label>
-            {t('Transport', '传输')}
-            <select aria-label="mcp transport" value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value as McpFormState['transport'] })}>
-              <option value="stdio">stdio</option>
-              <option value="http">http</option>
-              <option value="sse">sse</option>
-            </select>
-          </label>
-          <label>
-            command(stdio)
-            <input aria-label="mcp command" value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} placeholder="npx" />
-          </label>
-          <label>
-            {t('args (comma-separated)', 'args(逗号分隔)')}
-            <input aria-label="mcp args" value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} placeholder="-y, mcp-server" />
-          </label>
-          <label>
-            url(http/sse)
-            <input aria-label="mcp url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://…" />
-          </label>
-          <label>
-            {t('env (one KEY=VALUE per line)', 'env(逐行 KEY=VALUE)')}
-            <textarea aria-label="mcp env" value={form.env} onChange={(e) => setForm({ ...form, env: e.target.value })} rows={3} spellCheck={false} />
-          </label>
-          {form.editing && form.origEnvKeys.length > 0 && lostEnvKeys.length > 0 && (
-            <label className="sx-check-row">
-              <input
-                type="checkbox"
-                aria-label="confirm env drop"
-                checked={form.confirmEnvDrop}
-                onChange={(e) => setForm({ ...form, confirmEnvDrop: e.target.checked })}
-              />
-              {t(`Confirm removal of ${lostEnvKeys.length} unfilled env keys`, `确认移除未重填的 ${lostEnvKeys.length} 个 env 键`)}
-            </label>
-          )}
-          {formError !== '' && <p className="home-error" role="alert">{formError}</p>}
+          <h3>{jsonEd.editing !== null ? t(`Edit ${jsonEd.editing} (JSON)`, `编辑 ${jsonEd.editing}(JSON)`) : t('Add server (project, JSON)', '添加服务器(项目级,JSON)')}</h3>
+          <p className="sx-mcp-hint">
+            {t('mcp.json-compatible fragment: top-level key = server name. Supported fields: command/args/env (stdio), url/transport/headers/env (http·sse), enabled, disabledTools.', 'mcp.json 兼容片段:顶层键=服务器名。支持字段:command/args/env(stdio)、url/transport/headers/env(http·sse)、enabled、disabledTools。')}
+          </p>
+          <textarea
+            aria-label="mcp json editor"
+            className="sx-mcp-json"
+            value={jsonText}
+            onChange={(e) => setJsonText(e.target.value)}
+            rows={16}
+            spellCheck={false}
+          />
+          {jsonError !== '' && <p className="home-error" role="alert">{jsonError}</p>}
           <div className="sx-card-actions">
-            <button type="submit" disabled={saving || envDropBlocked}>
+            <button type="submit" disabled={saving}>
               {t('Save', '保存')}
             </button>
             <button
               type="button"
               onClick={() => {
-                setForm(null);
-                setFormError('');
+                setJsonEd(null);
+                setJsonError('');
               }}
             >
               {t('Cancel', '取消')}
@@ -357,7 +445,7 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
           </div>
         </form>
       )}
-      <button type="button" className="sx-add-button" disabled={root === ''} onClick={() => { setForm(emptyForm()); setFormError(''); }}>
+      <button type="button" className="sx-add-button" disabled={root === ''} onClick={() => void openJson(null)}>
         {t('+ Add server', '+ 添加服务器')}
       </button>
     </section>

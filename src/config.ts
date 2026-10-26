@@ -70,25 +70,35 @@ export function parseMcpJsonFile(p: string): McpServerConfig[] {
   const servers: McpServerConfig[] = [];
   for (const [name, cfg] of Object.entries(entry as Record<string, unknown>)) {
     if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) continue;
-    const c = cfg as { command?: unknown; args?: unknown; env?: unknown; transport?: unknown; url?: unknown };
+    const c = cfg as { command?: unknown; args?: unknown; env?: unknown; transport?: unknown; url?: unknown; headers?: unknown; enabled?: unknown; disabledTools?: unknown };
     if (c.transport !== undefined && !(VALID_TRANSPORTS as readonly string[]).includes(c.transport as string)) continue;
     const transport = VALID_TRANSPORTS.includes(c.transport as (typeof VALID_TRANSPORTS)[number])
       ? (c.transport as McpServerConfig['transport'])
       : undefined;
-    const url = typeof c.url === 'string' ? c.url : undefined;
+    /** 无 scheme 容错（2026-10-26 用户实测 gitnexus 形态 `url:"192.168.66.73:3000/api/mcp"`）：
+     *  缺 http(s):// 前缀即补 http://（主机:端口 形态的主流通配；new URL 对裸 host:port 会把
+     *  host 段误判为 protocol，必须先归一）。畸形 url（含空白等）不在此判——交由装配/探测面
+     *  new URL 的 Invalid url 报警，此处只做前缀补全 */
+    const normUrl = (u: string): string => (/^https?:\/\//i.test(u) ? u : `http://${u}`);
+    const rawUrl = typeof c.url === 'string' && c.url.trim() !== '' ? c.url.trim() : undefined;
+    const url = rawUrl !== undefined ? normUrl(rawUrl) : undefined;
     const command = typeof c.command === 'string' ? c.command : undefined;
     const env = strRecord(c.env);
     const args = strArr(c.args);
+    const headers = strRecord(c.headers);
+    const enabled = typeof c.enabled === 'boolean' ? c.enabled : undefined;
+    const disabledTools = strArr(c.disabledTools);
     if (transport === 'http' || transport === 'sse') {
       if (!url) continue;
-      servers.push({ name, url, transport, ...(env ? { env } : {}) });
+      servers.push({ name, url, transport, ...(env ? { env } : {}), ...(headers ? { headers } : {}), ...(enabled !== undefined ? { enabled } : {}), ...(disabledTools ? { disabledTools } : {}) });
     } else if (transport === 'stdio') {
       if (!command) continue;
-      servers.push({ name, command, ...(args ? { args } : {}), ...(env ? { env } : {}), transport });
-    } else if (url && /^https?:\/\//.test(url)) {
-      servers.push({ name, url, transport: 'http', ...(env ? { env } : {}) });
+      servers.push({ name, command, ...(args ? { args } : {}), ...(env ? { env } : {}), transport, ...(enabled !== undefined ? { enabled } : {}), ...(disabledTools ? { disabledTools } : {}) });
+    } else if (url) {
+      // 无 transport 的 url 条目：一律 http 流派（无 scheme 已补全，原 https?:// 显式前缀原样）
+      servers.push({ name, url, transport: 'http', ...(env ? { env } : {}), ...(headers ? { headers } : {}), ...(enabled !== undefined ? { enabled } : {}), ...(disabledTools ? { disabledTools } : {}) });
     } else if (command) {
-      servers.push({ name, command, ...(args ? { args } : {}), ...(env ? { env } : {}) });
+      servers.push({ name, command, ...(args ? { args } : {}), ...(env ? { env } : {}), ...(enabled !== undefined ? { enabled } : {}), ...(disabledTools ? { disabledTools } : {}) });
     }
   }
   return servers;
