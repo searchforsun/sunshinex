@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseSettingsFile, loadGlobalSettings, loadProjectSettings } from './settings';
+import { userConfigDir } from './env';
 
 /** 插件 manifest 规范（manifestVersion 1）解析与类型单点——两级装载、MCP 名单合成、校验 CLI 同源消费。
  *  校验规则 artifact：plugins/schema/plugin-manifest.schema.json（draft-07，随包分发供编辑器补全/第三方预检）；
@@ -205,4 +207,75 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
     ...(config !== undefined ? { config } : {}),
   };
   return { manifest, warnings, errors };
+}
+
+/** 包根（dist/config 两级上溯）：内置插件根缺省锚（plugins/ 随包分发） */
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
+
+/** 装载产物：manifest + 落位与启用态裁决（spec §2 插件装载面）。
+ *  - enabled：defaultEnabled 作初值，settings 语义键 plugins[id].enabled 在场即覆盖（两级合并见 loadEffectivePlugins）；
+ *  - config：settings 语义键 plugins[id].config 原值（浅对象；manifest.config 是其镜像载体，缺省空对象）；
+ *  - platformSupported：platforms 缺省全平台；不匹配 = 不可用（消费面据此剔除——设置页置灰、装配跳过），装载层只标记不丢弃；
+ *  - warnings：该插件 manifest 解析告警原值（顶层聚合警告带 `[builtin:id]`/`[user:id]` 前缀，见 loadEffectivePlugins）。 */
+export interface EffectivePlugin {
+  manifest: PluginManifest;
+  dir: string;
+  source: 'builtin' | 'user';
+  enabled: boolean;
+  config: Record<string, unknown>;
+  platformSupported: boolean;
+  warnings: string[];
+}
+
+/**
+ * 两级装载 + 启用态合并单点（内置 → 用户，MCP 名单合成/技能装载链/设置页同源消费）：
+ * - 装载顺序即遮蔽序：内置先扫、用户后扫，同 id 用户级整体覆盖内置级并告警点名（对标 CC 插件层级语义）；
+ * - 启用态两级合并：全局 settings 语义键 plugins（{<id>:{enabled?,config?}}）在前、项目级在后，
+ *   记录级整面替换（项目记录整体遮蔽全局记录，config 同面合并不深并）；settings 未配置 → defaultEnabled 兜底；
+ * - 容错纪律沿 parsePluginManifest：目录缺失静默空表、manifest 非法整插件跳过、settings 坏记录告警忽略该记录
+ *   （宁可少配不可错配）；settings 文档畸形 JSON 不在此兜——parseSettingsFile fail-fast 抛错，与装载链口径一致；
+ * - 可测性注入面：builtinRoot/userRoot/platform/settingsReader（免真写 HOME 与平台断言跳变），
+ *   生产缺省 REPO_ROOT/plugins + userConfigDir()/plugins + process.platform + parseSettingsFile 读两级 settings。
+ *   settingsReader 注入的是**整个 settings 文档对象**（null = 该级缺档），语义键 `.plugins` 由本函数提取。
+ */
+export function loadEffectivePlugins(projectRoot: string | undefined, opts: { builtinRoot?: string; userRoot?: string; settingsReader?: (scope: 'global' | 'project') => Record<string, unknown> | null; platform?: NodeJS.Platform } = {}): { plugins: EffectivePlugin[]; warnings: string[] } {
+  const builtinRoot = opts.builtinRoot ?? path.join(REPO_ROOT, 'plugins');
+  const userRoot = opts.userRoot ?? path.join(userConfigDir(), 'plugins');
+  const platform = opts.platform ?? process.platform;
+  const warnings: string[] = [];
+  const scan = (root: string, source: 'builtin' | 'user'): EffectivePlugin[] => {
+    if (!fs.existsSync(root)) return [];
+    const out: EffectivePlugin[] = [];
+    for (const d of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      const dir = path.join(root, d.name);
+      const r = parsePluginManifest(dir);
+      warnings.push(...r.warnings.map((w) => `[${source}:${d.name}] ${w}`));
+      if (r.manifest === null) { warnings.push(...r.errors.map((e) => `[${source}:${d.name}] ${e}`)); continue; }
+      out.push({ manifest: r.manifest, dir, source, enabled: r.manifest.defaultEnabled === true, config: {}, platformSupported: (r.manifest.platforms ?? []).length === 0 || (r.manifest.platforms ?? []).includes(platform), warnings: r.warnings });
+    }
+    return out;
+  };
+  const byId = new Map<string, EffectivePlugin>();
+  for (const p of scan(builtinRoot, 'builtin')) byId.set(p.manifest.id, p);
+  for (const p of scan(userRoot, 'user')) { const prev = byId.get(p.manifest.id); if (prev !== undefined) warnings.push(`[user] 插件 ${p.manifest.id} 遮蔽内置版`); byId.set(p.manifest.id, p); }
+  // 启用态：global ← project 两级合并（settings 语义键 plugins：{<id>:{enabled?,config?}}）
+  const read = (scope: 'global' | 'project'): Record<string, unknown> => {
+    const doc = opts.settingsReader !== undefined ? opts.settingsReader(scope)
+      : scope === 'global' ? parseSettingsFile(loadGlobalSettings()) : projectRoot === undefined ? null : parseSettingsFile(loadProjectSettings(projectRoot));
+    const v = doc?.plugins;
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  };
+  const merged = { ...read('global'), ...read('project') };
+  const plugins = [...byId.values()].map((p) => {
+    const ov = merged[p.manifest.id];
+    let enabled = p.enabled; let config: Record<string, unknown> = {};
+    if (typeof ov === 'object' && ov !== null && !Array.isArray(ov)) {
+      const o = ov as { enabled?: unknown; config?: unknown };
+      if (typeof o.enabled === 'boolean') enabled = o.enabled;
+      if (typeof o.config === 'object' && o.config !== null && !Array.isArray(o.config)) config = o.config as Record<string, unknown>;
+    } else if (ov !== undefined) warnings.push(`plugins.${p.manifest.id} 须为对象，已忽略`);
+    return { ...p, enabled, config };
+  });
+  return { plugins, warnings };
 }
