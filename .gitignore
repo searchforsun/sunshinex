@@ -53,3 +53,4 @@ eval-results/
 # ZCode 工作流草稿/插件工作区数据(运行时产物不入库)
 .zcode/
 .data-visual/
+.data-visual2/

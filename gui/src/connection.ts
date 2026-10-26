@@ -135,7 +135,7 @@ export interface Connection {
   sessionInterrupt(id: string): Promise<void>;
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
    *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
-  sessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }>;
+  sessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }>;
   /** POST /approval/:pid {decision}（G4）：decision ∈ 'allow'|'always'|'deny'——回执寻址用帧
    *  顶层 pid（非 req.id）；未知/已决/kind 不符 pid 404（GUI 侧失败也移卡） */
   replyApproval(pid: string, decision: string): Promise<void>;
@@ -272,9 +272,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
   }
 
   /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗） */
-  async function fetchSessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }> {
+  async function fetchSessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }> {
     const gen = transport.generation();
-    const resp = await getJson<SnapshotResponse & { lastSeq: number }>(`/session/${encodeURIComponent(id)}/snapshot`);
+    const q = page !== undefined ? `?before=${page.before}&limit=${page.limit}` : '';
+    const resp = await getJson<SnapshotResponse & { lastSeq: number }>(`/session/${encodeURIComponent(id)}/snapshot${q}`);
     if (gen === transport.generation() && resp.lastSeq > (transport.lastSeqBySession.get(id) ?? 0)) {
       transport.lastSeqBySession.set(id, resp.lastSeq);
     }
@@ -468,8 +469,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
     sessionInterrupt(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/interrupt`);
     },
-    sessionSnapshot(id: string): Promise<SnapshotResponse & { lastSeq: number }> {
-      return fetchSessionSnapshot(id);
+    sessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }> {
+      return fetchSessionSnapshot(id, page);
     },
     replyApproval(pid: string, decision: string): Promise<void> {
       return post(`/approval/${encodeURIComponent(pid)}`, { decision });

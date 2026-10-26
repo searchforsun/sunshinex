@@ -75,6 +75,9 @@ export interface ChatState {
   /** 种子代次(reseed 恒换新值):与 structureVersion 并用作派生 memo 依赖,防 sv 等值碰撞
    *  漏检重置——seed 恒置 1,旧态 sv=1 时 reseed 后原始类型依赖按不等比较不触发重算 */
   seedGen: number;
+  /** 2026-10-26 三期历史链:尾窗播种元数据——hasMore=true 时后台加载链逐页 prepend 补老;
+   *  complete=头部已到;failed=连续重试败(指示器可点重试)。undefined=旧 daemon(无分页) */
+  history?: { total: number; oldestSeq: number; hasMore: boolean; complete: boolean; failed?: boolean };
 }
 
 export function initialChatState(): ChatState {

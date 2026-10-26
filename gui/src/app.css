@@ -2255,6 +2255,27 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 /* 2026-10-25 尾块恒进解析器(上层统一裁定:实时渲染不枚举结构前缀),纯文本直出分支退役——本条 <pre> 回零规则随之删除 */
+/* ===== 2026-10-26 对话刻度导航条(左侧 minimap):每用户气泡一枚刻度,hover 伸长滑出
+   气泡预览(过长省略),点击滚动到气泡;垂直居中+占流区高 80%,超出条内滚(滚动条隐);
+   余量不足自动隐藏(组件内 RO 实测 padding) ===== */
+.sx-rail { position: sticky; top: 0; height: 0; overflow: visible; pointer-events: none; z-index: 5; }
+.sx-rail-inner {
+  position: absolute; left: 0; top: 10%; height: 80%; width: 40px;
+  transform: translateX(-100%); /* 锚内容列左缘向左展开:transform 不产生横向滚动域 */
+  display: flex; flex-direction: column; align-items: flex-end;
+  padding-right: 10px; overflow-y: auto; scrollbar-width: none; pointer-events: none;
+}
+.sx-rail-inner::-webkit-scrollbar { display: none; }
+.sx-rail-list { margin: auto 0; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.sx-rail-tick {
+  pointer-events: auto; display: flex; align-items: center; justify-content: flex-end;
+  padding: 3px 0; border: none; background: transparent; cursor: pointer;
+  flex: none; max-width: 100%;
+}
+.sx-rail-bar { display: block; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fg) 30%, transparent); flex: none; transition: background var(--dur-basic) var(--ease-enter), width var(--dur-basic) var(--ease-enter); }
+.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { background: var(--accent); width: 18px !important; }
+.sx-rail-flash { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); transition: outline-color 0.9s ease; outline-color: transparent; }
+
 /* 2026-10-26 性能轮:离屏条目跳过渲染排布(CSS 原生虚拟化,Chromium 引擎)——长会话数百行
    代码块/表格离屏不再参与 layout/paint;contain-intrinsic-size auto 先用估算高、渲染过一次
    记住真高(回滚不跳)。jsdom 不实现该属性,测试面零影响 */

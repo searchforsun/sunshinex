@@ -93,6 +93,11 @@ export interface SnapshotResponse {
   /** 内核流式游标(P4 归位):快照时刻 openRun/openSeg(-1 无)——seed 直用,客户端不再从条目反推 */
   openRun?: number;
   openSeg?: number;
+  /** 2026-10-26 三期分页(恒在):total=daemon 内核条目全量数;oldestSeq=本页最旧 seq(向前翻页
+   *  游标);hasMore=本页之前仍有更早条目。分页响应剥 result.full(按需走 observation 端点) */
+  total?: number;
+  oldestSeq?: number;
+  hasMore?: boolean;
   board: TaskBoardState;
   delegations: Delegation[];
   status: 'idle' | 'running';

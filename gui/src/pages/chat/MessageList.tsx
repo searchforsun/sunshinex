@@ -17,6 +17,7 @@ const RENDER_WINDOW_STEP = 300;
 import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
+import { ChatRail } from './ChatRail';
 
 /** 会话流列表(D32 第六批批F-3 自 Chat.tsx 平移):空态/按日分组/段折叠聚合
  *  (ToolSegBlock)/run·user·assistant 行派发/运行状态行。滚动容器 ref 与贴底旁路 ref 留宿主
@@ -286,6 +287,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
         maybeReplayEarlier();
       }}
     >
+        {/* 2026-10-26 对话刻度导航条:左侧 sticky 悬浮(不参与内容流),余量自适应显隐 */}
+        <ChatRail entries={visible} hiddenCount={hiddenCount} chatScrollRef={chatScrollRef} onEarlier={showEarlier} sideChat={sideChat} />
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
             <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
