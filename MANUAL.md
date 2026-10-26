@@ -161,6 +161,11 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   "sandbox": "on",                                   // Linux 下 exec 经 Landlock 内核围栏；off 一键关
   "isolation": "",                                   // 隔离口径声明 landlock|container|host；留空自动探测（selfcheck 上屏）
 
+  // ── 插件 ──────────────────────────────────────────────
+  "plugins": {                                       // 插件启用态与配置（见 6.4）
+    "browser-use": { "enabled": true, "config": {} } // enabled 缺省 = manifest defaultEnabled（缺省 false）；config 原样透传插件
+  },
+
   // ── 密钥（只写这里）──────────────────────────────────
   "env": {
     "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（必填；providers 各源缺专用密钥时也回退这里）
@@ -201,6 +206,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ~/.sunshinex/
 ├── settings.json               # 全局配置（第二节）
 ├── mcp.json                    # 全局 MCP 服务器登记（被项目级 .sunshinex/mcp.json 同名遮蔽）
+├── plugins/<id>/               # 用户级插件（plugin.json + 资源；见 6.4）
 ├── SUNSHINE.md                 # 个人全局约定，跨所有项目生效（对标 ~/.claude/CLAUDE.md）
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
@@ -430,6 +436,34 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `isolation` | 隔离口径 `landlock` / `container` / `host`，留空自动探测（selfcheck 上屏） |
 
 known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类命令在沙箱内失败，先设置 `SUNSHINEX_SANDBOX=off` 重试即可恢复，并向上游回报该环境信息。
+
+### 6.4 插件（plugins）
+
+插件把进程外 MCP server（浏览器操作、桌面操作等能力）包成可开关的治理单元：manifest 声明贡献什么、默认开不开、工具分几级审批。安装 = 把插件目录放进插件根，卸载 = 删除；`sunshinex plugins list` 看装载结果，`sunshinex plugins validate <目录>` 校验（开发细节见 `docs/PLUGIN-DEV.md`）。
+
+| 根 | 位置 | 说明 |
+| --- | --- | --- |
+| 内置 | `<安装目录>/plugins/<id>/` | 随包分发 |
+| 用户级 | `~/.sunshinex/plugins/<id>/` | 自装插件；同 id 遮蔽内置 |
+
+**启用/禁用**（改完对新会话生效，运行中会话不热切换）：
+
+| 方式 | 操作 |
+| --- | --- |
+| GUI | 设置页「插件」卡片开关（平台不支持置灰；manifest 非法的插件在 pane 尾以告警徽标列出） |
+| 手编 settings.json | `plugins` 语义键（见第二节字段表）：`"plugins": { "<id>": { "enabled": true, "config": {} } }`；两级文件项目遮蔽全局，未配置的插件用 manifest `defaultEnabled`（缺省关） |
+
+`config` 原样透传给插件（装配期与 manifest 缺省合并后展开为启动参数/环境变量），`configSchema` 各键含义见设置页展示。
+
+**安全与信任模型**：插件作者在 manifest 里对工具自声明三类风险，审批按声明驱动（`permissions.deny` 规则可随时覆盖，规则写法 `mcp__<server>__*`）：
+
+| 声明类别 | 语义 | 审批行为 |
+| --- | --- | --- |
+| `act` | 有副作用的动作 | 任何权限档都弹审批（`full-access` 也不例外）；`read-only` 档直接拒 |
+| `confirm` | 读但隐私敏感 / 高频 | 走常规审批，选 `a` 本会话一次放行 |
+| `observe` | 纯只读 | 各档位直放 |
+
+未声明安全类别的插件工具走常规 MCP 审批；总开关 = 插件开关——禁用即工具不存在。**安装第三方插件 = 信任其进程**（以你的用户身份运行），只装可信来源；内置插件缺省全部关闭，显式开启才生效。
 
 ## 七、中断与运行控制
 
