@@ -591,17 +591,22 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.entry-user .user-bubble blockquote { margin: 0; padding: 0; border: none; }
 /* 复制钮 hover 浮现:绝对定位挂气泡下沿——不占布局高度(原 flex 占位即用户消息"下边距大"的根因) */.entry-user .user-actions {
   position: absolute;
-  /* 2026-10-26 六轮:挂气泡下沿内侧(top 100%-2px→100%-26px,right 0→4px)——旧位悬挂在条目盒外,
-    与后续条目(content-visibility 原子层)相交即被整层盖住/命中被吞(Chromium cv:auto 命中怪癖,
-    桌面 CDP+浏览器双侧实测);收进盒内后 hover 层内自洽,永不被邻条遮 */
-  top: calc(100% - 26px);
-  right: 4px;
+  /* 2026-10-26 七轮:回到气泡下方(用户裁定「应该显示在气泡下面」;六轮收进盒内压住了气泡文字);
+    遮挡由 .entry-user:hover 提层(z-index:3)解决——hover 态整条浮在后续条目之上,按钮随层可见 */
+  top: calc(100% - 2px);
+  right: 0;
   display: flex;
   gap: 4px;
   opacity: 0;
   transition: opacity var(--dur-basic) var(--ease-enter);
   z-index: 3;
-}.entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
+}
+/* 2026-10-26 七轮根修:.entry 的 content-visibility(auto) 自带 paint containment——后代超出
+   条目盒的部分一律不绘制也不命中,气泡下方悬挂的动作钮被自己的条目裁掉(z-index 层叠修复
+   无效的真正原因:这不是层叠是裁剪)。用户气泡都是短条目,cv 豁免无性能损失;动作钮回到
+   气泡下方原位,z 提层保不受邻条压盖 */
+.entry.entry-user { content-visibility: visible; } /* 双类提特异性:压缩包里 .entry{cv:auto} 在更晚位置有第二份,单类同特异性按序会输 */
+.entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
 /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」根修:.entry 的 content-visibility(auto=paint
    containment) 让每条目自成 stacking context,兄弟按 DOM 序压盖——内部 z-index 出不去,气泡下方
    悬浮动作钮被后续条目整层盖住。hover/focus 时整条提层(flex item 可用 z-index):3>邻条 auto */
@@ -2414,4 +2419,6 @@ input.sx-setting-input { width: 100%; }
 .entry li > ul, .entry li > ol { margin: 4px 0; } /* 嵌套列表贴主项,不吃满档 */
 .entry pre { margin: 14px 0; }
 .entry table { margin: 14px 0; }
+.table-wrap table { margin: 0; } /* 包内表格由 wrap 承担外距(16px)——本档 .entry table 14px 排其后会覆写 margin:0 造双倍边距,此处归零 */
+.table-wrap { margin: 16px 0; }
 .entry hr { margin: 16px 0; }
