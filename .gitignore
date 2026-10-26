@@ -54,3 +54,6 @@ eval-results/
 .zcode/
 .data-visual/
 .data-visual2/
+
+# M3 computer-use 子包（pnpm workspace）：TS 编译产物就地落 server/（server/index.js 为 manifest 直启入口，产物不入库）
+plugins/computer-use/server/**/*.js

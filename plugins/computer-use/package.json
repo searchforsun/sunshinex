@@ -1,0 +1,22 @@
+{
+  "name": "sunshinex-plugin-computer-use",
+  "version": "0.1.0",
+  "private": true,
+  "description": "sunshinex 内置插件：Windows 桌面自动化 MCP server（Node 协议面 + PowerShell worker 执行器）",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.9.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test server/test/scale.test.js",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -168,6 +168,19 @@ importers:
         specifier: 0.0.83
         version: 0.0.83
 
+  plugins/computer-use:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.5.4)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   shell:
     devDependencies:
       '@types/node':
