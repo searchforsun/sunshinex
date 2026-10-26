@@ -1596,7 +1596,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
-    expect(screen.queryByLabelText('task board')).toBeNull();
+    expect(document.querySelector('[aria-label="task board"]')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留(裸 DOM 查询,inert 子树对 a11y 查询不可达)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
