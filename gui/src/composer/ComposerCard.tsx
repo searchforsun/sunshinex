@@ -103,7 +103,7 @@ export function ComposerCard({
         <div className="sx-img-strip" aria-label={t('Attached images', '附件图片')}>
           {images!.map((src, i) => (
             <div key={`${i}:${src.slice(-24)}`} className="sx-img-thumb">
-              <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} decoding="async" style={{ border: '1px solid var(--border)' }} onClick={() => onImageOpen?.(src)} />
+              <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} decoding="async" onClick={() => onImageOpen?.(src)} />
               {onRemoveImage !== undefined && (
                 <button
                   type="button"

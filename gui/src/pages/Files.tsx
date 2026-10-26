@@ -261,25 +261,23 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
               )}
             </div>
             {isImage ? (
-              /* 2026-10-26 侧栏预览:图片文件 dataURL 直显——视口双向居中;透明像素垫业界标准
-                 棋盘格背景(PS/Figma/VS Code 同款 conic-gradient 形态)界定图片实际范围 */
+              /* 2026-10-26 侧栏预览:棋盘格垫底铺满整个预览区(用户裁定,PS 画布口径),图片视口
+                 双向居中其上——透明像素与图片范围由整面棋盘格衬出 */
               <div
                 aria-label="file content"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 200px)', padding: 12 }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: 'calc(100vh - 200px)', padding: 12,
+                  backgroundImage: 'conic-gradient(#00000016 0 25%, transparent 0 50%, #00000016 0 75%, transparent 0)',
+                  backgroundSize: '16px 16px',
+                }}
               >
                 <img
                   src={`data:${load.file.mime};base64,${load.file.data}`}
                   alt={load.file.path}
                   loading="lazy"
                   decoding="async"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: 'calc(100vh - 260px)',
-                    objectFit: 'contain',
-                    display: 'block',
-                    backgroundImage: 'conic-gradient(#00000022 0 25%, transparent 0 50%, #00000022 0 75%, transparent 0)',
-                    backgroundSize: '16px 16px',
-                  }}
+                  style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 260px)', objectFit: 'contain', display: 'block' }}
                 />
               </div>
             ) : preview && isMd ? (

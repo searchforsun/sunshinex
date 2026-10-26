@@ -585,7 +585,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G9-B3 会话流(spec §3):用户右胶囊/日期分隔/流区限宽 ===== */.entry-user { position: relative; display: flex; flex-direction: column; align-items: flex-end; font-weight: 400; }.entry-user .user-bubble {
   max-width: 80%;
-  background: var(--bubble-user);
+  background: transparent; /* 2026-10-26 用户裁定:用户气泡去灰底(图片已分离到气泡外,文字裸排) */
   border-radius: var(--radius-composer); /* G14.203/G14.204 全局对标输入框(四轮定版回统一) */
   padding: 8px 12px;
 }.entry-user .user-bubble blockquote { margin: 0; padding: 0; border: none; }
@@ -2321,21 +2321,22 @@ input.sx-setting-input { width: 100%; }
   background: color-mix(in srgb, var(--fg) 32%, transparent); flex: none;
   transition: width var(--dur-basic) var(--ease-enter), height var(--dur-basic) var(--ease-enter), background var(--dur-basic) var(--ease-enter);
 }
-/* hover 弧形:本条变长变实,上下相邻跟着变长(过渡带) */
-.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { width: 18px; height: 2.5px; background: var(--fg); }
+/* 当前滚动位置正对的刻度:加重显色(实色+2px)但不加长——长度变化只在 hover(九轮裁定) */
+.sx-rail-tick.active .sx-rail-bar { background: var(--fg); height: 2px; }
+/* hover 弧形:本条变长为默认两倍(24px),上下相邻 1.5 倍(18px)成弧形过渡 */
+.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { width: 24px; height: 2.5px; background: var(--fg); }
 .sx-rail-tick:hover + .sx-rail-tick .sx-rail-bar,
-.sx-rail-tick:has(+ .sx-rail-tick:hover) .sx-rail-bar { width: 15px; height: 2px; }
-/* 右侧固定宽预览卡:hover 浮现,高度随内容(8 行封顶) */
+.sx-rail-tick:has(+ .sx-rail-tick:hover) .sx-rail-bar { width: 18px; height: 2px; }
+/* 右侧固定宽预览卡:视觉对齐全局 data-tip 卡(elev-prominent 阴影/lg 圆角/无边框/次级字色) */
 .sx-rail-preview {
   position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-  width: 280px; padding: 8px 10px; border-radius: var(--radius-md);
-  background: var(--surface-elevated); border: 1px solid var(--border);
-  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 14%, transparent);
-  color: var(--fg); font-size: 12px; line-height: 1.55; text-align: left;
+  width: 280px; padding: 6px 10px; border-radius: var(--radius-lg);
+  background: var(--surface-elevated); box-shadow: var(--elev-prominent);
+  color: var(--fg-secondary); font-size: 11px; line-height: 1.4; text-align: left;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 8; overflow: hidden;
   opacity: 0; pointer-events: none;
   transition: opacity var(--dur-basic) var(--ease-enter);
-  word-break: break-word;
+  word-break: break-word; white-space: pre-line;
 }
 .sx-rail-tick:hover .sx-rail-preview, .sx-rail-tick:focus-visible .sx-rail-preview { opacity: 1; }
 
@@ -2363,14 +2364,14 @@ input.sx-setting-input { width: 100%; }
 
 /* ===== 图片附件(2026-10-26):composer 缩略图条/用户气泡图条/队列行小图/lightbox/提示条 ===== */
 .sx-img-strip{display:flex;flex-wrap:wrap;gap:8px;padding:2px 2px 0}
-.sx-img-thumb{position:relative;width:96px;height:96px;border-radius:12px;overflow:hidden;background:var(--bubble-user);flex:none}
+.sx-img-thumb{position:relative;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid color-mix(in srgb, var(--fg) 24%, transparent);flex:none}
 .sx-img-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 .sx-img-remove{position:absolute;top:4px;right:4px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s;padding:0}
 .sx-img-thumb:hover .sx-img-remove,.sx-img-remove:focus-visible{opacity:1}
 .sx-img-hint{margin:4px 2px 0;font-size:12px;color:var(--fg);opacity:.65}
 .sx-img-hint.warn{color:#e5484d;opacity:.9}
 .user-img-strip{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px;justify-content:flex-end}
-.user-img-strip img{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--bubble-user)}
+.user-img-strip img{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:8px;display:block;border:1px solid color-mix(in srgb, var(--fg) 24%, transparent)}
 .user-img-strip img.clickable{cursor:zoom-in}
 .sx-plus-file-input{display:none}
 .steer-img-thumbs{display:inline-flex;gap:4px;margin-right:6px;vertical-align:middle}
@@ -2380,7 +2381,7 @@ input.sx-setting-input { width: 100%; }
 .sx-lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center}
 .sx-lightbox-img{max-width:92vw;max-height:84vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5);cursor:grab;touch-action:none}
 .sx-lightbox-img:active{cursor:grabbing}
-.sx-lightbox-bar{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:2px;background:var(--surface-elevated);border-radius:12px;padding:6px 8px;box-shadow:var(--elev-composer);color:var(--fg)}
+.sx-lightbox-bar{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:2px;background:var(--surface-elevated);border-radius:12px;padding:6px 8px;box-shadow:var(--elev-composer);color:var(--fg)}
 .sx-lightbox-act{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:inherit;border-radius:8px;cursor:pointer;text-decoration:none}
 .sx-lightbox-act:hover{background:var(--bubble-user)}
 .sx-lightbox-pct{min-width:46px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;opacity:.85}

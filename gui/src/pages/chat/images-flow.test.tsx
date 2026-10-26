@@ -178,14 +178,17 @@ describe('Chat 图片流', () => {
     expect((conn3.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls.at(-1)![2]).toEqual([PNG]);
   });
 
-  it('用户气泡缩略图(快照 images 直映,图上文下)+点击开 lightbox(倍数显形/复制/下载动作面)', async () => {
+  it('图片条独立于气泡外(2026-10-26 用户裁定:图与气泡分离)+点击开 lightbox(倍数显形/复制/下载动作面)', async () => {
     render(<Chat conn={connOf()} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed();
-    const bubble = document.querySelector('.entry-user .user-bubble')!;
-    expect(bubble.querySelector('.user-img-strip img')).not.toBeNull();
-    // 气泡内图上文下:strip 先于正文渲染
-    expect(bubble.firstElementChild?.className).toBe('user-img-strip');
-    fireEvent.click(bubble.querySelector('.user-img-strip img')!);
+    const entry = document.querySelector('.entry-user')!;
+    const strip = entry.querySelector('.user-img-strip')!;
+    const bubble = entry.querySelector('.user-bubble')!;
+    expect(strip.querySelector('img')).not.toBeNull();
+    // 图片条在气泡外且先于气泡渲染(CollapsibleBubble 外层是 user-bubble-wrap);气泡不再含图
+    expect(strip.nextElementSibling!.querySelector('.user-bubble')).toBe(bubble);
+    expect(bubble.querySelector('.user-img-strip')).toBeNull();
+    fireEvent.click(strip.querySelector('img')!);
     const lb = await waitFor(() => document.querySelector('.sx-lightbox')!);
     expect(lb.querySelector('.sx-lightbox-pct')?.textContent).toBe('100%');
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
