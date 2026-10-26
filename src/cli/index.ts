@@ -7,6 +7,7 @@ import { runPipeline } from './commands/run-pipeline';
 import { runServe } from './commands/serve';
 import { runSkillsInstall } from './commands/skills-install';
 import { runKbIndex } from './commands/kb-index';
+import { runPlugins } from './commands/plugins';
 import { runTui } from '../tui/entry';
 import { loadSettingsChain } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -80,7 +81,7 @@ export function flagList(flags: CliArgs['flags'], name: string): string[] {
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'help'];
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'help'];
 
 /** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
 export function isPathForm(arg: string): boolean {
@@ -130,6 +131,7 @@ export function usageText(): string {
   sunshinex skills install <git-url | owner/repo | local-dir> [--force]
                                           install skills into the global skills root (~/.sunshinex/skills)
   sunshinex kb-index [dir]                build the knowledge-base index for md/txt files (billed embedding; kb_search source)
+  sunshinex plugins list [--root <abs>] | validate <dir>    list installed plugins / validate a plugin directory
   flags:
   --mode=read-only|acceptEdits|full-access
                                           permission mode (default acceptEdits)
@@ -158,6 +160,7 @@ export function usageText(): string {
   sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   sunshinex kb-index [目录]               构建知识库索引（对目录内 md/txt 走计费 embedding；kb_search 检索源）
+  sunshinex plugins list [--root <abs>] | validate <dir>    列出已装载插件 / 校验插件目录（schema 错误退出码 1）
   flags：
   --mode=read-only|acceptEdits|full-access
                                           权限模式（缺省 acceptEdits）
@@ -242,6 +245,21 @@ async function main(): Promise<void> {
       return runSkillsInstall(args);
     case 'kb-index':
       return runKbIndex(args);
+    case 'plugins': {
+      // runPlugins 吃原始 token 形态（string[]，返回 exit code）：positional 透传，--root 由 flags 面回填
+      // （parseArgs 已拆装）；裸 --root（缺值 boolean 形态）按缺参走 usage 退出
+      const root = args.flags.root;
+      if (root === true) {
+        console.error(t('Usage: sunshinex plugins list [--root <abs>] | validate <dir>', '用法：sunshinex plugins list [--root <abs>] | validate <dir>'));
+        process.exitCode = 1;
+        return;
+      }
+      const rest = [...args.positional];
+      if (typeof root === 'string' && root !== '') rest.push('--root', root);
+      const code = await runPlugins(rest);
+      if (code !== 0) process.exitCode = code;
+      return;
+    }
     case 'tui': {
       const d = resolveDirArg(args);
       if (d.unrecognized) {
