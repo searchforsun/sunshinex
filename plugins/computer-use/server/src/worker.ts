@@ -1,6 +1,8 @@
 /** PowerShell worker 协议面（plan Task 18）：持久 powershell.exe 子进程，stdin/stdout 行分隔 JSON 按 id 配对。
  *
- *  职责单点：spawn（windowsHide，脚本经 -EncodedCommand 注入——不落盘、不触执行策略、stdin 留给协议通道）、
+ *  职责单点：spawn（windowsHide，脚本经 **环境变量 + 引导解压** 注入——不落盘、不触执行策略、stdin 留给
+ *  协议通道；Task 20 起脚本本体超出 CreateProcess 命令行 32767 字符上限，单一 -EncodedCommand 形态改：
+ *  gzip+base64 走环境变量 CU_WORKER_PS1，小引导经 -EncodedCommand 解压后 Invoke-Expression）、
  *  行回执按 id 配对 resolve/reject、请求串行排队（同一时刻一个在途——桌面输入本就串行语义，后续请求排队）、
  *  stderr 环形缓冲（调试面，上限 200 行，进程退出消息附尾部）、close()（SIGTERM 收口+5s 兜底 kill+等退出）、
  *  进程退出/流错误 → 未决请求全部 reject；close 后调用 op 立即 reject。
@@ -8,6 +10,7 @@
  *  协议对端脚本见 worker.ps1.ts；注入消费方见 types.ts WorkerClient（index.ts 生产装配，Task 19 首个真实消费）。 */
 import { spawn as nodeSpawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { gzipSync } from 'node:zlib';
 import type { WorkerClient } from './types';
 import { WORKER_PS1 } from './worker.ps1';
 
@@ -32,9 +35,27 @@ export interface WorkerProc {
 }
 
 /** spawn 注入缝（第二可选参）：生产面走 node child_process.spawn，测试面注入 fake（行回放/乱序回执/进程退出）。 */
-export type SpawnFn = (exe: string, args: readonly string[], opts: { windowsHide: boolean; stdio: ['pipe', 'pipe', 'pipe'] }) => WorkerProc;
+export type SpawnFn = (exe: string, args: readonly string[], opts: { windowsHide: boolean; stdio: ['pipe', 'pipe', 'pipe']; env: NodeJS.ProcessEnv }) => WorkerProc;
 
 const defaultSpawn: SpawnFn = (exe, args, opts) => nodeSpawn(exe, args, opts);
+
+/** 脚本本体注入值（gzip+base64——22KB 级 PS 脚本压至数 KB，远低于环境变量安全承载量）。 */
+const WORKER_PS1_B64 = gzipSync(Buffer.from(WORKER_PS1, 'utf8')).toString('base64');
+
+/** 解压引导（小体积走 -EncodedCommand）：读环境变量 → GzipStream 解压 → Invoke-Expression 执行脚本本体
+ *  （函数定义与 while 主循环都在同一表达式作用域内，协议面行为与直执行逐字一致）。 */
+const WORKER_BOOTSTRAP_PS1 = [
+  '$ErrorActionPreference = "Stop"',
+  'Add-Type -AssemblyName System.IO.Compression',
+  '$buf = [Convert]::FromBase64String($env:CU_WORKER_PS1)',
+  '$ms = New-Object System.IO.MemoryStream(,$buf)',
+  '$gz = New-Object System.IO.Compression.GzipStream($ms, [System.IO.Compression.CompressionMode]::Decompress)',
+  '$out = New-Object System.IO.MemoryStream',
+  '$gz.CopyTo($out)',
+  '$gz.Dispose()',
+  '$code = [System.Text.Encoding]::UTF8.GetString($out.ToArray())',
+  'Invoke-Expression $code',
+].join('\n');
 
 /** stderr 环形缓冲上限（行）——调试面：进程退出消息附尾部，stderrTail() 供诊断取用。 */
 const STDERR_RING_MAX = 200;
@@ -45,11 +66,12 @@ const CLOSE_KILL_AFTER_MS = 5000;
 /** 起一个持久 PS worker（exe 缺省 powershell.exe；spawnFn 供测试注入 fake）。
  *  返回 WorkerClient（op 串行排队 + close 收口），另附 stderrTail() 调试面（环形缓冲尾部）。 */
 export function createWorker(exe = 'powershell.exe', spawnFn: SpawnFn = defaultSpawn): WorkerClient & { stderrTail(max?: number): string[] } {
-  // -NoProfile 免 profile 副作用/杂音输出；-NonInteractive 禁交互提示；-EncodedCommand 不受执行策略约束
+  // -NoProfile 免 profile 副作用/杂音输出；-NonInteractive 禁交互提示；-EncodedCommand 只承载小引导
+  //（脚本本体经环境变量 CU_WORKER_PS1 注入——命令行 32767 字符上限装不下充实后的脚本，环境块不受此限且不落盘）
   const child = spawnFn(
     exe,
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(WORKER_PS1, 'utf16le').toString('base64')],
-    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(WORKER_BOOTSTRAP_PS1, 'utf16le').toString('base64')],
+    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, CU_WORKER_PS1: WORKER_PS1_B64 } },
   );
 
   type Pending = { resolve: (v: unknown) => void; reject: (e: WorkerError) => void };

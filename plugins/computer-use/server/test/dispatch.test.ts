@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dispatchTool, lastShotMeta } from '../src/dispatch';
+import { dispatchTool, lastShotMeta, resetLastShotMetaForTest } from '../src/dispatch';
+import { WorkerError } from '../src/worker';
 import type { WorkerClient } from '../src/types';
 
 /** fake worker 工厂（WorkerClient 接缝注入——createServer/dispatchTool 只依赖此接口，不触真进程）：
@@ -69,13 +70,102 @@ test('screenshot region：[l,t,r,b] 换算物理 x/y/w/h 下发，sent 尺寸 sh
   assert.equal(r.isError, undefined);
 });
 
-test('screenshot 非法入参：region 非 4 数/display 非 null → isError 且不触 worker', async () => {
+test('screenshot 非法入参：region 非 4 数/含非有限数/display 非 null → isError 且不触 worker', async () => {
   const h = fakeWorker(() => FULL_SHOT);
   const bad1 = await dispatchTool(h.worker, 'screenshot', { region: [1, 2, 3] });
   assert.equal(bad1.isError, true);
   const bad2 = await dispatchTool(h.worker, 'screenshot', { region: null, display: 1 });
   assert.equal(bad2.isError, true);
+  // Task 19 评审随手修：Number.isFinite 收口——Infinity/ -Infinity 也拒（原 NaN-only 校验漏放行）
+  const bad3 = await dispatchTool(h.worker, 'screenshot', { region: [0, 0, Infinity, 10] });
+  assert.equal(bad3.isError, true);
   assert.equal(h.calls.length, 0);
+});
+
+/* ===== Task 20 动作工具 =====
+ * 坐标反算基准（FULL_SHOT）：scale 3136x1568 → sent 1568x784（2x 反算）+ origin(-1920,0) 区域偏移——
+ * 模型 (100,50) → 物理 (200+(-1920), 100) = (-1720,100)。各测试先 reset 会话态，与文件内顺序无关。 */
+
+test('click：坐标按 lastMeta 反算物理值（scale+origin）下发；无 lastMeta 拒绝并引导先 screenshot', async () => {
+  // 无 lastMeta：click/type/scroll/drag 一律拒绝（动作环纪律：先见屏后动作），文案引导先 screenshot
+  resetLastShotMetaForTest();
+  const h0 = fakeWorker(() => FULL_SHOT);
+  for (const [name, args] of [
+    ['click', { x: 1, y: 1 }],
+    ['type', { text: 'hi' }],
+    ['scroll', { direction: 'down', amount: 1 }],
+    ['drag', { from: [0, 0], to: [1, 1] }],
+  ] as const) {
+    const r = await dispatchTool(h0.worker, name, { ...args });
+    assert.equal(r.isError, true, `${name} should reject without lastMeta`);
+    assert.match((r.content[0] as { text: string }).text, /screenshot/);
+  }
+  assert.equal(h0.calls.length, 0); // 拒绝路径不触 worker
+
+  // 有 lastMeta：2x 反算 + origin 偏移；button/clicks null → 缺省 left/1（screenshot op 回 FULL_SHOT 置真账）
+  const h = fakeWorker((op, params) => (op === 'screenshot' ? FULL_SHOT : params));
+  await dispatchTool(h.worker, 'screenshot', {});
+  const r = await dispatchTool(h.worker, 'click', { x: 100, y: 50, button: null, clicks: null });
+  assert.equal(r.isError, undefined);
+  assert.deepEqual(h.calls[1].params, { x: -1720, y: 100, button: 'left', clicks: 1 });
+});
+
+test('type/key：参数整形透传（text 直传；keys 数组 String 化+修剪空项）', async () => {
+  const h = fakeWorker((op, params) => (op === 'screenshot' ? FULL_SHOT : params ?? { op }));
+  await dispatchTool(h.worker, 'screenshot', {}); // type 属拒绝名单——须先有 lastMeta
+  await dispatchTool(h.worker, 'type', { text: '你好 world' });
+  assert.deepEqual(h.calls[1], { op: 'type', params: { text: '你好 world' } });
+  await dispatchTool(h.worker, 'key', { keys: [' Ctrl ', 'c'] });
+  assert.deepEqual(h.calls[2], { op: 'key', params: { keys: ['Ctrl', 'c'] } });
+  const badKey = await dispatchTool(h.worker, 'key', { keys: [] });
+  assert.equal(badKey.isError, true); // 空 keys 拒绝（schema minItems 1 的执行面）
+});
+
+test('scroll：有坐标反算下发/无坐标不带几何；direction/amount 整形', async () => {
+  const h = fakeWorker((op) => (op === 'screenshot' ? FULL_SHOT : {}));
+  await dispatchTool(h.worker, 'screenshot', {});
+  await dispatchTool(h.worker, 'scroll', { direction: 'up', amount: null, x: null, y: null });
+  assert.deepEqual(h.calls[1].params, { direction: 'up', amount: 1 });
+  await dispatchTool(h.worker, 'scroll', { direction: 'down', amount: 3, x: 10, y: 20 });
+  // 反算：toPhysical(10,20)=(20,40) + origin(-1920,0) = (-1900,40)
+  assert.deepEqual(h.calls[2].params, { direction: 'down', amount: 3, x: -1900, y: 40 });
+  const bad = await dispatchTool(h.worker, 'scroll', { direction: 'down', amount: 1, x: 10, y: null });
+  assert.equal(bad.isError, true); // 坐标须成对
+});
+
+test('drag：from/to 两点各反算（scale+origin）下发', async () => {
+  const h = fakeWorker((op) => (op === 'screenshot' ? FULL_SHOT : {}));
+  await dispatchTool(h.worker, 'screenshot', {});
+  await dispatchTool(h.worker, 'drag', { from: [0, 0], to: [100, 100] });
+  assert.deepEqual(h.calls[1].params, { from: [-1920, 0], to: [-1720, 200] });
+});
+
+test('wait/wait_for/app：数值封顶与 null 缺省整形', async () => {
+  const h = fakeWorker((op, params) => (op === 'screenshot' ? FULL_SHOT : op === 'wait_for' ? { found: true, mode: params.mode, elapsed: 0.3, foreground: '记事本' } : params));
+  await dispatchTool(h.worker, 'wait', { seconds: 1.5 });
+  assert.deepEqual(h.calls[0].params, { seconds: 1.5 });
+  await dispatchTool(h.worker, 'wait_for', { target: '完成', mode: null, timeout: null });
+  assert.deepEqual(h.calls[1].params, { target: '完成', mode: 'appear', timeout: 10 });
+  await dispatchTool(h.worker, 'app', { action: 'focus', target: '记事本' });
+  assert.deepEqual(h.calls[2].params, { action: 'focus', target: '记事本' });
+});
+
+test('wait_for 超时（found:false）→ isError 文本回执（引导模型换策略）', async () => {
+  const h = fakeWorker(() => ({ found: false, mode: 'appear', elapsed: 10.01, foreground: '记事本' }));
+  await dispatchTool(h.worker, 'screenshot', {});
+  const r = await dispatchTool(h.worker, 'wait_for', { target: '保存', mode: 'appear', timeout: 10 });
+  assert.equal(r.isError, true);
+  assert.match((r.content[0] as { text: string }).text, /保存/);
+  assert.match((r.content[0] as { text: string }).text, /10\.01/);
+});
+
+test('worker 级失败（WorkerError）单点转 isError CallToolResult（不直穿 JSON-RPC protocol error）', async () => {
+  const h = fakeWorker(() => {
+    throw new WorkerError('worker_op_failed', 'unknown key name: f13');
+  });
+  const r = await dispatchTool(h.worker, 'key', { keys: ['f13'] });
+  assert.equal(r.isError, true);
+  assert.match((r.content[0] as { text: string }).text, /unknown key name: f13/);
 });
 
 test('uia_snapshot：行文本原样拼接 + 300 行上限 + scope 缺省 window', async () => {
