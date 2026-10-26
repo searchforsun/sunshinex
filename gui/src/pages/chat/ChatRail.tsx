@@ -37,7 +37,7 @@ function previewText(md: string): string {
 }
 
 export function ChatRail(props: {
-  /** 可见窗内的条目(与 DOM 渲染集一致——点击按序反查 .entry-user) */
+  /** 可见窗内的条目(刻度序列=有正文的用户消息;DOM 气泡按 data-entry-key 键寻址,纯图/空 md 不入列) */
   readonly entries: readonly ChatEntry[];
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
   readonly sideChat?: boolean;
@@ -108,11 +108,14 @@ export function ChatRail(props: {
     };
   }, [chatScrollRef]);
   /** 当前滚动位置正对的刻度(九轮):视口顶下 120px 分界——最后一条顶边越线的用户气泡;
-   *  scroll rAF 节流单点,加重显色不加长(长度变化只在 hover) */
+   *  scroll rAF 节流单点,加重显色不加长(长度变化只在 hover)。
+   *  十二轮半:DOM .entry-user 与刻度序列不再同序同长(纯图/空 md 用户气泡进 DOM 不进刻度),
+   *  按 data-entry-key 键寻址——越线的最后一只带键气泡反查刻度序,无键气泡跳过 */
   const [activeIdx, setActiveIdx] = useState(-1);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
+    const keyIdx = new Map(users.map((u, i) => [u.key, i]));
     let raf = 0;
     const onScroll = (): void => {
       // 隐藏态(辅助对话/消息不足)不排动画帧:贴底跟随测试以 rAF 计数为不变量面,
@@ -120,11 +123,14 @@ export function ChatRail(props: {
       if (raf !== 0 || sideChat === true || users.length < MIN_USERS) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        const nodes = el.querySelectorAll('.entry-user');
+        const nodes = el.querySelectorAll('.entry-user[data-entry-key]');
         const line = el.getBoundingClientRect().top + 120;
         let idx = -1;
-        nodes.forEach((n, i) => {
-          if (n.getBoundingClientRect().top <= line) idx = i;
+        nodes.forEach((n) => {
+          if (n.getBoundingClientRect().top <= line) {
+            const ui = keyIdx.get(n.getAttribute('data-entry-key') ?? '');
+            if (ui !== undefined) idx = ui;
+          }
         });
         setActiveIdx(idx);
       });
@@ -144,10 +150,13 @@ export function ChatRail(props: {
   const jump = (index: number): void => {
     const el = chatScrollRef.current;
     if (el === null) return;
-    const nodes = el.querySelectorAll('.entry-user');
-    const node = nodes[index];
-    if (node === undefined) return;
-    // 落点要准(十二轮半用户裁定,不要平滑滑动):.entry 挂 content-visibility:auto,离屏条目
+    // 键寻址(十二轮半):DOM 用户气泡集 ⊇ 刻度序列(纯图/空 md 进 DOM 不进刻度),按序号
+    // 反查会错位——按 data-entry-key 直取目标气泡
+    const target = users[index];
+    if (target === undefined) return;
+    const node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
+    if (node === null) return;
+    // 落点要准(用户裁定,不要平滑滑动):.entry 挂 content-visibility:auto,离屏条目
     // 只有估算高(contain-intrinsic-size),scrollIntoView 一次到位按估算高算滚动量必落偏——
     // 即时跳到位后按目标真实盒位置迭代校正,收敛(偏差≤2px)或封顶即停
     el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top;

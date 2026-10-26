@@ -318,7 +318,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     // (复用正文 MdImage:工作区路径自动解析 dataURL,点击开灯箱;与附件条分列,发送语义不变)
     const embeddedImages = [...draft.matchAll(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g)].map((m) => m[1]!);
     return (
-      <div className="entry entry-user">
+      <div className="entry entry-user" data-entry-key={entry.key}>
         <div className="user-edit-card">
           {embeddedImages.length > 0 && (
             <div className="sx-img-strip" aria-label={t('Embedded images', '消息内嵌图片')}>
@@ -383,7 +383,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     );
   }
   return (
-    <div className="entry entry-user">
+    <div className="entry entry-user" data-entry-key={entry.key}>
       {/* 2026-10-26 用户裁定:图片与气泡分离——图片条独立在气泡外(上方右对齐),纯图消息不渲染空气泡 */}
       {entry.images !== undefined && entry.images.length > 0 && (
         <UserImageStrip images={entry.images} onOpen={onOpenImage} />
