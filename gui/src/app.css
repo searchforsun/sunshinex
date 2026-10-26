@@ -2283,9 +2283,12 @@ input.sx-setting-input { width: 100%; }
   padding: 3px 0; border: none; background: transparent; cursor: pointer;
   flex: none; max-width: 100%;
 }
-/* 2026-10-26 二轮裁定:等长刻度(14px 恒定,不随文本长);hover 突起=向左顶出 4px+变蓝 */
-.sx-rail-bar { display: block; width: 14px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fg) 30%, transparent); flex: none; transition: background var(--dur-basic) var(--ease-enter), transform var(--dur-basic) var(--ease-enter); }
-.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { background: var(--accent); transform: translateX(-4px); height: 3px; }
+/* 2026-10-26 二轮裁定:等长刻度(14px 恒定,不随文本长)。
+   2026-10-26 三轮裁定:hover 不变蓝——同色系纯色(fg 实色)加粗(3px)+顶出 4px;上下相邻刻度
+   轻微跟随(48% 色+2.5px+顶出 2px,前邻经 :has 反向选);height 一并入过渡,鼠标移动顺滑过渡 */
+.sx-rail-bar { display: block; width: 14px; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fg) 30%, transparent); flex: none; transition: background var(--dur-basic) var(--ease-enter), transform var(--dur-basic) var(--ease-enter), height var(--dur-basic) var(--ease-enter); }
+.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { background: var(--fg); transform: translateX(-4px); height: 3px; }
+.sx-rail-tick:hover + .sx-rail-tick .sx-rail-bar, .sx-rail-tick:has(+ .sx-rail-tick:hover) .sx-rail-bar { background: color-mix(in srgb, var(--fg) 48%, transparent); transform: translateX(-2px); height: 2.5px; }
 .sx-rail-flash { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); transition: outline-color 0.9s ease; outline-color: transparent; }
 
 /* 2026-10-26 性能轮:离屏条目跳过渲染排布(CSS 原生虚拟化,Chromium 引擎)——长会话数百行
