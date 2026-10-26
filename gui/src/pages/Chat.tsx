@@ -398,7 +398,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [running, journalId, conn, onSessionsMutated]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
-  const { submitText, send, interrupt } = useChatSubmit({
+  const { submitText, send: sendRaw, interrupt } = useChatSubmit({
     conn,
     sessionId,
     running,
@@ -416,6 +416,17 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
+  /** 2026-10-26 用户裁定:发送即跳底——视口停在上文时发新消息,立即置回贴底跟随
+   *  (stick 先置 true:发送回显帧与本轮流式内容随后由既有贴底 effect 接管不脱手) */
+  const jumpToBottom = useCallback((): void => {
+    chatStickRef.current = true;
+    const el = chatScrollRef.current;
+    if (el !== null) el.scrollTop = el.scrollHeight;
+  }, [chatScrollRef]);
+  const send = useCallback((): void => {
+    jumpToBottom();
+    sendRaw();
+  }, [jumpToBottom, sendRaw]);
   const { onInputClick } = useChatComposerSide({
     pickRelRef,
     inputRef,
