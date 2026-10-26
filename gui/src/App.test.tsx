@@ -1034,7 +1034,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     const { conn, unmount } = await enterChat();
     openTasksTab(); // G14.27:不再默认开,显式打开
     expect(document.querySelector('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')?.classList.contains('active')).toBe(true);
-    expect(document.querySelector('.taskboard-cards')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:开标签不重播种
     // G14.159 文件已移出「+」菜单:经目录树文件行开档(真实用户路径)
@@ -1043,7 +1043,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
     fireEvent.click(await screen.findByRole('button', { name: 'fileA.ts' }));
-    expect(screen.getByLabelText('files')).toBeDefined();
+    await waitFor(() => expect(screen.getByLabelText('files')).toBeDefined()); // lazy 标签体 chunk 解析
     expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
     expect(screen.queryByLabelText('board')).toBeNull(); // 标签体随活动切换
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
@@ -1051,7 +1051,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
-    expect(document.querySelector('.todo-cards')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.todo-cards')).not.toBeNull()); // lazy 标签体
     expect(conn.snapshotCalls).toHaveLength(1);
     unmount();
   });
@@ -1190,7 +1190,7 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
     expect(screen.queryByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeNull(); // 终端面退场(卸载)
-    expect(document.querySelector('.todo-cards')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.todo-cards')).not.toBeNull()); // lazy 标签体
     expect(conn.killPtyCalls).toEqual([]); // 卸载≠kill
     // 切回「终端」:重挂走重连径(ptyIdFor 命中既有记账)——openPty 计数不变,降级面照常
     fireEvent.click(screen.getByRole('button', { name: bi('Terminal', '终端') }));
@@ -1237,7 +1237,7 @@ describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncat
     // 点 fileA.ts:openTab('file', { path: 'dirA/fileA.ts' }) → 文件标签开且活动(title=G14.114 只显文件名)
     fireEvent.click(screen.getByRole('button', { name: 'fileA.ts' }));
     expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
-    expect(screen.getByLabelText('files')).toBeDefined();
+    await waitFor(() => expect(screen.getByLabelText('files')).toBeDefined()); // lazy 标签体 chunk 解析
     await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/fileA.ts']])); // initialPath 自动加载
     unmount();
   });
@@ -1503,7 +1503,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     const { unmount } = await enterChat();
     openWeb();
     expect(document.querySelector('.sx-tab[data-title="Browser"]')?.classList.contains('active')).toBe(true);
-    expect(screen.getByLabelText('web tab')).toBeDefined();
+    await waitFor(() => expect(screen.getByLabelText('web tab')).toBeDefined()); // lazy 标签体 chunk 解析
     // 裸开无 active:VSCode Simple Browser 同形空态(地球+引导)、无 iframe
     expect(screen.getByText(/Paste or type a URL|粘贴或输入 URL/)).toBeDefined();
     expect(document.querySelector('.sx-web-frame')).toBeNull();
@@ -1589,7 +1589,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
   it('任务板页默认在场(空板空态);开目录标签再切回,看板回归(Chat 恒挂不重播种)', async () => {
     const { conn, unmount } = await enterChat();
     openTasksTab(); // G14.27:不再默认开——菜单显式打开后空态在场
-    expect(document.querySelector('.taskboard-cards')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(document.querySelector('.tb-task-list')).toBeNull(); // 空板无任务列表
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // 播种恰一次
@@ -1601,7 +1601,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-    expect(document.querySelector('.taskboard-cards')).not.toBeNull();
+    await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     unmount();
   });

@@ -12,7 +12,9 @@ import { ProjectMenu } from './sidebar/ProjectMenu';
 import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
+import { Suspense } from 'react';
 import { tabEntry, registryProbe } from './tabs/registry';
+import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
 import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession, MIN_TAB_WIDTH } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
@@ -906,6 +908,8 @@ function AppShell(): JSX.Element {
               // 一个 Files 实例(initialPath 自动加载 effect no-op,空标签串上一标签内容/路径输入)
               <div className="sx-tabbody" key={activeTab.uid}>
 
+                {/* 2026-10-26 二期分包:标签体 lazy——Suspense 骨架承接首开 chunk 加载 */}
+                <Suspense fallback={<TabSkeleton />}>
                 {tabEntry(activeTab.type).render({
                   conn: connInstance,
                   sessionId: openSessionId,
@@ -923,6 +927,7 @@ function AppShell(): JSX.Element {
                   // G14.29 辅助对话:按 sideId 注入旁路 sink(App onEvent 同键路由帧)
                   chatSinkRef: activeTab.params.sideId !== undefined ? sideSinksRef.current.get(activeTab.params.sideId) : undefined,
                 })}
+                </Suspense>
               </div>
             )}
             {page === 'chat' && !tabState.collapsed && activeTab === null && (

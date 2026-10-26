@@ -1675,7 +1675,7 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       expect(tabsByTitle(container, bi('Browser', '浏览器'))[0]!.className).toContain('active');
 
       // —— 裸开档空态:引导文案 + url 输入在场(占位符锚)——
-      expect(container.querySelector('.sx-web-empty')).not.toBeNull();
+      await waitFor(() => expect(container.querySelector('.sx-web-empty')).not.toBeNull(), { timeout: 5_000 }); // lazy 标签体 chunk 解析
       const urlInput = screen.getByLabelText('web url input');
       expect(urlInput.getAttribute('placeholder')).toMatch(/网址|URL/); // G14.6 Simple Browser 占位(双语)
       fireEvent.change(urlInput, { target: { value: TARGET } });

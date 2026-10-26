@@ -6,18 +6,24 @@
  * 依赖,投影面经 TabServices 注入(T5 组装)。
  */
 
+import { lazy } from 'react';
 import { t } from '../i18n';
 import { FileText, FolderTree, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
-import { Files } from '../pages/Files';
-import { TerminalTab } from './TerminalTab';
-import { DirectoryTab } from './DirectoryTab';
-import { DiffTab } from './DiffTab';
-import { AgentTranscriptTab } from './AgentTranscriptTab';
-import { TodoCardsTab } from './TodoCardsTab';
-import { TaskBoardTab } from './TaskBoardTab';
-import { BgTasksTab, MemoryTab } from './InsightTabs';
-import { WebTab, normalizeWebUrl, webPageName } from './WebTab';
+import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
+
+// 2026-10-26 二期分包(用户裁定):标签体 lazy 化——Monaco/xterm 等重依赖随体出主包
+// (主包 9.4MB→目标 <1.5MB);元数据(title/resolveKey/icon)同步层不受影响
+const Files = lazy(() => import('../pages/Files').then((m) => ({ default: m.Files })));
+const TerminalTab = lazy(() => import('./TerminalTab').then((m) => ({ default: m.TerminalTab })));
+const DirectoryTab = lazy(() => import('./DirectoryTab').then((m) => ({ default: m.DirectoryTab })));
+const DiffTab = lazy(() => import('./DiffTab').then((m) => ({ default: m.DiffTab })));
+const AgentTranscriptTab = lazy(() => import('./AgentTranscriptTab').then((m) => ({ default: m.AgentTranscriptTab })));
+const TodoCardsTab = lazy(() => import('./TodoCardsTab').then((m) => ({ default: m.TodoCardsTab })));
+const TaskBoardTab = lazy(() => import('./TaskBoardTab').then((m) => ({ default: m.TaskBoardTab })));
+const BgTasksTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.BgTasksTab })));
+const MemoryTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.MemoryTab })));
+const WebTab = lazy(() => import('./WebTab').then((m) => ({ default: m.WebTab })));
 import type { MutableRefObject } from 'react';
 
 /** G14.114 标签条/标题行文件名化:取路径末段(win/posix 双分隔,滤空段防尾分隔符) */

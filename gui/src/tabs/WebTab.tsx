@@ -29,20 +29,10 @@ export interface WebTabProps {
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
 }
 
-/** url 规范化:去首尾空白;无 :// 前缀(无 scheme)补 https:// */
-export function normalizeWebUrl(raw: string): string {
-  const t = raw.trim();
-  return t.includes('://') ? t : `https://${t}`;
-}
-
-/** 页名推导:url → host(剥 www.;解析失败退原文)——标签条标题兜底/导航回写共用 */
-export function webPageName(url: string): string {
-  try {
-    return new URL(url).host.replace(/^www\./, '') || url;
-  } catch {
-    return url;
-  }
-}
+// normalizeWebUrl/webPageName 拆至 tab-meta.ts(2026-10-26 二期分包:registry 同步层消费纯函数,
+// WebTab 体 lazy 化)——此处再导出保既有消费面零迁移
+export { normalizeWebUrl, webPageName } from './tab-meta';
+import { normalizeWebUrl, webPageName } from './tab-meta';
 
 /** 自由尺寸缩放档(适应窗口外固定倍率;浏览器设备模拟同款档位) */
 const DEVICE_SCALES = [50, 75, 100, 125, 150, 200] as const;

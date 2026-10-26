@@ -1416,6 +1416,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .ctx-pop-bar-fill.lv1 { background: var(--warn); }
 .ctx-pop-bar-fill.lv2 { background: var(--err); }
 
+/* 2026-10-26 二期分包:lazy 标签体加载骨架(shimmer 流光) */
+.sx-tab-skeleton { display: flex; flex-direction: column; gap: 10px; padding: 24px; }
+.sx-tab-skeleton-title, .sx-tab-skeleton-row { height: 14px; border-radius: 6px; background: linear-gradient(90deg, color-mix(in srgb, var(--fg) 6%, transparent) 25%, color-mix(in srgb, var(--fg) 12%, transparent) 45%, color-mix(in srgb, var(--fg) 6%, transparent) 65%); background-size: 200% 100%; animation: sx-shimmer 1.2s linear infinite; }
+.sx-tab-skeleton-row.short { width: 55%; }
+@keyframes sx-shimmer { to { background-position: -200% 0; } }
+
 /* 2026-10-26 三期历史链指示器:补全中细条(贴流区顶) / 失败可点重试 */
 .chat-history-tip { padding: 4px 16px; font-size: 12px; color: var(--fg-tertiary); text-align: center; }
 .chat-history-tip .chat-history-retry { color: var(--warn); font-size: 12px; cursor: pointer; }

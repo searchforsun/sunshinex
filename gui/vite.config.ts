@@ -20,6 +20,16 @@ export default defineConfig({
   build: {
     outDir: '../dist-gui',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // 2026-10-26 二期分包:monaco/xterm/hljs 出主包独立 chunk(重依赖按需加载,主包 <1.5MB)
+        manualChunks: {
+          monaco: ['monaco-editor', '@monaco-editor/react'],
+          xterm: ['@xterm/xterm', '@xterm/addon-fit'],
+          hljs: ['highlight.js'],
+        },
+      },
+    },
   },
   test: {
     alias: {
