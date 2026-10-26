@@ -9,7 +9,7 @@
 
 ## 工具面与安全三类（safety）
 
-manifest 声明三类（spec §2.4 声明式安全契约，guard 通用消费，无 server 名特判）：
+manifest 声明三类（spec §2.2 manifest 字段表 safety 声明，§2.4 声明式安全契约，guard 通用消费，无 server 名特判）：
 
 | safety 类 | 工具 | guard 行为 |
 | --- | --- | --- |

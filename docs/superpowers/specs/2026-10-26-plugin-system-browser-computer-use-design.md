@@ -1,7 +1,7 @@
 # 插件体系 + browser use / computer use 系统插件设计（工具结果图片通道前置）
 
 - 日期：2026-10-26
-- 状态：设计待用户评审（brainstorming 产出；方向裁定=用户：立插件体系、两能力作为系统自带插件、设置页可开关；未答细节按本 spec 缺省裁定，评审可翻）
+- 状态：已实施（2026-10-26，SDD 22 任务，T22 收口；两插件 defaultEnabled false 等）
 - 范围：src/config（plugins 语义键）、src/harness（插件装配 + MCP 客户端图片提取 + guard 声明式安全消费）、src/types（ExecResult.images 等）、src/serve（设置端点）、gui（设置页插件 pane + 工具行图片渲染）、plugins/（新工作区目录：两个内置插件，其一含自建 MCP server）+ plugins/schema（manifest JSON Schema）+ plugins CLI（list/validate）+ docs/PLUGIN-DEV.md（插件开发指南）
 - 前置关系：图片功能（2026-10-26 已交付）打通了**用户随行图片**全链（`src/images.ts` 单源 → `SteerLine/SessionEvent/HistoryStep.images` → `buildMessages` 多模态 user 行 → wire image_url 块）；本设计补全**工具观察图片回流**这半边（截屏能力的生命线），并以「插件」为治理层承载 browser use / computer use 两个能力。
 - 业界调研锚点（2026-10-26 三路调研，详见会话记录）：浏览器自动化事实标准 = Playwright MCP（a11y snapshot+ref 主线，vision 兜底）；桌面自动化收敛动作面（screenshot/click/type/key/scroll/drag/wait）；结构优先、视觉兜底为工程共识；OpenAI 兼容协议 `role:"tool"` 消息无图片通道，业界标准变通 = 图片随合成 user 帧注入（与既有链行图片通道同形）；高危桌面动作业界共识 = 默认人工确认 + 能力默认关。
@@ -46,7 +46,7 @@
 
 ### 2.2 manifest 规范（manifestVersion 1）
 
-顶层 **`manifestVersion: 1`** 为前向兼容锚：同 major 更高 minor 接受并告警；未知 major 拒载并告警。字段表：
+顶层 **`manifestVersion`** 为整数 `1`，非 1 拒载并告警（版本化锚，同 major 演进走可选字段）。字段表：
 
 | 字段 | 必填 | 约束 |
 |------|------|------|
@@ -133,7 +133,7 @@
   4. 贡献点：mcpServers（含 safety 三类声明规范与如实声明义务）、skills；
   5. config/configSchema 与设置页展示；
   6. 生命周期与状态（discovered → enabled → active；生效时机 = 下次会话装配）；
-  7. 调试：`plugins validate/list`、探活（`/settings/mcp/probe` 同源）、daemon 日志告警出口；
+  7. 调试：`plugins validate/list`、探活（`POST /settings/mcp/probe` 同源探活）、设置端点（`GET/PUT /settings/plugins`）、daemon 日志告警出口；
   8. 安全契约与信任模型（作者自声明 + 审批交互 + 安装即信任）；
   9. 实例解构：browser-use（把现成 npm MCP server 包成插件）与 computer-use（自建 server）对照。
 
