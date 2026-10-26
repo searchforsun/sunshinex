@@ -2397,6 +2397,10 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-offcount{color:var(--fg-tertiary)}
 .sx-mcp-json{width:100%;box-sizing:border-box;font:11px/1.5 var(--font-mono);white-space:pre;resize:vertical}
 
+/* ===== 2026-10-26 插件 pane(Task 12,spec §6):卡面/开关/告警条复用 sx-mcp-*·sx-agent-* 既有类,
+   新增仅 config 只读 JSON 预格式块(沿 sx-agent-body pre 语法面) ===== */
+.sx-plugin-json{margin:4px 0 0;padding:6px;background:var(--surface-code);border:1px solid var(--border);border-radius:var(--radius-md);font:11px var(--font-mono);white-space:pre-wrap;overflow-wrap:anywhere}
+
 /* ===== 2026-10-26 用户裁定:正文呼吸感再放大一档——区块间距(段/标题/代码块/表格/分割线)
    与列表项行距各 +一档,列表项与普通换行拉开区分;行高 1.65→1.7。只动 .entry 正文域 ===== */
 .entry { line-height: 1.7; }

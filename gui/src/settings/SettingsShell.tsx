@@ -5,6 +5,8 @@ import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
 import { McpPane } from './McpPane';
 import type { McpPaneConn } from './McpPane';
+import { PluginsPane } from './PluginsPane';
+import type { PluginsPaneConn } from './PluginsPane';
 import { AgentsPane } from './AgentsPane';
 import type { AgentsPaneConn } from './AgentsPane';
 import { SkillsPane } from './SkillsPane';
@@ -26,6 +28,7 @@ import type { RawPaneConn } from './RawPane';
  * 技能/MCP/智能体/权限/高级——四简单面板走 SettingsForm(SETTINGS_PANES 定义),五复杂
  * 面板各自组件(ProvidersPane/McpPane/AgentsPane/SkillsPane/PermissionsPane/RawPane;
  * 设置重构二轮起「技能」「权限」两导航项各自独立面板——原同体渲染致内容重复,已拆分)。
+ * 2026-10-26 插件面:导航十一项——Integrations 组 MCP 后插「插件」(PluginsPane,spec §6)。
  * 选中态 activePane 本地 state(默认「通用」),主区以 key={paneId} 挂载(面板互切强制重挂——
  * 键集/输入值面整体复位)。
  */
@@ -34,7 +37,7 @@ import type { RawPaneConn } from './RawPane';
  *  RawPaneConn 的 settings 以 Omit 剥除——SettingsFormConn 已供全量 SettingsView 形(其含可选
  *  warnings,结构满足 RawPane/PermissionsPane 的告警/权限子集面;接口 extends 同名成员须同一性,
  *  故在此收窄拼接) */
-export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, Omit<RawPaneConn, 'settings'> {}
+export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, Omit<RawPaneConn, 'settings'> {}
 
 /** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后)。
  *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
@@ -59,6 +62,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
     items: [
       { id: 'skills', title: { en: 'Skills', zh: '技能' } },
       { id: 'mcp', title: { en: 'MCP', zh: 'MCP' } },
+      { id: 'plugins', title: { en: 'Plugins', zh: '插件' } },
       { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
     ],
   },
@@ -101,6 +105,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
         return <ProvidersPane key="providers" conn={conn} root={root} />;
       case 'mcp':
         return <McpPane key="mcp" conn={conn} root={root} />;
+      case 'plugins':
+        return <PluginsPane key="plugins" conn={conn} root={root} />;
       case 'agents':
         return <AgentsPane key="agents" conn={conn} root={root} />;
       case 'skills':

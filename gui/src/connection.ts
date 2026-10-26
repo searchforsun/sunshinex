@@ -15,6 +15,7 @@ import type {
   McpProbeResult,
   McpRow,
   McpRowInput,
+  PluginRow,
   SessionRow,
   SessionTaskRow,
   SettingsView,
@@ -211,6 +212,14 @@ export interface Connection {
   skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }>;
   /** GET /settings/memory-stats?root=（T6）：主域记忆概览（root 缺省 = 零值非 400） */
   memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
+  /** GET /settings/plugins?root=（2026-10-26 插件面）：loadEffectivePlugins 两级清单 + 装载聚合警告
+   *  （root 缺省 = 仅全局装载——与 /settings·/settings/mcp「无 root 仅全局面」同裁定） */
+  plugins(root?: string): Promise<{ plugins: PluginRow[]; warnings: string[] }>;
+  /** PUT /settings/plugins {root?, id, enabled?, config?}（插件面开关/配置写）：settings 语义键
+   *  plugins.<id> 的结构化原子写——root 在场 = 项目级 <root>/.sunshinex/settings.json，缺省 = 全局
+   *  settings；400（缺 id/坏形）/404（未知 id）/409（文件含注释·畸形·version 不符——引流 raw）以
+   *  HTTP 失败抛错；生效语义 = 下次会话装配生效（GUI 开关成功后重拉清单） */
+  putPlugin(root: string | undefined, id: string, patch: { enabled?: boolean; config?: Record<string, unknown> }): Promise<void>;
   close(): void;
   state(): ConnectionState;
   /** 测试钩子（e2e 断链注入专用）：当前底层 socket（无连接 undefined）——产品面勿消费 */
@@ -582,6 +591,13 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson<{ entries: number; lastWriteAt: number | null }>(
         root === undefined ? '/settings/memory-stats' : `/settings/memory-stats?root=${encodeURIComponent(root)}`,
       );
+    },
+    // ---- 2026-10-26 插件面：root 缺省省查询参/省 body 字段（settings 系同款——空串 root 不可靠）----
+    plugins(root?: string): Promise<{ plugins: PluginRow[]; warnings: string[] }> {
+      return getJson<{ plugins: PluginRow[]; warnings: string[] }>(root === undefined ? '/settings/plugins' : `/settings/plugins?root=${encodeURIComponent(root)}`);
+    },
+    putPlugin(root: string | undefined, id: string, patch: { enabled?: boolean; config?: Record<string, unknown> }): Promise<void> {
+      return put('/settings/plugins', { ...(root === undefined ? {} : { root }), id, ...patch });
     },
     close: () => transport.close(),
     state(): ConnectionState {

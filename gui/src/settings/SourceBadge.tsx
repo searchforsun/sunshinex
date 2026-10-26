@@ -3,16 +3,20 @@
  * effective 归因的渲染面——键名**后置**单色 hairline chip(env/project/global 三态文案,
  * default 隐藏不占位;前置圆点已移除——键名恒左对齐,色彩区分面撤销,title=来源说明 hover
  * 提示)。类名 sx-src-{source} 供测试与样式定位。纯展示组件,零状态。
+ * 2026-10-26 插件面(Task 12)扩 builtin/user 两态——插件 pane 卡头来源徽标同 chip 语言复用,
+ * 键值域加宽为加法(既有四态消费面不受扰)。
  */
 
 import { t } from '../i18n';
-export type SettingsSource = 'env' | 'project' | 'global' | 'default';
+export type SettingsSource = 'env' | 'project' | 'global' | 'default' | 'builtin' | 'user';
 
-/** 非默认三态的文案与说明(default 无徽标不载;双语对渲染期 t() 求值——G14.213 设置面 i18n) */
+/** 非默认五态的文案与说明(default 无徽标不载;双语对渲染期 t() 求值——G14.213 设置面 i18n) */
 const BADGES: Record<Exclude<SettingsSource, 'default'>, { en: string; zh: string; titleEn: string; titleZh: string }> = {
   env: { en: 'env', zh: 'env', titleEn: 'Overridden by env (highest priority)', titleZh: '环境变量覆盖(优先级最高)' },
   project: { en: 'Project', zh: '项目', titleEn: 'Project settings (project settings file)', titleZh: '项目级配置(项目 settings 文件)' },
   global: { en: 'Global', zh: '全局', titleEn: 'Global settings (user settings file)', titleZh: '全局配置(用户级 settings 文件)' },
+  builtin: { en: 'Builtin', zh: '内置', titleEn: 'Bundled plugin (ships with the app)', titleZh: '应用内置插件(随包分发)' },
+  user: { en: 'User', zh: '用户', titleEn: 'User plugin (user plugins directory)', titleZh: '用户级插件(用户插件目录)' },
 };
 
 export interface SourceBadgeProps {

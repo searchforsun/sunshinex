@@ -348,6 +348,28 @@ export interface SkillsGroup {
   skills: Array<{ id: string; name?: string; description?: string }>;
 }
 
+/** GET /settings/plugins 行（2026-10-26 插件面，对齐 daemon handlePluginsGet 载荷 = EffectivePlugin
+ *  可视化拆解）：manifest 必填五元（id/name/version/description）+ 落位与启用态裁决（source 两级/
+ *  enabled/platformSupported——装载层只标记不丢弃，platformSupported=false 照常列示供设置页置灰）
+ *  + 装配面摘要（servers=mcpServers 名数组、skillsCount=skills 目录数）+ 设置语义键面（configSchema
+ *  展示说明、config=settings plugins[id].config 原值）与逐插件 warnings（manifest 解析告警原值） */
+export interface PluginRow {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  source: 'builtin' | 'user';
+  enabled: boolean;
+  platformSupported: boolean;
+  servers: string[];
+  skillsCount?: number;
+  /** 设置页展示用 config 键说明（v1 仅展示不强校验；daemon 侧仅 manifest 在场时携带） */
+  configSchema?: Record<string, { type: string; description?: string }>;
+  /** settings 语义键 plugins[id].config 原值（浅对象） */
+  config?: Record<string, unknown>;
+  warnings: string[];
+}
+
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
