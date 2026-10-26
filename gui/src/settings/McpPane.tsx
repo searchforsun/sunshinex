@@ -409,41 +409,50 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
         </ul>
       )}
       {jsonEd !== null && (
-        <form
-          className="sx-card-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveJson();
-          }}
-        >
-          <h3>{jsonEd.editing !== null ? t(`Edit ${jsonEd.editing} (JSON)`, `编辑 ${jsonEd.editing}(JSON)`) : t('Add server (project, JSON)', '添加服务器(项目级,JSON)')}</h3>
-          <p className="sx-mcp-hint">
-            {t('mcp.json-compatible fragment: top-level key = server name. Supported fields: command/args/env (stdio), url/transport/headers/env (http·sse), enabled, disabledTools.', 'mcp.json 兼容片段:顶层键=服务器名。支持字段:command/args/env(stdio)、url/transport/headers/env(http·sse)、enabled、disabledTools。')}
-          </p>
-          <textarea
-            aria-label="mcp json editor"
-            className="sx-mcp-json"
-            value={jsonText}
-            onChange={(e) => setJsonText(e.target.value)}
-            rows={16}
-            spellCheck={false}
-          />
-          {jsonError !== '' && <p className="home-error" role="alert">{jsonError}</p>}
-          <div className="sx-card-actions">
-            <button type="submit" disabled={saving}>
-              {t('Save', '保存')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setJsonEd(null);
-                setJsonError('');
-              }}
-            >
-              {t('Cancel', '取消')}
-            </button>
-          </div>
-        </form>
+        /* 2026-10-26 用户裁定:JSON 编辑改居中模态(与改名弹窗同 modal-overlay/body 面),内联蓝边卡退役 */
+        <div className="modal-overlay" onClick={() => setJsonEd(null)}>
+          <form
+            className="modal-body sx-mcp-json-dialog"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveJson();
+            }}
+          >
+            <div className="dirpicker-head">
+              <h3>{jsonEd.editing !== null ? t(`Edit ${jsonEd.editing} (JSON)`, `编辑 ${jsonEd.editing}(JSON)`) : t('Add server (project, JSON)', '添加服务器(项目级,JSON)')}</h3>
+              <button type="button" aria-label={t('Close', '关闭')} onClick={() => setJsonEd(null)}>
+                ×
+              </button>
+            </div>
+            <p className="sx-mcp-hint">
+              {t('mcp.json-compatible fragment: top-level key = server name. Supported fields: command/args/env (stdio), url/transport/headers/env (http·sse), enabled, disabledTools.', 'mcp.json 兼容片段:顶层键=服务器名。支持字段:command/args/env(stdio)、url/transport/headers/env(http·sse)、enabled、disabledTools。')}
+            </p>
+            <textarea
+              aria-label="mcp json editor"
+              className="sx-mcp-json"
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              rows={16}
+              spellCheck={false}
+            />
+            {jsonError !== '' && <p className="home-error" role="alert">{jsonError}</p>}
+            <div className="dirpicker-foot">
+              <button
+                type="button"
+                onClick={() => {
+                  setJsonEd(null);
+                  setJsonError('');
+                }}
+              >
+                {t('Cancel', '取消')}
+              </button>
+              <button className="primary" type="submit" disabled={saving}>
+                {t('Save', '保存')}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
       <button type="button" className="sx-add-button" disabled={root === ''} onClick={() => void openJson(null)}>
         {t('+ Add server', '+ 添加服务器')}
