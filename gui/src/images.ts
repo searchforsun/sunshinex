@@ -2,19 +2,18 @@
  * 图片附件 GUI 装载面(2026-10-26 图片功能):文件→dataURL 装载——GUI 唯一转码点:小文件原样读
  * (保 GIF 动画/PNG 透明),大文件 canvas 降采样(长边 1568px/JPEG q0.85,vision 端点友好体积)。
  * dataURL 形态自此原样贯穿(HTTP images 字段→转录条目→链行→wire image_url 块,daemon 侧零转码)。
- * 常量与追加钳制(MAX_IMAGES/appendImages)单源在主仓 src/images.ts(serve/TUI/GUI 同值同实现),
- * 此处再导出保既有导入面(`../images` 消费方零改动)。
+ * 常量与追加钳制(MAX_IMAGES/appendImages/IMAGE_MAX_EDGE/IMAGE_JPEG_QUALITY)单源在主仓 src/images.ts
+ * (serve/TUI/GUI 装载面与插件 server 生产者同规范),此处再导出/别名保既有导入面(`../images` 消费方零改动)。
  */
 export { MAX_IMAGES, appendImages } from '../../src/images';
+import { IMAGE_JPEG_QUALITY as JPEG_QUALITY, IMAGE_MAX_EDGE as DOWNSCALE_EDGE } from '../../src/images';
 
 /** 附件文件选择器的接受类型(与 daemon 校验白名单同面) */
 export const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif';
 
 /** 小文件直读阈值:≤1.5MB 原样 dataURL(不转码,保真);超出走降采样 */
 const DIRECT_MAX_BYTES = 1_500_000;
-/** 降采样长边(vision 端点惯例 ≤1568px)与 JPEG 质量 */
-const DOWNSCALE_EDGE = 1568;
-const JPEG_QUALITY = 0.85;
+// 降采样长边(vision 端点惯例 ≤1568px)与 JPEG 质量自主仓单源导入(上方别名导入,消费方零改动)
 
 /** 单文件 → dataURL;非图片/解码失败回 undefined(调用方跳过)。convert 形参供测试注入 */
 export async function fileToImageDataURL(file: File): Promise<string | undefined> {
