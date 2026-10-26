@@ -2471,3 +2471,4 @@ input.sx-setting-input { width: 100%; }
 .sx-font-ctl { width: 100%; max-width: none; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .sx-font-preset-card { min-width: 0; }
 .sx-font-pv, .sx-font-pv-tool, .sx-font-pv-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sx-font-pv-tool { max-width: 100%; min-width: 0; } /* fit-content 最小宽=整句 nowrap 文本,盒子撑出卡片致省略号不可见——钳回容器宽 */
