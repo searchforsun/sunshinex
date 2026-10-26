@@ -2378,14 +2378,14 @@ input.sx-setting-input { width: 100%; }
 
 /* ===== 图片附件(2026-10-26):composer 缩略图条/用户气泡图条/队列行小图/lightbox/提示条 ===== */
 .sx-img-strip{display:flex;flex-wrap:wrap;gap:8px;padding:2px 2px 0}
-.sx-img-thumb{position:relative;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid color-mix(in srgb, var(--fg) 24%, transparent);flex:none}
+.sx-img-thumb{position:relative;width:96px;height:96px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);flex:none}
 .sx-img-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 .sx-img-remove{position:absolute;top:4px;right:4px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s;padding:0}
 .sx-img-thumb:hover .sx-img-remove,.sx-img-remove:focus-visible{opacity:1}
 .sx-img-hint{margin:4px 2px 0;font-size:12px;color:var(--fg);opacity:.65}
 .sx-img-hint.warn{color:#e5484d;opacity:.9}
 .user-img-strip{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px;justify-content:flex-end}
-.user-img-strip img{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:8px;display:block;border:1px solid color-mix(in srgb, var(--fg) 24%, transparent)}
+.user-img-strip img{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:var(--radius-sm);display:block;border:1px solid var(--border)}
 .user-img-strip img.clickable{cursor:zoom-in}
 .sx-plus-file-input{display:none}
 .steer-img-thumbs{display:inline-flex;gap:4px;margin-right:6px;vertical-align:middle}
@@ -2405,6 +2405,7 @@ input.sx-setting-input { width: 100%; }
 .tool-images{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
 .tool-image-thumb{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--surface-soft);cursor:zoom-in;transition:filter var(--dur-basic) var(--ease-enter)}
 .tool-image-thumb:hover{filter:brightness(1.15)}
+/* 正文 md 图片(2026-10-26 正文支持显示图片):合理尺寸上限+项目弧度/边框;点击开灯箱 */.md-image{display:block;max-width:100%;max-height:420px;object-fit:contain;border-radius:var(--radius-sm);border:1px solid var(--border);margin:8px 0;cursor:zoom-in}.md-image-loading{display:inline-block;min-width:120px;min-height:48px}
 
 /* ===== 2026-10-26 MCP 面四轮改版:状态圆点(绿=连接正常/红=连接失败/灰=探测中/灰环=停用,
    几何圆构造同 sx-api-dot——zoom 取整拉椭免疫;radial-gradient 画在盒内 corner-shape 裁不到) +
@@ -2465,3 +2466,7 @@ input.sx-setting-input { width: 100%; }
 .sx-font-pv { font-size: 12.5px; color: var(--fg-secondary); }
 .sx-font-pv-tool { font-family: var(--font-mono); font-size: 11px; color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-xs); padding: 1px 6px; align-self: flex-start; }
 .sx-font-pv-code { font-family: var(--font-mono); color: var(--fg-secondary); background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-xs); align-self: stretch; }
+/* 2026-10-26 用户裁定:预设卡单行横排(4 列等宽铺满行宽),预览文本单行省略不折行 */
+.sx-font-row.sx-setting-row { flex-direction: column; gap: 8px; }
+.sx-font-ctl { width: 100%; max-width: none; grid-template-columns: repeat(4, 1fr); }
+.sx-font-pv, .sx-font-pv-tool, .sx-font-pv-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
