@@ -12,7 +12,7 @@ Playwright MCP（`@playwright/mcp`）驱动的浏览器自动化：以可访问�
 | `browser` | string | 浏览器：chrome\\|chromium\\|firefox\\|webkit\\|msedge（缺省 chrome） |
 | `headless` | boolean | 无头模式（缺省 false，理由见上） |
 | `isolated` | boolean | 内存临时 profile（登录态不持久） |
-| `caps` | string | 能力组：tabs,pdf,devtools,network,storage,vision,testing |
+| `caps` | string | 能力组：config,network,storage,devtools,vision,pdf,testing（以 @playwright/mcp 版本为准） |
 | `userDataDir` | string | 持久 profile 目录（建议 `<dataDir>/plugins/browser-use/profile`） |
 
 ## Profile 与安全注记（spec §4.3）
