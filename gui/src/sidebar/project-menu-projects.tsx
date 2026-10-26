@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
 import { Archive, ChevronRight, Folder, FolderOpen, FolderTree, MoreHorizontal, SquarePen, X } from 'lucide-react';
-import { sessionMetaLine, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
+import { SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 import { SessionRowMenu } from './session-row-menu';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
@@ -238,15 +238,19 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                             ? runningIds.has(activeSessionId)
                             : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
                           const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
-                          // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘;
-                          // 统计行经 sessionMetaLine 单点——本地时区+单复数口径,原 UTC 切片分叉已收编);
-                          // 行本体 SessionRow 共用单点(G41 G6b,DOM 以 RECENTS 形为准)
+                          // G14.188 项目组会话行同样 hover 出会话信息(与最近会话行同款;贴主对话缘);
+                          // 2026-10-26 四段悬浮卡制:文本 meta 行退役,info 直传卡面(分支名根组取)
                           return (
                             <SessionRowView
                               key={sr.id}
                               rowId={sr.id}
                               label={label}
-                              meta={sessionMetaLine(sr, root !== undefined ? props.branchByRoot?.[root] : undefined)}
+                              info={{
+                                branch: root !== undefined ? props.branchByRoot?.[root] : undefined,
+                                runs: sr.runs,
+                                steps: sr.steps,
+                                createdAt: sr.createdAt,
+                              }}
                               updatedAt={sr.updatedAt}
                               active={active}
                               running={running}

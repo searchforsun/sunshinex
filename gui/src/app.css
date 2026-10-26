@@ -1068,6 +1068,20 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: var(--surface-elevated); box-shadow: var(--elev-prominent);
   color: var(--fg-secondary); font-size: 11px; line-height: 1.4;
   white-space: pre-line; max-width: 340px; overflow-wrap: anywhere;
+/* 2026-10-26 会话行四段悬浮卡(SessionRow hover,文本 data-tip 退役):固定宽 280(px 级,
+   zoom>1 视觉膨胀由 JS 落位时 /zoomScale 与视口钳制归一,余量不足缩到 min 160);
+   ①会话名可换行 ②分支 ③轮次·步数 ④建档时刻——②③④单行尾部省略 */
+.sx-sess-card {
+  position: fixed; z-index: 150; pointer-events: none; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 10px; border-radius: var(--radius-lg);
+  background: var(--surface-elevated); box-shadow: var(--elev-prominent);
+  font-size: 11px; line-height: 1.45; color: var(--fg-secondary);
+}
+.sx-sess-card-name { color: var(--fg); font-size: 12px; overflow-wrap: anywhere; }
+.sx-sess-card-row { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+.sx-sess-card-row svg { flex: none; color: var(--fg-tertiary); }
+.sx-sess-card-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 /* G14.80/G14.91:ask_question 选择题表单(dock 形态)——卡列表内滚+底部隐现提示+固定提交区;
    选项卡片化(整卡可点,选中 accent 边+浅底+勾图标);Other 与自由输入合二为一(默认项,✎+输入框);

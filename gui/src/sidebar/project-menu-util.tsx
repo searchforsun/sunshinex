@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
-import { Archive, Pin } from 'lucide-react';
+import { zoomScale } from '../ui-zoom';
+import { Archive, Clock, GitBranch, Layers, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -151,14 +152,67 @@ export function ArchiveConfirmButton(props: {
   );
 }
 
+/** 会话行悬浮卡数据(2026-10-26 用户裁定四段制):完整会话名/分支/轮次步数/建档时刻 */
+export interface SessionRowInfo {
+  readonly branch?: string;
+  readonly runs?: number;
+  readonly steps?: number;
+  readonly createdAt?: string;
+}
+
+/** 会话行悬浮卡(2026-10-26 用户裁定,文本 data-tip 退役):固定宽 280,仅应用宽度不够时收缩
+ *  (min 160);四段信息——①会话名占一到多行(换行不省略)②分支图标+分支名③图标+轮次·步数
+ *  ④时钟图标+建档时刻,②③④各占一行,宽度不够尾部省略。fixed 定位贴侧栏右缘,行垂直居中;
+ *  视觉测量写入本地样式按 D50 契约 /zoomScale() 归一 */
+function SessionHoverCard(props: {
+  readonly label: string;
+  readonly info: SessionRowInfo;
+  /** 锚点视觉坐标(summary 中心)与侧栏右缘(视觉 px) */
+  readonly anchor: { top: number; height: number; menuRight: number };
+}): JSX.Element {
+  const z = zoomScale();
+  const avail = (window.innerWidth - props.anchor.menuRight - 12) / z;
+  const width = Math.max(160, Math.min(280, avail));
+  const { branch, runs, steps, createdAt } = props.info;
+  const stats: string[] = [];
+  if (runs !== undefined) stats.push(t(`${runs} run${runs === 1 ? '' : 's'}`, `${runs} 轮`));
+  if (steps !== undefined) stats.push(t(`${steps} step${steps === 1 ? '' : 's'}`, `${steps} 步`));
+  return (
+    <div
+      className="sx-sess-card"
+      style={{ left: (props.anchor.menuRight + 4) / z, top: (props.anchor.top + props.anchor.height / 2) / z, width }}
+    >
+      <div className="sx-sess-card-name">{props.label}</div>
+      {branch !== undefined && branch !== '' && (
+        <div className="sx-sess-card-row">
+          <GitBranch size={12} strokeWidth={1.75} />
+          <span>{branch}</span>
+        </div>
+      )}
+      {stats.length > 0 && (
+        <div className="sx-sess-card-row">
+          <Layers size={12} strokeWidth={1.75} />
+          <span>{stats.join(' · ')}</span>
+        </div>
+      )}
+      {createdAt !== undefined && (
+        <div className="sx-sess-card-row">
+          <Clock size={12} strokeWidth={1.75} />
+          <span>{t(`created ${shortLocalTime(createdAt)}`, `创建于 ${shortLocalTime(createdAt)}`)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 会话行（项目组行/最近会话行两组共用，D41 G6b 收敛；DOM 以 RECENTS 形为准——projects 行
  *  注释自称「与最近会话行同款」而 tooltip 落点漂在整行，归一到标题 span）：置顶钮（pin 未传
- *  =不渲染）+运行/未读状态点+标题（统计 tooltip 贴标题）+相对时间+归档确认 morph。open 已在
+ *  =不渲染）+运行/未读状态点+标题（悬浮卡贴标题）+相对时间+归档确认 morph。open 已在
  *  调用方闭包好各自寻址形（组行 3 参/recents 2 参）与 root 缺省守卫 */
 export function SessionRow(props: {
   readonly rowId: string;
   readonly label: string;
-  readonly meta: string;
+  readonly info: SessionRowInfo;
   readonly updatedAt: number;
   readonly active: boolean;
   readonly running: boolean;
@@ -176,12 +230,15 @@ export function SessionRow(props: {
     ) : props.unseen ? (
       <span className="sx-session-dot unseen" />
     ) : null;
+  // 悬浮卡显隐(2026-10-26 四段卡替代文本 tip):enter 锚 summary 量位,leave/行点击即收
+  const [hover, setHover] = useState<{ top: number; height: number; menuRight: number } | null>(null);
   return (
     <li
       data-row-id={props.rowId}
       className={`session-row sx-session-row${props.active ? ' active' : ''}`}
       data-session-row="1"
       onClick={() => {
+        setHover(null);
         if (props.busy) return;
         props.onOpen();
       }}
@@ -199,10 +256,16 @@ export function SessionRow(props: {
       )}
       {dot}
       <span className="session-summary" data-id={props.rowId}
-        data-tip={`${props.label}${props.meta !== '' ? `\n${props.meta}` : ''}`} data-tip-pos="right"
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const menu = e.currentTarget.closest('.sx-menu');
+          setHover({ top: r.top, height: r.height, menuRight: menu !== null ? menu.getBoundingClientRect().right : r.right });
+        }}
+        onMouseLeave={() => setHover(null)}
       >
         {props.label}
       </span>
+      {hover !== null && <SessionHoverCard label={props.label} info={props.info} anchor={hover} />}
       <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
         <ArchiveConfirmButton
