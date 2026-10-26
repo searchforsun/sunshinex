@@ -18,6 +18,8 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Chat } from '../Chat';
 import { ImageLightbox } from '../../ImageLightbox';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
+import { ToolEntryView } from './ToolEntry';
+import type { ChatEntry } from '../../chat-reducer';
 import type { ChatSink } from './chat-types';
 import type { Connection } from '../../connection';
 
@@ -205,5 +207,35 @@ describe('ImageLightbox 单挂(缩放边界与倍数显形)', () => {
     expect(pct()).toBe('25%');
     const dl = document.querySelector('a[aria-label="Download"]') as HTMLAnchorElement;
     expect(dl.getAttribute('href')).toBe(PNG);
+  });
+});
+
+describe('工具行结果图片(2026-10-26 插件体系图片通道:条目 images → 缩略行+lightbox)', () => {
+  const toolEntry = (): ChatEntry => ({
+    key: 'k2',
+    kind: 'tool',
+    md: '',
+    name: 'mcp__cu__screenshot',
+    images: [PNG],
+    result: { text: 'shot', ok: true },
+  });
+
+  it('entry.images 非空:折叠行下缩略行直出;点击开 lightbox,关闭即清', async () => {
+    render(<ToolEntryView entry={toolEntry()} conn={{} as unknown as Connection} sessionId="s1" />);
+    const strip = document.querySelector('.tool-images')!;
+    expect(strip.querySelectorAll('img.tool-image-thumb')).toHaveLength(1);
+    expect(document.querySelector('.tool-images img')!.getAttribute('src')).toBe(PNG);
+    // 点缩略图开浮层;行不展开(tool-body 不 open)——缩略行在折叠壳外直出
+    fireEvent.click(document.querySelector('.tool-image-thumb')!);
+    expect(await waitFor(() => document.querySelector('.sx-lightbox'))).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(document.querySelector('.sx-lightbox')).toBeNull();
+  });
+
+  it('无图条目不渲染缩略行(回归钉)', () => {
+    const e = toolEntry();
+    delete e.images;
+    render(<ToolEntryView entry={e} conn={{} as unknown as Connection} sessionId="s1" />);
+    expect(document.querySelector('.tool-images')).toBeNull();
   });
 });

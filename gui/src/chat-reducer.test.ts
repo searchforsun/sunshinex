@@ -543,6 +543,60 @@ describe('structureVersion(P1 成员变更计数,派生冻结 memo key——spec
   });
 });
 
+describe('tool-result payload.images → 工具条目 images(2026-10-26 插件体系图片通道 GUI 面)', () => {
+  const SHOT = 'data:image/png;base64,QQ==';
+
+  it('call→result 正常配对:payload.images 原位落条(result 帧随行,仅非空携带)', () => {
+    const s = fold([
+      ev('tool-call', 'mcp__cu__screenshot', { callId: 'shot-1' }),
+      ev('tool-result', 'shot', { callId: 'shot-1', ok: true, full: 'shot', status: 'completed', images: [SHOT] }),
+    ]);
+    expect(s.entries[0]).toMatchObject({
+      kind: 'tool',
+      name: 'mcp__cu__screenshot',
+      result: { text: 'shot', ok: true },
+      images: [SHOT],
+    });
+  });
+
+  it('无 images/空列:条目不落 images 键(与事件侧「仅非空携带」同口径)', () => {
+    const bare = fold([
+      ev('tool-call', 'read', { callId: 'c1' }),
+      ev('tool-result', 'ok', { callId: 'c1' }),
+    ]);
+    expect('images' in bare.entries[0]!).toBe(false);
+    const emptied = fold([
+      ev('tool-call', 'read', { callId: 'c2' }),
+      ev('tool-result', 'ok', { callId: 'c2', images: [] }),
+    ]);
+    expect('images' in emptied.entries[0]!).toBe(false);
+  });
+
+  it('孤儿 result(payload.tool 独立成条)与 result 先行占位条同样落图;后续帧不丢(视图缓存身份保持)', () => {
+    const orphan = fold([ev('tool-result', 'late', { tool: 'mcp__cu__screenshot', images: [SHOT] })]);
+    expect(orphan.entries[0]).toMatchObject({ kind: 'tool', name: 'mcp__cu__screenshot', images: [SHOT] });
+    // result 先行:占位条即刻终态入列落图,迟到 call 回填 name 同条(images 随内核条目展开幸存)
+    const placed = fold([
+      ev('tool-result', 'out', { callId: 'c9', images: [SHOT] }),
+      ev('tool-call', 'mcp__cu__screenshot', { callId: 'c9' }),
+    ]);
+    expect(placed.entries.at(-1)).toMatchObject({ kind: 'tool', name: 'mcp__cu__screenshot', callId: 'c9', images: [SHOT] });
+    // 配对后的纯内容帧(token)不得丢图——条目引用身份由映射缓存保证
+    const after = applyChatEvent(placed, ev('token', '后续'));
+    expect(after.entries.find((e) => e.kind === 'tool')!.images).toEqual([SHOT]);
+  });
+
+  it('多 result 各归各条:images 只落本 result 的条目,不串扰无图行', () => {
+    const s = fold([
+      ev('tool-call', 'read', { callId: 'a' }),
+      ev('tool-call', 'mcp__cu__screenshot', { callId: 'b' }),
+      ev('tool-result', 'file', { callId: 'a' }),
+      ev('tool-result', 'shot', { callId: 'b', images: [SHOT] }),
+    ]);
+    expect(s.entries.filter((e) => e.kind === 'tool').map((e) => e.images)).toEqual([undefined, [SHOT]]);
+  });
+});
+
 describe('seedGen(种子代次——reseed 恒换新值,防 structureVersion 等值碰撞漏检)', () => {
   it('seedGen: 每次种子代次递增,structureVersion 保持种子语义', () => {
     const a = seedChatFromSnapshot([], { openRun: -1, openSeg: -1 });

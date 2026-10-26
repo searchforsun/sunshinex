@@ -24,7 +24,8 @@ export interface ChatEntry {
   key: string;
   kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error' | 'thinking' | 'run';
   md: string;
-  /** user 专用:随行图片附件(dataURL,≤8 张;内核条目直映——气泡缩略图数据源) */
+  /** 随行图片附件(dataURL):user=气泡附件条;tool=工具结果图片(2026-10-26 插件体系图片通道,
+   *  tool-result 事件 payload.images 原位落条——ToolEntry 缩略行数据源) */
   images?: string[];
   streaming?: boolean;
   /** thinking 专用：段耗时秒（内核封段计首尾 ts 差） */
@@ -264,11 +265,39 @@ export function applyChatEvent(s: ChatState, e: SessionEvent): ChatState {
   return applySubagentChatEvent(s, e);
 }
 
+/** 工具结果图片附带(2026-10-26 插件体系图片通道 GUI 面):daemon tool-result 事件 payload.images
+ *  (dataURL 数组,仅非空携带)内核不承载——内核投影全仓同源(TUI/journal/快照回放不随动,工具图
+ *  回放属后续范围),落条属 GUI 显示面语义,故在内核归约后认领其本次落位的 tool 条目原位补图。
+ *  认领=引用差分:tool-result 一帧恰换/增一个 tool kind 条目(封段只动 thinking/assistant/run;
+ *  配对/迟到回填/FIFO/占位追加全在内核单点,此处零重复配对)——替换位唯一/追加位在尾。
+ *  pending 槽幂等回填语义下 images 只随最终 result 帧来,原位补图即终态,无二次到达面 */
+function withToolResultImages(k: KernelState, prev: KernelState, e: SessionEvent): KernelState {
+  if (e.type !== 'tool-result') return k;
+  const raw = e.payload?.images;
+  if (!Array.isArray(raw) || raw.length === 0) return k;
+  const images = raw.filter((x): x is string => typeof x === 'string');
+  if (images.length === 0) return k;
+  const n = Math.min(prev.entries.length, k.entries.length);
+  for (let i = 0; i < n; i += 1) {
+    if (prev.entries[i] !== k.entries[i] && k.entries[i]!.kind === 'tool') {
+      const entries = k.entries.slice();
+      entries[i] = { ...entries[i]!, images };
+      return { ...k, entries };
+    }
+  }
+  // result 先行/孤儿:内核尾追加占位/独立条——补图落在尾条
+  const last = k.entries[k.entries.length - 1];
+  if (k.entries.length > prev.entries.length && last !== undefined && last.kind === 'tool') {
+    return { ...k, entries: [...k.entries.slice(0, -1), { ...last, images }] };
+  }
+  return k;
+}
+
 /** G14.2xx 子智能体流同源归约(无 subagent 排除门/无 queue 截收):与主流 applyChatEvent 走
  *  同一内核投影 applyEvent——子智能体转录(agents 页签)由此获得与主对话逐字段同构的条目
  *  (tool 行 name/input/result 全量),替代旧有损文本滑窗反解析(空名帧退化「…」行病根) */
 export function applySubagentChatEvent(s: ChatState, e: SessionEvent): ChatState {
-  const k = applySubagentEvent(s.k, e); // 剥 subagent 标签走同一内核归约(子智能体转录与主对话同构)
+  const k = withToolResultImages(applySubagentEvent(s.k, e), s.k, e); // 剥 subagent 标签走同一内核归约(子智能体转录与主对话同构)+工具结果图片原位落条
   // P9 统计面:计数器唯一权威在内核 stats,此处直投影零记账;P10 status 亦读内核
   // (openRun>=0 即 running——视图层 model-start/done 推导退役)
   let next: ChatState = { ...s, k, status: k.openRun >= 0 ? 'running' : 'idle', tokens: k.stats.sessionTotalTokens, steps: k.stats.sessionSteps, cacheTokens: k.stats.sessionCacheTokens };

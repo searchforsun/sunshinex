@@ -7,6 +7,7 @@ import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
 import { DiffLines } from '../../diff-lines';
 import { FileIcon } from '../../file-icon';
+import { ImageLightbox } from '../../ImageLightbox';
 import ReactMarkdown from 'react-markdown';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import type { DiffResp } from '../../connection';
@@ -171,6 +172,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** G7 diff 拉取态:undefined=未拉/在途(null 前先示右列现内容);null=拉取失败(退单列现内容);
    *  对象=成功(diff2html 面板)。拉一次缓存——折叠再展开不重拉 */
   const [diff, setDiff] = useState<DiffResp | null | undefined>(undefined);
+  /** 工具结果图片查看浮层(2026-10-26 插件体系图片通道;组件自持——ToolEntryView 主对话/agents
+   *  页签两消费面无差别直用,不依赖页级回调接线)。undefined=关;关闭即清(浮层卸载) */
+  const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   // P11 T7 渲染中立:字段单源(entry.name/input/result/status 直映)——md 首行解析与旁路 info
   // 双通道全退役,渲染记号与截断全是本组件职责
   const toolName = entry.name ?? '';
@@ -586,9 +590,25 @@ export const ToolEntryView = memo(function ToolEntryView({
         {collapsed}
         {!isRead && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
       </button>
+      {/* 工具结果图片缩略行(2026-10-26 插件体系图片通道):折叠壳外直出——截屏类工具行不展开即可看;
+          点击开查看浮层(交互/样式沿用户气泡图片条同款令牌)。images 只随 result 帧落条,执行中不现 */}
+      {entry.images !== undefined && entry.images.length > 0 && (
+        <div className="tool-images">
+          {entry.images.map((src, i) => (
+            <img
+              key={`${i}:${src.slice(-24)}`}
+              src={src}
+              alt={`${t('Tool image', '工具图片')} ${i + 1}`}
+              className="tool-image-thumb"
+              onClick={() => setLightbox(src)}
+            />
+          ))}
+        </div>
+      )}
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
         <div className="tool-body-inner">{body}</div>
       </div>
+      {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
     </div>
   );
 });

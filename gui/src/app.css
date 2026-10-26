@@ -2354,3 +2354,8 @@ input.sx-setting-input { width: 100%; }
 .sx-lightbox-act:hover{background:var(--bubble-user)}
 .sx-lightbox-pct{min-width:46px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;opacity:.85}
 .sx-lightbox-sep{width:1px;height:16px;background:var(--fg);opacity:.15;margin:0 4px}
+/* 工具行结果图片缩略(2026-10-26 插件体系图片通道):折叠行下横排——96px 见方/12px 圆角与用户气泡
+   缩略(user-img-strip)同令牌;hover 提亮+zoom-in 指针,点击开 lightbox */
+.tool-images{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
+.tool-image-thumb{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--surface-soft);cursor:zoom-in;transition:filter var(--dur-basic) var(--ease-enter)}
+.tool-image-thumb:hover{filter:brightness(1.15)}
