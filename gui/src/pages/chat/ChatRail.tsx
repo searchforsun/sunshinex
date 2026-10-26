@@ -32,13 +32,15 @@ export function ChatRail(props: {
 }): JSX.Element {
   const { entries, chatScrollRef, sideChat } = props;
   const [gutterOk, setGutterOk] = useState(false);
-  // 余量实测:流区限宽=对称 padding(>18px 段即余量),余量 ≥ 64px(刻度 44+呼吸)才显示
+  // 余量实测:流区限宽=对称 padding(>18px 段即余量)。v2 等长刻度后真实占位=inner 盒 40px
+  // (border-box,padding-right 10px 已含)+hover 左突 4px=44px——阈值随 v2 足迹收紧(旧 64 是
+  // v1 文本刻度 44px+呼吸的遗留,窄窗下把放得下的刻度条误藏)
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null || typeof ResizeObserver === 'undefined') return;
     const measure = (): void => {
       const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
-      setGutterOk(Number.isFinite(pad) && pad - 18 >= 64);
+      setGutterOk(Number.isFinite(pad) && pad - 18 >= 44);
     };
     measure();
     const ro = new ResizeObserver(measure);
