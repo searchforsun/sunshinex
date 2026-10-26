@@ -511,6 +511,33 @@ describe('run 状态行(G11 §1)', () => {
   });
 });
 
+describe('电脑控制徽标(2026-10-27)', () => {
+  it('控制类 computer-use 工具在跑:顶栏亮「正在控制」边框徽标;轮收束即隐', async () => {
+    mountChat([]);
+    await flushed();
+    expect(document.querySelector('.sx-controlling-badge')).toBeNull();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'tool-call', text: 'mcp__computer-use__click', ts: Date.now(), payload: { callId: 'cu1', input: { x: 10, y: 20 } } });
+    const badge = document.querySelector('.sx-controlling-badge');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toMatch(/controlling your computer|正在控制你的电脑/);
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'cu1' } });
+    fire({ type: 'done', text: '答', ts: Date.now() });
+    expect(document.querySelector('.sx-controlling-badge')).toBeNull();
+  });
+
+  it('观察类(screenshot)与他 server 工具不点亮', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'tool-call', text: 'mcp__computer-use__screenshot', ts: Date.now(), payload: { callId: 'cu2', input: {} } });
+    expect(document.querySelector('.sx-controlling-badge')).toBeNull();
+    fire({ type: 'tool-result', text: 'shot', ts: Date.now(), payload: { callId: 'cu2' } });
+    fire({ type: 'tool-call', text: 'mcp__browser-use__browser_click', ts: Date.now(), payload: { callId: 'bu1', input: {} } });
+    expect(document.querySelector('.sx-controlling-badge')).toBeNull();
+  });
+});
+
 
   it('read 执行中:流光「正在读取」+路径同行(用户裁定);结果回后回落 名称+目录', async () => {
     mountChat([]);

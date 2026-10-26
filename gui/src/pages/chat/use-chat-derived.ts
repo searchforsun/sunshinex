@@ -71,12 +71,27 @@ export interface ChatDerivedDeps {
 /** 用户气泡 md → 单行纯文本:剥引用前缀与链接标记(待办批次 goal 与关联轮次 turnGoal 共用单点) */
 const stripGoal = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
 
+/** 电脑控制指示(2026-10-27 用户裁定):主对话顶栏「Sunshinex 正在控制你的电脑」边框徽标判定面。
+ *  server 名+动作集与 plugins/computer-use/plugin.json 的 safety.act 声明同源——插件侧变更须两处
+ *  同步;screenshot=confirm(观察)、uia_snapshot/window_list=observe(读)、wait/wait_for(被动等待)
+ *  均非「控制」,不点亮 */
+const COMPUTER_USE_SERVER = 'computer-use';
+const COMPUTER_USE_ACT_TOOLS = new Set(['click', 'type', 'key', 'scroll', 'drag', 'app']);
+
+/** 工具名 → 是否为电脑控制类动作(`mcp__computer-use__<act>`) */
+export function isComputerUseControlTool(name: string | undefined): boolean {
+  const prefix = `mcp__${COMPUTER_USE_SERVER}__`;
+  return name !== undefined && name.startsWith(prefix) && COMPUTER_USE_ACT_TOOLS.has(name.slice(prefix.length));
+}
+
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;
   todoBatches: TodoBatch[];
   turnGoal: string;
   todoActive: number;
   taskActive: number;
+  /** 电脑控制徽标:控制类 computer-use 工具条在跑(顶栏「正在控制」判定) */
+  computerUseActive: boolean;
 } {
   const { chat, board, onTodoBatches, onTurnGoal } = deps;
   /** P1 派生冻结:依赖改成员集键(structureVersion+seedGen 防重置等值碰撞)——纯内容帧
@@ -126,6 +141,16 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     return '';
   }, [chat.structureVersion, chat.seedGen]);
 
+  /** 电脑控制徽标(2026-10-27):运行轮内存在未收口的控制类 computer-use 工具条(pending/running)
+   *  ——running 门使轮收束即隐(异常中断遗留的未决条不长久驻留);冻结键沿派生面同口径
+   *  (成员/收口配对才重算,pending→running 翻转不改变判定结果) */
+  const computerUseActive = useMemo(
+    () =>
+      chat.status === 'running' &&
+      chat.entries.some((e) => e.kind === 'tool' && (e.status === 'pending' || e.status === 'running') && isComputerUseControlTool(e.name)),
+    [chat.status, chat.structureVersion, chat.seedGen],
+  );
+
   // 上报去重(性能面):entries 每 token 帧都换新引用——序列化签名不变就不上报,
   // 否则 App 级 setState 跟着每帧放大重渲染(稳定条 md 计数上涨,G14.174 回归)
   const batchSig = useMemo(() => JSON.stringify(todoBatches), [todoBatches]);
@@ -139,7 +164,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   useEffect(() => {
     onTurnGoal?.(turnGoal);
   }, [turnGoal, onTurnGoal]);
-  return { taskNameOf, todoBatches, turnGoal, todoActive, taskActive };
+  return { taskNameOf, todoBatches, turnGoal, todoActive, taskActive, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer

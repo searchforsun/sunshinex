@@ -105,10 +105,12 @@ export interface ChatTopbarProps {
   readonly onToggleMenu?: () => void;
   /** 2026-10-25 应用级导航(前进/后退)控制面(App 壳持历史);缺场不渲染钮对(旁路 Chat 免配) */
   readonly nav?: NavControls;
+  /** 2026-10-27 电脑控制指示:控制类 computer-use 工具条在跑(use-chat-derived 派生)——顶栏会话名行右亮「正在控制」边框徽标 */
+  readonly computerUseActive?: boolean;
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, computerUseActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -293,6 +295,13 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </button>
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
+        {/* 2026-10-27 用户裁定:电脑控制期间会话名行右亮「正在控制」边框徽标(控制类 computer-use
+            工具在跑,use-chat-derived 派生,轮收束即隐) */}
+        {computerUseActive === true && (
+          <span className="sx-controlling-badge" role="status">
+            {t('Sunshinex is controlling your computer', 'Sunshinex 正在控制你的电脑')}
+          </span>
+        )}
         {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
         {/* 2026-10-24 拖拽重构:顶栏窗拖拽单点落本空白带(顶栏左聚布局,钮全在带左,带吸右侧余量)——
             旧「容器 drag+按钮挖孔」在 CSS zoom 下拖拽位图挖孔坐标错位,抽屉态窗控簇([|]−□×)真实
