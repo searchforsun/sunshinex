@@ -226,7 +226,7 @@ export function builtinTools(
       },
       name: 'read',
       description:
-        'Read file content (preferred over exec cat/head/tail for any file lookup); optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result)',
+        'Read file content (preferred over exec cat/head/tail for any file lookup); optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result). Image files (png/jpg/jpeg/webp/gif) are returned as attached images you can see directly — use this tool to visually inspect screenshots and pictures instead of claiming you cannot view images',
       category: 'read',
       display: { verb: 'READ', targetFields: ['path'] },
       executor: async (input: ToolInput) => {

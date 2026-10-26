@@ -13,11 +13,12 @@ function connOf(resp: FileResp): Connection {
   return { readFile: () => Promise.resolve(resp) } as unknown as Connection;
 }
 
-test('Files 图片文件:dataURL 直显,复制/换行钮让位', async () => {
+test('Files 图片文件:dataURL 直显(居中+棋盘格垫底),复制/换行钮让位', async () => {
   render(<Files conn={connOf({ path: 'C:/w/shot.png', type: 'image', content: '', mime: 'image/png', data: PNG_B64 })} sessionId="s1" initialPath="shot.png" />);
-  await waitFor(() => expect(document.querySelector('.files-md img')).not.toBeNull());
-  const img = document.querySelector('.files-md img') as HTMLImageElement;
+  await waitFor(() => expect(document.querySelector('[aria-label="file content"] img')).not.toBeNull());
+  const img = document.querySelector('[aria-label="file content"] img') as HTMLImageElement;
   expect(img.getAttribute('src')).toBe(`data:image/png;base64,${PNG_B64}`);
+  expect(img.style.objectFit).toBe('contain'); // 适配视口(棋盘格垫底为视觉面,jsdom cssstyle 不解析 conic-gradient,实机目验)
   // 图片面对复制/换行钮无意义:动作区不渲染这两枚(md 预览钮本就 isMd 才出)
   expect(screen.queryByLabelText('copy content')).toBeNull();
   expect(screen.queryByLabelText(/toggle word wrap|overflow scroll/)).toBeNull();

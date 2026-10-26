@@ -261,15 +261,25 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
               )}
             </div>
             {isImage ? (
-              /* 2026-10-26 侧栏预览:图片文件 dataURL 直显(适配视口,灯箱级交互不需要——
-                 复制/换行/md 预览钮对图片无意义,全部让位) */
-              <div className="files-md" aria-label="file content">
+              /* 2026-10-26 侧栏预览:图片文件 dataURL 直显——视口双向居中;透明像素垫业界标准
+                 棋盘格背景(PS/Figma/VS Code 同款 conic-gradient 形态)界定图片实际范围 */
+              <div
+                aria-label="file content"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 200px)', padding: 12 }}
+              >
                 <img
                   src={`data:${load.file.mime};base64,${load.file.data}`}
                   alt={load.file.path}
                   loading="lazy"
                   decoding="async"
-                  style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 200px)', objectFit: 'contain', display: 'block', margin: '8px auto' }}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: 'calc(100vh - 260px)',
+                    objectFit: 'contain',
+                    display: 'block',
+                    backgroundImage: 'conic-gradient(#00000022 0 25%, transparent 0 50%, #00000022 0 75%, transparent 0)',
+                    backgroundSize: '16px 16px',
+                  }}
                 />
               </div>
             ) : preview && isMd ? (
