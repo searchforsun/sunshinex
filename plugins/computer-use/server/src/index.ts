@@ -21,13 +21,12 @@ export function createServer(worker: WorkerClient): Server {
   return server;
 }
 
-/** 生产 worker：持久 PowerShell 子进程（createWorker，Task 18）。协议面已通（screenshot 可用）；
- *  dispatch 侧参数整形与观察/动作 op 消费随 Task 19/20 充实——worker 生命周期随本进程收口
+/** stdio 入口：生产 worker 在此 lazy 创建（Task 18 评审随手修——模块顶层即拉真进程会让任何 import 本模块
+ *  的面（含测试收集）都 spawn PowerShell；挪进 main() 后 import 零副作用，真进程只随真启动起）。
+ *  持久 PowerShell 子进程（createWorker，Task 18）协议面已通；worker 生命周期随本进程收口
  *  （宿主关管道 → process.exit → worker stdin EOF → PS 主循环退出，无孤儿进程）。 */
-const worker: WorkerClient = createWorker();
-
-/** stdio 入口：connect 后挂 stdin EOF 兜底——宿主收口（关管道）即干净退出（Windows 管道悬挂防残留）。 */
 async function main(): Promise<void> {
+  const worker: WorkerClient = createWorker();
   const server = createServer(worker);
   const transport = new StdioServerTransport();
   await server.connect(transport);

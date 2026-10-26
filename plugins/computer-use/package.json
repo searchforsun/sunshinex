@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test server/test/worker.test.js server/test/scale.test.js",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test server/test/worker.test.js server/test/scale.test.js server/test/dispatch.test.js",
     "start": "node server/index.js"
   },
   "dependencies": {
