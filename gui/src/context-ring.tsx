@@ -140,24 +140,25 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
           onMouseLeave={hide}
         >
           {/* G14.97 三分区横线分割:上下文(构成含 token+百分比) / 轮次步数 / 缓存命中率(含具体量)。
-              2026-10-26 用户裁定:数值改 `234k/1m(23.4%)` 括号形态、尾缀条数去掉、「上下文组成」
-              节标题去掉改逐段百分比条(圆环色阶同源:常 accent/70+ warn/90+ err) */}
+              2026-10-26 二轮裁定(参考图):总量一根条(占用率色阶),构成段行改彩色圆点+数值——
+              不再每段一根条;数值括号形态;缓存命中率行同括号口径 */}
           <div className="ctx-pop-row">
             <span className="k">{t('Context', '上下文')}</span>
             <span className="v">{`${fmt(used)}/${fmt(win)}(${pct1((used / Math.max(1, win)) * 100)})`}</span>
           </div>
+          <div className="ctx-pop-bar" aria-hidden="true">
+            <span className={`ctx-pop-bar-fill lv${lv}`} style={{ width: `${pct}%` }} />
+          </div>
           {parts.length > 0 && (
-            parts.map((p) => {
+            parts.map((p, i) => {
               const partPct = Math.min(100, (p.tokens / Math.max(1, used)) * 100);
               return (
-                <div className="ctx-pop-part" key={p.id}>
-                  <div className="ctx-pop-row sub">
-                    <span className="k">{partName(p.id)}</span>
-                    <span className="v">{`${fmt(p.tokens)}(${pct1(partPct)})`}</span>
-                  </div>
-                  <div className="ctx-pop-bar" aria-hidden="true">
-                    <span className={`ctx-pop-bar-fill lv${level(partPct)}`} style={{ width: `${partPct}%` }} />
-                  </div>
+                <div className="ctx-pop-row sub" key={p.id}>
+                  <span className="k">
+                    <span className={`ctx-dot c${i % 6}`} aria-hidden="true" />
+                    {partName(p.id)}
+                  </span>
+                  <span className="v">{`${fmt(p.tokens)}(${pct1(partPct)})`}</span>
                 </div>
               );
             })
@@ -172,7 +173,7 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
             <span className="k">{t('Cache hit rate', '缓存命中率')}</span>
             <span className="v">
               {tokens > 0
-                ? `${pct1((cacheTokens / tokens) * 100)} · ${fmt(cacheTokens)}/${fmt(tokens)}`
+                ? `${fmt(cacheTokens)}/${fmt(tokens)}(${pct1((cacheTokens / tokens) * 100)})`
                 : '0.0%'}
             </span>
           </div>

@@ -696,7 +696,8 @@ describe('G14.18 上下文圆环', () => {
     expect(pop.textContent).toContain('6.6k/1m(0.7%)');
     expect(pop.textContent).toContain('429(6.5%)'); // 构成项=token(百分比)
     expect(pop.textContent).not.toContain('上下文组成'); // 节标题退役(en 位本无文案,防御 zh 回归)
-    expect(pop.querySelectorAll('.ctx-pop-bar')).toHaveLength(pop.querySelectorAll('.ctx-pop-part').length); // 每段一条百分比条
+    expect(pop.querySelectorAll('.ctx-pop-bar')).toHaveLength(1); // 2026-10-26 二轮裁定:总量一根条(不再每段一根)
+    expect(pop.querySelectorAll('.ctx-dot').length).toBeGreaterThan(0); // 构成段行=彩色圆点
     expect(pop.querySelectorAll('.ctx-pop-sep').length).toBe(2); // 上下文/轮次/缓存三分区
     expect(pop.textContent).toContain('Turns / Steps');
     expect(pop.textContent).toContain('System');

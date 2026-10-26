@@ -1410,12 +1410,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   padding: 3px 12px; font-size: 12px; line-height: 18px;
 }.ctx-pop-row .k { color: var(--fg-secondary); white-space: nowrap; }.ctx-pop-row .v { color: var(--fg); font-variant-numeric: tabular-nums; text-align: right; }
-/* 2026-10-26 用户裁定:「上下文组成」节标题退役,逐段改百分比条(圆环色阶同源) */
-.ctx-pop-part { padding: 0; }
-.ctx-pop-bar { margin: 0 12px 4px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 10%, transparent); overflow: hidden; }
-.ctx-pop-bar-fill { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+/* 2026-10-26 二轮裁定(参考图):总量一根条(占用率色阶),构成段行=彩色圆点+数值,不再每段一根条 */
+.ctx-pop-bar { margin: 2px 12px 5px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 10%, transparent); overflow: hidden; }
+.ctx-pop-bar-fill { display: block; height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s ease; }
 .ctx-pop-bar-fill.lv1 { background: var(--warn); }
 .ctx-pop-bar-fill.lv2 { background: var(--err); }
+.ctx-pop-row .ctx-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.ctx-dot.c0 { background: var(--accent); }
+.ctx-dot.c1 { background: #b897f4; }
+.ctx-dot.c2 { background: #83d197; }
+.ctx-dot.c3 { background: #f9dc78; }
+.ctx-dot.c4 { background: #f1a275; }
+.ctx-dot.c5 { background: #f8a6c8; }
 /* G14.21 构成明细:分组小标 + 逐段子行(半档字号,条数缀暗化) */.ctx-pop-sec {
   padding: 5px 12px 2px; font-size: 10px; letter-spacing: 0.4px;
   text-transform: uppercase; color: var(--fg-tertiary);
