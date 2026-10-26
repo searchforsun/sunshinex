@@ -164,7 +164,9 @@ export class ToolRegistry {
     } catch (e) {
       if (e instanceof CodedToolError) {
         this.countOutcome(e.code);
-        return fail(e.code, e.message);
+        // images 随行透传（图片通道二）：isError 截屏等失败态图片挂错误实例，在此并进失败载荷——
+        // 否则错误实例在 catch 处被拆散、图片到不了 BatchRunner 回发面（无图调用方第三参缺省，形态零变化）
+        return fail(e.code, e.message, e.images);
       }
       this.countOutcome('EXEC_FAILED');
       return fail('EXEC_FAILED', e instanceof Error ? e.message : 'Tool execution failed');

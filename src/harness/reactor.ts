@@ -16,8 +16,9 @@ import { reactorMaxStepsEnv, reciteEveryEnv, resolveRunWindow, subagentTokenCapE
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
 /** 链行（与会话链 HistoryStep 同构）：reasoning=该轮模型思考原文（思考模式续轮回传载荷，挂 phase 行/批首调用行）；
+ *  images=随行图片附件（工具结果截屏回流/用户穿插行，图片通道二经 resultRow 第二参入链）；
  *  action 与 HistoryStep 同收窄 ChainAction（types.ts 单点登记），回写主链零对位转换 */
-export interface StepRecord { step: number; action?: ChainAction; observation: string; reasoning?: string; thinkSeconds?: number; }
+export interface StepRecord { step: number; action?: ChainAction; observation: string; reasoning?: string; thinkSeconds?: number; images?: string[]; }
 export interface RunResult {
   steps: StepRecord[];
   done: boolean;
@@ -349,7 +350,7 @@ export class Reactor {
       this.deps.context.appendChain(
         steps
           .filter((s) => s.step > cut)
-          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}) })),
+          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}), ...(s.images !== undefined ? { images: s.images } : {}) })),
       );
       if (done && reply) {
         this.deps.context.appendChain([{
@@ -539,7 +540,7 @@ export class Reactor {
       argsOf,
       step,
       ledger: {
-        resultRow: (observation) => steps.push({ step, action: TOOL_RESULT_ACTION, observation }),
+        resultRow: (observation, images) => steps.push({ step, action: TOOL_RESULT_ACTION, observation, ...(images !== undefined && images.length > 0 ? { images } : {}) }),
         trackFile: (p) => this.deps.context.trackFile(p),
       },
     });

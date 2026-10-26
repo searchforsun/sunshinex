@@ -16,8 +16,9 @@ export type BatchEventEmit = (type: 'tool-call' | 'tool-result', text: string, p
 /** 批次结果记账口（整块注入）：观察行入链 + read/grep 成功后的文件追踪——
  *  链与上下文归 Reactor 所有，BatchRunner 只按约定回发、不持记账面 */
 export interface BatchLedger {
-  /** 观察行入链（出牌顺序、批后统一回放——与完成序即发的 tool-result 事件两口径） */
-  resultRow: (observation: string) => void;
+  /** 观察行入链（出牌顺序、批后统一回放——与完成序即发的 tool-result 事件两口径）；
+   *  第二参 images=结果随行图片（成功/失败态均可携带，无图缺省）——链行 images 通道（Task 2 图片通道二） */
+  resultRow: (observation: string, images?: string[]) => void;
   /** read/grep 真实成功结果的文件追踪（recentFiles LRU） */
   trackFile: (path: string) => void;
 }
@@ -111,6 +112,7 @@ export class BatchRunner {
     // 链行仍按出牌顺序入链（role:tool 与调用行按位配对），事件流为瞬态呈现、链行为事实源
     const results: (Result<ExecResult> | null)[] = new Array(calls.length).fill(null);
     const obsOf: string[] = new Array(calls.length);
+    const imgsOf: (string[] | undefined)[] = new Array(calls.length);
     const emitResult = (i: number, c: ToolCallSpec, args: Record<string, unknown> | null, r: Result<ExecResult> | null): void => {
       const obs = overDuplicated[i]
         ? 'Repeated identical batch rejected: this exact set of calls already ran ' +
@@ -119,7 +121,12 @@ export class BatchRunner {
         : args === null || r === null
           ? 'Tool call "' + c.name + '" arguments are not valid JSON: ' + c.argsJson.slice(0, 200) + ' — fix the arguments and retry'
           : describe(r, this.deps.registry.get(c.name)?.fullObservation === true);
-      this.deps.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed' });
+      // 图片提取（图片通道二）：成功态取 ExecResult.images、失败态取失败载荷随行 images（CodedToolError 经 registry catch 透传）；
+      // 超限重复/坏参分支 r 恒 null → imgs 恒 undefined；空数组归一 undefined——事件/链行两口径仅非空携带（避免空数组噪音）
+      const raw = r === null ? undefined : r.ok ? r.value.images : (r.error as { images?: string[] | undefined }).images;
+      const imgs = raw !== undefined && raw.length > 0 ? raw : undefined;
+      imgsOf[i] = imgs;
+      this.deps.emit('tool-result', obs.slice(0, 200), { ok: r !== null && r.ok, full: obs, tool: c.name, callId: callIds[i], status: r !== null && r.ok ? 'completed' : 'failed', ...(imgs !== undefined ? { images: imgs } : {}) });
       obsOf[i] = obs;
     };
     if (sequential) {
@@ -144,7 +151,7 @@ export class BatchRunner {
       const c = calls[i];
       const args = argsOf[i];
       const r = results[i];
-      ledger.resultRow(obsOf[i]);
+      ledger.resultRow(obsOf[i], imgsOf[i]);
       if (r !== null && r.ok && (c.name === 'read' || c.name === 'grep')) {
         const p = (args as { path?: unknown } | null)?.path;
         if (typeof p === 'string' && p.length > 0) ledger.trackFile(p);

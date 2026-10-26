@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { BatchRunner } from './batch-runner';
 import type { BatchEventEmit, BatchLedger } from './batch-runner';
-import { ToolRegistry } from './tools';
+import { CodedToolError, ToolRegistry } from './tools';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -191,4 +191,58 @@ test('归档恢复指针随身携带：超 2000 且尾带 [truncated · full out
   assert.ok(row.startsWith('D'.repeat(2000)), '正文截到 2000');
   assert.match(row, /\[truncated · full output: C:\/tmp\/tool-outputs\/1-read-abc\.txt\]$/, '恢复指针在行尾幸存——模型据此 read 回全文');
   assert.ok(!row.includes('...(truncated)'), '有归档指针时不再叠加裸截断标记');
+});
+
+// ── 图片通道二（2026-10-26）：结果随行 images 经 resultRow 第二参 + tool-result 事件 payload 回发 ──
+
+/** 带图收集口：images 缺省不落键（与「仅非空携带」同口径的断言面）；复用 makeFixture 的 runner/事件收集，ledger 单点覆盖 */
+function imageLedger(seen: Array<{ obs: string; images?: string[] }>): BatchLedger {
+  return {
+    resultRow: (obs, imgs) => seen.push({ obs, ...(imgs !== undefined ? { images: imgs } : {}) }),
+    trackFile: () => {},
+  };
+}
+
+test('工具结果带 ExecResult.images：resultRow 第二参与 tool-result payload.images 均携带', async () => {
+  const IMG = 'data:image/png;base64,QQ==';
+  const r = new ToolRegistry();
+  r.register({ name: 'shot_probe', description: 'test-only shot probe', category: 'read', executor: async () => ({ exitCode: 0, stdout: 'shot', stderr: '', timedOut: false, images: [IMG] }) });
+  const f = makeFixture(r);
+  const seen: Array<{ obs: string; images?: string[] }> = [];
+  const calls = [call('shot_probe', {})];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: imageLedger(seen) });
+  assert.deepEqual(seen[0]!.images, [IMG], '观察行回发第二参携带 images（reactor 观察行入链数据源）');
+  assert.equal(seen[0]!.obs, 'shot');
+  const tr = f.events.find((e) => e.type === 'tool-result')!;
+  assert.deepEqual(tr.payload.images, [IMG], 'tool-result 事件 payload 随行 images（GUI 实时回显面）');
+  assert.equal(tr.payload.status, 'completed', '成功语义不回退');
+});
+
+test('无图结果形态零变化：resultRow 第二参缺省且 tool-result payload 无 images 键（回归钉）', async () => {
+  const registry = new ToolRegistry();
+  registry.register(probe('plain_probe', 'read', async () => 'plain'));
+  const f = makeFixture(registry);
+  const seen: Array<{ obs: string; images?: string[] }> = [];
+  const calls = [call('plain_probe', {})];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: imageLedger(seen) });
+  assert.equal(seen[0]!.obs, 'plain');
+  assert.equal(seen[0]!.images, undefined, '无图：第二参缺省（undefined）');
+  assert.ok(!('images' in seen[0]!), '无图：收集口不落 images 键');
+  const tr = f.events.find((e) => e.type === 'tool-result')!;
+  assert.ok(!('images' in tr.payload), '无图：事件 payload 无 images 键（避免空数组噪音）');
+});
+
+test('错误态 images 透传：executor 抛 CodedToolError 随图 → resultRow 第二参与事件 payload.images 均携带且 status=failed', async () => {
+  const IMG = 'data:image/png;base64,QQ==';
+  const r = new ToolRegistry();
+  r.register({ name: 'boom_probe', description: 'test-only boom probe', category: 'read', executor: async () => { throw new CodedToolError('MCP_TOOL_ERROR', 'boom', [IMG]); } });
+  const f = makeFixture(r);
+  const seen: Array<{ obs: string; images?: string[] }> = [];
+  const calls = [call('boom_probe', {})];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: imageLedger(seen) });
+  assert.deepEqual(seen[0]!.images, [IMG], '失败态图片经 registry catch 透传到达 resultRow 第二参');
+  const tr = f.events.find((e) => e.type === 'tool-result')!;
+  assert.deepEqual(tr.payload.images, [IMG], '失败态图片同样随事件 payload（MCP isError 截屏回流）');
+  assert.equal(tr.payload.status, 'failed', '失败语义不回退');
+  assert.equal(tr.payload.ok, false);
 });
