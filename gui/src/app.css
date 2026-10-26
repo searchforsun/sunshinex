@@ -185,6 +185,7 @@
 /* ---- G8e T1 样式波(G8a-d 挂名未定义类补全:青色令牌口径,沿既有段式;单一 CSS 文件 U-D10) ---- */
 
 /* Chat 顶栏状态组(G8d T5 挂名)/⚠ 徽标(Board G8d T5 挂名):全圆 pill+warn 配色 */.sx-stat { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-secondary); font-size: 12px; white-space: nowrap; }.sx-badge { display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); padding: 0 5px; margin: 0 4px; border: 1px solid transparent; font-size: 11px; line-height: 14px; vertical-align: middle; }.sx-badge-warn { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+/* 电脑控制指示徽标(2026-10-27):边框包裹 pill+呼吸点,顶栏会话名行右——控制类 computer-use 工具在跑(轮收束即隐) */.sx-controlling-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; line-height: 16px; color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 1px 8px; white-space: nowrap; }.sx-controlling-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--warn); animation: sx-controlling-pulse 1.2s ease-in-out infinite; }@keyframes sx-controlling-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }@media (prefers-reduced-motion: reduce) { .sx-controlling-badge::before { animation: none; } }
 
 /* Chat 输入面(G12 起 textarea 类为 .sx-composer-input,单源 .sx-composer 段;此条退役) */
 
@@ -333,7 +334,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   width: calc((var(--depth, 0)) * 14px);
   background: repeating-linear-gradient(to right, transparent 0 13px, var(--border-subtle) 13px 14px);
   pointer-events: none;
-}.sx-tree-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }.sx-tree-dir { color: var(--fg); }.sx-tree-chevron { flex: none; color: var(--fg-secondary); transition: transform 0.15s ease; }.sx-tree-chevron.open { transform: rotate(90deg); }.sx-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-tree-status, .sx-tree-truncated { color: var(--fg-secondary); font-size: 12px; }.sx-tree-error { color: var(--err); font-size: 12px; }
+}.sx-tree-row:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); }.sx-tree-dir { color: var(--fg); }.sx-tree-file { color: var(--fg); }.sx-tree-chevron { flex: none; color: var(--fg-secondary); transition: transform 0.15s ease; }.sx-tree-chevron.open { transform: rotate(90deg); }.sx-tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-tree-status, .sx-tree-truncated { color: var(--fg-secondary); font-size: 12px; }.sx-tree-error { color: var(--err); font-size: 12px; }
 /* G14.2xx 搜索命中行:VSCode quick-open 式面包屑——目录段暗淡、/ 分隔,文件行末段(名)亮;
  * 深路径头段先缩(flexShrink 按段序递减),文件名段 flex:none 恒全显 */
 .sx-tree-crumb { display: flex; align-items: center; min-width: 0; overflow: hidden; flex: 1 1 auto; }

@@ -262,7 +262,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
             <button
               key={h.path}
               type="button"
-              className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}`}
+              className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}${gst !== undefined && gst !== 'ignored' ? ` sx-tree-git-${gst}` : ''}`}
               style={indent(0)}
               data-tip={h.path}
               onClick={() => (h.kind === 'dir' ? openDirResult(h.path) : openFile(h.path))}
@@ -364,7 +364,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
               ) : (
                 <button
                   type="button"
-                  className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}`}
+                  className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}${gst !== undefined && gst !== 'ignored' ? ` sx-tree-git-${gst}` : ''}`}
                   style={indent(depth)}
                   onClick={() => openFile(p)}
                   draggable
