@@ -35,6 +35,7 @@ import { loadProviders, resolveProviderApiKey } from '../config/providers';
 import type { PermissionsConfig } from '../config/permissions';
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { userConfigDir } from '../config/env';
+import { loadEffectivePlugins } from '../config/plugins';
 import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
 import { loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, SkillsGroup } from '../harness/skills';
 
@@ -472,6 +473,148 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
   fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
   fs.renameSync(tmpFile, target);
   io.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
+}
+
+/** GET /settings/plugins?root=（2026-10-26 插件面，Settings 页插件清单数据源）：loadEffectivePlugins
+ *  两级装载语义的可视化拆解——manifest 必填五元（id/name/version/description）+ 落位与启用态裁决
+ *  （source/enabled/platformSupported，装载层只标记不丢弃：platformSupported=false 照常列示供设置页
+ *  置灰）+ 装配面摘要（servers=mcpServers 名数组、skillsCount=skills 目录数）+ 设置语义键面
+ *  （configSchema 展示说明、config=settings plugins[id].config 原值）与逐插件 warnings。无 root =
+ *  仅全局装载（loadEffectivePlugins(undefined) 项目级 settings 缺席——与 /settings·/settings/mcp
+ *  「无 root 仅全局面」同裁定）；顶层 warnings = 装载聚合警告单（遮蔽/坏记录/manifest 告警原值） */
+export function handlePluginsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const rootParam = url.searchParams.get('root');
+  const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+  const loaded = loadEffectivePlugins(root);
+  io.send(res, 200, {
+    plugins: loaded.plugins.map((p) => ({
+      id: p.manifest.id,
+      name: p.manifest.name,
+      version: p.manifest.version,
+      description: p.manifest.description,
+      source: p.source,
+      enabled: p.enabled,
+      platformSupported: p.platformSupported,
+      servers: Object.keys(p.manifest.mcpServers ?? {}),
+      skillsCount: (p.manifest.skills ?? []).length,
+      configSchema: p.manifest.configSchema,
+      config: p.config,
+      warnings: p.warnings,
+    })),
+    warnings: loaded.warnings,
+  });
+}
+
+/** PUT /settings/plugins {root?, id, enabled?, config?}（2026-10-26 插件面，设置页插件开关/配置表单）：
+ *  settings 语义键 plugins.<id> = {enabled?, config?} 的结构化写——目标文件 root 在场 = 项目级
+ *  `<root>/.sunshinex/settings.json`、缺省 = 全局 settings（与 GET 装载裁定镜像；写哪级读哪级，
+ *  两级合并语义不变）。守卫面：id 必填非空串（缺/空 400）；enabled 在场须布尔、config 在场须浅对象
+ *  （坏形 400——首错即返零部分写）；既有文件含注释/畸形 JSON → 409 引流 raw（T4 handleMcpPut 同款
+ *  守卫——结构化改写不越权处置注释/畸形，注释会被装载面剥除、结构化写静默覆盖等于丢用户手注）；
+ *  version 非 1 → 409（装载口径 parseSettingsFile 拒载 version≠1，写进去了也不生效）；id 经
+ *  loadEffectivePlugins 定位（与 GET/装配同源）在文件守卫之后——定位面会真读两级 settings
+ *  （畸形即 fail-fast 抛错），先 409 处置目标文件现状再定位；未知 id 404（无装载态的 id 无从写
+ *  语义键），定位器因**他级** settings 畸形抛错（target 已过守卫，抛点必在另一级）→ 放行写入：
+ *  结构化写不因无关级文件现状 500（T2 ⑲「reload 逐级容错」同精神），且未定位到的 id 记录落盘
+ *  无害（装载面按 id 查表，陌生记录自然闲置）。
+ *  写面：记录级整面替换（plugins.<id> 只含本次入场字段——与 loadEffectivePlugins「项目记录整体
+ *  遮蔽全局记录」的合并语义一致，不做记录内深并）；既有 plugins 键形状坏（非对象）→ 整键重置
+ *  （装载面本就告警忽略坏形状，写面不保留垃圾）；id 来自装载面定位，ID_RE（^[a-z0-9]+(-[a-z0-9]+)*$）
+ *  已滤 '__proto__' 一类原型键，普通对象赋值安全。原子写（同目录 tmp+rename，T2/T4 同款）；
+ *  成功 root 在场时 reloadSettingsChain(root)（plugins 键随 settings 链生效；无 root 无项目锚不
+ *  reload——与 raw 全局面裁定同）。IO 失败（写/换名）不经本地捕获——沿 dispatch 500 收口 */
+export async function handlePluginsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { root?: unknown; id?: unknown; enabled?: unknown; config?: unknown } | null;
+  const id = body?.id;
+  if (typeof id !== 'string' || id.length === 0) {
+    io.send(res, 400, { error: 'id required — target plugin id' });
+    return;
+  }
+  if (body?.enabled !== undefined && typeof body.enabled !== 'boolean') {
+    io.send(res, 400, { error: 'enabled must be a boolean' });
+    return;
+  }
+  if (
+    body?.config !== undefined &&
+    (typeof body.config !== 'object' || body.config === null || Array.isArray(body.config))
+  ) {
+    io.send(res, 400, { error: 'config must be an object (shallow record of plugin config keys)' });
+    return;
+  }
+  const rootRaw = body?.root;
+  const root = typeof rootRaw === 'string' && rootRaw.length > 0 ? path.resolve(rootRaw) : undefined;
+  const target = root !== undefined ? loadProjectSettings(root) : loadGlobalSettings();
+  // 409 守卫：既有文件注释/畸形/version（T2/T4 同款；结构化写不越权处置这三类文件现状）——先于
+  // 404 定位：定位器 parseSettingsFile 对畸形 settings fail-fast，目标文件现状须先在这里收口
+  let raw: string | null = null;
+  try {
+    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+  } catch {
+    io.send(res, 409, { error: `settings file not readable: ${target}` });
+    return;
+  }
+  if (raw !== null && hasJsonComments(raw)) {
+    io.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
+    return;
+  }
+  let obj: Record<string, unknown>;
+  if (raw === null) {
+    obj = { version: 1 }; // 新档补 version:1（settings schema 口径，T2 同款）
+  } else {
+    let parsedRoot: unknown;
+    try {
+      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 装载口径一致）
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
+      return;
+    }
+    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+      io.send(res, 409, { error: 'settings root must be a JSON object' });
+      return;
+    }
+    const existing = parsedRoot as Record<string, unknown>;
+    if ((existing['version'] ?? 1) !== 1) {
+      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
+      return;
+    }
+    obj = existing;
+  }
+  // 404 定位（文件守卫后——见上注）：loadEffectivePlugins 与 GET/装配同源（内置→用户两级扫描）
+  let located = true;
+  try {
+    located = loadEffectivePlugins(root).plugins.some((p) => p.manifest.id === id);
+  } catch {
+    // 他级 settings 畸形致定位器抛错（target 已过守卫）——放行写入不 500（见上注）
+  }
+  if (!located) {
+    io.send(res, 404, { error: `plugin not found: ${id}` });
+    return;
+  }
+  // 记录级整面替换：只含入场字段（enabled/config 均缺 = 清空该插件记录的语义——显式写空面）
+  const record: Record<string, unknown> = {};
+  if (body?.enabled !== undefined) record['enabled'] = body.enabled;
+  if (body?.config !== undefined) record['config'] = body.config;
+  const existingPlugins = obj['plugins'];
+  const pluginsMap =
+    typeof existingPlugins === 'object' && existingPlugins !== null && !Array.isArray(existingPlugins)
+      ? (existingPlugins as Record<string, unknown>)
+      : {}; // 既有键形状坏 → 整键重置（装载面告警忽略坏形状，见 loadEffectivePlugins）
+  pluginsMap[id] = record;
+  obj['plugins'] = pluginsMap;
+  // 原子写：同目录 tmp + rename（rename 在两平台均原子替换目标）；.sunshinex 目录缺则递归建
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmpFile, target);
+  if (root !== undefined) io.reloadSettingsChain(root); // plugins 键随 settings 链生效；无 root 无项目锚不 reload
+  io.send(res, 200, { ok: true });
 }
 
 /** GET /settings/agents?root=（G8c T5，Settings 页 Agents 清单数据源）：builtins = builtinAgentRoles

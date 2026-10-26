@@ -848,6 +848,11 @@ export class GuiDaemon {
     // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
     { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
     { method: 'GET', path: '/settings/memory-stats', auth: true, run: async (req, res) => this.handleMemoryStatsGet(req, res) },
+    // 2026-10-26 插件面：两级装载清单视图（loadEffectivePlugins 可视化，manifest/启用态/平台/装配
+    // 摘要/语义键 config 逐行列示）+ settings 语义键 plugins.<id> 结构化写（含注释/畸形 409 引流
+    // raw、原子写；root 在场成功后链重载——plugins 键随 settings 链生效语义）
+    { method: 'GET', path: '/settings/plugins', auth: true, run: async (req, res) => this.handlePluginsGet(req, res) },
+    { method: 'PUT', path: '/settings/plugins', auth: true, run: (req, res) => this.handlePluginsPut(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -1223,6 +1228,14 @@ export class GuiDaemon {
 
   private async handleMcpPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await configHandlers.handleMcpPut(this.configIo, req, res);
+  }
+
+  private handlePluginsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    configHandlers.handlePluginsGet(this.configIo, req, res);
+  }
+
+  private async handlePluginsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handlePluginsPut(this.configIo, req, res);
   }
 
   private handleAgentsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
