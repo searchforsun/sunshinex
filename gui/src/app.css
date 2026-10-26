@@ -1320,6 +1320,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    改 break-word 语义:min-content 保留完整 token 宽,自动表布局先给短列足宽(不换行),
    长文列按空格换行;真超宽 token 由容器横滚兜底(overflow hidden 同步放开口,不再截断) */
 .table-wrap th, .table-wrap td { overflow-wrap: break-word; word-break: normal; }
+/* 文件名列特支:.file-link-name 自带 anywhere(正文内长名断行用),表格里把它收回 normal——
+   否则该列 min-content 塌到 1 字符,链接文件名竖排单字(logo-64.png 实锤);超出宽度交容器横滚 */
+.table-wrap .file-link-name { overflow-wrap: normal; }
 .table-wrap { overflow-x: auto; }
 /* ④ 用户气泡上下边距一致:md 末元素 8px 下边距收口(气泡 padding 才是唯一呼吸边) */.entry-user .user-bubble :last-child { margin-bottom: 0; }
 /* ④ 编辑卡发送钮与 composer 同规格(28→32px 圆钮) */.user-edit-send { width: 32px; height: 32px; }
