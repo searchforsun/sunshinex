@@ -5,6 +5,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { ToolRegistry, CodedToolError, RegisteredTool } from '../tools';
 import { ExecResult, McpServerConfig, ToolCategory, ToolInput } from '../../types';
+import { MAX_IMAGES } from '../../images';
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
 const MAX_ARGS_BYTES = 64 * 1024;
@@ -19,12 +20,21 @@ interface McpConn {
   config: McpServerConfig;
 }
 
-function textOf(content: unknown): string {
+/** MCP 结果内容提取：text 块 join + image 块收 dataURL（MCP 规范原生支持；此前 textOf 丢图） */
+export function contentOf(content: unknown): { text: string; images?: string[] } {
   const parts = Array.isArray(content) ? content : [];
-  return parts
-    .map((c) => (typeof c === 'object' && c !== null && (c as { type?: string }).type === 'text' ? String((c as { text?: unknown }).text ?? '') : ''))
-    .filter((t) => t.length > 0)
-    .join('\n');
+  const texts: string[] = [];
+  const images: string[] = [];
+  for (const c of parts) {
+    if (typeof c !== 'object' || c === null) continue;
+    const o = (c as { type?: unknown; text?: unknown; data?: unknown; mimeType?: unknown });
+    if (o.type === 'text') texts.push(String(o.text ?? ''));
+    else if (o.type === 'image' && typeof o.data === 'string' && typeof o.mimeType === 'string' && images.length < MAX_IMAGES) {
+      images.push(`data:${o.mimeType};base64,${o.data}`);
+    }
+  }
+  const text = texts.filter((t) => t.length > 0).join('\n');
+  return { text, ...(images.length > 0 ? { images } : {}) };
 }
 
 /** 超时收束：竞速拒绝转 CodedToolError，计时器必清 */
@@ -159,9 +169,16 @@ export class McpHost {
           'MCP_TIMEOUT',
           `MCP call timed out (${timeoutMs}ms): ${fqName}`,
         );
-        const text = textOf(res.content);
-        if (res.isError) throw new CodedToolError('MCP_TOOL_ERROR', text || `MCP tool returned an error: ${fqName}`);
-        return { exitCode: 0, stdout: text, stderr: '', timedOut: false };
+        const { text, images } = contentOf(res.content);
+        // isError 不再抛 CodedToolError（会丢随行图片）：错误文案留 stdout、exitCode 收 1，images 原样随行
+        const isError = res.isError === true;
+        return {
+          exitCode: isError ? 1 : 0,
+          stdout: text,
+          stderr: isError ? 'tool reported error' : '',
+          timedOut: false,
+          ...(images !== undefined ? { images } : {}),
+        };
       },
     };
   }

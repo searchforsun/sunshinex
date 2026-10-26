@@ -381,6 +381,9 @@ export interface ExecResult {
   timedOut: boolean;
   /** 超时转后台（后台任务线规格 D5）：timedOut=true 时携带仍存活的子进程，调用方登记后台任务并接管输出流 */
   child?: import('child_process').ChildProcess;
+  /** 工具结果随行图片（dataURL，MCP image content/截屏回流）：链行 images 通道的数据源；
+   *  生产者负责视觉规范编码（≤1568 边/JPEG q0.85），harness 层零转码 */
+  images?: string[];
 }
 
 /** exec 透传选项（后台任务线 T2）：timeoutToBackground=true 时超时不杀进程，把存活子进程经 ExecResult.child 交回调用方 */
