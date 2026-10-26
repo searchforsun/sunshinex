@@ -1302,7 +1302,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G13 反馈轮(用户实测六条) ===== */
 /* ② 表格横向占满:窄表拉伸满列宽,宽表保持 max-content 走横滚(容器圆角边框不再空悬半宽) */.table-wrap table { width: 100%; }
-/* G14.12:单元格内容自动换行(长 token/URL 不再横向截断)——表格恒等于容器宽 */.table-wrap th, .table-wrap td { overflow-wrap: anywhere; word-break: break-word; }
+/* G14.12 单元格自动换行 → 2026-10-26 用户裁定「短单元格尽量不换行」:anywhere(逐字符
+   断行且 min-content 也按可断算)把 E1/task_exec_history.py 这类短 token 也拦腰折断——
+   改 break-word 语义:min-content 保留完整 token 宽,自动表布局先给短列足宽(不换行),
+   长文列按空格换行;真超宽 token 由容器横滚兜底(overflow hidden 同步放开口,不再截断) */
+.table-wrap th, .table-wrap td { overflow-wrap: break-word; word-break: normal; }
+.table-wrap { overflow-x: auto; }
 /* ④ 用户气泡上下边距一致:md 末元素 8px 下边距收口(气泡 padding 才是唯一呼吸边) */.entry-user .user-bubble :last-child { margin-bottom: 0; }
 /* ④ 编辑卡发送钮与 composer 同规格(28→32px 圆钮) */.user-edit-send { width: 32px; height: 32px; }
 /* ① 底栏设置钮放大一档(24→28px 钮体,图标 18 由组件面落) */.sx-menu-foot .sx-iconbtn { width: 28px; height: 28px; }
@@ -2096,8 +2101,20 @@ input.sx-setting-input { width: 100%; }
    特性的浏览器上同步拉直观感,真正做到「弧度对齐主输入框」;不支持的浏览器忽略此行 */
 *, ::before, ::after { corner-shape: superellipse(1.5); }
 
-/* G14.207 状态圆点恢复正圆(全局超椭园规则波及小圆点会变椭圆——用户裁定圆点用圆形) */
-.todo-dot, .sx-session-dot, .sx-status-dot { corner-shape: round; }
+/* G14.207 状态圆点恢复正圆(全局超椭园规则波及小圆点会变椭圆——用户裁定圆点用圆形)。
+   2026-10-26 用户报告圆点渲染成菱形:corner-shape 的 superellipse(S) 语义在引擎代次间
+   不兼容(Chrome 146:1=斜切 2=正圆;Chrome 152:1=正圆 2=方圆,electron 探针实测),
+   任何具体取值都会在另一代引擎上变形,round 关键字同样有 computed 值漂移——唯一跨引擎
+   稳的是 CSS 全局关键字 initial(initial 值=经典四分之一圆角,任何引擎 border-radius:50%
+   都是正圆),用它把 50% 圆元素从全局超椭园级联里整体拔出;清单=全仓 50% 圆选择器,
+   新增 50% 圆须加入 */
+/* 注意:选择器组里不可混入 ::-moz-* 等 Chromium 不认的伪元素——CSS 规则组任一选择器
+   非法即整条丢弃(首轮修复就是被 ::-moz-range-thumb 拖垮整组静默失效);GUI 仅
+   Electron(Chromium) 渲染,moz 伪元素直接不写 */
+.todo-dot, .sx-session-dot, .sx-status-dot, .sx-tree-dot, .sx-api-dot, .sx-welcome-dot,
+.conn-dot, .tb-status-dot, .ctx-pop-row .ctx-dot, .ctx-ring-btn, .run-spinner,
+.sx-img-remove, .sx-pin-btn, .sx-src-badge::before,
+.effort-slider input[type="range"]::-webkit-slider-thumb { corner-shape: initial; }
 
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
 .user-bubble-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 8px; margin-top: 0; pointer-events: none; }
