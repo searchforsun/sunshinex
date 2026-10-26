@@ -29,13 +29,19 @@ import type { Connection } from '../../connection';
 const sinkRef = { current: null as ChatSink | null };
 const PNG = 'data:image/png;base64,aGVsbG8=';
 
-function connOf(opts?: { supportsImages?: boolean }): Connection {
+export function connOf(opts?: { supportsImages?: boolean; assistantMd?: string; imageResp?: boolean }): Connection {
   return {
+    readFile: () =>
+      Promise.resolve(
+        opts?.imageResp === false
+          ? { path: 'shot.png', type: 'file', content: '' }
+          : { path: 'shot.png', type: 'image', content: '', mime: 'image/png', data: PNG },
+      ),
     sessionSnapshot: () =>
       Promise.resolve({
         messages: [
           { seq: 1, ts: Date.now(), kind: 'user', md: '看这张图', images: [PNG] },
-          { seq: 2, ts: Date.now(), kind: 'assistant', md: '好的' },
+          { seq: 2, ts: Date.now(), kind: 'assistant', md: opts?.assistantMd ?? '好的' },
         ],
         status: 'idle',
         openRun: -1,
@@ -196,6 +202,36 @@ describe('Chat 图片流', () => {
     expect(lb.querySelector('a[aria-label="Download"]')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(document.querySelector('.sx-lightbox')).toBeNull();
+  });
+});
+
+describe('正文 md 图片(2026-10-26 正文支持显示图片)', () => {
+  it('工作区路径图片语法:readFile 解析成 dataURL 直显(合理尺寸),点击开灯箱', async () => {
+    render(<Chat conn={connOf({ assistantMd: '截图如下\n\n![截图](shot.png)' })} sessionId="md1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await waitFor(() => expect(document.querySelectorAll('.entry-assistant').length).toBeGreaterThan(0));
+    console.log('MD1_HTML:', document.querySelector('.entry-assistant')?.innerHTML?.slice(0, 400));
+    const img = await waitFor(() => {
+      const el = document.querySelector('.entry-assistant .md-image') as HTMLImageElement | null;
+      expect(el).not.toBeNull();
+      return el;
+    }, { timeout: 5000 });
+    expect(img.getAttribute('src')!.startsWith('data:image/png;base64,')).toBe(true);
+    fireEvent.click(img);
+    expect(await waitFor(() => document.querySelector('.sx-lightbox'))).not.toBeNull();
+  });
+
+  it('web 形态直通不解析;解析失败回落文件 chip', async () => {
+    const r = render(<Chat conn={connOf({ assistantMd: '![w](https://example.com/x.png)' })} sessionId="md2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const web = await waitFor(() => {
+      const el = document.querySelector('.entry-assistant .md-image') as HTMLImageElement | null;
+      expect(el).not.toBeNull();
+      return el;
+    }, { timeout: 5000 });
+    expect(web.getAttribute('src')).toBe('https://example.com/x.png');
+    r.unmount();
+    render(<Chat conn={connOf({ assistantMd: '![bad](shot.png)', imageResp: false })} sessionId="md3" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await waitFor(() => expect(document.querySelector('.entry-assistant .md-image-miss')).not.toBeNull(), { timeout: 5000 });
+    expect(document.querySelector('.entry-assistant .md-image')).toBeNull();
   });
 });
 

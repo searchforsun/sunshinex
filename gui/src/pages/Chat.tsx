@@ -44,7 +44,7 @@ import { expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans,
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, slashTokenAt, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
-import { DirResolverContext } from './chat/md-render';
+import { DirResolverContext, MdImageContext } from './chat/md-render';
 export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import type { AskPick } from './chat/PendingCards';
@@ -481,8 +481,17 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     if (e.deltaY < 0) chatStickRef.current = false;
   };
 
+  /** 正文 md 图片解析器(2026-10-26 正文支持显示图片):绑定会话的 readFile,md 图片语法的工作区
+   *  路径经它读成 dataURL(MdImageContext 单向注入,MessageList/气泡/正文全子树可达) */
+  const mdImageLoader = useCallback(
+    (p: string) => conn.readFile(sessionId, p),
+    [conn, sessionId],
+  );
+
   return (
     <DirResolverContext.Provider value={isDirRef}>
+      <MdImageContext.Provider value={mdImageLoader}>
+
       <ChatTopbar
         fixedTitle={fixedTitle}
         titleEditing={titleEditing}
@@ -774,6 +783,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         }
       </div>
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
+    </MdImageContext.Provider>
     </DirResolverContext.Provider>
   );
 }

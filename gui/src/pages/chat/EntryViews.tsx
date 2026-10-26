@@ -8,6 +8,8 @@ import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
+import { ImageLightbox } from '../../ImageLightbox';
+import { MdImage } from './md-render';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
  *  回退菜单/折叠气泡)/系统行(含旁白着色)与单条渲染单元。memo 语义与 DOM 逐字节不变;md 渲染
@@ -286,6 +288,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     copyText(entry.md); // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
   };
   const [editing, setEditing] = useState(false);
+  const [editLightbox, setEditLightbox] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState('');
   const [draftImages, setDraftImages] = useState<string[]>([]);
   const openEdit = (): void => {
@@ -311,14 +314,32 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     );
   };
   if (editing) {
+    // 2026-10-26 用户裁定:编辑卡图片可预览——消息文字里嵌入的 md 图片提取成只读缩略图行
+    // (复用正文 MdImage:工作区路径自动解析 dataURL,点击开灯箱;与附件条分列,发送语义不变)
+    const embeddedImages = [...draft.matchAll(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g)].map((m) => m[1]!);
     return (
       <div className="entry entry-user">
         <div className="user-edit-card">
+          {embeddedImages.length > 0 && (
+            <div className="sx-img-strip" aria-label={t('Embedded images', '消息内嵌图片')}>
+              {embeddedImages.map((src, i) => (
+                <div key={`${i}:${src.slice(-24)}`} className="sx-img-thumb">
+                  <MdImage src={src} alt="" />
+                </div>
+              ))}
+            </div>
+          )}
           {draftImages.length > 0 && (
             <div className="sx-img-strip">
               {draftImages.map((src, i) => (
                 <div key={`${i}:${src.slice(-24)}`} className="sx-img-thumb">
-                  <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} decoding="async" />
+                  <img
+                    src={src}
+                    alt={`${t('Attached image', '附件图片')} ${i + 1}`}
+                    decoding="async"
+                    style={{ cursor: 'zoom-in' }}
+                    onClick={() => setEditLightbox(src)}
+                  />
                   <button
                     type="button"
                     className="sx-img-remove"
@@ -332,6 +353,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
               ))}
             </div>
           )}
+          {editLightbox !== undefined && <ImageLightbox src={editLightbox} onClose={() => setEditLightbox(undefined)} />}
           <textarea
             aria-label="edit message"
             className="user-edit-input"

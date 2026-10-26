@@ -14,6 +14,7 @@ import { Mermaid } from '../../Mermaid';
 import { FileIcon } from '../../file-icon';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import { TipButton } from './RunFooter';
+import { ImageLightbox } from '../../ImageLightbox';
 
 /** md 渲染插件单点(2026-10-25 用户报障「数学公式没有渲染」+「特殊显示未渲染」):
  *  remark:gfm+math;rehype:raw(行内 HTML 如 <u>)+mark(==高亮==,自写文本切分;~下标~^上标^与 GFM 单波浪删除线语法冲突,不收录)+
@@ -106,6 +107,86 @@ export function useDirResolver(): (p: string) => boolean {
   return useContext(DirResolverContext);
 }
 
+/** 正文 md 图片解析上下文(2026-10-26 正文支持显示图片):宿主(Chat/Files)注入绑定会话的
+ *  readFile——图片语法 ![alt](路径) 的**工作区路径**(相对/绝对/file:// 剥头)经它读成
+ *  {type:'image',mime,data} 转 dataURL;web/data 形态不走解析直通。null=宿主无会话面
+ *  (代理转录等),文件路径回落 file-chip 形态 */
+export const MdImageContext = createContext<((p: string) => Promise<{ type?: string; mime?: string; data?: string }>) | null>(null);
+
+/** 解析结果按 loader 身份分桶缓存(WeakMap):同一会话同路径只读一次,conn/session 切换自然换桶 */
+const mdImageCache = new WeakMap<object, Map<string, Promise<string | null>>>();
+
+/** 正文 md 图片件:合理尺寸上限(md-image)+点击开灯箱预览;解析失败回落文件 chip 形态 */
+export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; onOpenFile?: (p: string) => void }): JSX.Element {
+  const loader = useContext(MdImageContext);
+  const [durl, setDurl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [lightbox, setLightbox] = useState<string | undefined>(undefined);
+  const isDirect = /^(https?:|\/\/|data:)/i.test(src);
+  const path = src.replace(/^file:\/\//i, '');
+  useEffect(() => {
+    if (isDirect || loader === null) return;
+    let cache = mdImageCache.get(loader);
+    if (cache === undefined) {
+      cache = new Map();
+      mdImageCache.set(loader, cache);
+    }
+    let hit = cache.get(path);
+    if (hit === undefined) {
+      hit = loader(path).then(
+        (f) => (f.type === 'image' && f.mime !== undefined && f.data !== undefined ? `data:${f.mime};base64,${f.data}` : null),
+        () => null,
+      );
+      cache.set(path, hit);
+    }
+    let alive = true;
+    void hit.then((d) => {
+      if (!alive) return;
+      if (d !== null) setDurl(d);
+      else setFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [path, loader, isDirect]);
+  if (isDirect) {
+    return (
+      <img
+        className="md-image"
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onClick={() => setLightbox(src)}
+      />
+    );
+  }
+  if (durl !== null) {
+    return (
+      <>
+        <img className="md-image" src={durl} alt={alt} loading="lazy" decoding="async" onClick={() => setLightbox(durl)} />
+        {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
+      </>
+    );
+  }
+  if (failed) {
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        className="file-link md-image-miss"
+        data-tip={path}
+        onClick={onOpenFile !== undefined ? () => onOpenFile(path) : undefined}
+        onKeyDown={onOpenFile !== undefined ? (e) => { if (e.key === 'Enter') onOpenFile(path); } : undefined}
+      >
+        <FileIcon path={path} />
+        <span className="file-link-name">{tokenDisplayName(path)}</span>
+      </span>
+    );
+  }
+  return <span className="md-image-loading" aria-label={alt} />;
+}
+
 /** G14.125 用户气泡组件面:标准 md 链接文件化(a 覆写,onOpenFile 在场才可点;web 新窗)——
  *  非标引用(@token code/裸路径)不做文件渲染(G14.125 去兼容),保持通用 chip 原样;
  *  isDir=目录解析(目录引用链接显黄目录,undefined=全按文件) */
@@ -182,6 +263,11 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
           <table>{props.children}</table>
         </div>
       );
+    },
+    // 2026-10-26 正文支持显示图片:web/data 直通;工作区路径经 MdImageContext 解析为
+    // dataURL(合理尺寸上限+点击开灯箱预览;解析失败回落文件 chip)
+    img(props: { src?: string; alt?: string }) {
+      return <MdImage src={props.src ?? ''} alt={props.alt ?? ''} onOpenFile={onOpenFile} />;
     },
     // G14.124 md 原生超链接 → 文件引用:非 web 协议 href 视为文件路径,渲染 icon+文件名
     // (token 同款 file-link),点击/回车开侧栏 file 标签;web 链接 2026-10-25 起点击走系统

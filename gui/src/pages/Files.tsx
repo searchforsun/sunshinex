@@ -7,6 +7,7 @@ import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { t } from '../i18n';
+import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { buildMdComponents, keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './Chat';
 
@@ -158,6 +159,11 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   /** 2026-10-26 侧栏预览:图片扩展名(type=image 载荷)→ dataURL 直显替代源码视图 */
   const isImage = load.file !== null && load.file.type === 'image' && typeof load.file.mime === 'string' && typeof load.file.data === 'string';
   /** G14.125 预览组件面:md 内标准超链接按当前 md 目录解析为绝对路径后开内部 file 标签 */
+  /** 2026-10-26 正文 md 图片同口径:md 预览里图片语法的工作区路径经 readFile 解析直显 */
+  const mdImageLoader = useCallback(
+    (p: string) => conn.readFile(sessionId, p),
+    [conn, sessionId],
+  );
   const previewComponents = useMemo(
     () =>
       buildMdComponents((href) => {
@@ -284,6 +290,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
               /* G14.125 md 格式化渲染:mermaid/代码块/表格与正文同源;标准超链接跳内部文件标签
                * (href 相对当前 md 所在目录解析为绝对路径),web 链接新窗浏览器 */
               <div className="files-md" aria-label="file content">
+                <MdImageContext.Provider value={mdImageLoader}>
                 <ReactMarkdown
                   remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS}
                   urlTransform={keepUrl}
@@ -291,6 +298,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                 >
                   {load.file.content}
                 </ReactMarkdown>
+                </MdImageContext.Provider>
               </div>
             ) : (
               <div className="files-editor" aria-label="file content" onContextMenu={(e) => e.preventDefault()}>
