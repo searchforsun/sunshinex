@@ -1339,10 +1339,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 文件名列特支:.file-link-name 自带 anywhere(正文内长名断行用),表格里把它收回 normal——
    否则该列 min-content 塌到 1 字符,链接文件名竖排单字(logo-64.png 实锤);超出宽度交容器横滚 */
 .table-wrap .file-link-name { overflow-wrap: normal; }
-/* 2026-10-26 用户裁定:首列标签不折行——CJK 逐字断行点+width:100% 自动分配曾把首列压到一字一
-   行(区域/操作表首列竖排);首列 nowrap 使 auto 布局按完整标签分配,其余列分余宽;首列真长文
-   案由容器 overflow-x:auto 横滚兜底(宽表既有策略) */
-.table-wrap th:first-child, .table-wrap td:first-child { white-space: nowrap; }
+/* 2026-10-26 用户裁定(二次修正,全局策略):列宽可读下限——CJK 逐字断行点+width:100% 自动分配
+   可把任意窄内容列压到一字一行(区域/操作表首列竖排先例);全部列 min-width 6em 作可读下限,
+   余宽仍按内容量自动分配(短列取下限,长列多分);总超宽由容器 overflow-x:auto 横滚兜底。
+   不做首列 nowrap 特判:首列恰为长文案时会反向撑爆(用户复核指正) */
+.table-wrap th, .table-wrap td { min-width: 6em; }
 .table-wrap { overflow-x: auto; }
 /* ④ 用户气泡上下边距一致:md 末元素 8px 下边距收口(气泡 padding 才是唯一呼吸边) */.entry-user .user-bubble :last-child { margin-bottom: 0; }
 /* ④ 编辑卡发送钮与 composer 同规格(28→32px 圆钮) */.user-edit-send { width: 32px; height: 32px; }
