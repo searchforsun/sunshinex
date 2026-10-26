@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Check, Copy, Download, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import { t } from './i18n';
@@ -77,7 +78,9 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, zoomBy]);
   const pct = Math.round(scale * 100);
-  return (
+  // 2026-10-27 portal 挂 body:编辑卡等祖先带动画/层叠上下文会把 fixed 劫持成局部定位,
+  //  「输入框/窗控透出」根因;统一 portal 后所有入口(气泡/工具行/编辑卡/md 图)行为一致
+  return createPortal(
     <div
       className="sx-lightbox"
       role="dialog"
@@ -147,6 +150,7 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
           <X size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

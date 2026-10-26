@@ -2398,7 +2398,7 @@ input.sx-setting-input { width: 100%; }
 .sx-lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center}
 .sx-lightbox-img{max-width:92vw;max-height:84vh;border-radius:var(--radius-sm);box-shadow:0 8px 40px rgba(0,0,0,.5);cursor:grab;touch-action:none}
 .sx-lightbox-img:active{cursor:grabbing}
-.sx-lightbox-bar{position:fixed;top:14px;right:14px;display:flex;align-items:center;gap:2px;background:var(--surface-elevated);border-radius:var(--radius-sm);padding:6px 8px;box-shadow:var(--elev-composer);color:var(--fg)}
+.sx-lightbox-bar{position:fixed;top:22px;right:30px;display:flex;align-items:center;gap:2px;background:var(--surface-elevated);border-radius:var(--radius-sm);padding:6px 8px;box-shadow:var(--elev-composer);color:var(--fg)}
 .sx-lightbox-act{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:inherit;border-radius:8px;cursor:pointer;text-decoration:none}
 .sx-lightbox-act:hover{background:var(--bubble-user)}
 .sx-lightbox-pct{min-width:46px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums;opacity:.85}
