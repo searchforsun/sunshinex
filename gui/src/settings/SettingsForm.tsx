@@ -67,49 +67,51 @@ export interface SettingsFormConn {
   memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
 }
 
-/** 键描述(标题=键名,描述=双语一句;未登记键只显键名) */
-const KEY_DESCRIPTIONS: Record<string, { en: string; zh: string }> = {
-  language: { en: 'Language for the app UI', zh: '界面语言' },
-  shell: { en: 'Shell used for command execution', zh: '命令执行所用 shell' },
-  projectsDir: { en: 'Root directory of workspace registry', zh: '工作区注册表根目录' },
-  userSkillsDir: { en: 'Global user skills directory', zh: '全局用户技能目录' },
-  globalSunshine: { en: 'Global SUNSHINE.md path', zh: '全局 SUNSHINE.md 路径' },
-  model: { en: 'Default model id', zh: '缺省模型 id' },
-  modelSmall: { en: 'Model bound to small tier', zh: 'small 档绑定模型' },
-  modelMedium: { en: 'Model bound to medium tier', zh: 'medium 档绑定模型' },
-  modelLarge: { en: 'Model bound to large tier', zh: 'large 档绑定模型' },
-  tier: { en: 'Default model tier', zh: '缺省模型档位' },
-  reasoningEffort: { en: 'Reasoning effort for requests', zh: '请求思考强度' },
-  baseUrl: { en: 'OpenAI-compatible API base URL', zh: 'OpenAI 兼容 API 地址' },
-  contextWindow: { en: 'Model context window (tokens)', zh: '模型上下文窗口(tokens)' },
-  maxTokens: { en: 'Hard cap on tokens per request', zh: '单请求 token 硬顶' },
-  subagentTokenCap: { en: 'Token cap for subagents', zh: '子智能体 token 上限' },
-  teamTokenCap: { en: 'Token cap for the team registry', zh: '团队注册表 token 上限' },
-  maxSteps: { en: 'Max reactor steps per run', zh: '单 run 最大 reactor 步数' },
-  maxLoopIterations: { en: 'Max verify-fix loop iterations', zh: '验收修正环最大轮数' },
-  maxGraphNodes: { en: 'Max graph nodes per pipeline', zh: '全链路最大节点步数' },
-  readFence: { en: 'Read-approval fence mode', zh: '读审批围栏模式' },
-  sandbox: { en: 'Command sandbox policy', zh: '命令沙箱策略' },
-  isolation: { en: 'Isolation backend', zh: '隔离后端' },
-  autoMemory: { en: 'Persistent memory pipeline', zh: '持久记忆管线' },
-  learnedSkills: { en: 'Learned skills pipeline', zh: '学习技能沉淀管线' },
-  learnedSkillLimit: { en: 'Learned skill capacity', zh: '学习技能容量上限' },
-  memoryIdleKickMs: { en: 'Idle kick for memory pipeline (ms)', zh: '记忆管线空闲触发(ms)' },
-  stepDigestMaxSteps: { en: 'Digest: max steps summarized', zh: '摘要:最大归纳步数' },
-  stepDigestItemChars: { en: 'Digest: per-item char budget', zh: '摘要:单条字符预算' },
-  stepDigestTotalChars: { en: 'Digest: total char budget', zh: '摘要:总字符预算' },
-  kbBackend: { en: 'Knowledge-base vector backend', zh: '知识库向量后端' },
-  kbDataDir: { en: 'Knowledge-base data directory', zh: '知识库数据目录' },
-  embeddingBaseUrl: { en: 'Embedding API base URL', zh: 'Embedding API 地址' },
-  embeddingModel: { en: 'Embedding model id', zh: 'Embedding 模型 id' },
-  websearchProvider: { en: 'Web search provider', zh: '网页搜索提供方' },
-  websearchEndpoint: { en: 'Web search endpoint', zh: '网页搜索端点' },
+/** 键描述(2026-10-26 i18n 补全,用户裁定):label=行标题短标签双语对(desc 分离)——行标题不再
+ *  裸显键名(language/projectsDir 中文页露英文);标题显本地化 label,键名降为 data-tip。
+ *  en/zh=说明句(既有) */
+const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: string; zh: string }> = {
+  language: { label: { en: 'Language', zh: '语言' }, en: 'Language for the app UI', zh: '界面语言' },
+  shell: { label: { en: 'Shell', zh: 'Shell' }, en: 'Shell used for command execution', zh: '命令执行所用 shell' },
+  projectsDir: { label: { en: 'Projects directory', zh: '项目目录' }, en: 'Root directory of workspace registry', zh: '工作区注册表根目录' },
+  userSkillsDir: { label: { en: 'User skills directory', zh: '用户技能目录' }, en: 'Global user skills directory', zh: '全局用户技能目录' },
+  globalSunshine: { label: { en: 'Global SUNSHINE.md', zh: '全局 SUNSHINE.md' }, en: 'Global SUNSHINE.md path', zh: '全局 SUNSHINE.md 路径' },
+  model: { label: { en: 'Default model', zh: '默认模型' }, en: 'Default model id', zh: '缺省模型 id' },
+  modelSmall: { label: { en: 'Small-tier model', zh: 'small 档模型' }, en: 'Model bound to small tier', zh: 'small 档绑定模型' },
+  modelMedium: { label: { en: 'Medium-tier model', zh: 'medium 档模型' }, en: 'Model bound to medium tier', zh: 'medium 档绑定模型' },
+  modelLarge: { label: { en: 'Large-tier model', zh: 'large 档模型' }, en: 'Model bound to large tier', zh: 'large 档绑定模型' },
+  tier: { label: { en: 'Model tier', zh: '模型档位' }, en: 'Default model tier', zh: '缺省模型档位' },
+  reasoningEffort: { label: { en: 'Reasoning effort', zh: '思考强度' }, en: 'Reasoning effort for requests', zh: '请求思考强度' },
+  baseUrl: { label: { en: 'API base URL', zh: 'API 地址' }, en: 'OpenAI-compatible API base URL', zh: 'OpenAI 兼容 API 地址' },
+  contextWindow: { label: { en: 'Context window', zh: '上下文窗口' }, en: 'Model context window (tokens)', zh: '模型上下文窗口(tokens)' },
+  maxTokens: { label: { en: 'Max tokens', zh: '单请求上限' }, en: 'Hard cap on tokens per request', zh: '单请求 token 硬顶' },
+  subagentTokenCap: { label: { en: 'Subagent cap', zh: '子智能体上限' }, en: 'Token cap for subagents', zh: '子智能体 token 上限' },
+  teamTokenCap: { label: { en: 'Team cap', zh: '团队上限' }, en: 'Token cap for the team registry', zh: '团队注册表 token 上限' },
+  maxSteps: { label: { en: 'Max steps', zh: '最大步数' }, en: 'Max reactor steps per run', zh: '单 run 最大 reactor 步数' },
+  maxLoopIterations: { label: { en: 'Loop iterations', zh: '修正环轮数' }, en: 'Max verify-fix loop iterations', zh: '验收修正环最大轮数' },
+  maxGraphNodes: { label: { en: 'Graph nodes', zh: '链路节点数' }, en: 'Max graph nodes per pipeline', zh: '全链路最大节点步数' },
+  readFence: { label: { en: 'Read fence', zh: '读审批围栏' }, en: 'Read-approval fence mode', zh: '读审批围栏模式' },
+  sandbox: { label: { en: 'Sandbox', zh: '命令沙箱' }, en: 'Command sandbox policy', zh: '命令沙箱策略' },
+  isolation: { label: { en: 'Isolation', zh: '隔离后端' }, en: 'Isolation backend', zh: '隔离后端' },
+  autoMemory: { label: { en: 'Memory pipeline', zh: '记忆管线' }, en: 'Persistent memory pipeline', zh: '持久记忆管线' },
+  learnedSkills: { label: { en: 'Learned skills', zh: '技能沉淀' }, en: 'Learned skills pipeline', zh: '学习技能沉淀管线' },
+  learnedSkillLimit: { label: { en: 'Skill capacity', zh: '技能容量' }, en: 'Learned skill capacity', zh: '学习技能容量上限' },
+  memoryIdleKickMs: { label: { en: 'Memory idle kick', zh: '记忆空闲触发' }, en: 'Idle kick for memory pipeline (ms)', zh: '记忆管线空闲触发(ms)' },
+  stepDigestMaxSteps: { label: { en: 'Digest max steps', zh: '摘要归纳步数' }, en: 'Digest: max steps summarized', zh: '摘要:最大归纳步数' },
+  stepDigestItemChars: { label: { en: 'Digest item chars', zh: '摘要单条预算' }, en: 'Digest: per-item char budget', zh: '摘要:单条字符预算' },
+  stepDigestTotalChars: { label: { en: 'Digest total chars', zh: '摘要总预算' }, en: 'Digest: total char budget', zh: '摘要:总字符预算' },
+  kbBackend: { label: { en: 'Vector backend', zh: '向量后端' }, en: 'Knowledge-base vector backend', zh: '知识库向量后端' },
+  kbDataDir: { label: { en: 'KB data directory', zh: '知识库数据目录' }, en: 'Knowledge-base data directory', zh: '知识库数据目录' },
+  embeddingBaseUrl: { label: { en: 'Embedding API URL', zh: 'Embedding API 地址' }, en: 'Embedding API base URL', zh: 'Embedding API 地址' },
+  embeddingModel: { label: { en: 'Embedding model', zh: 'Embedding 模型' }, en: 'Embedding model id', zh: 'Embedding 模型 id' },
+  websearchProvider: { label: { en: 'Search provider', zh: '搜索提供方' }, en: 'Web search provider', zh: '网页搜索提供方' },
+  websearchEndpoint: { label: { en: 'Search endpoint', zh: '搜索端点' }, en: 'Web search endpoint', zh: '网页搜索端点' },
 };
 
 /** on/off 二态闭集(on/off 字符串键,daemon 口径) */
 const ON_OFF: readonly SelectOption[] = [
-  { v: 'on', l: 'on' },
-  { v: 'off', l: 'off' },
+  { v: 'on', l: t('on', '开') },
+  { v: 'off', l: t('off', '关') },
 ];
 
 /** providers 现配模型去重集(动态建议/选项源的 ctx;choices 缺面=空集) */
@@ -150,16 +152,16 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
         title: { en: 'Safety fences', zh: '安全围栏' },
         fields: [
           sel('readFence', [
-            { v: 'off', l: 'off' },
-            { v: 'sensitive', l: 'sensitive' },
-            { v: 'all', l: 'all' },
+            { v: 'off', l: t('off', '关闭') },
+            { v: 'sensitive', l: t('sensitive', '敏感文件') },
+            { v: 'all', l: t('all', '全部文件') },
           ]),
           sel('sandbox', ON_OFF),
           sel('isolation', [
-            { v: 'auto', l: 'auto' },
-            { v: 'landlock', l: 'landlock' },
-            { v: 'container', l: 'container' },
-            { v: 'host', l: 'host' },
+            { v: 'auto', l: t('auto', '自动') },
+            { v: 'landlock', l: 'Landlock' },
+            { v: 'container', l: t('container', '容器') },
+            { v: 'host', l: t('host', '宿主机') },
           ]),
         ],
       },
@@ -183,8 +185,8 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
         title: { en: 'Knowledge base', zh: '知识库' },
         fields: [
           sel('kbBackend', [
-            { v: 'local-json', l: 'local-json' },
-            { v: 'sqlite-vec', l: 'sqlite-vec' },
+            { v: 'local-json', l: t('local-json', '本地 JSON') },
+            { v: 'sqlite-vec', l: 'SQLite-vec' },
           ]),
           text('kbDataDir'),
         ],
@@ -546,7 +548,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
                     <div key={fd.key} className="sx-setting-row">
                       <div className="sx-setting-main">
                         <div className="sx-setting-title">
-                          <span className="sx-setting-label">{fd.key}</span>
+                          <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>
                           <SourceBadge source={row.source} />
                         </div>
                         {desc !== undefined && <p className="sx-setting-desc">{t(desc.en, desc.zh)}</p>}
