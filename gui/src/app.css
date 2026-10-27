@@ -2517,7 +2517,7 @@ input.sx-setting-input { width: 100%; }
 .files-md h2 { font-size: 15.5px; }
 .files-md h3 { font-size: 14px; }
 .files-md h4 { font-size: 13px; }
-.files-md h1, .files-md h2, .files-md h3, .files-md h4 { line-height: 1.55; font-weight: 600; margin: 28px 0 12px; }
+.files-md h1, .files-md h2, .files-md h3, .files-md h4 { line-height: 1.55; font-weight: 600; margin: 42px 0 12px; } /* 上距 28→42(2026-10-27 用户裁定 +50%):标题与上部内容拉开分节 */
 .files-md ul, .files-md ol { margin: 14px 0; padding-left: 22px; }
 .files-md li { margin: 5px 0; }
 .files-md li + li { margin-top: 8px; }
