@@ -564,7 +564,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           <div className="sx-dirview-body">
             <DirectoryTab
               /* ProjectMenuConn=收窄接口,App 实传整只 Connection(运行时满足 tree/searchTree 面) */
-              conn={conn as Connection}
+              conn={conn as unknown as Connection}
               sessionId={dirView.sessionId}
               root={dirView.root}
               openTab={(type, params) => {

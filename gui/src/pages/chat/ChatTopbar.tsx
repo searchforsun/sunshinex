@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Code2, Folder, FolderOpen, MoreHorizontal, PanelLeft } from 'lucide-react';
+import { Check, ChevronDown, Code2, MoreHorizontal, PanelLeft } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import type { ReactNode } from 'react';
@@ -140,11 +140,12 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         .then((r) => setEditors(r.editors), () => undefined);
     }
   };
+  /** 菜单点选=只设默认(✓ 移交+主钮图标随换),**不启动**——启动统一走主钮
+    (2026-10-27 用户裁定:点行即开应用会误触) */
   const pickEditor = (id: string): void => {
     localStorage.setItem('sunshinex.open-default', id);
     setDefaultEditor(id);
     setEditorMenu(null);
-    openIn(id);
   };
   /** 应用图标(2026-10-27 用户裁定:用**原生图标**):daemon 从 exe 资源段抽取(机器级缓存),
     dataURL 直显;未取到回落 vscode-icons 集内字形,未知 id 回落 Code2 线性图标 */
@@ -158,13 +159,13 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         .then((r) => setNativeIcons((m) => ({ ...m, [e.id]: `data:${r.mime};base64,${r.data}` })), () => setNativeIcons((m) => ({ ...m, [e.id]: '' })));
     }
   }, [editorMenu, editors, conn, nativeIcons]);
-  const editorIcon = (id: string, size = 14): ReactNode => {
+  const editorIcon = (id: string, size = 18): JSX.Element => {
     const native = nativeIcons[id];
     if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
     if (native === '') return <Code2 size={13} strokeWidth={1.75} />;
     const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
     const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
-    if (body === undefined) return <Code2 size={size - 1} strokeWidth={1.75} />;
+    if (body === undefined) return <Code2 size={size - 2} strokeWidth={1.75} />;
     return (
       <span
         style={{ width: 14, height: 14, display: 'inline-flex', flex: 'none' }}
@@ -308,7 +309,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             disabled={root === undefined || root === ''}
             onClick={() => openIn(defaultEditor)}
           >
-            {editorIcon(defaultEditor, 16)}
+            {editorIcon(defaultEditor, 18)}
           </button>
           <button
             type="button"
@@ -403,7 +404,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
               active: e.id === defaultEditor,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
-              icon: editorIcon(e.id, 16),
+              icon: editorIcon(e.id, 18),
               onSelect: () => pickEditor(e.id),
             }))}
           />
