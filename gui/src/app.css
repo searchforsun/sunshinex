@@ -1967,14 +1967,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--fg);
-  font: 12.5px var(--font-mono);
+  font: inherit; /* 字体预设管线:选中值与弹层选项同源(写死等宽曾致衬线预设下闭合态/弹层两种字) */
   box-sizing: border-box;
 }
 .sx-setting-input::placeholder { color: var(--fg-tertiary); }
 .sx-setting-input:hover:not(:disabled),
 .sx-dd-trigger:hover:not(:disabled) { border-color: var(--border-strong); }
 .sx-setting-input:focus,
-.sx-dd-trigger:focus-visible { border-color: var(--accent); outline: none; }
+.sx-dd-trigger:focus-visible { border-color: var(--border-strong); outline: none; }
 .sx-setting-input:disabled, .sx-dd-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
 input.sx-setting-input { width: 100%; }
 
@@ -2516,3 +2516,8 @@ input.sx-setting-input { width: 100%; }
 .files-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }
 .files-md img { max-width: 100%; border-radius: var(--radius-md); }
 .files-md table { margin: 14px 0; }
+
+/* 用户气泡上间距分档(2026-10-27 用户裁定):新回合用户消息与上方内容拉开(含图片条——图片在
+   entry 内首节点,margin 自动落在图片上方);运行中插入/辅助对话(entry-user-insert)保持紧凑 */
+.entry-user { margin-top: 18px; }
+.entry-user.entry-user-insert { margin-top: 10px; }
