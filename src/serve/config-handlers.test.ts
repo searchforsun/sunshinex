@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { handlePluginsGet, handlePluginsPut, type ConfigHandlerIo } from './config-handlers';
+import { handlePluginsGet, handlePluginsPut, handleMcpPut, type ConfigHandlerIo } from './config-handlers';
 
 /** 配置面处理器直测（Task 11 /settings/plugins 两端点）：handler 纯函数形（req/res + io），
  *  io 三面全 fake（send 收集回执/readJson 回放预设 body/reloadSettingsChain 记录调用），
@@ -269,4 +269,28 @@ test('PUT 既有 plugins 键形状坏（非对象）→ 整键重置为对象（
       fs.rmSync(proj, { recursive: true, force: true });
     }
   });
+});
+
+async function mcpPut(body: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { io, sends } = fakeIo(body);
+  await handleMcpPut(io, { url: '/settings/mcp' } as http.IncomingMessage, dummyRes);
+  assert.equal(sends.length, 1, 'PUT 恰一次回执');
+  return { status: sends[0]!.status, body: sends[0]!.body };
+}
+
+test('MCP PUT 新字段守卫：headers/enabled/disabledTools 坏形 400（装载面消费键写面拦形）；合法形原样落盘', async () => {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-put-'));
+  try {
+    assert.equal((await mcpPut({ root: proj, servers: [{ name: 'a', command: 'node', headers: ['x'] }] })).status, 400, 'headers 数组 400');
+    assert.equal((await mcpPut({ root: proj, servers: [{ name: 'a', command: 'node', headers: { X: 1 } }] })).status, 400, 'headers 值非字符串 400');
+    assert.equal((await mcpPut({ root: proj, servers: [{ name: 'a', command: 'node', enabled: 'yes' }] })).status, 400, 'enabled 非布尔 400');
+    assert.equal((await mcpPut({ root: proj, servers: [{ name: 'a', command: 'node', disabledTools: [1] }] })).status, 400, 'disabledTools 非字符串数组 400');
+    assert.equal(fs.existsSync(path.join(proj, '.sunshinex')), false, '守卫路径零写盘');
+    const ok = await mcpPut({ root: proj, servers: [{ name: 'a', command: 'node', headers: { X: '1' }, enabled: false, disabledTools: ['t1'] }] });
+    assert.equal(ok.status, 200, '三键合法形 200');
+    const onDisk = JSON.parse(fs.readFileSync(path.join(proj, '.sunshinex', 'mcp.json'), 'utf8')) as { mcpServers: Record<string, unknown> };
+    assert.deepEqual(onDisk.mcpServers['a'], { name: 'a', command: 'node', headers: { X: '1' }, enabled: false, disabledTools: ['t1'] }, '合法三键原样落盘（row 含 name 整体入位——写面不擅自裁剪）');
+  } finally {
+    fs.rmSync(proj, { recursive: true, force: true });
+  }
 });

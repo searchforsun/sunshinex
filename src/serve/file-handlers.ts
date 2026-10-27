@@ -223,11 +223,17 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     return;
   }
   // 图片预览分支（2026-10-26 侧栏预览）：图片扩展名 → base64 随 JSON 回（Files 页 dataURL 直显）。
-  // 帽内直读；缺档/目录落下方既有 404/directory 面（readFileBounded 语义不变）；超帽 415 指引裁剪
+  // 帽内直读；缺档/目录落下方既有 404/directory 面（readFileBounded 语义不变）；超帽 415 指引裁剪。
+  // 帽走 stat 前检（read 工具图片分支同款理由：readFileSync 对巨型文件先整量分配 Buffer 的 OOM 面），
+  // 读后复验兜 stat→read 竞态窗口
   const previewMime = imageMimeOf(abs);
   if (previewMime !== undefined) {
     let imgBuf: Buffer | null = null;
     try {
+      if (fs.statSync(abs).size > READ_IMAGE_MAX_BYTES) {
+        io.send(res, 415, { error: `image too large to preview (>${Math.round(READ_IMAGE_MAX_BYTES / 1048576)} MB)` });
+        return;
+      }
       imgBuf = fs.readFileSync(abs);
     } catch {
       /* 缺档：null 落下方 readFileBounded 的 404/directory 语义 */

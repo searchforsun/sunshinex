@@ -231,6 +231,9 @@ export function builtinTools(
       display: { verb: 'READ', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
         const abs = resolveProjectPath(root, String(input.path));
+        // 空语义归一单点：undefined / JSON null / "null"·"undefined" 字符串字面量（模型把可空联合当字符串传的形态）均按整文件处理
+        // （归一在图片分支之前——图片观察行的 range ignored 提示与文本路径同一口径）
+        const range = input.range === undefined || input.range === null || input.range === 'null' || input.range === 'undefined' ? '' : String(input.range).trim();
         // 图片文件分支（2026-10-26 读取图片）：扩展名识别 → dataURL 随 ExecResult.images 下发——
         // 模型视觉（批后伴随 user 帧入 wire）与 GUI 工具行缩略图（tool-result 事件 payload.images）
         // 共用既有通道；文本通道读二进制只会出 mojibake，故图片扩展名在此截流。
@@ -239,6 +242,12 @@ export function builtinTools(
         if (imageMime !== undefined) {
           let buf: Buffer | null = null;
           try {
+            // 帽走在读前：readFileSync 对巨型「.png」（如 4GB）会先整量分配 Buffer 再返回——OOM 面；
+            // stat→read 之间文件长大的竞态窗口由读后复验兜底
+            const size = fs.statSync(abs).size;
+            if (size > READ_IMAGE_MAX_BYTES) {
+              return execOut(`[image] ${path.basename(abs)} (${imageMime}, ${(size / 1048576).toFixed(1)} MB) exceeds the ${Math.round(READ_IMAGE_MAX_BYTES / 1048576)} MB inline cap — crop it or convert to a smaller format, then re-read`);
+            }
             buf = fs.readFileSync(abs);
           } catch {
             /* 缺档/权限：null 落文本路径，backend.readFile 抛原始错误 */
@@ -247,7 +256,7 @@ export function builtinTools(
             if (buf.length > READ_IMAGE_MAX_BYTES) {
               return execOut(`[image] ${path.basename(abs)} (${imageMime}, ${(buf.length / 1048576).toFixed(1)} MB) exceeds the ${Math.round(READ_IMAGE_MAX_BYTES / 1048576)} MB inline cap — crop it or convert to a smaller format, then re-read`);
             }
-            const rangeNote = input.range !== undefined && input.range !== null && String(input.range).trim() !== '' && String(input.range) !== 'null' ? '; range ignored for image files' : '';
+            const rangeNote = range !== '' ? '; range ignored for image files' : '';
             return {
               ...execOut(`[image] ${path.basename(abs)} (${imageMime}, ${Math.max(1, Math.round(buf.length / 1024))} KB) — content attached as image for visual inspection${rangeNote}`),
               images: [`data:${imageMime};base64,${buf.toString('base64')}`],
@@ -255,8 +264,6 @@ export function builtinTools(
           }
         }
         const content = backend.readFile(abs);
-        // 空语义归一单点：undefined / JSON null / "null"·"undefined" 字符串字面量（模型把可空联合当字符串传的形态）均按整文件处理
-        const range = input.range === undefined || input.range === null || input.range === 'null' || input.range === 'undefined' ? '' : String(input.range).trim();
         if (range === '') return execOut(fitOut('read', content));
         // 形态语义：L<a>-<b> 闭区间；L<a> 与 L<a>- 同义（a 行到尾）；L-<b>（前 b 行）；越界钳制到文件实际范围
         const m = /^L(?<a>\d+)?(?:-(?<b>\d+)?)?$/.exec(range);

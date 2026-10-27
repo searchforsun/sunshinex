@@ -21,8 +21,9 @@ export interface McpSafetyDecl {
 /** 插件贡献的 MCP server 条目 = McpServerConfig 基础上 safety?/configArgs?/configEnv?（+ cwd/configDefaults 装载面）。
  *  transport v1 仅 stdio（出现 http/sse 该条告警跳过——远程 server 支持后置）；name 来自 mcpServers 键。
  *  configArgs/configEnv/configDefaults 为装配期展开面：settings 插件 config 缺省值合并（configDefaults）后
- *  展开 args 模板（configArgs，`{value}` 占位替换、布尔 true → 纯旗标）与环境变量（configEnv，值字符串化） */
-export interface McpServerContrib {
+ *  展开 args 模板（configArgs，`{value}` 占位替换、布尔 true → 纯旗标）与环境变量（configEnv，值字符串化）。
+ *  模块内承载面（PluginManifest 经 Omit 引用；装配展开就地消费），不外导——外部类型面走 McpServerConfig */
+interface McpServerContrib {
   name: string;
   command: string;
   args?: string[];
@@ -160,7 +161,7 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
     return { manifest: null, warnings, errors };
   }
   for (const k of RESERVED) if (k in o) warnings.push(`贡献点 ${k} 本版本未实现，已忽略`);
-  for (const k of Object.keys(o)) if (!KNOWN_KEYS.has(k) && !RESERVED.includes(k as never)) warnings.push(`未知字段 ${k} 已忽略`);
+  for (const k of Object.keys(o)) if (!KNOWN_KEYS.has(k) && !(RESERVED as readonly string[]).includes(k)) warnings.push(`未知字段 ${k} 已忽略`);
   for (const k of REQUIRED) if (k !== 'manifestVersion' && typeof o[k] !== 'string') errors.push(`缺必填字段 ${k}`);
   // version 仅非空字符串口径（semver 供展示与排序，不做严格校验）；id 空值由 ID_RE 兜底
   if (typeof o.version === 'string' && o.version === '') errors.push('version 须非空字符串');
@@ -281,8 +282,9 @@ export function loadEffectivePlugins(projectRoot: string | undefined, opts: { bu
 }
 
 /** 合成产物：可装配 server 名单 + 声明式安全表 + 警告单（harness 构造期与 guard 同源消费，Task 9 接 safety）。
- *  servers 中 env 空对象不落键（缺省语义不变）；cwd 已解析为绝对路径（manifest '.' = 插件目录）。 */
-export interface PluginMcpAssembly {
+ *  servers 中 env 空对象不落键（缺省语义不变）；cwd 已解析为绝对路径（manifest '.' = 插件目录）。
+ *  模块内承载面（pluginMcpServers 返回类型，消费方结构化取字段），不外导 */
+interface PluginMcpAssembly {
   servers: McpServerConfig[];
   /** server 名 → 三类安全声明（仅启用且平台可用插件；guard 问线驱动面，未声明 server 走通用 MCP 审批） */
   safety: Record<string, McpSafetyDecl>;

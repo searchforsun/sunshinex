@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { SecurityGuard } from './guard';
@@ -232,24 +232,29 @@ test('safety 未声明 server/未声明工具名行为零变化（回归钉：�
 // manifest 声明与 guard 问线之间的装配面（harness 构造期同一路径）在真数据上闭环，改名/缺类即测红。
 
 test('safety 真接线：plugins/computer-use 真 manifest 声明下 act（click）full-access 仍强制 ask，observe 直放', () => {
-  const r = pluginMcpServers(undefined, {
-    builtinRoot: path.resolve(__dirname, '../../../plugins'),
-    userRoot: mkdtempSync(path.join(tmpdir(), 'guard-cu-u-')),
-    settingsReader: () => ({ plugins: { 'computer-use': { enabled: true } } }),
-  });
-  const decl = r.safety['computer-use'];
-  assert.ok(decl, '真 manifest 装载出 computer-use safety 声明（前置：随仓 manifest 在位且合法）');
-  const g = new SecurityGuard(new PolicyEngine(), 'full-access', ['computer-use']);
-  g.setMcpSafety({ 'computer-use': decl }); // 装配单点同形注入（harness/index.ts 构造期同一消费路径）
-  const click = g.preToolUse('mcp__computer-use__click', { x: 1, y: 2 });
-  assert.equal(click.allowed, false, '真声明下 full-access 不豁免 act（免审批 ≠ 免问线）');
-  if (!click.allowed) {
-    assert.equal(click.ask, true, 'act 强制 ask');
-    assert.match(click.reason, /plugin action tools always require approval/);
-  }
-  for (const mode of ['full-access', 'acceptEdits', 'read-only'] as const) {
-    const m = new SecurityGuard(new PolicyEngine(), mode, ['computer-use']);
-    m.setMcpSafety({ 'computer-use': decl });
-    assert.equal(m.preToolUse('mcp__computer-use__window_list', {}).allowed, true, `${mode} 下真声明 observe 直放`);
+  const userRoot = mkdtempSync(path.join(tmpdir(), 'guard-cu-u-'));
+  try {
+    const r = pluginMcpServers(undefined, {
+      builtinRoot: path.resolve(__dirname, '../../../plugins'),
+      userRoot,
+      settingsReader: () => ({ plugins: { 'computer-use': { enabled: true } } }),
+    });
+    const decl = r.safety['computer-use'];
+    assert.ok(decl, '真 manifest 装载出 computer-use safety 声明（前置：随仓 manifest 在位且合法）');
+    const g = new SecurityGuard(new PolicyEngine(), 'full-access', ['computer-use']);
+    g.setMcpSafety({ 'computer-use': decl }); // 装配单点同形注入（harness/index.ts 构造期同一消费路径）
+    const click = g.preToolUse('mcp__computer-use__click', { x: 1, y: 2 });
+    assert.equal(click.allowed, false, '真声明下 full-access 不豁免 act（免审批 ≠ 免问线）');
+    if (!click.allowed) {
+      assert.equal(click.ask, true, 'act 强制 ask');
+      assert.match(click.reason, /plugin action tools always require approval/);
+    }
+    for (const mode of ['full-access', 'acceptEdits', 'read-only'] as const) {
+      const m = new SecurityGuard(new PolicyEngine(), mode, ['computer-use']);
+      m.setMcpSafety({ 'computer-use': decl });
+      assert.equal(m.preToolUse('mcp__computer-use__window_list', {}).allowed, true, `${mode} 下真声明 observe 直放`);
+    }
+  } finally {
+    rmSync(userRoot, { recursive: true, force: true });
   }
 });

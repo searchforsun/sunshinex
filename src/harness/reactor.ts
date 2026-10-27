@@ -11,6 +11,7 @@ import { stableSegmentOf } from './prompts/shared';
 import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
+import { DEFAULT_IMAGE_HISTORY_LIMIT } from '../config/image-history';
 import { reactorMaxStepsEnv, reciteEveryEnv, resolveRunWindow, subagentTokenCapEnv } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
@@ -476,7 +477,7 @@ export class Reactor {
       // 压缩水位过滤：压缩点前的链行已折叠进压缩块，不得双份回流（runCompaction 契约）
       chain: steps.filter((s) => s.step > fromStep),
       pendingSkill: skill,
-    }, this.deps.imageHistoryLimit ?? 3);
+    }, this.deps.imageHistoryLimit ?? DEFAULT_IMAGE_HISTORY_LIMIT);
     const tools = [...this.deps.registry.list()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       .map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, ...(t.parameters ? { parameters: t.parameters } : {}) } }));

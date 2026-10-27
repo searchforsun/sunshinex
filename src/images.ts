@@ -39,8 +39,8 @@ export function appendImages(current: readonly string[], incoming: readonly stri
   return { images: merged, overflow: current.length + incoming.length - merged.length };
 }
 
-/** 图片扩展名 → MIME（读取面单源：read 工具按扩展名识别图片文件 / Files 预览同判） */
-export const IMAGE_EXT_MIME: Readonly<Record<string, string>> = {
+/** 图片扩展名 → MIME（读取面单源：read 工具按扩展名识别图片文件 / Files 预览同判；模块内 imageMimeOf 消费，不外导） */
+const IMAGE_EXT_MIME: Readonly<Record<string, string>> = {
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',

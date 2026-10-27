@@ -146,6 +146,8 @@ export class McpHost {
         continue;
       }
       if (cfg.enabled === false) {
+        // 防御性双闸（生产单点在 harness/index.ts 装配期 filter）：此处只服务测试直构 McpHost 的路径，
+        // 生产行为不依赖本分支——enabled 语义的裁决与「软提示」文案演进以装配期为准
         report.warnings.push(`server disabled (${cfg.name}): enabled=false, skipped`);
         continue;
       }
