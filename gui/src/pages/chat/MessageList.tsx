@@ -85,11 +85,14 @@ interface DayGroupProps {
   readonly onEntryRestore: (p: string) => void;
   readonly onFork?: () => void;
   readonly onOpenImage?: (src: string) => void;
+  /** 用户气泡上间距分档:运行中插入/辅助对话=紧凑档(2026-10-27 用户裁定) */
+  readonly running?: boolean;
+  readonly sideChat?: boolean;
 }
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, running, sideChat } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -153,6 +156,7 @@ const DayGroupBlock = memo(
           <UserEntryView
             key={entry.key}
             entry={entry}
+            insert={running === true || sideChat === true}
             onSend={submitText}
             onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
             onOpenImage={onOpenImage}
@@ -195,7 +199,9 @@ const DayGroupBlock = memo(
     && prev.onEntryOpenDiff === next.onEntryOpenDiff
     && prev.onEntryRestore === next.onEntryRestore
     && prev.onFork === next.onFork
-    && prev.onOpenImage === next.onOpenImage,
+    && prev.onOpenImage === next.onOpenImage
+    && prev.running === next.running
+    && prev.sideChat === next.sideChat,
 );
 
 export function MessageList(props: MessageListProps): JSX.Element {
@@ -334,6 +340,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
             onEntryRestore={onEntryRestoreStable}
             onFork={onForkOpt()}
             onOpenImage={onOpenImage}
+            running={running}
+            sideChat={sideChat}
           />
         ))}
         {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;

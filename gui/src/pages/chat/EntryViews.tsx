@@ -281,7 +281,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage }: { entry: ChatEntry } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
+export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage }: { entry: ChatEntry; insert?: boolean } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
   const isDir = useDirResolver();
   const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir), [onOpenFile, isDir]);
   const { status: copied, copy: copyText } = useCopyFeedback();
@@ -386,7 +386,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
     );
   }
   return (
-    <div className="entry entry-user" data-entry-key={entry.key}>
+    <div className={`entry entry-user${insert === true ? ' entry-user-insert' : ''}`} data-entry-key={entry.key}>
       {/* 2026-10-26 用户裁定:图片与气泡分离——图片条独立在气泡外(上方右对齐),纯图消息不渲染空气泡 */}
       {entry.images !== undefined && entry.images.length > 0 && (
         <UserImageStrip images={entry.images} onOpen={onOpenImage} />
