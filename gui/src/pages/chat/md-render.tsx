@@ -95,7 +95,21 @@ export const mdComponentsPlain = buildMdComponents(() => undefined);
 
 /** G14.121 文件 token 显形名:绝对/相对路径一律显末段文件名(全路径进 title 悬浮) */
 function tokenDisplayName(p: string): string {
-  return p.split(/[\\/]/).filter((s) => s.length > 0).pop() ?? p;
+  const dec = safeDecodeHref(p);
+  return dec.split(/[\\/]/).filter((s) => s.length > 0).pop() ?? dec;
+}
+
+/** 百分号编码还原(2026-10-27 用户报告「中文渲染有问题」):CommonMark 归一把非 ASCII 的
+ *  链接 href 落成 percent-encoded(中文文件名全中招,%E5%90%AF… 直出给用户,文件打开也必
+ *  404)——显示与打开口径按段安全解码,非法序列(字面量 % 等)原样保留;分隔符原位保留 */
+export function safeDecodeHref(p: string): string {
+  return p.replace(/[^/\\]+/g, (s) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  });
 }
 
 /** 目录判定上下文(Chat 注入会话级解析:记账表/工作区索引的尾斜杠内部标记):md 链接面据此把
@@ -123,8 +137,9 @@ export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; on
   const [failed, setFailed] = useState(false);
   const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   const isDirect = /^(https?:|\/\/|data:)/i.test(src);
-  // 工作区路径与 Files 页同一归一口径(ui-util.normRel 单点):/docs/a.png·./docs/a.png 不再 404 落 chip
-  const path = normRel(src.replace(/^file:\/\//i, ''));
+  // 工作区路径与 Files 页同一归一口径(ui-util.normRel 单点):/docs/a.png·./docs/a.png 不再 404 落 chip;
+  // 百分号编码同段还原(中文图片名 md 图链同样被 CommonMark 编码)
+  const path = normRel(safeDecodeHref(src.replace(/^file:\/\//i, '')));
   useEffect(() => {
     if (isDirect || loader === null) return;
     let cache = mdImageCache.get(loader);
@@ -215,25 +230,26 @@ function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: 
       </a>
     );
   }
+  const decoded = safeDecodeHref(href);
   return (
     <span
       role="button"
       tabIndex={0}
       className="file-link"
-      data-tip={href}
+      data-tip={decoded}
       onClick={(e) => {
         e.stopPropagation();
-        props.onOpenFile?.(href);
+        props.onOpenFile?.(decoded);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.stopPropagation();
-          props.onOpenFile?.(href);
+          props.onOpenFile?.(decoded);
         }
       }}
     >
-      <FileIcon path={href} folder={props.isDir?.(href)} />
-      <span className="file-link-name">{tokenDisplayName(href)}</span>
+      <FileIcon path={decoded} folder={props.isDir?.(decoded)} />
+      <span className="file-link-name">{tokenDisplayName(decoded)}</span>
     </span>
   );
 }
