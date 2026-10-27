@@ -7,10 +7,11 @@
 | 能力 | Linux | macOS | Windows |
 |------|-------|-------|---------|
 | 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
-| CLI（selfcheck / run / pipeline / serve / skills install / kb-index） | 支持 | 支持 | 支持（单行命令） |
+| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate） | 支持 | 支持 | 支持（单行命令） |
 | 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测；无 Git 时 PowerShell，末位 cmd 兜底） |
 | GUI 浏览器模式（`serve` daemon + web 前端） | 支持 | 支持 | 支持 |
 | GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS + portable 双产物） |
+| 内置插件 | browser-use 可用（启用前补装依赖）；computer-use 不支持（manifest 平台声明置灰） | 同 Linux | browser-use 可用（启用前补装依赖）；computer-use 支持（PowerShell worker） |
 
 部署条件（三平台通用）：
 
@@ -19,6 +20,7 @@
 3. 写入 `~/.sunshinex/settings.json`（语义键 + `env` 块填密钥，模板见 MANUAL.md 第二节）；未配置密钥时可用 `--model stub` 先验证链路。
 4. 包管理器统一 pnpm（`packageManager` 钉版，corepack 启用后自动对齐版本）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，依赖安装与缓存随仓库走。
 5. GUI 面（可选）：`node-pty` 为原生模块（安装期编译，serve 与终端标签依赖）；桌面端安装包经 `pnpm shell:dist` 产出（esbuild daemon 束 + node-pty 预编译产物装配，见 `scripts/prepare-pty-resource.mjs`），CI 打包矩阵当前仅 Windows。
+6. 内置插件（可选启用）：browser-use 目标机首次启用前须在插件目录补装第三方依赖（`pnpm --dir plugins/browser-use install`，MANUAL 6.4——npm 打包恒剔除 node_modules）；computer-use 仅 Windows（持久 PowerShell worker 执行器）。
 
 平台契约的机器强制（声明即须可执行）：
 

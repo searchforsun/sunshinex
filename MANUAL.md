@@ -41,6 +41,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 | `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 acceptEdits 权限档装配；详见 [MANUAL-GUI](MANUAL-GUI.md)） |
 | `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
 | `sunshinex kb-index [目录]` | 构建知识库索引（对目录内 md/txt 走计费 embedding；缺省当前工作区，`node_modules` 与隐藏目录跳过；`kb_search` 检索源，见第二节 KB 配置） |
+| `sunshinex plugins list [--root <目录>]` | 插件清单：两级装载结果（id / 版本 / 来源 / 启用态 / 贡献面 / 告警），见 6.4 |
+| `sunshinex plugins validate <目录>` | 校验插件目录 manifest（错误 / 告警逐行上屏，exit code 判过；开发面，详见 `docs/PLUGIN-DEV.md`） |
 
 **启动参数**（全部命令通用）
 
@@ -113,6 +115,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   "modelLarge": "",
   "contextWindow": 200000,                           // 全局窗口 tokens（未按模型配置时的回退；1M 模型填 1000000）
   "reasoningEffort": "high",                         // 缺省思考强度 none|minimal|low|medium|high|xhigh|max；留空 = 不下发（用端点默认）；端点不支持时按阶梯自动降级
+  "imageHistoryLimit": 3,                            // 工具结果图片渲染半径：链上仅最近 N 个带图行保图入模型上下文（0-50 整数，0 = 全部剥图留文本标记）
 
   // ── 长任务 ────────────────────────────────────────────
   "maxSteps": 400,                                  // Reactor 单 run 步数上限
@@ -195,7 +198,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 }
 ```
 
-- stdio 形态：`command` + 可选 `args` / `env`（transport 可省略）；远程形态：`url` + 可选 `transport`（缺省 `http`，支持 `sse`）。
+- stdio 形态：`command` + 可选 `args` / `env`（transport 可省略）；远程形态：`url` + 可选 `transport`（缺省 `http`，支持 `sse`）与 `headers`（请求头，string → string）。两形态通用的可选键：`enabled`（布尔整机开关，`false` 装配期跳过不连接）、`disabledTools`（停用工具短名数组，装配期不注册即模型不可见）；无 scheme 的 `url` 自动补 `http://`。
 - 非法条目跳过不抛（缺 command/url、transport 值未知、形态矛盾），装配面宁可少配不错配。
 
 ## 三、目录与文件

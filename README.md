@@ -19,7 +19,7 @@ graph LR
 
 ```text
 src/
-  cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index；裸命令进交互终端）
+  cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate；裸命令进交互终端）
   tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
   session/   # 会话内核（SessionKernel：转录/等待队列唯一投影 + v3 段级会话档读写）与 KernelRuntime 装配单点（CLI/TUI/GUI 共用）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子智能体、知识库
@@ -31,6 +31,7 @@ src/
   config/ storage/   # 配置装载、存储底座
 gui/         # 浏览器 GUI 前端（React 18 + Vite 工作区包，构建产物 dist-gui/）
 shell/       # Electron 桌面壳工作区包（托盘驻留、全局快捷键、安装包打包）
+plugins/     # 插件工作区根（内置插件 manifest + 技能；用户级 ~/.sunshinex/plugins/；开发指南 docs/PLUGIN-DEV.md）
 ```
 
 分层依赖：`graph → loop → harness → model / storage`；Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。文件级结构详见 [CLAUDE.md](CLAUDE.md)。
@@ -134,6 +135,7 @@ scripts/release.mjs --no-gui                   # 只发 TUI tgz（跳过 GUI 安
 
 - **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
 - **子智能体**：`agents/{id}/agent.md` 注册制（frontmatter 可声明 `isolation: worktree` 隔离、`executor: internal-team` 长驻 teammate / `external-cli` 外部执行体）；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
+- **插件**：把进程外 MCP server 与技能包成可开关的治理单元——manifest 声明贡献面、缺省开关与工具审批分级（`safety` 三类）；内置 browser-use / computer-use 双形态样例，用户级 `~/.sunshinex/plugins/` 同 id 遮蔽内置；`sunshinex plugins list` / `plugins validate` 自查，开发指南 [docs/PLUGIN-DEV.md](docs/PLUGIN-DEV.md)。
 - **问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。
 
 ## 文档导航
@@ -144,6 +146,7 @@ scripts/release.mjs --no-gui                   # 只发 TUI tgz（跳过 GUI 安
 | `docs/Arch-Plan.md` | 架构设计方案与分阶段规划 |
 | `docs/PLATFORM.md` | 平台兼容性与部署条件（三平台矩阵、部署清单） |
 | `docs/ROADMAP.md` | 开发路线图 |
+| `docs/PLUGIN-DEV.md` | 插件开发指南（manifest 规范、两级装载、safety 审批三类、plugins CLI 与设置页面） |
 | `docs/superpowers/specs/` | 设计 spec 归档 |
 | `MANUAL.md` | 使用手册（CLI + TUI：命令、快捷键、权限模式、配置全表） |
 | `MANUAL-GUI.md` | GUI 使用手册（桌面壳/浏览器：安装包、界面、标签工作区、设置页、快捷键、FAQ） |

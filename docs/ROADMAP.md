@@ -1,7 +1,7 @@
-# SunshineX 开发路线图（Roadmap）
+# Sunshinex 开发路线图（Roadmap）
 
-> 本文档从全局视角规划 SunshineX 从骨架到 v1.0 的完整落地路径，共 6 个阶段、28 周。
-> 依据：目标形态定稿（docs/GOAL.md，单一权威）＋《SunshineX 架构设计与技术选型》（docs/Arch-Plan.md）。设计原文存档于 docs/superpowers/specs/、plans/、reports/。
+> 本文档从全局视角规划 Sunshinex 从骨架到 v1.0 的完整落地路径，共 6 个阶段、28 周。
+> 依据：目标形态定稿（docs/GOAL.md，单一权威）＋《Sunshinex 架构设计与技术选型》（docs/Arch-Plan.md）。设计原文存档于 docs/superpowers/specs/、plans/、reports/。
 > 每个阶段以「可交付 + 可自检」为验收原则，阶段未通过自检不得进入下一阶段。
 
 ## 1. 总览
@@ -148,6 +148,7 @@ flowchart TB
 - [x] 阶段四 MCP 生态（三传输 + sqlite-vec 知识库 + 技能体系）
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（settings.json 配置，模型侧原生 function calling）
 - [x] 阶段五 5A 主体（会话 REPL、流式渲染、plan、审批与选择器、会话持久化 + resume + rewind/fork、中断与 steering、记忆/技能命令族、effort、上下文压缩模型驱动六要素、后台任务账本与 task 工具族、worktree 隔离）
+- [x] 插件治理层（manifestVersion 1 规范 + JSON Schema、两级装载 + 启用态合并、guard 声明式 safety 三类问线、`plugins list/validate` CLI、设置页插件 pane、工具结果图片通道；内置 browser-use / computer-use 双形态——规格 docs/superpowers/specs/2026-10-26-plugin-system-browser-computer-use-design.md）
 
 当前基线（2026-10-21 实测）：tsc strict 零报错、全量 1882 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 全量 363 例全绿（含真 daemon e2e）。实施记录见各 plan 执行回写与 reports/。
 

@@ -1,12 +1,12 @@
-# SunshineX 目标形态定稿（GOAL）
+# Sunshinex 目标形态定稿（GOAL）
 
-> 本文档是 SunshineX 的目标形态单一权威定稿：产品定位、方向性验收与非目标。
+> 本文档是 Sunshinex 的目标形态单一权威定稿：产品定位、方向性验收与非目标。
 > 量化里程碑与阶段排期归 `docs/ROADMAP.md`；工程纪律与硬性约束以 `CLAUDE.md` 为准。
 > 定稿于 2026-09-17 /grilling 目标形态评审，共识全文经确认。
 
 ## 一句话定位
 
-SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长任务为北极星场景，TUI + GUI 双交互面，凭 MCP / 技能·子智能体生态保持开放扩展，以「宽预算 + 验收收敛 + 基准集量化」保证长任务稳定可靠执行。
+Sunshinex 是个人开发者本机运行的通用 AI Agent：以复杂编码长任务为北极星场景，TUI + GUI 双交互面，凭 MCP / 技能·子智能体 / 插件生态保持开放扩展，以「宽预算 + 验收收敛 + 基准集量化」保证长任务稳定可靠执行。
 
 ## 北极星场景
 
@@ -19,7 +19,7 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 | 交互面 | 对标 | 定位 |
 |--------|------|------|
-| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / serve / skills install / kb-index / tui） |
+| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate / tui） |
 | TUI | Claude Code | 第一入口，v1.0 默认交互面，持续打磨 |
 | GUI | Codex 工作台 | 已交付：对话交互 + 代码预览 / diff + 任务板（列表 / 流程图）+ 终端 / Web 标签 + 设置管理面（Electron 桌面壳与浏览器双形态） |
 
@@ -32,10 +32,11 @@ SunshineX 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 **跨天持久化 + resume 升格一等能力**：全会话口径——会话链、消息、UI 状态全还原（对标 `claude --resume`），`/goal` 跨天续走为首个消费场景。
 
-## 扩展生态：两层按序深化
+## 扩展生态：按序深化
 
 1. **MCP 三传输生产化收尾**（stdio / streamable http / sse 接缝已交付）。
-2. **技能 / 子智能体生态**：记忆→技能沉淀的分享机制 + agents 注册制体系深化。
+2. **插件治理层**（已交付）：manifest 规范 + 两级装载 + 工具审批三类声明 + plugins CLI + 设置页插件 pane，内置 browser-use / computer-use 双形态样例（`docs/PLUGIN-DEV.md`）。
+3. **技能 / 子智能体生态**：记忆→技能沉淀的分享机制 + agents 注册制体系深化。
 
 架构保持通用、不与编码域耦合——编码工作方式由 SUNSHINE.md 承载，内核契约任何领域可用。
 

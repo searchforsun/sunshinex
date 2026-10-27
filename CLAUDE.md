@@ -62,7 +62,7 @@ NODE_OPTIONS=--use-system-ca pnpm shell:dist          # 全链单命令：版本
 ```text
 src/
   index.ts            # npm/pnpm start 入口（装载 settings.json 配置链）
-  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index；worktree-launch --worktree 装配前解析）
+  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate；worktree-launch --worktree 装配前解析）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildHarness 单点 + buildDeps CLI 整形：CLI/TUI/GUI 三面共用）
@@ -73,7 +73,7 @@ src/
   images.ts           # 图片附件共享面（MAX_IMAGES ≤8/parseImagesParam 校验/appendImages 钳制/imageMarkers 占位标记；serve HTTP + TUI + GUI 单源，dataURL 形态全链零转码）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
-  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir
+  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir / plugins（插件两级装载+启用态合并+MCP 名单合成）/ image-history（imageHistoryLimit 语义键解析，0-50 渲染半径）
   tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
   harness/
     index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
@@ -119,7 +119,7 @@ SUNSHINE.md          # 项目业务配置
 
 - 分层依赖方向：graph → loop → harness → model / storage
 - Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上
-- 技能与子智能体通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）
+- 技能与子智能体通过「目录约定」加载，第三方工具经 MCP 接入（服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`，项目级撞名遮蔽全局）；插件把 MCP server 与技能包成可开关的治理单元（manifest 声明贡献面与审批分级，`docs/PLUGIN-DEV.md`）
 - 错误通道分域：工具与安全域返回 `Result`（可预期失败显式化）；引擎（Reactor/Loop/Graph）在节点边界 `catch` 后转为节点状态与 `reply` 字段（不可预期失败集中化），两条通道不得跨域混用
 - 运行时装配收敛于 `src/runtime.ts`（`buildHarness` 为 Harness 构造单点、`buildDeps` 为其上 CLI 专用整形层），交互面（CLI/TUI/GUI）只做参数解析与呈现，新增交互面复用同一装配根
 
@@ -155,6 +155,7 @@ SUNSHINE.md          # 项目业务配置
 | ws | GUI daemon WebSocket 服务面（会话事件流 / PTY 帧下行），收敛于 `src/serve/daemon.ts` 接缝 | 事件面退 HTTP 快照轮询（GET 快照路径已在） |
 | node-pty | GUI 终端标签伪终端宿主（PTY 分配与 I/O 中继），收敛于 `src/serve/pty.ts` 接缝（原生模块，安装期编译） | 终端标签降级不可用提示，daemon 其余面不受影响 |
 | @xyflow/react + @dagrejs/dagre | GUI 任务板依赖图（React Flow 图面渲染 + dagre 自动分层布局），收敛于 `gui/src/tabs/TaskDag.tsx` | 降级为列表视图（列表/流程图双卡切换已在）；布局算法接缝在 `layoutTaskDag` 纯函数 |
+| @playwright/mcp | browser-use 内置插件的浏览器操作 MCP server（钉版直启；**插件目录工作区依赖，非主仓依赖**，目标机首次启用前补装，MANUAL 6.4），收敛于 `plugins/browser-use/` | 插件不启用即零依赖面；换任意 MCP 浏览器 server 改 manifest 即可 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 
@@ -167,6 +168,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 .cursor < .codex < .claude < .agents < .sunshinex（项目级，原生恒最优先）
   > ~/.sunshinex/skills/（全局用户级，SUNSHINEX_USER_SKILLS_DIR 覆盖）
   > ~/.sunshinex/projects/<工作区>/data/skills/（学习级，LearnedSkillStore 自动沉淀，FIFO 上限）
+  > plugins/<id>/skills/（内置插件技能根，最低优先级；启用且平台可用的插件才并入链尾）
 ```
 
 - 技能发现与加载（对标 Claude Code 渐进披露）：name+description 清单由 `formatSkillsIndex` 注入会话冻结段（会话级常量、随快照刷新点重读），模型据清单经 `skill` 工具按 id 加载正文——正文以工具观察尾追进链（装配面前缀零击穿）；`skillRef` 为 loop 内部模板面，仍走置尾一次性注入。
@@ -270,7 +272,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
 | GUI 内嵌浏览器 | WebContentsView | 规划选型 | Electron ≥ 30 原生 API（现行 Web 标签为 iframe，禁内嵌站点走系统外开） |
-| GUI 可选增强 | dockerode + tree-kill | 可选增强 | Compute Use 容器执行/进程管理，按需引入 |
+| GUI 可选增强 | dockerode + tree-kill | 可选增强 | 容器化执行/进程管理，按需引入；电脑控制已由 computer-use 内置插件交付（桌面 PowerShell worker，win32-only，见 `docs/PLUGIN-DEV.md`） |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
 - **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写（收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层）——TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。落位分三档：
