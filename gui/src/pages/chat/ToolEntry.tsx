@@ -632,6 +632,9 @@ export const ToolEntryView = memo(function ToolEntryView({
     body = <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>;
   }
 
+  /** read 图片行特殊面(2026-10-26 用户裁定澄清):折叠行=仅文件名行(无缩略图/无框/无说明文字),
+   *  展开=仅图片本身(裸显无背景)。判定=有图且结果文本只是 [image] 说明 */
+  const imageNoteOnly = hasToolImages && resultText.trim().startsWith('[image]');
   return (
     <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
       <button
@@ -649,9 +652,9 @@ export const ToolEntryView = memo(function ToolEntryView({
       </button>
       {/* 工具结果图片缩略行(2026-10-26 插件体系图片通道):折叠壳外直出——截屏类工具行不展开即可看;
           点击开查看浮层(交互/样式沿用户气泡图片条同款令牌)。images 只随 result 帧落条,执行中不现 */}
-      {entry.images !== undefined && entry.images.length > 0 && (
+      {hasToolImages && !imageNoteOnly && (
         <div className="tool-images">
-          {entry.images.map((src, i) => (
+          {entry.images!.map((src, i) => (
             <img
               key={`${i}:${src.slice(-24)}`}
               src={src}
@@ -664,9 +667,10 @@ export const ToolEntryView = memo(function ToolEntryView({
       )}
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
         <div className="tool-body-inner">
-          {hasToolImages && (
-            /* 展开大图(2026-10-26 用户裁定):contain 保比例/左对齐/max 280 不越行宽;点击灯箱滚轮缩放 */
-            <div className="tool-image-view">
+          {imageNoteOnly ? (
+            /* 2026-10-26 用户裁定:read 图片行展开体=仅图片本身(裸显无背景/左对齐/contain 保比例,
+               高 240 档不越行宽),点击开灯箱缩放;[image] 说明盒与缩略行均不渲染 */
+            <div className="tool-image-plain">
               {entry.images!.map((src, i) => (
                 <img
                   key={`v${i}:${src.slice(-24)}`}
@@ -676,8 +680,9 @@ export const ToolEntryView = memo(function ToolEntryView({
                 />
               ))}
             </div>
+          ) : (
+            body
           )}
-          {body}
         </div>
       </div>
       {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
