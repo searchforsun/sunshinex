@@ -146,9 +146,22 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     setEditorMenu(null);
     openIn(id);
   };
-  /** 应用品牌图标(vscode-icons 彩色集):explorer=文件夹/vscode=蓝标/cursor=橙立方;
-    未知 id 回落 Code2 线性图标 */
+  /** 应用图标(2026-10-27 用户裁定:用**原生图标**):daemon 从 exe 资源段抽取(机器级缓存),
+    dataURL 直显;未取到回落 vscode-icons 集内字形,未知 id 回落 Code2 线性图标 */
+  const [nativeIcons, setNativeIcons] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (editorMenu === null) return;
+    for (const e of editors) {
+      if (nativeIcons[e.id] !== undefined) continue;
+      void conn
+        .editorIcon(e.id)
+        .then((r) => setNativeIcons((m) => ({ ...m, [e.id]: `data:${r.mime};base64,${r.data}` })), () => setNativeIcons((m) => ({ ...m, [e.id]: '' })));
+    }
+  }, [editorMenu, editors, conn, nativeIcons]);
   const editorIcon = (id: string): ReactNode => {
+    const native = nativeIcons[id];
+    if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: 14, height: 14, display: 'block' }} />;
+    if (native === '') return <Code2 size={13} strokeWidth={1.75} />;
     const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
     const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
     if (body === undefined) return <Code2 size={13} strokeWidth={1.75} />;
@@ -386,14 +399,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             onClose={() => setEditorMenu(null)}
             items={editors.map((e) => ({
               id: e.id,
-              label: e.name,
+              label: e.id === defaultEditor ? `${e.name} ✓` : e.name,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
-              icon: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                  {editorIcon(e.id)}
-                  {e.id === defaultEditor && <Check size={12} strokeWidth={2.25} />}
-                </span>
-              ),
+              icon: editorIcon(e.id),
               onSelect: () => pickEditor(e.id),
             }))}
           />

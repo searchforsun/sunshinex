@@ -104,6 +104,8 @@ export interface Connection {
   saveAppSeen(seen: Record<string, number>): Promise<void>;
   /** 预设外部打开应用安装态(GET /app/editors;只列实际存在的,explorer 恒在) */
   editorsList(): Promise<{ editors: Array<{ id: string; name: string; exe: string }> }>;
+  /** 应用原生图标(exe 资源段抽取,机器级缓存):{mime,data(base64)}——打开菜单品牌图标用 */
+  editorIcon(id: string): Promise<{ mime: string; data: string }>;
   /** 以指定应用打开路径(POST /app/open;spawn detached,id 须在已装名单内) */
   openInEditor(path: string, id: string): Promise<void>;
   sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
@@ -436,6 +438,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     /** 外部打开应用族(2026-10-27 顶栏「打开」分体钮):安装态探测 + 以指定应用打开路径 */
     editorsList() {
       return getJson('/app/editors');
+    },
+    editorIcon(id: string) {
+      return getJson(`/app/editors/icon?id=${encodeURIComponent(id)}`);
     },
     async openInEditor(path: string, id: string) {
       await post('/app/open', { path, id });

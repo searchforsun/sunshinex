@@ -1,14 +1,23 @@
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile as execFileCb, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { SessionHandlerIo } from './session-handlers';
+import { userConfigDir } from '../config/env';
 
 /**
- * 外部打开应用族(2026-10-27 用户需求:顶栏[|] 旁「打开」分体钮——工作区路径一键进资源
- * 管理器/编辑器):GET /app/editors 探测预设应用安装态(只列实际存在的),POST /app/open
- * 以指定应用打开路径。spawn detached+unref 脱离 daemon 生命周期(应用自身另起进程,daemon
- * 不等不收养);windowsHide 不闪控制台窗。
+ * 外部打开应用族(2026-10-27 用户需求:顶栏「打开」分体钮——工作区路径一键进资源管理器/编辑器):
+ * GET /app/editors 探测安装态(只列实际存在的),GET /app/editors/icon?id= 抽取**应用原生图标**
+ * (PowerShell ExtractAssociatedIcon 从 exe 资源段提取,PNG 落盘缓存,机器级一次),POST /app/open
+ * 以指定应用打开路径。spawn detached+unref 脱离 daemon 生命周期。
+ *
+ * 2026-10-27 三修(用户实测四连):①探测全异步(execFile 代替 spawnSync)——where.exe 单次数百
+ * 毫秒且同步调用阻塞 daemon 事件循环,菜单打开即整应用卡顿;②注册表卸载键兜底——VS Code 装在
+ * 非标盘位(D:\MyWorkSoftware 等自定义位)不在静态候选,PATH 上 `code` shim 又被 Cursor 内嵌
+ * CLI 占用(「宁缺勿错」正确放弃),从 Inno Setup 定版 GUID 卸载键读 InstallLocation 兜回;
+ * ③open spawn 去 windowsHide——CREATE_NO_WINDOW 吞被拉起 GUI 应用的首个窗口(explorer
+ * 「点了没反应」实锤;GUI 子系统本不产控制台窗)。安装态缓存于 daemon 生命周期(低频事件,重启刷新)。
  */
 
 export interface EditorApp {
@@ -18,7 +27,7 @@ export interface EditorApp {
 }
 
 /** 预设候选(静态安装位):explorer 恒在;VS Code/Cursor 各取用户级+系统级两档常见安装位,
- *  同 id 多命中取首个(用户级优先于系统级)。便携版不在标准位——由 PATH shim 探测兜底 */
+ *  同 id 多命中取首个(用户级优先于系统级)。便携版不在标准位——由注册表/PATH shim 兜底 */
 export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorApp[] {
   const user = env.USERPROFILE ?? '';
   const pf = env['ProgramFiles'] ?? 'C:\\Program Files';
@@ -31,29 +40,58 @@ export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorAp
 }
 
 /** PATH shim 探测(便携装兜底):where <shim> 首行→自 shim 目录向上逐层(≤6)找 <exeName>。
- *  同名 shim 可能是别家(如 Cursor 内嵌的 code.cmd)——逐层找不到真 exe 即整条放弃,
+ *  同名 shim 可能是别家(实测 Cursor 内嵌的 code.cmd)——逐层找不到真 exe 即整条放弃,
  *  宁缺勿错(错配会把「VS Code 打开」实际开成 Cursor)。 */
 export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; exeName: string }> = [
   { id: 'vscode', name: 'VS Code', shim: 'code', exeName: 'Code.exe' },
   { id: 'cursor', name: 'Cursor', shim: 'cursor', exeName: 'Cursor.exe' },
 ];
 
-export type WhereFn = (shim: string) => string | null;
+/** VS Code Inno Setup 定版 GUID 卸载键(用户级+系统级;非标盘位安装的唯一可靠登记处) */
+export const VSCODE_UNINSTALL_KEYS = [
+  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1',
+  'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1',
+];
 
-/** 真实 where 探针:首行(最高 PATH 优先级)或 null */
-export function whereFirst(shim: string): string | null {
-  const r = spawnSync('where', [shim], { windowsHide: true });
-  if (r.status !== 0 || r.error !== undefined) return null;
-  const first = r.stdout
-    .toString()
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find((l) => l !== '');
-  return first ?? null;
+const execFile = promisify(execFileCb);
+
+/** 真实 where 探针(async):首行(最高 PATH 优先级)或 null */
+export async function whereFirst(shim: string): Promise<string | null> {
+  try {
+    const r = await execFile('where', [shim], { windowsHide: true });
+    const first = r.stdout
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l !== '');
+    return first ?? null;
+  } catch {
+    return null;
+  }
 }
 
-/** 安装态探测合成:静态位在前,PATH shim 解析兜底,同 id 静态命中优先 */
-export function detectEditors(exists: (p: string) => boolean, env: NodeJS.ProcessEnv = process.env, where: WhereFn = whereFirst): EditorApp[] {
+/** 注册表读 InstallLocation(async reg query;shell 转义与本进程无关):命中回安装根 */
+export async function vscodeInstallFromRegistry(): Promise<string | null> {
+  for (const key of VSCODE_UNINSTALL_KEYS) {
+    try {
+      const r = await execFile('reg', ['query', key, '/v', 'InstallLocation'], { windowsHide: true });
+      const m = /InstallLocation\s+REG_SZ\s+(.+)/.exec(r.stdout);
+      const loc = m !== null ? m[1]!.trim() : '';
+      if (loc !== '') return loc;
+    } catch {
+      /* 键缺席/被拒:逐键降级 */
+    }
+  }
+  return null;
+}
+
+/** 探测合成(异步,事件循环零阻塞):静态位 → 注册表卸载键(vscode 专属兜底)→ PATH shim;
+ *  同 id 先命中先得(静态 > 注册表 > shim) */
+export async function detectEditorsAsync(
+  exists: (p: string) => boolean,
+  env: NodeJS.ProcessEnv = process.env,
+  where: (shim: string) => Promise<string | null> = whereFirst,
+  vscodeRegistry: () => Promise<string | null> = vscodeInstallFromRegistry,
+): Promise<EditorApp[]> {
   const seen = new Set<string>();
   const out: EditorApp[] = [];
   const push = (c: EditorApp): void => {
@@ -62,7 +100,59 @@ export function detectEditors(exists: (p: string) => boolean, env: NodeJS.Proces
     out.push(c);
   };
   for (const c of editorCandidates(env)) push(c);
-  if (out.some((e) => e.id !== 'explorer')) return out; // 静态位已有编辑器,PATH 兜底不再叠
+  if (!seen.has('vscode')) {
+    const loc = await vscodeRegistry();
+    if (loc !== null) push({ id: 'vscode', name: 'VS Code', exe: path.join(loc, 'Code.exe') });
+  }
+  for (const probe of SHIM_PROBES) {
+    if (seen.has(probe.id)) continue;
+    const shimPath = await where(probe.shim);
+    if (shimPath === null) continue;
+    let cur = path.dirname(shimPath);
+    for (let depth = 0; depth < 6; depth++) {
+      const exe = path.join(cur, probe.exeName);
+      if (exists(exe)) {
+        push({ id: probe.id, name: probe.name, exe });
+        break;
+      }
+      const up = path.dirname(cur);
+      if (up === cur) break;
+      cur = up;
+    }
+  }
+  return out;
+}
+
+/** 旧同步签名保留(测试锚):语义=无注册表兜底、同步 where 的探测(逻辑与 async 同构) */
+export function detectEditors(
+  exists: (p: string) => boolean,
+  env: NodeJS.ProcessEnv = process.env,
+  where: (shim: string) => string | null = (): string | null => null,
+): EditorApp[] {
+  const seen = new Set<string>();
+  const out: EditorApp[] = [];
+  const push = (c: EditorApp): void => {
+    if (seen.has(c.id) || !exists(c.exe)) return;
+    seen.add(c.id);
+    out.push(c);
+  };
+  for (const c of editorCandidates(env)) push(c);
+  if (!seen.has('vscode')) {
+    const shimPath = where('code');
+    if (shimPath !== null) {
+      let cur = path.dirname(shimPath);
+      for (let depth = 0; depth < 6; depth++) {
+        const exe = path.join(cur, 'Code.exe');
+        if (exists(exe)) {
+          push({ id: 'vscode', name: 'VS Code', exe });
+          break;
+        }
+        const up = path.dirname(cur);
+        if (up === cur) break;
+        cur = up;
+      }
+    }
+  }
   for (const probe of SHIM_PROBES) {
     if (seen.has(probe.id)) continue;
     const shimPath = where(probe.shim);
@@ -82,11 +172,63 @@ export function detectEditors(exists: (p: string) => boolean, env: NodeJS.Proces
   return out;
 }
 
-export async function handleEditorsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
-  io.send(res, 200, { editors: detectEditors((p) => fs.existsSync(p)) });
+/** 安装态缓存(daemon 生命周期):菜单每次打开都读,异步探测只跑首次 */
+let editorsCache: EditorApp[] | null = null;
+export function editorsCacheReset(): void {
+  editorsCache = null;
 }
 
-/** 打开:body {path,id};id 须在已装名单内(防任意 exe 拼装),spawn detached 立即返回 */
+export async function handleEditorsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
+  if (editorsCache === null) {
+    editorsCache = await detectEditorsAsync((p) => fs.existsSync(p));
+  }
+  io.send(res, 200, { editors: editorsCache });
+}
+
+/** 原生图标缓存路径(机器级一次抽取):<userConfigDir>/gui/editor-icons/<id>.png */
+function editorIconPath(id: string): string {
+  return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.png`);
+}
+
+/** 原生图标抽取(PowerShell ExtractAssociatedIcon→PNG 落盘):异步不阻塞;失败回 null(GUI 回落字形) */
+export async function extractEditorIcon(id: string, exe: string): Promise<string | null> {
+  const out = editorIconPath(id);
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  if (!fs.existsSync(out)) {
+    const exeQ = exe.replaceAll("'", "''");
+    const outQ = out.replaceAll("'", "''");
+    const ps =
+      'Add-Type -AssemblyName System.Drawing; ' +
+      `$i=[System.Drawing.Icon]::ExtractAssociatedIcon('${exeQ}'); ` +
+      `if ($i -ne $null) { $b=$i.ToBitmap(); $b.Save('${outQ}', [System.Drawing.Imaging.ImageFormat]::Png) }`;
+    try {
+      await execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 });
+    } catch {
+      return null;
+    }
+  }
+  return fs.existsSync(out) ? fs.readFileSync(out).toString('base64') : null;
+}
+
+/** GET /app/editors/icon?id=:原生图标 PNG → {mime,data(base64)};失败 404(GUI 回落集内字形) */
+export async function handleEditorsIcon(io: SessionHandlerIo, res: http.ServerResponse, id: string): Promise<void> {
+  const list = editorsCache ?? (await detectEditorsAsync((p) => fs.existsSync(p)));
+  const editor = list.find((e) => e.id === id);
+  if (editor === undefined) {
+    io.send(res, 404, { error: 'editor not installed' });
+    return;
+  }
+  const data = await extractEditorIcon(id, editor.exe);
+  if (data === null) {
+    io.send(res, 404, { error: 'icon extract failed' });
+    return;
+  }
+  io.send(res, 200, { mime: 'image/png', data });
+}
+
+/** 打开:body {path,id};id 须在已装名单内(防任意 exe 拼装),spawn detached 立即返回。
+ *  windowsHide 不传:CREATE_NO_WINDOW 会吞被拉起 GUI 应用的首个窗口(explorer「点了没反应」
+ *  实锤——Node 已知坑);explorer/Code/Cursor 均为 GUI 子系统,本就不产控制台窗,无需隐藏 */
 export async function handleEditorsOpen(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
@@ -98,14 +240,13 @@ export async function handleEditorsOpen(io: SessionHandlerIo, req: http.Incoming
     io.send(res, 400, { error: 'path and id required' });
     return;
   }
-  const editor = detectEditors((p) => fs.existsSync(p)).find((e) => e.id === body.id);
+  const list = editorsCache ?? (await detectEditorsAsync((p) => fs.existsSync(p)));
+  const editor = list.find((e) => e.id === body.id);
   if (editor === undefined) {
     io.send(res, 404, { error: 'editor not installed' });
     return;
   }
   try {
-    // windowsHide 不传:CREATE_NO_WINDOW 会吞被拉起 GUI 应用的首个窗口(explorer「点了没反应」实锤——
-  //  Node 已知坑);explorer/Code/Cursor 均为 GUI 子系统,本就不产控制台窗,无需隐藏
     const child = spawn(editor.exe, [body.path], { detached: true, stdio: 'ignore' });
     child.unref();
     io.send(res, 200, { ok: true });
