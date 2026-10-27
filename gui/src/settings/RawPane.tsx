@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Select } from './controls';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 
 /**
  * G8c T9 高级面板(设置重构轮:仅全局+自动回显)——scope 面移除,恒 'global':本面板只编辑
@@ -26,7 +27,6 @@ export interface RawPaneConn {
   settings(root?: string): Promise<{ warnings?: string[] }>;
 }
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export interface RawPaneProps {
   readonly conn: RawPaneConn;

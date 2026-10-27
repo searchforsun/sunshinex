@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsView, BuiltinRole } from '../connection';
 import { SourceBadge } from './SourceBadge';
 
@@ -40,7 +41,6 @@ export interface AgentsPaneConn {
   agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
 }
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** id 安全面(daemon AGENT_ID_RE 同款:id 拼目录路径——路径分隔/点开头一律拒) */
 const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;

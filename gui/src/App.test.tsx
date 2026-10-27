@@ -1101,7 +1101,6 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     fireEvent.click(screen.getByRole('button', { name: bi('Directory', '目录') }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'b.ts' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'b.ts' }));
-    console.log('DBG-B: bodies=', document.querySelectorAll('.sx-tabbody').length, 'calls=', JSON.stringify(conn.readFileCalls));
     // 两文件标签在场且 B 活动(判重经 path:两 uid 两页)
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')).not.toBeNull();
     expect(document.querySelector('.sx-tab[data-title="b.ts"]')?.classList.contains('active')).toBe(true);
@@ -1431,8 +1430,6 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     expect(document.querySelector('.sx-agent-page')).toBeNull(); // 未点行无 agent 页
     fireEvent.click(row);
     await new Promise((r) => setTimeout(r, 300));
-    console.log('TABS:', [...document.querySelectorAll('.sx-tab')].map((x) => x.getAttribute('data-title')).join('|'));
-    console.log('AGENT PAGE:', document.querySelector('.sx-tabbody .sx-agent-page') !== null, 'BODY:', document.querySelector('.sx-tabbody')?.textContent?.slice(0, 200));
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull());
     expect(document.querySelector('.sx-tab[data-title="searcher"]')?.classList.contains('active')).toBe(true);
     const thread = document.querySelector('.sx-agent-thread');

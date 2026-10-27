@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
 import { t } from '../../i18n';
 import { rAFConverge } from '../../ui-util';
+import { CHAT_MAX_EVENT } from '../../thread-width';
 import { zoomScale } from '../../ui-zoom';
 import { MD_IMAGE_STRIP_RE } from './md-image-syntax';
 
@@ -86,8 +87,10 @@ export function ChatRail(props: {
     // 显隐/锚点滞后一拍的三种来源各配一条触发线(十二轮半:单挂 RO 时,交互拖拽/渲染步
     // 节流期间 RO 交付停滞,刻度状态整段拖到偶发交付才更新——缩/涨两向滞后到越过阈值很远):
     // ①RO:盒尺寸变化(三栏拖拽/视口/折叠);②resize:窗口级变化的兜底通道(rAF 去抖);
-    // ③MutationObserver:App RO 直写 .sx-main 等的 --chat-max 内联值——微任务通道,
-    //   渲染步冻结时也送达,专治 RO 停摆段;自身 left/top 写回同值自愈(setGeo 守卫截停)
+    // ③CHAT_MAX_EVENT:限宽写入方直发(thread-width 单点,App RO 落 --chat-max 内联值即同步
+    //   派发,冒泡至 window)——渲染步冻结时也送达,专治 RO 停摆段;自身 left/top 写回同值
+    //   自愈(setGeo 守卫截停)。2026-10-27 技术债轮 I4:原 documentElement 全树
+    //   MutationObserver 补丁通道退役(观测「写入后果」改「写入本身」)
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -99,24 +102,14 @@ export function ChatRail(props: {
       });
     };
     window.addEventListener('resize', onResize);
-    const mo =
-      typeof MutationObserver === 'undefined'
-        ? null
-        : new MutationObserver((muts) => {
-            for (const m of muts) {
-              const t = m.target instanceof HTMLElement ? m.target : null;
-              if (t !== null && t.style.getPropertyValue('--chat-max') !== '') {
-                measure();
-                return;
-              }
-            }
-          });
-    mo?.observe(document.documentElement, { attributes: true, attributeFilter: ['style'], subtree: true });
+    // 通道③直达不经 rAF 去抖:原 MO 微任务语义=渲染步冻结也即到,去抖会退回帧依赖
+    const onChatMax = (): void => measure();
+    window.addEventListener(CHAT_MAX_EVENT, onChatMax);
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', onResize);
+      window.removeEventListener(CHAT_MAX_EVENT, onChatMax);
       if (raf !== 0) cancelAnimationFrame(raf);
-      mo?.disconnect();
     };
   }, [chatScrollRef]);
   // 挂载/重挂当帧补锚(show 翻转重渲染后,绘制前同步写 left/top,避免 fixed auto 位置闪帧)

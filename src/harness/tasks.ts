@@ -236,30 +236,42 @@ export class TaskRegistry {
   /** 等待单点（task_wait 底座）：全部目标到终态即 resolve；超时 resolve settled=false 不抛错——
    *  轮询 100ms 与既有 appendFileSync 落盘口径同源，零事件依赖零新依赖；不存在的 id 直接过滤。
    *  signal（2026-10-26 立即暂停）：run 中止信号在场即挂监听——用户中断不再等终态/超时，即刻回
-   *  settled=false（回执如实显「已中止」面），task_wait 阻塞期(默认 1800s)从不可中断变即时穿透 */
+   *  settled=false（回执如实显「已中止」面），task_wait 阻塞期(默认 1800s)从不可中断变即时穿透。
+   *  收口卫生（2026-10-27 技术债轮）：单一 finish 出口统一摘 abort 监听+清在途 poll timer——
+   *  原 settle/timeout 后监听靠 {once:true}+对已 settled promise resolve 空转兜住、中止路径残留
+   *  ≤100ms stray timer，行为正确但每次 wait 皆遗挂靠面 */
   waitUntilSettled(taskIds: string[], timeoutMs: number, signal?: AbortSignal): Promise<{ settled: boolean; tasks: BackgroundTask[] }> {
     const deadline = Date.now() + timeoutMs;
     const snapshot = () =>
       taskIds.map((id) => this.tasks.get(id)).filter((t): t is BackgroundTask => t !== undefined);
     return new Promise((resolve) => {
-      const onAbort = (): void => resolve({ settled: false, tasks: snapshot() });
+      let done = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const onAbort = (): void => finish({ settled: false, tasks: snapshot() });
+      const finish = (r: { settled: boolean; tasks: BackgroundTask[] }): void => {
+        if (done) return;
+        done = true;
+        if (signal !== undefined) signal.removeEventListener('abort', onAbort);
+        if (timer !== null) clearTimeout(timer);
+        resolve(r);
+      };
       if (signal !== undefined) {
         if (signal.aborted) { onAbort(); return; }
-        signal.addEventListener('abort', onAbort, { once: true });
+        signal.addEventListener('abort', onAbort);
       }
       const poll = (): void => {
-        if (signal?.aborted) return; // 中止路径由 onAbort resolve,poll 不再出手
+        if (done) return; // 中止路径由 onAbort finish,poll 不再出手
         const ts = snapshot();
         // 空目标（含未知 id 过滤后为空）零等待即回：无等待对象即无事可等，幂等空回执
         if (ts.length === 0 || ts.every((t) => t.status !== 'running')) {
-          resolve({ settled: true, tasks: ts });
+          finish({ settled: true, tasks: ts });
           return;
         }
         if (Date.now() >= deadline) {
-          resolve({ settled: false, tasks: ts });
+          finish({ settled: false, tasks: ts });
           return;
         }
-        setTimeout(poll, 100);
+        timer = setTimeout(poll, 100);
       };
       poll();
     });

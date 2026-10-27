@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { SettingsView } from '../connection';
 
 /**
@@ -13,7 +14,6 @@ export interface PermissionsPaneConn {
   settings(root?: string): Promise<SettingsView>;
 }
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** 权限三列级别徽标文案(标签渲染期 t() 求值——G14.213,模块常量不冻结文案) */
 const PERM_LEVELS = ['merged', 'project', 'global'] as const;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { SkillsGroup } from '../connection';
 import { Select } from './controls';
 
@@ -15,7 +16,6 @@ export interface SkillsPaneConn {
   skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }>;
 }
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** 来源筛选项值 */
 type SourceFilter = 'all' | SkillsGroup['source'];

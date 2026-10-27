@@ -36,3 +36,8 @@ export function chatMaxFor(w: number): number {
  *  2026-10-24 用户裁定 440→320:模式 pill 窄端塌缩为纯图标后 composer 窄端可用,取 320;
  *  CSS 侧 .sx-main min-width 与两处 max-width calc 的减数同值联动改 */
 export const MAIN_MIN_WIDTH = 320;
+
+/** --chat-max 写入事件(2026-10-27 技术债轮 I4 根修):App 限宽 RO 在落内联值后于写入元素同步派发
+ *  (冒泡至 window)——限宽变化的一手通知;消费方(ChatRail 刻度显隐/锚点)经 window 监听它,
+ *  替代挂 documentElement 全树的 MutationObserver 补丁通道(观测「写入后果」改「写入本身」) */
+export const CHAT_MAX_EVENT = 'sx-chat-max';

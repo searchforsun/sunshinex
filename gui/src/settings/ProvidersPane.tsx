@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ProviderChoice } from '../connection';
 import { SettingsForm } from './SettingsForm';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
 
 /**
@@ -62,7 +63,6 @@ const PROVIDERS_PANE: SettingsPaneDef = {
 /** providers 只读面(conn.settings 的 providers 投影) */
 export type ProvidersPaneConn = SettingsFormConn;
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export interface ProvidersPaneProps {
   readonly conn: ProvidersPaneConn;

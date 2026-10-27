@@ -21,7 +21,7 @@ import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
-import { chatMaxFor } from './thread-width';
+import { CHAT_MAX_EVENT, chatMaxFor } from './thread-width';
 import { useAppearanceSync } from './use-appearance-sync';
 import { useOpError } from './use-op-error';
 import { useShellLayout } from './use-shell-layout';
@@ -442,10 +442,10 @@ function AppShell(): JSX.Element {
     if (els.length === 0) return;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        (entry.target as HTMLElement).style.setProperty(
-          '--chat-max',
-          `${Math.round(chatMaxFor(entry.contentRect.width))}px`,
-        );
+        const t = entry.target as HTMLElement;
+        t.style.setProperty('--chat-max', `${Math.round(chatMaxFor(entry.contentRect.width))}px`);
+        // 写入方直发(I4 根修,2026-10-27):一手通知替代消费方全树 MutationObserver 观测写入后果
+        t.dispatchEvent(new Event(CHAT_MAX_EVENT, { bubbles: true }));
       }
     });
     els.forEach((el) => ro.observe(el));
