@@ -788,7 +788,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }.entry-thinking .thinking-detail {
   margin: 4px 0 0; padding: 8px 10px;
   /* G14.211 背景/圆角上移至 .thinking-scroll(边框固定)——弧度挂滚动视口,内滚不再滚成直角 */
-  font: 12px/1.6 var(--font-mono); color: var(--fg-secondary);
+  font: 12.5px/1.6 var(--font-ui); color: var(--fg-secondary); /* 字体预设管线:思考=正文系散文(写死等宽在衬线预设下露馅,用户截图);行高由 --f-think-lh 预设令牌接管 */
   white-space: pre-wrap; overflow-wrap: anywhere;
 }.entry-tool .tool-summary { display: flex; align-items: center; gap: 6px; }.entry-tool .tool-verb { color: var(--fg-secondary); }.entry-tool .tool-result-inline { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; color: var(--fg); cursor: default; }.chat-more { margin-left: auto; }.chat-more-pop { top: 40px; right: 8px; }
 
