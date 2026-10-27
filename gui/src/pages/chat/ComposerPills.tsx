@@ -125,10 +125,13 @@ interface PillsRightProps {
   readonly interrupt: () => void;
   readonly connState: ConnectionState;
   readonly seeding: boolean;
+  /** 等待模型待态(2026-10-27 用户裁定:提交被接受→run-open 间 loading 效果挂在发送钮上,
+   *  正文等待文字退役)——true 时发送钮转圈 */
+  readonly sendLoading?: boolean;
 }
 
 export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
-  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding } = props;
+  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading } = props;
   return (
           <div className="composer-pills composer-pills-right">
             {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存 */}
@@ -198,7 +201,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
             ) : (
               <button
                 type="button"
-                className="send tip-right"
+                className={`send tip-right${sendLoading === true ? ' loading' : ''}`}
                 aria-label="send"
                 data-tip={t('Send', '发送')}
                 onClick={send}

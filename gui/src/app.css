@@ -733,6 +733,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg-on-solid);
   transition: background var(--dur-basic) var(--ease-enter);
 }.sx-composer .send:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }.sx-composer .send:disabled { opacity: 0.4; pointer-events: none; }
+/* 等待模型待态(2026-10-27 用户裁定:loading 挂发送钮,正文等待文字退役)——提交被接受到
+   run-open 间箭头转圈(正文零变化不抖动);run 条出现即停 */
+.sx-composer .send.loading svg { animation: sx-spin 0.9s linear infinite; }
 /* 会话语境(G9-B4 平移):限宽居中+贴底;.composer 由 ComposerCard 卡根复用,不再持卡面样式 */.composer {
   flex: none;
   width: calc(100% - 32px);
@@ -2421,9 +2424,12 @@ input.sx-setting-input { width: 100%; }
 .sx-lightbox-sep{width:1px;height:16px;background:var(--fg);opacity:.15;margin:0 4px}
 /* 工具行结果图片缩略(2026-10-26 插件体系图片通道):折叠行下横排——96px 见方/12px 圆角与用户气泡
    缩略(user-img-strip)同令牌;hover 提亮+zoom-in 指针,点击开 lightbox */
-.tool-images{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
-.tool-image-thumb{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--surface-soft);cursor:zoom-in;transition:filter var(--dur-basic) var(--ease-enter)}
+.tool-images{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 4px;align-items:flex-start} /* 2026-10-26 用户裁定:图片常驻裸显=预览本体 */
+.tool-image-thumb{max-width:100%;max-height:140px;width:auto;height:auto;object-fit:contain;border-radius:var(--radius-xs);display:block;cursor:zoom-in;transition:filter var(--dur-basic) var(--ease-enter)} /* 裸显:无框无底裁切,contain 保比例 */
 .tool-image-thumb:hover{filter:brightness(1.15)}
+/* read 图片行展开体(2026-10-26 用户裁定澄清):仅图片本体,裸显无框无底无背景,左对齐,contain 保比例(高 240 档不越行宽);点击开灯箱缩放 */
+.tool-image-plain{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.tool-image-plain img{display:block;max-width:100%;max-height:240px;width:auto;height:auto;object-fit:contain;border-radius:var(--radius-xs);cursor:zoom-in}
 /* 2026-10-26 用户裁定:工具展开盒上下节奏=思考行(固定上 4 下 0)——tool-detail/io/result 多层
    嵌套 margin 曾逐层叠加(4+4+2=10px 顶部空隙),现统一由 body-inner 供 4px 顶距,各级子盒
    首末 margin 归零 */
@@ -2431,9 +2437,6 @@ input.sx-setting-input { width: 100%; }
 .tool-body-inner > :first-child, .entry-tool .tool-detail > :first-child, .tool-io > :first-child { margin-top: 0; }
 .tool-body-inner > :last-child, .entry-tool .tool-detail > :last-child { margin-bottom: 0; }
 .entry-tool .tool-detail .tool-result { margin: 0; }
-/* 展开大图(2026-10-26 用户裁定):contain 保比例,左对齐不越工具行宽,高 280 档与 io/diff 内滚同档;点击开灯箱(滚轮/按钮同比缩放) */
-.tool-image-view{margin:4px 0 0;padding:8px 10px;background:var(--surface-code);border-radius:var(--radius-md);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
-.tool-image-view img{display:block;max-width:100%;max-height:280px;width:auto;height:auto;object-fit:contain;border-radius:var(--radius-xs);cursor:zoom-in}
 /* 正文 md 图片(2026-10-26 正文支持显示图片):合理尺寸上限+项目弧度/边框;点击开灯箱 */.md-image{display:block;max-width:100%;max-height:420px;object-fit:contain;border-radius:var(--radius-sm);border:1px solid var(--border);margin:8px 0;cursor:zoom-in}.md-image-loading{display:inline-block;min-width:120px;min-height:48px}
 
 /* ===== 2026-10-26 MCP 面四轮改版:状态圆点(绿=连接正常/红=连接失败/灰=探测中/灰环=停用,
@@ -2502,27 +2505,31 @@ input.sx-setting-input { width: 100%; }
 .sx-font-pv, .sx-font-pv-tool, .sx-font-pv-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sx-font-pv-tool { max-width: 100%; min-width: 0; } /* fit-content 最小宽=整句 nowrap 文本,盒子撑出卡片致省略号不可见——钳回容器宽 */
 
-/* Files 页 md 预览排版镜像(2026-10-27 用户反馈「右侧 md 文件还是很挤」):正文呼吸感裁定
-   (行距 1.65/段距 12/标题阶梯 26-10/li+li 6px/行内码/横线)整组镜像到 .files-md——此前只作用于
-   .entry,预览面仍吃上方 303 行旧紧凑档(13px/段距 10);覆盖值与本块保持同源,改正文须同步 */
-.files-md { font: 14px/1.8 var(--font-ui); }
-.files-md p { margin: 0 0 12px; }
+/* Files 页 md 预览排版镜像(2026-10-27 用户反馈「右侧 md 文件还是很挤」→二轮「行距再大一些」):
+   正文呼吸感档整组镜像到 .files-md 并再抬一档(行高 1.9/段距 14/标题 28-12/li+li 8px)——此前只
+   作用于 .entry,预览面吃上方 303 行旧紧凑档;覆盖值与本块保持同源,改正文须同步。
+   表格不另立档全同正文:外距归 .table-wrap(16px)、内距 6px 12px、只留横线/斑马/宽度分配均由
+   .table-wrap 全局档承担——镜像块此前 `.files-md table{margin:14px}` 与 2478 行 wrap 归零守卫
+   同特异性后到先赢,表身 14px 叠 wrap 16px 造上下 30px 空隙(用户截图「上下多余边距」) */
+.files-md { font: 14px/1.9 var(--font-ui); }
+.files-md p { margin: 0 0 14px; }
 .files-md h1 { font-size: 17px; }
 .files-md h2 { font-size: 15.5px; }
 .files-md h3 { font-size: 14px; }
 .files-md h4 { font-size: 13px; }
-.files-md h1, .files-md h2, .files-md h3, .files-md h4 { line-height: 1.5; font-weight: 600; margin: 26px 0 10px; }
-.files-md ul, .files-md ol { margin: 12px 0; padding-left: 22px; }
-.files-md li { margin: 4px 0; }
-.files-md li + li { margin-top: 6px; }
-.files-md li > ul, .files-md li > ol { margin: 4px 0; }
+.files-md h1, .files-md h2, .files-md h3, .files-md h4 { line-height: 1.55; font-weight: 600; margin: 28px 0 12px; }
+.files-md ul, .files-md ol { margin: 14px 0; padding-left: 22px; }
+.files-md li { margin: 5px 0; }
+.files-md li + li { margin-top: 8px; }
+.files-md li > ul, .files-md li > ol { margin: 5px 0; }
 .files-md li::marker { color: var(--fg-secondary); }
 .files-md blockquote { margin: 4px 0; padding: 0 0 0 9px; border-left: 2px solid var(--border); color: var(--fg-secondary); }
 .files-md :not(pre) > code { font-size: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }
-.files-md pre { margin: 14px 0; }
-.files-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }
+.files-md pre { margin: 16px 0; }
+.files-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 16px 0; }
 .files-md img { max-width: 100%; border-radius: var(--radius-md); }
-.files-md table { margin: 14px 0; }.files-md th, .files-md td { padding: 5px 12px; }.files-md .code-block pre code { line-height: 1.85; }
+.files-md table { margin: 0; }
+.files-md .code-block pre code { line-height: 1.9; }
 
 /* 用户气泡上间距分档(2026-10-27 用户裁定):新回合用户消息与上方内容拉开(含图片条——图片在
    entry 内首节点,margin 自动落在图片上方);运行中插入/辅助对话(entry-user-insert)保持紧凑 */

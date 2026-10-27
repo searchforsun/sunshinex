@@ -1333,8 +1333,8 @@ describe('P1 行级 memo render-count(Task 3):token 突发/交错帧已落位 to
 });
 
 describe('等待模型待态(2026-10-27)', () => {
-  it('idle 提交被接受→待态行出现;run-open 落地→收;steer 不置', async () => {
-    setLanguage('zh'); // 语言是全局态:前序用例可能切成 en,本用例断言中文文案先归位
+  it('idle 提交被接受→发送钮 loading;run-open 落地→收', async () => {
+    setLanguage('zh');
     let resolveSubmit: () => void = () => undefined;
     const sessionSubmit = vi.fn(
       () =>
@@ -1349,12 +1349,13 @@ describe('等待模型待态(2026-10-27)', () => {
     const ta = screen.getByLabelText('message input') as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '再来一条' } });
     fireEvent.keyDown(ta, { key: 'Enter' });
-    // 提交在途(未 resolve):待态未起(接受时点=resolve)
-    expect(screen.queryByText('已发送 · 等待模型')).toBeNull();
+    // 提交在途(未 resolve):loading 未起(接受时点=resolve)
+    expect(document.querySelector('.send.loading')).toBeNull();
     resolveSubmit();
-    expect(await screen.findByText('已发送 · 等待模型')).toBeTruthy();
-    // run-open 落地(model-start 建 run 条)→待态收
+    // 接受→run-open 空窗:loading 挂发送钮(2026-10-27 二次裁定:正文等待文字退役)
+    expect(await screen.findByLabelText('send', { selector: '.send.loading' })).toBeTruthy();
+    // run-open 落地(model-start 建 run 条)→loading 收
     fire({ type: 'model-start', ts: Date.now() });
-    expect(screen.queryByText('已发送 · 等待模型')).toBeNull();
+    expect(document.querySelector('.send.loading')).toBeNull();
   });
 });

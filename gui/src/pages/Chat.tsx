@@ -555,7 +555,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onEntryOpenDiff={onEntryOpenDiff}
         onEntryRestore={onEntryRestore}
         onFork={onFork}
-        awaitModelSince={awaitModelSince}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
         chatScrollRef={chatScrollRef}
@@ -765,6 +764,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             interrupt={interrupt}
             connState={connState}
             seeding={seeding}
+            sendLoading={awaitModelSince !== null}
           />
         }
         />
