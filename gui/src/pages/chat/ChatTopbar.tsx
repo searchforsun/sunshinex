@@ -127,6 +127,32 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     if (root === undefined || root === '') return;
     conn.openInEditor(root, id).catch(() => undefined);
   };
+  /** 预取前置(2026-10-28 用户反馈:菜单首开才拉,窗口期渲染 1/4 加载态):进入会话即拉
+    应用列表+逐个原生图标——菜单打开时全部热数据 */
+  useEffect(() => {
+    if (typeof conn.editorsList !== 'function') return; // 测试桩/旧 daemon:优雅跳过(图标回落集内字形)
+    let alive = true;
+    void conn
+      .editorsList()
+      .then((r) => {
+        if (!alive) return;
+        setEditors(r.editors);
+        for (const e of r.editors) {
+          void conn
+            .editorIcon(e.id)
+            .then((ic) => {
+              if (!alive) return;
+              setNativeIcons((m) => ({ ...m, [e.id]: `data:${ic.mime};base64,${ic.data}` }));
+            }, () => {
+              if (!alive) return;
+              setNativeIcons((m) => ({ ...m, [e.id]: m[e.id] ?? '' }));
+            });
+        }
+      }, () => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [conn]);
   const toggleEditorMenu = (anchor: HTMLElement): void => {
     if (editorMenu !== null) {
       setEditorMenu(null);
@@ -134,11 +160,6 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     }
     const b = anchor.getBoundingClientRect();
     setEditorMenu({ x: b.right, y: b.bottom + 2 });
-    if (editors.length === 0) {
-      conn
-        .editorsList()
-        .then((r) => setEditors(r.editors), () => undefined);
-    }
   };
   /** 菜单点选=只设默认(✓ 移交+主钮图标随换),**不启动**——启动统一走主钮
     (2026-10-27 用户裁定:点行即开应用会误触) */
@@ -309,7 +330,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             disabled={root === undefined || root === ''}
             onClick={() => openIn(defaultEditor)}
           >
-            {editorIcon(defaultEditor, 16)}
+            {editorIcon(defaultEditor, 14)}
           </button>
           <button
             type="button"
@@ -404,7 +425,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
               active: e.id === defaultEditor,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
-              icon: editorIcon(e.id, 16),
+              icon: editorIcon(e.id, 14),
               onSelect: () => pickEditor(e.id),
             }))}
           />
