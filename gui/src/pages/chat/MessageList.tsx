@@ -82,14 +82,13 @@ interface DayGroupProps {
   readonly onEntryRestore: (p: string) => void;
   readonly onFork?: () => void;
   readonly onOpenImage?: (src: string) => void;
-  /** 用户气泡上间距分档:运行中插入/辅助对话=紧凑档(2026-10-27 用户裁定) */
-  readonly running?: boolean;
+  /** 用户气泡上间距分档(2026-10-27 用户裁定):辅助对话=紧凑档;运行中插入按逐条目判定 */
   readonly sideChat?: boolean;
 }
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, running, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, sideChat } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -117,6 +116,8 @@ const DayGroupBlock = memo(
     /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
      *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
     let seg: ChatEntry[] = [];
+    /** 最近 run 行(逐条目插入判定):用户条目前的 run 仍 streaming=该条是运行中插入 */
+    let lastRun: ChatEntry | undefined;
     const flushSeg = (): void => {
       if (seg.length === 0) return;
       const segEntries = seg;
@@ -133,6 +134,7 @@ const DayGroupBlock = memo(
       seg = [];
     };
     for (const entry of entries) {
+      if (entry.kind === 'run') lastRun = entry;
       // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
       if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
         seg.push(entry);
@@ -153,7 +155,7 @@ const DayGroupBlock = memo(
           <UserEntryView
             key={entry.key}
             entry={entry}
-            insert={running === true || sideChat === true}
+            insert={sideChat === true || lastRun?.streaming === true}
             onSend={submitText}
             onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
             onOpenImage={onOpenImage}
@@ -197,7 +199,6 @@ const DayGroupBlock = memo(
     && prev.onEntryRestore === next.onEntryRestore
     && prev.onFork === next.onFork
     && prev.onOpenImage === next.onOpenImage
-    && prev.running === next.running
     && prev.sideChat === next.sideChat,
 );
 
@@ -330,7 +331,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
             onEntryRestore={onEntryRestoreStable}
             onFork={onForkOpt()}
             onOpenImage={onOpenImage}
-            running={running}
             sideChat={sideChat}
           />
         ))}
