@@ -2533,5 +2533,5 @@ input.sx-setting-input { width: 100%; }
 
 /* 用户气泡上间距分档(2026-10-27 用户裁定):新回合用户消息与上方内容拉开(含图片条——图片在
    entry 内首节点,margin 自动落在图片上方);运行中插入/辅助对话(entry-user-insert)保持紧凑 */
-.entry-user { margin-top: 18px; }
+.entry-user { margin-top: 30px; }
 .entry-user.entry-user-insert { margin-top: 10px; }
