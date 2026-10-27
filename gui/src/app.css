@@ -2536,3 +2536,15 @@ input.sx-setting-input { width: 100%; }
    entry 内首节点,margin 自动落在图片上方);运行中插入/辅助对话(entry-user-insert)保持紧凑 */
 .entry-user { margin-top: 50px; margin-bottom: 20px; }
 .entry-user.entry-user-insert { margin-top: 10px; margin-bottom: 0; }
+
+/* ===== 2026-10-27 用户裁定:正文纵向滚动条 thumb 长度恒定(自绘 overlay)——原生 thumb 长度=
+   视口/内容比,流式增长与图片解码逐段改写 scrollHeight,thumb 随之抖缩(「长度抖动,好像分段
+   一样」)。自绘后长度只由常量定(56px 本地 px,与内容量无关,冷加载即最终态),仅位置映射
+   scrollTop 比例。同步/交互纪律见 ChatScrollbar.tsx(零 setState/零 rAF;仅 thumb 可拖,track
+   不接事件——接了须盖右缘内容条,窄窗压正文选区)。原生条只在主对话容器隐藏;侧栏 dock 与
+   Files 等其余滚动面保原生 */
+.sx-main > .chat { scrollbar-width: none; }
+.sx-main > .chat::-webkit-scrollbar { display: none; }
+.sx-vbar { position: absolute; top: 6px; bottom: 6px; right: 1px; width: 10px; pointer-events: none; z-index: 4; }
+.sx-vbar-thumb { position: absolute; top: 0; right: 1px; width: 8px; height: 56px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 30%, transparent); pointer-events: auto; cursor: default; opacity: 0; user-select: none; touch-action: none; will-change: transform; }
+.sx-vbar-thumb:hover, .sx-vbar-thumb.sx-vbar-drag { background: var(--border-strong); }

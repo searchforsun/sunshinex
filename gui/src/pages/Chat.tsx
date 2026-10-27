@@ -37,6 +37,7 @@ import { useChatComposerSide } from './chat/use-chat-composer-side';
 import { slashItemsFor } from './chat/use-command-palette';
 import { useChatFold } from './chat/use-chat-fold';
 import { MessageList } from './chat/MessageList';
+import { ChatScrollbar } from './chat/ChatScrollbar';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
@@ -565,6 +566,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         liveTokens={liveTokens}
         onOpenImage={setLightboxSrc}
       />
+      {/* 2026-10-27 固定长纵向滚动条(用户裁定「长度应该固定,不像现在抖动分段」):仅主对话挂载
+       *  (overlay 定位于 .sx-main);侧栏 dock/其余滚动面保原生条 */}
+      {sideChat !== true && <ChatScrollbar containerRef={chatScrollRef} />}
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
        *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
