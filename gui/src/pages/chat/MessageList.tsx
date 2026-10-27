@@ -155,7 +155,7 @@ const DayGroupBlock = memo(
           <UserEntryView
             key={entry.key}
             entry={entry}
-            insert={sideChat === true || lastRun?.streaming === true}
+            insert={lastRun?.streaming === true} // 辅助对话同享新回合间距(2026-10-27 用户裁定:含子智能体/辅助会话)
             onSend={submitText}
             onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
             onOpenImage={onOpenImage}
