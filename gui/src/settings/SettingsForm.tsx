@@ -34,8 +34,8 @@ export interface SettingsFieldDef {
   readonly control: 'text' | 'number' | 'select' | 'combo';
   /** select 选项集;combo 建议集。函数形 = 动态源(入参 models=providers 现配模型去重集) */
   readonly options?:
-    | readonly SelectOption[]
-    | ((ctx: { models: readonly string[] }) => readonly SelectOption[]);
+    | readonly SettingsOption[]
+    | ((ctx: { models: readonly string[] }) => readonly SettingsOption[]);
   readonly placeholder?: string;
 }
 
@@ -109,9 +109,9 @@ const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: 
 };
 
 /** on/off 二态闭集(on/off 字符串键,daemon 口径) */
-const ON_OFF: readonly SelectOption[] = [
-  { v: 'on', l: t('on', '开') },
-  { v: 'off', l: t('off', '关') },
+const ON_OFF: readonly SettingsOption[] = [
+  { v: 'on', l: 'on', lz: '开' },
+  { v: 'off', l: 'off', lz: '关' },
 ];
 
 /** providers 现配模型去重集(动态建议/选项源的 ctx;choices 缺面=空集) */
@@ -120,7 +120,9 @@ const modelsOf = (view: SettingsView): string[] => [...new Set(view.providers.ch
 /** select 未设置项(置顶;清值=存 null 删键,与 text 行空串同语义) */
 const text = (key: string, placeholder?: string): SettingsFieldDef => ({ key, control: 'text', ...(placeholder !== undefined ? { placeholder } : {}) });
 const num = (key: string): SettingsFieldDef => ({ key, control: 'number' });
-const sel = (key: string, options: readonly SelectOption[]): SettingsFieldDef => ({ key, control: 'select', options });
+/** 闭集选项(lz=中文标签,渲染期 t 求值——选项标签曾于模块加载期 t() 冻结,切中文后仍显英文) */
+export type SettingsOption = SelectOption & { readonly lz?: string };
+const sel = (key: string, options: readonly SettingsOption[]): SettingsFieldDef => ({ key, control: 'select', options });
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
 
 /** 四简单面板(SETTINGS_PANES):键名与 daemon SEMANTIC_KEYS 逐字对齐;分组卡=语义盒。
@@ -152,16 +154,16 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
         title: { en: 'Safety fences', zh: '安全围栏' },
         fields: [
           sel('readFence', [
-            { v: 'off', l: t('off', '关闭') },
-            { v: 'sensitive', l: t('sensitive', '敏感文件') },
-            { v: 'all', l: t('all', '全部文件') },
+            { v: 'off', l: 'off', lz: '关闭' },
+            { v: 'sensitive', l: 'sensitive', lz: '敏感文件' },
+            { v: 'all', l: 'all', lz: '全部文件' },
           ]),
           sel('sandbox', ON_OFF),
           sel('isolation', [
-            { v: 'auto', l: t('auto', '自动') },
+            { v: 'auto', l: 'auto', lz: '自动' },
             { v: 'landlock', l: 'Landlock' },
-            { v: 'container', l: t('container', '容器') },
-            { v: 'host', l: t('host', '宿主机') },
+            { v: 'container', l: 'container', lz: '容器' },
+            { v: 'host', l: 'host', lz: '宿主机' },
           ]),
         ],
       },
@@ -185,7 +187,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
         title: { en: 'Knowledge base', zh: '知识库' },
         fields: [
           sel('kbBackend', [
-            { v: 'local-json', l: t('local-json', '本地 JSON') },
+            { v: 'local-json', l: 'local-json', lz: '本地 JSON' },
             { v: 'sqlite-vec', l: 'SQLite-vec' },
           ]),
           text('kbDataDir'),
@@ -465,7 +467,8 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
     const disabled = row.envOverride;
     const title = row.envOverride ? t('Overridden by env — read-only', 'env 覆盖中,改文件不生效') : undefined;
     if (fd.control === 'select') {
-      const base = typeof fd.options === 'function' ? fd.options({ models }) : (fd.options ?? []);
+      const base0 = typeof fd.options === 'function' ? fd.options({ models }) : (fd.options ?? []);
+      const base = base0.map((o) => (o.lz !== undefined ? { ...o, l: t(o.l, o.lz) } : o));
       const opts = base.some((o) => o.v === value) || value === '' ? base : [{ v: value, l: value }, ...base];
       return (
         <Select
