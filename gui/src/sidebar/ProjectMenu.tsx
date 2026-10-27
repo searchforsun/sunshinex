@@ -515,15 +515,23 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>
       </header>
-      <button
-        type="button"
-        className="sx-new-chat"
-        aria-label="new chat"
-        onClick={onNewChat}
-      >
-        <SquarePen size={16} strokeWidth={1.75} />
-        <span>{t('New chat', '新对话')}</span>
-      </button>
+      {dirView !== undefined && dirView !== null && onCloseDirView !== undefined ? (
+        /* 2026-10-27 用户裁定:目录视图的返回钮占「新对话」位(同款样式槽),根路径文字不显 */
+        <button type="button" className="sx-new-chat" aria-label="back to menu" onClick={onCloseDirView}>
+          <ArrowLeft size={16} strokeWidth={1.75} />
+          <span>{t('Back', '返回')}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="sx-new-chat"
+          aria-label="new chat"
+          onClick={onNewChat}
+        >
+          <SquarePen size={16} strokeWidth={1.75} />
+          <span>{t('New chat', '新对话')}</span>
+        </button>
+      )}
       {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
       <button
         type="button"
@@ -554,13 +562,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           DirectoryTab(会话寻址 tree API,sessionId 由 App ensureSession 落值)。整替滚动区内容 */}
       {dirView !== undefined && dirView !== null && onCloseDirView !== undefined ? (
         <div className="sx-dirview">
-          <div className="sx-dirview-head">
-            <button type="button" className="sx-dirview-back" aria-label={t('Back to menu', '返回菜单')} onClick={onCloseDirView}>
-              <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span>{t('Back', '返回')}</span>
-            </button>
-            <span className="sx-dirview-root">{dirView.root.split(/[\/]+/).filter(Boolean).pop()}</span>
-          </div>
           <div className="sx-dirview-body">
             <DirectoryTab
               /* ProjectMenuConn=收窄接口,App 实传整只 Connection(运行时满足 tree/searchTree 面) */
@@ -568,7 +569,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               sessionId={dirView.sessionId}
               root={dirView.root}
               openTab={(type, params) => {
-                if (type === 'file' && params !== undefined && typeof params.path === 'string') onOpenFileFromTree?.(params.path, dirView.root);
+                if (type === 'file' && params !== undefined && typeof params.path === 'string') {
+                  // 树路径=相对 root;转绝对后交开标签面——绝对路径不受「当前会话 root」绑定,
+                  // 任意会话均可读(serve /file 信任判界已放行注册工作区根)
+                  const sep = dirView.root.includes('\\') ? '\\' : '/';
+                  const abs = dirView.root.replace(/[\/]+$/, '') + sep + params.path.replace(/^[\/]+/, '');
+                  onOpenFileFromTree?.(abs, dirView.root);
+                }
               }}
             />
           </div>

@@ -652,7 +652,7 @@ function AppShell(): JSX.Element {
             )}
           </main>
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
-          {page === 'chat' && !tabState.collapsed && (
+          {(page === 'chat' || page === 'welcome') && !tabState.collapsed && (
           <aside className="sx-sidebar" ref={sidebarRef} style={{ width: sidebarWidth }}>
             <TabStrip
               tabs={tabState.tabs}
@@ -678,7 +678,7 @@ function AppShell(): JSX.Element {
                 if (uid !== null) closeTabInSession(uid);
               }}
             />
-            {page === 'chat' && !tabState.collapsed && connInstance !== null && (
+            {(page === 'chat' || page === 'welcome') && !tabState.collapsed && connInstance !== null && (
               // 2026-10-26 二期 keep-alive:全部 open 标签常挂,非活动 display:none+inert——
               // DOM/状态/滚动位/终端屏完整保留,互切零重建;重标签 LRU-4 超限自动关(下方 effect)
               tabState.tabs.map((t) => {
@@ -711,7 +711,7 @@ function AppShell(): JSX.Element {
                 );
               })
             )}
-            {page === 'chat' && !tabState.collapsed && activeTab === null && (
+            {(page === 'chat' || page === 'welcome') && !tabState.collapsed && activeTab === null && (
               // G14.27 零标签空态=Codex 推荐项:标题+副题+常用页卡(点击即开,不再默认开任务页);
               // 目录页签入常用卡(与 TabStrip 同款 FolderTree 图标)
               <div className="sx-tab-empty">
@@ -732,7 +732,7 @@ function AppShell(): JSX.Element {
                 </div>
               </div>
             )}
-            {page === 'chat' && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}
+            {(page === 'chat' || page === 'welcome') && !tabState.collapsed && <div className="sx-resizer" onMouseDown={startResize} />}
           </aside>
           )}
         </>
@@ -744,7 +744,7 @@ function AppShell(): JSX.Element {
       )}
       {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
-      <WindowControls showSideToggle={page === 'chat' && !settingsOpen} onToggleRightSidebar={() => {
+      <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen} onToggleRightSidebar={() => {
         const opening = tabState.collapsed;
         setTabStates((s) => setCollapsed(s, openSessionId, !opening));
         // 两侧抽屉互斥(2026-10-24 用户裁定):浮窗态开右抽屉即收菜单抽屉
