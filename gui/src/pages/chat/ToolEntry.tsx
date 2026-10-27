@@ -421,7 +421,7 @@ export const ToolEntryView = memo(function ToolEntryView({
           {' '}
           <FileIcon path={path} />
           {' '}
-          {isWrite && onOpenFile !== undefined ? (
+          {(isWrite || toolName === 'read') && onOpenFile !== undefined ? (
             <span
               role="button"
               tabIndex={-1}
