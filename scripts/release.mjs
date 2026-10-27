@@ -74,7 +74,7 @@ function run(cmd, args, opts = {}) {
   const isWinScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd);
   const file = isWinScript ? process.env.ComSpec ?? 'cmd.exe' : cmd;
   const argv = isWinScript ? ['/c', cmd, ...args] : args;
-  const r = spawnSync(file, argv, { encoding: 'utf8', windowsHide: true, ...(opts.stdio ? { stdio: opts.stdio } : {}) });
+  const r = spawnSync(file, argv, { encoding: 'utf8', windowsHide: true, ...(opts.stdio ? { stdio: opts.stdio } : {}), ...(opts.cwd ? { cwd: opts.cwd } : {}) });
   if (opts.allowFail) return r;
   if (r.error) die(`${cmd} 执行失败：${r.error.message}`);
   if (r.status !== 0) die(`${cmd} ${args.join(' ')} 失败（exit=${r.status}）${r.stderr ? `：${String(r.stderr).trim()}` : ''}`);
