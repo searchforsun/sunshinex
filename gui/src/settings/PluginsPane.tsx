@@ -112,26 +112,27 @@ export function PluginsPane({ conn, root }: PluginsPaneProps): JSX.Element {
                   </button>
                 </div>
                 {p.description !== '' && <p className="sx-agent-desc">{p.description}</p>}
-                <dl className="sx-mcp-meta">
-                  <dt>ID</dt>
-                  <dd>{p.id}</dd>
-                  {p.servers.length > 0 && (
-                    <>
-                      <dt>{t('Servers', '服务器')}</dt>
-                      <dd>{p.servers.join(', ')}</dd>
-                    </>
-                  )}
-                  {p.skillsCount !== undefined && p.skillsCount > 0 && (
-                    <>
-                      <dt>{t('Skills', '技能')}</dt>
-                      <dd>{t(`${p.skillsCount} skill(s)`, `技能 ×${p.skillsCount}`)}</dd>
-                    </>
-                  )}
-                </dl>
-                {/* config 展开区(v1 只读):configSchema 键说明 + config 原值 JSON(两者皆缺省不渲染) */}
-                {(p.configSchema !== undefined || (p.config !== undefined && Object.keys(p.config).length > 0)) && (
+                {/* 2026-10-27 用户裁定:ID/服务器/技能等元信息收进「详情(只读)」折叠层(卡片只留
+                    名称/版本/来源/开关/描述——设置页无关信息降噪);config 键说明与原值同层 */}
+                {(p.servers.length > 0 || (p.skillsCount !== undefined && p.skillsCount > 0) || p.configSchema !== undefined || (p.config !== undefined && Object.keys(p.config).length > 0)) && (
                   <details className="sx-mcp-probe">
-                    <summary>{t('Config (read-only)', '配置(只读)')}</summary>
+                    <summary>{t('Details (read-only)', '详情(只读)')}</summary>
+                    <dl className="sx-mcp-meta">
+                      <dt>ID</dt>
+                      <dd>{p.id}</dd>
+                      {p.servers.length > 0 && (
+                        <>
+                          <dt>{t('Servers', '服务器')}</dt>
+                          <dd>{p.servers.join(', ')}</dd>
+                        </>
+                      )}
+                      {p.skillsCount !== undefined && p.skillsCount > 0 && (
+                        <>
+                          <dt>{t('Skills', '技能')}</dt>
+                          <dd>{t(`${p.skillsCount} skill(s)`, `技能 ×${p.skillsCount}`)}</dd>
+                        </>
+                      )}
+                    </dl>
                     {p.configSchema !== undefined && (
                       <dl className="sx-mcp-meta">
                         {Object.entries(p.configSchema).map(([k, s]) => (
