@@ -410,11 +410,12 @@ export function WelcomeComposer({
                 <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {branchOpen && (
-                <div className="sx-menu-pop pill-pop" role="menu" aria-label={t('Branch', '分支')}>
+                <div className="sx-menu-pop pill-pop branch-pop" role="menu" aria-label={t('Branch', '分支')}>
                   {gitBr.branches.map((b) => (
                     <button
                       key={b}
                       type="button"
+                      title={b}
                       role="menuitem"
                       className={`sx-menuitem${b === gitBr.current ? ' active' : ''}`}
                       onClick={() => {
