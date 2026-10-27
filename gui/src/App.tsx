@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseLanguage, setLanguage, t } from './i18n';
 import { GitCompare, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, X } from 'lucide-react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject } from 'react';
+import type { CSSProperties, MutableRefObject } from 'react';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
 import { applyBoardEvent, applyDelegation, boardEventFrom, type SessionProjection } from './projection';
@@ -16,18 +16,18 @@ import { Suspense } from 'react';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, setWidth, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession, MIN_TAB_WIDTH } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, parseTabSession } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { applyAgentEvent } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
-import { chatMaxFor, MAIN_MIN_WIDTH } from './thread-width';
-import { zoomScale, applyZoom, type UiZoom } from './ui-zoom';
+import { chatMaxFor } from './thread-width';
+import { applyZoom, type UiZoom } from './ui-zoom';
 import { applyTheme, type ThemePref } from './theme';
 import { applyFontPreset, type FontPreset } from './font-preset';
 import { initUiPrefSync } from './ui-pref-sync';
-import { useMenuResize } from './use-menu-resize';
+import { useShellLayout } from './use-shell-layout';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
 import { NavButtons } from './NavButtons';
 import { emptyNavHistory, pushNav } from './nav-history';
@@ -601,52 +601,29 @@ function AppShell(): JSX.Element {
   }, [tabStates, openSessionId, connState, connInstance]);
 
   const tabState = tabStates[openSessionId] ?? emptyTabSession();
-  /** G12 左栏宽度可调(use-menu-resize 单点):菜单宽与拖宽手柄逻辑见钩子 */
-  const { menuWidth, startMenuResize } = useMenuResize(shellRef, () => sidebarOccupied);
-  /** 视口宽跟踪(2026-10-23 越视口修复的数据源):持久宽只在拖拽中钳制,窗口缩窄/换页后
-   *  渲染态从不重钳——残留宽令 .sx-menu 被 max-width 挤成缝隙、三栏行整体溢出视口。
-   *  resize 即重渲,下方渲染期钳制以实时视口重算。 */
-  const [viewportW, setViewportW] = useState(() => window.innerWidth);
-  useEffect(() => {
-    const onResize = (): void => setViewportW(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  /** 右栏浮窗切换(2026-10-24 三轮裁定):右栏浮窗下移为「主栏+抽屉双触底」——视口(本地/zoom)
-   *  <320+296=616 才浮;856~616 区间=菜单已自动关闭(见 menuFloating),主栏吃满,侧栏仍分栏 */
-  const sidebarFloating = viewportW / zoomScale() < MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
-  /** 左菜单浮窗/自动关闭(2026-10-24 用户裁定):视口 <240+320+296=856 时菜单自动关闭;手动重开
-   *  (顶栏 logo/搜索)后以悬浮抽屉呈现,选中会话/设置/新会话/搜索选会话即自动收——产品可缩到
-   *  主栏+侧栏双触底 616。压缩顺序:右缘缩=侧栏→主栏→菜单→菜单关闭;左缘反向 */
-  const menuFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
-  /** 菜单关闭态(手动点品牌收起/<856 自动关;顶栏 logo 重开) */
-  const [menuClosed, setMenuClosed] = useState(false);
-  /** 抽屉选中即收(会话/设置/新会话/目录;仅浮窗沿有效) */
-  const closeMenuDrawer = (): void => {
-    if (menuFloating && !menuClosed) setMenuClosed(true);
-  };
-  /** 缩窗抽屉沿(2026-10-24 四轮裁定):先左菜单(<856)后右栏(<616)相继转抽屉,后显者自动关先显者——
-   *  右抽屉出现沿=关菜单抽屉;加宽回分栏不自动恢复抽屉态(用户手动)。 */
-  const prevSbFloating = useRef(false);
-  useEffect(() => {
-    if (sidebarFloating && !prevSbFloating.current) setMenuClosed(true);
-    prevSbFloating.current = sidebarFloating;
-  }, [sidebarFloating]);
-  /** 菜单渲染期钳制(2026-10-24 用户裁定压缩顺序:右缘缩窗=侧栏→主栏→菜单→浮窗):视口装不下
-   *  右栏最小 296+主栏最小 320 时,菜单先让出富余宽(拖宽态 menuWidth 不丢,只钳渲染),下限 240 */
-  const menuRenderW = Math.min(menuWidth, Math.max(240, viewportW / zoomScale() - MAIN_MIN_WIDTH - MIN_TAB_WIDTH));
-  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320),下限 296:菜单让宽后仍装不下则侧栏托底
-   *  (vw≥856 时数学上恰≥296,见浮窗阈值);浮窗态=纯覆盖层,**不挤占主栏/composer**
-   *  (2026-10-24 用户裁定「抽屉是上浮的,为什么占输入框宽度」——dock 不让位,抽屉盖在上面),
-   *  上界只留 24px 边距,下限 MIN_TAB_WIDTH=296。视觉/本地换算 /zoomScale() 契约同前 */
-  const sidebarRenderW = Math.min(
-    tabState.width,
-    sidebarFloating
-      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuRenderW - 24)
-      : Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuRenderW - MAIN_MIN_WIDTH),
-  );
-  /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabState.collapsed && !sidebarFloating ? sidebarRenderW : 0;
+  /** 三栏几何簇(use-shell-layout 单点,2026-10-27 技术债轮 D53 批C-1 外提):视口跟踪/浮窗阈值/
+   *  抽屉态/菜单与右栏渲染期钳制/占宽/拖宽手柄,判定序与裁定注释随码在钩子内 */
+  const {
+    startMenuResize,
+    sidebarFloating,
+    menuFloating,
+    menuClosed,
+    setMenuClosed,
+    closeMenuDrawer,
+    menuRenderW,
+    sidebarOccupied,
+    startResize,
+    sidebarWidth,
+  } = useShellLayout({
+    shellRef,
+    resizeCleanupRef,
+    page,
+    settingsOpen,
+    openSessionId,
+    tabCollapsed: tabState.collapsed,
+    tabWidth: tabState.width,
+    setTabStates,
+  });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 2026-10-26 二期 keep-alive LRU:重标签保留上限 4,超限自动关最久未触的非活动标签 */
@@ -669,42 +646,6 @@ function AppShell(): JSX.Element {
   }, [tabState.tabs, activeUidNow, closeTabInSession]);
 
 
-  /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
-   *  tab-state.setWidth 单点,拖拽上界=视口−菜单−440——无固定最大宽但不越视口,G14.2xx 用户
-   *  裁定),mouseup 解绑 + 移 active 类;每次 move 直接落态(React 批处理兜底);sessionId
-   *  起拖时定格(拖拽中会话切换属病态,不追)。G14.2xx 起拖基线取「当前渲染宽」:状态可能
-   *  滞留护栏外(先拖宽菜单再拖本边条),不取渲染宽则向窄拖先空走死区 */
-  const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
-    if (page !== 'chat' || openSessionId === '' || tabState.collapsed) return;
-    e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
-    const el = e.currentTarget;
-    el.classList.add('active');
-    const startX = e.clientX;
-    // 拖拽上界随态:分栏预留主栏最小宽;浮窗=覆盖层只留 24px 边距(不挤 composer,见 sidebarRenderW);
-    // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)
-    const floating = sidebarFloating;
-    const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - (floating ? 24 : MAIN_MIN_WIDTH) / zoomScale();
-    const startWidth = Math.min(tabState.width, cap());
-    shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
-    const sessionId = openSessionId;
-    const onMove = (ev: MouseEvent): void => {
-      // G14.2xx 用户裁定:无固定最大宽,但受中栏最小宽约束——中栏触底即停,右栏不越视口。
-      // zoom 契约:clientX/startX 与上界均为视觉 px,宽度状态是本地 px——delta 与上界同 /zoomScale()
-      setTabStates((s) => setWidth(s, sessionId, Math.min(cap(), startWidth + (startX - ev.clientX) / zoomScale())));
-    };
-    const stop = (): void => {
-      el.classList.remove('active');
-      shellRef.current?.classList.remove('sx-dragging');
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', stop);
-      resizeCleanupRef.current = null;
-    };
-    resizeCleanupRef.current = stop;
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', stop);
-  };
-
-  const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabState.collapsed ? 32 : sidebarRenderW) : 32;
 
   /** G14.2xx 限宽动态化:--chat-max 不再钉 880px——ResizeObserver 分盯 .sx-main 与 .sx-sidebar,
    *  各按自身实时内容宽经 chatMaxFor 阶梯落内联值(同一策略覆盖主对话、欢迎页、辅助对话、
