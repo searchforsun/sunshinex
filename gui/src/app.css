@@ -147,6 +147,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* 2026-10-27 用户裁定:计数徽章右移贴 ⋯ 簇,不挤项目名——名 span 吃掉行内自由宽,
    徽章的 margin-left:auto 才能钉到按钮右缘(此前名 span 不生长,徽章蹲在名后) */
 .sx-group-head { position: relative; }
+.workspace-row .sx-group-head { flex: 1 1 auto; min-width: 0; }
 .sx-group-head .sx-ws-name { flex: 1 1 auto; min-width: 0; margin-right: 34px; }
 .sx-group-head .sx-count { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); margin-left: 0; }
 /* 二修(同日「距离也不对」):flex 生长有残余空隙且受 auto-margin/生长序扰动——改绝对定位
@@ -291,11 +292,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* === Files 页(G14.5 vscode 形态:顶部路径面包屑+Monaco 只读源码面;输入行仅空/错误态) === */.files { display: flex; flex-direction: column; height: 100%; }
 /* 顶部路径面包屑:逐级文件夹+分隔符,末级文件图标+名(VSCode breadcrumb 同形) */.files-breadcrumb {
-  flex: none; display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  flex: none; min-width: 0; display: flex; align-items: center; gap: 2px; flex-wrap: nowrap; overflow: hidden;
   padding: 6px 12px; border-bottom: 1px solid var(--border-subtle);
   font: 12px var(--font-ui); color: var(--fg-secondary);
 }.files-crumb { display: inline-flex; align-items: center; gap: 4px; }.files-crumb-sep { color: var(--fg-tertiary); }.files-crumb-seg { color: var(--fg-secondary); }.files-crumb-name { color: var(--fg); font-weight: 600; }
-/* G14.134 动作钮(md 预览切换/复制)常驻内容区右上角——不靠 hover,直接可见 */.files-head { flex: none; }.files-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }.files-actions {
+/* G14.134 动作钮(md 预览切换/复制)常驻内容区右上角——不靠 hover,直接可见 */.files-head { flex: none; display: flex; align-items: center; gap: 6px; }.files-head-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }.files-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }.files-actions {
   position: absolute; top: 6px; right: 10px; z-index: 3;
   display: flex; gap: 2px;
 }.files-act {
