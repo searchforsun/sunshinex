@@ -101,9 +101,10 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
     if (rn !== '' && p.startsWith(rn + '/')) return p.slice(rn.length + 1);
     return p;
   };
+  /** 2026-10-27 用户裁定:外部打开=打开当前文件本体(非工作区根;explorer 打开其所在位置,
+   *  Code/Cursor 等编辑器直接开文件) */
   const openExternally = (): void => {
-    const fallbackDir = (load.file?.path ?? '').replace(/[\/]+$/, '').replace(/[\/][^\/]*$/, '');
-    const target = root !== undefined && root !== '' ? root : fallbackDir;
+    const target = load.file?.path ?? '';
     if (target === '') return;
     void conn.openInEditor(target, localStorage.getItem('sunshinex.open-default') ?? 'explorer');
   };
@@ -206,15 +207,6 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
               <button
                 type="button"
                 className="sx-iconbtn"
-                aria-label="open externally"
-                data-tip={t('Open externally', '外部打开')}
-                onClick={openExternally}
-              >
-                <ExternalLink size={14} strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                className="sx-iconbtn"
                 aria-label="path actions"
                 data-tip={t('Copy path', '复制路径')}
                 onClick={(e) => {
@@ -224,6 +216,15 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                 }}
               >
                 <MoreHorizontal size={14} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                className="sx-iconbtn"
+                aria-label="open externally"
+                data-tip={t('Open externally', '外部打开')}
+                onClick={openExternally}
+              >
+                <ExternalLink size={14} strokeWidth={1.75} />
               </button>
             </div>
           </div>
@@ -245,7 +246,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                   label: t('Copy relative path', '复制相对路径'),
                   icon: <Copy size={13} strokeWidth={1.75} />,
                   tail: pathCopied === 'rel' ? <Check size={12} strokeWidth={2.25} /> : undefined,
-                  onSelect: () => copyPath(relOf()),
+                  onSelect: () => copyPath(relOf(), 'rel'),
                 },
               ]}
             />

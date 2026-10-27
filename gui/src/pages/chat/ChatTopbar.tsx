@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Code2, MoreHorizontal, PanelLeft } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
-import type { ReactNode } from 'react';
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';

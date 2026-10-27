@@ -14,6 +14,8 @@ import { zoomScale } from './ui-zoom';
 
 export interface ShellLayoutDeps {
   readonly shellRef: MutableRefObject<HTMLDivElement | null>;
+  /** 右栏根元素(拖宽期直写 width——绕开 React 重渲果冻,见 startResize) */
+  readonly sidebarRef: MutableRefObject<HTMLElement | null>;
   /** 拖宽在途的清理句柄(卸载兜底解绑由宿主持有——App 卸载 useEffect 消费) */
   readonly resizeCleanupRef: MutableRefObject<(() => void) | null>;
   readonly page: string;
@@ -46,7 +48,7 @@ export interface ShellLayout {
 }
 
 export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
-  const { shellRef, resizeCleanupRef, page, settingsOpen, openSessionId, tabCollapsed, tabWidth, setTabStates } = deps;
+  const { shellRef, sidebarRef, resizeCleanupRef, page, settingsOpen, openSessionId, tabCollapsed, tabWidth, setTabStates } = deps;
 
   /** G12 左栏宽度可调(use-menu-resize 单点):菜单宽与拖宽手柄逻辑见钩子;占宽 thunk 延迟求值
    *  (sidebarOccupied 在本链后段才成值,箭头体消费时已定义) */
@@ -97,9 +99,13 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
    *  tab-state.setWidth 单点,拖拽上界=视口−菜单−440——无固定最大宽但不越视口,G14.2xx 用户
-   *  裁定),mouseup 解绑 + 移 active 类;每次 move 直接落态(React 批处理兜底);sessionId
-   *  起拖时定格(拖拽中会话切换属病态,不追)。G14.2xx 起拖基线取「当前渲染宽」:状态可能
-   *  滞留护栏外(先拖宽菜单再拖本边条),不取渲染宽则向窄拖先空走死区 */
+   *  裁定),mouseup 解绑 + 移 active 类;拖拽期 **直写 sidebarRef.style.width**(2026-10-26
+   *  用户实测「拖右缘果冻左右晃动」根修:每帧 setTabStates 整树重渲滞后于光标呈橡皮筋;
+   *  直写后一帧只走 layout+paint,与左栏观感对齐),终值只在 mouseup 一次性落 React 态
+   *  (持久化/护栏/--sidebar-w 均随该次重渲收口);拖拽中无关重渲不动 width——React 对
+   *  style 的 vdom diff 前后相等不回写,直写值得以存续。sessionId 起拖时定格(拖拽中会话
+   *  切换属病态,不追)。G14.2xx 起拖基线取「当前渲染宽」:状态可能滞留护栏外(先拖宽菜单
+   *  再拖本边条),不取渲染宽则向窄拖先空走死区 */
   const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
     if (page !== 'chat' || openSessionId === '' || tabCollapsed) return;
     e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
@@ -111,12 +117,14 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
     const floating = sidebarFloating;
     const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - (floating ? 24 : MAIN_MIN_WIDTH) / zoomScale();
     const startWidth = Math.min(tabWidth, cap());
+    let next = startWidth;
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
     const sessionId = openSessionId;
     const onMove = (ev: MouseEvent): void => {
       // G14.2xx 用户裁定:无固定最大宽,但受中栏最小宽约束——中栏触底即停,右栏不越视口。
       // zoom 契约:clientX/startX 与上界均为视觉 px,宽度状态是本地 px——delta 与上界同 /zoomScale()
-      setTabStates((s) => setWidth(s, sessionId, Math.min(cap(), startWidth + (startX - ev.clientX) / zoomScale())));
+      next = Math.max(MIN_TAB_WIDTH, Math.min(cap(), startWidth + (startX - ev.clientX) / zoomScale()));
+      if (sidebarRef.current !== null) sidebarRef.current.style.width = `${next}px`;
     };
     const stop = (): void => {
       el.classList.remove('active');
@@ -124,6 +132,7 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', stop);
       resizeCleanupRef.current = null;
+      setTabStates((s) => setWidth(s, sessionId, next)); // 终值单次落态(内联直写值与态值一致,零回跳)
     };
     resizeCleanupRef.current = stop;
     window.addEventListener('mousemove', onMove);

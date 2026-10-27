@@ -421,6 +421,10 @@ function AppShell(): JSX.Element {
   useTabPersistence({ connInstance, connState, openSessionId, tabStates, setTabStates });
 
   const tabState = tabStates[openSessionId] ?? emptyTabSession();
+  /** G14.2xx 限宽动态化容器 ref(--chat-max RO 双盯;sidebarRef 另供拖宽直写——声明须先于
+   *  useShellLayout,后者拖拽回调闭包引用) */
+  const mainRef = useRef<HTMLElement | null>(null);
+  const sidebarRef = useRef<HTMLElement | null>(null);
   /** 三栏几何簇(use-shell-layout 单点,2026-10-27 技术债轮 D53 批C-1 外提):视口跟踪/浮窗阈值/
    *  抽屉态/菜单与右栏渲染期钳制/占宽/拖宽手柄,判定序与裁定注释随码在钩子内 */
   const {
@@ -436,6 +440,7 @@ function AppShell(): JSX.Element {
     sidebarWidth,
   } = useShellLayout({
     shellRef,
+    sidebarRef,
     resizeCleanupRef,
     page,
     settingsOpen,
@@ -461,8 +466,6 @@ function AppShell(): JSX.Element {
    *  子智能体转录页;流列/输入卡随三栏拖拽、右栏折叠、视口缩放即时跟宽)。首次 observe 即回调,
    *  首帧就位零闪;jsdom 桩回调宽 0,chatMaxFor 托底不落负。deps:两容器随设置态/页面/折叠/
    *  切会话换挂,重挂后需重挂观察器 */
-  const mainRef = useRef<HTMLElement | null>(null);
-  const sidebarRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const els = [mainRef.current, sidebarRef.current].filter((el): el is HTMLElement => el !== null);
     if (els.length === 0) return;
