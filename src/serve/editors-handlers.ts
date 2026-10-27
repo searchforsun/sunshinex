@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import type { SessionHandlerIo } from './session-handlers';
 
 /**
@@ -17,8 +17,8 @@ export interface EditorApp {
   exe: string;
 }
 
-/** 预设候选(安装态探测名单):explorer 恒在;VS Code/Cursor 各取用户级+系统级两档常见安装位,
- *  同 id 多命中取首个(用户级优先于系统级)。新增预设应用在此追加行 */
+/** 预设候选(静态安装位):explorer 恒在;VS Code/Cursor 各取用户级+系统级两档常见安装位,
+ *  同 id 多命中取首个(用户级优先于系统级)。便携版不在标准位——由 PATH shim 探测兜底 */
 export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorApp[] {
   const user = env.USERPROFILE ?? '';
   const pf = env['ProgramFiles'] ?? 'C:\\Program Files';
@@ -30,14 +30,51 @@ export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorAp
   ];
 }
 
-/** 安装态探测:同 id 多档取首个命中,缺席的整个不列(用户裁定「只有实际安装的才显示」) */
-export function detectEditors(exists: (p: string) => boolean, env: NodeJS.ProcessEnv = process.env): EditorApp[] {
+/** PATH shim 探测(便携装兜底):where <shim> 首行→shim 目录→按相对位回溯源 exe。
+ *  同名 shim 可能是别家(如 Cursor 内嵌的 code.cmd)——相对位找不到真 exe 即整条放弃,
+ *  宁缺勿错(错配会把「VS Code 打开」实际开成 Cursor)。 */
+export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; rels: string[][] }> = [
+  { id: 'vscode', name: 'VS Code', shim: 'code', rels: [['..', 'Code.exe'], ['..', '..', 'Code.exe'], ['Code.exe']] },
+  { id: 'cursor', name: 'Cursor', shim: 'cursor', rels: [['..', 'Cursor.exe'], ['..', '..', 'Cursor.exe'], ['Cursor.exe']] },
+];
+
+export type WhereFn = (shim: string) => string | null;
+
+/** 真实 where 探针:首行(最高 PATH 优先级)或 null */
+export function whereFirst(shim: string): string | null {
+  const r = spawnSync('where', [shim], { windowsHide: true });
+  if (r.status !== 0 || r.error !== undefined) return null;
+  const first = r.stdout
+    .toString()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l !== '');
+  return first ?? null;
+}
+
+/** 安装态探测合成:静态位在前,PATH shim 解析兜底,同 id 静态命中优先 */
+export function detectEditors(exists: (p: string) => boolean, env: NodeJS.ProcessEnv = process.env, where: WhereFn = whereFirst): EditorApp[] {
   const seen = new Set<string>();
   const out: EditorApp[] = [];
-  for (const c of editorCandidates(env)) {
-    if (seen.has(c.id) || !exists(c.exe)) continue;
+  const push = (c: EditorApp): void => {
+    if (seen.has(c.id) || !exists(c.exe)) return;
     seen.add(c.id);
     out.push(c);
+  };
+  for (const c of editorCandidates(env)) push(c);
+  if (out.some((e) => e.id !== 'explorer')) return out; // 静态位已有编辑器,PATH 兜底不再叠
+  for (const probe of SHIM_PROBES) {
+    if (seen.has(probe.id)) continue;
+    const shimPath = where(probe.shim);
+    if (shimPath === null) continue;
+    const dir = path.dirname(shimPath);
+    for (const rel of probe.rels) {
+      const exe = path.resolve(dir, ...rel);
+      if (exists(exe)) {
+        push({ id: probe.id, name: probe.name, exe });
+        break;
+      }
+    }
   }
   return out;
 }
