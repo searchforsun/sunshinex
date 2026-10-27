@@ -2424,6 +2424,13 @@ input.sx-setting-input { width: 100%; }
 .tool-images{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
 .tool-image-thumb{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:12px;display:block;background:var(--surface-soft);cursor:zoom-in;transition:filter var(--dur-basic) var(--ease-enter)}
 .tool-image-thumb:hover{filter:brightness(1.15)}
+/* 2026-10-26 用户裁定:工具展开盒上下节奏=思考行(固定上 4 下 0)——tool-detail/io/result 多层
+   嵌套 margin 曾逐层叠加(4+4+2=10px 顶部空隙),现统一由 body-inner 供 4px 顶距,各级子盒
+   首末 margin 归零 */
+.tool-body-inner { padding-top: 4px; }
+.tool-body-inner > :first-child, .entry-tool .tool-detail > :first-child, .tool-io > :first-child { margin-top: 0; }
+.tool-body-inner > :last-child, .entry-tool .tool-detail > :last-child { margin-bottom: 0; }
+.entry-tool .tool-detail .tool-result { margin: 0; }
 /* 展开大图(2026-10-26 用户裁定):contain 保比例,左对齐不越工具行宽,高 280 档与 io/diff 内滚同档;点击开灯箱(滚轮/按钮同比缩放) */
 .tool-image-view{margin:4px 0 0;padding:8px 10px;background:var(--surface-code);border-radius:var(--radius-md);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .tool-image-view img{display:block;max-width:100%;max-height:280px;width:auto;height:auto;object-fit:contain;border-radius:var(--radius-xs);cursor:zoom-in}
