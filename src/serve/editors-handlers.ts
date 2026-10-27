@@ -30,12 +30,12 @@ export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorAp
   ];
 }
 
-/** PATH shim 探测(便携装兜底):where <shim> 首行→shim 目录→按相对位回溯源 exe。
- *  同名 shim 可能是别家(如 Cursor 内嵌的 code.cmd)——相对位找不到真 exe 即整条放弃,
+/** PATH shim 探测(便携装兜底):where <shim> 首行→自 shim 目录向上逐层(≤6)找 <exeName>。
+ *  同名 shim 可能是别家(如 Cursor 内嵌的 code.cmd)——逐层找不到真 exe 即整条放弃,
  *  宁缺勿错(错配会把「VS Code 打开」实际开成 Cursor)。 */
-export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; rels: string[][] }> = [
-  { id: 'vscode', name: 'VS Code', shim: 'code', rels: [['..', 'Code.exe'], ['..', '..', 'Code.exe'], ['Code.exe']] },
-  { id: 'cursor', name: 'Cursor', shim: 'cursor', rels: [['..', 'Cursor.exe'], ['..', '..', 'Cursor.exe'], ['Cursor.exe']] },
+export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; exeName: string }> = [
+  { id: 'vscode', name: 'VS Code', shim: 'code', exeName: 'Code.exe' },
+  { id: 'cursor', name: 'Cursor', shim: 'cursor', exeName: 'Cursor.exe' },
 ];
 
 export type WhereFn = (shim: string) => string | null;
@@ -67,13 +67,16 @@ export function detectEditors(exists: (p: string) => boolean, env: NodeJS.Proces
     if (seen.has(probe.id)) continue;
     const shimPath = where(probe.shim);
     if (shimPath === null) continue;
-    const dir = path.dirname(shimPath);
-    for (const rel of probe.rels) {
-      const exe = path.resolve(dir, ...rel);
+    let cur = path.dirname(shimPath);
+    for (let depth = 0; depth < 6; depth++) {
+      const exe = path.join(cur, probe.exeName);
       if (exists(exe)) {
         push({ id: probe.id, name: probe.name, exe });
         break;
       }
+      const up = path.dirname(cur);
+      if (up === cur) break;
+      cur = up;
     }
   }
   return out;
