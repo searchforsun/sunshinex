@@ -125,6 +125,11 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* 顶栏 [|](菜单切换)与右侧窗控同款 26px;左缘镜像 right:8(顶栏 padding 12 → 负 margin 4)。
    2026-10-25 前进/后退钮对先于其渲染(菜单关闭态):负边距只认首元素位,其后随 topbar gap */
 .chat-topbar > .sx-menu-toggle:first-child { width: 26px; height: 26px; margin-left: -4px; }
+/* 「打开」分体钮(2026-10-27 用户需求,紧随 [｜]):主钮=默认应用开工作区,∨=已装预设菜单;
+   两瓣贴合(.sx-winbtn 底款 24px,主钮对齐 [｜] 的 26px 视觉),caret 窄瓣视觉成一体 */
+.chat-topbar .sx-open-split { display: inline-flex; align-items: center; margin-left: 2px; }
+.chat-topbar .sx-open-split .sx-open-main { width: 26px; height: 26px; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.chat-topbar .sx-open-split .sx-open-caret { width: 16px; height: 26px; padding: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-left: -1px; }
 /* 菜单头拖拽条:brand 与收起钮之间空白区承担窗拖拽(抽屉打开顶部可拖动应用);与按钮不相交 */
 .sx-head-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
 /* 浮窗态 dock 无任何让位规则(2026-10-24 用户裁定「抽屉是上浮的」):composer 恒按分栏态
@@ -1087,6 +1092,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font-size: 11px; line-height: 1.45; color: var(--fg-secondary);
 }
 .sx-sess-card-name { color: var(--fg); font-size: 12px; overflow-wrap: anywhere; }
+/* 2026-10-27 用户裁定:名下细分割线+项目根路径(换行不省略,宽度由组件按视口余量钳制) */
+.sx-sess-card-divider { height: 1px; background: var(--border); margin: 4px 0 3px; }
+.sx-sess-card-path { color: var(--fg-tertiary); font-size: 10.5px; line-height: 1.45; word-break: break-all; white-space: normal; }
 .sx-sess-card-row { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
 .sx-sess-card-row svg { flex: none; color: var(--fg-tertiary); }
 .sx-sess-card-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

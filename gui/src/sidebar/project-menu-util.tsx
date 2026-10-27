@@ -152,12 +152,14 @@ export function ArchiveConfirmButton(props: {
   );
 }
 
-/** 会话行悬浮卡数据(2026-10-26 用户裁定四段制):完整会话名/分支/轮次步数/建档时刻 */
+/** 会话行悬浮卡数据(2026-10-26 用户裁定四段制):完整会话名/分支/轮次步数/建档时刻;
+ *  2026-10-27 增补:rootPath=所属项目根路径(名下细分割线后换行展示) */
 export interface SessionRowInfo {
   readonly branch?: string;
   readonly runs?: number;
   readonly steps?: number;
   readonly createdAt?: string;
+  readonly rootPath?: string;
 }
 
 /** 会话行悬浮卡(2026-10-26 用户裁定,文本 data-tip 退役):固定宽 280,仅应用宽度不够时收缩
@@ -171,9 +173,10 @@ function SessionHoverCard(props: {
   readonly anchor: { top: number; height: number; menuRight: number };
 }): JSX.Element {
   const z = zoomScale();
+  // 低应用宽度不越视口:余量不足时收缩,下限 120(2026-10-27 用户裁定「不要超出视口」)
   const avail = (window.innerWidth - props.anchor.menuRight - 12) / z;
-  const width = Math.max(160, Math.min(280, avail));
-  const { branch, runs, steps, createdAt } = props.info;
+  const width = Math.max(120, Math.min(280, avail));
+  const { branch, runs, steps, createdAt, rootPath } = props.info;
   const stats: string[] = [];
   if (runs !== undefined) stats.push(t(`${runs} run${runs === 1 ? '' : 's'}`, `${runs} 轮`));
   if (steps !== undefined) stats.push(t(`${steps} step${steps === 1 ? '' : 's'}`, `${steps} 步`));
@@ -183,6 +186,15 @@ function SessionHoverCard(props: {
       style={{ left: (props.anchor.menuRight + 4) / z, top: (props.anchor.top + props.anchor.height / 2) / z, width }}
     >
       <div className="sx-sess-card-name">{props.label}</div>
+      {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底) */}
+      {rootPath !== undefined && rootPath !== '' && (
+        <>
+          <div className="sx-sess-card-divider" role="separator" />
+          <div className="sx-sess-card-path" title={rootPath}>
+            {rootPath}
+          </div>
+        </>
+      )}
       {branch !== undefined && branch !== '' && (
         <div className="sx-sess-card-row">
           <GitBranch size={12} strokeWidth={1.75} />

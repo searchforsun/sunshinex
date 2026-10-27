@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MoreHorizontal, PanelLeft } from 'lucide-react';
+import { Check, ChevronDown, Code2, Folder, FolderOpen, MoreHorizontal, PanelLeft } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
@@ -115,6 +115,35 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
   const [askArchive, setAskArchive] = useState<{ x: number; y: number } | null>(null);
+  // 「打开」分体钮(2026-10-27 用户需求):工作区一键进资源管理器/编辑器——主钮开默认应用,
+  // ∨ 菜单列已装预设(只有实际安装的才显示,daemon 探测),点选即设默认(✓)并打开。
+  // 默认应用 localStorage 持久(机器级偏好,同 zoom/theme 口径)
+  const [editorMenu, setEditorMenu] = useState<{ x: number; y: number } | null>(null);
+  const [editors, setEditors] = useState<Array<{ id: string; name: string }>>([]);
+  const [defaultEditor, setDefaultEditor] = useState<string>(() => localStorage.getItem('sunshinex.open-default') ?? 'explorer');
+  const openIn = (id: string): void => {
+    if (root === undefined || root === '') return;
+    conn.openInEditor(root, id).catch(() => undefined);
+  };
+  const toggleEditorMenu = (anchor: HTMLElement): void => {
+    if (editorMenu !== null) {
+      setEditorMenu(null);
+      return;
+    }
+    const b = anchor.getBoundingClientRect();
+    setEditorMenu({ x: b.right, y: b.bottom + 2 });
+    if (editors.length === 0) {
+      conn
+        .editorsList()
+        .then((r) => setEditors(r.editors), () => undefined);
+    }
+  };
+  const pickEditor = (id: string): void => {
+    localStorage.setItem('sunshinex.open-default', id);
+    setDefaultEditor(id);
+    setEditorMenu(null);
+    openIn(id);
+  };
   // 2026-10-24 用户裁定「能显示全就显示全」:标题隐现 mask 仅在真溢出时挂(RO 判 scrollWidth)
   const titleRef = useRef<HTMLSpanElement | null>(null);
   const [titleClipped, setTitleClipped] = useState(false);
@@ -230,15 +259,41 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         {/* 2026-10-24 用户裁定(二轮修正):[|] 仅菜单关闭态显示在会话名左(呼出);菜单开着时收起钮
             在菜单头右上,不双显。会话名不点击改名(⋯ 菜单→弹窗),长度随主栏 flex 收放 */}
         {menuClosed === true && (
-          <button
-            type="button"
-            className="sx-winbtn sx-menu-toggle"
-            aria-label="toggle menu"
-            data-tip={t('Open menu', '打开菜单')}
-            onClick={onToggleMenu}
-          >
-            <PanelLeft size={16} strokeWidth={1.75} />
-          </button>
+          <>
+            <button
+              type="button"
+              className="sx-winbtn sx-menu-toggle"
+              aria-label="toggle menu"
+              data-tip={t('Open menu', '打开菜单')}
+              onClick={onToggleMenu}
+            >
+              <PanelLeft size={16} strokeWidth={1.75} />
+            </button>
+            {/* 「打开」分体钮:主钮=默认应用开工作区,∨=已装预设菜单(✓=当前默认,点选即换即开) */}
+            <span className="sx-open-split" style={{ opacity: root === undefined || root === '' ? 0.4 : 1 }}>
+              <button
+                type="button"
+                className="sx-winbtn sx-open-main"
+                aria-label="open workspace"
+                data-tip={t('Open workspace', '打开工作区')}
+                disabled={root === undefined || root === ''}
+                onClick={() => openIn(defaultEditor)}
+              >
+                <FolderOpen size={16} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                className="sx-winbtn sx-open-caret"
+                aria-label="choose app"
+                data-tip={t('Open with', '打开方式')}
+                disabled={root === undefined || root === ''}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => toggleEditorMenu(e.currentTarget)}
+              >
+                <ChevronDown size={13} strokeWidth={2} />
+              </button>
+            </span>
+          </>
         )}
         {fixedTitle === '' ? (
           // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
@@ -309,6 +364,27 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         <div className="sx-topbar-drag" aria-hidden="true" />
         {menu !== null && fixedTitle !== '' && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
+        )}
+        {editorMenu !== null && (
+          <SessionRowMenu
+            x={editorMenu.x}
+            y={editorMenu.y}
+            onClose={() => setEditorMenu(null)}
+            items={editors.map((e) => ({
+              id: e.id,
+              label: e.name,
+              // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
+              icon:
+                e.id === defaultEditor ? (
+                  <Check size={13} strokeWidth={2.25} />
+                ) : e.id === 'explorer' ? (
+                  <Folder size={13} strokeWidth={1.75} />
+                ) : (
+                  <Code2 size={13} strokeWidth={1.75} />
+                ),
+              onSelect: () => pickEditor(e.id),
+            }))}
+          />
         )}
         {askArchive !== null && fixedTitle !== '' && (
           // 归档二次确认弹窗(同款弹层件;外点/Esc 即取消)

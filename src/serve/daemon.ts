@@ -27,6 +27,7 @@ import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
 import { findJournalOwner, validSessionId } from './session-handlers';
 import * as sessionHandlers from './session-handlers';
+import * as editorsHandlers from './editors-handlers';
 import type { SessionHandlerIo } from './session-handlers';
 import * as fileHandlers from './file-handlers';
 import * as workspaceHandlers from './workspace-handlers';
@@ -362,6 +363,9 @@ export class GuiDaemon {
     // 已读档(2026-10-23):userConfigDir/gui/seen.json,机器级 id→最近已读 updatedAt(已读/未读态落底层)
     { method: 'GET', path: '/app/seen', auth: true, run: async (_req, res) => sessionHandlers.handleAppSeenGet(this.sessionIo, res) },
     { method: 'PUT', path: '/app/seen', auth: true, run: async (req, res) => sessionHandlers.handleAppSeenPut(this.sessionIo, req, res) },
+    // 外部打开应用族(2026-10-27 顶栏「打开」分体钮):预设应用安装态探测 + 以指定应用打开路径
+    { method: 'GET', path: '/app/editors', auth: true, run: async (_req, res) => editorsHandlers.handleEditorsGet(this.sessionIo, res) },
+    { method: 'POST', path: '/app/open', auth: true, run: async (req, res) => editorsHandlers.handleEditorsOpen(this.sessionIo, req, res) },
     // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——落盘走 rename(G14.16)
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
     // G14.16 标题统一流：rename 落旁车 <id>.meta.json(侧栏/TUI 列表同源)；GET 回读(重开回显)

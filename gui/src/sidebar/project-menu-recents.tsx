@@ -91,7 +91,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 key={`${r.root}/${r.id}`}
                 rowId={r.id}
                 label={label}
-                info={{ runs: r.runs, steps: r.steps, createdAt: r.createdAt }}
+                info={{ runs: r.runs, steps: r.steps, createdAt: r.createdAt, rootPath: r.root }}
                 updatedAt={r.updatedAt}
                 active={active}
                 running={running}

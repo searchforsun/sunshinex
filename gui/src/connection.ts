@@ -102,6 +102,10 @@ export interface Connection {
   /** 已读档(GET/PUT /app/seen;2026-10-23 已读/未读态落底层,机器级 id→最近已读 updatedAt) */
   appSeen(): Promise<{ seen: Record<string, number> }>;
   saveAppSeen(seen: Record<string, number>): Promise<void>;
+  /** 预设外部打开应用安装态(GET /app/editors;只列实际存在的,explorer 恒在) */
+  editorsList(): Promise<{ editors: Array<{ id: string; name: string; exe: string }> }>;
+  /** 以指定应用打开路径(POST /app/open;spawn detached,id 须在已装名单内) */
+  openInEditor(path: string, id: string): Promise<void>;
   sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string): Promise<void>;
   pushChanges(id: string): Promise<void>;
@@ -428,6 +432,13 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async saveAppSeen(seen) {
       await put('/app/seen', { seen });
+    },
+    /** 外部打开应用族(2026-10-27 顶栏「打开」分体钮):安装态探测 + 以指定应用打开路径 */
+    editorsList() {
+      return getJson('/app/editors');
+    },
+    async openInEditor(path: string, id: string) {
+      await post('/app/open', { path, id });
     },
     sessionChangeContent(id: string, path: string) {
       return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);
