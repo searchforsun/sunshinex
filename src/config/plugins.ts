@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { strArr, strRecord } from '../config';
 import { parseSettingsFile, loadGlobalSettings, loadProjectSettings } from './settings';
 import { userConfigDir } from './env';
 import type { McpServerConfig } from '../types';
@@ -63,13 +64,8 @@ export const RESERVED = ['commands', 'hooks', 'agents', 'tools'] as const;
 const REQUIRED: Array<keyof PluginManifest> = ['manifestVersion', 'id', 'name', 'version', 'description'];
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-/** 形状小工具（与 parseMcpJsonFile 同形）：字符串数组 / 字符串到字符串映射 / 浅对象 */
-const strArr = (v: unknown): string[] | undefined =>
-  Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : undefined;
-const strRecord = (v: unknown): Record<string, string> | undefined =>
-  v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
-    ? (v as Record<string, string>)
-    : undefined;
+/** 形状小工具(2026-10-27 技术债轮 D53②/G-4 上收:与 parseMcpJsonFile 同形的三份本地复制收敛
+ *  config.ts 导出单点;objRecord 仅本文件消费留位) */
 const objRecord = (v: unknown): Record<string, unknown> | undefined =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 

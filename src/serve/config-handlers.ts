@@ -4,6 +4,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { MemoryStore } from '../harness/memory/store';
+import { strArr, strRecord } from '../config';
 import { urlOf } from './daemon-wire';
 import {
   AGENT_ID_RE,
@@ -361,6 +362,17 @@ export async function handleMcpProbe(io: ConfigHandlerIo, req: http.IncomingMess
  *  （同目录 tmp+rename）；成功不触发 settings reload——mcp 不在 settings 链，装配期读取（新会话
  *  生效）。键面用 null 原型记录承载：'__proto__' 一类名经普通对象赋值会改写原型而非落自键
  *  （JSON.parse 回读是自键——T2 Object.hasOwn 教训的写面镜像） */
+/** mcp server 行可选键形状守卫表(2026-10-27 技术债轮 D53② 表驱动;键序=原逐字段判定序,
+ *  400 文案逐字保持)。headers（http/sse 请求头，string→string）/ enabled（布尔整机开关）/
+ *  disabledTools（停用工具短名数组）等装载面消费键,坏形在写面拦——写面虽原样透传未知字段 */
+const MCP_ROW_FIELD_CHECKS: ReadonlyArray<{ readonly key: string; readonly ok: (v: unknown) => boolean; readonly expect: string }> = [
+  { key: 'args', ok: (v) => strArr(v) !== undefined, expect: 'must be an array of strings' },
+  { key: 'env', ok: (v) => strRecord(v) !== undefined, expect: 'must be an object of string → string' },
+  { key: 'headers', ok: (v) => strRecord(v) !== undefined, expect: 'must be an object of string → string' },
+  { key: 'enabled', ok: (v) => typeof v === 'boolean', expect: 'must be a boolean' },
+  { key: 'disabledTools', ok: (v) => strArr(v) !== undefined, expect: 'must be an array of strings' },
+];
+
 export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
@@ -404,33 +416,15 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
       io.send(res, 400, { error: `servers[${i}]: ${transport} transport requires a url` });
       return;
     }
-    if (r.args !== undefined && (!Array.isArray(r.args) || !r.args.every((a) => typeof a === 'string'))) {
-      io.send(res, 400, { error: `servers[${i}].args must be an array of strings` });
-      return;
-    }
-    if (
-      r.env !== undefined &&
-      (typeof r.env !== 'object' || r.env === null || Array.isArray(r.env) || !Object.values(r.env).every((v) => typeof v === 'string'))
-    ) {
-      io.send(res, 400, { error: `servers[${i}].env must be an object of string → string` });
-      return;
-    }
-    // 2026-10-26 新字段形态闸门：headers（http/sse 请求头，string→string）/ enabled（布尔整机开关）/
-    // disabledTools（停用工具短名数组）——写面虽原样透传未知字段，这三键装载面消费，坏形在此拦
-    if (
-      r.headers !== undefined &&
-      (typeof r.headers !== 'object' || r.headers === null || Array.isArray(r.headers) || !Object.values(r.headers).every((v) => typeof v === 'string'))
-    ) {
-      io.send(res, 400, { error: `servers[${i}].headers must be an object of string → string` });
-      return;
-    }
-    if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
-      io.send(res, 400, { error: `servers[${i}].enabled must be a boolean` });
-      return;
-    }
-    if (r.disabledTools !== undefined && (!Array.isArray(r.disabledTools) || !r.disabledTools.every((a) => typeof a === 'string'))) {
-      io.send(res, 400, { error: `servers[${i}].disabledTools must be an array of strings` });
-      return;
+    // 可选键形状守卫(2026-10-27 技术债轮 D53② 表驱动:原逐字段 if-return 线性堆叠,每新增
+    // McpServerConfig 字段本函数再涨一段——headers/enabled/disabledTools 三段即 +17 行;新增字段
+    // = 表中加一行)。可选键 undefined 跳过;形状谓词单点 config.strArr/strRecord(G-4 上收)
+    for (const { key, ok, expect } of MCP_ROW_FIELD_CHECKS) {
+      const v = r[key];
+      if (v !== undefined && !ok(v)) {
+        io.send(res, 400, { error: `servers[${i}].${key} ${expect}` });
+        return;
+      }
     }
     record[r.name] = row; // 输入原样（含 env/headers 全值与未知字段——写面不擅自裁剪）
   }

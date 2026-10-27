@@ -49,6 +49,18 @@ export function loadSunshinex(root: string): ProjectContext | null {
 
 const VALID_TRANSPORTS = ['stdio', 'http', 'sse'] as const;
 
+/** 字段形状谓词单点(2026-10-27 技术债轮 D53②/G-4 上收:parseMcpJsonFile 装载面、serve 配置写面
+ *  守卫、config/plugins 装载展开三处同谓词,原三份本地复制)。值或 undefined 形——undefined 即形状非法 */
+export function strArr(v: unknown): string[] | undefined {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : undefined;
+}
+
+export function strRecord(v: unknown): Record<string, string> | undefined {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
+    ? (v as Record<string, string>)
+    : undefined;
+}
+
 /** 解析单个 mcp.json 文件为 `mcpServers` 条目数组。文件缺失或 JSON 非法返回 []；非法条目（字段形态或传输与形态矛盾）跳过不抛（装配面宁可少配不可错配）。
  *  G8c T4 起导出：daemon /settings/mcp 两级视图需逐文件分立拆解（loadMcpServers 只出合并态），签名沿内部形 */
 export function parseMcpJsonFile(p: string): McpServerConfig[] {
@@ -61,12 +73,6 @@ export function parseMcpJsonFile(p: string): McpServerConfig[] {
   }
   const entry = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { mcpServers?: unknown }).mcpServers : undefined;
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
-  const strArr = (v: unknown): string[] | undefined =>
-    Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : undefined;
-  const strRecord = (v: unknown): Record<string, string> | undefined =>
-    v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
-      ? (v as Record<string, string>)
-      : undefined;
   const servers: McpServerConfig[] = [];
   for (const [name, cfg] of Object.entries(entry as Record<string, unknown>)) {
     if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) continue;
