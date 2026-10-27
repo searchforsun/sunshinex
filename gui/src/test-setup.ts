@@ -34,7 +34,7 @@ if (typeof g.DOMMatrixReadOnly === 'undefined') {
 // monaco(Files 源码视图)在 jsdom 缺 CSS.escape:补最小规范实现(cssValue.className 探测面即够)
 const cssGlobal = globalThis as unknown as { CSS?: { escape?: (s: string) => string } };
 if (cssGlobal.CSS === undefined || typeof cssGlobal.CSS.escape !== 'function') {
-  cssGlobal.CSS = { ...(cssGlobal.CSS ?? {}), escape: (s: string) => s.replace(/[^a-zA-Z0-9_\u00A0-\uFFFF-]/g, (c) => `\${c}`) };
+  cssGlobal.CSS = { ...(cssGlobal.CSS ?? {}), escape: (s: string) => s.replace(/[^a-zA-Z0-9_\u00A0-\uFFFF-]/g, (c) => `\\${c}`) };
 }
 
 // monaco 主题服务探测系统配色用 jsdom 缺的 matchMedia:最小桩(matches=false 恒浅色)

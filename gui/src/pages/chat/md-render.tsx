@@ -266,7 +266,7 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
     },
     // 2026-10-26 正文支持显示图片:web/data 直通;工作区路径经 MdImageContext 解析为
     // dataURL(合理尺寸上限+点击开灯箱预览;解析失败回落文件 chip)
-    img(props: { src?: string; alt?: string }) {
+    img(props: { src?: string; alt?: string; children?: ReactNode }) {
       return <MdImage src={props.src ?? ''} alt={props.alt ?? ''} onOpenFile={onOpenFile} />;
     },
     // G14.124 md 原生超链接 → 文件引用:非 web 协议 href 视为文件路径,渲染 icon+文件名

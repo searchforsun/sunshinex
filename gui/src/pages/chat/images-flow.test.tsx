@@ -210,11 +210,11 @@ describe('正文 md 图片(2026-10-26 正文支持显示图片)', () => {
     render(<Chat conn={connOf({ assistantMd: '截图如下\n\n![截图](shot.png)' })} sessionId="md1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await waitFor(() => expect(document.querySelectorAll('.entry-assistant').length).toBeGreaterThan(0));
     console.log('MD1_HTML:', document.querySelector('.entry-assistant')?.innerHTML?.slice(0, 400));
-    const img = await waitFor(() => {
+    const img = (await waitFor(() => {
       const el = document.querySelector('.entry-assistant .md-image') as HTMLImageElement | null;
       expect(el).not.toBeNull();
       return el;
-    }, { timeout: 5000 });
+    }, { timeout: 5000 })) as HTMLImageElement;
     expect(img.getAttribute('src')!.startsWith('data:image/png;base64,')).toBe(true);
     fireEvent.click(img);
     expect(await waitFor(() => document.querySelector('.sx-lightbox'))).not.toBeNull();
@@ -222,11 +222,11 @@ describe('正文 md 图片(2026-10-26 正文支持显示图片)', () => {
 
   it('web 形态直通不解析;解析失败回落文件 chip', async () => {
     const r = render(<Chat conn={connOf({ assistantMd: '![w](https://example.com/x.png)' })} sessionId="md2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
-    const web = await waitFor(() => {
+    const web = (await waitFor(() => {
       const el = document.querySelector('.entry-assistant .md-image') as HTMLImageElement | null;
       expect(el).not.toBeNull();
       return el;
-    }, { timeout: 5000 });
+    }, { timeout: 5000 })) as HTMLImageElement;
     expect(web.getAttribute('src')).toBe('https://example.com/x.png');
     r.unmount();
     render(<Chat conn={connOf({ assistantMd: '![bad](shot.png)', imageResp: false })} sessionId="md3" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
