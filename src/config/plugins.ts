@@ -203,8 +203,17 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
   return { manifest, warnings, errors };
 }
 
-/** 包根（dist/config 两级上溯）：内置插件根缺省锚（plugins/ 随包分发） */
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
+/** 包根（dist/config 两级上溯）：源码仓/全局 tgz 包形态的内置插件根锚（plugins/ 与 dist 同级） */
+const MODULE_ROOT = path.resolve(__dirname, '..', '..');
+/** 内置根候选（首个存在 plugins 目录者胜，均不存在回落首候选）：
+ *  - 源码 dev / 全局 tgz：MODULE_ROOT/plugins（plugins/ 与 dist 同级）；
+ *  - electron 安装布局：extraResources 落 <install>/resources/plugins，daemon 束 __dirname=resources/app-dist，
+ *    MODULE_ROOT 两级上溯恰为 <install>——候选二命中。三形态（dev/tgz/exe）同一实现，零 env 注入 */
+const BUILTIN_ROOT_CANDIDATES = [path.join(MODULE_ROOT, 'plugins'), path.join(MODULE_ROOT, 'resources', 'plugins')];
+const REPO_ROOT_CANDIDATE = () => {
+  const hit = BUILTIN_ROOT_CANDIDATES.find((d) => fs.existsSync(d));
+  return hit !== undefined ? path.dirname(hit) : path.dirname(BUILTIN_ROOT_CANDIDATES[0]!);
+};
 
 /** 装载产物：manifest + 落位与启用态裁决（spec §2 插件装载面）。
  *  - enabled：defaultEnabled 作初值，settings 语义键 plugins[id].enabled 在场即覆盖（两级合并见 loadEffectivePlugins）；
@@ -233,7 +242,7 @@ export interface EffectivePlugin {
  *   settingsReader 注入的是**整个 settings 文档对象**（null = 该级缺档），语义键 `.plugins` 由本函数提取。
  */
 export function loadEffectivePlugins(projectRoot: string | undefined, opts: { builtinRoot?: string; userRoot?: string; settingsReader?: (scope: 'global' | 'project') => Record<string, unknown> | null; platform?: NodeJS.Platform } = {}): { plugins: EffectivePlugin[]; warnings: string[] } {
-  const builtinRoot = opts.builtinRoot ?? path.join(REPO_ROOT, 'plugins');
+  const builtinRoot = opts.builtinRoot ?? path.join(REPO_ROOT_CANDIDATE(), 'plugins');
   const userRoot = opts.userRoot ?? path.join(userConfigDir(), 'plugins');
   const platform = opts.platform ?? process.platform;
   const warnings: string[] = [];

@@ -25,6 +25,15 @@ extraResources:
   # resources/app-dist/daemon.cjs 束内 require('node-pty') 沿 node_modules 上溯解析恰命中
   - from: ./build/node-pty
     to: node_modules/node-pty
+  # 插件体系（2026-10-27）：内置两插件进安装包（manifest/skills/computer-use server 单文件束）——
+  # 装载器内置根候选探测命中 resources/plugins（src/config/plugins.ts BUILTIN_ROOT_CANDIDATES）。
+  # 剥 node_modules：browser-use 依赖不随包（装机面 pnpm --dir install,MANUAL §6.4 降级口径）；
+  # computer-use 单文件束零依赖即用
+  - from: ../plugins
+    to: plugins
+    filter:
+      - '**/*'
+      - '!**/node_modules/**'
 win:
   icon: assets/icon.ico
   target:

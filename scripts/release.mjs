@@ -361,6 +361,12 @@ fs.rmSync(path.join(ROOT, 'gui-dist'), { recursive: true, force: true });
 fs.cpSync(path.join(ROOT, 'dist-gui'), path.join(ROOT, 'gui-dist'), { recursive: true });
 if (!fs.existsSync(path.join(ROOT, 'gui-dist', 'index.html'))) die('gui-dist/index.html 缺失——gui build 未产出');
 
+// npm pack 前置 2：computer-use server 单文件束（2026-10-27）——sdk 内联,装机形态零子包依赖
+// （产物 server/index.js gitignore 不入库,发版时点现构建;plugins/computer-use/build.mjs esbuild 束）
+say('computer-use server 单文件束（plugins/computer-use build.mjs）');
+run(process.execPath, ['plugins/computer-use/build.mjs'], { cwd: path.join(ROOT, 'plugins', 'computer-use'), stdio: 'inherit' });
+if (!fs.existsSync(path.join(ROOT, 'plugins', 'computer-use', 'server', 'index.js'))) die('plugins/computer-use/server/index.js 缺失——bundle 未产出');
+
 // ---------- npm pack ----------
 say(`npm pack → ${TGZ_NAME}`);
 const packOut = run(NPM, ['pack', '--cache', '.npm-cache']).stdout || '';
