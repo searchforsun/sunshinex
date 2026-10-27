@@ -14,6 +14,8 @@ export interface SessionRowMenuItem {
   icon?: JSX.Element;
   /** 行尾右置尾标(如默认应用的勾;flex 推到行最右,与名称侧分离) */
   tail?: JSX.Element;
+  /** 选中态(默认应用行:浅底强调,与普通行区分) */
+  active?: boolean;
   /** 禁用项(灰显不可点,如运行中的归档) */
   disabled?: boolean;
   /** 分隔线项( label/图标忽略,渲染为分隔线) */
@@ -64,7 +66,8 @@ export function SessionRowMenu({ x, y, items, onClose }: {
             key={it.id}
             type="button"
             role="menuitem"
-            className="sx-menuitem"
+            className={`sx-menuitem${it.active === true ? " sx-menuitem-active" : ""}`}
+            aria-current={it.active === true ? 'true' : undefined}
             disabled={it.disabled}
             onClick={() => {
               it.onSelect();

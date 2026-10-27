@@ -158,17 +158,17 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         .then((r) => setNativeIcons((m) => ({ ...m, [e.id]: `data:${r.mime};base64,${r.data}` })), () => setNativeIcons((m) => ({ ...m, [e.id]: '' })));
     }
   }, [editorMenu, editors, conn, nativeIcons]);
-  const editorIcon = (id: string): ReactNode => {
+  const editorIcon = (id: string, size = 14): ReactNode => {
     const native = nativeIcons[id];
-    if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: 14, height: 14, display: 'block', objectFit: 'contain' }} />;
+    if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
     if (native === '') return <Code2 size={13} strokeWidth={1.75} />;
     const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
     const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
-    if (body === undefined) return <Code2 size={13} strokeWidth={1.75} />;
+    if (body === undefined) return <Code2 size={size - 1} strokeWidth={1.75} />;
     return (
       <span
         style={{ width: 14, height: 14, display: 'inline-flex', flex: 'none' }}
-        dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14">${body}</svg>` }}
+        dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="${size}" height="${size}">${body}</svg>` }}
       />
     );
   };
@@ -308,7 +308,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             disabled={root === undefined || root === ''}
             onClick={() => openIn(defaultEditor)}
           >
-            <FolderOpen size={16} strokeWidth={1.75} />
+            {editorIcon(defaultEditor, 16)}
           </button>
           <button
             type="button"
@@ -401,8 +401,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               id: e.id,
               label: e.name,
               tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
+              active: e.id === defaultEditor,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
-              icon: editorIcon(e.id),
+              icon: editorIcon(e.id, 16),
               onSelect: () => pickEditor(e.id),
             }))}
           />
