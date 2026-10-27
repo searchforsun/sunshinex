@@ -1342,3 +1342,30 @@ describe('P1 行级 memo render-count(Task 3):token 突发/交错帧已落位 to
     expect(hlCounters.__calls()).toBe(0); // 折叠隐藏的 exec 行不因后续帧重渲染
   });
 });
+
+describe('等待模型待态(2026-10-27)', () => {
+  it('idle 提交被接受→待态行出现;run-open 落地→收;steer 不置', async () => {
+    setLanguage('zh'); // 语言是全局态:前序用例可能切成 en,本用例断言中文文案先归位
+    let resolveSubmit: () => void = () => undefined;
+    const sessionSubmit = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolveSubmit = res;
+        }),
+    );
+    const conn = connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await screen.findAllByText('你好');
+    const ta = screen.getByLabelText('message input') as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '再来一条' } });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    // 提交在途(未 resolve):待态未起(接受时点=resolve)
+    expect(screen.queryByText('已发送 · 等待模型')).toBeNull();
+    resolveSubmit();
+    expect(await screen.findByText('已发送 · 等待模型')).toBeTruthy();
+    // run-open 落地(model-start 建 run 条)→待态收
+    fire({ type: 'model-start', ts: Date.now() });
+    expect(screen.queryByText('已发送 · 等待模型')).toBeNull();
+  });
+});
