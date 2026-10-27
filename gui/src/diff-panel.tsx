@@ -66,7 +66,7 @@ export function DiffPanel({ oldStr, newStr, path, onOpenDiff, openDiffTitle, hei
           lineNumbersMinChars: 3,
           fontSize: 12,
           lineHeight: 19,
-          fontFamily: 'ui-monospace, SFMono-Regular, consolas, monospace',
+          fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
           automaticLayout: true,
           diffWordWrap: 'off',
           hideUnchangedRegions: { enabled: true, contextLineCount: 3 }, // 折叠未变更区(VSCode 原生行为)

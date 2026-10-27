@@ -362,7 +362,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     fontSize: 12,
                     lineHeight: 19,
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
-                    fontFamily: 'ui-monospace, SFMono-Regular, consolas, monospace',
+                    fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
                     automaticLayout: true,
                     renderLineHighlight: 'none',
                     overviewRulerLanes: 0,

@@ -31,7 +31,7 @@ const MERMAID_VARS = {
     clusterBkg: '#181818',
     clusterBorder: '#2c2c2c',
     edgeLabelBackground: '#101010',
-    fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+    fontFamily: 'var(--font-ui)', /* 字体预设管线:图内文字走全局界面字族 */
     fontSize: '13px',
   },
   light: {
@@ -50,7 +50,7 @@ const MERMAID_VARS = {
     clusterBkg: '#f9f9f9',
     clusterBorder: '#e5e5e5',
     edgeLabelBackground: '#fcfcfc',
-    fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif',
+    fontFamily: 'var(--font-ui)', /* 字体预设管线:图内文字走全局界面字族 */
     fontSize: '13px',
   },
 } as const;
