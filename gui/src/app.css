@@ -2494,3 +2494,25 @@ input.sx-setting-input { width: 100%; }
 .sx-font-preset-card { min-width: 0; }
 .sx-font-pv, .sx-font-pv-tool, .sx-font-pv-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sx-font-pv-tool { max-width: 100%; min-width: 0; } /* fit-content 最小宽=整句 nowrap 文本,盒子撑出卡片致省略号不可见——钳回容器宽 */
+
+/* Files 页 md 预览排版镜像(2026-10-27 用户反馈「右侧 md 文件还是很挤」):正文呼吸感裁定
+   (行距 1.65/段距 12/标题阶梯 26-10/li+li 6px/行内码/横线)整组镜像到 .files-md——此前只作用于
+   .entry,预览面仍吃上方 303 行旧紧凑档(13px/段距 10);覆盖值与本块保持同源,改正文须同步 */
+.files-md { font: 14px/1.65 var(--font-ui); }
+.files-md p { margin: 0 0 12px; }
+.files-md h1 { font-size: 17px; }
+.files-md h2 { font-size: 15.5px; }
+.files-md h3 { font-size: 14px; }
+.files-md h4 { font-size: 13px; }
+.files-md h1, .files-md h2, .files-md h3, .files-md h4 { line-height: 1.4; font-weight: 600; margin: 26px 0 10px; }
+.files-md ul, .files-md ol { margin: 12px 0; padding-left: 22px; }
+.files-md li { margin: 3px 0; }
+.files-md li + li { margin-top: 6px; }
+.files-md li > ul, .files-md li > ol { margin: 4px 0; }
+.files-md li::marker { color: var(--fg-secondary); }
+.files-md blockquote { margin: 4px 0; padding: 0 0 0 9px; border-left: 2px solid var(--border); color: var(--fg-secondary); }
+.files-md :not(pre) > code { font-size: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }
+.files-md pre { margin: 14px 0; }
+.files-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }
+.files-md img { max-width: 100%; border-radius: var(--radius-md); }
+.files-md table { margin: 14px 0; }
