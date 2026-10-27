@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useContext, useEffect, useState } from 'react';
 import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, MousePointerClick, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
@@ -8,6 +8,7 @@ import type { Connection } from '../../connection';
 import { DiffLines } from '../../diff-lines';
 import { FileIcon } from '../../file-icon';
 import { ImageLightbox } from '../../ImageLightbox';
+import { MdImageContext } from './md-render';
 import ReactMarkdown from 'react-markdown';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { COMPUTER_USE_PREFIX } from './computer-use-contract';
@@ -175,6 +176,43 @@ export function writeStatOf(result: string): { added?: string; removed?: string 
 /** P1 行级 memo(Task 3):entry 身份由 chat-reducer WeakMap 视图缓存保证(未变行引用恒定),
  *  MessageList 侧回调经 ref 稳定化——token 帧重渲染时本组件 props 全等即 bail-out,
  *  行体(含 exec 高亮 highlightCode 调用)零执行。导出名不变(AgentTranscriptTab 等消费面无感) */
+/** read 图片行展开体(2026-10-27 用户裁定):点击展开时按路径经 MdImageContext 重读图片——
+ *  不依赖 result 帧随行 images(切会话回放即丢,曾「切会话后无法再次显示」),随时可显;
+ *  裸显无框无底/与其他展开行左缘对齐/contain 保比例高 240 不越行宽/点击开灯箱缩放 */
+function ReadImageBody({ path }: { path: string }): JSX.Element {
+  const loader = useContext(MdImageContext);
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [lightbox, setLightbox] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (loader === null) return;
+    let alive = true;
+    void loader(path).then(
+      (f) => {
+        if (!alive) return;
+        if (f.type === 'image' && f.mime !== undefined && f.data !== undefined) setSrc(`data:${f.mime};base64,${f.data}`);
+        else setFailed(true);
+      },
+      () => {
+        if (alive) setFailed(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [loader, path]);
+  if (src !== null) {
+    return (
+      <div className="tool-image-plain">
+        <img src={src} alt="" onClick={() => setLightbox(src)} />
+        {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
+      </div>
+    );
+  }
+  if (failed) return <span className="tool-image-miss">{t('image unavailable', '图片不可用')}</span>;
+  return <span className="tool-image-miss">{t('loading image…', '图片加载中…')}</span>;
+}
+
 export const ToolEntryView = memo(function ToolEntryView({
   entry,
   conn,
@@ -238,6 +276,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 文件写入/编辑分型(G14):折叠=文件名+相对路径+diff stat,展开=diff 面板;read 分型:整行=打开文件标签 */
   const isWrite = (toolName === 'write' || toolName === 'edit') && path !== undefined;
   const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
+  /** read 图片分型(2026-10-27):结果只是 [image] 说明——行=可折叠展开(展开体重读图片显),
+   *  普通 read 文件行维持「整行=打开文件标签」既有面 */
+  const isReadImage = toolName === 'read' && path !== undefined && resultText.trim().startsWith('[image]');
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
   const stat = isWrite ? writeStatOf(resultText) : {};
   /** G14.171 spawn 子智能体名(label ?? agent_id)——运行态文案与折叠行链接共用 */
@@ -634,9 +675,9 @@ export const ToolEntryView = memo(function ToolEntryView({
       <button
         type="button"
         className="tool-summary"
-        aria-expanded={isRead ? undefined : expanded}
+        aria-expanded={isReadImage ? expanded : isRead ? undefined : expanded}
         onClick={() => {
-          if (isRead) onOpenFile?.(path!);
+          if (isRead && !isReadImage) onOpenFile?.(path!);
           else {
             setExpanded((v) => !v);
             window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
@@ -645,11 +686,11 @@ export const ToolEntryView = memo(function ToolEntryView({
       >
         <ToolIcon verb={toolName} />
         {collapsed}
-        {!isRead && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
+        {(!isRead || isReadImage) && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
       </button>
       {/* 工具结果图片缩略行(2026-10-26 插件体系图片通道):折叠壳外直出——截屏类工具行不展开即可看;
           点击开查看浮层(交互/样式沿用户气泡图片条同款令牌)。images 只随 result 帧落条,执行中不现 */}
-      {entry.images !== undefined && entry.images.length > 0 && (
+      {toolName !== 'read' && entry.images !== undefined && entry.images.length > 0 && (
         <div className="tool-images">
           {entry.images.map((src, i) => (
             <img
@@ -663,7 +704,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         </div>
       )}
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
-        <div className="tool-body-inner">{body}</div>
+        <div className="tool-body-inner">{isReadImage && path !== undefined ? <ReadImageBody path={path} /> : body}</div>
       </div>
       {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
     </div>
