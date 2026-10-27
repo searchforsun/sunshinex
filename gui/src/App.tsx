@@ -285,35 +285,61 @@ function AppShell(): JSX.Element {
   const openMemoryTab = useCallback((): void => { openTabInSession('memory'); }, [openTabInSession]);
   /** 组头目录钮排队旗(2026-10-23 用户裁定):跨会话打开链(newSession→attach→openSession)落位后
    *  补开目录页签——openTabInSession 走 sessionRef,须等目标会话成为打开会话再消费 */
-  const pendingDirectoryTabRef = useRef(false);
+  /** 2026-10-27 目录树入左菜单层(用户裁定):menuDir={root,sessionId} 驱动 ProjectMenu 目录视图;
+   *  sessionId 由 ensureSessionForRoot 落值(首会话复用/零会话 newSession 建席——tree API 会话寻址) */
+  const [menuDir, setMenuDir] = useState<{ root: string; sessionId: string } | null>(null);
+  /** 树内点文件排队旗:目标会话成为打开会话后补开文件标签(欢迎页/无会话态先建席再进) */
+  const pendingFileTabRef = useRef<string | null>(null);
   useEffect(() => {
-    if (openSessionId === '' || !pendingDirectoryTabRef.current) return;
-    pendingDirectoryTabRef.current = false;
-    openTabInSession('directory', {});
-  }, [openSessionId, openTabInSession]);
+    if (openSessionId === '' || pendingFileTabRef.current === null) return;
+    const p = pendingFileTabRef.current;
+    pendingFileTabRef.current = null;
+    openFileTab(p);
+    // eslint 不入依赖(openFileTab 恒稳:openTabInSession/setter)
+  }, [openSessionId]);
   /** 组头目录钮(2026-10-23 用户裁定):当前会话属该项目→直接开目录页签;否则打开项目第一个
    *  会话(恢复链同款 newSession→attach→openSession,收编以返回 id 为准)后补开目录页签。
    *  项目无会话钮不渲染(组头侧 sessionCount 门) */
+  /** 组头目录钮(2026-10-27 用户裁定·目录树入左菜单层):常驻图标点击→ensureSessionForRoot
+   *  (首会话复用/零会话 newSession 建席)→菜单目录视图(setMenuCollapsed 解除,抽屉态保持悬浮);
+   *  失败可见化(fork/rewind 同口径) */
   const openProjectDirectory = useCallback((root: string): void => {
-    if (openRoot === root && openSessionId !== '') {
-      openTabInSession('directory', {});
-      return;
-    }
-    if (connInstance === null) return;
+    if (connInstance === null || root === '') return;
+    setMenuClosed(false);
     void Promise.resolve()
       .then(() => connInstance.sessionsOf(root))
       .then((rows) => {
         const first = rows[0];
-        if (first === undefined) return;
-        pendingDirectoryTabRef.current = true;
+        return first !== undefined
+          ? { sessionId: first.liveSessionId ?? connInstance.newSession(root).then((r) => r.sessionId) }
+          : connInstance.newSession(root).then((r) => ({ sessionId: r.sessionId }));
+      })
+      .then(({ sessionId }) => Promise.resolve(sessionId).then((sid) => setMenuDir({ root, sessionId: sid })))
+      .catch(showOpError);
+    // eslint 不入依赖(setMenuClosed/setMenuDir 恒稳;connInstance 由连接生命周期持有)
+  }, [connInstance]);
+  /** 树内点文件→右侧文件标签:有打开会话直接开(服务端信任根已放行跨项目);无会话(欢迎页)→
+   *  建席+attach+openSession 进会话,标签经 pendingFileTabRef 排队补开 */
+  const openFileFromTree = useCallback((path: string, root: string): void => {
+    if (openSessionId !== '') {
+      openFileTab(path);
+      return;
+    }
+    if (connInstance === null) return;
+    pendingFileTabRef.current = path;
+    void Promise.resolve()
+      .then(() => connInstance.sessionsOf(root))
+      .then((rows) => {
+        const first = rows[0];
+        if (first === undefined) return connInstance.newSession(root).then((r) => ({ sessionId: r.sessionId, journalId: undefined as string | undefined }));
         return connInstance
           .newSession(root)
-          .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId })))
-          .then(({ sessionId }) => openSession(sessionId, root, first.id));
+          .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId, journalId: first.id })));
       })
-      .catch(showOpError); // 目录钮开失败可见化（fork/rewind 同口径;无会话项目走上面 first 守卫静默返回）
-    // eslint 不入依赖(openSession 恒稳:仅 setter/refs;connInstance 由连接生命周期持有)
-  }, [openRoot, openSessionId, openTabInSession, connInstance]);
+      .then(({ sessionId, journalId }) => openSession(sessionId, root, journalId))
+      .catch(showOpError);
+    // eslint 不入依赖(openSession 恒稳;connInstance 由连接生命周期持有)
+  }, [openSessionId, openFileTab, connInstance]);
   /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
   const forkLatestRef = useRef(() => {});
   forkLatestRef.current = (): void => {
@@ -502,7 +528,10 @@ function AppShell(): JSX.Element {
                 return { canBack: navControls.canBack, canForward: navControls.canForward, back, forward };
               })()}
               onOpenSession={(sessionId, root, journalId) => { closeMenuDrawer(); openSession(sessionId, root, journalId); }}
-              onOpenDirectory={(root) => { closeMenuDrawer(); openProjectDirectory(root); }}
+              onOpenDirectory={(root) => { openProjectDirectory(root); }}
+              dirView={menuDir}
+              onCloseDirView={() => setMenuDir(null)}
+              onOpenFileFromTree={openFileFromTree}
               onOpenSettings={() => { closeMenuDrawer(); openSettings(); }}
               onNewChat={() => {
                 closeMenuDrawer();

@@ -193,8 +193,9 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                       <MoreHorizontal size={14} strokeWidth={1.75} />
                     </button>
                     {/* 组头目录钮(2026-10-23 用户裁定):⋯ 与新会话之间——开当前会话/项目第一会话的
-                        目录页签;项目无会话不显示 */}
-                    {root !== undefined && row.sessionCount > 0 && (
+                        目录页签;2026-10-27 用户裁定:图标常驻(目录树已和会话解绑——零会话项目
+                        点击即建席,树视图入左菜单层) */}
+                    {root !== undefined && (
                       <button
                         type="button"
                         aria-label={`open directory ${row.slug}`}

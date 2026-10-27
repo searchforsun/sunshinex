@@ -2566,3 +2566,9 @@ input.sx-setting-input { width: 100%; }
 .sx-dirview-back:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-dirview-root { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--fg); }
 .sx-dirview-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* 所有下拉弹层统一最大高度(2026-10-27 用户裁定):超出纵向滚动,不再无限拉高。
+   既有更紧档优先(模型菜单 pill-pop-tall 320/分支 branch-pop 320/文件面板 260/命令面板 280),
+   故 :not 排除;proj-pop(欢迎页项目清单)首次收口 */
+.sx-menu-pop:not(.pill-pop-tall):not(.branch-pop),
+.pill-pop:not(.pill-pop-tall):not(.branch-pop),
+.proj-pop { max-height: 480px; overflow-y: auto; }

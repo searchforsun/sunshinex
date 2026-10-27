@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import type { SessionRuntime } from './session';
 import { MAX_PREVIEW_BYTES, insideTrustedRoots, realPathOf, readFileBounded } from './daemon-static';
 import { urlOf } from './daemon-wire';
-import { resolveDataDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir } from '../config/data-dir';
 import { imageMimeOf, READ_IMAGE_MAX_BYTES } from '../images';
 
 /** 会话文件面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：/file 只读预览（信任根判界+有界读+
@@ -216,7 +216,30 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   const real = realPathOf(abs) ?? abs;
   const dataRoot = path.resolve(resolveDataDir(session.root));
   const inData = real === dataRoot || real.startsWith(dataRoot + path.sep);
-  if (!inData && !insideTrustedRoots(session.runtime.harness.safety, real)) {
+  // 2026-10-27 用户裁定:注册工作区根一并放行——任意项目的会话可开任意项目的文件(跨项目标签页,
+  // GUI 目录树/正文文件链接跨项目打开)。注册根=projects 注册表逐 workspace.json 的 root 字段
+  // (与 sessions-list 同源扫描);在册即用户显式打开过的目录,信任级与 trusted roots 同档
+  const inWorkspaceRoots = (target: string): boolean => {
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(projectsRoot(), ent.name, 'data', 'workspace.json'), 'utf8')) as { root?: unknown };
+        if (typeof raw?.root !== 'string' || raw.root === '') continue;
+        const wroot = path.resolve(raw.root);
+        if (target === wroot || target.startsWith(wroot + path.sep)) return true;
+      } catch {
+        /* 坏档跳过 */
+      }
+    }
+    return false;
+  };
+  if (!inData && !insideTrustedRoots(session.runtime.harness.safety, real) && !inWorkspaceRoots(real)) {
     // G14.106 判界拒绝诊断(root/dataDir/real 三点对照——memory 放行失配的定位面)
     console.error(`[file 403] root=${session.root} dataRoot=${dataRoot} real=${real}`);
     io.send(res, 403, { error: 'path outside trusted roots' });

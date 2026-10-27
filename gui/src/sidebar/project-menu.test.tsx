@@ -222,15 +222,15 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     expect(open.mock.calls.length).toBe(opensBefore);
   });
 
-  it('组头目录钮(2026-10-23 用户裁定):有会话且 root 在场才渲染,点击上抛 onOpenDirectory(root);无会话/缺 root 不渲染', async () => {
+  it('组头目录钮(2026-10-27 常驻裁定):root 在场即渲染(零会话点击即建席),点击上抛 onOpenDirectory(root);缺 root 不渲染', async () => {
     const onOpenDirectory = vi.fn();
     renderMenu(makeConn(), { onOpenDirectory });
     await screen.findByText('p1');
     // p1:root+1 会话 → 钮在,点击上抛 root
     fireEvent.click(screen.getByRole('button', { name: 'open directory p1' }));
     expect(onOpenDirectory).toHaveBeenCalledWith('D:/w/p1');
-    // p3-junk:0 会话 → 钮不渲染
-    expect(screen.queryByRole('button', { name: 'open directory p3-junk' })).toBeNull();
+    // 2026-10-27 常驻裁定:p3-junk 0 会话 → 钮照渲染(点击即建席开树视图)
+    expect(screen.getByRole('button', { name: 'open directory p3-junk' })).toBeDefined();
     // p2:root 缺场(历史档) → 钮不渲染
     expect(screen.queryByRole('button', { name: 'open directory p2' })).toBeNull();
   });

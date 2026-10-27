@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { SessionRow, WorkspaceRow } from '../connection';
+import type { Connection, SessionRow, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
-import { PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
+import { ArrowLeft, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { DirPicker } from '../pages/DirPicker';
+import { DirectoryTab } from '../tabs/DirectoryTab';
 import { NavButtons } from '../NavButtons';
 import type { NavControls } from '../nav-history';
 import {
@@ -87,6 +88,11 @@ export interface ProjectMenuProps {
   readonly onComposeIn: (root: string) => void;
   /** 组头目录钮(2026-10-23 用户裁定):开当前会话/项目第一会话的目录页签(宿主解析会话+开页签) */
   readonly onOpenDirectory: (root: string) => void;
+  /** 2026-10-27 用户裁定:目录树入左菜单视图层——App 持状态(openProjectDirectory 落值),
+   *  视图=返回+DirectoryTab 复用;文件行点击经 onOpenFileFromTree 开右侧文件标签 */
+  readonly dirView?: { readonly root: string; readonly sessionId: string } | null;
+  readonly onCloseDirView?: () => void;
+  readonly onOpenFileFromTree?: (path: string, root: string) => void;
   /** 2026-10-24 用户裁定:菜单头收起钮(PanelLeft,搜索钮右侧)=宿主收起菜单(抽屉/关闭态由宿主管) */
   readonly onCollapse?: () => void;
   /** 2026-10-25 应用级导航(前进/后退)控制面(全局史):菜单开着时钮对驻菜单头(用户裁定——
@@ -97,7 +103,7 @@ export interface ProjectMenuProps {
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree } = props;
   const recentVersion = props.recentVersion ?? 0;
   const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
@@ -544,7 +550,32 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onComposeIn={onComposeIn}
         />
       )}
-            {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
+            {/* 2026-10-27 目录视图层(用户裁定:目录树从右侧栏挪入左菜单,参考 ZCode):返回+树复用
+          DirectoryTab(会话寻址 tree API,sessionId 由 App ensureSession 落值)。整替滚动区内容 */}
+      {dirView !== undefined && dirView !== null && onCloseDirView !== undefined ? (
+        <div className="sx-dirview">
+          <div className="sx-dirview-head">
+            <button type="button" className="sx-dirview-back" aria-label={t('Back to menu', '返回菜单')} onClick={onCloseDirView}>
+              <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{t('Back', '返回')}</span>
+            </button>
+            <span className="sx-dirview-root">{dirView.root.split(/[\/]+/).filter(Boolean).pop()}</span>
+          </div>
+          <div className="sx-dirview-body">
+            <DirectoryTab
+              /* ProjectMenuConn=收窄接口,App 实传整只 Connection(运行时满足 tree/searchTree 面) */
+              conn={conn as Connection}
+              sessionId={dirView.sessionId}
+              root={dirView.root}
+              openTab={(type, params) => {
+                if (type === 'file' && params !== undefined && typeof params.path === 'string') onOpenFileFromTree?.(params.path, dirView.root);
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+      <>
+      {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
       <div className="sx-side-scroll" ref={sideScrollRef}>
         {/* 置顶组(2026-10-21 用户裁定):「项目」上方,不支持折叠;无钉不渲染(PinnedSection 判空) */}
         <PinnedSection
@@ -639,6 +670,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           </div>
         )}
       </div>
+      </>
+      )}
       <footer className="sx-menu-foot">
         {onOpenSettings !== undefined && (
           <button
