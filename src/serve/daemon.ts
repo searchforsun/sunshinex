@@ -366,7 +366,7 @@ export class GuiDaemon {
     // 外部打开应用族(2026-10-27 顶栏「打开」分体钮):预设应用安装态探测 + 以指定应用打开路径
     { method: 'GET', path: '/app/editors', auth: true, run: async (_req, res) => editorsHandlers.handleEditorsGet(this.sessionIo, res) },
     { method: 'POST', path: '/app/open', auth: true, run: async (req, res) => editorsHandlers.handleEditorsOpen(this.sessionIo, req, res) },
-    { method: 'GET', path: '/app/editors/icon', auth: true, run: async (_req, res, p) => editorsHandlers.handleEditorsIcon(this.sessionIo, res, p.id) },
+    { method: 'GET', path: '/app/editors/icon/:id', auth: true, run: async (_req, res, p) => editorsHandlers.handleEditorsIcon(this.sessionIo, res, decodeURIComponent(p.id)) },
     // G10-C7 标题总结面：模型一次性概括首条用户消息(≤20 字,无状态不落盘)——落盘走 rename(G14.16)
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
     // G14.16 标题统一流：rename 落旁车 <id>.meta.json(侧栏/TUI 列表同源)；GET 回读(重开回显)

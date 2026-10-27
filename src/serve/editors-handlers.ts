@@ -209,8 +209,9 @@ function editorIconPath(id: string): string {
   return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.v2.png`);
 }
 
-/** 原生图标抽取(Icon(exe,64,64)→PNG 落盘):64px 帧保 alpha——ExtractAssociatedIcon 恒 32px 且
- *  透明度易失(「只显示左上角」的根因);异步不阻塞;失败回 null(GUI 回落集内字形) */
+/** 原生图标抽取(ExtractAssociatedIcon→透明画布重绘 64px→PNG):直接 ToBitmap 会丢透明度
+ *  (透明区变黑、字形缩角=「只显示左上角」观感的根因);异步不阻塞;失败回 null(GUI 回落集内字形)。
+ *  注:Icon(exe,64,64) 三参重载经 New-Object 绑定失败(实测「picture 必须是可用作 Icon」),不用 */
 export async function extractEditorIcon(id: string, exe: string): Promise<string | null> {
   const out = editorIconPath(id);
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -219,8 +220,13 @@ export async function extractEditorIcon(id: string, exe: string): Promise<string
     const outQ = out.replaceAll("'", "''");
     const ps =
       'Add-Type -AssemblyName System.Drawing; ' +
-      `$i=New-Object System.Drawing.Icon('${exeQ}', 64, 64); ` +
-      `if ($i -ne $null) { $b=$i.ToBitmap(); $b.Save('${outQ}', [System.Drawing.Imaging.ImageFormat]::Png) }`;
+      `$i=[System.Drawing.Icon]::ExtractAssociatedIcon('${exeQ}'); ` +
+      '$b=New-Object System.Drawing.Bitmap 64, 64; ' +
+      '$g=[System.Drawing.Graphics]::FromImage($b); ' +
+      '$g.Clear([System.Drawing.Color]::Transparent); ' +
+      "$g.InterpolationMode='HighQualityBicubic'; " +
+      '$g.DrawIcon($i, (New-Object System.Drawing.Rectangle 8, 8, 48, 48)); ' +
+      `$b.Save('${outQ}', [System.Drawing.Imaging.ImageFormat]::Png)`;
     try {
       await execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 });
     } catch {

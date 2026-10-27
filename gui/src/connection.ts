@@ -440,7 +440,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson('/app/editors');
     },
     editorIcon(id: string) {
-      return getJson(`/app/editors/icon?id=${encodeURIComponent(id)}`);
+      return getJson(`/app/editors/icon/${encodeURIComponent(id)}`);
     },
     async openInEditor(path: string, id: string) {
       await post('/app/open', { path, id });
