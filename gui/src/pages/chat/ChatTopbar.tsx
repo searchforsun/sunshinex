@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Code2, Folder, FolderOpen, MoreHorizontal, PanelLeft } from 'lucide-react';
+import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
+import type { ReactNode } from 'react';
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
@@ -143,6 +145,19 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     setDefaultEditor(id);
     setEditorMenu(null);
     openIn(id);
+  };
+  /** 应用品牌图标(vscode-icons 彩色集):explorer=文件夹/vscode=蓝标/cursor=橙立方;
+    未知 id 回落 Code2 线性图标 */
+  const editorIcon = (id: string): ReactNode => {
+    const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
+    const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
+    if (body === undefined) return <Code2 size={13} strokeWidth={1.75} />;
+    return (
+      <span
+        style={{ width: 14, height: 14, display: 'inline-flex', flex: 'none' }}
+        dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14">${body}</svg>` }}
+      />
+    );
   };
   // 2026-10-24 用户裁定「能显示全就显示全」:标题隐现 mask 仅在真溢出时挂(RO 判 scrollWidth)
   const titleRef = useRef<HTMLSpanElement | null>(null);
@@ -373,14 +388,12 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               id: e.id,
               label: e.name,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
-              icon:
-                e.id === defaultEditor ? (
-                  <Check size={13} strokeWidth={2.25} />
-                ) : e.id === 'explorer' ? (
-                  <Folder size={13} strokeWidth={1.75} />
-                ) : (
-                  <Code2 size={13} strokeWidth={1.75} />
-                ),
+              icon: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  {editorIcon(e.id)}
+                  {e.id === defaultEditor && <Check size={12} strokeWidth={2.25} />}
+                </span>
+              ),
               onSelect: () => pickEditor(e.id),
             }))}
           />

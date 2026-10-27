@@ -104,7 +104,9 @@ export async function handleEditorsOpen(io: SessionHandlerIo, req: http.Incoming
     return;
   }
   try {
-    const child = spawn(editor.exe, [body.path], { detached: true, stdio: 'ignore', windowsHide: true });
+    // windowsHide 不传:CREATE_NO_WINDOW 会吞被拉起 GUI 应用的首个窗口(explorer「点了没反应」实锤——
+  //  Node 已知坑);explorer/Code/Cursor 均为 GUI 子系统,本就不产控制台窗,无需隐藏
+    const child = spawn(editor.exe, [body.path], { detached: true, stdio: 'ignore' });
     child.unref();
     io.send(res, 200, { ok: true });
   } catch {
