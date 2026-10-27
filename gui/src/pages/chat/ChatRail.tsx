@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
 import { t } from '../../i18n';
+import { rAFConverge } from '../../ui-util';
 import { zoomScale } from '../../ui-zoom';
+import { MD_IMAGE_STRIP_RE } from './md-image-syntax';
 
 /**
  * 对话刻度导航条(2026-10-27 十一轮):
@@ -40,7 +42,7 @@ function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number
 function previewText(md: string): string {
   const flat = md
     .replace(/^>\s?/gm, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, t('[image]', '[图]'))
+    .replace(MD_IMAGE_STRIP_RE, t('[image]', '[图]'))
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[#*`_~]/g, '')
     .split('\n')
@@ -180,25 +182,17 @@ export function ChatRail(props: {
     if (node === null) return;
     // 落点要准(用户裁定,不要平滑滑动):.entry 挂 content-visibility:auto,离屏条目
     // 只有估算高(contain-intrinsic-size),scrollIntoView 一次到位按估算高算滚动量必落偏——
-    // 即时跳到位后按目标真实盒位置迭代校正;上方条目陆续水合会把目标继续推偏,预算 150 帧
-    // 且连续 2 帧偏差≤2px 才收(24 帧封顶实测残差 87px:级联未停循环已退役)
+    // 即时跳到位后按目标真实盒位置迭代校正;上方条目陆续水合会把目标继续推偏,迭代骨架
+    // =ui-util rAFConverge 单点(eps=2,150 帧封顶:24 帧封顶实测残差 87px,级联未停循环已退役)
     el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top;
-    let tries = 0;
-    let stable = 0;
-    const correct = (): void => {
-      if (!el.isConnected || tries > 150) return;
-      tries++;
-      const delta = node.getBoundingClientRect().top - el.getBoundingClientRect().top;
-      if (Math.abs(delta) <= 2) {
-        stable++;
-        if (stable >= 2) return;
-      } else {
-        stable = 0;
+    rAFConverge(
+      el,
+      () => node.getBoundingClientRect().top - el.getBoundingClientRect().top,
+      (delta) => {
         el.scrollTop += delta;
-      }
-      requestAnimationFrame(correct);
-    };
-    requestAnimationFrame(correct);
+      },
+      2,
+    );
   };
 
   return (

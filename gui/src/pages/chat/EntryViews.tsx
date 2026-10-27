@@ -10,6 +10,7 @@ import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDir
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { MdImage } from './md-render';
+import { MD_IMAGE_SRC_RE } from './md-image-syntax';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
  *  回退菜单/折叠气泡)/系统行(含旁白着色)与单条渲染单元。memo 语义与 DOM 逐字节不变;md 渲染
@@ -315,8 +316,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, fetchAnchors, 
   };
   if (editing) {
     // 2026-10-26 用户裁定:编辑卡图片可预览——消息文字里嵌入的 md 图片提取成只读缩略图行
-    // (复用正文 MdImage:工作区路径自动解析 dataURL,点击开灯箱;与附件条分列,发送语义不变)
-    const embeddedImages = [...draft.matchAll(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g)].map((m) => m[1]!);
+    // (复用正文 MdImage:工作区路径自动解析 dataURL,点击开灯箱;与附件条分列,发送语义不变;
+    // 正则单点 md-image-syntax,D54③)
+    const embeddedImages = [...draft.matchAll(MD_IMAGE_SRC_RE)].map((m) => m[1]!);
     return (
       <div className="entry entry-user" data-entry-key={entry.key}>
         <div className="user-edit-card">
