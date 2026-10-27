@@ -184,6 +184,17 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
 
+    // 「浏览文件夹」原生目录选择（2026-10-27 创建新项目慢修复）：preload 桥 window.sunshinex.pickFolder
+    // →系统对话框选完即回绝对路径——GUI 两处创建入口（欢迎页/侧栏 pickAndAdd）探测到此桥即不再走
+    // 浏览器态标记定位兜底（全盘 BFS 同步 readdir 阻塞 daemon 主线程，实测 3.7s+/深目录更劣）。
+    // 破窗守卫：主窗缺席时退无窗形态（对话框仍可用，模态性放弃）。
+    ipcMain.handle('shell:pick-folder', async (): Promise<string | null> => {
+      const opts = { properties: ['openDirectory'] as Array<'openDirectory'> };
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      const r = win !== undefined ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+      return r.canceled ? null : (r.filePaths[0] ?? null);
+    });
+
     // 驻留序（H-D2）：非退出流程中关窗=preventDefault+hide（会话/PTY 不中断），退出流程放行真关闭
     win.on('close', (event) => {
       if (shouldHideOnClose(quitting)) {

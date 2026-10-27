@@ -15,3 +15,11 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     return () => void ipcRenderer.removeListener('win:maximized', handler);
   },
 });
+
+/** 桌面壳桥二（2026-10-27 创建新项目慢修复）：window.sunshinex.pickFolder——GUI 契约（env.d.ts）
+ *  早已声明、两处创建入口（欢迎页/侧栏）本就优先消费，壳侧此前缺席 ⇒ 装机面恒走浏览器态兜底
+ *  （showDirectoryPicker 句柄无路径 → 标记文件 + 全盘 BFS 定位，同步 readdir 阻塞 daemon 主线程，
+ *  实测深目录 3.7s+，整段创建「卡住」即此）。原生对话框直接回绝对路径，零扫描。 */
+contextBridge.exposeInMainWorld('sunshinex', {
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('shell:pick-folder'),
+});
