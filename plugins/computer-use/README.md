@@ -5,7 +5,7 @@
 ## 缺省与启用
 
 - 缺省**未启用**（`defaultEnabled: false`）且 `platforms: ["win32"]`（非 Windows 平台设置页自动置灰）：settings 语义键 `plugins.computer-use.enabled: true` 后生效。
-- 插件目录是 pnpm workspace 包：目标机首次启用前需补装 server 依赖（MCP sdk）——`pnpm --dir plugins/computer-use install`（开发机随 workspace `pnpm install` 已就位）。连接失败走装配警告单降级，不 crash。
+- server 已**单文件束化**（2026-10-27：sdk 内联进 `server/index.js`，与 tsc 形态同产物路径）——tgz/exe 装机形态目标机**零补装**（系统 node + 系统 powershell 即用；browser-use 才有补装步骤，见 MANUAL 6.4）。构建面属开发机：`node build.mjs`（esbuild 束，发版链现构建）或 `pnpm build`（tsc 形态，测试链），sdk 依赖仅开发面（随 workspace `pnpm install` 就位）。连接失败走装配警告单降级，不 crash。
 
 ## 工具面与安全三类（safety）
 
