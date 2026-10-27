@@ -204,9 +204,9 @@ export async function handleEditorsGet(io: SessionHandlerIo, res: http.ServerRes
   io.send(res, 200, { editors: editorsCache });
 }
 
-/** 原生图标缓存路径(机器级一次抽取):<userConfigDir>/gui/editor-icons/<id>.v2.png(64px 带透明;v1 32px 黑角淘汰) */
+/** 原生图标缓存路径(机器级一次抽取):<userConfigDir>/gui/editor-icons/<id>.v3.png(64px 满画布;v2 48px 居中/v1 32px 黑角淘汰) */
 function editorIconPath(id: string): string {
-  return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.v2.png`);
+  return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.v3.png`);
 }
 
 /** 原生图标抽取(ExtractAssociatedIcon→透明画布重绘 64px→PNG):直接 ToBitmap 会丢透明度
@@ -225,7 +225,7 @@ export async function extractEditorIcon(id: string, exe: string): Promise<string
       '$g=[System.Drawing.Graphics]::FromImage($b); ' +
       '$g.Clear([System.Drawing.Color]::Transparent); ' +
       "$g.InterpolationMode='HighQualityBicubic'; " +
-      '$g.DrawIcon($i, (New-Object System.Drawing.Rectangle 8, 8, 48, 48)); ' +
+      '$g.DrawIcon($i, (New-Object System.Drawing.Rectangle 0, 0, 64, 64)); ' +
       `$b.Save('${outQ}', [System.Drawing.Imaging.ImageFormat]::Png)`;
     try {
       await execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 });
