@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, MousePointerClick, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -22,6 +22,11 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
 };
 
+/** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick+warn 色,
+ *  区别于通用 MCP 拼图件,与顶栏「正在控制」徽标同族视觉)——图标标类(含观察件),徽标标进行中的控制;
+ *  server 名与 plugins/computer-use/plugin.json 同源 */
+const COMPUTER_USE_PREFIX = 'mcp__computer-use__';
+
 /** MCP 工具名拆解单点(2026-10-26 用户裁定:MCP 工具行显业界通用图标+短工具名,参数/返回值同其他工具):
  *  登记名 `mcp__<server>__<tool>` → { server, tool };非 MCP 名返回 null。server 段取首个 `__` 前
  *  (server 键不含 `__`——配置名即文件/清单键),tool 段为余量(可含 `__`) */
@@ -34,6 +39,10 @@ export function mcpToolParts(name: string): { server: string; tool: string } | n
 }
 
 function ToolIcon({ verb }: { verb: string }): JSX.Element {
+  // computer-use 全族=鼠标点击件(warn 色——与顶栏「正在控制」徽标同族视觉)
+  if (verb.startsWith(COMPUTER_USE_PREFIX)) {
+    return <MousePointerClick size={12} strokeWidth={1.75} className="tool-icon-controlling" aria-hidden="true" />;
+  }
   // MCP 工具=Puzzle 拼图件(业界 MCP 集成的通用视觉母题,区别于内置工具的扳手兜底)
   if (mcpToolParts(verb) !== null) return <Puzzle size={12} strokeWidth={1.75} aria-hidden="true" />;
   const Icon = TOOL_ICONS[verb] ?? Wrench;

@@ -536,6 +536,20 @@ describe('电脑控制徽标(2026-10-27)', () => {
     fire({ type: 'tool-call', text: 'mcp__browser-use__browser_click', ts: Date.now(), payload: { callId: 'bu1', input: {} } });
     expect(document.querySelector('.sx-controlling-badge')).toBeNull();
   });
+
+  it('工具行专属图标前缀:computer-use 全族=鼠标点击件(warn 色),他 MCP 工具=拼图件', async () => {
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    fire({ type: 'tool-call', text: 'mcp__computer-use__screenshot', ts: Date.now(), payload: { callId: 'cu3', input: {} } });
+    fire({ type: 'tool-result', text: 'shot', ts: Date.now(), payload: { callId: 'cu3' } });
+    fire({ type: 'tool-call', text: 'mcp__browser-use__browser_click', ts: Date.now(), payload: { callId: 'bu2', input: {} } });
+    const rows = Array.from(document.querySelectorAll('.tool-summary'));
+    expect(rows.length).toBe(2);
+    expect(rows[0]!.querySelector('.tool-icon-controlling')).not.toBeNull();
+    expect(rows[1]!.querySelector('.tool-icon-controlling')).toBeNull();
+    expect(rows[1]!.querySelector('svg.lucide-puzzle')).not.toBeNull();
+  });
 });
 
 
