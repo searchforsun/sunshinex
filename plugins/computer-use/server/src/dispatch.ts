@@ -17,8 +17,9 @@ import { shrinkToEdge, toPhysical, type ScreenMeta } from './scale';
  *    在 dispatchTool 兜底捕获转 CallToolResult(isError:true)，不直穿成 JSON-RPC protocol error。
  *  worker 依赖注入（WorkerClient 接缝）——测试以 fake worker 驱动本函数全分支，不触真进程。 */
 
-/** JPEG 压缩质量（0.85 → 8 进制无涉，PS 侧 EncoderParameter 收 [long]）——镜像主仓 IMAGE_JPEG_QUALITY。 */
-const JPEG_QUALITY = 85;
+/** JPEG 压缩质量（0.85 → 8 进制无涉，PS 侧 EncoderParameter 收 [long]）——镜像主仓 IMAGE_JPEG_QUALITY；
+ *  导出供 scale.test 跨包镜像对拍钉消费（D55：改此值不与主仓同改即测红）。 */
+export const JPEG_QUALITY = 85;
 
 /** uia_snapshot 行文本上限（spec §5.2：交互元素优先的行数组截到 300）。 */
 const UIA_MAX_LINES = 300;

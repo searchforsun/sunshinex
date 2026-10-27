@@ -72,6 +72,15 @@ const PRESETS: Record<FontPreset, Record<string, string>> = {
 /** 全变量并集(default 清空用) */
 const ALL_VARS = [...new Set(Object.values(PRESETS).flatMap((v) => Object.keys(v)))];
 
+/** 设置卡展示名单单源(2026-10-27 技术债轮 D55②:值×双语标签原散 SettingsForm,加预设须两处同步
+ *  无锁——收编本件后加预设只改此处;标签 {en,zh} 数据形态,渲染期 t() 求值消费) */
+export const FONT_PRESET_CHOICES: ReadonlyArray<{ v: FontPreset; l: { en: string; zh: string } }> = [
+  { v: 'default', l: { en: 'Compact (default)', zh: '紧凑(默认)' } },
+  { v: 'serif', l: { en: 'Serif reading', zh: '衬线阅读' } },
+  { v: 'mono', l: { en: 'Terminal mono', zh: '终端等宽' } },
+  { v: 'roomy', l: { en: 'Roomy', zh: '宽松' } },
+];
+
 export function readFontPreset(): FontPreset {
   try {
     const v = localStorage.getItem(KEY);

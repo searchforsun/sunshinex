@@ -9,7 +9,7 @@ import { applyTheme, readThemePref, watchSystemTheme } from '../theme';
 import type { ThemePref } from '../theme';
 import { applyZoom, readZoomPref } from '../ui-zoom';
 import type { UiZoom } from '../ui-zoom';
-import { applyFontPreset, presetVars, readFontPreset } from '../font-preset';
+import { applyFontPreset, FONT_PRESET_CHOICES, presetVars, readFontPreset } from '../font-preset';
 import type { FontPreset } from '../font-preset';
 
 /**
@@ -206,15 +206,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
 
 /** 字体预设行(2026-10-26 用户裁定):四预设卡片,每卡内嵌迷你实时预览(正文行/工具行/代码行
  *  按该预设的字号行高内联渲染),点击即全局生效并持久化(theme/ui-zoom 同通路)。GUI 本地偏好,
- *  非 settings 键 */
-/** 四款风格发散(2026-10-26 全局管线版):紧凑系统黑体/衬线阅读(宋体·Georgia)/终端等宽(Cascadia
- *  全局)/宽松(黑体+现代等宽+大字)。旧 cozy/cozyMono 由 readFontPreset 迁移映射 */
-const FONT_PRESETS: ReadonlyArray<{ v: FontPreset; l: { en: string; zh: string } }> = [
-  { v: 'default', l: { en: 'Compact (default)', zh: '紧凑(默认)' } },
-  { v: 'serif', l: { en: 'Serif reading', zh: '衬线阅读' } },
-  { v: 'mono', l: { en: 'Terminal mono', zh: '终端等宽' } },
-  { v: 'roomy', l: { en: 'Roomy', zh: '宽松' } },
-];
+ *  非 settings 键。名单单源在 font-preset.ts FONT_PRESET_CHOICES(D55② 收敛,加预设只改彼处) */
 
 function FontRow(): JSX.Element {
   const [pref, setPref] = useState<FontPreset>(readFontPreset);
@@ -227,7 +219,7 @@ function FontRow(): JSX.Element {
         <p className="sx-setting-desc">{t('Body / thinking / tool / code typography — click a preset to apply', '正文/思考/工具/代码的字体排版——点击卡片即生效')}</p>
       </div>
       <div className="sx-setting-ctl sx-font-ctl">
-        {FONT_PRESETS.map((p) => {
+        {FONT_PRESET_CHOICES.map((p) => {
           const v = presetVars(p.v);
           return (
             <button
