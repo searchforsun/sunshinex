@@ -1191,7 +1191,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 智能定向(mouseover 委托打点,main.tsx):顶部空间不足翻下方;贴左右缘/容器缘对齐防出窗 */[data-tip].tip-below:not([data-tip=""]):hover::after { bottom: auto; top: calc(100% + 5px); }[data-tip].tip-left:not([data-tip=""]):hover::after { left: 0; transform: none; }[data-tip].tip-right:not([data-tip=""]):hover::after { left: auto; right: 0; transform: none; }.sx-tip-right::after { left: auto; right: 0; transform: none; }
 
-/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 12px; color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }.run-spinner { width: 8px; height: 8px; flex: none; border-radius: 50%; background: conic-gradient(from 0deg, var(--fg) 0 25%, var(--fg-tertiary) 0); -webkit-mask-image: radial-gradient(circle 4px at 50% 50%, transparent 1.2px, #000 1.7px 3px, transparent 3.4px); mask-image: radial-gradient(circle 4px at 50% 50%, transparent 1.2px, #000 1.7px 3px, transparent 3.4px); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
+/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 12px; color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变);顶栏 9px 覆写随退 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: conic-gradient(from 0deg, var(--fg) 0 25%, var(--fg-tertiary) 0); -webkit-mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px); mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
 
 /* 条目左对齐统一(§2):正文/工具/思考同一 x 起点 */.entry { padding: 4px 8px; }.entry-tool { padding: 2px 8px; }
 /* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8);visibility 折叠尾切(T4 评审可达性补丁:
@@ -1872,7 +1872,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    藏在 hover 后没有信息增益;hover 仅保留变色反馈 */
 .chat-dyn-btn { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 6px; border: none; border-radius: 9999px; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .chat-dyn-btn:hover { color: var(--fg); }
-.chat-dyn-btn .run-spinner { width: 9px; height: 9px; border-width: 1.5px; }
+
 
 
 /* ===== G14.178 后台任务卡片流:状态点色 + 展开详情行 ===== */
