@@ -235,9 +235,12 @@ export const ToolEntryView = memo(function ToolEntryView({
   const path = typeof input.path === 'string' && input.path !== '' ? input.path : undefined;
   const command = toolName === 'exec' && typeof input.command === 'string' && input.command !== '' ? input.command : undefined;
   const target = toolTargetOf(toolName, input);
-  /** 文件写入/编辑分型(G14):折叠=文件名+相对路径+diff stat,展开=diff 面板;read 分型:整行=打开文件标签 */
+  /** 文件写入/编辑分型(G14):折叠=文件名+相对路径+diff stat,展开=diff 面板。
+   *  read 分型 2026-10-26 用户裁定二修:「整行=打开文件标签」退役——read 行与其他工具同制可折叠
+   *  展开(展开体=图片大图预览:contain 比例保留/左缘对齐其他工具思考展开/不越行宽/点击开灯箱缩放);
+   *  打开文件标签仍走展开体路径 chip 既有面 */
   const isWrite = (toolName === 'write' || toolName === 'edit') && path !== undefined;
-  const isRead = toolName === 'read' && path !== undefined && onOpenFile !== undefined;
+  const hasToolImages = entry.images !== undefined && entry.images.length > 0;
   const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
   const stat = isWrite ? writeStatOf(resultText) : {};
   /** G14.171 spawn 子智能体名(label ?? agent_id)——运行态文案与折叠行链接共用 */
@@ -634,18 +637,15 @@ export const ToolEntryView = memo(function ToolEntryView({
       <button
         type="button"
         className="tool-summary"
-        aria-expanded={isRead ? undefined : expanded}
+        aria-expanded={expanded}
         onClick={() => {
-          if (isRead) onOpenFile?.(path!);
-          else {
-            setExpanded((v) => !v);
-            window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
-          }
+          setExpanded((v) => !v);
+          window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
         }}
       >
         <ToolIcon verb={toolName} />
         {collapsed}
-        {!isRead && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
+        <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />
       </button>
       {/* 工具结果图片缩略行(2026-10-26 插件体系图片通道):折叠壳外直出——截屏类工具行不展开即可看;
           点击开查看浮层(交互/样式沿用户气泡图片条同款令牌)。images 只随 result 帧落条,执行中不现 */}
@@ -663,7 +663,22 @@ export const ToolEntryView = memo(function ToolEntryView({
         </div>
       )}
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
-        <div className="tool-body-inner">{body}</div>
+        <div className="tool-body-inner">
+          {hasToolImages && (
+            /* 展开大图(2026-10-26 用户裁定):contain 保比例/左对齐/max 280 不越行宽;点击灯箱滚轮缩放 */
+            <div className="tool-image-view">
+              {entry.images!.map((src, i) => (
+                <img
+                  key={`v${i}:${src.slice(-24)}`}
+                  src={src}
+                  alt={`${t('Tool image', '工具图片')} ${i + 1}`}
+                  onClick={() => setLightbox(src)}
+                />
+              ))}
+            </div>
+          )}
+          {body}
+        </div>
       </div>
       {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
     </div>
