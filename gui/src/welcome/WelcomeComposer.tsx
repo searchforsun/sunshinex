@@ -8,6 +8,7 @@ import { CommandPalette, filterCommands } from '../CommandPalette';
 import { ComposerCard } from '../composer/ComposerCard';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
+import { ImageLightbox } from '../ImageLightbox';
 import { EffortChip, EffortSlider } from '../effort-slider';
 import { FolderAddIcon } from '../sidebar/ProjectMenu';
 import { PlusAddIcon } from '../sidebar/project-menu-util';
@@ -50,6 +51,8 @@ export function WelcomeComposer({
   const [plusOpen, setPlusOpen] = useState(false);
   /** 待发图片附件（dataURL,≤8 张;2026-10-26 图片功能——欢迎页粘贴/+面板附件,随首条消息发送） */
   const [images, setImages] = useState<string[]>([]);
+  /** 输入卡缩略图预览(2026-10-26 用户裁定:与主对话同口径,点击开灯箱) */
+  const [lightboxSrc, setLightboxSrc] = useState<string | undefined>(undefined);
   const attachImages = (files: File[]): void => {
     void loadImages(files).then((imgs) => {
       if (imgs.length === 0) return;
@@ -465,6 +468,7 @@ export function WelcomeComposer({
           inputRef={goalRef}
           images={images}
           onRemoveImage={(i) => setImages((cur) => cur.filter((_, idx) => idx !== i))}
+          onImageOpen={setLightboxSrc}
           onPasteFiles={attachImages}
           highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n))}
           value={goal}
@@ -850,6 +854,7 @@ export function WelcomeComposer({
             </>
           }
         />
+        {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
       </div>
     </div>
   );
