@@ -124,13 +124,6 @@ function fire(e: SessionEvent): void {
   act(() => sinkRef.current!.on(e, 1));
 }
 
-/** G14.215 ghost 落定:归并渐收行的卸载定时器在 act 内耗散,后续断言不见 ghost 残留(动画窗 420ms+余量) */
-async function ghostsSettled(): Promise<void> {
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 520));
-  });
-}
-
 describe('Chat 会话流 Codex 形(B3b)', () => {
   beforeEach(() => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -889,7 +882,6 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(open).not.toBeNull(); // 点击展开
     expect(open!.querySelectorAll('.entry-tool')).toHaveLength(2); // 成员平级铺开
     expect(open!.querySelector('.entry-tool .tool-summary')).not.toBeNull(); // 成员=原生工具行(折叠壳保持)
-    await ghostsSettled();
   });
 
   it('G14.215 2026-10-25 裁定:运行中单条=原生行,第二个同类出牌才成组(计数≥2,头流光)', async () => {
@@ -906,8 +898,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(head.textContent).toMatch(/Waited on tasks ×2|等待了 2 次任务/);
     expect(head.querySelector('.exec-running-text')).not.toBeNull();
     expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(2);
-    await ghostsSettled(); // solo→member 归并 ghost 到点卸载
-    expect(document.querySelector('.tool-ghost')).toBeNull();
+    expect(document.querySelector('.tool-ghost')).toBeNull(); // 成组原地显示,无渐收过程(2026-10-27 裁定)
   });
 
   it('G14.215 运行中直进组(计数实时增+头流光;2026-10-22 裁定取消「执行行→归并」动作);ghost 只承载完成单行归并', async () => {
@@ -918,8 +909,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e2', input: { command: 'pwd' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e2' } });
     expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×2|执行了 2 次命令/);
-    await ghostsSettled(); // 成组归并 ghost(e1 standalone→member)到点卸载
-    expect(document.querySelector('.tool-ghost')).toBeNull();
+    expect(document.querySelector('.tool-ghost')).toBeNull(); // 成组原地显示,无渐收过程(2026-10-27 裁定)
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e3', input: { command: 'echo hi' } } });
     // 运行中直进组:计数 ×3 实时增+头流光,无独立行无 ghost(成员行流光标签+命令同行)
     expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×3|执行了 3 次命令/);
@@ -1077,7 +1067,6 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e1' } });
     fireRead('r2', 'b.ts');
     fireRead('r3', 'c.ts');
-    await ghostsSettled();
     const kids = [...document.querySelectorAll('.seg-inner > *')];
     expect(kids[0]!.classList.contains('entry-tool')).toBe(true); // read 单行(计数 1)
     expect(kids[1]!.classList.contains('entry-tool')).toBe(true); // exec 独立行(不被吞)

@@ -1,8 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight, FolderSearch, Hourglass, SquareTerminal, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
-
 /** G14.215 工具聚合行（用户裁决；2026-10-25 再裁定「聚合计数不小于 2」——单条（含运行中）恒原生
  *  行,第二个同类工具行出牌才成组,组头流光/计数随出牌实时递增;「编辑/写入行不聚合」不变）：同类型
  *  相邻工具行折为一条聚合头（「查询了 N 次文件」形,N≥2）;点击展开=成员工具行平级铺开（成员即原生
@@ -74,9 +73,6 @@ export function buildSegNodes(seg: ChatEntry[]): SegNode[] {
   return nodes;
 }
 
-/** ghost 渐收时长（CSS tool-merge-up 0.36s + 卸载余量） */
-const GHOST_MS = 420;
-
 /** 聚合头锚定窗口（ms，覆盖 grid 0fr→1fr 高度过渡 --dur-relaxed=0.3s + 余量）：窗口内贴底跟随
  *  挂起（滚动容器 dataset.groupAnchor 旗，use-chat-scroll 贴底 effect 读），聚合头逐帧回钉视口位
  *  ——折叠/展开只动头下内容，头部视口位恒定（用户裁定：上侧不动、下侧工具行向上吸附） */
@@ -105,8 +101,8 @@ interface ToolSegBlockProps {
 }
 
 /** 会话折叠段块（Chat flushSeg 抽件，G14.73 seg-collapse 壳不变）：段内条目经 buildSegNodes 聚合——
- *  聚合头（图标+计数文案+chevron）点击展开/收起；归并动画=上一帧单行/执行中、本帧成组员的条目
- *  在组尾渲染渐收 ghost（挂载即播收合动画，到点卸载；首帧/种子回放批量落位不动画）。
+ *  聚合头（图标+计数文案+chevron）点击展开/收起。2026-10-27 用户裁定:成组原地显示,不出现进入态
+ *  过程(ghost 渐收行退役,防上下正文抖动)——组形成即最终形,无帧间过渡动画。
  *  P1 行级 memo(Task 3):segPropsEqual 逐位判等——token 帧重渲染时段块整体 bail-out */
 export const ToolSegBlock = memo(function ToolSegBlock({
   seg,
@@ -118,11 +114,6 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   const nodes = buildSegNodes(seg);
   /** 展开态（聚合头点击）：gkey 集合——键含首成员 key，计数增长键不变、展开态跨渲染保持 */
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  /** 归并 ghost（渐收行）：帧间 diff 得出，到点移除；上限 3 防大批量落位堆积 */
-  const [ghosts, setGhosts] = useState<ChatEntry[]>([]);
-  const ghostTimers = useRef<number[]>([]);
-  /** 上一帧条目态快照（key → 执行中/单行/组员）：null=首帧不动画 */
-  const prevStates = useRef<Map<string, 'executing' | 'standalone' | 'member'> | null>(null);
   /** 聚合头锚定 rAF 句柄（卸载清理；窗口自终止） */
   const anchorRafs = useRef<number[]>([]);
 
@@ -154,37 +145,9 @@ export const ToolSegBlock = memo(function ToolSegBlock({
     anchorRafs.current.push(requestAnimationFrame(step));
   };
 
-  useLayoutEffect(() => {
-    const cur = new Map<string, 'executing' | 'standalone' | 'member'>();
-    for (const n of nodes) {
-      if (n.type === 'group') for (const e of n.entries) cur.set(e.key, 'member');
-      else if (n.type === 'tool') cur.set(n.entry.key, executingOf(n.entry) ? 'executing' : 'standalone');
-    }
-    const prev = prevStates.current;
-    prevStates.current = cur;
-    if (prev === null) return;
-    const merged: ChatEntry[] = [];
-    for (const n of nodes) {
-      if (n.type !== 'group') continue;
-      for (const e of n.entries) {
-        const was = prev.get(e.key);
-        if ((was === 'executing' || was === 'standalone') && cur.get(e.key) === 'member') merged.push(e);
-      }
-    }
-    if (merged.length === 0) return;
-    setGhosts((g) => [...g.filter((x) => !merged.some((m) => m.key === x.key)), ...merged].slice(-3));
-    for (const m of merged) {
-      ghostTimers.current.push(window.setTimeout(() => setGhosts((g) => g.filter((x) => x.key !== m.key)), GHOST_MS));
-    }
-    // 无依赖：每帧 diff（nodes 随渲染重建，无稳定引用可依赖）
-  });
   useEffect(() => () => {
-    for (const id of ghostTimers.current) clearTimeout(id);
     for (const id of anchorRafs.current) cancelAnimationFrame(id);
   }, []);
-
-  /** 各组的 ghost（组尾渐收行）：按成员归属分流 */
-  const ghostsOf = (n: SegNode & { type: 'group' }): ChatEntry[] => ghosts.filter((g) => n.entries.some((e) => e.key === g.key));
 
   return (
     <div className={`seg-collapse${closed ? '' : ' open'}`}>
@@ -219,11 +182,6 @@ export const ToolSegBlock = memo(function ToolSegBlock({
               <div className={`tool-group-members${isOpen ? ' open' : ''}`} aria-hidden={!isOpen}>
                 <div className="tool-group-members-inner">{n.entries.map((e) => renderTool(e))}</div>
               </div>
-              {ghostsOf(n).map((g) => (
-                <div key={`ghost:${g.key}`} className="tool-ghost">
-                  <div className="tool-ghost-clip">{renderTool(g)}</div>
-                </div>
-              ))}
             </div>
           );
         })}
