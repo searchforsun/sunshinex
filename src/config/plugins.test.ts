@@ -395,7 +395,7 @@ test('真实内置根装载 browser-use：未启用不出 server；enabled 后�
     assert.equal(srv!.command, 'node');
     const i = srv!.args!.indexOf('--browser');
     assert.ok(i >= 0 && srv!.args![i + 1] === 'chrome', 'configDefaults browser=chrome → args 含 --browser chrome');
-    assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'node_modules/@playwright/mcp/cli.js')), 'cwd "." 解析为插件根，@playwright/mcp 随 workspace 安装在位');
+    assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'server', 'index.js')), 'cwd "." 解析为插件根，单文件束 server/index.js 在位（缺失则跑 plugins/browser-use/build.mjs 现构建）');
   } finally {
     rmSync(userRoot, { recursive: true, force: true });
   }

@@ -449,7 +449,7 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 内置 | `<安装目录>/plugins/<id>/` | 随包分发 |
 | 用户级 | `~/.sunshinex/plugins/<id>/` | 自装插件；同 id 遮蔽内置 |
 
-**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json），内置插件声明的第三方依赖须在目标机**首次启用前**补装。例外：**computer-use 已单文件束化**（sdk 内联进 `server/index.js`，系统 node + 系统 powershell 即用，零补装）。以 browser-use（依赖 `@playwright/mcp`）为例：
+**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json），内置插件声明的第三方依赖须在目标机**首次启用前**补装。例外：**两内置插件均已单文件束化**（0.5.0 重发起：依赖图内联进各自 `server/index.js`，目标机零补装——computer-use 用系统 powershell；browser-use 用系统 Chrome，均系统 node 即可）。旧包（重发前）的 browser-use 补装步骤：
 
 ```bash
 pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包用 npm --prefix <包内 plugins/browser-use 路径> install

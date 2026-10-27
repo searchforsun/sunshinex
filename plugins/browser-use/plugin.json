@@ -2,7 +2,7 @@
   "description": "Playwright 驱动的浏览器自动化（a11y snapshot 主线，vision 兜底可开）",
   "defaultEnabled": false,
   "mcpServers": { "browser-use": { "command": "node", "cwd": ".",
-    "args": ["node_modules/@playwright/mcp/cli.js"],
+    "args": ["server/index.js"],
     "configDefaults": { "browser": "chrome" },
     "configArgs": { "browser": ["--browser", "{value}"], "headless": ["--headless"], "isolated": ["--isolated"], "caps": ["--caps", "{value}"], "userDataDir": ["--user-data-dir", "{value}"] } } },
   "skills": ["skills"],

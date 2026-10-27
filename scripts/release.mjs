@@ -363,6 +363,9 @@ if (!fs.existsSync(path.join(ROOT, 'gui-dist', 'index.html'))) die('gui-dist/ind
 
 // npm pack 前置 2：computer-use server 单文件束（2026-10-27）——sdk 内联,装机形态零子包依赖
 // （产物 server/index.js gitignore 不入库,发版时点现构建;plugins/computer-use/build.mjs esbuild 束）
+say('browser-use server 单文件束（plugins/browser-use build.mjs）');
+run(process.execPath, ['build.mjs'], { cwd: path.join(ROOT, 'plugins', 'browser-use'), stdio: 'inherit' });
+if (!fs.existsSync(path.join(ROOT, 'plugins', 'browser-use', 'server', 'index.js'))) die('plugins/browser-use/server/index.js 缺失——bundle 未产出');
 say('computer-use server 单文件束（plugins/computer-use build.mjs）');
 run(process.execPath, ['plugins/computer-use/build.mjs'], { cwd: path.join(ROOT, 'plugins', 'computer-use'), stdio: 'inherit' });
 if (!fs.existsSync(path.join(ROOT, 'plugins', 'computer-use', 'server', 'index.js'))) die('plugins/computer-use/server/index.js 缺失——bundle 未产出');
