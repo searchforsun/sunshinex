@@ -9,7 +9,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { chaseScrollBottom, loadStoredMap, pathBasename, persistCappedMap } from '../ui-util';
+import { chaseScrollBottom, pathBasename } from '../ui-util';
 import { stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
@@ -28,6 +28,7 @@ import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
 import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
+import { flushScrollMem, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
 import { useChatScroll } from './chat/use-chat-scroll';
 import { useChatTitle } from './chat/use-chat-title';
 import { useChatSessionInfo } from './chat/use-chat-session-info';
@@ -72,45 +73,8 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** tokens 格式:共享面迁移 ui-util.fmtTokens(G14.17)——本文件 re-export 保既有引用零迁移 */
 
-
-
-/** G14.212 会话滚动位存档(localStorage `sunshinex.chat-scroll`):id → { d: 距底 px, t: 时刻 }。
- *  非贴底(>80px,同贴底判定阈值)才记;贴底离开删档(再进照旧跳底)。内存单例跨 Chat 重挂载
- *  存活(key 换装即读),localStorage 节流落盘(冷却 800ms 直写+尾随写);容量封顶 100(超出丢
- *  最旧),存储满/禁用静默 */
-const SCROLL_KEY = 'sunshinex.chat-scroll';
-type ScrollMem = Record<string, { d: number; t: number }>;
-let scrollMem: ScrollMem | null = null;
-let scrollFlushAt = 0;
-let scrollFlushTimer: ReturnType<typeof setTimeout> | null = null;
-function scrollMemMap(): ScrollMem {
-  if (scrollMem !== null) return scrollMem;
-  scrollMem = loadStoredMap<{ d: number; t: number }>(SCROLL_KEY);
-  return scrollMem;
-}
-function flushScrollMem(): void {
-  if (scrollFlushTimer !== null) {
-    clearTimeout(scrollFlushTimer);
-    scrollFlushTimer = null;
-  }
-  scrollFlushAt = Date.now();
-  if (scrollMem === null) return;
-  persistCappedMap(SCROLL_KEY, scrollMem, 100, (v) => v.t);
-}
-function saveScrollPos(id: string, dist: number): void {
-  const m = scrollMemMap();
-  if (dist <= 0) delete m[id];
-  else m[id] = { d: Math.round(dist), t: Date.now() };
-  if (scrollFlushTimer !== null) return;
-  if (Date.now() - scrollFlushAt > 800) flushScrollMem();
-  else scrollFlushTimer = setTimeout(flushScrollMem, 800);
-}
-/** 存档读取:仅非贴底位(≤80px 视为贴底语义,回 null 走跳底) */
-function peekScrollPos(id: string): number | null {
-  const hit = scrollMemMap()[id];
-  const out = hit !== undefined && hit.d > 80 ? hit.d : null;
-  return out;
-}
+/** G14.212 会话滚动位存档单点(2026-10-27 技术债轮外提 chat/scroll-mem.ts——≤800 验收线回弹清算):
+ *  saveScrollPos/peekScrollPos 原路径同名导入,行为零变化 */
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
@@ -151,7 +115,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [archived, setArchived] = useState(false);
   /** pill 开合('plus' = + 附加面板) */
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
-  /** textarea 引用(+ 面板插入收口后焦点回输入框) */
   /** textarea 引用(+ 面板插入收口后焦点回输入框) */
   /** 流区贴底跟随(G13 反馈轮):滚动容器 ref + 「用户是否贴底」旁路 ref——贴底(含初始态)时
    *  每次渲染(流式 token/条目增删)自动归底;用户上翻超阈值即放手,再触底恢复跟随 */

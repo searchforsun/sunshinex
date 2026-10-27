@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult } from '../connection';
 import { SourceBadge } from './SourceBadge';
 
@@ -27,7 +28,6 @@ export interface McpPaneConn {
   putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void>;
 }
 
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** 状态点三态:ok=绿(连接正常)/err=红(连接失败)/probe=灰(探测中)/off=灰环(整机停用,不探测) */
 type McpDotState = 'ok' | 'err' | 'probe' | 'off';
@@ -126,27 +126,35 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     [conn, root],
   );
 
-  /** 整机开关(写 enabled 显式布尔;root='' 与全局卡禁用) */
-  const toggleServer = (s: McpRow): void => {
-    if (root === '' || s.source !== 'project' || saving) return;
-    const next = s.enabled === false;
+  /** 写回收口单点(2026-10-27 技术债轮 G7:整机开关/逐工具开关/删除三处同构块收敛):saving 门→
+   *  结构化写→成功后重拉清单(可选 after 钩子先行);失败 saving 复位+行内错误条 */
+  const runWrite = (mutate: (srv: Record<string, unknown>) => void, after?: () => void): void => {
     setSaving(true);
-    mutateProjectMcp((srv) => {
-      const e = srv[s.name];
-      if (e !== null && typeof e === 'object' && !Array.isArray(e)) {
-        (e as Record<string, unknown>).enabled = next;
-      }
-    })
+    void mutateProjectMcp(mutate)
       .then(() => {
         setSaving(false);
-        // 开关即时反馈:probes 保留(重探测可手动);autoProbed 放行重探
-        autoProbed.current.delete(s.name);
+        after?.();
         load();
       })
       .catch((err: unknown) => {
         setSaving(false);
         setLoadError(errText(err));
       });
+  };
+
+  /** 整机开关(写 enabled 显式布尔;root='' 与全局卡禁用) */
+  const toggleServer = (s: McpRow): void => {
+    if (root === '' || s.source !== 'project' || saving) return;
+    const next = s.enabled === false;
+    runWrite((srv) => {
+      const e = srv[s.name];
+      if (e !== null && typeof e === 'object' && !Array.isArray(e)) {
+        (e as Record<string, unknown>).enabled = next;
+      }
+    }, () => {
+      // 开关即时反馈:probes 保留(重探测可手动);autoProbed 放行重探
+      autoProbed.current.delete(s.name);
+    });
   };
 
   /** 逐工具开关:disabledTools 短名增删,空数组整键移除(文件干净) */
@@ -155,39 +163,21 @@ export function McpPane({ conn, root }: McpPaneProps): JSX.Element {
     const cur = new Set(s.disabledTools ?? []);
     if (cur.has(tool)) cur.delete(tool);
     else cur.add(tool);
-    setSaving(true);
-    mutateProjectMcp((srv) => {
+    runWrite((srv) => {
       const e = srv[s.name];
       if (e !== null && typeof e === 'object' && !Array.isArray(e)) {
         const o = e as Record<string, unknown>;
         if (cur.size === 0) delete o.disabledTools;
         else o.disabledTools = [...cur].sort();
       }
-    })
-      .then(() => {
-        setSaving(false);
-        load();
-      })
-      .catch((err: unknown) => {
-        setSaving(false);
-        setLoadError(errText(err));
-      });
+    });
   };
 
   const remove = (name: string): void => {
     if (root === '' || saving) return;
-    setSaving(true);
-    mutateProjectMcp((srv) => {
+    runWrite((srv) => {
       delete srv[name];
-    })
-      .then(() => {
-        setSaving(false);
-        load();
-      })
-      .catch((err: unknown) => {
-        setSaving(false);
-        setLoadError(errText(err));
-      });
+    });
   };
 
   /** JSON 编辑窗打开:预填取 raw 原文该卡条目(值不打码;全局卡/无 root 禁用,添加给模板) */

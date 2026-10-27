@@ -46,14 +46,12 @@ async function flush(): Promise<void> {
   try {
     const { state } = await conn.appGuiState();
     const blob = state !== null && typeof state === 'object' && !Array.isArray(state) ? { ...state } as Record<string, unknown> : {};
-    let changed = false;
     // ① 本地 pending 优先(=用户最新意图,先落 blob+本地)
     for (const short of Object.keys(pending) as Array<keyof typeof LOCAL_KEYS>) {
       const v = pending[short];
       if (v !== undefined) {
         blob[short] = v;
         localStorage.setItem(LOCAL_KEYS[short], v);
-        changed = true;
       }
     }
     pending = {};
@@ -71,11 +69,12 @@ async function flush(): Promise<void> {
         }
       } else if (local !== null && local !== '') {
         blob[short] = local; // 服务端缺键:本地回填上收(旧档/首联)
-        changed = true;
       }
     }
     applyingRemote = false;
-    if (changed || true) await conn.saveAppGuiState(blob); // blob 可能因①②变化,恒回写(幂等)
+    // 恒回写(幂等):①pending 落 blob/②本地回填上收都改 blob,且上次 flush 的远端写也可能尚未
+    // 冲合——不做 changed 记账(2026-10-27 技术债轮 I1:原 `changed || true` 恒真+死记账误导,删)
+    await conn.saveAppGuiState(blob);
   } catch {
     // 断链/旧 daemon 无端点:静默——本地层自足,下一拍重试
     window.clearTimeout(flushTimer);

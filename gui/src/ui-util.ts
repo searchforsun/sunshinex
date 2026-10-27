@@ -43,6 +43,18 @@ export function pathSegments(p: string): string[] {
   return p.split(/[\\/]+/).filter(Boolean);
 }
 
+/** 相对路径归一单点(2026-10-27 技术债轮 G10 自 Files.tsx 上收——md 正文图片此前仅剥 file:// 头,
+ *  `/docs/a.png`·`./docs/a.png` 形态在 Files 面可解析、MdImage 面 404 落 chip 的口径分叉根除):
+ *  ./a/b 与 /a/b 都按会话根相对(前导斜杠的绝对化曾逃出信任域落 404;Windows 盘符绝对路径原样)。
+ *  消费面:Files 页 /file 端点取读、md 图片 MdImage 装载 */
+export function normRel(p: string): string {
+  let t = p.trim().replace(/\\/g, '/');
+  while (t.startsWith('./')) t = t.slice(2);
+  if (t.startsWith('/') && !/^[a-zA-Z]:/.test(t)) t = t.replace(/^\/+/, '');
+  return t;
+}
+
+
 /** 路径 basename 单点（D34 口径收敛）：双分隔符归一（Windows 反斜杠/POSIX 斜杠）、
  *  空段滤除、无分隔符原样返回——daemon 下发 POSIX 相对路径与 Windows 绝对路径两面同源。 */
 export function pathBasename(p: string): string {

@@ -10,6 +10,7 @@ import { FileIcon } from '../../file-icon';
 import { ImageLightbox } from '../../ImageLightbox';
 import ReactMarkdown from 'react-markdown';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
+import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import type { DiffResp } from '../../connection';
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);G14.168 taskboard 六工具专属图标(去扳手默认) */
@@ -24,8 +25,8 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 
 /** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick,
  *  区别于通用 MCP 拼图件)——图标标类(含观察件),徽标标进行中的控制;特殊色只归顶栏徽标(2026-10-27
- *  二次裁定:工具行不用特殊色),className 留作语义/查询锚;server 名与 plugins/computer-use/plugin.json 同源 */
-const COMPUTER_USE_PREFIX = 'mcp__computer-use__';
+ *  二次裁定:工具行不用特殊色),className 留作语义/查询锚;前缀常量单点在 computer-use-contract
+ *  (2026-10-27 技术债轮收敛,与徽标判定面/插件 manifest 三方同源,对拍钉锁镜像) */
 
 /** MCP 工具名拆解单点(2026-10-26 用户裁定:MCP 工具行显业界通用图标+短工具名,参数/返回值同其他工具):
  *  登记名 `mcp__<server>__<tool>` → { server, tool };非 MCP 名返回 null。server 段取首个 `__` 前
@@ -39,7 +40,7 @@ export function mcpToolParts(name: string): { server: string; tool: string } | n
 }
 
 function ToolIcon({ verb }: { verb: string }): JSX.Element {
-  // computer-use 全族=鼠标点击件(warn 色——与顶栏「正在控制」徽标同族视觉)
+  // computer-use 全族=鼠标点击件(2026-10-27 二次裁定:无专属色,className 留语义/查询锚)
   if (verb.startsWith(COMPUTER_USE_PREFIX)) {
     return <MousePointerClick size={12} strokeWidth={1.75} className="tool-icon-controlling" aria-hidden="true" />;
   }
@@ -542,7 +543,7 @@ export const ToolEntryView = memo(function ToolEntryView({
             }
           : undefined;
     const openDiffTitle =
-      onOpenDiff !== undefined && callId !== undefined ? '打开 diff 标签' : '在文件标签预览';
+      onOpenDiff !== undefined && callId !== undefined ? t('Open diff tab', '打开 diff 标签') : t('Preview in file tab', '在文件标签预览');
     body = (
       <div className="tool-detail">
         {/* G14.51:自绘行级 diff;⇄ 开 diff 标签钮迁入(原 DiffPanel 角标钮,可及名=路径) */}

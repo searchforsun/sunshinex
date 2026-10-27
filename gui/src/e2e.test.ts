@@ -1071,7 +1071,9 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).toContain('active'); // sx-tab active
       expect(tabsByTitle(container, REL).length).toBe(0); // Diff 标签未开
       // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
-      expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(); // 空板:容器在场(G10-C12/G14.174)
+      // 轮询判据(2026-10-27 技术债轮:registry lazy+keep-alive 下标签体异步挂载,直读断言在
+      // -t 选择跑/模块图时序漂移下必抖——归因在案 HEAD 同红)
+      await waitFor(() => expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(), { timeout: 5_000 }); // 空板:容器在场(G10-C12/G14.174)
 
       // —— write 域内直写(G7 场景复用)→ done 收束 → 工具条目在场 ——
       const input = screen.getByLabelText('message input');
@@ -1089,7 +1091,8 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       fireEvent.click(toolRowRe(`write ${REL} `))!;
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.getAttribute('aria-label')).toBe(REL);
-      expect(pathBtn?.getAttribute('data-tip')).toBe('打开 diff 标签'); // 主通道标识(缺场回落面才示「在文件标签预览」)
+      // 双语容忍正解(2026-10-27 技术债轮 K2:openDiffTitle t() 化,测试环境缺省 en)
+      expect(pathBtn?.getAttribute('data-tip')).toMatch(/^打开 diff 标签$|^Open diff tab$/); // 主通道标识(缺场回落面才示「在文件标签预览」)
       fireEvent.click(pathBtn!);
       await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // Diff 标签活动
@@ -1242,7 +1245,7 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Directory', '目录')).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, bi('Directory', '目录'))[0]!.className).toContain('active'); // 目录标签开且活动
-      expect(container.querySelector('.sx-tabbody .sx-tree')).not.toBeNull(); // 树容器在场
+      await waitFor(() => expect(container.querySelector('.sx-tabbody .sx-tree')).not.toBeNull(), { timeout: 5_000 }); // 树容器在场(lazy 标签体轮询判据,同 G8a 归因)
       const dirRow = await screen.findByRole('button', { name: 'dirA' }, { timeout: 5_000 }); // 根层目录行
       expect(dirRow.className).toContain('sx-tree-dir');
 
@@ -1628,7 +1631,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Task board', '任务板')).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).toContain('active');
-      expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(); // 任务板页签体挂载(G14.174)
+      await waitFor(() => expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(), { timeout: 5_000 }); // 任务板页签体挂载(lazy 轮询判据,同 G8a 归因)
 
       // —— 委派投影(G14.213 任务板重构:旧板 .delegation-main 行退役):fork 委派落任务行内
       //    执行子智能体徽标(agentOfTask 按委派标签命中)——板 id 不透明方言,行名正则定位+id 捕获

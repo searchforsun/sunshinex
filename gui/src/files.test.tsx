@@ -134,7 +134,8 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
   it('truncated 横幅:truncated:true 回执 → 截断标记在场', async () => {
     const conn = connOf({ readFile: vi.fn(() => Promise.resolve({ path: '/r/big.txt', content: 'x', truncated: true } as FileResp)) });
     render(<Files conn={conn} sessionId="s1" initialPath="big.txt" />);
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('512KB'));
+    // 双语容忍正解(第十一轮 App.test 同款):横幅文案已 t() 化(K2),测试环境缺省 en——钉 512KB 数值锚双语
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/512 KB|512KB/));
   });
 
   it('G14.119 面包屑锚点:工作区内文件锚到工作区名显相对路径,区外才显绝对路径', async () => {

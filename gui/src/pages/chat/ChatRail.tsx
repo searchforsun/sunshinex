@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
+import { t } from '../../i18n';
 import { zoomScale } from '../../ui-zoom';
 
 /**
@@ -39,7 +40,7 @@ function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number
 function previewText(md: string): string {
   const flat = md
     .replace(/^>\s?/gm, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '[图]')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, t('[image]', '[图]'))
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[#*`_~]/g, '')
     .split('\n')
@@ -203,10 +204,10 @@ export function ChatRail(props: {
   return (
     <div className="sx-rail" aria-hidden="true">
       {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y 直写 style(测量同帧落位;translateY(-50%) 落中线) */}
-      <div ref={innerRef} className="sx-rail-inner" role="navigation" aria-label="会话刻度导航">
+      <div ref={innerRef} className="sx-rail-inner" role="navigation" aria-label={t('Session outline rail', '会话刻度导航')}>
         <div className="sx-rail-list">
           {users.map((u, i) => (
-            <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={`第 ${i + 1} 条消息`} onClick={() => jump(i)}>
+            <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)} onClick={() => jump(i)}>
               <span className="sx-rail-preview">{previewText(u.md)}</span>
               <span className="sx-rail-bar" />
             </button>

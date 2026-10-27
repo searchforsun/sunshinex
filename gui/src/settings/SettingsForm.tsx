@@ -248,7 +248,7 @@ function FontRow(): JSX.Element {
               >
                 {t('Body text reads here. 正文预览。', 'Body text reads here. 正文预览。')}
               </span>
-              <span className="sx-font-pv-tool" style={{ fontSize: v['--f-tool'] ?? '11px', fontFamily: v['--font-mono'] ? undefined : undefined, lineHeight: v['--f-tool-lh'] ?? 'normal' }}>
+              <span className="sx-font-pv-tool" style={{ fontSize: v['--f-tool'] ?? '11px', lineHeight: v['--f-tool-lh'] ?? 'normal' }}>
                 <span style={v['--font-mono'] !== undefined ? { fontFamily: v['--font-mono'] } : undefined}>run pnpm test --filter gui</span>
               </span>
               <span

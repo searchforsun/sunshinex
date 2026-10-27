@@ -179,36 +179,36 @@ export function useSessionEvents(deps: {
     );
   }, [conn, sessionId, addCard]);
 
-  /** G4 回执:寻址用帧顶层 pid(T1 契约);成功移卡,失败(404 已决等)也移——不悬挂。
-   *  失败面不再倒 error 条:挂起生命周期以 daemon 挂起表为准,本地卡只是其投影 */
-  const sendApproval = useCallback(
-    (pid: string, decision: string): void => {
-      void conn.replyApproval(pid, decision).then(
+  /** G4 回执收口单点(2026-10-27 技术债轮 G8:approval/ask/plan 三通道同构块收敛):寻址用帧顶层
+   *  pid(T1 契约);成功移卡,失败(404 已决等)也移——不悬挂。失败面不再倒 error 条:挂起生命周期
+   *  以 daemon 挂起表为准,本地卡只是其投影 */
+  const settle = useCallback(
+    (p: Promise<unknown>, pid: string): void => {
+      void p.then(
         () => removeCard(pid),
         () => removeCard(pid),
       );
     },
-    [conn, removeCard],
+    [removeCard],
+  );
+  const sendApproval = useCallback(
+    (pid: string, decision: string): void => {
+      settle(conn.replyApproval(pid, decision), pid);
+    },
+    [conn, settle],
   );
   const sendAsk = useCallback(
     (pid: string, answer: GuiAskAnswer): void => {
-      void conn.replyAsk(pid, answer).then(
-        () => removeCard(pid),
-        () => removeCard(pid),
-      );
+      settle(conn.replyAsk(pid, answer), pid);
     },
-    [conn, removeCard],
+    [conn, settle],
   );
-  /** 阶段三 plan-arm 裁决回执:沿 approval/ask 回执通道同口径——成功移卡,失败(404 已决/kind
-   *  不符等)也移,不悬挂 */
+  /** 阶段三 plan-arm 裁决回执:沿 approval/ask 回执通道同口径 */
   const sendPlanApproval = useCallback(
     (pid: string, decision: GuiPlanDecision): void => {
-      void conn.replyPlanApproval(pid, decision).then(
-        () => removeCard(pid),
-        () => removeCard(pid),
-      );
+      settle(conn.replyPlanApproval(pid, decision), pid);
     },
-    [conn, removeCard],
+    [conn, settle],
   );
 
   useEffect(() => {

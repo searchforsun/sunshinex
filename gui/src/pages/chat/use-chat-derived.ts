@@ -71,18 +71,10 @@ export interface ChatDerivedDeps {
 /** 用户气泡 md → 单行纯文本:剥引用前缀与链接标记(待办批次 goal 与关联轮次 turnGoal 共用单点) */
 const stripGoal = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
 
-/** 电脑控制指示(2026-10-27 用户裁定):主对话顶栏「Sunshinex 正在控制你的电脑」边框徽标判定面。
- *  server 名+动作集与 plugins/computer-use/plugin.json 的 safety.act 声明同源——插件侧变更须两处
- *  同步;screenshot=confirm(观察)、uia_snapshot/window_list=observe(读)、wait/wait_for(被动等待)
- *  均非「控制」,不点亮 */
-const COMPUTER_USE_SERVER = 'computer-use';
-const COMPUTER_USE_ACT_TOOLS = new Set(['click', 'type', 'key', 'scroll', 'drag', 'app']);
-
-/** 工具名 → 是否为电脑控制类动作(`mcp__computer-use__<act>`) */
-export function isComputerUseControlTool(name: string | undefined): boolean {
-  const prefix = `mcp__${COMPUTER_USE_SERVER}__`;
-  return name !== undefined && name.startsWith(prefix) && COMPUTER_USE_ACT_TOOLS.has(name.slice(prefix.length));
-}
+/** 电脑控制指示判定面单点在 computer-use-contract(2026-10-27 技术债轮收敛:server 名/动作集与
+ *  ToolEntry 图标前缀三方共用,原字面量复制改导入单点);原路径再导出保徽标测试与既有引用零迁移 */
+import { isComputerUseControlTool } from './computer-use-contract';
+export { isComputerUseControlTool };
 
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;

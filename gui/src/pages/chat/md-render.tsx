@@ -9,7 +9,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { t } from '../../i18n';
 import { highlightFence } from '../../highlight';
 import { zoomScale } from '../../ui-zoom';
-import { openExternalUrl } from '../../ui-util';
+import { normRel, openExternalUrl } from '../../ui-util';
 import { Mermaid } from '../../Mermaid';
 import { FileIcon } from '../../file-icon';
 import { useCopyFeedback } from '../../use-copy-feedback';
@@ -123,7 +123,8 @@ export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; on
   const [failed, setFailed] = useState(false);
   const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   const isDirect = /^(https?:|\/\/|data:)/i.test(src);
-  const path = src.replace(/^file:\/\//i, '');
+  // 工作区路径与 Files 页同一归一口径(ui-util.normRel 单点):/docs/a.png·./docs/a.png 不再 404 落 chip
+  const path = normRel(src.replace(/^file:\/\//i, ''));
   useEffect(() => {
     if (isDirect || loader === null) return;
     let cache = mdImageCache.get(loader);
@@ -190,51 +191,59 @@ export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; on
 /** G14.125 用户气泡组件面:标准 md 链接文件化(a 覆写,onOpenFile 在场才可点;web 新窗)——
  *  非标引用(@token code/裸路径)不做文件渲染(G14.125 去兼容),保持通用 chip 原样;
  *  isDir=目录解析(目录引用链接显黄目录,undefined=全按文件) */
+/** G14.124 md 原生超链接渲染单件(2026-10-27 技术债轮 G1 收敛——用户气泡/正文两工厂曾逐字双份约
+ *  40 行):非 web 协议 href 视为文件路径,渲染 icon+文件名 file-link(token 同款),点击/回车开侧栏
+ *  file 标签;web 链接 2026-10-25 起点击走系统默认浏览器(preventDefault+openExternalUrl——Electron
+ *  内默认行为是开自家子窗);mailto/锚点/无 onOpenFile 回落原生 <a>(onOpenFile 缺省守卫=用户气泡
+ *  工厂原语义,正文工厂签名本就必传,守卫对其为防御性) */
+function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: string) => void; isDir?: (p: string) => boolean }): JSX.Element {
+  const href = props.href ?? '';
+  if (props.onOpenFile === undefined || href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
+  if (/^(https?:|\/\/)/i.test(href)) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openExternalUrl(href);
+        }}
+      >
+        {props.children}
+      </a>
+    );
+  }
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className="file-link"
+      data-tip={href}
+      onClick={(e) => {
+        e.stopPropagation();
+        props.onOpenFile?.(href);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.stopPropagation();
+          props.onOpenFile?.(href);
+        }
+      }}
+    >
+      <FileIcon path={href} folder={props.isDir?.(href)} />
+      <span className="file-link-name">{tokenDisplayName(href)}</span>
+    </span>
+  );
+}
+
 export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
   return {
     ...mdComponentsPlain,
-    // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点;web 链接 2026-10-25 起
-    // 点击走系统默认浏览器——与正文链接同拦截,Electron 内默认行为是开自家子窗)
+    // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点)——渲染单件 MdLinkA
     a(props: { href?: string; children?: ReactNode }) {
-      const href = props.href ?? '';
-      if (onOpenFile === undefined || href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
-      if (/^(https?:|\/\/)/i.test(href)) {
-        return (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              openExternalUrl(href);
-            }}
-          >
-            {props.children}
-          </a>
-        );
-      }
-      return (
-        <span
-          role="button"
-          tabIndex={0}
-          className="file-link"
-          data-tip={href}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenFile(href);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.stopPropagation();
-              onOpenFile(href);
-            }
-          }}
-        >
-          <FileIcon path={href} folder={isDir?.(href)} />
-          <span className="file-link-name">{tokenDisplayName(href)}</span>
-        </span>
-      );
+      return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir}>{props.children}</MdLinkA>;
     },
   };
 }
@@ -269,49 +278,9 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
     img(props: { src?: string; alt?: string; children?: ReactNode }) {
       return <MdImage src={props.src ?? ''} alt={props.alt ?? ''} onOpenFile={onOpenFile} />;
     },
-    // G14.124 md 原生超链接 → 文件引用:非 web 协议 href 视为文件路径,渲染 icon+文件名
-    // (token 同款 file-link),点击/回车开侧栏 file 标签;web 链接 2026-10-25 起点击走系统
-    // 默认浏览器(preventDefault+openExternalUrl——Electron 内默认行为是开自家子窗)
+    // G14.124 md 原生超链接 → 文件引用(web 链接新窗系统默认浏览器)——渲染单件 MdLinkA
     a(props: { href?: string; children?: ReactNode }) {
-      const href = props.href ?? '';
-      if (href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
-      if (/^(https?:|\/\/)/i.test(href)) {
-        return (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              openExternalUrl(href);
-            }}
-          >
-            {props.children}
-          </a>
-        );
-      }
-      return (
-        <span
-          role="button"
-          tabIndex={0}
-          className="file-link"
-          data-tip={href}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenFile(href);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.stopPropagation();
-              onOpenFile(href);
-            }
-          }}
-        >
-          <FileIcon path={href} folder={isDir?.(href)} />
-          <span className="file-link-name">{tokenDisplayName(href)}</span>
-        </span>
-      );
+      return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir}>{props.children}</MdLinkA>;
     },
   };
 }

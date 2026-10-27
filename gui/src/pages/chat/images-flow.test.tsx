@@ -209,7 +209,6 @@ describe('正文 md 图片(2026-10-26 正文支持显示图片)', () => {
   it('工作区路径图片语法:readFile 解析成 dataURL 直显(合理尺寸),点击开灯箱', async () => {
     render(<Chat conn={connOf({ assistantMd: '截图如下\n\n![截图](shot.png)' })} sessionId="md1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await waitFor(() => expect(document.querySelectorAll('.entry-assistant').length).toBeGreaterThan(0));
-    console.log('MD1_HTML:', document.querySelector('.entry-assistant')?.innerHTML?.slice(0, 400));
     const img = (await waitFor(() => {
       const el = document.querySelector('.entry-assistant .md-image') as HTMLImageElement | null;
       expect(el).not.toBeNull();

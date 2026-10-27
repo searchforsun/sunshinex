@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
 import { SourceBadge } from './SourceBadge';
 
@@ -23,8 +24,6 @@ export interface PluginsPaneConn {
   plugins(root?: string): Promise<{ plugins: PluginRow[]; warnings?: string[] }>;
   putPlugin(root: string, id: string, patch: { enabled?: boolean }): Promise<void>;
 }
-
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export interface PluginsPaneProps {
   readonly conn: PluginsPaneConn;

@@ -7,6 +7,7 @@ import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { t } from '../i18n';
+import { normRel } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { buildMdComponents, keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './Chat';
@@ -47,15 +48,6 @@ interface LoadState {
 }
 
 const EMPTY_LOAD: LoadState = { file: null, error: null, loading: false };
-
-/** G14.2xx 相对路径归一:./a/b 与 /a/b 都按会话根相对(前导斜杠的绝对化曾逃出信任域落 404;
- *  Windows 盘符绝对路径原样)。返回根相对形态供 /file 端点解析 */
-function normRel(p: string): string {
-  let t = p.trim().replace(/\\/g, '/');
-  while (t.startsWith('./')) t = t.slice(2);
-  if (t.startsWith('/') && !/^[a-zA-Z]:/.test(t)) t = t.replace(/^\/+/, '');
-  return t;
-}
 
 /** G14.119 面包屑分段：path 在工作区内 → [工作区目录名, ...相对段]；区外 → 绝对段（原样）。
  *  win/posix 双分隔归一后再比对（daemon 回路径分隔符随平台）。 */
@@ -114,7 +106,6 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   const fetchFile = useCallback(
     (p: string): void => {
       const target = normRel(p);
-      if (target === '') return;
       if (target === '') return;
       const rid = ++requestIdRef.current;
       setLoad((prev) => ({ file: prev.file, error: null, loading: true }));
@@ -194,7 +185,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
           </div>
           {load.file.truncated === true && (
             <div className="files-truncated" role="status">
-              文件超过 512KB,已截断为首 512KB 预览
+              {t('File exceeds 512 KB — preview truncated to the first 512 KB', '文件超过 512KB,已截断为首 512KB 预览')}
             </div>
           )}
           <div className="files-body" ref={bodyRef}>
