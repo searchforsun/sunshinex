@@ -22,9 +22,9 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
 };
 
-/** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick+warn 色,
- *  区别于通用 MCP 拼图件,与顶栏「正在控制」徽标同族视觉)——图标标类(含观察件),徽标标进行中的控制;
- *  server 名与 plugins/computer-use/plugin.json 同源 */
+/** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick,
+ *  区别于通用 MCP 拼图件)——图标标类(含观察件),徽标标进行中的控制;特殊色只归顶栏徽标(2026-10-27
+ *  二次裁定:工具行不用特殊色),className 留作语义/查询锚;server 名与 plugins/computer-use/plugin.json 同源 */
 const COMPUTER_USE_PREFIX = 'mcp__computer-use__';
 
 /** MCP 工具名拆解单点(2026-10-26 用户裁定:MCP 工具行显业界通用图标+短工具名,参数/返回值同其他工具):
