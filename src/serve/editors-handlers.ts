@@ -47,7 +47,14 @@ export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; exeNam
   { id: 'cursor', name: 'Cursor', shim: 'cursor', exeName: 'Cursor.exe' },
 ];
 
-/** VS Code Inno Setup 定版 GUID 卸载键(用户级+系统级;非标盘位安装的唯一可靠登记处) */
+/** 注册表探测源(与具体安装路径解耦——盘位/安装方式千人千面,但都登记在这里):
+ *  ① App Paths\Code.exe 缺省值=安装器登记的完整 exe 路径(HKCU 用户装/HKLM 系统装两键,
+ *  任意盘位任意目录通用);② Inno Setup 定版 GUID 卸载键 InstallLocation(系统装常见登记)
+ *  → 命中安装根,Code.exe 由调用方拼接 */
+export const VSCODE_APP_PATHS_KEYS = [
+  'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Code.exe',
+  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Code.exe',
+];
 export const VSCODE_UNINSTALL_KEYS = [
   'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1',
   'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1',
@@ -69,8 +76,20 @@ export async function whereFirst(shim: string): Promise<string | null> {
   }
 }
 
-/** 注册表读 InstallLocation(async reg query;shell 转义与本进程无关):命中回安装根 */
+/** 注册表读探测值(async reg query;shell 转义与本进程无关):命中回 InstallLocation/缺省值 */
 export async function vscodeInstallFromRegistry(): Promise<string | null> {
+  // ① App Paths:缺省值即完整 exe 路径(任意安装位通用)
+  for (const key of VSCODE_APP_PATHS_KEYS) {
+    try {
+      const r = await execFile('reg', ['query', key], { windowsHide: true });
+      const m = /REG_SZ\s+(.+)/.exec(r.stdout);
+      const exe = m !== null ? m[1]!.trim() : '';
+      if (exe !== '' && /Code\.exe$/i.test(exe)) return path.dirname(exe);
+    } catch {
+      /* 键缺席:降级 */
+    }
+  }
+  // ② Inno 卸载键 InstallLocation(系统装登记)→ 安装根
   for (const key of VSCODE_UNINSTALL_KEYS) {
     try {
       const r = await execFile('reg', ['query', key, '/v', 'InstallLocation'], { windowsHide: true });
@@ -185,12 +204,13 @@ export async function handleEditorsGet(io: SessionHandlerIo, res: http.ServerRes
   io.send(res, 200, { editors: editorsCache });
 }
 
-/** 原生图标缓存路径(机器级一次抽取):<userConfigDir>/gui/editor-icons/<id>.png */
+/** 原生图标缓存路径(机器级一次抽取):<userConfigDir>/gui/editor-icons/<id>.v2.png(64px 带透明;v1 32px 黑角淘汰) */
 function editorIconPath(id: string): string {
-  return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.png`);
+  return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.v2.png`);
 }
 
-/** 原生图标抽取(PowerShell ExtractAssociatedIcon→PNG 落盘):异步不阻塞;失败回 null(GUI 回落字形) */
+/** 原生图标抽取(Icon(exe,64,64)→PNG 落盘):64px 帧保 alpha——ExtractAssociatedIcon 恒 32px 且
+ *  透明度易失(「只显示左上角」的根因);异步不阻塞;失败回 null(GUI 回落集内字形) */
 export async function extractEditorIcon(id: string, exe: string): Promise<string | null> {
   const out = editorIconPath(id);
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -199,7 +219,7 @@ export async function extractEditorIcon(id: string, exe: string): Promise<string
     const outQ = out.replaceAll("'", "''");
     const ps =
       'Add-Type -AssemblyName System.Drawing; ' +
-      `$i=[System.Drawing.Icon]::ExtractAssociatedIcon('${exeQ}'); ` +
+      `$i=New-Object System.Drawing.Icon('${exeQ}', 64, 64); ` +
       `if ($i -ne $null) { $b=$i.ToBitmap(); $b.Save('${outQ}', [System.Drawing.Imaging.ImageFormat]::Png) }`;
     try {
       await execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 });

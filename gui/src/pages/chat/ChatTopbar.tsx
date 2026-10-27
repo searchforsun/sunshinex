@@ -160,7 +160,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   }, [editorMenu, editors, conn, nativeIcons]);
   const editorIcon = (id: string): ReactNode => {
     const native = nativeIcons[id];
-    if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: 14, height: 14, display: 'block' }} />;
+    if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: 14, height: 14, display: 'block', objectFit: 'contain' }} />;
     if (native === '') return <Code2 size={13} strokeWidth={1.75} />;
     const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
     const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
@@ -399,7 +399,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             onClose={() => setEditorMenu(null)}
             items={editors.map((e) => ({
               id: e.id,
-              label: e.id === defaultEditor ? `${e.name} ✓` : e.name,
+              label: e.name,
+              tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
               icon: editorIcon(e.id),
               onSelect: () => pickEditor(e.id),
