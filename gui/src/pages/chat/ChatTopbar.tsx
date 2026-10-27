@@ -309,7 +309,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             disabled={root === undefined || root === ''}
             onClick={() => openIn(defaultEditor)}
           >
-            {editorIcon(defaultEditor, 18)}
+            {editorIcon(defaultEditor, 16)}
           </button>
           <button
             type="button"
@@ -404,7 +404,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
               active: e.id === defaultEditor,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
-              icon: editorIcon(e.id, 18),
+              icon: editorIcon(e.id, 16),
               onSelect: () => pickEditor(e.id),
             }))}
           />

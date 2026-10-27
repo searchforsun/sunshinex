@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronRight, CodeXml, Copy, Eye, WrapText } from 'lucide-react';
+import { Check, ChevronRight, CodeXml, Copy, Eye, ExternalLink, MoreHorizontal, WrapText } from 'lucide-react';
 import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
@@ -10,6 +10,7 @@ import { t } from '../i18n';
 import { normRel } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
+import { SessionRowMenu } from '../sidebar/session-row-menu';
 import { buildMdComponents, keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './Chat';
 
 /**
@@ -87,6 +88,25 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   const { status: copied, copy: writeCopy } = useCopyFeedback();
   /** G14.2xx 自动换行(正文代码块同款交互):源码视图默认横向滚动,开启后 wordWrap 纵向排布(无横向滚动条) */
   const [wrap, setWrap] = useState(false);
+  /** 2026-10-27 用户裁定:路径行右侧 ⋯ 菜单(复制相对/绝对路径)+外部打开钮(应用=左侧选中方式) */
+  const [pathMenu, setPathMenu] = useState<{ x: number; y: number } | null>(null);
+  const [pathCopied, setPathCopied] = useState('');
+  const copyPath = (text: string, tag: string): void => {
+    void navigator.clipboard?.writeText(text).then(() => setPathCopied(tag), () => setPathCopied(''));
+    window.setTimeout(() => setPathCopied(''), 1500);
+  };
+  const relOf = (): string => {
+    const p = (load.file?.path ?? '').replace(/\\/g, '/');
+    const rn = (root ?? '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (rn !== '' && p.startsWith(rn + '/')) return p.slice(rn.length + 1);
+    return p;
+  };
+  const openExternally = (): void => {
+    const fallbackDir = (load.file?.path ?? '').replace(/[\/]+$/, '').replace(/[\/][^\/]*$/, '');
+    const target = root !== undefined && root !== '' ? root : fallbackDir;
+    if (target === '') return;
+    void conn.openInEditor(target, localStorage.getItem('sunshinex.open-default') ?? 'explorer');
+  };
 
   /** G14.139 选区加引用:Monaco 实例/当前文件/选区信息 ref(回调闭包免陈旧)+悬浮钮显隐 */
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
@@ -182,7 +202,54 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                 </span>
               ))}
             </div>
+            <div className="files-head-actions">
+              <button
+                type="button"
+                className="sx-iconbtn"
+                aria-label="open externally"
+                data-tip={t('Open externally', '外部打开')}
+                onClick={openExternally}
+              >
+                <ExternalLink size={14} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                className="sx-iconbtn"
+                aria-label="path actions"
+                data-tip={t('Copy path', '复制路径')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const b = e.currentTarget.getBoundingClientRect();
+                  setPathMenu({ x: b.right, y: b.bottom + 2 });
+                }}
+              >
+                <MoreHorizontal size={14} strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
+          {pathMenu !== null && load.file !== null && (
+            <SessionRowMenu
+              x={pathMenu.x}
+              y={pathMenu.y}
+              onClose={() => setPathMenu(null)}
+              items={[
+                {
+                  id: 'copy-abs',
+                  label: t('Copy absolute path', '复制绝对路径'),
+                  icon: <Copy size={13} strokeWidth={1.75} />,
+                  tail: pathCopied === 'abs' ? <Check size={12} strokeWidth={2.25} /> : undefined,
+                  onSelect: () => copyPath(load.file!.path, 'abs'),
+                },
+                {
+                  id: 'copy-rel',
+                  label: t('Copy relative path', '复制相对路径'),
+                  icon: <Copy size={13} strokeWidth={1.75} />,
+                  tail: pathCopied === 'rel' ? <Check size={12} strokeWidth={2.25} /> : undefined,
+                  onSelect: () => copyPath(relOf()),
+                },
+              ]}
+            />
+          )}
           {load.file.truncated === true && (
             <div className="files-truncated" role="status">
               {t('File exceeds 512 KB — preview truncated to the first 512 KB', '文件超过 512KB,已截断为首 512KB 预览')}
