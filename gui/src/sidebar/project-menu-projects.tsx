@@ -173,9 +173,17 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                         {openSlug === row.slug ? <FolderOpen size={16} strokeWidth={1.75} /> : <Folder size={16} strokeWidth={1.75} />}
                       </span>
                       <span className="ws-slug sx-ws-name">{wsName(row)}</span>
-                      <span className="ws-count sx-count">
-                        {row.sessionCount}
-                      </span>
+                    </button>
+                    {/* 2026-10-28 用户裁定:计数徽章移出组头按钮,作为行内均匀项贴 ⋯ 簇左侧
+                        (与行尾按钮同距同节奏;点击同切换组展开) */}
+                    <button
+                      type="button"
+                      className="ws-count sx-count"
+                      aria-label={`${t('Sessions', '会话数')} ${row.sessionCount}`}
+                      disabled={root === undefined}
+                      onClick={() => onToggleGroup(row)}
+                    >
+                      {row.sessionCount}
                     </button>
                     {/* 组头 ⋯ 移除钮(2026-10-23 用户裁定:hover 显形 sx-iconbtn 同款,居新会话钮左侧;点击弹「移除」) */}
                     <button
