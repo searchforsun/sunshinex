@@ -1,24 +1,20 @@
 // 警告过滤必须首个 import（node:sqlite 实验横幅在 import 链内即发射）
 import '../warning-filter';
-import * as crypto from 'node:crypto';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ModelAdapter, parseEffort } from '../model/adapter';
-import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime, isShadowEvent, type EventFrame } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { SessionJournal, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir } from "../tui/session-journal";
-import { reduceSteerRows, reduceSegRows } from '../session/seglog';
+import { purgeSession, readSessionMeta } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
-import { projectSlug, projectsRoot, resolveDataDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -39,6 +35,8 @@ import type { WorkspaceHandlerIo } from './workspace-handlers';
 import * as ptyHandlers from './pty-handlers';
 import type { PtyHandlerIo } from './pty-handlers';
 import type { FileHandlerIo } from './file-handlers';
+import * as lifecycle from './session-lifecycle';
+import type { SessionLifecycleIo } from './session-lifecycle';
 import {
   GUI_ASSETS_HINT,
   mimeOf,
@@ -208,128 +206,33 @@ export class GuiDaemon {
    *  才落盘建新档，档 id 同源 newSessionId()；空会话零文件，TUI 惰性先例同构）——首 run 起链持久，
    *  后续 /sessions 列档与 attach 重开（chain 派生转录）可消费。
    */
-  /** G14.10 B 方案:default 工作区锚定专用临时目录——root 字面 'default'(GUI 欢迎页非项目
-   *  会话的缺省锚点)解析为 <tmp>/sunshinex-default(缺场 mkdir recursive):临时任务的文件
-   *  落在系统临时目录,不再污染仓库/项目目录。非字面 root(显式项目路径)不经过此处。 */
-  private defaultScratchRoot(): string {
-    const dir = path.join(os.tmpdir(), 'sunshinex-default');
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-
-  /** 会话 id（2026-10-23 用户裁定）：sun-{项目摘要12}-{随机8hex}——项目段确定性（会话 id 即可见
-   *  项目归属），随机段 4 字节 hex 单进程防撞，撞库重掷（注册表查重）。形态为 validSessionId
-   *  （[A-Za-z0-9_-]）子集；退役 s<n> 单调草档（重启即重号、跨项目不可归因） */
-  private mintSessionId(root: string): string {
-    const project = projectSlug(root).slice(-12);
-    for (;;) {
-      const id = `sun-${project}-${crypto.randomBytes(4).toString('hex')}`;
-      if (!this.sessions.has(id)) return id;
-    }
-  }
-
-  createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
-    const abs = root === 'default' ? this.defaultScratchRoot() : path.resolve(root);
-    let st: fs.Stats;
-    try {
-      st = fs.statSync(abs);
-    } catch {
-      return fail('INVALID_ARG', `root does not exist: ${abs}`);
-    }
-    if (!st.isDirectory()) return fail('INVALID_ARG', `root is not a directory: ${abs}`);
-    const dataDir = resolveDataDir(abs);
-    try {
-      fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root: abs }) + '\n', 'utf8');
-    } catch {
-      // 落档尽力：写失败只让 /workspaces 降级 slug-only，不影响会话装配
-    }
-    // 会话 id(2026-10-23 用户裁定):sun-{项目摘要12}-{随机8}——退役 s<n> 单调草档(重启即重号、
-    // 跨项目不可归因);项目段=工作区 slug 摘要尾(确定性,会话 id 即可见归属),随机段单进程防撞
-    const id = this.mintSessionId(abs);
-    // P6 §4 挂起表下沉会话:daemon 只注入网络寻址两接缝(mintPid/broadcast)——注册/守卫(ghost 硬化
-    // isAborted/manual 档位判定)/组帧/回执全部在 SessionRuntime 挂起面(suspendApproval/suspendAsk)
-    const session = new SessionRuntime({
-      id,
-      root: abs,
+  /** 会话生命周期域(session-lifecycle 单点,2026-10-27 技术债轮 D31 骨架域续批外提):
+   *  create/attach 双入口+id 铸造+default 锚定,类状态触点=io 六面 */
+  private get lifecycleIo(): SessionLifecycleIo {
+    return {
+      sessions: this.sessions,
       model: this.model,
-      ...(this.model instanceof ModelSwitcher ? { modelSwitcher: this.model } : {}),
       nextSeq: () => {
         this.seqCounter += 1;
         return this.seqCounter;
       },
-      broadcast: (frame) => this.broadcastFrame(frame),
-      ...(opts?.mode !== undefined ? { mode: opts.mode } : {}),
       mintPid: () => {
         this.pendingSeq += 1;
         return `p${this.pendingSeq}`;
       },
-    });
-    this.sessions.set(id, session);
-    this.active = id;
-    // T2 出生 journal：挂载即接 onContextChange 续写链（惰性建档，见 createSession 注释）
-    session.attachJournal(new SessionJournal(dataDir));
-    return ok({ sessionId: id });
+      broadcast: (frame) => this.broadcastFrame(frame),
+      setActive: (id) => {
+        this.active = id;
+      },
+    };
   }
 
-  /**
-   * attach 恢复（spec §4b 装载序 + 渲染中立 spec v3）：会话 root 的 dataDir 下定位 `<journalId>.jsonl`（未知 id
-   * INVALID_ARG）→ parseJournalFile → 版本守卫（v3 段级词汇;v1/v2 旧档拒载,dev 用 purge 脚本清理）→
-   * 装载双读面:reduceJournal(chain/compact → restoreSession 上下文;model/todos/view 参数面不动) +
-   * reduceSegRows(seg/seg-update/run-open/runmeta/truncate → kernel.seed 转录投影,seq 原样沿用)→
-   * SessionJournal attach 续挂 + SessionRuntime.attachJournal 挂订阅（后续 run 的 chain 行与段级行
-   * 续落同档,teardown seal）→ 置激活。双挂/运行中挂 INVALID_STATE（播种会击穿在飞 run 的链）。
-   */
+  createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
+    return lifecycle.createSessionIn(this.lifecycleIo, root, opts);
+  }
+
   attach(id: string, journalId: string): Result<{ sessionId: string }> {
-    // G14.2xx 运行中刷新恢复:同 journal 已在座且**运行中**(内核循环与在飞 run 都在旧对象身上)→
-    // **收编复用**并丢弃 newSession 造的空壳——空壳挂同档=会话 id 换号,直播帧按会话过滤全丢,
-    // GUI 种子态冻结成假「已停止」而侧栏仍在跑(实测病根)。idle 在座不收编:走经典重播种
-    // (确定性等价,排队经 steer 行回放;双挂 409 面由下方既有守卫承继)
-    for (const [sid, s] of this.sessions) {
-      if (s.attachedJournalId === journalId && s.status() === 'running') {
-        if (sid !== id) this.sessions.delete(id);
-        this.active = sid;
-        return ok({ sessionId: sid });
-      }
-    }
-    const session = this.sessions.get(id);
-    if (session === undefined) return fail('INVALID_ARG', `unknown session: ${id}`);
-    if (session.attachedJournalId !== undefined) return fail('INVALID_STATE', 'session already has an attached journal');
-    if (session.status() === 'running') return fail('INVALID_STATE', 'cannot attach while a run is in progress');
-    const dataDir = resolveDataDir(session.root);
-    const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
-    if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
-    const replayEvents = parseJournalFile(file).events;
-    const replay = reduceJournal(replayEvents);
-    if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
-    session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
-    // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
-    session.kernelSeed(reduceSegRows(replayEvents));
-    // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
-    session.steerSeed(reduceSteerRows(replayEvents));
-    // 影子投影装载(G14.2xx 断线重连):board/delegation 事件行回种——重启后快照/补发不再空板空委派
-    session.seedShadow(replayEvents);
-    // 会话选择面回放(G14.2xx 公共持久化归位):model/effort/mode 运行中切换即落 meta 旁车,
-    // attach 按档归位——重启/重开不再回落装配缺省(CLAUDE.md §13 持久化分层口径)
-    const selMeta = readSessionMeta(dataDir, journalId);
-    if (selMeta.effort !== undefined) session.setEffort(selMeta.effort);
-    if (selMeta.model !== undefined) session.setModel(selMeta.model);
-    if (selMeta.mode !== undefined) {
-      // 权限档回放只认现值三档(2026-10-24 用户裁定「不要有兼容逻辑,旧会话记录可以删」:旧值
-      // manual/dontAsk 一律回落缺省档+warn,沿 MANUAL-GUI「不保旧档」开发期先例);'plan' 是流程
-      // 标记非档,照写不照回——arm 不跨重启(spec §5.2),静默落缺省档。
-      // setMode 异步化后(终审修复:disarm 收口)此处 fire-and-forget 仍同步生效——attach 只落在从未
-      // 附档的新会话(idle+plan 流程必不在途,复附有上 guard 拦),setMode 无 await 点直落换新,随后的
-      // attachJournal 挂的就是换新后的运行时;带流程在途的 setMode 只经 mode 端点(async)行走
-      const mode = selMeta.mode;
-      if (mode === 'read-only' || mode === 'acceptEdits' || mode === 'full-access') void session.setMode(mode);
-      else if (mode !== 'plan') console.warn(`[serve] session mode in meta not restorable: ${String(mode)} — falling back to default`);
-    }
-    const journal = new SessionJournal(dataDir);
-    journal.attach(journalId);
-    session.attachJournal(journal);
-    this.active = id;
-    return ok({ sessionId: id });
+    return lifecycle.attachSessionIn(this.lifecycleIo, id, journalId);
   }
 
   /** 会话外窥（测试/后续 T2+ 端点消费）：未知 id 回 undefined */
@@ -1272,7 +1175,7 @@ export class GuiDaemon {
       model: this.model,
       attach: (id, journalId) => this.attach(id, journalId),
       createSession: (root, opts) => this.createSession(root, opts),
-      defaultScratchRoot: () => this.defaultScratchRoot(),
+      defaultScratchRoot: () => lifecycle.defaultScratchRoot(),
       resolveApproval: (pid, decision) => this.resolveApproval(pid, decision),
       resolveAsk: (pid, answer) => this.resolveAsk(pid, answer),
       resolvePlanApproval: (pid, decision) => this.resolvePlanApproval(pid, decision),
