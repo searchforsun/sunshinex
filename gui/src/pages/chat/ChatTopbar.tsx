@@ -259,42 +259,41 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         {/* 2026-10-24 用户裁定(二轮修正):[|] 仅菜单关闭态显示在会话名左(呼出);菜单开着时收起钮
             在菜单头右上,不双显。会话名不点击改名(⋯ 菜单→弹窗),长度随主栏 flex 收放 */}
         {menuClosed === true && (
-          <>
-            <button
-              type="button"
-              className="sx-winbtn sx-menu-toggle"
-              aria-label="toggle menu"
-              data-tip={t('Open menu', '打开菜单')}
-              onClick={onToggleMenu}
-            >
-              <PanelLeft size={16} strokeWidth={1.75} />
-            </button>
-            {/* 「打开」分体钮:主钮=默认应用开工作区,∨=已装预设菜单(✓=当前默认,点选即换即开) */}
-            <span className="sx-open-split" style={{ opacity: root === undefined || root === '' ? 0.4 : 1 }}>
-              <button
-                type="button"
-                className="sx-winbtn sx-open-main"
-                aria-label="open workspace"
-                data-tip={t('Open workspace', '打开工作区')}
-                disabled={root === undefined || root === ''}
-                onClick={() => openIn(defaultEditor)}
-              >
-                <FolderOpen size={16} strokeWidth={1.75} />
-              </button>
-              <button
-                type="button"
-                className="sx-winbtn sx-open-caret"
-                aria-label="choose app"
-                data-tip={t('Open with', '打开方式')}
-                disabled={root === undefined || root === ''}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => toggleEditorMenu(e.currentTarget)}
-              >
-                <ChevronDown size={13} strokeWidth={2} />
-              </button>
-            </span>
-          </>
+          <button
+            type="button"
+            className="sx-winbtn sx-menu-toggle"
+            aria-label="toggle menu"
+            data-tip={t('Open menu', '打开菜单')}
+            onClick={onToggleMenu}
+          >
+            <PanelLeft size={16} strokeWidth={1.75} />
+          </button>
         )}
+        {/* 「打开」分体钮:常驻顶栏(工作区功能不随菜单开关隐现);主钮=默认应用开工作区,
+            ∨=已装预设菜单(✓=当前默认,点选即换即开) */}
+        <span className="sx-open-split" style={{ opacity: root === undefined || root === '' ? 0.4 : 1 }}>
+          <button
+            type="button"
+            className="sx-winbtn sx-open-main"
+            aria-label="open workspace"
+            data-tip={t('Open workspace', '打开工作区')}
+            disabled={root === undefined || root === ''}
+            onClick={() => openIn(defaultEditor)}
+          >
+            <FolderOpen size={16} strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            className="sx-winbtn sx-open-caret"
+            aria-label="choose app"
+            data-tip={t('Open with', '打开方式')}
+            disabled={root === undefined || root === ''}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => toggleEditorMenu(e.currentTarget)}
+          >
+            <ChevronDown size={13} strokeWidth={2} />
+          </button>
+        </span>
         {fixedTitle === '' ? (
           // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
           <span className="chat-title" />
