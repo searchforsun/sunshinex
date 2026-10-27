@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { parseLanguage, setLanguage, t } from './i18n';
+import { t } from './i18n';
 import { GitCompare, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, X } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { Connection, ConnectionState, SnapshotResponse } from './connection';
@@ -23,16 +23,13 @@ import type { SessionEvent } from '../../src/types';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { chatMaxFor } from './thread-width';
-import { applyZoom, type UiZoom } from './ui-zoom';
-import { applyTheme, type ThemePref } from './theme';
-import { applyFontPreset, type FontPreset } from './font-preset';
-import { initUiPrefSync } from './ui-pref-sync';
+import { useAppearanceSync } from './use-appearance-sync';
+import { useOpError } from './use-op-error';
 import { useShellLayout } from './use-shell-layout';
 import { useTabPersistence } from './use-tab-persistence';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
 import { NavButtons } from './NavButtons';
-import { emptyNavHistory, pushNav } from './nav-history';
-import type { NavControls, NavHistory, NavLoc } from './nav-history';
+import { useNavHistory } from './use-nav-history';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -99,17 +96,6 @@ function AppShell(): JSX.Element {
   const [openJournalId, setOpenJournalId] = useState<string>('');
   /** 当前会话所属工作区 root(ProjectMenu activeRoot 组自动展开的判据;'' = 无) */
   const [openRoot, setOpenRoot] = useState<string>('');
-  /** 2026-10-25 应用级导航历史(前进/后退,浏览器形):壳层位置流(welcome/会话)——openSession/
-   *  backHome/New chat 各记录,navBack/navForward 位次回放。navLock=回放期抑制记录(回放复用
-   *  openSession 本体,不锁即回放被当新导航记二次);回调动词挂 ref(每渲染刷新,零过期闭包) */
-  const [nav, setNav] = useState<NavHistory>(emptyNavHistory);
-  const navLockRef = useRef(false);
-  const navRef = useRef(nav);
-  navRef.current = nav;
-  const recordNav = (loc: NavLoc): void => {
-    if (navLockRef.current) return;
-    setNav((h) => pushNav(h, loc));
-  };
   /** G14.16 标题统一流联动:rename 落盘后 bump → ProjectMenu 重拉 recentSessions(侧栏即时同名) */
   const [recentVersion, setRecentVersion] = useState(0);
   /** G14.52 活动会话运行态(GUI 本地权威):model-start 置位,done/error 复位——侧栏运行圆点消费 */
@@ -127,15 +113,8 @@ function AppShell(): JSX.Element {
   const setSessionTodos = useCallback((todos: TodoItem[]): void => {
     setProjection((p) => ({ ...p, sessionTodos: todos }));
   }, []);
-  /** 会话级操作(fork/rewind)失败提示:sx-toast 底部浮出 3s 自隐(设置页同形态)——旁路失败此前零反馈,
-   *  用户点「分叉/回到此轮」无响应会误以为成功 */
-  const [opError, setOpError] = useState('');
-  const opErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showOpError = (err: unknown): void => {
-    setOpError(err instanceof Error ? err.message : String(err));
-    if (opErrorTimer.current !== null) clearTimeout(opErrorTimer.current);
-    opErrorTimer.current = setTimeout(() => setOpError(''), 3_000);
-  };
+  /** 会话级操作失败提示(use-op-error 单点,2026-10-27 技术债轮 D53 批E 外提):sx-toast 3s 自隐 */
+  const { opError, showOpError } = useOpError();
   /** G8d/G14.2xx 子智能体活动聚合按会话分桶+LRU(use-agent-projections 单点;onEvent 归约与
    *  services.agentActivities 消费) */
   const { agentActivitiesBySession, bumpActs } = useAgentBuckets();
@@ -196,32 +175,9 @@ function AppShell(): JSX.Element {
   /** 影子水合单点绑定:每渲染重赋 hydrate ref(闭包恒取最新连接实例) */
   bindShadowHydration({ shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef }, bumpActs, connInstance);
 
-
-  /** G14.104 语言切换重渲染触发(t 为模块级非响应式) */
-  const [, setLangTick] = useState(0); // G14.104 语言切换重渲染(t 非响应式,tick 驱动)
-  /** GUI chrome 双语(G10-C3c):语言源 = daemon settings language 键,连接装配即同步 */
-  useEffect(() => {
-    if (connInstance === null) return;
-    connInstance.settings().then(
-      (view) => {
-        const raw = view.keys.find((k) => k.key === 'language')?.value ?? undefined;
-        if (raw !== undefined) setLanguage(parseLanguage(raw)); // 未设置不覆盖(缺省 zh 由 i18n 模块承载;测试钉 en 由 setup 承载)
-        setLangTick((v) => v + 1); // G14.104 语言是模块级非响应式——补一次重渲染,静止页面即时翻语言
-      },
-      () => {},
-    );
-  }, [connInstance]);
-
-  /** 公共持久化偏好上收(2026-10-24 用户裁定「能放到公共持久化的务必放」):连接就绪即拉
-   *  /app/gui-state 公共档覆盖本地(ui-zoom/theme),此后变更经 notifyUiPref 去抖双写 */
-  useEffect(() => {
-    if (connInstance === null) return;
-    initUiPrefSync(connInstance, {
-      zoom: (v) => applyZoom(v as UiZoom),
-      theme: (v) => applyTheme(v as ThemePref),
-      fontPreset: (v) => applyFontPreset(v as FontPreset),
-    });
-  }, [connInstance]);
+  /** 外观偏好同步(use-appearance-sync 单点,2026-10-27 技术债轮 D53 批E 外提):语言源随 daemon
+   *  settings + 公共持久化偏好上收(/app/gui-state 覆盖本地,zoom/theme/fontPreset)两件一次性同步 */
+  useAppearanceSync(connInstance);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
@@ -316,56 +272,10 @@ function AppShell(): JSX.Element {
     recordNav({ k: 'welcome' });
   };
 
-  /** 导航回放(前进/后退落点应用):welcome 位=壳层清场;chat 位=直接 openSession(会话常驻
-   *  daemon,GUI 端点全按 :id 寻址——零 newSession/attach,无 journal 档的新会话亦可回跳)。
-   *  navLock 全程落位:回放引发的 openSession/leaveToWelcome 不再记史(位次由回调动词改) */
-  const applyNavRef = useRef<(loc: NavLoc) => void>(() => undefined);
-  applyNavRef.current = (loc: NavLoc): void => {
-    navLockRef.current = true;
-    try {
-      if (loc.k === 'welcome') leaveToWelcome();
-      else openSession(loc.sessionId, loc.root, loc.journalId);
-    } finally {
-      navLockRef.current = false;
-    }
-  };
-  /** 回调动词(零依赖恒稳):位次先改、落点随 apply——目标位必与当前位异键(相邻去重保证) */
-  const navBack = useCallback((): void => {
-    const h = navRef.current;
-    const loc = h.stack[h.idx - 1];
-    if (h.idx <= 0 || loc === undefined) return;
-    applyNavRef.current(loc);
-    setNav({ ...h, idx: h.idx - 1 });
-  }, []);
-  const navForward = useCallback((): void => {
-    const h = navRef.current;
-    const loc = h.stack[h.idx + 1];
-    if (h.idx >= h.stack.length - 1 || loc === undefined) return;
-    applyNavRef.current(loc);
-    setNav({ ...h, idx: h.idx + 1 });
-  }, []);
-  /** 控制面(顶栏/欢迎页钮对 + Alt+←/→ 快捷键):nav 史变化即新对象(钮可用性随史) */
-  const navControls = useMemo<NavControls>(
-    () => ({ canBack: nav.idx > 0, canForward: nav.idx < nav.stack.length - 1, back: navBack, forward: navForward }),
-    [nav, navBack, navForward],
-  );
-  const navControlsRef = useRef(navControls);
-  navControlsRef.current = navControls;
-  /** Alt+←/→(浏览器惯例):preventDefault 免浏览器态吞作自身历史导航;设置页整壳替换无钮,键面同封 */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      if (settingsOpen) return;
-      const c = navControlsRef.current;
-      if (e.key === 'ArrowLeft' ? !c.canBack : !c.canForward) return;
-      e.preventDefault();
-      if (e.key === 'ArrowLeft') c.back();
-      else c.forward();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [settingsOpen]);
+  /** 应用级导航历史(use-nav-history 单点,2026-10-27 技术债轮 D53 批D 外提):记录/回放/控制面/
+   *  Alt+←/→ 键面一条链一个文件(navLock 回放抑制/零过期闭包语义随码);落点动词注入
+   *  (welcome=壳层清场,chat=openSession 直达——会话常驻 daemon 零重播链) */
+  const { navControls, recordNav } = useNavHistory({ goWelcome: leaveToWelcome, openSession, settingsOpen });
 
   /** G8c-T8 开设置态:settingsRoot 快照当前 openRoot(无会话=''=仅全局);connInstance 在场才
    *  可达(设置钮只在 ProjectMenu 底栏,其渲染前提即连接装配完成) */
