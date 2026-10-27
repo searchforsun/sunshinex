@@ -5,5 +5,8 @@
   "description": "sunshinex 内置插件：Playwright MCP 浏览器自动化",
   "dependencies": {
     "@playwright/mcp": "0.0.83"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

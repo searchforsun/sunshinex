@@ -34,6 +34,9 @@ extraResources:
     filter:
       - '**/*'
       - '!**/node_modules/**'
+      - '!**/test/**'
+      - '!**/*.test.ts'
+      - '!**/*.test.js'
 win:
   icon: assets/icon.ico
   target:
