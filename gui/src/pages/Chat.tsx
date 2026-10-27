@@ -257,6 +257,17 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const liveTokens = lastLiveRun?.tokensBase !== undefined ? Math.max(0, chat.tokens - lastLiveRun.tokensBase) : chat.tokens;
   /** G14.74 回到底部钮:非贴底即显(滚动 handler 里置态,值不变时 React 自动跳过重渲染) */
   const [atBottom, setAtBottom] = useState(scrollRestoreRef.current === null); // G14.212 恢复中非贴底:跳底钮即显
+  /** 等待模型待态(2026-10-27):idle 提交被接受→run-open 落地之间的空窗计时——上游首 token
+   *  延迟实测 29-60s 且此间零反馈(用户「卡住 1 分钟不显示计时」)。run 条出现/error 条即收 */
+  const [awaitModelSince, setAwaitModelSince] = useState<number | null>(null);
+  useEffect(() => {
+    setAwaitModelSince(null);
+  }, [sessionId]);
+  useEffect(() => {
+    if (awaitModelSince === null) return;
+    const last = chat.entries[chat.entries.length - 1];
+    if (last !== undefined && (last.kind === 'run' || last.kind === 'error')) setAwaitModelSince(null);
+  }, [chat.entries, awaitModelSince]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   /** 图片附件(2026-10-26):composer 待发 dataURL 列(≤8 张)——粘贴/附件选择装载,send 发送即清;
@@ -376,6 +387,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setInput,
     images: pendingImages,
     setImages: setPendingImages,
+    onAccepted: () => setAwaitModelSince(Date.now()),
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
@@ -543,6 +555,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onEntryOpenDiff={onEntryOpenDiff}
         onEntryRestore={onEntryRestore}
         onFork={onFork}
+        awaitModelSince={awaitModelSince}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
         chatScrollRef={chatScrollRef}

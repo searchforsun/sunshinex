@@ -18,8 +18,9 @@ import { MD_IMAGE_SRC_RE } from './md-image-syntax';
  *  原路径消费。行为零变化(Chat.test 转录组为锚)。 */
 
 /** 秒数格式(G14.118 中文单位,2026-10-25 扩时日档):<60s 「34秒」;≥60s 「5分 20秒」;≥1h 「6小时 1分」;
- *  ≥1d 「2天 3小时」(状态行/尾条共用;en 恒英文单位)——长任务(361分)不再挤在分钟档 */
-function runElapsed(seconds: number): string {
+ *  ≥1d 「2天 3小时」(状态行/尾条共用;en 恒英文单位)——长任务(361分)不再挤在分钟档。
+ *  2026-10-27 导出:等待模型待态行(MessageList pending)共用同一格式 */
+export function runElapsed(seconds: number): string {
   if (seconds < 60) return t(`${seconds}s`, `${seconds}秒`);
   if (seconds < 3600) return t(`${Math.floor(seconds / 60)}m ${seconds % 60}s`, `${Math.floor(seconds / 60)}分 ${seconds % 60}秒`); // G14.185b 分秒之间加间隙
   if (seconds < 86_400) {

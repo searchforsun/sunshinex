@@ -26,12 +26,15 @@ export function useChatSubmit(deps: {
   /** composer 待发图片附件(dataURL 列,≤8 张;send 发送即清) */
   readonly images: string[];
   readonly setImages: Dispatch<SetStateAction<string[]>>;
+  /** 提交被接受回调(2026-10-27 等待模型待态):idle 提交成功 resolve 即调——宿主据此时点
+   *  起待态计时,run-open 落地(run 条出现)即收 */
+  readonly onAccepted?: () => void;
 }): {
   submitText: (text: string, images?: string[]) => Promise<void>;
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted } = deps;
 /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
  *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
@@ -72,12 +75,17 @@ const submitText = useCallback(
           .then(() => undefined);
       } else req = conn.sessionSubmit(sessionId, trimmed);
     } else req = conn.sessionSubmit(sessionId, trimmed);
-    return req.catch((err: unknown) => {
-      setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-      throw err;
-    });
+    return req
+      .then(() => {
+        // idle 提交被接受(2026-10-27 等待模型待态):run-open 前的空窗起待态计时;steer/入队不置
+        if (!running) onAccepted?.();
+      })
+      .catch((err: unknown) => {
+        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+        throw err;
+      });
   },
-  [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData],
+  [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, onAccepted],
 );
 
 const send = (): void => {

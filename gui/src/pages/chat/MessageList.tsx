@@ -1,5 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -14,7 +14,7 @@ function fmtTokens(n: number): string {
  *  2026-10-23-messagelist-tail-window.md) */
 const RENDER_WINDOW_DEFAULT = 600; // 2026-10-26 三期:尾窗同步 600(用户裁定;content-visibility/组级 memo 兜渲染成本)
 const RENDER_WINDOW_STEP = 300;
-import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
+import { ChatEntryView, RunEntryView, runElapsed, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
 import { ChatRail } from './ChatRail';
@@ -55,6 +55,9 @@ export interface MessageListProps {
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
+  /** 等待模型待态(2026-10-27):提交被接受→run-open 落地之间的空窗(首 token 前上游延迟
+   *  29-60s 实测)——流区末行渲染「已发送 · 等待模型 + 秒针」,run 条出现即隐 */
+  readonly awaitModelSince?: number | null;
 }
 
 /** 2026-10-26 性能轮:按日分组块级 memo——此前每帧(30ms 批)重建全部可见行元素(300 行
@@ -198,7 +201,14 @@ const DayGroupBlock = memo(
 export function MessageList(props: MessageListProps): JSX.Element {
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage, awaitModelSince } = props;
+  /** 待态秒针:awaitModel 在场时逐秒重渲染(计时走 Date.now() 差值,区间持续 1s tick) */
+  const [, setPendingTick] = useState(0);
+  useEffect(() => {
+    if (awaitModelSince === undefined || awaitModelSince === null) return;
+    const t = setInterval(() => setPendingTick((v) => v + 1), 1000);
+    return () => clearInterval(t);
+  }, [awaitModelSince]);
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -333,6 +343,14 @@ export function MessageList(props: MessageListProps): JSX.Element {
             <span className="run-spinner" aria-hidden="true" />
             <span>{t(`${liveSteps} steps`, `${liveSteps} 步`)}</span>
             <span>{fmtTokens(liveTokens)}</span>
+          </div>
+        )}
+        {/* 等待模型待态(2026-10-27):run-open 前的空窗有反馈——提交接受即显,run 条出现即隐 */}
+        {!running && awaitModelSince !== undefined && awaitModelSince !== null && (
+          <div className="run-live-line" role="status" aria-label="run status">
+            <span className="run-spinner" aria-hidden="true" />
+            <span>{t('Sent · waiting for model', '已发送 · 等待模型')}</span>
+            <span className="run-meta">{runElapsed(Math.max(0, Math.round((Date.now() - awaitModelSince) / 1000)))}</span>
           </div>
         )}
     </main>
