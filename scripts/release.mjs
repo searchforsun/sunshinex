@@ -367,7 +367,7 @@ say('browser-use server 单文件束（plugins/browser-use build.mjs）');
 run(process.execPath, ['build.mjs'], { cwd: path.join(ROOT, 'plugins', 'browser-use'), stdio: 'inherit' });
 if (!fs.existsSync(path.join(ROOT, 'plugins', 'browser-use', 'server', 'index.js'))) die('plugins/browser-use/server/index.js 缺失——bundle 未产出');
 say('computer-use server 单文件束（plugins/computer-use build.mjs）');
-run(process.execPath, ['plugins/computer-use/build.mjs'], { cwd: path.join(ROOT, 'plugins', 'computer-use'), stdio: 'inherit' });
+run(process.execPath, ['build.mjs'], { cwd: path.join(ROOT, 'plugins', 'computer-use'), stdio: 'inherit' });
 if (!fs.existsSync(path.join(ROOT, 'plugins', 'computer-use', 'server', 'index.js'))) die('plugins/computer-use/server/index.js 缺失——bundle 未产出');
 
 // ---------- npm pack ----------
