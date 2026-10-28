@@ -58,13 +58,21 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
    *  resize 即重渲,渲染期钳制以实时视口重算。 */
   const [viewportW, setViewportW] = useState(() => window.innerWidth);
   useEffect(() => {
-    // resize 事件风暴合并到帧界(2026-10-28 果冻续修:每事件一整树重渲=中间帧不一致提交,
-    // 元素随提交节拍晃;rAF 合并后一帧至多一次,几何仍逐帧连续)
+    // resize 响应降频(2026-10-28 迟滞感续修):窗口拖大/缩小每事件一整树重渲,渲染+全窗 reflow
+    // 叠加超帧预算=内容落后窗缘一两帧(双侧迟滞)。rAF 合并之上再加 100ms 时限——几何类右缘
+    // 已纯 CSS 逐帧跟随不受影响;此处状态只喂阈值翻转(抽屉模式)与窄宽钳制,10Hz 足够
     let raf = 0;
+    let last = 0;
     const onResize = (): void => {
       if (raf !== 0) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        const now = performance.now();
+        if (now - last < 100) {
+          raf = requestAnimationFrame(onResize); // 未到时限:续帧等待(空转回调零成本)
+          return;
+        }
+        last = now;
         setViewportW(window.innerWidth);
       });
     };
