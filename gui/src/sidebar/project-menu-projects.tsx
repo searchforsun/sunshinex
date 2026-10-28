@@ -176,59 +176,62 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                     </button>
                     {/* 2026-10-28 用户裁定:计数徽章移出组头按钮,作为行内均匀项贴 ⋯ 簇左侧
                         (与行尾按钮同距同节奏;点击同切换组展开) */}
-                    <button
-                      type="button"
-                      className="ws-count sx-count"
-                      aria-label={`${t('Sessions', '会话数')} ${row.sessionCount}`}
-                      disabled={root === undefined}
-                      onClick={() => onToggleGroup(row)}
-                    >
-                      {row.sessionCount}
-                    </button>
-                    {/* 组头 ⋯ 移除钮(2026-10-23 用户裁定:hover 显形 sx-iconbtn 同款,居新会话钮左侧;点击弹「移除」) */}
-                    <button
-                      type="button"
-                      aria-label={`workspace actions ${row.slug}`}
-                      className="sx-iconbtn"
-                      data-tip={t('Workspace actions', '工作区操作')}
-                      onMouseDown={(e) => e.stopPropagation()} // 锚钮自身不触发 document 外点收(toggle 不被击穿)
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const r = e.currentTarget.getBoundingClientRect();
-                        setRemoveAsk((v) => (v?.slug === row.slug ? null : { slug: row.slug, x: Math.round(r.right), y: Math.round(r.bottom) }));
-                      }}
-                    >
-                      <MoreHorizontal size={14} strokeWidth={1.75} />
-                    </button>
-                    {/* 组头目录钮(2026-10-23 用户裁定):⋯ 与新会话之间——开当前会话/项目第一会话的
-                        目录页签;2026-10-27 用户裁定:图标常驻(目录树已和会话解绑——零会话项目
-                        点击即建席,树视图入左菜单层) */}
-                    {root !== undefined && (
+                    {/* 2026-10-28 用户裁定:四图标簇(计数/⋯/目录/新会话)静默态整簇隐没不占位,
+                        项目名占满全行;行 hover/focus 整簇淡入覆盖名尾(左缘渐隐垫保可读) */}
+                    <span className="ws-row-actions">
                       <button
                         type="button"
-                        aria-label={`open directory ${row.slug}`}
+                        className="ws-count sx-count"
+                        aria-label={`${t('Sessions', '会话数')} ${row.sessionCount}`}
+                        disabled={root === undefined}
+                        onClick={() => onToggleGroup(row)}
+                      >
+                        {row.sessionCount}
+                      </button>
+                      {/* 组头 ⋯ 移除钮(2026-10-23 用户裁定:hover 显形 sx-iconbtn 同款,居新会话钮左侧;点击弹「移除」) */}
+                      <button
+                        type="button"
+                        aria-label={`workspace actions ${row.slug}`}
                         className="sx-iconbtn"
-                        data-tip={t('Open directory tab', '打开目录页签')}
-                        onMouseDown={(e) => e.stopPropagation()}
+                        data-tip={t('Workspace actions', '工作区操作')}
+                        onMouseDown={(e) => e.stopPropagation()} // 锚钮自身不触发 document 外点收(toggle 不被击穿)
                         onClick={(e) => {
                           e.stopPropagation();
-                          onOpenDirectory(root);
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setRemoveAsk((v) => (v?.slug === row.slug ? null : { slug: row.slug, x: Math.round(r.right), y: Math.round(r.bottom) }));
                         }}
                       >
-                        <FolderTree size={14} strokeWidth={1.75} />
+                        <MoreHorizontal size={14} strokeWidth={1.75} />
                       </button>
-                    )}
-                    {root !== undefined && (
-                      <button
-                        type="button"
-                        aria-label={`new session in ${row.slug}`}
-                        className="sx-iconbtn"
-                        data-tip={t('New chat in this project', '在此项目中新对话')}
-                        onClick={() => onComposeIn(root)}
-                      >
-                        <SquarePen size={14} strokeWidth={1.75} />
-                      </button>
-                    )}
+                      {/* 组头目录钮(2026-10-23 用户裁定):⋯ 与新会话之间——开当前会话/项目第一会话的
+                          目录页签 */}
+                      {root !== undefined && (
+                        <button
+                          type="button"
+                          aria-label={`open directory ${row.slug}`}
+                          className="sx-iconbtn"
+                          data-tip={t('Open directory tab', '打开目录页签')}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenDirectory(root);
+                          }}
+                        >
+                          <FolderTree size={14} strokeWidth={1.75} />
+                        </button>
+                      )}
+                      {root !== undefined && (
+                        <button
+                          type="button"
+                          aria-label={`new session in ${row.slug}`}
+                          className="sx-iconbtn"
+                          data-tip={t('New chat in this project', '在此项目中新对话')}
+                          onClick={() => onComposeIn(root)}
+                        >
+                          <SquarePen size={14} strokeWidth={1.75} />
+                        </button>
+                      )}
+                    </span>
                   </div>
                   {root !== undefined && (
                     <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>

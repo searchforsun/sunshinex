@@ -157,8 +157,21 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 }
 .ws-count:hover { color: var(--fg); }
 .ws-count:disabled { opacity: 0.4; cursor: default; }
-/* 二修(同日「距离也不对」):flex 生长有残余空隙且受 auto-margin/生长序扰动——改绝对定位
-   钉死按钮右内缘 4px(⋯ 簇在按钮右邻,视觉即贴),名 span 右留 34px 徽章位防压 */
+/* 2026-10-28 用户裁定(二次):静默态四图标簇(计数/⋯/目录/新会话)隐没不占位,项目名
+   占满全行;行 hover/focus 整簇淡入覆盖名尾(左缘渐隐垫保可读),离行即隐 */
+.workspace-item .ws-row-actions {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 2px;
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-basic) var(--ease-enter);
+}
+.workspace-item .ws-row-actions::before {
+  content: ''; position: absolute; inset: -3px -8px -3px -30px;
+  background: linear-gradient(90deg, transparent, var(--surface-under) 26px);
+}
+.workspace-item:hover .ws-row-actions,
+.workspace-item:focus-within .ws-row-actions { opacity: 1; pointer-events: auto; }
+.ws-row-actions > * { position: relative; }
 /* G8e-T1 三面①组头 active(row.root===activeRoot 加类):竖 accent 条+bg-2——会话行 active 同款 */.sx-group-head.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8e-T1 补:chevron 旋转过渡(旋角由组件内联 transform 落,类只承载过渡) */.sx-chevron { display: inline-flex; flex: none; color: var(--fg-secondary); transition: transform 0.15s ease; }.sx-session-row { display: flex; width: 100%; align-items: center; gap: 6px; padding: 4px 12px 4px 34px; color: var(--fg); text-align: left; border-radius: var(--radius-sm); }
 /* G14.2xx 组内「显示更多」尾行:与会话行同位(left 4/pad 24)、弱化灰 */
