@@ -71,6 +71,9 @@ interface SettingsDoc {
   plugins?: unknown;
   /** imageHistoryLimit 结构化语义键原值（图片历史渲染半径，spec §3.2）：形状裁决在 config/image-history.ts，不经 flatten/env 槽 */
   imageHistoryLimit?: unknown;
+  /** mcpApprovals/mcpDenied 结构化语义键原值（项目 MCP 批准阀账本，键=projectSlug(root)→名单，读写单点 catalog/approvals.ts）：形状裁决在 approvals 模块，不经 flatten/env 槽 */
+  mcpApprovals?: unknown;
+  mcpDenied?: unknown;
 }
 
 /**
@@ -154,6 +157,8 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   let providers: unknown = undefined;
   let plugins: unknown = undefined;
   let imageHistoryLimit: unknown = undefined;
+  let mcpApprovals: unknown = undefined;
+  let mcpDenied: unknown = undefined;
   for (const [key, value] of Object.entries(root)) {
     if (key === 'version' || key === 'env') continue;
     if (key === 'permissions') {
@@ -172,6 +177,14 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
       imageHistoryLimit = root[key] as unknown;
       continue;
     }
+    if (key === 'mcpApprovals') {
+      mcpApprovals = root[key] as unknown;
+      continue;
+    }
+    if (key === 'mcpDenied') {
+      mcpDenied = root[key] as unknown;
+      continue;
+    }
     semantic[key] = value;
   }
   const env: Record<string, string> = {};
@@ -185,7 +198,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
       // 非字符串值静默忽略：env 块定位是环境变量透传，数字/布尔无对应语义
     }
   }
-  return { semantic, env, permissions, providers, plugins, imageHistoryLimit };
+  return { semantic, env, permissions, providers, plugins, imageHistoryLimit, mcpApprovals, mcpDenied };
 }
 
 interface FlattenResult {
