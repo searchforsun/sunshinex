@@ -28,6 +28,8 @@ export interface TabStripProps {
   readonly tabs: readonly import('./tab-state').TabInstance[];
   readonly activeUid: string | null;
   readonly disabled?: boolean; // 无会话:整条灰
+  /** 2026-10-27 欢迎页全局草稿:true = 「+」菜单只示浏览器/终端(草稿座可用面) */
+  readonly welcomeOnly?: boolean;
   readonly onSelect: (uid: string) => void;
   readonly onClose: (uid: string) => void;
   /** G14.111 拖拽重排回调(App 落 tabStates 数组重排) */
@@ -50,6 +52,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     tabs,
     activeUid,
     disabled = false,
+    welcomeOnly = false,
     onSelect,
     onClose,
     onReorder,
@@ -247,7 +250,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         <div className="sx-menu-pop" style={{ position: 'fixed', top: popPos.top, right: popPos.right }} role="menu" aria-label="new tab types">
           {GROUP_ORDER.map((g) => {
             // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
-            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id));
+            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && (!welcomeOnly || e.id === 'web' || e.id === 'terminal'));
             if (entries.length === 0) return null;
             return (
               <div key={g} role="group" aria-label={g}>

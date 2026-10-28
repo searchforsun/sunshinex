@@ -95,7 +95,7 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
       : Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuRenderW - MAIN_MIN_WIDTH),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
-  const sidebarOccupied = !settingsOpen && page === 'chat' && !tabCollapsed && !sidebarFloating ? sidebarRenderW : 0;
+  const sidebarOccupied = !settingsOpen && (page === 'chat' || page === 'welcome') && !tabCollapsed && !sidebarFloating ? sidebarRenderW : 0;
 
   /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 296 在
    *  tab-state.setWidth 单点,拖拽上界=视口−菜单−主栏最小宽——无固定最大宽但不越视口,G14.2xx 用户
@@ -122,7 +122,7 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
     const startWidth = Math.min(tabWidth, cap());
     let next = startWidth;
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
-    const sessionId = openSessionId;
+    const sessionId = openSessionId !== '' ? openSessionId : '@welcome'; // 草稿座宽度档
     const onMove = (ev: MouseEvent): void => {
       // G14.2xx 用户裁定:无固定最大宽,但受中栏最小宽约束——中栏触底即停,右栏不越视口。
       // zoom 契约:clientX/startX 与上界均为视觉 px,宽度状态是本地 px——delta 与上界同 /zoomScale()
@@ -142,7 +142,7 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
     window.addEventListener('mouseup', stop);
   };
 
-  const sidebarWidth = page === 'chat' && openSessionId !== '' ? (tabCollapsed ? 32 : sidebarRenderW) : 32;
+  const sidebarWidth = (page === 'chat' || page === 'welcome') && !(openSessionId === '' && tabCollapsed) ? (tabCollapsed ? 32 : sidebarRenderW) : 32;
 
   return {
     startMenuResize,

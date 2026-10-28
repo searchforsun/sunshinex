@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from './i18n';
 import { t as tLabel } from './i18n';
-import { GitCompare, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, X } from 'lucide-react';
+import { GitCompare, Globe, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { Connection, ConnectionState } from './connection';
 import type { TodoItem } from '../../src/types';
@@ -686,7 +686,8 @@ function AppShell(): JSX.Element {
             <TabStrip
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
-              disabled={page !== 'chat'}
+              disabled={page !== 'chat' && page !== 'welcome'}
+              welcomeOnly={openSessionId === ''}
               onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, uid))}
               onReorder={(from, to) => setTabStates((s) => reorderTab(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, from, to))}
               onClose={closeTabInSession}
@@ -756,12 +757,17 @@ function AppShell(): JSX.Element {
                 <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
                 <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
                 <div className="sx-tab-empty-cards">
-                  {([
-                    ['side', MessageCircle, t('Side chat', '辅助对话'), () => startSideChat()],
-                    ['tasks', ListTodo, t('Todos', '待办'), () => openTabInSession('tasks')],
-                    ['diff', GitCompare, t('Review', '审查'), () => openTabInSession('diff')],
-                    ['directory', FolderTree, t('Directory', '目录'), () => openTabInSession('directory')],
-                  ] as const).map(([key, Icon, label, onClick]) => (
+                  {(openSessionId === ''
+                    ? [
+                        ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
+                        ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
+                      ] as [string, LucideIcon, string, () => void][]
+                    : [
+                        ['side', MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],
+                        ['tasks', ListTodo, t('Todos', '待办'), (): void => openTabInSession('tasks')],
+                        ['diff', GitCompare, t('Review', '审查'), (): void => openTabInSession('diff')],
+                        ['directory', FolderTree, t('Directory', '目录'), (): void => openTabInSession('directory')],
+                      ] as [string, LucideIcon, string, () => void][]).map(([key, Icon, label, onClick]) => (
                     <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
                       <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
                       <span>{label}</span>
