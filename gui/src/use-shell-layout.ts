@@ -58,9 +58,21 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
    *  resize 即重渲,渲染期钳制以实时视口重算。 */
   const [viewportW, setViewportW] = useState(() => window.innerWidth);
   useEffect(() => {
-    const onResize = (): void => setViewportW(window.innerWidth);
+    // resize 事件风暴合并到帧界(2026-10-28 果冻续修:每事件一整树重渲=中间帧不一致提交,
+    // 元素随提交节拍晃;rAF 合并后一帧至多一次,几何仍逐帧连续)
+    let raf = 0;
+    const onResize = (): void => {
+      if (raf !== 0) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setViewportW(window.innerWidth);
+      });
+    };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (raf !== 0) cancelAnimationFrame(raf);
+    };
   }, []);
   /** 右栏浮窗切换(2026-10-24 三轮裁定):右栏浮窗下移为「主栏+抽屉双触底」——视口(本地/zoom)
    *  <320+296=616 才浮;856~616 区间=菜单已自动关闭(见 menuFloating),主栏吃满,侧栏仍分栏 */

@@ -527,13 +527,13 @@ function AppShell(): JSX.Element {
         '--sidebar-w': `${sidebarOccupied}px`,
       } as CSSProperties}
     >
-      {IS_SHELL && !settingsOpen && page !== 'chat' && (page !== 'welcome' || tabState.collapsed) && (
-        /* 2026-10-24 拖拽重构:欢迎/连接页不渲染 TabStrip/ChatTopbar,整窗零 drag 把手(用户实测
-           「欢迎页顶部无法拖窗」根因)。几何隔离 drag 轨:left+44 避让菜单关闭态呼出钮、right:148
-           避让窗控簇(簇左缘 118+30 安全边)——drag 矩形与一切按钮互斥,无挖孔,CSS zoom 下拖拽
-           位图错位也咬不到按钮;抽屉态左缘移至抽屉浮层右缘之外(CSS sx-menu-float 分支)。
-           2026-10-28 用户实测「欢迎页 +/×/∨ 全点不动」:草稿座功能(FD964FF)让页签条上了欢迎页,
-           dragrail 仍按旧假设整条铺顶压住条上按钮——页签条在场(右栏展开)即让位,折叠/断连态照旧 */
+      {IS_SHELL && !settingsOpen && page !== 'chat' && (
+        /* 2026-10-24 拖拽重构:欢迎/连接页顶部拖窗把手。几何隔离 drag 轨:left+104 避让菜单
+           关闭态呼出钮簇、right=148+侧栏实占宽(--sidebar-w)避让窗控簇与草稿座页签条(2026-10-28
+           用户实测「开侧栏后上侧无法拖窗」:曾按页签条在场整条撤 rail 致欢迎页零拖拽面——老 bug
+           复现;改动态让位后 rail 常开仍与一切按钮几何互斥,zoom 错位平移咬不到钮;抽屉态左缘
+           移至抽屉浮层右缘之外见 CSS sx-menu-float 分支;侧栏抽屉浮层 z80 盖 rail z1,其条上
+           空白不可拖为窄视口可接受) */
         <div className="sx-dragrail" aria-hidden="true" />
       )}
       {settingsOpen && connInstance !== null ? (

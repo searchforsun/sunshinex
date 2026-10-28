@@ -2360,7 +2360,7 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }
 /* left+104 避让菜单关闭态左上浮出簇(2026-10-25:后退/前进钮对+呼出钮,簇宽 10+84=94)—
    drag 矩形与一切按钮几何互斥不变,zoom 错位平移仍咬不到钮 */
-.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: 148px; z-index: 1; -webkit-app-region: drag; }
+.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: calc(148px + var(--sidebar-w, 0px)); z-index: 1; -webkit-app-region: drag; } /* 2026-10-28:右缘动态让位侧栏实占宽——欢迎页草稿座页签条上场后 dragrail 常开仍几何互斥(侧栏关=回 148 原值) */
 .sx-shell.sx-desktop.sx-menu-float .sx-dragrail { left: calc(var(--menu-w, 240px) + 12px); } /* 抽屉态让位浮层(width:--menu-w z96),拖拽走顶栏空白带可见部 */
 .sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; margin-left: 24px; -webkit-app-region: drag; } /* margin-left=zoom 位图错位安全边(带左紧邻 ChatDynButtons) */
 .sx-shell.sx-desktop .sx-menu-head-drag { flex: 1; align-self: stretch; margin: 0 24px 0 16px; -webkit-app-region: drag; } /* 右 24 避收起钮;左 16 避品牌字——右单侧,钮仍贴右缘 */
