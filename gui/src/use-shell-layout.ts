@@ -60,21 +60,26 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
   useEffect(() => {
     // resize 响应降频(2026-10-28 迟滞感续修):窗口拖大/缩小每事件一整树重渲,渲染+全窗 reflow
     // 叠加超帧预算=内容落后窗缘一两帧(双侧迟滞)。rAF 合并之上再加 100ms 时限——几何类右缘
-    // 已纯 CSS 逐帧跟随不受影响;此处状态只喂阈值翻转(抽屉模式)与窄宽钳制,10Hz 足够
+    // 已纯 CSS 逐帧跟随不受影响;此处状态只喂阈值翻转(抽屉模式)与窄宽钳制,10Hz 足够。
+    // 续帧等待必须是独立函数(2026-10-29 用户实测截图冻结根修):原实现重试调度 onResize 自身,
+    // 重试帧触发时 raf 已是新 rAF id(非 0),进门被下方守卫静默吞掉且永不清零——首个 <100ms
+    // 连续拖动后所有 resize 事件永久丢弃,viewportW 冻结=抽屉阈值/窄宽钳制全按旧宽计算
+    // (实测:696 视口三栏按 856 溢出渲染,右栏被窗缘裁掉,抽屉模式再也不翻转)
     let raf = 0;
     let last = 0;
+    const flush = (): void => {
+      const now = performance.now();
+      if (now - last < 100) {
+        raf = requestAnimationFrame(flush); // 未到时限:续帧等待(flush 不走事件入口守卫)
+        return;
+      }
+      raf = 0;
+      last = now;
+      setViewportW(window.innerWidth);
+    };
     const onResize = (): void => {
       if (raf !== 0) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const now = performance.now();
-        if (now - last < 100) {
-          raf = requestAnimationFrame(onResize); // 未到时限:续帧等待(空转回调零成本)
-          return;
-        }
-        last = now;
-        setViewportW(window.innerWidth);
-      });
+      raf = requestAnimationFrame(flush);
     };
     window.addEventListener('resize', onResize);
     return () => {
