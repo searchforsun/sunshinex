@@ -44,7 +44,11 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  # 业界惯例命名（kebab-case 无空格，URL/CLI 友好）：sunshinex-<ver>-setup.exe
+  # 桌面/开始菜单快捷方式 NSIS 助手默认预勾(2026-10-28 用户实测「没有桌面图标」——安装时
+  # 两处均未勾且无兜底;显式声明防再犯)
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  # 业界惯例命名（kebab-case 无空格，URL/CLI 友好）：sunshinex-<ver>-setup.${ext}
   artifactName: sunshinex-${version}-setup.${ext}
 # node-pty 1.1.0 为 N-API（node-addon-api）构建，ABI 跨 Electron/Node 版本稳定；
 # H1/H2 壳冒烟（dev 态 Electron 主进程 in-process 加载同一二进制）已实证免重建——
