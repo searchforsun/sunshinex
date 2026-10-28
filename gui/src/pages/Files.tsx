@@ -127,7 +127,15 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.154 悬浮工具条状态(绝对定位 React 面,跟随选区;弃 monaco overlay——其位置不随选区重算) */
   const [selBar, setSelBar] = useState<{ top: number; left: number; rel: string; lines: string } | null>(null);
-  useEffect(() => () => { editorRef.current = null; }, []);
+  /** Monaco 防抖 layout(2026-10-28):RO 句柄随编辑器卸载断开;挂定时器句柄防卸载后迟到回调 */
+  const monoRoRef = useRef<ResizeObserver | null>(null);
+  const monoTimerRef = useRef(0);
+  useEffect(() => () => {
+    editorRef.current = null;
+    monoRoRef.current?.disconnect();
+    monoRoRef.current = null;
+    if (monoTimerRef.current !== 0) { clearTimeout(monoTimerRef.current); monoTimerRef.current = 0; }
+  }, []);
 
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
   /** 文件读取单点(2026-10-27 欢迎页全局草稿):无会话(欢迎页草稿座)走 /app/file(root 信任域),
@@ -382,6 +390,19 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     // 位置=monaco getScrolledVisiblePosition(任意行可用)+编辑器/容器 rect 差换算;
                     // mousedown preventDefault 保选区;双动作:添加到当前任务/在辅助对话中提问
                     editorRef.current = ed;
+                    // 窗口缩放右缘迟滞主源(2026-10-28 用户实测「左缘顺右缘迟」不对称):侧栏收窄时
+                    // automaticLayout 每帧全量重排(长文档逐行重折行)。改 RO+120ms 尾沿手动 layout
+                    // (VS Code 同款策略);首帧即刻 layout 一次保尺寸就位
+                    ed.layout();
+                    const monoRo = new ResizeObserver(() => {
+                      if (monoTimerRef.current !== 0) clearTimeout(monoTimerRef.current);
+                      monoTimerRef.current = window.setTimeout(() => {
+                        monoTimerRef.current = 0;
+                        if (editorRef.current !== null) editorRef.current.layout(); // 卸载后迟到回调守卫
+                      }, 120);
+                    });
+                    monoRo.observe(ed.getContainerDomNode());
+                    monoRoRef.current = monoRo;
                     const hide = (): void => {
                       selRef.current = null;
                       selRangeRef.current = null;
@@ -443,7 +464,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     lineHeight: 19,
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
                     fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
-                    automaticLayout: true,
+                    automaticLayout: false, // 2026-10-28 改 RO+120ms 防抖手动 layout(onMount 内),右缘缩放迟滞主源根除
                     renderLineHighlight: 'none',
                     overviewRulerLanes: 0,
                     scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8, useShadows: false },
