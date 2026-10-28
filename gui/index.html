@@ -15,8 +15,90 @@
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       })();
     </script>
+    <style>
+      /* 开机画面(2026-10-27 用户需求「开机动画+产品logo」):内联零依赖——首 paint 即现,
+         不等 app.css/JS 束;主题随上方引导已落的 data-theme。收尾由 src/main.tsx 挂载后
+         调 window.__sxBootDone 淡出交接(下方控制脚本定义)。 */
+      #boot {
+        position: fixed; inset: 0; z-index: 2147483647;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+        background: #131313; color: #dfdfdf;
+        transition: opacity 0.4s ease;
+      }
+      html[data-theme='light'] #boot { background: #f9f9f9; color: #1a1c1f; }
+      #boot.boot-out { opacity: 0; pointer-events: none; }
+      .boot-mark { opacity: 0.92; }
+      /* 核星呼吸(与卫星公转同周期 2.6s,行星意象) */
+      .boot-core { transform-origin: 36px 36px; animation: boot-pulse 2.6s ease-in-out infinite; }
+      @keyframes boot-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.72); opacity: 0.55; } }
+      /* 字标:延迟淡入,宽字距全大写 */
+      .boot-word {
+        font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; font-weight: 600;
+        letter-spacing: 0.42em; text-indent: 0.42em;
+        opacity: 0; animation: boot-in 0.8s ease 0.15s forwards;
+      }
+      @keyframes boot-in { to { opacity: 0.85; } }
+      /* 进度微光:accent 短线不定态扫掠 */
+      .boot-bar {
+        width: 132px; height: 2px; border-radius: 1px; overflow: hidden;
+        background: rgba(223, 223, 223, 0.12);
+      }
+      html[data-theme='light'] .boot-bar { background: rgba(26, 28, 31, 0.1); }
+      .boot-bar i {
+        display: block; width: 44px; height: 100%; border-radius: 1px; background: #339cff;
+        animation: boot-sweep 1.3s ease-in-out infinite;
+      }
+      @keyframes boot-sweep { from { transform: translateX(-48px); } to { transform: translateX(136px); } }
+      @media (prefers-reduced-motion: reduce) {
+        #boot, #boot * { animation: none !important; }
+        .boot-word { opacity: 0.85; }
+      }
+    </style>
   </head>
   <body>
+    <!-- 开机画面:mark 几何镜像 welcome-logo/scripts/gen-shell-icon.mjs(改形两侧同步) -->
+    <div id="boot" aria-hidden="true">
+      <svg class="boot-mark" width="84" height="84" viewBox="0 0 72 72" fill="none">
+        <g transform="rotate(-15 36 36)">
+          <g stroke="currentColor" stroke-width="2.5">
+            <path d="M52.11 30.17A19 11 0 0 1 52.11 41.83" />
+            <path d="M46.07 45.33A19 11 0 0 1 25.93 45.33" />
+            <path d="M19.89 41.83A19 11 0 0 1 19.89 30.17" />
+            <path d="M25.93 26.67A19 11 0 0 1 46.07 26.67" />
+          </g>
+          <circle class="boot-core" cx="36" cy="36" r="4.5" fill="currentColor" />
+          <circle r="2.2" fill="currentColor">
+            <!-- 卫星沿轨道椭圆(rx19 ry11 圆心 36,36,同环)公转 -->
+            <animateMotion dur="2.6s" repeatCount="indefinite" path="M 17 36 A 19 11 0 1 0 55 36 A 19 11 0 1 0 17 36" />
+          </circle>
+        </g>
+      </svg>
+      <div class="boot-word">SUNSHINEX</div>
+      <div class="boot-bar"><i></i></div>
+    </div>
+    <script>
+      /* 开机画面控制:同渲染会话 reload 不再演(dev HMR 不扰);挂载收尾 __sxBootDone 淡出;
+         8s 兜底——React 挂载失败也放行画面,不留死屏 */
+      (function () {
+        var boot = document.getElementById('boot');
+        if (boot === null) return;
+        var again = false;
+        try {
+          again = sessionStorage.getItem('sunshinex.booted') === '1';
+          sessionStorage.setItem('sunshinex.booted', '1');
+        } catch (e) { /* 存储禁用:每次都演 */ }
+        if (again) { boot.remove(); return; }
+        var done = false;
+        var finish = function () {
+          if (done === true) return;
+          done = true;
+          boot.classList.add('boot-out');
+          window.setTimeout(function () { boot.remove(); }, 460);
+        };
+        window.__sxBootDone = finish;
+        window.setTimeout(finish, 8000);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

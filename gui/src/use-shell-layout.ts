@@ -107,7 +107,6 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
    *  切换属病态,不追)。G14.2xx 起拖基线取「当前渲染宽」:状态可能滞留护栏外(先拖宽菜单
    *  再拖本边条),不取渲染宽则向窄拖先空走死区 */
   const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
-    const onWelcome = page === 'welcome'; // 2026-10-27:欢迎页草稿座可拖宽(宽度档 '@welcome')
     if (tabCollapsed || (page !== 'chat' && page !== 'welcome')) return;
     e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
     const el = e.currentTarget;
