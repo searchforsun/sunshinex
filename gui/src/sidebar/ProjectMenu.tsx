@@ -193,6 +193,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 会话 id → journal 行 id 映射(attach 时记下):行 active 只亮当前打开会话对应的 journal 行,
    *  不再用 root 兜底(兜底会把同组所有行全点亮,看起来像误 hover) */
   const [journalOfSession, setJournalOfSession] = useState<ReadonlyMap<string, string>>(() => new Map());
+  /** 正在看的会话跑完自动已读(2026-10-28 用户裁定):行刷新后,当前打开会话对应行的
+   *  updatedAt 新于已读戳即补戳(markSeen 自守恒)——蓝点只亮「非当前会话的新活动」 */
+  useEffect(() => {
+    if (activeSessionId === '' || sessions === null) return;
+    const sr = sessions.find(
+      (s) => s.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === s.id,
+    );
+    if (sr !== undefined && isUnseen(sr.id, sr.updatedAt)) markSeen(sr.id, sr.updatedAt);
+  }, [sessions, activeSessionId, journalOfSession, isUnseen, markSeen]);
+
   const markJournal = (sessionId: string, journalId: string): void =>
     setJournalOfSession((prev) => {
       if (prev.get(sessionId) === journalId) return prev;

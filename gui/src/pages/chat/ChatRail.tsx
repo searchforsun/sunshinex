@@ -95,6 +95,12 @@ export function ChatRail(props: {
     //   自愈(setGeo 守卫截停)。2026-10-27 技术债轮 I4:原 documentElement 全树
     //   MutationObserver 补丁通道退役(观测「写入后果」改「写入本身」)
     measure();
+    // 首载沉降补测(2026-10-28 用户实测:首次加载锚在左上角,加宽才复位)——首帧测量时
+    // 顶栏/菜单/字体未定稿,rect 是过渡值;其后滚动口尺寸若不变 RO 不再触发,错锚即滞留。
+    // 挂载后数帧+350ms+字体就绪各补测一次(railAnchor 幂等,零尺寸由守卫收起)
+    const settleRafs = [2, 5, 9].map(() => requestAnimationFrame(() => measure()));
+    const settleTimer = window.setTimeout(measure, 350);
+    void Promise.resolve(document.fonts?.ready).then(() => measure(), () => undefined);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     const onResize = (): void => {
@@ -113,6 +119,8 @@ export function ChatRail(props: {
       window.removeEventListener('resize', onResize);
       window.removeEventListener(CHAT_MAX_EVENT, onChatMax);
       if (raf !== 0) cancelAnimationFrame(raf);
+      settleRafs.forEach((f) => cancelAnimationFrame(f));
+      window.clearTimeout(settleTimer);
     };
   }, [chatScrollRef]);
   // 挂载/重挂当帧补锚(show 翻转重渲染后,绘制前同步写 left/top,避免 fixed auto 位置闪帧)
@@ -144,7 +152,9 @@ export function ChatRail(props: {
       raf = requestAnimationFrame(() => {
         raf = 0;
         const nodes = el.querySelectorAll('.entry-user[data-entry-key]');
-        const line = el.getBoundingClientRect().top + 120;
+        // 判定线=滚动口下缘上 40px(2026-10-28 用户裁定:加粗刻度=「输入框上面那个会话」,
+        // 旧 top+120 以视口顶为准,与尾随阅读位不符);取线上最后一只带键气泡反查刻度序
+        const line = el.getBoundingClientRect().bottom - 40;
         let idx = -1;
         nodes.forEach((n) => {
           if (n.getBoundingClientRect().top <= line) {

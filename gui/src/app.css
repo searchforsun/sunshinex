@@ -2613,8 +2613,14 @@ input.sx-setting-input { width: 100%; }
 /* ===== 2026-10-28 用户裁定:窗口缩放果冻根修——侧栏宽改纯 CSS 钳制:React 只供偏好宽
    --sb-w(setWidth 落态),随窗缩放由 width+既有 max-width 逐帧跟随;旧「JS 渲染期钳制宽度
    内联落 style」与 CSS max-width 即时钳两套打架(状态滞后↔即钳来回跳)= 果冻,不再内联宽 ===== */
-.sx-sidebar { width: var(--sb-w, 420px); }
-.sx-shell.sx-sidebar-float .sx-sidebar { max-width: calc(100vw - 24px); }
+.sx-sidebar {
+  width: var(--sb-w, 420px);
+  /* 钳制单位归一(2026-10-28 zoom1.25 实测越界 375px 根修):100vw 解析=视觉视口宽,
+     而 menu-occ/渲染结果均为本地 px(×zoom 才是视觉)——三项须同除 --ui-zoom 归一到本地再相减,
+     否则缩放≠1 时 max-width 超 Allow 一倍 zoom,侧栏越视口、页签压窗控 */
+  max-width: calc(100vw / var(--ui-zoom, 1) - var(--menu-occ, 0px) - var(--main-min-w, 320px));
+}
+.sx-shell.sx-sidebar-float .sx-sidebar { max-width: calc(100vw / var(--ui-zoom, 1) - 24px); }
 
 /* ===== 2026-10-28 用户裁定:运行转圈全局统一=正文 run-spinner 12px——会话行/任务板/动态行
    同升(8/6px 档退役);done/failed/stopped 仍为小圆点(点语言不随转圈放大) ===== */
