@@ -149,13 +149,13 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* 2026-10-28 用户裁定:计数徽章移出组头按钮,作为行内均匀项贴 ⋯ 簇左侧(与行尾按钮
    同距同节奏,点击同切换组展开);组头按钮 flex 生长占位,名 span 溢出截断 */
 .workspace-row .sx-group-head { flex: 1 1 auto; min-width: 0; }
+/* 2026-10-28 用户裁定:不加背景色(纯数字) */
 .ws-count {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   min-width: 20px; height: 22px; padding: 0 8px; border: none; cursor: pointer;
-  border-radius: var(--radius-sm); background: var(--surface-soft);
   color: var(--fg-secondary); font-size: 12px; font-variant-numeric: tabular-nums;
 }
-.ws-count:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.ws-count:hover { color: var(--fg); }
 .ws-count:disabled { opacity: 0.4; cursor: default; }
 /* 二修(同日「距离也不对」):flex 生长有残余空隙且受 auto-margin/生长序扰动——改绝对定位
    钉死按钮右内缘 4px(⋯ 簇在按钮右邻,视觉即贴),名 span 右留 34px 徽章位防压 */
