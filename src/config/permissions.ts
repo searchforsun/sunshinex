@@ -23,7 +23,9 @@ interface LoadedPermissions {
 
 const EMPTY: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
 
-function readLevel(filePath: string, warnings: string[]): PermissionsConfig {
+/** 单级 permissions 键读取（Task 16 起导出：catalog/permissions listPermissions 复用本单点拆
+ *  project/global 两级——读面零解析逻辑收敛一处，两视图永不漂移；原调用方 loadPermissions 不变） */
+export function readLevel(filePath: string, warnings: string[]): PermissionsConfig {
   let doc: ReturnType<typeof parseSettingsFile> = null;
   try {
     doc = parseSettingsFile(filePath);

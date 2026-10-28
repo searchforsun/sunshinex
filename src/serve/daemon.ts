@@ -590,6 +590,11 @@ export class GuiDaemon {
     // raw、原子写；root 在场成功后链重载——plugins 键随 settings 链生效语义）
     { method: 'GET', path: '/settings/plugins', auth: true, run: async (req, res) => this.handlePluginsGet(req, res) },
     { method: 'PUT', path: '/settings/plugins', auth: true, run: (req, res) => this.handlePluginsPut(req, res) },
+    // Task 16 providers/permissions 结构化编辑收口：单条目操作端点（handler 薄封装 catalog 写面，
+    // CatalogWriteError→409+hint 沿 mcp/op 同映射；providers 写后链重载——env/模型清单随 settings 链
+    // 生效；permissions 装配期语义不 reload；config-changed 帧由写内 notify 直发）
+    { method: 'PUT', path: '/settings/providers/op', auth: true, run: (req, res) => this.handleProvidersOp(req, res) },
+    { method: 'PUT', path: '/settings/permissions/op', auth: true, run: (req, res) => this.handlePermissionsOp(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -971,6 +976,14 @@ export class GuiDaemon {
 
   private async handleMcpOp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await configHandlers.handleMcpOp(this.configIo, req, res);
+  }
+
+  private async handleProvidersOp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handleProvidersOp(this.configIo, req, res);
+  }
+
+  private async handlePermissionsOp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handlePermissionsOp(this.configIo, req, res);
   }
 
   private handlePluginsGet(req: http.IncomingMessage, res: http.ServerResponse): void {

@@ -12,7 +12,6 @@ import {
   filePermissions,
   fileSlots,
   fileWarnings,
-  globalProvidersOnly,
   mcpRow,
   memoryStats,
   parseAgentFrontmatterInput,
@@ -36,6 +35,10 @@ import {
 // Task 15 mcp 写面：单条目操作（add/remove/enable/disable）+ 两级视图读面（approval 标注进响应）
 import { listMcpServers, removeMcpServer, setMcpServerEnabled, upsertMcpServer } from '../catalog/mcp';
 import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
+// Task 16 providers/permissions 写面：op 端点收口 catalog 单点（读面 GET /settings 同源 listProviders）
+import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../catalog/providers';
+import type { ProviderModelInput, ProviderUpsertPatch } from '../catalog/providers';
+import { addPermission, removePermission } from '../catalog/permissions';
 import { CatalogWriteError } from '../catalog/io';
 import {
   hasJsonComments,
@@ -47,7 +50,7 @@ import {
   surgicalSettingsUpdate,
   getSelfFilledSlots,
 } from '../config/settings';
-import { loadProviders, resolveProviderApiKey } from '../config/providers';
+import { resolveProviderApiKey } from '../config/providers';
 import type { PermissionsConfig } from '../config/permissions';
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { userConfigDir } from '../config/env';
@@ -69,8 +72,9 @@ export interface ConfigHandlerIo {
 /** GET /settings?root=<abs>（G8c T2，Settings 页数据源）：无 root = 仅全局+env 面。keys 按
  *  SEMANTIC_KEYS 键序全量回执（effective 判定见 effectiveKeyRow 单点）；permissions 三面
  *  {merged, project, global}（两级文件分立拆解 + 拼接去重合并——与 loadPermissions 同口径的
- *  视图态）；providers = loadProviders 展开 + apiKeyPresent 布尔（resolveProviderApiKey 判存，
- *  不显值——密钥永不回传）。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役
+ *  视图态）；providers = catalog listProviders 单点（Task 16 增量消费：choices 生效面 + entries
+ *  源级分组显式值面（含 tier/apiKeyEnv，T9 语义标注见实现处注释）+ apiKeyPresent 布尔
+ *  （resolveProviderApiKey 判存，不显值——密钥永不回传））。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役
  *  键，项目先行拼全局）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
  *  process.env + 文件面，零副作用 */
 export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -88,16 +92,22 @@ export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage
     allow: [...new Set([...globalPerms.allow, ...projectPerms.allow])],
     additionalDirs: [...new Set([...globalPerms.additionalDirs, ...projectPerms.additionalDirs])],
   };
-  const loaded = root !== undefined ? loadProviders(root) : globalProvidersOnly();
+  // Task 16 起 providers 面增量消费 catalog listProviders 单点（含 tier/apiKeyEnv/apiKeyPresent/
+  // choices 序——与写面/装配同源不漂移；root 缺省仅全局面 = listProviders(null)，globalProvidersOnly
+  // 先例口径——缺项目上下文不伪造 cwd 相对读取）。既有契约字段（choices/apiKeyPresent/warnings）零变；
+  // 新增 entries = ProviderEntry 源级分组（文件结构镜像 + 密钥面）。T9 评审移交（语义标注，消费方必读）：
+  // entries.models = 文件显式值（非继承源级缺省——源级 contextWindow 不流入未显式声明的模型条目），
+  // 生效值一律看 choices 面（条目级 > 源级缺省）；GUI 编辑回显走 entries、生效呈现走 choices
+  const view = listProviders(root ?? null);
   const apiKeyPresent: Record<string, boolean> = {};
-  for (const choice of loaded.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
+  for (const choice of view.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
   // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知/退役键）项目先行拼全局——GET /settings
   // 透出（RawPane 顶部告警列表消费）；降级语义沿 fileSlots（缺文件/畸形按空）
   const warnings = [...(root !== undefined ? fileWarnings(loadProjectSettings(root)) : []), ...fileWarnings(loadGlobalSettings())];
   io.send(res, 200, {
     keys,
     permissions: { merged, project: projectPerms, global: globalPerms },
-    providers: { choices: loaded.choices, apiKeyPresent, warnings: loaded.warnings },
+    providers: { choices: view.choices, entries: view.providers, apiKeyPresent, warnings: view.warnings },
     warnings,
   });
 }
@@ -484,6 +494,17 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
   io.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
 }
 
+/** CatalogWriteError→HTTP 映射单点（T15 裁定 2026-10-28 于 handleMcpOp 首立，Task 16 抽出共用）：
+ *  COMMENTS/INVALID 两码统一 409 {error, hint:'use raw editor'}——400 恒留纯请求形状错误（坏 op/
+ *  缺 name/project 缺 root 等），内容/写面错误（注释文件/畸形 JSON/条目缺失/形状不收）一律 409+hint
+ *  引流 raw 编辑面；error 原文指名文件与原因。返回是否已回执：false = 非 catalog 面（IO 竞态等），
+ *  调用方沿 dispatch 500 收口（T2/T4 同惯例）。op 族端点（mcp/providers/permissions）共用本映射 */
+function sendCatalogWriteError(io: ConfigHandlerIo, res: http.ServerResponse, err: unknown): boolean {
+  if (!(err instanceof CatalogWriteError)) return false;
+  io.send(res, 409, { error: err.message, hint: 'use raw editor' });
+  return true;
+}
+
 /** PUT /settings/mcp/op {op:'add'|'remove'|'enable'|'disable'|'approve'|'deny', scope, root?, name, server?}
  *  （Task 15，MCP 单条目操作端点——补「global 只能 raw、编辑只能整块替换」的操作缺口）：
  *  handler 是 catalog 写面的薄封装 + CatalogWriteError→HTTP 码映射，文件读写/守卫/原子写/写通知
@@ -555,12 +576,167 @@ export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage
     }
   } catch (err) {
     // CatalogWriteError（COMMENTS/INVALID 两码）统一 409+hint——控制器裁定 2026-10-28（理由与语义
-    // 定案见上注）：400 恒留请求形状面，写面拒写（含条目缺失/server 形状不收/文件畸形）不落 400
-    if (err instanceof CatalogWriteError) {
-      io.send(res, 409, { error: err.message, hint: 'use raw editor' });
+    // 定案见上注，映射单点 sendCatalogWriteError）：400 恒留请求形状面，写面拒写（含条目缺失/
+    // server 形状不收/文件畸形）不落 400
+    if (!sendCatalogWriteError(io, res, err)) throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口
+    return;
+  }
+  io.send(res, 200, { ok: true });
+}
+
+/** PUT /settings/providers/op {op:'add'|'update'|'remove'|'modelAdd'|'modelRemove'|'modelMove'|'setKey',
+ *  scope, root?, name, provider?, model?, entry?, direction?, apiKey?}（Task 16，providers 单条目操作
+ *  端点——补「providers 编辑只能手改 settings.json」的操作缺口）：handler 是 catalog/providers 写面的
+ *  薄封装 + CatalogWriteError→HTTP 码映射（sendCatalogWriteError 单点），文件读写/守卫/原子写/写通知
+ *  全在 catalog 单点（config-changed WS 帧由写内 notify 直发——本 handler 不自行广播防双发）。
+ *  字段分工（body 契约）：name=目标源身份（七值通用）；provider=add|update 的条目补丁对象
+ *  （ProviderUpsertPatch——add 时 baseUrl+非空 models 必备、update 增量未提字段不动）；entry=modelAdd
+ *  的模型条目对象（ProviderModelInput）；model=modelRemove|modelMove 的目标模型名；direction=modelMove
+ *  的 up|down；apiKey=setKey 的密钥值（空串=清槽；**响应永不回显键值**——catalog 返回 void，成功响应
+ *  恒恰 {ok:true}）。错误语义沿 T15 裁定（sendCatalogWriteError 单点）：400=纯请求形状错误（坏 op/
+ *  scope、缺 name、project 缺 root、载荷形状——provider/entry 在场须对象、model 缺失、direction 越枚举、
+ *  apiKey 非字符串，全部在入 catalog 前拦），409=内容/写面错误（COMMENTS/INVALID → {error, hint:
+ *  'use raw editor'}——缺 baseUrl/models、缺源、同名重复、边界调序、注释/畸形文件等 catalog 判定）。
+ *  成功 200 {ok:true} 后 reloadSettingsChain（handleSettingsPut 同款链重载——providers/env 随 settings
+ *  链生效：setKey 的 env 专用槽落 process.env（GET /settings apiKeyPresent 翻转即时可见、适配器取键
+ *  即时生效），模型清单新会话即刻生效；global 无项目锚只重装全局面） */
+export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as {
+    op?: unknown; scope?: unknown; root?: unknown; name?: unknown;
+    provider?: unknown; model?: unknown; entry?: unknown; direction?: unknown; apiKey?: unknown;
+  } | null;
+  const op = body?.op;
+  if (op !== 'add' && op !== 'update' && op !== 'remove' && op !== 'modelAdd' && op !== 'modelRemove' && op !== 'modelMove' && op !== 'setKey') {
+    io.send(res, 400, { error: 'op must be "add" | "update" | "remove" | "modelAdd" | "modelRemove" | "modelMove" | "setKey"' });
+    return;
+  }
+  const scope = body?.scope;
+  if (scope !== 'project' && scope !== 'global') {
+    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+    return;
+  }
+  const name = body?.name;
+  if (typeof name !== 'string' || name.length === 0) {
+    io.send(res, 400, { error: 'name required — target provider name' });
+    return;
+  }
+  const rootRaw = body?.root;
+  if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
+    io.send(res, 400, { error: 'root required for scope=project' });
+    return;
+  }
+  // 载荷形状守卫（400——纯请求形状，先于 catalog；内容校验归 catalog → 409）
+  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (op === 'add' || op === 'update') {
+    if (!isRecord(body?.provider)) {
+      io.send(res, 400, { error: `provider must be an object (provider patch) for op="${op}"` });
       return;
     }
-    throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口（T2/T4 同惯例）
+  } else if (op === 'modelAdd') {
+    if (!isRecord(body?.entry)) {
+      io.send(res, 400, { error: 'entry must be an object ({ model, ... }) for op="modelAdd"' });
+      return;
+    }
+  } else if (op === 'modelRemove' || op === 'modelMove') {
+    if (typeof body?.model !== 'string' || body.model.length === 0) {
+      io.send(res, 400, { error: 'model required — target model name' });
+      return;
+    }
+    if (op === 'modelMove' && body?.direction !== 'up' && body?.direction !== 'down') {
+      io.send(res, 400, { error: 'direction must be "up" | "down"' });
+      return;
+    }
+  } else if (op === 'setKey' && typeof body?.apiKey !== 'string') {
+    io.send(res, 400, { error: 'apiKey must be a string (empty string clears the slot)' });
+    return;
+  }
+  // global 恒忽略 root（定位面——与其余配置写面同裁定）；project 必有（上方守卫）
+  const root = scope === 'project' ? path.resolve(rootRaw as string) : null;
+  try {
+    switch (op) {
+      case 'add':
+      case 'update':
+        upsertProvider(root, scope, name, body?.provider as ProviderUpsertPatch); // 内容校验在 catalog（INVALID→409+hint）
+        break;
+      case 'remove':
+        removeProvider(root, scope, name);
+        break;
+      case 'modelAdd':
+        modelAdd(root, scope, name, body?.entry as ProviderModelInput);
+        break;
+      case 'modelRemove':
+        modelRemove(root, scope, name, body?.model as string);
+        break;
+      case 'modelMove':
+        modelMove(root, scope, name, body?.model as string, body?.direction as 'up' | 'down');
+        break;
+      case 'setKey':
+        setProviderApiKey(root, scope, name, body?.apiKey as string); // 键值零回显：catalog void、响应恒 {ok:true}
+        break;
+    }
+  } catch (err) {
+    if (!sendCatalogWriteError(io, res, err)) throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口
+    return;
+  }
+  // 链重载（handleSettingsPut 同款）：providers/env 随 settings 链生效（见上注）；root 已守卫必有
+  io.reloadSettingsChain(scope === 'project' ? (root as string) : undefined);
+  io.send(res, 200, { ok: true });
+}
+
+/** PUT /settings/permissions/op {op:'add'|'remove', scope, root?, list, value}（Task 16，permissions
+ *  单条目操作端点）：handler 是 catalog/permissions 写面（addPermission/removePermission）的薄封装 +
+ *  sendCatalogWriteError 映射——settings permissions 键（deny/allow/additionalDirs 三数组）对应 scope
+ *  文件对应数组的手术写（add 去重幂等、remove 缺失 INVALID），纪律与写通知全在 catalog 单点。
+ *  错误语义沿 T15 裁定：400=纯请求形状错误（坏 op/scope/list、value 非字符串、project 缺 root——全部
+ *  在入 catalog 前拦），409=内容/写面错误（value 空串/空白 → INVALID、注释/畸形文件 → COMMENTS/
+ *  INVALID → {error, hint:'use raw editor'}）。成功 200 {ok:true}，不触发 settings reload——permissions
+ *  键不入 env/settings 链（harness 装配期经 loadPermissions 读文件，新会话生效——mcp/approvals 装配期
+ *  语义先例）；GUI 刷新由写内 notify 的 config-changed 帧承担 */
+export async function handlePermissionsOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { op?: unknown; scope?: unknown; root?: unknown; list?: unknown; value?: unknown } | null;
+  const op = body?.op;
+  if (op !== 'add' && op !== 'remove') {
+    io.send(res, 400, { error: 'op must be "add" | "remove"' });
+    return;
+  }
+  const scope = body?.scope;
+  if (scope !== 'project' && scope !== 'global') {
+    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+    return;
+  }
+  const list = body?.list;
+  if (list !== 'deny' && list !== 'allow' && list !== 'additionalDirs') {
+    io.send(res, 400, { error: 'list must be "deny" | "allow" | "additionalDirs"' });
+    return;
+  }
+  // value 非字符串 = 请求形状（400）；空串/空白 = 内容（catalog INVALID → 409）——形状/内容分野与
+  // providers op 的 apiKey 同判
+  if (typeof body?.value !== 'string') {
+    io.send(res, 400, { error: 'value required — the permission rule string' });
+    return;
+  }
+  const rootRaw = body?.root;
+  if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
+    io.send(res, 400, { error: 'root required for scope=project' });
+    return;
+  }
+  const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
+  try {
+    if (op === 'add') addPermission(root, scope, list, body.value);
+    else removePermission(root, scope, list, body.value);
+  } catch (err) {
+    if (!sendCatalogWriteError(io, res, err)) throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口
+    return;
   }
   io.send(res, 200, { ok: true });
 }
