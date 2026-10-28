@@ -7,7 +7,9 @@
  *   锚点，catalog 写面凭它落 <root>/.sunshinex/）
  * - `--json` → json: true（list 数据面 JSON 输出口）
  * 词汇表（MCP_FLAG_KEYS）内其余旗标（command/arg/env/url/transport）跳过不验——归子命令解析面；
- * 词汇表外旗标（拼错一类）/ --scope 值越界 / --root 缺值 → bad，调用方走 usage + exit 1（非法参数口径）。
+ * 词汇表外旗标（拼错一类）在两处口径不同：顶层 dispatch 回填时按 plugins 先例静默丢弃（语言类全局
+ * 旗标由此兼容），本面 bad 仅防御直调面（进程内直跑 runMcpCommand 一类）；--scope 值越界 / --root
+ * 缺值 → bad，调用方走 usage + exit 1（非法参数口径）。
  */
 import * as path from 'node:path';
 import type { Scope } from '../../catalog/types';
@@ -62,7 +64,7 @@ export function resolveTarget(args: string[]): ResolvedTarget {
       const eq = a.indexOf('=');
       const key = eq === -1 ? a.slice(2) : a.slice(2, eq);
       if (!MCP_FLAG_KEYS.includes(key)) {
-        target.bad = true; // 词汇表外旗标（拼错一类）不静默放过
+        target.bad = true; // 词汇表外旗标：直调面拒识（spawn 面经 dispatch 回填，词典外旗标已被静默丢弃，不达此处）
         continue;
       }
       // 子命令自有旗标：两形态吞值跳过，值合法性归子命令解析面

@@ -12,6 +12,8 @@ import * as path from 'path';
  * 父测试进程态零污染）。
  * 六用例对齐 brief：① add project 落盘 ② list 表格 ③ list --json ④ enable/disable 翻转
  * ⑤ approve/deny 写全局 settings ⑥ 缺 --command/--url → exit 1 + usage。
+ * ⑦ 为 T17 评审修补钉：test 子命令 not-found / probe name 注入（盘上条目无 name 键，cfg.name
+ * 须从清单名回填）/ 项目遮蔽全局的倒序取生效条目（经子进程 spawn 失败透出的命令名判定）。
  */
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -147,6 +149,32 @@ test('⑥ add 缺 --command/--url → exit 1 + usage 行（非法参数口径）
     assert.ok(/Usage: sunshinex mcp/.test(r.stderr ?? ''), `应上屏 usage 行：${JSON.stringify(r.stderr)}`);
     // 非法参数不得落盘（零副作用）
     assert.equal(fs.existsSync(path.join(f.proj, '.sunshinex', 'mcp.json')), false, 'usage 错误不应写 mcp.json');
+  } finally {
+    cleanup(f);
+  }
+});
+
+test('⑦ test：not-found exit 1；probe error 含条目名（name 注入钉）+ 项目遮蔽全局取生效条目', () => {
+  const f = makeFixture('test');
+  try {
+    // 全局同名条目先落（marker 命令）——项目条目应遮蔽它（合并清单倒序取首个同名 = 装载面生效序）
+    fs.mkdirSync(path.join(f.home, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(
+      path.join(f.home, '.sunshinex', 'mcp.json'),
+      JSON.stringify({ mcpServers: { 'fs-pin': { command: 'global-cmd-marker' } } }),
+    );
+    assert.equal(runCli(f, ['add', 'fs-pin', '--command=no-such-cmd-xyz']).status, 0, '前置 add 应成功');
+    const nf = runCli(f, ['test', 'nosuch']);
+    assert.equal(nf.status, 1, '未知名应 exit 1');
+    assert.ok((nf.stderr ?? '').includes('not found'), `应上屏 not found：${JSON.stringify(nf.stderr)}`);
+    const r = runCli(f, ['test', 'fs-pin']);
+    assert.equal(r.status, 1, '连接失败应 exit 1');
+    const err = r.stderr ?? '';
+    assert.ok(err.includes('connection failed (fs-pin)'), `error 应含条目名（probe name 注入）：${JSON.stringify(err)}`);
+    assert.ok(!err.includes('undefined'), '不应出现 undefined 名（T17 评审修补钉）');
+    // spawn 失败经子进程 stderr 透出命令名：探到的须是项目条目（no-such-cmd-xyz）而非被遮蔽的全局条目
+    assert.ok(err.includes('no-such-cmd-xyz'), `应探测项目条目（生效序）：${JSON.stringify(err)}`);
+    assert.ok(!err.includes('global-cmd-marker'), '被遮蔽的全局条目不应被探测');
   } finally {
     cleanup(f);
   }

@@ -134,7 +134,7 @@ export function usageText(): string {
                                           install skills into the global skills root (~/.sunshinex/skills)
   sunshinex kb-index [dir]                build the knowledge-base index for md/txt files (billed embedding; kb_search source)
   sunshinex plugins list [--root <abs>] | validate <dir>    list installed plugins / validate a plugin directory
-  sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--json]
+  sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <dir>] [--json]
                                           manage the MCP server catalog (add <name> --command=<cmd> [--arg=a] [--env=K=V] | --url=<u>; project .sunshinex/mcp.json or global ~/.sunshinex/mcp.json)
   flags:
   --mode=read-only|acceptEdits|full-access
@@ -165,7 +165,7 @@ export function usageText(): string {
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   sunshinex kb-index [目录]               构建知识库索引（对目录内 md/txt 走计费 embedding；kb_search 检索源）
   sunshinex plugins list [--root <abs>] | validate <dir>    列出已装载插件 / 校验插件目录（schema 错误退出码 1）
-  sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--json]
+  sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <目录>] [--json]
                                           管理 MCP server 目录（add <名称> --command=<命令> [--arg=a] [--env=K=V] | --url=<地址>；项目 .sunshinex/mcp.json 或全局 ~/.sunshinex/mcp.json）
   flags：
   --mode=read-only|acceptEdits|full-access

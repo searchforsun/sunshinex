@@ -274,8 +274,10 @@ async function testCmd(args: string[]): Promise<number> {
     return 1;
   }
   // 探测面照 daemon /settings/mcp/probe 同源（临时装配+握手+tools/list）；失败是结果不是异常——
-  // error 行上屏 + exit 1（CLI 面 CI 可判定），进程内零残留由 probeMcpServer finally 收口
-  const r = await probeMcpServer(entry.server);
+  // error 行上屏 + exit 1（CLI 面 CI 可判定），进程内零残留由 probeMcpServer finally 收口。
+  // name 显式注入：盘上条目本体无 name 键（name 是 mcpServers 的键、值即配置），probe 的连接失败
+  // 文案与身份比对（serverInfo.name ≠ cfg.name 恒真→误发 note）都读 cfg.name——T17 评审修补
+  const r = await probeMcpServer({ ...entry.server, name: entry.name });
   if (!r.ok) {
     console.error(`error: ${r.error}`);
     return 1;
