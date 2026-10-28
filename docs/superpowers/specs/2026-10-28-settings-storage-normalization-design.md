@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 状态：设计定稿（待用户审阅 → 实现计划）
-- 范围：src/catalog（新共享存储库）、src/config（settings/plugins 加载语义）、src/config.ts（loadMcpServers 项目级复活）、src/harness/subagent.ts（agents 两级+enabled+兼容读）、src/serve（设置端点对称补齐 + WS config-changed 帧 + 文件监听）、src/cli（四类资源全套子命令 + settings get/set）、src/tui（/mcp /agents /plugins /skills 面板）、gui/src/settings（ScopeSwitcher/SearchBar/ResourceCard/EditorDrawer 共享组件 + 11 页统一卡片风格）
+- 范围：src/catalog（新共享存储库）、src/config（settings/plugins 加载语义 + providers 规范化 + 散键退役）、src/config.ts（loadMcpServers 项目级复活）、src/harness/subagent.ts（agents 两级+enabled+兼容读）、src/model/catalog.ts（缺省内芯恒为 choices[0]）、src/serve（设置端点对称补齐 + WS config-changed 帧 + 文件监听）、src/cli（资源全套子命令 + settings get/set + providers）、src/tui（/mcp /agents /plugins /skills /providers 面板）、gui/src/settings（ScopeSwitcher/SearchBar/ResourceCard/EditorDrawer 共享组件 + 11 页统一卡片风格）
 - 前置关系：插件体系（2026-10-26 设计已实施）提供 manifest/两级发现/安全契约；本设计不改动插件 manifest 规范，只恢复其开关的项目级生效、并把四类资源的存储、作用域、UI、CLI、TUI、实时同步统一到一套规范。
 
 ## 0. 背景与病灶（2026-10-28 现状勘查）
@@ -27,8 +27,9 @@ CLI 层：仅 `skills install` 与 `plugins list/validate`；MCP/agents/settings
 3. **实时同步**：**双向实时**——守护进程加文件监听 + WS 广播 `config-changed` + 开着的设置页自动刷新；GUI 编辑继续直接写盘。
 4. **CLI 面**：**四类全套 CRUD** + `settings get/set`；统一 `--scope`；**TUI 同样支持**（面板+启停，编辑引导 CLI/$EDITOR）。
 5. **代码架构**：**共享存储库 + 各端薄封装**（新建 `src/catalog/`，harness 加载器改为消费同一 merge 逻辑）；否决原地修补（作用域逻辑继续漂移）与全泛型资源引擎（对 4 类属过度设计）。
+6. **模型与提供方规范化**（2026-10-28 二次需求并入）：providers/model 配置**平级列表存储**，全局级散键退役；GUI 支持新增编辑，TUI/CLI 同样支持；**默认选中模型 = 第一个 provider 的第一个 model**。详见 §15。
 
-**缺省裁定（用户评审可翻）**：skills 不设开关、不做增删改（只读 + 搜索 + 遮蔽标注）；CLI `--scope` 默认 project@cwd（对齐 `claude mcp` local 默认）；TUI 不做表单编辑。
+**缺省裁定（用户评审可翻）**：skills 不设开关、不做增删改（只读 + 搜索 + 遮蔽标注）；CLI `--scope` 默认 project@cwd（对齐 `claude mcp` local 默认）；TUI 不做表单编辑；档位路由三键（modelSmall/modelMedium/modelLarge）随 `model`/`baseUrl` 一并退役，档位改为 models 条目可选 `tier` 标注表达（此条为澄清问题未及答复后的推荐落法，评审可翻回「部分退役」）。
 
 ## 2. 存储层规范（目标布局）
 
@@ -74,6 +75,9 @@ src/catalog/
                                                      # 运行时加载器（harness）剔除 enabled:false
   plugins.ts    listPlugins(root) / setPluginEnabled(root,scope,id,enabled) / setPluginConfig
                                                      # 发现复用 config/plugins.ts 不动
+  providers.ts  listProviders / upsertProvider / removeProvider / setProviderApiKey（写 settings
+                env 块，响应不回显）/ modelAdd / modelRemove / modelMove / testProvider
+                                                     # 见 §15；格式沿现 providers 键
   skills.ts     listSkills(root,opts)                # 分组+来源链+遮蔽标注（包装 harness/skills.ts 既有链）
   approvals.ts  项目 MCP 批准/拒绝记录读写（settings mcpApprovals，按 projectSlug）
   watch.ts      watchConfigs(targets) → EventEmitter # 防抖 fs.watch 目录级 → {resource,scope,root}
@@ -101,7 +105,7 @@ src/catalog/
 补齐对称缺口（全部走 catalog，409 注释保护/原子写/reload 语义不变）：
 - `PUT /settings/mcp/op`：`{op:'add'|'remove'|'enable'|'disable'|'approve'|'deny', scope, root?, name, server?}` —— 单条操作；今日全局只能 raw、修改只能整块替换，此端点收口。
 - `PUT /settings/agents/op` 扩展 op 值 `enable|disable`（现有 upsert|delete 保留）。
-- `PUT /settings/providers/op`：`{op:'add'|'update'|'remove', scope, name, provider?, apiKey?}` —— apiKey 写入 settings `env` 块（`SUNSHINEX_API_KEY_<UPPER>`），响应永不回显密钥（现状纪律）。
+- `PUT /settings/providers/op`：`{op:'add'|'update'|'remove'|'modelAdd'|'modelRemove'|'modelMove'|'setKey', scope, name, provider?, model?, apiKey?, direction?}` —— apiKey 写入 settings `env` 块（`SUNSHINEX_API_KEY_<UPPER>`），响应永不回显密钥（现状纪律）；op 值语义见 §15。
 - `PUT /settings/permissions/op`：`{op:'add'|'remove', scope, list:'deny'|'allow'|'additionalDirs', value}` —— 权限列表结构化增删（今日 GUI 只读、编辑靠 raw）。
 - `GET /settings/skills` 无写端点（维持只读）。
 
@@ -128,7 +132,7 @@ src/catalog/
 - **Plugins**：卡片 + 搜索保留；配置编辑（configSchema 驱动键值）进 EditorDrawer；无新增（安装=目录拷贝，另议）。
 - **Skills**：只读网格 + 搜索 + 来源过滤保留；补同 id 跨来源遮蔽标注（谁遮蔽了谁）；无启停无增改。
 
-**其余页补齐**：Providers 加 provider 增删改表单 + apiKey 输入（写 env 块，密钥不回显）；Permissions 从只读表格升级为 deny/allow/additionalDirs 结构化增删；SettingsForm 四页加行过滤 SearchBar。全部 11 页统一卡片视觉令牌（间距/圆角/标题层级/描述行高）。
+**其余页补齐**：Providers 按 §15 重构（卡片增删改 + 默认标记 + 「API 地址」行与模型 Combo 删除）；Permissions 从只读表格升级为 deny/allow/additionalDirs 结构化增删；SettingsForm 四页加行过滤 SearchBar。全部 11 页统一卡片视觉令牌（间距/圆角/标题层级/描述行高）。
 
 **文案纪律**：描述改人话、去术语（如 `disabledTools` → 「不加载这些工具」），示例保留；沿 KEY_DESCRIPTIONS 模式集中维护。
 
@@ -142,6 +146,11 @@ sunshinex agents   list|add|remove|enable|disable
                    add <id> --name=... --description=... [--memory] [--isolation=worktree]
                        [--executor=internal-team|external-cli] [--body-file=<path>]
 sunshinex plugins  list|enable|disable <id> [--scope] [--root]
+sunshinex providers list|add|remove|set|key|test [--scope] [--root]
+                   add <name> --base-url=<u> [--models=m1,m2,...] [--context-window=]
+                              [--reasoning-effort=] [--supports-images]
+                   set <name>（同 add 字段，增量更新）/ key <name>（交互隐藏输入，写 env 块）
+                   model add|remove|move <provider> <model> [--tier=small|medium|large] [--direction=up|down]
 sunshinex skills   list [--scope=all]              # 保留既有 install
 sunshinex settings get <key> | set <key> <value> [--scope]
 ```
@@ -156,6 +165,7 @@ sunshinex settings get <key> | set <key> <value> [--scope]
 - `/mcp`：两级合并列表（scope/状态/待确认标注）+ `/mcp enable|disable|approve|deny <name>`；`/mcp add` 引导到 `sunshinex mcp add` 或 `$EDITOR` 打开对应 mcp.json（TUI 不做表单）。
 - `/agents`：注册表列表（含 enabled/旧位置标注）+ `/agents enable|disable <id>`。
 - `/plugins`：清单 + `/plugins enable|disable <id>`。
+- `/providers`：provider/model 清单卡（密钥状态、默认标记）+ `/model` 切换卡补「默认」徽标；编辑引导 CLI（`sunshinex providers add/...`）或 `$EDITOR`（TUI 不做表单，沿缺省裁定）。
 - `/skills`：扩展现有 commands-skills 面板，补来源与遮蔽标注（轻改）。
 - 项目 MCP 有未批准项时，TUI 启动加载后打一行提示（非阻塞）。
 
@@ -188,10 +198,32 @@ skills 增删改与启停（用户裁定除外）；插件安装/卸载 CLI 与�
 5. 外部编辑四类文件后，打开中的 GUI 设置页 ≤1s 自动反映；daemon 自写不产生多余刷新。
 6. `<root>/agents/` 旧位置继续可用且 GUI 一键迁移成功。
 7. 全量门禁绿：主仓 node:test + `pnpm --dir gui run typecheck` + gui vitest。
+8. 模型与提供方（§15）：providers 列表三端增删改一致；默认模型恒为第一×第一且有标记；散键退役有 warning 指引；档位路由按 tier 标注工作。
 
 ## 14. 风险与缓解
 
 - **fs.watch 平台差异**（网络盘/权限）：仅监听本地路径；不可用时降级现状语义（GET 即读），功能不阻塞（§6 降级条款）。
-- **harness 加载行为变化**（MCP 项目级复活、agents enabled）：批准阀兜底安全面；catalog 单测钉死合并语义；现有 guard/probe 回归测试盯防。
+- **harness 加载行为变化**（MCP 项目级复活、agents enabled、model 散键退役）：批准阀兜底安全面；退役键 warning 指引兜底迁移；catalog 单测钉死合并语义；现有 guard/probe 回归测试盯防。
 - **并行会话同仓冲突**：本重构触碰 config.ts/plugins.ts/subagent.ts 等热区——实现计划须小任务粒度、每任务收口前全量测试、提交前 rebase。
 - **GUI 改面大**：共享组件先行落地一页（MCP）验证形态，再批量铺开，避免 11 页齐改齐崩。
+
+## 15. 模型与提供方规范化（2026-10-28 二次需求并入）
+
+**病灶**：`providers` 结构化键已是平级列表（`[{name, baseUrl, contextWindow?, reasoningEffort?, supportsImages?, models:[string|{model,...}]}]`，两级整键遮蔽，展开为 `ModelChoice` 供 `/model` 选择卡），但旁边并存全局级散键 `model`/`baseUrl`（GUI「API 地址」行）/`modelSmall`/`modelMedium`/`modelLarge`（档位路由三键）→ 环境槽 → 单模型装配链。模型配置散在两处，`model` 未显式配置时缺省内芯恰好已是第一×第一（`ModelSwitcher.explicitDefault` 分支管理这个特例）。
+
+**目标形态**：providers 列表 = 模型配置唯一事实源。
+
+1. **存储**：settings `providers` 键格式不变，models 条目对象形态新增可选 **`tier?: 'small'|'medium'|'large'`** 标注；密钥仍走 env 槽（`SUNSHINEX_API_KEY_<源名>` 专用槽 > 主槽，D6「密钥不进结构化键」延续）；项目键**整键遮蔽**维持现状（键粒度的项目遮蔽全局，与决策 1 对齐）。
+2. **散键退役**：`model`/`baseUrl`/`modelSmall`/`modelMedium`/`modelLarge` 移入 `RETIRED_KEYS`（带指引「改用 providers 列表」）；解析遇退役键打 warning 不致命（语义沿 `structuredOutput` 先例）；`tier`/`effort` 语义键保留（请求参数，非 provider 配置）。装配链缺省内芯恒为 `choices[0]`，`explicitDefault` 分支退役。
+3. **默认模型规则**：默认选中 = `choices[0]` = **providers 数组序 × models 数组序的第一×第一**；顺序即优先级——GUI EditorDrawer 模型行带上移/下移，CLI `--models` 逗号清单序即序、`model move` 调序；列表首位标「默认」chip。无 defaultModel 覆盖键（用户裁定：默认即派生）。
+4. **档位路由**：`/model-tier`（TUI）与 GUI 档位 select 语义不变，实现从三散键映射改为清单内按 `tier` 标注选中（同档多模型取第一个；无匹配/未标注回默认 `choices[0]`）。
+5. **catalog/providers.ts**：`listProviders / upsertProvider / removeProvider / setProviderApiKey（写 settings env 块，响应不回显）/ modelAdd / modelRemove / modelMove / testProvider`；`testProvider` 复用 probe 思路连通性验证。
+6. **REST**：`PUT /settings/providers/op`（§5）op 值 `add|update|remove|modelAdd|modelRemove|modelMove|setKey`。
+7. **CLI**：`sunshinex providers list|add|remove|set|key|test` + `providers model add|remove|move`（§8）；`providers key <name>` 交互式隐藏输入写 env 块（无回显）。
+8. **TUI**：`/providers` 清单卡 + `/model` 卡补「默认」徽标；编辑引导 CLI/`$EDITOR`（§9）。
+9. **GUI**（§7 模型与提供方页）：提供方卡片列表（名称/baseUrl/密钥状态点/models chips/默认标记）+ EditorDrawer 增删改（name/baseUrl/apiKey 输入/models 行编辑含 tier select 与上下移）；「请求参数」卡保留 tier/effort 两个 select，**删除「API 地址」行与模型 Combo**。
+10. **兼容**：存量 `model`/`baseUrl` 配置给出一次性 warning 指引；`providers` 键用户无需任何迁移；本仓库自身 settings 若含退役键随 warning 暴露。
+
+**测试**（并入 §11）：catalog/providers 单测（展开/两级整键遮蔽/tier 路由选中/密钥槽解析/env 块写入与不回显/modelMove 调序）；退役键 warning 断言；缺省内芯恒为 choices[0] 断言（含单 provider 单模型、多 provider 混合对象/字符串 models 形态）；CLI providers 端到端；GUI EditorDrawer 模型行排序与默认标记渲染。
+
+**验收**（并入 §13）：providers 三端（GUI 编辑 / CLI 子命令 / TUI 引导）增删改一致生效且写同一批文件；默认模型恒为第一×第一且 GUI 有标记；散键退役有 warning 指引；`/model-tier` 按 tier 标注正确选中、无标注回默认。
