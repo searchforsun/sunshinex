@@ -268,9 +268,14 @@ describe('Task 7 三级装载收口', () => {
   });
 
   test('②enabled:false 装配期剔除：不进注册表（resolve 沿现状 throw）；剔除先于遮蔽——停用条目不覆盖低层级；视图不受影响照列', () => {
+    // HOME 桩（沿 G8c-T1 ④ 先例）：首段单参 loadAgents 的全局层缺省回落真实 userConfigDir()/agents——
+    // 开发机全局恰有启用 id 'off' 则不 throw 断言红、有畸形 agent.md 则整次 fail-fast 红，环境敏感必桩
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7en-home-'));
     const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7en-global-'));
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7en-proj-'));
+    const prevHome = process.env.HOME;
     try {
+      process.env.HOME = home;
       writeAgent(root, 'off', agentMd('off', '停用框定', 'enabled: false\n'));
       writeAgent(root, 'on', agentMd('on', '启用框定'));
       const reg = new AgentRegistry();
@@ -299,6 +304,9 @@ describe('Task 7 三级装载收口', () => {
         '视图双行照列，不受装配剔除影响',
       );
     } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(home, { recursive: true, force: true });
       fs.rmSync(globalDir, { recursive: true, force: true });
       fs.rmSync(root, { recursive: true, force: true });
     }
