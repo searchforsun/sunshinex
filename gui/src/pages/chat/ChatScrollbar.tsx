@@ -25,11 +25,14 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     if (box === null || track === null || thumb === null) return;
 
     const sync = (): void => {
-      // 轨道上下界动态夹紧到滚动容器实际矩形(不夹则 overlay 从 .sx-main 顶画起,越过顶栏分割线)
+      // 轨道上下界动态夹紧到滚动容器实际矩形(不夹则 overlay 从 .sx-main 顶画起,越过顶栏分割线)。
+      // zoom 契约:cr/tr 差值为视觉 px,写本地 top/bottom 须 /zoomScale()——不归一每次写入过冲
+      // 逐帧不收敛=「越线+上下抖动」同根(2026-10-27 用户实测)
       const cr = box.getBoundingClientRect();
       const tr = track.getBoundingClientRect();
-      track.style.top = `${Math.max(Math.round(cr.top - tr.top), 0) + 2}px`;
-      track.style.bottom = `${Math.max(Math.round(tr.bottom - cr.bottom), 0) + 2}px`;
+      const z = zoomScale();
+      track.style.top = `${Math.max(Math.round((cr.top - tr.top) / z), 0) + 2}px`;
+      track.style.bottom = `${Math.max(Math.round((tr.bottom - cr.bottom) / z), 0) + 2}px`;
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
       if (max <= 1 || box.scrollHeight <= 0) {
