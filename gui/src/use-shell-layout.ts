@@ -112,12 +112,15 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
   /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320),下限 296:菜单让宽后仍装不下则侧栏托底
    *  (vw≥856 时数学上恰≥296,见浮窗阈值);浮窗态=纯覆盖层,**不挤占主栏/composer**
    *  (2026-10-24 用户裁定「抽屉是上浮的,为什么占输入框宽度」——dock 不让位,抽屉盖在上面),
-   *  上界只留 24px 边距,下限 MIN_TAB_WIDTH=296。视觉/本地换算 /zoomScale() 契约同前 */
+   *  上界=视口−24 边距——**不减菜单宽**:sidebarFloating⇒menuFloating 恒真(616<856),菜单已
+   *  自动关闭占位为 0,多减 240 曾令极窄窗抽屉塌到 296 下限(应用最小宽 453 DIP 时应=453−24≈429,
+   *  2026-10-29 用户实测「最短宽度应≈应用最小宽−24」实证偏差);与 startResize cap() 的
+   *  (menuFloating?0:menuRenderW) 口径对齐。zoom 契约:视口项 /zoomScale() 归一 */
   const sidebarRenderW = Math.min(
     tabWidth,
     sidebarFloating
-      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuRenderW - 24)
-      : Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - menuRenderW - MAIN_MIN_WIDTH),
+      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - (menuFloating ? 0 : menuRenderW) - 24)
+      : Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - (menuFloating ? 0 : menuRenderW) - MAIN_MIN_WIDTH),
   );
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
   const sidebarOccupied = !settingsOpen && (page === 'chat' || page === 'welcome') && !tabCollapsed && !sidebarFloating ? sidebarRenderW : 0;
