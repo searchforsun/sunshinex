@@ -10,6 +10,7 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
 import { SEMANTIC_KEYS, applySettings, loadGlobalSettings, loadProjectSettings, resetSelfFilledSlots, stripJsonComments } from '../config/settings';
+import { approveMcpServer } from '../catalog/approvals';
 
 /** T1 会话管理器测试：daemon 从单会话改注册表——POST /session/new 创建、/session/:id/* 会话维端点、
  *  裸端点激活别名、双会话并发互不串流、全会话 teardown。既有 G1/G2 单会话用例已迁移 :id 形态（语义不变） */
@@ -1568,6 +1569,7 @@ describe('G8c T4 /settings/mcp 端点族', () => {
       fs.writeFileSync(path.join(proj, '.sunshinex', 'mcp.json'), JSON.stringify({
         mcpServers: { 'probe-fixture': { command: process.execPath, args: [fixture] } },
       }, null, 2), 'utf8');
+      approveMcpServer(proj, 'probe-fixture'); // 2026-10-28 批准阀：probe 走装载口径，项目条目 approved 才进合并清单
 
       const probe = async (reqBody: unknown): Promise<ProbeBody> =>
         (await (await fetch(`${base}/settings/mcp/probe`, { method: 'POST', headers: AUTH, body: JSON.stringify(reqBody) })).json()) as ProbeBody;
@@ -1600,6 +1602,9 @@ describe('G8c T4 /settings/mcp 端点族', () => {
           'probe-fixture': { command: process.execPath, args: [fixture, 'other-server'] },
         },
       }, null, 2), 'utf8');
+      // 2026-10-28 批准阀：probe 走装载口径——两台都先批准（连接失败/身份不符的降级语义才可测）
+      approveMcpServer(proj, 'ghost');
+      approveMcpServer(proj, 'probe-fixture');
 
       const probe = async (name: string): Promise<ProbeBody> =>
         (await (await fetch(`${base}/settings/mcp/probe`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: proj, name }) })).json()) as ProbeBody;

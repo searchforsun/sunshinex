@@ -13,6 +13,7 @@ import { ProcessSandbox } from './security/sandbox';
 import { ToolRegistry } from './tools';
 import { StubAdapter } from '../model/adapter';
 import { Harness } from './index';
+import { approveMcpServer } from '../catalog/approvals';
 
 /** 项目级 mcp.json 指向 mock stdio server（scripts/mock-mcp-server.js，与 client.register.test.ts 同源夹具） */
 function writeProjectMcpJson(root: string, servers: Record<string, unknown>): void {
@@ -20,36 +21,57 @@ function writeProjectMcpJson(root: string, servers: Record<string, unknown>): vo
   fs.writeFileSync(path.join(root, '.sunshinex', 'mcp.json'), JSON.stringify({ mcpServers: servers }));
 }
 
-test('Harness MCP 装配接线：两级配置 → mcpReady 注册 mcp__ 工具 → guard 放行', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
-  writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
-  const h = new Harness({ root, mode: 'full-access' });
+/** HOME 钉桩（async）：2026-10-28 批准阀接线后，项目条目装配经 approvalState 读 $HOME/.sunshinex/settings.json——
+ *  不钉则触真实用户家（真档畸形会让构造链抛错）；用毕还原。批准记录经 approveMcpServer 落桩内家目录。 */
+async function withHome(fn: (home: string) => Promise<void>): Promise<void> {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-home-'));
+  const prev = process.env.HOME;
+  process.env.HOME = home;
   try {
-    await h.mcpReady();
-    assert.ok(h.tools.get('mcp__fs__echo'), 'mcp__fs__echo 应注册进主链注册表');
-    const d = h.security.preToolUse('mcp__fs__echo', {});
-    assert.equal(d.allowed, true, 'guard 应按配置名单放行已登记 server 的工具');
+    await fn(home);
   } finally {
-    await h.mcpClose();
+    if (prev === undefined) delete process.env.HOME;
+    else process.env.HOME = prev;
   }
+}
+
+test('Harness MCP 装配接线：两级配置 → mcpReady 注册 mcp__ 工具 → guard 放行', async () => {
+  await withHome(async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
+    writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
+    approveMcpServer(root, 'fs'); // 2026-10-28 批准阀：项目条目 approved 才拉起进程
+    const h = new Harness({ root, mode: 'full-access' });
+    try {
+      await h.mcpReady();
+      assert.ok(h.tools.get('mcp__fs__echo'), 'mcp__fs__echo 应注册进主链注册表');
+      const d = h.security.preToolUse('mcp__fs__echo', {});
+      assert.equal(d.allowed, true, 'guard 应按配置名单放行已登记 server 的工具');
+    } finally {
+      await h.mcpClose();
+    }
+  });
 });
 
 test('Harness MCP 降级语义：坏服务器 mcpReady 不拒绝，警告单可读、好服务器照常', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
-  writeProjectMcpJson(root, {
-    bad: { url: 'http://127.0.0.1:1/mcp', transport: 'http' },
-    fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] },
+  await withHome(async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
+    writeProjectMcpJson(root, {
+      bad: { url: 'http://127.0.0.1:1/mcp', transport: 'http' },
+      fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] },
+    });
+    approveMcpServer(root, 'bad'); // 坏服务器也要批准才进装配面（否则批准阀先拦，测不到连接降级）
+    approveMcpServer(root, 'fs');
+    const h = new Harness({ root, mode: 'full-access' });
+    try {
+      await h.mcpReady(); // 降级语义：不拒绝
+      assert.ok(h.tools.get('mcp__fs__echo'), '坏服务器不影响好服务器注册');
+      const warns = h.mcpWarnings();
+      assert.equal(warns.length, 1);
+      assert.match(warns[0], /connection failed \(bad\)/);
+    } finally {
+      await h.mcpClose();
+    }
   });
-  const h = new Harness({ root, mode: 'full-access' });
-  try {
-    await h.mcpReady(); // 降级语义：不拒绝
-    assert.ok(h.tools.get('mcp__fs__echo'), '坏服务器不影响好服务器注册');
-    const warns = h.mcpWarnings();
-    assert.equal(warns.length, 1);
-    assert.match(warns[0], /connection failed \(bad\)/);
-  } finally {
-    await h.mcpClose();
-  }
 });
 
 test('Harness MCP 收口幂等：未连接时 close 为 no-op，连接后 close 后可重连', async () => {
@@ -61,13 +83,16 @@ test('Harness MCP 收口幂等：未连接时 close 为 no-op，连接后 close 
   assert.equal(h.tools.list().filter((t: { name: string }) => t.name.startsWith('mcp__')).length, 0);
 });
 
-test('Harness MCP 闸门：未登记 server 的 mcp__ 工具被 guard 拒绝', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
-  writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
-  const h = new Harness({ root, mode: 'full-access' });
-  const d = h.security.preToolUse('mcp__other__tool', {});
-  assert.equal(d.allowed, false);
-  assert.match(d.reason ?? '', /not registered/);
+test('Harness MCP 闸门：未登记 server 的 mcp__ 工具被 guard 拒绝', async () => {
+  // HOME 钉桩：构造链经批准阀读全局 settings（本项目条目未批准不装配，闸门断言不受影响）
+  await withHome(async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
+    writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
+    const h = new Harness({ root, mode: 'full-access' });
+    const d = h.security.preToolUse('mcp__other__tool', {});
+    assert.equal(d.allowed, false);
+    assert.match(d.reason ?? '', /not registered/);
+  });
 });
 
 /** 引擎级就绪门槛用例夹具：最小 LoopDeps */

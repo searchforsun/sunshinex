@@ -5,21 +5,37 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os'; import { join } from 'node:path';
 import { mcpJsonPath, listMcpServers } from './mcp';
 
+/** HOME 钉桩（Task 3 评审转来补桩）：项目条目 approval 接 approvalState——读 $HOME/.sunshinex/settings.json，
+ *  不钉则隐式依赖真实用户家 settings 可解析（真档畸形会让读面抛错）。沿 approvals.test.ts withHome 同款。 */
+function withHome(fn: (home: string) => void): void {
+  const home = mkdtempSync(join(tmpdir(), 'sunshinex-mcp-home-'));
+  const prev = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    fn(home);
+  } finally {
+    if (prev === undefined) delete process.env.HOME;
+    else process.env.HOME = prev;
+  }
+}
+
 test('listMcpServers: 项目遮蔽全局同名，全局保留 shadowed 标注', () => {
-  const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));
-  writeFileSync(join(g, 'mcp.json'), JSON.stringify({ mcpServers: { fs: { command: 'npx', args: ['a'] }, api: { url: 'https://x' } } }));
-  mkdirSync(join(p, '.sunshinex'), { recursive: true });
-  writeFileSync(join(p, '.sunshinex', 'mcp.json'), JSON.stringify({ mcpServers: { fs: { command: 'node', args: ['b'] } } }));
-  const r = listMcpServers(p, g);
-  // 排序钉死：全局先、项目后；各作用域内 name 字典序（api < fs）
-  assert.deepEqual(r.entries.map((e) => `${e.scope}:${e.name}`), ['global:api', 'global:fs', 'project:fs']);
-  // 项目条目胜出（就近遮蔽），本身不标 shadowed
-  const fsEntry = r.entries.find((e) => e.name === 'fs' && e.scope === 'project')!;
-  assert.equal(fsEntry.server.command, 'node'); assert.equal(fsEntry.shadowed, false);
-  // 同名全局条目保留在列并标 shadowed（视图口径；装载面 Task 4 才真正丢弃）
-  const gFs = r.entries.filter((e) => e.name === 'fs');
-  assert.equal(gFs.length, 2); assert.ok(gFs.some((e) => e.scope === 'global' && e.shadowed));
-  assert.equal(r.warnings.length, 0);
+  withHome(() => { // 项目条目过批准阀（读全局 settings）——HOME 桩保密闭
+    const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));
+    writeFileSync(join(g, 'mcp.json'), JSON.stringify({ mcpServers: { fs: { command: 'npx', args: ['a'] }, api: { url: 'https://x' } } }));
+    mkdirSync(join(p, '.sunshinex'), { recursive: true });
+    writeFileSync(join(p, '.sunshinex', 'mcp.json'), JSON.stringify({ mcpServers: { fs: { command: 'node', args: ['b'] } } }));
+    const r = listMcpServers(p, g);
+    // 排序钉死：全局先、项目后；各作用域内 name 字典序（api < fs）
+    assert.deepEqual(r.entries.map((e) => `${e.scope}:${e.name}`), ['global:api', 'global:fs', 'project:fs']);
+    // 项目条目胜出（就近遮蔽），本身不标 shadowed
+    const fsEntry = r.entries.find((e) => e.name === 'fs' && e.scope === 'project')!;
+    assert.equal(fsEntry.server.command, 'node'); assert.equal(fsEntry.shadowed, false);
+    // 同名全局条目保留在列并标 shadowed（视图口径；装载面才真正丢弃——Task 4 已接线）
+    const gFs = r.entries.filter((e) => e.name === 'fs');
+    assert.equal(gFs.length, 2); assert.ok(gFs.some((e) => e.scope === 'global' && e.shadowed));
+    assert.equal(r.warnings.length, 0);
+  });
 });
 test('listMcpServers: 两级文件均缺 = 空表不报错；坏条目跳过进 warnings', () => {
   const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));
@@ -32,6 +48,13 @@ test('listMcpServers: 两级文件均缺 = 空表不报错；坏条目跳过进 
   assert.equal(r.entries[0].scope, 'global'); assert.equal(r.entries[0].approval, 'none');
   assert.equal(r.warnings.length, 2);
   assert.ok(r.warnings.some((w) => w.includes('bad'))); assert.ok(r.warnings.some((w) => w.includes('junk')));
+  // 坏 JSON / 缺 mcpServers 键：降级空条目不抛（D7；Task 4 装载面接线时暴露的 Object.keys(undefined) 修复钉）
+  writeFileSync(join(g, 'mcp.json'), '{ not json');
+  const malformed = listMcpServers(p, g);
+  assert.deepEqual(malformed.entries, []); assert.equal(malformed.warnings.length, 1);
+  writeFileSync(join(g, 'mcp.json'), JSON.stringify({ other: 1 }));
+  const noKey = listMcpServers(p, g);
+  assert.deepEqual(noKey.entries, []); assert.deepEqual(noKey.warnings, []);
 });
 test('enabled:false 条目仍在列（列表面标停用，加载面过滤是加载器职责）', () => {
   const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));

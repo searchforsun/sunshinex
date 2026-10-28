@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { userConfigDir } from './config/env';
+import { listMcpServers } from './catalog/mcp';
 import { McpServerConfig, ProjectContext } from './types';
 
 interface SunshinexDoc {
@@ -110,12 +111,27 @@ export function parseMcpJsonFile(p: string): McpServerConfig[] {
   return servers;
 }
 
-/** 两级装载 MCP 服务器配置：项目级 .sunshinex/mcp.json 遮蔽全局 ~/.sunshinex/mcp.json（id 撞名就近遮蔽，与技能装载链同构）。结构：`{ "mcpServers": { "<name>": { command, args?, env?, transport?, url? } } }`（与主流 MCP 客户端 mcpServers 键位兼容） */
+/**
+ * 两级装载 MCP 服务器配置（2026-10-28 裁定反转 2026-10-27「应用级」——spec §1 决策 1「项目遮蔽全局 +
+ * 项目 MCP 首次启用需一次确认」/§4 批准阀；项目 mcp.json 复活装载）。收口 catalog 单一事实源
+ * （listMcpServers 两级合并 + 审批标注），本函数是其上的「装载口径」过滤链，与视图面分工：
+ * 视图保留被遮蔽条目标 shadowed:true，装载面只出实际拉起进程的集合——
+ * ① enabled !== false（缺省语义）：全局或项目停用均不装载（不拉起进程）；
+ * ② 项目条目过批准阀（approvalState 读全局 settings mcpApprovals/mcpDenied）：仅 approved 装载，
+ *    pending/denied 一律不拉起进程（项目 mcp.json 随仓库分发，未审先启等于仓库供给方拿到本机执行权）；
+ *    全局条目用户手配不过阀（catalog 恒标 'none'）；
+ * ③ 同名遮蔽以「实际装载」计：被 ①② 过滤掉的项目条目不遮蔽全局同名（未批准/停用不吃掉全局同款）。
+ * 输出序沿 catalog（全局先、项目后，各作用域内 name 字典序）。
+ * 结构：`{ "mcpServers": { "<name>": { command, args?, env?, transport?, url? } } }`（与主流 MCP 客户端 mcpServers 键位兼容）。
+ * require 环说明：catalog/mcp 复用本模块 parseMcpJsonFile 谓词、本模块经其出合并视图——双方均函数体内
+ * 引用（CJS 晚绑定），无顶层执行依赖。
+ */
 export function loadMcpServers(projectRoot: string, globalDir: string = userConfigDir()): McpServerConfig[] {
-  const global = parseMcpJsonFile(path.join(globalDir, 'mcp.json'));
-  const project = parseMcpJsonFile(path.join(projectRoot, '.sunshinex', 'mcp.json'));
-  if (project.length === 0) return global;
-  const shadowed = new Set(project.map((s) => s.name));
-  return [...project, ...global.filter((s) => !shadowed.has(s.name))];
+  const { entries } = listMcpServers(projectRoot, globalDir);
+  const loadable = entries
+    .filter((e) => e.server.enabled !== false)
+    .filter((e) => e.scope !== 'project' || e.approval === 'approved');
+  const loadedProjectNames = new Set(loadable.filter((e) => e.scope === 'project').map((e) => e.name));
+  return loadable.filter((e) => e.scope !== 'global' || !loadedProjectNames.has(e.name)).map((e) => e.server);
 }
 

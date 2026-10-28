@@ -1,6 +1,6 @@
 /**
  * catalog/mcp 读面：两级（全局/项目）mcp.json 合并列举 + 遮蔽标注。
- * 与装载面（config.loadMcpServers）的分工：装载面丢遮蔽条目（运行时一台只装一份，Task 4 接线）；
+ * 与装载面（config.loadMcpServers）的分工：装载面丢遮蔽条目（运行时一台只装一份，Task 4 已接线）；
  * 本面是「视图」——项目同名遮蔽全局时，全局条目保留在列并标 shadowed:true（catalog 面要能看清
  * 全局配了什么、被谁遮蔽）。读纪律沿 catalog/io 单点（readJsoncDoc），条目形状判定复用
  * parseMcpJsonFile 的谓词（单点，不另造解析器）；项目条目 approval 接 approvals.approvalState
@@ -51,7 +51,9 @@ export function listMcpServers(root: string | null, globalDir?: string): Listing
       return servers;
     }
     const known = new Set(servers.map((s) => s.name));
-    for (const name of Object.keys(entry as Record<string, unknown>)) {
+    // entry undefined（文件无 mcpServers 键 / 坏 JSON 降级空 doc）= 无键面可对账，跳过即可——
+    // 不可 Object.keys(undefined)（Task 4 接线装载面时暴露：坏 JSON 恒抛 TypeError，违反本面 D7 不抛契约）
+    for (const name of Object.keys((entry ?? {}) as Record<string, unknown>)) {
       if (!known.has(name)) warnings.push(`${file} 条目 "${name}" 形状非法，已跳过`);
     }
     return servers;
