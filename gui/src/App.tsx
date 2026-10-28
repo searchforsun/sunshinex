@@ -8,6 +8,7 @@ import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import { Chat } from './pages/Chat';
+import { ChatScrollbar } from './pages/chat/ChatScrollbar';
 import type { ChatSink } from './pages/Chat';
 import { ProjectMenu } from './sidebar/ProjectMenu';
 import { PanelLeft } from 'lucide-react';
@@ -453,6 +454,8 @@ function AppShell(): JSX.Element {
    *  useShellLayout,后者拖拽回调闭包引用) */
   const mainRef = useRef<HTMLElement | null>(null);
   const sidebarRef = useRef<HTMLElement | null>(null);
+  /** 活动标签滚动容器(自绘 vbar 数据源):仅活动 tabbody 绑定——keep-alive 隐藏面零监听零几何 */
+  const tabBodyRef = useRef<HTMLDivElement | null>(null);
   /** 三栏几何簇(use-shell-layout 单点,2026-10-27 技术债轮 D53 批C-1 外提):视口跟踪/浮窗阈值/
    *  抽屉态/菜单与右栏渲染期钳制/占宽/拖宽手柄,判定序与裁定注释随码在钩子内 */
   const {
@@ -720,6 +723,7 @@ function AppShell(): JSX.Element {
                   <div
                     key={t.uid}
                     className="sx-tabbody"
+                    ref={hidden ? undefined : tabBodyRef}
                     style={hidden ? { display: 'none' } : undefined}
                     {...(hidden ? { inert: '' as unknown as boolean } : {})}
                   >
@@ -754,6 +758,14 @@ function AppShell(): JSX.Element {
                   </div>
                 );
               })
+            )}
+            {activeTab !== null && (
+              // 侧栏自绘 vbar(2026-10-29 用户实测宽度变化果冻/多余条根修):tabbody 原生条 CSS 退役——
+              // 经典条占布局宽,Monaco stale 溢出/内容增减时反复闪现横推内容(4840e9c 加 gutter↔
+              // eaeb7c4 撤 gutter 两难连根消);滚轮/键盘原生滚动不变,thumb 拖拽走 ChatScrollbar
+              // 同款直写 DOM。key=活动 uid:切签重挂即换数据源(ref 随 commit 先行落位,后到 effect
+              // 读到新容器;非活动面 display:none 不产几何)
+              <ChatScrollbar key={activeTab.uid} containerRef={tabBodyRef} />
             )}
             {(page === 'chat' || page === 'welcome') && !tabState.collapsed && activeTab === null && (
               // G14.27 零标签空态=Codex 推荐项:标题+副题+常用页卡(点击即开,不再默认开任务页);

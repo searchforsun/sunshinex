@@ -127,14 +127,15 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.154 悬浮工具条状态(绝对定位 React 面,跟随选区;弃 monaco overlay——其位置不随选区重算) */
   const [selBar, setSelBar] = useState<{ top: number; left: number; rel: string; lines: string } | null>(null);
-  /** Monaco 防抖 layout(2026-10-28):RO 句柄随编辑器卸载断开;挂定时器句柄防卸载后迟到回调 */
+  /** Monaco rAF 合并 layout(2026-10-29 用户实测空白带/多余双条根修):RO 句柄随编辑器卸载断开;
+   *  rAF 句柄防卸载后迟到回调 */
   const monoRoRef = useRef<ResizeObserver | null>(null);
-  const monoTimerRef = useRef(0);
+  const monoRafRef = useRef(0);
   useEffect(() => () => {
     editorRef.current = null;
     monoRoRef.current?.disconnect();
     monoRoRef.current = null;
-    if (monoTimerRef.current !== 0) { clearTimeout(monoTimerRef.current); monoTimerRef.current = 0; }
+    if (monoRafRef.current !== 0) { cancelAnimationFrame(monoRafRef.current); monoRafRef.current = 0; }
   }, []);
 
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
@@ -390,16 +391,18 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     // 位置=monaco getScrolledVisiblePosition(任意行可用)+编辑器/容器 rect 差换算;
                     // mousedown preventDefault 保选区;双动作:添加到当前任务/在辅助对话中提问
                     editorRef.current = ed;
-                    // 窗口缩放右缘迟滞主源(2026-10-28 用户实测「左缘顺右缘迟」不对称):侧栏收窄时
-                    // automaticLayout 每帧全量重排(长文档逐行重折行)。改 RO+120ms 尾沿手动 layout
-                    // (VS Code 同款策略);首帧即刻 layout 一次保尺寸就位
+                    // 右缘缩放布局同步(2026-10-29 用户实测「空白带/多余纵横条/停手整跳」三症同根):
+                    // 前版 RO+120ms 尾沿防抖在连续拖动中定时器每帧重置=整个拖动过程零重排,Monaco
+                    // 恒按旧宽绘制(变宽右侧留白带/旧折行对新容器溢出多出纵横条),停手才一次性
+                    // snap=果冻感。改 RO+rAF 当帧合并(一帧至多一次全量重排,与整树 resize 4401acc
+                    // 同口径):stale 窗口收敛到单帧,拖动中逐帧就位;首帧即刻 layout 保尺寸就位
                     ed.layout();
                     const monoRo = new ResizeObserver(() => {
-                      if (monoTimerRef.current !== 0) clearTimeout(monoTimerRef.current);
-                      monoTimerRef.current = window.setTimeout(() => {
-                        monoTimerRef.current = 0;
+                      if (monoRafRef.current !== 0) return;
+                      monoRafRef.current = requestAnimationFrame(() => {
+                        monoRafRef.current = 0;
                         if (editorRef.current !== null) editorRef.current.layout(); // 卸载后迟到回调守卫
-                      }, 120);
+                      });
                     });
                     monoRo.observe(ed.getContainerDomNode());
                     monoRoRef.current = monoRo;
@@ -464,7 +467,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     lineHeight: 19,
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
                     fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
-                    automaticLayout: false, // 2026-10-28 改 RO+120ms 防抖手动 layout(onMount 内),右缘缩放迟滞主源根除
+                    automaticLayout: false, // 2026-10-29 改 RO+rAF 当帧手动 layout(onMount 内);120ms 尾沿防抖出局=拖动全程 stale(见 onMount 注)
                     renderLineHighlight: 'none',
                     overviewRulerLanes: 0,
                     scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8, useShadows: false },
