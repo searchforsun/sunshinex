@@ -2659,3 +2659,9 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; }
 .sx-shell.sx-desktop .sx-tabstrip,
 .sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: drag; }
+
+/* 2026-10-29 用户裁定「下拉框行间不挤」(全局):一切弹层菜单条目(.sx-menuitem 竖排面——
+   sx-menu-pop/proj-pop/branch-pop 及会话行/页签/模型选择/设置控件/欢迎页十几处复用)相邻行间
+   2px 行距——hover 圆角底相邻行贴死显挤;相邻选择器只作用于行间、首尾行贴容器 padding 不受影响,
+   横排面(如有)margin-top 无视觉副作用,一处收口 */
+.sx-menuitem + .sx-menuitem { margin-top: 2px; }
