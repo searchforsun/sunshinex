@@ -192,10 +192,15 @@ function editorIconPath(id: string): string {
   return path.join(userConfigDir(), 'gui', 'editor-icons', `${id}.v3.png`);
 }
 
+/** 图标抽取失败负缓存(daemon 生命周期,与 editorsCache 同口径——重启刷新):失败的 exe 反复重付
+ *  15s PowerShell 超时,GUI 预取前置后每会话即拉、失败应用反复付账——按 id 记忆,进程内不再重试 */
+const iconFailMemo = new Set<string>();
+
 /** 原生图标抽取(ExtractAssociatedIcon→透明画布重绘 64px→PNG):直接 ToBitmap 会丢透明度
- *  (透明区变黑、字形缩角=「只显示左上角」观感的根因);异步不阻塞;失败回 null(GUI 回落集内字形)。
- *  注:Icon(exe,64,64) 三参重载经 New-Object 绑定失败(实测「picture 必须是可用作 Icon」),不用 */
+ *  (透明区变黑、字形缩角=「只显示左上角」观感的根因);异步不阻塞;失败回 null(GUI 回落集内字形)
+ *  并记负缓存。注:Icon(exe,64,64) 三参重载经 New-Object 绑定失败(实测「picture 必须是可用作 Icon」),不用 */
 export async function extractEditorIcon(id: string, exe: string): Promise<string | null> {
+  if (iconFailMemo.has(id)) return null;
   const out = editorIconPath(id);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   if (!fs.existsSync(out)) {
@@ -213,6 +218,7 @@ export async function extractEditorIcon(id: string, exe: string): Promise<string
     try {
       await execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 });
     } catch {
+      iconFailMemo.add(id); // 负缓存:本轮 daemon 不再重试(15s 超时 × 会话级预取=反复付账)
       return null;
     }
   }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Code2, MoreHorizontal, PanelLeft } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
+import { OPEN_DEFAULT_KEY } from '../../ui-util';
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
@@ -91,6 +92,8 @@ export interface ChatTopbarProps {
   readonly taskActive: number;
   readonly conn: Connection;
   readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks') => void);
+  /** 「打开」分体钮失败可见化面(D57④:App showOpError 经 Chat 透传,探测/打开失败 sx-toast) */
+  readonly onOpError?: (err: unknown) => void;
   /** 归档态(2026-10-21):快照播种对齐——true 显徽标+撤销钮,false 显归档钮(确认 morph) */
   readonly archived: boolean;
   /** 归档/撤销归档上抛(落 conn.archiveSession;本地 archived 同步归宿主 Chat) */
@@ -111,7 +114,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, computerUseActive, conn, onOpenTab, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -121,10 +124,20 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   // 默认应用 localStorage 持久(机器级偏好,同 zoom/theme 口径)
   const [editorMenu, setEditorMenu] = useState<{ x: number; y: number } | null>(null);
   const [editors, setEditors] = useState<Array<{ id: string; name: string }>>([]);
-  const [defaultEditor, setDefaultEditor] = useState<string>(() => localStorage.getItem('sunshinex.open-default') ?? 'explorer');
+  const [defaultEditor, setDefaultEditor] = useState<string>(() => localStorage.getItem(OPEN_DEFAULT_KEY) ?? 'explorer');
   const openIn = (id: string): void => {
     if (root === undefined || root === '') return;
-    conn.openInEditor(root, id).catch(() => undefined);
+    // 失败可见化(D57④:探测后应用被卸载/daemon 异常——主钮常驻,静默吞=点了没反应)
+    conn.openInEditor(root, id).catch((err: unknown) => onOpError?.(err));
+  };
+  /** 原生图标拉取(D57② 双 effect 归一):进入会话预取全部;菜单打开时对缺失项补拉(服务端有
+   *  失败负缓存,重试 404 即回零成本)。拉取失败**不落空串**——留 undefined 走品牌字形回落,
+   *  下次菜单开自然重试(原「失败标记 '' 永不重试」缺陷根除) */
+  const fetchIcon = (id: string): void => {
+    if (typeof conn.editorIcon !== 'function') return; // 测试桩/旧 daemon:优雅跳过(图标回落集内字形)
+    void conn
+      .editorIcon(id)
+      .then((ic) => setNativeIcons((m) => ({ ...m, [id]: `data:${ic.mime};base64,${ic.data}` })), () => undefined);
   };
   /** 预取前置(2026-10-28 用户反馈:菜单首开才拉,窗口期渲染 1/4 加载态):进入会话即拉
     应用列表+逐个原生图标——菜单打开时全部热数据 */
@@ -136,22 +149,14 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       .then((r) => {
         if (!alive) return;
         setEditors(r.editors);
-        for (const e of r.editors) {
-          void conn
-            .editorIcon(e.id)
-            .then((ic) => {
-              if (!alive) return;
-              setNativeIcons((m) => ({ ...m, [e.id]: `data:${ic.mime};base64,${ic.data}` }));
-            }, () => {
-              if (!alive) return;
-              setNativeIcons((m) => ({ ...m, [e.id]: m[e.id] ?? '' }));
-            });
-        }
-      }, () => undefined);
+        for (const e of r.editors) fetchIcon(e.id);
+      }, (err: unknown) => {
+        if (alive) onOpError?.(err); // 探测失败可见化(D57④:静默=∨ 菜单零项且无解释)
+      });
     return () => {
       alive = false;
     };
-  }, [conn]);
+  }, [conn, onOpError]);
   const toggleEditorMenu = (anchor: HTMLElement): void => {
     if (editorMenu !== null) {
       setEditorMenu(null);
@@ -163,7 +168,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   /** 菜单点选=只设默认(✓ 移交+主钮图标随换),**不启动**——启动统一走主钮
     (2026-10-27 用户裁定:点行即开应用会误触) */
   const pickEditor = (id: string): void => {
-    localStorage.setItem('sunshinex.open-default', id);
+    localStorage.setItem(OPEN_DEFAULT_KEY, id);
     setDefaultEditor(id);
     setEditorMenu(null);
   };
@@ -173,16 +178,14 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   useEffect(() => {
     if (editorMenu === null) return;
     for (const e of editors) {
-      if (nativeIcons[e.id] !== undefined) continue;
-      void conn
-        .editorIcon(e.id)
-        .then((r) => setNativeIcons((m) => ({ ...m, [e.id]: `data:${r.mime};base64,${r.data}` })), () => setNativeIcons((m) => ({ ...m, [e.id]: '' })));
+      // 缺失即补拉(无失败永久标记——服务端负缓存使重试零成本)
+      if (nativeIcons[e.id] === undefined) fetchIcon(e.id);
     }
-  }, [editorMenu, editors, conn, nativeIcons]);
+  }, [editorMenu, editors, nativeIcons]);
   const editorIcon = (id: string, size = 18): JSX.Element => {
     const native = nativeIcons[id];
-    if (native !== undefined && native !== '') return <img src={native} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
-    if (native === '') return <Code2 size={13} strokeWidth={1.75} />;
+    // 拉到原生图标直显;失败/未拉到回落品牌字形(D57②:失败不再落 '' 恒跳 Code2——下次菜单开重试)
+    if (native !== undefined) return <img src={native} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
     const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
     const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
     if (body === undefined) return <Code2 size={size - 2} strokeWidth={1.75} />;

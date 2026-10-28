@@ -496,6 +496,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         computerUseActive={computerUseActive}
         conn={conn}
         onOpenTab={onOpenTab}
+        onOpError={onOpError}
         archived={archived}
         onArchive={onArchive}
         journalId={journalId}

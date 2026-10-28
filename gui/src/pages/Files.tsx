@@ -7,7 +7,7 @@ import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { t } from '../i18n';
-import { normRel } from '../ui-util';
+import { normRel, OPEN_DEFAULT_KEY } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { SessionRowMenu } from '../sidebar/session-row-menu';
@@ -111,7 +111,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
     const target = load.file?.path ?? '';
     if (target === '') return;
     void conn
-      .openInEditor(target, localStorage.getItem('sunshinex.open-default') ?? 'explorer')
+      .openInEditor(target, localStorage.getItem(OPEN_DEFAULT_KEY) ?? 'explorer')
       .catch((err: unknown) => setLoad((prev) => ({ ...prev, error: err instanceof Error ? err.message : String(err) })));
   };
 

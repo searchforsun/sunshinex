@@ -43,6 +43,10 @@ export function pathSegments(p: string): string[] {
   return p.split(/[\\/]+/).filter(Boolean);
 }
 
+/** 「打开」分体钮默认应用偏好键(2026-10-27 技术债轮 D57③:字面量三处散布——ChatTopbar×2/
+ *  Files×1——默认应用口径靠字符串耦合,收单点) */
+export const OPEN_DEFAULT_KEY = 'sunshinex.open-default';
+
 /** 相对路径归一单点(2026-10-27 技术债轮 G10 自 Files.tsx 上收——md 正文图片此前仅剥 file:// 头,
  *  `/docs/a.png`·`./docs/a.png` 形态在 Files 面可解析、MdImage 面 404 落 chip 的口径分叉根除):
  *  ./a/b 与 /a/b 都按会话根相对(前导斜杠的绝对化曾逃出信任域落 404;Windows 盘符绝对路径原样)。
