@@ -31,12 +31,12 @@ function withPinnedEnv<T>(fn: (root: string, userDir: string) => T): T {
   }
 }
 
-/** 写一个技能条目（SKILL.md 标准名，frontmatter 三件套齐全），返回条目目录备 sourceDir 断言 */
-function writeSkill(base: string, id: string, name: string, version = '1.0.0'): string {
+/** 写一个技能条目（SKILL.md 标准名，frontmatter 三件套齐全），返回条目目录备 sourceDir 断言；params 形参清单可选 */
+function writeSkill(base: string, id: string, name: string, version = '1.0.0', params?: string): string {
   fs.mkdirSync(path.join(base, id), { recursive: true });
   fs.writeFileSync(
     path.join(base, id, 'SKILL.md'),
-    `---\nname: ${name}\ndescription: ${name} 说明\nversion: ${version}\n---\n${name} 正文`,
+    `---\nname: ${name}\ndescription: ${name} 说明\nversion: ${version}\n${params !== undefined ? `params: ${params}\n` : ''}---\n${name} 正文`,
   );
   return path.join(base, id);
 }
@@ -133,6 +133,25 @@ test('listSkills：组内同 id 就近去重（project 双根与 plugin 双目�
       fs.rmSync(pluginA, { recursive: true, force: true });
       fs.rmSync(pluginB, { recursive: true, force: true });
     }
+  });
+});
+
+test('listSkills：带 params 的技能在列（清单不套出牌面参数门）且跨源遮蔽正常', () => {
+  withPinnedEnv((root, userDir) => {
+    writeSkill(path.join(root, '.sunshinex', 'skills'), 'withp', 'WithParams', '1.0.0', 'topic tone');
+    writeSkill(userDir, 'withp', 'UserWithParams');
+    writeSkill(path.join(root, '.data', 'skills'), 'withp', 'LearnedWithParams');
+    const { entries } = listSkills(root, { pluginSkillDirs: [] });
+    assert.deepEqual(
+      entries.map((e) => [e.source, e.id, e.shadowedBy ?? null]),
+      [
+        ['project', 'withp', null],
+        ['user', 'withp', 'project'],
+        ['learned', 'withp', 'project'],
+      ],
+      'manifest.params 非空的技能三源全在列（SKILL_PARAM_MISSING 属出牌面语义，清单视图不得套用）',
+    );
+    assert.equal(entries.find((e) => e.source === 'project' && e.id === 'withp')?.name, 'WithParams');
   });
 });
 
