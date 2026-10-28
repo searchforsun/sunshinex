@@ -2661,12 +2661,17 @@ input.sx-setting-input { width: 100%; }
    抽屉态页签条维持 2363 行 no-drag(「抽屉态一并退出」),分栏态全域 drag 保留。注:562e3ea
    (23:56)从未单独上过桌面——下次推装 00:45:26 已捆绑至 eaeb7c4,抽屉态页签条 drag 在野外
    无「好用」样本,勿以「刚修完好用」反推该条无害 */
+/* 2026-10-29 CDP 实测补刀(用户截图「收起按钮仅左侧可点」):zoom=1.1 下挖孔按未缩放布局坐标
+   记录、命中按缩放视觉坐标判定——孔整体左移 9.09%(收起钮 28.6px 仅左 5px 可点,右上 [|] 整钮
+   错位全死)。反 zoom 1/zoom 使顶带子树累计缩放恒等于 1,挖孔与视觉逐像素对齐,任意界面缩放
+   下全局可拖且按钮全可点;窗控簇自有 no-drag 同理须对齐,否则压不进页签条 drag 区 */
 .sx-shell.sx-desktop .sx-menu-head,
-.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: drag; }
+.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
 .sx-shell.sx-desktop .sx-menu-head button,
 .sx-shell.sx-desktop .sx-menu-head input { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; }
-.sx-shell.sx-desktop .sx-tabstrip { -webkit-app-region: drag; }
+.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+.sx-shell.sx-desktop .sx-tabstrip { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+.sx-shell.sx-desktop .sx-wincontrols { zoom: var(--ui-zoom-inv, 1); }
 
 /* 2026-10-29 用户裁定「下拉框行间不挤」(全局):一切弹层菜单条目(.sx-menuitem 竖排面——
    sx-menu-pop/proj-pop/branch-pop 及会话行/页签/模型选择/设置控件/欢迎页十几处复用)相邻行间

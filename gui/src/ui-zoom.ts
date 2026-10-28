@@ -32,6 +32,12 @@ export function applyZoom(pref: UiZoom): void {
   // 成本地 px——zoom 子树内 px 是本地值,不除则 flex 最小宽×zoom 越视口(600 窗 zoom1.1 实测
   // 主栏右溢 16px,输入卡居中偏右贴窗沿)。除数须纯数字 token,calc 除法才合法
   document.documentElement.style.setProperty('--ui-zoom', String(parseFloat(pref)) || '1');
+  // --ui-zoom-inv = 1/zoom(2026-10-29 app-region 挖孔错位根修配套):Chromium 的拖拽区
+  // (-webkit-app-region)位图按未缩放布局坐标记录、命中按缩放视觉坐标判定——zoom=1.1 下挖孔
+  // 整体左移 9.09%(实测收起按钮仅左 5px 可点、右上 [|] 整钮不可点)。顶带 drag 容器
+  // (菜单头/会话顶栏/页签条/窗控簇,见 app.css 全局可拖块)反 zoom 1/zoom 后子树累计缩放
+  // 恒等于 1,挖孔与视觉逐像素对齐,任意界面缩放全局可拖且按钮全可点
+  document.documentElement.style.setProperty('--ui-zoom-inv', String(1 / (parseFloat(pref) || 1)));
   try {
     localStorage.setItem(KEY, pref);
   } catch {
