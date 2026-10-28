@@ -23,4 +23,4 @@ Playwright MCP（`@playwright/mcp`）驱动的浏览器自动化：以可访问�
 
 `skills/web-testing/`：面向模型的 Web 测试教程技能（snapshot→按 ref 定位→操作→verify 标准循环、caps 能力组、敏感面 deny 示例），插件启用后经技能装载链自动并入清单（id `web-testing`）。
 
-详细使用文档见 MANUAL.md 插件章节（含**目标机首次启用前的依赖补装步骤**：`pnpm --dir plugins/browser-use install`）；插件开发规范见 PLUGIN-DEV.md。
+server 已**单文件束化**（2026-10-27：@playwright/mcp 全图内联进 `server/index.js`，manifest 同路径直启）——tgz/exe 装机形态目标机**零补装**，系统 Chrome/Edge 品牌通道即用；开发机构建 `node build.mjs`（esbuild 束，发版链现构建），依赖仅开发面（workspace `pnpm install`）。详细使用文档见 MANUAL.md 插件章节；插件开发规范见 PLUGIN-DEV.md。

@@ -457,6 +457,8 @@ pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包
 
 跳过该步的表现：启用插件后会话装配时该 server 连接失败，警告单出现 `assembly failed (browser-use): …`——降级语义，只损失此单 server 的工具，会话照常不中断；补装后**新开会话**即恢复。浏览器内核方面，缺省 `browser=chrome` 走系统已装的 Chrome/Edge 等品牌通道，无须另下内核；换 `chromium` 才需 `npx playwright install chromium`。
 
+**仓库工作区形态（当前版）**：两束产物 gitignore 不入库——checkout 后在插件目录跑一次 `node build.mjs`（`plugins/browser-use`、`plugins/computer-use` 各一，esbuild 现构建出 `server/index.js`），否则启用即 `assembly failed`；发版链 `scripts/release.mjs` 已前置该构建，开发机手动跑即可。
+
 **启用/禁用**（改完对新会话生效，运行中会话不热切换）：
 
 | 方式 | 操作 |

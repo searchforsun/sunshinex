@@ -1,7 +1,7 @@
 // browser-use server 单文件束（2026-10-27）：@playwright/mcp 全依赖图内联（含 playwright-core）、
 // 产物 server/index.js 零外部依赖——装机形态免补装（系统 node + 系统 Chrome 即用，--browser chrome 走
-// channel 机制定位本机浏览器）。与 computer-use/build.mjs 同模式：路径按本文件解析（对调用方 cwd
-// 免疫，release.mjs run() 不透传 cwd）；产物 gitignore 不入库，发版链 release.mjs 前置现构建。
+// channel 机制定位本机浏览器）。与 computer-use/build.mjs 同模式：路径按本文件解析（对调用方 cwd 免疫；
+// release.mjs run() 现已透传 cwd,免疫性保留作双保险——96072b0 前实测踩坑）；产物 gitignore 不入库，发版链 release.mjs 前置现构建。
 // 运行：node build.mjs
 import * as esbuild from 'esbuild';
 import * as path from 'node:path';

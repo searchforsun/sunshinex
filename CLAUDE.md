@@ -155,7 +155,7 @@ SUNSHINE.md          # 项目业务配置
 | ws | GUI daemon WebSocket 服务面（会话事件流 / PTY 帧下行），收敛于 `src/serve/daemon.ts` 接缝 | 事件面退 HTTP 快照轮询（GET 快照路径已在） |
 | node-pty | GUI 终端标签伪终端宿主（PTY 分配与 I/O 中继），收敛于 `src/serve/pty.ts` 接缝（原生模块，安装期编译） | 终端标签降级不可用提示，daemon 其余面不受影响 |
 | @xyflow/react + @dagrejs/dagre | GUI 任务板依赖图（React Flow 图面渲染 + dagre 自动分层布局），收敛于 `gui/src/tabs/TaskDag.tsx` | 降级为列表视图（列表/流程图双卡切换已在）；布局算法接缝在 `layoutTaskDag` 纯函数 |
-| @playwright/mcp | browser-use 内置插件的浏览器操作 MCP server（钉版直启；**插件目录工作区依赖，非主仓依赖**，目标机首次启用前补装，MANUAL 6.4），收敛于 `plugins/browser-use/` | 插件不启用即零依赖面；换任意 MCP 浏览器 server 改 manifest 即可 |
+| @playwright/mcp | browser-use 内置插件的浏览器操作 MCP server（钉版；**插件目录工作区开发依赖，非主仓依赖**——发版链 esbuild 全图内联进 `server/index.js` 单文件束，目标机零补装），收敛于 `plugins/browser-use/` | 插件不启用即零依赖面；换任意 MCP 浏览器 server 改 manifest 即可 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 

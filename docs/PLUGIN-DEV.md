@@ -227,7 +227,7 @@ safety 三类 = 插件作者对所贡献工具的**自声明**风险类别；gua
 
 ### browser-use（M2：包装现成 server）
 
-- 思路：把现成 npm MCP server（`@playwright/mcp`）**钉版**为插件目录依赖（插件目录 = pnpm 工作区包），manifest 以 `node <插件>/node_modules/@playwright/mcp/cli.js` 直启——运行时零 npx 网络依赖；相对路径 + `cwd` 锚定插件根。
+- 思路：把现成 npm MCP server（`@playwright/mcp`）**钉版**为插件目录依赖（插件目录 = pnpm 工作区包），manifest 以 `node <插件>/node_modules/@playwright/mcp/cli.js` 直启——运行时零 npx 网络依赖；相对路径 + `cwd` 锚定插件根。（交付形态已演进为 esbuild 单文件束 `server/index.js` 零补装——本节为规划存档,以仓内 `plugins/browser-use/` 为准）
 - `configArgs` 映射 settings config → server 参数（浏览器选择 / headless / isolated profile / caps），`configDefaults` 给缺省值。
 - `safety` 不声明：浏览器操作走既有通用 MCP 审批行为；敏感面建议用户以 deny 规则兜底（如 `deny mcp__browser-use__browser_run_code_unsafe`）。
 - 规划字段：`platforms: ["win32", "darwin", "linux"]`、`defaultEnabled: false`、server 名 `browser-use`。
