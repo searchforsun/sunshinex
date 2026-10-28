@@ -352,7 +352,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 6px 8px 4px;
   font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
   color: var(--fg-secondary);
-}.sx-tree-head-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }.sx-tree-head-actions { display: inline-flex; gap: 2px; }.sx-tree-head-actions .sx-iconbtn { width: 22px; height: 22px; opacity: 0; }.sx-tree-head:hover .sx-iconbtn, .sx-tree-head:focus-within .sx-iconbtn { opacity: 1; }
+}.sx-tree-head-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; font-weight: 400; } /* 不加粗(用户裁定) */.sx-tree-head-actions { display: inline-flex; gap: 2px; }.sx-tree-head-actions .sx-iconbtn { width: 22px; height: 22px; opacity: 1; } /* 2026-10-27 用户裁定:刷新/全部折叠常驻(hover 浮现退役) */.sx-tree-head:hover .sx-iconbtn, .sx-tree-head:focus-within .sx-iconbtn { opacity: 1; }
 /* G14.7 文件过滤框(VSCode「搜索文件」同位):圆角雾面输入 */.sx-tree-filter {
   display: flex; align-items: center; gap: 6px;
   margin: 2px 8px 6px; padding: 0 8px; height: 28px;
@@ -2588,7 +2588,7 @@ input.sx-setting-input { width: 100%; }
 .sx-dirview-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px; }
 .sx-dirview-back { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-sm); color: var(--fg-secondary); }
 .sx-dirview-back:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
-.sx-dirview-root { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 4px 12px 2px; font-size: 12px; font-weight: 600; color: var(--fg); } /* 2026-10-27 用户裁定:项目名保留(返回钮下/树上方),否则不知道开的是哪个项目 */
+.sx-dirview-root { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 12px 2px; font-size: 12px; font-weight: 400; color: var(--fg); } /* 2026-10-27 用户裁定:不加粗(标题观感),树体整体上移 */ /* 2026-10-27 用户裁定:项目名保留(返回钮下/树上方),否则不知道开的是哪个项目 */
 .sx-dirview-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* 所有下拉弹层统一最大高度(2026-10-27 用户裁定):超出纵向滚动,不再无限拉高。
    既有更紧档优先(模型菜单 pill-pop-tall 320/分支 branch-pop 320/文件面板 260/命令面板 280),

@@ -533,7 +533,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         </button>
       )}
       {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
-      <button
+      {dirView === undefined || dirView === null || onCloseDirView === undefined ? (<button
         type="button"
         className="sx-new-chat"
         aria-label="search"
@@ -541,7 +541,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       >
         <Search size={16} strokeWidth={1.75} />
         <span>{t('Search', '搜索')}</span>
-      </button>
+      </button>) : null}
       {searchOpen && (
         <ProjectSearch
           rows={rows}
