@@ -42,7 +42,7 @@ export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorAp
 /** PATH shim 探测(便携装兜底):where <shim> 首行→自 shim 目录向上逐层(≤6)找 <exeName>。
  *  同名 shim 可能是别家(实测 Cursor 内嵌的 code.cmd)——逐层找不到真 exe 即整条放弃,
  *  宁缺勿错(错配会把「VS Code 打开」实际开成 Cursor)。 */
-export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; exeName: string }> = [
+const SHIM_PROBES: Array<{ id: string; name: string; shim: string; exeName: string }> = [
   { id: 'vscode', name: 'VS Code', shim: 'code', exeName: 'Code.exe' },
   { id: 'cursor', name: 'Cursor', shim: 'cursor', exeName: 'Cursor.exe' },
 ];
@@ -51,11 +51,11 @@ export const SHIM_PROBES: Array<{ id: string; name: string; shim: string; exeNam
  *  ① App Paths\Code.exe 缺省值=安装器登记的完整 exe 路径(HKCU 用户装/HKLM 系统装两键,
  *  任意盘位任意目录通用);② Inno Setup 定版 GUID 卸载键 InstallLocation(系统装常见登记)
  *  → 命中安装根,Code.exe 由调用方拼接 */
-export const VSCODE_APP_PATHS_KEYS = [
+const VSCODE_APP_PATHS_KEYS = [
   'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Code.exe',
   'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Code.exe',
 ];
-export const VSCODE_UNINSTALL_KEYS = [
+const VSCODE_UNINSTALL_KEYS = [
   'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1',
   'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1',
 ];
@@ -63,7 +63,7 @@ export const VSCODE_UNINSTALL_KEYS = [
 const execFile = promisify(execFileCb);
 
 /** 真实 where 探针(async):首行(最高 PATH 优先级)或 null */
-export async function whereFirst(shim: string): Promise<string | null> {
+async function whereFirst(shim: string): Promise<string | null> {
   try {
     const r = await execFile('where', [shim], { windowsHide: true });
     const first = r.stdout
@@ -77,7 +77,7 @@ export async function whereFirst(shim: string): Promise<string | null> {
 }
 
 /** 注册表读探测值(async reg query;shell 转义与本进程无关):命中回 InstallLocation/缺省值 */
-export async function vscodeInstallFromRegistry(): Promise<string | null> {
+async function vscodeInstallFromRegistry(): Promise<string | null> {
   // ① App Paths:缺省值即完整 exe 路径(任意安装位通用)
   for (const key of VSCODE_APP_PATHS_KEYS) {
     try {
@@ -156,22 +156,8 @@ export function detectEditors(
     out.push(c);
   };
   for (const c of editorCandidates(env)) push(c);
-  if (!seen.has('vscode')) {
-    const shimPath = where('code');
-    if (shimPath !== null) {
-      let cur = path.dirname(shimPath);
-      for (let depth = 0; depth < 6; depth++) {
-        const exe = path.join(cur, 'Code.exe');
-        if (exists(exe)) {
-          push({ id: 'vscode', name: 'VS Code', exe });
-          break;
-        }
-        const up = path.dirname(cur);
-        if (up === cur) break;
-        cur = up;
-      }
-    }
-  }
+  // vscode 专属 where 块已删(2026-10-27 技术债轮 F2):SHIM_PROBES 首位即 vscode(code shim),
+  // 专属块与其逐字同构且探测序不变——纯冗余第二遍
   for (const probe of SHIM_PROBES) {
     if (seen.has(probe.id)) continue;
     const shimPath = where(probe.shim);
@@ -193,9 +179,6 @@ export function detectEditors(
 
 /** 安装态缓存(daemon 生命周期):菜单每次打开都读,异步探测只跑首次 */
 let editorsCache: EditorApp[] | null = null;
-export function editorsCacheReset(): void {
-  editorsCache = null;
-}
 
 export async function handleEditorsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
   if (editorsCache === null) {
@@ -274,6 +257,12 @@ export async function handleEditorsOpen(io: SessionHandlerIo, req: http.Incoming
   }
   try {
     const child = spawn(editor.exe, [body.path], { detached: true, stdio: 'ignore' });
+    // spawn 失败（应用探测后被卸载/移动）走异步 'error' 事件——try/catch 只接同步抛出，无监听即
+    // uncaughtException 打死整个 daemon（全会话中断）。200 已先回（detached 打开本就无同步成败
+    // 可确认），失败面落 daemon 控制台供诊断
+    child.once('error', (err: Error) => {
+      console.error(`[app/open] spawn failed (${editor.id}): ${err.message}`);
+    });
     child.unref();
     io.send(res, 200, { ok: true });
   } catch {

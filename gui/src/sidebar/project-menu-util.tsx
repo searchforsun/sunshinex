@@ -190,9 +190,7 @@ function SessionHoverCard(props: {
       {rootPath !== undefined && rootPath !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
-          <div className="sx-sess-card-path" title={rootPath}>
-            {rootPath}
-          </div>
+          <div className="sx-sess-card-path">{rootPath}</div>
         </>
       )}
       {branch !== undefined && branch !== '' && (

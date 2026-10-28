@@ -415,7 +415,7 @@ export function WelcomeComposer({
                     <button
                       key={b}
                       type="button"
-                      title={b}
+                      data-tip={b}
                       role="menuitem"
                       className={`sx-menuitem${b === gitBr.current ? ' active' : ''}`}
                       onClick={() => {

@@ -337,7 +337,11 @@ function AppShell(): JSX.Element {
           .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId, journalId: first.id })));
       })
       .then(({ sessionId, journalId }) => openSession(sessionId, root, journalId))
-      .catch(showOpError);
+      .catch((err: unknown) => {
+        // 建席链败:排队旗回收——残留会在用户下次打开任意会话时补开出陈旧路径的幽灵文件标签
+        pendingFileTabRef.current = null;
+        showOpError(err);
+      });
     // eslint 不入依赖(openSession 恒稳;connInstance 由连接生命周期持有)
   }, [openSessionId, openFileTab, connInstance]);
   /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */

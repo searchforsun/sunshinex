@@ -423,7 +423,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               label: e.name,
               tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
               active: e.id === defaultEditor,
-              // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选即设默认并打开
+              // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选只设默认不启动(误触根因,2d80c7e)
               icon: editorIcon(e.id, 14),
               onSelect: () => pickEditor(e.id),
             }))}

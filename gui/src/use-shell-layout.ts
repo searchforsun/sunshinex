@@ -97,8 +97,8 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
   const sidebarOccupied = !settingsOpen && page === 'chat' && !tabCollapsed && !sidebarFloating ? sidebarRenderW : 0;
 
-  /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 440 在
-   *  tab-state.setWidth 单点,拖拽上界=视口−菜单−440——无固定最大宽但不越视口,G14.2xx 用户
+  /** 拖宽边条 mousedown:window mousemove 计算宽(右栏在右侧,向左拖=变宽;min 296 在
+   *  tab-state.setWidth 单点,拖拽上界=视口−菜单−主栏最小宽——无固定最大宽但不越视口,G14.2xx 用户
    *  裁定),mouseup 解绑 + 移 active 类;拖拽期 **直写 sidebarRef.style.width**(2026-10-26
    *  用户实测「拖右缘果冻左右晃动」根修:每帧 setTabStates 整树重渲滞后于光标呈橡皮筋;
    *  直写后一帧只走 layout+paint,与左栏观感对齐),终值只在 mouseup 一次性落 React 态
@@ -113,9 +113,12 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
     el.classList.add('active');
     const startX = e.clientX;
     // 拖拽上界随态:分栏预留主栏最小宽;浮窗=覆盖层只留 24px 边距(不挤 composer,见 sidebarRenderW);
-    // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)
+    // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)。
+    // 视口项 /zoomScale 归一;菜单让宽/主栏最小宽/24 边距为本地 px 常数不除 zoom——与 sidebarRenderW
+    // 渲染钳制(:91-96)同一口径(2026-10-27 技术债轮:常数误除 zoom 致非 100% 缩放下拖宽上界松于
+    // 渲染钳制,mouseup 落态>渲染宽=可见回跳+持久档失真)
     const floating = sidebarFloating;
-    const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - (floating ? 24 : MAIN_MIN_WIDTH) / zoomScale();
+    const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - (floating ? 24 : MAIN_MIN_WIDTH);
     const startWidth = Math.min(tabWidth, cap());
     let next = startWidth;
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
