@@ -79,6 +79,23 @@ test('watch 不存在目录 → 不 throw、降级 warn（回退 GET 即读）',
   rmSync(missing, { recursive: true, force: true });
 });
 
+test('watch 缺失目录降级后，补建目录并重新 watchGlobal → 事件可达（零条目组不占位，重试非空操作）', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cw-retry-'));
+  const missing = join(root, 'g'); // 故意先不创建：首次 watchGlobal 全目录缺失 → 逐个降级 warn 不 throw
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  w.watchGlobal(missing);
+  try {
+    await waitMs(250);
+    mkdirSync(join(missing, 'agents'), { recursive: true }); // 事后补建目录
+    w.watchGlobal(missing); // 重新监听：全局侧无 unwatch 可重置，重试必须真实生效
+    await waitMs(250);
+    writeFileSync(join(missing, 'mcp.json'), '{"a":1}');
+    await waitFor(() => got.some(c => c.resource === 'mcp' && c.scope === 'global' && c.root === null));
+  } finally { w.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 test('close() 后写文件不再回调', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cw-close-'));
   const w = new ConfigWatcher();

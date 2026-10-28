@@ -118,7 +118,8 @@ export class ConfigWatcher {
 
   // ---- 内部 ----
 
-  /** 建立一组目录监听；同 key 已在监听则跳过（避免重复事件源），失败目录逐个降级不 throw */
+  /** 建立一组目录监听；同 key 已在监听则跳过（避免重复事件源），失败目录逐个降级不 throw。
+   *  零条目组（全部目录缺失等）不注册：后续再次 watchXxx 自然重试——否则组键占位会把重试变成静默空操作。 */
   private watchGroup(key: string, specs: DirSpec[]): void {
     if (this.closed || this.groups.has(key)) return;
     const group: WatchGroup = { key, entries: [] };
@@ -126,7 +127,7 @@ export class ConfigWatcher {
       const entry = this.tryWatch(spec);
       if (entry) group.entries.push(entry);
     }
-    this.groups.set(key, group);
+    if (group.entries.length > 0) this.groups.set(key, group);
   }
 
   /** 单目录尝试监听：目录缺失/权限不足 → warn 降级返回 null；平台不支持递归时回退非递归（至少本层生效） */
