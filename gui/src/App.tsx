@@ -523,6 +523,8 @@ function AppShell(): JSX.Element {
         // 浮窗抽屉面(2026-10-24 用户裁定):窄视口右栏悬浮不占布局宽,主栏吃满
         // (模式 pill 塌缩已改底栏实测溢出驱动 pills-tight,壳级不再派生 sx-main-narrow)
         sidebarFloating ? 'sx-sidebar-float' : '',
+        // 侧栏停靠折叠态(2026-10-29 标题让位根修配套):32px 骨架兜不住窗控簇(~150px),主列顶栏照旧预留
+        !sidebarFloating && tabState.collapsed ? 'sx-sidebar-collapsed' : '',
         // 左菜单抽屉面(2026-10-24 三轮裁定):<856 菜单自动关闭;手动重开=悬浮抽屉(fixed 左满高)
         menuFloating && !menuClosed ? 'sx-menu-float' : '',
       ].filter(Boolean).join(' ')}
