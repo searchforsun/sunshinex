@@ -63,14 +63,16 @@ interface AgentDef {
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 
 /** 解析 agent.md 的简易 frontmatter（词法单点 skills.parseFrontmatterKV；本处只保留严格策略：
- *  无 frontmatter 块或缺 name 即 fail-fast——注册制物料缺关键字段不得静默降级） */
-export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; isolation?: 'worktree'; executor?: 'internal-team' | 'external-cli' } {
+ *  无 frontmatter 块或缺 name 即 fail-fast——注册制物料缺关键字段不得静默降级）。
+ *  enabled（启停声明，catalog 读面/设置视图消费）：缺省 true，仅字面 'false' 为 false；
+ *  本解析只透出字段、throw 纪律零变——装载面按 enabled 剔除属 Task 7 收口 */
+export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; enabled: boolean; isolation?: 'worktree'; executor?: 'internal-team' | 'external-cli' } {
   const m = FRONTMATTER.exec(md);
   if (!m) throw new Error('agent.md missing frontmatter');
   const out: Record<string, string> = { name: '', description: '', version: '0.1.0', ...parseFrontmatterKV(md) };
   if (!out.name) throw new Error('agent.md frontmatter missing name');
   const executor = out.executor === 'internal-team' || out.executor === 'external-cli' ? out.executor : undefined;
-  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true', ...(out.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}), ...(executor !== undefined ? { executor } : {}) };
+  return { name: out.name, description: out.description, version: out.version, body: md.slice(m[0].length).trim(), memory: out.memory === 'true', enabled: out.enabled !== 'false', ...(out.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}), ...(executor !== undefined ? { executor } : {}) };
 }
 
 /** 注册表：四角色内建注册 + agents/{id}/agent.md 装配期一次性加载（fail-fast，运行期零增删）。
