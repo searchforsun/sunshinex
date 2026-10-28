@@ -2637,3 +2637,14 @@ input.sx-setting-input { width: 100%; }
   -webkit-mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px);
   mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px);
 }
+
+/* ===== 2026-10-28 用户裁定:顶部 40px 整带全域可拖(欢迎页/会话页/侧栏/主菜单一视同仁)——
+   三列顶行容器 drag + 行内交互面(钮/输入/页签/弹层/搜索)no-drag;fixed 窗控簇自有 no-drag。
+   旧「容器 drag 挖孔」退役案系页签宽度失配年代误伤,宽度钳制已归一,按业界同构恢复 ===== */
+.sx-shell.sx-desktop .sx-menu-head,
+.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: drag; }
+.sx-shell.sx-desktop .sx-menu-head button,
+.sx-shell.sx-desktop .sx-menu-head input { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; }
+.sx-shell.sx-desktop .sx-tabstrip,
+.sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: drag; }
