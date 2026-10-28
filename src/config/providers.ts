@@ -10,7 +10,7 @@
  */
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
 import { EFFORT_ORDER, parseEffort } from '../model/effort';
-import type { ReasoningEffort } from '../types';
+import type { ModelTier, ReasoningEffort } from '../types';
 
 /** 单个可选模型（源 × 模型展开条目）：id = `<name>/<model>`，是 /model 选择卡与 journal modelId 的稳定标识 */
 export interface ModelChoice {
@@ -29,6 +29,9 @@ export interface ModelChoice {
   /** 该模型是否支持图片输入（models 条目对象形态 supportsImages > 源级 supportsImages 缺省；
    *  undefined = 未声明按支持处理——乐观缺省，未声明端点由服务端自然报错） */
   supportsImages?: boolean;
+  /** 该模型档位标注（仅 models 条目对象形态可声明，无源级缺省、字符串形态无此位；
+   *  undefined = 未标注，档位路由按缺省处理——§15 档位路由消费面） */
+  tier?: ModelTier;
 }
 
 /** 源名 → 专用密钥槽名：非字母数字段折叠为单下划线（"my-provider" → SUNSHINEX_API_KEY_MY_PROVIDER） */
@@ -51,20 +54,46 @@ interface LoadedProviders {
 }
 
 /**
- * 单级 providers 键解析：`[{ "name", "baseUrl", "contextWindow?", "reasoningEffort?", "models": ["m" | { "model", "contextWindow?", "reasoningEffort?" }] }]`
- * 逐源展开为 ModelChoice 列表。models 条目两形态：字符串（模型名）与对象（模型名 + 每模型覆盖）；
- * 逐项两级优先级 = 条目级 > 源级缺省（contextWindow / reasoningEffort 同口径，缺省回全局链）。
+ * 源级分组条目（catalog/providers 读面的数据基座，settings.json providers 键的文件结构镜像）：
+ * 源级字段 = 源级显式值（非法值已被告警忽略）；models 条目 = 条目级显式值（对象形态才有覆盖位，
+ * 字符串形态仅模型名）。与 ModelChoice（生效值 = 条目级 > 源级缺省）分工：本面供设置页渲染/编辑
+ * 文件结构（源级缺省与逐模型覆盖的分野须保真），choices 供运行面。
+ */
+export interface ParsedProviderEntry {
+  name: string;
+  baseUrl: string;
+  contextWindow?: number;
+  reasoningEffort?: ReasoningEffort;
+  supportsImages?: boolean;
+  models: Array<{ model: string; contextWindow?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; tier?: ModelTier }>;
+}
+
+/** 单次解析全量产物：providers=源级分组（文件结构镜像）、choices=展平生效值（providers 序 × models 序） */
+interface ParsedProviders {
+  providers: ParsedProviderEntry[];
+  choices: ModelChoice[];
+  warnings: string[];
+}
+
+/**
+ * 单级 providers 键解析（全量内点）：`[{ "name", "baseUrl", "contextWindow?", "reasoningEffort?", "supportsImages?", "models": ["m" | { "model", "contextWindow?", "reasoningEffort?", "supportsImages?", "tier?" }] }]`
+ * 一次遍历同产源级分组（ParsedProviderEntry，文件结构镜像）与展平 choices（生效值），序同为
+ * providers 数组序 × models 数组序。models 条目两形态：字符串（模型名）与对象（模型名 + 每模型覆盖）；
+ * 逐项两级优先级 = 条目级 > 源级缺省（contextWindow / reasoningEffort / supportsImages 同口径，缺省回全局链）；
+ * tier 仅条目对象形态可声明（无源级缺省、字符串形态无此位），非法值告警忽略档位、模型保留
+ * （沿 contextWindow 同款纪律：标注值坏不连坐模型本体）。
  * 非法形态（非数组 / 条目非对象 / 缺 name / 缺 baseUrl / models 空 or 条目形态坏）→ warning 后跳过
  * （装配面宁可少配不可错配）；contextWindow / reasoningEffort 值非法 → warning 后忽略该值、模型保留
  * （窗口与强度只是预算/请求参数，跳过整个模型反而过罚）；同源同模型重复登记幂等去重。
  */
-export function parseProvidersSpec(raw: unknown, origin: string): LoadedProviders {
+function parseProvidersAll(raw: unknown, origin: string): ParsedProviders {
   const warnings: string[] = [];
   const choices: ModelChoice[] = [];
-  if (raw === undefined) return { choices, warnings };
+  const providers: ParsedProviderEntry[] = [];
+  if (raw === undefined) return { providers, choices, warnings };
   if (typeof raw !== 'object' || raw === null || !Array.isArray(raw)) {
     warnings.push(`settings.json providers 须为数组（${origin}），该键已忽略`);
-    return { choices, warnings };
+    return { providers, choices, warnings };
   }
   const seen = new Set<string>();
   for (const entry of raw as unknown[]) {
@@ -113,15 +142,26 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
         warnings.push(`settings.json providers.${name} supportsImages 须为布尔（${origin}），已忽略`);
       }
     }
+    // 源级分组先于 models 遍历入列（引用共享）：条目全坏该源仍以 models:[] 留列（文件结构如实镜像）
+    const models: ParsedProviderEntry['models'] = [];
+    providers.push({
+      name,
+      baseUrl,
+      models,
+      ...(providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
+      ...(providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
+      ...(providerImages !== undefined ? { supportsImages: providerImages } : {}),
+    });
     for (const item of e.models as unknown[]) {
       let model: string | undefined;
       let itemWindow: number | undefined;
       let itemEffort: ReasoningEffort | undefined;
       let itemImages: boolean | undefined;
+      let itemTier: ModelTier | undefined;
       if (typeof item === 'string') {
         model = item.trim();
       } else if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-        const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown };
+        const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; tier?: unknown };
         model = typeof o.model === 'string' ? o.model.trim() : undefined;
         if (o.contextWindow !== undefined) {
           if (typeof o.contextWindow === 'number' && Number.isFinite(o.contextWindow) && o.contextWindow > 0) {
@@ -145,6 +185,13 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
             warnings.push(`settings.json providers.${name} models 条目 supportsImages 须为布尔（${origin}），已忽略`);
           }
         }
+        if (o.tier !== undefined) {
+          if (o.tier === 'small' || o.tier === 'medium' || o.tier === 'large') {
+            itemTier = o.tier;
+          } else {
+            warnings.push(`settings.json providers.${name} models 条目 tier 须为 small|medium|large（${origin}），该档位已忽略`);
+          }
+        }
       }
       if (model === undefined || model === '') {
         warnings.push(`settings.json providers.${name} models 条目须为模型名字符串或 { model, contextWindow?, reasoningEffort? } 对象（${origin}），已跳过`);
@@ -153,6 +200,13 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
       const id = `${name}/${model}`;
       if (seen.has(id)) continue;
       seen.add(id);
+      models.push({
+        model,
+        ...(itemWindow !== undefined ? { contextWindow: itemWindow } : {}),
+        ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : {}),
+        ...(itemImages !== undefined ? { supportsImages: itemImages } : {}),
+        ...(itemTier !== undefined ? { tier: itemTier } : {}),
+      });
       choices.push({
         id,
         provider: name,
@@ -162,15 +216,29 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
         ...(itemWindow !== undefined ? { contextWindow: itemWindow } : providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
         ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
         ...(itemImages !== undefined ? { supportsImages: itemImages } : providerImages !== undefined ? { supportsImages: providerImages } : {}),
+        ...(itemTier !== undefined ? { tier: itemTier } : {}),
       });
     }
   }
-  return { choices, warnings };
+  return { providers, choices, warnings };
 }
 
-/** 两级装载：项目 providers 键在场即整键遮蔽全局；返回展开后的可选模型清单与告警单 */
-export function loadProviders(projectRoot: string): LoadedProviders {
-  const projectPath = loadProjectSettings(projectRoot);
+/**
+ * 单级 providers 键解析（既有 API 面）：展平 choices + 告警单。返回形状被既有钉子用例
+ * 整体 deepEqual 锁定（恒恰 {choices, warnings} 两键），全量产物（源级分组）走 parseProvidersAll /
+ * loadProvidersFull 单点——本函数只是投影，零独立解析逻辑。
+ */
+export function parseProvidersSpec(raw: unknown, origin: string): LoadedProviders {
+  const full = parseProvidersAll(raw, origin);
+  return { choices: full.choices, warnings: full.warnings };
+}
+
+/**
+ * 两级装载全量单点（catalog/providers 读面入口）：项目 providers 键在场即整键遮蔽全局（现状语义）；
+ * root:null 仅全局（serve globalProvidersOnly 先例——缺项目上下文不伪造 cwd 相对读取）。
+ * 返回源级分组 + 展平 choices + 告警单，一次装载同产两视图。
+ */
+export function loadProvidersFull(projectRoot: string | null): ParsedProviders {
   const read = (filePath: string): unknown => {
     try {
       const doc = parseSettingsFile(filePath);
@@ -179,8 +247,17 @@ export function loadProviders(projectRoot: string): LoadedProviders {
       return undefined; // 畸形 JSON 由 settings 装载链统一上报；此处按缺级处理
     }
   };
-  const project = read(projectPath);
-  if (project !== undefined) return parseProvidersSpec(project, projectPath);
+  if (projectRoot !== null) {
+    const projectPath = loadProjectSettings(projectRoot);
+    const project = read(projectPath);
+    if (project !== undefined) return parseProvidersAll(project, projectPath);
+  }
   const globalPath = loadGlobalSettings();
-  return parseProvidersSpec(read(globalPath), globalPath);
+  return parseProvidersAll(read(globalPath), globalPath);
+}
+
+/** 两级装载（既有 API 面）：返回展开后的可选模型清单与告警单。投影自 loadProvidersFull，零独立装载逻辑 */
+export function loadProviders(projectRoot: string | null): LoadedProviders {
+  const full = loadProvidersFull(projectRoot);
+  return { choices: full.choices, warnings: full.warnings };
 }
