@@ -94,6 +94,8 @@ function AppShell(): JSX.Element {
   /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
+  /** 2026-10-27 欢迎页全局草稿:座判定按页面不按 openSessionId——进欢迎页(新对话)不清会话,残留侧栏即此根因 */
+  const isWelcome = page === 'welcome';
   /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
   const [composePresetRoot, setComposePresetRoot] = useState<string | null>(null);
   const [openSessionId, setOpenSessionId] = useState<string>('');
@@ -205,7 +207,7 @@ function AppShell(): JSX.Element {
   const openSession = (sessionId: string, root: string, journalId?: string): void => {
     // 2026-10-27 欢迎页全局草稿迁移:欢迎页(无会话)侧栏整座绑定为新会话侧栏(目标座空才迁,
     // 不覆盖既有档)——迁移即取走,新欢迎页侧栏清空(草稿一次性)
-    if (openSessionId === '' && sessionId !== '') {
+    if (isWelcome && sessionId !== '') {
       const draft = tabStates[WELCOME_TAB_SEAT];
       if (draft !== undefined && draft.tabs.length > 0) {
         const target = tabStates[sessionId];
@@ -290,7 +292,7 @@ function AppShell(): JSX.Element {
   const openTabInSession = useCallback((type: TabTypeId, params: TabParams = {}): void => {
     // 2026-10-27 欢迎页全局草稿:无会话(欢迎页)写 '@welcome' 草稿座——首个用户输入建席后
     // 整座迁移绑定为该会话侧栏(openSession 内迁移),新欢迎页侧栏清空
-    const seat = openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT;
+    const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
     // G14.38:程序化开标签即展开右栏(默认折叠下 write/diff/目录跳转/卡片开面板均可见)
     setTabStates((st) => setCollapsed(st, seat, false));
     setTabStates((s) => openTab(s, seat, type, params, PROBE));
@@ -391,12 +393,12 @@ function AppShell(): JSX.Element {
         const conn = connRef.current;
         // killPty 尽力而为:标签已关,失败=daemon 侧 pty 随会话 teardown 兜底回收,无用户可见后果
         if (conn !== null) {
-          if (openSessionId !== '') void conn.killPty(openSessionId, ptyId).catch(() => {});
-          else void conn.killPtyAt(ptyId).catch(() => {});
+          if (isWelcome) void conn.killPtyAt(ptyId).catch(() => {});
+          else void conn.killPty(openSessionId, ptyId).catch(() => {});
         }
       }
     }
-    setTabStates((s) => closeTab(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, uid));
+    setTabStates((s) => closeTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid));
   };
 
   /** G5 gate 审批装配:任务标签 onReview → boardReview(sessionId, taskId, approved)——失败倒
@@ -446,7 +448,7 @@ function AppShell(): JSX.Element {
    *  + 变更写透防抖,盘↔内存同步效应在钩子内(水合闸/防抖句柄为钩子私域) */
   useTabPersistence({ connInstance, connState, openSessionId, tabStates, setTabStates });
 
-  const tabState = tabStates[openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT] ?? emptyTabSession();
+  const tabState = tabStates[isWelcome ? WELCOME_TAB_SEAT : openSessionId] ?? emptyTabSession();
   /** G14.2xx 限宽动态化容器 ref(--chat-max RO 双盯;sidebarRef 另供拖宽直写——声明须先于
    *  useShellLayout,后者拖拽回调闭包引用) */
   const mainRef = useRef<HTMLElement | null>(null);
@@ -602,7 +604,7 @@ function AppShell(): JSX.Element {
                   setMenuClosed(!menuClosed);
                   // 两侧抽屉互斥(2026-10-24 用户裁定):开菜单抽屉即收右抽屉
                   if (opening && sidebarFloating && !tabState.collapsed) {
-                    setTabStates((s) => setCollapsed(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, true));
+                    setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, true));
                   }
                 }}
                 conn={connInstance}
@@ -688,8 +690,8 @@ function AppShell(): JSX.Element {
               activeUid={tabState.activeUid}
               disabled={page !== 'chat' && page !== 'welcome'}
               welcomeOnly={openSessionId === ''}
-              onSelect={(uid) => setTabStates((s) => setActive(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, uid))}
-              onReorder={(from, to) => setTabStates((s) => reorderTab(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, from, to))}
+              onSelect={(uid) => setTabStates((s) => setActive(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid))}
+              onReorder={(from, to) => setTabStates((s) => reorderTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, from, to))}
               onClose={closeTabInSession}
               onOpenType={(t) => {
                 // G14.2xx 辅助对话特判:sidechat 需先 fork 出 side 会话(拿 sideId)再开页——
@@ -700,9 +702,9 @@ function AppShell(): JSX.Element {
                 }
                 openTabInSession(t, tabEntry(t).mintParams?.());
               }}
-              onCycle={(d) => setTabStates((s) => cycleTab(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, d))}
+              onCycle={(d) => setTabStates((s) => cycleTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, d))}
               recentClosed={tabState.recentClosed}
-              onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, i, PROBE))}
+              onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, i, PROBE))}
               onCloseActive={() => {
                 const uid = tabState.activeUid;
                 if (uid !== null) closeTabInSession(uid);
@@ -790,7 +792,7 @@ function AppShell(): JSX.Element {
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
       <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen} onToggleRightSidebar={() => {
         const opening = tabState.collapsed;
-        setTabStates((s) => setCollapsed(s, openSessionId !== '' ? openSessionId : WELCOME_TAB_SEAT, !opening));
+        setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, !opening));
         // 两侧抽屉互斥(2026-10-24 用户裁定):浮窗态开右抽屉即收菜单抽屉
         if (opening && sidebarFloating) setMenuClosed(true);
       }} />

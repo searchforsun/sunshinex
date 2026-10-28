@@ -107,7 +107,8 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
    *  切换属病态,不追)。G14.2xx 起拖基线取「当前渲染宽」:状态可能滞留护栏外(先拖宽菜单
    *  再拖本边条),不取渲染宽则向窄拖先空走死区 */
   const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
-    if (page !== 'chat' || openSessionId === '' || tabCollapsed) return;
+    const onWelcome = page === 'welcome'; // 2026-10-27:欢迎页草稿座可拖宽(宽度档 '@welcome')
+    if (tabCollapsed || (page !== 'chat' && page !== 'welcome')) return;
     e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
     const el = e.currentTarget;
     el.classList.add('active');
@@ -122,7 +123,7 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
     const startWidth = Math.min(tabWidth, cap());
     let next = startWidth;
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
-    const sessionId = openSessionId !== '' ? openSessionId : '@welcome'; // 草稿座宽度档
+    const sessionId = page === 'welcome' ? '@welcome' : openSessionId; // 草稿座宽度档(按页面判定,与 App 座口径一致)
     const onMove = (ev: MouseEvent): void => {
       // G14.2xx 用户裁定:无固定最大宽,但受中栏最小宽约束——中栏触底即停,右栏不越视口。
       // zoom 契约:clientX/startX 与上界均为视觉 px,宽度状态是本地 px——delta 与上界同 /zoomScale()
