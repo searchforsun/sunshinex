@@ -121,7 +121,9 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     group: 'content',
     // G14.114 文件类标签只显文件名(全路径在标签体内已有:file 面包屑/diff 头)——win/posix 双分隔
     title: (params) => (params.path !== undefined ? baseName(params.path) : t('File', '文件')),
-    resolveKey: (params) => params.path ?? '',
+    // 2026-10-27 用户裁定:同文件判同键——路径归一(win 分隔统一/连续分隔收敛/剥 ./ 前缀),
+    // 否则工具行相对形态(./gomoku.bat)与树内/链接形态(gomoku.bat)各开一签
+    resolveKey: (params) => (params.path ?? '').replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/(?:^|\/)\.\//g, '$1'),
     singleton: false,
     render: (p) => (
       <Files
