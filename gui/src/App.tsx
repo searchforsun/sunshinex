@@ -528,11 +528,13 @@ function AppShell(): JSX.Element {
         '--sidebar-w': `${sidebarOccupied}px`,
       } as CSSProperties}
     >
-      {IS_SHELL && !settingsOpen && page !== 'chat' && (
+      {IS_SHELL && !settingsOpen && page !== 'chat' && (page !== 'welcome' || tabState.collapsed) && (
         /* 2026-10-24 拖拽重构:欢迎/连接页不渲染 TabStrip/ChatTopbar,整窗零 drag 把手(用户实测
            「欢迎页顶部无法拖窗」根因)。几何隔离 drag 轨:left+44 避让菜单关闭态呼出钮、right:148
            避让窗控簇(簇左缘 118+30 安全边)——drag 矩形与一切按钮互斥,无挖孔,CSS zoom 下拖拽
-           位图错位也咬不到按钮;抽屉态左缘移至抽屉浮层右缘之外(CSS sx-menu-float 分支) */
+           位图错位也咬不到按钮;抽屉态左缘移至抽屉浮层右缘之外(CSS sx-menu-float 分支)。
+           2026-10-28 用户实测「欢迎页 +/×/∨ 全点不动」:草稿座功能(FD964FF)让页签条上了欢迎页,
+           dragrail 仍按旧假设整条铺顶压住条上按钮——页签条在场(右栏展开)即让位,折叠/断连态照旧 */
         <div className="sx-dragrail" aria-hidden="true" />
       )}
       {settingsOpen && connInstance !== null ? (

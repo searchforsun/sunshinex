@@ -175,8 +175,11 @@ export class WsHub {
       return;
     }
     // G8e-T4 归属校验：条目在但 owner ≠ 本会话 → 同 error 帧语义（'pty not found for session'）后
-    // close(1008)——错位寻址 fail-closed 不串读；与 get() 同拍同步查，条目在场性一致
-    if (this.deps.ptyManager.ownerOf(ptyId) !== sessionId) {
+    // close(1008)——错位寻址 fail-closed 不串读；与 get() 同拍同步查，条目在场性一致。
+    // 2026-10-28 用户实测「欢迎页终端卡 pty not found for session」:草稿座(FD964FF)终端走
+    // /app/pty 无会话分配(owner='@app')而 ws 挂 /session/@welcome/——别名放行这一对
+    const owner = this.deps.ptyManager.ownerOf(ptyId);
+    if (owner !== sessionId && !(sessionId === '@welcome' && owner === '@app')) {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'error', message: 'pty not found for session' }));
       ws.close(1008);
       return;
