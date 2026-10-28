@@ -2,7 +2,7 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ChatScrollbar } from './ChatScrollbar';
 
-/** 固定长滚动条(2026-10-27 用户裁定):thumb 长度恒定,仅位置映射 scrollTop——jsdom 无布局,
+/** 响应式滚动条(2026-10-27 二次裁定):thumb 长度=轨道x视口/内容比(下限 32),位置映射 scrollTop——jsdom 无布局,
  *  尺寸面全部 defineProperty 桩定(clientHeight/scrollHeight/scrollTop),断言 transform 映射
  *  与无溢出隐藏两态;同步全在 scroll 监听内直接 DOM 写(零 setState/零 rAF) */
 
@@ -31,19 +31,20 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('ChatScrollbar 固定长滚动条', () => {
-  it('scroll 同步把 scrollTop 比例映射为 translateY,位置动而长度恒', () => {
+describe('ChatScrollbar 响应式滚动条', () => {
+  it('scroll 同步:长度响应式映射内容比,位置映射 scrollTop 比例', () => {
     const { box } = stubBox();
     const { thumb } = mount(box);
-    // max=1500,track 300,thumb 常量 56:半程 scrollTop=750 → y=0.5×(300-56)=122
+    // max=1500,track 300,thumb 响应式=300×500/2000=75:半程 scrollTop=750 → y=0.5×(300-75)=112.5
     box.scrollTop = 750;
     box.dispatchEvent(new Event('scroll'));
     expect(thumb.style.opacity).toBe('1');
-    expect(thumb.style.transform).toBe('translateY(122px)');
-    // 滚到底:y 钳到 trackH-th=244——长度不变(56 由 CSS 常量承担,组件只写位置)
+    expect(thumb.style.height).toBe('75px');
+    expect(thumb.style.transform).toBe('translateY(112.5px)');
+    // 滚到底:y 钳到 trackH-th=225
     box.scrollTop = 1500;
     box.dispatchEvent(new Event('scroll'));
-    expect(thumb.style.transform).toBe('translateY(244px)');
+    expect(thumb.style.transform).toBe('translateY(225px)');
   });
 
   it('无溢出(scrollHeight≤clientHeight):thumb 隐藏', () => {

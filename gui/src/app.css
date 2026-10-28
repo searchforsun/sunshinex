@@ -2578,9 +2578,10 @@ input.sx-setting-input { width: 100%; }
    Files 等其余滚动面保原生 */
 .sx-main > .chat { scrollbar-width: none; }
 .sx-main > .chat::-webkit-scrollbar { display: none; }
-.sx-vbar { position: absolute; top: 6px; bottom: 6px; right: 1px; width: 10px; pointer-events: none; z-index: 4; }
-.sx-vbar-thumb { position: absolute; top: 0; right: 1px; width: 8px; height: 56px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 30%, transparent); pointer-events: auto; cursor: default; opacity: 0; user-select: none; touch-action: none; will-change: transform; }
-.sx-vbar-thumb:hover, .sx-vbar-thumb.sx-vbar-drag { background: var(--border-strong); }
+.sx-vbar { position: absolute; top: 6px; bottom: 6px; right: 2px; width: 6px; pointer-events: none; z-index: 4; } /* 2026-10-27 用户裁定:10px->6px(太粗);上下界由 ChatScrollbar 按容器矩形动态夹紧 */
+.sx-vbar-thumb { position: absolute; top: 0; right: 0; width: 6px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 30%, transparent); pointer-events: auto; cursor: default; opacity: 0; user-select: none; touch-action: none; will-change: transform; } /* 高度响应式=轨道x视口/内容比(下限 32),由组件直写 */
+.sx-vbar-thumb:hover, .sx-vbar-thumb.sx-vbar-drag { background: color-mix(in srgb, var(--fg) 55%, transparent); }
+
 
 /* 2026-10-27 目录树入左菜单视图层(用户裁定,参考 ZCode):返回+根名头行+DirectoryTab 复用;
    整替菜单滚动区内容,树体自管滚动(目录页签同构面) */

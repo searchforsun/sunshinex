@@ -3,19 +3,16 @@ import type { MutableRefObject } from 'react';
 import { zoomScale } from '../../ui-zoom';
 
 /**
- * 正文固定长纵向滚动条(2026-10-27 用户裁定):原生 thumb 长度=视口/内容比,流式增长与图片
- * 解码逐段改写 scrollHeight,thumb 随之抖缩(「长度抖动,好像分段一样」)——自绘 overlay:
- * 长度恒定(CSS 56px 本地 px,与内容量无关,冷加载即最终态无二次变化),仅位置映射 scrollTop
- * 比例。实现纪律:全直接 DOM 写(零 setState/零 rAF——RO/MO 回调本就按帧合并,scroll 事件
- * 按帧派发),组件只渲染一次;同步面=scroll+RO(容器自身尺寸)+MO(条目挂载改 scrollHeight,
- * 用户上翻阅读时流式在下方长高无 scroll 事件的盲区)。
- * 交互仅 thumb 拖拽(track 点跳退役:track 若接事件须盖住右缘内容条,窄窗压正文选区);
- * 指针位移按 zoomScale() 归一(视觉 px→本地 px,ui-zoom 契约),映射比无量纲不受 zoom 影响。
- * 挂载面:仅主对话(Chat 内 sideChat!==true 才挂,容器=.sx-main 定位父级);原生条由 CSS 在
- * `.sx-main > .chat` 隐藏,侧栏 dock 与 Files 等其余滚动面不动。
+ * 正文纵向滚动条(2026-10-27 二次裁定,反转「长度恒定」):thumb 长度响应式=轨道×视口/内容比
+ * (下限 32px),所见即内容量;流式增长时长度随之变化为预期行为(直接 DOM 写,无 setState 抖动
+ * 面)。轨道上下边界动态夹紧到滚动容器实际区域——挂载锚是 .sx-main(定位父级),不夹则越顶栏
+ * 分割线(用户实测)。实现纪律不变:全直接 DOM 写(零 setState/零 rAF),组件只渲染一次;
+ * 同步面=scroll+RO(容器自身尺寸)+MO(条目挂载改 scrollHeight 的盲区)。
+ * 交互仅 thumb 拖拽;指针位移按 zoomScale() 归一(视觉 px→本地 px,ui-zoom 契约)。
+ * 挂载面:仅主对话(sideChat!==true);原生条由 CSS 在 `.sx-main > .chat` 隐藏。
  */
 
-const THUMB_FALLBACK = 56;
+
 
 export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElement | null> }): JSX.Element {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -28,13 +25,20 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     if (box === null || track === null || thumb === null) return;
 
     const sync = (): void => {
+      // 轨道上下界动态夹紧到滚动容器实际矩形(不夹则 overlay 从 .sx-main 顶画起,越过顶栏分割线)
+      const cr = box.getBoundingClientRect();
+      const tr = track.getBoundingClientRect();
+      track.style.top = `${Math.max(Math.round(cr.top - tr.top), 0) + 2}px`;
+      track.style.bottom = `${Math.max(Math.round(tr.bottom - cr.bottom), 0) + 2}px`;
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
-      const th = thumb.offsetHeight > 0 ? thumb.offsetHeight : THUMB_FALLBACK;
-      if (max <= 1 || trackH <= th + 8) {
+      if (max <= 1 || box.scrollHeight <= 0) {
         thumb.style.opacity = '0';
         return;
       }
+      // 响应式长度=轨道×视口/内容比,下限 32px(用户裁定反转「恒定 56」)
+      const th = Math.max(32, Math.round((box.clientHeight / box.scrollHeight) * trackH));
+      thumb.style.height = `${th}px`;
       const y = Math.min(Math.max((box.scrollTop / max) * (trackH - th), 0), trackH - th);
       thumb.style.opacity = '1';
       thumb.style.transform = `translateY(${y}px)`;
@@ -55,7 +59,7 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     const onDown = (e: PointerEvent): void => {
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
-      const th = thumb.offsetHeight > 0 ? thumb.offsetHeight : THUMB_FALLBACK;
+      const th = thumb.offsetHeight;
       if (max <= 1 || trackH <= th + 8) return;
       const m = /translateY\((-?[\d.]+)px\)/.exec(thumb.style.transform);
       grab = yLocalOf(e) - (m !== null ? parseFloat(m[1]) : 0);
@@ -68,7 +72,7 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
       if (!dragging) return;
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
-      const th = thumb.offsetHeight > 0 ? thumb.offsetHeight : THUMB_FALLBACK;
+      const th = thumb.offsetHeight;
       if (max <= 1 || trackH <= th + 8) return;
       const y = Math.min(Math.max(yLocalOf(e) - grab, 0), trackH - th);
       box.scrollTop = (y / (trackH - th)) * max;
