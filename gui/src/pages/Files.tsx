@@ -127,15 +127,12 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.154 悬浮工具条状态(绝对定位 React 面,跟随选区;弃 monaco overlay——其位置不随选区重算) */
   const [selBar, setSelBar] = useState<{ top: number; left: number; rel: string; lines: string } | null>(null);
-  /** Monaco rAF 合并 layout(2026-10-29 用户实测空白带/多余双条根修):RO 句柄随编辑器卸载断开;
-   *  rAF 句柄防卸载后迟到回调 */
+  /** Monaco RO 同帧 layout(2026-10-29 果冻残余根修):RO 句柄随编辑器卸载断开 */
   const monoRoRef = useRef<ResizeObserver | null>(null);
-  const monoRafRef = useRef(0);
   useEffect(() => () => {
     editorRef.current = null;
     monoRoRef.current?.disconnect();
     monoRoRef.current = null;
-    if (monoRafRef.current !== 0) { cancelAnimationFrame(monoRafRef.current); monoRafRef.current = 0; }
   }, []);
 
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
@@ -391,18 +388,19 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     // 位置=monaco getScrolledVisiblePosition(任意行可用)+编辑器/容器 rect 差换算;
                     // mousedown preventDefault 保选区;双动作:添加到当前任务/在辅助对话中提问
                     editorRef.current = ed;
-                    // 右缘缩放布局同步(2026-10-29 用户实测「空白带/多余纵横条/停手整跳」三症同根):
-                    // 前版 RO+120ms 尾沿防抖在连续拖动中定时器每帧重置=整个拖动过程零重排,Monaco
-                    // 恒按旧宽绘制(变宽右侧留白带/旧折行对新容器溢出多出纵横条),停手才一次性
-                    // snap=果冻感。改 RO+rAF 当帧合并(一帧至多一次全量重排,与整树 resize 4401acc
-                    // 同口径):stale 窗口收敛到单帧,拖动中逐帧就位;首帧即刻 layout 保尺寸就位
+                    // 右缘缩放布局同步(2026-10-29 用户实测果冻两轮根修):
+                    // ①e19e1de 的 RO+120ms 尾沿防抖:连续拖动中定时器每帧重置=拖动全程零重排,恒按
+                    //   旧宽绘制(变宽右侧留白带/旧折行溢出多出纵横条/停手一次性 snap)——已出局;
+                    // ②RO+rAF 中转:stale 收敛到单帧,但相位差恒在——容器边缘纯 CSS 当帧走,内容
+                    //   下一帧才重排,快速拖动内容边缘拖 ~16px 弹性尾=残余果冻——一并出局;
+                    // ③本版=RO 回调内同步 layout:RO 触发点在当帧布局后、绘制前,同帧重排同帧上屏
+                    //   =零相位差;浏览器保证每元素每帧至多一次回调(天然合并不需手动),与 monaco
+                    //   内建 automaticLayout(ElementSizeObserver 首帧立即+逐帧合并)同帧同成本,
+                    //   审查页 diff 即此路径无果冻实证。代价=拖动中每帧全量重折行(大文件帧预算
+                    //   压力回归 e19e1de 前水平,实测有感再上分级);首帧即刻 layout 保尺寸就位
                     ed.layout();
                     const monoRo = new ResizeObserver(() => {
-                      if (monoRafRef.current !== 0) return;
-                      monoRafRef.current = requestAnimationFrame(() => {
-                        monoRafRef.current = 0;
-                        if (editorRef.current !== null) editorRef.current.layout(); // 卸载后迟到回调守卫
-                      });
+                      if (editorRef.current !== null) editorRef.current.layout(); // 卸载守卫(disconnect 后无迟到回调)
                     });
                     monoRo.observe(ed.getContainerDomNode());
                     monoRoRef.current = monoRo;
@@ -467,7 +465,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     lineHeight: 19,
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
                     fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
-                    automaticLayout: false, // 2026-10-29 改 RO+rAF 当帧手动 layout(onMount 内);120ms 尾沿防抖出局=拖动全程 stale(见 onMount 注)
+                    automaticLayout: false, // 2026-10-29 改 RO 回调内同步手动 layout(onMount 内,零相位差见彼注);内建 automaticLayout 时序等同故无需开启
                     renderLineHighlight: 'none',
                     overviewRulerLanes: 0,
                     scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8, useShadows: false },
