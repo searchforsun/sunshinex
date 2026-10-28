@@ -24,13 +24,15 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     const thumb = thumbRef.current;
     if (box === null || track === null || thumb === null) return;
 
-    const sync = (): void => {
-      // 轨道上下界动态夹紧到滚动容器实际矩形(不夹则 overlay 从 .sx-main 顶画起,越过顶栏分割线)。
-      // zoom 契约:cr/tr 差值为视觉 px,写本地 top/bottom 须 /zoomScale()——不归一每次写入过冲
-      // 逐帧不收敛=「越线+上下抖动」同根(2026-10-27 用户实测)
+    const syncGeometry = (): void => {
+      // 几何面(MO/RO 消费):仅轨道边界与 thumb 长度,不动位置——内容流式增长(MO 高频)若连位置
+      // 一起重算,阅读中段时 max 连续增大 y 随之漂移=残余抖动根因(2026-10-27 用户实测);位置只在
+      // scroll(用户滚动)时更新,映射基准用当下 max,语义仍正确
       const cr = box.getBoundingClientRect();
       const tr = track.getBoundingClientRect();
       const z = zoomScale();
+      // zoom 契约:cr/tr 差值为视觉 px,写本地 top/bottom 须 /zoomScale()——不归一每次写入过冲
+      // 逐帧不收敛=「越线+上下抖动」同根(2026-10-27 用户实测)
       track.style.top = `${Math.max(Math.round((cr.top - tr.top) / z), 0) + 2}px`;
       track.style.bottom = `${Math.max(Math.round((tr.bottom - cr.bottom) / z), 0) + 2}px`;
       const max = box.scrollHeight - box.clientHeight;
@@ -39,11 +41,19 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
         thumb.style.opacity = '0';
         return;
       }
-      // 响应式长度=轨道×视口/内容比,下限 32px;仅变化时写(流式期 MO 高频触发,恒写样式徒增帧耗)
       const th = Math.max(32, Math.round((box.clientHeight / box.scrollHeight) * trackH));
       if (thumb.style.height !== `${th}px`) thumb.style.height = `${th}px`;
-      // 上下抖动根修(2026-10-27):流式贴底期 scrollHeight 与 scrollTop 分属 MO/scroll 两源交替
-      // 落值,比例式 y 三量不同步即来回跳——贴底判定(距底≤4px)优先钉底,非贴底才走比例式
+    };
+    const sync = (): void => {
+      syncGeometry();
+      const max = box.scrollHeight - box.clientHeight;
+      const trackH = track.clientHeight;
+      const th = Math.max(32, Math.round((box.clientHeight / box.scrollHeight) * trackH)); // 与几何面同式(jsdom 无布局)
+      if (max <= 1 || box.scrollHeight <= 0) {
+        thumb.style.opacity = '0';
+        return;
+      }
+      // 贴底判定(距底≤4px)优先钉底,非贴底才走比例式(流式两源交替落值的抖动防线保留)
       const pinned = max - box.scrollTop <= 4;
       const y = pinned
         ? trackH - th
@@ -55,7 +65,7 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     box.addEventListener('scroll', sync, { passive: true });
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => sync()) : null;
     ro?.observe(box);
-    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => sync()) : null;
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => syncGeometry()) : null;
     mo?.observe(box, { childList: true, subtree: true });
 
     let dragging = false;
