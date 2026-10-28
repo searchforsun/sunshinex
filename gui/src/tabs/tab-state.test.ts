@@ -78,6 +78,16 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     expect(setCollapsed(s, 's1', true).s1.collapsed).toBe(true);
   });
 
+  it('座缺席落座(2026-10-28 欢迎页侧栏打不开根修):草稿座恒不在 tabStates,开关/拖宽须以空态落座;已对齐值仍原引用', () => {
+    const s: import('./tab-state').TabStates = {};
+    const opened = setCollapsed(s, '@welcome', false);
+    expect(opened['@welcome']!.collapsed).toBe(false);
+    const widened = setWidth(opened, '@welcome', 520);
+    expect(widened['@welcome']!.width).toBe(520);
+    expect(setCollapsed(opened, '@welcome', false)).toBe(opened); // 未动即未变
+    expect(setWidth(widened, '@welcome', 520)).toBe(widened);
+  });
+
   it('emptyTabSession 缺省面', () => {
     const e = emptyTabSession();
     expect(e.tabs).toHaveLength(0);

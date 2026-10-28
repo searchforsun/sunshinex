@@ -216,9 +216,12 @@ export function cycleTab(states: TabStates, sessionId: string, dir: 1 | -1): Tab
 }
 
 /** 折叠右栏:值未变/会话缺席 → 原引用返回 */
+/** 折叠开关:座缺席时以空态落座(2026-10-28 用户实测「欢迎页侧栏打不开」根因——草稿座
+ *  '@welcome' 恒不在 tabStates(持久化只跟 openSessionId 走),旧守卫原引用返回致窗控开关
+ *  与 openTabInSession 的程序化展开双双写空) */
 export function setCollapsed(states: TabStates, sessionId: string, collapsed: boolean): TabStates {
-  const cur = states[sessionId];
-  if (cur === undefined || cur.collapsed === collapsed) return states;
+  const cur = states[sessionId] ?? emptyTabSession();
+  if (cur.collapsed === collapsed) return states;
   return { ...states, [sessionId]: { ...cur, collapsed } };
 }
 
@@ -244,10 +247,10 @@ export function patchTabMeta(
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
 
-/** 调宽:只钳最小 MIN_TAB_WIDTH(无最大宽——G14.2xx 用户裁定);钳后未变/会话缺席 → 原引用返回 */
+/** 调宽:只钳最小 MIN_TAB_WIDTH(无最大宽——G14.2xx 用户裁定);钳后未变 → 原引用返回;
+ *  座缺席同 setCollapsed 以空态落座(欢迎页草稿座拖宽终值不落即弹回,同日实测) */
 export function setWidth(states: TabStates, sessionId: string, width: number): TabStates {
-  const cur = states[sessionId];
-  if (cur === undefined) return states;
+  const cur = states[sessionId] ?? emptyTabSession();
   const clamped = Math.max(MIN_TAB_WIDTH, width);
   if (cur.width === clamped) return states;
   return { ...states, [sessionId]: { ...cur, width: clamped } };
