@@ -51,10 +51,25 @@ export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionI
     };
   }, [conn, sessionId]);
   // G14.213 轮次收束即隐:running 熄灭按钮组整体不显(待办/任务是否完结无关)
-  if (!running || (todoActive === 0 && taskActive === 0 && bgRunning === 0)) return null;
+  // 过多隐现(2026-10-29 用户裁定「只有真的显示才占会话名位置;过多隐现」):容器被压缩时挂
+  // tight 右缘渐隐 mask(与标题 clipped 同款 RO 判定);压缩优先级由 flex 收缩权重承担
+  // (.chat-dyn-buttons shrink 999——空间不足几乎全由本组吸收,标题不因让位被裁到看不全)
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [tight, setTight] = useState(false);
+  const shown = running && (todoActive > 0 || taskActive > 0 || bgRunning > 0);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!shown || el === null) return;
+    const judge = (): void => setTight(el.scrollWidth > el.clientWidth + 1);
+    judge();
+    const ro = new ResizeObserver(judge);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [shown, todoActive, taskActive, bgRunning]);
+  if (!shown) return null;
 
   return (
-    <div className="chat-dyn-buttons" role="group" aria-label="live counters">
+    <div className={`chat-dyn-buttons${tight ? ' tight' : ''}`} ref={wrapRef} role="group" aria-label="live counters">
       {todoActive > 0 && (
         <button type="button" className="chat-dyn-btn todo" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
           <span className="run-spinner" aria-hidden="true" />

@@ -1883,7 +1883,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G14.177 顶栏动态计数按钮(待办/任务/后台任务):靠右聚拢,不挤压标题与展开钮 ===== */
 /* G14.213 幽灵钮化:无底色无边框,顶栏 hover 浮现;待办钮转圈绿色;侧栏展开不再隐藏(组件面) */
-.chat-dyn-buttons { flex: none; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+/* 2026-10-29 用户裁定「只有真的显示才占会话名位置;过多隐现」:shrink 权重 999——主栏过窄时
+   溢出几乎全由本组吸收(内部钮 flex:none 原样,超出容器即裁),标题只在本组让尽后才参与收缩
+   (flex:none 旧值=徽标不可让,窄栏三徽标 ~230px 直接把标题碾到几十 px);min-width:0=让尽即
+   整组归零不占位。tight 渐隐 mask 由组件 RO 挂(压缩中右缘淡出,有空间时无 mask 不可见) */
+.chat-dyn-buttons { flex: 0 999 auto; min-width: 0; overflow: hidden; display: inline-flex; align-items: center; gap: 4px; }
+.chat-dyn-buttons.tight { mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent); }
 /* G14.2xx 用户裁定:默认常显(旧「幽灵钮 hover 浮现」退役)——运行态计数是持续有用的状态面,
    藏在 hover 后没有信息增益;hover 仅保留变色反馈 */
 .chat-dyn-btn { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 2px 6px; border: none; border-radius: 9999px; background: transparent; color: var(--fg-tertiary); font-size: 11px; cursor: pointer; white-space: nowrap; }
