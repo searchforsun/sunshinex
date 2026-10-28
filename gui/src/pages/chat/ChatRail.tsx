@@ -26,11 +26,14 @@ const HUG_LEFT = 6; // 贴边距
 const SHOW_MIN_MARGIN = 17; // 余量门控:上一轮 34 减半(2026-10-27 用户裁定「缩到当前间距的一半就开启」)
 const MIN_USERS = 2;
 
-/** 滚动口实测锚(单点):show=余量门控;left/top=贴滚动口左缘+中线(视觉坐标 /zoomScale 归一,D50 契约) */
+/** 滚动口实测锚(单点):show=余量门控;left/top=贴滚动口左缘+中线(视觉坐标 /zoomScale 归一,D50 契约)。
+ *  2026-10-28 用户实测「导航条宽/短/跑到顶部」:容器 display:none(keep-alive 隐藏席/换页瞬间)
+ *  时 rect 全 0——锚 (HUG_LEFT,0) 把刻度串钉死窗顶;零尺寸一律 show=false 收起,复显由 RO 重测 */
 function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number } | null {
   const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
   if (!Number.isFinite(pad)) return null;
   const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return { show: false, left: HUG_LEFT, top: 0 };
   const z = zoomScale() || 1;
   return {
     show: pad - 18 >= SHOW_MIN_MARGIN,
