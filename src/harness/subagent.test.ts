@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { AgentRegistry, builtinAgentRoles, loadAgentsView, parseAgentFrontmatter, resolveSpawnSpec, SubagentRunner } from './subagent';
+import { listAgents } from '../catalog/agents';
 import { ProcessSandbox } from './security/sandbox';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -215,6 +216,151 @@ describe('G8c-T1 两级装载与宽容视图', () => {
     for (const r of roles) {
       assert.ok(r.name.length > 0, `${r.role} 角色名非空`);
       assert.ok(r.framing.length > 0, `${r.role} 框定非空`);
+    }
+  });
+});
+
+/* ---------- Task 7：AgentRegistry 三级装载收口（新家遮蔽 legacy + enabled 剔除 + 视图 catalog 薄委托） ---------- */
+
+describe('Task 7 三级装载收口', () => {
+  /** fixture：向 <dir>/agents/<id>/agent.md 写一份注册物料（legacy 旧位置/全局目录同形） */
+  function writeAgent(dir: string, id: string, md: string): void {
+    fs.mkdirSync(path.join(dir, 'agents', id), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md);
+  }
+
+  /** fixture：向项目新家 <root>/.sunshinex/agents/<id>/agent.md 写一份注册物料 */
+  function writeNewHomeAgent(root: string, id: string, md: string): void {
+    fs.mkdirSync(path.join(root, '.sunshinex', 'agents', id), { recursive: true });
+    fs.writeFileSync(path.join(root, '.sunshinex', 'agents', id, 'agent.md'), md);
+  }
+
+  /** frontmatter 物料模板（extra 透传可选声明键行，如 enabled: false） */
+  const agentMd = (name: string, body: string, extra = ''): string =>
+    `---\nname: ${name}\ndescription: d-${name}\n${extra}---\n\n${body}`;
+
+  test('①三级装载序：新家同 id 遮蔽 legacy（resolve 取新家 framing）；无新家时 legacy 照常遮蔽全局（两级语义保持）', () => {
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7-proj-'));
+    try {
+      writeAgent(globalDir, 'shared', agentMd('g-shared', '全局框定'));
+      writeAgent(root, 'shared', agentMd('legacy-shared', '旧位置框定'));
+      writeNewHomeAgent(root, 'shared', agentMd('newhome-shared', '新家框定'));
+      const reg = new AgentRegistry();
+      reg.registerBuiltins();
+      reg.loadAgents(root, globalDir);
+      const def = reg.resolve('shared');
+      assert.equal(def.name, 'newhome-shared', '新家最后装载，同 id 遮蔽 legacy 与全局');
+      assert.equal(def.framing, '新家框定', '遮蔽后 framing 取新家版正文');
+
+      // 无新家碰撞时 legacy 照常遮蔽全局（G8c-T1 两级语义在三级链中保持：legacy 中间层后装覆盖全局）
+      writeAgent(globalDir, 'legacy-wins', agentMd('g-legacy-wins', '全局框定'));
+      writeAgent(root, 'legacy-wins', agentMd('l-legacy-wins', '旧位置框定'));
+      const reg2 = new AgentRegistry();
+      reg2.registerBuiltins();
+      reg2.loadAgents(root, globalDir);
+      assert.equal(reg2.resolve('legacy-wins').name, 'l-legacy-wins', '无新家碰撞 → legacy 后装遮蔽全局');
+      assert.equal(reg2.resolve('shared').name, 'newhome-shared', '前组新家遮蔽在二次装配中不受影响');
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('②enabled:false 装配期剔除：不进注册表（resolve 沿现状 throw）；剔除先于遮蔽——停用条目不覆盖低层级；视图不受影响照列', () => {
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7en-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7en-proj-'));
+    try {
+      writeAgent(root, 'off', agentMd('off', '停用框定', 'enabled: false\n'));
+      writeAgent(root, 'on', agentMd('on', '启用框定'));
+      const reg = new AgentRegistry();
+      reg.registerBuiltins();
+      reg.loadAgents(root);
+      assert.throws(() => reg.resolve('off'), /not found/i, 'enabled:false 条目不进注册表');
+      assert.equal(reg.resolve('on').name, 'on', 'enabled 缺省 true 照常装载');
+
+      // 剔除先于遮蔽：旧位置停用版不覆盖全局启用版（skip 静默跳过、不写 defs——低层级同 id 仍生效）
+      writeAgent(globalDir, 'dual', agentMd('dual-global', '全局启用框定'));
+      writeAgent(root, 'dual', agentMd('dual-legacy', '旧位置停用框定', 'enabled: false\n'));
+      const reg2 = new AgentRegistry();
+      reg2.registerBuiltins();
+      reg2.loadAgents(root, globalDir);
+      assert.equal(reg2.resolve('dual').name, 'dual-global', '停用条目不遮蔽低层级，全局启用版仍生效');
+
+      // 视图不受运行时剔除影响：enabled:false 条目照列（启停是写面/视图操作，catalog 同口径）
+      const view = loadAgentsView(root, globalDir);
+      assert.ok(
+        view.entries.some((e) => e.id === 'off' && e.source === 'project'),
+        'enabled:false 条目仍在视图中（仅注册表剔除）',
+      );
+      assert.ok(
+        view.entries.some((e) => e.id === 'dual' && e.source === 'project') &&
+          view.entries.some((e) => e.id === 'dual' && e.source === 'global'),
+        '视图双行照列，不受装配剔除影响',
+      );
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('③loadAgentsView = catalog listAgents 薄委托：三级条目逐行形状映射一致（scope→source/旧位置→project 行/enabled 照列/遮蔽标注）', () => {
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7vw-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7vw-proj-'));
+    try {
+      // 全局：独有 + 新家撞名 + enabled:false + 旧位置撞名（四态齐备）
+      writeAgent(globalDir, 'gOnly', agentMd('gOnly', '全局正文'));
+      writeAgent(globalDir, 'shared', agentMd('g-shared', '全局正文'));
+      writeAgent(globalDir, 'offg', agentMd('offg', '停用全局正文', 'enabled: false\n'));
+      writeAgent(globalDir, 'dual', agentMd('g-dual', '全局正文'));
+      // 新家：独有 + 撞全局 shared + 撞旧位置 nh-lonly（新家最高，被撞旧位置不列）
+      writeNewHomeAgent(root, 'shared', agentMd('n-shared', '新家正文'));
+      writeNewHomeAgent(root, 'nhOnly', agentMd('nhOnly', '新家正文'));
+      writeNewHomeAgent(root, 'nh-lonly', agentMd('nh-lonly', '新家正文'));
+      // 旧位置：独有 lOnly + 撞全局 dual + 撞新家 nh-lonly + 畸形 bad
+      writeAgent(root, 'lOnly', agentMd('lOnly', '旧位置正文'));
+      writeAgent(root, 'dual', agentMd('l-dual', '旧位置正文'));
+      writeAgent(root, 'nh-lonly', agentMd('l-nh', '旧位置正文'));
+      fs.mkdirSync(path.join(root, 'agents', 'bad'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'agents', 'bad', 'agent.md'), '无 frontmatter 正文');
+
+      const view = loadAgentsView(root, globalDir);
+      const listing = listAgents(root, globalDir);
+
+      // 形状映射一致性：catalog 每条目按视图形状映射（scope→source、可选键按需、旧位置 scope='project'
+      // 仍归 project 行）后在视图中逐行可寻；全局行 shadowed 额外吸收旧位置遮蔽（视图唯一超集点，下钉）
+      const legacyShadowedGlobals = new Set(['dual']);
+      for (const e of listing.entries) {
+        const row = view.entries.find((v) => v.id === e.id && v.source === e.scope);
+        assert.ok(row, `catalog ${e.scope}/${e.id} 应有对应视图行（薄委托不丢行）`);
+        assert.equal(row.shadowed, e.shadowed || (e.scope === 'global' && legacyShadowedGlobals.has(e.id)), `shadowed 映射一致：${e.scope}/${e.id}`);
+        assert.equal(row.name, e.meta.name, `name 映射一致：${e.scope}/${e.id}`);
+        assert.equal(row.bodyPreview, e.bodyPreview, `bodyPreview 映射一致：${e.scope}/${e.id}`);
+        assert.equal(row.description, e.meta.description || undefined, `description 可选键映射一致：${e.scope}/${e.id}`);
+      }
+      // enabled:false 照列（视图不受运行时剔除影响）：offg 行在场且不被剔除
+      assert.ok(listing.entries.some((e) => e.id === 'offg' && e.scope === 'global'), 'catalog 对 enabled:false 照列');
+      assert.ok(view.entries.some((e) => e.id === 'offg' && e.source === 'global'), '视图同口径照列 enabled:false');
+
+      // 视图唯一超集点：旧位置撞全局行（catalog 就近优先不透出，视图沿装载序两行都列、全局行标 shadowed）
+      const lDual = view.entries.find((e) => e.id === 'dual' && e.source === 'project');
+      assert.ok(lDual, '旧位置撞全局行在视图中保留（与装载序一致：旧位置遮蔽全局）');
+      assert.equal(lDual.shadowed, false, '旧位置行（生效版）不标 shadowed');
+      assert.equal(lDual.bodyPreview, '旧位置正文');
+      const gDual = view.entries.find((e) => e.id === 'dual' && e.source === 'global');
+      assert.equal(gDual!.shadowed, true, '旧位置撞名 → 全局行 shadowed=true');
+      assert.ok(!view.entries.some((e) => e.id === 'shared' && e.source === 'project' && e.bodyPreview === '旧位置正文'), '旧位置撞新家行不列（新家最高，catalog 同口径）');
+
+      // 项目行先于全局行（生效视图优先，G8c-T1 既有序保持）
+      const ids = view.entries.map((e) => e.id);
+      assert.ok(ids.indexOf('nhOnly') < ids.indexOf('gOnly'), '项目条目先于全局条目');
+      // 畸形文件：恰好一条 warning（两次内部列举同文件告警去重），含文件路径；畸形条目不入清单
+      assert.equal(view.warnings.length, 1, '畸形文件告警去重后恰一条');
+      assert.ok(view.warnings[0]!.includes(path.join(root, 'agents', 'bad', 'agent.md')), 'warning 含文件路径');
+      assert.ok(!view.entries.some((e) => e.id === 'bad'), '畸形条目不入清单');
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });

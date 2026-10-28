@@ -3,13 +3,16 @@
  * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案恒英文单语（角色行/工具 description 直接进模型） */
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+import * as crypto from 'crypto';
 import { AgentRole, ModelTier, OutputStyle, SessionEvent, SubagentSpawnInput } from '../types';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
 import { createWorktree, isRepo, removeWorktree, subagentTreeName } from './worktree';
 import { dataDirReal } from '../config/data-dir';
-import { userConfigDir } from '../config/env';
+import { agentsDir, legacyAgentsDir, listAgents } from '../catalog/agents';
+import type { AgentEntry } from '../catalog/agents';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
 import { MemoryStore } from './memory/store';
@@ -65,7 +68,7 @@ const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
 /** 解析 agent.md 的简易 frontmatter（词法单点 skills.parseFrontmatterKV；本处只保留严格策略：
  *  无 frontmatter 块或缺 name 即 fail-fast——注册制物料缺关键字段不得静默降级）。
  *  enabled（启停声明，catalog 读面/设置视图消费）：缺省 true，仅字面 'false' 为 false；
- *  本解析只透出字段、throw 纪律零变——装载面按 enabled 剔除属 Task 7 收口 */
+ *  本解析只透出字段、throw 纪律零变——装载面按 enabled 剔除已收口（Task 7：装配期静默剔除不进注册表） */
 export function parseAgentFrontmatter(md: string): { name: string; description: string; version: string; body: string; memory: boolean; enabled: boolean; isolation?: 'worktree'; executor?: 'internal-team' | 'external-cli' } {
   const m = FRONTMATTER.exec(md);
   if (!m) throw new Error('agent.md missing frontmatter');
@@ -88,15 +91,23 @@ export class AgentRegistry {
     }
   }
 
-  /** 两级装载（G8c）：全局 <globalDir>/agents/ 先装、项目 <projectRoot>/agents/ 后装遮蔽（同 id 就近覆盖，与
-   *  loadMcpServers/skills 两级链同构）；缺省 globalDir=userConfigDir()（既有单参调用零破坏——全局目录
-   *  不存在 = 空注册）。装配纪律不变：任一级畸形文件整次 loadAgents throw（fail-fast 语义零变） */
+  /** 三级装载（Task 7 收口）：全局 <globalDir>/agents/ → 旧位置 <root>/agents/ → 新家 <root>/.sunshinex/agents/，
+   *  后装遮蔽同 id（last-wins 就近覆盖，与 loadMcpServers/skills 多级链同机制）——新家是目录注册制的
+   *  归位终点（最高优先），旧位置是历史装配口径（中间层，遮蔽全局的两级语义保持不变），全局垫底。
+   *  三级路径一律取 catalog 落位单点（agentsDir/legacyAgentsDir），不手拼路径防漂移。
+   *  缺省 globalDir=userConfigDir()（既有单参调用零破坏——全局目录不存在 = 空注册）。
+   *  装配纪律不变：任一级畸形文件整次 loadAgents throw（fail-fast 语义零变）；enabled:false 条目
+   *  装配期剔除（loadAgentsFrom 内，见该函数注释） */
   loadAgents(projectRoot: string, globalDir?: string): void {
-    this.loadAgentsFrom(path.join(globalDir ?? userConfigDir(), 'agents'));
-    this.loadAgentsFrom(path.join(projectRoot, 'agents'));
+    this.loadAgentsFrom(agentsDir('global', projectRoot, globalDir));
+    this.loadAgentsFrom(legacyAgentsDir(projectRoot));
+    this.loadAgentsFrom(agentsDir('project', projectRoot, globalDir));
   }
 
-  /** 单级目录装载：扫 <dir>/<id>/agent.md；目录不存在 = 空注册（不算错）；畸形文件整次 fail-fast（同 skills/MCP 装配纪律） */
+  /** 单级目录装载：扫 <dir>/<id>/agent.md；目录不存在 = 空注册（不算错）；畸形文件整次 fail-fast（同 skills/MCP 装配纪律）。
+   *  enabled:false = 用户显式停用（启停是写面/视图操作，非装配错误）：解析后先查 enabled 再决定入册，
+   *  停用条目静默剔除不进注册表——是用户选择不是异常，零告警；剔除先于遮蔽（skip 不写 defs），
+   *  停用条目不遮蔽低层级同 id，低层级版本仍生效 */
   private loadAgentsFrom(dir: string): void {
     if (!fs.existsSync(dir)) return;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -105,6 +116,7 @@ export class AgentRegistry {
       if (!fs.existsSync(file)) continue;
       const md = fs.readFileSync(file, 'utf8');
       const meta = parseAgentFrontmatter(md);
+      if (!meta.enabled) continue; // enabled:false 装配期剔除（静默——用户停用是选择非错误）
       this.defs.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body, ...(meta.memory ? { memory: true } : {}), ...(meta.isolation ? { isolation: meta.isolation } : {}), ...(meta.executor ? { executor: meta.executor } : {}) });
     }
   }
@@ -124,9 +136,11 @@ export class AgentRegistry {
   }
 }
 
-/* ---------- 两级宽容视图（G8c T5 设置端点消费面；纯函数不经 Registry） ---------- */
+/* ---------- 三级宽容视图（G8c T5 设置端点消费面；Task 7 起为 catalog listAgents 薄委托，不经 Registry） ---------- */
 
-/** agents 清单展示条目（loadAgentsView 产物）：与 AgentDef 同字段面的只读投影 + 来源/遮蔽标记 + 正文预览 */
+/** agents 清单展示条目（loadAgentsView 产物）：与 AgentDef 同字段面的只读投影 + 来源/遮蔽标记 + 正文预览。
+ *  形状是 /settings/agents 应答契约（daemon ㉜ 逐字节钉死），字段集零增删——catalog 的富字段
+ *  （version/dir/oldLocation/enabled）不透出，GUI 富化属后续 REST 改面（Task 23） */
 export interface AgentEntryView {
   readonly id: string;
   readonly name: string;
@@ -134,59 +148,62 @@ export interface AgentEntryView {
   readonly memory?: boolean;
   readonly isolation?: string;
   readonly executor?: string;
-  /** 条目来源层级：global = <globalDir>/agents/，project = <projectRoot>/agents/ */
+  /** 条目来源层级：project = 项目两级（新家 <root>/.sunshinex/agents/ 与旧位置 <root>/agents/ 同标 project——
+   *  旧位置条目在 catalog 中 scope 恒 'project'，形状映射自然归位）；global = <globalDir>/agents/ */
   readonly source: 'project' | 'global';
-  /** true = 被项目同名 id 遮蔽（全局条目保留展示、运行期不生效） */
+  /** true = 被更高优先同 id 遮蔽（全局条目保留展示、运行期不生效）；新家/旧位置条目（生效版）恒 false */
   readonly shadowed: boolean;
   /** frontmatter 之后正文前 200 字符（预览载荷防长正文击穿设置面板） */
   readonly bodyPreview: string;
 }
 
-/** 两级扫描宽容产物：生效+被遮蔽全量清单 + 逐文件告警（畸形/读失败不抛死，路径入 warnings） */
+/** 宽容清单产物：生效+被遮蔽全量行 + 逐文件告警（畸形/读失败不抛死，路径入 warnings——告警词法由 catalog 单点承载） */
 export interface AgentsView {
   readonly entries: AgentEntryView[];
   readonly warnings: string[];
 }
 
-/** 两级 agents 目录宽容清单（G8c）：与 loadAgents 同扫描几何（<globalDir>/agents/ + <projectRoot>/agents/），
- *  但逐文件宽容——parseAgentFrontmatter throw / readFileSync 失败一律入 warnings（含文件路径）不抛死；
- *  项目 id 撞名 → 全局条目 shadowed=true 保留在列表；bodyPreview = frontmatter 之后正文 slice(0,200)。
- *  清单序：项目条目在前（生效视图优先），全局条目随后。纯函数零状态，不经 Registry */
+/** 三级 agents 目录宽容清单（G8c 两级起手、Task 7 收口为 catalog 薄委托）：扫描/解析/告警词法全部
+ *  收口 catalog listAgents 单点（本函数零 fs 零解析——两面对账不漂移），只做三件映射：
+ *  ①形状映射 AgentEntry→AgentEntryView（scope→source；description/memory/isolation/executor 可选键按需
+ *  透出，空/假值省键——应答字节面与委托前逐字节同形）；②排序映射（catalog 层序=全局先，视图序=项目两级
+ *  先、全局殿后——「生效视图优先」的既有契约）；③遮蔽补注（唯一超集点，见下）。
+ *  遮蔽补注：catalog 对旧位置取就近优先（撞全局/新家即不列），而视图沿装载序（global→legacy→新家
+ *  last-wins）——旧位置撞全局时运行期是旧位置生效，故视图保留该行并给全局行补标 shadowed=true。
+ *  这批行 catalog 不透出，借「保证不存在的空全局哨兵」二次调 listAgents 补齐（哨兵惯例沿
+ *  handleAgentsGet：tmpdir+randomUUID，绝不落真实目录），解析/告警仍全走 catalog 单点零复制。
+ *  新家撞旧位置/全局：catalog 与装载序同判（新家最高），被撞行不列/标 shadowed，两面天然一致。
+ *  enabled:false 照列（启停是写面/视图操作，运行时剔除属装配面职责）。畸形文件入 warnings 不抛死；
+ *  两次内部列举对同一畸形文件的重复告警经 Set 去重（warning 文本含完整路径，同文件必同文）。
+ *  纯函数零状态，不经 Registry */
 export function loadAgentsView(projectRoot: string, globalDir: string): AgentsView {
-  const warnings: string[] = [];
-  const collect = (dir: string, source: 'project' | 'global'): Map<string, AgentEntryView> => {
-    const out = new Map<string, AgentEntryView>();
-    if (!fs.existsSync(dir)) return out;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const file = path.join(dir, entry.name, 'agent.md');
-      if (!fs.existsSync(file)) continue;
-      try {
-        const meta = parseAgentFrontmatter(fs.readFileSync(file, 'utf8'));
-        out.set(entry.name, {
-          id: entry.name,
-          name: meta.name,
-          ...(meta.description ? { description: meta.description } : {}),
-          ...(meta.memory ? { memory: true } : {}),
-          ...(meta.isolation ? { isolation: meta.isolation } : {}),
-          ...(meta.executor ? { executor: meta.executor } : {}),
-          source,
-          shadowed: false,
-          bodyPreview: meta.body.slice(0, 200),
-        });
-      } catch (e) {
-        warnings.push(`${file}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    return out;
+  const full = listAgents(projectRoot, globalDir);
+  const noGlobal = listAgents(projectRoot, path.join(os.tmpdir(), `sunshinex-agents-view-noglobal-${crypto.randomUUID()}`));
+  /** 形状映射单点：catalog 条目 → 视图行（可选键按需省键，应答字节面与委托前逐字节同形） */
+  const toRow = (e: AgentEntry, shadowed: boolean): AgentEntryView => ({
+    id: e.id,
+    name: e.meta.name,
+    ...(e.meta.description ? { description: e.meta.description } : {}),
+    ...(e.meta.memory ? { memory: true } : {}),
+    ...(e.meta.isolation !== undefined ? { isolation: e.meta.isolation } : {}),
+    ...(e.meta.executor !== undefined ? { executor: e.meta.executor } : {}),
+    source: e.scope,
+    shadowed,
+    bodyPreview: e.bodyPreview,
+  });
+  const newHome = full.entries.filter((e) => e.scope === 'project' && !e.oldLocation);
+  // 旧位置全量行：空全局哨兵下 catalog 的「撞全局即不列」过滤天然失效，撞全局行由此补齐
+  const legacy = noGlobal.entries.filter((e) => e.oldLocation);
+  const legacyIds = new Set(legacy.map((e) => e.id));
+  const globals = full.entries.filter((e) => e.scope === 'global');
+  return {
+    entries: [
+      ...newHome.map((e) => toRow(e, e.shadowed)),
+      ...legacy.map((e) => toRow(e, e.shadowed)),
+      ...globals.map((e) => toRow(e, e.shadowed || legacyIds.has(e.id))), // 全局行 shadowed 吸收新家撞名（catalog）+旧位置撞名（装载序）
+    ],
+    warnings: [...new Set([...full.warnings, ...noGlobal.warnings])],
   };
-  const global = collect(path.join(globalDir, 'agents'), 'global');
-  const project = collect(path.join(projectRoot, 'agents'), 'project');
-  for (const id of project.keys()) {
-    const g = global.get(id);
-    if (g) global.set(id, { ...g, shadowed: true });
-  }
-  return { entries: [...project.values(), ...global.values()], warnings };
 }
 
 /** 可选点入参归一单点：两病同收——①模型按 schema「null」描述把字面量当字符串传（agent_id:"null" 等），
