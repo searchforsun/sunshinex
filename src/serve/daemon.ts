@@ -22,6 +22,9 @@ import {
   resetSelfFilledSlots,
 } from '../config/settings';
 import { PtyManager } from './pty';
+import { ConfigWatcher } from '../catalog/watch';
+import { setOnCatalogWrite } from '../catalog/io';
+import { userConfigDir } from '../config/env';
 import { fetchWebMeta } from './web-meta';
 import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
@@ -53,7 +56,7 @@ export { LOOPBACK_HOST } from './daemon-wire';
 // 壳装配序依赖(2026-10-23):桌面壳在 buildModel 前须跑 settings 链(全局 env 块=API key、
 // projectsDir、language)——CLI serve 同序先例 cli/index.ts;不导出则壳侧模型适配器构造期读空 env
 export { loadSettingsChain } from '../config/settings';
-export type { ApprovalFrame, AskFrame, ResetFrame, DaemonFrame } from './daemon-wire';
+export type { ApprovalFrame, AskFrame, ResetFrame, ConfigChangedFrame, DaemonFrame } from './daemon-wire';
 
 /** GUI daemon 构造面（G3 会话中心）：不再绑 root——daemon 持会话注册表，会话经 createSession(root)
  *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
@@ -168,6 +171,11 @@ export class GuiDaemon {
     ptyManager: this.ptyManager,
     isClosing: () => this.closePromise !== undefined,
   });
+  /** 配置变更监听（任务14：双向实时同步的「外部编辑感知」半边）——daemon 持单例；start 时挂全局
+   *  目录 + onChange→config-changed 帧广播，会话打开/关闭随 lifecycleIo 挂/拆项目监听；写回环抑制
+   *  与内部写直发经 onCatalogWrite 钩子装配（suppress 丢 watcher 回声、broadcast 承担帧下行，两路
+   *  合一：外部编辑走 watcher、内部写走直发，同键不双发）。句柄面：start 开、teardown 收 */
+  private readonly watcher = new ConfigWatcher();
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
@@ -205,7 +213,27 @@ export class GuiDaemon {
       setActive: (id) => {
         this.active = id;
       },
+      watchProject: (root) => this.watchProjectRoot(root),
+      unwatchProject: (root) => this.unwatchProjectRoot(root),
     };
+  }
+
+  /** 项目配置监听挂载（任务14，watchProject 守护面）：`.sunshinex` 缺失跳过不监听不产告警——
+   *  watcher 对缺失目录本就逐目录 warn 降级，会话打开于无项目配置的普通目录（含 default 草稿根）
+   *  是常态，静默跳过即「GET 即读」降级口径；目录补建后下次会话打开重试即真实生效（watchProject
+   *  幂等，同 root 已监听则跳过） */
+  private watchProjectRoot(root: string): void {
+    if (!fs.existsSync(path.join(root, '.sunshinex'))) return;
+    this.watcher.watchProject(root);
+  }
+
+  /** 项目配置监听拆除（任务14，unwatchProject 守护面）：同 root 多会话允许（Ruling 2）——注册表
+   *  内仍有该 root 的会话在场则保留监听（会话粒度挂/拆的 root 粒度折算）；无人在场才整组拆 */
+  private unwatchProjectRoot(root: string): void {
+    for (const s of this.sessions.values()) {
+      if (s.root === root) return;
+    }
+    this.watcher.unwatchProject(root);
   }
 
   createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
@@ -281,6 +309,14 @@ export class GuiDaemon {
     });
     this.server = server;
     this.wsHub.attach(server, token);
+    // 任务14 配置监听装配：全局目录（userConfigDir——HOME/部署重定向口，测试钉 tmp HOME 即 hermetic）
+    // + 写回环抑制/直发钩子 + 变更→config-changed 帧广播（无 seq，broadcastFrame 全连接直发）
+    this.watcher.watchGlobal(userConfigDir());
+    setOnCatalogWrite((resource, scope, root) => {
+      this.watcher.suppress(resource, scope, root); // 抑制 watcher 事件源（防自触回声双发）
+      this.broadcastFrame({ kind: 'config-changed', resource, scope, root }); // 帧下行由直发承担
+    });
+    this.watcher.onChange((c) => this.broadcastFrame({ kind: 'config-changed', ...c }));
     // 静态面探测（启动一次，缓存布尔）：index.html 在场才挂静态——缺场 GET 保持 G1 的 404+hint 原样
     this.staticReady = fs.existsSync(path.join(this.staticRoot, 'index.html'));
     const addr = server.address();
@@ -299,6 +335,11 @@ export class GuiDaemon {
    *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（逐会话收口序在会话维
    *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
+    // 0-) 配置监听面先收（任务14）：摘写通知钩子（还原缺省 no-op——收口途中 catalog 写不再产帧）+
+    //     watcher.close 全组拆句柄清回调（防收口途中残留 fs 事件再产广播）；project 组随 close 全拆，
+    //     无需逐会话 unwatch
+    setOnCatalogWrite(null);
+    this.watcher.close();
     // 0) 挂起全表回填（G4 裁定 3）：悬挂的 asker promise 先落 deny/dismissed——被中止 run 才能在
     //    有界窗口内真正 settle
     this.denyAllPending();
@@ -833,6 +874,8 @@ export class GuiDaemon {
       this.denyPendingFor(key);
       await session.teardown();
       this.sessions.delete(key);
+      // 任务14：会话关闭拆其项目监听（守护面——同 root 仍被其他会话持有则保留）
+      this.unwatchProjectRoot(session.root);
       // G8b T3 插杀（单会话回收处）：会话回收连带清杀其全部 pty（daemon 持 manager——serve 分层，
       // session.ts 不引 pty）；kill 同步注销 → 该会话 pty 的后续 WS 连入收 error 'pty not found'
       this.ptyManager.killAllFor(key);

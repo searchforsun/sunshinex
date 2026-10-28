@@ -1,6 +1,7 @@
 import * as http from 'node:http';
 import type { EventFrame } from './session';
 import type { ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
+import type { ResourceKind, Scope } from '../catalog/types';
 
 /** daemon 下行 wire 面（D31 分域拆分自 daemon.ts）：HTTP URL 解析原语（urlOf/LOOPBACK_HOST）+
  *  下行帧形态（事件帧并集/审批/问询/reset）与挂起表条目——叶子模块，daemon 与各 handler 域共用，
@@ -51,8 +52,20 @@ export interface ResetFrame {
   sessionId: string;
 }
 
-/** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset 帧（无 seq）——广播面单点共用序列化 */
-export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | PlanApprovalFrame | ResetFrame;
+/** config-changed 通知帧（任务14：双向实时同步的 GUI 下行面）：无 seq——配置变更通知非事件流成员
+ *  （不进环形缓冲不补发，断线窗口的变更由重连后 GET 即读自愈）。三元与 catalog ConfigChange 同构：
+ *  resource=资源种类、scope=作用域、root=项目根（null=全局）；形状与 watcher 对同一物理文件的映射
+ *  同构（外部编辑走 watcher、内部写走 onCatalogWrite 直发，两路同帧形合一）——GUI（Task 21）据此
+ *  刷新对应 catalog 视图。batch 客户端同挂起帧直发不经合帧窗（daemon-ws broadcastFrame 仅 event 入窗） */
+export interface ConfigChangedFrame {
+  kind: 'config-changed';
+  resource: ResourceKind;
+  scope: Scope;
+  root: string | null;
+}
+
+/** daemon 下行帧全并集：pump 事件帧（有 seq）+ 挂起/reset/config-changed 帧（无 seq）——广播面单点共用序列化 */
+export type DaemonFrame = EventFrame | ApprovalFrame | AskFrame | PlanApprovalFrame | ResetFrame | ConfigChangedFrame;
 
 /** P1 Task 6 batch=1 客户端合帧形态：30ms 合批窗内连发的事件帧打包单帧下行（内嵌数组序保持）——
  *  挂起/reset 帧绕过合批直发（审批即时性优先）。仅下行合成帧，不经 broadcastFrame 入参（泵输入

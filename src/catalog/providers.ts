@@ -14,7 +14,7 @@ import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseEffort, EFFORT_ORDER } from '../model/effort';
 import type { ReasoningEffort, ModelTier } from '../types';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic } from './io';
+import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite } from './io';
 
 /** 单个源条目：config 解析面的源级分组（name/baseUrl/源级显式字段/models 条目显式值）+ 密钥面 */
 export interface ProviderEntry extends ParsedProviderEntry {
@@ -99,10 +99,13 @@ function readWriteDoc(root: string | null, scope: Scope): { file: string; read: 
   return { file, read };
 }
 
-/** 落盘收口：新档补 version:1（settings schema 口径，plugins/approvals 同款）→ 原子写 2-space + 尾随换行 */
-function finishWrite(file: string, read: ReturnType<typeof readJsoncDoc>, doc: Record<string, unknown>): void {
+/** 落盘收口：新档补 version:1（settings schema 口径，plugins/approvals 同款）→ 原子写 2-space + 尾随换行
+ *  → 任务14 写通知（root/scope 透传自各写函数；写的是目标 scope 的 settings.json → ('settings', scope, root)，
+ *  与 watcher settings.json 映射同构——六写经本单点统一回填） */
+function finishWrite(root: string | null, scope: Scope, file: string, read: ReturnType<typeof readJsoncDoc>, doc: Record<string, unknown>): void {
   if (!read.exists && doc['version'] === undefined) doc['version'] = 1;
   writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
+  notifyCatalogWrite('settings', scope, root);
 }
 
 /** 对象形状裁决（条目/env 块通用）：非对象或数组 → undefined */
@@ -249,7 +252,7 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
       ...(patch.supportsImages !== undefined ? { supportsImages: patch.supportsImages } : {}),
       models: buildModelList(label, patch.models),
     });
-    finishWrite(file, read, doc);
+    finishWrite(root, scope, file, read, doc);
     return;
   }
   // update 路径：增量手术（未提字段不动，其余键原样透传）
@@ -273,7 +276,7 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
   }
   if (JSON.stringify(cur) !== JSON.stringify(next)) {
     arr[idx] = next;
-    finishWrite(file, read, doc);
+    finishWrite(root, scope, file, read, doc);
   }
 }
 
@@ -287,7 +290,7 @@ export function removeProvider(root: string | null, scope: Scope, name: string):
   const idx = entryIndexByName(arr, label);
   if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
   arr.splice(idx, 1);
-  finishWrite(file, read, doc);
+  finishWrite(root, scope, file, read, doc);
 }
 
 /** 追加一个模型到指定源：同源同模型名已存在（字符串速记/对象两形态都算同名）→ INVALID（幂等拒绝）；
@@ -306,7 +309,7 @@ export function modelAdd(root: string | null, scope: Scope, provider: string, en
     throw new CatalogWriteError('INVALID', `providers.${label} 模型已存在: ${built.model}（同名重复拒绝）`);
   }
   cur['models'] = [...(Array.isArray(rawModels) ? rawModels : []), built];
-  finishWrite(file, read, doc);
+  finishWrite(root, scope, file, read, doc);
 }
 
 /** 摘除一个模型：源不在/模型不在 → INVALID；最后一条模型摘除后源整条删除（providers 条目 models
@@ -327,7 +330,7 @@ export function modelRemove(root: string | null, scope: Scope, provider: string,
   if (at === -1) throw new CatalogWriteError('INVALID', `providers.${label} 模型不存在: ${target}`);
   models.splice(at, 1);
   if (models.length === 0) arr.splice(idx, 1); // 空自动删源：models 空的源是非法形态
-  finishWrite(file, read, doc);
+  finishWrite(root, scope, file, read, doc);
 }
 
 /** 相邻调序：up=与前一位互换、down=与后一位互换（choices 序 = providers 序 × models 序，调序即调
@@ -354,7 +357,7 @@ export function modelMove(root: string | null, scope: Scope, provider: string, m
     throw new CatalogWriteError('INVALID', `providers.${label} 模型 ${target} 已在${direction === 'up' ? '顶' : '底'}部，无从再${direction === 'up' ? '上' : '下'}移`);
   }
   [models[at], models[swapWith]] = [models[swapWith]!, models[at]!];
-  finishWrite(file, read, doc);
+  finishWrite(root, scope, file, read, doc);
 }
 
 /**
@@ -380,7 +383,7 @@ export function setProviderApiKey(root: string | null, scope: Scope, provider: s
     // env 块缺失（或形状坏）：删不存在的行 = 零变化不落盘；落值则整键重建（形状坏不保留垃圾）
     if (apiKey === '') return;
     doc['env'] = { [slot]: apiKey };
-    finishWrite(file, read, doc);
+    finishWrite(root, scope, file, read, doc);
     return;
   }
   if (apiKey === '') {
@@ -390,5 +393,5 @@ export function setProviderApiKey(root: string | null, scope: Scope, provider: s
     if (env[slot] === apiKey) return; // 零变化不落盘
     env[slot] = apiKey;
   }
-  finishWrite(file, read, doc);
+  finishWrite(root, scope, file, read, doc);
 }

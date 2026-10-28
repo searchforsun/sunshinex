@@ -14,7 +14,7 @@
  *   两键互斥维护：记入一侧同时对向除名（批准/拒绝互为终态，同名不共存两键；对向键形状坏不动——读面宽容）。
  * - 全局级条目不过本阀：全局 mcp.json 在 userConfigDir（用户手配，非仓库供给），恒 'none' 由调用面（catalog/mcp）保证。
  */
-import { readJsoncDoc, writeJsonAtomic, CatalogWriteError } from './io';
+import { readJsoncDoc, writeJsonAtomic, CatalogWriteError, notifyCatalogWrite } from './io';
 import { loadGlobalSettings, parseSettingsFile } from '../config/settings';
 import { projectSlug } from '../config/data-dir';
 
@@ -98,4 +98,6 @@ function setApproval(
   if (!changed) return;
   if (!read.exists && doc['version'] === undefined) doc['version'] = 1; // 新档补 version:1（settings schema 口径，daemon T2/T4 同款）
   writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
+  // 任务14 写通知：写的是全局 settings.json → ('settings','global',null)（与 watcher 全局映射同构，approve/deny 共用本公共体）
+  notifyCatalogWrite('settings', 'global', null);
 }

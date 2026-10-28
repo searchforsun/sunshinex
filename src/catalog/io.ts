@@ -10,6 +10,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { hasJsonComments, stripJsonComments } from '../config/settings';
+import type { ResourceKind, Scope } from './types';
 
 /** 写入被拒：code=COMMENTS（目标文件含 JSONC 注释，结构化整写会毁注释）或 INVALID（内容不合法） */
 export class CatalogWriteError extends Error {
@@ -40,4 +41,32 @@ export function writeJsonAtomic(file: string, text: string): void {
   const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
   fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, file);
+}
+
+/* ---------- 写通知钩子（任务14：双向实时同步的「内部写」半边） ----------
+ * catalog 各写函数落盘成功后经 notifyCatalogWrite 统一通知；daemon（任务14）装配期注入
+ * 「suppress watcher 回声 + 广播 config-changed 帧」。放 io.ts 单点是让全部 catalog 写共享一个
+ * 回环抑制口，不逐模块穿参。缺省 null = no-op（Task 1-13 期间零行为）。
+ * 口径约定：notify 的 (resource,scope,root) 与 watcher 对同一物理文件的映射同构（settings.json→
+ * 'settings'、mcp.json→'mcp'、agents 目录→'agents'；scope='global' root 恒 null）——daemon 的
+ * suppress 按 (resource,scope,root) 键丢 watcher 事件，键不同构则回声去重失效（自触双发）。 */
+
+/** 写通知回调形态（catalog 写面落盘成功后携带的定位三元的消费签名） */
+export type CatalogWriteNotify = (resource: ResourceKind, scope: Scope, root: string | null) => void;
+
+/** 当前钩子（模块内可变量；经 setter 注入/摘除，catalog 模块一律走 notifyCatalogWrite 不直读） */
+let onCatalogWrite: CatalogWriteNotify | null = null;
+
+/** daemon 装配/摘除口：传 null 还原缺省 no-op（teardown 收口用） */
+export function setOnCatalogWrite(fn: CatalogWriteNotify | null): void {
+  onCatalogWrite = fn;
+}
+
+/** 落盘成功后的统一通知口：钩子未装配（null）时 no-op；钩子内抛错沿调用方收口
+ *  （daemon 装配体自身不抛——broadcast/suppress 均为同步无异常面）。
+ *  scope='global' 时 root 归一为 null：watcher 全局 DirSpec 恒 root:null，全局写携带非 null root
+ *  的入参（调用方笔误）永远配不成 suppress 键——单点归一保证回声去重不因入参形态失效 */
+export function notifyCatalogWrite(resource: ResourceKind, scope: Scope, root: string | null): void {
+  if (onCatalogWrite === null) return;
+  onCatalogWrite(resource, scope, scope === 'global' ? null : root);
 }

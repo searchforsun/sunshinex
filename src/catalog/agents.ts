@@ -15,7 +15,7 @@ import * as path from 'path';
 import { userConfigDir } from '../config/env';
 import { parseAgentFrontmatter } from '../harness/subagent';
 import { AGENT_ID_RE } from '../serve/config-helpers';
-import { CatalogWriteError, writeJsonAtomic } from './io';
+import { CatalogWriteError, writeJsonAtomic, notifyCatalogWrite } from './io';
 import type { Listing, Scope } from './types';
 
 /** catalog agents 列表条目：id/scope 定位 + 遮蔽/旧位置标注 + 落盘目录 + frontmatter 元数据 + 正文预览 */
@@ -214,6 +214,8 @@ export function upsertAgent(root: string | null, scope: Scope, id: string, spec:
   if (meta.executor !== spec.executor) throw new CatalogWriteError('INVALID', `round-trip executor mismatch (<agents>/${id}/agent.md)`);
   if (meta.enabled !== (spec.enabled !== false)) throw new CatalogWriteError('INVALID', `round-trip enabled mismatch (<agents>/${id}/agent.md)`);
   writeJsonAtomic(path.join(dir, 'agent.md'), md);
+  // 任务14 写通知：agent.md 落盘 → ('agents', scope, root)（与 watcher agents 目录映射同构）
+  notifyCatalogWrite('agents', scope, root);
 }
 
 /** 移除一个 agent 定义：rm -rf 条目整目录（agent.md 及同级私有文件一并清）；不存在 → INVALID
@@ -222,6 +224,8 @@ export function removeAgent(root: string | null, scope: Scope, id: string): void
   const dir = agentWriteTarget(root, scope, id);
   if (!fs.existsSync(dir)) throw new CatalogWriteError('INVALID', `agent not found: ${scope}/agents/${id}`);
   fs.rmSync(dir, { recursive: true });
+  // 任务14 写通知：条目整目录移除同样是配置变更（rm 非原子写路径，成功后同样补一行）
+  notifyCatalogWrite('agents', scope, root);
 }
 
 /** frontmatter enabled 行保序手术（setEnabled 单点）：块内既有 enabled 行原位替换（位置不动）；缺行则
@@ -274,6 +278,8 @@ export function setAgentEnabled(root: string | null, scope: Scope, id: string, e
   }
   if (meta.enabled !== enabled) throw new CatalogWriteError('INVALID', `round-trip enabled mismatch (<agents>/${id}/agent.md)`);
   writeJsonAtomic(file, patched);
+  // 任务14 写通知：enabled 手术落盘 → ('agents', scope, root)
+  notifyCatalogWrite('agents', scope, root);
 }
 
 /** 旧位置 → 新家迁移（Task 6 写面，写面「只迁不删」的一半）：<root>/agents/<id>/ 整目录递归拷入
@@ -293,4 +299,6 @@ export function migrateAgent(root: string, id: string): void {
     throw new CatalogWriteError('INVALID', `destination already exists: .sunshinex/agents/${id}`);
   }
   fs.cpSync(src, dest, { recursive: true });
+  // 任务14 写通知：迁入新家 = 项目 agents 目录新增条目（cp 非原子写路径，成功后同样补一行；恒 project）
+  notifyCatalogWrite('agents', 'project', root);
 }

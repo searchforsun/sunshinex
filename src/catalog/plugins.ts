@@ -19,7 +19,7 @@
 import { loadEffectivePlugins, type EffectivePlugin } from '../config/plugins';
 import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic } from './io';
+import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite } from './io';
 
 /** 两级清单（loadEffectivePlugins 薄包装）：plugins + 装载聚合警告单；root=null 仅全局装载（无项目锚） */
 export function listPlugins(root: string | null): { plugins: EffectivePlugin[]; warnings: string[] } {
@@ -69,6 +69,9 @@ function updatePluginRecord(
     pluginsMap[id] = record;
     if (!read.exists && doc['version'] === undefined) doc['version'] = 1; // 新档补 version:1（settings schema 口径，approvals 同款）
     writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
+    // 任务14 写通知：写的是目标 scope 的 settings.json（plugins 语义键）→ ('settings', scope, root)
+    // （与 watcher settings.json 映射同构；零变化不落盘路径不通知——无盘上副作用即无变更事件）
+    notifyCatalogWrite('settings', scope, root);
   }
 }
 

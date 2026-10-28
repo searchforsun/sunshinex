@@ -20,7 +20,8 @@ import { projectSlug, resolveDataDir } from '../config/data-dir';
  */
 
 /** daemon 类状态触点面:注册表直引用(Map 本体——createSessionIn 写入/attachIn 遍历收编),
- *  其余四面为回调注入(与 SessionRuntime 装配面同形透传) */
+ *  其余八面为回调注入(与 SessionRuntime 装配面同形透传)。watchProject/unwatchProject 两面
+ *  (任务14):daemon 持 ConfigWatcher——会话打开挂项目监听、会话关闭(与收编弃壳)拆监听 */
 export interface SessionLifecycleIo {
   readonly sessions: Map<string, SessionRuntime>;
   readonly model: ModelAdapter;
@@ -28,6 +29,10 @@ export interface SessionLifecycleIo {
   readonly mintPid: () => string;
   readonly broadcast: (frame: DaemonFrame) => void;
   readonly setActive: (id: string) => void;
+  /** 会话打开挂项目配置监听（daemon 侧守护：.sunshinex 缺失降级跳过，不产告警） */
+  readonly watchProject: (root: string) => void;
+  /** 拆项目配置监听（daemon 侧守护：同 root 仍被其他会话持有时不拆） */
+  readonly unwatchProject: (root: string) => void;
 }
 
 /** G14.10 B 方案:default 工作区锚定专用临时目录——root 字面 'default'(GUI 欢迎页非项目
@@ -98,6 +103,9 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
   io.setActive(id);
   // T2 出生 journal:挂载即接 onContextChange 续写链(惰性建档,见 createSession 注释)
   session.attachJournal(new SessionJournal(dataDir));
+  // 任务14 双向同步:会话打开即挂项目配置监听(.sunshinex 缺失由 daemon 侧守护降级跳过——
+  // 缺失目录不产告警;目录补建后下次会话打开重试即真实生效,watchXxx 幂等)
+  io.watchProject(abs);
   return ok({ sessionId: id });
 }
 
@@ -116,7 +124,13 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   // (确定性等价,排队经 steer 行回放;双挂 409 面由下方既有守卫承继)
   for (const [sid, s] of io.sessions) {
     if (s.attachedJournalId === journalId && s.status() === 'running') {
-      if (sid !== id) io.sessions.delete(id);
+      // 任务14:被收编丢弃的空壳会话出生时挂的项目监听随壳拆除(unwatchProject 守护——同 root
+      // 仍被在座会话持有则不拆);壳 root 与被收编会话 root 可不同,不拆则监听句柄泄漏到 daemon 收口
+      const shell = io.sessions.get(id);
+      if (sid !== id) {
+        io.sessions.delete(id);
+        if (shell !== undefined) io.unwatchProject(shell.root);
+      }
       io.setActive(sid);
       return ok({ sessionId: sid });
     }
