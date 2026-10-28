@@ -27,14 +27,19 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     const syncGeometry = (): void => {
       // 几何面(MO/RO 消费):仅轨道边界与 thumb 长度,不动位置——内容流式增长(MO 高频)若连位置
       // 一起重算,阅读中段时 max 连续增大 y 随之漂移=残余抖动根因(2026-10-27 用户实测);位置只在
-      // scroll(用户滚动)时更新,映射基准用当下 max,语义仍正确
+      // scroll(用户滚动)时更新,映射基准用当下 max,语义仍正确。
+      // 轨道边界=锚(offsetParent)绝对坐标直写(2026-10-29 用户实测滚动抖动+上越分割条根修):
+      // 旧式取轨道自身 gBCR 求差回写——style.top 已含上次写入值,构成 top(n+1)=T−top(n)+2 的
+      // 周期 2 振荡器(CSS 初始 6px↔目标值反复横跳;跳回 6 时轨道顶端戳进顶栏=越线,每次
+      // scroll/RO 重算即跳=抖动;4840e9c 的 /z 归一只修了过冲面,代数振荡面漏了)。
+      // zoom 契约:视觉坐标差 /z 归一成本地 px
       const cr = box.getBoundingClientRect();
-      const tr = track.getBoundingClientRect();
+      const ar = track.offsetParent instanceof HTMLElement ? track.offsetParent.getBoundingClientRect() : null;
       const z = zoomScale();
-      // zoom 契约:cr/tr 差值为视觉 px,写本地 top/bottom 须 /zoomScale()——不归一每次写入过冲
-      // 逐帧不收敛=「越线+上下抖动」同根(2026-10-27 用户实测)
-      track.style.top = `${Math.max(Math.round((cr.top - tr.top) / z), 0) + 2}px`;
-      track.style.bottom = `${Math.max(Math.round((tr.bottom - cr.bottom) / z), 0) + 2}px`;
+      if (ar !== null) {
+        track.style.top = `${Math.max(Math.round((cr.top - ar.top) / z), 0) + 2}px`;
+        track.style.bottom = `${Math.max(Math.round((ar.bottom - cr.bottom) / z), 0) + 2}px`;
+      }
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
       if (max <= 1 || box.scrollHeight <= 0) {
