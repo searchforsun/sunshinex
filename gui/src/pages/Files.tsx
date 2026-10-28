@@ -91,9 +91,12 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   /** 2026-10-27 用户裁定:路径行右侧 ⋯ 菜单(复制相对/绝对路径)+外部打开钮(应用=左侧选中方式) */
   const [pathMenu, setPathMenu] = useState<{ x: number; y: number } | null>(null);
   const [pathCopied, setPathCopied] = useState('');
+  const pathCopiedTimer = useRef<number | null>(null);
   const copyPath = (text: string, tag: string): void => {
     void navigator.clipboard?.writeText(text).then(() => setPathCopied(tag), () => setPathCopied(''));
-    window.setTimeout(() => setPathCopied(''), 1500);
+    // 连续复制防叠跑:前一次的归位 timer 先清(不清则提前掐掉后一次的 ✓ 尾标)
+    if (pathCopiedTimer.current !== null) clearTimeout(pathCopiedTimer.current);
+    pathCopiedTimer.current = window.setTimeout(() => setPathCopied(''), 1500);
   };
   const relOf = (): string => {
     const p = (load.file?.path ?? '').replace(/\\/g, '/');
@@ -102,11 +105,14 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
     return p;
   };
   /** 2026-10-27 用户裁定:外部打开=打开当前文件本体(非工作区根;explorer 打开其所在位置,
-   *  Code/Cursor 等编辑器直接开文件) */
+   *  Code/Cursor 等编辑器直接开文件)。失败可见化:load.error 面承接(文件已删/应用探测后被
+   *  卸载的 spawn 失败走 daemon 侧 error 事件,HTTP 面可能仍 200——此处只接 HTTP 拒绝面) */
   const openExternally = (): void => {
     const target = load.file?.path ?? '';
     if (target === '') return;
-    void conn.openInEditor(target, localStorage.getItem('sunshinex.open-default') ?? 'explorer');
+    void conn
+      .openInEditor(target, localStorage.getItem('sunshinex.open-default') ?? 'explorer')
+      .catch((err: unknown) => setLoad((prev) => ({ ...prev, error: err instanceof Error ? err.message : String(err) })));
   };
 
   /** G14.139 选区加引用:Monaco 实例/当前文件/选区信息 ref(回调闭包免陈旧)+悬浮钮显隐 */
@@ -461,7 +467,29 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
             </button>
           </div>
           {load.loading && <div className="files-loading" role="status">{t('Loading…', '加载中…')}</div>}
-          {load.error !== null && <div className="files-error">{load.error}</div>}
+          {load.error !== null && (() => {
+            /* 2026-10-27 用户裁定:错误面友好化——常见状态码人话标题,原始报文退居小字详情 */
+            const raw = load.error;
+            const m = /-> (\d{3})\s*$/.exec(raw);
+            const status = m?.[1];
+            const friendly =
+              status === '404' ? t('File not found — it may have been moved or deleted.', '文件不存在——可能已被移动或删除。')
+              : status === '403' ? t('Read denied — the path is outside trusted directories.', '读取被拒绝——该路径不在受信任的目录内。')
+              : status === '415' ? t('File too large to preview.', '文件过大，无法预览。')
+              : null;
+            let detail = raw;
+            try {
+              detail = decodeURIComponent(raw);
+            } catch {
+              /* 编码异常按原文显 */
+            }
+            return (
+              <div className="files-error" role="alert">
+                <p className="files-error-title">{friendly ?? raw}</p>
+                {friendly !== null && <p className="files-error-detail">{detail}</p>}
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
