@@ -36,10 +36,15 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
         thumb.style.opacity = '0';
         return;
       }
-      // 响应式长度=轨道×视口/内容比,下限 32px(用户裁定反转「恒定 56」)
+      // 响应式长度=轨道×视口/内容比,下限 32px;仅变化时写(流式期 MO 高频触发,恒写样式徒增帧耗)
       const th = Math.max(32, Math.round((box.clientHeight / box.scrollHeight) * trackH));
-      thumb.style.height = `${th}px`;
-      const y = Math.min(Math.max((box.scrollTop / max) * (trackH - th), 0), trackH - th);
+      if (thumb.style.height !== `${th}px`) thumb.style.height = `${th}px`;
+      // 上下抖动根修(2026-10-27):流式贴底期 scrollHeight 与 scrollTop 分属 MO/scroll 两源交替
+      // 落值,比例式 y 三量不同步即来回跳——贴底判定(距底≤4px)优先钉底,非贴底才走比例式
+      const pinned = max - box.scrollTop <= 4;
+      const y = pinned
+        ? trackH - th
+        : Math.min(Math.max((box.scrollTop / max) * (trackH - th), 0), trackH - th);
       thumb.style.opacity = '1';
       thumb.style.transform = `translateY(${y}px)`;
     };
