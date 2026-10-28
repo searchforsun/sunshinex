@@ -14,9 +14,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { userConfigDir } from '../config/env';
 import { parseAgentFrontmatter } from '../harness/subagent';
-import { AGENT_ID_RE } from '../serve/config-helpers';
 import { CatalogWriteError, writeJsonAtomic, notifyCatalogWrite } from './io';
 import type { Listing, Scope } from './types';
+
+/** PUT /settings/agents 的 id 安全面（单点；Task 15 自 serve/config-helpers 上收——T6 评审移交：
+ *  消除 catalog→serve 运行时依赖倒置，serve 面改从本模块 import）：id 直接拼进
+ *  <agents 目录>/<id>/ 目录路径——路径分隔/穿越/点开头等形态一律拒（首字符限字母数字，
+ *  余字符限 [A-Za-z0-9_-]） */
+export const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 /** catalog agents 列表条目：id/scope 定位 + 遮蔽/旧位置标注 + 落盘目录 + frontmatter 元数据 + 正文预览 */
 export interface AgentEntry {
@@ -155,7 +160,7 @@ export function renderAgentMd(fm: AgentFrontmatterInput, body: string): string {
   return `---\n${lines.join('\n')}\n---\n${body}`;
 }
 
-/** 写面目标定位 + 双守卫（写面四函数共用）：id 安全校验（AGENT_ID_RE serve 单点复用不另造——id 直接拼
+/** 写面目标定位 + 双守卫（写面四函数共用）：id 安全校验（AGENT_ID_RE 本模块单点——id 直接拼
  *  目录路径，路径分隔/穿越/点开头一律拒）+ project 作用域 root 必备（agentsDir 的 root:null→cwd 回退仅为
  *  读面签名全整改兜底，写面绝不借道——凭空落 cwd 是伪写）。返回条目目录 <agents 目录>/<id> */
 function agentWriteTarget(root: string | null, scope: Scope, id: string): string {

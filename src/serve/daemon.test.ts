@@ -1464,7 +1464,8 @@ describe('G8c T3 /settings/raw 双文件端点', () => {
 
 // ---------- G8c T4:/settings/mcp 端点族(两级遮蔽视图/单台真探测/项目级结构化写) ----------
 
-/** GET /settings/mcp 行(断言面;transport 已归一——装载面缺省条目不带该字段) */
+/** GET /settings/mcp 行(断言面;transport 已归一——装载面缺省条目不带该字段)。Task 15 起行增 approval
+ *  字段(GET 改消费 catalog listMcpServers——批准阀标注进响应,GUI 审批流消费;project 接阀/global 恒 'none') */
 interface McpServerRow {
   name: string;
   transport: 'stdio' | 'http' | 'sse';
@@ -1474,6 +1475,7 @@ interface McpServerRow {
   envKeys: string[];
   source: 'project' | 'global';
   shadowed: boolean;
+  approval: 'none' | 'approved' | 'pending' | 'denied';
 }
 
 interface ProbeBody {
@@ -1548,20 +1550,24 @@ describe('G8c T4 /settings/mcp 端点族', () => {
       assert.deepEqual(sharedRows[0], {
         name: 'shared', transport: 'stdio', command: 'node', args: ['a.js'],
         envKeys: ['SECRET_A', 'SECRET_B'], headerKeys: [], source: 'project', shadowed: false,
-      }, '项目条目:source=project/shadowed=false/env·headers 折键名列表');
+        approval: 'pending',
+      }, '项目条目:source=project/shadowed=false/env·headers 折键名列表/approval=pending(未审)');
       assert.deepEqual(sharedRows[1], {
         name: 'shared', transport: 'http', url: 'https://global.example/mcp',
-        envKeys: [], headerKeys: [], source: 'global', shadowed: true,
-      }, '全局同名被项目遮蔽→shadowed=true 仍列示');
+        envKeys: [], headerKeys: [], source: 'global', shadowed: true, approval: 'none',
+      }, '全局同名被项目遮蔽→shadowed=true 仍列示(approval 恒 none)');
       assert.deepEqual(body.servers.find((s) => s.name === 'only'), {
         name: 'only', transport: 'stdio', command: 'node', envKeys: ['G'], headerKeys: [], source: 'global', shadowed: false,
+        approval: 'none',
       }, '未被遮蔽的全局条目:source=global/shadowed=false');
       assert.ok(!JSON.stringify(body).includes('"va"') && !JSON.stringify(body).includes('"vb"'), 'env 值不回传(只键名)');
 
-      // 无 root=仅全局清单(项目级缺席面;空串 root 会读 cwd 相对 .sunshinex/mcp.json,不可靠)
+      // 无 root=仅全局清单(项目级缺席面;空串 root 会读 cwd 相对 .sunshinex/mcp.json,不可靠)。
+      // Task 15 改消费 catalog listMcpServers:作用域内 name 字典序(装载面 loadMcpServers 输出序同款
+      // 归一——旧实现沿文件插入序 shared,only,故断言序随 catalog 归一调整)
       const g = await fetch(`${base}/settings/mcp`, { headers: AUTH });
       const gBody = (await g.json()) as { servers: McpServerRow[] };
-      assert.deepEqual(gBody.servers.map((s) => [s.name, s.source, s.shadowed]), [['shared', 'global', false], ['only', 'global', false]], '无 root 只出全局面');
+      assert.deepEqual(gBody.servers.map((s) => [s.name, s.source, s.shadowed]), [['only', 'global', false], ['shared', 'global', false]], '无 root 只出全局面(作用域内 name 字典序)');
     });
   });
 
@@ -1778,10 +1784,12 @@ describe('G8c T5 /settings/agents 端点', () => {
       });
       assert.equal(full.status, 200, 'project upsert 应 200');
       assert.deepEqual(await full.json(), { ok: true });
+      // Task 15 写面收口 catalog：project upsert 落位=新家 <root>/.sunshinex/agents/<id>（catalog
+      // agentsDir 单点，较旧 <root>/agents 旧位是有意的存储归一——旧位置条目经 migrate op 迁移）
       assert.equal(
-        fs.readFileSync(path.join(proj, 'agents', 'newagent', 'agent.md'), 'utf8'),
+        fs.readFileSync(path.join(proj, '.sunshinex', 'agents', 'newagent', 'agent.md'), 'utf8'),
         '---\nname: New Agent\ndescription: does many things\nmemory: true\nisolation: worktree\nexecutor: internal-team\n---\nFrame line one.\nLine two.',
-        '生成 agent.md:frontmatter 键序 name 首位,可选键按需,正文原样',
+        '生成 agent.md:frontmatter 键序 name 首位,可选键按需,正文原样(落新家)',
       );
 
       // global 最小形状:仅 name(可选键全缺省不落行)+缺省空正文;root 被忽略(定向 userConfigDir,decoy 不产目录)
@@ -1847,7 +1855,7 @@ describe('G8c T5 /settings/agents 端点', () => {
       const noRoot = await put({ scope: 'project', op: 'upsert', id: 'ok', frontmatter: { name: 'Ok' } });
       assert.equal(noRoot.status, 400, 'scope=project 缺 root → 400');
 
-      assert.equal(fs.existsSync(path.join(proj, 'agents')), false, '400 面零盘上副作用(agents 目录不建)');
+      assert.equal(fs.existsSync(path.join(proj, '.sunshinex', 'agents')), false, '400 面零盘上副作用(agents 目录不建——新家落位口径)');
     });
   });
 
@@ -1863,7 +1871,7 @@ describe('G8c T5 /settings/agents 端点', () => {
       const del = await put({ root: proj, scope: 'project', op: 'delete', id: 'delagent' });
       assert.equal(del.status, 200);
       assert.deepEqual(await del.json(), { ok: true });
-      assert.equal(fs.existsSync(path.join(proj, 'agents', 'delagent')), false, '目录已整删(rm -rf)');
+      assert.equal(fs.existsSync(path.join(proj, '.sunshinex', 'agents', 'delagent')), false, '目录已整删(rm -rf——catalog removeAgent 收口新家)');
       const again = await put({ root: proj, scope: 'project', op: 'delete', id: 'delagent' });
       assert.equal(again.status, 200, '重复 delete 幂等 200');
       assert.deepEqual(await again.json(), { ok: true });

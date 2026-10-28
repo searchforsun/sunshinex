@@ -12,7 +12,8 @@ import type { PermissionsConfig } from '../config/permissions';
 import type { McpServerConfig } from '../types';
 import { memoryDir } from '../harness/memory/store';
 // upsert frontmatter 面（校验后形态）已随 renderAgentMd 迁入 catalog/agents（Task 6 写面收口）——
-// type-only 引用（编译期擦除，运行时零依赖：catalog/agents 运行时反向引用本模块的 AGENT_ID_RE，防成环）
+// type-only 引用（编译期擦除，运行时零依赖；AGENT_ID_RE 亦已上收 catalog/agents 单点——Task 15
+// 依 T6 评审移交消除 catalog→serve 运行时依赖倒置，消费方改从 catalog import）
 import type { AgentFrontmatterInput } from '../catalog/agents';
 
 /** /settings 配置面模块级助手（D31 分域拆分自 daemon.ts，G8c T2-T6 原域）：只读视图的文件级拆解、
@@ -214,11 +215,7 @@ export async function probeMcpServer(
   }
 }
 
-// ---------- G8c T5：/settings/agents 面模块级助手（agent.md 输入校验；生成器已迁 catalog/agents） ----------
-
-/** PUT /settings/agents 的 id 安全面（单点）：id 直接拼进 <scopeDir>/agents/<id>/ 目录路径——
- *  路径分隔/穿越/点开头等形态一律拒（首字符限字母数字，余字符限 [A-Za-z0-9_-]） */
-export const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+// ---------- G8c T5：/settings/agents 面模块级助手（agent.md 输入校验；生成器与 AGENT_ID_RE 已迁 catalog/agents） ----------
 
 /** upsert frontmatter 输入校验+归一（G8c T5，validateMcpRawContent 同款 throw→400 形态）：name 必填
  *  非空白单行；可选键按需——description/isolation/executor 须单行字符串（frontmatter 是单行 KV 词法，

@@ -7,7 +7,6 @@ import { MemoryStore } from '../harness/memory/store';
 import { strArr, strRecord } from '../config';
 import { urlOf } from './daemon-wire';
 import {
-  AGENT_ID_RE,
   effectiveKeyRow,
   EMPTY_PERMISSIONS,
   filePermissions,
@@ -20,8 +19,24 @@ import {
   probeMcpServer,
   validateMcpRawContent,
 } from './config-helpers';
-// renderAgentMd（G8c T5 生成器）已迁 catalog/agents（Task 6 写面收口）——serve 层改 import，行为零变
-import { renderAgentMd, type AgentFrontmatterInput } from '../catalog/agents';
+// Task 6 起 renderAgentMd（生成器）居 catalog/agents——serve 层不再直用（upsert 经 catalog
+// upsertAgent 内部生成）；Task 15 起 agents 写面（upsert/remove/setEnabled/migrate）与 AGENT_ID_RE
+// （id 安全面单点，自 config-helpers 上收消依赖倒置）同样收口 catalog——本文件 handlers 全部薄封装 catalog 调用
+import {
+  AGENT_ID_RE,
+  agentsDir,
+  legacyAgentsDir,
+  migrateAgent,
+  removeAgent,
+  setAgentEnabled,
+  upsertAgent,
+  type AgentFrontmatterInput,
+  type AgentUpsertSpec,
+} from '../catalog/agents';
+// Task 15 mcp 写面：单条目操作（add/remove/enable/disable）+ 两级视图读面（approval 标注进响应）
+import { listMcpServers, removeMcpServer, setMcpServerEnabled, upsertMcpServer } from '../catalog/mcp';
+import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
+import { CatalogWriteError } from '../catalog/io';
 import {
   hasJsonComments,
   loadGlobalSettings,
@@ -306,24 +321,24 @@ export async function handleSettingsRawPut(io: ConfigHandlerIo, req: http.Incomi
   io.send(res, 200, { ok: true });
 }
 
-/** GET /settings/mcp?root=（G8c T4，Settings 页 MCP 清单数据源）：loadMcpServers 两级合并语义的
- *  视图化拆解——直接 parseMcpJsonFile 逐文件读（loadMcpServers 只出合并态）：项目级全量
- *  （source='project'，shadowed=false）+ 全局逐名（被项目同名遮蔽 → shadowed=true 仍列示，GUI
- *  可呈现「被遮蔽」态；未遮蔽 → shadowed=false）。无 root = 仅全局清单（与 /settings providers
- *  面同裁定：空串 root 会让装载面读 cwd 相对 .sunshinex/mcp.json，不可靠）。env 折键名列表，
- *  transport 缺省归一 stdio（mcpRow 单点） */
+/** GET /settings/mcp?root=（G8c T4，Settings 页 MCP 清单数据源；Task 15 改消费 catalog
+ *  listMcpServers 单点——遮蔽/批准阀标注同源不漂移）：行 = mcpRow 打码视图 + approval 字段
+ *  （project 接批准阀 approved/pending/denied——GUI 审批流消费；global 恒 'none' 用户手配不过阀）。
+ *  应答序保持既有契约「项目先全局后」（catalog 层序全局先——视图序在此翻转，loadAgentsView 同款
+ *  裁定），各作用域内 name 字典序。无 root = 仅全局清单（catalog 项目分支 root:null 会回退扫
+ *  cwd——弃置项目扫描结果，与既有「无 root 仅全局面」裁定一致；空串 root 不可靠的活体陷阱见
+ *  handleAgentsGet 同款注释）。env/headers 折键名列表（值不回传），transport 缺省归一 stdio */
 export function handleMcpGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
   const url = urlOf(req);
   const rootParam = url.searchParams.get('root');
   const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-  const globalServers = parseMcpJsonFile(path.join(userConfigDir(), 'mcp.json'));
-  const projectServers = root !== undefined ? parseMcpJsonFile(path.join(root, '.sunshinex', 'mcp.json')) : [];
-  const projectNames = new Set(projectServers.map((s) => s.name));
+  const entries = listMcpServers(root ?? null).entries;
+  const ordered =
+    root === undefined
+      ? entries.filter((e) => e.scope === 'global')
+      : [...entries.filter((e) => e.scope === 'project'), ...entries.filter((e) => e.scope === 'global')];
   io.send(res, 200, {
-    servers: [
-      ...projectServers.map((s) => mcpRow(s, 'project', false)),
-      ...globalServers.map((s) => mcpRow(s, 'global', projectNames.has(s.name))),
-    ],
+    servers: ordered.map((e) => ({ ...mcpRow(e.server, e.scope, e.shadowed), approval: e.approval })),
   });
 }
 
@@ -467,6 +482,88 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
   fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
   fs.renameSync(tmpFile, target);
   io.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
+}
+
+/** PUT /settings/mcp/op {op:'add'|'remove'|'enable'|'disable'|'approve'|'deny', scope, root?, name, server?}
+ *  （Task 15，MCP 单条目操作端点——补「global 只能 raw、编辑只能整块替换」的操作缺口）：
+ *  handler 是 catalog 写面的薄封装 + CatalogWriteError→HTTP 码映射，文件读写/守卫/原子写/写通知
+ *  全在 catalog/mcp 写面单点（config-changed WS 帧由写内 notify 直发——本 handler 不自行广播防双发）。
+ *  - add：server 原样透传 catalog upsertMcpServer（形状校验沿 parseMcpJsonFile 接受口径：
+ *    command 或 url 至少其一，COMMAND/URL 缺 → INVALID）；
+ *  - remove/enable/disable：目标条目缺失/形状非法 → catalog INVALID（严格语义，非幂等）；
+ *  - approve/deny：仅 project 有效（global → 400——全局条目用户手配不过批准阀），走
+ *    approvals.approveMcpServer/denyMcpServer 既有写面（互斥维护 + notify 回填）。
+ *  CatalogWriteError 映射（沿既有 handler 对两类拒写的分野）：COMMENTS → 409 {error, hint:'use
+ *  raw editor'}（现 409 形状复用——注释文件引流 raw 编辑面）；INVALID → 400 {error}（与整块 PUT
+ *  把「文件畸形」映射 409 的分野：op 面统一二值契约——400=请求/语义不被接受（含目标文件畸形，
+ *  error 原文指名文件与原因）、409+hint=须先经 raw 面清注释；catalog 家族 approvals 同款
+ *  COMMENTS/INVALID 双码裁定）。请求形态错（坏 op/scope/缺 name、project 缺 root、global
+ *  approve/deny）在入 catalog 前 400 拦。成功 200 {ok:true}；不触发 settings reload（mcp/approvals
+ *  均装配期语义——mcp 新会话生效、批准阀下次装载读取） */
+export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { op?: unknown; scope?: unknown; root?: unknown; name?: unknown; server?: unknown } | null;
+  const op = body?.op;
+  if (op !== 'add' && op !== 'remove' && op !== 'enable' && op !== 'disable' && op !== 'approve' && op !== 'deny') {
+    io.send(res, 400, { error: 'op must be "add" | "remove" | "enable" | "disable" | "approve" | "deny"' });
+    return;
+  }
+  const scope = body?.scope;
+  if (scope !== 'project' && scope !== 'global') {
+    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+    return;
+  }
+  const name = body?.name;
+  if (typeof name !== 'string' || name.length === 0) {
+    io.send(res, 400, { error: 'name required — target mcp server name' });
+    return;
+  }
+  if ((op === 'approve' || op === 'deny') && scope !== 'project') {
+    io.send(res, 400, { error: 'approve/deny only applies to project-scope servers (global entries are user-managed and skip the approval gate)' });
+    return;
+  }
+  const rootRaw = body?.root;
+  if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
+    io.send(res, 400, { error: 'root required for scope=project' });
+    return;
+  }
+  // global 恒忽略 root（定位面——与其余配置写面同裁定）；project 必有（上方守卫）
+  const root = scope === 'project' ? path.resolve(rootRaw as string) : null;
+  try {
+    switch (op) {
+      case 'add':
+        upsertMcpServer(root, scope, name, body?.server); // server 校验在 catalog（INVALID→400），原样透传
+        break;
+      case 'remove':
+        removeMcpServer(root, scope, name);
+        break;
+      case 'enable':
+      case 'disable':
+        setMcpServerEnabled(root, scope, name, op === 'enable');
+        break;
+      case 'approve':
+        approveMcpServer(root!, name);
+        break;
+      case 'deny':
+        denyMcpServer(root!, name);
+        break;
+    }
+  } catch (err) {
+    if (err instanceof CatalogWriteError) {
+      if (err.code === 'COMMENTS') {
+        io.send(res, 409, { error: err.message, hint: 'use raw editor' });
+        return;
+      }
+      io.send(res, 400, { error: err.message });
+      return;
+    }
+    throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口（T2/T4 同惯例）
+  }
+  io.send(res, 200, { ok: true });
 }
 
 /** GET /settings/plugins?root=（2026-10-26 插件面，Settings 页插件清单数据源）：loadEffectivePlugins
@@ -634,31 +731,38 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
   io.send(res, 200, { builtins: builtinAgentRoles(), view: loadAgentsView(projectRoot, userConfigDir()) });
 }
 
-/** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（G8c T5，AgentsPane 表单增删改）：
- *  - id 安全校验 AGENT_ID_RE → 400（id 直接拼目录路径——路径分隔/穿越/点开头一律拒，upsert 与 delete
- *    同守卫）；scope=project 必带 root（缺 400），global 恒忽略 root（与 raw/mcp 面同裁定）
- *  - upsert：先全量校验后落盘零部分写（name 必填非空白；name/description/isolation/executor 单行
- *    字符串——frontmatter 是单行 KV 词法，含换行的值会注入伪键，多行内容属 body 面；memory 布尔；
- *    body 字符串缺省空）→ renderAgentMd 生成（键序 name 首位）→ 写同目录 tmp → 回读 tmp 过真解析器
- *    parseAgentFrontmatter + name 回环（验证口径=装载口径且验证的就是将要落盘的字节；throw/回环不符
- *    → 清 tmp 500，目标零触碰）→ rename 原子落盘
- *  - delete：<scopeDir>/agents/<id>/ 存在 → rm -rf；不存在 → 幂等 ok。IO 失败（写/rename/rm）不经
- *    本地捕获——沿 dispatch 500 收口（T2/T3/T4 同惯例） */
+/** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（G8c T5，AgentsPane 表单增删改；
+ *  Task 15 扩 op 值 enable|disable|migrate 并全量收口 catalog 写面——本 handler 只剩请求形态校验
+ *  与 CatalogWriteError→HTTP 码映射，文件操作/校验/原子写/写通知全在 catalog/agents 单点；
+ *  config-changed WS 帧由写内 notify 直发，handler 不自行广播防双发）：
+ *  - id 安全校验 AGENT_ID_RE → 400（id 直接拼目录路径——路径分隔/穿越/点开头一律拒，全 op 同守卫）；
+ *    scope=project 必带 root（缺 400），global 恒忽略 root（与 raw/mcp 面同裁定）
+ *  - upsert：parseAgentFrontmatterInput 单点校验+归一（首错 400，零部分写）→ catalog upsertAgent
+ *    （内部 renderAgentMd 生成 + 写前 round-trip 过真解析器 + 原子落盘——较旧 tmp+回读+rename 更进一步：
+ *    坏内容根本不进 tmp）。落位=新家 <root>/.sunshinex/agents/<id>（catalog agentsDir 单点——storage
+ *    归一裁定，旧位置条目经 migrate op 入新家）；frontmatter 枚举越型（isolation/executor）旧路径落
+ *    tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 400（罕见路径语义升级）
+ *  - delete：catalog removeAgent（rm -rf 条目整目录含同级私有文件；新家缺失 INVALID）+ 旧位置兼容
+ *    回退——catalog 写面对旧位置「只迁不删」无删除面，serve 保留旧位删除收口使幂等契约不回退
+ *    （手建旧位条目仍可删）；新旧皆缺 = 幂等 200（既有契约零变）
+ *  - enable/disable（Task 15 新增）：catalog setAgentEnabled（frontmatter enabled 行保序手术 +
+ *    写后回环）；条目缺失 → 400（旧位置条目须先 migrate——写面只认新家，迁移前置是产品语义）
+ *  - migrate（Task 15 新增）：catalog migrateAgent（legacy <root>/agents/<id> 整目录拷入新家，
+ *    旧位保留）。恒项目级（body 无 scope——root 锚定），缺 root 400；非 legacy 条目（无源目录）
+ *    → 404（brief 明定——迁移是 legacy 专属动作）；撞新家已存在 → 400（INVALID）
+ *  CatalogWriteError 映射：INVALID → 400 {error}（delete 例外——缺失 INVALID 就地吞作幂等 200，
+ *  见分支注）；COMMENTS 不可达（agent.md 无注释形态——真如此
+ *  沿 INVALID 分支外的兜底抛错走 dispatch 500）。IO 失败不经本地捕获——沿 dispatch 500 收口 */
 export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown } | null;
+  const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown; enabled?: unknown } | null;
   const op = body?.op;
-  if (op !== 'upsert' && op !== 'delete') {
-    io.send(res, 400, { error: 'op must be "upsert" or "delete"' });
-    return;
-  }
-  const scope = body?.scope;
-  if (scope !== 'project' && scope !== 'global') {
-    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+  if (op !== 'upsert' && op !== 'delete' && op !== 'enable' && op !== 'disable' && op !== 'migrate') {
+    io.send(res, 400, { error: 'op must be "upsert" | "delete" | "enable" | "disable" | "migrate"' });
     return;
   }
   const id = body?.id;
@@ -666,16 +770,80 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
     io.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
     return;
   }
+  // migrate 恒项目级：body 无 scope（root 锚定 <root>/agents → <root>/.sunshinex/agents），缺 root 400
+  if (op === 'migrate') {
+    const migrateRootRaw = body?.root;
+    if (typeof migrateRootRaw !== 'string' || migrateRootRaw.length === 0) {
+      io.send(res, 400, { error: 'root required for migrate (legacy <root>/agents → <root>/.sunshinex/agents)' });
+      return;
+    }
+    const migrateRoot = path.resolve(migrateRootRaw);
+    // 非 legacy 条目 → 404（先于 catalog：migrateAgent 的「缺源 INVALID」在此细分出专属码——
+    // 迁移是 legacy 专属动作，无源目录与资源不存在同义）
+    if (!fs.existsSync(path.join(legacyAgentsDir(migrateRoot), id))) {
+      io.send(res, 404, { error: `legacy agent not found: agents/${id}` });
+      return;
+    }
+    try {
+      migrateAgent(migrateRoot, id); // 撞新家已存在 → INVALID → 400
+    } catch (err) {
+      if (err instanceof CatalogWriteError) {
+        io.send(res, 400, { error: err.message });
+        return;
+      }
+      throw err;
+    }
+    io.send(res, 200, { ok: true });
+    return;
+  }
+  const scope = body?.scope;
+  if (scope !== 'project' && scope !== 'global') {
+    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+    return;
+  }
   const rootRaw = body?.root;
   if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
     io.send(res, 400, { error: 'root required for scope=project' });
     return;
   }
-  const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootRaw as string); // global 恒忽略 root（定位面）
-  const agentDir = path.join(scopeDir, 'agents', id);
+  const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
+  const mapWriteError = (err: unknown): boolean => {
+    if (!(err instanceof CatalogWriteError)) return false; // 非 catalog 面（IO 竞态等）→ dispatch 500
+    io.send(res, 400, { error: err.message });
+    return true;
+  };
   if (op === 'delete') {
-    if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true }); // 不存在 = 幂等 ok
+    try {
+      removeAgent(root, scope, id); // catalog 收口：新家 rm -rf（含同级私有文件）
+    } catch (err) {
+      // 新家缺失 INVALID 就地吞（幂等契约）+ 旧位置兼容回退：catalog 写面只迁不删（无旧位删除面），
+      // serve 保留旧位删除收口——手建 <root>/agents/<id> 条目的既有可删性不因收口回退；新旧皆缺 =
+      // 幂等 200（既有契约零变）。非 catalog 面（IO 竞态等）→ dispatch 500（removeAgent 的
+      // invalid-id 分支已被上方 AGENT_ID_RE 守卫拦截，不可达）
+      if (!(err instanceof CatalogWriteError)) throw err;
+      if (scope === 'project') {
+        const legacyDir = path.join(legacyAgentsDir(root!), id);
+        if (fs.existsSync(legacyDir)) fs.rmSync(legacyDir, { recursive: true });
+      }
+    }
     io.send(res, 200, { ok: true });
+    return;
+  }
+  if (op === 'enable' || op === 'disable') {
+    const enabled = op === 'enable';
+    // enabled 可选回显面：在场须布尔且与 op 同义（op 是权威——防 {op:'enable', enabled:false} 一类
+    // 自相矛盾请求静默择一）
+    if (body?.enabled !== undefined && (typeof body.enabled !== 'boolean' || body.enabled !== enabled)) {
+      io.send(res, 400, { error: `enabled must be ${enabled} for op="${op}" (or omit it)` });
+      return;
+    }
+    try {
+      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→400（旧位置条目须先 migrate）
+    } catch (err) {
+      if (!mapWriteError(err)) throw err;
+      return; // 已回 400
+    }
+    io.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
     return;
   }
   // upsert 校验面（首错 400，零部分写）：frontmatter 经 parseAgentFrontmatterInput 单点校验+归一
@@ -691,40 +859,30 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
     io.send(res, 400, { error: 'body must be a string' });
     return;
   }
-  // 写后回读验证（T3 raw 同款几何）：先落同目录 tmp → 回读 tmp 过真解析器（字节面=目标面）→
-  // throw/回环不符即拒：清 tmp 500，目标文件零触碰（不落盘）。验证口径=装配口径 parseAgentFrontmatter——
-  // 防生成坏文件（装配链 fail-fast 写盘前防线）；单行校验下此路径仅生成器缺陷可达，纯防御层
-  fs.mkdirSync(agentDir, { recursive: true });
-  const target = path.join(agentDir, 'agent.md');
-  const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpFile, renderAgentMd(fm, bodyText ?? ''), 'utf8');
+  // catalog upsertAgent：生成 + 写前 round-trip（验证口径=装载口径）+ 原子落盘 + notify 直发——
+  // serve 侧零文件操作。isolation/executor 为 string 归一前形态，断言窄化后枚举守卫在 catalog
+  // 运行时面（越型 INVALID → 400，较旧 tmp 回读 500 语义升级）
+  const spec: AgentUpsertSpec = {
+    name: fm.name,
+    ...(fm.description !== undefined ? { description: fm.description } : {}),
+    ...(fm.memory === true ? { memory: true } : {}),
+    ...(fm.isolation !== undefined ? { isolation: fm.isolation as 'worktree' } : {}),
+    ...(fm.executor !== undefined ? { executor: fm.executor as 'internal-team' | 'external-cli' } : {}),
+    body: bodyText ?? '',
+  };
   try {
-    const meta = parseAgentFrontmatter(fs.readFileSync(tmpFile, 'utf8'));
-    if (meta.name !== fm.name) throw new Error(`round-trip name mismatch: ${JSON.stringify(meta.name)}`);
+    upsertAgent(root, scope, id, spec);
   } catch (err) {
-    try {
-      fs.unlinkSync(tmpFile); // 拒存清 tmp：目标文件零触碰，不留残片
-    } catch {
-      // tmp 已不在场（写即败等）——无需清
-    }
-    io.send(res, 500, { error: `generated agent.md failed validation (${target}): ${err instanceof Error ? err.message : String(err)}` });
-    return;
-  }
-  try {
-    fs.renameSync(tmpFile, target);
-  } catch (err) {
-    try {
-      fs.unlinkSync(tmpFile);
-    } catch {
-      // 同上
-    }
-    throw err; // IO 面 → dispatch 500 收口
+    if (!mapWriteError(err)) throw err;
+    return; // 已回 400
   }
   io.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
 }
 
 /** GET /settings/agents/body?scope=project|global&id=&root=（G8d T3，AgentsPane 编辑全文装载）：
- *  读 <scopeDir>/agents/<id>/agent.md 的 frontmatter 后正文全文（parseAgentFrontmatter 单点——
+ *  读条目 agent.md（Task 15 落位解析：新家 <root>/.sunshinex/agents 先、旧位置 <root>/agents 回退，
+ *  global=<userConfigDir>/agents——catalog agentsDir/legacyAgentsDir 单点）的 frontmatter 后正文全文
+ *  （parseAgentFrontmatter 单点——
  *  验证口径=装载口径=bodyPreview 口径，三面同源；bodyPreview 的 200 帽在此不适用）。错误面：
  *  坏 scope/坏 id（AGENT_ID_RE 同 PUT 守卫）/scope=project 缺 root → 400；文件缺 → 404（回显
  *  `${scope}/agents/${id}` 相对定位——G8e-T4 收敛：不泄 daemon 主机绝对路径，GUI 可原样呈现）；
@@ -747,8 +905,14 @@ export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessa
     io.send(res, 400, { error: 'root required for scope=project' });
     return;
   }
-  const scopeDir = scope === 'global' ? userConfigDir() : path.resolve(rootParam as string);
-  const file = path.join(scopeDir, 'agents', id, 'agent.md');
+  // 落位解析（Task 15 收口 catalog agentsDir 单点）：先新家（upsert/enable 的写位），缺则回退旧位置
+  // <root>/agents（legacyAgentsDir——手建旧位条目的既有可编辑性不因写面收口回退；global 无旧位概念）
+  const scopeRoot = scope === 'project' ? path.resolve(rootParam as string) : null;
+  const newHomeFile = path.join(agentsDir(scope, scopeRoot), id, 'agent.md');
+  const file =
+    scope === 'project' && !fs.existsSync(newHomeFile)
+      ? path.join(legacyAgentsDir(scopeRoot!), id, 'agent.md')
+      : newHomeFile;
   if (!fs.existsSync(file)) {
     io.send(res, 404, { error: `agent.md not found: ${scope}/agents/${id}` });
     return;

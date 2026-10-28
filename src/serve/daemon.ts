@@ -568,12 +568,14 @@ export class GuiDaemon {
     { method: 'GET', path: '/settings/raw', auth: true, run: async (req, res) => this.handleSettingsRawGet(req, res) },
     { method: 'PUT', path: '/settings/raw', auth: true, run: (req, res) => this.handleSettingsRawPut(req, res) },
     // G8c T4 mcp 面：两级遮蔽视图 + 单台真探测 + 项目级结构化写（mcp 装配期语义——写盘不触发
-    // settings reload，新会话/下次装配生效）
+    // settings reload，新会话/下次装配生效）；Task 15 单条目操作端点（add/remove/enable/disable/
+    // approve/deny——handler 薄封装 catalog 写面，config-changed 帧由写内 notify 直发）
     { method: 'GET', path: '/settings/mcp', auth: true, run: async (req, res) => this.handleMcpGet(req, res) },
     { method: 'POST', path: '/settings/mcp/probe', auth: true, run: (req, res) => this.handleMcpProbe(req, res) },
     { method: 'PUT', path: '/settings/mcp', auth: true, run: (req, res) => this.handleMcpPut(req, res) },
-    // G8c T5 agents 面：两级宽容清单 + builtins 四角色 / 表单增删改（upsert 写后回读验证——装配
-    // fail-fast 的写盘前防线；delete 幂等；agents 装配期读取，写盘不触发 settings reload）
+    { method: 'PUT', path: '/settings/mcp/op', auth: true, run: (req, res) => this.handleMcpOp(req, res) },
+    // G8c T5 agents 面：两级宽容清单 + builtins 四角色 / 表单增删改（Task 15 起写面收口 catalog——
+    // upsert 落新家、op 扩 enable|disable|migrate；写盘不触发 settings reload，装配期语义）
     { method: 'GET', path: '/settings/agents', auth: true, run: async (req, res) => this.handleAgentsGet(req, res) },
     { method: 'PUT', path: '/settings/agents', auth: true, run: (req, res) => this.handleAgentsPut(req, res) },
     // G8d T3 agents 全文面：agent.md frontmatter 后正文全文（AgentsPane 编辑播种升级——清单面
@@ -965,6 +967,10 @@ export class GuiDaemon {
 
   private async handleMcpPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await configHandlers.handleMcpPut(this.configIo, req, res);
+  }
+
+  private async handleMcpOp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handleMcpOp(this.configIo, req, res);
   }
 
   private handlePluginsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
