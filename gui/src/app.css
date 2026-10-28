@@ -2361,7 +2361,13 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; } /* 头内按钮安全兜底;拖拽由头内空白带承担 */
 .sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: no-drag; } /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
-.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; padding-right: 150px; } /* 撤容器 drag(挖孔式,zoom 下吞窗控);padding 右留窗控簇位 */
+.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; } /* 撤容器 drag(挖孔式,zoom 下吞窗控) */
+/* 窗控簇 150px 预留按需生效(2026-10-29 用户实测「窄主栏标题被压没,右侧还有空间」根修):
+   预留只在主列是窗口最右表面(窗控簇真正压在主列上)时让位——侧栏停靠展开=窗控簇压侧栏上方,
+   主列顶栏无条件 150px 白占=窄主栏标题被挤进剩余窄条而右侧看似空着;浮窗抽屉态(抽屉关=主列
+   裸露;抽屉开=该区被抽屉盖住本不可用)与停靠折叠态(32px 骨架兜不住 ~150px 簇)照旧预留 */
+.sx-shell.sx-desktop.sx-sidebar-float .chat-topbar,
+.sx-shell.sx-desktop.sx-sidebar-collapsed .chat-topbar { padding-right: 150px; }
 .sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }
 /* left+104 避让菜单关闭态左上浮出簇(2026-10-25:后退/前进钮对+呼出钮,簇宽 10+84=94)—
    drag 矩形与一切按钮几何互斥不变,zoom 错位平移仍咬不到钮 */
@@ -2662,10 +2668,12 @@ input.sx-setting-input { width: 100%; }
    横排面(如有)margin-top 无视觉副作用,一处收口 */
 .sx-menuitem + .sx-menuitem { margin-top: 2px; }
 /* 同裁定全盘清点(2026-10-29 续):全部弹层条目类逐一核对,其余贴行面一并 2px——权限模式菜单
-   (.mode-item,分组 mode-pop-group 内相邻;分组间已有 mode-pop-sep 6px 不动)、「/」命令面板
+   (模式菜单每行各自包一层 mode-pop-group,相邻兄弟是分组不是条目——首版 .mode-item+.mode-item
+   落空即此,改分组层修;主栏 ComposerPills 与欢迎页两处同构;分组间 sep 自带 6px 边距,叠加
+   2px 后分隔线上下更透气,可接受)、「/」命令面板
    (.cmd-item)、设置下拉(.sx-dd-pop 内相邻 li>button)。已自带间距不动的:审批卡选项
    (card-options gap 4px)、归档/置顶/工作区行(margin-block 1px)、ctx-pop(为 kv 展示行无
    hover 底)、settings 导航列(常驻导航非弹层) */
-.mode-item + .mode-item,
+.mode-pop-group + .mode-pop-group,
 .cmd-item + .cmd-item,
 .sx-dd-pop li + li { margin-top: 2px; }
