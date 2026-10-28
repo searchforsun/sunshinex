@@ -81,7 +81,7 @@ declare global {
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
 
-/** 2026-10-27 欢迎页全局草稿座:无会话(欢迎页)时侧栏标签落此键——首个用户输入建席后整座迁移为该会话侧栏 */
+/** 2026-10-27 欢迎页全局草稿座:无会话(欢迎页)时侧栏标签落此键——2026-10-29 起与会话座全隔离(迁移链退役,座常驻回访原样) */
 const WELCOME_TAB_SEAT = '@welcome';
 
 export function App(): JSX.Element {
@@ -206,18 +206,9 @@ function AppShell(): JSX.Element {
   };
 
   const openSession = (sessionId: string, root: string, journalId?: string): void => {
-    // 2026-10-27 欢迎页全局草稿迁移:欢迎页(无会话)侧栏整座绑定为新会话侧栏(目标座空才迁,
-    // 不覆盖既有档)——迁移即取走,新欢迎页侧栏清空(草稿一次性)
-    if (isWelcome && sessionId !== '') {
-      const draft = tabStates[WELCOME_TAB_SEAT];
-      if (draft !== undefined && draft.tabs.length > 0) {
-        const target = tabStates[sessionId];
-        if (target === undefined || target.tabs.length === 0) {
-          const { [WELCOME_TAB_SEAT]: _moved, ...rest } = tabStates;
-          setTabStates({ ...rest, [sessionId]: { ...draft, collapsed: false } });
-        }
-      }
-    }
+    // 草稿座迁移链退役(2026-10-29 用户实测裁定「没有隔离」):原设计欢迎页开的标签整座迁入
+    // 目标会话(目标座空才迁,草稿一次性)——开既有会话也吸收草稿=跨座泄漏。改全隔离:
+    // '@welcome' 座欢迎页私有且常驻(回欢迎页原样),会话座只含自己的标签(ensureSession 建席)
     sessionRef.current = sessionId;
     const jid = journalId !== undefined && journalId !== '' ? journalId : sessionId;
     setOpenSessionId(sessionId);
@@ -291,8 +282,8 @@ function AppShell(): JSX.Element {
    *  稳定:内联闭包随 App 渲染换新,击穿 ChatEntryView memo——点一次文件=全列表重渲染闪帧
    *  (正文抖动源之一);sessionRef 恒同步 openSessionId,无过期闭包面 */
   const openTabInSession = useCallback((type: TabTypeId, params: TabParams = {}): void => {
-    // 2026-10-27 欢迎页全局草稿:无会话(欢迎页)写 '@welcome' 草稿座——首个用户输入建席后
-    // 整座迁移绑定为该会话侧栏(openSession 内迁移),新欢迎页侧栏清空
+    // 2026-10-27 欢迎页全局草稿:无会话(欢迎页)写 '@welcome' 草稿座——2026-10-29 起全隔离:
+    // 座常驻欢迎页私有,不随建席/开会话迁移(迁移链退役见 openSession)
     const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
     // G14.38:程序化开标签即展开右栏(默认折叠下 write/diff/目录跳转/卡片开面板均可见)
     setTabStates((st) => setCollapsed(st, seat, false));
