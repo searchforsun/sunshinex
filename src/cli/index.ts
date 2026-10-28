@@ -6,10 +6,13 @@ import { runLoop } from './commands/run-loop';
 import { runPipeline } from './commands/run-pipeline';
 import { runServe } from './commands/serve';
 import { runSkillsInstall } from './commands/skills-install';
+import { runSkillsCommand } from './commands/skills';
 import { runKbIndex } from './commands/kb-index';
 import { runPlugins } from './commands/plugins';
+import { runAgents } from './commands/agents';
+import { runSettings } from './commands/settings-cli';
 import { runMcpCommand } from './commands/mcp';
-import { MCP_FLAG_KEYS } from './commands/catalog-common';
+import { AGENTS_FLAG_KEYS, MCP_FLAG_KEYS, SETTINGS_FLAG_KEYS, SKILLS_FLAG_KEYS, backfillFlags } from './commands/catalog-common';
 import { runTui } from '../tui/entry';
 import { loadSettingsChain } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -83,7 +86,7 @@ export function flagList(flags: CliArgs['flags'], name: string): string[] {
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'mcp', 'help'];
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'mcp', 'agents', 'settings', 'help'];
 
 /** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
 export function isPathForm(arg: string): boolean {
@@ -130,10 +133,17 @@ export function usageText(): string {
   sunshinex pipeline <dir> --goal="..." [--yes]
                                           five-node pipeline with gate approvals (--yes auto-approves)
   sunshinex serve [dir] [--port=N]        GUI daemon (HTTP control + WS events)
+  sunshinex skills list [--scope=all|project|global] [--json]
+                                          list skills along the source chain (project/user/learned/plugin, shadow marks)
   sunshinex skills install <git-url | owner/repo | local-dir> [--force]
                                           install skills into the global skills root (~/.sunshinex/skills)
   sunshinex kb-index [dir]                build the knowledge-base index for md/txt files (billed embedding; kb_search source)
-  sunshinex plugins list [--root <abs>] | validate <dir>    list installed plugins / validate a plugin directory
+  sunshinex plugins list [--root <abs>] | validate <dir> | enable|disable <id> [--scope=global|project]
+                                          list installed plugins / validate a plugin directory / toggle plugin enabled state
+  sunshinex agents list|add|remove|enable|disable [--scope=global|project] [--root <dir>] [--json]
+                                          manage the agent catalog (add <id> --name=<n> [--description=<d>] [--memory] [--isolation=worktree] [--executor=internal-team|external-cli] [--body-file=<path>])
+  sunshinex settings get <key> | set <key> <value> [--scope=global|project]
+                                          read or write a semantic settings key (retired keys print guidance and exit 1)
   sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <dir>] [--json]
                                           manage the MCP server catalog (add <name> --command=<cmd> [--arg=a] [--env=K=V] | --url=<u>; project .sunshinex/mcp.json or global ~/.sunshinex/mcp.json)
   flags:
@@ -161,10 +171,17 @@ export function usageText(): string {
   sunshinex pipeline <dir> --goal="..." [--yes]
                                           五节点流水线 gate 审批（--yes 跳过交互直接批准）
   sunshinex serve [目录] [--port=N]       GUI daemon（HTTP 控制面 + WS 事件流）
+  sunshinex skills list [--scope=all|project|global] [--json]
+                                          沿来源链列出技能（project/user/learned/plugin 分组，含遮蔽标注）
   sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   sunshinex kb-index [目录]               构建知识库索引（对目录内 md/txt 走计费 embedding；kb_search 检索源）
-  sunshinex plugins list [--root <abs>] | validate <dir>    列出已装载插件 / 校验插件目录（schema 错误退出码 1）
+  sunshinex plugins list [--root <绝对路径>] | validate <目录> | enable|disable <id> [--scope=global|project]
+                                          列出已装载插件 / 校验插件目录 / 切换插件启用态（schema 错误退出码 1）
+  sunshinex agents list|add|remove|enable|disable [--scope=global|project] [--root <目录>] [--json]
+                                          管理子智能体目录（add <id> --name=<名称> [--description=<描述>] [--memory] [--isolation=worktree] [--executor=internal-team|external-cli] [--body-file=<路径>]）
+  sunshinex settings get <键> | set <键> <值> [--scope=global|project]
+                                          读写语义设置键（退役键打印处置指引并退出码 1）
   sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <目录>] [--json]
                                           管理 MCP server 目录（add <名称> --command=<命令> [--arg=a] [--env=K=V] | --url=<地址>；项目 .sunshinex/mcp.json 或全局 ~/.sunshinex/mcp.json）
   flags：
@@ -211,6 +228,16 @@ export function assertValidFlagValues(args: CliArgs): void {
   }
 }
 
+/**
+ * catalog 族 dispatch 单点（Task 18 自 mcp/plugins case 内联回填上收）：positional 透传 + 词汇表旗标
+ * 按 parseArgs 拆装结果还原为原始 token（backfillFlags 单点——词汇表外旗标静默丢弃，语言类全局旗标
+ * main 已先行消费），命令函数返回 exit code 非 0 落 process.exitCode。
+ */
+async function dispatchCatalogCommand(args: CliArgs, keys: readonly string[], run: (rest: string[]) => Promise<number>): Promise<void> {
+  const code = await run([...args.positional, ...backfillFlags(args.flags, keys)]);
+  if (code !== 0) process.exitCode = code;
+}
+
 async function main(): Promise<void> {
   const args = resolveInvocation(parseArgs(process.argv.slice(2)));
   // 版本号先于 settings 链装载与语言设定：--version 是纯产物事实查询，输出固定 en 单语
@@ -248,40 +275,31 @@ async function main(): Promise<void> {
     case 'serve':
       return runServe(args);
     case 'skills':
+      // 同族分流（Task 18）：`skills list` 走 catalog 只读视图（raw token 形态 + exit code 惯例），
+      // `skills install` 沿既有 CliArgs 形态入口不动
+      if (args.positional[0] === 'list') {
+        return dispatchCatalogCommand(args, SKILLS_FLAG_KEYS, runSkillsCommand);
+      }
       return runSkillsInstall(args);
     case 'kb-index':
       return runKbIndex(args);
-    case 'plugins': {
-      // runPlugins 吃原始 token 形态（string[]，返回 exit code）：positional 透传，--root 由 flags 面回填
-      // （parseArgs 已拆装）；裸 --root（缺值 boolean 形态）按缺参走 usage 退出
-      const root = args.flags.root;
-      if (root === true) {
-        console.error(t('Usage: sunshinex plugins list [--root <abs>] | validate <dir>', '用法：sunshinex plugins list [--root <abs>] | validate <dir>'));
-        process.exitCode = 1;
-        return;
-      }
-      const rest = [...args.positional];
-      if (typeof root === 'string' && root !== '') rest.push('--root', root);
-      const code = await runPlugins(rest);
-      if (code !== 0) process.exitCode = code;
-      return;
-    }
-    case 'mcp': {
+    case 'plugins':
+      // runPlugins 吃原始 token 形态（string[]，返回 exit code）：positional 透传，scope/root 旗标
+      // 按 parseArgs 拆装结果回填（Task 18 增 enable|disable 的 --scope；backfillFlags 单点——词汇表
+      // 外旗标静默丢弃，语言类全局旗标 main 已先行消费）
+      return dispatchCatalogCommand(args, ['scope', 'root'], runPlugins);
+    case 'mcp':
       // runMcpCommand 吃原始 token 形态（string[]，返回 exit code）：positional 透传，mcp 词汇表旗标
-      // 按 parseArgs 拆装结果回填（--arg/--env 可重复旗标经 REPEATABLE_FLAGS 收集为数组，展开还原
-      // 多值；词汇表外旗标静默丢弃——plugins case 同款宽松口径，语言类全局旗标 main 已先行消费）
-      const rest = [...args.positional];
-      for (const key of MCP_FLAG_KEYS) {
-        const v = args.flags[key];
-        if (v === undefined) continue;
-        if (Array.isArray(v)) for (const item of v) rest.push(`--${key}=${item}`);
-        else if (v === true) rest.push(`--${key}`); // 裸旗（--json/--root 缺值形态）原样透传，runMcpCommand 裁定
-        else rest.push(`--${key}=${v}`);
-      }
-      const code = await runMcpCommand(rest);
-      if (code !== 0) process.exitCode = code;
-      return;
-    }
+      // 按 parseArgs 拆装结果回填（--arg/--env 可重复旗标经 REPEATABLE_FLAGS 收集为数组，展开还原多值）
+      return dispatchCatalogCommand(args, MCP_FLAG_KEYS, runMcpCommand);
+    case 'agents':
+      // runAgents 吃原始 token 形态（string[]，返回 exit code）：positional 透传，agents 词汇表旗标
+      // 按 parseArgs 拆装结果回填（Task 18；--memory 布尔旗 bare 形态原样透传）
+      return dispatchCatalogCommand(args, AGENTS_FLAG_KEYS, runAgents);
+    case 'settings':
+      // runSettings 吃原始 token 形态（string[]，返回 exit code）：positional 透传，settings 词汇表旗标
+      // 按 parseArgs 拆装结果回填（Task 18；get/set 的 --scope 两级定位）
+      return dispatchCatalogCommand(args, SETTINGS_FLAG_KEYS, runSettings);
     case 'tui': {
       const d = resolveDirArg(args);
       if (d.unrecognized) {
