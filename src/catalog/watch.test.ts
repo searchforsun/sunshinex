@@ -1,0 +1,99 @@
+// src/catalog/watch.test.ts
+// ConfigWatcher 行为测试：真实 tmp 目录 + 真实 fs.watch（不读任何配置文件，不需要 HOME 桩，绝不触真实 ~/.sunshinex）。
+// 计时纪律（沿仓内「计时抖动」教训，见 scripts/run-tests.js 注释）：等待只设上界不设精确时序——
+// 正向断言用 waitFor 轮询（事件一到即过），反向断言（无回调）给足 ≥1.5s 上界窗口。
+import { test } from 'node:test'; import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os'; import { join } from 'node:path';
+import { ConfigWatcher, type ConfigChange } from './watch';
+
+/** 固定等待（反向断言的观察窗口/写前就绪缓冲） */
+const waitMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+/** 轮询等待条件成立，timeoutMs 只是兜底上界——满足即返回，不整段硬睡 */
+async function waitFor(fn: () => boolean, timeoutMs = 2500): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    if (fn()) return;
+    if (Date.now() - start > timeoutMs) throw new Error(`waitFor 超时（${timeoutMs}ms 内条件未成立）`);
+    await waitMs(25);
+  }
+}
+
+test('写 globalDir/mcp.json → 收 mcp/global/null；300ms 防抖窗口内多次写合并为一次回调', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cw-global-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  w.watchGlobal(dir); // agents/ plugins/ 子目录不存在 → 逐目录降级 warn，不影响本层监听
+  try {
+    await waitMs(250); // fs.watch 就绪缓冲
+    writeFileSync(join(dir, 'mcp.json'), '{"a":1}');
+    writeFileSync(join(dir, 'mcp.json'), '{"a":2}'); // 防抖窗口内第二次写 → 合并
+    await waitFor(() => got.some(c => c.resource === 'mcp' && c.scope === 'global' && c.root === null));
+    await waitMs(800); // 超过防抖窗口+余量：确认没有第二次回调
+    assert.equal(got.length, 1);
+  } finally { w.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('写 project/.sunshinex/skills/a/SKILL.md → 收 skills/project/root', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cw-proj-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  mkdirSync(join(root, '.sunshinex', 'skills'), { recursive: true }); // 结构先于监听存在（缺失目录会降级跳过）
+  mkdirSync(join(root, '.sunshinex', 'agents'), { recursive: true });
+  w.watchProject(root);
+  try {
+    await waitMs(250);
+    const skillDir = join(root, '.sunshinex', 'skills', 'a');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '# t');
+    await waitFor(() => got.some(c => c.resource === 'skills' && c.scope === 'project' && c.root === root));
+    await waitMs(800); // base 层与 skills/ 两路事件同键 → 防抖合并为一次
+    assert.equal(got.filter(c => c.resource === 'skills').length, 1);
+  } finally { w.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("suppress('mcp','global',null) 后写 mcp.json → 窗口期内不回调（写回环抑制）", async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cw-suppress-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  w.watchGlobal(dir);
+  try {
+    await waitMs(250);
+    w.suppress('mcp', 'global', null); // 缺省 500ms 抑制窗口
+    writeFileSync(join(dir, 'mcp.json'), '{"a":1}');
+    await waitMs(1600); // 上界 ≥1.5s：窗口内确无任何回调
+    assert.equal(got.length, 0);
+  } finally { w.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('watch 不存在目录 → 不 throw、降级 warn（回退 GET 即读）', () => {
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  const missing = join(mkdtempSync(join(tmpdir(), 'cw-missing-')), 'nope');
+  assert.doesNotThrow(() => { w.watchGlobal(missing); w.watchProject(missing); });
+  assert.doesNotThrow(() => w.close()); // 拆除也不 throw
+  rmSync(missing, { recursive: true, force: true });
+});
+
+test('close() 后写文件不再回调', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cw-close-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  w.watchGlobal(dir);
+  try {
+    await waitMs(250);
+    writeFileSync(join(dir, 'settings.json'), '{}');
+    await waitFor(() => got.length > 0); // 先证明监听确实活着
+    w.close();
+    await waitMs(100);
+    const before = got.length;
+    writeFileSync(join(dir, 'settings.json'), '{"x":1}');
+    await waitMs(1600); // 上界 ≥1.5s：close 后确无迟到回调
+    assert.equal(got.length, before);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
