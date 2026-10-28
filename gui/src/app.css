@@ -2615,3 +2615,19 @@ input.sx-setting-input { width: 100%; }
    内联落 style」与 CSS max-width 即时钳两套打架(状态滞后↔即钳来回跳)= 果冻,不再内联宽 ===== */
 .sx-sidebar { width: var(--sb-w, 420px); }
 .sx-shell.sx-sidebar-float .sx-sidebar { max-width: calc(100vw - 24px); }
+
+/* ===== 2026-10-28 用户裁定:运行转圈全局统一=正文 run-spinner 12px——会话行/任务板/动态行
+   同升(8/6px 档退役);done/failed/stopped 仍为小圆点(点语言不随转圈放大) ===== */
+.sx-session-dot.running {
+  width: 12px;
+  height: 12px;
+  -webkit-mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px);
+  mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px);
+}
+.sx-session-dot.running { left: 12px; top: calc(50% - 6px); }
+.tb-status-dot.bg-running {
+  width: 12px;
+  height: 12px;
+  -webkit-mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px);
+  mask-image: radial-gradient(circle 6px at 50% 50%, transparent 1.8px, #000 2.6px 4.5px, transparent 5.1px);
+}
