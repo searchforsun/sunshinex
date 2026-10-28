@@ -388,19 +388,24 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     // 位置=monaco getScrolledVisiblePosition(任意行可用)+编辑器/容器 rect 差换算;
                     // mousedown preventDefault 保选区;双动作:添加到当前任务/在辅助对话中提问
                     editorRef.current = ed;
-                    // 右缘缩放布局同步(2026-10-29 用户实测果冻两轮根修):
+                    // 右缘缩放布局同步(2026-10-29 用户实测果冻三轮根修):
                     // ①e19e1de 的 RO+120ms 尾沿防抖:连续拖动中定时器每帧重置=拖动全程零重排,恒按
                     //   旧宽绘制(变宽右侧留白带/旧折行溢出多出纵横条/停手一次性 snap)——已出局;
                     // ②RO+rAF 中转:stale 收敛到单帧,但相位差恒在——容器边缘纯 CSS 当帧走,内容
-                    //   下一帧才重排,快速拖动内容边缘拖 ~16px 弹性尾=残余果冻——一并出局;
-                    // ③本版=RO 回调内同步 layout:RO 触发点在当帧布局后、绘制前,同帧重排同帧上屏
-                    //   =零相位差;浏览器保证每元素每帧至多一次回调(天然合并不需手动),与 monaco
-                    //   内建 automaticLayout(ElementSizeObserver 首帧立即+逐帧合并)同帧同成本,
-                    //   审查页 diff 即此路径无果冻实证。代价=拖动中每帧全量重折行(大文件帧预算
-                    //   压力回归 e19e1de 前水平,实测有感再上分级);首帧即刻 layout 保尺寸就位
+                    //   下一帧才重排,快速拖动内容边缘拖 ~16px 弹性尾——一并出局;
+                    // ③本版=RO 回调内同步 layout+强制同步渲染:RO 触发点在当帧布局后、绘制前,
+                    //   layout 后再打 View.render(now=true)(_flushAccumulatedAndRenderNow)把新布局
+                    //   的文字像素同帧写上 DOM——layout 只管几何,文字本走 Monaco 下一帧 rAF 渲染批
+                    //   (边框到位文字晚一帧=拖尾残余),now=true 消掉它。私有路径 _modelData.view 以
+                    //   可选链守卫,monaco 升级断链时静默回退渲染批(仅剩一帧拖尾不致错乱);与 monaco
+                    //   内建 automaticLayout 相比多补了这刀(内建同样吃渲染批的晚一帧)。首帧即刻 layout
                     ed.layout();
                     const monoRo = new ResizeObserver(() => {
-                      if (editorRef.current !== null) editorRef.current.layout(); // 卸载守卫(disconnect 后无迟到回调)
+                      if (editorRef.current === null) return; // 卸载守卫(disconnect 后无迟到回调)
+                      editorRef.current.layout();
+                      (editorRef.current as unknown as {
+                        _modelData?: { view?: { render?: (now: boolean, everything: boolean) => void } };
+                      })._modelData?.view?.render?.(true, false);
                     });
                     monoRo.observe(ed.getContainerDomNode());
                     monoRoRef.current = monoRo;
