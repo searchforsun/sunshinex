@@ -130,13 +130,19 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   useEffect(() => () => { editorRef.current = null; }, []);
 
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
+  /** 文件读取单点(2026-10-27 欢迎页全局草稿):无会话(欢迎页草稿座)走 /app/file(root 信任域),
+   *  有会话走既有 /session/:id/file */
+  const readFileOf = useCallback(
+    (p: string): Promise<FileResp> => (sessionId === '' ? conn.appFile(root ?? '', p) : conn.readFile(sessionId, p)),
+    [conn, sessionId, root],
+  );
   const fetchFile = useCallback(
     (p: string): void => {
       const target = normRel(p);
       if (target === '') return;
       const rid = ++requestIdRef.current;
       setLoad((prev) => ({ file: prev.file, error: null, loading: true }));
-      void conn.readFile(sessionId, target).then(
+      void readFileOf(target).then(
         (f) => {
           if (rid !== requestIdRef.current) return; // 过期应答:丢弃
           if (f.type === 'directory') {
@@ -179,7 +185,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
   /** G14.125 预览组件面:md 内标准超链接按当前 md 目录解析为绝对路径后开内部 file 标签 */
   /** 2026-10-26 正文 md 图片同口径:md 预览里图片语法的工作区路径经 readFile 解析直显 */
   const mdImageLoader = useCallback(
-    (p: string) => conn.readFile(sessionId, p),
+    (p: string) => readFileOf(p),
     [conn, sessionId],
   );
   const previewComponents = useMemo(

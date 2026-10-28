@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import * as os from 'node:os';
 import type { SessionRuntime } from './session';
 import type { PtyManager } from './pty';
 
@@ -51,6 +52,42 @@ export function handlePtyKill(io: PtyHandlerIo, res: http.ServerResponse, id: st
     io.send(res, 404, { error: 'pty not found for session' });
     return;
   }
+  io.ptyManager.kill(ptyId);
+  io.send(res, 200, { ok: true });
+}
+
+/** App 级 pty 分配（2026-10-27 用户裁定:欢迎页全局草稿——终端页签不绑会话）:root 直供 cwd
+ *  （缺省落临时目录）,owner='@app'（与会话 pty 分域;回收走 handleAppPtyKill） */
+export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { root?: unknown; cols?: unknown; rows?: unknown } | null;
+  const cols = body?.cols ?? 80;
+  const rows = body?.rows ?? 24;
+  if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
+    io.send(res, 400, { error: 'cols and rows must be positive integers' });
+    return;
+  }
+  const root = typeof body?.root === 'string' && body.root !== '' ? body.root : os.tmpdir();
+  const ptyId = io.nextPtyId();
+  const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
+  io.ptyManager.spawn(ptyId, {
+    file,
+    args: [],
+    cwd: root,
+    cols,
+    rows,
+    owner: '@app',
+    env: process.env as Record<string, string>,
+  });
+  io.send(res, 200, { ptyId });
+}
+
+/** App 级 pty 回收:不校验 owner（'@app' 域无会话寻址）——ptyId 直杀,幂等 */
+export function handleAppPtyKill(io: PtyHandlerIo, res: http.ServerResponse, ptyId: string): void {
   io.ptyManager.kill(ptyId);
   io.send(res, 200, { ok: true });
 }

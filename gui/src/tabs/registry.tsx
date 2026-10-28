@@ -243,6 +243,8 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         uid={p.uid}
         ptyIdFor={p.ptyIdFor}
         onPtyAllocated={p.onPtyAllocated}
+        draft={p.sessionId === ''}
+        draftRoot={p.root}
       />
     ),
   },

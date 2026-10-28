@@ -160,6 +160,8 @@ export interface Connection {
   /** GET /session/:id/file?path=（G6 预览面）：path 相对会话 root 或绝对均可；403(越界)/404(不
    *  存在/目录)/415(二进制)以 HTTP 失败抛错（消息含 status）——Files 页错误态消费 */
   readFile(sessionId: string, path: string): Promise<FileResp>;
+  /** GET /app/file?root=&path=（2026-10-27 欢迎页全局草稿）:无会话文件读,信任域=注册工作区根+数据目录 */
+  appFile(root: string, path: string): Promise<FileResp>;
   /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
    *  callId 无帧/会话）以 HTTP 失败抛错——Chat write 展开退单列现内容的判据 */
   fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
@@ -175,6 +177,10 @@ export interface Connection {
   /** DELETE /session/:id/pty/:ptyId（G8b T3）：同步注销——kill 后新 WS 连入收 error
    *  'pty not found'（注销即失效，无宽限窗） */
   killPty(sessionId: string, ptyId: string): Promise<void>;
+  /** POST /app/pty（2026-10-27 欢迎页全局草稿）:无会话 pty 分配（root 直供 cwd,owner '@app'） */
+  openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }>;
+  /** DELETE /app/pty/:ptyId:App 级 pty 回收 */
+  killPtyAt(ptyId: string): Promise<void>;
   /** GET /session/:id/tree?path=（G8b T4 目录面，path 缺省 = root 单层直读）：DirectoryTab 逐层
    *  惰拉的取数面；403 越界/404 不存在/400 非目录以 HTTP 失败抛错（消息含 status） */
   tree(sessionId: string, path?: string): Promise<TreeResp>;
@@ -544,6 +550,25 @@ export function createConnection(opts: ConnectionOpts): Connection {
       });
       if (!res.ok) throw new Error(`${path} -> ${res.status}`);
       return (await res.json()) as { ptyId: string };
+    },
+    async appFile(root: string, filePath: string): Promise<FileResp> {
+      return getJson<FileResp>(`/app/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(filePath)}`);
+    },
+    async openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
+      const body: { root: string; cols?: number; rows?: number } = { root };
+      if (cols !== undefined) body.cols = cols;
+      if (rows !== undefined) body.rows = rows;
+      // post 助手无应答体面(newSession 同款 fetch+json)——ptyId 在 200 应答体内
+      const res = await fetch(`${base}/app/pty`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`/app/pty -> ${res.status}`);
+      return (await res.json()) as { ptyId: string };
+    },
+    async killPtyAt(ptyId: string): Promise<void> {
+      await post(`/app/pty/${encodeURIComponent(ptyId)}`, {});
     },
     async killPty(sessionId: string, ptyId: string): Promise<void> {
       const path = `/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`;

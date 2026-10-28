@@ -43,6 +43,10 @@ export interface TerminalTabProps {
   readonly ptyIdFor: (uid: string) => string | undefined;
   /** pty 分配落定回传(App ptyIdsRef 记账;关标签 → killPty) */
   readonly onPtyAllocated: (uid: string, ptyId: string) => void;
+  /** 2026-10-27 欢迎页全局草稿:draft=true = 不绑会话——分配走 /app/pty(root 直供 cwd),
+   *  WS 寻址会话段用 '@welcome' 占位(serve 帧中继只按 ptyId 寻址,段不校验) */
+  readonly draft?: boolean;
+  readonly draftRoot?: string;
 }
 
 /** xterm 主题:取 app.css 设计令牌字面值(G8a spec §3;G8d U-D21 青色重定——CSS 变量无法跨
@@ -55,7 +59,7 @@ const XTERM_THEME = {
   selectionBackground: 'rgba(34, 211, 238, 0.25)',
 } as const;
 
-export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated }: TerminalTabProps): JSX.Element {
+export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '' }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   /** jsdom 守卫落定面:无布局 → 降级(降级时 pty 已分配记账,关标签链照常 kill) */
   const [fallback, setFallback] = useState(false);
@@ -101,7 +105,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
         for (;;) {
           if (cancelled) return;
           if (ptyId === undefined) {
-            const allocated = await conn.openPty(sessionId, 80, 24);
+            const allocated = draft ? await conn.openPtyAt(draftRoot, 80, 24) : await conn.openPty(sessionId, 80, 24);
             if (cancelled) return;
             ptyId = allocated.ptyId;
             onPtyAllocated(uid, ptyId);
@@ -121,7 +125,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           let sawFrame = false; // replay/data 任一到达 = pty 活着(回退判据)
           let dead = false; // error 帧+closed = 档键已死(回退触发)
           socket = new PtySocket({
-            url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`,
+            url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(draft ? '@welcome' : sessionId)}/pty/${encodeURIComponent(ptyId)}`,
             token: localStorage.getItem('sunshinex.token') ?? '',
             onFrame: (f: PtyFrame): void => {
               if (f.t === 'replay' || f.t === 'data') {

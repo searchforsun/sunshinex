@@ -249,6 +249,13 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   // 帽内直读；缺档/目录落下方既有 404/directory 面（readFileBounded 语义不变）；超帽 415 指引裁剪。
   // 帽走 stat 前检（read 工具图片分支同款理由：readFileSync 对巨型文件先整量分配 Buffer 的 OOM 面），
   // 读后复验兜 stat→read 竞态窗口
+  sendFilePayload(io, res, abs);
+}
+
+/** 文件载荷发送(2026-10-27 抽取共用:handleFile 与 handleAppFile 同尾段)——图片预览分支
+ *  (扩展名→base64 随 JSON 回,帽走 stat 前检防巨型 Buffer OOM,读后复验兜 stat→read 竞态)
+ *  + 文本 readFileBounded(404/directory/binary/截断语义) */
+function sendFilePayload(io: FileHandlerIo, res: http.ServerResponse, abs: string): void {
   const previewMime = imageMimeOf(abs);
   if (previewMime !== undefined) {
     let imgBuf: Buffer | null = null;
@@ -288,6 +295,48 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     return;
   }
   io.send(res, 200, { path: abs, content: read.content, ...(read.truncated ? { truncated: true } : {}) });
+}
+
+/** App 级文件读（2026-10-27 欢迎页全局草稿:文件页签不绑会话）:GET /app/file?root=&path=。
+ *  信任域=注册工作区根(与 sessions-list/handleFile 的 inWorkspaceRoots 同源扫描)+该 root 的
+ *  数据目录(memory 等产物可达);无会话寻址,root 缺省按字面解析 */
+export function handleAppFile(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const q = url.searchParams.get('path');
+  if (q === null || q.length === 0) {
+    io.send(res, 400, { error: 'path query param required' });
+    return;
+  }
+  const rootParam = url.searchParams.get('root') ?? '';
+  const base = rootParam !== '' ? rootParam : process.cwd();
+  const abs = path.resolve(base, q);
+  const real = realPathOf(abs) ?? abs;
+  const dataRoot = rootParam !== '' ? path.resolve(resolveDataDir(rootParam)) : '';
+  const inData = dataRoot !== '' && (real === dataRoot || real.startsWith(dataRoot + path.sep));
+  let inWorkspaceRoots = false;
+  try {
+    for (const ent of fs.readdirSync(projectsRoot(), { withFileTypes: true })) {
+      if (!ent.isDirectory()) continue;
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(projectsRoot(), ent.name, 'data', 'workspace.json'), 'utf8')) as { root?: unknown };
+        if (typeof raw?.root !== 'string' || raw.root === '') continue;
+        const wroot = path.resolve(raw.root);
+        if (real === wroot || real.startsWith(wroot + path.sep)) {
+          inWorkspaceRoots = true;
+          break;
+        }
+      } catch {
+        /* 坏档跳过 */
+      }
+    }
+  } catch {
+    /* 注册表缺席:仅数据目录域 */
+  }
+  if (!inData && !inWorkspaceRoots) {
+    io.send(res, 403, { error: 'path outside trusted roots' });
+    return;
+  }
+  sendFilePayload(io, res, abs);
 }
 
 export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
