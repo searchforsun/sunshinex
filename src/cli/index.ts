@@ -8,6 +8,8 @@ import { runServe } from './commands/serve';
 import { runSkillsInstall } from './commands/skills-install';
 import { runKbIndex } from './commands/kb-index';
 import { runPlugins } from './commands/plugins';
+import { runMcpCommand } from './commands/mcp';
+import { MCP_FLAG_KEYS } from './commands/catalog-common';
 import { runTui } from '../tui/entry';
 import { loadSettingsChain } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -34,8 +36,8 @@ export interface CliArgs {
   flags: Record<string, string | boolean | string[]>;
 }
 
-/** 可重复 flag 清单：出现多次不覆盖、依次收集为数组（当前仅 --add-dir） */
-const REPEATABLE_FLAGS = new Set(['add-dir']);
+/** 可重复 flag 清单：出现多次不覆盖、依次收集为数组（--add-dir；mcp 族的 --arg/--env 同为多值旗） */
+const REPEATABLE_FLAGS = new Set(['add-dir', 'arg', 'env']);
 
 export function parseArgs(argv: string[]): CliArgs {
   const flags: Record<string, string | boolean | string[]> = {};
@@ -81,7 +83,7 @@ export function flagList(flags: CliArgs['flags'], name: string): string[] {
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'help'];
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'mcp', 'help'];
 
 /** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
 export function isPathForm(arg: string): boolean {
@@ -132,6 +134,8 @@ export function usageText(): string {
                                           install skills into the global skills root (~/.sunshinex/skills)
   sunshinex kb-index [dir]                build the knowledge-base index for md/txt files (billed embedding; kb_search source)
   sunshinex plugins list [--root <abs>] | validate <dir>    list installed plugins / validate a plugin directory
+  sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--json]
+                                          manage the MCP server catalog (add <name> --command=<cmd> [--arg=a] [--env=K=V] | --url=<u>; project .sunshinex/mcp.json or global ~/.sunshinex/mcp.json)
   flags:
   --mode=read-only|acceptEdits|full-access
                                           permission mode (default acceptEdits)
@@ -161,6 +165,8 @@ export function usageText(): string {
                                           把技能安装到全局技能根（~/.sunshinex/skills）
   sunshinex kb-index [目录]               构建知识库索引（对目录内 md/txt 走计费 embedding；kb_search 检索源）
   sunshinex plugins list [--root <abs>] | validate <dir>    列出已装载插件 / 校验插件目录（schema 错误退出码 1）
+  sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--json]
+                                          管理 MCP server 目录（add <名称> --command=<命令> [--arg=a] [--env=K=V] | --url=<地址>；项目 .sunshinex/mcp.json 或全局 ~/.sunshinex/mcp.json）
   flags：
   --mode=read-only|acceptEdits|full-access
                                           权限模式（缺省 acceptEdits）
@@ -257,6 +263,22 @@ async function main(): Promise<void> {
       const rest = [...args.positional];
       if (typeof root === 'string' && root !== '') rest.push('--root', root);
       const code = await runPlugins(rest);
+      if (code !== 0) process.exitCode = code;
+      return;
+    }
+    case 'mcp': {
+      // runMcpCommand 吃原始 token 形态（string[]，返回 exit code）：positional 透传，mcp 词汇表旗标
+      // 按 parseArgs 拆装结果回填（--arg/--env 可重复旗标经 REPEATABLE_FLAGS 收集为数组，展开还原
+      // 多值；词汇表外旗标静默丢弃——plugins case 同款宽松口径，语言类全局旗标 main 已先行消费）
+      const rest = [...args.positional];
+      for (const key of MCP_FLAG_KEYS) {
+        const v = args.flags[key];
+        if (v === undefined) continue;
+        if (Array.isArray(v)) for (const item of v) rest.push(`--${key}=${item}`);
+        else if (v === true) rest.push(`--${key}`); // 裸旗（--json/--root 缺值形态）原样透传，runMcpCommand 裁定
+        else rest.push(`--${key}=${v}`);
+      }
+      const code = await runMcpCommand(rest);
       if (code !== 0) process.exitCode = code;
       return;
     }
