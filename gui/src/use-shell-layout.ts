@@ -135,7 +135,10 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', stop);
       resizeCleanupRef.current = null;
-      setTabStates((s) => setWidth(s, sessionId, next)); // 终值单次落态(内联直写值与态值一致,零回跳)
+      // 内联宽清场+终值落态同批提交(同一事件任务内,无中间绘制帧)——宽度自此归 CSS
+      // var(--sb-w) 管(窗口缩放纯 CSS 逐帧钳,果冻根除),拖拽直写值不残留覆盖
+      if (sidebarRef.current !== null) sidebarRef.current.style.width = '';
+      setTabStates((s) => setWidth(s, sessionId, next));
     };
     resizeCleanupRef.current = stop;
     window.addEventListener('mousemove', onMove);

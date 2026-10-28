@@ -2609,3 +2609,9 @@ input.sx-setting-input { width: 100%; }
 
 /* 2026-10-28 用户裁定续:页签条钉 40px 工具行高——与主对话顶栏/窗控簇同高,两道下缘分割线齐平 */
 .sx-tabstrip { height: var(--toolbar-h); }
+
+/* ===== 2026-10-28 用户裁定:窗口缩放果冻根修——侧栏宽改纯 CSS 钳制:React 只供偏好宽
+   --sb-w(setWidth 落态),随窗缩放由 width+既有 max-width 逐帧跟随;旧「JS 渲染期钳制宽度
+   内联落 style」与 CSS max-width 即时钳两套打架(状态滞后↔即钳来回跳)= 果冻,不再内联宽 ===== */
+.sx-sidebar { width: var(--sb-w, 420px); }
+.sx-shell.sx-sidebar-float .sx-sidebar { max-width: calc(100vw - 24px); }
