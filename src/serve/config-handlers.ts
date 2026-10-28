@@ -493,13 +493,14 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
  *  - remove/enable/disable：目标条目缺失/形状非法 → catalog INVALID（严格语义，非幂等）；
  *  - approve/deny：仅 project 有效（global → 400——全局条目用户手配不过批准阀），走
  *    approvals.approveMcpServer/denyMcpServer 既有写面（互斥维护 + notify 回填）。
- *  CatalogWriteError 映射（沿既有 handler 对两类拒写的分野）：COMMENTS → 409 {error, hint:'use
- *  raw editor'}（现 409 形状复用——注释文件引流 raw 编辑面）；INVALID → 400 {error}（与整块 PUT
- *  把「文件畸形」映射 409 的分野：op 面统一二值契约——400=请求/语义不被接受（含目标文件畸形，
- *  error 原文指名文件与原因）、409+hint=须先经 raw 面清注释；catalog 家族 approvals 同款
- *  COMMENTS/INVALID 双码裁定）。请求形态错（坏 op/scope/缺 name、project 缺 root、global
- *  approve/deny）在入 catalog 前 400 拦。成功 200 {ok:true}；不触发 settings reload（mcp/approvals
- *  均装配期语义——mcp 新会话生效、批准阀下次装载读取） */
+ *  CatalogWriteError 映射（控制器裁定 2026-10-28）：COMMENTS/INVALID 两码统一 → 409 {error,
+ *  hint:'use raw editor'}——brief 契约行钉死 COMMENTS/INVALID → 409 {error,hint}；同资源族三个既有
+ *  结构化写面（settings 结构化/raw、mcp 整块 PUT、plugins PUT）对「目标文件现状不可结构化写」一律
+ *  409 同判；本端点是首个 CatalogWriteError→HTTP 映射，无「既有分野」可沿。语义定案：**400=纯请求
+ *  形状错误**（坏 op/scope、缺 name、project 缺 root、global approve/deny——全部在入 catalog 前拦），
+ *  **409=内容/写面错误**（注释文件/畸形 JSON/条目缺失/server 形状不收——error 原文指名文件与原因）。
+ *  成功 200 {ok:true}；不触发 settings reload（mcp/approvals 均装配期语义——mcp 新会话生效、批准阀
+ *  下次装载读取） */
 export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
@@ -536,7 +537,7 @@ export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage
   try {
     switch (op) {
       case 'add':
-        upsertMcpServer(root, scope, name, body?.server); // server 校验在 catalog（INVALID→400），原样透传
+        upsertMcpServer(root, scope, name, body?.server); // server 校验在 catalog（INVALID→409+hint），原样透传
         break;
       case 'remove':
         removeMcpServer(root, scope, name);
@@ -553,12 +554,10 @@ export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage
         break;
     }
   } catch (err) {
+    // CatalogWriteError（COMMENTS/INVALID 两码）统一 409+hint——控制器裁定 2026-10-28（理由与语义
+    // 定案见上注）：400 恒留请求形状面，写面拒写（含条目缺失/server 形状不收/文件畸形）不落 400
     if (err instanceof CatalogWriteError) {
-      if (err.code === 'COMMENTS') {
-        io.send(res, 409, { error: err.message, hint: 'use raw editor' });
-        return;
-      }
-      io.send(res, 400, { error: err.message });
+      io.send(res, 409, { error: err.message, hint: 'use raw editor' });
       return;
     }
     throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口（T2/T4 同惯例）
@@ -741,18 +740,20 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
  *    （内部 renderAgentMd 生成 + 写前 round-trip 过真解析器 + 原子落盘——较旧 tmp+回读+rename 更进一步：
  *    坏内容根本不进 tmp）。落位=新家 <root>/.sunshinex/agents/<id>（catalog agentsDir 单点——storage
  *    归一裁定，旧位置条目经 migrate op 入新家）；frontmatter 枚举越型（isolation/executor）旧路径落
- *    tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 400（罕见路径语义升级）
+ *    tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 409+hint（罕见路径语义升级，见映射注）
  *  - delete：catalog removeAgent（rm -rf 条目整目录含同级私有文件；新家缺失 INVALID）+ 旧位置兼容
  *    回退——catalog 写面对旧位置「只迁不删」无删除面，serve 保留旧位删除收口使幂等契约不回退
  *    （手建旧位条目仍可删）；新旧皆缺 = 幂等 200（既有契约零变）
  *  - enable/disable（Task 15 新增）：catalog setAgentEnabled（frontmatter enabled 行保序手术 +
- *    写后回环）；条目缺失 → 400（旧位置条目须先 migrate——写面只认新家，迁移前置是产品语义）
+ *    写后回环）；条目缺失 → 409（旧位置条目须先 migrate——写面只认新家，迁移前置是产品语义）
  *  - migrate（Task 15 新增）：catalog migrateAgent（legacy <root>/agents/<id> 整目录拷入新家，
  *    旧位保留）。恒项目级（body 无 scope——root 锚定），缺 root 400；非 legacy 条目（无源目录）
- *    → 404（brief 明定——迁移是 legacy 专属动作）；撞新家已存在 → 400（INVALID）
- *  CatalogWriteError 映射：INVALID → 400 {error}（delete 例外——缺失 INVALID 就地吞作幂等 200，
- *  见分支注）；COMMENTS 不可达（agent.md 无注释形态——真如此
- *  沿 INVALID 分支外的兜底抛错走 dispatch 500）。IO 失败不经本地捕获——沿 dispatch 500 收口 */
+ *    → 404（brief 明定——迁移是 legacy 专属动作）；撞新家已存在 → 400（裁定例外项，见分支注）
+ *  CatalogWriteError 映射（控制器裁定 2026-10-28，理由见 handleMcpOp 注）：upsert/enable/disable
+ *  的 INVALID → 409 {error, hint:'use raw editor'}（内容/写面错误；delete 例外——缺失 INVALID 就地
+ *  吞作幂等 200，见分支注）；migrate 的 INVALID 保留 400（撞新家=请求所指目标状态冲突，裁定例外项）。
+ *  COMMENTS 不可达（agent.md 无注释形态——真如此沿兜底抛错走 dispatch 500）。IO 失败不经本地捕获
+ *  ——沿 dispatch 500 收口 */
 export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
@@ -785,7 +786,9 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
       return;
     }
     try {
-      migrateAgent(migrateRoot, id); // 撞新家已存在 → INVALID → 400
+      // 撞新家已存在 → 400（保留原判——控制器裁定 2026-10-28 的例外项：撞新家属请求所指目标的
+      // 状态冲突而非目标文件内容不可写，非 legacy 404 同类，不入「内容/写面错误 → 409」桶）
+      migrateAgent(migrateRoot, id);
     } catch (err) {
       if (err instanceof CatalogWriteError) {
         io.send(res, 400, { error: err.message });
@@ -809,7 +812,9 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
   const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
   const mapWriteError = (err: unknown): boolean => {
     if (!(err instanceof CatalogWriteError)) return false; // 非 catalog 面（IO 竞态等）→ dispatch 500
-    io.send(res, 400, { error: err.message });
+    // 内容/写面错误 → 409+hint（控制器裁定 2026-10-28，理由与语义定案见 handleMcpOp 注——
+    // upsert/enable/disable 的写面拒写：条目缺失/frontmatter 枚举越型/round-trip 拒写等）
+    io.send(res, 409, { error: err.message, hint: 'use raw editor' });
     return true;
   };
   if (op === 'delete') {
@@ -838,7 +843,7 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
       return;
     }
     try {
-      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→400（旧位置条目须先 migrate）
+      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→409+hint（旧位置条目须先 migrate）
     } catch (err) {
       if (!mapWriteError(err)) throw err;
       return; // 已回 400
@@ -861,7 +866,7 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
   }
   // catalog upsertAgent：生成 + 写前 round-trip（验证口径=装载口径）+ 原子落盘 + notify 直发——
   // serve 侧零文件操作。isolation/executor 为 string 归一前形态，断言窄化后枚举守卫在 catalog
-  // 运行时面（越型 INVALID → 400，较旧 tmp 回读 500 语义升级）
+  // 运行时面（越型 INVALID → 409+hint，较旧 tmp 回读 500 语义升级）
   const spec: AgentUpsertSpec = {
     name: fm.name,
     ...(fm.description !== undefined ? { description: fm.description } : {}),
