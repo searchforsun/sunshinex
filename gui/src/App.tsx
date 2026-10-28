@@ -690,7 +690,7 @@ function AppShell(): JSX.Element {
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
               disabled={page !== 'chat' && page !== 'welcome'}
-              welcomeOnly={openSessionId === ''}
+              welcomeOnly={isWelcome}
               onSelect={(uid) => setTabStates((s) => setActive(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid))}
               onReorder={(from, to) => setTabStates((s) => reorderTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, from, to))}
               onClose={closeTabInSession}
@@ -725,9 +725,11 @@ function AppShell(): JSX.Element {
                   >
                     {/* 二期分包:标签体 lazy——Suspense 骨架承接首开 chunk 加载 */}
                     <Suspense fallback={<TabSkeleton />}>
-                    {openSessionId === '' && !['file', 'web', 'terminal'].includes(t.type) ? (
+                    {isWelcome && !['file', 'web', 'terminal'].includes(t.type) ? (
                       /* 2026-10-27 欢迎页全局草稿:会话绑定型页签(待办/审查/智能体/上下文等)在无会话
-                          草稿座不渲染内容——首个输入建席迁移后自动可用 */
+                          草稿座不渲染内容——首个输入建席迁移后自动可用。2026-10-29 用户实测修正:
+                          判定按页面(isWelcome)不按 openSessionId 空——5232DCE 起进欢迎页不清
+                          openSessionId,开过会话再回欢迎页此条件恒假,浏览器/终端卡与 + 菜单全灭 */
                       <div className="sx-tab-empty">
                         <div className="sx-tab-empty-title">{tLabel('Available after a session starts', '会话开始后可用')}</div>
                         <div className="sx-tab-empty-sub">{tLabel('This panel is session-bound. Send a message to bind the draft sidebar to a session.', '此面板绑定会话。发送一条消息即可把当前草稿侧栏绑定到会话。')}</div>
@@ -760,7 +762,7 @@ function AppShell(): JSX.Element {
                 <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
                 <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
                 <div className="sx-tab-empty-cards">
-                  {(openSessionId === ''
+                  {(isWelcome
                     ? [
                         ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
                         ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
