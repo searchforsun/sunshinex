@@ -562,6 +562,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           DirectoryTab(会话寻址 tree API,sessionId 由 App ensureSession 落值)。整替滚动区内容 */}
       {dirView !== undefined && dirView !== null && onCloseDirView !== undefined ? (
         <div className="sx-dirview">
+          {/* 2026-10-27 用户裁定:项目名保留(否则不知道开的是哪个项目的树);完整路径不显 */}
+          <div className="sx-dirview-root">{dirView.root.split(/[\/]+/).filter(Boolean).pop()}</div>
           <div className="sx-dirview-body">
             <DirectoryTab
               /* ProjectMenuConn=收窄接口,App 实传整只 Connection(运行时满足 tree/searchTree 面) */
