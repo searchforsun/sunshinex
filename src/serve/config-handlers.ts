@@ -18,10 +18,10 @@ import {
   memoryStats,
   parseAgentFrontmatterInput,
   probeMcpServer,
-  renderAgentMd,
   validateMcpRawContent,
-  type AgentFrontmatterInput,
 } from './config-helpers';
+// renderAgentMd（G8c T5 生成器）已迁 catalog/agents（Task 6 写面收口）——serve 层改 import，行为零变
+import { renderAgentMd, type AgentFrontmatterInput } from '../catalog/agents';
 import {
   hasJsonComments,
   loadGlobalSettings,

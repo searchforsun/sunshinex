@@ -11,6 +11,9 @@ import type { ModelChoice } from '../config/providers';
 import type { PermissionsConfig } from '../config/permissions';
 import type { McpServerConfig } from '../types';
 import { memoryDir } from '../harness/memory/store';
+// upsert frontmatter 面（校验后形态）已随 renderAgentMd 迁入 catalog/agents（Task 6 写面收口）——
+// type-only 引用（编译期擦除，运行时零依赖：catalog/agents 运行时反向引用本模块的 AGENT_ID_RE，防成环）
+import type { AgentFrontmatterInput } from '../catalog/agents';
 
 /** /settings 配置面模块级助手（D31 分域拆分自 daemon.ts，G8c T2-T6 原域）：只读视图的文件级拆解、
  *  effective 判定、mcp 两级遮蔽视图行与单台真探测、agent.md 生成与输入校验、记忆统计——叶子模块，
@@ -211,30 +214,7 @@ export async function probeMcpServer(
   }
 }
 
-// ---------- G8c T5：/settings/agents 面模块级助手（agent.md 生成 + 写后回读验证） ----------
-
-/** PUT /settings/agents upsert 输入的 frontmatter 面（校验后形态）：name 必填，可选键按需；
- *  调用方已保证字符串值单行（含换行的值在 400 面拒收——frontmatter 是单行 KV 词法，换行注入伪键） */
-export interface AgentFrontmatterInput {
-  name: string;
-  description?: string;
-  memory?: boolean;
-  isolation?: string;
-  executor?: string;
-}
-
-/** agent.md 生成（G8c T5 upsert）：frontmatter 键序固定 name 首位、可选键按需追加
- *  （description→memory→isolation→executor），body 缺省空串。生成物经写后回读 parseAgentFrontmatter
- *  验证后才落盘目标——装配链 loadAgents 对畸形文件 fail-fast，坏文件会死锁整个会话装配，
- *  本生成器 + 回读验证是写盘前的防线（handler 内单点消费） */
-export function renderAgentMd(fm: AgentFrontmatterInput, body: string): string {
-  const lines = [`name: ${fm.name}`];
-  if (fm.description !== undefined) lines.push(`description: ${fm.description}`);
-  if (fm.memory === true) lines.push('memory: true');
-  if (fm.isolation !== undefined) lines.push(`isolation: ${fm.isolation}`);
-  if (fm.executor !== undefined) lines.push(`executor: ${fm.executor}`);
-  return `---\n${lines.join('\n')}\n---\n${body}`;
-}
+// ---------- G8c T5：/settings/agents 面模块级助手（agent.md 输入校验；生成器已迁 catalog/agents） ----------
 
 /** PUT /settings/agents 的 id 安全面（单点）：id 直接拼进 <scopeDir>/agents/<id>/ 目录路径——
  *  路径分隔/穿越/点开头等形态一律拒（首字符限字母数字，余字符限 [A-Za-z0-9_-]） */
