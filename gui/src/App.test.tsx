@@ -184,8 +184,8 @@ const h = vi.hoisted(() => {
       // G14.9 IA:会话只在 RECENTS 列——mock 与 sessionsOf 同源,补 root/slug 供行点击寻址
       return Promise.resolve(this.sessionRows.map((s) => ({ ...s, root: '/w/root-a', slug: 'root-a' })));
     }
-    sessionModel(): Promise<{ current: undefined; explicitDefault: boolean; choices: never[] }> {
-      return Promise.resolve({ current: undefined, explicitDefault: false, choices: [] });
+    sessionModel(): Promise<{ current: undefined; choices: never[] }> {
+      return Promise.resolve({ current: undefined, choices: [] });
     }
     setSessionModel(): Promise<void> { return Promise.resolve(); }
     setSessionTier(): Promise<void> { return Promise.resolve(); }

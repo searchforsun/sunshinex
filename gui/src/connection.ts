@@ -35,8 +35,10 @@ export interface Connection {
   sessionsOf(root: string): Promise<SessionRow[]>;
   /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
-  /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切) */
-  sessionModel(id: string): Promise<{ current?: string; explicitDefault: boolean; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number; supportsImages?: boolean }> }>;
+  /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切)。
+   *  explicitDefault 位已退役（2026-10-28 spec §15 T11：providers 列表唯一事实源，服务端恒切
+   *  choices[0]，响应不再携带该位）——契约面随服务端同步收窄 */
+  sessionModel(id: string): Promise<{ current?: string; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; contextWindow?: number; supportsImages?: boolean }> }>;
   /** 模型总结会话标题(G10-C7):text=首条用户消息;daemon 一次 chat 调用回 ≤20 字标题(503=模型未接线) */
   sessionTitle(id: string, text: string): Promise<{ title: string }>;
   /** 会话名持久化(G14.16 标题统一流):POST /session/:id/rename 落旁车 meta——顶栏/侧栏同源 */

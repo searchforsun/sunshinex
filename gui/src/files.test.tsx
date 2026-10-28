@@ -46,7 +46,7 @@ const noop = (): void => {};
 function connOf(over: Partial<Connection> = {}): Connection {
   return {
     readFile: vi.fn(() => Promise.resolve({ path: '/r/a.ts', content: 'const x = 1;\n' })),
-    sessionModel: () => Promise.resolve({ current: undefined, explicitDefault: false, choices: [] }),
+    sessionModel: () => Promise.resolve({ current: undefined, choices: [] }),
     setSessionModel: () => Promise.resolve(),
     setSessionTier: () => Promise.resolve(),
     setSessionEffort: () => Promise.resolve(),
@@ -190,7 +190,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     ({
       sessionSnapshot: vi.fn(() => Promise.resolve(emptySnap())),
       fetchDiff: vi.fn(() => Promise.reject(new Error('/session/s1/diff?callId=c1 -> 404'))),
-      sessionModel: () => Promise.resolve({ current: undefined, explicitDefault: false, choices: [] }),
+      sessionModel: () => Promise.resolve({ current: undefined, choices: [] }),
       setSessionModel: () => Promise.resolve(),
       setSessionTier: () => Promise.resolve(),
       setSessionEffort: () => Promise.resolve(),

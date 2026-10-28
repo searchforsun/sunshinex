@@ -25,7 +25,7 @@ export function useChatSessionInfo(deps: {
 useEffect(() => {
   conn.sessionModel(sessionId).then(
     (info) => setModelInfo(info),
-    () => setModelInfo({ current: undefined, explicitDefault: false, choices: [] }),
+    () => setModelInfo({ current: undefined, choices: [] }),
   );
 }, [conn, sessionId]);
 

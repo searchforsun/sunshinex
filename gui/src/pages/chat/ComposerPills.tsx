@@ -114,7 +114,7 @@ interface PillsRightProps {
   readonly steps: number;
   readonly tokens: number;
   readonly cacheTokens: number;
-  /** 形态单源：sessionModel 返回类型直推（含 explicitDefault/图片能力位，防内联窄化漂移） */
+  /** 形态单源：sessionModel 返回类型直推（含图片能力位，防内联窄化漂移；explicitDefault 位 2026-10-28 T11 退役） */
   readonly modelInfo: SessionModelInfo | null;
   readonly setModelInfo: Dispatch<SetStateAction<SessionModelInfo | null>>;
   readonly sessEffort: string | undefined;

@@ -62,7 +62,6 @@ export function connOf(opts?: { supportsImages?: boolean; assistantMd?: string; 
     sessionModel: () =>
       Promise.resolve({
         current: opts?.supportsImages === false ? 'p/text-only' : undefined,
-        explicitDefault: false,
         choices: opts?.supportsImages === false ? [{ id: 'p/text-only', model: 'text-only', supportsImages: false }] : [],
       }),
     setSessionModel: vi.fn(() => Promise.resolve()),
