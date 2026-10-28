@@ -22,18 +22,16 @@ export async function modelSwitch(ctrl: SessionController): Promise<void> {
     return;
   }
   const current = sw.currentId();
-  const options = [
-    // default 仅在主模型显式配置（model 键 / SUNSHINEX_MODEL）时露出：未配置时缺省内芯本就是首个 provider 模型
-    ...(sw.hasExplicitDefault() ? [{ label: 'default', description: current === undefined ? t('current (main model)', '当前（主模型）') : undefined }] : []),
-    ...sw.choices().map((c) => ({
-      label: c.id,
-      description: c.id === current
-        ? t('current', '当前')
-        : [c.baseUrl, c.contextWindow !== undefined ? formatTokens(c.contextWindow) : undefined, c.reasoningEffort !== undefined ? `effort ${c.reasoningEffort}` : undefined].filter((x) => x !== undefined).join(' · '),
-    })),
-  ];
+  // default 选项已退役（2026-10-28 spec §15）：providers 列表唯一事实源，选择卡只列 providers 展开项
+  // （装配方对非空 choices 恒切 choices[0]，default 内芯只服务无 providers 的单模型形态）
+  const options = sw.choices().map((c) => ({
+    label: c.id,
+    description: c.id === current
+      ? t('current', '当前')
+      : [c.baseUrl, c.contextWindow !== undefined ? formatTokens(c.contextWindow) : undefined, c.reasoningEffort !== undefined ? `effort ${c.reasoningEffort}` : undefined].filter((x) => x !== undefined).join(' · '),
+  }));
   const answer = await ctrl.askUser({
-    question: t(current ? `Switch model (current: ${current})` : 'Switch model (current: main model)', current ? `切换模型（当前 ${current}）` : '切换模型（当前主模型）'),
+    question: t(current ? `Switch model (current: ${current})` : 'Switch model (current: first provider model)', current ? `切换模型（当前 ${current}）` : '切换模型（当前首个 provider 模型）'),
     options,
   });
   if (answer.type !== 'selected') {
@@ -41,14 +39,6 @@ export async function modelSwitch(ctrl: SessionController): Promise<void> {
     return;
   }
   const picked = answer.labels[0] ?? '';
-  if (picked === 'default') {
-    sw.switchTo(undefined);
-    ctrl.state = { ...ctrl.state, modelId: undefined, modelLabel: undefined, modelWindow: undefined };
-    ctrl.notify();
-    ctrl.logModel();
-    ctrl.pushMsg('system', t('Model cleared; the main model applies to subsequent tasks', '模型已清除；后续任务用主模型'));
-    return;
-  }
   if (!sw.switchTo(picked)) return; // 选择卡来源即清单，正常不可达；防御配置漂移
   ctrl.state = { ...ctrl.state, modelId: picked, modelLabel: sw.label, ...(sw.contextWindow !== undefined ? { modelWindow: sw.contextWindow } : { modelWindow: undefined }) };
   ctrl.notify();

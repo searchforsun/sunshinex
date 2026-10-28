@@ -133,9 +133,11 @@ test('settings 解析面：providers 收留为结构化键原值，flatten 不�
   const tmp = tmpdir('sunshinex-prov-parse-');
   try {
     const file = path.join(tmp, 'settings.json');
+    // model 标量键已退役（2026-10-28 spec §15）：文件里写它走 RETIRED_KEYS 指引告警面，本钉只锁
+    // 「providers 结构化键不是拼错」——用存活语义键 language 充当平凡语义键
     fs.writeFileSync(file, JSON.stringify({
       version: 1,
-      model: 'm',
+      language: 'zh',
       providers: [{ name: 'x', baseUrl: 'https://x/v1', models: ['a'] }],
     }), 'utf8');
     const doc = parseSettingsFile(file)!;
@@ -143,7 +145,7 @@ test('settings 解析面：providers 收留为结构化键原值，flatten 不�
     assert.equal(doc.semantic.providers, undefined, '不混入语义键面');
     const flat = flattenSettings(doc);
     assert.deepEqual(flat.warnings, [], '零未知键告警（结构化键不是拼错）');
-    assert.equal(flat.slots.SUNSHINEX_MODEL, 'm');
+    assert.equal(flat.slots.SUNSHINEX_LANGUAGE, 'zh');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

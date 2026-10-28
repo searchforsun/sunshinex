@@ -3,22 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
-import { buildModel, buildTierRouter, modelTimeoutMsEnv, parseTier } from './runtime';
-
-const TIER_ENV_KEYS = ['SUNSHINEX_MODEL_SMALL', 'SUNSHINEX_MODEL_MEDIUM', 'SUNSHINEX_MODEL_LARGE'] as const;
-
-function withTierEnv(fn: () => void): void {
-  const prev = TIER_ENV_KEYS.map((k) => [k, process.env[k]] as const);
-  for (const [k] of prev) delete process.env[k];
-  try {
-    fn();
-  } finally {
-    for (const [k, v] of prev) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  }
-}
+import { buildModel, modelTimeoutMsEnv, parseTier } from './runtime';
 
 test('parseTier：仅 small|medium|large 生效，其余与缺省一律 undefined', () => {
   assert.equal(parseTier('small'), 'small');
@@ -29,24 +14,9 @@ test('parseTier：仅 small|medium|large 生效，其余与缺省一律 undefine
   assert.equal(parseTier(undefined), undefined);
 });
 
-test('buildTierRouter：未配置按档模型返回 undefined（单模型装配零新概念）', () => {
-  withTierEnv(() => {
-    assert.equal(buildTierRouter({}), undefined);
-  });
-});
-
-test('buildTierRouter：按档绑定 + 缺省兜底，显式档解析到绑定模型', () => {
-  withTierEnv(() => {
-    process.env.SUNSHINEX_MODEL_LARGE = 'gpt-large-x';
-    const router = buildTierRouter({});
-    assert.ok(router, '配置任一按档模型即启用 router');
-    assert.deepEqual(router.boundTiers(), ['large']);
-    assert.equal(router.resolve('large').label, 'gpt-large-x');
-    const defLabel = buildModel({}).label;
-    assert.equal(router.resolve('small').label, defLabel, '未配置档回退默认承载（同配置标签）');
-    assert.equal(router.resolve('medium').label, defLabel);
-  });
-});
+// 旧 buildTierRouter（SUNSHINEX_MODEL_SMALL/MEDIUM/LARGE env 三键）已随散键退役删除
+// （2026-10-28 spec §15）：档位路由唯一事实源 = providers choices tier 标注，
+// buildTierRouterFromChoices 用例迁 runtime.tier-router.test.ts。
 
 // ── J9b：LLMConfig.timeoutMs 死旋钮接线 SUNSHINEX_MODEL_TIMEOUT_MS ──
 // 表值钉已随函数迁 config/termination-config.test.ts（2026-10-04 归口迁移）；此处保 re-export

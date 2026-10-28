@@ -31,25 +31,41 @@ test('run-loop：ScriptedAdapter 驱动 test-loop 修正环 done（离线端到�
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-run-'));
   fs.writeFileSync(path.join(tmp, 'math.js'), 'function add(a, b) { return a + b; }\nmodule.exports = { add };\n');
   fs.writeFileSync(path.join(tmp, 'math.test.js'), 'const assert = require("node:assert");\nconst { add } = require("./math");\nassert.equal(add(1, 2), 4);\n');
-  const deps = buildDeps(tmp, {});
-  (deps as { model: unknown }).model = new ScriptedAdapter([
-    '{"tool":"write","input":{"path":"math.test.js","content":"const assert = require(\\"node:assert\\");\\nconst { add } = require(\\"./math\\");\\nassert.equal(add(1, 2), 3);\\n"},"done":false}',
-    '{"done":true,"reply":"断言已修正为 3"}',
-  ]);
-  const tpl = resolveTemplate(deps, 'test-loop', {
-    ruleCheckers: { c1: async () => fs.readFileSync(path.join(tmp, 'math.test.js'), 'utf8').includes('assert.equal(add(1, 2), 3)') },
-  });
-  const r = await tpl.engine.run('修正测试断言（验收标准：c1=断言 add(1,2)===3）');
-  assert.equal(r.status, 'done');
-  assert.equal(r.tokensUsed, 0);
-  // O3 观测面:askStats 双计数接线——write 过 policy ask（dontAsk 自动放行仍计数）,全程零 ask_question
-  const stats = deps.askStats();
-  assert.ok(stats.approvals >= 1, '写操作经 policy ask 决策（自动放行形态）');
-  assert.equal(stats.asks, 0, '无 ask_question 调用');
-  // O6 观测面:工具执行分桶——write 一次经执行面 ok 桶
-  const usage = deps.registry.usageStats();
-  assert.ok(usage.calls >= 1, '工具执行计数在座');
-  assert.ok((usage.byOutcome.ok ?? 0) >= 1, 'write 落 ok 桶');
+  // HOME/USERPROFILE 重定向空临时家目录（2026-10-28 spec §15 档位路由改造）：buildDeps 经
+  // listProviders 装档位路由——开发机全局 providers 在场时 deps.router 在场，reactor 主通道走
+  // choices[0] 适配器而非本测后置替换的 deps.model（ScriptedAdapter），离线端到端即出网。
+  // 钉空家目录 = 零 providers = router undefined = deps.model 承载（单模型装配现状）。
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-run-home-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  try {
+    const deps = buildDeps(tmp, {});
+    (deps as { model: unknown }).model = new ScriptedAdapter([
+      '{"tool":"write","input":{"path":"math.test.js","content":"const assert = require(\\"node:assert\\");\\nconst { add } = require(\\"./math\\");\\nassert.equal(add(1, 2), 3);\\n"},"done":false}',
+      '{"done":true,"reply":"断言已修正为 3"}',
+    ]);
+    const tpl = resolveTemplate(deps, 'test-loop', {
+      ruleCheckers: { c1: async () => fs.readFileSync(path.join(tmp, 'math.test.js'), 'utf8').includes('assert.equal(add(1, 2), 3)') },
+    });
+    const r = await tpl.engine.run('修正测试断言（验收标准：c1=断言 add(1,2)===3）');
+    assert.equal(r.status, 'done');
+    assert.equal(r.tokensUsed, 0);
+    // O3 观测面:askStats 双计数接线——write 过 policy ask（dontAsk 自动放行仍计数）,全程零 ask_question
+    const stats = deps.askStats();
+    assert.ok(stats.approvals >= 1, '写操作经 policy ask 决策（自动放行形态）');
+    assert.equal(stats.asks, 0, '无 ask_question 调用');
+    // O6 观测面:工具执行分桶——write 一次经执行面 ok 桶
+    const usage = deps.registry.usageStats();
+    assert.ok(usage.calls >= 1, '工具执行计数在座');
+    assert.ok((usage.byOutcome.ok ?? 0) >= 1, 'write 落 ok 桶');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
 });
 
 test('buildModel：缺省 openai 且带展示标签，--model=stub 走占位适配器', () => {

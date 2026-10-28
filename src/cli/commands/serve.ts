@@ -66,8 +66,8 @@ export async function runServe(args: CliArgs): Promise<void> {
       : cwdGui; // 两级皆缺：保留旧口径（探测失败 → API-only hint）
   // 多源多模型装配（G13 反馈轮对齐 TUI entry 形态；2026-10-23 收口为 serve/daemon 单点工厂）：
   // providers 键展开为 /model 选择卡数据面;桌面壳同源调用（同束 ModelSwitcher,instanceof 注入闸恒真）。
-  // providers 根取预选目录（缺省 cwd,同 TUI launchRoot 口径）;缺省模型显式配置（SUNSHINEX_MODEL）
-  // 才露 default 选项;未显式且配了 providers 时切首个源模型（TUI 同款防陷阱缺省）。
+  // providers 根取预选目录（缺省 cwd,同 TUI launchRoot 口径）;2026-10-28 spec §15:providers 列表
+  // 唯一事实源,choices 非空恒切首个源模型（default 选项不再露出）。
   const providerRoot = preselect ?? process.cwd();
   const assembled = assembleGuiModel(buildModel(args.flags), providerRoot, args.flags);
   for (const w of assembled.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));

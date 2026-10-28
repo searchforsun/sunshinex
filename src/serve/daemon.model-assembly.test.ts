@@ -1,9 +1,10 @@
 /** assembleGuiModel 装配钉（2026-10-23 桌面「默认模型/无法选模型」根因件）：
- *  providers 展开进切换器 + 未显式缺省切首源（防陷阱）+ SUNSHINEX_MODEL 显式档不自动切；
- *  产物必须过同束 instanceof ModelSwitcher——壳/serve 分装面曾因跨束类拷贝致注入闸恒假
- *  （modelSwitcher 恒 null,/model 恒 {choices:[]}）。判定限界：instanceof 断言在单束单测内
- *  结构性恒真，判别力在行为钉；跨束恒假只在壳分装面复现，由装配单点（assembleGuiModel
- *  与 GuiDaemon 同束）结构性排除。 */
+ *  providers 展开进切换器 + choices 非空恒切首源（2026-10-28 spec §15 散键退役裁定——providers
+ *  列表唯一事实源，SUNSHINEX_MODEL env 显式与否不再改变该缺省；env 槽只喂 default 内芯=
+ *  无 providers 的单模型形态）。产物必须过同束 instanceof ModelSwitcher——壳/serve 分装面曾因
+ *  跨束类拷贝致注入闸恒假（modelSwitcher 恒 null,/model 恒 {choices:[]}）。判定限界：instanceof
+ *  断言在单束单测内结构性恒真，判别力在行为钉；跨束恒假只在壳分装面复现，由装配单点
+ *  （assembleGuiModel 与 GuiDaemon 同束）结构性排除。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -23,7 +24,7 @@ function writeGlobalProviders(home: string, providers: unknown): void {
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ version: 1, providers }), 'utf8');
 }
 
-test('assembleGuiModel：providers 展开 + 未显式缺省自动切首源；产物过同束 instanceof', () => {
+test('assembleGuiModel：providers 展开 + choices 非空恒自动切首源；产物过同束 instanceof', () => {
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevModel = process.env.SUNSHINEX_MODEL;
@@ -41,8 +42,7 @@ test('assembleGuiModel：providers 展开 + 未显式缺省自动切首源；产
     assert.deepEqual(warnings, []);
     assert.ok(model instanceof ModelSwitcher, '产物必须是本束 ModelSwitcher（跨束 instanceof 注入闸的回归钉）');
     assert.deepEqual(model.choices().map((c) => c.id), ['a/m1', 'a/m2', 'b/m3']);
-    assert.equal(model.currentId(), 'a/m1', '未显式缺省：自动切首个源模型（防陷阱缺省）');
-    assert.equal(model.hasExplicitDefault(), false);
+    assert.equal(model.currentId(), 'a/m1', 'choices 非空恒切首个源模型（默认模型 = 第一个 provider 的第一个 model）');
   } finally {
     if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
@@ -50,7 +50,7 @@ test('assembleGuiModel：providers 展开 + 未显式缺省自动切首源；产
   }
 });
 
-test('assembleGuiModel：SUNSHINEX_MODEL 显式档不自动切源（default 选项露出,GUI 回显 env 模型）', () => {
+test('assembleGuiModel：SUNSHINEX_MODEL env 显式不再阻止自动切源（providers 唯一事实源裁定；env 只喂 default 内芯）', () => {
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   const prevModel = process.env.SUNSHINEX_MODEL;
@@ -63,8 +63,7 @@ test('assembleGuiModel：SUNSHINEX_MODEL 显式档不自动切源（default 选�
     writeGlobalProviders(home, [{ name: 'a', baseUrl: 'https://a/v1', models: ['m1'] }]);
     const { model } = assembleGuiModel(new StubAdapter(), proj);
     assert.ok(model instanceof ModelSwitcher);
-    assert.equal(model.currentId(), undefined, '显式档不自动切源（缺省主模型即 env 配置）');
-    assert.equal(model.hasExplicitDefault(), true);
+    assert.equal(model.currentId(), 'a/m1', '2026-10-28 裁定：env 显式档退役，providers 在场缺省恒 choices[0]');
   } finally {
     if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
     if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;

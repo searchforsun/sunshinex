@@ -937,7 +937,7 @@ describe('G8c T2 /settings 端点', () => {
       assert.deepEqual(row('language'), { key: 'language', value: 'env-lang', source: 'env', envOverride: true }, '真导出=env 最优先+禁编徽标');
       assert.deepEqual(row('tier'), { key: 'tier', value: 'global-tier', source: 'global', envOverride: false }, '全局文件键自填→global');
       assert.deepEqual(row('contextWindow'), { key: 'contextWindow', value: '160000', source: 'global', envOverride: false }, '数字键 String 归一后回显');
-      assert.deepEqual(row('model'), { key: 'model', value: null, source: 'default', envOverride: false }, '未配置=default+null');
+      assert.deepEqual(row('maxSteps'), { key: 'maxSteps', value: null, source: 'default', envOverride: false }, '未配置=default+null（model 键 2026-10-28 退役，抽查键换 maxSteps）');
       assert.deepEqual(row('teamTokenCap'), { key: 'teamTokenCap', value: null, source: 'default', envOverride: false }, 'G8c 终审 C:teamTokenCap 收编语义键面(GET 报行——曾 env-only 致面板静默省略)');
     });
   });
@@ -952,7 +952,7 @@ describe('G8c T2 /settings 端点', () => {
         fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify(json, null, 2), 'utf8');
       };
       writeGlobal({ tier: 'g-tier', language: 'en', contextWindow: 111111 });
-      writeProject({ tier: 'p-tier', model: 'proj-model' });
+      writeProject({ tier: 'p-tier', shell: 'proj-shell' });
       applySettings(loadProjectSettings(proj));
       applySettings(loadGlobalSettings());
 
@@ -961,7 +961,7 @@ describe('G8c T2 /settings 端点', () => {
       const body = (await r.json()) as SettingsBody;
       const row = (key: string): SettingsKeyRow => body.keys.find((k) => k.key === key)!;
       assert.deepEqual(row('tier'), { key: 'tier', value: 'p-tier', source: 'project', envOverride: false }, '项目键覆盖 global 同键→project');
-      assert.deepEqual(row('model'), { key: 'model', value: 'proj-model', source: 'project', envOverride: false }, '项目独有键→project');
+      assert.deepEqual(row('shell'), { key: 'shell', value: 'proj-shell', source: 'project', envOverride: false }, '项目独有键→project（model 键 2026-10-28 退役，抽查键换 shell）');
       assert.deepEqual(row('language'), { key: 'language', value: 'en', source: 'global', envOverride: false }, '项目未配置槽回退 global');
       assert.deepEqual(row('contextWindow'), { key: 'contextWindow', value: '111111', source: 'global', envOverride: false });
 
@@ -1014,7 +1014,7 @@ describe('G8c T2 /settings 端点', () => {
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
       const original = {
         version: 1,
-        model: 'old-model',
+        maxSteps: 100,
         tier: 'keep-me',
         env: { SUNSHINEX_API_KEY: 'preserve-me' },
         permissions: { deny: ['Bash(rm*)'] },
@@ -1028,19 +1028,19 @@ describe('G8c T2 /settings 端点', () => {
         fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
 
       // 改键+新增键:盘上复读保留 version/env/permissions/未知键
-      const ok = await put({ root: proj, updates: { model: 'new-model', maxTokens: 999999 } });
+      const ok = await put({ root: proj, updates: { maxSteps: 50, maxTokens: 999999 } });
       assert.equal(ok.status, 200);
       assert.deepEqual(await ok.json(), { ok: true });
       assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), {
         ...original,
-        model: 'new-model',
+        maxSteps: 50,
         maxTokens: 999999,
       }, '结构化改写只动目标键,其余原样保留');
 
       const g = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
       const gBody = (await g.json()) as SettingsBody;
       const row = (key: string): SettingsKeyRow => gBody.keys.find((k) => k.key === key)!;
-      assert.deepEqual(row('model'), { key: 'model', value: 'new-model', source: 'project', envOverride: false }, 'PUT 后 GET 反映新值(自填槽已重载)');
+      assert.deepEqual(row('maxSteps'), { key: 'maxSteps', value: '50', source: 'project', envOverride: false }, 'PUT 后 GET 反映新值(自填槽已重载;model 键 2026-10-28 退役,抽查键换 maxSteps)');
 
       // 校验面 400(目标文件不被动)
       const before400 = fs.readFileSync(file, 'utf8');
@@ -1052,9 +1052,13 @@ describe('G8c T2 /settings 端点', () => {
       const retired = await put({ root: proj, updates: { dataDir: 'x' } });
       assert.equal(retired.status, 400, '退役键 400');
       assert.ok(((await retired.json()) as { error: string }).error.includes('projectsDir'), '退役键带处置提示(换 projectsDir)');
-      const badType = await put({ root: proj, updates: { model: true } });
+      // 散键退役(2026-10-28 spec §15):model 系写面同样 400 且指引 providers 列表
+      const retiredModel = await put({ root: proj, updates: { model: 'x' } });
+      assert.equal(retiredModel.status, 400, '退役键 model 400');
+      assert.ok(((await retiredModel.json()) as { error: string }).error.includes('providers'), 'model 退役提示指引 providers 列表');
+      const badType = await put({ root: proj, updates: { maxSteps: true } });
       assert.equal(badType.status, 400, '值类型非 string|number|null 400');
-      const noRoot = await put({ updates: { model: 'x' } });
+      const noRoot = await put({ updates: { language: 'x' } });
       assert.equal(noRoot.status, 400, '缺 root 400(PUT 恒项目级,全局走 raw 编辑)');
       const badUpdates = await put({ root: proj, updates: ['not', 'object'] });
       assert.equal(badUpdates.status, 400, 'updates 非对象 400');
@@ -1117,9 +1121,10 @@ describe('G8c T2 /settings 端点', () => {
       assert.equal((JSON.parse(stripJsonComments(afterIns)) as Record<string, unknown>)['maxTokens'], 999, '插入键可解析');
 
       // 多行值(不支持形态;须含注释才进手术路径——无注释多行走常规结构化写,整键改写合法):409 引流 raw,盘上原样
-      const multiline = '{\n  // 注释\n  "model": {\n    "nested": true\n  }\n}\n';
+      // (model 键 2026-10-28 退役——退役键先于文件面 409 判 400,本测须用存活键才可达手术路径)
+      const multiline = '{\n  // 注释\n  "language": {\n    "nested": true\n  }\n}\n';
       fs.writeFileSync(file, multiline, 'utf8');
-      const r4 = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'x' } }) });
+      const r4 = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { language: 'x' } }) });
       assert.equal(r4.status, 409);
       assert.equal(fs.readFileSync(file, 'utf8'), multiline, '409 面零盘上副作用');
     });
@@ -1160,30 +1165,30 @@ describe('G8c T2 /settings 端点', () => {
   test('⑱b PUT scope=global:结构化写用户级文件(root 省略合法,env/version 保留,GET 回 global);缺 updates/project 缺 root 仍 400', async () => {
     await withSettingsDaemon(async ({ base, home }) => {
       const gfile = path.join(home, '.sunshinex', 'settings.json');
-      fs.writeFileSync(gfile, JSON.stringify({ version: 1, model: 'g-old', env: { SUNSHINEX_API_KEY: 'keep' } }), 'utf8');
+      fs.writeFileSync(gfile, JSON.stringify({ version: 1, language: 'g-old', env: { SUNSHINEX_API_KEY: 'keep' } }), 'utf8');
       applySettings(loadGlobalSettings());
 
       const r = await fetch(`${base}/settings`, {
         method: 'PUT',
         headers: AUTH,
-        body: JSON.stringify({ scope: 'global', updates: { model: 'g-new', maxTokens: 123 } }),
+        body: JSON.stringify({ scope: 'global', updates: { language: 'g-new', maxTokens: 123 } }),
       });
       assert.equal(r.status, 200);
       assert.deepEqual(await r.json(), { ok: true });
       assert.deepEqual(
         JSON.parse(fs.readFileSync(gfile, 'utf8')),
-        { version: 1, model: 'g-new', maxTokens: 123, env: { SUNSHINEX_API_KEY: 'keep' } },
-        '全局文件结构化改写:只动目标键,version/env 保留',
+        { version: 1, language: 'g-new', maxTokens: 123, env: { SUNSHINEX_API_KEY: 'keep' } },
+        '全局文件结构化改写:只动目标键,version/env 保留（model 键 2026-10-28 退役,抽查键换 language）',
       );
 
       const g = await fetch(`${base}/settings`, { headers: AUTH });
-      const row = ((await g.json()) as SettingsBody).keys.find((k) => k.key === 'model')!;
-      assert.deepEqual(row, { key: 'model', value: 'g-new', source: 'global', envOverride: false }, 'GET(无 root)反映全局新值');
+      const row = ((await g.json()) as SettingsBody).keys.find((k) => k.key === 'language')!;
+      assert.deepEqual(row, { key: 'language', value: 'g-new', source: 'global', envOverride: false }, 'GET(无 root)反映全局新值');
 
       // 语义不因新参松动:缺 updates 400;scope=project(缺省)缺 root 400
       const noUpdates = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ scope: 'global' }) });
       assert.equal(noUpdates.status, 400, 'updates 缺失 400');
-      const projNoRoot = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ updates: { model: 'x' } }) });
+      const projNoRoot = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ updates: { language: 'x' } }) });
       assert.equal(projNoRoot.status, 400, 'scope=project 缺 root 400(缺省语义不变)');
     });
   });
@@ -1194,12 +1199,12 @@ describe('G8c T2 /settings 端点', () => {
       const proj = path.join(tmp, 'proj');
       const file = path.join(proj, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify({ model: 'old' }), 'utf8');
+      fs.writeFileSync(file, JSON.stringify({ language: 'old' }), 'utf8');
 
-      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'written' } }) });
+      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { language: 'written' } }) });
       assert.equal(r.status, 200, '写盘成功是既成事实——重装时全局文件畸形不反噬 500(误导+坏文件死锁后续改写)');
       assert.deepEqual(await r.json(), { ok: true });
-      assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { model?: string }).model, 'written', '项目文件如实落盘');
+      assert.equal((JSON.parse(fs.readFileSync(file, 'utf8')) as { language?: string }).language, 'written', '项目文件如实落盘');
     });
   });
 
@@ -1208,10 +1213,10 @@ describe('G8c T2 /settings 端点', () => {
       const proj = path.join(tmp, 'proj');
       const file = path.join(proj, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
-      const raw = '{\n  "model": "m"\n'; // 未闭合:无注释的畸形 JSON
+      const raw = '{\n  "language": "en"\n'; // 未闭合:无注释的畸形 JSON
       fs.writeFileSync(file, raw, 'utf8');
 
-      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { model: 'x' } }) });
+      const r = await fetch(`${base}/settings`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ root: proj, updates: { language: 'x' } }) });
       assert.equal(r.status, 409, '文件现状挡结构化改写(与注释同面)');
       assert.ok(((await r.json()) as { error: string }).error.includes('not valid JSON'), '错误指名畸形 JSON');
       assert.equal(fs.readFileSync(file, 'utf8'), raw, '409 面零盘上副作用');

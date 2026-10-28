@@ -81,16 +81,15 @@ export async function runTui(args: CliArgs): Promise<void> {
   const tier = parseTier(args.flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   // 缺省思考强度（请求级参数，--effort > SUNSHINEX_REASONING_EFFORT）：/model-effort 可会话内切换
   const effort = parseEffort(typeof args.flags.effort === 'string' ? args.flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
-  // 主模型是否显式配置（settings model 键 → SUNSHINEX_MODEL 槽）：未配置且配了 providers 时缺省取首个源模型，
-  // default 选项亦不露出（此时「回主模型」只会落到端点内置缺省，是陷阱选项）
-  const explicitDefault = (process.env.SUNSHINEX_MODEL ?? '').trim().length > 0;
+  // 2026-10-28 spec §15 散键退役裁定：explicitDefault 档退役——providers 列表唯一事实源，
+  // choices 非空恒切首个源模型 choices[0]（与 daemon assembleGuiModel 同口径）；
+  // SUNSHINEX_MODEL env 只喂 default 内芯（无 providers 的单模型形态）
   const model = new ModelSwitcher({
     choices: providers.choices,
     default: buildModel(args.flags),
-    ...(explicitDefault ? { explicitDefault: true } : {}),
     ...(effort ? { reasoningEffort: effort } : {}),
   });
-  if (!explicitDefault && providers.choices.length > 0) model.switchTo(providers.choices[0]!.id);
+  if (providers.choices.length > 0) model.switchTo(providers.choices[0]!.id);
   // 会话续接（--continue，规格 D1/D5）：裸 flag 解析为 boolean，透传控制器构造（无档时控制器内提示并以新会话继续）
   const continueLast = args.flags['continue'] === true;
   const resumePicker = resolveResumeFlag(args);

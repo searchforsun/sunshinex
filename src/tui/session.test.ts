@@ -318,7 +318,7 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
   }
 });
 
-test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 + modelId 落档），Esc 取消零变化；default 清除回主模型', async () => {
+test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 + modelId 落档），Esc 取消零变化；default 选项不再露出', async () => {
   const tmp = tmpdir('sunshinex-sess-modelsw-');
   // 窗口槽隔离：settings 装载链会把全局 settings 的 contextWindow 写进 env 槽（槽=运行时载体），
   // 用户机器全局配置带窗口时本断言（无窗口声明模型 modelWindow 不落）即被污染——测试钉槽
@@ -338,15 +338,14 @@ test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 
         { id: 'bigmodel/glm-4.7', provider: 'bigmodel', model: 'glm-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKeyEnv: 'SUNSHINEX_API_KEY_BIGMODEL' },
       ],
       default: new ScriptedAdapter([]),
-      explicitDefault: true,
     });
     const ctrl = new SessionController({ root: tmp, runtime: fake, models: sw });
     const p = ctrl.submit('/model');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
     assert.deepEqual(
       ctrl.getState().question?.options.map((o) => o.label),
-      ['default', 'deepseek/deepseek-chat', 'bigmodel/glm-4.7'],
-      '选择卡 = default（主模型显式配置时露出）+ providers 展开项',
+      ['deepseek/deepseek-chat', 'bigmodel/glm-4.7'],
+      '选择卡 = providers 展开项；default 选项已退役（2026-10-28 spec §15：providers 唯一事实源，装配方恒切 choices[0]）',
     );
     ctrl.resolveAskAnswer({ type: 'selected', labels: ['bigmodel/glm-4.7'] });
     await p;
@@ -364,13 +363,6 @@ test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 
     ctrl.resolveAskAnswer({ type: 'selected', labels: ['deepseek/deepseek-chat'] });
     await pw;
     assert.equal(ctrl.getState().modelWindow, 128000, '带窗口模型：modelWindow 随选择落状态（状态栏分母随模型）');
-    const p3 = ctrl.submit('/model');
-    await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: ['default'] });
-    await p3;
-    assert.equal(sw.currentId(), undefined, 'default 清除回主模型');
-    assert.equal(ctrl.getState().modelId, undefined, 'modelId 清除');
-    assert.equal(ctrl.getState().modelWindow, undefined, 'modelWindow 一并清除');
   } finally {
     if (prevCtx === undefined) delete process.env.SUNSHINEX_CONTEXT_WINDOW;else process.env.SUNSHINEX_CONTEXT_WINDOW = prevCtx;
     fs.rmSync(tmp, { recursive: true, force: true });

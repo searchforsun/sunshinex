@@ -7,6 +7,9 @@ import { modelTimeoutMsEnv } from './config/termination-config';
 import { LoopDeps } from './loop/engine';
 import type { TaskBoard } from './taskboard/board';
 import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
+import { choiceAdapterConfig } from './model/catalog';
+import type { ModelChoice } from './config/providers';
+import { listProviders } from './catalog/providers';
 import { ModelTier, ReasoningEffort } from './types';
 
 /** 模型调用超时旋钮已归口 config/termination-config（2026-10-04 迁移，超时旋钮单点）；对外 re-export 保持
@@ -34,30 +37,26 @@ export function parseTier(value: unknown): ModelTier | undefined {
 }
 
 /**
- * 按档模型绑定（对标 Claude Code 多模型形态）：SUNSHINEX_MODEL_SMALL/MEDIUM/LARGE 显式配置的档位各绑一份
- * OpenAI 协议适配器（端点与密钥复用主配置），未配置档位回退主模型；全未配置返回 undefined（调用方退单模型装配）。
+ * 按档模型绑定（2026-10-28 spec §15 散键退役改造）：tier 路由唯一事实源 = providers choices 的
+ * tier 标注——档 T 绑第一个 `choice.tier === T` 的 choice（适配器经 choiceAdapterConfig 单点构造，
+ * effort/timeout 继承沿旧 buildTierRouter 注释口径：--effort/env 全局缺省 + SUNSHINEX_MODEL_TIMEOUT_MS
+ * 装配期解析一次，防换档丢旋钮）；未标注/无匹配档不绑、resolve 回缺省绑定 choices[0] 的适配器
+ * （默认模型 = 第一个 provider 的第一个 model）；choices 空 → undefined（调用方退单模型装配沿现状）。
+ * 旧 SUNSHINEX_MODEL_SMALL/MEDIUM/LARGE env 三键路径（buildTierRouter）随散键退役删除；
  * 档位是用户级会话参数：换档即换模型，属用户显式触发的跨模型重算事件（CLAUDE.md §11），系统侧不做任何自动换档。
  */
-export function buildTierRouter(flags: Record<string, string | boolean | string[]>): ModelRouter | undefined {
-  const tiers: Array<{ tier: ModelTier; env: string }> = [
-    { tier: 'small', env: 'SUNSHINEX_MODEL_SMALL' },
-    { tier: 'medium', env: 'SUNSHINEX_MODEL_MEDIUM' },
-    { tier: 'large', env: 'SUNSHINEX_MODEL_LARGE' },
-  ];
-  let bound = 0;
+export function buildTierRouterFromChoices(choices: readonly ModelChoice[], flags: Record<string, string | boolean | string[]>): ModelRouter | undefined {
+  if (choices.length === 0) return undefined;
   const router = new ModelRouter();
-  // 超时旋钮装配期解析一次（按档绑定与主模型同源继承，防换档丢旋钮）
+  // 超时旋钮装配期解析一次（与主模型同源继承，防换档丢旋钮）
   const timeoutMs = modelTimeoutMsEnv();
-  for (const { tier, env } of tiers) {
-    const model = process.env[env];
-    if (model && model.length > 0) {
-      // 按档绑定同样继承缺省思考强度（--effort/env）与超时旋钮，否则配档路由的用户 effort/timeout 缺省丢失
-      router.bind(tier, new OpenAIAdapter({ provider: 'openai', model, ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...resolveEffortConfig(flags) }));
-      bound++;
-    }
+  const defs = { ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...resolveEffortConfig(flags) };
+  for (const tier of ['small', 'medium', 'large'] as const) {
+    const hit = choices.find((c) => c.tier === tier);
+    if (hit) router.bind(tier, new OpenAIAdapter(choiceAdapterConfig(hit, defs)));
   }
-  if (bound === 0) return undefined;
-  return router.bindDefault(buildModel(flags));
+  const first = choices[0]!;
+  return router.bindDefault(new OpenAIAdapter(choiceAdapterConfig(first, defs)));
 }
 
 /** 统一装配根（composition root）：CLI/TUI/GUI 三面共用的唯一运行时装配点；root 为项目目录 */
@@ -142,7 +141,9 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     return baseAsk(req);
   };
   const h = buildHarness(root, { mode: 'full-access', ask: countedAsk, addDirs });
-  const router = buildTierRouter(flags);
+  // 档位路由（2026-10-28 spec §15）：choices 来源 = catalog listProviders（providers 列表唯一事实源，
+  // daemon/TUI/CLI 三面同源）；choices 空 → undefined → 退单模型装配（deps.model = buildModel，env 直导出用户沿现状）
+  const router = buildTierRouterFromChoices(listProviders(root).choices, flags);
   const tier = parseTier(flags.tier) ?? parseTier(process.env.SUNSHINEX_TIER);
   return {
     safety: h.safety,

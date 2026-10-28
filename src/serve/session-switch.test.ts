@@ -27,7 +27,6 @@ function makeSession(): SessionRuntime {
   const sw = new FakeSwitcher({
     default: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
     choices: CHOICES,
-    explicitDefault: true,
   });
   return new SessionRuntime({
     id: 's1',

@@ -14,13 +14,12 @@ import { modelTimeoutMsEnv } from '../config/termination-config';
 interface ModelSwitcherOpts {
   /** 可选清单（settings providers 键展开）；空 = /model 无可切换项 */
   choices: readonly ModelChoice[];
-  /** 缺省主适配器（单模型装配产物；/model 选 default 或未切换时用它） */
+  /** 缺省主适配器（单模型装配产物；未切换时用它——无 providers 的 env 直导出用户形态） */
   default: ModelAdapter;
-  /** 主模型是否显式配置（settings model 键 / SUNSHINEX_MODEL）：为真时 default 才作为可选项露出——
-   *  未显式配置时缺省内芯即首个 provider 模型，「回 default」只会回到没人要的端点内置缺省，是陷阱选项 */
-  explicitDefault?: boolean;
   /** 缺省思考强度（与单模型装配同源 --effort/env）：各源适配器同基继承，防配了多源后 effort 缺省丢失 */
   reasoningEffort?: ReasoningEffort;
+  // explicitDefault 已退役（2026-10-28 spec §15）：providers 列表唯一事实源，装配方（daemon/TUI）
+  // 对非空 choices 恒 switchTo(choices[0])，default 不再作为选择卡可选项露出（防陷阱缺省选项）。
 }
 
 /**
@@ -29,6 +28,7 @@ interface ModelSwitcherOpts {
  * timeoutMs 装配级旋钮（SUNSHINEX_MODEL_TIMEOUT_MS，D26 尾巴接线：/model 切换路径与主装配链
  * buildModel/buildTierRouter 同源吃到旋钮），未设不落字段回适配器内建 600s）。
  *  抽为导出纯函数：优先级链可钉（protected 工厂测试子类钉不了构造入参），buildAdapter 单点消费
+ *  （2026-10-28 档位路由改造后 runtime.buildTierRouterFromChoices 同以本函数构造档位适配器——单点不破）
  */
 export function choiceAdapterConfig(
   choice: ModelChoice,
@@ -63,7 +63,7 @@ export class ModelSwitcher implements ModelAdapter {
 
   /** 源条目 → OpenAI 协议适配器（cfg 经 choiceAdapterConfig 纯函数：密钥/窗口/两级 effort/超时旋钮单点）。
    *  protected 工厂：测试子类可注入假内芯钉「换内芯即生效」的转发语义，生产面零额外 API。
-   *  超时旋钮装配期解析（构造随各源内芯逐个 build，env 运行期不变——与 buildModel/buildTierRouter 同口径：
+   *  超时旋钮装配期解析（构造随各源内芯逐个 build，env 运行期不变——与 buildModel/buildTierRouterFromChoices 同口径：
    *  未设不落字段回适配器内建 600s） */
   protected buildAdapter(choice: ModelChoice): ModelAdapter {
     const timeoutMs = modelTimeoutMsEnv();
@@ -92,11 +92,6 @@ export class ModelSwitcher implements ModelAdapter {
   /** 可选清单（settings providers 展开） */
   choices(): readonly ModelChoice[] {
     return this.defs.choices;
-  }
-
-  /** 主模型是否显式配置（决定 default 选项是否露出） */
-  hasExplicitDefault(): boolean {
-    return this.defs.explicitDefault === true;
   }
 
   /** 当前选择 id（undefined = 缺省主模型） */

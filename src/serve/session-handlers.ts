@@ -358,13 +358,13 @@ export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResp
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const sw = session.modelSwitcher;
-  if (sw === null) return io.send(res, 200, { current: undefined, choices: [], explicitDefault: false });
-  // current 回退(SUNSHINEX_MODEL 显式档):切换器未选时 default 内芯即 env 模型——回其名供 GUI
-  // pill 显示具体模型(Codex 同形),而非「默认模型」占位
+  if (sw === null) return io.send(res, 200, { current: undefined, choices: [] });
+  // current 回退(SUNSHINEX_MODEL env 直导出档):切换器未选时 default 内芯即 env 模型——回其名供 GUI
+  // pill 显示具体模型(Codex 同形),而非「默认模型」占位。explicitDefault 字段已退役
+  // (2026-10-28 spec §15:providers 唯一事实源,装配方恒切 choices[0],响应不再携带该位)
   const envDefault = (process.env.SUNSHINEX_MODEL ?? '').trim();
   io.send(res, 200, {
     current: sw.currentId() ?? (envDefault !== '' ? envDefault : undefined),
-    explicitDefault: sw.hasExplicitDefault(),
     choices: sw.choices().map((c) => ({ id: c.id, model: c.model, baseUrl: c.baseUrl, effort: c.reasoningEffort, contextWindow: c.contextWindow, supportsImages: c.supportsImages })),
   });
 }

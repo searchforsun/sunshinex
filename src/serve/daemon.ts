@@ -107,23 +107,23 @@ interface Route {
  *  壳形态 GuiDaemon 在 daemon.cjs、buildModel 在 runtime.cjs,两束各有一份 ModelSwitcher 类,
  *  壳侧 `new (外部目录 ModelSwitcher)` 过不了 daemon 束的 `instanceof ModelSwitcher` 注入闸
  *  （modelSwitcher 恒 null → /model 恒 {choices:[]}）;工厂与本文件同类 → instanceof 恒真。
- *  explicitDefault=SUNSHINEX_MODEL 显式档;未显式且配了 providers 时切首个源模型（TUI 同款
- *  防陷阱缺省）;effort 缺省随装配注入各源内芯;providers warnings 原样透出（调用方 i18n 打印）。 */
+ *  2026-10-28 spec §15 散键退役裁定：explicitDefault 档退役——providers 列表唯一事实源,
+ *  choices 非空恒切首个源模型 choices[0]（默认模型 = 第一个 provider 的第一个 model）,
+ *  SUNSHINEX_MODEL env 只喂 default 内芯（无 providers 的单模型形态,buildModel env 读取保留）;
+ *  effort 缺省随装配注入各源内芯;providers warnings 原样透出（调用方 i18n 打印）。 */
 export function assembleGuiModel(
   model: ModelAdapter,
   providerRoot: string,
   flags?: Record<string, string | boolean | string[]>,
 ): { model: ModelSwitcher; warnings: string[] } {
   const providers = loadProviders(providerRoot);
-  const explicitDefault = (process.env.SUNSHINEX_MODEL ?? '').trim().length > 0;
   const effortDef = parseEffort(typeof flags?.effort === 'string' ? flags.effort : undefined) ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
   const sw = new ModelSwitcher({
     choices: providers.choices,
     default: model,
-    ...(explicitDefault ? { explicitDefault: true } : {}),
     ...(effortDef ? { reasoningEffort: effortDef } : {}),
   });
-  if (!explicitDefault && providers.choices.length > 0) sw.switchTo(providers.choices[0]!.id);
+  if (providers.choices.length > 0) sw.switchTo(providers.choices[0]!.id);
   return { model: sw, warnings: providers.warnings };
 }
 

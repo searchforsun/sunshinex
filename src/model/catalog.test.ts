@@ -14,12 +14,13 @@ const CHOICES: ModelChoice[] = [
 
 test('缺省态：provider/label 透传主适配器，currentId undefined，choices 原样可读', () => {
   const def = new ScriptedAdapter(['{"done":true,"reply":"r"}']);
-  const sw = new ModelSwitcher({ choices: CHOICES, default: def, explicitDefault: true });
+  // explicitDefault 选项已退役（2026-10-28 spec §15）：providers 唯一事实源，装配方恒切 choices[0]，
+  // default 不再作为选择卡可选项露出（构造面无该字段）
+  const sw = new ModelSwitcher({ choices: CHOICES, default: def });
   assert.equal(sw.currentId(), undefined);
   assert.equal(sw.provider, 'scripted', 'provider 透传主适配器');
   assert.equal(sw.label, 'scripted', 'label 回退 provider（内芯无标签时，与单模型形态一致）');
   assert.deepEqual(sw.choices(), CHOICES);
-  assert.equal(sw.hasExplicitDefault(), true);
 });
 
 test('切换与复位：switchTo 换内芯（label = 源/模型 id）；undefined 回缺省；未知 id 幂等 false 不动现状', () => {

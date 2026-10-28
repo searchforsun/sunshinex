@@ -26,26 +26,42 @@ test('pipeline：ScriptedAdapter 离线端到端——五节点链 paused 于 de
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-pipeline-'));
   fs.writeFileSync(path.join(tmp, 'math.js'), 'function add(a, b) { return a + b; }\nmodule.exports = { add };\n');
   fs.writeFileSync(path.join(tmp, 'math.test.js'), 'const assert = require("node:assert");\nconst { add } = require("./math");\nassert.equal(add(1, 2), 4);\n');
-  const deps = buildDeps(tmp, {});
-  (deps as { model: unknown }).model = new ScriptedAdapter([
-    '{"done":true,"reply":"规划：修正测试断言为 3"}',
-    '{"tool":"write","input":{"path":"math.test.js","content":"const assert = require(\\"node:assert\\");\\nconst { add } = require(\\"./math\\");\\nassert.equal(add(1, 2), 3);\\n"},"done":false}',
-    '{"done":true,"reply":"开发完成：断言已修正"}',
-    '{"done":true,"reply":"测试验证完成：断言符合 c1"}',
-    '{"done":true,"reply":"审查通过，无阻塞问题"}',
-  ]);
-  const tpl = runPipelineAssembly(deps, {
-    goal: '实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）',
-    ruleCheckers: {
-      c1: async () => fs.readFileSync(path.join(tmp, 'math.test.js'), 'utf8').includes('assert.equal(add(1, 2), 3)'),
-    },
-  });
-  const r1 = await tpl.engine.run('实现 add 函数并保证测试正确');
-  assert.equal(r1.status, 'paused');
-  assert.deepEqual(r1.pendingGates, ['delivery-gate']);
-  const r2 = await tpl.engine.resume({ 'delivery-gate': true });
-  assert.equal(r2.status, 'done');
-  assert.deepEqual(r2.failedNodes, []);
+  // HOME/USERPROFILE 重定向空临时家目录（2026-10-28 spec §15 档位路由改造）：buildDeps 经
+  // listProviders 装档位路由——开发机全局 providers 在场时 deps.router 在场，reactor 主通道走
+  // choices[0] 适配器而非本测后置替换的 deps.model（ScriptedAdapter），离线端到端即出网。
+  // 钉空家目录 = 零 providers = router undefined = deps.model 承载（单模型装配现状）。
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-pipeline-home-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  try {
+    const deps = buildDeps(tmp, {});
+    (deps as { model: unknown }).model = new ScriptedAdapter([
+      '{"done":true,"reply":"规划：修正测试断言为 3"}',
+      '{"tool":"write","input":{"path":"math.test.js","content":"const assert = require(\\"node:assert\\");\\nconst { add } = require(\\"./math\\");\\nassert.equal(add(1, 2), 3);\\n"},"done":false}',
+      '{"done":true,"reply":"开发完成：断言已修正"}',
+      '{"done":true,"reply":"测试验证完成：断言符合 c1"}',
+      '{"done":true,"reply":"审查通过，无阻塞问题"}',
+    ]);
+    const tpl = runPipelineAssembly(deps, {
+      goal: '实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）',
+      ruleCheckers: {
+        c1: async () => fs.readFileSync(path.join(tmp, 'math.test.js'), 'utf8').includes('assert.equal(add(1, 2), 3)'),
+      },
+    });
+    const r1 = await tpl.engine.run('实现 add 函数并保证测试正确');
+    assert.equal(r1.status, 'paused');
+    assert.deepEqual(r1.pendingGates, ['delivery-gate']);
+    const r2 = await tpl.engine.resume({ 'delivery-gate': true });
+    assert.equal(r2.status, 'done');
+    assert.deepEqual(r2.failedNodes, []);
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
 });
 
 test('teardownCliRun：收尾链停全部 running 后台任务并落 [stopped: process exit] 终态行（D24）', async () => {

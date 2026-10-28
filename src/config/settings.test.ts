@@ -100,8 +100,8 @@ test('parseSettingsFile：根非对象 / version 非 1 拒载抛错且 message �
 test('flattenSettings：语义键→SUNSHINEX_* 槽映射正确（六键抽查）', () => {
   const { slots } = flattenSettings({
     semantic: {
-      model: 'glm-5.3-flash',
-      baseUrl: 'https://open.example.com/api/paas/v4',
+      shell: '/bin/zsh',
+      kbBackend: 'local-json',
       tier: 'medium',
       language: 'zh',
       contextWindow: 1000000,
@@ -110,8 +110,8 @@ test('flattenSettings：语义键→SUNSHINEX_* 槽映射正确（六键抽查�
     },
     env: {},
   });
-  assert.equal(slots['SUNSHINEX_MODEL'], 'glm-5.3-flash');
-  assert.equal(slots['SUNSHINEX_BASE_URL'], 'https://open.example.com/api/paas/v4');
+  assert.equal(slots['SUNSHINEX_SHELL'], '/bin/zsh');
+  assert.equal(slots['SUNSHINEX_KB_BACKEND'], 'local-json');
   assert.equal(slots['SUNSHINEX_TIER'], 'medium');
   assert.equal(slots['SUNSHINEX_LANGUAGE'], 'zh', 'language 新槽（D9）');
   assert.equal(slots['SUNSHINEX_CONTEXT_WINDOW'], '1000000');
@@ -121,10 +121,10 @@ test('flattenSettings：语义键→SUNSHINEX_* 槽映射正确（六键抽查�
 
 test('flattenSettings：同槽语义键 > env 块（D3 语义键是正名，env 块兜底）', () => {
   const { slots, warnings } = flattenSettings({
-    semantic: { model: 'from-semantic' },
-    env: { SUNSHINEX_MODEL: 'from-env-block', SUNSHINEX_BING_API_KEY: 'sk-bing' },
+    semantic: { shell: 'from-semantic' },
+    env: { SUNSHINEX_SHELL: 'from-env-block', SUNSHINEX_BING_API_KEY: 'sk-bing' },
   });
-  assert.equal(slots['SUNSHINEX_MODEL'], 'from-semantic');
+  assert.equal(slots['SUNSHINEX_SHELL'], 'from-semantic');
   assert.equal(slots['SUNSHINEX_BING_API_KEY'], 'sk-bing', 'env 块独有键照常透传');
   assert.deepEqual(warnings, []);
 });
@@ -138,20 +138,20 @@ test('flattenSettings：contextWindow 数字或数字字符串均 String() 归�
 
 test('flattenSettings：未知语义键进告警清单且不致命', () => {
   const { slots, warnings } = flattenSettings({
-    semantic: { model: 'glm-5.3-flash', noSuchKey: 'x' },
+    semantic: { language: 'zh', noSuchKey: 'x' },
     env: {},
   });
-  assert.equal(slots['SUNSHINEX_MODEL'], 'glm-5.3-flash', '未知键不影响其余键装载');
+  assert.equal(slots['SUNSHINEX_LANGUAGE'], 'zh', '未知键不影响其余键装载');
   assert.equal(warnings.length, 1);
   assert.ok(warnings[0]!.includes('noSuchKey'), '告警指明未知键名');
 });
 
 test('flattenSettings：值类型非 string/number 告警并忽略', () => {
   const { slots, warnings } = flattenSettings({
-    semantic: { model: 'glm-5.3-flash', tier: ['medium'] },
+    semantic: { language: 'zh', tier: ['medium'] },
     env: {},
   });
-  assert.equal(slots['SUNSHINEX_MODEL'], 'glm-5.3-flash', '非法值不影响其余键装载');
+  assert.equal(slots['SUNSHINEX_LANGUAGE'], 'zh', '非法值不影响其余键装载');
   assert.equal(slots['SUNSHINEX_TIER'], undefined, '非法值被忽略不落槽');
   assert.equal(warnings.length, 1);
   assert.ok(warnings[0]!.includes('tier'), '告警指明非法值键名');
@@ -159,27 +159,27 @@ test('flattenSettings：值类型非 string/number 告警并忽略', () => {
 
 test('applySettings：只填缺省——已导出环境变量不被覆盖，返回 loaded 与 warnings', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-apply-'));
-  const prevModel = process.env.SUNSHINEX_MODEL;
+  const prevLang = process.env.SUNSHINEX_LANGUAGE;
   const prevTier = process.env.SUNSHINEX_TIER;
   const prevKbBackend = process.env.SUNSHINEX_KB_BACKEND;
   try {
     const file = path.join(dir, 'settings.json');
     fs.writeFileSync(file, JSON.stringify({
-      model: 'from-settings',
+      language: 'from-settings',
       tier: 'medium',
       env: { SUNSHINEX_KB_BACKEND: 'from-env-block' },
     }));
-    process.env.SUNSHINEX_MODEL = 'from-shell';
+    process.env.SUNSHINEX_LANGUAGE = 'from-shell';
     delete process.env.SUNSHINEX_TIER;
     delete process.env.SUNSHINEX_KB_BACKEND;
     const { loaded, warnings } = applySettings(file);
-    assert.equal(process.env.SUNSHINEX_MODEL, 'from-shell', '已导出环境变量不被覆盖（顺序即优先级）');
+    assert.equal(process.env.SUNSHINEX_LANGUAGE, 'from-shell', '已导出环境变量不被覆盖（顺序即优先级）');
     assert.equal(process.env.SUNSHINEX_TIER, 'medium', '缺失槽由语义键填充');
     assert.equal(process.env.SUNSHINEX_KB_BACKEND, 'from-env-block', 'env 块键照常落槽');
     assert.equal(loaded, 2, 'loaded 仅计实际写入的缺失槽');
     assert.deepEqual(warnings, []);
   } finally {
-    if (prevModel === undefined) delete process.env.SUNSHINEX_MODEL; else process.env.SUNSHINEX_MODEL = prevModel;
+    if (prevLang === undefined) delete process.env.SUNSHINEX_LANGUAGE; else process.env.SUNSHINEX_LANGUAGE = prevLang;
     if (prevTier === undefined) delete process.env.SUNSHINEX_TIER; else process.env.SUNSHINEX_TIER = prevTier;
     if (prevKbBackend === undefined) delete process.env.SUNSHINEX_KB_BACKEND; else process.env.SUNSHINEX_KB_BACKEND = prevKbBackend;
     fs.rmSync(dir, { recursive: true, force: true });
@@ -228,34 +228,34 @@ test('两级 settings 装载·三层优先级链：shell > 项目 settings > 全
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
     SUNSHINEX_TIER: process.env.SUNSHINEX_TIER,
-    SUNSHINEX_BASE_URL: process.env.SUNSHINEX_BASE_URL,
+    SUNSHINEX_LANGUAGE: process.env.SUNSHINEX_LANGUAGE,
     SUNSHINEX_KB_BACKEND: process.env.SUNSHINEX_KB_BACKEND,
   };
   process.env.HOME = fakeHome;
   process.env.USERPROFILE = fakeHome;
   // 先清空三层相关槽：排除 shell 真实环境/前序用例残留，断言只反映本用例布置
   delete process.env.SUNSHINEX_TIER;
-  delete process.env.SUNSHINEX_BASE_URL;
+  delete process.env.SUNSHINEX_LANGUAGE;
   delete process.env.SUNSHINEX_KB_BACKEND;
   try {
     // ① shell 层（最高）：预导出变量压过一切文件层
     process.env.SUNSHINEX_TIER = 'shell-top';
-    // ② 项目 settings 层：语义键承载 baseUrl（与全局层同槽对垒）
+    // ② 项目 settings 层：语义键承载 language（与全局层同槽对垒；baseUrl 键 2026-10-28 退役，抽查键换 language）
     fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
     fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({
-      baseUrl: 'from-project-settings',
+      language: 'from-project-settings',
     }));
     // ③ 全局 settings 层：同槽兜底 + env 块独有键验兜底
     fs.mkdirSync(path.join(fakeHome, '.sunshinex'), { recursive: true });
     fs.writeFileSync(path.join(fakeHome, '.sunshinex', 'settings.json'), JSON.stringify({
       tier: 'from-global-settings',
-      env: { SUNSHINEX_BASE_URL: 'from-global-env', SUNSHINEX_KB_BACKEND: 'from-global-only' },
+      env: { SUNSHINEX_LANGUAGE: 'from-global-env', SUNSHINEX_KB_BACKEND: 'from-global-only' },
     }));
     // 按入口真实顺序装载（cli/index.ts 与 index.ts 同款）：只填缺省，装载顺序即优先级
     applySettings(loadProjectSettings(proj));
     applySettings(loadGlobalSettings());
     assert.equal(process.env.SUNSHINEX_TIER, 'shell-top', '① shell 预导出最高，settings 语义键不覆盖');
-    assert.equal(process.env.SUNSHINEX_BASE_URL, 'from-project-settings', '② 项目 settings 胜全局 settings');
+    assert.equal(process.env.SUNSHINEX_LANGUAGE, 'from-project-settings', '② 项目 settings 胜全局 settings');
     assert.equal(process.env.SUNSHINEX_KB_BACKEND, 'from-global-only', '③ 全局 settings 兜底项目未配置槽');
   } finally {
     for (const [key, val] of Object.entries(prev)) {
@@ -285,9 +285,9 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：35 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：30 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 35, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板');
+  assert.equal(entries.length, 30, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役入 RETIRED_KEYS）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
@@ -308,6 +308,11 @@ test('SEMANTIC_KEYS 全表钉子：35 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');
   assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 不存在：不隔离的整目录直指口不进用户配置面（只留环境变量给开发与测试）');
   assert.equal(SEMANTIC_KEYS['structuredOutput'], undefined, 'structuredOutput 不存在：function calling 恒开、无结构化输出开关');
+  assert.equal(SEMANTIC_KEYS['model'], undefined, 'model 已退役（2026-10-28 spec §15）：providers 列表唯一事实源');
+  assert.equal(SEMANTIC_KEYS['baseUrl'], undefined, 'baseUrl 已退役：providers 条目自带 baseUrl');
+  assert.equal(SEMANTIC_KEYS['modelSmall'], undefined, 'modelSmall 已退役：models 条目 tier:"small" 标注');
+  assert.equal(SEMANTIC_KEYS['modelMedium'], undefined, 'modelMedium 已退役：models 条目 tier:"medium" 标注');
+  assert.equal(SEMANTIC_KEYS['modelLarge'], undefined, 'modelLarge 已退役：models 条目 tier:"large" 标注');
   assert.equal(RETIRED_KEYS['dataDir'] !== undefined, true, '退役键必须留定向提示，不能静默变「未知键」');
   assert.ok(/function calling/.test(RETIRED_KEYS['structuredOutput']), 'structuredOutput 退役提示须指明替代口径');
 });
@@ -330,12 +335,39 @@ test('flattenSettings：dataDir 走退役定向提示、不落槽，且与未知
   assert.ok(unknown.warnings[0]!.includes('未知语义键'), '真拼错仍走未知键口径');
 });
 
+/**
+ * 散键退役（2026-10-28 spec §15，Task 11）：model/baseUrl/modelSmall/modelMedium/modelLarge 五键
+ * 出语义键面——providers 列表成为模型配置唯一事实源（设置页模型与提供方 / sunshinex providers 子命令），
+ * 默认模型 = 第一个 provider 的第一个 model。退役键沿用 dataDir 先例：定向指引告警、绝不落 env 槽
+ * （SUNSHINEX_MODEL* 槽保留给真导出环境变量的用户——buildModel 的 env 读取不退役）。
+ */
+test('散键退役：model 系五键写任一即 providers 指引告警且不落槽（env 槽只留给真导出）', () => {
+  const retired: Array<[string, string]> = [
+    ['model', 'SUNSHINEX_MODEL'],
+    ['baseUrl', 'SUNSHINEX_BASE_URL'],
+    ['modelSmall', 'SUNSHINEX_MODEL_SMALL'],
+    ['modelMedium', 'SUNSHINEX_MODEL_MEDIUM'],
+    ['modelLarge', 'SUNSHINEX_MODEL_LARGE'],
+  ];
+  for (const [key, slot] of retired) {
+    assert.equal((SEMANTIC_KEYS as Record<string, unknown>)[key], undefined, `${key} 已出语义键面`);
+    assert.ok(RETIRED_KEYS[key] !== undefined, `${key} 退役键必须留定向提示，不能静默变「未知键」`);
+    assert.ok(/providers/.test(RETIRED_KEYS[key]!), `${key} 退役提示须指向 providers 列表`);
+    const r = flattenSettings({ semantic: { [key]: 'x' }, env: {} });
+    assert.equal(r.slots[slot], undefined, `${key} 退役绝不落槽（providers 列表唯一事实源）`);
+    assert.equal(r.warnings.length, 1);
+    assert.ok(r.warnings[0]!.includes('providers'), `${key} 告警须含 providers 指引`);
+    assert.ok(r.warnings[0]!.includes(key), '告警指名退役键');
+    assert.ok(!r.warnings[0]!.includes('未知语义键'), '退役键不得被当未知键');
+  }
+});
+
 test('空串等价未配置：语义键与 env 块空串均不落槽（模板占位安全）', () => {
   const { slots, warnings } = flattenSettings({
-    semantic: { model: '', autoMemory: '', learnedSkillLimit: '' },
+    semantic: { shell: '', autoMemory: '', learnedSkillLimit: '' },
     env: { SUNSHINEX_API_KEY: '', SUNSHINEX_BING_API_KEY: 'sk-bing' },
   });
-  assert.equal(slots['SUNSHINEX_MODEL'], undefined, '语义键空串不落槽');
+  assert.equal(slots['SUNSHINEX_SHELL'], undefined, '语义键空串不落槽');
   assert.equal(slots['SUNSHINEX_AUTO_MEMORY'], undefined, '空串不得触发 on|off fail-fast');
   assert.equal(slots['SUNSHINEX_LEARNED_SKILL_LIMIT'], undefined, '空串不得触发整数 fail-fast');
   assert.equal(slots['SUNSHINEX_API_KEY'], undefined, 'env 块空串不落槽');

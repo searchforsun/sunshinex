@@ -70,6 +70,16 @@ test('O3 verify 双态对照×5：未做必红、黄金解必绿（判别力锚�
 test('O3 wiring：ScriptedAdapter 驱动 T1 全链（goal→引擎→write 落盘→验盘）', async () => {
   const task = BENCH_TASKS[0]!;
   const dir = tmp();
+  // HOME/USERPROFILE 重定向空临时家目录（2026-10-28 spec §15 档位路由改造）：buildDeps 现经
+  // listProviders(root) 读全局 settings 的 providers 列表装档位路由——开发机全局配置带 providers 时
+  // deps.router 在场，reactor 主通道走 choices[0] 适配器而非本测后置替换的 deps.model（ScriptedAdapter），
+  // 全链即出网。本测意图是 ScriptedAdapter 驱动的确定性 hermetic 面，钉空家目录 = 零 providers = router
+  // undefined = deps.model 承载（与单模型装配现状同径）。
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bench-home-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
   try {
     const deps = buildDeps(dir, {});
     (deps as { model: unknown }).model = new ScriptedAdapter([
@@ -83,7 +93,10 @@ test('O3 wiring：ScriptedAdapter 驱动 T1 全链（goal→引擎→write 落�
     assert.equal(r.status, 'done');
     assert.equal(task.verify(dir), null, '引擎链产出通过权威验盘');
   } finally {
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
   }
 });
 
