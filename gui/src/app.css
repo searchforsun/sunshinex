@@ -2661,3 +2661,11 @@ input.sx-setting-input { width: 100%; }
    2px 行距——hover 圆角底相邻行贴死显挤;相邻选择器只作用于行间、首尾行贴容器 padding 不受影响,
    横排面(如有)margin-top 无视觉副作用,一处收口 */
 .sx-menuitem + .sx-menuitem { margin-top: 2px; }
+/* 同裁定全盘清点(2026-10-29 续):全部弹层条目类逐一核对,其余贴行面一并 2px——权限模式菜单
+   (.mode-item,分组 mode-pop-group 内相邻;分组间已有 mode-pop-sep 6px 不动)、「/」命令面板
+   (.cmd-item)、设置下拉(.sx-dd-pop 内相邻 li>button)。已自带间距不动的:审批卡选项
+   (card-options gap 4px)、归档/置顶/工作区行(margin-block 1px)、ctx-pop(为 kv 展示行无
+   hover 底)、settings 导航列(常驻导航非弹层) */
+.mode-item + .mode-item,
+.cmd-item + .cmd-item,
+.sx-dd-pop li + li { margin-top: 2px; }
