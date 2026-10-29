@@ -23,13 +23,16 @@ export async function modelSwitch(ctrl: SessionController): Promise<void> {
   }
   const current = sw.currentId();
   // default 选项已退役（2026-10-28 spec §15）：providers 列表唯一事实源，选择卡只列 providers 展开项
-  // （装配方对非空 choices 恒切 choices[0]，default 内芯只服务无 providers 的单模型形态）
-  const options = sw.choices().map((c) => ({
-    label: c.id,
-    description: c.id === current
-      ? t('current', '当前')
-      : [c.baseUrl, c.contextWindow !== undefined ? formatTokens(c.contextWindow) : undefined, c.reasoningEffort !== undefined ? `effort ${c.reasoningEffort}` : undefined].filter((x) => x !== undefined).join(' · '),
-  }));
+  // （装配方对非空 choices 恒切 choices[0]，default 内芯只服务无 providers 的单模型形态）；
+  // Task 20：choices[0] 即缺省模型（首源首模型）——补「默认」徽标（装配方不显式传也一眼可辨）
+  const options = sw.choices().map((c, i) => {
+    const detail = [c.baseUrl, c.contextWindow !== undefined ? formatTokens(c.contextWindow) : undefined, c.reasoningEffort !== undefined ? `effort ${c.reasoningEffort}` : undefined].filter((x) => x !== undefined).join(' · ');
+    const badges = [
+      ...(i === 0 ? [t('default', '默认')] : []),
+      ...(c.id === current ? [t('current', '当前')] : []),
+    ];
+    return { label: c.id, description: [...badges, ...(detail !== '' ? [detail] : [])].join(' · ') };
+  });
   const answer = await ctrl.askUser({
     question: t(current ? `Switch model (current: ${current})` : 'Switch model (current: first provider model)', current ? `切换模型（当前 ${current}）` : '切换模型（当前首个 provider 模型）'),
     options,

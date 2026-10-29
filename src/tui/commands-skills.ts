@@ -1,5 +1,7 @@
 import { SLASH_COMMANDS } from './slash-commands';
 import { readSkillUsage } from './skill-usage';
+import { listSkills } from '../catalog/skills';
+import type { SkillSource } from '../catalog/skills';
 import type { SessionController } from './session';
 
 // D52 拆分件②（D17 commands-* 族先例）：命令面技能清单族——skillCommandIds 注册表与 skillMenuEntries
@@ -18,12 +20,24 @@ function skillManifestsForCommandsOn(ctrl: SessionController) {
   return ctrl.runtime.harness.skills.list().filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id));
 }
 
-/** 纵向命令面板技能源（2026-09-30 对标 CC）：清单口径与 skillCommandIds 同源，附 name/description
- *  与最近使用时间——最近使用在前（用户裁决「skills 默认显示最近常用的」）、平局回落数字典序；
+/** 纵向命令面板技能源（2026-09-30 对标 CC）：清单口径与 skillCommandIds 同源，附 name/description、
+ *  最近使用时间与来源/遮蔽标注（Task 20 轻改：catalog 只读视图 listSkills 按 id 补 source/shadowedBy
+ *  ——同 id 跨来源遮蔽在面板可见；catalog 视图缺条目（解析口径差异）时缺省无标注，仅展示面损失）——
+ *  最近使用在前（用户裁决「skills 默认显示最近常用的」）、平局回落数字典序；
  *  调用方（App）挂载 + 回合边界刷新，不逐键读盘 */
-export function skillMenuEntriesOn(ctrl: SessionController): { id: string; name: string; description: string; lastUsedAt?: number }[] {
+export function skillMenuEntriesOn(ctrl: SessionController): { id: string; name: string; description: string; lastUsedAt?: number; source?: SkillSource; shadowedBy?: SkillSource }[] {
   const usage = readSkillUsage(ctrl.root);
+  const catalogById = new Map(listSkills(ctrl.root).entries.map((e) => [e.id, e]));
   return skillManifestsForCommandsOn(ctrl)
-    .map((m) => ({ id: m.id, name: m.name, description: m.description, lastUsedAt: usage[m.id] }))
+    .map((m) => {
+      const c = catalogById.get(m.id);
+      return {
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        lastUsedAt: usage[m.id],
+        ...(c !== undefined ? { source: c.source, ...(c.shadowedBy !== undefined ? { shadowedBy: c.shadowedBy } : {}) } : {}),
+      };
+    })
     .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }

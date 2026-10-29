@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SLASH_COMMANDS } from './slash-commands';
+import { SLASH_COMMANDS, slashCommandDescriptions } from './slash-commands';
 
 /** MANUAL 会话命令表 × SLASH_COMMANDS 双向对账钉（D39 家族·文档面兜底）：
  *  命令清单两大消费面 = 菜单/补全（代码，SlashMenu.test 已单源推导）与 MANUAL 命令表（文档）——
@@ -45,4 +45,12 @@ test('MANUAL 会话命令表 × SLASH_COMMANDS 双向对账：每个命令有行
     `命令表行内 token 须都在 SLASH_COMMANDS 清单内——改名/删命令未清行即红（未知：${unknown.join(' ') || '无'}）`,
   );
   assert.equal(SLASH_COMMANDS.length, new Set(SLASH_COMMANDS).size, '清单自身无重复条目');
+});
+
+test('Task 20：/mcp /agents /plugins /providers 注册进 SLASH_COMMANDS 且各有运行期描述', () => {
+  for (const c of ['/mcp', '/agents', '/plugins', '/providers']) {
+    assert.ok(SLASH_COMMANDS.includes(c), `${c} 应注册进 SLASH_COMMANDS（菜单/补全/GUI /commands 同源）`);
+    const d = slashCommandDescriptions()[c.slice(1)];
+    assert.ok(typeof d === 'string' && d.length > 0, `${c} 应有非空本地化描述`);
+  }
 });

@@ -4,7 +4,7 @@ import { t } from '../i18n';
  *  App 重导出保持既有 import 路径（components/App），session 消费同一单点防双清单漂移；
  *  顺序即 Tab 循环顺序（handleSlash 分支与 /help 文案的相邻排布同源：/terminal-setup 紧随 /status，
  *  2026-10-03 批A D1 补登——实现与 /help 文案早已在场，清单缺席即三源漂移病根）。 */
-export const SLASH_COMMANDS = ['/help', '/init', '/status', '/terminal-setup', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/btw', '/side', '/archive', '/unarchive', '/delete', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/add-dir', '/kb-index', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
+export const SLASH_COMMANDS = ['/help', '/init', '/status', '/terminal-setup', '/tasks', '/skill', '/new', '/resume', '/rewind', '/fork', '/btw', '/side', '/archive', '/unarchive', '/delete', '/compact', '/context', '/plan', '/goal', '/model', '/model-tier', '/model-effort', '/mcp', '/agents', '/plugins', '/providers', '/add-dir', '/kb-index', '/memory', '/memory-add', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off'];
 
 /** 内置命令描述（2026-09-30 纵向命令面板）：键为去斜杠命令词，值为运行期求值的本地化描述——
  *  t() 运行期求值防语言装配冻结（先例：approvalSelectorOptions）；文案与 slashHelp 同源口径收一行为限 */
@@ -32,6 +32,10 @@ export function slashCommandDescriptions(): Record<string, string> {
     model: t('switch model (settings providers)', '切换模型（多源清单）'),
     'model-tier': t('switch model tier', '切换模型档位'),
     'model-effort': t('switch reasoning effort', '切换思考强度'),
+    mcp: t('MCP servers panel (list / enable|disable|approve|deny)', 'MCP 服务器面板（清单/启停/批准/拒绝）'),
+    agents: t('subagents panel (list / enable|disable)', '子智能体面板（清单/启停）'),
+    plugins: t('plugins panel (list / enable|disable)', '插件面板（清单/启停）'),
+    providers: t('model providers panel (read-only list)', '模型提供方面板（只读清单）'),
     'add-dir': t('extend trusted directories', '扩展信任目录'),
     'kb-index': t('build the knowledge-base index', '构建知识库索引'),
     memory: t('list persistent memories', '列出持久记忆'),

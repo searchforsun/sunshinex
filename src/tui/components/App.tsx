@@ -39,12 +39,22 @@ import { useLineEditKeys } from './use-line-edit';
 // 保住既有「from './App'」导入面（App.test 等纯函数单测）
 export { approvalKeyToDecision, approvalDecisionByIndex };
 
-/** 纵向命令面板技能源（session.skillMenuEntries 同构）：lastUsedAt 缺省=从未使用，排最尾部 */
+/** 纵向命令面板技能源（session.skillMenuEntries 同构）：lastUsedAt 缺省=从未使用，排最尾部；
+ *  Task 20 起附来源/遮蔽标注（catalog 视图透传，缺省无标注） */
 interface SlashMenuSkillSource {
   id: string;
   name?: string;
   description?: string;
   lastUsedAt?: number;
+  source?: string;
+  shadowedBy?: string;
+}
+
+/** 技能行来源/遮蔽标注（Task 20 轻改单点）：被遮蔽标胜者来源名（跨源同 id 可见性），正选标来源段 */
+function skillSourceAnnotation(s: SlashMenuSkillSource): string {
+  if (s.shadowedBy !== undefined) return t(`shadowed by ${s.shadowedBy}`, `被${s.shadowedBy}遮蔽`);
+  if (s.source !== undefined) return t(`source: ${s.source}`, `来源：${s.source}`);
+  return '';
 }
 
 /** 纵向命令面板条目装配（2026-09-30 对标 Claude Code，纯函数）：内置命令按 SLASH_COMMANDS 固定序在前、
@@ -57,7 +67,15 @@ export function buildSlashMenu(buffer: string, skills: readonly SlashMenuSkillSo
   const builtins: SlashMenuEntry[] = SLASH_COMMANDS.map((cmd) => ({ cmd, description: descs[cmd.slice(1)] ?? '', kind: 'builtin' as const }));
   const skillEntries: SlashMenuEntry[] = [...skills]
     .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .map((s) => ({ cmd: `/${s.id}`, description: s.description ?? '', kind: 'skill' as const }));
+    .map((s) => {
+      // 描述尾追来源/遮蔽标注（Task 20）：标注缺席时与既有描述逐字节一致（annotation 为空串不入拼）
+      const annotation = skillSourceAnnotation(s);
+      return {
+        cmd: `/${s.id}`,
+        description: [s.description ?? '', ...(annotation !== '' ? [annotation] : [])].join(' · '),
+        kind: 'skill' as const,
+      };
+    });
   return [...builtins, ...skillEntries].filter((e) => e.cmd.startsWith(q));
 }
 

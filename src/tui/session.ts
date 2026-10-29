@@ -39,6 +39,10 @@ import { recordSkillUsage } from './skill-usage';
 import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
 import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-memory';
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
+import { mcpPanel } from './commands-mcp';
+import { agentsPanel } from './commands-agents';
+import { pluginsPanel } from './commands-plugins';
+import { providersPanel } from './commands-providers';
 import { resumeFlow, btwFlow, branchFlow, unarchiveFlow, resumeLatest as resumeLatestFrom } from './commands-session';
 import { applyDelegation } from '../delegation/projection';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
@@ -932,8 +936,10 @@ export class SessionController {
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
     // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
-    // 自由文本参数命令（目标/关注点/记忆内容/目录路径）不在枚举范围，带参放行
-    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir', '/kb-index', '/btw', '/side']);
+    // 自由文本参数命令（目标/关注点/记忆内容/目录路径）不在枚举范围，带参放行；
+    // Task 20 catalog 面板族（/mcp /agents /plugins）带枚举子命令+条目名尾参，同豁免——
+    // 参数合法性由拆分件子命令解析面裁决（未知动作/名称回用法或错误行，不落任务流）
+    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir', '/kb-index', '/btw', '/side', '/mcp', '/agents', '/plugins']);
     // 技能命令（规格 2026-09-22-skill-as-command D4）：意图尾参为自由文本，与 FREE_TEXT_ARGS 同豁免；命中与否由尾部技能分发面裁决
     const isSkillCommand = this.skillCommandIds().includes(cmd.slice(1));
     if (!FREE_TEXT_ARGS.has(cmd) && !isSkillCommand && text !== cmd) {
@@ -1085,6 +1091,26 @@ export class SessionController {
       await modelEffortSwitch(this);
       return;
     }
+    if (cmd === '/mcp') {
+      // MCP 服务器面板（Task 20）：无参两级列表卡；enable|disable|approve|deny <名称> 就地启停/审批——细节见拆分件 commands-mcp
+      mcpPanel(this, text.slice(cmd.length).trim());
+      return;
+    }
+    if (cmd === '/agents') {
+      // 子智能体面板（Task 20）：无参三级位置列表卡；enable|disable <id> 就地启停——细节见拆分件 commands-agents
+      agentsPanel(this, text.slice(cmd.length).trim());
+      return;
+    }
+    if (cmd === '/plugins') {
+      // 插件面板（Task 20）：无参两级清单卡；enable|disable <id> 写项目 settings——细节见拆分件 commands-plugins
+      pluginsPanel(this, text.slice(cmd.length).trim());
+      return;
+    }
+    if (cmd === '/providers') {
+      // 模型提供方只读清单卡（Task 20）：默认源标注 + 编辑引导（CLI/$EDITOR，TUI 不做表单）——细节见拆分件 commands-providers
+      providersPanel(this);
+      return;
+    }
     if (cmd === '/resume') {
       // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要）；>8 条 filterable 全量卡（筛选在渲染层）；翻页统一渲染层滑窗（2026-09-30 口径）
       // 带参形态已由裸形式守卫统一无法识别——此处只认无参；流程体迁拆分件 commands-session
@@ -1225,8 +1251,8 @@ export class SessionController {
     return skillCommandIdsOn(this);
   }
 
-  /** 纵向命令面板技能源（D52 薄委托 commands-skills，调用面零变化） */
-  skillMenuEntries(): { id: string; name: string; description: string; lastUsedAt?: number }[] {
+  /** 纵向命令面板技能源（D52 薄委托 commands-skills，调用面零变化；Task 20 起附来源/遮蔽标注） */
+  skillMenuEntries(): { id: string; name: string; description: string; lastUsedAt?: number; source?: import('../catalog/skills').SkillSource; shadowedBy?: import('../catalog/skills').SkillSource }[] {
     return skillMenuEntriesOn(this);
   }
 
