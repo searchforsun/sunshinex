@@ -185,6 +185,23 @@ describe('McpPane(op 端点卡片化)', () => {
     expect(opCalls).toEqual([]); // 零 op 落盘
   });
 
+  it('「JSON 源码」收起解除武装:展开预览(武装)→ 收起 → 表单字段改动提交 → op body 用表单值非旧预览', async () => {
+    const { conn, opCalls } = connOf([row()]);
+    render(<McpPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add' }));
+    await screen.findByRole('dialog', { name: 'Add MCP server' });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'search' } });
+    const summary = screen.getByText('JSON source');
+    fireEvent.click(summary); // 展开:按表单预览,jsonText 非空=武装
+    fireEvent.click(summary); // 收起:清空解除武装(偷看不接管提交)
+    fireEvent.change(screen.getByLabelText('Command'), { target: { value: 'node' } });
+    fireEvent.click(screen.getByText('Save'));
+    // op server=表单值(command 'node'),非展开时的旧预览(无 command)
+    await waitFor(() =>
+      expect(opCalls).toEqual([{ op: 'add', scope: 'project', root: '/w/proj', name: 'search', server: { transport: 'stdio', command: 'node' } }]),
+    );
+  });
+
   it('refreshTick 变化触发重拉(config-changed 外部改动信号)', async () => {
     const { conn, mcpServersCalls } = connOf([row()]);
     const { rerender } = render(<McpPane conn={conn} root="/w/proj" refreshTick={0} />);

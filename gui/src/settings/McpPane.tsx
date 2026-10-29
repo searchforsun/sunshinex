@@ -17,7 +17,8 @@ import type { SettingsScope } from './components';
  * 添加/编辑 → EditorDrawer 右滑抽屉(名称/transport select/command|url/args 逐行
  * textarea/env 键值行)+「JSON 源码」高级折叠(展开即按当前表单预览;提交时非空则
  * JSON.parse+单条形状校验+与名称字段一致门,整条以 JSON 为准——隐藏值(headers/enabled/
- * disabledTools)由此保全)。
+ * disabledTools)由此保全;收起即清空解除武装——偷看预览不接管提交,覆写规则入抽屉
+ * 提示行,T22 评审修补)。
  *
  * 作用域语义(壳 ScopeSwitcher 下发):scope='project'(缺省,有 root 时)读两级清单
  * (GET 带 root,项目先全局后)——项目卡可写(op scope='project' 带 root),全局同名卡
@@ -576,6 +577,12 @@ export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.E
               '环境变量/请求头值已打码——保存将整条改写;需保全隐藏值请用「JSON 源码」。',
             )}
           </p>
+          <p className="sx-mcp-hint">
+            {t(
+              'A non-empty JSON source overrides the form on save — form edits apply only after clearing it; collapsing the panel clears it.',
+              '「JSON 源码」非空时保存整条以 JSON 为准——清空后方可用表单编辑;收起面板即清空。',
+            )}
+          </p>
           <label className="sx-drawer-field">
             {t('Name', '名称')}
             <input aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
@@ -645,8 +652,9 @@ export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.E
           <details className="sx-rc-details sx-mcp-json-adv" open={form.jsonOpen}>
             <summary
               onClick={(e) => {
-                // 受控开合(preventDefault 拦原生 toggle——jsdom/键盘同径);首次展开按当前表单
-                // 预览单条 JSON(顶层键=名称——提交一致性门同源)
+                // 受控开合(preventDefault 拦原生 toggle——jsdom/键盘同径)。展开且文本空 → 按当前表单
+                // 预览单条 JSON(顶层键=名称——提交一致性门同源);收起 → 清空解除武装(T22 评审修补:
+                // 偷看一眼预览不再静默接管提交——覆写规则见上方提示行)
                 e.preventDefault();
                 const next = !form.jsonOpen;
                 setForm((f) => ({
@@ -655,7 +663,9 @@ export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.E
                   jsonText:
                     next && f.jsonText.trim() === ''
                       ? JSON.stringify({ [f.name.trim() === '' ? 'new-server' : f.name.trim()]: buildServerForPreview(f, drawer) }, null, 2)
-                      : f.jsonText,
+                      : next
+                        ? f.jsonText
+                        : '', // 收起=解除武装:回落表单组装
                 }));
               }}
             >
