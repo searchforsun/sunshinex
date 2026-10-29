@@ -9,7 +9,7 @@ import type { DaemonFrame } from './daemon-wire';
 import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
 import { SessionJournal, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir } from '../tui/session-journal';
-import { reduceSteerRows, reduceSegRows } from '../session/seglog';
+import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import { projectSlug, resolveDataDir } from '../config/data-dir';
 
 /**
@@ -171,6 +171,15 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   const journal = new SessionJournal(dataDir);
   journal.attach(journalId);
   session.attachJournal(journal);
+  // 崩溃档兜底回灌（2026-10-30 spec §2）：与 TUI restoreFromSession 同构——seg 面有而链没有的在飞
+  // 窗口归约成链行 appendChain（journal attach 之后执行,回灌行经订阅落 chain 行,恢复即持久化）。
+  // 正常档窗口恒空、零开销;回灌失败不阻塞 attach——恢复永远可用,只是兜底少一条
+  try {
+    const crash = entriesToChainSteps(crashWindowEntries(replayEvents));
+    if (crash.length > 0) session.runtime.harness.context.appendChain(crash);
+  } catch {
+    /* 兜底尽力而为:残缺档不阻塞恢复 */
+  }
   io.setActive(id);
   return ok({ sessionId: id });
 }

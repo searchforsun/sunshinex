@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
 import { listSessions, markSessionArchived, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
 import { createKernelRuntime } from '../session/runtime';
+import { crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { renderMd } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
@@ -198,6 +199,15 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   ctrl.kernelSeedForRestore(entries); // 转录面入核:后续 live 条目 seg 行 seq 续接(P3)
   ctrl.queueRestore(reduceSteerRows(parsed.events)); // 等待队列回种(P5):末条 steer 行整列恢复
   ctrl.ensureJournal().attach(meta.id);
+  // 崩溃档兜底回灌（2026-10-30 spec §2）：seg 面有而链没有的在飞窗口归约成链行 appendChain——
+  // 走单点故压缩/面板/后续 seed 自动一致；attach 之后执行,回灌行经订阅落 journal chain 行（恢复
+  // 即持久化）。正常档窗口恒空、零开销;回灌失败不阻塞 resume——恢复永远可用,只是兜底少一条
+  try {
+    const crash = entriesToChainSteps(crashWindowEntries(parsed.events));
+    if (crash.length > 0) ctrl.runtime.harness.context.appendChain(crash);
+  } catch {
+    /* 兜底尽力而为:残缺档不阻塞恢复 */
+  }
   // 模型配置漂移告警（状态注入后上屏，防被 replay.messages 吞掉）
   if (modelDriftWarn !== undefined) ctrl.pushMsg('system', modelDriftWarn, { level: 'warn' });
   // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」
