@@ -21,9 +21,25 @@ function agentRow(e: AgentEntry): string {
   return `- ${e.id} [${e.scope}] ${state}${origin} — ${e.meta.name}: ${e.meta.description}`;
 }
 
+/** 读面遏制单点（T20 评审修补）：列表面与写面同契约（「不抛死会话」）——catalog 读面失败
+ *  （目录竞态不可读等）统一 try/catch → warn 错误行（与写面错误行同形状），不抛死会话
+ *  （submit 是 fire-and-forget，handleSlash 拒绝即未处理拒绝杀进程） */
+function readListing<T>(ctrl: SessionController, fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch (e) {
+    ctrl.pushMsg('system', t(
+      `Subagent listing failed: ${e instanceof Error ? e.message : String(e)}`,
+      `子智能体清单读取失败：${e instanceof Error ? e.message : String(e)}`,
+    ), { level: 'warn' });
+    return undefined;
+  }
+}
+
 /** 列表卡（无参查看态 + 带参执行后重绘态共用）：三级位置清单 + 装配告警 + 用法行 */
 function agentsListing(ctrl: SessionController): void {
-  const listing = listAgents(ctrl.root);
+  const listing = readListing(ctrl, () => listAgents(ctrl.root));
+  if (listing === undefined) return; // 读面遏制已出错误行
   const lines = [t(`Subagents (${listing.entries.length}):`, `子智能体（${listing.entries.length} 个）：`)];
   if (listing.entries.length === 0) {
     lines.push(t(
@@ -65,7 +81,10 @@ export function agentsPanel(ctrl: SessionController, rest: string): void {
     ctrl.pushMsg('system', t('Usage: /agents enable|disable <id>', '用法：/agents enable|disable <id>'), { level: 'warn' });
     return;
   }
-  const entry = effectiveEntry(listAgents(ctrl.root).entries, id);
+  // 读面一次 + 就地定位（同一遏制单点）：读失败 warn 已出即短路，不落写、不误报 not-found
+  const listing = readListing(ctrl, () => listAgents(ctrl.root));
+  if (listing === undefined) return;
+  const entry = effectiveEntry(listing.entries, id);
   if (entry === undefined) {
     ctrl.pushMsg('system', t(`Subagent not found: ${id}`, `找不到子智能体：${id}`), { level: 'warn' });
     return;

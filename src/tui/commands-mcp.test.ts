@@ -180,6 +180,53 @@ test('pushPendingMcpHint：项目有 pending 条目 push 一行提示；全部�
 
 /* ---------- /agents /plugins /providers ---------- */
 
+test('T20 评审修补：畸形全局 settings 下读面遏制——/mcp /plugins 不 throw 出 warn 行，不杀会话', async () => {
+  await withFixture(async ({ home, root, ctrl }) => {
+    writeProjectMcp(root);
+    // 触发窗：approvalState → parseSettingsFile 对畸形全局 settings fail-fast throw（装载链纪律）——
+    // 回归即 submit 拒绝（生产 fire-and-forget 下即未处理拒绝杀进程），本用例整体失败
+    fs.mkdirSync(path.join(home, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), '{ broken');
+    await ctrl.submit('/mcp');
+    assert.ok(
+      sysTexts(ctrl).some((x) => /MCP listing failed|MCP 清单读取失败/.test(x)),
+      `读面失败应出 warn 错误行：${JSON.stringify(sysTexts(ctrl))}`,
+    );
+    // 带参查找同读面：遏制后短路——不落写、不误报 not-found、不二次 throw
+    await ctrl.submit('/mcp enable fs');
+    assert.ok(
+      sysTexts(ctrl).filter((x) => /MCP listing failed|MCP 清单读取失败/.test(x)).length >= 2,
+      '带参查找路径同遏制（重绘/写路径不触达）',
+    );
+    assert.equal(readProjMcp(root).mcpServers['fs']!.enabled, undefined, '读面失败不落写');
+    // /plugins 读面（loadEffectivePlugins → parseSettingsFile 同 fail-fast）
+    await ctrl.submit('/plugins');
+    assert.ok(
+      sysTexts(ctrl).some((x) => /Plugin listing failed|插件清单读取失败/.test(x)),
+      '插件读面同遏制',
+    );
+  });
+});
+
+test('T20 评审修补：pushPendingMcpHint 读面失败降级 console.warn——不 throw、零消息入档、不炸启动', async () => {
+  await withFixture(async ({ home, root, ctrl }) => {
+    writeProjectMcp(root); // 项目 pending 条目在场——读面走 approvalState 才会触雷
+    fs.mkdirSync(path.join(home, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), '{ broken');
+    const warns: string[] = [];
+    const orig = console.warn;
+    console.warn = (m: unknown): void => { warns.push(String(m)); };
+    try {
+      pushPendingMcpHint(ctrl); // 回归即 throw 杀启动——本行不抛即降级生效
+    } finally {
+      console.warn = orig;
+    }
+    assert.equal(sysTexts(ctrl).length, 0, '启动提示失败不 push 消息（App 未挂载）');
+    assert.equal(warns.length, 1, '失败降级 console.warn 诊断面');
+    assert.ok(/pending MCP hint|未批准提示/.test(warns[0]!), 'warn 应点明跳过原因');
+  });
+});
+
 test('/agents：面板列 id/scope/启停/描述；enable|disable 写所在作用域 agent.md', async () => {
   await withFixture(async ({ root, ctrl }) => {
     const dir = path.join(root, '.sunshinex', 'agents', 'reviewer');

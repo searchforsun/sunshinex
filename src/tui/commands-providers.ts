@@ -7,6 +7,21 @@ import type { SessionController } from './session';
 // （缺省裁定，与 brief 一致）：写面（upsert/model/密钥）引导 CLI sunshinex providers ... 或 $EDITOR
 // settings.json——TUI 面板零写盘。
 
+/** 读面遏制（T20 评审修补）：列表面与写面同契约（「不抛死会话」）——catalog 读面任何失败统一
+ *  try/catch → warn 错误行（与写面错误行同形状），不抛死会话（submit 是 fire-and-forget，
+ *  handleSlash 拒绝即未处理拒绝杀进程） */
+function readProviders(ctrl: SessionController): ReturnType<typeof listProviders> | undefined {
+  try {
+    return listProviders(ctrl.root);
+  } catch (e) {
+    ctrl.pushMsg('system', t(
+      `Provider listing failed: ${e instanceof Error ? e.message : String(e)}`,
+      `提供方清单读取失败：${e instanceof Error ? e.message : String(e)}`,
+    ), { level: 'warn' });
+    return undefined;
+  }
+}
+
 /** /providers：模型提供方清单卡——源名/模型数/密钥槽在场状态/默认标记（默认恒 choices[0] 所属源，
  *  §15 缺省模型 = 首源首模型）+ 编辑引导行。未配置 providers 时给配置指引（/model 无卡同款引导面）。 */
 export function providersPanel(ctrl: SessionController): void {
@@ -14,7 +29,9 @@ export function providersPanel(ctrl: SessionController): void {
     ctrl.pushMsg('system', t('A task is running; /providers unavailable now', '当前有任务进行中，暂不能执行 /providers'), { level: 'warn' });
     return;
   }
-  const { providers, choices, warnings } = listProviders(ctrl.root);
+  const listing = readProviders(ctrl);
+  if (listing === undefined) return; // 读面遏制已出错误行
+  const { providers, choices, warnings } = listing;
   if (providers.length === 0) {
     ctrl.pushMsg('system', t(
       'No providers configured: add a "providers" array to settings.json (each entry: name + baseUrl + models), or run: sunshinex providers add',

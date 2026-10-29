@@ -20,9 +20,27 @@ function pluginRow(p: EffectivePlugin): string {
   return `- ${p.manifest.id} ${state} (${p.source})${platform} — ${p.manifest.name}: ${p.manifest.description}`;
 }
 
+/** 读面遏制单点（T20 评审修补）：loadEffectivePlugins 对畸形 settings fail-fast 抛错（settingsReader →
+ *  parseSettingsFile 装载链同纪律），而 submit 是 fire-and-forget——handleSlash 拒绝即未处理拒绝杀进程。
+ *  面板「不抛死会话」契约读面与写面同履：统一 try/catch → warn 错误行（与写面错误行同形状），
+ *  undefined = 已出错误行，调用方短路后续定位/写路径 */
+function readListing<T>(ctrl: SessionController, fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch (e) {
+    ctrl.pushMsg('system', t(
+      `Plugin listing failed: ${e instanceof Error ? e.message : String(e)}`,
+      `插件清单读取失败：${e instanceof Error ? e.message : String(e)}`,
+    ), { level: 'warn' });
+    return undefined;
+  }
+}
+
 /** 列表卡（无参查看态 + 带参执行后重绘态共用）：两级清单 + 装配告警 + 用法行 */
 function pluginsListing(ctrl: SessionController): void {
-  const { plugins, warnings } = listPlugins(ctrl.root);
+  const listing = readListing(ctrl, () => listPlugins(ctrl.root));
+  if (listing === undefined) return; // 读面遏制已出错误行
+  const { plugins, warnings } = listing;
   const lines = [t(`Plugins (${plugins.length}):`, `插件（${plugins.length} 个）：`)];
   if (plugins.length === 0) {
     lines.push(t('No plugins installed.', '未安装插件。'));
@@ -49,7 +67,10 @@ export function pluginsPanel(ctrl: SessionController, rest: string): void {
     ctrl.pushMsg('system', t('Usage: /plugins enable|disable <id>', '用法：/plugins enable|disable <id>'), { level: 'warn' });
     return;
   }
-  const plugin = effectiveEntry(listPlugins(ctrl.root).plugins, id);
+  // 读面一次 + 就地定位（同一遏制单点）：读失败 warn 已出即短路，不落写、不误报 not-found
+  const listing = readListing(ctrl, () => listPlugins(ctrl.root));
+  if (listing === undefined) return;
+  const plugin = effectiveEntry(listing.plugins, id);
   if (plugin === undefined) {
     ctrl.pushMsg('system', t(`Plugin not found: ${id}`, `找不到插件：${id}`), { level: 'warn' });
     return;
