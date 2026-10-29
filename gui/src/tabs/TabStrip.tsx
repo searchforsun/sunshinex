@@ -279,6 +279,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         </div>
       )}
       </div>
+      {/* 顶行缩放配套(2026-10-29):页签条撤容器 drag 后,窗口拖拽带收拢为右端固定 40px
+          (Chrome 同位;抽屉态 CSS 退场)——空带不占页签视觉,封顶余量并入本带 */}
+      <div className="sx-tabstrip-drag" aria-hidden="true" />
       </div>
     </div>
   );

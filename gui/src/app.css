@@ -2370,6 +2370,20 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; } /* 头内按钮安全兜底;拖拽由头内空白带承担 */
 .sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: no-drag; } /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
+/* 抽屉态顶栏容器 drag 一并退出(2026-10-29 用户实测「点击顶部宽高自动变大」+抽屉态呼出钮两连真实点击全死,CDP 定性):
+   抽屉翻转期容器 drag 位图错位吞按钮=点击落进 drag 区,微动鼠标即拖窗,松手贴顶=顶部吸附最大化
+   (宽高自动变大的机制);按钮优先原则照 2363 页签条抽屉态退出同款,窗口拖拽由 sx-topbar-drag
+   空白带(in-flow 孤岛)承担 */
+.sx-shell.sx-desktop.sx-menu-float .chat-topbar,
+.sx-shell.sx-desktop.sx-sidebar-float .chat-topbar { -webkit-app-region: no-drag; }
+/* 抽屉开启期覆盖面拖拽声明整体退役(2026-10-29 CDP 实测收尾):仅 no-drag 不够——被抽屉盖住的
+   drag 孤岛(sx-topbar-drag/sx-dragrail)仍进位图,记录/命中坐标错位方向随布局历史漂移,
+   抽屉头按钮被啃(呼出钮/收起钮真实点击间歇全死,合成点击正常=React 链无罪、系统位图有罪);
+   sx-menu-float 类仅在抽屉开启时在场(关=类退场),display:none 使元素不进位图=错位无从发生,
+   被盖住的拖拽面本不可见=零真实损失;抽屉关闭拖拽面即复职 */
+.sx-shell.sx-desktop.sx-menu-float .sx-topbar-drag,
+.sx-shell.sx-desktop.sx-menu-float .sx-dragrail { display: none; }
+.sx-shell.sx-desktop.sx-sidebar-float .sx-tabstrip { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; } /* 撤容器 drag(挖孔式,zoom 下吞窗控) */
 /* 窗控簇 150px 预留按需生效(2026-10-29 用户实测「窄主栏标题被压没,右侧还有空间」根修):
    预留只在主列是窗口最右表面(窗控簇真正压在主列上)时让位——侧栏停靠展开=窗控簇压侧栏上方,
@@ -2687,9 +2701,17 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop.sx-menu-float .sx-menu-head-drag { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
 .sx-shell.sx-desktop .sx-menu-head button,
 .sx-shell.sx-desktop .sx-menu-head input { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
-.sx-shell.sx-desktop .sx-tabstrip { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
-.sx-shell.sx-desktop .sx-wincontrols { zoom: var(--ui-zoom-inv, 1); }
+/* 顶行缩放回归(2026-10-29 用户裁定「顶部一行也要放大缩小」):chat-topbar/tabstrip 撤容器
+   drag+counter-zoom——倒数补偿把顶行钉死在缩放 1.0(字体/行高不随界面缩放,比正文小一档,
+   用户实测截图「字体大小和行高都没有变化」);窗口拖拽由专用空白带承担(sx-topbar-drag/
+   sx-dragrail/页签条右端 sx-tabstrip-drag 40px 拖带),按钮/页签恢复原生点击面,zoom 下命中
+   零错位;wincontrols 同步撤补偿=窗控三钮随缩放;拖带挂 counter-zoom 与 menu-head-drag
+   同口径(空带位图逐像素对齐),抽屉态退场照 sx-topbar-drag 惯例 */
+.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .sx-tabstrip { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .sx-tabstrip-drag { flex: none; width: 40px; align-self: stretch; -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+.sx-shell.sx-desktop.sx-menu-float .sx-tabstrip-drag,
+.sx-shell.sx-desktop.sx-sidebar-float .sx-tabstrip-drag { display: none; }
 
 /* 2026-10-29 用户裁定「下拉框行间不挤」(全局):一切弹层菜单条目(.sx-menuitem 竖排面——
    sx-menu-pop/proj-pop/branch-pop 及会话行/页签/模型选择/设置控件/欢迎页十几处复用)相邻行间
