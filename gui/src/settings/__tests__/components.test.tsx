@@ -242,6 +242,29 @@ describe('useConfigChanged', () => {
     expect(screen.getByTestId('tick-mcp').textContent).toBe('1'); // 不再跳
   });
 
+  it('真尾随防抖(尾帧起算):首帧+150ms 又来帧 → 计时重起,尾帧后 200ms 才单次递增(leading 语义在 t+200 已=1,本例分辨两语义)', () => {
+    const conn = new ConnStub();
+    render(<TickProbe conn={conn} />);
+    act(() => {
+      conn.emit({ resource: 'mcp', scope: 'project', root: '/w/proj' }); // t=0 首帧
+    });
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(screen.getByTestId('tick-mcp').textContent).toBe('0');
+    act(() => {
+      conn.emit({ resource: 'mcp', scope: 'project', root: '/w/proj' }); // t=150 尾帧(窗内重起表)
+    });
+    act(() => {
+      vi.advanceTimersByTime(150); // t=300:leading 语义此刻已触发(=1),尾随仍未到(350)
+    });
+    expect(screen.getByTestId('tick-mcp').textContent).toBe('0');
+    act(() => {
+      vi.advanceTimersByTime(50); // t=350=尾帧+200ms
+    });
+    expect(screen.getByTestId('tick-mcp').textContent).toBe('1'); // 只此一次
+  });
+
   it('全局帧(root=null)同径递增;卸载退订(注册点退订函数被调)', () => {
     const conn = new ConnStub();
     const { unmount } = render(<TickProbe conn={conn} />);

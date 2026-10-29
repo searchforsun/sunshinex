@@ -52,7 +52,11 @@ export function useConfigChanged(conn: ConfigChangedSource): Record<ResourceKind
     const pending = new Map<ResourceKind, ReturnType<typeof setTimeout>>();
     const off = conn.onConfigChanged((f) => {
       const kind = asResourceKind(f.resource);
-      if (kind === null || pending.has(kind)) return; // 未知资源忽略;窗内同 resource 合并
+      if (kind === null) return; // 未知资源忽略
+      // 真尾随防抖(与 SearchBar 同语义,尾帧起算):窗内新帧重起 200ms 表——文档契约即此,
+      // 首帧起算(leading-edge)会让突发首帧独自提前定tick,窗外尾帧反被漏并
+      const old = pending.get(kind);
+      if (old !== undefined) clearTimeout(old);
       pending.set(
         kind,
         setTimeout(() => {
