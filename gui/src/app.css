@@ -2810,7 +2810,7 @@ input.sx-setting-input { width: 100%; }
    且自 y0 起滚,内容上滑直入窗顶条区)——sticky 钉顶+负下边距让正文从容器顶起滑、上滑被条盖住,
    主对话 topbar 同款遮盖语义;条底 1px 分割线同 main 对话。窗控簇 fixed z90 在条上方不受影响,
    弹层 z40 模态照常盖条 */
-.sx-settings-head .sx-new-chat { margin-left: -12px; padding-right: 10px; } /* 实测修正:箭头字面 x27→x15≈导航文字 x14(胶囊贴列缘);右内边距 10=hover 圆角底全包文字(旧 padding-right 0 圆角切「回」字) */
+.sx-settings-head .sx-new-chat { margin-left: -4px; padding-right: 10px; } /* 实测二修:−12 过头(hover 底越出视口左缘被裁),−4=图标稍靠右且 hover 底完整在视口内;右内边距 10=hover 圆角底全包文字 */
 /* 右栏遮盖区改结构化(2026-10-29 二轮实测「设置标题被覆盖」+三轮实测「条随内容移动/滚动条跑到顶」):
    sticky/覆盖方案全废——条+视口两段 flex,正文在视口内滚动,物理上进不了条区(条底分割线随条
    固定不动);滚动容器自 main 上移至视口,滚动条贴窗右缘不变、起点=条底(2127 归位裁定的延续)。
