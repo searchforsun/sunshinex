@@ -289,3 +289,67 @@ test('imageHistoryLimit deps 注入：渲染半径随装配面解析值透传 bu
   assert.equal(context.chainView().filter((s) => s.images !== undefined).length, 3, 'journal 全量留档不受影响');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+/** 逐轮探针桩:每次 chat 前回调(轮边界入链断言钩子) */
+class ProbeStub implements ModelAdapter {
+  readonly provider = 'openai';
+  private i = 0;
+  readonly requests: ChatRequest[] = [];
+  constructor(private steps: ChatResult[], private onChat: (index: number) => void) {}
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    this.onChat(this.i);
+    this.requests.push(req);
+    const s = this.steps[Math.min(this.i, this.steps.length - 1)];
+    this.i += 1;
+    return s;
+  }
+  async chatStream(req: ChatRequest, onDelta: (t: string) => void, _hooks?: unknown): Promise<ChatResult> {
+    const r = await this.chat(req);
+    for (const ch of r.content) onDelta(ch);
+    return r;
+  }
+}
+
+test('轮边界增量入链:第一轮完成后 chainView 即含该轮行(收束前可见),收束后与旧口径逐字节一致', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat-inc-'));
+  fs.writeFileSync(path.join(tmp, 'inc.txt'), 'incremental body');
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  let sawAfterRound1 = false;
+  const adapter = new ProbeStub([
+    { finish: 'tool_calls', content: 'Reading', toolCalls: [{ id: 'c1', name: 'read', argsJson: '{"path":"inc.txt"}' }] },
+    stop('final reply'),
+  ], (idx) => {
+    if (idx === 1) sawAfterRound1 = context.chainView().some((s) => s.observation.includes('incremental body'));
+  });
+  const reactor = new Reactor({ registry, safety, context, model: adapter });
+  const r = await reactor.run({ goal: 'g' });
+  assert.equal(r.done, true);
+  assert.equal(sawAfterRound1, true, '第二轮模型请求前,第一轮的 tool-result 观察行已在主链上(轮边界入链)');
+  assert.ok(context.chainView().some((s) => s.action === 'reply' && s.observation === 'final reply'), '收束 reply 行照常入链');
+});
+
+test('fork 作用域零主链回写不变量:run 全程(含轮边界)chainView 长度恒定', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat-fork-'));
+  fs.writeFileSync(path.join(tmp, 'inc.txt'), 'fork body');
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  const base = context.chainView().length;
+  let midRunLen = -1;
+  const adapter = new ProbeStub([
+    { finish: 'tool_calls', content: 'phase', toolCalls: [{ id: 'c1', name: 'read', argsJson: '{"path":"inc.txt"}' }] },
+    stop('fork reply'),
+  ], (idx) => {
+    if (idx === 1) midRunLen = context.chainView().length;
+  });
+  const reactor = new Reactor({ registry, safety, context, model: adapter });
+  await reactor.run({ goal: 'g' }, { scope: 'fork' });
+  assert.equal(midRunLen, base, 'fork run 途中主链零增长');
+  assert.equal(context.chainView().length, base, 'fork run 收束后主链零增长(既有不变量)');
+});

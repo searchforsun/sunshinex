@@ -165,6 +165,31 @@ export class Reactor {
     const seedLen = seed.length;
     const seedLastStep = seed.length > 0 ? seed[seed.length - 1].step : 0;
     const steps: StepRecord[] = [...seed];
+    // 轮边界增量入链游标(2026-10-30 spec §1)：appendedCount=局部 steps 已 appendChain 进主链的条目数;
+    // trimmedRows=本 run 已由 runCompaction 折链(trimChainFront)的主链条目数——折链余量记账,
+    // 压缩折链计数必须传「未折余量」而非累计目标(同 run 多次压缩/收束兜底重复折算即误删在链行)
+    let appendedCount = 0;
+    let trimmedRows = 0;
+    // StepRecord→链行映射单点(原收束点内联式提取——轮边界与收束两消费面共用一份,漂移温床拆除)
+    const toChainRow = (s: StepRecord) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}), ...(s.images !== undefined ? { images: s.images } : {}) });
+    // 主链折叠目标计数（压缩 trim 归 runCompaction 的 chainFoldedCount 单点承载,收束点安全兜底复用）：
+    // 主链中步号 ≤ 水位的条目数 = 种子全量(≤水位) + 已入链新步按水位取交——轮边界入链后已入链新步
+    // 同在主链上,压缩折链必须一并计入,否则 runCompaction 只折种子部分、新步行「链+压缩块」双份
+    const foldOf = (watermark: number): number =>
+      seed.filter((s) => s.step <= watermark).length + steps.slice(0, appendedCount).filter((s) => s.step <= watermark).length;
+    // 轮边界增量入链(session 作用域限定;fork 短路——零主链回写不变量):已完成轮的链行立即落主链
+    // (journal chain 行随 onContextChange 事件即时落盘)——崩溃丢失窗口从整轮收窄到在飞一轮,面板/模型
+    // seed 三面随轮一致。append 抛错吞掉、游标不推进(落档尽力而为,后续边界与收束点自然补写——
+    // append 未成功即无数据,无双写面;与 settle 吞错纪律同款)
+    const appendNewSteps = (): void => {
+      if (scope !== 'session' || steps.length <= appendedCount) return;
+      try {
+        this.deps.context.appendChain(steps.slice(appendedCount).map(toChainRow));
+        appendedCount = steps.length;
+      } catch {
+        /* 吞错:持久化失败不中断任务执行 */
+      }
+    };
     // 压缩水位线（步骤号口径，0=无折叠）：>0 时此号及之前的 steps 已由摘要代表、不再进入 history；
     // 初值必须为 0——种子链行未经压缩、必须照常进 history（链即记忆），seedLastStep 只用于收尾回写防双写
     let compactedUpToStep = 0;
@@ -173,7 +198,9 @@ export class Reactor {
     const compactOpts = () => ({
       summaryTokenBudget: Math.floor(budget.reserve / 2),
       rereadTokenBudget: Math.floor(budget.reserve / 2),
-      chainFoldedCount: seed.filter((s) => s.step <= compactedUpToStep).length,
+      // 折链计数=未折余量(foldOf 目标 − 已折记账,轮边界入链后主链上不止种子行)——runCompaction 按
+      // 此数归档+折链;传累计目标则同 run 二次压缩重复折算、误删压缩点后入链行(2026-10-30 spec §1)
+      chainFoldedCount: foldOf(compactedUpToStep) - trimmedRows,
       summaryModel: adapter,
     });
     let done = false;
@@ -223,6 +250,7 @@ export class Reactor {
           const injected = lines.map((line, i) => ({ step: base + 1 + i, action: 'task' as const, observation: line.text, ...(line.images !== undefined && line.images.length > 0 ? { images: line.images } : {}) }));
           steps.push(...injected);
           this.emit('step', 'task', { step: injected[injected.length - 1].step });
+          appendNewSteps();
         }
       }
       // O4 recitation（SUNSHINEX_RECITE_EVERY,缺省关——形态待长任务 A/B 实验,HARNESS-BACKLOG O4）：
@@ -237,6 +265,7 @@ export class Reactor {
           if (instruction !== undefined) {
             steps.push({ step: steps[steps.length - 1].step + 1, action: 'task' as const, observation: `[goal reminder] ${instruction}` });
             this.emit('step', 'task', { step: steps[steps.length - 1].step });
+            appendNewSteps();
           }
         }
       }
@@ -267,8 +296,12 @@ export class Reactor {
         do {
           // 水位先算：折叠步骤号只依赖 steps/seed，与压缩结果无关（折链交由 runCompaction 统一执行）
           compactedUpToStep = steps.length > 0 ? steps[steps.length - 1].step : seedLastStep;
+          // 压缩折链归 runCompaction 单点（chainFoldedCount=未折余量,compaction.ts 契约）——此处不手动
+          // trim:提前清空 chainView 会破坏 runCompaction 的归档切片与折叠选块（实测 4 钉红）;
+          // 非 replay 折链生效后按实际折量推进记账（replay 幂等重放不折链、不推进）
           // 压缩协调单点：确定性选块 → 摘要（当前 run 模型，失败回退确定性）→ 门禁重注入 → 折链（防「链+压缩块」双份）
-          await runCompaction(this.deps.context, items, compactOpts());
+          const compacted = await runCompaction(this.deps.context, items, compactOpts());
+          if (compacted.via !== 'replay') trimmedRows += compactOpts().chainFoldedCount;
           lastCompactStep = step;
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
           est = this.deps.context.window.estimate(items);
@@ -318,6 +351,8 @@ export class Reactor {
           this.emit('step', 'done', { step });
           break;
         }
+        // 轮边界增量入链(2026-10-30 spec §1):本轮链行已完成即落主链;done 轮归收束点(与 reply 行同批)
+        appendNewSteps();
       } catch (e) {
         // 用户中断在途模型调用：静默转入中断终态，不 emit error（中断回执由会话层统一发）
         if (this.deps.signal?.aborted) {
@@ -330,12 +365,15 @@ export class Reactor {
         if (isContextOverflowError(errMsg) && !reactiveUsed) {
           reactiveUsed = true;
           this.emit('error', 'Context overflow at the endpoint — compacting and retrying once');
-          await runCompaction(this.deps.context, items, compactOpts());
+          const reactive = await runCompaction(this.deps.context, items, compactOpts());
+          if (reactive.via !== 'replay') trimmedRows += compactOpts().chainFoldedCount;
           lastCompactStep = step;
           // 重试本步：步号由链尾派生（steps 未变则下轮同号），重建装配面后 continue
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
-          // 退位重试：移除本 run 末步（若有）使下轮步号复用当前步号，且不产生空洞
-          if (steps.length > 0) steps.pop();
+          // 退位重试（轮边界入链后收窄）：只移除未入链的末步——已入链行在 append-only 主链上不可撤销
+          // （截尾需新 journal 词汇,兜底不值得）；失败轮零产出（steps.length == appendedCount）则保留
+          // 原末步、下轮步号顺延（guardrail 多计一轮,可接受）
+          if (steps.length > appendedCount) steps.pop();
           continue;
         }
         // 2026-10-22 用户裁定:模型失败只走 error 事件行——错误文案不再赋给 reply(经 settle
@@ -346,16 +384,20 @@ export class Reactor {
       }
     }
 
-    // 主链作用域收束回写：存续新步骤 + 结论行/补丁行尾追进链（fork 模型 §5；fork 作用域私有不回写）
+    // 主链作用域收束回写（轮边界入链后退化为补尾）：未入链余量 + 结论行/补丁行尾追进链
+    // （fork 作用域私有不回写）；折叠目标按水位取交精确计数,减去压缩点已折部分只补余量。
+    // 产出链行序列与「收束批量回写」旧口径逐字节一致（等价性由既有全量测试承载）
     if (scope === 'session') {
-      const foldedSeed = seed.filter((s) => s.step <= compactedUpToStep).length;
-      if (foldedSeed > 0) this.deps.context.trimChainFront(foldedSeed);
       const cut = Math.max(compactedUpToStep, seedLastStep);
+      const fold = foldOf(compactedUpToStep) - trimmedRows;
+      if (fold > 0) this.deps.context.trimChainFront(fold);
       this.deps.context.appendChain(
         steps
+          .slice(appendedCount)
           .filter((s) => s.step > cut)
-          .map((s) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}), ...(s.images !== undefined ? { images: s.images } : {}) })),
+          .map(toChainRow),
       );
+      appendedCount = steps.length;
       if (done && reply) {
         this.deps.context.appendChain([{
           action: 'reply',
