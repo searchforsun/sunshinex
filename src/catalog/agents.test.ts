@@ -1,10 +1,10 @@
-// src/catalog/agents.test.ts —— catalog/agents 读面（两级新家 + 旧位置兼容 + 遮蔽/启用标注）与写面
-// （upsert/remove/setEnabled/migrate，Task 6）钉行为。
+// src/catalog/agents.test.ts —— catalog/agents 读面（两级视图 + 旧位置一次性迁移 + 遮蔽/启用标注）与写面
+// （upsert/remove/setEnabled，Task 6）钉行为。
 // 纪律：globalDir/root 一律 mkdtempSync(tmpdir()) 桩 + HOME 钉桩，禁止直写真实 ~/.sunshinex（沿 mcp.test.ts withHome 先例）。
 import { test } from 'node:test'; import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os'; import { join } from 'node:path';
-import { agentsDir, legacyAgentsDir, listAgents, migrateAgent, removeAgent, setAgentEnabled, upsertAgent } from './agents';
+import { agentsDir, listAgents, migrateLegacyAgentsOnce, removeAgent, setAgentEnabled, upsertAgent } from './agents';
 import { CatalogWriteError } from './io';
 import { parseAgentFrontmatter } from '../harness/subagent';
 
@@ -39,11 +39,10 @@ test('listAgents: 项目新家遮蔽全局同名 id，全局条目保留在列�
     writeAgent(join(p, '.sunshinex', 'agents'), 'shared', agentMd('p-shared', '', 'P'.repeat(300)));
     writeAgent(join(p, '.sunshinex', 'agents'), 'proj-only', agentMd('proj-only'));
     const r = listAgents(p, g);
-    // 排序钉死：全局先、新家次（各层内 id 字典序）；旧位置无条目
+    // 排序钉死：全局先、新家次（各层内 id 字典序）
     assert.deepEqual(r.entries.map((e) => `${e.scope}:${e.id}`), ['global:glob-only', 'global:shared', 'project:proj-only', 'project:shared']);
     const gShared = r.entries.find((e) => e.id === 'shared' && e.scope === 'global')!;
     assert.equal(gShared.shadowed, true, '新家撞名 → 全局条 shadowed=true');
-    assert.equal(gShared.oldLocation, false);
     assert.equal(gShared.meta.name, 'g-shared', '全局条目保留原内容（视图不删除）');
     const pShared = r.entries.find((e) => e.id === 'shared' && e.scope === 'project')!;
     assert.equal(pShared.shadowed, false, '新家条目（生效版）不标 shadowed');
@@ -54,37 +53,48 @@ test('listAgents: 项目新家遮蔽全局同名 id，全局条目保留在列�
   });
 });
 
-test('listAgents: 旧位置条目 oldLocation:true；撞新家不列（新家最高），撞全局照列且生效（legacy 遮蔽全局，2026-10-28 终审裁定对齐装载序）', () => {
+test('migrateLegacyAgentsOnce + listAgents：旧位置条目一次性迁入新家（同轮可见），搬空删旧目录；再列举零迁移告警', () => {
   withHome(() => {
     const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));
     writeAgent(join(g, 'agents'), 'in-global', agentMd('in-global'));
     writeAgent(join(p, '.sunshinex', 'agents'), 'in-new-home', agentMd('in-new-home'));
-    // 旧位置三态：独占（列出）/ 撞新家（不列——新家最高）/ 撞全局（照列且生效——legacy 遮蔽全局）
-    writeAgent(join(p, 'agents'), 'legacy-only', agentMd('legacy-only'));
-    writeAgent(join(p, 'agents'), 'in-new-home', agentMd('legacy-dup-new'));
-    writeAgent(join(p, 'agents'), 'in-global', agentMd('legacy-dup-global'));
+    // 旧位置两态：独占（随迁新家后列出）/ 撞新家同 id（陈旧重复：删旧副本、新家保留）
+    writeAgent(join(p, 'agents'), 'legacy-only', agentMd('legacy-only', '', 'OLD'));
+    writeFileSync(join(p, 'agents', 'legacy-only', 'notes.txt'), 'side');
+    writeAgent(join(p, 'agents'), 'in-new-home', agentMd('stale-dup'));
     const r = listAgents(p, g);
-    // 清单序钉死：全局 → 新家 → 旧位置（in-global 撞名两行齐列：全局行 + 旧位置行）
+    // 清单序钉死：全局 → 新家（迁入条目同轮可见；旧目录已删除、不再有旧位置层）
     assert.deepEqual(
-      r.entries.map((e) => `${e.scope}:${e.id}${e.oldLocation ? '@legacy' : ''}`),
-      ['global:in-global', 'project:in-new-home', 'project:in-global@legacy', 'project:legacy-only@legacy'],
+      r.entries.map((e) => `${e.scope}:${e.id}`),
+      ['global:in-global', 'project:in-new-home', 'project:legacy-only'],
     );
     const legacy = r.entries.find((e) => e.id === 'legacy-only')!;
-    assert.ok(legacy, '无碰撞旧位置条目在列');
-    assert.equal(legacy.oldLocation, true, '旧位置标注 oldLocation:true');
-    assert.equal(legacy.scope, 'project', '旧位置属项目作用域');
-    assert.equal(legacy.shadowed, false, '旧位置条目（生效版）不标 shadowed');
-    assert.equal(legacy.meta.name, 'legacy-only');
-    assert.equal(r.entries.filter((e) => e.id === 'in-new-home').length, 1, '撞新家同 id 不再从旧位置列出');
-    assert.equal(r.entries.find((e) => e.id === 'in-new-home')!.oldLocation, false, '在列的是新家版本');
-    // 撞全局：旧位置照列且为生效副本（legacy 遮蔽全局——与 AgentRegistry.loadAgents 装载序同构），
-    // 全局行降 shadowed:true 保留在列
-    const legacyDup = r.entries.find((e) => e.id === 'in-global' && e.oldLocation)!;
-    assert.equal(legacyDup.shadowed, false, '撞全局时旧位置行是生效副本，不标 shadowed');
-    assert.equal(legacyDup.meta.name, 'legacy-dup-global', '在列副本来自旧位置');
-    const globalDup = r.entries.find((e) => e.id === 'in-global' && !e.oldLocation)!;
-    assert.equal(globalDup.scope, 'global', '同 id 全局行保留在列');
-    assert.equal(globalDup.shadowed, true, '被旧位置撞名 → 全局行 shadowed=true');
+    assert.equal(legacy.scope, 'project', '迁入条目属项目作用域');
+    assert.equal(legacy.dir, join(agentsDir('project', p), 'legacy-only'), '条目目录=新家');
+    assert.equal(legacy.meta.name, 'legacy-only', '内容随迁');
+    assert.equal(readFileSync(join(agentsDir('project', p), 'legacy-only', 'notes.txt'), 'utf8'), 'side', '递归搬移含非 agent.md 同级文件');
+    assert.equal(readFileSync(join(agentsDir('project', p), 'in-new-home', 'agent.md'), 'utf8'), agentMd('in-new-home'), '撞新家同 id：新家版本保留（陈旧重复删旧副本）');
+    assert.equal(existsSync(join(p, 'agents')), false, '搬空后旧目录删除');
+    assert.deepEqual(r.warnings, [], '迁移成功零告警');
+    // 幂等：迁移完成后永不再触发（旧目录不在场，二次列举零告警零变化）
+    const again = listAgents(p, g);
+    assert.deepEqual(again.entries.map((e) => `${e.scope}:${e.id}`), r.entries.map((e) => `${e.scope}:${e.id}`));
+    assert.deepEqual(again.warnings, []);
+  });
+});
+
+test('migrateLegacyAgentsOnce：失败条目留在原地出 warning（非目录条目不搬），旧目录保留', () => {
+  withHome(() => {
+    const p = mkdtempSync(join(tmpdir(), 'p'));
+    writeAgent(join(p, 'agents'), 'good', agentMd('good'));
+    writeFileSync(join(p, 'agents', 'stray.txt'), 'not a directory');
+    const warnings = migrateLegacyAgentsOnce(p);
+    assert.equal(warnings.length, 1, '非目录条目恰一条告警');
+    assert.ok(warnings[0]!.includes(join(p, 'agents', 'stray.txt')), '告警含条目路径');
+    assert.equal(existsSync(join(p, 'agents', 'stray.txt')), true, '失败条目留在原地');
+    assert.equal(existsSync(join(p, 'agents', 'good', 'agent.md')), false, '可搬条目已迁走');
+    assert.equal(existsSync(join(agentsDir('project', p), 'good', 'agent.md')), true, '可搬条目落新家');
+    assert.equal(existsSync(join(p, 'agents')), true, '旧目录保留（尚有未迁条目）');
   });
 });
 
@@ -121,26 +131,26 @@ test('parseAgentFrontmatter: enabled 缺省 true，仅字面 false 为 false；t
   assert.throws(() => parseAgentFrontmatter('---\ndescription: d\n---\nb'), /missing name/, '缺 name 仍 fail-fast');
 });
 
-test('listAgents: root=null 只列全局（项目两级整体跳过，与 mcp 的 cwd 回退刻意不同）', () => {
+test('listAgents: root=null 只列全局（项目级整体跳过且不触发迁移，与 mcp 的 cwd 回退刻意不同）', () => {
   withHome(() => {
     const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));
     writeAgent(join(g, 'agents'), 'glob', agentMd('glob'));
-    // 项目两级都有物料，root=null 时必须整体跳过（不回退 cwd 伪造条目）
+    // 项目级都有物料，root=null 时必须整体跳过（不回退 cwd 伪造条目）且不动盘（迁移不在场触发）
     writeAgent(join(p, '.sunshinex', 'agents'), 'new-home', agentMd('new-home'));
     writeAgent(join(p, 'agents'), 'legacy', agentMd('legacy'));
     const r = listAgents(null, g);
     assert.deepEqual(r.entries.map((e) => `${e.scope}:${e.id}`), ['global:glob']);
     assert.equal(r.warnings.length, 0);
+    assert.equal(existsSync(join(p, 'agents', 'legacy', 'agent.md')), true, 'root=null 不触发迁移（旧目录原样）');
   });
 });
 
-test('agentsDir/legacyAgentsDir: global=<dir>/agents；project=<root>/.sunshinex/agents；legacy=<root>/agents', () => {
+test('agentsDir: global=<dir>/agents；project=<root>/.sunshinex/agents', () => {
   assert.equal(agentsDir('global', null, '/g'), join('/g', 'agents'));
   assert.equal(agentsDir('project', '/r', '/g'), join('/r', '.sunshinex', 'agents'));
-  assert.equal(legacyAgentsDir('/r'), join('/r', 'agents'));
 });
 
-// ---------- 写面（Task 6）：upsert / remove / setEnabled / migrate ----------
+// ---------- 写面（Task 6）：upsert / remove / setEnabled ----------
 
 /** 写面 INVALID 断言器：CatalogWriteError 且 code==='INVALID'（错误类+码双钉，防裸 Error 误绿） */
 function invalid(fn: () => void): void {
@@ -217,26 +227,7 @@ test('removeAgent: 目录整体移除（含同级私有文件），listAgents �
   });
 });
 
-test('migrateAgent: 旧位置整目录递归拷入新家（含同级私有文件），旧目录保留；listAgents 改报新家条目', () => {
-  withHome(() => {
-    const p = mkdtempSync(join(tmpdir(), 'p'));
-    writeAgent(join(p, 'agents'), 'legacy', agentMd('legacy', 'memory: true', 'OLD'));
-    writeFileSync(join(p, 'agents', 'legacy', 'notes.txt'), 'side');
-    migrateAgent(p, 'legacy');
-    const newFile = join(agentsDir('project', p), 'legacy', 'agent.md');
-    assert.equal(existsSync(newFile), true, '新家文件在场');
-    assert.equal(readFileSync(newFile, 'utf8'), readFileSync(join(p, 'agents', 'legacy', 'agent.md'), 'utf8'), '同内容');
-    assert.equal(readFileSync(join(agentsDir('project', p), 'legacy', 'notes.txt'), 'utf8'), 'side', '递归拷贝含非 agent.md 同级文件');
-    assert.equal(existsSync(join(legacyAgentsDir(p), 'legacy', 'agent.md')), true, '旧目录保留不删');
-    const rows = listAgents(p).entries.filter((e) => e.id === 'legacy');
-    assert.equal(rows.length, 1, '旧位置有同 id 碰撞 → 不再从旧位置列出');
-    assert.equal(rows[0]!.oldLocation, false, '在列的是新家条目');
-    assert.equal(rows[0]!.dir, join(agentsDir('project', p), 'legacy'));
-    assert.equal(rows[0]!.meta.memory, true, '内容随迁（memory 标注读回）');
-  });
-});
-
-test('写面 INVALID 族：非法 id 四函数同拒；remove/setEnabled 未存在 id、migrate 缺源/撞目标、project 缺 root、畸形 agent.md → INVALID', () => {
+test('写面 INVALID 族：非法 id 三函数同拒；remove/setEnabled 未存在 id、project 缺 root、畸形 agent.md → INVALID', () => {
   withHome(() => {
     const p = mkdtempSync(join(tmpdir(), 'p'));
     invalid(() => upsertAgent(p, 'project', '../evil', { name: 'x' }));
@@ -244,13 +235,8 @@ test('写面 INVALID 族：非法 id 四函数同拒；remove/setEnabled 未存�
     invalid(() => upsertAgent(p, 'project', 'has.dot', { name: 'x' }));
     invalid(() => removeAgent(p, 'project', '../evil'));
     invalid(() => setAgentEnabled(p, 'project', '../evil', false));
-    invalid(() => migrateAgent(p, '../evil'));
     invalid(() => removeAgent(p, 'project', 'nope')); // 未存在 id
     invalid(() => setAgentEnabled(p, 'project', 'nope', true)); // 未存在 id
-    invalid(() => migrateAgent(p, 'nope')); // 缺源
-    writeAgent(join(p, '.sunshinex', 'agents'), 'dup', agentMd('dup'));
-    writeAgent(join(p, 'agents'), 'dup', agentMd('dup'));
-    invalid(() => migrateAgent(p, 'dup')); // 撞目标（新家已存在）
     invalid(() => upsertAgent(null, 'project', 'ok', { name: 'x' })); // project 缺 root（写面不借道 agentsDir 的 cwd 回退）
     mkdirSync(join(agentsDir('project', p), 'bad'), { recursive: true });
     writeFileSync(join(agentsDir('project', p), 'bad', 'agent.md'), 'no frontmatter');

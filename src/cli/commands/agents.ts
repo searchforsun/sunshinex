@@ -5,7 +5,7 @@
  *        [--executor=internal-team|external-cli] [--body-file=<path>]
  *   remove|enable|disable <id>
  * 读写全走 catalog 单点（listAgents / upsertAgent / removeAgent / setAgentEnabled），CLI 零自管盘上
- * 形态；三级视图（全局 → 项目新家 → 旧位置）在 list 标注 scope/shadowed/oldLocation/enabled（--json
+ * 形态；两级视图（全局 → 项目新家）在 list 标注 scope/shadowed/enabled（--json
  * 输出 AgentEntry 原样数组）。add 的 --body-file 读文件为正文（frontmatter 之后的 markdown 本体），
  * 缺省空正文；isolation/executor 枚举校验归 catalog 写面（越界值 CatalogWriteError('INVALID')）。
  * 通道即语义（mcp.ts 先例）：结果面（表格/JSON/ok 行）stdout、诊断面（error/[warn]）stderr、
@@ -41,8 +41,8 @@ function listCmd(args: string[]): number {
     return 1;
   }
   const listing = listAgents(target.root);
-  // --scope=global 过滤全局面（listAgents(null) 只列全局，root 非 null 时合并视图含项目两级+旧位置）；
-  // 缺省 project = 全量合并视图（global+项目新家+旧位置，遮蔽/旧位标注保留——与 catalog 视图同源裁定）
+  // --scope=global 过滤全局面（listAgents(null) 只列全局，root 非 null 时合并视图含项目级+全局）；
+  // 缺省 project = 全量合并视图（global+项目新家，遮蔽标注保留——与 catalog 视图同源裁定）
   const entries = target.scope === 'global' ? listing.entries.filter((e) => e.scope === 'global') : listing.entries;
   if (target.json) {
     // --json 输出 entries 原样数组（含 meta 全量与 bodyPreview），warnings 走 stderr 不混数据面
@@ -50,11 +50,11 @@ function listCmd(args: string[]): number {
   } else {
     // 表格（cli-table3，style 清空色码沿 plugins 先例，输出保持纯文本可管道）
     const table = new CliTable3({
-      head: ['id', 'name', 'scope', t('enabled', '启用'), t('shadowed', '遮蔽'), 'oldLocation'],
+      head: ['id', 'name', 'scope', t('enabled', '启用'), t('shadowed', '遮蔽')],
       style: { head: [], border: [] },
     });
     for (const e of entries) {
-      table.push([e.id, e.meta.name, e.scope, e.meta.enabled ? 'on' : 'off', e.shadowed ? 'yes' : '', e.oldLocation ? 'yes' : '']);
+      table.push([e.id, e.meta.name, e.scope, e.meta.enabled ? 'on' : 'off', e.shadowed ? 'yes' : '']);
     }
     console.log(table.toString());
   }

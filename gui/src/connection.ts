@@ -242,10 +242,10 @@ export interface Connection {
   /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（T5，AgentsPane 表单增删改）：
    *  input 原文即请求体（缺省字段不落 JSON）；scope=project 必带 root（缺 400），delete 不存在幂等 ok */
   putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void>;
-  /** PUT /settings/agents（T5 表单端点、T15 扩 op 五值，Task 23 AgentsPane 卡片化写面）：op 五值
-   *  判别联合（upsert/delete/enable/disable/migrate——agents 面无 mcp 式独立 /op 端点）；
-   *  input 原文即请求体（migrate 无 scope、global 省 root 不留空串伪参）；400=纯请求形状、
-   *  409=写面（hint 引流 raw 编辑面）、404=migrate 非 legacy，以 HTTP 失败抛错；成功 200 {ok:true} */
+  /** PUT /settings/agents（T5 表单端点、T15 扩 op 四值，Task 23 AgentsPane 卡片化写面）：op 四值
+   *  判别联合（upsert/delete/enable/disable——agents 面无 mcp 式独立 /op 端点）；
+   *  input 原文即请求体（global 省 root 不留空串伪参）；400=纯请求形状、
+   *  409=写面（hint 引流 raw 编辑面），以 HTTP 失败抛错；成功 200 {ok:true} */
   putAgentOp(input: AgentsOpInput): Promise<void>;
   /** GET /settings/agents/body?scope=&id=&root=（G8d T3，AgentsPane 编辑全文装载）：agent.md
    *  frontmatter 后正文全文（bodyPreview 200 帽不适用）；root 缺省省查询参（scope=global 忽略
@@ -707,8 +707,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return putOp('/settings/agents', input);
     },
     putAgentOp(input: AgentsOpInput): Promise<void> {
-      // input 原文即请求体（putAgent/putMcpOp 同款——migrate 无 scope、scope=global 省参不留
-      // root 空串伪参）。端点=既有 PUT /settings/agents（T15 在 handleAgentsPut 上扩 op 五值——
+      // input 原文即请求体（putAgent/putMcpOp 同款——scope=global 省参不留 root 空串伪参）。
+      // 端点=既有 PUT /settings/agents（T15 在 handleAgentsPut 上扩 op 四值——
       // agents 面无 mcp 式独立 /op 端点，daemon 路由表无 /settings/agents/op）
       return putOp('/settings/agents', input);
     },

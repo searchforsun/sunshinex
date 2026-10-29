@@ -270,14 +270,10 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── .sunshinex/
 │   ├── settings.json           # 项目级配置（覆盖全局；已在 .gitignore）
 │   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；首次装载过批准阀；可提交入库共享）
-│   ├── skills/<id>/SKILL.md    # 项目技能
-│   └── agents/<id>/agent.md    # 项目子智能体（新家；写只写这里，见 5.3）
-├── agents/<id>/agent.md        # 旧位置子智能体（兼容读中间层：遮蔽全局、被 .sunshinex/agents/ 新家遮蔽；GUI 可一键迁移）
-└── 兼容技能根（可选；同名技能按下述优先级就近生效）
-    ├── .agents/skills/<id>/SKILL.md   # 优先级：.sunshinex > .agents > .claude > .codex > .cursor
-    ├── .claude/skills/<id>/SKILL.md
-    ├── .codex/skills/<id>/SKILL.md
-    └── .cursor/skills/<id>/SKILL.md
+│   ├── skills/<id>/SKILL.md    # 项目技能（唯一项目技能根）
+│   └── agents/<id>/agent.md    # 项目子智能体（唯一项目落位；见 5.3）
+└── （历史旧位置 <项目>/agents/ 与 .claude/.cursor 等兼容技能根不再读取：子智能体旧位置条目在首次
+    装载/列举时一次性自动迁入 .sunshinex/agents/，兼容技能根请手工挪入 .sunshinex/skills/）
 ```
 
 - 技能标准形态统一为 `{根}/skills/{id}/SKILL.md`，正文前 frontmatter 写 `name` 与 `description`。
@@ -316,7 +312,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出，技能行附来源/遮蔽标注（project/user/learned/plugin，被遮蔽条目点名胜者来源） |
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，首项标注「默认」（缺省模型=首源首模型）、当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
 | `/mcp` | MCP 服务器面板：两级清单卡（名称/作用域/启用状态点/遮蔽标注/审批态，项目待确认服务器带「待确认」徽标与批准指引）；`/mcp enable|disable|approve|deny <名称>` 就地启停（写所在作用域 mcp.json）与项目批准阀审批（写全局 settings），执行后回显并重绘；新增/编辑经 `sunshinex mcp` 子命令 |
-| `/agents` | 子智能体面板：三级位置清单卡（id/作用域/来源标注/启用状态/描述）；`/agents enable|disable <id>` 就地启停（写所在作用域 agent.md enabled 行）；新增/编辑经 `sunshinex agents` 子命令 |
+| `/agents` | 子智能体面板：两级位置清单卡（id/作用域/遮蔽标注/启用状态/描述）；`/agents enable|disable <id>` 就地启停（写所在作用域 agent.md enabled 行）；新增/编辑经 `sunshinex agents` 子命令 |
 | `/plugins` | 插件面板：内置+用户两级清单卡（id/启用状态/来源段/平台可用性）；`/plugins enable|disable <id>` 写项目 settings 插件启用键；配置与安装经 `sunshinex plugins` 子命令 |
 | `/providers` | 模型提供方面板：只读清单卡（源名/模型数/密钥槽在场状态/默认源标注）+ 编辑引导（`sunshinex providers` 子命令或 `$EDITOR settings.json`；面板不做表单） |
 | `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效）；各档实际选中的模型 = providers models 条目的 `tier` 标注（同档取第一，无标注回缺省模型） |
@@ -361,7 +357,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 结束后：整段记录折叠进 `● [SPAWN]` 调用行（单行摘要含步数/耗时尾注）；`Ctrl+B` 浏览模式下 `Enter` 展开为 `▾` 头行 + 缩进转录全文（再按收拢）；`Tab` / `Ctrl+O` 可重放全文。
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
 - 预算护栏：子智能体不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
-- 自定义角色：项目级放 `<项目>/.sunshinex/agents/{id}/agent.md`，全局级放 `~/.sunshinex/agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。frontmatter 可选 `enabled`（缺省 `true`；`false` = 从注册表剔除，等同不存在，`/agents` 面板仍可见可再启用）。旧位置 `<项目>/agents/` 继续兼容读（三级装载序 后装遮蔽：全局 → 项目旧位置 → 项目新家——新家最高、全局垫底，停用条目不遮蔽低层级同 id；同名就近遮蔽），写只写新家——GUI 智能体页旧位置卡带「迁移」钮（拷入新家、旧目录保留不动）。启停与增删改：`/agents` 面板或 `sunshinex agents` 子命令。
+- 自定义角色：项目级放 `<项目>/.sunshinex/agents/{id}/agent.md`，全局级放 `~/.sunshinex/agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。frontmatter 可选 `enabled`（缺省 `true`；`false` = 从注册表剔除，等同不存在，`/agents` 面板仍可见可再启用）。两级装载序 后装遮蔽：全局 → 项目新家（同名就近遮蔽）。历史旧位置 `<项目>/agents/` 在首次装载/列举时一次性自动迁入新家（同 id 撞新家按陈旧重复删旧副本），此后盘上只有标准两级。启停与增删改：`/agents` 面板或 `sunshinex agents` 子命令。
 - 团队形态：`create_teammate` 工具创建智能体团队成员（长驻，自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
@@ -419,7 +415,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 | 操作 | 方法 |
 | --- | --- |
-| 开 | 「创建智能体团队成员 reviewer」（模型走 create_teammate）；或指定 `agents/{id}/agent.md`（旧位置）或 `.sunshinex/agents/{id}/agent.md`（新家，见 5.3）注册角色作框定 |
+| 开 | 「创建智能体团队成员 reviewer」（模型走 create_teammate）；或指定 `.sunshinex/agents/{id}/agent.md` 注册角色作框定（项目级/全局级见 5.3） |
 | 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为 agent 间交流） |
 | 打断当前任务 | 转录页两次 `Ctrl+C`（只打断这一个任务，成员保留续认领）；或 `task_stop <板任务 id>` / `task_stop 成员名` |
 | 消息 | teammate 间可互发，转录可见 |

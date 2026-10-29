@@ -9,7 +9,7 @@ import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
 import { createWorktree, isRepo, removeWorktree, subagentTreeName } from './worktree';
 import { dataDirReal } from '../config/data-dir';
-import { agentsDir, legacyAgentsDir, listAgents } from '../catalog/agents';
+import { agentsDir, listAgents, migrateLegacyAgentsOnce } from '../catalog/agents';
 import type { AgentEntry } from '../catalog/agents';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
@@ -89,16 +89,18 @@ export class AgentRegistry {
     }
   }
 
-  /** 三级装载（Task 7 收口）：全局 <globalDir>/agents/ → 旧位置 <root>/agents/ → 新家 <root>/.sunshinex/agents/，
-   *  后装遮蔽同 id（last-wins 就近覆盖，与 loadMcpServers/skills 多级链同机制）——新家是目录注册制的
-   *  归位终点（最高优先），旧位置是历史装配口径（中间层，遮蔽全局的两级语义保持不变），全局垫底。
-   *  三级路径一律取 catalog 落位单点（agentsDir/legacyAgentsDir），不手拼路径防漂移。
+  /** 两级装载：全局 <globalDir>/agents/ → 新家 <root>/.sunshinex/agents/，后装遮蔽同 id（last-wins
+   *  就近覆盖，与 loadMcpServers/skills 多级链同机制）——新家是目录注册制的归位终点（最高优先），
+   *  全局垫底。进面先跑 migrateLegacyAgentsOnce(projectRoot)：历史旧位置 <root>/agents/ 一次性自动
+   *  搬入新家（用户裁定 2026-10-29 去兼容清理），同轮装载即见迁入条目；legacy 目录不在场 = 快路径
+   *  零开销，迁移完成后永不再触发（失败条目留原地 + 装载面不认旧位，零阻塞）。
+   *  两级路径一律取 catalog 落位单点（agentsDir），不手拼路径防漂移。
    *  缺省 globalDir=userConfigDir()（既有单参调用零破坏——全局目录不存在 = 空注册）。
    *  装配纪律不变：任一级畸形文件整次 loadAgents throw（fail-fast 语义零变）；enabled:false 条目
    *  装配期剔除（loadAgentsFrom 内，见该函数注释） */
   loadAgents(projectRoot: string, globalDir?: string): void {
+    migrateLegacyAgentsOnce(projectRoot);
     this.loadAgentsFrom(agentsDir('global', projectRoot, globalDir));
-    this.loadAgentsFrom(legacyAgentsDir(projectRoot));
     this.loadAgentsFrom(agentsDir('project', projectRoot, globalDir));
   }
 
@@ -134,12 +136,12 @@ export class AgentRegistry {
   }
 }
 
-/* ---------- 三级宽容视图（G8c T5 设置端点消费面；Task 7 起为 catalog listAgents 薄委托，不经 Registry） ---------- */
+/* ---------- 两级宽容视图（G8c T5 设置端点消费面；Task 7 起为 catalog listAgents 薄委托，不经 Registry） ---------- */
 
 /** agents 清单展示条目（loadAgentsView 产物）：与 AgentDef 同字段面的只读投影 + 来源/遮蔽标记 + 正文预览。
  *  形状是 /settings/agents 应答契约（daemon ㉜ 逐字节钉死）。Task 27.5 富化落地（控制器 T23/T26 评审
- *  裁定的 REST 改面——Task 23 预留位）：enabled/oldLocation 两键透出（GUI AgentsPane 启停开关/迁移钮
- *  的 gating 字段，恒在场布尔——enabled 缺省 true 由本视图显式化）；version/dir 仍不透出（GUI 零消费面） */
+ *  裁定的 REST 改面——Task 23 预留位）：enabled 键透出（GUI AgentsPane 启停开关的 gating 字段，恒在
+ *  场布尔——enabled 缺省 true 由本视图显式化）；version/dir 仍不透出（GUI 零消费面） */
 export interface AgentEntryView {
   readonly id: string;
   readonly name: string;
@@ -151,14 +153,10 @@ export interface AgentEntryView {
    *  （T5 裁定——启停是写面/视图操作，运行期剔除属装配面职责）；恒布尔在场 = GUI gating 契约
    *  （缺键=旧 daemon 未富化，开关不渲染） */
   readonly enabled: boolean;
-  /** 条目来源层级：project = 项目两级（新家 <root>/.sunshinex/agents/ 与旧位置 <root>/agents/ 同标 project——
-   *  旧位置条目在 catalog 中 scope 恒 'project'，形状映射自然归位）；global = <globalDir>/agents/ */
+  /** 条目来源层级：project = 项目新家 <root>/.sunshinex/agents/；global = <globalDir>/agents/ */
   readonly source: 'project' | 'global';
-  /** true = 被更高优先同 id 遮蔽（全局条目保留展示、运行期不生效）；新家/旧位置条目（生效版）恒 false */
+  /** true = 被更高优先同 id 遮蔽（全局条目保留展示、运行期不生效）；项目条目（生效版）恒 false */
   readonly shadowed: boolean;
-  /** true = 旧位置 <root>/agents 条目（catalog AgentEntry.oldLocation 直映；新家/全局行恒 false）——
-   *  AgentsPane 迁移钮 gating（迁移是 legacy 专属动作） */
-  readonly oldLocation: boolean;
   /** frontmatter 之后正文前 200 字符（预览载荷防长正文击穿设置面板） */
   readonly bodyPreview: string;
 }
@@ -169,22 +167,20 @@ export interface AgentsView {
   readonly warnings: string[];
 }
 
-/** 三级 agents 目录宽容清单（G8c 两级起手、Task 7 收口为 catalog 薄委托）：扫描/解析/告警/遮蔽词法
+/** 两级 agents 目录宽容清单（G8c 两级起手、Task 7 收口为 catalog 薄委托）：扫描/解析/告警/遮蔽词法
  *  全部收口 catalog listAgents 单点（本函数零 fs 零解析——两面对账不漂移），只做两件映射：
  *  ①形状映射 AgentEntry→AgentEntryView（scope→source；description/memory/isolation/executor 可选键按需
- *  透出，空/假值省键；enabled/oldLocation 恒在场布尔直映 catalog——Task 27.5 富化，控制器 T23/T26 评审裁定的
- *  REST 改面）；②排序映射（catalog 层序=装载序全局先，视图序=项目两级
+ *  透出，空/假值省键；enabled 恒在场布尔直映 catalog——Task 27.5 富化，控制器 T23/T26 评审裁定的
+ *  REST 改面）；②排序映射（catalog 层序=装载序全局先，视图序=项目新家
  *  先、全局殿后——「生效视图优先」的既有契约）。
- *  遮蔽标注单点化（2026-10-28 终审修复波裁定）：catalog listAgents 自身按装载序（global→legacy→新家
- *  last-wins）给被撞全局行标 shadowed——旧位置撞全局的行 catalog 照列（legacy 遮蔽全局），本函数此前
- *  借「空全局哨兵二次列举补齐撞名行」的超集修补随之退役（单次列举即可，两面零分歧）；新家撞旧位置/
- *  全局两面同判（新家最高）。
+ *  遮蔽标注单点化：catalog listAgents 自身按装载序（global→新家 last-wins）给被撞全局行标 shadowed
+ *  （项目撞全局行 catalog 照列且生效，全局行降 shadowed）。
  *  enabled:false 照列（启停是写面/视图操作，运行时剔除属装配面职责）。畸形文件入 warnings 不抛死。
  *  纯函数零状态，不经 Registry */
 export function loadAgentsView(projectRoot: string, globalDir: string): AgentsView {
   const full = listAgents(projectRoot, globalDir);
   /** 形状映射单点：catalog 条目 → 视图行（可选键按需省键，应答字节面与委托前逐字节同形；
-   *  Task 27.5 富化：enabled/oldLocation 恒在场布尔直映 catalog——条目已在手，零二次扫盘） */
+   *  Task 27.5 富化：enabled 恒在场布尔直映 catalog——条目已在手，零二次扫盘） */
   const toRow = (e: AgentEntry, shadowed: boolean): AgentEntryView => ({
     id: e.id,
     name: e.meta.name,
@@ -195,18 +191,14 @@ export function loadAgentsView(projectRoot: string, globalDir: string): AgentsVi
     enabled: e.meta.enabled,
     source: e.scope,
     shadowed,
-    oldLocation: e.oldLocation,
     bodyPreview: e.bodyPreview,
   });
-  const newHome = full.entries.filter((e) => e.scope === 'project' && !e.oldLocation);
-  // 旧位置全量行：catalog 已按装载序透出（撞全局照列且生效），直接过滤即可
-  const legacy = full.entries.filter((e) => e.oldLocation);
+  const projects = full.entries.filter((e) => e.scope === 'project');
   const globals = full.entries.filter((e) => e.scope === 'global');
   return {
     entries: [
-      ...newHome.map((e) => toRow(e, e.shadowed)),
-      ...legacy.map((e) => toRow(e, e.shadowed)),
-      ...globals.map((e) => toRow(e, e.shadowed)), // 全局行 shadowed 由 catalog 单点标注（新家/旧位置撞名均覆盖）
+      ...projects.map((e) => toRow(e, e.shadowed)),
+      ...globals.map((e) => toRow(e, e.shadowed)), // 全局行 shadowed 由 catalog 单点标注（项目撞名覆盖）
     ],
     warnings: full.warnings,
   };

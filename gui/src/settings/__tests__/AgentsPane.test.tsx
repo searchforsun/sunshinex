@@ -5,14 +5,15 @@ import type { AgentsPaneConn } from '../AgentsPane';
 import type { Connection, AgentEntryView, BuiltinRole } from '../../connection';
 
 /**
- * Task 23 AgentsPane 重构桩测(卡片化+enabled 开关+旧位置迁移+编辑弹窗+SearchBar):
+ * Task 23 AgentsPane 重构桩测(卡片化+enabled 开关+编辑弹窗+SearchBar):
  * conn 全桩(agentsView/putAgentOp/agentBody 三面,不出网),用例沿 task brief——
  * ①卡片渲染(id/name/badge/chips/shadowed 标/正文折叠/builtins 只读卡/warnings;行无 enabled
  *   字段=daemon 未富化 → 开关不渲染的 gating 契约);②启停开关 op 形状(enable/disable,
- *   project 带 root/global 省参);③旧位置卡迁移钮 op 形状(migrate 恒 root+id,非 legacy 卡无钮);
- * ④编辑提交形状(EditorModal 居中模态:upsert scope=卡 source;id 编辑态锁定;截断守卫兜底仍在);
- * ⑤SearchBar 搜索过滤(200ms 防抖);⑥refreshTick 变化触发重拉;
- * ⑦工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页)。
+ *   project 带 root/global 省参);③编辑提交形状(EditorModal 居中模态:upsert scope=卡 source;id 编辑态锁定;
+ *   截断守卫兜底仍在);④SearchBar 搜索过滤(200ms 防抖);⑤refreshTick 变化触发重拉;
+ * ⑥工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页)。
+ * (2026-10-29 去兼容清理:旧位置卡「Old location」标注与 Migrate 钮随 oldLocation 字段/op migrate
+ * 一并退役——agents 旧位置由清单/装载入口一次性自动迁移,GUI 无迁移面)
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -73,7 +74,7 @@ const connOf = (
   };
 };
 
-describe('AgentsPane(卡片化+启停+旧位置迁移)', () => {
+describe('AgentsPane(卡片化+启停)', () => {
   it('卡片渲染:id 标题/名字副题/来源徽标/属性 chips/shadowed 标/正文折叠/builtins 只读卡/warnings;行无 enabled 字段 → 开关不渲染(gating 契约)', async () => {
     const { conn, agentsViewCalls } = connOf(
       [row(), row({ id: 'shared', name: 'Shared G', description: undefined, memory: undefined, isolation: undefined, executor: undefined, source: 'global', shadowed: true, bodyPreview: '全局版。' })],
@@ -122,22 +123,6 @@ describe('AgentsPane(卡片化+启停+旧位置迁移)', () => {
     await waitFor(() => expect(agentsViewCalls).toEqual([undefined])); // 仅全局清单
     fireEvent.click(sw);
     await waitFor(() => expect(opCalls).toEqual([{ op: 'enable', scope: 'global', id: 'dev' }])); // 省参 root
-  });
-
-  it('旧位置卡:「Old location」标注 + Migrate 钮 → {op:migrate, root, id}(非 legacy 卡无迁移钮);migrate 404 行内示错', async () => {
-    const { conn, opCalls } = connOf(
-      [row({ oldLocation: true }), row({ id: 'nh', name: 'New home', oldLocation: false })],
-      { opReject: new Error('/settings/agents/op -> 404') },
-    );
-    render(<AgentsPane conn={conn} root="/w/proj" />);
-    expect(await screen.findByText('Old location')).toBeDefined(); // 旧位置卡标
-    expect(screen.queryByText('New home')).toBeDefined();
-    // 非 legacy 卡无迁移钮;legacy 卡迁移钮 → op migrate(恒项目级 root 锚定)
-    expect(screen.queryByRole('button', { name: 'Migrate to .sunshinex/ nh' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Migrate to .sunshinex/ dev' }));
-    await waitFor(() => expect(opCalls).toEqual([{ op: 'migrate', root: '/w/proj', id: 'dev' }]));
-    // stub 恒拒(404 非 legacy)→ actionError 行内示错(saving 复位,不弹全局)
-    expect(await screen.findByRole('alert')).toBeDefined();
   });
 
   it('编辑提交形状:EditorDrawer(Edit dev)id 锁定 → Save = putAgentOp {op:upsert, scope:project, root, id, frontmatter, body};缺省键不落', async () => {

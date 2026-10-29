@@ -1726,8 +1726,6 @@ interface AgentEntryRow {
   shadowed: boolean;
   /** Task 27.5 富化(控制器 T23/T26 评审裁定):启停声明恒在场布尔(enabled:false 行照列,视图语义) */
   enabled: boolean;
-  /** Task 27.5 富化:true=旧位置 <root>/agents 条目(迁移钮 gating;新家/全局行恒 false) */
-  oldLocation: boolean;
   bodyPreview: string;
 }
 
@@ -1738,7 +1736,7 @@ interface AgentsBody {
 }
 
 describe('G8c T5 /settings/agents 端点', () => {
-  test('㉜ GET 两级+builtins 四角色+warnings(畸形宽容);无 token 401;无 root=仅全局(不扫 cwd 相对 agents/)', async () => {
+  test('㉜ GET 两级+builtins 四角色+warnings(畸形宽容)+旧位置一次性迁移;无 token 401;无 root=仅全局(不扫 cwd 相对 agents/)', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
       const writeAgent = (dir: string, id: string, md: string): void => {
@@ -1746,8 +1744,9 @@ describe('G8c T5 /settings/agents 端点', () => {
         fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md, 'utf8');
       };
       // 项目级:projA(带可选键)+shared(与全局同名→全局行 shadowed)+broken(缺 frontmatter→warnings 不抛死)
-      // +off(enabled:false 富化钉——照列且行上 enabled:false);全部落 <root>/agents 旧位置
-      // (writeAgent 几何)——项目行 oldLocation:true 即旧位置行富化钉;全局级落 userConfigDir=<home>/.sunshinex
+      // +off(enabled:false 富化钉——照列且行上 enabled:false);落 <root>/agents 旧位置几何(writeAgent
+      // 几何)——GET 经 loadAgentsView→listAgents 触发一次性迁移,条目自动搬入新家后照常列举;全局级落
+      // userConfigDir=<home>/.sunshinex
       writeAgent(proj, 'projA', '---\nname: Proj A\ndescription: project one\n---\nproj body\n');
       writeAgent(proj, 'shared', '---\nname: Shared P\n---\nfrom project\n');
       writeAgent(proj, 'off', '---\nname: Off\nenabled: false\n---\noff body\n');
@@ -1761,6 +1760,8 @@ describe('G8c T5 /settings/agents 端点', () => {
 
       const r = await fetch(`${base}/settings/agents?root=${encodeURIComponent(proj)}`, { headers: AUTH });
       assert.equal(r.status, 200);
+      // 一次性迁移随 GET 收口:旧位置条目全部搬入新家,旧目录删除(用户裁定 2026-10-29 去兼容清理)
+      assert.equal(fs.existsSync(path.join(proj, 'agents')), false, 'GET 后旧位置目录已随一次性迁移删除');
       const body = (await r.json()) as AgentsBody;
       assert.deepEqual(body.builtins, [
         { role: 'planner', name: 'Planner', framing: 'requirement breakdown, solution and plan' },
@@ -1771,21 +1772,21 @@ describe('G8c T5 /settings/agents 端点', () => {
       const ids = body.view.entries.map((e) => e.id);
       assert.deepEqual(new Set(ids), new Set(['projA', 'shared', 'off', 'globalA']), '清单=项目 3+全局 2(同名两行);畸形 broken 不入清单');
       assert.deepEqual(body.view.entries.filter((e) => e.id === 'shared'), [
-        { id: 'shared', name: 'Shared P', source: 'project', shadowed: false, enabled: true, oldLocation: true, bodyPreview: 'from project' },
-        { id: 'shared', name: 'Shared G', source: 'global', shadowed: true, enabled: true, oldLocation: false, bodyPreview: 'from global' },
-      ], '同名两行:项目行生效+全局行 shadowed=true 仍列示(序:项目先全局后);两键=Task 27.5 富化(项目行=旧位置→oldLocation:true)');
+        { id: 'shared', name: 'Shared P', source: 'project', shadowed: false, enabled: true, bodyPreview: 'from project' },
+        { id: 'shared', name: 'Shared G', source: 'global', shadowed: true, enabled: true, bodyPreview: 'from global' },
+      ], '同名两行:项目行生效+全局行 shadowed=true 仍列示(序:项目先全局后);enabled=Task 27.5 富化恒在场');
       assert.deepEqual(body.view.entries.find((e) => e.id === 'projA'), {
-        id: 'projA', name: 'Proj A', description: 'project one', source: 'project', shadowed: false, enabled: true, oldLocation: true, bodyPreview: 'proj body',
-      }, '项目条目:可选键按需透出;旧位置行 oldLocation:true+enabled:true 恒在场(富化契约)');
+        id: 'projA', name: 'Proj A', description: 'project one', source: 'project', shadowed: false, enabled: true, bodyPreview: 'proj body',
+      }, '项目条目:可选键按需透出(旧位置条目已随一次性迁移入新家)');
       assert.deepEqual(body.view.entries.find((e) => e.id === 'globalA'), {
-        id: 'globalA', name: 'Global A', source: 'global', shadowed: false, enabled: true, oldLocation: false, bodyPreview: 'global body',
+        id: 'globalA', name: 'Global A', source: 'global', shadowed: false, enabled: true, bodyPreview: 'global body',
       }, '未被遮蔽的全局条目');
       // enabled:false 行照列(T5 裁定:启停是写面/视图操作)且行上 enabled:false——GUI 启停开关 gating 字段
       assert.deepEqual(body.view.entries.find((e) => e.id === 'off'), {
-        id: 'off', name: 'Off', source: 'project', shadowed: false, enabled: false, oldLocation: true, bodyPreview: 'off body',
+        id: 'off', name: 'Off', source: 'project', shadowed: false, enabled: false, bodyPreview: 'off body',
       }, 'enabled:false 行照列且显式 enabled:false(缺省 true 由富化 daemon 显式化——恒布尔契约)');
       assert.equal(body.view.warnings.length, 1, '畸形文件恰一条 warning');
-      assert.ok(body.view.warnings[0]!.includes(path.join(proj, 'agents', 'broken', 'agent.md')), 'warning 含文件路径');
+      assert.ok(body.view.warnings[0]!.includes(path.join(proj, '.sunshinex', 'agents', 'broken', 'agent.md')), 'warning 含文件路径(迁移后=新家路径)');
       assert.ok(ids.indexOf('projA') < ids.indexOf('globalA'), '项目条目先于全局条目(生效视图优先)');
 
       // 无 root=仅全局清单:projectRoot 哨兵不落 cwd 相对 'agents'——测试进程 cwd=仓库根(真有 agents/
@@ -1817,7 +1818,7 @@ describe('G8c T5 /settings/agents 端点', () => {
       assert.equal(full.status, 200, 'project upsert 应 200');
       assert.deepEqual(await full.json(), { ok: true });
       // Task 15 写面收口 catalog：project upsert 落位=新家 <root>/.sunshinex/agents/<id>（catalog
-      // agentsDir 单点，较旧 <root>/agents 旧位是有意的存储归一——旧位置条目经 migrate op 迁移）
+      // agentsDir 单点——存储归一定版；历史旧位置条目由清单/装载入口一次性迁移收口）
       assert.equal(
         fs.readFileSync(path.join(proj, '.sunshinex', 'agents', 'newagent', 'agent.md'), 'utf8'),
         '---\nname: New Agent\ndescription: does many things\nmemory: true\nisolation: worktree\nexecutor: internal-team\n---\nFrame line one.\nLine two.',
@@ -1837,8 +1838,8 @@ describe('G8c T5 /settings/agents 端点', () => {
       assert.deepEqual(body.view.entries.find((e) => e.id === 'newagent'), {
         id: 'newagent', name: 'New Agent', description: 'does many things', memory: true,
         isolation: 'worktree', executor: 'internal-team', enabled: true, source: 'project', shadowed: false,
-        oldLocation: false, bodyPreview: 'Frame line one.\nLine two.',
-      }, '新条目全字段透出(bodyPreview=正文预览);新家行 oldLocation:false(与 ㉜ 旧位置行 true 对照)');
+        bodyPreview: 'Frame line one.\nLine two.',
+      }, '新条目全字段透出(bodyPreview=正文预览;enabled=Task 27.5 富化恒在场)');
       assert.deepEqual(body.view.warnings, [], 'upsert 生成物零 warnings(生成物必过装配解析器)');
       const g = await fetch(`${base}/settings/agents`, { headers: AUTH });
       const gBody = (await g.json()) as AgentsBody;
@@ -1932,14 +1933,13 @@ describe('G8d T3 GET /settings/agents/body 端点', () => {
   test('㊱ 两 scope 往返:frontmatter 后正文全文(>200 不截断,不含 frontmatter);global 忽略 root;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
-      const writeAgent = (dir: string, id: string, md: string): void => {
-        fs.mkdirSync(path.join(dir, 'agents', id), { recursive: true });
-        fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md, 'utf8');
+      const writeAgent = (agentsDirPath: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(agentsDirPath, id), { recursive: true });
+        fs.writeFileSync(path.join(agentsDirPath, id, 'agent.md'), md, 'utf8');
       };
       const longBody = `整段正文第一行。\n${'很长的正文行。'.repeat(40)}\n收尾行。`;
-      writeAgent(proj, 'pfull', `---\nname: P Full\ndescription: project full\n---\n${longBody}`);
-      const globalDir = path.join(home, '.sunshinex');
-      writeAgent(globalDir, 'gfull', `---\nname: G Full\n---\n${longBody}`);
+      writeAgent(path.join(proj, '.sunshinex', 'agents'), 'pfull', `---\nname: P Full\ndescription: project full\n---\n${longBody}`);
+      writeAgent(path.join(home, '.sunshinex', 'agents'), 'gfull', `---\nname: G Full\n---\n${longBody}`);
 
       const noAuth = await fetch(`${base}/settings/agents/body?scope=project&id=pfull&root=${encodeURIComponent(proj)}`);
       assert.equal(noAuth.status, 401, '无 token 401');
@@ -1969,10 +1969,10 @@ describe('G8d T3 GET /settings/agents/body 端点', () => {
   test('㊲ 404(两 scope 缺文件)/400 坏 id(路径穿越)/400 坏 scope·缺 root/400 畸形 frontmatter(带 message)', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
-      fs.mkdirSync(path.join(proj, 'agents', 'ok'), { recursive: true });
-      fs.writeFileSync(path.join(proj, 'agents', 'ok', 'agent.md'), '---\nname: Ok\n---\nbody\n', 'utf8');
-      fs.mkdirSync(path.join(proj, 'agents', 'broken'), { recursive: true });
-      fs.writeFileSync(path.join(proj, 'agents', 'broken', 'agent.md'), 'no frontmatter here\n', 'utf8');
+      fs.mkdirSync(path.join(proj, '.sunshinex', 'agents', 'ok'), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'agents', 'ok', 'agent.md'), '---\nname: Ok\n---\nbody\n', 'utf8');
+      fs.mkdirSync(path.join(proj, '.sunshinex', 'agents', 'broken'), { recursive: true });
+      fs.writeFileSync(path.join(proj, '.sunshinex', 'agents', 'broken', 'agent.md'), 'no frontmatter here\n', 'utf8');
 
       // 404:project 目录存在但无该 id;global 同;回显 ${scope}/agents/${id} 相对定位——不含绝对路径
       const p404 = await fetch(

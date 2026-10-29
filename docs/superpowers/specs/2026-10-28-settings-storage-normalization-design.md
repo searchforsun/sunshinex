@@ -23,7 +23,7 @@ CLI 层：仅 `skills install` 与 `plugins list/validate`；MCP/agents/settings
 ## 1. 决策记录（用户裁定 2026-10-28）
 
 1. **作用域**：恢复**项目遮蔽全局**——MCP 项目文件复活加载、插件开关恢复项目级；项目同名/同 id 遮蔽全局，UI 明确标注遮蔽关系。安全阀：项目级 MCP 首次启用需一次确认（防克隆仓库自带 mcp.json 自动拉起进程）。此裁定反转 2026-10-27 的「应用级」裁定。
-2. **存储格式**：**单文件惯例 + settings.json 元数据中枢**。mcp 每作用域一个 `mcp.json`（含 enabled）；插件开关/配置留 settings `plugins` 键；`agent.md` frontmatter 新增可选 `enabled`；agents 项目目录迁入 `.sunshinex/agents`（旧位置兼容读）。否决「每类文件夹+registry.json」方案（迁移面大、破坏 mcp.json 生态惯例）。
+2. **存储格式**：**单文件惯例 + settings.json 元数据中枢**。mcp 每作用域一个 `mcp.json`（含 enabled）；插件开关/配置留 settings `plugins` 键；`agent.md` frontmatter 新增可选 `enabled`；agents 项目目录迁入 `.sunshinex/agents`（旧位置 2026-10-29 起一次性自动迁移后退役）。否决「每类文件夹+registry.json」方案（迁移面大、破坏 mcp.json 生态惯例）。
 3. **实时同步**：**双向实时**——守护进程加文件监听 + WS 广播 `config-changed` + 开着的设置页自动刷新；GUI 编辑继续直接写盘。
 4. **CLI 面**：**四类全套 CRUD** + `settings get/set`；统一 `--scope`；**TUI 同样支持**（面板+启停，编辑引导 CLI/$EDITOR）。
 5. **代码架构**：**共享存储库 + 各端薄封装**（新建 `src/catalog/`，harness 加载器改为消费同一 merge 逻辑）；否决原地修补（作用域逻辑继续漂移）与全泛型资源引擎（对 4 类属过度设计）。
@@ -48,14 +48,14 @@ CLI 层：仅 `skills install` 与 `plugins list/validate`；MCP/agents/settings
 <root>/.sunshinex/                         项目作用域
   settings.json    不变；plugins 项目级键恢复生效
   mcp.json         复活：项目级 MCP，遮蔽全局同名；条目首次加载需批准（§4）
-  skills/<id>/SKILL.md                       # 不变（五兼容根优先级链不动）
-  agents/<id>/agent.md                       # 新家；旧位置 <root>/agents/ 兼容读（遮蔽全局、低于新家——
-                                             # 终审修复波裁定 2026-10-28，见 §2 作用域规则注），写只写新家
+  skills/<id>/SKILL.md                       # 项目技能唯一根（2026-10-29 去兼容清理：五兼容根收敛单根）
+  agents/<id>/agent.md                       # 唯一项目落位（2026-10-29 去兼容清理：旧位置 <root>/agents/
+                                             # 不再兼容读，清单/装载入口一次性自动迁入新家，见 §2 注）
 ```
 
-**统一作用域规则**：四类一律项目遮蔽全局（同 id/同名，视图标 `shadowed`）；settings 语义键维持既有 env > project > global 填充链不动。skills 的五兼容根优先级链（`.sunshinex` > `.agents` > `.claude` > `.codex` > `.cursor` > user > learned > plugin）不动，仅视图补遮蔽标注。
+**统一作用域规则**：四类一律项目遮蔽全局（同 id/同名，视图标 `shadowed`）；settings 语义键维持既有 env > project > global 填充链不动。skills 项目根 2026-10-29 去兼容清理后收敛为单根（`.sunshinex` > user > learned > plugin，`.agents`/`.claude`/`.codex`/`.cursor` 兼容根不再装载）。
 
-> **agents 三级优先级终审裁定（2026-10-28 终审修复波，控制器裁定）**：agents 的旧位置并非全资源统一规则下的「最低优先级」——装载器（harness.AgentRegistry.loadAgents，Task 7 收口）三级序为 **global → legacy（旧位置）→ 新家**，last-wins 即**旧位置遮蔽全局、新家遮蔽旧位置/全局**（保住分支前行为与迁移叙事）。2026-10-28 终审修复波裁定：**以装载器语义为准**，catalog 读面（listAgents）对齐——旧位置撞全局时旧位置行照列且生效（shadowed 恒 false），同 id 全局行降标 shadowed 保留在列；撞新家时旧位置不列。此前 catalog 读面「全局在场时旧位置整行隐藏」与装载器的三面分歧（CLI/TUI 显示全局副本、运行期却装 legacy 副本）随之收口，显示与运行恒同一副本（跨面钉测见 harness/subagent.test ④）。
+> **agents 旧位置退役（2026-10-29 去兼容清理，用户裁定 A+B 档全删）**：此前旧位置 `<root>/agents/` 为兼容读中间层（2026-10-28 终审裁定视图对齐装载器：旧位置遮蔽全局、新家最高）。2026-10-29 起旧位置不再兼容读——`catalog/agents.ts` 新增 `migrateLegacyAgentsOnce(root)` 一次性自动迁移（`listAgents` 与 `AgentRegistry.loadAgents` 进面触发：逐 id 搬入新家、新家已有同 id = 陈旧重复删旧副本、搬空删旧目录、失败条目留原地出 warning 不阻塞），读面/装载面/写面收敛为标准两级（全局 → 项目新家），`oldLocation` 字段与 `migrate` op/GUI 迁移钮随之退役。
 
 **enabled 语义**：agent.md `enabled: false` ⇒ 注册表中剔除（等同不存在，不参与遮蔽计数）；缺省/true ⇒ 正常。MCP 条目 `enabled: false` 维持现状语义（列出但标停用）。插件 enabled 由 settings 记录表达（两级：项目记录存在则用项目记录，否则全局记录，否则 manifest `defaultEnabled`）。
 
@@ -71,11 +71,11 @@ src/catalog/
   mcp.ts        listMcpServers(root|null)            # 两级合并视图 + scope/shadowed/approval 标注
                 upsertMcpServer(root,scope,name,server) / removeMcpServer / setMcpServerEnabled
                 approveMcpServer(root,name) / denyMcpServer(root,name)
-  agents.ts     listAgents(root|null)                # 全局 → 项目旧位置 → 项目新家（层序=装载序；
-                                                     # 旧位置遮蔽全局、新家最高——终审修复波裁定
-                                                     # 2026-10-28 对齐 harness 装载器，见 §2 注）+
+  agents.ts     listAgents(root|null)                # 全局 → 项目新家（层序=装载序；进面先跑
+                                                     # migrateLegacyAgentsOnce 一次性迁旧位置条目——
+                                                     # 2026-10-29 去兼容清理）+
                                                      # 含 enabled:false 项（视图可见可再启用）+
-                                                     # shadowed/oldLocation 标注
+                                                     # shadowed 标注
                 upsertAgent(root,scope,id,spec) / removeAgent / setAgentEnabled
                                                      # 运行时加载器（harness）剔除 enabled:false
   plugins.ts    listPlugins(root) / setPluginEnabled(root,scope,id,enabled) / setPluginConfig
@@ -92,7 +92,7 @@ src/catalog/
 
 **单一事实源改造**（行为收口的关键）：
 - `src/config.ts loadMcpServers(root)`：改调 `catalog/mcp.ts` 的合并+批准过滤逻辑（今日它读全局 mcp.json、`void projectRoot`）。
-- `src/harness/subagent.ts loadAgents`：改调 `catalog/agents.ts` 的两级+旧位置+enabled 逻辑（保持 fail-fast 加载纪律与 `loadAgentsView` 宽容视图分离）。
+- `src/harness/subagent.ts loadAgents`：改调 `catalog/agents.ts` 的两级+enabled 逻辑（进面先跑 migrateLegacyAgentsOnce 一次性迁移；保持 fail-fast 加载纪律与 `loadAgentsView` 宽容视图分离）。
 - `src/config/plugins.ts readGlobal`：恢复两级 settings 读取（今日 global-only、项目键「存在即忽略」）。
 - `src/harness/skills.ts` 不动（catalog/skills.ts 仅做视图组合）。
 
@@ -133,7 +133,7 @@ src/catalog/
 
 **四张资源页统一为一屏式**（顶栏 = 搜索 + 新增；主体 = 卡片列表；scope 在壳上）：
 - **MCP**：卡片列 server（连接状态点、transport chip、工具数、SourceBadge）；操作 = 测试/编辑/删除/启停；新增/编辑走 EditorDrawer（名称/transport/command|url/args/env 表单 + JSON 源码折叠）；项目作用域下全局同名卡标「被项目遮蔽」；`pendingApproval` 卡标「待确认」+ 确认/拒绝钮。
-- **Agents**：卡片化重写（弃原生 form）；EditorDrawer 表单（id 编辑态锁定/名称/描述/记忆/隔离/执行器/正文）+ 启停开关；builtin 角色只读卡；旧位置条目标「旧位置」+ 一键迁移钮（copy 至 `.sunshinex/agents/`，旧目录保留不动）。
+- **Agents**：卡片化重写（弃原生 form）；EditorDrawer 表单（id 编辑态锁定/名称/描述/记忆/隔离/执行器/正文）+ 启停开关；builtin 角色只读卡（旧位置条目/迁移钮随 2026-10-29 去兼容清理退役——旧位置由清单/装载入口一次性自动迁移）。
 - **Plugins**：卡片 + 搜索保留；配置编辑（configSchema 驱动键值）进 EditorDrawer；无新增（安装=目录拷贝，另议）。
 - **Skills**：只读网格 + 搜索 + 来源过滤保留；补同 id 跨来源遮蔽标注（谁遮蔽了谁）；无启停无增改。
 
@@ -168,7 +168,7 @@ sunshinex settings get <key> | set <key> <value> [--scope]
 
 按 `commands-*` 族先例（commands-skills.ts / commands-memory.ts 拆分件模式）新增：
 - `/mcp`：两级合并列表（scope/状态/待确认标注）+ `/mcp enable|disable|approve|deny <name>`；`/mcp add` 引导到 `sunshinex mcp add` 或 `$EDITOR` 打开对应 mcp.json（TUI 不做表单）。
-- `/agents`：注册表列表（含 enabled/旧位置标注）+ `/agents enable|disable <id>`。
+- `/agents`：注册表列表（含 enabled 标注）+ `/agents enable|disable <id>`。
 - `/plugins`：清单 + `/plugins enable|disable <id>`。
 - `/providers`：provider/model 清单卡（密钥状态、默认标记）+ `/model` 切换卡补「默认」徽标；编辑引导 CLI（`sunshinex providers add/...`）或 `$EDITOR`（TUI 不做表单，沿缺省裁定）。
 - `/skills`：扩展现有 commands-skills 面板，补来源与遮蔽标注（轻改）。
@@ -176,14 +176,14 @@ sunshinex settings get <key> | set <key> <value> [--scope]
 
 ## 10. 迁移与兼容
 
-- agents 旧位置 `<root>/agents/`：继续读（遮蔽全局、低于新家——终审修复波裁定 2026-10-28，见 §2 注），写只写新家；GUI 一键迁移（copy，不删旧）；不自动搬移（不动用户仓库文件）。
+- agents 旧位置 `<root>/agents/`：**一次性自动迁移**（2026-10-29 去兼容清理改口，替代本节初版「继续兼容读 + GUI 一键迁移」口径）——清单/装载入口 `migrateLegacyAgentsOnce` 逐 id 搬入新家（同 id 撞新家按陈旧重复删旧副本）、搬空删旧目录、失败条目留原地出 warning 不阻塞；此后旧位置零读取零写入。
 - 项目 mcp.json 僵尸复活：现存文件直接进合并视图（本仓库自身 `{"mcpServers":{}}` 即实例）；其中 server 首次加载走批准阀。
 - settings `plugins` 项目键：从「存在即忽略」恢复为两级生效；本仓库自身 `.sunshinex/settings.json` 的两插件启用配置自动复活。
 - 无数据迁移脚本、无版本升级；`MANUAL.md`/`docs/PLUGIN-DEV.md` 相应章节随实现更新。
 
 ## 11. 测试策略
 
-- **catalog 每模块 node:test**：两级合并/遮蔽标注/enabled 语义/批准阀（批准加载、未批准跳过、拒绝不再询问）/注释 409/原子写/agents 旧位置兼容读/JSONC 容忍。
+- **catalog 每模块 node:test**：两级合并/遮蔽标注/enabled 语义/批准阀（批准加载、未批准跳过、拒绝不再询问）/注释 409/原子写/agents 两级合并与一次性迁移/JSONC 容忍。
 - **watch.ts**：临时目录真实 write/rename 触发 → 防抖事件断言；回环抑制断言。
 - **serve handlers**：op 端点、providers/permissions op、409 路径、config-changed WS 帧、reload 语义。
 - **CLI**：spawn dist 端到端（`mcp add` → `mcp list --json` 断言；agents add → list）。
@@ -201,7 +201,7 @@ skills 增删改与启停（用户裁定除外）；插件安装/卸载 CLI 与�
 3. 插件项目级开关真实生效且与 GUI 来源徽标一致。
 4. CLI 全套子命令可用，与 GUI 写同一批文件（交叉验证一致）。
 5. 外部编辑四类文件后，打开中的 GUI 设置页 ≤1s 自动反映；daemon 自写不产生多余刷新。
-6. `<root>/agents/` 旧位置继续可用且 GUI 一键迁移成功。
+6. `<root>/agents/` 旧位置条目经一次性自动迁移落入 `.sunshinex/agents/`（旧目录删除；撞新家同 id 删旧副本）。
 7. 全量门禁绿：主仓 node:test + `pnpm --dir gui run typecheck` + gui vitest。
 8. 模型与提供方（§15）：providers 列表三端增删改一致；默认模型恒为第一×第一且有标记；散键退役有 warning 指引；档位路由按 tier 标注工作。
 

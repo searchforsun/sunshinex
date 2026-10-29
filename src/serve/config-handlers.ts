@@ -19,13 +19,11 @@ import {
   validateMcpRawContent,
 } from './config-helpers';
 // Task 6 起 renderAgentMd（生成器）居 catalog/agents——serve 层不再直用（upsert 经 catalog
-// upsertAgent 内部生成）；Task 15 起 agents 写面（upsert/remove/setEnabled/migrate）与 AGENT_ID_RE
+// upsertAgent 内部生成）；Task 15 起 agents 写面（upsert/remove/setEnabled）与 AGENT_ID_RE
 // （id 安全面单点，自 config-helpers 上收消依赖倒置）同样收口 catalog——本文件 handlers 全部薄封装 catalog 调用
 import {
   AGENT_ID_RE,
   agentsDir,
-  legacyAgentsDir,
-  migrateAgent,
   removeAgent,
   setAgentEnabled,
   upsertAgent,
@@ -915,7 +913,7 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
 }
 
 /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（G8c T5，AgentsPane 表单增删改；
- *  Task 15 扩 op 值 enable|disable|migrate 并全量收口 catalog 写面——本 handler 只剩请求形态校验
+ *  Task 15 扩 op 值 enable|disable 并全量收口 catalog 写面——本 handler 只剩请求形态校验
  *  与 CatalogWriteError→HTTP 码映射，文件操作/校验/原子写/写通知全在 catalog/agents 单点；
  *  config-changed WS 帧由写内 notify 直发，handler 不自行广播防双发）：
  *  - id 安全校验 AGENT_ID_RE → 400（id 直接拼目录路径——路径分隔/穿越/点开头一律拒，全 op 同守卫）；
@@ -923,20 +921,16 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
  *  - upsert：parseAgentFrontmatterInput 单点校验+归一（首错 400，零部分写）→ catalog upsertAgent
  *    （内部 renderAgentMd 生成 + 写前 round-trip 过真解析器 + 原子落盘——较旧 tmp+回读+rename 更进一步：
  *    坏内容根本不进 tmp）。落位=新家 <root>/.sunshinex/agents/<id>（catalog agentsDir 单点——storage
- *    归一裁定，旧位置条目经 migrate op 入新家）；frontmatter 枚举越型（isolation/executor）旧路径落
- *    tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 409（罕见路径语义升级，见映射注）
- *  - delete：catalog removeAgent（rm -rf 条目整目录含同级私有文件；新家缺失 INVALID）+ 旧位置兼容
- *    回退——catalog 写面对旧位置「只迁不删」无删除面，serve 保留旧位删除收口使幂等契约不回退
- *    （手建旧位条目仍可删）；新旧皆缺 = 幂等 200（既有契约零变）
+ *    归一裁定；历史旧位置条目由清单/装载入口的 migrateLegacyAgentsOnce 一次性自动迁入）；frontmatter
+ *    枚举越型（isolation/executor）旧路径落 tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 409
+ *    （罕见路径语义升级，见映射注）
+ *  - delete：catalog removeAgent（rm -rf 条目整目录含同级私有文件；缺失 INVALID）；缺失 INVALID
+ *    就地吞作幂等 200（既有契约零变）
  *  - enable/disable（Task 15 新增）：catalog setAgentEnabled（frontmatter enabled 行保序手术 +
- *    写后回环）；条目缺失 → 409（旧位置条目须先 migrate——写面只认新家，迁移前置是产品语义）
- *  - migrate（Task 15 新增）：catalog migrateAgent（legacy <root>/agents/<id> 整目录拷入新家，
- *    旧位保留）。恒项目级（body 无 scope——root 锚定），缺 root 400；非 legacy 条目（无源目录）
- *    → 404（brief 明定——迁移是 legacy 专属动作）；撞新家已存在 → 400（裁定例外项，见分支注）
+ *    写后回环）；条目缺失 → 409（写面只认标准两级——旧位置条目由清单/装载入口一次性迁移收口）
  *  CatalogWriteError 映射（控制器裁定 2026-10-28，理由见 handleMcpOp 注；hint 分流终审修复波二裁
- *  见 sendCatalogWriteError 注）：upsert/enable/disable 的 INVALID → 409 {error}（内容/写面错误；
- *  delete 例外——缺失 INVALID 就地吞作幂等 200，见分支注）；migrate 的 INVALID 保留 400（撞新家=请求
- *  所指目标状态冲突，裁定例外项）。
+ *  见 sendCatalogWriteError 注）：INVALID → 409 {error}（内容/写面错误；delete 例外——缺失 INVALID
+ *  就地吞作幂等 200，见分支注）。
  *  COMMENTS 不可达（agent.md 无注释形态——真如此沿兜底抛错走 dispatch 500）。IO 失败不经本地捕获
  *  ——沿 dispatch 500 收口 */
 export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -947,41 +941,13 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
   }
   const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown; enabled?: unknown } | null;
   const op = body?.op;
-  if (op !== 'upsert' && op !== 'delete' && op !== 'enable' && op !== 'disable' && op !== 'migrate') {
-    io.send(res, 400, { error: 'op must be "upsert" | "delete" | "enable" | "disable" | "migrate"' });
+  if (op !== 'upsert' && op !== 'delete' && op !== 'enable' && op !== 'disable') {
+    io.send(res, 400, { error: 'op must be "upsert" | "delete" | "enable" | "disable"' });
     return;
   }
   const id = body?.id;
   if (typeof id !== 'string' || !AGENT_ID_RE.test(id)) {
     io.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
-    return;
-  }
-  // migrate 恒项目级：body 无 scope（root 锚定 <root>/agents → <root>/.sunshinex/agents），缺 root 400
-  if (op === 'migrate') {
-    const migrateRootRaw = body?.root;
-    if (typeof migrateRootRaw !== 'string' || migrateRootRaw.length === 0) {
-      io.send(res, 400, { error: 'root required for migrate (legacy <root>/agents → <root>/.sunshinex/agents)' });
-      return;
-    }
-    const migrateRoot = path.resolve(migrateRootRaw);
-    // 非 legacy 条目 → 404（先于 catalog：migrateAgent 的「缺源 INVALID」在此细分出专属码——
-    // 迁移是 legacy 专属动作，无源目录与资源不存在同义）
-    if (!fs.existsSync(path.join(legacyAgentsDir(migrateRoot), id))) {
-      io.send(res, 404, { error: `legacy agent not found: agents/${id}` });
-      return;
-    }
-    try {
-      // 撞新家已存在 → 400（保留原判——控制器裁定 2026-10-28 的例外项：撞新家属请求所指目标的
-      // 状态冲突而非目标文件内容不可写，非 legacy 404 同类，不入「内容/写面错误 → 409」桶）
-      migrateAgent(migrateRoot, id);
-    } catch (err) {
-      if (err instanceof CatalogWriteError) {
-        io.send(res, 400, { error: err.message });
-        return;
-      }
-      throw err;
-    }
-    io.send(res, 200, { ok: true });
     return;
   }
   const scope = body?.scope;
@@ -999,17 +965,11 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
   // 同形闭包 mapWriteError 两码统一挂 hint，与单点 hint 分流口径漂移，随之删除）
   if (op === 'delete') {
     try {
-      removeAgent(root, scope, id); // catalog 收口：新家 rm -rf（含同级私有文件）
+      removeAgent(root, scope, id); // catalog 收口：rm -rf 条目整目录（含同级私有文件）
     } catch (err) {
-      // 新家缺失 INVALID 就地吞（幂等契约）+ 旧位置兼容回退：catalog 写面只迁不删（无旧位删除面），
-      // serve 保留旧位删除收口——手建 <root>/agents/<id> 条目的既有可删性不因收口回退；新旧皆缺 =
-      // 幂等 200（既有契约零变）。非 catalog 面（IO 竞态等）→ dispatch 500（removeAgent 的
-      // invalid-id 分支已被上方 AGENT_ID_RE 守卫拦截，不可达）
+      // 缺失 INVALID 就地吞（幂等契约：从未存在与已删同 ok）。非 catalog 面（IO 竞态等）→
+      // dispatch 500（removeAgent 的 invalid-id 分支已被上方 AGENT_ID_RE 守卫拦截，不可达）
       if (!(err instanceof CatalogWriteError)) throw err;
-      if (scope === 'project') {
-        const legacyDir = path.join(legacyAgentsDir(root!), id);
-        if (fs.existsSync(legacyDir)) fs.rmSync(legacyDir, { recursive: true });
-      }
     }
     io.send(res, 200, { ok: true });
     return;
@@ -1023,7 +983,7 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
       return;
     }
     try {
-      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（旧位置条目须先 migrate）
+      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（写面只认标准两级）
     } catch (err) {
       if (!sendCatalogWriteError(io, res, err)) throw err;
       return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
@@ -1065,9 +1025,8 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
 }
 
 /** GET /settings/agents/body?scope=project|global&id=&root=（G8d T3，AgentsPane 编辑全文装载）：
- *  读条目 agent.md（Task 15 落位解析：新家 <root>/.sunshinex/agents 先、旧位置 <root>/agents 回退，
- *  global=<userConfigDir>/agents——catalog agentsDir/legacyAgentsDir 单点）的 frontmatter 后正文全文
- *  （parseAgentFrontmatter 单点——
+ *  读条目 agent.md（落位解析：project=<root>/.sunshinex/agents、global=<userConfigDir>/agents——
+ *  catalog agentsDir 单点）的 frontmatter 后正文全文（parseAgentFrontmatter 单点——
  *  验证口径=装载口径=bodyPreview 口径，三面同源；bodyPreview 的 200 帽在此不适用）。错误面：
  *  坏 scope/坏 id（AGENT_ID_RE 同 PUT 守卫）/scope=project 缺 root → 400；文件缺 → 404（回显
  *  `${scope}/agents/${id}` 相对定位——G8e-T4 收敛：不泄 daemon 主机绝对路径，GUI 可原样呈现）；
@@ -1090,14 +1049,10 @@ export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessa
     io.send(res, 400, { error: 'root required for scope=project' });
     return;
   }
-  // 落位解析（Task 15 收口 catalog agentsDir 单点）：先新家（upsert/enable 的写位），缺则回退旧位置
-  // <root>/agents（legacyAgentsDir——手建旧位条目的既有可编辑性不因写面收口回退；global 无旧位概念）
+  // 落位解析（Task 15 收口 catalog agentsDir 单点）：project=<root>/.sunshinex/agents、
+  // global=<userConfigDir>/agents（标准两级；旧位回退随去兼容清理退役——清单/装载入口已一次性迁移）
   const scopeRoot = scope === 'project' ? path.resolve(rootParam as string) : null;
-  const newHomeFile = path.join(agentsDir(scope, scopeRoot), id, 'agent.md');
-  const file =
-    scope === 'project' && !fs.existsSync(newHomeFile)
-      ? path.join(legacyAgentsDir(scopeRoot!), id, 'agent.md')
-      : newHomeFile;
+  const file = path.join(agentsDir(scope, scopeRoot), id, 'agent.md');
   if (!fs.existsSync(file)) {
     io.send(res, 404, { error: `agent.md not found: ${scope}/agents/${id}` });
     return;

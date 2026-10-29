@@ -8,7 +8,7 @@ import { handleAgentsPut, handleMcpGet, handleMcpOp, type ConfigHandlerIo } from
 
 /** /settings/mcp/op + /settings/agents op 扩展处理器直测（Task 15；沿 config-handlers.test 先例：
  *  handler 纯函数形 req/res+io，io 全 fake 不起真 daemon——daemon.test 的 fetch 面锚既有端点契约，
- *  此处补 op 面单元粒度：单条目手术写、批准阀接线、注释/畸形守卫、agents enable/disable/migrate） */
+ *  此处补 op 面单元粒度：单条目手术写、批准阀接线、注释/畸形守卫、agents enable/disable/delete） */
 
 /** fake io：send 回执收集 + readJson 回放预设 body（op 面不触发链重载，reloadSettingsChain 恒空转） */
 function fakeIo(body: unknown): { io: ConfigHandlerIo; sends: Array<{ status: number; body: Record<string, unknown> }> } {
@@ -241,51 +241,44 @@ test('agents op：enable/disable 落 frontmatter enabled 行（原位替换非�
     assert.equal(md.split('enabled:').length - 1, 1, 'enabled 行原位替换（恰一行）');
     assert.ok(md.includes('enabled: false'), 'disable 落 enabled:false');
 
-    // 缺失条目 → 409（catalog INVALID 写面拒写；旧位置条目须先 migrate——写面只认新家）；
+    // 缺失条目 → 409（catalog INVALID 写面拒写；写面只认标准两级——旧位置条目由清单/装载入口的
+    // migrateLegacyAgentsOnce 一次性迁移收口，写面不再认旧位）；
     // 终审修复波二裁：INVALID 无 hint（raw 编辑器修不了缺失条目）
     fs.mkdirSync(path.join(proj, 'agents', 'legacy1'), { recursive: true });
     fs.writeFileSync(path.join(proj, 'agents', 'legacy1', 'agent.md'), '---\nname: L1\n---\nold\n', 'utf8');
     r = await agentsPut({ op: 'enable', scope: 'project', root: proj, id: 'ghost' });
     assert.equal(r.status, 409, 'enable 缺失条目 → 409');
     r = await agentsPut({ op: 'disable', scope: 'project', root: proj, id: 'legacy1' });
-    assert.equal(r.status, 409, 'enable/disable 不认旧位置条目（迁移前置）→ 409');
+    assert.equal(r.status, 409, 'enable/disable 不认旧位置条目（写面只认标准两级）→ 409');
     assert.equal((r.body as { hint?: string }).hint, undefined, '写面 INVALID 409 无 hint');
   });
 });
 
-test('agents op migrate：legacy→新家整目录拷贝（旧位置保留）；非 legacy 条目 404；缺 root 400；delete 兼容旧位置（catalog 收口+serve 旧位回退）', async () => {
+test('agents op delete：catalog 收口新家 rm -rf + 缺失幂等 200（旧位置兼容回退随去兼容清理退役——不再删旧位）', async () => {
   await withFakeHome(async (home) => {
     const proj = path.join(home, 'proj');
-    const legacyFile = path.join(proj, 'agents', 'm1', 'agent.md');
     const newHomeFile = path.join(proj, '.sunshinex', 'agents', 'm1', 'agent.md');
-    fs.mkdirSync(path.join(proj, 'agents', 'm1'), { recursive: true });
-    fs.writeFileSync(legacyFile, '---\nname: M One\n---\nold body\n', 'utf8');
+    fs.mkdirSync(path.join(proj, '.sunshinex', 'agents', 'm1'), { recursive: true });
+    fs.writeFileSync(newHomeFile, '---\nname: M One\n---\nbody\n', 'utf8');
 
-    // migrate：legacy <root>/agents/m1 → 新家 <root>/.sunshinex/agents/m1（整目录拷贝，旧位置保留不删）
-    let r = await agentsPut({ op: 'migrate', root: proj, id: 'm1' });
-    assert.equal(r.status, 200, 'migrate 应 200');
-    assert.deepEqual(await r.body, { ok: true });
-    assert.equal(fs.readFileSync(newHomeFile, 'utf8'), '---\nname: M One\n---\nold body\n', '新家同内容');
-    assert.equal(fs.existsSync(legacyFile), true, '旧位置保留（只迁不删）');
-
-    // 非 legacy 条目 → 404（迁移是 legacy 专属动作——无 legacy 源目录即无从迁，brief 明定 404）
-    r = await agentsPut({ op: 'migrate', root: proj, id: 'never' });
-    assert.equal(r.status, 404, '不存在的 legacy 条目 → 404');
-    // 已迁条目再迁：legacy 源仍在（只迁不删）→ 过 404 预检，撞新家已存在 → 400（裁定例外项保留
-    // 原判——撞新家属请求所指目标状态冲突，不入「内容/写面错误 → 409」桶）
-    r = await agentsPut({ op: 'migrate', root: proj, id: 'm1' });
-    assert.equal(r.status, 400, '撞新家已存在 → 400（裁定例外项）');
-    r = await agentsPut({ op: 'migrate', id: 'm1' });
-    assert.equal(r.status, 400, 'migrate 缺 root → 400');
-
-    // delete 兼容：catalog removeAgent 收口新家；旧位置条目（catalog 无删除面——只迁不删）由 serve 幂等回退收口
-    r = await agentsPut({ op: 'delete', scope: 'project', root: proj, id: 'm1' });
+    // delete：catalog removeAgent 收口标准新家（rm -rf 条目整目录）
+    let r = await agentsPut({ op: 'delete', scope: 'project', root: proj, id: 'm1' });
     assert.equal(r.status, 200, 'delete 应 200');
     assert.equal(fs.existsSync(newHomeFile), false, '新家条目已删（catalog removeAgent）');
-    assert.equal(fs.existsSync(legacyFile), true, '旧位置尚在（第一刀只删新家）');
+
+    // 再删/从未存在 → 幂等 200（缺失 INVALID 就地吞，既有契约零变）
     r = await agentsPut({ op: 'delete', scope: 'project', root: proj, id: 'm1' });
     assert.equal(r.status, 200, '再删幂等 200');
-    assert.equal(fs.existsSync(legacyFile), false, '旧位置回退收口（幂等契约不回退——手建旧位条目仍可删）');
+    r = await agentsPut({ op: 'delete', scope: 'project', root: proj, id: 'never' });
+    assert.equal(r.status, 200, '删除不存在的 id → 幂等 ok');
+
+    // 旧位置条目不再是 delete 面（2026-10-29 去兼容清理撤 serve 旧位回退）：删除旧位条目 = 缺失幂等 200、盘零触碰
+    const legacyOldFile = path.join(proj, 'agents', 'old', 'agent.md');
+    fs.mkdirSync(path.join(proj, 'agents', 'old'), { recursive: true });
+    fs.writeFileSync(legacyOldFile, '---\nname: Old\n---\nold\n', 'utf8');
+    r = await agentsPut({ op: 'delete', scope: 'project', root: proj, id: 'old' });
+    assert.equal(r.status, 200, '旧位条目 delete → 幂等 200（写面只认标准两级）');
+    assert.equal(fs.existsSync(legacyOldFile), true, '旧位条目不被写面触碰（迁移属清单/装载入口一次性收口）');
   });
 });
 

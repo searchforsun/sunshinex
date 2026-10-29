@@ -8,13 +8,13 @@ import type { SettingsScope, ScopeOption } from './components';
 
 /**
  * Task 23 AgentsPane 重构（Phase F 第二面板，2026-10-28）：一屏式卡片列表——写面统一走
- * PUT /settings/agents 的 op 五值（T15 在既有 handleAgentsPut 端点扩 enable|disable|migrate；
+ * PUT /settings/agents 的 op 四值（T15 在既有 handleAgentsPut 端点扩 enable|disable；
  * agents 面无 mcp 式独立 /op 端点，经 conn.putAgentOp），原「内联 <form> 表单」路径退役。
  *
  * 结构（T21 共享组件 verbatim 消费，McpPane 参照实现同款）：工具栏三件套（2026-10-29 用户
  * 裁定入页：ScopeSelect 作用域下拉+SearchBar（200ms 防抖过滤
  * id/name/description，弹性）+「+ New」钮一行）；主体 ul.sx-rc-list × ResourceCard（title=id 注册表键/
- * subtitle=name/chips=memory·isolation·executor 属性+shadowed·oldLocation 标注/badge=
+ * subtitle=name/chips=memory·isolation·executor 属性+shadowed 标注/badge=
  * SourceBadge/折叠详情=bodyPreview）；增改 → EditorModal 居中模态（2026-10-29 用户裁定：
  * 弹窗替换右滑抽屉；id 编辑态锁定——id 是
  * 目录名/name/description/memory checkbox/isolation/executor/body textarea，无本地 scope
@@ -25,13 +25,11 @@ import type { SettingsScope, ScopeOption } from './components';
  * 恒强制 global。卡可写判据（McpPane canWrite 同款）：project 卡=project 作用域且有 root，
  * global 卡=global 作用域（被遮蔽卡只出现在 project 视图，天然不可写）。
  *
- * 启停/迁移（Task 15 op 面，REST 富化 gating）：daemon GET 尚未透出 enabled/oldLocation
+ * 启停（Task 15 op 面，REST 富化 gating）：daemon GET 尚未透出 enabled
  * （subagent.ts loadAgentsView「GUI 富化属后续 REST 改面」预留），GUI 侧契约就绪、字段在场
  * 才渲染——enabled 恒布尔（缺省 true 由富化 daemon 显式化）的行出启停开关（切停=op disable、
- * 复启=op enable，新会话生效——agents 装配期语义）；oldLocation:true 的旧位置卡标「Old
- * location」+「Migrate to .sunshinex/」钮（op migrate 恒项目级 root 锚定——非 legacy 404、
- * 撞新家 400、写面 409+hint）。现 daemon（缺键）两钮皆不渲染：无误导态，富化落地 GUI 零改动
- * 自动点亮。
+ * 复启=op enable，新会话生效——agents 装配期语义）。现 daemon（缺键）不渲染：无误导态，
+ * 富化落地 GUI 零改动自动点亮。
  *
  * 编辑播种沿 G8d-T3 全文装载：编辑钮先以 bodyPreview 播种（即时开抽屉），再 conn.agentBody
  * 拉 agent.md 正文全文升级播种——成功则截断守卫对该抽屉退役；失败回退 bodyPreview+行内提示。
@@ -135,7 +133,7 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
       : { op, scope: e.source, ...(e.source === 'project' ? { root } : {}), id: e.id };
 
   /** op 写回收口单点（McpPane runOp 同款）：saving 门 → putAgentOp → 成功重拉（失败 saving
-   *  复位+行内错误条；409 hint/404 非 legacy 由 errText 呈现 status 行） */
+   *  复位+行内错误条；409 hint 由 errText 呈现 status 行） */
   const runOp = (input: AgentsOpInput): void => {
     if (saving) return;
     setSaving(true);
@@ -255,15 +253,13 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
   const builtins = (data?.builtins ?? []).filter((b) => match(`${b.role} ${b.name}`));
   const visible = (data?.view.entries ?? []).filter((e) => match(`${e.id} ${e.name} ${e.description ?? ''}`));
 
-  /** 卡 chips：memory/isolation/executor 属性 + 遮蔽/旧位置标注（shadowed 沿现数据、oldLocation
-   *  为富化字段在场才标） */
+  /** 卡 chips：memory/isolation/executor 属性 + 遮蔽标注（shadowed 沿现数据） */
   const chipsOf = (e: AgentEntryView): ReactNode => (
     <>
       {e.memory === true && <span className="sx-chip">memory</span>}
       {e.isolation !== undefined && <span className="sx-chip">{`isolation:${e.isolation}`}</span>}
       {e.executor !== undefined && <span className="sx-chip">{`executor:${e.executor}`}</span>}
       {e.shadowed && <span className="sx-shadow-tag">{t('Shadowed by project', '被项目遮蔽')}</span>}
-      {e.oldLocation === true && <span className="sx-chip">{t('Old location', '旧位置')}</span>}
     </>
   );
 
@@ -315,16 +311,6 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
                   onToggle={toggle}
                   actions={
                     <>
-                      {e.oldLocation === true && e.source === 'project' && root !== '' && (
-                        <button
-                          type="button"
-                          aria-label={`${t('Migrate to .sunshinex/', '迁移到 .sunshinex/')} ${e.id}`}
-                          disabled={saving}
-                          onClick={() => runOp({ op: 'migrate', root, id: e.id })}
-                        >
-                          {t('Migrate', '迁移')}
-                        </button>
-                      )}
                       <button
                         type="button"
                         aria-label={`${t('Edit', '编辑')} ${e.id}(${scopeTag(e.source)})`}

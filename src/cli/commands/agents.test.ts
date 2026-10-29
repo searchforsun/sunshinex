@@ -9,7 +9,7 @@ import * as path from 'path';
  * agents 子命令族端到端验收（Task 18）：spawn dist/cli/index.js 真子进程——CLI 全链
  * （parseArgs → dispatch → runAgents → catalog 读写面）原样走一遍，env 桩钉住 HOME/数据目录
  * （mcp.test 先例：HOME 重定向 + SUNSHINEX_* 显式清场，父测试进程态零污染）。
- * 用例对齐 brief：① add→list（含 --body-file 读入）② list --json 标注 scope/shadowed/oldLocation/
+ * 用例对齐 brief：① add→list（含 --body-file 读入）② list --json 标注 scope/shadowed/
  * enabled ③ enable/disable 落 frontmatter ④ remove 移除 + not found ⑤ 缺 --name → usage + 零副作用。
  */
 
@@ -91,14 +91,14 @@ test('① add（全旗标 + --body-file）→ agent.md 落盘 frontmatter 六件
   }
 });
 
-test('② list --json：条目标注 scope/shadowed/oldLocation/enabled 与 meta 字段', () => {
+test('② list --json：条目标注 scope/shadowed/enabled 与 meta 字段', () => {
   const f = makeFixture('json');
   try {
     addReviewer(f);
     const r = runCli(f, ['list', '--json']);
     assert.equal(r.status, 0, `list --json 应 exit 0，stderr：${r.stderr}`);
     const entries = JSON.parse(r.stdout ?? '') as Array<{
-      id: string; scope: string; shadowed: boolean; oldLocation: boolean;
+      id: string; scope: string; shadowed: boolean;
       meta: { name: string; memory: boolean; isolation?: string; executor?: string; enabled: boolean };
     }>;
     assert.ok(Array.isArray(entries), '--json 应输出 JSON 数组');
@@ -106,7 +106,7 @@ test('② list --json：条目标注 scope/shadowed/oldLocation/enabled 与 meta
     assert.ok(e, '数组应含 reviewer 条目');
     assert.equal(e!.scope, 'project');
     assert.equal(e!.shadowed, false, '新家条目无遮蔽');
-    assert.equal(e!.oldLocation, false, '新家条目非旧位置');
+    assert.equal('oldLocation' in e!, false, 'oldLocation 字段已随去兼容清理删除（两级视图）');
     assert.equal(e!.meta.name, 'Reviewer');
     assert.equal(e!.meta.memory, true);
     assert.equal(e!.meta.isolation, 'worktree');

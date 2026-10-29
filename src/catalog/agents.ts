@@ -1,12 +1,13 @@
 /**
- * catalog/agents 读面 + 写面：子智能体定义（<agents 目录>/<id>/agent.md）三级位置合并列举 + 遮蔽/旧位置/
- * 启用标注；写面（Task 6）upsert/remove/setEnabled/migrate 收口（serve 面与 GUI 后续一律经此，Task 15 迁）。
- * 位置级序（高→低，与 harness.AgentRegistry.loadAgents 装载序 global→legacy→新家 last-wins 同构）：
- * 项目新家 <root>/.sunshinex/agents → 项目旧位置 <root>/agents（目录注册制历史装配口径，读面兼容
- * 列举、写面只迁不删）→ 全局 <userConfigDir>/agents。与装载面（harness.AgentRegistry）的分工：
- * 装载面 fail-fast 且每 id 运行期只装一份（Task 7 收口三级装载）；本面是「视图」——全量列出 + 来源
- * 标注（撞名者生效、被撞者标 shadowed 保留在列：新家撞全局/旧位置，旧位置撞全局——2026-10-28 终审
- * 修复波裁定视图对齐装载器语义，杜绝「显示全局、生效 legacy」的显示/运行分叉）。
+ * catalog/agents 读面 + 写面：子智能体定义（<agents 目录>/<id>/agent.md）两级位置合并列举 + 遮蔽/
+ * 启用标注；写面（Task 6）upsert/remove/setEnabled 收口（serve 面与 GUI 后续一律经此，Task 15 迁）。
+ * 位置级序（高→低，与 harness.AgentRegistry.loadAgents 装载序 global→新家 last-wins 同构）：
+ * 项目新家 <root>/.sunshinex/agents → 全局 <userConfigDir>/agents。历史旧位置 <root>/agents 不再
+ * 兼容读——进面入口（listAgents / AgentRegistry.loadAgents）经 migrateLegacyAgentsOnce 一次性自动
+ * 搬入新家（用户裁定 2026-10-29 去兼容清理：不兼容的改成标准形态），此后盘上只有标准两级。
+ * 与装载面（harness.AgentRegistry）的分工：装载面 fail-fast 且每 id 运行期只装一份；本面是「视图」
+ * ——全量列出 + 来源标注（撞名者生效、被撞者标 shadowed 保留在列：项目撞全局——视图对齐装载器
+ * 语义，杜绝「显示全局、生效项目副本」的显示/运行分叉）。
  * 逐文件宽容：单文件畸形 → warnings 不抛死（沿 loadAgentsView 纪律）；enabled:false 照列（启停是
  * 写面/视图操作，运行时剔除属装载面职责）。解析词法复用 parseAgentFrontmatter 单点，不另造解析器。
  * 写面纪律（沿 serve handleAgentsPut 现纪律下沉）：先全量校验后落盘零部分写 + 将落盘字节过真解析器
@@ -25,16 +26,13 @@ import type { Listing, Scope } from './types';
  *  余字符限 [A-Za-z0-9_-]） */
 export const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
-/** catalog agents 列表条目：id/scope 定位 + 遮蔽/旧位置标注 + 落盘目录 + frontmatter 元数据 + 正文预览 */
+/** catalog agents 列表条目：id/scope 定位 + 遮蔽标注 + 落盘目录 + frontmatter 元数据 + 正文预览 */
 export interface AgentEntry {
   id: string;
   scope: Scope;
-  /** true = 被更高优先同 id 遮蔽（被撞条目保留展示，沿 listMcpServers/loadAgentsView 视图口径——
-   *  2026-10-28 终审裁定后撞名关系=装载序：新家撞全局/旧位置、旧位置撞全局均给全局/旧位置行标
-   *  shadowed）；旧位置条目恒 false（撞名时旧位置是生效面——legacy 遮蔽全局；撞新家则不列） */
+  /** true = 被更高优先同 id 遮蔽（被撞条目保留展示，沿 listMcpServers 视图口径——同 id 项目行生效
+   *  + 全局行 shadowed:true 保留在列）；生效条目恒 false */
   shadowed: boolean;
-  /** true = 来自旧位置 <root>/agents（撞新家同 id 不列；撞全局照列且生效——legacy 遮蔽全局） */
-  oldLocation: boolean;
   /** 条目落盘目录（所在 agents 目录下本 id 子目录；agent.md 及同级私有文件均在此） */
   dir: string;
   meta: {
@@ -52,35 +50,75 @@ export interface AgentEntry {
 
 /** agents 落位单点：global=<userConfigDir>/agents（globalDir 显式传参 = 测试/重定向口）；project=<root>/.sunshinex/agents（新家）。
  *  project 分支 root:null → cwd 回退仅为签名全整改（沿 mcpJsonPath 同形）；listAgents 对 root:null 刻意
- *  整体跳过项目两级（见该函数注释），不经此回退——写面调本函数前须自行保证 project 有 root。 */
+ *  整体跳过项目级（见该函数注释），不经此回退——写面调本函数前须自行保证 project 有 root。 */
 export function agentsDir(scope: Scope, root: string | null, globalDir?: string): string {
   if (scope === 'global') return path.join(globalDir ?? userConfigDir(), 'agents');
   return path.join(root ?? process.cwd(), '.sunshinex', 'agents');
 }
 
-/** 旧位置（legacy）：<root>/agents —— 目录注册制历史装配口径；读面兼容列举（遮蔽全局、低于新家——
- *  与装载序同构），写面只迁不删 */
-export function legacyAgentsDir(root: string): string {
-  return path.join(root, 'agents');
+/**
+ * 旧位置一次性自动迁移（用户裁定 2026-10-29 去兼容清理的「替身兼容」）：<root>/agents/ 在场时把
+ * 历史条目搬入标准新家 <root>/.sunshinex/agents/，搬空后删除旧目录——此后盘上只剩标准两级，本函数
+ * 永不再触发（legacy 目录不存在 = 首行 existsSync 快路径零开销）。
+ * - 逐子目录搬移：同卷 rename（原子）优先，异常回退 cpSync+rmSync（跨设备等罕见面兜底）；零新依赖。
+ * - 新家已有同 id = 陈旧重复（迁移语义下新家是用户后续写位，后写为准）→ 直接删除旧副本、不覆盖新家。
+ * - 非目录条目/搬移失败：留在原地 + 出 warning（不阻塞调用方——读面/装载面照常继续）。
+ * - 刻意不发 notifyCatalogWrite：迁移只在旧目录在场时发生一次，且写入目标是 .sunshinex/agents——
+ *   项目侧 watcher 本就监听该目录，config-changed 帧由监听面自然广播；从读路径再补通知反而自激。
+ */
+export function migrateLegacyAgentsOnce(root: string): string[] {
+  const warnings: string[] = [];
+  const legacyDir = path.join(root, 'agents');
+  if (!fs.existsSync(legacyDir)) return warnings;
+  const newHome = agentsDir('project', root);
+  for (const entry of fs.readdirSync(legacyDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      warnings.push(`agents 迁移：非目录条目留在原地 ${path.join(legacyDir, entry.name)}`);
+      continue;
+    }
+    const src = path.join(legacyDir, entry.name);
+    const dest = path.join(newHome, entry.name);
+    try {
+      if (fs.existsSync(dest)) {
+        fs.rmSync(src, { recursive: true }); // 新家已有同 id = 陈旧重复：删旧副本、新家不动
+        continue;
+      }
+      fs.mkdirSync(newHome, { recursive: true });
+      try {
+        fs.renameSync(src, dest); // 同卷 rename 原子搬移
+      } catch {
+        fs.cpSync(src, dest, { recursive: true }); // rename 异常回退拷贝+删源
+        fs.rmSync(src, { recursive: true });
+      }
+    } catch (e) {
+      warnings.push(`agents 迁移失败（条目留在原地）${src}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  try {
+    if (fs.readdirSync(legacyDir).length === 0) fs.rmdirSync(legacyDir); // 搬空才删旧目录（有失败条目则保留）
+  } catch {
+    // 旧目录删除失败不致命：内容已空/已迁，留待用户手清
+  }
+  return warnings;
 }
 
 /**
- * 三级合并列举（层序=装载序：全局 → 项目旧位置 → 项目新家；各层内按 id 字典序沿 listMcpServers 口径）。
+ * 两级合并列举（层序=装载序：全局 → 项目新家；各层内按 id 字典序沿 listMcpServers 口径）。
+ * 进面先跑 migrateLegacyAgentsOnce（root 非 null 时）——旧位置条目随迁入新家、同轮即可见；迁移
+ * warning 并入本面 warnings（失败条目留在原地、不再列举——视图只认标准两级）。
  * 容错口径沿 Listing（D7）：目录缺 = 空条目不算错；单文件畸形（frontmatter 缺块/缺 name、读失败）
- * 一律降级产 warnings 不抛——列举面宁可少列不可抛死。root:null 时项目两级整体跳过（只列全局）：
- * 与 mcp 模块 root:null→cwd 回退刻意不同——mcp 需要「无项目上下文时回落 cwd 惯例位」继续可操作，
- * agents 列表面无此需求：目录注册制定义本就依附具体工作区（新家 .sunshinex/agents 与旧位置 agents
- * 皆是项目概念），凭空落 cwd 只会伪造条目。
- * 遮蔽语义（2026-10-28 终审修复波裁定，与 harness.AgentRegistry.loadAgents 装载序逐层同构）：
- * 新家最高（同 id 撞旧位置/全局，被撞行 shadowed:true 保留在列）；旧位置中间层（同 id 撞全局——
- * 旧位置照列且生效、全局行降 shadowed:true；同 id 撞新家则旧位置不列）；全局垫底。此前「全局撞旧位置
- * 时旧位置整行隐藏」的旧口径与装载器 legacy 遮蔽全局（T7 钉测）三面分歧（CLI/TUI 列全局、运行装
- * legacy），本裁定后读面单点对齐，显示与运行恒同一副本。
+ * 一律降级产 warnings 不抛——列举面宁可少列不可抛死。root:null 时项目级整体跳过（只列全局，且不触发
+ * 迁移）：与 mcp 模块 root:null→cwd 回退刻意不同——mcp 需要「无项目上下文时回落 cwd 惯例位」继续可操作，
+ * agents 列表面无此需求：目录注册制定义本就依附具体工作区（.sunshinex/agents 是项目概念），凭空落
+ * cwd 只会伪造条目。
+ * 遮蔽语义（与 harness.AgentRegistry.loadAgents 装载序逐层同构）：项目新家最高（同 id 撞全局，被撞
+ * 全局行 shadowed:true 保留在列）；全局垫底。
  */
 export function listAgents(root: string | null, globalDir?: string): Listing<AgentEntry> {
   const warnings: string[] = [];
+  if (root !== null) warnings.push(...migrateLegacyAgentsOnce(root));
   /** 单目录扫描：仅收 <id>/agent.md 常规目录（沿 loadAgentsView 几何，无 agent.md 的目录跳过） */
-  const scan = (dir: string, scope: Scope, oldLocation: boolean): Map<string, AgentEntry> => {
+  const scan = (dir: string, scope: Scope): Map<string, AgentEntry> => {
     const out = new Map<string, AgentEntry>();
     if (!fs.existsSync(dir)) return out;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -93,7 +131,6 @@ export function listAgents(root: string | null, globalDir?: string): Listing<Age
           id: entry.name,
           scope,
           shadowed: false,
-          oldLocation,
           dir: path.join(dir, entry.name),
           meta: {
             name: meta.name,
@@ -112,26 +149,18 @@ export function listAgents(root: string | null, globalDir?: string): Listing<Age
     }
     return out;
   };
-  const globalEntries = scan(agentsDir('global', root, globalDir), 'global', false);
-  const newHome = root !== null ? scan(agentsDir('project', root, globalDir), 'project', false) : new Map<string, AgentEntry>();
+  const globalEntries = scan(agentsDir('global', root, globalDir), 'global');
+  const newHome = root !== null ? scan(agentsDir('project', root, globalDir), 'project') : new Map<string, AgentEntry>();
   // 新家最高：同 id 撞全局——全局条目保留在列、标 shadowed:true（视图口径，装载面才真正就近取一份）
   for (const id of newHome.keys()) {
     const g = globalEntries.get(id);
     if (g) globalEntries.set(id, { ...g, shadowed: true });
   }
-  // 旧位置中间层（装载序 legacy 遮蔽全局，2026-10-28 终审裁定视图对齐）：撞新家 → 不列（新家生效）；
-  // 撞全局 → 照列且为生效副本（shadowed 恒 false），同 id 全局行降 shadowed:true 保留在列
-  const legacy = root !== null ? scan(legacyAgentsDir(root), 'project', true) : new Map<string, AgentEntry>();
-  const legacyEntries = [...legacy.values()].filter((e) => !newHome.has(e.id));
-  for (const e of legacyEntries) {
-    const g = globalEntries.get(e.id);
-    if (g) globalEntries.set(e.id, { ...g, shadowed: true });
-  }
   const byId = (a: AgentEntry, b: AgentEntry): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  return { entries: [...[...globalEntries.values()].sort(byId), ...[...newHome.values()].sort(byId), ...legacyEntries.sort(byId)], warnings };
+  return { entries: [...[...globalEntries.values()].sort(byId), ...[...newHome.values()].sort(byId)], warnings };
 }
 
-/* ---------- 写面（Task 6）：upsert / remove / setEnabled / migrate ----------
+/* ---------- 写面（Task 6）：upsert / remove / setEnabled ----------
  *  serve handleAgentsPut 的写纪律（先全量校验后落盘零部分写 + 将落盘字节过真解析器 round-trip）下沉
  *  至 catalog 单点：GUI/serve（Task 15 迁）后续一律经本面写，serve 层不再各自 fs 直写。 */
 
@@ -300,25 +329,4 @@ export function setAgentEnabled(root: string | null, scope: Scope, id: string, e
   writeJsonAtomic(file, patched);
   // 任务14 写通知：enabled 手术落盘 → ('agents', scope, root)
   notifyCatalogWrite('agents', scope, root);
-}
-
-/** 旧位置 → 新家迁移（Task 6 写面，写面「只迁不删」的一半）：<root>/agents/<id>/ 整目录递归拷入
- *  <root>/.sunshinex/agents/<id>/（fs.cpSync 内建递归拷贝，零新依赖；agent.md 及同级私有文件随迁）。
- *  旧目录保留不删（旧位置读面兼容列举靠同 id 碰撞自然让位，见 listAgents；删除属用户显式操作）。
- *  缺源 / 撞目标（新家已存在）/ 非法 id → INVALID——迁移是一次性动作，幂等重放由调用方显式裁定 */
-export function migrateAgent(root: string, id: string): void {
-  if (!AGENT_ID_RE.test(id)) {
-    throw new CatalogWriteError('INVALID', `invalid agent id: ${JSON.stringify(id)} (must match ${AGENT_ID_RE.source})`);
-  }
-  const src = path.join(legacyAgentsDir(root), id);
-  const dest = path.join(agentsDir('project', root), id);
-  if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) {
-    throw new CatalogWriteError('INVALID', `legacy agent not found: agents/${id}`);
-  }
-  if (fs.existsSync(dest)) {
-    throw new CatalogWriteError('INVALID', `destination already exists: .sunshinex/agents/${id}`);
-  }
-  fs.cpSync(src, dest, { recursive: true });
-  // 任务14 写通知：迁入新家 = 项目 agents 目录新增条目（cp 非原子写路径，成功后同样补一行；恒 project）
-  notifyCatalogWrite('agents', 'project', root);
 }
