@@ -124,4 +124,8 @@ export async function runSelfcheck(_args: CliArgs): Promise<void> {
   // MCP 收口（D20，机理同 teardownCliRun 在册注释——run-loop/run/pipeline 共用单点）：mcpReady 装配的
   // stdio 子进程不关闭会悬挂事件循环，配 stdio MCP 服务器的机器上 selfcheck 可能永不退出；空配置/未连接时幂等 no-op
   await h.mcpClose();
+  // 双保险（Task 28 bug：Windows 下 MCP stdio 子进程树不随 SDK close 终结，selfcheck 实测 60s+ 悬挂；
+  // 主修在 harness mcp client close 路径按 pid 树终结）。leaf 命令强制收敛兜底：残余句柄（第三方传输/
+  // 未知泄漏面）不再阻退出；process.exit 透传既有 exitCode（装配失败等已置 1 的失败语义不丢）
+  process.exit(process.exitCode ?? 0);
 }

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -17,6 +18,8 @@ interface McpHostOptions {
 
 interface McpConn {
   client: Client;
+  /** 原始传输句柄：close 时取 stdio 子进程 pid（SDK close 内部先置空 _process，之后 pid getter 恒 null——须留存引用） */
+  transport: Transport;
   config: McpServerConfig;
 }
 
@@ -80,6 +83,39 @@ function mergedChildEnv(cfg: McpServerConfig): Record<string, string> {
     if (v !== undefined) merged[k] = v;
   }
   return { ...merged, ...(cfg.env ?? {}) };
+}
+
+/**
+ * 终结 stdio 子进程树（Task 28 bug 修复）。机理：MCP SDK 的 client.close() 在 Windows 上只 kill 直接
+ * 子进程（Node kill() = TerminateProcess 单进程语义），而插件 server 常再拉孙进程（computer-use 的
+ * 持久 PowerShell worker 等）——孙进程手里的 stdio 管道句柄挂住父进程事件循环，CLI 进程永不退出
+ * （实测：.sunshinex/settings.json 启用 browser-use/computer-use 插件后 selfcheck 60s+ 悬挂，
+ * 禁用插件 10s 干净退出）。故 SDK close 之后按 pid 树终结兜底：Windows 走 taskkill /T /F（树杀，
+ * 覆盖孙进程），POSIX 走 SIGTERM（stdin 关闭语义下服务器通常自行退出，此处兜底防残留）。
+ * 失败（进程已亡 ESRCH / taskkill 不在等）静默——树终结是兜底而非主路径，与 close 路径
+ * 「单点失败不阻塞其余关闭」口径一致。taskkill 子孙 fire-and-forget + unref：避免杀树工具自己
+ * 反过来挂住事件循环（自指悬挂）。
+ */
+export function killProcessTree(pid: number): void {
+  try {
+    if (process.platform === 'win32') {
+      const tk = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      tk.on('error', () => {}); // 吞 spawn 失败的 error 事件（防 unhandled 'error' 崩进程）
+      tk.unref(); // 不持事件循环引用：父进程先于 taskkill 退出也不影响杀树（OS 层完成）
+    } else {
+      process.kill(pid, 'SIGTERM');
+    }
+  } catch {
+    // 静默：pid 已失效（ESRCH）等，兜底路径不计失败
+  }
+}
+
+/** 捕获 stdio 传输的子进程 pid：SDK StdioClientTransport 暴露 pid getter（启动后可得）；非 stdio 传输
+ *  或未启动时无 pid 形态（null/undefined），静默跳过树终结。须在 client.close() 之前调用——SDK close()
+ *  内部先把 _process 置空再 kill，之后 pid getter 恒为 null（再读即漏杀）。 */
+function pidOf(transport: Transport): number | null {
+  const t = transport as { pid?: unknown };
+  return typeof t.pid === 'number' && Number.isFinite(t.pid) ? t.pid : null;
 }
 
 /** MCP tools/list 的 inputSchema → 主仓 JsonSchema（松散结构透传，2026-10-26 browser-use 装配联调裁定）：
@@ -158,7 +194,10 @@ export class McpHost {
           await client.connect(transport);
         } catch (e) {
           // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
+          const halfOpenPid = pidOf(transport);
           await client.close().catch(() => {});
+          // 半开 stdio 子进程同样挂事件循环（握手超时但子进程已 spawn 的现场）——同 close 路径树终结
+          if (halfOpenPid !== null) killProcessTree(halfOpenPid);
           const msg = e instanceof Error ? e.message : String(e);
           report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
           continue;
@@ -168,7 +207,7 @@ export class McpHost {
           // 身份软提示（不再跳过）：照常 listTools+注册，差异上屏供诊断
           report.warnings.push(`identity note (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'} (accepted)`);
         }
-        this.conns.set(cfg.name, { client, config: cfg });
+        this.conns.set(cfg.name, { client, transport, config: cfg });
         const listed = await client.listTools();
         const disabled = new Set(cfg.disabledTools ?? []);
         for (const t of listed.tools) {
@@ -186,8 +225,13 @@ export class McpHost {
   }
 
   async close(): Promise<void> {
-    for (const { client } of this.conns.values()) {
+    for (const { client, transport } of this.conns.values()) {
+      // pid 须在 client.close() 之前捕获：SDK close() 内部先置空 _process 再 kill，之后 pid getter 恒 null
+      const pid = pidOf(transport);
       await client.close().catch(() => {}); // 退出路径的连接清理：单点失败不阻塞其余关闭
+      // Windows 下 SDK close 不终结 stdio 子进程树（孙进程残留 → 管道句柄挂住事件循环，进程永不退出
+      // ——Task 28 bug），按 pid 树终结兜底；pid 不可得（http/sse 或未 spawn）静默跳过
+      if (pid !== null) killProcessTree(pid);
     }
     this.conns.clear();
   }
