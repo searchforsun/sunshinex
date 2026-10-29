@@ -1,6 +1,7 @@
 import { sanitizeChanges, type KernelEntry, type RunMeta } from './entry';
 import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from '../tui/session-journal';
+import type { ChainAction } from '../types';
 
 /**
  * v3 段级行重放(session-kernel spec §3.2 装载序;journal v3 零兼容,P11-T2 正名 seglog):
@@ -240,4 +241,64 @@ export function reduceSteerRows(rows: ReadonlyArray<SegRowLike>): SteerItem[] {
     items = next;
   }
   return items;
+}
+
+// ===== 崩溃兜底回灌(2026-10-30 spec §2):seg 面有而链没有的在飞窗口 → 链行 =====
+
+/** 崩溃窗口提取:journal 顺序扫描,chain/compact 行落点即「此前 seg 行已入链」的水位标记——其后新增
+ *  的 seg 行=未入链在飞窗口(崩溃档特征;轮边界入链后正常档窗口恒空)。返回 reduceSegRows 全集按
+ *  seq > 水位过滤(truncate 行在全档重放中对位,窗口过滤在其后统一生效)。纯件零 IO。 */
+export function crashWindowEntries(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
+  let boundarySeq = 0;
+  let seq = 0;
+  for (const row of rows) {
+    if (row.t === 'chain' || row.t === 'compact') boundarySeq = seq;
+    const s = num(row.seq);
+    if (s !== undefined && s > seq) seq = s;
+  }
+  return reduceSegRows(rows).filter((e) => e.seq > boundarySeq);
+}
+
+/** seg 条目 → 链行归约(兜底口径,非逐字节恢复):user→task;assistant→reply;thinking 前挂后继
+ *  assistant(无后继自落 note);tool→tool-result 观察行(observation=result.full ?? text;悬空 tool
+ *  已由 reduceSegRows 补 interrupted result,无回执面跳过);notice/error→note;run 条跳过。
+ *  纯件零 IO,restore 消费方(TUI commands-session/daemon session-lifecycle)共用。 */
+export function entriesToChainSteps(entries: readonly KernelEntry[]): Array<{ action?: ChainAction; observation: string; images?: string[]; reasoning?: string; thinkSeconds?: number }> {
+  const out: Array<{ action?: ChainAction; observation: string; images?: string[]; reasoning?: string; thinkSeconds?: number }> = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]!;
+    if (e.kind === 'run') continue;
+    if (e.kind === 'user') {
+      out.push({ action: 'task', observation: e.md, ...(e.images !== undefined && e.images.length > 0 ? { images: e.images } : {}) });
+      continue;
+    }
+    if (e.kind === 'assistant') {
+      out.push({ action: 'reply', observation: e.md });
+      continue;
+    }
+    if (e.kind === 'thinking') {
+      const next = entries[i + 1];
+      if (next !== undefined && next.kind === 'assistant') {
+        out.push({ action: 'reply', observation: next.md, reasoning: e.md, ...(e.seconds !== undefined ? { thinkSeconds: e.seconds } : {}) });
+        i += 1; // 思考已并入后继正文行,后继跳过
+        continue;
+      }
+      out.push({ action: 'note', observation: `[thinking] ${e.md}` });
+      continue;
+    }
+    if (e.kind === 'tool') {
+      const obs = e.result?.full ?? e.result?.text ?? '';
+      if (obs === '') continue; // 配对残缺容错:无回执面跳过,不阻塞恢复
+      out.push({ action: 'tool-result', observation: obs });
+      continue;
+    }
+    if (e.kind === 'error') {
+      out.push({ action: 'note', observation: `Error: ${e.md}` });
+      continue;
+    }
+    if (e.kind === 'notice') {
+      out.push({ action: 'note', observation: e.md });
+    }
+  }
+  return out;
 }

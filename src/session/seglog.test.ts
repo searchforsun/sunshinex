@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reduceSteerRows, reduceSegRows, kernelEventRows } from './seglog';
+import { reduceSteerRows, reduceSegRows, kernelEventRows, crashWindowEntries, entriesToChainSteps } from './seglog';
 import { SessionKernel } from './kernel';
 import type { KernelEvent } from './kernel';
 import type { KernelEntry } from './entry';
+import type { SegRowLike } from './seglog';
 import type { SessionEvent } from '../types';
 
 /** v3 段级行重放/往返测试(session-kernel spec §3.2 装载序;journal v3 零兼容,P11-T2):
@@ -260,4 +261,52 @@ test('G14.2xx shadow 行映射:task-/gate- → board 行、delegation- → deleg
   assert.deepEqual(rows2, [{ t: 'delegation', e: { type: 'delegation-started', ts: 2, payload: { delegationId: 'd1' } } }]);
   const rows3 = kernelEventRows({ t: 'shadow', e: { type: 'tool-call', ts: 3, payload: { subagent: 'w1' } } });
   assert.deepEqual(rows3, [{ t: 'subagent', e: { type: 'tool-call', ts: 3, payload: { subagent: 'w1' } } }]);
+});
+
+test('crashWindowEntries: chain 行落点为入链水位——其后 seg 行为崩溃窗口,之前零窗口', () => {
+  const rows: SegRowLike[] = [
+    { t: 'seg', kind: 'user', md: 'task one', ts: 1, seq: 1 },
+    { t: 'chain', steps: [{ step: 1, action: 'task', observation: 'task one' }] },
+    { t: 'seg', kind: 'user', md: 'task two', ts: 2, seq: 2 },
+    { t: 'seg', kind: 'assistant', md: 'working…', ts: 3, seq: 3 },
+  ];
+  const win = crashWindowEntries(rows);
+  assert.deepEqual(win.map((e) => e.md), ['task two', 'working…'], '末个 chain 行之后的 seg 行=在飞窗口');
+});
+
+test('crashWindowEntries: 正常档(chain 行收尾)零窗口;无 chain 行全窗口', () => {
+  const normal: SegRowLike[] = [
+    { t: 'seg', kind: 'user', md: 'a', ts: 1, seq: 1 },
+    { t: 'chain', steps: [{ step: 1, action: 'task', observation: 'a' }] },
+    { t: 'seg', kind: 'assistant', md: 'done', ts: 2, seq: 2 },
+    { t: 'chain', steps: [{ step: 2, action: 'reply', observation: 'done' }] },
+  ];
+  assert.deepEqual(crashWindowEntries(normal), [], '末行 chain 收尾:全部 seg 已入链,零窗口');
+  const orphan: SegRowLike[] = [{ t: 'seg', kind: 'user', md: 'x', ts: 1, seq: 1 }];
+  assert.equal(crashWindowEntries(orphan).length, 1, '无 chain 行(首 run 即崩):全窗口');
+});
+
+test('entriesToChainSteps:四类映射逐类断言 + thinking 前挂后继 assistant + 残缺容错', () => {
+  const steps = entriesToChainSteps([
+    { seq: 1, ts: 1, kind: 'user', md: 'do it' },
+    { seq: 2, ts: 2, kind: 'thinking', md: 'hmm', seconds: 3 },
+    { seq: 3, ts: 3, kind: 'assistant', md: 'ans' },
+    { seq: 4, ts: 4, kind: 'tool', md: '', callId: 'c1', name: 'read', input: { path: 'a' }, result: { text: 'short', ok: true, full: 'full observation' } },
+    { seq: 5, ts: 5, kind: 'error', md: 'boom' },
+    { seq: 6, ts: 6, kind: 'notice', md: 'note text' },
+    { seq: 7, ts: 7, kind: 'run', md: '' },
+    { seq: 8, ts: 8, kind: 'tool', md: '', callId: 'c2' }, // 悬空(无 result):跳过
+  ]);
+  assert.deepEqual(steps[0], { action: 'task', observation: 'do it' });
+  assert.deepEqual(steps[1], { action: 'reply', observation: 'ans', reasoning: 'hmm', thinkSeconds: 3 }, 'thinking 附挂后继 assistant 行');
+  assert.equal(steps[2].action, 'tool-result');
+  assert.equal(steps[2].observation, 'full observation', '观察行取 result.full(全量观测优先)');
+  assert.deepEqual(steps[3], { action: 'note', observation: 'Error: boom' });
+  assert.deepEqual(steps[4], { action: 'note', observation: 'note text' });
+  assert.equal(steps.length, 5, 'run 条与无结果悬空 tool 行跳过');
+});
+
+test('entriesToChainSteps:孤立 thinking(无后继 assistant)自落 note 行', () => {
+  const steps = entriesToChainSteps([{ seq: 1, ts: 1, kind: 'thinking', md: 'alone' }]);
+  assert.deepEqual(steps, [{ action: 'note', observation: '[thinking] alone' }]);
 });
