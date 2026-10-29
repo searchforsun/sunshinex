@@ -15,8 +15,8 @@ function tmpdir(prefix: string): string {
 
 test('parseProvidersSpec：合法清单逐源展开为 源/模型 条目，同源同模型幂等去重', () => {
   const r = parseProvidersSpec([
-    { name: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'] },
-    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4.7', 'glm-4.7'] },
+    { name: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', models: [{ model: 'deepseek-chat' }, { model: 'deepseek-reasoner' }] },
+    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: [{ model: 'glm-4.7' }, { model: 'glm-4.7' }] },
   ], 'test.json');
   assert.deepEqual(r.warnings, []);
   assert.deepEqual(r.choices.map((c) => c.id), ['deepseek/deepseek-chat', 'deepseek/deepseek-reasoner', 'bigmodel/glm-4.7']);
@@ -28,43 +28,45 @@ test('parseProvidersSpec：合法清单逐源展开为 源/模型 条目，同�
 test('parseProvidersSpec：非数组/条目非对象/缺 name/缺 baseUrl/models 空或条目形态坏 → warning 跳过，不致命', () => {
   const r = parseProvidersSpec([
     'not-an-object',
-    { baseUrl: 'https://x/v1', models: ['m'] }, // 缺 name
+    { baseUrl: 'https://x/v1', models: [{ model: 'm' }] }, // 缺 name
     { name: 'a' }, // 缺 baseUrl
     { name: 'b', baseUrl: 'https://b/v1' }, // 缺 models
     { name: 'c', baseUrl: 'https://c/v1', models: [] }, // models 空
-    // 混合坏条目按条跳过（不再整源连坐）：好条目保留、坏条目各一条 warning
+    // 混合坏条目按条跳过（不再整源连坐）：好条目保留、坏条目各一条 warning；
+    // 字符串简写已退役（2026-10-29 去兼容清理）——'m1' 与 42、缺 model 对象同样逐条告警跳过
     { name: 'd', baseUrl: 'https://d/v1', models: ['m1', 42, { contextWindow: 1000 }] },
-    { name: 'ok', baseUrl: 'https://ok/v1', models: ['m'] }, // 合法源保留
+    { name: 'ok', baseUrl: 'https://ok/v1', models: [{ model: 'm' }] }, // 合法源保留
   ], 'test.json');
-  assert.deepEqual(r.choices.map((c) => c.id), ['d/m1', 'ok/m'], '坏条目只跳自己，同源好条目保留');
-  assert.equal(r.warnings.length, 7, '七条非法形态各一条 warning（含 d 源两条坏条目）');
+  assert.deepEqual(r.choices.map((c) => c.id), ['ok/m'], '坏条目只跳自己（含字符串简写），同源好条目保留');
+  assert.equal(r.warnings.length, 8, '八条非法形态各一条 warning（含 d 源字符串简写/非对象/缺 model 三条坏条目）');
+  assert.ok(r.warnings.some((w) => w.includes('models 条目须为对象形态')), '字符串简写有专属指引文案（对象形态）');
   const nonArray = parseProvidersSpec({ name: 'x' }, 'test.json');
   assert.deepEqual(nonArray.choices, []);
   assert.equal(nonArray.warnings.length, 1, '根非数组整键忽略');
   assert.deepEqual(parseProvidersSpec(undefined, 'test.json'), { choices: [], warnings: [] }, '键缺席 = 空清单零告警');
 });
 
-test('parseProvidersSpec：每模型窗口——对象形态 contextWindow > 源级缺省 > 未配置；非法窗口告警忽略但模型保留', () => {
+test('parseProvidersSpec：每模型窗口——条目对象形态 contextWindow > 源级缺省 > 未配置；非法窗口告警忽略但模型保留', () => {
   const r = parseProvidersSpec([
     {
       name: 'deepseek',
       baseUrl: 'https://api.deepseek.com/v1',
       contextWindow: 64000, // 源级缺省
       models: [
-        'deepseek-chat',                                        // 纯字符串：吃源级 64000
+        { model: 'deepseek-chat' },                              // 无条目级覆盖：吃源级 64000
         { model: 'deepseek-reasoner', contextWindow: 128000 },   // 条目级覆盖源级
         { model: 'deepseek-bad', contextWindow: -1 },            // 非法条目窗口：告警忽略窗口、模型保留
       ],
     },
-    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4.7'] }, // 全链未配置
-    { name: 'badsrc', baseUrl: 'https://bad/v1', contextWindow: 'big', models: ['m'] }, // 非法源级窗口
+    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: [{ model: 'glm-4.7' }] }, // 全链未配置
+    { name: 'badsrc', baseUrl: 'https://bad/v1', contextWindow: 'big', models: [{ model: 'm' }] }, // 非法源级窗口
   ], 'test.json');
   assert.deepEqual(r.warnings, [
     'settings.json providers.deepseek models 条目 contextWindow 须为正数（test.json），该窗口已忽略',
     'settings.json providers.badsrc contextWindow 须为正数（test.json），已忽略',
   ]);
   const byId = new Map(r.choices.map((c) => [c.id, c]));
-  assert.equal(byId.get('deepseek/deepseek-chat')!.contextWindow, 64000, '纯字符串条目回退源级缺省');
+  assert.equal(byId.get('deepseek/deepseek-chat')!.contextWindow, 64000, '条目未声明回退源级缺省');
   assert.equal(byId.get('deepseek/deepseek-reasoner')!.contextWindow, 128000, '条目级窗口覆盖源级');
   assert.equal(byId.get('deepseek/deepseek-bad')!.contextWindow, 64000, '条目窗口非法回退源级（模型保留）');
   assert.equal(byId.get('bigmodel/glm-4.7')!.contextWindow, undefined, '全链未配置 = undefined（回全局链）');
@@ -84,7 +86,7 @@ test('loadProviders：项目级 providers 键整键遮蔽全局；项目缺键�
     fs.mkdirSync(globalDir, { recursive: true });
     fs.writeFileSync(path.join(globalDir, 'settings.json'), JSON.stringify({
       version: 1,
-      providers: [{ name: 'global-src', baseUrl: 'https://g/v1', models: ['gm'] }],
+      providers: [{ name: 'global-src', baseUrl: 'https://g/v1', models: [{ model: 'gm' }] }],
     }), 'utf8');
     fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
 
@@ -93,7 +95,7 @@ test('loadProviders：项目级 providers 键整键遮蔽全局；项目缺键�
 
     fs.writeFileSync(loadProjectSettings(proj), JSON.stringify({
       version: 1,
-      providers: [{ name: 'proj', baseUrl: 'https://p/v1', models: ['pm1', 'pm2'] }],
+      providers: [{ name: 'proj', baseUrl: 'https://p/v1', models: [{ model: 'pm1' }, { model: 'pm2' }] }],
     }), 'utf8');
     const shadowed = loadProviders(proj);
     assert.deepEqual(shadowed.choices.map((c) => c.id), ['proj/pm1', 'proj/pm2'], '项目键在场整键遮蔽全局');
@@ -133,12 +135,12 @@ test('settings 解析面：providers 收留为结构化键原值，flatten 不�
   const tmp = tmpdir('sunshinex-prov-parse-');
   try {
     const file = path.join(tmp, 'settings.json');
-    // model 标量键已退役（2026-10-28 spec §15）：文件里写它走 RETIRED_KEYS 指引告警面，本钉只锁
+    // model 标量键已退役（2026-10-28 spec §15，2026-10-29 撤专属指引面——与未知键同判）：本钉只锁
     // 「providers 结构化键不是拼错」——用存活语义键 language 充当平凡语义键
     fs.writeFileSync(file, JSON.stringify({
       version: 1,
       language: 'zh',
-      providers: [{ name: 'x', baseUrl: 'https://x/v1', models: ['a'] }],
+      providers: [{ name: 'x', baseUrl: 'https://x/v1', models: [{ model: 'a' }] }],
     }), 'utf8');
     const doc = parseSettingsFile(file)!;
     assert.ok(Array.isArray(doc.providers as unknown), 'providers 进结构化面');
@@ -158,19 +160,19 @@ test('每模型缺省思考强度：条目 reasoningEffort > 源级缺省 > 未�
       baseUrl: 'https://api.deepseek.com',
       reasoningEffort: 'high', // 源级缺省
       models: [
-        'deepseek-chat',                                          // 纯字符串：吃源级 high
+        { model: 'deepseek-chat' },                                // 无条目级覆盖：吃源级 high
         { model: 'deepseek-flash', reasoningEffort: 'low' },       // 条目级覆盖源级
         { model: 'deepseek-bad', reasoningEffort: 'turbo' },       // 非法条目级：告警忽略强度、回退源级、模型保留
       ],
     },
-    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', reasoningEffort: 42, models: ['glm-5.3'] }, // 源级非法类型
+    { name: 'bigmodel', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', reasoningEffort: 42, models: [{ model: 'glm-5.3' }] }, // 源级非法类型
   ], 'test.json');
   assert.deepEqual(r.warnings, [
     'settings.json providers.deepseek models 条目 reasoningEffort 须为 none|minimal|low|medium|high|xhigh|max（test.json），该强度已忽略',
     'settings.json providers.bigmodel reasoningEffort 须为 none|minimal|low|medium|high|xhigh|max（test.json），已忽略',
   ]);
   const byId = new Map(r.choices.map((c) => [c.id, c]));
-  assert.equal(byId.get('deepseek/deepseek-chat')!.reasoningEffort, 'high', '纯字符串条目回退源级缺省');
+  assert.equal(byId.get('deepseek/deepseek-chat')!.reasoningEffort, 'high', '条目未声明回退源级缺省');
   assert.equal(byId.get('deepseek/deepseek-flash')!.reasoningEffort, 'low', '条目级强度覆盖源级');
   assert.equal(byId.get('deepseek/deepseek-bad')!.reasoningEffort, 'high', '条目级非法回退源级（模型保留）');
   assert.equal(byId.get('bigmodel/glm-5.3')!.reasoningEffort, undefined, '源级非法忽略 = 未配置（回全局链）');

@@ -120,14 +120,14 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
       "contextWindow": 64000,                        // 源级缺省窗口
       "reasoningEffort": "high",                     // 源级缺省思考强度 none|minimal|low|medium|high|xhigh|max
       "models": [
-        "deepseek-chat",                             // 字符串形态：窗口/强度/图片能力回退源级；清单序即缺省序——第一源第一模型 = 默认模型
-        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low", "supportsImages": false, "tier": "large" }  // 对象形态：逐项覆盖源级（supportsImages=false 声明纯文本模型；tier 标注供 /model-tier 档位路由选中，small|medium|large 可省）
+        { "model": "deepseek-chat" },                             // 最简对象形态（窗口/强度/图片能力回退源级）；清单序即缺省序——第一源第一模型 = 默认模型
+        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low", "supportsImages": false, "tier": "large" }  // 逐项覆盖源级（supportsImages=false 声明纯文本模型；tier 标注供 /model-tier 档位路由选中，small|medium|large 可省）
       ]
     },
     {
       "name": "bigmodel",
       "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-      "models": ["glm-4.7"]
+      "models": [{ "model": "glm-4.7" }]
     }
   ],
   "tier": "medium",                                  // 缺省档位 small|medium|large（/model-tier 按上面 tier 标注选中对应模型，无标注回默认）

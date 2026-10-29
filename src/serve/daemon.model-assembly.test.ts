@@ -35,8 +35,8 @@ test('assembleGuiModel：providers 展开 + choices 非空恒自动切首源；�
   delete process.env.SUNSHINEX_MODEL;
   try {
     writeGlobalProviders(home, [
-      { name: 'a', baseUrl: 'https://a/v1', models: ['m1', 'm2'] },
-      { name: 'b', baseUrl: 'https://b/v1', models: ['m3'] },
+      { name: 'a', baseUrl: 'https://a/v1', models: [{ model: 'm1' }, { model: 'm2' }] },
+      { name: 'b', baseUrl: 'https://b/v1', models: [{ model: 'm3' }] },
     ]);
     const { model, warnings } = assembleGuiModel(new StubAdapter(), proj);
     assert.deepEqual(warnings, []);
@@ -60,7 +60,7 @@ test('assembleGuiModel：SUNSHINEX_MODEL env 显式不再阻止自动切源（pr
   process.env.USERPROFILE = home;
   process.env.SUNSHINEX_MODEL = 'glm-5.3-flash';
   try {
-    writeGlobalProviders(home, [{ name: 'a', baseUrl: 'https://a/v1', models: ['m1'] }]);
+    writeGlobalProviders(home, [{ name: 'a', baseUrl: 'https://a/v1', models: [{ model: 'm1' }] }]);
     const { model } = assembleGuiModel(new StubAdapter(), proj);
     assert.ok(model instanceof ModelSwitcher);
     assert.equal(model.currentId(), 'a/m1', '2026-10-28 裁定：env 显式档退役，providers 在场缺省恒 choices[0]');

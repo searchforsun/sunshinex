@@ -42,7 +42,7 @@ test('listProviders 两级整键遮蔽：项目 providers 键在场（含空数�
   withHome((fakeHome, proj) => {
     writeJson(path.join(fakeHome, '.sunshinex', 'settings.json'), {
       version: 1,
-      providers: [{ name: 'global-src', baseUrl: 'https://g/v1', models: ['gm'] }],
+      providers: [{ name: 'global-src', baseUrl: 'https://g/v1', models: [{ model: 'gm' }] }],
     });
     fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
 
@@ -52,7 +52,7 @@ test('listProviders 两级整键遮蔽：项目 providers 键在场（含空数�
 
     writeJson(path.join(proj, '.sunshinex', 'settings.json'), {
       version: 1,
-      providers: [{ name: 'proj', baseUrl: 'https://p/v1', models: ['pm1', 'pm2'] }],
+      providers: [{ name: 'proj', baseUrl: 'https://p/v1', models: [{ model: 'pm1' }, { model: 'pm2' }] }],
     });
     const shadowed = listProviders(proj);
     assert.deepEqual(shadowed.providers.map((p) => p.name), ['proj'], '项目键在场整键遮蔽全局');
@@ -70,7 +70,7 @@ test('listProviders 两级整键遮蔽：项目 providers 键在场（含空数�
   });
 });
 
-test('parseProvidersSpec tier 解析：对象形态合法档位进 ModelChoice.tier；非法 warning 忽略档位、模型保留；字符串形态无 tier', () => {
+test('parseProvidersSpec tier 解析：对象形态合法档位进 ModelChoice.tier；非法 warning 忽略档位、模型保留；', () => {
   const r = parseProvidersSpec([
     {
       name: 'p',
@@ -80,7 +80,6 @@ test('parseProvidersSpec tier 解析：对象形态合法档位进 ModelChoice.t
         { model: 'm-medium', tier: 'medium' },
         { model: 'm-large', tier: 'large' },
         { model: 'm-plain' }, // 对象形态未声明 tier
-        'm-string',           // 字符串形态无 tier 位
         { model: 'm-bad', tier: 'huge' }, // 非法档位：warning、模型保留、tier 不落
       ],
     },
@@ -93,16 +92,15 @@ test('parseProvidersSpec tier 解析：对象形态合法档位进 ModelChoice.t
   assert.equal(byId.get('p/m-medium')!.tier, 'medium');
   assert.equal(byId.get('p/m-large')!.tier, 'large');
   assert.equal(byId.get('p/m-plain')!.tier, undefined, '未声明 = undefined（档位路由按缺省处理）');
-  assert.equal(byId.get('p/m-string')!.tier, undefined, '字符串形态没有 tier 位');
   assert.equal(byId.get('p/m-bad')!.tier, undefined, '非法档位忽略（模型保留）');
-  assert.equal(r.choices.length, 6, '坏档位不连坐，六个模型全保留');
+  assert.equal(r.choices.length, 5, '坏档位不连坐，五个模型全保留（字符串简写已退役不入列）');
 });
 
 test('listProviders apiKeyPresent：专用 env 槽有值 true、无值 false（env 桩注入，不写真键）', () => {
   withHome((_fakeHome, proj) => {
     writeJson(path.join(proj, '.sunshinex', 'settings.json'), {
       version: 1,
-      providers: [{ name: 'stubprov', baseUrl: 'https://s/v1', models: ['sm'] }],
+      providers: [{ name: 'stubprov', baseUrl: 'https://s/v1', models: [{ model: 'sm' }] }],
     });
     // env 桩保存/恢复：先清场防真实环境串入（专用槽与主槽都钉，禁真实密钥）
     const prevSpecific = process.env.SUNSHINEX_API_KEY_STUBPROV;
@@ -131,8 +129,8 @@ test('listProviders choices 序 = providers 序 × models 序；providers 面镜
     writeJson(path.join(proj, '.sunshinex', 'settings.json'), {
       version: 1,
       providers: [
-        { name: 'p1', baseUrl: 'https://p1/v1', contextWindow: 64000, models: ['m1', { model: 'm2', contextWindow: 128000 }] },
-        { name: 'p2', baseUrl: 'https://p2/v1', models: ['m3'] },
+        { name: 'p1', baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', contextWindow: 128000 }] },
+        { name: 'p2', baseUrl: 'https://p2/v1', models: [{ model: 'm3' }] },
       ],
     });
     const r = listProviders(proj);

@@ -12,7 +12,7 @@ test('parseProvidersSpec：supportsImages 源级缺省 + 条目级覆盖，两�
         name: 'src-a',
         baseUrl: 'https://a.example/v1',
         supportsImages: false,
-        models: [{ model: 'm1' }, { model: 'm2', supportsImages: true }, 'm3'],
+        models: [{ model: 'm1' }, { model: 'm2', supportsImages: true }, { model: 'm3' }],
       },
       {
         name: 'src-b',
@@ -26,7 +26,7 @@ test('parseProvidersSpec：supportsImages 源级缺省 + 条目级覆盖，两�
   const byId = new Map(r.choices.map((c) => [c.id, c]));
   assert.equal(byId.get('src-a/m1')!.supportsImages, false, '源级缺省下传');
   assert.equal(byId.get('src-a/m2')!.supportsImages, true, '条目级覆盖源级');
-  assert.equal(byId.get('src-a/m3')!.supportsImages, false, '字符串形态条目吃源级缺省');
+  assert.equal(byId.get('src-a/m3')!.supportsImages, false, '条目未声明吃源级缺省');
   assert.equal(byId.get('src-b/v1')!.supportsImages, false, '无源级声明时条目级独立生效');
 });
 
@@ -48,6 +48,6 @@ test('parseProvidersSpec：supportsImages 非布尔告警忽略（模型保留�
 });
 
 test('parseProvidersSpec：未声明 supportsImages → undefined（乐观缺省，GUI/适配器按支持放行）', () => {
-  const r = parseProvidersSpec([{ name: 'p', baseUrl: 'https://p.example/v1', models: ['m'] }], 'test');
+  const r = parseProvidersSpec([{ name: 'p', baseUrl: 'https://p.example/v1', models: [{ model: 'm' }] }], 'test');
   assert.equal(r.choices[0]!.supportsImages, undefined);
 });

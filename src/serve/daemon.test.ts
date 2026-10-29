@@ -987,14 +987,14 @@ describe('G8c T2 /settings 端点', () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), JSON.stringify({
         permissions: { deny: ['Bash(rm*)'], allow: ['Read(*)'] },
-        providers: [{ name: 'gp', baseUrl: 'https://gp.example', models: ['gm'] }],
+        providers: [{ name: 'gp', baseUrl: 'https://gp.example', models: [{ model: 'gm' }] }],
       }, null, 2), 'utf8');
       const proj = path.join(tmp, 'proj');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
       fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({
         permissions: { deny: ['Bash(rm*)', 'Write(/secret/*)'], additionalDirs: ['C:/extra'] },
         providers: [
-          { name: 'pp', baseUrl: 'https://pp.example', models: ['pm1', 'pm2'] },
+          { name: 'pp', baseUrl: 'https://pp.example', models: [{ model: 'pm1' }, { model: 'pm2' }] },
           { name: 'broken', models: [] }, // 坏条目(缺 baseUrl)→warning 且该源跳过
         ],
       }, null, 2), 'utf8');

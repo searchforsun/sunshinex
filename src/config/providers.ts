@@ -29,7 +29,7 @@ export interface ModelChoice {
   /** 该模型是否支持图片输入（models 条目对象形态 supportsImages > 源级 supportsImages 缺省；
    *  undefined = 未声明按支持处理——乐观缺省，未声明端点由服务端自然报错） */
   supportsImages?: boolean;
-  /** 该模型档位标注（仅 models 条目对象形态可声明，无源级缺省、字符串形态无此位；
+  /** 该模型档位标注（models 条目对象形态声明，无源级缺省；
    *  undefined = 未标注，档位路由按缺省处理——§15 档位路由消费面） */
   tier?: ModelTier;
 }
@@ -55,8 +55,7 @@ interface LoadedProviders {
 
 /**
  * 源级分组条目（catalog/providers 读面的数据基座，settings.json providers 键的文件结构镜像）：
- * 源级字段 = 源级显式值（非法值已被告警忽略）；models 条目 = 条目级显式值（对象形态才有覆盖位，
- * 字符串形态仅模型名）。与 ModelChoice（生效值 = 条目级 > 源级缺省）分工：本面供设置页渲染/编辑
+ * 源级字段 = 源级显式值（非法值已被告警忽略）；models 条目 = 条目级显式值。与 ModelChoice（生效值 = 条目级 > 源级缺省）分工：本面供设置页渲染/编辑
  * 文件结构（源级缺省与逐模型覆盖的分野须保真），choices 供运行面。
  */
 export interface ParsedProviderEntry {
@@ -89,12 +88,13 @@ interface ParsedProviders {
 }
 
 /**
- * 单级 providers 键解析（全量内点）：`[{ "name", "baseUrl", "contextWindow?", "reasoningEffort?", "supportsImages?", "models": ["m" | { "model", "contextWindow?", "reasoningEffort?", "supportsImages?", "tier?" }] }]`
+ * 单级 providers 键解析（全量内点）：`[{ "name", "baseUrl", "contextWindow?", "reasoningEffort?", "supportsImages?", "models": [{ "model", "contextWindow?", "reasoningEffort?", "supportsImages?", "tier?" }] }]`
  * 一次遍历同产源级分组（ParsedProviderEntry 去 origin 的中间形——两级来源归因由 loadProvidersFull
  * 盖章，见 stampOrigin；文件结构镜像）与展平 choices（生效值），序同为
- * providers 数组序 × models 数组序。models 条目两形态：字符串（模型名）与对象（模型名 + 每模型覆盖）；
- * 逐项两级优先级 = 条目级 > 源级缺省（contextWindow / reasoningEffort / supportsImages 同口径，缺省回全局链）；
- * tier 仅条目对象形态可声明（无源级缺省、字符串形态无此位），非法值告警忽略档位、模型保留
+ * providers 数组序 × models 数组序。models 条目标准形态 = 对象（2026-10-29 去兼容清理：字符串简写
+ * 退役，遇之告警跳过）；逐项两级优先级 = 条目级 > 源级缺省（contextWindow / reasoningEffort /
+ * supportsImages 同口径，缺省回全局链）；
+ * tier 仅条目对象形态可声明（无源级缺省），非法值告警忽略档位、模型保留
  * （沿 contextWindow 同款纪律：标注值坏不连坐模型本体）。
  * 非法形态（非数组 / 条目非对象 / 缺 name / 缺 baseUrl / models 空 or 条目形态坏）→ warning 后跳过
  * （装配面宁可少配不可错配）；contextWindow / reasoningEffort 值非法 → warning 后忽略该值、模型保留
@@ -172,9 +172,12 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       let itemEffort: ReasoningEffort | undefined;
       let itemImages: boolean | undefined;
       let itemTier: ModelTier | undefined;
+      // 字符串简写退役（2026-10-29 去兼容清理）：models 条目须为对象形态，遇字符串告警跳过
       if (typeof item === 'string') {
-        model = item.trim();
-      } else if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+        warnings.push(`settings.json providers.${name} models 条目须为对象形态（${origin}），已跳过`);
+        continue;
+      }
+      if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
         const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; tier?: unknown };
         model = typeof o.model === 'string' ? o.model.trim() : undefined;
         if (o.contextWindow !== undefined) {
@@ -208,7 +211,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         }
       }
       if (model === undefined || model === '') {
-        warnings.push(`settings.json providers.${name} models 条目须为模型名字符串或 { model, contextWindow?, reasoningEffort? } 对象（${origin}），已跳过`);
+        warnings.push(`settings.json providers.${name} models 条目须为 { model, contextWindow?, reasoningEffort? } 对象（${origin}），已跳过`);
         continue;
       }
       const id = `${name}/${model}`;

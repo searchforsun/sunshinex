@@ -270,7 +270,7 @@ test('/providers：清单卡含源名/模型数/密钥槽状态/默认标记 + �
       version: 1,
       providers: [
         { name: 'alpha', baseUrl: 'https://a.example', models: [{ model: 'm1' }, { model: 'm2' }] },
-        { name: 'beta', baseUrl: 'https://b.example', models: ['m3'] },
+        { name: 'beta', baseUrl: 'https://b.example', models: [{ model: 'm3' }] },
       ],
     }));
     const ctrl2 = new SessionController({ root, model: new ScriptedAdapter([]) });

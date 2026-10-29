@@ -229,6 +229,6 @@ skills 增删改与启停（用户裁定除外）；插件安装/卸载 CLI 与�
 9. **GUI**（§7 模型与提供方页）：提供方卡片列表（名称/baseUrl/密钥状态点/models chips/默认标记）+ EditorDrawer 增删改（name/baseUrl/apiKey 输入/models 行编辑含 tier select 与上下移）；「请求参数」卡保留 tier/effort 两个 select，**删除「API 地址」行与模型 Combo**。
 10. **兼容**：存量 `model`/`baseUrl` 配置给出一次性 warning 指引；`providers` 键用户无需任何迁移；本仓库自身 settings 若含退役键随 warning 暴露。
 
-**测试**（并入 §11）：catalog/providers 单测（展开/两级整键遮蔽/tier 路由选中/密钥槽解析/env 块写入与不回显/modelMove 调序）；退役键 warning 断言；缺省内芯恒为 choices[0] 断言（含单 provider 单模型、多 provider 混合对象/字符串 models 形态）；CLI providers 端到端；GUI EditorDrawer 模型行排序与默认标记渲染。
+**测试**（并入 §11）：catalog/providers 单测（展开/两级整键遮蔽/tier 路由选中/密钥槽解析/env 块写入与不回显/modelMove 调序）；退役键 warning 断言；缺省内芯恒为 choices[0] 断言（含单 provider 单模型、多 provider 混合 models 形态；字符串简写 2026-10-29 起退役为告警跳过）；CLI providers 端到端；GUI EditorDrawer 模型行排序与默认标记渲染。
 
 **验收**（并入 §13）：providers 三端（GUI 编辑 / CLI 子命令 / TUI 引导）增删改一致生效且写同一批文件；默认模型恒为第一×第一且 GUI 有标记；散键退役有 warning 指引；`/model-tier` 按 tier 标注正确选中、无标注回默认。
