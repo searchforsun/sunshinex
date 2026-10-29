@@ -19,6 +19,9 @@ import { Select } from './controls';
  *   onSubmit)——raw/JSON 类编辑面统一容器(2026-10-29 用户裁定:弹窗替换右滑抽屉;Esc 走
  *   document 捕获段并 stopPropagation——设置壳「Esc 回会话态」监听在 document 冒泡段,弹窗
  *   开着时 Esc 只关弹窗不退设置态;焦点落对话框,不做完整焦点陷阱)。
+ * - ModalTabs:弹窗顶部 Tab 条(2026-10-29 用户裁定:MCP/Plugins 配置弹窗改「配置|源码」两 Tab
+ *   替代"表单+折叠 JSON 段"堆叠;共享件,role=tablist/tab)。同轮裁定:ScopeSelect 工具栏下拉
+ *   定宽(sx-dd-fixed 150px,超长项目名 ellipsis+title tip 全名)。
  * - EmptyState/ErrorBanner:空态/错误条(role=alert,沿 home-error 的告警语义)。
  * 样式零新依赖:全部走 app.css 既有令牌(--surface-elevated/--border/--radius 系列/--warn…),
  * 新类前缀 sx-scope-/sx-search-/sx-rc-/sx-drawer-/sx-empty-/sx-error-(Task 21 追加段)+
@@ -61,15 +64,57 @@ export interface ScopeSelectProps {
 /** 作用域目标选择器下拉(2026-10-29 用户裁定:两选项形态退役,改目标选择器):
  *  沿共享 Select 弹层控件(sx-dd 同款样式);选项=「全局」+ 全部已注册项目(按项目名);
  *  选哪个项目,资源页读写就锚定哪个项目(壳换发 root/scope 后 pane 重拉)——不再限于
- *  当前打开的会话项目 */
+ *  当前打开的会话项目。2026-10-29 用户裁定(下拉定宽):sx-dd-fixed 150px 固定宽不随内容
+ *  伸缩,超长项目名 ellipsis 截断(.sx-dd-value 既有规则),title tip 提示全名 */
 export function ScopeSelect({ value, options, onChange }: ScopeSelectProps): JSX.Element {
+  const current = options.find((o) => o.value === value);
   return (
     <Select
+      className="sx-dd-fixed"
       ariaLabel={t('Settings scope', '配置作用域')}
       value={value}
       options={options.map((o) => ({ v: o.value, l: o.label }))}
+      title={current?.label}
       onChange={onChange}
     />
+  );
+}
+
+/** ModalTabs 选项行:id=受控当值键;label=渲染期 t() 后的标签 */
+export interface ModalTabItem {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** ModalTabs props:受控顶部 Tab 条(2026-10-29 用户裁定:MCP/Plugins 配置弹窗改「配置|源码」
+ *  两 Tab 替代"表单+折叠 JSON 段"堆叠;切 Tab 不清内容——内容留存由弹窗宿主持有)。
+ *  role=tablist/tab+aria-selected(键盘焦点沿钮原生序,无 roving tabindex——弹窗内两 Tab 小集,
+ *  Tab 键遍历即可达) */
+export interface ModalTabsProps {
+  readonly tabs: readonly ModalTabItem[];
+  readonly active: string;
+  readonly onChange: (id: string) => void;
+  /** 无障碍名(aria-label,如弹窗标题) */
+  readonly ariaLabel?: string;
+}
+
+/** 弹窗顶部 Tab 条(共享件——MCP/Plugins 配置弹窗同构消费;样式 sx-modal-tabs 追加段) */
+export function ModalTabs({ tabs, active, onChange, ariaLabel }: ModalTabsProps): JSX.Element {
+  return (
+    <div className="sx-modal-tabs" role="tablist" aria-label={ariaLabel}>
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={tab.id === active}
+          className={`sx-modal-tab${tab.id === active ? ' active' : ''}`}
+          onClick={() => onChange(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

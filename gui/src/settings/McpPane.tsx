@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult, McpOpInput } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 
 /**
@@ -15,12 +15,14 @@ import type { SettingsScope, ScopeOption } from './components';
  * 作用域下拉+SearchBar(200ms 防抖过滤 name/command/url,弹性)+「+ Add」钮一行);主体
  * ul.sx-rc-list × ResourceCard(icon=探测状态点/title=名/subtitle=
  * 命令行|url/chips=transport+env·header 键+批准阀/badge=SourceBadge/开关=启停);
- * 添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉;名称/transport
- * select/command|url/args 逐行
- * textarea/env 键值行)+「JSON 源码」高级折叠(展开即按当前表单预览;提交时非空则
- * JSON.parse+单条形状校验+与名称字段一致门,整条以 JSON 为准——隐藏值(headers/enabled/
- * disabledTools)由此保全;收起即清空解除武装——偷看预览不接管提交,覆写规则入弹窗
- * 提示行,T22 评审修补)。
+ * 添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉)。弹窗体
+ * 2026-10-29 再裁定改**顶部两 Tab**(ModalTabs 共享件):「配置」(名称/transport select/
+ * command|url/args 逐行 textarea/env 键值行)与「源码」(原 JSON 源码 textarea)——替代
+ * "表单+折叠 JSON 段"堆叠形态。纪律不变:源码 Tab 非空保存即整条以 JSON 为准(parse+单条
+ * 形状校验+与名称字段一致门——隐藏值(headers/enabled/disabledTools)由此保全);**切 Tab
+ * 不清内容**(旧"收起面板清空解除武装"退役——清空源码文本方回表单组装,覆写规则入弹窗
+ * 提示行)。默认落「配置」Tab;编辑已有条目且存在表单外隐藏键(seedRest 非空——沿现 seed
+ * 逻辑判断)→ 默认落「源码」并预填整条 JSON(隐藏键由此可见可编)。
  *
  * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳):scope='project'(缺省,有 root 时)读两级清单
  * (GET 带 root,项目先全局后)——项目卡可写(op scope='project' 带 root),全局同名卡
@@ -35,7 +37,7 @@ import type { SettingsScope, ScopeOption } from './components';
  *
  * 值打码边界:GET 视图 env/headers 只回键名——表单编辑/逐工具开关改条目前经
  * settingsRaw 读原文条目作 seed(值保全预填;文件含注释/畸形时降级行视图字段起步,
- * 隐藏值丢失风险以抽屉内提示引流「JSON 源码」)。409(内容/写面错误,hint
+ * 隐藏值丢失风险以弹窗内提示引流「源码」Tab)。409(内容/写面错误,hint
  * 'use raw editor')与 400(HTTP 失败)统一 errText 行内 ErrorBanner 呈现。
  *
  * 探测面沿 2026-10-26 四轮改版保留:挂载即逐台真探测(绿/红/灰点,停用卡不探),
@@ -57,6 +59,9 @@ export interface McpPaneConn {
 /** 状态点三态:ok=绿(连接正常)/err=红(连接失败)/probe=灰(探测中)/off=灰环(整机停用,不探测) */
 type McpDotState = 'ok' | 'err' | 'probe' | 'off';
 
+/** 弹窗 Tab 键:「配置」=表单面;「源码」=JSON 源码面(非空保存即整条以 JSON 为准) */
+type ModalTab = 'config' | 'source';
+
 /** 抽屉表单态(受控单对象;setForm 局部覆写) */
 interface DrawerForm {
   name: string;
@@ -67,20 +72,21 @@ interface DrawerForm {
   argsText: string;
   /** env 键值行(值面可编辑;键空行忽略) */
   envRows: Array<{ k: string; v: string }>;
-  /** 「JSON 源码」高级折叠开合(受控——jsdom/键盘同径);非空即提交时整条以 JSON 为准 */
-  jsonOpen: boolean;
+  /** 顶部 Tab 当值(2026-10-29 用户裁定:配置|源码 两 Tab;切 Tab 不清 jsonText) */
+  tab: ModalTab;
+  /** 「源码」Tab 文本;非空=提交时整条以 JSON 为准(清空方回表单组装) */
   jsonText: string;
 }
 
 /** 抽屉会话态:add=新增;edit=编辑某卡(source=写作用域,original=改名换键的旧名)。
  *  seed=raw 原文该条目(编辑/逐工具开关的值保全底稿;null=不可得——行视图字段起步);
  *  seedRest=seed 中表单不建模的其余键(headers/enabled/disabledTools…,提交透传保全);
- *  seedNote=seed 不可得时的降级提示(引流「JSON 源码」) */
+ *  seedNote=seed 不可得时的降级提示(引流「源码」Tab) */
 type DrawerState =
   | { mode: 'add'; source: 'project' | 'global' }
   | { mode: 'edit'; source: 'project' | 'global'; original: string; seed: Record<string, unknown> | null; seedRest: Record<string, unknown>; seedNote: string };
 
-const EMPTY_FORM: DrawerForm = { name: '', transport: 'stdio', command: '', url: '', argsText: '', envRows: [], jsonOpen: false, jsonText: '' };
+const EMPTY_FORM: DrawerForm = { name: '', transport: 'stdio', command: '', url: '', argsText: '', envRows: [], tab: 'config', jsonText: '' };
 
 export interface McpPaneProps {
   readonly conn: McpPaneConn;
@@ -200,7 +206,7 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
   };
 
   /** raw 原文条目读取(编辑 seed/逐工具开关底稿):content 缺/条目缺 → null;文件不可解析 →
-   *  抛错(调用方行内呈报——引流「JSON 源码」/raw 编辑面) */
+   *  抛错(调用方行内呈报——引流「源码」Tab/raw 编辑面) */
   const readSeedEntry = async (s: McpRow): Promise<Record<string, unknown> | null> => {
     const { content } = await conn.settingsRaw(s.source, s.source === 'project' ? root : undefined, 'mcp');
     if (content === null) return null;
@@ -208,13 +214,16 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
     try {
       doc = JSON.parse(content);
     } catch {
-      throw new Error(t('mcp.json contains comments or invalid JSON — masked values unavailable; use the JSON source panel', 'mcp.json 含注释或非法 JSON——打码值不可得;请用「JSON 源码」面板'));
+      throw new Error(t('mcp.json contains comments or invalid JSON — masked values unavailable; use the Source tab', 'mcp.json 含注释或非法 JSON——打码值不可得;请用「源码」Tab'));
     }
     const entry = (doc as { mcpServers?: Record<string, unknown> } | null)?.mcpServers?.[s.name];
     return entry !== null && typeof entry === 'object' && !Array.isArray(entry) ? { ...(entry as Record<string, unknown>) } : null;
   };
 
-  /** 抽屉打开(添加=空表单;编辑=raw seed 预填,值保全;seed 不可得降级行字段起步+提示) */
+  /** 抽屉打开(添加=空表单;编辑=raw seed 预填,值保全;seed 不可得降级行字段起步+提示)。
+   *  默认 Tab(2026-10-29 用户裁定):恒「配置」;编辑且存在表单外隐藏键(seedRest 非空——
+   *  沿现 seed 逻辑判断)→ 默认「源码」并预填整条 JSON(隐藏键由此可见可编,保存即以 JSON
+   *  为准=现纪律);seed 不可得(打码值/注释文件降级)无隐藏键面 → 「配置」起步 */
   const openDrawer = async (s: McpRow | null): Promise<void> => {
     setFormError('');
     if (s === null) {
@@ -232,7 +241,9 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
     }
     const rest: Record<string, unknown> = { ...seed };
     for (const k of ['transport', 'command', 'url', 'args', 'env']) delete rest[k];
-    setForm({
+    const drawerState: DrawerState = { mode: 'edit', source: s.source, original: s.name, seed, seedRest: rest, seedNote };
+    const hiddenKeys = seed !== null && Object.keys(rest).length > 0;
+    const nextForm: DrawerForm = {
       name: s.name,
       transport: s.transport,
       command: seed !== null && typeof seed.command === 'string' ? seed.command : (s.command ?? ''),
@@ -243,10 +254,29 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
           ? (seed.env as Record<string, string>)
           : {},
       ).map(([k, v]) => ({ k, v: String(v) })),
-      jsonOpen: false,
+      tab: hiddenKeys ? 'source' : 'config',
       jsonText: '',
+    };
+    if (hiddenKeys) nextForm.jsonText = JSON.stringify({ [s.name]: buildServerForPreview(nextForm, drawerState) }, null, 2);
+    setForm(nextForm);
+    setDrawer(drawerState);
+  };
+
+  /** 顶部 Tab 切换(2026-10-29 用户裁定):**切 Tab 不清内容**(旧"收起清空解除武装"退役);
+   *  入「源码」且文本空 → 按当前表单预填单条 JSON(顶层键=名称——提交一致性门同源);
+   *  源码非空留存=提交仍以 JSON 为准,清空文本方回表单组装(覆写规则入弹窗提示行) */
+  const switchTab = (next: ModalTab): void => {
+    setForm((f) => {
+      if (f.tab === next) return f;
+      if (next === 'source' && f.jsonText.trim() === '') {
+        return {
+          ...f,
+          tab: next,
+          jsonText: JSON.stringify({ [f.name.trim() === '' ? 'new-server' : f.name.trim()]: buildServerForPreview(f, drawer) }, null, 2),
+        };
+      }
+      return { ...f, tab: next };
     });
-    setDrawer({ mode: 'edit', source: s.source, original: s.name, seed, seedRest: rest, seedNote });
   };
 
   /** 表单当前值 → server 条目对象(seedRest 透传保全表单外键;transport 显式;stdio=command、
@@ -273,7 +303,7 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
   };
 
   /** 抽屉保存:add=op add;edit=op add(改名再 op remove 旧键——两段顺序落盘)。
-   *  「JSON 源码」非空 → 整条以 JSON 为准(parse+单条对象+与名称一致门);否则表单组装 */
+   *  「源码」Tab 非空 → 整条以 JSON 为准(parse+单条对象+与名称一致门);否则表单组装 */
   const submitDrawer = (): void => {
     if (drawer === null || saving) return;
     const name = form.name.trim();
@@ -351,7 +381,7 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
     setActionError('');
     readSeedEntry(s)
       .then((seed) => {
-        if (seed === null) throw new Error(t('Entry not found in file — edit via the JSON source panel', '文件内未找到该条目——请经「JSON 源码」面板编辑'));
+        if (seed === null) throw new Error(t('Entry not found in file — edit via the Source tab', '文件内未找到该条目——请经「源码」Tab 编辑'));
         const cur = new Set(Array.isArray(seed.disabledTools) ? (seed.disabledTools as unknown[]).map(String) : (s.disabledTools ?? []));
         if (cur.has(tool)) cur.delete(tool);
         else cur.add(tool);
@@ -583,16 +613,35 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
           {drawer.mode === 'edit' && drawer.seedNote !== '' && <p className="sx-mcp-hint">{drawer.seedNote}</p>}
           <p className="sx-mcp-hint">
             {t(
-              'Env/header values are masked — saving rewrites the whole entry; use JSON source to preserve hidden values.',
-              '环境变量/请求头值已打码——保存将整条改写;需保全隐藏值请用「JSON 源码」。',
+              'Env/header values are masked — saving rewrites the whole entry; the Source tab shows the full JSON.',
+              '环境变量/请求头值已打码——保存将整条改写;「源码」Tab 可见完整 JSON。',
             )}
           </p>
           <p className="sx-mcp-hint">
             {t(
-              'A non-empty JSON source overrides the form on save — form edits apply only after clearing it; collapsing the panel clears it.',
-              '「JSON 源码」非空时保存整条以 JSON 为准——清空后方可用表单编辑;收起面板即清空。',
+              'A non-empty Source tab overrides the form on save — clear it to edit via the form; switching tabs keeps its content.',
+              '「源码」非空时保存整条以 JSON 为准——清空后方可用表单编辑;切 Tab 不清内容。',
             )}
           </p>
+          <ModalTabs
+            tabs={[
+              { id: 'config', label: t('Config', '配置') },
+              { id: 'source', label: t('Source', '源码') },
+            ]}
+            active={form.tab}
+            onChange={(id) => switchTab(id === 'source' ? 'source' : 'config')}
+          />
+          {form.tab === 'source' ? (
+            <textarea
+              aria-label={t('Server JSON', '服务器 JSON')}
+              className="sx-mcp-json"
+              value={form.jsonText}
+              onChange={(e) => setForm({ ...form, jsonText: e.target.value })}
+              rows={12}
+              spellCheck={false}
+            />
+          ) : (
+            <>
           <label className="sx-drawer-field">
             {t('Name', '名称')}
             <input aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
@@ -659,37 +708,8 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
               {t('+ Add env', '+ 添加环境变量')}
             </button>
           </div>
-          <details className="sx-rc-details sx-mcp-json-adv" open={form.jsonOpen}>
-            <summary
-              onClick={(e) => {
-                // 受控开合(preventDefault 拦原生 toggle——jsdom/键盘同径)。展开且文本空 → 按当前表单
-                // 预览单条 JSON(顶层键=名称——提交一致性门同源);收起 → 清空解除武装(T22 评审修补:
-                // 偷看一眼预览不再静默接管提交——覆写规则见上方提示行)
-                e.preventDefault();
-                const next = !form.jsonOpen;
-                setForm((f) => ({
-                  ...f,
-                  jsonOpen: next,
-                  jsonText:
-                    next && f.jsonText.trim() === ''
-                      ? JSON.stringify({ [f.name.trim() === '' ? 'new-server' : f.name.trim()]: buildServerForPreview(f, drawer) }, null, 2)
-                      : next
-                        ? f.jsonText
-                        : '', // 收起=解除武装:回落表单组装
-                }));
-              }}
-            >
-              {t('JSON source', 'JSON 源码')}
-            </summary>
-            <textarea
-              aria-label={t('Server JSON', '服务器 JSON')}
-              className="sx-mcp-json"
-              value={form.jsonText}
-              onChange={(e) => setForm({ ...form, jsonText: e.target.value })}
-              rows={10}
-              spellCheck={false}
-            />
-          </details>
+            </>
+          )}
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}
@@ -697,7 +717,7 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
   );
 }
 
-/** JSON 源码首展预览:按当前表单组装单条对象(与提交组装同形;编辑态透传 seedRest 保全表单外键) */
+/** 「源码」Tab 预填预览:按当前表单组装单条对象(与提交组装同形;编辑态透传 seedRest 保全表单外键) */
 function buildServerForPreview(f: DrawerForm, drawer: DrawerState | null): Record<string, unknown> {
   const server: Record<string, unknown> = { ...(drawer !== null && drawer.mode === 'edit' ? drawer.seedRest : {}), transport: f.transport };
   if (f.transport === 'stdio') {

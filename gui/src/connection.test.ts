@@ -738,6 +738,21 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     await expect(conn.putAgentOp({ op: 'migrate', root: '/w', id: 'nh' })).rejects.toThrow('/settings/agents -> 404');
   });
 
+  it('⑪c 2026-10-29 用户裁定 op 族错误透出:非 2xx 读应答体 {error,hint} 组装(hint 随原文拼接);体无 error 字段回落 <path> -> <status> 旧格式', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    // 409 + {error,hint}:GUI 行内错误条呈服务端真因,非裸 path->status 连接层格式
+    fetchQueue.push({ ok: false, status: 409, json: async () => ({ error: 'model m9 not found in provider p2', hint: 'use raw editor' }) });
+    await expect(
+      conn.putProviderOp({ op: 'modelMove', scope: 'global', name: 'p2', model: 'm9', direction: 'up' }),
+    ).rejects.toThrow('model m9 not found in provider p2 — use raw editor');
+    // 409 + {error} 无 hint:原样透出
+    fetchQueue.push({ ok: false, status: 409, json: async () => ({ error: 'file contains comments' }) });
+    await expect(conn.putMcpOp({ op: 'add', scope: 'global', name: 'fs', server: {} })).rejects.toThrow('file contains comments');
+    // 体无 error 字段(errResp 形):回落 <path> -> <status> 旧格式
+    fetchQueue.push(errResp(404));
+    await expect(conn.putPermissionOp({ op: 'add', scope: 'global', list: 'deny', value: '/w' })).rejects.toThrow('/settings/permissions/op -> 404');
+  });
+
   it('⑫ G8c mcpProbe 联合应答两态解码:ok:true tools / ok:false error 均 200 正常落定(探测失败是结果非错误码)', async () => {
     conn = createConnection({ baseUrl: 'http://x', token: 't', onEvent: () => {}, onReset: () => {} });
     fetchQueue.push(

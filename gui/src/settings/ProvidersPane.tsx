@@ -3,8 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
-import type { SettingsScope, ScopeOption } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard } from './components';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
 
 /**
@@ -15,32 +14,22 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  *
  * 结构(T21 共享组件 verbatim 消费):上=SettingsForm 表单引擎复用(仅「请求参数」卡——tier/
  * reasoningEffort 两闭集下拉;**2026-10-29 用户裁定豁免:请求参数卡恒全局**——root 恒 ''
- * (读仅全局、写恒 global 桶),卡片标题带「(global)/(全局)」注明,不随工具栏目标选择器;
- * 「API 地址」行与模型散键四 Combo 删除——baseUrl 归提供方卡、模型归 models 行编辑);下=
- * 提供方卡列表(GET /settings providers.entries 源级分组逐卡:名称/baseUrl 副行/密钥状态点
- * (绿=env 槽在场/灰=缺,tip=槽名)/models chips(choices[0] 所属模型加「Default」chip=生效默认,
- * 服务端恒切 choices[0]——T11 裁定)/编辑/删除)。工具栏三件套(2026-10-29 用户裁定入页):
- * ScopeSelect 目标选择器下拉(全局+全部注册项目按名)+SearchBar(200ms 防抖,过滤 name/baseUrl,
- * 弹性)+「+ Add provider」钮一行;添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗
- * 替换右滑抽屉;名称/Base URL/API key password 输入——写走 setKey op、密钥零回显(编辑播种恒
- * 空串,留空=不动键)/models 行编辑(模型名/contextWindow/reasoningEffort/tier select/上移下移
- * 钮——上移下移=文件级手术即时提交 modelMove op,成功后重拉+行重播种:以文件真值为基底按模型
+ * (读仅全局、写恒 global 桶),卡片标题带「(global)/(全局)」注明;「API 地址」行与模型散键
+ * 四 Combo 删除——baseUrl 归提供方卡、模型归 models 行编辑);下=提供方卡列表(GET /settings
+ * providers.entries 源级分组逐卡:名称/baseUrl 副行/密钥状态点(绿=env 槽在场/灰=缺,tip=槽名)/
+ * models chips(choices[0] 所属模型加「Default」chip=生效默认,服务端恒切 choices[0]——T11 裁定)/
+ * 编辑/删除)。**页面即全局**(2026-10-29 用户裁定:模型/提供方全局豁免——工具栏 ScopeSelect
+ * 与 SearchBar 撤除,只留「+ 新增提供方」钮;页面不再提供项目切换,项目级 providers 整键遮蔽
+ * 语义仍在存储层但 GUI 不再触达);读恒省参(仅全局清单),新增/编辑/删除恒写全局(op scope=
+ * 'global' 省参 root)。添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑
+ * 抽屉;名称/Base URL/API key password 输入——写走 setKey op、密钥零回显(编辑播种恒空串,
+ * 留空=不动键)/models 行编辑(模型名/contextWindow/reasoningEffort/tier select/上移下移钮
+ * ——上移下移=文件级手术即时提交 modelMove op,成功后重拉+行重播种:以文件真值为基底按模型
  * 名键合保留本地未保存行字段编辑——模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(弹窗
  * 提示行言明);行字段=本地态,Save 经 update op 整组替换 models)。
  *
  * 测试按钮裁定:v1 GUI 无提供方连通测试钮——REST 无 providers test 端点(不造端点),前端直连
  * baseUrl 需携密钥(密钥不进前端,违 D6);测试能力=CLI/TUI 面(T19/T20 已交付)。
- *
- * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳,T22 同款):scope='project'(缺省,有 root 时)读带 root
- * (两级遮蔽链视图)、写 op scope='project' 带 root;scope='global' 读省参(仅全局)、写 scope=
- * 'global' 省参 root。root='' 恒强制 global。2026-10-29 目标选择器:root 由壳按下拉目标换发
- * (全局+全部注册项目可选,不限当前打开会话项目),本面卡读写逻辑零改动(内嵌请求参数卡除外
- * ——恒全局,见结构段)。entries 无 source 归因字段(GET 投影不分级)——
- * 卡写作用域恒随壳,且**须知整键遮蔽后果**:loadProvidersFull 是 providers 键整键遮蔽,project
- * 作用域下编辑一条全局回落条目(项目档无 providers 键时)= 按 upsert 语义在项目档创建 providers
- * 键,该键一旦在场即取代全局——**其余所有全局提供方被遮出有效链与本面板**(遮蔽是装载语义,
- * 面板无从呈现被遮项)。GUI 无法以现有数据自修(无 source 归因):规避靠用户切全局作用域编辑,
- * 根治归 daemon REST 富化后续任务(与 agents 富化同批——透出行级 source/shadowed 再做标注门)。
  *
  * 读面 T9 拆分(daemon handler 注释口径):entries=文件显式值(编辑回显走此面)、生效值看
  * choices(条目级 > 源级缺省)——卡片默认标记走 choices,抽屉播种走 entries;密钥面
@@ -48,8 +37,9 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * 全畸形被跳过、choices 无行的源,密钥点不因呈现面缺行误灰)。
  *
  * 错误面三分 + saving 门单点(T22 同款):loadError(读)/actionError(卡写面)/formError(抽屉
- * 校验与保存,409 hint 经 errText 呈现引流 raw 编辑面),均 ErrorBanner 行内;写面在途禁再发。
- * config-changed 订阅:壳下发 refreshTick(providers 资源计数)变化即重拉(外部改动信号,零轮询)。
+ * 校验与保存,409 error/hint 经 connection 层透出+errText 行内呈现引流 raw 编辑面),均
+ * ErrorBanner 行内;写面在途禁再发。config-changed 订阅:壳下发 refreshTick(providers 资源
+ * 计数)变化即重拉(外部改动信号,零轮询)。
  */
 
 /** 模型与提供方面板连接面(SettingsFormConn 复用——请求参数卡走既有语义键写路径;putProviderOp=
@@ -115,9 +105,9 @@ interface DrawerForm {
   rows: ModelRow[];
 }
 
-/** 抽屉会话态:add=新增;edit=编辑某卡(original=改名换键的旧名)。写作用域随壳(source)——
- *  entries 无 source 归因,见头注 */
-type DrawerState = { mode: 'add'; source: SettingsScope } | { mode: 'edit'; source: SettingsScope; original: string };
+/** 抽屉会话态:add=新增;edit=编辑某卡(original=改名换键的旧名)。页面即全局(2026-10-29
+ *  用户裁定)——写作用域恒 global,无 source 维度 */
+type DrawerState = { mode: 'add' } | { mode: 'edit'; original: string };
 
 const EMPTY_ROW: ModelRow = { model: '', contextWindow: '', reasoningEffort: '', tier: '' };
 const EMPTY_FORM: DrawerForm = { name: '', baseUrl: '', apiKey: '', rows: [{ ...EMPTY_ROW }] };
@@ -150,56 +140,41 @@ const mergeReseedRows = (fresh: ProviderEntry, local: ModelRow[]): ModelRow[] =>
 
 export interface ProvidersPaneProps {
   readonly conn: ProvidersPaneConn;
-  /** 作用域目标项目 root(壳下发 targetRoot——下拉选哪个项目即锚哪个;'' = 全局作用域) */
-  readonly root: string;
-  /** T21 设置壳注入:作用域(缺省按 root 推断——非空即 project,壳缺省同款) */
-  readonly scope?: SettingsScope;
-  /** 2026-10-29 工具栏 ScopeSelect 上抛口(目标选择器,状态留壳层):上抛新目标项目 root
-   *  字符串('' = 全局);未接(直接渲染/桩测)时切换不回写 */
-  readonly onScopeChange?: (targetRoot: string) => void;
-  /** 2026-10-29 目标选择器选项面(壳下发:全局+全部注册项目按名;未接=直渲/桩测缺省 全局+当前 root) */
-  readonly scopeOptions?: readonly ScopeOption[];
   /** T21 config-changed 订阅 tick(providers 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
 
-export function ProvidersPane({ conn, root, scope, onScopeChange, scopeOptions, refreshTick }: ProvidersPaneProps): JSX.Element {
+export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.Element {
   /** GET /settings 全视图(null = 加载中;providers 面消费 entries/choices/apiKeyPresent/warnings,
    *  keys 面归内嵌 SettingsForm 自管——同一应答两消费方,单端点单请求) */
   const [view, setView] = useState<SettingsView | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [saving, setSaving] = useState(false);
-  /** 工具栏搜索(2026-10-29 三件套入页):200ms 防抖过滤 name/baseUrl(大小写不敏感包含) */
-  const [query, setQuery] = useState('');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<DrawerForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
 
-  /** 作用域裁定:壳下发优先,缺省按 root 推断(壳缺省同款——无 root 强制 global) */
-  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
-  /** 读面取参:project 作用域带 root(两级遮蔽链),global 作用域省参(仅全局) */
-  const fetchRoot = myScope === 'project' && root !== '' ? root : undefined;
-
+  /** 页面即全局(2026-10-29 用户裁定):读恒省参(仅全局清单),项目级 providers 整键遮蔽
+   *  语义仍在存储层但页面不再提供项目切换 */
   const load = useCallback((): void => {
-    conn.settings(fetchRoot).then(
+    conn.settings(undefined).then(
       (v) => {
         setView(v);
         setLoadError('');
       },
       (err: unknown) => setLoadError(errText(err)),
     );
-  }, [conn, fetchRoot]);
+  }, [conn]);
 
   useEffect(() => {
     load();
   }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉(config-changed 订阅消费面)
 
-  /** op 写作用域取参单点:project 带 root、global 省参(input 原文即请求体,不留空串伪参) */
+  /** op 写作用域取参单点:恒 global 省参 root(不留空串伪参;页面即全局裁定) */
   const opInput = (base: Omit<ProviderOpInput, 'scope' | 'root'>): ProviderOpInput => ({
     ...base,
-    scope: myScope,
-    ...(myScope === 'project' ? { root } : {}),
+    scope: 'global',
   });
 
   /** 卡写回收口单点(删除):saving 门 → op remove → 成功重拉(失败 saving 复位+行内错误条) */
@@ -224,11 +199,11 @@ export function ProvidersPane({ conn, root, scope, onScopeChange, scopeOptions, 
     setFormError('');
     if (e === null) {
       setForm({ ...EMPTY_FORM, rows: [{ ...EMPTY_ROW }] });
-      setDrawer({ mode: 'add', source: myScope });
+      setDrawer({ mode: 'add' });
       return;
     }
     setForm({ name: e.name, baseUrl: e.baseUrl, apiKey: '', rows: rowsOfEntry(e) });
-    setDrawer({ mode: 'edit', source: myScope, original: e.name });
+    setDrawer({ mode: 'edit', original: e.name });
   };
 
   /** models 行字段 → 写面条目(model trim 空行滤除;contextWindow 化型正数校验;''=未设置省键;
@@ -318,7 +293,7 @@ export function ProvidersPane({ conn, root, scope, onScopeChange, scopeOptions, 
       .putProviderOp(opInput({ op: 'modelMove', name: drawer.original, model, direction }))
       .then(() => {
         setSaving(false);
-        return conn.settings(fetchRoot).then((v) => {
+        return conn.settings(undefined).then((v) => {
           setView(v);
           setLoadError('');
           const fresh = (v.providers.entries ?? []).find((e) => e.name === drawer.original);
@@ -336,10 +311,8 @@ export function ProvidersPane({ conn, root, scope, onScopeChange, scopeOptions, 
   };
 
   const allEntries = view?.providers.entries ?? [];
-  /** 搜索过滤(2026-10-29 三件套入页):name/baseUrl 大小写不敏感包含(空查询=不限);
-   *  卡列表一行一个(sx-rc-list 纵向) */
-  const needle = query.trim().toLowerCase();
-  const entries = needle === '' ? allEntries : allEntries.filter((e) => `${e.name} ${e.baseUrl}`.toLowerCase().includes(needle));
+  /** 页面即全局(2026-10-29 用户裁定):工具栏只留新增钮——无下拉无搜索,卡列表全量呈现 */
+  const entries = allEntries;
   const loading = view === null && loadError === '';
   /** 生效默认模型 = choices[0](首源首模型;服务端恒切,T11 裁定)。choices 空=无默认标注 */
   const defaultId =
@@ -353,9 +326,8 @@ export function ProvidersPane({ conn, root, scope, onScopeChange, scopeOptions, 
       <SettingsForm conn={conn} root="" pane={PROVIDERS_PANE} />
       <section className="sx-providers" aria-label="providers">
         <h3>{t('Providers', '提供方')}</h3>
+        {/* 工具栏单件(2026-10-29 用户裁定:页面即全局——ScopeSelect/SearchBar 撤除,只留新增钮) */}
         <div className="sx-res-toolbar">
-          <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
-          <SearchBar value={query} onChange={setQuery} placeholder={t('Search providers', '搜索提供方')} />
           <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
             {t('+ Add provider', '+ 新增提供方')}
           </button>

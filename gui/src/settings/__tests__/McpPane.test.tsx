@@ -9,9 +9,11 @@ import type { Connection, McpRow } from '../../connection';
  * (mcpServers/mcpProbe/putMcpOp/settingsRaw 四面,不出网),用例沿 task brief——
  * ①列表渲染+挂载自动探测;②SearchBar 搜索过滤(200ms 防抖);③新增提交 putMcpOp op 形状;
  * ④待确认卡 Approve/Deny 按钮调 op approve/deny;⑤遮蔽标注渲染(全局同名卡灰显+只读);
- * ⑥「JSON 源码」高级折叠非法 JSON 拦截(不落 op);⑦refreshTick 变化触发重拉;
+ * ⑥「源码」Tab(2026-10-29 用户裁定:弹窗顶部 配置|源码 两 Tab 替代表单+折叠 JSON 段):
+ *   非法 JSON 拦截不落 op、源码非空保存以 JSON 为准+切 Tab 不清内容、清空方回表单组装、
+ *   默认 Tab 规则(新增=配置;编辑含表单外隐藏键=源码预填);⑦refreshTick 变化触发重拉;
  * ⑧工具栏作用域下拉(2026-10-29 目标选择器):切换上抛目标 root 字符串(''=全局)+壳换发
- * root+scope 后按新目标重拉。
+ * root+scope 后按新目标重拉;下拉定宽(sx-dd-fixed)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -174,34 +176,78 @@ describe('McpPane(op 端点卡片化)', () => {
     await waitFor(() => expect(opCalls).toEqual([{ op: 'disable', scope: 'project', root: '/w/proj', name: 'fs' }]));
   });
 
-  it('「JSON 源码」高级折叠:非法 JSON 提交被拦(行内报错,零 op 落盘)', async () => {
+  it('「源码」Tab 非法 JSON 提交被拦(行内报错,零 op 落盘;2026-10-29 Tab 形态:弹窗顶部 配置|源码 两 Tab)', async () => {
     const { conn, opCalls } = connOf([row()]);
     render(<McpPane conn={conn} root="/w/proj" />);
     fireEvent.click(await screen.findByRole('button', { name: '+ Add' }));
     await screen.findByRole('dialog', { name: 'Add MCP server' });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
-    fireEvent.click(screen.getByText('JSON source')); // 展开高级折叠
+    // 默认落「配置」Tab(表单字段可见);切「源码」Tab(空文本入 Tab 即按表单预填)
+    expect(screen.getByLabelText('Command')).toBeDefined(); // 配置 Tab 字段在
+    fireEvent.click(screen.getByRole('tab', { name: 'Source' }));
     fireEvent.change(screen.getByLabelText('Server JSON'), { target: { value: '{ not json' } });
     fireEvent.click(screen.getByText('Save'));
     expect(await screen.findByRole('alert')).toBeDefined(); // 行内报错
     expect(opCalls).toEqual([]); // 零 op 落盘
   });
 
-  it('「JSON 源码」收起解除武装:展开预览(武装)→ 收起 → 表单字段改动提交 → op body 用表单值非旧预览', async () => {
+  it('「源码」非空保存以 JSON 为准 + 切 Tab 不清内容(2026-10-29 用户裁定:配置→源码(预填)→配置 改表单,提交仍 JSON 胜)', async () => {
     const { conn, opCalls } = connOf([row()]);
     render(<McpPane conn={conn} root="/w/proj" />);
     fireEvent.click(await screen.findByRole('button', { name: '+ Add' }));
     await screen.findByRole('dialog', { name: 'Add MCP server' });
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'search' } });
-    const summary = screen.getByText('JSON source');
-    fireEvent.click(summary); // 展开:按表单预览,jsonText 非空=武装
-    fireEvent.click(summary); // 收起:清空解除武装(偷看不接管提交)
+    fireEvent.click(screen.getByRole('tab', { name: 'Source' })); // 预填:表单态快照(name=search,无 command)
+    const json = screen.getByLabelText('Server JSON') as HTMLTextAreaElement;
+    expect(json.value).toContain('"search"');
+    fireEvent.click(screen.getByRole('tab', { name: 'Config' })); // 切回配置
+    fireEvent.change(screen.getByLabelText('Command'), { target: { value: 'node' } }); // 表单改动
+    fireEvent.click(screen.getByText('Save'));
+    // op server=源码快照(无 command)——jsonText 切 Tab 不清,JSON 胜(钉测:源码非空保存以 JSON 为准)
+    await waitFor(() =>
+      expect(opCalls).toEqual([{ op: 'add', scope: 'project', root: '/w/proj', name: 'search', server: { transport: 'stdio' } }]),
+    );
+  });
+
+  it('「源码」清空后保存回落表单组装(清空方解除 JSON 接管);配置 Tab 字段在源码 Tab 隐藏', async () => {
+    const { conn, opCalls } = connOf([row()]);
+    render(<McpPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add' }));
+    await screen.findByRole('dialog', { name: 'Add MCP server' });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'search' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Source' }));
+    fireEvent.change(screen.getByLabelText('Server JSON'), { target: { value: '' } }); // 清空解除接管
+    fireEvent.click(screen.getByRole('tab', { name: 'Config' }));
+    expect(screen.queryByLabelText('Server JSON')).toBeNull(); // 源码 Tab 面隐藏
     fireEvent.change(screen.getByLabelText('Command'), { target: { value: 'node' } });
     fireEvent.click(screen.getByText('Save'));
-    // op server=表单值(command 'node'),非展开时的旧预览(无 command)
     await waitFor(() =>
       expect(opCalls).toEqual([{ op: 'add', scope: 'project', root: '/w/proj', name: 'search', server: { transport: 'stdio', command: 'node' } }]),
     );
+  });
+
+  it('默认 Tab 规则(2026-10-29 用户裁定):新增落「配置」;编辑已有条目存在表单外隐藏键 → 默认落「源码」并预填整条 JSON(隐藏键可见);无隐藏键编辑仍落「配置」', async () => {
+    const seed = JSON.stringify({ mcpServers: { fs: { command: 'npx', headers: { 'x-a': '1' } } } });
+    const { conn } = connOf([row(), row({ name: 'plain', command: 'node' })], undefined, seed);
+    render(<McpPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit fs(Project)' }));
+    await screen.findByRole('dialog', { name: 'Edit fs' });
+    // 隐藏键(headers)在场 → 默认「源码」:JSON 面可见且预填整条(含隐藏键),配置字段隐藏
+    const json = screen.getByLabelText('Server JSON') as HTMLTextAreaElement;
+    expect(json.value).toContain('"headers"');
+    expect(json.value).toContain('"fs"');
+    expect(screen.queryByLabelText('Command')).toBeNull(); // 配置 Tab 面隐藏
+    // 切「配置」字段在;切回「源码」内容留存(不清)
+    fireEvent.click(screen.getByRole('tab', { name: 'Config' }));
+    expect(screen.getByLabelText('Command')).toBeDefined();
+    fireEvent.click(screen.getByRole('tab', { name: 'Source' }));
+    expect((screen.getByLabelText('Server JSON') as HTMLTextAreaElement).value).toContain('"headers"');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' })); // 关弹窗
+    // 无隐藏键编辑(seed 缺=文件无条目,行字段起步)→ 默认「配置」
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit plain(Project)' }));
+    await screen.findByRole('dialog', { name: 'Edit plain' });
+    expect(screen.getByLabelText('Command')).toBeDefined(); // 配置 Tab 直落
+    expect(screen.queryByLabelText('Server JSON')).toBeNull();
   });
 
   it('refreshTick 变化触发重拉(config-changed 外部改动信号)', async () => {
@@ -234,6 +280,8 @@ describe('McpPane(op 端点卡片化)', () => {
     const { rerender } = render(<McpPane conn={conn} root="/w/proj" scope="project" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await screen.findByText('fs');
     await waitFor(() => expect(mcpServersCalls).toEqual(['/w/proj']));
+    // 作用域下拉定宽(2026-10-29 用户裁定:sx-dd-fixed 150px 不随内容伸缩)
+    expect(screen.getByRole('button', { name: 'Settings scope' }).closest('.sx-dd')!.className).toContain('sx-dd-fixed');
     fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
     expect(raised).toEqual(['']); // 只上抛(''=全局,状态留壳层)

@@ -24,9 +24,12 @@ export function Select(props: {
   readonly title?: string;
   readonly ariaLabel: string;
   readonly placeholder?: string;
+  /** 包裹层附加类(2026-10-29 用户裁定:工具栏作用域/项目下拉定宽——sx-dd-fixed 150px,
+   *  超长项目名 ellipsis 截断;不随内容伸缩) */
+  readonly className?: string;
   readonly onChange: (v: string) => void;
 }): JSX.Element {
-  const { value, options, disabled = false, title, ariaLabel, placeholder, onChange } = props;
+  const { value, options, disabled = false, title, ariaLabel, placeholder, className, onChange } = props;
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -93,7 +96,7 @@ export function Select(props: {
   const current = options.find((o) => o.v === value);
   const listId = useId();
   return (
-    <div className="sx-dd" ref={wrapRef}>
+    <div className={className === undefined ? 'sx-dd' : `sx-dd ${className}`} ref={wrapRef}>
       <button
         type="button"
         className="sx-dd-trigger"

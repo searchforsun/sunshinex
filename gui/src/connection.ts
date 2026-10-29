@@ -323,6 +323,34 @@ export function createConnection(opts: ConnectionOpts): Connection {
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   }
 
+  /** 非 2xx → Error（2026-10-29 用户裁定:op 族失败透出服务端 {error,hint}——GUI 行内错误条
+   *  呈服务端真因,不再裸显 `<path> -> <status>` 连接层格式;hint 在场拼随原文引流）。体缺/
+   *  非 JSON/无 error 字段 → 回落 `<path> -> <status>` 旧格式（非 op 形状应答容错面） */
+  async function opError(path: string, res: Response): Promise<Error> {
+    let doc: unknown;
+    try {
+      doc = await res.json();
+    } catch {
+      return new Error(`${path} -> ${res.status}`); // 体不可解析(空体/HTML):回落旧格式
+    }
+    const err = typeof (doc as { error?: unknown })?.error === 'string' ? ((doc as { error: string }).error.trim()) : '';
+    if (err === '') return new Error(`${path} -> ${res.status}`);
+    const hint = typeof (doc as { hint?: unknown })?.hint === 'string' ? ((doc as { hint: string }).hint.trim()) : '';
+    return new Error(hint !== '' ? `${err} — ${hint}` : err);
+  }
+
+  /** PUT op 族（设置 op 端点写面:providers/mcp/permissions/agents op;失败读应答体 error/hint
+   *  组装透出,见 opError——普通 put 的裸 status 格式仅连接层兜底）。成功面与 put 同纪律:
+   *  200 {ok:true} 只作成功信号不解析应答体 */
+  async function putOp(path: string, body: unknown): Promise<void> {
+    const res = await fetch(`${base}${path}`, {
+      method: 'PUT',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await opError(path, res);
+  }
+
   /** POST 带 JSON 应答（G8c mcpProbe——联合应答 200 两态均正常落定，非 2xx 才是错误） */
   async function postJson<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(`${base}${path}`, {
@@ -650,11 +678,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     putPermissionOp(input: PermissionOpInput): Promise<void> {
       // input 原文即请求体（putMcpOp/putAgentOp 同款——scope=global 省参不留 root 空串伪参）
-      return put('/settings/permissions/op', input);
+      return putOp('/settings/permissions/op', input);
     },
     putProviderOp(input: ProviderOpInput): Promise<void> {
       // input 原文即请求体（putMcpOp/putPermissionOp 同款——scope=global 省参不留 root 空串伪参）
-      return put('/settings/providers/op', input);
+      return putOp('/settings/providers/op', input);
     },
     mcpServers(root?: string): Promise<{ servers: McpRow[] }> {
       return getJson<{ servers: McpRow[] }>(root === undefined ? '/settings/mcp' : `/settings/mcp?root=${encodeURIComponent(root)}`);
@@ -667,7 +695,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     putMcpOp(input: McpOpInput): Promise<void> {
       // input 原文即请求体（putAgent 同款——scope=global 省参不留 root 空串伪参）
-      return put('/settings/mcp/op', input);
+      return putOp('/settings/mcp/op', input);
     },
     agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }> {
       return getJson<{ builtins: BuiltinRole[]; view: AgentsView }>(
@@ -675,13 +703,14 @@ export function createConnection(opts: ConnectionOpts): Connection {
       );
     },
     putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void> {
-      return put('/settings/agents', input);
+      // op 族端点(agents 唯一写面,op 字段随身)——错误组装走 putOp(error/hint 透出,2026-10-29)
+      return putOp('/settings/agents', input);
     },
     putAgentOp(input: AgentsOpInput): Promise<void> {
       // input 原文即请求体（putAgent/putMcpOp 同款——migrate 无 scope、scope=global 省参不留
       // root 空串伪参）。端点=既有 PUT /settings/agents（T15 在 handleAgentsPut 上扩 op 五值——
       // agents 面无 mcp 式独立 /op 端点，daemon 路由表无 /settings/agents/op）
-      return put('/settings/agents', input);
+      return putOp('/settings/agents', input);
     },
     // G8d T3 全文面:root 缺省省查询参(settings 系同款);scope=global 时 root 定位面被服务端忽略
     agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {

@@ -48,12 +48,16 @@ import type { ConfigChangedSource } from './use-config-changed';
  * 状态回写本壳后随 re-render 回流)。原 T21 顶栏挂点移除,本壳其余职责不变。
  * 2026-10-29 用户裁定(作用域下拉改目标选择器):两选项「具体项目|全局」退役——下拉改
  * **目标选择器**:选项=「全局」+ 全部已注册项目(GET /workspaces 注册表,按项目名=basename
- * 排序;当前打开项目不在注册表仍补列),选哪个项目,五资源页就读写哪个项目的配置(不再限
+ * 排序;当前打开项目不在注册表仍补列),选哪个项目,资源页就读写哪个项目的配置(不再限
  * 于当前打开的会话项目)。壳层状态 targetRoot('' = 全局;缺省=当前打开项目 root)替换旧
- * scope 二值;下发给五资源 pane 的换发内容=scope(按 targetRoot 推导)+ root=targetRoot +
+ * scope 二值;下发给资源 pane 的换发内容=scope(按 targetRoot 推导)+ root=targetRoot +
  * scopeOptions(选项清单)+ onScopeChange(上抛新 targetRoot 字符串)——pane 读写逻辑零改动,
  * 仅壳层换发内容变。四 SettingsForm 简单页与权限/高级两页维持快照 root 语义(非资源页,不随
  * 下拉)。注册表拉取失败时保留缺省选项面(全局+当前打开项目),不阻塞设置态。
+ * 2026-10-29 用户裁定(五条修正):①Skills 工具栏合并为**项目下拉**(全部项目|全局|项目们)
+ * ——'all' 态壳层不感知(壳不下发 root,SkillsPane 自持 scope=all 拉取);全局/项目两态仍上抛
+ * 同步本壳 targetRoot。④提供方页即全局(模型/提供方全局豁免)——本壳不再向 ProvidersPane
+ * 下发 root/scope/选项面,页面工具栏只留新增钮。
  */
 
 /** 壳连接面:全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
@@ -183,7 +187,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       );
     switch (activePane) {
       case 'providers':
-        return <ProvidersPane key="providers" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.providers} />;
+        // 2026-10-29 用户裁定:提供方页即全局——不下发 root/scope/下拉选项(页面不再提供项目切换)
+        return <ProvidersPane key="providers" conn={conn} refreshTick={refreshTick.providers} />;
       case 'mcp':
         return <McpPane key="mcp" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.mcp} />;
       case 'plugins':
@@ -191,7 +196,9 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       case 'agents':
         return <AgentsPane key="agents" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.agents} />;
       case 'skills':
-        return <SkillsPane key="skills" conn={conn} root={targetRoot} title={t('Skills', '技能')} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.skills} />;
+        // 2026-10-29 用户裁定:Skills 工具栏合并为项目下拉(全部项目|全局|项目们)——'all' 态
+        // 壳层不感知(pane 自持 scope=all 拉取,不上抛);全局/项目两态经 onScopeChange 同步本壳
+        return <SkillsPane key="skills" conn={conn} root={targetRoot} title={t('Skills', '技能')} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.skills} />;
       case 'permissions':
         return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} scope={scope} refreshTick={refreshTick.permissions} />;
       default:
@@ -205,7 +212,7 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
           下限=导航最长项「知识库与搜索」min-content——窄窗先压左栏到导航可读下限,右侧表单
           (240px 控件列)不再被挤压逐字断行;会话态菜单列保持 flex:none 拖宽钉值不受此影响 */}
       <nav className="sx-menu sx-settings-menu" aria-label={t('settings', '设置')}>
-        <header className="sx-menu-head sx-settings-head">
+        <header className="sx-menu-head sx-settings-head" data-drag-band>
           {/* 2026-10-29 用户裁定:返回钮套用侧栏目录视图返回钮同款样式槽(sx-new-chat=图标+文字胶囊) */}
           <button type="button" className="sx-new-chat" onClick={onBack} aria-label="back to sessions">
             <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -240,7 +247,7 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       <main className="sx-main sx-settings-main">
         {/* 顶部遮盖条(2026-10-29 用户裁定「右侧设置正文顶部一行作为遮盖区,和主对话一样」):
             正文在视口内滚动,物理上进不了条区;空带兼窗拖拽 */}
-        <div className="sx-settings-topbar" aria-hidden="true" />
+        <div className="sx-settings-topbar" data-drag-band aria-hidden="true" />
         <div className="sx-settings-viewport">{renderPane()}</div>
       </main>
     </>

@@ -2825,3 +2825,14 @@ input.sx-setting-input { width: 100%; }
   -webkit-app-region: drag;
 } /* 无 counter-zoom(2026-10-29 用户实测「还是没有变化」根修):初版给空条挂倒数补偿=条钉死缩放 1.0 不随界面缩放(主对话顶栏 b2ae099 撤补偿后正常跟随,设置条漏改);空带命中错位为可接受面(带内无钮) */
 .sx-settings-viewport { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+
+/* ===== 2026-10-29 用户裁定五条修正追加段(纯加法;app.css 并行热区只加不改) ===== */
+/* ①②工具栏作用域/项目下拉定宽(150px,不随内容伸缩;超长项目名 ellipsis 截断——.sx-dd-value
+   既有规则承接,title/data-tip 提示全名;搜索框仍弹性) */
+.sx-dd-fixed { width: 150px; flex: none; }
+/* ③弹窗顶部 Tab(ModalTabs:配置|源码 两 Tab 替代"表单+折叠 JSON 段"堆叠)——tab 条贴
+   .sx-editor-modal-fields 顶,active 底线 accent 同语言 */
+.sx-modal-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.sx-modal-tab { border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; padding: 5px 12px; cursor: pointer; border-radius: var(--radius-sm) var(--radius-sm) 0 0; border-bottom: 2px solid transparent; }
+.sx-modal-tab:hover { color: var(--fg); }
+.sx-modal-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }

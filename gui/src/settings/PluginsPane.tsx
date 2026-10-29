@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 
 /**
@@ -15,11 +15,15 @@ import type { SettingsScope, ScopeOption } from './components';
  * 开关=启停/折叠详情=ID·servers·skills 元信息+configSchema 键说明+config 原值只读——卡片详情
  * 折叠保留)。
  *
- * 「配置」钮 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉):configSchema 在场=键值表单(逐键播种既有 config 值,
- * type=boolean 复选框/number 数字校验/string 文本;schema 外既有键 rest 透传保全——T22 seedRest
- * 同纪律);无 schema=JSON 文本域(受控折叠,T22 JSON 源码纪律:提示覆写规则+收起清空,提交前
- * JSON.parse+对象形状校验)。提交统一 putPlugin(…, {config}) 整对象覆写——保存即 plugins.<id>.
- * config 全量改写,弹窗提示行言明。
+ * 「配置」钮 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉)。弹窗体同日
+ * 再裁定改**顶部两 Tab**(ModalTabs 共享件,McpPane 同构):「配置」=configSchema 在场键值
+ * 表单(逐键播种既有 config 值,type=boolean 复选框/number 数字校验/string 文本;schema 外
+ * 既有键 rest 透传保全——T22 seedRest 同纪律),「源码」=JSON 文本域。纪律不变:「源码」
+ * 非空保存整对象以 JSON 为准(parse+对象形状校验);**切 Tab 不清内容**(旧"收起清空"退役,
+ * 清空源码方回表单组装)。默认 Tab:无 configSchema=「源码」(JSON 唯一编辑面,预填既有
+ * config);有 schema 且存在 schema 外既有键(表单外隐藏键,沿现 rest 判断)=「源码」预填
+ * 既有 config;其余=「配置」。提交统一 putPlugin(…, {config}) 整对象覆写——保存即
+ * plugins.<id>.config 全量改写,弹窗提示行言明。
  *
  * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳,McpPane/AgentsPane 同款):scope='project'(缺省,有 root
  * 时)读两级清单(GET 带 root)、写带 root(项目 settings.json plugins.<id> 覆写键);scope='global'
@@ -57,13 +61,17 @@ export interface PluginsPaneProps {
   readonly refreshTick?: number;
 }
 
+/** 弹窗 Tab 键(McpPane 同构):「配置」=schema 表单面;「源码」=JSON 文本域(非空保存整对象
+ *  以 JSON 为准) */
+type ModalTab = 'config' | 'source';
+
 /** 配置抽屉表单态(受控单对象):values=schema 键的字符串态播种;rest=config 中 schema 外
- *  既有键(表单不建模——提交透传保全);jsonOpen/jsonText=「JSON 源码」受控折叠(T22 纪律:
- *  非空即提交整对象以 JSON 为准;收起即清空解除武装) */
+ *  既有键(表单不建模——提交透传保全);tab=顶部 Tab 当值;jsonText=「源码」文本(T22 纪律:
+ *  非空即提交整对象以 JSON 为准;切 Tab 不清,清空方回表单组装) */
 interface ConfigForm {
   values: Record<string, string>;
   rest: Record<string, unknown>;
-  jsonOpen: boolean;
+  tab: ModalTab;
   jsonText: string;
 }
 
@@ -145,8 +153,10 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
   };
 
   /** 抽屉打开:schema 键逐键播种既有 config 值(String 化;缺省空串=未设);schema 外既有键
-   *  收进 rest(提交透传保全——T22 seedRest 同纪律);无 schema=JSON 文本域直接展开+预填
-   *  既有 config(唯一编辑面);有 schema=折叠收起(jsonText 空=表单组装生效) */
+   *  收进 rest(提交透传保全——T22 seedRest 同纪律)。默认 Tab(2026-10-29 用户裁定,McpPane
+   *  同构):无 schema=「源码」+预填既有 config(JSON 唯一编辑面);有 schema 且存在 schema
+   *  外既有键(表单外隐藏键)=「源码」+预填既有 config;其余=「配置」(jsonText 空=表单组装
+   *  生效) */
   const openDrawer = (p: PluginRow): void => {
     setFormError('');
     const schemaKeys = Object.keys(p.configSchema ?? {});
@@ -159,36 +169,36 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
     for (const [k, v] of Object.entries(p.config ?? {})) {
       if (!schemaKeys.includes(k)) rest[k] = v;
     }
-    const jsonOpen = schemaKeys.length === 0;
+    const sourceDefault = schemaKeys.length === 0 || Object.keys(rest).length > 0;
     setForm({
       values,
       rest,
-      jsonOpen,
-      jsonText: jsonOpen ? JSON.stringify(p.config ?? {}, null, 2) : '',
+      tab: sourceDefault ? 'source' : 'config',
+      jsonText: sourceDefault ? JSON.stringify(p.config ?? {}, null, 2) : '',
     });
     setDrawer(p);
   };
 
-  /** 「JSON 源码」受控开合(T22 同款,preventDefault 拦原生 toggle——jsdom/键盘同径):
-   *  展开且文本空 → 按当前表单+rest 预填整对象(逐键按 schema type lenient 转换——非法数字
-   *  回落原串,预览不篡改类型);收起 → 清空解除武装(覆写规则见抽屉提示行) */
-  const toggleJson = (next: boolean, schema: NonNullable<PluginRow['configSchema']>): void => {
+  /** 「源码」Tab 切换(T22 预填语义沿袭,**切 Tab 不清内容**——2026-10-29 用户裁定):
+   *  入「源码」且文本空 → 按当前表单+rest 预填整对象(逐键按 schema type lenient 转换——
+   *  非法数字回落原串,预览不篡改类型);源码非空留存=提交仍以 JSON 为准,清空方回表单组装 */
+  const switchTab = (next: ModalTab): void => {
     setForm((f) => {
-      if (f === null || f.jsonOpen === next) return f;
-      if (next && f.jsonText.trim() === '') {
+      if (f === null || f.tab === next) return f;
+      if (next === 'source' && f.jsonText.trim() === '') {
         const seeded: Record<string, unknown> = { ...f.rest };
         for (const [k, raw] of Object.entries(f.values)) {
           if (raw === '') continue;
-          const type = schema[k]?.type;
+          const type = drawer?.configSchema?.[k]?.type;
           if (type === 'boolean') seeded[k] = raw === 'true';
           else if (type === 'number') {
             const n = Number(raw);
             seeded[k] = Number.isFinite(n) ? n : raw;
           } else seeded[k] = raw;
         }
-        return { ...f, jsonOpen: true, jsonText: JSON.stringify(seeded, null, 2) };
+        return { ...f, tab: next, jsonText: JSON.stringify(seeded, null, 2) };
       }
-      return { ...f, jsonOpen: next, jsonText: next ? f.jsonText : '' };
+      return { ...f, tab: next };
     });
   };
 
@@ -363,10 +373,29 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
           </p>
           <p className="sx-mcp-hint">
             {t(
-              'A non-empty JSON source overrides the form on save — collapsing the panel clears it.',
-              '「JSON 源码」非空时保存以 JSON 为准;收起面板即清空。',
+              'A non-empty Source tab overrides the form on save — clear it to edit via the form; switching tabs keeps its content.',
+              '「源码」非空时保存以 JSON 为准——清空后方可用表单编辑;切 Tab 不清内容。',
             )}
           </p>
+          <ModalTabs
+            tabs={[
+              { id: 'config', label: t('Config', '配置') },
+              { id: 'source', label: t('Source', '源码') },
+            ]}
+            active={form.tab}
+            onChange={(id) => switchTab(id === 'source' ? 'source' : 'config')}
+          />
+          {form.tab === 'source' ? (
+            <textarea
+              aria-label={t('Config JSON', '配置 JSON')}
+              className="sx-mcp-json"
+              value={form.jsonText}
+              onChange={(e) => setForm({ ...form, jsonText: e.target.value })}
+              rows={10}
+              spellCheck={false}
+            />
+          ) : (
+            <>
           {Object.entries(drawer.configSchema ?? {}).map(([k, s]) =>
             s.type === 'boolean' ? (
               <label key={k} className="sx-drawer-field sx-check-row">
@@ -392,24 +421,8 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
               </label>
             ),
           )}
-          <details className="sx-rc-details sx-mcp-json-adv" open={form.jsonOpen}>
-            <summary
-              onClick={(e) => {
-                e.preventDefault();
-                toggleJson(!form.jsonOpen, drawer.configSchema ?? {});
-              }}
-            >
-              {t('JSON source', 'JSON 源码')}
-            </summary>
-            <textarea
-              aria-label={t('Config JSON', '配置 JSON')}
-              className="sx-mcp-json"
-              value={form.jsonText}
-              onChange={(e) => setForm({ ...form, jsonText: e.target.value })}
-              rows={10}
-              spellCheck={false}
-            />
-          </details>
+            </>
+          )}
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}

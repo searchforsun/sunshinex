@@ -9,10 +9,12 @@ import type { PluginRow } from '../../connection';
  * (plugins/putPlugin 两面,不出网),用例沿 task brief——①列表渲染+warnings 三出口(逐卡
  * 告警行+pane 尾聚合装载告警);②SearchBar 搜索过滤(200ms 防抖);③开关 scope 形状两级
  * (project 带 root/global 省参——旧「写死项目级」门退役,root='' 走全局可写);④配置弹窗
- * 提交形状(configSchema 键值表单+schema 外既有键透传保全);⑤无 schema JSON 文本域
+ * 提交形状(configSchema 键值表单+schema 外既有键透传保全);⑤无 schema「源码」Tab
  * (非法 JSON 拦截不落盘;合法 JSON 提交解析值);⑥refreshTick 变化触发重拉;
  * ⑦工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页;
- * 无新增钮——插件目录扫描发现,非用户创建面)。
+ * 无新增钮——插件目录扫描发现,非用户创建面)+下拉定宽(sx-dd-fixed);⑧弹窗顶部 配置|源码
+ * 两 Tab(2026-10-29 用户裁定,McpPane 同构):默认 Tab 规则(无 schema 外键=配置/有=源码
+ * 预填)+切 Tab 不清内容(源码非空保存 JSON 胜)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -134,7 +136,7 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     await waitFor(() => expect(putCalls).toEqual([[undefined, 'browser-use', { enabled: true }]]));
   });
 
-  it('配置抽屉提交形状(configSchema 键值表单):Save → putPlugin(root, id, {config}) 数字转换+schema 外既有键透传保全', async () => {
+  it('配置抽屉提交形状(configSchema 键值表单):Save → putPlugin(root, id, {config}) 数字转换+schema 外既有键透传保全;存在 schema 外键默认落「源码」Tab,清空方回表单组装(切 Tab 不清内容)', async () => {
     const { conn, putCalls, pluginsCalls } = connOf([
       row({
         config: { level: 1, extra: 'keep' },
@@ -144,6 +146,11 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     render(<PluginsPane conn={conn} root="/w/proj" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Configure Browser Use' }));
     await screen.findByRole('dialog', { name: 'Configure Browser Use' });
+    // schema 外既有键(extra)在 → 默认「源码」Tab 预填既有 config(2026-10-29 用户裁定);
+    // 清空源码(解除 JSON 接管)→ 切「配置」Tab 表单可编
+    expect(screen.getByLabelText('Config JSON')).toBeDefined();
+    fireEvent.change(screen.getByLabelText('Config JSON'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Config' }));
     const level = screen.getByLabelText('level') as HTMLInputElement;
     expect(level.value).toBe('1'); // 既有 config 播种
     fireEvent.change(level, { target: { value: '2' } });
@@ -153,6 +160,26 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     // 成功后关抽屉+重拉
     await waitFor(() => expect(pluginsCalls.length).toBe(2));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('默认 Tab 规则+切 Tab 不清内容(2026-10-29 用户裁定,McpPane 同构):无 schema 外键默认「配置」;入「源码」预填,切回「配置」改字段,保存仍 JSON 胜;清空源码方回表单组装', async () => {
+    const { conn, putCalls } = connOf([
+      row({ config: { level: 1 }, configSchema: { level: { type: 'number' } } }),
+    ]);
+    render(<PluginsPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Configure Browser Use' }));
+    await screen.findByRole('dialog', { name: 'Configure Browser Use' });
+    // 无 schema 外键 → 默认「配置」(JSON 面不在)
+    expect(screen.getByLabelText('level')).toBeDefined();
+    expect(screen.queryByLabelText('Config JSON')).toBeNull();
+    // 入「源码」:空文本预填整对象;切回「配置」改字段,保存仍以 JSON 为准(切 Tab 不清内容)
+    fireEvent.click(screen.getByRole('tab', { name: 'Source' }));
+    const json = screen.getByLabelText('Config JSON') as HTMLTextAreaElement;
+    expect(JSON.parse(json.value)).toEqual({ level: 1 });
+    fireEvent.click(screen.getByRole('tab', { name: 'Config' }));
+    fireEvent.change(screen.getByLabelText('level'), { target: { value: '9' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(putCalls).toEqual([['/w/proj', 'browser-use', { config: { level: 1 } }]])); // JSON 胜(表单改动不接管)
   });
 
   it('无 schema JSON 文本域:非法 JSON 提交被拦(行内报错零落盘);合法 JSON → putPlugin config 解析值', async () => {
@@ -190,6 +217,8 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     await screen.findByText('Browser Use');
     await waitFor(() => expect(pluginsCalls).toEqual(['/w/proj']));
     expect(screen.queryByRole('button', { name: '+ Add' })).toBeNull(); // 无新增钮(目录发现面)
+    // 作用域下拉定宽(2026-10-29 用户裁定:sx-dd-fixed 150px 不随内容伸缩)
+    expect(screen.getByRole('button', { name: 'Settings scope' }).closest('.sx-dd')!.className).toContain('sx-dd-fixed');
     fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
     expect(raised).toEqual(['']); // 只上抛(''=全局,状态留壳层)

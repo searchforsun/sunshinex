@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions, scopeTargetLabel } from '../components';
+import { EditorModal, EmptyState, ErrorBanner, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions, scopeTargetLabel } from '../components';
 import type { ScopeOption } from '../components';
 import { useConfigChanged } from '../use-config-changed';
 import type { ConfigChangedInfo, ConfigChangedSource } from '../use-config-changed';
@@ -210,6 +210,39 @@ describe('EditorModal', () => {
     // Esc=document 捕获段关闭(stopPropagation 截断壳层 document 冒泡段「Esc 回会话态」监听)
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(closes).toEqual([1, 1, 1, 1]);
+  });
+});
+
+describe('ModalTabs', () => {
+  const tabs = [
+    { id: 'config', label: 'Config' },
+    { id: 'source', label: 'Source' },
+  ];
+
+  it('tablist/tab 渲染:active 当值 aria-selected+active 类;点击上抛 id(2026-10-29 用户裁定:MCP/Plugins 配置弹窗 配置|源码 两 Tab 共享件)', () => {
+    const picks: string[] = [];
+    const { rerender } = render(<ModalTabs tabs={tabs} active="config" onChange={(id) => picks.push(id)} ariaLabel="editor" />);
+    const list = screen.getByRole('tablist', { name: 'editor' });
+    expect(list).toBeDefined();
+    const configTab = screen.getByRole('tab', { name: 'Config' });
+    const sourceTab = screen.getByRole('tab', { name: 'Source' });
+    expect(configTab.getAttribute('aria-selected')).toBe('true'); // 当值高亮
+    expect(sourceTab.getAttribute('aria-selected')).toBe('false');
+    expect(configTab.className).toContain('active');
+    expect(sourceTab.className).not.toContain('active');
+    fireEvent.click(sourceTab);
+    expect(picks).toEqual(['source']); // 上抛 id,受控切换由宿主任
+    // 受控换面:active=source → aria/类随动
+    rerender(<ModalTabs tabs={tabs} active="source" onChange={(id) => picks.push(id)} ariaLabel="editor" />);
+    expect(sourceTab.getAttribute('aria-selected')).toBe('true');
+    expect(sourceTab.className).toContain('active');
+    expect(configTab.className).not.toContain('active');
+  });
+
+  it('ScopeSelect 定宽(2026-10-29 用户裁定):包裹层挂 sx-dd-fixed(150px 定宽,超长项目名 ellipsis 由 .sx-dd-value 既有规则承接)', () => {
+    render(<ScopeSelect value="" options={[{ value: '', label: 'Global' }]} onChange={() => {}} />);
+    const wrap = screen.getByRole('button', { name: 'Settings scope' }).closest('.sx-dd');
+    expect(wrap!.className).toContain('sx-dd-fixed');
   });
 });
 
