@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SkillsPane } from '../SkillsPane';
 import type { SkillsPaneConn } from '../SkillsPane';
-import type { SettingsScope } from '../components';
 import type { SkillsGroup } from '../../connection';
 
 /**
@@ -69,17 +68,18 @@ describe('SkillsPane(遮蔽标注)', () => {
     await waitFor(() => expect(calls).toEqual([['/w/proj', true], ['/w/proj', true]]));
   });
 
-  it('工具栏作用域下拉入页(2026-10-29 三件套,只读面无添加钮):切换只上抛 onScopeChange,不重拉(scope=all 全量视图不随壳作用域收窄)', async () => {
+  it('工具栏作用域下拉入页(2026-10-29 目标选择器,只读面无添加钮):切换上抛目标 root 字符串(\'\'=全局),不重拉(scope=all 全量视图不随壳作用域收窄)', async () => {
     const { conn, calls } = connOf([{ source: 'user', skills: [row('alpha')] }]);
-    const scopes: SettingsScope[] = [];
-    render(<SkillsPane conn={conn} root="/w/proj" title="Skills" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    const raised: string[] = [];
+    render(<SkillsPane conn={conn} root="/w/proj" title="Skills" scope="project" onScopeChange={(v) => raised.push(v)} />);
     await screen.findByText('alpha');
     expect(screen.queryByRole('button', { name: '+ Add' })).toBeNull(); // 只读面:无添加钮
     expect(screen.getByLabelText('Search')).toBeDefined(); // 搜索入工具栏(SearchBar 统一入口)
-    expect(screen.getByRole('button', { name: 'Settings scope' }).textContent).toContain('This project');
+    // 无壳 scopeOptions 下发 → 缺省选项面(全局+当前 root basename)当值回显
+    expect(screen.getByRole('button', { name: 'Settings scope' }).textContent).toContain('proj');
     fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
-    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
+    expect(raised).toEqual(['']); // 只上抛(''=全局,状态留壳层)
     expect(calls).toEqual([['/w/proj', true]]); // 不随壳作用域重拉(全量视图裁定)
   });
 });

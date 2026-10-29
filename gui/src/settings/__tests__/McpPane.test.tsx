@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { McpPane } from '../McpPane';
 import type { McpPaneConn } from '../McpPane';
-import type { SettingsScope } from '../components';
 import type { Connection, McpRow } from '../../connection';
 
 /**
@@ -11,7 +10,8 @@ import type { Connection, McpRow } from '../../connection';
  * ①列表渲染+挂载自动探测;②SearchBar 搜索过滤(200ms 防抖);③新增提交 putMcpOp op 形状;
  * ④待确认卡 Approve/Deny 按钮调 op approve/deny;⑤遮蔽标注渲染(全局同名卡灰显+只读);
  * ⑥「JSON 源码」高级折叠非法 JSON 拦截(不落 op);⑦refreshTick 变化触发重拉;
- * ⑧工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页)。
+ * ⑧工具栏作用域下拉(2026-10-29 目标选择器):切换上抛目标 root 字符串(''=全局)+壳换发
+ * root+scope 后按新目标重拉。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -223,17 +223,28 @@ describe('McpPane(op 端点卡片化)', () => {
     await waitFor(() => expect(opCalls).toEqual([{ op: 'disable', scope: 'global', name: 'fs' }])); // 省参 root
   });
 
-  it('工具栏作用域下拉(2026-10-29 三件套入页):切换只上抛 onScopeChange;壳换发 scope 后按新作用域重拉(global 省参)', async () => {
+  it('工具栏作用域下拉(2026-10-29 目标选择器):切换上抛目标 root 字符串(\'\'=全局);壳换发 root+scope 后按新目标重拉(global 省参/项目带参)', async () => {
     const { conn, mcpServersCalls } = connOf([row({ source: 'global', approval: 'none' })]);
-    const scopes: SettingsScope[] = [];
-    const { rerender } = render(<McpPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    const raised: string[] = [];
+    const scopeOptions = [
+      { value: '', label: 'Global' },
+      { value: '/w/proj', label: 'proj' },
+      { value: '/w/other', label: 'other' },
+    ];
+    const { rerender } = render(<McpPane conn={conn} root="/w/proj" scope="project" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await screen.findByText('fs');
     await waitFor(() => expect(mcpServersCalls).toEqual(['/w/proj']));
     fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
-    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
-    // 壳回写 scope 后随 props 回流:读面按新作用域重拉(global 省参)
-    rerender(<McpPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
+    expect(raised).toEqual(['']); // 只上抛(''=全局,状态留壳层)
+    // 壳回写 targetRoot('')后随 props 回流(scope=global+root=''):读面按新目标重拉(global 省参)
+    rerender(<McpPane conn={conn} root="" scope="global" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await waitFor(() => expect(mcpServersCalls).toEqual(['/w/proj', undefined]));
+    // 选回注册项目:上抛 root 字符串,壳换发 project+root 后带参重拉
+    fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
+    fireEvent.click(screen.getByRole('option', { name: 'other' }));
+    expect(raised).toEqual(['', '/w/other']);
+    rerender(<McpPane conn={conn} root="/w/other" scope="project" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
+    await waitFor(() => expect(mcpServersCalls).toEqual(['/w/proj', undefined, '/w/other']));
   });
 });

@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsOpInput, AgentsView, BuiltinRole } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
-import type { SettingsScope } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import type { SettingsScope, ScopeOption } from './components';
 
 /**
  * Task 23 AgentsPane 重构（Phase F 第二面板，2026-10-28）：一屏式卡片列表——写面统一走
@@ -81,17 +81,20 @@ type DrawerState = { mode: 'add' | 'edit'; source: 'project' | 'global'; id: str
 
 export interface AgentsPaneProps {
   readonly conn: AgentsPaneConn;
-  /** 项目上下文（'' = 无项目上下文——恒全局作用域） */
+  /** 作用域目标项目 root（壳下发 targetRoot——下拉选哪个项目即锚哪个；'' = 全局作用域） */
   readonly root: string;
-  /** T21 设置壳注入：作用域（缺省按 root 推断——有 root 即 project，壳缺省同款） */
+  /** T21 设置壳注入：作用域（缺省按 root 推断——非空即 project，壳缺省同款） */
   readonly scope?: SettingsScope;
-  /** 2026-10-29 工具栏 ScopeSelect 上抛口（状态留壳层）：未接（直接渲染/桩测）时切换不回写 */
-  readonly onScopeChange?: (scope: SettingsScope) => void;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口（目标选择器，状态留壳层）：上抛新目标项目 root
+   *  字符串（'' = 全局）；未接（直接渲染/桩测）时切换不回写 */
+  readonly onScopeChange?: (targetRoot: string) => void;
+  /** 2026-10-29 目标选择器选项面（壳下发：全局+全部注册项目按名；未接=直渲/桩测缺省 全局+当前 root） */
+  readonly scopeOptions?: readonly ScopeOption[];
   /** T21 config-changed 订阅 tick（agents 资源计数——外部改动信号，变化即重拉） */
   readonly refreshTick?: number;
 }
 
-export function AgentsPane({ conn, root, scope, onScopeChange, refreshTick }: AgentsPaneProps): JSX.Element {
+export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, refreshTick }: AgentsPaneProps): JSX.Element {
   const [data, setData] = useState<{ builtins: BuiltinRole[]; view: AgentsView } | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -268,7 +271,7 @@ export function AgentsPane({ conn, root, scope, onScopeChange, refreshTick }: Ag
     <section className="sx-settings-form" aria-label="settings pane agents">
       <h2>{t('Agents', '智能体')}</h2>
       <div className="sx-res-toolbar">
-        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
+        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
         <SearchBar value={query} onChange={setQuery} placeholder={t('Search agents', '搜索智能体')} />
         <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
           {t('+ New', '+ 新增')}

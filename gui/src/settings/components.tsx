@@ -7,9 +7,10 @@ import { Select } from './controls';
 
 /**
  * Task 21 设置共享组件 kit(Phase F 六面板改版的统一消费面,T22-27 逐页verbatim消费):
- * - ScopeSelect:全局/项目作用域下拉(共享 Select 弹层控件)——资源页工具栏内联作用域选择面
- *   (2026-10-29 用户裁定:工具栏三件套入页,壳顶分段控件撤除,scope 状态仍留壳层统一下发);
- *   项目不可用时整机 disabled+提示(沿现禁用文案)。
+ * - ScopeSelect:作用域目标选择器下拉(共享 Select 弹层控件)——资源页工具栏内联目标选择面
+ *   (2026-10-29 用户裁定:工具栏三件套入页,壳顶分段控件撤除,目标状态留壳层统一下发;
+ *   同日再裁定:两选项「具体项目|全局」退役,改**目标选择器**——选项=全局 + 全部已注册
+ *   项目按项目名可选,选哪个项目五资源页就读写哪个项目的配置,不再限于当前打开的会话项目)。
  * - SearchBar:受控输入+内置 200ms 防抖(契约见 SearchBarProps 注)——列表过滤统一入口。
  * - ResourceCard:资源卡(icon/标题/副题/来源徽标/chips/开关/actions)——结构沿 sx-mcp-card
  *   现行卡片语言(surface-elevated 面+border 圆角+头部行),开关复用 .sx-mcp-switch 令牌;
@@ -29,29 +30,45 @@ import { Select } from './controls';
 /** 设置作用域(与 src/catalog/types 的 Scope 同形——gui 侧自持别名,面板 props 统一此名) */
 export type SettingsScope = 'global' | 'project';
 
-/** ScopeSelect props:scope 受控;projectAvailable=false 时整机禁用(无项目上下文,沿禁用提示) */
-export interface ScopeSelectProps {
-  readonly scope: SettingsScope;
-  readonly projectAvailable: boolean;
-  readonly onScopeChange: (scope: SettingsScope) => void;
+/** 作用域目标选择器选项行:value=项目 root('' = 全局);label=项目名(basename) */
+export interface ScopeOption {
+  readonly value: string;
+  readonly label: string;
 }
 
-/** 全局/项目作用域下拉(2026-10-29 用户裁定:分段控件改下拉、入各资源页工具栏):
- *  沿共享 Select 弹层控件(sx-dd 同款样式);选项「具体项目」(project)/「全局」(global);
- *  projectAvailable=false → 整机 disabled+data-tip 提示(此态壳层恒已强制 global,禁用即
- *  项目侧不可选,全局当值照显) */
-export function ScopeSelect({ scope, projectAvailable, onScopeChange }: ScopeSelectProps): JSX.Element {
+/** root → 项目显示名(取末段 basename;win32 反斜杠/unix 斜杠双容错,纯路径段) */
+export function scopeTargetLabel(root: string): string {
+  const parts = root.split(/[\\/]/).filter((p) => p !== '');
+  return parts[parts.length - 1] ?? root;
+}
+
+/** 缺省选项面(壳未下发 scopeOptions 时——pane 直渲/桩测):全局 + 当前 root(非空时)。
+ *  壳层真值面=GET /workspaces 注册表(全局+全部注册项目按名排序),见 SettingsShell */
+export function defaultScopeOptions(root: string): ScopeOption[] {
+  const opts: ScopeOption[] = [{ value: '', label: t('Global', '全局') }];
+  if (root !== '') opts.push({ value: root, label: scopeTargetLabel(root) });
+  return opts;
+}
+
+/** ScopeSelect props:目标选择器受控——value=当前目标项目 root('' = 全局);options=壳装配的
+ *  全局+注册项目清单;onChange 上抛新目标 root 字符串('' = 全局) */
+export interface ScopeSelectProps {
+  readonly value: string;
+  readonly options: readonly ScopeOption[];
+  readonly onChange: (value: string) => void;
+}
+
+/** 作用域目标选择器下拉(2026-10-29 用户裁定:两选项形态退役,改目标选择器):
+ *  沿共享 Select 弹层控件(sx-dd 同款样式);选项=「全局」+ 全部已注册项目(按项目名);
+ *  选哪个项目,资源页读写就锚定哪个项目(壳换发 root/scope 后 pane 重拉)——不再限于
+ *  当前打开的会话项目 */
+export function ScopeSelect({ value, options, onChange }: ScopeSelectProps): JSX.Element {
   return (
     <Select
       ariaLabel={t('Settings scope', '配置作用域')}
-      value={scope}
-      disabled={!projectAvailable}
-      title={projectAvailable ? undefined : t('No project open — global only', '未打开项目——仅全局')}
-      options={[
-        { v: 'project', l: t('This project', '具体项目') },
-        { v: 'global', l: t('Global', '全局') },
-      ]}
-      onChange={(v) => onScopeChange(v as SettingsScope)}
+      value={value}
+      options={options.map((o) => ({ v: o.value, l: o.label }))}
+      onChange={onChange}
     />
   );
 }

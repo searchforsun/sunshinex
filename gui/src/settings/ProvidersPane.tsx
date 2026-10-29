@@ -3,8 +3,8 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
-import type { SettingsScope } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import type { SettingsScope, ScopeOption } from './components';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
 
 /**
@@ -14,25 +14,28 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * 整体退役(spec §15 散键退役裁定:providers 列表唯一事实源,服务端恒切 choices[0] 为默认)。
  *
  * 结构(T21 共享组件 verbatim 消费):上=SettingsForm 表单引擎复用(仅「请求参数」卡——tier/
- * reasoningEffort 两闭集下拉,语义键写路径 PUT /settings 原样保留;「API 地址」行与模型散键
- * 四 Combo 删除——baseUrl 归提供方卡、模型归 models 行编辑);下=提供方卡列表(GET /settings
- * providers.entries 源级分组逐卡:名称/baseUrl 副行/密钥状态点(绿=env 槽在场/灰=缺,tip=槽名)/
- * models chips(choices[0] 所属模型加「Default」chip=生效默认,服务端恒切 choices[0]——T11 裁定)/
- * 编辑/删除)。工具栏三件套(2026-10-29 用户裁定入页):ScopeSelect 作用域下拉+SearchBar
- * (200ms 防抖,过滤 name/baseUrl,弹性)+「+ Add provider」钮一行;添加/编辑 → EditorModal
- * 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉;名称/Base URL/API key
- * password 输入——写走 setKey op、密钥零回显(编辑播种恒空串,留空=不动键)/models 行编辑
- * (模型名/contextWindow/reasoningEffort/tier select/上移下移钮——上移下移=文件级手术即时提交
- * modelMove op,成功后重拉+行重播种:以文件真值为基底按模型名键合保留本地未保存行字段编辑——
- * 模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(弹窗提示行言明);行字段=本地态,
- * Save 经 update op 整组替换 models)。
+ * reasoningEffort 两闭集下拉;**2026-10-29 用户裁定豁免:请求参数卡恒全局**——root 恒 ''
+ * (读仅全局、写恒 global 桶),卡片标题带「(global)/(全局)」注明,不随工具栏目标选择器;
+ * 「API 地址」行与模型散键四 Combo 删除——baseUrl 归提供方卡、模型归 models 行编辑);下=
+ * 提供方卡列表(GET /settings providers.entries 源级分组逐卡:名称/baseUrl 副行/密钥状态点
+ * (绿=env 槽在场/灰=缺,tip=槽名)/models chips(choices[0] 所属模型加「Default」chip=生效默认,
+ * 服务端恒切 choices[0]——T11 裁定)/编辑/删除)。工具栏三件套(2026-10-29 用户裁定入页):
+ * ScopeSelect 目标选择器下拉(全局+全部注册项目按名)+SearchBar(200ms 防抖,过滤 name/baseUrl,
+ * 弹性)+「+ Add provider」钮一行;添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗
+ * 替换右滑抽屉;名称/Base URL/API key password 输入——写走 setKey op、密钥零回显(编辑播种恒
+ * 空串,留空=不动键)/models 行编辑(模型名/contextWindow/reasoningEffort/tier select/上移下移
+ * 钮——上移下移=文件级手术即时提交 modelMove op,成功后重拉+行重播种:以文件真值为基底按模型
+ * 名键合保留本地未保存行字段编辑——模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(弹窗
+ * 提示行言明);行字段=本地态,Save 经 update op 整组替换 models)。
  *
  * 测试按钮裁定:v1 GUI 无提供方连通测试钮——REST 无 providers test 端点(不造端点),前端直连
  * baseUrl 需携密钥(密钥不进前端,违 D6);测试能力=CLI/TUI 面(T19/T20 已交付)。
  *
  * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳,T22 同款):scope='project'(缺省,有 root 时)读带 root
  * (两级遮蔽链视图)、写 op scope='project' 带 root;scope='global' 读省参(仅全局)、写 scope=
- * 'global' 省参 root。root='' 恒强制 global。entries 无 source 归因字段(GET 投影不分级)——
+ * 'global' 省参 root。root='' 恒强制 global。2026-10-29 目标选择器:root 由壳按下拉目标换发
+ * (全局+全部注册项目可选,不限当前打开会话项目),本面卡读写逻辑零改动(内嵌请求参数卡除外
+ * ——恒全局,见结构段)。entries 无 source 归因字段(GET 投影不分级)——
  * 卡写作用域恒随壳,且**须知整键遮蔽后果**:loadProvidersFull 是 providers 键整键遮蔽,project
  * 作用域下编辑一条全局回落条目(项目档无 providers 键时)= 按 upsert 语义在项目档创建 providers
  * 键,该键一旦在场即取代全局——**其余所有全局提供方被遮出有效链与本面板**(遮蔽是装载语义,
@@ -56,13 +59,16 @@ export interface ProvidersPaneConn extends SettingsFormConn {
 }
 
 /** 请求参数卡(SettingsForm 复用):仅 tier/effort 两闭集下拉——模型档位散键四 Combo 与 baseUrl
- *  行退役(spec §15);键名与 daemon SEMANTIC_KEYS 逐字对齐,写路径 PUT /settings 原样保留 */
+ *  行退役(spec §15);键名与 daemon SEMANTIC_KEYS 逐字对齐,写路径 PUT /settings 原样保留。
+ *  2026-10-29 用户裁定豁免:卡恒全局(标题带「(global)/(全局)」注明+说明行;root 恒 '',
+ *  不随工具栏目标选择器——模型档位/思考强度是全局请求面) */
 const PROVIDERS_PANE: SettingsPaneDef = {
   id: 'providers',
   title: { en: 'Models & providers', zh: '模型与提供方' },
   groups: [
     {
-      title: { en: 'Request parameters', zh: '请求参数' },
+      title: { en: 'Request parameters (global)', zh: '请求参数(全局)' },
+      desc: { en: 'Pinned to global scope — not affected by the project selector', zh: '恒全局作用域——不随项目选择器' },
       fields: [
         {
           key: 'tier',
@@ -144,17 +150,20 @@ const mergeReseedRows = (fresh: ProviderEntry, local: ModelRow[]): ModelRow[] =>
 
 export interface ProvidersPaneProps {
   readonly conn: ProvidersPaneConn;
-  /** 项目上下文('' = 无项目上下文——恒全局作用域) */
+  /** 作用域目标项目 root(壳下发 targetRoot——下拉选哪个项目即锚哪个;'' = 全局作用域) */
   readonly root: string;
-  /** T21 设置壳注入:作用域(缺省按 root 推断——有 root 即 project,壳缺省同款) */
+  /** T21 设置壳注入:作用域(缺省按 root 推断——非空即 project,壳缺省同款) */
   readonly scope?: SettingsScope;
-  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
-  readonly onScopeChange?: (scope: SettingsScope) => void;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(目标选择器,状态留壳层):上抛新目标项目 root
+   *  字符串('' = 全局);未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (targetRoot: string) => void;
+  /** 2026-10-29 目标选择器选项面(壳下发:全局+全部注册项目按名;未接=直渲/桩测缺省 全局+当前 root) */
+  readonly scopeOptions?: readonly ScopeOption[];
   /** T21 config-changed 订阅 tick(providers 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
 
-export function ProvidersPane({ conn, root, scope, onScopeChange, refreshTick }: ProvidersPaneProps): JSX.Element {
+export function ProvidersPane({ conn, root, scope, onScopeChange, scopeOptions, refreshTick }: ProvidersPaneProps): JSX.Element {
   /** GET /settings 全视图(null = 加载中;providers 面消费 entries/choices/apiKeyPresent/warnings,
    *  keys 面归内嵌 SettingsForm 自管——同一应答两消费方,单端点单请求) */
   const [view, setView] = useState<SettingsView | null>(null);
@@ -339,11 +348,13 @@ export function ProvidersPane({ conn, root, scope, onScopeChange, refreshTick }:
       : '';
   return (
     <div className="sx-settings-complex">
-      <SettingsForm conn={conn} root={root} pane={PROVIDERS_PANE} />
+      {/* 请求参数卡恒全局(2026-10-29 用户裁定豁免):root 恒 ''——读仅全局、写恒 global 桶,
+          不随工具栏目标选择器(卡片标题已注明,见 PROVIDERS_PANE) */}
+      <SettingsForm conn={conn} root="" pane={PROVIDERS_PANE} />
       <section className="sx-providers" aria-label="providers">
         <h3>{t('Providers', '提供方')}</h3>
         <div className="sx-res-toolbar">
-          <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
+          <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
           <SearchBar value={query} onChange={setQuery} placeholder={t('Search providers', '搜索提供方')} />
           <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
             {t('+ Add provider', '+ 新增提供方')}

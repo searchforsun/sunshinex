@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AgentsPane } from '../AgentsPane';
 import type { AgentsPaneConn } from '../AgentsPane';
-import type { SettingsScope } from '../components';
 import type { Connection, AgentEntryView, BuiltinRole } from '../../connection';
 
 /**
@@ -234,17 +233,22 @@ describe('AgentsPane(卡片化+启停+旧位置迁移)', () => {
     await waitFor(() => expect(agentsViewCalls).toEqual(['/w/proj', '/w/proj']));
   });
 
-  it('工具栏作用域下拉(2026-10-29 三件套入页):切换只上抛 onScopeChange;壳换发 scope 后按新作用域重拉(global 省参)', async () => {
+  it('工具栏作用域下拉(2026-10-29 目标选择器):切换上抛目标 root 字符串(\'\'=全局);壳换发 root+scope 后按新目标重拉(global 省参)', async () => {
     const { conn, agentsViewCalls } = connOf([row({ source: 'global' })]);
-    const scopes: SettingsScope[] = [];
-    const { rerender } = render(<AgentsPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    const raised: string[] = [];
+    const scopeOptions = [
+      { value: '', label: 'Global' },
+      { value: '/w/proj', label: 'proj' },
+      { value: '/w/other', label: 'other' },
+    ];
+    const { rerender } = render(<AgentsPane conn={conn} root="/w/proj" scope="project" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await screen.findByText('dev');
     await waitFor(() => expect(agentsViewCalls).toEqual(['/w/proj']));
     fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
-    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
-    // 壳回写 scope 后随 props 回流:读面按新作用域重拉(global 省参)
-    rerender(<AgentsPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
+    expect(raised).toEqual(['']); // 只上抛(''=全局,状态留壳层)
+    // 壳回写 targetRoot('')后随 props 回流(scope=global+root=''):读面按新目标重拉(global 省参)
+    rerender(<AgentsPane conn={conn} root="" scope="global" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await waitFor(() => expect(agentsViewCalls).toEqual(['/w/proj', undefined]));
   });
 });

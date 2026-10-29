@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
-import type { SettingsScope } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import type { SettingsScope, ScopeOption } from './components';
 
 /**
  * Task 24 PluginsPane 重构(Phase F 第三面板,2026-10-28):一屏式卡片列表——T21 共享组件
@@ -44,12 +44,15 @@ export interface PluginsPaneConn {
 
 export interface PluginsPaneProps {
   readonly conn: PluginsPaneConn;
-  /** 项目上下文('' = 无项目上下文——恒全局作用域) */
+  /** 作用域目标项目 root(壳下发 targetRoot——下拉选哪个项目即锚哪个;'' = 全局作用域) */
   readonly root: string;
-  /** T21 设置壳注入:作用域(缺省按 root 推断——有 root 即 project,壳缺省同款) */
+  /** T21 设置壳注入:作用域(缺省按 root 推断——非空即 project,壳缺省同款) */
   readonly scope?: SettingsScope;
-  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
-  readonly onScopeChange?: (scope: SettingsScope) => void;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(目标选择器,状态留壳层):上抛新目标项目 root
+   *  字符串('' = 全局);未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (targetRoot: string) => void;
+  /** 2026-10-29 目标选择器选项面(壳下发:全局+全部注册项目按名;未接=直渲/桩测缺省 全局+当前 root) */
+  readonly scopeOptions?: readonly ScopeOption[];
   /** T21 config-changed 订阅 tick(plugins 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
@@ -88,7 +91,7 @@ const buildValues = (
   return { ok: true, config };
 };
 
-export function PluginsPane({ conn, root, scope, onScopeChange, refreshTick }: PluginsPaneProps): JSX.Element {
+export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, refreshTick }: PluginsPaneProps): JSX.Element {
   const [rows, setRows] = useState<PluginRow[] | null>(null);
   /** 装载聚合警告(pane 尾展开;可选防旧 daemon——GET 载荷恒带,结构面留宽) */
   const [viewWarnings, setViewWarnings] = useState<string[]>([]);
@@ -292,7 +295,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, refreshTick }: P
     <section className="sx-settings-form" aria-label="settings pane plugins">
       <h2>{t('Plugins', '插件')}</h2>
       <div className="sx-res-toolbar">
-        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
+        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
         <SearchBar value={query} onChange={setQuery} placeholder={t('Search plugins', '搜索插件')} />
       </div>
       {loadError !== '' && <ErrorBanner text={loadError} />}

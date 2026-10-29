@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProvidersPane } from '../ProvidersPane';
 import type { ProvidersPaneConn } from '../ProvidersPane';
-import type { SettingsScope } from '../components';
 import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '../../connection';
 
 /**
@@ -11,13 +10,17 @@ import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '..
  * 用例沿 task brief——①卡片渲染含默认标记(choices[0]=默认模型)+密钥状态点+warnings;
  * ②删除调 op remove+成功重拉;③models 上移下移提交 modelMove(文件级手术+行重播种);
  * ④apiKey 提交走 setKey 且输入框清空(关弹窗)、重拉响应无键值回显;⑤新增提交 op add
- * (密钥留空零 setKey);⑥请求参数卡无「API 地址」行/模型散键 Combo 退役;⑦tier select
- * 提交形状(PUT /settings 语义键 tier 写路径保留);⑧refreshTick 重拉;⑨global 作用域
- * 省参;⑩表单校验(空名/空 models)拦截零落盘;⑪空清单空态;⑫工具栏作用域下拉切换上抛+
- * 壳换发 scope 后卡面按新作用域重拉(2026-10-29 三件套入页);⑬工具栏搜索过滤(name/baseUrl)。
+ * (密钥留空零 setKey);⑥请求参数卡无「API 地址」行/模型散键 Combo 退役;⑦请求参数卡
+ * 恒全局写钉测(2026-10-29 用户裁定豁免:root 恒 ''——PUT /settings 无 root 即缺省全局,
+ * 断言 putSettings 首参 global/second undefined);⑧refreshTick 重拉;⑨global 作用域
+ * 省参;⑩表单校验(空名/空 models)拦截零落盘;⑪空清单空态;⑫工具栏作用域下拉(2026-10-29
+ * 目标选择器:上抛目标 root 字符串,''=全局)+壳换发 root+scope 后卡面按新目标重拉;
+ * ⑬工具栏搜索过滤(name/baseUrl)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
- * 注:挂载=两笔 settings 请求(内嵌 SettingsForm 表单面 + 本组件 providers 卡面——同一
- * GET /settings 应答两消费方,旧 pane 同口径);settingsCalls 断言按此计数。
+ * 注:挂载=两笔 settings 请求(内嵌 SettingsForm 表单面(2026-10-29 起恒全局省参——请求
+ * 参数卡豁免)+ 本组件 providers 卡面(随目标 root));settingsCalls 断言按此计数。
+ * 键行 source 钉 'global'(SettingsForm 恒全局读——daemon 无 root GET 投影即全局面,
+ * 行 source=global → 写恒 global 桶)。
  */
 
 /** putProviderOp 输入形(connection.ts 内联签名提取——桩记录类型用,McpPane.test 同款) */
@@ -34,11 +37,12 @@ const entryOf = (over: Partial<ProviderEntry> = {}): ProviderEntry => ({
   ...over,
 });
 
-/** 键行构造器(SettingsKeyRow 合法缺省——SettingsForm 行仅渲染 daemon 报键面) */
-const keyRow = (key: string, value: string | null): SettingsKeyRow => ({ key, value, source: 'project', envOverride: false });
+/** 键行构造器(SettingsKeyRow 合法缺省——SettingsForm 行仅渲染 daemon 报键面;
+ *  source 钉 'global':内嵌请求参数卡恒全局读) */
+const keyRow = (key: string, value: string | null): SettingsKeyRow => ({ key, value, source: 'global', envOverride: false });
 
 /** GET /settings 应答构造器:providers 面 choices+entries+apiKeyPresent+warnings 可编程;
- *  keys 面=请求参数卡两语义键(tier/reasoningEffort,project 来源——写路径钉 project 桶) */
+ *  keys 面=请求参数卡两语义键(tier/reasoningEffort,global 来源——写路径钉 global 桶) */
 const viewOf = (providers: Partial<SettingsView['providers']> = {}): SettingsView => ({
   keys: [keyRow('tier', 'medium'), keyRow('reasoningEffort', null)],
   permissions: {
@@ -114,8 +118,10 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     expect(document.querySelectorAll('.sx-api-dot.missing')).toHaveLength(1); // p2 缺=灰点
     expect((document.querySelector('.sx-api-dot.missing') as HTMLElement).getAttribute('data-tip')).toBe('SUNSHINEX_API_KEY_P2'); // tip=entries 行 apiKeyEnv
     expect(screen.getByText('providers warn line')).toBeDefined(); // providers warnings 行
-    await waitFor(() => expect(settingsCalls).toEqual(['/w/proj', '/w/proj'])); // 挂载两笔(SettingsForm+卡面),皆带 root
-    // 请求参数卡仅 tier/effort 两 select(SettingsForm 复用)
+    // 挂载两笔:内嵌 SettingsForm 恒全局省参(请求参数卡豁免),卡面带目标 root
+    await waitFor(() => expect(settingsCalls).toEqual([undefined, '/w/proj']));
+    // 请求参数卡仅 tier/effort 两 select(SettingsForm 复用);卡片标题带恒全局注明
+    expect(screen.getByText('Request parameters (global)')).toBeDefined();
     expect(screen.getByRole('button', { name: 'tier' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'reasoningEffort' })).toBeDefined();
   });
@@ -241,30 +247,30 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     await waitFor(() => expect(settingsCalls.length).toBe(3));
   });
 
-  it('tier select 提交形状:换项即存 → putSettings(project, root, {tier}) 语义键写路径保留', async () => {
+  it('请求参数卡恒全局写钉测(2026-10-29 用户裁定豁免):project 作用域在场仍 putSettings(global, undefined, {tier})——语义键写路径保留且无 root(缺省全局)', async () => {
     const { conn, putSettingsCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} root="/w/proj" />);
+    render(<ProvidersPane conn={conn} root="/w/proj" scope="project" />); // 作用域下拉钉项目——请求参数卡不随
     await screen.findByText('p1');
     fireEvent.click(screen.getByRole('button', { name: 'tier' }));
     fireEvent.click(screen.getByRole('option', { name: 'large' }));
-    await waitFor(() => expect(putSettingsCalls).toEqual([['project', '/w/proj', { tier: 'large' }]]));
+    await waitFor(() => expect(putSettingsCalls).toEqual([['global', undefined, { tier: 'large' }]])); // 首参 global,root 省参
   });
 
   it('refreshTick 变化触发重拉(config-changed 外部改动信号)', async () => {
     const { conn, settingsCalls } = connOf(viewOf());
     const { rerender } = render(<ProvidersPane conn={conn} root="/w/proj" refreshTick={0} />);
     await screen.findByText('p1');
-    expect(settingsCalls).toEqual(['/w/proj', '/w/proj']);
+    expect(settingsCalls).toEqual([undefined, '/w/proj']);
     rerender(<ProvidersPane conn={conn} root="/w/proj" refreshTick={1} />);
-    await waitFor(() => expect(settingsCalls).toEqual(['/w/proj', '/w/proj', '/w/proj'])); // 卡面重拉(SettingsForm 不订阅 providers tick)
+    await waitFor(() => expect(settingsCalls).toEqual([undefined, '/w/proj', '/w/proj'])); // 卡面重拉(SettingsForm 不订阅 providers tick)
   });
 
   it('global 作用域:卡面读省参(仅全局)+ op scope=global 省参 root', async () => {
     const { conn, settingsCalls, opCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} root="/w/proj" scope="global" />);
     await screen.findByText('p1');
-    // 挂载两笔:内嵌 SettingsForm 仍带 root(既有口径,不随卡面作用域),卡面省参(仅全局)
-    await waitFor(() => expect(settingsCalls).toEqual(['/w/proj', undefined]));
+    // 挂载两笔:内嵌 SettingsForm 恒全局省参(豁免),卡面省参(仅全局)
+    await waitFor(() => expect(settingsCalls).toEqual([undefined, undefined]));
     fireEvent.click(screen.getByRole('button', { name: 'Delete p1' }));
     await waitFor(() => expect(opCalls).toEqual([{ op: 'remove', scope: 'global', name: 'p1' }]));
   });
@@ -290,17 +296,22 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     expect(await screen.findByText('No providers configured.')).toBeDefined();
   });
 
-  it('工具栏作用域下拉(2026-10-29 三件套入页):切换只上抛 onScopeChange;壳换发 scope 后卡面按新作用域重拉(global 省参,SettingsForm 仍带 root)', async () => {
+  it('工具栏作用域下拉(2026-10-29 目标选择器):切换上抛目标 root 字符串(\'\'=全局);壳换发 root+scope 后卡面按新目标重拉(SettingsForm 恒全局不受影响)', async () => {
     const { conn, settingsCalls } = connOf(viewOf());
-    const scopes: SettingsScope[] = [];
-    const { rerender } = render(<ProvidersPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    const raised: string[] = [];
+    const scopeOptions = [
+      { value: '', label: 'Global' },
+      { value: '/w/proj', label: 'proj' },
+      { value: '/w/other', label: 'other' },
+    ];
+    const { rerender } = render(<ProvidersPane conn={conn} root="/w/proj" scope="project" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await screen.findByText('p1');
     fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
-    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
-    // 壳回写 scope 后随 props 回流:卡面按新作用域重拉(第三笔=global 省参;SettingsForm 不随卡面作用域)
-    rerender(<ProvidersPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
-    await waitFor(() => expect(settingsCalls).toEqual(['/w/proj', '/w/proj', undefined]));
+    expect(raised).toEqual(['']); // 只上抛(''=全局,状态留壳层)
+    // 壳回写 targetRoot('')后随 props 回流(scope=global+root=''):卡面按新目标重拉(第三笔=global 省参)
+    rerender(<ProvidersPane conn={conn} root="" scope="global" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
+    await waitFor(() => expect(settingsCalls).toEqual([undefined, '/w/proj', undefined]));
   });
 
   it('工具栏搜索(2026-10-29 三件套入页):SearchBar 200ms 防抖后按 name/baseUrl 过滤,清空恢复', async () => {

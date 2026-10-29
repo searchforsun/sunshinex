@@ -17,7 +17,9 @@ import { PermissionsPane } from './PermissionsPane';
 import type { PermissionsPaneConn } from './PermissionsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
-import type { SettingsScope } from './components';
+import type { SettingsScope, ScopeOption } from './components';
+import { defaultScopeOptions, scopeTargetLabel } from './components';
+import type { WorkspaceRow } from '../connection';
 import { useConfigChanged } from './use-config-changed';
 import type { ConfigChangedSource } from './use-config-changed';
 
@@ -44,6 +46,14 @@ import type { ConfigChangedSource } from './use-config-changed';
  * 下沉为各资源页工具栏内联 ScopeSelect 下拉(五资源页:MCP/插件/Skills/智能体/提供方);
  * scope 状态仍留本壳统一持有,经 scope + onScopeChange 两 props 下发(pane 内下拉只上抛,
  * 状态回写本壳后随 re-render 回流)。原 T21 顶栏挂点移除,本壳其余职责不变。
+ * 2026-10-29 用户裁定(作用域下拉改目标选择器):两选项「具体项目|全局」退役——下拉改
+ * **目标选择器**:选项=「全局」+ 全部已注册项目(GET /workspaces 注册表,按项目名=basename
+ * 排序;当前打开项目不在注册表仍补列),选哪个项目,五资源页就读写哪个项目的配置(不再限
+ * 于当前打开的会话项目)。壳层状态 targetRoot('' = 全局;缺省=当前打开项目 root)替换旧
+ * scope 二值;下发给五资源 pane 的换发内容=scope(按 targetRoot 推导)+ root=targetRoot +
+ * scopeOptions(选项清单)+ onScopeChange(上抛新 targetRoot 字符串)——pane 读写逻辑零改动,
+ * 仅壳层换发内容变。四 SettingsForm 简单页与权限/高级两页维持快照 root 语义(非资源页,不随
+ * 下拉)。注册表拉取失败时保留缺省选项面(全局+当前打开项目),不阻塞设置态。
  */
 
 /** 壳连接面:全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
@@ -51,8 +61,13 @@ import type { ConfigChangedSource } from './use-config-changed';
  *  warnings,结构满足 RawPane/PermissionsPane 的告警/权限子集面;接口 extends 同名成员须同一性,
  *  故在此收窄拼接)。T21 并入 config-changed 订阅面(ConfigChangedSource——顶栏 useConfigChanged
  *  的 conn 依赖;App 的 Connection 已供 onConfigChanged 注册点)。T26 并入 ProvidersPaneConn
- *  (providers 面扩 putProviderOp op 端点写面——旧形=SettingsFormConn 子集无需单列) */
-export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {}
+ *  (providers 面扩 putProviderOp op 端点写面——旧形=SettingsFormConn 子集无需单列)。
+ *  2026-10-29 目标选择器并入 workspaces()(GET /workspaces 注册表——五资源页作用域下拉的
+ *  注册项目清单数据源;既有端点,零新造) */
+export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
+  /** GET /workspaces:工作区注册表扫描(T2;行含 slug+root——root 缺档历史行不可选) */
+  workspaces(): Promise<WorkspaceRow[]>;
+}
 
 /** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后)。
  *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
@@ -100,16 +115,45 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
   /** G14.213 语言切换 tick:SettingsForm 语言键保存 → onLanguageChanged → 本壳重渲染
    *  (t 非响应式——导航/分组/壳头等本组件的 t() 面不 tick 不翻面) */
   const [, setLangTick] = useState(0);
-  /** T21 作用域状态提升(顶栏 ScopeSwitcher):缺省 project;无 root 强制 global(项目侧禁用,
-   *  本处与回调双闸)。root 维持快照语义(打开设置时的活动工作区,只读不改) */
-  const [scope, setScope] = useState<SettingsScope>(root === '' ? 'global' : 'project');
+  /** 作用域目标选择器状态(2026-10-29 用户裁定,替换旧 scope 二值):targetRoot=当前目标
+   *  项目 root('' = 全局;缺省=当前打开项目 root——root='' 时缺省全局)。root 维持快照语义
+   *  (打开设置时的活动工作区,只读不改——仅作缺省目标与兜底) */
+  const [targetRoot, setTargetRoot] = useState<string>(root);
   useEffect(() => {
-    if (root === '') setScope('global'); // root 快照变化兜底(理论不发生——防御面)
+    if (root === '') setTargetRoot(''); // root 快照变化兜底(理论不发生——防御面)
   }, [root]);
-  const onScopeChange = (next: SettingsScope): void => {
-    if (next === 'project' && root === '') return; // 无项目上下文:项目侧不可选
-    setScope(next);
-  };
+  /** 下拉选项清单(全局+全部注册项目按项目名;缺省面=全局+当前打开项目,注册表应答后替换;
+   *  打开项目不在注册表仍补列并保持选中) */
+  const [scopeOptions, setScopeOptions] = useState<readonly ScopeOption[]>(() => defaultScopeOptions(root));
+  useEffect(() => {
+    let alive = true;
+    conn.workspaces().then(
+      (rows) => {
+        if (!alive) return;
+        const seen = new Set<string>();
+        const projects: ScopeOption[] = [];
+        for (const row of rows as WorkspaceRow[]) {
+          const r = row.root;
+          if (r === undefined || r === '' || seen.has(r)) continue; // 历史无档行不可 attach——不列
+          seen.add(r);
+          projects.push({ value: r, label: scopeTargetLabel(r) });
+        }
+        projects.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0)); // 按项目名(码点序)
+        if (root !== '' && !seen.has(root)) projects.push({ value: root, label: scopeTargetLabel(root) }); // 打开项目不在注册表:仍列入
+        setScopeOptions([{ value: '', label: t('Global', '全局') }, ...projects]);
+      },
+      () => {
+        /* 注册表拉取失败:保留缺省选项面(全局+当前打开项目)——不阻塞设置态 */
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, root]);
+  /** 换发取参单点:scope 按 targetRoot 推导('' = global);五资源 pane 的 onScopeChange 上抛
+   *  新 targetRoot 字符串,回写后随 re-render 换发(pane 按新 root/scope 重拉) */
+  const scope: SettingsScope = targetRoot === '' ? 'global' : 'project';
+  const onTargetChange = (next: string): void => setTargetRoot(next);
   /** T21 config-changed 订阅:按 resource 合并 200ms 的 tick 计数——逐 pane 经 props 下发
    *  (pane 以自身 resource 的 tick 变化为外部改动信号触发重拉;T22 起逐页消费) */
   const refreshTick = useConfigChanged(conn);
@@ -127,7 +171,10 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
    *  T21:scope 与对应 resource 的 refreshTick 经 props 下发各 pane(可选 props——本任务 pane
    *  零行为变化,T22 起逐页解构消费;RawPane 全局/项目 raw 文件共用,下发 scope+root——T27 起
    *  project 作用域读写带 root 定位,global 省参)。2026-10-29:五资源页再加 onScopeChange
-   *  下发(pane 工具栏 ScopeSelect 上抛,状态回写本壳) */
+   *  下发(pane 工具栏 ScopeSelect 上抛,状态回写本壳)。
+   *  2026-10-29 目标选择器:五资源 pane 换发内容改 root=targetRoot + scope(按 targetRoot
+   *  推导)+ scopeOptions(注册项目清单)+ onScopeChange(targetRoot 字符串)——pane 读写逻辑
+   *  零改动;四 SettingsForm 简单页与权限/高级两页维持快照 root(非资源页,不随下拉) */
   const renderPane = (): JSX.Element => {
     const formDef = SETTINGS_PANES.find((p) => p.id === activePane);
     if (formDef !== undefined)
@@ -136,15 +183,15 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       );
     switch (activePane) {
       case 'providers':
-        return <ProvidersPane key="providers" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.providers} />;
+        return <ProvidersPane key="providers" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.providers} />;
       case 'mcp':
-        return <McpPane key="mcp" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.mcp} />;
+        return <McpPane key="mcp" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.mcp} />;
       case 'plugins':
-        return <PluginsPane key="plugins" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.plugins} />;
+        return <PluginsPane key="plugins" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.plugins} />;
       case 'agents':
-        return <AgentsPane key="agents" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.agents} />;
+        return <AgentsPane key="agents" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.agents} />;
       case 'skills':
-        return <SkillsPane key="skills" conn={conn} root={root} title={t('Skills', '技能')} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.skills} />;
+        return <SkillsPane key="skills" conn={conn} root={targetRoot} title={t('Skills', '技能')} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.skills} />;
       case 'permissions':
         return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} scope={scope} refreshTick={refreshTick.permissions} />;
       default:

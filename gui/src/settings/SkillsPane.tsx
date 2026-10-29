@@ -3,8 +3,8 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { SkillsGroup } from '../connection';
 import { Select } from './controls';
-import { ScopeSelect, SearchBar } from './components';
-import type { SettingsScope } from './components';
+import { ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import type { SettingsScope, ScopeOption } from './components';
 
 /**
  * G8c T9 技能面板(设置·技能页):**跨项目全量视图**——拉 scope=all(user 全局 + 当前项目
@@ -51,20 +51,23 @@ interface SkillRow {
 
 export interface SkillsPaneProps {
   readonly conn: SkillsPaneConn;
-  /** 项目上下文('' = 仅全局:project 组缺席,learned 仍跨项目枚举) */
+  /** 作用域目标项目 root(壳下发 targetRoot——下拉选哪个项目即锚哪个;'' = 全局:project 组缺席,learned 仍跨项目枚举) */
   readonly root: string;
   /** 导航标题(aria-label/标题行) */
   readonly title: string;
   /** T21 设置壳注入:作用域(工具栏 ScopeSelect 回显)——本面 scope 意识沿既有过滤保持(scope=all
    *  跨项目全量视图是本面裁定,不随壳作用域收窄,切换不重拉;2026-10-29 起工具栏下拉消费回显+上抛) */
   readonly scope?: SettingsScope;
-  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
-  readonly onScopeChange?: (scope: SettingsScope) => void;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(目标选择器,状态留壳层):上抛新目标项目 root 字符串
+   *  ('' = 全局);未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (targetRoot: string) => void;
+  /** 2026-10-29 目标选择器选项面(壳下发:全局+全部注册项目按名;未接=直渲/桩测缺省 全局+当前 root) */
+  readonly scopeOptions?: readonly ScopeOption[];
   /** T21 config-changed 订阅 tick(skills 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
   readonly refreshTick?: number;
 }
 
-export function SkillsPane({ conn, root, title, scope, onScopeChange, refreshTick }: SkillsPaneProps): JSX.Element {
+export function SkillsPane({ conn, root, title, scope, onScopeChange, scopeOptions, refreshTick }: SkillsPaneProps): JSX.Element {
   /** 平铺技能行(scope=all 全量;null = 加载中) */
   const [skills, setSkills] = useState<SkillRow[] | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -134,7 +137,7 @@ export function SkillsPane({ conn, root, title, scope, onScopeChange, refreshTic
       <h2>{title}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
       <div className="sx-res-toolbar">
-        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
+        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
         <SearchBar value={query} onChange={setQuery} placeholder={t('Search skills…', '搜索技能…')} />
         <div className="sx-skills-filter">
           <Select

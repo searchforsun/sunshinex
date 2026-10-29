@@ -1,17 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from '../components';
-import type { SettingsScope } from '../components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions, scopeTargetLabel } from '../components';
+import type { ScopeOption } from '../components';
 import { useConfigChanged } from '../use-config-changed';
 import type { ConfigChangedInfo, ConfigChangedSource } from '../use-config-changed';
 import type { SourceBadgeProps } from '../SourceBadge';
 
 /**
- * Task 21 设置共享组件 kit 桩测:ScopeSelect 切换回调/项目不可用禁用态(2026-10-29 下拉化)、
- * SearchBar 200ms 防抖、ResourceCard 开关与 actions/折叠详情渲染、EditorModal 开合与提交
- * (2026-10-29 弹窗替换抽屉:Cancel/×/遮罩/Esc=关,Save=提交,焦点落对话框)、EmptyState/
- * ErrorBanner、useConfigChanged 帧后按 resource 合并 200ms 递增(connection 桩注入帧)。
- * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
+ * Task 21 设置共享组件 kit 桩测:ScopeSelect 目标选择器(2026-10-29 用户裁定:两选项形态
+ * 退役——选项列表形态,选项渲染/当值回显/上抛 value=root 字符串,''=全局;defaultScopeOptions
+ * 缺省面+scopeTargetLabel basename 双分隔容错)、SearchBar 200ms 防抖、ResourceCard 开关与
+ * actions/折叠详情渲染、EditorModal 开合与提交(2026-10-29 弹窗替换抽屉:Cancel/×/遮罩/Esc=关,
+ * Save=提交,焦点落对话框)、EmptyState/ErrorBanner、useConfigChanged 帧后按 resource 合并
+ * 200ms 递增(connection 桩注入帧)。测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
 /** 计时器面:防抖/合并窗全走 fake timers(逐例推进,零真实等待) */
@@ -51,28 +52,38 @@ function TickProbe({ conn }: { readonly conn: ConfigChangedSource }): JSX.Elemen
   );
 }
 
-describe('ScopeSelect', () => {
-  it('下拉:当值回显,弹层换项上抛 onScopeChange', () => {
-    const calls: SettingsScope[] = [];
-    render(<ScopeSelect scope="project" projectAvailable={true} onScopeChange={(s) => calls.push(s)} />);
+describe('ScopeSelect(目标选择器形态)', () => {
+  const options: ScopeOption[] = [
+    { value: '', label: 'Global' },
+    { value: '/w/sunshinex', label: 'sunshinex' },
+    { value: '/w/project1', label: 'project1' },
+  ];
+
+  it('选项列表渲染:弹层按 options 展开,当值(项目 root 字符串)回显,选中上抛 value', () => {
+    const calls: string[] = [];
+    render(<ScopeSelect value="/w/sunshinex" options={options} onChange={(v) => calls.push(v)} />);
     const trigger = screen.getByRole('button', { name: 'Settings scope' }) as HTMLButtonElement;
-    expect(trigger.textContent).toContain('This project');
+    expect(trigger.textContent).toContain('sunshinex'); // 当值=项目 root 对应项回显
     expect(trigger.disabled).toBe(false);
     fireEvent.click(trigger);
+    expect(screen.getByRole('option', { name: 'Global' })).toBeDefined(); // 全局恒在
+    expect(screen.getByRole('option', { name: 'project1' })).toBeDefined(); // 注册项目逐项
     fireEvent.click(screen.getByRole('option', { name: 'Global' }));
-    expect(calls).toEqual(['global']);
+    expect(calls).toEqual(['']); // '' = 全局
+    fireEvent.click(trigger); // 重开弹层
+    fireEvent.click(screen.getByRole('option', { name: 'project1' }));
+    expect(calls).toEqual(['', '/w/project1']); // 项目=root 字符串上抛(壳 setState 换发)
   });
 
-  it('项目不可用:整机禁用+data-tip 提示,不展开弹层不上抛', () => {
-    const calls: SettingsScope[] = [];
-    render(<ScopeSelect scope="global" projectAvailable={false} onScopeChange={(s) => calls.push(s)} />);
-    const trigger = screen.getByRole('button', { name: 'Settings scope' }) as HTMLButtonElement;
-    expect(trigger.textContent).toContain('Global'); // 此态壳层恒已强制 global,当值照显
-    expect(trigger.disabled).toBe(true);
-    expect(trigger.getAttribute('data-tip')).not.toBe(null);
-    fireEvent.click(trigger); // disabled:handler 不触发
-    expect(screen.queryByRole('listbox')).toBeNull();
-    expect(calls).toEqual([]);
+  it("value='' 全局回显;defaultScopeOptions(root)=全局+当前 root basename;scopeTargetLabel 双分隔容错", () => {
+    render(<ScopeSelect value="" options={defaultScopeOptions('/w/sunshinex')} onChange={() => {}} />);
+    const trigger = screen.getByRole('button', { name: 'Settings scope' });
+    expect(trigger.textContent).toContain('Global'); // 全局当值照显
+    fireEvent.click(trigger);
+    expect(screen.getByRole('option', { name: 'Global' })).toBeDefined();
+    expect(screen.getByRole('option', { name: 'sunshinex' })).toBeDefined(); // basename 标签
+    expect(scopeTargetLabel('D:\\repos\\demo')).toBe('demo'); // win32 反斜杠容错
+    expect(scopeTargetLabel('/w/root-a/')).toBe('root-a'); // unix 斜杠+尾分隔符
   });
 });
 
