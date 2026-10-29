@@ -163,6 +163,9 @@ if (!app.requestSingleInstanceLock()) {
     };
     ipcMain.on('win:drag-start', () => {
       if (!mainWindow || mainWindow.isDestroyed() || dragTimer !== null) return;
+      // 最大化中拖拽=先还原再跟(2026-10-29 用户实测「拖顶带宽高自动变大」机制):标志/视觉脱同步
+      // 时 setPosition 会套用更大的还原边界;显式 unmaximize 后以还原后边界重算偏移,拖拽恒=纯移动
+      if (mainWindow.isMaximized()) mainWindow.unmaximize();
       const [wx, wy] = mainWindow.getPosition();
       const cursor = screen.getCursorScreenPoint();
       const offX = cursor.x - wx;
