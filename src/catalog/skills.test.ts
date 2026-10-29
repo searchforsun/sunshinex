@@ -110,12 +110,12 @@ test('listSkills：plugin 来源经 opts 钉根——plugin 组排尾、同 id �
   });
 });
 
-test('listSkills：组内同 id 就近去重（project 双根与 plugin 双目录各只列一条、不标遮蔽）', () => {
+test('listSkills：组内同 id 就近去重（plugin 双目录各只列一条、不标遮蔽）；兼容根零列示', () => {
   withPinnedEnv((root) => {
     const pluginA = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-skills-da-'));
     const pluginB = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-skills-db-'));
     try {
-      // .sunshinex 与 .claude 同属 project 组：组内去重沿 loadSkillsGrouped 现序（.sunshinex 就近胜出）
+      // .claude 兼容根（2026-10-29 去兼容清理后零装载）：不进 project 组、不影响去重
       writeSkill(path.join(root, '.sunshinex', 'skills'), 'inner', 'SunshineInner');
       writeSkill(path.join(root, '.claude', 'skills'), 'inner', 'ClaudeInner');
       writeSkill(pluginA, 'plug', 'PluginA');
@@ -127,7 +127,7 @@ test('listSkills：组内同 id 就近去重（project 双根与 plugin 双目�
           ['project', 'inner', 'SunshineInner', null],
           ['plugin', 'plug', 'PluginA', null],
         ],
-        '组内同 id 只列就近一条（沿装载链组内去重口径，败者静默让位非跨源遮蔽）',
+        '组内同 id 只列就近一条（沿装载链组内去重口径，败者静默让位非跨源遮蔽）；.claude 兼容根零列示',
       );
     } finally {
       fs.rmSync(pluginA, { recursive: true, force: true });

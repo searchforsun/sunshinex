@@ -2,7 +2,7 @@
  * catalog/skills 只读视图（Task 12，Phase A 收尾）：来源链 + 跨源遮蔽标注（skills 设置页展示面）。
  * skills 只读是设计裁定：无启停开关、无 CRUD 写面（技能资产沿文件语义手工管理，视图不越权）。
  * 装载链零改动——src/harness/skills.ts 不动，本面只「看」：根链经 priorityChain 单点取
- * （项目五根 .sunshinex > .agents > .claude > .codex > .cursor > user > learned > plugin），
+ * （项目根 .sunshinex > user > learned > plugin），
  * 条目解析经 parseSkillFrontmatter 单点 + SKILL.md/skill.md 文件名查找（frontmatter 词法与
  * 大小写兜底全沿装载口径，不另造解析器）；刻意不走 resolveSkill——那是出牌面（resolve 三态），
  * manifest.params 非空且无实参即 SKILL_PARAM_MISSING，套在清单上会让带参技能从视图整条消失
@@ -20,7 +20,7 @@ import { loadEffectivePlugins } from '../config/plugins';
 import { PROJECT_SKILL_ROOTS_ASC, isValidSkillId, parseSkillFrontmatter, priorityChain } from '../harness/skills';
 import type { Listing } from './types';
 
-/** 技能来源段（对齐装载优先级链的语义级）：project = 项目五兼容根合并一组（loadSkillsGrouped 同款） */
+/** 技能来源段（对齐装载优先级链的语义级）：project = 项目根 .sunshinex/skills（loadSkillsGrouped 同款） */
 export type SkillSource = 'project' | 'user' | 'learned' | 'plugin';
 
 /** catalog skills 列表条目：id + frontmatter 三件套 + 来源段 + 落盘目录 + 跨源遮蔽标注 */
@@ -73,7 +73,7 @@ function skillMdIn(dir: string, id: string): string | undefined {
  */
 export function listSkills(root: string, opts?: { pluginSkillDirs?: string[] }): Listing<SkillEntry> {
   const pluginDirs = opts?.pluginSkillDirs ?? defaultPluginSkillDirs(root);
-  // 段切分沿 priorityChain 构成（项目五根 → user 根 → learned 根 → 插件根）：前段长度 =
+  // 段切分沿 priorityChain 构成（项目根 → user 根 → learned 根 → 插件根）：前段长度 =
   // PROJECT_SKILL_ROOTS_ASC.length，随后 user/learned 各一根，尾段 = 插件根。链构成（含顺序）由
   // priorityChain 单点承载，本面只按语义段切片、不重复拼接与排序逻辑
   const chain = priorityChain(root, pluginDirs);

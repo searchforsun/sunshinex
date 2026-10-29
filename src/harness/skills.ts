@@ -38,10 +38,11 @@ export function learnedSkillsDir(root: string): string {
   return path.join(resolveDataDir(root), 'skills');
 }
 
-/** 项目级兼容根升序（规格 v2：五根统一标准形态 {根}/skills/{id}/SKILL.md；右侧遮蔽左侧，.sunshinex 原生恒最优先） */
-export const PROJECT_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents', '.sunshinex'] as const;
+/** 项目技能根（标准形态单根，2026-10-29 去兼容清理收敛：项目技能只认 {root}/.sunshinex/skills/{id}/SKILL.md；
+ *  既往 .cursor/.codex/.claude/.agents 兼容根不再装载） */
+export const PROJECT_SKILL_ROOTS_ASC = ['.sunshinex'] as const;
 
-/** 项目级各兼容根下的技能目录（升序） */
+/** 项目技能目录（升序） */
 function projectSkillDirs(root: string): string[] {
   return PROJECT_SKILL_ROOTS_ASC.map((dot) => path.join(root, dot, 'skills'));
 }
@@ -97,7 +98,7 @@ function pluginSkillDirs(root: string): string[] {
     .flatMap((p) => (p.manifest.skills ?? []).map((rel) => path.join(p.dir, rel)));
 }
 
-/** 装载/解析优先级链（降序）：项目级五根（.sunshinex > .agents > .claude > .codex > .cursor）→ 全局根 → 学习根
+/** 装载/解析优先级链（降序）：项目根（.sunshinex）→ 全局根 → 学习根
  *  → 插件 skills 根（最低优先级，启用且平台可用的插件贡献，装载入口经 pluginSkillDirs 注入）。
  *  pluginSkillDirs 为可选尾参保持纯函数可测（测试钉目录免真写插件根）；不传时与既有链逐位一致 */
 export function priorityChain(root: string, pluginSkillDirs: string[] = []): string[] {
@@ -226,7 +227,7 @@ export function formatSkillsIndex(manifests: SkillManifest[]): string | null {
 
 /** 技能回执头行单点（skill 工具回执 / /skill 链注入 / loop skillRef 块三方同源，防格式漂移）：
  *  首行与既有格式逐字节一致（会话去重判据依赖 `(id=x v=` 前缀）；sourceRoot 在位时第二行携带来源目录——
- *  兼容根（.claude/.codex 等）装载的技能正文引用伴随文件，模型按此目录而非项目根解析 */
+ *  技能正文引用伴随文件（脚本/资源）时模型按此目录而非项目根解析 */
 export function skillHeader(m: SkillManifest): string {
   const head = `[Skill] ${m.name} (id=${m.id} v=${m.version})`;
   return m.sourceRoot !== undefined ? `${head}\nDirectory: ${m.sourceRoot}` : head;

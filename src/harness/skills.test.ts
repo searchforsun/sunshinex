@@ -24,8 +24,10 @@ test('loadSkills：扫描项目根 .sunshinex/skills/{id}/skill.md，无 skill.m
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-'));
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  const prevHome = process.env.HOME;
   process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
   process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  process.env.HOME = path.join(dir, 'home'); // HOME 桩：隔绝真全局 settings 的插件启用面（与 withCompatEnv 同口径）
   try {
     assert.deepEqual(loadSkills(dir), []);
     fs.mkdirSync(path.join(dir, '.sunshinex', 'skills', 'alpha'), { recursive: true });
@@ -43,6 +45,7 @@ test('loadSkills：扫描项目根 .sunshinex/skills/{id}/skill.md，无 skill.m
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -94,7 +97,7 @@ test('formatSkillsIndex：空清单 null、按 name 排序、行格式与截断�
 });
 
 
-/** 兼容链（规格 v2）：五根统一 {根}/skills/{id}/SKILL.md（Agent Skills 标准形态），异构形态零兼容 */
+/** 标准根（2026-10-29 去兼容清理后单根）：{根}/skills/{id}/SKILL.md（Agent Skills 标准形态） */
 function writeCompatSkill(root: string, dot: string, id: string, name: string): void {
   fs.mkdirSync(path.join(root, dot, 'skills', id), { recursive: true });
   fs.writeFileSync(path.join(root, dot, 'skills', id, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} 说明\nversion: 1.0.0\n---\n${name} 正文`);
@@ -103,18 +106,23 @@ function writeCompatSkill(root: string, dot: string, id: string, name: string): 
 function withCompatEnv<T>(root: string, fn: () => T): T {
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  const prevHome = process.env.HOME;
   process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
   process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(root, 'global-skills');
+  // HOME 桩：全局 settings 的 plugins 启用面（开发机真家可能启用内置插件）不得泄入——
+  // 装载链尾段插件根随 loadEffectivePlugins(真全局 settings) 变化，环境敏感必桩（与下方插件用例同口径）
+  process.env.HOME = path.join(root, 'home');
   try {
     return fn();
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
 
-test('兼容链：五根统一 SKILL.md 标准形态，互不相同 id 全量并入清单', () => {
+test('去兼容清理：.cursor/.codex/.claude/.agents 兼容根零装载，仅 .sunshinex 单根生效（清单与 resolve 同口径）', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
   withCompatEnv(root, () => {
     writeCompatSkill(root, '.cursor', 'a-skill', 'CursorSkill');
@@ -122,15 +130,14 @@ test('兼容链：五根统一 SKILL.md 标准形态，互不相同 id 全量并
     writeCompatSkill(root, '.claude', 'c-skill', 'ClaudeSkill');
     writeCompatSkill(root, '.agents', 'd-skill', 'AgentsSkill');
     writeCompatSkill(root, '.sunshinex', 'e-skill', 'SunshineSkill');
-    assert.deepEqual(loadSkills(root).map((s) => s.id).sort(), ['a-skill', 'b-skill', 'c-skill', 'd-skill', 'e-skill']);
-    // 来源目录标注（2026-09-28 用户裁决）：清单与 resolve 均携带技能所在目录的绝对路径，
-    // 模型经 read/exec 解析技能正文引用的伴随文件不再找不到
-    const cursor = loadSkills(root).find((s) => s.id === 'a-skill');
-    assert.equal(cursor?.sourceRoot, path.join(root, '.cursor', 'skills', 'a-skill'));
+    assert.deepEqual(loadSkills(root).map((s) => s.id), ['e-skill'], '兼容根技能不入清单（单根收敛）');
     const facade = createSkillsFacade(root);
     const r = facade.resolve('c-skill');
-    assert.ok(r.ok);
-    if (r.ok) assert.equal(r.value.manifest.sourceRoot, path.join(root, '.claude', 'skills', 'c-skill'));
+    assert.equal(r.ok, false, 'resolve 回退链同样不认兼容根');
+    if (!r.ok) assert.equal(r.error.code, 'SKILL_NOT_FOUND');
+    const ok = facade.resolve('e-skill');
+    assert.ok(ok.ok, '标准根技能照常命中');
+    if (ok.ok) assert.equal(ok.value.manifest.sourceRoot, path.join(root, '.sunshinex', 'skills', 'e-skill'));
   });
 });
 
@@ -141,18 +148,6 @@ test('skillHeader：首行与既有格式逐字节一致（会话去重判据依
     skillHeader({ ...base, sourceRoot: '/p/.claude/skills/s' } as SkillManifest),
     '[Skill] S (id=s v=1.0.0)\nDirectory: /p/.claude/skills/s',
   );
-});
-
-test('兼容链就近遮蔽：同 id 取最高优先根（.sunshinex 遮蔽 .agents/.claude），list 恒一', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
-  withCompatEnv(root, () => {
-    writeCompatSkill(root, '.claude', 'dup', 'ClaudeDup');
-    writeCompatSkill(root, '.agents', 'dup', 'AgentsDup');
-    writeCompatSkill(root, '.sunshinex', 'dup', 'SunshineDup');
-    const hits = loadSkills(root).filter((s) => s.id === 'dup');
-    assert.equal(hits.length, 1, '同 id 就近遮蔽、list 恒一');
-    assert.equal(hits[0].name, 'SunshineDup');
-  });
 });
 
 /**
@@ -201,26 +196,14 @@ test('异构形态零装载：rules/*.mdc、AGENTS.md、commands/*.md 就位不�
   });
 });
 
-test('resolve 回退链跨兼容根：仅 .claude 注册的技能可命中（就近优先）', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
-  withCompatEnv(root, () => {
-    writeCompatSkill(root, '.claude', 'solo', 'ClaudeSolo');
-    const facade = createSkillsFacade(root);
-    const r = facade.resolve('solo');
-    assert.equal(r.ok, true);
-    if (r.ok) assert.ok(r.value.body.includes('ClaudeSolo 正文'));
-    const miss = facade.resolve('nope');
-    assert.equal(miss.ok, false);
-    if (!miss.ok) assert.equal(miss.error.code, 'SKILL_NOT_FOUND');
-  });
-});
-
 test('loadSkills：学习根单条目读取失败（并发移除/坏条目）不拖垮整次扫描', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-racy-'));
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  const prevHome = process.env.HOME;
   process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
   process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'global-skills-root');
+  process.env.HOME = path.join(dir, 'home'); // HOME 桩：隔绝真全局 settings 的插件启用面（与 withCompatEnv 同口径）
   try {
     const root = path.join(dir, 'proj');
     const learned = path.join(dir, '.data', 'skills');
@@ -234,6 +217,7 @@ test('loadSkills：学习根单条目读取失败（并发移除/坏条目）不
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -281,7 +265,7 @@ function restorePluginEnv(prevData: string | undefined, prevUser: string | undef
   if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
 }
 
-test('priorityChain：pluginSkillDirs 注入尾参恒在链尾（五根 > 全局 > 学习 > 插件），缺省与既有链逐位一致', () => {
+test('priorityChain：pluginSkillDirs 注入尾参恒在链尾（项目根 > 全局 > 学习 > 插件），缺省与既有链逐位一致', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-chain-'));
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
