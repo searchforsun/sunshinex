@@ -21,11 +21,14 @@ import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '..
 /** putProviderOp 输入形(connection.ts 内联签名提取——桩记录类型用,McpPane.test 同款) */
 type ProviderOpInput = Parameters<Connection['putProviderOp']>[0];
 
-/** GET /settings providers.entries 行构造器(daemon ParsedProviderEntry 投影合法缺省) */
+/** GET /settings providers.entries 行构造器(daemon listProviders 富化行形合法缺省——
+ *  apiKeyEnv/apiKeyPresent 恒在场,Task 26 评审修补后 GUI 密钥点直读本行字段) */
 const entryOf = (over: Partial<ProviderEntry> = {}): ProviderEntry => ({
   name: 'p1',
   baseUrl: 'https://api.p1/v1',
   models: [{ model: 'm1', tier: 'large' }, { model: 'm2' }],
+  apiKeyEnv: 'SUNSHINEX_API_KEY_P1',
+  apiKeyPresent: true,
   ...over,
 });
 
@@ -47,7 +50,7 @@ const viewOf = (providers: Partial<SettingsView['providers']> = {}): SettingsVie
       { id: 'p1/m2', provider: 'p1', model: 'm2', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
       { id: 'p2/m9', provider: 'p2', model: 'm9', baseUrl: 'https://api.p2/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P2' },
     ],
-    entries: [entryOf(), entryOf({ name: 'p2', baseUrl: 'https://api.p2/v1', models: [{ model: 'm9' }] })],
+    entries: [entryOf(), entryOf({ name: 'p2', baseUrl: 'https://api.p2/v1', models: [{ model: 'm9' }], apiKeyEnv: 'SUNSHINEX_API_KEY_P2', apiKeyPresent: false })],
     apiKeyPresent: { p1: true, p2: false },
     warnings: ['providers warn line'],
     ...providers,
@@ -105,8 +108,9 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     expect(screen.getByText('m2')).toBeDefined();
     expect(screen.getByText('m9')).toBeDefined();
     expect(screen.getAllByText('Default')).toHaveLength(1); // 默认标记恒一处(choices[0]=p1/m1)
-    expect(document.querySelector('.sx-api-dot.present')).not.toBeNull(); // p1 密钥在场=绿点
+    expect(document.querySelector('.sx-api-dot.present')).not.toBeNull(); // p1 密钥在场=绿点(entries 行 apiKeyPresent)
     expect(document.querySelectorAll('.sx-api-dot.missing')).toHaveLength(1); // p2 缺=灰点
+    expect((document.querySelector('.sx-api-dot.missing') as HTMLElement).getAttribute('data-tip')).toBe('SUNSHINEX_API_KEY_P2'); // tip=entries 行 apiKeyEnv
     expect(screen.getByText('providers warn line')).toBeDefined(); // providers warnings 行
     await waitFor(() => expect(settingsCalls).toEqual(['/w/proj', '/w/proj'])); // 挂载两笔(SettingsForm+卡面),皆带 root
     // 请求参数卡仅 tier/effort 两 select(SettingsForm 复用)
@@ -161,6 +165,33 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
         { op: 'modelMove', scope: 'project', root: '/w/proj', name: 'p1', model: 'm2', direction: 'down' },
       ]),
     );
+  });
+
+  it('moveModel 行重播种键合(T26 评审修补):本地未保存行字段编辑按模型名保留,文件外行(新增未落盘)随 fresh 丢弃+提示行言明', async () => {
+    const moved = viewOf({
+      entries: [entryOf({ models: [{ model: 'm2' }, { model: 'm1', tier: 'large' }] })],
+      choices: [
+        { id: 'p1/m2', provider: 'p1', model: 'm2', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
+        { id: 'p1/m1', provider: 'p1', model: 'm1', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
+      ],
+    });
+    const { conn, opCalls } = connOf(viewOf(), moved);
+    render(<ProvidersPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit p1' });
+    // 未保存行编辑:m2 行(第二行)contextWindow 填 12345;再 + 新增一行 mNew(文件外,未落盘)
+    fireEvent.change(screen.getAllByLabelText('Context window')[1]!, { target: { value: '12345' } });
+    fireEvent.click(screen.getByText('+ Add model'));
+    fireEvent.change(screen.getAllByLabelText('Model name')[2]!, { target: { value: 'mNew' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Move up m2' }));
+    await waitFor(() =>
+      expect(opCalls).toEqual([{ op: 'modelMove', scope: 'project', root: '/w/proj', name: 'p1', model: 'm2', direction: 'up' }]),
+    );
+    // 重播种:行序=fresh [m2, m1];mNew(模型名不在文件)随 fresh 丢弃;m2 的未保存窗口编辑键合保留
+    await waitFor(() => expect(screen.getAllByLabelText('Model name')).toHaveLength(2));
+    expect((screen.getAllByLabelText('Model name')[0] as HTMLInputElement).value).toBe('m2');
+    expect((screen.getAllByLabelText('Context window')[0] as HTMLInputElement).value).toBe('12345');
+    expect(within(dialog).getByText(/row order resets to the file/)).toBeDefined(); // 键合/丢弃规则提示行在
   });
 
   it('编辑保存+密钥:编辑态密钥框恒空(不回显)→ Save = op update(provider patch)+ setKey(键值仅入请求体);抽屉关+重拉面无键值', async () => {

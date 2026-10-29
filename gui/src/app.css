@@ -2759,3 +2759,5 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-denied { color: var(--err); border-color: var(--err); }
 .sx-rc:has(.sx-mcp-denied) { border-color: color-mix(in srgb, var(--err) 55%, var(--border)); }
 .sx-rc:has(.sx-shadow-tag) { opacity: 0.5; } /* 被项目遮蔽灰显(沿旧 .sx-mcp-card.shadowed 语言;仅 ResourceCard 卡) */
+/* T26 提供方默认模型 chip(choices[0] 所属——ok 绿描边,与普值 chip 视觉区分) */
+.sx-chip.sx-provider-default { color: var(--ok); border-color: var(--ok); }

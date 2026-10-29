@@ -21,8 +21,9 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * 编辑/删除)+「+ Add provider」钮;添加/编辑 → EditorDrawer 右滑抽屉(名称/Base URL/API key
  * password 输入——写走 setKey op、密钥零回显(编辑播种恒空串,留空=不动键)/models 行编辑
  * (模型名/contextWindow/reasoningEffort/tier select/上移下移钮——上移下移=文件级手术即时提交
- * modelMove op,成功后重拉+行重播种回落文件真值;行字段=本地态,Save 经 update op 整组替换
- * models)。
+ * modelMove op,成功后重拉+行重播种:以文件真值为基底按模型名键合保留本地未保存行字段编辑——
+ * 模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(抽屉提示行言明);行字段=本地态,
+ * Save 经 update op 整组替换 models)。
  *
  * 测试按钮裁定:v1 GUI 无提供方连通测试钮——REST 无 providers test 端点(不造端点),前端直连
  * baseUrl 需携密钥(密钥不进前端,违 D6);测试能力=CLI/TUI 面(T19/T20 已交付)。
@@ -30,11 +31,16 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * 作用域语义(壳 ScopeSwitcher 下发,T22 同款):scope='project'(缺省,有 root 时)读带 root
  * (两级遮蔽链视图)、写 op scope='project' 带 root;scope='global' 读省参(仅全局)、写 scope=
  * 'global' 省参 root。root='' 恒强制 global。entries 无 source 归因字段(GET 投影不分级)——
- * 卡写作用域恒随壳:project 作用域下编辑一条全局回落条目 = 按 upsert 语义落项目档(add 路径,
- * baseUrl+非空 models 必备,抽屉校验同口径)。
+ * 卡写作用域恒随壳,且**须知整键遮蔽后果**:loadProvidersFull 是 providers 键整键遮蔽,project
+ * 作用域下编辑一条全局回落条目(项目档无 providers 键时)= 按 upsert 语义在项目档创建 providers
+ * 键,该键一旦在场即取代全局——**其余所有全局提供方被遮出有效链与本面板**(遮蔽是装载语义,
+ * 面板无从呈现被遮项)。GUI 无法以现有数据自修(无 source 归因):规避靠用户切全局作用域编辑,
+ * 根治归 daemon REST 富化后续任务(与 agents 富化同批——透出行级 source/shadowed 再做标注门)。
  *
  * 读面 T9 拆分(daemon handler 注释口径):entries=文件显式值(编辑回显走此面)、生效值看
- * choices(条目级 > 源级缺省)——卡片呈现/默认标记走 choices,抽屉播种走 entries。
+ * choices(条目级 > 源级缺省)——卡片默认标记走 choices,抽屉播种走 entries;密钥面
+ * (apiKeyEnv/apiKeyPresent)直读 entries 行富化字段(catalog listProviders 单点——含 models
+ * 全畸形被跳过、choices 无行的源,密钥点不因呈现面缺行误灰)。
  *
  * 错误面三分 + saving 门单点(T22 同款):loadError(读)/actionError(卡写面)/formError(抽屉
  * 校验与保存,409 hint 经 errText 呈现引流 raw 编辑面),均 ErrorBanner 行内;写面在途禁再发。
@@ -108,10 +114,6 @@ type DrawerState = { mode: 'add'; source: SettingsScope } | { mode: 'edit'; sour
 const EMPTY_ROW: ModelRow = { model: '', contextWindow: '', reasoningEffort: '', tier: '' };
 const EMPTY_FORM: DrawerForm = { name: '', baseUrl: '', apiKey: '', rows: [{ ...EMPTY_ROW }] };
 
-/** 专用密钥槽名(daemon providerApiKeyEnv 同式镜像——choices 无该源行时的 data-tip 回退;
- *  单源在 src/config/providers.ts,此处仅呈现面兜底) */
-const apiKeyEnvOf = (name: string): string => `SUNSHINEX_API_KEY_${name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
-
 /** entries 源级分组 → 抽屉 models 行播种(文件显式值——T9 拆分:编辑回显不走 choices) */
 const rowsOfEntry = (e: ProviderEntry): ModelRow[] =>
   e.models.map((m) => ({
@@ -121,6 +123,22 @@ const rowsOfEntry = (e: ProviderEntry): ModelRow[] =>
     tier: m.tier ?? '',
     ...(m.supportsImages !== undefined ? { supportsImages: m.supportsImages } : {}),
   }));
+
+/** 行重播种键合(modelMove 后行序回落文件真值,但**不静默丢弃本地未保存行编辑**):
+ *  fresh(文件真值)为基底,本地行按模型名键合覆写 contextWindow/reasoningEffort/tier 三字段
+ *  (model 名即键、supportsImages 是文件透传位随 fresh);未触碰字段本地值=播种值=fresh 值,
+ *  覆写幂等。模型名改过/新增未落盘的行无法键合——随 fresh 丢弃(抽屉提示行言明该规则) */
+const mergeReseedRows = (fresh: ProviderEntry, local: ModelRow[]): ModelRow[] => {
+  const byModel = new Map<string, ModelRow>();
+  for (const r of local) {
+    const k = r.model.trim();
+    if (k !== '') byModel.set(k, r);
+  }
+  return rowsOfEntry(fresh).map((fr) => {
+    const l = byModel.get(fr.model);
+    return l === undefined ? fr : { ...fr, contextWindow: l.contextWindow, reasoningEffort: l.reasoningEffort, tier: l.tier };
+  });
+};
 
 export interface ProvidersPaneProps {
   readonly conn: ProvidersPaneConn;
@@ -270,7 +288,8 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
   };
 
   /** models 行上移/下移:文件级手术即时提交 modelMove op(非本地排序——Save 不接管行序);
-   *  成功重拉 + 行重播种回落文件真值(name/baseUrl/apiKey 本地编辑保留;行序字段让位文件真相) */
+   *  成功重拉 + 行重播种=mergeReseedRows 键合(文件真值基底 + 本地未保存行字段编辑保留,
+   *  文件外行丢弃——见 helper 注;name/baseUrl/apiKey 本地编辑天然保留) */
   const moveModel = (index: number, direction: 'up' | 'down'): void => {
     if (drawer === null || drawer.mode !== 'edit' || saving) return;
     const model = form.rows[index]?.model.trim() ?? '';
@@ -288,7 +307,7 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
           setView(v);
           setLoadError('');
           const fresh = (v.providers.entries ?? []).find((e) => e.name === drawer.original);
-          if (fresh !== undefined) setForm((f) => (f === null ? f : { ...f, rows: rowsOfEntry(fresh) }));
+          if (fresh !== undefined) setForm((f) => (f === null ? f : { ...f, rows: mergeReseedRows(fresh, f.rows) }));
         });
       })
       .catch((err: unknown) => {
@@ -308,9 +327,6 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
     view !== null && view.providers.choices.length > 0
       ? `${view.providers.choices[0]!.provider}/${view.providers.choices[0]!.model}`
       : '';
-  /** 专用密钥槽名:choices 行携 apiKeyEnv(单点);choices 缺该源行(条目全坏)回退本地镜像式 */
-  const envOf = (name: string): string => view?.providers.choices.find((c) => c.provider === name)?.apiKeyEnv ?? apiKeyEnvOf(name);
-
   return (
     <div className="sx-settings-complex">
       <SettingsForm conn={conn} root={root} pane={PROVIDERS_PANE} />
@@ -328,14 +344,14 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
         {entries.length > 0 && (
           <ul className="sx-rc-list">
             {entries.map((e) => {
-              const present = view?.providers.apiKeyPresent[e.name] === true;
+              const present = e.apiKeyPresent;
               return (
                 <ResourceCard
                   key={e.name}
                   icon={
                     <span
                       className={`sx-api-dot ${present ? 'present' : 'missing'}`}
-                      data-tip={envOf(e.name)}
+                      data-tip={e.apiKeyEnv}
                       aria-hidden="true"
                     />
                   }
@@ -392,6 +408,14 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
           <p className="sx-mcp-hint">
             {t('API key is write-only — it is never displayed. Leave empty to keep the current key.', 'API 密钥仅写不显——留空保持现键不变。')}
           </p>
+          {drawer.mode === 'edit' && (
+            <p className="sx-mcp-hint">
+              {t(
+                'Reorder writes to the file immediately — row order resets to the file after each move. Unsaved field edits are kept for rows whose model name is already in the file; other unsaved rows are dropped.',
+                '排序即时落盘——每次排序后行序回落文件真值。模型名已在文件中的行保留未保存的字段编辑，其余未保存行会被丢弃。',
+              )}
+            </p>
+          )}
           <label className="sx-drawer-field">
             {t('Name', '名称')}
             <input aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
