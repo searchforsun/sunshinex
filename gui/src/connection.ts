@@ -3,6 +3,7 @@ export { toWsUrl } from './connection-transport';
 export * from './connection-types';
 import type {
   AgentFrontmatterInput,
+  AgentsOpInput,
   AgentsView,
   BuiltinRole,
   ConfigChangedInfo,
@@ -226,6 +227,11 @@ export interface Connection {
   /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（T5，AgentsPane 表单增删改）：
    *  input 原文即请求体（缺省字段不落 JSON）；scope=project 必带 root（缺 400），delete 不存在幂等 ok */
   putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void>;
+  /** PUT /settings/agents/op（Task 15 单条目操作端点，Task 23 AgentsPane 卡片化写面）：op 五值
+   *  判别联合（upsert/delete/enable/disable/migrate）；input 原文即请求体（putMcpOp 同款——
+   *  migrate 无 scope、global 省 root 不留空串伪参）；400=纯请求形状、409=写面（hint 引流
+   *  raw 编辑面）、404=migrate 非 legacy，以 HTTP 失败抛错；成功 200 {ok:true} */
+  putAgentOp(input: AgentsOpInput): Promise<void>;
   /** GET /settings/agents/body?scope=&id=&root=（G8d T3，AgentsPane 编辑全文装载）：agent.md
    *  frontmatter 后正文全文（bodyPreview 200 帽不适用）；root 缺省省查询参（scope=global 忽略
    *  root）；404（缺文件）/400（坏 id·scope=project 缺 root·畸形 frontmatter）以 HTTP 失败抛错 */
@@ -647,6 +653,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     putAgent(input: { root?: string; scope: 'project' | 'global'; op: 'upsert' | 'delete'; id: string; frontmatter?: AgentFrontmatterInput; body?: string }): Promise<void> {
       return put('/settings/agents', input);
+    },
+    putAgentOp(input: AgentsOpInput): Promise<void> {
+      // input 原文即请求体（putMcpOp 同款——migrate 无 scope、scope=global 省参不留 root 空串伪参）
+      return put('/settings/agents/op', input);
     },
     // G8d T3 全文面:root 缺省省查询参(settings 系同款);scope=global 时 root 定位面被服务端忽略
     agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {

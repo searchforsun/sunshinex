@@ -332,7 +332,13 @@ export interface BuiltinRole {
 }
 
 /** GET /settings/agents view.entries 行（T5，对齐主仓 AgentEntryView 只读投影）：source 两级
- *  归因 + shadowed 被遮蔽标记 + bodyPreview 正文前 200 字符（防长正文击穿设置面板） */
+ *  归因 + shadowed 被遮蔽标记 + bodyPreview 正文前 200 字符（防长正文击穿设置面板）。
+ *  Task 23 富化面（可选键，daemon GET 逐步透出——subagent.ts「GUI 富化属后续 REST 改面」预留）：
+ *  - enabled：启停声明（frontmatter enabled 行）。契约=恒布尔（缺省 true 由 daemon 显式化——
+ *    富化 daemon 每行都带）；缺键=daemon 未富化，AgentsPane 开关不渲染（gating：字段在场才
+ *    出开关，富化落地即自动点亮，GUI 侧零改动）。
+ *  - oldLocation：true=旧位置 <root>/agents/<id> 条目（迁移是 legacy 专属动作——AgentsPane
+ *    迁移钮仅在此键在场且为 true 的卡渲染；新家/全局卡省键）。 */
 export interface AgentEntryView {
   id: string;
   name: string;
@@ -343,6 +349,8 @@ export interface AgentEntryView {
   source: 'project' | 'global';
   shadowed: boolean;
   bodyPreview: string;
+  enabled?: boolean;
+  oldLocation?: boolean;
 }
 
 /** 两级扫描宽容清单（T5）：生效+被遮蔽全量 + 逐文件告警（畸形文件不抛死，路径入 warnings） */
@@ -360,6 +368,21 @@ export interface AgentFrontmatterInput {
   isolation?: string;
   executor?: string;
 }
+
+/** PUT /settings/agents/op 请求体（Task 15 单条目操作端点，op 五值判别联合——形状门逐 op 钉死）：
+ *  - upsert/delete：scope 必带（'project' 必带 root——服务端 400 守卫，'global' 恒忽略省参）；
+ *    upsert 携 frontmatter（name 必填）+ body（缺省空串）。
+ *  - enable/disable：scope 必带 + id 定位；enabled 可选回显面（服务端校验须与 op 同义，op 是
+ *    权威——矛盾体 400）。旧位置条目 → 409+hint（须先 migrate——写面只认新家）。
+ *  - migrate：恒项目级（body 无 scope——root 锚定 <root>/agents → <root>/.sunshinex/agents 拷入，
+ *    旧位保留）；非 legacy 条目 → 404；撞新家已存在 → 400。
+ *  错误语义（T15 裁定）：400=纯请求形状、409=写面错误（{error, hint:'use raw editor'}）、
+ *  404=migrate 非 legacy——均以 HTTP 失败抛错；成功 200 {ok:true} */
+export type AgentsOpInput =
+  | { op: 'upsert'; scope: 'project' | 'global'; root?: string; id: string; frontmatter?: AgentFrontmatterInput; body?: string }
+  | { op: 'delete'; scope: 'project' | 'global'; root?: string; id: string }
+  | { op: 'enable' | 'disable'; scope: 'project' | 'global'; root?: string; id: string; enabled?: boolean }
+  | { op: 'migrate'; root: string; id: string };
 
 /** 技能三源分组行（T6，对齐主仓 SkillsGroup）：source 三段 project/user/learned；组内去重沿装载
  *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id。
