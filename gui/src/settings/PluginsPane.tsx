@@ -1,52 +1,112 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
-import { SourceBadge } from './SourceBadge';
+import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard, SearchBar } from './components';
 import type { SettingsScope } from './components';
 
 /**
- * 2026-10-26 插件面(Task 12,spec §6 设置页「插件」pane):loadEffectivePlugins 两级清单的可视化
- * 卡列表——名称+版本+来源徽标(SourceBadge 扩 builtin/user 两态)+开关钮+描述行+贡献面行
- * (servers 名列表/skillsCount)+逐插件 warnings 行内告警条;pane 尾聚合装载告警(「N 条装载告警」
- * 展开——manifest 非法被跳过的插件唯一可见面,装载告警三出口之一)。config 展开区 v1 只读 JSON
- * 展示(configSchema 键说明+config 原值),无表单无添加——插件由目录扫描发现,非用户创建面。
- * 交互沿 MCP pane 裁定:写面恒项目级(root='' 只读,开关禁用+「选择项目」提示);platformSupported=
- * false 置灰+「平台不支持」标(装载层只标记不丢弃,装配跳过);开关=PUT settings 语义键(显式布尔,
- * 记录级整面替换)成功后重拉清单,生效语义=下次会话装配生效(沿 MCP「新会话生效」同口径);
- * 400/404/409 行内错误条(pane 顶 role=alert,沿 McpPane 错误条位)。
+ * Task 24 PluginsPane 重构(Phase F 第三面板,2026-10-28):一屏式卡片列表——T21 共享组件
+ * verbatim 消费(McpPane/T23 同款骨架)。顶栏 SearchBar(200ms 防抖过滤 id/name/description,
+ * 无新增钮——插件由目录扫描发现,安装=目录拷贝,非用户创建面);主体 ul.sx-rc-list ×
+ * ResourceCard(title=名/subtitle 无/chips=版本+平台不支持标/badge=SourceBadge(builtin|user)/
+ * 开关=启停/折叠详情=ID·servers·skills 元信息+configSchema 键说明+config 原值只读——卡片详情
+ * 折叠保留)。
+ *
+ * 「配置」钮 → EditorDrawer 右滑抽屉:configSchema 在场=键值表单(逐键播种既有 config 值,
+ * type=boolean 复选框/number 数字校验/string 文本;schema 外既有键 rest 透传保全——T22 seedRest
+ * 同纪律);无 schema=JSON 文本域(受控折叠,T22 JSON 源码纪律:提示覆写规则+收起清空,提交前
+ * JSON.parse+对象形状校验)。提交统一 putPlugin(…, {config}) 整对象覆写——保存即 plugins.<id>.
+ * config 全量改写,抽屉提示行言明。
+ *
+ * 作用域语义(壳 ScopeSwitcher 下发,McpPane/AgentsPane 同款):scope='project'(缺省,有 root
+ * 时)读两级清单(GET 带 root)、写带 root(项目 settings.json plugins.<id> 覆写键);scope='global'
+ * 读仅全局清单(GET 省参)、写省参 root(全局 settings)。root='' 恒强制 global——旧「写面恒项目级
+ * (root='' 开关禁用)」写死门退役:全局作用域开关/配置可写。platformSupported=false 卡置灰+
+ * 写面全禁(装载层只标记,装配面剔除)。开关变更「新会话生效」。
+ *
+ * 错误面三分(T22 同款):loadError=读面/actionError=开关写面/formError=抽屉校验与保存失败,
+ * 均 ErrorBanner 行内。saving 门单点:写面在途禁再发。config-changed 订阅:壳下发 refreshTick
+ * (plugins 资源计数)变化即重拉(外部改动信号,零轮询)。
  */
 
 /** 插件行类型随本 pane 再导出(brief 产出面;本体在 connection-types——Connection.plugins 应答同源) */
 export type { PluginRow };
 
-/** 插件面连接面(结构满足即收,App 传整只 Connection;root: string=项目上下文,'' = 仅全局) */
+/** 插件面连接面(结构满足即收,App 传整只 Connection);putPlugin=PUT /settings/plugins
+ *  记录级写(T8/T16 交付):root 在场=项目级 <root>/.sunshinex/settings.json,缺省=全局 */
 export interface PluginsPaneConn {
   plugins(root?: string): Promise<{ plugins: PluginRow[]; warnings?: string[] }>;
-  putPlugin(root: string, id: string, patch: { enabled?: boolean }): Promise<void>;
+  putPlugin(root: string | undefined, id: string, patch: { enabled?: boolean; config?: Record<string, unknown> }): Promise<void>;
 }
 
 export interface PluginsPaneProps {
   readonly conn: PluginsPaneConn;
-  /** 项目上下文('' = 仅全局——写面禁用,读面省参) */
+  /** 项目上下文('' = 无项目上下文——恒全局作用域) */
   readonly root: string;
-  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T23 起解构消费 */
+  /** T21 设置壳注入:作用域(缺省按 root 推断——有 root 即 project,壳缺省同款) */
   readonly scope?: SettingsScope;
-  /** T21 config-changed 订阅 tick(plugins 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  /** T21 config-changed 订阅 tick(plugins 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
 
-export function PluginsPane({ conn, root }: PluginsPaneProps): JSX.Element {
+/** 配置抽屉表单态(受控单对象):values=schema 键的字符串态播种;rest=config 中 schema 外
+ *  既有键(表单不建模——提交透传保全);jsonOpen/jsonText=「JSON 源码」受控折叠(T22 纪律:
+ *  非空即提交整对象以 JSON 为准;收起即清空解除武装) */
+interface ConfigForm {
+  values: Record<string, string>;
+  rest: Record<string, unknown>;
+  jsonOpen: boolean;
+  jsonText: string;
+}
+
+/** 表单字符串值 → config 片段(严格态):boolean 恒落 true/false;number 非空转数字(非有限
+ *  数=校验失败);string 非空落值;空串=删键(显式清空语义) */
+const buildValues = (
+  values: Record<string, string>,
+  schema: NonNullable<PluginRow['configSchema']>,
+): { ok: true; config: Record<string, unknown> } | { ok: false; error: string } => {
+  const config: Record<string, unknown> = {};
+  for (const [k, raw] of Object.entries(values)) {
+    const type = schema[k]?.type;
+    if (type === 'boolean') {
+      config[k] = raw === 'true';
+    } else if (type === 'number') {
+      if (raw.trim() === '') continue;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return { ok: false, error: t(`Invalid number for ${k}: ${raw}`, `${k} 不是合法数字: ${raw}`) };
+      config[k] = n;
+    } else {
+      if (raw === '') continue;
+      config[k] = raw;
+    }
+  }
+  return { ok: true, config };
+};
+
+export function PluginsPane({ conn, root, scope, refreshTick }: PluginsPaneProps): JSX.Element {
   const [rows, setRows] = useState<PluginRow[] | null>(null);
   /** 装载聚合警告(pane 尾展开;可选防旧 daemon——GET 载荷恒带,结构面留宽) */
   const [viewWarnings, setViewWarnings] = useState<string[]>([]);
   const [loadError, setLoadError] = useState('');
-  /** 在途开关的插件 id(逐卡禁用——与 McpPane saving 同语义) */
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const r = root === '' ? undefined : root;
+  const [actionError, setActionError] = useState('');
+  /** 写面在途门(saving 单点——开关/配置提交共用,在途禁再发) */
+  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState('');
+  const [drawer, setDrawer] = useState<PluginRow | null>(null);
+  const [form, setForm] = useState<ConfigForm | null>(null);
+  const [formError, setFormError] = useState('');
+
+  /** 作用域裁定:壳下发优先,缺省按 root 推断(壳缺省同款——无 root 强制 global) */
+  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
+  /** 读面取参:project 作用域带 root(两级清单),global 作用域省参(仅全局清单) */
+  const fetchRoot = myScope === 'project' && root !== '' ? root : undefined;
+  /** 写面取参单点:project 带 root、global 省参(不留空串伪参) */
+  const writeRoot = fetchRoot;
 
   const load = useCallback((): void => {
-    conn.plugins(r).then(
+    conn.plugins(fetchRoot).then(
       (v) => {
         setRows(v.plugins);
         setViewWarnings(v.warnings ?? []);
@@ -54,116 +114,218 @@ export function PluginsPane({ conn, root }: PluginsPaneProps): JSX.Element {
       },
       (err: unknown) => setLoadError(errText(err)),
     );
-  }, [conn, r]);
+  }, [conn, fetchRoot]);
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉(config-changed 订阅消费面)
 
-  /** 开关切换:PUT 语义键(显式布尔)成功后重拉;失败行内错误条(pane 顶,沿 McpPane 裁定) */
+  /** 开关切换:PUT 语义键(显式布尔)按作用域落位,成功后重拉(新会话生效);
+   *  失败行内错误条(actionError,pane 顶) */
   const toggle = (p: PluginRow): void => {
-    if (root === '' || !p.platformSupported || savingId !== null) return;
-    setSavingId(p.id);
-    conn.putPlugin(root, p.id, { enabled: !p.enabled }).then(
+    if (!p.platformSupported || saving) return;
+    setSaving(true);
+    setActionError('');
+    conn.putPlugin(writeRoot, p.id, { enabled: !p.enabled }).then(
       () => {
-        setSavingId(null);
+        setSaving(false);
         load();
       },
       (err: unknown) => {
-        setSavingId(null);
-        setLoadError(errText(err));
+        setSaving(false);
+        setActionError(errText(err));
       },
     );
   };
 
+  /** 抽屉打开:schema 键逐键播种既有 config 值(String 化;缺省空串=未设);schema 外既有键
+   *  收进 rest(提交透传保全——T22 seedRest 同纪律);无 schema=JSON 文本域直接展开+预填
+   *  既有 config(唯一编辑面);有 schema=折叠收起(jsonText 空=表单组装生效) */
+  const openDrawer = (p: PluginRow): void => {
+    setFormError('');
+    const schemaKeys = Object.keys(p.configSchema ?? {});
+    const values: Record<string, string> = {};
+    for (const k of schemaKeys) {
+      const v = p.config?.[k];
+      values[k] = v === undefined ? '' : String(v);
+    }
+    const rest: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(p.config ?? {})) {
+      if (!schemaKeys.includes(k)) rest[k] = v;
+    }
+    const jsonOpen = schemaKeys.length === 0;
+    setForm({
+      values,
+      rest,
+      jsonOpen,
+      jsonText: jsonOpen ? JSON.stringify(p.config ?? {}, null, 2) : '',
+    });
+    setDrawer(p);
+  };
+
+  /** 「JSON 源码」受控开合(T22 同款,preventDefault 拦原生 toggle——jsdom/键盘同径):
+   *  展开且文本空 → 按当前表单+rest 预填整对象(逐键按 schema type lenient 转换——非法数字
+   *  回落原串,预览不篡改类型);收起 → 清空解除武装(覆写规则见抽屉提示行) */
+  const toggleJson = (next: boolean, schema: NonNullable<PluginRow['configSchema']>): void => {
+    setForm((f) => {
+      if (f === null || f.jsonOpen === next) return f;
+      if (next && f.jsonText.trim() === '') {
+        const seeded: Record<string, unknown> = { ...f.rest };
+        for (const [k, raw] of Object.entries(f.values)) {
+          if (raw === '') continue;
+          const type = schema[k]?.type;
+          if (type === 'boolean') seeded[k] = raw === 'true';
+          else if (type === 'number') {
+            const n = Number(raw);
+            seeded[k] = Number.isFinite(n) ? n : raw;
+          } else seeded[k] = raw;
+        }
+        return { ...f, jsonOpen: true, jsonText: JSON.stringify(seeded, null, 2) };
+      }
+      return { ...f, jsonOpen: next, jsonText: next ? f.jsonText : '' };
+    });
+  };
+
+  /** 抽屉保存:「JSON 源码」非空 → 整对象以 JSON 为准(parse+对象形状门);否则表单组装
+   *  (rest 透传+schema 键类型化值)→ putPlugin(…, {config}) 整对象覆写 → 成功关抽屉+重拉 */
+  const submitDrawer = (): void => {
+    if (drawer === null || form === null || saving) return;
+    const schema = drawer.configSchema ?? {};
+    let config: Record<string, unknown>;
+    if (form.jsonText.trim() !== '') {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(form.jsonText);
+      } catch (e) {
+        setFormError(t(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`, `JSON 非法: ${e instanceof Error ? e.message : String(e)}`));
+        return;
+      }
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setFormError(t('Config must be a JSON object', '配置必须是 JSON 对象'));
+        return;
+      }
+      config = parsed as Record<string, unknown>;
+    } else {
+      const built = buildValues(form.values, schema);
+      if (!built.ok) {
+        setFormError(built.error);
+        return;
+      }
+      config = { ...form.rest, ...built.config };
+    }
+    setSaving(true);
+    setFormError('');
+    conn.putPlugin(writeRoot, drawer.id, { config }).then(
+      () => {
+        setSaving(false);
+        setDrawer(null);
+        setForm(null);
+        load();
+      },
+      (err: unknown) => {
+        setSaving(false);
+        setFormError(errText(err)); // 400 形状面/409 写面原文行内
+      },
+    );
+  };
+
+  /** 过滤面:id/name/description 大小写不敏感包含 */
+  const needle = query.trim().toLowerCase();
+  const visible = (rows ?? []).filter((p) => (needle === '' ? true : `${p.id} ${p.name} ${p.description}`.toLowerCase().includes(needle)));
+
+  /** 卡 chips:版本+平台不支持标(装载层只标记不丢弃——装配面同门剔除,写面全禁) */
+  const chipsOf = (p: PluginRow): ReactNode => (
+    <>
+      <span className="sx-chip">v{p.version}</span>
+      {!p.platformSupported && <span className="sx-shadow-tag">{t('Platform not supported', '平台不支持')}</span>}
+    </>
+  );
+
+  /** 折叠详情(只读保留):逐插件 warnings 行内告警条(manifest 解析告警原值——T22 探测失败
+   *  同位折叠层内;pane 尾聚合装载告警恒展开可见)+ID/servers/skills 元信息 dl+
+   *  configSchema 键说明+config 原值 */
+  const detailsOf = (p: PluginRow): ReactNode => (
+    <>
+      {p.warnings.length > 0 && (
+        <div role="alert">
+          {p.warnings.map((w, i) => (
+            <p key={i} className="sx-agent-warn">
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
+      <dl className="sx-mcp-meta">
+        <dt>ID</dt>
+        <dd>{p.id}</dd>
+        {p.servers.length > 0 && (
+          <>
+            <dt>{t('Servers', '服务器')}</dt>
+            <dd>{p.servers.join(', ')}</dd>
+          </>
+        )}
+        {p.skillsCount !== undefined && p.skillsCount > 0 && (
+          <>
+            <dt>{t('Skills', '技能')}</dt>
+            <dd>{t(`${p.skillsCount} skill(s)`, `技能 ×${p.skillsCount}`)}</dd>
+          </>
+        )}
+      </dl>
+      {p.configSchema !== undefined && (
+        <dl className="sx-mcp-meta">
+          {Object.entries(p.configSchema).map(([k, s]) => (
+            <Fragment key={k}>
+              <dt>{k}</dt>
+              <dd>{s.description !== undefined ? `${s.type} — ${s.description}` : s.type}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+      {p.config !== undefined && Object.keys(p.config).length > 0 && <pre className="sx-plugin-json">{JSON.stringify(p.config, null, 2)}</pre>}
+    </>
+  );
+
   return (
     <section className="sx-settings-form" aria-label="settings pane plugins">
       <h2>{t('Plugins', '插件')}</h2>
-      {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
-      {rows !== null && root !== '' && rows.length > 0 && (
+      <div className="sx-mcp-toolbar">
+        <SearchBar value={query} onChange={setQuery} placeholder={t('Search plugins', '搜索插件')} />
+      </div>
+      {loadError !== '' && <ErrorBanner text={loadError} />}
+      {actionError !== '' && <ErrorBanner text={actionError} />}
+      {rows !== null && rows.length > 0 && visible.length > 0 && (
         <p className="sx-mcp-hint">{t('Toggles take effect on next session', '开关变更对新会话生效')}</p>
       )}
-      {rows === null && loadError === '' && <p className="home-loading">{t('Loading plugins…', '加载插件清单…')}</p>}
-      {rows !== null && rows.length === 0 && loadError === '' && <p className="home-loading">{t('No plugins.', '无已装载插件。')}</p>}
-      {rows !== null && rows.length > 0 && (
-        <ul className="sx-mcp-list">
-          {rows.map((p) => {
-            const writable = root !== '' && p.platformSupported;
+      {rows === null && loadError === '' && <EmptyState text={t('Loading plugins…', '加载插件清单…')} />}
+      {rows !== null && rows.length === 0 && loadError === '' && <EmptyState text={t('No plugins.', '无已装载插件。')} />}
+      {rows !== null && rows.length > 0 && visible.length === 0 && <EmptyState text={t('No matches.', '无匹配结果。')} />}
+      {visible.length > 0 && (
+        <ul className="sx-rc-list">
+          {visible.map((p) => {
+            const writable = p.platformSupported;
             return (
-              <li key={p.id} className={`sx-mcp-card${p.platformSupported ? '' : ' disabled'}`}>
-                <div className="sx-mcp-head">
-                  <span className="sx-mcp-name">{p.name}</span>
-                  <span className="sx-chip">v{p.version}</span>
-                  <SourceBadge source={p.source} />
-                  {/* 平台不支持:置灰卡+告警色标(开关恒禁用——装配面同门剔除) */}
-                  {!p.platformSupported && <span className="sx-shadow-tag">{t('Platform not supported', '平台不支持')}</span>}
+              <ResourceCard
+                key={p.id}
+                title={p.name}
+                chips={chipsOf(p)}
+                badge={{ source: p.source }}
+                enabled={p.enabled}
+                onToggle={writable ? () => toggle(p) : undefined}
+                actions={
                   <button
                     type="button"
-                    role="switch"
-                    aria-checked={p.enabled}
-                    aria-label={`${t('Enable', '启用')} ${p.name}`}
-                    data-tip={
-                      root === ''
-                        ? t('Project-level write required — select a project', '需项目级写权限——请先选择项目')
-                        : !p.platformSupported
-                          ? t('Platform not supported', '平台不支持')
-                          : t('Takes effect on next session', '新会话生效')
-                    }
-                    disabled={!writable || savingId !== null}
-                    className={`sx-mcp-switch${p.enabled ? ' on' : ''}`}
-                    onClick={() => toggle(p)}
+                    aria-label={`${t('Configure', '配置')} ${p.name}`}
+                    disabled={!writable || saving}
+                    data-tip={!writable ? t('Platform not supported', '平台不支持') : undefined}
+                    onClick={() => openDrawer(p)}
                   >
-                    <span className="knob" aria-hidden="true" />
+                    {t('Configure', '配置')}
                   </button>
-                </div>
+                }
+              >
                 {p.description !== '' && <p className="sx-agent-desc">{p.description}</p>}
-                {/* 2026-10-27 用户裁定:ID/服务器/技能等元信息收进「详情(只读)」折叠层(卡片只留
-                    名称/版本/来源/开关/描述——设置页无关信息降噪);config 键说明与原值同层 */}
-                {(p.servers.length > 0 || (p.skillsCount !== undefined && p.skillsCount > 0) || p.configSchema !== undefined || (p.config !== undefined && Object.keys(p.config).length > 0)) && (
-                  <details className="sx-mcp-probe">
-                    <summary>{t('Details (read-only)', '详情(只读)')}</summary>
-                    <dl className="sx-mcp-meta">
-                      <dt>ID</dt>
-                      <dd>{p.id}</dd>
-                      {p.servers.length > 0 && (
-                        <>
-                          <dt>{t('Servers', '服务器')}</dt>
-                          <dd>{p.servers.join(', ')}</dd>
-                        </>
-                      )}
-                      {p.skillsCount !== undefined && p.skillsCount > 0 && (
-                        <>
-                          <dt>{t('Skills', '技能')}</dt>
-                          <dd>{t(`${p.skillsCount} skill(s)`, `技能 ×${p.skillsCount}`)}</dd>
-                        </>
-                      )}
-                    </dl>
-                    {p.configSchema !== undefined && (
-                      <dl className="sx-mcp-meta">
-                        {Object.entries(p.configSchema).map(([k, s]) => (
-                          <Fragment key={k}>
-                            <dt>{k}</dt>
-                            <dd>{s.description !== undefined ? `${s.type} — ${s.description}` : s.type}</dd>
-                          </Fragment>
-                        ))}
-                      </dl>
-                    )}
-                    {p.config !== undefined && Object.keys(p.config).length > 0 && (
-                      <pre className="sx-plugin-json">{JSON.stringify(p.config, null, 2)}</pre>
-                    )}
-                  </details>
-                )}
-                {/* 逐插件 warnings 行内告警条(manifest 解析告警原值——坏值键已告警忽略,插件仍列示) */}
-                {p.warnings.length > 0 && (
-                  <div role="alert">
-                    {p.warnings.map((w, i) => (
-                      <p key={i} className="sx-agent-warn">
-                        {w}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </li>
+                {detailsOf(p)}
+              </ResourceCard>
             );
           })}
         </ul>
@@ -178,6 +340,71 @@ export function PluginsPane({ conn, root }: PluginsPaneProps): JSX.Element {
             </p>
           ))}
         </details>
+      )}
+      {drawer !== null && form !== null && (
+        <EditorDrawer
+          open
+          title={t(`Configure ${drawer.name}`, `配置 ${drawer.name}`)}
+          onClose={() => {
+            setDrawer(null);
+            setForm(null);
+          }}
+          onSubmit={submitDrawer}
+        >
+          <p className="sx-mcp-hint">
+            {t('Saving rewrites the whole plugins.<id>.config object.', '保存将整体改写 plugins.<id>.config 对象。')}
+          </p>
+          <p className="sx-mcp-hint">
+            {t(
+              'A non-empty JSON source overrides the form on save — collapsing the panel clears it.',
+              '「JSON 源码」非空时保存以 JSON 为准;收起面板即清空。',
+            )}
+          </p>
+          {Object.entries(drawer.configSchema ?? {}).map(([k, s]) =>
+            s.type === 'boolean' ? (
+              <label key={k} className="sx-drawer-field sx-check-row">
+                <input
+                  type="checkbox"
+                  aria-label={k}
+                  checked={form.values[k] === 'true'}
+                  onChange={(e) => setForm({ ...form, values: { ...form.values, [k]: e.target.checked ? 'true' : 'false' } })}
+                />
+                {k}
+                {s.description !== undefined && <span className="sx-mcp-hint">{s.description}</span>}
+              </label>
+            ) : (
+              <label key={k} className="sx-drawer-field">
+                {k}
+                {s.description !== undefined && <span className="sx-mcp-hint">{s.description}</span>}
+                <input
+                  aria-label={k}
+                  value={form.values[k] ?? ''}
+                  spellCheck={false}
+                  onChange={(e) => setForm({ ...form, values: { ...form.values, [k]: e.target.value } })}
+                />
+              </label>
+            ),
+          )}
+          <details className="sx-rc-details sx-mcp-json-adv" open={form.jsonOpen}>
+            <summary
+              onClick={(e) => {
+                e.preventDefault();
+                toggleJson(!form.jsonOpen, drawer.configSchema ?? {});
+              }}
+            >
+              {t('JSON source', 'JSON 源码')}
+            </summary>
+            <textarea
+              aria-label={t('Config JSON', '配置 JSON')}
+              className="sx-mcp-json"
+              value={form.jsonText}
+              onChange={(e) => setForm({ ...form, jsonText: e.target.value })}
+              rows={10}
+              spellCheck={false}
+            />
+          </details>
+          {formError !== '' && <ErrorBanner text={formError} />}
+        </EditorDrawer>
       )}
     </section>
   );
