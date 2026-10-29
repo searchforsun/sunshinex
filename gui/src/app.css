@@ -2691,7 +2691,11 @@ input.sx-setting-input { width: 100%; }
    记录、命中按缩放视觉坐标判定——孔整体左移 9.09%(收起钮 28.6px 仅左 5px 可点,右上 [|] 整钮
    错位全死)。反 zoom 1/zoom 使顶带子树累计缩放恒等于 1,挖孔与视觉逐像素对齐,任意界面缩放
    下全局可拖且按钮全可点;窗控簇自有 no-drag 同理须对齐,否则压不进页签条 drag 区 */
-.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+/* 左菜单头缩放回归(2026-10-29 用户裁定「左侧菜单/设置页左菜单第一行也要放大缩小」):撤容器
+   drag+counter-zoom(倒数补偿把菜单头钉死缩放 1.0=设置态左菜单第一行不随界面缩放);窗口拖拽
+   由头内 .sx-menu-head-drag 空白带承担(无条件渲染,margin 安全边避让品牌/收起钮),头内按钮/
+   品牌恢复原生点击面;抽屉态头本就 no-drag+带 counter-zoom(位图对齐)不变 */
+.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; }
 /* 抽屉态整头容器 drag 退役(2026-10-29 用户实测抽屉浮窗态收起钮全死;同案在档:2363 页签条
    「抽屉态一并退出」+ProjectMenu 头注「容器 drag+挖孔 zoom 下位图错位吞收起钮(实证)」)——
    fixed 抽屉 + counter-zoom 的 app-region 位图在抽屉翻转期不可信,挖孔/命中错位吞按钮;
@@ -2784,3 +2788,19 @@ input.sx-setting-input { width: 100%; }
 .sx-rc:has(.sx-shadow-tag) { opacity: 0.5; } /* 被项目遮蔽灰显(沿旧 .sx-mcp-card.shadowed 语言;仅 ResourceCard 卡) */
 /* T26 提供方默认模型 chip(choices[0] 所属——ok 绿描边,与普值 chip 视觉区分) */
 .sx-chip.sx-provider-default { color: var(--ok); border-color: var(--ok); }
+/* 2026-10-29 用户裁定追加段(纯加法;app.css 并行热区只加不改——旧 sx-drawer-* 容器类留置不删,历史段回看):
+   ①编辑抽屉→居中模态(sx-editor-modal-*:遮罩+居中,Cancel/×/Esc/遮罩点击=关,Save=提交);
+   ②资源页工具栏三件套入页(sx-res-toolbar:作用域下拉|搜索弹性|添加钮一行) */
+.sx-editor-modal-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.sx-editor-modal { width: min(90vw, 640px); max-height: 80vh; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; }
+.sx-editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.sx-editor-modal-head h3 { margin: 0; font-size: 14px; }
+.sx-editor-modal-close { border: none; background: transparent; color: var(--fg-secondary); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
+.sx-editor-modal-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-editor-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
+.sx-editor-modal-fields { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.sx-editor-modal-actions { margin-top: auto; }
+.sx-res-toolbar { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.sx-res-toolbar > .sx-search-bar { flex: 1 1 160px; width: auto; min-width: 120px; max-width: none; } /* 搜索弹性位(帽仅工具栏内解除) */
+.sx-res-toolbar > .sx-add-button { align-self: auto; flex: none; }
+.sx-res-toolbar > .sx-dd { flex: none; }
