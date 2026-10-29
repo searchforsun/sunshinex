@@ -2684,8 +2684,6 @@ input.sx-setting-input { width: 100%; }
    拖拽面保留、按钮脱离 drag 位图全可点;带挂 counter-zoom 与停靠态同口径(位图逐像素对齐) */
 .sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop.sx-menu-float .sx-menu-head-drag { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
-.sx-shell.sx-desktop.sx-menu-float .sx-menu-head-drag { margin-left: 0; } /* 2026-10-29 用户实测「左抽屉上侧拖不动,右抽屉却可以」拖面对齐:带左扩 16→0 贴导航钮(头内唯一可拖面只剩中缝=体感拖不动);品牌 span 另行声明拖面(纯展示无交互,拖面无按钮挖孔零位图风险),导航钮/收起钮兄弟盒自带 no-drag 不受累 */
-.sx-shell.sx-desktop.sx-menu-float .sx-brand { -webkit-app-region: drag; }
 .sx-shell.sx-desktop .sx-menu-head button,
 .sx-shell.sx-desktop .sx-menu-head input { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
