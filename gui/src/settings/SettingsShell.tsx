@@ -190,7 +190,12 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
           ))}
         </ul>
       </nav>
-      <main className="sx-main sx-settings-main">{renderPane()}</main>
+      <main className="sx-main sx-settings-main">
+        {/* 顶部遮盖条(2026-10-29 用户裁定「右侧设置正文顶部一行作为遮盖区,和主对话一样」):
+            正文在视口内滚动,物理上进不了条区;空带兼窗拖拽 */}
+        <div className="sx-settings-topbar" aria-hidden="true" />
+        <div className="sx-settings-viewport">{renderPane()}</div>
+      </main>
     </>
   );
 }

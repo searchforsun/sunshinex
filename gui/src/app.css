@@ -131,7 +131,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 .chat-topbar .sx-open-split .sx-open-main { width: 26px; height: 26px; border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .chat-topbar .sx-open-split .sx-open-caret { width: 16px; height: 26px; padding: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; margin-left: -1px; }
 /* 菜单头拖拽条:brand 与收起钮之间空白区承担窗拖拽(抽屉打开顶部可拖动应用);与按钮不相交 */
-.sx-head-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
+.sx-head-drag { flex: 1; align-self: stretch; }
 /* 浮窗态 dock 无任何让位规则(2026-10-24 用户裁定「抽屉是上浮的」):composer 恒按分栏态
    几何(left:50% 居中/main−32)铺满主栏,抽屉 z-80 直接盖在右缘——曾有 inset 让位与
    left:50%−w/2 位移公式,均因挤占/错位 composer 被裁撤 */
@@ -2367,15 +2367,15 @@ input.sx-setting-input { width: 100%; }
    ① sx-dragrail 欢迎页/连接页顶部整条(left+104 避左上浮出簇=后退/前进钮对+呼出钮,right:148 避窗控簇=118+30 安全边);
    ② sx-topbar-drag 顶栏空白带(左聚布局钮全在带左,带吸右侧余量;抽屉态把手=其未被浮层
      盖住的可见部分);③ sx-menu-head-drag 菜单头空隙带(品牌字与收起钮之间,两侧 margin 避让) */
-.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; } /* 头内按钮安全兜底;拖拽由头内空白带承担 */
-.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop.sx-menu-float .sx-tabstrip { -webkit-app-region: no-drag; } /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
+ /* 头内按钮安全兜底;拖拽由头内空白带承担 */
+
+ /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
 /* 抽屉态顶栏容器 drag 一并退出(2026-10-29 用户实测「点击顶部宽高自动变大」+抽屉态呼出钮两连真实点击全死,CDP 定性):
    抽屉翻转期容器 drag 位图错位吞按钮=点击落进 drag 区,微动鼠标即拖窗,松手贴顶=顶部吸附最大化
    (宽高自动变大的机制);按钮优先原则照 2363 页签条抽屉态退出同款,窗口拖拽由 sx-topbar-drag
    空白带(in-flow 孤岛)承担 */
 .sx-shell.sx-desktop.sx-menu-float .chat-topbar,
-.sx-shell.sx-desktop.sx-sidebar-float .chat-topbar { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop.sx-sidebar-float .chat-topbar { }
 /* 抽屉开启期覆盖面拖拽声明整体退役(2026-10-29 CDP 实测收尾):仅 no-drag 不够——被抽屉盖住的
    drag 孤岛(sx-topbar-drag/sx-dragrail)仍进位图,记录/命中坐标错位方向随布局历史漂移,
    抽屉头按钮被啃(呼出钮/收起钮真实点击间歇全死,合成点击正常=React 链无罪、系统位图有罪);
@@ -2383,22 +2383,22 @@ input.sx-setting-input { width: 100%; }
    被盖住的拖拽面本不可见=零真实损失;抽屉关闭拖拽面即复职 */
 .sx-shell.sx-desktop.sx-menu-float .sx-topbar-drag,
 .sx-shell.sx-desktop.sx-menu-float .sx-dragrail { display: none; }
-.sx-shell.sx-desktop.sx-sidebar-float .sx-tabstrip { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; } /* 撤容器 drag(挖孔式,zoom 下吞窗控) */
+
+.sx-shell.sx-desktop .chat-topbar { } /* 撤容器 drag(挖孔式,zoom 下吞窗控) */
 /* 窗控簇 150px 预留按需生效(2026-10-29 用户实测「窄主栏标题被压没,右侧还有空间」根修):
    预留只在主列是窗口最右表面(窗控簇真正压在主列上)时让位——侧栏停靠展开=窗控簇压侧栏上方,
    主列顶栏无条件 150px 白占=窄主栏标题被挤进剩余窄条而右侧看似空着;浮窗抽屉态(抽屉关=主列
    裸露;抽屉开=该区被抽屉盖住本不可用)与停靠折叠态(32px 骨架兜不住 ~150px 簇)照旧预留 */
 .sx-shell.sx-desktop.sx-sidebar-float .chat-topbar,
 .sx-shell.sx-desktop.sx-sidebar-collapsed .chat-topbar { padding-right: 150px; }
-.sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .chat-topbar .chat-title { -webkit-app-region: no-drag; } /* 标题挖孔(2026-10-29 用户实测 hover 完整名提示失效):标题是 span 非钮非输入,容器 drag 下拖拽区吞鼠标事件=data-tip 不显;让出标题条可拖换 hover 面,窗口拖拽走其后 sx-topbar-drag 空白带不受影响 */
+.sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { }
+.sx-shell.sx-desktop .chat-topbar .chat-title { } /* 标题挖孔(2026-10-29 用户实测 hover 完整名提示失效):标题是 span 非钮非输入,容器 drag 下拖拽区吞鼠标事件=data-tip 不显;让出标题条可拖换 hover 面,窗口拖拽走其后 sx-topbar-drag 空白带不受影响 */
 /* left+104 避让菜单关闭态左上浮出簇(2026-10-25:后退/前进钮对+呼出钮,簇宽 10+84=94)—
    drag 矩形与一切按钮几何互斥不变,zoom 错位平移仍咬不到钮 */
-.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: calc(148px + var(--sidebar-w, 0px)); z-index: 1; -webkit-app-region: drag; } /* 2026-10-28:右缘动态让位侧栏实占宽——欢迎页草稿座页签条上场后 dragrail 常开仍几何互斥(侧栏关=回 148 原值) */
+.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: calc(148px + var(--sidebar-w, 0px)); z-index: 1; } /* 2026-10-28:右缘动态让位侧栏实占宽——欢迎页草稿座页签条上场后 dragrail 常开仍几何互斥(侧栏关=回 148 原值) */
 .sx-shell.sx-desktop.sx-menu-float .sx-dragrail { left: calc(var(--menu-w, 240px) + 12px); } /* 抽屉态让位浮层(width:--menu-w z96),拖拽走顶栏空白带可见部 */
-.sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; margin-left: 24px; -webkit-app-region: drag; } /* margin-left=zoom 位图错位安全边(带左紧邻 ChatDynButtons) */
-.sx-shell.sx-desktop .sx-menu-head-drag { flex: 1; align-self: stretch; margin: 0 24px 0 16px; -webkit-app-region: drag; } /* 右 24 避收起钮;左 16 避品牌字——右单侧,钮仍贴右缘 */
+.sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; margin-left: 24px; } /* margin-left=zoom 位图错位安全边(带左紧邻 ChatDynButtons) */
+.sx-shell.sx-desktop .sx-menu-head-drag { flex: 1; align-self: stretch; margin: 0 24px 0 16px; } /* 右 24 避收起钮;左 16 避品牌字——右单侧,钮仍贴右缘 */
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
 /* 2026-10-25 尾块恒进解析器(上层统一裁定:实时渲染不枚举结构前缀),纯文本直出分支退役——本条 <pre> 回零规则随之删除 */
@@ -2450,15 +2450,15 @@ input.sx-setting-input { width: 100%; }
 .entry { content-visibility: auto; contain-intrinsic-size: auto 40px; }
 
 /* ===== 2026-10-23 用户裁定:自绘窗控簇(撤 WCO 方块)——[|] 侧栏开关 + − □ ×,
-   sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; -webkit-app-region: no-drag; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+   sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖)——2026-10-23 [|] 入簇:簇=|+−□× 四钮
    (4×26+3×2=110,right:8 → 簇左缘=W-118),让位 92→120 */
-.sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; -webkit-app-region: no-drag; } /* 2026-10-24 拖拽重构:页签条容器 drag 退役——真 zoom1.1 实测其 no-drag 挖孔错位吞 fixed 右上窗控簇([|] 真实点击变拖窗,与顶栏同机制);页签空档不再拖窗,拖拽单点走顶栏空白带/菜单头带/rail */
+.sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; } /* 2026-10-24 拖拽重构:页签条容器 drag 退役——真 zoom1.1 实测其 no-drag 挖孔错位吞 fixed 右上窗控簇([|] 真实点击变拖窗,与顶栏同机制);页签空档不再拖窗,拖拽单点走顶栏空白带/菜单头带/rail */
 .sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 40px; } /* web:固定 [|] 钉窗口右缘(占 W-34..W-8),页签内容止步让位 */
-.sx-shell.sx-desktop .sx-tabstrip button, .sx-shell.sx-desktop .sx-tabstrip input { -webkit-app-region: no-drag; }
+
 /* 2026-10-24 用户实测:页签搜索弹窗行是 div[role=button](非真 button),落拖拽区致桌面点击变拖窗——
    弹层子树整体豁免(弹窗面永不拖窗);newtab 弹层同口径防缝隙区吞点 */
-.sx-shell.sx-desktop .sx-tabstrip .sx-tabsearch, .sx-shell.sx-desktop .sx-tabstrip .sx-tabsearch *, .sx-shell.sx-desktop .sx-tabstrip .sx-menu-pop, .sx-shell.sx-desktop .sx-tabstrip .sx-menu-pop * { -webkit-app-region: no-drag; }
+
 /* 2026-10-23 用户裁定:①「+」弹窗提层保险(真根因=右栏 overflow 裁切,另修);
    ②web 旧 10px 内距规则已被上行 40px 让位取代 */
 .sx-strip-newtab .sx-menu-pop { z-index: 45; }
@@ -2695,25 +2695,25 @@ input.sx-setting-input { width: 100%; }
    drag+counter-zoom(倒数补偿把菜单头钉死缩放 1.0=设置态左菜单第一行不随界面缩放);窗口拖拽
    由头内 .sx-menu-head-drag 空白带承担(无条件渲染,margin 安全边避让品牌/收起钮),头内按钮/
    品牌恢复原生点击面;抽屉态头本就 no-drag+带 counter-zoom(位图对齐)不变 */
-.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: no-drag; }
+
 /* 抽屉态整头容器 drag 退役(2026-10-29 用户实测抽屉浮窗态收起钮全死;同案在档:2363 页签条
    「抽屉态一并退出」+ProjectMenu 头注「容器 drag+挖孔 zoom 下位图错位吞收起钮(实证)」)——
    fixed 抽屉 + counter-zoom 的 app-region 位图在抽屉翻转期不可信,挖孔/命中错位吞按钮;
    drag 收缩到头内空白带 .sx-menu-head-drag(2377:左 16 避品牌字/右 24 避收起钮,几何互斥),
    拖拽面保留、按钮脱离 drag 位图全可点;带挂 counter-zoom 与停靠态同口径(位图逐像素对齐) */
-.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop.sx-menu-float .sx-menu-head-drag { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+
+
 .sx-shell.sx-desktop .sx-menu-head button,
-.sx-shell.sx-desktop .sx-menu-head input { -webkit-app-region: no-drag; }
+
 /* 顶行缩放回归(2026-10-29 用户裁定「顶部一行也要放大缩小」):chat-topbar/tabstrip 撤容器
    drag+counter-zoom——倒数补偿把顶行钉死在缩放 1.0(字体/行高不随界面缩放,比正文小一档,
    用户实测截图「字体大小和行高都没有变化」);窗口拖拽由专用空白带承担(sx-topbar-drag/
    sx-dragrail/页签条右端 sx-tabstrip-drag 40px 拖带),按钮/页签恢复原生点击面,zoom 下命中
    零错位;wincontrols 同步撤补偿=窗控三钮随缩放;拖带挂 counter-zoom 与 menu-head-drag
    同口径(空带位图逐像素对齐),抽屉态退场照 sx-topbar-drag 惯例 */
-.sx-shell.sx-desktop .chat-topbar { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .sx-tabstrip { -webkit-app-region: no-drag; }
-.sx-shell.sx-desktop .sx-tabstrip-drag { flex: none; width: 40px; align-self: stretch; -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+.sx-shell.sx-desktop .chat-topbar { }
+
+.sx-shell.sx-desktop .sx-tabstrip-drag { flex: none; width: 40px; align-self: stretch; }
 .sx-shell.sx-desktop.sx-menu-float .sx-tabstrip-drag,
 .sx-shell.sx-desktop.sx-sidebar-float .sx-tabstrip-drag { display: none; }
 
@@ -2810,16 +2810,17 @@ input.sx-setting-input { width: 100%; }
    且自 y0 起滚,内容上滑直入窗顶条区)——sticky 钉顶+负下边距让正文从容器顶起滑、上滑被条盖住,
    主对话 topbar 同款遮盖语义;条底 1px 分割线同 main 对话。窗控簇 fixed z90 在条上方不受影响,
    弹层 z40 模态照常盖条 */
-.sx-settings-head .sx-new-chat { margin-left: 0; }
-.sx-settings-main { position: relative; }
-.sx-settings-main::before {
-  content: '';
-  position: sticky;
-  top: 0;
-  display: block;
+.sx-settings-head .sx-new-chat { margin-left: -12px; padding-right: 10px; } /* 实测修正:箭头字面 x27→x15≈导航文字 x14(胶囊贴列缘);右内边距 10=hover 圆角底全包文字(旧 padding-right 0 圆角切「回」字) */
+/* 右栏遮盖区改结构化(2026-10-29 二轮实测「设置标题被覆盖」):sticky ::before 条盖住了标题上半截
+   (内容自 y0 起滚,静止态即半遮)——改主对话同构:条+视口两段 flex,正文在视口内滚动,物理上进
+   不了条区;条兼窗拖拽(空带 counter-zoom 位图对齐,menu-head-drag 同口径) */
+.sx-settings-main { display: flex; flex-direction: column; overflow: hidden; }
+.sx-settings-topbar {
+  flex: none;
   height: var(--toolbar-h);
-  margin-bottom: calc(-1 * var(--toolbar-h));
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  z-index: 5;
+  -webkit-app-region: drag;
+  zoom: var(--ui-zoom-inv, 1);
 }
+.sx-settings-viewport { flex: 1 1 0; min-height: 0; overflow-y: auto; }
