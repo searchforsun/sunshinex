@@ -254,38 +254,86 @@ function removeCmd(args: string[]): number {
   return 0;
 }
 
+/** 单块扫描产物：done=false → buf 已累计、echo 为本块回显串；done=true → value=提交值（undefined=中止） */
+export type ScanOutcome = { done: false; buf: string; echo: string } | { done: true; value: string | undefined };
+
 /**
- * 隐藏输入最小实现（brief 裁定：readline 质询 + setRawMode 逐字符读，仓内无 mute 先例）：
- * 回显 * 逐位累计，回车结束；Ctrl+C 中止（raw 模式不生成 SIGINT，须手动识别 \x03）；退格回显位
- * 擦除；ESC 控制序列整段忽略。密钥值只经返回值交付写面，无任何回显路径。
+ * 单块逐字符扫描（纯函数，测试可注入）：raw 模式下 stdin 按块送达——粘贴块会把密钥文本与终止符
+ * 合并在一块（剪贴板尾随换行 → 'abc\r'），逐块等值检查会漏判终止符致其嵌入存入的密钥（静默凭据
+ * 损坏）。逐字符扫描：\r/\n 即终止（提交已收集值）、\x03 中止（raw 模式不生成 SIGINT，须手动
+ * 识别）、\x7f/\b 退格删一位、\x1b 跳过整条控制序列（CSI/SS3：ESC + 引入字节 + 参数/中间字节 +
+ * 最终字节）、其余 C0 控制字符忽略、可打印字符入缓冲并计一次回显位。
+ */
+export function scanChunk(s: string, buf: string): ScanOutcome {
+  let out = buf;
+  let echo = '';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (ch === '\r' || ch === '\n') return { done: true, value: out };
+    if (ch === '\x03') return { done: true, value: undefined };
+    if (ch === '\x7f' || ch === '\b') {
+      if (out.length > 0) {
+        out = out.slice(0, -1);
+        echo += '\b \b'; // 退格回显位擦除
+      }
+      continue;
+    }
+    if (ch === '\x1b') {
+      if (s[i + 1] === '[' || s[i + 1] === 'O') {
+        i += 2; // 跳过 ESC 与引入字节
+        while (i < s.length && s.charCodeAt(i) <= 0x3f) i++; // 参数/中间字节（0x20–0x3F）
+        // i 停在最终字节（0x40–0x7E）上——留给 for 的 i++ 消费，此处不得再跳（防吞后续可打印字符）
+      } // 裸 ESC：仅忽略该字符
+      continue;
+    }
+    if (ch.charCodeAt(0) < 0x20) continue; // 其余 C0 控制字符忽略（不入缓冲不回显）
+    out += ch;
+    echo += '*';
+  }
+  return { done: false, buf: out, echo };
+}
+
+/**
+ * 隐藏输入最小实现（brief 裁定：setRawMode 逐字符读，仓内无 readline mute 先例）：回显 * 逐位
+ * 累计，回车结束；块解析与终端态维护分立——块内容裁定全在 scanChunk 纯函数（可注入钉测）；
+ * 回显/终止通路异常时恢复 cooked 模式再上抛（终端态守卫，防异常路径挂死 raw 终端）。
+ * 密钥值只经返回值交付写面，无任何回显路径。
  */
 function readHiddenLine(prompt: string): Promise<string | undefined> {
   return new Promise((resolve) => {
     const stdin = process.stdin;
     process.stdout.write(prompt);
-    stdin.setRawMode(true);
+    try {
+      stdin.setRawMode(true);
+    } catch {
+      // 非 TTY 直调兜底（keyCmd 的 TTY 门先行，此处只防进程内直跑挂死）
+    }
     let buf = '';
     const finish = (value: string | undefined): void => {
       stdin.removeListener('data', onData);
-      stdin.setRawMode(false);
+      try {
+        stdin.setRawMode(false);
+      } catch {
+        // 终端态恢复失败不掩盖原异常
+      }
       stdin.pause();
       process.stdout.write('\n');
       resolve(value);
     };
     const onData = (chunk: Buffer | string): void => {
-      const s = chunk.toString('utf8');
-      if (s === '\r' || s === '\n') return finish(buf);
-      if (s === '\x03') return finish(undefined); // Ctrl+C：raw 模式不生成 SIGINT，手动中止
-      if (s === '\x7f' || s === '\b') {
-        if (buf.length > 0) {
-          buf = buf.slice(0, -1);
-          process.stdout.write('\b \b'); // 退格回显位擦除
-        }
-        return;
+      try {
+        const outcome = scanChunk(chunk.toString('utf8'), buf);
+        if (outcome.done) return finish(outcome.value);
+        buf = outcome.buf;
+        if (outcome.echo !== '') process.stdout.write(outcome.echo);
+      } catch (e) {
+        // 异常路径终端态守卫：回显/终止通路抛（如管道对面 EPIPE）先恢复 cooked 模式再上抛
+        // （finish 已恢复过则本次为幂等兜底；恢复失败不掩盖原异常）
+        try {
+          stdin.setRawMode(false);
+        } catch { /* 流已毁/已 cooked */ }
+        throw e;
       }
-      if (s.startsWith('\x1b')) return; // ESC 控制序列（方向键等）整段忽略
-      buf += s;
-      process.stdout.write('*'.repeat(s.length));
     };
     stdin.on('data', onData);
   });

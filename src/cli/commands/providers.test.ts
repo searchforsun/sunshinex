@@ -6,6 +6,7 @@ import * as http from 'http';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
+import { scanChunk } from './providers';
 
 /**
  * providers 子命令族端到端验收（Task 19）：spawn dist/cli/index.js 真子进程——CLI 全链
@@ -15,7 +16,8 @@ import * as path from 'path';
  * ② model move a --direction=down → 序 [b,a] ③ model add c --tier=small → ModelChoice tier 标注
  * ④ set --base-url 增量 ⑤ remove 删整条 ⑥ key：非 TTY spawn → exit 1 提示（TTY 交互路径手工验收）。
  * 附加钉：⑦ 密钥任何输出路径零回显 ⑧ 用法错族零副作用 ⑨ test 真 HTTP 探测（ok 两行/Bearer 头/
- * 拒连 error/not found）⑩ --scope=global 落 HOME settings。
+ * 拒连 error/not found）⑩ --scope=global 落 HOME settings ⑪⑫ key 块解析 scanChunk 注入钉
+ * （T19 评审修补：粘贴块内嵌终止符/控制字符——进程内混合面，spawn 面 stdin 恒非 TTY 无法驱动）。
  */
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -328,4 +330,46 @@ test('⑩ add --scope=global → 落 HOME settings.json（HOME 桩）', () => {
   } finally {
     cleanup(f);
   }
+});
+
+/* ---------- key 交互面块解析（scanChunk 纯函数注入面） ----------
+ *  T19 评审修补钉：readHiddenLine 的 stdin 交互在 spawn 面恒非 TTY（⑥ 已钉错误路径），TTY 交互
+ *  无法自动化——块解析裁定抽纯为 scanChunk 后按 plugins.test 进程内+spawn 混合先例在此注入钉测。
+ *  重点：粘贴块把密钥文本与终止符合并送达（剪贴板尾随换行 → 'abc\r'）时终止符不得嵌入存入密钥。 */
+
+test('⑪ scanChunk：粘贴块内嵌终止符 → 终止且不嵌入密钥（T19 评审修补钉）', () => {
+  // 剪贴板带尾随换行的整块粘贴：'abc\r' 一次送达 → 得 'abc' 且终止（逐块等值检查漏判的缺陷面）
+  const cr = scanChunk('abc\r', '');
+  assert.ok(cr.done, '块内 \r 应终止');
+  assert.equal(cr.done && cr.value, 'abc', `终止符不得嵌入密钥：${JSON.stringify(cr)}`);
+  // LF 终止同判
+  const lf = scanChunk('abc\n', '');
+  assert.ok(lf.done && lf.done && lf.value === 'abc', '块内 \n 应终止且不嵌入');
+  // 终止符后的字符不再收集（'abc\rX' → 'abc'，X 属下一行输入）
+  const trail = scanChunk('abc\rX', '');
+  assert.ok(trail.done && trail.value === 'abc', `终止符后的残块不得入缓冲：${JSON.stringify(trail)}`);
+});
+
+test('⑫ scanChunk：块内 Ctrl+C 中止 / C0 控制字符忽略 / 退格 / ESC 序列跳过 / 分块续接', () => {
+  // 块内 \x03（Ctrl+C 内嵌）→ 中止（value undefined），后续字符不再收集
+  const abort = scanChunk('ab\x03cd', '');
+  assert.ok(abort.done, '块内 Ctrl+C 应中止');
+  assert.equal(abort.done && abort.value, undefined, '中止不得提交半截缓冲');
+  // 其余 C0 控制字符（\x00、\t）忽略不入缓冲
+  const c0 = scanChunk('a\x00b\tc', '');
+  assert.ok(!c0.done && c0.buf === 'abc', `C0 控制字符应忽略：${JSON.stringify(c0)}`);
+  assert.equal(c0.echo, '***', '回显位逐可打印字符计');
+  // 块内退格（DEL \x7f）：删一位缓冲
+  const del = scanChunk('abc\x7f\r', '');
+  assert.ok(del.done && del.value === 'ab', `块内退格应删一位：${JSON.stringify(del)}`);
+  // CSI 序列整条跳过（ESC [ 参数 最终字节）：最终字节 'A' 不得漏入缓冲
+  const csi = scanChunk('ab\x1b[Ac', '');
+  assert.ok(!csi.done && csi.buf === 'abc', `ESC 序列应整条跳过：${JSON.stringify(csi)}`);
+  // 分块送达续接：单字符块逐位来（逐键形态）
+  const first = scanChunk('a', '');
+  assert.ok(!first.done, '单字符块不应终止');
+  const second = scanChunk('b', first.done ? '' : first.buf);
+  assert.ok(!second.done, '单字符块不应终止');
+  const last = scanChunk('c\r', second.done ? '' : second.buf);
+  assert.ok(last.done && last.value === 'abc', `分块续接应等价整块：${JSON.stringify(last)}`);
 });
