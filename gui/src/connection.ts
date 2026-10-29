@@ -18,6 +18,7 @@ import type {
   McpRow,
   McpRowInput,
   McpOpInput,
+  PermissionOpInput,
   PluginRow,
   SessionRow,
   SessionTaskRow,
@@ -211,6 +212,11 @@ export interface Connection {
   /** PUT /settings/raw {scope, root?, file, content}（T3）：服务端验证拒存+原子写；root 缺省省
    *  字段（scope=global 无锚只写盘不 reload，scope=project 缺 root 400） */
   putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void>;
+  /** PUT /settings/permissions/op（Task 16 单条目操作端点，Task 25 PermissionsPane 消费）：op
+   *  add|remove；scope='project' 必带 root（缺 400）、'global' 省参；400=纯请求形状错误、409=
+   *  内容/写面错误（hint:'use raw editor' 引流 raw 编辑面）以 HTTP 失败抛错；成功 200 {ok:true}
+   *  （add 幂等去重，remove 缺失 409） */
+  putPermissionOp(input: PermissionOpInput): Promise<void>;
   /** GET /settings/mcp?root=（T4）：两级遮蔽清单（项目全量 source='project' + 全局逐名 shadowed 标记） */
   mcpServers(root?: string): Promise<{ servers: McpRow[] }>;
   /** POST /settings/mcp/probe {root?, name}（T4）：单台真探测联合应答（失败即结果非错误码，见
@@ -632,6 +638,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void> {
       return put('/settings/raw', { scope, ...(root === undefined ? {} : { root }), file, content });
+    },
+    putPermissionOp(input: PermissionOpInput): Promise<void> {
+      // input 原文即请求体（putMcpOp/putAgentOp 同款——scope=global 省参不留 root 空串伪参）
+      return put('/settings/permissions/op', input);
     },
     mcpServers(root?: string): Promise<{ servers: McpRow[] }> {
       return getJson<{ servers: McpRow[] }>(root === undefined ? '/settings/mcp' : `/settings/mcp?root=${encodeURIComponent(root)}`);

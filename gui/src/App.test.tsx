@@ -335,6 +335,18 @@ const h = vi.hoisted(() => {
       this.putSettingsRawCalls.push([scope, root ?? '', file, content]);
       return Promise.resolve();
     }
+    /** T25 权限 op 面:PermissionsPane 结构化增删桩(缺省恒成;调用记录供断言) */
+    putPermissionOpCalls: Array<{ op: 'add' | 'remove'; scope: 'project' | 'global'; root?: string; list: 'deny' | 'allow' | 'additionalDirs'; value: string }> = [];
+    putPermissionOp(input: {
+      op: 'add' | 'remove';
+      scope: 'project' | 'global';
+      root?: string;
+      list: 'deny' | 'allow' | 'additionalDirs';
+      value: string;
+    }): Promise<void> {
+      this.putPermissionOpCalls.push(input);
+      return Promise.resolve();
+    }
     guiState(_id: string): Promise<{ state: unknown }> {
       return Promise.resolve({ state: null }); // G14.2xx 面私有态:测试缺省无盘档
     }

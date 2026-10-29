@@ -12,6 +12,9 @@ import type { SettingsScope } from './components';
  * 搜索框(弹性) + 来源筛选(全部来源/项目/全局/学习沉淀) + **项目筛选**(全部项目/各项目
  * 名,scope=all 的 project 维度),两者叠加过滤(空查询/全部=不限)。
  * 跨源同 id 去重(装载序先者胜=遮蔽裁决生效源,ComposerPlusPanel 同口径)。
+ * Task 25 遮蔽标注:行带 daemon 富化 shadowedBy(catalog listSkills 链上裁决——当前项目链中
+ * 同 id 被更高优先来源遮蔽)→ 卡灰显 + 「被 <来源> 同名技能遮蔽」角标(sourceDir 随行,
+ * id 悬停 tip;字段在场才渲染——gating 契约沿 T23,MCP/agents 遮蔽标同语言)。
  */
 export interface SkillsPaneConn {
   skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }>;
@@ -37,6 +40,10 @@ interface SkillRow {
   readonly source: SkillsGroup['source'];
   /** 项目归属显示名(scope=all 视图的 project/learned 行;user 行无) */
   readonly project?: string;
+  /** T25 遮蔽标注(daemon 富化):同 id 被更高优先来源遮蔽的胜者来源名——字段在场才灰显+角标 */
+  readonly shadowedBy?: string;
+  /** T25 富化:条目落盘目录(id 悬停 tip;字段在场才带) */
+  readonly sourceDir?: string;
 }
 
 export interface SkillsPaneProps {
@@ -45,13 +52,14 @@ export interface SkillsPaneProps {
   readonly root: string;
   /** 导航标题(aria-label/标题行) */
   readonly title: string;
-  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T25 起解构消费 */
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——本面 scope 意识沿既有过滤保持(scope=all
+   *  跨项目全量视图是本面裁定,不随壳作用域收窄;prop 留置不消费,T26+ 若需分域视图再接) */
   readonly scope?: SettingsScope;
   /** T21 config-changed 订阅 tick(skills 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
   readonly refreshTick?: number;
 }
 
-export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element {
+export function SkillsPane({ conn, root, title, refreshTick }: SkillsPaneProps): JSX.Element {
   /** 平铺技能行(scope=all 全量;null = 加载中) */
   const [skills, setSkills] = useState<SkillRow[] | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -71,7 +79,15 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
           for (const s of g.skills) {
             if (seen.has(s.id)) continue;
             seen.add(s.id);
-            rows.push({ id: s.id, desc: s.description ?? s.name ?? '', source: g.source, ...(g.project !== undefined ? { project: g.project } : {}) });
+            rows.push({
+              id: s.id,
+              desc: s.description ?? s.name ?? '',
+              source: g.source,
+              ...(g.project !== undefined ? { project: g.project } : {}),
+              // T25 富化字段透传(字段在场才带——gating 契约沿 T23,无富化行零标注)
+              ...(s.shadowedBy !== undefined ? { shadowedBy: s.shadowedBy } : {}),
+              ...(s.sourceDir !== undefined ? { sourceDir: s.sourceDir } : {}),
+            });
           }
         }
         setSkills(rows);
@@ -84,7 +100,7 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
     return () => {
       alive = false;
     };
-  }, [conn, r]);
+  }, [conn, r, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉(config-changed 订阅消费面)
 
   /** 项目筛选项:scope=all 行的去重归属名清单(码点序) */
   const projectOptions = useMemo(() => {
@@ -144,9 +160,12 @@ export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element 
       {filtered !== null && filtered.length > 0 && (
         <div className="sx-skill-grid">
           {filtered.map((s) => (
-            <div key={s.id} className="sx-card sx-skill-card">
+            <div key={s.id} className={`sx-card sx-skill-card${s.shadowedBy !== undefined ? ' shadowed' : ''}`}>
               <div className="sx-skill-head">
-                <span className="sx-skill-id">{s.id}</span>
+                <span className="sx-skill-id" data-tip={s.sourceDir}>{s.id}</span>
+                {s.shadowedBy !== undefined && (
+                  <span className="sx-shadow-tag">{t(`Shadowed by ${s.shadowedBy} skill`, `被 ${s.shadowedBy} 同名技能遮蔽`)}</span>
+                )}
                 <span className={`sx-skill-src sx-skill-src-${s.source}`} data-tip={s.project !== undefined ? t(`Belongs to project: ${s.project}`, `归属项目:${s.project}`) : t('Global skill', '全局技能')}>
                   {s.project !== undefined ? s.project : t('Global', '全局')}
                 </span>

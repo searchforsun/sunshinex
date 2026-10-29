@@ -1985,11 +1985,14 @@ describe('G8d T3 GET /settings/agents/body 端点', () => {
 
 // ---------- G8c T6:/settings/skills + /settings/memory-stats 端点(技能三源分组清单+主域记忆概览) ----------
 
-/** GET /settings/skills 应答行(skills.ts SkillsGroup 只读投影;name/description 空串不透出) */
+/** GET /settings/skills 应答行(skills.ts SkillsGroup 只读投影;name/description 空串不透出。
+ *  Task 25 富化:sourceDir=条目落盘目录、shadowedBy=跨源遮蔽胜者来源名——handler 响应侧附加) */
 interface SkillsRow {
   id: string;
   name?: string;
   description?: string;
+  sourceDir?: string;
+  shadowedBy?: string;
 }
 
 /** GET /settings/skills 应答整体(断言用;project=scope=all 跨项目视图的归属名) */
@@ -2023,14 +2026,18 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(body.groups.map((g) => g.source), ['project', 'user', 'learned'], '三组固定序:project→user→learned');
       const group = (s: string): { skills: SkillsRow[] } => body.groups.find((g) => g.source === s)!;
 
-      // 组内去重沿装载序(优先级降序:.sunshinex 先装,.claude 同名跳过)——恰一行且为原生版
+      // 组内去重沿装载序(优先级降序:.sunshinex 先装,.claude 同名跳过)——恰一行且为原生版;
+      // Task 25 富化:行带 sourceDir(落盘目录)
       assert.deepEqual(group('project').skills.filter((s) => s.id === 'alpha'), [
-        { id: 'alpha', name: 'Alpha Native', description: 'native one' },
+        { id: 'alpha', name: 'Alpha Native', description: 'native one', sourceDir: path.join(proj, '.sunshinex', 'skills', 'alpha') },
       ], '组内遮蔽:.sunshinex alpha 生效,.claude 同名让位(恰一行)');
       assert.ok(!group('project').skills.some((s) => s.name === 'Alpha Compat'), '被遮蔽的 .claude 版本不入 project 组');
-      assert.deepEqual(group('project').skills.find((s) => s.id === 'bare'), { id: 'bare' }, '无 frontmatter:name/description 空串不透出(行只含 id)');
-      assert.deepEqual(group('user').skills, [{ id: 'alpha', name: 'Alpha User', description: 'user one' }], 'user 组=全局 userSkillsDir 直扫');
-      assert.deepEqual(group('learned').skills, [{ id: 'learned-one', name: 'Learned One' }], 'learned 组=resolveDataDir(root)/skills');
+      assert.deepEqual(group('project').skills.find((s) => s.id === 'bare'), { id: 'bare', sourceDir: path.join(proj, '.sunshinex', 'skills', 'bare') }, '无 frontmatter:name/description 空串不透出(行只含 id+sourceDir)');
+      // Task 25 富化:user 行锚当前 root 链——同 id project 技能在场 → shadowedBy=project(跨源遮蔽标注)
+      assert.deepEqual(group('user').skills, [
+        { id: 'alpha', name: 'Alpha User', description: 'user one', sourceDir: path.join(home, '.sunshinex', 'skills', 'alpha'), shadowedBy: 'project' },
+      ], 'user 组=全局 userSkillsDir 直扫;shadowedBy=当前项目同名 project 技能');
+      assert.deepEqual(group('learned').skills, [{ id: 'learned-one', name: 'Learned One', sourceDir: path.join(tmp, 'data', 'skills', 'learned-one') }], 'learned 组=resolveDataDir(root)/skills');
       // 跨组不去重:project 与 user 各持 alpha(展示面重复 id 保留,GUI 可标注多源同名)
       assert.equal(body.groups.filter((g) => g.skills.some((s) => s.id === 'alpha')).length, 2, '跨组同名不去重:两组各在');
     });
@@ -2056,6 +2063,8 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(body.groups.map((g) => g.source), ['user', 'project', 'learned'], '固定序:user→project→learned(逐项目)');
       const user = body.groups.find((g) => g.source === 'user')!;
       assert.equal(user.project, undefined, 'user 组无项目归属');
+      // Task 25 富化:scope=all 仅 user 组锚当前 root 链(域组各锚各域,handler 不代锚防撞键错配)
+      assert.deepEqual(user.skills, [{ id: 'solo', name: 'Solo', sourceDir: path.join(home, '.sunshinex', 'skills', 'solo') }], 'user 行带 sourceDir;project 无同名 → 零 shadowedBy');
       const projGroup = body.groups.find((g) => g.source === 'project')!;
       assert.equal(projGroup.project, 'proj', 'project 组归属=当前项目显示名(basename(root))');
       assert.deepEqual(projGroup.skills, [{ id: 'alpha', name: 'Alpha', description: 'd' }]);

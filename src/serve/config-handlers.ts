@@ -34,6 +34,7 @@ import {
 } from '../catalog/agents';
 // Task 15 mcp 写面：单条目操作（add/remove/enable/disable）+ 两级视图读面（approval 标注进响应）
 import { listMcpServers, removeMcpServer, setMcpServerEnabled, upsertMcpServer } from '../catalog/mcp';
+import { listSkills } from '../catalog/skills';
 import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
 // Task 16 providers/permissions 写面：op 端点收口 catalog 单点（读面 GET /settings 同源 listProviders）
 import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../catalog/providers';
@@ -1106,11 +1107,44 @@ export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessa
   }
 }
 
+/** GET /settings/skills 应答行富化形（T6 基形 + Task 25 附加字段，行基形零变化纯附加）：
+ *  sourceDir=条目落盘目录（catalog listSkills 链上 SkillEntry 直映）、shadowedBy=同 id 被更高
+ *  优先来源遮蔽时的胜者来源名（catalog 链上裁决——harness SkillsGroup 投影不带遮蔽关系，本面
+ *  在响应侧富化供 GUI 灰显+角标；正选条目/无法锚定链的行省字段） */
+type SkillsGetRow = SkillsGroup['skills'][number] & { sourceDir?: string; shadowedBy?: string };
+
+/** 技能行富化（Task 25，消费 catalog/skills listSkills 单点）：listSkills(anchor) 链上条目按
+ *  (source,id) 建表，既有 SkillsGroup 行查表命中即补 sourceDir/shadowedBy（未命中保持原行——
+ *  anchor 外的组自然落空）。anchor 语义按视图裁定：
+ *  - 常规视图（root 在场）：三组全部锚定 root 链（loadSkillsGrouped 与 listSkills 同一条
+ *    priorityChain——project 段组内去重口径亦一致，查表逐行命中）；
+ *  - scope=all：跨项目域组各锚各域 root（handler 不重枚举域表，且异域 (source,id) 会与本链
+ *    撞键——查错表即配错 sourceDir），故仅 user 组锚当前 root 链：userSkillsDir root 无关恒
+ *    查表命中，shadowedBy=当前项目同名 project 技能在场即标（GUI 先见 user 行，标注随行透出；
+ *    无 root=无项目上下文=无从遮蔽，整组省字段） */
+function enrichSkillsGroups(groups: SkillsGroup[], anchor: string | undefined, sources: ReadonlyArray<SkillsGroup['source']>): SkillsGroup[] {
+  if (anchor === undefined) return groups;
+  const byKey = new Map(listSkills(anchor).entries.map((e) => [`${e.source}\n${e.id}`, e] as const));
+  const wanted = new Set(sources);
+  return groups.map((g) => {
+    if (!wanted.has(g.source)) return g;
+    return {
+      ...g,
+      skills: g.skills.map((s): SkillsGetRow => {
+        const e = byKey.get(`${g.source}\n${s.id}`);
+        if (e === undefined) return s;
+        return { ...s, sourceDir: e.sourceDir, ...(e.shadowedBy !== undefined ? { shadowedBy: e.shadowedBy } : {}) };
+      }),
+    };
+  });
+}
+
 /** GET /settings/skills?root=（G8c T6，Settings 页 Skills 清单数据源）：root 在场 → loadSkillsGrouped
  *  三组固定序（project/user/learned；组内沿装载序去重、跨组不去重——重复 id 是多源同名的事实呈现，
  *  遮蔽裁决属装配面 loadSkills，视图不预裁）。无 root = 仅 user 组（userSkillsDir 全局可扫；
  *  project/learned 均 root 锚定缺席——空组不占位，与 /settings·/settings/mcp「无 root 仅全局面」
- *  同裁定，但 skills 的全局面是 userSkillsDir 而非 userConfigDir 文件） */
+ *  同裁定，但 skills 的全局面是 userSkillsDir 而非 userConfigDir 文件）。
+ *  Task 25 富化：行补 sourceDir/shadowedBy（见 enrichSkillsGroups——catalog listSkills 消费单点） */
 export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
   const url = urlOf(req);
   const rootParam = url.searchParams.get('root');
@@ -1119,10 +1153,12 @@ export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
   // 组逐域归属项目名;root 入场仅作当前项目组置首锚——设置页 root 可能为空,枚举不依赖它)
   if (url.searchParams.get('scope') === 'all') {
     const groups: SkillsGroup[] = [loadUserSkillsGroup(), ...loadCrossProjectSkillGroups(root)];
-    io.send(res, 200, { groups });
+    io.send(res, 200, { groups: enrichSkillsGroups(groups, root, ['user']) });
     return;
   }
-  io.send(res, 200, { groups: root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()] });
+  io.send(res, 200, {
+    groups: enrichSkillsGroups(root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()], root, ['project', 'user', 'learned']),
+  });
 }
 
 /** GET /settings/memory-stats?root=（G8c T6，Settings 页记忆概览）：root 在场 → memoryStats 主域

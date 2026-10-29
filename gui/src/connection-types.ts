@@ -388,11 +388,30 @@ export type AgentsOpInput =
 
 /** 技能三源分组行（T6，对齐主仓 SkillsGroup）：source 三段 project/user/learned；组内去重沿装载
  *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id。
- *  project=项目归属显示名（scope=all 跨项目视图携带——项目筛选数据面；常规视图不载） */
+ *  project=项目归属显示名（scope=all 跨项目视图携带——项目筛选数据面；常规视图不载）。
+ *  Task 25 富化（可选键，daemon 响应侧附加——catalog listSkills 链上裁决，缺键=行未富化/无遮蔽）：
+ *  - shadowedBy：同 id 被更高优先来源遮蔽时的胜者来源名（SkillsPane 据此灰显+角标；字段在场才
+ *    渲染——gating 契约沿 T23）。
+ *  - sourceDir：条目落盘目录（<链根>/<id>；id 悬停 tip）。 */
 export interface SkillsGroup {
   source: 'project' | 'user' | 'learned';
   project?: string;
-  skills: Array<{ id: string; name?: string; description?: string }>;
+  skills: Array<{ id: string; name?: string; description?: string; shadowedBy?: string; sourceDir?: string }>;
+}
+
+/** PUT /settings/permissions/op 请求体（Task 16 单条目操作端点，Task 25 PermissionsPane 消费）：
+ *  op add|remove 两值；scope 两级（'project' 必带 root——服务端 400 守卫，'global' 省参——服务端
+ *  恒忽略）；list=目标数组键（settings permissions 三数组）；value=权限规则串。错误语义（T15
+ *  裁定）：400=纯请求形状错误、409=内容/写面错误（value 空白/注释/畸形文件 → {error,
+ *  hint:'use raw editor'} 引流 raw 编辑面）——均以 HTTP 失败抛错；成功 200 {ok:true}，add 幂等
+ *  去重（已存在照常 ok），remove 缺失 409 */
+export interface PermissionOpInput {
+  op: 'add' | 'remove';
+  scope: 'project' | 'global';
+  /** scope='project' 必带（服务端 400 守卫）；'global' 缺省省参 */
+  root?: string;
+  list: 'deny' | 'allow' | 'additionalDirs';
+  value: string;
 }
 
 /** GET /settings/plugins 行（2026-10-26 插件面，对齐 daemon handlePluginsGet 载荷 = EffectivePlugin

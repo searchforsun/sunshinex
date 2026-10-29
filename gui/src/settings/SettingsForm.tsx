@@ -3,6 +3,7 @@ import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
 import type { SelectOption } from './controls';
+import { EmptyState, SearchBar } from './components';
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -27,6 +28,8 @@ import type { FontPreset } from '../font-preset';
  * root 归一:''(仅全局)→ settings/memoryStats 省参;此时 source='project' 行不可写(无项目
  * 定位)——触发时报错提示自项目内打开。数字键保存时 number 化;清空值存 null(=delete)。
  * 记忆面板概览行(pane.memoryOverview):conn.memoryStats 只读展示「N 条记忆·最近 X」。
+ * Task 25 行过滤:顶部 SearchBar(组件内 200ms 防抖)按行键名/双语标签/双语说明过滤——
+ * 一 pane 实例一过滤态;过滤激活时特例行(theme/zoom/font)一并滤除,全不命中显空态。
  */
 
 export interface SettingsFieldDef {
@@ -114,6 +117,18 @@ const ON_OFF: readonly SettingsOption[] = [
   { v: 'on', l: 'on', lz: '开' },
   { v: 'off', l: 'off', lz: '关' },
 ];
+
+/** 行过滤匹配(Task 25):键名/双语标签/双语说明四元大小写不敏感包含——键名、本地化标签、
+ *  说明句任一命中即留(空查询=不限;中英混检双侧可达:中文页键 'model'、英文页键 '模型' 均命中) */
+const rowMatches = (fd: SettingsFieldDef, q: string): boolean => {
+  if (q === '') return true;
+  const d = KEY_DESCRIPTIONS[fd.key];
+  return (
+    fd.key.toLowerCase().includes(q) ||
+    (d !== undefined &&
+      (d.label.en.toLowerCase().includes(q) || d.label.zh.includes(q) || d.en.toLowerCase().includes(q) || d.zh.includes(q)))
+  );
+};
 
 /** providers 现配模型去重集(动态建议/选项源的 ctx;choices 缺面=空集) */
 const modelsOf = (view: SettingsView): string[] => [...new Set(view.providers.choices.map((c) => c.model))].filter((m) => m !== '');
@@ -351,6 +366,8 @@ export interface SettingsFormProps {
 export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFormProps): JSX.Element {
   /** 键行表(pane 键过滤后;null = 加载中) */
   const [rows, setRows] = useState<Record<string, SettingsKeyRow> | null>(null);
+  /** 行过滤词(Task 25 顶部 SearchBar,防抖沿组件契约;trim 小写后匹配) */
+  const [filter, setFilter] = useState('');
   /** 输入当前值(键→字符串面;number 输入亦暂存字符串,保存时化型) */
   const [values, setValues] = useState<Record<string, string>>({});
   /** providers 现配模型去重集(combo 动态建议源;视图应答即定格) */
@@ -523,9 +540,14 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
     );
   };
 
+  /** 行过滤词规一(渲染期求值——输入词 trim 小写;空=不限) */
+  const q = filter.trim().toLowerCase();
+
   return (
     <section className="sx-settings-form sx-settings-body" aria-label={`settings pane ${pane.id}`}>
       <h2>{t(pane.title.en, pane.title.zh)}</h2>
+      {/* T25 行过滤入口(四 SETTINGS_PANES 共用本引擎,一 pane 实例一过滤态):按行标签/键过滤 */}
+      <SearchBar value={filter} onChange={setFilter} placeholder={t('Filter settings…', '筛选设置项…')} />
       {pane.memoryOverview && stats !== null && (
         <div className="sx-card sx-memory-card">
           <p className="sx-memory-stats" aria-label="memory stats">
@@ -538,8 +560,8 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
       {rows === null && loadError === '' && <p className="home-loading">{t('Loading settings…', '加载设置…')}</p>}
       {rows !== null &&
         pane.groups.map((g) => {
-          const visible = g.fields.filter((fd) => rows[fd.key] !== undefined);
-          if (!g.themeRow && visible.length === 0) return null; // daemon 未报键的组整卡省略
+          const visible = g.fields.filter((fd) => rows[fd.key] !== undefined && rowMatches(fd, q));
+          if (visible.length === 0 && !(q === '' && (g.themeRow || g.zoomRow || g.fontRow))) return null; // 无可见行组卡省略(过滤命中零行同;特例行仅空查询保留)
           return (
             <div key={g.title.en} className="sx-card sx-settings-card">
               <div className="sx-card-head">
@@ -547,9 +569,9 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
                 {g.desc !== undefined && <span className="sx-card-desc">{t(g.desc.en, g.desc.zh)}</span>}
               </div>
               <div className="sx-card-rows">
-                {g.themeRow && <ThemeRow />}
-                {g.zoomRow && <ZoomRow />}
-                {g.fontRow && <FontRow />}
+                {g.themeRow && q === '' && <ThemeRow />}
+                {g.zoomRow && q === '' && <ZoomRow />}
+                {g.fontRow && q === '' && <FontRow />}
                 {visible.map((fd) => {
                   const row = rows[fd.key]!;
                   const desc = KEY_DESCRIPTIONS[fd.key];
@@ -570,6 +592,9 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
             </div>
           );
         })}
+      {rows !== null && q !== '' && !pane.groups.some((g) => g.fields.some((fd) => rows[fd.key] !== undefined && rowMatches(fd, q))) && (
+        <EmptyState text={t('No matching settings.', '无匹配设置项。')} />
+      )}
       {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}
       {toast !== '' && (
         <div className="sx-toast" role="status">
