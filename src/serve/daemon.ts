@@ -174,7 +174,8 @@ export class GuiDaemon {
   /** 配置变更监听（任务14：双向实时同步的「外部编辑感知」半边）——daemon 持单例；start 时挂全局
    *  目录 + onChange→config-changed 帧广播，会话打开/关闭随 lifecycleIo 挂/拆项目监听；写回环抑制
    *  与内部写直发经 onCatalogWrite 钩子装配（suppress 丢 watcher 回声、broadcast 承担帧下行，两路
-   *  合一：外部编辑走 watcher、内部写走直发，同键不双发）。句柄面：start 开、teardown 收 */
+   *  合一：外部编辑走 watcher、内部写走直发，同键不双发；project 写通知另担补监听——见 start 注）。
+   *  句柄面：start 开、teardown 收 */
   private readonly watcher = new ConfigWatcher();
 
   constructor(opts: GuiDaemonOpts) {
@@ -313,6 +314,13 @@ export class GuiDaemon {
     // + 写回环抑制/直发钩子 + 变更→config-changed 帧广播（无 seq，broadcastFrame 全连接直发）
     this.watcher.watchGlobal(userConfigDir());
     setOnCatalogWrite((resource, scope, root) => {
+      // 补监听（终审修复波 2026-10-28）：project-scope 写通知到达时该 root 尚未监听（会话打开时
+      // `.sunshinex` 还不存在——watchProjectRoot 当时静默跳过）则就地补挂，使 `.sunshinex` 后建的
+      // 项目也能获得实时帧（首次写本身已产直发帧；补挂保证后续外部编辑走 watcher 同样有帧）。
+      // watchProjectRoot 幂等 + 内建 `.sunshinex` 存在性守卫，global 通知 root 恒 null 不入此支。
+      if (scope === 'project' && root !== null && !this.watcher.isProjectWatched(root)) {
+        this.watchProjectRoot(root);
+      }
       this.watcher.suppress(resource, scope, root); // 抑制 watcher 事件源（防自触回声双发）
       this.broadcastFrame({ kind: 'config-changed', resource, scope, root }); // 帧下行由直发承担
     });

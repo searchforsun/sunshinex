@@ -1,10 +1,12 @@
 /**
  * catalog/agents 读面 + 写面：子智能体定义（<agents 目录>/<id>/agent.md）三级位置合并列举 + 遮蔽/旧位置/
  * 启用标注；写面（Task 6）upsert/remove/setEnabled/migrate 收口（serve 面与 GUI 后续一律经此，Task 15 迁）。
- * 位置级序（高→低）：项目新家 <root>/.sunshinex/agents → 全局 <userConfigDir>/agents → 项目旧位置
- * <root>/agents（目录注册制历史装配口径，读面兼容列举、写面只迁不删）。与装载面（harness.AgentRegistry）
- * 的分工：装载面 fail-fast 且每 id 运行期只装一份（Task 7 收口三级装载）；本面是「视图」——全量列出 +
- * 来源标注（新家撞全局：全局条目标 shadowed 保留在列；旧位置仅无同 id 碰撞时列出标 oldLocation）。
+ * 位置级序（高→低，与 harness.AgentRegistry.loadAgents 装载序 global→legacy→新家 last-wins 同构）：
+ * 项目新家 <root>/.sunshinex/agents → 项目旧位置 <root>/agents（目录注册制历史装配口径，读面兼容
+ * 列举、写面只迁不删）→ 全局 <userConfigDir>/agents。与装载面（harness.AgentRegistry）的分工：
+ * 装载面 fail-fast 且每 id 运行期只装一份（Task 7 收口三级装载）；本面是「视图」——全量列出 + 来源
+ * 标注（撞名者生效、被撞者标 shadowed 保留在列：新家撞全局/旧位置，旧位置撞全局——2026-10-28 终审
+ * 修复波裁定视图对齐装载器语义，杜绝「显示全局、生效 legacy」的显示/运行分叉）。
  * 逐文件宽容：单文件畸形 → warnings 不抛死（沿 loadAgentsView 纪律）；enabled:false 照列（启停是
  * 写面/视图操作，运行时剔除属装载面职责）。解析词法复用 parseAgentFrontmatter 单点，不另造解析器。
  * 写面纪律（沿 serve handleAgentsPut 现纪律下沉）：先全量校验后落盘零部分写 + 将落盘字节过真解析器
@@ -27,9 +29,11 @@ export const AGENT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 export interface AgentEntry {
   id: string;
   scope: Scope;
-  /** true = 被项目新家同 id 遮蔽（全局条目保留展示，沿 listMcpServers/loadAgentsView 视图口径）；旧位置条目恒 false（有碰撞即不列） */
+  /** true = 被更高优先同 id 遮蔽（被撞条目保留展示，沿 listMcpServers/loadAgentsView 视图口径——
+   *  2026-10-28 终审裁定后撞名关系=装载序：新家撞全局/旧位置、旧位置撞全局均给全局/旧位置行标
+   *  shadowed）；旧位置条目恒 false（撞名时旧位置是生效面——legacy 遮蔽全局；撞新家则不列） */
   shadowed: boolean;
-  /** true = 来自旧位置 <root>/agents（新家与全局均无同 id 才列出） */
+  /** true = 来自旧位置 <root>/agents（撞新家同 id 不列；撞全局照列且生效——legacy 遮蔽全局） */
   oldLocation: boolean;
   /** 条目落盘目录（所在 agents 目录下本 id 子目录；agent.md 及同级私有文件均在此） */
   dir: string;
@@ -54,18 +58,24 @@ export function agentsDir(scope: Scope, root: string | null, globalDir?: string)
   return path.join(root ?? process.cwd(), '.sunshinex', 'agents');
 }
 
-/** 旧位置（legacy）：<root>/agents —— 目录注册制历史装配口径；读面兼容列举（最低优先级），写面只迁不删 */
+/** 旧位置（legacy）：<root>/agents —— 目录注册制历史装配口径；读面兼容列举（遮蔽全局、低于新家——
+ *  与装载序同构），写面只迁不删 */
 export function legacyAgentsDir(root: string): string {
   return path.join(root, 'agents');
 }
 
 /**
- * 三级合并列举：global → 项目新家 → 旧位置；各层内按 id 字典序（分层序沿 listMcpServers 口径）。
+ * 三级合并列举（层序=装载序：全局 → 项目旧位置 → 项目新家；各层内按 id 字典序沿 listMcpServers 口径）。
  * 容错口径沿 Listing（D7）：目录缺 = 空条目不算错；单文件畸形（frontmatter 缺块/缺 name、读失败）
  * 一律降级产 warnings 不抛——列举面宁可少列不可抛死。root:null 时项目两级整体跳过（只列全局）：
  * 与 mcp 模块 root:null→cwd 回退刻意不同——mcp 需要「无项目上下文时回落 cwd 惯例位」继续可操作，
  * agents 列表面无此需求：目录注册制定义本就依附具体工作区（新家 .sunshinex/agents 与旧位置 agents
  * 皆是项目概念），凭空落 cwd 只会伪造条目。
+ * 遮蔽语义（2026-10-28 终审修复波裁定，与 harness.AgentRegistry.loadAgents 装载序逐层同构）：
+ * 新家最高（同 id 撞旧位置/全局，被撞行 shadowed:true 保留在列）；旧位置中间层（同 id 撞全局——
+ * 旧位置照列且生效、全局行降 shadowed:true；同 id 撞新家则旧位置不列）；全局垫底。此前「全局撞旧位置
+ * 时旧位置整行隐藏」的旧口径与装载器 legacy 遮蔽全局（T7 钉测）三面分歧（CLI/TUI 列全局、运行装
+ * legacy），本裁定后读面单点对齐，显示与运行恒同一副本。
  */
 export function listAgents(root: string | null, globalDir?: string): Listing<AgentEntry> {
   const warnings: string[] = [];
@@ -104,14 +114,19 @@ export function listAgents(root: string | null, globalDir?: string): Listing<Age
   };
   const globalEntries = scan(agentsDir('global', root, globalDir), 'global', false);
   const newHome = root !== null ? scan(agentsDir('project', root, globalDir), 'project', false) : new Map<string, AgentEntry>();
-  // 遮蔽标注：新家同 id 遮蔽全局——全局条目保留在列、标 shadowed:true（视图口径，装载面才真正就近取一份）
+  // 新家最高：同 id 撞全局——全局条目保留在列、标 shadowed:true（视图口径，装载面才真正就近取一份）
   for (const id of newHome.keys()) {
     const g = globalEntries.get(id);
     if (g) globalEntries.set(id, { ...g, shadowed: true });
   }
-  // 旧位置最低：仅当该 id 在全局与新家都不存在时列出（就近优先零歧义），标 oldLocation:true
+  // 旧位置中间层（装载序 legacy 遮蔽全局，2026-10-28 终审裁定视图对齐）：撞新家 → 不列（新家生效）；
+  // 撞全局 → 照列且为生效副本（shadowed 恒 false），同 id 全局行降 shadowed:true 保留在列
   const legacy = root !== null ? scan(legacyAgentsDir(root), 'project', true) : new Map<string, AgentEntry>();
-  const legacyEntries = [...legacy.values()].filter((e) => !globalEntries.has(e.id) && !newHome.has(e.id));
+  const legacyEntries = [...legacy.values()].filter((e) => !newHome.has(e.id));
+  for (const e of legacyEntries) {
+    const g = globalEntries.get(e.id);
+    if (g) globalEntries.set(e.id, { ...g, shadowed: true });
+  }
   const byId = (a: AgentEntry, b: AgentEntry): number => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return { entries: [...[...globalEntries.values()].sort(byId), ...[...newHome.values()].sort(byId), ...legacyEntries.sort(byId)], warnings };
 }

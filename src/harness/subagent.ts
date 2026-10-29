@@ -3,8 +3,6 @@
  * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案恒英文单语（角色行/工具 description 直接进模型） */
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-import * as crypto from 'crypto';
 import { AgentRole, ModelTier, OutputStyle, SessionEvent, SubagentSpawnInput } from '../types';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
@@ -171,23 +169,20 @@ export interface AgentsView {
   readonly warnings: string[];
 }
 
-/** 三级 agents 目录宽容清单（G8c 两级起手、Task 7 收口为 catalog 薄委托）：扫描/解析/告警词法全部
- *  收口 catalog listAgents 单点（本函数零 fs 零解析——两面对账不漂移），只做三件映射：
+/** 三级 agents 目录宽容清单（G8c 两级起手、Task 7 收口为 catalog 薄委托）：扫描/解析/告警/遮蔽词法
+ *  全部收口 catalog listAgents 单点（本函数零 fs 零解析——两面对账不漂移），只做两件映射：
  *  ①形状映射 AgentEntry→AgentEntryView（scope→source；description/memory/isolation/executor 可选键按需
  *  透出，空/假值省键；enabled/oldLocation 恒在场布尔直映 catalog——Task 27.5 富化，控制器 T23/T26 评审裁定的
- *  REST 改面）；②排序映射（catalog 层序=全局先，视图序=项目两级
- *  先、全局殿后——「生效视图优先」的既有契约）；③遮蔽补注（唯一超集点，见下）。
- *  遮蔽补注：catalog 对旧位置取就近优先（撞全局/新家即不列），而视图沿装载序（global→legacy→新家
- *  last-wins）——旧位置撞全局时运行期是旧位置生效，故视图保留该行并给全局行补标 shadowed=true。
- *  这批行 catalog 不透出，借「保证不存在的空全局哨兵」二次调 listAgents 补齐（哨兵惯例沿
- *  handleAgentsGet：tmpdir+randomUUID，绝不落真实目录），解析/告警仍全走 catalog 单点零复制。
- *  新家撞旧位置/全局：catalog 与装载序同判（新家最高），被撞行不列/标 shadowed，两面天然一致。
- *  enabled:false 照列（启停是写面/视图操作，运行时剔除属装配面职责）。畸形文件入 warnings 不抛死；
- *  两次内部列举对同一畸形文件的重复告警经 Set 去重（warning 文本含完整路径，同文件必同文）。
+ *  REST 改面）；②排序映射（catalog 层序=装载序全局先，视图序=项目两级
+ *  先、全局殿后——「生效视图优先」的既有契约）。
+ *  遮蔽标注单点化（2026-10-28 终审修复波裁定）：catalog listAgents 自身按装载序（global→legacy→新家
+ *  last-wins）给被撞全局行标 shadowed——旧位置撞全局的行 catalog 照列（legacy 遮蔽全局），本函数此前
+ *  借「空全局哨兵二次列举补齐撞名行」的超集修补随之退役（单次列举即可，两面零分歧）；新家撞旧位置/
+ *  全局两面同判（新家最高）。
+ *  enabled:false 照列（启停是写面/视图操作，运行时剔除属装配面职责）。畸形文件入 warnings 不抛死。
  *  纯函数零状态，不经 Registry */
 export function loadAgentsView(projectRoot: string, globalDir: string): AgentsView {
   const full = listAgents(projectRoot, globalDir);
-  const noGlobal = listAgents(projectRoot, path.join(os.tmpdir(), `sunshinex-agents-view-noglobal-${crypto.randomUUID()}`));
   /** 形状映射单点：catalog 条目 → 视图行（可选键按需省键，应答字节面与委托前逐字节同形；
    *  Task 27.5 富化：enabled/oldLocation 恒在场布尔直映 catalog——条目已在手，零二次扫盘） */
   const toRow = (e: AgentEntry, shadowed: boolean): AgentEntryView => ({
@@ -204,17 +199,16 @@ export function loadAgentsView(projectRoot: string, globalDir: string): AgentsVi
     bodyPreview: e.bodyPreview,
   });
   const newHome = full.entries.filter((e) => e.scope === 'project' && !e.oldLocation);
-  // 旧位置全量行：空全局哨兵下 catalog 的「撞全局即不列」过滤天然失效，撞全局行由此补齐
-  const legacy = noGlobal.entries.filter((e) => e.oldLocation);
-  const legacyIds = new Set(legacy.map((e) => e.id));
+  // 旧位置全量行：catalog 已按装载序透出（撞全局照列且生效），直接过滤即可
+  const legacy = full.entries.filter((e) => e.oldLocation);
   const globals = full.entries.filter((e) => e.scope === 'global');
   return {
     entries: [
       ...newHome.map((e) => toRow(e, e.shadowed)),
       ...legacy.map((e) => toRow(e, e.shadowed)),
-      ...globals.map((e) => toRow(e, e.shadowed || legacyIds.has(e.id))), // 全局行 shadowed 吸收新家撞名（catalog）+旧位置撞名（装载序）
+      ...globals.map((e) => toRow(e, e.shadowed)), // 全局行 shadowed 由 catalog 单点标注（新家/旧位置撞名均覆盖）
     ],
-    warnings: [...new Set([...full.warnings, ...noGlobal.warnings])],
+    warnings: full.warnings,
   };
 }
 

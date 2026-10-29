@@ -101,7 +101,7 @@ test('mcp/op add：单条目落盘（既有条目/顶层键不动）+ 同值重�
     assert.equal((onDisk.mcpServers['fetcher'] as { enabled?: unknown }).enabled, true, 'enable 翻回 enabled:true');
 
     // remove：单条目移除（其余保留）；再删同条目 → 409（catalog INVALID 写面拒写——控制器裁定
-    // 2026-10-28：内容/写面错误一律 409+hint，非幂等语义不变）
+    // 2026-10-28：内容/写面错误一律 409；终审修复波二裁 INVALID 无 hint，非幂等语义不变）
     r = await mcpOp({ op: 'remove', scope: 'project', root: proj, name: 'fetcher' });
     assert.equal(r.status, 200, 'remove 应 200');
     onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -109,13 +109,14 @@ test('mcp/op add：单条目落盘（既有条目/顶层键不动）+ 同值重�
     assert.deepEqual(onDisk.mcpServers['keep'], { command: 'node' }, '其余条目保留');
     r = await mcpOp({ op: 'remove', scope: 'project', root: proj, name: 'fetcher' });
     assert.equal(r.status, 409, 'remove 缺失条目 → 409（INVALID）');
-    // enable 缺失条目同写面拒写语义
+    // enable 缺失条目同写面拒写语义（raw 编辑器修不了缺失条目 → INVALID 无 hint）
     r = await mcpOp({ op: 'enable', scope: 'project', root: proj, name: 'ghost' });
     assert.equal(r.status, 409, 'enable 缺失条目 → 409');
+    assert.equal((r.body as { hint?: string }).hint, undefined, 'INVALID 409 无 hint');
   });
 });
 
-test('mcp/op add：global 无需 root 落 userConfigDir；形状坏 409（catalog INVALID 写面拒写→409+hint）；零盘上副作用', async () => {
+test('mcp/op add：global 无需 root 落 userConfigDir；形状坏 409（catalog INVALID 写面拒写→409 无 hint）；零盘上副作用', async () => {
   await withFakeHome(async (home) => {
     const globalFile = path.join(home, '.sunshinex', 'mcp.json');
     // global add：无需 root（定位面恒 userConfigDir——与其余配置写面同裁定）
@@ -125,7 +126,7 @@ test('mcp/op add：global 无需 root 落 userConfigDir；形状坏 409（catalo
     assert.deepEqual(onDisk.mcpServers['mine'], { transport: 'http', url: 'https://x.example/mcp' }, 'global 条目落 <home>/.sunshinex/mcp.json');
 
     // 形状坏 → 409（catalog 校验沿 parseMcpJsonFile 接受口径 fail-fast，INVALID 属内容/写面错误——
-    // 控制器裁定 2026-10-28：409 {error, hint:'use raw editor'}，400 恒留纯请求形状面）
+    // 控制器裁定 2026-10-28：409；终审修复波二裁 hint 按 code 分流：INVALID 无 hint，400 恒留纯请求形状面）
     const proj = path.join(home, 'proj');
     const cases: Array<[string, unknown]> = [
       ['command/url 皆缺', { description: 'no transport fields' }],
@@ -137,7 +138,7 @@ test('mcp/op add：global 无需 root 落 userConfigDir；形状坏 409（catalo
     for (const [label, server] of cases) {
       const bad = await mcpOp({ op: 'add', scope: 'project', root: proj, name: 'x', server });
       assert.equal(bad.status, 409, `${label} → 409`);
-      assert.equal((bad.body as { hint?: string }).hint, 'use raw editor', `${label} → 409 带 hint`);
+      assert.equal((bad.body as { hint?: string }).hint, undefined, `${label} → 409 无 hint（INVALID）`);
     }
     assert.equal(fs.existsSync(projMcpFile(home)), false, '409 面零盘上副作用（project mcp.json 不因坏形建文件）');
   });
@@ -198,11 +199,12 @@ test('mcp/op 守卫面：注释既有文件 409 hint 引流 raw（原文逐字�
     assert.equal(fs.readFileSync(file, 'utf8'), commented, '409 面零盘上副作用（注释原样）');
 
     // 畸形 JSON → 409（catalog 写面 INVALID 属内容/写面错误——控制器裁定 2026-10-28 与 brief 契约行：
-    // COMMENTS/INVALID → 409 {error, hint}；readJsoncDoc 降级空 doc 照写等于毁既有内容，拒写引流）
+    // COMMENTS/INVALID → 409；终审修复波二裁 INVALID 无 hint——error 原文已指名 JSON 病因；
+    // readJsoncDoc 降级空 doc 照写等于毁既有内容，拒写）
     fs.writeFileSync(file, '{ not json', 'utf8');
     r = await mcpOp({ op: 'add', scope: 'project', root: proj, name: 'x', server: { command: 'node' } });
     assert.equal(r.status, 409, '畸形 JSON → 409（INVALID）');
-    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', 'INVALID 409 带 hint');
+    assert.equal((r.body as { hint?: string }).hint, undefined, 'INVALID 409 无 hint');
     assert.equal(fs.readFileSync(file, 'utf8'), '{ not json', '409 面零盘上副作用');
 
     // 请求形态面：project 缺 root / 未知 op / 缺 name / 坏 scope
@@ -239,14 +241,15 @@ test('agents op：enable/disable 落 frontmatter enabled 行（原位替换非�
     assert.equal(md.split('enabled:').length - 1, 1, 'enabled 行原位替换（恰一行）');
     assert.ok(md.includes('enabled: false'), 'disable 落 enabled:false');
 
-    // 缺失条目 → 409（catalog INVALID 写面拒写；旧位置条目须先 migrate——写面只认新家）
+    // 缺失条目 → 409（catalog INVALID 写面拒写；旧位置条目须先 migrate——写面只认新家）；
+    // 终审修复波二裁：INVALID 无 hint（raw 编辑器修不了缺失条目）
     fs.mkdirSync(path.join(proj, 'agents', 'legacy1'), { recursive: true });
     fs.writeFileSync(path.join(proj, 'agents', 'legacy1', 'agent.md'), '---\nname: L1\n---\nold\n', 'utf8');
     r = await agentsPut({ op: 'enable', scope: 'project', root: proj, id: 'ghost' });
     assert.equal(r.status, 409, 'enable 缺失条目 → 409');
     r = await agentsPut({ op: 'disable', scope: 'project', root: proj, id: 'legacy1' });
     assert.equal(r.status, 409, 'enable/disable 不认旧位置条目（迁移前置）→ 409');
-    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', '写面 INVALID 409 带 hint');
+    assert.equal((r.body as { hint?: string }).hint, undefined, '写面 INVALID 409 无 hint');
   });
 });
 
@@ -286,19 +289,28 @@ test('agents op migrate：legacy→新家整目录拷贝（旧位置保留）；
   });
 });
 
-test('INVALID → 409+hint 钉测（控制器裁定 2026-10-28：400=纯请求形状错误、409=内容/写面错误；同资源族 settings/mcp/plugins 结构化写面文件畸形同判 409）', async () => {
+test('INVALID → 409 无 hint 钉测（终审修复波 2026-10-28 二裁：hint 按 code 分流——COMMENTS → 409+hint 引流 raw，INVALID（含缺失条目）→ 409 无 hint：raw 编辑器修不了缺失条目；400=纯请求形状错误恒无 hint）', async () => {
   await withFakeHome(async (home) => {
     const proj = path.join(home, 'proj');
     const file = projMcpFile(home);
     fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ mcpServers: { keep: { command: 'node' } } }), 'utf8');
 
-    // 写面 INVALID（条目缺失）→ 409 {error, hint:'use raw editor'}，error 指名目标，盘零触碰
+    // 写面 INVALID（条目缺失）→ 409 {error} 恰恰无 hint，error 指名目标，盘零触碰
     const r = await mcpOp({ op: 'remove', scope: 'project', root: proj, name: 'ghost' });
     assert.equal(r.status, 409, '写面 INVALID → 409');
-    assert.deepEqual(r.body, { error: r.body['error'], hint: 'use raw editor' }, '409 包络 = {error, hint}');
+    assert.deepEqual(r.body, { error: r.body['error'] }, '409 包络 = {error}（无 hint——raw 修不了缺失条目）');
     assert.ok(((r.body as { error?: string }).error ?? '').includes('ghost'), 'error 指名缺失条目');
     assert.equal(fs.readFileSync(file, 'utf8'), JSON.stringify({ mcpServers: { keep: { command: 'node' } } }), '409 面零盘上副作用');
+
+    // COMMENTS 对照（hint 分流的另一侧）：注释文件 → 409 {error, hint:'use raw editor'} 引流 raw，盘零触碰
+    const commented = '{\n  // 手写注释\n  "mcpServers": {}\n}\n';
+    fs.writeFileSync(file, commented, 'utf8');
+    const c = await mcpOp({ op: 'add', scope: 'project', root: proj, name: 'x', server: { command: 'node' } });
+    assert.equal(c.status, 409, '注释文件 → 409');
+    assert.deepEqual(c.body, { error: c.body['error'], hint: 'use raw editor' }, 'COMMENTS 409 包络 = {error, hint}');
+    assert.equal(fs.readFileSync(file, 'utf8'), commented, 'COMMENTS 409 面零盘上副作用（注释原样）');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { keep: { command: 'node' } } }), 'utf8');
 
     // 对照组：请求形状错误仍 400（不带 hint）——坏 op / project 缺 root / global approve
     const badOp = await mcpOp({ op: 'bogus', scope: 'project', root: proj, name: 'keep' });

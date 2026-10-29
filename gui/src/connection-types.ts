@@ -335,8 +335,9 @@ export interface McpRowInput {
 
 /** PUT /settings/mcp/op 请求体（Task 15 单条目操作端点）：op 六值枚举；scope 必带（'project' 必带
  *  root，'global' 省参——服务端恒忽略）；name=目标服务器名；server=op:'add' 的条目对象（原样透传
- *  catalog upsertMcpServer，形状门 command/url 至少其一在 catalog）。错误语义（T15 裁定）：400=纯
- *  请求形状错误、409=内容/写面错误（{error, hint:'use raw editor'} 引流 raw 编辑面）——均以 HTTP
+ *  catalog upsertMcpServer，形状门 command/url 至少其一在 catalog）。错误语义（T15 裁定；hint
+ *  按 code 分流见终审修复波 2026-10-28）：400=纯请求形状错误、409=内容/写面错误（COMMENTS →
+ *  {error, hint:'use raw editor'} 引流 raw 编辑面；INVALID → {error} 无 hint）——均以 HTTP
  *  失败抛错；成功 200 {ok:true} */
 export interface McpOpInput {
   op: 'add' | 'remove' | 'enable' | 'disable' | 'approve' | 'deny';
@@ -407,11 +408,13 @@ export interface AgentFrontmatterInput {
  *  - upsert/delete：scope 必带（'project' 必带 root——服务端 400 守卫，'global' 恒忽略省参）；
  *    upsert 携 frontmatter（name 必填）+ body（缺省空串）。
  *  - enable/disable：scope 必带 + id 定位；enabled 可选回显面（服务端校验须与 op 同义，op 是
- *    权威——矛盾体 400）。旧位置条目 → 409+hint（须先 migrate——写面只认新家）。
+ *    权威——矛盾体 400）。旧位置条目 → 409 无 hint（须先 migrate——写面只认新家；INVALID 分
+ *    流无 hint，终审修复波 2026-10-28）。
  *  - migrate：恒项目级（body 无 scope——root 锚定 <root>/agents → <root>/.sunshinex/agents 拷入，
  *    旧位保留）；非 legacy 条目 → 404；撞新家已存在 → 400。
- *  错误语义（T15 裁定）：400=纯请求形状、409=写面错误（{error, hint:'use raw editor'}）、
- *  404=migrate 非 legacy——均以 HTTP 失败抛错；成功 200 {ok:true} */
+ *  错误语义（T15 裁定；hint 按 code 分流见终审修复波 2026-10-28）：400=纯请求形状、409=写面
+ *  错误（INVALID → {error} 无 hint）、404=migrate 非 legacy——均以 HTTP 失败抛错；成功
+ *  200 {ok:true} */
 export type AgentsOpInput =
   | { op: 'upsert'; scope: 'project' | 'global'; root?: string; id: string; frontmatter?: AgentFrontmatterInput; body?: string }
   | { op: 'delete'; scope: 'project' | 'global'; root?: string; id: string }
@@ -434,9 +437,10 @@ export interface SkillsGroup {
 /** PUT /settings/permissions/op 请求体（Task 16 单条目操作端点，Task 25 PermissionsPane 消费）：
  *  op add|remove 两值；scope 两级（'project' 必带 root——服务端 400 守卫，'global' 省参——服务端
  *  恒忽略）；list=目标数组键（settings permissions 三数组）；value=权限规则串。错误语义（T15
- *  裁定）：400=纯请求形状错误、409=内容/写面错误（value 空白/注释/畸形文件 → {error,
- *  hint:'use raw editor'} 引流 raw 编辑面）——均以 HTTP 失败抛错；成功 200 {ok:true}，add 幂等
- *  去重（已存在照常 ok），remove 缺失 409 */
+ *  裁定；hint 按 code 分流见终审修复波 2026-10-28）：400=纯请求形状错误、409=内容/写面错误
+ *  （注释 → COMMENTS {error, hint:'use raw editor'} 引流 raw 编辑面；value 空白/缺失条目 →
+ *  INVALID {error} 无 hint）——均以 HTTP 失败抛错；成功 200 {ok:true}，add 幂等去重（已存在
+ *  照常 ok），remove 缺失 409 */
 export interface PermissionOpInput {
   op: 'add' | 'remove';
   scope: 'project' | 'global';
@@ -452,8 +456,9 @@ export interface PermissionOpInput {
  *  （对齐 handleProvidersOp 形状门）：add|update 携 provider（upsert patch——add 必备 baseUrl+
  *  非空 models，update 增量未提字段不动、patch.name 改名）；modelAdd 携 entry（{model,...} 对象）；
  *  modelRemove|modelMove 携 model（modelMove 另携 direction:'up'|'down'）；setKey 携 apiKey
- *  （空串清槽；密钥零回显——响应恒 {ok:true}）。错误语义（T15 裁定）：400=纯请求形状、409=
- *  内容/写面错误（{error, hint:'use raw editor'} 引流 raw 编辑面）——均以 HTTP 失败抛错 */
+ *  （空串清槽；密钥零回显——响应恒 {ok:true}）。错误语义（T15 裁定；hint 按 code 分流见终审
+ *  修复波 2026-10-28）：400=纯请求形状、409=内容/写面错误（COMMENTS → {error,
+ *  hint:'use raw editor'}；INVALID → {error} 无 hint）——均以 HTTP 失败抛错 */
 export interface ProviderOpInput {
   op: 'add' | 'update' | 'remove' | 'modelAdd' | 'modelRemove' | 'modelMove' | 'setKey';
   scope: 'project' | 'global';

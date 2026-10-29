@@ -215,13 +215,15 @@ export interface Connection {
   putSettingsRaw(scope: 'project' | 'global', root: string | undefined, file: 'settings' | 'mcp', content: string): Promise<void>;
   /** PUT /settings/permissions/op（Task 16 单条目操作端点，Task 25 PermissionsPane 消费）：op
    *  add|remove；scope='project' 必带 root（缺 400）、'global' 省参；400=纯请求形状错误、409=
-   *  内容/写面错误（hint:'use raw editor' 引流 raw 编辑面）以 HTTP 失败抛错；成功 200 {ok:true}
+   *  内容/写面错误（COMMENTS 带 hint:'use raw editor' 引流 raw 编辑面，INVALID 无 hint——
+   *  2026-10-28 终审修复波按 code 分流）以 HTTP 失败抛错；成功 200 {ok:true}
    *  （add 幂等去重，remove 缺失 409） */
   putPermissionOp(input: PermissionOpInput): Promise<void>;
   /** PUT /settings/providers/op（Task 16 单条目操作端点，Task 26 ProvidersPane 消费）：op 七值
    *  add|update|remove|modelAdd|modelRemove|modelMove|setKey；scope='project' 必带 root（缺 400）、
-   *  'global' 省参；400=纯请求形状错误、409=内容/写面错误（hint:'use raw editor' 引流 raw 编辑面）
-   *  以 HTTP 失败抛错；成功 200 {ok:true}（setKey 密钥零回显——响应恒 {ok:true} 不携键值） */
+   *  'global' 省参；400=纯请求形状错误、409=内容/写面错误（COMMENTS 带 hint:'use raw editor'，
+   *  INVALID 无 hint——2026-10-28 终审修复波按 code 分流）以 HTTP 失败抛错；成功 200 {ok:true}
+   *  （setKey 密钥零回显——响应恒 {ok:true} 不携键值） */
   putProviderOp(input: ProviderOpInput): Promise<void>;
   /** GET /settings/mcp?root=（T4）：两级遮蔽清单（项目全量 source='project' + 全局逐名 shadowed 标记） */
   mcpServers(root?: string): Promise<{ servers: McpRow[] }>;
@@ -232,7 +234,8 @@ export interface Connection {
   putMcpServers(root: string, servers: McpRowInput[]): Promise<void>;
   /** PUT /settings/mcp/op（Task 15 单条目操作端点）：add/remove/enable/disable/approve/deny 六值；
    *  scope='project' 必带 root（缺 400）、'global' 省参；400=纯请求形状错误、409=内容/写面错误
-   *  （hint:'use raw editor' 引流 raw 编辑面）以 HTTP 失败抛错；成功 200 {ok:true} */
+   *  （COMMENTS 带 hint:'use raw editor' 引流 raw 编辑面，INVALID 无 hint——2026-10-28 终审
+   *  修复波按 code 分流）以 HTTP 失败抛错；成功 200 {ok:true} */
   putMcpOp(input: McpOpInput): Promise<void>;
   /** GET /settings/agents?root=（T5）：builtins 四预设 + 两级宽容清单（root 缺省 = 仅全局清单） */
   agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }>;

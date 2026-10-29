@@ -1,7 +1,8 @@
 /** PUT /settings/providers/op + PUT /settings/permissions/op 处理器直测（Task 16；沿
  *  config-handlers.mcp-op.test 先例：handler 纯函数形 req/res+io，io 全 fake 不起真 daemon）。
  *  覆盖：providers op 七值各一正例（add/update/remove/modelAdd/modelRemove/modelMove/setKey）+
- *  INVALID/COMMENTS 409（CatalogWriteError→409+hint，T15 裁定同映射）+ 请求形状 400 + setKey 后
+ *  INVALID/COMMENTS 409（CatalogWriteError→409，T15 裁定同映射；hint 按 code 分流——COMMENTS 带 hint
+ *  引流 raw、INVALID 无 hint）+ 请求形状 400 + setKey 后
  *  GET /settings providers 面 apiKeyPresent 翻转且响应无键值 + permissions op add/remove 落对应
  *  数组、add 去重、remove 缺失 409。
  *  T9 评审移交（providers 读面语义）：ProviderEntry.models = 文件显式值（非继承源级缺省），生效值
@@ -225,14 +226,16 @@ test('providers op 409 面：COMMENTS/畸形 JSON → 409+hint 且原文零改�
     assert.equal((r.body as { hint?: string }).hint, 'use raw editor', '409 带 hint 引流 raw');
     assert.equal(fs.readFileSync(projFile, 'utf8'), commented, '409 面零盘上副作用（注释原样）');
 
-    // 畸形 JSON → 409（INVALID 同桶：readJsoncDoc 降级空 doc 照写等于毁既有内容）
+    // 畸形 JSON → 409（INVALID 同桶：readJsoncDoc 降级空 doc 照写等于毁既有内容；终审修复波二裁
+    // INVALID 无 hint——error 原文已指名 JSON 病因）
     fs.writeFileSync(projFile, '{ not json', 'utf8');
     r = await providersOp({ op: 'add', scope: 'project', root: proj, name: 'p', provider: { baseUrl: 'https://p/v1', models: [{ model: 'm' }] } });
     assert.equal(r.status, 409, '畸形 JSON → 409（INVALID）');
-    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', 'INVALID 409 带 hint');
+    assert.equal((r.body as { hint?: string }).hint, undefined, 'INVALID 409 无 hint');
     assert.equal(fs.readFileSync(projFile, 'utf8'), '{ not json', '409 面零盘上副作用');
 
     // 干净文件上的写面 INVALID：remove 缺源 / setKey 缺源 / modelMove 边界 / modelAdd 重复 / add 缺 baseUrl / update 改名撞源
+    // （终审修复波二裁：INVALID 无 hint——raw 编辑器修不了缺失条目/形状不收，error 原文指名原因）
     fs.writeFileSync(
       projFile,
       JSON.stringify({ version: 1, providers: [{ name: 'p', baseUrl: 'https://p/v1', models: [{ model: 'm1' }] }, { name: 'q', baseUrl: 'https://q/v1', models: [{ model: 'qm' }] }] }),
@@ -250,7 +253,7 @@ test('providers op 409 面：COMMENTS/畸形 JSON → 409+hint 且原文零改�
     for (const [label, body] of cases) {
       const bad = await providersOp(body);
       assert.equal(bad.status, 409, `${label} → 409`);
-      assert.equal((bad.body as { hint?: string }).hint, 'use raw editor', `${label} → 409 带 hint`);
+      assert.equal((bad.body as { hint?: string }).hint, undefined, `${label} → 409 无 hint（INVALID）`);
     }
   });
 });
@@ -314,14 +317,14 @@ test('permissions op：add 落对应数组且同值重加去重零落盘；remov
     assert.deepEqual(perms.project.deny, ['Bash(rm -rf /*)'], 'GET project 面随之');
     assert.deepEqual(perms.merged.additionalDirs, ['/tmp/playground'], 'GET merged 面随之');
 
-    // remove：摘除；再删同值 → 409（catalog INVALID 严格语义）
+    // remove：摘除；再删同值 → 409（catalog INVALID 严格语义；终审修复波二裁 INVALID 无 hint）
     r = await permissionsOp({ op: 'remove', scope: 'project', root: proj, list: 'deny', value: 'Bash(rm -rf /*)' });
     assert.equal(r.status, 200, 'remove 应 200');
     doc = JSON.parse(fs.readFileSync(projFile, 'utf8'));
     assert.deepEqual((doc['permissions'] as Record<string, string[]>).deny, [], '条目已摘除');
     r = await permissionsOp({ op: 'remove', scope: 'project', root: proj, list: 'deny', value: 'Bash(rm -rf /*)' });
     assert.equal(r.status, 409, 'remove 缺失 → 409');
-    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', '409 带 hint');
+    assert.equal((r.body as { hint?: string }).hint, undefined, 'INVALID 409 无 hint');
 
     // global scope：无 root 落全局 settings
     r = await permissionsOp({ op: 'add', scope: 'global', list: 'allow', value: 'Read(**)' });
@@ -331,24 +334,24 @@ test('permissions op：add 落对应数组且同值重加去重零落盘；remov
   });
 });
 
-test('permissions op 409/400 面：value 空串 → 409+hint、COMMENTS → 409+hint；坏 op/list/scope、value 非字符串、project 缺 root → 400 无 hint', async () => {
+test('permissions op 409/400 面：COMMENTS → 409+hint 引流 raw、value 空串 → 409 无 hint（INVALID，终审修复波二裁）；坏 op/list/scope、value 非字符串、project 缺 root → 400 无 hint', async () => {
   await withFakeHome(async (home) => {
     const proj = path.join(home, 'proj');
     const projFile = path.join(proj, '.sunshinex', 'settings.json');
     fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
 
-    // 注释文件 → 409 + hint（COMMENTS 引流 raw）；value 空串 → 409 + hint（catalog INVALID）
+    // 注释文件 → 409 + hint（COMMENTS 引流 raw）；value 空串 → 409 无 hint（catalog INVALID）
     const commented = '{\n  // 手写注释\n  "version": 1\n}\n';
     fs.writeFileSync(projFile, commented, 'utf8');
     let r = await permissionsOp({ op: 'add', scope: 'project', root: proj, list: 'deny', value: 'X' });
     assert.equal(r.status, 409, '注释文件 → 409');
-    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', '409 带 hint');
+    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', 'COMMENTS 409 带 hint');
     assert.equal(fs.readFileSync(projFile, 'utf8'), commented, '409 面零盘上副作用');
 
     fs.writeFileSync(projFile, JSON.stringify({ version: 1 }), 'utf8');
     r = await permissionsOp({ op: 'add', scope: 'project', root: proj, list: 'deny', value: '   ' });
     assert.equal(r.status, 409, 'value 空白串 → 409（catalog INVALID——内容校验归 catalog）');
-    assert.equal((r.body as { hint?: string }).hint, 'use raw editor', '409 带 hint');
+    assert.equal((r.body as { hint?: string }).hint, undefined, 'INVALID 409 无 hint');
 
     // 请求形状面 → 400 无 hint
     const cases: Array<[string, unknown]> = [

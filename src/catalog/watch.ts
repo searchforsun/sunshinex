@@ -92,6 +92,13 @@ export class ConfigWatcher {
     }
   }
 
+  /** 项目 root 是否已在监听（daemon onCatalogWrite 补监听判定用，终审修复波 2026-10-28）：
+   *  path.resolve 归一后查组键——与 watchProject/unwatchProject 同键法，与「零条目组不注册」的
+   *  重试语义对齐（目录缺失未挂上 = false，后续写事件可再触发重试） */
+  isProjectWatched(root: string): boolean {
+    return this.groups.has(`project:${path.resolve(root)}`);
+  }
+
   /** 注册变更回调（可多次注册，事件到达时依次调用） */
   onChange(cb: (c: ConfigChange) => void): void {
     this.callbacks.push(cb);

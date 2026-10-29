@@ -54,28 +54,37 @@ test('listAgents: 项目新家遮蔽全局同名 id，全局条目保留在列�
   });
 });
 
-test('listAgents: 旧位置条目 oldLocation:true；新家或全局有同 id 时不再列出', () => {
+test('listAgents: 旧位置条目 oldLocation:true；撞新家不列（新家最高），撞全局照列且生效（legacy 遮蔽全局，2026-10-28 终审裁定对齐装载序）', () => {
   withHome(() => {
     const g = mkdtempSync(join(tmpdir(), 'g')), p = mkdtempSync(join(tmpdir(), 'p'));
     writeAgent(join(g, 'agents'), 'in-global', agentMd('in-global'));
     writeAgent(join(p, '.sunshinex', 'agents'), 'in-new-home', agentMd('in-new-home'));
-    // 旧位置三态：独占（列出）/ 撞新家（不列）/ 撞全局（不列）
+    // 旧位置三态：独占（列出）/ 撞新家（不列——新家最高）/ 撞全局（照列且生效——legacy 遮蔽全局）
     writeAgent(join(p, 'agents'), 'legacy-only', agentMd('legacy-only'));
     writeAgent(join(p, 'agents'), 'in-new-home', agentMd('legacy-dup-new'));
     writeAgent(join(p, 'agents'), 'in-global', agentMd('legacy-dup-global'));
     const r = listAgents(p, g);
-    // 清单序钉死：全局 → 新家 → 旧位置
-    assert.deepEqual(r.entries.map((e) => `${e.scope}:${e.id}`), ['global:in-global', 'project:in-new-home', 'project:legacy-only']);
+    // 清单序钉死：全局 → 新家 → 旧位置（in-global 撞名两行齐列：全局行 + 旧位置行）
+    assert.deepEqual(
+      r.entries.map((e) => `${e.scope}:${e.id}${e.oldLocation ? '@legacy' : ''}`),
+      ['global:in-global', 'project:in-new-home', 'project:in-global@legacy', 'project:legacy-only@legacy'],
+    );
     const legacy = r.entries.find((e) => e.id === 'legacy-only')!;
     assert.ok(legacy, '无碰撞旧位置条目在列');
     assert.equal(legacy.oldLocation, true, '旧位置标注 oldLocation:true');
     assert.equal(legacy.scope, 'project', '旧位置属项目作用域');
-    assert.equal(legacy.shadowed, false, '旧位置仅无碰撞时列出，不标 shadowed');
+    assert.equal(legacy.shadowed, false, '旧位置条目（生效版）不标 shadowed');
     assert.equal(legacy.meta.name, 'legacy-only');
     assert.equal(r.entries.filter((e) => e.id === 'in-new-home').length, 1, '撞新家同 id 不再从旧位置列出');
     assert.equal(r.entries.find((e) => e.id === 'in-new-home')!.oldLocation, false, '在列的是新家版本');
-    assert.equal(r.entries.filter((e) => e.id === 'in-global').length, 1, '撞全局同 id 亦不再从旧位置列出');
-    assert.equal(r.entries.find((e) => e.id === 'in-global')!.scope, 'global', '在列的是全局版本');
+    // 撞全局：旧位置照列且为生效副本（legacy 遮蔽全局——与 AgentRegistry.loadAgents 装载序同构），
+    // 全局行降 shadowed:true 保留在列
+    const legacyDup = r.entries.find((e) => e.id === 'in-global' && e.oldLocation)!;
+    assert.equal(legacyDup.shadowed, false, '撞全局时旧位置行是生效副本，不标 shadowed');
+    assert.equal(legacyDup.meta.name, 'legacy-dup-global', '在列副本来自旧位置');
+    const globalDup = r.entries.find((e) => e.id === 'in-global' && !e.oldLocation)!;
+    assert.equal(globalDup.scope, 'global', '同 id 全局行保留在列');
+    assert.equal(globalDup.shadowed, true, '被旧位置撞名 → 全局行 shadowed=true');
   });
 });
 

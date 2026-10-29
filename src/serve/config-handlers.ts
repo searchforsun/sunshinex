@@ -499,14 +499,16 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
   io.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
 }
 
-/** CatalogWriteError→HTTP 映射单点（T15 裁定 2026-10-28 于 handleMcpOp 首立，Task 16 抽出共用）：
- *  COMMENTS/INVALID 两码统一 409 {error, hint:'use raw editor'}——400 恒留纯请求形状错误（坏 op/
- *  缺 name/project 缺 root 等），内容/写面错误（注释文件/畸形 JSON/条目缺失/形状不收）一律 409+hint
- *  引流 raw 编辑面；error 原文指名文件与原因。返回是否已回执：false = 非 catalog 面（IO 竞态等），
- *  调用方沿 dispatch 500 收口（T2/T4 同惯例）。op 族端点（mcp/providers/permissions）共用本映射 */
+/** CatalogWriteError→HTTP 映射单点（T15 裁定 2026-10-28 于 handleMcpOp 首立，Task 16 抽出共用；
+ *  终审修复波 2026-10-28 二裁 hint 分流）：两码恒 409（400 恒留纯请求形状错误），hint 按 code 分流——
+ *  COMMENTS → {error, hint:'use raw editor'}（手写注释只有 raw 编辑面能解，引流）；INVALID → {error}
+ *  无 hint（条目缺失/形状不收/畸形 JSON 等写面拒写：raw 编辑器修不了缺失条目，error 原文已指名目标
+ *  与原因，挂「去 raw 编辑」是误导引流）。返回是否已回执：false = 非 catalog 面（IO 竞态等），
+ *  调用方沿 dispatch 500 收口（T2/T4 同惯例）。op 族端点（mcp/providers/permissions/agents）共用本映射 */
 function sendCatalogWriteError(io: ConfigHandlerIo, res: http.ServerResponse, err: unknown): boolean {
   if (!(err instanceof CatalogWriteError)) return false;
-  io.send(res, 409, { error: err.message, hint: 'use raw editor' });
+  if (err.code === 'COMMENTS') io.send(res, 409, { error: err.message, hint: 'use raw editor' });
+  else io.send(res, 409, { error: err.message });
   return true;
 }
 
@@ -519,12 +521,13 @@ function sendCatalogWriteError(io: ConfigHandlerIo, res: http.ServerResponse, er
  *  - remove/enable/disable：目标条目缺失/形状非法 → catalog INVALID（严格语义，非幂等）；
  *  - approve/deny：仅 project 有效（global → 400——全局条目用户手配不过批准阀），走
  *    approvals.approveMcpServer/denyMcpServer 既有写面（互斥维护 + notify 回填）。
- *  CatalogWriteError 映射（控制器裁定 2026-10-28）：COMMENTS/INVALID 两码统一 → 409 {error,
- *  hint:'use raw editor'}——brief 契约行钉死 COMMENTS/INVALID → 409 {error,hint}；同资源族三个既有
+ *  CatalogWriteError 映射（控制器裁定 2026-10-28；hint 分流终审修复波二裁）：两码统一 → 409——
+ *  brief 契约行钉死 COMMENTS/INVALID → 409；同资源族三个既有
  *  结构化写面（settings 结构化/raw、mcp 整块 PUT、plugins PUT）对「目标文件现状不可结构化写」一律
  *  409 同判；本端点是首个 CatalogWriteError→HTTP 映射，无「既有分野」可沿。语义定案：**400=纯请求
  *  形状错误**（坏 op/scope、缺 name、project 缺 root、global approve/deny——全部在入 catalog 前拦），
- *  **409=内容/写面错误**（注释文件/畸形 JSON/条目缺失/server 形状不收——error 原文指名文件与原因）。
+ *  **409=内容/写面错误**（注释文件/畸形 JSON/条目缺失/server 形状不收——error 原文指名文件与原因；
+ *  hint 按 code 分流见 sendCatalogWriteError 注——COMMENTS 引流 raw、INVALID 无 hint）。
  *  成功 200 {ok:true}；不触发 settings reload（mcp/approvals 均装配期语义——mcp 新会话生效、批准阀
  *  下次装载读取） */
 export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -563,7 +566,7 @@ export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage
   try {
     switch (op) {
       case 'add':
-        upsertMcpServer(root, scope, name, body?.server); // server 校验在 catalog（INVALID→409+hint），原样透传
+        upsertMcpServer(root, scope, name, body?.server); // server 校验在 catalog（INVALID→409 无 hint），原样透传
         break;
       case 'remove':
         removeMcpServer(root, scope, name);
@@ -580,9 +583,9 @@ export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage
         break;
     }
   } catch (err) {
-    // CatalogWriteError（COMMENTS/INVALID 两码）统一 409+hint——控制器裁定 2026-10-28（理由与语义
-    // 定案见上注，映射单点 sendCatalogWriteError）：400 恒留请求形状面，写面拒写（含条目缺失/
-    // server 形状不收/文件畸形）不落 400
+    // CatalogWriteError（COMMENTS/INVALID 两码）统一 409——控制器裁定 2026-10-28（理由与语义
+    // 定案见上注，映射单点 sendCatalogWriteError，hint 按 code 分流）：400 恒留请求形状面，写面
+    // 拒写（含条目缺失/server 形状不收/文件畸形）不落 400
     if (!sendCatalogWriteError(io, res, err)) throw err; // 非 catalog 面（IO 竞态等）沿 dispatch 500 收口
     return;
   }
@@ -600,8 +603,8 @@ export async function handleMcpOp(io: ConfigHandlerIo, req: http.IncomingMessage
  *  的 up|down；apiKey=setKey 的密钥值（空串=清槽；**响应永不回显键值**——catalog 返回 void，成功响应
  *  恒恰 {ok:true}）。错误语义沿 T15 裁定（sendCatalogWriteError 单点）：400=纯请求形状错误（坏 op/
  *  scope、缺 name、project 缺 root、载荷形状——provider/entry 在场须对象、model 缺失、direction 越枚举、
- *  apiKey 非字符串，全部在入 catalog 前拦），409=内容/写面错误（COMMENTS/INVALID → {error, hint:
- *  'use raw editor'}——缺 baseUrl/models、缺源、同名重复、边界调序、注释/畸形文件等 catalog 判定）。
+ *  apiKey 非字符串，全部在入 catalog 前拦），409=内容/写面错误（COMMENTS/INVALID——缺 baseUrl/models、
+ *  缺源、同名重复、边界调序、注释/畸形文件等 catalog 判定；hint 按 code 分流见 sendCatalogWriteError 注）。
  *  成功 200 {ok:true} 后 reloadSettingsChain（handleSettingsPut 同款链重载——providers/env 随 settings
  *  链生效：setKey 的 env 专用槽落 process.env（GET /settings apiKeyPresent 翻转即时可见、适配器取键
  *  即时生效），模型清单新会话即刻生效；global 无项目锚只重装全局面） */
@@ -666,7 +669,7 @@ export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingM
     switch (op) {
       case 'add':
       case 'update':
-        upsertProvider(root, scope, name, body?.provider as ProviderUpsertPatch); // 内容校验在 catalog（INVALID→409+hint）
+        upsertProvider(root, scope, name, body?.provider as ProviderUpsertPatch); // 内容校验在 catalog（INVALID→409 无 hint）
         break;
       case 'remove':
         removeProvider(root, scope, name);
@@ -699,7 +702,7 @@ export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingM
  *  文件对应数组的手术写（add 去重幂等、remove 缺失 INVALID），纪律与写通知全在 catalog 单点。
  *  错误语义沿 T15 裁定：400=纯请求形状错误（坏 op/scope/list、value 非字符串、project 缺 root——全部
  *  在入 catalog 前拦），409=内容/写面错误（value 空串/空白 → INVALID、注释/畸形文件 → COMMENTS/
- *  INVALID → {error, hint:'use raw editor'}）。成功 200 {ok:true}，不触发 settings reload——permissions
+ *  INVALID；hint 按 code 分流见 sendCatalogWriteError 注）。成功 200 {ok:true}，不触发 settings reload——permissions
  *  键不入 env/settings 链（harness 装配期经 loadPermissions 读文件，新会话生效——mcp/approvals 装配期
  *  语义先例）；GUI 刷新由写内 notify 的 config-changed 帧承担 */
 export async function handlePermissionsOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -921,7 +924,7 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
  *    （内部 renderAgentMd 生成 + 写前 round-trip 过真解析器 + 原子落盘——较旧 tmp+回读+rename 更进一步：
  *    坏内容根本不进 tmp）。落位=新家 <root>/.sunshinex/agents/<id>（catalog agentsDir 单点——storage
  *    归一裁定，旧位置条目经 migrate op 入新家）；frontmatter 枚举越型（isolation/executor）旧路径落
- *    tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 409+hint（罕见路径语义升级，见映射注）
+ *    tmp 回读失败 500，现 catalog 枚举守卫 INVALID → 409（罕见路径语义升级，见映射注）
  *  - delete：catalog removeAgent（rm -rf 条目整目录含同级私有文件；新家缺失 INVALID）+ 旧位置兼容
  *    回退——catalog 写面对旧位置「只迁不删」无删除面，serve 保留旧位删除收口使幂等契约不回退
  *    （手建旧位条目仍可删）；新旧皆缺 = 幂等 200（既有契约零变）
@@ -930,9 +933,10 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
  *  - migrate（Task 15 新增）：catalog migrateAgent（legacy <root>/agents/<id> 整目录拷入新家，
  *    旧位保留）。恒项目级（body 无 scope——root 锚定），缺 root 400；非 legacy 条目（无源目录）
  *    → 404（brief 明定——迁移是 legacy 专属动作）；撞新家已存在 → 400（裁定例外项，见分支注）
- *  CatalogWriteError 映射（控制器裁定 2026-10-28，理由见 handleMcpOp 注）：upsert/enable/disable
- *  的 INVALID → 409 {error, hint:'use raw editor'}（内容/写面错误；delete 例外——缺失 INVALID 就地
- *  吞作幂等 200，见分支注）；migrate 的 INVALID 保留 400（撞新家=请求所指目标状态冲突，裁定例外项）。
+ *  CatalogWriteError 映射（控制器裁定 2026-10-28，理由见 handleMcpOp 注；hint 分流终审修复波二裁
+ *  见 sendCatalogWriteError 注）：upsert/enable/disable 的 INVALID → 409 {error}（内容/写面错误；
+ *  delete 例外——缺失 INVALID 就地吞作幂等 200，见分支注）；migrate 的 INVALID 保留 400（撞新家=请求
+ *  所指目标状态冲突，裁定例外项）。
  *  COMMENTS 不可达（agent.md 无注释形态——真如此沿兜底抛错走 dispatch 500）。IO 失败不经本地捕获
  *  ——沿 dispatch 500 收口 */
 export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -991,13 +995,8 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
     return;
   }
   const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
-  const mapWriteError = (err: unknown): boolean => {
-    if (!(err instanceof CatalogWriteError)) return false; // 非 catalog 面（IO 竞态等）→ dispatch 500
-    // 内容/写面错误 → 409+hint（控制器裁定 2026-10-28，理由与语义定案见 handleMcpOp 注——
-    // upsert/enable/disable 的写面拒写：条目缺失/frontmatter 枚举越型/round-trip 拒写等）
-    io.send(res, 409, { error: err.message, hint: 'use raw editor' });
-    return true;
-  };
+  // 写面拒写回执映射：sendCatalogWriteError 单点（终审修复波 2026-10-28 收编——此前本 handler 内联
+  // 同形闭包 mapWriteError 两码统一挂 hint，与单点 hint 分流口径漂移，随之删除）
   if (op === 'delete') {
     try {
       removeAgent(root, scope, id); // catalog 收口：新家 rm -rf（含同级私有文件）
@@ -1024,10 +1023,10 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
       return;
     }
     try {
-      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→409+hint（旧位置条目须先 migrate）
+      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（旧位置条目须先 migrate）
     } catch (err) {
-      if (!mapWriteError(err)) throw err;
-      return; // 已回 400
+      if (!sendCatalogWriteError(io, res, err)) throw err;
+      return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
     }
     io.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
     return;
@@ -1047,7 +1046,7 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
   }
   // catalog upsertAgent：生成 + 写前 round-trip（验证口径=装载口径）+ 原子落盘 + notify 直发——
   // serve 侧零文件操作。isolation/executor 为 string 归一前形态，断言窄化后枚举守卫在 catalog
-  // 运行时面（越型 INVALID → 409+hint，较旧 tmp 回读 500 语义升级）
+  // 运行时面（越型 INVALID → 409 无 hint，较旧 tmp 回读 500 语义升级）
   const spec: AgentUpsertSpec = {
     name: fm.name,
     ...(fm.description !== undefined ? { description: fm.description } : {}),
@@ -1059,8 +1058,8 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
   try {
     upsertAgent(root, scope, id, spec);
   } catch (err) {
-    if (!mapWriteError(err)) throw err;
-    return; // 已回 400
+    if (!sendCatalogWriteError(io, res, err)) throw err;
+    return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
   }
   io.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
 }

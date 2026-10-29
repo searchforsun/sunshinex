@@ -77,7 +77,7 @@ export function maxTeammatesEnv(env: NodeJS.ProcessEnv = process.env): number {
  *  对齐 CLAUDE §12「模型调用超时 600s」的可调口径）：SUNSHINEX_MODEL_TIMEOUT_MS 正整数生效，
  * 未设/空串/非正整数静默忽略回适配器内建 600s。**刻意不并入本文件 positiveIntOrUndefined 的
  * fail-fast 口径**（批F 裁决：装配根不打断启动，与 runtime.ts resolveEffortConfig 对非法 env 同宽；
- * 消费点为 runtime.buildModel/buildTierRouter 与 model/catalog（/model 切换路径），装配期解析一次） */
+ * 消费点为 runtime.buildModel/buildTierRouterFromChoices 与 model/catalog（/model 切换路径），装配期解析一次） */
 export function modelTimeoutMsEnv(env: NodeJS.ProcessEnv = process.env): number | undefined {
   const raw = env.SUNSHINEX_MODEL_TIMEOUT_MS;
   if (raw === undefined || raw.trim() === '') return undefined;

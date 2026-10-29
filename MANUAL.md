@@ -49,6 +49,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 
 六个命令族，其中 mcp / agents / providers / settings 四族共用同一套作用域定位：`--scope=global|project`（缺省 `project`，锚定当前工作目录）、`--root <目录>` 覆盖工作目录；写项目级时 `.sunshinex/` 不存在会自动建。plugins 启停同样带 `--scope=global|project`；skills list 的 `--scope` 词表为 `all|project|global`（视图过滤，非写面定位）。`--json` 供脚本消费。表格输出 / exit code（0 成功 / 1 用法错或写失败）。
 
+注意：`list` 的 `--scope` 不是行过滤——`sunshinex mcp list --scope=project`（含缺省）返回全合并视图（项目 + 全局，含 `scope`/`遮蔽` 标注列，与 GUI/REST 同源同口径），仅 `--scope=global` 时过滤只看全局条目；`agents list` 同此语义，`providers list` 恒为合并视图（`--scope` 不参与行过滤）。
+
 | 命令族 | 子命令 | 说明 |
 | --- | --- | --- |
 | `sunshinex mcp` | `list` / `add <名> --command=<命令> [--arg=a]… [--env=K=V]…` 或 `--url=<地址>` / `remove` / `enable` / `disable` / `test <名>` / `approve` / `deny <名>` | MCP 服务器登记表增删改查；`test` 探活（握手 + tools/list）；`approve`/`deny` 写项目批准阀（见第二节 mcp.json）；项目级 `add` 会提示首次装载需批准 |

@@ -336,12 +336,12 @@ describe('Task 7 三级装载收口', () => {
       const listing = listAgents(root, globalDir);
 
       // 形状映射一致性：catalog 每条目按视图形状映射（scope→source、可选键按需、旧位置 scope='project'
-      // 仍归 project 行）后在视图中逐行可寻；全局行 shadowed 额外吸收旧位置遮蔽（视图唯一超集点，下钉）
-      const legacyShadowedGlobals = new Set(['dual']);
+      // 仍归 project 行）后在视图中逐行可寻；shadowed 由 catalog 单点按装载序标注（2026-10-28 终审裁定
+      // 后视图零补注——旧位置撞全局行 catalog 照列且全局行自带 shadowed）
       for (const e of listing.entries) {
         const row = view.entries.find((v) => v.id === e.id && v.source === e.scope);
         assert.ok(row, `catalog ${e.scope}/${e.id} 应有对应视图行（薄委托不丢行）`);
-        assert.equal(row.shadowed, e.shadowed || (e.scope === 'global' && legacyShadowedGlobals.has(e.id)), `shadowed 映射一致：${e.scope}/${e.id}`);
+        assert.equal(row.shadowed, e.shadowed, `shadowed 映射一致（catalog 单点标注）：${e.scope}/${e.id}`);
         assert.equal(row.name, e.meta.name, `name 映射一致：${e.scope}/${e.id}`);
         assert.equal(row.bodyPreview, e.bodyPreview, `bodyPreview 映射一致：${e.scope}/${e.id}`);
         assert.equal(row.description, e.meta.description || undefined, `description 可选键映射一致：${e.scope}/${e.id}`);
@@ -353,23 +353,66 @@ describe('Task 7 三级装载收口', () => {
       assert.ok(listing.entries.some((e) => e.id === 'offg' && e.scope === 'global'), 'catalog 对 enabled:false 照列');
       assert.ok(view.entries.some((e) => e.id === 'offg' && e.source === 'global'), '视图同口径照列 enabled:false');
 
-      // 视图唯一超集点：旧位置撞全局行（catalog 就近优先不透出，视图沿装载序两行都列、全局行标 shadowed）
+      // 旧位置撞全局行（legacy 遮蔽全局，2026-10-28 终审裁定后 catalog 直出——不再是视图超集补注）：
+      // 旧位置行（生效版）+ 全局行（shadowed=true）两行齐列，与装载序一致
       const lDual = view.entries.find((e) => e.id === 'dual' && e.source === 'project');
       assert.ok(lDual, '旧位置撞全局行在视图中保留（与装载序一致：旧位置遮蔽全局）');
       assert.equal(lDual.shadowed, false, '旧位置行（生效版）不标 shadowed');
       assert.equal(lDual.oldLocation, true, '旧位置行标 oldLocation:true（Task 27.5 富化——AgentsPane 迁移钮 gating 字段）');
       assert.equal(lDual.bodyPreview, '旧位置正文');
       const gDual = view.entries.find((e) => e.id === 'dual' && e.source === 'global');
-      assert.equal(gDual!.shadowed, true, '旧位置撞名 → 全局行 shadowed=true');
+      assert.equal(gDual!.shadowed, true, '旧位置撞名 → 全局行 shadowed=true（catalog 单点标注）');
       assert.ok(!view.entries.some((e) => e.id === 'shared' && e.source === 'project' && e.bodyPreview === '旧位置正文'), '旧位置撞新家行不列（新家最高，catalog 同口径）');
 
       // 项目行先于全局行（生效视图优先，G8c-T1 既有序保持）
       const ids = view.entries.map((e) => e.id);
       assert.ok(ids.indexOf('nhOnly') < ids.indexOf('gOnly'), '项目条目先于全局条目');
-      // 畸形文件：恰好一条 warning（两次内部列举同文件告警去重），含文件路径；畸形条目不入清单
-      assert.equal(view.warnings.length, 1, '畸形文件告警去重后恰一条');
+      // 畸形文件：恰好一条 warning（单次列举，无哨兵去重面），含文件路径；畸形条目不入清单
+      assert.equal(view.warnings.length, 1, '畸形文件告警恰一条');
       assert.ok(view.warnings[0]!.includes(path.join(root, 'agents', 'bad', 'agent.md')), 'warning 含文件路径');
       assert.ok(!view.entries.some((e) => e.id === 'bad'), '畸形条目不入清单');
+    } finally {
+      fs.rmSync(globalDir, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('④终审裁定钉测（2026-10-28 fix wave）：同 id 全局+legacy 并存时 listAgents 视图 / loadAgentsView(REST) / AgentRegistry.resolve 三面一致指向 legacy 副本', () => {
+    // 三面分歧病灶：装载器 legacy 遮蔽全局（运行期生效 legacy），旧 catalog 读面却是全局撞旧位置时
+    // 旧位置整行隐藏（CLI/TUI 显示全局）——显示与运行各装一份。本钉测三面同证：同 id 并存时读面
+    // （catalog listAgents）、REST 视图（loadAgentsView——/settings/agents 单点）、运行期（Registry
+    // resolve）三方取到的都是 legacy 副本。
+    const globalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7x3-global-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-t7x3-proj-'));
+    try {
+      writeAgent(globalDir, 'dup', agentMd('g-dup', '全局正文'));
+      writeAgent(root, 'dup', agentMd('l-dup', '旧位置正文'));
+
+      // (a) catalog 读面：旧位置行（生效，shadowed:false）+ 全局行（shadowed:true）两行齐列
+      const listing = listAgents(root, globalDir);
+      const lRow = listing.entries.find((e) => e.id === 'dup' && e.oldLocation);
+      const gRow = listing.entries.find((e) => e.id === 'dup' && e.scope === 'global');
+      assert.ok(lRow && gRow, '撞名两行齐列（旧位置不隐藏）');
+      assert.equal(lRow.shadowed, false, '读面生效副本=旧位置行（shadowed:false）');
+      assert.equal(lRow.meta.name, 'l-dup', '读面生效副本内容取 legacy');
+      assert.equal(gRow.shadowed, true, '读面全局行标 shadowed（非生效）');
+
+      // (b) REST 视图（loadAgentsView——/settings/agents 应答单点）：与读面同判，legacy 行在前生效
+      const view = loadAgentsView(root, globalDir);
+      const vlRow = view.entries.find((e) => e.id === 'dup' && e.source === 'project');
+      const vgRow = view.entries.find((e) => e.id === 'dup' && e.source === 'global');
+      assert.ok(vlRow && vgRow, 'REST 视图撞名两行齐列');
+      assert.equal(vlRow.shadowed, false, 'REST 视图生效副本=旧位置行');
+      assert.equal(vlRow.oldLocation, true, 'REST 视图旧位置行标 oldLocation（迁移钮 gating）');
+      assert.equal(vlRow.bodyPreview, '旧位置正文', 'REST 视图生效副本内容取 legacy');
+      assert.equal(vgRow.shadowed, true, 'REST 视图全局行标 shadowed');
+
+      // (c) 运行期（AgentRegistry.resolve）：legacy 遮蔽全局（T7 既有语义保持）
+      const reg = new AgentRegistry();
+      reg.registerBuiltins();
+      reg.loadAgents(root, globalDir);
+      assert.equal(reg.resolve('dup').name, 'l-dup', '运行期 resolve 取 legacy 副本');
+      assert.equal(reg.resolve('dup').framing, '旧位置正文', '运行期 framing 取 legacy 正文');
     } finally {
       fs.rmSync(globalDir, { recursive: true, force: true });
       fs.rmSync(root, { recursive: true, force: true });

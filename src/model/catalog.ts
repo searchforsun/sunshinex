@@ -26,7 +26,7 @@ interface ModelSwitcherOpts {
  * 源条目 → 适配器 cfg 纯函数（密钥按源名解析专用槽/主槽；effort 两级：条目 reasoningEffort > 装配级
  * 全局缺省（--effort/env）；窗口进 cfg——run 级窗口解析（resolveRunWindow）随当前内芯走；
  * timeoutMs 装配级旋钮（SUNSHINEX_MODEL_TIMEOUT_MS，D26 尾巴接线：/model 切换路径与主装配链
- * buildModel/buildTierRouter 同源吃到旋钮），未设不落字段回适配器内建 600s）。
+ * buildModel/buildTierRouterFromChoices 同源吃到旋钮），未设不落字段回适配器内建 600s）。
  *  抽为导出纯函数：优先级链可钉（protected 工厂测试子类钉不了构造入参），buildAdapter 单点消费
  *  （2026-10-28 档位路由改造后 runtime.buildTierRouterFromChoices 同以本函数构造档位适配器——单点不破）
  */

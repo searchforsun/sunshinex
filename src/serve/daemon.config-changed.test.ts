@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { GuiDaemon } from './daemon';
 import { setPluginEnabled } from '../catalog/plugins';
+import { upsertAgent } from '../catalog/agents';
 import { ScriptedAdapter } from '../model/adapter';
 
 /**
@@ -14,6 +15,8 @@ import { ScriptedAdapter } from '../model/adapter';
  * ② 内部写走直发：经 catalog 写路径（setPluginEnabled）→ suppress 抑制 watcher 回声，自触帧只收到一次
  *    （抑制的是 watcher 事件源，广播由 onCatalogWrite 直发——两路合一去重）；
  * ③ 会话关闭（受控删除）拆项目监听：此后写项目文件不再产生帧。
+ * ④ 补监听（终审修复波 2026-10-28）：会话打开时 `.sunshinex` 缺失的 root，首个 project 写就地补挂
+ *    watch——此后外部编辑同样产帧（onCatalogWrite 钩子的 watchProjectRoot 补挂半边）。
  * 环境隔离沿 daemon.ws.test 惯例 + HOME 重定向口（config/env.homeDir：HOME 显式设置优先，win32
  * 不读 USERPROFILE 判界）——tmp HOME 钉全局目录，项目 root 独立 tmp。
  */
@@ -186,6 +189,37 @@ test('③ 会话关闭（受控删除）拆项目监听：此后写项目文件�
       assert.equal(projectFrames.length, 1, `unwatch 后写项目文件不再产生帧，实收 ${projectFrames.length}`);
     } finally {
       ws.close();
+    }
+  });
+});
+
+test('④ 补监听（终审修复波 2026-10-28）：会话打开时 `.sunshinex` 尚不存在的 root，首个 project 写（catalog 直发）就地补挂 watch，此后外部编辑同样收到 config-changed 帧', async () => {
+  await withConfigDaemon(new ScriptedAdapter([]), async (ctx) => {
+    // 无 `.sunshinex` 的项目根：会话打开时 watchProjectRoot 静默跳过（任务14 降级口径）——
+    // 此后首个 catalog 写（目录随写建）应触发补监听，外部编辑不再丢帧
+    const late = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-cc-late-'));
+    await ctx.newSession(late); // 打开时 .sunshinex 缺失 → 未监听
+    const { ws, frames } = await openCollecting(ctx.ws);
+    try {
+      assert.equal(fs.existsSync(path.join(late, '.sunshinex')), false, '前置：会话打开未建 .sunshinex');
+      // 内部写（catalog 直发）：upsertAgent 落 <late>/.sunshinex/agents/<id>/agent.md（目录随写建）
+      // → onCatalogWrite 钩子：补挂 watchProjectRoot + suppress + 直发帧
+      upsertAgent(late, 'project', 'late-agent', { name: 'Late Agent' });
+      assert.equal(fs.existsSync(path.join(late, '.sunshinex', 'agents', 'late-agent', 'agent.md')), true, '写落盘且目录随建');
+      await waitFor(() => configChangedOf(frames).some((f) => f.resource === 'agents' && f.scope === 'project' && f.root === late), 5000);
+      const direct = configChangedOf(frames).find((f) => f.resource === 'agents' && f.scope === 'project' && f.root === late);
+      assert.deepEqual(
+        { kind: direct?.kind, resource: direct?.resource, scope: direct?.scope, root: direct?.root },
+        { kind: 'config-changed', resource: 'agents', scope: 'project', root: late },
+        '首个 project 写直发帧（root=补挂对象）',
+      );
+      // 补挂生效的实证：此后外部编辑（不经 catalog）写同一 root 的 mcp.json → watcher 产帧
+      fs.writeFileSync(path.join(late, '.sunshinex', 'mcp.json'), JSON.stringify({ mcpServers: { ext: { command: 'echo' } } }) + '\n', 'utf8');
+      await waitFor(() => configChangedOf(frames).some((f) => f.resource === 'mcp' && f.scope === 'project' && f.root === late), 5000);
+      assert.ok(configChangedOf(frames).some((f) => f.resource === 'mcp' && f.scope === 'project' && f.root === late), '外部编辑帧到达（补监听生效）');
+    } finally {
+      ws.close();
+      fs.rmSync(late, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 });
