@@ -9,7 +9,6 @@ import {
   loadGlobalSettings,
   loadProjectSettings,
   parseSettingsFile,
-  RETIRED_KEYS,
   SEMANTIC_KEYS,
 } from './settings';
 
@@ -287,7 +286,7 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
 
 test('SEMANTIC_KEYS 全表钉子：30 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 30, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役入 RETIRED_KEYS）');
+  assert.equal(entries.length, 30, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
@@ -313,52 +312,28 @@ test('SEMANTIC_KEYS 全表钉子：30 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['modelSmall'], undefined, 'modelSmall 已退役：models 条目 tier:"small" 标注');
   assert.equal(SEMANTIC_KEYS['modelMedium'], undefined, 'modelMedium 已退役：models 条目 tier:"medium" 标注');
   assert.equal(SEMANTIC_KEYS['modelLarge'], undefined, 'modelLarge 已退役：models 条目 tier:"large" 标注');
-  assert.equal(RETIRED_KEYS['dataDir'] !== undefined, true, '退役键必须留定向提示，不能静默变「未知键」');
-  assert.ok(/function calling/.test(RETIRED_KEYS['structuredOutput']), 'structuredOutput 退役提示须指明替代口径');
 });
 
 /**
- * 退役键与未知键必须分开处置：未知键是拼错（提示改拼即可），
- * 退役键是配置面主动收回——只提示「未知键」会把用户引向反复试错，
- * 必须说清「换成哪个键 + 为什么不能再写这里」，并确保它绝不落槽。
+ * 去兼容清理（2026-10-29）：退役键专属指引面（RETIRED_KEYS）整体删除——历史退役键
+ * （dataDir/structuredOutput/model 系五键）与拼错键同判：通用未知键告警、绝不落槽。
  */
-test('flattenSettings：dataDir 走退役定向提示、不落槽，且与未知键文案可区分', () => {
-  const retired = flattenSettings({ semantic: { dataDir: 'D:\\shared-data' }, env: {} });
-  assert.equal(retired.slots['SUNSHINEX_DATA_DIR'], undefined, '退役键绝不落槽（否则隔离语义又被绕开）');
-  assert.equal(retired.warnings.length, 1);
-  assert.ok(retired.warnings[0]!.includes('projectsDir'), '提示须给出替代键');
-  assert.ok(retired.warnings[0]!.includes('按工作区分目录隔离'), '提示须说清为何不能再写这里');
-  assert.ok(!retired.warnings[0]!.includes('未知语义键'), '退役键不得被当未知键');
-
-  const unknown = flattenSettings({ semantic: { dataDirX: 'x' }, env: {} });
-  assert.equal(unknown.warnings.length, 1);
-  assert.ok(unknown.warnings[0]!.includes('未知语义键'), '真拼错仍走未知键口径');
-});
-
-/**
- * 散键退役（2026-10-28 spec §15，Task 11）：model/baseUrl/modelSmall/modelMedium/modelLarge 五键
- * 出语义键面——providers 列表成为模型配置唯一事实源（设置页模型与提供方 / sunshinex providers 子命令），
- * 默认模型 = 第一个 provider 的第一个 model。退役键沿用 dataDir 先例：定向指引告警、绝不落 env 槽
- * （SUNSHINEX_MODEL* 槽保留给真导出环境变量的用户——buildModel 的 env 读取不退役）。
- */
-test('散键退役：model 系五键写任一即 providers 指引告警且不落槽（env 槽只留给真导出）', () => {
-  const retired: Array<[string, string]> = [
+test('flattenSettings：历史退役键走通用未知键告警、不落槽（专属指引面已删）', () => {
+  for (const [key, slot] of [
+    ['dataDir', 'SUNSHINEX_DATA_DIR'],
+    ['structuredOutput', 'SUNSHINEX_STRUCTURED_OUTPUT'],
     ['model', 'SUNSHINEX_MODEL'],
     ['baseUrl', 'SUNSHINEX_BASE_URL'],
     ['modelSmall', 'SUNSHINEX_MODEL_SMALL'],
     ['modelMedium', 'SUNSHINEX_MODEL_MEDIUM'],
     ['modelLarge', 'SUNSHINEX_MODEL_LARGE'],
-  ];
-  for (const [key, slot] of retired) {
-    assert.equal((SEMANTIC_KEYS as Record<string, unknown>)[key], undefined, `${key} 已出语义键面`);
-    assert.ok(RETIRED_KEYS[key] !== undefined, `${key} 退役键必须留定向提示，不能静默变「未知键」`);
-    assert.ok(/providers/.test(RETIRED_KEYS[key]!), `${key} 退役提示须指向 providers 列表`);
+  ] as Array<[string, string]>) {
+    assert.equal((SEMANTIC_KEYS as Record<string, unknown>)[key], undefined, `${key} 不在语义键面`);
     const r = flattenSettings({ semantic: { [key]: 'x' }, env: {} });
-    assert.equal(r.slots[slot], undefined, `${key} 退役绝不落槽（providers 列表唯一事实源）`);
-    assert.equal(r.warnings.length, 1);
-    assert.ok(r.warnings[0]!.includes('providers'), `${key} 告警须含 providers 指引`);
-    assert.ok(r.warnings[0]!.includes(key), '告警指名退役键');
-    assert.ok(!r.warnings[0]!.includes('未知语义键'), '退役键不得被当未知键');
+    assert.equal(r.slots[slot], undefined, `${key} 绝不落槽`);
+    assert.equal(r.warnings.length, 1, `${key} 恰一条告警`);
+    assert.ok(r.warnings[0]!.includes('未知语义键'), `${key} 告警=通用未知键口径`);
+    assert.ok(r.warnings[0]!.includes(key), '告警指名键');
   }
 });
 

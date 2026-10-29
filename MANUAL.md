@@ -96,13 +96,13 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 {
   "version": 1,
   "providers": [
-    { "name": "bigmodel", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "models": ["glm-4.7"] }
+    { "name": "bigmodel", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "models": [{ "model": "glm-4.7" }] }
   ],
   "env": { "SUNSHINEX_API_KEY": "sk-…" }
 }
 ```
 
-模型配置唯一事实源 = `providers` 列表：缺省模型恒为**第一个 provider 的第一个 model**（清单序即优先级）。存量配置里的 `model` / `baseUrl` / `modelSmall` / `modelMedium` / `modelLarge` 五个散键已退役（2026-10-28）——启动遇退役键打 warning 指引（不致命）：前两者迁为 `providers` 第一条目（`{name, baseUrl, models:[<模型名>]}`），后三者迁为 models 条目的 `tier` 标注；密钥仍在 `env` 块不动。没配 `providers` 时直接 `export SUNSHINEX_MODEL=…` / `SUNSHINEX_BASE_URL=…` 的单模型环境变量形态仍可用。
+模型配置唯一事实源 = `providers` 列表：缺省模型恒为**第一个 provider 的第一个 model**（清单序即优先级）。`model` / `baseUrl` / `modelSmall` / `modelMedium` / `modelLarge` 五个散键已退役（2026-10-28），`dataDir` 等历史键同样不再识别——这些键与拼错的未知键同判（启动打一条通用未知键告警、不生效），配置一律写 `providers` 列表；没配 `providers` 时直接 `export SUNSHINEX_MODEL=…` / `SUNSHINEX_BASE_URL=…` 的单模型环境变量形态仍可用。
 
 修改配置后新开会话生效（运行中会话不热切换；GUI 设置页的实时刷新只影响面板显示，见第三节「配置实时同步」）。
 
@@ -568,7 +568,7 @@ pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包
 | 现象 | 处理 |
 | --- | --- |
 | 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `providers`（首源 `baseUrl` 与 `env` 密钥槽，全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽（`providers test <源>` 可探活） |
-| 启动告警「model 已退役 / baseUrl 已退役 / modelSmall 已退役…」 | 存量散键设置：按第二节「散键退役」指引迁 `providers` 列表（告警不致命；未配 providers 时 env 直导出形态仍可用） |
+| 启动告警「未知语义键 "model" / "dataDir" …」 | 存量散键/历史键设置：这些键已不再识别（与拼错键同判，告警不致命）——模型配置改写 `providers` 列表（见第二节）；未配 providers 时 env 直导出形态仍可用 |
 | 输入没反应 | 正在等待审批或计划确认：按 `y` / `a` / `n` |
 | 写操作总被拒 | 当前是 `read-only` 档：重启以 `--mode=acceptEdits`（或缺省档）启动 |
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |

@@ -3,8 +3,8 @@
  * 语义键结构化写（settings 无 catalog 写面模块——写路径沿 serve handleSettingsPut 的语义键纪律就地收口）。
  * - get <key>：effective 值 + 来源单行上屏（env/project/global/default——复用 serve/config-helpers 的
  *   effectiveKeyRow 单点：CLI 入口 main 已跑 loadSettingsChain，selfFilledSlots 登记在册，来源归因与
- *   GUI /settings 同源不漂移；fileSlots 两级槽集同源）；退役键（RETIRED_KEYS，T11 五散键已退役入
- *   providers 列表）→ 打印处置指引 + exit 1；未知键 → error + exit 1。
+ *   GUI /settings 同源不漂移；fileSlots 两级槽集同源）；未知键（含历史退役键——2026-10-29 去兼容清理
+ *   撤专属指引面）→ error + exit 1。
  * - set <key> <value> [--scope=global|project]：SEMANTIC_KEYS 校验（Object.hasOwn 防原型键穿透——
  *   handleSettingsPut 同款）后沿其语义键写路径落盘：含注释文件走 surgicalSettingsUpdate 逐行手术
  *   （行尾注释/缩进/其余键逐字保真；不支持形态 → error 引流 raw 编辑面 + exit 1，零盘上副作用）；
@@ -15,7 +15,6 @@
  */
 import * as fs from 'node:fs';
 import {
-  RETIRED_KEYS,
   SEMANTIC_KEYS,
   getSelfFilledSlots,
   hasJsonComments,
@@ -35,12 +34,6 @@ function printUsage(): void {
   ));
 }
 
-/** 退役键处置指引（get/set 共用）：RETIRED_KEYS 文案自带「换成哪个键、为什么不能再写这里」 */
-function retiredGuidance(key: string): number {
-  console.error(`error: ${RETIRED_KEYS[key]}`);
-  return 1;
-}
-
 function getCmd(args: string[]): number {
   const key = args[0];
   if (key === undefined || key.startsWith('--')) {
@@ -52,7 +45,6 @@ function getCmd(args: string[]): number {
     printUsage();
     return 1;
   }
-  if (Object.hasOwn(RETIRED_KEYS, key)) return retiredGuidance(key);
   if (!Object.hasOwn(SEMANTIC_KEYS, key)) {
     console.error(t(`error: unknown settings key: ${key}`, `error：未知设置键：${key}`));
     return 1;
@@ -82,7 +74,6 @@ function setCmd(args: string[]): number {
     printUsage();
     return 1;
   }
-  if (Object.hasOwn(RETIRED_KEYS, key)) return retiredGuidance(key);
   if (!Object.hasOwn(SEMANTIC_KEYS, key)) {
     console.error(t(`error: unknown settings key: ${key}`, `error：未知设置键：${key}`));
     return 1;
@@ -142,7 +133,7 @@ function setCmd(args: string[]): number {
   return 0;
 }
 
-/** 命令入口：settings get/set；返回 exit code（0 成功 / 1 用法错、未知/退役键或写失败），调用方落 process.exitCode */
+/** 命令入口：settings get/set；返回 exit code（0 成功 / 1 用法错、未知键或写失败），调用方落 process.exitCode */
 export async function runSettings(args: string[]): Promise<number> {
   const sub = args[0];
   if (sub === 'get') return getCmd(args.slice(1));

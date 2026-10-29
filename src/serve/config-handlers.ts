@@ -45,7 +45,6 @@ import {
   loadProjectSettings,
   parseSettingsFile,
   SEMANTIC_KEYS,
-  RETIRED_KEYS,
   surgicalSettingsUpdate,
   getSelfFilledSlots,
 } from '../config/settings';
@@ -73,7 +72,7 @@ export interface ConfigHandlerIo {
  *  {merged, project, global}（两级文件分立拆解 + 拼接去重合并——与 loadPermissions 同口径的
  *  视图态）；providers = catalog listProviders 单点（Task 16 增量消费：choices 生效面 + entries
  *  源级分组显式值面（含 tier/apiKeyEnv，T9 语义标注见实现处注释）+ apiKeyPresent 布尔
- *  （resolveProviderApiKey 判存，不显值——密钥永不回传））。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役
+ *  （resolveProviderApiKey 判存，不显值——密钥永不回传））。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知
  *  键，项目先行拼全局）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
  *  process.env + 文件面，零副作用 */
 export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -104,7 +103,7 @@ export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage
   const view = listProviders(root ?? null);
   const apiKeyPresent: Record<string, boolean> = {};
   for (const choice of view.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
-  // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知/退役键）项目先行拼全局——GET /settings
+  // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知键）项目先行拼全局——GET /settings
   // 透出（RawPane 顶部告警列表消费）；降级语义沿 fileSlots（缺文件/畸形按空）
   const warnings = [...(root !== undefined ? fileWarnings(loadProjectSettings(root)) : []), ...fileWarnings(loadGlobalSettings())];
   io.send(res, 200, {
@@ -117,8 +116,8 @@ export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage
 
 /** PUT /settings {scope?, root?, updates}（G8c T2）：scope 缺省 'project'（root 必填，缺 400）；
  *  scope='global' 写用户级文件（root 定位面被忽略——与 raw 端点同裁定），GUI 设置页「逐项写回
- *  来源文件」的数据面。updates 为 Record<语义键, string|number|null>（非对象 400；未知键 400 带
- *  RETIRED 处置提示；值类型坏 400）。结构化写：读原文件（缺=空对象 {version:1}）→ 含注释 409
+ *  来源文件」的数据面。updates 为 Record<语义键, string|number|null>（非对象 400；未知键 400；
+ *  值类型坏 400）。结构化写：读原文件（缺=空对象 {version:1}）→ 含注释 409
  *  引流 raw 编辑面 → 改键（null=delete）→ 保 version/env/permissions/providers/未知键（操作原
  *  对象自然保）→ 2 空格缩进 JSON 原子写（同目录 tmp+rename，目录缺则 mkdir）→ reloadSettingsChain
  *  重载 → 200 {ok:true}。畸形 JSON / 根非对象 / version 非 1：409（文件现状挡住结构化改写，与注释同面） */
@@ -146,10 +145,7 @@ export async function handleSettingsPut(io: ConfigHandlerIo, req: http.IncomingM
   // 穿透守卫被写上盘——hasOwn 只认真自键
   for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
     if (!Object.hasOwn(SEMANTIC_KEYS, key)) {
-      const retired = Object.hasOwn(RETIRED_KEYS, key) ? RETIRED_KEYS[key] : undefined;
-      io.send(res, 400, {
-        error: retired !== undefined ? `unknown key "${key}": ${retired}` : `unknown settings key "${key}"`,
-      });
+      io.send(res, 400, { error: `unknown settings key "${key}"` });
       return;
     }
     if (value !== null && typeof value !== 'string' && typeof value !== 'number') {

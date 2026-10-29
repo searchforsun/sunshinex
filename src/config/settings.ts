@@ -8,9 +8,10 @@ import { t } from '../i18n';
  * - 只有 *API_KEY 不进本表（D6 + 用户裁决「env 块只承载敏感字段」）：密钥只走 env 透传块或环境变量，设置与凭据分离。
  * - SUNSHINEX_DATA_DIR 亦不进本表：它是「整目录直指」的**开发与测试专用**重定向口（测试钉数据目录、CI 隔离运行时数据），
  *   留在用户配置面即诱导误用（多工作区共用一份 sessions/memory/runs/skills，记忆索引还会跨项目注入提示词），
- *   故只保留在环境变量面，见 RETIRED_KEYS；用户级换盘一律走 projectsDir。
- * - model/baseUrl/modelSmall/modelMedium/modelLarge 五键已退役出本表（2026-10-28 spec §15，见 RETIRED_KEYS）：
- *   providers 列表成为模型配置唯一事实源；SUNSHINEX_MODEL 系与 SUNSHINEX_BASE_URL 槽本身不退役——
+ *   故只保留在环境变量面；用户级换盘一律走 projectsDir。
+ * - model/baseUrl/modelSmall/modelMedium/modelLarge 五键已退役出本表（2026-10-28 spec §15，2026-10-29
+ *   去兼容清理撤其专属指引面）：providers 列表成为模型配置唯一事实源；这些键如今与任何未知键同判
+ *   （flatten 出通用未知键告警、不落槽）。SUNSHINEX_MODEL 系与 SUNSHINEX_BASE_URL 槽本身不退役——
  *   无 providers 的用户直 export 环境变量仍被 buildModel/OpenAIAdapter 读取（单模型形态），退役的只是
  *   「settings 键 → env 槽」的填充路径。
  * - 其余全部 SUNSHINEX_* 配置变量均语义化（含 shell 逃生口、全局约定覆盖与记忆管线参数）：settings.json 是配置的正名，环境变量不是配置的替代形态。
@@ -46,22 +47,6 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   readFence: 'SUNSHINEX_READ_FENCE',
   sandbox: 'SUNSHINEX_SANDBOX',
   isolation: 'SUNSHINEX_ISOLATION',
-};
-
-/**
- * 退役语义键 → 处置提示（只提示、不落槽）：曾在本表、因语义与用户预期相悖而摘除的键。
- * 与「未知键」分开登记——未知键是拼错，退役键是配置面主动收回，两者的处置指引不同：
- * 前者提示改拼，后者必须指出「换成哪个键、以及为什么不能再写这里」。
- */
-export const RETIRED_KEYS: Readonly<Record<string, string>> = {
-  dataDir: 'dataDir 须走 projectsDir（按工作区分目录隔离）；SUNSHINEX_DATA_DIR 是开发与测试专用重定向口，用户配置面以 projectsDir 为准',
-  structuredOutput: 'structuredOutput 不存在：工具调用恒走原生 function calling（tools 字段下发），要求端点支持 function calling，无结构化输出开关',
-  // 散键退役（2026-10-28 spec §15）：模型配置唯一事实源 = providers 列表，标量散键五连退役
-  model: 'model 已退役：改用 providers 列表（设置页模型与提供方 / sunshinex providers 子命令）；默认模型 = 第一个 provider 的第一个 model',
-  baseUrl: 'baseUrl 已退役：改用 providers 列表（设置页模型与提供方 / sunshinex providers 子命令）；每个 provider 条目自带 baseUrl',
-  modelSmall: 'modelSmall 已退役：改用 providers 列表（设置页模型与提供方 / sunshinex providers 子命令），在 models 条目上标 tier:"small"',
-  modelMedium: 'modelMedium 已退役：改用 providers 列表（设置页模型与提供方 / sunshinex providers 子命令），在 models 条目上标 tier:"medium"',
-  modelLarge: 'modelLarge 已退役：改用 providers 列表（设置页模型与提供方 / sunshinex providers 子命令），在 models 条目上标 tier:"large"',
 };
 
 /** settings.json 解析产物：semantic=根级语义键原始值（形状裁决留给 flattenSettings）；env=透传块（键名即 SUNSHINEX_* 原名） */
@@ -225,8 +210,8 @@ export function flattenSettings(doc: SettingsDoc): FlattenResult {
   for (const [key, value] of Object.entries(doc.semantic)) {
     const slot = SEMANTIC_KEYS[key];
     if (slot === undefined) {
-      const retired = RETIRED_KEYS[key];
-      warnings.push(retired === undefined ? `settings: 未知语义键 "${key}"，已忽略` : `settings: ${retired}`);
+      // 未知键（含历史退役键）：通用未知键告警、不落槽（2026-10-29 去兼容清理撤退役键专属指引面）
+      warnings.push(`settings: 未知语义键 "${key}"，已忽略`);
       continue;
     }
     if (typeof value !== 'string' && typeof value !== 'number') {

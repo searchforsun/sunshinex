@@ -8,7 +8,8 @@ import * as path from 'path';
 /**
  * settings get/set 子命令端到端验收（Task 18）：spawn dist/cli/index.js 真子进程（mcp.test 先例：
  * HOME 重定向 + SUNSHINEX_* 显式清场，父测试进程态零污染）。
- * 用例对齐 brief：① get 退役键 model → 指引 + exit 1 ② set language（project 缺省）→ settings.json
+ * 用例对齐 brief：① get 历史退役键 model → 未知键口径 + exit 1（2026-10-29 撤退役专属指引面）
+ * ② set language（project 缺省）→ settings.json
  * 落键 + get → 值+来源 ③ get language（env 真导出）→ source env + override 标注 ④ set --scope=global
  * → HOME settings.json 落键 ⑤ 注释文件走 surgical 手术（注释保真）⑥ 未知键/裸命令 → exit 1。
  * 来源归因依赖 CLI 入口 main 先跑 loadSettingsChain（selfFilledSlots 登记）——get 的 env/project/
@@ -65,14 +66,14 @@ function globalSettings(f: Fixture): string {
   return path.join(f.home, '.sunshinex', 'settings.json');
 }
 
-test('① get 退役键 model → 退役指引 + exit 1（零盘上副作用）', () => {
+test('① get 历史退役键 model → 未知键口径 + exit 1（零盘上副作用；专属指引面已删）', () => {
   const f = makeFixture('retired');
   try {
     const r = runCli(f, ['get', 'model']);
     assert.equal(r.status, 1, '退役键应 exit 1');
     const text = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
-    assert.ok(text.includes('providers'), `指引应指向 providers 列表：${JSON.stringify(text)}`);
-    assert.ok(text.includes('已退役'), '指引应说明退役事实');
+    assert.ok(text.includes('model'), `错误应点名键名：${JSON.stringify(text)}`);
+    assert.ok(/unknown settings key/i.test(text), '退役键走通用未知键口径（指引面已删）');
     assert.equal(fs.existsSync(projSettings(f)), false, 'get 不落盘');
   } finally {
     cleanup(f);
@@ -156,7 +157,7 @@ test('⑥ 非法面：未知键 get/set、裸 settings、set 退役键 → exit 
     assert.equal(fs.existsSync(projSettings(f)), false, '拒绝写零盘上副作用');
     const retiredSet = runCli(f, ['set', 'model', 'gpt-x']);
     assert.equal(retiredSet.status, 1, '退役键 set 应 exit 1');
-    assert.ok(`${retiredSet.stderr ?? ''}`.includes('providers'), '退役键 set 应打印指引');
+    assert.ok(/unknown settings key/i.test(`${retiredSet.stderr ?? ''}`), '退役键 set 走通用未知键口径（指引面已删）');
     const bare = runCli(f, []);
     assert.equal(bare.status, 1, '裸 settings 应 exit 1');
     assert.ok(/Usage: sunshinex settings/.test(bare.stderr ?? ''), `应上屏 usage 行：${JSON.stringify(bare.stderr)}`);

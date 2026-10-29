@@ -878,7 +878,7 @@ interface SettingsBody {
     /** Task 27.5:entries 行 origin 归因(项目 providers 键在场整键遮蔽→该面全部 'project';否则 'global') */
     entries?: Array<{ name: string; origin?: 'project' | 'global' }>;
   };
-  /** G8d T5:两级 settings.json 的 flatten 告警(未知/退役键)——项目先行拼全局 */
+  /** G8d T5:两级 settings.json 的 flatten 告警(未知键,含历史退役键)——项目先行拼全局 */
   warnings: string[];
 }
 
@@ -1029,7 +1029,7 @@ describe('G8c T2 /settings 端点', () => {
     });
   });
 
-  test('⑯ PUT 改键→GET 反映+盘上复读(保留 version/env/permissions/未知键);未知键/RETIRED/类型坏/缺 root 400;null 删键', async () => {
+  test('⑯ PUT 改键→GET 反映+盘上复读(保留 version/env/permissions/未知键);未知键/退役键/类型坏/缺 root 400;null 删键', async () => {
     await withSettingsDaemon(async ({ base, tmp }) => {
       const proj = path.join(tmp, 'proj');
       const file = path.join(proj, '.sunshinex', 'settings.json');
@@ -1071,13 +1071,13 @@ describe('G8c T2 /settings 端点', () => {
       assert.ok(((await unknown.json()) as { error: string }).error.includes('unknown'), '未知键提示');
       const proto = await put({ root: proj, updates: { toString: 'x' } });
       assert.equal(proto.status, 400, '原型键穿透守卫:Object.hasOwn 判定,toString 不在自键集即 400(值比对会被 Object.prototype 解析穿透)');
+      // 历史退役键(2026-10-29 去兼容清理撤专属指引面)与拼错键同判:400 通用未知键文案、盘零触碰
       const retired = await put({ root: proj, updates: { dataDir: 'x' } });
       assert.equal(retired.status, 400, '退役键 400');
-      assert.ok(((await retired.json()) as { error: string }).error.includes('projectsDir'), '退役键带处置提示(换 projectsDir)');
-      // 散键退役(2026-10-28 spec §15):model 系写面同样 400 且指引 providers 列表
+      assert.ok(((await retired.json()) as { error: string }).error.includes('unknown'), '退役键走通用未知键文案(专属指引面已删)');
       const retiredModel = await put({ root: proj, updates: { model: 'x' } });
       assert.equal(retiredModel.status, 400, '退役键 model 400');
-      assert.ok(((await retiredModel.json()) as { error: string }).error.includes('providers'), 'model 退役提示指引 providers 列表');
+      assert.ok(((await retiredModel.json()) as { error: string }).error.includes('unknown'), 'model 退役同样通用未知键文案');
       const badType = await put({ root: proj, updates: { maxSteps: true } });
       assert.equal(badType.status, 400, '值类型非 string|number|null 400');
       const noRoot = await put({ updates: { language: 'x' } });
@@ -1246,22 +1246,22 @@ describe('G8c T2 /settings 端点', () => {
   });
 });
 
-// ---------- G8d T5:GET /settings warnings(两级 settings.json 未知键/退役键告警透出——RawPane 顶部告警列表数据源) ----------
+// ---------- G8d T5:GET /settings warnings(两级 settings.json 未知键告警透出——RawPane 顶部告警列表数据源) ----------
 
 describe('G8d T5 GET /settings warnings 透出', () => {
-  test('㉙ 项目文件未知键+退役键 → warnings 两级拼接(项目先行);缺文件 → warnings 空', async () => {
+  test('㉙ 项目文件未知键(含历史退役键) → warnings 两级拼接(项目先行);缺文件 → warnings 空', async () => {
     await withSettingsDaemon(async ({ base, tmp }) => {
       const proj = path.join(tmp, 'proj-warn');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
-      // 未知键(拼错面)+ 退役键(配置面主动收回面)各一——flattenSettings 的两类告警文本
+      // 未知键两条(拼错面 + 历史退役键——2026-10-29 去兼容清理后与未知键同判)——flattenSettings 告警文本
       fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({ nope: 1, dataDir: '/old' }), 'utf8');
 
       const r = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
       assert.equal(r.status, 200);
       const body = (await r.json()) as SettingsBody;
-      assert.equal(body.warnings.length, 2, '未知+退役各一条(全局缺文件零贡献)');
+      assert.equal(body.warnings.length, 2, '两条未知键告警(全局缺文件零贡献)');
       assert.ok(body.warnings[0]!.includes('未知语义键 "nope"'), '未知键告警指名键名');
-      assert.ok(body.warnings[1]!.includes('dataDir 须走 projectsDir'), '退役键告警携带处置提示');
+      assert.ok(body.warnings[1]!.includes('未知语义键 "dataDir"'), '历史退役键走通用未知键口径(专属指引面已删)');
 
       // 缺文件(项目无 .sunshinex + 全局无)→ warnings 空(缺失=没配,不是告警)
       const clean = path.join(tmp, 'proj-clean');

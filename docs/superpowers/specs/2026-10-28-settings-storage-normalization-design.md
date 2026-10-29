@@ -219,7 +219,7 @@ skills 增删改与启停（用户裁定除外）；插件安装/卸载 CLI 与�
 **目标形态**：providers 列表 = 模型配置唯一事实源。
 
 1. **存储**：settings `providers` 键格式不变，models 条目对象形态新增可选 **`tier?: 'small'|'medium'|'large'`** 标注；密钥仍走 env 槽（`SUNSHINEX_API_KEY_<源名>` 专用槽 > 主槽，D6「密钥不进结构化键」延续）；项目键**整键遮蔽**维持现状（键粒度的项目遮蔽全局，与决策 1 对齐）。
-2. **散键退役**：`model`/`baseUrl`/`modelSmall`/`modelMedium`/`modelLarge` 移入 `RETIRED_KEYS`（带指引「改用 providers 列表」）；解析遇退役键打 warning 不致命（语义沿 `structuredOutput` 先例）；`tier`/`effort` 语义键保留（请求参数，非 provider 配置）。装配链缺省内芯恒为 `choices[0]`，`explicitDefault` 分支退役。
+2. **散键退役**：`model`/`baseUrl`/`modelSmall`/`modelMedium`/`modelLarge` 出语义键面（2026-10-28 设专属指引面，2026-10-29 去兼容清理撤之——与未知键同判：通用告警、不落槽）；`tier`/`effort` 语义键保留（请求参数，非 provider 配置）。装配链缺省内芯恒为 `choices[0]`，`explicitDefault` 分支退役。
 3. **默认模型规则**：默认选中 = `choices[0]` = **providers 数组序 × models 数组序的第一×第一**；顺序即优先级——GUI EditorDrawer 模型行带上移/下移，CLI `--models` 逗号清单序即序、`model move` 调序；列表首位标「默认」chip。无 defaultModel 覆盖键（用户裁定：默认即派生）。
 4. **档位路由**：`/model-tier`（TUI）与 GUI 档位 select 语义不变，实现从三散键映射改为清单内按 `tier` 标注选中（同档多模型取第一个；无匹配/未标注回默认 `choices[0]`）。
 5. **catalog/providers.ts**：`listProviders / upsertProvider / removeProvider / setProviderApiKey（写 settings env 块，响应不回显）/ modelAdd / modelRemove / modelMove / testProvider`；`testProvider` 复用 probe 思路连通性验证。
