@@ -2804,3 +2804,22 @@ input.sx-setting-input { width: 100%; }
 .sx-res-toolbar > .sx-search-bar { flex: 1 1 160px; width: auto; min-width: 120px; max-width: none; } /* 搜索弹性位(帽仅工具栏内解除) */
 .sx-res-toolbar > .sx-add-button { align-self: auto; flex: none; }
 .sx-res-toolbar > .sx-dd { flex: none; }
+
+/* 设置页顶区三修(2026-10-29 用户裁定):①返回胶囊 margin 归零——箭头字面与导航项文字左缘对齐
+   (旧 margin 8px 整体偏右);②右栏遮盖区=sticky toolbar-h 不透明条(.sx-settings-main 为滚动容器
+   且自 y0 起滚,内容上滑直入窗顶条区)——sticky 钉顶+负下边距让正文从容器顶起滑、上滑被条盖住,
+   主对话 topbar 同款遮盖语义;条底 1px 分割线同 main 对话。窗控簇 fixed z90 在条上方不受影响,
+   弹层 z40 模态照常盖条 */
+.sx-settings-head .sx-new-chat { margin-left: 0; }
+.sx-settings-main { position: relative; }
+.sx-settings-main::before {
+  content: '';
+  position: sticky;
+  top: 0;
+  display: block;
+  height: var(--toolbar-h);
+  margin-bottom: calc(-1 * var(--toolbar-h));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 5;
+}
