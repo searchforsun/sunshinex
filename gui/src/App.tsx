@@ -472,6 +472,7 @@ function AppShell(): JSX.Element {
     closeMenuDrawer,
     menuRenderW,
     sidebarOccupied,
+    sidebarRenderW,
     startResize,
   } = useShellLayout({
     shellRef,
@@ -696,7 +697,7 @@ function AppShell(): JSX.Element {
           </main>
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
           {(page === 'chat' || page === 'welcome') && !tabState.collapsed && (
-          <aside className="sx-sidebar" ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px` } as CSSProperties}>
+          <aside className="sx-sidebar" ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
             <TabStrip
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}

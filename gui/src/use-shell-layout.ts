@@ -41,10 +41,20 @@ export interface ShellLayout {
   readonly menuRenderW: number;
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不挤占主栏/composer) */
   readonly sidebarOccupied: number;
+  /** 右栏渲染期钳制宽(浮窗态=抽屉固定宽 drawerMin;CSS --drawer-w 消费) */
+  readonly sidebarRenderW: number;
   /** 右栏拖宽边条 mousedown 手柄 */
   readonly startResize: (e: ReactMouseEvent<HTMLDivElement>) => void;
   /** 右栏布局宽(折叠=32 骨架宽) */
   readonly sidebarWidth: number;
+}
+
+/** 抽屉固定宽(2026-10-29 用户裁定终版「抽屉最小宽度=应用最小宽−24,浮窗态固定此值不可调节」):
+ *  应用最小宽=壳 main.ts PHYSICAL_MIN_W 500 物理px(minWidth 单点;gui 不可见该常量,按
+ *  devicePixelRatio 折算 DIP——与 screen.scaleFactor 同源,跨屏漂移为已接受近似)再减 24 浮窗
+ *  边距,与 MIN_TAB_WIDTH 取大兜底(低 DPI 大值安全)。仅浮窗态生效:分栏态压缩链仍 296 不动 */
+function drawerMin(): number {
+  return Math.max(MIN_TAB_WIDTH, Math.round(500 / (window.devicePixelRatio || 1)) - 24);
 }
 
 export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
@@ -109,19 +119,14 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
   /** 菜单渲染期钳制(2026-10-24 用户裁定压缩顺序:右缘缩窗=侧栏→主栏→菜单→浮窗):视口装不下
    *  右栏最小 296+主栏最小 320 时,菜单先让出富余宽(拖宽态 menuWidth 不丢,只钳渲染),下限 240 */
   const menuRenderW = Math.min(menuWidth, Math.max(240, viewportW / zoomScale() - MAIN_MIN_WIDTH - MIN_TAB_WIDTH));
-  /** 右栏渲染期钳制宽——分栏态预留主栏最小宽(320),下限 296:菜单让宽后仍装不下则侧栏托底
-   *  (vw≥856 时数学上恰≥296,见浮窗阈值);浮窗态=纯覆盖层,**不挤占主栏/composer**
-   *  (2026-10-24 用户裁定「抽屉是上浮的,为什么占输入框宽度」——dock 不让位,抽屉盖在上面),
-   *  上界=视口−24 边距——**不减菜单宽**:sidebarFloating⇒menuFloating 恒真(616<856),菜单已
-   *  自动关闭占位为 0,多减 240 曾令极窄窗抽屉塌到 296 下限(应用最小宽 453 DIP 时应=453−24≈429,
-   *  2026-10-29 用户实测「最短宽度应≈应用最小宽−24」实证偏差);与 startResize cap() 的
-   *  (menuFloating?0:menuRenderW) 口径对齐。zoom 契约:视口项 /zoomScale() 归一 */
-  const sidebarRenderW = Math.min(
-    tabWidth,
-    sidebarFloating
-      ? Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - (menuFloating ? 0 : menuRenderW) - 24)
-      : Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - (menuFloating ? 0 : menuRenderW) - MAIN_MIN_WIDTH),
-  );
+  /** 右栏渲染期钳制宽——浮窗态=**抽屉固定宽 drawerMin()=应用最小宽−24,不可调节**(2026-10-29
+   *  用户裁定终版:最窄应用下变抽屉浮窗,宽度恒为此值;此前 min(持久宽, 视口−24) 会把持久宽
+   *  带进抽屉,废)。分栏态=既有钳制:预留主栏最小宽(320),下限 296,菜单让宽口径
+   *  (menuFloating?0:menuRenderW) 与 startResize cap() 一致(616~856 区间菜单已关占位 0,
+   *  侧栏自 856 起随视口渐进压缩)。视觉/本地换算 /zoomScale() 契约同前 */
+  const sidebarRenderW = sidebarFloating
+    ? drawerMin() // 浮窗:固定宽,持久宽不带进抽屉
+    : Math.min(tabWidth, Math.max(MIN_TAB_WIDTH, viewportW / zoomScale() - (menuFloating ? 0 : menuRenderW) - MAIN_MIN_WIDTH));
   /** 右栏实际占宽(未渲染=0:欢迎页/折叠/settings/浮窗态——浮窗不占布局宽,菜单/主栏不受钳) */
   const sidebarOccupied = !settingsOpen && (page === 'chat' || page === 'welcome') && !tabCollapsed && !sidebarFloating ? sidebarRenderW : 0;
 
@@ -136,17 +141,16 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
    *  再拖本边条),不取渲染宽则向窄拖先空走死区 */
   const startResize = (e: ReactMouseEvent<HTMLDivElement>): void => {
     if (tabCollapsed || (page !== 'chat' && page !== 'welcome')) return;
+    if (sidebarFloating) return; // 浮窗抽屉不可调节(2026-10-29 用户裁定):宽度恒=drawerMin()
     e.preventDefault(); // 拖宽期间禁原生文本选择拖选(G8e 终审 B;.sx-resizer 另挂 user-select:none)
     const el = e.currentTarget;
     el.classList.add('active');
     const startX = e.clientX;
-    // 拖拽上界随态:分栏预留主栏最小宽;浮窗=覆盖层只留 24px 边距(不挤 composer,见 sidebarRenderW);
-    // 下限 296 在 setWidth 单点(起拖定格,拖拽中无 resize 事件模式不翻转)。
-    // 视口项 /zoomScale 归一;菜单让宽/主栏最小宽/24 边距为本地 px 常数不除 zoom——与 sidebarRenderW
-    // 渲染钳制(:91-96)同一口径(2026-10-27 技术债轮:常数误除 zoom 致非 100% 缩放下拖宽上界松于
-    // 渲染钳制,mouseup 落态>渲染宽=可见回跳+持久档失真)
-    const floating = sidebarFloating;
-    const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - (floating ? 24 : MAIN_MIN_WIDTH);
+    // 拖拽上界:分栏预留主栏最小宽(菜单已关口径同 sidebarRenderW);下限 296 在 setWidth 单点
+    // (起拖定格,拖拽中无 resize 事件模式不翻转)。视口项 /zoomScale 归一;菜单让宽/主栏最小宽
+    // 为本地 px 常数不除 zoom——与渲染钳制同一口径(2026-10-27 技术债轮:常数误除 zoom 致非 100%
+    // 缩放下拖宽上界松于渲染钳制,mouseup 落态>渲染宽=可见回跳+持久档失真)
+    const cap = (): number => window.innerWidth / zoomScale() - (menuFloating ? 0 : menuRenderW) - MAIN_MIN_WIDTH;
     const startWidth = Math.min(tabWidth, cap());
     let next = startWidth;
     shellRef.current?.classList.add('sx-dragging'); // 拖拽期 iframe 指针事件让位(见 CSS .sx-dragging)
@@ -184,6 +188,7 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
     closeMenuDrawer,
     menuRenderW,
     sidebarOccupied,
+    sidebarRenderW,
     startResize,
     sidebarWidth,
   };

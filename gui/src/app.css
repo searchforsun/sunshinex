@@ -2100,6 +2100,7 @@ input.sx-setting-input { width: 100%; }
 .sx-skills-search { max-width: 320px; }
 .sx-skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-auto-rows: 104px; gap: 10px; }
 .sx-skill-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; overflow: hidden; }
+.sx-skill-card.shadowed { opacity: 0.5; } /* T25 被同名技能遮蔽:灰显(沿 .sx-mcp-card.shadowed 同口) */
 .sx-skill-card .sx-skill-head { min-width: 0; }
 .sx-skill-card .sx-skill-id { font-family: var(--font-mono); font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-skill-card .sx-skill-desc { font-size: 12px; line-height: 1.5; color: var(--fg-tertiary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -2634,11 +2635,13 @@ input.sx-setting-input { width: 100%; }
   max-width: calc(100% - var(--menu-occ, 0px) - var(--main-min-w, 320px));
 }
 .sx-shell.sx-sidebar-float .sx-sidebar {
-  /* 浮窗态恢复 c342d00 CDP 四态验证的全宽几何(2026-10-29 用户实测桌面端窄窗抽屉不可见根修):
-     --sb-w 是分栏偏好宽,浮窗=纯覆盖层按视口-菜单-24 全宽盖右缘,不吃会话宽度档 */
-  width: calc(100% - var(--menu-occ, 0px) - 24px);
+  /* 浮窗态抽屉=**固定宽 --drawer-w**(2026-10-29 用户裁定终版:抽屉宽恒=应用最小宽−24,
+     use-shell-layout drawerMin() 经 App 内联落变量,不可调节,startResize 浮窗早退):
+     --sb-w 是分栏偏好宽不入抽屉;回退值保底(变量缺失时旧全宽几何,与 c342d00 同) */
+  width: var(--drawer-w, calc(100% - var(--menu-occ, 0px) - 24px));
   max-width: none;
 }
+.sx-shell.sx-sidebar-float .sx-resizer { display: none; } /* 抽屉不可调节,拖宽手柄隐藏(同菜单抽屉 4d69da4 惯例) */
 
 /* ===== 2026-10-28 用户裁定:运行转圈全局统一=正文 run-spinner 12px——会话行/任务板/动态行
    同升(8/6px 档退役);done/failed/stopped 仍为小圆点(点语言不随转圈放大) ===== */
