@@ -58,7 +58,7 @@ hello-mcp/
 ```bash
 sunshinex plugins validate ~/.sunshinex/plugins/hello-mcp   # error:/warn: 逐行；exit 0/1（可进 CI）
 sunshinex plugins list                                       # id/version/来源/启用/平台/server/告警 表格
-# 第三步：开启——GUI 设置页「插件」开关，或手编 settings.json（MANUAL §6.4）
+# 第三步：开启——`sunshinex plugins enable <id>`（缺省项目作用域，--scope=global 切全局）、GUI 设置页「插件」开关，或手编 settings.json（MANUAL §6.4）
 ```
 
 生效时机 = **下次会话装配**（运行中会话不热插拔，见 §6）。
@@ -130,7 +130,7 @@ settings 语义键（两级：全局 `~/.sunshinex/settings.json` 与项目级 `
 } }
 ```
 
-- **记录级整面替换**：项目记录整体遮蔽全局记录（config 不深并）；settings 未配置该插件 → `defaultEnabled` 兜底；坏记录（非对象）告警忽略。
+- **记录级整面替换（per-id）**：启用裁决按插件 id 逐个进行——项目级有该 id 记录则用项目记录（整体遮蔽全局记录，config 不深并）；项目级无记录用全局记录；两级都无 → `defaultEnabled` 兜底；坏记录（非对象）告警忽略。即 `merged = { ...global, ...project }` 的键级浅并，项目侧同一键整体胜出。
 - **装配期展开**（以如下 manifest 为例）：
 
 ```json
@@ -171,7 +171,7 @@ discovered   两级根扫描发现，manifest 合法入表（非法整插件跳�
   → active   enabled 且平台可用：server 进 MCP 名单 + guard 登记 + skills 链并入
 ```
 
-- **生效时机 = 下次会话装配**：设置页开关 / 手编 settings 改完对新会话生效；运行中会话不热切换（进程生命周期属 McpHost，热插拔后置）。
+- **生效时机 = 下次会话装配**：设置页开关 / `sunshinex plugins enable|disable` / 手编 settings 改完对新会话生效；运行中会话不热切换（进程生命周期属 McpHost，热插拔后置）。
 - 进程生命周期随 harness：懒装配（首次 run 前 `mcpReady` 连接注册；无启用 server 时零开销直通）→ 会话收尾 `mcpClose` 收口（CLI 收尾 / TUI dispose / daemon 停机同源）。浏览器类有头进程同随此收口。
 - `platforms` 不匹配：装载层只标记不丢弃（设置页置灰列示），装配期剔除。
 
@@ -181,7 +181,7 @@ discovered   两级根扫描发现，manifest 合法入表（非法整插件跳�
 
 | 出口 | 用法 |
 | --- | --- |
-| plugins CLI | `sunshinex plugins validate <dir>`（单目录校验，`error:` / `warn:` 逐行，exit 0/1 可进 CI）；`sunshinex plugins list [--root <abs>]`（两级装载表格：id/version/来源/启用/平台/server/告警数 + `[warn]` 聚合告警行；`--root` = 项目 settings 锚，缺省 cwd） |
+| plugins CLI | `sunshinex plugins validate <dir>`（单目录校验，`error:` / `warn:` 逐行，exit 0/1 可进 CI）；`sunshinex plugins list [--root <abs>]`（两级装载表格：id/version/来源/启用/平台/server/告警数 + `[warn]` 聚合告警行；`--root` = 项目 settings 锚，缺省 cwd）；`sunshinex plugins enable\|disable <id> [--scope=global\|project]`（启停写 settings `plugins` 键） |
 | 设置页 / 端点 | `GET /settings/plugins?root=`：逐插件 id/来源/启用/平台/server/技能数/configSchema/config/warnings + 顶层 warnings；manifest 非法被跳过的插件以告警徽标列于 pane 尾 |
 | 会话 / daemon 面 | 装配告警（遮蔽/撞名/坏记录/manifest 告警）并入 harness 警告单——会话面以警示行透出，`selfcheck` 同屏 |
 

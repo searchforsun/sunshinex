@@ -41,8 +41,22 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 | `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 acceptEdits 权限档装配；详见 [MANUAL-GUI](MANUAL-GUI.md)） |
 | `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
 | `sunshinex kb-index [目录]` | 构建知识库索引（对目录内 md/txt 走计费 embedding；缺省当前工作区，`node_modules` 与隐藏目录跳过；`kb_search` 检索源，见第二节 KB 配置） |
-| `sunshinex plugins list [--root <目录>]` | 插件清单：两级装载结果（id / 版本 / 来源 / 启用态 / 贡献面 / 告警），见 6.4 |
+| `sunshinex plugins list [--root <目录>] \| enable\|disable <id> [--scope=global\|project]` | 插件清单与启停：两级装载结果（id / 版本 / 来源 / 启用态 / 贡献面 / 告警），见 6.4 |
 | `sunshinex plugins validate <目录>` | 校验插件目录 manifest（错误 / 告警逐行上屏，exit code 判过；开发面，详见 `docs/PLUGIN-DEV.md`） |
+| `sunshinex mcp` / `agents` / `providers` / `settings` / `skills list` | MCP 服务器 / 子智能体 / 模型提供方 / 设置键 / 技能清单的命令行管理面（增删改查 / 启停 / 批准 / 探活），见下方「资源管理子命令」 |
+
+**资源管理子命令**（MCP / 子智能体 / 插件 / 提供方 / 技能 / 设置键）
+
+六个命令族，其中 mcp / agents / providers / settings 四族共用同一套作用域定位：`--scope=global|project`（缺省 `project`，锚定当前工作目录）、`--root <目录>` 覆盖工作目录；写项目级时 `.sunshinex/` 不存在会自动建。plugins 启停同样带 `--scope=global|project`；skills list 的 `--scope` 词表为 `all|project|global`（视图过滤，非写面定位）。`--json` 供脚本消费。表格输出 / exit code（0 成功 / 1 用法错或写失败）。
+
+| 命令族 | 子命令 | 说明 |
+| --- | --- | --- |
+| `sunshinex mcp` | `list` / `add <名> --command=<命令> [--arg=a]… [--env=K=V]…` 或 `--url=<地址>` / `remove` / `enable` / `disable` / `test <名>` / `approve` / `deny <名>` | MCP 服务器登记表增删改查；`test` 探活（握手 + tools/list）；`approve`/`deny` 写项目批准阀（见第二节 mcp.json）；项目级 `add` 会提示首次装载需批准 |
+| `sunshinex agents` | `list` / `add <id> --name=<名称> [--description=<描述>] [--memory] [--isolation=worktree] [--executor=internal-team\|external-cli] [--body-file=<路径>]` / `remove` / `enable` / `disable <id>` | 子智能体目录管理；启停写 agent.md 的 `enabled` 行（见 5.3） |
+| `sunshinex plugins` | `list [--root <目录>]` / `validate <目录>` / `enable` / `disable <id> [--scope=global\|project]` | 插件清单 / manifest 校验 / 启停（写 settings `plugins` 键，见 6.4） |
+| `sunshinex providers` | `list` / `add <名> --base-url=<地址> --models=m1,m2,…` / `set <名>`（增量更新，同 add 字段）/ `remove` / `key <名>`（隐藏输入写 env 块）/ `test <名>`（探测 `<baseUrl>/models`）| 模型提供方管理；模型行二级：`providers model add\|remove\|move <源> <模型> [--tier=small\|medium\|large] [--direction=up\|down]`——清单序即缺省序（首位=默认模型），`--tier` 标注档位路由 |
+| `sunshinex skills` | `list [--scope=all\|project\|global] [--json]`（另有 `install` 见上表） | 沿来源链列技能（project/user/learned/plugin 分组 + 遮蔽标注） |
+| `sunshinex settings` | `get <键>` / `set <键> <值> [--scope=global\|project]` | 读语义设置键（打印生效值与来源）/ 写键；退役键（如 `model`）打印处置指引并退出码 1 |
 
 **启动参数**（全部命令通用）
 
@@ -70,18 +84,25 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 | 全局 | `~/.sunshinex/settings.json` | 本机所有项目（配一次） |
 | 项目 | `<项目>/.sunshinex/settings.json` | 仅该项目（已在 .gitignore） |
 
-生效优先级（高 → 低）：**已导出环境变量 > 项目 settings.json > 全局 settings.json > 内置缺省**。修改配置后新开会话生效。
+生效优先级（高 → 低）：**已导出环境变量 > 项目 settings.json > 全局 settings.json > 内置缺省**。
+
+**作用域统一规则**：MCP、子智能体、插件、技能四类资源一律**项目遮蔽全局**（同名/同 id 时项目生效，视图标注遮蔽关系，见第三节目录树）；settings 语义键维持上面的填充链，两个结构化键的两级遮蔽口径不同：`providers` 按**整键**（项目写了该键——含空数组——则整键以项目为准，不做逐项深合并）；`plugins` 按**插件 id 逐条**（`{...全局记录, ...项目记录}` 键级浅并——项目只覆写它点名的插件，未点名的沿用全局记录；同 id 记录整面替换、config 不深并）。
 
 最小可用配置（可直接复制使用；任意 OpenAI 协议兼容端点均可，如 BigModel、DeepSeek、OpenRouter、vLLM 本地部署等）：
 
 ```json
 {
   "version": 1,
-  "model": "<模型名>",
-  "baseUrl": "https://<端点>/v1",
+  "providers": [
+    { "name": "bigmodel", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "models": ["glm-4.7"] }
+  ],
   "env": { "SUNSHINEX_API_KEY": "sk-…" }
 }
 ```
+
+模型配置唯一事实源 = `providers` 列表：缺省模型恒为**第一个 provider 的第一个 model**（清单序即优先级）。存量配置里的 `model` / `baseUrl` / `modelSmall` / `modelMedium` / `modelLarge` 五个散键已退役（2026-10-28）——启动遇退役键打 warning 指引（不致命）：前两者迁为 `providers` 第一条目（`{name, baseUrl, models:[<模型名>]}`），后三者迁为 models 条目的 `tier` 标注；密钥仍在 `env` 块不动。没配 `providers` 时直接 `export SUNSHINEX_MODEL=…` / `SUNSHINEX_BASE_URL=…` 的单模型环境变量形态仍可用。
+
+修改配置后新开会话生效（运行中会话不热切换；GUI 设置页的实时刷新只影响面板显示，见第三节「配置实时同步」）。
 
 下面是**全部可配置项**（供查改；`//` 与 `/* */` 注释可原样保留——settings.json 容忍 JSONC 注释；尾随逗号不在此列、仍按严格 JSON 报错；不需要的项整行删除即用缺省）：
 
@@ -90,17 +111,15 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   "version": 1,
 
   // ── 模型 ──────────────────────────────────────────────
-  "model": "<模型名>",                               // 主模型（任意 OpenAI 协议兼容模型）
-  "baseUrl": "https://<端点>/v1",                    // 模型端点
-  "providers": [                                     // 多源多模型清单（/model 选择卡数据源；项目级整键覆盖全局级）
+  "providers": [                                     // 模型配置唯一事实源（多源多模型清单；/model 选择卡数据源；项目级整键覆盖全局级）
     {                                                // 每项 = 一个源：name + baseUrl + models（contextWindow / reasoningEffort 为该源各模型缺省，可省）
       "name": "deepseek",
       "baseUrl": "https://api.deepseek.com",
       "contextWindow": 64000,                        // 源级缺省窗口
       "reasoningEffort": "high",                     // 源级缺省思考强度 none|minimal|low|medium|high|xhigh|max
       "models": [
-        "deepseek-chat",                             // 字符串形态：窗口/强度/图片能力回退源级
-        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low", "supportsImages": false }  // 对象形态：逐项覆盖源级（supportsImages=false 声明纯文本模型，GUI/TUI 拦截图片附件）
+        "deepseek-chat",                             // 字符串形态：窗口/强度/图片能力回退源级；清单序即缺省序——第一源第一模型 = 默认模型
+        { "model": "deepseek-flash", "contextWindow": 128000, "reasoningEffort": "low", "supportsImages": false, "tier": "large" }  // 对象形态：逐项覆盖源级（supportsImages=false 声明纯文本模型；tier 标注供 /model-tier 档位路由选中，small|medium|large 可省）
       ]
     },
     {
@@ -109,10 +128,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
       "models": ["glm-4.7"]
     }
   ],
-  "tier": "medium",                                  // 缺省档位 small|medium|large
-  "modelSmall": "",                                  // 各档绑定的模型；留空 = 该档用主模型
-  "modelMedium": "",
-  "modelLarge": "",
+  "tier": "medium",                                  // 缺省档位 small|medium|large（/model-tier 按上面 tier 标注选中对应模型，无标注回默认）
   "contextWindow": 200000,                           // 全局窗口 tokens（未按模型配置时的回退；1M 模型填 1000000）
   "reasoningEffort": "high",                         // 缺省思考强度 none|minimal|low|medium|high|xhigh|max；留空 = 不下发（用端点默认）；端点不支持时按阶梯自动降级
   "imageHistoryLimit": 3,                            // 工具结果图片渲染半径：链上仅最近 N 个带图行保图入模型上下文（0-50 整数，0 = 全部剥图留文本标记）
@@ -165,23 +181,28 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   "isolation": "",                                   // 隔离口径声明 landlock|container|host；留空自动探测（selfcheck 上屏）
 
   // ── 插件 ──────────────────────────────────────────────
-  "plugins": {                                       // 插件启用态与配置（见 6.4）
+  "plugins": {                                       // 插件启用态与配置（见 6.4）；两级 per-id 项目遮蔽全局（同 id 记录整面替换，config 不深并）
     "browser-use": { "enabled": true, "config": {} } // enabled 缺省 = manifest defaultEnabled（缺省 false）；config 原样透传插件
   },
 
+  // ── 项目 MCP 批准阀（approve/deny 动作自动维护，一般无需手改）──
+  // "mcpApprovals": { "<项目slug>": ["github"] },    // 已批准的项目 MCP 服务器（按项目记，见下节）
+  // "mcpDenied": { "<项目slug>": ["不可信源"] },     // 已拒绝的：不再询问、装载器直接跳过
+
   // ── 密钥（只写这里）──────────────────────────────────
   "env": {
-    "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（必填；providers 各源缺专用密钥时也回退这里）
-    "SUNSHINEX_API_KEY_DEEPSEEK": "sk-…",            // 按源专用密钥：SUNSHINEX_API_KEY_<大写源名>（有则优先于主密钥）
+    "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（providers 各源缺专用密钥时也回退这里；无 providers 的单模型 env 形态也读它）
+    "SUNSHINEX_API_KEY_DEEPSEEK": "sk-…",            // 按源专用密钥：SUNSHINEX_API_KEY_<大写源名>（有则优先于主密钥；providers key 子命令写这里）
     "SUNSHINEX_EMBEDDING_API_KEY": "",               // 嵌入密钥；留空 = 回退主密钥
     "SUNSHINEX_BING_API_KEY": ""                     // Bing 搜索密钥（websearchProvider=bing 时用）
   }
 }
 ```
 
-- 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`model` ≡ `SUNSHINEX_MODEL`），环境变量仍最高优先。
-- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；主模型未显式配置（无 `model` 键）时缺省取清单首项，`default` 选项仅在主模型显式配置时露出。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
+- 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`tier` ≡ `SUNSHINEX_TIER`），环境变量仍最高优先。散键退役后 `SUNSHINEX_MODEL` / `SUNSHINEX_BASE_URL` 两个环境槽本身不退役——无 `providers` 时直接导出仍按单模型形态装配。
+- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`；`sunshinex providers key <源>` 交互写入）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
+- 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）——取代退役的 `modelSmall` / `modelMedium` / `modelLarge` 三键。
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 
@@ -201,15 +222,26 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - stdio 形态：`command` + 可选 `args` / `env`（transport 可省略）；远程形态：`url` + 可选 `transport`（缺省 `http`，支持 `sse`）与 `headers`（请求头，string → string）。两形态通用的可选键：`enabled`（布尔整机开关，`false` 装配期跳过不连接）、`disabledTools`（停用工具短名数组，装配期不注册即模型不可见）；无 scheme 的 `url` 自动补 `http://`。
 - 非法条目跳过不抛（缺 command/url、transport 值未知、形态矛盾），装配面宁可少配不错配。
 
+**项目 MCP 批准阀**（安全阀，防克隆仓库自带 mcp.json 自动拉起进程）：项目级条目**首次装载需你批准一次**——批准前不拉起进程、不装载也不遮蔽全局同名条目。批准 / 拒绝记录写在全局 settings 的 `mcpApprovals` / `mcpDenied` 键（按项目 slug 分账）；拒绝过的不再次询问、装载器直接跳过；全局条目是你亲手配的机器级文件，不过阀。批准渠道三选一：
+
+| 渠道 | 操作 |
+| --- | --- |
+| GUI | 设置页「MCP」项目作用域下待确认卡（「待确认」徽标 + 确认 / 拒绝按钮） |
+| TUI | 启动加载后非阻塞提示未批准项；`/mcp` 面板看「待确认」徽标，`/mcp approve <名>` / `/mcp deny <名>` |
+| CLI | `sunshinex mcp list` 标注 pending；`sunshinex mcp approve <名>` / `deny <名>`（写全局 settings） |
+
+`mcp.json` 的增删改查走 `sunshinex mcp` 子命令（见第一节「资源管理子命令」）或 GUI 设置页；手编文件同样有效。
+
 ## 三、目录与文件
 
 **全局级 `~/.sunshinex/`**
 
 ```
 ~/.sunshinex/
-├── settings.json               # 全局配置（第二节）
-├── mcp.json                    # 全局 MCP 服务器登记（被项目级 .sunshinex/mcp.json 同名遮蔽）
-├── plugins/<id>/               # 用户级插件（plugin.json + 资源；见 6.4）
+├── settings.json               # 全局配置（第二节；含 providers / plugins / mcpApprovals / mcpDenied）
+├── mcp.json                    # 全局 MCP 服务器登记（被项目级 .sunshinex/mcp.json 同名遮蔽；不过批准阀）
+├── plugins/<id>/               # 用户级插件（plugin.json + 资源；同 id 遮蔽内置，见 6.4）
+├── agents/<id>/agent.md        # 全局子智能体（frontmatter 可选 enabled，缺省开；见 5.3）
 ├── SUNSHINE.md                 # 个人全局约定，跨所有项目生效（对标 ~/.claude/CLAUDE.md）
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
@@ -235,8 +267,10 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── SUNSHINE.md                 # 项目约定（/init 生成或手写）
 ├── .sunshinex/
 │   ├── settings.json           # 项目级配置（覆盖全局；已在 .gitignore）
-│   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；可提交入库共享）
-│   └── skills/<id>/SKILL.md    # 项目技能
+│   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；首次装载过批准阀；可提交入库共享）
+│   ├── skills/<id>/SKILL.md    # 项目技能
+│   └── agents/<id>/agent.md    # 项目子智能体（新家；写只写这里，见 5.3）
+├── agents/<id>/agent.md        # 旧位置子智能体（兼容读中间层：遮蔽全局、被 .sunshinex/agents/ 新家遮蔽；GUI 可一键迁移）
 └── 兼容技能根（可选；同名技能按下述优先级就近生效）
     ├── .agents/skills/<id>/SKILL.md   # 优先级：.sunshinex > .agents > .claude > .codex > .cursor
     ├── .claude/skills/<id>/SKILL.md
@@ -247,6 +281,8 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 技能标准形态统一为 `{根}/skills/{id}/SKILL.md`，正文前 frontmatter 写 `name` 与 `description`。
 - 技能生效顺序：项目级 > 全局级 > 学习级（沉淀产物垫底）。
 - 文件读取缺省全盘开放；写入信任项目根与已登记信任目录，越界写走审批或拒绝（详见第六节）。
+
+**配置实时同步（serve/GUI）**：`sunshinex serve` 运行期间监听全局 `~/.sunshinex/`（settings.json / mcp.json / agents / plugins）与各活跃项目的 `.sunshinex/`（settings / mcp / skills / agents）；文件改动（手编、CLI 写、另一窗口 GUI 写）经 300ms 防抖合并后以 WS `config-changed` 帧广播，打开中的设置页自动刷新（≤1s）；daemon 自身的结构化写做回环抑制，不产生多余刷新。CLI 与 TUI 是一次性进程不做监听——它们写盘后由 GUI 跟上，GUI 写后 CLI / TUI 下次读盘即见。监听不可用（网络盘 / 权限）时降级为打开页面即读，功能不阻塞。
 
 ## 四、基本用法
 
@@ -281,7 +317,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/agents` | 子智能体面板：三级位置清单卡（id/作用域/来源标注/启用状态/描述）；`/agents enable|disable <id>` 就地启停（写所在作用域 agent.md enabled 行）；新增/编辑经 `sunshinex agents` 子命令 |
 | `/plugins` | 插件面板：内置+用户两级清单卡（id/启用状态/来源段/平台可用性）；`/plugins enable|disable <id>` 写项目 settings 插件启用键；配置与安装经 `sunshinex plugins` 子命令 |
 | `/providers` | 模型提供方面板：只读清单卡（源名/模型数/密钥槽在场状态/默认源标注）+ 编辑引导（`sunshinex providers` 子命令或 `$EDITOR settings.json`；面板不做表单） |
-| `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效） |
+| `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效）；各档实际选中的模型 = providers models 条目的 `tier` 标注（同档取第一，无标注回缺省模型） |
 | `/model-effort` | 切换思考强度：选择卡七档 + default，回执实际生效档 |
 | `/add-dir <目录>` | 向会话追加信任目录（读写同项目根，本会话内生效；另见 6.1 的 `--add-dir` 与配置面） |
 | `/kb-index [目录]` | 构建知识库索引（缺省当前工作区；对目录内 md/txt 走计费 embedding，完成后 `kb_search` 本会话即时可用；同 `sunshinex kb-index`） |
@@ -323,7 +359,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 结束后：整段记录折叠进 `● [SPAWN]` 调用行（单行摘要含步数/耗时尾注）；`Ctrl+B` 浏览模式下 `Enter` 展开为 `▾` 头行 + 缩进转录全文（再按收拢）；`Tab` / `Ctrl+O` 可重放全文。
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
 - 预算护栏：子智能体不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
-- 自定义角色：放 `agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。
+- 自定义角色：项目级放 `<项目>/.sunshinex/agents/{id}/agent.md`，全局级放 `~/.sunshinex/agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。frontmatter 可选 `enabled`（缺省 `true`；`false` = 从注册表剔除，等同不存在，`/agents` 面板仍可见可再启用）。旧位置 `<项目>/agents/` 继续兼容读（三级装载序 后装遮蔽：全局 → 项目旧位置 → 项目新家——新家最高、全局垫底，停用条目不遮蔽低层级同 id；同名就近遮蔽），写只写新家——GUI 智能体页旧位置卡带「迁移」钮（拷入新家、旧目录保留不动）。启停与增删改：`/agents` 面板或 `sunshinex agents` 子命令。
 - 团队形态：`create_teammate` 工具创建智能体团队成员（长驻，自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
@@ -381,7 +417,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 | 操作 | 方法 |
 | --- | --- |
-| 开 | 「创建智能体团队成员 reviewer」（模型走 create_teammate）；或指定 `agents/{id}/agent.md` 注册角色作框定 |
+| 开 | 「创建智能体团队成员 reviewer」（模型走 create_teammate）；或指定 `agents/{id}/agent.md`（旧位置）或 `.sunshinex/agents/{id}/agent.md`（新家，见 5.3）注册角色作框定 |
 | 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为 agent 间交流） |
 | 打断当前任务 | 转录页两次 `Ctrl+C`（只打断这一个任务，成员保留续认领）；或 `task_stop <板任务 id>` / `task_stop 成员名` |
 | 消息 | teammate 间可互发，转录可见 |
@@ -533,7 +569,8 @@ pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包
 
 | 现象 | 处理 |
 | --- | --- |
-| 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `model`、`baseUrl` 与 `env.SUNSHINEX_API_KEY`（全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽 |
+| 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `providers`（首源 `baseUrl` 与 `env` 密钥槽，全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽（`providers test <源>` 可探活） |
+| 启动告警「model 已退役 / baseUrl 已退役 / modelSmall 已退役…」 | 存量散键设置：按第二节「散键退役」指引迁 `providers` 列表（告警不致命；未配 providers 时 env 直导出形态仍可用） |
 | 输入没反应 | 正在等待审批或计划确认：按 `y` / `a` / `n` |
 | 写操作总被拒 | 当前是 `read-only` 档：重启以 `--mode=acceptEdits`（或缺省档）启动 |
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |

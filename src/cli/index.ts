@@ -133,7 +133,8 @@ export function usageText(): string {
   sunshinex run <dir> --goal="..."        run the standard verify-fix loop (exit code 1 unless done)
   sunshinex pipeline <dir> --goal="..." [--yes]
                                           five-node pipeline with gate approvals (--yes auto-approves)
-  sunshinex serve [dir] [--port=N]        GUI daemon (HTTP control + WS events)
+  sunshinex serve [dir] [--port=N] [--token=T]
+                                          GUI daemon (HTTP control + WS events)
   sunshinex skills list [--scope=all|project|global] [--json]
                                           list skills along the source chain (project/user/learned/plugin, shadow marks)
   sunshinex skills install <git-url | owner/repo | local-dir> [--force]
@@ -173,7 +174,8 @@ export function usageText(): string {
   sunshinex run <dir> --goal="..."        在目录上运行标准验收修正环（非 done 退出码 1）
   sunshinex pipeline <dir> --goal="..." [--yes]
                                           五节点流水线 gate 审批（--yes 跳过交互直接批准）
-  sunshinex serve [目录] [--port=N]       GUI daemon（HTTP 控制面 + WS 事件流）
+  sunshinex serve [目录] [--port=N] [--token=T]
+                                          GUI daemon（HTTP 控制面 + WS 事件流）
   sunshinex skills list [--scope=all|project|global] [--json]
                                           沿来源链列出技能（project/user/learned/plugin 分组，含遮蔽标注）
   sunshinex skills install <git-url | owner/repo | 本地目录> [--force]
@@ -194,6 +196,7 @@ export function usageText(): string {
                                           权限模式（缺省 acceptEdits）
   --manual / --mode=acceptEdits           serve，预选会话走 acceptEdits 权限模式（审批/问询经 GUI 挂起回执）
   --language=en|zh                        界面语言（缺省 en）
+  --version                               打印 CLI 版本并退出
   --model=openai|scripted|stub            模型后端（缺省 openai）
   --tier=small|medium|large               模型档位（用户级，会话内恒定）
   --effort=none|minimal|low|medium|high|xhigh|max
