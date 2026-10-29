@@ -17,7 +17,6 @@ import { PermissionsPane } from './PermissionsPane';
 import type { PermissionsPaneConn } from './PermissionsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
-import { ScopeSwitcher } from './components';
 import type { SettingsScope } from './components';
 import { useConfigChanged } from './use-config-changed';
 import type { ConfigChangedSource } from './use-config-changed';
@@ -37,10 +36,14 @@ import type { ConfigChangedSource } from './use-config-changed';
  * 2026-10-26 插件面:导航十一项——Integrations 组 MCP 后插「插件」(PluginsPane,spec §6)。
  * 选中态 activePane 本地 state(默认「通用」),主区以 key={paneId} 挂载(面板互切强制重挂——
  * 键集/输入值面整体复位)。
- * T21(2026-10-28 设置共享组件轮):顶栏加 ScopeSwitcher 分段控件——scope 状态提升本壳
- * ('global'|'project',缺省 project、无 root 强制 global,root 快照语义不变),连同 config-changed
- * 订阅 tick(useConfigChanged——WS 帧按 resource 合并 200ms 递增,见 use-config-changed)经 props
- * 下发各 pane(pane 侧可选 props,本任务零行为变化;T22 起逐页解构消费)。
+ * T21(2026-10-28 设置共享组件轮):scope 状态提升本壳('global'|'project',缺省 project、
+ * 无 root 强制 global,root 快照语义不变),连同 config-changed 订阅 tick(useConfigChanged——
+ * WS 帧按 resource 合并 200ms 递增,见 use-config-changed)经 props 下发各 pane(pane 侧可选
+ * props,本任务零行为变化;T22 起逐页解构消费)。
+ * 2026-10-29 用户裁定(工具栏三件套入页):壳顶 ScopeSwitcher 分段控件撤除——scope 切换面
+ * 下沉为各资源页工具栏内联 ScopeSelect 下拉(五资源页:MCP/插件/Skills/智能体/提供方);
+ * scope 状态仍留本壳统一持有,经 scope + onScopeChange 两 props 下发(pane 内下拉只上抛,
+ * 状态回写本壳后随 re-render 回流)。原 T21 顶栏挂点移除,本壳其余职责不变。
  */
 
 /** 壳连接面:全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
@@ -123,7 +126,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
   /** 主区渲染分发:表单面板查 SETTINGS_PANES 定义,复杂面板各归其件(skills/permissions 同体)。
    *  T21:scope 与对应 resource 的 refreshTick 经 props 下发各 pane(可选 props——本任务 pane
    *  零行为变化,T22 起逐页解构消费;RawPane 全局/项目 raw 文件共用,下发 scope+root——T27 起
-   *  project 作用域读写带 root 定位,global 省参) */
+   *  project 作用域读写带 root 定位,global 省参)。2026-10-29:五资源页再加 onScopeChange
+   *  下发(pane 工具栏 ScopeSelect 上抛,状态回写本壳) */
   const renderPane = (): JSX.Element => {
     const formDef = SETTINGS_PANES.find((p) => p.id === activePane);
     if (formDef !== undefined)
@@ -132,15 +136,15 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       );
     switch (activePane) {
       case 'providers':
-        return <ProvidersPane key="providers" conn={conn} root={root} scope={scope} refreshTick={refreshTick.providers} />;
+        return <ProvidersPane key="providers" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.providers} />;
       case 'mcp':
-        return <McpPane key="mcp" conn={conn} root={root} scope={scope} refreshTick={refreshTick.mcp} />;
+        return <McpPane key="mcp" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.mcp} />;
       case 'plugins':
-        return <PluginsPane key="plugins" conn={conn} root={root} scope={scope} refreshTick={refreshTick.plugins} />;
+        return <PluginsPane key="plugins" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.plugins} />;
       case 'agents':
-        return <AgentsPane key="agents" conn={conn} root={root} scope={scope} refreshTick={refreshTick.agents} />;
+        return <AgentsPane key="agents" conn={conn} root={root} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.agents} />;
       case 'skills':
-        return <SkillsPane key="skills" conn={conn} root={root} title={t('Skills', '技能')} scope={scope} refreshTick={refreshTick.skills} />;
+        return <SkillsPane key="skills" conn={conn} root={root} title={t('Skills', '技能')} scope={scope} onScopeChange={onScopeChange} refreshTick={refreshTick.skills} />;
       case 'permissions':
         return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} scope={scope} refreshTick={refreshTick.permissions} />;
       default:
@@ -161,8 +165,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
             <span>{t('Back', '返回')}</span>
           </button>
           <span>{t('Settings', '设置')}</span>
-          {/* T21 作用域分段控件(状态提升于本壳,经 props 下发各 pane):无 root 项目侧禁用 */}
-          <ScopeSwitcher scope={scope} projectAvailable={root !== ''} onScopeChange={onScopeChange} />
+          {/* 2026-10-29 用户裁定:壳顶作用域分段控件撤除——切换面下沉五资源页工具栏 ScopeSelect
+              (scope 状态仍本壳持有,经 scope+onScopeChange 下发,见 renderPane) */}
         </header>
         <ul className="sx-settings-nav">
           {SETTINGS_GROUPS.map((g) => (

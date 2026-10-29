@@ -1,19 +1,21 @@
-import { describe, it, expect } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProvidersPane } from '../ProvidersPane';
 import type { ProvidersPaneConn } from '../ProvidersPane';
+import type { SettingsScope } from '../components';
 import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '../../connection';
 
 /**
- * Task 26 ProvidersPane 重构桩测(提供方 ResourceCard 卡片化+op 端点写面+EditorDrawer+
+ * Task 26 ProvidersPane 重构桩测(提供方 ResourceCard 卡片化+op 端点写面+编辑弹窗+
  * 请求参数卡散键行退役):conn 全桩(settings/putSettings/putProviderOp 三面,不出网),
  * 用例沿 task brief——①卡片渲染含默认标记(choices[0]=默认模型)+密钥状态点+warnings;
  * ②删除调 op remove+成功重拉;③models 上移下移提交 modelMove(文件级手术+行重播种);
- * ④apiKey 提交走 setKey 且输入框清空(关抽屉)、重拉响应无键值回显;⑤新增提交 op add
+ * ④apiKey 提交走 setKey 且输入框清空(关弹窗)、重拉响应无键值回显;⑤新增提交 op add
  * (密钥留空零 setKey);⑥请求参数卡无「API 地址」行/模型散键 Combo 退役;⑦tier select
  * 提交形状(PUT /settings 语义键 tier 写路径保留);⑧refreshTick 重拉;⑨global 作用域
- * 省参;⑩表单校验(空名/空 models)拦截零落盘;⑪空清单空态。测试基准语言钉 en
- * (test-setup G14.104),断言单语 en。
+ * 省参;⑩表单校验(空名/空 models)拦截零落盘;⑪空清单空态;⑫工具栏作用域下拉切换上抛+
+ * 壳换发 scope 后卡面按新作用域重拉(2026-10-29 三件套入页);⑬工具栏搜索过滤(name/baseUrl)。
+ * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  * 注:挂载=两笔 settings 请求(内嵌 SettingsForm 表单面 + 本组件 providers 卡面——同一
  * GET /settings 应答两消费方,旧 pane 同口径);settingsCalls 断言按此计数。
  */
@@ -286,5 +288,42 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     const { conn } = connOf(viewOf({ entries: [], choices: [], apiKeyPresent: {}, warnings: [] }));
     render(<ProvidersPane conn={conn} root="/w/proj" />);
     expect(await screen.findByText('No providers configured.')).toBeDefined();
+  });
+
+  it('工具栏作用域下拉(2026-10-29 三件套入页):切换只上抛 onScopeChange;壳换发 scope 后卡面按新作用域重拉(global 省参,SettingsForm 仍带 root)', async () => {
+    const { conn, settingsCalls } = connOf(viewOf());
+    const scopes: SettingsScope[] = [];
+    const { rerender } = render(<ProvidersPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    await screen.findByText('p1');
+    fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Global' }));
+    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
+    // 壳回写 scope 后随 props 回流:卡面按新作用域重拉(第三笔=global 省参;SettingsForm 不随卡面作用域)
+    rerender(<ProvidersPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
+    await waitFor(() => expect(settingsCalls).toEqual(['/w/proj', '/w/proj', undefined]));
+  });
+
+  it('工具栏搜索(2026-10-29 三件套入页):SearchBar 200ms 防抖后按 name/baseUrl 过滤,清空恢复', async () => {
+    const { conn } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} root="/w/proj" />);
+    await screen.findByText('p1');
+    const toolbarSearch = (): HTMLInputElement =>
+      within(document.querySelector('section.sx-providers')!).getByLabelText('Search') as HTMLInputElement; // within 消歧(内嵌 SettingsForm 另有过滤搜索)
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(toolbarSearch(), { target: { value: 'p2' } });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(screen.queryByText('p1')).toBeNull(); // 不匹配卡滤除
+      expect(screen.getByText('p2')).toBeDefined();
+      fireEvent.change(toolbarSearch(), { target: { value: '' } });
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(screen.getByText('p1')).toBeDefined(); // 清空恢复
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

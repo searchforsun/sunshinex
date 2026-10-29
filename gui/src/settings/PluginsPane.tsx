@@ -3,24 +3,25 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
-import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard, SearchBar } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
 import type { SettingsScope } from './components';
 
 /**
  * Task 24 PluginsPane 重构(Phase F 第三面板,2026-10-28):一屏式卡片列表——T21 共享组件
- * verbatim 消费(McpPane/T23 同款骨架)。顶栏 SearchBar(200ms 防抖过滤 id/name/description,
- * 无新增钮——插件由目录扫描发现,安装=目录拷贝,非用户创建面);主体 ul.sx-rc-list ×
+ * verbatim 消费(McpPane/T23 同款骨架)。工具栏三件套(2026-10-29 用户裁定入页):ScopeSelect
+ * 作用域下拉+SearchBar(200ms 防抖过滤 id/name/description,弹性)——无新增钮(插件由目录
+ * 扫描发现,安装=目录拷贝,非用户创建面,无新增 op 端点);主体 ul.sx-rc-list ×
  * ResourceCard(title=名/subtitle 无/chips=版本+平台不支持标/badge=SourceBadge(builtin|user)/
  * 开关=启停/折叠详情=ID·servers·skills 元信息+configSchema 键说明+config 原值只读——卡片详情
  * 折叠保留)。
  *
- * 「配置」钮 → EditorDrawer 右滑抽屉:configSchema 在场=键值表单(逐键播种既有 config 值,
+ * 「配置」钮 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉):configSchema 在场=键值表单(逐键播种既有 config 值,
  * type=boolean 复选框/number 数字校验/string 文本;schema 外既有键 rest 透传保全——T22 seedRest
  * 同纪律);无 schema=JSON 文本域(受控折叠,T22 JSON 源码纪律:提示覆写规则+收起清空,提交前
  * JSON.parse+对象形状校验)。提交统一 putPlugin(…, {config}) 整对象覆写——保存即 plugins.<id>.
- * config 全量改写,抽屉提示行言明。
+ * config 全量改写,弹窗提示行言明。
  *
- * 作用域语义(壳 ScopeSwitcher 下发,McpPane/AgentsPane 同款):scope='project'(缺省,有 root
+ * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳,McpPane/AgentsPane 同款):scope='project'(缺省,有 root
  * 时)读两级清单(GET 带 root)、写带 root(项目 settings.json plugins.<id> 覆写键);scope='global'
  * 读仅全局清单(GET 省参)、写省参 root(全局 settings)。root='' 恒强制 global——旧「写面恒项目级
  * (root='' 开关禁用)」写死门退役:全局作用域开关/配置可写。platformSupported=false 卡置灰+
@@ -47,6 +48,8 @@ export interface PluginsPaneProps {
   readonly root: string;
   /** T21 设置壳注入:作用域(缺省按 root 推断——有 root 即 project,壳缺省同款) */
   readonly scope?: SettingsScope;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (scope: SettingsScope) => void;
   /** T21 config-changed 订阅 tick(plugins 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
@@ -85,7 +88,7 @@ const buildValues = (
   return { ok: true, config };
 };
 
-export function PluginsPane({ conn, root, scope, refreshTick }: PluginsPaneProps): JSX.Element {
+export function PluginsPane({ conn, root, scope, onScopeChange, refreshTick }: PluginsPaneProps): JSX.Element {
   const [rows, setRows] = useState<PluginRow[] | null>(null);
   /** 装载聚合警告(pane 尾展开;可选防旧 daemon——GET 载荷恒带,结构面留宽) */
   const [viewWarnings, setViewWarnings] = useState<string[]>([]);
@@ -288,7 +291,8 @@ export function PluginsPane({ conn, root, scope, refreshTick }: PluginsPaneProps
   return (
     <section className="sx-settings-form" aria-label="settings pane plugins">
       <h2>{t('Plugins', '插件')}</h2>
-      <div className="sx-mcp-toolbar">
+      <div className="sx-res-toolbar">
+        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
         <SearchBar value={query} onChange={setQuery} placeholder={t('Search plugins', '搜索插件')} />
       </div>
       {loadError !== '' && <ErrorBanner text={loadError} />}
@@ -342,7 +346,7 @@ export function PluginsPane({ conn, root, scope, refreshTick }: PluginsPaneProps
         </details>
       )}
       {drawer !== null && form !== null && (
-        <EditorDrawer
+        <EditorModal
           open
           title={t(`Configure ${drawer.name}`, `配置 ${drawer.name}`)}
           onClose={() => {
@@ -404,7 +408,7 @@ export function PluginsPane({ conn, root, scope, refreshTick }: PluginsPaneProps
             />
           </details>
           {formError !== '' && <ErrorBanner text={formError} />}
-        </EditorDrawer>
+        </EditorModal>
       )}
     </section>
   );

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult, McpOpInput } from '../connection';
-import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard, SearchBar } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
 import type { SettingsScope } from './components';
 
 /**
@@ -11,16 +11,18 @@ import type { SettingsScope } from './components';
  * PUT /settings/mcp/op 单条目操作端点(T15),原「整块 PUT /settings/mcp + raw 读改写
  * (mutateProjectMcp)+ 内联 JSON textarea 编辑窗」路径整体退役。
  *
- * 结构(T21 共享组件 verbatim 消费):顶栏 SearchBar(200ms 防抖过滤 name/command/url)
- * + 「+ Add」钮;主体 ul.sx-rc-list × ResourceCard(icon=探测状态点/title=名/subtitle=
+ * 结构(T21 共享组件 verbatim 消费):工具栏三件套(2026-10-29 用户裁定入页:ScopeSelect
+ * 作用域下拉+SearchBar(200ms 防抖过滤 name/command/url,弹性)+「+ Add」钮一行);主体
+ * ul.sx-rc-list × ResourceCard(icon=探测状态点/title=名/subtitle=
  * 命令行|url/chips=transport+env·header 键+批准阀/badge=SourceBadge/开关=启停);
- * 添加/编辑 → EditorDrawer 右滑抽屉(名称/transport select/command|url/args 逐行
+ * 添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉;名称/transport
+ * select/command|url/args 逐行
  * textarea/env 键值行)+「JSON 源码」高级折叠(展开即按当前表单预览;提交时非空则
  * JSON.parse+单条形状校验+与名称字段一致门,整条以 JSON 为准——隐藏值(headers/enabled/
- * disabledTools)由此保全;收起即清空解除武装——偷看预览不接管提交,覆写规则入抽屉
+ * disabledTools)由此保全;收起即清空解除武装——偷看预览不接管提交,覆写规则入弹窗
  * 提示行,T22 评审修补)。
  *
- * 作用域语义(壳 ScopeSwitcher 下发):scope='project'(缺省,有 root 时)读两级清单
+ * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳):scope='project'(缺省,有 root 时)读两级清单
  * (GET 带 root,项目先全局后)——项目卡可写(op scope='project' 带 root),全局同名卡
  * 「被项目遮蔽」灰标+写钮全禁用(切全局作用域可编辑);scope='global' 读仅全局清单
  * (GET 省参)——全局卡可写(op scope='global' 省参 root)。root='' 恒强制 global。
@@ -84,11 +86,13 @@ export interface McpPaneProps {
   readonly root: string;
   /** T21 设置壳注入:作用域(缺省按 root 推断——有 root 即 project,壳缺省同款) */
   readonly scope?: SettingsScope;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (scope: SettingsScope) => void;
   /** T21 config-changed 订阅 tick(mcp 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
 
-export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.Element {
+export function McpPane({ conn, root, scope, onScopeChange, refreshTick }: McpPaneProps): JSX.Element {
   const [servers, setServers] = useState<McpRow[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -488,7 +492,8 @@ export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.E
   return (
     <section className="sx-settings-form" aria-label="settings pane MCP">
       <h2>{t('MCP servers', 'MCP 服务器')}</h2>
-      <div className="sx-mcp-toolbar">
+      <div className="sx-res-toolbar">
+        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
         <SearchBar value={query} onChange={setQuery} placeholder={t('Search MCP servers', '搜索 MCP 服务器')} />
         <button type="button" className="sx-add-button" onClick={() => void openDrawer(null)}>
           {t('+ Add', '+ 添加')}
@@ -564,7 +569,7 @@ export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.E
         </ul>
       )}
       {drawer !== null && (
-        <EditorDrawer
+        <EditorModal
           open
           title={drawer.mode === 'add' ? t('Add MCP server', '添加 MCP 服务器') : t(`Edit ${drawer.original}`, `编辑 ${drawer.original}`)}
           onClose={() => setDrawer(null)}
@@ -681,7 +686,7 @@ export function McpPane({ conn, root, scope, refreshTick }: McpPaneProps): JSX.E
             />
           </details>
           {formError !== '' && <ErrorBanner text={formError} />}
-        </EditorDrawer>
+        </EditorModal>
       )}
     </section>
   );

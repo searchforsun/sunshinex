@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SkillsPane } from '../SkillsPane';
 import type { SkillsPaneConn } from '../SkillsPane';
+import type { SettingsScope } from '../components';
 import type { SkillsGroup } from '../../connection';
 
 /**
  * Task 25 SkillsPane 遮蔽标注桩测:conn 全桩(skillsGroups 单面,不出网),用例沿 task brief——
  * ①遮蔽标注渲染+gating(行带 shadowedBy 字段 → 卡灰显+「被 <来源> 同名技能遮蔽」角标+sourceDir
  *   tip;无字段卡零角标零灰显——gating 契约沿 T23);②跨组同 id 去重保持(先者胜),shadowedBy
- *   随保留行透出;③refreshTick 变化触发重拉。
+ *   随保留行透出;③refreshTick 变化触发重拉;④工具栏作用域下拉入页(2026-10-29 三件套:
+ *   只读面=下拉+搜索无添加钮;切换只上抛不重拉——scope=all 全量视图不随壳作用域收窄)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -65,5 +67,19 @@ describe('SkillsPane(遮蔽标注)', () => {
     expect(calls).toEqual([['/w/proj', true]]);
     rerender(<SkillsPane conn={conn} root="/w/proj" title="Skills" refreshTick={1} />);
     await waitFor(() => expect(calls).toEqual([['/w/proj', true], ['/w/proj', true]]));
+  });
+
+  it('工具栏作用域下拉入页(2026-10-29 三件套,只读面无添加钮):切换只上抛 onScopeChange,不重拉(scope=all 全量视图不随壳作用域收窄)', async () => {
+    const { conn, calls } = connOf([{ source: 'user', skills: [row('alpha')] }]);
+    const scopes: SettingsScope[] = [];
+    render(<SkillsPane conn={conn} root="/w/proj" title="Skills" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    await screen.findByText('alpha');
+    expect(screen.queryByRole('button', { name: '+ Add' })).toBeNull(); // 只读面:无添加钮
+    expect(screen.getByLabelText('Search')).toBeDefined(); // 搜索入工具栏(SearchBar 统一入口)
+    expect(screen.getByRole('button', { name: 'Settings scope' }).textContent).toContain('This project');
+    fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Global' }));
+    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
+    expect(calls).toEqual([['/w/proj', true]]); // 不随壳作用域重拉(全量视图裁定)
   });
 });

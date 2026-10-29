@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsOpInput, AgentsView, BuiltinRole } from '../connection';
-import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard, SearchBar } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
 import type { SettingsScope } from './components';
 
 /**
@@ -11,14 +11,16 @@ import type { SettingsScope } from './components';
  * PUT /settings/agents 的 op 五值（T15 在既有 handleAgentsPut 端点扩 enable|disable|migrate；
  * agents 面无 mcp 式独立 /op 端点，经 conn.putAgentOp），原「内联 <form> 表单」路径退役。
  *
- * 结构（T21 共享组件 verbatim 消费，McpPane 参照实现同款）：顶栏 SearchBar（200ms 防抖过滤
- * id/name/description）+「+ New」钮；主体 ul.sx-rc-list × ResourceCard（title=id 注册表键/
+ * 结构（T21 共享组件 verbatim 消费，McpPane 参照实现同款）：工具栏三件套（2026-10-29 用户
+ * 裁定入页：ScopeSelect 作用域下拉+SearchBar（200ms 防抖过滤
+ * id/name/description，弹性）+「+ New」钮一行）；主体 ul.sx-rc-list × ResourceCard（title=id 注册表键/
  * subtitle=name/chips=memory·isolation·executor 属性+shadowed·oldLocation 标注/badge=
- * SourceBadge/折叠详情=bodyPreview）；增改 → EditorDrawer 右滑抽屉（id 编辑态锁定——id 是
+ * SourceBadge/折叠详情=bodyPreview）；增改 → EditorModal 居中模态（2026-10-29 用户裁定：
+ * 弹窗替换右滑抽屉；id 编辑态锁定——id 是
  * 目录名/name/description/memory checkbox/isolation/executor/body textarea，无本地 scope
  * select——写作用域随壳）。
  *
- * 作用域语义（壳 ScopeSwitcher 下发，McpPane 同款）：scope='project'（缺省，有 root 时）读
+ * 作用域语义（壳下发：scope + onScopeChange——工具栏 ScopeSelect 只上抛，状态留壳，McpPane 同款）：scope='project'（缺省，有 root 时）读
  * 两级清单（GET 带 root，项目先全局后）；scope='global' 读仅全局清单（GET 省参）。root=''
  * 恒强制 global。卡可写判据（McpPane canWrite 同款）：project 卡=project 作用域且有 root，
  * global 卡=global 作用域（被遮蔽卡只出现在 project 视图，天然不可写）。
@@ -83,11 +85,13 @@ export interface AgentsPaneProps {
   readonly root: string;
   /** T21 设置壳注入：作用域（缺省按 root 推断——有 root 即 project，壳缺省同款） */
   readonly scope?: SettingsScope;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口（状态留壳层）：未接（直接渲染/桩测）时切换不回写 */
+  readonly onScopeChange?: (scope: SettingsScope) => void;
   /** T21 config-changed 订阅 tick（agents 资源计数——外部改动信号，变化即重拉） */
   readonly refreshTick?: number;
 }
 
-export function AgentsPane({ conn, root, scope, refreshTick }: AgentsPaneProps): JSX.Element {
+export function AgentsPane({ conn, root, scope, onScopeChange, refreshTick }: AgentsPaneProps): JSX.Element {
   const [data, setData] = useState<{ builtins: BuiltinRole[]; view: AgentsView } | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -263,7 +267,8 @@ export function AgentsPane({ conn, root, scope, refreshTick }: AgentsPaneProps):
   return (
     <section className="sx-settings-form" aria-label="settings pane agents">
       <h2>{t('Agents', '智能体')}</h2>
-      <div className="sx-mcp-toolbar">
+      <div className="sx-res-toolbar">
+        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
         <SearchBar value={query} onChange={setQuery} placeholder={t('Search agents', '搜索智能体')} />
         <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
           {t('+ New', '+ 新增')}
@@ -350,7 +355,7 @@ export function AgentsPane({ conn, root, scope, refreshTick }: AgentsPaneProps):
         </>
       )}
       {drawer !== null && form !== null && (
-        <EditorDrawer
+        <EditorModal
           open
           title={drawer.mode === 'add' ? t('New agent', '新增智能体') : t(`Edit ${drawer.id}`, `编辑 ${drawer.id}`)}
           onClose={() => {
@@ -388,7 +393,7 @@ export function AgentsPane({ conn, root, scope, refreshTick }: AgentsPaneProps):
             <textarea aria-label="agent body" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={4} spellCheck={false} />
           </label>
           {formError !== '' && <ErrorBanner text={formError} />}
-        </EditorDrawer>
+        </EditorModal>
       )}
     </section>
   );

@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard, ScopeSwitcher, SearchBar } from '../components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from '../components';
+import type { SettingsScope } from '../components';
 import { useConfigChanged } from '../use-config-changed';
 import type { ConfigChangedInfo, ConfigChangedSource } from '../use-config-changed';
 import type { SourceBadgeProps } from '../SourceBadge';
 
 /**
- * Task 21 设置共享组件 kit 桩测:ScopeSwitcher 切换回调/项目不可用禁用态、SearchBar 200ms 防抖、
- * ResourceCard 开关与 actions/折叠详情渲染、EditorDrawer 开合与提交、EmptyState/ErrorBanner、
- * useConfigChanged 帧后按 resource 合并 200ms 递增(connection 桩注入帧)。测试基准语言钉 en
- * (test-setup G14.104),断言单语 en。
+ * Task 21 设置共享组件 kit 桩测:ScopeSelect 切换回调/项目不可用禁用态(2026-10-29 下拉化)、
+ * SearchBar 200ms 防抖、ResourceCard 开关与 actions/折叠详情渲染、EditorModal 开合与提交
+ * (2026-10-29 弹窗替换抽屉:Cancel/×/遮罩/Esc=关,Save=提交,焦点落对话框)、EmptyState/
+ * ErrorBanner、useConfigChanged 帧后按 resource 合并 200ms 递增(connection 桩注入帧)。
+ * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
 /** 计时器面:防抖/合并窗全走 fake timers(逐例推进,零真实等待) */
@@ -49,26 +51,27 @@ function TickProbe({ conn }: { readonly conn: ConfigChangedSource }): JSX.Elemen
   );
 }
 
-describe('ScopeSwitcher', () => {
-  it('分段控件:两枚按钮,当值 aria-pressed;点击上抛 onScopeChange', () => {
-    const calls: string[] = [];
-    render(<ScopeSwitcher scope="project" projectAvailable={true} onScopeChange={(s) => calls.push(s)} />);
-    const g = screen.getByRole('button', { name: 'Global' }) as HTMLButtonElement;
-    const p = screen.getByRole('button', { name: 'Project' }) as HTMLButtonElement;
-    expect(p.getAttribute('aria-pressed')).toBe('true');
-    expect(g.getAttribute('aria-pressed')).toBe('false');
-    expect(p.disabled).toBe(false);
-    fireEvent.click(g);
+describe('ScopeSelect', () => {
+  it('下拉:当值回显,弹层换项上抛 onScopeChange', () => {
+    const calls: SettingsScope[] = [];
+    render(<ScopeSelect scope="project" projectAvailable={true} onScopeChange={(s) => calls.push(s)} />);
+    const trigger = screen.getByRole('button', { name: 'Settings scope' }) as HTMLButtonElement;
+    expect(trigger.textContent).toContain('This project');
+    expect(trigger.disabled).toBe(false);
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('option', { name: 'Global' }));
     expect(calls).toEqual(['global']);
   });
 
-  it('项目不可用:项目侧禁用+title 提示,点击不上抛', () => {
-    const calls: string[] = [];
-    render(<ScopeSwitcher scope="global" projectAvailable={false} onScopeChange={(s) => calls.push(s)} />);
-    const p = screen.getByRole('button', { name: 'Project' }) as HTMLButtonElement;
-    expect(p.disabled).toBe(true);
-    expect(p.getAttribute('title')).not.toBe(null);
-    fireEvent.click(p); // disabled:handler 不触发
+  it('项目不可用:整机禁用+data-tip 提示,不展开弹层不上抛', () => {
+    const calls: SettingsScope[] = [];
+    render(<ScopeSelect scope="global" projectAvailable={false} onScopeChange={(s) => calls.push(s)} />);
+    const trigger = screen.getByRole('button', { name: 'Settings scope' }) as HTMLButtonElement;
+    expect(trigger.textContent).toContain('Global'); // 此态壳层恒已强制 global,当值照显
+    expect(trigger.disabled).toBe(true);
+    expect(trigger.getAttribute('data-tip')).not.toBe(null);
+    fireEvent.click(trigger); // disabled:handler 不触发
+    expect(screen.queryByRole('listbox')).toBeNull();
     expect(calls).toEqual([]);
   });
 });
@@ -159,35 +162,43 @@ describe('ResourceCard', () => {
   });
 });
 
-describe('EditorDrawer', () => {
-  it('open=false 不渲染;open=true 右侧滑出:标题/Save/Cancel/背板开合', () => {
+describe('EditorModal', () => {
+  it('open=false 不渲染;open=true 居中对话框:标题/字段/焦点落框;Save/Cancel/×/遮罩/Esc 关闭路径', () => {
     const { container, rerender } = render(
-      <EditorDrawer open={false} title="Edit thing" onClose={() => {}} onSubmit={() => {}}>
+      <EditorModal open={false} title="Edit thing" onClose={() => {}} onSubmit={() => {}}>
         <input aria-label="field" />
-      </EditorDrawer>,
+      </EditorModal>,
     );
     expect(container.textContent).toBe('');
 
     const closes: number[] = [];
     const submits: number[] = [];
     rerender(
-      <EditorDrawer open={true} title="Edit thing" onClose={() => closes.push(1)} onSubmit={() => submits.push(1)}>
+      <EditorModal open={true} title="Edit thing" onClose={() => closes.push(1)} onSubmit={() => submits.push(1)}>
         <input aria-label="field" />
-      </EditorDrawer>,
+      </EditorModal>,
     );
-    expect(screen.getByRole('dialog', { name: 'Edit thing' })).toBeDefined();
+    const dialog = screen.getByRole('dialog', { name: 'Edit thing' });
+    expect(dialog).toBeDefined();
     expect(screen.getByLabelText('field')).toBeDefined();
+    expect(document.activeElement).toBe(dialog); // 焦点落对话框(autoFocus+tabIndex=-1,简单落焦)
     fireEvent.click(screen.getByText('Save'));
     expect(submits).toEqual([1]);
     expect(closes).toEqual([]);
     fireEvent.click(screen.getByText('Cancel'));
     expect(closes).toEqual([1]);
-    // 背板点击=关;抽屉体内点击不关(stopPropagation)
-    const backdrop = container.querySelector('.sx-drawer-backdrop')!;
+    // 右上 ×=关
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(closes).toEqual([1, 1]);
+    // 遮罩点击=关;对话框体内点击不关(stopPropagation)
+    const backdrop = container.querySelector('.sx-editor-modal-backdrop')!;
     fireEvent.click(backdrop);
-    expect(closes).toEqual([1, 1]);
+    expect(closes).toEqual([1, 1, 1]);
     fireEvent.click(screen.getByRole('dialog', { name: 'Edit thing' }));
-    expect(closes).toEqual([1, 1]);
+    expect(closes).toEqual([1, 1, 1]);
+    // Esc=document 捕获段关闭(stopPropagation 截断壳层 document 冒泡段「Esc 回会话态」监听)
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(closes).toEqual([1, 1, 1, 1]);
   });
 });
 

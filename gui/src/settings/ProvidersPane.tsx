@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar } from './components';
 import type { SettingsScope } from './components';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
 
@@ -18,17 +18,19 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * 四 Combo 删除——baseUrl 归提供方卡、模型归 models 行编辑);下=提供方卡列表(GET /settings
  * providers.entries 源级分组逐卡:名称/baseUrl 副行/密钥状态点(绿=env 槽在场/灰=缺,tip=槽名)/
  * models chips(choices[0] 所属模型加「Default」chip=生效默认,服务端恒切 choices[0]——T11 裁定)/
- * 编辑/删除)+「+ Add provider」钮;添加/编辑 → EditorDrawer 右滑抽屉(名称/Base URL/API key
+ * 编辑/删除)。工具栏三件套(2026-10-29 用户裁定入页):ScopeSelect 作用域下拉+SearchBar
+ * (200ms 防抖,过滤 name/baseUrl,弹性)+「+ Add provider」钮一行;添加/编辑 → EditorModal
+ * 居中模态(2026-10-29 用户裁定:弹窗替换右滑抽屉;名称/Base URL/API key
  * password 输入——写走 setKey op、密钥零回显(编辑播种恒空串,留空=不动键)/models 行编辑
  * (模型名/contextWindow/reasoningEffort/tier select/上移下移钮——上移下移=文件级手术即时提交
  * modelMove op,成功后重拉+行重播种:以文件真值为基底按模型名键合保留本地未保存行字段编辑——
- * 模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(抽屉提示行言明);行字段=本地态,
+ * 模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(弹窗提示行言明);行字段=本地态,
  * Save 经 update op 整组替换 models)。
  *
  * 测试按钮裁定:v1 GUI 无提供方连通测试钮——REST 无 providers test 端点(不造端点),前端直连
  * baseUrl 需携密钥(密钥不进前端,违 D6);测试能力=CLI/TUI 面(T19/T20 已交付)。
  *
- * 作用域语义(壳 ScopeSwitcher 下发,T22 同款):scope='project'(缺省,有 root 时)读带 root
+ * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳,T22 同款):scope='project'(缺省,有 root 时)读带 root
  * (两级遮蔽链视图)、写 op scope='project' 带 root;scope='global' 读省参(仅全局)、写 scope=
  * 'global' 省参 root。root='' 恒强制 global。entries 无 source 归因字段(GET 投影不分级)——
  * 卡写作用域恒随壳,且**须知整键遮蔽后果**:loadProvidersFull 是 providers 键整键遮蔽,project
@@ -146,17 +148,21 @@ export interface ProvidersPaneProps {
   readonly root: string;
   /** T21 设置壳注入:作用域(缺省按 root 推断——有 root 即 project,壳缺省同款) */
   readonly scope?: SettingsScope;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (scope: SettingsScope) => void;
   /** T21 config-changed 订阅 tick(providers 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;
 }
 
-export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneProps): JSX.Element {
+export function ProvidersPane({ conn, root, scope, onScopeChange, refreshTick }: ProvidersPaneProps): JSX.Element {
   /** GET /settings 全视图(null = 加载中;providers 面消费 entries/choices/apiKeyPresent/warnings,
    *  keys 面归内嵌 SettingsForm 自管——同一应答两消费方,单端点单请求) */
   const [view, setView] = useState<SettingsView | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [saving, setSaving] = useState(false);
+  /** 工具栏搜索(2026-10-29 三件套入页):200ms 防抖过滤 name/baseUrl(大小写不敏感包含) */
+  const [query, setQuery] = useState('');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<DrawerForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
@@ -320,7 +326,11 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
     setForm((f) => ({ ...f, rows: f.rows.map((r, i) => (i === index ? { ...r, ...patch } : r)) }));
   };
 
-  const entries = view?.providers.entries ?? [];
+  const allEntries = view?.providers.entries ?? [];
+  /** 搜索过滤(2026-10-29 三件套入页):name/baseUrl 大小写不敏感包含(空查询=不限);
+   *  卡列表一行一个(sx-rc-list 纵向) */
+  const needle = query.trim().toLowerCase();
+  const entries = needle === '' ? allEntries : allEntries.filter((e) => `${e.name} ${e.baseUrl}`.toLowerCase().includes(needle));
   const loading = view === null && loadError === '';
   /** 生效默认模型 = choices[0](首源首模型;服务端恒切,T11 裁定)。choices 空=无默认标注 */
   const defaultId =
@@ -331,8 +341,10 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
     <div className="sx-settings-complex">
       <SettingsForm conn={conn} root={root} pane={PROVIDERS_PANE} />
       <section className="sx-providers" aria-label="providers">
-        <div className="sx-mcp-toolbar">
-          <h3>{t('Providers', '提供方')}</h3>
+        <h3>{t('Providers', '提供方')}</h3>
+        <div className="sx-res-toolbar">
+          <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
+          <SearchBar value={query} onChange={setQuery} placeholder={t('Search providers', '搜索提供方')} />
           <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
             {t('+ Add provider', '+ 新增提供方')}
           </button>
@@ -340,7 +352,8 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
         {loadError !== '' && <ErrorBanner text={loadError} />}
         {actionError !== '' && <ErrorBanner text={actionError} />}
         {loading && <EmptyState text={t('Loading providers…', '加载提供方…')} />}
-        {!loading && entries.length === 0 && <EmptyState text={t('No providers configured.', '尚未配置提供方。')} />}
+        {!loading && allEntries.length === 0 && <EmptyState text={t('No providers configured.', '尚未配置提供方。')} />}
+        {!loading && allEntries.length > 0 && entries.length === 0 && <EmptyState text={t('No matches.', '无匹配结果。')} />}
         {entries.length > 0 && (
           <ul className="sx-rc-list">
             {entries.map((e) => {
@@ -399,7 +412,7 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
         ))}
       </section>
       {drawer !== null && (
-        <EditorDrawer
+        <EditorModal
           open
           title={drawer.mode === 'add' ? t('Add provider', '新增提供方') : t(`Edit ${drawer.original}`, `编辑 ${drawer.original}`)}
           onClose={() => setDrawer(null)}
@@ -503,7 +516,7 @@ export function ProvidersPane({ conn, root, scope, refreshTick }: ProvidersPaneP
             </button>
           </div>
           {formError !== '' && <ErrorBanner text={formError} />}
-        </EditorDrawer>
+        </EditorModal>
       )}
     </div>
   );

@@ -3,14 +3,17 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { SkillsGroup } from '../connection';
 import { Select } from './controls';
+import { ScopeSelect, SearchBar } from './components';
 import type { SettingsScope } from './components';
 
 /**
  * G8c T9 技能面板(设置·技能页):**跨项目全量视图**——拉 scope=all(user 全局 + 当前项目
  * project 组 + 全项目学习沉淀逐项目分组),逐卡 id+描述+**归属标**(卡片右上角 chip:有
- * project 归属显项目名,user 显「全局」;单色 hairline 语言)。工具行三控件占满一行——
- * 搜索框(弹性) + 来源筛选(全部来源/项目/全局/学习沉淀) + **项目筛选**(全部项目/各项目
- * 名,scope=all 的 project 维度),两者叠加过滤(空查询/全部=不限)。
+ * project 归属显项目名,user 显「全局」;单色 hairline 语言)。工具栏(2026-10-29 用户裁定
+ * 三件套入页,只读面:作用域下拉+搜索,无添加钮)——ScopeSelect 作用域下拉 + SearchBar
+ * (200ms 防抖,弹性)+ 来源筛选(全部来源/项目/全局/学习沉淀)+ **项目筛选**(全部项目/各项目
+ * 名,scope=all 的 project 维度),后两者叠加过滤(空查询/全部=不限)——过滤逻辑零变化。
+ * 作用域下拉只上抛不重拉:本面 scope=all 跨项目全量视图是本面裁定,不随壳作用域收窄。
  * 跨源同 id 去重(装载序先者胜=遮蔽裁决生效源,ComposerPlusPanel 同口径)。
  * Task 25 遮蔽标注:行带 daemon 富化 shadowedBy(catalog listSkills 链上裁决——当前项目链中
  * 同 id 被更高优先来源遮蔽)→ 卡灰显 + 「被 <来源> 同名技能遮蔽」角标(sourceDir 随行,
@@ -52,20 +55,25 @@ export interface SkillsPaneProps {
   readonly root: string;
   /** 导航标题(aria-label/标题行) */
   readonly title: string;
-  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——本面 scope 意识沿既有过滤保持(scope=all
-   *  跨项目全量视图是本面裁定,不随壳作用域收窄;prop 留置不消费,T26+ 若需分域视图再接) */
+  /** T21 设置壳注入:作用域(工具栏 ScopeSelect 回显)——本面 scope 意识沿既有过滤保持(scope=all
+   *  跨项目全量视图是本面裁定,不随壳作用域收窄,切换不重拉;2026-10-29 起工具栏下拉消费回显+上抛) */
   readonly scope?: SettingsScope;
+  /** 2026-10-29 工具栏 ScopeSelect 上抛口(状态留壳层):未接(直接渲染/桩测)时切换不回写 */
+  readonly onScopeChange?: (scope: SettingsScope) => void;
   /** T21 config-changed 订阅 tick(skills 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
   readonly refreshTick?: number;
 }
 
-export function SkillsPane({ conn, root, title, refreshTick }: SkillsPaneProps): JSX.Element {
+export function SkillsPane({ conn, root, title, scope, onScopeChange, refreshTick }: SkillsPaneProps): JSX.Element {
   /** 平铺技能行(scope=all 全量;null = 加载中) */
   const [skills, setSkills] = useState<SkillRow[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [projectFilter, setProjectFilter] = useState('all');
+  /** 工具栏作用域回显:壳下发优先,缺省按 root 推断(壳缺省同款——无 root 强制 global;
+   *  仅回显+上抛,不参与取参——本面恒 scope=all 全量视图) */
+  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
   const r = root === '' ? undefined : root;
 
   useEffect(() => {
@@ -125,15 +133,9 @@ export function SkillsPane({ conn, root, title, refreshTick }: SkillsPaneProps):
     <section className="sx-settings-form sx-settings-body" aria-label={`settings pane ${title}`}>
       <h2>{title}</h2>
       {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
-      <div className="sx-skills-toolbar">
-        <input
-          type="text"
-          className="sx-setting-input sx-skills-search"
-          aria-label="skills search"
-          placeholder={t('Search skills…', '搜索技能…')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+      <div className="sx-res-toolbar">
+        <ScopeSelect scope={myScope} projectAvailable={root !== ''} onScopeChange={(s) => onScopeChange?.(s)} />
+        <SearchBar value={query} onChange={setQuery} placeholder={t('Search skills…', '搜索技能…')} />
         <div className="sx-skills-filter">
           <Select
             ariaLabel="skills source"

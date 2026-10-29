@@ -2,15 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { PluginsPane } from '../PluginsPane';
 import type { PluginsPaneConn } from '../PluginsPane';
+import type { SettingsScope } from '../components';
 import type { PluginRow } from '../../connection';
 
 /**
- * Task 24 PluginsPane 重构桩测(搜索+configSchema 配置抽屉+作用域开关):conn 全桩
+ * Task 24 PluginsPane 重构桩测(搜索+configSchema 配置弹窗+作用域开关):conn 全桩
  * (plugins/putPlugin 两面,不出网),用例沿 task brief——①列表渲染+warnings 三出口(逐卡
  * 告警行+pane 尾聚合装载告警);②SearchBar 搜索过滤(200ms 防抖);③开关 scope 形状两级
- * (project 带 root/global 省参——旧「写死项目级」门退役,root='' 走全局可写);④配置抽屉
+ * (project 带 root/global 省参——旧「写死项目级」门退役,root='' 走全局可写);④配置弹窗
  * 提交形状(configSchema 键值表单+schema 外既有键透传保全);⑤无 schema JSON 文本域
- * (非法 JSON 拦截不落盘;合法 JSON 提交解析值);⑥refreshTick 变化触发重拉。
+ * (非法 JSON 拦截不落盘;合法 JSON 提交解析值);⑥refreshTick 变化触发重拉;
+ * ⑦工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页;
+ * 无新增钮——插件目录扫描发现,非用户创建面)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -174,5 +177,20 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     expect(pluginsCalls).toEqual(['/w/proj']);
     rerender(<PluginsPane conn={conn} root="/w/proj" refreshTick={1} />);
     await waitFor(() => expect(pluginsCalls).toEqual(['/w/proj', '/w/proj']));
+  });
+
+  it('工具栏作用域下拉(2026-10-29 三件套入页,只读发现面无添加钮):切换只上抛 onScopeChange;壳换发 scope 后按新作用域重拉(global 省参)', async () => {
+    const { conn, pluginsCalls } = connOf([row()]);
+    const scopes: SettingsScope[] = [];
+    const { rerender } = render(<PluginsPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    await screen.findByText('Browser Use');
+    await waitFor(() => expect(pluginsCalls).toEqual(['/w/proj']));
+    expect(screen.queryByRole('button', { name: '+ Add' })).toBeNull(); // 无新增钮(目录发现面)
+    fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Global' }));
+    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
+    // 壳回写 scope 后随 props 回流:读面按新作用域重拉(global 省参)
+    rerender(<PluginsPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
+    await waitFor(() => expect(pluginsCalls).toEqual(['/w/proj', undefined]));
   });
 });

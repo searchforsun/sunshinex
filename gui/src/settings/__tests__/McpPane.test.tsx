@@ -2,14 +2,16 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { McpPane } from '../McpPane';
 import type { McpPaneConn } from '../McpPane';
+import type { SettingsScope } from '../components';
 import type { Connection, McpRow } from '../../connection';
 
 /**
- * Task 22 McpPane 重构桩测(op 端点卡片化+EditorDrawer+批准流+遮蔽标注):conn 全桩
+ * Task 22 McpPane 重构桩测(op 端点卡片化+编辑弹窗+批准流+遮蔽标注):conn 全桩
  * (mcpServers/mcpProbe/putMcpOp/settingsRaw 四面,不出网),用例沿 task brief——
  * ①列表渲染+挂载自动探测;②SearchBar 搜索过滤(200ms 防抖);③新增提交 putMcpOp op 形状;
  * ④待确认卡 Approve/Deny 按钮调 op approve/deny;⑤遮蔽标注渲染(全局同名卡灰显+只读);
- * ⑥「JSON 源码」高级折叠非法 JSON 拦截(不落 op);⑦refreshTick 变化触发重拉。
+ * ⑥「JSON 源码」高级折叠非法 JSON 拦截(不落 op);⑦refreshTick 变化触发重拉;
+ * ⑧工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -219,5 +221,19 @@ describe('McpPane(op 端点卡片化)', () => {
     const sw = screen.getByRole('switch', { name: 'Enable fs' }) as HTMLButtonElement;
     fireEvent.click(sw);
     await waitFor(() => expect(opCalls).toEqual([{ op: 'disable', scope: 'global', name: 'fs' }])); // 省参 root
+  });
+
+  it('工具栏作用域下拉(2026-10-29 三件套入页):切换只上抛 onScopeChange;壳换发 scope 后按新作用域重拉(global 省参)', async () => {
+    const { conn, mcpServersCalls } = connOf([row({ source: 'global', approval: 'none' })]);
+    const scopes: SettingsScope[] = [];
+    const { rerender } = render(<McpPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    await screen.findByText('fs');
+    await waitFor(() => expect(mcpServersCalls).toEqual(['/w/proj']));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Global' }));
+    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
+    // 壳回写 scope 后随 props 回流:读面按新作用域重拉(global 省参)
+    rerender(<McpPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
+    await waitFor(() => expect(mcpServersCalls).toEqual(['/w/proj', undefined]));
   });
 });

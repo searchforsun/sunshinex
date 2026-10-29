@@ -2,16 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AgentsPane } from '../AgentsPane';
 import type { AgentsPaneConn } from '../AgentsPane';
+import type { SettingsScope } from '../components';
 import type { Connection, AgentEntryView, BuiltinRole } from '../../connection';
 
 /**
- * Task 23 AgentsPane 重构桩测(卡片化+enabled 开关+旧位置迁移+EditorDrawer+SearchBar):
+ * Task 23 AgentsPane 重构桩测(卡片化+enabled 开关+旧位置迁移+编辑弹窗+SearchBar):
  * conn 全桩(agentsView/putAgentOp/agentBody 三面,不出网),用例沿 task brief——
  * ①卡片渲染(id/name/badge/chips/shadowed 标/正文折叠/builtins 只读卡/warnings;行无 enabled
  *   字段=daemon 未富化 → 开关不渲染的 gating 契约);②启停开关 op 形状(enable/disable,
  *   project 带 root/global 省参);③旧位置卡迁移钮 op 形状(migrate 恒 root+id,非 legacy 卡无钮);
- * ④编辑提交形状(EditorDrawer:upsert scope=卡 source;id 编辑态锁定;截断守卫兜底仍在);
- * ⑤SearchBar 搜索过滤(200ms 防抖);⑥refreshTick 变化触发重拉。
+ * ④编辑提交形状(EditorModal 居中模态:upsert scope=卡 source;id 编辑态锁定;截断守卫兜底仍在);
+ * ⑤SearchBar 搜索过滤(200ms 防抖);⑥refreshTick 变化触发重拉;
+ * ⑦工具栏作用域下拉切换上抛+壳换发 scope 后按新作用域重拉(2026-10-29 三件套入页)。
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
@@ -230,5 +232,19 @@ describe('AgentsPane(卡片化+启停+旧位置迁移)', () => {
     expect(agentsViewCalls).toEqual(['/w/proj']);
     rerender(<AgentsPane conn={conn} root="/w/proj" refreshTick={1} />);
     await waitFor(() => expect(agentsViewCalls).toEqual(['/w/proj', '/w/proj']));
+  });
+
+  it('工具栏作用域下拉(2026-10-29 三件套入页):切换只上抛 onScopeChange;壳换发 scope 后按新作用域重拉(global 省参)', async () => {
+    const { conn, agentsViewCalls } = connOf([row({ source: 'global' })]);
+    const scopes: SettingsScope[] = [];
+    const { rerender } = render(<AgentsPane conn={conn} root="/w/proj" scope="project" onScopeChange={(s) => scopes.push(s)} />);
+    await screen.findByText('dev');
+    await waitFor(() => expect(agentsViewCalls).toEqual(['/w/proj']));
+    fireEvent.click(screen.getByRole('button', { name: 'Settings scope' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Global' }));
+    expect(scopes).toEqual(['global']); // 只上抛(状态留壳层)
+    // 壳回写 scope 后随 props 回流:读面按新作用域重拉(global 省参)
+    rerender(<AgentsPane conn={conn} root="/w/proj" scope="global" onScopeChange={(s) => scopes.push(s)} />);
+    await waitFor(() => expect(agentsViewCalls).toEqual(['/w/proj', undefined]));
   });
 });
