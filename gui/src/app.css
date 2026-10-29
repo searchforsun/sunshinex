@@ -2823,6 +2823,5 @@ input.sx-setting-input { width: 100%; }
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
-  zoom: var(--ui-zoom-inv, 1);
-}
+} /* 无 counter-zoom(2026-10-29 用户实测「还是没有变化」根修):初版给空条挂倒数补偿=条钉死缩放 1.0 不随界面缩放(主对话顶栏 b2ae099 撤补偿后正常跟随,设置条漏改);空带命中错位为可接受面(带内无钮) */
 .sx-settings-viewport { flex: 1 1 0; min-height: 0; overflow-y: auto; }
