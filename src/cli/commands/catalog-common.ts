@@ -35,6 +35,11 @@ export const SKILLS_FLAG_KEYS: readonly string[] = ['scope', 'root', 'json'];
 /** settings 族旗标词汇表（Task 18）：get/set 仅公共 target 旗标 */
 export const SETTINGS_FLAG_KEYS: readonly string[] = ['scope', 'root'];
 
+/** providers 族旗标词汇表（Task 19）：前三为公共 target 旗标，其余 add/set/model 三操作自有。
+ *  --models 是单值逗号清单（`--models=a,b` 一串即清单，清单序 = 模型优先级）——非可重复旗，
+ *  不进 cli/index REPEATABLE_FLAGS；--supports-images 是布尔旗（bare 形态 true，agents --memory 同款） */
+export const PROVIDERS_FLAG_KEYS: readonly string[] = ['scope', 'root', 'json', 'base-url', 'models', 'context-window', 'reasoning-effort', 'supports-images', 'tier', 'direction'];
+
 /** 解析产物：scope+root 定位 catalog 读写目标面，json 是 list 输出形态旗，bad 走调用方 usage */
 export interface ResolvedTarget {
   scope: Scope;

@@ -11,8 +11,9 @@ import { runKbIndex } from './commands/kb-index';
 import { runPlugins } from './commands/plugins';
 import { runAgents } from './commands/agents';
 import { runSettings } from './commands/settings-cli';
+import { runProviders } from './commands/providers';
 import { runMcpCommand } from './commands/mcp';
-import { AGENTS_FLAG_KEYS, MCP_FLAG_KEYS, SETTINGS_FLAG_KEYS, SKILLS_FLAG_KEYS, backfillFlags } from './commands/catalog-common';
+import { AGENTS_FLAG_KEYS, MCP_FLAG_KEYS, PROVIDERS_FLAG_KEYS, SETTINGS_FLAG_KEYS, SKILLS_FLAG_KEYS, backfillFlags } from './commands/catalog-common';
 import { runTui } from '../tui/entry';
 import { loadSettingsChain } from '../config/settings';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -86,7 +87,7 @@ export function flagList(flags: CliArgs['flags'], name: string): string[] {
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */
-const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'mcp', 'agents', 'settings', 'help'];
+const COMMANDS = ['selfcheck', 'run', 'pipeline', 'serve', 'skills', 'kb-index', 'plugins', 'mcp', 'agents', 'providers', 'settings', 'help'];
 
 /** 路径形态判据（规格 §6.2）：绝对路径（POSIX `/` 前缀、Windows 盘符）、`.`/`..` 显式相对形态、或含路径分隔符 */
 export function isPathForm(arg: string): boolean {
@@ -146,6 +147,8 @@ export function usageText(): string {
                                           read or write a semantic settings key (retired keys print guidance and exit 1)
   sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <dir>] [--json]
                                           manage the MCP server catalog (add <name> --command=<cmd> [--arg=a] [--env=K=V] | --url=<u>; project .sunshinex/mcp.json or global ~/.sunshinex/mcp.json)
+  sunshinex providers list|add|set|remove|key|test [--scope=global|project] [--root <dir>] [--json]
+                                          manage model providers (add <name> --base-url=<u> --models=m1,m2,... [--context-window=<n>] [--reasoning-effort=<e>] [--supports-images]; set <name> incremental; model add|remove|move <provider> <model> [--tier=small|medium|large] [--direction=up|down]; key <name> prompts hidden input and writes the settings env block; test <name> probes <baseUrl>/models; list --json prints {providers, choices})
   flags:
   --mode=read-only|acceptEdits|full-access
                                           permission mode (default acceptEdits)
@@ -184,6 +187,8 @@ export function usageText(): string {
                                           读写语义设置键（退役键打印处置指引并退出码 1）
   sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <目录>] [--json]
                                           管理 MCP server 目录（add <名称> --command=<命令> [--arg=a] [--env=K=V] | --url=<地址>；项目 .sunshinex/mcp.json 或全局 ~/.sunshinex/mcp.json）
+  sunshinex providers list|add|set|remove|key|test [--scope=global|project] [--root <目录>] [--json]
+                                          管理模型提供方（add <名称> --base-url=<地址> --models=m1,m2,... [--context-window=<n>] [--reasoning-effort=<强度>] [--supports-images]；set <名称> 增量更新；model add|remove|move <源> <模型> [--tier=small|medium|large] [--direction=up|down]；key <名称> 隐藏输入写入 settings env 块；test <名称> 探测 <baseUrl>/models 连通；list --json 输出 {providers, choices}）
   flags：
   --mode=read-only|acceptEdits|full-access
                                           权限模式（缺省 acceptEdits）
@@ -296,6 +301,11 @@ async function main(): Promise<void> {
       // runAgents 吃原始 token 形态（string[]，返回 exit code）：positional 透传，agents 词汇表旗标
       // 按 parseArgs 拆装结果回填（Task 18；--memory 布尔旗 bare 形态原样透传）
       return dispatchCatalogCommand(args, AGENTS_FLAG_KEYS, runAgents);
+    case 'providers':
+      // runProviders 吃原始 token 形态（string[]，返回 exit code）：positional 透传，providers 词汇表
+      // 旗标按 parseArgs 拆装结果回填（Task 19；--models 单值逗号清单非可重复旗，--supports-images
+      // 布尔旗 bare 形态原样透传）
+      return dispatchCatalogCommand(args, PROVIDERS_FLAG_KEYS, runProviders);
     case 'settings':
       // runSettings 吃原始 token 形态（string[]，返回 exit code）：positional 透传，settings 词汇表旗标
       // 按 parseArgs 拆装结果回填（Task 18；get/set 的 --scope 两级定位）
