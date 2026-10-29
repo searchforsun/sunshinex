@@ -389,6 +389,20 @@ export interface WsFrame {
   pid?: string;
   req?: unknown;
   frames?: Array<{ kind: string; sessionId?: string; seq?: number; e?: SessionEvent }>;
+  /** Task 21 config-changed 下行帧（daemon 级无 sessionId——不 seq/不去重）：与 src/serve/
+   *  daemon-wire.ts ConfigChangedFrame 同形；resource/scope 宽收 string（transport 轻归一后
+   *  转 ConfigChangedInfo，未知资源由订阅侧过滤） */
+  resource?: string;
+  scope?: string;
+  root?: string | null;
+}
+
+/** config-changed 通知帧载荷（Task 21 双向实时同步面，useConfigChanged 消费）：resource=资源
+ *  种类（ResourceKind 字符串，未知值订阅侧忽略）、scope=作用域、root=项目根（null=全局） */
+export interface ConfigChangedInfo {
+  resource: string;
+  scope: 'global' | 'project';
+  root: string | null;
 }
 
 export interface ConnectionOpts {

@@ -3,6 +3,7 @@ import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
 import type { SelectOption } from './controls';
+import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
 import { applyTheme, readThemePref, watchSystemTheme } from '../theme';
@@ -338,6 +339,11 @@ export interface SettingsFormProps {
   readonly pane: SettingsPaneDef;
   /** G14.213 语言键保存后上抛(壳层 tick 重渲染——t 非响应式,本组件外的 t() 面才需要) */
   readonly onLanguageChanged?: () => void;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher;'global'|'project')——可选,本任务零行为变化,
+   *  T22+ 起解构消费(作用域感知的行读写锚切换) */
+  readonly scope?: SettingsScope;
+  /** T21 config-changed 订阅 tick(settings 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  readonly refreshTick?: number;
 }
 
 /** 改动桶(逐项写回来源文件):source='project' → project;global/default → global */

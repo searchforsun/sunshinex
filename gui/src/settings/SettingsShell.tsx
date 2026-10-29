@@ -15,6 +15,10 @@ import { PermissionsPane } from './PermissionsPane';
 import type { PermissionsPaneConn } from './PermissionsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
+import { ScopeSwitcher } from './components';
+import type { SettingsScope } from './components';
+import { useConfigChanged } from './use-config-changed';
+import type { ConfigChangedSource } from './use-config-changed';
 
 /**
  * G8c T8/T9 设置态壳(设置重构轮):App settingsOpen 时整体替换三栏内容——左栏(顶栏「← 返回」
@@ -31,13 +35,18 @@ import type { RawPaneConn } from './RawPane';
  * 2026-10-26 插件面:导航十一项——Integrations 组 MCP 后插「插件」(PluginsPane,spec §6)。
  * 选中态 activePane 本地 state(默认「通用」),主区以 key={paneId} 挂载(面板互切强制重挂——
  * 键集/输入值面整体复位)。
+ * T21(2026-10-28 设置共享组件轮):顶栏加 ScopeSwitcher 分段控件——scope 状态提升本壳
+ * ('global'|'project',缺省 project、无 root 强制 global,root 快照语义不变),连同 config-changed
+ * 订阅 tick(useConfigChanged——WS 帧按 resource 合并 200ms 递增,见 use-config-changed)经 props
+ * 下发各 pane(pane 侧可选 props,本任务零行为变化;T22 起逐页解构消费)。
  */
 
 /** 壳连接面:全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
  *  RawPaneConn 的 settings 以 Omit 剥除——SettingsFormConn 已供全量 SettingsView 形(其含可选
  *  warnings,结构满足 RawPane/PermissionsPane 的告警/权限子集面;接口 extends 同名成员须同一性,
- *  故在此收窄拼接) */
-export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, Omit<RawPaneConn, 'settings'> {}
+ *  故在此收窄拼接)。T21 并入 config-changed 订阅面(ConfigChangedSource——顶栏 useConfigChanged
+ *  的 conn 依赖;App 的 Connection 已供 onConfigChanged 注册点) */
+export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {}
 
 /** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后)。
  *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
@@ -85,6 +94,19 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
   /** G14.213 语言切换 tick:SettingsForm 语言键保存 → onLanguageChanged → 本壳重渲染
    *  (t 非响应式——导航/分组/壳头等本组件的 t() 面不 tick 不翻面) */
   const [, setLangTick] = useState(0);
+  /** T21 作用域状态提升(顶栏 ScopeSwitcher):缺省 project;无 root 强制 global(项目侧禁用,
+   *  本处与回调双闸)。root 维持快照语义(打开设置时的活动工作区,只读不改) */
+  const [scope, setScope] = useState<SettingsScope>(root === '' ? 'global' : 'project');
+  useEffect(() => {
+    if (root === '') setScope('global'); // root 快照变化兜底(理论不发生——防御面)
+  }, [root]);
+  const onScopeChange = (next: SettingsScope): void => {
+    if (next === 'project' && root === '') return; // 无项目上下文:项目侧不可选
+    setScope(next);
+  };
+  /** T21 config-changed 订阅:按 resource 合并 200ms 的 tick 计数——逐 pane 经 props 下发
+   *  (pane 以自身 resource 的 tick 变化为外部改动信号触发重拉;T22 起逐页消费) */
+  const refreshTick = useConfigChanged(conn);
 
   /** Esc → 回会话态(与返回钮同路径) */
   useEffect(() => {
@@ -95,26 +117,30 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
     return () => document.removeEventListener('keydown', onKey);
   }, [onBack]);
 
-  /** 主区渲染分发:表单面板查 SETTINGS_PANES 定义,复杂面板各归其件(skills/permissions 同体) */
+  /** 主区渲染分发:表单面板查 SETTINGS_PANES 定义,复杂面板各归其件(skills/permissions 同体)。
+   *  T21:scope 与对应 resource 的 refreshTick 经 props 下发各 pane(可选 props——本任务 pane
+   *  零行为变化,T22 起逐页解构消费;RawPane 全局/项目 raw 文件共用,只下发 scope) */
   const renderPane = (): JSX.Element => {
     const formDef = SETTINGS_PANES.find((p) => p.id === activePane);
     if (formDef !== undefined)
-      return <SettingsForm key={formDef.id} conn={conn} root={root} pane={formDef} onLanguageChanged={() => setLangTick((v) => v + 1)} />;
+      return (
+        <SettingsForm key={formDef.id} conn={conn} root={root} pane={formDef} scope={scope} refreshTick={refreshTick.settings} onLanguageChanged={() => setLangTick((v) => v + 1)} />
+      );
     switch (activePane) {
       case 'providers':
-        return <ProvidersPane key="providers" conn={conn} root={root} />;
+        return <ProvidersPane key="providers" conn={conn} root={root} scope={scope} refreshTick={refreshTick.providers} />;
       case 'mcp':
-        return <McpPane key="mcp" conn={conn} root={root} />;
+        return <McpPane key="mcp" conn={conn} root={root} scope={scope} refreshTick={refreshTick.mcp} />;
       case 'plugins':
-        return <PluginsPane key="plugins" conn={conn} root={root} />;
+        return <PluginsPane key="plugins" conn={conn} root={root} scope={scope} refreshTick={refreshTick.plugins} />;
       case 'agents':
-        return <AgentsPane key="agents" conn={conn} root={root} />;
+        return <AgentsPane key="agents" conn={conn} root={root} scope={scope} refreshTick={refreshTick.agents} />;
       case 'skills':
-        return <SkillsPane key="skills" conn={conn} root={root} title={t('Skills', '技能')} />;
+        return <SkillsPane key="skills" conn={conn} root={root} title={t('Skills', '技能')} scope={scope} refreshTick={refreshTick.skills} />;
       case 'permissions':
-        return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} />;
+        return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} scope={scope} refreshTick={refreshTick.permissions} />;
       default:
-        return <RawPane key="raw" conn={conn} />;
+        return <RawPane key="raw" conn={conn} scope={scope} />;
     }
   };
 
@@ -129,6 +155,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
             {t('← Back', '← 返回')}
           </button>
           <span>{t('Settings', '设置')}</span>
+          {/* T21 作用域分段控件(状态提升于本壳,经 props 下发各 pane):无 root 项目侧禁用 */}
+          <ScopeSwitcher scope={scope} projectAvailable={root !== ''} onScopeChange={onScopeChange} />
         </header>
         <ul className="sx-settings-nav">
           {SETTINGS_GROUPS.map((g) => (

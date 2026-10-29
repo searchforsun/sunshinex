@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
 import { SourceBadge } from './SourceBadge';
+import type { SettingsScope } from './components';
 
 /**
  * 2026-10-26 插件面(Task 12,spec §6 设置页「插件」pane):loadEffectivePlugins 两级清单的可视化
@@ -29,6 +30,10 @@ export interface PluginsPaneProps {
   readonly conn: PluginsPaneConn;
   /** 项目上下文('' = 仅全局——写面禁用,读面省参) */
   readonly root: string;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T23 起解构消费 */
+  readonly scope?: SettingsScope;
+  /** T21 config-changed 订阅 tick(plugins 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  readonly refreshTick?: number;
 }
 
 export function PluginsPane({ conn, root }: PluginsPaneProps): JSX.Element {

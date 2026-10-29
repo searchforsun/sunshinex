@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult } from '../connection';
 import { SourceBadge } from './SourceBadge';
+import type { SettingsScope } from './components';
 
 /**
  * G8c T9 MCP 面板 → 2026-10-26 四轮改版(用户裁定):
@@ -43,6 +44,10 @@ export interface McpPaneProps {
   readonly conn: McpPaneConn;
   /** 项目上下文('' = 仅全局——写面禁用,读面省参) */
   readonly root: string;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T22 起解构消费 */
+  readonly scope?: SettingsScope;
+  /** T21 config-changed 订阅 tick(mcp 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  readonly refreshTick?: number;
 }
 
 export function McpPane({ conn, root }: McpPaneProps): JSX.Element {

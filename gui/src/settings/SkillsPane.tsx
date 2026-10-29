@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { SkillsGroup } from '../connection';
 import { Select } from './controls';
+import type { SettingsScope } from './components';
 
 /**
  * G8c T9 技能面板(设置·技能页):**跨项目全量视图**——拉 scope=all(user 全局 + 当前项目
@@ -44,6 +45,10 @@ export interface SkillsPaneProps {
   readonly root: string;
   /** 导航标题(aria-label/标题行) */
   readonly title: string;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T25 起解构消费 */
+  readonly scope?: SettingsScope;
+  /** T21 config-changed 订阅 tick(skills 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  readonly refreshTick?: number;
 }
 
 export function SkillsPane({ conn, root, title }: SkillsPaneProps): JSX.Element {

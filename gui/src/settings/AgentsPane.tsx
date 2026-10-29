@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsView, BuiltinRole } from '../connection';
 import { SourceBadge } from './SourceBadge';
+import type { SettingsScope } from './components';
 
 /**
  * G8c T9 智能体面板:内建预设 + 两级注册清单 + agent.md 生成式增删改。
@@ -70,6 +71,10 @@ export interface AgentsPaneProps {
   readonly conn: AgentsPaneConn;
   /** 项目上下文('' = 仅全局——scope=project 禁选) */
   readonly root: string;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T24 起解构消费 */
+  readonly scope?: SettingsScope;
+  /** T21 config-changed 订阅 tick(agents 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  readonly refreshTick?: number;
 }
 
 export function AgentsPane({ conn, root }: AgentsPaneProps): JSX.Element {

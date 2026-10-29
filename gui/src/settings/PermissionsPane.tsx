@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { SettingsView } from '../connection';
+import type { SettingsScope } from './components';
 
 /**
  * G8c T9 权限面板(设置重构二轮,自 SkillsPermsPane 拆出——「技能」「权限」两导航项原同体
@@ -25,6 +26,10 @@ export interface PermissionsPaneProps {
   readonly root: string;
   /** 导航标题(aria-label/标题行) */
   readonly title: string;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher)——可选,本任务零行为变化,T26 起解构消费 */
+  readonly scope?: SettingsScope;
+  /** T21 config-changed 订阅 tick(permissions 资源计数——外部改动信号,变化即重拉;未消费可忽略) */
+  readonly refreshTick?: number;
 }
 
 export function PermissionsPane({ conn, root, title }: PermissionsPaneProps): JSX.Element {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Select } from './controls';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
+import type { SettingsScope } from './components';
 
 /**
  * G8c T9 高级面板(设置重构轮:仅全局+自动回显)——scope 面移除,恒 'global':本面板只编辑
@@ -30,6 +31,10 @@ export interface RawPaneConn {
 
 export interface RawPaneProps {
   readonly conn: RawPaneConn;
+  /** T21 设置壳注入:作用域(顶栏 ScopeSwitcher;raw 双文件面——settings/mcp 各按作用域取文)
+   *  可选,本任务零行为变化,T27 起解构消费。refreshTick 不由壳下发(raw 跨 settings+mcp 两
+   *  资源——需要时本面自持 conn 调 useConfigChanged 自取) */
+  readonly scope?: SettingsScope;
 }
 
 export function RawPane({ conn }: RawPaneProps): JSX.Element {

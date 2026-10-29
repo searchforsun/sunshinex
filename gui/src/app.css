@@ -2688,3 +2688,38 @@ input.sx-setting-input { width: 100%; }
 .mode-pop-group + .mode-pop-group,
 .cmd-item + .cmd-item,
 .sx-dd-pop li + li { margin-top: 2px; }
+
+/* ===== Task 21(2026-10-28)设置共享组件 kit:ScopeSwitcher/SearchBar/ResourceCard/EditorDrawer/
+   EmptyState/ErrorBanner(T22-27 六面板改版统一消费;令牌沿既有 --surface-elevated/--border/
+   --radius-*/--warn 面,零新依赖) ===== */
+/* 作用域分段控件(壳顶栏;margin-left:auto 推右) */
+.sx-scope-switcher { margin-left: auto; display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; flex: none; }
+.sx-scope-btn { border: none; background: transparent; color: var(--fg-secondary); padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.sx-scope-btn + .sx-scope-btn { border-left: 1px solid var(--border); }
+.sx-scope-btn:hover:not(:disabled):not(.active) { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-scope-btn.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-scope-btn:disabled { cursor: default; opacity: 0.5; }
+/* 搜索框(沿 sx-setting-input 令牌,只加宽度帽) */
+.sx-search-bar { max-width: 240px; }
+/* 资源卡(卡面语言沿 sx-mcp-card:surface-elevated+border 圆角;开关复用 .sx-mcp-switch 令牌) */
+.sx-rc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sx-rc { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.sx-rc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sx-rc-icon { display: inline-flex; color: var(--fg-secondary); flex: none; }
+.sx-rc-title { color: var(--fg); font-weight: 600; font-size: 13px; }
+.sx-rc-subtitle { color: var(--fg-secondary); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+.sx-rc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sx-rc-details summary { color: var(--fg-secondary); font-size: 12px; cursor: pointer; }
+/* 右侧滑出编辑抽屉(背板+右侧 aside;浮层 z 高于设置态菜单抽屉 z96) */
+.sx-drawer-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, 0.35); }
+.sx-editor-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 121; width: min(420px, 90vw); background: var(--surface); border-left: 1px solid var(--border-strong); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; }
+.sx-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.sx-drawer-head h3 { margin: 0; font-size: 14px; }
+.sx-drawer-close { border: none; background: transparent; color: var(--fg-secondary); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
+.sx-drawer-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
+.sx-drawer-fields { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.sx-drawer-actions { margin-top: auto; }
+/* 空态/错误条 */
+.sx-empty-state { margin: 0; color: var(--fg-tertiary); font-size: 13px; padding: 18px 0; text-align: center; }
+.sx-error-banner { margin: 0; color: var(--warn); font-size: 12px; border: 1px solid var(--warn); border-radius: var(--radius-md); padding: 6px 8px; }

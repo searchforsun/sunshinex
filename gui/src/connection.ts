@@ -5,6 +5,7 @@ import type {
   AgentFrontmatterInput,
   AgentsView,
   BuiltinRole,
+  ConfigChangedInfo,
   ConnectionOpts,
   ConnectionState,
   DirPickerResp,
@@ -183,6 +184,10 @@ export interface Connection {
   openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }>;
   /** DELETE /app/pty/:ptyId:App 级 pty 回收 */
   killPtyAt(ptyId: string): Promise<void>;
+  /** Task 21 config-changed 帧订阅注册点（设置面双向实时同步——useConfigChanged 消费）：
+   *  daemon 级下行帧（无 sessionId，不 seq/不去重）帧帧转发在册回调；返回退订函数。
+   *  注册面单点——帧主流程（transport 分发）零扰动，未注册即静默 */
+  onConfigChanged(cb: (f: ConfigChangedInfo) => void): () => void;
   /** GET /session/:id/tree?path=（G8b T4 目录面，path 缺省 = root 单层直读）：DirectoryTab 逐层
    *  惰拉的取数面；403 越界/404 不存在/400 非目录以 HTTP 失败抛错（消息含 status） */
   tree(sessionId: string, path?: string): Promise<TreeResp>;
@@ -249,6 +254,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
   const backoffBaseMs = opts.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
   const base = baseUrl.replace(/\/+$/, '');
 
+  /** Task 21 config-changed 订阅注册表：transport 可选回调单点 → 全部在册订阅者（退订=Set 摘除）。
+   *  挂钩面最小化——帧分发（connection-transport）只多一个可选回调分支，主流程不动 */
+  const configChangedSubs = new Set<(f: ConfigChangedInfo) => void>();
+
   const transport = createConnectionTransport(base, token, backoffBaseMs, {
     onEvent,
     onApproval,
@@ -257,6 +266,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     onReset,
     onResetSession,
     onStateChange,
+    onConfigChanged: (f) => {
+      for (const sub of configChangedSubs) sub(f);
+    },
   });
 
   async function getJson<T>(path: string): Promise<T> {
@@ -571,6 +583,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async killPtyAt(ptyId: string): Promise<void> {
       await post(`/app/pty/${encodeURIComponent(ptyId)}`, {});
+    },
+    onConfigChanged(cb: (f: ConfigChangedInfo) => void): () => void {
+      configChangedSubs.add(cb);
+      return () => {
+        configChangedSubs.delete(cb);
+      };
     },
     async killPty(sessionId: string, ptyId: string): Promise<void> {
       const path = `/session/${encodeURIComponent(sessionId)}/pty/${encodeURIComponent(ptyId)}`;

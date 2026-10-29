@@ -1,5 +1,5 @@
 import type { SessionEvent } from '../../src/types';
-import type { ConnectionState, WsFrame, GuiApprovalReq, GuiAskReq, GuiPlanApprovalReq } from './connection-types';
+import type { ConnectionState, ConfigChangedInfo, WsFrame, GuiApprovalReq, GuiAskReq, GuiPlanApprovalReq } from './connection-types';
 
 /** WS 传输状态机（D32 批A′ 拆分自 connection.ts）：连接/退避重连/代次失效/单调 seq 过滤/挂起帧
  *  去重分发——RPC 面仅消费 state/generation/lastSeqBySession/currentSocket/close 五面；事件流、挂起
@@ -14,6 +14,9 @@ export interface TransportCallbacks {
   onPlanApproval?(sessionId: string, pid: string, req: GuiPlanApprovalReq): void;
   onReset(): void;
   onResetSession?(sessionId: string): void;
+  /** Task 21 config-changed 下行帧回调（daemon 级无 sessionId——不 seq/不去重，帧帧回调）：
+   *  可选注册——未注册即忽略（旧上层零感知），帧主流程零扰动 */
+  onConfigChanged?(f: ConfigChangedInfo): void;
   onStateChange?(next: ConnectionState): void;
 }
 
@@ -151,6 +154,16 @@ function connect(): void {
     // G4 会话 reset 通知帧：无 seq/pid——不入单调序列也不去重，帧帧回调
     if (frame.kind === 'reset') {
       if (typeof frame.sessionId === 'string' && frame.sessionId.length > 0) cb.onResetSession?.(frame.sessionId);
+      return;
+    }
+    // Task 21 config-changed 通知帧：daemon 级无 sessionId——不入 seq 序列也不去重，帧帧回调；
+    // 轻归一（resource/scope/root 宽收→窄形）后转可选回调，未注册即忽略（主流程零扰动）
+    if (frame.kind === 'config-changed') {
+      cb.onConfigChanged?.({
+        resource: typeof frame.resource === 'string' ? frame.resource : '',
+        scope: frame.scope === 'project' ? 'project' : 'global',
+        root: typeof frame.root === 'string' ? frame.root : null,
+      });
       return;
     }
     // P1 Task 7 batch 合帧解包：内嵌事件帧逐帧过同一条 deliver 通道（单调 seq 过滤/pid 去重语义
