@@ -2369,6 +2369,7 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop.sx-sidebar-float .chat-topbar,
 .sx-shell.sx-desktop.sx-sidebar-collapsed .chat-topbar { padding-right: 150px; }
 .sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop .chat-topbar .chat-title { -webkit-app-region: no-drag; } /* 标题挖孔(2026-10-29 用户实测 hover 完整名提示失效):标题是 span 非钮非输入,容器 drag 下拖拽区吞鼠标事件=data-tip 不显;让出标题条可拖换 hover 面,窗口拖拽走其后 sx-topbar-drag 空白带不受影响 */
 /* left+104 避让菜单关闭态左上浮出簇(2026-10-25:后退/前进钮对+呼出钮,簇宽 10+84=94)—
    drag 矩形与一切按钮几何互斥不变,zoom 错位平移仍咬不到钮 */
 .sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: calc(148px + var(--sidebar-w, 0px)); z-index: 1; -webkit-app-region: drag; } /* 2026-10-28:右缘动态让位侧栏实占宽——欢迎页草稿座页签条上场后 dragrail 常开仍几何互斥(侧栏关=回 148 原值) */
@@ -2665,8 +2666,14 @@ input.sx-setting-input { width: 100%; }
    记录、命中按缩放视觉坐标判定——孔整体左移 9.09%(收起钮 28.6px 仅左 5px 可点,右上 [|] 整钮
    错位全死)。反 zoom 1/zoom 使顶带子树累计缩放恒等于 1,挖孔与视觉逐像素对齐,任意界面缩放
    下全局可拖且按钮全可点;窗控簇自有 no-drag 同理须对齐,否则压不进页签条 drag 区 */
-.sx-shell.sx-desktop .sx-menu-head,
-.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+.sx-shell.sx-desktop .sx-menu-head { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
+/* 抽屉态整头容器 drag 退役(2026-10-29 用户实测抽屉浮窗态收起钮全死;同案在档:2363 页签条
+   「抽屉态一并退出」+ProjectMenu 头注「容器 drag+挖孔 zoom 下位图错位吞收起钮(实证)」)——
+   fixed 抽屉 + counter-zoom 的 app-region 位图在抽屉翻转期不可信,挖孔/命中错位吞按钮;
+   drag 收缩到头内空白带 .sx-menu-head-drag(2377:左 16 避品牌字/右 24 避收起钮,几何互斥),
+   拖拽面保留、按钮脱离 drag 位图全可点;带挂 counter-zoom 与停靠态同口径(位图逐像素对齐) */
+.sx-shell.sx-desktop.sx-menu-float .sx-menu-head { -webkit-app-region: no-drag; }
+.sx-shell.sx-desktop.sx-menu-float .sx-menu-head-drag { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
 .sx-shell.sx-desktop .sx-menu-head button,
 .sx-shell.sx-desktop .sx-menu-head input { -webkit-app-region: no-drag; }
 .sx-shell.sx-desktop .chat-topbar { -webkit-app-region: drag; zoom: var(--ui-zoom-inv, 1); }
