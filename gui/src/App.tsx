@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from './i18n';
 import { t as tLabel } from './i18n';
-import { GitCompare, Globe, MessageCircle, ListTodo, FolderTree, Copy, Minus, PanelRight, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react';
+import { GitCompare, Globe, MessageCircle, ListTodo, Copy, Minus, PanelRight, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { Connection, ConnectionState } from './connection';
 import type { TodoItem } from '../../src/types';
@@ -489,17 +489,18 @@ function AppShell(): JSX.Element {
 
   /** 窗口程序化拖拽·全状态统一(2026-10-29 用户裁定「修干净/推倒重来」终版):CSS app-region
    *  整族不可信(zoom 位图错位×3 案在档:吞呼出钮/吞收起钮/吞窗控;抽屉态 CSS 孤岛亦死)——改
-   *  捕获期监听:拖拽面(.sx-menu-head 菜单头/.sx-topbar-drag 顶栏空白带/.sx-head-drag 欢迎页
-   *  顶带/.sx-dragrail/.sx-tabstrip-drag)非按钮/输入区的 mousedown 发 drag-start(壳跟随光标
-   *  循环),全局 mouseup 发 drag-end 停表;双击拖拽面=最大化切换(标准标题栏行为);停靠/抽屉
-   *  两态同规零分叉,旧壳 ?. 静默跳过。button/input 目标排除(收起/导航/呼出钮点击不受累) */
+   *  捕获期监听:拖拽面走 [data-drag-band] 数据属性单点契约(2026-10-30:五类硬编码类名收敛,
+   *  死选择器 .sx-head-drag 除名、设置遮盖条 .sx-settings-topbar 入约)非按钮/输入区的
+   *  mousedown 发 drag-start(壳跟随光标循环,壳侧 4px 位移阈值内纯点击不动窗),全局 mouseup
+   *  发 drag-end 停表;双击拖拽面=最大化切换(标准标题栏行为);停靠/抽屉两态同规零分叉,旧壳
+   *  ?. 静默跳过。button/input 目标排除(收起/导航/呼出钮点击不受累) */
   useEffect(() => {
     if (!IS_SHELL) return;
     const onDown = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
       if (t === null || t.closest('button, input') !== null) return;
-      if (t.closest('.sx-menu-head, .sx-topbar-drag, .sx-head-drag, .sx-dragrail, .sx-tabstrip-drag') === null) return;
+      if (t.closest('[data-drag-band]') === null) return;
       winBridge()?.dragStart?.();
     };
     const onUp = (): void => winBridge()?.dragEnd?.();
@@ -507,7 +508,7 @@ function AppShell(): JSX.Element {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
       if (t === null || t.closest('button, input') !== null) return;
-      if (t.closest('.sx-menu-head, .sx-topbar-drag, .sx-head-drag, .sx-dragrail, .sx-tabstrip-drag') === null) return;
+      if (t.closest('[data-drag-band]') === null) return;
       winBridge()?.toggleMaximize?.();
     };
     window.addEventListener('mousedown', onDown, true);
@@ -579,7 +580,7 @@ function AppShell(): JSX.Element {
            复现;改动态让位后 rail 常开仍与一切按钮几何互斥,zoom 错位平移咬不到钮;抽屉态左缘
            移至抽屉浮层右缘之外见 CSS sx-menu-float 分支;侧栏抽屉浮层 z80 盖 rail z1,其条上
            空白不可拖为窄视口可接受) */
-        <div className="sx-dragrail" aria-hidden="true" />
+        <div className="sx-dragrail" data-drag-band aria-hidden="true" />
       )}
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
@@ -812,7 +813,6 @@ function AppShell(): JSX.Element {
             )}
             {(page === 'chat' || page === 'welcome') && !tabState.collapsed && activeTab === null && (
               // G14.27 零标签空态=Codex 推荐项:标题+副题+常用页卡(点击即开,不再默认开任务页);
-              // 目录页签入常用卡(与 TabStrip 同款 FolderTree 图标)
               <div className="sx-tab-empty">
                 <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
                 <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
@@ -826,7 +826,6 @@ function AppShell(): JSX.Element {
                         ['side', MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],
                         ['tasks', ListTodo, t('Todos', '待办'), (): void => openTabInSession('tasks')],
                         ['diff', GitCompare, t('Review', '审查'), (): void => openTabInSession('diff')],
-                        ['directory', FolderTree, t('Directory', '目录'), (): void => openTabInSession('directory')],
                       ] as [string, LucideIcon, string, () => void][]).map(([key, Icon, label, onClick]) => (
                     <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
                       <Icon size={16} strokeWidth={1.75} aria-hidden="true" />

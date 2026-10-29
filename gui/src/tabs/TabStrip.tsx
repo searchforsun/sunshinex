@@ -45,7 +45,7 @@ export interface TabStripProps {
 /** 「+」菜单分节序:content → session → tools */
 const GROUP_ORDER: readonly ('content' | 'session' | 'tools')[] = ['content', 'session', 'tools'];
 /** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */
-const MENU_HIDDEN = new Set(['file', 'context', 'agent']);
+const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断
 
 export function TabStrip(props: TabStripProps): JSX.Element {
   const {
@@ -281,7 +281,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
       </div>
       {/* 顶行缩放配套(2026-10-29):页签条撤容器 drag 后,窗口拖拽带收拢为右端固定 40px
           (Chrome 同位;抽屉态 CSS 退场)——空带不占页签视觉,封顶余量并入本带 */}
-      <div className="sx-tabstrip-drag" aria-hidden="true" />
+      <div className="sx-tabstrip-drag" data-drag-band aria-hidden="true" />
       </div>
     </div>
   );
