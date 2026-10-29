@@ -49,12 +49,13 @@ export interface ShellLayout {
   readonly sidebarWidth: number;
 }
 
-/** 抽屉固定宽(2026-10-29 用户裁定终版+补刀「不随放大倍数变」):**纯本地 px 常量** 476=
- *  应用最小宽 500(壳 main.ts PHYSICAL_MIN_W 手调单点)−24 浮窗边距。首版 500/devicePixelRatio−24
- *  随显示缩放漂移(100%→476/110%→429/125%→376),用户裁定废——本地常量一处手调与壳同联动。
- *  与 MIN_TAB_WIDTH 取大兜底;仅浮窗态生效,分栏压缩链 296 不动 */
+/** 抽屉固定宽(2026-10-29 用户裁定两次收敛):**应用最小宽(壳 main.ts PHYSICAL_MIN_W 500 物理px)
+ *  按 devicePixelRatio 折算 DIP−24**——不变量=「任意显示缩放下,最窄应用宽时抽屉不超出应用
+ *  最小宽度,恒留 24px 主列边」(150% 实测裁定):应用最小宽的 DIP 值=500/缩放(100%=500/110%=453/
+ *  150%=333),固定常量在分数缩放下必然越界(476@150% 超出 143px),故必须折算。中间「纯常量」
+ *  版已废。与 MIN_TAB_WIDTH 取大兜底;仅浮窗态生效,分栏压缩链 296 不动 */
 function drawerMin(): number {
-  return Math.max(MIN_TAB_WIDTH, 500 - 24);
+  return Math.max(MIN_TAB_WIDTH, Math.round(500 / (window.devicePixelRatio || 1)) - 24);
 }
 
 export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
