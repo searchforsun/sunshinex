@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
+import type { ProvidersPaneConn } from './ProvidersPane';
 import { McpPane } from './McpPane';
 import type { McpPaneConn } from './McpPane';
 import { PluginsPane } from './PluginsPane';
@@ -45,8 +46,9 @@ import type { ConfigChangedSource } from './use-config-changed';
  *  RawPaneConn 的 settings 以 Omit 剥除——SettingsFormConn 已供全量 SettingsView 形(其含可选
  *  warnings,结构满足 RawPane/PermissionsPane 的告警/权限子集面;接口 extends 同名成员须同一性,
  *  故在此收窄拼接)。T21 并入 config-changed 订阅面(ConfigChangedSource——顶栏 useConfigChanged
- *  的 conn 依赖;App 的 Connection 已供 onConfigChanged 注册点) */
-export interface SettingsShellConn extends SettingsFormConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {}
+ *  的 conn 依赖;App 的 Connection 已供 onConfigChanged 注册点)。T26 并入 ProvidersPaneConn
+ *  (providers 面扩 putProviderOp op 端点写面——旧形=SettingsFormConn 子集无需单列) */
+export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {}
 
 /** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后)。
  *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */

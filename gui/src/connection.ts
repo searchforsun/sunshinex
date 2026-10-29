@@ -20,6 +20,7 @@ import type {
   McpOpInput,
   PermissionOpInput,
   PluginRow,
+  ProviderOpInput,
   SessionRow,
   SessionTaskRow,
   SettingsView,
@@ -217,6 +218,11 @@ export interface Connection {
    *  内容/写面错误（hint:'use raw editor' 引流 raw 编辑面）以 HTTP 失败抛错；成功 200 {ok:true}
    *  （add 幂等去重，remove 缺失 409） */
   putPermissionOp(input: PermissionOpInput): Promise<void>;
+  /** PUT /settings/providers/op（Task 16 单条目操作端点，Task 26 ProvidersPane 消费）：op 七值
+   *  add|update|remove|modelAdd|modelRemove|modelMove|setKey；scope='project' 必带 root（缺 400）、
+   *  'global' 省参；400=纯请求形状错误、409=内容/写面错误（hint:'use raw editor' 引流 raw 编辑面）
+   *  以 HTTP 失败抛错；成功 200 {ok:true}（setKey 密钥零回显——响应恒 {ok:true} 不携键值） */
+  putProviderOp(input: ProviderOpInput): Promise<void>;
   /** GET /settings/mcp?root=（T4）：两级遮蔽清单（项目全量 source='project' + 全局逐名 shadowed 标记） */
   mcpServers(root?: string): Promise<{ servers: McpRow[] }>;
   /** POST /settings/mcp/probe {root?, name}（T4）：单台真探测联合应答（失败即结果非错误码，见
@@ -642,6 +648,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     putPermissionOp(input: PermissionOpInput): Promise<void> {
       // input 原文即请求体（putMcpOp/putAgentOp 同款——scope=global 省参不留 root 空串伪参）
       return put('/settings/permissions/op', input);
+    },
+    putProviderOp(input: ProviderOpInput): Promise<void> {
+      // input 原文即请求体（putMcpOp/putPermissionOp 同款——scope=global 省参不留 root 空串伪参）
+      return put('/settings/providers/op', input);
     },
     mcpServers(root?: string): Promise<{ servers: McpRow[] }> {
       return getJson<{ servers: McpRow[] }>(root === undefined ? '/settings/mcp' : `/settings/mcp?root=${encodeURIComponent(root)}`);

@@ -255,14 +255,38 @@ export interface ProviderChoice {
   reasoningEffort?: string;
 }
 
+/** GET /settings providers.entries 的 models 条目（Task 16 源级分组投影，对齐主仓
+ *  ParsedProviderEntry.models——文件显式值；tier/reasoningEffort 宽化为 string 同 choices 口径） */
+export interface ProviderEntryModel {
+  model: string;
+  contextWindow?: number;
+  reasoningEffort?: string;
+  supportsImages?: boolean;
+  tier?: string;
+}
+
+/** GET /settings providers.entries 行（Task 16 增量消费 listProviders 源级分组——文件结构镜像，
+ *  对齐主仓 ParsedProviderEntry）。T9 拆分语义（daemon handler 注释）：entries=文件显式值
+ *  （GUI 编辑回显走此面——非继承源级缺省）、生效值看 choices（条目级 > 源级缺省）。
+ *  可选防旧 daemon（无该字段时 ProvidersPane 按空清单处理） */
+export interface ProviderEntry {
+  name: string;
+  baseUrl: string;
+  contextWindow?: number;
+  reasoningEffort?: string;
+  supportsImages?: boolean;
+  models: ProviderEntryModel[];
+}
+
 /** GET /settings 载荷（T2 Settings 页数据源）：keys 按 SEMANTIC_KEYS 键序全量；permissions 三面
  *  {merged=两级拼接去重视图态, project, global}；providers 密钥只报在场布尔不显值。
  *  G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知/退役键，项目先行拼全局）——
- *  RawPane 顶部告警列表数据源；可选防旧 daemon（无该字段） */
+ *  RawPane 顶部告警列表数据源；可选防旧 daemon（无该字段）。
+ *  Task 16/26 增 providers.entries（源级分组，可选防旧 daemon） */
 export interface SettingsView {
   keys: SettingsKeyRow[];
   permissions: { merged: PermissionsBlocks; project: PermissionsBlocks; global: PermissionsBlocks };
-  providers: { choices: ProviderChoice[]; apiKeyPresent: Record<string, boolean>; warnings: string[] };
+  providers: { choices: ProviderChoice[]; apiKeyPresent: Record<string, boolean>; warnings: string[]; entries?: ProviderEntry[] };
   warnings?: string[];
 }
 
@@ -412,6 +436,32 @@ export interface PermissionOpInput {
   root?: string;
   list: 'deny' | 'allow' | 'additionalDirs';
   value: string;
+}
+
+/** PUT /settings/providers/op 请求体（Task 16 单条目操作端点，Task 26 ProvidersPane 消费）：
+ *  op 七值 add|update|remove|modelAdd|modelRemove|modelMove|setKey；scope 两级（'project' 必带
+ *  root——服务端 400 守卫，'global' 省参——服务端恒忽略）；name=目标提供方名。载荷按 op 分形
+ *  （对齐 handleProvidersOp 形状门）：add|update 携 provider（upsert patch——add 必备 baseUrl+
+ *  非空 models，update 增量未提字段不动、patch.name 改名）；modelAdd 携 entry（{model,...} 对象）；
+ *  modelRemove|modelMove 携 model（modelMove 另携 direction:'up'|'down'）；setKey 携 apiKey
+ *  （空串清槽；密钥零回显——响应恒 {ok:true}）。错误语义（T15 裁定）：400=纯请求形状、409=
+ *  内容/写面错误（{error, hint:'use raw editor'} 引流 raw 编辑面）——均以 HTTP 失败抛错 */
+export interface ProviderOpInput {
+  op: 'add' | 'update' | 'remove' | 'modelAdd' | 'modelRemove' | 'modelMove' | 'setKey';
+  scope: 'project' | 'global';
+  /** scope='project' 必带（服务端 400 守卫）；'global' 缺省省参 */
+  root?: string;
+  name: string;
+  /** op:'add'|'update' 的 provider patch（原样透传 catalog upsertProvider） */
+  provider?: Record<string, unknown>;
+  /** op:'modelRemove'|'modelMove' 的目标模型名 */
+  model?: string;
+  /** op:'modelAdd' 的模型条目（{ model, tier?, contextWindow?, reasoningEffort?, supportsImages? }） */
+  entry?: Record<string, unknown>;
+  /** op:'modelMove' 方向 */
+  direction?: 'up' | 'down';
+  /** op:'setKey' 键值（空串清槽；GUI 侧仅用户当次键入值——零回显零播种） */
+  apiKey?: string;
 }
 
 /** GET /settings/plugins 行（2026-10-26 插件面，对齐 daemon handlePluginsGet 载荷 = EffectivePlugin
