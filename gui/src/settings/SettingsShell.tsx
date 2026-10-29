@@ -121,7 +121,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
 
   /** 主区渲染分发:表单面板查 SETTINGS_PANES 定义,复杂面板各归其件(skills/permissions 同体)。
    *  T21:scope 与对应 resource 的 refreshTick 经 props 下发各 pane(可选 props——本任务 pane
-   *  零行为变化,T22 起逐页解构消费;RawPane 全局/项目 raw 文件共用,只下发 scope) */
+   *  零行为变化,T22 起逐页解构消费;RawPane 全局/项目 raw 文件共用,下发 scope+root——T27 起
+   *  project 作用域读写带 root 定位,global 省参) */
   const renderPane = (): JSX.Element => {
     const formDef = SETTINGS_PANES.find((p) => p.id === activePane);
     if (formDef !== undefined)
@@ -142,7 +143,7 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       case 'permissions':
         return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} scope={scope} refreshTick={refreshTick.permissions} />;
       default:
-        return <RawPane key="raw" conn={conn} scope={scope} />;
+        return <RawPane key="raw" conn={conn} root={root} scope={scope} />;
     }
   };
 
