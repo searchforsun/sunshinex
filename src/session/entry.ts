@@ -166,7 +166,7 @@ function sealSeg(s: KernelState, now: number): KernelState {
   if (idx < 0) return { ...s, openSeg: -1 };
   const cur = s.entries[idx]!;
   if (cur.kind !== 'assistant' && cur.kind !== 'thinking') return { ...s, openSeg: -1 };
-  const seconds = cur.kind === 'thinking' && now > cur.ts ? Math.round((now - cur.ts) / 1000) : undefined;
+  const seconds = cur.kind === 'thinking' && now > cur.ts ? Math.max(1, Math.ceil((now - cur.ts) / 1000)) : undefined;
   return { ...s, entries: replaceAt(s.entries, idx, { ...cur, status: undefined, ...(seconds !== undefined ? { seconds } : {}) }), openSeg: -1 };
 }
 

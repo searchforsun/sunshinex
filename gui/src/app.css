@@ -769,9 +769,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg-on-solid);
   transition: background var(--dur-basic) var(--ease-enter);
 }.sx-composer .send:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }.sx-composer .send:disabled { opacity: 0.4; pointer-events: none; }
-/* 等待模型待态(2026-10-27 用户裁定:loading 挂发送钮,正文等待文字退役)——提交被接受到
-   run-open 间箭头转圈(正文零变化不抖动);run 条出现即停 */
-.sx-composer .send.loading svg { animation: sx-spin 0.9s linear infinite; }
+/* 等待模型待态(2026-10-27 用户裁定:loading 挂发送钮,正文等待文字退役)——2026-10-29 用户裁定
+   「loading 用真转圈,箭头自转滑稽」:loading 渲染 run-spinner 环(组件侧替换 svg,箭头旋转规则退役),
+   环色用 fg-on-solid(发送钮为实心前景底,--fg 系配色在底上不可见),尺寸 14px 中心对齐 */
+.sx-composer .send .run-spinner { width: 14px; height: 14px; background: conic-gradient(from 0deg, var(--fg-on-solid) 0 30%, transparent 0); -webkit-mask-image: radial-gradient(circle 7px at 50% 50%, transparent 2.2px, #000 3px 5.6px, transparent 6.2px); mask-image: radial-gradient(circle 7px at 50% 50%, transparent 2.2px, #000 3px 5.6px, transparent 6.2px); }
 /* 会话语境(G9-B4 平移):限宽居中+贴底;.composer 由 ComposerCard 卡根复用,不再持卡面样式 */.composer {
   flex: none;
   width: calc(100% - 32px);

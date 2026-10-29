@@ -207,7 +207,12 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                 onClick={send}
                 disabled={connState !== 'open' || seeding}
               >
-                <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+                {sendLoading === true ? (
+                  /* 2026-10-29 用户裁定:loading 用真转圈(run-spinner 环,与运行态同语言)——箭头自转观感滑稽 */
+                  <span className="run-spinner" aria-hidden="true" />
+                ) : (
+                  <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+                )}
               </button>
             )}
           </div>

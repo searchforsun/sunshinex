@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { t } from '../i18n';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
@@ -154,8 +155,10 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
           (240px 控件列)不再被挤压逐字断行;会话态菜单列保持 flex:none 拖宽钉值不受此影响 */}
       <nav className="sx-menu sx-settings-menu" aria-label={t('settings', '设置')}>
         <header className="sx-menu-head sx-settings-head">
-          <button type="button" className="sx-settings-back" onClick={onBack}>
-            {t('← Back', '← 返回')}
+          {/* 2026-10-29 用户裁定:返回钮套用侧栏目录视图返回钮同款样式槽(sx-new-chat=图标+文字胶囊) */}
+          <button type="button" className="sx-new-chat" onClick={onBack} aria-label="back to sessions">
+            <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span>{t('Back', '返回')}</span>
           </button>
           <span>{t('Settings', '设置')}</span>
           {/* T21 作用域分段控件(状态提升于本壳,经 props 下发各 pane):无 root 项目侧禁用 */}

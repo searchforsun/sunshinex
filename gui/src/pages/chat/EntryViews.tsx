@@ -132,10 +132,11 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
         <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
         <span className="thinking-label">
           {streaming ? (
-            /* 流光文字(2026-10-22 用户裁定:思考行与执行行同语言) */
-            <span className="exec-running-text">{t(`Thinking ${elapsed ?? 0}s`, `思考中 ${elapsed ?? 0}秒`)}</span>
+            /* 流光文字(2026-10-22 用户裁定:思考行与执行行同语言);秒数向上取整最少 1s(2026-10-29
+               用户裁定「思考最少 1s,向上取整」——亚秒/0 值不再显 0 秒) */
+            <span className="exec-running-text">{t(`Thinking ${Math.max(1, Math.ceil(elapsed ?? 0))}s`, `思考中 ${Math.max(1, Math.ceil(elapsed ?? 0))}秒`)}</span>
           ) : entry.seconds !== undefined ? (
-            t(`Thought for ${entry.seconds}s`, `思考 ${entry.seconds}秒`)
+            t(`Thought for ${Math.max(1, Math.ceil(entry.seconds))}s`, `思考 ${Math.max(1, Math.ceil(entry.seconds))}秒`)
           ) : (
             t('Thought', '思考')
           )}
