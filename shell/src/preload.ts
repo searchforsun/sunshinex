@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   minimize: (): void => void ipcRenderer.send('win:minimize'),
   toggleMaximize: (): void => void ipcRenderer.send('win:toggle-maximize'),
   close: (): void => void ipcRenderer.send('win:close'),
+  /** 抽屉程序化拖窗(2026-10-29):抽屉头 mousedown 发 drag-start(主进程跟随光标循环),
+   *  渲染层全局 mouseup 发 drag-end 停表——绕开 app-region 位图(fixed 抽屉下吞按钮/拖区) */
+  dragStart: (): void => void ipcRenderer.send('win:drag-start'),
+  dragEnd: (): void => void ipcRenderer.send('win:drag-end'),
   openExternal: (url: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:open-external', url),
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);

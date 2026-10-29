@@ -487,6 +487,30 @@ function AppShell(): JSX.Element {
   });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
+  /** 抽屉程序化拖窗(2026-10-29 用户裁定「左抽屉顶带拖动窗」终版):CSS app-region 在 fixed 抽屉+
+   *  counter-zoom 位图下翻转期不可信(吞 [|]/吞收起钮/拖垮右栏 drag,三案在案,整族退役)——改
+   *  捕获期监听:抽屉态(menuFloating)下抽屉头非按钮区的 mousedown 发 drag-start(壳跟随光标
+   *  循环),全局 mouseup 发 drag-end 停表;button/input 目标排除(收起/导航钮点击不受累),
+   *  分栏态(菜单可拖走 CSS 空白带/页签条)完全不进此路零冲突。旧壳无桥方法 ?. 静默跳过 */
+  useEffect(() => {
+    if (!IS_SHELL) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.button !== 0 || !menuFloating) return;
+      const t = e.target as HTMLElement | null;
+      if (t === null || t.closest('button, input') !== null) return;
+      if (t.closest('.sx-menu-head') === null) return;
+      winBridge()?.dragStart?.();
+    };
+    const onUp = (): void => winBridge()?.dragEnd?.();
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('mouseup', onUp, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('mouseup', onUp, true);
+      winBridge()?.dragEnd?.(); // 卸载兜底停表
+    };
+  }, [menuFloating]);
+
   /** keep-alive LRU(use-heavy-tab-lru 单点,2026-10-27 技术债轮 D53 批F 外提):重标签上限 4 */
   useHeavyTabLru({
     tabs: tabState.tabs,
@@ -840,6 +864,9 @@ interface SunshinexWindowBridge {
   /** 2026-10-25:Web 标签「在系统浏览器打开」——shell.openExternal,OS 默认浏览器承接(非 Electron 子窗) */
   openExternal?: (url: string) => Promise<{ ok: boolean }>;
   onMaximizedChange: (cb: (v: boolean) => void) => () => void;
+  /** 抽屉程序化拖窗(2026-10-29):可选——旧壳无此方法 ?. 静默跳过 */
+  dragStart?: () => void;
+  dragEnd?: () => void;
 }
 const winBridge = (): SunshinexWindowBridge | undefined =>
   IS_SHELL ? (window as unknown as { sunshinexWindow?: SunshinexWindowBridge }).sunshinexWindow : undefined;

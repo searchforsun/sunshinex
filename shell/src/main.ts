@@ -150,6 +150,34 @@ if (!app.requestSingleInstanceLock()) {
       else mainWindow.maximize();
     });
     ipcMain.on('win:close', () => mainWindow?.close());
+    // 抽屉程序化拖窗(2026-10-29 用户裁定:菜单抽屉顶带拖动窗——CSS app-region 在 fixed 抽屉+
+    // counter-zoom 位图下翻转期不可信(吞 [|]/吞收起钮/拖垮右栏 drag,三案在案),改主进程跟随
+    // 光标循环完全绕开位图:win:drag-start 记「光标−窗口」偏移,10ms 定时器 getCursorScreenPoint
+    // → setPosition;renderer 全局 mouseup 发 win:drag-end 停表;60s 兜底防 mouseup 丢失长挂
+    let dragTimer: ReturnType<typeof setInterval> | null = null;
+    const stopWindowDrag = (): void => {
+      if (dragTimer !== null) {
+        clearInterval(dragTimer);
+        dragTimer = null;
+      }
+    };
+    ipcMain.on('win:drag-start', () => {
+      if (!mainWindow || mainWindow.isDestroyed() || dragTimer !== null) return;
+      const [wx, wy] = mainWindow.getPosition();
+      const cursor = screen.getCursorScreenPoint();
+      const offX = cursor.x - wx;
+      const offY = cursor.y - wy;
+      const startedAt = Date.now();
+      dragTimer = setInterval(() => {
+        if (!mainWindow || mainWindow.isDestroyed() || Date.now() - startedAt > 60_000) {
+          stopWindowDrag();
+          return;
+        }
+        const c = screen.getCursorScreenPoint();
+        mainWindow.setPosition(c.x - offX, c.y - offY);
+      }, 10);
+    });
+    ipcMain.on('win:drag-end', stopWindowDrag);
     const notifyMaximized = (): void => {
       try {
         mainWindow?.webContents.send('win:maximized', mainWindow.isMaximized());
