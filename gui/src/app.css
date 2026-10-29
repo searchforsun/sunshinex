@@ -2723,3 +2723,22 @@ input.sx-setting-input { width: 100%; }
 /* 空态/错误条 */
 .sx-empty-state { margin: 0; color: var(--fg-tertiary); font-size: 13px; padding: 18px 0; text-align: center; }
 .sx-error-banner { margin: 0; color: var(--warn); font-size: 12px; border: 1px solid var(--warn); border-radius: var(--radius-md); padding: 6px 8px; }
+/* Task 22 McpPane 改版(Phase F 首面板):顶栏工具行 + 抽屉字段面 + 批准阀标注(写面全走 /settings/mcp/op) */
+.sx-mcp-toolbar { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 0 0 10px; }
+.sx-mcp-toolbar .sx-add-button { align-self: auto; }
+.sx-drawer-field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fg-secondary); }
+.sx-drawer-field input, .sx-drawer-field select, .sx-drawer-field textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: 12px var(--font-mono); }
+.sx-drawer-field input:focus, .sx-drawer-field select:focus, .sx-drawer-field textarea:focus { border-color: var(--border-strong); outline: none; }
+.sx-mcp-envrow { display: flex; gap: 6px; align-items: center; }
+.sx-mcp-envrow input { flex: 1; min-width: 0; }
+.sx-mcp-envrow button { flex: none; padding: 2px 8px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg-secondary); cursor: pointer; }
+.sx-mcp-envrow button:hover { border-color: var(--border-strong); color: var(--fg); }
+.sx-mcp-json-adv summary { color: var(--fg-secondary); font-size: 12px; cursor: pointer; }
+.sx-mcp-probe-body { display: flex; flex-direction: column; gap: 4px; }
+.sx-mcp-probe-summary { margin: 0; color: var(--fg-secondary); font-size: 12px; }
+/* 批准阀:待确认卡 warn 边(chip 内联标)+ 已拒绝卡 err 边(:has 挂到卡根——ResourceCard 无 className 注入面) */
+.sx-mcp-gate { color: var(--warn); border-color: var(--warn); }
+.sx-rc:has(.sx-mcp-gate) { border-color: var(--warn); }
+.sx-mcp-denied { color: var(--err); border-color: var(--err); }
+.sx-rc:has(.sx-mcp-denied) { border-color: color-mix(in srgb, var(--err) 55%, var(--border)); }
+.sx-rc:has(.sx-shadow-tag) { opacity: 0.5; } /* 被项目遮蔽灰显(沿旧 .sx-mcp-card.shadowed 语言;仅 ResourceCard 卡) */

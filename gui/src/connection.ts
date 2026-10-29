@@ -16,6 +16,7 @@ import type {
   McpProbeResult,
   McpRow,
   McpRowInput,
+  McpOpInput,
   PluginRow,
   SessionRow,
   SessionTaskRow,
@@ -216,6 +217,10 @@ export interface Connection {
   mcpProbe(root: string | undefined, name: string): Promise<McpProbeResult>;
   /** PUT /settings/mcp {root, servers}（T4）：项目级 mcp.json 整块结构化写（旧清单整块替换） */
   putMcpServers(root: string, servers: McpRowInput[]): Promise<void>;
+  /** PUT /settings/mcp/op（Task 15 单条目操作端点）：add/remove/enable/disable/approve/deny 六值；
+   *  scope='project' 必带 root（缺 400）、'global' 省参；400=纯请求形状错误、409=内容/写面错误
+   *  （hint:'use raw editor' 引流 raw 编辑面）以 HTTP 失败抛错；成功 200 {ok:true} */
+  putMcpOp(input: McpOpInput): Promise<void>;
   /** GET /settings/agents?root=（T5）：builtins 四预设 + 两级宽容清单（root 缺省 = 仅全局清单） */
   agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }>;
   /** PUT /settings/agents {root?, scope, op, id, frontmatter?, body?}（T5，AgentsPane 表单增删改）：
@@ -630,6 +635,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     putMcpServers(root: string, servers: McpRowInput[]): Promise<void> {
       return put('/settings/mcp', { root, servers });
+    },
+    putMcpOp(input: McpOpInput): Promise<void> {
+      // input 原文即请求体（putAgent 同款——scope=global 省参不留 root 空串伪参）
+      return put('/settings/mcp/op', input);
     },
     agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }> {
       return getJson<{ builtins: BuiltinRole[]; view: AgentsView }>(

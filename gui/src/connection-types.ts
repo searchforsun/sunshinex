@@ -282,6 +282,9 @@ export interface McpRow {
   disabledTools?: string[];
   source: 'project' | 'global';
   shadowed: boolean;
+  /** 项目条目批准阀态（Task 15 GET /settings/mcp 增列）：approved/pending/denied——global 恒 'none'
+   *  （用户手配不过阀）。可选防旧 daemon（无该字段时 GUI 按 'none' 显） */
+  approval?: 'none' | 'approved' | 'pending' | 'denied';
 }
 
 /** PUT /settings/mcp servers 行（T4 结构化写输入）：与 McpRow 的差面=写面收 env/headers 全值（文件本就
@@ -296,6 +299,21 @@ export interface McpRowInput {
   headers?: Record<string, string>;
   enabled?: boolean;
   disabledTools?: string[];
+}
+
+/** PUT /settings/mcp/op 请求体（Task 15 单条目操作端点）：op 六值枚举；scope 必带（'project' 必带
+ *  root，'global' 省参——服务端恒忽略）；name=目标服务器名；server=op:'add' 的条目对象（原样透传
+ *  catalog upsertMcpServer，形状门 command/url 至少其一在 catalog）。错误语义（T15 裁定）：400=纯
+ *  请求形状错误、409=内容/写面错误（{error, hint:'use raw editor'} 引流 raw 编辑面）——均以 HTTP
+ *  失败抛错；成功 200 {ok:true} */
+export interface McpOpInput {
+  op: 'add' | 'remove' | 'enable' | 'disable' | 'approve' | 'deny';
+  scope: 'project' | 'global';
+  /** scope='project' 必带（服务端 400 守卫）；'global' 缺省省参 */
+  root?: string;
+  name: string;
+  /** op:'add' 必带（其余 op 不带） */
+  server?: Record<string, unknown>;
 }
 
 /** POST /settings/mcp/probe 联合应答：ok:true 携 tools 清单（note=身份软提示——serverInfo.name 与
