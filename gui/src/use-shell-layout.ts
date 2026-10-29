@@ -49,13 +49,14 @@ export interface ShellLayout {
   readonly sidebarWidth: number;
 }
 
-/** 抽屉固定宽(2026-10-29 用户裁定两次收敛):**应用最小宽(壳 main.ts PHYSICAL_MIN_W 500 物理px)
- *  按 devicePixelRatio 折算 DIP−24**——不变量=「任意显示缩放下,最窄应用宽时抽屉不超出应用
- *  最小宽度,恒留 24px 主列边」(150% 实测裁定):应用最小宽的 DIP 值=500/缩放(100%=500/110%=453/
- *  150%=333),固定常量在分数缩放下必然越界(476@150% 超出 143px),故必须折算。中间「纯常量」
- *  版已废。与 MIN_TAB_WIDTH 取大兜底;仅浮窗态生效,分栏压缩链 296 不动 */
+/** 抽屉固定宽(2026-10-29 用户裁定三轮收敛):**应用最小宽(壳 PHYSICAL_MIN_W 500 物理px)折算
+ *  本地 px−24**——不变量=「任意 OS 显示缩放 × 任意界面缩放下,最窄应用窗口时抽屉不超出视口,
+ *  恒留 24px(本地)主列边」。物理=本地×zoom×dpr,故本地值=500/(dpr×zoomScale):界面 zoom 1.5
+ *  时=278 本地(渲染 417 视觉 ≤ 453 视口)——首版漏除 UI zoom(429 本地×1.5=643 视觉爆窗,
+ *  用户实测截图),纯常量版(476 不折算)在分数缩放下同样越界,均已废。下限 24 兜底防荒谬值;
+ *  仅浮窗态生效,分栏压缩链 296 不动 */
 function drawerMin(): number {
-  return Math.max(MIN_TAB_WIDTH, Math.round(500 / (window.devicePixelRatio || 1)) - 24);
+  return Math.max(24, Math.round(500 / ((window.devicePixelRatio || 1) * zoomScale())) - 24);
 }
 
 export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
