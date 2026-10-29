@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { applyZoom, readZoomPref } from './ui-zoom';
+import { applyZoom, readZoomPref, zoomScale } from './ui-zoom';
 import { applyFontPreset, readFontPreset } from './font-preset';
 import './app.css';
 import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+rehype-katex):字体与排版样式全局一份
@@ -40,7 +40,11 @@ requestAnimationFrame(() => {
   const place = (): void => {
     if (tip === null || anchor === null) return;
     tip.textContent = anchor.getAttribute('data-tip') ?? '';
-    tip.style.zoom = '1'; // 提示泡不随根放缩:自身视口空间
+    // tip 随根缩放(2026-10-29 用户裁定「全局 hover 弹窗跟随放大」):撤 zoom=1 豁免——新版 zoom
+    // 语义下子树 used zoom 仍=根 zoom,豁免既不生效(渲染仍放大)又让两轮回测的单步补差只收敛
+    // 75%(位置飞 25%,实测截图);撤豁免后 fixed 偏移吃本地 px(跨空间契约),目标视觉位 /zoomScale
+    // 一次落位即精确,渲染尺寸与全 UI 同倍
+    const z = zoomScale();
     tip.style.left = '0px';
     tip.style.top = '0px';
     const r = anchor.getBoundingClientRect();
@@ -63,13 +67,10 @@ requestAnimationFrame(() => {
       it = Math.max(8, below ? r.bottom + 6 : r.top - tr.height - 6);
     }
     it = Math.max(8, Math.min(it, window.innerHeight - tr.height - 8));
-    // 先落意图位→回测实际视觉位→本地 px 一次性补差:根 zoom≠1 时 Chromium 对 fixed 偏移乘根
-    // 缩放(2026-10-24 用户实测桌面 zoom1.1 下 tooltip 探入正文),此校正对任何缩放模型恒精确
-    tip.style.left = `${Math.round(iv)}px`;
-    tip.style.top = `${Math.round(it)}px`;
-    const ar = tip.getBoundingClientRect();
-    tip.style.left = `${Math.round(parseFloat(tip.style.left) + iv - ar.left)}px`;
-    tip.style.top = `${Math.round(parseFloat(tip.style.top) + it - ar.top)}px`;
+    // 意图视觉位 /zoomScale 落本地 px(fixed 偏移渲染 ×根 zoom,一次除即精确落位;旧两轮回测
+    // 为 zoom=1 豁免态的模型差补偿,单步只收敛 75%=位置飞 25%,随豁免一并退役)
+    tip.style.left = `${Math.round(iv / z)}px`;
+    tip.style.top = `${Math.round(it / z)}px`;
   };
   const hide = (): void => {
     if (tip !== null) tip.remove();
