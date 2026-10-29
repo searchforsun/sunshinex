@@ -23,6 +23,20 @@ pnpm start      # 运行入口（node dist/index.js）
 pnpm cli        # CLI 执行面（内置自动构建，自动装载 settings.json）
 pnpm selfcheck  # 编译并运行骨架自检（dist 可启动性；shell/isolation 决议上屏）
 pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
+
+### 桌面端部署（scripts/deploy-gui.mjs，安装目录参数化）
+
+```bash
+node scripts/deploy-gui.mjs verify                  # gui typecheck 快速门禁（--tests 加跑全量 vitest）
+node scripts/deploy-gui.mjs deploy                  # 纯 gui 改动后：构建→推装 dist-gui→重启（壳不变）
+node scripts/deploy-gui.mjs reinstall               # 壳变更后：全链构建→重打包→卸载→重装→启动
+node scripts/deploy-gui.mjs deploy --dir "D:\Path"  # 指定安装目录（默认 D:\MyWorkSoftware\Sunshinex）
+node scripts/deploy-gui.mjs reinstall --no-build    # 跳过构建直接用现有产物卸载重装
+```
+
+细则：deploy/reinstall 停启动应用、dist-gui 轮换留 dist-gui.old 回滚点、ie4uinit 刷图标缓存
+（exe 同路径替换后缓存留白图标）；reinstall 静默卸载/安装，用户数据 %APPDATA%\sunshinex-shell
+不受影响；**壳源码/IPC 变更必须 reinstall**（renderer 推装覆盖不到壳），纯 gui 改动 deploy 即可。
 ```
 
 ### 本地测试（按包分层）
