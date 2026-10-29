@@ -707,6 +707,37 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     await expect(conn.mcpProbe(undefined, '')).rejects.toThrow('/settings/mcp/probe -> 400');
   });
 
+  it('⑪b T23 putAgentOp(PUT /settings/agents op 五值):URL 钉死既有端点(agents 面无独立 /op——T23 评审修补,path 断言对该缺陷类别免疫)+ migrate 无 scope/global 省 root 的 body 面', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    const bareOk = (): RespLike => ({ ok: true, status: 200, json: async () => { throw new Error('test: void PUT must not read body'); } });
+    fetchQueue.push(
+      bareOk(), // enable project(root 带)
+      bareOk(), // disable global(root 省参)
+      bareOk(), // migrate(无 scope——恒项目级 root 锚定)
+      bareOk(), // upsert(frontmatter/body 原样)
+    );
+    await conn.putAgentOp({ op: 'enable', scope: 'project', root: '/w', id: 'dev' });
+    await conn.putAgentOp({ op: 'disable', scope: 'global', id: 'dev' });
+    await conn.putAgentOp({ op: 'migrate', root: '/w', id: 'legacy' });
+    await conn.putAgentOp({ op: 'upsert', scope: 'project', root: '/w', id: 'dev', frontmatter: { name: 'Dev' }, body: '正文' });
+    // URL/verb 面:五 op 同打既有 PUT /settings/agents(daemon 路由表唯一 agents 写端点)
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/settings/agents',
+      'http://127.0.0.1:7788/settings/agents',
+      'http://127.0.0.1:7788/settings/agents',
+      'http://127.0.0.1:7788/settings/agents',
+    ]);
+    expect(fetchLog.every((f) => f.init?.method === 'PUT')).toBe(true);
+    // body 面:input 原文即请求体(migrate 无 scope 伪参;global 省 root)
+    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ op: 'enable', scope: 'project', root: '/w', id: 'dev' }));
+    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ op: 'disable', scope: 'global', id: 'dev' }));
+    expect(fetchLog[2]?.init?.body).toBe(JSON.stringify({ op: 'migrate', root: '/w', id: 'legacy' }));
+    expect(fetchLog[3]?.init?.body).toBe(JSON.stringify({ op: 'upsert', scope: 'project', root: '/w', id: 'dev', frontmatter: { name: 'Dev' }, body: '正文' }));
+    // 非 2xx 透传:404=migrate 非 legacy(错误消息含路径与 status)
+    fetchQueue.push(errResp(404));
+    await expect(conn.putAgentOp({ op: 'migrate', root: '/w', id: 'nh' })).rejects.toThrow('/settings/agents -> 404');
+  });
+
   it('⑫ G8c mcpProbe 联合应答两态解码:ok:true tools / ok:false error 均 200 正常落定(探测失败是结果非错误码)', async () => {
     conn = createConnection({ baseUrl: 'http://x', token: 't', onEvent: () => {}, onReset: () => {} });
     fetchQueue.push(

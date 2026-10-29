@@ -369,7 +369,9 @@ export interface AgentFrontmatterInput {
   executor?: string;
 }
 
-/** PUT /settings/agents/op 请求体（Task 15 单条目操作端点，op 五值判别联合——形状门逐 op 钉死）：
+/** PUT /settings/agents 请求体（T5 表单端点、Task 15 扩 op 五值 enable|disable|migrate——agents
+ *  面无 mcp 式独立 /op 端点，daemon 路由表仅 PUT /settings/agents → handleAgentsPut 单点；
+ *  op 五值判别联合——形状门逐 op 钉死）：
  *  - upsert/delete：scope 必带（'project' 必带 root——服务端 400 守卫，'global' 恒忽略省参）；
  *    upsert 携 frontmatter（name 必填）+ body（缺省空串）。
  *  - enable/disable：scope 必带 + id 定位；enabled 可选回显面（服务端校验须与 op 同义，op 是

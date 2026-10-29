@@ -7,9 +7,9 @@ import { EditorDrawer, EmptyState, ErrorBanner, ResourceCard, SearchBar } from '
 import type { SettingsScope } from './components';
 
 /**
- * Task 23 AgentsPane 重构（Phase F 第二面板，2026-10-28）：一屏式卡片列表——写面全部走
- * PUT /settings/agents/op 单条目操作端点（T15，op 五值 upsert/delete/enable/disable/migrate），
- * 原「内联 <form> 表单 + putAgent 整块 PUT」路径退役（PUT /settings/agents 端点仍在，GUI 弃用）。
+ * Task 23 AgentsPane 重构（Phase F 第二面板，2026-10-28）：一屏式卡片列表——写面统一走
+ * PUT /settings/agents 的 op 五值（T15 在既有 handleAgentsPut 端点扩 enable|disable|migrate；
+ * agents 面无 mcp 式独立 /op 端点，经 conn.putAgentOp），原「内联 <form> 表单」路径退役。
  *
  * 结构（T21 共享组件 verbatim 消费，McpPane 参照实现同款）：顶栏 SearchBar（200ms 防抖过滤
  * id/name/description）+「+ New」钮；主体 ul.sx-rc-list × ResourceCard（title=id 注册表键/
