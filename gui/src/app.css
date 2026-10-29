@@ -2811,10 +2811,12 @@ input.sx-setting-input { width: 100%; }
    主对话 topbar 同款遮盖语义;条底 1px 分割线同 main 对话。窗控簇 fixed z90 在条上方不受影响,
    弹层 z40 模态照常盖条 */
 .sx-settings-head .sx-new-chat { margin-left: -12px; padding-right: 10px; } /* 实测修正:箭头字面 x27→x15≈导航文字 x14(胶囊贴列缘);右内边距 10=hover 圆角底全包文字(旧 padding-right 0 圆角切「回」字) */
-/* 右栏遮盖区改结构化(2026-10-29 二轮实测「设置标题被覆盖」):sticky ::before 条盖住了标题上半截
-   (内容自 y0 起滚,静止态即半遮)——改主对话同构:条+视口两段 flex,正文在视口内滚动,物理上进
-   不了条区;条兼窗拖拽(空带 counter-zoom 位图对齐,menu-head-drag 同口径) */
-.sx-settings-main { display: flex; flex-direction: column; overflow: hidden; }
+/* 右栏遮盖区改结构化(2026-10-29 二轮实测「设置标题被覆盖」+三轮实测「条随内容移动/滚动条跑到顶」):
+   sticky/覆盖方案全废——条+视口两段 flex,正文在视口内滚动,物理上进不了条区(条底分割线随条
+   固定不动);滚动容器自 main 上移至视口,滚动条贴窗右缘不变、起点=条底(2127 归位裁定的延续)。
+   选择器同特异 .sx-main.sx-settings-main(2127 双类规则同特异性,靠源序更晚取胜——单类版被它
+   压制即「改了没生效」根因);条兼窗拖拽(counter-zoom 位图对齐,menu-head-drag 同口径) */
+.sx-main.sx-settings-main { display: flex; flex-direction: column; overflow: hidden; }
 .sx-settings-topbar {
   flex: none;
   height: var(--toolbar-h);
