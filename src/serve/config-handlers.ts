@@ -98,7 +98,11 @@ export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage
   // 先例口径——缺项目上下文不伪造 cwd 相对读取）。既有契约字段（choices/apiKeyPresent/warnings）零变；
   // 新增 entries = ProviderEntry 源级分组（文件结构镜像 + 密钥面）。T9 评审移交（语义标注，消费方必读）：
   // entries.models = 文件显式值（非继承源级缺省——源级 contextWindow 不流入未显式声明的模型条目），
-  // 生效值一律看 choices 面（条目级 > 源级缺省）；GUI 编辑回显走 entries、生效呈现走 choices
+  // 生效值一律看 choices 面（条目级 > 源级缺省）；GUI 编辑回显走 entries、生效呈现走 choices。
+  // Task 27.5 富化（控制器 T26 评审裁定——全键遮蔽陷阱的观察面）：entries 每行增 origin 来源归因
+  // （'project' | 'global'，loadProvidersFull 两级裁决整批盖章——项目 providers 键在场=整键遮蔽，
+  // 该面全部条目 origin='project'，全局源不可能混列；catalog ProviderEntry 经 ParsedProviderEntry
+  // 透传，本 handler 零改动）
   const view = listProviders(root ?? null);
   const apiKeyPresent: Record<string, boolean> = {};
   for (const choice of view.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;

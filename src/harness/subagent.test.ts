@@ -345,6 +345,9 @@ describe('Task 7 三级装载收口', () => {
         assert.equal(row.name, e.meta.name, `name 映射一致：${e.scope}/${e.id}`);
         assert.equal(row.bodyPreview, e.bodyPreview, `bodyPreview 映射一致：${e.scope}/${e.id}`);
         assert.equal(row.description, e.meta.description || undefined, `description 可选键映射一致：${e.scope}/${e.id}`);
+        // Task 27.5 富化（控制器 T23/T26 评审裁定的 REST 改面）：两键直映 catalog 条目（零二次扫盘）
+        assert.equal(row.enabled, e.meta.enabled, `enabled 映射一致：${e.scope}/${e.id}`);
+        assert.equal(row.oldLocation, e.oldLocation, `oldLocation 映射一致：${e.scope}/${e.id}`);
       }
       // enabled:false 照列（视图不受运行时剔除影响）：offg 行在场且不被剔除
       assert.ok(listing.entries.some((e) => e.id === 'offg' && e.scope === 'global'), 'catalog 对 enabled:false 照列');
@@ -354,6 +357,7 @@ describe('Task 7 三级装载收口', () => {
       const lDual = view.entries.find((e) => e.id === 'dual' && e.source === 'project');
       assert.ok(lDual, '旧位置撞全局行在视图中保留（与装载序一致：旧位置遮蔽全局）');
       assert.equal(lDual.shadowed, false, '旧位置行（生效版）不标 shadowed');
+      assert.equal(lDual.oldLocation, true, '旧位置行标 oldLocation:true（Task 27.5 富化——AgentsPane 迁移钮 gating 字段）');
       assert.equal(lDual.bodyPreview, '旧位置正文');
       const gDual = view.entries.find((e) => e.id === 'dual' && e.source === 'global');
       assert.equal(gDual!.shadowed, true, '旧位置撞名 → 全局行 shadowed=true');

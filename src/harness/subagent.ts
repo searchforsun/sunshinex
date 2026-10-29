@@ -139,8 +139,9 @@ export class AgentRegistry {
 /* ---------- 三级宽容视图（G8c T5 设置端点消费面；Task 7 起为 catalog listAgents 薄委托，不经 Registry） ---------- */
 
 /** agents 清单展示条目（loadAgentsView 产物）：与 AgentDef 同字段面的只读投影 + 来源/遮蔽标记 + 正文预览。
- *  形状是 /settings/agents 应答契约（daemon ㉜ 逐字节钉死），字段集零增删——catalog 的富字段
- *  （version/dir/oldLocation/enabled）不透出，GUI 富化属后续 REST 改面（Task 23） */
+ *  形状是 /settings/agents 应答契约（daemon ㉜ 逐字节钉死）。Task 27.5 富化落地（控制器 T23/T26 评审
+ *  裁定的 REST 改面——Task 23 预留位）：enabled/oldLocation 两键透出（GUI AgentsPane 启停开关/迁移钮
+ *  的 gating 字段，恒在场布尔——enabled 缺省 true 由本视图显式化）；version/dir 仍不透出（GUI 零消费面） */
 export interface AgentEntryView {
   readonly id: string;
   readonly name: string;
@@ -148,11 +149,18 @@ export interface AgentEntryView {
   readonly memory?: boolean;
   readonly isolation?: string;
   readonly executor?: string;
+  /** 启停声明（frontmatter enabled 行，catalog AgentEntry.meta.enabled 直映）：false 行照列
+   *  （T5 裁定——启停是写面/视图操作，运行期剔除属装配面职责）；恒布尔在场 = GUI gating 契约
+   *  （缺键=旧 daemon 未富化，开关不渲染） */
+  readonly enabled: boolean;
   /** 条目来源层级：project = 项目两级（新家 <root>/.sunshinex/agents/ 与旧位置 <root>/agents/ 同标 project——
    *  旧位置条目在 catalog 中 scope 恒 'project'，形状映射自然归位）；global = <globalDir>/agents/ */
   readonly source: 'project' | 'global';
   /** true = 被更高优先同 id 遮蔽（全局条目保留展示、运行期不生效）；新家/旧位置条目（生效版）恒 false */
   readonly shadowed: boolean;
+  /** true = 旧位置 <root>/agents 条目（catalog AgentEntry.oldLocation 直映；新家/全局行恒 false）——
+   *  AgentsPane 迁移钮 gating（迁移是 legacy 专属动作） */
+  readonly oldLocation: boolean;
   /** frontmatter 之后正文前 200 字符（预览载荷防长正文击穿设置面板） */
   readonly bodyPreview: string;
 }
@@ -166,7 +174,8 @@ export interface AgentsView {
 /** 三级 agents 目录宽容清单（G8c 两级起手、Task 7 收口为 catalog 薄委托）：扫描/解析/告警词法全部
  *  收口 catalog listAgents 单点（本函数零 fs 零解析——两面对账不漂移），只做三件映射：
  *  ①形状映射 AgentEntry→AgentEntryView（scope→source；description/memory/isolation/executor 可选键按需
- *  透出，空/假值省键——应答字节面与委托前逐字节同形）；②排序映射（catalog 层序=全局先，视图序=项目两级
+ *  透出，空/假值省键；enabled/oldLocation 恒在场布尔直映 catalog——Task 27.5 富化，控制器 T23/T26 评审裁定的
+ *  REST 改面）；②排序映射（catalog 层序=全局先，视图序=项目两级
  *  先、全局殿后——「生效视图优先」的既有契约）；③遮蔽补注（唯一超集点，见下）。
  *  遮蔽补注：catalog 对旧位置取就近优先（撞全局/新家即不列），而视图沿装载序（global→legacy→新家
  *  last-wins）——旧位置撞全局时运行期是旧位置生效，故视图保留该行并给全局行补标 shadowed=true。
@@ -179,7 +188,8 @@ export interface AgentsView {
 export function loadAgentsView(projectRoot: string, globalDir: string): AgentsView {
   const full = listAgents(projectRoot, globalDir);
   const noGlobal = listAgents(projectRoot, path.join(os.tmpdir(), `sunshinex-agents-view-noglobal-${crypto.randomUUID()}`));
-  /** 形状映射单点：catalog 条目 → 视图行（可选键按需省键，应答字节面与委托前逐字节同形） */
+  /** 形状映射单点：catalog 条目 → 视图行（可选键按需省键，应答字节面与委托前逐字节同形；
+   *  Task 27.5 富化：enabled/oldLocation 恒在场布尔直映 catalog——条目已在手，零二次扫盘） */
   const toRow = (e: AgentEntry, shadowed: boolean): AgentEntryView => ({
     id: e.id,
     name: e.meta.name,
@@ -187,8 +197,10 @@ export function loadAgentsView(projectRoot: string, globalDir: string): AgentsVi
     ...(e.meta.memory ? { memory: true } : {}),
     ...(e.meta.isolation !== undefined ? { isolation: e.meta.isolation } : {}),
     ...(e.meta.executor !== undefined ? { executor: e.meta.executor } : {}),
+    enabled: e.meta.enabled,
     source: e.scope,
     shadowed,
+    oldLocation: e.oldLocation,
     bodyPreview: e.bodyPreview,
   });
   const newHome = full.entries.filter((e) => e.scope === 'project' && !e.oldLocation);

@@ -281,6 +281,9 @@ export interface ProviderEntry {
   apiKeyEnv: string;
   /** 密钥槽在场布尔（resolveProviderApiKey 判存——含 choices 无行的畸形源，密钥状态点单点数据源） */
   apiKeyPresent: boolean;
+  /** 来源级归因（Task 27.5 富化）：项目 providers 键在场整键遮蔽 → 该面全部条目 'project'
+   *  （全局源不可能混列），否则 'global'。可选防旧 daemon（未富化 daemon 无该键） */
+  origin?: 'project' | 'global';
 }
 
 /** GET /settings 载荷（T2 Settings 页数据源）：keys 按 SEMANTIC_KEYS 键序全量；permissions 三面

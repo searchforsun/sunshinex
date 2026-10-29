@@ -871,7 +871,13 @@ interface SettingsBody {
     project: { deny: string[]; allow: string[]; additionalDirs: string[] };
     global: { deny: string[]; allow: string[]; additionalDirs: string[] };
   };
-  providers: { choices: Array<{ id: string; provider: string }>; apiKeyPresent: Record<string, boolean>; warnings: string[] };
+  providers: {
+    choices: Array<{ id: string; provider: string }>;
+    apiKeyPresent: Record<string, boolean>;
+    warnings: string[];
+    /** Task 27.5:entries 行 origin 归因(项目 providers 键在场整键遮蔽→该面全部 'project';否则 'global') */
+    entries?: Array<{ name: string; origin?: 'project' | 'global' }>;
+  };
   /** G8d T5:两级 settings.json 的 flatten 告警(未知/退役键)——项目先行拼全局 */
   warnings: string[];
 }
@@ -1004,6 +1010,22 @@ describe('G8c T2 /settings 端点', () => {
       assert.deepEqual(body.providers.apiKeyPresent, { pp: true }, '密钥在场性=布尔(专用槽>主槽),不显值');
       assert.equal(body.providers.warnings.length, 1, '坏条目产出一条 warning');
       assert.ok(body.providers.warnings[0]!.includes('broken'), 'warning 指名坏源');
+      // Task 27.5 entries origin 归因:项目键在场=整键遮蔽 → 该面全部条目 origin='project'
+      // (全局 gp 被遮蔽不入 entries——choices 面已钉;T26 全键遮蔽陷阱的观察面)
+      assert.deepEqual(
+        (body.providers.entries ?? []).map((e) => [e.name, e.origin]),
+        [['pp', 'project']],
+        '项目键在场→entries 全部 origin=project(整键遮蔽,全局源不混列)',
+      );
+      // 无 root=仅全局面:entries origin='global'
+      const gView = await fetch(`${base}/settings`, { headers: AUTH });
+      assert.equal(gView.status, 200);
+      const gViewBody = (await gView.json()) as SettingsBody;
+      assert.deepEqual(
+        (gViewBody.providers.entries ?? []).map((e) => [e.name, e.origin]),
+        [['gp', 'global']],
+        '无 root 仅全局面→entries origin=global',
+      );
     });
   });
 
@@ -1702,6 +1724,10 @@ interface AgentEntryRow {
   executor?: string;
   source: 'project' | 'global';
   shadowed: boolean;
+  /** Task 27.5 富化(控制器 T23/T26 评审裁定):启停声明恒在场布尔(enabled:false 行照列,视图语义) */
+  enabled: boolean;
+  /** Task 27.5 富化:true=旧位置 <root>/agents 条目(迁移钮 gating;新家/全局行恒 false) */
+  oldLocation: boolean;
   bodyPreview: string;
 }
 
@@ -1719,10 +1745,12 @@ describe('G8c T5 /settings/agents 端点', () => {
         fs.mkdirSync(path.join(dir, 'agents', id), { recursive: true });
         fs.writeFileSync(path.join(dir, 'agents', id, 'agent.md'), md, 'utf8');
       };
-      // 项目级:projA(带可选键)+shared(与全局同名→全局行 shadowed)+broken(缺 frontmatter→warnings 不抛死);
-      // 全局级落 userConfigDir=<home>/.sunshinex(与 PUT global 面同几何)
+      // 项目级:projA(带可选键)+shared(与全局同名→全局行 shadowed)+broken(缺 frontmatter→warnings 不抛死)
+      // +off(enabled:false 富化钉——照列且行上 enabled:false);全部落 <root>/agents 旧位置
+      // (writeAgent 几何)——项目行 oldLocation:true 即旧位置行富化钉;全局级落 userConfigDir=<home>/.sunshinex
       writeAgent(proj, 'projA', '---\nname: Proj A\ndescription: project one\n---\nproj body\n');
       writeAgent(proj, 'shared', '---\nname: Shared P\n---\nfrom project\n');
+      writeAgent(proj, 'off', '---\nname: Off\nenabled: false\n---\noff body\n');
       writeAgent(proj, 'broken', 'no frontmatter here\n');
       const globalDir = path.join(home, '.sunshinex');
       writeAgent(globalDir, 'globalA', '---\nname: Global A\n---\nglobal body\n');
@@ -1741,17 +1769,21 @@ describe('G8c T5 /settings/agents 端点', () => {
         { role: 'reviewer', name: 'Reviewer', framing: 'convention, logic and security review' },
       ], 'builtins=ROLE_PRESETS 四预设角色平铺(role/name/framing)');
       const ids = body.view.entries.map((e) => e.id);
-      assert.deepEqual(new Set(ids), new Set(['projA', 'shared', 'globalA']), '清单=项目 2+全局 2(同名两行);畸形 broken 不入清单');
+      assert.deepEqual(new Set(ids), new Set(['projA', 'shared', 'off', 'globalA']), '清单=项目 3+全局 2(同名两行);畸形 broken 不入清单');
       assert.deepEqual(body.view.entries.filter((e) => e.id === 'shared'), [
-        { id: 'shared', name: 'Shared P', source: 'project', shadowed: false, bodyPreview: 'from project' },
-        { id: 'shared', name: 'Shared G', source: 'global', shadowed: true, bodyPreview: 'from global' },
-      ], '同名两行:项目行生效+全局行 shadowed=true 仍列示(序:项目先全局后)');
+        { id: 'shared', name: 'Shared P', source: 'project', shadowed: false, enabled: true, oldLocation: true, bodyPreview: 'from project' },
+        { id: 'shared', name: 'Shared G', source: 'global', shadowed: true, enabled: true, oldLocation: false, bodyPreview: 'from global' },
+      ], '同名两行:项目行生效+全局行 shadowed=true 仍列示(序:项目先全局后);两键=Task 27.5 富化(项目行=旧位置→oldLocation:true)');
       assert.deepEqual(body.view.entries.find((e) => e.id === 'projA'), {
-        id: 'projA', name: 'Proj A', description: 'project one', source: 'project', shadowed: false, bodyPreview: 'proj body',
-      }, '项目条目:可选键按需透出');
+        id: 'projA', name: 'Proj A', description: 'project one', source: 'project', shadowed: false, enabled: true, oldLocation: true, bodyPreview: 'proj body',
+      }, '项目条目:可选键按需透出;旧位置行 oldLocation:true+enabled:true 恒在场(富化契约)');
       assert.deepEqual(body.view.entries.find((e) => e.id === 'globalA'), {
-        id: 'globalA', name: 'Global A', source: 'global', shadowed: false, bodyPreview: 'global body',
+        id: 'globalA', name: 'Global A', source: 'global', shadowed: false, enabled: true, oldLocation: false, bodyPreview: 'global body',
       }, '未被遮蔽的全局条目');
+      // enabled:false 行照列(T5 裁定:启停是写面/视图操作)且行上 enabled:false——GUI 启停开关 gating 字段
+      assert.deepEqual(body.view.entries.find((e) => e.id === 'off'), {
+        id: 'off', name: 'Off', source: 'project', shadowed: false, enabled: false, oldLocation: true, bodyPreview: 'off body',
+      }, 'enabled:false 行照列且显式 enabled:false(缺省 true 由富化 daemon 显式化——恒布尔契约)');
       assert.equal(body.view.warnings.length, 1, '畸形文件恰一条 warning');
       assert.ok(body.view.warnings[0]!.includes(path.join(proj, 'agents', 'broken', 'agent.md')), 'warning 含文件路径');
       assert.ok(ids.indexOf('projA') < ids.indexOf('globalA'), '项目条目先于全局条目(生效视图优先)');
@@ -1804,9 +1836,9 @@ describe('G8c T5 /settings/agents 端点', () => {
       const body = (await r.json()) as AgentsBody;
       assert.deepEqual(body.view.entries.find((e) => e.id === 'newagent'), {
         id: 'newagent', name: 'New Agent', description: 'does many things', memory: true,
-        isolation: 'worktree', executor: 'internal-team', source: 'project', shadowed: false,
-        bodyPreview: 'Frame line one.\nLine two.',
-      }, '新条目全字段透出(bodyPreview=正文预览)');
+        isolation: 'worktree', executor: 'internal-team', enabled: true, source: 'project', shadowed: false,
+        oldLocation: false, bodyPreview: 'Frame line one.\nLine two.',
+      }, '新条目全字段透出(bodyPreview=正文预览);新家行 oldLocation:false(与 ㉜ 旧位置行 true 对照)');
       assert.deepEqual(body.view.warnings, [], 'upsert 生成物零 warnings(生成物必过装配解析器)');
       const g = await fetch(`${base}/settings/agents`, { headers: AUTH });
       const gBody = (await g.json()) as AgentsBody;

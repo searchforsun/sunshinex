@@ -66,9 +66,22 @@ export interface ParsedProviderEntry {
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
   models: Array<{ model: string; contextWindow?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; tier?: ModelTier }>;
+  /** 来源级归因（Task 27.5 富化，控制器 T26 评审裁定——全键遮蔽陷阱的观察面）：loadProvidersFull
+   *  两级整键遮蔽裁决——项目 providers 键在场（含空数组）即整键遮蔽 → 该面全部条目 origin='project'
+   *  （全局条目不可能混列）；否则（含 root:null 仅全局面）origin='global'。单级解析面（parseProvidersAll）
+   *  无两级语义不盖章，由 loadProvidersFull 投影处统一 stamp（零行为变化） */
+  origin: 'project' | 'global';
 }
 
-/** 单次解析全量产物：providers=源级分组（文件结构镜像）、choices=展平生效值（providers 序 × models 序） */
+/** 单次解析全量产物（parseProvidersAll 中间形）：providers 条目尚无来源归因——单级解析不知道自己
+ *  装的是哪一级（两级裁决在 loadProvidersFull），盖章后才是 ParsedProviders */
+interface ParsedProvidersRaw {
+  providers: Array<Omit<ParsedProviderEntry, 'origin'>>;
+  choices: ModelChoice[];
+  warnings: string[];
+}
+
+/** 单次解析全量产物：providers=源级分组（文件结构镜像 + origin 来源归因）、choices=展平生效值（providers 序 × models 序） */
 interface ParsedProviders {
   providers: ParsedProviderEntry[];
   choices: ModelChoice[];
@@ -77,7 +90,8 @@ interface ParsedProviders {
 
 /**
  * 单级 providers 键解析（全量内点）：`[{ "name", "baseUrl", "contextWindow?", "reasoningEffort?", "supportsImages?", "models": ["m" | { "model", "contextWindow?", "reasoningEffort?", "supportsImages?", "tier?" }] }]`
- * 一次遍历同产源级分组（ParsedProviderEntry，文件结构镜像）与展平 choices（生效值），序同为
+ * 一次遍历同产源级分组（ParsedProviderEntry 去 origin 的中间形——两级来源归因由 loadProvidersFull
+ * 盖章，见 stampOrigin；文件结构镜像）与展平 choices（生效值），序同为
  * providers 数组序 × models 数组序。models 条目两形态：字符串（模型名）与对象（模型名 + 每模型覆盖）；
  * 逐项两级优先级 = 条目级 > 源级缺省（contextWindow / reasoningEffort / supportsImages 同口径，缺省回全局链）；
  * tier 仅条目对象形态可声明（无源级缺省、字符串形态无此位），非法值告警忽略档位、模型保留
@@ -86,10 +100,10 @@ interface ParsedProviders {
  * （装配面宁可少配不可错配）；contextWindow / reasoningEffort 值非法 → warning 后忽略该值、模型保留
  * （窗口与强度只是预算/请求参数，跳过整个模型反而过罚）；同源同模型重复登记幂等去重。
  */
-function parseProvidersAll(raw: unknown, origin: string): ParsedProviders {
+function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
   const warnings: string[] = [];
   const choices: ModelChoice[] = [];
-  const providers: ParsedProviderEntry[] = [];
+  const providers: ParsedProvidersRaw['providers'] = [];
   if (raw === undefined) return { providers, choices, warnings };
   if (typeof raw !== 'object' || raw === null || !Array.isArray(raw)) {
     warnings.push(`settings.json providers 须为数组（${origin}），该键已忽略`);
@@ -234,9 +248,18 @@ export function parseProvidersSpec(raw: unknown, origin: string): LoadedProvider
 }
 
 /**
+ * 来源归因盖章（Task 27.5 投影单点）：两级整键遮蔽裁决出的单一级别整批盖章——项目键在场全部条目
+ * origin='project'（整键遮蔽下全局条目不可能混列，T26 观察面），否则 'global'。choices/warnings
+ * 原样透传，条目仅增一枚来源键（零行为变化）。
+ */
+function stampOrigin(parsed: ParsedProvidersRaw, origin: 'project' | 'global'): ParsedProviders {
+  return { providers: parsed.providers.map((e) => ({ ...e, origin })), choices: parsed.choices, warnings: parsed.warnings };
+}
+
+/**
  * 两级装载全量单点（catalog/providers 读面入口）：项目 providers 键在场即整键遮蔽全局（现状语义）；
  * root:null 仅全局（serve globalProvidersOnly 先例——缺项目上下文不伪造 cwd 相对读取）。
- * 返回源级分组 + 展平 choices + 告警单，一次装载同产两视图。
+ * 返回源级分组（+origin 来源归因）+ 展平 choices + 告警单，一次装载同产两视图。
  */
 export function loadProvidersFull(projectRoot: string | null): ParsedProviders {
   const read = (filePath: string): unknown => {
@@ -250,10 +273,10 @@ export function loadProvidersFull(projectRoot: string | null): ParsedProviders {
   if (projectRoot !== null) {
     const projectPath = loadProjectSettings(projectRoot);
     const project = read(projectPath);
-    if (project !== undefined) return parseProvidersAll(project, projectPath);
+    if (project !== undefined) return stampOrigin(parseProvidersAll(project, projectPath), 'project');
   }
   const globalPath = loadGlobalSettings();
-  return parseProvidersAll(read(globalPath), globalPath);
+  return stampOrigin(parseProvidersAll(read(globalPath), globalPath), 'global');
 }
 
 /** 两级装载（既有 API 面）：返回展开后的可选模型清单与告警单。投影自 loadProvidersFull，零独立装载逻辑 */
