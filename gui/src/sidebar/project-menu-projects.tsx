@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
-import { ArrowDownUp, Archive, Check, ChevronRight, Folder, FolderOpen, FolderTree, MoreHorizontal, SquarePen, X } from 'lucide-react';
+import { Archive, Check, ChevronRight, Folder, FolderOpen, FolderTree, ListFilter, MoreHorizontal, SquarePen, X } from 'lucide-react';
 import { SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 import { SessionRowMenu } from './session-row-menu';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
@@ -155,7 +155,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                 setSortOpen((v) => !v);
               }}
             >
-              <ArrowDownUp size={14} strokeWidth={1.75} />
+              <ListFilter size={14} strokeWidth={1.75} />
             </button>
             {onOpenArchived !== undefined && (
               <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
