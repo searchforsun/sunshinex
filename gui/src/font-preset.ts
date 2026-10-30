@@ -18,8 +18,10 @@ const KEY = 'sunshinex.font-preset';
 
 const SANS = `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif`;
 const SERIF = `Georgia, 'Times New Roman', 'Source Han Serif SC', 'Noto Serif SC', 'SimSun', serif`;
-const MODERN_MONO = `'Cascadia Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', consolas, monospace`;
-const SYSTEM_MONO = `ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', monospace`;
+// mono 栈补 CJK 回退(2026-10-31 用户报障「选择图片字体是全局漏网之鱼」):等宽栈全为拉丁字族,
+// 中文字符落到浏览器缺省(Windows=宋体衬线)即「字体逃逸」——generic 前插雅黑,CJK 走黑体、拉丁仍等宽
+const MODERN_MONO = `'Cascadia Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', consolas, 'Microsoft YaHei', monospace`;
+const SYSTEM_MONO = `ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', 'Microsoft YaHei', monospace`;
 
 /** 预设→CSS 变量表(根内联;未列出的变量在切换时移除,回落样式表缺省)。
  *  --font-ui/--font-mono/--f-base-size/--f-base-lh=全局管线令牌;--f-*=聊天排版细部 */

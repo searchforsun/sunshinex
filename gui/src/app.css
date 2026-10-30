@@ -68,9 +68,10 @@
   --syntax-variable: #b897f4;
   --syntax-attr: #f9dc78;
   --syntax-name: #63a8f8;
-  /* 字体 */
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', monospace;
+  /* 字体(--font-mono generic 前插雅黑:等宽栈全拉丁,CJK 曾落浏览器缺省宋体=「字体逃逸」,
+     2026-10-31 用户裁定与 font-preset.ts 预设栈同补中文回退) */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', 'Microsoft YaHei', monospace;
 }[data-theme='light'] {
   color-scheme: light;
   --surface: #fff;
@@ -2917,3 +2918,16 @@ input.sx-setting-input { width: 100%; }
   outline: 1px solid var(--err);
   outline-offset: 1px;
 }
+
+/* ===== 2026-10-31 用户裁定追加段(设置面七项;纯加法,源序覆写前置) ===== */
+/* ① 下拉选项:长项目名省略号(弹层同触发器宽),hover title 显全名(controls 侧 title 挂钮) */
+.sx-dd-opt-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ② 插件详情重排(.sx-plugin-meta,与卡语言统一):dt 定宽 mono 灰/dd min-width:0 换行不逃逸;
+   schema 键说明=键+类型 chip+作用描述(UI 字族,替代「type — 长句」mono 逃逸面) */
+.sx-plugin-meta { margin: 0; display: grid; grid-template-columns: minmax(88px, auto) minmax(0, 1fr); gap: 4px 12px; font-size: 12px; align-items: baseline; }
+.sx-plugin-meta dt { color: var(--fg-secondary); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.sx-plugin-meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; color: var(--fg); }
+.sx-plugin-schema dd { color: var(--fg-secondary); font-family: var(--font-ui); }
+.sx-plugin-type { display: inline-block; font: 11px var(--font-mono); color: var(--fg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 6px; margin-right: 8px; }
+/* 资源卡内容 containment:超长 token 越出卡缘的兜底钳制(卡内自换行,不再横向逃逸) */
+.sx-rc { min-width: 0; overflow: hidden; }

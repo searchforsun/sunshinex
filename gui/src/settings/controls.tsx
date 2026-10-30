@@ -122,6 +122,7 @@ export function Select(props: {
                 aria-selected={o.v === value}
                 className={`sx-dd-opt${i === active ? ' active' : ''}`}
                 ref={o.v === value ? activeRef : undefined}
+                title={o.l} /* 长项目名省略后 hover 显全名(2026-10-31 用户裁定) */
                 onMouseEnter={() => setActive(i)}
                 onClick={() => pick(o.v)}
               >

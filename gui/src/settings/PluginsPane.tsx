@@ -257,9 +257,9 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
     </>
   );
 
-  /** 折叠详情(只读保留):逐插件 warnings 行内告警条(manifest 解析告警原值——T22 探测失败
-   *  同位折叠层内;pane 尾聚合装载告警恒展开可见)+ID/servers/skills 元信息 dl+
-   *  configSchema 键说明+config 原值 */
+  /** 折叠详情(只读保留;2026-10-31 用户裁定重排:详情与卡语言统一——dt 定宽/dd 换行不逃逸,
+   *  configSchema 键说明=键+类型 chip+作用描述(UI 字族),不再「type — 长句」mono 逃逸):
+   *  逐插件 warnings 行内告警条+ID/servers/skills 元信息+configSchema 键说明+config 原值 */
   const detailsOf = (p: PluginRow): ReactNode => (
     <>
       {p.warnings.length > 0 && (
@@ -271,7 +271,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
           ))}
         </div>
       )}
-      <dl className="sx-mcp-meta">
+      <dl className="sx-plugin-meta">
         <dt>ID</dt>
         <dd>{p.id}</dd>
         {p.servers.length > 0 && (
@@ -287,12 +287,15 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
           </>
         )}
       </dl>
-      {p.configSchema !== undefined && (
-        <dl className="sx-mcp-meta">
+      {p.configSchema !== undefined && Object.keys(p.configSchema).length > 0 && (
+        <dl className="sx-plugin-meta sx-plugin-schema">
           {Object.entries(p.configSchema).map(([k, s]) => (
             <Fragment key={k}>
               <dt>{k}</dt>
-              <dd>{s.description !== undefined ? `${s.type} — ${s.description}` : s.type}</dd>
+              <dd>
+                <span className="sx-plugin-type">{s.type}</span>
+                {s.description}
+              </dd>
             </Fragment>
           ))}
         </dl>
@@ -310,9 +313,6 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
       </div>
       {loadError !== '' && <ErrorBanner text={loadError} />}
       {actionError !== '' && <ErrorBanner text={actionError} />}
-      {rows !== null && rows.length > 0 && visible.length > 0 && (
-        <p className="sx-mcp-hint">{t('Toggles take effect on next session', '开关变更对新会话生效')}</p>
-      )}
       {rows === null && loadError === '' && <EmptyState text={t('Loading plugins…', '加载插件清单…')} />}
       {rows !== null && rows.length === 0 && loadError === '' && <EmptyState text={t('No plugins.', '无已装载插件。')} />}
       {rows !== null && rows.length > 0 && visible.length === 0 && <EmptyState text={t('No matches.', '无匹配结果。')} />}

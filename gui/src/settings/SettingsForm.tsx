@@ -594,6 +594,9 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
                           <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>
                           {row.source !== 'global' && row.source !== 'default' && <SourceBadge source={row.source} />}
                         </div>
+                        {/* 2026-10-31 用户裁定「所有配置细项要加上一简要的说明」:KEY_DESCRIPTIONS
+                            说明句(此前仅作搜索匹配面)升格为行内描述渲染,与外观行同形态 */}
+                        {desc !== undefined && <p className="sx-setting-desc">{t(desc.en, desc.zh)}</p>}
                       </div>
                       <div className="sx-setting-ctl">{renderControl(fd, row)}</div>
                     </div>
