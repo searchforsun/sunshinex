@@ -5,7 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
-import { listSessions, parseJournalFile } from './session-journal';
+import { listSessions, parseJournalFile, reduceJournal, sessionsDir } from './session-journal';
+import { resolveDataDir } from '../config/data-dir';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -158,6 +159,105 @@ test('resume：正常档（chain 行收尾）零回灌——chainView 与 chain 
     const chainSteps = reparsed.events.filter((e) => e.t === 'chain').flatMap((e) => e.steps);
     assert.equal(view.length, chainSteps.length, '零回灌：chainView 长度与 chain 事件步数一致');
     assert.equal(view.length, 2, '前置：链步数如 fixture');
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+/** 工作区播种（SUNSHINE.md + 技能目录；daemon.ctx-snap.test seedWorkspace 同形）：快照磁盘形态 */
+function seedWorkspace(root: string, sunshine: string, skillId: string, skillDesc: string): void {
+  fs.mkdirSync(path.join(root, '.sunshinex', 'skills', skillId), { recursive: true });
+  fs.writeFileSync(path.join(root, 'SUNSHINE.md'), sunshine, 'utf8');
+  fs.writeFileSync(
+    path.join(root, '.sunshinex', 'skills', skillId, 'SKILL.md'),
+    `---\nname: ${skillId}\ndescription: ${skillDesc}\n---\nbody\n`,
+    'utf8',
+  );
+}
+
+/** resume 选择卡驱动（既有 rig 同形）：选指定档 → restore → 回 idle */
+async function resumePick(ctrl: SessionController, id: string): Promise<void> {
+  await waitFor(() => ctrl.getState().status === 'awaiting-question');
+  ctrl.resolveAskAnswer({ type: 'selected', labels: [id] });
+  await waitFor(() => ctrl.getState().question?.question.includes('Restore this session, or fork from it?') ?? false);
+  ctrl.resolveAskAnswer({ type: 'selected', labels: ['restore'] });
+  await waitFor(() => ctrl.getState().status === 'idle');
+}
+
+test('resume 回种落档快照：快照不重读磁盘;档内无 ctx-snap 行回退磁盘并补出生写', async () => {
+  const tmp = tmpRoot();
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  const dataDir = pinDataDir(tmp);
+  try {
+    seedWorkspace(tmp, 'v1 line\n', 'base-skill', 'base skill');
+    // 参照拍：磁盘初态的快照导出（ctx-snap 行 fixture 数据面——items+sig 必须同源同拍）
+    const probe = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
+    const exported = probe.runtime.harness.context.snapshotExport();
+    probe.dispose();
+
+    // 1) 造档含 ctx-snap 行（skills='base-skill' 旧拍）→ 改磁盘（SUNSHINE.md 追加 + 新技能）→ resume
+    const id1 = '20261031-snap-frozen';
+    writeJournalFile(dataDir, id1, [
+      { t: 'header', v: 3, id: id1, createdAt: '2026-10-31T00:00:00.000Z' },
+      { t: 'chain', steps: [{ step: 1, action: 'task', observation: '旧任务' }] },
+      { t: 'ctx-snap', items: exported.items, sig: exported.sig },
+    ]);
+    fs.appendFileSync(path.join(tmp, 'SUNSHINE.md'), 'v2 line\n', 'utf8');
+    fs.mkdirSync(path.join(tmp, '.sunshinex', 'skills', 'new-skill'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.sunshinex', 'skills', 'new-skill', 'SKILL.md'), '---\nname: new-skill\ndescription: brand new skill\n---\nbody\n', 'utf8');
+
+    const ctrl1 = new SessionController({ root: tmp, model: new ScriptedAdapter([]), resumePicker: true });
+    await resumePick(ctrl1, id1);
+    // 快照不重读磁盘：导出面与落档行逐位相等（磁盘 v2 行与新技能未烘进）
+    const snap1 = ctrl1.runtime.harness.context.snapshotExport();
+    assert.deepEqual(snap1, exported, '回种后导出面与落档快照逐位相等（不重读磁盘）');
+    assert.ok(!snap1.items.some((it) => it.content.includes('v2 line')), '磁盘 SUNSHINE.md 新内容未烘进快照');
+    assert.ok(!snap1.items.some((it) => it.content.includes('brand new skill')), '磁盘新技能未烘进快照');
+    // 回种成功零出生写追尾：档内 ctx-snap 行仍恰一行
+    const events1 = parseJournalFile(path.join(dataDir, 'sessions', id1 + '.jsonl')).events;
+    assert.equal(events1.filter((e) => e.t === 'ctx-snap').length, 1, '回种成功零出生写追尾');
+    ctrl1.dispose();
+
+    // 2) 造档无 ctx-snap 行（升级前旧档形态）→ resume → 回退磁盘现读 + 档尾补出生写 ctx-snap 行
+    const id2 = '20261031-snap-legacy';
+    const file2 = writeJournalFile(dataDir, id2, [
+      { t: 'header', v: 3, id: id2, createdAt: '2026-10-31T00:00:00.000Z' },
+      { t: 'chain', steps: [{ step: 1, action: 'task', observation: '旧任务' }] },
+    ]);
+    const ctrl2 = new SessionController({ root: tmp, model: new ScriptedAdapter([]), resumePicker: true });
+    await resumePick(ctrl2, id2);
+    const snap2 = ctrl2.runtime.harness.context.snapshotExport();
+    assert.ok(snap2.items.some((it) => it.content.includes('v2 line')), '旧档无行 → 回退磁盘现读（新内容在快照）');
+    const tail2 = parseJournalFile(file2).events;
+    assert.equal(tail2[tail2.length - 1]?.t, 'ctx-snap', 'journal 尾部补出生写 ctx-snap 行');
+    assert.ok(reduceJournal(tail2).snapshot !== undefined, '补写行为合法行（归约面可读）');
+    ctrl2.dispose();
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('出生写：首个持久化事件建档即铸 header+ctx-snap 档（对等 serve 出生写）', async () => {
+  const tmp = tmpRoot();
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  pinDataDir(tmp);
+  try {
+    seedWorkspace(tmp, 'birth line\n', 'birth-skill', 'birth skill');
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
+    await ctrl.submit('出生任务');
+    await ctrl.waitIdle();
+    const jid = ctrl.journal?.currentId;
+    assert.ok(jid, '建档已铸 id');
+    const file = path.join(sessionsDir(resolveDataDir(tmp)), `${jid}.jsonl`);
+    const events = parseJournalFile(file).events;
+    assert.equal(events[0]?.t, 'header', '档首 header');
+    assert.equal(events[1]?.t, 'ctx-snap', '出生写紧随 header（header+ctx-snap 形态）');
+    const snap = reduceJournal(events).snapshot;
+    assert.ok(snap, '出生行为合法行（归约面可读）');
+    assert.deepEqual(snap, ctrl.runtime.harness.context.snapshotExport(), '出生行与导出面逐位相等');
+    ctrl.dispose();
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });

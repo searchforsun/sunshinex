@@ -168,6 +168,9 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   const messages = entriesToChatItems(entries, () => ctrl.mdWidth());
   // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
   ctrl.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+  // 快照回种（2026-10-31 spec §4）：落档快照直注入（不重读磁盘,离场变更留首条提交追尾）;旧档无行/坏包
+  // 视同不存在——保持 restoreSession 的磁盘现读,并在 attach 后补出生写（快照冻结起点随恢复重建）
+  const snapOk = replay.snapshot !== undefined && ctrl.runtime.harness.context.restoreSnapshot(replay.snapshot);
   ctrl.msgSeq = messages.length;
   // 模型选择还原（/model）：档内 modelId 事件末值即目标态（undefined = 回缺省主模型，内芯一并复位）；
   // 配置漂移（id 已不在清单）保持当前不硬切、告警行随状态注入后上屏（注入前 push 会被 replay.messages 吞掉）
@@ -208,6 +211,9 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   } catch {
     /* 兜底尽力而为:残缺档不阻塞恢复 */
   }
+  // 快照出生写回退（2026-10-31 spec §4）：旧档无 ctx-snap 行或坏包被拒——磁盘现读即出生写,档尾补新行
+  // （必须在 attach 之后——journal 有 id 才落行;置末序与 serve 对等:attach → 崩溃回灌 → 出生写）
+  if (!snapOk) ctrl.persistSnapshotRow();
   // 模型配置漂移告警（状态注入后上屏，防被 replay.messages 吞掉）
   if (modelDriftWarn !== undefined) ctrl.pushMsg('system', modelDriftWarn, { level: 'warn' });
   // 横幅在状态注入后上屏（注入前 push 会被 messages 覆盖吞掉）；撕裂场景合并提示，保持「消息 + 单条提示行」

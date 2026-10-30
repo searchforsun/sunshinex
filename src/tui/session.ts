@@ -269,7 +269,7 @@ export class SessionController {
   private persistKernelEvent(ev: import('../session/kernel').KernelEvent): void {
     const j = this.ensureJournal();
     try {
-      if (j.currentId === undefined) j.start(3);
+      if (j.currentId === undefined) this.persistSnapshotRow(); // 出生写（2026-10-31 spec §2）：steer 行可先于首条提交建档——同铸 header+ctx-snap（对等 serve）
       for (const row of kernelEventRows(ev)) j.log(row);
     } catch {
       // 尽力落档:写失败不影响运行面
@@ -445,6 +445,7 @@ export class SessionController {
     // 未建档时事件丢弃（订阅常驻、可选链路由）；restoreSession 直注入不触发订阅（重放零击穿）。
     this.runtime.harness.context.onContextChange((c) => {
       if (c.kind === 'append') this.journal?.log({ t: 'chain', steps: c.steps });
+      else if (c.kind === 'snap') this.persistSnapshotRow(); // 快照翻新（reloadContext：/init·/new·压缩）：新行落档,末行为准（2026-10-31 spec §2）
       else if (c.kind === 'compact') {
         this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
         // 自动压缩消息流留痕（CC auto-compact 口径）：一次压缩 = applyCompaction + trimChainFront 两条 compact 事件，
@@ -508,7 +509,7 @@ export class SessionController {
     // 纯图无文本不入历史（空历史项无意义）；图片持久化由内核 seg 行单点承载（本行非转录面）
     if (text !== '') {
       const j = this.ensureJournal();
-      j.start(3);
+      if (j.currentId === undefined) this.persistSnapshotRow(); // 出生写（2026-10-31 spec §2）：新档首事件前即铸 header+ctx-snap（对等 serve,惰性零文件不变式已废）
       j.log({ t: 'user', text });
     }
     if (text.startsWith('/')) {
@@ -602,6 +603,14 @@ export class SessionController {
   ensureJournal(): SessionJournal {
     if (!this.journal) this.journal = new SessionJournal(resolveDataDir(this.root));
     return this.journal;
+  }
+
+  /** 快照落档单点（2026-10-31 spec；与 serve SessionRuntime.persistSnapshotRow 同构对等）：出生写与翻新写共用——
+   *  journal 未建档则先建档（v3 header 即铸）再落 ctx-snap 行;无 journal（理论不可达,守卫）no-op */
+  persistSnapshotRow(): void {
+    if (this.journal === undefined) return;
+    if (this.journal.currentId === undefined) this.journal.start(3);
+    this.journal.log({ t: 'ctx-snap', ...this.runtime.harness.context.snapshotExport() } as unknown as Parameters<SessionJournal['log']>[0]);
   }
 
   /** 快照型事件接线（规格 2026-09-22 D5）：变更点即时 log 的单点构造器，防四处拼装漂移；
