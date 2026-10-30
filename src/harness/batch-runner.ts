@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { ExecResult, ToolCallSpec } from '../types';
 import { Result } from '../result';
 import { ToolRegistry } from './tools';
@@ -8,6 +9,19 @@ import { PARALLEL_TOOLS_LIMIT } from './prompts/shared';
 const MAX_IDENTICAL_CALLS = 2;
 /** 批次计数过期间隔：距末次同批次已拉开 N 步即视为过期清零——早期试错不永久封死后续合法调用 */
 const IDENTICAL_CALL_EXPIRY_STEPS = 4;
+
+/** 写调用同文件锁键归一：相对路径按安全链活动根解析 + win32 大小写折叠（NTFS 不区分大小写）——
+ *  同一目标的两形态（相对/绝对、大小写差、`..` 段）必须收敛到同一键，漏判即锁失效、并发写竞态复现；
+ *  解析异常按 null 兜底（不锁 = 退回既有并发语义，不因锁层故障放大调用失败） */
+function writeLockKey(root: string, raw: unknown): string | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    const abs = path.resolve(root, raw);
+    return process.platform === 'win32' ? abs.toLowerCase() : abs;
+  } catch {
+    return null;
+  }
+}
 
 /** 批次面事件旁路口（窄化为批次仅有的两类事件：tool-call 挂起预告 / tool-result 逐结果回发）——
  *  只收函数不收 Reactor 实例，抽出件可独立钉测；ts 盖点由注入方（Reactor.emit）单点负责 */
@@ -138,12 +152,29 @@ export class BatchRunner {
         emitResult(i, calls[i], argsOf[i], r);
       }
     } else {
-      await Promise.all(calls.map(async (c, i) => {
-        if (overDuplicated[i]) { emitResult(i, c, argsOf[i], null); return; }
-        emitRunning(i, c);
-        const r = await runOne(c, argsOf[i]);
-        results[i] = r;
-        emitResult(i, c, argsOf[i], r);
+      // 纯并行批内的同文件写串行锁：write 类调用按归一目标路径链队（后继接前驱尾任务，异路径组间照常并发）——
+      // edit 的 old_string 匹配基于执行期才读的文件内容（读-改-写非原子），并发打同文件时第二个调用
+      // 的匹配基线是第一个改动前的内容，静默错改/not found 误报；链队保证同路径按出牌顺序生效。
+      // 锁键取入参原文归一（生产链 safePath 注入发生在 registry.execute 内部，批次面只见模型原文——
+      // 故此处自归一而非复用 safePath）；串行批天然有序不经过此分支。tail 存储侧 catch 收口：
+      // 前驱链断裂不得拖死后续批次面的同路径调用（runOne 恒 Result 不 reject，此为防御位）
+      const tails = new Map<string, Promise<void>>();
+      await Promise.all(calls.map((c, i) => {
+        if (overDuplicated[i]) { emitResult(i, c, argsOf[i], null); return Promise.resolve(); }
+        const run = async (): Promise<void> => {
+          // running 帧在锁后发（P11 契约：执行起点才有 running——同路径排队等待不冒充执行中）
+          emitRunning(i, c);
+          const r = await runOne(c, argsOf[i]);
+          results[i] = r;
+          emitResult(i, c, argsOf[i], r);
+        };
+        const key = this.deps.registry.get(c.name)?.category === 'write'
+          ? writeLockKey(this.deps.safety.rootReal, (argsOf[i] as { path?: unknown } | null)?.path)
+          : null;
+        if (key === null) return run();
+        const tail = (tails.get(key) ?? Promise.resolve()).then(run);
+        tails.set(key, tail.catch(() => {}));
+        return tail;
       }));
     }
     // 批后记账（出牌顺序）：观察行入链 + read/grep 成功结果文件追踪——经 ledger 回调整块承载

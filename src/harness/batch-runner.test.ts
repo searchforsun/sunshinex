@@ -193,6 +193,73 @@ test('归档恢复指针随身携带：超 2000 且尾带 [truncated · full out
   assert.ok(!row.includes('...(truncated)'), '有归档指针时不再叠加裸截断标记');
 });
 
+// ── 同文件写串行锁（2026-10-29）：纯并行批内 write 类调用按归一目标路径链队 ──
+// 断言标记用 content 字段（锁键取入参原文 path 归一，但 executor 收到的是链 realpath 后的 safePath——
+// win32 下盘符大小写/8.3 短名不可预知，path 字面量不可作日志匹配锚点）
+
+test('同文件写串行锁：并行批内同路径 write 按出牌顺序链队（前者完成后者才开跑），异路径照常并发', async () => {
+  const log: string[] = [];
+  const r = new ToolRegistry();
+  r.register({
+    name: 'wp',
+    description: 'test-only write probe',
+    category: 'write',
+    executor: async (input: { content?: unknown }) => {
+      const m = String(input.content);
+      log.push(`w${m}:start`);
+      await sleep(30);
+      log.push(`w${m}:end`);
+      return { exitCode: 0, stdout: 'ok', stderr: '', timedOut: false };
+    },
+  });
+  const f = makeFixture(r);
+  // 出牌顺序：w1 → w2（同路径 a，须链队）→ w3（异路径 b，照常并发）
+  const calls = [
+    call('wp', { path: 'src/slow.ts', content: '1' }),
+    call('wp', { path: 'src/slow.ts', content: '2' }),
+    call('wp', { path: 'src/other.ts', content: '3' }),
+  ];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: f.ledger });
+  const idx = (s: string, n = 1) => idxOf(log, s, n);
+  assert.ok(idx('w1:start') < idx('w1:end') && idx('w1:end') < idx('w2:start'), '同路径第二写在前一写完成后才开跑（链队）');
+  assert.ok(idx('w3:start') < idx('w1:end'), '异路径写不被同路径锁牵连（并发语义保留）');
+});
+
+test('同文件写锁键归一：相对/绝对路径与 win32 大小写差收敛同一键（漏判即并发竞态复现）', async () => {
+  const log: string[] = [];
+  const r = new ToolRegistry();
+  r.register({
+    name: 'wp_norm',
+    description: 'test-only write probe',
+    category: 'write',
+    executor: async (input: { content?: unknown }) => {
+      const m = String(input.content);
+      log.push(`w${m}:start`);
+      await sleep(20);
+      log.push(`w${m}:end`);
+      return { exitCode: 0, stdout: 'ok', stderr: '', timedOut: false };
+    },
+  });
+  const f = makeFixture(r);
+  // 相对 vs 绝对（fixture root 为 tmp 目录）+ win32 大小写差：三形态指向同一文件
+  const root = (f.runner as unknown as { deps: { safety: { rootReal: string } } }).deps.safety.rootReal;
+  const calls = [
+    call('wp_norm', { path: 'SRC/one.ts', content: '1' }),
+    call('wp_norm', { path: `${root}/src/one.ts`, content: '2' }),
+    call('wp_norm', { path: 'src/one.ts', content: '3' }),
+  ];
+  await f.runner.runBatch({ calls, argsOf: parseArgs(calls), step: 1, ledger: f.ledger });
+  assert.equal(log.filter((l) => l.endsWith(':end')).length, 3, '三写全部执行');
+  assert.ok(idxOf(log, 'w1:start') < idxOf(log, 'w2:start') && idxOf(log, 'w2:start') < idxOf(log, 'w3:start'), '三形态按出牌顺序链队（归一同键；win32 折叠生效，POSIX 下本就同键）');
+});
+
+/** indexOf 的第 n 次出现版本（同标记多轮 start/end 行的断言辅助） */
+function idxOf(arr: string[], v: string, n = 1): number {
+  let found = -1;
+  for (let i = 0; i <= n - 1; i++) found = arr.indexOf(v, found + 1);
+  return found;
+}
+
 // ── 图片通道二（2026-10-26）：结果随行 images 经 resultRow 第二参 + tool-result 事件 payload 回发 ──
 
 /** 带图收集口：images 缺省不落键（与「仅非空携带」同口径的断言面）；复用 makeFixture 的 runner/事件收集，ledger 单点覆盖 */
