@@ -163,13 +163,15 @@ if (!app.requestSingleInstanceLock()) {
     };
     ipcMain.on('win:drag-start', () => {
       if (!mainWindow || mainWindow.isDestroyed() || dragTimer !== null) return;
-      // 最大化中拖拽=先还原再跟(2026-10-29 用户实测「拖顶带宽高自动变大」机制):标志/视觉脱同步
-      // 时 setPosition 会套用更大的还原边界;显式 unmaximize 后以还原后边界重算偏移,拖拽恒=纯移动
-      if (mainWindow.isMaximized()) mainWindow.unmaximize();
-      const [wx, wy] = mainWindow.getPosition();
-      const cursor = screen.getCursorScreenPoint();
-      const offX = cursor.x - wx;
-      const offY = cursor.y - wy;
+      // 位移阈值(2026-10-30 用户裁定:SM_CXDRAG 惯例 4px)——drag-start 在 mousedown 即发,零阈值
+      // 下最大化中纯点击(手不动)也触发 unmaximize=「点一下顶部宽高就变」;双击两连 mousedown 各自
+      // 还原再被 dblclick toggle=状态竞态抖动。阈值内只轮询不动窗;真拖的首拍才还原(标志/视觉脱同步
+      // 时 setPosition 会套更大还原边界,故显式 unmaximize 后以还原后边界重算偏移,拖拽恒=纯移动)
+      const start = screen.getCursorScreenPoint();
+      let [wx, wy] = mainWindow.getPosition();
+      let offX = start.x - wx;
+      let offY = start.y - wy;
+      let moved = false;
       const startedAt = Date.now();
       dragTimer = setInterval(() => {
         if (!mainWindow || mainWindow.isDestroyed() || Date.now() - startedAt > 60_000) {
@@ -177,6 +179,24 @@ if (!app.requestSingleInstanceLock()) {
           return;
         }
         const c = screen.getCursorScreenPoint();
+        if (!moved && Math.hypot(c.x - start.x, c.y - start.y) < 4) return;
+        if (!moved) {
+          moved = true;
+          if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize();
+            // 还原边界自愈(2026-10-30):restore bounds 曾被历史版本 setPosition 污染成畸形尺寸
+            // (实测 594×1230 窄高条=「点顶部自动放大/变高」残影)——还原后越出工作区即钳回,
+            // 以工作区钳制值重算偏移,后续跟随恒在屏内
+            const wa = screen.getPrimaryDisplay().workArea;
+            const [rw, rh] = mainWindow.getSize();
+            if (rw > wa.width || rh > wa.height) {
+              mainWindow.setSize(Math.min(rw, wa.width), Math.min(rh, wa.height));
+            }
+            [wx, wy] = mainWindow.getPosition();
+            offX = start.x - wx;
+            offY = start.y - wy;
+          }
+        }
         mainWindow.setPosition(c.x - offX, c.y - offY);
       }, 10);
     });

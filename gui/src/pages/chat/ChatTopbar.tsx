@@ -319,7 +319,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     },
   ];
   return (
-    <header className="chat-topbar">
+    <header className="chat-topbar" data-drag-band>
         {/* 2026-10-25 应用级导航(前进/后退):菜单关闭态才驻顶栏最左——菜单开着时由菜单头承载
             (2026-10-25 用户裁定「菜单存在显示在菜单里,收起才显示在当前位置」,单点不双显) */}
         {nav !== undefined && menuClosed === true && <NavButtons nav={nav} />}
@@ -430,7 +430,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         {/* 2026-10-24 拖拽重构:顶栏窗拖拽单点落本空白带(顶栏左聚布局,钮全在带左,带吸右侧余量)——
             旧「容器 drag+按钮挖孔」在 CSS zoom 下拖拽位图挖孔坐标错位,抽屉态窗控簇([|]−□×)真实
             按下被吞(用户实测「抽屉态 [|] 点不动」根因);空白带与一切按钮几何互斥,无孔可挖 */}
-        <div className="sx-topbar-drag" aria-hidden="true" />
+        <div className="sx-topbar-drag" data-drag-band aria-hidden="true" />
         {menu !== null && fixedTitle !== '' && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
         )}

@@ -83,7 +83,7 @@ export interface SkillManifest {
   params?: string[];
   /** 技能形态（阶段四：prompt = 上下文注入模板；缺省视作 prompt） */
   kind?: 'prompt';
-  /** 技能所在目录绝对路径（装载/解析时带上）：兼容根（.claude/.codex 等）装载的技能，
+  /** 技能所在目录绝对路径（装载/解析时带上）：技能
    *  正文引用的伴随文件（脚本/资源）须按此目录解析，缺来源标注时模型按项目根解析找不到文件 */
   sourceRoot?: string;
 }

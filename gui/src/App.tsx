@@ -499,7 +499,7 @@ function AppShell(): JSX.Element {
     const onDown = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
-      if (t === null || t.closest('button, input') !== null) return;
+      if (t === null || t.closest('button, input, [role="button"]') !== null) return;
       if (t.closest('[data-drag-band]') === null) return;
       winBridge()?.dragStart?.();
     };
@@ -507,7 +507,7 @@ function AppShell(): JSX.Element {
     const onDbl = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
-      if (t === null || t.closest('button, input') !== null) return;
+      if (t === null || t.closest('button, input, [role="button"]') !== null) return;
       if (t.closest('[data-drag-band]') === null) return;
       winBridge()?.toggleMaximize?.();
     };
