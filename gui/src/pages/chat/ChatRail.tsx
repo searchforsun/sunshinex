@@ -87,6 +87,10 @@ export function ChatRail(props: {
   // show 仍走 state(挂卸载决策,翻转由 layout effect 当帧补锚)
   const innerRef = useRef<HTMLDivElement | null>(null);
   const [show, setShow] = useState(false);
+  /** 稳定门采样(2026-10-31 用户报障「打开会话刻度先现顶部,约 1s 后才回位」):首帧 rect 是
+   *  过渡值(顶栏/菜单/字体未定稿),show=true 当帧渲染=先错位后跳。连续两次测量一致才亮——
+   *  亮起即已就位;布局漂移期(拖宽/开合)同样先藏,稳定帧再亮(闪隐不闪错位) */
+  const stableRef = useRef<{ left: number; top: number } | null>(null);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
@@ -100,7 +104,13 @@ export function ChatRail(props: {
         inner.style.left = `${a.left}px`;
         inner.style.top = `${a.top}px`;
       }
-      setShow((prev) => (prev === a.show ? prev : a.show));
+      const prev = stableRef.current;
+      stableRef.current = { left: a.left, top: a.top };
+      const stable = prev !== null && prev.left === a.left && prev.top === a.top;
+      setShow((p) => {
+        if (p) return a.show ? p : false; // 已亮:只随余量门收起,位置继续实时跟随(流式高度变化不停亮)
+        return stable && a.show; // 未亮:连续两次测量一致才首亮(亮起即就位,无先错后跳)
+      });
     };
     // 显隐/锚点滞后一拍的三种来源各配一条触发线(十二轮半:单挂 RO 时,交互拖拽/渲染步
     // 节流期间 RO 交付停滞,刻度状态整段拖到偶发交付才更新——缩/涨两向滞后到越过阈值很远):
