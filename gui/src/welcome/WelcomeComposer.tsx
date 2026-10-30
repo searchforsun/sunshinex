@@ -102,11 +102,14 @@ export function WelcomeComposer({
   useEffect(() => {
     conn.commands().then(setWelcomeCmdData, () => setWelcomeCmdData(null));
   }, [conn]);
-  /** G14.213 技能清单惰性拉取:敲 `/` 起手才拉一次(挂载即拉会污染 G8c skillsGroupsCalls 计数) */
-  const welcomeSkillsFetchedRef = useRef(false);
-  const fetchWelcomeSkills = (): void => {
-    if (welcomeSkillsFetchedRef.current) return;
-    welcomeSkillsFetchedRef.current = true;
+  /** G14.213 技能清单惰性拉取:敲 `/`/点开 + 面板起手拉(挂载即拉会污染 G8c skillsGroupsCalls 计数)。
+   *  2026-10-31 用户裁定:主动触发即可拉最新清单,5s 节流防抖(时间戳闸替代单次布尔闸——
+   *  首拉恒过,窗口内重复触发静默跳过) */
+  const WELCOME_SKILLS_THROTTLE_MS = 5000;
+  const welcomeSkillsAtRef = useRef(0);
+  const fetchWelcomeSkills = (force = false): void => {
+    if (!force && Date.now() - welcomeSkillsAtRef.current < WELCOME_SKILLS_THROTTLE_MS) return;
+    welcomeSkillsAtRef.current = Date.now();
     conn.skillsGroups?.(picked).then(
       (r) => {
         const out: Array<{ id: string; desc: string }> = [];
@@ -116,13 +119,12 @@ export function WelcomeComposer({
       () => undefined,
     );
   };
-  // 项目切换/新建登记后静默重拉（2026-10-30 用户裁定「创建项目后该加载都要静默加载」）：单次闸按
-  // picked 归位——已拉过清单时切到新项目（选中/新建/登记）即重拉该 root 的 skills；未拉过（还没敲
-  // `/`）不拉，惰性口径与 G8c 计数污染防护不变（同 workspaceFiles 的 [picked] effect 对照口径）
+  // 项目切换/新建登记后静默重拉（2026-10-30 用户裁定「创建项目后该加载都要静默加载」）：已拉过清单时
+  // 切到新项目（选中/新建/登记）即强制重拉该 root 的 skills（绕过 5s 节流——项目语义变更非防抖对象）；
+  // 未拉过（还没敲 `/`）不拉，惰性口径与 G8c 计数污染防护不变（同 workspaceFiles 的 [picked] effect 对照口径）
   useEffect(() => {
-    if (!welcomeSkillsFetchedRef.current) return;
-    welcomeSkillsFetchedRef.current = false;
-    fetchWelcomeSkills();
+    if (welcomeSkillsAtRef.current === 0) return;
+    fetchWelcomeSkills(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked]);
 
@@ -241,6 +243,7 @@ export function WelcomeComposer({
   /** + 面板外点收(面板内点与 + 钮自持) */
   useEffect(() => {
     if (!plusOpen) return;
+    fetchWelcomeSkills(); // 2026-10-31 用户裁定:主动点开 + 即拉最新技能清单(5s 节流防抖在 fetch 侧)
     const onDown = (e: MouseEvent): void => {
       if (e.target instanceof Element && e.target.closest('.sx-plus-panel') === null && e.target.closest('.composer-plus-btn') === null) {
         setPlusOpen(false);
