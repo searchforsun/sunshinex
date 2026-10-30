@@ -56,8 +56,11 @@ export interface ProvidersPaneConn extends SettingsFormConn {
 /** models 行 effort/tier 闭集(单源:请求参数卡选项与模型行 Select 共用;daemon 语义键同域) */
 const MODEL_EFFORTS: readonly string[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const MODEL_TIERS: readonly string[] = ['small', 'medium', 'large'];
-const EFFORT_LABELS: Record<string, string> = { none: '无', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '极高', max: '最大' };
-const TIER_LABELS: Record<string, string> = { small: '小', medium: '中', large: '大' };
+/* 档位/强度双语对(2026-10-30 用户澄清「label 走 i18n,不是改成中文」):l/lz 双语对形态——
+ *  请求参数卡字段走 lz 管线(renderControl 渲染期 t 求值),模型行 Select 渲染期 t() 求值;
+ *  值本身(none/medium/small 等语义键)不随语言变 */
+const EFFORT_PAIRS: Record<string, { en: string; zh: string }> = { none: { en: 'None', zh: '无' }, minimal: { en: 'Minimal', zh: '极低' }, low: { en: 'Low', zh: '低' }, medium: { en: 'Medium', zh: '中' }, high: { en: 'High', zh: '高' }, xhigh: { en: 'XHigh', zh: '极高' }, max: { en: 'Max', zh: '最大' } };
+const TIER_PAIRS: Record<string, { en: string; zh: string }> = { small: { en: 'Small', zh: '小' }, medium: { en: 'Medium', zh: '中' }, large: { en: 'Large', zh: '大' } };
 
 /** 请求参数卡(SettingsForm 复用):仅 tier/effort 两闭集下拉——模型档位散键四 Combo 与 baseUrl
  *  行退役(spec §15);键名与 daemon SEMANTIC_KEYS 逐字对齐,写路径 PUT /settings 原样保留。
@@ -73,12 +76,12 @@ const PROVIDERS_PANE: SettingsPaneDef = {
         {
           key: 'tier',
           control: 'select',
-          options: MODEL_TIERS.map((v) => ({ v, l: TIER_LABELS[v] ?? v })),
+          options: MODEL_TIERS.map((v) => ({ v, l: TIER_PAIRS[v].en, lz: TIER_PAIRS[v].zh })),
         },
         {
           key: 'reasoningEffort',
           control: 'select',
-          options: MODEL_EFFORTS.map((v) => ({ v, l: EFFORT_LABELS[v] ?? v })),
+          options: MODEL_EFFORTS.map((v) => ({ v, l: EFFORT_PAIRS[v].en, lz: EFFORT_PAIRS[v].zh })),
         },
       ],
     },
@@ -444,14 +447,14 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                     ariaLabel={t('Effort', '强度')}
                     value={r.reasoningEffort}
                     placeholder={t('Effort', '强度')}
-                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_EFFORTS.map((v) => ({ v, l: EFFORT_LABELS[v] ?? v }))]}
+                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_EFFORTS.map((v) => ({ v, l: t(EFFORT_PAIRS[v].en, EFFORT_PAIRS[v].zh) }))]}
                     onChange={(v) => setRow(i, { reasoningEffort: v })}
                   />
                   <Select
                     ariaLabel={t('Tier', '档位')}
                     value={r.tier}
                     placeholder={t('Tier', '档位')}
-                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_TIERS.map((v) => ({ v, l: TIER_LABELS[v] ?? v }))]}
+                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_TIERS.map((v) => ({ v, l: t(TIER_PAIRS[v].en, TIER_PAIRS[v].zh) }))]}
                     onChange={(v) => setRow(i, { tier: v })}
                   />
                 </div>

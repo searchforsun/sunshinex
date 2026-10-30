@@ -139,16 +139,17 @@ const num = (key: string): SettingsFieldDef => ({ key, control: 'number' });
 /** 闭集选项(lz=中文标签,渲染期 t 求值——选项标签曾于模块加载期 t() 冻结,切中文后仍显英文) */
 export type SettingsOption = SelectOption & { readonly lz?: string };
 const sel = (key: string, options: readonly SettingsOption[]): SettingsFieldDef => ({ key, control: 'select', options });
-/* 未设置显默认值(2026-10-30 用户裁定):键→默认项中文标签(渲染期显示;存值仍=清空删键) */
-const SELECT_PLACEHOLDERS: Record<string, string> = {
-  tier: '中',
-  reasoningEffort: '中',
-  readFence: '关闭',
-  sandbox: '关闭',
-  isolation: '自动',
-  kbBackend: '本地 JSON',
-  autoMemory: '开',
-  learnedSkills: '开',
+/* 未设置显默认值(2026-10-30 用户裁定;占位=默认选项的本地化标签,渲染期 t 求值随语言切换;
+ *  存值仍=清空删键):键→默认选项的 value(在 options 集里按值找回双语标签) */
+const SELECT_DEFAULT_VALUES: Record<string, string> = {
+  tier: 'medium',
+  reasoningEffort: 'medium',
+  readFence: 'off',
+  sandbox: 'off',
+  isolation: 'auto',
+  kbBackend: 'local-json',
+  autoMemory: 'on',
+  learnedSkills: 'on',
   websearchProvider: 'duckduckgo',
 };
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
@@ -512,7 +513,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
           options={opts}
           disabled={disabled}
           title={title}
-          placeholder={SELECT_PLACEHOLDERS[fd.key] !== undefined ? SELECT_PLACEHOLDERS[fd.key] : t('Unset', '未设置')}
+          placeholder={(() => { const dv = SELECT_DEFAULT_VALUES[fd.key]; const def = dv !== undefined ? base.find((o) => o.v === dv) : undefined; return def !== undefined ? t(def.l, def.lz ?? def.l) : t('Unset', '未设置'); })()}
           onChange={(v) => {
             setValues((vals) => ({ ...vals, [fd.key]: v }));
             persistField(fd, v); // 换项即存(自动生效轮)

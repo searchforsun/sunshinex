@@ -75,29 +75,34 @@ const TOOL_VERB_ZH: Record<string, string> = {
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
  *  11 工具 + 浏览器操作常用族;未收录回退短名(server 面在展开体/工具清单承载,折叠行不重复) */
-const MCP_TOOL_ZH: Record<string, string> = {
-  screenshot: '截屏', click: '点击', type: '输入', key: '按键', scroll: '滚动', drag: '拖拽',
-  app: '切换应用', uia_snapshot: '界面快照', window_list: '窗口列表', wait: '等待', wait_for: '等待至',
-  browser_navigate: '打开网页', browser_navigate_back: '网页后退', browser_navigate_forward: '网页前进',
-  browser_click: '点击', browser_type: '输入', browser_press_key: '按键', browser_hover: '悬停',
-  browser_drag: '拖拽', browser_select: '选择', browser_fill: '填充', browser_snapshot: '页面快照',
-  browser_take_screenshot: '网页截图', browser_screenshot: '网页截图', browser_evaluate: '执行脚本',
-  browser_wait_for: '等待至', browser_check: '勾选', browser_annotate: '页面标注',
-  browser_emulate_media: '模拟媒体', browser_handle_dialog: '处理对话框', browser_pdf: '导出 PDF',
-  browser_tab_select: '切换标签', browser_tab_new: '新建标签', browser_tab_close: '关闭标签',
-  browser_tab_list: '标签列表', browser_tab_update: '更新标签',
-  browser_console_messages: '读控制台', browser_console_clear: '清控制台', browser_network_requests: '网络请求',
-  browser_cookie_get: '读 Cookie', browser_cookie_set: '设 Cookie', browser_cookie_delete: '删 Cookie',
-  browser_cookie_list: 'Cookie 列表', browser_cookie_clear: '清 Cookie', browser_file_upload: '上传文件',
-  browser_close: '关闭页面', browser_resize: '调整窗口', browser_install: '安装浏览器',
+/** MCP 工具双语名映射(2026-10-30 用户裁定「档位/强度/工具名走 i18n,不是改成中文」):电脑操作
+ *  11 工具 + 浏览器操作常用族;渲染期 t(en, zh) 求值随语言切换;未收录回退短名(server 面在
+ *  展开体/工具清单承载,折叠行不重复) */
+const MCP_TOOL_LABELS: Record<string, { en: string; zh: string }> = {
+  screenshot: { en: 'Screenshot', zh: '截屏' }, click: { en: 'Click', zh: '点击' }, type: { en: 'Type', zh: '输入' }, key: { en: 'Key', zh: '按键' },
+  scroll: { en: 'Scroll', zh: '滚动' }, drag: { en: 'Drag', zh: '拖拽' }, app: { en: 'Switch app', zh: '切换应用' },
+  uia_snapshot: { en: 'UI snapshot', zh: '界面快照' }, window_list: { en: 'Window list', zh: '窗口列表' },
+  wait: { en: 'Wait', zh: '等待' }, wait_for: { en: 'Wait for', zh: '等待至' },
+  browser_navigate: { en: 'Open page', zh: '打开网页' }, browser_navigate_back: { en: 'Back', zh: '网页后退' }, browser_navigate_forward: { en: 'Forward', zh: '网页前进' },
+  browser_click: { en: 'Click', zh: '点击' }, browser_type: { en: 'Type', zh: '输入' }, browser_press_key: { en: 'Press key', zh: '按键' }, browser_hover: { en: 'Hover', zh: '悬停' },
+  browser_drag: { en: 'Drag', zh: '拖拽' }, browser_select: { en: 'Select', zh: '选择' }, browser_fill: { en: 'Fill', zh: '填充' }, browser_snapshot: { en: 'Snapshot', zh: '页面快照' },
+  browser_take_screenshot: { en: 'Screenshot', zh: '网页截图' }, browser_screenshot: { en: 'Screenshot', zh: '网页截图' }, browser_evaluate: { en: 'Evaluate', zh: '执行脚本' },
+  browser_wait_for: { en: 'Wait for', zh: '等待至' }, browser_check: { en: 'Check', zh: '勾选' }, browser_annotate: { en: 'Annotate', zh: '页面标注' },
+  browser_emulate_media: { en: 'Emulate media', zh: '模拟媒体' }, browser_handle_dialog: { en: 'Handle dialog', zh: '处理对话框' }, browser_pdf: { en: 'Export PDF', zh: '导出 PDF' },
+  browser_tab_select: { en: 'Select tab', zh: '切换标签' }, browser_tab_new: { en: 'New tab', zh: '新建标签' }, browser_tab_close: { en: 'Close tab', zh: '关闭标签' },
+  browser_tab_list: { en: 'Tab list', zh: '标签列表' }, browser_tab_update: { en: 'Update tab', zh: '更新标签' },
+  browser_console_messages: { en: 'Console', zh: '读控制台' }, browser_console_clear: { en: 'Clear console', zh: '清控制台' }, browser_network_requests: { en: 'Network requests', zh: '网络请求' },
+  browser_cookie_get: { en: 'Get cookie', zh: '读 Cookie' }, browser_cookie_set: { en: 'Set cookie', zh: '设 Cookie' }, browser_cookie_delete: { en: 'Delete cookie', zh: '删 Cookie' },
+  browser_cookie_list: { en: 'Cookie list', zh: 'Cookie 列表' }, browser_cookie_clear: { en: 'Clear cookies', zh: '清 Cookie' }, browser_file_upload: { en: 'Upload file', zh: '上传文件' },
+  browser_close: { en: 'Close page', zh: '关闭页面' }, browser_resize: { en: 'Resize', zh: '调整窗口' }, browser_install: { en: 'Install browser', zh: '安装浏览器' },
 };
 
 export function zhToolName(name: string): string {
-  // MCP 工具显中文名(未收录回退短名;server 面在展开体/工具清单承载,折叠行不重复)
+  // MCP 工具显本地化名(t(en, zh) 渲染期求值随语言切换;未收录回退短名;server 面在展开体/工具清单承载)
   const mcp = mcpToolParts(name);
   if (mcp !== null) {
-    const zh = MCP_TOOL_ZH[mcp.tool];
-    return zh !== undefined ? zh : mcp.tool;
+    const pair = MCP_TOOL_LABELS[mcp.tool];
+    return pair !== undefined ? t(pair.en, pair.zh) : mcp.tool;
   }
   const zh = TOOL_VERB_ZH[name];
   return zh === undefined ? name : t(name, zh);
@@ -360,12 +365,14 @@ export const ToolEntryView = memo(function ToolEntryView({
     // G14.214 task_* 运行态带任务名——「正在复审 架构评审」替代泛文案（taskOpName 已在场即有值）
     const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
     if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
-    // 2026-10-26 MCP 工具运行态带短工具名——「正在调用 send_message」(与完成态短名同口径)
+    // 2026-10-26 MCP 工具运行态带本地化工具名——「正在调用 截屏」(双语对随语言切换,与完成态同口径)
     const mcp = mcpToolParts(toolName);
-    // 运行态带中文工具名(2026-10-30 用户裁定;「正在调用 截屏」替代英文短名)
+    // 运行态带本地化工具名(2026-10-30 用户裁定;双语对渲染期求值)
     if (mcp !== null) {
-      const zh = MCP_TOOL_ZH[mcp.tool] ?? mcp.tool;
-      return t(`Calling ${zh}`, `正在调用 ${zh}`);
+      const pair = MCP_TOOL_LABELS[mcp.tool];
+      return pair !== undefined
+        ? t(`Calling ${pair.en}`, `正在调用 ${pair.zh}`)
+        : t(`Calling ${mcp.tool}`, `正在调用 ${mcp.tool}`);
     }
     const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
     return t(pair[0], pair[1]);
