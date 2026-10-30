@@ -31,7 +31,7 @@ export interface ShellLayout {
   startMenuResize: (e: ReactMouseEvent<HTMLDivElement>) => void;
   /** 右栏浮窗(视口 <616):覆盖层不占布局宽 */
   readonly sidebarFloating: boolean;
-  /** 菜单浮窗(视口 <856 自动关,手动重开呈抽屉) */
+  /** 菜单浮窗(视口 <856 自动关,手动重开呈抽屉;设置页停靠例外——不转浮窗,见实现) */
   readonly menuFloating: boolean;
   readonly menuClosed: boolean;
   readonly setMenuClosed: Dispatch<SetStateAction<boolean>>;
@@ -104,8 +104,13 @@ export function useShellLayout(deps: ShellLayoutDeps): ShellLayout {
   const sidebarFloating = viewportW / zoomScale() < MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
   /** 左菜单浮窗/自动关闭(2026-10-24 用户裁定):视口 <240+320+296=856 时菜单自动关闭;手动重开
    *  (顶栏 logo/搜索)后以悬浮抽屉呈现,选中会话/设置/新会话/搜索选会话即自动收——产品可缩到
-   *  主栏+侧栏双触底 616。压缩顺序:右缘缩=侧栏→主栏→菜单→菜单关闭;左缘反向 */
-  const menuFloating = viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
+   *  主栏+侧栏双触底 616。压缩顺序:右缘缩=侧栏→主栏→菜单→菜单关闭;左缘反向。
+   *  设置页例外(2026-10-30 用户裁定「设置页面宽度缩小时不应该产生抽屉浮窗」):settingsOpen
+   *  期间不判浮窗,菜单保持停靠,由既有渲染期钳制按 240 下限压缩让位(menuRenderW),设置内容
+   *  由 ≤720px 响应式纵向布局兜底。旁路影响面:仅设置页(settingsOpen)窄宽不再 sx-menu-float
+   *  (--menu-occ 由 0 改为钳后 menuRenderW);chat/welcome 页行为零变化;设置关闭后窄宽仍按
+   *  上式原规则转浮窗。sidebarFloating(右栏)不在此判定,设置页本就不渲染右栏,不受影响 */
+  const menuFloating = !settingsOpen && viewportW / zoomScale() < 240 + MAIN_MIN_WIDTH + MIN_TAB_WIDTH;
   /** 菜单关闭态(手动点品牌收起/<856 自动关;顶栏 logo 重开) */
   const [menuClosed, setMenuClosed] = useState(false);
   const closeMenuDrawer = (): void => {
