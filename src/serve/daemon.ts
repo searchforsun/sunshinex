@@ -222,10 +222,12 @@ export class GuiDaemon {
   /** 项目配置监听挂载（任务14，watchProject 守护面）：`.sunshinex` 缺失跳过不监听不产告警——
    *  watcher 对缺失目录本就逐目录 warn 降级，会话打开于无项目配置的普通目录（含 default 草稿根）
    *  是常态，静默跳过即「GET 即读」降级口径；目录补建后下次会话打开重试即真实生效（watchProject
-   *  幂等，同 root 已监听则跳过） */
-  private watchProjectRoot(root: string): void {
-    if (!fs.existsSync(path.join(root, '.sunshinex'))) return;
+   *  幂等，同 root 已监听则跳过）。返回是否真实挂载（create 面据此决定是否广播 skills 帧——
+   *  无 `.sunshinex` 的纯新目录不产假帧） */
+  private watchProjectRoot(root: string): boolean {
+    if (!fs.existsSync(path.join(root, '.sunshinex'))) return false;
     this.watcher.watchProject(root);
+    return true;
   }
 
   /** 项目配置监听拆除（任务14，unwatchProject 守护面）：同 root 多会话允许（Ruling 2）——注册表
@@ -1057,6 +1059,13 @@ export class GuiDaemon {
     return {
       send: (res, status, body) => this.send(res, status, body),
       readJson: (req, cap) => this.readJson(req, cap),
+      // 创建/登记成功后静默补全（2026-10-30 用户裁定「创建项目后该加载都要静默加载」）：既有目录
+      // 登记（选完即建）时 `.sunshinex` 可能已就位——就地挂 watcher（会话未开也有帧）+ 广播 skills
+      // 帧（在座 GUI 面静默重拉该 root 的 skills 视图）；纯新目录（无 `.sunshinex`）不挂不广播，
+      // 会话打开时「GET 即读」+ watchProject 补挂兜底
+      afterCreate: (root) => {
+        if (this.watchProjectRoot(root)) this.broadcastFrame({ kind: 'config-changed', resource: 'skills', scope: 'project', root });
+      },
     };
   }
 

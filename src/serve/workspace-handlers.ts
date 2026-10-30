@@ -17,6 +17,9 @@ import type { WorkspaceRow } from './daemon';
 export interface WorkspaceHandlerIo {
   send(res: http.ServerResponse, status: number, body: object): void;
   readJson(req: http.IncomingMessage, cap?: number): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
+  /** 创建/登记成功后的静默补全钩子（2026-10-30：创建提速后加载缺口收口——daemon 侧挂项目 watcher
+   *  + 广播 skills 帧；GUI 侧回源 rows/重置 skills 闸）。幂等登记路径同样触发（重新添加也该加载） */
+  afterCreate?(root: string): void;
 }
 
 export async function handleWorkspaceLocate(io: WorkspaceHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -105,13 +108,17 @@ export async function handleWorkspaceCreate(io: WorkspaceHandlerIo, req: http.In
   if (fs.existsSync(wsFile)) {
     try {
       const raw = JSON.parse(fs.readFileSync(wsFile, 'utf8')) as { root?: unknown };
-      if (raw?.root === root) return io.send(res, 200, { ok: true, root, slug: projectSlug(root) });
+      if (raw?.root === root) {
+        io.afterCreate?.(root);
+        return io.send(res, 200, { ok: true, root, slug: projectSlug(root) });
+      }
     } catch {
       // 坏档:按新初始化覆写
     }
   }
   fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
   fs.writeFileSync(wsFile, JSON.stringify({ root }, null, 2));
+  io.afterCreate?.(root);
   io.send(res, 200, { ok: true, root, slug: projectSlug(root) });
 }
 

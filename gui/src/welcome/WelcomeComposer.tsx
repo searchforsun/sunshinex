@@ -116,6 +116,15 @@ export function WelcomeComposer({
       () => undefined,
     );
   };
+  // 项目切换/新建登记后静默重拉（2026-10-30 用户裁定「创建项目后该加载都要静默加载」）：单次闸按
+  // picked 归位——已拉过清单时切到新项目（选中/新建/登记）即重拉该 root 的 skills；未拉过（还没敲
+  // `/`）不拉，惰性口径与 G8c 计数污染防护不变（同 workspaceFiles 的 [picked] effect 对照口径）
+  useEffect(() => {
+    if (!welcomeSkillsFetchedRef.current) return;
+    welcomeSkillsFetchedRef.current = false;
+    fetchWelcomeSkills();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked]);
 
   useEffect(() => {
     conn.settings().then(
@@ -164,7 +173,9 @@ export function WelcomeComposer({
   useEffect(() => {
     if (presetRoot !== undefined && presetRoot !== '' ) setPicked(presetRoot);
   }, [presetRoot]);
-  useEffect(() => {
+  /** 项目列表回源（挂载 + 创建/登记成功后静默重拉——本地 append 只保即时可见,mtime 排序/会话计数/
+   *  侧栏对齐都要以 /workspaces 为准;2026-10-30 创建提速后加载缺口收口） */
+  const refreshRows = (): void => {
     conn.workspaces().then(
       (list) => {
         const usable = list.filter((r) => r.root !== undefined && r.root !== '');
@@ -187,6 +198,10 @@ export function WelcomeComposer({
       },
       () => setRows([]),
     );
+  };
+  useEffect(() => {
+    refreshRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn]);
   useEffect(() => {
     if (!projOpen) return;
@@ -311,6 +326,7 @@ export function WelcomeComposer({
         });
         setPicked(res.root);
         setProjOpen(false);
+        void refreshRows(); // 静默回源:skills 闸随 picked 重置(上方 effect)+列表与侧栏/mtime 对齐
       } catch (err) {
         setHint(err instanceof Error ? err.message : String(err));
       }
@@ -329,6 +345,7 @@ export function WelcomeComposer({
         });
         setPicked(res.root);
         setProjOpen(false);
+        void refreshRows(); // 静默回源(同桌面壳分支)
       } catch (err) {
         setHint(err instanceof Error ? err.message : String(err));
       }
@@ -350,6 +367,7 @@ export function WelcomeComposer({
         });
         setPicked(res.root);
         setProjOpen(false);
+        void refreshRows(); // 静默回源:skills 闸随 picked 重置+列表对齐
       })
       .catch((err: unknown) => setHint(err instanceof Error ? err.message : String(err)));
   };
