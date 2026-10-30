@@ -169,10 +169,35 @@ export function WelcomeComposer({
       ?.then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => undefined);
   }, [picked, conn]);
 
-  /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换) */
+  /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换)。
+   *  同拍回源项目列表:侧栏「添加工作区」只经本 preset 通知欢迎页(组件已挂载不重拉,
+   *  下拉还是挂载时快照——新建项目不入列,切页才显) */
   useEffect(() => {
-    if (presetRoot !== undefined && presetRoot !== '' ) setPicked(presetRoot);
+    if (presetRoot !== undefined && presetRoot !== '') {
+      setPicked(presetRoot);
+      refreshRows();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetRoot]);
+  /** 他面创建回源(2026-10-30 用户实测「侧栏建项目后欢迎页下拉不显,切页才出」的跨面收口):
+   *  config-changed 任一帧即静默重拉 /workspaces(daemon afterCreate 建项目必广播;skills
+   *  等高频帧顺带重拉只是幂等 GET)。300ms 合帧防抖;conn 缺 onConfigChanged(旧桩)不订阅 */
+  useEffect(() => {
+    if (typeof conn.onConfigChanged !== 'function') return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = conn.onConfigChanged(() => {
+      if (timer !== null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        refreshRows();
+      }, 300);
+    });
+    return () => {
+      off();
+      if (timer !== null) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conn]);
   /** 项目列表回源（挂载 + 创建/登记成功后静默重拉——本地 append 只保即时可见,mtime 排序/会话计数/
    *  侧栏对齐都要以 /workspaces 为准;2026-10-30 创建提速后加载缺口收口） */
   const refreshRows = (): void => {

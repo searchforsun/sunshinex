@@ -29,6 +29,9 @@ export interface WelcomeComposerConn {
    *  dirs=尾斜杠目录清单(@面板滤出文件夹;旧 daemon 无此字段 → undefined) */
   workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
   setSessionModel(id: string, model?: string): Promise<void>;
+  /** config-changed 订阅(可选——旧测试桩/降级面缺名即不订阅,守卫口径同 appSeen 族):
+   *  工作区在他面(侧栏添加/他窗)创建落库时 daemon 广播,欢迎页据此静默回源项目列表 */
+  onConfigChanged?(cb: (info: { resource: string; scope?: string; root?: string | null }) => void): () => void;
   setSessionEffort(id: string, effort?: string): Promise<void>;
   /** read-only 档建后补切(newSession mode 参数只收执行两档;见 WelcomeComposer.send) */
   setSessionMode(id: string, mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan'): Promise<void>;
