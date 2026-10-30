@@ -115,7 +115,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 .sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; /* z 96→80:窗控簇(z90)常驻其上, [|] −□× 可见可点(用户裁定) */ border-left: 1px solid var(--border); border-radius: var(--radius-win) 0 0 var(--radius-win); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24 用户裁定:抽屉圆角对齐客户端 */
 /* 2026-10-24 三轮裁定:左菜单抽屉(<856 手动重开态)——fixed 左满高悬浮,宽走 --menu-w(渲染
    钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
-.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 96; width: var(--menu-w); padding-top: 0; /* 2026-10-24 用户裁定:抽屉头与窗控簇同高对齐(旧 G10-C13 padding-top:8 下移 8.8 视觉) */ max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */
+.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 80; width: var(--menu-w); padding-top: 0; /* 2026-10-24 用户裁定:抽屉头与窗控簇同高对齐(旧 G10-C13 padding-top:8 下移 8.8 视觉) */ max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */ /* 2026-10-30 z 96→80:与右抽屉同规(用户裁定先例 z 96→80「窗控簇 z90 常驻其上」)——--menu-w 用户可拖宽上限 100vw-40px,抽屉够宽时 z96 盖住 fixed 右上窗控簇=[|]−□× 不可点 */
 .sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
 /* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏)。2026-10-25 前进/后退:
    呼出钮入浮出簇(导航钮对+呼出同排),定位由簇容器承载;z50 盖 welcome 页 dragrail */
@@ -307,7 +307,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 消息流:chat 满高滚动列+行距;entry 条目卡 bg-1+10px 圆+hover 微浮(阴影+边提亮,零布局移);
    user=accent 左边(裁定:与 session-row.active 竖条同语言);notice=虚线轻条;error=err 着色 */.chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; }.entry { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; overflow-wrap: anywhere; }.entry:hover { border-color: var(--fg-secondary); }.entry-user { border-left: 3px solid var(--accent); }.entry-user:hover { border-left-color: var(--accent); }.entry-notice { background: transparent; border-style: dashed; color: var(--fg-secondary); font-size: 12px; }.entry-error { border-color: var(--err); background: color-mix(in srgb, var(--err) 8%, transparent); color: var(--err); }
 /* entry 内 markdown 排版(react-markdown 直出,浏览器默认 p/table 边距收束;user 条 `> text`
-   即 blockquote——user 卡内平铺,assistant 引用=灰竖线缩进) */.entry p { margin: 0 0 6px; }.entry > :last-child { margin-bottom: 0; }.entry ul, .entry ol { margin: 10px 0; padding-left: 20px; }.entry blockquote { margin: 4px 0; padding: 0 0 0 10px; border-left: 2px solid var(--border); color: var(--fg-secondary); }.entry-user blockquote { margin: 0; padding: 0; border: none; }.entry a { color: var(--accent); }.entry code { font-family: var(--font-mono); font-size: 12px; }.entry :not(pre) > code { background: var(--surface-soft); border-radius: var(--radius-xs); padding: 0 4px; }.entry pre { margin: 4px 0; padding: 6px 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); font: 11px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }.entry table { margin: 10px 0; border-collapse: collapse; font-size: 12px; }.entry th, .entry td { border: 1px solid var(--border); padding: 2px 8px; }
+   即 blockquote——user 卡内平铺,assistant 引用=灰竖线缩进) */.entry p { margin: 0 0 6px; }.entry > :last-child { margin-bottom: 0; }.entry ul, .entry ol { margin: 10px 0; padding-left: 20px; }.entry blockquote { margin: 4px 0; padding: 0 0 0 10px; border-left: 2px solid var(--border); color: var(--fg-secondary); }.entry-user blockquote { margin: 0; padding: 0; border: none; }.entry a { color: var(--accent); }.entry code { font-family: var(--font-mono); font-size: var(--f-code, 12px); }.entry :not(pre) > code { background: var(--surface-soft); border-radius: var(--radius-xs); padding: 0 4px; }.entry pre { margin: 4px 0; padding: 6px 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); font: 11px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }.entry table { margin: 10px 0; border-collapse: collapse; font-size: 12px; }.entry th, .entry td { border: 1px solid var(--border); padding: 2px 8px; }
 
 /* 工具条目(entry-tool):bg-2 行;折叠行按钮/展开缩进列/path 钮/diff 加载行。字族 2026-10-26 用户裁定进预设管线(写死等宽在衬线预设下露馅)——UI 字族,代码井/路径仍等宽 */.entry-tool { padding: 3px 6px; background: var(--surface-soft); font-family: var(--font-ui); font-size: var(--f-tool, 11px); }.tool-summary { display: block; width: 100%; text-align: left; padding: 2px 4px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.tool-summary:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.tool-detail { margin: 2px 0 4px; padding-left: 8px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; }.tool-path { align-self: flex-start; padding: 0 4px; border-radius: var(--radius-xs); color: var(--accent); }.tool-path:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); text-decoration: underline; }.diff-loading { margin: 0; color: var(--fg-secondary); font-size: 12px; }
 
@@ -335,7 +335,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none; border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-tertiary); cursor: pointer;
 }.files-act:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
-/* G14.121 md 格式化预览面:prose 基础排版;mermaid/代码块组件自带样式 */.files-md { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 24px; font: 13px/1.7 var(--font-ui); }.files-md h1, .files-md h2, .files-md h3, .files-md h4 { margin: 20px 0 10px; line-height: 1.35; }.files-md p { margin: 0 0 10px; }.files-md ul, .files-md ol { margin: 10px 0; padding-left: 22px; }.files-md blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--fg-secondary); }.files-md a { color: var(--accent); }/* G14.213 行内限定(:not(pre)>code):灰底/内边距只上行内 code——块代码吃灰底则横滚露区无底(底色须归不滚动的 .code-block 卡) */.files-md :not(pre) > code { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 0 4px; font: 12px var(--font-mono); }.files-md table { border-collapse: collapse; margin: 12px 0; }.files-md th, .files-md td { border: 1px solid var(--border); padding: 4px 10px; }.files-editor { flex: 1; min-height: 0; }
+/* G14.121 md 格式化预览面:prose 基础排版;mermaid/代码块组件自带样式 */.files-md { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 24px; font: 13px/1.7 var(--font-ui); }.files-md h1, .files-md h2, .files-md h3, .files-md h4 { margin: 20px 0 10px; line-height: 1.35; }.files-md p { margin: 0 0 10px; }.files-md ul, .files-md ol { margin: 10px 0; padding-left: 22px; }.files-md blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--fg-secondary); }.files-md a { color: var(--accent); }/* G14.213 行内限定(:not(pre)>code):灰底/内边距只上行内 code——块代码吃灰底则横滚露区无底(底色须归不滚动的 .code-block 卡) */.files-md :not(pre) > code { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 0 4px; font: var(--f-code, 12px) var(--font-mono); }.files-md table { border-collapse: collapse; margin: 12px 0; }.files-md th, .files-md td { border: 1px solid var(--border); padding: 4px 10px; }.files-editor { flex: 1; min-height: 0; }
 /* 空态(裸开档):引导+路径输入(加载入口仅此处与错误态在场) */.files-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; }.files-hint { margin: 40px 0 12px; text-align: center; color: var(--fg-tertiary); font-size: 12px; }.files-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 24px; }.files-path { flex: 1; min-width: 0; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: 12px var(--font-mono); }.files-load { flex: none; padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); }.files-load:hover:not(:disabled) { border-color: var(--border-strong); color: var(--fg); }.files-loading { flex: none; padding: 4px 12px; color: var(--fg-secondary); font-size: 12px; }.files-error { flex: none; margin: 8px 24px; color: var(--err); border: 1px solid var(--err); border-radius: var(--radius-md); padding: 6px 8px; font-size: 12px; }.files-error-title { margin: 0; font-weight: 600; }.files-error-detail { margin: 4px 0 0; font: 11px var(--font-mono); color: var(--fg-tertiary); overflow-wrap: anywhere; }.files-truncated { flex: none; margin: 6px 12px; color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 1px 10px; font-size: 11px; }
 /* hljs 令牌着色(无主题 css 导入——令牌口径就地取色,暗底可读;plaintext 无 span 零牵连) */.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: var(--syntax-keyword); }.hljs-string, .hljs-attr, .hljs-attribute { color: var(--syntax-string); }.hljs-number, .hljs-literal { color: var(--syntax-literal); }.hljs-comment { color: var(--syntax-comment); font-style: italic; }.hljs-title, .hljs-name { color: var(--syntax-name); }
 /* shell 命令行着色(highlightCommand tok-* 令牌,2026-10-25):命令词蓝/旗标黄/串绿/变量紫/操作符粉/数字橙/注释灰斜——与 hljs syntax 表同源 */
@@ -1231,10 +1231,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .thinking-scroll { max-height: 320px; overflow-y: auto; margin-top: 4px; background: var(--surface-code); border-radius: var(--radius-md); }.thinking-scroll .thinking-detail { margin: 0; background: transparent; border-radius: 0; }
 /* 系统行图标(§4):图标前置列+md 体;末元素 margin 收口随之内移一层 */.entry-md.has-icon { display: flex; align-items: flex-start; gap: 6px; }.entry-icon { flex: none; margin-top: 2px; color: var(--fg-tertiary); }.entry-md-body { min-width: 0; flex: 1; }.entry-md-body > :last-child { margin-bottom: 0; }.entry > .entry-md:last-child > .entry-md-body > :last-child { margin-bottom: 0; }
 
-/* 代码块卡(§5.2):禁折行横滚+头部栏;复制钮 hover 浮现 */.code-block { margin: 8px 0; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }.code-head { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; }.code-lang { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); }.code-head .sx-tip { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.code-block:hover .code-head .sx-tip, .code-head .sx-tip:focus-visible { opacity: 1; }.code-block pre { margin: 0; padding: 12px 14px; background: transparent; border: none; border-radius: 0; overflow-x: auto; }.code-block pre code { display: block; font: 12.5px/1.7 var(--font-mono); white-space: pre; overflow-wrap: normal; background: transparent; border-radius: 0; padding: 0; } /* G14.213 显式复位:嵌入面(.files-md 等)行内 code 规则不得渗入块代码——底色恒由本卡承担 */
+/* 代码块卡(§5.2):禁折行横滚+头部栏;复制钮 hover 浮现 */.code-block { margin: 8px 0; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; }.code-head { display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 6px 0 12px; }.code-lang { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); }.code-head .sx-tip { opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.code-block:hover .code-head .sx-tip, .code-head .sx-tip:focus-visible { opacity: 1; }.code-block pre { margin: 0; padding: 12px 14px; background: transparent; border: none; border-radius: 0; overflow-x: auto; }.code-block pre code { display: block; font: var(--f-code, 12.5px)/1.7 var(--font-mono); white-space: pre; overflow-wrap: normal; background: transparent; border-radius: 0; padding: 0; } /* G14.213 显式复位:嵌入面(.files-md 等)行内 code 规则不得渗入块代码——底色恒由本卡承担 */
 /* hljs 令牌泛化(原 .files-view 前缀收敛为全局——hljs 类只在代码上下文出现) */
 
-/* 正文排版定靶(§5.1):行距/标题阶梯/行内码/列表/hr/链接/图片 */.entry { line-height: 1.65; }.entry h1 { font-size: 17px; }.entry h2 { font-size: 15.5px; }.entry h3 { font-size: 14px; }.entry h4 { font-size: 13px; }.entry h1, .entry h2, .entry h3, .entry h4 { line-height: 1.4; font-weight: 600; margin: 26px 0 10px; }.entry :not(pre) > code { font-size: 12px; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }.entry li { margin: 3px 0; }.entry li::marker { color: var(--fg-secondary); }.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }.entry img { max-width: 100%; border-radius: var(--radius-md); }
+/* 正文排版定靶(§5.1):行距/标题阶梯/行内码/列表/hr/链接/图片 */.entry { line-height: 1.65; }.entry h1 { font-size: 17px; }.entry h2 { font-size: 15.5px; }.entry h3 { font-size: 14px; }.entry h4 { font-size: 13px; }.entry h1, .entry h2, .entry h3, .entry h4 { line-height: 1.4; font-weight: 600; margin: 26px 0 10px; }.entry :not(pre) > code { font-size: calc(var(--f-code, 12.5px) - 0.5px); background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }.entry li { margin: 3px 0; }.entry li::marker { color: var(--fg-secondary); }.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }.entry img { max-width: 100%; border-radius: var(--radius-md); }
 /* 表格(§5.3):横滚圆角容器+表头底+只留横线+斑马纹;外距 14(区域行距加大,2026-10-24) */.table-wrap { margin: 14px 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); /* G14.103 */ } .table-wrap .file-link { vertical-align: middle; }.table-wrap table { margin: 0; width: max-content; min-width: 50%; border-collapse: collapse; font-size: 12px; }.table-wrap th { background: var(--surface-soft); font-weight: 600; text-align: left; }.table-wrap th, .table-wrap td { padding: 6px 12px; border: none; border-bottom: 1px solid var(--border-subtle); }.table-wrap tr:last-child td { border-bottom: none; }.table-wrap tbody tr:nth-child(even) { background: color-mix(in srgb, var(--fg) 2%, transparent); }
 /* mermaid 容器(§5.4):hover 浮现钮;lightbox 淡入+轻缩放,contain 居中 */.mermaid-block { position: relative; }.mermaid-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.mermaid-block:hover .mermaid-actions, .mermaid-actions:focus-within { opacity: 1; }
 /* G14.122 lightbox 收缩:顶部让出标签条带(padding-top),动作钮随体——不再与标签条钮重叠 */.mermaid-lightbox {
@@ -1423,7 +1423,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: var(--surface-code); border-radius: var(--radius-md);
   font-size: 12px; line-height: 1.65;
   max-height: 280px; overflow-y: auto; /* G14.2xx 定高内滚:技能正文长则面板内滚动,不无限撑高流区 */
-}.tool-md p { margin: 0 0 6px; }.tool-md > :last-child { margin-bottom: 0; }.tool-md pre { margin: 4px 0; padding: 6px 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); font: 11px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }.tool-md code { font-family: var(--font-mono); }
+}.tool-md p { margin: 0 0 6px; }.tool-md > :last-child { margin-bottom: 0; }.tool-md pre { margin: 4px 0; padding: 6px 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); font: var(--f-code, 11px)/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }.tool-md code { font-family: var(--font-mono); }
 /* G14.5 Monaco diff(VSCode 原生 DiffEditor):圆角井容器+右上角标钮(diff 标签入口) */.diff-panel {
   position: relative;
   border-radius: 0; /* G14.109 直角(对标全文件 diff 视图) */
@@ -2370,34 +2370,22 @@ input.sx-setting-input { width: 100%; }
  /* 头内按钮安全兜底;拖拽由头内空白带承担 */
 
  /* drag 区按 DOM 序集合运算:页签条 drag 带在菜单头挖孔之后重新加回按钮区(文档序非绘制序),抽屉态一并退出 */
-/* 抽屉态顶栏容器 drag 一并退出(2026-10-29 用户实测「点击顶部宽高自动变大」+抽屉态呼出钮两连真实点击全死,CDP 定性):
-   抽屉翻转期容器 drag 位图错位吞按钮=点击落进 drag 区,微动鼠标即拖窗,松手贴顶=顶部吸附最大化
-   (宽高自动变大的机制);按钮优先原则照 2363 页签条抽屉态退出同款,窗口拖拽由 sx-topbar-drag
-   空白带(in-flow 孤岛)承担 */
-.sx-shell.sx-desktop.sx-menu-float .chat-topbar,
-.sx-shell.sx-desktop.sx-sidebar-float .chat-topbar { }
-/* 抽屉开启期覆盖面拖拽声明整体退役(2026-10-29 CDP 实测收尾):仅 no-drag 不够——被抽屉盖住的
-   drag 孤岛(sx-topbar-drag/sx-dragrail)仍进位图,记录/命中坐标错位方向随布局历史漂移,
-   抽屉头按钮被啃(呼出钮/收起钮真实点击间歇全死,合成点击正常=React 链无罪、系统位图有罪);
-   sx-menu-float 类仅在抽屉开启时在场(关=类退场),display:none 使元素不进位图=错位无从发生,
-   被盖住的拖拽面本不可见=零真实损失;抽屉关闭拖拽面即复职 */
-.sx-shell.sx-desktop.sx-menu-float .sx-topbar-drag,
-.sx-shell.sx-desktop.sx-menu-float .sx-dragrail { display: none; }
+/* 2026-10-30 用户裁定收口:容器 drag 整族与「抽屉态拖拽面 display:none」缓解一并退役(原生
+   app-region 位图机制归零,防回归钉见 no-native-drag.test.ts)——JS data-drag-band 拖拽下,
+   被抽屉盖住的区域天然收不到 mousedown(抽屉 z 更高),露出多少就能拖多少=左抽屉开启时顶栏
+   可见段恢复可拖(「任何时候可拖」) */
 
-.sx-shell.sx-desktop .chat-topbar { } /* 撤容器 drag(挖孔式,zoom 下吞窗控) */
 /* 窗控簇 150px 预留按需生效(2026-10-29 用户实测「窄主栏标题被压没,右侧还有空间」根修):
    预留只在主列是窗口最右表面(窗控簇真正压在主列上)时让位——侧栏停靠展开=窗控簇压侧栏上方,
    主列顶栏无条件 150px 白占=窄主栏标题被挤进剩余窄条而右侧看似空着;浮窗抽屉态(抽屉关=主列
    裸露;抽屉开=该区被抽屉盖住本不可用)与停靠折叠态(32px 骨架兜不住 ~150px 簇)照旧预留 */
 .sx-shell.sx-desktop.sx-sidebar-float .chat-topbar,
 .sx-shell.sx-desktop.sx-sidebar-collapsed .chat-topbar { padding-right: 150px; }
-.sx-shell.sx-desktop .chat-topbar button, .sx-shell.sx-desktop .chat-topbar input { }
-.sx-shell.sx-desktop .chat-topbar .chat-title { } /* 标题挖孔(2026-10-29 用户实测 hover 完整名提示失效):标题是 span 非钮非输入,容器 drag 下拖拽区吞鼠标事件=data-tip 不显;让出标题条可拖换 hover 面,窗口拖拽走其后 sx-topbar-drag 空白带不受影响 */
-/* left+104 避让菜单关闭态左上浮出簇(2026-10-25:后退/前进钮对+呼出钮,簇宽 10+84=94)—
-   drag 矩形与一切按钮几何互斥不变,zoom 错位平移仍咬不到钮 */
-.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 104px); right: calc(148px + var(--sidebar-w, 0px)); z-index: 1; } /* 2026-10-28:右缘动态让位侧栏实占宽——欢迎页草稿座页签条上场后 dragrail 常开仍几何互斥(侧栏关=回 148 原值) */
-.sx-shell.sx-desktop.sx-menu-float .sx-dragrail { left: calc(var(--menu-w, 240px) + 12px); } /* 抽屉态让位浮层(width:--menu-w z96),拖拽走顶栏空白带可见部 */
-.sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; margin-left: 24px; } /* margin-left=zoom 位图错位安全边(带左紧邻 ChatDynButtons) */
+/* dragrail 104/148 安全边与 topbar-drag margin-left:24 均为位图错位让路(2026-10-25/24 案)——
+   JS 拖拽下 rail z1 低于一切钮簇(z50/z90),钮优先天然成立,安全边收回纯设计间距 */
+.sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 12px); right: calc(12px + var(--sidebar-w, 0px)); z-index: 1; }
+.sx-shell.sx-desktop.sx-menu-float .sx-dragrail { left: calc(var(--menu-w, 240px) + 12px); } /* 抽屉态让位浮层(width:--menu-w z80) */
+.sx-shell.sx-desktop .sx-topbar-drag { flex: 1; align-self: stretch; user-select: none; }
 .sx-shell.sx-desktop .sx-menu-head-drag { flex: 1; align-self: stretch; margin: 0 24px 0 16px; } /* 右 24 避收起钮;左 16 避品牌字——右单侧,钮仍贴右缘 */
 /* 2026-10-23:分域渲染在途尾块 <pre> 吃进 .entry pre 代码块样式(用户截图「阴影区」)——
    尾块是正文不是代码:显式回零(裸段文字直出,字号字色随正文) */
@@ -2822,8 +2810,8 @@ input.sx-setting-input { width: 100%; }
   height: var(--toolbar-h);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
-} /* 无 counter-zoom(2026-10-29 用户实测「还是没有变化」根修):初版给空条挂倒数补偿=条钉死缩放 1.0 不随界面缩放(主对话顶栏 b2ae099 撤补偿后正常跟随,设置条漏改);空带命中错位为可接受面(带内无钮) */
+  user-select: none;
+} /* 纯视觉遮盖条(2026-10-30 用户裁定收口):app-region drag 终版退役(399a26a 清场后此处 3ac483a 复发=「点顶部窗宽高自动变大」元凶:原生 SC_MOVE+Aero Snap),拖拽改 JS data-drag-band 契约(App.tsx);此前 counter-zoom 挂/撤两轮(fe822ee)随位图机制一并作废 */
 .sx-settings-viewport { flex: 1 1 0; min-height: 0; overflow-y: auto; }
 
 /* ===== 2026-10-29 用户裁定五条修正追加段(纯加法;app.css 并行热区只加不改) ===== */

@@ -6,6 +6,7 @@ import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
+import { codeFontSize } from '../font-preset';
 import { t } from '../i18n';
 import { normRel, OPEN_DEFAULT_KEY } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
@@ -466,7 +467,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
                     lineNumbersMinChars: 3,
-                    fontSize: 12,
+                    fontSize: codeFontSize(), // 字体预设管线:代码字号随 --f-code(字族经 var 已随)
                     lineHeight: 19,
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
                     fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */

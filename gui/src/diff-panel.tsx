@@ -1,6 +1,7 @@
 import { DiffEditor } from '@monaco-editor/react';
 import { useMemo } from 'react';
 import { monacoLangOf, useSxTheme } from './monaco-setup';
+import { codeFontSize } from './font-preset';
 
 /**
  * G6 diff 面板（Chat 工具条 write 展开 / Diff 标签消费）——G14.5 起换 Monaco DiffEditor
@@ -64,7 +65,7 @@ export function DiffPanel({ oldStr, newStr, path, onOpenDiff, openDiffTitle, hei
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           lineNumbersMinChars: 3,
-          fontSize: 12,
+          fontSize: codeFontSize(), // 字体预设管线:代码字号随 --f-code(挂载时点;字族经 var 已随)
           lineHeight: 19,
           fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
           automaticLayout: true,

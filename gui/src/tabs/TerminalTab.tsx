@@ -1,4 +1,5 @@
 import '@xterm/xterm/css/xterm.css';
+import { terminalFontSpec } from '../font-preset';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -118,7 +119,8 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             return;
           }
           // ③ xterm + FitAddon + pty WS 装配
-          term = new Terminal({ theme: XTERM_THEME });
+          const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
+          term = new Terminal({ theme: XTERM_THEME, fontFamily: fontSpec.family, fontSize: fontSpec.size });
           fit = new FitAddon();
           term.loadAddon(fit);
           term.open(container);
@@ -187,8 +189,19 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
       }
     })();
 
+    // 字体预设热更(2026-10-29 字体一致性面):预设切换重读 --font-mono/--f-code 热更选项,
+    // canvas 度量随字变 → refit 重同步 pty 尺寸(不适配会错行)
+    const onFontPreset = (): void => {
+      if (term === null || fit === null) return;
+      const spec = terminalFontSpec();
+      term.options.fontFamily = spec.family;
+      term.options.fontSize = spec.size;
+      syncSize();
+    };
+    window.addEventListener('sunshinex:font-preset', onFontPreset);
     return () => {
       cancelled = true;
+      window.removeEventListener('sunshinex:font-preset', onFontPreset);
       observer?.disconnect();
       socket?.dispose();
       term?.dispose(); // 不 killPty——kill 归 App 关标签链(pty 生命周期属标签不属渲染)

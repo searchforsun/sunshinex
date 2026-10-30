@@ -103,10 +103,38 @@ export function applyFontPreset(p: FontPreset): void {
     if (v === undefined) rootStyle.removeProperty(name);
     else rootStyle.setProperty(name, v);
   }
+  // 非 CSS 消费方(xterm canvas 等)变更信号:字族/字号取值面自行重读并热更
+  window.dispatchEvent(new CustomEvent('sunshinex:font-preset'));
   try {
     localStorage.setItem(KEY, p);
   } catch {
     /* 隐私模式等持久化失败:仅内存态生效,不阻断 */
+  }
+}
+
+/** 终端字体规格(2026-10-29 用户裁定「终端可控也跟随预设」):family=当前生效 --font-mono
+ *  (含 default 预设的 :root 缺省,computed 读取统一两源),size=--f-code 数值(px,失败 12)。
+ *  xterm canvas 接 CSS 变量字符串不解析,须经此取实值。 */
+export function terminalFontSpec(): { family: string; size: number } {
+  let family = '';
+  let size = 12;
+  try {
+    const cs = getComputedStyle(document.documentElement);
+    family = cs.getPropertyValue('--font-mono').trim();
+    size = parseFloat(cs.getPropertyValue('--f-code')) || 12;
+  } catch {
+    /* 非浏览器环境守卫:回落 xterm 缺省 */
+  }
+  return { family: family || 'monospace', size };
+}
+
+/** 代码字号 px(2026-10-29 字体预设一致性面):Monaco 等非 CSS 数字消费方读取
+ *  --f-code 当前生效值(default 预设回落样式表缺省 12.5)。 */
+export function codeFontSize(): number {
+  try {
+    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--f-code')) || 12.5;
+  } catch {
+    return 12.5;
   }
 }
 
