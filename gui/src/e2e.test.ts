@@ -1033,7 +1033,7 @@ const tabsByTitle = (container: HTMLElement, title: string | RegExp): Element[] 
     return typeof title === 'string' ? t === title : title.test(t);
   });
 
-describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务页) + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走 +菜单)', () => {
+describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务页) + write 条目 path 钮开 Diff 标签(判重聚焦;文件标签面走左菜单目录树)', () => {
   it('建会话 → 「任务」默认在场且活动 → write path 钮 → Diff 标签开且活动(title=文件名)→ 双列 → 再点同 path 判重 → +菜单「文件」+路径输入补文件预览', async () => {
     const REL = 'g8d-e2e-diff-tab.txt'; // 会话 root 域内相对路径(full-access 直写,无挂起卡)
     const OLD = 'diff tab old line'; // pre-image 源(G7 fixture 复用:真 daemon write 影子快照的 old 列)
@@ -1115,15 +1115,13 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // 聚焦保持
       expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 标签总数不变
 
-      // —— 文件标签面(G14.159:+菜单「文件」已移除,经目录树文件行开档 → initialPath 载磁盘
-      //    现文件):「文件」标签开且活动 → files-view 载磁盘现文件 ——
-      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Directory', '目录')).length).toBe(1), { timeout: 5_000 });
+      // —— 文件标签面(2026-10-27 目录树入左菜单):左菜单树文件行开档 → files-view 载磁盘
+      //    现文件;目录树非页签(dirview 常驻左菜单),文件标签开且活动 ——
+      fireEvent.click(screen.getByRole('button', { name: /^open directory / }));
+      await waitFor(() => expect(container.querySelector('.sx-dirview .sx-tree')).not.toBeNull(), { timeout: 5_000 });
       const fileRow = await waitFor(
         () => {
-          const rows = [...container.querySelectorAll('.sx-tabbody .sx-tree-row')].filter((x) => x.textContent.trim() === REL);
+          const rows = [...container.querySelectorAll('.sx-dirview .sx-tree-row')].filter((x) => x.textContent.trim() === REL);
           if (rows.length === 0) throw new Error('not yet');
           return rows[0];
         },
@@ -1134,7 +1132,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
         () => expect(container.querySelector('.sx-tabbody [aria-label="file content"]')?.textContent).toContain(NEW),
         { timeout: 5_000 },
       );
-      expect(container.querySelectorAll('.sx-tab').length).toBe(4); // 任务 + Diff + 目录 + 文件
+      expect(container.querySelectorAll('.sx-tab').length).toBe(3); // 任务 + Diff + 文件
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -1144,7 +1142,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
 });
 
 describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务标签 → 任务行在场', () => {
-  it('提交 CARDS → done 收束 → 经「+」菜单开文件标签(任务失活)→ 切回「任务」标签 → 任务行/委派落位', async () => {
+  it('提交 CARDS → done 收束 → 开待办页签(任务失活)→ 切回「任务」标签 → 任务行/委派落位', async () => {
     const env = await startDaemon(new ScriptedAdapter(CARDS));
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
@@ -1176,13 +1174,13 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
         { timeout: 15_000 },
       );
 
-      // —— 任务标签失活现场:开目录标签即可(任务失活;G14.159 +菜单「文件」已移除)——
+      // —— 任务标签失活现场:开待办页签即可(任务失活;2026-10-27 目录页签退役)——
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Directory', '目录')).length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, bi('Directory', '目录'))[0]!.className).toContain('active');
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
+      await waitFor(() => expect(tabsByTitle(container, bi('Todos', '待办')).length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, bi('Todos', '待办'))[0]!.className).toContain('active');
       expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).not.toContain('active');
       expect(container.querySelector('.sx-tabbody .taskboard-cards')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留
 
@@ -1217,8 +1215,8 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
  * 连入收 error 'pty not found'。
  * ============================================================ */
 
-describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录标签 → 展开 → 点文件 → 文件标签活动+内容自动加载', () => {
-  it('建会话 → +菜单「目录」→ 根行 dirA → 展开 fileA.ts → 点开 → title=dirA/fileA.ts 活动且 Files 载标记串', async () => {
+describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 左菜单树(dirview)→ 展开 → 点文件 → 文件标签活动+内容自动加载', () => {
+  it('建会话 → 左菜单目录树(dirview)→ 根行 dirA → 展开 fileA.ts → 点开 → title=fileA.ts 活动且 Files 载标记串', async () => {
     const MARKER = 'g8b-dir-tree-file-marker';
     const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"目录场景无需模型轮"}']));
     try {
@@ -1238,14 +1236,10 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
     fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
-      // —— +菜单开目录标签(content 节「目录」,单例)→ mount 惰拉 root → 根行 dirA 在场 ——
+      // —— 目录树入左菜单(2026-10-27):组行目录钮开左菜单 dirview → 根行 dirA 在场 ——
       await expandPanel();
-      fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-      await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Directory', '目录')).length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, bi('Directory', '目录'))[0]!.className).toContain('active'); // 目录标签开且活动
-      await waitFor(() => expect(container.querySelector('.sx-tabbody .sx-tree')).not.toBeNull(), { timeout: 5_000 }); // 树容器在场(lazy 标签体轮询判据,同 G8a 归因)
+      fireEvent.click(screen.getByRole('button', { name: /^open directory / }));
+      await waitFor(() => expect(container.querySelector('.sx-dirview .sx-tree')).not.toBeNull(), { timeout: 5_000 }); // 树容器在场
       const dirRow = await screen.findByRole('button', { name: 'dirA' }, { timeout: 5_000 }); // 根层目录行
       expect(dirRow.className).toContain('sx-tree-dir');
 
@@ -1259,7 +1253,6 @@ describe('G8b 场景①:目录树开文件——fixture dirA/fileA.ts → 目录
       fireEvent.click(fileRow);
       await waitFor(() => expect(tabsByTitle(container, 'fileA.ts').length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, 'fileA.ts')[0]!.className).toContain('active'); // 文件标签活动
-      expect(tabsByTitle(container, bi('Directory', '目录'))[0]!.className).not.toContain('active'); // 目录标签失活
       await waitFor(
         () => expect(container.querySelector('.sx-tabbody [aria-label="file content"]')?.textContent).toContain(MARKER),
         { timeout: 5_000 },
@@ -1535,44 +1528,46 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
       fireEvent.click(screen.getByRole('button', { name: 'MCP' }));
       await screen.findByLabelText('settings pane MCP', { timeout: 5_000 });
-      await waitFor(() => expect(container.querySelector('.sx-mcp-card .sx-mcp-name')?.textContent).toBe('bad'), { timeout: 5_000 });
-      expect(container.querySelector('.sx-mcp-card')?.textContent).toContain('definitely-missing-xyz');
+      // MCP 面 2026-10-28 T21 骨架重构:ResourceCard(.sx-rc,title=服务端名);命令行落 details 内 meta
+      await waitFor(() => expect(container.querySelector('.sx-rc .sx-rc-title')?.textContent).toBe('bad'), { timeout: 5_000 });
+      expect(container.querySelector('.sx-rc')?.textContent).toContain('definitely-missing-xyz');
 
       // —— 「测试连接」→ probe 真探测(spawn 缺席命令)→ ok:false → 卡内错误行(daemon.test
       //    ghost 同口径:connection failed 前缀/ENOENT/spawn 任一即可——平台 spawn 报文差异容差)——
       fireEvent.click(screen.getByRole('button', { name: /^(?:Test connection|测试连接) bad$/ }));
       await waitFor(
         () =>
-          expect(container.querySelector('.sx-mcp-card .home-error')?.textContent ?? '').toMatch(
-            /connection failed \(bad\)|ENOENT|spawn/i,
+          expect(container.querySelector('.sx-rc .home-error')?.textContent ?? '').toMatch(
+            /connection failed \(bad\)|ENOENT|spawn|not found in merged manifest/i,
           ),
         { timeout: 15_000 },
       );
 
-      // —— 智能体面(导航项):「+ 新增」→ 表单 scope=project/id/name →「保存」→ 清单含 e2e-agent ——
+      // —— 智能体面(导航项):「+ 新增」→ 弹窗 id/name(写作用域=壳 scope,project 缺省)→ 保存 →
+      //    ResourceCard 清单含 e2e-agent(T21 骨架:.sx-rc title=id,副题=name)——
       fireEvent.click(screen.getByRole('button', { name: bi('Agents', '智能体') }));
       await screen.findByLabelText('settings pane agents', { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: bi('+ New', '+ 新增') }));
       await screen.findByLabelText('agent id', { timeout: 5_000 });
-      fireEvent.change(screen.getByLabelText('agent scope'), { target: { value: 'project' } });
       fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'e2e-agent' } });
       fireEvent.change(screen.getByLabelText('agent name'), { target: { value: 'E2E' } });
       fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
-      await waitFor(() => expect(container.querySelector('.sx-agent-list')?.textContent).toContain('e2e-agent'), { timeout: 10_000 });
-      expect(container.querySelector('.sx-agent-list')?.textContent).toContain('E2E'); // name 面同卡在场
+      await waitFor(() => expect(container.querySelector('.sx-rc')?.textContent).toContain('e2e-agent'), { timeout: 10_000 });
+      expect(container.querySelector('.sx-rc')?.textContent).toContain('E2E'); // name 面同卡在场
 
-      // —— 删除(op:delete)→ 清单空(「无自定义智能体。」空态回归)——
+      // —— 删除(两段式确认原地两击;op:delete)→ 清单空(「无自定义智能体。」空态回归)——
+      fireEvent.click(screen.getByRole('button', { name: /^(?:Delete|删除) e2e-agent\((?:Project|项目)\)$/ }));
       fireEvent.click(screen.getByRole('button', { name: /^(?:Delete|删除) e2e-agent\((?:Project|项目)\)$/ }));
       await waitFor(
         () => {
           expect(screen.getByText(bi('No custom agents.', '无自定义智能体。'))).toBeDefined();
-          expect(container.querySelector('.sx-agent-list')?.textContent ?? '').not.toContain('e2e-agent');
+          expect(container.querySelector('.sx-rc-list')?.textContent ?? '').not.toContain('e2e-agent');
         },
         { timeout: 10_000 },
       );
 
-      // —— 「← 返回」回会话态:Chat 重挂在场(输入面/连接态如常)——
-      fireEvent.click(screen.getByRole('button', { name: bi('← Back', '← 返回') }));
+      // —— 「返回」回会话态:Chat 重挂在场(输入面/连接态如常)——
+      fireEvent.click(screen.getByRole('button', { name: 'back to sessions' }));
       await waitFor(() => expect(screen.getByLabelText('message input')).toBeDefined(), { timeout: 10_000 });
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役
     } finally {
@@ -1727,18 +1722,25 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
     try {
       const ns = (await post('/session/new', { root: fx.root })) as { sessionId: string };
       await post(`/session/${ns.sessionId}/submit`, { goal: 'create demo task' });
-      // 收敛判据=快照 idle(同 G3 冒烟③口径;不以首个 done 牌为准)
+      // 收敛判据=快照 idle 且板面已见任务(提交后 run 起跑有窗:种子态即 idle,只等 idle 会在
+      // 起跑前竞态通过——create_task 落板是「run 真跑过」的实证,再等 idle 才是收束)
       await waitFor(
         async () => {
-          const snap = (await (await fetch(`${base}/session/${ns.sessionId}/snapshot`)).json()) as { status?: string };
-          return snap.status === 'idle';
+          const snap = (await (await fetch(`${base}/session/${ns.sessionId}/snapshot`)).json()) as {
+            status?: string;
+            board?: { tasks?: Record<string, unknown> };
+          };
+          return snap.status === 'idle' && Object.keys(snap.board?.tasks ?? {}).length > 0;
         },
         { timeout: 20_000 },
       );
-      // journal id(重启前取;fx.stop 会清 tmp,数据先迁出)
       const journals = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(fx.root)}`)).json()) as Array<{ id: string }>;
       const journalId = journals[0]!.id;
       const slug = fs.readdirSync(fx.projects).filter((n) => fs.existsSync(path.join(fx.projects, n, 'data')))[0]!;
+      // 迁移前等档:内存板面随事件即时可见,journal 落盘有滞后窗——以磁盘出现 board 行为迁移前提
+      // (否则拷贝截在出生写,attach 回种恒空——本用例注释的「旧 daemon 此处恒空」假象来源)
+      const srcFile = path.join(fx.projects, slug, 'data', 'sessions', `${journalId}.jsonl`);
+      await waitFor(() => expect(fs.readFileSync(srcFile, 'utf8')).toContain('"t":"board"'), { timeout: 10_000 });
       const carried = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g35-e2e2-'));
       const projects2 = path.join(carried, 'projects');
       fs.mkdirSync(projects2, { recursive: true });

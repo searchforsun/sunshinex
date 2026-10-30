@@ -9,11 +9,12 @@ const base = {
   onCycle: vi.fn(), onCloseActive: vi.fn(),
 };
 
-describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web)', () => {
-  it('注册 file/diff/directory/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,directory/tasks/agents 单例,web 按 url 判重多实例', () => {
+describe('TAB_REGISTRY(G8a 两类 + G8b terminal + G8d diff/agents/web)', () => {
+  it('注册 file/diff/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,tasks/agents 单例,web 按 url 判重多实例', () => {
     expect(TAB_REGISTRY.map((e) => e.id)).toEqual([
-      'file', 'diff', 'directory', 'tasks', 'agents', 'agent', 'bgtasks', 'memory', 'terminal', 'web', 'sidechat',
-    ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子智能体只读页,菜单不列)
+      'file', 'diff', 'tasks', 'agents', 'agent', 'bgtasks', 'memory', 'terminal', 'web', 'sidechat',
+    ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子智能体只读页,菜单不列);
+    // directory 页签退役(2026-10-27 目录树挪入左菜单 dirview,注册表除名)
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
@@ -26,13 +27,10 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal/directory + G8d diff/agents/web
     expect(diff.title({ path: 'src/a.ts', callId: 'c1' })).toBe('a.ts'); // path 可读优先,只显文件名
     expect(diff.title({ callId: 'c1' })).toBe('c1');
     expect(diff.title({})).toBe('Review'); // G14.180 Diff 改审查(title t() 化;测试环境钉 en,zh 面=「审查」)
-    const directory = TAB_REGISTRY[2]!;
-    expect(directory.singleton).toBe(true);
-    expect(directory.title({})).toBe('Directory');
-    const tasks = TAB_REGISTRY[3]!;
+    const tasks = TAB_REGISTRY[2]!;
     expect(tasks.singleton).toBe(true);
     expect(tasks.title({})).toBe('Todos'); // G14.174 重定位:任务页签 → 待办
-    const agents = TAB_REGISTRY[4]!;
+    const agents = TAB_REGISTRY[3]!;
     expect(agents.singleton).toBe(true);
     expect(agents.group).toBe('session');
     expect(agents.title({})).toBe('Task board'); // G14.174 重定位:Agents 页签 → 任务板
@@ -106,6 +104,11 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(handlers.onCycle).toHaveBeenCalledWith(1);
     fireEvent.keyDown(window, { key: 'ArrowLeft', ctrlKey: true, altKey: true });
     expect(handlers.onCycle).toHaveBeenCalledWith(-1);
+  });
+
+  it('页签条空白处是窗口拖拽面', () => {
+    render(<TabStrip {...base} tabs={[]} activeUid={null} />);
+    expect(document.querySelector('.sx-tabstrip')?.hasAttribute('data-drag-band')).toBe(true);
   });
 
   it('disabled 态:+ 与标签不可点', () => {

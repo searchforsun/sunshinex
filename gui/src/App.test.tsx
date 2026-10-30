@@ -58,6 +58,11 @@ type FakeSnapshot = SnapshotResponse & { lastSeq: number };
 const h = vi.hoisted(() => {
   class FakeConn {
     readonly opts: ConnectionOpts;
+    /** G14.113 分支面桩:ProjectMenu/WelcomeComposer 装配即拉,缺法=未处理 rejection 连坐全文件 */
+    gitBranches(): Promise<{ current: string; branches: string[] }> {
+      return Promise.resolve({ current: 'main', branches: ['main'] });
+    }
+    gitCheckout(): Promise<void> { return Promise.resolve(); }
     workspaceRows: WorkspaceRow[] = [{ root: '/w/root-a', slug: 'ws-root-a', mtime: 1, sessionCount: 1 }];
     sessionRows: SessionRow[] = [{ id: 'j1', file: '/d/j1.jsonl', updatedAt: 1, firstUser: '老会话摘要' }];
     dirpickerResp: DirPickerResp = { path: '/home', parent: '/', dirs: [] };
@@ -440,7 +445,7 @@ function mount(): { conn: Conn; unmount: () => void } {
 }
 
 /** 左栏项目组头定位(ProjectMenu 组头钮可及名 = slug + 会话数;G8a:Home 行退役,组头即展开钮) */
-const GROUP_HEAD = { name: /^root-a 1$/ }; // G8f 可读性:组头=basename(root)+纯数字计数
+const GROUP_HEAD = { name: 'root-a' }; // G8f 组头可访问名=wsName(basename);2026-10-28 计数徽章移出按钮
 
 /** 左栏真流程进 chat(G8a:ProjectMenu 组头展开 → Attach 两步链(newSession+attach)→ Chat
  *  会话 chip 在场)→ 连接 open + 播种落定(输入启用——seeding 门:基线快照在途时输入禁用) */
@@ -457,6 +462,12 @@ function openTasksTab(): void {
   expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
   fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') })); // G14.174:看板面迁任务板页签
+}
+
+/** 目录树入口(2026-10-27 用户裁定·目录树入左菜单):组行目录钮开左菜单 dirview——
+ *  树不再是右栏页签,文件行点击经 onOpenFileFromTree 开 file 页签 */
+function openSidebarTree(): void {
+  fireEvent.click(screen.getByRole('button', { name: 'open directory ws-root-a' }));
 }
 
 async function enterChat(): Promise<{ conn: Conn; unmount: () => void }> {
@@ -1051,11 +1062,9 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:开标签不重播种
-    // G14.159 文件已移出「+」菜单:经目录树文件行开档(真实用户路径)
+    // G14.159 文件已移出「+」菜单;2026-10-27 目录树入左菜单——经左菜单树文件行开档(真实用户路径)
     conn.treeByPath = { '': { entries: [{ name: 'fileA.ts', kind: 'file' }] } };
-    expandSidebarIfCollapsed();
-    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
+    openSidebarTree();
     fireEvent.click(await screen.findByRole('button', { name: 'fileA.ts' }));
     await waitFor(() => expect(screen.getByLabelText('files')).toBeDefined()); // lazy 标签体 chunk 解析
     expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
@@ -1074,15 +1083,13 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     const { conn, unmount } = await enterChat();
     openConn(conn);
     expandSidebarIfCollapsed();
-    // G14.159 文件已移出「+」菜单:经目录树文件行开档(initialPath 自动加载)
+    // G14.159 文件已移出「+」菜单;2026-10-27 目录树入左菜单——树文件行开档(initialPath 自动加载)
     conn.treeByPath = { '': { entries: [{ name: 'dirA', kind: 'dir' }], }, dirA: { entries: [{ name: 'a.ts', kind: 'file' }] } };
-    expandSidebarIfCollapsed();
-    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
+    openSidebarTree();
     await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
     fireEvent.click(await screen.findByRole('button', { name: 'a.ts' }));
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts']]));
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts']]));
     await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
     expect(document.querySelector('.mock-monaco-editor')!.getAttribute('data-language')).toBe('typescript'); // G14.5 monaco 面
     expect(document.querySelector('.files-breadcrumb')?.textContent).toContain('a.ts'); // 面包屑末级
@@ -1094,34 +1101,31 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
   it('两个文件标签互切:keep-alive 零重挂——切回 A 实例状态保留(内容/路径不丢,无重拉)', { timeout: 30_000 }, async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
-    // G8d 起 Chat path 钮改开 diff 标签——file 标签按 path 开档的入口改为目录树文件行(openTab('file',{path}))
+    // G8d 起 Chat path 钮改开 diff 标签——file 标签按 path 开档的入口为左菜单目录树文件行(openTab('file',{path}))
     conn.treeByPath = {
       '': { entries: [{ name: 'dirA', kind: 'dir' }] },
       dirA: { entries: [{ name: 'a.ts', kind: 'file' }, { name: 'b.ts', kind: 'file' }] },
     };
     // —— 开 file 标签 A(dirA/a.ts:目录文件行跳转,initialPath 自动加载)——
-    expandSidebarIfCollapsed();
-    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
+    openSidebarTree();
     await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'a.ts' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts']]));
-    // —— 开 file 标签 B:切回目录标签(keep-alive 展开态保留,不重拉不折叠)点 b.ts 行 ——
-    fireEvent.click(screen.getByRole('button', { name: bi('Directory', '目录') }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'b.ts' })).toBeDefined());
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts']]));
+    // —— 开 file 标签 B:左菜单树常驻(dirview 不随开档收起)点 b.ts 行 ——
     fireEvent.click(screen.getByRole('button', { name: 'b.ts' }));
     // 两文件标签在场且 B 活动(判重经 path:两 uid 两页)
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')).not.toBeNull();
     expect(document.querySelector('.sx-tab[data-title="b.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts']]));
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts'], ['s1', 'w/root-a/dirA/b.ts']]));
     // —— 切回 A:tabbody key=uid 强制重挂——initialPath 重新生效(第三笔加载请求 path=A)+ 路径输入回 A
     // (无 key 时 React 复用 B 的 Files 实例:effect no-op,无第三笔请求且路径输入残留 dirA/b.ts)
-    fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
+    // 左菜单树常驻(2026-10-27):树行与页签同名,页签用 DOM 定位
+    fireEvent.click(document.querySelector('.sx-tab[data-title="a.ts"]') as HTMLElement);
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')?.classList.contains('active')).toBe(true);
-    expect(conn.readFileCalls).toEqual([['s1', 'dirA/a.ts'], ['s1', 'dirA/b.ts']]); // 无重拉(去重)
+    expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts'], ['s1', 'w/root-a/dirA/b.ts']]); // 无重拉(去重)
     expect(document.querySelector('.files-breadcrumb .files-crumb-name')?.textContent).toBe('a.ts');
     unmount();
   });
@@ -1130,12 +1134,10 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     const { conn, unmount } = await enterChat();
     conn.fileReject = new Error('/session/s1/file?path=../x -> 403');
     expandSidebarIfCollapsed();
-    // G14.159 树路由开档:readFile 拒绝 403 → 行内错误消息示出
+    // G14.159 树路由开档(2026-10-27 树入左菜单):readFile 拒绝 403 → 行内错误消息示出
     conn.fileReject = new Error('/session/s1/file?path=fileX.ts -> 403');
     conn.treeByPath = { '': { entries: [{ name: 'fileX.ts', kind: 'file' }] } };
-    expandSidebarIfCollapsed();
-    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
+    openSidebarTree();
     fireEvent.click(await screen.findByRole('button', { name: 'fileX.ts' }));
     await waitFor(() => expect(screen.getByText('/session/s1/file?path=fileX.ts -> 403')).toBeDefined());
     unmount();
@@ -1212,141 +1214,8 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
   });
 });
 
-describe('G8b 目录标签:树惰拉/单例注册 + 文件行开标签 + truncated 标记', () => {
-  /** +菜单开目录(菜单 → content 节「目录」直调 onOpenType) */
-  const openDirectory = (): void => {
-    expandSidebarIfCollapsed();
-    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
-  };
-
-  it('+菜单开目录:mount 拉 root → 展开 dirA 惰拉单层 → 点 fileA.ts 开文件标签且活动(title=路径);单例两开一标签;收起保留缓存', async () => {
-    const { conn, unmount } = await enterChat();
-    // 桩两级:root(dirA 目录 + fileB.ts 文件)/ dirA(fileA.ts 文件)
-    conn.treeByPath = {
-      '': { entries: [{ name: 'dirA', kind: 'dir' }, { name: 'fileB.ts', kind: 'file' }] },
-      dirA: { entries: [{ name: 'fileA.ts', kind: 'file' }] },
-    };
-    openDirectory();
-    // mount 拉 root:tree(s1, '') 一笔;根级行列表在场(目录行+文件行)
-    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', '']]));
-    expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'fileB.ts' })).toBeDefined();
-    // 单例:再开 = 聚焦既有(仍一个目录标签且活动)
-    openDirectory();
-    expect(document.querySelectorAll('.sx-tab[data-title="目录"], .sx-tab[data-title="Directory"]')).toHaveLength(1);
-    expect(document.querySelector('.sx-tab[data-title="目录"], .sx-tab[data-title="Directory"]')?.classList.contains('active')).toBe(true);
-    // 展开 dirA:惰拉单层(path 拼合 = name)→ 子文件行在场
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA']]));
-    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
-    // 收起:子层退场但缓存保留——再展开不再拉(treeCalls 仍两笔)
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    expect(screen.queryByRole('button', { name: 'fileA.ts' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
-    expect(conn.treeCalls).toHaveLength(2);
-    // 点 fileA.ts:openTab('file', { path: 'dirA/fileA.ts' }) → 文件标签开且活动(title=G14.114 只显文件名)
-    fireEvent.click(screen.getByRole('button', { name: 'fileA.ts' }));
-    expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(screen.getByLabelText('files')).toBeDefined()); // lazy 标签体 chunk 解析
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/fileA.ts']])); // initialPath 自动加载
-    unmount();
-  });
-
-  it('truncated 标记:桩返 truncated:true → 行尾「…已截断」;子层拉失败 → 行内错误消息', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.treeByPath = { '': { entries: [{ name: 'dirA', kind: 'dir' }], truncated: true } };
-    openDirectory();
-    await waitFor(() => expect(screen.getByText(/已截断|truncated/)).toBeDefined()); // root 级截断标记
-    conn.treeReject = new Error('/session/s1/tree?path=dirA -> 404');
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    await waitFor(() => expect(screen.getByText('/session/s1/tree?path=dirA -> 404')).toBeDefined()); // 行内错误态
-    unmount();
-  });
-
-  it('G8e-T2 错误层重试:展开失败 → 收起再展开重拉(错误态缓存不命中跳过)→ 第二笔成功行在场', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.treeByPath = {
-      '': { entries: [{ name: 'dirA', kind: 'dir' }] },
-      dirA: { entries: [{ name: 'fileA.ts', kind: 'file' }] },
-    };
-    openDirectory();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
-    // 首拉 dirA 失败:层落 error 行内态
-    conn.treeReject = new Error('/session/s1/tree?path=dirA -> 500');
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    await waitFor(() => expect(screen.getByText('/session/s1/tree?path=dirA -> 500')).toBeDefined());
-    // 收起再展开:错误层清除重拉(而非 nodes.has 命中跳过)→ 第二笔 dirA 成功 → 子文件行在场
-    conn.treeReject = null;
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' })); // 收起
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' })); // 再展开 → 重拉
-    await waitFor(() => expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined());
-    expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s1', 'dirA']]); // dirA 两笔(重试面)
-    unmount();
-  });
-
-  it('会话切换层缓存重置(单例 uid 跨会话不重挂):直切回 s1 无 s2 陈旧层,展开重拉 + 文件行开标签用本会话路径', async () => {
-    const { conn, unmount } = await enterChat();
-    // 两会话同名目录 dirA 而子层各异(s1 层=fileA.ts / s2 层=fileB.ts)——陈旧层缓存唯一可观测形
-    conn.treeBySession = {
-      s1: {
-        '': { entries: [{ name: 'dirA', kind: 'dir' }] },
-        dirA: { entries: [{ name: 'fileA.ts', kind: 'file' }] },
-      },
-      s2: {
-        '': { entries: [{ name: 'dirA', kind: 'dir' }] },
-        dirA: { entries: [{ name: 'fileB.ts', kind: 'file' }] },
-      },
-    };
-    // —— s1:开目录标签,展开 dirA(fileA.ts 层缓存落定)——
-    openDirectory();
-    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', '']]));
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA']]));
-    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
-    // —— 直切 s2(左栏 Attach,不经返回——page 恒 chat;s2 缺省任务页,目录标签经 key 变更重挂)——
-    // 再开目录:s2 目录标签在场且活动(构造两会话同 uid 'directory:' 的不重挂现场),展开 dirA 缓存 s2 层
-    conn.nextSessionId = 's2';
-    await clickSessionRow();
-    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
-    openDirectory();
-    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', '']]));
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA']]));
-    expect(screen.getByRole('button', { name: 'fileB.ts' })).toBeDefined();
-    // —— 直切回 s1:tabbody key 仍 'directory:' 不重挂(仅 sessionId prop 变)——修复契约:
-    // 层缓存+展开集随 sessionId 整体重置 + root 重拉——s2 陈旧子层(fileB.ts)退场,dirA 收起
-    conn.nextSessionId = 's1';
-    await clickSessionRow();
-    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
-    await waitFor(() =>
-      expect(conn.treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA'], ['s1', '']]),
-    );
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'fileB.ts' })).toBeNull()); // 陈旧层根除
-    expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined(); // 新会话 root(dirA 在场)
-    expect(screen.queryByRole('button', { name: 'fileA.ts' })).toBeNull(); // 展开集已清:未展开不渲染
-    // 展开 dirA:缓存已清 → 重新拉 s1 层 → fileA.ts 在场(fileB.ts 仍无)
-    fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
-    await waitFor(() =>
-      expect(conn.treeCalls).toEqual([
-        ['s1', ''],
-        ['s1', 'dirA'],
-        ['s2', ''],
-        ['s2', 'dirA'],
-        ['s1', ''],
-        ['s1', 'dirA'],
-      ]),
-    );
-    expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'fileB.ts' })).toBeNull();
-    // 点 fileA.ts:文件标签开且活动(title=文件名),initialPath 以本会话 s1 寻址加载
-    fireEvent.click(screen.getByRole('button', { name: 'fileA.ts' }));
-    expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'dirA/fileA.ts']]));
-    unmount();
-  });
-});
+/** G8b 目录标签簇退役(2026-10-27 目录页签除名,树挪左菜单 dirview):树惰拉/截断/错误重试/
+ *  会话切换缓存重置四行为下沉 DirectoryTab 组件专测——src/tabs/DirectoryTab.test.tsx verbatim 承接 */
 
 describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId 判重保留)', () => {
   /** write 工具条目注入(实时帧 callId 配对面:tool-call+tool-result 两帧) */
@@ -1603,10 +1472,10 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expect(document.querySelector('.tb-task-list')).toBeNull(); // 空板无任务列表
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // 播种恰一次
-    // G14.159 文件已移出「+」菜单:开目录标签(任务板失活)→ 切回「任务板」:回归零重播种
+    // G14.159 文件已移出「+」菜单;2026-10-27 目录树入左菜单——开待办页签(任务板失活)→ 切回「任务板」:回归零重播种
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Directory', '目录') }));
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
     expect(document.querySelector('[aria-label="task board"]')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留(裸 DOM 查询,inert 子树对 a11y 查询不可达)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
@@ -1857,7 +1726,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(document.querySelector('.sx-tabstrip')).toBeNull();
     expect(screen.queryByLabelText('message input')).toBeNull();
     // 返回 → 回会话态:Chat 重新在场(重挂重播种,输入门落定后启用)
-    fireEvent.click(screen.getByRole('button', { name: '← Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'back to sessions' }));
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // G14.38:缺省折叠——条不在场,返回面以输入门与 Chat 在场断言
 
@@ -1884,11 +1753,11 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // 行渲染:select 触发钮显当值标签(en→English);text 行值 = 行 value ?? 缺省空(default 行空串)
     expect(screen.getByLabelText('language').textContent).toContain('English');
     expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
-    // 来源徽标类名:四态各归其位
+    // 来源徽标类名:仅 env/project 有 chip;global/default 无徽标不占位(SettingsForm 渲染条件)
     expect(document.querySelector('.sx-src-env')).not.toBeNull();
     expect(document.querySelector('.sx-src-project')).not.toBeNull();
-    expect(document.querySelector('.sx-src-global')).not.toBeNull();
-    expect(document.querySelector('.sx-src-default')).not.toBeNull();
+    expect(document.querySelector('.sx-src-global')).toBeNull();
+    expect(document.querySelector('.sx-src-default')).toBeNull();
     // envOverride 行禁编 + title 说明
     expect((screen.getByLabelText('shell') as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByLabelText('shell').getAttribute('data-tip')).toBe('Overridden by env — read-only');
@@ -1975,464 +1844,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
   });
 });
 
-describe('G8c 复杂面板五件:模型与提供方/MCP/智能体/技能+权限/高级 raw', () => {
-  beforeEach(() => setLanguage('en')); // G14.213 同上
 
-  const openSettings = (): void => {
-    fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
-  };
-
-  it('模型与提供方:模型键表单行在场(SettingsForm 复用)+ providers 只读两卡(apiKeyPresent 点类名/槽名 title)+ warnings 行', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.settingsView = settingsViewOf(
-      [
-        { key: 'model', value: 'gpt-x', source: 'project', envOverride: false },
-        { key: 'baseUrl', value: 'https://api.example.com', source: 'global', envOverride: false },
-      ],
-      {
-        providers: {
-          choices: [
-            { id: 'main', provider: 'openai', model: 'gpt-5', baseUrl: 'https://a', apiKeyEnv: 'OPENAI_API_KEY' },
-            { id: 'aux', provider: 'anthropic', model: 'claude-x', baseUrl: 'https://b', apiKeyEnv: 'ANTHROPIC_API_KEY' },
-          ],
-          apiKeyPresent: { openai: true, anthropic: false },
-          warnings: ['anthropic: api key missing'],
-        },
-      },
-    );
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Models & providers' }));
-    // 上:模型键表单引擎复用(行 = daemon 报键面;未报键行省略;模型键=combo 输入)
-    await screen.findByLabelText('model');
-    expect((screen.getByLabelText('model') as HTMLInputElement).value).toBe('gpt-x');
-    expect((screen.getByLabelText('baseUrl') as HTMLInputElement).value).toBe('https://api.example.com');
-    // combo 动态建议:输入 'gpt' → providers 现配模型过滤出 gpt-5(claude-x 不匹配不显)——建议源动态自 providers
-    fireEvent.change(screen.getByLabelText('model'), { target: { value: 'gpt' } });
-    expect(screen.getByRole('option', { name: 'gpt-5' })).toBeDefined();
-    expect(screen.queryByRole('option', { name: 'claude-x' })).toBeNull();
-    fireEvent.mouseDown(document.body); // 外点收建议面:getByText 断言不受 combo 选项重复干扰
-    // 下:providers 只读卡两枚 + api key 圆点类名(绿=在场/灰=缺)+ 槽名 title
-    await waitFor(() => expect(screen.getByText('gpt-5')).toBeDefined());
-    expect(screen.getByText('claude-x')).toBeDefined();
-    expect(document.querySelector('.sx-api-dot.present')).not.toBeNull();
-    expect((document.querySelector('.sx-api-dot.missing') as HTMLElement | null)?.getAttribute('data-tip')).toBe('ANTHROPIC_API_KEY');
-    expect(screen.getByText('anthropic: api key missing')).toBeDefined();
-    unmount();
-  });
-
-  it('MCP:两级清单卡(shadowed 灰显+遮蔽标+envKeys 打码)+ 挂载自动探测 + 测试连接 error 行内 + JSON 编辑添加(raw 写)', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.mcpServersResp = {
-      servers: [
-        { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'mcp-fs'], envKeys: ['MCP_FS_TOKEN'], headerKeys: [], source: 'project', shadowed: false },
-        { name: 'fs', transport: 'http', url: 'https://global/fs', envKeys: [], headerKeys: [], source: 'global', shadowed: true },
-        { name: 'web', transport: 'sse', url: 'https://global/web', envKeys: [], headerKeys: [], source: 'global', shadowed: false },
-      ],
-    };
-    conn.mcpProbeResp = { ok: false, error: 'connect timeout after 10s' };
-    conn.rawMcpResp = {
-      content: JSON.stringify({ mcpServers: { fs: { command: 'npx', args: ['-y', 'mcp-fs'], env: { MCP_FS_TOKEN: 'secret' } } } }),
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a']));
-    // 挂载自动探测(状态圆点数据源):非停用全部唯一名各一探
-    await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'fs'], ['/w/root-a', 'web']]));
-    // shadowed 全局卡灰显 + 「被项目遮蔽」标 + env 键名列表(值打码不回传)
-    expect(document.querySelector('.sx-mcp-card.shadowed')).not.toBeNull();
-    expect(screen.getByText('Shadowed by project')).toBeDefined();
-    expect(screen.getByText('MCP_FS_TOKEN')).toBeDefined();
-    // shadowed 全局卡:删除钮禁用(写面恒项目级)
-    expect((screen.getByRole('button', { name: 'Delete fs(Global)' }) as HTMLButtonElement).disabled).toBe(true);
-    // 手动重探 web → probe error 行内
-    fireEvent.click(screen.getByRole('button', { name: 'Test connection web' }));
-    await waitFor(() => expect(conn.mcpProbeCalls).toEqual([['/w/root-a', 'fs'], ['/w/root-a', 'web'], ['/w/root-a', 'web']]));
-    await waitFor(() => expect(screen.getAllByText('connect timeout after 10s').length).toBeGreaterThan(0));
-    // + 添加服务器:JSON 编辑窗(mcp.json 兼容片段)→ 保存 = raw 读改写(非 putMcpServers;
-    //   整块结构化写会丢其他行 env 值——raw 路径根治)
-    fireEvent.click(screen.getByRole('button', { name: '+ Add server' }));
-    const ta = (await screen.findByLabelText('mcp json editor')) as HTMLTextAreaElement;
-    fireEvent.change(ta, { target: { value: JSON.stringify({ search: { command: 'npx', args: ['-y', 'mcp-search'] } }, null, 2) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
-    const [scope, rroot, file, content] = conn.putSettingsRawCalls[0]!;
-    expect(scope).toBe('project');
-    expect(rroot).toBe('/w/root-a');
-    expect(file).toBe('mcp');
-    const saved = JSON.parse(content) as { mcpServers: Record<string, unknown> };
-    expect(saved.mcpServers.search).toEqual({ command: 'npx', args: ['-y', 'mcp-search'] });
-    // 原文条目原样保留(env 值零丢失)
-    expect(saved.mcpServers.fs).toEqual({ command: 'npx', args: ['-y', 'mcp-fs'], env: { MCP_FS_TOKEN: 'secret' } });
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉
-    unmount();
-  });
-
-  it('MCP:删除项目卡 → raw 改写条目减一(全局卡不在项目文件)', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.mcpServersResp = {
-      servers: [
-        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], headerKeys: [], source: 'project', shadowed: false },
-        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], headerKeys: [], source: 'global', shadowed: false },
-      ],
-    };
-    conn.rawMcpResp = { content: JSON.stringify({ mcpServers: { fs: { command: 'npx' } } }) };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    await screen.findByText('fs');
-    fireEvent.click(screen.getByRole('button', { name: 'Delete fs(Project)' }));
-    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
-    expect(JSON.parse(conn.putSettingsRawCalls[0]![3]).mcpServers).toEqual({}); // fs 已删
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a']));
-    unmount();
-  });
-
-  it('MCP JSON 编辑:预填自 raw 原文(env 值不打码)→ 保存改单键零丢失;改名=换键', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.mcpServersResp = {
-      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: ['MCP_FS_TOKEN'], headerKeys: [], source: 'project', shadowed: false }],
-    };
-    conn.rawMcpResp = {
-      content: JSON.stringify({
-        mcpServers: {
-          fs: { command: 'npx', env: { MCP_FS_TOKEN: 'secret' } },
-          other: { url: 'http://x/api' },
-        },
-      }),
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    await screen.findByText('fs');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit JSON fs(Project)' }));
-    const ta = (await screen.findByLabelText('mcp json editor')) as HTMLTextAreaElement;
-    // 预填=raw 原文该卡条目(env 全值在场——视图打码面不再经手,env 丢失确认门随之退役)
-    expect(JSON.parse(ta.value)).toEqual({ fs: { command: 'npx', env: { MCP_FS_TOKEN: 'secret' } } });
-    // 改 command 保存:仅该键更新,other 条目原样
-    fireEvent.change(ta, { target: { value: JSON.stringify({ fs: { command: 'node', env: { MCP_FS_TOKEN: 'secret' } } }, null, 2) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
-    const saved = JSON.parse(conn.putSettingsRawCalls[0]![3]) as { mcpServers: Record<string, unknown> };
-    expect(saved.mcpServers.fs).toEqual({ command: 'node', env: { MCP_FS_TOKEN: 'secret' } });
-    expect(saved.mcpServers.other).toEqual({ url: 'http://x/api' });
-    // 改名:键 fs2 替换 fs(旧键删除)
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a', '/w/root-a']));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit JSON fs(Project)' }));
-    const ta2 = (await screen.findByLabelText('mcp json editor')) as HTMLTextAreaElement;
-    fireEvent.change(ta2, { target: { value: JSON.stringify({ fs2: { command: 'npx', env: { MCP_FS_TOKEN: 'secret' } } }, null, 2) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(2));
-    const saved2 = JSON.parse(conn.putSettingsRawCalls[1]![3]) as { mcpServers: Record<string, unknown> };
-    expect(saved2.mcpServers.fs2).toEqual({ command: 'npx', env: { MCP_FS_TOKEN: 'secret' } });
-    expect(saved2.mcpServers.fs).toBeUndefined();
-    expect(saved2.mcpServers.other).toEqual({ url: 'http://x/api' });
-    unmount();
-  });
-
-  it('MCP 工具清单与开关:探测 ok → 工具数+逐工具开关(切换写 disabledTools);整机开关写 enabled', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.mcpServersResp = {
-      servers: [{ name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], headerKeys: [], disabledTools: ['b'], source: 'project', shadowed: false }],
-    };
-    conn.mcpProbeResp = { ok: true, tools: [{ name: 'a' }, { name: 'b' }] };
-    conn.rawMcpResp = { content: JSON.stringify({ mcpServers: { fs: { command: 'npx' } } }) };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    // 探测 ok:状态点绿 + 工具数(details 缺省展开)+ 停用计数(span 拆分——匹配首段文本节点)
-    await screen.findByText('Connected · 2 tools');
-    expect(screen.getByText(/1 disabled/)).toBeDefined();
-    // 逐工具开关:b 在 disabledTools → off;点 a(启用态)→ 切停用,raw 写 disabledTools 排序全量
-    const swA = screen.getByRole('switch', { name: 'a' }) as HTMLButtonElement;
-    expect(swA.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(swA);
-    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(1));
-    const saved = JSON.parse(conn.putSettingsRawCalls[0]![3]) as { mcpServers: Record<string, { disabledTools?: string[] }> };
-    expect(saved.mcpServers.fs.disabledTools).toEqual(['a', 'b']);
-    // 整机开关:关 → enabled:false 落盘
-    const swServer = screen.getByRole('switch', { name: 'Enable fs' }) as HTMLButtonElement;
-    expect(swServer.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(swServer);
-    await waitFor(() => expect(conn.putSettingsRawCalls.length).toBe(2));
-    const saved2 = JSON.parse(conn.putSettingsRawCalls[1]![3]) as { mcpServers: Record<string, { enabled?: boolean }> };
-    expect(saved2.mcpServers.fs.enabled).toBe(false);
-    unmount();
-  });
-
-  it('MCP 修复环 I2:全局卡(含被遮蔽)JSON 编辑钮禁用 + 引流 raw;项目卡可用', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.mcpServersResp = {
-      servers: [
-        { name: 'fs', transport: 'stdio', command: 'npx', envKeys: [], headerKeys: [], source: 'project', shadowed: false },
-        { name: 'fs', transport: 'http', url: 'https://g/fs', envKeys: [], headerKeys: [], source: 'global', shadowed: true },
-        { name: 'web', transport: 'sse', url: 'https://g/web', envKeys: [], headerKeys: [], source: 'global', shadowed: false },
-      ],
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    await screen.findByText('web');
-    for (const label of ['Edit JSON fs(Global)', 'Edit JSON web(Global)']) {
-      const btn = screen.getByRole('button', { name: label }) as HTMLButtonElement;
-      expect(btn.disabled).toBe(true);
-      expect(btn.getAttribute('data-tip')).toBe('Global-level — edit via Advanced raw');
-    }
-    expect((screen.getByRole('button', { name: 'Edit JSON fs(Project)' }) as HTMLButtonElement).disabled).toBe(false);
-    unmount();
-  });
-
-  it('MCP 修复环 M4(退役):顶部项目选择器已移除(设置重构轮),root 不可能中途清空——保存失败不静默由通用面板 400 用例覆盖', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.mcpServersResp = { servers: [] };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'MCP' }));
-    await waitFor(() => expect(conn.mcpServersCalls).toEqual(['/w/root-a']));
-    unmount();
-  });
-
-  it('智能体:builtins 四预设位 + 清单卡(chips/遮蔽/warnings)+ 新增表单 putAgent upsert 断参 + 删除 op:delete', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.agentsViewResp = {
-      builtins: [
-        { role: 'builder', name: '构建者', framing: '实现计划步骤' },
-        { role: 'reviewer', name: '评审者', framing: '评审交付质量' },
-      ],
-      view: {
-        entries: [
-          { id: 'dev', name: '开发者', description: '写代码', memory: true, isolation: 'workspace', executor: 'local', source: 'project', shadowed: false, bodyPreview: '你是项目内开发者。' },
-          { id: 'dev', name: '全局开发者', source: 'global', shadowed: true, bodyPreview: '全局版。' },
-        ],
-        warnings: ['agents/broken/agent.md: frontmatter parse failed'],
-      },
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Agents' }));
-    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
-    // builtins 只读卡(role/name/framing)
-    expect(screen.getByText('构建者')).toBeDefined();
-    expect(screen.getByText('builder')).toBeDefined();
-    // entries 卡:属性 chips + shadowed 灰显 + 畸形文件告警卡
-    expect(screen.getByText('开发者')).toBeDefined();
-    expect(screen.getByText('memory')).toBeDefined();
-    expect(screen.getByText('isolation:workspace')).toBeDefined();
-    expect(screen.getByText('executor:local')).toBeDefined();
-    expect(document.querySelector('.sx-agent-card.shadowed')).not.toBeNull();
-    expect(screen.getByText(/frontmatter parse failed/)).toBeDefined();
-    // + 新增 → putAgent upsert(root/scope/op/frontmatter 形/body)
-    fireEvent.click(screen.getByRole('button', { name: '+ New' }));
-    fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'writer' } });
-    fireEvent.change(screen.getByLabelText('agent name'), { target: { value: '写手' } });
-    fireEvent.change(screen.getByLabelText('agent description'), { target: { value: '写文档' } });
-    fireEvent.click(screen.getByLabelText('agent memory'));
-    fireEvent.change(screen.getByLabelText('agent body'), { target: { value: '正文内容' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() =>
-      expect(conn.putAgentCalls).toEqual([
-        { root: '/w/root-a', scope: 'project', op: 'upsert', id: 'writer', frontmatter: { name: '写手', description: '写文档', memory: true }, body: '正文内容' },
-      ]),
-    );
-    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a', '/w/root-a'])); // 保存后重拉
-    // 删除 → putAgent op:'delete'(scope = 卡 source)
-    fireEvent.click(screen.getByRole('button', { name: 'Delete dev(Project)' }));
-    await waitFor(() => expect(conn.putAgentCalls).toHaveLength(2));
-    expect(conn.putAgentCalls[1]).toEqual({ root: '/w/root-a', scope: 'project', op: 'delete', id: 'dev' });
-    unmount();
-  });
-
-  it('智能体终审 A:编辑 bodyPreview 恰 200 字卡不改正文保存 → 截断守卫阻断(错误条+putAgent 未调);改写正文 → 放行', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.agentsViewResp = {
-      builtins: [],
-      view: { entries: [{ id: 'dev', name: '开发者', source: 'project', shadowed: false, bodyPreview: 'x'.repeat(200) }], warnings: [] },
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Agents' }));
-    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit dev(Project)' }));
-    // 不改正文(仍=播种的 200 字预览切片)直接保存 → 守卫阻断:行内错误条 + putAgent 未调
-    // (直接保存即把截断文写盘毁掉余文——GUI 本地守卫根除)
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(screen.getByText(/preview-truncated/)).toBeDefined());
-    expect(screen.getByText(/agents\/dev\/agent\.md/)).toBeDefined(); // 提示指明完整原文兜底路径
-    expect(conn.putAgentCalls).toEqual([]);
-    // 改写正文(≠播种值)= 有意重写 → 放行(body=改写文)
-    fireEvent.change(screen.getByLabelText('agent body'), { target: { value: '改写后的完整正文' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
-    expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: '改写后的完整正文' });
-    unmount();
-  });
-
-  it('智能体 G8d 全文装载:编辑钮 → conn.agentBody(source,id,root) 播种全文(≥200 不再触发截断守卫);失败回退 bodyPreview+行内提示(守卫兜底)', async () => {
-    const { conn, unmount } = await enterChat();
-    const preview = 'x'.repeat(200); // 恰触预览帽:全文装载成功前守卫本会拦截
-    conn.agentsViewResp = {
-      builtins: [],
-      view: { entries: [{ id: 'dev', name: '开发者', source: 'project', shadowed: false, bodyPreview: preview }], warnings: [] },
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Agents' }));
-    await waitFor(() => expect(conn.agentsViewCalls).toEqual(['/w/root-a']));
-    // —— 全文装载成功:编辑 → agentBody('project','dev','/w/root-a') → 正文=全文;未改保存放行 ——
-    const full = `${'全文正文行。'.repeat(60)}收尾`;
-    conn.agentBodyResp = { body: full };
-    fireEvent.click(screen.getByRole('button', { name: 'Edit dev(Project)' }));
-    await waitFor(() => expect(conn.agentBodyCalls).toEqual([['project', 'dev', '/w/root-a']]));
-    await waitFor(() => expect((screen.getByLabelText('agent body') as HTMLTextAreaElement).value).toBe(full));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(conn.putAgentCalls).toHaveLength(1));
-    expect(conn.putAgentCalls[0]).toMatchObject({ root: '/w/root-a', scope: 'project', op: 'upsert', id: 'dev', body: full });
-    // —— 失败面:回退 bodyPreview + 行内提示;截断守卫兜底(未改正文保存阻断,零写) ——
-    conn.agentBodyResp = null;
-    conn.agentBodyReject = new Error('/settings/agents/body?scope=project&id=dev -> 404');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit dev(Project)' }));
-    await waitFor(() => expect(conn.agentBodyCalls).toHaveLength(2));
-    await waitFor(() => expect(screen.getByText(/已回退预览|fell back to preview/)).toBeDefined());
-    expect((screen.getByLabelText('agent body') as HTMLTextAreaElement).value).toBe(preview);
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(screen.getByText(/preview-truncated/)).toBeDefined());
-    expect(conn.putAgentCalls).toHaveLength(1); // 守卫兜底:失败回退面未再写盘
-    unmount();
-  });
-
-  it('技能(平铺卡+搜索+来源筛选):三源合并去重逐卡带来源标;权限(独立面板):三列(merged/project/global)渲染', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.skillsGroupsResp = {
-      groups: [
-        { source: 'project', project: 'root-a', skills: [{ id: 'proj-skill', name: '项目技能', description: '项目内装载' }] },
-        { source: 'user', skills: [{ id: 'user-skill', description: '用户目录技能' }] },
-        { source: 'learned', project: 'other-proj', skills: [{ id: 'learned-skill' }] },
-      ],
-    };
-    conn.settingsView = settingsViewOf([], {
-      permissions: {
-        merged: { deny: ['Bash(rm *)'], allow: ['Read'], additionalDirs: ['/tmp/x'] },
-        project: { deny: ['Bash(rm *)'], allow: [], additionalDirs: [] },
-        global: { deny: [], allow: ['Read'], additionalDirs: ['/tmp/x'] },
-      },
-    });
-    openSettings();
-    // —— 技能面板:平铺卡片,逐卡来源标(单色 chip),搜索+来源筛选双过滤 ——
-    fireEvent.click(await screen.findByRole('button', { name: 'Skills' }));
-    await waitFor(() => expect(conn.skillsGroupsCalls).toEqual([['/w/root-a', true]]));
-    expect(screen.getByText('proj-skill')).toBeDefined();
-    expect(screen.getByText('user-skill')).toBeDefined();
-    expect(screen.getByText('learned-skill')).toBeDefined();
-    expect(screen.getByText('项目内装载')).toBeDefined();
-    // 卡片归属标:项目级显项目名,user/learned 显三态文案
-    expect(screen.getByText('proj-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-project')?.textContent).toBe('root-a');
-    expect(screen.getByText('user-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-user')?.textContent).toBe('Global');
-    expect(screen.getByText('learned-skill').closest('.sx-skill-card')?.querySelector('.sx-skill-src-learned')?.textContent).toBe('other-proj');
-    // 项目筛选:选「other-proj」→ 仅 learned-skill 在列;回「全部项目」恢复全量
-    fireEvent.click(screen.getByLabelText('skills project'));
-    fireEvent.click(screen.getByRole('option', { name: 'other-proj' }));
-    expect(screen.getByText('learned-skill')).toBeDefined();
-    expect(screen.queryByText('proj-skill')).toBeNull();
-    expect(screen.queryByText('user-skill')).toBeNull();
-    fireEvent.click(screen.getByLabelText('skills project'));
-    fireEvent.click(screen.getByRole('option', { name: 'All projects' }));
-    expect(screen.getByText('proj-skill')).toBeDefined();
-    // 来源筛选:选「项目」→ 仅 project 卡在列
-    fireEvent.click(screen.getByLabelText('skills source'));
-    fireEvent.click(screen.getByRole('option', { name: 'Project' }));
-    expect(screen.getByText('proj-skill')).toBeDefined();
-    expect(screen.queryByText('user-skill')).toBeNull();
-    expect(screen.queryByText('learned-skill')).toBeNull();
-    // 回「全部来源」+搜索 'proj':搜索过滤照常(与筛选叠加)
-    fireEvent.click(screen.getByLabelText('skills source'));
-    fireEvent.click(screen.getByRole('option', { name: 'All sources' }));
-    fireEvent.change(screen.getByLabelText('skills search'), { target: { value: 'proj' } });
-    expect(screen.getByText('proj-skill')).toBeDefined();
-    expect(screen.queryByText('user-skill')).toBeNull();
-    fireEvent.change(screen.getByLabelText('skills search'), { target: { value: '' } });
-    expect(screen.getByText('user-skill')).toBeDefined();
-    // —— 权限独立面板(不再与技能同体重复):三列级别徽标 + deny/allow/additionalDirs 行 ——
-    fireEvent.click(screen.getByRole('button', { name: 'Permissions' }));
-    await waitFor(() => expect(document.querySelectorAll('.sx-perm-level')).toHaveLength(3));
-    expect(screen.getAllByText('Bash(rm *)')).toHaveLength(2);
-    expect(screen.getAllByText('Read')).toHaveLength(2);
-    expect(screen.getAllByText('/tmp/x')).toHaveLength(2);
-    unmount();
-  });
-
-  it('高级 raw(仅全局):mount 即自动回显 + 保存失败(400)行内错误原文 + 成功 toast', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.rawResp = { content: '{\n  "language": "zh"\n}\n' };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
-    // 自动回显:mount 即读取(无需手动「读取」——「无法回显」观感根除);scope 恒 global,root 省参
-    await waitFor(() => expect(conn.settingsRawCalls).toEqual([['global', '', 'settings']]));
-    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"');
-    // 保存失败(服务端 400 解析错误原文)→ 行内错误条
-    conn.putSettingsRawReject = new Error('/settings/raw -> 400 Unexpected token } in JSON');
-    fireEvent.change(screen.getByLabelText('raw editor'), { target: { value: '{ bad' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Verify & save' }));
-    await waitFor(() => expect(screen.getByText('/settings/raw -> 400 Unexpected token } in JSON')).toBeDefined());
-    // 成功 → toast(记录面 [scope, root 归一 '', file, content])
-    conn.putSettingsRawReject = null;
-    fireEvent.click(screen.getByRole('button', { name: 'Verify & save' }));
-    await waitFor(() => expect(screen.getByText(/Saved — applies|已保存：新建会话起/)).toBeDefined());
-    expect(conn.putSettingsRawCalls).toEqual([['global', '', 'settings', '{ bad']]);
-    unmount();
-  });
-
-  it('高级 raw:自动读取后切文件 → content/错误/toast 清回未读取态并自动重读新文件;未读取态保存零发', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.rawResp = { content: '{\n  "language": "zh"\n}\n' };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
-    await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('"language": "zh"'));
-    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
-    // 切文件(自绘下拉):同步回未读取态(content 清 + 保存禁),随即自动读取新文件
-    conn.rawMcpResp = { content: '{\n  "mcpServers": {}\n}\n' }; // file='mcp' 走 mcp 专用应答
-    fireEvent.click(screen.getByLabelText('raw file'));
-    fireEvent.click(screen.getByRole('option', { name: 'mcp.json' }));
-    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
-    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(true);
-    // 自动重读落定:mcp 原文装载(settings 原文不跨文件残留)
-    await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('mcpServers'));
-    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
-    expect(conn.settingsRawCalls).toEqual([['global', '', 'settings'], ['global', '', 'mcp']]);
-    // 未读取态点击保存:零 putSettingsRaw(A 文件内容写进 B 文件的跨文件错写根除——守卫在自动重读窗)
-    unmount();
-  });
-
-  it('G8e 终审 A read 代守卫:慢读在途切文件 → 迟到应答弃——不置 loaded/内容不装载/保存仍禁', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.rawResp = { content: '{\n  "language": "zh"\n}\n' }; // A 文件(settings)内容——迟到面
-    conn.holdRaw(); // mount 自动读取应答悬挂(单发门:后续直通)
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
-    await waitFor(() => expect(conn.settingsRawCalls).toEqual([['global', '', 'settings']]));
-    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toBe('');
-    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(true);
-    // 在途窗切文件:同步回未读取态(自动重读直通落定 mcp 原文)
-    conn.rawMcpResp = { content: '{\n  "mcpServers": {}\n}\n' }; // file='mcp' 走 mcp 专用应答
-    fireEvent.click(screen.getByLabelText('raw file'));
-    fireEvent.click(screen.getByRole('option', { name: 'mcp.json' }));
-    await waitFor(() => expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('mcpServers'));
-    // A 迟到应答落定:陈旧代弃——不覆写已装载的 B 文件内容(无守卫则 A 内容入 B 文件)
-    await act(async () => {
-      conn.releaseRaw();
-    });
-    expect((screen.getByLabelText('raw editor') as HTMLTextAreaElement).value).toContain('mcpServers');
-    expect((screen.getByRole('button', { name: 'Verify & save' }) as HTMLButtonElement).disabled).toBe(false);
-    // 保存写的是 B 文件现内容(A 迟到内容不入写面)
-    fireEvent.click(screen.getByRole('button', { name: 'Verify & save' }));
-    await waitFor(() => expect(conn.putSettingsRawCalls).toEqual([['global', '', 'mcp', '{\n  "mcpServers": {}\n}\n']]));
-    unmount();
-  });
-
-  it('G8d T5 高级 raw:退役键/未知键告警透出(GET /settings warnings 逐行渲染,role=alert)', async () => {
-    const { conn, unmount } = await enterChat();
-    conn.settingsView = {
-      ...settingsViewOf([]),
-      warnings: ['settings: 未知语义键 "nope"，已忽略', 'settings: dataDir 须走 projectsDir（按工作区分目录隔离）'],
-    };
-    openSettings();
-    fireEvent.click(await screen.findByRole('button', { name: 'Advanced' }));
-    // 挂载即拉 settings(告警与编辑目标无关注面;高级=仅全局 → root 省参,[0]=App 同步,[1]=raw 面)
-    await waitFor(() => expect(conn.settingsCalls.filter((c) => c === '').length).toBeGreaterThanOrEqual(2));
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('未知语义键 "nope"');
-    expect(alert.textContent).toContain('dataDir 须走 projectsDir');
-    expect(document.querySelector('.sx-raw-warnings')).not.toBeNull();
-    unmount();
-  });
-});
+/** G8c 复杂面板五件簇退役:模型与提供方/MCP/智能体/技能+权限/高级 raw 的 App 级走通测已由
+ *  src/settings/__tests__/{ProvidersPane,McpPane,AgentsPane,SkillsPane,PermissionsPane,RawPane}.test.tsx 
+ *  组件专测承接(壳装配/nav 切换由上方 G8c 设置态壳簇覆盖)——面板内行为断言不再双维护 */
