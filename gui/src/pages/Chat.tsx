@@ -79,7 +79,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -237,6 +237,20 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat });
 
   const running = chat.status === 'running';
+  /** 浏览器导航跟随(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
+   *  工具条落条即上抛目标 url 开 web 页签;lastNavRef 免对同一条目逐帧重开 */
+  const lastNavRef = useRef('');
+  useEffect(() => {
+    if (onOpenWeb === undefined) return;
+    for (const e of chat.entries) {
+      if (e.kind !== 'tool' || e.name !== 'browser_navigate') continue;
+      const url = e.input?.url;
+      if (typeof url === 'string' && url !== '' && url !== lastNavRef.current) {
+        lastNavRef.current = url;
+        onOpenWeb(url);
+      }
+    }
+  }, [chat.entries, onOpenWeb]);
   /** 队列防竞态面(2026-10-31):当前会话用户条文本集(trim)——SteerQueue 立即/插入转圈直至
    *  文本命中正文;memo 随条目帧重算 */
   const entryTexts = useMemo(() => new Set(chat.entries.filter((e) => e.kind === 'user').map((e) => e.md.trim())), [chat.entries]);

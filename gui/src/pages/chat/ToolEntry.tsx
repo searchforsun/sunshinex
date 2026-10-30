@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, MousePointerClick, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -45,8 +45,15 @@ function ToolIcon({ verb }: { verb: string }): JSX.Element {
   if (verb.startsWith(COMPUTER_USE_PREFIX)) {
     return <MousePointerClick size={12} strokeWidth={1.75} className="tool-icon-controlling" aria-hidden="true" />;
   }
+  // 浏览器操作全族(browser-use 插件,工具名 browser_*)=浏览器窗件(2026-10-31 用户裁定:
+  // 「换成浏览器相关的」——该插件即浏览器专用,通用拼图件不达意;AppWindow 与 webfetch 的
+  // Globe 区分:一个是浏览器窗,一个是网页抓取)
+  const mcp = mcpToolParts(verb);
+  if (mcp !== null && mcp.tool.startsWith('browser_')) {
+    return <AppWindow size={12} strokeWidth={1.75} className="tool-icon-browser" aria-hidden="true" />;
+  }
   // MCP 工具=Puzzle 拼图件(业界 MCP 集成的通用视觉母题,区别于内置工具的扳手兜底)
-  if (mcpToolParts(verb) !== null) return <Puzzle size={12} strokeWidth={1.75} aria-hidden="true" />;
+  if (mcp !== null) return <Puzzle size={12} strokeWidth={1.75} aria-hidden="true" />;
   const Icon = TOOL_ICONS[verb] ?? Wrench;
   return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
@@ -95,6 +102,31 @@ const MCP_TOOL_LABELS: Record<string, { en: string; zh: string }> = {
   browser_cookie_get: { en: 'Get cookie', zh: '读 Cookie' }, browser_cookie_set: { en: 'Set cookie', zh: '设 Cookie' }, browser_cookie_delete: { en: 'Delete cookie', zh: '删 Cookie' },
   browser_cookie_list: { en: 'Cookie list', zh: 'Cookie 列表' }, browser_cookie_clear: { en: 'Clear cookies', zh: '清 Cookie' }, browser_file_upload: { en: 'Upload file', zh: '上传文件' },
   browser_close: { en: 'Close page', zh: '关闭页面' }, browser_resize: { en: 'Resize', zh: '调整窗口' }, browser_install: { en: 'Install browser', zh: '安装浏览器' },
+  // browser-use 全族补全(2026-10-31 用户报障「浏览器操作的方法没有完全 i18n」;清单=插件 server 注册面 84 工具)
+  browser_find: { en: 'Find', zh: '查找' }, browser_tabs: { en: 'Tabs', zh: '标签管理' }, browser_select_option: { en: 'Select option', zh: '选下拉项' },
+  browser_generate_locator: { en: 'Locator', zh: '生成定位器' }, browser_uncheck: { en: 'Uncheck', zh: '取消勾选' }, browser_drop: { en: 'Drop', zh: '拖放' },
+  browser_fill_form: { en: 'Fill form', zh: '填表单' }, browser_reload: { en: 'Reload', zh: '刷新页面' }, browser_resume: { en: 'Resume', zh: '恢复执行' },
+  browser_highlight: { en: 'Highlight', zh: '高亮元素' }, browser_hide_highlight: { en: 'Clear highlight', zh: '清高亮' },
+  browser_get_config: { en: 'Browser config', zh: '读浏览器配置' },
+  browser_keydown: { en: 'Key down', zh: '按下' }, browser_keyup: { en: 'Key up', zh: '松开' }, browser_press_sequentially: { en: 'Type keys', zh: '逐键输入' },
+  browser_mouse_move_xy: { en: 'Move mouse', zh: '移动鼠标' }, browser_mouse_down: { en: 'Mouse down', zh: '按下鼠标' }, browser_mouse_up: { en: 'Mouse up', zh: '松开鼠标' },
+  browser_mouse_wheel: { en: 'Wheel', zh: '滚轮' }, browser_mouse_click_xy: { en: 'Click at', zh: '坐标点击' }, browser_mouse_drag_xy: { en: 'Drag at', zh: '坐标拖拽' },
+  browser_network_request: { en: 'Request detail', zh: '看网络请求' }, browser_network_clear: { en: 'Clear network', zh: '清网络记录' }, browser_network_state_set: { en: 'Set network state', zh: '设网络状态' },
+  browser_pdf_save: { en: 'Save PDF', zh: '存为 PDF' },
+  browser_start_recording: { en: 'Start recording', zh: '开始录制' }, browser_stop_recording: { en: 'Stop recording', zh: '停止录制' },
+  browser_start_video: { en: 'Start video', zh: '开始录屏' }, browser_stop_video: { en: 'Stop video', zh: '停止录屏' },
+  browser_video_chapter: { en: 'Video chapter', zh: '视频章节' }, browser_video_show_actions: { en: 'Show actions', zh: '显示操作标注' }, browser_video_hide_actions: { en: 'Hide actions', zh: '隐藏操作标注' },
+  browser_start_tracing: { en: 'Start tracing', zh: '开始追踪' }, browser_stop_tracing: { en: 'Stop tracing', zh: '停止追踪' },
+  browser_route: { en: 'Set route', zh: '设路由拦截' }, browser_route_list: { en: 'Route list', zh: '路由列表' }, browser_unroute: { en: 'Remove route', zh: '撤路由' },
+  browser_run_code_unsafe: { en: 'Run code', zh: '运行代码' },
+  browser_storage_state: { en: 'Storage state', zh: '读存储状态' }, browser_set_storage_state: { en: 'Set storage state', zh: '设存储状态' },
+  browser_verify_element_visible: { en: 'Verify element', zh: '验证元素可见' }, browser_verify_text_visible: { en: 'Verify text', zh: '验证文本可见' },
+  browser_verify_list_visible: { en: 'Verify list', zh: '验证列表可见' }, browser_verify_value: { en: 'Verify value', zh: '验证取值' },
+  browser_webmcp_list: { en: 'Page MCP list', zh: '列页面 MCP' }, browser_webmcp_call: { en: 'Call page MCP', zh: '调页面 MCP' },
+  browser_localstorage_list: { en: 'Local storage list', zh: '列本地存储' }, browser_localstorage_get: { en: 'Get local storage', zh: '读本地存储' },
+  browser_localstorage_set: { en: 'Set local storage', zh: '写本地存储' }, browser_localstorage_delete: { en: 'Delete local storage', zh: '删本地存储' }, browser_localstorage_clear: { en: 'Clear local storage', zh: '清本地存储' },
+  browser_sessionstorage_list: { en: 'Session storage list', zh: '列会话存储' }, browser_sessionstorage_get: { en: 'Get session storage', zh: '读会话存储' },
+  browser_sessionstorage_set: { en: 'Set session storage', zh: '写会话存储' }, browser_sessionstorage_delete: { en: 'Delete session storage', zh: '删会话存储' }, browser_sessionstorage_clear: { en: 'Clear session storage', zh: '清会话存储' },
 };
 
 export function zhToolName(name: string): string {

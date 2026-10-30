@@ -306,6 +306,9 @@ function AppShell(): JSX.Element {
   const openFileTab = useCallback((p: string): void => { openTabInSession('file', { path: p }); }, [openTabInSession]);
   const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string): void => { openTabInSession('agent', { label, agentTitle, task }); }, [openTabInSession]);
+  /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走
+   *  browser_navigate 时 Chat 上抛 url,此处开 web 页签跟随(判重由 openTabInSession 承担) */
+  const openWebTab = useCallback((url: string): void => { openTabInSession('web', { url }); }, [openTabInSession]);
   /** G14.174 重定位:agents 页签 id=任务板页签(卡片流;tab 持久化档兼容保留旧 id) */
   const openBoardTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
   const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
@@ -487,38 +490,50 @@ function AppShell(): JSX.Element {
   });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
-  /** 窗口程序化拖拽·全状态统一(2026-10-29 用户裁定「修干净/推倒重来」终版):CSS app-region
-   *  整族不可信(zoom 位图错位×3 案在档:吞呼出钮/吞收起钮/吞窗控;抽屉态 CSS 孤岛亦死)——改
-   *  捕获期监听:拖拽面走 [data-drag-band] 数据属性单点契约(2026-10-30:五类硬编码类名收敛,
-   *  死选择器 .sx-head-drag 除名、设置遮盖条 .sx-settings-topbar 入约)非按钮/输入区的
-   *  mousedown 发 drag-start(壳跟随光标循环,壳侧 4px 位移阈值内纯点击不动窗),全局 mouseup
-   *  发 drag-end 停表;双击拖拽面=最大化切换(标准标题栏行为);停靠/抽屉两态同规零分叉,旧壳
-   *  ?. 静默跳过。button/input 目标排除(收起/导航/呼出钮点击不受累) */
+  /** 窗口程序化拖拽:拖拽面是 [data-drag-band]。按下后光标移动满 4px 才发 drag-start,
+   *  纯点击不通知壳(壳侧 setPosition 在无边框窗上会改宽高)。mouseup 发 drag-end。
+   *  双击拖拽面切换最大化。按钮、输入和弹层不进入拖拽。 */
   useEffect(() => {
     if (!IS_SHELL) return;
+    let armed = false;
+    let sx = 0;
+    let sy = 0;
     const onDown = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
-      if (t === null || t.closest('button, input, [role="button"]') !== null) return;
+      if (t === null || t.closest('button, input, textarea, select, [role="button"], [role="dialog"], [role="menu"]') !== null) return;
       if (t.closest('[data-drag-band]') === null) return;
+      armed = true;
+      sx = e.screenX;
+      sy = e.screenY;
+    };
+    const onMove = (e: MouseEvent): void => {
+      if (!armed || e.buttons !== 1) return;
+      if (Math.hypot(e.screenX - sx, e.screenY - sy) < 4) return;
+      armed = false;
       winBridge()?.dragStart?.();
     };
-    const onUp = (): void => winBridge()?.dragEnd?.();
+    const onUp = (): void => {
+      armed = false;
+      winBridge()?.dragEnd?.();
+    };
     const onDbl = (e: MouseEvent): void => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement | null;
-      if (t === null || t.closest('button, input, [role="button"]') !== null) return;
+      if (t === null || t.closest('button, input, textarea, select, [role="button"], [role="dialog"], [role="menu"]') !== null) return;
       if (t.closest('[data-drag-band]') === null) return;
       winBridge()?.toggleMaximize?.();
     };
     window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('mousemove', onMove, true);
     window.addEventListener('mouseup', onUp, true);
     window.addEventListener('dblclick', onDbl, true);
     return () => {
       window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('mousemove', onMove, true);
       window.removeEventListener('mouseup', onUp, true);
       window.removeEventListener('dblclick', onDbl, true);
-      winBridge()?.dragEnd?.(); // 卸载兜底停表
+      winBridge()?.dragEnd?.();
     };
   }, []);
 
@@ -665,6 +680,7 @@ function AppShell(): JSX.Element {
                 onOpenFile={openFileTab}
                 onOpenDiff={openDiffTab}
                 onOpenAgent={openAgentTab}
+                onOpenWeb={openWebTab}
                 onOpenTask={(ref) => {
                   openBoardTab();
                   setTaskFocus({ ref, nonce: Date.now() });

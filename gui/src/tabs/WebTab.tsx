@@ -222,92 +222,9 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
         >
           <ExternalLink size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        {deviceMode &&
-          /* G14.2xx 自由尺寸:宽 × 高 px + 缩放下拉(适应窗口/固定倍率)——设备模拟同构。
-             非自由尺寸=纯浏览器形态,无缩放面(G14.2xx:−/%/+ 退役) */
-          (
-            <>
-              <input
-                className="sx-web-dev-input"
-                aria-label={t('Viewport width (px)', '视口宽(px)')}
-                value={wDraft ?? String(deviceW)}
-                onChange={(e) => setWDraft(e.target.value)}
-                onBlur={() => {
-                  commitDim(wDraft, setDevW);
-                  setWDraft(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    commitDim(wDraft, setDevW);
-                    setWDraft(null);
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
-              <span className="sx-web-dev-x">×</span>
-              <input
-                className="sx-web-dev-input"
-                aria-label={t('Viewport height (px)', '视口高(px)')}
-                value={hDraft ?? String(deviceH)}
-                onChange={(e) => setHDraft(e.target.value)}
-                onBlur={() => {
-                  commitDim(hDraft, setDevH);
-                  setHDraft(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    commitDim(hDraft, setDevH);
-                    setHDraft(null);
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
-              <div className="sx-web-dev-anchor">
-              <button
-                type="button"
-                className="sx-web-dev-btn"
-                aria-label={t('Scale', '缩放')}
-                aria-expanded={scaleOpen}
-                onClick={() => setScaleOpen((v) => !v)}
-              >
-                {devFit ? t('Fit window', '适应窗口') : `${Math.round(devZoom * 100)}%`}
-                <ChevronDown size={11} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-              {scaleOpen && (
-                <div className="sx-web-dev-menu" role="menu" aria-label={t('Scale', '缩放')}>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className={devFit ? 'active' : undefined}
-                    onClick={() => {
-                      setDevFit(true);
-                      setScaleOpen(false);
-                    }}
-                  >
-                    {t('Fit window', '适应窗口')}
-                  </button>
-                  {DEVICE_SCALES.map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      role="menuitem"
-                      className={!devFit && Math.abs(devZoom - pct / 100) < 1e-6 ? 'active' : undefined}
-                      onClick={() => {
-                        setDevFit(false);
-                        setDevZoom(pct / 100);
-                        setScaleOpen(false);
-                      }}
-                    >
-                      {pct}%
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
         {/* G14.2xx 自由尺寸开关(设备模拟形):开=缺省 16:9 标准档 1280×720 定格为视口 px(此后
-            只随输入变,不随侧栏漂移)+缩放下拉;关=流式+缩放钮 */}
+            只随输入变,不随侧栏漂移)+缩放下拉;关=流式+缩放钮。开关留条上;宽高/缩放控件
+            2026-10-31 用户裁定移至独立一行(不挤网址右侧) */}
         <button
           type="button"
           className={`sx-web-nav${deviceMode ? ' active' : ''}`}
@@ -324,6 +241,89 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
           <MonitorSmartphone size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
+      {deviceMode && (
+        <div className="sx-web-dev-row">
+          <span className="sx-web-dev-label">{t('Viewport', '视口')}</span>
+          <input
+            className="sx-web-dev-input"
+            aria-label={t('Viewport width (px)', '视口宽(px)')}
+            value={wDraft ?? String(deviceW)}
+            onChange={(e) => setWDraft(e.target.value)}
+            onBlur={() => {
+              commitDim(wDraft, setDevW);
+              setWDraft(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                commitDim(wDraft, setDevW);
+                setWDraft(null);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          <span className="sx-web-dev-x">×</span>
+          <input
+            className="sx-web-dev-input"
+            aria-label={t('Viewport height (px)', '视口高(px)')}
+            value={hDraft ?? String(deviceH)}
+            onChange={(e) => setHDraft(e.target.value)}
+            onBlur={() => {
+              commitDim(hDraft, setDevH);
+              setHDraft(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                commitDim(hDraft, setDevH);
+                setHDraft(null);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          <div className="sx-web-dev-anchor">
+            <button
+              type="button"
+              className="sx-web-dev-btn"
+              aria-label={t('Scale', '缩放')}
+              aria-expanded={scaleOpen}
+              onClick={() => setScaleOpen((v) => !v)}
+            >
+              {devFit ? t('Fit window', '适应窗口') : `${Math.round(devZoom * 100)}%`}
+              <ChevronDown size={11} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+            {scaleOpen && (
+              <div className="sx-web-dev-menu" role="menu" aria-label={t('Scale', '缩放')}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={devFit ? 'active' : undefined}
+                  onClick={() => {
+                    setDevFit(true);
+                    setScaleOpen(false);
+                  }}
+                >
+                  {t('Fit window', '适应窗口')}
+                </button>
+                {DEVICE_SCALES.map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    role="menuitem"
+                    className={!devFit && Math.abs(devZoom - pct / 100) < 1e-6 ? 'active' : undefined}
+                    onClick={() => {
+                      setDevFit(false);
+                      setDevZoom(pct / 100);
+                      setScaleOpen(false);
+                    }}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="sx-web-dev-note">{t('Screenshot / resize is driven by the browser plugin (browser_resize, browser_take_screenshot).', '截图与调窗能力由浏览器插件驱动(browser_resize、browser_take_screenshot)。')}</span>
+        </div>
+      )}
       {/* 缩放结构恒在场(未开页同样显示目标区域——自由尺寸空态=视口框内引导面) */}
       <div className={`sx-web-frame-wrap${deviceMode ? ' device' : ''}`} ref={wrapRef}>
         <div

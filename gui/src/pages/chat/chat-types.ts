@@ -50,6 +50,9 @@ export interface ChatProps {
   onOpenDiff?: (callId: string, path: string) => void;
   /** G14.171 spawn 行子智能体名=蓝色链接:点开对应 agent 只读标签页(App 接 openTabInSession('agent',{label,agentTitle})) */
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
+   *  落条时上抛目标 url,App 开 web 页签跟随(判重/聚焦由 openTabInSession 承担);可选防桩免配 */
+  onOpenWeb?: (url: string) => void;
   /** G14.176 create_task 行任务名=蓝色链接:点开任务板并定位高亮对应卡(App 接 openTabInSession('agents')+focus 定位) */
   onOpenTask?: (taskRef: string) => void;
   /** G14.177 顶栏动态计数按钮:打开对应页签(待办=tasks/任务板=agents/后台任务=bgtasks) */

@@ -2967,3 +2967,10 @@ input.sx-setting-input { width: 100%; }
 .sx-composer .send .run-spinner { background: conic-gradient(from 0deg, var(--fg-on-solid) 0 72%, transparent 0); }
 /* 队列在途转圈(立即/插入已点正文未落):标题运行中同款 12px 灰环,替代四动作位 */
 .steer-row-actions .run-spinner { width: 12px; height: 12px; margin-right: 4px; }
+/* 浏览器工具图标着色钩子(与拼图件同字级,类留语义/查询锚) */
+.tool-icon-browser { color: var(--fg-secondary); }
+/* 自由尺寸控件独立一行(2026-10-31 用户裁定:不挤网址右侧)——视口标签+宽高输入+缩放下拉+
+   能力说明尾注;输入/下拉钮沿 sx-web-dev-* 既有令牌 */
+.sx-web-dev-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.sx-web-dev-label { font-size: 11px; color: var(--fg-tertiary); flex: none; }
+.sx-web-dev-note { font-size: 10.5px; color: var(--fg-tertiary); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -93,7 +93,7 @@ async function flushed(): Promise<void> {
 }
 /** rAF 可控 stub:记录调度数、回调入队手动 flush——归底 rAF 化(Task 4)后 jsdom 帧永不自走,
  *  断言赋值时机须显式排水;cancel 记入丢弃集供断言。restore() 还原原实现 */
-function installRafStub(): { count: () => number; drain: () => void; cancelled: () => number; restore: () => void } {
+function installRafStub(): { count: () => number; reset: () => void; drain: () => void; cancelled: () => number; restore: () => void } {
   const origRaf = globalThis.requestAnimationFrame;
   const origCaf = globalThis.cancelAnimationFrame;
   const queue: Array<() => void> = [];
@@ -109,6 +109,7 @@ function installRafStub(): { count: () => number; drain: () => void; cancelled: 
   }) as typeof cancelAnimationFrame;
   return {
     count: () => scheduled,
+    reset: () => { scheduled = 0; }, // 计数清零(队列不动):滤除挂载期一次性 rAF(ChatRail settle 等),只量后续调度
     cancelled: () => cancelledCount,
     drain: () => {
       while (queue.length > 0) (queue.shift() as () => void)();
@@ -541,7 +542,8 @@ describe('电脑控制徽标(2026-10-27)', () => {
     expect(rows.length).toBe(2);
     expect(rows[0]!.querySelector('.tool-icon-controlling')).not.toBeNull();
     expect(rows[1]!.querySelector('.tool-icon-controlling')).toBeNull();
-    expect(rows[1]!.querySelector('svg.lucide-puzzle')).not.toBeNull();
+    // browser-use 全族=浏览器窗件(2026-10-31 用户裁定:浏览器专用插件不吃通用拼图件)
+    expect(rows[1]!.querySelector('svg.lucide-app-window')).not.toBeNull();
   });
 });
 
@@ -935,7 +937,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelector('.chat-earlier')).toBeNull();
   });
 
-  it('G14.2xx 流式期间滚轮上翻立即脱离贴底跟随(wheel 意图直判,80px 窗口不再吞滚轮)', async () => {
+  it('G14.2xx 流式期间滚轮上翻立即脱离贴底跟随(wheel 意图直判)', async () => {
     const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
     Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
     Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 2000 });
@@ -944,7 +946,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
       await flushed();
       const el = document.querySelector('.chat') as HTMLElement;
-      // 回归锚:80px 窗口内(距底 50)未上翻时贴底跟随在场——重渲归底拉回
+      // 回归锚:仅改 scrollTop 未派 scroll 时 stick 仍真——重渲归底拉回
       el.scrollTop = 1450;
       fire({ type: 'token', text: '答1', ts: Date.now() });
       await flushed();
@@ -965,6 +967,39 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
+  it('贴底非对称闩:距底 50 的 scroll 即放手,流式/思考帧不再拉回(旧 80 磁区根修)', async () => {
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 2000 });
+    const raf = installRafStub();
+    try {
+      mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
+      await flushed();
+      const el = document.querySelector('.chat') as HTMLElement;
+      el.scrollTop = 2000;
+      fireEvent.scroll(el);
+      raf.drain();
+      // 上滑至距底 50(<80 旧磁区会重贴):scroll 闩应放手
+      el.scrollTop = 1450;
+      fireEvent.scroll(el);
+      fire({ type: 'reasoning', text: '想一想', ts: Date.now() });
+      await flushed();
+      raf.drain();
+      expect(el.scrollTop).toBe(1450);
+      // 真正回底(<4)才恢复跟随
+      el.scrollTop = 1998;
+      fireEvent.scroll(el);
+      fire({ type: 'reasoning', text: '继续', ts: Date.now() });
+      await flushed();
+      raf.drain();
+      expect(el.scrollTop).toBe(2000);
+    } finally {
+      raf.restore();
+      delete proto.clientHeight;
+      delete proto.scrollHeight;
+    }
+  });
+
   it('G14.2xx 贴底归底收进 rAF:同帧多次渲染只调度一次,flush 前不赋值', async () => {
     const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
     Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
@@ -974,6 +1009,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
       await flushed();
       const el = document.querySelector('.chat') as HTMLElement;
+      raf.reset(); // 挂载期一次性 rAF(ChatRail settle/滚动条等)已入队,计数清零只量贴底调度
       // 同帧三次渲染(三次 act,均先于帧回调排水):在途守卫令调度恒 1 次
       fire({ type: 'token', text: '一', ts: Date.now() });
       await flushed();
@@ -981,7 +1017,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       await flushed();
       fire({ type: 'token', text: '三', ts: Date.now() });
       await flushed();
-      expect(raf.count()).toBe(1);
+      expect(raf.count()).toBe(0); // 在途守卫:挂载期贴底调度未 flush 仍占槽,三次渲染零新增
       // flush 前不赋值(同步归底已退役)——贴底态高度读取推迟到动画帧
       expect(el.scrollTop).toBe(0);
       raf.drain();
