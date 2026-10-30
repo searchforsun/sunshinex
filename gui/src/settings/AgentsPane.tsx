@@ -379,7 +379,7 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
               ariaLabel="agent isolation"
               value={form.isolation}
               options={[
-                { v: '', l: t('Unset', '未设置') },
+                { v: '', l: t('Default', '默认') },
                 { v: 'worktree', l: 'worktree' },
               ]}
               onChange={(v) => setForm({ ...form, isolation: v })}
@@ -390,7 +390,7 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
               ariaLabel="agent executor"
               value={form.executor}
               options={[
-                { v: '', l: t('Unset', '未设置') },
+                { v: '', l: t('Default', '默认') },
                 { v: 'internal-team', l: 'internal-team' },
                 { v: 'external-cli', l: 'external-cli' },
               ]}

@@ -139,6 +139,18 @@ const num = (key: string): SettingsFieldDef => ({ key, control: 'number' });
 /** 闭集选项(lz=中文标签,渲染期 t 求值——选项标签曾于模块加载期 t() 冻结,切中文后仍显英文) */
 export type SettingsOption = SelectOption & { readonly lz?: string };
 const sel = (key: string, options: readonly SettingsOption[]): SettingsFieldDef => ({ key, control: 'select', options });
+/* 未设置显默认值(2026-10-30 用户裁定):键→默认项中文标签(渲染期显示;存值仍=清空删键) */
+const SELECT_PLACEHOLDERS: Record<string, string> = {
+  tier: '中',
+  reasoningEffort: '中',
+  readFence: '关闭',
+  sandbox: '关闭',
+  isolation: '自动',
+  kbBackend: '本地 JSON',
+  autoMemory: '开',
+  learnedSkills: '开',
+  websearchProvider: 'duckduckgo',
+};
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
 
 /** 四简单面板(SETTINGS_PANES):键名与 daemon SEMANTIC_KEYS 逐字对齐;分组卡=语义盒。
@@ -500,7 +512,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
           options={opts}
           disabled={disabled}
           title={title}
-          placeholder={t('Unset', '未设置')}
+          placeholder={SELECT_PLACEHOLDERS[fd.key] !== undefined ? SELECT_PLACEHOLDERS[fd.key] : t('Unset', '未设置')}
           onChange={(v) => {
             setValues((vals) => ({ ...vals, [fd.key]: v }));
             persistField(fd, v); // 换项即存(自动生效轮)
@@ -566,7 +578,6 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
             <div key={g.title.en} className="sx-card sx-settings-card">
               <div className="sx-card-head">
                 <span className="sx-card-title">{t(g.title.en, g.title.zh)}</span>
-                {g.desc !== undefined && <span className="sx-card-desc">{t(g.desc.en, g.desc.zh)}</span>}
               </div>
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
@@ -580,9 +591,8 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
                       <div className="sx-setting-main">
                         <div className="sx-setting-title">
                           <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>
-                          <SourceBadge source={row.source} />
+                          {row.source !== 'global' && row.source !== 'default' && <SourceBadge source={row.source} />}
                         </div>
-                        {desc !== undefined && <p className="sx-setting-desc">{t(desc.en, desc.zh)}</p>}
                       </div>
                       <div className="sx-setting-ctl">{renderControl(fd, row)}</div>
                     </div>

@@ -56,6 +56,8 @@ export interface ProvidersPaneConn extends SettingsFormConn {
 /** models 行 effort/tier 闭集(单源:请求参数卡选项与模型行 Select 共用;daemon 语义键同域) */
 const MODEL_EFFORTS: readonly string[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const MODEL_TIERS: readonly string[] = ['small', 'medium', 'large'];
+const EFFORT_LABELS: Record<string, string> = { none: '无', minimal: '极低', low: '低', medium: '中', high: '高', xhigh: '极高', max: '最大' };
+const TIER_LABELS: Record<string, string> = { small: '小', medium: '中', large: '大' };
 
 /** 请求参数卡(SettingsForm 复用):仅 tier/effort 两闭集下拉——模型档位散键四 Combo 与 baseUrl
  *  行退役(spec §15);键名与 daemon SEMANTIC_KEYS 逐字对齐,写路径 PUT /settings 原样保留。
@@ -67,17 +69,16 @@ const PROVIDERS_PANE: SettingsPaneDef = {
   groups: [
     {
       title: { en: 'Request parameters (global)', zh: '请求参数(全局)' },
-      desc: { en: 'Pinned to global scope — not affected by the project selector', zh: '恒全局作用域——不随项目选择器' },
       fields: [
         {
           key: 'tier',
           control: 'select',
-          options: MODEL_TIERS.map((v) => ({ v, l: v })),
+          options: MODEL_TIERS.map((v) => ({ v, l: TIER_LABELS[v] ?? v })),
         },
         {
           key: 'reasoningEffort',
           control: 'select',
-          options: MODEL_EFFORTS.map((v) => ({ v, l: v })),
+          options: MODEL_EFFORTS.map((v) => ({ v, l: EFFORT_LABELS[v] ?? v })),
         },
       ],
     },
@@ -398,17 +399,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
           onClose={() => setDrawer(null)}
           onSubmit={submitDrawer}
         >
-          <p className="sx-mcp-hint">
-            {t('API key is write-only — it is never displayed. Leave empty to keep the current key.', 'API 密钥仅写不显——留空保持现键不变。')}
-          </p>
-          {drawer.mode === 'edit' && (
-            <p className="sx-mcp-hint">
-              {t(
-                'Reorder writes to the file immediately — row order resets to the file after each move. Unsaved field edits are kept for rows whose model name is already in the file; other unsaved rows are dropped.',
-                '排序即时落盘——每次排序后行序回落文件真值。模型名已在文件中的行保留未保存的字段编辑，其余未保存行会被丢弃。',
-              )}
-            </p>
-          )}
           <ModalField label={t('Name', '名称')}>
             <input className="sx-setting-input" aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
           </ModalField>
@@ -454,14 +444,14 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                     ariaLabel={t('Effort', '强度')}
                     value={r.reasoningEffort}
                     placeholder={t('Effort', '强度')}
-                    options={[{ v: '', l: t('Effort', '强度') }, ...MODEL_EFFORTS.map((v) => ({ v, l: v }))]}
+                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_EFFORTS.map((v) => ({ v, l: EFFORT_LABELS[v] ?? v }))]}
                     onChange={(v) => setRow(i, { reasoningEffort: v })}
                   />
                   <Select
                     ariaLabel={t('Tier', '档位')}
                     value={r.tier}
                     placeholder={t('Tier', '档位')}
-                    options={[{ v: '', l: t('Tier', '档位') }, ...MODEL_TIERS.map((v) => ({ v, l: v }))]}
+                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_TIERS.map((v) => ({ v, l: TIER_LABELS[v] ?? v }))]}
                     onChange={(v) => setRow(i, { tier: v })}
                   />
                 </div>
