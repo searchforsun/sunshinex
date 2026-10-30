@@ -225,8 +225,8 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
         )}
       </div>
       {chips !== undefined && <div className="sx-rc-chips">{chips}</div>}
-      {actions !== undefined && <div className="sx-card-actions">{actions}</div>}
       {body !== undefined && <div className="sx-rc-body">{body}</div>}
+      {actions !== undefined && <div className="sx-card-actions">{actions}</div>}
       {children !== undefined && (
         <details className="sx-rc-details">
           <summary>{t('Details', '详情')}</summary>

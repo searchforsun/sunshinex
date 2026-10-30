@@ -311,6 +311,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                 chips={chipsOf(p)}
                 enabled={p.enabled}
                 onToggle={writable ? () => toggle(p) : undefined}
+                body={cardBodyOf(p)}
                 actions={
                   <button
                     type="button"
@@ -322,9 +323,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                     {t('Configure', '配置')}
                   </button>
                 }
-              >
-                body={cardBodyOf(p)}
-              </ResourceCard>
+              />
             );
           })}
         </ul>
