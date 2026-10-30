@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, RotateCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bug, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, MoreHorizontal, RotateCw } from 'lucide-react';
 import type { TabParams } from './tab-state';
 import { t } from '../i18n';
 import { openExternalUrl } from '../ui-util';
@@ -107,6 +107,19 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
     return () => window.removeEventListener('pointerdown', close);
   }, [scaleOpen]);
 
+  /** ⋯ 更多操作菜单(2026-10-31):开关态+点外即收(同缩放档收口,锚共类);调试项=桌面壳
+   *  openDevtools 桥在场才渲染(旧壳/浏览器态自动隐) */
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const close = (e: PointerEvent): void => {
+      if (e.target instanceof Element && !e.target.closest('.sx-web-dev-anchor')) setMoreOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [moreOpen]);
+  const devtoolsBridge = (window as unknown as { sunshinexWindow?: { openDevtools?: () => void } }).sunshinexWindow?.openDevtools;
+
   const navigate = (): void => {
     if (input.trim() === '') return;
     const url = normalizeWebUrl(input);
@@ -212,16 +225,56 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
             }}
           />
         </div>
-        <button
-          type="button"
-          className="sx-web-nav"
-          aria-label={t('Open in system browser', '在系统浏览器打开')}
-          data-tip={t('Open in system browser', '在系统浏览器打开')}
-          disabled={active === null}
-          onClick={openExternal}
-        >
-          <ExternalLink size={13} strokeWidth={1.75} aria-hidden="true" />
-        </button>
+        {/* ⋯ 更多操作菜单(2026-10-31 用户裁定:外链钮升级为菜单钮——在默认浏览器打开+打开
+            调试工具;两项均需已输入网址;调试项仅桌面壳在场(旧壳无 openDevtools 桥自动隐)) */}
+        <div className="sx-web-dev-anchor">
+          <button
+            type="button"
+            className={`sx-web-nav${moreOpen ? ' active' : ''}`}
+            aria-label={t('More actions', '更多操作')}
+            data-tip={t('More actions', '更多操作')}
+            aria-expanded={moreOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMoreOpen((v) => !v);
+            }}
+          >
+            <MoreHorizontal size={14} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          {moreOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 24, background: 'transparent' }} onClick={() => setMoreOpen(false)} />
+              <div className="sx-web-dev-menu sx-web-more-menu" role="menu" aria-label={t('More actions', '更多操作')} style={{ zIndex: 25 }}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={active === null}
+                  onClick={() => {
+                    openExternal();
+                    setMoreOpen(false);
+                  }}
+                >
+                  <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
+                  {t('Open in system browser', '在默认浏览器中打开')}
+                </button>
+                {devtoolsBridge !== undefined && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={active === null}
+                    onClick={() => {
+                      devtoolsBridge();
+                      setMoreOpen(false);
+                    }}
+                  >
+                    <Bug size={12} strokeWidth={1.75} aria-hidden="true" />
+                    {t('Open DevTools', '打开调试工具')}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         {/* G14.2xx 自由尺寸开关(设备模拟形):开=缺省 16:9 标准档 1280×720 定格为视口 px(此后
             只随输入变,不随侧栏漂移)+缩放下拉;关=流式+缩放钮。开关留条上;宽高/缩放控件
             2026-10-31 用户裁定移至独立一行(不挤网址右侧) */}

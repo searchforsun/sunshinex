@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
+import { clampSize, lockedDragBounds } from './lib/window-drag';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
 import { resolveUiLang, resolveUiLangFromSetting, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
@@ -150,23 +151,35 @@ if (!app.requestSingleInstanceLock()) {
       else mainWindow.maximize();
     });
     ipcMain.on('win:close', () => mainWindow?.close());
-    // 抽屉程序化拖窗(2026-10-29 用户裁定:菜单抽屉顶带拖动窗——CSS app-region 在 fixed 抽屉+
-    // counter-zoom 位图下翻转期不可信(吞 [|]/吞收起钮/拖垮右栏 drag,三案在案),改主进程跟随
-    // 光标循环完全绕开位图:win:drag-start 记「光标−窗口」偏移,10ms 定时器 getCursorScreenPoint
-    // → setPosition;renderer 全局 mouseup 发 win:drag-end 停表;60s 兜底防 mouseup 丢失长挂
+    // 程序化拖窗:渲染层在拖拽面上越过 4px 才发 drag-start,主进程再跟光标。
+    // Windows 无边框窗的 setPosition 会把 thick frame 逐拍加进宽高,贴顶时还会被 Aero Snap
+    // 拉成工作区大小——拖拽期锁死宽高,并用 setResizable(false) 挡住系统改尺寸。
     let dragTimer: ReturnType<typeof setInterval> | null = null;
+    let dragSession = false;
+    let dragLockSize: { width: number; height: number } | null = null;
+    let normalBounds: { x: number; y: number; width: number; height: number } | null = null;
+    const rememberNormal = (): void => {
+      if (dragSession || mainWindow === undefined || mainWindow.isDestroyed() || mainWindow.isMaximized()) return;
+      normalBounds = mainWindow.getBounds();
+    };
     const stopWindowDrag = (): void => {
       if (dragTimer !== null) {
         clearInterval(dragTimer);
         dragTimer = null;
       }
+      const lock = dragLockSize;
+      dragLockSize = null;
+      if (lock !== null && mainWindow !== undefined && !mainWindow.isDestroyed()) {
+        const [x, y] = mainWindow.getPosition();
+        mainWindow.setResizable(true);
+        mainWindow.setBounds({ x, y, width: lock.width, height: lock.height }, false);
+        if (!mainWindow.isMaximized()) normalBounds = mainWindow.getBounds();
+      }
+      dragSession = false;
     };
     ipcMain.on('win:drag-start', () => {
       if (!mainWindow || mainWindow.isDestroyed() || dragTimer !== null) return;
-      // 位移阈值(2026-10-30 用户裁定:SM_CXDRAG 惯例 4px)——drag-start 在 mousedown 即发,零阈值
-      // 下最大化中纯点击(手不动)也触发 unmaximize=「点一下顶部宽高就变」;双击两连 mousedown 各自
-      // 还原再被 dblclick toggle=状态竞态抖动。阈值内只轮询不动窗;真拖的首拍才还原(标志/视觉脱同步
-      // 时 setPosition 会套更大还原边界,故显式 unmaximize 后以还原后边界重算偏移,拖拽恒=纯移动)
+      dragSession = true;
       const start = screen.getCursorScreenPoint();
       let [wx, wy] = mainWindow.getPosition();
       let offX = start.x - wx;
@@ -179,28 +192,45 @@ if (!app.requestSingleInstanceLock()) {
           return;
         }
         const c = screen.getCursorScreenPoint();
+        // 渲染层已做 4px 门槛;这里再守一道,纯点击(光标抖动未过线)不改窗口
         if (!moved && Math.hypot(c.x - start.x, c.y - start.y) < 4) return;
         if (!moved) {
           moved = true;
           if (mainWindow.isMaximized()) {
             mainWindow.unmaximize();
-            // 还原边界自愈(2026-10-30):restore bounds 曾被历史版本 setPosition 污染成畸形尺寸
-            // (实测 594×1230 窄高条=「点顶部自动放大/变高」残影)——还原后越出工作区即钳回,
-            // 以工作区钳制值重算偏移,后续跟随恒在屏内
-            const wa = screen.getPrimaryDisplay().workArea;
-            const [rw, rh] = mainWindow.getSize();
-            if (rw > wa.width || rh > wa.height) {
-              mainWindow.setSize(Math.min(rw, wa.width), Math.min(rh, wa.height));
+            if (normalBounds !== null) {
+              mainWindow.setBounds(normalBounds, false);
+            } else {
+              const wa = screen.getPrimaryDisplay().workArea;
+              const [rw, rh] = mainWindow.getSize();
+              const next = clampSize({ width: rw, height: rh }, wa);
+              if (next.width !== rw || next.height !== rh) mainWindow.setSize(next.width, next.height);
             }
             [wx, wy] = mainWindow.getPosition();
             offX = start.x - wx;
             offY = start.y - wy;
           }
+          const [lockW, lockH] = mainWindow.getSize();
+          dragLockSize = { width: lockW, height: lockH };
+          mainWindow.setResizable(false);
+          const [lx, ly] = mainWindow.getPosition();
+          mainWindow.setBounds({ x: lx, y: ly, width: lockW, height: lockH }, false);
         }
-        mainWindow.setPosition(c.x - offX, c.y - offY);
+        if (dragLockSize === null) return;
+        const next = lockedDragBounds({ x: c.x, y: c.y }, { x: offX, y: offY }, dragLockSize);
+        mainWindow.setBounds(next, false);
+        if (mainWindow.isMaximized()) {
+          mainWindow.unmaximize();
+          mainWindow.setBounds(next, false);
+        }
+        const [aw, ah] = mainWindow.getSize();
+        if (aw !== dragLockSize.width || ah !== dragLockSize.height) mainWindow.setBounds(next, false);
       }, 10);
     });
     ipcMain.on('win:drag-end', stopWindowDrag);
+    win.on('resize', rememberNormal);
+    win.on('move', rememberNormal);
+    win.once('ready-to-show', rememberNormal);
     const notifyMaximized = (): void => {
       try {
         mainWindow?.webContents.send('win:maximized', mainWindow.isMaximized());
@@ -236,6 +266,15 @@ if (!app.requestSingleInstanceLock()) {
       } catch {
         return { ok: false };
       }
+    });
+
+    // 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」):主窗 detach 独立 DevTools
+    // 窗——检查器内以帧选择器定位 WebTab iframe(同页全帧可检);已开再点=关闭(toggle 语义)
+    ipcMain.on('web:open-devtools', () => {
+      const wc = mainWindow !== undefined && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined;
+      if (wc === undefined) return;
+      if (wc.isDevToolsOpened()) wc.closeDevTools();
+      else wc.openDevTools({ mode: 'detach' });
     });
 
     // 「浏览文件夹」原生目录选择（2026-10-27 创建新项目慢修复）：preload 桥 window.sunshinex.pickFolder

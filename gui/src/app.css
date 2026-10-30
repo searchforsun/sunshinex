@@ -2973,6 +2973,11 @@ input.sx-setting-input { width: 100%; }
 .sx-rc-body .sx-agent-desc { margin: 0; }
 /* 插件配置多选勾选组行(caps 能力组等 multi 键):横排勾选 */
 .sx-plugin-opt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+/* 浏览器页签 ⋯ 更多操作菜单(在默认浏览器打开/打开调试工具):加宽+图标行 */
+.sx-web-more-menu { min-width: 200px; }
+.sx-web-more-menu button { display: flex; align-items: center; gap: 8px; }
+.sx-web-more-menu button:disabled { opacity: 0.45; cursor: not-allowed; }
+.sx-web-more-menu button:disabled:hover { background: transparent; }
 /* 发送 loading 转圈比例(2026-10-31 用户裁定「暗色主题黑占大部分白占小部分,亮色相反」):
    环身=主题反色占 72%(转圈才明显),缺口 28% 小亮口;fg-on-solid 对按钮底恒反相,双主题自动互反。
    旧 30% 弧(反色小弧+大透明)读不出转动=本次根修;静止小方块停止钮维持原样不动 */

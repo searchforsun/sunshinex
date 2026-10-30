@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   dragStart: (): void => void ipcRenderer.send('win:drag-start'),
   dragEnd: (): void => void ipcRenderer.send('win:drag-end'),
   openExternal: (url: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:open-external', url),
+  /** 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」):主窗 detach 独立 DevTools 窗,
+   *  检查器帧选择器可定位 WebTab iframe;已开再点=关闭(toggle) */
+  openDevtools: (): void => void ipcRenderer.send('web:open-devtools'),
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);
     ipcRenderer.on('win:maximized', handler);
