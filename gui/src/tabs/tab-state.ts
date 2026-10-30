@@ -14,7 +14,7 @@
 import { pathBasename, pathSegments } from '../ui-util';
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
-export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'agent' | 'directory' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'sidechat';
+export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'agent' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'sidechat'; /* directory 退役(2026-10-29 用户裁定「不要兼容」):盘档消毒 TAB_TYPES 同步滤除,旧盘 directory 页签开席即弃 */
 
 /** 开标签目标参数(按类型取用:file=diff=目录用 path、diff 备选 callId、web=url、终端 cols/rows) */
 export interface TabParams {
@@ -308,7 +308,7 @@ export function reopenClosed(states: TabStates, sessionId: string, index: number
 }
 
 const TAB_TYPES: ReadonlySet<string> = new Set<string>([
-  'file', 'diff', 'tasks', 'agents', 'agent', 'directory', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'sidechat',
+  'file', 'diff', 'tasks', 'agents', 'agent', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'sidechat',
 ]);
 
 /** G14.2xx 盘档消毒(gui/sessions/<会话id>.json → TabSessionState):盘为真相源,但坏键/越型

@@ -37,7 +37,6 @@ export interface FilesProps {
   /** md 预览内链点击（G14.125）：href 已解析为绝对路径，App 注入开 file 标签 */
   onOpenFile?: (path: string) => void;
   /** G14.2xx 目录路径移交(输入目录 → 目录页签定位展开;undefined = 宿主不支持) */
-  onOpenDirectory?: (relPath: string) => void;
   /** G14.154 选区「在辅助对话中提问」：携带 @引用 文本,App 注入 fork+开辅助标签 */
   onSideAsk?: (insert: string) => void;
 }
@@ -78,7 +77,7 @@ function resolveHref(mdPath: string, href: string): string {
   return out.join('/');
 }
 
-export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDirectory, onSideAsk }: FilesProps): JSX.Element {
+export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAsk }: FilesProps): JSX.Element {
   const [pathInput, setPathInput] = useState(initialPath ?? '');
   const [load, setLoad] = useState<LoadState>(EMPTY_LOAD);
   /** G7 请求序守卫：发号单调节点——发请求 ++,应答落定时号不匹配即过期丢弃 */
@@ -153,9 +152,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
         (f) => {
           if (rid !== requestIdRef.current) return; // 过期应答:丢弃
           if (f.type === 'directory') {
-            // G14.2xx 目录路径:移交目录页签定位展开(文件预览面对目录无意义)
-            onOpenDirectory?.(target);
-            setLoad((prev) => ({ file: prev.file, error: null, loading: false }));
+            // 目录无预览(directory 页签已退役,2026-10-29 用户裁定「不要兼容」):回落空态引导
+            setLoad(EMPTY_LOAD);
             return;
           }
           setLoad({ file: f, error: null, loading: false });
@@ -166,7 +164,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onOpenDi
         },
       );
     },
-    [conn, sessionId, onOpenDirectory],
+    [conn, sessionId],
   );
 
   /** initialPath 到场自动加载（跳转面：依赖含 initialPath——已挂载时新跳转同样触发）。

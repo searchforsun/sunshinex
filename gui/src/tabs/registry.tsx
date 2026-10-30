@@ -8,7 +8,7 @@
 
 import { lazy } from 'react';
 import { t } from '../i18n';
-import { FileText, FolderTree, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { FileText, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -16,7 +16,6 @@ import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 // (主包 9.4MB→目标 <1.5MB);元数据(title/resolveKey/icon)同步层不受影响
 const Files = lazy(() => import('../pages/Files').then((m) => ({ default: m.Files })));
 const TerminalTab = lazy(() => import('./TerminalTab').then((m) => ({ default: m.TerminalTab })));
-const DirectoryTab = lazy(() => import('./DirectoryTab').then((m) => ({ default: m.DirectoryTab })));
 const DiffTab = lazy(() => import('./DiffTab').then((m) => ({ default: m.DiffTab })));
 const AgentTranscriptTab = lazy(() => import('./AgentTranscriptTab').then((m) => ({ default: m.AgentTranscriptTab })));
 const TodoCardsTab = lazy(() => import('./TodoCardsTab').then((m) => ({ default: m.TodoCardsTab })));
@@ -86,7 +85,6 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   sidechat: MessageCircle,
   file: FileText,
   diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
-  directory: FolderTree,
   tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
   agents: Bot, // G8d 子智能体活动聚合卡
   agent: Bot, // G14.175 子智能体只读转录页(机器人图标,用户裁决)
@@ -132,12 +130,6 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         initialPath={p.params.path}
         root={p.root}
         onOpenFile={(path) => p.openTab('file', { path })}
-        onOpenDirectory={(rel) => {
-          // 目录不作标签(用户裁定):移交 directory 页签(单例聚焦+树内逐层定位展开)后关掉
-          // 承接点击的 file 页签——否则中间页签残留
-          p.openTab('directory', { path: rel });
-          p.closeTab(p.uid);
-        }}
         onSideAsk={(text: string) => p.startSideChat?.(text)}
       />
     ),
@@ -151,14 +143,6 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: (params) => params.callId ?? '',
     singleton: false,
     render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={(path) => p.openTab('file', { path })} />,
-  },
-  {
-    id: 'directory',
-    group: 'content',
-    title: () => t('Directory', '目录'),
-    resolveKey: () => '',
-    singleton: true,
-    render: (p) => <DirectoryTab conn={p.conn} sessionId={p.sessionId} root={p.root} openTab={p.openTab} locate={p.params.path} />,
   },
   {
     id: 'tasks',

@@ -6,7 +6,7 @@ import type { TabInstance } from './tabs/tab-state';
  * 2026-10-26 二期 keep-alive——重标签(terminal/file/diff/taskboard/directory)保留上限 4,
  * 超限自动关最久未触的非活动标签;触达序=活动重标签尾追,新出现的重标签补录。
  */
-const HEAVY_TAB_TYPES = new Set<string>(['terminal', 'file', 'diff', 'taskboard', 'directory']);
+const HEAVY_TAB_TYPES = new Set<string>(['terminal', 'file', 'diff', 'taskboard']);
 const KEEP_ALIVE_CAP = 4;
 
 export function useHeavyTabLru(deps: {
