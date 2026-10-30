@@ -10,7 +10,7 @@ import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
 import { SessionJournal, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
-import { projectSlug, resolveDataDir } from '../config/data-dir';
+import { projectsRoot, projectSlug, resolveDataDir } from '../config/data-dir';
 
 /**
  * 会话生命周期域(2026-10-27 技术债轮 自 daemon.ts 外提,D31 骨架域续批,行为零变化):
@@ -132,7 +132,20 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
       const shell = io.sessions.get(id);
       if (sid !== id) {
         io.sessions.delete(id);
-        if (shell !== undefined) io.unwatchProject(shell.root);
+        if (shell !== undefined) {
+          io.unwatchProject(shell.root);
+          // 空壳出生档随壳清扫(2026-10-31 用户报障「每次点击运行中会话都产生一个新对话」):
+          // 内存收编了,盘面 birth-only 档还在——/sessions 列表每次点击多一行「新会话」孤儿。
+          // 仅零实质行档可删(birthOnlyFile 守卫从严,真档绝不触碰)
+          const shellJid = shell.attachedJournalId;
+          if (shellJid !== undefined && birthOnlyFile(sessionsDir(resolveDataDir(shell.root)), `${shellJid}.jsonl`)) {
+            try {
+              fs.rmSync(path.join(sessionsDir(resolveDataDir(shell.root)), `${shellJid}.jsonl`), { force: true });
+            } catch {
+              /* 单文件收口失败不阻塞收编(下次启动清扫兜底) */
+            }
+          }
+        }
       }
       io.setActive(sid);
       return ok({ sessionId: sid });
@@ -215,10 +228,14 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
 /** birth-only 档判定（出生写语义的守卫面,2026-10-31 spec §2）：档仅含 header/ctx-snap 行（零实质
  *  内容）即出生档——逐行 JSON 校验,任一实质行/坏行/读失败即非 birth-only（守卫从严,不误放双挂） */
 function birthOnlyJournal(root: string, jid: string): boolean {
-  const file = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+  return birthOnlyFile(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+}
+
+/** birth-only 文件判定（目录+文件名形态;启动清扫/收编清扫共用——单一判定面） */
+function birthOnlyFile(dir: string, fileName: string): boolean {
   let text: string;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    text = fs.readFileSync(path.join(dir, fileName), 'utf8');
   } catch {
     return false;
   }
@@ -232,4 +249,39 @@ function birthOnlyJournal(root: string, jid: string): boolean {
     }
   }
   return true;
+}
+
+/** 出生档启动清扫（2026-10-31 用户报障「每次点击运行中会话都产生一个新对话」存量收口）：
+ *  收编路径曾只丢内存空壳,盘面 birth-only 档遗留——/sessions 列表每次点击多一行「新会话」
+ *  孤儿。boot 序扫全部注册工作区删零实质行档:boot 时零在座会话,无引用可破;birthOnlyFile
+ *  守卫从严(任一实质行/坏行/读失败即保留),历史实质档零风险。返回清除数(启动日志面) */
+export function sweepBirthOnlyJournals(): number {
+  let removed = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dir = sessionsDir(path.join(projectsRoot(), ent.name, 'data'));
+    let files: string[];
+    try {
+      files = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      if (!f.endsWith('.jsonl')) continue;
+      if (!birthOnlyFile(dir, f)) continue;
+      try {
+        fs.rmSync(path.join(dir, f), { force: true });
+        removed++;
+      } catch {
+        /* 单文件失败不阻塞清扫 */
+      }
+    }
+  }
+  return removed;
 }

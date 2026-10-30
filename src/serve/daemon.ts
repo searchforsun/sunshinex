@@ -307,6 +307,14 @@ export class GuiDaemon {
   async start(opts?: GuiDaemonStartOpts): Promise<GuiDaemonHandle> {
     // token 语义(G10 后裁定):undefined = 免鉴权档(服务恒绑 127.0.0.1,本地工具不设密);显式传入才启用鉴权
     const token = opts?.token;
+    // 出生档启动清扫(2026-10-31「点击运行中会话每次多一个新对话」存量收口):boot 序零在座
+    // 会话,birth-only 档(零实质行)删除无引用可破——历次点击遗留的孤儿「新会话」行就此清零
+    try {
+      const swept = lifecycle.sweepBirthOnlyJournals();
+      if (swept > 0) console.log(`[daemon] swept ${swept} birth-only journal(s)`);
+    } catch {
+      /* 清扫失败不阻塞启动(下次 boot 再扫) */
+    }
     const server = http.createServer((req, res) => this.dispatch(req, res, token));
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
