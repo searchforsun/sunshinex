@@ -67,8 +67,8 @@ export function ChatRail(props: {
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
   const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
-  // 每部分回复正文(2026-10-31 用户裁定 2+2 行迷你预览):用户消息后首个 assistant 正文条,
-  // 单次问答取首个(后续 assistant 段=同一轮的分段续文,不重复入预览)
+  // 每部分回复正文(2026-10-31 用户裁定:取该轮**最后一个**正文条——流式/思考分段会把一轮拆成
+  // 多条 assistant,末条=收束全文;首条常只是开头段。持续覆盖直至下一用户消息)
   const replyByKey = new Map<string, string>();
   {
     let pendingKey: string | null = null;
@@ -79,7 +79,6 @@ export function ChatRail(props: {
       }
       if (pendingKey !== null && e.kind === 'assistant' && e.md.trim() !== '') {
         replyByKey.set(pendingKey, previewText(e.md));
-        pendingKey = null;
       }
     }
   }
