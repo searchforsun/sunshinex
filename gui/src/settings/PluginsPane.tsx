@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
+import { Select } from './controls';
 import { zhToolName } from '../pages/chat/ToolEntry';
 import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
@@ -257,16 +258,16 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
   const needle = query.trim().toLowerCase();
   const visible = (rows ?? []).filter((p) => (needle === '' ? true : `${p.id} ${p.name} ${p.description}`.toLowerCase().includes(needle)));
 
-  /** 卡 chips:版本+工具计数(2026-10-31 用户裁定「默认只显示多少个工具」;exposedTools=manifest
-   *  缺省暴露清单)+平台不支持标(装载层只标记不丢弃——装配面同门剔除,写面全禁) */
+  /** 卡副题行(2026-10-31 用户裁定「去掉这种标签,直接显示」):版本+工具计数纯文本,不再做
+   *  chip 描边;来源徽章(内置/用户)整项去除——卡头名牌即足以辨识 */
   const chipsOf = (p: PluginRow): ReactNode => (
-    <>
-      <span className="sx-chip">v{p.version}</span>
-      {p.exposedTools !== undefined && p.exposedTools.length > 0 && (
-        <span className="sx-chip">{t(`tools ×${p.exposedTools.length}`, `工具 ×${p.exposedTools.length}`)}</span>
-      )}
-      {!p.platformSupported && <span className="sx-shadow-tag">{t('Platform not supported', '平台不支持')}</span>}
-    </>
+    <span className="sx-rc-subtitle">
+      {t(`v${p.version}`, `v${p.version}`)}
+      {p.exposedTools !== undefined && p.exposedTools.length > 0
+        ? t(` · tools ×${p.exposedTools.length}`, ` · 工具 ×${p.exposedTools.length}`)
+        : ''}
+      {!p.platformSupported ? t(' · platform not supported', ' · 平台不支持') : ''}
+    </span>
   );
 
   /** 卡面(2026-10-31 用户裁定「不用现在的详情显示等」):描述+逐插件 warnings 行内直出(罕见
@@ -308,7 +309,6 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                 key={p.id}
                 title={p.name}
                 chips={chipsOf(p)}
-                badge={{ source: p.source }}
                 enabled={p.enabled}
                 onToggle={writable ? () => toggle(p) : undefined}
                 actions={
@@ -323,7 +323,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                   </button>
                 }
               >
-                {cardBodyOf(p)}
+                body={cardBodyOf(p)}
               </ResourceCard>
             );
           })}
@@ -350,15 +350,6 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
           }}
           onSubmit={submitDrawer}
         >
-          <p className="sx-mcp-hint">
-            {t('Saving rewrites the whole plugins.<id>.config object.', '保存将整体改写 plugins.<id>.config 对象。')}
-          </p>
-          <p className="sx-mcp-hint">
-            {t(
-              'A non-empty Source tab overrides the form on save — clear it to edit via the form; switching tabs keeps its content.',
-              '「源码」非空时保存以 JSON 为准——清空后方可用表单编辑;切 Tab 不清内容。',
-            )}
-          </p>
           <ModalTabs
             tabs={[
               { id: 'config', label: t('Config', '配置') },
@@ -409,9 +400,9 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
             </div>
           ) : (
             <>
-          {/* 2026-10-30 用户裁定:schema 键值表单改 ModalField 表单行(标签行(键名+schema
-              说明 hint)+控件行,对齐主设置面;boolean 复选行沿 sx-check-row 现形态);
-              aria-label/提交形状零变化 */}
+          {/* 2026-10-30 用户裁定:schema 键值表单改 ModalField 表单行;2026-10-31 用户裁定
+              「能用下拉的,不要用自由输入」——options 枚举键=下拉(单选)/勾选组(multi 逗号多选),
+              仅无 options 键(自由路径等)保持文本输入;aria-label/提交形状零变化 */}
           {Object.entries(drawer.configSchema ?? {}).map(([k, s]) =>
             s.type === 'boolean' ? (
               <label key={k} className="sx-drawer-field sx-check-row">
@@ -424,6 +415,39 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                 {k}
                 {s.description !== undefined && <span className="sx-mcp-hint">{s.description}</span>}
               </label>
+            ) : s.options !== undefined && s.options.length > 0 && s.multi === true ? (
+              <ModalField key={k} label={k} hint={s.description}>
+                <div className="sx-plugin-opt-row" role="group" aria-label={k}>
+                  {s.options.map((o) => {
+                    const picked = (form.values[k] ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '');
+                    const on = picked.includes(o);
+                    return (
+                      <label key={o} className="sx-drawer-field sx-check-row">
+                        <input
+                          type="checkbox"
+                          aria-label={`${k}:${o}`}
+                          checked={on}
+                          onChange={(e) => {
+                            const next = e.target.checked ? [...picked, o] : picked.filter((x) => x !== o);
+                            setForm({ ...form, values: { ...form.values, [k]: next.join(',') } });
+                          }}
+                        />
+                        {o}
+                      </label>
+                    );
+                  })}
+                </div>
+              </ModalField>
+            ) : s.options !== undefined && s.options.length > 0 ? (
+              <ModalField key={k} label={k} hint={s.description}>
+                <Select
+                  ariaLabel={k}
+                  value={form.values[k] ?? ''}
+                  placeholder={t('Default', '默认')}
+                  options={[{ v: '', l: t('Default', '默认') }, ...s.options.map((o) => ({ v: o, l: o }))]}
+                  onChange={(v) => setForm({ ...form, values: { ...form.values, [k]: v } })}
+                />
+              </ModalField>
             ) : (
               <ModalField key={k} label={k} hint={s.description}>
                 <input

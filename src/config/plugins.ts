@@ -53,8 +53,9 @@ export interface PluginManifest {
   mcpServers?: Record<string, Omit<McpServerContrib, 'name'>>;
   /** 插件内技能目录（相对插件根），并入技能装载链（优先级最低） */
   skills?: string[];
-  /** 设置页展示用 config 键说明（v1 仅展示，不强校验 config 值，故条目形状不深校验） */
-  configSchema?: Record<string, { type: string; description?: string }>;
+  /** 设置页展示用 config 键说明（v1 仅展示，不强校验 config 值；options=枚举下拉面,
+   *  multi=逗号多选;条目形状不深校验） */
+  configSchema?: Record<string, { type: string; description?: string; options?: string[]; multi?: boolean }>;
   /** 缺省暴露的 MCP 工具短名清单(2026-10-31 用户裁定「默认只显示多少个工具」):设置面工具
    *  开关的渲染清单+卡片计数源——实际暴露仍由 server caps 决定,本名单=缺省 caps 下的面;
    *  停用面走 settings plugins.<id>.config.disabledTools(短名),装配期 client 逐工具不注册 */
@@ -177,7 +178,7 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
   const skills = o.skills === undefined ? undefined : strArr(o.skills);
   if (o.skills !== undefined && skills === undefined) warnings.push('skills: 须为字符串数组（相对插件根的目录），已忽略该键');
   // configSchema 只守卫对象形状，条目不深校验（v1 仅设置页展示）——类型面按声明收窄
-  const configSchema = o.configSchema === undefined ? undefined : (objRecord(o.configSchema) as Record<string, { type: string; description?: string }> | undefined);
+  const configSchema = o.configSchema === undefined ? undefined : (objRecord(o.configSchema) as Record<string, { type: string; description?: string; options?: string[]; multi?: boolean }> | undefined);
   if (o.configSchema !== undefined && !configSchema) warnings.push('configSchema: 须为对象，已忽略该键');
   // exposedTools:缺省暴露工具短名清单(设置面工具开关渲染源;串数组净化,坏形忽略)
   const exposedTools = o.exposedTools === undefined ? undefined : strArr(o.exposedTools);

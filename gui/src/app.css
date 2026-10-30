@@ -2961,6 +2961,15 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-sort-pop { top: calc(100% + 4px); right: 0; min-width: 128px; }
 .sx-ws-sort-pop .sx-menuitem { justify-content: space-between; }
 .sx-ws-sort-active { color: var(--fg); }
+/* 插件弹窗工具开关页(2026-10-31):行=本地化名+短名+开关(沿 sx-mcp-switch 令牌);纵列密排 */
+.sx-plugin-tools { display: flex; flex-direction: column; }
+.sx-plugin-tool-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); }
+.sx-plugin-tool-row:last-child { border-bottom: none; }
+.sx-plugin-tool-name { font-size: 12.5px; color: var(--fg); flex: none; min-width: 88px; }
+.sx-plugin-tool-id { font: 11px var(--font-mono); color: var(--fg-tertiary); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-plugin-tool-row .sx-mcp-switch { flex: none; margin-left: auto; }
+/* 插件配置多选勾选组行(caps 能力组等 multi 键):横排勾选 */
+.sx-plugin-opt-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 /* 发送 loading 转圈比例(2026-10-31 用户裁定「暗色主题黑占大部分白占小部分,亮色相反」):
    环身=主题反色占 72%(转圈才明显),缺口 28% 小亮口;fg-on-solid 对按钮底恒反相,双主题自动互反。
    旧 30% 弧(反色小弧+大透明)读不出转动=本次根修;静止小方块停止钮维持原样不动 */

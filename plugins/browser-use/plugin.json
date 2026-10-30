@@ -43,7 +43,8 @@
   "configSchema": {
     "browser": {
       "type": "string",
-      "description": "浏览器：chrome|chromium|firefox|webkit|msedge"
+      "options": ["chrome", "chromium", "firefox", "webkit", "msedge"],
+      "description": "浏览器"
     },
     "headless": {
       "type": "boolean",
@@ -55,7 +56,9 @@
     },
     "caps": {
       "type": "string",
-      "description": "能力组：config,network,storage,devtools,vision,pdf,testing（以 @playwright/mcp 版本为准）"
+      "options": ["config", "network", "storage", "devtools", "vision", "pdf", "testing"],
+      "multi": true,
+      "description": "能力组（以 @playwright/mcp 版本为准）"
     },
     "userDataDir": {
       "type": "string",

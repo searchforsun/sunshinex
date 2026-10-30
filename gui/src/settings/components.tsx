@@ -180,8 +180,9 @@ export function SearchBar({ value, placeholder, onChange }: SearchBarProps): JSX
 /** ResourceCard props:icon 任意节点(aria-hidden 装饰位);subtitle 副题行;chips 任意 chips 行
  *  (sx-chip 令牌);badge=SourceBadgeProps 直通;enabled+onToggle 同在才渲染开关(role=switch,
  *  aria-label=`Enable {title}`——沿 McpPane 惯例,enabled 缺省 true);actions=卡尾操作钮行;
- *  children=折叠详情(<details> 缺省收起,summary「Details」)。根元素 <li>——置于
- *  ul.sx-rc-list(或既有 sx-mcp-list 语言)列表内消费 */
+ *  body=直显卡身(2026-10-31 用户裁定:描述等内容不折「详情」,直接展示);children=折叠详情
+ *  (<details>,summary「Details/详情」)。根元素 <li>——置于 ul.sx-rc-list(或既有 sx-mcp-list
+ *  语言)列表内消费 */
 export interface ResourceCardProps {
   readonly icon?: ReactNode;
   readonly title: string;
@@ -191,12 +192,13 @@ export interface ResourceCardProps {
   readonly enabled?: boolean;
   readonly onToggle?: () => void;
   readonly actions?: ReactNode;
+  readonly body?: ReactNode;
   readonly children?: ReactNode;
 }
 
 /** 资源卡统一骨架(六面板改版共用):头部行(icon/标题/副题/徽标/开关)+chips 行+actions 行+
- *  折叠详情。开关复用 .sx-mcp-switch 令牌(on=--ok 绿) */
-export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onToggle, actions, children }: ResourceCardProps): JSX.Element {
+ *  body 直显行+折叠详情。开关复用 .sx-mcp-switch 令牌(on=--ok 绿) */
+export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onToggle, actions, body, children }: ResourceCardProps): JSX.Element {
   const on = enabled !== false;
   return (
     <li className="sx-rc">
@@ -224,6 +226,7 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
       </div>
       {chips !== undefined && <div className="sx-rc-chips">{chips}</div>}
       {actions !== undefined && <div className="sx-card-actions">{actions}</div>}
+      {body !== undefined && <div className="sx-rc-body">{body}</div>}
       {children !== undefined && (
         <details className="sx-rc-details">
           <summary>{t('Details', '详情')}</summary>

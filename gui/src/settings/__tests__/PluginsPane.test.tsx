@@ -75,7 +75,7 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     render(<PluginsPane conn={conn} root="" />);
     expect(await screen.findByText('Browser Use')).toBeDefined();
     expect(screen.getByText('v1.0.0')).toBeDefined();
-    expect(screen.getByText('Builtin')).toBeDefined(); // SourceBadge builtin 态(en 钉)
+    expect(screen.queryByText('Builtin')).toBeNull(); // 来源徽章退役(2026-10-31 用户裁定:标签直接显示,内置/用户徽章去除)
     expect(screen.getByText('Browser automation via plugin MCP')).toBeDefined();
     // 读面省参(root='' 恒全局清单)
     await waitFor(() => expect(pluginsCalls).toEqual([undefined]));
