@@ -55,10 +55,14 @@ export interface PluginManifest {
   skills?: string[];
   /** 设置页展示用 config 键说明（v1 仅展示，不强校验 config 值，故条目形状不深校验） */
   configSchema?: Record<string, { type: string; description?: string }>;
+  /** 缺省暴露的 MCP 工具短名清单(2026-10-31 用户裁定「默认只显示多少个工具」):设置面工具
+   *  开关的渲染清单+卡片计数源——实际暴露仍由 server caps 决定,本名单=缺省 caps 下的面;
+   *  停用面走 settings plugins.<id>.config.disabledTools(短名),装配期 client 逐工具不注册 */
+  exposedTools?: string[];
 }
 
 /** 已知顶层键（导出供 schema↔解析器对拍钉消费，plugins.test 终审 Fix 7）：键集漂移在测试面拦下 */
-export const KNOWN_KEYS = new Set(['manifestVersion', 'id', 'name', 'version', 'description', 'platforms', 'defaultEnabled', 'mcpServers', 'skills', 'configSchema']);
+export const KNOWN_KEYS = new Set(['manifestVersion', 'id', 'name', 'version', 'description', 'platforms', 'defaultEnabled', 'mcpServers', 'skills', 'configSchema', 'exposedTools']);
 /** 保留贡献点名（v1 未实现）：出现即告警「已忽略」，名字留作前向兼容（进程内工具贡献/hooks 等留位） */
 export const RESERVED = ['commands', 'hooks', 'agents', 'tools'] as const;
 const REQUIRED: Array<keyof PluginManifest> = ['manifestVersion', 'id', 'name', 'version', 'description'];
@@ -175,6 +179,9 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
   // configSchema 只守卫对象形状，条目不深校验（v1 仅设置页展示）——类型面按声明收窄
   const configSchema = o.configSchema === undefined ? undefined : (objRecord(o.configSchema) as Record<string, { type: string; description?: string }> | undefined);
   if (o.configSchema !== undefined && !configSchema) warnings.push('configSchema: 须为对象，已忽略该键');
+  // exposedTools:缺省暴露工具短名清单(设置面工具开关渲染源;串数组净化,坏形忽略)
+  const exposedTools = o.exposedTools === undefined ? undefined : strArr(o.exposedTools);
+  if (o.exposedTools !== undefined && exposedTools === undefined) warnings.push('exposedTools: 须为字符串数组（工具短名），已忽略该键');
   let mcpServers: Record<string, Omit<McpServerContrib, 'name'>> | undefined;
   if (o.mcpServers !== undefined) {
     const entries = objRecord(o.mcpServers);
@@ -199,6 +206,7 @@ export function parsePluginManifest(dir: string): { manifest: PluginManifest | n
     ...(mcpServers !== undefined ? { mcpServers } : {}),
     ...(skills !== undefined ? { skills } : {}),
     ...(configSchema !== undefined ? { configSchema } : {}),
+    ...(exposedTools !== undefined ? { exposedTools } : {}),
   };
   return { manifest, warnings, errors };
 }
@@ -343,12 +351,18 @@ export function pluginMcpServers(projectRoot: string | undefined, opts: Paramete
         const v = merged[confKey];
         if (v !== undefined) env[envKey] = String(v);
       }
+      // 逐工具停用清单(2026-10-31 用户裁定「配置弹窗控制哪些工具可用」):settings config
+      // disabledTools(短名串数组)→ server 配置,MCP 装配期 client 逐工具不注册(模型不可见);
+      // 坏形(非串数组/含非串)净化为 undefined=全量放行
+      const rawDisabled = merged.disabledTools;
+      const disabledTools = Array.isArray(rawDisabled) ? rawDisabled.filter((x): x is string => typeof x === 'string') : undefined;
       servers.push({
         name,
         command: cfg.command,
         args,
         ...(Object.keys(env).length > 0 ? { env } : {}),
         ...(cfg.cwd !== undefined ? { cwd: cfg.cwd === '.' ? p.dir : cfg.cwd } : {}),
+        ...(disabledTools !== undefined && disabledTools.length > 0 ? { disabledTools } : {}),
       });
       if (cfg.safety !== undefined) safety[name] = cfg.safety;
     }

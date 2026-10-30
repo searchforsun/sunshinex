@@ -1,9 +1,92 @@
-{ "manifestVersion": 1, "id": "browser-use", "name": "浏览器操作", "version": "0.1.0",
+{
+  "manifestVersion": 1,
+  "id": "browser-use",
+  "name": "浏览器操作",
+  "version": "0.1.0",
   "description": "Playwright 驱动的浏览器自动化（a11y snapshot 主线，vision 兜底可开）",
   "defaultEnabled": false,
-  "mcpServers": { "browser-use": { "command": "node", "cwd": ".",
-    "args": ["server/index.js"],
-    "configDefaults": { "browser": "chrome" },
-    "configArgs": { "browser": ["--browser", "{value}"], "headless": ["--headless"], "isolated": ["--isolated"], "caps": ["--caps", "{value}"], "userDataDir": ["--user-data-dir", "{value}"] } } },
-  "skills": ["skills"],
-  "configSchema": { "browser": { "type": "string", "description": "浏览器：chrome|chromium|firefox|webkit|msedge" }, "headless": { "type": "boolean", "description": "无头模式" }, "isolated": { "type": "boolean", "description": "内存临时 profile（登录态不持久）" }, "caps": { "type": "string", "description": "能力组：config,network,storage,devtools,vision,pdf,testing（以 @playwright/mcp 版本为准）" }, "userDataDir": { "type": "string", "description": "持久 profile 目录（建议 <dataDir>/plugins/browser-use/profile）" } } }
+  "mcpServers": {
+    "browser-use": {
+      "command": "node",
+      "cwd": ".",
+      "args": [
+        "server/index.js"
+      ],
+      "configDefaults": {
+        "browser": "chrome"
+      },
+      "configArgs": {
+        "browser": [
+          "--browser",
+          "{value}"
+        ],
+        "headless": [
+          "--headless"
+        ],
+        "isolated": [
+          "--isolated"
+        ],
+        "caps": [
+          "--caps",
+          "{value}"
+        ],
+        "userDataDir": [
+          "--user-data-dir",
+          "{value}"
+        ]
+      }
+    }
+  },
+  "skills": [
+    "skills"
+  ],
+  "configSchema": {
+    "browser": {
+      "type": "string",
+      "description": "浏览器：chrome|chromium|firefox|webkit|msedge"
+    },
+    "headless": {
+      "type": "boolean",
+      "description": "无头模式"
+    },
+    "isolated": {
+      "type": "boolean",
+      "description": "内存临时 profile（登录态不持久）"
+    },
+    "caps": {
+      "type": "string",
+      "description": "能力组：config,network,storage,devtools,vision,pdf,testing（以 @playwright/mcp 版本为准）"
+    },
+    "userDataDir": {
+      "type": "string",
+      "description": "持久 profile 目录（建议 <dataDir>/plugins/browser-use/profile）"
+    }
+  },
+  "exposedTools": [
+    "browser_close",
+    "browser_resize",
+    "browser_console_messages",
+    "browser_handle_dialog",
+    "browser_emulate_media",
+    "browser_evaluate",
+    "browser_file_upload",
+    "browser_drop",
+    "browser_find",
+    "browser_fill_form",
+    "browser_press_key",
+    "browser_type",
+    "browser_navigate",
+    "browser_navigate_back",
+    "browser_network_requests",
+    "browser_network_request",
+    "browser_run_code_unsafe",
+    "browser_take_screenshot",
+    "browser_snapshot",
+    "browser_click",
+    "browser_drag",
+    "browser_hover",
+    "browser_select_option",
+    "browser_tabs",
+    "browser_wait_for"
+  ]
+}

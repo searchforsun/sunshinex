@@ -488,6 +488,8 @@ export interface PluginRow {
   skillsCount?: number;
   /** 设置页展示用 config 键说明（v1 仅展示不强校验；daemon 侧仅 manifest 在场时携带） */
   configSchema?: Record<string, { type: string; description?: string }>;
+  /** 缺省暴露工具短名清单(2026-10-31 工具开关面:卡片计数+配置弹窗开关渲染源;旧 daemon 不带) */
+  exposedTools?: string[];
   /** settings 语义键 plugins[id].config 原值（浅对象） */
   config?: Record<string, unknown>;
   warnings: string[];

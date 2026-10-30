@@ -1,8 +1,9 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
+import { zhToolName } from '../pages/chat/ToolEntry';
 import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 
@@ -61,16 +62,17 @@ export interface PluginsPaneProps {
   readonly refreshTick?: number;
 }
 
-/** 弹窗 Tab 键(McpPane 同构):「配置」=schema 表单面;「源码」=JSON 文本域(非空保存整对象
- *  以 JSON 为准) */
-type ModalTab = 'config' | 'source';
+/** 弹窗 Tab 键(McpPane 同构):「配置」=schema 表单面;「工具」=缺省暴露工具开关面(2026-10-31,
+ *  manifest.exposedTools 在场才渲染);「源码」=JSON 文本域(非空保存整对象以 JSON 为准) */
+type ModalTab = 'config' | 'tools' | 'source';
 
 /** 配置抽屉表单态(受控单对象):values=schema 键的字符串态播种;rest=config 中 schema 外
- *  既有键(表单不建模——提交透传保全);tab=顶部 Tab 当值;jsonText=「源码」文本(T22 纪律:
- *  非空即提交整对象以 JSON 为准;切 Tab 不清,清空方回表单组装) */
+ *  既有键(表单不建模——提交透传保全;disabledTools 由工具开关页专管,不入 rest 防双源);
+ *  disabled=停用工具短名集(2026-10-31 工具开关面);tab=顶部 Tab 当值;jsonText=「源码」文本 */
 interface ConfigForm {
   values: Record<string, string>;
   rest: Record<string, unknown>;
+  disabled: string[];
   tab: ModalTab;
   jsonText: string;
 }
@@ -165,14 +167,18 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
       const v = p.config?.[k];
       values[k] = v === undefined ? '' : String(v);
     }
+    // rest=config 中 schema 外既有键(透传保全)——disabledTools 由工具开关页专管,不入 rest(防双源)
     const rest: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(p.config ?? {})) {
-      if (!schemaKeys.includes(k)) rest[k] = v;
+      if (!schemaKeys.includes(k) && k !== 'disabledTools') rest[k] = v;
     }
+    const rawDisabled = p.config?.disabledTools;
+    const disabled = Array.isArray(rawDisabled) ? rawDisabled.filter((x): x is string => typeof x === 'string') : [];
     const sourceDefault = schemaKeys.length === 0 || Object.keys(rest).length > 0;
     setForm({
       values,
       rest,
+      disabled,
       tab: sourceDefault ? 'source' : 'config',
       jsonText: sourceDefault ? JSON.stringify(p.config ?? {}, null, 2) : '',
     });
@@ -196,6 +202,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
             seeded[k] = Number.isFinite(n) ? n : raw;
           } else seeded[k] = raw;
         }
+        if (f.disabled.length > 0) seeded.disabledTools = f.disabled; // 工具停用并入源码预览
         return { ...f, tab: next, jsonText: JSON.stringify(seeded, null, 2) };
       }
       return { ...f, tab: next };
@@ -229,6 +236,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
       }
       config = { ...form.rest, ...built.config };
     }
+    if (form.disabled.length > 0) config = { ...config, disabledTools: form.disabled }; // 工具停用随提交落 config(装配期 client 逐工具不注册)
     setSaving(true);
     setFormError('');
     conn.putPlugin(writeRoot, drawer.id, { config }).then(
@@ -249,19 +257,24 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
   const needle = query.trim().toLowerCase();
   const visible = (rows ?? []).filter((p) => (needle === '' ? true : `${p.id} ${p.name} ${p.description}`.toLowerCase().includes(needle)));
 
-  /** 卡 chips:版本+平台不支持标(装载层只标记不丢弃——装配面同门剔除,写面全禁) */
+  /** 卡 chips:版本+工具计数(2026-10-31 用户裁定「默认只显示多少个工具」;exposedTools=manifest
+   *  缺省暴露清单)+平台不支持标(装载层只标记不丢弃——装配面同门剔除,写面全禁) */
   const chipsOf = (p: PluginRow): ReactNode => (
     <>
       <span className="sx-chip">v{p.version}</span>
+      {p.exposedTools !== undefined && p.exposedTools.length > 0 && (
+        <span className="sx-chip">{t(`tools ×${p.exposedTools.length}`, `工具 ×${p.exposedTools.length}`)}</span>
+      )}
       {!p.platformSupported && <span className="sx-shadow-tag">{t('Platform not supported', '平台不支持')}</span>}
     </>
   );
 
-  /** 折叠详情(只读保留;2026-10-31 用户裁定重排:详情与卡语言统一——dt 定宽/dd 换行不逃逸,
-   *  configSchema 键说明=键+类型 chip+作用描述(UI 字族),不再「type — 长句」mono 逃逸):
-   *  逐插件 warnings 行内告警条+ID/servers/skills 元信息+configSchema 键说明+config 原值 */
-  const detailsOf = (p: PluginRow): ReactNode => (
+  /** 卡面(2026-10-31 用户裁定「不用现在的详情显示等」):描述+逐插件 warnings 行内直出(罕见
+   *  诊断面不再折叠藏详情),元信息 dl/configSchema 键说明/config 原值 dump 整体退役——
+   *  配置与工具开关全部进「配置」弹窗 */
+  const cardBodyOf = (p: PluginRow): ReactNode => (
     <>
+      {p.description !== '' && <p className="sx-agent-desc">{p.description}</p>}
       {p.warnings.length > 0 && (
         <div role="alert">
           {p.warnings.map((w, i) => (
@@ -271,36 +284,6 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
           ))}
         </div>
       )}
-      <dl className="sx-plugin-meta">
-        <dt>ID</dt>
-        <dd>{p.id}</dd>
-        {p.servers.length > 0 && (
-          <>
-            <dt>{t('Servers', '服务器')}</dt>
-            <dd>{p.servers.join(', ')}</dd>
-          </>
-        )}
-        {p.skillsCount !== undefined && p.skillsCount > 0 && (
-          <>
-            <dt>{t('Skills', '技能')}</dt>
-            <dd>{t(`${p.skillsCount} skill(s)`, `技能 ×${p.skillsCount}`)}</dd>
-          </>
-        )}
-      </dl>
-      {p.configSchema !== undefined && Object.keys(p.configSchema).length > 0 && (
-        <dl className="sx-plugin-meta sx-plugin-schema">
-          {Object.entries(p.configSchema).map(([k, s]) => (
-            <Fragment key={k}>
-              <dt>{k}</dt>
-              <dd>
-                <span className="sx-plugin-type">{s.type}</span>
-                {s.description}
-              </dd>
-            </Fragment>
-          ))}
-        </dl>
-      )}
-      {p.config !== undefined && Object.keys(p.config).length > 0 && <pre className="sx-plugin-json">{JSON.stringify(p.config, null, 2)}</pre>}
     </>
   );
 
@@ -340,8 +323,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                   </button>
                 }
               >
-                {p.description !== '' && <p className="sx-agent-desc">{p.description}</p>}
-                {detailsOf(p)}
+                {cardBodyOf(p)}
               </ResourceCard>
             );
           })}
@@ -380,10 +362,13 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
           <ModalTabs
             tabs={[
               { id: 'config', label: t('Config', '配置') },
+              ...(drawer.exposedTools !== undefined && drawer.exposedTools.length > 0
+                ? [{ id: 'tools' as const, label: t('Tools', '工具') }]
+                : []),
               { id: 'source', label: t('Source', '源码') },
             ]}
             active={form.tab}
-            onChange={(id) => switchTab(id === 'source' ? 'source' : 'config')}
+            onChange={(id) => switchTab(id === 'source' ? 'source' : id === 'tools' ? 'tools' : 'config')}
           />
           {form.tab === 'source' ? (
             <textarea
@@ -394,6 +379,34 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
               rows={10}
               spellCheck={false}
             />
+          ) : form.tab === 'tools' ? (
+            /* 工具开关页(2026-10-31 用户裁定「配置弹窗控制哪些工具可用」):manifest 缺省暴露清单
+               逐具开关——开=注册进模型工具面,关=装配期不注册(模型不可见);落 config.disabledTools */
+            <div className="sx-plugin-tools" role="group" aria-label={t('Tool toggles', '工具开关')}>
+              {drawer.exposedTools!.map((name) => {
+                const off = form.disabled.includes(name);
+                return (
+                  <div key={name} className="sx-plugin-tool-row">
+                    <span className="sx-plugin-tool-name">{zhToolName(`mcp__${drawer.id}__${name}`)}</span>
+                    <span className="sx-plugin-tool-id">{name}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!off}
+                      aria-label={name}
+                      className={`sx-mcp-switch${off ? '' : ' on'}`}
+                      onClick={() =>
+                        setForm((f) =>
+                          f === null ? f : { ...f, disabled: off ? f.disabled.filter((x) => x !== name) : [...f.disabled, name] },
+                        )
+                      }
+                    >
+                      <span className="knob" aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <>
           {/* 2026-10-30 用户裁定:schema 键值表单改 ModalField 表单行(标签行(键名+schema
