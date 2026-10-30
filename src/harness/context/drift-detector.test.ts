@@ -46,6 +46,19 @@ test('基线两态比对：未变零输出；变更一条英文说明；基线�
   });
 });
 
+test('exportSig/restoreBaselines: 基线随快照走——回种后 detect 不报漂移,磁盘变更才报', () => {
+  // deps 桩:readSunshinex 可变
+  let disk = 'v1';
+  const d = new DriftDetector({ root: os.tmpdir(), readGlobalSunshine: () => null, readSunshinex: () => disk, globalPath: '/g', readMemoryIndex: () => '' });
+  assert.deepEqual(d.detect(), []); // 构造基线=磁盘,无漂移
+  disk = 'v2';
+  assert.equal(d.detect().length, 1); // 变更检出,基线前进
+  assert.deepEqual(d.detect(), []);
+  d.restoreBaselines({ skills: '', memory: '', sunshinex: 'v1', globalSunshine: null }); // 回种旧基线
+  assert.deepEqual(d.detect().map((s) => s.startsWith('SUNSHINE.md changed')), [true]); // 旧基线 vs 新磁盘 → 再报一次(追尾语义)
+  assert.equal(d.exportSig().sunshinex, 'v2'); // 基线已随比对前进
+});
+
 test('消失态与空记忆索引态：is gone / (the memory index is now empty) 显式标注', () => {
   withDetector((det, state) => {
     state.proj = null; // 磁盘文件被删

@@ -95,6 +95,20 @@ export class DriftDetector {
     return out;
   }
 
+  /** 基线导出（ctx-snap 落档面）：四基线现值随快照同出生/同更新 */
+  exportSig(): { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null } {
+    return { skills: this.skillsBaseline, memory: this.memoryBaseline, sunshinex: this.sunshinexBaseline, globalSunshine: this.globalSunshineBaseline };
+  }
+
+  /** 基线回种（恢复面，spec §3）：落档签名直置——基线随快照走而非随磁盘（attach/resume 换铸时
+   *  磁盘可能已变，重取即把变更烘进快照基线、绕过追尾）。回种后首次 detect 检出磁盘 diff 即追尾 */
+  restoreBaselines(sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null }): void {
+    this.skillsBaseline = sig.skills;
+    this.memoryBaseline = sig.memory;
+    this.sunshinexBaseline = sig.sunshinex;
+    this.globalSunshineBaseline = sig.globalSunshine;
+  }
+
   /** 单层 SUNSHINE 漂移说明构建（全局/项目两层共用单点，防两处拼装漂移）：变更头+最新全文（超限截断附 read 指针）/ 消失态；文案恒英文单语（写链即提示词面） */
   private sunshineDriftText(label: string, current: string | null, filePath: string): string {
     const text =
