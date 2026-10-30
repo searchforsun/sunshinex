@@ -13,7 +13,8 @@
         "server/index.js"
       ],
       "configDefaults": {
-        "browser": "chrome"
+        "browser": "chrome",
+        "headless": true
       },
       "configArgs": {
         "browser": [
@@ -44,25 +45,25 @@
     "browser": {
       "type": "string",
       "options": ["chrome", "chromium", "firefox", "webkit", "msedge"],
-      "description": "浏览器"
+      "description": "Agent 浏览器内核（默认 chrome）"
     },
     "headless": {
       "type": "boolean",
-      "description": "无头模式"
+      "description": "无界面运行（默认开：不弹浏览器窗口，过程经快照与侧栏跟随；关=弹窗可视可手动接管）"
     },
     "isolated": {
       "type": "boolean",
-      "description": "内存临时 profile（登录态不持久）"
+      "description": "一次性 profile（默认关；开=关闭即忘登录态）"
     },
     "caps": {
       "type": "string",
       "options": ["config", "network", "storage", "devtools", "vision", "pdf", "testing"],
       "multi": true,
-      "description": "能力组（以 @playwright/mcp 版本为准）"
+      "description": "附加能力组（默认无=精简工具面；组越多工具越多、越占模型上下文）"
     },
     "userDataDir": {
       "type": "string",
-      "description": "持久 profile 目录（建议 <dataDir>/plugins/browser-use/profile）"
+      "description": "登录态 profile 目录（默认空=临时目录，建议 <dataDir>/plugins/browser-use/profile）"
     }
   },
   "exposedTools": [

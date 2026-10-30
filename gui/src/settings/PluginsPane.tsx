@@ -401,14 +401,18 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
             <>
           {/* 2026-10-30 用户裁定:schema 键值表单改 ModalField 表单行;2026-10-31 用户裁定
               「能用下拉的,不要用自由输入」——options 枚举键=下拉(单选)/勾选组(multi 逗号多选),
-              仅无 options 键(自由路径等)保持文本输入;aria-label/提交形状零变化 */}
-          {Object.entries(drawer.configSchema ?? {}).map(([k, s]) =>
-            s.type === 'boolean' ? (
+              仅无 options 键(自由路径等)保持文本输入;显示面按「生效默认」(config ?? configDefaults)
+              —未设置的键勾选/下拉显示缺省态而非空白;提交形状零变化(未触碰=不落键) */}
+          {Object.entries(drawer.configSchema ?? {}).map(([k, s]) => {
+            const effDefault = drawer.configDefaults?.[k];
+            const value = form.values[k] ?? '';
+            const checked = value !== '' ? value === 'true' : effDefault === true;
+            return s.type === 'boolean' ? (
               <label key={k} className="sx-drawer-field sx-check-row">
                 <input
                   type="checkbox"
                   aria-label={k}
-                  checked={form.values[k] === 'true'}
+                  checked={checked}
                   onChange={(e) => setForm({ ...form, values: { ...form.values, [k]: e.target.checked ? 'true' : 'false' } })}
                 />
                 {k}
@@ -418,7 +422,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
               <ModalField key={k} label={k} hint={s.description}>
                 <div className="sx-plugin-opt-row" role="group" aria-label={k}>
                   {s.options.map((o) => {
-                    const picked = (form.values[k] ?? '').split(',').map((x) => x.trim()).filter((x) => x !== '');
+                    const picked = value.split(',').map((x) => x.trim()).filter((x) => x !== '');
                     const on = picked.includes(o);
                     return (
                       <label key={o} className="sx-drawer-field sx-check-row">
@@ -441,9 +445,13 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
               <ModalField key={k} label={k} hint={s.description}>
                 <Select
                   ariaLabel={k}
-                  value={form.values[k] ?? ''}
-                  placeholder={t('Default', '默认')}
-                  options={[{ v: '', l: t('Default', '默认') }, ...s.options.map((o) => ({ v: o, l: o }))]}
+                  value={value}
+                  placeholder={
+                    typeof effDefault === 'string' && effDefault !== ''
+                      ? t('Default', '默认') + ` (${effDefault})`
+                      : t('Default', '默认')
+                  }
+                  options={[{ v: '', l: t('Default', '默认') + (typeof effDefault === 'string' && effDefault !== '' ? ` (${effDefault})` : '') }, ...s.options.map((o) => ({ v: o, l: o }))]}
                   onChange={(v) => setForm({ ...form, values: { ...form.values, [k]: v } })}
                 />
               </ModalField>
@@ -452,13 +460,13 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                 <input
                   className="sx-setting-input"
                   aria-label={k}
-                  value={form.values[k] ?? ''}
+                  value={value}
                   spellCheck={false}
                   onChange={(e) => setForm({ ...form, values: { ...form.values, [k]: e.target.value } })}
                 />
               </ModalField>
-            ),
-          )}
+            );
+          })}
             </>
           )}
           {formError !== '' && <ErrorBanner text={formError} />}

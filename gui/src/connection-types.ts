@@ -491,6 +491,8 @@ export interface PluginRow {
   configSchema?: Record<string, { type: string; description?: string; options?: string[]; multi?: boolean }>;
   /** 缺省暴露工具短名清单(2026-10-31 工具开关面:卡片计数+配置弹窗开关渲染源;旧 daemon 不带) */
   exposedTools?: string[];
+  /** server 缺省配置(2026-10-31:表单显示「生效默认」的种子面;旧 daemon 不带) */
+  configDefaults?: Record<string, unknown>;
   /** settings 语义键 plugins[id].config 原值（浅对象） */
   config?: Record<string, unknown>;
   warnings: string[];
