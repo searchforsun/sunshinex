@@ -96,7 +96,7 @@ export function WelcomeComposer({
   const goalComposingRef = useRef(false);
   /** G14.213 欢迎页 / 命令面板(与会话内同构):命令清单+技能(skillsGroups,无会话依赖) */
   const [welcomeCmdData, setWelcomeCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
-  const [welcomeSkills, setWelcomeSkills] = useState<Array<{ id: string; name: string }>>([]);
+  const [welcomeSkills, setWelcomeSkills] = useState<Array<{ id: string; desc: string }>>([]);
   const [welcomeCmdActive, setWelcomeCmdActive] = useState(0);
   const [welcomeSlashDismissed, setWelcomeSlashDismissed] = useState<string | null>(null);
   useEffect(() => {
@@ -109,9 +109,8 @@ export function WelcomeComposer({
     welcomeSkillsFetchedRef.current = true;
     conn.skillsGroups?.(picked).then(
       (r) => {
-        // UI 面只显技能名称（2026-10-30 用户裁定「UI 层面显示 skills 名称就可以」——描述不进面板）
-        const out: Array<{ id: string; name: string }> = [];
-        for (const g of r.groups) for (const s of g.skills) if (!out.some((x) => x.id === s.id)) out.push({ id: s.id, name: s.name && s.name.length > 0 ? s.name : s.id });
+        const out: Array<{ id: string; desc: string }> = [];
+        for (const g of r.groups) for (const s of g.skills) if (!out.some((x) => x.id === s.id)) out.push({ id: s.id, desc: s.description ?? '' });
         setWelcomeSkills(out);
       },
       () => undefined,
@@ -278,7 +277,7 @@ export function WelcomeComposer({
       .slice(0, 8)
       .map((s) => {
         const idx = s.id.toLowerCase().indexOf(q);
-        return { cmd: `/${s.id}`, name: s.name, desc: '', idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
+        return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
       });
     const all = [...cmds, ...skills];
     return all.length > 0 ? all : null;
@@ -621,7 +620,7 @@ export function WelcomeComposer({
                     .slice(0, 8)
                     .map((s) => {
                       const idx = s.id.toLowerCase().indexOf(slashTok.query.toLowerCase());
-                      return { cmd: `/${s.id}`, name: s.name, desc: '', idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
+                      return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
                     }),
                 ]
                 : [];
