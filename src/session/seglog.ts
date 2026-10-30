@@ -73,6 +73,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
       ...(e.name !== undefined ? { name: e.name } : {}),
       ...(e.input !== undefined ? { input: e.input } : {}),
       ...(e.result !== undefined ? { result: e.result } : {}),
+      ...(e.images !== undefined ? { images: e.images } : {}),
     },
   ];
 }
@@ -84,7 +85,8 @@ export interface SegRowLike {
   md?: unknown;
   ts?: unknown;
   seq?: unknown;
-  /** user 行随行图片附件（dataURL 串数组；行面字段不予信任——imagesOf 净化回落） */
+  /** 行随行图片附件（dataURL 串数组；行面字段不予信任——imagesOf 净化回落。user 附件+tool
+   *  结果图(2026-10-31 截屏回显)全 kind 通用,读侧不再按 kind 设门） */
   images?: unknown;
   callId?: unknown;
   name?: unknown;
@@ -166,7 +168,8 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
       const name = str(row.name);
       const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as Record<string, unknown>) : undefined;
       const seconds = num(row.seconds);
-      const images = kind === 'user' ? imagesOf(row.images) : undefined;
+      // images 全 kind 通用(user 附件+tool 结果图;2026-10-31 截屏回显——读侧不再按 kind 设门)
+      const images = imagesOf(row.images);
       entries.push({
         seq,
         ts: num(row.ts) ?? 0,
@@ -189,7 +192,8 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
       const name = str(row.name);
       const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as Record<string, unknown>) : undefined;
       const result = resultOf(row.result);
-      entries[idx] = { ...cur, ...(name !== undefined ? { name } : {}), ...(input !== undefined ? { input } : {}), ...(result !== undefined ? { result } : {}) };
+      const backfillImages = imagesOf(row.images);
+      entries[idx] = { ...cur, ...(name !== undefined ? { name } : {}), ...(input !== undefined ? { input } : {}), ...(result !== undefined ? { result } : {}), ...(backfillImages !== undefined ? { images: backfillImages } : {}) };
       continue;
     }
     if (row.t === 'runmeta') {

@@ -237,7 +237,9 @@ export function SessionRow(props: {
   const dot =
     props.running ? (
       <span className="sx-session-dot running" />
-    ) : props.unseen ? (
+    ) : props.unseen && !props.active ? (
+      // 当前打开的会话恒已读(2026-10-31 用户裁定「处于当前会话,到自动已读」):active 行不亮
+      // 蓝点——后台 markSeen effect 异步补戳,渲染层此守卫兜即时态(新活动帧落到补戳间隙不闪点)
       <span className="sx-session-dot unseen" />
     ) : null;
   // 悬浮卡显隐(2026-10-26 四段卡替代文本 tip):enter 锚 summary 量位,leave/行点击即收

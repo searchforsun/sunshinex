@@ -207,7 +207,8 @@ export function handleWorkspaces(io: WorkspaceHandlerIo, res: http.ServerRespons
     // G14.165 回退:注册表恒全量(欢迎页项目下拉要能选到刚建 0 会话的工作区);
     // 0 会话残渣的隐藏归 GUI 侧栏渲染层(sessionCount>0 门)
     const sessionCount = listSessions(dataDir).length;
-    rows.push({ ...(root !== undefined ? { root } : {}), slug: ent.name, mtime: st.mtimeMs, sessionCount });
+    // createdAt=注册目录创建时刻(birthtime;2026-10-31 用户裁定项目排序「创建时间」维度的数据面)
+    rows.push({ ...(root !== undefined ? { root } : {}), slug: ent.name, mtime: st.mtimeMs, sessionCount, createdAt: st.birthtimeMs });
   }
   rows.sort((a, b) => b.mtime - a.mtime);
   io.send(res, 200, rows);

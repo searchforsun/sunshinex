@@ -14,10 +14,30 @@ export interface AskDockProps {
 
 export function AskDock(props: AskDockProps): JSX.Element {
   const { askCards, askPicks, setAskPicks, sendAsk } = props;
+  const submittable = askCards.every((c) => pickAnswered(askPicks[c.pid]));
+  const submit = (): void => {
+    if (!submittable) return;
+    askCards.forEach((c) => {
+      const p = askPicks[c.pid];
+      const custom = p?.custom.trim() ?? '';
+      if (custom !== '') sendAsk(c.pid, { type: 'custom', text: custom });
+      else if ((p?.labels.length ?? 0) > 0) sendAsk(c.pid, { type: 'selected', labels: p!.labels });
+    });
+    setAskPicks({});
+  };
   return (
           /* G14.80/G14.91:ask_question 挂起时输入框变为选择题表单——卡列表纵排(单卡内选项自滚)+
-             固定提交区(右下):多题任一未答不可提交;跳过=全部 dismissed;全部处理完恢复输入框 */
-          <div className="ask-dock">
+             固定提交区(右下):多题任一未答不可提交;跳过=全部 dismissed;全部处理完恢复输入框。
+             2026-10-31 用户裁定:Enter=点击「提交」(dock 级 keydown——选项 radio/自定义输入框
+             聚焦均冒泡到此;可提交态才生效,Shift+Enter 不劫持) */
+          <div
+            className="ask-dock"
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.shiftKey || !submittable) return;
+              e.preventDefault();
+              submit();
+            }}
+          >
             <div className="ask-scroll">
               {askCards.map((c) => (
                 <AskCard
@@ -43,20 +63,7 @@ export function AskDock(props: AskDockProps): JSX.Element {
               >
                 {t('Skip', '跳过')}
               </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={!askCards.every((c) => pickAnswered(askPicks[c.pid]))}
-                onClick={() => {
-                  askCards.forEach((c) => {
-                    const p = askPicks[c.pid];
-                    const custom = p?.custom.trim() ?? '';
-                    if (custom !== '') sendAsk(c.pid, { type: 'custom', text: custom });
-                    else if ((p?.labels.length ?? 0) > 0) sendAsk(c.pid, { type: 'selected', labels: p!.labels });
-                  });
-                  setAskPicks({});
-                }}
-              >
+              <button type="button" className="primary" disabled={!submittable} onClick={submit}>
                 {t('Submit', '提交')}
               </button>
             </div>

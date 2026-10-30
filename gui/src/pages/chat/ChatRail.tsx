@@ -29,16 +29,18 @@ const MIN_USERS = 2;
 /** 滚动口实测锚(单点):show=余量门控;left/top=贴滚动口左缘+中线(视觉坐标 /zoomScale 归一,D50 契约)。
  *  2026-10-28 用户实测「导航条宽/短/跑到顶部」:容器 display:none(keep-alive 隐藏席/换页瞬间)
  *  时 rect 全 0——锚 (HUG_LEFT,0) 把刻度串钉死窗顶;零尺寸一律 show=false 收起,复显由 RO 重测 */
-function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number } | null {
+function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number; width: number } | null {
   const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
   if (!Number.isFinite(pad)) return null;
   const rect = el.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return { show: false, left: HUG_LEFT, top: 0 };
+  if (rect.width === 0 || rect.height === 0) return { show: false, left: HUG_LEFT, top: 0, width: 120 };
   const z = zoomScale() || 1;
   return {
     show: pad - 18 >= SHOW_MIN_MARGIN,
     left: Number.isFinite(rect.left) ? Math.round(rect.left / z + HUG_LEFT) : HUG_LEFT,
     top: Number.isFinite(rect.top) ? Math.round((rect.top + rect.height / 2) / z) : 0,
+    // 迷你预览宽(2026-10-31 用户裁定 2+2 行面):随左余量自适应,64..150px 夹紧
+    width: Math.max(64, Math.min(150, Math.round(pad) - 28)),
   };
 }
 
@@ -67,6 +69,22 @@ export function ChatRail(props: {
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
   const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
+  // 每部分回复正文(2026-10-31 用户裁定 2+2 行迷你预览):用户消息后首个 assistant 正文条,
+  // 单次问答取首个(后续 assistant 段=同一轮的分段续文,不重复入预览)
+  const replyByKey = new Map<string, string>();
+  {
+    let pendingKey: string | null = null;
+    for (const e of entries) {
+      if (e.kind === 'user') {
+        pendingKey = e.md.trim() !== '' ? e.key : null;
+        continue;
+      }
+      if (pendingKey !== null && e.kind === 'assistant' && e.md.trim() !== '') {
+        replyByKey.set(pendingKey, previewText(e.md));
+        pendingKey = null;
+      }
+    }
+  }
   // 锚点直写 style 不经 React 提交(十三轮半,果冻效应根因):left/top 若走 state,重渲染
   // 落地比测量晚一拍——拖三栏滑动线/开关菜单时锚点追着布局跑,刻度悬在半空不落新边框。
   // show 仍走 state(挂卸载决策,翻转由 layout effect 当帧补锚)
@@ -84,6 +102,7 @@ export function ChatRail(props: {
       if (inner !== null) {
         inner.style.left = `${a.left}px`;
         inner.style.top = `${a.top}px`;
+        inner.style.setProperty('--sx-rail-w', `${a.width}px`);
       }
       setShow((prev) => (prev === a.show ? prev : a.show));
     };
@@ -206,12 +225,23 @@ export function ChatRail(props: {
       {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y 直写 style(测量同帧落位;translateY(-50%) 落中线) */}
       <div ref={innerRef} className="sx-rail-inner" role="navigation" aria-label={t('Session outline rail', '会话刻度导航')}>
         <div className="sx-rail-list">
-          {users.map((u, i) => (
-            <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)} onClick={() => jump(i)}>
-              <span className="sx-rail-preview">{previewText(u.md)}</span>
-              <span className="sx-rail-bar" />
-            </button>
-          ))}
+          {users.map((u, i) => {
+            const reply = replyByKey.get(u.key);
+            return (
+              <button
+                key={u.key}
+                type="button"
+                className={`sx-rail-item${i === activeIdx ? ' active' : ''}`}
+                aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)}
+                onClick={() => jump(i)}
+              >
+                {/* 2026-10-31 用户裁定迷你预览:前两行=用户输入(亮),后两行=回复正文(暗),各自
+                    2 行封顶多余省略(line-clamp)——替代旧等长短横+hover 预览卡 */}
+                <span className="sx-rail-user">{previewText(u.md)}</span>
+                {reply !== undefined && <span className="sx-rail-reply">{reply}</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

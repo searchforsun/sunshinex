@@ -27,9 +27,18 @@ test('reduceSegRows：user seg 行 images 回读；坏形净化（非串/非 dat
   assert.equal(none[0]!.images, undefined);
   const absent = reduceSegRows([{ t: 'seg', kind: 'user', md: 'x', ts: 1, seq: 1 }]);
   assert.equal(absent[0]!.images, undefined);
-  // 非 user 行不挂图片（tool 条 images 字段即使误落行也被忽略）
-  const tool = reduceSegRows([{ t: 'seg', kind: 'tool', md: '', ts: 1, seq: 2, name: 'exec', images: [PNG] }]);
-  assert.equal(tool[0]!.images, undefined);
+  // tool 行 images 随档(2026-10-31 截屏回显:工具结果图全 kind 通用,读侧净化同 user——
+  // 旧「非 user 行忽略」门随投影层带图一并退役)
+  const tool = reduceSegRows([{ t: 'seg', kind: 'tool', md: '', ts: 1, seq: 2, name: 'exec', images: [PNG, 'junk', 42] }]);
+  assert.deepEqual(tool[0]!.images, [PNG]);
+  const toolNone = reduceSegRows([{ t: 'seg', kind: 'tool', md: '', ts: 1, seq: 3, name: 'exec', images: ['not-image'] }]);
+  assert.equal(toolNone[0]!.images, undefined);
+  // seg-update 回填行 images 合并(重载后 result 后到面同样带图)
+  const backfill = reduceSegRows([
+    { t: 'seg', kind: 'tool', md: '', ts: 1, seq: 4, name: 'screenshot' },
+    { t: 'seg-update', seq: 4, ts: 2, result: { text: '[image]', ok: true }, images: [PNG] },
+  ]);
+  assert.deepEqual(backfill[0]!.images, [PNG]);
 });
 
 test('steer 行 images 面读写往返：写面随 items 落行、读面净化回种', () => {

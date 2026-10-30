@@ -121,6 +121,8 @@ export interface WorkspaceRow {
   slug: string;
   mtime: number;
   sessionCount: number;
+  /** 注册目录创建时刻(birthtimeMs;旧 daemon 不带=可缺省,排序「创建时间」维度回退 mtime) */
+  createdAt?: number;
 }
 
 /** GET /sessions?root= 行（T2，对齐主仓 session-journal.ts SessionMeta 实际返回）：id=journal id；

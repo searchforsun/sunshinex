@@ -90,6 +90,8 @@ export interface WorkspaceRow {
   slug: string;
   mtime: number;
   sessionCount: number;
+  /** 注册目录创建时刻(birthtimeMs;2026-10-31 项目排序「创建时间」维度;旧档/平台不支持=可缺省) */
+  createdAt?: number;
 }
 
 

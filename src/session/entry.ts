@@ -292,6 +292,12 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     case 'tool-result': {
       const sealed = sealSeg(state, e.ts);
       const callId = typeof e.payload?.callId === 'string' && e.payload.callId !== '' ? e.payload.callId : undefined;
+      // 工具结果图片随档(2026-10-31 用户报障「截屏的图片要能回显时显示」):images 此前只在 live
+      // 帧透传,投影层丢弃→重载/重播种后 entry.images 缺失=展开体无图。KernelEntry.images 复用
+      // user attachments 同字段(全链 wire/快照原样承载),GUI mapEntries 已透传
+      const rawImgs = e.payload?.images;
+      const imgs = Array.isArray(rawImgs) ? rawImgs.filter((x): x is string => typeof x === 'string') : undefined;
+      const hasImgs = imgs !== undefined && imgs.length > 0;
       const result = {
         text: e.text ?? '',
         ok: typeof e.payload?.ok === 'boolean' ? e.payload.ok : true,
@@ -299,7 +305,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
         ...(typeof e.payload?.full === 'string' ? { full: e.payload.full } : {}),
       };
       // 收 done:status 删字段(终态行字段省略——undefined 即 done,✗ 面由 result.ok 承载)
-      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, name, result, status: undefined });
+      const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, name, result, status: undefined, ...(hasImgs ? { images: imgs } : {}) });
       if (callId !== undefined) {
         const pi = sealed.pending.findIndex((p) => p.callId === callId);
         if (pi >= 0) {
@@ -322,7 +328,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
           return { ...sealed, entries: replaceAt(sealed.entries, li, fill(cur, cur.name ?? PLACEHOLDER)) };
         }
         // result 先到:占位条即刻入列(callId 留账,等 call 回填 name)——有 result 即终态,无 status
-        const next = appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', callId, result });
+        const next = appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', callId, result, ...(hasImgs ? { images: imgs } : {}) });
         return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, callId, name: PLACEHOLDER }] };
       }
       // 无 callId:FIFO 兜底配最老的无 callId 未配对条(pendingCalls 同口径)
@@ -341,7 +347,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       // 孤儿 result:以 payload.tool 为动词独立成条(完备条,不进 pending)——即刻终态,无 status
       const tool = e.payload?.tool;
       const verb = typeof tool === 'string' && tool.length > 0 ? tool : PLACEHOLDER;
-      return appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', name: verb, result });
+      return appendEntry(sealed, { ts: e.ts, kind: 'tool', md: '', name: verb, result, ...(hasImgs ? { images: imgs } : {}) });
     }
     case 'user': {
       const sealed = sealSeg(state, e.ts);

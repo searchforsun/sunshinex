@@ -2,10 +2,32 @@ import { useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
-import { Archive, ChevronRight, Folder, FolderOpen, FolderTree, MoreHorizontal, SquarePen, X } from 'lucide-react';
+import { ArrowDownUp, Archive, Check, ChevronRight, Folder, FolderOpen, FolderTree, MoreHorizontal, SquarePen, X } from 'lucide-react';
 import { SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 import { SessionRowMenu } from './session-row-menu';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
+
+/** 项目排序模式(2026-10-31 用户裁定三选):created=创建时间新→旧 / updated=更新时间新→旧 /
+ *  natural=名称自然顺序;选择持久化 localStorage */
+type WsSortMode = 'created' | 'updated' | 'natural';
+const WS_SORT_KEY = 'sunshinex.ws-sort';
+const WS_SORT_LABELS: Record<WsSortMode, { en: string; zh: string }> = {
+  created: { en: 'Created time', zh: '创建时间' },
+  updated: { en: 'Updated time', zh: '更新时间' },
+  natural: { en: 'Natural order', zh: '自然顺序' },
+};
+const loadWsSort = (): WsSortMode => {
+  const v = localStorage.getItem(WS_SORT_KEY);
+  return v === 'created' || v === 'natural' ? v : 'updated';
+};
+/** 客户端重排(服务端缺省 mtime 新→旧;旧 daemon 无 createdAt 时该维度回退 mtime) */
+const sortRows = (rows: WorkspaceRow[], mode: WsSortMode): WorkspaceRow[] => {
+  const out = [...rows];
+  if (mode === 'updated') out.sort((a, b) => b.mtime - a.mtime);
+  else if (mode === 'created') out.sort((a, b) => (b.createdAt ?? b.mtime) - (a.createdAt ?? a.mtime));
+  else out.sort((a, b) => wsName(a).localeCompare(wsName(b), undefined, { numeric: true, sensitivity: 'base' }));
+  return out;
+};
 
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
  *  + 工作区组列表(展开惰拉会话/组内行 attach)。纯渲染件,数据/动作 props 注入——
@@ -55,6 +77,15 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
+  /** 项目排序(2026-10-31 用户裁定三选:创建时间/更新时间/自然顺序):组头排序钮弹层切换,
+   *  localStorage 持久化;服务端缺省序=mtime 新→旧,客户端按模式重排 */
+  const [wsSort, setWsSort] = useState<WsSortMode>(loadWsSort);
+  const [sortOpen, setSortOpen] = useState(false);
+  const pickSort = (m: WsSortMode): void => {
+    setWsSort(m);
+    localStorage.setItem(WS_SORT_KEY, m);
+    setSortOpen(false);
+  };
   /** 组头 ⋯ 移除弹层(2026-10-23):存锚点坐标+slug,弹层随组头右缘下开 */
   const [removeAsk, setRemoveAsk] = useState<{ slug: string; x: number; y: number } | null>(null);
   if (archiveMode === true) {
@@ -99,6 +130,33 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
           />
           {/* 2026-10-21 用户裁定:归档钮挨着新项目钮右侧成簇贴右——组头 space-between 会把裸子元素撑散,包右贴容器 */}
           <span className="sx-side-head-actions">
+            {/* 排序钮(2026-10-31 用户裁定:归档左侧)+三选弹层(创建时间/更新时间/自然顺序) */}
+            {sortOpen && (
+              <>
+                {/* 全屏透明遮罩(点击即收;不挡弹层自身——z 序在弹层之下) */}
+                <div style={{ position: 'fixed', inset: 0, zIndex: 44, background: 'transparent' }} onClick={() => setSortOpen(false)} />
+                <div className="sx-menu-pop sx-ws-sort-pop" role="menu" aria-label={t('Sort projects', '项目排序')} style={{ zIndex: 45 }}>
+                  {(['created', 'updated', 'natural'] as const).map((m) => (
+                    <button key={m} type="button" role="menuitemradio" aria-checked={wsSort === m} className={`sx-menuitem${wsSort === m ? ' sx-ws-sort-active' : ''}`} onClick={() => pickSort(m)}>
+                      <span className="sx-ws-sort-name">{t(WS_SORT_LABELS[m].en, WS_SORT_LABELS[m].zh)}</span>
+                      {wsSort === m && <Check size={13} strokeWidth={2} aria-hidden="true" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="sort projects"
+              data-tip={t('Sort projects', '项目排序')}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSortOpen((v) => !v);
+              }}
+            >
+              <ArrowDownUp size={14} strokeWidth={1.75} />
+            </button>
             {onOpenArchived !== undefined && (
               <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
                 aria-label="archived sessions"
@@ -136,7 +194,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                 {actionError}
               </li>
             )}
-            {visibleWorkspaces(rows ?? []).map((row) => {
+            {visibleWorkspaces(sortRows(rows ?? [], wsSort)).map((row) => {
               const root = row.root; // const 捕获:root 收窄可入回调
               // G14.2xx 组内会话默认收窄:默认显 24h 内活跃(最多 10;活跃不足 10 有几条显几条),
               // 「显示更多」放全量、「收起」复位;当前打开的会话恒显(避免点开后从列表消失)

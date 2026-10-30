@@ -1647,6 +1647,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.48:展开/折叠滚动位移由 onEntryToggleClick 单点接管。G14.211 原生 scroll anchoring
    回归恒开——右栏展开重排/异步内容闪帧等外部高度变化,视口由浏览器锚定不再上下跳;
    仅折叠/展开校正窗口内由 onEntryToggleClick 临时关停防互搏 */.chat { overflow-anchor: auto; }
+/* 思考行流式:关 content-visibility 估算高跳动 + 关 overflow-anchor——尾窗 rtl 流/秒针改宽时
+   浏览器锚点与主链贴底归底互搏=行周上下抖(2026-10-31) */.entry.entry-thinking { content-visibility: visible; overflow-anchor: none; }
+.entry-thinking .thinking-label { font-variant-numeric: tabular-nums; }
 
 /* G14.52 运行状态行:圆圈+步数+tokens 常驻流区末行(轮次完成/停止即隐);
    独立成行左缘对齐其他行(padding 同 .entry),替代「尾参挂最后工具行」的旧形态 */.run-live-line {
@@ -2587,19 +2590,28 @@ input.sx-setting-input { width: 100%; }
 .files-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 16px 0; }
 .files-md img { max-width: 100%; border-radius: var(--radius-md); }
 .files-md table { margin: 0; }
-.files-md .code-block pre code { line-height: 1.9; }
+.files-md .code-block pre code { line-height: var(--f-code-lh, 1.9); }
+
+/* 字体预设遗漏补齐(2026-10-31 用户裁定「除浏览器外网页外全跟随,尤其代码块与文件内容」):
+   等宽井/自绘 diff/命令行/设置 raw/文件 md 预览统一走 --f-* 令牌;default 清空时回落括号缺省 */
+.code-block pre { padding: var(--f-code-pad, 12px 14px); }
+.code-block pre code { font: var(--f-code, 12.5px)/var(--f-code-lh, 1.7) var(--font-mono); }
+.files-md { font: var(--f-base-size, 14px)/var(--f-body-lh, 1.9) var(--font-ui); }
+.files-md p { margin: 0 0 var(--f-para-gap, 14px); }
+.files-md :not(pre) > code { font-size: calc(var(--f-code, 12.5px) - 0.5px); }
+.diff-lines { font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); }
+.tool-exec-cmd { font: var(--f-code, 12px)/var(--f-code-lh, 1.6) var(--font-mono); }
+.tool-md pre { font: var(--f-code, 11px)/var(--f-code-lh, 1.6) var(--font-mono); padding: var(--f-code-pad, 6px 8px); }
+.sx-raw-editor { font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); }
+.mermaid-pending, .mermaid-fallback { font: var(--f-code, 12px)/var(--f-code-lh, 1.6) var(--font-mono); }
 
 /* 用户气泡上间距分档(2026-10-27 用户裁定):新回合用户消息与上方内容拉开(含图片条——图片在
    entry 内首节点,margin 自动落在图片上方);运行中插入/辅助对话(entry-user-insert)保持紧凑 */
 .entry-user { margin-top: 60px; margin-bottom: 15px; }
 .entry-user.entry-user-insert { margin-top: 10px; margin-bottom: 0; }
 
-/* ===== 2026-10-27 用户裁定:正文纵向滚动条 thumb 长度恒定(自绘 overlay)——原生 thumb 长度=
-   视口/内容比,流式增长与图片解码逐段改写 scrollHeight,thumb 随之抖缩(「长度抖动,好像分段
-   一样」)。自绘后长度只由常量定(56px 本地 px,与内容量无关,冷加载即最终态),仅位置映射
-   scrollTop 比例。同步/交互纪律见 ChatScrollbar.tsx(零 setState/零 rAF;仅 thumb 可拖,track
-   不接事件——接了须盖右缘内容条,窄窗压正文选区)。原生条只在主对话容器隐藏;侧栏 dock 与
-   Files 等其余滚动面保原生 */
+/* ===== 正文纵向滚动条(自绘 overlay):长度响应式=轨道×视口/内容比;贴底闩见 ChatScrollbar
+   (冷加载撑高同帧粘底)。原生条只在主对话容器隐藏 */
 .sx-main > .chat { scrollbar-width: none; }
 .sx-main > .chat::-webkit-scrollbar { display: none; }
 .sx-vbar { position: absolute; top: 6px; bottom: 6px; right: 2px; width: 5px; pointer-events: none; z-index: 4; } /* 2026-10-27 用户裁定:10px->6px(太粗);2026-10-29 再收 6->5 对齐原生条轨道宽;上下界由 ChatScrollbar 按容器矩形动态夹紧 */
@@ -2933,3 +2945,28 @@ input.sx-setting-input { width: 100%; }
 .sx-plugin-type { display: inline-block; font: 11px var(--font-mono); color: var(--fg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 6px; margin-right: 8px; }
 /* 资源卡内容 containment:超长 token 越出卡缘的兜底钳制(卡内自换行,不再横向逃逸) */
 .sx-rc { min-width: 0; overflow: hidden; }
+
+/* ===== 2026-10-31 用户裁定追加段二号(纯加法) ===== */
+/* 刻度导航条迷你预览(每部分 2+2 行):用户输入亮/回复正文暗,各自 line-clamp 2 封顶多余省略;
+   宽度随左余量自适应(组件注入 --sx-rail-w,64..150px);active=左缘 accent 条+微底;旧 tick
+   短横/预览卡选择器留置不删(只加不改纪律,新类不重叠) */
+.sx-rail-item {
+  pointer-events: auto; position: relative;
+  display: flex; flex-direction: column; gap: 2px;
+  width: var(--sx-rail-w, 120px); padding: 4px 6px;
+  border: none; border-radius: var(--radius-sm); background: transparent;
+  cursor: pointer; text-align: left;
+}
+.sx-rail-item:hover, .sx-rail-item.active { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.sx-rail-item.active { box-shadow: inset 2px 0 0 var(--accent); }
+.sx-rail-user, .sx-rail-reply {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  font-size: 10.5px; line-height: 1.35; word-break: break-word;
+}
+.sx-rail-user { color: var(--fg); }
+.sx-rail-reply { color: var(--fg-tertiary); }
+/* 项目排序弹层(组头 actions 锚定,归档钮左侧排序钮弹出):三选 radio 面,当选项 check+亮 */
+.sx-side-head-actions { position: relative; }
+.sx-ws-sort-pop { top: calc(100% + 4px); right: 0; min-width: 128px; }
+.sx-ws-sort-pop .sx-menuitem { justify-content: space-between; }
+.sx-ws-sort-active { color: var(--fg); }

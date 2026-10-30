@@ -69,7 +69,8 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
               </button>
               {running ? (
                 <span className="sx-session-dot running" />
-              ) : isUnseen(p.id, p.updatedAt) ? (
+              ) : isUnseen(p.id, p.updatedAt) && !active ? (
+                // 当前打开会话恒已读(2026-10-31 用户裁定;与 SessionRow 蓝点守卫同口径)
                 <span className="sx-session-dot unseen" />
               ) : null}
               <span className="sx-pin-title">{p.title}</span>

@@ -737,21 +737,8 @@ export const ToolEntryView = memo(function ToolEntryView({
         {collapsed}
         {(!isRead || isReadImage) && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
       </button>
-      {/* 工具结果图片缩略行(2026-10-26 插件体系图片通道):折叠壳外直出——截屏类工具行不展开即可看;
-          点击开查看浮层(交互/样式沿用户气泡图片条同款令牌)。images 只随 result 帧落条,执行中不现 */}
-      {toolName !== 'read' && entry.images !== undefined && entry.images.length > 0 && (
-        <div className="tool-images">
-          {entry.images.map((src, i) => (
-            <img
-              key={`${i}:${src.slice(-24)}`}
-              src={src}
-              alt={`${t('Tool image', '工具图片')} ${i + 1}`}
-              className="tool-image-thumb"
-              onClick={() => setLightbox(src)}
-            />
-          ))}
-        </div>
-      )}
+      {/* 折叠壳外常驻图片缩略行退役(2026-10-31 用户裁定「去掉常驻显示的图片,保留内部的就可以」):
+          截图只在展开体回显(ec9159c 面),折叠行不占版面;点击行展开即看 */}
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
         <div className="tool-body-inner">{isReadImage && path !== undefined ? <ReadImageBody path={path} /> : body}</div>
       </div>
