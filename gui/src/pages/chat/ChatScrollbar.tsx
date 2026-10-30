@@ -6,8 +6,10 @@ import { zoomScale } from '../../ui-zoom';
  * 正文纵向滚动条(2026-10-27 二次裁定,反转「长度恒定」):thumb 长度响应式=轨道×视口/内容比
  * (下限 32px),所见即内容量;流式增长时长度随之变化为预期行为(直接 DOM 写,无 setState 抖动
  * 面)。轨道上下边界动态夹紧到滚动容器实际区域——挂载锚是 .sx-main(定位父级),不夹则越顶栏
- * 分割线(用户实测)。实现纪律不变:全直接 DOM 写(零 setState/零 rAF),组件只渲染一次;
- * 同步面=scroll+RO(容器自身尺寸)+MO(条目挂载改 scrollHeight 的盲区)。
+ * 分割线(用户实测)。实现纪律:全直接 DOM 写(零 setState),组件只渲染一次;同步源=
+ * scroll+RO(容器自身尺寸)+MO(条目挂载改 scrollHeight 的盲区)经 rAF 帧内合流(2026-10-31
+ * 实测定性:流式期 token 帧使 scroll/MO 高频交替,各做 gBCR 强制布局=布局抖动面;y 取整落写
+ * 防 zoom 树分数 scrollTop 的亚像素闪烁)。
  * 交互仅 thumb 拖拽;指针位移按 zoomScale() 归一(视觉 px→本地 px,ui-zoom 契约)。
  * 挂载面:仅主对话(sideChat!==true);原生条由 CSS 在 `.sx-main > .chat` 隐藏。
  */
@@ -32,13 +34,16 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
       // 旧式取轨道自身 gBCR 求差回写——style.top 已含上次写入值,构成 top(n+1)=T−top(n)+2 的
       // 周期 2 振荡器(CSS 初始 6px↔目标值反复横跳;跳回 6 时轨道顶端戳进顶栏=越线,每次
       // scroll/RO 重算即跳=抖动;4840e9c 的 /z 归一只修了过冲面,代数振荡面漏了)。
+      // 同值写守卫(2026-10-31):恒等字符串不落 DOM(流式高频面少一半无效样式置脏)。
       // zoom 契约:视觉坐标差 /z 归一成本地 px
       const cr = box.getBoundingClientRect();
       const ar = track.offsetParent instanceof HTMLElement ? track.offsetParent.getBoundingClientRect() : null;
       const z = zoomScale();
       if (ar !== null) {
-        track.style.top = `${Math.max(Math.round((cr.top - ar.top) / z), 0) + 2}px`;
-        track.style.bottom = `${Math.max(Math.round((ar.bottom - cr.bottom) / z), 0) + 2}px`;
+        const top = `${Math.max(Math.round((cr.top - ar.top) / z), 0) + 2}px`;
+        const bottom = `${Math.max(Math.round((ar.bottom - cr.bottom) / z), 0) + 2}px`;
+        if (track.style.top !== top) track.style.top = top;
+        if (track.style.bottom !== bottom) track.style.bottom = bottom;
       }
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
@@ -64,13 +69,33 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
         ? trackH - th
         : Math.min(Math.max((box.scrollTop / max) * (trackH - th), 0), trackH - th);
       thumb.style.opacity = '1';
-      thumb.style.transform = `translateY(${y}px)`;
+      // y 取整(2026-10-31 实测定性):zoom 树下 scrollTop 分数(实测 3276.679…)→分数 y 落
+      // 设备像素反复跳变=亚像素闪烁;流式中 React 重渲染致 sh 非单调,分数面放大来回跳感
+      thumb.style.transform = `translateY(${Math.round(y)}px)`;
     };
 
-    box.addEventListener('scroll', sync, { passive: true });
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => sync()) : null;
+    // rAF 合流(2026-10-31 实测定性):流式期 token 帧驱动 scroll(贴底归底)+MO(条目挂载)高频
+    // 交替,每回调各做 gBCR 强制布局+样式写=布局抖动;帧内合并至多一次同步(MO 只几何,位置
+    // 仅当帧内有 scroll/RO 来源)——渲染节律归 rAF 单点,与 use-chat-scroll 归底合并同法
+    let rafId: number | null = null;
+    let withPosition = false;
+    const requestSync = (position: boolean): void => {
+      if (position) withPosition = true;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const p = withPosition;
+        withPosition = false;
+        if (p) sync();
+        else syncGeometry();
+      });
+    };
+
+    const onScroll = (): void => requestSync(true);
+    box.addEventListener('scroll', onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => requestSync(true)) : null;
     ro?.observe(box);
-    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => syncGeometry()) : null;
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => requestSync(false)) : null;
     mo?.observe(box, { childList: true, subtree: true });
 
     let dragging = false;
@@ -113,7 +138,8 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
 
     sync();
     return () => {
-      box.removeEventListener('scroll', sync);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      box.removeEventListener('scroll', onScroll);
       ro?.disconnect();
       mo?.disconnect();
       thumb.removeEventListener('pointerdown', onDown);

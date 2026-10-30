@@ -122,7 +122,8 @@ export function Select(props: {
                 aria-selected={o.v === value}
                 className={`sx-dd-opt${i === active ? ' active' : ''}`}
                 ref={o.v === value ? activeRef : undefined}
-                title={o.l} /* 长项目名省略后 hover 显全名(2026-10-31 用户裁定) */
+                data-tip={o.l} /* 长项目名省略后 hover 显全名(2026-10-31 用户裁定);data-tip=
+                                  项目统一气泡面(全局单例层),title 原生提示与项目风格不合已退役 */
                 onMouseEnter={() => setActive(i)}
                 onClick={() => pick(o.v)}
               >
