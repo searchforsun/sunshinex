@@ -2947,24 +2947,15 @@ input.sx-setting-input { width: 100%; }
 .sx-rc { min-width: 0; overflow: hidden; }
 
 /* ===== 2026-10-31 用户裁定追加段二号(纯加法) ===== */
-/* 刻度导航条迷你预览(每部分 2+2 行):用户输入亮/回复正文暗,各自 line-clamp 2 封顶多余省略;
-   宽度随左余量自适应(组件注入 --sx-rail-w,64..150px);active=左缘 accent 条+微底;旧 tick
-   短横/预览卡选择器留置不删(只加不改纪律,新类不重叠) */
-.sx-rail-item {
-  pointer-events: auto; position: relative;
-  display: flex; flex-direction: column; gap: 2px;
-  width: var(--sx-rail-w, 120px); padding: 4px 6px;
-  border: none; border-radius: var(--radius-sm); background: transparent;
-  cursor: pointer; text-align: left;
-}
-.sx-rail-item:hover, .sx-rail-item.active { background: color-mix(in srgb, var(--fg) 7%, transparent); }
-.sx-rail-item.active { box-shadow: inset 2px 0 0 var(--accent); }
-.sx-rail-user, .sx-rail-reply {
+/* 刻度导航条 hover 预览卡内容改版(仅 hover 文字内容变,刻度本体短横不动):前段=用户输入
+   (亮色,2 行封顶),后段=该轮回复正文(暗色,2 行封顶),各自 line-clamp 多余省略 */
+.sx-rail-preview { display: flex; flex-direction: column; gap: 4px; }
+.sx-rail-pv-user, .sx-rail-pv-reply {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
-  font-size: 10.5px; line-height: 1.35; word-break: break-word;
+  line-height: 1.4; word-break: break-word;
 }
-.sx-rail-user { color: var(--fg); }
-.sx-rail-reply { color: var(--fg-tertiary); }
+.sx-rail-pv-user { color: var(--fg); }
+.sx-rail-pv-reply { color: var(--fg-tertiary); }
 /* 项目排序弹层(组头 actions 锚定,归档钮左侧排序钮弹出):三选 radio 面,当选项 check+亮 */
 .sx-side-head-actions { position: relative; }
 .sx-ws-sort-pop { top: calc(100% + 4px); right: 0; min-width: 128px; }
