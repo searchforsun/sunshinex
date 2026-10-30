@@ -30,9 +30,9 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 // ---------- 常量（设计口径单一来源） ----------
-const BASE_RGB = [0x0a, 0x0a, 0x0a];   // #0a0a0a 黑圆角方(现行窗口图标实测色,与二稿一致)
-const MARK_RGB = [0xe8, 0xe8, 0xe8];   // #e8e8e8 灰白轨道环+核
-const CORNER = 0.18;                   // 圆角半径占比(18%S)
+const BASE_RGB = [0x00, 0x00, 0x00];   // #000000 纯黑圆角方(2026-10-30 用户裁定「黑底白色,对比度要高」)
+const MARK_RGB = [0xff, 0xff, 0xff];   // #ffffff 纯白轨道环+核(对黑底最大对比度)
+const CORNER = 0.15;                   // 圆角半径占比(15%S,2026-10-30 用户裁定与项目主圆角观感对齐:--radius-lg 22px 主圆角比例校准,原 18%)
 // 欢迎页 hero SVG 比例(72 视窗):椭圆 rx19 ry11 / 描边 2.5 / 核点 r4.5,rotate -15°
 const ORBIT_RX = 19 / 72;
 const ORBIT_RY = 11 / 72;
