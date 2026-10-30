@@ -9,6 +9,10 @@ import * as path from 'path';
 import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
 import { utcCompactStamp } from '../idstamp';
 import type { ChatItem, TodoItem } from './session';
+// CtxSnapshot 类型定义在上下文域（src/harness/context/index.ts）——journal 是持久化层，type-only import 防反向依赖；
+// 此处 re-export 保 Task 1 消费方零改动
+import type { CtxSnapshot } from '../harness/context/index';
+export type { CtxSnapshot };
 
 /** 分档血缘（规格 2026-09-20 rewind+fork §5.1）：upToLine=源档 1-based 行号，新档含源档第 1..upToLine 行 */
 interface ForkedFrom {
@@ -234,13 +238,6 @@ interface JournalReplay {
   view: { expandAll: boolean; latestFull: boolean };
   /** 会话前缀快照（ctx-snap 归约；末条合法行为准，载荷不合法视同不存在） */
   snapshot?: CtxSnapshot;
-}
-
-/** 会话前缀快照落档行（2026-10-31 spec：会话档生命周期快照冻结）——items=快照条目（part 三段标注，
- *  /context 分段面板还原用）；sig=漂移基线签名（恢复面基线随快照走）。末行为准；载荷不合法视同不存在 */
-export interface CtxSnapshot {
-  items: Array<{ part: 'instructions' | 'skills' | 'memory'; kind: string; content: string }>;
-  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null };
 }
 
 /** 会话 id：UTC 紧凑时间戳 + 4 位随机尾（文件名安全、可排序） */

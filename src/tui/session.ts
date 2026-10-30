@@ -445,7 +445,7 @@ export class SessionController {
     // 未建档时事件丢弃（订阅常驻、可选链路由）；restoreSession 直注入不触发订阅（重放零击穿）。
     this.runtime.harness.context.onContextChange((c) => {
       if (c.kind === 'append') this.journal?.log({ t: 'chain', steps: c.steps });
-      else {
+      else if (c.kind === 'compact') {
         this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
         // 自动压缩消息流留痕（CC auto-compact 口径）：一次压缩 = applyCompaction + trimChainFront 两条 compact 事件，
         // 以事件序号配对（重放按序覆盖同款语义）——成对第一/第二条都不上屏，第三条起（新一轮压缩首个事件）上屏；

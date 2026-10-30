@@ -555,7 +555,7 @@ export class SessionRuntime {
       if (c.kind === 'append') {
         if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
         this.journal?.log({ t: 'chain', steps: c.steps });
-      } else {
+      } else if (c.kind === 'compact') {
         this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
       }
     });

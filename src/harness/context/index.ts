@@ -22,12 +22,19 @@ export type { RunCompactionResult } from './compaction';
 
 const RECENT_LIMIT = 5;
 
+/** 会话前缀快照落档形态（2026-10-31 spec：类型单一事实源在本域，journal 层 type-only import——持久化层不反向定义上下文域类型） */
+export interface CtxSnapshot {
+  items: Array<{ part: 'instructions' | 'skills' | 'memory'; kind: string; content: string }>;
+  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null };
+}
+
 /** 会话链/压缩变更事件（会话日志订阅面，规格 2026-09-17-session-persistence-resume-design.md §5 单一事实源）：
  *  append=链尾追加（携带实际推入的行与绝对步号）；compact=压缩后状态快照——applyCompaction 与 trimChainFront 各发一条，
- *  重放按序覆盖取后态（配对压缩产生两条 compact 事件，最终状态精确）。 */
+ *  重放按序覆盖取后态（配对压缩产生两条 compact 事件，最终状态精确）；snap=快照翻新信号，压缩/显式刷新后由订阅面落 ctx-snap 行。 */
 export type ContextChange =
   | { kind: 'append'; steps: HistoryStep[] }
-  | { kind: 'compact'; chainFrom: number; compacted: ContextItem[] };
+  | { kind: 'compact'; chainFrom: number; compacted: ContextItem[] }
+  | { kind: 'snap' };
 
 /** 会话状态完整快照（restoreSession 载荷：journal 事件流归约产物，/resume 重放直注入） */
 interface ContextSessionState {
@@ -283,6 +290,34 @@ export class ContextManager {
     this.refreshCompactInstructions();
     // 刷新点：快照已是磁盘最新态，基线随之对齐（否则下一轮会把「已进快照的改动」误判为漂移）
     this.drift.captureBaselines();
+    // snap 信号（2026-10-31 spec）：快照翻新后由订阅面落 ctx-snap 行（会话档生命周期快照冻结）
+    this.changeSink?.({ kind: 'snap' });
+  }
+
+  /** 快照落档导出（ctx-snap 出生/翻新写的数据面）：三段条目 part 标注 + 漂移基线签名同出——
+   *  恢复面基线随快照走（spec §3），两半必须同源同拍 */
+  snapshotExport(): CtxSnapshot {
+    const items: CtxSnapshot['items'] = [];
+    for (const [part, list] of Object.entries(this.snapshotParts) as Array<[keyof ContextManager['snapshotParts'], ContextItem[]]>) {
+      for (const it of list) items.push({ part, kind: it.kind, content: it.content });
+    }
+    return { items, sig: this.drift.exportSig() };
+  }
+
+  /** 快照回种（attach/resume/setMode 换铸面，spec §4）：落档快照直注入替代磁盘重读——前缀字节跨
+   *  重建逐位稳定；基线同拍回种（磁盘 diff 留给首次 appendInstructionLine 追尾）。直注入不触发
+   *  订阅（restoreSession 同族：回种期日志是读方）。载荷不合法（条目 kind 越界，仅 system/instruction 白名单）
+   *  整包拒收返回 false，调用方回退磁盘现读（坏档永不阻断恢复） */
+  restoreSnapshot(s: CtxSnapshot): boolean {
+    const parts: ContextManager['snapshotParts'] = { instructions: [], skills: [], memory: [] };
+    for (const it of s.items) {
+      if (it.kind !== 'system' && it.kind !== 'instruction') return false;
+      (parts[it.part] as ContextItem[]).push({ kind: it.kind as 'system' | 'instruction', content: it.content });
+    }
+    this.snapshotParts = parts;
+    this.contextSnapshot = [...parts.instructions, ...parts.skills, ...parts.memory];
+    this.drift.restoreBaselines(s.sig);
+    return true;
   }
 
   /** 技能清单段（对标 Claude Code 常驻技能清单）：name+description 摘要行进冻结快照（history 前、逐字节稳定），
