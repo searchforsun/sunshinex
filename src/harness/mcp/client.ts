@@ -130,6 +130,10 @@ function toToolSpecParameters(input: unknown): JsonSchema | undefined {
 
 export class McpHost {
   private conns = new Map<string, McpConn>();
+  /** 本次装配注册进 registry 的工具全名（mcp__<server>__<tool>）：close 收口时逐名撤销——
+   *  否则 close 后注册表残留死连接工具（guard 名单仍放行、executor 指向已关 client，调用必败），
+   *  重连虽可同覆盖重注册，但「收口后零残留」是 close 的语义底线（harness.mcpClose 收口幂等钉） */
+  private registeredNames = new Set<string>();
 
   constructor(
     private servers: McpServerConfig[],
@@ -212,7 +216,9 @@ export class McpHost {
         const disabled = new Set(cfg.disabledTools ?? []);
         for (const t of listed.tools) {
           if (disabled.has(t.name)) continue; // 逐工具停用（短名过滤）：装配期不注册即模型不可见
-          this.registry.register(this.makeTool(cfg.name, client, t.name, { description: t.description, inputSchema: t.inputSchema }));
+          const spec = this.makeTool(cfg.name, client, t.name, { description: t.description, inputSchema: t.inputSchema });
+          this.registry.register(spec);
+          this.registeredNames.add(spec.name); // 收口账：close 撤牌名单（名字取自 spec.name，单源免漂移）
           report.registered += 1;
         }
       } catch (e) {
@@ -225,6 +231,10 @@ export class McpHost {
   }
 
   async close(): Promise<void> {
+    // 撤牌先于断链：close 后注册表零 mcp 残留（收口语义底线）——残留工具 executor 指向已关 client，
+    // guard 名单却仍放行，模型调用必败且死相难查
+    for (const name of this.registeredNames) this.registry.unregister(name);
+    this.registeredNames.clear();
     for (const { client, transport } of this.conns.values()) {
       // pid 须在 client.close() 之前捕获：SDK close() 内部先置空 _process 再 kill，之后 pid getter 恒 null
       const pid = pidOf(transport);

@@ -164,3 +164,21 @@ test('McpHost.close pid 不可得（http/sse 等非 stdio 传输）静默跳过�
     assert.equal(kills.length, 0);
   });
 });
+
+test('McpHost.close 撤销本次注册的全部工具——收口后注册表零 mcp 残留（收口幂等回归钉）', async () => {
+  const registry = new ToolRegistry();
+  const host = new McpHost([], registry);
+  // 直注 registeredNames + 同名工具进注册表（registerTools 的注册账与撤销面以此字段为单点；
+  // 连接/拉清单协议面不属本钉目标，经 close 真路径验证撤销动作本身）
+  const fake = { name: 'mcp__plugin__act', description: 'x', category: 'external' as const, executor: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }) };
+  registry.register(fake);
+  registry.register({ ...fake, name: 'mcp__plugin__observe' });
+  (host as unknown as { registeredNames: Set<string> }).registeredNames = new Set(['mcp__plugin__act', 'mcp__plugin__observe']);
+  await host.close();
+  assert.equal(registry.list().filter((t) => t.name.startsWith('mcp__')).length, 0, 'close 后注册表不得残留 mcp__ 工具（残留即 guard 放行死连接工具）');
+  assert.equal(registry.get('mcp__plugin__act'), undefined);
+  // 幂等：二连 close 不抛、不误伤他具
+  registry.register({ ...fake, name: 'builtin_read' });
+  await assert.doesNotReject(() => host.close());
+  assert.ok(registry.get('builtin_read'), '二次 close 不误撤销他方工具');
+});
