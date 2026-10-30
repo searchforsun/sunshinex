@@ -25,6 +25,13 @@ export class SecurityGuard {
     this.mcpSafety = map;
   }
 
+  /** 登记名单运行期对齐（2026-10-30 MCP 会话内热载）：mcp.json 变更经 harness mcpReady 同步重注册后
+   *  调用——新 server 工具才放行、移除/停用 server 名单同步收口（防已卸载 server 的残留工具被放行）。
+   *  整表替换语义（调用方传合并后全量名单），与构造期名单同源同形 */
+  setMcpServers(names: string[]): void {
+    this.mcpServers = names;
+  }
+
   /** `mcp__<server>__<tool>` 拆解后按 server 声明归类三类：act → confirm → observe（同工具名落入多类时取最严问线，
    *  fail-closed 取向）。server 未声明或工具名三类均未命中返回 undefined——调用方落穿通用面，未声明路径零变化。 */
   private mcpSafetyClass(tool: string): 'act' | 'confirm' | 'observe' | undefined {

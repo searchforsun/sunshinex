@@ -119,8 +119,12 @@ export class Harness {
     settle: (r: SettlePayload) => string | undefined;
     settleMemory: (r: SettlePayload) => string | undefined;
   };
-  /** MCP 装配就绪门槛（两级 mcp.json → McpHost 注册链）：loop 引擎 run 入口统一 await，单发/loop/graph 嵌套全覆盖；配置为空时零开销直通 */
-  readonly mcpReady: () => Promise<void>;
+  /** MCP 装配就绪门槛（两级 mcp.json → McpHost 注册链）：loop 引擎 run 入口统一 await，单发/loop/graph 嵌套全覆盖。
+   *  每次调用重读两级 mcp.json 比对装配基线（2026-10-30 用户裁定「MCP 生效时下次执行追加新工具描述」）——
+   *  配置变更即整链重注册（旧 host close 撤牌 → 新 host 注册，guard 名单/safety 表同步对齐），返回应尾追
+   *  进链的漂移说明行（added/removed 工具面 diff；引擎按 notice 行落链，本轮 wire 即携带）；未变更零开销直通。
+   *  注册链 fail-fast（连接/握手/拉取任一失败即 run 入口转确定性失败），配置为空时零开销直通 */
+  readonly mcpReady: () => Promise<string[]>;
   /** MCP 连接收口（stdio 子进程防悬挂事件循环）：CLI 命令收尾与 TUI dispose 调用；未连接时幂等 no-op */
   readonly mcpClose: () => Promise<void>;
   /** MCP 装配警告单（降级语义）：服务器连接/握手/重名失败只损失该服务器工具，警告收集后继续装配其余服务器 */
@@ -191,21 +195,64 @@ export class Harness {
       learnedEnabled: () => opts.learnSkills ?? resolveMemoryConfig().learnedSkills,
       memoryEnabled: () => (opts.memoryOverride ?? resolveMemoryConfig().autoMemory) === true,
     });
-    // MCP 装配链（两级 mcp.json → McpHost）：注册链 fail-fast（连接/握手/拉取任一失败即 run 入口转确定性失败），guard 名单已构造期注入；懒连接——首次 run 前才发起，空配置零开销
+    // MCP 装配链（两级 mcp.json → McpHost）：注册链 fail-fast（连接/握手/拉取任一失败即 run 入口转确定性失败），guard 名单已构造期注入；懒连接——首次 run 前才发起，空配置零开销。
+    // 会话内热载（2026-10-30）：mcpReady 每次 run 入口重读两级配置比对基线（mcpSig），变更即 close 撤旧牌
+    // → 重建 host 注册 → guard 名单/safety 表对齐 → 返回工具面 diff 漂移行（引擎落 notice 链行，本轮 wire 携带——
+    // 追加发生在 Reactor 种子捕获之前）；未变更且已注册零开销直通
     let mcpHost: McpHost | undefined;
     let mcpWarnings: string[] = [...pluginMcp.warnings]; // 合成期告警（用户遮蔽/插件撞名/装载告警）并入既有警告单通道
-    this.mcpReady = async () => {
-      if (mcpServers.length === 0) return;
-      if (!mcpHost) {
-        mcpHost = new McpHost(mcpServers, this.tools);
-        try {
-          const report = await mcpHost.registerTools();
-          mcpWarnings = [...pluginMcp.warnings, ...report.warnings];
-        } catch (e) {
-          mcpHost = undefined; // 注册链失败复位，下次 run 重试连接（失败经 run 入口转确定性 failed，不静默直通）
-          throw e;
-        }
+    let mcpSig = JSON.stringify(mcpServers); // 装配基线（合并后 server 配置集；plugin 贡献随合成入列）
+    let mcpEverRegistered = false; // 是否曾真实注册过工具面（未注册过的新配置不产漂移行——模型没见过旧面）
+    const mcpToolSnapshot = (): Map<string, string> =>
+      new Map(this.tools.list().filter((t) => t.name.startsWith('mcp__')).map((t) => [t.name, t.description]));
+    this.mcpReady = async (): Promise<string[]> => {
+      const freshUser = loadMcpServers(base);
+      const freshPlugin = pluginMcpServers(base, { userServerNames: new Set(freshUser.map((s) => s.name)) });
+      const fresh = [...freshUser, ...freshPlugin.servers].filter((s) => s.enabled !== false);
+      const sig = JSON.stringify(fresh);
+      if (sig === mcpSig && (mcpHost !== undefined || fresh.length === 0)) return []; // 未变更：已注册直通/空配置零开销
+      const before = mcpEverRegistered ? mcpToolSnapshot() : null;
+      if (mcpHost) {
+        await mcpHost.close(); // 撤旧牌（registeredNames 逐名 unregister——移除/变更 server 的工具下架）
+        mcpHost = undefined;
       }
+      if (fresh.length === 0) {
+        this.security.setMcpServers([]); // 名单收口：已卸载 server 的工具放行面同步关闭
+        const drift = mcpEverRegistered ? ['[mcp] all MCP servers removed — their tools are no longer available'] : [];
+        mcpSig = sig;
+        mcpEverRegistered = false;
+        return drift;
+      }
+      mcpHost = new McpHost(fresh, this.tools);
+      try {
+        const report = await mcpHost.registerTools();
+        mcpWarnings = [...freshPlugin.warnings, ...report.warnings];
+      } catch (e) {
+        mcpHost = undefined; // 注册链失败复位，下次 run 重试连接（失败经 run 入口转确定性 failed，不静默直通）
+        throw e;
+      }
+      // guard 名单/safety 表对齐新配置（注册成功才对齐——失败路径保留旧名单，下次 run 重试）
+      this.security.setMcpServers(fresh.map((s) => s.name));
+      this.security.setMcpSafety(freshPlugin.safety);
+      const drift: string[] = [];
+      if (before !== null) {
+        const after = mcpToolSnapshot();
+        const added: string[] = [];
+        const removed: string[] = [];
+        const updated: string[] = [];
+        for (const [name, desc] of after) {
+          const prev = before.get(name);
+          if (prev === undefined) added.push(desc.length > 0 ? `${name} — ${desc.slice(0, 128)}` : name);
+          else if (prev !== desc) updated.push(name);
+        }
+        for (const name of before.keys()) if (!after.has(name)) removed.push(name);
+        if (added.length > 0) drift.push(`[mcp] tools added: ${added.join(', ')}`);
+        if (removed.length > 0) drift.push(`[mcp] tools removed: ${removed.join(', ')} (no longer available)`);
+        if (updated.length > 0) drift.push(`[mcp] tools updated: ${updated.join(', ')} (tool list refreshed from mcp.json)`);
+      }
+      mcpSig = sig;
+      mcpEverRegistered = true;
+      return drift;
     };
     this.mcpClose = async () => {
       const h = mcpHost;

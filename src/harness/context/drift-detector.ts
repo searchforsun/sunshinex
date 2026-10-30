@@ -41,7 +41,7 @@ export class DriftDetector {
   captureBaselines(): void {
     this.globalSunshineBaseline = this.deps.readGlobalSunshine();
     this.sunshinexBaseline = this.deps.readSunshinex();
-    this.skillsBaseline = skillIds(this.deps.root);
+    this.skillsBaseline = skillSig(this.deps.root);
     this.memoryBaseline = this.deps.readMemoryIndex();
   }
 
@@ -59,13 +59,32 @@ export class DriftDetector {
       out.push(this.sunshineDriftText('SUNSHINE.md', current, path.join(this.deps.root, 'SUNSHINE.md')));
       this.sunshinexBaseline = current;
     }
-    const ids = skillIds(this.deps.root);
+    const ids = skillSig(this.deps.root);
     if (ids !== this.skillsBaseline) {
-      const before = new Set(this.skillsBaseline.split('\n').filter((s) => s.length > 0));
-      const added = ids.split('\n').filter((s) => s.length > 0 && !before.has(s));
-      if (added.length > 0) {
-        out.push(`[skills] added: ${added.join(', ')} — load with the skill tool`);
+      const parse = (block: string): Map<string, [string, string]> =>
+        new Map(
+          block
+            .split('\n')
+            .filter((l) => l.length > 0)
+            .map((l) => {
+              const [id, name, desc] = JSON.parse(l) as [string, string, string];
+              return [id, [name, desc]] as [string, [string, string]];
+            }),
+        );
+      const before = parse(this.skillsBaseline);
+      const after = parse(ids);
+      const added: string[] = [];
+      const removed: string[] = [];
+      const updated: string[] = [];
+      for (const [id, meta] of after) {
+        const prev = before.get(id);
+        if (prev === undefined) added.push(meta[0].length > 0 || meta[1].length > 0 ? `${id} (${(meta[1] || meta[0]).slice(0, 128)})` : id);
+        else if (prev[0] !== meta[0] || prev[1] !== meta[1]) updated.push(meta[1].length > 0 ? `${id} — ${meta[1].slice(0, 128)}` : id);
       }
+      for (const id of before.keys()) if (!after.has(id)) removed.push(id);
+      if (added.length > 0) out.push(`[skills] added: ${added.join(', ')} — load with the skill tool`);
+      if (removed.length > 0) out.push(`[skills] removed: ${removed.join(', ')} (no longer available)`);
+      if (updated.length > 0) out.push(`[skills] updated: ${updated.join(', ')}`);
       this.skillsBaseline = ids;
     }
     const mem = this.deps.readMemoryIndex();
@@ -108,10 +127,13 @@ export class DriftDetector {
   }
 }
 
-/** 技能 id 集（排序后 join，跨环境逐字节稳定）：漂移比对用——只比 id 集，技能正文永不进上下文 */
-function skillIds(root: string): string {
+/** 技能指纹（排序后逐条 JSON 行，跨环境逐字节稳定）：漂移比对用——id+name+description 三元，
+ *  描述/名称变更与新增/移除同等可检（2026-10-30 用户裁定「技能描述变化后肯定要追尾」）；
+ *  正文永不进上下文。装载走 loadSkills 全优先级链（项目 .sunshinex → 全局用户根 → 学习根 → 插件根，
+ *  两级+装载口径与快照技能清单同源） */
+function skillSig(root: string): string {
   return loadSkills(root)
-    .map((m) => m.id)
+    .map((m) => JSON.stringify([m.id, m.name, m.description]))
     .sort()
     .join('\n');
 }

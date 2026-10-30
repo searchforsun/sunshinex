@@ -75,7 +75,7 @@ test('超 4096 字符截断 + read 指针', () => {
   });
 });
 
-test('技能清单新增 → 尾追一行（正文不进上下文）', () => {
+test('技能清单新增 → 尾追一行（正文不进上下文，描述随行）', () => {
   withRoot((root) => {
     const cm = cmAt(root);
     const dir = path.join(root, '.sunshinex', 'skills', 'newone');
@@ -83,8 +83,26 @@ test('技能清单新增 → 尾追一行（正文不进上下文）', () => {
     fs.writeFileSync(path.join(dir, 'SKILL.md'), ['---', 'name: New One', 'description: brand new skill', '---', 'body', ''].join('\n'));
     const notices = cm.appendInstructionLine('t');
     assert.equal(notices.filter((n) => n.includes('newone')).length, 1);
-    assert.match(notices.find((n) => n.includes('newone'))!, /^\[skills\] added: newone — load with the skill tool$/);
+    // 2026-10-30 用户裁定「技能描述变化后肯定要追尾」：added 行随带描述（正文仍不进上下文）
+    assert.match(notices.find((n) => n.includes('newone'))!, /^\[skills\] added: newone \(brand new skill\) — load with the skill tool$/);
     assert.ok(!notices.some((n) => n.includes('body')), '技能正文不进上下文');
+  });
+});
+
+test('技能描述变更 → updated 行；移除 → removed 行（基线随比对前进各告知一次）', () => {
+  withRoot((root) => {
+    const dir = path.join(root, '.sunshinex', 'skills', 'evolve');
+    fs.mkdirSync(dir, { recursive: true });
+    const write = (description: string): void =>
+      fs.writeFileSync(path.join(dir, 'SKILL.md'), ['---', 'name: Evolve', `description: ${description}`, '---', 'body', ''].join('\n'));
+    write('v1 desc'); // 构造前就位（基线含该技能——否则首条消息误报 added）
+    const cm = cmAt(root);
+    assert.equal(cm.appendInstructionLine('t1').filter((n) => n.includes('evolve')).length, 0, '基线捕获后无漂移');
+    write('v2 desc changed');
+    assert.match(cm.appendInstructionLine('t2').find((n) => n.includes('evolve'))!, /^\[skills\] updated: evolve — v2 desc changed$/, '描述变更尾追 updated 行');
+    assert.equal(cm.appendInstructionLine('t3').filter((n) => n.includes('evolve')).length, 0, '同一变更只告知一次');
+    fs.rmSync(dir, { recursive: true, force: true });
+    assert.match(cm.appendInstructionLine('t4').find((n) => n.includes('removed'))!, /^\[skills\] removed: evolve \(no longer available\)$/, '移除尾追 removed 行');
   });
 });
 

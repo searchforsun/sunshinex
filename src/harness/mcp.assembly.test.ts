@@ -134,3 +134,34 @@ test('LoopEngine mcpReady 先于首节点执行（就绪门槛语义）', async 
   assert.equal(r.status, 'done');
   assert.deepEqual(order, ['ready', 'node']);
 });
+
+test('Harness MCP 会话内热载：mcp.json 变更 → mcpReady 重注册 + 工具面 diff 漂移行 + guard 名单对齐', async () => {
+  await withHome(async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
+    writeProjectMcpJson(root, { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } });
+    approveMcpServer(root, 'fs');
+    const h = new Harness({ root, mode: 'full-access' });
+    try {
+      // 首次注册零漂移（模型没见过旧面——漂移行只在曾注册后的变更轮产出）
+      const first = await h.mcpReady();
+      assert.deepEqual(first, [], '首次注册零漂移行');
+      assert.ok(h.tools.get('mcp__fs__echo'));
+      // 变更配置（fs → fs2）：重注册 + added/removed 两行 + guard 名单同步
+      writeProjectMcpJson(root, { fs2: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs2'] } });
+      approveMcpServer(root, 'fs2');
+      const drift = await h.mcpReady();
+      assert.equal(drift.filter((l) => l.startsWith('[mcp] tools added')).length, 1, 'added 漂移行');
+      assert.match(drift.find((l) => l.startsWith('[mcp] tools added'))!, /mcp__fs2__echo/);
+      assert.equal(drift.filter((l) => l.startsWith('[mcp] tools removed')).length, 1, 'removed 漂移行');
+      assert.match(drift.find((l) => l.startsWith('[mcp] tools removed'))!, /mcp__fs__echo/);
+      assert.ok(h.tools.get('mcp__fs2__echo'), '新 server 工具已注册');
+      assert.equal(h.tools.get('mcp__fs__echo'), undefined, '旧 server 工具已下架');
+      assert.equal(h.security.preToolUse('mcp__fs2__echo', {}).allowed, true, 'guard 名单已对齐新配置（新工具放行）');
+      assert.equal(h.security.preToolUse('mcp__fs__echo', {}).allowed, false, 'guard 名单已对齐新配置（旧工具拒绝）');
+      // 未变更：零开销直通零漂移
+      assert.deepEqual(await h.mcpReady(), []);
+    } finally {
+      await h.mcpClose();
+    }
+  });
+});

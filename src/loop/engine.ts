@@ -62,8 +62,9 @@ export interface LoopDeps {
   runner?: import('../harness/subagent').SubagentRunner;
   /** 后台沉淀管线（装配层注入；CLI 收尾 await drain 用）：纯类型依赖，内联 import 规避模块环 */
   pipeline?: import('../harness/memory/pipeline').MemoryPipeline;
-  /** MCP 装配就绪门槛（Harness 注入）：run 入口统一 await——mcp__ 工具注册完成后才进首节点；拒绝转确定性 failed（装配期 fail-fast 收敛为节点状态） */
-  mcpReady?: () => Promise<void>;
+  /** MCP 装配就绪门槛（Harness 注入）：run 入口统一 await——mcp__ 工具注册完成后才进首节点；拒绝转确定性 failed（装配期 fail-fast 收敛为节点状态）。
+   *  返回值=会话内热载漂移说明行（2026-10-30：mcp.json 变更重注册后的工具面 diff；引擎按 notice 行落链） */
+  mcpReady?: () => Promise<string[] | void>;
   /** MCP 连接收口（Harness 注入）：CLI 命令收尾关闭 stdio 子进程，防悬挂事件循环 */
   mcpClose?: () => Promise<void>;
   /** MCP 装配警告单（Harness 注入，降级语义）：服务器失败只损失该服务器工具，警告由呈现面上屏 */
@@ -121,7 +122,12 @@ export class LoopEngine {
     // MCP 装配就绪门槛（fail-fast 收敛为确定性失败）：mcp__ 工具注册完成后才进首节点
     if (this.deps.mcpReady) {
       try {
-        await this.deps.mcpReady();
+        const drift = await this.deps.mcpReady();
+        // 会话内热载漂移行落链（2026-10-30）：mcp.json 变更重注册后的工具面 diff——本轮 Reactor 种子
+        // 在其之后捕获（agentNode 逐 run 构造），wire 即携带「新增/移除/更新工具」认知
+        for (const line of Array.isArray(drift) ? drift : []) {
+          this.deps.context.appendChain([{ action: 'notice', observation: line }]);
+        }
       } catch (e) {
         return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: `MCP_ASSEMBLY_FAILED: ${e instanceof Error ? e.message : String(e)}` };
       }
