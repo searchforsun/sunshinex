@@ -2961,8 +2961,9 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-sort-pop { top: calc(100% + 4px); right: 0; min-width: 128px; }
 .sx-ws-sort-pop .sx-menuitem { justify-content: space-between; }
 .sx-ws-sort-active { color: var(--fg); }
-/* 停止态转圈(2026-10-31 用户裁定「深色转圈占大头」,静态小方块退役):白钮上深色环 20px 占
-   钮面大部;色沿 .sx-composer .send .run-spinner 既有令牌(fg-on-solid),只放大+重调环带 */
-.sx-composer .send .stop-spinner { width: 20px; height: 20px; -webkit-mask-image: radial-gradient(circle 10px at 50% 50%, transparent 3px, #000 4.2px 7.6px, transparent 8.6px); mask-image: radial-gradient(circle 10px at 50% 50%, transparent 3px, #000 4.2px 7.6px, transparent 8.6px); }
+/* 发送 loading 转圈比例(2026-10-31 用户裁定「暗色主题黑占大部分白占小部分,亮色相反」):
+   环身=主题反色占 72%(转圈才明显),缺口 28% 小亮口;fg-on-solid 对按钮底恒反相,双主题自动互反。
+   旧 30% 弧(反色小弧+大透明)读不出转动=本次根修;静止小方块停止钮维持原样不动 */
+.sx-composer .send .run-spinner { background: conic-gradient(from 0deg, var(--fg-on-solid) 0 72%, transparent 0); }
 /* 队列在途转圈(立即/插入已点正文未落):标题运行中同款 12px 灰环,替代四动作位 */
 .steer-row-actions .run-spinner { width: 12px; height: 12px; margin-right: 4px; }

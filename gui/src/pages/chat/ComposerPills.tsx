@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, Eye, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import { ArrowUp, ChevronDown, Eye, ListTodo, ShieldCheck, Square, Unlock } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import { ContextRing } from '../../context-ring';
@@ -196,9 +196,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
             {/* G14.89 运行中输入框有内容 → 显示发送(入队)而非停止;空输入才是停止 */}
             {running && input.trim() === '' ? (
               <button type="button" className="send" aria-label="stop" data-tip={t('Stop', '停止')} onClick={interrupt}>
-                {/* 2026-10-31 用户裁定:停止态=深色转圈占大头(静态小方块退役;白钮上深色环同
-                    运行语言,尺寸 20px 占钮面大部) */}
-                <span className="run-spinner stop-spinner" aria-hidden="true" />
+                <Square size={12} strokeWidth={2.5} aria-hidden="true" />
               </button>
             ) : (
               <button
