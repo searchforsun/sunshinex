@@ -184,9 +184,14 @@ export class MemoryPipeline {
   }
 
   /** 说明行文案（G14.106 GUI 可见面去路径引用——recall 指针只留在 TUI/链行侧,径经链接化会
-   *  在正文拖出长蓝链）；近限提醒（规格 §3.4）以 ` — ` 并入同一行——单行契约不拆 */
+   *  在正文拖出长蓝链）；近限提醒（规格 §3.4）以 ` — ` 并入同一行——单行契约不拆。
+   *  slug 显示截短（2026-10-30 用户裁定「更新说明只显示名字就可以」）：slug 由内容描述生成、
+   *  slugifyMemory 截 40 字符,逐条全量拼行过长——展示面每条截 24 内掐尾词附省略号;模型面
+   *  工具回执（writer `Saved memory: <slug>`）仍持全名,按名引用不受影响 */
   private memoryLine(slugs: string[]): string {
-    const base = `[memory] saved: ${slugs.join(', ')}`;
+    const short = (slug: string): string =>
+      slug.length <= 24 ? slug : `${slug.slice(0, 24).replace(/-[^\-]*$/, '')}…`;
+    const base = `[memory] saved: ${slugs.map(short).join(', ')}`;
     const near = new MemoryStore(this.deps.root).capacityNotice();
     return near ? `${base} — ${near}` : base;
   }
