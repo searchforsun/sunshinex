@@ -61,14 +61,12 @@ test('GET /session/:id/file:判界/404/415/截断/400 全分支', async () => {
     body = (await resp.json()) as { content: string };
     assert.equal(body.content, '# note\n');
 
-    // —— 越界:../ 逃逸出会话 root → 403 恒定文案 ——
-    resp = await file('../outside.txt');
-    assert.equal(resp.status, 403);
-    assert.deepEqual(await resp.json(), { error: 'path outside trusted roots' });
-    // 逃逸目标真实存在与否同拒(判界先于存在性)
+    // —— 越界放开(2026-10-29 用户裁定「任何目录都能打开,只是访问而已」):../ 相对路径同样可读 ——
     fs.writeFileSync(path.join(tmp, 'outside.txt'), 'out', 'utf8');
     resp = await file('../outside.txt');
-    assert.equal(resp.status, 403, '逃逸到真实文件同样 403');
+    assert.equal(resp.status, 200, '读取面信任域门退役:任意路径可读');
+    body = (await resp.json()) as { content: string };
+    assert.equal(body.content, 'out');
 
     // —— 不存在 → 404;目录 → 200 {type:'directory'}(G14.2xx 目录移交:客户端转目录页签定位) ——
     resp = await file('nope.ts');

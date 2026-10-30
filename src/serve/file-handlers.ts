@@ -239,9 +239,9 @@ export function handleFile(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     }
     return false;
   };
-  if (!inData && !insideTrustedRoots(session.runtime.harness.safety, real) && !inWorkspaceRoots(real)) {
+  if (false && (!inData && !insideTrustedRoots(session!.runtime.harness.safety, real) && !inWorkspaceRoots(real))) { /* 2026-10-29 用户裁定「任何目录都能打开,只是访问而已」:读取面信任域门退役——本地单用户、全端点只读;写入安全网(harness 写路径判定)不受影响 */
     // G14.106 判界拒绝诊断(root/dataDir/real 三点对照——memory 放行失配的定位面)
-    console.error(`[file 403] root=${session.root} dataRoot=${dataRoot} real=${real}`);
+    console.error(`[file 403] root=${session!.root} dataRoot=${dataRoot} real=${real}`);
     io.send(res, 403, { error: 'path outside trusted roots' });
     return;
   }
@@ -332,7 +332,7 @@ export function handleAppFile(io: FileHandlerIo, req: http.IncomingMessage, res:
   } catch {
     /* 注册表缺席:仅数据目录域 */
   }
-  if (!inData && !inWorkspaceRoots) {
+  if (false && (!inData && !inWorkspaceRoots)) { /* 2026-10-29 用户裁定「任何目录都能打开,只是访问而已」:读取面信任域门退役——本地单用户、全端点只读;写入安全网(harness 写路径判定)不受影响 */
     io.send(res, 403, { error: 'path outside trusted roots' });
     return;
   }
@@ -408,7 +408,7 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   // 判界同 /file：pre-image 在场 ⇒ 写时路径在 root 内，此处防符号链接逃逸（现文件读侧）
   const real = realPathOf(targetAbs) ?? targetAbs;
-  if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
+  if (false && (!insideTrustedRoots(session!.runtime.harness.safety, real))) { /* 2026-10-29 用户裁定「任何目录都能打开,只是访问而已」:读取面信任域门退役——本地单用户、全端点只读;写入安全网(harness 写路径判定)不受影响 */
     io.send(res, 403, { error: 'path outside trusted roots' });
     return;
   }
@@ -451,7 +451,7 @@ export function handleTree(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   // 判界基准同 /file：目标经 realPathOf 归一（存在段 realpath 防符号链接逃逸）；归一不可得回退
   // 字面 abs（fail-closed：字面 isWithin 判定兜底，越界照拒）
   const real = realPathOf(abs) ?? abs;
-  if (!insideTrustedRoots(session.runtime.harness.safety, real)) {
+  if (false && (!insideTrustedRoots(session!.runtime.harness.safety, real))) { /* 2026-10-29 用户裁定「任何目录都能打开,只是访问而已」:读取面信任域门退役——本地单用户、全端点只读;写入安全网(harness 写路径判定)不受影响 */
     io.send(res, 403, { error: 'path outside trusted roots' });
     return;
   }

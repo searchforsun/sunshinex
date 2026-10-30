@@ -700,11 +700,10 @@ test('⑫ tree:单层列举/忽略集/上限截断/判界 403/根缺省/404/400'
     assert.equal(bMany.entries[0].name, 'f000.ts', '截断保序:首项 f000.ts');
     assert.equal(bMany.entries[499].name, 'f499.ts', '截断保序:末项 f499.ts(f500.ts 被裁)');
 
-    // —— 判界 403:../ 逃逸出会话 root(逃逸靶真实在场——判界先于存在性) ——
+    // —— 越界放开(2026-10-29 用户裁定「任何目录都能打开,只是访问而已」):../ 相对路径 200 列表 ——
     fs.mkdirSync(path.join(tmp, 'outside'));
-    const r403 = await tree('../outside');
-    assert.equal(r403.status, 403);
-    assert.deepEqual(await r403.json(), { error: 'path outside trusted roots' });
+    const rOpen = await tree('../outside');
+    assert.equal(rOpen.status, 200, '读取面信任域门退役:任意路径可列表');
 
     // —— 不存在 404 / 非目录 400 ——
     const r404 = await tree('nope');
