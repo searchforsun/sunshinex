@@ -25,7 +25,14 @@ const rel = path
   .replace(/\.test\.js$/, '')
   .replace(/[\\/]/g, '-');
 const dir = path.join(repoRoot, '.data-test', rel);
-fs.mkdirSync(dir, { recursive: true });
+const home = path.join(dir, 'home');
+fs.mkdirSync(home, { recursive: true });
 process.env.SUNSHINEX_DATA_DIR = dir;
 process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'user-skills');
 process.env.SUNSHINEX_GLOBAL_SUNSHINE = path.join(dir, 'global-SUNSHINE.md');
+process.env.HOME = home;
+// HOME 同钉（单点纪律同上）：env.ts homeDir() 显式优先读 HOME——不钉则 userConfigDir() 落真实
+// ~/.sunshinex，全局 settings.json（本机 plugins.browser-use/computer-use enabled=true 等）经
+// loadEffectivePlugins → 插件 skills/MCP server 泄入测试装配面（实测五败：技能清单零注入钉
+// 230 tok 泄入、压缩环 est 407>400 提前压缩、mcpClose 36 工具残留）。按文件私有目录互不可见；
+// 用例内自钉/还原 HOME 的测试不受影响（finally 还原到本钉值）。

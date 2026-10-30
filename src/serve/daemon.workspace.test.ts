@@ -197,14 +197,17 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
       const root = path.join(tmp, 'root-att');
       fs.mkdirSync(root, { recursive: true });
       fs.writeFileSync(path.join(root, 'a.txt'), 'old', 'utf8');
-      // 手工 v3 journal：header + user + chain + seg 面（user 裸文,写面单形态）+ msg 两行（v1 残留形态——装载忽略）
+      // 手工 v3 journal：header + user + seg 面（user 裸文,写面单形态）+ chain + msg 两行（v1 残留形态——装载忽略）。
+      // 行序按真实写面（seglog 钉口径）：本轮流 seg 先于本轮 chain 行（chain 行落点=入链水位,其后 seg 行
+      // 即崩溃窗口——71f51d0 崩溃档回灌按此判定）。旧序（chain 在 seg 前）为「轮已转录未入链」的崩溃形,
+      // 会触发回灌（task/reply 重复入链,run 续号 3 起）；正常档窗口恒空,run 自 step=2 续排
       const { id: jid, file } = makeJournal(
         root,
         [
           { t: 'user', text: '先前的任务' },
-          { t: 'chain', steps: [{ step: 1, action: 'task', observation: '先前的任务' }] },
           { t: 'seg', kind: 'user', md: '先前的任务', ts: 10, seq: 1 },
           { t: 'seg', kind: 'assistant', md: '先前的答复', ts: 20, seq: 2 },
+          { t: 'chain', steps: [{ step: 1, action: 'task', observation: '先前的任务' }] },
           { t: 'msg', item: { role: 'user', text: '先前的任务', ts: 1, seq: 1 } },
           { t: 'msg', item: { role: 'assistant', text: '先前的答复', ts: 2, seq: 2 } },
           { t: 'steer', items: [{ seq: 0, text: '旧队列条目', front: false }] },

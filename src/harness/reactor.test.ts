@@ -329,12 +329,16 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {600,400}：threshold 200，摘要/重读预算各 200。M5 恒在记忆引导条目把「装配底数」从 3 tok 抬到 122 tok（+119，
-  //   条目正文 487 字符 / 0 CJK ≈122 tok，见 index.ts memoryIndexItems），故 budget.total 由 480 抬到 600 使 threshold 80→200
-  //   （=122 底数 + 78 余量）：step1 底数 122 不过阈、不压缩，首次触发仍在 step2。观察只入 history（不写记忆）：
-  // step2 est=122(装配底数)+178(hist f×700)=300>200 触发；一轮收敛后 est=122+136(摘要)+180(重读 f)=438≤600 即止；
-  // step3 est=442>200 但滞回门（3-2=1<2）挡住，records 保持 1
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 600, reserve: 400 } });
+  // budget {700,400}：threshold 300，摘要/重读预算各 200。标定基线三段演进（2026-10-30 重标定）：
+  //   ①恒在记忆引导条目 694 字符/0 CJK ≈174 tok（4991d8a 增 supersession 预授权行后的底数，M5 轮1 时代 122/487 已过期）；
+  //   ②M5 轮2（59931b5）起 foldableItems 剔除会话常量——引导条目不进摘要素材，摘要=纯 history 行；
+  //   ③bd8e349 轮边界增量入链后 chainFoldedCount 在新步已入链时非零 → 摘要尾带 Full trace 归档指针行（约 +25 tok）。
+  // 故 budget.total 由 600 抬到 700（600 时代 step3 est 恰好越 total 触发硬越限旁路、二次压缩破「records 收敛于 1」）：
+  // step1 est=174≤300 不过阈、不压缩；观察只入 history（不写记忆）：
+  // step2 est=174+191(tool-call 11+tool-result f×700 180)=365>300 滞回门（2-(-2)≥2）触发；
+  //   chunks=[tool-call,tool-result] 191≤摘要预算 200 原样入摘要，收敛后 est=174+234(摘要含 checksum 头+trace 行)+180(重读 f)≈588≤700 即止（records 1）；
+  // step3 est≈588+17(step2 新 history 行)=605≤700 无硬越限，滞回门（3-2=1<2）挡住，records 保持 1
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 700, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.ok(prompts[1].includes('[Compacted summary'), '触发轮当轮以收敛后上下文组装');
