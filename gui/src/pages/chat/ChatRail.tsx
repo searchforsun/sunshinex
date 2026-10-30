@@ -87,10 +87,10 @@ export function ChatRail(props: {
   // show 仍走 state(挂卸载决策,翻转由 layout effect 当帧补锚)
   const innerRef = useRef<HTMLDivElement | null>(null);
   const [show, setShow] = useState(false);
-  /** 稳定门采样(2026-10-31 用户报障「打开会话刻度先现顶部,约 1s 后才回位」):首帧 rect 是
-   *  过渡值(顶栏/菜单/字体未定稿),show=true 当帧渲染=先错位后跳。连续两次测量一致才亮——
-   *  亮起即已就位;布局漂移期(拖宽/开合)同样先藏,稳定帧再亮(闪隐不闪错位) */
-  const stableRef = useRef<{ left: number; top: number } | null>(null);
+  /** 首亮放行门(2026-10-31 用户复测「稳定门后仍会跳」):两次相同测量可能都落在内容未渲染的
+   *  过渡布局上,条目落位后照样跳——改为时限放行:挂载 350ms 沉降期内的测量只静默写坐标不放行
+   *  显示,沉降完成才可首亮(亮起即终位);已亮后实时跟随不受门限(流式高度变化不停亮) */
+  const revealAtRef = useRef(false);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
@@ -104,12 +104,9 @@ export function ChatRail(props: {
         inner.style.left = `${a.left}px`;
         inner.style.top = `${a.top}px`;
       }
-      const prev = stableRef.current;
-      stableRef.current = { left: a.left, top: a.top };
-      const stable = prev !== null && prev.left === a.left && prev.top === a.top;
       setShow((p) => {
-        if (p) return a.show ? p : false; // 已亮:只随余量门收起,位置继续实时跟随(流式高度变化不停亮)
-        return stable && a.show; // 未亮:连续两次测量一致才首亮(亮起即就位,无先错后跳)
+        if (p) return a.show ? p : false; // 已亮:只随余量门收起,位置继续实时跟随
+        return revealAtRef.current && a.show; // 未亮:沉降期(350ms)不放行,亮起即终位
       });
     };
     // 显隐/锚点滞后一拍的三种来源各配一条触发线(十二轮半:单挂 RO 时,交互拖拽/渲染步
@@ -124,7 +121,11 @@ export function ChatRail(props: {
     // 顶栏/菜单/字体未定稿,rect 是过渡值;其后滚动口尺寸若不变 RO 不再触发,错锚即滞留。
     // 挂载后数帧+350ms+字体就绪各补测一次(railAnchor 幂等,零尺寸由守卫收起)
     const settleRafs = [2, 5, 9].map(() => requestAnimationFrame(() => measure()));
-    const settleTimer = window.setTimeout(measure, 350);
+    // 沉降放行(首亮门):350ms 补测同帧放行首亮——此前测量只养坐标不显示
+    const settleTimer = window.setTimeout(() => {
+      revealAtRef.current = true;
+      measure();
+    }, 350);
     void Promise.resolve(document.fonts?.ready).then(() => measure(), () => undefined);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
