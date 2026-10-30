@@ -49,7 +49,7 @@ node scripts/deploy-gui.mjs reinstall --pristine    # 净装：连用户态历�
 
 | 层 | 命令 | 内容 |
 |----|------|------|
-| 主仓单测 | `pnpm test` | 清空并编译 dist/ → `node --test` 跑全量 `*.test.js`；测试数据钉仓内 `.data-test`（按测试文件派生私有子目录、跑完自清，零污染用户全局区）；不含 GUI。**pty.test 例外**（2026-10-31）：从并发批剥离、主批完后直接执行（node:test standalone）串行收尾——win32 下 node-pty 1.1.0 的 conpty 出口检测与其他文件的 daemon pty 并发即挂死（AttachConsole failed 族，runner 永等），根修=升级 node-pty 1.2.0-beta；批内 `--test-force-exit` 兜 daemon 类收口后的 fs.watch 句柄迟滞 |
+| 主仓单测 | `pnpm test` | 清空并编译 dist/ → `node --test` 跑全量 `*.test.js`；测试数据钉仓内 `.data-test`（按测试文件派生私有子目录、跑完自清，零污染用户全局区）；不含 GUI。**pty.test 例外**（2026-10-31）：从并发批剥离、主批完后直接执行（node:test standalone）串行收尾——win32 下 node-pty 的 conpty 出口检测与其他文件的 daemon pty 并发即挂死（AttachConsole failed 族，runner 永等；1.1.0 与 1.2.0-beta.18 均复现，非版本回归，上游问题）；批内 `--test-force-exit` 兜 daemon 类收口后的 fs.watch 句柄迟滞 |
 | GUI 全量 | `pnpm --dir gui run test` | pretest 先 typecheck（`tsc --noEmit`）并编译主仓，vitest 全量＝单测 + e2e（起真 daemon，消费 `dist/serve/daemon` 发布形态）——gui 直接 import 主仓 TS 源保类型同源 |
 | GUI e2e 单跑 | `pnpm --dir gui run test:e2e` | pretest 先构建 dist-gui，只跑 e2e 文件（主仓 dist 须先在） |
 | 桌面壳 | `pnpm --filter sunshinex-shell run test`；冒烟 `pnpm shell:smoke` | 壳单测（vitest）；冒烟＝electron 真启动：起 → 页面加载完成 → 有序退，退出码判过 |
