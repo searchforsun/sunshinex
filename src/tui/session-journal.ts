@@ -70,7 +70,10 @@ export type JournalEvent =
   | { t: 'delegation'; e: SessionEvent }
   /** 子智能体流影子投影行(同上):payload.subagent 标签事件原件落档——attach 以帧重放给渲染层,
    *  子智能体活动面(agent 页签)跨重启/换渲染层可重建;reduceJournal 忽略 */
-  | { t: 'subagent'; e: SessionEvent };
+  | { t: 'subagent'; e: SessionEvent }
+  /** 会话前缀快照落档行(2026-10-31 spec:会话档生命周期快照冻结):items=快照条目,
+   *  sig=漂移基线签名;重放末条合法行为准,载荷不合法的行视同不存在(v3 零兼容,未知行双向可忽略) */
+  | { t: 'ctx-snap'; items: unknown; sig: unknown };
 
 export interface SessionMeta extends SessionSidecarMeta {
   id: string;
@@ -229,6 +232,15 @@ interface JournalReplay {
   /** /model 选择 id（`源/模型`；undefined = 缺省主模型） */
   modelId?: string;
   view: { expandAll: boolean; latestFull: boolean };
+  /** 会话前缀快照（ctx-snap 归约；末条合法行为准，载荷不合法视同不存在） */
+  snapshot?: CtxSnapshot;
+}
+
+/** 会话前缀快照落档行（2026-10-31 spec：会话档生命周期快照冻结）——items=快照条目（part 三段标注，
+ *  /context 分段面板还原用）；sig=漂移基线签名（恢复面基线随快照走）。末行为准；载荷不合法视同不存在 */
+export interface CtxSnapshot {
+  items: Array<{ part: 'instructions' | 'skills' | 'memory'; kind: string; content: string }>;
+  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null };
 }
 
 /** 会话 id：UTC 紧凑时间戳 + 4 位随机尾（文件名安全、可排序） */
@@ -269,6 +281,20 @@ function normalizeTodoItems(raw: unknown[]): TodoItem[] {
   });
 }
 
+/** ctx-snap 行面净化单点（行面字段不予信任——journal 既有口径）：任一字段形态不合法即整行视同不存在 */
+function normalizeCtxSnap(items: unknown, sig: unknown): CtxSnapshot | undefined {
+  if (!Array.isArray(items) || typeof sig !== 'object' || sig === null) return undefined;
+  const out: CtxSnapshot['items'] = [];
+  for (const it of items) {
+    const o = (it ?? {}) as { part?: unknown; kind?: unknown; content?: unknown };
+    if ((o.part !== 'instructions' && o.part !== 'skills' && o.part !== 'memory') || typeof o.kind !== 'string' || typeof o.content !== 'string') return undefined;
+    out.push({ part: o.part, kind: o.kind, content: o.content });
+  }
+  const s = sig as Record<string, unknown>;
+  if (typeof s.skills !== 'string' || typeof s.memory !== 'string' || !(s.sunshinex === null || typeof s.sunshinex === 'string') || !(s.globalSunshine === null || typeof s.globalSunshine === 'string')) return undefined;
+  return { items: out, sig: { skills: s.skills, memory: s.memory, sunshinex: s.sunshinex as string | null, globalSunshine: s.globalSunshine as string | null } };
+}
+
 /** 重放归约（封闭词汇 v1）：链累积、压缩后态覆盖（末值语义）、消息直汇、user 汇输入历史、todos/model/view 末值覆盖 */
 export function reduceJournal(events: JournalEvent[]): JournalReplay {
   const r: JournalReplay = {
@@ -281,6 +307,7 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
     history: [],
     todos: [],
     view: { expandAll: false, latestFull: false },
+    snapshot: undefined,
   };
   for (const e of events) {
     switch (e.t) {
@@ -320,6 +347,11 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
       case 'view':
         r.view = { expandAll: e.expandAll, latestFull: e.latestFull };
         break;
+      case 'ctx-snap': {
+        const snap = normalizeCtxSnap(e.items, e.sig);
+        if (snap !== undefined) r.snapshot = snap; // 末行为准；不合法行视同不存在
+        break;
+      }
     }
   }
   return r;

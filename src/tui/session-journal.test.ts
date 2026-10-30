@@ -353,3 +353,22 @@ test('purgeSession:会话档全家清(journal/meta/transcript 前缀匹配)+ gui
   assert.equal(fs.existsSync(guiSession), false, 'gui 面私有档清');
   assert.doesNotThrow(() => purgeSession(dataDir, JID), '幂等:重复 purge 不炸');
 });
+
+const snapRow = (content: string): JournalEvent => ({
+  t: 'ctx-snap',
+  items: [{ part: 'skills', kind: 'system', content }],
+  sig: { skills: 'a', memory: '', sunshinex: null, globalSunshine: null },
+});
+
+test('reduceJournal: ctx-snap 末行为准', () => {
+  const r = reduceJournal([{ t: 'header', v: 3, id: 'x', createdAt: 'c' } as unknown as JournalEvent, snapRow('old'), snapRow('new')]);
+  assert.equal(r.snapshot?.items[0]?.content, 'new');
+});
+
+test('reduceJournal: ctx-snap 载荷不合法视同不存在（坏档不炸归约）', () => {
+  const bad = { t: 'ctx-snap', items: 'nope', sig: null } as unknown as JournalEvent;
+  const r = reduceJournal([{ t: 'header', v: 3, id: 'x', createdAt: 'c' } as unknown as JournalEvent, bad, snapRow('ok')]);
+  assert.equal(r.snapshot?.items[0]?.content, 'ok');
+  const r2 = reduceJournal([{ t: 'header', v: 3, id: 'x', createdAt: 'c' } as unknown as JournalEvent, bad]);
+  assert.equal(r2.snapshot, undefined);
+});
