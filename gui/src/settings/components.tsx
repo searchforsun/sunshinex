@@ -23,10 +23,13 @@ import { Select } from './controls';
  *   替代"表单+折叠 JSON 段"堆叠;共享件,role=tablist/tab)。同轮裁定:ScopeSelect 工具栏下拉
  *   定宽(sx-dd-fixed 150px,超长项目名 ellipsis+title tip 全名)。
  * - EmptyState/ErrorBanner:空态/错误条(role=alert,沿 home-error 的告警语义)。
+ * - ModalField:弹窗表单行(2026-10-30 用户裁定:弹窗内容对齐主设置面行形态)——label(+hint)
+ *   行与控件行两段纵向,字级/间距对齐 .sx-setting-label/.sx-setting-desc;纯容器零逻辑
+ *   (children 原样透传,受控件/aria-label 全由消费方持有)。
  * 样式零新依赖:全部走 app.css 既有令牌(--surface-elevated/--border/--radius 系列/--warn…),
  * 新类前缀 sx-scope-/sx-search-/sx-rc-/sx-drawer-/sx-empty-/sx-error-(Task 21 追加段)+
  * sx-editor-modal-/sx-res-toolbar(2026-10-29 追加段;旧 sx-drawer-* 容器类留置不删——app.css
- * 并行热区只加不改)。
+ * 并行热区只加不改)+ sx-modal-field-(2026-10-30 追加段,同纯加法纪律)。
  * 字符串一律渲染期 t(en,zh)(G14.213 设置面 i18n 纪律)。
  */
 
@@ -231,6 +234,31 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
   );
 }
 
+/** ModalField props:label(+hint)标签行 + 控件行(纵向两段;hint 可选=字段说明,同主设置面
+ *  desc 语义)。纯容器:children 原样透传(输入/Select/textarea 全由消费方持 aria-label 与
+ *  受控态),零逻辑 */
+export interface ModalFieldProps {
+  readonly label: ReactNode;
+  readonly hint?: ReactNode;
+  readonly children: ReactNode;
+}
+
+/** 弹窗表单行(2026-10-30 用户裁定:弹窗内容对齐主设置面 SettingsForm 卡+行形态):每字段=
+ *  标签行(label+hint,字级对齐 .sx-setting-label/.sx-setting-desc)+控件行;行距/分隔线由
+ *  app.css 2026-10-30 追加段(.sx-modal-field-*)承接,四编辑弹窗(MCP/Agents/Plugins/Providers)
+ *  统一消费 */
+export function ModalField({ label, hint, children }: ModalFieldProps): JSX.Element {
+  return (
+    <div className="sx-modal-field">
+      <div className="sx-modal-field-label">
+        <span className="sx-modal-field-name">{label}</span>
+        {hint !== undefined && <span className="sx-modal-field-hint">{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 /** EditorModal props:open=false 恒 null;onClose=遮罩点击/Cancel/×/Esc 统一闭面;onSubmit=Save
  *  (form submit 路径,preventDefault 由本件承担);children=弹窗体字段面 */
 export interface EditorModalProps {
@@ -242,7 +270,8 @@ export interface EditorModalProps {
 }
 
 /** 居中模态编辑对话框(2026-10-29 用户裁定:弹窗替换右滑抽屉;raw/JSON 编辑统一容器):
- *  fixed 遮罩(z 120)+居中对话框(role=dialog aria-modal,宽 min(90vw,640px)/高 80vh 内滚动,
+ *  fixed 遮罩(z 120)+居中对话框(role=dialog aria-modal,尺寸 2026-10-30 用户裁定加宽:
+ *  min(92vw,680px)/max-height 84vh 内滚动,app.css 追加段覆写首版 90vw/640px/80vh;
  *  体头 ×、Save/Cancel 尾栏);体内点击 stopPropagation 不冒遮罩;Esc=document 捕获段监听
  *  (stopPropagation 截断壳层 document 冒泡段「Esc 回会话态」——弹窗开着时 Esc 只关弹窗);
  *  焦点落对话框(open 挂载 ref.focus——React autoFocus 仅表单元素生效,div 走 ref;简单落焦,

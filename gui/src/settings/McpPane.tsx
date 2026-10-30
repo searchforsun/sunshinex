@@ -3,8 +3,9 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult, McpOpInput } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
+import { Select } from './controls';
 
 /**
  * Task 22 McpPane 重构(Phase F 首面板,2026-10-28):一屏式卡片列表——写面全部走
@@ -23,6 +24,9 @@ import type { SettingsScope, ScopeOption } from './components';
  * 不清内容**(旧"收起面板清空解除武装"退役——清空源码文本方回表单组装,覆写规则入弹窗
  * 提示行)。默认落「配置」Tab;编辑已有条目且存在表单外隐藏键(seedRest 非空——沿现 seed
  * 逻辑判断)→ 默认落「源码」并预填整条 JSON(隐藏键由此可见可编)。
+ * 2026-10-30 用户裁定(弹窗对齐主设置面风格):弹窗字段面改 ModalField 表单行(标签行+控件
+ * 行纵向,标签/间距对齐主设置面卡行);transport 原生 select 换共享 Select(sx-dd 弹层);
+ * 「源码」textarea styled(代码底/边框容器,回填逻辑零变化)——零逻辑变化纯容器与控件形态。
  *
  * 作用域语义(壳下发:scope + onScopeChange——工具栏 ScopeSelect 只上抛,状态留壳):scope='project'(缺省,有 root 时)读两级清单
  * (GET 带 root,项目先全局后)——项目卡可写(op scope='project' 带 root),全局同名卡
@@ -642,35 +646,33 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
             />
           ) : (
             <>
-          <label className="sx-drawer-field">
-            {t('Name', '名称')}
-            <input aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            {t('Transport', '传输')}
-            <select
-              aria-label={t('Transport', '传输')}
+          {/* 2026-10-30 用户裁定:弹窗字段面改 ModalField 表单行(标签行+控件行纵向,对齐主设置面);
+              transport 原生 select 换共享 Select(sx-dd 弹层形态,app.css 追加段抬层浮于弹窗) */}
+          <ModalField label={t('Name', '名称')}>
+            <input className="sx-setting-input" aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('Transport', '传输')}>
+            <Select
+              ariaLabel={t('Transport', '传输')}
               value={form.transport}
-              onChange={(e) => setForm({ ...form, transport: e.target.value as DrawerForm['transport'] })}
-            >
-              <option value="stdio">stdio</option>
-              <option value="http">http</option>
-              <option value="sse">sse</option>
-            </select>
-          </label>
+              options={[
+                { v: 'stdio', l: 'stdio' },
+                { v: 'http', l: 'http' },
+                { v: 'sse', l: 'sse' },
+              ]}
+              onChange={(v) => setForm({ ...form, transport: v as DrawerForm['transport'] })}
+            />
+          </ModalField>
           {form.transport === 'stdio' ? (
-            <label className="sx-drawer-field">
-              {t('Command', '命令')}
-              <input aria-label={t('Command', '命令')} value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} spellCheck={false} />
-            </label>
+            <ModalField label={t('Command', '命令')}>
+              <input className="sx-setting-input" aria-label={t('Command', '命令')} value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} spellCheck={false} />
+            </ModalField>
           ) : (
-            <label className="sx-drawer-field">
-              URL
-              <input aria-label="URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} spellCheck={false} />
-            </label>
+            <ModalField label="URL">
+              <input className="sx-setting-input" aria-label="URL" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} spellCheck={false} />
+            </ModalField>
           )}
-          <label className="sx-drawer-field">
-            {t('Arguments (one per line)', '参数(每行一个)')}
+          <ModalField label={t('Arguments (one per line)', '参数(每行一个)')}>
             <textarea
               aria-label={t('Arguments (one per line)', '参数(每行一个)')}
               value={form.argsText}
@@ -678,18 +680,19 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
               rows={3}
               spellCheck={false}
             />
-          </label>
-          <div className="sx-drawer-field">
-            {t('Env (key / value)', '环境变量(键/值)')}
+          </ModalField>
+          <ModalField label={t('Env (key / value)', '环境变量(键/值)')}>
             {form.envRows.map((r, i) => (
               <div key={i} className="sx-mcp-envrow">
                 <input
+                  className="sx-setting-input"
                   aria-label={t('Env key', '环境键')}
                   value={r.k}
                   onChange={(e) => setForm({ ...form, envRows: form.envRows.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)) })}
                   spellCheck={false}
                 />
                 <input
+                  className="sx-setting-input"
                   aria-label={t('Env value', '环境值')}
                   value={r.v}
                   onChange={(e) => setForm({ ...form, envRows: form.envRows.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)) })}
@@ -707,7 +710,7 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
             <button type="button" onClick={() => setForm({ ...form, envRows: [...form.envRows, { k: '', v: '' }] })}>
               {t('+ Add env', '+ 添加环境变量')}
             </button>
-          </div>
+          </ModalField>
             </>
           )}
           {formError !== '' && <ErrorBanner text={formError} />}

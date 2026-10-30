@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 
 /**
@@ -396,6 +396,9 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
             />
           ) : (
             <>
+          {/* 2026-10-30 用户裁定:schema 键值表单改 ModalField 表单行(标签行(键名+schema
+              说明 hint)+控件行,对齐主设置面;boolean 复选行沿 sx-check-row 现形态);
+              aria-label/提交形状零变化 */}
           {Object.entries(drawer.configSchema ?? {}).map(([k, s]) =>
             s.type === 'boolean' ? (
               <label key={k} className="sx-drawer-field sx-check-row">
@@ -409,16 +412,15 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                 {s.description !== undefined && <span className="sx-mcp-hint">{s.description}</span>}
               </label>
             ) : (
-              <label key={k} className="sx-drawer-field">
-                {k}
-                {s.description !== undefined && <span className="sx-mcp-hint">{s.description}</span>}
+              <ModalField key={k} label={k} hint={s.description}>
                 <input
+                  className="sx-setting-input"
                   aria-label={k}
                   value={form.values[k] ?? ''}
                   spellCheck={false}
                   onChange={(e) => setForm({ ...form, values: { ...form.values, [k]: e.target.value } })}
                 />
-              </label>
+              </ModalField>
             ),
           )}
             </>

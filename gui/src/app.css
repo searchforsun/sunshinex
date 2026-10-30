@@ -2824,3 +2824,64 @@ input.sx-setting-input { width: 100%; }
 .sx-modal-tab { border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; padding: 5px 12px; cursor: pointer; border-radius: var(--radius-sm) var(--radius-sm) 0 0; border-bottom: 2px solid transparent; }
 .sx-modal-tab:hover { color: var(--fg); }
 .sx-modal-tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ===== 2026-10-30 用户裁定追加段(编辑弹窗对齐主设置面风格;纯加法——app.css 并行热区只加
+   不改,覆写前置同名规则靠源序同特异性后者胜) ===== */
+/* ① Modal 尺寸(min(92vw,680px)/max-height 84vh 内滚动——覆写 2026-10-29 段 90vw/640px/80vh) */
+.sx-editor-modal { width: min(92vw, 680px); max-height: 84vh; }
+/* ② 弹窗内共享 Select 弹层层序(z 审计结论:.sx-editor-modal-backdrop z120 自成 stacking
+   context,弹层(.sx-dd-pop z40)系其 DOM 后代恒被圈在该上下文内——全局抬 z 无解,上下文内
+   弹层本就以「定位+正 z」浮于弹窗静置内容之上;此处弹窗作用域显式抬层,压过弹窗内一切现有/
+   将来带层的包裹,钉死标准对话框行为=选项面浮于表单之上。弹层超高溢出由 .sx-editor-modal-body
+   滚动面承接(与主设置面表单滚动面同款行为),弹层参与滚动区不裁丢) */
+.sx-editor-modal .sx-dd-pop { z-index: 130; }
+/* ③ 弹窗表单行(ModalField:标签行(名+hint)+控件行纵向;字级对齐主设置面 .sx-setting-label
+   13px/500 与 .sx-setting-desc 12px 灰;行距=容器 14px——app.css 无 --space-* 尺度变量,
+   呼吸感对齐设置卡行距节奏) */
+.sx-editor-modal-fields { gap: 14px; }
+.sx-modal-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sx-modal-field-label { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.sx-modal-field-name { font-size: 13px; font-weight: 500; color: var(--fg); }
+.sx-modal-field-hint { font-size: 12px; color: var(--fg-tertiary); }
+/* 弹窗正文域(args/正文等 textarea;.sx-setting-input 令牌由标记直挂 input,textarea 无令牌此处补齐同面) */
+.sx-editor-modal-fields textarea { width: 100%; box-sizing: border-box; background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; font: 12px/1.6 var(--font-mono); resize: vertical; }
+.sx-editor-modal-fields textarea:focus { border-color: var(--border-strong); outline: none; }
+/* ④ 源码 JSON 编辑面(去裸 textarea 观感:主题代码底/边框容器/等宽/合理高度,同 .sx-raw-editor
+   语言;换行与回填逻辑零变化——仅外观) */
+.sx-editor-modal-fields textarea.sx-mcp-json { min-height: 160px; background: var(--surface-code); padding: 10px 12px; }
+.sx-editor-modal-fields textarea.sx-mcp-json:focus { border-color: var(--accent); outline: none; }
+/* ⑤ Providers 模型行重排:模型名独占行+(窗口/强度/档位)参数行+(上移/下移/删除)右对齐行,
+   块间 subtle 分隔线;参数行三件弹性等分(窗口输入/两个 sx-dd Select) */
+.sx-provider-modelrow { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; min-width: 0; }
+.sx-provider-modelrow + .sx-provider-modelrow { border-top: 1px solid var(--border-subtle); }
+.sx-provider-model-params { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sx-provider-model-params > .sx-setting-input { flex: 1 1 110px; width: auto; min-width: 0; }
+.sx-provider-model-params > .sx-dd { flex: 1 1 110px; min-width: 0; }
+.sx-provider-model-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.sx-provider-model-actions button { flex: none; padding: 2px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
+.sx-provider-model-actions button:hover:not(:disabled) { border-color: var(--border-strong); color: var(--fg); }
+
+/* ===== 设置页全局响应式(2026-10-30 用户裁定:窗口缩窄布局改纵向——本仓首个宽度断点,
+   窗口宽=视口;断点以上现形态零变化。全部收进本 media 块) ===== */
+@media (max-width: 720px) {
+  /* 主设置面:行纵向(设置名+描述在上、控件在下独占行)+卡/卡行 padding 收紧 */
+  .sx-settings-form { padding: 14px 14px 40px; gap: 10px; }
+  .sx-setting-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .sx-setting-main { padding-top: 0; }
+  .sx-setting-ctl { width: 100%; max-width: none; flex: none; }
+  .sx-card-head { flex-wrap: wrap; padding: 10px 14px 2px; }
+  .sx-card-rows { padding: 2px 14px 6px; }
+  .sx-rc { padding: 8px 10px; }
+  .sx-raw-card { padding: 10px 14px; }
+  /* 资源页工具栏换行:作用域下拉+添加钮第一行,搜索独占第二行(order 提前于 DOM 序的搜索) */
+  .sx-res-toolbar { flex-wrap: wrap; row-gap: 8px; }
+  .sx-res-toolbar > .sx-add-button { order: 2; }
+  .sx-res-toolbar > .sx-search-bar { flex: 1 1 100%; min-width: 0; order: 3; }
+  /* 编辑弹窗贴边(92vw 于极窄窗会越过遮罩 padding——100% 于遮罩内缩后即 ≈92vw,不越视口) */
+  .sx-editor-modal-backdrop { padding: 12px; }
+  .sx-editor-modal { width: min(100%, 680px); }
+  /* 弹窗模型参数行窄窗纵排(窗口/强度/档位各占一行) */
+  .sx-provider-model-params { flex-wrap: wrap; }
+  .sx-provider-model-params > .sx-setting-input,
+  .sx-provider-model-params > .sx-dd { flex: 1 1 100%; }
+}

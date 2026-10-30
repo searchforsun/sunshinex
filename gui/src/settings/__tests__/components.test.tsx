@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { EditorModal, EmptyState, ErrorBanner, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions, scopeTargetLabel } from '../components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions, scopeTargetLabel } from '../components';
 import type { ScopeOption } from '../components';
+import { Select } from '../controls';
 import { useConfigChanged } from '../use-config-changed';
 import type { ConfigChangedInfo, ConfigChangedSource } from '../use-config-changed';
 import type { SourceBadgeProps } from '../SourceBadge';
@@ -210,6 +211,34 @@ describe('EditorModal', () => {
     // Esc=document 捕获段关闭(stopPropagation 截断壳层 document 冒泡段「Esc 回会话态」监听)
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(closes).toEqual([1, 1, 1, 1]);
+  });
+
+  it('Modal 内共享 Select(2026-10-30 z 修正回归保护):弹窗开共享 Select 弹层容器出现在 document 且在弹窗遮罩内,选项可点选上抛;ModalField=标签行(label+hint)+控件行', () => {
+    const picks: string[] = [];
+    render(
+      <EditorModal open title="Edit thing" onClose={() => {}} onSubmit={() => {}}>
+        <ModalField label="Transport" hint="pick one">
+          <Select
+            ariaLabel="Transport"
+            value="stdio"
+            options={[
+              { v: 'stdio', l: 'stdio' },
+              { v: 'http', l: 'http' },
+            ]}
+            onChange={(v) => picks.push(v)}
+          />
+        </ModalField>
+      </EditorModal>,
+    );
+    // ModalField 表单行:标签行(名+hint)在,控件(trigger)在
+    expect(screen.getByText('pick one')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Transport' })).toBeDefined();
+    // 开弹层:弹层容器(.sx-dd-pop)出现在 document 且位于弹窗遮罩内(z 层修正的 DOM 面锚点——
+    // 遮罩 z120 stacking context 圈住弹层,弹窗作用域 CSS 抬层保证浮于表单之上,此处钉 DOM 在场)
+    fireEvent.click(screen.getByRole('button', { name: 'Transport' }));
+    expect(document.querySelector('.sx-editor-modal-backdrop .sx-dd-pop')).not.toBeNull();
+    fireEvent.click(screen.getByRole('option', { name: 'http' }));
+    expect(picks).toEqual(['http']); // 弹层选项点选上抛(弹窗内交互通路)
   });
 });
 

@@ -187,6 +187,28 @@ describe('AgentsPane(卡片化+启停)', () => {
     );
   });
 
+  it('isolation/executor 共享 Select(2026-10-30 弹窗对齐主设置面):弹层点选 worktree/external-cli → frontmatter 落值;Unset 显式项 → 键不落(与原清空输入同提交形状)', async () => {
+    const { conn, opCalls } = connOf([]);
+    render(<AgentsPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ New' }));
+    await screen.findByRole('dialog', { name: 'New agent' });
+    fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'writer' } });
+    fireEvent.change(screen.getByLabelText('agent name'), { target: { value: 'Writer' } });
+    fireEvent.click(screen.getByRole('button', { name: 'agent isolation' })); // 共享 Select trigger(aria-label)
+    expect(document.querySelector('.sx-editor-modal-backdrop .sx-dd-pop')).not.toBeNull(); // 弹层在弹窗内渲染(z 修正回归保护)
+    fireEvent.click(screen.getByRole('option', { name: 'worktree' }));
+    fireEvent.click(screen.getByRole('button', { name: 'agent executor' }));
+    fireEvent.click(screen.getByRole('option', { name: 'external-cli' }));
+    fireEvent.click(screen.getByRole('button', { name: 'agent isolation' })); // 重开:回退 Unset
+    fireEvent.click(screen.getByRole('option', { name: 'Unset' }));
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() =>
+      expect(opCalls).toEqual([
+        { op: 'upsert', scope: 'project', root: '/w/proj', id: 'writer', frontmatter: { name: 'Writer', executor: 'external-cli' }, body: '' },
+      ]),
+    );
+  });
+
   it('搜索过滤:SearchBar 200ms 防抖后按 id/name 过滤,清空恢复', async () => {
     const { conn } = connOf([row(), row({ id: 'writer', name: 'Scribe', description: undefined })]);
     render(<AgentsPane conn={conn} root="/w/proj" />);

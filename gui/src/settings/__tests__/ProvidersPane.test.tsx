@@ -264,6 +264,28 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     await waitFor(() => expect(settingsCalls.length).toBe(3));
   });
 
+  it('models 行强度/档位共享 Select(2026-10-30 弹窗对齐主设置面):弹层点选 low/small → patch models 带 reasoningEffort/tier(提交形状零变化)', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add provider' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add provider' });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'p3' } });
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.p3/v1' } });
+    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm7' } });
+    // 强度/档位=共享 Select trigger(aria-label;单行各一,within(dialog) 消歧内嵌请求参数卡 tier/effort 小写键钮)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Effort' }));
+    expect(document.querySelector('.sx-editor-modal-backdrop .sx-dd-pop')).not.toBeNull(); // 弹层在弹窗内渲染(z 修正回归保护)
+    fireEvent.click(within(dialog).getByRole('option', { name: 'low' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tier' }));
+    fireEvent.click(within(dialog).getByRole('option', { name: 'small' }));
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() =>
+      expect(opCalls).toEqual([
+        { op: 'add', scope: 'global', name: 'p3', provider: { baseUrl: 'https://api.p3/v1', models: [{ model: 'm7', reasoningEffort: 'low', tier: 'small' }] } },
+      ]),
+    );
+  });
+
   it('请求参数卡恒全局写钉测(2026-10-29 用户裁定豁免):putSettings(global, undefined, {tier})——语义键写路径保留且无 root(缺省全局)', async () => {
     const { conn, putSettingsCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);

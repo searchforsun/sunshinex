@@ -3,8 +3,9 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsOpInput, AgentsView, BuiltinRole } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
+import { Select } from './controls';
 
 /**
  * Task 23 AgentsPane 重构（Phase F 第二面板，2026-10-28）：一屏式卡片列表——写面统一走
@@ -18,7 +19,10 @@ import type { SettingsScope, ScopeOption } from './components';
  * SourceBadge/折叠详情=bodyPreview）；增改 → EditorModal 居中模态（2026-10-29 用户裁定：
  * 弹窗替换右滑抽屉；id 编辑态锁定——id 是
  * 目录名/name/description/memory checkbox/isolation/executor/body textarea，无本地 scope
- * select——写作用域随壳）。
+ * select——写作用域随壳）。2026-10-30 用户裁定（弹窗对齐主设置面风格）：字段面改 ModalField
+ * 表单行（标签行+控件行纵向）；isolation/executor 自由输入换共享 Select（闭集=daemon 写面
+ * 枚举守卫同域：isolation 仅 worktree、executor 仅 internal-team|external-cli，''=Unset
+ * 显式项保「空即键不落」提交形状零变化）。
  *
  * 作用域语义（壳下发：scope + onScopeChange——工具栏 ScopeSelect 只上抛，状态留壳，McpPane 同款）：scope='project'（缺省，有 root 时）读
  * 两级清单（GET 带 root，项目先全局后）；scope='global' 读仅全局清单（GET 省参）。root=''
@@ -353,34 +357,49 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
           }}
           onSubmit={submitDrawer}
         >
-          <label className="sx-drawer-field">
-            id
-            <input aria-label="agent id" value={form.id} readOnly={form.editing} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="writer" spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            name
-            <input aria-label="agent name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            description
-            <input aria-label="agent description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} spellCheck={false} />
-          </label>
+          {/* 2026-10-30 用户裁定:弹窗字段面改 ModalField 表单行(标签行+控件行纵向,对齐主设置面);
+              isolation/executor 原生自由输入换共享 Select(闭集=daemon 写面枚举守卫同域:
+              isolation 仅 worktree、executor 仅 internal-team|external-cli——catalog/agents.ts
+              写面即拒越型值;''=Unset 显式项保「清空即键不落」提交形状零变化) */}
+          <ModalField label="id">
+            <input className="sx-setting-input" aria-label="agent id" value={form.id} readOnly={form.editing} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="writer" spellCheck={false} />
+          </ModalField>
+          <ModalField label="name">
+            <input className="sx-setting-input" aria-label="agent name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label="description">
+            <input className="sx-setting-input" aria-label="agent description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} spellCheck={false} />
+          </ModalField>
           <label className="sx-drawer-field sx-check-row">
             <input type="checkbox" aria-label="agent memory" checked={form.memory} onChange={(e) => setForm({ ...form, memory: e.target.checked })} />
             {t('memory (own memory)', 'memory(自有记忆)')}
           </label>
-          <label className="sx-drawer-field">
-            isolation
-            <input aria-label="agent isolation" value={form.isolation} onChange={(e) => setForm({ ...form, isolation: e.target.value })} spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            executor
-            <input aria-label="agent executor" value={form.executor} onChange={(e) => setForm({ ...form, executor: e.target.value })} spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            {t('Body (agent.md body)', '正文(agent.md body)')}
+          <ModalField label="isolation">
+            <Select
+              ariaLabel="agent isolation"
+              value={form.isolation}
+              options={[
+                { v: '', l: t('Unset', '未设置') },
+                { v: 'worktree', l: 'worktree' },
+              ]}
+              onChange={(v) => setForm({ ...form, isolation: v })}
+            />
+          </ModalField>
+          <ModalField label="executor">
+            <Select
+              ariaLabel="agent executor"
+              value={form.executor}
+              options={[
+                { v: '', l: t('Unset', '未设置') },
+                { v: 'internal-team', l: 'internal-team' },
+                { v: 'external-cli', l: 'external-cli' },
+              ]}
+              onChange={(v) => setForm({ ...form, executor: v })}
+            />
+          </ModalField>
+          <ModalField label={t('Body (agent.md body)', '正文(agent.md body)')}>
             <textarea aria-label="agent body" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={4} spellCheck={false} />
-          </label>
+          </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}

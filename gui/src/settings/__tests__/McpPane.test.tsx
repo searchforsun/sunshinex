@@ -142,6 +142,22 @@ describe('McpPane(op 端点卡片化)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('传输下拉(2026-10-30 弹窗对齐主设置面:原生 select 换共享 Select):弹层点选 http → Save = server {transport:"http", url}', async () => {
+    const { conn, opCalls } = connOf([row()]);
+    render(<McpPane conn={conn} root="/w/proj" />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Add' }));
+    await screen.findByRole('dialog', { name: 'Add MCP server' });
+    fireEvent.click(screen.getByRole('button', { name: 'Transport' })); // 共享 Select trigger(aria-label)
+    expect(document.querySelector('.sx-editor-modal-backdrop .sx-dd-pop')).not.toBeNull(); // 弹层在弹窗内渲染(z 修正回归保护)
+    fireEvent.click(screen.getByRole('option', { name: 'http' }));
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://x/sse' } }); // http 形态切 URL 字段
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'web' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() =>
+      expect(opCalls).toEqual([{ op: 'add', scope: 'project', root: '/w/proj', name: 'web', server: { transport: 'http', url: 'https://x/sse' } }]),
+    );
+  });
+
   it('待确认卡:warn 标注 + Approve/Deny 按钮各调 op approve/deny(scope=project 带 root)', async () => {
     const { conn, opCalls } = connOf([row({ approval: 'pending' })]);
     render(<McpPane conn={conn} root="/w/proj" />);

@@ -3,7 +3,8 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { EditorModal, EmptyState, ErrorBanner, ResourceCard } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard } from './components';
+import { Select } from './controls';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
 
 /**
@@ -27,6 +28,10 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * ——上移下移=文件级手术即时提交 modelMove op,成功后重拉+行重播种:以文件真值为基底按模型
  * 名键合保留本地未保存行字段编辑——模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(弹窗
  * 提示行言明);行字段=本地态,Save 经 update op 整组替换 models)。
+ * 2026-10-30 用户裁定(弹窗对齐主设置面风格):字段面改 ModalField 表单行;模型行重排——
+ * 模型名独占行+(窗口/强度/档位)参数行+(上移/下移/删除)右对齐行,块间分隔线;强度/档位
+ * 原生 select 换共享 Select('' 显式项=未设置,与原空值 option 同形)。提交形状/aria-label
+ * 零变化。
  *
  * 测试按钮裁定:v1 GUI 无提供方连通测试钮——REST 无 providers test 端点(不造端点),前端直连
  * baseUrl 需携密钥(密钥不进前端,违 D6);测试能力=CLI/TUI 面(T19/T20 已交付)。
@@ -48,6 +53,10 @@ export interface ProvidersPaneConn extends SettingsFormConn {
   putProviderOp(input: ProviderOpInput): Promise<void>;
 }
 
+/** models 行 effort/tier 闭集(单源:请求参数卡选项与模型行 Select 共用;daemon 语义键同域) */
+const MODEL_EFFORTS: readonly string[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+const MODEL_TIERS: readonly string[] = ['small', 'medium', 'large'];
+
 /** 请求参数卡(SettingsForm 复用):仅 tier/effort 两闭集下拉——模型档位散键四 Combo 与 baseUrl
  *  行退役(spec §15);键名与 daemon SEMANTIC_KEYS 逐字对齐,写路径 PUT /settings 原样保留。
  *  2026-10-29 用户裁定豁免:卡恒全局(标题带「(global)/(全局)」注明+说明行;root 恒 '',
@@ -63,24 +72,12 @@ const PROVIDERS_PANE: SettingsPaneDef = {
         {
           key: 'tier',
           control: 'select',
-          options: [
-            { v: 'small', l: 'small' },
-            { v: 'medium', l: 'medium' },
-            { v: 'large', l: 'large' },
-          ],
+          options: MODEL_TIERS.map((v) => ({ v, l: v })),
         },
         {
           key: 'reasoningEffort',
           control: 'select',
-          options: [
-            { v: 'none', l: 'none' },
-            { v: 'minimal', l: 'minimal' },
-            { v: 'low', l: 'low' },
-            { v: 'medium', l: 'medium' },
-            { v: 'high', l: 'high' },
-            { v: 'xhigh', l: 'xhigh' },
-            { v: 'max', l: 'max' },
-          ],
+          options: MODEL_EFFORTS.map((v) => ({ v, l: v })),
         },
       ],
     },
@@ -412,92 +409,97 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
               )}
             </p>
           )}
-          <label className="sx-drawer-field">
-            {t('Name', '名称')}
-            <input aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            {t('Base URL', 'Base URL')}
-            <input aria-label={t('Base URL', 'Base URL')} value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} spellCheck={false} />
-          </label>
-          <label className="sx-drawer-field">
-            {t('API key', 'API 密钥')}
+          <ModalField label={t('Name', '名称')}>
+            <input className="sx-setting-input" aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('Base URL', 'Base URL')}>
+            <input className="sx-setting-input" aria-label={t('Base URL', 'Base URL')} value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('API key', 'API 密钥')}>
             <input
               type="password"
+              className="sx-setting-input"
               aria-label={t('API key', 'API 密钥')}
               value={form.apiKey}
               autoComplete="new-password"
               onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
               spellCheck={false}
             />
-          </label>
-          <div className="sx-drawer-field">
-            {t('Models (name / context window / effort / tier)', '模型(名称/上下文窗口/强度/档位)')}
+          </ModalField>
+          {/* 2026-10-30 用户裁定(模型行重排):一行一个模型块——模型名独占行+(窗口/强度/档位)
+              参数行+(上移/下移/删除)右对齐行,块间分隔线;强度/档位原生 select 换共享 Select
+              ('' 显式项=未设置,与原空值 option 同形,buildModels 空串省键提交形状零变化);
+              全部 aria-label 沿用 */}
+          <ModalField label={t('Models (name / context window / effort / tier)', '模型(名称/上下文窗口/强度/档位)')}>
             {form.rows.map((r, i) => (
-              <div key={i} className="sx-mcp-envrow">
+              <div key={i} className="sx-provider-modelrow">
                 <input
+                  className="sx-setting-input"
                   aria-label={t('Model name', '模型名')}
                   placeholder={t('Model name', '模型名')}
                   value={r.model}
                   onChange={(e) => setRow(i, { model: e.target.value })}
                   spellCheck={false}
                 />
-                <input
-                  aria-label={t('Context window', '上下文窗口')}
-                  placeholder={t('Context window', '上下文窗口')}
-                  value={r.contextWindow}
-                  onChange={(e) => setRow(i, { contextWindow: e.target.value })}
-                  spellCheck={false}
-                />
-                <select aria-label={t('Effort', '强度')} value={r.reasoningEffort} onChange={(e) => setRow(i, { reasoningEffort: e.target.value })}>
-                  <option value="">{t('Effort', '强度')}</option>
-                  {['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <select aria-label={t('Tier', '档位')} value={r.tier} onChange={(e) => setRow(i, { tier: e.target.value })}>
-                  <option value="">{t('Tier', '档位')}</option>
-                  {['small', 'medium', 'large'].map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                {drawer.mode === 'edit' && (
-                  <>
-                    <button
-                      type="button"
-                      aria-label={`${t('Move up', '上移')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
-                      disabled={saving || i === 0}
-                      onClick={() => moveModel(i, 'up')}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${t('Move down', '下移')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
-                      disabled={saving || i === form.rows.length - 1}
-                      onClick={() => moveModel(i, 'down')}
-                    >
-                      ↓
-                    </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  aria-label={`${t('Remove model row', '移除模型行')} ${i + 1}`}
-                  onClick={() => setForm((f) => ({ ...f, rows: f.rows.filter((_, j) => j !== i) }))}
-                >
-                  ×
-                </button>
+                <div className="sx-provider-model-params">
+                  <input
+                    className="sx-setting-input"
+                    aria-label={t('Context window', '上下文窗口')}
+                    placeholder={t('Context window', '上下文窗口')}
+                    value={r.contextWindow}
+                    onChange={(e) => setRow(i, { contextWindow: e.target.value })}
+                    spellCheck={false}
+                  />
+                  <Select
+                    ariaLabel={t('Effort', '强度')}
+                    value={r.reasoningEffort}
+                    placeholder={t('Effort', '强度')}
+                    options={[{ v: '', l: t('Effort', '强度') }, ...MODEL_EFFORTS.map((v) => ({ v, l: v }))]}
+                    onChange={(v) => setRow(i, { reasoningEffort: v })}
+                  />
+                  <Select
+                    ariaLabel={t('Tier', '档位')}
+                    value={r.tier}
+                    placeholder={t('Tier', '档位')}
+                    options={[{ v: '', l: t('Tier', '档位') }, ...MODEL_TIERS.map((v) => ({ v, l: v }))]}
+                    onChange={(v) => setRow(i, { tier: v })}
+                  />
+                </div>
+                <div className="sx-provider-model-actions">
+                  {drawer.mode === 'edit' && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label={`${t('Move up', '上移')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
+                        disabled={saving || i === 0}
+                        onClick={() => moveModel(i, 'up')}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${t('Move down', '下移')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
+                        disabled={saving || i === form.rows.length - 1}
+                        onClick={() => moveModel(i, 'down')}
+                      >
+                        ↓
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`${t('Remove model row', '移除模型行')} ${i + 1}`}
+                    onClick={() => setForm((f) => ({ ...f, rows: f.rows.filter((_, j) => j !== i) }))}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             ))}
             <button type="button" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { ...EMPTY_ROW }] }))}>
               {t('+ Add model', '+ 添加模型')}
             </button>
-          </div>
+          </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}
