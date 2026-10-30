@@ -555,10 +555,21 @@ export class SessionRuntime {
       if (c.kind === 'append') {
         if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
         this.journal?.log({ t: 'chain', steps: c.steps });
+      } else if (c.kind === 'snap') {
+        this.persistSnapshotRow(); // 快照翻新（压缩/显式刷新,/init）：新行落档,末行为准（2026-10-31 spec §2）
       } else if (c.kind === 'compact') {
         this.journal?.log({ t: 'compact', chainFrom: c.chainFrom, compacted: c.compacted });
       }
     });
+  }
+
+  /** 快照落档单点（2026-10-31 spec §2）：出生写与翻新写共用——journal 未建档则先建档（惰性建档
+   *  口径在此退役：出生写后每次 newSession 即铸造 header+ctx-snap 档,「空会话零文件」不变式由
+   *  spec §2 显式废除,空会话档案增长是出生写语义的既定成本）;无 journal（理论不可达,守卫）no-op */
+  persistSnapshotRow(): void {
+    if (this.journal === undefined) return;
+    if (this.journal.currentId === undefined) this.journal.start(3);
+    this.journal.log({ t: 'ctx-snap', ...this.runtimeImpl.harness.context.snapshotExport() } as unknown as Parameters<SessionJournal['log']>[0]);
   }
 
   /** 影子投影只读外窥（测试面） */

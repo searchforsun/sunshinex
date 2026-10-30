@@ -105,7 +105,8 @@ test('① GET /workspaces：createSession 落 workspace.json（root 反解）；
     fs.mkdirSync(rootB, { recursive: true });
     await ctx.newSession(rootA);
     await ctx.newSession(rootB);
-    // root-a 造一份 journal（SessionJournal 既有导出）→ sessionCount=1
+    // root-a 造一份 journal（SessionJournal 既有导出）→ sessionCount=1 手工档 + 1 出生档
+    // （2026-10-31 spec §2 出生写：newSession 即铸 header+ctx-snap 档,惰性零文件不变式已废）
     makeJournal(rootA, [{ t: 'user', text: '问一句' }]);
 
     // 历史工作区（TUI 时代产物）：slug 目录 + data + sessions 档，无 workspace.json → slug-only 行
@@ -125,12 +126,12 @@ test('① GET /workspaces：createSession 落 workspace.json（root 反解）；
     const aRow = rows.find((x) => x.root === path.resolve(rootA));
     assert.ok(aRow, 'root-a 行的 root 经 workspace.json 反解正确');
     assert.ok(aRow.slug.length > 0, 'slug 非空');
-    assert.equal(aRow.sessionCount, 1, 'root-a sessions jsonl 计数');
+    assert.equal(aRow.sessionCount, 2, 'root-a sessions jsonl 计数（手工档+出生档,spec §2 出生写）');
     assert.ok(typeof aRow.mtime === 'number' && aRow.mtime > 0, 'mtime=dataDir mtime');
 
     const bRow = rows.find((x) => x.root === path.resolve(rootB));
     assert.ok(bRow, 'root-b 行同样反解（注册表恒全量——下拉可选中刚建 0 会话工作区）');
-    assert.equal(bRow.sessionCount, 0, '无 sessions 目录 = 0');
+    assert.equal(bRow.sessionCount, 1, '新铸出生档一档（spec §2 出生写——0 会话工作区也有出生档）');
 
     const legacy = rows.find((x) => x.slug === legacySlug);
     assert.ok(legacy, '历史工作区行在场（slug 目录 + data 存在即列）');
@@ -280,16 +281,17 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
   );
 });
 
-test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文件）→ submit 一轮 sessions/ 出新档（chain 行、零 msg）；/sessions?root= 列出；第二会话不同 id；attach 重开 → 转录 seg 面重放（user 裸文 + assistant reply）', { timeout: 30_000 }, async () => {
+test('⑤ createSession 出生 journal（T2+spec §2 出生写）：出生即铸档（header+ctx-snap）→ submit 续落同档（chain 行、零 msg）；/sessions?root= 列出；第二会话不同 id；attach 重开 → 转录 seg 面重放（user 裸文 + assistant reply）', { timeout: 30_000 }, async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"首轮完成"}']), async (ctx) => {
     const { base, tmp, daemon } = ctx;
     const root = path.join(tmp, 'root-birth');
     fs.mkdirSync(root, { recursive: true });
 
     const s1 = await ctx.newSession(root);
-    // 惰性建档：未 run 前零文件（空会话不产档案，TUI 惰性先例同构）
-    assert.equal(daemon.get(s1)!.attachedJournalId, undefined, '出生 journal 惰性——未 run 无档 id');
-    assert.equal(listSessions(resolveDataDir(root)).length, 0, 'sessions 目录零档');
+    // 出生写（2026-10-31 spec §2）：newSession 即铸 header+ctx-snap 档——惰性建档零文件不变式已废
+    const birthJid = daemon.get(s1)!.attachedJournalId;
+    assert.ok(birthJid, '出生写已铸档 id');
+    assert.equal(listSessions(resolveDataDir(root)).length, 1, 'sessions 目录恰出生档一档');
 
     const r = await fetch(`${base}/session/${s1}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
     assert.equal(r.status, 202);
@@ -317,7 +319,7 @@ test('⑤ createSession 出生 journal（T2）：惰性建档（未 run 零文�
 
     // attach 重开：s2 挂 s1 的档 → 转录 seg 面重放（v3 装载——首轮的 user/run-open/终答段行在档）
     const att = await fetch(`${base}/session/${s2}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
-    assert.equal(att.status, 200, 'attach 重开 200（s2 出生 journal 惰性未建档——守卫不拦）');
+    assert.equal(att.status, 200, 'attach 重开 200（s2 出生档 birth-only——守卫放行,孤儿出生档回收）');
     const snap = (await (await fetch(`${base}/session/${s2}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
     const mds = snap.messages.map((m) => m.md);
     assert.ok(mds.includes('跑一轮'), 'seg 重放 user 条（裸文直读）');
@@ -356,7 +358,7 @@ test('⑥ attach v3 装载面分离：msg 行不入转录（v1 遗留形态忽�
   });
 });
 
-test('⑦ POST /session/:id/delete：未跑(无 journal) 404；running 409；未归档 409；归档态删 → 200 + 注册表移出 + active 清 + 再访 404 + journal 真清；未知 :id 404', { timeout: 30_000 }, async () => {
+test('⑦ POST /session/:id/delete：未跑(出生档未归档) 409；running 409；未归档 409；归档态删 → 200 + 注册表移出 + active 清 + 再访 404 + journal 真清；未知 :id 404', { timeout: 30_000 }, async () => {
   await withDaemon(new HangingAdapter(), async (ctx) => {
     const { base, tmp, daemon } = ctx;
     const root = path.join(tmp, 'root-del');
@@ -366,11 +368,12 @@ test('⑦ POST /session/:id/delete：未跑(无 journal) 404；running 409；未
     const unknown = await fetch(`${base}/session/s999/delete`, { method: 'POST', headers: AUTH });
     assert.equal(unknown.status, 404, '未知 :id → 404');
 
-    // 未跑会话（出生 journal 惰性建档——零文件零 id）delete → 404 'session has no journal'
+    // 未跑会话（2026-10-31 spec §2 出生写：出生即铸 birth-only 档）delete → 409 未归档
+    // （旧惰性建档时代「无 journal 404」面随出生写退役——门禁口径：删除须先归档）
     const s1 = await ctx.newSession(root);
     assert.equal(daemon.activeId(), s1, '新建即激活');
     const noJournal = await fetch(`${base}/session/${s1}/delete`, { method: 'POST', headers: AUTH });
-    assert.equal(noJournal.status, 404, '无 journal 会话 delete → 404');
+    assert.equal(noJournal.status, 409, '未跑会话 delete → 409 未归档（出生档在场）');
 
     // running 会话删除 → 409（先收 run 再删，与归档同门禁）
     const s2 = await ctx.newSession(root);

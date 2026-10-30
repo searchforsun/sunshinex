@@ -8,7 +8,7 @@ import { SessionRuntime } from './session';
 import type { DaemonFrame } from './daemon-wire';
 import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
-import { SessionJournal, parseJournalFile, readSessionMeta, reduceJournal, sessionsDir } from '../tui/session-journal';
+import { SessionJournal, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir } from '../tui/session-journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import { projectSlug, resolveDataDir } from '../config/data-dir';
 
@@ -101,8 +101,11 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
   });
   io.sessions.set(id, session);
   io.setActive(id);
-  // T2 出生 journal:挂载即接 onContextChange 续写链(惰性建档,见 createSession 注释)
+  // T2 出生 journal:挂载即接 onContextChange 续写链
   session.attachJournal(new SessionJournal(dataDir));
+  // 出生写（2026-10-31 spec §2）：会话出生即落 ctx-snap 行（快照冻结起点,恢复面基线随快照走）——
+  // 惰性建档「空会话零文件」不变式由 spec §2 显式废除：每次 newSession 即铸造 header+ctx-snap 档
+  session.persistSnapshotRow();
   // 任务14 双向同步:会话打开即挂项目配置监听(.sunshinex 缺失由 daemon 侧守护降级跳过——
   // 缺失目录不产告警;目录补建后下次会话打开重试即真实生效,watchXxx 幂等)
   io.watchProject(abs);
@@ -137,7 +140,13 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   }
   const session = io.sessions.get(id);
   if (session === undefined) return fail('INVALID_ARG', `unknown session: ${id}`);
-  if (session.attachedJournalId !== undefined) return fail('INVALID_STATE', 'session already has an attached journal');
+  // 双挂守卫（出生写语义适配,2026-10-31 spec §2）：出生写后每个新会话出生即铸 birth-only 档
+  // （仅 header+ctx-snap 行,零实质内容）——此类档不构成「已挂载」,放行换挂真档（否则 GUI 重开
+  // 的 newSession+attach 流程被出生写全数 409）;已落实质行的档守卫照旧（防档双写）
+  const prevJournalId = session.attachedJournalId;
+  if (prevJournalId !== undefined && !birthOnlyJournal(session.root, prevJournalId)) {
+    return fail('INVALID_STATE', 'session already has an attached journal');
+  }
   if (session.status() === 'running') return fail('INVALID_STATE', 'cannot attach while a run is in progress');
   const dataDir = resolveDataDir(session.root);
   const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
@@ -146,6 +155,10 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   const replay = reduceJournal(replayEvents);
   if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+  // 快照回种（2026-10-31 spec §4）：落档快照直注入替代磁盘重读——前缀字节跨换铸逐位稳定;基线同拍
+  // 回种,磁盘 diff 留给首条提交追尾。旧档无行/坏包（restoreSnapshot 拒收）→ snapOk=false,attach
+  // 收尾回退出生写（磁盘现读即落新行——坏档永不阻断恢复）
+  const snapOk = replay.snapshot !== undefined && session.runtime.harness.context.restoreSnapshot(replay.snapshot);
   // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
   session.kernelSeed(reduceSegRows(replayEvents));
   // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
@@ -180,6 +193,41 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   } catch {
     /* 兜底尽力而为:残缺档不阻塞恢复 */
   }
+  // 出生写回退（2026-10-31 spec §4）：旧档无 ctx-snap 行或坏包被拒——磁盘现读即出生写,档尾补新行
+  // （末行为准）;回种成功则零事务（快照已随档走）
+  if (!snapOk) session.persistSnapshotRow();
+  // 孤儿出生档回收（2026-10-31 spec §2 伴生面）：出生写后每个新会话出生即铸 birth-only 档,换挂
+  // 真档后成孤儿（/sessions 列表的幻影空会话）——守卫已验其仅含 header/ctx-snap,尽力 purge;
+  // 自挂形态（attach 自己的出生档 id）不回收
+  if (prevJournalId !== undefined && prevJournalId !== journalId) {
+    try {
+      purgeSession(dataDir, prevJournalId);
+    } catch {
+      /* 回收尽力而为:不阻断 attach */
+    }
+  }
   io.setActive(id);
   return ok({ sessionId: id });
+}
+
+/** birth-only 档判定（出生写语义的守卫面,2026-10-31 spec §2）：档仅含 header/ctx-snap 行（零实质
+ *  内容）即出生档——逐行 JSON 校验,任一实质行/坏行/读失败即非 birth-only（守卫从严,不误放双挂） */
+function birthOnlyJournal(root: string, jid: string): boolean {
+  const file = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return false;
+  }
+  for (const line of text.split('\n')) {
+    if (line.length === 0) continue;
+    try {
+      const t = (JSON.parse(line) as { t?: unknown }).t;
+      if (t !== 'header' && t !== 'ctx-snap') return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }

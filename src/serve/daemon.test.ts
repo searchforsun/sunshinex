@@ -325,9 +325,11 @@ test('⑦b rename/title-get（G14.16 标题统一流）：建档后 rename 落�
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"旁路答案"}']), async (ctx) => {
     const { base } = ctx;
     const sid = await ctx.newSession();
-    // 无档会话(未跑首轮):rename 409(空会话零落盘不变式),title-get 回空对象
-    assert.equal((await fetch(`${base}/session/${sid}/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: '早改' }) })).status, 409);
-    assert.deepEqual(await (await fetch(`${base}/session/${sid}/title/get`, { headers: AUTH })).json(), {});
+    // 出生写（2026-10-31 spec §2）后出生即有档:rename 出生即可用（200 落旁车 meta,跨重启可回读）,
+    // title-get 回改后值（旧「空会话零落盘」409 面随出生写退役）
+    const early = await fetch(`${base}/session/${sid}/rename`, { method: 'POST', headers: AUTH, body: JSON.stringify({ title: '早改' }) });
+    assert.equal(early.status, 200);
+    assert.deepEqual(await (await fetch(`${base}/session/${sid}/title/get`, { headers: AUTH })).json(), { title: '早改' });
     // 跑一轮建档(journal.start 于首次持久)后再 rename:200 回显 trim;GET 回读一致
     const r = await fetch(`${base}/session/${sid}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
     assert.equal(r.status, 202);
