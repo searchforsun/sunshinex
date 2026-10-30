@@ -155,10 +155,6 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   const replay = reduceJournal(replayEvents);
   if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
-  // 快照回种（2026-10-31 spec §4）：落档快照直注入替代磁盘重读——前缀字节跨换铸逐位稳定;基线同拍
-  // 回种,磁盘 diff 留给首条提交追尾。旧档无行/坏包（restoreSnapshot 拒收）→ snapOk=false,attach
-  // 收尾回退出生写（磁盘现读即落新行——坏档永不阻断恢复）
-  const snapOk = replay.snapshot !== undefined && session.runtime.harness.context.restoreSnapshot(replay.snapshot);
   // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
   session.kernelSeed(reduceSegRows(replayEvents));
   // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
@@ -181,6 +177,12 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
     if (mode === 'read-only' || mode === 'acceptEdits' || mode === 'full-access') void session.setMode(mode);
     else if (mode !== 'plan') console.warn(`[serve] session mode in meta not restorable: ${String(mode)} — falling back to default`);
   }
+  // 快照回种（2026-10-31 spec §4）：落档快照直注入替代磁盘重读——前缀字节跨换铸逐位稳定;基线同拍
+  // 回种,磁盘 diff 留给首条提交追尾。落点在 meta 回放（mode → setMode 换铸）**之后**:setMode 换新
+  // 运行时=新 ContextManager 磁盘重读,先回种会被换铸静默冲掉;attach 只落 idle 新会话,setMode 无
+  // await 点直落换铸（同步生效）,此处 `session.runtime` 已是最终在座运行时。旧档无行/坏包
+  // （restoreSnapshot 拒收）→ snapOk=false,attach 收尾回退出生写（坏档永不阻断恢复）
+  const snapOk = replay.snapshot !== undefined && session.runtime.harness.context.restoreSnapshot(replay.snapshot);
   const journal = new SessionJournal(dataDir);
   journal.attach(journalId);
   session.attachJournal(journal);

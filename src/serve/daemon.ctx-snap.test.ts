@@ -8,7 +8,7 @@ import type { SessionLifecycleIo } from './session-lifecycle';
 import { SessionRuntime } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { SessionJournal, parseJournalFile, sessionsDir, reduceJournal } from '../tui/session-journal';
+import { SessionJournal, parseJournalFile, sessionsDir, reduceJournal, writeSessionMeta } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
 import type { CtxSnapshot } from '../harness/context/index';
 
@@ -191,5 +191,34 @@ test('守卫边界：已落实质行（非 birth-only）的会话重复 attach �
     const att = attachSessionIn(io, c.value.sessionId, jid);
     assert.equal(att.ok, false, '实质档不可重复挂（INVALID_STATE）');
     assert.ok(!att.ok && att.error.code === 'INVALID_STATE', '错误码 INVALID_STATE');
+  });
+});
+
+test('meta.mode 回放换铸窗口：attach 后快照回种落在最终运行时上（不重读磁盘）', { timeout: 30_000 }, async () => {
+  await withIsoEnv(async (tmp) => {
+    const root = path.join(tmp, 'ws-mode');
+    fs.mkdirSync(root, { recursive: true });
+    seedWorkspace(root, 'v1 line\n', 'sk', 'skill');
+    const io = makeIo(new ScriptedAdapter(['{"done":true,"reply":"ok"}']));
+    // 会话 A 出生写落 ctx-snap（v1 拍）→ 离场改磁盘（v2）→ sidecar 落 mode（selMeta.mode 回放面）
+    const c1 = createSessionIn(io, root);
+    assert.ok(c1.ok, 'createSessionIn 受理');
+    const jid = io.sessions.get(c1.value.sessionId)!.attachedJournalId!;
+    const exported1 = snapOf(path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`));
+    assert.ok(exported1, '出生档含 ctx-snap 行');
+    fs.appendFileSync(path.join(root, 'SUNSHINE.md'), 'v2 line\n', 'utf8');
+    writeSessionMeta(resolveDataDir(root), jid, { mode: 'acceptEdits' });
+
+    // attach：mode 回放触发 setMode 换铸——回种必须落在换铸后的最终运行时（否则磁盘 v2 烘进快照）
+    const c2 = createSessionIn(io, root);
+    assert.ok(c2.ok, '第二会话受理');
+    const att = attachSessionIn(io, c2.value.sessionId, jid);
+    assert.ok(att.ok, `attach 受理: ${att.ok ? '' : att.error.message}`);
+    const s2 = io.sessions.get(c2.value.sessionId)!;
+    assert.equal(s2.isAcceptEdits(), true, 'mode 回放在场（换铸确实发生）');
+    assert.deepEqual(s2.runtime.harness.context.snapshotExport(), exported1, '最终运行时导出面与落档快照逐位相等（磁盘 v2 未烘进）');
+    // 回种成功零补写：旧档未被出生写追尾（档尾仍是既有 ctx-snap 行,无第二行）
+    const events = parseJournalFile(path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`)).events;
+    assert.equal(events.filter((e) => e.t === 'ctx-snap').length, 1, '回种成功零出生写追尾');
   });
 });
