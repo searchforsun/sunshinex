@@ -913,6 +913,7 @@ export class SessionRuntime {
           // 主路径,此处不再带病续跑）
           const ctx = this.runtimeImpl.harness.context;
           const carry = { chain: ctx.chainView(), chainFrom: ctx.chainFromView(), compacted: ctx.compactedView() };
+          const prevSnap = ctx.snapshotExport(); // 换铸前捕快照（批准续段位点,与 carry 同拍——内存直传载荷）
           if ((await this.setMode('acceptEdits', { planFlowInternal: true })) === 'busy') {
             this.pump({ type: 'notice', text: 'Plan approved — execution cancelled (mode switch failed)', ts: Date.now() });
             return;
@@ -920,6 +921,7 @@ export class SessionRuntime {
           // setMode 换新运行时=换上下文链（reset 同路径）——批准续段必须站在含计划书的原链上执行：
           // 快照-换新-restoreSession 回种（daemon attach 同构;直注入不触发订阅,零双写）
           this.runtimeImpl.harness.context.restoreSession(carry);
+          this.runtimeImpl.harness.context.restoreSnapshot(prevSnap); // 快照内存直传(不经 journal,同会话中途换铸字节稳定)
           this.pump({ type: 'notice', text: 'Switched to workspace edit mode', ts: Date.now() });
           // 阶段二锁（执行段）：批准续段整段持锁（409 拒并发提交）+沙箱信号重装（换新后落新 runtime）
           this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
@@ -1111,8 +1113,13 @@ export class SessionRuntime {
       await this.abortPlanFlowAndSettle();
       if (this.status() !== 'idle') return 'busy'; // 防御:收束窗口内有新 run 起跑则拒切（不换新运行时压 run）
     }
+    // 换铸快照内存直传（2026-10-31 spec §4,Task 6）：旧运行时 dispose/换新前捕快照,换新后直注入回种
+    // ——不经 journal 回程、不重读磁盘,同会话中途换铸前缀字节稳定（离场磁盘变更留给追尾,不烘进快照;
+    // 直注入不触发订阅,零 snap 事件零落档）。内存导出恒合法,拒收分支（false）理论不可达
+    const prevSnap = this.runtimeImpl.harness.context.snapshotExport();
     this.currentMode = mode;
     this.runtimeImpl = this.assemble();
+    this.runtimeImpl.harness.context.restoreSnapshot(prevSnap);
     if (this.journal !== undefined) this.hookJournalSink();
     this.persistSelection({ mode }); // G14.2xx 模式切换即刻落 meta(attach 回放)
     return 'ok';
