@@ -2548,13 +2548,13 @@ input.sx-setting-input { width: 100%; }
 .entry-thinking .thinking-summary, .entry-thinking .thinking-detail { line-height: var(--f-think-lh, 1.55); }
 /* 预设卡(设置行内 2×2 网格;迷你预览=该预设变量直映内联,选中=灰描边+soft 底,单色系) */
 .sx-font-ctl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sx-font-preset-card { display: flex; flex-direction: column; gap: 5px; text-align: left; padding: 9px 11px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
+.sx-font-preset-card { display: flex; flex-direction: column; gap: 9px; text-align: left; padding: 14px 16px; min-height: 158px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
 .sx-font-preset-card:hover:not(.active) { border-color: var(--border-strong); }
 .sx-font-preset-card.active { border-color: var(--border-strong); background: var(--surface-soft); }
 .sx-font-preset-name { font-size: 12px; font-weight: 600; color: var(--fg); }
-.sx-font-pv { font-size: 12.5px; color: var(--fg-secondary); }
-.sx-font-pv-tool { font-family: var(--font-mono); font-size: 11px; color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-xs); padding: 1px 6px; align-self: flex-start; }
-.sx-font-pv-code { font-family: var(--font-mono); color: var(--fg-secondary); background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-xs); align-self: stretch; }
+.sx-font-pv { font-size: 12.5px; color: var(--fg-secondary); padding: 2px 0; }
+.sx-font-pv-tool { font-family: var(--font-mono); font-size: 11px; color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-xs); padding: 3px 8px; align-self: flex-start; }
+.sx-font-pv-code { font-family: var(--font-mono); color: var(--fg-secondary); background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 5px 8px; align-self: stretch; }
 /* 2026-10-26 用户裁定:预设卡单行横排(4 列等宽铺满行宽),预览文本单行省略不折行 */
 .sx-font-row.sx-setting-row { flex-direction: column; gap: 8px; }
 .sx-font-ctl { width: 100%; max-width: none; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); } /* 2026-10-30 用户裁定:预设卡自动布局——容器宽两列、窄单列(auto-fit 随宽自适应,4 列强排曾致预览文字挤压截断) */
