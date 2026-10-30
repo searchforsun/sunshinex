@@ -347,3 +347,60 @@ export function ErrorBanner({ text }: { readonly text: string }): JSX.Element {
     </p>
   );
 }
+
+/** 两段式删除确认钮武装时长(毫秒):超时未确认自动解除回「删除」 */
+export const DELETE_CONFIRM_MS = 3000;
+
+/** ConfirmDeleteButton props:ariaLabel 恒定(两段同名——测试/读屏按资源名寻钮不因换段漂移);
+ *  dataTip 直通(不可写 tip 等);onConfirm 仅在武装段二次点击时触发 */
+export interface ConfirmDeleteButtonProps {
+  readonly ariaLabel: string;
+  readonly disabled?: boolean;
+  readonly dataTip?: string;
+  readonly onConfirm: () => void;
+}
+
+/** 两段式删除确认钮(2026-10-30 用户裁定「删除按钮应该有二次确认,原地显示确认红按钮」):
+ *  同一按钮原地两段——首击=武装(变红显「确认删除」并落焦,Enter 同确认),DELETE_CONFIRM_MS
+ *  内再击才执行 onConfirm;超时/失焦(点击他处/Tab 离开)自动解除回「删除」。确认前零副作用,
+ *  无弹窗无遮罩。aria-label 恒定不变段,accessible name 稳定 */
+export function ConfirmDeleteButton({ ariaLabel, disabled, dataTip, onConfirm }: ConfirmDeleteButtonProps): JSX.Element {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const disarm = (): void => {
+    setArmed(false);
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+  useEffect(() => () => disarm(), []); // 卸载兜底:在途计时器不泄漏(含换段/关闭弹窗)
+  useEffect(() => {
+    if (armed) btnRef.current?.focus(); // 武装即落焦:Enter=确认;点击他处=失焦解除
+  }, [armed]);
+  return (
+    <button
+      ref={btnRef}
+      type="button"
+      className={armed ? 'sx-del-confirm' : undefined}
+      aria-label={ariaLabel}
+      data-tip={dataTip}
+      disabled={disabled}
+      onClick={() => {
+        if (armed) {
+          disarm();
+          onConfirm();
+          return;
+        }
+        setArmed(true);
+        timer.current = setTimeout(disarm, DELETE_CONFIRM_MS);
+      }}
+      onBlur={() => {
+        if (armed) disarm();
+      }}
+    >
+      {armed ? t('Confirm delete', '确认删除') : t('Delete', '删除')}
+    </button>
+  );
+}

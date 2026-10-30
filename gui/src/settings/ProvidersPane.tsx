@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard } from './components';
 import { Select } from './controls';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
 
@@ -15,7 +15,8 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  *
  * 结构(T21 共享组件 verbatim 消费):上=SettingsForm 表单引擎复用(仅「请求参数」卡——tier/
  * reasoningEffort 两闭集下拉;**2026-10-29 用户裁定豁免:请求参数卡恒全局**——root 恒 ''
- * (读仅全局、写恒 global 桶),卡片标题带「(global)/(全局)」注明;「API 地址」行与模型散键
+ * (读仅全局、写恒 global 桶);标题注明「(global)/(全局)」已于 2026-10-30 用户裁定去除——
+ * 多余说明;「API 地址」行与模型散键
  * 四 Combo 删除——baseUrl 归提供方卡、模型归 models 行编辑);下=提供方卡列表(GET /settings
  * providers.entries 源级分组逐卡:名称/baseUrl 副行/密钥状态点(绿=env 槽在场/灰=缺,tip=槽名)/
  * models chips(choices[0] 所属模型加「Default」chip=生效默认,服务端恒切 choices[0]——T11 裁定)/
@@ -64,14 +65,14 @@ const TIER_PAIRS: Record<string, { en: string; zh: string }> = { small: { en: 'S
 
 /** 请求参数卡(SettingsForm 复用):仅 tier/effort 两闭集下拉——模型档位散键四 Combo 与 baseUrl
  *  行退役(spec §15);键名与 daemon SEMANTIC_KEYS 逐字对齐,写路径 PUT /settings 原样保留。
- *  2026-10-29 用户裁定豁免:卡恒全局(标题带「(global)/(全局)」注明+说明行;root 恒 '',
- *  不随工具栏目标选择器——模型档位/思考强度是全局请求面) */
+ *  卡恒全局豁免不变(2026-10-29 用户裁定:root 恒 '',模型档位/思考强度是全局请求面);
+ *  标题「(global)/(全局)」注明退役(2026-10-30 用户裁定:多余说明) */
 const PROVIDERS_PANE: SettingsPaneDef = {
   id: 'providers',
   title: { en: 'Models & providers', zh: '模型与提供方' },
   groups: [
     {
-      title: { en: 'Request parameters (global)', zh: '请求参数(全局)' },
+      title: { en: 'Request parameters', zh: '请求参数' },
       fields: [
         {
           key: 'tier',
@@ -374,14 +375,11 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                       >
                         {t('Edit', '编辑')}
                       </button>
-                      <button
-                        type="button"
-                        aria-label={`${t('Delete', '删除')} ${e.name}`}
+                      <ConfirmDeleteButton
+                        ariaLabel={`${t('Delete', '删除')} ${e.name}`}
                         disabled={saving}
-                        onClick={() => runRemove(e.name)}
-                      >
-                        {t('Delete', '删除')}
-                      </button>
+                        onConfirm={() => runRemove(e.name)}
+                      />
                     </>
                   }
                 />

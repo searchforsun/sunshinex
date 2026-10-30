@@ -124,7 +124,7 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     // 挂载两笔,均恒全局省参(页面即全局——内嵌 SettingsForm 豁免+卡面不再随目标切换)
     await waitFor(() => expect(settingsCalls).toEqual([undefined, undefined]));
     // 请求参数卡仅 tier/effort 两 select(SettingsForm 复用);卡片标题带恒全局注明
-    expect(screen.getByText('Request parameters (global)')).toBeDefined();
+    expect(screen.getByText('Request parameters')).toBeDefined(); // 2026-10-30 标题「(全局)」注明去除
     expect(screen.getByRole('button', { name: 'tier' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'reasoningEffort' })).toBeDefined();
   });
@@ -142,10 +142,12 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     expect(screen.queryByLabelText('baseUrl')).toBeNull();
   });
 
-  it('删除:卡 Delete 钮 → putProviderOp {op:remove, scope:global(省参 root), name} + 成功重拉(页面即全局,恒写全局)', async () => {
+  it('删除:卡 Delete 钮两段确认(2026-10-30 裁定:首击武装原地红钮,再击执行)→ putProviderOp {op:remove, scope:global(省参 root), name} + 成功重拉(页面即全局,恒写全局)', async () => {
     const { conn, opCalls, settingsCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete p1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete p1' })); // 首击=武装(零请求)
+    expect(opCalls).toEqual([]); // 确认前零副作用
+    fireEvent.click(screen.getByRole('button', { name: 'Delete p1' })); // 再击=确认执行(aria-label 两段恒定)
     await waitFor(() => expect(opCalls).toEqual([{ op: 'remove', scope: 'global', name: 'p1' }]));
     await waitFor(() => expect(settingsCalls.length).toBe(3)); // 成功重拉(挂载两笔+重拉一笔)
   });
@@ -204,7 +206,7 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     const { conn, opCalls } = connOf(viewOf(), moved);
     render(<ProvidersPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Edit p1' });
+    await screen.findByRole('dialog', { name: 'Edit p1' });
     // 未保存行编辑:m2 行(第二行)contextWindow 填 12345;再 + 新增一行 mNew(文件外,未落盘)
     fireEvent.change(screen.getAllByLabelText('Context window')[1]!, { target: { value: '12345' } });
     fireEvent.click(screen.getByText('+ Add model'));
@@ -217,7 +219,7 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     await waitFor(() => expect(screen.getAllByLabelText('Model name')).toHaveLength(2));
     expect((screen.getAllByLabelText('Model name')[0] as HTMLInputElement).value).toBe('m2');
     expect((screen.getAllByLabelText('Context window')[0] as HTMLInputElement).value).toBe('12345');
-    expect(within(dialog).getByText(/row order resets to the file/)).toBeDefined(); // 键合/丢弃规则提示行在
+    // 提示行断言随 2cd5913「编辑弹窗两条解释段删除」一并退役(用户裁定:多余说明)
   });
 
   it('编辑保存+密钥:编辑态密钥框恒空(不回显)→ Save = op update(provider patch)+ setKey(键值仅入请求体);抽屉关+重拉面无键值', async () => {
@@ -275,9 +277,9 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     // 强度/档位=共享 Select trigger(aria-label;单行各一,within(dialog) 消歧内嵌请求参数卡 tier/effort 小写键钮)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Effort' }));
     expect(document.querySelector('.sx-editor-modal-backdrop .sx-dd-pop')).not.toBeNull(); // 弹层在弹窗内渲染(z 修正回归保护)
-    fireEvent.click(within(dialog).getByRole('option', { name: 'low' }));
+    fireEvent.click(within(dialog).getByRole('option', { name: 'Low' })); // 10c96cc 起选项标签双语(渲染期 t)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Tier' }));
-    fireEvent.click(within(dialog).getByRole('option', { name: 'small' }));
+    fireEvent.click(within(dialog).getByRole('option', { name: 'Small' }));
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
       expect(opCalls).toEqual([
@@ -291,7 +293,7 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     render(<ProvidersPane conn={conn} />);
     await screen.findByText('p1');
     fireEvent.click(screen.getByRole('button', { name: 'tier' }));
-    fireEvent.click(screen.getByRole('option', { name: 'large' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Large' })); // 10c96cc 起选项标签双语(渲染期 t)
     await waitFor(() => expect(putSettingsCalls).toEqual([['global', undefined, { tier: 'large' }]])); // 首参 global,root 省参
   });
 
@@ -340,6 +342,7 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     const { conn } = connOf(viewOf(), undefined, { opError: new Error('model m9 not found in provider p2 — check the file') });
     render(<ProvidersPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Delete p2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete p2' })); // 两段确认(再击=执行)
     // .sx-error-banner 消歧(providers warnings 行亦 role=alert)
     await waitFor(() => expect(document.querySelector('.sx-error-banner')?.textContent).toContain('model m9 not found in provider p2'));
     expect(document.querySelector('.sx-error-banner')!.textContent).not.toContain('-> 409'); // 连接层裸格式不再透出

@@ -199,8 +199,8 @@ describe('AgentsPane(卡片化+启停)', () => {
     fireEvent.click(screen.getByRole('option', { name: 'worktree' }));
     fireEvent.click(screen.getByRole('button', { name: 'agent executor' }));
     fireEvent.click(screen.getByRole('option', { name: 'external-cli' }));
-    fireEvent.click(screen.getByRole('button', { name: 'agent isolation' })); // 重开:回退 Unset
-    fireEvent.click(screen.getByRole('option', { name: 'Unset' }));
+    fireEvent.click(screen.getByRole('button', { name: 'agent isolation' })); // 重开:回退未设置(2cd5913 起未设置项显「Default/默认」)
+    fireEvent.click(screen.getByRole('option', { name: 'Default' }));
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
       expect(opCalls).toEqual([

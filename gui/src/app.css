@@ -2441,7 +2441,7 @@ input.sx-setting-input { width: 100%; }
    sx-iconbtn 同款圆角 hover;fixed 右上常驻(页签视图亦在场) */.sx-wincontrols { position: fixed; top: 0; right: 8px; height: 40px; display: flex; align-items: center; gap: 2px; z-index: 90; }.sx-winbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.sx-winbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.sx-winbtn:active { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* 页签条右留簇位 + 页签条空档即拖拽区(钮不拖)——2026-10-23 [|] 入簇:簇=|+−□× 四钮
    (4×26+3×2=110,right:8 → 簇左缘=W-118),让位 92→120 */
-.sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; } /* 2026-10-24 拖拽重构:页签条容器 drag 退役——真 zoom1.1 实测其 no-drag 挖孔错位吞 fixed 右上窗控簇([|] 真实点击变拖窗,与顶栏同机制);页签空档不再拖窗,拖拽单点走顶栏空白带/菜单头带/rail */
+.sx-shell.sx-desktop .sx-tabstrip { padding-right: 120px; } /* 右缘让位窗控簇;条空白处拖窗走 data-drag-band,按钮由监听排除 */
 .sx-shell:not(.sx-desktop) .sx-tabstrip { padding-right: 40px; } /* web:固定 [|] 钉窗口右缘(占 W-34..W-8),页签内容止步让位 */
 
 /* 2026-10-24 用户实测:页签搜索弹窗行是 div[role=button](非真 button),落拖拽区致桌面点击变拖窗——
@@ -2702,8 +2702,6 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-desktop .chat-topbar { }
 
 .sx-shell.sx-desktop .sx-tabstrip-drag { flex: none; width: 40px; align-self: stretch; }
-.sx-shell.sx-desktop.sx-menu-float .sx-tabstrip-drag,
-.sx-shell.sx-desktop.sx-sidebar-float .sx-tabstrip-drag { display: none; }
 
 /* 2026-10-29 用户裁定「下拉框行间不挤」(全局):一切弹层菜单条目(.sx-menuitem 竖排面——
    sx-menu-pop/proj-pop/branch-pop 及会话行/页签/模型选择/设置控件/欢迎页十几处复用)相邻行间
@@ -2884,4 +2882,38 @@ input.sx-setting-input { width: 100%; }
   .sx-provider-model-params { flex-wrap: wrap; }
   .sx-provider-model-params > .sx-setting-input,
   .sx-provider-model-params > .sx-dd { flex: 1 1 100%; }
+}
+
+/* ===== 2026-10-30 用户裁定二次追加段(纯加法,源序同特异性覆写前置段) ===== */
+/* ① 编辑弹窗动作区=固定底栏(「保存/取消按钮应固定在底部,有对应底部区域」):滚动面自 body
+   移至 fields——body 不滚,fields 内滚,actions 脱离滚动流钉在弹窗底;负 margin 撑满 body
+   padding 成通栏,上分割线+自身 padding=专属底部区域,长表单滚动时恒可见不叠内容。
+   Select 弹层注:弹层层(z130)仍随 DOM 祖先 fields 的滚动面承接,行为不变 */
+.sx-editor-modal-body { overflow-y: visible; }
+.sx-editor-modal-fields { flex: 1 1 0; overflow-y: auto; }
+.sx-editor-modal-actions {
+  flex: none;
+  margin: 6px -12px -12px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  justify-content: flex-end; /* 右下主行动作(dirpicker-foot 2026-10-24 同例) */
+}
+/* ② 二段式删除确认钮(ConfirmDeleteButton 武装段):原钮原地变红——红字红边淡红底,
+   悬停实心红白字;未武装段走 .sx-card-actions 既有钮面零新样式 */
+.sx-card-actions .sx-del-confirm,
+.sx-provider-model-actions .sx-del-confirm {
+  border-color: var(--err);
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+.sx-card-actions .sx-del-confirm:hover:not(:disabled),
+.sx-provider-model-actions .sx-del-confirm:hover:not(:disabled) {
+  background: var(--err);
+  color: #fff;
+  border-color: var(--err);
+}
+.sx-card-actions .sx-del-confirm:focus-visible,
+.sx-provider-model-actions .sx-del-confirm:focus-visible {
+  outline: 1px solid var(--err);
+  outline-offset: 1px;
 }

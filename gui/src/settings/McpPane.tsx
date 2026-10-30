@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult, McpOpInput } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
 
@@ -589,15 +589,12 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
                     >
                       {t('Edit', '编辑')}
                     </button>
-                    <button
-                      type="button"
-                      aria-label={`${t('Delete', '删除')} ${s.name}(${s.source === 'project' ? t('Project', '项目') : t('Global', '全局')})`}
+                    <ConfirmDeleteButton
+                      ariaLabel={`${t('Delete', '删除')} ${s.name}(${s.source === 'project' ? t('Project', '项目') : t('Global', '全局')})`}
                       disabled={!writable || saving}
-                      data-tip={writable ? undefined : globalTip}
-                      onClick={() => runOp(opFor(s, 'remove'))}
-                    >
-                      {t('Delete', '删除')}
-                    </button>
+                      dataTip={writable ? undefined : globalTip}
+                      onConfirm={() => runOp(opFor(s, 'remove'))}
+                    />
                   </>
                 }
               >

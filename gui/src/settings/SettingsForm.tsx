@@ -305,7 +305,7 @@ function ThemeRow(): JSX.Element {
         <div className="sx-setting-title">
           <span className="sx-setting-label">{t('Appearance', '外观')}</span>
         </div>
-        <p className="sx-setting-desc">{t('UI theme: system / light / dark', '界面主题:跟随系统/亮色/暗色')}</p>
+        <p className="sx-setting-desc">{t('Color scheme of the app interface', '应用界面的亮暗配色')}</p>
       </div>
       <div className="sx-setting-ctl">
       <Select

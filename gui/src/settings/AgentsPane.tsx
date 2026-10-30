@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsOpInput, AgentsView, BuiltinRole } from '../connection';
-import { EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
 
@@ -324,15 +324,12 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
                       >
                         {t('Edit', '编辑')}
                       </button>
-                      <button
-                        type="button"
-                        aria-label={`${t('Delete', '删除')} ${e.id}(${scopeTag(e.source)})`}
+                      <ConfirmDeleteButton
+                        ariaLabel={`${t('Delete', '删除')} ${e.id}(${scopeTag(e.source)})`}
                         disabled={!writable || saving}
-                        data-tip={writable ? undefined : globalTip}
-                        onClick={() => runOp(opFor(e, 'delete'))}
-                      >
-                        {t('Delete', '删除')}
-                      </button>
+                        dataTip={writable ? undefined : globalTip}
+                        onConfirm={() => runOp(opFor(e, 'delete'))}
+                      />
                     </>
                   }
                 >
