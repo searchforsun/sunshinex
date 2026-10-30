@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { ArrowDown, Eye, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
 import { ImageLightbox } from '../ImageLightbox';
@@ -237,6 +237,28 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat });
 
   const running = chat.status === 'running';
+  /** 队列防竞态面(2026-10-31):当前会话用户条文本集(trim)——SteerQueue 立即/插入转圈直至
+   *  文本命中正文;memo 随条目帧重算 */
+  const entryTexts = useMemo(() => new Set(chat.entries.filter((e) => e.kind === 'user').map((e) => e.md.trim())), [chat.entries]);
+  /** Win 完成通知卡(2026-10-31 用户裁定「桌面端支持 win 的完成右下角卡片提示」):运行→收束
+   *  沿且窗口失焦/后台时弹系统通知(前台在看不弹不打扰);点击通知聚焦窗口。Notification 不
+   *  可用的环境(旧壳/权限拒绝)静默降级 */
+  const prevRunNotifRef = useRef(false);
+  useEffect(() => {
+    const prev = prevRunNotifRef.current;
+    prevRunNotifRef.current = running;
+    if (prev === running || running) return; // 只报完成沿
+    if (document.hasFocus()) return; // 前台在看=无需提醒
+    try {
+      const n = new Notification(t('Run finished', '运行完成'), { body: t('The session task has completed.', '会话任务已完成。'), silent: false });
+      n.onclick = (): void => {
+        window.focus();
+        n.close();
+      };
+    } catch {
+      /* 无通知能力:静默 */
+    }
+  }, [running]);
   /** G14.63 运行状态行「本轮」口径:末个流式 run 的基线差值(会话累计−轮起点);无基线回退累计 */
   /** G14.80 未决问询卡:ask 挂起时输入框变为选择题表单 */
   const askCards = cards.filter((c) => c.kind === 'ask');
@@ -451,19 +473,21 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef);
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
-   *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位) */
+   *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位)。
+   *  跟随闩非对称(2026-10-31):仅距底 <4 才重新贴底——旧「<80 双向磁区」会在滚轮/拖条刚
+   *  离开底时被同一次 scroll 事件立刻抢回 stick,思考/正文流式帧再归底=上滑失效+行周抖动;
+   *  跳底钮仍用 80 显隐(近底不闪钮)。 */
   const handleChatScroll = (e: { currentTarget: HTMLElement }): void => {
     const el = e.currentTarget;
-    const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const stick = dist < 4;
     chatStickRef.current = stick;
-    setAtBottom(stick);
+    setAtBottom(dist < 80);
     if (el.scrollHeight - el.clientHeight > 80) {
-      saveScrollPos(archiveKey, stick ? 0 : el.scrollHeight - el.scrollTop - el.clientHeight);
+      saveScrollPos(archiveKey, stick ? 0 : dist);
     }
   };
-  /** G14.2xx 滚轮上翻立即脱离贴底跟随:80px 判定窗内流式重渲的归底赋值会逐帧抵消用户滚动
-   *  (滚轮失效感),wheel 是明确的用户意图信号——deltaY<0 直接放手,不等距离窗;
-   *  只写 ref 零重渲,回触底恢复仍走 handleChatScroll 的距离判定 */
+  /** 滚轮上翻立即脱离贴底:与 scroll 非对称闩互补(scroll 事件晚于 wheel 时也先放手) */
   const handleChatWheel = (e: { deltaY: number }): void => {
     if (e.deltaY < 0) chatStickRef.current = false;
   };
@@ -588,6 +612,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           pauseAndSend={pauseAndSend}
           setInput={setInput}
           setImages={setPendingImages}
+          entryTexts={entryTexts}
         />
       )}
         {!atBottom && (
