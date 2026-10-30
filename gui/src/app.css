@@ -2891,7 +2891,9 @@ input.sx-setting-input { width: 100%; }
    padding 成通栏,上分割线+自身 padding=专属底部区域,长表单滚动时恒可见不叠内容。
    Select 弹层注:弹层层(z130)仍随 DOM 祖先 fields 的滚动面承接,行为不变 */
 .sx-editor-modal-body { overflow-y: visible; }
-.sx-editor-modal-fields { flex: 1 1 0; overflow-y: auto; }
+/* flex 1 1 auto(非 0):弹窗仅 max-height 无确定高,内容反推容器——basis 0 时 fields 塌缩
+   不可见(用户实测「弹窗的东西没有了」);auto=内容定高,超高被容器 84vh 钳制后收缩+内滚 */
+.sx-editor-modal-fields { flex: 1 1 auto; overflow-y: auto; }
 .sx-editor-modal-actions {
   flex: none;
   margin: 6px -12px -12px;
