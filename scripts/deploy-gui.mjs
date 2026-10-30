@@ -5,7 +5,7 @@
  * 用法(仓库根执行):
  *   node scripts/deploy-gui.mjs verify              # gui typecheck(快速门禁;--tests 加跑全量 vitest)
  *   node scripts/deploy-gui.mjs deploy  [--dir ...] # 构建 gui → 推装 dist-gui → 重启应用(壳不变,日常改动用)
- *   node scripts/deploy-gui.mjs reinstall [--dir ...] [--setup ...]
+ *   node scripts/deploy-gui.mjs reinstall [--dir ...] [--setup ...] [--pristine]
  *                                                   # 全链:gui+壳构建→重打包 setup→卸载→装→启动(壳变更用)
  *
  * 参数:
@@ -14,17 +14,24 @@
  *   --setup <path>   安装包路径(reinstall 用,默认 shell/release/sunshinex-<ver>-setup.exe 取最新)
  *   --tests          verify 附带全量 vitest(既有基线红面见 CLAUDE.md,以基线对照为准)
  *   --no-build       deploy/reinstall 跳过构建,直接用现有产物
+ *   --pristine       净装:清用户态历史——%APPDATA%\sunshinex-shell(Electron 缓存/Local Storage/
+ *                    daemon-port 指针)与 ~/.sunshinex/gui(GUI 面私有 UI 态)。会话/转录等共享数据在
+ *                    ~/.sunshinex/projects 不动;UI 偏好(缩放/标签布局/主题)回出厂。适用于
+ *                    「重装后旧毛病仍在」的排除法:代码层已证一致时,剩下的只有这两个历史载体
  *
  * 行为细则:
  *   - deploy:dist-gui 整目录轮换(旧→dist-gui.old 回滚点),重启前停 Sunshinex 进程,完成后
  *     ie4uinit 刷新图标缓存(exe 同路径替换后 Windows 缓存留白图标,轻量刷新即可)。
  *   - reinstall:静默卸载(Uninstall Sunshinex.exe /S)→ 残留清点 → 静默安装(/S /D=<dir>,
  *     /D 必须是最后一个参数)→ 启动;用户数据(%APPDATA%\sunshinex-shell)不受影响。
+ *   - 装配校验自动化(deploy/reinstall 共用):装后核 app.asar 壳束标志 + 安装目录 dist-gui
+ *     渲染层标志,启动后核进程路径确从安装目录起——防「旧实例占住单例锁/装的是旧包」假安装。
  *   - 壳变更(壳源码/新增 IPC)必须走 reinstall;纯 gui 改动走 deploy 即可(renderer 推装覆盖不到壳)。
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -44,13 +51,16 @@ const opt = (name) => {
 };
 
 if (command !== 'verify' && command !== 'deploy' && command !== 'reinstall') {
-  console.error('用法: node scripts/deploy-gui.mjs <verify|deploy|reinstall> [--dir <安装目录>] [--setup <安装包>] [--tests] [--no-build]');
+  console.error('用法: node scripts/deploy-gui.mjs <verify|deploy|reinstall> [--dir <安装目录>] [--setup <安装包>] [--tests] [--no-build] [--pristine]');
   process.exit(2);
 }
 
 const installDir = path.resolve(opt('--dir') ?? 'D:\\MyWorkSoftware\\Sunshinex');
 const installGui = path.join(installDir, 'resources', 'dist-gui');
 const installExe = path.join(installDir, EXE_NAME);
+// 装配校验标志串:壳束 IPC 通道与渲染层拖拽契约(新束独有,旧束必无)
+const SHELL_MARKER = 'win:drag-start';
+const GUI_MARKER = 'data-drag-band';
 
 const run = (cmd, cmdArgs, opts = {}) => {
   const r = spawnSync(cmd, cmdArgs, { stdio: 'inherit', shell: true, cwd: opts.cwd ?? REPO, env: { ...process.env, ...opts.env } });
@@ -67,7 +77,14 @@ const powershell = (script) => {
 
 const stopApp = () => {
   console.log('· 停止 Sunshinex 进程…');
-  powershell(`Stop-Process -Name ${APP_NAME} -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2`);
+  powershell(`Stop-Process -Name ${APP_NAME} -Force -ErrorAction SilentlyContinue`);
+  // 轮询到净而非固定 sleep:句柄不释放会卡卸载/换装;残留实例占住单例锁会把「新装启动」吞成「旧实例复活」
+  for (let i = 0; i < 15; i++) {
+    const { out } = powershell(`(Get-Process -Name ${APP_NAME} -ErrorAction SilentlyContinue | Measure-Object).Count`);
+    if (out === '' || out === '0') return;
+    powershell(`Stop-Process -Name ${APP_NAME} -Force -ErrorAction SilentlyContinue`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+  }
 };
 
 const launchApp = () => {
@@ -77,17 +94,63 @@ const launchApp = () => {
   powershell('ie4uinit.exe -show');
 };
 
+// 装配校验(CLAUDE.md 纪律自动化):新壳束/新渲染层标志必须在安装目录内,防「装的是旧包」假安装
+const verifyAssembly = () => {
+  const asar = path.join(installDir, 'resources', 'app.asar');
+  if (!existsSync(asar) || !readFileSync(asar).includes(SHELL_MARKER)) {
+    console.error('✗ 装配校验失败:app.asar 内未见新壳束标志(安装包过旧或安装未完成)');
+    process.exit(1);
+  }
+  const assets = path.join(installGui, 'assets');
+  const guiMarker = existsSync(assets) && readdirSync(assets).some((f) => readFileSync(path.join(assets, f)).includes(GUI_MARKER));
+  if (!guiMarker) {
+    console.error('✗ 装配校验失败:安装目录 dist-gui 未见新渲染层标志');
+    process.exit(1);
+  }
+  console.log('✓ 装配校验:壳束+渲染层新束标志在位');
+};
+
+// 启动校验:进程必须真从安装目录起——单例锁被残留实例占住时,Start-Process 会静默落到旧进程
+const verifyLaunchedFromInstallDir = () => {
+  for (let i = 0; i < 15; i++) {
+    const { out } = powershell(`(Get-Process -Name ${APP_NAME} -ErrorAction SilentlyContinue | Select-Object -First 1).Path`);
+    if (out && out.toLowerCase().startsWith(installDir.toLowerCase())) {
+      console.log(`✓ 启动校验:进程来自安装目录(${out})`);
+      return;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+  }
+  console.error('✗ 启动校验失败:15s 内未见从安装目录启动的进程');
+  process.exit(1);
+};
+
+// --pristine:清用户态历史载体。会话/转录/记忆等共享数据在 ~/.sunshinex/projects 不动;
+// 只清 Electron userData(Chromium 缓存/Local Storage/Session Storage/daemon-port 指针)与
+// ~/.sunshinex/gui(GUI 面私有 UI 态)——UI 偏好(缩放/标签布局/主题)回出厂,重装推不掉的旧渲染态在此
+const wipeAppState = () => {
+  console.log('· pristine:清用户态历史(userData + ~/.sunshinex/gui UI 态)…');
+  const dirs = [path.join(process.env.APPDATA ?? '', 'sunshinex-shell'), path.join(os.homedir(), '.sunshinex', 'gui')];
+  for (const dir of dirs) {
+    if (dir && existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 const latestSetup = () => {
   if (opt('--setup')) return opt('--setup');
   const releaseDir = path.join(SHELL_DIR, 'release');
+  // 按修改时间取最新:readdir 字典序会误选(0.10 < 0.9 字典序倒挂),历史包就这么混进安装链
   const setups = existsSync(releaseDir)
-    ? readdirSync(releaseDir).filter((f) => f.startsWith('sunshinex-') && f.endsWith('-setup.exe'))
+    ? readdirSync(releaseDir)
+        .filter((f) => f.startsWith('sunshinex-') && f.endsWith('-setup.exe'))
+        .map((f) => ({ f, m: statSync(path.join(releaseDir, f)).mtimeMs }))
+        .sort((a, b) => b.m - a.m)
     : [];
   if (setups.length === 0) {
     console.error('✗ shell/release 下无安装包;先跑 reinstall 的构建或手动提供 --setup');
     process.exit(1);
   }
-  return path.join(releaseDir, setups[setups.length - 1]);
+  console.log(`· 选用安装包(按 mtime 最新): ${setups[0].f} (${new Date(setups[0].m).toLocaleString()})`);
+  return path.join(releaseDir, setups[0].f);
 };
 
 const verify = () => {
@@ -136,9 +199,12 @@ const deploy = () => {
     process.exit(1);
   }
   stopApp();
+  if (flag('--pristine')) wipeAppState();
   pushDistGui();
+  verifyAssembly();
   launchApp();
-  console.log(`✓ deploy 完成:renderer 已推装至 ${installGui}`);
+  verifyLaunchedFromInstallDir();
+  console.log(`✓ deploy 完成:renderer 已推装至 ${installGui}${flag('--pristine') ? '(pristine 用户态已清)' : ''}`);
 };
 
 const reinstall = () => {
@@ -161,6 +227,7 @@ const reinstall = () => {
     process.exit(1);
   }
   stopApp();
+  if (flag('--pristine')) wipeAppState();
   const uninstaller = path.join(installDir, `Uninstall ${APP_NAME}.exe`);
   if (existsSync(uninstaller)) {
     console.log('· 静默卸载(/S)…');
@@ -188,8 +255,14 @@ const reinstall = () => {
     console.error('✗ 安装超时:未检出 Sunshinex.exe');
     process.exit(1);
   }
+  // electron-builder NSIS 安装器每次都会把自身拷贝到 updater store(差量更新预留);本项目壳无
+  // electron-updater 更新源,该副本是 129MB 死重,装后即清(将来若接自动更新,下载时会自动重建)
+  const installerStore = path.join(process.env.LOCALAPPDATA ?? '', `${APP_NAME.toLowerCase()}-shell-updater`);
+  if (existsSync(installerStore)) rmSync(installerStore, { recursive: true, force: true });
+  verifyAssembly();
   launchApp();
-  console.log(`✓ reinstall 完成:${installDir}`);
+  verifyLaunchedFromInstallDir();
+  console.log(`✓ reinstall 完成:${installDir}${flag('--pristine') ? '(pristine 用户态已清)' : ''}`);
 };
 
 if (command === 'verify') verify();

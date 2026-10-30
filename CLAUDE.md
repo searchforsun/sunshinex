@@ -33,11 +33,17 @@ node scripts/deploy-gui.mjs deploy                  # 纯 gui 改动后：构建
 node scripts/deploy-gui.mjs reinstall               # 壳变更后：全链构建→重打包→卸载→重装→启动
 node scripts/deploy-gui.mjs deploy --dir "D:\Path"  # 指定安装目录（默认 D:\MyWorkSoftware\Sunshinex）
 node scripts/deploy-gui.mjs reinstall --no-build    # 跳过构建直接用现有产物卸载重装
+node scripts/deploy-gui.mjs reinstall --pristine    # 净装：连用户态历史一并清（见下方细则）
 ```
 
 细则：deploy/reinstall 停启动应用、dist-gui 轮换留 dist-gui.old 回滚点、ie4uinit 刷图标缓存
-（exe 同路径替换后缓存留白图标）；reinstall 静默卸载/安装，用户数据 %APPDATA%\sunshinex-shell
-不受影响；**壳源码/IPC 变更必须 reinstall**（renderer 推装覆盖不到壳），纯 gui 改动 deploy 即可。
+（exe 同路径替换后缓存留白图标）；reinstall 静默卸载/安装；**装配校验自动化**（deploy/reinstall
+共用）：装后核 app.asar 壳束标志与安装目录 dist-gui 渲染层标志、启动后核进程路径确从安装目录起
+（防旧实例占住单例锁的假安装）；reinstall 缺省保留用户数据，`--pristine` 连用户态历史一并清——
+`%APPDATA%\sunshinex-shell`（Electron 缓存/Local Storage/daemon-port 指针）与 `~/.sunshinex/gui/`
+（GUI 面私有 UI 态，缩放/标签布局/主题回出厂），会话/转录等共享数据（`~/.sunshinex/projects/`）
+不动；适用于「重装后旧毛病仍在」的排除场景；**壳源码/IPC 变更必须 reinstall**（renderer 推装
+覆盖不到壳），纯 gui 改动 deploy 即可。
 
 ### 本地测试（按包分层）
 
