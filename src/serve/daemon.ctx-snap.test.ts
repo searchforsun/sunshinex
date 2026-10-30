@@ -194,6 +194,35 @@ test('守卫边界：已落实质行（非 birth-only）的会话重复 attach �
   });
 });
 
+test('reset 落 ctx-snap 翻新行：档内末条快照=reset 后运行时（磁盘离场变更烘进新拍）', { timeout: 60_000 }, async () => {
+  await withIsoEnv(async (tmp) => {
+    const root = path.join(tmp, 'ws-reset');
+    fs.mkdirSync(root, { recursive: true });
+    seedWorkspace(root, 'v1 line\n', 'sk', 'skill');
+    const io = makeIo(new ScriptedAdapter(['{"done":true,"reply":"ok"}']));
+    const c = createSessionIn(io, root);
+    assert.ok(c.ok, 'createSessionIn 受理');
+    const s = io.sessions.get(c.value.sessionId)!;
+    const jid = s.attachedJournalId!;
+    const file = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+    const pre = snapOf(file);
+    assert.ok(pre, '出生档含 ctx-snap 行');
+    assert.ok(!pre!.items.some((it) => it.content.includes('v2 line')), 'reset 前快照无磁盘 v2 内容');
+
+    // 改磁盘（离场变更）→ reset：换新运行时重读磁盘,快照翻新必须落档（否则 attach 回种 reset 前旧拍）
+    fs.appendFileSync(path.join(root, 'SUNSHINE.md'), 'v2 line\n', 'utf8');
+    seedWorkspace(root, 'v1 line\nv2 line\n', 'new-skill', 'brand new skill'); // v2 留在盘上（seed 会整写 SUNSHINE.md）
+    await s.reset();
+
+    const post = snapOf(file);
+    assert.ok(post, 'reset 后档仍含 ctx-snap 行');
+    const exported = s.runtime.harness.context.snapshotExport();
+    assert.deepEqual(post, exported, '档内末条 ctx-snap 与 reset 后运行时导出逐位相等');
+    assert.ok(exported.items.some((it) => it.content.includes('v2 line')), 'reset 后快照含磁盘 SUNSHINE.md v2');
+    assert.ok(exported.items.some((it) => it.content.includes('brand new skill')), 'reset 后快照含新技能');
+  });
+});
+
 test('meta.mode 回放换铸窗口：attach 后快照回种落在最终运行时上（不重读磁盘）', { timeout: 30_000 }, async () => {
   await withIsoEnv(async (tmp) => {
     const root = path.join(tmp, 'ws-mode');

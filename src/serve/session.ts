@@ -548,8 +548,8 @@ export class SessionRuntime {
   }
 
   /** journal 落盘订阅单点（单槽，后注册覆盖——attachJournal 重挂天然幂等不双写）：attach 与 reset 换新
-   *  运行时后重挂共用；T2 出生 journal 惰性建档——首条 append 时 start() 落 header（空会话零文件，
-   *  TUI SessionJournal 惰性先例同构） */
+   *  运行时后重挂共用；出生写语义（2026-10-31 spec §2）——会话铸造即建档落 header+ctx-snap 首拍,
+   *  订阅内快照翻新走 persistSnapshotRow（末行为准） */
   private hookJournalSink(): void {
     this.runtimeImpl.harness.context.onContextChange((c) => {
       if (c.kind === 'append') {
@@ -1031,6 +1031,7 @@ export class SessionRuntime {
     if (this.journal !== undefined) {
       this.hookJournalSink();
       this.syncTasksLedger();
+      this.persistSnapshotRow(); // 快照翻新：reset 换新运行时重读磁盘,末行落新拍（续写同档,末条为准）
     }
     await this.disposeRuntime(old);
     this.board = emptyBoard();
