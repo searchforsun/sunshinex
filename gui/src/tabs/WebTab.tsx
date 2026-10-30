@@ -229,7 +229,7 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
           type="button"
           className={`sx-web-nav${deviceMode ? ' active' : ''}`}
           aria-label={t('Custom size', '自由尺寸')}
-          data-tip={t('Custom viewport size', '自由尺寸(定宽高渲染)')}
+          data-tip={t('Custom size', '自由尺寸')}
           onClick={() => {
             if (!deviceMode) {
               if (devW === null) setDevW(1280);
@@ -243,7 +243,6 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
       </div>
       {deviceMode && (
         <div className="sx-web-dev-row">
-          <span className="sx-web-dev-label">{t('Viewport', '视口')}</span>
           <input
             className="sx-web-dev-input"
             aria-label={t('Viewport width (px)', '视口宽(px)')}
@@ -321,7 +320,6 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
               </div>
             )}
           </div>
-          <span className="sx-web-dev-note">{t('Screenshot / resize is driven by the browser plugin (browser_resize, browser_take_screenshot).', '截图与调窗能力由浏览器插件驱动(browser_resize、browser_take_screenshot)。')}</span>
         </div>
       )}
       {/* 缩放结构恒在场(未开页同样显示目标区域——自由尺寸空态=视口框内引导面) */}

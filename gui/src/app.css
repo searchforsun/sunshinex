@@ -2969,8 +2969,5 @@ input.sx-setting-input { width: 100%; }
 .steer-row-actions .run-spinner { width: 12px; height: 12px; margin-right: 4px; }
 /* 浏览器工具图标着色钩子(与拼图件同字级,类留语义/查询锚) */
 .tool-icon-browser { color: var(--fg-secondary); }
-/* 自由尺寸控件独立一行(2026-10-31 用户裁定:不挤网址右侧)——视口标签+宽高输入+缩放下拉+
-   能力说明尾注;输入/下拉钮沿 sx-web-dev-* 既有令牌 */
-.sx-web-dev-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--surface); }
-.sx-web-dev-label { font-size: 11px; color: var(--fg-tertiary); flex: none; }
-.sx-web-dev-note { font-size: 10.5px; color: var(--fg-tertiary); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 自由尺寸控件独立一行(2026-10-31 用户裁定:不挤网址右侧;冗余标签/说明去除,控件居中) */
+.sx-web-dev-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--surface); }
