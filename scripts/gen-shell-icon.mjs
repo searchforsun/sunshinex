@@ -6,12 +6,12 @@
  *   3. shell/src/lib/product-logo.ts PRODUCT_LOGO_DATA_URL（64px,BrowserWindow 窗口图标）
  *   4. shell/src/lib/tray-icon.ts    TRAY_ICON_DATA_URL（32px,托盘——Windows 按 DPI 缩放,32 源比 16 原生平滑）
  *
- * 设计语言（2026-10-23 用户裁定三稿：mark 缩小「显示全」+ 托盘同新 logo）：
- *   - 画布满幅黑色圆角矩形 #0a0a0a（圆角 18%S,四角透明）；
- *   - 灰白 #e8e8e8 轨道环+核 mark,比例与欢迎页 hero SVG 同源（72 视窗取值：
- *     椭圆 rx19 ry11、描边 2.5、中心点 r4.5,整体 rotate -15°）——mark 横向占约 55%W,
- *     不再撑满画布（二稿 100%W 被裁是本次返工根因）；改形须与 gui/src/welcome/WelcomeComposer.tsx
- *     hero SVG 手工镜像同步（注释互指,生成面只认本脚本单源）；
+ * 设计语言（2026-10-30 四稿:黑底白 mark + 四豁口弧环 + 放大 + 输入框同弧度）：
+ *   - 画布满幅纯黑圆角方 #000000（圆角 20%S + superellipse(1.5) 超椭圆角形,四角透明）；
+ *   - 灰白 #ffffff 四段弧轨道环（四豁口）+核 mark,比例与欢迎页 hero SVG 同源（72 视窗取值：
+ *     椭圆 rx19 ry11、描边 2.5、中心点 r4.5,整体 rotate -15°;弧端参数角 ±32°/±58° 即四豁口）
+ *     ——mark 横向占约 66%W（MARK_SCALE 1.25,2026-10-30「整体图标放大一些」）;改形须与
+ *     gui/src/welcome/WelcomeComposer.tsx hero SVG 手工镜像同步（注释互指,生成面只认本脚本单源）；
  *   - ≤32px 小尺寸光学补偿:描边 ×1.6、核点 ×1.3（细环 16px 不可辨）;
  *   - 边缘 4x4 超采样定点抗锯齿（确定性,逐位可复现）。
  *
@@ -32,12 +32,18 @@ import { createHash } from 'node:crypto';
 // ---------- 常量（设计口径单一来源） ----------
 const BASE_RGB = [0x00, 0x00, 0x00];   // #000000 纯黑圆角方(2026-10-30 用户裁定「黑底白色,对比度要高」)
 const MARK_RGB = [0xff, 0xff, 0xff];   // #ffffff 纯白轨道环+核(对黑底最大对比度)
-const CORNER = 0.15;                   // 圆角半径占比(15%S,2026-10-30 用户裁定与项目主圆角观感对齐:--radius-lg 22px 主圆角比例校准,原 18%)
-// 欢迎页 hero SVG 比例(72 视窗):椭圆 rx19 ry11 / 描边 2.5 / 核点 r4.5,rotate -15°
-const ORBIT_RX = 19 / 72;
-const ORBIT_RY = 11 / 72;
-const STROKE = 2.5 / 72;
-const CORE_R = 4.5 / 72;
+// 圆角(2026-10-30 三次裁定「弧度和主对话输入框弧度一致」):--radius-composer 22px 实测卡高
+// ~110px(12+44+4+32+10)→占比 20%·S,且 .sx-composer 带 corner-shape:superellipse(1.5)——角形
+// 同换超椭圆(隐式 n=3:|x/r|³+|y/r|³≤1,k=1 ↔ n=2 圆弧,k=0 ↔ n=1 斜切),原 15% 圆弧观感偏尖
+const CORNER = 0.20;
+const CORNER_N = 3;                    // superellipse 隐式指数(CSS superellipse(k) ↔ n=2k)
+// 欢迎页 hero SVG 比例(72 视窗):椭圆 rx19 ry11 / 描边 2.5 / 核点 r4.5,rotate -15°;
+// MARK_SCALE(2026-10-30 用户裁定「整体图标放大一些」):mark 整体等比放大(含描边,观感权重不变)
+const MARK_SCALE = 1.25;               // 占宽 ~53%W → ~66%W
+const ORBIT_RX = (19 / 72) * MARK_SCALE;
+const ORBIT_RY = (11 / 72) * MARK_SCALE;
+const STROKE = (2.5 / 72) * MARK_SCALE;
+const CORE_R = (4.5 / 72) * MARK_SCALE;
 const TILT = (15 * Math.PI) / 180;     // -15° 的逆变换角(点旋 +15° 入椭圆坐标系)
 const COS_T = Math.cos(TILT);
 const SIN_T = Math.sin(TILT);
@@ -58,14 +64,16 @@ const crc32 = zlibCrc32 ?? (() => {
 })();
 
 // ---------- 像素生成（纯函数：同常量→同字节） ----------
-/** 点 (px,py) 是否在满幅圆角方内(圆角 CORNER·S)。 */
+/** 点 (px,py) 是否在满幅圆角方内。角区为 superellipse(CORNER_N):|dx/r|ⁿ+|dy/r|ⁿ≤1
+ *  (n=3 与 .sx-composer corner-shape:superellipse(1.5) 同形;n=2 即传统圆弧 border-radius)。 */
 function inRoundRect(px, py, s) {
   const half = s / 2;
   const r = CORNER * s;
   const inner = half - r;
   const dx = Math.max(Math.abs(px - half) - inner, 0);
   const dy = Math.max(Math.abs(py - half) - inner, 0);
-  return dx * dx + dy * dy <= r * r;
+  if (dx === 0 || dy === 0) return true; // 直边区(含中心带)
+  return dx ** CORNER_N + dy ** CORNER_N <= r ** CORNER_N;
 }
 
 /** 点 (px,py) 对中心 (half,half) 的旋转归一坐标(逆 -15°:点旋 +TILT 入椭圆坐标系)。 */
@@ -76,13 +84,25 @@ function toLocal(px, py, s) {
   return [dx * COS_T - dy * SIN_T, dx * SIN_T + dy * COS_T];
 }
 
-/** 点是否在轨道环内(外椭圆减内椭圆;±stroke/2)。 */
+/** 点是否在轨道环内(外椭圆减内椭圆;±stroke/2)。环非连续——hero SVG 四段弧
+ *  (M52.11 30.17 A19 11 … ×4)间四豁口:参数角 (32°,58°) 及其四象限对称位;
+ *  端点常量即 SVG 路径端点(±16.11,∓5.83)/(±10.07,±9.33) 反解,豁口切全 stroke 深(butt 端同形)。
+ *  MARK_SCALE 等比缩放下参数角不变,豁口角度全尺寸一致。 */
+const ARC_T1 = Math.atan2(5.83 / 11, 16.11 / 19); // ≈32.0°(弧端参数角)
+const ARC_T2 = Math.atan2(9.33 / 11, 10.07 / 19); // ≈58.0°
 function inRing(lx, ly, rx, ry, halfStroke) {
   const qo = (lx / (rx + halfStroke)) ** 2 + (ly / (ry + halfStroke)) ** 2;
   if (qo > 1) return false;
   const ri = Math.max(rx - halfStroke, 0);
   const qi = (lx / ri) ** 2 + (ly / Math.max(ry - halfStroke, 0.01)) ** 2;
-  return qi > 1;
+  if (qi <= 1) return false;
+  // 四豁口参数区间:[t1,t2]∪[π−t2,π−t1]∪[π+t1,π+t2]∪[2π−t2,2π−t1]
+  let t = Math.atan2(ly / ry, lx / rx);
+  if (t < 0) t += Math.PI * 2;
+  const p = Math.PI, d = 2 * Math.PI;
+  if ((t > ARC_T1 && t < ARC_T2) || (t > p - ARC_T2 && t < p - ARC_T1) ||
+      (t > p + ARC_T1 && t < p + ARC_T2) || (t > d - ARC_T2 && t < d - ARC_T1)) return false;
+  return true;
 }
 
 /** 生成 size² RGBA 像素缓冲(非预乘直通 alpha)。smallBoost:≤32px 光学补偿。 */
