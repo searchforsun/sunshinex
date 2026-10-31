@@ -3,6 +3,7 @@ import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { CodedToolError, ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
+import { createReadGuard, type ReadGuard } from './tools/read-guard';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
@@ -99,6 +100,8 @@ export class Harness {
   readonly runner: SubagentRunner;
   /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
   readonly tasks: TaskRegistry;
+  /** edit 先读守卫（read-guard.ts）：read 记录快照 / edit 校验，NOT_READ·STALE_READ 硬闸 */
+  readonly readGuard: ReadGuard;
   /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单隐式 team main 的板面操作权威（测试/后续阶段消费） */
   readonly taskboard: TaskBoard;
   /** teammate 注册表（P2 spec §5 T3;2026-10-20 起 create_teammate 独立动词创建）
@@ -166,6 +169,10 @@ export class Harness {
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
     // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
     this.tasks = new TaskRegistry(resolveDataDir(base));
+    // edit 先读守卫(read 记录快照/edit 校验 NOT_READ·STALE_READ):随运行时铸造——setMode/reset 换铸
+    // 即新守卫,换铸后目标文件须重读再改(与快照出生重建同族语义);写入面(write 工具)不设闸(全量覆写
+    // 自带完整内容,无 old_string 错位面)
+    this.readGuard = createReadGuard();
     // memory 接缝注入记忆写入（规格 §4.4 落点表，原第 7 参）：模型会中经既有 write 自写记忆走校验/规范化/索引/容量单点；工具清单零变化
     // kb 接缝（D18 接线，原第 3 参）：装配根构造的 KnowledgeBase 注入——缺省 undefined 时 kb_search 按既有契约降级 kb_not_configured
     // 装配接缝具名注入（D25/H6）：原 13 位置参收敛为 opts 对象，接缝错位由编译期失配兜底（webSearch 生产不注入，缺键即省）
@@ -180,6 +187,7 @@ export class Harness {
       activeRoot: () => this.safety.activeRoot,
       todos: opts.todos ?? { set: () => {} },
       tasks: this.tasks,
+      readGuard: this.readGuard, // edit 先读守卫(2026-10-31 用户裁定):随运行时铸造,换铸后须重读再改
     })) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();

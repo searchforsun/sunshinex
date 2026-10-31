@@ -9,6 +9,7 @@ import { ExecResult, ToolInput, TodoStatus } from '../../types';
 import { Result } from '../../result';
 import { KnowledgeBase } from '../knowledge/index';
 import { SkillsFacade, skillHeader } from '../skills';
+import { ReadGuard } from './read-guard';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
 import { TaskRegistry } from '../tasks';
@@ -110,10 +111,11 @@ export function builtinTools(
     activeRoot?: () => string | null;
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
+    readGuard?: ReadGuard;
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
-  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks } = opts;
+  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -264,6 +266,7 @@ export function builtinTools(
           }
         }
         const content = backend.readFile(abs);
+        readGuard?.record(abs, content); // 先读守卫:读成功即记快照(edit 校验基准;图片分支无文本读不记)
         if (range === '') return execOut(fitOut('read', content));
         // 形态语义：L<a>-<b> 闭区间；L<a> 与 L<a>- 同义（a 行到尾）；L-<b>（前 b 行）；越界钳制到文件实际范围
         const m = /^L(?<a>\d+)?(?:-(?<b>\d+)?)?$/.exec(range);
@@ -343,7 +346,7 @@ export function builtinTools(
       },
       name: 'edit',
       description:
-        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally against the CURRENT file content and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file with the read tool BEFORE editing — always when editing a file for the first time in this run or when editing many files in one batch (read each target first, then edit), and again whenever the file may have changed since your last read; working from memory is the main cause of old_string-not-found failures; file creation and whole-content replacement belong to write; edits outside the trusted roots go through permission checks (approval or rejection)',
+        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally against the CURRENT file content and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file with the read tool BEFORE editing — always when editing a file for the first time in this run or when editing many files in one batch (read each target first, then edit), and again whenever the file may have changed since your last read; this is enforced: editing a file you have not read, or that changed since your last read, is rejected (NOT_READ / STALE_READ); file creation and whole-content replacement belong to write; edits outside the trusted roots go through permission checks (approval or rejection)',
       category: 'write',
       display: { verb: 'EDIT', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
@@ -363,10 +366,12 @@ export function builtinTools(
           throw new CodedToolError('INVALID_ARG', `file not found: ${target} — edit modifies an existing file; use write to create one`);
         }
         const count = content.split(oldString).length - 1;
+        readGuard?.ensureRead(target, content); // 先读守卫(2026-10-31 用户裁定):NOT_READ/STALE_READ 硬闸——匹配失败前先拦「凭记忆编辑」
         if (count === 0) throw new CodedToolError('INVALID_ARG', `old_string not found in ${target} — the file content differs from what you assumed; read the file now and base old_string on its current text, do not retry from memory`);
         if (count > 1 && !replaceAll) throw new CodedToolError('INVALID_ARG', `old_string matches ${count} locations in ${target} — include more surrounding context to make it unique, or pass replaceAll=true`);
         // 字面替换单点（split/join 规避 String.replace 的 $ 模式语义）；replaceAll 只放宽唯一性要求，替换实现同一份
         const newContent = content.split(oldString).join(newString);
+        readGuard?.record(target, newContent); // 守卫快照随编辑前进:连环编辑基于上一次编辑后的态,无需重读
         // 记忆写入接缝/影子快照/diff 统计同 write 一份实现（commitFileWrite 单点；edit 已读原文直传 pre-image）
         return commitFileWrite(p, newContent, content, 'edited');
       },
