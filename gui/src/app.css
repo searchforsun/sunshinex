@@ -182,7 +182,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* 2026-10-24 圆点统一(用户裁定:全前端指示点 6px 纯圆):border-radius:50% 在根 zoom+flex 交叉轴
  *  小数取整下会被拉椭(tb-status-dot 同款教训)——实心点/空芯环全改 radial-gradient(circle Rpx)
  *  几何圆构造,半径两轴同值,盒取整不变形 */
-.sx-session-dot { width: 6px; height: 6px; border-radius: 50%; clip-path: circle(50% at 50% 50%); flex: none; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); }.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
+.sx-session-dot { width: 12px; height: 12px; border-radius: 50%; clip-path: circle(50% at 50% 50%); flex: none; display: inline-flex; align-items: center; justify-content: center; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); } /* 2026-10-31 用户裁定「上下左右对齐」:状态槽统一 12px 盒 flex 居中——点/环/? 同心同轴,radial 于盒心自居中 */.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
    open=accent 实心/connecting·reconnecting=warn 描边空芯/closed(离线)=灰 */
 .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: radial-gradient(circle 3px at 50% 50%, var(--fg-secondary) 2.5px, transparent 2.9px); }.conn-dot.conn-open { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.5px, transparent 2.9px); }.conn-dot.conn-connecting, .conn-dot.conn-reconnecting { background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--warn) 2px 2.7px, transparent 3.1px); }
 /* G8e-T1 补:左栏「+ 添加工作区」区(G8a 挂名) */.sx-menu-add { border-top: 1px solid var(--border); padding: 8px 12px; }.sx-add-workspace { display: block; width: 100%; padding: 4px 8px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--fg-secondary); }.sx-add-workspace:hover:not(:disabled) { color: var(--fg); border-color: var(--border-strong); }.sx-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--fg-secondary); }
@@ -608,15 +608,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.sx-session-row.active { background: color-mix(in srgb, var(--fg) 8%, transparent); box-shadow: none; }
 /* 运行中会话:旋转环(G14.79)。border 圆环+clip-path 正圆锁(防 corner-shape/盒形把环收成菱形) */
 .sx-session-dot.running {
-  width: 8px;
-  height: 8px;
   background: none;
-  border: 1.3px solid var(--fg-tertiary);
+  border: 1.9px solid var(--fg-tertiary);
   border-top-color: var(--fg);
   border-radius: 50%;
   clip-path: circle(50% at 50% 50%);
   animation: sx-spin 1s linear infinite;
-}
+} /* 盒尺寸沿基础槽 12px(2026-10-31 统一槽裁定),环厚 1.9=全局运行档 */
 @keyframes sx-spin { to { transform: rotate(360deg); } }
 /* 底栏:普通 ghost 行(去卡片化,Codex Settings 行同形) */.sx-menu-foot {
   margin: 0;
@@ -1065,7 +1063,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin: 0;
   padding: 0 10px 0 28px;
   border-radius: var(--radius-sm); /* G14.66:与菜单 hover 圆角一致 */
-}.sx-session-dot { position: absolute; left: 12px; top: calc(50% - 3px); }.sx-session-dot.running { left: 12px; top: calc(50% - 4px); }.sx-side-head { padding: 14px 8px 6px 12px; }
+}.sx-session-dot { position: absolute; left: 12px; top: calc(50% - 6px); }.sx-side-head { padding: 14px 8px 6px 12px; }
 
 /* G10-C9 行盒归属修正:hover/active 提到 workspace-row 整行(含 + 钮区,组行与会话行同宽同色);
    组头本体不再自持底色;会话行 active 只亮当前打开会话(ProjectMenu 去root 兜底) */.workspace-item > .workspace-row { height: 32px; border-radius: var(--radius-md); }
@@ -1611,12 +1609,19 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg-tertiary); font-size: 12px;
 }
 
-/* G14.39:条上「+」弹窗跟随按钮、开在其下(原 absolute right:8px 钉右缘) */
-/* 标签滚动区独立;+/弹窗在其外不被裁切 */
-/* G14.108 flex 布局:滚动区可收缩(min-width 0),+ 钮恒在视口内跟随其后——此前 block 布局
-   让 scroll 被内容撑开,标签多时 + 与整条溢出视口右缘 */.sx-tabstrip { display: flex; align-items: center; overflow: visible; }.sx-tabstrip-scroll { display: flex; align-items: center; gap: 2px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; } /* 2026-10-23 用户裁定:Chrome 同款页签宽度——滚动区伸展,页签按总宽均分(200 封顶/56 兜底)随总宽变窄连续收缩 */ /* 2026-10-31 用户裁定「+ 跟随页签不固定,过窄不跑丢覆盖」:+ 回滚动区贴末签(宽足=纯跟随,
-   sticky 不生效);溢出时 sticky right:0 粘在滚动口右缘不被裁(底色遮住滑过的页签),二态一体;
-   弹层 fixed 钉屏(组件内联坐标) */.sx-strip-newtab { position: sticky; right: 0; margin-left: auto; display: inline-flex; flex: none; align-items: center; background: var(--surface); } /* margin-left:auto=空隙态贴右 [|](用户裁定「过窄时贴着右边」);溢出态 auto 归零回末签+sticky 兜住——二态一体 */
+/* G14.39 Cursor 同构:宽裕 + 文档流跟末签;滚区溢出才 .is-pinned → sticky 贴滚口右缘(= [|] 左)
+   底色盖下层;恒 sticky/margin-left:auto 都会把 + 误钉死右侧。弹层 portal→body z200 */
+.sx-tabstrip { display: flex; align-items: center; overflow: visible; }
+.sx-tabstrip-scroll { display: flex; align-items: center; gap: 2px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; }
+.sx-strip-newtab {
+  position: relative; z-index: 2; display: inline-flex; flex: none; align-items: center;
+  align-self: stretch; padding-left: 2px; background: var(--surface);
+}
+.sx-strip-newtab.is-pinned { position: sticky; right: 0; padding-left: 10px; }
+.sx-strip-newtab.is-pinned::before {
+  content: ''; position: absolute; left: -16px; top: 0; bottom: 0; width: 16px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--surface));
+}
 
 /* G14.40:右栏拖宽把手可视化收窄(8px 命中区不变,高亮改 2px 细线居中) */.sx-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; }.sx-resizer:hover::before, .sx-resizer.active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); }.sx-resizer:hover, .sx-resizer.active { background: transparent; }
 
@@ -1876,7 +1881,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    中心(groups 4px 缩进+行 10px 内边距+16px 图标 → 中线 x=22)——8px 环左 18/6px 点左 19,
    此前环 20(中心 24 偏右)/点 14(中心 17 偏左),两态还互不对齐 */
 .sx-side-scroll .sx-session-dot { left: 19px; }
-.sx-side-scroll .sx-session-dot.running { left: 18px; }
 
 
 /* G14.154 文件选区悬浮工具条(双动作):跟随选区上方,ReactDOM 面非 monaco overlay */
@@ -2181,14 +2185,11 @@ input.sx-setting-input { width: 100%; }
 /* G14.197 点锚定行本身:组行(x=4)点 left 10、最近行(x=10)点 left 4——两点同列 x=14;运行态同规 */
 .sx-session-row { position: relative; }
 .sx-session-dot { left: 10px; }
-.sx-session-dot.running { left: 10px; }
 .sx-collapse-recents .sx-session-dot { left: 4px; }
-.sx-collapse-recents .sx-session-dot.running { left: 4px; }
 
 /* G14.213 最近行圆点与项目组行圆点同列(组行点 x=24;最近行行缘 x=10 → left 14 补齐;
    G14.197 的 4px 是旧几何,文字列已随 G14.152 右移)。运行态同规 */
 .sx-side-scroll .recent-list .sx-session-dot { left: 14px; }
-.sx-side-scroll .recent-list .sx-session-dot.running { left: 14px; }
 
 /* ---- 技能工具行:搜索+来源筛选;卡片头(id+来源 chip 单色) ---- */
 .sx-skills-toolbar { display: flex; align-items: center; gap: 10px; }
@@ -2290,9 +2291,11 @@ input.sx-setting-input { width: 100%; }
 .chat .entry-thinking + .tool-group, .chat .tool-group + .entry-thinking,
 .chat .tool-group + .tool-group { margin-top: -10px; }
 
-/* ---- G14.2xx 标签宽度 chrome 式(用户裁定):flex 均分侧栏宽,最小/最大钳制——宽度只随
-   标签数量与侧栏总宽变化,不随标题长度伸缩;长题省略号(全名走 title 悬浮),挤不下时
-   sx-tabstrip-scroll 既有横向滚动接管 ---- */.sx-tabstrip .sx-tab { flex: 1 1 0; min-width: 56px; max-width: 200px; overflow: hidden; }.sx-tab .sx-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }.sx-tab .sx-tab-close { flex: none; margin-left: auto; } /* G14.2xx ×钉标签最右(flex 拉宽后不随内容) */
+/* ---- 标签宽:视口内优先均分(flex-grow,200 封顶/56 兜底);缩到最窄仍放不下才横滚,
+   + 溢出入 is-pinned 贴 [|] 左。少数签受 max-width 封顶后 + 仍跟在末签后(余白在 + 右侧) ---- */
+.sx-tabstrip .sx-tab { flex: 1 1 0; min-width: 56px; max-width: 200px; overflow: hidden; }
+.sx-tab .sx-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sx-tab .sx-tab-close { flex: none; margin-left: auto; }
 /* G14.2xx 标题截断隐现(chrome 同形):无省略号——溢出时右缘渐隐以标识被截,未溢出无效果(data-cut 由 TabStrip 逐标题量溢出打点) */
 .sx-tab .sx-tab-title { text-overflow: clip; }
 .sx-tab .sx-tab-title[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }.sx-tab > .iconify, .sx-tab > svg { flex: none; }
@@ -2488,9 +2491,7 @@ input.sx-setting-input { width: 100%; }
 /* 2026-10-24 用户实测:页签搜索弹窗行是 div[role=button](非真 button),落拖拽区致桌面点击变拖窗——
    弹层子树整体豁免(弹窗面永不拖窗);newtab 弹层同口径防缝隙区吞点 */
 
-/* 2026-10-23 用户裁定:①「+」弹窗提层保险(真根因=右栏 overflow 裁切,另修);
-   ②web 旧 10px 内距规则已被上行 40px 让位取代 */
-.sx-strip-newtab .sx-menu-pop { z-index: 45; }
+/* 「+」类型菜单 portal→body(见 TabStrip),z 与 SessionRowMenu 同档压过页签体 sticky 头 */
 /* 2026-10-23 实测根因:「+」弹层向左伸出右栏边界被 overflow:hidden 裁切(z-index 无关,
    elementFromPoint 证实切缘外命中中栏正文)——右栏圆角保留,裁切放开(tabbody 自滚动自contain) */
 .sx-sidebar { overflow: visible; }
@@ -2712,16 +2713,22 @@ input.sx-setting-input { width: 100%; }
 .sx-shell.sx-sidebar-float .sx-resizer { display: none; } /* 抽屉不可调节,拖宽手柄隐藏(同菜单抽屉 4d69da4 惯例) */
 
 /* 运行转圈统一 12px(正文 run-spinner);done/failed/stopped 仍为 6px 小圆点 */
-.sx-session-dot.running {
-  width: 12px;
-  height: 12px;
-  border-width: 1.9px;
-  left: 12px;
-  top: calc(50% - 6px);
-}
 .tb-status-dot.bg-running {
   width: 12px;
   height: 12px;
+}
+
+/* 会话行待确认「?」图标(2026-10-31 用户裁定「转圈图标显示成 ? 问题确认图标」):运行中遇
+   ask/approval 挂起,转圈位换 CircleHelp(accent 色,呼应可点链接语言)。同槽复用:
+   位置(left/top 各变体)沿 .sx-session-dot 既有规则,点面 Chrome 全重置 */
+.sx-session-dot.asking {
+  background: none;
+  border: none;
+  clip-path: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
 }
 
 /* 2026-10-29 全局可拖恢复(用户裁定「不能回退,就是要全局可拖;刚修完时 [|] 好用」)+抽屉态边界:
