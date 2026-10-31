@@ -12,8 +12,11 @@
  * - profile 残留锁自愈:强杀实例留 Singleton 系锁文件会让 Chrome 直接退出(exit 21 无 DevTools 行)
  *   ——启动前清锁;启动即退则清 profile 重试一次。
  * - isolated=true → 一次性临时 profile;否则 --user-data-dir(缺省持久目录由装配 dataDir 令牌落参)。
- * 注意:本文件所有 Windows 路径一律正斜杠(Node/Windows 全兼容)——反斜杠经构建/同步链路会被转义
- * 层吞掉(实测 'C:\\Program Files' 落盘成 'C:Program Files'),候选路径全 miss 即 spawn chrome ENOENT。
+ * 两个 Windows/宿主陷阱(实测踩坑):
+ * - 本文件所有 Windows 路径一律正斜杠——反斜杠经同步链路会被转义层吞掉('C:\\Program Files'落盘
+ *   成'C:Program Files',候选路径全 miss 即 spawn chrome ENOENT)。
+ * - 宿主可以是 **Electron 主进程**(daemon 在壳内)——process.execPath=electron.exe 而非 node,
+ *   探活脚本外派 node/electron -e 全不可靠;探活必须用本进程原生 fetch(Chrome DevTools HTTP 面)。
  */
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
@@ -91,81 +94,89 @@ function writeMeta(ws, pid) {
   } catch { /* 尽力落盘 */ }
 }
 
-function probeAlive(meta) {
+/** 探活(本进程原生 fetch 直打 DevTools HTTP 面;宿主可能=Electron 主进程,外派 execPath 不可靠) */
+async function probeAlive(meta) {
   try {
     const port = /:(\d+)\//.exec(meta.ws);
     if (port === null) return false;
-    const r = spawnSync(process.execPath, ['-e', "fetch('http://127.0.0.1:" + port[1] + "/json/version',{signal:AbortSignal.timeout(1500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"], { timeout: 3000 });
-    return r.status === 0;
+    const r = await fetch(`http://127.0.0.1:${port[1]}/json/version`, { signal: AbortSignal.timeout(1500) });
+    return r.ok;
   } catch {
     return false;
   }
 }
 
-const exe = mode === 'default' ? defaultBrowserExe() : fixedChrome();
-const profile = isolated === true
-  ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-browser-')), 'profile')
-  : userDataDirArg ?? path.join(os.tmpdir(), 'sunshinex-browser-profile');
-const headlessArgs = mode === 'builtin' ? ['--headless=new'] : [];
+async function main() {
+  const exe = mode === 'default' ? defaultBrowserExe() : fixedChrome();
+  const profile = isolated === true
+    ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-browser-')), 'profile')
+    : userDataDirArg ?? path.join(os.tmpdir(), 'sunshinex-browser-profile');
+  const headlessArgs = mode === 'builtin' ? ['--headless=new'] : [];
 
-// 常驻复用:meta 实例活着即直接注端点,不重启
-const existingMeta = metaPath !== undefined && fs.existsSync(metaPath)
-  ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
-  : undefined;
-if (existingMeta !== undefined && typeof existingMeta.ws === 'string' && probeAlive(existingMeta)) {
-  writeMeta(existingMeta.ws, existingMeta.pid ?? 0);
-  const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });
-  server.on('exit', () => process.exit(0));
-  return;
-}
-
-// 残留锁清理:强杀实例留 Singleton 系锁文件会让 Chrome 直接退出(exit 21 无 DevTools 行)
-function clearLocks(dir) {
-  for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile']) {
-    try { fs.rmSync(path.join(dir, name), { force: true, recursive: true }); } catch { /* 尽力 */ }
+  // 常驻复用:meta 实例活着即直接注端点,不重启
+  const existingMeta = metaPath !== undefined && fs.existsSync(metaPath)
+    ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
+    : undefined;
+  if (existingMeta !== undefined && typeof existingMeta.ws === 'string' && (await probeAlive(existingMeta))) {
+    writeMeta(existingMeta.ws, existingMeta.pid ?? 0);
+    const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });
+    server.on('exit', () => process.exit(0));
+    return;
   }
-}
-clearLocks(profile);
 
-let settled = false;
-let attempts = 0;
-const fail = (msg) => {
-  if (settled) return;
-  settled = true;
-  process.stderr.write(`browser bridge: ${msg}\n`);
-  process.exit(1);
-};
-
-function attempt() {
-  attempts += 1;
-  clearLocks(profile);
-  const browser = spawn(exe, [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-    detached: true, // 常驻:脱离桥进程树(mcpClose 树杀 bridge/server 不连坐浏览器)
-  });
-  browser.unref();
-  browser.on('error', (e) => fail(`browser launch failed: ${e.message}`));
-  browser.stderr.on('data', (d) => {
-    const m = /DevTools listening on (ws:\/\/\S+)/.exec(String(d));
-    if (m === null || settled) return;
-    settled = true;
-    writeMeta(m[1], browser.pid);
-    const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', m[1]], { stdio: 'inherit' });
-    server.on('exit', () => process.exit(0)); // 浏览器不随杀(常驻,下条消息经 probeAlive 复用)
-  });
-  browser.on('exit', (code) => {
-    if (settled) return;
-    // 未打印 DevTools 即退出=profile 残留锁/损坏:清 profile 重试一次(仅一次,防循环)
-    if (attempts < 2) {
-      process.stderr.write('browser bridge: browser exited without DevTools endpoint — retrying with fresh profile\n');
-      try { fs.rmSync(profile, { force: true, recursive: true }); } catch { /* 尽力 */ }
-      attempt();
-      return;
+  // 残留锁清理:强杀实例留 Singleton 系锁文件会让 Chrome 直接退出(exit 21 无 DevTools 行)
+  function clearLocks(dir) {
+    for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'lockfile']) {
+      try { fs.rmSync(path.join(dir, name), { force: true, recursive: true }); } catch { /* 尽力 */ }
     }
-    fail(`browser exited (code ${code}) without DevTools endpoint`);
-  });
-  // DevTools 行从未到且浏览器未退(极端挂死):15s 收口
-  setTimeout(() => { if (!settled) fail('DevTools endpoint not observed in 15s'); }, 15000);
+  }
+  clearLocks(profile);
+
+  let settled = false;
+  let attempts = 0;
+  const fail = (msg) => {
+    if (settled) return;
+    settled = true;
+    process.stderr.write(`browser bridge: ${msg}\n`);
+    process.exit(1);
+  };
+
+  function attempt() {
+    attempts += 1;
+    clearLocks(profile);
+    const browser = spawn(exe, [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+      detached: true, // 常驻:脱离桥进程树(mcpClose 树杀 bridge/server 不连坐浏览器)
+    });
+    browser.unref();
+    browser.on('error', (e) => fail(`browser launch failed: ${e.message}`));
+    browser.stderr.on('data', (d) => {
+      const m = /DevTools listening on (ws:\/\/\S+)/.exec(String(d));
+      if (m === null || settled) return;
+      settled = true;
+      writeMeta(m[1], browser.pid);
+      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', m[1]], { stdio: 'inherit' });
+      server.on('exit', () => process.exit(0)); // 浏览器不随杀(常驻,下条消息经 probeAlive 复用)
+    });
+    browser.on('exit', (code) => {
+      if (settled) return;
+      // 未打印 DevTools 即退出=profile 残留锁/损坏:清 profile 重试一次(仅一次,防循环)
+      if (attempts < 2) {
+        process.stderr.write('browser bridge: browser exited without DevTools endpoint — retrying with fresh profile\n');
+        try { fs.rmSync(profile, { force: true, recursive: true }); } catch { /* 尽力 */ }
+        attempt();
+        return;
+      }
+      fail(`browser exited (code ${code}) without DevTools endpoint`);
+    });
+    // DevTools 行从未到且浏览器未退(极端挂死):15s 收口
+    setTimeout(() => { if (!settled) fail('DevTools endpoint not observed in 15s'); }, 15000);
+  }
+
+  attempt();
 }
 
-attempt();
+main().catch((e) => {
+  process.stderr.write(`browser bridge: ${e instanceof Error ? e.message : String(e)}\n`);
+  process.exit(1);
+});
