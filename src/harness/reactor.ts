@@ -168,7 +168,10 @@ export class Reactor {
     // 轮边界增量入链游标(2026-10-30 spec §1)：appendedCount=局部 steps 已 appendChain 进主链的条目数;
     // trimmedRows=本 run 已由 runCompaction 折链(trimChainFront)的主链条目数——折链余量记账,
     // 压缩折链计数必须传「未折余量」而非累计目标(同 run 多次压缩/收束兜底重复折算即误删在链行)
-    let appendedCount = 0;
+    // appendedCount 初值=种子长度(2026-10-31 用户实测链每轮翻倍 1.6m/159% 根因):种子步已在主链上
+    // (chainView 即主链投影),游标从 0 起会把整条种子当新步在首个轮边界重 append(步号顺延重排=链
+    // 每消息翻倍)。游标只记「本 run 新增未入链」步;种子计入折叠目标(foldOf 种子项单独求和)
+    let appendedCount = seedLen;
     let trimmedRows = 0;
     // StepRecord→链行映射单点(原收束点内联式提取——轮边界与收束两消费面共用一份,漂移温床拆除)
     const toChainRow = (s: StepRecord) => ({ ...(s.action !== undefined ? { action: s.action } : {}), observation: s.observation, ...(s.reasoning !== undefined ? { reasoning: s.reasoning } : {}), ...(s.thinkSeconds !== undefined ? { thinkSeconds: s.thinkSeconds } : {}), ...(s.images !== undefined ? { images: s.images } : {}) });
@@ -176,7 +179,7 @@ export class Reactor {
     // 主链中步号 ≤ 水位的条目数 = 种子全量(≤水位) + 已入链新步按水位取交——轮边界入链后已入链新步
     // 同在主链上,压缩折链必须一并计入,否则 runCompaction 只折种子部分、新步行「链+压缩块」双份
     const foldOf = (watermark: number): number =>
-      seed.filter((s) => s.step <= watermark).length + steps.slice(0, appendedCount).filter((s) => s.step <= watermark).length;
+      seed.filter((s) => s.step <= watermark).length + steps.slice(seedLen, appendedCount).filter((s) => s.step <= watermark).length;
     // 轮边界增量入链(session 作用域限定;fork 短路——零主链回写不变量):已完成轮的链行立即落主链
     // (journal chain 行随 onContextChange 事件即时落盘)——崩溃丢失窗口从整轮收窄到在飞一轮,面板/模型
     // seed 三面随轮一致。append 抛错吞掉、游标不推进(落档尽力而为,后续边界与收束点自然补写——

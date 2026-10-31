@@ -56,6 +56,31 @@ function makeReactor(tmp: string, model: ModelAdapter): Reactor {
 
 const stop = (content: string): ChatResult => ({ finish: 'stop', content, toolCalls: [] });
 
+
+test('轮边界增量入链游标:种子非空链上跑轮,主链只增新步不重写种子(2026-10-31 用户实测链每轮翻倍 1.6m/159% 根因钉)', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-cursor-'));
+  const store = new FileStore(tmp);
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
+  const registry = new ToolRegistry();
+  for (const t of builtinTools(safety, tmp)) registry.register(t);
+  const context = new ContextManager(tmp, store);
+  // 预置非空主链(3 步)——模拟切换/重启后的链视图重建
+  context.appendChain([
+    { action: 'task', observation: 'goal one' },
+    { action: 'reply', observation: 'reply one' },
+    { action: 'note', observation: 'note one' },
+  ]);
+  const before = context.chainView().length;
+  const model = new ChatStub([stop('second reply')]);
+  const reactor = new Reactor({ registry, safety, context, model });
+  await reactor.run({ goal: 'goal two' });
+  const after = context.chainView();
+  // 主链=种子 3 步+新轮收束 reply=4;重 append 种子则 ≥6(翻倍形态,修复前即此值)
+  assert.equal(after.length, before + 1);
+  assert.equal(after[3]!.observation, 'second reply');
+  assert.equal(context.chainView()[2]!.observation, 'note one', '种子步原地保留(步号不重排)');
+});
+
 test('chat 主通道端到端：tool_calls 轮执行工具、role:tool 配对回喂、stop 收束 reply', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor-chat1-'));
   fs.writeFileSync(path.join(tmp, 'note.txt'), 'hello world');
