@@ -5,13 +5,17 @@ import { codeFontSize, codeFontFamily } from './font-preset';
 /**
  * Mermaid 图渲染(G10-C3c):代码分包(不进主 bundle;G14.2xx 起模块加载即预取 chunk——
  * 会话进场首图免付 ~1s 等待,桌面本地资产不碍首屏);
- * 主题随 html[data-theme](MutationObserver 监听,切换即重渲);渲染失败/超时回落原文代码块
+ * 主题随 html[data-theme](MutationObserver 监听,切换即重渲);失败/超时回落原文代码块
  * (会话流零阻塞,spec §10 降级纪律)。
  * G13 批次1:base 主题 + 主题变量取 app.css 令牌同值——dark 下不再出现 mermaid 默认亮底节点
  * (节点面=--surface-elevated/文字=--fg/连线=fg 50%),与流区底色同源。
- * G14.2xx 会话进场不割裂:①模块加载即预取 mermaid chunk(首图免在进场时付 ~1s 动态导入);
- * ②渲染缓存(主题+图源→svg)——重进会话/重挂载同步直出,不再「先代码块 1s 后弹图」;
- * ③渲染落定广播 sx-mermaid-settled——撑高发生在组件内 state,贴底跟随方(Chat)借此补归底。
+ * G14.2xx 会话进场不割裂:①模块加载即预取 mermaid chunk;②渲染缓存;③sx-mermaid-settled 广播。
+ * 流式策略(2026-10-30 用户报障「mermaid 无法实时流式渲染」;推翻 10-31 零 render 策略——
+ * 整图压到流末才现形,与流式体验相悖):围栏未闭合 draft=true → live 试渲——半截源码对
+ * mermaid.render 节流尝试(首帧立即,后续 600ms 一发尾随;每次 chart 变化重排计时),成功即
+ * 成图随流生长(sx-mermaid-settled 照常广播,贴底跟随不断链);失败=半截语法,静默回落软
+ * 源码零错误面,下一帧重试。半截解析的代价由节流兜住。live 成图不进缓存(半截源码无复用
+ * 价值),闭合后正式渲一次入缓存;渲染 id 每次自增,防与正式渲同 id 并发冲突。
  */
 
 /** 两套主题色(与 app.css :root / [data-theme='light'] 手工同值;mermaid 无法读 CSS 色变量)。
@@ -74,8 +78,9 @@ const mermaidReady: Promise<typeof import('mermaid') | undefined> = import('merm
 /** 渲染缓存(主题+图源→svg):进程内存态;超上限整体清(图源重复率低,LRU 不值得) */
 const svgCache = new Map<string, string>();
 const cacheKey = (theme: string, chart: string): string => `${theme}\u0000${chart}`;
-/** 测试钩子:缓存是模块态,用例间清空以复现 pending/现渲路径 */
-const RENDER_TIMEOUT_MS = 5_000; // mermaid 渲染超时(D33 具名):到点回落原文代码块
+const RENDER_TIMEOUT_MS = 5_000;
+/** 流式 live 试渲节流间隔:半截图随流成形的最大延迟上界(首帧不受限) */
+const LIVE_RENDER_INTERVAL_MS = 600;
 
 export function mermaidCacheClear(): void {
   svgCache.clear();
@@ -90,31 +95,28 @@ export function repairMermaid(chart: string): string {
   );
 }
 
-export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: boolean, errorMsg?: string) => void }): JSX.Element {
-  /** G14.2xx 缓存直出:命中即同步首绘(无 pending 态、无进场撑高跳变),未命中走异步现渲 */
-  const [svg, setSvg] = useState<string | null>(() => svgCache.get(cacheKey(currentTheme(), chart)) ?? null);
-  /** G14.94 渲染失败态:错误消息(红)+源代码同框——修复有据 */
+export function Mermaid({
+  chart,
+  onStatus,
+  draft = false,
+}: {
+  chart: string;
+  onStatus?: (ok: boolean, errorMsg?: string) => void;
+  /** 围栏未闭合:流式 live 试渲(节流),失败静默回落软源码 */
+  draft?: boolean;
+}): JSX.Element {
+  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentTheme(), chart)) ?? null));
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
-  /** 尝试节流戳(2026-10-25 用户报障「mermaid 等输出完源码才渲染」):原 250ms 去抖在连续 token
-   *  流下恒被 cleanup 取消重排——渲染尝试直到流间歇/收束才发第一次,部分源码合法也不渐进成图。
-   *  改节流:距上次尝试不足间隔也保尾随一次,流式期间每 ~250ms 必试,源码合法即现图 */
-  const lastAttemptRef = useRef(0);
-  /** G14.2xx 流式静默:上一版成功图形(失败时不 clear,保图形在屏);稳定重试仍败才落错误态 */
-  const lastGoodRef = useRef<{ chart: string; svg: string } | null>(null);
-  /** 稳定判定窗:chart 停止变化达该时长后仍失败才示错(流式期间静默) */
-  const STABLE_MS = 1200;
-  /** 主题切换触发器:data-theme 属性变化即重渲(否则图停留在旧配色直到 chart 变更) */
+  const liveLastRef = useRef(0);
+  const liveSeqRef = useRef(0);
   const [themeTick, setThemeTick] = useState(0);
-  /** onStatus 经 ref 取最新(2026-10-25):消费方传内联箭头时身份逐渲染换新,进 deps 会使渲染
-   *  尝试链被无关重渲反复打断(重试窗清零/静默回调时序错乱)——事件回调不该是重渲依赖 */
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
 
   useEffect(() => {
     const bump = (): void => setThemeTick((v) => v + 1);
     const unwatch = watchThemeChange(bump);
-    // 字体预设变更:清缓存并重渲(缓存键未含字族,旧 SVG 会留旧字体)
     const onFont = (): void => {
       svgCache.clear();
       bump();
@@ -126,16 +128,15 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
     };
   }, []);
 
-  /** G14.2xx 落定广播:svg/回落提交后发全局事件——撑高发生在组件内 state,不触发父流区
-   *  重渲染,贴底跟随方(Chat)监听此事件补归底(会话进场多图连发由消费方 rAF 合并) */
   useEffect(() => {
     if (svg === null && failed === null) return;
     window.dispatchEvent(new Event('sx-mermaid-settled'));
   }, [svg, failed]);
 
   useEffect(() => {
+    if (draft) return; // 流式草稿面由下方 live 试渲 effect 接管
+
     let alive = true;
-    let abortedByStale = false; // G14.2xx 流式静默:chart 未稳定期间的失败不示错(静默重试,稳定后仍败才示错)
     const key = cacheKey(currentTheme(), chart);
     const cached = svgCache.get(key);
     if (cached !== undefined) {
@@ -146,75 +147,89 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
         alive = false;
       };
     }
-    // 尝试节流(见 lastAttemptRef 注):去抖改节流——连续流中也保尾随尝试,渐进成图
-    const wait = Math.max(0, 250 - (Date.now() - lastAttemptRef.current));
-    const debounce = window.setTimeout(run, wait);
-    function run(): void {
-      if (!alive) return;
-      lastAttemptRef.current = Date.now();
-      (async () => {
-        try {
-          const mod = await mermaidReady;
-          if (mod === undefined) throw new Error('mermaid unavailable');
-          const mermaid = mod.default;
-          // look 钉 classic:v12 默认 neo 给节点画挤出式重影边(用户视为边框 bug)
-          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
-          const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
-          const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
-          if (alive) {
-            if (svgCache.size >= 200) svgCache.clear();
-            svgCache.set(key, r.svg);
-            lastGoodRef.current = { chart, svg: r.svg };
-            setSvg(r.svg);
-            setFailed(null);
-            onStatusRef.current?.(true); // G14.122 渲染成败上抛(消费方按态收放放大钮)
-          }
-        } catch (e) {
-          if (!alive) return;
-          onStatusRef.current?.(false);
-          // G14.2xx 流式静默:不稳定期间的失败不示错、不清图形——上一版图保留在屏,源码静默兜底;
-          // 稳定(STABLE_MS 内 chart 未再变)后重试一次,仍败才落错误态(真非法图才示错)
-          if (lastGoodRef.current !== null) {
-            setSvg(lastGoodRef.current.svg); // 保留上一版图形在屏
-            return;
-          }
-          setSvg(null);
-          window.setTimeout(() => {
-            if (!alive || abortedByStale) return;
-            abortedByStale = true;
-            void (async () => {
-              try {
-                const mod = await mermaidReady;
-                if (mod === undefined) throw new Error('mermaid unavailable');
-                const mermaid = mod.default;
-                mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
-                const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
-                const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
-                if (alive) {
-                  svgCache.set(key, r.svg);
-                  setSvg(r.svg);
-                  lastGoodRef.current = { chart, svg: r.svg };
-                  setFailed(null);
-                  onStatusRef.current?.(true);
-                }
-              } catch (e2) {
-                if (alive) {
-                  const raw = e2 instanceof Error ? e2.message : String(e2);
-                  const msg = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed';
-                  setFailed(msg);
-                  onStatusRef.current?.(false, msg); // 2026-10-25 错误文案随状态上抛(消费方复制钮:报错+源码同复制)
-                }
-              }
-            })();
-          }, STABLE_MS);
-        }
-      })();
-    }
+
+    (async () => {
+      try {
+        const mod = await mermaidReady;
+        if (mod === undefined) throw new Error('mermaid unavailable');
+        if (!alive) return;
+        const mermaid = mod.default;
+        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
+        const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
+        const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
+        if (!alive) return;
+        if (svgCache.size >= 200) svgCache.clear();
+        svgCache.set(key, r.svg);
+        setSvg(r.svg);
+        setFailed(null);
+        onStatusRef.current?.(true);
+      } catch (e) {
+        if (!alive) return;
+        const raw = e instanceof Error ? e.message : String(e);
+        const msg = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed';
+        setSvg(null);
+        setFailed(msg);
+        onStatusRef.current?.(false, msg);
+      }
+    })();
+
     return () => {
       alive = false;
-      window.clearTimeout(debounce);
     };
-  }, [chart, themeTick]); // onStatus 走 ref(事件回调不进重渲依赖,见 onStatusRef 注)
+  }, [chart, themeTick, draft]);
+
+  /** 流式 live 试渲(draft 期):半截源码节流 mermaid.render——成功成图随流生长,失败保留上一成图
+   *  帧(无则软源码),零错误面。候选两级:全文优先(末行恰完整=零滞后),失败退掉末行再试(token 多停
+   *  行中,半截末行是最常见失败因;滞后 ≤1 行)。同源去重免重渲;不报 onStatus(草稿期动作钮本就
+   *  不挂)。全文成图单槽写缓存(旧槽即删,零污染):闭合时块由尾块迁头块重挂载,初始态命中缓存
+   *  即零闪替换。每帧 chart 变化重排计时=带尾随的节流,流停后余量到期补渲最后一帧 */
+  const liveDoneRef = useRef<string | null>(null);
+  const liveCachedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    liveDoneRef.current = null; // 主题/字体换挡:同源也须重渲
+  }, [themeTick]);
+  useEffect(() => {
+    if (!draft) return;
+    let alive = true;
+    const attempt = async (): Promise<void> => {
+      liveLastRef.current = Date.now();
+      const mod = await mermaidReady;
+      if (!alive || mod === undefined) return;
+      const mermaid = mod.default;
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
+      const nl = chart.lastIndexOf('\n');
+      const candidates = nl > 0 ? [chart, chart.slice(0, nl)] : [chart];
+      for (const src of candidates) {
+        if (src === liveDoneRef.current) return;
+        try {
+          liveSeqRef.current += 1;
+          const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
+          const r = (await Promise.race([mermaid.render(`${idRef.current}-live${liveSeqRef.current}`, repairMermaid(src)), timeout])) as { svg: string };
+          if (!alive) return;
+          liveDoneRef.current = src;
+          if (src === chart) {
+            const key = cacheKey(currentTheme(), src);
+            if (liveCachedKeyRef.current !== null) svgCache.delete(liveCachedKeyRef.current);
+            if (svgCache.size >= 200) svgCache.clear();
+            svgCache.set(key, r.svg);
+            liveCachedKeyRef.current = key;
+          }
+          setSvg(r.svg);
+          setFailed(null);
+          return;
+        } catch {
+          if (!alive) return; // 半截语法:静默试下一候选;全败保留上一帧
+        }
+      }
+    };
+    const timer = setTimeout(() => {
+      void attempt();
+    }, Math.max(0, LIVE_RENDER_INTERVAL_MS - (Date.now() - liveLastRef.current)));
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [chart, themeTick, draft]);
 
   if (failed !== null) {
     return (
@@ -224,6 +239,13 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
       </div>
     );
   }
-  if (svg === null) return <pre className="mermaid-pending">{chart}</pre>;
+  if (svg === null) {
+    // 流式草稿(live 未成/半截语法)/ 正式成图在途:软源码(无代码卡底)——成图即替换
+    return (
+      <pre className="mermaid-pending mermaid-draft" data-testid="mermaid-pending" aria-busy="true">
+        {chart}
+      </pre>
+    );
+  }
   return <div className="mermaid-svg" data-testid="mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
 }

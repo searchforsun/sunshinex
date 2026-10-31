@@ -13,6 +13,7 @@ import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { MdImage } from './md-render';
 import { MD_IMAGE_SRC_RE } from './md-image-syntax';
+import { hasUnclosedFence, streamMdCut } from './stream-md';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
  *  回退菜单/折叠气泡)/系统行(含旁白着色)与单条渲染单元。memo 语义与 DOM 逐字节不变;md 渲染
@@ -505,10 +506,9 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string; tag?: 
 /** 流式分域渲染(对齐 TUI 块缓冲口径,2026-10-22 用户报障「正文流式期间状态行向下抖动」):
  *  已完成块=整块 markdown(memo——头串稳定即跳过重解析),在途尾块=markdown 实时渲染。
  *  2026-10-25 用户裁定「实时渲染从上层统一定,穷尽不完」:结构前缀枚举(tailIsStructured)
- *  退役——代码块/mermaid/引用行/任务清单/行内代码在围栏未闭合、分隔行未落定时即随 token
- *  逐帧成形(未闭合围栏内代码逐行生长、表分隔行落定即成表、mermaid 半截按组件既有降级
- *  回落原文);纯文本直出分支退役,散文/结构尾块同一解析器同一样式,done 后终渲染不变。
- *  尾块只含当前在途块(最后空行以降),逐 token 重解析成本有界;晋升即并入 memo 头 */
+ *  退役——代码块/引用行等随 token 成形;切分见 streamMdCut(围栏内空行不切断)。mermaid 未闭合=
+ *  live 试渲流式(节流成图随流生长,半截语法保留上一帧;2026-10-30 用户报障「无法实时流式渲染」
+ *  推翻此前零 render 等闭合策略);闭合后正式成图入缓存。尾块=在途块,晋升并入 memo 头 */
 const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string; components: Components }): JSX.Element {
   if (md === '') return <></>;
   return (
@@ -526,18 +526,19 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   const isDir = useDirResolver();
   const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined), isDir), [onOpenFile, isDir]);
   const streaming = entry.streaming === true;
-  // 块缓冲切分:最后一个空行为界——前段=已完成块(整块 md,memo),尾段=在途块(markdown 实时渲染,剥首部换行防双空隙)
+  // 块缓冲切分:安全空行为界(未闭合围栏不切断)——前段=已完成块,尾段=在途块
   let headMd = '';
   let tailMd = '';
   if (streaming && accent === null) {
-    const cut = entry.md.lastIndexOf('\n\n');
-    if (cut >= 0) {
-      headMd = entry.md.slice(0, cut);
-      tailMd = entry.md.slice(cut).replace(/^\n+/, '');
-    } else {
-      tailMd = entry.md;
-    }
+    const cut = streamMdCut(entry.md);
+    headMd = cut.head;
+    tailMd = cut.tail;
   }
+  const mermaidDraft = streaming && hasUnclosedFence(tailMd);
+  const mdcTail = useMemo(
+    () => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { mermaidDraft }),
+    [onOpenFile, isDir, mermaidDraft],
+  );
   return (
     <div
       className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}`}
@@ -551,10 +552,10 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
           {streaming ? (
             <>
               <MarkdownHead md={headMd} components={mdc} />
-              {/* 在途尾块恒进解析器(2026-10-25 上层统一裁定:实时渲染不枚举结构前缀) */}
+              {/* 尾块:未闭合 mermaid=live 试渲随流成图;闭合后正式成图(迁头块,缓存命中零闪) */}
               {tailMd !== '' && (
                 <div className="entry-stream-tail-md">
-                  <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdc}>
+                  <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdcTail}>
                     {tailMd}
                   </ReactMarkdown>
                 </div>

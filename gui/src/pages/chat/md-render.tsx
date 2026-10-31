@@ -257,6 +257,14 @@ function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: 
 export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
   return {
     ...mdComponentsPlain,
+    // 用户气泡围栏：不走 CodeBlock/Mermaid 格式化卡，只保留相对空白位置（pre-wrap）
+    pre(props: { children?: ReactNode }) {
+      const child = Array.isArray(props.children) ? props.children[0] : props.children;
+      const el = child as { props?: { children?: unknown } } | null;
+      const raw = el?.props?.children;
+      const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
+      return <pre className="user-bubble-fence">{code}</pre>;
+    },
     // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点)——渲染单件 MdLinkA
     a(props: { href?: string; children?: ReactNode }) {
       return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir}>{props.children}</MdLinkA>;
@@ -264,12 +272,21 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
   };
 }
 
+export type MdComponentsOpts = {
+  /** 围栏未闭合:mermaid 流式 live 试渲(节流成图随流生长,半截语法保留上一帧/软源码) */
+  mermaidDraft?: boolean;
+};
+
 /** G14.125 md 组件面工厂(导出——Files 页 md 预览复用,传各自 onOpenFile):pre 分流
  *  (mermaid 围栏→Mermaid 懒加载/失败回落,其余围栏→CodeBlock hljs+头部)+ table 横滚 +
  *  md 原生超链接文件化(G14.124:非 web href=文件路径 → icon+文件名 file-link,点击开侧栏;
  *  web 链接新窗 <a>;非标准 md 引用——裸路径/代码形态 token——不做文件渲染,G14.125 去兼容);
  *  isDir=目录解析(目录 href 显黄目录,缺省全按文件) */
-export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode }) => JSX.Element> {
+export function buildMdComponents(
+  onOpenFile: (p: string) => void,
+  isDir?: (p: string) => boolean,
+  opts?: MdComponentsOpts,
+): Record<string, (props: { children?: ReactNode }) => JSX.Element> {
   return {
     pre(props: { children?: ReactNode }) {
       const child = Array.isArray(props.children) ? props.children[0] : props.children;
@@ -278,7 +295,7 @@ export function buildMdComponents(onOpenFile: (p: string) => void, isDir?: (p: s
       const raw = el?.props?.children;
       // react-markdown 保留围栏末行换行(value 尾随 \n)——剥掉一个尾换行,复制面/高亮面拿净代码
       const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
-      if (cls.includes('language-mermaid')) return <MermaidBlock chart={code} />;
+      if (cls.includes('language-mermaid')) return <MermaidBlock chart={code} draft={opts?.mermaidDraft === true} />;
       const m = /language-([\w-]+)/.exec(cls);
       return <CodeBlock code={code} lang={m?.[1]} />;
     },
@@ -342,9 +359,9 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
  *  G14.122:渲染失败 → 放大钮收起(浮层只属成功图);浮层内容=克隆已渲 SVG(不二次渲染,
  *  免 concurrent render 空白);浮层面板下移缩窄,不遮标签条钮
  *  G14.2xx 视图手感:拖动钳制(内容恒不全丢)、滚轮绕指针缩放、按钮绕视心缩放(不跳) */
-export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClick?: (nodeId: string) => void }): JSX.Element {
+export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: string; onNodeClick?: (nodeId: string) => void; draft?: boolean }): JSX.Element {
   const [zoom, setZoom] = useState(false);
-  /** 渲染成败(null=在途):false 即收放大钮 */
+  /** 渲染成败(null=在途/草稿):false 即收放大钮 */
   const [renderOk, setRenderOk] = useState<boolean | null>(null);
   /** 2026-10-25 错误文案(Mermaid 上抛,展示面不變):在场时复制钮=报错+源码同复制(此前报错不可复制) */
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -481,24 +498,32 @@ export function MermaidBlock({ chart, onNodeClick }: { chart: string; onNodeClic
       <div ref={inlineRef} className="mermaid-inline">
         <Mermaid
           chart={chart}
+          draft={draft}
           onStatus={(ok, msg) => {
+            if (draft) {
+              setRenderOk(null);
+              return;
+            }
             setRenderOk(ok);
-            setErrorMsg(ok ? null : (msg ?? null)); // 成功即清(流式静默路径无 msg,不误存)
+            setErrorMsg(ok ? null : (msg ?? null));
           }}
         />
       </div>
-      <div className="mermaid-actions">
-        {renderOk !== false && (
-          <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
-        )}
-        <TipButton
-          className="sx-tip-right"
-          tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-          label="copy mermaid"
-          icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
-          onClick={() => copyChart(errorMsg !== null ? `${errorMsg}\n\n${chart}` : chart)}
-        />
-      </div>
+      {/* 草稿/在途不挂动作钮;成败落定后再显 */}
+      {renderOk !== null && !draft && (
+        <div className="mermaid-actions">
+          {renderOk && (
+            <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
+          )}
+          <TipButton
+            className="sx-tip-right"
+            tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
+            label="copy mermaid"
+            icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => copyChart(errorMsg !== null ? `${errorMsg}\n\n${chart}` : chart)}
+          />
+        </div>
+      )}
       {zoom && (
         <div
           className="mermaid-lightbox"

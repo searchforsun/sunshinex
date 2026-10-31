@@ -180,6 +180,9 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(expandFileRefs('看 @src 结构', 'D:/ws/demo', (n) => (n === 'src' ? 'gui/src/' : undefined))).toBe(
       '看 [src](./gui/src/) 结构',
     );
+    // 绝对路径目录/文件:href 不加 ./(避免 ./D:\proj\src/ 畸形)
+    expect(expandFileRefs('看 @D:\\ws\\demo\\src/ 结构', 'D:/ws/other')).toBe('看 [src](D:\\ws\\demo\\src/) 结构');
+    expect(expandFileRefs('看 @D:/ws/demo/a.ts', 'D:/ws/other')).toBe('看 [a.ts](D:/ws/demo/a.ts)');
   });
 
   it('高亮层目录芯片:@短写经 lookup 命中带标记目录项 → FileIcon folder=true(黄目录);未命中按文件', () => {
@@ -266,6 +269,19 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(onOpenFile).not.toHaveBeenCalled();
   });
 
+  it('用户气泡围栏不格式化:mermaid/代码块走 plain fence,无 code-block/mermaid 卡', async () => {
+    mountChat([{
+      seq: 1,
+      ts: DAY1,
+      kind: 'user',
+      md: ['```mermaid', 'stateDiagram-v2', '[*] --> pending', '```'].join('\n'),
+    }]);
+    await waitFor(() => expect(document.querySelector('.user-bubble-fence')).not.toBeNull());
+    expect(document.querySelector('.user-bubble-fence')!.textContent).toContain('stateDiagram-v2');
+    expect(document.querySelector('.user-bubble .code-block')).toBeNull();
+    expect(document.querySelector('.user-bubble .mermaid-block')).toBeNull();
+  });
+
   it('复制钮写入剪贴板(剥 > 前缀),成功示「已复制」', async () => {
     mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
     fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
@@ -302,9 +318,11 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
 
 describe('mermaid 围栏(G10-C3c)', () => {
   beforeEach(() => mermaidCacheClear()); // G14.2xx 渲染缓存是模块态——清空以复现 pending/现渲路径
-  it('加载失败回落原文代码块(降级纪律,会话流零阻塞)', async () => {
+  it('围栏落定后渲成 SVG(流式在途不落源码块区)', async () => {
     mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: '图:\n\n```mermaid\ngraph TD; A-->B\n```' }]);
-    expect(await screen.findByText(/graph TD; A-->B/, {}, { timeout: 5_000 })).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('[data-testid="mermaid-svg"]')).not.toBeNull(), { timeout: 5_000 });
+    expect(document.querySelector('.mermaid-pending')).toBeNull();
+    expect(document.querySelector('.mermaid-fallback')).toBeNull();
   });
 });
 
@@ -318,8 +336,7 @@ describe('MermaidBlock(G11 §5.4)', () => {
   });
 
   it('容器带放大/复制钮;放大开 lightbox,Esc 关闭;G14.117 +−之间百分比显形联动,方框钮复位;G14.122 浮层=克隆 SVG', async () => {    mountChat([{ seq: 2, ts: DAY1, kind: 'assistant', md: ['图:', '', '```mermaid', 'graph TD; A-->B', '```'].join('\n') }]);
-    await screen.findByText(/graph TD; A-->/, {}, { timeout: 5_000 });
-    await waitFor(() => expect(document.querySelector('.mermaid-svg svg')).not.toBeNull()); // G14.2xx 防抖后等渲染落地
+    await waitFor(() => expect(document.querySelector('.mermaid-svg svg')).not.toBeNull(), { timeout: 5_000 }); // G14.2xx 防抖后等渲染落地
     await waitFor(() => expect(screen.getByRole('button', { name: 'zoom mermaid' })).toBeDefined()); // 渲染成功才在场
     fireEvent.click(screen.getByRole('button', { name: 'zoom mermaid' }));
     expect(document.querySelector('.mermaid-lightbox')).not.toBeNull();
@@ -1040,6 +1057,72 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'token', text: '| a | 1 |\n', ts: Date.now() });
     await flushed();
     expect(document.querySelectorAll('.entry-assistant tbody tr')).toHaveLength(1);
+  });
+
+  it('mermaid 流式 live 试渲(2026-10-30):半截围栏随流成图(无 code-block/无错误面);闭合迁头块缓存命中零重渲,后文可见', async () => {
+    const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
+    mountChat([]);
+    await flushed();
+    fire({ type: 'model-start', ts: Date.now() });
+    const chart = ['stateDiagram-v2', '', '[*] --> pending', '', 'state "terminal 终态" as terminal'].join('\n');
+    fire({ type: 'token', text: ['图：', '', '```mermaid', chart].join('\n'), ts: Date.now() });
+    await waitFor(() => expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"]')).not.toBeNull(), { timeout: 5_000 });
+    expect(document.querySelector('.entry-assistant .code-block')).toBeNull();
+    expect(document.querySelector('.entry-assistant .mermaid-error')).toBeNull();
+    expect(renderMock.mock.calls.at(-1)?.[1]).toBe(chart); // 全文候选优先(末行完整=零滞后)
+    const calls = renderMock.mock.calls.length;
+    fire({ type: 'token', text: '\n```\n\n后文说明一行', ts: Date.now() });
+    await waitFor(() => expect(document.body.textContent ?? '').toContain('后文说明一行'));
+    expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"]')).not.toBeNull();
+    expect(document.querySelector('.entry-assistant .mermaid-draft')).toBeNull(); // 迁头块初始态命中 live 单槽缓存,零闪
+    expect(renderMock.mock.calls.length).toBe(calls); // 闭合不重渲
+  });
+
+  it('mermaid 流式 live 试渲失败:半截语法静默回落软源码(零错误面/无 SVG);闭合后正式渲仍败才落错误态', async () => {
+    const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    renderMock.mockImplementation(() => Promise.reject(new Error('Parse error on line 2')));
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'model-start', ts: Date.now() });
+      const base = renderMock.mock.calls.length;
+      fire({ type: 'token', text: ['图：', '', '```mermaid', 'stateDiagram-v2', '[*] --> pen'].join('\n'), ts: Date.now() });
+      await waitFor(() => expect(renderMock.mock.calls.length).toBeGreaterThanOrEqual(base + 2), { timeout: 5_000 }); // 全文+退末行两候选均试过
+      await flushed();
+      const draft = document.querySelector('.entry-assistant .mermaid-draft');
+      expect(draft).not.toBeNull();
+      expect(draft!.textContent).toContain('stateDiagram-v2');
+      expect(document.querySelector('.entry-assistant .mermaid-error')).toBeNull();
+      expect(document.querySelector('.entry-assistant .mermaid-svg')).toBeNull();
+      fire({ type: 'token', text: '\n```\n\n后文', ts: Date.now() });
+      expect(await screen.findByTestId('mermaid-error', {}, { timeout: 5_000 })).toBeTruthy();
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
+  });
+
+  it('mermaid 流式 live 试渲:后续半截语法失败保留上一成图帧,不回退源码(防图↔源码闪烁)', async () => {
+    const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    renderMock.mockImplementation((_id: string, src: string) =>
+      src.includes('BROKEN') ? Promise.reject(new Error('Parse error')) : Promise.resolve({ svg: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>' }),
+    );
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'model-start', ts: Date.now() });
+      fire({ type: 'token', text: ['图：', '', '```mermaid', 'graph TD', 'A-->B'].join('\n'), ts: Date.now() });
+      await waitFor(() => expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"]')).not.toBeNull(), { timeout: 5_000 });
+      fire({ type: 'token', text: '\nBROKEN', ts: Date.now() });
+      // 节流到期试渲:全文(含 BROKEN)败,退末行候选与已成图同源 → 跳过;上一帧保留
+      await waitFor(() => expect(renderMock.mock.calls.some((c) => String(c[1]).includes('BROKEN'))).toBe(true), { timeout: 3_000 });
+      await flushed();
+      expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"]')).not.toBeNull();
+      expect(document.querySelector('.entry-assistant .mermaid-draft')).toBeNull();
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
   });
 
   it('2026-10-25 裁定:在途尾块恒进解析器(实时渲染从上层统一定,不枚举结构前缀)——代码块/行内代码/引用行/散文逐 token 成形', async () => {
