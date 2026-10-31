@@ -168,7 +168,7 @@ async function main() {
       // 未打印 DevTools 即退出=profile 残留锁/损坏:清 profile 重试一次(仅一次,防循环)
       if (attempts < 2) {
         process.stderr.write(`browser bridge: browser exited (code ${code}) stderr tail: ${errTail.join('').slice(-500) || '(empty)'}\n`);
-        process.stderr.write('browser bridge: browser exited without DevTools endpoint — retrying with fresh profile\n');
+        process.stderr.write('browser bridge: browser exited without DevTools endpoint — retrying with fresh profile + fallback flags\n');
         try { fs.rmSync(profile, { force: true, recursive: true }); } catch { /* 尽力 */ }
         attempt();
         return;
