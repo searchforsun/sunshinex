@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { pathBasename } from '../ui-util';
-import { ChevronDown, ChevronUp, RefreshCw, Upload, GitCommitVertical } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Loader2, RefreshCw, Upload, GitCommitVertical } from 'lucide-react';
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
 import { t } from '../i18n';
@@ -53,6 +53,8 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
   const [commitOpen, setCommitOpen] = useState(false);
   const [commitMsg, setCommitMsg] = useState('');
   const [busy, setBusy] = useState<'commit' | 'push' | null>(null);
+  /** 成功对号闪示(2026-10-31 用户裁定「转圈到对号,原地显示」):完成后 2s 回落图标 */
+  const [flash, setFlash] = useState<'commit' | 'push' | null>(null);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   /** 列表里是否含 params.path(含 → 自动展开该项;不含且 callId 在场 → 旧单文件视图) */
   const [autoPathInList, setAutoPathInList] = useState<boolean | null>(null);
@@ -106,12 +108,14 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
     void req.then(
       () => {
         setBusy(null);
+        setFlash(kind); // 原地对号闪示,2s 回落图标
+        setTimeout(() => setFlash((cur) => (cur === kind ? null : cur)), 2000);
         setResult({ ok: true, text: kind === 'commit' ? t('Committed', '已提交') : t('Pushed', '已推送') });
         if (kind === 'commit') {
           setCommitMsg('');
           setCommitOpen(false);
-          refresh();
         }
+        refresh(); // 成功后刷新审查面(commit 清变动列表;push 同步远端态)
       },
       (err: unknown) => {
         setBusy(null);
@@ -131,8 +135,14 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
           <button type="button" className="sx-changes-act" aria-label={t('Commit', '提交')} data-tip={t('Commit', '提交')} onClick={() => setCommitOpen((v) => !v)}>
             <GitCommitVertical size={13} strokeWidth={1.75} aria-hidden="true" />
           </button>
-          <button type="button" className="sx-changes-act" aria-label={t('Push', '推送')} data-tip={t('Push', '推送')} onClick={() => runGit('push')}>
-            <Upload size={13} strokeWidth={1.75} aria-hidden="true" />
+          <button type="button" className="sx-changes-act" aria-label={t('Push', '推送')} data-tip={t('Push', '推送')} disabled={busy !== null} onClick={() => runGit('push')}>
+            {busy === 'push' ? (
+              <Loader2 size={13} strokeWidth={1.75} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" />
+            ) : flash === 'push' ? (
+              <Check size={13} strokeWidth={2.25} aria-hidden="true" />
+            ) : (
+              <Upload size={13} strokeWidth={1.75} aria-hidden="true" />
+            )}
           </button>
           <button type="button" className="sx-changes-act" aria-label={t('Refresh', '刷新')} data-tip={t('Refresh', '刷新')} onClick={refresh}>
             <RefreshCw size={13} strokeWidth={1.75} aria-hidden="true" />
@@ -154,7 +164,13 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
               {t('Cancel', '取消')}
             </button>
             <button type="button" className="primary" disabled={busy !== null || commitMsg.trim() === ''} onClick={() => runGit('commit')}>
-              {busy === 'commit' ? t('Committing…', '提交中…') : t('Commit', '提交')}
+              {busy === 'commit' ? (
+                <><Loader2 size={13} strokeWidth={1.75} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" /> {t('Committing…', '提交中…')}</>
+              ) : flash === 'commit' ? (
+                <><Check size={13} strokeWidth={2.25} aria-hidden="true" /> {t('Committed', '已提交')}</>
+              ) : (
+                t('Commit', '提交')
+              )}
             </button>
           </div>
         </div>

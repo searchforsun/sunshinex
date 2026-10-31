@@ -141,11 +141,20 @@ export async function commitChanges(root: string, message: string): Promise<Resu
   return ok({ out: c.out });
 }
 
-/** 推送：push（上游缺场回错误面——前端提示先设置上游） */
+/** 推送：push;无上游(首推/新分支常态)且 remote 在场时 -u origin HEAD 自动补上游重试
+ *  (2026-10-31 用户实测裸 push 400——错误面原样透出,remote 缺场/凭据失败不掩盖) */
 export async function pushChanges(root: string): Promise<Result<{ out: string }>> {
   const p = await git(root, ['push']);
-  if (!p.ok) return fail('PUSH_FAIL', p.err);
-  return ok({ out: p.out });
+  if (p.ok) return ok({ out: p.out });
+  if (/set-upstream|no upstream|has no upstream/i.test(p.err)) {
+    const remote = await git(root, ['remote']);
+    if (remote.ok && remote.out.trim() !== '') {
+      const r2 = await git(root, ['push', '-u', 'origin', 'HEAD']);
+      if (r2.ok) return ok({ out: r2.out });
+      return fail('PUSH_FAIL', r2.err);
+    }
+  }
+  return fail('PUSH_FAIL', p.err);
 }
 
 /** G14.113 分支清单+当前分支(欢迎页分支选择弹窗;非 git 目录 → branches 空数组) */

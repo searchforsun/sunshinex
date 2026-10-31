@@ -530,10 +530,17 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);
     },
     async commitChanges(id: string, message: string) {
-      await post('/session/' + encodeURIComponent(id) + '/changes/commit', { message });
+      // 失败读应答体 error 透出(2026-10-31 用户实测 push 400 裸显——服务端 git 真因直达审查页)
+      const res = await fetch(`${base}/session/${encodeURIComponent(id)}/changes/commit`, {
+        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ message }),
+      });
+      if (!res.ok) throw await opError(`/session/${encodeURIComponent(id)}/changes/commit`, res);
     },
     async pushChanges(id: string) {
-      await post('/session/' + encodeURIComponent(id) + '/changes/push', {});
+      const res = await fetch(`${base}/session/${encodeURIComponent(id)}/changes/push`, {
+        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: '{}',
+      });
+      if (!res.ok) throw await opError(`/session/${encodeURIComponent(id)}/changes/push`, res);
     },
     async restoreChange(id: string, path: string) {
       await post('/session/' + encodeURIComponent(id) + '/changes/restore', { path });
