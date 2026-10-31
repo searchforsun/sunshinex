@@ -432,15 +432,18 @@ export async function handleBoardStop(io: SessionHandlerIo, req: http.IncomingMe
   }
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  const stopped = stopBoardTask(session.runtime.harness.taskboard, session.runtime.harness.tasks, taskId.trim());
+  const raw = taskId.trim();
+  const stopped = stopBoardTask(session.runtime.harness.taskboard, session.runtime.harness.tasks, raw);
   if (stopped === undefined) {
-    io.send(res, 400, { error: `unknown task: ${taskId.trim()}` });
+    io.send(res, 400, { error: `unknown task: ${raw}` });
     return;
   }
   if (!stopped.ok) {
     io.send(res, 400, { error: stopped.error.message });
     return;
   }
+  // 物理板终态幂等时无事件——影子板可能仍是打开态(重启孤儿);强制同步 cancelled
+  session.syncBoardStopToShadow(stopped.value.taskId);
   io.send(res, 200, { ok: true });
 }
 

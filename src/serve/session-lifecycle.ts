@@ -201,6 +201,9 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   const journal = new SessionJournal(dataDir);
   journal.attach(journalId);
   session.attachJournal(journal);
+  // 物理板 init 自愈 cancelled 后,journal 回放会把旧 running/pending 盖回影子——对齐权威板并落档
+  // (须在 attachJournal 之后,reconcile 的 pump 才能把 cancelled 写入 journal 防下次再孤儿)
+  session.reconcileBoardWithHarness();
   // 崩溃档兜底回灌（2026-10-30 spec §2）：与 TUI restoreFromSession 同构——seg 面有而链没有的在飞
   // 窗口归约成链行 appendChain（journal attach 之后执行,回灌行经订阅落 chain 行,恢复即持久化）。
   // 正常档窗口恒空、零开销;回灌失败不阻塞 attach——恢复永远可用,只是兜底少一条

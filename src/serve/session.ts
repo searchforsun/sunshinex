@@ -358,6 +358,47 @@ export class SessionRuntime {
     }
   }
 
+  /**
+   * attach 后板投影对齐:Harness TaskBoard.init 已把打开态自愈为 cancelled,但 seedShadow 会从
+   * journal 回放旧 running/pending 盖回影子板——GUI 出现不可停孤儿(物理板已终态、stop 幂等无事件)。
+   * 物理板为生命周期权威:影子打开态跟 harness 对齐,差异经 pump 落档+广播。
+   */
+  reconcileBoardWithHarness(): void {
+    const physical = this.runtimeImpl.harness.taskboard;
+    const auth = physical.snapshot().tasks;
+    for (const task of Object.values(this.board.tasks)) {
+      if (task.status !== 'pending' && task.status !== 'running') continue;
+      const live = auth[task.id];
+      // harness 仍打开 → stopTask 发事件经 onEvent→pump 同步影子
+      if (live !== undefined && (live.status === 'pending' || live.status === 'running')) {
+        physical.stopTask(task.id);
+        continue;
+      }
+      // harness 已终态(或缺失):影子单独补 cancelled,落档防下次 attach 再孤儿
+      const from = task.status;
+      const note = from === 'running'
+        ? 'interrupted by restart (execution lost — recreate the task if needed)'
+        : 'no live executors after restart — recreate the task if needed';
+      this.pump({
+        type: 'task-status-changed',
+        ts: Date.now(),
+        payload: { taskId: task.id, from, status: 'cancelled', note },
+      });
+    }
+  }
+
+  /** 板停后影子同步:物理板已终态时 stopBoardTask 不发事件——影子若仍打开则补 pump cancelled */
+  syncBoardStopToShadow(taskId: string): void {
+    const task = this.board.tasks[taskId];
+    if (task === undefined) return;
+    if (task.status !== 'pending' && task.status !== 'running') return;
+    this.pump({
+      type: 'task-status-changed',
+      ts: Date.now(),
+      payload: { taskId, from: task.status, status: 'cancelled', note: 'stopped' },
+    });
+  }
+
   /** 子智能体影子帧重放(emitQueueFrame 同形):journal 里的子智能体事件按新 seq 回灌帧缓冲+广播,
    *  GUI agent 页签的聚合面从帧重建(实时流同一消费通道) */
   private emitShadowFrame(e: SessionEvent): void {

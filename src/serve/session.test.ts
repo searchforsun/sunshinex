@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -348,5 +348,47 @@ test('⓿b entryObservation:按 seq 取全量观测(按需端点数据源)', asy
     assert.equal(obs?.full, 'THE FULL OBSERVATION');
     assert.equal(obs?.text, 'short');
     assert.equal(ctx.session.entryObservation(99999), undefined);
+  });
+});
+
+test('板影子重启对齐:journal 回放打开态后 reconcile→cancelled;stop 终态幂等同步影子', async () => {
+  await withSession(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    // 影子板:模拟 attach seedShadow 回放出 running + pending 孤儿(不经物理板 create,避免 drain 派发)
+    ctx.session.pump({
+      type: 'task-created',
+      ts: 1,
+      payload: { taskId: 'task-orphan-run', title: '调研', spec: 'a', teamId: TEAM_ID, dependsOn: [] },
+    });
+    ctx.session.pump({
+      type: 'task-status-changed',
+      ts: 2,
+      payload: { taskId: 'task-orphan-run', from: 'pending', status: 'running' },
+    });
+    ctx.session.pump({
+      type: 'task-created',
+      ts: 3,
+      payload: { taskId: 'task-orphan-pend', title: '简介', spec: 'b', teamId: TEAM_ID, dependsOn: [] },
+    });
+    assert.equal(ctx.session.shadowBoard.tasks['task-orphan-run']?.status, 'running');
+    assert.equal(ctx.session.shadowBoard.tasks['task-orphan-pend']?.status, 'pending');
+    // 物理板无此二任务(=已自愈后的空权威面);reconcile 应将影子打开态一律 cancelled
+    ctx.session.reconcileBoardWithHarness();
+    assert.equal(ctx.session.shadowBoard.tasks['task-orphan-run']?.status, 'cancelled');
+    assert.equal(ctx.session.shadowBoard.tasks['task-orphan-pend']?.status, 'cancelled');
+
+    // stop 幂等同步:影子仍是 running 时 syncBoardStopToShadow 拉回 cancelled
+    ctx.session.pump({
+      type: 'task-created',
+      ts: 10,
+      payload: { taskId: 'task-stuck', title: 'Stuck', spec: 'x', teamId: TEAM_ID, dependsOn: [] },
+    });
+    ctx.session.pump({
+      type: 'task-status-changed',
+      ts: 11,
+      payload: { taskId: 'task-stuck', from: 'pending', status: 'running' },
+    });
+    assert.equal(ctx.session.shadowBoard.tasks['task-stuck']?.status, 'running');
+    ctx.session.syncBoardStopToShadow('task-stuck');
+    assert.equal(ctx.session.shadowBoard.tasks['task-stuck']?.status, 'cancelled');
   });
 });
