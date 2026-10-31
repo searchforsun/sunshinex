@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { currentTheme, watchThemeChange } from './theme';
+import { codeFontSize, codeFontFamily } from './font-preset';
 
 /**
  * Mermaid 图渲染(G10-C3c):代码分包(不进主 bundle;G14.2xx 起模块加载即预取 chunk——
@@ -13,8 +14,9 @@ import { currentTheme, watchThemeChange } from './theme';
  * ③渲染落定广播 sx-mermaid-settled——撑高发生在组件内 state,贴底跟随方(Chat)借此补归底。
  */
 
-/** 两套主题变量(与 app.css :root / [data-theme='light'] 手工同值;mermaid 无法读 CSS 变量) */
-const MERMAID_VARS = {
+/** 两套主题色(与 app.css :root / [data-theme='light'] 手工同值;mermaid 无法读 CSS 色变量)。
+ *  字族/字号运行时拼入——跟随字体预设(除浏览器外网页外全跟随)。 */
+const MERMAID_COLORS = {
   dark: {
     darkMode: true,
     background: '#101010',
@@ -31,8 +33,6 @@ const MERMAID_VARS = {
     clusterBkg: '#181818',
     clusterBorder: '#2c2c2c',
     edgeLabelBackground: '#101010',
-    fontFamily: 'var(--font-ui)', /* 字体预设管线:图内文字走全局界面字族 */
-    fontSize: '13px',
   },
   light: {
     darkMode: false,
@@ -50,10 +50,22 @@ const MERMAID_VARS = {
     clusterBkg: '#f9f9f9',
     clusterBorder: '#e5e5e5',
     edgeLabelBackground: '#fcfcfc',
-    fontFamily: 'var(--font-ui)', /* 字体预设管线:图内文字走全局界面字族 */
-    fontSize: '13px',
   },
 } as const;
+
+function mermaidThemeVars(): Record<string, string | boolean> {
+  let uiFamily = '';
+  try {
+    uiFamily = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim();
+  } catch {
+    /* 非浏览器守卫 */
+  }
+  return {
+    ...MERMAID_COLORS[currentTheme()],
+    fontFamily: uiFamily || codeFontFamily(),
+    fontSize: `${codeFontSize()}px`,
+  };
+}
 
 /** 模块预取:本模块随 Chat/Files 静态链加载,chunk 即刻在后台拉起(测试 mock 同经此路径);
  *  失败归一 undefined,由渲染处按错误回落 */
@@ -100,7 +112,18 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
   onStatusRef.current = onStatus;
 
   useEffect(() => {
-    return watchThemeChange(() => setThemeTick((v) => v + 1));
+    const bump = (): void => setThemeTick((v) => v + 1);
+    const unwatch = watchThemeChange(bump);
+    // 字体预设变更:清缓存并重渲(缓存键未含字族,旧 SVG 会留旧字体)
+    const onFont = (): void => {
+      svgCache.clear();
+      bump();
+    };
+    window.addEventListener('sunshinex:font-preset', onFont);
+    return () => {
+      unwatch();
+      window.removeEventListener('sunshinex:font-preset', onFont);
+    };
   }, []);
 
   /** G14.2xx 落定广播:svg/回落提交后发全局事件——撑高发生在组件内 state,不触发父流区
@@ -135,7 +158,7 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
           if (mod === undefined) throw new Error('mermaid unavailable');
           const mermaid = mod.default;
           // look 钉 classic:v12 默认 neo 给节点画挤出式重影边(用户视为边框 bug)
-          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
           const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
           const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
           if (alive) {
@@ -164,7 +187,7 @@ export function Mermaid({ chart, onStatus }: { chart: string; onStatus?: (ok: bo
                 const mod = await mermaidReady;
                 if (mod === undefined) throw new Error('mermaid unavailable');
                 const mermaid = mod.default;
-                mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: { ...MERMAID_VARS[currentTheme()] } });
+                mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
                 const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
                 const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
                 if (alive) {

@@ -7,6 +7,10 @@
  * 聊天正文的段距/工具/代码尺寸等既有 --f-* 细部令牌随预设同落。default 清空全部内联,
  * 样式表缺省值接管=零漂移。
  *
+ * 覆盖面(2026-10-31 用户裁定「除浏览器外网页外全跟随」):聊天正文/思考/工具行、代码块卡、
+ * 工具内 md/exec 命令、自绘 diff 行、文件 md 预览、Monaco 源码/DiffEditor、xterm 终端、
+ * 设置 raw 编辑器、mermaid 图文——浏览器 Web 标签 iframe 外内容不入管线。
+ *
  * 持久与主题/缩放同通路:localStorage 即时层 + /app/gui-state 公共档双写(ui-pref-sync)。
  */
 
@@ -138,6 +142,33 @@ export function codeFontSize(): number {
   } catch {
     return 12.5;
   }
+}
+
+/** 代码等宽字族(Monaco/热更面):取当前生效 --font-mono(含 default 的 :root 缺省)。 */
+export function codeFontFamily(): string {
+  try {
+    return getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace';
+  } catch {
+    return 'monospace';
+  }
+}
+
+/** 代码行高 px(Monaco lineHeight):--f-code × --f-code-lh(缺省 1.55),与 CSS 代码井同口径。 */
+export function codeLineHeightPx(): number {
+  let lh = 1.55;
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--f-code-lh').trim();
+    const n = parseFloat(raw);
+    if (Number.isFinite(n) && n > 0) lh = n;
+  } catch {
+    /* 非浏览器守卫 */
+  }
+  return Math.round(codeFontSize() * lh);
+}
+
+/** Monaco 等宽面三项(挂载+sunshinex:font-preset 热更共用)。 */
+export function monacoCodeFontOptions(): { fontSize: number; fontFamily: string; lineHeight: number } {
+  return { fontSize: codeFontSize(), fontFamily: codeFontFamily(), lineHeight: codeLineHeightPx() };
 }
 
 /** 设置页预览卡消费:预设的变量表原样给 UI(卡片内联样式直映) */

@@ -92,9 +92,10 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
   const onScroll = (): void => {
     const el = bodyRef.current;
     if (el !== null) {
-      const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-      stickRef.current = stick;
-      setAtBottom(stick);
+      // 非对称闩同主对话:仅距底 <4 重贴;跳底钮 80 显隐
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickRef.current = dist < 4;
+      setAtBottom(dist < 80);
     }
   };
 

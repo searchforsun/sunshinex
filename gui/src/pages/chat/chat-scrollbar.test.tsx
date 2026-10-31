@@ -2,10 +2,8 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ChatScrollbar } from './ChatScrollbar';
 
-/** 响应式滚动条(2026-10-27 二次裁定):thumb 长度=轨道x视口/内容比(下限 32),位置映射 scrollTop——jsdom 无布局,
- *  尺寸面全部 defineProperty 桩定(clientHeight/scrollHeight/scrollTop),断言 transform 映射
- *  与无溢出隐藏两态。2026-10-31 rAF 合流:同步事件只排队,落值在下一动画帧——用例 await 帧
- *  冲洗后再断言;y 写整数(亚像素闪烁根修,112.5→113)。 */
+/** 滚动条:长度始终响应式;贴底闩在 scrollTop 未跟上的撑高帧仍粘底。jsdom 无布局,尺寸面
+ *  defineProperty 桩定。rAF 合流后落值在下一帧——用例 await 帧冲洗。 */
 
 function stubBox(): { box: HTMLElement } {
   const box = document.createElement('div');
@@ -35,22 +33,44 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('ChatScrollbar 响应式滚动条', () => {
-  it('scroll 同步(rAF 合流):长度响应式映射内容比,位置映射 scrollTop 比例(y 整数落写)', async () => {
+describe('ChatScrollbar', () => {
+  it('非贴底:长度响应式,位置映射 scrollTop 比例(y 整数落写)', async () => {
     const { box } = stubBox();
     const { thumb } = mount(box);
-    // max=1500,track 300,thumb 响应式=300×500/2000=75:半程 scrollTop=750 → y=0.5×(300-75)=112.5→取整 113
+    // max=1500,track 300,thumb=300×500/2000=75:半程 scrollTop=750 → y=0.5×(300-75)=112.5→取整 113
     box.scrollTop = 750;
     box.dispatchEvent(new Event('scroll'));
     await flushFrame();
     expect(thumb.style.opacity).toBe('1');
     expect(thumb.style.height).toBe('75px');
     expect(thumb.style.transform).toBe('translateY(113px)');
-    // 滚到底:y 钳到 trackH-th=225
+  });
+
+  it('贴底:长度仍响应式,位置钉轨道底', async () => {
+    const { box } = stubBox();
+    const { thumb } = mount(box);
+    box.scrollTop = 1500; // max
+    box.dispatchEvent(new Event('scroll'));
+    await flushFrame();
+    expect(thumb.style.height).toBe('75px');
+    expect(thumb.style.transform).toBe('translateY(225px)'); // trackH-th=300-75
+  });
+
+  it('贴底闩:撑高后 scrollTop 未跟上仍粘底(冷加载抖动根)', async () => {
+    const { box } = stubBox();
+    const { thumb } = mount(box);
     box.scrollTop = 1500;
     box.dispatchEvent(new Event('scroll'));
     await flushFrame();
     expect(thumb.style.transform).toBe('translateY(225px)');
+
+    // 内容撑高,scrollTop 仍停在旧 max——距底已远;MO 路径不得按比例式脱底
+    Object.defineProperty(box, 'scrollHeight', { value: 3000, configurable: true });
+    box.appendChild(document.createElement('div'));
+    await flushFrame();
+    // th=500/3000×300=50;粘底 y=300-50=250(比例式会落到 1500/2500×250=150)
+    expect(thumb.style.height).toBe('50px');
+    expect(thumb.style.transform).toBe('translateY(250px)');
   });
 
   it('无溢出(scrollHeight≤clientHeight):thumb 隐藏', async () => {

@@ -100,12 +100,15 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
 
 
 /** 思考链折叠行(G11 §3):折叠=Brain 图标+「思考中…/思考 Ns」+末行内联预览(尾锚定,新内容自右
- *  推入旧文左流=「往前流动」,左缘 mask 渐隐);展开=全文内滚容器(streaming 时 effect 逐帧吸底,
- *  直设 scrollTop 不平滑——逐 token 跟手)。展开/折叠 grid-rows 过渡(同工具行公式) */
+ *  推入旧文左流=「往前流动」,左缘 mask 渐隐);展开=全文内滚容器(streaming 时贴底闩吸底,
+ *  直设 scrollTop 不平滑——逐 token 跟手;用户上翻即放手,同主对话非对称闩)。展开/折叠
+ *  grid-rows 过渡(同工具行公式) */
 export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [, setTick] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** 展开体内滚贴底闩:仅距底 <4 重贴;上翻/滚轮即放手——流式 md 增长不得抵消用户阅读位 */
+  const bodyStickRef = useRef(true);
   const streaming = entry.streaming === true;
   useEffect(() => {
     if (!streaming) return;
@@ -113,19 +116,24 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
     return () => clearInterval(h);
   }, [streaming]);
   useEffect(() => {
-    if (open && streaming && scrollRef.current !== null) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (open && streaming && bodyStickRef.current && scrollRef.current !== null) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
   }, [open, streaming, entry.md]);
   // G14.37 流式两件套:头部秒数持续计数 / 内容右向流动窗(G14.52:速率显示去——思考行占满整行)
   const elapsed = streaming && entry.ts !== undefined ? Math.max(1, Math.round((Date.now() - entry.ts) / 1000)) : undefined;
   const flow = streaming ? entry.md.slice(-220) : ''; // G14.79:加宽尾窗,宽行下思考内容充满整行
   return (
-    <div className={`entry entry-thinking${open ? ' open' : ''}`}>
+    <div className={`entry entry-thinking${open ? ' open' : ''}${streaming ? ' streaming' : ''}`}>
       <button
         type="button"
         className="thinking-summary"
         aria-expanded={open}
         onClick={() => {
-          setOpen((v) => !v);
+          setOpen((v) => {
+            if (!v) bodyStickRef.current = true; // 展开即贴底跟流
+            return !v;
+          });
           window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
         }}
       >
@@ -150,7 +158,17 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
       </button>
       <div className="think-body">
         <div className="think-body-inner">
-          <div className="thinking-scroll" ref={scrollRef}>
+          <div
+            className="thinking-scroll"
+            ref={scrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              bodyStickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+            }}
+            onWheel={(e) => {
+              if (e.deltaY < 0) bodyStickRef.current = false;
+            }}
+          >
             <pre className="thinking-detail">{entry.md}</pre>
           </div>
         </div>

@@ -59,7 +59,7 @@ const installDir = path.resolve(opt('--dir') ?? 'D:\\MyWorkSoftware\\Sunshinex')
 const installGui = path.join(installDir, 'resources', 'dist-gui');
 const installExe = path.join(installDir, EXE_NAME);
 // 装配校验标志串:壳束 IPC 通道与渲染层拖拽契约(新束独有,旧束必无)
-const SHELL_MARKER = 'win:drag-start';
+const SHELL_MARKER = 'lockedDragBounds'; // 拖拽锁宽高(2026-10-30);旧束只有 win:drag-start
 const GUI_MARKER = 'data-drag-band';
 
 const run = (cmd, cmdArgs, opts = {}) => {

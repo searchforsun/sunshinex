@@ -1,7 +1,8 @@
 import { DiffEditor } from '@monaco-editor/react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { monacoLangOf, useSxTheme } from './monaco-setup';
-import { codeFontSize } from './font-preset';
+import { monacoCodeFontOptions } from './font-preset';
 
 /**
  * G6 diff 面板（Chat 工具条 write 展开 / Diff 标签消费）——G14.5 起换 Monaco DiffEditor
@@ -36,6 +37,21 @@ export function DiffPanel({ oldStr, newStr, path, onOpenDiff, openDiffTitle, hei
   const theme = useSxTheme();
   const auto = useMemo(() => diffHeight(oldStr, newStr), [oldStr, newStr]);
   const height = heightOverride ?? auto;
+  const edRef = useRef<MonacoEditor.IStandaloneDiffEditor | null>(null);
+  const fontOpts = monacoCodeFontOptions();
+  // 预设切换热更字号/字族/行高(挂载时 options 只取一次;终端同口径听 sunshinex:font-preset)
+  useEffect(() => {
+    const apply = (): void => {
+      const ed = edRef.current;
+      if (ed === null) return;
+      const next = monacoCodeFontOptions();
+      ed.updateOptions(next);
+      ed.getOriginalEditor().updateOptions(next);
+      ed.getModifiedEditor().updateOptions(next);
+    };
+    window.addEventListener('sunshinex:font-preset', apply);
+    return () => window.removeEventListener('sunshinex:font-preset', apply);
+  }, []);
 
   return (
     <div className="diff-panel" aria-label="diff" data-diff-old={oldStr ?? ''} data-diff-new={newStr}>
@@ -56,6 +72,9 @@ export function DiffPanel({ oldStr, newStr, path, onOpenDiff, openDiffTitle, hei
         language={monacoLangOf(path)}
         theme={theme}
         height={height}
+        onMount={(ed) => {
+          edRef.current = ed;
+        }}
         options={{
           renderSideBySide: false, // unified(inline)形态——原生单列行号/±标
           readOnly: true,
@@ -65,9 +84,9 @@ export function DiffPanel({ oldStr, newStr, path, onOpenDiff, openDiffTitle, hei
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           lineNumbersMinChars: 3,
-          fontSize: codeFontSize(), // 字体预设管线:代码字号随 --f-code(挂载时点;字族经 var 已随)
-          lineHeight: 19,
-          fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
+          fontSize: fontOpts.fontSize,
+          lineHeight: fontOpts.lineHeight,
+          fontFamily: fontOpts.fontFamily,
           automaticLayout: true,
           diffWordWrap: 'off',
           hideUnchangedRegions: { enabled: true, contextLineCount: 3 }, // 折叠未变更区(VSCode 原生行为)

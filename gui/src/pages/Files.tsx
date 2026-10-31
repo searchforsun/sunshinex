@@ -6,7 +6,7 @@ import type { Connection } from '../connection';
 import type { FileResp } from '../connection';
 import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
-import { codeFontSize } from '../font-preset';
+import { monacoCodeFontOptions } from '../font-preset';
 import { t } from '../i18n';
 import { normRel, OPEN_DEFAULT_KEY } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
@@ -133,6 +133,14 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
     editorRef.current = null;
     monoRoRef.current?.disconnect();
     monoRoRef.current = null;
+  }, []);
+  // 字体预设热更:Monaco 数字面只在挂载取一次,切换预设须 updateOptions(字族/字号/行高)
+  useEffect(() => {
+    const apply = (): void => {
+      editorRef.current?.updateOptions(monacoCodeFontOptions());
+    };
+    window.addEventListener('sunshinex:font-preset', apply);
+    return () => window.removeEventListener('sunshinex:font-preset', apply);
   }, []);
 
   /** 加载单点：trim 空 no-op；请求期间保留旧文（切换不闪空）,失败倒错误态不静默 */
@@ -465,10 +473,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
                     lineNumbersMinChars: 3,
-                    fontSize: codeFontSize(), // 字体预设管线:代码字号随 --f-code(字族经 var 已随)
-                    lineHeight: 19,
+                    ...monacoCodeFontOptions(), // 字体预设:字号/字族/行高随 --f-code(热更见上)
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
-                    fontFamily: 'var(--font-mono)', /* 字体预设管线:等宽位走全局令牌 */
                     automaticLayout: false, // 2026-10-29 改 RO 回调内同步手动 layout(onMount 内,零相位差见彼注);内建 automaticLayout 时序等同故无需开启
                     renderLineHighlight: 'none',
                     overviewRulerLanes: 0,

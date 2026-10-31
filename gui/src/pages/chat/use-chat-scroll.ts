@@ -15,11 +15,10 @@ export function useChatScroll(deps: {
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
-/** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;上翻 >80px 放手,
- *  再触底恢复。useEffect 无依赖面=每渲染后跑,滚动判断在 onScroll 单点维护;上翻 80px 窗口
- *  内的滚轮失效由 Chat 的 wheel 意图直判兜住(渲染期归底赋值与用户滚动的竞争单点在 stick ref)。
- *  P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop 赋值收进动画帧——同帧多渲染调度一次,
- *  消灭逐渲染强制 reflow(布局读取与写入各至多每帧一次);回调内重核 stick,放手即弃 */
+/** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;离开底缘即放手
+ *  (Chat onScroll:仅距底 <4 重贴,避免旧 80px 磁区在上滑后被 scroll 抢回)。useEffect 无依赖面
+ *  =每渲染后跑;wheel 上翻与 stick ref 互补。P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop
+ *  赋值收进动画帧——同帧多渲染调度一次,回调内重核 stick,放手即弃 */
 useEffect(() => {
   if (bottomRafRef.current !== null) return;
   bottomRafRef.current = requestAnimationFrame(() => {

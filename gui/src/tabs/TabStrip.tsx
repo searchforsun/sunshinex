@@ -136,7 +136,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   const stripTitle = disabled ? '先从左侧选择会话' : undefined;
 
   return (
-    <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle}>
+    <div className="sx-tabstrip" ref={rootRef} style={stripStyle} data-tip={stripTitle} data-drag-band>
       {/* G14.2xx 标签搜索弹窗触发钮(最左;纵向列打开的/最近关闭的标签页) */}
       <div style={{ position: 'relative', display: 'inline-flex', flex: 'none' }} ref={searchAnchorRef}>
         <button
@@ -279,8 +279,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         </div>
       )}
       </div>
-      {/* 顶行缩放配套(2026-10-29):页签条撤容器 drag 后,窗口拖拽带收拢为右端固定 40px
-          (Chrome 同位;抽屉态 CSS 退场)——空带不占页签视觉,封顶余量并入本带 */}
+      {/* 页签条根节点即拖拽面;本带是条内右侧余量,按钮不在此带上 */}
       <div className="sx-tabstrip-drag" data-drag-band aria-hidden="true" />
       </div>
     </div>

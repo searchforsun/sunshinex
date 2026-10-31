@@ -4,17 +4,19 @@ import { zoomScale } from '../../ui-zoom';
 
 /**
  * 正文纵向滚动条(2026-10-27 二次裁定,反转「长度恒定」):thumb 长度响应式=轨道×视口/内容比
- * (下限 32px),所见即内容量;流式增长时长度随之变化为预期行为(直接 DOM 写,无 setState 抖动
- * 面)。轨道上下边界动态夹紧到滚动容器实际区域——挂载锚是 .sx-main(定位父级),不夹则越顶栏
- * 分割线(用户实测)。实现纪律:全直接 DOM 写(零 setState),组件只渲染一次;同步源=
- * scroll+RO(容器自身尺寸)+MO(条目挂载改 scrollHeight 的盲区)经 rAF 帧内合流(2026-10-31
- * 实测定性:流式期 token 帧使 scroll/MO 高频交替,各做 gBCR 强制布局=布局抖动面;y 取整落写
- * 防 zoom 树分数 scrollTop 的亚像素闪烁)。
- * 交互仅 thumb 拖拽;指针位移按 zoomScale() 归一(视觉 px→本地 px,ui-zoom 契约)。
- * 挂载面:仅主对话(sideChat!==true);原生条由 CSS 在 `.sx-main > .chat` 隐藏。
+ * (下限 32px),所见即内容量。轨道上下边界动态夹紧到滚动容器实际区域(锚 .sx-main)。
+ * 贴底闩(2026-10-31):冷会话/流式渐进撑高时 MO 先于贴底归底改 scrollHeight——若只改长度、
+ * 位置等 scroll 才钉底,thumb 底缘会先抬后落=上下抖;一旦贴底,后续几何同步同帧粘
+ * y=trackH−th,不以滞后 scrollTop 重判脱闩(scroll 路径才更新闩)。同步源 scroll+RO+MO
+ * 经 rAF 帧内合流;y 取整防亚像素闪。交互仅 thumb 拖拽;指针位移按 zoomScale() 归一。
+ * 挂载面:仅主对话。
  */
 
+const THUMB_MIN = 32;
 
+function thumbHeight(trackH: number, clientH: number, scrollH: number): number {
+  return Math.max(THUMB_MIN, Math.round((clientH / scrollH) * trackH));
+}
 
 export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElement | null> }): JSX.Element {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -26,16 +28,12 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     const thumb = thumbRef.current;
     if (box === null || track === null || thumb === null) return;
 
-    const syncGeometry = (): void => {
-      // 几何面(MO/RO 消费):仅轨道边界与 thumb 长度,不动位置——内容流式增长(MO 高频)若连位置
-      // 一起重算,阅读中段时 max 连续增大 y 随之漂移=残余抖动根因(2026-10-27 用户实测);位置只在
-      // scroll(用户滚动)时更新,映射基准用当下 max,语义仍正确。
-      // 轨道边界=锚(offsetParent)绝对坐标直写(2026-10-29 用户实测滚动抖动+上越分割条根修):
-      // 旧式取轨道自身 gBCR 求差回写——style.top 已含上次写入值,构成 top(n+1)=T−top(n)+2 的
-      // 周期 2 振荡器(CSS 初始 6px↔目标值反复横跳;跳回 6 时轨道顶端戳进顶栏=越线,每次
-      // scroll/RO 重算即跳=抖动;4840e9c 的 /z 归一只修了过冲面,代数振荡面漏了)。
-      // 同值写守卫(2026-10-31):恒等字符串不落 DOM(流式高频面少一半无效样式置脏)。
-      // zoom 契约:视觉坐标差 /z 归一成本地 px
+    /** 贴底闩:scroll 路径按距底≤4px 更新;MO 几何路径只读——撑高瞬间 scrollTop 未跟上仍粘底 */
+    let lastPinned = false;
+
+    const layoutTrack = (): void => {
+      // 轨道边界=锚 offsetParent 绝对坐标直写(防 top(n+1)=T−top(n)+2 周期振荡)。
+      // 同值写守卫:恒等字符串不落 DOM。zoom 契约:视觉差 /z 归一成本地 px
       const cr = box.getBoundingClientRect();
       const ar = track.offsetParent instanceof HTMLElement ? track.offsetParent.getBoundingClientRect() : null;
       const z = zoomScale();
@@ -45,38 +43,30 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
         if (track.style.top !== top) track.style.top = top;
         if (track.style.bottom !== bottom) track.style.bottom = bottom;
       }
-      const max = box.scrollHeight - box.clientHeight;
-      const trackH = track.clientHeight;
-      if (max <= 1 || box.scrollHeight <= 0) {
-        thumb.style.opacity = '0';
-        return;
-      }
-      const th = Math.max(32, Math.round((box.clientHeight / box.scrollHeight) * trackH));
-      if (thumb.style.height !== `${th}px`) thumb.style.height = `${th}px`;
     };
-    const sync = (): void => {
-      syncGeometry();
+
+    /** withPosition=true(scroll/RO):重判闩并写位置;false(MO):只改长度,闩开时同帧粘底 */
+    const writeThumb = (withPosition: boolean): void => {
+      layoutTrack();
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
-      const th = Math.max(32, Math.round((box.clientHeight / box.scrollHeight) * trackH)); // 与几何面同式(jsdom 无布局)
       if (max <= 1 || box.scrollHeight <= 0) {
         thumb.style.opacity = '0';
         return;
       }
-      // 贴底判定(距底≤4px)优先钉底,非贴底才走比例式(流式两源交替落值的抖动防线保留)
-      const pinned = max - box.scrollTop <= 4;
-      const y = pinned
+      if (withPosition) lastPinned = max - box.scrollTop <= 4;
+      const th = thumbHeight(trackH, box.clientHeight, box.scrollHeight);
+      if (thumb.style.height !== `${th}px`) thumb.style.height = `${th}px`;
+      if (!withPosition && !lastPinned) return;
+      const y = lastPinned
         ? trackH - th
         : Math.min(Math.max((box.scrollTop / max) * (trackH - th), 0), trackH - th);
       thumb.style.opacity = '1';
-      // y 取整(2026-10-31 实测定性):zoom 树下 scrollTop 分数(实测 3276.679…)→分数 y 落
-      // 设备像素反复跳变=亚像素闪烁;流式中 React 重渲染致 sh 非单调,分数面放大来回跳感
+      // y 取整:zoom 树下分数 scrollTop→分数 translateY 落设备像素反复跳=亚像素闪烁
       thumb.style.transform = `translateY(${Math.round(y)}px)`;
     };
 
-    // rAF 合流(2026-10-31 实测定性):流式期 token 帧驱动 scroll(贴底归底)+MO(条目挂载)高频
-    // 交替,每回调各做 gBCR 强制布局+样式写=布局抖动;帧内合并至多一次同步(MO 只几何,位置
-    // 仅当帧内有 scroll/RO 来源)——渲染节律归 rAF 单点,与 use-chat-scroll 归底合并同法
+    // rAF 合流:流式期 scroll(贴底归底)+MO 高频交替,帧内合并至多一次同步
     let rafId: number | null = null;
     let withPosition = false;
     const requestSync = (position: boolean): void => {
@@ -86,8 +76,7 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
         rafId = null;
         const p = withPosition;
         withPosition = false;
-        if (p) sync();
-        else syncGeometry();
+        writeThumb(p);
       });
     };
 
@@ -136,7 +125,7 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     thumb.addEventListener('pointerup', onUp);
     thumb.addEventListener('pointercancel', onUp);
 
-    sync();
+    writeThumb(true);
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
       box.removeEventListener('scroll', onScroll);
