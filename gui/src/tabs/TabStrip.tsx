@@ -244,9 +244,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           </button>
         );
       })}
-      {/* + 锚容器+拖拽带移出滚动区(2026-10-31 用户裁定「缩窄时 + 不要被盖到后面」):+ 恒钉
-          条上可见(页签滚动收缩自理);弹层 fixed 钉屏坐标=开层瞬间钮矩形 */}
-      </div>
+      {/* + 锚容器回滚动区(2026-10-31 用户裁定「+ 跟随页签,不固定」):贴末签随增删移动;溢出时
+          sticky right:0 粘在滚动口右缘=不被裁/不盖窗控(宽足时 sticky 不生效=纯跟随,二态一体)。
+          弹层 fixed 钉屏坐标=开层瞬间钮矩形 */}
       <div className="sx-strip-newtab" ref={menuAnchorRef}>
       <button
         type="button"
@@ -297,7 +297,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         </div>
       )}
       </div>
-      {/* 页签条根节点即拖拽面;本带是滚动区右侧余量(与 + 同层),按钮不在此带上 */}
+      </div>
+      {/* 页签条根节点即拖拽面;本带是滚动区右侧余量,按钮不在此带上 */}
       <div className="sx-tabstrip-drag" data-drag-band aria-hidden="true" />
     </div>
   );
