@@ -122,6 +122,10 @@ export interface SessionSidecarMeta {
   mode?: string;
   /** 辅助会话标记(G14.29 /btw /side 旁路档)——listSessions 全列表滤除,不进 RECENTS 与 /resume */
   side?: boolean;
+  /** 辅助会话编号(2026-10-31 用户裁定):父档 sideCount=N 持久化,辅助档题=辅助对话 N */
+  sideCount?: number;
+  /** 辅助会话回指父档 journalId(重进主会话列其辅助对话) */
+  sideOf?: string;
   /** 归档标记(2026-10-21):纯标记态——主列表/RECENTS/TUI /resume 滤除,会话本体零行为差异 */
   archived?: boolean;
   /** 归档时刻 epoch ms(归档页排序;撤销即删键) */
@@ -131,10 +135,10 @@ export interface SessionSidecarMeta {
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
-  'archived', 'archivedAt',
+  'archived', 'archivedAt', 'sideCount', 'sideOf',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流） */
-const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode']);
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf']);
 /** 布尔值键（G14.29 side 辅助会话标记 / archived 归档标记） */
 const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side', 'archived']);
 
@@ -410,7 +414,9 @@ export function listSessions(dataDir: string): SessionMeta[] {
       : firstUser;
     const sid = name.slice(0, -'.jsonl'.length);
     const side = readSessionMeta(dataDir, sid);
-    if (side.side === true) continue; // G14.29:辅助会话不进任何列表(RECENTS//resume//sessions)
+    // 2026-10-31 用户裁定「辅助对话持久化可见(独立会话档+编号标题)」:带编号标题的辅助会话入列
+    // (侧栏主会话组内可见可点回);无标题的 side 旧档维持滤除(过渡态兼容,重装新 fork 即带题)
+    if (side.side === true && side.title === undefined) continue;
     metas.push({
       id: sid,
       file,

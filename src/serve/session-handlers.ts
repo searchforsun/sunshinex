@@ -633,7 +633,14 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
     return io.send(res, 500, { error: 'branch failed: ' + String((err as Error).message) });
   }
   if (kind === 'fork') {
-    if (side) writeSessionMeta(dataDir, newId, { side: true });
+    if (side) {
+      // 2026-10-31 用户裁定「辅助对话持久化可见+编号」:父档 sideCount 独立计数持久化,
+      // 辅助档题=辅助对话 N、sideOf 回指父档(重进主会话可列其辅助对话)
+      const parentMeta = readSessionMeta(dataDir, srcId);
+      const seq = (parentMeta.sideCount ?? 0) + 1;
+      writeSessionMeta(dataDir, srcId, { sideCount: seq });
+      writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: srcId });
+    }
     const created = io.createSession(session.root);
     if (!created.ok) return io.send(res, 500, { error: created.error.message });
     const ar = io.attach(created.value.sessionId, newId);
