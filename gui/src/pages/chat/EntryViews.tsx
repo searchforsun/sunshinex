@@ -533,12 +533,15 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   const failed = done && entry.result?.ok === false;
   const text = done ? localizeNotice(entry.result?.text ?? '') : `${commandRunningLabel(name)}…`;
   return (
-    <div className={`entry entry-notice cmd-entry${!done ? ' streaming' : failed ? ' cmd-failed' : ''}`} role="status" data-cmd={name}>
+    <div className={`entry entry-notice cmd-entry`} role="status" data-cmd={name} data-state={!done ? 'running' : failed ? 'failed' : 'done'}>
       <div className="entry-md has-icon">
+        {/* 前置统一「!」Info 图标(系统提示行同款);失败=AlertCircle err 色——状态不入图标位 */}
         <span className="entry-icon" style={failed ? { color: 'var(--err)' } : undefined}>
-          {!done ? <span className="run-spinner" aria-hidden="true" /> : failed ? <X size={12} strokeWidth={2} aria-hidden="true" /> : <Check size={12} strokeWidth={2} aria-hidden="true" />}
+          {failed ? <AlertCircle size={12} strokeWidth={1.75} aria-hidden="true" /> : <Info size={12} strokeWidth={1.75} aria-hidden="true" />}
         </span>
-        <div className="entry-md-body" style={failed ? { color: 'var(--err)' } : undefined}>{text !== '' ? text : name}</div>
+        <div className={`entry-md-body${!done ? ' exec-running-text' : ''}`} style={failed ? { color: 'var(--err)' } : undefined}>
+          {text !== '' ? text : name}
+        </div>
       </div>
     </div>
   );
