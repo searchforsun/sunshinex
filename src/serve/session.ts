@@ -11,6 +11,7 @@ import type { ModelAdapter } from '../model/adapter';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, RunOutcome, SessionEvent, TodoItem } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import type { TaskBoardState } from '../taskboard/model';
+import type { AgentTeam } from '../taskboard/team-registry';
 import { applyDelegation } from '../delegation/projection';
 import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
@@ -88,6 +89,8 @@ export interface SessionSnapshot {
   status: 'idle' | 'running';
   lastSeq: number;
   team: Array<{ name: string; busy: boolean }>;
+  /** 工作区 AgentTeam 注册表投影（teamId/name/createdAt） */
+  teams: AgentTeam[];
   /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
   model?: string;
   mode: SessionMode;
@@ -1309,6 +1312,7 @@ export class SessionRuntime {
         name,
         busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,
       })),
+      teams: this.runtimeImpl.harness.agentTeams.list(),
     };
   }
 

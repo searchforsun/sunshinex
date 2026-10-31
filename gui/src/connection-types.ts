@@ -108,6 +108,8 @@ export interface SnapshotResponse {
   effort?: string;
   queued?: Array<{ seq: number; text: string; images?: string[] }>;
   team?: Array<{ name: string; busy: boolean }>;
+  /** 工作区团队注册表（daemon 快照必发） */
+  teams?: Array<{ teamId: string; name: string; createdAt: number }>;
   /** 挂起段 kind 三值(阶段三 plan-arm 增 plan-approval):reseed 据此重建挂起卡(卡内容唯一来源) */
   pending?: Array<{ pid: string; kind: 'approval' | 'ask' | 'plan-approval'; req?: unknown }>;
   /** 2026-10-21 归档态:旁车 meta archived 回读(顶栏归档钮/徽标三态播种);可选防旧 daemon(无此字段=未归档面) */

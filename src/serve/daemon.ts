@@ -397,6 +397,7 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (req, res, p) => this.handleSnapshot(req, res, p.id) },
+    { method: 'POST', path: '/session/:id/board/stop', auth: true, run: (req, res, p) => sessionHandlers.handleBoardStop(this.sessionIo, req, res, p.id) },
     // 2026-10-26 三期 §4.5:按需全量观测(快照分页剥 full 后,工具行展开按 seq 单条拉)
     { method: 'GET', path: '/session/:id/entry/:seq/observation', auth: true, run: async (_req, res, p) => {
         const session = this.sessionFor(res, p.id);

@@ -6,6 +6,7 @@ import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
 import type { TeamRegistry } from '../../taskboard/teammate';
 import { dispatchTag, type TaskBoard } from '../../taskboard/board';
+import { fail, ok, type Result } from '../../result';
 
 const BOARD_TERMINAL = new Set(['success', 'failed', 'cancelled']);
 
@@ -40,6 +41,28 @@ function ledgerForBoard(tasks: TaskRegistry, boardKey: string, rawId: string): B
   return hits.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
 }
 
+export interface BoardStopReceipt {
+  taskId: string;
+  status: string;
+  title: string;
+  alreadyFinished: boolean;
+}
+
+/** 板任务停：pending|running → cancelled；running 再 abort 台账。非板 id 返回 undefined，调用方走台账/队友面。 */
+export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: string): Result<BoardStopReceipt> | undefined {
+  const boardKey = boardKeyOf(board, tasks, rawId);
+  if (boardKey === undefined) return undefined;
+  const before = board.snapshot().tasks[boardKey]!;
+  if (BOARD_TERMINAL.has(before.status)) {
+    return ok({ taskId: boardKey, status: before.status, title: before.title, alreadyFinished: true });
+  }
+  const ledger = before.status === 'running' ? ledgerForBoard(tasks, boardKey, rawId) : undefined;
+  const stopped = board.stopTask(boardKey);
+  if (!stopped.ok) return fail(stopped.error.code, stopped.error.message);
+  if (before.status === 'running') abortLedger(tasks, ledger);
+  return ok({ taskId: boardKey, status: 'cancelled', title: before.title, alreadyFinished: false });
+}
+
 /** 执行体中止并收口台账。stop 句柄由提交方挂载（fork/teammate=abort，external=强杀）；已终态的 finish 幂等 */
 function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefined): void {
   if (ledger === undefined) return;
@@ -71,17 +94,15 @@ export function makeTaskStopTool(tasks: TaskRegistry, team?: TeamRegistry, board
     executor: async (input) => {
       const rawId = String(input.taskId ?? '').trim();
       if (rawId === '') throw new CodedToolError('INVALID_ARG', 'taskId is required');
-      const boardKey = board !== undefined ? boardKeyOf(board, tasks, rawId) : undefined;
-      if (boardKey !== undefined && board !== undefined) {
-        const before = board.snapshot().tasks[boardKey]!;
-        if (BOARD_TERMINAL.has(before.status)) {
-          return receipt(`task ${boardKey} already finished with status ${before.status}`);
+      if (board !== undefined) {
+        const stopped = stopBoardTask(board, tasks, rawId);
+        if (stopped !== undefined) {
+          if (!stopped.ok) throw new CodedToolError(stopped.error.code, stopped.error.message);
+          const { taskId, status, title, alreadyFinished } = stopped.value;
+          return alreadyFinished
+            ? receipt(`task ${taskId} already finished with status ${status}`)
+            : receipt(`task ${taskId} cancelled (${title})`);
         }
-        const ledger = before.status === 'running' ? ledgerForBoard(tasks, boardKey, rawId) : undefined;
-        const stopped = board.stopTask(boardKey);
-        if (!stopped.ok) throw new CodedToolError(stopped.error.code, stopped.error.message);
-        if (before.status === 'running') abortLedger(tasks, ledger);
-        return receipt(`task ${boardKey} cancelled (${before.title})`);
       }
       const taskId = tasks.resolveId(rawId);
       const task = tasks.get(taskId);

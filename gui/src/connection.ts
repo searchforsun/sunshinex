@@ -171,6 +171,8 @@ export interface Connection {
   /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）:gate 双语义(gated 审批
    *  解锁 / in-review 关单)——Board 页 onReview 装配点;400 面=未知任务/状态不符 */
   boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void>;
+  /** POST /session/:id/board/stop {taskId}：pending|running → cancelled */
+  boardStop(sessionId: string, taskId: string): Promise<void>;
   /** GET /session/:id/file?path=（G6 预览面）：path 相对会话 root 或绝对均可；403(越界)/404(不
    *  存在/目录)/415(二进制)以 HTTP 失败抛错（消息含 status）——Files 页错误态消费 */
   readFile(sessionId: string, path: string): Promise<FileResp>;
@@ -613,6 +615,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
       return post(`/session/${encodeURIComponent(sessionId)}/board/review`, { taskId, approved });
+    },
+    boardStop(sessionId: string, taskId: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(sessionId)}/board/stop`, { taskId });
     },
     readFile(sessionId: string, filePath: string): Promise<FileResp> {
       return getJson<FileResp>(`/session/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(filePath)}`);
