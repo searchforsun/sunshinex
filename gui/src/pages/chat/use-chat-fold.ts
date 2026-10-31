@@ -35,6 +35,9 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
     }
     if (e.kind === 'user') {
       closeSeg();
+      // user 条=新段起点,其后的工具/思考行不属于上一轮折叠区(2026-10-31 用户报障「命令没反应」:
+      // /compact 气泡后的命令三态行被折进上一轮已折叠区——此前只收段不复位 hide)
+      hide = false;
       continue;
     }
     if (hide && (e.kind === 'tool' || e.kind === 'thinking')) s.add(e.key);
