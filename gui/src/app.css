@@ -182,7 +182,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* 2026-10-24 圆点统一(用户裁定:全前端指示点 6px 纯圆):border-radius:50% 在根 zoom+flex 交叉轴
  *  小数取整下会被拉椭(tb-status-dot 同款教训)——实心点/空芯环全改 radial-gradient(circle Rpx)
  *  几何圆构造,半径两轴同值,盒取整不变形 */
-.sx-session-dot { width: 12px; height: 12px; border-radius: 50%; clip-path: circle(50% at 50% 50%); flex: none; display: inline-flex; align-items: center; justify-content: center; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); } /* 2026-10-31 用户裁定「上下左右对齐」:状态槽统一 12px 盒 flex 居中——点/环/? 同心同轴,radial 于盒心自居中 */.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
+.sx-session-dot { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; clip-path: circle(50% at 50% 50%); flex: none; display: inline-flex; align-items: center; justify-content: center; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); } /* 2026-10-31 用户裁定「转圈/蓝点偏右,最近会话置顶图标也要对齐」:状态槽=置顶钮配方逐字同几何(left 6/24px 盒/flex 居中),点/环/?/置顶 morph 四者同槽同心;分区 left 覆写全退役 */ /* 2026-10-31 用户裁定「上下左右对齐」:状态槽统一 12px 盒 flex 居中——点/环/? 同心同轴,radial 于盒心自居中 */.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
    open=accent 实心/connecting·reconnecting=warn 描边空芯/closed(离线)=灰 */
 .conn-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: radial-gradient(circle 3px at 50% 50%, var(--fg-secondary) 2.5px, transparent 2.9px); }.conn-dot.conn-open { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.5px, transparent 2.9px); }.conn-dot.conn-connecting, .conn-dot.conn-reconnecting { background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--warn) 2px 2.7px, transparent 3.1px); }
 /* G8e-T1 补:左栏「+ 添加工作区」区(G8a 挂名) */.sx-menu-add { border-top: 1px solid var(--border); padding: 8px 12px; }.sx-add-workspace { display: block; width: 100%; padding: 4px 8px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--fg-secondary); }.sx-add-workspace:hover:not(:disabled) { color: var(--fg); border-color: var(--border-strong); }.sx-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--fg-secondary); }
@@ -1063,7 +1063,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin: 0;
   padding: 0 10px 0 28px;
   border-radius: var(--radius-sm); /* G14.66:与菜单 hover 圆角一致 */
-}.sx-session-dot { position: absolute; left: 12px; top: calc(50% - 6px); }.sx-side-head { padding: 14px 8px 6px 12px; }
+}.sx-side-head { padding: 14px 8px 6px 12px; }
 
 /* G10-C9 行盒归属修正:hover/active 提到 workspace-row 整行(含 + 钮区,组行与会话行同宽同色);
    组头本体不再自持底色;会话行 active 只亮当前打开会话(ProjectMenu 去root 兜底) */.workspace-item > .workspace-row { height: 32px; border-radius: var(--radius-md); }
@@ -1880,7 +1880,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-10-25 用户报障「运行态转圈没和上下图标居中对齐」:中心线统一钉在工作区文件夹图标
    中心(groups 4px 缩进+行 10px 内边距+16px 图标 → 中线 x=22)——8px 环左 18/6px 点左 19,
    此前环 20(中心 24 偏右)/点 14(中心 17 偏左),两态还互不对齐 */
-.sx-side-scroll .sx-session-dot { left: 19px; }
 
 
 /* G14.154 文件选区悬浮工具条(双动作):跟随选区上方,ReactDOM 面非 monaco overlay */
@@ -2170,7 +2169,6 @@ input.sx-setting-input { width: 100%; }
 .sx-perm-level-global { color: var(--fg-tertiary); }
 
 /* G14.194 最近会话行状态点与项目组会话点同位(行整体右移 6 后的点偏移补偿) */
-.sx-collapse-recents .sx-session-dot { left: 4px; } /* G14.197 最近行左缘 10,+4=14 与组行同列 */
 
 /* ===== 设置滚动面归位(三轮):滚动条贴窗右缘——滚动容器上移到设置主区(全宽 .sx-settings-main),
    内容列(.sx-settings-form/.sx-settings-complex)只做居中不再自滚(居中列自滚=滚动条悬在列缘,
@@ -2184,12 +2182,9 @@ input.sx-setting-input { width: 100%; }
 
 /* G14.197 点锚定行本身:组行(x=4)点 left 10、最近行(x=10)点 left 4——两点同列 x=14;运行态同规 */
 .sx-session-row { position: relative; }
-.sx-session-dot { left: 10px; }
-.sx-collapse-recents .sx-session-dot { left: 4px; }
 
 /* G14.213 最近行圆点与项目组行圆点同列(组行点 x=24;最近行行缘 x=10 → left 14 补齐;
    G14.197 的 4px 是旧几何,文字列已随 G14.152 右移)。运行态同规 */
-.sx-side-scroll .recent-list .sx-session-dot { left: 14px; }
 
 /* ---- 技能工具行:搜索+来源筛选;卡片头(id+来源 chip 单色) ---- */
 .sx-skills-toolbar { display: flex; align-items: center; gap: 10px; }
@@ -2725,12 +2720,6 @@ input.sx-setting-input { width: 100%; }
    left 6/top 50%/translateY(-50%)/24px 盒 flex 双向居中——与 sx-pin-btn 逐字同几何,
    calc(50% - 6px) 的字体度量漂移即根除;hover 行不淡出(? 是 hover 时最需要看见的状态) */
 .sx-session-dot.asking {
-  position: absolute;
-  left: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
   background: none;
   border: none;
   clip-path: none;
