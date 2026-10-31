@@ -148,6 +148,7 @@ export function bindShadowHydration(
   refs: ReturnType<typeof useShadowHydrationRefs>,
   bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void,
   connInstance: Connection | null,
+  dropPendingActs?: (sessionId: string) => void,
 ): void {
   const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef } = refs;
   shadowHydrateRef.current = (sessionId: string): void => {
@@ -168,6 +169,10 @@ export function bindShadowHydration(
         }
         shadowBufRef.current.delete(sessionId);
         shadowHydratingRef.current.delete(sessionId);
+        // 水合整替前的 live folds 丢弃(2026-10-31「重启后重复渲染时间线」根修):hydrating 置位前
+        // 已入尾随队列的同源帧 folds——journal 行集已含(落档先于广播),过期 fold 落在重建态上即
+        // 第二遍应用;且其 done 会被卡幂等面吞(已根修为必过投影)——双保险此处直接弃源
+        dropPendingActs?.(sessionId);
         // 按会话桶整替(只覆本会话,他桶内存缓存不动)
         bumpActs(sessionId, () => acts);
       },

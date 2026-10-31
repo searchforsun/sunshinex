@@ -34,6 +34,10 @@ export interface ConnectionWiringDeps {
   shadowHydratedRef: MutableRefObject<Set<string>>;
   shadowHydratingRef: MutableRefObject<Set<string>>;
   shadowBufRef: MutableRefObject<Map<string, Array<{ e: SessionEvent; seq: number }>>>;
+  /** 水合整替前的同源 live folds 丢弃口(wiring 装配期赋值;App 转交 bindShadowHydration):
+   *  attach seedShadow 突发帧在 hydrating 置位前已入 100ms 尾随队列——settle 整替若先于 flush,
+   *  过期 fold 落在重建态上即第二遍应用(重复时间线病根);丢弃安全前提=影子帧落档先于广播 */
+  dropPendingActsRef: MutableRefObject<((sessionId: string) => void) | null>;
   connRef: MutableRefObject<Connection | null>;
   reopenBoardSeedWindow: () => void;
   bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void;
@@ -79,6 +83,9 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
     };
   }
   const throttles = throttleRef.current;
+  deps.dropPendingActsRef.current = (sessionId: string): void => {
+    throttles.acts.drop((it) => it.sessionId !== sessionId);
+  };
   useEffect(() => {
     const {
       sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,

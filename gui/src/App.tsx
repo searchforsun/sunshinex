@@ -169,18 +169,20 @@ function AppShell(): JSX.Element {
   /** G14.2xx b 影子水合四 ref(use-agent-projections 工厂;refs 先声明解「水合需连接实例、
    *  装配需截流 refs」的环——onEvent 截流路由/onReset 重建/会话打开触发消费原样) */
   const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef } = useShadowHydrationRefs();
+  /** 水合整替前 live folds 丢弃口(wiring 装配期赋值,水合绑定面消费——见 ConnectionWiringDeps 注) */
+  const dropPendingActsRef = useRef<((sessionId: string) => void) | null>(null);
 
   /** 单连接装配(use-connection-wiring 单点):onEvent 路由/onReset 重建/挂起转投/生命周期迁
    *  钩子,依赖注入面见 ConnectionWiringDeps——装配一次([]),闭包取首渲染值,会话切换经
    *  sessionRef 与各 ref 免陈旧(原口径) */
   const connInstance = useConnectionWiring({
     sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
-    shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, connRef,
+    shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, dropPendingActsRef, connRef,
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
     setTodoBatches, setTurnGoal, setConnState,
   });
   /** 影子水合单点绑定:每渲染重赋 hydrate ref(闭包恒取最新连接实例) */
-  bindShadowHydration({ shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef }, bumpActs, connInstance);
+  bindShadowHydration({ shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef }, bumpActs, connInstance, (sid) => dropPendingActsRef.current?.(sid));
 
   /** 外观偏好同步(use-appearance-sync 单点,2026-10-27 技术债轮 D53 批E 外提):语言源随 daemon
    *  settings + 公共持久化偏好上收(/app/gui-state 覆盖本地,zoom/theme/fontPreset)两件一次性同步 */

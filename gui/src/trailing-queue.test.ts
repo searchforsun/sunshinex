@@ -55,3 +55,22 @@ describe('createTrailingQueue', () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe('drop 按谓词丢弃窗内缓冲(水合整替前弃同源 live folds)', () => {
+  it('命中项丢弃不 apply;未命中项保留照常窗尾 apply;清空时摘在途 timer', () => {
+    vi.useFakeTimers();
+    const seen: number[][] = [];
+    const q = createTrailingQueue<{ sid: string; v: number }>((xs) => seen.push(xs.map((x) => x.v)), 100);
+    q.push({ sid: 's1', v: 1 });
+    q.push({ sid: 's2', v: 2 });
+    q.drop((x) => x.sid !== 's1'); // 弃 s1(水合重建已含),留 s2
+    vi.advanceTimersByTime(100);
+    expect(seen).toEqual([[2]]); // s1 永不落地
+    // 全清空:摘 timer,窗尾零 apply
+    q.push({ sid: 's3', v: 3 });
+    q.drop(() => false);
+    vi.advanceTimersByTime(200);
+    expect(seen).toEqual([[2]]);
+    q.dispose();
+  });
+});

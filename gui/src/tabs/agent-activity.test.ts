@@ -45,7 +45,7 @@ describe('建卡与原引用守卫', () => {
     }
   });
 
-  it('不变事件原引用返回:usage 无 turnTotal/已 error 再 error/已 done 的 done', () => {
+  it('不变事件原引用返回:usage 无 turnTotal/已 error 再 error', () => {
     let s = applyAgentEvent({}, sub('usage', 'w1', undefined, { turnTotal: 100 }));
     expect(applyAgentEvent(s, sub('usage', 'w1'))).toBe(s); // 无 turnTotal
     s = applyAgentEvent(s, sub('error', 'w1', 'boom'));
@@ -182,5 +182,26 @@ describe('G14.2xx b chat 投影对标主对话(reasoning/run/steps 入核)', () 
     expect(s.tri!.chat.entries.map((e) => e.status)).toContain('running');
     s = applyAgentEvent(s, sub('tool-result', 'tri', 'ok', { callId: 'c1', ok: true, tool: 'read' }));
     for (const e of s.tri!.chat.entries) expect(e.status).toBeUndefined(); // 终态以缺省承载
+  });
+});
+
+describe('重复投递帧 done 必封投影(2026-10-31 重启后重复时间线+永转根修钉)', () => {
+  it('卡已 done 后整流重放:第二份 done 必过 chat 投影封 run(openRun 不悬空——转录页不永转)', () => {
+    const stream = [
+      sub('model-start', 'ca'),
+      sub('step', 'ca', 'model'),
+      sub('usage', 'ca', undefined, { turnTotal: 106303 }),
+      sub('done', 'ca', '报告'),
+    ];
+    // 第一遍(水合整替/journal 重建):卡 sealed、run 封闭
+    let s = applyAgentEvent({}, stream[0]!);
+    for (const e of stream.slice(1)) s = applyAgentEvent(s, e);
+    expect(s.ca!.status).toBe('done');
+    expect(s.ca!.chat.status).toBe('idle');
+    // 第二遍(seedShadow attach 突发竞态整替失败面):done 被「卡已 done」吞掉即 openRun 悬空永转
+    for (const e of stream) s = applyAgentEvent(s, e);
+    expect(s.ca!.chat.status).toBe('idle'); // 根修前=running(第二份 run 永不闭合)
+    const runs = s.ca!.chat.entries.filter((e) => e.kind === 'run');
+    for (const r of runs) expect(r.streaming).toBeUndefined(); // 每个 run 条均封段
   });
 });

@@ -2,7 +2,7 @@
  *  消费面:use-connection-wiring 的 live 板/委派/子智能体投影路径(流式突发帧高频 setState 的
  *  收敛面);水合/播种回放路径(权威终态)旁路直投,不经本队列。单 timer 在途守卫:窗内后续 push
  *  只入缓冲不另起表;flush 同步排空供权威读面;dispose 弃缓冲清 timer(卸载面) */
-export function createTrailingQueue<T>(apply: (items: T[]) => void, ms: number): { push(item: T): void; flush(): void; dispose(): void } {
+export function createTrailingQueue<T>(apply: (items: T[]) => void, ms: number): { push(item: T): void; flush(): void; drop(keep: (item: T) => boolean): void; dispose(): void } {
   let buf: T[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   const drain = (): void => {
@@ -23,6 +23,15 @@ export function createTrailingQueue<T>(apply: (items: T[]) => void, ms: number):
         timer = null;
       }
       drain();
+    },
+    /** 按谓词丢弃窗内缓冲(不触发 apply):水合整替前丢弃同源 live folds——整替重放已含这些事件,
+     *  过期 fold 落在重建态上即第二遍应用(重复时间线病根);缓冲清空时顺手摘 timer 在途表 */
+    drop(keep: (item: T) => boolean): void {
+      buf = buf.filter(keep);
+      if (buf.length === 0 && timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
     },
     dispose(): void {
       if (timer !== null) {

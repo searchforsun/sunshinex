@@ -100,9 +100,11 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
       return withChat({ ...card, status: 'error' });
     }
     case 'done': {
-      if (card.status === 'done') return s; // 已 done：幂等
-      // error 粘滞时卡状态保持 error(done 不覆写),但 done 权威终语必过 chat 投影——
-      // 封 run/合并终稿,防投影 openRun 悬空(运行态行永转)
+      // done 幂等守卫退役(2026-10-31 用户报障「重启后重复渲染时间线+底部永转」根修):done 必过
+      // chat 投影——重复投递帧(attach seedShadow 突发×水合整替竞态第二份)的 done 若被「卡已 done」
+      // 吞掉,其内核 run 永不闭合 → openRun 悬空 → 转录页永转。内核侧 done 无 run 可封时零条目
+      // (applyEvent default 分支 sealSeg 空段透传),重复过投影幂等;状态仅 running 态迁移,
+      // error 粘滞不覆写(口径不变)
       return withChat(card.status === 'running' ? { ...card, status: 'done' } : card);
     }
     default: {
