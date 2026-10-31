@@ -3,7 +3,7 @@ import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
 import { zoomScale } from '../ui-zoom';
-import { Archive, Clock, GitBranch, Layers, Pin } from 'lucide-react';
+import { Archive, CircleHelp, Clock, GitBranch, Layers, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -226,6 +226,8 @@ export function SessionRow(props: {
   readonly updatedAt: number;
   readonly active: boolean;
   readonly running: boolean;
+  /** 会话待确认(2026-10-31 主菜单「?」图标):运行中遇 ask/approval 挂起,转圈换 ? 图标 */
+  readonly awaiting?: boolean;
   readonly unseen: boolean;
   readonly busy: boolean;
   readonly onOpen: () => void;
@@ -235,7 +237,13 @@ export function SessionRow(props: {
   readonly onConfirm: () => void;
 }): JSX.Element {
   const dot =
-    props.running ? (
+    props.awaiting === true ? (
+      // 待确认优先于一切态(用户裁定「转圈图标显示成 ? 问题确认图标」):需要用户输入是当前
+      // 最该被看见的状态,转圈/未读都让位;accent 色呼应可点链接语言
+      <span className="sx-session-dot asking">
+        <CircleHelp size={12} strokeWidth={1.75} />
+      </span>
+    ) : props.running ? (
       <span className="sx-session-dot running" />
     ) : props.unseen && !props.active ? (
       // 当前打开的会话恒已读(2026-10-31 用户裁定「处于当前会话,到自动已读」):active 行不亮

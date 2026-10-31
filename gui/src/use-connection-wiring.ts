@@ -149,6 +149,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
       // G4 挂起面装配:连接层回调闭包固定,经 sessionRef 过滤本会话后转投 Chat sink(卡片区);
       //  他会话挂起卡不显(本会话外无渲染面),他会话 reset 不触发重播种
       onApproval: (sessionId, pid, req) => {
+        setRecentVersion((v) => v + 1); // 挂起确认到达刷侧栏(2026-10-31「?」图标:awaiting 标注跟手)
         if (sessionId !== sessionRef.current) {
           sideSinksRef.current.get(sessionId)?.current?.onApproval(pid, req);
           return;
@@ -156,6 +157,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         chatSinkRef.current?.onApproval(pid, req);
       },
       onAsk: (sessionId, pid, req) => {
+        setRecentVersion((v) => v + 1); // 同上:ask 挂起到达刷侧栏
         if (sessionId !== sessionRef.current) {
           sideSinksRef.current.get(sessionId)?.current?.onAsk(pid, req);
           return;
@@ -165,6 +167,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
       // 阶段三 plan-arm(spec §5.1):plan-approval 挂起帧同 approval/ask 装配形态——本会话过滤后
       // 转投 Chat sink(卡片区);他会话挂起不显
       onPlanApproval: (sessionId, pid, req) => {
+        setRecentVersion((v) => v + 1); // 同上:plan 确认到达刷侧栏
         if (sessionId !== sessionRef.current) {
           sideSinksRef.current.get(sessionId)?.current?.onPlanApproval(pid, req);
           return;

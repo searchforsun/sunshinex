@@ -188,6 +188,14 @@ function AppShell(): JSX.Element {
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
+  /** 挂起确认解除刷侧栏(2026-10-31 主菜单「?」图标):Chat 移卡(settle)派 sx-pending-settled,
+   *  此处 bump recentVersion 重拉会话行——awaiting 标注解除跟手(到达侧 bump 在 wiring 三回调) */
+  useEffect(() => {
+    const onPendingSettled = (): void => setRecentVersion((v) => v + 1);
+    window.addEventListener('sx-pending-settled', onPendingSettled);
+    return () => window.removeEventListener('sx-pending-settled', onPendingSettled);
+  }, []);
+
   /** 左栏选中会话(attach/新建完成):切路由(Chat 装配期自播种基线)+ ensureSession 建席
    *  (缺省「任务」页)+ 板投影/team 清零(会话切换串态防线——快照落定后经 onSeeded 重建
    *  权威态)+ 播种窗重开;tabStates 已有该会话则原样(重开同会话标签还原) */

@@ -151,6 +151,8 @@ export interface SessionRow {
   forkedFrom?: { sourceSessionId: string; upToLine: number; kind: 'rewind' | 'fork' };
   /** G14.52:该 journal 当前挂载的活跃会话 id(daemon 反查标注)——侧栏行运行圆点直比,不依赖 attach 本地映射 */
   liveSessionId?: string;
+  /** 会话待确认(2026-10-31 主菜单「?」图标):daemon 挂起表非空(approval/ask/plan-approval 任一未决) */
+  awaiting?: boolean;
 }
 
 /** GET /dirpicker?path= 载荷（T2 服务端目录选择）：path=绝对路径，parent=上级（盘根=自身），dirs=子目录名 */

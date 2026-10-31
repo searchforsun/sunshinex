@@ -95,6 +95,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 updatedAt={r.updatedAt}
                 active={active}
                 running={running}
+                awaiting={r.awaiting === true}
                 unseen={isUnseen(r.id, r.updatedAt)}
                 busy={busy}
                 onOpen={() => onAttach(r.root, r.id)}

@@ -28,6 +28,7 @@ export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerRespo
     return;
   }
   const liveByJournal = liveSessionByJournal(io.sessions); // G14.52:行附活跃会话 id(运行圆点直比)
+  const awaiting = awaitingByJournal(io.sessions); // 2026-10-31:行附待确认标注(主菜单「?」图标)
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
     const dataDir = path.join(projectsRoot(), ent.name, 'data');
@@ -72,6 +73,7 @@ export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerRespo
         root,
         slug: ent.name,
         ...(liveByJournal.get(r.id) !== undefined ? { liveSessionId: liveByJournal.get(r.id) } : {}),
+        ...(awaiting.has(r.id) ? { awaiting: true } : {}),
       });
     }
   }
@@ -89,9 +91,11 @@ export function handleSessions(io: SessionHandlerIo, req: http.IncomingMessage, 
   // G14.52:行附 liveSessionId(journal ↔ 活跃会话反查)——GUI 侧栏行运行圆点直比会话 id,
   // 不再依赖 attach 时的本地映射(新建会话首条 append 前无 journal id,映射缺位圆点不亮)
   const liveByJournal = liveSessionByJournal(io.sessions);
+  const awaitingSet = awaitingByJournal(io.sessions); // 2026-10-31:待确认标注(主菜单「?」图标)
   const rows = listSessions(resolveDataDir(root)).filter((r) => r.archived !== true).map((r) => {
     const live = liveByJournal.get(r.id);
-    return live !== undefined ? { ...r, liveSessionId: live } : r;
+    const row = live !== undefined ? { ...r, liveSessionId: live } : r;
+    return awaitingSet.has(r.id) ? { ...row, awaiting: true as const } : row;
   });
   io.send(res, 200, rows);
 }
@@ -102,6 +106,18 @@ export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map
     if (s.status() !== 'running') continue;
     const jid = s.attachedJournalId;
     if (jid !== undefined) m.set(jid, s.id);
+  }
+  return m;
+}
+
+/** 会话待确认标注(2026-10-31 主菜单「?」图标数据源):live 会话挂起表非空(approval/ask/
+ *  plan-approval 任一未决)=运行中需要用户确认;journal 反查与 liveSessionByJournal 同构 */
+function awaitingByJournal(sessions: Map<string, SessionRuntime>): Set<string> {
+  const m = new Set<string>();
+  for (const s of sessions.values()) {
+    if (s.pendingSnapshot().length === 0) continue;
+    const jid = s.attachedJournalId;
+    if (jid !== undefined) m.add(jid);
   }
   return m;
 }

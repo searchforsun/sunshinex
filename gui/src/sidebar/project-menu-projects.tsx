@@ -325,6 +325,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               updatedAt={sr.updatedAt}
                               active={active}
                               running={running}
+                              awaiting={sr.awaiting === true}
                               unseen={isUnseen(sr.id, sr.updatedAt)}
                               busy={busy}
                               onOpen={() => {
