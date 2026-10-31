@@ -48,6 +48,7 @@ export const pickAnswered = (p: AskPick | undefined): boolean => p !== undefined
 export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; onPick: (patch: Partial<AskPick>) => void }): JSX.Element {
   const multiple = req.multiple === true;
   const selected = pick.labels;
+  const [customFocused, setCustomFocused] = useState(false);
   const optionsRef = useRef<HTMLDivElement | null>(null);
   const [overflowing, setOverflowing] = useState(false);
   useEffect(() => {
@@ -66,6 +67,9 @@ export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; 
   const toggle = (label: string): void => {
     onPick({
       labels: multiple ? (selected.includes(label) ? selected.filter((l) => l !== label) : [...selected, label]) : selected.includes(label) ? [] : [label],
+      // 单选互斥对称(2026-10-30 用户裁定「点输入框去掉上面的选中」的镜像):单选时选选项即清自由
+      // 输入——否则「已选选项+有字输入」并存而提交优先发 custom,所选选项失真
+      ...(multiple ? null : { custom: '' }),
     });
   };
 
@@ -94,7 +98,7 @@ export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; 
             </label>
           );
         })}
-        <div className={`card-custom-card${pick.custom.trim() !== '' ? ' filled' : ''}`}>
+        <div className={`card-custom-card${pick.custom.trim() !== '' ? ' filled' : ''}${!multiple && customFocused ? ' active' : ''}`}>
           <span className="card-option-icon">
             <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />
           </span>
@@ -103,6 +107,12 @@ export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; 
             className="card-custom"
             value={pick.custom}
             placeholder={t('Other… free input', '其他… 自由输入')}
+            onFocus={() => {
+              setCustomFocused(true);
+              // 单选互斥(2026-10-30 用户裁定):点自由输入=选中输入卡,上方单选去选中
+              if (!multiple && selected.length > 0) onPick({ labels: [] });
+            }}
+            onBlur={() => setCustomFocused(false)}
             onChange={(e) => onPick({ custom: e.target.value })}
           />
         </div>
