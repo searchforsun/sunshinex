@@ -4,7 +4,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskBoard } from './board';
-import { TeamRegistry, Teammate } from './teammate';
+import { TeamRegistry, Teammate, teammateSendTargets } from './teammate';
+import { InboxCursorStore } from './inbox-cursors';
 import { TeamStore } from './store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from './team-registry';
 import { FileInbox } from './file-inbox';
@@ -59,7 +60,8 @@ interface Rig {
   /** 真 FileInbox(与装配面同语义;测试按需注入 teammate deps) */
   inbox: FileInbox;
   /** 构造 Teammate(不注册);模型可注入以共享计数断言顺序,inbox 可注入以开回合边界注入 */
-  makeTeammate(name: string, model?: CountingAdapter, inbox?: Inbox): Teammate;
+  makeTeammate(name: string, model?: CountingAdapter, inbox?: Inbox, cursors?: InboxCursorStore, teamIdOverride?: string): Teammate;
+  cursors: InboxCursorStore;
   /** 构造并注册 */
   addTeammate(name: string, model?: CountingAdapter, inbox?: Inbox): Teammate;
 }
@@ -102,7 +104,8 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const tools = new ToolRegistry();
   const inbox = new FileInbox(path.join(tmp, 'teams', 'main', 'inbox'));
-  const depsOf = (name: string, model: CountingAdapter, depInbox?: Inbox) => ({
+  const cursors = new InboxCursorStore(path.join(tmp, 'teams', 'inbox-cursors.json'));
+  const depsOf = (name: string, model: CountingAdapter, depInbox?: Inbox, cursorStore: InboxCursorStore = cursors) => ({
     safety,
     model,
     registry: tools,
@@ -111,10 +114,16 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     board,
     tasks: registry,
     ...(depInbox !== undefined ? { inbox: depInbox } : {}),
+    inboxCursors: cursorStore,
     onEvent: (e: SessionEvent) => events.push(e),
   });
-  const makeTeammate = (name: string, model?: CountingAdapter, depInbox?: Inbox): Teammate =>
-    new Teammate({ name, framing: `framing of ${name}`, teamId, deps: depsOf(name, model ?? new CountingAdapter(), depInbox) });
+  const makeTeammate = (name: string, model?: CountingAdapter, depInbox?: Inbox, cursorStore?: InboxCursorStore, teamIdOverride?: string): Teammate =>
+    new Teammate({
+      name,
+      framing: `framing of ${name}`,
+      teamId: teamIdOverride ?? teamId,
+      deps: depsOf(name, model ?? new CountingAdapter(), depInbox, cursorStore),
+    });
   return {
     board,
     team,
@@ -124,6 +133,7 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     ledgerSubmitted,
     ledgerFinished,
     inbox,
+    cursors,
     makeTeammate,
     addTeammate: (name: string, model?: CountingAdapter, depInbox?: Inbox) => {
       const tm = makeTeammate(name, model, depInbox);
@@ -392,6 +402,68 @@ test('msg-id 链前缀去重:poll 重复回放同消息(cursor 归零面)不双�
     for (const c of model.chats) {
       assert.equal(countOccurrences(c, 'msg:m1 [message from lead] hi'), 1, `每轮 m1 行恰一条(链前缀去重),实际:${c.slice(0, 200)}`);
     }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('同队白名单不含他队与自己', () => {
+  const tmp = tmpdir('sunshinex-tm-targets-');
+  try {
+    const rig = makeRig(tmp, true);
+    rig.addTeammate('w1');
+    rig.addTeammate('w2');
+    const other = rig.makeTeammate('w9', undefined, undefined, undefined, 'team-other');
+    const reg = rig.team.register(other);
+    assert.ok(reg.ok);
+    const targets = teammateSendTargets(rig.team, rig.teamId, 'w1');
+    assert.deepEqual(targets.knownRecipients().sort(), ['w2']);
+    assert.equal(targets.teamId(), rig.teamId);
+    assert.equal(targets.recipientTeamId('w2'), rig.teamId);
+    assert.equal(targets.recipientTeamId('w9'), 'team-other');
+    assert.equal(targets.recipientTeamId('ghost'), undefined);
+    other.stop();
+    assert.equal(targets.recipientTeamId('w9'), undefined, '已停成员不再是活收件人');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('inbox 位点持久化:新实例不把已消费消息再灌进链,位点之后的新消息仍进链', async () => {
+  const tmp = tmpdir('sunshinex-tm-cursor-');
+  try {
+    const rig = makeRig(tmp, true);
+    const model1 = new CountingAdapter();
+    rig.addTeammate('w1', model1, rig.inbox);
+    await rig.inbox.send('w1', { from: 'lead', text: 'once' });
+    const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A', assignee: 'w1' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    const done = await until(() => rig.board.snapshot().tasks[idA]?.status === 'success');
+    assert.ok(done, '首任务消化');
+    assert.ok(model1.chats[0]?.includes('msg:m1 [message from lead] once'), '首轮应灌入 m1');
+    const cursorFile = path.join(tmp, 'teams', 'inbox-cursors.json');
+    assert.ok(fs.existsSync(cursorFile), '位点应写入 inbox-cursors.json');
+    const saved = JSON.parse(fs.readFileSync(cursorFile, 'utf8')) as Record<string, number>;
+    assert.ok((saved.w1 ?? 0) > 0, 'w1 位点应大于 0');
+
+    rig.team.get('w1')?.stop();
+    const cursors2 = new InboxCursorStore(cursorFile);
+    const model2 = new CountingAdapter();
+    const restarted = rig.makeTeammate('w1', model2, rig.inbox, cursors2);
+    const reg = rig.team.register(restarted);
+    assert.ok(reg.ok);
+    await rig.inbox.send('w1', { from: 'lead', text: 'after restart' });
+    const rb = rig.board.create({ teamId: rig.teamId, title: 'B', spec: 'do B', assignee: 'w1' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
+    const done2 = await until(() => rig.board.snapshot().tasks[idB]?.status === 'success');
+    assert.ok(done2, '重启后的任务应消化');
+    assert.ok(model2.chats.length >= 1, '新实例应有一轮 chat');
+    const second = model2.chats[0]!;
+    assert.ok(second.includes(`Task ${idB}:`), '新实例应执行任务 B');
+    assert.equal(countOccurrences(second, 'msg:m1 [message from lead] once'), 0, '已消费消息不得再次进链');
+    assert.ok(second.includes('msg:m2 [message from lead] after restart'), '位点之后的新消息应进链');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

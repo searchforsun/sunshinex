@@ -1,5 +1,5 @@
-/** T2(P2 spec §5):send_message 双面工具——校验(to 白名单/text 非空≤4000)→ FileInbox 落盘 →
- *  agent-message 事件 → 回执文案;from()/knownRecipients() 注入器经闭包生效;teammate 派生面注册断言。 */
+/** send_message 双面工具——同队白名单 / 跨队拒绝 / text 非空≤4000 → FileInbox 落盘 →
+ *  agent-message 事件 → 回执;from()/knownRecipients()/teamId() 经闭包注入。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -59,16 +59,22 @@ test('合法投递:落盘 jsonl(from/to/text)+ 事件载荷 deepEqual + 回执�
   }
 });
 
-test('to 校验:未知收件人拒(INVALID_ARG,含活名单文案);lead 恒可达', async () => {
+test('to 校验:未知名拒(INVALID_ARG, not a live member);lead 恒可达', async () => {
   const tmp = tmpdir('sunshinex-tb-msgtool-2-');
   try {
     const inbox = new FileInbox(path.join(tmp, 'inbox'));
     const events: SessionEvent[] = [];
-    const tool = makeSendMessageTool({ inbox, onEvent: (e) => events.push(e), knownRecipients: () => ['w1', 'w2'], from: () => 'lead' });
+    const tool = makeSendMessageTool({
+      inbox,
+      onEvent: (e) => events.push(e),
+      knownRecipients: () => ['w1', 'w2'],
+      from: () => 'lead',
+      teamId: () => 'team-main',
+    });
     await assert.rejects(
       tool.executor({ to: 'ghost', text: 'hi' }),
-      (e: unknown) => isInvalidArg(e) && e.message.includes('unknown recipient: ghost') && e.message.includes('live: lead, w1, w2'),
-      '未知 to 应 INVALID_ARG 且文案含活名单',
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message to ghost: not a live member of team team-main',
+      '未知 to 应 INVALID_ARG 且文案为 not a live member',
     );
     // lead 直达(knownRecipients 不含 lead 也合法——'lead' 恒可达)
     const out = (await tool.executor({ to: 'lead', text: 'to main' })) as { stdout: string };
@@ -115,8 +121,10 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     // teammate 面 knownRecipients(harness registryFactory 同款):lead + 其余活名(排己)
     const msgTool = makeSendMessageTool({
       inbox,
-      knownRecipients: () => ['lead', ...team.aliveNames().filter((n) => n !== 'w2')],
+      knownRecipients: () => team.aliveNames().filter((n) => n !== 'w2'),
       from: () => 'w2',
+      teamId: () => 'team-a',
+      recipientTeamId: (n) => (team.aliveNames().includes(n) ? 'team-a' : undefined),
     });
     const face = deriveTeammateRegistry(base, board, msgTool);
     assert.ok(face.get('send_message') !== undefined, 'teammate 面应含 send_message');
@@ -129,7 +137,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     // 排己:自发(to=自己)不在白名单 → INVALID_ARG
     await assert.rejects(
       msgTool.executor({ to: 'w2', text: 'self' }),
-      (e: unknown) => isInvalidArg(e) && e.message.includes('unknown recipient: w2'),
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message to w2: not a live member of team team-a',
       'teammate 面不得给自己发消息',
     );
     // teammate 面发给 lead/他队友合法,from 注入为 teammate 名
@@ -137,6 +145,38 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     assert.match(out.stdout, /delivered to lead/);
     const rec = JSON.parse(fs.readFileSync(path.join(tmp, 'inbox', 'lead.jsonl'), 'utf8').trim()) as { from: string };
     assert.equal(rec.from, 'w2', '落档 from 来自注入器(teammate 名)');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('跨队 to 拒绝 cannot send_message across teams;同队与 lead 放行且不落跨队档', async () => {
+  const tmp = tmpdir('sunshinex-tb-msgtool-cross-');
+  try {
+    const inbox = new FileInbox(path.join(tmp, 'inbox'));
+    const tool = makeSendMessageTool({
+      inbox,
+      knownRecipients: () => ['w2'],
+      from: () => 'w1',
+      teamId: () => 'team-a',
+      recipientTeamId: (name) => (name === 'w1' || name === 'w2' ? 'team-a' : name === 'w9' ? 'team-b' : undefined),
+    });
+    await assert.rejects(
+      tool.executor({ to: 'w9', text: 'cross' }),
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message across teams',
+      '跨队收件人应拒绝',
+    );
+    assert.equal(fs.existsSync(path.join(tmp, 'inbox', 'w9.jsonl')), false, '拒绝不得落档');
+    await assert.rejects(
+      tool.executor({ to: 'ghost', text: 'nope' }),
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message to ghost: not a live member of team team-a',
+    );
+    const same = (await tool.executor({ to: 'w2', text: 'same team' })) as { stdout: string };
+    assert.match(same.stdout, /^message m1 delivered to w2$/);
+    const lead = (await tool.executor({ to: 'lead', text: 'report' })) as { stdout: string };
+    assert.match(lead.stdout, /delivered to lead/);
+    const rec = JSON.parse(fs.readFileSync(path.join(tmp, 'inbox', 'w2.jsonl'), 'utf8').trim()) as { from: string; text: string };
+    assert.deepEqual([rec.from, rec.text], ['w1', 'same team']);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -15,6 +15,7 @@ import * as path from 'path';
 import { Harness } from './index';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 import { makeSendMessageTool } from '../taskboard/message-tools';
+import { teammateSendTargets } from '../taskboard/teammate';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 
@@ -139,6 +140,63 @@ test('e2e teammate→lead:派生面直测 send_message → lead.jsonl 落档(fro
     assert.deepEqual(ev!.payload, { messageId: rec.id, from: 'w1', to: 'lead', text: 'done with prep' });
     assert.equal(ev!.ts, rec.ts, '事件 ts 与落档消息 ts 同源');
     // fork 子面无 send_message(L2 身份专属):已由 teammate-spawn.test.ts 钉住(L2 T3 评审附带 1),引注不重复
+  } finally {
+    cleanup(h, tmp, restore);
+  }
+});
+
+test('e2e 同队消息进接收方链;跨队拒绝;lead 可投任一存活成员;位点落盘', async () => {
+  const tmp = tmpdir('sunshinex-msg-e2e-team-');
+  const restore = pinEnv(tmp);
+  let h: Harness | undefined;
+  try {
+    const model = new CountingAdapter();
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
+    const teamA = h.agentTeams.create('alpha');
+    const teamB = h.agentTeams.create('beta');
+    assert.ok(teamA.ok, `create alpha 应成功:${teamA.ok ? '' : teamA.error.message}`);
+    assert.ok(teamB.ok, `create beta 应成功:${teamB.ok ? '' : teamB.error.message}`);
+    const teamAId = teamA.value.teamId;
+    const teamBId = teamB.value.teamId;
+    for (const [teamId, name] of [[teamAId, 'w1'], [teamAId, 'w2'], [teamBId, 'w9']] as const) {
+      const sp = await h.tools.execute('create_teammate', { teamId, name, prompt: `worker ${name}` }, h.safety);
+      assert.ok(sp.ok && sp.value.exitCode === 0, `spawn ${name} 应成功:${JSON.stringify(sp)}`);
+    }
+    const face = deriveTeammateRegistry(
+      h.tools,
+      h.taskboard,
+      makeSendMessageTool({
+        inbox: h.inbox,
+        from: () => 'w1',
+        ...teammateSendTargets(h.team, teamAId, 'w1'),
+      }),
+    );
+    const cross = await face.execute('send_message', { to: 'w9', text: 'nope' }, h.safety);
+    assert.equal(cross.ok, false, '跨队应拒绝');
+    assert.equal(cross.ok ? '' : cross.error.message, 'cannot send_message across teams');
+    assert.equal(fs.existsSync(path.join(tmp, 'teams', 'main', 'inbox', 'w9.jsonl')), false, '跨队拒绝不得落档');
+
+    const lead = await h.tools.execute('send_message', { to: 'w9', text: 'lead ping' }, h.safety);
+    assert.ok(lead.ok && lead.value.exitCode === 0, `lead 可投给任一存活成员:${JSON.stringify(lead)}`);
+
+    const same = await face.execute('send_message', { to: 'w2', text: 'same team note' }, h.safety);
+    assert.ok(same.ok && same.value.exitCode === 0, `同队投递应成功:${JSON.stringify(same)}`);
+    assert.match(same.value.stdout, /^message m1 delivered to w2$/);
+
+    const created = h.taskboard.create({ teamId: teamAId, title: 'M2', spec: 'do M2', assignee: 'w2' });
+    assert.ok(created.ok, `create 应成功:${JSON.stringify(created)}`);
+    const taskId = created.value.taskId;
+    const digested = await until(() => h!.taskboard.snapshot().tasks[taskId]?.status === 'success');
+    assert.ok(digested, 'w2 应消化指派任务');
+    const hit = model.chats.find((c) => c.includes(`Task ${taskId}:`));
+    assert.ok(hit, '接收方链应进入模型');
+    assert.ok(hit.includes('msg:m1 [message from w1] same team note'), `链尾应含同队消息行,实际:${hit.slice(0, 400)}`);
+    assert.ok(
+      hit.indexOf('msg:m1 [message from w1] same team note') < hit.indexOf(`Task ${taskId}:`),
+      '消息行应先于 Task 行',
+    );
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'teams', 'inbox-cursors.json'), 'utf8')) as Record<string, number>;
+    assert.ok((saved.w2 ?? 0) > 0, 'w2 消费位点应落盘');
   } finally {
     cleanup(h, tmp, restore);
   }

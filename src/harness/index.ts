@@ -26,7 +26,8 @@ import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
 import { AgentTeamRegistryStore, TeamStore } from '../taskboard/store';
 import { AgentTeamRegistry } from '../taskboard/team-registry';
-import { TeamRegistry, Teammate } from '../taskboard/teammate';
+import { TeamRegistry, Teammate, teammateSendTargets } from '../taskboard/teammate';
+import { InboxCursorStore } from '../taskboard/inbox-cursors';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 import { makeSendMessageTool } from '../taskboard/message-tools';
 import { FileInbox } from '../taskboard/file-inbox';
@@ -299,8 +300,10 @@ export class Harness {
     // 同点注入 TaskBoard 派发路由(T2 接缝 team?:TeamRegistry)
     this.team = new TeamRegistry();
     // FileInbox 装配（P2 agent-message,T2）:teams/main/inbox 与任务板同 team 目录族;构造零 IO
-    // （send 才惰性建档）,与 taskboard.init 的空板零物化纪律一致
-    this.inbox = new FileInbox(path.join(resolveDataDir(base), 'teams', 'main', 'inbox'));
+    // （send 才惰性建档）,与 taskboard.init 的空板零物化纪律一致。消费位点与 inbox 同 teams 根。
+    const teamsRoot = path.join(resolveDataDir(base), 'teams');
+    this.inbox = new FileInbox(path.join(teamsRoot, 'main', 'inbox'));
+    const inboxCursors = new InboxCursorStore(path.join(teamsRoot, 'inbox-cursors.json'));
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
     // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_board/get_task)。
@@ -342,17 +345,17 @@ export class Harness {
             // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_message
             // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
             inbox: this.inbox,
+            inboxCursors,
             ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
             registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
               b,
               this.taskboard,
-              // teammate 面 send_message（T2 双面之二）:收件人 = lead + 其余活名（排己——不自发）,
-              // from = teammate 名;事件经 onEvent 直达装配层（TUI 即时呈现/落档同轨）
+              // teammate 面 send_message:同队存活(排己);lead 由工具恒放行。from = teammate 名
               makeSendMessageTool({
                 inbox: this.inbox,
                 ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-                knownRecipients: () => ['lead', ...this.team.aliveNames().filter((n) => n !== name)],
                 from: () => name,
+                ...teammateSendTargets(this.team, teamId, name),
               }),
             ),
           },
@@ -375,7 +378,6 @@ export class Harness {
     // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;
     // external-cli 执行体(T5):claude code stream-json 适配,board 侧 executorHint 'external-cli' 路由接管
     // (无环:executors/external-cli 只依赖 sandbox/tasks/types/executor 接口,零 board 反向引用)
-    const teamsRoot = path.join(resolveDataDir(base), 'teams');
     this.agentTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot));
     this.taskboard = new TaskBoard({
       store: new TeamStore(path.join(teamsRoot, 'main')),

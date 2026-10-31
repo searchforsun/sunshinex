@@ -14,6 +14,7 @@ import type { ToolRegistry } from '../harness/tools';
 import type { TaskRegistry } from '../harness/tasks';
 import type { StorageAdapter } from '../storage/adapter';
 import type { Inbox } from './inbox';
+import type { InboxCursorStore } from './inbox-cursors';
 import { dispatchTag, isUserAbort, type TaskBoard } from './board';
 import type { BoardTask } from './model';
 
@@ -41,6 +42,8 @@ export interface TeammateDeps {
   /** agent 间消息收件箱(T3 agent-message 回合边界注入):worker 每轮 execute 前 drainInbox——
    *  poll 本名新消息,按 msg-id 链前缀去重后以 note 行 append own chain;缺省无 inbox = 零行为变化 */
   inbox?: Inbox;
+  /** 消费位点落盘(<teams>/inbox-cursors.json)。缺省只保持进程内位点 */
+  inboxCursors?: InboxCursorStore;
 }
 
 /** teammate 注册表:帽可配(缺省 DEFAULT_MAX_TEAMMATES,SUNSHINEX_MAX_TEAMMATES 覆盖)+ 名字索引 + 存活聚合(派发路由的退化判据) */
@@ -72,6 +75,13 @@ export class TeamRegistry {
     return false;
   }
 
+  /** 存活成员的 teamId;已停或未注册为 undefined */
+  teamIdOf(name: string): string | undefined {
+    const t = this.teammates.get(name);
+    if (t === undefined || t.stopped) return undefined;
+    return t.teamId;
+  }
+
   /** 单停(幂等:Teammate.stop 自身幂等,未注册静默) */
   stop(name: string): void {
     this.teammates.get(name)?.stop();
@@ -81,9 +91,24 @@ export class TeamRegistry {
     for (const t of this.teammates.values()) t.stop();
   }
 
-  aliveNames(): string[] {
-    return [...this.teammates.values()].filter((t) => !t.stopped).map((t) => t.name);
+  aliveNames(teamId?: string): string[] {
+    return [...this.teammates.values()]
+      .filter((t) => !t.stopped && (teamId === undefined || t.teamId === teamId))
+      .map((t) => t.name);
   }
+}
+
+/** teammate 面 send_message 的收件闭包:同 teamId 存活成员(排己);lead 由工具内恒放行 */
+export function teammateSendTargets(team: TeamRegistry, teamId: string, self: string): {
+  knownRecipients: () => string[];
+  teamId: () => string;
+  recipientTeamId: (name: string) => string | undefined;
+} {
+  return {
+    knownRecipients: () => team.aliveNames(teamId).filter((n) => n !== self),
+    teamId: () => teamId,
+    recipientTeamId: (name) => team.teamIdOf(name),
+  };
 }
 
 /** 长驻执行体:一次装配跨任务存续;kick 起 claim 循环单飞消化未指派任务,runTask 承接指派路由 */
@@ -105,9 +130,8 @@ export class Teammate {
   /** 指派队列(executeOne 派发路由入队):单 worker 每轮先取此队、空则 board.claim——指派与自主认领
    *  统一单飞,同一时刻至多一个 execute 在飞(own ctx / Reactor seed 串行不变量,2026-10-06 复审裁定) */
   private assignedQueue: BoardTask[] = [];
-  /** inbox 消费位点(Ruling 2 内存态):已消费的最大 ts;poll 取严格大于此值——至少一次投递的读侧。
-   *  重启归零后重放由 msg-id 链前缀去重兜底(注入幂等 §7.3) */
-  private inboxCursor = 0;
+  /** inbox 消费位点:已消费的最大 ts;poll 取严格大于此值。构造时从 inboxCursors 读回,drain 推进后写回 */
+  private inboxCursor: number;
 
   constructor(opts: { name: string; framing: string; teamId: string; deps: TeammateDeps }) {
     this.name = opts.name;
@@ -116,6 +140,7 @@ export class Teammate {
     this.deps = opts.deps;
     this.ctx = new ContextManager(opts.deps.root, opts.deps.store);
     this.taskTimeoutMs = opts.deps.taskTimeoutMs ?? 30 * 60 * 1000;
+    this.inboxCursor = opts.deps.inboxCursors?.load(opts.name) ?? 0;
   }
 
   /** 已停观测(TeamRegistry.hasAlive / executeOne 派发路由判据) */
@@ -163,10 +188,9 @@ export class Teammate {
     }
   }
 
-  /** 回合边界消息注入(T3):poll 本名 ts 严格大于位点的消息,逐条按 `msg:<id> ` 前缀扫 own chain
-   *  已含该行则跳过(去重),否则以 note 行 append 链尾——消息行进链不进事件(消费面 = 模型上下文)。
-   *  Ruling 2:cursor 内存态 + msg-id 链前缀去重 = 至少一次 + 注入幂等(§7.3);append 恒在链尾、
-   *  既有前缀不动 = §9.3 缓存友好。返回本轮注入条数。 */
+  /** 回合边界消息注入:poll 本名 ts 严格大于位点的消息,逐条按 `msg:<id> ` 前缀扫 own chain
+   *  已含该行则跳过,否则以 note 行 append 链尾。位点推进后写入 inboxCursors,重启不重复灌链。
+   *  append 恒在链尾。返回本轮注入条数。 */
   private drainInbox(): number {
     if (this.deps.inbox === undefined) return 0;
     const msgs = this.deps.inbox.poll(this.name, this.inboxCursor);
@@ -186,6 +210,7 @@ export class Teammate {
       injected += 1;
     }
     this.inboxCursor = Math.max(this.inboxCursor, ...msgs.map((m) => m.ts));
+    this.deps.inboxCursors?.save(this.name, this.inboxCursor);
     return injected;
   }
 
