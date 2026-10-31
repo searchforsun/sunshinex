@@ -63,7 +63,7 @@ export function TodoCardsTab({ batches, conn, sessionId }: TodoCardsTabProps): J
           disabled={refreshing}
           onClick={refresh}
         >
-          <RefreshCw size={13} strokeWidth={1.75} />
+          <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
         </button>
       </div>
       <div className="todo-cards" aria-label="todo cards">

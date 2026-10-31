@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot } from 'lucide-react';
+import { Bot, RefreshCw } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
@@ -34,6 +34,9 @@ export interface TaskBoardTabProps {
   readonly onReview?: (taskId: string, approved: boolean) => void;
   /** G14.176 create_task 行点开的定位信号:ref=任务 id 或标题;nonce 变更即滚动+高亮对应行 */
   readonly focus?: { ref: string; nonce: number } | null;
+  /** 顶部刷新钮(2026-10-31 用户裁定):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影;
+   *  onRefresh 返回 Promise,钮在此期间转圈。缺省=旧连接/测试桩,钮不渲染 */
+  readonly onRefresh?: () => Promise<void>;
 }
 
 /** 批次切分间隔:相邻创建时刻超过该值即视为新一轮任务的卡片(ms) */
@@ -176,8 +179,22 @@ function TaskCard({
 }
 
 
-export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onReview, focus }: TaskBoardTabProps): JSX.Element {
+export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onReview, focus, onRefresh }: TaskBoardTabProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /** 刷新钮转圈(2026-10-31):在途自转,落定即停;重入禁 */
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = (): void => {
+    if (refreshing || onRefresh === undefined) return;
+    setRefreshing(true);
+    void onRefresh().catch(() => {}).finally(() => setRefreshing(false));
+  };
+  const bar = onRefresh !== undefined && (
+    <div className="insight-bar tb-board-bar">
+      <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={refreshing ? t('Refreshing…', '刷新中…') : t('Refresh', '刷新')} disabled={refreshing} onClick={refresh}>
+        <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
+      </button>
+    </div>
+  );
   // G14.176 定位高亮:nonce 变更→按 id/标题找行→滚动居中+flash 高亮(1.8s 退场)
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
@@ -198,16 +215,21 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
   const groups = useMemo(() => groupTasks(tasks), [tasks]);
   if (tasks.length === 0) {
     return (
-      <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('Task board is empty', '任务板为空')}</p>
-          <p className="board-empty-hint">{t('Tasks appear here once agents create them.', '智能体创建任务后会显示在这里。')}</p>
+      <div className="insight-tab">
+        {bar}
+        <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
+          <div className="board-empty-state" role="status">
+            <p className="board-empty-title">{t('Task board is empty', '任务板为空')}</p>
+            <p className="board-empty-hint">{t('Tasks appear here once agents create them.', '智能体创建任务后会显示在这里。')}</p>
+          </div>
         </div>
       </div>
     );
   }
   return (
-    <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
+    <div className="insight-tab">
+      {bar}
+      <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
       {[...groups].reverse().map((group) => (
         <TaskCard
           key={group[0]?.id ?? `group-${group.length}`}
@@ -219,6 +241,7 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
           onReview={onReview}
         />
       ))}
+      </div>
     </div>
   );
 }

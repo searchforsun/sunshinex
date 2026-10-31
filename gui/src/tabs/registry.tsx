@@ -54,6 +54,9 @@ export interface TabServices {
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名/站标 → 标签 params;App 落 patchTabMeta) */
   readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
+  /** 任务板顶部刷新(2026-10-31):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影。
+   *  可选(旧装配/测试桩缺省,任务板刷新钮不渲染) */
+  readonly refreshBoard?: (sessionId: string) => Promise<void>;
 }
 
 export interface TabRenderProps {
@@ -173,6 +176,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         focus={p.services.taskFocus}
         onOpenAgent={(label, agentTitle) => p.openTab('agent', { label, agentTitle })}
         onReview={p.services.onReview}
+        onRefresh={p.services.refreshBoard === undefined ? undefined : () => p.services.refreshBoard!(p.sessionId)}
       />
     ),
   },

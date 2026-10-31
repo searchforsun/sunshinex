@@ -26,21 +26,27 @@ type CtxBreakdown = {
 
 type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string; body: string };
 
-function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; error: string; reload: () => void } {
+function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; error: string; reload: () => void; fetching: boolean } {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
   const [tick, setTick] = useState(0);
+  const [fetching, setFetching] = useState(true);
   useEffect(() => {
     let alive = true;
+    setFetching(true);
     fn().then(
       (d) => {
         if (alive) {
           setData(d);
           setError('');
+          setFetching(false);
         }
       },
       (err: unknown) => {
-        if (alive) setError(err instanceof Error ? err.message : String(err));
+        if (alive) {
+          setError(err instanceof Error ? err.message : String(err));
+          setFetching(false);
+        }
       },
     );
     return () => {
@@ -48,7 +54,7 @@ function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; e
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
-  return { data, error, reload: () => setTick((v) => v + 1) };
+  return { data, error, reload: () => setTick((v) => v + 1), fetching };
 }
 
 const pct = (tokens: number, total: number): string => `${Math.round((tokens / Math.max(1, total)) * 100)}%`;
@@ -64,12 +70,12 @@ const fmtDur = (ms: number): string => {
 
 /** 上下文面板:/context 结构化面——分段条 + 总量/窗口余量 */
 export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
-  const { data, error, reload } = useFetch<CtxBreakdown>(() => conn.sessionContext(sessionId), [conn, sessionId]);
+  const { data, error, reload, fetching } = useFetch<CtxBreakdown>(() => conn.sessionContext(sessionId), [conn, sessionId]);
   return (
     <div className="insight-tab">
       <div className="insight-bar">
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={13} strokeWidth={1.75} />
+          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -102,7 +108,7 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
  *  运行时长停表扣 pausedMs(暂停段不计时);点击展开命令详情与结果(服务端输出尾读,结果区最大
  *  高度内部滚动)。运行中时长 1s 实时跳 */
 export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
-  const { data, error, reload } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
+  const { data, error, reload, fetching } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // 复制回显(2026-10-31 用户裁定「与正文中复制按钮一致」):useCopyFeedback 单点+Check 图标交换
   // ——status=最近一次复制结果,ltRid 锚定到触发行(多行面板仅命中行显 √)
@@ -148,7 +154,7 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={13} strokeWidth={1.75} />
+          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -248,7 +254,7 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
  *  ⑤批量勾选入口退役(「去掉批量删除入口」)——单行删除二段确认保留 */
 export function MemoryTab({ conn, root, focus }: { conn: Connection; root: string; focus?: { slug: string; nonce: number } }): JSX.Element {
   const fetcher = useCallback(() => conn.memoryList(root), [conn, root]);
-  const { data, error, reload } = useFetch<MemoryRow[]>(fetcher, [conn, root]);
+  const { data, error, reload, fetching } = useFetch<MemoryRow[]>(fetcher, [conn, root]);
   const [deleting, setDeleting] = useState(false);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   /** 删除二段确认(共享 ConfirmDeleteButton 同语义):首击武装(红),3s 内再击执行,超时解除 */
@@ -286,7 +292,7 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={13} strokeWidth={1.75} />
+          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -369,7 +375,7 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
  *  展开=深色底固定高纵md渲染(mem 同款类) */
 export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: string }): JSX.Element {
   const fetcher = useCallback(() => conn.skillsGroups(root), [conn, root]);
-  const { data, error, reload } = useFetch(fetcher, [conn, root]);
+  const { data, error, reload, fetching } = useFetch(fetcher, [conn, root]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   /** 删除二段确认(与记忆行同语义):首击武装(红),3s 内再击执行,超时解除 */
   const [armId, setArmId] = useState<string | null>(null);
@@ -389,7 +395,7 @@ export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: strin
     <div className="insight-tab">
       <div className="insight-bar">
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={13} strokeWidth={1.75} />
+          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
