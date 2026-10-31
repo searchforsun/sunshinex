@@ -343,7 +343,7 @@ export function builtinTools(
       },
       name: 'edit',
       description:
-        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file first when unsure of the exact current text; file creation and whole-content replacement belong to write; edits outside the trusted roots go through permission checks (approval or rejection)',
+        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally against the CURRENT file content and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file with the read tool BEFORE editing — always when editing a file for the first time in this run or when editing many files in one batch (read each target first, then edit), and again whenever the file may have changed since your last read; working from memory is the main cause of old_string-not-found failures; file creation and whole-content replacement belong to write; edits outside the trusted roots go through permission checks (approval or rejection)',
       category: 'write',
       display: { verb: 'EDIT', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
@@ -363,7 +363,7 @@ export function builtinTools(
           throw new CodedToolError('INVALID_ARG', `file not found: ${target} — edit modifies an existing file; use write to create one`);
         }
         const count = content.split(oldString).length - 1;
-        if (count === 0) throw new CodedToolError('INVALID_ARG', `old_string not found in ${target} — pass the exact current text (read the file first if unsure)`);
+        if (count === 0) throw new CodedToolError('INVALID_ARG', `old_string not found in ${target} — the file content differs from what you assumed; read the file now and base old_string on its current text, do not retry from memory`);
         if (count > 1 && !replaceAll) throw new CodedToolError('INVALID_ARG', `old_string matches ${count} locations in ${target} — include more surrounding context to make it unique, or pass replaceAll=true`);
         // 字面替换单点（split/join 规避 String.replace 的 $ 模式语义）；replaceAll 只放宽唯一性要求，替换实现同一份
         const newContent = content.split(oldString).join(newString);
