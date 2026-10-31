@@ -96,11 +96,9 @@ describe('DiffPanel:Monaco DiffEditor 装载(G14.5 data-* 面)', () => {
 });
 
 describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () => {
-  it('输入路径 Enter 加载:conn.readFile(sessionId, path) → 高亮渲染(hljs class 在场)', async () => {
+  it('initialPath 加载(2026-10-30 空态输入行/加载钮卸载,入口=跳转面):conn.readFile(sessionId, path) → 高亮渲染(hljs class 在场)', async () => {
     const conn = connOf();
-    render(<Files conn={conn} sessionId="s1" />);
-    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'src/a.ts' } });
-    fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
+    render(<Files conn={conn} sessionId="s1" initialPath="src/a.ts" />);
     await waitFor(() => expect(conn.readFile).toHaveBeenCalledWith('s1', 'src/a.ts'));
     await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
     expect(document.querySelector('.mock-monaco-editor')!.getAttribute('data-language')).toBe('typescript'); // G14.5 monaco 面
@@ -112,11 +110,8 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
     // 逐次发号的可控应答:两次 readFile 各持一个 resolver,后发先至再旧迟到
     const resolvers: Array<(f: FileResp) => void> = [];
     const conn = connOf({ readFile: vi.fn(() => new Promise<FileResp>((res) => { resolvers.push(res); })) });
-    render(<Files conn={conn} sessionId="s1" />);
-    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'a.unknown' } });
-    fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
-    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: 'b.unknown' } });
-    fireEvent.keyDown(screen.getByLabelText('file path input'), { key: 'Enter' });
+    const { rerender } = render(<Files conn={conn} sessionId="s1" initialPath="a.unknown" />);
+    rerender(<Files conn={conn} sessionId="s1" initialPath="b.unknown" />); // 跳转面连发两次(initialPath 变更即拉)
     expect(resolvers).toHaveLength(2);
     // 新请求先应答(unknown 扩展→plaintext 原文透传,断言可读)
     await act(async () => {
@@ -159,9 +154,7 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
 
   it('403 错误态:readFile 拒绝 → 错误消息示出(含 status)', async () => {
     const conn = connOf({ readFile: vi.fn(() => Promise.reject(new Error('/session/s1/file?path=../x -> 403'))) });
-    render(<Files conn={conn} sessionId="s1" />);
-    fireEvent.change(screen.getByLabelText('file path input'), { target: { value: '../x' } });
-    fireEvent.click(screen.getByRole('button', { name: /加载|^Load$/ }));
+    render(<Files conn={conn} sessionId="s1" initialPath="x" />);
     await waitFor(() => expect(screen.getByText('/session/s1/file?path=../x -> 403')).toBeDefined());
     expect(document.querySelector('.files-view')).toBeNull(); // 无内容面
   });

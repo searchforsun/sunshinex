@@ -8,6 +8,7 @@ import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import { Chat } from './pages/Chat';
+import { DirOpenerContext } from './pages/chat/md-render';
 import { ChatScrollbar } from './pages/chat/ChatScrollbar';
 import type { ChatSink } from './pages/Chat';
 import { ProjectMenu } from './sidebar/ProjectMenu';
@@ -665,7 +666,10 @@ function AppShell(): JSX.Element {
     return () => ro.disconnect();
   }, [settingsOpen, page, tabState.collapsed, openSessionId]);
 
+  // 目录打开上下文(2026-10-30):正文目录芯片 → openDirectoryPath(在册项目左侧树定位展开;区外按
+  //  左上角配置的打开方式外开)——Chat/tabs 全子树可达
   return (
+    <DirOpenerContext.Provider value={openDirectoryPath}>
     <div
       className={[
         IS_SHELL ? 'sx-shell sx-desktop' : 'sx-shell',
@@ -911,6 +915,7 @@ function AppShell(): JSX.Element {
                       services,
                       uid: t.uid,
                       openTab: openTabInSession,
+                      openFilePath: openFileTab, // 目录回抛走左树定位/配置打开方式外开(2026-10-30)
                       closeTab: closeTabInSession,
                       startSideChat,
                       ptyIdFor,
@@ -975,6 +980,7 @@ function AppShell(): JSX.Element {
         if (opening && sidebarFloating) setMenuClosed(true);
       }} />
     </div>
+    </DirOpenerContext.Provider>
   );
 }
 

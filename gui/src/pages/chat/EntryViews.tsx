@@ -13,7 +13,7 @@ import type { ChatEntry } from '../../chat-reducer';
 import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
-import { MdImage } from './md-render';
+import { MdImage, useDirOpener } from './md-render';
 import { MD_IMAGE_SRC_RE } from './md-image-syntax';
 import { hasUnclosedFence, streamMdCut } from './stream-md';
 
@@ -331,7 +331,8 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
 
 export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
   const isDir = useDirResolver();
-  const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir), [onOpenFile, isDir]);
+  const openDir = useDirOpener();
+  const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir, openDir ?? undefined), [onOpenFile, isDir, openDir]);
   const { status: copied, copy: copyText } = useCopyFeedback();
   const [rewindOpen, setRewindOpen] = useState(false);
   const copy = (): void => {
@@ -575,7 +576,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建);
   // isDir=目录解析(目录链接显黄目录;context 缺省恒 false——代理转录等无会话索引面按文件)
   const isDir = useDirResolver();
-  const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined), isDir), [onOpenFile, isDir]);
+  const openDir = useDirOpener();
+  const mdc = useMemo(() => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { onOpenDirectory: openDir ?? undefined }), [onOpenFile, isDir, openDir]);
   const streaming = entry.streaming === true;
   // 块缓冲切分:安全空行为界(未闭合围栏不切断)——前段=已完成块,尾段=在途块
   let headMd = '';
@@ -587,8 +589,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   }
   const mermaidDraft = streaming && hasUnclosedFence(tailMd);
   const mdcTail = useMemo(
-    () => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { mermaidDraft }),
-    [onOpenFile, isDir, mermaidDraft],
+    () => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { mermaidDraft, onOpenDirectory: openDir ?? undefined }),
+    [onOpenFile, isDir, mermaidDraft, openDir],
   );
   return (
     <div

@@ -8,7 +8,7 @@ import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { monacoCodeFontOptions } from '../font-preset';
 import { t } from '../i18n';
-import { normRel, OPEN_DEFAULT_KEY } from '../ui-util';
+import { isAbsPath, normRel, OPEN_DEFAULT_KEY } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { SessionRowMenu } from '../sidebar/session-row-menu';
@@ -78,7 +78,6 @@ function resolveHref(mdPath: string, href: string): string {
 }
 
 export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAsk }: FilesProps): JSX.Element {
-  const [pathInput, setPathInput] = useState(initialPath ?? '');
   const [load, setLoad] = useState<LoadState>(EMPTY_LOAD);
   /** G7 请求序守卫：发号单调节点——发请求 ++,应答落定时号不匹配即过期丢弃 */
   const requestIdRef = useRef(0);
@@ -152,7 +151,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
   );
   const fetchFile = useCallback(
     (p: string): void => {
-      const target = normRel(p);
+      // 绝对路径原样(跨项目树开签);相对才走 normRel——避免 posix /ws/… 被剥头成相对 404
+      const target = isAbsPath(p) ? p.trim() : normRel(p);
       if (target === '') return;
       const rid = ++requestIdRef.current;
       setLoad((prev) => ({ file: prev.file, error: null, loading: true }));
@@ -160,8 +160,11 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
         (f) => {
           if (rid !== requestIdRef.current) return; // 过期应答:丢弃
           if (f.type === 'directory') {
-            // 目录无预览(directory 页签已退役,2026-10-29 用户裁定「不要兼容」):回落空态引导
+            // 目录无预览(directory 页签已退役):回落空态;有 onOpenFile 则尾斜杠回抛→App 左侧树/外开
             setLoad(EMPTY_LOAD);
+            if (onOpenFile !== undefined) {
+              onOpenFile(/[\\/]$/.test(target) ? target : `${target}/`);
+            }
             return;
           }
           setLoad({ file: f, error: null, loading: false });
@@ -172,7 +175,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
         },
       );
     },
-    [conn, sessionId],
+    [readFileOf, onOpenFile],
   );
 
   /** initialPath 到场自动加载（跳转面：依赖含 initialPath——已挂载时新跳转同样触发）。
@@ -487,23 +490,9 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
           {load.loading && <div className="files-loading" role="status">{t('Loading…', '加载中…')}</div>}
         </>
       ) : (
+        /* 2026-10-30 用户裁定「目录占位提示卡卸载」:空态只余加载/错误面(目录点击已分流左侧树
+         *  定位/外开,不再落此;常驻输入行同卸——注释口径「无常驻输入行/加载钮」本就如此) */
         <div className="files-empty">
-          <p className="files-hint">{t('Open a file from the directory tree or a tool row', '从目录树或工具行打开文件')}</p>
-          <div className="files-bar">
-            <input
-              aria-label="file path input"
-              className="files-path"
-              value={pathInput}
-              placeholder={t('Relative to the workspace root, e.g. src/main.ts', '相对会话根或绝对路径,如 src/main.ts')}
-              onChange={(e) => setPathInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) fetchFile(pathInput);
-              }}
-            />
-            <button type="button" className="files-load" onClick={() => fetchFile(pathInput)}>
-              {t('Load', '加载')}
-            </button>
-          </div>
           {load.loading && <div className="files-loading" role="status">{t('Loading…', '加载中…')}</div>}
           {load.error !== null && (() => {
             /* 2026-10-27 用户裁定:错误面友好化——常见状态码人话标题,原始报文退居小字详情 */

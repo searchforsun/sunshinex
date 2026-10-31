@@ -121,6 +121,15 @@ export function useDirResolver(): (p: string) => boolean {
   return useContext(DirResolverContext);
 }
 
+/** 目录打开上下文(2026-10-30 用户裁定「正文点目录直接开左侧菜单对应目录并自动展开;目录不在
+ *  左侧项目则按左上角配置的打开方式外开」):App 注入 openDirectoryPath(在册项目→左侧树定位
+ *  展开;否则按 OPEN_DEFAULT_KEY 资源管理器/vscode… 外开)。null=宿主无目录面(代理转录等),
+ *  目录芯片回落 onOpenFile(file 签→目录探测回抛链) */
+export const DirOpenerContext = createContext<((p: string) => void) | null>(null);
+export function useDirOpener(): ((p: string) => void) | null {
+  return useContext(DirOpenerContext);
+}
+
 /** 正文 md 图片解析上下文(2026-10-26 正文支持显示图片):宿主(Chat/Files)注入绑定会话的
  *  readFile——图片语法 ![alt](路径) 的**工作区路径**(相对/绝对/file:// 剥头)经它读成
  *  {type:'image',mime,data} 转 dataURL;web/data 形态不走解析直通。null=宿主无会话面
@@ -211,9 +220,15 @@ export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; on
  *  file 标签;web 链接 2026-10-25 起点击走系统默认浏览器(preventDefault+openExternalUrl——Electron
  *  内默认行为是开自家子窗);mailto/锚点/无 onOpenFile 回落原生 <a>(onOpenFile 缺省守卫=用户气泡
  *  工厂原语义,正文工厂签名本就必传,守卫对其为防御性) */
-function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: string) => void; isDir?: (p: string) => boolean }): JSX.Element {
+function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: string) => void; isDir?: (p: string) => boolean; onOpenDirectory?: (p: string) => void }): JSX.Element {
   const href = props.href ?? '';
-  if (props.onOpenFile === undefined || href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
+  const onOpenFile = props.onOpenDirectory !== undefined || props.isDir !== undefined ? (p: string): void => {
+    // 目录分流(2026-10-30):isDir 命中或尾斜杠(既定内部标记,与 openFileTab/拖拽载荷同口径)
+    // → onOpenDirectory(左侧树定位/外开);否则文件原链
+    if (props.isDir?.(p) === true || /[\/]$/.test(p)) props.onOpenDirectory?.(p);
+    else props.onOpenFile?.(p);
+  } : props.onOpenFile;
+  if (onOpenFile === undefined || href === '' || /^(mailto:|#)/i.test(href)) return <a href={href}>{props.children}</a>;
   if (/^(https?:|\/\/)/i.test(href)) {
     return (
       <a
@@ -239,12 +254,12 @@ function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: 
       data-tip={decoded}
       onClick={(e) => {
         e.stopPropagation();
-        props.onOpenFile?.(decoded);
+        onOpenFile(decoded);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.stopPropagation();
-          props.onOpenFile?.(decoded);
+          onOpenFile(decoded);
         }
       }}
     >
@@ -254,7 +269,7 @@ function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: 
   );
 }
 
-export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined, isDir?: (p: string) => boolean): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
+export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefined, isDir?: (p: string) => boolean, onOpenDirectory?: (p: string) => void): Record<string, (props: { children?: ReactNode; className?: string }) => JSX.Element> {
   return {
     ...mdComponentsPlain,
     // 用户气泡围栏：不走 CodeBlock/Mermaid 格式化卡，只保留相对空白位置（pre-wrap）
@@ -267,7 +282,7 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
     },
     // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点)——渲染单件 MdLinkA
     a(props: { href?: string; children?: ReactNode }) {
-      return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir}>{props.children}</MdLinkA>;
+      return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir} onOpenDirectory={onOpenDirectory}>{props.children}</MdLinkA>;
     },
   };
 }
@@ -275,6 +290,8 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
 export type MdComponentsOpts = {
   /** 围栏未闭合:mermaid 流式 live 试渲(节流成图随流生长,半截语法保留上一帧/软源码) */
   mermaidDraft?: boolean;
+  /** 目录打开面(2026-10-30):目录芯片(isDir/尾斜杠)点它 → 左侧树定位展开/区外按打开方式外开 */
+  onOpenDirectory?: (p: string) => void;
 };
 
 /** G14.125 md 组件面工厂(导出——Files 页 md 预览复用,传各自 onOpenFile):pre 分流
@@ -313,7 +330,7 @@ export function buildMdComponents(
     },
     // G14.124 md 原生超链接 → 文件引用(web 链接新窗系统默认浏览器)——渲染单件 MdLinkA
     a(props: { href?: string; children?: ReactNode }) {
-      return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir}>{props.children}</MdLinkA>;
+      return <MdLinkA href={props.href} onOpenFile={onOpenFile} isDir={isDir} onOpenDirectory={opts?.onOpenDirectory}>{props.children}</MdLinkA>;
     },
   };
 }

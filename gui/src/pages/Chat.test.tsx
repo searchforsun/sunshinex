@@ -45,6 +45,7 @@ import * as highlightMock from '../highlight';
 import { Chat, expandFileRefs, rankFileHits, renderMentionSpans, tokenDeleteRange } from './Chat';
 import type { ReactElement, ReactNode } from 'react';
 import { mermaidCacheClear } from '../Mermaid';
+import { DirOpenerContext } from './chat/md-render';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
 import type { SessionEvent } from '../../../src/types';
@@ -1203,6 +1204,29 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     } finally {
       renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
     }
+  });
+
+  it('正文目录芯片分流(2026-10-30 用户裁定「点目录=左侧菜单对应目录定位展开;区外按打开方式外开」):尾斜杠芯片→DirOpenerContext(opener),文件芯片不走 opener', async () => {
+    const opener = vi.fn();
+    render(
+      <DirOpenerContext.Provider value={opener}>
+        <Chat
+          conn={connOf([{ seq: 2, ts: DAY1, kind: 'assistant', md: '结构:[src](src/) 与 [pom](pom.xml)'}])}
+          sessionId="s1"
+          connState="open"
+          onBack={() => {}}
+          sinkRef={sinkRef}
+        />
+      </DirOpenerContext.Provider>,
+    );
+    await flushed();
+    const srcChip = screen.getByText('src').closest('.file-link');
+    expect(srcChip).not.toBeNull();
+    fireEvent.click(srcChip!);
+    expect(opener).toHaveBeenCalledTimes(1);
+    expect(opener).toHaveBeenCalledWith('src/');
+    fireEvent.click(screen.getByText('pom.xml').closest('.file-link')!); // 文件芯片:不开 opener(无 onOpenFile 面,零动作)
+    expect(opener).toHaveBeenCalledTimes(1);
   });
 
   it('2026-10-25 裁定:在途尾块恒进解析器(实时渲染从上层统一定,不枚举结构前缀)——代码块/行内代码/引用行/散文逐 token 成形', async () => {

@@ -76,6 +76,10 @@ export interface TabRenderProps {
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
   /** G14.2xx 关自身页签(file 页签探测到目录:移交 directory 页签后自关——文件夹不作标签) */
   readonly closeTab: (uid: string) => void;
+  /** 2026-10-30 目录分流(用户裁定「正文点目录=左侧目录树定位展开;区外目录按左上角配置的打开
+   *  方式外开」):App openFileTab——尾斜杠/目录回抛走 openDirectoryPath,file 照旧开签;缺省回落
+   *  openTab(直开 file 签,旧行为) */
+  readonly openFilePath?: (path: string) => void;
   /** G14.154 辅助对话带问启动(fork+开辅助标签;文件选区「在辅助对话中提问」通道) */
   readonly startSideChat?: (insert?: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
@@ -121,6 +125,11 @@ export interface TabTypeEntry {
  * 终端(nonce 多实例)+ web(by url 判重多实例——裸开档 key='' 聚焦既有,标签体内输入开档) */
 import { Chat } from '../pages/Chat';
 
+/** onOpenFile 统一走 App openFilePath(尾斜杠/目录回抛→左侧树定位/配置打开方式外开;2026-10-30
+ *  此前直开 file 签,目录回抛在 Files 页签内打转=空态卡)——缺省回落 openTab 直开 */
+const fileTabOf = (p: TabRenderProps): ((path: string) => void) =>
+  p.openFilePath ?? ((path: string) => p.openTab('file', { path }));
+
 export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'file',
@@ -137,7 +146,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         sessionId={p.sessionId}
         initialPath={p.params.path}
         root={p.root}
-        onOpenFile={(path) => p.openTab('file', { path })}
+        onOpenFile={fileTabOf(p)}
         onSideAsk={(text: string) => p.startSideChat?.(text)}
       />
     ),
@@ -150,7 +159,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     // by callId 多实例:同 write 调用重开=聚焦,异 callId 并存
     resolveKey: (params) => params.callId ?? '',
     singleton: false,
-    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={(path) => p.openTab('file', { path })} />,
+    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={fileTabOf(p)} />,
   },
   {
     id: 'tasks',
@@ -197,7 +206,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         task={p.params.task}
         // G14.2xx b 工具行/正文回调链与主对话同构(App openTabInSession 同一开签口径——
         // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_task 名定位任务板)
-        onOpenFile={(path) => p.openTab('file', { path })}
+        onOpenFile={fileTabOf(p)}
         onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
         onOpenAgent={(label2, agentTitle, task2) => p.openTab('agent', { label: label2, agentTitle, task: task2 })}
         onOpenTask={p.services.onOpenTask}
