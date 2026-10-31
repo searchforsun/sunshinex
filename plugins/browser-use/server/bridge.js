@@ -85,8 +85,43 @@ const profile = isolated === true
   ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-browser-')), 'profile')
   : userDataDirArg ?? path.join(os.tmpdir(), 'sunshinex-browser-profile'); // 持久缺省:登录态保留
 const headlessArgs = mode === 'builtin' ? ['--headless=new'] : []; // builtin=侧栏即唯一视图,无弹窗(2026-11-01 用户裁定)
+
+// 常驻复用(2026-11-01 用户报障「每发一条消息弹一个浏览器」):run 收口 mcpClose 树杀 bridge,
+// 浏览器若为其子进程即连坐=每消息起灭。两件保常驻:①browser detached 独立起(脱离桥的树,
+// 树杀不连坐)②spawn 前先探 meta 实例:活着(CDP /json/version 应答)即不重启直接复用端点。
+function probeAlive(meta) {
+  try {
+    const port = /:(\d+)\//.exec(meta.ws);
+    if (port === null) return false;
+    const r = spawnSync('node', ['-e', "fetch('http://127.0.0.1:" + port[1] + "/json/version',{signal:AbortSignal.timeout(1500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"], { timeout: 3000 });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function writeMeta(ws, pid) {
+  if (metaPath === undefined) return;
+  try {
+    fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+    fs.writeFileSync(metaPath, JSON.stringify({ ws, pid, mode, startedAt: Date.now() }));
+  } catch { /* 尽力落盘 */ }
+}
+
+const existingMeta = metaPath !== undefined && fs.existsSync(metaPath)
+  ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
+  : undefined;
+if (existingMeta !== undefined && typeof existingMeta.ws === 'string' && probeAlive(existingMeta)) {
+  // 复用:直接注端点给 server;server 退场不动浏览器(常驻,下条消息继续用)
+  writeMeta(existingMeta.ws, existingMeta.pid ?? 0);
+  const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });
+  server.on('exit', () => process.exit(0));
+  return;
+}
+
 const browser = spawn(exe, [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'], {
   stdio: ['ignore', 'ignore', 'pipe'],
+  detached: true, // 常驻:脱离桥进程树(mcpClose 树杀 bridge/server 不连坐浏览器)
 });
 let settled = false;
 const fail = (msg) => {
@@ -100,15 +135,10 @@ browser.stderr.on('data', (d) => {
   const m = /DevTools listening on (ws:\/\/\S+)/.exec(String(d));
   if (m === null || settled) return;
   settled = true;
-  if (metaPath !== undefined) {
-    try {
-      fs.mkdirSync(path.dirname(metaPath), { recursive: true });
-      fs.writeFileSync(metaPath, JSON.stringify({ ws: m[1], pid: browser.pid, mode, startedAt: Date.now() }));
-    } catch { /* 尽力落盘 */ }
-  }
+  writeMeta(m[1], browser.pid);
+  browser.unref(); // 常驻:与桥解耦(mcpClose 树杀不连坐)
   const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', m[1]], { stdio: 'inherit' });
-  const killBrowser = () => { try { spawnSync('taskkill', ['/pid', String(browser.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { try { browser.kill('SIGKILL'); } catch { /* ignore */ } } };
-  server.on('exit', () => { killBrowser(); process.exit(0); });
+  server.on('exit', () => process.exit(0)); // 浏览器不随杀(常驻,下条消息经 probeAlive 复用)
   browser.on('exit', () => { try { server.kill(); } catch { /* ignore */ } process.exit(0); });
 });
 browser.on('error', (e) => fail(`browser launch failed: ${e.message}`));
