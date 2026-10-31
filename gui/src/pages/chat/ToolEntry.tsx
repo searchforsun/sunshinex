@@ -629,6 +629,15 @@ export const ToolEntryView = memo(function ToolEntryView({
       </div>
     );
   } else if (isWrite) {
+    // 拦截态先行(2026-10-31 用户实测「守卫拦截了但没显示报错」):失败(write/edit 被拒/NOT_READ/
+    // STALE_READ 等)渲染 err 色错误横幅替代 diff——尝试的替换对未落盘,当 diff 显是误导
+    if (entry.result?.ok === false && !executing) {
+      body = (
+        <div className="tool-detail" role="alert">
+          <div style={{ color: 'var(--err)', fontSize: 12, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>✗ {resultText}</div>
+        </div>
+      );
+    } else {
     // 快照兜底列(404/失败/加载期):write=整稿新内容(input.content);edit=本次替换对(oldString→newString)
     const fallbackOld = toolName === 'edit' && typeof input.oldString === 'string' ? input.oldString : undefined;
     const fallbackNew =
@@ -670,6 +679,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         </div>
       </div>
     );
+    }
   } else if (toolName === 'skill') {
     body = (
       <div className="tool-md">
