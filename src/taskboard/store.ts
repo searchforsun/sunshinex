@@ -1,6 +1,65 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { applyBoardEvent, BoardEvent, emptyBoard, TaskBoardState } from './model';
+/** AgentTeam 注册表落盘记录(spec §2.1) */
+export interface AgentTeamRecord {
+  teamId: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface AgentTeamStoreBackend {
+  load(): AgentTeamRecord[];
+  save(teams: AgentTeamRecord[]): void;
+}
+
+/** AgentTeam 清单持久化：与 per-team events 同 `<dataDir>/teams/` 根，单文件 registry.json */
+export class AgentTeamRegistryStore implements AgentTeamStoreBackend {
+  private dirMade = false;
+
+  constructor(private readonly teamsRoot: string) {}
+
+  private registryPath(): string {
+    return path.join(this.teamsRoot, 'registry.json');
+  }
+
+  private ensureDir(): void {
+    if (this.dirMade) return;
+    fs.mkdirSync(this.teamsRoot, { recursive: true });
+    this.dirMade = true;
+  }
+
+  load(): AgentTeamRecord[] {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(this.registryPath(), 'utf8');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(isAgentTeamRecord);
+    } catch {
+      return [];
+    }
+  }
+
+  save(teams: AgentTeamRecord[]): void {
+    this.ensureDir();
+    const target = this.registryPath();
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(teams), 'utf8');
+    fs.renameSync(tmp, target);
+  }
+}
+
+function isAgentTeamRecord(v: unknown): v is AgentTeamRecord {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.teamId === 'string' && typeof o.name === 'string' && typeof o.createdAt === 'number';
+}
 
 /** team 目录 event sourcing(spec §7.2):events.jsonl 为协调状态唯一真相源(append-only 单行原子),
  *  board.json 为物化快照缓存(tmp+rename 原子写,FileStore 先例)——P1 写不读,载入走全量重放
