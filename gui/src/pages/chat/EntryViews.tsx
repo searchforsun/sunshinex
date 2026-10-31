@@ -554,7 +554,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   const name = entry.name ?? '';
   const done = entry.result !== undefined;
   const failed = done && entry.result?.ok === false;
-  const text = done ? localizeNotice(entry.result?.text ?? '') : `${commandRunningLabel(name)}…`;
+  const text = done ? localizeNotice(entry.result?.text ?? '') : commandRunningLabel(name); // 运行态由波纹承载,不加 …(2026-10-31 裁定)
   // 统一样式语言(2026-10-31 用户裁定「不要 ✓;成功=灰色叹号系统提示,失败=红色叹号+背景框」):
   // 成功/运行中=entry-notice(Info 灰);失败=entry-error(AlertCircle err 色+err 底框,与 error 条同款)
   return (

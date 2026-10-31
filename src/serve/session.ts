@@ -898,8 +898,18 @@ export class SessionRuntime {
    *  stopReason=interrupted 收束后 finally 清锁。plan 流程在途（规划轮/裁决点挂卡/执行段）同为
    *  中断面：共用 abortPlanFlowAndSettle 单点（信号中止+挂卡拒绝回填+有界等收束,fire-and-forget——
    *  收尾可观测面由流程自身的 aborted 回执承载;settle 等待的强制的只在 reset/teardown/disarm） */
+  /** 命令执行中止句柄(2026-10-31 用户裁定「命令运行态可中断,中断后显示命令中断提示」):runCommand
+   *  在途期挂载,interrupt 无 run 在途时转中止命令;收尾清空 */
+  commandAbort?: AbortController;
+
   interrupt(): SessionInterruptResult {
-    if (!this.current && !this.planFlowRunning) return { ok: false, error: 'no run in progress' };
+    if (!this.current && !this.planFlowRunning) {
+      if (this.commandAbort !== undefined && !this.commandAbort.signal.aborted) {
+        this.commandAbort.abort();
+        return { ok: true };
+      }
+      return { ok: false, error: 'no run in progress' };
+    }
     this.current?.abort.abort();
     void this.abortPlanFlowAndSettle();
     return { ok: true };

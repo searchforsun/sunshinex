@@ -41,23 +41,55 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
   const notice = (text: string): void => {
     resultText = text; // 捕获为工具结果载荷(不再单独落 notice——三态行即回执面)
   };
+  // 命令中断(2026-10-31 用户裁定「命令运行态可中断,后台统一返回对应命令的中断信息」):中止信号
+  // 挂 Session.commandAbort,interrupt 端点无 run 在途即中止命令;中断即刻落终态回执(命令名专属文案,
+  // 灰色系统提示——用户主动止,非失败),命令体迟到结果不再二次落行;体内在 apply 前检查信号=零副作用回滚
+  const ac = new AbortController();
+  s.commandAbort = ac;
+  let settled = false;
+  const emitInterrupted = (): void => {
+    if (settled) return;
+    settled = true;
+    s.pump({ type: 'tool-result', text: interruptedLabel(cmd), payload: { callId, status: 'completed', ok: true, interrupted: true }, ts: Date.now() });
+  };
+  ac.signal.addEventListener('abort', emitInterrupted, { once: true });
   try {
-    const r = await runCommandBody(s, line, cmd, notice);
-    s.pump({ type: 'tool-result', text: resultText, payload: { callId, status: 'completed', ok: true }, ts: Date.now() });
+    const r = await runCommandBody(s, line, cmd, notice, ac.signal);
+    if (!settled) {
+      settled = true;
+      s.pump({ type: 'tool-result', text: resultText, payload: { callId, status: 'completed', ok: true }, ts: Date.now() });
+    }
     return r;
   } catch (err) {
-    s.pump({
-      type: 'tool-result',
-      text: err instanceof Error ? err.message : String(err),
-      payload: { callId, status: 'failed', ok: false },
-      ts: Date.now(),
-    });
+    if (ac.signal.aborted) {
+      emitInterrupted(); // 体内因信号抛出=中断收口(非失败),HTTP 面照常 ok
+      return 'ok';
+    }
+    if (!settled) {
+      settled = true;
+      s.pump({
+        type: 'tool-result',
+        text: err instanceof Error ? err.message : String(err),
+        payload: { callId, status: 'failed', ok: false },
+        ts: Date.now(),
+      });
+    }
     throw err;
+  } finally {
+    ac.signal.removeEventListener('abort', emitInterrupted);
+    if (s.commandAbort === ac) s.commandAbort = undefined;
   }
 }
 
+/** 命令中断文案(命令名专属;GUI 系统提示行直显) */
+function interruptedLabel(cmd: string): string {
+  if (cmd === '/compact') return t('Context compaction interrupted', '上下文压缩已中断');
+  if (cmd === '/plan') return t('Planning interrupted', '规划已中断');
+  return t(`${cmd} interrupted`, `${cmd} 已中断`);
+}
+
 /** 命令体(三态包装拆出):notice=结果捕获(不再旁路落 notice 行) */
-async function runCommandBody(s: SessionRuntime, line: string, cmd: string, notice: (text: string) => void): Promise<CommandRunResult> {
+async function runCommandBody(s: SessionRuntime, line: string, cmd: string, notice: (text: string) => void, signal?: AbortSignal): Promise<CommandRunResult> {
 
   if (cmd === '/status') {
     const snap = s.snapshotResponse();
@@ -74,7 +106,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     // 压缩协调单点(与 Reactor 自动压缩同链路):补链参与 → 压缩 → 摘要 → 折链(TUI /compact 同形移植)
     // 过程回执先行(2026-10-31 用户裁定「发送后正文显示压缩中说明」):压缩成功才落完成回执,
     // 中途失败/中断无完成行=链面自动回滚语义(runCompaction apply 前零副作用)
-    notice(t('Compacting context…', '上下文压缩中…'));
+    notice(t('Compacting context', '上下文压缩中')); // 运行态由波纹承载,不用 … 标识(2026-10-31 裁定)
     const ctx = s.runtime.harness.context;
     const chainItems = chainToHistoryItems(ctx.chainView());
     const items = ctx.assemble(chainItems);
@@ -86,6 +118,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       chainFoldedCount: chainItems.length,
       summaryModel: s.runtime.harness.model,
       ...(focus.length > 0 ? { focus } : {}),
+      ...(signal !== undefined ? { signal } : {}), // 中断信号:apply 前检查,中断即零副作用回滚
     });
     const after = ctx.window.estimate(ctx.assemble()).used;
     notice(

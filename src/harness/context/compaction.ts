@@ -153,7 +153,7 @@ export interface CompactionHost {
 export async function runCompaction(
   cm: CompactionHost,
   items: ContextItem[],
-  opts: { summaryTokenBudget: number; rereadTokenBudget: number; chainFoldedCount?: number; summaryModel?: ModelAdapter; focus?: string },
+  opts: { summaryTokenBudget: number; rereadTokenBudget: number; chainFoldedCount?: number; summaryModel?: ModelAdapter; focus?: string; signal?: AbortSignal },
 ): Promise<RunCompactionResult> {
   let traceLine: string | undefined;
   const folded = opts.chainFoldedCount ?? 0;
@@ -168,6 +168,8 @@ export async function runCompaction(
     }
   }
   const chunks = await cm.window.compact(cm.foldableItems(items), { summaryTokenBudget: opts.summaryTokenBudget });
+  // 中断检查点(2026-10-31 /compact 可中断):摘要已算但未 apply——此处抛出=上下文零副作用回滚
+  if (opts.signal?.aborted === true) throw new Error('compaction interrupted');
   const via = await cm.applyCompaction(chunks, {
     rereadTokenBudget: opts.rereadTokenBudget,
     summaryTokenBudget: opts.summaryTokenBudget,

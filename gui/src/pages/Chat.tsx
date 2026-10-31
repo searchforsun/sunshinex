@@ -250,7 +250,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   });
   const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat });
 
-  const running = chat.status === 'running';
+  /** 命令执行中(2026-10-31 用户裁定「命令运行态=可插入的运行态,可中断」):命令三态系统行未收终态
+   *  (result 未到)即运行中——与 run 同权进 running(composer 显停止钮/插入占位,Enter 走 steer 排队;
+   *  停止钮 → interrupt 端点 → daemon 中止命令) */
+  const commandRunning = chat.entries.some((en) => en.kind === 'tool' && typeof en.name === 'string' && en.name.startsWith('/') && en.result === undefined);
+  const running = chat.status === 'running' || commandRunning;
   /** 浏览器导航跟随(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
    *  工具条落条即上抛目标 url 开 web 页签;lastNavRef 免对同一条目逐帧重开 */
   const lastNavRef = useRef('');
@@ -320,9 +324,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     // tool 条亦收(命令三态行无 run-open;防御:任何非 user 新条即表示 daemon 已响应)
     if (last !== undefined && (last.kind === 'run' || last.kind === 'error' || last.kind === 'tool')) setAwaitModelSince(null);
   }, [chat.entries, awaitModelSince]);
-  /** 命令执行中(2026-10-31 用户裁定「运行态时发送按钮是运行状态并拦发」):命令三态系统行未收
-   *  终态(result 未到)=运行中——与等待模型待态同权进 sendLoading/sendBlocked */
-  const commandRunning = chat.entries.some((en) => en.kind === 'tool' && typeof en.name === 'string' && en.name.startsWith('/') && en.result === undefined);
+
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   /** 图片附件(2026-10-26):composer 待发 dataURL 列(≤8 张)——粘贴/附件选择装载,send 发送即清;
@@ -443,7 +445,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     images: pendingImages,
     setImages: setPendingImages,
     onAccepted: () => setAwaitModelSince(Date.now()),
-    sendBlocked: awaitModelSince !== null || commandRunning,
+    sendBlocked: awaitModelSince !== null,
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
@@ -859,7 +861,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             interrupt={interrupt}
             connState={connState}
             seeding={seeding}
-            sendLoading={awaitModelSince !== null || commandRunning}
+            sendLoading={awaitModelSince !== null}
           />
         }
         />
