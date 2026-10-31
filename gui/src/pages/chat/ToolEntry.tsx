@@ -285,14 +285,16 @@ function ToolImageThumb({ src, onOpen }: { src: string; onOpen: (src: string) =>
       alive = false;
     };
   }, [src, loader]);
-  if (failed) return <ImageMissing name={src} />;
-  if (resolved === null) return <span style={{ width: 96, height: 96, display: 'inline-block', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)' }} aria-hidden="true" />;
+  if (failed) return <ImageMissing name={src} size={120} />;
+  if (resolved === null) return <span style={{ width: 120, height: 72, display: 'inline-block', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)' }} aria-hidden="true" />;
   return (
     <img
       src={resolved}
       alt={t('Tool image', '工具图片')}
       className="tool-image-thumb"
-      style={{ width: 96, height: 96, objectFit: 'cover' }}
+      /* 原始长宽比同比缩小(2026-10-31 用户裁定「保持原始长宽比,同比缩小,不超过工具行宽度」):
+         width/height auto + maxWidth 100% + maxHeight 240(与 ReadImageBody 展开体同口径) */
+      style={{ width: 'auto', height: 'auto', maxWidth: '100%', maxHeight: 240, objectFit: 'contain' }}
       onClick={() => onOpen(resolved)}
     />
   );
@@ -802,7 +804,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         {/* 回显带图(2026-10-30 用户裁定「回显也要显示截图的图片」):截屏类工具的截图在展开体
             结果后同样渲染——回显卡不只有参数/元数据,图片就近可看(缩略行同款,点击开灯箱) */}
         {entry.images !== undefined && entry.images.length > 0 && (
-          <div className="tool-images" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <div className="tool-images">
             {entry.images.map((src, i) => (
               <ToolImageThumb key={`${i}:${src.slice(-24)}`} src={src} onOpen={setLightbox} />
             ))}
