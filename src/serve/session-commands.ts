@@ -1,4 +1,5 @@
 import { chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
+import { removeLearnedSkill } from '../harness/skills';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
 import { resolveDataDir } from '../config/data-dir';
@@ -13,7 +14,7 @@ import type { SessionRuntime } from './session';
  *  planFlow 等共享化逐批入列,GET /commands 消费面置灰判定同步。 */
 
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
-export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan'] as const;
+export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan', '/skills-rm'] as const;
 
 export type CommandRunResult = 'ok' | 'unsupported' | 'busy';
 
@@ -150,6 +151,23 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
     notice(t('Session deleted', '已删除'));
     await s.teardown();
     purgeSession(dataDir, jid);
+    return 'ok';
+  }
+
+  if (cmd === '/skills-rm') {
+    // 学习技能删除(2026-10-31,GUI 学习技能页签删除钮同源 removeLearnedSkill):/skills-rm <id>
+    // 只作用于学习根(learnedSkillsDir(root)),project/user 用户资产不可达;TUI /skills-rm 同径
+    const id = line.trim().split(/\s+/).slice(1).join(' ').trim();
+    if (id.length === 0) {
+      notice(t('Usage: /skills-rm <id> — remove a learned skill from this workspace', '用法：/skills-rm <id>——删除本工作区的一个学习技能'));
+      return 'ok';
+    }
+    const r = removeLearnedSkill(s.root, id);
+    notice(
+      r === 'ok'
+        ? t(`Learned skill removed: ${id}`, `已删除学习技能：${id}`)
+        : t(`No learned skill '${id}' in this workspace`, `本工作区没有学习技能 '${id}'`),
+    );
     return 'ok';
   }
 

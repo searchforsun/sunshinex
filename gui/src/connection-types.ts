@@ -432,7 +432,7 @@ export type AgentsOpInput =
 export interface SkillsGroup {
   source: 'project' | 'user' | 'learned';
   project?: string;
-  skills: Array<{ id: string; name?: string; description?: string; shadowedBy?: string; sourceDir?: string }>;
+  skills: Array<{ id: string; name?: string; description?: string; shadowedBy?: string; sourceDir?: string; createdMs?: number }>;
 }
 
 /** PUT /settings/permissions/op 请求体（Task 16 单条目操作端点，Task 25 PermissionsPane 消费）：

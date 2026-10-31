@@ -364,13 +364,27 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
 }
 
 /** 学习技能面板(2026-10-31 用户裁定「侧栏增加学习技能页签,页签样式内容和记忆一致」):
- *  learned 源技能清单——行=Sparkles(与正文 [skills] 回显同件)+id+描述;展开=深色底固定高
- *  纵向滚动(mem 同款类);删除面不设(学习技能生命周期在 skills 管线/设置面管理) */
+ *  learned 源技能清单——行=Sparkles(与正文 [skills] 回显同件)+id+创建时间+删除(二段确认,
+ *  与记忆行同语言;只作用于学习根 learnedSkillsDir,project/user 用户资产不可达);
+ *  展开=深色底固定高纵md渲染(mem 同款类) */
 export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: string }): JSX.Element {
   const fetcher = useCallback(() => conn.skillsGroups(root), [conn, root]);
   const { data, error, reload } = useFetch(fetcher, [conn, root]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** 删除二段确认(与记忆行同语义):首击武装(红),3s 内再击执行,超时解除 */
+  const [armId, setArmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    if (armId === null) return;
+    const t = setTimeout(() => setArmId(null), 3000);
+    return () => clearTimeout(t);
+  }, [armId]);
   const learned = (data?.groups ?? []).filter((g) => g.source === 'learned').flatMap((g) => g.skills);
+  const remove = (id: string): void => {
+    if (root === '') return;
+    setDeleting(true);
+    conn.skillsRemove(root, id).then(reload).finally(() => setDeleting(false));
+  };
   return (
     <div className="insight-tab">
       <div className="insight-bar">
@@ -409,6 +423,26 @@ export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: strin
                 >
                   {s.id}
                 </span>
+                {/* 创建时间(2026-10-31 用户裁定「显示创建时间等」):birthtime 回退 mtime,缺省不列 */}
+                {s.createdMs !== undefined && <span className="mem-date">{new Date(s.createdMs).toISOString().slice(0, 10)}</span>}
+                <button
+                  type="button"
+                  className={`sx-changes-act mem-del${armId === s.id ? ' arm' : ''}`}
+                  aria-label={armId === s.id ? `confirm delete ${s.id}` : `delete ${s.id}`}
+                  data-tip={armId === s.id ? t('Click again to confirm', '再次点击确认') : t('Delete', '删除')}
+                  disabled={deleting}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (armId === s.id) {
+                      remove(s.id);
+                      setArmId(null);
+                    } else {
+                      setArmId(s.id);
+                    }
+                  }}
+                >
+                  <Trash2 size={13} strokeWidth={1.75} />
+                </button>
               </div>
               {expandedId === s.id && (
                 <div className="mem-detail">

@@ -615,6 +615,8 @@ export class GuiDaemon {
     // G8c T6 skills/memory-stats 面：三源分组清单（project 五根合并一组/user 全局/learned 工作区锚定；
     // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
     { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
+    // 学习技能删除面(2026-10-31 GUI 学习技能页签/TUI /skills-rm 共用)
+    { method: 'POST', path: '/settings/skills/rm', auth: true, run: async (req, res) => configHandlers.handleSkillsRemove(this.configIo, req, res) },
     { method: 'GET', path: '/settings/memory-stats', auth: true, run: async (req, res) => this.handleMemoryStatsGet(req, res) },
     // 2026-10-26 插件面：两级装载清单视图（loadEffectivePlugins 可视化，manifest/启用态/平台/装配
     // 摘要/语义键 config 逐行列示）+ settings 语义键 plugins.<id> 结构化写（含注释/畸形 409 引流

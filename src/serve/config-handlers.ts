@@ -33,6 +33,7 @@ import {
 // Task 15 mcp 写面：单条目操作（add/remove/enable/disable）+ 两级视图读面（approval 标注进响应）
 import { listMcpServers, removeMcpServer, setMcpServerEnabled, upsertMcpServer } from '../catalog/mcp';
 import { listSkills } from '../catalog/skills';
+import { removeLearnedSkill } from '../harness/skills';
 import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
 // Task 16 providers/permissions 写面：op 端点收口 catalog 单点（读面 GET /settings 同源 listProviders）
 import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../catalog/providers';
@@ -1115,6 +1116,33 @@ export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
   io.send(res, 200, {
     groups: enrichSkillsGroups(root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()], root, ['project', 'user', 'learned']),
   });
+}
+
+/** POST /settings/skills/rm {root, id}（2026-10-31 学习技能删除面,GUI 学习技能页签/TUI /skills-rm
+ *  共用单点）：root 必传(学习根=learnedSkillsDir(root) 工作区锚定);删除原语 removeLearnedSkill
+ *  只作用于学习根(id 规范校验防路径逃逸,project/user 用户资产物理不可达)。404=学习根无此 id
+ *  (含清理失败);200 {removed:id} */
+export async function handleSkillsRemove(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { root?: unknown; id?: unknown } | null;
+  if (typeof body?.root !== 'string' || body.root.length === 0) {
+    io.send(res, 400, { error: 'root required' });
+    return;
+  }
+  if (typeof body?.id !== 'string' || body.id.length === 0) {
+    io.send(res, 400, { error: 'id required' });
+    return;
+  }
+  const r = removeLearnedSkill(path.resolve(body.root), body.id);
+  if (r !== 'ok') {
+    io.send(res, 404, { error: `no learned skill '${body.id}'` });
+    return;
+  }
+  io.send(res, 200, { removed: body.id });
 }
 
 /** GET /settings/memory-stats?root=（G8c T6，Settings 页记忆概览）：root 在场 → memoryStats 主域

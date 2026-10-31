@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { SkillManifest } from '../types';
-import { createSkillsFacade, formatSkillsIndex, parseSkillFrontmatter, loadSkills, priorityChain, skillHeader } from './skills';
+import { createSkillsFacade, formatSkillsIndex, loadSkillsGrouped, parseSkillFrontmatter, loadSkills, priorityChain, removeLearnedSkill, skillHeader } from './skills';
 
 test('parseSkillFrontmatter：--- 块内 key: value 提取', () => {
   const m = parseSkillFrontmatter('---\nname: TUI 技能\ndescription: 终端交互\nversion: 1.2.0\n---\n正文');
@@ -330,6 +330,37 @@ test('插件 skills 同 id 遮蔽：项目根就近遮蔽插件根（最低优�
     assert.equal(hits[0].sourceRoot, path.join(root, '.sunshinex', 'skills', 'dup'), '命中项目根目录而非插件目录');
   } finally {
     restorePluginEnv(prevData, prevUser, prevHome);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('学习技能删除面(2026-10-31):removeLearnedSkill 只删学习根;createdMs 入 learned 分组行;id 校验防逃逸', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-rm-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(dir, '.data');
+  try {
+    fs.mkdirSync(path.join(dir, '.data', 'skills', 'learned-one'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.data', 'skills', 'learned-one', 'SKILL.md'), '---\nname: Learned One\n---\n正文');
+    // createdMs:loadSkillsGrouped learned 行携带(学习技能页创建时间列数据源)
+    const grouped = loadSkillsGrouped(dir).find((g) => g.source === 'learned')!;
+    assert.equal(grouped.skills.length, 1);
+    assert.ok((grouped.skills[0].createdMs ?? 0) > 0, 'learned 行带 createdMs(birthtime 回退 mtime)');
+    // 删除:ok 落盘真清(目录+SKILL.md 同殁);unknown=学习根无此 id
+    assert.equal(removeLearnedSkill(dir, 'learned-one'), 'ok');
+    assert.equal(fs.existsSync(path.join(dir, '.data', 'skills', 'learned-one')), false);
+    assert.equal(removeLearnedSkill(dir, 'learned-one'), 'unknown');
+    assert.equal(removeLearnedSkill(dir, 'nope'), 'unknown');
+    // 防路径逃逸:非规范 id(../ 与嵌路径)一律拒
+    assert.equal(removeLearnedSkill(dir, '../escape'), 'unknown');
+    assert.equal(removeLearnedSkill(dir, 'a/b'), 'unknown');
+    // project 组行不带 createdMs(仅学习沉淀带)
+    fs.mkdirSync(path.join(dir, '.sunshinex', 'skills', 'proj-skill'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.sunshinex', 'skills', 'proj-skill', 'SKILL.md'), '---\nname: P\n---\n正文');
+    const proj = loadSkillsGrouped(dir).find((g) => g.source === 'project')!;
+    assert.equal(proj.skills[0].createdMs, undefined);
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

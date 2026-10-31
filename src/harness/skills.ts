@@ -135,7 +135,7 @@ export interface SkillsGroup {
   /** 项目归属显示名(设置·技能页项目筛选面;scope=all 跨项目枚举时携带——project 组=当前项目,
    *  learned 组=沉淀时项目;user 组无归属不载) */
   project?: string;
-  skills: Array<{ id: string; name?: string; description?: string }>;
+  skills: Array<{ id: string; name?: string; description?: string; createdMs?: number }>;
 }
 
 /** 分组行投影：id 恒在，name/description 空串不透出（无 frontmatter 的技能行只含 id） */
@@ -147,13 +147,44 @@ function skillRow(m: SkillManifest): { id: string; name?: string; description?: 
   };
 }
 
+/** 条目目录创建时刻（2026-10-31 学习技能页「显示创建时间」）：birthtime 优先（win32 落盘可靠），
+ *  回退 mtime（跨平台拷贝丢出生时间）；stat 失败/无意义值 = 不透出（GUI 缺省不列） */
+function createdMsOf(dir: string, id: string): { createdMs?: number } {
+  try {
+    const st = fs.statSync(path.join(dir, id));
+    const ms = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    return Number.isFinite(ms) && ms > 0 ? { createdMs: ms } : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 学习技能删除（2026-10-31 GUI/TUI 删除面单点后端）：只作用于 learnedSkillsDir(root) 学习根
+ *  （学习沉淀=机器产物可删;project/user 技能=用户资产,目录物理上不在学习根=天然不可达）。
+ *  id 过 isValidSkillId 规范校验（防路径逃逸）;'unknown'=目录不存在/校验拒/清理失败（幂等安全） */
+export function removeLearnedSkill(root: string, id: string): 'ok' | 'unknown' {
+  if (!isValidSkillId(id)) return 'unknown';
+  const dir = path.join(learnedSkillsDir(root), id);
+  if (!fs.existsSync(dir)) return 'unknown'; // 学习根无此 id(含已删幂等)——rmSync force 对缺路径静默成功,须显式判
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    return 'unknown';
+  }
+  return fs.existsSync(dir) ? 'unknown' : 'ok';
+}
+
 /** 三源分组装载（G8c T6）：project 段=projectSkillDirs(root) 逆转序（.sunshinex 最优先）合并一组；
- *  user 段=userSkillsDir()（全局，root 无关）；learned 段=learnedSkillsDir(root)（工作区锚定） */
+ *  user 段=userSkillsDir()（全局，root 无关）；learned 段=learnedSkillsDir(root)（工作区锚定）+
+ *  createdMs（学习技能页创建时间列,2026-10-31） */
 export function loadSkillsGrouped(root: string): SkillsGroup[] {
   return [
     { source: 'project', skills: loadSkillsChain(projectSkillDirs(root).reverse()).map(skillRow) },
     { source: 'user', skills: loadSkillsChain([userSkillsDir()]).map(skillRow) },
-    { source: 'learned', skills: loadSkillsChain([learnedSkillsDir(root)]).map(skillRow) },
+    {
+      source: 'learned',
+      skills: loadSkillsChain([learnedSkillsDir(root)]).map(skillRow).map((r) => ({ ...r, ...createdMsOf(learnedSkillsDir(root), r.id) })),
+    },
   ];
 }
 
@@ -197,7 +228,8 @@ export function loadCrossProjectSkillGroups(root?: string): SkillsGroup[] {
         }
       }
     }
-    const learned = loadSkillsChain([path.join(domain, 'data', 'skills')]).map(skillRow);
+    const learnedDir = path.join(domain, 'data', 'skills');
+    const learned = loadSkillsChain([learnedDir]).map(skillRow).map((r) => ({ ...r, ...createdMsOf(learnedDir, r.id) }));
     if (learned.length > 0) {
       out.push({ source: 'learned', project: domRoot !== undefined ? path.basename(domRoot) : slug, skills: learned });
     }
