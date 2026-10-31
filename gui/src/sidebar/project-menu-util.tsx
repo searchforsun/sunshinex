@@ -241,7 +241,7 @@ export function SessionRow(props: {
       // 待确认优先于一切态(用户裁定「转圈图标显示成 ? 问题确认图标」):需要用户输入是当前
       // 最该被看见的状态,转圈/未读都让位;accent 色呼应可点链接语言
       <span className="sx-session-dot asking">
-        <CircleHelp size={12} strokeWidth={1.75} />
+        <CircleHelp size={16} strokeWidth={1.75} />
       </span>
     ) : props.running ? (
       <span className="sx-session-dot running" />

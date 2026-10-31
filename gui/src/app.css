@@ -2721,7 +2721,16 @@ input.sx-setting-input { width: 100%; }
 /* 会话行待确认「?」图标(2026-10-31 用户裁定「转圈图标显示成 ? 问题确认图标」):运行中遇
    ask/approval 挂起,转圈位换 CircleHelp(accent 色,呼应可点链接语言)。同槽复用:
    位置(left/top 各变体)沿 .sx-session-dot 既有规则,点面 Chrome 全重置 */
+/* ? 图标几何=置顶钮配方原样(2026-10-31 用户裁定「参考置顶图标位置,左右上下都居中」):
+   left 6/top 50%/translateY(-50%)/24px 盒 flex 双向居中——与 sx-pin-btn 逐字同几何,
+   calc(50% - 6px) 的字体度量漂移即根除;hover 行不淡出(? 是 hover 时最需要看见的状态) */
 .sx-session-dot.asking {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
   background: none;
   border: none;
   clip-path: none;
@@ -2729,6 +2738,11 @@ input.sx-setting-input { width: 100%; }
   align-items: center;
   justify-content: center;
   color: var(--accent);
+}
+.sx-session-row:hover .sx-session-dot.asking,
+.sx-pin-item:hover .sx-session-dot.asking,
+.sx-session-row:focus-within .sx-session-dot.asking {
+  opacity: 1;
 }
 
 /* 2026-10-29 全局可拖恢复(用户裁定「不能回退,就是要全局可拖;刚修完时 [|] 好用」)+抽屉态边界:
