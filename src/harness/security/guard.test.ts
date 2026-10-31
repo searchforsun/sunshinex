@@ -258,3 +258,21 @@ test('safety 真接线：plugins/computer-use 真 manifest 声明下 act（click
     rmSync(userRoot, { recursive: true, force: true });
   }
 });
+
+test('插件 act 类强制问线跨档位弹审批(2026-11-01 用户裁定「完全访问也要弹特殊确认」)', async () => {
+  const g = new SecurityGuard(new PolicyEngine(), 'full-access', ['computer-use']);
+  g.setMcpSafety({ 'computer-use': { act: ['app'] } });
+  const asked: string[] = [];
+  g.setAsker(async (req) => {
+    asked.push(req.subject);
+    return 'allow';
+  });
+  const d = await g.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
+  assert.equal(d.allowed, true, '用户放行即执行');
+  assert.equal(asked.length, 1, 'full-access 下仍弹审批(act 类任何档位不自动放行)');
+  // 拒绝路径:deny 落 COMMAND_DENIED rejected by user
+  g.setAsker(async () => 'deny');
+  const d2 = await g.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
+  assert.equal(d2.allowed, false);
+  assert.match(d2.allowed ? '' : d2.reason, /rejected by user/);
+});

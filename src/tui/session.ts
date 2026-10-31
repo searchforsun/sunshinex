@@ -428,7 +428,9 @@ export class SessionController {
     });
     this.autoAsker = opts.asker;
     // 终端化审批闭包迁拆分件 approval（挂起语义不变：guard ask → 挂起 → 裁决回填 → 继续）
-    if (opts.mode === 'acceptEdits') this.runtime.harness.security.setAsker(suspendAskerFor(this));
+    // 注入不限档(2026-11-01 同 GUI 侧裁定:插件 act 类强制问线任何档位都要弹审批;full-access
+    // 常规 ask 在 guard 层自动放行不经 asker,注入零档位副作用)
+    this.runtime.harness.security.setAsker(suspendAskerFor(this));
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
     if (opts.tier) this.state = { ...this.state, tier: opts.tier };
     if (opts.effort) this.state = { ...this.state, effort: opts.effort };

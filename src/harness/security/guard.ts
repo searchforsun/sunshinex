@@ -226,7 +226,7 @@ export class SecurityGuard {
       id: this.nextApprovalId(),
       kind: tool === 'Bash' ? 'command' : tool.startsWith('mcp__') ? 'mcp' : tool === 'WebFetch' ? 'webfetch' : tool === 'WebSearch' ? 'websearch' : 'write',
       subject,
-      reason: 'acceptEdits mode requires interactive confirmation',
+      reason: sync.reason, // 携原判定语(acceptEdits 交互面/插件 act 强制问线各自如实)
     };
     let d: ApprovalDecision;
     try {

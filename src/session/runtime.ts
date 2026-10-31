@@ -56,7 +56,10 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
   });
-  if (opts.mode === 'acceptEdits' && opts.onApproval) harness.security.setAsker(opts.onApproval);
+  // 审批注入不再限 acceptEdits(2026-11-01 用户裁定「完全访问也要弹特殊确认」):asker 只服务
+  // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
+  // full-access 的常规 ask 仍在 guard 层自动放行(不经 asker),注入无档位副作用
+  if (opts.onApproval) harness.security.setAsker(opts.onApproval);
   // 工具呈现表接线（D26/J1）：注册表 display 元数据下泄 TUI 呈现层（工具动词/代表字段随注册走，
   // harness 增改工具零跟表）；display 为纯呈现数据，不进模型侧 tools schema（SessionController 构造前）
   setToolDisplayMeta(harness.tools.displayMeta());

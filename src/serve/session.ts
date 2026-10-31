@@ -442,7 +442,10 @@ export class SessionRuntime {
    *  非 acceptEdits 视为拒绝兜底;ghost（run 已中止——interrupt/reset/delete 的 denyPending 回填发生在
    *  abort 时点,其后的迟到 asker 调用即幽灵）直接 deny 不入表不广播（G14.10） */
   private suspendApproval(req: ApprovalRequest): Promise<ApprovalDecision> {
-    if (this.isAborted() || !this.isAcceptEdits()) return Promise.resolve('deny');
+    // 档位门退役(2026-11-01 用户裁定):能到这里的审批只有两类——acceptEdits 交互面与插件 act 类
+    // 强制问线(full-access 常规 ask 在 guard 层已自动放行,不会到这);acceptEdits 门曾把 act 类的
+    // 审批帧整只吞成 deny(完全访问下 bottom 确认框不弹的根因)。ghost 窗守卫保留
+    if (this.isAborted()) return Promise.resolve('deny');
     return new Promise((resolve) => {
       const pid = this.opts.mintPid();
       this.pending.set(pid, { kind: 'approval', req, resolve });
