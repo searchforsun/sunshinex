@@ -166,7 +166,11 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
       )}
       {loadErr !== null && <div className="sx-changes-result err">{loadErr}</div>}
       {files.length === 0 && loadErr === null && (
-        <div className="sx-changes-empty">{t('No uncommitted changes', '没有未提交的变动')}</div>
+        /* 2026-10-31 用户裁定:空态与其他页签同款(board-empty-state 居中放大),顶贴小字退役 */
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No uncommitted changes', '没有未提交的变动')}</p>
+          <p className="board-empty-hint">{t('Working tree changes will appear here.', '工作区改动会显示在这里。')}</p>
+        </div>
       )}
       <div className="sx-changes-list">
         {files.map((f) => {

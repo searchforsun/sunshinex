@@ -1234,7 +1234,7 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     expect(document.querySelector('.sx-tab[data-title=\'a.ts\']')?.classList.contains('active')).toBe(true);
     // G14.109:DiffTab 统一 ChangesView(mock 无 sessionChanges → 可选链空变动集,空态文案)
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-changes')).not.toBeNull());
-    expect(document.querySelector('.sx-tabbody .sx-changes-empty')).not.toBeNull();
+    expect(document.querySelector('.sx-tabbody .board-empty-title')).not.toBeNull();
     // Chat 展开面仍走 fetchDiff(G7 既有,DiffLines 行级)
     await waitFor(() => expect(conn.diffCalls).toEqual([['s1', 'c1']]));
     unmount();
@@ -1281,7 +1281,7 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     fireEvent.click(toolRow('new.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/new.ts' }));
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-changes')).not.toBeNull());
-    expect(document.querySelector('.sx-tabbody .sx-changes-empty')).not.toBeNull(); // 空变动集兜底
+    expect(document.querySelector('.sx-tabbody .board-empty-title')).not.toBeNull(); // 空变动集兜底
     unmount();
   });
 });
@@ -1414,15 +1414,16 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     unmount();
   });
 
-  it('外开钮 → window.open(url, _blank, noopener,noreferrer) 断参', async () => {
+  it('外开钮 → window.open(url, _blank, noopener,noreferrer) 断参(2026-10-31 起走 ⋯ 菜单)', async () => {
     const { unmount } = await enterChat();
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     try {
       openWeb();
-      // 无 active:外开钮禁用(无可外开目标;G14.6 Simple Browser 形态恒驻工具行)
-      expect((screen.getByRole('button', { name: bi('Open in system browser', '在系统浏览器打开') }) as HTMLButtonElement).disabled).toBe(true);
+      // 无 active:菜单项禁用(无可外开目标;⋯ 菜单(更多操作)内两项均需已输入网址)
+      fireEvent.click(screen.getByRole('button', { name: bi('More actions', '更多操作') }));
+      expect((screen.getByRole('menuitem', { name: bi('Open in system browser', '在默认浏览器中打开') }) as HTMLButtonElement).disabled).toBe(true);
       submitUrl('example.com');
-      fireEvent.click(screen.getByRole('button', { name: bi('Open in system browser', '在系统浏览器打开') }));
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Open in system browser', '在默认浏览器中打开') }));
       expect(openSpy).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer');
       expect(openSpy).toHaveBeenCalledTimes(1);
     } finally {

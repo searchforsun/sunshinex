@@ -12,9 +12,9 @@ const base = {
 describe('TAB_REGISTRY(G8a 两类 + G8b terminal + G8d diff/agents/web)', () => {
   it('注册 file/diff/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,tasks/agents 单例,web 按 url 判重多实例', () => {
     expect(TAB_REGISTRY.map((e) => e.id)).toEqual([
-      'file', 'diff', 'tasks', 'agents', 'agent', 'bgtasks', 'memory', 'terminal', 'web', 'sidechat',
+      'file', 'diff', 'tasks', 'agents', 'agent', 'bgtasks', 'memory', 'learned', 'terminal', 'web', 'sidechat',
     ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子智能体只读页,菜单不列);
-    // directory 页签退役(2026-10-27 目录树挪入左菜单 dirview,注册表除名)
+    // 2026-10-31:+ learned(学习技能,memory 后邻位);directory 页签退役(2026-10-27 目录树挪入左菜单 dirview,注册表除名)
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');

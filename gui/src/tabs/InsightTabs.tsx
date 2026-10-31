@@ -177,27 +177,22 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
 }
 
 /** 记忆面板:/memory 清单(body 全文)+ /memory/rm 删除。
- *  G14.147 对标 diff 页交互:行点击展开详情(全文),删除=图标钮(单行 Trash/批量带计数)。
+ *  G14.147 对标 diff 页交互:行点击展开详情(全文),删除=行尾图标单删。
  *  2026-10-31 用户裁定显示优化:①行图标=Database(与正文 [memory] 回显同件) ②「project · 创建」
- *  元信息行退役 ③详情=深色底固定高,过高纵向滚动 ④focus(memoryFocus 下发)展开并滚至对应行 */
+ *  元信息行退役 ③详情=深色底固定高,过高纵向滚动 ④focus(memoryFocus 下发)展开并滚至对应行
+ *  ⑤批量勾选入口退役(「去掉批量删除入口」)——单行删除二段确认保留 */
 export function MemoryTab({ conn, root, focus }: { conn: Connection; root: string; focus?: { slug: string; nonce: number } }): JSX.Element {
   const fetcher = useCallback(() => conn.memoryList(root), [conn, root]);
   const { data, error, reload } = useFetch<MemoryRow[]>(fetcher, [conn, root]);
-  const [selected, setSelected] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
-  /** 删除二段确认(2026-10-31 用户裁定,共享 ConfirmDeleteButton 同语义):单行 armSlug/批量
-   *  armBatch——首击武装(红),3s 内再击执行,超时/换他钮解除 */
+  /** 删除二段确认(共享 ConfirmDeleteButton 同语义):首击武装(红),3s 内再击执行,超时解除 */
   const [armSlug, setArmSlug] = useState<string | null>(null);
-  const [armBatch, setArmBatch] = useState(false);
   useEffect(() => {
-    if (armSlug === null && !armBatch) return;
-    const t = setTimeout(() => {
-      setArmSlug(null);
-      setArmBatch(false);
-    }, 3000);
+    if (armSlug === null) return;
+    const t = setTimeout(() => setArmSlug(null), 3000);
     return () => clearTimeout(t);
-  }, [armSlug, armBatch]);
+  }, [armSlug]);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   useEffect(() => {
     if (focus === undefined || data === null) return;
@@ -205,14 +200,13 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
     const li = rowRefs.current.get(focus.slug);
     li?.scrollIntoView({ block: 'center' });
   }, [focus, data]);
-  const remove = (slugs: string[]): void => {
-    if (slugs.length === 0 || root === '') return;
+  const remove = (slug: string): void => {
+    if (root === '') return;
     setDeleting(true);
     conn
-      .removeMemory(root, slugs)
+      .removeMemory(root, [slug])
       .then(() => {
-        setSelected((s) => s.filter((x) => !slugs.includes(x)));
-        if (expandedSlug !== null && slugs.includes(expandedSlug)) setExpandedSlug(null);
+        if (expandedSlug === slug) setExpandedSlug(null);
         reload();
       })
       .finally(() => setDeleting(false));
@@ -229,31 +223,20 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
         >
           <RefreshCw size={13} strokeWidth={1.75} />
         </button>
-        {selected.length > 0 && (
-          <button
-            type="button"
-            className={`sx-changes-act${armBatch ? ' arm' : ''}`}
-            aria-label={armBatch ? 'confirm delete selected' : 'delete selected'}
-            data-tip={armBatch ? t('Click again to confirm', '再次点击确认') : `${t('Delete selected', '删除所选')} (${selected.length})`}
-            disabled={deleting || root === ''}
-            onClick={() => {
-              if (armBatch) {
-                remove(selected);
-                setArmBatch(false);
-              } else {
-                setArmBatch(true);
-                setArmSlug(null);
-              }
-            }}
-          >
-            <Trash2 size={13} strokeWidth={1.75} />
-            <span className="mem-count">{armBatch ? t('Confirm', '确认') : selected.length}</span>
-          </button>
-        )}
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
-      {root === '' && <p className="insight-empty">{t('Select a project to view memory', '选择项目后可查看记忆')}</p>}
-      {root !== '' && data !== null && data.length === 0 && <p className="insight-empty">{t('No persistent memory yet', '暂无持久记忆')}</p>}
+      {root === '' && (
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No project selected', '未选择项目')}</p>
+          <p className="board-empty-hint">{t('Select a project to view memory', '选择项目后可查看记忆')}</p>
+        </div>
+      )}
+      {root !== '' && data !== null && data.length === 0 && (
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No persistent memory yet', '暂无持久记忆')}</p>
+          <p className="board-empty-hint">{t('Memories saved by the agent will appear here.', '智能体保存的记忆会显示在这里。')}</p>
+        </div>
+      )}
       {root !== '' && data !== null && data.length > 0 && (
         <ul className="mem-list">
           {data.map((m) => (
@@ -266,15 +249,6 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
               }}
             >
               <div className="mem-rowline">
-                <label className="mem-check">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(m.slug)}
-                    onChange={(e) =>
-                      setSelected((s) => (e.target.checked ? [...s, m.slug] : s.filter((x) => x !== m.slug)))
-                    }
-                  />
-                </label>
                 {/* 行图标与正文 [memory] 回显同件(Database,2026-10-31 用户裁定「记忆的图标和
                     正文中的数据库图标一致」) */}
                 <Database size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
@@ -300,11 +274,10 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
                   onClick={(e) => {
                     e.stopPropagation();
                     if (armSlug === m.slug) {
-                      remove([m.slug]);
+                      remove(m.slug);
                       setArmSlug(null);
                     } else {
                       setArmSlug(m.slug);
-                      setArmBatch(false);
                     }
                   }}
                 >
@@ -341,8 +314,18 @@ export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: strin
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
-      {root === '' && <p className="insight-empty">{t('Select a project to view learned skills', '选择项目后可查看学习技能')}</p>}
-      {root !== '' && data !== null && learned.length === 0 && <p className="insight-empty">{t('No learned skills yet', '暂无学习技能')}</p>}
+      {root === '' && (
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No project selected', '未选择项目')}</p>
+          <p className="board-empty-hint">{t('Select a project to view learned skills', '选择项目后可查看学习技能')}</p>
+        </div>
+      )}
+      {root !== '' && data !== null && learned.length === 0 && (
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No learned skills yet', '暂无学习技能')}</p>
+          <p className="board-empty-hint">{t('Skills the agent learns will appear here.', '智能体学到的技能会显示在这里。')}</p>
+        </div>
+      )}
       {learned.length > 0 && (
         <ul className="mem-list">
           {learned.map((s) => (
