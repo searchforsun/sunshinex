@@ -172,6 +172,17 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
 
 /** 各工具执行中标签(G14.13):「正在…」双语;未知工具回落 正在执行 */
 const RUNNING_LABELS: Record<string, [string, string]> = {
+  // 斜杠命令三态行(2026-10-31 用户裁定「命令执行与工具行三态一致」):/cmd 名即工具名
+  '/compact': ['Compacting context', '上下文压缩中'],
+  '/status': ['Querying status', '查询状态'],
+  '/context': ['Inspecting context', '检查上下文'],
+  '/skills-rm': ['Removing learned skill', '删除学习技能'],
+  '/memory-on': ['Enabling memory', '开启记忆'],
+  '/memory-off': ['Disabling memory', '关闭记忆'],
+  '/archive': ['Archiving session', '归档会话'],
+  '/unarchive': ['Unarchiving session', '取消归档'],
+  '/delete': ['Deleting session', '删除会话'],
+  '/plan': ['Preparing plan', '准备计划'],
   read: ['Reading file', '正在读取文件'],
   write: ['Writing file', '正在写入'],
   edit: ['Editing file', '正在编辑'],

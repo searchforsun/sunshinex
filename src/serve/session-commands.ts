@@ -33,9 +33,31 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
   // 的气泡而不仅结果回执;user 事件走 pump 单点(kernel 归约→journal 行+WS 广播),不进模型上下文
   // (命令不调 appendInstructionLine,模型链零影响)
   s.pump({ type: 'user', text: line, ts: Date.now() });
-  // G14.95 notice 走 pump 单点(pump 已含 transcript 入列+WS 广播)——原只入快照不广播,
-  // GUI 实时面看不到命令回执(压缩/状态等)
-  const notice = (text: string): void => s.pump({ type: 'notice', text, ts: Date.now() });
+  // 命令执行三态(2026-10-31 用户裁定「与工具行三态一致」):tool-call 行=执行中(波纹),tool-result
+  // 行=完成/失败终态——同步命令不再只落孤立 notice;回执文本经 notice 捕获为结果载荷
+  const callId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  s.pump({ type: 'tool-call', text: cmd, payload: { input: {}, callId, status: 'pending' }, ts: Date.now() });
+  let resultText = '';
+  const notice = (text: string): void => {
+    resultText = text; // 捕获为工具结果载荷(不再单独落 notice——三态行即回执面)
+  };
+  try {
+    const r = await runCommandBody(s, line, cmd, notice);
+    s.pump({ type: 'tool-result', text: resultText, payload: { callId, status: 'completed', ok: true }, ts: Date.now() });
+    return r;
+  } catch (err) {
+    s.pump({
+      type: 'tool-result',
+      text: err instanceof Error ? err.message : String(err),
+      payload: { callId, status: 'failed', ok: false },
+      ts: Date.now(),
+    });
+    throw err;
+  }
+}
+
+/** 命令体(三态包装拆出):notice=结果捕获(不再旁路落 notice 行) */
+async function runCommandBody(s: SessionRuntime, line: string, cmd: string, notice: (text: string) => void): Promise<CommandRunResult> {
 
   if (cmd === '/status') {
     const snap = s.snapshotResponse();
