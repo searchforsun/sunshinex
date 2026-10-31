@@ -54,11 +54,9 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
         if (!alive) return;
         if (ws === undefined) { setStatus('idle'); await new Promise((r) => setTimeout(r, 2000)); continue; }
         try {
-          const m = /^ws:\/\/([^/]+)\//.exec(ws);
-          const base = m !== null ? `http://${m[1]}` : undefined;
-          if (base === undefined) throw new Error('bad ws url');
-          const targets = (await (await fetch(`${base}/json/list`)).json()) as Array<{ type?: string; webSocketDebuggerUrl?: string; url?: string }>;
-          const page = targets.find((tg) => tg.type === 'page' && tg.webSocketDebuggerUrl !== undefined);
+          // 端点发现走 daemon 代理(渲染层直连 DevTools HTTP 面被 CORS 拦)
+          const targets = await conn.cdpTargets(root);
+          const page = (targets as Array<{ type?: string; webSocketDebuggerUrl?: string; url?: string }>).find((tg) => tg.type === 'page' && tg.webSocketDebuggerUrl !== undefined);
           if (page?.webSocketDebuggerUrl === undefined) throw new Error('no page target');
           if (!alive) return;
           await new Promise<void>((resolve) => {

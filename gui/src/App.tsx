@@ -360,29 +360,21 @@ function AppShell(): JSX.Element {
     const key = `${openSessionId}:${openRoot}`;
     const timer = window.setInterval(() => {
       void connInstance
-        .appFile(openRoot, 'plugins/browser-use/builtin-cdp.json', 'data')
-        .then(async (meta) => {
-          if (meta.type !== 'file' || cdpAutoRef.current === key) return;
-          // 开签条件=真实网址(2026-11-01 用户裁定「实际打开一个网址时才打开页签」):about:blank
-          // 起始页不算——CDP /json/list 页面 target 的 url 非空非 about:blank 才开
-          const pport = /devtools-browser\/[0-9a-f-]+$/.test(meta.content)
-            ? (meta.content.match(/:(\d+)\/devtools/)?.[1] ?? null)
-            : (meta.content.match(/127\.0\.0\.1:(\d+)/)?.[1] ?? null);
-          if (pport === null || pport === undefined) return;
-          try {
-            const targets = (await (await fetch(`http://127.0.0.1:${pport}/json/list`)).json()) as Array<{ type?: string; url?: string }>;
-            const real = targets.some((tg) => tg.type === 'page' && tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank' && !tg.url.startsWith('devtools://'));
-            if (!real) return;
-            cdpAutoRef.current = key;
-            openTabInSession('web', {});
-          } catch { /* 探测失败下轮重试 */ }
+        .cdpTargets(openRoot)
+        .then((targets) => {
+          if (cdpAutoRef.current === key) return;
+          // 开签条件=真实网址(about:blank 起始页不算):daemon 代理 /app/cdp-targets(渲染层直连
+          // DevTools HTTP 面被 CORS 拦,自动开签曾静默失败)
+          const real = targets.some((tg) => tg.type === 'page' && tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank' && !tg.url.startsWith('devtools://'));
+          if (!real) return;
+          cdpAutoRef.current = key;
+          openTabInSession('web', {});
         })
         .catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connInstance, page, openRoot, openSessionId]);
-
   /** 记忆页签+定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」):focus slug 随 render props
    *  下发 MemoryTab,展开并滚至对应行;nonce 保证同 slug 重复点击仍触发 */
   const [memoryFocus, setMemoryFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);

@@ -497,6 +497,7 @@ export class GuiDaemon {
     // 2026-10-27 欢迎页全局草稿:App 级文件读（注册工作区根信任域,不绑会话;handler 同步,async 包一层
     // 适配 Route.run 的 Promise<void> 契约——f08cbd6 带伤入库,HEAD tsc 不通,技术债轮补直）
     { method: 'GET', path: '/app/file', auth: true, run: async (req, res) => fileHandlers.handleAppFile(this.fileIo, req, res) },
+    { method: 'GET', path: '/app/cdp-targets', auth: true, run: async (req, res) => fileHandlers.handleCdpTargets(this.fileIo, req, res) },
     // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
     { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
     { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },
