@@ -1,8 +1,8 @@
 // TaskBoard lead 工具面:create_team / create_task / update_task / get_board。
 // update_task 只保留 assign|depend;取消走 task_stop。观察尾附板摘要(summaryLines);
 // create_task 即触发派发(drain 异步),等待经既有 task_wait。
-// lead-only 不变量:四件套随 deriveChildRegistry/deriveTeammateRegistry 扩剔(TASKBOARD_TOOL_NAMES
-// ——两处 spread 自动随动,增名即扩剔),子智能体工具面不可见。
+// lead-only 不变量:板四件套 + create_teammate 随 deriveChildRegistry 扩剔(FORK_EXCLUDED_TOOLS
+// 单点),子智能体/fork 工具面不可见——建队/建任务/建成员只属主链 lead。
 import { CodedToolError, RegisteredTool } from '../tools';
 import { fail } from '../../result';
 import type { TaskBoard } from '../../taskboard/board';
@@ -10,11 +10,11 @@ import type { AgentTeamRegistry } from '../../taskboard/team-registry';
 
 export const TASKBOARD_TOOL_NAMES = ['create_team', 'create_task', 'update_task', 'get_board'] as const;
 
-/** fork 子面剔除族单点:send_message(消息身份属 lead+具名 teammate,fork 子面不发)+
- *  lead-only 板工具(含 get_board:fork 不读板,读取权威在 lead 与成员面)。三处 fork-scope 派生点同源
+/** fork 子面剔除族单点:send_message(消息身份属 lead+具名 teammate)+板四件套+create_teammate
+ *  (建成员是 lead 组队动词,板任务 fork 执行体不得再生成员)。三处 fork-scope 派生点同源
  *  消费——subagent.ts deriveChildRegistry、loop/nodes.ts agentNode、graph/nodes.ts makeLoopNode;
  *  增名即扩剔,防漂移由 harness/fork-face.test.ts 钉测(常量即契约)。 */
-export const FORK_EXCLUDED_TOOLS = ['send_message', ...TASKBOARD_TOOL_NAMES] as const;
+export const FORK_EXCLUDED_TOOLS = ['send_message', 'create_teammate', ...TASKBOARD_TOOL_NAMES] as const;
 
 /** 板摘要尾(观察行尾附):summaryLines 单点(与成员面 get_board 读面同源) */
 function boardTail(board: TaskBoard): string {
@@ -41,7 +41,13 @@ export function makeTaskBoardTools(board: TaskBoard, teams: AgentTeamRegistry): 
       const name = String((input as { name?: unknown }).name ?? '');
       const r = teams.create(name);
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
-      return { exitCode: 0, stdout: `team ${r.value.teamId} created (${r.value.name})`, stderr: '', timedOut: false };
+      // 回执名优先(GUI/模型叙述用队名);teamId 置尾供后续 create_task/create_teammate 绑定
+      return {
+        exitCode: 0,
+        stdout: `team "${r.value.name}" created — teamId=${r.value.teamId} (bind create_task / create_teammate to this teamId)`,
+        stderr: '',
+        timedOut: false,
+      };
     },
   };
 
@@ -87,7 +93,18 @@ export function makeTaskBoardTools(board: TaskBoard, teams: AgentTeamRegistry): 
         ...(retryOf !== undefined ? { retryOf } : {}),
       });
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
-      return { exitCode: 0, stdout: [`task ${r.value.taskId} created; dispatch is automatic for unblocked tasks — block with task_wait (taskIds=null)`, boardTail(board)].join('\n'), stderr: '', timedOut: false };
+      const title = String(raw.title ?? '').trim();
+      const titleBit = title !== '' ? `"${title}"` : r.value.taskId;
+      // 回执标题优先;id 置尾供 task_wait / dependsOn / retryOf 绑定
+      return {
+        exitCode: 0,
+        stdout: [
+          `task ${titleBit} created (id=${r.value.taskId}); dispatch is automatic for unblocked tasks — block with task_wait (taskIds=null)`,
+          boardTail(board),
+        ].join('\n'),
+        stderr: '',
+        timedOut: false,
+      };
     },
   };
 

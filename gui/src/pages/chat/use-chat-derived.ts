@@ -21,7 +21,9 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
     if (e.kind !== 'tool' || e.name !== 'create_task') continue;
     const input = e.input ?? {};
     const title = typeof input.title === 'string' ? input.title.trim() : '';
-    const created = /task (\S+) created/.exec(e.result?.text ?? e.result?.full ?? '');
+    const receipt = e.result?.text ?? e.result?.full ?? '';
+    // 名优先回执 `task "…" created (id=…)` 取 id=;旧形态 `task <id> created` 兜底
+    const created = /id=([^\s);,]+)/.exec(receipt) ?? /task (\S+) created/.exec(receipt);
     if (title !== '' && created !== null) {
       m.set(created[1]!, title);
       m.set(`task-${created[1]!}`, title);

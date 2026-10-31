@@ -61,10 +61,12 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
     assert.equal(face.get('spawn'), undefined, 'teammate 面不得再生子代');
     assert.equal(face.get('create_task'), undefined, 'teammate 面不得碰板面写操作');
-    // fork 子面剔除 send_message(L2 agent-message T3,评审附带 1):消息身份属 lead+具名 teammate,
-    // fork 子面不发——缺省派生与显式 allowlist 两分支都不得透出
+    assert.equal(face.get('create_teammate'), undefined, 'teammate 面不得再建成员(lead-only)');
+    // fork 子面剔除 send_message / create_teammate(消息身份与建成员属 lead)
     assert.equal(h.runner.deriveChildRegistry({}).get('send_message'), undefined, 'fork 子面缺省派生不得含 send_message');
-    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'read'] }).get('send_message'), undefined, '显式 allowlist 亦恒剔除 send_message');
+    assert.equal(h.runner.deriveChildRegistry({}).get('create_teammate'), undefined, 'fork 子面不得含 create_teammate');
+    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'create_teammate', 'read'] }).get('send_message'), undefined, '显式 allowlist 亦恒剔除 send_message');
+    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'create_teammate', 'read'] }).get('create_teammate'), undefined, '显式 allowlist 亦恒剔除 create_teammate');
     const created = h.taskboard.create({ teamId: TEAM_ID, title: 'A', spec: 'do A stuff' });
     assert.ok(created.ok);
     const aId = created.value.taskId;

@@ -23,9 +23,9 @@ function makeBoard(tmp: string): { board: TaskBoard; teams: AgentTeamRegistry; t
 
 const drain = () => new Promise((r) => setImmediate(r));
 
-/** 从 create_task observation 捕获真实板 id(id 方言(2026-10-19)随机段不可写字面量) */
+/** 从 create_task observation 捕获真实板 id(回执标题优先、id= 置尾;随机段不可写字面量) */
 function createdId(stdout: string): string {
-  const m = /task (\S+) created;/.exec(stdout);
+  const m = /id=([^\s);,]+)/.exec(stdout);
   assert.ok(m, `observation 含新任务 id:${stdout}`);
   return m![1]!;
 }
@@ -40,7 +40,8 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     const createTeam = tools.find((t) => t.name === 'create_team')!;
     const teamOut = await createTeam.executor({ name: 'beta' });
     assert.equal(teamOut.exitCode, 0);
-    const teamId = /team (\S+) created/.exec(teamOut.stdout)![1]!;
+    assert.match(teamOut.stdout, /team "beta" created/);
+    const teamId = /teamId=(\S+)/.exec(teamOut.stdout)![1]!;
     assert.match(teamId, /^team-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/);
     const create = tools.find((t) => t.name === 'create_task')!;
     assert.deepEqual(

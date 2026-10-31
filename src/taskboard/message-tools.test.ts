@@ -112,7 +112,9 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
       category: 'read',
       executor: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
     });
-    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', ...TASKBOARD_TOOL_NAMES]) base.register(dummy(name));
+    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_teammate', ...TASKBOARD_TOOL_NAMES]) {
+      base.register(dummy(name));
+    }
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
       runner: {} as never,
@@ -132,8 +134,11 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     assert.ok(face.get('send_message') !== undefined, 'teammate 面应含 send_message');
     assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
-    // 禁入=写板工具(create_team/create_task/update_task);get_board/get_task 是成员面合法只读对(已注入)
-    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_team', 'create_task', 'update_task']) {
+    // 禁入=建成员+写板工具;get_board/get_task 是成员面合法只读对(已注入)
+    for (const name of [
+      SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_teammate',
+      'create_team', 'create_task', 'update_task',
+    ]) {
       assert.equal(face.get(name), undefined, `teammate 面不得含 ${name}`);
     }
     // 排己:自发(to=自己)不在白名单 → INVALID_ARG

@@ -55,17 +55,19 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
   return [getBoard, getTask];
 }
 
-/** teammate 派生工具面(L1 注入单点):base 克隆剔 spawn/todo_write/ask_question/worktree/taskboard 五件套
- *  (与 SubagentRunner.deriveChildRegistry 同剔除集——teammate 不得再生子代、不得碰板面写操作),
- *  再注册 get_board/get_task;messageTool 在场则追加注册 send_message(T2 双面裁定:send_message 不入
- *  TASKBOARD_TOOL_NAMES——teammate 面也要有,lead-only 剔除表不适用;排己白名单由装配点闭包注入)。
+/** teammate 派生工具面(L1 注入单点):base 克隆剔 spawn/todo_write/ask_question/worktree/
+ *  create_teammate+板四件套(成员不得建队/建成员/写板;与 fork 面 lead-only 同口径,但 send_message
+ *  保留——T2 双面裁定:send_message 不入 TASKBOARD_TOOL_NAMES,teammate 面要有),
+ *  再注册 get_board/get_task;messageTool 在场则追加注册 send_message;排己白名单由装配点闭包注入。
  *  原 registry 零突变;每次调用新面(装配期一次性,teammate.ts registryFactory 消费) */
 export function deriveTeammateRegistry(
   base: ToolRegistry,
   board: TaskBoard,
   messageTool?: RegisteredTool,
 ): ToolRegistry {
-  const face = base.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', ...TASKBOARD_TOOL_NAMES] });
+  const face = base.derive({
+    exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'create_teammate', ...TASKBOARD_TOOL_NAMES],
+  });
   for (const t of makeTeammateTools(board)) face.register(t);
   if (messageTool) face.register(messageTool);
   return face;

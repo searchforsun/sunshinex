@@ -341,7 +341,7 @@ export class SubagentRunner {
    * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子智能体不得改动主会话工作环境；
    * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 lead，子智能体不碰板；
    * send_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 lead+具名 teammate,fork 子面不发；
-   * send_message+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引,终审 Important 闭合) */
+   * send_message+create_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引) */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
     if (input?.tools && input.tools.length > 0) {
       const child = this.deps.registry.derive({ only: input.tools });

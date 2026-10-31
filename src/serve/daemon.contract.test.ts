@@ -256,7 +256,10 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
     const boardIds = Object.keys(snap.board.tasks);
     assert.equal(boardIds.length, 1, '前置:恰一个板任务');
     const taskId = boardIds[0]!;
-    assert.ok(tool!.result?.ok === true && tool!.result.text.startsWith(`task ${taskId} created`), 'tool 条 result 字段含回执(字段权威)');
+    assert.ok(
+      tool!.result?.ok === true && (tool!.result.text.includes(`id=${taskId}`) || tool!.result.text.startsWith(`task ${taskId} created`)),
+      'tool 条 result 字段含回执(字段权威)',
+    );
     // 影子投影：pump 喂入的 task-created 经同源 boardEventFrom/applyBoardEvent 落位
     assert.notEqual(snap.board.tasks[taskId], undefined, 'board 影子含 create_task 建出的任务');
     assert.equal(snap.board.tasks[taskId]!.title, 'A');

@@ -78,6 +78,7 @@ const TOOL_VERB_ZH: Record<string, string> = {
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
   create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
+  create_team: '创建智能体团队',
   create_teammate: '创建智能体团队成员',
   update_task: '更新任务', get_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
 };
@@ -202,6 +203,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   memory_write: ['Saving memory', '正在保存记忆'],
   spawn: ['Dispatching subagent', '正在分派子智能体'],
   create_teammate: ['Creating teammate', '正在创建智能体团队成员'],
+  create_team: ['Creating team', '正在创建智能体团队'],
   update_task: ['Updating task', '正在更新任务'], get_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
   task_wait: ['Waiting for tasks', '正在等待任务'],
   task_stop: ['Stopping task', '正在停止任务'],
@@ -407,6 +409,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 2026-10-24 create_teammate 队友名(name 必填)——与 spawn 同款:运行态文案+折叠行蓝色链接 */
   const teammateName =
     toolName === 'create_teammate' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
+  /** create_team 队名——折叠行「创建智能体团队 {name}」;运行态同构 */
+  const teamName =
+    toolName === 'create_team' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
   /** G14.172 task_wait 折叠行任务名(taskNameOf 单点解析;同名去重)——用户裁决「等待任务显示任务名称,不要用 id」 */
   const waitTaskNames = toolName === 'task_wait'
     ? [
@@ -446,6 +451,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
     // 2026-10-24 create_teammate 运行态带队友名(与 spawn 同构)
     if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
+    if (toolName === 'create_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
     if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
     // task_* 运行态带任务名——「正在更新 架构评审」替代泛文案（taskOpName 已在场即有值）
@@ -515,7 +521,7 @@ export const ToolEntryView = memo(function ToolEntryView({
 
   /** 折叠行主体(G14 分型;2026-10-22 用户裁定:运行态=流光动词标签+目标内容同行——spawn/skill/
  *  taskOp 的流光标签已含目标名故不重示):文件工具=文件名+相对路径(+stat);exec=完整命令;其余=动词+目标 */
-  const hideTargetWhileRunning = executing && (toolName === 'spawn' || toolName === 'create_teammate' || toolName === 'skill' || taskOpName !== undefined);
+  const hideTargetWhileRunning = executing && (toolName === 'spawn' || toolName === 'create_teammate' || toolName === 'create_team' || toolName === 'skill' || taskOpName !== undefined);
   const verbSpan = executing ? (
     // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
     <span className="tool-verb exec-running">
@@ -574,6 +580,9 @@ export const ToolEntryView = memo(function ToolEntryView({
           const done = arr.filter((o) => (o ?? {}).status === 'completed').length;
           return <span className="tool-file-base tool-cmd">{' '}{done}/{arr.length}</span>;
         })()
+      ) : !hideTargetWhileRunning && toolName === 'create_team' ? (
+        /* 折叠行「创建智能体团队 {name}」——队名跟动词,id 不进折叠行(回执/展开体承载) */
+        <span className="tool-file-base tool-cmd">{teamName !== '' ? ` ${teamName}` : ''}</span>
       ) : !hideTargetWhileRunning && toolName === 'create_task' ? (
         /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
         onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
@@ -584,8 +593,10 @@ export const ToolEntryView = memo(function ToolEntryView({
             data-tip={t('Open task board card', '在任务板中定位')}
             onClick={(e) => {
               e.stopPropagation();
-              const created = /task (\S+) created/.exec(resultText);
-              onOpenTask(created !== null ? created[1]! : (input.title as string));
+              // 回执名优先形态 `task "…" created (id=task-xxx)`——按 id= 取真 id,旧形态兜底
+              const created = /id=(\S+)/.exec(resultText) ?? /task (\S+) created/.exec(resultText);
+              const id = created !== null ? created[1]!.replace(/[);,].*$/, '') : (input.title as string);
+              onOpenTask(id);
             }}
           >
             {' '}{input.title}

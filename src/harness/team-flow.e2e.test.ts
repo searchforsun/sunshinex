@@ -50,10 +50,10 @@ test('团队业务流:create_team→create_teammate→指派+依赖任务→get_
 
     const ca = await h.tools.execute('create_task', { teamId, title: 'A', spec: 'do A', dependsOn: null, assignee: 'w1', executor: null, retryOf: null }, h.safety);
     assert.ok(ca.ok, `create A 应成功:${JSON.stringify(ca)}`);
-    const idA = /task (\S+) created;/.exec((ca as { value: { stdout: string } }).value.stdout)![1]!;
+    const idA = /id=([^\s);,]+)/.exec((ca as { value: { stdout: string } }).value.stdout)![1]!;
     const cb = await h.tools.execute('create_task', { teamId, title: 'B', spec: 'do B', dependsOn: [idA], assignee: 'w1', executor: null, retryOf: null }, h.safety);
     assert.ok(cb.ok, `create B 应成功:${JSON.stringify(cb)}`);
-    const idB = /task (\S+) created;/.exec((cb as { ok: true; value: { stdout: string } }).value.stdout)![1]!;
+    const idB = /id=([^\s);,]+)/.exec((cb as { ok: true; value: { stdout: string } }).value.stdout)![1]!;
     assert.notEqual(idA, idB, '两任务 id 互异(不透明方言)');
 
     // ③ get_board 读面(lead 缺口补齐):两任务行在场,含状态与标题
