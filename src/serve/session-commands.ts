@@ -50,6 +50,9 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
 
   if (cmd === '/compact') {
     // 压缩协调单点(与 Reactor 自动压缩同链路):补链参与 → 压缩 → 摘要 → 折链(TUI /compact 同形移植)
+    // 过程回执先行(2026-10-31 用户裁定「发送后正文显示压缩中说明」):压缩成功才落完成回执,
+    // 中途失败/中断无完成行=链面自动回滚语义(runCompaction apply 前零副作用)
+    notice(t('Compacting context…', '上下文压缩中…'));
     const ctx = s.runtime.harness.context;
     const chainItems = chainToHistoryItems(ctx.chainView());
     const items = ctx.assemble(chainItems);

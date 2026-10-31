@@ -1,5 +1,6 @@
 import type { SessionEvent } from '../../src/types';
 import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
+import { localizeNotice } from './i18n-notice';
 
 /**
  * G3 chat 投影 → P4 内核视图层(session-kernel spec §6 P4):事件→转录的投影逻辑全数退役,
@@ -143,7 +144,8 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
     }
     // P11 渲染中立条目:user md 内核写面恒裸文(v3),直透零归一(剥 `> ` 前缀分支退役——
     // 与 TUI restore 同向);error 补 `Error: ` 前缀(前缀归渲染面——与 TUI live/restore 同形)
-    const md = e.kind === 'error' ? `Error: ${e.md}` : e.md;
+    // 命令回执本地化(2026-10-31 用户裁定):档面英文恒定(提示词契约),渲染面按模式映射中文
+    const md = e.kind === 'notice' ? localizeNotice(e.md) : e.kind === 'error' ? `Error: ${e.md}` : e.md;
     const view: ChatEntry = {
       key: `k${e.seq}`,
       kind: e.kind,
