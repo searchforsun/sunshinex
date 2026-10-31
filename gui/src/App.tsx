@@ -351,6 +351,27 @@ function AppShell(): JSX.Element {
   const openBoardTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
   const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
 
+  /** 内置浏览器自动开签(2026-11-01 用户裁定「会自动打开浏览器页签+输入对应网址」):插件 builtin
+   *  档在跑(meta 在场)即自动开「浏览器」页签——WebTab CDP 形态自动接管镜像与 URL 回显;
+   *  每会话一次(页签在场/插件关停不重开不撤销) */
+  const cdpAutoRef = useRef<string>('');
+  useEffect(() => {
+    if (connInstance === null || page !== 'chat' || openRoot === '') return;
+    const key = `${openSessionId}:${openRoot}`;
+    const timer = window.setInterval(() => {
+      void connInstance
+        .appFile(openRoot, 'plugins/browser-use/builtin-cdp.json', 'data')
+        .then((meta) => {
+          if (meta.type !== 'file' || cdpAutoRef.current === key) return;
+          cdpAutoRef.current = key;
+          openTabInSession('web', {});
+        })
+        .catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connInstance, page, openRoot, openSessionId]);
+
   /** 记忆页签+定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」):focus slug 随 render props
    *  下发 MemoryTab,展开并滚至对应行;nonce 保证同 slug 重复点击仍触发 */
   const [memoryFocus, setMemoryFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);
