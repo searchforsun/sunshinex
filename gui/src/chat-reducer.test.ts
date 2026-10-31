@@ -288,6 +288,36 @@ describe('status·tokens·steps 聚合', () => {
 });
 
 describe('seedChatFromSnapshot（onResync 基线）', () => {
+  it('open-run 基线注入(2026-10-31 用户实测切换会话「本轮」0↔100+ 摆动收口):基线=窗口重建累计−在飞回合 tool 条目估计,live 减基线=估计+新增', () => {
+    // 窗口:闭合 run(meta steps=80 累计) + open run(seq=10) + 其后 3 个 tool 条目(在飞回合步数估计=3)
+    const s = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'run', md: '', meta: { steps: 80, tokens: 5000, endedTs: 2 } },
+        { seq: 2, ts: 2, kind: 'user', md: 'next goal' },
+        { seq: 10, ts: 3, kind: 'run', md: '' }, // open run(无 meta=在飞)
+        { seq: 11, ts: 4, kind: 'tool', md: '', name: 'read', result: { text: 'ok', ok: true } },
+        { seq: 12, ts: 5, kind: 'tool', md: '', name: 'grep', result: { text: 'ok', ok: true } },
+        { seq: 13, ts: 6, kind: 'tool', md: '', name: 'edit', result: { text: 'ok', ok: true } },
+      ] as never,
+      { openRun: 10, openSeg: -1 },
+    );
+    // 重建累计:steps=80(tokens=5000);基线 steps=80−3(估计)=77,tokens=5000
+    expect(s.steps).toBe(80);
+    expect(s.runBases[10]).toEqual({ steps: 77, tokens: 5000 });
+    // live 减基线=3(估计)+新增,非全量 80
+    const openRunView = s.entries.find((e) => e.key === 'k10');
+    expect(openRunView?.stepsBase).toBe(77);
+    expect(openRunView?.tokensBase).toBe(5000);
+  });
+
+  it('无 open run(openRun=-1)不注入基线(回放会话原口径不变)', () => {
+    const s = seedChatFromSnapshot(
+      [{ seq: 1, ts: 1, kind: 'run', md: '', meta: { steps: 80, tokens: 5000, endedTs: 2 } }] as never,
+      { openRun: -1, openSeg: -1 },
+    );
+    expect(s.runBases).toEqual({});
+  });
+
   it('五 kind 直映射 entries（md 原文、无 streaming），status 读游标(P10),tokens/steps 0 起步', () => {
     const s = seedChatFromSnapshot(
       [
