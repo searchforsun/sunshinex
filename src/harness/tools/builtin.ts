@@ -63,9 +63,9 @@ async function readBodyCapped(res: Response, cap: number): Promise<string> {
  *  显完整命令,不要只显示命令头」;id 业务段仍走 slugify ≤16 截断不受影响）——直接启动与超时转后台
  *  两条登记路径共用 */
 function execLabel(cmd: string): string {
-  const flat = cmd.trim().replace(/\s+/g, ' ');
-  if (flat.length <= 96) return flat;
-  return `${flat.slice(0, 72)}…${flat.slice(-20)}`;
+  // 2026-10-31 用户裁定「命令后面的省略号不对」:不再中截烙「…」进台账 label——详情/复制钮要全文
+  // (GUI 头部行由 CSS text-overflow 截断,省略语义在显示层);id 段 slug16 封顶不受影响
+  return cmd.trim().replace(/\s+/g, ' ');
 }
 
 /** §9.3 触发判据：目标是否为项目根的 SUNSHINE.md。两侧同基准：file 已是安全链 realpath 归一的绝对路径（safePath 注入），

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Copy, Database, Pause, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Check, Copy, Database, Pause, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { TipButton } from '../pages/chat/RunFooter';
+import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
 import type { Connection, SessionTaskRow } from '../connection';
 import { t } from '../i18n';
@@ -102,9 +104,11 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
 export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
   const { data, error, reload } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const copiedTimer = useRef<number>(0);
-  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+  // 复制回显(2026-10-31 用户裁定「与正文中复制按钮一致」):useCopyFeedback 单点+Check 图标交换
+  // ——status=最近一次复制结果,ltRid 锚定到触发行(多行面板仅命中行显 √)
+  const { status: copyStatus, copy: copyText } = useCopyFeedback();
+  const copiedRowRef = useRef<string | null>(null);
+  const copied = (id: string): boolean => copiedRowRef.current === id && copyStatus === 'ok';
   // 运行中时长实时:有 running 任务才起 1s 定时器(终态行用 endedAt 恒定,零无谓重渲染)
   const [now, setNow] = useState(Date.now());
   const hasRunning = (data ?? []).some((r) => r.status === 'running');
@@ -124,14 +128,8 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
       return next;
     });
   const copyCmd = (id: string, label: string): void => {
-    navigator.clipboard
-      .writeText(label)
-      .then(() => {
-        setCopiedId(id);
-        window.clearTimeout(copiedTimer.current);
-        copiedTimer.current = window.setTimeout(() => setCopiedId(null), 1500);
-      })
-      .catch(() => {});
+    copiedRowRef.current = id;
+    copyText(label);
   };
   const pauseTask = (e: React.MouseEvent, id: string, resume: boolean): void => {
     e.stopPropagation();
@@ -181,7 +179,7 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
                 >
                   {/* 2026-10-24 用户裁定:状态点与全项目同款(tb-status-dot)——灰转圈=running,
                    *  蓝点=done,红点=failed,灰点=stopped/paused(paused 静态灰点+时长冻结) */}
-                  <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
+                  <span className={`tb-status-dot bg-${r.status === 'paused' ? 'stopped' : r.status}`} aria-hidden="true" />
                   {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
                   <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>{durOf(r)}</span>
                   <span className="todo-card-goal bg-cmd" data-tip={r.label}>{r.label}</span>
@@ -212,21 +210,19 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
                 </div>
                 {open && (
                   <div className="bg-detail">
-                    {/* 2026-10-31 用户裁定:摘「命令/结果」自解释标题;命令行右缘复制钮 */}
+                    {/* 2026-10-31 用户裁定:摘「命令/结果」自解释标题;复制钮与正文同款(TipButton+
+                        Check 交换,点击显 √);span 承接 stopPropagation(防触发头行展开) */}
                     <div className="bg-cmd-row">
                       <span className="bg-cmd-text">{r.label}</span>
-                      <button
-                        type="button"
-                        className="sx-changes-act"
-                        aria-label={`copy command ${r.id}`}
-                        data-tip={copiedId === r.id ? t('Copied', '已复制') : t('Copy command', '复制命令')}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          copyCmd(r.id, r.label);
-                        }}
-                      >
-                        <Copy size={12} strokeWidth={1.75} />
-                      </button>
+                      <span className="bg-copy" onClick={(e) => e.stopPropagation()}>
+                        <TipButton
+                          className="sx-changes-act"
+                          label={`copy command ${r.id}`}
+                          tip={copied(r.id) ? t('Copied', '已复制') : t('Copy command', '复制命令')}
+                          icon={copied(r.id) ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+                          onClick={() => copyCmd(r.id, r.label)}
+                        />
+                      </span>
                     </div>
                     {r.outputTail !== undefined && r.outputTail !== '' && (
                       <pre className="bg-output">

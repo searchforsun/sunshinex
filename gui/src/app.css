@@ -724,20 +724,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   box-shadow: var(--elev-composer);
   padding: 12px 14px 10px;
 }
-/* 超椭圆只挂面状容器(输入框/气泡/浮层/卡片)——禁止 * 全局级联:指示点与转圈依赖
-   border-radius:50% 正圆,superellipse(1.5) 在 Electron 上会把边框环收成菱形(旋转 45° 即截图) */
-@supports (corner-shape: superellipse(1.5)) {
-  .sx-composer,
-  .entry-user .user-bubble,
-  .sx-menu-pop,
-  .sx-pop,
-  .sx-popover,
-  .tb-card,
-  .bg-output,
-  .sx-toast,
-  .chat-ask-card,
-  .files-err-box,
-  .tool-output-pre { corner-shape: superellipse(1.5); }
+@supports (corner-shape: superellipse(1.5)) {  .sx-composer { corner-shape: superellipse(1.5); }
 }.sx-composer-input {
   width: 100%;
   min-height: 44px;
@@ -1231,7 +1218,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 智能定向(mouseover 委托打点,main.tsx):顶部空间不足翻下方;贴左右缘/容器缘对齐防出窗 */[data-tip].tip-below:not([data-tip=""]):hover::after { bottom: auto; top: calc(100% + 5px); }[data-tip].tip-left:not([data-tip=""]):hover::after { left: 0; transform: none; }[data-tip].tip-right:not([data-tip=""]):hover::after { left: auto; right: 0; transform: none; }.sx-tip-right::after { left: auto; right: 0; transform: none; }
 
-/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 12px; color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变);顶栏 9px 覆写随退。2026-10-31 菱形二案根修:conic+mask 光栅化随机丢层(见 sx-session-dot.running 注),改 border 圆环构造 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: none; border: 1.9px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
+/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 12px; color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变);顶栏 9px 覆写随退。2026-10-31 菱形二案根修:conic+mask 光栅化随机丢层(见 sx-session-dot.running 注),改 border 圆环构造 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: none; border: 1.9px solid var(--fg-tertiary); border-top-color: var(--fg); clip-path: circle(50% at 50% 50%); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
 
 /* 条目左对齐统一(§2):正文/工具/思考同一 x 起点 */.entry { padding: 4px 8px; }.entry-tool { padding: 2px 8px; }
 /* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8);visibility 折叠尾切(T4 评审可达性补丁:
@@ -1724,7 +1711,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    zoom≥1.1 档即现椭圆)——实心点改几何圆构造:radial-gradient(circle Rpx) 半径两轴
    同值,盒取整不变形。2026-10-31 菱形二案:转圈退役 conic+mask 改 border 圆环(mask 光栅化
    随机丢层根因,见 sx-session-dot.running 注);静态点 radial-gradient 两轮探针零异常保留 */
-.tb-status-dot { flex: none; box-sizing: border-box; width: 6px; height: 6px; border-radius: 50%; background: radial-gradient(circle 3px at 50% 50%, var(--fg-tertiary) 2.4px, transparent 2.8px); }
+/* clip-path 正圆锁:全局 corner-shape:superellipse 会把 6px 盒收成菱形,径向/转圈同被裁;
+   仅本选择器特殊处理,不动全局弧度 */
+.tb-status-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  corner-shape: initial;
+  clip-path: circle(50% at 50% 50%);
+  background: radial-gradient(circle 3px at 50% 50%, var(--fg-tertiary) 2.4px, transparent 2.8px);
+}
 .tb-status-dot.task-status-claimed,
 .tb-status-dot.task-status-in_review {
   background: none;
@@ -1944,23 +1942,25 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 
 /* ===== G14.178 后台任务卡片流:状态点色 + 展开详情行 ===== */
-/* G14.2xx 用户裁定三态语言(顶栏 run-spinner 同款灰转圈):运行=灰转圈(非蓝),完成=蓝点,
-   失败=红点,停止/等待=灰点。2026-10-31 菱形二案根修:转圈退役 conic+mask 改 border 圆环
-   (mask 光栅化随机丢层=实心方旋转菱形,见 sx-session-dot.running 注) */
+/* 后台任务三态:运行=灰转圈,完成=蓝点,失败=红点,停止=灰点。转圈用 border 环+clip-path 正圆锁 */
 .tb-status-dot.bg-running {
   background: none;
   border: 1.9px solid var(--fg-tertiary);
   border-top-color: var(--fg);
+  border-radius: 50%;
+  clip-path: circle(50% at 50% 50%);
   animation: sx-spin 1s linear infinite;
 }
 .tb-status-dot.bg-done { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.bg-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
 .tb-status-dot.bg-stopped { background: radial-gradient(circle 3px at 50% 50%, var(--fg-tertiary) 2.4px, transparent 2.8px); }
-.bg-detail { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 0 19px; }
-/* 2026-10-31 用户裁定:摘「命令/结果」自解释标题——命令行=全文+右缘复制钮;bg-detail-key 组退役 */
+.bg-detail { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 0 14px; }
+/* 2026-10-31 用户裁定:摘「命令/结果」自解释标题——命令行=全文+右缘复制钮;bg-detail-key 组退役。
+   左缘 14px=状态点(6)+间隙(8),与前移的运行时长列左缘同轴(「左侧和时间对齐」) */
 .bg-cmd-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .bg-cmd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 11px var(--font-mono); color: var(--fg-secondary); }
-.bg-cmd-row .sx-changes-act { flex: none; width: 22px; height: 22px; }
+/* 复制钮=正文同款 TipButton(sx-tip 22px 方钮)+Check 交换(2026-10-31);span 只承接 stopPropagation */
+.bg-copy { display: inline-flex; flex: none; }
 /* 暂停/恢复钮(2026-10-31):hover 显现(语言同 mem-del),头部点击展开不误触(stopPropagation 在组件面) */
 .tb-card .bg-act { flex: none; width: 22px; height: 22px; opacity: 0; transition: opacity 0.12s; }
 .tb-card:hover .bg-act, .tb-card .bg-act:focus-visible { opacity: 1; }
@@ -2244,20 +2244,14 @@ input.sx-setting-input { width: 100%; }
    特性的浏览器上同步拉直观感,真正做到「弧度对齐主输入框」;不支持的浏览器忽略此行 */
 *, ::before, ::after { corner-shape: superellipse(1.5); }
 
-/* G14.207 状态圆点恢复正圆(全局超椭园规则波及小圆点会变椭圆——用户裁定圆点用圆形)。
-   2026-10-26 用户报告圆点渲染成菱形:corner-shape 的 superellipse(S) 语义在引擎代次间
-   不兼容(Chrome 146:1=斜切 2=正圆;Chrome 152:1=正圆 2=方圆,electron 探针实测),
-   任何具体取值都会在另一代引擎上变形,round 关键字同样有 computed 值漂移——唯一跨引擎
-   稳的是 CSS 全局关键字 initial(initial 值=经典四分之一圆角,任何引擎 border-radius:50%
-   都是正圆),用它把 50% 圆元素从全局超椭园级联里整体拔出;清单=全仓 50% 圆选择器,
-   新增 50% 圆须加入 */
-/* 注意:选择器组里不可混入 ::-moz-* 等 Chromium 不认的伪元素——CSS 规则组任一选择器
-   非法即整条丢弃(首轮修复就是被 ::-moz-range-thumb 拖垮整组静默失效);GUI 仅
-   Electron(Chromium) 渲染,moz 伪元素直接不写 */
+/* G14.207 状态圆点恢复正圆(全局超椭园波及小圆点)。豁免组 corner-shape:initial 拔出级联;
+   .tb-status-dot 另在基类挂 clip-path:circle(后台任务菱形根修)。选择器组不可混入 ::-moz-* */
 .todo-dot, .sx-session-dot, .sx-status-dot, .sx-tree-dot, .sx-api-dot, .sx-welcome-dot,
 .conn-dot, .tb-status-dot, .ctx-pop-row .ctx-dot, .ctx-ring-btn, .run-spinner,
 .sx-img-remove, .sx-pin-btn, .sx-src-badge::before, .sx-mcp-dot, .sx-mcp-switch .knob,
 .effort-slider input[type="range"]::-webkit-slider-thumb { corner-shape: initial; }
+/* 后台/任务板状态点:盖过全局 * 超椭圆(同特异性时后写胜;再加 clip-path 双保险) */
+.tb-status-dot { corner-shape: initial; clip-path: circle(50% at 50% 50%); }
 
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
 .user-bubble-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 8px; margin-top: 0; pointer-events: none; }
@@ -2709,15 +2703,14 @@ input.sx-setting-input { width: 100%; }
 }
 .sx-shell.sx-sidebar-float .sx-resizer { display: none; } /* 抽屉不可调节,拖宽手柄隐藏(同菜单抽屉 4d69da4 惯例) */
 
-/* ===== 2026-10-28 用户裁定:运行转圈全局统一=正文 run-spinner 12px——会话行/任务板/动态行
-   同升(8/6px 档退役);done/failed/stopped 仍为小圆点(点语言不随转圈放大)。2026-10-31
-   mask 摘除(菱形二案根修,见 sx-session-dot.running 注),环带厚度随 12px 档补 1.9px ===== */
+/* 运行转圈统一 12px(正文 run-spinner);done/failed/stopped 仍为 6px 小圆点 */
 .sx-session-dot.running {
   width: 12px;
   height: 12px;
   border-width: 1.9px;
+  left: 12px;
+  top: calc(50% - 6px);
 }
-.sx-session-dot.running { left: 12px; top: calc(50% - 6px); }
 .tb-status-dot.bg-running {
   width: 12px;
   height: 12px;
