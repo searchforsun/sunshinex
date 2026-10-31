@@ -21,6 +21,7 @@ export function useCommandPalette(
   cmdActive: number;
   setCmdActive: React.Dispatch<React.SetStateAction<number>>;
   skillCmds: Array<{ id: string; description: string }>;
+  setSkillCmds: React.Dispatch<React.SetStateAction<Array<{ id: string; description: string }>>>;
 } {
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<CmdData | null>(null);
@@ -34,7 +35,7 @@ export function useCommandPalette(
   useEffect(() => {
     conn.commands().then(setCmdData, () => setCmdData(null));
   }, [conn]);
-  return { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds };
+  return { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds, setSkillCmds };
 }
 
 /** G14.95 slash 面板令牌清单(批F-7d 自宿主平移):开头=命令+技能,中间=仅技能,无匹配=空 */

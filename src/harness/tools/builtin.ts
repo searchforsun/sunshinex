@@ -292,7 +292,7 @@ export function builtinTools(
       },
       name: 'skill',
       description:
-        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; use only ids that appear in the available skills list — never guess or invent a name; the body is returned verbatim and never truncated, so load it only when the task matches',
+        'Load a skill\'s full instructions by id when the task matches an entry in the available skills list; use only ids that appear in the available skills list — never guess or invent a name; the body is returned verbatim and never truncated, so load it only when the task matches. Skills are live: one you create (or one announced by a later [skills] notice in this conversation) is usable by its id immediately — no new session needed',
       category: 'read',
       fullObservation: true,
       executor: async (input: ToolInput) => {
