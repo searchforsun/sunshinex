@@ -4,6 +4,8 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X } from 'lucide-react';
 import { t } from '../../i18n';
 import { pathBasename } from '../../ui-util';
+import { useResolvedImages } from '../../images-cache';
+import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
@@ -229,21 +231,22 @@ interface UserEntryOpts {
 
 /** 用户气泡图片条(2026-10-26 图片功能):文本上方横排缩略图(截图口径——图上文下);
  *  点击开 lightbox(缩放/复制/下载)。空图不渲染 */
-function UserImageStrip({ images, onOpen }: { images: readonly string[]; onOpen?: (src: string) => void }): JSX.Element | null {
+function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | null; root?: string; images: readonly string[]; onOpen?: (src: string) => void }): JSX.Element | null {
+  const resolved = useResolvedImages(conn ?? null, root, images); // images-cache 引用 → dataURL(2026-10-31 裁定显示面)
   if (images.length === 0) return null;
   return (
     <div className="user-img-strip">
       {images.map((src, i) => (
         <img
           key={`${i}:${src.slice(-24)}`}
-          src={src}
+          src={resolved[i] || src}
           alt={`${t('Attached image', '附件图片')} ${i + 1}`}
           /* 2026-10-26 懒加载+异步解码(大截图首滚入视口的主线程解码冻结)——边框/圆角统一在
              app.css .user-img-strip img(明暗主题自适应 color-mix,气泡/输入框/编辑卡同源) */
           loading="lazy"
           decoding="async"
           className={onOpen !== undefined ? 'clickable' : undefined}
-          onClick={onOpen !== undefined ? () => onOpen(src) : undefined}
+          onClick={onOpen !== undefined ? () => onOpen(resolved[i] || src) : undefined}
         />
       ))}
     </div>
@@ -300,7 +303,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage }: { entry: ChatEntry; insert?: boolean } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
+export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
   const isDir = useDirResolver();
   const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir), [onOpenFile, isDir]);
   const { status: copied, copy: copyText } = useCopyFeedback();
@@ -408,7 +411,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
     <div className={`entry entry-user${insert === true ? ' entry-user-insert' : ''}`} data-entry-key={entry.key}>
       {/* 2026-10-26 用户裁定:图片与气泡分离——图片条独立在气泡外(上方右对齐),纯图消息不渲染空气泡 */}
       {entry.images !== undefined && entry.images.length > 0 && (
-        <UserImageStrip images={entry.images} onOpen={onOpenImage} />
+        <UserImageStrip conn={conn} root={root} images={entry.images} onOpen={onOpenImage} />
       )}
       {entry.md.trim() !== '' && (
         <CollapsibleBubble

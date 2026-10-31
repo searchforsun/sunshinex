@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { spillImages } from './images-cache';
 import { createKernelRuntime } from '../session/runtime';
 import { resolveDataDir } from '../config/data-dir';
 import { parseTier } from '../runtime';
@@ -763,6 +764,9 @@ export class SessionRuntime {
     // plan-arm 提交通道（spec §5.1）：mode==='plan' 即 armed——armed 空闲提交经 planFlow 规划流程
     // （TUI /plan 同构:规划→确认卡→批准落档→逐项执行）;流程在途（含裁决点挂卡——idle+planFlowRunning）
     // 一律 409 不排队,裁决走挂起表回执端点。批准自动解除（续段 setMode 切走）/手动切档解除/拒绝保持。
+    // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进
+    // 上下文/档/wire(见 images-cache.ts 头注);此入口覆盖 submit 与 plan-arm 全部提交面
+    images = spillImages(this.root, images);
     if (this.planArmed()) {
       this.runPlanArm(goal, images);
       return { ok: true };
@@ -1104,7 +1108,7 @@ export class SessionRuntime {
    *  drain 消费、空闲入队下一轮生效（排队语义即承诺，恒 200 由 HTTP 面承担）;steer 行落档与
    *  queue 帧广播经 onKernelEvent 单槽随发 */
   steer(text: string, images?: string[]): void {
-    this.kernel.steerEnqueue(text, images);
+    this.kernel.steerEnqueue(text, spillImages(this.root, images)); // 图片落盘点(同 submit 裁定)
   }
 
   /**

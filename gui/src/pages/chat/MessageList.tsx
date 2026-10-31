@@ -32,6 +32,8 @@ export interface MessageListProps {
   readonly callIdOf: (entry: ChatEntry) => string | undefined;
   readonly conn: Connection;
   readonly sessionId: string;
+  /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
+  readonly root?: string;
   readonly onOpenFile?: (p: string) => void;
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
@@ -82,13 +84,15 @@ interface DayGroupProps {
   readonly onEntryRestore: (p: string) => void;
   readonly onFork?: () => void;
   readonly onOpenImage?: (src: string) => void;
+  /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
+  readonly root?: string;
   /** 用户气泡上间距分档(2026-10-27 用户裁定):辅助对话=紧凑档;运行中插入按逐条目判定 */
   readonly sideChat?: boolean;
 }
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -159,6 +163,8 @@ const DayGroupBlock = memo(
             onSend={submitText}
             onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
             onOpenImage={onOpenImage}
+            conn={conn}
+            root={root}
           />,
         );
       } else {
@@ -199,13 +205,14 @@ const DayGroupBlock = memo(
     && prev.onEntryRestore === next.onEntryRestore
     && prev.onFork === next.onFork
     && prev.onOpenImage === next.onOpenImage
+    && prev.root === next.root
     && prev.sideChat === next.sideChat,
 );
 
 export function MessageList(props: MessageListProps): JSX.Element {
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -319,6 +326,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
             callIdOf={callIdOfStable}
             conn={conn}
             sessionId={sessionId}
+            root={root}
             onOpenFile={onOpenFileOpt()}
             onOpenDiff={onOpenDiffOpt()}
             onOpenAgent={onOpenAgentOpt()}

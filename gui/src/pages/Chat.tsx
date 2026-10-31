@@ -627,6 +627,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         callIdOf={callIdOf}
         conn={conn}
         sessionId={sessionId}
+        root={root}
         onOpenFile={onOpenFile}
         onOpenDiff={onOpenDiff}
         onOpenAgent={onOpenAgent}
