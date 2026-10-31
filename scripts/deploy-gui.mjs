@@ -89,7 +89,12 @@ const stopApp = () => {
 
 const launchApp = () => {
   console.log('· 启动应用…');
-  powershell(`Start-Process -FilePath "${installExe}" -WorkingDirectory "${installDir}"`);
+  // 经 explorer 中转启动(2026-11-01 用户报障「builtin 浏览器连不上」根修):安装器是提权运行的,
+  // Start-Process 直启会让应用继承**提权令牌**——无头 Chrome 在提权环境下 crashpad 初始化失败,
+  // 静默秒退 exit 21(stderr 全空,与实测一致)。explorer 以当前登录用户的普通完整性代启,
+  // 应用降权运行,子进程链恢复正常
+  powershell(`Start-Process explorer.exe -ArgumentList '${installExe}'`);
+  powershell('ie4uinit.exe -show');
   // Windows 图标缓存轻量刷新:exe 同路径反复替换后缓存留白图标(2026-10-29 实测),ie4uinit 重建即可
   powershell('ie4uinit.exe -show');
 };
