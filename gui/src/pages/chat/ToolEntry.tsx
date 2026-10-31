@@ -173,6 +173,12 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
 }
 
 /** 各工具执行中标签(G14.13):「正在…」双语;未知工具回落 正在执行 */
+/** 斜杠命令运行态标签外窥(系统提示行三态渲染,EntryViews CommandEntryView 消费) */
+export function commandRunningLabel(name: string): string {
+  const pair = RUNNING_LABELS[name] ?? ['Running', '正在执行'];
+  return t(pair[0], pair[1]);
+}
+
 const RUNNING_LABELS: Record<string, [string, string]> = {
   // 斜杠命令三态行(2026-10-31 用户裁定「命令执行与工具行三态一致」):/cmd 名即工具名
   '/compact': ['Compacting context', '上下文压缩中'],

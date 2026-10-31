@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X } from 'lucide-react';
 import { t } from '../../i18n';
+import { localizeNotice } from '../../i18n-notice';
+import { commandRunningLabel } from './ToolEntry';
 import { pathBasename } from '../../ui-util';
 import { useResolvedImages } from '../../images-cache';
 import type { Connection } from '../../connection';
@@ -515,6 +517,30 @@ const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string
     <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={components}>
       {md}
     </ReactMarkdown>
+  );
+});
+
+/** 斜杠命令三态系统提示行(2026-10-31 用户裁定「显示成系统提示行,不是普通工具行;系统提示也要
+ *  三态;不受工具折叠影响」):daemon runCommand 落的 tool-call/tool-result 行(name=/cmd)在此以
+ *  notice 形态直渲——运行中 spinner+「上下文压缩中」/完成 ✓+回执/失败 ✗+错误;不进 ToolSegBlock
+ *  聚合,不入轮次折叠区(use-chat-fold 同步豁免) */
+export function isCommandEntry(e: ChatEntry): boolean {
+  return e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/');
+}
+export const CommandEntryView = memo(function CommandEntryView({ entry }: { entry: ChatEntry }): JSX.Element {
+  const name = entry.name ?? '';
+  const done = entry.result !== undefined;
+  const failed = done && entry.result?.ok === false;
+  const text = done ? localizeNotice(entry.result?.text ?? '') : `${commandRunningLabel(name)}…`;
+  return (
+    <div className={`entry entry-notice cmd-entry${!done ? ' streaming' : failed ? ' cmd-failed' : ''}`} role="status" data-cmd={name}>
+      <div className="entry-md has-icon">
+        <span className="entry-icon" style={failed ? { color: 'var(--err)' } : undefined}>
+          {!done ? <span className="run-spinner" aria-hidden="true" /> : failed ? <X size={12} strokeWidth={2} aria-hidden="true" /> : <Check size={12} strokeWidth={2} aria-hidden="true" />}
+        </span>
+        <div className="entry-md-body" style={failed ? { color: 'var(--err)' } : undefined}>{text !== '' ? text : name}</div>
+      </div>
+    </div>
   );
 });
 

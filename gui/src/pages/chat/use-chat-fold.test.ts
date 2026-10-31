@@ -11,4 +11,10 @@ describe('collapsedHiddenKeys 折叠区间边界', () => {
     expect(hidden.has('t1')).toBe(true); // 上一轮工具行按折叠隐藏
     expect(hidden.has('cmd')).toBe(false); // 命令三态行(user 后)可见
   });
+  it('斜杠命令行=系统提示行,即便落在折叠区内也不隐藏(2026-10-31 裁定「不受工具折叠影响」)', () => {
+    const cmd = { ...e('cmd', 'tool'), name: '/compact' } as ChatEntry;
+    const hidden = collapsedHiddenKeys([e('r1', 'run'), e('t1', 'tool'), cmd], new Set(['r1']));
+    expect(hidden.has('t1')).toBe(true);
+    expect(hidden.has('cmd')).toBe(false);
+  });
 });

@@ -14,7 +14,7 @@ function fmtTokens(n: number): string {
  *  2026-10-23-messagelist-tail-window.md) */
 const RENDER_WINDOW_DEFAULT = 600; // 2026-10-26 三期:尾窗同步 600(用户裁定;content-visibility/组级 memo 兜渲染成本)
 const RENDER_WINDOW_STEP = 300;
-import { ChatEntryView, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
+import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
 import { ChatRail } from './ChatRail';
@@ -140,6 +140,12 @@ const DayGroupBlock = memo(
     for (const entry of entries) {
       if (entry.kind === 'run') lastRun = entry;
       // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
+      if (isCommandEntry(entry)) {
+        // 斜杠命令三态=系统提示行(2026-10-31 裁定):不进工具段聚合
+        flushSeg();
+        nodes.push(<CommandEntryView key={entry.key} entry={entry} />);
+        continue;
+      }
       if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
         seg.push(entry);
         continue;

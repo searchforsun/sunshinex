@@ -40,7 +40,8 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
       hide = false;
       continue;
     }
-    if (hide && (e.kind === 'tool' || e.kind === 'thinking')) s.add(e.key);
+    // 斜杠命令三态行=系统提示行,不受折叠影响(2026-10-31 裁定)
+    if (hide && (e.kind === 'tool' || e.kind === 'thinking') && !(e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/'))) s.add(e.key);
   }
   closeSeg();
   return s;
