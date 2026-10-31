@@ -163,6 +163,18 @@ export class McpHost {
     }
   }
 
+  /** 装配失败/连接失败落盘(与 stderr 日志同文件 append,带时间戳):诊断源不依赖 GUI 上屏 */
+  private writeAssemblyLog(name: string, line: string): void {
+    if (this.opts.logDir === undefined) return;
+    try {
+      fs.mkdirSync(this.opts.logDir, { recursive: true });
+      fs.appendFileSync(path.join(this.opts.logDir, `${name}.log`), `[${new Date().toISOString()}] ${line}
+`);
+    } catch {
+      /* 尽力落盘 */
+    }
+  }
+
   /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输）。
    *  2026-10-26：cfg.headers 随 http/sse 请求透传（requestInit.headers——Bearer 鉴权面，gitnexus
    *  风格 `{url, headers}` 主流形态）；SDK 对 SSE 的 GET 流同样吃 requestInit 头 */
@@ -217,10 +229,11 @@ export class McpHost {
       try {
         const transport = this.makeTransport(cfg);
         const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
-        this.attachStderrLog(cfg, transport); // start 后 stderr 才可用——连接前后都要挂(崩退原因必落)
         try {
           await client.connect(transport);
+          this.attachStderrLog(cfg, transport); // spawn 完成后 transport.stderr 才存在——挂靠必须在 connect 之后(pre-connect 恒 null=日志恒空的病根)
         } catch (e) {
+          this.attachStderrLog(cfg, transport); // 失败路径同样挂(子进程可能已 spawn,崩退现场必落)
           // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
           const halfOpenPid = pidOf(transport);
           await client.close().catch(() => {});
@@ -228,6 +241,7 @@ export class McpHost {
           if (halfOpenPid !== null) killProcessTree(halfOpenPid);
           const msg = e instanceof Error ? e.message : String(e);
           report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
+          this.writeAssemblyLog(cfg.name, `connection failed: ${msg}`);
           continue;
         }
         const actual = client.getServerVersion()?.name;
@@ -249,6 +263,7 @@ export class McpHost {
         // 形态守卫/清单拉取等残余失败同样只损失本服务器（降级语义），收警告继续
         const msg = e instanceof Error ? e.message : String(e);
         report.warnings.push(`assembly failed (${cfg.name}): ${msg.slice(0, 120)}`);
+        this.writeAssemblyLog(cfg.name, `assembly failed: ${msg}`);
       }
     }
     return report;
