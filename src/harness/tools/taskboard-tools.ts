@@ -43,14 +43,14 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { title?: string | null; spec?: string | null; dependsOn?: string[] | null; assignee?: string | null; gated?: boolean | null; executor?: string | null };
+      const raw = input as { title?: string | null; spec?: string | null; dependsOn?: string[] | null; assignee?: string | null; teamId?: string | null; executor?: string | null };
       const executor = raw.executor === 'internal' || raw.executor === 'external-cli' ? raw.executor : undefined;
       const r = board.create({
+        teamId: String(raw.teamId ?? ''),
         title: String(raw.title ?? ''),
         spec: String(raw.spec ?? ''),
         dependsOn: raw.dependsOn ?? undefined,
         assignee: raw.assignee ?? undefined,
-        gated: raw.gated === true,
         executor,
       });
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
@@ -79,14 +79,14 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { taskId?: string | null; action?: string | null; assignee?: string | null; note?: string | null; dependsOn?: string | null };
+      const raw = input as { taskId?: string | null; action?: string | null; assignee?: string | null; dependsOn?: string | null };
       const taskId = String(raw.taskId ?? '');
       const action = raw.action ?? '';
       const r =
         action === 'assign'
           ? board.assign(taskId, String(raw.assignee ?? ''))
           : action === 'gate'
-            ? board.gate(taskId, raw.note ?? undefined)
+            ? fail('INVALID_ARG', 'gate is not a board operation')
             : action === 'cancel'
               ? board.cancel(taskId)
               : action === 'depend'
@@ -113,9 +113,8 @@ export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
       'Lead ruling on a board task: close an in-review task (approved=true marks done and unblocks dependents; false marks failed, which blocks dependents) or resolve a gate (approved=true resumes dispatch).',
     category: 'task',
     fullObservation: true,
-    executor: async (input) => {
-      const raw = input as { taskId?: string | null; approved?: boolean | null; note?: string | null };
-      const r = board.review(String(raw.taskId ?? ''), { approved: raw.approved === true, note: raw.note ?? undefined });
+    executor: async () => {
+      const r = fail('INVALID_ARG', 'review is not a board operation');
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
       return { exitCode: 0, stdout: ['review recorded', boardTail(board)].join('\n'), stderr: '', timedOut: false };
     },

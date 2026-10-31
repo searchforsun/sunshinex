@@ -6,10 +6,11 @@ import { fail, ok, Result } from '../result';
 import { slugify } from '../slug';
 import {
   applyBoardEvent, BoardEvent, BoardTask, dispatchable, emptyBoard, hasCycle,
-  recoverOnLoad, TaskBoardState, transitionLegal,
+  recoverOnLoad, TaskBoardState, TaskStatus, transitionError, transitionLegal,
 } from './model';
 import type { TeamStore } from './store';
 import type { TeamRegistry } from './teammate';
+import type { AgentTeamRegistry } from './team-registry';
 import type { ExternalExecutorLike } from './executors/external-cli';
 
 /** 派发登记/委派标签(台账方言单点):旧 tN 板 id(恢复档)补 task- 前缀保 resolveId 归一命中;
@@ -18,14 +19,32 @@ export function dispatchTag(taskId: string): string {
   return /^t\d+$/.test(taskId) ? `task-${taskId}` : taskId;
 }
 
-/** TaskBoard 协调器(spec §5/§7):操作面(创建/依赖/指派/裁决/门)+ 事件发射(task-* / gate-* 进
- *  SessionEvent 公共面)+ event sourcing 持久化 + 批量并行派发 drain。
- *  (注:brief 原文此处的 task 前缀与 gate 前缀连写含块注释收注序列,会提前截断注释爆 TS1109,
- *  改写为加空格形态,语义不变)
- *  派发(Ruling 1):dispatchable 批次经 registry.submit 登账本(task_wait(null) 可等待)后
- *  await runner.runSubagent(fork 顶替 teammate,§13 P1),完成即强制回写 claimed→in-review/failed
- *  (§5.4 harness 权威,不依赖模型自觉);失败对直接下游发 task-blocked(不自动 skip,§4.1)。
- *  init 只恢复不 kick(Ruling 2):旧任务不随会话启动自动执行。 */
+const RESTART_RUNNING_NOTE = 'interrupted by restart (execution lost — recreate the task if needed)';
+const RESTART_PENDING_NOTE = 'no live executors after restart — recreate the task if needed';
+
+/** 执行回写:成功，或失败且可标明终态(缺省 failed;abort 路径传 cancelled) */
+export type ExecutionReport =
+  | { ok: true; by?: string; reply?: string; tokens?: number; durationMs?: number }
+  | {
+    ok: false;
+    terminal?: 'failed' | 'cancelled';
+    by?: string;
+    reply?: string;
+    tokens?: number;
+    durationMs?: number;
+    error?: { code?: string; message?: string };
+  };
+
+function statusTransitionError(taskId: string, from: TaskStatus, to: TaskStatus): string {
+  return transitionError(from, to).replace('cannot transition from', `cannot transition ${taskId} from`);
+}
+
+function isTerminal(status: TaskStatus): boolean {
+  return status === 'success' || status === 'failed' || status === 'cancelled';
+}
+
+/** TaskBoard 协调器:创建/依赖/指派/停止 + 事件发射 + event sourcing + 批量并行派发。
+ *  派发 pending→running;回写 running→success|failed|cancelled。init 只恢复不 kick。 */
 export interface TaskBoardDeps {
   store: TeamStore;
   runner: SubagentRunner;
@@ -34,19 +53,18 @@ export interface TaskBoardDeps {
   now?: () => number;
   /** 单任务执行预算上限(ms),缺省 30 分钟 */
   taskTimeoutMs?: number;
-  /** 未终态任务限流(spec §5.8),缺省 64 */
+  /** 未终态任务限流,缺省 64 */
   maxOpenTasks?: number;
-  /** 容量退避重派间隔(ms):CONCURRENCY_LIMIT 回池后等多少再重派,缺省 1000(测试可注入短值) */
+  /** 容量退避重派间隔(ms):并发护栏拒绝后等多少再重派,缺省 1000(测试可注入短值) */
   retryDelayMs?: number;
-  /** teammate 注册表(M2 派发路由):assignee 命中活 teammate → runTask;未指派且有活 teammate → 留给 claim;
-   *  缺省/全停 = P1 fork 路径原样(退化语义)。type-only 导入——teammate.ts 反向引 board 类型,双向值导入会成环 */
+  /** teammate 注册表:assignee 命中活 teammate → runTask;未指派且有活 teammate → 留给 claim。
+   *  缺省/全停 = fork 路径。type-only 导入——teammate.ts 反向引 board 类型,双向值导入会成环 */
   team?: TeamRegistry;
-  /** team 预算帽(spec §5.6,缺省不设):整板累计 tokens 上限,超帽 drain/claim 双前置拦截——任务留
-   *  pending 不失败;装配处经 teamTokenCapEnv() 注入(src/harness/index.ts) */
+  /** AgentTeam 注册表:create 拒绝未知 teamId。测试注入桩或 Memory 后端 */
+  agentTeams?: AgentTeamRegistry;
+  /** team 预算帽(缺省不设):整板累计 tokens 上限,超帽 drain/claim 双前置拦截——任务留 pending 不失败 */
   teamTokenCap?: number;
-  /** external-cli 执行体注入(P2 spec §5):executorHint 'external-cli' 的任务路由至此;缺席 = 提示仅
-   *  记录不改变派发行为(P1 内部路径原样)。分层口径:board 只依赖最小 ExternalExecutorLike 接口
-   *  (type-only 导入防环),真 ExternalCliExecutor 由 harness/index.ts 装配注入 */
+  /** external-cli 执行体:executorHint 'external-cli' 的任务路由至此;缺席则仍走内部路径 */
   externalExecutor?: ExternalExecutorLike;
 }
 
@@ -57,19 +75,18 @@ const DEFAULT_RETRY_DELAY_MS = 1000;
 export class TaskBoard {
   private state: TaskBoardState = emptyBoard();
   private draining = false;
-  /** 本轮 drain 有任务因 CONCURRENCY_LIMIT 回池:收兵改由退避定时器重派(2026-10-05 终审复审裁定) */
+  /** 本轮 drain 有任务因并发护栏拒绝留在 pending:收兵改由退避定时器重派 */
   private capacityDeferred = false;
-  /** 本轮 drain 有任务移交 teammate 执行路径(M2:未指派留 claim / 指派入队但 worker 在飞未认领):
-   *  收兵且不设定时器——teammate 单飞 worker 自持消化,消化完 finishExecution 尾 kick 重入;
-   *  不收兵则 while(true) 立即重取同批仍 pending 的任务 = 纯微任务自旋(与 capacityDeferred 同病同防) */
+  /** 本轮 drain 有任务移交 teammate:收兵且不设定时器,由 finishExecution 尾 kick 重入 */
   private claimDeferred = false;
   private deferredKick?: ReturnType<typeof setTimeout>;
-  /** team 预算帽累计用量(spec §5.6):finishExecution 回写时累加(计入所有回写的 tokens,失败通常为 0)——
-   *  与 artifact.tokens 同源,init 重放恢复(artifact.tokens 求和),跨重启帽语义续接不清零 */
+  /** team 预算帽累计用量:finishExecution 回写时累加;init 按 artifact.tokens 求和续接 */
   private teamTokensUsed = 0;
-  /** 帽耗尽 notice 已发(终审 Item 3,板实例级 one-shot):静默停摆是设计终态(任务留 pending 等帽拆),
-   *  可见性经 notice 单发——kick 重入不重发;板实例重建(重启)视为新一轮,重放后首个帽 break 再发一次 */
+  /** 帽耗尽 notice 已发(板实例级 one-shot) */
   private capNoticeEmitted = false;
+  /** fork 路径在飞执行:stopTask 据此 abort,并收口对应台账 */
+  private readonly inflight = new Map<string, { abort: () => void; ledgerId: string }>();
+  private readonly closedLedgers = new Set<string>();
   private readonly now: () => number;
   private readonly maxOpen: number;
   private readonly taskTimeoutMs: number;
@@ -82,22 +99,21 @@ export class TaskBoard {
     this.retryDelayMs = deps.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   }
 
-  /** 载入恢复(§7.5):重放 → claimed 回池(自愈事件落流)→ 不 kick(Ruling 2) */
+  /** 载入恢复:重放后 pending 与 running 自愈为 cancelled(事件落流,from 为装载前态),不 kick */
   init(): void {
     const loaded = this.deps.store.load();
+    const prior = new Map(Object.values(loaded.tasks).map((t) => [t.id, t.status]));
     const { state, recovered } = recoverOnLoad(loaded);
     this.state = state;
-    // team 帽用量重放恢复(T4 裁定):artifact.tokens 是事件流的投影,求和即历史累计——
-    // 重启后帽语义续接,不因进程重启清零导致超额重放
     this.teamTokensUsed = Object.values(this.state.tasks).reduce((sum, t) => sum + (t.artifact?.tokens ?? 0), 0);
     for (const id of recovered) {
-      // 2026-10-31 用户裁定「中断即终态」:claimed 恢复落 failed(异常终态,task_wait 等待面立即
-      // 收到终态回执;静默回池 pending 曾致已完成工作重派重执行+无人认领任务永等)
-      this.deps.store.append({ t: 'status-changed', taskId: id, from: 'claimed', to: 'failed', ts: this.now(), note: 'interrupted by restart (execution lost — recreate the task if needed)' });
-      this.emit('task-status-changed', { taskId: id, from: 'claimed', status: 'failed', note: 'interrupted by restart (execution lost — recreate the task if needed)' });
+      const from = prior.get(id);
+      if (from !== 'pending' && from !== 'running') continue;
+      const note = from === 'running' ? RESTART_RUNNING_NOTE : RESTART_PENDING_NOTE;
+      this.deps.store.append({ t: 'status-changed', taskId: id, from, to: 'cancelled', ts: this.now(), note });
+      this.emit('task-status-changed', { taskId: id, from, status: 'cancelled', note });
     }
-    // 惰性建档(Ruling 2「首写惰性建档」,2026-10-05 T4 评审裁定归 T3):init 接线进每个 Harness 构造后,
-    // 空板(无 tasks 且 seq=0)且无恢复时不得落快照——未用过任务板的工作区零物化 teams/ 目录;有状态维持原行为。
+    // 空板(无 tasks 且 seq=0)且无恢复时不落快照——未用过任务板的工作区零物化 teams/ 目录
     if (Object.keys(this.state.tasks).length === 0 && this.state.seq === 0 && recovered.length === 0) return;
     this.deps.store.writeSnapshot(this.state);
   }
@@ -106,31 +122,25 @@ export class TaskBoard {
     return this.state;
   }
 
-  /** 轮询等待板收敛（P2/T6；先例 harness/tasks.ts waitUntilSettled）：100ms 间隔快照，至「无 pending 且无
-   *  claimed」（在飞/待派皆空 = 本轮无事可做）或超时，返回末态快照——超时与否由调用方检视任务态自判
-   *  （直接给状态比 settled 布尔更通用）。注意：gated/依赖未满的 pending 会顶住收敛（等待 lead 审批/关单
-   *  解锁下游），调用方（如 run-pipeline 板路径）应以审批/裁决推进后重入。钟走 Date.now（轮询节拍器，
-   *  不入事件流时间戳，无需注入）。空板/全终态零等待即回。 */
+  /** 轮询至无 pending 且无 running,或超时。钟走 Date.now(轮询节拍,不入事件流)。 */
   async settle(timeoutMs: number): Promise<TaskBoardState> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const busy = Object.values(this.state.tasks).some((t) => t.status === 'pending' || t.status === 'claimed');
+      const busy = Object.values(this.state.tasks).some((t) => t.status === 'pending' || t.status === 'running');
       if (!busy) return this.state;
       if (Date.now() >= deadline) return this.state;
       await new Promise((r) => setTimeout(r, 100));
     }
   }
 
-  /** 面板摘要行(工具 observation 与 TUI 共用,P2 英文化):`t1 [in-review] A (needs t2)` 形态 */
+  /** 面板摘要行:`<id> [status] title (needs ...)` */
   summaryLines(): string[] {
     const lines = Object.values(this.state.tasks)
       .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
       .map((t) => {
         const dep = t.dependsOn.length > 0 ? ` (needs ${t.dependsOn.join(',')})` : '';
-        const gate = t.gated === true ? ' [gated]' : '';
-        return `${t.id} [${t.status}]${gate} ${t.title}${dep}`;
+        return `${t.id} [${t.status}] ${t.title}${dep}`;
       });
-    // team 预算帽透出(T4):帽设置即尾行附用量供工具观察,达帽标注 exhausted(spec §5.6)
     if (this.deps.teamTokenCap !== undefined) {
       lines.push(this.teamTokensUsed >= this.deps.teamTokenCap
         ? `team budget exhausted (${this.teamTokensUsed}/${this.deps.teamTokenCap}) tokens`
@@ -139,36 +149,54 @@ export class TaskBoard {
     return lines;
   }
 
-  create(input: { title: string; spec: string; dependsOn?: string[]; assignee?: string; gated?: boolean; executor?: 'internal' | 'external-cli' }): Result<{ taskId: string }> {
+  create(input: {
+    teamId: string;
+    title: string;
+    spec: string;
+    dependsOn?: string[];
+    assignee?: string;
+    executor?: 'internal' | 'external-cli';
+    retryOf?: string;
+  }): Result<{ taskId: string }> {
     if (typeof input.title !== 'string' || input.title.length === 0 || typeof input.spec !== 'string' || input.spec.length === 0) {
       return fail('INVALID_ARG', 'create requires non-empty title and spec');
+    }
+    if (typeof input.teamId !== 'string' || input.teamId.length === 0 || this.deps.agentTeams?.get(input.teamId) === undefined) {
+      return fail('INVALID_ARG', `unknown teamId: ${String(input.teamId ?? '')}; create a team with create_team first`);
     }
     const deps = input.dependsOn ?? [];
     const unknown = deps.filter((d) => this.state.tasks[d] === undefined);
     if (unknown.length > 0) return fail('INVALID_ARG', `unknown dependency: ${unknown.join(', ')}`);
-    const open = Object.values(this.state.tasks).filter((t) => t.status !== 'done' && t.status !== 'failed' && t.status !== 'cancelled').length;
-    if (open >= this.maxOpen) return fail('INVALID_ARG', `task board open-task limit reached (${this.maxOpen}); review or cancel existing tasks first`);
-    // id 方言(2026-10-19 用户裁决「t1/t2 无意义」):task-<业务段>-<随机码> 对齐台账「业务段-时间/随机段」
-    // 三段式——业务段=slug(title,≤16),CJK 等非拉丁按方言折叠回退 'board';随机段 4 位 base36,板内唯一性
-    // 循环再生。旧 tN 形态随恢复档继续可读(resolveId/dispatchTag 归一兼容),seq 仅作事件序记账保留
+    const cross = deps.filter((d) => this.state.tasks[d]!.teamId !== input.teamId);
+    if (cross.length > 0) return fail('INVALID_ARG', `dependsOn task ${cross.join(', ')} is not on team ${input.teamId}`);
+    if (input.retryOf !== undefined) {
+      const prev = this.state.tasks[input.retryOf];
+      if (prev === undefined) return fail('INVALID_ARG', `retryOf task ${input.retryOf} is not on team ${input.teamId}`);
+      if (prev.teamId !== input.teamId) return fail('INVALID_ARG', `retryOf task ${input.retryOf} does not belong to team ${input.teamId}`);
+      if (!isTerminal(prev.status)) {
+        return fail('INVALID_ARG', `retryOf task ${input.retryOf} is still ${prev.status}; stop it or wait for a terminal state first`);
+      }
+    }
+    const open = Object.values(this.state.tasks).filter((t) => t.status === 'pending' || t.status === 'running').length;
+    if (open >= this.maxOpen) return fail('INVALID_ARG', `task board open-task limit reached (${this.maxOpen}); stop existing tasks or wait for them to finish`);
     const genId = (): string => `task-${slugify(input.title, { max: 16, fallback: 'board' })}-${Math.random().toString(36).slice(2, 6)}`;
     let taskId = genId();
     while (this.state.tasks[taskId] !== undefined) taskId = genId();
-    const ev: BoardEvent = { t: 'task-created', taskId, title: input.title, spec: input.spec, dependsOn: deps, ts: this.now(), ...(input.executor !== undefined ? { executorHint: input.executor } : {}) };
+    const ev: BoardEvent = {
+      t: 'task-created', taskId, title: input.title, spec: input.spec, dependsOn: deps, teamId: input.teamId, ts: this.now(),
+      ...(input.retryOf !== undefined ? { retryOf: input.retryOf } : {}),
+      ...(input.executor !== undefined ? { executorHint: input.executor } : {}),
+    };
     this.applyAndPersist(ev);
     if (input.assignee !== undefined && input.assignee.length > 0) {
       this.applyAndPersist({ t: 'assigned', taskId, assignee: input.assignee, ts: this.now() });
     }
-    // 建即 gated(P2):经既有 gate-set 事件表达,不引入新变体——task-created(及 assigned)落流后再挂门,
-    // 发射序同构(task-created 先于 gate-waiting:投影侧按事件序归约,门先于建会丢单)
-    if (input.gated === true) {
-      this.applyAndPersist({ t: 'gate-set', taskId, ts: this.now() });
-    }
-    this.emit('task-created', { taskId, title: input.title, spec: input.spec, dependsOn: deps, ...(input.executor !== undefined ? { executorHint: input.executor } : {}) });
-    if (input.gated === true) {
-      this.emit('gate-waiting', { taskId });
-    }
-    this.kick(); // gated 任务自然不派发;依赖满足后 + 门经 review(approved) 解锁才会派发
+    this.emit('task-created', {
+      taskId, title: input.title, spec: input.spec, dependsOn: deps, teamId: input.teamId,
+      ...(input.retryOf !== undefined ? { retryOf: input.retryOf } : {}),
+      ...(input.executor !== undefined ? { executorHint: input.executor } : {}),
+    });
+    this.kick();
     return ok({ taskId });
   }
 
@@ -182,6 +210,9 @@ export class TaskBoard {
     );
     const cycle = hasCycle(candidate);
     if (cycle !== null) return fail('INVALID_ARG', `dependency would create a cycle: ${cycle.join(' -> ')}`);
+    if (this.state.tasks[dependsOn]!.teamId !== task.teamId) {
+      return fail('INVALID_ARG', `dependsOn task ${dependsOn} is not on team ${task.teamId}`);
+    }
     this.applyAndPersist({ t: 'dependency-added', taskId, dependsOn, ts: this.now() });
     this.emit('task-dep-added', { taskId, dependsOn });
     this.kick();
@@ -197,55 +228,32 @@ export class TaskBoard {
     return ok(undefined);
   }
 
-  /** lead 裁决双语义:gated → 审批(approved 解锁 / 拒绝维持);in-review → 关单(approved=done / 拒=failed) */
-  review(taskId: string, opts: { approved: boolean; note?: string }): Result<void> {
+  /** pending|running → cancelled。终态幂等成功,不重复 abort。 */
+  stopTask(taskId: string): Result<void> {
     const task = this.state.tasks[taskId];
     if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
-    if (task.gated === true) {
-      if (opts.approved) {
-        this.applyAndPersist({ t: 'gate-resolved', taskId, approved: true, ts: this.now() });
-        this.emit('gate-resolved', { taskId, approved: true });
-        this.kick();
-        return ok(undefined);
-      }
-      return ok(undefined); // 拒绝审批:维持 gated(lead 可改任务或再议)
+    if (isTerminal(task.status)) return ok(undefined);
+    if (!transitionLegal(task.status, 'cancelled')) {
+      return fail('INVALID_STATE', statusTransitionError(taskId, task.status, 'cancelled'));
     }
-    if (task.status === 'in-review') {
-      const to = opts.approved ? 'done' : 'failed';
-      if (!transitionLegal('in-review', to)) return fail('INVALID_STATE', `illegal transition in-review -> ${to}`);
-      this.applyAndPersist({ t: 'status-changed', taskId, from: 'in-review', to, ts: this.now(), ...(opts.note !== undefined ? { note: opts.note } : {}) });
-      this.emit('task-status-changed', { taskId, from: 'in-review', status: to, ...(opts.note !== undefined ? { note: opts.note } : {}) });
-      if (!opts.approved) this.emitBlockedDownstream(taskId);
-      this.kick();
-      return ok(undefined);
+    const from = task.status;
+    this.applyAndPersist({ t: 'status-changed', taskId, from, to: 'cancelled', ts: this.now(), note: 'stopped' });
+    this.emit('task-status-changed', { taskId, from, status: 'cancelled', note: 'stopped' });
+    const flight = this.inflight.get(taskId);
+    if (flight !== undefined) {
+      flight.abort();
+      this.finishLedger(flight.ledgerId, 'stopped');
+      this.inflight.delete(taskId);
     }
-    return fail('INVALID_ARG', `review expects a gated or in-review task, ${taskId} is ${task.status}`);
-  }
-
-  gate(taskId: string, note?: string): Result<void> {
-    const task = this.state.tasks[taskId];
-    if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
-    if (task.status === 'claimed') return fail('INVALID_ARG', 'cannot gate a task mid-execution');
-    this.applyAndPersist({ t: 'gate-set', taskId, ts: this.now(), ...(note !== undefined ? { note } : {}) });
-    this.emit('gate-waiting', { taskId, ...(note !== undefined ? { note } : {}) });
+    if (from === 'running' && task.executedBy !== undefined && task.executedBy !== 'fork' && task.executedBy !== 'external-cli') {
+      this.deps.team?.get(task.executedBy)?.interruptCurrent();
+    }
     return ok(undefined);
   }
 
-  /** lead 取消(终审 Item 2):pending(含 gated / blocked 派生)→ cancelled(LEGAL 既有边)——终态即
-   *  出 open 计数,板容量可回收;claimed 在飞不可直接取消(须先 stop 收口,回写单点保证终态迁移);
-   *  其余终态/非法迁移一律 INVALID_ARG。不发下游 task-blocked:cancelled 依赖的下游本就经派生 blocked
-   *  语义顶住(§4.1 留人裁决),取消本身非执行失败 */
+  /** 与 stopTask 同语义 */
   cancel(taskId: string): Result<void> {
-    const task = this.state.tasks[taskId];
-    if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
-    if (task.status !== 'pending') {
-      return fail('INVALID_ARG', task.status === 'claimed'
-        ? `cannot cancel a claimed task mid-execution (${taskId}); stop it first`
-        : `cancel expects a pending task (gated/blocked included), ${taskId} is ${task.status}`);
-    }
-    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'cancelled', ts: this.now(), note: 'cancelled by lead' });
-    this.emit('task-status-changed', { taskId, from: 'pending', status: 'cancelled', note: 'cancelled by lead' });
-    return ok(undefined);
+    return this.stopTask(taskId);
   }
 
   private applyAndPersist(ev: BoardEvent): void {
@@ -258,34 +266,55 @@ export class TaskBoard {
     this.deps.onEvent?.({ type, payload, ...(text !== undefined ? { text } : {}), ts: this.now() });
   }
 
-  /** teammate 自取(M2 claim 循环):原子取首个 dispatchable 未指派任务 pending→claimed(事件化)。
-   *  assignee 形参=认领者名(事件记账+执行者归因): Ctrl+T 行 @owner 在执行期即可见(spec §10.2「这个任务
-   *  被谁接着」)——归因键统一 by(2026-10-09 修:旧发射键 claimedBy 与 translate 读取键 by 错位,执行者
-   *  归因死线;persist 同步带 by,重启重放 owner 不丢)。
-   *  (同步单线程取置,两 teammate 不会取到同一任务;team 预算帽 T4 落地) */
-  claim(assignee: string): BoardTask | undefined {
-    // team 预算帽前置(与 drain 同检,spec §5.6):超帽 teammate 空手而归,任务留 pending 不失败
-    if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) return undefined;
-    const task = dispatchable(this.state).find((t) => t.assignee === undefined);
-    if (task === undefined) return undefined;
-    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now(), by: assignee });
-    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', by: assignee });
-    return this.state.tasks[task.id];
+  private finishLedger(ledgerId: string, status: 'done' | 'failed' | 'stopped', opts?: { marker?: string }): void {
+    if (this.closedLedgers.has(ledgerId)) return;
+    this.closedLedgers.add(ledgerId);
+    this.deps.registry.finish(ledgerId, status, opts);
   }
 
-  /** 指派路由认领(M2,Teammate.execute 入口):pending→claimed(事件化),by=认领者名(执行者归因,口径同 claim)。
-   *  幂等双口径:已 claimed 返回 true(claim() 先行认领的同任务);非 pending(终态/被取走)返回 false,调用方静默放弃 */
-  markClaimed(taskId: string, by: string): boolean {
+  /** 执行体在首次 await 之前返回的结果(并发护栏拒绝)可在一次微任务内观察到;真正执行仍 pending */
+  private async earlyResult<T>(p: Promise<T>): Promise<T | undefined> {
+    let settled = false;
+    let value!: T;
+    let rejected: unknown;
+    let didReject = false;
+    p.then(
+      (v) => { settled = true; value = v; },
+      (e) => { settled = true; didReject = true; rejected = e; },
+    );
+    await Promise.resolve();
+    if (!settled) return undefined;
+    if (didReject) throw rejected;
+    return value;
+  }
+
+  private enterRunning(taskId: string, by: string): boolean {
     const task = this.state.tasks[taskId];
-    if (task === undefined) return false;
-    if (task.status === 'claimed') return true;
-    if (task.status !== 'pending') return false;
-    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'claimed', ts: this.now(), by });
-    this.emit('task-status-changed', { taskId, from: 'pending', status: 'claimed', by });
+    if (task === undefined || task.status !== 'pending') return false;
+    this.applyAndPersist({ t: 'status-changed', taskId, from: 'pending', to: 'running', ts: this.now(), by });
+    this.emit('task-status-changed', { taskId, from: 'pending', status: 'running', by });
     return true;
   }
 
-  /** 上游 failed:直接下游 pending 者发 task-blocked(§4.1 不自动 skip;blockedBy=其依赖中的失败者) */
+  /** teammate 自取:原子取首个 dispatchable 未指派任务 pending→running */
+  claim(assignee: string): BoardTask | undefined {
+    if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) return undefined;
+    const task = dispatchable(this.state).find((t) => t.assignee === undefined);
+    if (task === undefined) return undefined;
+    if (!this.enterRunning(task.id, assignee)) return undefined;
+    return this.state.tasks[task.id];
+  }
+
+  /** 指派路由认领:pending→running。已 running 幂等 true;其余非 pending 返回 false */
+  markClaimed(taskId: string, by: string): boolean {
+    const task = this.state.tasks[taskId];
+    if (task === undefined) return false;
+    if (task.status === 'running') return true;
+    if (task.status !== 'pending') return false;
+    return this.enterRunning(taskId, by);
+  }
+
+  /** 上游 failed:直接下游 pending 者发 task-blocked */
   private emitBlockedDownstream(failedId: string): void {
     for (const t of Object.values(this.state.tasks)) {
       if (t.status === 'pending' && t.dependsOn.includes(failedId)) {
@@ -299,26 +328,16 @@ export class TaskBoard {
     void this.drain();
   }
 
-  /** 批量并行派发(graph 层内 allSettled 先例):每轮取当前 dispatchable 全批并发,完成后续跑下一轮。
-   *  容量退避(2026-10-05 终审复审裁定):CONCURRENCY_LIMIT 回池若仍在 while(true) 里立即重取,
-   *  runSubagent 同步拒绝 → allSettled 微任务即 resolve → 纯微任务自旋(事件流无界增长 + 饿死才能
-   *  释放容量的 macrotask 完成回调 = 潜在死锁)。故本轮收兵,退避定时器让出事件循环后再 kick 重派。 */
+  /** 批量并行派发:每轮取当前 dispatchable 全批并发,完成后续跑下一轮。
+   *  并发护栏拒绝留在 pending,本轮收兵,退避定时器让出事件循环后再 kick。 */
   private async drain(): Promise<void> {
     if (this.draining) return;
     this.draining = true;
-    // 双旗跨轮互清(2026-10-06 复审 Minor 3):capacity/claim 任一 break 分支只清己旗,对侧旗残留会让
-    // 下一轮在首个批次后过早收兵——入口统一清零,本轮旗由 executeOne 重新置位
     this.capacityDeferred = false;
     this.claimDeferred = false;
     let defer = false;
     try {
       while (true) {
-        // team 预算帽前置检查(spec §5.6 超帽留 pending 不失败):整板累计 tokens 达帽即收兵,不派发新批。
-        // 不置 capacityDeferred/claimDeferred(无退避定时器、不归队 claim)——任务保持 pending,
-        // 后续 review/create 的 kick 自然重入;用量透出走 summaryLines 尾行,不发阻塞事件。
-        // 帽耗尽 one-shot notice(终审 Item 3):静默停摆是设计终态,但零信号会让 lead 误判板死锁——
-        // 经既有 notice 事件单发一次(板实例级,TUI 渲染 system 行,零新增协议词汇;kick 重入不重发;
-        // Ctrl+T 页脚用量随 P3 数据面)
         if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) {
           if (!this.capNoticeEmitted) {
             this.capNoticeEmitted = true;
@@ -337,17 +356,17 @@ export class TaskBoard {
         if (this.capacityDeferred) {
           this.capacityDeferred = false;
           defer = true;
-          break; // 容量被占:本轮收兵,定时器让出事件循环(macrotask 完成回调才有机会释放容量)
+          break;
         }
         if (this.claimDeferred) {
           this.claimDeferred = false;
-          break; // 留给 claim:任务仍 pending,原地重取即自旋;teammate claim 循环消化后续轮由 review/create 再 kick
+          break;
         }
       }
     } finally {
       this.draining = false;
       if (defer) {
-        clearTimeout(this.deferredKick); // 未清不重入:clearTimeout 更稳
+        clearTimeout(this.deferredKick);
         this.deferredKick = setTimeout(() => { this.deferredKick = undefined; this.kick(); }, this.retryDelayMs);
         this.deferredKick.unref?.();
       }
@@ -355,84 +374,86 @@ export class TaskBoard {
   }
 
   private async executeOne(task: BoardTask): Promise<void> {
-    // external-cli 路由(P2,先于 team 路由:任务级 executorHint 是显式声明,强于 assignee/teammate 缺省):
-    // 注入在场才接管;缺席 = 提示退化记录,内部路径原样(与 P1 行为完全一致)
     if (task.executorHint === 'external-cli' && this.deps.externalExecutor !== undefined) {
       await this.executeExternal(task, this.deps.externalExecutor);
       return;
     }
-    // M2 派发路由(先于本方法 claimed 落流,teammate 路径自含认领):assignee 命中活 teammate →
-    // 交 runTask(markClaimed + 执行 + 回写 + 续 claim 自含,不 await 整批);未指派且有活 teammate →
-    // 留给 claim 循环(不落 claimed);否则 P1 fork 路径原样(无 team/全停/指派已死 = 退化语义)
     if (this.deps.team !== undefined) {
       const tm = task.assignee !== undefined ? this.deps.team.get(task.assignee) : undefined;
       if (tm !== undefined && !tm.stopped) {
-        void tm.runTask(task).catch(() => { /* 单任务异常不倒灌派发;回写缺失由恢复回池兜底 */ });
-        // 入队不等于认领(worker 在飞上一任务时任务仍 pending):不收兵则下轮原地重派同任务
-        // = 纯微任务自旋(worker 空闲时同步认领,此旗空转一轮无害)——收兵,worker 认领/消化后
-        // finishExecution 尾 kick 重入
+        void tm.runTask(task).catch(() => { /* 单任务异常不倒灌派发;回写由执行体收口 */ });
         this.claimDeferred = true;
         return;
       }
       if (task.assignee === undefined && this.deps.team.hasAlive()) {
-        // 留给 claim:踢活 teammate 认领(可能空闲——claim 循环上次取空已退出)+ 本轮 drain 收兵
         for (const name of this.deps.team.aliveNames()) this.deps.team.get(name)?.kick();
         this.claimDeferred = true;
         return;
       }
     }
-    this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'pending', to: 'claimed', ts: this.now(), by: 'fork' });
-    this.emit('task-status-changed', { taskId: task.id, from: 'pending', status: 'claimed', by: 'fork' });
     const ledger = this.deps.registry.submit({ kind: 'subagent', label: dispatchTag(task.id) });
     const abort = new AbortController();
     ledger.stop = () => abort.abort();
+    this.inflight.set(task.id, { abort: () => abort.abort(), ledgerId: ledger.id });
     this.deps.registry.append(ledger.id, `[taskboard] ${task.id}: ${task.title}\n`);
     const startedAt = this.now();
+    let phase: 'result' | 'concurrency' | 'cancelled' = 'result';
     let okRun = false;
     let reply = '';
     let tokens = 0;
     let errCode: string | undefined;
     let errMsg: string | undefined;
     try {
-      const tokenCap = subagentTokenCapEnv();
-      const r = await this.deps.runner.runSubagent(
+      const runP = this.deps.runner.runSubagent(
         { prompt: task.spec, label: dispatchTag(task.id) },
         {
           taskLine: `Task ${task.id}: ${task.title}`,
           signal: abort.signal,
           budget: {
             maxSteps: reactorMaxStepsEnv() ?? 400,
-            ...(tokenCap !== undefined ? { tokenCap } : {}),
+            ...(subagentTokenCapEnv() !== undefined ? { tokenCap: subagentTokenCapEnv() } : {}),
             deadlineAt: Date.now() + this.taskTimeoutMs,
           },
         },
       );
-      if (r.ok) {
-        okRun = true;
-        reply = r.value.reply;
-        tokens = r.value.tokens;
+      const early = await this.earlyResult(runP);
+      if (this.state.tasks[task.id]?.status === 'cancelled') {
+        phase = 'cancelled';
+      } else if (early !== undefined && !early.ok && early.error.code === 'CONCURRENCY_LIMIT') {
+        phase = 'concurrency';
+        this.capacityDeferred = true;
+      } else if (!this.enterRunning(task.id, 'fork')) {
+        phase = 'cancelled';
       } else {
-        errCode = r.error.code;
-        errMsg = r.error.message;
+        const r = early ?? await runP;
+        if (this.state.tasks[task.id]?.status === 'cancelled') {
+          phase = 'cancelled';
+        } else if (r.ok) {
+          okRun = true;
+          reply = r.value.reply;
+          tokens = r.value.tokens;
+        } else {
+          errCode = r.error.code;
+          errMsg = r.error.message;
+          if (errCode === 'CONCURRENCY_LIMIT' && this.state.tasks[task.id]?.status === 'pending') {
+            phase = 'concurrency';
+            this.capacityDeferred = true;
+          }
+        }
       }
     } catch (e) {
+      if (this.state.tasks[task.id]?.status === 'cancelled') phase = 'cancelled';
       okRun = false;
       errCode = 'THROWN';
       errMsg = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.inflight.delete(task.id);
     }
-    const durationMs = this.now() - startedAt;
-    // 并发护栏拒绝非任务过错:claimed→pending 回池待派(合法迁移,同 §7.4 恢复语义),台账收口 stopped;
-    // 不写 failed、不发下游 blocked——置 capacityDeferred,drain 本轮收兵改由退避定时器重派
-    // (2026-10-05 终审复审裁定:容量被外部占用时定时器让出事件循环,消除微任务自旋热循环)
-    if (!okRun && errCode === 'CONCURRENCY_LIMIT') {
-      this.applyAndPersist({ t: 'status-changed', taskId: task.id, from: 'claimed', to: 'pending', ts: this.now(), note: 'concurrency limit, deferred' });
-      this.emit('task-status-changed', { taskId: task.id, from: 'claimed', status: 'pending', note: 'concurrency limit, deferred' });
-      this.deps.registry.finish(ledger.id, 'stopped');
-      this.capacityDeferred = true;
+    if (phase === 'concurrency' || phase === 'cancelled' || this.state.tasks[task.id]?.status === 'cancelled') {
+      this.finishLedger(ledger.id, 'stopped');
       return;
     }
-    // harness 强制回写(§5.4):回写单点 finishExecution——executeOne 与 T2 teammate/外部执行体路径共用,
-    // claimed→in-review/failed 口径单点(不依赖模型自觉标记)
+    const durationMs = this.now() - startedAt;
     if (okRun) {
       this.finishExecution(task.id, { ok: true, by: 'fork', reply, tokens, durationMs }, ledger.id);
     } else {
@@ -440,12 +461,8 @@ export class TaskBoard {
     }
   }
 
-  /** external-cli 执行路径(P2):markClaimed 认领 → 委派生命周期事件(kind 'external-cli')→
-   *  executor.run(deadline = 板超时换算)→ finishExecution 强制回写(失败 note 带 EXTERNAL code;
-   *  external 任务的台账在执行体内部,ledgerId 缺省跳过)。黑盒口径:执行体无翻译产出时
-   *  UI 仅见起止(delegation-started/ended),board 不透传其内部细节 */
   private async executeExternal(task: BoardTask, executor: ExternalExecutorLike): Promise<void> {
-    if (!this.markClaimed(task.id, 'external-cli')) return; // 非 pending(被取走/终态):静默放弃
+    if (!this.markClaimed(task.id, 'external-cli')) return;
     const delegationId = dispatchTag(task.id);
     this.emit('delegation-started', { delegationId, kind: 'external-cli', label: delegationId });
     const startedAt = this.now();
@@ -453,10 +470,13 @@ export class TaskBoard {
     try {
       r = await executor.run({ id: task.id, title: task.title, spec: task.spec }, { deadlineAt: Date.now() + this.taskTimeoutMs });
     } catch (e) {
-      // 执行体异常收口:作 EXTERNAL 失败回写(不向上抛——drain 不因单任务炸停)
       r = { ok: false, reply: e instanceof Error ? e.message : String(e), tokens: 0 };
     }
     const durationMs = this.now() - startedAt;
+    if (this.state.tasks[task.id]?.status === 'cancelled') {
+      this.emit('delegation-ended', { delegationId, kind: 'external-cli', status: 'failed', tokens: r.tokens });
+      return;
+    }
     if (r.ok) {
       this.finishExecution(task.id, { ok: true, by: 'external-cli', reply: r.reply, tokens: r.tokens, durationMs });
     } else {
@@ -465,31 +485,44 @@ export class TaskBoard {
     this.emit('delegation-ended', { delegationId, kind: 'external-cli', status: r.ok ? 'done' : 'failed', tokens: r.tokens });
   }
 
-  /** 执行回写单点(P2 自 executeOne 抽取,T2 teammate/外部执行体路径复用):claimed→in-review/failed 强制迁移
-   *  + task-status-changed 发射 + artifact 并入(conclusion/tokens/durationMs)+ 台账收口(ledgerId 缺省跳过)
-   *  + 失败发直接下游 task-blocked(§4.1 不自动 skip)。失败 note 带 code+message(与台账 [failed] 行口径对称)。
-   *  r.durationMs 由调用方计算传入(计时归执行路径,回写点不持钟);r.error 携带失败详情供 note 组装。 */
-  finishExecution(taskId: string, r: { ok: boolean; by?: string; reply?: string; tokens?: number; durationMs?: number; error?: { code?: string; message?: string } }, ledgerId?: string): void {
-    const failNote = `execution failed: ${r.error?.code ?? 'UNKNOWN'}: ${r.error?.message ?? 'no error detail'}`;
-    // team 帽用量累计(T4):计入所有回写的 tokens(与 artifact 同源的 r.tokens),失败通常为 0——
-    // ok/failed 均累加,幂等面由「finishExecution 每任务恰一次」的回写单点不变量保证
-    this.teamTokensUsed += r.tokens ?? 0;
-    this.applyAndPersist({
-      t: 'status-changed', taskId, from: 'claimed', to: r.ok ? 'in-review' : 'failed', ts: this.now(),
-      ...(r.by !== undefined ? { by: r.by } : {}),
-      ...(r.ok
-        ? { conclusion: r.reply ?? '', tokens: r.tokens ?? 0, ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}) }
-        : { note: failNote }),
-    });
-    this.emit('task-status-changed', { taskId, from: 'claimed', status: r.ok ? 'in-review' : 'failed', ...(r.by !== undefined ? { by: r.by } : {}), ...(r.ok ? {} : { note: failNote }) });
-    if (r.ok) {
-      if (ledgerId !== undefined) this.deps.registry.finish(ledgerId, 'done', { marker: `[conclusion] ${r.reply ?? ''}\n` });
-    } else {
-      if (ledgerId !== undefined) this.deps.registry.finish(ledgerId, 'failed');
-      this.emitBlockedDownstream(taskId);
+  /** running → success|failed|cancelled。已是终态则幂等成功,不改状态、不重复记账。 */
+  finishExecution(taskId: string, r: ExecutionReport, ledgerId?: string): Result<void> {
+    const task = this.state.tasks[taskId];
+    if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
+    const to: TaskStatus = r.ok ? 'success' : (r.terminal ?? 'failed');
+    if (task.status !== 'running') {
+      if (isTerminal(task.status)) {
+        if (ledgerId !== undefined) {
+          const ledgerStatus = task.status === 'success' ? 'done' : task.status === 'cancelled' ? 'stopped' : 'failed';
+          this.finishLedger(ledgerId, ledgerStatus, task.status === 'success' ? { marker: `[conclusion] ${r.ok ? (r.reply ?? '') : ''}\n` } : undefined);
+        }
+        return ok(undefined);
+      }
+      return fail('INVALID_STATE', statusTransitionError(taskId, task.status, to));
     }
-    // 回写尾 kick(2026-10-06 复审 Critical 1):teammate/外部执行体路径的回写发生在 drain 之外,
-    // 回写解锁的指派下游必须重入派发(P1 路径在 drain 内调用,闩挡重入零开销;claimDeferred 防自旋)
+    if (!transitionLegal('running', to)) return fail('INVALID_STATE', statusTransitionError(taskId, 'running', to));
+    this.teamTokensUsed += r.tokens ?? 0;
+    const failNote = !r.ok ? `execution failed: ${r.error?.code ?? 'UNKNOWN'}: ${r.error?.message ?? 'no error detail'}` : undefined;
+    const note = to === 'failed' ? failNote : to === 'cancelled' ? 'stopped' : undefined;
+    this.applyAndPersist({
+      t: 'status-changed', taskId, from: 'running', to, ts: this.now(),
+      ...(r.by !== undefined ? { by: r.by } : {}),
+      ...(to === 'success'
+        ? { conclusion: r.reply ?? '', tokens: r.tokens ?? 0, ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}) }
+        : note !== undefined ? { note } : {}),
+    });
+    this.emit('task-status-changed', {
+      taskId, from: 'running', status: to,
+      ...(r.by !== undefined ? { by: r.by } : {}),
+      ...(note !== undefined ? { note } : {}),
+    });
+    if (ledgerId !== undefined) {
+      if (to === 'success') this.finishLedger(ledgerId, 'done', { marker: `[conclusion] ${r.reply ?? ''}\n` });
+      else if (to === 'cancelled') this.finishLedger(ledgerId, 'stopped');
+      else this.finishLedger(ledgerId, 'failed');
+    }
+    if (to === 'failed') this.emitBlockedDownstream(taskId);
     this.kick();
+    return ok(undefined);
   }
 }

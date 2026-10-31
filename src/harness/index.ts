@@ -24,7 +24,8 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
-import { TeamStore } from '../taskboard/store';
+import { AgentTeamRegistryStore, TeamStore } from '../taskboard/store';
+import { AgentTeamRegistry } from '../taskboard/team-registry';
 import { TeamRegistry, Teammate } from '../taskboard/teammate';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 import { makeSendMessageTool } from '../taskboard/message-tools';
@@ -370,11 +371,13 @@ export class Harness {
     // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;
     // external-cli 执行体(T5):claude code stream-json 适配,board 侧 executorHint 'external-cli' 路由接管
     // (无环:executors/external-cli 只依赖 sandbox/tasks/types/executor 接口,零 board 反向引用)
+    const teamsRoot = path.join(resolveDataDir(base), 'teams');
     this.taskboard = new TaskBoard({
-      store: new TeamStore(path.join(resolveDataDir(base), 'teams', 'main')),
+      store: new TeamStore(path.join(teamsRoot, 'main')),
       runner: this.runner,
       registry: this.tasks,
       team: this.team,
+      agentTeams: new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot)),
       externalExecutor: new ExternalCliExecutor({
         sandbox: this.sandbox,
         registry: this.tasks,

@@ -157,11 +157,9 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
         // 异常终态附重派指引(2026-10-31 用户裁定「终态可提示主动分发避免死态」):failed=执行丢失
         // (含重启中断恢复)/失败,永不自动重跑——需要重做由 lead 重新 create_task
         const hint =
-          bt.status === 'in-review'
-            ? ' (work finished, awaiting review)'
-            : bt.status === 'failed' || bt.status === 'cancelled'
-              ? ` — terminal; to redo this work, create a new task with create_task${bt.status === 'failed' ? ' (failed tasks are never auto-rerun; tasks interrupted by a restart land here too)' : ''}`
-              : '';
+          bt.status === 'failed' || bt.status === 'cancelled'
+            ? ' — terminal; to redo this work, create a new task with create_task'
+            : '';
         lines.push(`${id} (board) ${bt.status} — ${bt.title}${hint}`);
       }
       const head = result.settled

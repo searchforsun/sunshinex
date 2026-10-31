@@ -11,9 +11,13 @@ import { applyBoardEvent, emptyBoard } from './model';
 
 test('task-created 翻译:title/spec/dependsOn/ts 逐字段;载荷 executorHint 不携带(现状口径)', () => {
   const ev = boardEventFrom({ type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', spec: 'do A', dependsOn: ['t0'], executorHint: 'external-cli' } });
-  assert.deepEqual(ev, { t: 'task-created', taskId: 't1', title: 'A', spec: 'do A', dependsOn: ['t0'], ts: 100 });
+  assert.deepEqual(ev, { t: 'task-created', taskId: 't1', title: 'A', spec: 'do A', dependsOn: ['t0'], teamId: '', ts: 100 });
+  assert.deepEqual(
+    boardEventFrom({ type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', spec: 'do A', dependsOn: [], teamId: 'tm1', retryOf: 't0' } }),
+    { t: 'task-created', taskId: 't1', title: 'A', spec: 'do A', dependsOn: [], teamId: 'tm1', retryOf: 't0', ts: 100 },
+  );
   // 缺省载荷防御:payload 缺席/字段缺失回退空串与空数组
-  assert.deepEqual(boardEventFrom({ type: 'task-created', ts: 101 }), { t: 'task-created', taskId: '', title: '', spec: '', dependsOn: [], ts: 101 });
+  assert.deepEqual(boardEventFrom({ type: 'task-created', ts: 101 }), { t: 'task-created', taskId: '', title: '', spec: '', dependsOn: [], teamId: '', ts: 101 });
 });
 
 test('task-dep-added/task-assigned 翻译(P2 新型)', () => {
@@ -29,30 +33,13 @@ test('task-dep-added/task-assigned 翻译(P2 新型)', () => {
 
 test('task-status-changed 翻译:from/状态键 status→to;缺省回退 pending', () => {
   assert.deepEqual(
-    boardEventFrom({ type: 'task-status-changed', ts: 104, payload: { taskId: 't1', from: 'pending', status: 'claimed' } }),
-    { t: 'status-changed', taskId: 't1', from: 'pending', to: 'claimed', ts: 104 },
+    boardEventFrom({ type: 'task-status-changed', ts: 104, payload: { taskId: 't1', from: 'pending', status: 'running' } }),
+    { t: 'status-changed', taskId: 't1', from: 'pending', to: 'running', ts: 104 },
   );
   // from/status 缺席回退 pending(防御:非法/残缺载荷不炸)
   assert.deepEqual(
     boardEventFrom({ type: 'task-status-changed', ts: 105, payload: { taskId: 't9' } }),
     { t: 'status-changed', taskId: 't9', from: 'pending', to: 'pending', ts: 105 },
-  );
-});
-
-test('gate 两态翻译:waiting 带 note(字符串时)/resolved 带 approved', () => {
-  assert.deepEqual(
-    boardEventFrom({ type: 'gate-waiting', ts: 106, payload: { taskId: 't4', note: 'need human check' } }),
-    { t: 'gate-set', taskId: 't4', ts: 106, note: 'need human check' },
-  );
-  // note 非字符串不携带(条件展开)
-  assert.deepEqual(boardEventFrom({ type: 'gate-waiting', ts: 107, payload: { taskId: 't4', note: 42 } }), { t: 'gate-set', taskId: 't4', ts: 107 });
-  assert.deepEqual(
-    boardEventFrom({ type: 'gate-resolved', ts: 108, payload: { taskId: 't4', approved: true } }),
-    { t: 'gate-resolved', taskId: 't4', approved: true, ts: 108 },
-  );
-  assert.deepEqual(
-    boardEventFrom({ type: 'gate-resolved', ts: 109, payload: { taskId: 't4', approved: false } }),
-    { t: 'gate-resolved', taskId: 't4', approved: false, ts: 109 },
   );
 });
 
@@ -64,7 +51,7 @@ test('task-unlocked/task-blocked 默认分支:pending→pending 翻译,reducer �
     );
   }
   let board: TaskBoardState = emptyBoard();
-  board = applyBoardEvent(board, { t: 'task-created', taskId: 't2', title: 'B', spec: '', dependsOn: [], ts: 1 });
+  board = applyBoardEvent(board, { t: 'task-created', taskId: 't2', title: 'B', spec: '', dependsOn: [], teamId: 'tm1', ts: 1 });
   const before = board;
   const after = applyBoardEvent(board, boardEventFrom({ type: 'task-blocked', ts: 110, payload: { taskId: 't2' } } satisfies SessionEvent));
   assert.equal(after, before, '投影无状态变化,reducer 原引用返回');

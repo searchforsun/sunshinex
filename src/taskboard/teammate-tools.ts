@@ -36,7 +36,7 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
       if (task === undefined) throw new CodedToolError('INVALID_ARG', `unknown task: ${taskId === '' ? '(empty)' : taskId}`);
       const lines = [
         `id: ${task.id}`,
-        `status: ${task.status}${task.gated === true ? ' (gated)' : ''}`,
+        `status: ${task.status}`,
         `title: ${task.title}`,
         `spec: ${task.spec}`,
         `dependsOn: ${task.dependsOn.length > 0 ? task.dependsOn.join(',') : '(none)'}`,

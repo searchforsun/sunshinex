@@ -219,7 +219,7 @@ export class Teammate {
   private currentTaskAbort?: AbortController;
 
   private async execute(task: BoardTask): Promise<void> {
-    if (!this.deps.board.markClaimed(task.id, this.name)) return; // 已被取走/非 pending:静默放弃(claim() 先行者已 claimed,幂等放行)
+    if (!this.deps.board.markClaimed(task.id, this.name)) return; // 非 pending:静默放弃(已 running 的认领幂等放行)
     // 板任务台账登记(与 fork 路径同形 dispatchTag(板 id)):task_wait(null) 的可等面;stop=精确中止本任务
     // (Reactor 收到 abort 即 !done→failed 回写;teammate 存活继续 claim 下一任务)
     const taskAbort = new AbortController();
@@ -294,17 +294,21 @@ ${task.spec}` },
       this.currentTaskAbort = undefined;
       return;
     }
-    // harness 强制回写单点(P1 finishExecution):claimed→in-review/failed,不依赖模型自觉;
-    // delegation-ended 后置(2026-10-20 业务测试异常修复):终态宣告必须晚于回写——先宣告后回写时,
-    // 消费方收到「已结束(done)」而任务还是 claimed,事件序与事实序相悖
-    this.deps.board.finishExecution(task.id, {
-      ok: r.done,
+    // 回写 running→success|failed;delegation-ended 后置于回写,终态宣告晚于状态落板
+    const reportBase = {
       by: this.name,
       ...(r.reply !== undefined ? { reply: r.reply } : {}),
       ...(r.tokensUsed !== undefined ? { tokens: r.tokensUsed } : {}),
       durationMs: Date.now() - startedAt,
-      ...(r.done ? {} : { error: { code: 'INCOMPLETE', message: r.stopReason ?? 'did not finish' } }),
-    }, ledger?.id);
+    };
+    if (r.done) this.deps.board.finishExecution(task.id, { ok: true, ...reportBase }, ledger?.id);
+    else {
+      this.deps.board.finishExecution(task.id, {
+        ok: false,
+        ...reportBase,
+        error: { code: 'INCOMPLETE', message: r.stopReason ?? 'did not finish' },
+      }, ledger?.id);
+    }
     emitDelegation('delegation-ended', r.done ? 'done' : 'failed', r.tokensUsed ?? 0);
     this.currentTaskAbort = undefined;
   }
