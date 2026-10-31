@@ -1183,6 +1183,28 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
+  it('mermaid 闭合零闪(2026-10-30「输出完时闪现源码再显示 svg」):末 token 与闭合同帧(live 未渲全文)→新实例以前缀帧占位,正式渲落定替换,全程无软源码', async () => {
+    const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    renderMock.mockImplementation((_id: string, src: string) => Promise.resolve({ svg: `<svg data-lines="${src.split('\n').length}"></svg>` }));
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'model-start', ts: Date.now() });
+      fire({ type: 'token', text: '```mermaid\ngraph TD\nA-->B', ts: Date.now() });
+      await waitFor(() => expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"] svg')?.getAttribute('data-lines')).toBe('2'), { timeout: 5_000 });
+      fire({ type: 'token', text: '\nB-->C\n```\n\n后文', ts: Date.now() }); // 新行+闭合同帧:live 从未渲过 3 行全文
+      // fire 同步提交后、正式渲落定前:占位帧(2 行)在场,不落源码
+      expect(document.querySelector('.entry-assistant .mermaid-draft')).toBeNull();
+      expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"] svg')?.getAttribute('data-lines')).toBe('2');
+      await flushed();
+      await waitFor(() => expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"] svg')?.getAttribute('data-lines')).toBe('3'), { timeout: 5_000 }); // 正式渲替换
+      expect(document.querySelector('.entry-assistant .mermaid-draft')).toBeNull();
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
+  });
+
   it('2026-10-25 裁定:在途尾块恒进解析器(实时渲染从上层统一定,不枚举结构前缀)——代码块/行内代码/引用行/散文逐 token 成形', async () => {
     mountChat([]);
     await flushed();

@@ -436,8 +436,24 @@ export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: str
       panRef.current.innerHTML = inlineRef.current.innerHTML;
       const svg = panRef.current.querySelector('svg');
       if (svg !== null) {
+        const z = zoomScale();
         const r = svg.getBoundingClientRect();
-        baseRef.current = { w: r.width / zoomScale(), h: r.height / zoomScale() }; // 视觉→本地(svg 宽高写本地)
+        // 2026-10-30 用户报障「预览矢量渲染没了」:基准曾取 contain 适配尺寸——超高图(viewBox 983×8698)
+        // 按高压到 8%,100% 档整图不可读、放到上限 800% 仍不足自然尺寸,观感即「小而糊」。基准改按宽
+        // 适配且不超自然宽(普通/宽图与 contain 同值,行为不变;超高图开盒即可读,纵向靠拖动/滚轮);
+        // 高于面板时初始视图对齐顶部(flex 居中会把顶部裁掉一半)
+        const vb = (svg as SVGSVGElement).viewBox?.baseVal;
+        const body = bodyRef.current?.getBoundingClientRect();
+        if (vb !== undefined && vb.width > 0 && vb.height > 0 && body !== undefined) {
+          const panelW = body.width / z - 32;
+          const panelH = body.height / z - 32;
+          const w = Math.min(vb.width, panelW);
+          const h = (w * vb.height) / vb.width;
+          baseRef.current = { w, h };
+          if (h > panelH) setView((v) => ({ ...v, y: (h - panelH) / 2 }));
+        } else {
+          baseRef.current = { w: r.width / zoomScale(), h: r.height / zoomScale() }; // 视觉→本地(svg 宽高写本地)
+        }
       }
       bindNodes(panRef.current); // G14.213 克隆面节点点击重绑(innerHTML 克隆不带监听)
     }

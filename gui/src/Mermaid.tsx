@@ -84,6 +84,30 @@ const LIVE_RENDER_INTERVAL_MS = 600;
 
 export function mermaidCacheClear(): void {
   svgCache.clear();
+  liveFrames.clear();
+}
+
+/** live 成图帧暂存(2026-10-30 用户报障「输出完时闪现源码再显示 svg」):围栏闭合时块由尾块迁头块
+ *  重挂载,state 随旧实例丢;单槽缓存只在「最后一次 live 恰渲全文」时命中,末 token 与闭合落在同一
+ *  节流窗内(常态)则未渲全文→新实例初始态落回软源码,正式渲落定才换图=闪。帧表 src→svg(FIFO 上限
+ *  16),新实例按「已渲 src 是 chart 前缀且不短于其半」取最长帧作占位,正式渲落定即替换——过渡期恒有图 */
+const liveFrames = new Map<string, string>();
+const LIVE_FRAMES_MAX = 16;
+function liveFrameSet(src: string, svg: string): void {
+  liveFrames.delete(src);
+  liveFrames.set(src, svg);
+  while (liveFrames.size > LIVE_FRAMES_MAX) liveFrames.delete(liveFrames.keys().next().value as string);
+}
+function liveFrameFor(chart: string): string | null {
+  let best: string | null = null;
+  let bestLen = -1;
+  for (const [src, svg] of liveFrames) {
+    if (src.length > bestLen && src.length * 2 >= chart.length && chart.startsWith(src)) {
+      best = svg;
+      bestLen = src.length;
+    }
+  }
+  return best;
 }
 
 /** 渲染配置单点(live/正式两路同参)。suppressErrorRendering 必开(2026-10-30 用户报障「显示不出来了」
@@ -121,7 +145,7 @@ export function Mermaid({
   /** 围栏未闭合:流式 live 试渲(节流),失败静默回落软源码 */
   draft?: boolean;
 }): JSX.Element {
-  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentTheme(), chart)) ?? null));
+  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentTheme(), chart)) ?? liveFrameFor(chart)));
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
   const liveLastRef = useRef(0);
@@ -240,6 +264,7 @@ export function Mermaid({
           const r = (await Promise.race([mermaid.render(liveId, repairMermaid(src)), timeout])) as { svg: string };
           if (!st.active) return;
           liveDoneRef.current = src;
+          liveFrameSet(src, r.svg);
           if (src === chartNow) {
             const key = cacheKey(currentTheme(), src);
             if (liveCachedKeyRef.current !== null) svgCache.delete(liveCachedKeyRef.current);
