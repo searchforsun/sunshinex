@@ -8,6 +8,7 @@ import { contextWindowEnv } from '../config/termination-config';
 import { parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
 import { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
 import { toWireMessages, toWireTools, parseChatResult } from './wire';
+import { resolveImageRefs } from './image-ref';
 
 // 四件原路径再导出（防既有导入点漂移）：值符号与类型符号各自走 export / export type
 export { EFFORT_ORDER, parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
@@ -222,7 +223,7 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       const body: Record<string, unknown> = {
         model: this.model,
-        messages: toWireMessages(req.messages),
+        messages: toWireMessages(resolveImageRefs(req.messages)), // images-cache 地址回水 dataURL(wire 边界,2026-10-31)
         tool_choice: 'auto',
         ...(req.tools && req.tools.length > 0 ? { tools: toWireTools(req.tools) } : {}),
       };
@@ -246,7 +247,7 @@ export class OpenAIAdapter implements ModelAdapter {
     try {
       const body: Record<string, unknown> = {
         model: this.model,
-        messages: toWireMessages(req.messages),
+        messages: toWireMessages(resolveImageRefs(req.messages)), // images-cache 地址回水 dataURL(wire 边界,2026-10-31)
         stream: true,
         stream_options: { include_usage: true },
         tool_choice: 'auto',
