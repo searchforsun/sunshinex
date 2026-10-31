@@ -73,6 +73,8 @@ function focusMainWindow(): void {
     console.error('[shell] main window unavailable — cannot focus');
     return;
   }
+  // 最小化先还原:Windows 下 show() 对最小化窗只点亮任务栏不还原窗体(2026-10-31 通知点击唤起实证口径)
+  if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
 }
@@ -151,6 +153,9 @@ if (!app.requestSingleInstanceLock()) {
       else mainWindow.maximize();
     });
     ipcMain.on('win:close', () => mainWindow?.close());
+    // 通知点击唤起(2026-10-31 用户裁定「点击后要打开应用界面」):渲染层 Notification onclick 经桥
+    // 唤起——hide-on-close/最小化窗 window.focus() 无效,须主进程 show+focus(focusMainWindow 破窗守卫)
+    ipcMain.on('win:focus-main', () => focusMainWindow());
     // 程序化拖窗:渲染层在拖拽面上越过 4px 才发 drag-start,主进程再跟光标。
     // Windows 无边框窗的 setPosition 会把 thick frame 逐拍加进宽高,贴顶时还会被 Aero Snap
     // 拉成工作区大小——拖拽期锁死宽高,并用 setResizable(false) 挡住系统改尺寸。

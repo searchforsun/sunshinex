@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   minimize: (): void => void ipcRenderer.send('win:minimize'),
   toggleMaximize: (): void => void ipcRenderer.send('win:toggle-maximize'),
   close: (): void => void ipcRenderer.send('win:close'),
+  // 通知点击唤起主窗(渲染层 window.focus() 拉不回 hide/最小化窗,走主进程 show+focus)
+  focusMain: (): void => void ipcRenderer.send('win:focus-main'),
   /** 抽屉程序化拖窗(2026-10-29):抽屉头 mousedown 发 drag-start(主进程跟随光标循环),
    *  渲染层全局 mouseup 发 drag-end 停表——绕开 app-region 位图(fixed 抽屉下吞按钮/拖区) */
   dragStart: (): void => void ipcRenderer.send('win:drag-start'),

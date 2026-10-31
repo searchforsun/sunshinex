@@ -283,16 +283,24 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     prevRunNotifRef.current = running;
     if (prev === running || running) return; // 只报完成沿
     if (document.hasFocus()) return; // 前台在看=无需提醒
+    // 标题带具体会话名(2026-10-31 用户裁定「显示具体会话的名称已完成」);点击经壳桥唤起——
+    // hide-on-close/最小化窗 window.focus() 无效,preload focusMain → 主进程 show+focus(还原最小化)
+    const name = displayTitle.trim();
     try {
-      const n = new Notification(t('Run finished', '运行完成'), { body: t('The session task has completed.', '会话任务已完成。'), silent: false });
+      const n = new Notification(t('Run finished', '运行完成'), {
+        body: name !== '' ? `「${name}」${t('The session task has completed.', '会话任务已完成。')}` : t('The session task has completed.', '会话任务已完成。'),
+        silent: false,
+      });
       n.onclick = (): void => {
-        window.focus();
+        const bridge = (window as unknown as { sunshinexWindow?: { focusMain?: () => void } }).sunshinexWindow;
+        if (bridge?.focusMain !== undefined) bridge.focusMain();
+        else window.focus(); // 旧壳无桥:退化为尽力 focus
         n.close();
       };
     } catch {
       /* 无通知能力:静默 */
     }
-  }, [running]);
+  }, [running, displayTitle]);
   /** G14.63 运行状态行「本轮」口径:末个流式 run 的基线差值(会话累计−轮起点);无基线回退累计 */
   /** G14.80 未决问询卡:ask 挂起时输入框变为选择题表单 */
   const askCards = cards.filter((c) => c.kind === 'ask');

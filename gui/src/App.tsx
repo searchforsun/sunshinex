@@ -996,6 +996,8 @@ const IS_SHELL =
 interface SunshinexWindowBridge {
   minimize: () => void;
   toggleMaximize: () => void;
+  /** 通知点击唤起主窗(2026-10-31):win:focus-main → show+restore+focus;旧壳缺省=window.focus 兜底 */
+  focusMain?: () => void;
   close: () => void;
   /** 2026-10-25:Web 标签「在系统浏览器打开」——shell.openExternal,OS 默认浏览器承接(非 Electron 子窗) */
   openExternal?: (url: string) => Promise<{ ok: boolean }>;
