@@ -431,7 +431,13 @@ export class Harness {
         if (!prompt && !agentId) throw new CodedToolError('INVALID_ARG', 'prompt or agent_id is required (the teammate needs a role framing)');
         const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks on team ${teamId} (give it work with create_task); tasks carry the lifecycle: interrupt one via task_stop <board task id>`, stderr: '', timedOut: false };
+        // 回执名优先(GUI 折叠/展开同源);teamId 置尾供 create_task 绑定
+        return {
+          exitCode: 0,
+          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}; give it work with create_task); interrupt a running task via task_stop`,
+          stderr: '',
+          timedOut: false,
+        };
       },
       display: { verb: 'TEAM' },
     });

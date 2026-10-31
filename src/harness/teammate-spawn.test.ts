@@ -40,7 +40,7 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true, '主链应正常收束');
     const obs = r.steps.map((s) => s.observation).join('\n');
-    assert.ok(obs.includes('teammate w1 started'), `spawn 观察应含 teammate w1 started,实际:${obs}`);
+    assert.ok(/teammate "?w1"? started/.test(obs), `spawn 观察应含 teammate w1 started,实际:${obs}`);
     // 长驻体定位(2026-10-20 用户裁决「teammate 是声明不是任务」):存活面=TeamRegistry 活名,
     // 不进任务账本(账本只承载有生命周期的工作单元);停止=task_stop 按名寻址
     assert.ok(h.team.aliveNames().includes('w1'), 'w1 应为活 teammate');
@@ -111,7 +111,7 @@ test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队�
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true);
     const obs = r.steps.map((s) => s.observation).join('\n');
-    assert.ok(obs.includes('teammate ee started'), `create_teammate 应建 teammate ee,实际:${obs}`);
+    assert.ok(obs.includes('teammate "ee" started') || obs.includes('teammate ee started'), `create_teammate 应建 teammate ee,实际:${obs}`);
     assert.ok(h.team.aliveNames().includes('ee'));
   } finally {
     h?.team.stopAll();

@@ -45,7 +45,7 @@ test('团队业务流:create_team→create_teammate→指派+依赖任务→get_
 
     const tm = await h.tools.execute('create_teammate', { teamId, name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
     assert.ok(tm.ok && tm.value.exitCode === 0, `create_teammate 应成功:${JSON.stringify(tm)}`);
-    assert.ok(tm.value.stdout.includes('teammate w1 started'), '回执含启动确认');
+    assert.ok(/teammate "?w1"? started/.test(tm.value.stdout), '回执含启动确认');
     assert.ok(!/stop via task_stop/.test(tm.value.stdout), '回执无停止叙事(成员=上下文承载体,无停止概念)');
 
     const ca = await h.tools.execute('create_task', { teamId, title: 'A', spec: 'do A', dependsOn: null, assignee: 'w1', executor: null, retryOf: null }, h.safety);

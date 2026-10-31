@@ -80,7 +80,7 @@ test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered +
     const teamId = team.value.teamId;
     const sp = await h.tools.execute('create_teammate', { teamId, name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
-    assert.ok(sp.value.stdout.includes('teammate w1 started'), `spawn 回执应含 teammate w1 started:${sp.value.stdout}`);
+    assert.ok(/teammate "?w1"? started/.test(sp.value.stdout), `spawn 回执应含 teammate w1 started:${sp.value.stdout}`);
     assert.deepEqual(h.team.aliveNames(), ['w1'], 'w1 活名在场(主链面 send_message 白名单数据源)');
     // lead→w1:经主链真工具面投递(签名现场核对 ToolRegistry.execute(name, input, safety))
     const sm = await h.tools.execute('send_message', { to: 'w1', text: 'prioritize tests' }, h.safety);

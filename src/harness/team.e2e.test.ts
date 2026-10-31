@@ -150,7 +150,7 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/全
     for (const w of ['w1', 'w2', 'w3']) {
       const r = await h.tools.execute('create_teammate', { teamId, name: w, prompt: `worker ${w}: claim board tasks and finish each` }, h.safety);
       assert.ok(r.ok && r.value.exitCode === 0, `spawn ${w} 应成功:${JSON.stringify(r)}`);
-      assert.ok(r.value.stdout.includes(`teammate ${w} started`), `spawn 回执应含 teammate ${w} started`);
+      assert.ok(new RegExp(`teammate "?${w}"? started`).test(r.value.stdout), `spawn 回执应含 teammate ${w} started`);
     }
     assert.deepEqual([...h.team.aliveNames()].sort(), ['w1', 'w2', 'w3'], '三 teammate 全活');
     // 7 任务:T2/T3 依赖 T1(板 id 不透明方言:T1 先建取 id,再装配依赖;捕获 id 供后续断言)

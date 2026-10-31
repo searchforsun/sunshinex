@@ -452,6 +452,10 @@ export const ToolEntryView = memo(function ToolEntryView({
     // 2026-10-24 create_teammate 运行态带队友名(与 spawn 同构)
     if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
     if (toolName === 'create_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
+    // create_task 运行态带任务标题——「正在创建任务 调研项目结构」,id 不进折叠行
+    if (toolName === 'create_task' && typeof input.title === 'string' && input.title !== '') {
+      return t(`Creating task ${input.title}`, `正在创建任务 ${input.title}`);
+    }
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
     if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
     // task_* 运行态带任务名——「正在更新 架构评审」替代泛文案（taskOpName 已在场即有值）
@@ -521,7 +525,12 @@ export const ToolEntryView = memo(function ToolEntryView({
 
   /** 折叠行主体(G14 分型;2026-10-22 用户裁定:运行态=流光动词标签+目标内容同行——spawn/skill/
  *  taskOp 的流光标签已含目标名故不重示):文件工具=文件名+相对路径(+stat);exec=完整命令;其余=动词+目标 */
-  const hideTargetWhileRunning = executing && (toolName === 'spawn' || toolName === 'create_teammate' || toolName === 'create_team' || toolName === 'skill' || taskOpName !== undefined);
+  const createTaskTitle = toolName === 'create_task' && typeof input.title === 'string' ? input.title : '';
+  const hideTargetWhileRunning = executing && (
+    toolName === 'spawn' || toolName === 'create_teammate' || toolName === 'create_team'
+    || (toolName === 'create_task' && createTaskTitle !== '')
+    || toolName === 'skill' || taskOpName !== undefined
+  );
   const verbSpan = executing ? (
     // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
     <span className="tool-verb exec-running">

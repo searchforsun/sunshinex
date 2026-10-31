@@ -829,21 +829,27 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[2]!.textContent).not.toMatch(/spawn\s+\S/); // 无名:只出动词,不编名
   });
 
-  it('2026-10-24 create_teammate 折叠行带队友名(蓝色链接同 spawn,点击开 agent 页;运行态「正在创建队友 X」)', async () => {
+  it('create_teammate / create_team 折叠行名优先(创建智能体团队成员|创建智能体团队 {名})', async () => {
     const onOpenAgent = vi.fn();
     render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
     await flushed();
     fire({ type: 'tool-call', text: 'create_teammate', ts: Date.now(), payload: { callId: 'tm1', input: { name: '分析-内核架构', prompt: 'x' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'tm1' } });
     fire({ type: 'tool-call', text: 'create_teammate', ts: Date.now(), payload: { callId: 'tm2', input: { prompt: 'x' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'tm2' } });
+    fire({ type: 'tool-call', text: 'create_team', ts: Date.now(), payload: { callId: 'ct0', input: { name: '调研组' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'ct0' } });
     const rows = [...document.querySelectorAll('.entry-tool')];
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     const link = rows[0]!.querySelector('.tool-agent-link');
-    expect(link).not.toBeNull(); // 同 spawn 的名称链接(tool-agent-link=accent 蓝可点)
+    expect(link).not.toBeNull();
     expect(link!.textContent).toContain('分析-内核架构');
+    expect(rows[0]!.textContent).toMatch(/创建智能体团队成员|Creating teammate|create_teammate/);
     fireEvent.click(link!);
     expect(onOpenAgent).toHaveBeenCalledWith('分析-内核架构', '分析-内核架构', 'x');
-    expect(rows[1]!.textContent).toMatch(/创建队友|Creating teammate/); // 无名:只出动词
+    expect(rows[1]!.textContent).toMatch(/创建智能体团队成员|Creating teammate|create_teammate/); // 无名:只出动词
+    expect(rows[2]!.textContent).toContain('调研组');
+    expect(rows[2]!.textContent).toMatch(/创建智能体团队|Creating team|create_team/);
   });
 
   it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_task 标题;null=全部后台任务)', async () => {
