@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Eye, ShieldCheck, XCircle, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Eye, ShieldCheck, XCircle, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -23,6 +23,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   create_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
   create_teammate: UsersRound, // 2026-10-31 用户裁定「智能体团队的工具没有特殊图标」:团队成员创建件(区别于 spawn 的 Bot 单体/assign 的 UserPlus 单加)
   review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
+  update_task: ListChecks, get_board: Kanban, probe: Radar, // 2026-10-31 用户裁定「内置工具还没有完全 i18n 化」:任务板更新/看板读取/探测三件专属图标(退役扳手兜底)
 };
 
 /** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick,
@@ -79,6 +80,7 @@ const TOOL_VERB_ZH: Record<string, string> = {
   create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
   review_task: '复审', gate_task: '门审', cancel_task: '取消',
   create_teammate: '创建智能体团队成员',
+  update_task: '更新任务', get_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -195,6 +197,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   memory_write: ['Saving memory', '正在保存记忆'],
   spawn: ['Dispatching subagent', '正在分派子智能体'],
   create_teammate: ['Creating teammate', '正在创建智能体团队成员'],
+  update_task: ['Updating task', '正在更新任务'], get_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
   task_wait: ['Waiting for tasks', '正在等待任务'],
   task_stop: ['Stopping task', '正在停止任务'],
   todo_write: ['Updating todos', '正在更新待办'],
