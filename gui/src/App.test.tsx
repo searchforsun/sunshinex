@@ -77,7 +77,6 @@ const h = vi.hoisted(() => {
     replyApprovalCalls: Array<[string, string]> = [];
     replyAskCalls: Array<[string, GuiAskAnswer]> = [];
     deleteSessionCalls: string[] = [];
-    boardReviewCalls: Array<[string, string, boolean]> = [];
     boardStopCalls: Array<[string, string]> = [];
     readFileCalls: Array<[string, string]> = [];
     /** G6 Files 预览面应答(readFile 可编程) */
@@ -249,13 +248,12 @@ const h = vi.hoisted(() => {
       this.deleteSessionCalls.push(id);
       return Promise.resolve();
     }
-    boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
-      this.boardReviewCalls.push([sessionId, taskId, approved]);
-      return Promise.resolve();
-    }
     boardStop(sessionId: string, taskId: string): Promise<void> {
       this.boardStopCalls.push([sessionId, taskId]);
       return Promise.resolve();
+    }
+    sessionSides(): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>> {
+      return Promise.resolve([]);
     }
     readFile(sessionId: string, path: string): Promise<FileResp> {
       if (this.fileReject !== null) return Promise.reject(this.fileReject);
@@ -1327,7 +1325,7 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     unmount();
   });
 
-  it('status 流转与清板:delegation-ended failed → 行带失败子智能体名;onResetSession 清聚合回空态', async () => {
+  it('status 流转与清板:delegation-ended failed → 行带失败子智能体名;onResetSession 清活动行,任务简述仍在', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     fire(conn, ev('task-created', undefined, { taskId: 't2', title: 'reviewer 审阅', spec: 's', dependsOn: [] }));
@@ -1352,7 +1350,11 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     fireResetSession(conn, 's9');
     expect(document.querySelector('.sx-agent-page')).not.toBeNull(); // 他会话 reset:聚合不清,页在(名称归页签,G14.202)
     fireResetSession(conn, 's1');
-    await waitFor(() => expect(document.querySelector('.sx-agent-page')?.textContent).toMatch(/No agent activity|无活动记录/)); // 空态走 t() 双语(测试环境缺省 en,D37 双语容忍正解)
+    await waitFor(() => {
+      const page = document.querySelector('.sx-agent-page');
+      expect(page?.textContent).toContain('reviewer 审阅');
+      expect(page?.querySelector('.entry-assistant, .entry-tool, .run-live-line')).toBeNull();
+    });
     unmount();
   });
 

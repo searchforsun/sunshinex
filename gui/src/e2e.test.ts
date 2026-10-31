@@ -89,16 +89,72 @@ function toolRowRe(re: RegExp | string): HTMLButtonElement | null {
  * 连接层语义迁移:T2 起 daemon 无绑 root、裸端点=激活别名(无 active 409)——本套全面迁 :id 形态
  * (newSession 先建会话);重连语义=onReset+全量重放(旧 onResync 载荷路径退役,App 级重置重播种
  * 经 App.test 单测,本套覆盖连接层半边:第二次 onReset、补发帧全量再投、快照全量在场)。
- * 全链事件序(taskboard.e2e 实测口径):主链 create_task 牌 → 板派发 fork(fork 消费末位 done 牌)→
- * 强制回写 claimed→in-review → 主链再取(末位 done 牌重复供牌)→ run 收束。收敛判据 =
+ * 全链事件序:主链 create_task(绑定已注册 teamId)→ 板派发 fork(fork 消费末位 done 牌)→
+ * 回写 success → 主链再取(末位 done 牌重复供牌)→ run 收束。收敛判据 =
  * snapshot status idle + 板/委派落位,不以首个 done 为准。
+ * startDaemon 写入队注册表 team-alpha-e2e / Alpha,脚本里的 create_task 绑定该 teamId。
  */
 
-/** 两卡脚本:create_task 建 t1(六入参全给 null 形)+ done 终答;末位 done 牌重复供牌(ScriptedAdapter 语义) */
+/** 已注册队伍:create_task 的 teamId 必须命中 registry,卡头名称取快照 teams.name */
+const E2E_TEAM_ID = 'team-alpha-e2e';
+const E2E_TEAM_NAME = 'Alpha';
+
+/** 两卡脚本:create_task 建 Demo(五态,无门禁入参)+ done 终答;末位 done 牌重复供牌(ScriptedAdapter 语义) */
 const CARDS = [
-  '{"tool":"create_task","input":{"title":"Demo","spec":"demo task","dependsOn":null,"assignee":null,"gated":null,"executor":null}}',
+  `{"tool":"create_task","input":{"teamId":"${E2E_TEAM_ID}","title":"Demo","spec":"demo task","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
   '{"done":true,"reply":"all done"}',
 ];
+
+/** 会话根数据目录预置队伍,供 harness 启动时 load */
+function seedE2eTeam(root: string): void {
+  const dir = path.join(resolveDataDir(root), 'teams');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'registry.json'),
+    JSON.stringify([{ teamId: E2E_TEAM_ID, name: E2E_TEAM_NAME, createdAt: 1 }]),
+  );
+}
+
+/** 首轮建任务,其后轮(含 fork)挂起,直到 release:任务停在 pending/running,供停钮断言 */
+class HoldDispatchAdapter implements ModelAdapter {
+  readonly provider = 'hold-dispatch';
+  private calls = 0;
+  private readonly pending: Array<() => void> = [];
+
+  release(): void {
+    for (const resolve of this.pending.splice(0)) resolve();
+  }
+
+  async chat(_req: ChatRequest): Promise<ChatResult> {
+    if (this.calls++ === 0) {
+      return {
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{
+          id: 'call_0',
+          name: 'create_task',
+          argsJson: JSON.stringify({
+            teamId: E2E_TEAM_ID,
+            title: 'HoldDemo',
+            spec: 'hold until stop',
+            dependsOn: null,
+            assignee: null,
+            executor: null,
+            retryOf: null,
+          }),
+        }],
+      };
+    }
+    await new Promise<void>((resolve) => { this.pending.push(resolve); });
+    return { finish: 'stop', content: 'held', toolCalls: [] };
+  }
+
+  async chatStream(_req: ChatRequest, onDelta: (t: string) => void): Promise<ChatResult> {
+    const r = await this.chat(_req);
+    for (const ch of r.content) onDelta(ch);
+    return r;
+  }
+}
 
 /** 每场景独立 daemon 装配:tmp 会话根 + projects 根隔离(工作区注册表扫描面 hermetic——
  *  不设 SUNSHINEX_DATA_DIR,令 resolveDataDir 走 <projectsRoot>/<slug>/data 的 T2 注册表形态)
@@ -116,6 +172,7 @@ async function startDaemon(
   fs.mkdirSync(out, { recursive: true });
   const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+  seedE2eTeam(root);
   // 语言钉 en(2026-10-22 用户档语言泄漏观察项落地):开发者 ~/.sunshinex/settings.json 的
   // language 键经 daemon settings 下发 App 会翻转渲染语言,断言面机器相关——显式钉 en 去机器相关
   const prevLanguage = process.env.SUNSHINEX_LANGUAGE;
@@ -226,10 +283,12 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
     expect(tool!.md).toBe(''); // P11:tool md 恒空(字段单源 name/input/result)
     expect(tool!.name).toBe('create_task');
 
-    // —— 板:任务在场(板 id 不透明方言,从快照捕获),fork 完成强制回写后未 review → in-review ——
+    // —— 板:任务在场(板 id 不透明方言,从快照捕获),fork 完成回写 success,归属预置队伍 ——
     const taskId = Object.keys(snap1.board.tasks)[0]!;
     expect(snap1.board.tasks[taskId]?.title).toBe('Demo');
-    expect(snap1.board.tasks[taskId]?.status).toBe('in-review');
+    expect(snap1.board.tasks[taskId]?.status).toBe('success');
+    expect(snap1.board.tasks[taskId]?.teamId).toBe(E2E_TEAM_ID);
+    expect(snap1.teams?.some((t) => t.teamId === E2E_TEAM_ID && t.name === E2E_TEAM_NAME)).toBe(true);
 
     // —— 委派:create_task 经板派发 fork,delegation 事件流经影子投影(delegationId=dispatchTag(板 id))——
     const del = snap1.delegations.find((d) => d.id === taskId);
@@ -725,24 +784,15 @@ describe('2026-10-21 受控删除:归档态 journalId 直调 daemon API → 真�
 });
 
 /* ============================================================
- * G6 Board GUI-e2e 全链(G5 验收证据口径的分层测试面落地):真 daemon + ScriptedAdapter
- * create_task(gated:true)envelope → 事件流(task-created/gate-waiting)→ App 板投影 →
- * Board tab List(gated ⚠ 行)→ DAG 视图 svg 盒(data-task)→ Approve 点击(经 UI)→
- * daemon boardReview → gate-resolved/task-status 事件流广播 → 板 UI 自更新(⚠ 消失/状态
- * 流转 pending→claimed→in-review,fork 派发经 ScriptedAdapter 末位 done 牌重复供牌收束)。
- * 板投影 seq 门(App 桩测钉语义)此处验真链:开窗/重放不出现在本场景(播种先于提交),
- * 场景聚焦 gate 审批闭环的端到端因果链。
+ * G6 Board GUI-e2e:真 daemon + HoldDispatchAdapter。create_task 绑定预置队伍,
+ * fork 挂起使任务停在 pending|running。队卡卡头为队名;列表与 DAG 为五态点色;
+ * 停钮走 board/stop,任务进入 cancelled(标题划线)。无审批行。
  * ============================================================ */
 
-describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 → Approve → gate-resolved/task-status 流 → 板自更新', () => {
-  it('提交建 gated 任务 → List ⚠ + Approve 在场 → DAG 节点(gated 类)→ Approve 点击 → ⚠ 消失 in-review', async () => {
-    const env = await startDaemon(
-      new ScriptedAdapter([
-        '{"tool":"create_task","input":{"title":"GateDemo","spec":"gated demo task","dependsOn":null,"assignee":null,"gated":true,"executor":null}}',
-        '{"done":true,"reply":"all done"}',
-      ]),
-    );
-    // 观察连接(等事件流断言用;App 自连接独立收帧)
+describe('G6 Board 全链:队卡 + 五态行 → DAG 节点 → Stop → cancelled', () => {
+  it('提交建任务 → 队卡 Alpha → 列表/DAG 为 pending|running 且无审批 → Stop → cancelled 划线', async () => {
+    const hold = new HoldDispatchAdapter();
+    const env = await startDaemon(hold);
     const frames: SessionEvent[] = [];
     const conn = createConnection({
       baseUrl: `http://127.0.0.1:${env.port}`,
@@ -752,56 +802,48 @@ describe('G6 Board 全链:gated create_task → List ⚠ 行 → DAG svg 盒 →
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
-      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 }); // 连接点退役:以 home 就绪信号代之
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 });
 
-      // —— 「+ 添加工作区」(DirPicker 真面,缺省不勾 manual)→ 提交 → 主链 create_task(gated)——
-            Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
-      fireEvent.click(screen.getByRole('button', { name: 'add workspace' })); // 原生选择器选完自动建项目+开 auto 会话进 Chat(G10-C11)
-    await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
-    const goalInput = screen.getByLabelText('welcome goal');
-    fireEvent.change(goalInput, { target: { value: '新的任务' } });
-    fireEvent.keyDown(goalInput, { key: 'Enter' });
+      Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => env.root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
+      await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+      const goalInput = screen.getByLabelText('welcome goal');
+      fireEvent.change(goalInput, { target: { value: '新的任务' } });
+      fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
-      fireEvent.change(input, { target: { value: 'run gated demo' } });
+      fireEvent.change(input, { target: { value: 'run hold demo' } });
       fireEvent.keyDown(input, { key: 'Enter' });
 
-      // —— 等事件流:task-created + gate-waiting(daemon board.create 发射序);板 id 自帧捕获 ——
       await waitFor(() => expect(frames.some((e) => e.type === 'task-created')).toBe(true), { timeout: 10_000 });
       const taskId = (frames.find((e) => e.type === 'task-created')!.payload as { taskId: string }).taskId;
-      await waitFor(() => expect(frames.some((e) => e.type === 'gate-waiting')).toBe(true), { timeout: 5_000 });
 
-      // —— 任务标签(G14.27:不再默认开——经「+」菜单显式打开)→ List 视图:gated ⚠ Badge 行
-      //    + 行内 Approve/Deny(G8d T5:⚠ 文本面 Badge 化)——
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-      await waitFor(() => expect(screen.getByRole('button', { name: `${taskId} [pending] GateDemo` })).toBeDefined(), { timeout: 10_000 });
-      await waitFor(() => expect(container.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠'), { timeout: 5_000 });
-      expect(screen.getByRole('button', { name: `Approve ${taskId}` })).toBeDefined();
-      expect(screen.getByRole('button', { name: `Deny ${taskId}` })).toBeDefined();
+      const openLabel = new RegExp(`^${taskId} \\[(pending|running)\\] HoldDemo$`);
+      await waitFor(() => expect(screen.getByRole('button', { name: openLabel })).toBeDefined(), { timeout: 10_000 });
+      expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
+      expect(container.querySelector('.tb-card')?.getAttribute('data-team-id')).toBe(E2E_TEAM_ID);
+      expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Deny/ })).toBeNull();
+      expect(container.querySelector('.sx-badge.sx-badge-warn')).toBeNull();
 
-      // —— DAG 视图(G14.2xx 换开源 DAG 组件 React Flow+dagre 布局,mermaid 拼源渲染退役):
-      //    节点=状态+任务名(+🤖子智能体名),aria-label `${id} [${status}] ${title}` 与 List 行同钩子
       fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
       await waitFor(() => expect(container.querySelector('.tb-dag-wrap')).not.toBeNull(), { timeout: 5_000 });
-      // 图面承载断言:lazy chunk 落定后 React Flow 节点 DOM 同步可查(布局=dagre 纯计算零异步)
-      await waitFor(() => expect(screen.getByLabelText(`${taskId} [pending] GateDemo`)).not.toBeNull(), { timeout: 10_000 });
+      await waitFor(() => expect(screen.getByLabelText(openLabel)).not.toBeNull(), { timeout: 10_000 });
+      expect(screen.getByRole('button', { name: `Stop ${taskId}` })).toBeDefined();
 
-      // —— 回 List → Approve 点击(经 UI:conn.boardReview(s1, t1, true))→ 事件流驱动板自更新 ——
       fireEvent.click(screen.getByRole('button', { name: 'List' }));
-      fireEvent.click(screen.getByRole('button', { name: `Approve ${taskId}` }));
-      await waitFor(() => expect(frames.some((e) => e.type === 'gate-resolved')).toBe(true), { timeout: 10_000 });
-      await waitFor(() => expect(frames.some((e) => e.type === 'task-status-changed')).toBe(true), { timeout: 5_000 });
-      // 板 UI 更新:门消失 + 状态流转 pending→claimed→…→in-review(fork 消化末位 done 牌后强制回写)
-      await waitFor(() => expect(screen.getByRole('button', { name: `${taskId} [in-review] GateDemo` })).toBeDefined(), { timeout: 15_000 });
-      expect(container.textContent).not.toContain('⚠');
-      // 派发面(G14.213 任务板重构:旧板侧栏 .delegation-list 退役):fork 委派落 t1 行内
-      // 执行子智能体徽标(agentOfTask 按 task-<id> 命中 → 🤖 徽标入行)
-      await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
+      fireEvent.click(screen.getByRole('button', { name: `Stop ${taskId}` }));
+      await waitFor(() => expect(screen.getByRole('button', { name: `${taskId} [cancelled] HoldDemo` })).toBeDefined(), { timeout: 10_000 });
+      expect(container.querySelector('.tb-task-title.tb-struck')?.textContent).toBe('HoldDemo');
+      expect(container.querySelector('.tb-task-row.task-status-cancelled')).not.toBeNull();
+      expect(screen.queryByRole('button', { name: `Stop ${taskId}` })).toBeNull();
     } finally {
+      hold.release();
       conn.close();
       await env.stop();
       vi.unstubAllEnvs();
@@ -1186,13 +1228,14 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
 
       // —— 切回「任务」标签 → 看板消费:任务行文本在场(既有 Board 断言面)+ 委派侧栏 ——
       fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')!);
-      // 板 id 不透明方言:行名 `${id} [in-review] Demo` 正则定位,id 自 aria-label 捕获
-      await waitFor(() => expect(screen.getByRole('button', { name: /\[in-review\] Demo$/ })).toBeDefined(), { timeout: 10_000 });
-      const demoRow = screen.getByRole('button', { name: /\[in-review\] Demo$/ });
+      // 板 id 不透明方言:行名 `${id} [success] Demo` 正则定位,id 自 aria-label 捕获
+      await waitFor(() => expect(screen.getByRole('button', { name: /\[success\] Demo$/ })).toBeDefined(), { timeout: 10_000 });
+      expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
+      const demoRow = screen.getByRole('button', { name: /\[success\] Demo$/ });
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;
       expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).toContain('active');
       // 委派面(G14.213 任务板重构:旧 .delegation-list 侧栏退役):fork 委派落任务行内执行
-      // 子智能体徽标(agentOfTask 按委派标签命中 → 🤖 徽标入行);状态面已在行名 [in-review] 断过
+      // 子智能体徽标(agentOfTask 按委派标签命中 → 🤖 徽标入行);状态面已在行名 [success] 断过
       await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
     } finally {
       await env.stop();
@@ -1630,8 +1673,9 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
 
       // —— 委派投影(G14.213 任务板重构:旧板 .delegation-main 行退役):fork 委派落任务行内
       //    执行子智能体徽标(agentOfTask 按委派标签命中)——板 id 不透明方言,行名正则定位+id 捕获
-      await waitFor(() => expect(screen.getByRole('button', { name: /\[in-review\] Demo$/ })).toBeDefined(), { timeout: 10_000 });
-      const demoRow = screen.getByRole('button', { name: /\[in-review\] Demo$/ });
+      await waitFor(() => expect(screen.getByRole('button', { name: /\[success\] Demo$/ })).toBeDefined(), { timeout: 10_000 });
+      expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
+      const demoRow = screen.getByRole('button', { name: /\[success\] Demo$/ });
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;
       await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
 
