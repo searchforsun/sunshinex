@@ -8,7 +8,7 @@ import type { SessionLifecycleIo } from './session-lifecycle';
 import { SessionRuntime } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { branchFrom, listSessions, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { branchFrom, listSessions, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
 
 /** 辅助对话持久化可见（2026-10-31 用户裁定「独立会话档+每主会话独立编号」）：side fork 整档继承
@@ -71,6 +71,7 @@ test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,父
       const seq = (parentMeta.sideCount ?? 0) + 1;
       writeSessionMeta(dataDir, jid, { sideCount: seq });
       writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: jid });
+      pruneSideForkArchive(dataDir, newId);
     }
     // 编号与计数持久化(2026-10-31 用户实时反馈「不要进主菜单」:side 档列表隐藏,持久化入口=
     // 主会话页签恢复 /session/:id/sides,按 sideOf 派生)
@@ -87,6 +88,9 @@ test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,父
       const chainLine = fs.readFileSync(path.join(sessionsDir(dataDir), name), 'utf8').split('\n').find((l) => l.includes('"action":"task"'))!;
       const fork = JSON.parse(chainLine) as { steps: Array<{ observation?: string }> };
       assert.ok(fork.steps.some((st) => st.observation === '主任务'), 'fork 整档继承(当前最新上下文)');
+      // 视图起点裁剪(2026-10-31 用户裁定「只继承上下文不显示旧时间线」):fork 档零转录行
+      const segLines = fs.readFileSync(path.join(sessionsDir(dataDir), name), 'utf8').split('\n').filter((l) => l.includes('"t":"seg"'));
+      assert.equal(segLines.length, 0, 'fork 档零转录行(视图从空时间线开始)');
       forkChecked += 1;
     }
     assert.equal(forkChecked, 2, '两份辅助档都在(独立会话档)');

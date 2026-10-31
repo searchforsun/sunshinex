@@ -13,7 +13,7 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, listAnchors, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { branchFrom, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -640,6 +640,7 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
       const seq = (parentMeta.sideCount ?? 0) + 1;
       writeSessionMeta(dataDir, srcId, { sideCount: seq });
       writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: srcId });
+      pruneSideForkArchive(dataDir, newId);
     }
     const created = io.createSession(session.root);
     if (!created.ok) return io.send(res, 500, { error: created.error.message });

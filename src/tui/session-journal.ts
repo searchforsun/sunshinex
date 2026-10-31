@@ -163,6 +163,28 @@ export function readSessionMeta(dataDir: string, id: string): SessionSidecarMeta
   }
 }
 
+/** 辅助对话 fork 档视图起点裁剪（2026-10-31 用户裁定「只 fork 继承上下文,不显示之前的时间线」）：
+ *  剥转录面行（seg/seg-update/run-open/runmeta/subagent/delegation/board/todos/snapshots/msg 等）,
+ *  留 header/ctx-snap/chain/compact/steer——模型侧上下文完整继承(chain 行即主链),GUI 视图从空时间线
+ *  开始(辅助对话自己的段行随对话增量落档)。坏行保留(半行撕裂由装载侧容错);handleBranch side 分支
+ *  与测试同调此单点 */
+export function pruneSideForkArchive(dataDir: string, id: string): void {
+  const file = path.join(sessionsDir(dataDir), `${id}.jsonl`);
+  const kept = fs
+    .readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => {
+      if (line === '') return false;
+      try {
+        const r = JSON.parse(line) as { t?: unknown };
+        return r.t === 'header' || r.t === 'ctx-snap' || r.t === 'chain' || r.t === 'compact' || r.t === 'steer';
+      } catch {
+        return true;
+      }
+    });
+  fs.writeFileSync(file, `${kept.join('\n')}\n`, 'utf8');
+}
+
 /** 写会话旁车元数据（读改写合并单点）：patch 只落已知键且剔除 undefined——调用方自行
  *  读旧值算累计（runs/tokens 等加法语义在调用面，本帮手只管合并与原子性） */
 export function writeSessionMeta(dataDir: string, id: string, patch: SessionSidecarMeta): void {
