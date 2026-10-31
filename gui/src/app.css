@@ -1645,8 +1645,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.monaco-scrollable-element > .scrollbar > .slider:hover { background: color-mix(in srgb, var(--fg) 30%, transparent) !important; }.monaco-scrollable-element > .scrollbar.vertical > .slider { left: 1px !important; width: 6px !important; }.monaco-scrollable-element > .scrollbar.horizontal > .slider { top: 1px !important; height: 6px !important; }
 
 /* G14.48:展开/折叠滚动位移由 onEntryToggleClick 单点接管。G14.211 原生 scroll anchoring
-   回归恒开——右栏展开重排/异步内容闪帧等外部高度变化,视口由浏览器锚定不再上下跳;
-   仅折叠/展开校正窗口内由 onEntryToggleClick 临时关停防互搏 */.chat { overflow-anchor: auto; }
+   阅读态恒开——右栏展开重排/异步内容闪帧等外部高度变化,视口由浏览器锚定不再上下跳;
+   仅折叠/展开校正窗口内由 onEntryToggleClick 临时关停防互搏。2026-10-31 跟随闩三修:此 auto
+   只是阅读态缺省,贴底跟随期(stick)由 syncOverflowAnchor 写 none——流式估算高校正的锚定回拉
+   (原生改 scrollTop)是跟随死亡头号杀手,见 use-chat-scroll.ts */.chat { overflow-anchor: auto; }
 /* 思考行流式:关 content-visibility 估算高跳动 + 关 overflow-anchor——尾窗 rtl 流/秒针改宽时
    浏览器锚点与主链贴底归底互搏=行周上下抖(2026-10-31) */.entry.entry-thinking { content-visibility: visible; overflow-anchor: none; }
 .entry-thinking .thinking-label { font-variant-numeric: tabular-nums; }

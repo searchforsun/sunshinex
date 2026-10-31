@@ -2,6 +2,30 @@ import { useEffect, useRef } from 'react';
 import { zoomScale } from '../../ui-zoom';
 import type { MutableRefObject } from 'react';
 
+/** 程序贴底写入登记(2026-10-31 跟随闩二修):跟随类写入(scrollTop=scrollHeight,被浏览器钳到
+ *  当帧 max)落点登记于此,scroll 事件里 scrollTop 命中登记值=程序位移而非用户位移——跟随闩
+ *  不得据此释放。为何不用「scrollTop 较上次事件位移」判用户:Chromium 把写入事件与同帧内容
+ *  生长合并成一次派发,事件同时携带程序位移与 dist 虚增,位移门照样误释放(实机探针复现,
+ *  正文流式必现)。ε=1.5:zoom 树下钳位亚像素残差不算用户位移 */
+const progBottom = new WeakMap<HTMLElement, number>();
+export function markProgBottom(el: HTMLElement): void {
+  progBottom.set(el, Math.max(0, el.scrollHeight - el.clientHeight));
+}
+function isProgBottom(el: HTMLElement, top: number): boolean {
+  const v = progBottom.get(el);
+  return v !== undefined && Math.abs(top - v) <= 1.5;
+}
+export { isProgBottom };
+
+/** 贴底跟随期的锚定模式(2026-10-31 跟随闩三修联动手):stick 期间关 .chat 的 scroll anchoring
+ *  ——流式中估算高校正触发的锚定回拉(原生改 scrollTop,不经 setter=绕过一切写入日志)是跟随
+ *  死亡头号杀手(实机探针:一轮内 -796px 回拉即脱闩,关 anchoring 后 322 次跟随写入零断);
+ *  阅读期(stick=false)恢复 auto=G14.211 视口稳定契约不动。CSS 缺省 auto 即阅读态 */
+export function syncOverflowAnchor(el: HTMLElement, stick: boolean): void {
+  const want = stick ? 'none' : '';
+  if (el.style.overflowAnchor !== want) el.style.overflowAnchor = want;
+}
+
 /** 滚动跟随/存档恢复/mermaid 补归底/dock 高度实测四 effects(D32 第六批批F-5 自 Chat.tsx 平移,
  *  行为零变化)。refs 留宿主声明(滚动 handler/存档键消费),dockRef 因 JSX 消费由本 hook 返还。 */
 export function useChatScroll(deps: {
@@ -25,7 +49,11 @@ useEffect(() => {
     bottomRafRef.current = null;
     const el = chatScrollRef.current;
     // 聚合头锚定窗口（ToolGroups dataset 旗）内挂起贴底回钉——折叠/展开期间头钮逐帧自钉视口位
-    if (el !== null && chatStickRef.current && el.dataset.groupAnchor !== '1') el.scrollTop = el.scrollHeight;
+    if (el !== null && chatStickRef.current && el.dataset.groupAnchor !== '1') {
+      syncOverflowAnchor(el, true);
+      el.scrollTop = el.scrollHeight;
+      markProgBottom(el);
+    }
   });
 });
 // 卸载收尾:取消在途回调(挂载期一次性 cleanup;每渲染 cleanup 会在渲染间隙取消在途调度,
@@ -69,7 +97,11 @@ useEffect(() => {
     const t0 = Date.now();
     const step = (): void => {
       const el = chatScrollRef.current;
-      if (el !== null) el.scrollTop = el.scrollHeight;
+      if (el !== null) {
+        syncOverflowAnchor(el, true);
+        el.scrollTop = el.scrollHeight;
+        markProgBottom(el);
+      }
       if (Date.now() - t0 < 450) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
@@ -89,7 +121,11 @@ useEffect(() => {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       const el = chatScrollRef.current;
-      if (el !== null && chatStickRef.current) el.scrollTop = el.scrollHeight;
+      if (el !== null && chatStickRef.current) {
+        syncOverflowAnchor(el, true);
+        el.scrollTop = el.scrollHeight;
+        markProgBottom(el);
+      }
     });
   };
   window.addEventListener('sx-mermaid-settled', onSettled);

@@ -29,7 +29,7 @@ import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
 import { flushScrollMem, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
-import { useChatScroll } from './chat/use-chat-scroll';
+import { isProgBottom, markProgBottom, syncOverflowAnchor, useChatScroll } from './chat/use-chat-scroll';
 import { useChatTitle } from './chat/use-chat-title';
 import { useChatSessionInfo } from './chat/use-chat-session-info';
 import { useChatSubmit } from './chat/use-chat-submit';
@@ -125,6 +125,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   // 贴底离开无存档=照旧跳底
   const scrollRestoreRef = useRef<number | null>(peekScrollPos(archiveKey));
   const chatStickRef = useRef(scrollRestoreRef.current === null);
+  /** 跟随闩位移指纹:上次 scroll 事件时的 scrollTop——本次事件里它没变=纯内容生长
+   *  (钉底位被新内容顶成距底>0),不得据此释放 stick(二修根因见 handleChatScroll 注) */
+  const chatLastTopRef = useRef(0);
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
@@ -444,7 +447,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const jumpToBottom = useCallback((): void => {
     chatStickRef.current = true;
     const el = chatScrollRef.current;
-    if (el !== null) el.scrollTop = el.scrollHeight;
+    if (el !== null) {
+      syncOverflowAnchor(el, true);
+      el.scrollTop = el.scrollHeight;
+      markProgBottom(el);
+    }
   }, [chatScrollRef]);
   const send = useCallback((): void => {
     jumpToBottom();
@@ -499,22 +506,35 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位)。
-   *  跟随闩非对称(2026-10-31):仅距底 <4 才重新贴底——旧「<80 双向磁区」会在滚轮/拖条刚
-   *  离开底时被同一次 scroll 事件立刻抢回 stick,思考/正文流式帧再归底=上滑失效+行周抖动;
+   *  跟随闩三修(2026-10-31,实机探针两轮复现定案):释放只认真用户输入,距离+位移都不可信——
+   *  ①距离门会被同帧内容生长虚增(首版 <4 非对称闩之死:贴底写入被钳到旧 max,3ms 后流式再长
+   *  一行,dist 过 4px 一次 scroll 事件误释放,整轮跟随死);②位移门会被 Chromium 事件合并骗过
+   *  (二修之死:写入落点 scroll 与内容生长合并成一次派发,事件同时携带程序位移+dist 虚增)。
+   *  定案:scrollTop 命中 markProgBottom 登记值(ε=1.5)=程序位移不释放;距底 <4 重贴不变;
+   *  其余(用户滚轮——wheel 先行释放、拖条/刻度跳转/锚定回钉——真实位移且未登记)按距离放手。
    *  跳底钮仍用 80 显隐(近底不闪钮)。 */
   const handleChatScroll = (e: { currentTarget: HTMLElement }): void => {
     const el = e.currentTarget;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const stick = dist < 4;
+    const prog = isProgBottom(el, el.scrollTop);
+    const moved = Math.abs(el.scrollTop - chatLastTopRef.current) > 1;
+    chatLastTopRef.current = el.scrollTop;
+    const stick = dist < 4 ? true : prog ? chatStickRef.current : moved ? false : chatStickRef.current;
+    if (stick !== chatStickRef.current) syncOverflowAnchor(el, stick);
     chatStickRef.current = stick;
     setAtBottom(dist < 80);
     if (el.scrollHeight - el.clientHeight > 80) {
       saveScrollPos(archiveKey, stick ? 0 : dist);
     }
   };
-  /** 滚轮上翻立即脱离贴底:与 scroll 非对称闩互补(scroll 事件晚于 wheel 时也先放手) */
+  /** 滚轮上翻立即脱离贴底:与 scroll 非对称闩互补(scroll 事件晚于 wheel 时也先放手);
+   *  同时锚定模式交还阅读态(G14.211 auto) */
   const handleChatWheel = (e: { deltaY: number }): void => {
-    if (e.deltaY < 0) chatStickRef.current = false;
+    if (e.deltaY < 0) {
+      chatStickRef.current = false;
+      const el = chatScrollRef.current;
+      if (el !== null) syncOverflowAnchor(el, false);
+    }
   };
 
   /** 正文 md 图片解析器(2026-10-26 正文支持显示图片):绑定会话的 readFile,md 图片语法的工作区
