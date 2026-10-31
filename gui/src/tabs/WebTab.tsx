@@ -247,6 +247,13 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
         >
           <RotateCw size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
+        {cdpActive && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flex: 'none' }}>
+            <button type="button" className="sx-web-nav" aria-label={t('Zoom out', '缩小')} data-tip={t('Zoom out', '缩小')} onClick={() => cdp.setZoom(Math.max(0.25, cdp.zoom - 0.1))}>{'−'}</button>
+            <button type="button" className="sx-web-nav" aria-label={t('Reset zoom', '重置缩放')} data-tip={t('Reset zoom', '重置缩放')} style={{ fontSize: 10, minWidth: 34 }} onClick={() => cdp.setZoom(1)}>{Math.round(cdp.zoom * 100)}%</button>
+            <button type="button" className="sx-web-nav" aria-label={t('Zoom in', '放大')} data-tip={t('Zoom in', '放大')} onClick={() => cdp.setZoom(Math.min(3, cdp.zoom + 0.1))}>{'+'}</button>
+          </span>
+        )}
         <div className="sx-web-url-box">
           <Lock size={11} strokeWidth={1.75} aria-hidden="true" />
           <input

@@ -22,11 +22,15 @@ export interface CdpPage {
   /** 画布 ref(视图挂接) */
   canvasRef: React.RefObject<HTMLCanvasElement>;
   onMouse: (type: string, ev: React.MouseEvent<HTMLCanvasElement>) => void;
+  /** 页面缩放(Emulation.setPageScaleFactor,内置浏览器原生能力):1=100% */
+  zoom: number;
+  setZoom: (f: number) => void;
 }
 
 export function useCdpBuiltinPage(conn: Connection | null, root: string | undefined): CdpPage {
   const [status, setStatus] = useState<CdpPage['status']>('idle');
   const [url, setUrl] = useState('');
+  const [zoomState, setZoomState] = useState(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scaleRef = useRef({ sx: 1, sy: 1 });
   const sendRef = useRef<((method: string, params?: Record<string, unknown>) => void) | null>(null);
@@ -100,9 +104,18 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn, root]);
 
+  const zoomRef = useRef(1);
+  const setZoom = (f: number): void => {
+    const z = Math.min(3, Math.max(0.25, Math.round(f * 100) / 100));
+    zoomRef.current = z;
+    setZoomState(z);
+    sendRef.current?.('Emulation.setPageScaleFactor', { pageScaleFactor: z });
+  };
   return {
     status,
     url,
+    zoom: zoomState,
+    setZoom,
     canvasRef,
     navigate: (raw: string) => {
       const nav = /^[a-z]+:\/\//i.test(raw) ? raw : `https://${raw}`;

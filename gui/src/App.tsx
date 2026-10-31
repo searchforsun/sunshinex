@@ -361,10 +361,21 @@ function AppShell(): JSX.Element {
     const timer = window.setInterval(() => {
       void connInstance
         .appFile(openRoot, 'plugins/browser-use/builtin-cdp.json', 'data')
-        .then((meta) => {
+        .then(async (meta) => {
           if (meta.type !== 'file' || cdpAutoRef.current === key) return;
-          cdpAutoRef.current = key;
-          openTabInSession('web', {});
+          // 开签条件=真实网址(2026-11-01 用户裁定「实际打开一个网址时才打开页签」):about:blank
+          // 起始页不算——CDP /json/list 页面 target 的 url 非空非 about:blank 才开
+          const pport = /devtools-browser\/[0-9a-f-]+$/.test(meta.content)
+            ? (meta.content.match(/:(\d+)\/devtools/)?.[1] ?? null)
+            : (meta.content.match(/127\.0\.0\.1:(\d+)/)?.[1] ?? null);
+          if (pport === null || pport === undefined) return;
+          try {
+            const targets = (await (await fetch(`http://127.0.0.1:${pport}/json/list`)).json()) as Array<{ type?: string; url?: string }>;
+            const real = targets.some((tg) => tg.type === 'page' && tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank' && !tg.url.startsWith('devtools://'));
+            if (!real) return;
+            cdpAutoRef.current = key;
+            openTabInSession('web', {});
+          } catch { /* 探测失败下轮重试 */ }
         })
         .catch(() => undefined);
     }, 5000);
