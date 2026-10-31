@@ -170,6 +170,7 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
   // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
   session.kernelSeed(reduceSegRows(replayEvents));
+  session.seedTodoBatches(replayEvents); // todo 批次权威投影(2026-10-31 用户裁定):journal 全量行派生,内核环窗之外的老批次由此可见
   // 等待队列装载(P5 spec §12):末条 steer 行整列回种(无行=空队列)
   session.steerSeed(reduceSteerRows(replayEvents));
   // 影子投影装载(G14.2xx 断线重连):board/delegation 事件行回种——重启后快照/补发不再空板空委派

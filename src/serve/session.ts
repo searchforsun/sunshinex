@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '../session/kernel';
 import { kernelEventRows } from '../session/seglog';
+import type { SegRowLike } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
@@ -63,6 +64,14 @@ export interface SessionSnapshotPage {
   limit?: number;
 }
 
+/** 会话 todo 批次行(快照载荷面):daemon 权威投影,GUI「待办」页签直显(不再仅靠转录派生) */
+export interface SessionTodoBatch {
+  key: string;
+  ts: number;
+  goal: string;
+  items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
+}
+
 export interface SessionSnapshot {
   messages: KernelEntry[];
   /** 内核流式游标(G14.51 归位):快照时刻的 openRun/openSeg——客户端装载直用,不再从条目反推 */
@@ -88,6 +97,8 @@ export interface SessionSnapshot {
   queued: Array<{ seq: number; text: string; images?: string[] }>;
   /** 归档态(2026-10-21):旁车 meta archived 回读——GUI 顶栏归档钮/徽标三态播种;未附 journal 恒 false */
   archived: boolean;
+  /** todo 批次权威投影(2026-10-31 用户裁定):journal 全量派生+live 增量——GUI 直显,无旧档兼容面 */
+  todoBatches: SessionTodoBatch[];
 }
 
 /** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask/plan-approval——阶段三
@@ -199,6 +210,12 @@ export class SessionRuntime {
   private runDoneSteps?: number;
   /** G14.56 本轮自身步数(done 载荷 runSteps;runmeta 落档,GUI 回放 run 尾部「本轮」口径) */
   private runRunSteps?: number;
+  /** 会话 todo 批次权威投影(2026-10-31 用户裁定「任务历史持久化可见」):attach 自 journal 全量行
+   *  派生(seedTodoBatches)+live 随段级事件增量维护(trackTodoEvent)——内核环形窗 CAP 2000 之外的
+   *  老批次只有档上有,GUI 转录派生面覆盖不到;快照载荷以此为准(不留旧 daemon 兼容面) */
+  private todoBatches: SessionTodoBatch[] = [];
+  /** todo 批次归属 goal(最近一条 user 行 md;live 与播种同口径) */
+  private todoLastGoal = '';
   /** attach/出生挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
    *  daemon 侧新会话出生即挂（惰性建档——首 run 首条 append 才落盘，空会话零文件）；resume 转录由
    *  事件转录面承担，msg 行非 TUI ChatItem（daemon 档只落 chain） */
@@ -256,6 +273,70 @@ export class SessionRuntime {
     } catch {
       // 尽力落档:写失败不影响运行面
     }
+    this.trackTodoEvent(ev);
+  }
+
+  /** todo 批次 live 增量(权威投影维护面):user 段=归属 goal 归位;todo_write 工具段=批次
+   *  追加/按 seq 幂等覆盖(段回填重发不重账)。与 seedTodoBatches 同一签名去重口径(下游) */
+  private trackTodoEvent(ev: KernelEvent): void {
+    if (ev.t !== 'seg-open') return;
+    const en = ev.entry;
+    if (en.kind === 'user') {
+      this.todoLastGoal = en.md;
+      return;
+    }
+    if (en.kind !== 'tool' || en.name !== 'todo_write') return;
+    const arr = en.input !== undefined && Array.isArray((en.input as { todos?: unknown }).todos) ? ((en.input as { todos: unknown[] }).todos) : [];
+    const items = arr
+      .map((o) => {
+        const x = (o ?? {}) as { text?: unknown; status?: unknown };
+        const text = typeof x.text === 'string' ? x.text : '';
+        const status: SessionTodoBatch['items'][number]['status'] = x.status === 'completed' ? 'completed' : x.status === 'in_progress' ? 'in_progress' : 'pending';
+        return { text, status };
+      })
+      .filter((x) => x.text !== '');
+    if (items.length === 0) return;
+    const batch: SessionTodoBatch = { key: `t${en.seq}`, ts: en.ts, goal: this.todoLastGoal, items };
+    const idx = this.todoBatches.findIndex((b) => b.key === batch.key);
+    if (idx >= 0) this.todoBatches[idx] = batch;
+    else this.todoBatches.push(batch);
+  }
+
+  /** journal 全量行 → todo 批次(attach 播种单点,2026-10-31 用户裁定「任务历史持久化可见」):
+   *  user 行刷新归属 goal,todo_write tool 行入批(带 result 的行即终态);同签名保留最新
+   *  (GUI G14.179 同口径——同一份待办的进度推进不拆卡),ts 正序。坏行字段缺省回落逐行跳过 */
+  seedTodoBatches(rows: ReadonlyArray<SegRowLike>): void {
+    for (const row of rows) {
+      if (row.t !== 'seg') continue;
+      const kind = typeof row.kind === 'string' ? row.kind : undefined;
+      if (kind === 'user') {
+        if (typeof row.md === 'string') this.todoLastGoal = row.md;
+        continue;
+      }
+      if (kind !== 'tool') continue;
+      const name = typeof row.name === 'string' ? row.name : undefined;
+      const seq = typeof row.seq === 'number' ? row.seq : undefined;
+      if (name !== 'todo_write' || seq === undefined) continue;
+      const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as { todos?: unknown }) : undefined;
+      const arr = input !== undefined && Array.isArray(input.todos) ? input.todos : [];
+      const items = arr
+        .map((o) => {
+          const x = (o ?? {}) as { text?: unknown; status?: unknown };
+          const text = typeof x.text === 'string' ? x.text : '';
+          const status: SessionTodoBatch['items'][number]['status'] = x.status === 'completed' ? 'completed' : x.status === 'in_progress' ? 'in_progress' : 'pending';
+          return { text, status };
+        })
+        .filter((x) => x.text !== '');
+      if (items.length === 0) continue;
+      const batch: SessionTodoBatch = { key: `t${seq}`, ts: typeof row.ts === 'number' ? row.ts : 0, goal: this.todoLastGoal, items };
+      const idx = this.todoBatches.findIndex((b) => b.key === batch.key);
+      if (idx >= 0) this.todoBatches[idx] = batch;
+      else this.todoBatches.push(batch);
+    }
+    const sigOf = (b: SessionTodoBatch): string => b.items.map((i) => i.text).join('|');
+    const bySig = new Map<string, SessionTodoBatch>();
+    for (const b of [...this.todoBatches].sort((a, b) => a.ts - b.ts)) bySig.set(sigOf(b), b);
+    this.todoBatches = [...bySig.values()].sort((a, b) => a.ts - b.ts);
   }
 
   /** attach 回种(G14.2xx 内核层落库):journal 影子行折叠回影子投影——board/delegation 行经翻译
@@ -1037,6 +1118,8 @@ export class SessionRuntime {
     this.board = emptyBoard();
     this.delegations = [];
     this.todos = []; // 真 /new 等价：待办清单随换新清空（TUI 软重置同语义）
+    this.todoBatches = []; // 真 /new 等价：todo 批次权威投影随换新清空（2026-10-31 同上口径）
+    this.todoLastGoal = '';
     // 转录清空(v3):truncate 行落档(upToSeq=0 全清——重放视界与 live 清空对齐)+ 内核换新
     // (同一 onKernelEvent 挂点,后续段落新行;truncate 前落行——换新后旧条目不再可达)
     this.kernel.truncate(0);
@@ -1205,6 +1288,7 @@ export class SessionRuntime {
       ...(this.tier ? { tier: this.tier } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
       queued: this.queuedSteer(),
+      todoBatches: this.todoBatches,
       archived: this.attachedJournalId !== undefined
         ? readSessionMeta(resolveDataDir(this.root), this.attachedJournalId).archived === true
         : false,

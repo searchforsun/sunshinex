@@ -131,6 +131,9 @@ function AppShell(): JSX.Element {
   const { chatMemGet, chatMemPut } = useChatMemory((key) => runningIds.has(key)); // TTL 豁免:运行中会话不剔(60min,2026-10-26)
   /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
   const [todoBatches, setTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
+  /** 快照权威投影(2026-10-31 用户裁定「任务历史持久化可见」):daemon journal 全量派生,经 onSeeded
+   *  播种;与转录派生值合并(同签名派生优先——live 批次 ts 更新),环窗/尾窗外的老批次由此可见 */
+  const [seededTodoBatches, setSeededTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
   const [turnGoal, setTurnGoal] = useState('');
   /** G14.176 create_task 行点开的定位信号(任务板滚动高亮对应卡) */
   const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number } | null>(null);
@@ -228,6 +231,7 @@ function AppShell(): JSX.Element {
     reopenBoardSeedWindow();
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
+        setSeededTodoBatches([]);
         setTurnGoal('');
     // G14.2xx b 子智能体聚合不清零(按会话分桶,切回直接内存命中——零拉取零重建;刷新/重连才走影子水合)
     // 影子水合前置触发:sessionRef 已同步更新、hydrating 标记在此即刻落位——effect 渲染周期前的
@@ -256,6 +260,7 @@ function AppShell(): JSX.Element {
     reopenBoardSeedWindow();
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
+        setSeededTodoBatches([]);
         setTurnGoal('');
     // G14.2xx b 子智能体聚合不清(按会话分桶=内存缓存,重开同会话直接命中)
     setPage('welcome');
@@ -446,8 +451,18 @@ function AppShell(): JSX.Element {
     setTaskFocus({ ref, nonce: Date.now() });
   }, [openBoardTab]);
   const services = useMemo<TabServices>(
-    () => ({ board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos], todoBatches, turnGoal, taskFocus, onOpenTask: openTaskFocus }),
-    [projection, reviewTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, turnGoal, taskFocus, openTaskFocus],
+    () => ({
+      board: projection.board, delegations: [...projection.delegations], team: [...projection.team], onReview: reviewTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos],
+      // todo 批次合并(权威播种+转录派生):同签名派生优先(条目随回填/live 更新 ts 更新),ts 正序
+      todoBatches: (() => {
+        const bySig = new Map<string, import('./pages/Chat').TodoBatch>();
+        for (const b of seededTodoBatches) bySig.set(b.items.map((i) => i.text).join('|'), b);
+        for (const b of todoBatches) bySig.set(b.items.map((i) => i.text).join('|'), b);
+        return [...bySig.values()].sort((a, b) => a.ts - b.ts);
+      })(),
+      turnGoal, taskFocus, onOpenTask: openTaskFocus,
+    }),
+    [projection, reviewTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, turnGoal, taskFocus, openTaskFocus],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -683,7 +698,11 @@ function AppShell(): JSX.Element {
                 connState={connState}
                 onBack={backHome}
                 sinkRef={chatSinkRef}
-                onSeeded={seedFromSnapshot}
+                onSeeded={(snap) => {
+                  seedFromSnapshot(snap);
+                  // todo 批次权威投影播种(daemon journal 全量派生;快照未带=旧 daemon,清空走纯派生面)
+                  setSeededTodoBatches(snap.todoBatches ?? []);
+                }}
                 onOpenFile={openFileTab}
                 onOpenDiff={openDiffTab}
                 onOpenAgent={openAgentTab}
