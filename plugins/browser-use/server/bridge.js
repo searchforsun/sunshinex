@@ -144,7 +144,12 @@ async function main() {
   function attempt() {
     attempts += 1;
     clearLocks(profile);
-    const browser = spawn(exe, [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'], {
+    // 第 2 次尝试换参数变体自愈:--headless=new 换 --headless(新旧取值各版本接受面不同)+--disable-gpu
+    // (Windows 无头 GPU 初始化失败亦为即时退出源);fresh profile
+    const tryArgs = attempts === 1
+      ? [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank']
+      : ['--headless', '--disable-gpu', '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'];
+    const browser = spawn(exe, tryArgs, {
       stdio: ['ignore', 'ignore', 'pipe'],
       detached: true, // 常驻:脱离桥进程树(mcpClose 树杀 bridge/server 不连坐浏览器)
     });
