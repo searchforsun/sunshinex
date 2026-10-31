@@ -187,15 +187,13 @@ export class McpHost {
       default:
         if (!cfg.command) throw fail('stdio transport requires a command');
         // cwd 仅插件贡献 server 携带（合成期已解析为绝对路径）；SDK 1.30 StdioServerParameters 原生支持，缺省不落键保持既有 spawn 语义
-        const transport = new StdioClientTransport({
+        return new StdioClientTransport({
           command: cfg.command,
           args: cfg.args ?? [],
           env: mergedChildEnv(cfg),
-          stderr: 'pipe', // 落日志面(见 attachStderrLog;缺省 SDK 丢弃 stderr)
+          stderr: 'pipe', // 落日志面(见 attachStderrLog;SDK 缺省丢弃 stderr)
           ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
         });
-        this.attachStderrLog(cfg, transport);
-        return transport;
     }
   }
 
@@ -219,6 +217,7 @@ export class McpHost {
       try {
         const transport = this.makeTransport(cfg);
         const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
+        this.attachStderrLog(cfg, transport); // start 后 stderr 才可用——连接前后都要挂(崩退原因必落)
         try {
           await client.connect(transport);
         } catch (e) {

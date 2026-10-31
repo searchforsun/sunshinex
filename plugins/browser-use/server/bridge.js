@@ -36,7 +36,9 @@ const metaPath = takeWithArg('--builtin-meta');
 const userDataDirArg = takeWithArg('--user-data-dir');
 const isolated = hasFlag('--isolated');
 const serverJs = path.join(__dirname, 'index.js');
-const serverArgs = [...argv];
+// 非 headless 档:server 不自起浏览器——自起族旗标(--browser/--headless/--executable-path)与
+// --cdp-endpoint 互斥,不剥即 server 参校验报错退出(插件「自动关闭」根因之一)
+const serverArgs = mode === 'headless' ? [...argv] : argv.filter((a, i) => !['--browser', '--headless', '--executable-path'].includes(a) && argv[i - 1] !== '--browser' && argv[i - 1] !== '--executable-path');
 
 // headless 档:server 自起浏览器,仅需补旗标(缺省形态=存量行为)
 if (mode === 'headless') {

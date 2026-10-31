@@ -63,6 +63,15 @@ export interface PluginsPaneProps {
   readonly refreshTick?: number;
 }
 
+/** 枚举值显示 label(2026-11-01 用户裁定「枚举值即说明,用 label+i18n」):值名即键,t() 落中文;
+ *  未命中映射原样显示(自定义值/其他插件枚举零破坏) */
+function optLabelOf(key: string, o: string): string {
+  const labels: Record<string, Record<string, string>> = {
+    mode: { headless: t('Headless browser', '无头浏览器'), default: t('Default browser', '默认浏览器'), builtin: t('Built-in browser', '内置浏览器') },
+  };
+  return labels[key]?.[o] ?? o;
+}
+
 /** 弹窗 Tab 键(McpPane 同构):「配置」=schema 表单面;「工具」=缺省暴露工具开关面(2026-10-31,
  *  manifest.exposedTools 在场才渲染);「源码」=JSON 文本域(非空保存整对象以 JSON 为准) */
 type ModalTab = 'config' | 'tools' | 'source';
@@ -435,7 +444,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                             setForm({ ...form, values: { ...form.values, [k]: next.join(',') } });
                           }}
                         />
-                        {o}
+                        {optLabelOf(k, o)}
                       </label>
                     );
                   })}
@@ -451,7 +460,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                       ? t('Default', '默认') + ` (${effDefault})`
                       : t('Default', '默认')
                   }
-                  options={[{ v: '', l: t('Default', '默认') + (typeof effDefault === 'string' && effDefault !== '' ? ` (${effDefault})` : '') }, ...s.options.map((o) => ({ v: o, l: o }))]}
+                  options={[{ v: '', l: t('Default', '默认') + (typeof effDefault === 'string' && effDefault !== '' ? ` (${optLabelOf(k, effDefault)})` : '') }, ...s.options.map((o) => ({ v: o, l: optLabelOf(k, o) }))]}
                   onChange={(v) => setForm({ ...form, values: { ...form.values, [k]: v } })}
                 />
               </ModalField>

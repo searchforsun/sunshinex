@@ -3,7 +3,7 @@
   "id": "browser-use",
   "name": "浏览器操作",
   "version": "0.1.0",
-  "description": "Playwright 驱动的浏览器自动化（a11y snapshot 主线，vision 兜底可开）",
+  "description": "Playwright 浏览器自动化(无头/默认浏览器/内置侧栏)",
   "defaultEnabled": false,
   "mcpServers": {
     "browser-use": {
@@ -51,7 +51,7 @@
         "default",
         "builtin"
       ],
-      "description": "浏览器形态:无头浏览器(默认)/默认浏览器(自动打开系统默认)/内置浏览器(侧栏实时镜像)"
+      "description": "浏览器形态"
     },
     "browser": {
       "type": "string",
@@ -62,7 +62,7 @@
         "webkit",
         "msedge"
       ],
-      "description": "无头档内核(默认 chrome)"
+      "description": "无头档内核"
     },
     "isolated": {
       "type": "boolean",
@@ -80,11 +80,11 @@
         "testing"
       ],
       "multi": true,
-      "description": "附加能力组(默认无)"
+      "description": "附加能力组"
     },
     "userDataDir": {
       "type": "string",
-      "description": "profile 目录(默认 <dataDir>/plugins/browser-use/profile)"
+      "description": "profile 目录(默认 data/plugins/browser-use/profile)"
     }
   },
   "exposedTools": [
