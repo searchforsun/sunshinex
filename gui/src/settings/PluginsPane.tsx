@@ -454,13 +454,10 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
               <ModalField key={k} label={k} hint={s.description}>
                 <Select
                   ariaLabel={k}
-                  value={value}
-                  placeholder={
-                    typeof effDefault === 'string' && effDefault !== ''
-                      ? t('Default', '默认') + ` (${effDefault})`
-                      : t('Default', '默认')
-                  }
-                  options={[{ v: '', l: t('Default', '默认') + (typeof effDefault === 'string' && effDefault !== '' ? ` (${optLabelOf(k, effDefault)})` : '') }, ...s.options.map((o) => ({ v: o, l: optLabelOf(k, o) }))]}
+                  value={value !== '' ? value : typeof effDefault === 'string' && effDefault !== '' ? effDefault : ''}
+                  /* 无独立「默认」项(2026-11-01 用户裁定「直接显示成对应实际值」):未设置时直接选中
+                     schema 缺省值实际项;无缺省才落空选 */
+                  options={s.options.map((o) => ({ v: o, l: optLabelOf(k, o) }))}
                   onChange={(v) => setForm({ ...form, values: { ...form.values, [k]: v } })}
                 />
               </ModalField>
