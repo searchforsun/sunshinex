@@ -255,6 +255,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  停止钮 → interrupt 端点 → daemon 中止命令) */
   const commandRunning = chat.entries.some((en) => en.kind === 'tool' && typeof en.name === 'string' && en.name.startsWith('/') && en.result === undefined);
   const running = chat.status === 'running' || commandRunning;
+  /** run-live 行/顶部运行态只认真实 run(2026-10-31 用户裁定「步数 tokens 行是普通对话用的,命令期不显」)——命令期 composer 侧运行态走 commandRunning */
+  const runLive = chat.status === 'running';
   /** 浏览器导航跟随(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
    *  工具条落条即上抛目标 url 开 web 页签;lastNavRef 免对同一条目逐帧重开 */
   const lastNavRef = useRef('');
@@ -652,7 +654,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         chatScrollRef={chatScrollRef}
         onScroll={handleChatScroll}
         onWheel={handleChatWheel}
-        running={running}
+        running={runLive}
         liveSteps={liveSteps}
         liveTokens={liveTokens}
         onOpenImage={setLightboxSrc}
