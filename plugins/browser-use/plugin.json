@@ -10,11 +10,12 @@
       "command": "node",
       "cwd": ".",
       "args": [
-        "server/index.js"
+        "server/bridge.js"
       ],
       "configDefaults": {
         "browser": "chrome",
-        "headless": true
+        "headless": true,
+        "builtin": false
       },
       "configArgs": {
         "browser": [
@@ -34,6 +35,15 @@
         "userDataDir": [
           "--user-data-dir",
           "{value}"
+        ],
+        "cdpEndpoint": [
+          "--cdp-endpoint",
+          "{value}"
+        ],
+        "builtin": [
+          "--builtin",
+          "--builtin-meta",
+          "{dataDir}/plugins/browser-use/builtin-cdp.json"
         ]
       }
     }
@@ -44,7 +54,13 @@
   "configSchema": {
     "browser": {
       "type": "string",
-      "options": ["chrome", "chromium", "firefox", "webkit", "msedge"],
+      "options": [
+        "chrome",
+        "chromium",
+        "firefox",
+        "webkit",
+        "msedge"
+      ],
       "description": "Agent 浏览器内核（默认 chrome）"
     },
     "headless": {
@@ -57,13 +73,29 @@
     },
     "caps": {
       "type": "string",
-      "options": ["config", "network", "storage", "devtools", "vision", "pdf", "testing"],
+      "options": [
+        "config",
+        "network",
+        "storage",
+        "devtools",
+        "vision",
+        "pdf",
+        "testing"
+      ],
       "multi": true,
       "description": "附加能力组（默认无=精简工具面；组越多工具越多、越占模型上下文）"
     },
     "userDataDir": {
       "type": "string",
       "description": "登录态 profile 目录（默认空=临时目录，建议 <dataDir>/plugins/browser-use/profile）"
+    },
+    "cdpEndpoint": {
+      "type": "string",
+      "description": "自己的浏览器 CDP 地址(非空即附着该浏览器,browser/headless 失效;如 http://127.0.0.1:9222,Chrome 需带 --remote-debugging-port 启动)"
+    },
+    "builtin": {
+      "type": "boolean",
+      "description": "内置侧栏浏览器(优先级高于 cdpEndpoint:起独立 Chromium,侧栏「内置浏览器」页实时镜像可点击;关=普通无头/有头模式)"
     }
   },
   "exposedTools": [

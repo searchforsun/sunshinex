@@ -231,7 +231,8 @@ export class Harness {
         mcpEverRegistered = false;
         return drift;
       }
-      mcpHost = new McpHost(fresh, this.tools);
+      // stderr 日志面(2026-11-01):<dataDir>/plugins/logs/<server>.log——插件崩退/有头启动失败诊断源
+      mcpHost = new McpHost(fresh, this.tools, { logDir: path.join(resolveDataDir(base), 'plugins', 'logs') });
       try {
         const report = await mcpHost.registerTools();
         mcpWarnings = [...freshPlugin.warnings, ...report.warnings];

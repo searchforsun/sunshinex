@@ -3,6 +3,7 @@ import * as path from 'path';
 import { strArr, strRecord } from '../config';
 import { parseSettingsFile, loadGlobalSettings, loadProjectSettings } from './settings';
 import { userConfigDir } from './env';
+import { resolveDataDir } from './data-dir';
 import type { McpServerConfig } from '../types';
 
 /** 插件 manifest 规范（manifestVersion 1）解析与类型单点——两级装载、MCP 名单合成、校验 CLI 同源消费。
@@ -341,10 +342,13 @@ export function pluginMcpServers(projectRoot: string | undefined, opts: Paramete
         // pattern（configArgs 值 = string[]）为整体裁决单位：含 {value} 的 pattern 逐元素展开
         // （占位替换 + 非占位元素原样透传——"--browser","{value}" 空格双元素形态）；不含 {value} 的
         // 旗标 pattern 仅布尔 true 追加（非 true 值不得把字符串当旗标落参）
+        // {dataDir} 令牌(2026-11-01 内置浏览器档):展开为该工作区数据目录绝对路径(斜杠规范形)——
+        // 桥接进程/GUI 约定文件位不靠 cwd 推断
+        const dataDirToken = resolveDataDir(projectRoot ?? process.cwd()).split(path.sep).join('/');
         if (patterns.some((pat) => pat.includes('{value}'))) {
-          for (const pat of patterns) args.push(pat.includes('{value}') ? pat.replace('{value}', String(v)) : pat);
+          for (const pat of patterns) args.push((pat.includes('{value}') ? pat.replace('{value}', String(v)) : pat).replaceAll('{dataDir}', dataDirToken));
         } else if (v === true) {
-          args.push(...patterns);
+          args.push(...patterns.map((pat) => pat.replaceAll('{dataDir}', dataDirToken)));
         }
       }
       const env: Record<string, string> = { ...(cfg.env ?? {}) };

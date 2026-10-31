@@ -24,6 +24,7 @@ const BgTasksTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.
 const MemoryTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.MemoryTab })));
 const LearnedSkillsTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.LearnedSkillsTab })));
 const WebTab = lazy(() => import('./WebTab').then((m) => ({ default: m.WebTab })));
+const CdpBrowserTab = lazy(() => import('./CdpBrowserTab').then((m) => ({ default: m.CdpBrowserTab })));
 import type { MutableRefObject } from 'react';
 
 /** G14.114 标签条/标题行文件名化:取路径末段(win/posix 双分隔,滤空段防尾分隔符) */
@@ -276,6 +277,16 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)}
       />
     ),
+  },
+  {
+    // 内置侧栏浏览器(2026-11-01 ABC 裁定之三):CDP 镜像插件 builtin 档起的 Chromium——
+    // screencast 实时帧+点击回注+地址条;端点经 builtin-cdp.json 发现(桥写)。singleton 会话维
+    id: 'cdbrowser',
+    group: 'tools',
+    title: () => t('Built-in browser', '内置浏览器'),
+    resolveKey: () => 'cdbrowser',
+    singleton: true,
+    render: (p) => <CdpBrowserTab conn={p.conn} root={p.root} />,
   },
   {
     id: 'sidechat',

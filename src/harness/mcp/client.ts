@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -14,6 +16,8 @@ const MAX_ARGS_BYTES = 64 * 1024;
 interface McpHostOptions {
   /** 单次 tools/call 超时（缺省 30s；测试注入短超时用） */
   callTimeoutMs?: number;
+  /** stdio server stderr 日志目录(缺省不落):<logDir>/<server>.log append——插件崩退/有头启动失败的诊断源 */
+  logDir?: string;
 }
 
 interface McpConn {
@@ -141,6 +145,24 @@ export class McpHost {
     private opts: McpHostOptions = {},
   ) {}
 
+  /** stdio server stderr 落盘(2026-11-01 用户报障「关 headless 插件即消失」定位面):SDK 缺省
+   *  丢弃子进程 stderr——有头启动失败/崩溃原因不可见。pipe 后逐行 append 到 <logDir>/<name>.log
+   *  (尽力而为,写失败不影响连接);日志即诊断源 */
+  private attachStderrLog(cfg: McpServerConfig, transport: Transport): void {
+    if (this.opts.logDir === undefined || cfg.transport === 'http' || cfg.transport === 'sse') return;
+    const t = transport as unknown as { stderr?: NodeJS.ReadableStream | null };
+    const stderr = t.stderr;
+    if (stderr === undefined || stderr === null) return;
+    try {
+      fs.mkdirSync(this.opts.logDir, { recursive: true });
+      const stream = fs.createWriteStream(path.join(this.opts.logDir, `${cfg.name}.log`), { flags: 'a' });
+      stream.on('error', () => {});
+      stderr.on('data', (chunk: Buffer) => stream.write(chunk));
+    } catch {
+      /* 尽力落盘 */
+    }
+  }
+
   /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输）。
    *  2026-10-26：cfg.headers 随 http/sse 请求透传（requestInit.headers——Bearer 鉴权面，gitnexus
    *  风格 `{url, headers}` 主流形态）；SDK 对 SSE 的 GET 流同样吃 requestInit 头 */
@@ -165,12 +187,15 @@ export class McpHost {
       default:
         if (!cfg.command) throw fail('stdio transport requires a command');
         // cwd 仅插件贡献 server 携带（合成期已解析为绝对路径）；SDK 1.30 StdioServerParameters 原生支持，缺省不落键保持既有 spawn 语义
-        return new StdioClientTransport({
+        const transport = new StdioClientTransport({
           command: cfg.command,
           args: cfg.args ?? [],
           env: mergedChildEnv(cfg),
+          stderr: 'pipe', // 落日志面(见 attachStderrLog;缺省 SDK 丢弃 stderr)
           ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
         });
+        this.attachStderrLog(cfg, transport);
+        return transport;
     }
   }
 
