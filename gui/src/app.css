@@ -1728,12 +1728,15 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-status-dot.task-status-claimed,
 .tb-status-dot.task-status-in_review {
   background: none;
-  border: 1px solid var(--fg-tertiary);
+  border: 1.9px solid var(--fg-tertiary);
   border-top-color: var(--fg);
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   clip-path: circle(50% at 50% 50%);
   animation: sx-spin 1s linear infinite;
-}
+} /* 2026-10-31 用户裁定「转圈要和其他运行转圈一样大」:claimed/in_review=任务板的运行态,
+  6px 档漏升(2026-10-28「全局统一 12px」只升了 bg-running/会话行)——补齐同档同环厚 */
 .tb-status-dot.task-status-done { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.task-status-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
 /* G14.213 DAG 预设高度;G14.2xx 渲染换开源图组件 React Flow(@xyflow/react)+dagre 布局

@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, Eye, ShieldCheck, XCircle, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Eye, ShieldCheck, XCircle, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -21,6 +21,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
   create_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
+  create_teammate: UsersRound, // 2026-10-31 用户裁定「智能体团队的工具没有特殊图标」:团队成员创建件(区别于 spawn 的 Bot 单体/assign 的 UserPlus 单加)
   review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
 };
 
@@ -77,7 +78,7 @@ const TOOL_VERB_ZH: Record<string, string> = {
   task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
   create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
   review_task: '复审', gate_task: '门审', cancel_task: '取消',
-  create_teammate: '创建队友',
+  create_teammate: '创建智能体团队成员',
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -182,7 +183,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   websearch: ['Searching the web', '正在搜索网页'],
   memory_write: ['Saving memory', '正在保存记忆'],
   spawn: ['Dispatching subagent', '正在分派子智能体'],
-  create_teammate: ['Creating teammate', '正在创建队友'],
+  create_teammate: ['Creating teammate', '正在创建智能体团队成员'],
   task_wait: ['Waiting for tasks', '正在等待任务'],
   task_stop: ['Stopping task', '正在停止任务'],
   todo_write: ['Updating todos', '正在更新待办'],
@@ -391,7 +392,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     // G14.166 spawn 运行态带子智能体名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
     // 2026-10-24 create_teammate 运行态带队友名(与 spawn 同构)
-    if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建队友 ${teammateName}`);
+    if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
     if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
     // G14.214 task_* 运行态带任务名——「正在复审 架构评审」替代泛文案（taskOpName 已在场即有值）
