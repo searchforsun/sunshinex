@@ -84,7 +84,8 @@ const exe = mode === 'default' ? defaultBrowserExe() : fixedChrome();
 const profile = isolated === true
   ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-browser-')), 'profile')
   : userDataDirArg ?? path.join(os.tmpdir(), 'sunshinex-browser-profile'); // 持久缺省:登录态保留
-const browser = spawn(exe, ['--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'], {
+const headlessArgs = mode === 'builtin' ? ['--headless=new'] : []; // builtin=侧栏即唯一视图,无弹窗(2026-11-01 用户裁定)
+const browser = spawn(exe, [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'], {
   stdio: ['ignore', 'ignore', 'pipe'],
 });
 let settled = false;

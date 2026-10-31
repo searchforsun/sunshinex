@@ -174,7 +174,7 @@ export interface Connection {
    *  存在/目录)/415(二进制)以 HTTP 失败抛错（消息含 status）——Files 页错误态消费 */
   readFile(sessionId: string, path: string): Promise<FileResp>;
   /** GET /app/file?root=&path=（2026-10-27 欢迎页全局草稿）:无会话文件读,信任域=注册工作区根+数据目录 */
-  appFile(root: string, path: string): Promise<FileResp>;
+  appFile(root: string, filePath: string, scope?: 'data'): Promise<FileResp>;
   /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
    *  callId 无帧/会话）以 HTTP 失败抛错——Chat write 展开退单列现内容的判据 */
   fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
@@ -644,8 +644,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
       if (!res.ok) throw new Error(`${path} -> ${res.status}`);
       return (await res.json()) as { ptyId: string };
     },
-    async appFile(root: string, filePath: string): Promise<FileResp> {
-      return getJson<FileResp>(`/app/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(filePath)}`);
+    async appFile(root: string, filePath: string, scope?: 'data'): Promise<FileResp> {
+      return getJson<FileResp>(`/app/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(filePath)}${scope === 'data' ? '&scope=data' : ''}`);
     },
     async openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
       const body: { root: string; cols?: number; rows?: number } = { root };

@@ -359,7 +359,7 @@ function AppShell(): JSX.Element {
     const key = `${openSessionId}:${openRoot}`;
     const timer = window.setInterval(() => {
       void connInstance
-        .appFile(openRoot, 'plugins/browser-use/builtin-cdp.json')
+        .appFile(openRoot, 'plugins/browser-use/builtin-cdp.json', 'data')
         .then((meta) => {
           if (meta.type !== 'file' || cdpAutoRef.current === key) return;
           cdpAutoRef.current = key;

@@ -29,7 +29,7 @@ export function CdpBrowserTab({ conn, root }: { conn: Connection; root?: string 
         // 1) 端点发现(尽力而为:meta 缺失=插件未开 builtin 档)
         let ws: string | undefined;
         try {
-          const meta = await conn.appFile(root, 'plugins/browser-use/builtin-cdp.json');
+          const meta = await conn.appFile(root, 'plugins/browser-use/builtin-cdp.json', 'data');
           if (meta.type === 'file') {
             const parsed = JSON.parse(meta.content) as { ws?: string };
             if (typeof parsed.ws === 'string') ws = parsed.ws;

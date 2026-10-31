@@ -308,6 +308,12 @@ export function handleAppFile(io: FileHandlerIo, req: http.IncomingMessage, res:
     return;
   }
   const rootParam = url.searchParams.get('root') ?? '';
+  // scope=data(2026-11-01 内置浏览器档):path 按**数据目录**解析——builtin-cdp.json 等桥产物
+  // 落在 <dataDir>/plugins/...,工作区相对解析永远够不着
+  if (url.searchParams.get('scope') === 'data' && rootParam !== '') {
+    sendFilePayload(io, res, path.join(resolveDataDir(rootParam), q));
+    return;
+  }
   const base = rootParam !== '' ? rootParam : process.cwd();
   const abs = path.resolve(base, q);
   const real = realPathOf(abs) ?? abs;
