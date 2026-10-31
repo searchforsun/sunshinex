@@ -86,19 +86,23 @@ test('出生会话落 ctx-snap 行；attach 回种旧快照不重读磁盘；离
     seedWorkspace(root, 'v1 line\n', 'base-skill', 'base skill for birth');
     const io = makeIo(new ScriptedAdapter(['{"done":true,"reply":"第一轮完成"}', '{"done":true,"reply":"第二轮完成"}']));
 
-    // 1) createSession → journal 已建档（出生写,spec §2）且含 ctx-snap 行（header+ctx-snap 形态）
+    // 1) createSession → 占座壳零档(2026-10-31 幽灵会话根因修:零事件零文件);首条提交触发建档
+    //    (header→ctx-snap→chain),出生行与导出面逐位相等
     const c1 = createSessionIn(io, root);
     assert.ok(c1.ok, 'createSessionIn 受理');
     const s1 = io.sessions.get(c1.value.sessionId)!;
     const jid1 = s1.attachedJournalId;
-    assert.ok(jid1, '出生写已铸造档 id（惰性零文件不变式由 spec §2 废除）');
-    const file1 = path.join(sessionsDir(resolveDataDir(root)), `${jid1}.jsonl`);
-    assert.ok(fs.existsSync(file1), '出生档 jsonl 在盘');
+    assert.equal(jid1, undefined, '占座壳零档(零事件零文件——幽灵会话根因修)');
+    assert.equal(s1.submit('第一轮').ok, true, '首轮受理(建档触发)');
+    await waitFor(() => s1.status() === 'idle', 30_000);
+    const jid1b = s1.attachedJournalId;
+    assert.ok(jid1b, '首条事件已建档');
+    const file1 = path.join(sessionsDir(resolveDataDir(root)), `${jid1b}.jsonl`);
     const events1 = parseJournalFile(file1).events;
     assert.equal(events1[0]?.t, 'header', '档首 header');
     assert.equal((events1[0] as { v?: number }).v, 3, 'header v=3');
     const birthSnap = snapOf(file1);
-    assert.ok(birthSnap, '出生档含 ctx-snap 行');
+    assert.ok(birthSnap, '建档即含 ctx-snap 出生行');
     const exported1 = s1.runtime.harness.context.snapshotExport();
     assert.deepEqual(birthSnap, exported1, '出生行与导出面逐位相等（items+sig 同源同拍）');
 
@@ -110,14 +114,13 @@ test('出生会话落 ctx-snap 行；attach 回种旧快照不重读磁盘；离
     const c2 = createSessionIn(io, root);
     assert.ok(c2.ok, '第二会话受理');
     const sid2 = c2.value.sessionId;
-    const birthId2 = io.sessions.get(sid2)!.attachedJournalId;
-    assert.ok(birthId2 && birthId2 !== jid1, '第二会话出生档独立铸造');
-    const att = attachSessionIn(io, sid2, jid1);
+    const att = attachSessionIn(io, sid2, jid1b!);
     assert.ok(att.ok, `attach 受理（birth-only 出生档守卫放行）: ${att.ok ? '' : att.error.message}`);
     const s2 = io.sessions.get(sid2)!;
-    assert.equal(s2.attachedJournalId, jid1, '挂上旧档');
+    assert.equal(s2.attachedJournalId, jid1b, '挂上旧档');
     const exported2 = s2.runtime.harness.context.snapshotExport();
     assert.deepEqual(exported2, exported1, '回种后导出面与出生拍逐位相等（不重读磁盘）');
+    assert.ok(!exported2.items.some((it) => it.content.includes('第一轮')), '首轮内容已随链行在档(重建面含实质行)');
     assert.ok(!exported2.items.some((it) => it.content.includes('v2 line')), '磁盘 SUNSHINE.md 新内容未烘进快照');
     assert.ok(!exported2.items.some((it) => it.content.includes('brand new skill')), '磁盘新技能未烘进快照');
 
@@ -161,7 +164,7 @@ test('旧档无 ctx-snap 行：attach 回退磁盘重读 + 出生写新行', { t
     assert.ok(c.ok, 'createSessionIn 受理');
     const sid = c.value.sessionId;
     const birthId = io.sessions.get(sid)!.attachedJournalId;
-    assert.ok(birthId && birthId !== jid, '新会话出生档已铸（birth-only）');
+    assert.equal(birthId, undefined, '占座壳零档(2026-10-31 幽灵会话根因修:零事件零文件)');
 
     const att = attachSessionIn(io, sid, jid);
     assert.ok(att.ok, `attach 受理: ${att.ok ? '' : att.error.message}`);
@@ -171,7 +174,7 @@ test('旧档无 ctx-snap 行：attach 回退磁盘重读 + 出生写新行', { t
     const tail = parseJournalFile(file).events;
     assert.equal(tail[tail.length - 1]?.t, 'ctx-snap', 'journal 尾部补出生写 ctx-snap 行');
     assert.ok(snapOf(file) !== undefined, '补写行为合法行（归约面可读）');
-    assert.ok(!fs.existsSync(path.join(sessionsDir(dataDir), `${birthId}.jsonl`)), 'birth-only 孤儿出生档已回收（不产幻影会话）');
+    assert.ok(birthId === undefined, '壳零档=零幻影(无需回收)');
   });
 });
 
@@ -203,10 +206,12 @@ test('reset 落 ctx-snap 翻新行：档内末条快照=reset 后运行时（磁
     const c = createSessionIn(io, root);
     assert.ok(c.ok, 'createSessionIn 受理');
     const s = io.sessions.get(c.value.sessionId)!;
+    assert.equal(s.submit('建档轮').ok, true, '首条事件触发建档(幽灵会话根因修)');
+    await waitFor(() => s.status() === 'idle', 30_000);
     const jid = s.attachedJournalId!;
     const file = path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
     const pre = snapOf(file);
-    assert.ok(pre, '出生档含 ctx-snap 行');
+    assert.ok(pre, '建档含 ctx-snap 出生行');
     assert.ok(!pre!.items.some((it) => it.content.includes('v2 line')), 'reset 前快照无磁盘 v2 内容');
 
     // 改磁盘（离场变更）→ reset：换新运行时重读磁盘,快照翻新必须落档（否则 attach 回种 reset 前旧拍）
@@ -232,9 +237,12 @@ test('meta.mode 回放换铸窗口：attach 后快照回种落在最终运行时
     // 会话 A 出生写落 ctx-snap（v1 拍）→ 离场改磁盘（v2）→ sidecar 落 mode（selMeta.mode 回放面）
     const c1 = createSessionIn(io, root);
     assert.ok(c1.ok, 'createSessionIn 受理');
-    const jid = io.sessions.get(c1.value.sessionId)!.attachedJournalId!;
+    const sA = io.sessions.get(c1.value.sessionId)!;
+    assert.equal(sA.submit('建档轮').ok, true, '首条事件触发建档(幽灵会话根因修)');
+    await waitFor(() => sA.status() === 'idle', 30_000);
+    const jid = sA.attachedJournalId!;
     const exported1 = snapOf(path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`));
-    assert.ok(exported1, '出生档含 ctx-snap 行');
+    assert.ok(exported1, '建档含 ctx-snap 出生行');
     fs.appendFileSync(path.join(root, 'SUNSHINE.md'), 'v2 line\n', 'utf8');
     writeSessionMeta(resolveDataDir(root), jid, { mode: 'acceptEdits' });
 

@@ -103,9 +103,10 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
   io.setActive(id);
   // T2 出生 journal:挂载即接 onContextChange 续写链
   session.attachJournal(new SessionJournal(dataDir));
-  // 出生写（2026-10-31 spec §2）：会话出生即落 ctx-snap 行（快照冻结起点,恢复面基线随快照走）——
-  // 惰性建档「空会话零文件」不变式由 spec §2 显式废除：每次 newSession 即铸造 header+ctx-snap 档
-  session.persistSnapshotRow();
+  // 出生写收口(2026-10-31 用户实测「幽灵会话」根因修):出生档改在**首次实质事件落档时**铸造
+  // (hookJournalSink append 分支 start 后即补 ctx-snap 出生行)——占座壳(目录视图锚定等从未
+  // 跑过事件的 newSession)不再产生可见档,侧栏无幽灵;真会话首条事件即 header→ctx-snap→chain,
+  // 快照冻结起点不变量保持(重开精确)
   // 任务14 双向同步:会话打开即挂项目配置监听(.sunshinex 缺失由 daemon 侧守护降级跳过——
   // 缺失目录不产告警;目录补建后下次会话打开重试即真实生效,watchXxx 幂等)
   io.watchProject(abs);

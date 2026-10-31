@@ -268,7 +268,7 @@ export class SessionRuntime {
     const j = this.journal;
     if (j === undefined) return;
     try {
-      if (j.currentId === undefined) j.start(3); // 惰性建档(chain 订阅同构):首条段级行落 header——首 run 的 user/run-open 行不再丢档
+      this.ensureMintedWithBirth(); // 惰性建档(chain 订阅同构)+出生行伴随(幽灵会话根因修:两写路同单点)
       for (const row of kernelEventRows(ev)) j.log(row);
     } catch {
       // 尽力落档:写失败不影响运行面
@@ -634,7 +634,7 @@ export class SessionRuntime {
   private hookJournalSink(): void {
     this.runtimeImpl.harness.context.onContextChange((c) => {
       if (c.kind === 'append') {
-        if (this.journal !== undefined && this.journal.currentId === undefined) this.journal.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
+        this.ensureMintedWithBirth(); // 首条实质事件建档即落 ctx-snap 出生行(header→ctx-snap→chain)——占座壳零事件零档(幽灵会话根因修),真会话冻结起点不变
         this.journal?.log({ t: 'chain', steps: c.steps });
       } else if (c.kind === 'snap') {
         this.persistSnapshotRow(); // 快照翻新（压缩/显式刷新,/init）：新行落档,末行为准（2026-10-31 spec §2）
@@ -647,6 +647,15 @@ export class SessionRuntime {
   /** 快照落档单点（2026-10-31 spec §2）：出生写与翻新写共用——journal 未建档则先建档（惰性建档
    *  口径在此退役：出生写后每次 newSession 即铸造 header+ctx-snap 档,「空会话零文件」不变式由
    *  spec §2 显式废除,空会话档案增长是出生写语义的既定成本）;无 journal（理论不可达,守卫）no-op */
+  /** 建档单点(出生写伴随):首条实质事件(链行/段级行任一路先到)触发建档——header 后立即落
+   *  ctx-snap 出生行,两写路(链订阅/段级落档)共用,防「seg 行先铸档漏出生行」分叉 */
+  private ensureMintedWithBirth(): void {
+    const j = this.journal;
+    if (j === undefined || j.currentId !== undefined) return;
+    j.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
+    this.persistSnapshotRow();
+  }
+
   persistSnapshotRow(): void {
     if (this.journal === undefined) return;
     if (this.journal.currentId === undefined) this.journal.start(3);
