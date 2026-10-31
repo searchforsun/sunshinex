@@ -103,6 +103,13 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   const fitScale =
     deviceW > 0 && deviceH > 0 && wrapSize.w > 0 ? Math.min(wrapSize.w / deviceW, wrapSize.h / deviceH) : 1;
   const deviceScale = devFit ? fitScale : devZoom;
+  // CDP 形态:自由尺寸 W×H 下发内置浏览器本体视口(Emulation.setDeviceMetricsOverride)——
+  // 镜像画布随页面实际尺寸自适应;关闭设备模拟即清覆盖回落默认视口
+  useEffect(() => {
+    if (!cdpActive) return;
+    cdp.setViewport(deviceMode ? deviceW : null, deviceMode ? deviceH : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cdpActive, deviceMode, deviceW, deviceH]);
 
   // 缩放档弹层点外即收(面板内点按任意处;菜单行在 anchor 内不触发)
   useEffect(() => {

@@ -25,6 +25,9 @@ export interface CdpPage {
   /** 页面缩放(Emulation.setPageScaleFactor,内置浏览器原生能力):1=100% */
   zoom: number;
   setZoom: (f: number) => void;
+  /** 视口尺寸(Emulation.setDeviceMetricsOverride——自由尺寸 W×H 下发到内置浏览器本体;
+   *  null=清除覆盖回落默认视口) */
+  setViewport: (w: number | null, h?: number) => void;
 }
 
 export function useCdpBuiltinPage(conn: Connection | null, root: string | undefined): CdpPage {
@@ -123,6 +126,10 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
       sendRef.current?.('Page.navigate', { url: nav });
     },
     reload: () => sendRef.current?.('Page.reload'),
+    setViewport: (w: number | null, h?: number) => {
+      if (w === null) sendRef.current?.('Emulation.clearDeviceMetricsOverride');
+      else sendRef.current?.('Emulation.setDeviceMetricsOverride', { width: Math.round(w), height: Math.round(h ?? Math.round(w * 0.5625)), deviceScaleFactor: 0, mobile: false });
+    },
     onMouse: (type: string, ev: React.MouseEvent<HTMLCanvasElement>) => {
       const send = sendRef.current;
       if (send === null) return;
