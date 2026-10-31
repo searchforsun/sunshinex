@@ -2,11 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { utcCompactStamp } from '../idstamp';
+import { resolveDataDir } from '../config/data-dir';
 
 /**
  * 图片落盘点(2026-10-31 用户裁定「底层存储不要 base64,太占上下文——图片暂存项目目录
- * images-cache 文件夹,上下文引用文件地址」):dataURL → 落盘 `<root>/images-cache/<时间戳>-<hash>.<ext>`,
- * 返回相对路径引用串。覆盖面=Session 两个图片入口(submit 用户附件/steer 插话附件)——下游
+ * 项目**数据目录** images-cache 文件夹(<dataDir>/images-cache,即
+ * sunshinex/<项目slug>/data/images-cache——2026-10-31 用户裁定「目录位置放到对应项目的数据目录下」,
+ * 图片不进工作区),上下文引用其绝对文件地址(<dataDir>/images-cache/<时间戳>-<hash>.<ext>,恒正斜杠)
+ * ——模型可经 read 工具按地址直接看法,GUI 经 /app/file(path.resolve 对绝对参数天然正确)取回显示。覆盖面=Session 两个图片入口(submit 用户附件/steer 插话附件)——下游
  * (kernel.submit 转录条、appendInstructionLine 上下文、chain 行、journal、wire、GUI 回显)
  * 从此只见路径串,base64 不再进档不进上下文;模型要看法可经 read 工具按路径读原文件。
  *
@@ -44,7 +47,7 @@ function parseDataUrl(s: string): { mime: string; ext: string; buf: Buffer } | u
 /** 图片附件落盘单点(见文件头裁定):dataURL 数组 → images-cache 相对路径数组(原序;尽力而为) */
 export function spillImages(root: string, images?: string[]): string[] | undefined {
   if (images === undefined || images.length === 0) return undefined;
-  const dir = path.join(root, 'images-cache');
+  const dir = path.join(resolveDataDir(root), 'images-cache'); // 项目数据目录(2026-10-31 裁定:不进工作区)
   const out: string[] = [];
   for (const img of images) {
     if (typeof img !== 'string' || img === '') continue;
@@ -56,11 +59,10 @@ export function spillImages(root: string, images?: string[]): string[] | undefin
     try {
       fs.mkdirSync(dir, { recursive: true });
       const hash = createHash('sha256').update(parsed.buf).digest('hex').slice(0, 12);
-      // 引用串恒正斜杠（journal/上下文/GUI 解析键的规范形态；Windows path.join 会产反斜杠）
-      const rel = `images-cache/${utcCompactStamp()}-${hash}.${parsed.ext}`;
-      const abs = path.join(root, rel);
+      const abs = path.join(dir, `${utcCompactStamp()}-${hash}.${parsed.ext}`);
       if (!fs.existsSync(abs)) fs.writeFileSync(abs, parsed.buf);
-      out.push(rel);
+      // 引用串恒正斜杠(journal/上下文/GUI 解析键的规范形态;Windows path.join 会产反斜杠)
+      out.push(abs.replaceAll('\\', '/'));
     } catch {
       out.push(img); // 落盘失败退回 dataURL:图片不丢
     }
