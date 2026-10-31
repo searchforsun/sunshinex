@@ -119,6 +119,10 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
             throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
           }
         }
+        if (e.type === 'agent-message') {
+          // 收件人转录气泡与主会话 notice 同源事件:to=lead 的卡由 reducer 原样跳过
+          throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
+        }
         if (typeof e.payload?.subagent === 'string') {
           // G14.2xx b 影子水合在途:subagent 帧截流缓冲(落定按 seq>cut 重放)——防清零重放丢在途帧
           const buf = shadowBufRef.current.get(sessionId);

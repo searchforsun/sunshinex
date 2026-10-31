@@ -205,7 +205,15 @@ export class Teammate {
       // 收件消息上屏转录(✉ 行,与任务带区分):tagged step + messageLine,同任务带通道
       this.deps.onEvent?.({
         type: 'step', text: '', ts: Date.now(),
-        payload: { subagent: this.name, messageLine: `${m.from}: ${m.text}` },
+        payload: {
+          subagent: this.name,
+          messageLine: `${m.from}: ${m.text}`,
+          messageId: m.id,
+          from: m.from,
+          to: this.name,
+          text: m.text,
+          teamId: this.teamId,
+        },
       });
       injected += 1;
     }

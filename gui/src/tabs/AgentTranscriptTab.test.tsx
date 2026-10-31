@@ -122,6 +122,34 @@ describe('AgentTranscriptTab 对标主对话', () => {
     expect(streamingAssistant!.querySelector('.run-footer')).toBeNull(); // 主对话运行中同款
   });
 
+  it('消息气泡显示来源名，点击打开该智能体转录', () => {
+    let s: AgentActivities = {};
+    s = applyAgentEvent(s, ev('agent-message', undefined, { messageId: 'm1', from: 'w1', to: 'w2', text: '先看测试', teamId: 'team-a' }));
+    s = applyAgentEvent(s, sub('step', 'w2', '', { messageId: 'm1', messageLine: 'w1: 先看测试', from: 'w1', to: 'w2', text: '先看测试', teamId: 'team-a' }));
+    const onOpenAgent = vi.fn();
+    const { container } = render(
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.w2} board={boardStub} onOpenAgent={onOpenAgent} />,
+    );
+    const bubbles = container.querySelectorAll('.agent-msg-bubble');
+    expect(bubbles).toHaveLength(1);
+    expect(container.querySelector('.agent-msg-from')?.textContent).toBe('w1');
+    expect(bubbles[0]?.textContent).toContain('先看测试');
+    fireEvent.click(bubbles[0]!);
+    expect(onOpenAgent).toHaveBeenCalledWith('w1', 'w1');
+  });
+
+  it('inbox drain 的 messageLine 步单独成气泡，来源名可点', () => {
+    const s = applyAgentEvent({}, sub('step', 'w2', '', { messageLine: 'lead: 去跑测试', from: 'lead', to: 'w2', text: '去跑测试', messageId: 'm9', teamId: 'team-a' }));
+    const onOpenAgent = vi.fn();
+    const { container } = render(
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.w2} board={boardStub} onOpenAgent={onOpenAgent} />,
+    );
+    const from = container.querySelector('.agent-msg-from');
+    expect(from?.textContent).toBe('lead');
+    fireEvent.click(from!);
+    expect(onOpenAgent).toHaveBeenCalledWith('lead', 'lead');
+  });
+
   it('轮折叠:sealed run 自动折叠(2026-10-24 裁定)——初始即收合,点击展开,再点收回', () => {
     let s: AgentActivities = {};
     s = applyAgentEvent(s, sub('model-start', 'an'));

@@ -60,7 +60,19 @@ export function makeSendMessageTool(deps: SendMessageToolDeps): RegisteredTool {
       if (text.trim().length === 0) throw new CodedToolError('INVALID_ARG', 'message text must be non-empty');
       if (text.length > MAX_TEXT) throw new CodedToolError('INVALID_ARG', `message text too long: ${text.length} > ${MAX_TEXT} chars`);
       const m = await deps.inbox.send(to, { from: deps.from(), text });
-      deps.onEvent?.({ type: 'agent-message', payload: { messageId: m.id, from: m.from, to: m.to, text: m.text }, ts: m.ts });
+      const senderTeam = deps.teamId?.();
+      const teamId = typeof senderTeam === 'string' && senderTeam.length > 0 ? senderTeam : deps.recipientTeamId?.(to);
+      deps.onEvent?.({
+        type: 'agent-message',
+        payload: {
+          messageId: m.id,
+          from: m.from,
+          to: m.to,
+          text: m.text,
+          ...(typeof teamId === 'string' && teamId.length > 0 ? { teamId } : {}),
+        },
+        ts: m.ts,
+      });
       return { exitCode: 0, stdout: `message ${m.id} delivered to ${to}`, stderr: '', timedOut: false };
     },
   };

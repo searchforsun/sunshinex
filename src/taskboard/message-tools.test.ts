@@ -80,6 +80,8 @@ test('to 校验:未知名拒(INVALID_ARG, not a live member);lead 恒可达', as
     const out = (await tool.executor({ to: 'lead', text: 'to main' })) as { stdout: string };
     assert.match(out.stdout, /delivered to lead/);
     assert.equal(events.length, 1, '被拒调用不产生事件');
+    assert.equal(events[0]?.payload?.from, 'lead');
+    assert.equal(events[0]?.payload?.teamId, 'team-main', '发送方 teamId 进入 agent-message 投影');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -177,6 +179,27 @@ test('跨队 to 拒绝 cannot send_message across teams;同队与 lead 放行且
     assert.match(lead.stdout, /delivered to lead/);
     const rec = JSON.parse(fs.readFileSync(path.join(tmp, 'inbox', 'w2.jsonl'), 'utf8').trim()) as { from: string; text: string };
     assert.deepEqual([rec.from, rec.text], ['w1', 'same team']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('lead 无自身 teamId 时事件投影用收件人 teamId', async () => {
+  const tmp = tmpdir('sunshinex-tb-msgtool-team-');
+  try {
+    const inbox = new FileInbox(path.join(tmp, 'inbox'));
+    const events: SessionEvent[] = [];
+    const tool = makeSendMessageTool({
+      inbox,
+      onEvent: (e) => events.push(e),
+      knownRecipients: () => ['w1'],
+      from: () => 'lead',
+      recipientTeamId: (name) => (name === 'w1' ? 'team-alpha' : undefined),
+    });
+    await tool.executor({ to: 'w1', text: 'hi' });
+    assert.equal(events[0]?.payload?.from, 'lead');
+    assert.equal(events[0]?.payload?.teamId, 'team-alpha');
+    assert.equal(events[0]?.payload?.to, 'w1');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

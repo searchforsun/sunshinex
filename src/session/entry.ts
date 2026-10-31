@@ -92,6 +92,24 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
   return exact ? incoming : Math.max(current, incoming);
 }
 
+/** inbox drain step → 来源/正文。结构化 from/text 优先;旧档只带 `messageLine`（`from: text`）时从该行拆。 */
+export function inboundMessageOf(payload: Record<string, unknown> | undefined): { from: string; to: string; text: string } | undefined {
+  if (payload === undefined) return undefined;
+  let from = typeof payload.from === 'string' ? payload.from : '';
+  let text = typeof payload.text === 'string' ? payload.text : '';
+  const line = typeof payload.messageLine === 'string' ? payload.messageLine : '';
+  if (line.length > 0) {
+    const idx = line.indexOf(': ');
+    if (idx > 0) {
+      if (from.length === 0) from = line.slice(0, idx);
+      if (text.length === 0) text = line.slice(idx + 2);
+    }
+  }
+  if (from.length === 0) return undefined;
+  const to = typeof payload.to === 'string' && payload.to.length > 0 ? payload.to : '?';
+  return { from, to, text };
+}
+
 /** 安静 notice 判定(P10 显示裁定单点):机制回执行(ask 回执/记忆索引漂移)对用户零信息量——
  *  内核忠实归档(journal 审计面保留),但 TUI/GUI 渲染面统一不显示。原 GUI 私有实现上收:
  *  两端同一裁定,防「同会话两端行数不同」分叉 */
@@ -408,10 +426,16 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       if (used === state.stats.ctxUsed && exact === state.stats.ctxExact) return state;
       return { ...state, stats: { ...state.stats, ctxUsed: used, ctxExact: exact } };
     }
-    case 'step':
+    case 'step': {
       // P9 统计面:步数计账(model 动作步;done 收尾帧不计——与 TUI 旧口径一致)
       if (e.text === 'done') return state;
-      return { ...state, stats: { ...state.stats, sessionSteps: state.stats.sessionSteps + 1 } };
+      const bumped: KernelState = { ...state, stats: { ...state.stats, sessionSteps: state.stats.sessionSteps + 1 } };
+      // inbox drain 的 messageLine 步:转录气泡与 agent-message 同形,来源名在方括号左侧
+      const note = inboundMessageOf(e.payload);
+      if (note === undefined) return bumped;
+      const sealed = sealSeg(bumped, e.ts);
+      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: `[${note.from} → ${note.to}] ${note.text}` });
+    }
     case 'done': {
       // ① 思考段先封(thinking 先行);开启 assistant 段合并终稿(同文不重复),无开启段且终稿非空才独立成条
       let st = state;

@@ -443,6 +443,7 @@ export class Harness {
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       knownRecipients: () => this.team.aliveNames(),
       from: () => 'lead',
+      recipientTeamId: (name) => this.team.teamIdOf(name),
     }));
     // P7:稳定段观测面装配口径缓存(outputStyle 是 run 级常量)——harness.stableSegment 与 reactor
     // 构造行同源,不引入第二份 deps 面

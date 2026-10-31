@@ -1872,6 +1872,33 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 记忆/学习技能回显行可点(点击开对应侧栏页签):手形+hover 亮 */
 .entry-notice[data-notice-clickable='1'] { cursor: pointer; }
 .entry-notice[data-notice-clickable='1']:hover { color: var(--fg); }
+/* 成员消息气泡：来源名可点，打开该智能体转录 */
+.entry-notice.agent-msg {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-composer);
+  color: var(--fg);
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.agent-msg-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+div.agent-msg-bubble { cursor: default; }
+.agent-msg-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agent-msg-from { color: var(--accent); font-weight: 600; }
+.agent-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* G14.150 侧栏左缘统一列(x=14):品牌/新对话/项目组行 与 分区头(项目/最近会话) 对齐 */
 .sx-brand { margin-left: 6px; }
