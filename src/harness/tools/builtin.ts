@@ -185,7 +185,14 @@ export function builtinTools(
             onData: (chunk) => tasks.append(task.id, chunk),
             onExit: (code) => tasks.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code }),
           });
-          if (started.ok) task.stop = () => backend.killBackground?.(started.value.pid);
+          if (started.ok) {
+            task.stop = () => backend.killBackground?.(started.value.pid);
+            // 暂停面（2026-10-31 GUI 暂停钮）：挂起/恢复进程树闭包——挂起成功才翻账本状态
+            if (backend.suspendBackground !== undefined && backend.resumeBackground !== undefined) {
+              task.pause = () => { if (backend.suspendBackground!(started.value.pid)) tasks.setPaused(task.id, true); };
+              task.resume = () => { if (backend.resumeBackground!(started.value.pid)) tasks.setPaused(task.id, false); };
+            }
+          }
           // 轮询法在回执点下发（触发才付费）：参数描述只留输入输出契约，后台工作法随两张启动回执走（本行与下方超时转后台行）
           return execOut(`task ${task.id} started (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait`);
         }
@@ -207,6 +214,10 @@ export function builtinTools(
           child.on('close', (code) => ledger.finish(task.id, code === 0 ? 'done' : 'failed', { exitCode: code ?? -1 }));
           // 收割收敛 killBackground 单点（§14）：按进程树/进程组同步收割（win32 taskkill /T /F，POSIX kill(-pid)）
           task.stop = () => backend.killBackground?.(child.pid ?? 0);
+          if (backend.suspendBackground !== undefined && backend.resumeBackground !== undefined) {
+            task.pause = () => { if (backend.suspendBackground!(child.pid ?? 0)) ledger.setPaused(task.id, true); };
+            task.resume = () => { if (backend.resumeBackground!(child.pid ?? 0)) ledger.setPaused(task.id, false); };
+          }
           ledger.append(task.id, '[moved to background after timeout]\n');
           return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath}) — the command keeps running (not killed); poll that file (it ends with [exit N] when done) or block with task_wait`);
         }

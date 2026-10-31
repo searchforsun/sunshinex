@@ -226,9 +226,27 @@ export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerRespons
     startedAt: t2.startedAt,
     ...(t2.endedAt !== undefined ? { endedAt: t2.endedAt } : {}),
     ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
+    // 暂停面（2026-10-31）：pausedMs=已折算暂停总时长;pausedAt=进行中暂停段起点(运行时长停表点)
+    ...(t2.pausedMs !== undefined ? { pausedMs: t2.pausedMs } : {}),
+    ...(t2.pausedAt !== undefined ? { pausedAt: t2.pausedAt } : {}),
     ...taskOutputTail(t2.outputFilePath),
   }));
   io.send(res, 200, rows);
+}
+
+/** POST /session/:id/tasks/pause|resume（2026-10-31 GUI 暂停钮）：body {id: taskId}；经 resolveId
+ *  归一（task_wait 同款）。409=该任务无暂停闭包（subagent/重放孤儿账——挂起面仅 exec 活账在），
+ *  404=会话/任务未知。幂等：已是目标态原样 200 */
+export function handleTaskPause(io: SessionHandlerIo, res: http.ServerResponse, id: string, taskId: string, paused: boolean): void {
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  const tid = session.runtime.harness.tasks.resolveId(taskId);
+  const t = session.runtime.harness.tasks.get(tid);
+  if (t === undefined) return io.send(res, 404, { error: 'unknown task' });
+  const closure = paused ? t.pause : t.resume;
+  if (closure === undefined) return io.send(res, 409, { error: paused ? 'task not pausable' : 'task not resumable' });
+  closure();
+  io.send(res, 200, { id: t.id, status: t.status });
 }
 
 

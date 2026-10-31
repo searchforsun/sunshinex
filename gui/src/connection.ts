@@ -130,6 +130,10 @@ export interface Connection {
    *  真后台执行——subagent/teammate 账本行退役(子智能体/队友在任务板·agent 页签已有专面,双处
    *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用)。行形 SessionTaskRow 单点(connection-types) */
   sessionTasks(id: string): Promise<SessionTaskRow[]>;
+  /** POST /session/:id/tasks/pause|resume {id: taskId}：后台任务暂停/恢复（2026-10-31 GUI 暂停钮）。
+   *  409=任务无暂停闭包（subagent/重放孤儿账）;404=会话/任务未知;幂等=已是目标态 200 */
+  taskPause(id: string, taskId: string): Promise<void>;
+  taskResume(id: string, taskId: string): Promise<void>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
   memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
@@ -542,6 +546,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson<SessionTaskRow[]>(
         '/session/' + encodeURIComponent(id) + '/tasks',
       ).then((rows) => rows.filter((r) => r.kind === 'exec'));
+    },
+    async taskPause(id: string, taskId: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/tasks/pause', { id: taskId });
+    },
+    async taskResume(id: string, taskId: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/tasks/resume', { id: taskId });
     },
     memoryList(root: string) {
       return getJson('/memory?root=' + encodeURIComponent(root));

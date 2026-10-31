@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Database, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, Database, Pause, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
 import type { Connection, SessionTaskRow } from '../connection';
 import { t } from '../i18n';
@@ -94,12 +94,18 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
 }
 
 /** 后台任务面板:/tasks 账本行(exec 运行面,与任务板分立)。2026-10-24 用户裁定行制改版:
- *  不区分用户输入(turnGoal 退役)——单行=状态图标+运行时长+命令(一行省略)+创建时间;
- *  点击展开命令详情与结果(服务端输出尾读,结果区最大高度内部滚动)。运行中时长 1s 实时跳 */
+ *  单行=状态图标+运行时长+命令(一行省略)+创建时间。2026-10-31 用户裁定三改:①运行时长前移到
+ *  状态图标后(与右缘创建时间在视觉轴上分开) ②展开详情摘「命令/结果」自解释标题,命令行右缘
+ *  复制钮 ③运行中行暂停钮/暂停中恢复钮(hover 显现;exec 活账闭包,subagent/重放账 409 静默)。
+ *  运行时长停表扣 pausedMs(暂停段不计时);点击展开命令详情与结果(服务端输出尾读,结果区最大
+ *  高度内部滚动)。运行中时长 1s 实时跳 */
 export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
   const { data, error, reload } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  // 运行时长实时:有 running 任务才起 1s 定时器(终态行用 endedAt 恒定,零无谓重渲染)
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimer = useRef<number>(0);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+  // 运行中时长实时:有 running 任务才起 1s 定时器(终态行用 endedAt 恒定,零无谓重渲染)
   const [now, setNow] = useState(Date.now());
   const hasRunning = (data ?? []).some((r) => r.status === 'running');
   useEffect(() => {
@@ -107,6 +113,9 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [hasRunning]);
+  /** 运行时长停表(2026-10-31 暂停面):终态=endedAt;暂停中=pausedAt 冻结点;其余=now——均扣已折算暂停段 */
+  const durOf = (r: SessionTaskRow): string =>
+    fmtDur(Math.max(0, (r.endedAt ?? (r.status === 'paused' ? (r.pausedAt ?? now) : now)) - r.startedAt - (r.pausedMs ?? 0)));
   const toggle = (id: string): void =>
     setExpanded((cur) => {
       const next = new Set(cur);
@@ -114,6 +123,22 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
       else next.add(id);
       return next;
     });
+  const copyCmd = (id: string, label: string): void => {
+    navigator.clipboard
+      .writeText(label)
+      .then(() => {
+        setCopiedId(id);
+        window.clearTimeout(copiedTimer.current);
+        copiedTimer.current = window.setTimeout(() => setCopiedId(null), 1500);
+      })
+      .catch(() => {});
+  };
+  const pauseTask = (e: React.MouseEvent, id: string, resume: boolean): void => {
+    e.stopPropagation();
+    (resume ? conn.taskResume(sessionId, id) : conn.taskPause(sessionId, id).catch(() => {}))
+      .then(() => reload())
+      .catch(() => {});
+  };
   const rows = [...(data ?? [])].sort((a, b) => b.startedAt - a.startedAt);
   return (
     <div className="insight-tab">
@@ -139,31 +164,75 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
         <div className="todo-cards" aria-label="background tasks">
           {rows.map((r) => {
             const open = expanded.has(r.id);
-            const dur = fmtDur((r.endedAt ?? now) - r.startedAt);
             return (
               <section key={r.id} className="tb-card">
-                <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(r.id)}>
+                <div
+                  className="todo-card-head"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open}
+                  onClick={() => toggle(r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggle(r.id);
+                    }
+                  }}
+                >
                   {/* 2026-10-24 用户裁定:状态点与全项目同款(tb-status-dot)——灰转圈=running,
-                   *  蓝点=done,红点=failed,灰点=stopped */}
+                   *  蓝点=done,红点=failed,灰点=stopped/paused(paused 静态灰点+时长冻结) */}
                   <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
+                  {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
+                  <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>{durOf(r)}</span>
                   <span className="todo-card-goal bg-cmd" data-tip={r.label}>{r.label}</span>
-                  <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>{dur}</span>
+                  {/* 暂停/恢复(2026-10-31):仅 exec 活账有闭包(daemon 409 静默兜旧档);hover 显现 */}
+                  {r.status === 'running' && typeof conn.taskPause === 'function' && (
+                    <button
+                      type="button"
+                      className="sx-changes-act bg-act"
+                      aria-label={`pause ${r.id}`}
+                      data-tip={t('Pause', '暂停')}
+                      onClick={(e) => pauseTask(e, r.id, false)}
+                    >
+                      <Pause size={12} strokeWidth={1.75} />
+                    </button>
+                  )}
+                  {r.status === 'paused' && typeof conn.taskResume === 'function' && (
+                    <button
+                      type="button"
+                      className="sx-changes-act bg-act"
+                      aria-label={`resume ${r.id}`}
+                      data-tip={t('Resume', '恢复')}
+                      onClick={(e) => pauseTask(e, r.id, true)}
+                    >
+                      <Play size={12} strokeWidth={1.75} />
+                    </button>
+                  )}
                   <span className="todo-card-time">{shortStampMs(r.startedAt)}</span>
-                </button>
+                </div>
                 {open && (
                   <div className="bg-detail">
-                    <div className="bg-detail-row">
-                      <span className="bg-detail-key">{t('Command', '命令')}</span>
-                      <span className="bg-detail-val bg-detail-mono">{r.label}</span>
+                    {/* 2026-10-31 用户裁定:摘「命令/结果」自解释标题;命令行右缘复制钮 */}
+                    <div className="bg-cmd-row">
+                      <span className="bg-cmd-text">{r.label}</span>
+                      <button
+                        type="button"
+                        className="sx-changes-act"
+                        aria-label={`copy command ${r.id}`}
+                        data-tip={copiedId === r.id ? t('Copied', '已复制') : t('Copy command', '复制命令')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyCmd(r.id, r.label);
+                        }}
+                      >
+                        <Copy size={12} strokeWidth={1.75} />
+                      </button>
                     </div>
                     {r.outputTail !== undefined && r.outputTail !== '' && (
-                      <div className="bg-detail-row bg-detail-col">
-                        <span className="bg-detail-key">{t('Result', '结果')}</span>
-                        <pre className="bg-output">
-                          {r.outputTail}
-                          {r.outputTruncated === true && `\n…${t('output truncated (showing last 4KB)', '输出已截断(仅示末 4KB)')}`}
-                        </pre>
-                      </div>
+                      <pre className="bg-output">
+                        {r.outputTail}
+                        {r.outputTruncated === true && `\n…${t('output truncated (showing last 4KB)', '输出已截断(仅示末 4KB)')}`}
+                      </pre>
                     )}
                   </div>
                 )}

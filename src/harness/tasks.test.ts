@@ -224,3 +224,53 @@ test('账本:坏行/乱序行跳过不炸;无账本路径 = 纯内存零 ledger 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('暂停面(2026-10-31 GUI 暂停钮):setPaused 翻态+停表折算;paused 落终态/收割/等待面三守卫', async () => {
+  const { reg } = makeReg();
+  const t = reg.submit({ kind: 'exec', label: 'mvn -q compile' });
+  // 暂停:running→paused,pauseAt 落点;恢复:折算 pausedMs 回 running
+  reg.setPaused(t.id, true);
+  const paused = reg.get(t.id);
+  assert.equal(paused?.status, 'paused');
+  assert.ok(paused?.pausedAt !== undefined, '进行中暂停段起点落 pausedAt');
+  // 手动回拨暂停起点 500ms 前再恢复:pausedMs≈500(容差 250ms 防调度抖动)
+  reg.get(t.id)!.pausedAt = Date.now() - 500;
+  reg.setPaused(t.id, false);
+  const resumed = reg.get(t.id)!;
+  assert.equal(resumed.status, 'running');
+  assert.ok((resumed.pausedMs ?? 0) >= 400 && (resumed.pausedMs ?? 0) <= 800, `pausedMs 折算暂停段(实测 ${resumed.pausedMs})`);
+  assert.equal(resumed.pausedAt, undefined);
+  // 幂等:目标态重复调用零副作用
+  reg.setPaused(t.id, false);
+  assert.equal(reg.get(t.id)?.status, 'running');
+  // 暂停中可直落终态(onExit 照常回调路径):paused 尾巴折进 pausedMs
+  reg.setPaused(t.id, true);
+  reg.get(t.id)!.pausedAt = Date.now() - 300;
+  reg.finish(t.id, 'stopped', { marker: '[stopped: killed while paused]' });
+  const done = reg.get(t.id)!;
+  assert.equal(done.status, 'stopped');
+  assert.ok((done.pausedMs ?? 0) >= 300, '终态折算暂停尾巴');
+  assert.equal(done.pausedAt, undefined);
+});
+
+test('暂停面守卫:waitUntilSettled 不把 paused 当终态;reap/stopAll 收割 paused', async () => {
+  const { reg } = makeReg();
+  const a = reg.submit({ kind: 'exec', label: 'paused-task' });
+  const b = reg.submit({ kind: 'exec', label: 'done-task' });
+  reg.finish(b.id, 'done', { exitCode: 0 });
+  reg.setPaused(a.id, true);
+  // paused 不得放行等待面:300ms 内保持 unsettled(旧语义 status!=='running' 会立即误判 settled)
+  const early = await reg.waitUntilSettled([a.id], 250);
+  assert.equal(early.settled, false, 'paused≠终态,等待面不放行');
+  // reap 收割 paused(挂起树 taskkill 照杀语义)
+  a.stop = () => {};
+  const reaped = reg.reap('main');
+  assert.deepEqual(reaped.map((r) => r.id), [a.id]);
+  assert.equal(reg.get(a.id)?.status, 'stopped');
+  // stopAll 收割 paused
+  const c = reg.submit({ kind: 'exec', label: 'paused-2' });
+  reg.setPaused(c.id, true);
+  const stopped = reg.stopAll();
+  assert.ok(stopped.some((r) => r.id === c.id));
+  assert.equal(reg.get(c.id)?.status, 'stopped');
+});

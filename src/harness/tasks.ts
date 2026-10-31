@@ -11,15 +11,21 @@ export interface BackgroundTask {
   id: string;
   kind: 'exec' | 'subagent';
   label: string;
-  status: 'running' | 'done' | 'failed' | 'stopped';
+  status: 'running' | 'paused' | 'done' | 'failed' | 'stopped';
   outputFilePath: string;
   startedAt: number;
-  /** 终态时刻（finish 落定；running 无——GUI 运行时长=now-startedAt / 终态=endedAt-startedAt） */
+  /** 终态时刻（finish 落定；running/paused 无——GUI 运行时长=(endedAt ?? paused 停表点 ?? now)-startedAt-pausedMs） */
   endedAt?: number;
   exitCode?: number;
   ownerRun?: string;
   /** 停止执行单点（exec=进程 kill、subagent=中断线 abort）；提交方挂载，账本透传——kill 与 abort 两类差异收敛在提交方闭包，账本零 kind 分派 */
   stop?: () => void;
+  /** 暂停面（2026-10-31 GUI 暂停钮）：exec 任务提交方挂载（挂起/恢复进程树闭包），账本不入档
+   *  （函数不可序列化）；pausedAt=本段暂停起点、pausedMs=已折算暂停总时长——运行时长停表语义 */
+  pause?: () => void;
+  resume?: () => void;
+  pausedAt?: number;
+  pausedMs?: number;
 }
 
 /** owner 作用域（后台任务线规格 D9）：AsyncLocalStorage 承载 fork 归属，并发 fork 互不串号 */
@@ -154,10 +160,16 @@ export class TaskRegistry {
     fs.appendFileSync(t.outputFilePath, chunk, 'utf8');
   }
 
-  /** 终态（规格 D3）：带 exitCode 落 [exit N]；带 marker 落 marker 行（subagent 结论/失败补丁行）；否则 [status]；重复终止幂等 */
+  /** 终态（规格 D3）：带 exitCode 落 [exit N]；带 marker 落 marker 行（subagent 结论/失败补丁行）；否则 [status]；重复终止幂等。
+   *  paused 亦可落终态（2026-10-31）：暂停中进程被杀（onExit 照常回调），从 paused 直落终态不卡账 */
   finish(taskId: string, status: 'done' | 'failed' | 'stopped', opts?: { exitCode?: number; marker?: string }): BackgroundTask | undefined {
     const t = this.tasks.get(taskId);
-    if (!t || t.status !== 'running') return t;
+    if (!t || (t.status !== 'running' && t.status !== 'paused')) return t;
+    // 暂停中折算停表尾巴进 pausedMs,终态时长=(endedAt-startedAt-pausedMs) 语义自洽
+    if (t.status === 'paused' && t.pausedAt !== undefined) {
+      t.pausedMs = (t.pausedMs ?? 0) + (Date.now() - t.pausedAt);
+      t.pausedAt = undefined;
+    }
     const line = opts?.marker ?? (opts?.exitCode !== undefined ? `[exit ${opts.exitCode}]` : `[${status}]`);
     fs.appendFileSync(t.outputFilePath, `${line}\n`, 'utf8');
     t.status = status;
@@ -181,6 +193,22 @@ export class TaskRegistry {
 
   get(taskId: string): BackgroundTask | undefined {
     return this.tasks.get(taskId);
+  }
+
+  /** 暂停/恢复单点（2026-10-31 GUI 暂停钮）：翻 running↔paused 并折算停表（pausedAt/pausedMs）；
+   *  幂等（已是目标态原样返回）。挂起失败由闭包侧不调本方法（状态不动）——此处只管账本面 */
+  setPaused(taskId: string, paused: boolean): BackgroundTask | undefined {
+    const t = this.tasks.get(taskId);
+    if (t === undefined) return undefined;
+    if (paused && t.status === 'running') {
+      t.status = 'paused';
+      t.pausedAt = Date.now();
+    } else if (!paused && t.status === 'paused') {
+      t.status = 'running';
+      if (t.pausedAt !== undefined) t.pausedMs = (t.pausedMs ?? 0) + (Date.now() - t.pausedAt);
+      t.pausedAt = undefined;
+    }
+    return t;
   }
 
   /**
@@ -210,11 +238,12 @@ export class TaskRegistry {
     return id;
   }
 
-  /** ownerRun 收割（规格 D9）：终结该 owner 名下全部 running——触发 stop 句柄并落 [stopped] 终态行 */
+  /** ownerRun 收割（规格 D9）：终结该 owner 名下全部未终态（running/paused）——触发 stop 句柄并落
+   *  [stopped] 终态行（挂起中的树 taskkill 照杀,2026-10-31 paused 纳入） */
   reap(ownerRun: string): BackgroundTask[] {
     const out: BackgroundTask[] = [];
     for (const t of this.tasks.values()) {
-      if (t.status === 'running' && t.ownerRun === ownerRun) {
+      if ((t.status === 'running' || t.status === 'paused') && t.ownerRun === ownerRun) {
         t.stop?.();
         this.finish(t.id, 'stopped', { marker: '[stopped: owner finished]' });
         out.push(t);
@@ -223,9 +252,9 @@ export class TaskRegistry {
     return out;
   }
 
-  /** 全量收口（宿主退出/CLI run 终态，规格 D9 任务属进程） */
+  /** 全量收口（宿主退出/CLI run 终态，规格 D9 任务属进程）；paused 纳入（挂起树同杀） */
   stopAll(): BackgroundTask[] {
-    const out = this.list().filter((t) => t.status === 'running');
+    const out = this.list().filter((t) => t.status === 'running' || t.status === 'paused');
     for (const t of out) {
       t.stop?.();
       this.finish(t.id, 'stopped', { marker: '[stopped: process exit]' });
@@ -262,8 +291,9 @@ export class TaskRegistry {
       const poll = (): void => {
         if (done) return; // 中止路径由 onAbort finish,poll 不再出手
         const ts = snapshot();
-        // 空目标（含未知 id 过滤后为空）零等待即回：无等待对象即无事可等，幂等空回执
-        if (ts.length === 0 || ts.every((t) => t.status !== 'running')) {
+        // 空目标（含未知 id 过滤后为空）零等待即回：无等待对象即无事可等，幂等空回执。
+        // paused=仍在等（2026-10-31：暂停不是终态,等待面不得提前放行）
+        if (ts.length === 0 || ts.every((t) => t.status !== 'running' && t.status !== 'paused')) {
           finish({ settled: true, tasks: ts });
           return;
         }
