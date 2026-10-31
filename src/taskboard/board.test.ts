@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { TaskBoard } from './board';
 import { TeamStore } from './store';
+import { makeTeammateTools } from './teammate-tools';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from './team-registry';
 import { SessionEvent } from '../types';
 import { teamTokenCapEnv } from '../config/termination-config';
@@ -576,19 +577,59 @@ test('set_dependency/assign 发 task-dep-added/task-assigned', async () => {
   }
 });
 
-test('summaryLines 英文化:needs 标记,无中文字符', async () => {
+test('summaryLines 英文化:needs 标记,无中文字符;teamId 常在,retryOf 有值才出现', async () => {
   const tmp = tmpdir('sunshinex-tb-en-');
   try {
     const h = makeBoard(tmp, { failReplies: ['A'] });
     const a = h.board.create({ teamId: h.teamId, title: 'A', spec: 'a' });
     assert.ok(a.ok);
     await drain();
-    const b = h.board.create({ teamId: h.teamId, title: 'B', spec: 'b', dependsOn: [a.value.taskId] });
+    const b = h.board.create({ teamId: h.teamId, title: 'B', spec: 'b', dependsOn: [a.value.taskId], retryOf: a.value.taskId });
     assert.ok(b.ok);
     const lines = h.board.summaryLines();
-    assert.ok(lines.includes(`${a.value.taskId} [failed] A`));
-    assert.ok(lines.includes(`${b.value.taskId} [pending] B (needs ${a.value.taskId})`));
+    assert.ok(lines.includes(`${a.value.taskId} [failed] A team=${h.teamId}`));
+    assert.equal(lines.find((l) => l.startsWith(a.value.taskId))!.includes('retryOf='), false);
+    assert.ok(lines.includes(`${b.value.taskId} [pending] B (needs ${a.value.taskId}) team=${h.teamId} retryOf=${a.value.taskId}`));
     assert.ok(lines.every((l) => !/[\u4e00-\u9fff]/.test(l)));
+    const getTask = makeTeammateTools(h.board).find((t) => t.name === 'get_task')!;
+    const fullB = (await getTask.executor({ taskId: b.value.taskId })) as { stdout: string };
+    assert.match(fullB.stdout, new RegExp(`^teamId: ${h.teamId}$`, 'm'));
+    assert.match(fullB.stdout, new RegExp(`^retryOf: ${a.value.taskId}$`, 'm'));
+    const fullA = (await getTask.executor({ taskId: a.value.taskId })) as { stdout: string };
+    assert.match(fullA.stdout, new RegExp(`^teamId: ${h.teamId}$`, 'm'));
+    assert.equal(fullA.stdout.includes('retryOf:'), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('init:旧 events.jsonl 含 gate-set 与 claimed 不抛,未收口任务变为 cancelled', async () => {
+  const tmp = tmpdir('sunshinex-tb-legacy-');
+  try {
+    const dir = path.join(tmp, 'teams', 'main');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'events.jsonl'), [
+      JSON.stringify({ t: 'task-created', taskId: 't-open', title: 'Open', spec: 'o', dependsOn: [], teamId: 'tm-old', ts: 1 }),
+      JSON.stringify({ t: 'gate-set', taskId: 't-open', ts: 2 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't-open', from: 'claimed', to: 'in-review', ts: 3 }),
+      JSON.stringify({ t: 'task-created', taskId: 't-run', title: 'Run', spec: 'r', dependsOn: [], teamId: 'tm-old', ts: 4 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't-run', from: 'pending', to: 'running', ts: 5 }),
+      JSON.stringify({ t: 'gate-resolved', taskId: 't-run', ts: 6 }),
+      JSON.stringify({ t: 'task-created', taskId: 't-ok', title: 'Ok', spec: 'k', dependsOn: [], teamId: 'tm-old', ts: 7 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't-ok', from: 'pending', to: 'running', ts: 8 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't-ok', from: 'running', to: 'success', ts: 9 }),
+    ].join('\n') + '\n', 'utf8');
+    const { agentTeams } = attachTeam();
+    const board = new TaskBoard({
+      store: new TeamStore(dir),
+      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner,
+      registry: registryStub,
+      agentTeams,
+    });
+    assert.doesNotThrow(() => board.init());
+    assert.equal(board.snapshot().tasks['t-open']!.status, 'cancelled');
+    assert.equal(board.snapshot().tasks['t-run']!.status, 'cancelled');
+    assert.equal(board.snapshot().tasks['t-ok']!.status, 'success');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

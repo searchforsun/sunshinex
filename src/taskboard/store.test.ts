@@ -54,6 +54,29 @@ test('load 容错:尾行截断跳过、中段损坏行跳过、缺文件空板',
   }
 });
 
+test('load:旧事件 gate-set 与 claimed 迁移跳过，任务停在创建时的 pending', () => {
+  const tmp = tmpdir('sunshinex-tb-store-legacy-');
+  try {
+    const dir = path.join(tmp, 'teams', 'main');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'events.jsonl'), [
+      JSON.stringify({ t: 'task-created', taskId: 't1', title: 'A', spec: 'do A', dependsOn: [], teamId: 'tm1', ts: 1 }),
+      JSON.stringify({ t: 'gate-set', taskId: 't1', ts: 2 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't1', from: 'claimed', to: 'in-review', ts: 3 }),
+      JSON.stringify({ t: 'gate-resolved', taskId: 't1', ts: 4 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't1', from: 'in-review', to: 'done', ts: 5 }),
+      JSON.stringify({ t: 'task-created', taskId: 't2', title: 'B', spec: 'do B', dependsOn: [], teamId: 'tm1', ts: 6 }),
+      JSON.stringify({ t: 'status-changed', taskId: 't2', from: 'pending', to: 'running', ts: 7 }),
+    ].join('\n') + '\n', 'utf8');
+    const loaded = new TeamStore(dir).load();
+    assert.equal(loaded.tasks['t1']!.status, 'pending');
+    assert.equal(loaded.tasks['t1']!.teamId, 'tm1');
+    assert.equal(loaded.tasks['t2']!.status, 'running');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('load 后可继续 append(恢复写入路径畅通)', () => {
   const tmp = tmpdir('sunshinex-tb-store3-');
   try {

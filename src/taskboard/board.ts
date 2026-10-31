@@ -139,13 +139,14 @@ export class TaskBoard {
     }
   }
 
-  /** 面板摘要行:`<id> [status] title (needs ...)` */
+  /** 面板摘要行:`<id> [status] title (needs ...) team=<teamId> retryOf=<id>`（retryOf 仅在有值时出现） */
   summaryLines(): string[] {
     const lines = Object.values(this.state.tasks)
       .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
       .map((t) => {
         const dep = t.dependsOn.length > 0 ? ` (needs ${t.dependsOn.join(',')})` : '';
-        return `${t.id} [${t.status}] ${t.title}${dep}`;
+        const retry = t.retryOf !== undefined && t.retryOf.length > 0 ? ` retryOf=${t.retryOf}` : '';
+        return `${t.id} [${t.status}] ${t.title}${dep} team=${t.teamId}${retry}`;
       });
     if (this.deps.teamTokenCap !== undefined) {
       lines.push(this.teamTokensUsed >= this.deps.teamTokenCap

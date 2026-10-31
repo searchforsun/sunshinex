@@ -100,7 +100,10 @@ test('get_board 收编进 lead 面:摘要行含 id/状态/标题,未设帽不透
     const id = createdId(r.stdout);
     assert.equal(board.snapshot().tasks[id]!.retryOf, prevId);
     const out = (await getBoard.executor({})) as { stdout: string };
-    assert.match(out.stdout, new RegExp(`${id} \\[(pending|running|success)\\] RetryDemo`), '板摘要行含 id/状态/标题');
+    assert.match(out.stdout, new RegExp(`${id} \\[(pending|running|success)\\] RetryDemo team=${teamId} retryOf=${prevId}`), '板摘要行含 id/状态/标题/teamId/retryOf');
+    const prevLine = out.stdout.split('\n').find((l) => l.startsWith(prevId));
+    assert.ok(prevLine?.includes(`team=${teamId}`), '无 retryOf 的任务仍带 teamId');
+    assert.equal(prevLine?.includes('retryOf='), false);
     assert.ok(!out.stdout.includes('team budget'), '未设预算帽不透出预算行');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

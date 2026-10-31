@@ -141,7 +141,7 @@ export function makeGetBoardTool(board: TaskBoard, description?: string): Regist
     name: 'get_board',
     description:
       description ??
-      'Read the shared task board: one summary line per task (id, status, title, dependencies, assignee/executedBy) plus the team budget line. The task lifecycle authority for planning and task_wait targeting.',
+      'Read the shared task board: one summary line per task (id, status, title, dependencies, team id, retryOf when set) plus the team budget line. The task lifecycle authority for planning and task_wait targeting.',
     category: 'task',
     fullObservation: true,
     executor: async () => {

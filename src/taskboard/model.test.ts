@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyBoardEvent, BoardEvent, dispatchable, emptyBoard, hasCycle,
-  recoverOnLoad, transitionLegal, derivedBlocked,
+  recoverOnLoad, transitionLegal, derivedBlocked, TaskStatus,
 } from './model';
 
 const created = (id: string, deps: string[] = [], extra: Partial<Extract<BoardEvent, { t: 'task-created' }>> = {}): BoardEvent =>
@@ -40,6 +40,22 @@ test('transitionLegal:五态闭集', () => {
   assert.ok(!transitionLegal('success', 'pending'));
   assert.ok(!transitionLegal('pending', 'success'));
   assert.ok(!transitionLegal('failed', 'running'));
+  assert.equal(transitionLegal('claimed' as TaskStatus, 'running'), false);
+  assert.equal(transitionLegal('in-review' as TaskStatus, 'success'), false);
+  assert.equal(transitionLegal('done' as TaskStatus, 'cancelled'), false);
+});
+
+test('applyBoardEvent:未知事件类型与非法迁移保持原状态', () => {
+  let s = emptyBoard();
+  s = applyBoardEvent(s, created('t1'));
+  const before = s;
+  assert.equal(applyBoardEvent(s, { t: 'gate-set', taskId: 't1', ts: 2 } as unknown as BoardEvent), before);
+  assert.equal(applyBoardEvent(s, { t: 'gate-resolved', taskId: 't1', ts: 3 } as unknown as BoardEvent), before);
+  const after = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'claimed', to: 'done', ts: 4 } as unknown as BoardEvent);
+  assert.equal(after, before);
+  assert.equal(after.tasks['t1']!.status, 'pending');
+  const recovered = recoverOnLoad(after);
+  assert.equal(recovered.state.tasks['t1']!.status, 'cancelled');
 });
 
 test('dispatchable/derivedBlocked:依赖须 success 与失败传播', () => {

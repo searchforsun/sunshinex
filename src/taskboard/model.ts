@@ -44,12 +44,17 @@ const LEGAL: Record<TaskStatus, TaskStatus[]> = {
   cancelled: [],
 };
 
+/** 五态表外的起点（重放旧档时出现）没有出边 */
+function outbound(from: string): readonly TaskStatus[] | undefined {
+  return (LEGAL as Record<string, readonly TaskStatus[] | undefined>)[from];
+}
+
 export function transitionLegal(from: TaskStatus, to: TaskStatus): boolean {
-  return LEGAL[from].includes(to);
+  return outbound(from)?.includes(to) ?? false;
 }
 
 export function transitionError(from: TaskStatus, to: TaskStatus): string {
-  const allowed = LEGAL[from];
+  const allowed = outbound(from) ?? [];
   const allowedText = allowed.length === 0 ? 'none' : allowed.join(', ');
   if (allowed.length === 0) {
     return `cannot transition from ${from} to ${to}; terminal state has no outbound edges (allowed: ${allowedText})`;
@@ -61,7 +66,7 @@ export function emptyBoard(): TaskBoardState {
   return { tasks: {}, seq: 0 };
 }
 
-/** 事件 reducer(纯):事件流是协调状态的唯一真相源;未知 taskId 原引用返回(零分配) */
+/** 事件 reducer(纯):事件流是协调状态的唯一真相源;未知 taskId、未知事件类型、非法迁移均原引用返回(零分配) */
 export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoardState {
   switch (ev.t) {
     case 'task-created': {
@@ -92,6 +97,8 @@ export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoar
         : task.artifact;
       return patch(state, ev.taskId, { status: ev.to, updatedAt: ev.ts, ...(artifact !== task.artifact ? { artifact } : {}), ...(ev.by !== undefined ? { executedBy: ev.by } : {}) });
     }
+    default:
+      return state;
   }
 }
 

@@ -93,7 +93,8 @@ export class TeamStore {
     fs.renameSync(tmp, target);
   }
 
-  /** 全量重放载入(P1 真相路径):文件缺失 = 空 team;损坏行(无换行截断/非法 JSON/缺 t 字段)跳过不炸 */
+  /** 全量重放载入(P1 真相路径):文件缺失 = 空 team;损坏行(无换行截断/非法 JSON/缺 t 字段)跳过不炸。
+   *  未知事件类型与非法迁移由 applyBoardEvent 保持原状态,不把旧状态名写入五态。 */
   load(): TaskBoardState {
     let raw: string;
     try {
