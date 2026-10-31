@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Database, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
 import type { Connection, SessionTaskRow } from '../connection';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
@@ -184,6 +186,18 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
   const [selected, setSelected] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  /** 删除二段确认(2026-10-31 用户裁定,共享 ConfirmDeleteButton 同语义):单行 armSlug/批量
+   *  armBatch——首击武装(红),3s 内再击执行,超时/换他钮解除 */
+  const [armSlug, setArmSlug] = useState<string | null>(null);
+  const [armBatch, setArmBatch] = useState(false);
+  useEffect(() => {
+    if (armSlug === null && !armBatch) return;
+    const t = setTimeout(() => {
+      setArmSlug(null);
+      setArmBatch(false);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [armSlug, armBatch]);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   useEffect(() => {
     if (focus === undefined || data === null) return;
@@ -218,14 +232,22 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
         {selected.length > 0 && (
           <button
             type="button"
-            className="sx-changes-act"
-            aria-label="delete selected"
-            data-tip={`${t('Delete selected', '删除所选')} (${selected.length})`}
+            className={`sx-changes-act${armBatch ? ' arm' : ''}`}
+            aria-label={armBatch ? 'confirm delete selected' : 'delete selected'}
+            data-tip={armBatch ? t('Click again to confirm', '再次点击确认') : `${t('Delete selected', '删除所选')} (${selected.length})`}
             disabled={deleting || root === ''}
-            onClick={() => remove(selected)}
+            onClick={() => {
+              if (armBatch) {
+                remove(selected);
+                setArmBatch(false);
+              } else {
+                setArmBatch(true);
+                setArmSlug(null);
+              }
+            }}
           >
             <Trash2 size={13} strokeWidth={1.75} />
-            <span className="mem-count">{selected.length}</span>
+            <span className="mem-count">{armBatch ? t('Confirm', '确认') : selected.length}</span>
           </button>
         )}
       </div>
@@ -271,13 +293,19 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
                 <span className="mem-date">{m.modified.slice(0, 10)}</span>
                 <button
                   type="button"
-                  className="sx-changes-act mem-del"
-                  aria-label={`delete ${m.slug}`}
-                  data-tip={t('Delete', '删除')}
+                  className={`sx-changes-act mem-del${armSlug === m.slug ? ' arm' : ''}`}
+                  aria-label={armSlug === m.slug ? `confirm delete ${m.slug}` : `delete ${m.slug}`}
+                  data-tip={armSlug === m.slug ? t('Click again to confirm', '再次点击确认') : t('Delete', '删除')}
                   disabled={deleting}
                   onClick={(e) => {
                     e.stopPropagation();
-                    remove([m.slug]);
+                    if (armSlug === m.slug) {
+                      remove([m.slug]);
+                      setArmSlug(null);
+                    } else {
+                      setArmSlug(m.slug);
+                      setArmBatch(false);
+                    }
                   }}
                 >
                   <Trash2 size={13} strokeWidth={1.75} />
@@ -336,7 +364,12 @@ export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: strin
               </div>
               {expandedId === s.id && (
                 <div className="mem-detail">
-                  <pre className="mem-body-text">{s.description ?? t('(no description)', '(无描述)')}</pre>
+                  {/* 2026-10-31 用户裁定:描述渲染后的 md(标题/列表/代码呈现,非裸文本) */}
+                  <div className="mem-body-text mem-body-md">
+                    <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl}>
+                      {s.description ?? t('(no description)', '(无描述)')}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               )}
             </li>

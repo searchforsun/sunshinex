@@ -1829,6 +1829,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 8px 10px; color: var(--fg);
 }
 .mem-icon { flex: none; color: var(--fg-tertiary); }
+/* 删除二段确认武装态(2026-10-31 记忆页签):红显+tip「再次点击确认」 */
+.sx-changes-act.arm { color: var(--err); }
+.sx-changes-act.arm:hover { color: var(--err); }
+/* 学习技能详情 md 渲染面(段落节奏;容器深底固定高沿 .mem-detail .mem-body-text) */
+.mem-body-md p { margin: 0 0 6px; }
+.mem-body-md h1, .mem-body-md h2, .mem-body-md h3 { font-size: 12.5px; margin: 8px 0 4px; }
+.mem-body-md ul, .mem-body-md ol { margin: 4px 0; padding-left: 18px; }
+.mem-body-md code { font: 11px var(--font-mono); background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 0 3px; }
 /* 记忆/学习技能回显行可点(点击开对应侧栏页签):手形+hover 亮 */
 .entry-notice[data-notice-clickable='1'] { cursor: pointer; }
 .entry-notice[data-notice-clickable='1']:hover { color: var(--fg); }

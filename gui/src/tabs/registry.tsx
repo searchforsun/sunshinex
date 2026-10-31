@@ -8,7 +8,7 @@
 
 import { lazy } from 'react';
 import { t } from '../i18n';
-import { FileText, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, Sparkles, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -93,7 +93,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   agents: Bot, // G8d 子智能体活动聚合卡
   agent: Bot, // G14.175 子智能体只读转录页(机器人图标,用户裁决)
   bgtasks: Hourglass, // G14.180 后台任务(等待执行)
-  memory: Brain, // G14.180 持久记忆
+  memory: Database, // G14.180 持久记忆(2026-10-31 用户裁定:与正文 [memory] 回显同件,Brain 退役)
   learned: Sparkles, // 学习技能(2026-10-31,[skills] 回显同族图标)
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
   web: Globe, // G8d 内嵌网页标签
