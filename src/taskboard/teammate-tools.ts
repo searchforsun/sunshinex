@@ -14,7 +14,7 @@ const TODO_TOOL_NAME = 'todo_write';
 export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
   const getBoard = makeGetBoardTool(
     board,
-    "Read the shared task board summary: one line per task in id order — id [status] [gated] title (needs deps). Read-only; use get_task for one task's full spec, assignee and execution artifact.",
+    "Read the shared task board summary: one line per task in id order — id [status] title (needs deps) team=<teamId>, plus retryOf=<id> when set. Read-only; use get_task for one task's full spec, team, assignee and execution artifact.",
   );
   const getTask: RegisteredTool = {
     parameters: {
@@ -27,7 +27,7 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
     },
     name: 'get_task',
     description:
-      'Read one task from the shared task board in full: id, status (with gate state), title, self-contained spec, dependencies, assignee and execution artifact (conclusion, tokens, duration). Read-only.',
+      'Read one task from the shared task board in full: id, status, title, teamId, self-contained spec, dependencies, retryOf when set, assignee and execution artifact (conclusion, tokens, duration). Read-only.',
     category: 'read',
     fullObservation: true,
     executor: async (input) => {
@@ -36,12 +36,14 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
       if (task === undefined) throw new CodedToolError('INVALID_ARG', `unknown task: ${taskId === '' ? '(empty)' : taskId}`);
       const lines = [
         `id: ${task.id}`,
-        `status: ${task.status}${task.gated === true ? ' (gated)' : ''}`,
+        `status: ${task.status}`,
         `title: ${task.title}`,
+        `teamId: ${task.teamId}`,
         `spec: ${task.spec}`,
         `dependsOn: ${task.dependsOn.length > 0 ? task.dependsOn.join(',') : '(none)'}`,
         `assignee: ${task.assignee ?? '(unassigned)'}`,
       ];
+      if (task.retryOf !== undefined && task.retryOf.length > 0) lines.push(`retryOf: ${task.retryOf}`);
       if (task.artifact !== undefined) {
         lines.push(
           `artifact: conclusion=${task.artifact.conclusion ?? ''} tokens=${task.artifact.tokens ?? 0} durationMs=${task.artifact.durationMs ?? 0}`,

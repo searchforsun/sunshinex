@@ -1,25 +1,23 @@
-/** TaskBoard 域模型纯件(spec 2026-10-04 §4.1):状态机、依赖派生、环检测、事件 reducer。
+/** TaskBoard 域模型纯件: 五态状态机、依赖派生、环检测、事件 reducer。
  *  零 IO 零 harness 依赖——store 重放、TaskBoard 协调器、TUI 投影三方共用同一 reducer(单点防漂移)。
- *  blocked 为派生态不落存储(上游 failed/cancelled 的 pending 下游,不自动迁移——交互场景留人裁决,spec §4.1);
- *  cancelled 状态机合法但 P1 无工具入口(P2 看板操作)。 */
+ *  blocked 为派生态不落存储(上游 failed/cancelled 的 pending 下游,不自动迁移——交互场景留人裁决);
+ *  cancelled 为停止与重启自愈终态。 */
 
-export type TaskStatus = 'pending' | 'claimed' | 'in-review' | 'done' | 'failed' | 'cancelled';
+export type TaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
 
 export interface BoardTask {
   id: string;
   title: string;
-  /** 自包含任务描述:执行体不看主链也能干(spec §4.1,可替换性前提) */
+  /** 自包含任务描述:执行体不看主链也能干(可替换性前提) */
   spec: string;
   status: TaskStatus;
+  teamId: string;
   dependsOn: string[];
+  retryOf?: string;
   assignee?: string;
-  /** 实际执行者(2026-10-06 用户定版 Ctrl+T 语义「哪个代理执行的」):认领即落(status-changed by,2026-10-09
-   *  修:旧认领路径不带 by,执行期 @owner 空窗)、回写刷新;与 assignee(应派谁)正交;
-   *  fork 路径='fork'、teammate=名、external-cli='external-cli' */
+  /** 实际执行者:派发即落(status-changed by)、回写刷新;与 assignee(应派谁)正交 */
   executedBy?: string;
-  /** gate 挂起(spec Ruling 3):派发跳过,review_task(approved) 解锁 */
-  gated?: boolean;
-  /** 执行体路由提示(P2):internal=子智能体 fork(缺省)/external-cli=外部 CLI 执行体;提示不改派发语义,消费面为 P2 派发路由 */
+  /** 执行体路由提示(P2):internal=子智能体 fork(缺省)/external-cli=外部 CLI 执行体 */
   executorHint?: 'internal' | 'external-cli';
   createdAt: number;
   updatedAt: number;
@@ -33,40 +31,50 @@ export interface TaskBoardState {
 }
 
 export type BoardEvent =
-  | { t: 'task-created'; taskId: string; title: string; spec: string; dependsOn: string[]; executorHint?: 'internal' | 'external-cli'; ts: number }
+  | { t: 'task-created'; taskId: string; title: string; spec: string; dependsOn: string[]; teamId: string; retryOf?: string; executorHint?: 'internal' | 'external-cli'; ts: number }
   | { t: 'dependency-added'; taskId: string; dependsOn: string; ts: number }
   | { t: 'assigned'; taskId: string; assignee: string; ts: number }
-  | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number; by?: string }
-  | { t: 'gate-set'; taskId: string; note?: string; ts: number }
-  | { t: 'gate-resolved'; taskId: string; approved: boolean; ts: number };
+  | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number; by?: string };
 
-/** 合法迁移闭集:pending→claimed/cancelled;claimed→in-review/failed/pending(恢复回池 §7.4);
- *  in-review→done/failed(lead 裁决);终态无出边 */
 const LEGAL: Record<TaskStatus, TaskStatus[]> = {
-  pending: ['claimed', 'cancelled'],
-  claimed: ['in-review', 'failed', 'pending'],
-  'in-review': ['done', 'failed'],
-  done: [],
+  pending: ['running', 'cancelled'],
+  running: ['success', 'failed', 'cancelled'],
+  success: [],
   failed: [],
   cancelled: [],
 };
 
+/** 五态表外的起点（重放旧档时出现）没有出边 */
+function outbound(from: string): readonly TaskStatus[] | undefined {
+  return (LEGAL as Record<string, readonly TaskStatus[] | undefined>)[from];
+}
+
 export function transitionLegal(from: TaskStatus, to: TaskStatus): boolean {
-  return LEGAL[from].includes(to);
+  return outbound(from)?.includes(to) ?? false;
+}
+
+export function transitionError(from: TaskStatus, to: TaskStatus): string {
+  const allowed = outbound(from) ?? [];
+  const allowedText = allowed.length === 0 ? 'none' : allowed.join(', ');
+  if (allowed.length === 0) {
+    return `cannot transition from ${from} to ${to}; terminal state has no outbound edges (allowed: ${allowedText})`;
+  }
+  return `cannot transition from ${from} to ${to}; allowed: ${allowedText}`;
 }
 
 export function emptyBoard(): TaskBoardState {
   return { tasks: {}, seq: 0 };
 }
 
-/** 事件 reducer(纯):事件流是协调状态的唯一真相源(spec §7.2);未知 taskId 原引用返回(零分配) */
+/** 事件 reducer(纯):事件流是协调状态的唯一真相源;未知 taskId、未知事件类型、非法迁移均原引用返回(零分配) */
 export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoardState {
   switch (ev.t) {
     case 'task-created': {
       if (state.tasks[ev.taskId] !== undefined) return state;
       const task: BoardTask = {
-        id: ev.taskId, title: ev.title, spec: ev.spec, status: 'pending',
+        id: ev.taskId, title: ev.title, spec: ev.spec, status: 'pending', teamId: ev.teamId,
         dependsOn: [...ev.dependsOn], createdAt: ev.ts, updatedAt: ev.ts,
+        ...(ev.retryOf !== undefined ? { retryOf: ev.retryOf } : {}),
         ...(ev.executorHint !== undefined ? { executorHint: ev.executorHint } : {}),
       };
       return { tasks: { ...state.tasks, [ev.taskId]: task }, seq: Math.max(state.seq, Number(ev.taskId.slice(1)) || 0) };
@@ -89,16 +97,8 @@ export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoar
         : task.artifact;
       return patch(state, ev.taskId, { status: ev.to, updatedAt: ev.ts, ...(artifact !== task.artifact ? { artifact } : {}), ...(ev.by !== undefined ? { executedBy: ev.by } : {}) });
     }
-    case 'gate-set': {
-      const task = state.tasks[ev.taskId];
-      if (task === undefined) return state;
-      return patch(state, ev.taskId, { gated: true, updatedAt: ev.ts });
-    }
-    case 'gate-resolved': {
-      const task = state.tasks[ev.taskId];
-      if (task === undefined || ev.approved !== true) return state;
-      return patch(state, ev.taskId, { gated: false, updatedAt: ev.ts });
-    }
+    default:
+      return state;
   }
 }
 
@@ -107,7 +107,7 @@ function patch(state: TaskBoardState, id: string, fields: Partial<BoardTask>): T
   return { ...state, tasks: { ...state.tasks, [id]: { ...task, ...fields } } };
 }
 
-/** 派生 blocked(§4.1):pending 且任一依赖 failed/cancelled——不自动 skip,等 lead 裁决 */
+/** 派生 blocked:pending 且任一依赖 failed/cancelled——不自动 skip,等 lead 裁决 */
 export function derivedBlocked(state: TaskBoardState, taskId: string): boolean {
   const task = state.tasks[taskId];
   if (task === undefined || task.status !== 'pending') return false;
@@ -117,14 +117,14 @@ export function derivedBlocked(state: TaskBoardState, taskId: string): boolean {
   });
 }
 
-/** 可派发集合:pending && !gated && 依赖全 done(创建序)——blocked/gated/依赖未满者自然出局 */
+/** 可派发集合:pending 且依赖全 success(retryOf 不参与阻塞;创建序) */
 export function dispatchable(state: TaskBoardState): BoardTask[] {
   return Object.values(state.tasks)
-    .filter((t) => t.status === 'pending' && t.gated !== true && t.dependsOn.every((d) => state.tasks[d]?.status === 'done'))
+    .filter((t) => t.status === 'pending' && t.dependsOn.every((d) => state.tasks[d]?.status === 'success'))
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 }
 
-/** Kahn 环检测(spec §12.1 器官移植,自 graph/engine.ts:50-84 同构):返回环成员清单或 null */
+/** Kahn 环检测:返回环成员清单或 null */
 export function hasCycle(tasks: Array<{ id: string; dependsOn: string[] }>): string[] | null {
   const indeg = new Map<string, number>();
   const dependents = new Map<string, string[]>();
@@ -134,7 +134,7 @@ export function hasCycle(tasks: Array<{ id: string; dependsOn: string[] }>): str
   }
   for (const t of tasks) {
     for (const d of t.dependsOn) {
-      if (!indeg.has(d)) continue; // 缺失依赖由调用方先校验,此处防御跳过
+      if (!indeg.has(d)) continue;
       indeg.set(t.id, (indeg.get(t.id) ?? 0) + 1);
       dependents.get(d)!.push(t.id);
     }
@@ -158,16 +158,22 @@ export function hasCycle(tasks: Array<{ id: string; dependsOn: string[] }>): str
   return null;
 }
 
-/** 恢复回池(§7.4;2026-10-31 用户裁定改语义「中断即终态」):claimed 无终态记录 → **failed**
- *  (中断=异常终态,如实显示;不再静默回池 pending——回池会让已完成工作被重派重执行,且 pending
- *  在执行体死后无人认领,task_wait 等待面永远收不到终态=「永远等待」的病根)。终态/其余不动。
- *  返回恢复清单供协调器 append 自愈事件。需要重做由 lead 重新 create_task(显式裁决优先于静默重跑) */
+/** 重启自愈:pending 与 running → cancelled;终态不动 */
 export function recoverOnLoad(state: TaskBoardState): { state: TaskBoardState; recovered: string[] } {
-  const recovered = Object.values(state.tasks).filter((t) => t.status === 'claimed').map((t) => t.id);
+  const recovered = Object.values(state.tasks)
+    .filter((t) => t.status === 'pending' || t.status === 'running')
+    .map((t) => t.id);
   if (recovered.length === 0) return { state, recovered };
   let next = state;
+  const ts = Date.now();
   for (const id of recovered) {
-    next = applyBoardEvent(next, { t: 'status-changed', taskId: id, from: 'claimed', to: 'failed', ts: Date.now(), note: 'interrupted by restart (execution lost — recreate the task if needed)' });
+    const from = next.tasks[id]!.status as 'pending' | 'running';
+    next = applyBoardEvent(next, {
+      t: 'status-changed', taskId: id, from, to: 'cancelled', ts,
+      note: from === 'running'
+        ? 'interrupted by restart (execution lost — recreate the task if needed)'
+        : 'no live executors after restart — recreate the task if needed',
+    });
   }
   return { state: next, recovered };
 }

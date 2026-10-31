@@ -1,9 +1,8 @@
 // 后台任务线 T4：task_wait 内置工具——阻塞等待工作到终态并内联回执（对标 CC TaskOutput）。
-// 等待面语义（2026-10-20 定位定版）：等待目标=有生命周期的工作单元（exec/后台 fork/板任务），板任务
-// 是任务生命周期权威（未派发也可等，轮询板态至 in-review/done/failed）；teammate 长驻执行体是声明
-// 不是任务，不进账本、不在等待面（停止走 task_stop 按名）。taskIds=null 等当前全部 running；
-// 指定列表只等这些任务，已终态幂等即回；timeoutSeconds=0 非阻塞 peek；未知 id INVALID_ARG 附
-// 等待面投影（账本工作单元+板任务清单，数据自解释）。
+// 等待面语义：等待目标=有生命周期的工作单元（exec/后台 fork/板任务），板任务是任务生命周期权威
+// （未派发也可等，轮询板态至 success/failed/cancelled）；teammate 长驻执行体是声明不是任务，不进账本、
+// 不在等待面（停止走 task_stop 按名）。taskIds=null 等当前全部 running；指定列表只等这些任务，已终态
+// 幂等即回；timeoutSeconds=0 非阻塞 peek；未知 id INVALID_ARG 附等待面投影（账本工作单元+板任务清单）。
 import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
@@ -11,6 +10,8 @@ import type { TaskBoard } from '../../taskboard/board';
 
 const DEFAULT_TIMEOUT_SECONDS = 1800;
 const RECEIPT_TAIL_LINES = 200;
+/** 板任务终态：success 完成、failed 执行错误、cancelled 主动停止或重启自愈 */
+const BOARD_TERMINAL = new Set(['success', 'failed', 'cancelled']);
 
 function readTail(filePath: string, lines: number): string {
   try {
@@ -45,7 +46,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
           type: ['array', 'null'],
           items: { type: 'string' },
           description:
-            'Task ids to wait for: background work ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids as create_task/the board summary shows them (["task-build-parser-k3f2"]; older journals use short "t5" ids — accepted too). Board tasks are the task lifecycle authority: pre-dispatch ones (pending/gated/not yet claimed) are valid targets — the call blocks until their work finishes (in-review/done/failed). null waits for all currently running work. Already-finished ids return an idempotent receipt immediately.',
+            'Task ids to wait for: background work ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids as create_task/the board summary shows them (["task-build-parser-k3f2"]; older journals use short "t5" ids — accepted too). Board tasks are the task lifecycle authority: pre-dispatch ones (pending, not yet running) are valid targets — the call blocks until their work reaches a terminal state (success, failed, or cancelled). null waits for all currently running work. Already-finished ids return an idempotent receipt immediately.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],
@@ -56,7 +57,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
     },
     name: 'task_wait',
     description:
-      'Block until work reaches a terminal state and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. Terminal states include abnormal endings — failed (execution error, or interrupted: tasks mid-execution when the app restarts are marked failed, never auto-rerun) and cancelled; any terminal state returns immediately, the wait never hangs on a dead task (default cap 1800s). Wait targets are background work (exec, subagent forks) and board tasks — board tasks are the task lifecycle authority, even before dispatch; long-lived teammates are executors, not tasks, and are never wait targets (wait their board task ids). taskIds=null waits all currently running work; on timeout the current status is returned so you can keep waiting or stop the task. A failed board task is terminal and dead: to redo the work, create a new task with create_task.',
+      'Block until work reaches a terminal state and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. Board terminal states are success, failed, and cancelled. failed is an execution error and is never auto-rerun; cancelled is an explicit stop, or a task that was still pending or running when the app restarted. Any terminal state returns immediately; the wait never hangs on a finished task (default cap 1800s). Wait targets are background work (exec, subagent forks) and board tasks — board tasks are the task lifecycle authority, even before dispatch; long-lived teammates are executors, not tasks, and are never wait targets (wait their board task ids). taskIds=null waits all currently running work; on timeout the current status is returned so you can keep waiting or stop the task. A failed or cancelled board task is terminal: to redo the work, create a new task with create_task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -75,10 +76,8 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
         if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0) {
           throw new CodedToolError('INVALID_ARG', 'taskIds must be a non-empty array of task ids, or null to wait for all running tasks');
         }
-        // id 分类(2026-10-19「未派发板任务等不到」真机修复):台账可解析(直接/resolveId 前缀)走台账等待;
-        // 板上在册但台账无条目(pending/gated/未 claim——派发登记发生在 claim 时刻)为合法等待对象,
-        // 走板态轮询至 in-review/done/failed/cancelled(工作完成,claim 后其台账条目自动接力);
-        // 两者皆非才 INVALID_ARG(真机 GUI 首呼:teammates 刚 spawn 未 claim,板 id 全量报错即此缺口)
+        // id 分类:台账可解析(直接/resolveId 前缀)走台账等待;板上在册但台账无条目(pending、尚未 running)
+        // 为合法等待对象,走板态轮询至 success/failed/cancelled;两者皆非才 INVALID_ARG
         ids = [];
         const boardTasks = board?.snapshot().tasks ?? {};
         const boardKeyOf = (rawId: string): string | undefined => {
@@ -123,11 +122,11 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
       if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
         throw new CodedToolError('INVALID_ARG', `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`);
       }
-      // 混合等待:纯台账走事件唤醒 waitUntilSettled(既有精度);含板任务则统一轮询——台账 running/
-      // 板任务未达工作终态(in-review/done/failed/cancelled)即未收口;claim 后板任务转台账口径续等
+      // 混合等待:纯台账走事件唤醒 waitUntilSettled;含板任务则统一轮询——台账 running 或板任务
+      // 未达 success/failed/cancelled 即未收口
       const boardStatus = (id: string): string | undefined => board?.snapshot().tasks[id]?.status;
       const boardPending = (): string[] =>
-        boardWaitIds.filter((id) => !['in-review', 'done', 'failed', 'cancelled'].includes(boardStatus(id) ?? ''));
+        boardWaitIds.filter((id) => !BOARD_TERMINAL.has(boardStatus(id) ?? ''));
       let result: Awaited<ReturnType<TaskRegistry['waitUntilSettled']>>;
       if (boardWaitIds.length === 0) {
         result = await tasks.waitUntilSettled(ids, timeoutSeconds * 1000, signal);
@@ -154,14 +153,11 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
       for (const id of boardWaitIds) {
         const bt = board?.snapshot().tasks[id];
         if (bt === undefined) continue;
-        // 异常终态附重派指引(2026-10-31 用户裁定「终态可提示主动分发避免死态」):failed=执行丢失
-        // (含重启中断恢复)/失败,永不自动重跑——需要重做由 lead 重新 create_task
+        // failed=执行错误;cancelled=主动停止或重启自愈。两者都须 create_task 重做;success 即完成
         const hint =
-          bt.status === 'in-review'
-            ? ' (work finished, awaiting review)'
-            : bt.status === 'failed' || bt.status === 'cancelled'
-              ? ` — terminal; to redo this work, create a new task with create_task${bt.status === 'failed' ? ' (failed tasks are never auto-rerun; tasks interrupted by a restart land here too)' : ''}`
-              : '';
+          bt.status === 'failed' || bt.status === 'cancelled'
+            ? ' — terminal; to redo this work, create a new task with create_task'
+            : '';
         lines.push(`${id} (board) ${bt.status} — ${bt.title}${hint}`);
       }
       const head = result.settled

@@ -19,9 +19,10 @@ import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { resolveDataDir } from '../config/data-dir';
 import { validSessionId } from './session-id';
+import { stopBoardTask } from '../harness/tools/task-stop';
 
 /** 会话控制面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：submit/interrupt/steer 族/reset/snapshot/
- *  anchors/tier/effort/model/mode/command/tasks/context/board-review/rename/title/attach——类状态
+ *  anchors/tier/effort/model/mode/command/tasks/context/board-stop/rename/title/attach——类状态
  *  触点收敛于 io（send/readJson/sessionFor 会话寻址 + sessions 表 + denyPendingFor/broadcastFrame/
  *  pending 挂起面 + model 标题摘要 + attach 挂载）；路由表零改动，行为零变化（daemon.test 为锚）。
  */
@@ -417,32 +418,37 @@ export async function handleSessionMode(io: SessionHandlerIo, req: http.Incoming
 }
 
 
-export function handleSnapshot(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined, page?: import('../serve/session').SessionSnapshotPage): void {
-  const session = io.sessionFor(res, id);
-  if (session === undefined) return;
-  // P6 §4:挂起段由会话自产（表下沉后快照合并零过滤）;2026-10-26 三期:page 透传分页(缺省尾窗 200)
-  io.send(res, 200, { ...session.snapshotResponse(page), pending: session.pendingSnapshot() });
-}
-
-export async function handleBoardReview(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+/** POST /session/:id/board/stop {taskId}：与 task_stop 板分支同语义——pending|running → cancelled，running 再 abort 台账。 */
+export async function handleBoardStop(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = parsed.body as { taskId?: unknown; approved?: unknown } | null;
-  if (typeof body?.taskId !== 'string' || body.taskId.length === 0 || typeof body.approved !== 'boolean') {
-    io.send(res, 400, { error: 'taskId must be a non-empty string and approved must be a boolean' });
+  const taskId = (parsed.body as { taskId?: unknown } | null)?.taskId;
+  if (typeof taskId !== 'string' || taskId.trim().length === 0) {
+    io.send(res, 400, { error: 'taskId must be a non-empty string' });
     return;
   }
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  const r = session.runtime.harness.taskboard.review(body.taskId, { approved: body.approved });
-  if (!r.ok) {
-    io.send(res, 400, { error: r.error.message });
+  const stopped = stopBoardTask(session.runtime.harness.taskboard, session.runtime.harness.tasks, taskId.trim());
+  if (stopped === undefined) {
+    io.send(res, 400, { error: `unknown task: ${taskId.trim()}` });
+    return;
+  }
+  if (!stopped.ok) {
+    io.send(res, 400, { error: stopped.error.message });
     return;
   }
   io.send(res, 200, { ok: true });
+}
+
+export function handleSnapshot(io: SessionHandlerIo, res: http.ServerResponse, id: string | undefined, page?: import('../serve/session').SessionSnapshotPage): void {
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  // P6 §4:挂起段由会话自产（表下沉后快照合并零过滤）;2026-10-26 三期:page 透传分页(缺省尾窗 200)
+  io.send(res, 200, { ...session.snapshotResponse(page), pending: session.pendingSnapshot() });
 }
 
 export async function handleAttach(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {

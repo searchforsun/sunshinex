@@ -1,14 +1,13 @@
 import type { SessionEvent, SteerLine } from '../types';
 import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState, type SessionStats } from './entry';
 
-/** 影子事件判定(单点):板面(task-)/审批门(gate-)/委派(delegation-)与带 subagent 标签的子智能体流。
+/** 影子事件判定(单点):板面(task-)/委派(delegation-)与带 subagent 标签的子智能体流。
  *  两面共用此谓词:①内核 pump 透传落档(seglog 映射 journal 行);②serve WS 回放面据此把这类帧从
  *  512 环窗改道 journal 全量重发(环窗对长会话子智能体流必溢出)。新增影子事件族只改本谓词,
  *  落档与回放改道自动同频——分叉即「落了档回放面却不知情」的环窗溢出病根回流。 */
 export function isShadowEvent(e: SessionEvent): boolean {
   return (
     e.type.startsWith('task-') ||
-    e.type.startsWith('gate-') ||
     e.type.startsWith('delegation-') ||
     (e.payload !== undefined && typeof (e.payload as { subagent?: unknown }).subagent === 'string')
   );

@@ -12,9 +12,10 @@ import type { TaskRegistry } from '../../harness/tasks';
 import type { Executor } from '../executor';
 import type { Inbox } from '../inbox';
 
-/** board 侧最小接口(TaskBoardDeps.externalExecutor 契约):run 单方法,测试可注入 stub */
+/** board 侧最小接口(TaskBoardDeps.externalExecutor 契约):run 必选;stop 在板停时按任务 id 强杀 */
 export interface ExternalExecutorLike {
   run(task: { id: string; title: string; spec: string }, budget: { deadlineAt: number }): Promise<{ ok: boolean; reply: string; tokens: number }>;
+  stop?(taskId: string): void;
 }
 
 export interface ExternalCliExecutorDeps {
@@ -46,8 +47,10 @@ export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
   private readonly command: string;
   /** 最近拉起的在飞进程 pid(Executor.stop 单点用):并发已非单飞——批内多个 external 任务并发 run,
    *  在飞数由内部信号量 MAX_EXTERNAL_CONCURRENT 限界;此字段只记最近一次(粗粒度兜底,
-   *  按任务精确收割走 ledgerTask.stop 接线,见 executeHeld) */
+   *  按任务精确收割走 stops / ledgerTask.stop,见 executeHeld) */
   private currentPid = 0;
+  /** 在飞任务 → 强杀函数。板 stopTask 经 stop(taskId) 调用 */
+  private stops = new Map<string, () => void>();
   /** 并发信号量(终审 Item 1):active = 在飞槽位占用数;waiters = 排队者的 resolve 队列(FIFO) */
   private active = 0;
   private waiters: Array<() => void> = [];
@@ -127,6 +130,11 @@ export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
     } finally {
       this.release();
     }
+  }
+
+  /** 板停:按任务 id 强杀在飞进程;未在飞则空操作 */
+  stop(taskId: string): void {
+    this.stops.get(taskId)?.();
   }
 
   /** 持槽执行体(仅经 runWithSink 进入,槽位已持有):登账 → 拉起 → 行缓冲翻译流 → exit/deadline 竞速 → 收口 */
@@ -220,17 +228,18 @@ export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
       }
       pid = spawned.value.pid;
       this.currentPid = pid;
-      // stop 接线(终审 Item 1):台账 stop 句柄指向本进程强杀——task_stop/reap/stopAll 经台账单点触达,
-      // 不再只依赖 Executor.stop 的「最近进程」粗粒度口径。kill 失败吞:task_stop 单点已兜底 finish 终态
-      ledgerTask.stop = () => {
+      // stop 接线:台账 stop 与板 stop(taskId) 共用强杀。kill 失败吞,不向上炸
+      const kill = (): void => {
         if (pid > 0) {
           try {
             this.deps.sandbox.killBackground(pid);
           } catch {
-            // kill 失败吞(进程已死等):task_stop 侧 finish 单点已兜底,不向上炸
+            // kill 失败吞(进程已死等):调用方 finish 单点已兜底,不向上炸
           }
         }
       };
+      this.stops.set(task.id, kill);
+      ledgerTask.stop = kill;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return this.settle(ledgerTask.id, { ok: false, reply: `external executor unavailable: ${msg}`, tokens: 0 });
@@ -244,6 +253,7 @@ export class ExternalCliExecutor implements ExternalExecutorLike, Executor {
     const outcome = await Promise.race([exited.then((): 'exit' => 'exit'), timeoutOutcome]);
     if (timeoutId !== undefined) clearTimeout(timeoutId);
     if (this.currentPid === pid) this.currentPid = 0;
+    this.stops.delete(task.id);
     if (outcome === 'timeout') {
       this.deps.sandbox.killBackground(pid); // 进程树收割(sandbox 单点);迟到的 onExit 幂等无害
       return this.settle(ledgerTask.id, { ok: false, reply: 'external executor timed out', tokens: tokensSoFar });

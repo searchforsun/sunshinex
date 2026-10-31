@@ -1,16 +1,16 @@
-// TaskBoard lead 工具面(2026-10-20 收束版):四件套——create_task / update_task / review_task /
-// get_board。update_task 归并旧 set_dependency/assign/gate_task/cancel_task 四个薄工具(action
-// 枚举单点);get_board 自成员面收编进 lead 面(补 lead 无板读取工具的缺口)。观察尾附板摘要
-// (summaryLines)供模型一眼看板;create_task 即触发派发(drain 异步),等待经既有 task_wait。
+// TaskBoard lead 工具面:create_team / create_task / update_task / get_board。
+// update_task 只保留 assign|depend;取消走 task_stop。观察尾附板摘要(summaryLines);
+// create_task 即触发派发(drain 异步),等待经既有 task_wait。
 // lead-only 不变量:四件套随 deriveChildRegistry/deriveTeammateRegistry 扩剔(TASKBOARD_TOOL_NAMES
 // ——两处 spread 自动随动,增名即扩剔),子智能体工具面不可见。
 import { CodedToolError, RegisteredTool } from '../tools';
 import { fail } from '../../result';
 import type { TaskBoard } from '../../taskboard/board';
+import type { AgentTeamRegistry } from '../../taskboard/team-registry';
 
-export const TASKBOARD_TOOL_NAMES = ['create_task', 'update_task', 'review_task', 'get_board'] as const;
+export const TASKBOARD_TOOL_NAMES = ['create_team', 'create_task', 'update_task', 'get_board'] as const;
 
-/** fork 子面剔除族单点(L2 终审 Important):send_message(消息身份属 lead+具名 teammate,fork 子面不发)+
+/** fork 子面剔除族单点:send_message(消息身份属 lead+具名 teammate,fork 子面不发)+
  *  lead-only 板工具(含 get_board:fork 不读板,读取权威在 lead 与成员面)。三处 fork-scope 派生点同源
  *  消费——subagent.ts deriveChildRegistry、loop/nodes.ts agentNode、graph/nodes.ts makeLoopNode;
  *  增名即扩剔,防漂移由 harness/fork-face.test.ts 钉测(常量即契约)。 */
@@ -22,109 +22,110 @@ function boardTail(board: TaskBoard): string {
   return lines.length === 0 ? '(task board empty)' : ['board:', ...lines].join('\n');
 }
 
-export function makeTaskBoardTools(board: TaskBoard): RegisteredTool[] {
+export function makeTaskBoardTools(board: TaskBoard, teams: AgentTeamRegistry): RegisteredTool[] {
+  const createTeam: RegisteredTool = {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['name'],
+      properties: {
+        name: { type: 'string', description: 'Team name. The card title; the system assigns teamId.' },
+      },
+    },
+    name: 'create_team',
+    description:
+      'Create an agent team and return its teamId. Tasks (create_task) and teammates (create_teammate) must bind to this id. Call this before creating tasks or teammates. A session may hold several teams; work and messages stay inside one team.',
+    category: 'task',
+    fullObservation: true,
+    executor: async (input) => {
+      const name = String((input as { name?: unknown }).name ?? '');
+      const r = teams.create(name);
+      if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
+      return { exitCode: 0, stdout: `team ${r.value.teamId} created (${r.value.name})`, stderr: '', timedOut: false };
+    },
+  };
+
   const createTask: RegisteredTool = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['title', 'spec', 'dependsOn', 'assignee', 'gated', 'executor'],
+      required: ['teamId', 'title', 'spec', 'dependsOn', 'assignee', 'executor', 'retryOf'],
       properties: {
+        teamId: { type: 'string', description: 'Team id from create_team. The task is rejected if this team does not exist.' },
         title: { type: ['string', 'null'], description: 'Short task title shown on the board.' },
         spec: { type: ['string', 'null'], description: 'Self-contained task description: the executing agent sees ONLY this (no main-chain context), so include everything needed.' },
-        dependsOn: { type: ['array', 'null'], items: { type: 'string' }, description: 'Task ids this task depends on (e.g. ["task-build-parser-k3f2"]); null/empty = no dependencies. A task dispatches only after all dependencies are done.' },
-        assignee: { type: ['string', 'null'], description: 'Optional teammate name to route this task to (an active teammate picks it up directly; unset = any idle teammate may claim it).' },
-        gated: { type: ['boolean', 'null'], description: 'Pass true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves).' },
+        dependsOn: { type: ['array', 'null'], items: { type: 'string' }, description: 'Task ids this task depends on (same team, e.g. ["task-build-parser-k3f2"]); null/empty = no dependencies. A task dispatches only after every dependency is success.' },
+        assignee: { type: ['string', 'null'], description: 'Optional teammate name on this team. An active teammate picks the task up directly; null = any idle teammate on the team may claim it.' },
         executor: { type: ['string', 'null'], enum: ['internal', 'external-cli', null], description: 'Execution routing hint: "internal" = subagent fork (default), "external-cli" = external CLI executor.' },
+        retryOf: { type: ['string', 'null'], description: 'Id of a terminal task on the same team that this task retries. Does not block dispatch. The predecessor must already be success, failed, or cancelled.' },
       },
     },
     name: 'create_task',
     description:
-      'Create a task on the shared task board (任务板=智能体团队的协作面) — the coordination surface for multi-role interdependent work (dependency ordering, approval gates, per-role assignment, review closes). Unblocked tasks (no unfinished dependencies, not gated) are dispatched automatically — to a subagent fork, or claimed by a registered teammate (assigned tasks go to that teammate). Block on completion with task_wait (taskIds=null waits on dispatched board tasks). The board persists across sessions. Terminal tasks (done/failed/cancelled) are final: a failed task (execution error, or interrupted by an app restart) is never auto-rerun — to redo that work, create a NEW task here (it dispatches immediately when its dependencies are met); check get_board for which dependents were blocked by the failure and recreate them too if still wanted. Pass gated=true to hold the task behind an approval gate from creation (dispatch skips it until review_task approves). Pass executor ("internal" or "external-cli") as the execution routing hint. For a single independent one-shot task, a plain background spawn is lighter than a board task.',
+      'Create a task on one team\'s shared task board (teamId from create_team). Unblocked tasks (every dependency is success) dispatch automatically — to a subagent fork, or to a teammate on that team (assigned tasks go to that teammate). Block on completion with task_wait (taskIds=null waits on dispatched board tasks). The board persists across sessions. Terminal tasks (success/failed/cancelled) are final: a failed task is never auto-rerun, and a task still open at app restart is cancelled. To redo that work, create a NEW task here with the same teamId and retryOf set to the predecessor id (retryOf does not block dispatch); check get_board for which dependents were blocked and recreate them too if still wanted. Pass executor ("internal" or "external-cli") as the execution routing hint. For a single independent one-shot task, a plain background spawn is lighter than a board task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { title?: string | null; spec?: string | null; dependsOn?: string[] | null; assignee?: string | null; gated?: boolean | null; executor?: string | null };
+      const raw = input as {
+        title?: string | null;
+        spec?: string | null;
+        dependsOn?: string[] | null;
+        assignee?: string | null;
+        teamId?: string | null;
+        executor?: string | null;
+        retryOf?: string | null;
+      };
       const executor = raw.executor === 'internal' || raw.executor === 'external-cli' ? raw.executor : undefined;
+      const retryOf = typeof raw.retryOf === 'string' && raw.retryOf.length > 0 ? raw.retryOf : undefined;
       const r = board.create({
+        teamId: String(raw.teamId ?? ''),
         title: String(raw.title ?? ''),
         spec: String(raw.spec ?? ''),
         dependsOn: raw.dependsOn ?? undefined,
         assignee: raw.assignee ?? undefined,
-        gated: raw.gated === true,
         executor,
+        ...(retryOf !== undefined ? { retryOf } : {}),
       });
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
       return { exitCode: 0, stdout: [`task ${r.value.taskId} created; dispatch is automatic for unblocked tasks — block with task_wait (taskIds=null)`, boardTail(board)].join('\n'), stderr: '', timedOut: false };
     },
   };
 
-  // update_task:存量任务的全部后创建变更归一(assign/gate/cancel/depend 四动作——旧四个薄工具的收束形;
-  // 依赖/分配的合理性是 lead 的规划职责,不再拆成逐个出牌的模型工具)
   const updateTask: RegisteredTool = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['taskId', 'action'],
+      required: ['taskId', 'action', 'assignee', 'dependsOn'],
       properties: {
         taskId: { type: 'string', description: 'Board task id (e.g. "task-build-parser-k3f2").' },
-        action: { type: 'string', enum: ['assign', 'gate', 'cancel', 'depend'], description: 'assign = route to a teammate (needs assignee); gate = hold behind an approval gate (needs note); cancel = cancel a pending/gated/blocked task; depend = add a dependency edge (needs dependsOn)' },
+        action: { type: 'string', enum: ['assign', 'depend'], description: 'assign = route to a teammate on the same team (needs assignee); depend = add a dependency edge (needs dependsOn). Cancel with task_stop.' },
         assignee: { type: ['string', 'null'], description: 'Teammate name for action=assign.' },
-        note: { type: ['string', 'null'], description: 'Gate reason for action=gate.' },
-        dependsOn: { type: ['string', 'null'], description: 'Dependency task id for action=depend; rejected if it would create a cycle.' },
+        dependsOn: { type: ['string', 'null'], description: 'Dependency task id for action=depend; rejected if it would create a cycle or cross teams.' },
       },
     },
     name: 'update_task',
     description:
-      'Update a board task after creation: re-assign it to a teammate (assign), hold it behind an approval gate (gate), cancel it (cancel), or add a dependency edge (depend). Terminal tasks (done/failed/cancelled) cannot be updated — a failed task (including one interrupted by a restart) is dead, not resumable: recreate the work as a new task with create_task. Pending/gated tasks can be cancelled here; claimed tasks must be stopped (task_stop) before cancel.',
+      'Update a board task after creation: re-assign it to a teammate (assign) or add a dependency edge (depend). Cancel a pending or running task with task_stop. Terminal tasks (success/failed/cancelled) cannot be updated — a failed task, or one cancelled by a stop or a restart, is dead: recreate the work as a new task with create_task and retryOf.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { taskId?: string | null; action?: string | null; assignee?: string | null; note?: string | null; dependsOn?: string | null };
+      const raw = input as { taskId?: string | null; action?: string | null; assignee?: string | null; dependsOn?: string | null };
       const taskId = String(raw.taskId ?? '');
       const action = raw.action ?? '';
       const r =
         action === 'assign'
           ? board.assign(taskId, String(raw.assignee ?? ''))
-          : action === 'gate'
-            ? board.gate(taskId, raw.note ?? undefined)
-            : action === 'cancel'
-              ? board.cancel(taskId)
-              : action === 'depend'
-                ? board.setDependency(taskId, String(raw.dependsOn ?? ''))
-                : fail('INVALID_ARG', `unknown action: ${action} (assign|gate|cancel|depend)`);
+          : action === 'depend'
+            ? board.setDependency(taskId, String(raw.dependsOn ?? ''))
+            : fail('INVALID_ARG', `unknown action: ${action} (assign|depend)`);
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
       return { exitCode: 0, stdout: [`updated: ${taskId} ${action}`, boardTail(board)].join('\n'), stderr: '', timedOut: false };
     },
   };
 
-  const reviewTask: RegisteredTool = {
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['taskId', 'approved', 'note'],
-      properties: {
-        taskId: { type: ['string', 'null'], description: 'Task id to review.' },
-        approved: { type: ['boolean', 'null'], description: 'For an in-review task: true = done, false = failed. For a gated task: true = approve and resume dispatch, false = keep gated.' },
-        note: { type: ['string', 'null'], description: 'Optional rationale recorded with the decision.' },
-      },
-    },
-    name: 'review_task',
-    description:
-      'Lead ruling on a board task: close an in-review task (approved=true marks done and unblocks dependents; false marks failed, which blocks dependents) or resolve a gate (approved=true resumes dispatch).',
-    category: 'task',
-    fullObservation: true,
-    executor: async (input) => {
-      const raw = input as { taskId?: string | null; approved?: boolean | null; note?: string | null };
-      const r = board.review(String(raw.taskId ?? ''), { approved: raw.approved === true, note: raw.note ?? undefined });
-      if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
-      return { exitCode: 0, stdout: ['review recorded', boardTail(board)].join('\n'), stderr: '', timedOut: false };
-    },
-  };
-
-  // get_board 收编进 lead 面(2026-10-20:此前只在成员面——lead 无板读取工具的缺口补齐)
   const getBoard = makeGetBoardTool(board);
 
-  return [createTask, updateTask, reviewTask, getBoard];
+  return [createTeam, createTask, updateTask, getBoard];
 }
 
 /** get_board 工具工厂(lead 面与成员面共享单点,消双实现):executor 同源 board.summaryLines;
@@ -140,7 +141,7 @@ export function makeGetBoardTool(board: TaskBoard, description?: string): Regist
     name: 'get_board',
     description:
       description ??
-      'Read the shared task board: one summary line per task (id, status symbol, gated ⚠ marker, title, dependencies, assignee/executedBy) plus the team budget line. The task lifecycle authority for planning and task_wait targeting.',
+      'Read the shared task board: one summary line per task (id, status, title, dependencies, team id, retryOf when set) plus the team budget line. The task lifecycle authority for planning and task_wait targeting.',
     category: 'task',
     fullObservation: true,
     executor: async () => {

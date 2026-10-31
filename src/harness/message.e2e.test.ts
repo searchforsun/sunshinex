@@ -2,7 +2,7 @@
  * 计数捕获 fake 模型(T3 teammate.test.ts 同款:req.messages 逐轮捕获)。数据目录经 SUNSHINEX_DATA_DIR
  * 钉位 tmp(inbox 即 <tmp>/teams/main/inbox,与装配面同路径),team 帽摘除防宿主耦合(team.e2e 同款)。
  * ① lead→teammate 回合边界:spawn w1(mode team)→ 主链真工具面 send_message(回执 delivered + 落档)
- *   → create 任务 → w1 消化至 in-review → 首轮 chat 消息面含 msg 行且先于 Task t1 行(drain 先于 execute)。
+ *   → create 任务 → w1 消化至 success → 首轮 chat 消息面含 msg 行且先于 Task t1 行(drain 先于 execute)。
  * ② teammate→lead(裁定:teammate 面工具执行不经 fake model 驱动,直测工具):deriveTeammateRegistry 同
  *   harness/index.ts registryFactory 装配点同构 → execute send_message{to:'lead'} → lead.jsonl 落档
  *   (from 'w1')+ harness onEvent 收集器收到 agent-message 事件(lead 投递轨 = 事件 + 落档,Ruling 3)。
@@ -15,6 +15,7 @@ import * as path from 'path';
 import { Harness } from './index';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 import { makeSendMessageTool } from '../taskboard/message-tools';
+import { teammateSendTargets } from '../taskboard/teammate';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 
@@ -74,8 +75,10 @@ test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered +
   try {
     const model = new CountingAdapter();
     h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
-    // spawn w1(mode 'team')——经真 spawn 工具执行面(与模型出牌同一条链;team.e2e 同款)
-    const sp = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
+    const team = h.agentTeams.create('alpha');
+    assert.ok(team.ok, `create team 应成功:${team.ok ? '' : team.error.message}`);
+    const teamId = team.value.teamId;
+    const sp = await h.tools.execute('create_teammate', { teamId, name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
     assert.ok(sp.value.stdout.includes('teammate w1 started'), `spawn 回执应含 teammate w1 started:${sp.value.stdout}`);
     assert.deepEqual(h.team.aliveNames(), ['w1'], 'w1 活名在场(主链面 send_message 白名单数据源)');
@@ -84,12 +87,11 @@ test('e2e lead→teammate:主链真工具面 send_message → 回执 delivered +
     assert.ok(sm.ok && sm.value.exitCode === 0, `send_message 应成功:${JSON.stringify(sm)}`);
     assert.match(sm.value.stdout, /^message m1 delivered to w1$/, '回执 message <id> delivered to <to>');
     assert.ok(fs.existsSync(path.join(tmp, 'teams', 'main', 'inbox', 'w1.jsonl')), 'w1 收件档应在 <tmp>/teams/main/inbox 落盘');
-    // 建任务(消息先于任务投递)→ w1 消化:轮询快照至 in-review(派发路由自动踢点,worker 首轮 execute 前 drain)
-    const created = h.taskboard.create({ title: 'M1', spec: 'do M1' });
+    const created = h.taskboard.create({ teamId, title: 'M1', spec: 'do M1' });
     assert.ok(created.ok, `create 应成功:${JSON.stringify(created)}`);
     const taskId = created.value.taskId;
-    const digested = await until(() => h!.taskboard.snapshot().tasks[taskId]?.status === 'in-review');
-    assert.ok(digested, '板任务应由 w1 消化至 in-review');
+    const digested = await until(() => h!.taskboard.snapshot().tasks[taskId]?.status === 'success');
+    assert.ok(digested, '板任务应由 w1 消化至 success');
     // 回合边界注入可见(T3 语义 e2e 复证):w1 首轮 chat 消息面含 m1 消息行,且先于本任务 Task 行
     assert.ok(model.chats.length >= 1, 'w1 至少一轮 chat');
     const first = model.chats[0]!;
@@ -111,7 +113,9 @@ test('e2e teammate→lead:派生面直测 send_message → lead.jsonl 落档(fro
   try {
     const events: SessionEvent[] = [];
     h = new Harness({ root: tmp, mode: 'full-access', model: new CountingAdapter(), learnSkills: false, onEvent: (e) => events.push(e) });
-    const sp = await h.tools.execute('create_teammate', { name: 'w1', prompt: 'worker w1' }, h.safety);
+    const team = h.agentTeams.create('alpha');
+    assert.ok(team.ok, `create team 应成功:${team.ok ? '' : team.error.message}`);
+    const sp = await h.tools.execute('create_teammate', { teamId: team.value.teamId, name: 'w1', prompt: 'worker w1' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
     // 裁定(T4 计划):teammate 面工具执行不经 fake model 驱动,直测工具——deriveTeammateRegistry 同
     // harness/index.ts registryFactory 装配点同构(仅 w1 活名时排己白名单恰 ['lead']);onEvent 透传
@@ -136,6 +140,63 @@ test('e2e teammate→lead:派生面直测 send_message → lead.jsonl 落档(fro
     assert.deepEqual(ev!.payload, { messageId: rec.id, from: 'w1', to: 'lead', text: 'done with prep' });
     assert.equal(ev!.ts, rec.ts, '事件 ts 与落档消息 ts 同源');
     // fork 子面无 send_message(L2 身份专属):已由 teammate-spawn.test.ts 钉住(L2 T3 评审附带 1),引注不重复
+  } finally {
+    cleanup(h, tmp, restore);
+  }
+});
+
+test('e2e 同队消息进接收方链;跨队拒绝;lead 可投任一存活成员;位点落盘', async () => {
+  const tmp = tmpdir('sunshinex-msg-e2e-team-');
+  const restore = pinEnv(tmp);
+  let h: Harness | undefined;
+  try {
+    const model = new CountingAdapter();
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
+    const teamA = h.agentTeams.create('alpha');
+    const teamB = h.agentTeams.create('beta');
+    assert.ok(teamA.ok, `create alpha 应成功:${teamA.ok ? '' : teamA.error.message}`);
+    assert.ok(teamB.ok, `create beta 应成功:${teamB.ok ? '' : teamB.error.message}`);
+    const teamAId = teamA.value.teamId;
+    const teamBId = teamB.value.teamId;
+    for (const [teamId, name] of [[teamAId, 'w1'], [teamAId, 'w2'], [teamBId, 'w9']] as const) {
+      const sp = await h.tools.execute('create_teammate', { teamId, name, prompt: `worker ${name}` }, h.safety);
+      assert.ok(sp.ok && sp.value.exitCode === 0, `spawn ${name} 应成功:${JSON.stringify(sp)}`);
+    }
+    const face = deriveTeammateRegistry(
+      h.tools,
+      h.taskboard,
+      makeSendMessageTool({
+        inbox: h.inbox,
+        from: () => 'w1',
+        ...teammateSendTargets(h.team, teamAId, 'w1'),
+      }),
+    );
+    const cross = await face.execute('send_message', { to: 'w9', text: 'nope' }, h.safety);
+    assert.equal(cross.ok, false, '跨队应拒绝');
+    assert.equal(cross.ok ? '' : cross.error.message, 'cannot send_message across teams');
+    assert.equal(fs.existsSync(path.join(tmp, 'teams', 'main', 'inbox', 'w9.jsonl')), false, '跨队拒绝不得落档');
+
+    const lead = await h.tools.execute('send_message', { to: 'w9', text: 'lead ping' }, h.safety);
+    assert.ok(lead.ok && lead.value.exitCode === 0, `lead 可投给任一存活成员:${JSON.stringify(lead)}`);
+
+    const same = await face.execute('send_message', { to: 'w2', text: 'same team note' }, h.safety);
+    assert.ok(same.ok && same.value.exitCode === 0, `同队投递应成功:${JSON.stringify(same)}`);
+    assert.match(same.value.stdout, /^message m1 delivered to w2$/);
+
+    const created = h.taskboard.create({ teamId: teamAId, title: 'M2', spec: 'do M2', assignee: 'w2' });
+    assert.ok(created.ok, `create 应成功:${JSON.stringify(created)}`);
+    const taskId = created.value.taskId;
+    const digested = await until(() => h!.taskboard.snapshot().tasks[taskId]?.status === 'success');
+    assert.ok(digested, 'w2 应消化指派任务');
+    const hit = model.chats.find((c) => c.includes(`Task ${taskId}:`));
+    assert.ok(hit, '接收方链应进入模型');
+    assert.ok(hit.includes('msg:m1 [message from w1] same team note'), `链尾应含同队消息行,实际:${hit.slice(0, 400)}`);
+    assert.ok(
+      hit.indexOf('msg:m1 [message from w1] same team note') < hit.indexOf(`Task ${taskId}:`),
+      '消息行应先于 Task 行',
+    );
+    const saved = JSON.parse(fs.readFileSync(path.join(tmp, 'teams', 'inbox-cursors.json'), 'utf8')) as Record<string, number>;
+    assert.ok((saved.w2 ?? 0) > 0, 'w2 消费位点应落盘');
   } finally {
     cleanup(h, tmp, restore);
   }

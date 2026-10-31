@@ -70,12 +70,10 @@ export function keyHintsFor(s: {
       ],
     };
   }
-  // 任务视图接管（Ctrl+T）：Enter=gated 行审批（卡在场时本条退场，由卡 hint 承载）；非 gated 行无操作
   if (s.board) {
     return {
       items: [
         { key: '↑↓', action: t('move', '移动') },
-        { key: 'Enter', action: t('review gate', '审批门') },
         { key: 'Esc', action: t('exit', '退出') },
       ],
     };
@@ -113,7 +111,7 @@ export function keyHintsFor(s: {
         };
   }
   // 运行中：暂停（两次 Ctrl+C）· 待办展开 · 最近轮详情（子智能体在场追加浏览；任务视图常驻可进——
-  // 板投影运行期经 task-*/gate-* 事件持续更新）
+  // 板投影运行期经 task-* 事件持续更新）
   if (s.status === 'running') {
     const items: KeyHintItem[] = [
       { key: 'Ctrl+C', action: t('pause', '暂停') },

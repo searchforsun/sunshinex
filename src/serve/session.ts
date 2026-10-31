@@ -11,6 +11,7 @@ import type { ModelAdapter } from '../model/adapter';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, RunOutcome, SessionEvent, TodoItem } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import type { TaskBoardState } from '../taskboard/model';
+import type { AgentTeam } from '../taskboard/team-registry';
 import { applyDelegation } from '../delegation/projection';
 import type { Delegation } from '../delegation/projection';
 import { boardEventFrom } from '../tui/session';
@@ -88,6 +89,8 @@ export interface SessionSnapshot {
   status: 'idle' | 'running';
   lastSeq: number;
   team: Array<{ name: string; busy: boolean }>;
+  /** 工作区 AgentTeam 注册表投影（teamId/name/createdAt） */
+  teams: AgentTeam[];
   /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
   model?: string;
   mode: SessionMode;
@@ -735,7 +738,7 @@ export class SessionRuntime {
     } else if (e.type === 'ctx' && typeof e.payload?.used === 'number') {
       this.runCtxUsed = e.payload.used;
     }
-    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+    if (e.type.startsWith('task-')) {
       // G14.2xx 板面/委派/子智能体流落档已收归内核泵(shadow 事件,seglog 映射 journal 行)——
       // 本面只留影子投影更新,daemon/TUI 两写面自动继承
       const bev = boardEventFrom(e);
@@ -1319,6 +1322,7 @@ export class SessionRuntime {
         name,
         busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,
       })),
+      teams: this.runtimeImpl.harness.agentTeams.list(),
     };
   }
 

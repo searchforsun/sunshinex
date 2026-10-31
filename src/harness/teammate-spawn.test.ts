@@ -9,11 +9,27 @@ import { Harness } from './index';
 import { CodedToolError } from './tools';
 import { ScriptedAdapter } from '../model/adapter';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
+import { resolveDataDir } from '../config/data-dir';
 
-const TEAM_ENVELOPE = JSON.stringify({ tool: 'create_teammate', input: { name: 'w1', prompt: 'review stuff' } });
+const TEAM_ID = 'team-alpha-test';
+
+function seedTeam(root: string): () => void {
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(root, 'data');
+  const dir = path.join(resolveDataDir(root), 'teams');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'registry.json'), JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]));
+  return () => {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prev;
+  };
+}
+
+const TEAM_ENVELOPE = JSON.stringify({ tool: 'create_teammate', input: { teamId: TEAM_ID, name: 'w1', prompt: 'review stuff' } });
 
 test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_board/get_task,task_stop 按名可停', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-1-'));
+  const restore = seedTeam(tmp);
   let h: Harness | undefined;
   try {
     const model = new ScriptedAdapter([
@@ -49,15 +65,17 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     // fork 子面不发——缺省派生与显式 allowlist 两分支都不得透出
     assert.equal(h.runner.deriveChildRegistry({}).get('send_message'), undefined, 'fork 子面缺省派生不得含 send_message');
     assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'read'] }).get('send_message'), undefined, '显式 allowlist 亦恒剔除 send_message');
-    // 只读板工具回执:gated 任务不派发,直接消费执行体验证摘要口径
-    const created = h.taskboard.create({ title: 'A', spec: 'do A stuff', gated: true });
+    const created = h.taskboard.create({ teamId: TEAM_ID, title: 'A', spec: 'do A stuff' });
     assert.ok(created.ok);
     const aId = created.value.taskId;
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    const status = h.taskboard.snapshot().tasks[aId]!.status;
     const boardOut = (await face.get('get_board')!.executor({})) as { stdout: string };
-    assert.ok(boardOut.stdout.includes(`${aId} [pending] [gated] A`), 'get_board 应回板摘要行');
+    assert.ok(boardOut.stdout.includes(`${aId} [${status}] A`), 'get_board 应回板摘要行');
     const taskOut = (await face.get('get_task')!.executor({ taskId: aId })) as { stdout: string };
     assert.ok(taskOut.stdout.includes(`id: ${aId}`));
-    assert.match(taskOut.stdout, /status: pending/);
+    assert.match(taskOut.stdout, new RegExp(`status: ${status}`));
     assert.match(taskOut.stdout, /spec: do A stuff/);
     await assert.rejects(
       face.get('get_task')!.executor({ taskId: 'zz' }),
@@ -67,12 +85,14 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();
+    restore();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
 test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队友框定(name=agent_id)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-2-'));
+  const restore = seedTeam(tmp);
   let h: Harness | undefined;
   try {
     fs.mkdirSync(path.join(tmp, 'agents', 'ee'), { recursive: true });
@@ -82,7 +102,7 @@ test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队�
       'utf8',
     );
     const model = new ScriptedAdapter([
-      JSON.stringify({ tool: 'create_teammate', input: { name: 'ee', agent_id: 'ee' } }),
+      JSON.stringify({ tool: 'create_teammate', input: { teamId: TEAM_ID, name: 'ee', agent_id: 'ee' } }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
     h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
@@ -94,6 +114,7 @@ test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队�
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();
+    restore();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

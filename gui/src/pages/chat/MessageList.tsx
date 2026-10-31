@@ -183,6 +183,7 @@ const DayGroupBlock = memo(
             onRestore={onEntryRestore}
             onFork={onFork}
             onOpenFile={onOpenFile}
+            onOpenAgent={onOpenAgent}
           />,
         );
       }

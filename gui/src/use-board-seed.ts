@@ -60,7 +60,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
     let nextBoard = snap.board;
     let nextDelegations = snap.delegations;
     for (const f of replay) {
-      if (f.e.type.startsWith('task-') || f.e.type.startsWith('gate-')) {
+      if (f.e.type.startsWith('task-')) {
         nextBoard = applyBoardEvent(nextBoard, boardEventFrom(f.e));
       } else if (f.e.type.startsWith('delegation-')) {
         nextDelegations = applyDelegation(nextDelegations, f.e);
@@ -70,7 +70,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
         if (sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
       }
     }
-    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [] }));
+    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [], teams: snap.teams ?? [] }));
   };
 
   return { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot };

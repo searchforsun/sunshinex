@@ -302,8 +302,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* === Chat 页(sx-main flex 列消费:顶栏/挂起卡区/消息流/输入条四段贴均分) === */.chat-topbar { display: flex; align-items: center; gap: 8px; flex: none; height: var(--toolbar-h); padding: 0 12px; background: transparent; }.chat-topbar .back { flex: none; padding: 2px 8px; border: none; border-radius: var(--radius-sm); color: var(--fg-secondary); }.chat-topbar .back:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.session-chip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--font-mono); color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-sm); padding: 1px 8px; }.status-text { font-size: 12px; color: var(--fg-secondary); white-space: nowrap; }.status-text.status-running { color: var(--accent); }
 
-/* 挂起卡区(G14.88 卡片入 dock:approval/ask 同 pending-card 缺省边——warn/accent 彩边与三色钮退役;
- * gate-actions 彩钮服务任务行门禁钮) */.pending-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }.ask-card { border-color: var(--border-strong); }.card-title { font-size: 13px; font-weight: 600; color: var(--fg); }.card-reason { color: var(--fg-secondary); font-size: 12px; }.card-options { display: flex; flex-direction: column; gap: 4px; }.card-option { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }.card-option input, .mode-option input { accent-color: var(--accent); }.card-custom { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: inherit; }.pending-card .card-actions { display: flex; gap: 8px; }.gate-actions .approve { padding: 2px 10px; border: 1px solid var(--ok); border-radius: var(--radius-md); color: var(--ok); }.gate-actions .deny { padding: 2px 10px; border: 1px solid var(--err); border-radius: var(--radius-md); color: var(--err); }.pending-card .primary, .dirpicker-foot .primary { padding: 2px 12px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); }.gate-actions .approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ok) 15%, transparent); }.gate-actions .deny:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 15%, transparent); }.pending-card .primary:hover:not(:disabled), .dirpicker-foot .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
+/* 挂起卡区(G14.88 卡片入 dock:approval/ask 同 pending-card 缺省边) */.pending-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }.ask-card { border-color: var(--border-strong); }.card-title { font-size: 13px; font-weight: 600; color: var(--fg); }.card-reason { color: var(--fg-secondary); font-size: 12px; }.card-options { display: flex; flex-direction: column; gap: 4px; }.card-option { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }.card-option input, .mode-option input { accent-color: var(--accent); }.card-custom { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: inherit; }.pending-card .card-actions { display: flex; gap: 8px; }.pending-card .primary, .dirpicker-foot .primary { padding: 2px 12px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); }.pending-card .primary:hover:not(:disabled), .dirpicker-foot .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
 
 /* 消息流:chat 满高滚动列+行距;entry 条目卡 bg-1+10px 圆+hover 微浮(阴影+边提亮,零布局移);
    user=accent 左边(裁定:与 session-row.active 竖条同语言);notice=虚线轻条;error=err 着色 */.chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; }.entry { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; overflow-wrap: anywhere; }.entry:hover { border-color: var(--fg-secondary); }.entry-user { border-left: 3px solid var(--accent); }.entry-user:hover { border-left-color: var(--accent); }.entry-notice { background: transparent; border-style: dashed; color: var(--fg-secondary); font-size: 12px; }.entry-error { border-color: var(--err); background: color-mix(in srgb, var(--err) 8%, transparent); color: var(--err); }
@@ -314,8 +313,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 输入面贴底(G12 起 composer 卡面样式单源在 .sx-composer 段,旧 flex 席位规则退役) */
 
-/* === 任务板页签(滚动落 sx-tabbody;列表行卡/needs 文字列/gate 左条) === */.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-/* gated=warn 左条(inset 竖条零布局移,hover 不夺条);needs 箭头列随行文本,状态六态着色 */.task-row.gated { box-shadow: inset 2px 0 0 var(--warn); }.task-status-pending { color: var(--fg-secondary); }.task-status-claimed { color: var(--accent); }.task-status-in-review { color: var(--warn); }.task-status-done { color: var(--ok); }.task-status-failed { color: var(--err); }.task-status-cancelled { color: var(--fg-secondary); text-decoration: line-through; }.gate-actions { display: inline-flex; gap: 6px; margin-left: 12px; }.gate-actions .approve, .gate-actions .deny { padding: 1px 8px; font-size: 12px; }
+/* === 任务板页签(列表 | DAG) === */.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* 任务五态的字色不承载状态；点色与划线在 .tb-status-dot / .tb-struck */
 /* DAG 滚动壳(列表/流程图双卡共用的滚动容器) */.board-dag-scroll { overflow: auto; min-height: 0; }
 
 /* === Files 页(G14.5 vscode 形态:顶部路径面包屑+Monaco 只读源码面;输入行仅空/错误态) === */.files { display: flex; flex-direction: column; height: 100%; }
@@ -719,10 +718,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border-radius: var(--radius-md);
   box-shadow: var(--elev-card);
   padding: 10px 12px;
-}.approval-card, .ask-card { border: none; }.pending-card .card-actions { display: flex; gap: 8px; }.pending-card .approve, .gate-actions .approve {
+}.approval-card, .ask-card { border: none; }.pending-card .card-actions { display: flex; gap: 8px; }.pending-card .approve {
   padding: 3px 12px; border: none; border-radius: var(--radius-sm);
   background: var(--ok-solid); color: #fff; font-weight: 500;
-}.pending-card .approve:hover:not(:disabled), .gate-actions .approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ok-solid) 88%, #fff); }.pending-card .deny, .gate-actions .deny { padding: 3px 12px; border: none; border-radius: var(--radius-sm); color: var(--err); }.pending-card .deny:hover:not(:disabled), .gate-actions .deny:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 12%, transparent); }.pending-card .always, .pending-card .primary, .pending-card .card-actions button:not(.approve):not(.deny) { padding: 3px 12px; border: none; border-radius: var(--radius-sm); color: var(--fg); }.pending-card .always:hover:not(:disabled), .pending-card .primary:hover:not(:disabled), .pending-card .card-actions button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+}.pending-card .approve:hover:not(:disabled) { background: color-mix(in srgb, var(--ok-solid) 88%, #fff); }.pending-card .deny { padding: 3px 12px; border: none; border-radius: var(--radius-sm); color: var(--err); }.pending-card .deny:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 12%, transparent); }.pending-card .always, .pending-card .primary, .pending-card .card-actions button:not(.approve):not(.deny) { padding: 3px 12px; border: none; border-radius: var(--radius-sm); color: var(--fg); }.pending-card .always:hover:not(:disabled), .pending-card .primary:hover:not(:disabled), .pending-card .card-actions button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* 挂起卡区随流区限宽,去底线 */.pending-cards { border-bottom: none; max-width: calc(var(--chat-max) + 2 * var(--thread-gutter)); margin: 0 auto; width: 100%; }
 /* diff 面:Codex diff-surface 公式底,mono 12px/1.8 */.sx-diff-tab .diff-col {
   background: color-mix(in srgb, var(--surface) 94%, var(--fg));
@@ -1734,16 +1733,26 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-time { flex: none; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .todo-card-list { padding: 4px 0 0 6px; }
 .tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tb-team-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.tb-task-row { display: flex; flex-direction: column; gap: 2px; }
+.tb-task-row { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.tb-struck { text-decoration: line-through; }
+.tb-stop {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: var(--radius-sm);
+  background: var(--surface-elevated); color: var(--fg-secondary); cursor: pointer;
+  opacity: 0; pointer-events: none;
+}
+.tb-task-row:hover .tb-stop,
+.tb-task-row:focus-within .tb-stop,
+.tb-dag-node:hover .tb-stop,
+.tb-dag-node:focus-within .tb-stop { opacity: 1; pointer-events: auto; }
+.tb-stop:hover { color: var(--err); }
 .tb-task-main { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; border: none; background: transparent; padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; color: var(--fg); font-size: 12.5px; }
 .tb-task-main:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-/* G14.213 状态图标三态:运行(claimed/in_review)=灰转圈;完成=蓝点;等待(pending)=灰点;失败=红点。
-   2026-10-19 用户裁定两连:①蓝转圈退役对齐全局灰环语言(顶栏 run-spinner/侧栏会话行同款);
-   ②小圆点在根 zoom+flex 交叉轴小数取整下会被拉椭(border-radius:50% 依赖盒纵横比,实测
-   zoom≥1.1 档即现椭圆)——实心点改几何圆构造:radial-gradient(circle Rpx) 半径两轴
-   同值,盒取整不变形。2026-10-31 菱形二案:转圈退役 conic+mask 改 border 圆环(mask 光栅化
-   随机丢层根因,见 sx-session-dot.running 注);静态点 radial-gradient 两轮探针零异常保留 */
+/* 任务五态点:pending 灰(基类)、running 转圈、success 蓝、failed 红、cancelled 黄。
+   实心点用 radial-gradient 几何圆(zoom 取整不拉椭);转圈用 border 圆环(与全局运行环同档)。 */
 /* clip-path 正圆锁:全局 corner-shape:superellipse 会把 6px 盒收成菱形,径向/转圈同被裁;
    仅本选择器特殊处理,不动全局弧度 */
 .tb-status-dot {
@@ -1756,8 +1765,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   clip-path: circle(50% at 50% 50%);
   background: radial-gradient(circle 3px at 50% 50%, var(--fg-tertiary) 2.4px, transparent 2.8px);
 }
-.tb-status-dot.task-status-claimed,
-.tb-status-dot.task-status-in_review {
+.tb-status-dot.task-status-running {
   background: none;
   border: 1.9px solid var(--fg-tertiary);
   border-top-color: var(--fg);
@@ -1766,22 +1774,21 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border-radius: 50%;
   clip-path: circle(50% at 50% 50%);
   animation: sx-spin 1s linear infinite;
-} /* 2026-10-31 用户裁定「转圈要和其他运行转圈一样大」:claimed/in_review=任务板的运行态,
-  6px 档漏升(2026-10-28「全局统一 12px」只升了 bg-running/会话行)——补齐同档同环厚 */
-.tb-status-dot.task-status-done { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
+}
+.tb-status-dot.task-status-success { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.task-status-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
+.tb-status-dot.task-status-cancelled { background: radial-gradient(circle 3px at 50% 50%, #f5c542 2.4px, transparent 2.8px); }
 /* G14.213 DAG 预设高度;G14.2xx 渲染换开源图组件 React Flow(@xyflow/react)+dagre 布局
    (mermaid 拼源退役):平移/滚轮缩放/控制钮组件内置,外层壳不再滚动(防双滚动条) */
 .tb-dag-wrap { position: relative; }
 .tb-card .board-dag-scroll.tb-dag-scroll { height: clamp(320px, 52vh, 600px); overflow: hidden; }
 .tb-dag-flow { width: 100%; height: 100%; font: 12px var(--font-ui); }
 .tb-dag-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-tertiary); font-size: 12px; }
-/* 任务节点卡:状态点+任务名(+gated ⚠)+🤖执行子代理行——列表行同语言(task-status-* 钩子共用) */
-.tb-dag-node { width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
+/* 任务节点卡:状态点+任务名+执行子代理行(与列表行 task-status-* 同钩子) */
+.tb-dag-node { position: relative; width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .tb-dag-node.clickable { cursor: pointer; }
 .tb-dag-node.clickable:hover { border-color: var(--accent); }
-.tb-dag-node.gated { border-color: var(--warn); }
-.tb-dag-node.task-status-cancelled { opacity: 0.5; }
+.tb-dag-node .tb-stop { top: 4px; right: 4px; transform: none; }
 .tb-dag-node-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tb-dag-node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .tb-dag-node-agent { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1890,6 +1897,33 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 记忆/学习技能回显行可点(点击开对应侧栏页签):手形+hover 亮 */
 .entry-notice[data-notice-clickable='1'] { cursor: pointer; }
 .entry-notice[data-notice-clickable='1']:hover { color: var(--fg); }
+/* 成员消息气泡：来源名可点，打开该智能体转录 */
+.entry-notice.agent-msg {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-composer);
+  color: var(--fg);
+  font-size: 13px;
+  padding: 8px 12px;
+}
+.agent-msg-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+div.agent-msg-bubble { cursor: default; }
+.agent-msg-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.agent-msg-from { color: var(--accent); font-weight: 600; }
+.agent-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* G14.150 侧栏左缘统一列(x=14):品牌/新对话/项目组行 与 分区头(项目/最近会话) 对齐 */
 .sx-brand { margin-left: 6px; }

@@ -9,18 +9,16 @@ import type { SessionEvent } from '../../src/types';
  */
 
 describe('gui 板投影（boardEventFrom + applyBoardEvent 同源直跑）', () => {
-  it('task-created → claimed → in-review → gate-waiting → gate-resolved 事件序列得 in-review 板', () => {
+  it('task-created → running → success 事件序列得 success 板', () => {
     const events: SessionEvent[] = [
-      { type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', spec: 'do A', dependsOn: [] } },
-      { type: 'task-status-changed', ts: 101, payload: { taskId: 't1', from: 'pending', status: 'claimed' } },
-      { type: 'task-status-changed', ts: 102, payload: { taskId: 't1', from: 'claimed', status: 'in-review' } },
-      { type: 'gate-waiting', ts: 103, payload: { taskId: 't1', note: 'need human check' } },
-      { type: 'gate-resolved', ts: 104, payload: { taskId: 't1', approved: true } },
+      { type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', spec: 'do A', dependsOn: [], teamId: 'team-a' } },
+      { type: 'task-status-changed', ts: 101, payload: { taskId: 't1', from: 'pending', status: 'running' } },
+      { type: 'task-status-changed', ts: 102, payload: { taskId: 't1', from: 'running', status: 'success' } },
     ];
     let board = emptyBoard();
     for (const e of events) board = applyBoardEvent(board, boardEventFrom(e));
     expect(board.seq).toBe(1);
-    expect(board.tasks['t1']).toMatchObject({ id: 't1', title: 'A', spec: 'do A', status: 'in-review', gated: false });
+    expect(board.tasks['t1']).toMatchObject({ id: 't1', title: 'A', spec: 'do A', status: 'success', teamId: 'team-a' });
   });
 
   it('委派投影一例：delegation-started → delegation-ended(done) 归约出终态委派条目', () => {

@@ -10,7 +10,7 @@ import type { ChatSink } from './pages/Chat';
 
 /** D34 串态收口的投影空态(D42 自 App.tsx 随连接装配迁入导出——openSession/backHome 清零与
  *  连接回调 onReset/onResetSession 整替共此一口径) */
-export const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(), sessionTodos: [], delegations: [], team: [] });
+export const EMPTY_PROJECTION = (): SessionProjection => ({ board: emptyBoard(), sessionTodos: [], delegations: [], team: [], teams: [] });
 
 /** P1 Task 8 live 帧节流窗(毫秒):100ms 尾随——突发 token/工具帧期间板/委派/子智能体投影至多
  *  每 100ms 一次 setState */
@@ -45,7 +45,6 @@ export interface ConnectionWiringDeps {
   setRunningIds: Dispatch<SetStateAction<ReadonlySet<string>>>;
   setProjection: Dispatch<SetStateAction<SessionProjection>>;
   setTodoBatches: Dispatch<SetStateAction<import('./pages/Chat').TodoBatch[]>>;
-  setTurnGoal: Dispatch<SetStateAction<string>>;
   setConnState: Dispatch<SetStateAction<ConnectionState>>;
 }
 
@@ -91,7 +90,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
       sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
       shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, connRef,
       reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
-      setTodoBatches, setTurnGoal, setConnState,
+      setTodoBatches, setConnState,
     } = deps;
     const conn = createConnection({
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
@@ -105,7 +104,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
           return;
         }
-        if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+        if (e.type.startsWith('task-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else throttles.board.push({ sessionId, e }); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)
@@ -119,6 +118,10 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
             // 终语:ended failed → error·done → done;未建卡原引用返回,React 同引用即免重渲染)
             throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
           }
+        }
+        if (e.type === 'agent-message') {
+          // 收件人转录气泡与主会话 notice 同源事件:to=lead 的卡由 reducer 原样跳过
+          throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
         }
         if (typeof e.payload?.subagent === 'string') {
           // G14.2xx b 影子水合在途:subagent 帧截流缓冲(落定按 seq>cut 重放)——防清零重放丢在途帧
@@ -143,7 +146,6 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         reopenBoardSeedWindow();
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:board/todos/delegations/team 一处整替
         setTodoBatches([]);
-        setTurnGoal('');
         if (sessionRef.current !== '') bumpActs(sessionRef.current, () => ({})); // G8d:仅当前会话桶清零(重连影子水合重建;他会话缓存不动)
         chatSinkRef.current?.reset();
         // G14.2xx b 重连影子重水合:WS 回放已不含 shadow 帧(环窗溢出+回放面跳过,恢复唯一入口=
@@ -193,7 +195,6 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         reopenBoardSeedWindow();
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之一随收口补齐(纪律落实)
         setTodoBatches([]);
-        setTurnGoal('');
         if (sessionRef.current !== '') bumpActs(sessionRef.current, () => ({})); // G8d:会话维 reset 清当前桶(swap 新 Harness,旧卡作废)
         chatSinkRef.current?.resetSession();
       },

@@ -1,4 +1,4 @@
-// 镜像属性测试(终审钉口径):TaskBoard 发射(task-*/gate-* SessionEvent)↔ boardEventFrom 翻译 ↔
+// 镜像属性测试:TaskBoard 发射(task-* SessionEvent)↔ boardEventFrom 翻译 ↔
 // applyBoardEvent 归约三方互为镜像——对代表性事件脚本,经真实 TaskBoard(假 runner 恒成功)逐变更收集事件,
 // 投影侧(翻译 + reducer)终态必须与真相侧 board.snapshot() 结构相等。
 // 口径边界:P2 起 set_dependency/assign 也发事件(task-dep-added/task-assigned),脚本补两步进覆盖;
@@ -10,6 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { TaskBoard } from './board';
 import { TeamStore } from './store';
+import { AgentTeamRegistry, MemoryAgentTeamStore } from './team-registry';
 import { applyBoardEvent, emptyBoard, TaskBoardState } from './model';
 import { boardEventFrom } from '../tui/session';
 import { SessionEvent } from '../types';
@@ -22,7 +23,7 @@ function tmpdir(prefix: string): string {
 
 const drain = () => new Promise((r) => setImmediate(r));
 
-/** 投影可比面:排除 createdAt/updatedAt/artifact(时间戳与结论富字段),比较 statuses/dependsOn/assignee/gated/titles/specs */
+/** 投影可比面:排除 createdAt/updatedAt/artifact,比较 status/teamId/dependsOn/assignee/title/spec */
 function project(s: TaskBoardState): Record<string, unknown> {
   return {
     seq: s.seq,
@@ -31,9 +32,10 @@ function project(s: TaskBoardState): Record<string, unknown> {
       title: t.title,
       spec: t.spec,
       status: t.status,
+      teamId: t.teamId,
       dependsOn: [...t.dependsOn].sort(),
       assignee: t.assignee,
-      gated: t.gated,
+      ...(t.retryOf !== undefined ? { retryOf: t.retryOf } : {}),
     }])),
   };
 }
@@ -43,59 +45,55 @@ test('镜像属性:发射↔翻译↔归约的投影终态与真相板一致(代
   try {
     const events: SessionEvent[] = [];
     const runner = {
-      runSubagent: async (_i: unknown, o?: { taskLine?: string }) => ({ ok: true as const, value: { reply: `done:${o?.taskLine ?? ''}`, tokens: 1 } }),
+      runSubagent: async (_i: unknown, o?: { taskLine?: string }) => {
+        const line = o?.taskLine ?? '';
+        if (line.endsWith(': C')) return { ok: false as const, error: { code: 'INCOMPLETE', message: 'no finish' } };
+        return { ok: true as const, value: { reply: `done:${line}`, tokens: 1 } };
+      },
     } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'm1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
       runner,
       registry,
+      agentTeams,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 5000; return () => ++n; })(),
     });
     board.init();
 
-    // 代表性变更脚本(经公共操作面,每次状态变更都有对应 SessionEvent;板 id 经 create 返回值捕获,
-    // id 方言(2026-10-19)随机段不可写字面量):
-    // 任务A 无依赖 / 任务B 依赖 A / 任务C 无依赖 → 同批派发回写 in-review;
-    // 任务D 依赖 C → gate 挂起;裁决 C 拒(关单 failed)→ D 收 task-blocked(§4.1 不自动 skip);
-    // 裁决 A 过 → B 解锁派发回写;裁决 B 过;审批 D → gate 解锁(依赖失败仍 pending)。
-    const ra = board.create({ title: 'A', spec: 'do A' });
+    // A 成功解锁 B;C 失败挡住 D(task-blocked);再补依赖边与指派
+    const ra = board.create({ teamId, title: 'A', spec: 'do A' });
     assert.ok(ra.ok);
     const idA = ra.value.taskId;
-    const rb = board.create({ title: 'B', spec: 'do B', dependsOn: [idA] });
+    const rb = board.create({ teamId, title: 'B', spec: 'do B', dependsOn: [idA] });
     assert.ok(rb.ok);
     const idB = rb.value.taskId;
-    const rc = board.create({ title: 'C', spec: 'do C' });
+    const rc = board.create({ teamId, title: 'C', spec: 'do C' });
     assert.ok(rc.ok);
     const idC = rc.value.taskId;
-    await drain(); // A/C → claimed → in-review;B 等 A 保持 pending
-    const rd = board.create({ title: 'D', spec: 'do D', dependsOn: [idC] });
+    const rd = board.create({ teamId, title: 'D', spec: 'do D', dependsOn: [idC] });
     assert.ok(rd.ok);
-    const idD = rd.value.taskId; // pending,C 未终态
-    assert.ok(board.gate(idD, 'need human check').ok);
+    const idD = rd.value.taskId;
     await drain();
-    assert.ok((await board.review(idC, { approved: false })).ok); // C failed + D task-blocked
-    assert.ok((await board.review(idA, { approved: true })).ok);  // A done → B 派发 → in-review
     await drain();
-    assert.ok((await board.review(idB, { approved: true })).ok);  // B done
-    assert.ok((await board.review(idD, { approved: true })).ok);  // gate 解锁;依赖 C failed → 仍 pending
-    // P2 补齐:set_dependency/assign 亦发事件(task-dep-added/task-assigned),进镜像覆盖
-    assert.ok(board.setDependency(idD, idA).ok); // A 已 done,加边合法无环
+    assert.ok(board.setDependency(idD, idA).ok);
     assert.ok(board.assign(idD, 'ext-lead').ok);
 
-    // 脚本覆盖面守卫:八类板事件全出现(防脚本退化成空转,属性静默变弱)
-    const relevant = events.filter((e) => e.type.startsWith('task-') || e.type.startsWith('gate-'));
-    for (const type of ['task-created', 'task-unlocked', 'task-status-changed', 'task-blocked', 'gate-waiting', 'gate-resolved', 'task-dep-added', 'task-assigned']) {
+    const relevant = events.filter((e) => e.type.startsWith('task-'));
+    for (const type of ['task-created', 'task-unlocked', 'task-status-changed', 'task-blocked', 'task-dep-added', 'task-assigned']) {
       assert.ok(relevant.some((e) => e.type === type), `脚本应覆盖 ${type} 事件`);
     }
 
-    // 镜像管线:每条事件经翻译单点 → 同一 reducer 归约,终态必须等于真相板
     let mirror = emptyBoard();
     for (const e of relevant) mirror = applyBoardEvent(mirror, boardEventFrom(e));
     const real = board.snapshot();
-    assert.equal(real.tasks[idA]!.status, 'done');
-    assert.equal(real.tasks[idB]!.status, 'done');
+    assert.equal(real.tasks[idA]!.status, 'success');
+    assert.equal(real.tasks[idB]!.status, 'success');
     assert.equal(real.tasks[idC]!.status, 'failed');
     assert.equal(real.tasks[idD]!.status, 'pending');
     assert.deepEqual(project(mirror), project(real), '投影镜像终态应与真相板结构相等');

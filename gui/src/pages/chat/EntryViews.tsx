@@ -494,6 +494,14 @@ function systemIconOf(entry: ChatEntry): ReactNode {
   return <Info size={12} strokeWidth={1.75} aria-hidden="true" />;
 }
 
+/** agent-message / inbox drain 通知：`[from → to] text`。气泡只展示来源名与正文。 */
+function agentMessageOf(entry: ChatEntry): { from: string; text: string } | null {
+  if (entry.kind !== 'notice') return null;
+  const m = /^\[([^\]]+) → ([^\]]+)\] ([\s\S]*)$/.exec(entry.md);
+  if (m === null || m[1] === undefined) return null;
+  return { from: m[1], text: m[3] ?? '' };
+}
+
 /** G14.19 旁白分类(G14 批):[skills]/[memory] 打头的学习/记忆系统信息用专用图标(Sparkles/
  *  Database 微着色)+剥标签前缀——与一般系统提示(Info 灰)一眼区分;非此类回 null 走 systemIconOf。
  *  2026-10-31 用户裁定 i18n+可点:saved/updated/learned 动词本地化(添加记忆/更新记忆/添加技能/
@@ -570,7 +578,8 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: () => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void }): JSX.Element {
+  const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
   // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建);
@@ -592,6 +601,28 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
     () => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { mermaidDraft, onOpenDirectory: openDir ?? undefined }),
     [onOpenFile, isDir, mermaidDraft, openDir],
   );
+  if (msg !== null) {
+    const copy = (
+      <>
+        {icon !== null && <span className="entry-icon">{icon}</span>}
+        <span className="agent-msg-copy">
+          <span className="agent-msg-from">{msg.from}</span>
+          {msg.text !== '' && <span className="agent-msg-text">{msg.text}</span>}
+        </span>
+      </>
+    );
+    return (
+      <div className="entry entry-notice agent-msg">
+        {onOpenAgent !== undefined ? (
+          <button type="button" className="agent-msg-bubble" data-from={msg.from} onClick={() => onOpenAgent(msg.from, msg.from)}>
+            {copy}
+          </button>
+        ) : (
+          <div className="agent-msg-bubble" data-from={msg.from}>{copy}</div>
+        )}
+      </div>
+    );
+  }
   return (
     <div
       className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}`}

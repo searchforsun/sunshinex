@@ -10,6 +10,7 @@ import * as path from 'path';
 import { TaskRegistry } from '../tasks';
 import { TaskBoard } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
+import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
 import { makeTaskWaitTool } from './task-wait';
 import { ToolRegistry } from '../tools';
 
@@ -205,57 +206,67 @@ test('task_wait 板任务原生 id 归一：tN/delegationId 形态命中派发�
   }
 });
 
-test('task_wait 未派发板任务可等:板上在册即合法目标,轮询至工作终态(GUI 首呼 INVALID_ARG 回归)', async () => {
+test('task_wait 未派发板任务可等:pending 非终态,success 立即收口', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-boardpre-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    let release: () => void = () => {};
+    const hang = new Promise<void>((res) => { release = res; });
     const board = new TaskBoard({
       store: new TeamStore(path.join(root, 'teams', 'main')),
-      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as never,
+      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'r', tokens: 1 } }; } } as never,
       registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      agentTeams,
       onEvent: () => {},
       now: (() => { let n = 1000; return () => ++n; })(),
     });
     board.init();
-    const created = board.create({ title: 'GateDemo', spec: 'gated demo', gated: true }); // gated=永不派发,台账恒无条目
+    const blocker = board.create({ teamId: team.value.teamId, title: 'Blocker', spec: 'hold' });
+    assert.ok(blocker.ok);
+    const created = board.create({ teamId: team.value.teamId, title: 'WaitDemo', spec: 'demo', dependsOn: [blocker.value.taskId] });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
     const registry = new ToolRegistry();
     registry.register(makeTaskWaitTool(tasks, board));
-    // timeoutSeconds=0 peek:gated 任务在板,合法目标(不再 INVALID_ARG),回执板态 pending
     const peek = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
     assert.ok(peek.ok, `板任务应合法,实际 ${peek.ok ? '' : peek.error?.message}`);
     if (peek.ok) {
-      assert.match(peek.value.stdout, /\(board\) pending — GateDemo/, '回执含板态与标题');
+      assert.match(peek.value.stdout, /\(board\) pending — WaitDemo/, '回执含板态与标题');
       assert.match(peek.value.stdout, /status peek/, 'peek 非阻塞');
+      assert.doesNotMatch(peek.value.stdout, /all target tasks finished/);
     }
-    // review 放行 → fork 消化至 in-review → 工作完成即收口 settled
-    assert.ok(board.review(boardId, { approved: true }).ok);
-    const settled = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 10 }, stubSafety);
+    release();
+    for (let i = 0; i < 20 && board.snapshot().tasks[boardId]?.status !== 'success'; i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+    assert.equal(board.snapshot().tasks[boardId]!.status, 'success');
+    const settled = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 1 }, stubSafety);
     assert.ok(settled.ok);
     if (settled.ok) {
-      assert.match(settled.value.stdout, /all target tasks finished \(1\)/, '板任务工作完成即收口');
-      assert.match(settled.value.stdout, /\(board\) in-review — GateDemo/, '回执 in-review(等复核)');
+      assert.match(settled.value.stdout, /all target tasks finished \(1\)/, 'success 即终态,立即收口');
+      assert.match(settled.value.stdout, /\(board\) success — WaitDemo/);
+      assert.doesNotMatch(settled.value.stdout, /to redo this work/);
     }
-    // 真未知 id 仍 INVALID_ARG(板上无、台账无);错误清单=等待面投影(工作单元+板任务,数据自解释)
     const bad = await registry.execute('task_wait', { taskIds: ['task-not-on-board-x9z9'], timeoutSeconds: 0 }, stubSafety);
     assert.ok(!bad.ok, '板/台账皆无仍报错');
     if (!bad.ok) {
       assert.match(bad.error.message, /Waitable now — tasks:/, '错误清单=等待面投影');
-      assert.match(bad.error.message, /board: .*GateDemo/, '板任务在册即列(数据自解释,无补丁文案)');
+      assert.match(bad.error.message, /board: .*WaitDemo/, '板任务在册即列(数据自解释,无补丁文案)');
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('task_wait 中断即终态(2026-10-31 裁定):重启恢复 claimed→failed,等待面立即收口不再永等', async () => {
+test('task_wait 重启自愈 cancelled 立即收口', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-interrupted-'));
   try {
     const store = new TeamStore(path.join(root, 'teams', 'main'));
-    // 预置崩溃档:任务已 claim(执行中)即进程死——无终态记录
-    store.append({ t: 'task-created', taskId: 'task-demo-crash-xx01', title: 'CrashDemo', spec: 's', dependsOn: [], ts: 1 });
-    store.append({ t: 'status-changed', taskId: 'task-demo-crash-xx01', from: 'pending', to: 'claimed', ts: 2, by: 'code-analyst' });
+    store.append({ t: 'task-created', taskId: 'task-demo-crash-xx01', title: 'CrashDemo', spec: 's', dependsOn: [], teamId: 'team-alpha-ab12', ts: 1 });
+    store.append({ t: 'status-changed', taskId: 'task-demo-crash-xx01', from: 'pending', to: 'running', ts: 2, by: 'code-analyst' });
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const board = new TaskBoard({
       store,
@@ -264,15 +275,16 @@ test('task_wait 中断即终态(2026-10-31 裁定):重启恢复 claimed→failed
       onEvent: () => {},
       now: (() => { let n = 1000; return () => ++n; })(),
     });
-    board.init(); // recoverOnLoad:claimed → failed(interrupted by restart)
-    assert.equal(board.snapshot().tasks['task-demo-crash-xx01']!.status, 'failed', '恢复落 failed 终态');
+    board.init();
+    assert.equal(board.snapshot().tasks['task-demo-crash-xx01']!.status, 'cancelled', '重启自愈为 cancelled');
     const registry = new ToolRegistry();
     registry.register(makeTaskWaitTool(tasks, board));
-    const r = await registry.execute('task_wait', { taskIds: ['task-demo-crash-xx01'], timeoutSeconds: 5 }, stubSafety);
+    const r = await registry.execute('task_wait', { taskIds: ['task-demo-crash-xx01'], timeoutSeconds: 1 }, stubSafety);
     assert.ok(r.ok);
     if (r.ok) {
-      assert.match(r.value.stdout, /all target tasks finished \(1\)/, '中断终态立即收口(不再等满 timeout)');
-      assert.match(r.value.stdout, /\(board\) failed — CrashDemo/, '回执如实显示 failed');
+      assert.match(r.value.stdout, /all target tasks finished \(1\)/, 'cancelled 立即收口');
+      assert.match(r.value.stdout, /\(board\) cancelled — CrashDemo/);
+      assert.match(r.value.stdout, /to redo this work, create a new task with create_task/);
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

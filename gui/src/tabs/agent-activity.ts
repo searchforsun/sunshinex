@@ -29,6 +29,8 @@ export interface AgentActivity {
   /** G14.2xx 全量同源转录（chat-reducer 内核投影,与主对话逐字段同构:tool 行 name/input/
    *  result 全量)——子智能体转录页直渲此流,替代旧有损文本滑窗反解析(空名帧退化「…」行病根) */
   chat: ChatState;
+  /** 已落入转录的 messageId。agent-message 与随后的 inbox drain step 同 id 只留一条气泡 */
+  seenMessageIds?: readonly string[];
 }
 
 /** 聚合态：key = payload.subagent 标签 */
@@ -49,8 +51,42 @@ function bumpTokens(card: AgentActivity, payload: Record<string, unknown> | unde
  *   error → error（粘滞）；done（running 态）→ done。凡动投影的事件同帧过 chat 内核投影
  *   （转录页条目单源）；不变事件原引用返回。
  */
+function messageIdOf(e: SessionEvent): string {
+  const id = e.payload?.messageId;
+  return typeof id === 'string' && id.length > 0 ? id : '';
+}
+
+/** 收件消息落入 label 的转录。同 messageId 已投影则原引用返回（agent-message 与 drain step 双通道）。 */
+function projectInbound(s: AgentActivities, label: string, e: SessionEvent): AgentActivities {
+  const id = messageIdOf(e);
+  const prev = s[label];
+  if (prev !== undefined && id !== '' && (prev.seenMessageIds?.includes(id) ?? false)) return s;
+  const card: AgentActivity = prev ?? { label, status: 'running', tokens: 0, chat: initialChatState() };
+  const tagged: SessionEvent = e.type === 'agent-message'
+    ? { ...e, payload: { ...(e.payload ?? {}), subagent: label } }
+    : e;
+  const chat = applySubagentChatEvent(card.chat, tagged);
+  const grew = chat.entries.length > card.chat.entries.length;
+  if (chat === card.chat) return s;
+  const seenMessageIds = id !== '' && grew ? [...(card.seenMessageIds ?? []), id] : card.seenMessageIds;
+  return { ...s, [label]: { ...card, chat, ...(seenMessageIds !== undefined && seenMessageIds.length > 0 ? { seenMessageIds } : {}) } };
+}
+
+function isInboundStep(e: SessionEvent): boolean {
+  if (e.type !== 'step' || e.payload === undefined) return false;
+  const p = e.payload;
+  if (typeof p.messageLine === 'string' && p.messageLine.length > 0) return true;
+  return typeof p.from === 'string' && p.from.length > 0 && typeof p.text === 'string';
+}
+
 export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActivities {
-  const p = e.payload as { subagent?: unknown; label?: unknown; status?: unknown; turnTotal?: unknown; ok?: unknown; tool?: unknown; input?: unknown; taskBand?: unknown } | undefined;
+  const p = e.payload as { subagent?: unknown; label?: unknown; status?: unknown; turnTotal?: unknown; ok?: unknown; tool?: unknown; input?: unknown; taskBand?: unknown; to?: unknown } | undefined;
+  if (e.type === 'agent-message') {
+    const to = typeof p?.to === 'string' ? p.to : '';
+    // lead 的气泡在主会话;队友转录只收发给自己的
+    if (to === '' || to === 'lead') return s;
+    return projectInbound(s, to, e);
+  }
   const label = p?.subagent;
   if (typeof label !== 'string' || label.length === 0) {
     // delegation 系（无 subagent 标签）：payload.label 命中既有卡才改状态；其余/未命中原引用
@@ -63,6 +99,7 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
   }
   const card: AgentActivity = s[label] ?? { label, status: 'running', tokens: 0, chat: initialChatState() };
   if (e.type === 'queue') return s; // 队列面事件不入转录投影(主对话 applyChatEvent 同款防御——防误闭合开启段)
+  if (isInboundStep(e)) return projectInbound(s, label, e);
   // G14.2xx 同源归约:凡动卡的子智能体事件都过一遍 chat-reducer 内核投影(与主对话唯一实现
   // 同源),产全量字段条目;未动卡的事件原引用返回(投影亦幂等,省一次)。
   // G14.2xx b:零变化透传下沉到 withChat——卡未动且投影零变化(applySubagentChatEvent

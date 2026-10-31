@@ -8,7 +8,7 @@ import type { ChangeFile, SessionEvent } from '../types';
  * - streaming 不入模型:开启中即流式中(state.openSeg/openRun 派生,§3.1b 词汇收缩内核侧)。
  * - reasoning 与 assistant 段顺序开闭(不交错)——真实事件流(思考先行)渲染等价,段行更规整。
  * - done 终答 mergeFinal(前缀重叠取长/否则补入,GUI 语义);与开启段同文不重复(collector ①b)。
- * - delegation-*、task-*、gate-* 不产条目(G14.213 状态提示不显示;board/delegation 另路投影)。
+ * - delegation-*、task-* 不产条目(状态不进转录;board/delegation 另路投影)。agent-message 与 inbox 消息步落 notice。
  * - notice 不做显示面过滤(G14.90/G14.106 是显示裁定,journal 审计面保留——过滤归消费方)。
  * - token 增量只进段聚合,不独立成条(§2 非目标:无 token 级日志)。
  */
@@ -90,6 +90,24 @@ export function zeroSessionStats(): SessionStats {
 export function applyCtxWatermark(current: number, incoming: number, exact: boolean): number {
   if (!(incoming > 0)) return current;
   return exact ? incoming : Math.max(current, incoming);
+}
+
+/** inbox drain step → 来源/正文。结构化 from/text 优先;旧档只带 `messageLine`（`from: text`）时从该行拆。 */
+export function inboundMessageOf(payload: Record<string, unknown> | undefined): { from: string; to: string; text: string } | undefined {
+  if (payload === undefined) return undefined;
+  let from = typeof payload.from === 'string' ? payload.from : '';
+  let text = typeof payload.text === 'string' ? payload.text : '';
+  const line = typeof payload.messageLine === 'string' ? payload.messageLine : '';
+  if (line.length > 0) {
+    const idx = line.indexOf(': ');
+    if (idx > 0) {
+      if (from.length === 0) from = line.slice(0, idx);
+      if (text.length === 0) text = line.slice(idx + 2);
+    }
+  }
+  if (from.length === 0) return undefined;
+  const to = typeof payload.to === 'string' && payload.to.length > 0 ? payload.to : '?';
+  return { from, to, text };
 }
 
 /** 安静 notice 判定(P10 显示裁定单点):机制回执行(ask 回执/记忆索引漂移)对用户零信息量——
@@ -408,10 +426,16 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       if (used === state.stats.ctxUsed && exact === state.stats.ctxExact) return state;
       return { ...state, stats: { ...state.stats, ctxUsed: used, ctxExact: exact } };
     }
-    case 'step':
+    case 'step': {
       // P9 统计面:步数计账=模型被调用的轮数(2026-10-31 二次裁定「终稿轮也计」):直答轮=1 步,
       // 每个工具出牌批再+1——旧「done 收尾帧不计」TUI 口径使纯对话轮恒 0 步(重启后面板 2/0 病根)
-      return { ...state, stats: { ...state.stats, sessionSteps: state.stats.sessionSteps + 1 } };
+      const bumped: KernelState = { ...state, stats: { ...state.stats, sessionSteps: state.stats.sessionSteps + 1 } };
+      // inbox drain 的 messageLine 步:转录气泡与 agent-message 同形,来源名在方括号左侧
+      const note = inboundMessageOf(e.payload);
+      if (note === undefined) return bumped;
+      const sealed = sealSeg(bumped, e.ts);
+      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: `[${note.from} → ${note.to}] ${note.text}` });
+    }
     case 'done': {
       // ① 思考段先封(thinking 先行);开启 assistant 段合并终稿(同文不重复),无开启段且终稿非空才独立成条
       let st = state;
@@ -478,7 +502,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       return { ...state, entries: replaceAt(state.entries, idx, { ...cur, meta }) };
     }
     default: {
-      // 非流内事件(route/approval 系/task 系/gate 系/delegation 系)一律先封流式段
+      // 非流内事件(route/approval 系/task 系/delegation 系)一律先封流式段
       // ——collector G14.213 同构:不产条目的事件也承担段边界职责;model-end 流内
       // 不封(每模型轮收尾即发——封段会把轮内正文与 done 终稿裂成重复两条,实测 TUI 往返抓出);
       // usage/step/ctx 已升级显式统计面分支(P9),不再走流内免封清单

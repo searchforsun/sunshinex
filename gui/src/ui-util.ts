@@ -47,6 +47,57 @@ export function pathSegments(p: string): string[] {
  *  Files×1——默认应用口径靠字符串耦合,收单点) */
 export const OPEN_DEFAULT_KEY = 'sunshinex.open-default';
 
+/** 文件系统绝对路径判定(浏览器无 node:path):Win 盘符/UNC;Posix 前导 /。
+ *  开签/拖拽经 joinWsPath 的产物走此门;会话相对 md 图仍用 normRel(剥前导 /)。 */
+export function isAbsPath(p: string): boolean {
+  const t = p.trim();
+  if (t === '') return false;
+  if (/^[a-zA-Z]:[\\/]/.test(t)) return true;
+  if (t.startsWith('\\\\') || t.startsWith('//')) return true;
+  return t.startsWith('/');
+}
+
+/** 剥 md/拖放畸形前缀(./ 叠层、file://)后判绝对;相对保留。目录点击/开签入参归一。 */
+export function cleanPathInput(p: string): string {
+  let t = p.trim().replace(/^file:\/\//i, '');
+  while (t.startsWith('./')) t = t.slice(2);
+  return t;
+}
+
+/** 绝对路径落在哪个注册工作区(最长前缀命中);返回 root + 相对路径(posix /)。未命中 null。
+ *  比较走大小写/分隔符无关;rel 从归一后前缀切,避免 root 与 abs 斜杠形态不一致时 slice 错位。 */
+export function workspaceOfAbs(absPath: string, roots: readonly string[]): { root: string; rel: string } | null {
+  const target = cleanPathInput(absPath).replace(/[\\/]+$/, '');
+  if (target === '' || roots.length === 0) return null;
+  const norm = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const t = norm(target);
+  const targetPosix = target.replace(/\\/g, '/').replace(/\/+$/, '');
+  let best: { root: string; rel: string; len: number } | null = null;
+  for (const root of roots) {
+    const bare = root.replace(/[\\/]+$/, '');
+    if (bare === '') continue;
+    const r = norm(bare);
+    if (t === r || t.startsWith(r + '/')) {
+      const rel = t === r ? '' : targetPosix.slice(r.length).replace(/^\/+/, '');
+      if (best === null || r.length > best.len) best = { root: bare, rel, len: r.length };
+    }
+  }
+  return best === null ? null : { root: best.root, rel: best.rel };
+}
+
+/** 工作区根 + 相对 → 绝对;入参已绝对则原样(尾目录斜杠保留)。分隔随 root 形态。 */
+export function joinWsPath(root: string, relOrAbs: string): string {
+  const raw = relOrAbs.trim();
+  if (raw === '' || root === '') return raw;
+  if (isAbsPath(raw)) return raw;
+  const sep = root.includes('\\') ? '\\' : '/';
+  const base = root.replace(/[\\/]+$/, '');
+  const rel = raw.replace(/^[\\/]+/, '');
+  const dirMark = /[\\/]$/.test(raw);
+  const joined = `${base}${sep}${rel.replace(/\\/g, sep)}`;
+  return dirMark && !/[\\/]$/.test(joined) ? `${joined}${sep}` : joined;
+}
+
 /** 相对路径归一单点(2026-10-27 技术债轮 G10 自 Files.tsx 上收——md 正文图片此前仅剥 file:// 头,
  *  `/docs/a.png`·`./docs/a.png` 形态在 Files 面可解析、MdImage 面 404 落 chip 的口径分叉根除):
  *  ./a/b 与 /a/b 都按会话根相对(前导斜杠的绝对化曾逃出信任域落 404;Windows 盘符绝对路径原样)。

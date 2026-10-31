@@ -140,7 +140,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
           />
         )}
         renderThinking={(e2) => <ThinkingEntryView key={e2.key} entry={e2} />}
-        renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
+        renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
       />,
     );
     seg = [];
@@ -160,7 +160,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
       );
       continue;
     }
-    nodes.push(<ChatEntryView key={e.key} entry={e} footerRun={runFooterByEntry.get(e.key)} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />);
+    nodes.push(<ChatEntryView key={e.key} entry={e} footerRun={runFooterByEntry.get(e.key)} onOpenFile={onOpenFile} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />);
   }
   flushSeg();
 

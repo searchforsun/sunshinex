@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyBoardEvent, BoardEvent, dispatchable, emptyBoard, hasCycle,
-  recoverOnLoad, transitionLegal, derivedBlocked,
+  recoverOnLoad, transitionLegal, derivedBlocked, TaskStatus,
 } from './model';
 
-const created = (id: string, deps: string[] = []): BoardEvent =>
-  ({ t: 'task-created', taskId: id, title: `T ${id}`, spec: `do ${id}`, dependsOn: deps, ts: 1 });
+const created = (id: string, deps: string[] = [], extra: Partial<Extract<BoardEvent, { t: 'task-created' }>> = {}): BoardEvent =>
+  ({ t: 'task-created', taskId: id, title: `T ${id}`, spec: `do ${id}`, dependsOn: deps, teamId: 'tm1', ts: 1, ...extra });
 
 test('applyBoardEvent:created 建条、status-changed 迁移与 artifact 并入、未知 taskId 原引用', () => {
   let s = emptyBoard();
@@ -14,54 +14,75 @@ test('applyBoardEvent:created 建条、status-changed 迁移与 artifact 并入�
   s = applyBoardEvent(s, created('t2', ['t1']));
   assert.equal(s.seq, 2);
   assert.equal(s.tasks['t1']!.status, 'pending');
+  assert.equal(s.tasks['t1']!.teamId, 'tm1');
   const before = s;
   assert.equal(applyBoardEvent(s, { t: 'assigned', taskId: 'tX', assignee: 'a', ts: 2 }), before, '未知 id 原引用');
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'pending', to: 'claimed', ts: 3 });
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'claimed', to: 'in-review', ts: 4, conclusion: 'done A', tokens: 42, durationMs: 900 });
-  assert.equal(s.tasks['t1']!.status, 'in-review');
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'pending', to: 'running', ts: 3 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'running', to: 'success', ts: 4, conclusion: 'done A', tokens: 42, durationMs: 900 });
+  assert.equal(s.tasks['t1']!.status, 'success');
   assert.deepEqual(s.tasks['t1']!.artifact, { conclusion: 'done A', tokens: 42, durationMs: 900 });
 });
 
 test('task-created executorHint:随事件入板;缺省时字段缺位(P2)', () => {
   let s = emptyBoard();
-  s = applyBoardEvent(s, { t: 'task-created', taskId: 't1', title: 'A', spec: 'a', dependsOn: [], ts: 1, executorHint: 'external-cli' });
+  s = applyBoardEvent(s, { t: 'task-created', taskId: 't1', title: 'A', spec: 'a', dependsOn: [], teamId: 'tm1', ts: 1, executorHint: 'external-cli' });
   assert.equal(s.tasks['t1']!.executorHint, 'external-cli', 'executorHint 随 task-created 事件入板');
   s = applyBoardEvent(s, created('t2'));
   assert.equal('executorHint' in s.tasks['t2']!, false, '不带 executorHint 的 task-created,字段缺位(非 undefined 值)');
 });
 
-test('transitionLegal:合法迁移表', () => {
-  assert.ok(transitionLegal('pending', 'claimed'));
-  assert.ok(transitionLegal('claimed', 'pending'), '恢复回池合法');
-  assert.ok(transitionLegal('claimed', 'in-review'));
-  assert.ok(transitionLegal('in-review', 'done'));
-  assert.ok(transitionLegal('in-review', 'failed'));
+test('transitionLegal:五态闭集', () => {
+  assert.ok(transitionLegal('pending', 'running'));
   assert.ok(transitionLegal('pending', 'cancelled'));
-  assert.ok(!transitionLegal('done', 'pending'));
-  assert.ok(!transitionLegal('pending', 'done'), '不可跳过执行直达终态');
-  assert.ok(!transitionLegal('failed', 'claimed'));
+  assert.ok(transitionLegal('running', 'success'));
+  assert.ok(transitionLegal('running', 'failed'));
+  assert.ok(transitionLegal('running', 'cancelled'));
+  assert.ok(!transitionLegal('success', 'pending'));
+  assert.ok(!transitionLegal('pending', 'success'));
+  assert.ok(!transitionLegal('failed', 'running'));
+  assert.equal(transitionLegal('claimed' as TaskStatus, 'running'), false);
+  assert.equal(transitionLegal('in-review' as TaskStatus, 'success'), false);
+  assert.equal(transitionLegal('done' as TaskStatus, 'cancelled'), false);
 });
 
-test('dispatchable/derivedBlocked:依赖门控与失败传播', () => {
+test('applyBoardEvent:未知事件类型与非法迁移保持原状态', () => {
+  let s = emptyBoard();
+  s = applyBoardEvent(s, created('t1'));
+  const before = s;
+  assert.equal(applyBoardEvent(s, { t: 'gate-set', taskId: 't1', ts: 2 } as unknown as BoardEvent), before);
+  assert.equal(applyBoardEvent(s, { t: 'gate-resolved', taskId: 't1', ts: 3 } as unknown as BoardEvent), before);
+  const after = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'claimed', to: 'done', ts: 4 } as unknown as BoardEvent);
+  assert.equal(after, before);
+  assert.equal(after.tasks['t1']!.status, 'pending');
+  const recovered = recoverOnLoad(after);
+  assert.equal(recovered.state.tasks['t1']!.status, 'cancelled');
+});
+
+test('dispatchable/derivedBlocked:依赖须 success 与失败传播', () => {
   let s = emptyBoard();
   s = applyBoardEvent(s, created('t1'));
   s = applyBoardEvent(s, created('t2', ['t1']));
   s = applyBoardEvent(s, created('t3', ['t2']));
   assert.deepEqual(dispatchable(s).map((t) => t.id), ['t1'], '仅无依赖者可派发');
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'pending', to: 'claimed', ts: 2 });
-  assert.deepEqual(dispatchable(s), [], 'claimed 不重复派发');
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'claimed', to: 'in-review', ts: 3 });
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'in-review', to: 'done', ts: 4 });
-  assert.deepEqual(dispatchable(s).map((t) => t.id), ['t2'], '上游 done 解锁下游');
-  s = applyBoardEvent(s, { t: 'gate-set', taskId: 't2', ts: 5 });
-  assert.deepEqual(dispatchable(s), [], 'gated 跳过');
-  s = applyBoardEvent(s, { t: 'gate-resolved', taskId: 't2', approved: true, ts: 6 });
-  assert.deepEqual(dispatchable(s).map((t) => t.id), ['t2']);
-  // 失败传播:t2 failed → t3 派生 blocked(不自动 skip,等 lead 裁决)
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'pending', to: 'claimed', ts: 7 });
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'claimed', to: 'failed', ts: 8 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'pending', to: 'running', ts: 2 });
+  assert.deepEqual(dispatchable(s), [], 'running 不重复派发');
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'running', to: 'success', ts: 3 });
+  assert.deepEqual(dispatchable(s).map((t) => t.id), ['t2'], '上游 success 解锁下游');
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'pending', to: 'running', ts: 7 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'running', to: 'failed', ts: 8 });
   assert.ok(derivedBlocked(s, 't3'), '上游 failed → 下游派生 blocked');
   assert.deepEqual(dispatchable(s), [], 'blocked 不派发');
+});
+
+test('dispatchable:dependsOn 须 success；retryOf 不挡派发', () => {
+  let s = emptyBoard();
+  s = applyBoardEvent(s, { t: 'task-created', taskId: 'a', title: 'A', spec: 'a', dependsOn: [], teamId: 'tm1', ts: 1 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 'a', from: 'pending', to: 'running', ts: 2 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 'a', from: 'running', to: 'failed', ts: 3 });
+  s = applyBoardEvent(s, {
+    t: 'task-created', taskId: 'a2', title: 'A', spec: 'a', dependsOn: [], teamId: 'tm1', retryOf: 'a', ts: 4,
+  });
+  assert.deepEqual(dispatchable(s).map((t) => t.id), ['a2'], 'retryOf 失败前驱仍可派发');
 });
 
 test('hasCycle:加边成环检出并给成员', () => {
@@ -77,18 +98,17 @@ test('hasCycle:加边成环检出并给成员', () => {
   assert.equal(hasCycle([{ id: 'a', dependsOn: [] }, { id: 'b', dependsOn: ['a'] }]), null);
 });
 
-test('recoverOnLoad:claimed 回池、其余不动', () => {
+test('recoverOnLoad:pending+running→cancelled；终态不动', () => {
   let s = emptyBoard();
-  s = applyBoardEvent(s, created('t1'));
-  s = applyBoardEvent(s, created('t2'));
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't1', from: 'pending', to: 'claimed', ts: 2 });
-  // brief 原文此处 pending→done 直达,与 transitionLegal 闭集及 test 2 的断言矛盾(reducer 拒绝后 t2 停留 pending);
-  // 改走合法链 pending→claimed→in-review→done,测试意图不变:终态任务 recoverOnLoad 不动。
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'pending', to: 'claimed', ts: 3 });
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'claimed', to: 'in-review', ts: 3 });
-  s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'in-review', to: 'done', ts: 3 });
+  s = applyBoardEvent(s, { t: 'task-created', taskId: 'p', title: 'P', spec: 'p', dependsOn: [], teamId: 'tm1', ts: 1 });
+  s = applyBoardEvent(s, { t: 'task-created', taskId: 'r', title: 'R', spec: 'r', dependsOn: [], teamId: 'tm1', ts: 1 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 'r', from: 'pending', to: 'running', ts: 2 });
+  s = applyBoardEvent(s, { t: 'task-created', taskId: 'ok', title: 'OK', spec: 'ok', dependsOn: [], teamId: 'tm1', ts: 1 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 'ok', from: 'pending', to: 'running', ts: 2 });
+  s = applyBoardEvent(s, { t: 'status-changed', taskId: 'ok', from: 'running', to: 'success', ts: 3 });
   const r = recoverOnLoad(s);
-  assert.deepEqual(r.recovered, ['t1']);
-  assert.equal(r.state.tasks['t1']!.status, 'failed', '中断即终态(2026-10-31 裁定:静默回池曾致重派重执行+永等)');
-  assert.equal(r.state.tasks['t2']!.status, 'done', '终态不动');
+  assert.equal(r.state.tasks['p']!.status, 'cancelled');
+  assert.equal(r.state.tasks['r']!.status, 'cancelled');
+  assert.equal(r.state.tasks['ok']!.status, 'success');
+  assert.ok(r.recovered.includes('p') && r.recovered.includes('r'));
 });

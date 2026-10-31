@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Eye, ShieldCheck, XCircle, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -15,7 +15,7 @@ import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
 import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import type { DiffResp } from '../../connection';
 
-/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);G14.168 taskboard 六工具专属图标(去扳手默认) */
+/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);任务板工具专属图标(去扳手默认) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
@@ -23,7 +23,6 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
   create_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
   create_teammate: UsersRound, // 2026-10-31 用户裁定「智能体团队的工具没有特殊图标」:团队成员创建件(区别于 spawn 的 Bot 单体/assign 的 UserPlus 单加)
-  review_task: Eye, gate_task: ShieldCheck, cancel_task: XCircle,
   update_task: ListChecks, get_board: Kanban, probe: Radar, // 2026-10-31 用户裁定「内置工具还没有完全 i18n 化」:任务板更新/看板读取/探测三件专属图标(退役扳手兜底)
 };
 
@@ -70,7 +69,7 @@ export interface TodoBatch {
 
 /** 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名)。
  *  G14.216 命名口径(用户裁定,替代 G14.213「两字优先」):自然两字且项目既定的保留不动——
- *  读取/写入/执行/查阅/查找/搜索/抓取/停止/取消/分派/复审/门审/提问(工作树为项目自然词);
+ *  读取/写入/执行/查阅/查找/搜索/抓取/停止/取消/分派/提问(工作树为项目自然词);
  *  凑两字而失读性的展开为目标域词,与运行态标签(RUNNING_LABELS)同口径——加载技能、保存记忆、
  *  更新待办、等待任务、检索知识库、创建任务、设置依赖、分派子智能体 */
 const TOOL_VERB_ZH: Record<string, string> = {
@@ -79,7 +78,6 @@ const TOOL_VERB_ZH: Record<string, string> = {
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
   create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
-  review_task: '复审', gate_task: '门审', cancel_task: '取消',
   create_teammate: '创建智能体团队成员',
   update_task: '更新任务', get_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
 };
@@ -214,21 +212,16 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   create_task: ['Creating task', '正在创建任务'],
   set_dependency: ['Setting dependency', '正在设置依赖'],
   assign: ['Assigning task', '正在分派任务'],
-  review_task: ['Reviewing task', '正在复审任务'],
-  gate_task: ['Gating task', '正在门审任务'],
-  cancel_task: ['Cancelling task', '正在取消任务'],
 };
 
-/** G14.214 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
- *  折叠行默认分型只出动词（复审/停止…五连发无从分辨）——任务名经 taskNameOf 单点解析后跟行 */
-const TASK_OP_TOOLS = new Set(['task_stop', 'review_task', 'gate_task', 'cancel_task', 'assign', 'set_dependency']);
+/** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
+ *  折叠行默认分型只出动词——任务名经 taskNameOf 单点解析后跟行 */
+const TASK_OP_TOOLS = new Set(['task_stop', 'update_task', 'assign', 'set_dependency']);
 
 /** G14.214 运行态动词对（拼接任务名替代泛文案，仿 spawn G14.166 先例）；折叠行动词走 zhToolName 既有映射 */
 const TASK_OP_RUNNING: Record<string, [string, string]> = {
   task_stop: ['Stopping', '正在停止'],
-  review_task: ['Reviewing', '正在复审'],
-  gate_task: ['Gating', '正在门审'],
-  cancel_task: ['Cancelling', '正在取消'],
+  update_task: ['Updating', '正在更新'],
   assign: ['Assigning', '正在分派'],
   set_dependency: ['Setting dependency of', '正在设置依赖'],
 };
@@ -455,7 +448,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
     if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
-    // G14.214 task_* 运行态带任务名——「正在复审 架构评审」替代泛文案（taskOpName 已在场即有值）
+    // task_* 运行态带任务名——「正在更新 架构评审」替代泛文案（taskOpName 已在场即有值）
     const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
     if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
     // 2026-10-26 MCP 工具运行态带本地化工具名——「正在调用 截屏」(双语对随语言切换,与完成态同口径)

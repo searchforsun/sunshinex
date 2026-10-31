@@ -9,6 +9,7 @@ import type { TaskRegistry } from '../../harness/tasks';
 import type { SubagentRunner } from '../../harness/subagent';
 import { TaskBoard } from '../board';
 import { TeamStore } from '../store';
+import { AgentTeamRegistry, MemoryAgentTeamStore } from '../team-registry';
 import { ExternalCliExecutor, MAX_EXTERNAL_CONCURRENT } from './external-cli';
 
 function tmpdir(prefix: string): string {
@@ -189,10 +190,12 @@ test('stop 接线:run 进行中 ledgerTask.stop → killBackground(pid);kill 失
   assert.equal(typeof h.ledgers[0]!.stop, 'function', '台账 stop 句柄已挂(execBackground 返回 pid 后)');
   h.ledgers[0]!.stop!();
   assert.deepEqual(h.sandbox.killed, [123], 'stop 触发 killBackground(pid)');
+  exec.stop('t7');
+  assert.deepEqual(h.sandbox.killed, [123, 123], '板 stop(taskId) 与台账 stop 打到同一进程');
   // kill 失败吞(进程已死 ESRCH 等):stop 不向上炸,可重复调
   h.sandbox.throwOnKill = new Error('kill ESRCH');
   assert.doesNotThrow(() => h.ledgers[0]!.stop!());
-  assert.deepEqual(h.sandbox.killed, [123], 'kill 失败不再入账(task_stop 单点已兜底 finish)');
+  assert.deepEqual(h.sandbox.killed, [123, 123], 'kill 失败不再入账(task_stop 单点已兜底 finish)');
   // 收尾:exit 驱动 run 自然终值(迟到 exit 经 exit promise 收口)
   h.sandbox.exitPid(123, 0);
   const r = await p;
@@ -220,21 +223,26 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
       },
     } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
       runner,
       registry,
+      agentTeams,
       externalExecutor,
       onEvent: (e) => events.push(e),
     });
     board.init();
-    const a = board.create({ title: 'A', spec: 'a', executor: 'external-cli' });
+    const a = board.create({ teamId, title: 'A', spec: 'a', executor: 'external-cli' });
     assert.ok(a.ok);
     const aId = a.value.taskId;
     await drain();
     await drain();
     const s = board.snapshot();
-    assert.equal(s.tasks[aId]!.status, 'in-review', '强制回写 claimed→in-review');
+    assert.equal(s.tasks[aId]!.status, 'success', '强制回写 running→success');
     assert.equal(s.tasks[aId]!.artifact?.conclusion, 'external reply');
     assert.equal(s.tasks[aId]!.artifact?.tokens, 7);
     assert.deepEqual(internalCalls, [], 'internal runner 零调用(external 路由接管)');
@@ -250,7 +258,7 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
     // 黑盒降级:stub 无翻译产出时 UI 仅见起止(无 token/tool-call 透传)
     assert.ok(!events.some((e) => e.type === 'token' || e.type === 'tool-call'), '公共面仅见起止');
     // 失败路径:EXTERNAL code 回写 + delegation-ended failed
-    const b = board.create({ title: 'B', spec: 'b', executor: 'external-cli' });
+    const b = board.create({ teamId, title: 'B', spec: 'b', executor: 'external-cli' });
     assert.ok(b.ok);
     const bId = b.value.taskId;
     await drain();

@@ -28,8 +28,7 @@ import type { Delegation } from '../../src/delegation/projection';
  * 铸票，连接生命周期维 Set 去重，重连重发幂等）回调上层；回执走 HTTP（replyApproval/
  * replyAsk，寻址统一帧顶层 pid——req.id 是会话内编号非寻址键）；reset 通知帧帧帧回调
  * （onResetSession）；deleteSession（2026-10-21 受控删除端点——归档门禁后真清,daemon 会话 id /
- * journalId 双寻址）供归档页删除与 /delete 命令消费；boardReview
- * （G5 看板服务面）供 Board 页 gate 行内审批。
+ * journalId 双寻址）供归档页删除与 /delete 命令消费。
  */
 
 /** 粗粒度转录条目(对齐主仓 src/serve/transcript.ts TranscriptEntry;G4 对齐五 kind——
@@ -108,6 +107,8 @@ export interface SnapshotResponse {
   effort?: string;
   queued?: Array<{ seq: number; text: string; images?: string[] }>;
   team?: Array<{ name: string; busy: boolean }>;
+  /** 工作区团队注册表（daemon 快照必发） */
+  teams?: Array<{ teamId: string; name: string; createdAt: number }>;
   /** 挂起段 kind 三值(阶段三 plan-arm 增 plan-approval):reseed 据此重建挂起卡(卡内容唯一来源) */
   pending?: Array<{ pid: string; kind: 'approval' | 'ask' | 'plan-approval'; req?: unknown }>;
   /** 2026-10-21 归档态:旁车 meta archived 回读(顶栏归档钮/徽标三态播种);可选防旧 daemon(无此字段=未归档面) */

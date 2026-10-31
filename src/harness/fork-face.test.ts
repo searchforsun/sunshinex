@@ -1,5 +1,5 @@
 /** L2 终审 Important(fork 面剔除未闭合):loop/graph 两处 fork-scope 派生点曾只剔 spawn——
- *  send_message(lead 消息身份)与六件套 lead-only 板工具会泄入 fork 子面(经 TUI /init scope:'fork' 可达,lead 冒充)。
+ *  send_message(lead 消息身份)与四件套 lead-only 板工具会泄入 fork 子面(经 TUI /init scope:'fork' 可达,lead 冒充)。
  *  修复裁定:三处派生点(subagent deriveChildRegistry / loop agentNode / graph makeLoopNode)同源消费
  *  FORK_EXCLUDED_TOOLS(send_message + TASKBOARD_TOOL_NAMES);常量即契约——本文件钉测常量内容 +
  *  直测三处派生输出面(loop/graph 用 derive 间谍捕获产品派生点产物,不经内部实现细节)。 */
@@ -42,7 +42,7 @@ function makeFaceDeps(root: string): { deps: LoopDeps; faces: ToolRegistry[] } {
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
-  // 假件(spawn/send_message/六件套):证明确实被派生剔除,而非本就不在场
+  // 假件(spawn/send_message/四件套):证明确实被派生剔除,而非本就不在场
   for (const name of FAMILY) registry.register(dummy(name));
   const faces: ToolRegistry[] = [];
   const realDerive = registry.derive.bind(registry);
@@ -71,10 +71,10 @@ const loopCtx = (): LoopContext => ({
   termination: { maxIterations: 2, timeoutMs: 60_000 } as LoopTermination,
 });
 
-test('常量契约:FORK_EXCLUDED_TOOLS = send_message + 六件套(单点定义,三派生点同源)', () => {
+test('常量契约:FORK_EXCLUDED_TOOLS = send_message + 四件套(单点定义,三派生点同源)', () => {
   assert.deepEqual([...FORK_EXCLUDED_TOOLS], ['send_message', ...TASKBOARD_TOOL_NAMES]);
   assert.equal(FORK_EXCLUDED_TOOLS.length, TASKBOARD_TOOL_NAMES.length + 1);
-  for (const n of TASKBOARD_TOOL_NAMES) assert.ok(FORK_EXCLUDED_TOOLS.includes(n), `六件套 ${n} 应在剔除族`);
+  for (const n of TASKBOARD_TOOL_NAMES) assert.ok(FORK_EXCLUDED_TOOLS.includes(n), `四件套 ${n} 应在剔除族`);
   // 三处消费点源码同源钉测(防再内联漂移;沿 prompt-language.test.ts 源扫描先例)
   const ROOT = path.resolve(__dirname, '..', '..');
   for (const rel of ['src/harness/subagent.ts', 'src/loop/nodes.ts', 'src/graph/nodes.ts']) {
@@ -83,7 +83,7 @@ test('常量契约:FORK_EXCLUDED_TOOLS = send_message + 六件套(单点定义,�
   }
 });
 
-test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支均剔 send_message+六件套(真 Harness)', async () => {
+test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支均剔 send_message+四件套(真 Harness)', async () => {
   const tmp = mktmp('sunshinex-forkface-sub-');
   let h: Harness | undefined;
   try {
@@ -103,7 +103,7 @@ test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支�
   }
 });
 
-test('loop 派生点:agentNode scope=fork 的私有面剔 send_message+六件套(直测产品派生点输出面)', async () => {
+test('loop 派生点:agentNode scope=fork 的私有面剔 send_message+四件套(直测产品派生点输出面)', async () => {
   const tmp = mktmp('sunshinex-forkface-loop-');
   try {
     const { deps, faces } = makeFaceDeps(tmp);
@@ -126,7 +126,7 @@ test('loop 派生点:agentNode scope=fork 的私有面剔 send_message+六件套
   }
 });
 
-test('graph 派生点:makeLoopNode fork 面剔 send_message+六件套(直测产品派生点输出面)', async () => {
+test('graph 派生点:makeLoopNode fork 面剔 send_message+四件套(直测产品派生点输出面)', async () => {
   const tmp = mktmp('sunshinex-forkface-graph-');
   try {
     const { deps, faces } = makeFaceDeps(tmp);

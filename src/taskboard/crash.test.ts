@@ -5,7 +5,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskBoard } from './board';
-import { TeamStore } from './store';
+import { AgentTeamRegistryStore, TeamStore } from './store';
+import { AgentTeamRegistry } from './team-registry';
 import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 
@@ -13,7 +14,7 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-test('kill -9 于 claimed 时刻:重启恢复,任务落中断终态、事件完整、可继续追加(spec §7.6;2026-10-31 裁定回池退役)', async () => {
+test('kill -9 于 running 时刻:重启恢复,打开态落 cancelled、事件完整、可继续追加', async () => {
   const tmp = tmpdir('sunshinex-tbcrash-');
   const child = spawn(process.execPath, [path.resolve(__dirname, 'crash-fixture.js')], {
     env: { ...process.env, SUNSHINEX_DATA_DIR: path.join(tmp, 'data') },
@@ -23,14 +24,14 @@ test('kill -9 于 claimed 时刻:重启恢复,任务落中断终态、事件完�
   child.stdout!.setEncoding('utf8');
   child.stdout!.on('data', (c: string) => { out += c; });
   try {
-    // 等 fixture 打印 READY(claimed 已落盘)后强杀;10s 兜底定时器在 READY 命中时即清(不留悬挂句柄)
+    // 等 fixture 打印 READY(running 已落盘)后强杀;10s 兜底定时器在 READY 命中时即清(不留悬挂句柄)
     await new Promise<void>((resolve) => {
       const t = setInterval(() => {
         if (out.includes('READY')) { clearInterval(t); clearTimeout(fallback); resolve(); }
       }, 50);
       const fallback = setTimeout(() => { clearInterval(t); resolve(); }, 10_000);
     });
-    assert.ok(out.includes('READY'), 'fixture 达到 claimed 挂起点');
+    assert.ok(out.includes('READY'), 'fixture 达到 running 挂起点');
     child.kill('SIGKILL');
     await new Promise<void>((resolve) => child.once('exit', () => resolve()));
     // 存活性证明(4c 取最简稳健项):杀时进程仍活着——exitCode 非零或信号终局(fixture 两笔 create 均已成功才挂到此处)
@@ -38,7 +39,14 @@ test('kill -9 于 claimed 时刻:重启恢复,任务落中断终态、事件完�
     // 重启恢复:同目录新协调器
     const runner = { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'b9', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
-    const board = new TaskBoard({ store: new TeamStore(path.join(tmp, 'data', 'teams', 'main')), runner, registry });
+    const teamsRoot = path.join(tmp, 'data', 'teams');
+    const agentTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot));
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(teamsRoot, 'main')),
+      runner,
+      registry,
+      agentTeams,
+    });
     board.init();
     const s = board.snapshot();
     // id 方言(2026-10-19):板 id 为 task-<业务段>-<随机码>,fixture 子进程不向父进程回传 create 返回值——
@@ -50,17 +58,19 @@ test('kill -9 于 claimed 时刻:重启恢复,任务落中断终态、事件完�
     };
     const idA = byTitle('A');
     const idB = byTitle('B');
-    assert.equal(s.tasks[idA]!.status, 'failed', '中断即终态(2026-10-31 裁定:回池 pending 曾致重派重执行+永等)');
+    assert.equal(s.tasks[idA]!.status, 'cancelled', 'running 自愈为 cancelled');
     assert.ok(s.tasks[idA]!.artifact?.conclusion === undefined, '无半成品 artifact');
-    assert.equal(s.tasks[idB]!.status, 'pending', '依赖任务原样');
-    // 恢复后可继续:create 成功且事件流追加畅通
-    const r = board.create({ title: 'C', spec: 'c', dependsOn: [idA] });
+    assert.equal(s.tasks[idB]!.status, 'cancelled', 'pending 同样自愈为 cancelled');
+    const teamId = agentTeams.list()[0]?.teamId;
+    assert.ok(teamId !== undefined, '队注册表随崩溃前 create 落盘');
+    const r = board.create({ teamId: teamId!, title: 'C', spec: 'c', dependsOn: [idA] });
     assert.ok(r.ok);
     await new Promise((r2) => setImmediate(r2));
     // events.jsonl 无撕裂行:全部可解析
     const lines = fs.readFileSync(path.join(tmp, 'data', 'teams', 'main', 'events.jsonl'), 'utf8').split('\n').filter((l) => l.length > 0);
     for (const line of lines) JSON.parse(line);
-    assert.ok(lines.some((l) => l.includes('interrupted by restart')), '自愈事件在流中(failed=中断终态)');
+    assert.ok(lines.some((l) => l.includes('interrupted by restart')), 'running 自愈事件在流中');
+    assert.ok(lines.some((l) => l.includes('no live executors after restart')), 'pending 自愈事件在流中');
   } finally {
     // 收尸守卫:READY 断言失败等早退路径也保证 kill(已退出则守卫跳过,双杀无害);等退出后再清场防文件占用
     if (child.exitCode === null && child.signalCode === null) {
@@ -80,7 +90,7 @@ test('进程内变体:events.jsonl 尾行截断,重放跳过不炸(Task 2 语义
     const dir = path.join(tmp, 'teams', 'main');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'events.jsonl'), [
-      JSON.stringify({ t: 'task-created', taskId: 't1', title: 'A', spec: 'a', dependsOn: [], ts: 1 }),
+      JSON.stringify({ t: 'task-created', taskId: 't1', title: 'A', spec: 'a', dependsOn: [], teamId: 'tm1', ts: 1 }),
       '{"t":"task-cr',
     ].join('\n'), 'utf8');
     const store = new TeamStore(dir);

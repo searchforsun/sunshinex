@@ -6,26 +6,30 @@
 import type { SessionEvent } from '../types';
 import type { BoardEvent, TaskStatus } from './model';
 
-/** SessionEvent(task- 前缀与 gate- 前缀事件) → BoardEvent 翻译单点:与 TaskBoard.emit 载荷口径互为镜像(P1 子集:
- *  created/status/unlocked/blocked/gate 两态;P2 增 dep-added/assigned;conclusion 等富字段不进 UI 事件,投影无需)。
+/** SessionEvent(task- 前缀事件) → BoardEvent 翻译单点:与 TaskBoard.emit 载荷口径互为镜像
+ *  (created/status/unlocked/blocked/dep-added/assigned;conclusion 等富字段不进 UI 事件)。
  *  公开 = 镜像属性测试钉口径(mirror.test.ts)消费 */
 export function boardEventFrom(e: SessionEvent): BoardEvent {
   const p = (e.payload ?? {}) as Record<string, unknown>;
   const taskId = String(p.taskId ?? '');
   const ts = e.ts;
   switch (e.type) {
-    case 'task-created':
-      return { t: 'task-created', taskId, title: String(p.title ?? ''), spec: String(p.spec ?? ''), dependsOn: Array.isArray(p.dependsOn) ? (p.dependsOn as string[]) : [], ts };
+    case 'task-created': {
+      const retryOf = typeof p.retryOf === 'string' ? p.retryOf : undefined;
+      return {
+        t: 'task-created', taskId, title: String(p.title ?? ''), spec: String(p.spec ?? ''),
+        dependsOn: Array.isArray(p.dependsOn) ? (p.dependsOn as string[]) : [],
+        teamId: typeof p.teamId === 'string' ? p.teamId : '',
+        ts,
+        ...(retryOf !== undefined ? { retryOf } : {}),
+      };
+    }
     case 'task-dep-added':
       return { t: 'dependency-added', taskId, dependsOn: String(p.dependsOn ?? ''), ts };
     case 'task-assigned':
       return { t: 'assigned', taskId, assignee: String(p.assignee ?? ''), ts };
     case 'task-status-changed':
       return { t: 'status-changed', taskId, from: (p.from as TaskStatus) ?? 'pending', to: (p.status as TaskStatus) ?? 'pending', ts, ...(typeof p.by === 'string' ? { by: p.by } : {}) };
-    case 'gate-waiting':
-      return { t: 'gate-set', taskId, ts, ...(typeof p.note === 'string' ? { note: p.note } : {}) };
-    case 'gate-resolved':
-      return { t: 'gate-resolved', taskId, approved: p.approved === true, ts };
     default:
       return { t: 'status-changed', taskId, from: 'pending', to: 'pending', ts }; // task-unlocked/task-blocked:投影无状态变化,reducer 原引用返回
   }

@@ -14,7 +14,8 @@ import type { ToolRegistry } from '../harness/tools';
 import type { TaskRegistry } from '../harness/tasks';
 import type { StorageAdapter } from '../storage/adapter';
 import type { Inbox } from './inbox';
-import { dispatchTag, type TaskBoard } from './board';
+import type { InboxCursorStore } from './inbox-cursors';
+import { dispatchTag, isUserAbort, type TaskBoard } from './board';
 import type { BoardTask } from './model';
 
 /** 队伍缺省帽(2026-10-06 用户实机反馈「4 太少」提至 8):主链上下文带宽是共享资源,teammate 转录都进
@@ -41,6 +42,8 @@ export interface TeammateDeps {
   /** agent 间消息收件箱(T3 agent-message 回合边界注入):worker 每轮 execute 前 drainInbox——
    *  poll 本名新消息,按 msg-id 链前缀去重后以 note 行 append own chain;缺省无 inbox = 零行为变化 */
   inbox?: Inbox;
+  /** 消费位点落盘(<teams>/inbox-cursors.json)。缺省只保持进程内位点 */
+  inboxCursors?: InboxCursorStore;
 }
 
 /** teammate 注册表:帽可配(缺省 DEFAULT_MAX_TEAMMATES,SUNSHINEX_MAX_TEAMMATES 覆盖)+ 名字索引 + 存活聚合(派发路由的退化判据) */
@@ -72,6 +75,13 @@ export class TeamRegistry {
     return false;
   }
 
+  /** 存活成员的 teamId;已停或未注册为 undefined */
+  teamIdOf(name: string): string | undefined {
+    const t = this.teammates.get(name);
+    if (t === undefined || t.stopped) return undefined;
+    return t.teamId;
+  }
+
   /** 单停(幂等:Teammate.stop 自身幂等,未注册静默) */
   stop(name: string): void {
     this.teammates.get(name)?.stop();
@@ -81,14 +91,31 @@ export class TeamRegistry {
     for (const t of this.teammates.values()) t.stop();
   }
 
-  aliveNames(): string[] {
-    return [...this.teammates.values()].filter((t) => !t.stopped).map((t) => t.name);
+  aliveNames(teamId?: string): string[] {
+    return [...this.teammates.values()]
+      .filter((t) => !t.stopped && (teamId === undefined || t.teamId === teamId))
+      .map((t) => t.name);
   }
+}
+
+/** teammate 面 send_message 的收件闭包:同 teamId 存活成员(排己);lead 由工具内恒放行 */
+export function teammateSendTargets(team: TeamRegistry, teamId: string, self: string): {
+  knownRecipients: () => string[];
+  teamId: () => string;
+  recipientTeamId: (name: string) => string | undefined;
+} {
+  return {
+    knownRecipients: () => team.aliveNames(teamId).filter((n) => n !== self),
+    teamId: () => teamId,
+    recipientTeamId: (name) => team.teamIdOf(name),
+  };
 }
 
 /** 长驻执行体:一次装配跨任务存续;kick 起 claim 循环单飞消化未指派任务,runTask 承接指派路由 */
 export class Teammate {
   readonly name: string;
+  /** 所属 AgentTeam。认领与派发只处理同 teamId 的任务。 */
+  readonly teamId: string;
   private readonly framing: string;
   private readonly deps: TeammateDeps;
   /** 独立上下文(每 teammate 一份,永不共享主链):role/task 行的落点与每任务 Reactor 的 seed 源 */
@@ -103,16 +130,17 @@ export class Teammate {
   /** 指派队列(executeOne 派发路由入队):单 worker 每轮先取此队、空则 board.claim——指派与自主认领
    *  统一单飞,同一时刻至多一个 execute 在飞(own ctx / Reactor seed 串行不变量,2026-10-06 复审裁定) */
   private assignedQueue: BoardTask[] = [];
-  /** inbox 消费位点(Ruling 2 内存态):已消费的最大 ts;poll 取严格大于此值——至少一次投递的读侧。
-   *  重启归零后重放由 msg-id 链前缀去重兜底(注入幂等 §7.3) */
-  private inboxCursor = 0;
+  /** inbox 消费位点:已消费的最大 ts;poll 取严格大于此值。构造时从 inboxCursors 读回,drain 推进后写回 */
+  private inboxCursor: number;
 
-  constructor(opts: { name: string; framing: string; deps: TeammateDeps }) {
+  constructor(opts: { name: string; framing: string; teamId: string; deps: TeammateDeps }) {
     this.name = opts.name;
+    this.teamId = opts.teamId;
     this.framing = opts.framing;
     this.deps = opts.deps;
     this.ctx = new ContextManager(opts.deps.root, opts.deps.store);
     this.taskTimeoutMs = opts.deps.taskTimeoutMs ?? 30 * 60 * 1000;
+    this.inboxCursor = opts.deps.inboxCursors?.load(opts.name) ?? 0;
   }
 
   /** 已停观测(TeamRegistry.hasAlive / executeOne 派发路由判据) */
@@ -137,7 +165,7 @@ export class Teammate {
   private async worker(): Promise<void> {
     try {
       while (!this.stoppedFlag) {
-        const next = this.assignedQueue.length > 0 ? this.assignedQueue.shift() : this.deps.board.claim(this.name);
+        const next = this.assignedQueue.length > 0 ? this.assignedQueue.shift() : this.deps.board.claim(this.name, this.teamId);
         if (next === undefined) break;
         // 回合边界注入(T3):每轮 execute 前统一 drain inbox(指派与 claim 两路都过此口)——
         // 消息行先于本任务 task 行 append;注入异常吞并不阻断任务(cursor 未进,下轮重 poll 兜底)
@@ -160,10 +188,9 @@ export class Teammate {
     }
   }
 
-  /** 回合边界消息注入(T3):poll 本名 ts 严格大于位点的消息,逐条按 `msg:<id> ` 前缀扫 own chain
-   *  已含该行则跳过(去重),否则以 note 行 append 链尾——消息行进链不进事件(消费面 = 模型上下文)。
-   *  Ruling 2:cursor 内存态 + msg-id 链前缀去重 = 至少一次 + 注入幂等(§7.3);append 恒在链尾、
-   *  既有前缀不动 = §9.3 缓存友好。返回本轮注入条数。 */
+  /** 回合边界消息注入:poll 本名 ts 严格大于位点的消息,逐条按 `msg:<id> ` 前缀扫 own chain
+   *  已含该行则跳过,否则以 note 行 append 链尾。位点推进后写入 inboxCursors,重启不重复灌链。
+   *  append 恒在链尾。返回本轮注入条数。 */
   private drainInbox(): number {
     if (this.deps.inbox === undefined) return 0;
     const msgs = this.deps.inbox.poll(this.name, this.inboxCursor);
@@ -178,11 +205,20 @@ export class Teammate {
       // 收件消息上屏转录(✉ 行,与任务带区分):tagged step + messageLine,同任务带通道
       this.deps.onEvent?.({
         type: 'step', text: '', ts: Date.now(),
-        payload: { subagent: this.name, messageLine: `${m.from}: ${m.text}` },
+        payload: {
+          subagent: this.name,
+          messageLine: `${m.from}: ${m.text}`,
+          messageId: m.id,
+          from: m.from,
+          to: this.name,
+          text: m.text,
+          teamId: this.teamId,
+        },
       });
       injected += 1;
     }
     this.inboxCursor = Math.max(this.inboxCursor, ...msgs.map((m) => m.ts));
+    this.deps.inboxCursors?.save(this.name, this.inboxCursor);
     return injected;
   }
 
@@ -219,9 +255,9 @@ export class Teammate {
   private currentTaskAbort?: AbortController;
 
   private async execute(task: BoardTask): Promise<void> {
-    if (!this.deps.board.markClaimed(task.id, this.name)) return; // 已被取走/非 pending:静默放弃(claim() 先行者已 claimed,幂等放行)
+    if (!this.deps.board.markClaimed(task.id, this.name)) return; // 非 pending:静默放弃(已 running 的认领幂等放行)
     // 板任务台账登记(与 fork 路径同形 dispatchTag(板 id)):task_wait(null) 的可等面;stop=精确中止本任务
-    // (Reactor 收到 abort 即 !done→failed 回写;teammate 存活继续 claim 下一任务)
+    // (用户中止/interrupted/ABORTED 回写 cancelled;执行错误回写 failed;teammate 存活继续 claim 下一任务)
     const taskAbort = new AbortController();
     this.currentTaskAbort = taskAbort;
     const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: dispatchTag(task.id) });
@@ -237,7 +273,7 @@ export class Teammate {
     const delegationId = dispatchTag(task.id);
     // label = teammate 名(2026-10-06 用户定版 UI 语义:Ctrl+B 行显执行者名字,面板明细按名 join 转录;
     // delegationId 用同形标签保投影唯一键与台账对齐)
-    const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed', tokens?: number): void => {
+    const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed' | 'skipped', tokens?: number): void => {
       this.deps.onEvent?.({
         type,
         ts: Date.now(),
@@ -282,30 +318,63 @@ ${task.spec}` },
         },
       );
     } catch (e) {
-      // 异常收口:delegation failed + THROWN 回写(不向上抛——claim 循环/runTask 不因单任务炸停)
+      // 异常收口不向上抛——claim 循环/runTask 不因单任务炸停。信号中止回写 cancelled
       const message = e instanceof Error ? e.message : String(e);
-      this.deps.board.finishExecution(task.id, {
-        ok: false,
-        by: this.name,
-        durationMs: Date.now() - startedAt,
-        error: { code: 'THROWN', message },
-      }, ledger?.id);
-      emitDelegation('delegation-ended', 'failed', 0);
+      this.writeFailure(task.id, ledger?.id, taskAbort.signal, 'THROWN', message, Date.now() - startedAt);
+      this.endDelegation(task.id, emitDelegation, 0);
       this.currentTaskAbort = undefined;
       return;
     }
-    // harness 强制回写单点(P1 finishExecution):claimed→in-review/failed,不依赖模型自觉;
-    // delegation-ended 后置(2026-10-20 业务测试异常修复):终态宣告必须晚于回写——先宣告后回写时,
-    // 消费方收到「已结束(done)」而任务还是 claimed,事件序与事实序相悖
-    this.deps.board.finishExecution(task.id, {
-      ok: r.done,
+    // 回写 running→success|failed|cancelled;delegation-ended 后置于回写,终态宣告晚于状态落板
+    const reportBase = {
       by: this.name,
       ...(r.reply !== undefined ? { reply: r.reply } : {}),
       ...(r.tokensUsed !== undefined ? { tokens: r.tokensUsed } : {}),
       durationMs: Date.now() - startedAt,
-      ...(r.done ? {} : { error: { code: 'INCOMPLETE', message: r.stopReason ?? 'did not finish' } }),
-    }, ledger?.id);
-    emitDelegation('delegation-ended', r.done ? 'done' : 'failed', r.tokensUsed ?? 0);
+    };
+    if (r.done) this.deps.board.finishExecution(task.id, { ok: true, ...reportBase }, ledger?.id);
+    else {
+      const message = r.stopReason ?? 'did not finish';
+      const cancel = taskAbort.signal.aborted || r.stopReason === 'interrupted' || isUserAbort('INCOMPLETE', message);
+      this.deps.board.finishExecution(task.id, {
+        ok: false,
+        ...(cancel ? { terminal: 'cancelled' as const } : {}),
+        ...reportBase,
+        error: { code: cancel ? 'ABORTED' : 'INCOMPLETE', message },
+      }, ledger?.id);
+    }
+    this.endDelegation(task.id, emitDelegation, r.tokensUsed ?? 0);
     this.currentTaskAbort = undefined;
+  }
+
+  /** 执行异常回写。信号已中止或文案为 interrupted/ABORTED 时落 cancelled,否则 failed */
+  private writeFailure(
+    taskId: string,
+    ledgerId: string | undefined,
+    signal: AbortSignal,
+    code: string,
+    message: string,
+    durationMs: number,
+  ): void {
+    const cancel = signal.aborted || isUserAbort(code, message);
+    this.deps.board.finishExecution(taskId, {
+      ok: false,
+      ...(cancel ? { terminal: 'cancelled' as const } : {}),
+      by: this.name,
+      durationMs,
+      error: { code: cancel ? 'ABORTED' : code, message },
+    }, ledgerId);
+  }
+
+  /** 板已是 cancelled 时不把委派收口报成 failed */
+  private endDelegation(
+    taskId: string,
+    emit: (type: 'delegation-ended', status: 'done' | 'failed' | 'skipped', tokens: number) => void,
+    tokens: number,
+  ): void {
+    const status = this.deps.board.snapshot().tasks[taskId]?.status;
+    if (status === 'cancelled') emit('delegation-ended', 'skipped', tokens);
+    else if (status === 'success') emit('delegation-ended', 'done', tokens);
+    else emit('delegation-ended', 'failed', tokens);
   }
 }

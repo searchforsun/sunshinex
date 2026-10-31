@@ -159,12 +159,12 @@ describe('五 kind 与 notice 系映射', () => {
     expect(s.entries).toHaveLength(0);
   });
 
-  it('chat 面忽略事件：task-*/gate-*/route/model-end/approval-* 不产生条目(reasoning 已改为思考链聚合,见下组)', () => {
+  it('chat 面忽略事件：task-*/route/model-end/approval-* 不产生条目(reasoning 已改为思考链聚合,见下组)', () => {
     const s0 = initialChatState();
     const s = fold(
       [
         ev('task-created', 't', { id: 't1' }),
-        ev('gate-waiting'),
+        ev('task-blocked'),
         ev('route', undefined, { tier: 'small' }),
         ev('model-end'),
         ev('approval-request', '?', { id: 'q' }),
