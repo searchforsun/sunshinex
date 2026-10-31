@@ -1811,7 +1811,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .mem-row .mem-body:hover { color: var(--fg); }
 .mem-row .mem-del { flex: none; width: 22px; height: 22px; opacity: 0; transition: opacity 0.12s; }
 .mem-row:hover .mem-del, .mem-row .mem-del:focus-visible { opacity: 1; }
-.mem-detail { margin: 4px 0 2px 24px; }
+/* 详情深底块与行框左右缘对齐(2026-10-31 用户裁定「向左延展」):旧 24px 左缩进是给已退役
+   的勾选列让位,归零即与行内容左缘(图标处)齐平;右缘本就随行框 */
+.mem-detail { margin: 4px 0 2px 0; }
 .mem-meta { font-size: 11px; color: var(--fg-tertiary); margin-bottom: 2px; }
 .mem-body-text {
   margin: 0; font: 12px/1.7 var(--font-ui); color: var(--fg-secondary);
