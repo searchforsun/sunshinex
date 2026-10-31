@@ -7,7 +7,7 @@ import { ModelAdapter, parseEffort } from '../model/adapter';
 import type { Result } from '../result';
 import type { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { purgeSession, readSessionMeta } from "../tui/session-journal";
+import { purgeSession, readSessionMeta, sessionsDir } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
@@ -450,6 +450,9 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
     // G14.29 辅助问答：fork 整档旁路 + 隔离一轮，主会话零污染（TUI /btw 同机制）
     { method: 'POST', path: '/session/:id/btw', auth: true, run: (req, res, p) => this.handleSessionBtw(req, res, p.id) },
+    // 辅助对话列表(2026-10-31 用户裁定「辅助对话持久化+编号页签」):主会话的 side 档清单
+    // (GUI 重进主会话恢复 辅助对话 N 页签;sideOf=主 journal 的档按 mtime 正序)
+    { method: 'GET', path: '/session/:id/sides', auth: true, run: async (_req, res, p) => this.handleSessionSides(res, p.id) },
     { method: 'POST', path: '/memory/rm', auth: true, run: (req, res) => this.handleMemoryRm(req, res) },
     { method: 'GET', path: '/memory', auth: true, run: async (req, res) => this.handleMemoryList(req, res) },
     { method: 'GET', path: '/session/:id/tasks', auth: true, run: async (_req, res, p) => this.handleSessionTasks(res, p.id) },
@@ -1154,6 +1157,40 @@ export class GuiDaemon {
 
   private async handleSessionBtw(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
     await sessionHandlers.handleSessionBtw(this.sessionIo, req, res, id);
+  }
+
+  /** 辅助对话清单：主会话 journal 的 side 档（sideOf 回指）按 mtime 正序——GUI 重进主会话恢复页签 */
+  private handleSessionSides(res: http.ServerResponse, id: string): void {
+    const session = this.sessions.get(id);
+    const srcId = session?.attachedJournalId;
+    if (session === undefined || srcId === undefined) return this.send(res, 200, []);
+    const dir = sessionsDir(resolveDataDir(session.root));
+    let names: string[] = [];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      return this.send(res, 200, []);
+    }
+    const out: Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }> = [];
+    for (const name of names) {
+      if (!name.endsWith('.meta.json')) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as { side?: unknown; sideOf?: unknown; title?: unknown };
+        if (meta.side !== true || meta.sideOf !== srcId) continue;
+        const jid = name.slice(0, -'.meta.json'.length);
+        const live = [...this.sessions.values()].find((rt) => rt.attachedJournalId === jid);
+        out.push({
+          journalId: jid,
+          ...(live !== undefined ? { sessionId: live.id } : {}),
+          title: typeof meta.title === 'string' ? meta.title : '辅助对话',
+          updatedAt: fs.statSync(path.join(dir, name)).mtimeMs,
+        });
+      } catch {
+        /* 坏 meta 行跳过 */
+      }
+    }
+    out.sort((a, b) => a.updatedAt - b.updatedAt);
+    this.send(res, 200, out);
   }
 
   private async handleBranch(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'rewind' | 'fork'): Promise<void> {

@@ -414,9 +414,7 @@ export function listSessions(dataDir: string): SessionMeta[] {
       : firstUser;
     const sid = name.slice(0, -'.jsonl'.length);
     const side = readSessionMeta(dataDir, sid);
-    // 2026-10-31 用户裁定「辅助对话持久化可见(独立会话档+编号标题)」:带编号标题的辅助会话入列
-    // (侧栏主会话组内可见可点回);无标题的 side 旧档维持滤除(过渡态兼容,重装新 fork 即带题)
-    if (side.side === true && side.title === undefined) continue;
+    if (side.side === true) continue; // G14.29:辅助会话不进列表(RECENTS//resume//sessions)——2026-10-31 用户实时反馈「不要进主菜单」,持久化入口=主会话页签恢复(/session/:id/sides)
     metas.push({
       id: sid,
       file,

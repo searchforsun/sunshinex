@@ -82,6 +82,9 @@ export interface Connection {
   runCommand(id: string, line: string): Promise<void>;
   /** GET /commands:清单+双语描述+supported(G10-C4 命令面板数据源) */
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
+  /** 辅助对话清单(2026-10-31 用户裁定「辅助对话持久化+编号页签」):主会话的 side 档;
+   *  sessionId=在座会话 id(daemon 重启后缺席,页签恢复仅限同 daemon 生命周期) */
+  sessionSides(id: string): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>>;
   /** G14.95 技能命令清单(会话维):GUI 命令面板混入技能项 */
   skillCommands(id: string): Promise<Array<{ id: string; description: string }>>;
   /** G14.99 工作区未提交变动面（Diff 标签数据源） */
@@ -467,6 +470,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async runCommand(id: string, line: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/command', { line });
+    },
+    sessionSides(id: string) {
+      return getJson(`/session/${encodeURIComponent(id)}/sides`);
     },
     commands() {
       return getJson('/commands');

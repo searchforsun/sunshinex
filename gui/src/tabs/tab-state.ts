@@ -28,6 +28,8 @@ export interface TabParams {
   readonly nonce?: string;
   /** G14.29 辅助对话:fork 旁路会话 id(sidechat 标签寻址;同一辅助会话重开=聚焦) */
   readonly sideId?: string;
+  /** 辅助对话持久化编号题(辅助对话 N;daemon fork meta,开签注入) */
+  readonly title?: string;
   /** G14.154 辅助对话首问(文件选区「在辅助对话中提问」携带,挂载即落输入框) */
   readonly insert?: string;
   /** G14.164 子智能体只读标签:payload.subagent 标签(委派行/工具行点开;同 agent 重开=聚焦) */

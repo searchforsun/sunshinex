@@ -272,7 +272,8 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'sidechat',
     group: 'session',
     // G14.29 辅助对话:fork 旁路会话绑定的完整 Chat(sideId 寻址;帧路由经 App chatSinkRef)
-    title: () => t('Side chat', '辅助对话'),
+    // 题=持久化编号(辅助对话 N,daemon fork 时落 meta;开签经 params.title 注入)
+    title: (params) => params.title ?? t('Side chat', '辅助对话'),
     resolveKey: (params) => params.sideId ?? '',
     singleton: false,
     render: (p) =>

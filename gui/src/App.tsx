@@ -202,12 +202,38 @@ function AppShell(): JSX.Element {
         const last = anchors.length > 0 ? anchors[anchors.length - 1]!.turn : 1;
         const r = await conn.forkSession(openSessionId, last, true);
         sideSinksRef.current.set(r.sessionId, { current: null });
-        openTabInSession('sidechat', { sideId: r.sessionId, insert });
+        // 持久化编号题(daemon fork 落 meta「辅助对话 N」;2026-10-31 用户裁定页签显编号)
+        const title = await conn.getSessionTitle(r.sessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : undefined)).catch(() => undefined);
+        openTabInSession('sidechat', { sideId: r.sessionId, insert, ...(title !== undefined ? { title } : {}) });
       } catch {
         /* fork 失败静默(旁路非关键路径) */
       }
     })();
   };
+
+  /** 辅助对话页签恢复(2026-10-31 用户裁定「辅助对话持久化+编号页签」):重进主会话即按 /sides
+   *  清单恢复 辅助对话 N 页签(在座 side 会话才恢复——daemon 重启后缺席;用户关过的页签经
+   *  dismissedRef 记忆不复活) */
+  const sideTabDismissedRef = useRef(new Map<string, Set<string>>());
+  useEffect(() => {
+    const conn = connInstance;
+    if (conn === null || page !== 'chat' || openSessionId === '') return;
+    void conn.sessionSides(openSessionId).then(
+      (sides) => {
+        const dismissed = sideTabDismissedRef.current.get(openSessionId);
+        for (const sd of sides) {
+          if (sd.sessionId === undefined) continue;
+          if (dismissed?.has(sd.sessionId) === true) continue;
+          setTabStates((st) => {
+            const cur = st[openSessionId];
+            if (cur !== undefined && cur.tabs.some((x) => x.params.sideId === sd.sessionId)) return st;
+            return openTab(ensureSession(st, openSessionId, PROBE), openSessionId, 'sidechat', { sideId: sd.sessionId, title: sd.title }, PROBE);
+          });
+        }
+      },
+      () => undefined,
+    );
+  }, [connInstance, openSessionId, page]);
 
   const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false): void => {
     // 临时会话思想(2026-10-29 用户设计定版):欢迎页=临时会话,发出去(欢迎页输入建席)时临时座
@@ -434,6 +460,14 @@ function AppShell(): JSX.Element {
   /** G8b 关标签链(TabStrip onClose/onCloseActive 共用):被关标签为 terminal 且 pty 已记账 →
    *  fire-and-forget killPty(拒约吞——关标签不等 HTTP;已关会话侧幂等)再关标签态 */
   const closeTabInSession = (uid: string): void => {
+    // 辅助对话页签关闭即记忆(重进主会话不复活;切会话不误记——按当前席上该页签的 sideId 记)
+    const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
+    const tab = tabStates[seat]?.tabs.find((x) => x.uid === uid);
+    if (tab !== undefined && tab.type === 'sidechat' && tab.params.sideId !== undefined) {
+      const set = sideTabDismissedRef.current.get(seat) ?? new Set<string>();
+      set.add(tab.params.sideId);
+      sideTabDismissedRef.current.set(seat, set);
+    }
     const t = tabState.tabs.find((x) => x.uid === uid);
     if (t?.type === 'terminal') {
       const ptyId = takePtyId(uid);

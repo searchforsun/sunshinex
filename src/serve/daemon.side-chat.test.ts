@@ -72,17 +72,23 @@ test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,父
       writeSessionMeta(dataDir, jid, { sideCount: seq });
       writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: jid });
     }
-    // 编号与计数持久化
+    // 编号与计数持久化(2026-10-31 用户实时反馈「不要进主菜单」:side 档列表隐藏,持久化入口=
+    // 主会话页签恢复 /session/:id/sides,按 sideOf 派生)
     assert.equal(readSessionMeta(dataDir, jid).sideCount, 2);
     const rows = listSessions(dataDir);
-    const titled = rows.filter((r) => r.title?.startsWith('辅助对话'));
-    assert.equal(titled.length, 2, '带编号标题的辅助档入列(可见可点回)');
-    assert.deepEqual(titled.map((r) => r.title).sort(), ['辅助对话 1', '辅助对话 2']);
-    // fork 整档继承:辅助档链含主任务行(重开播种即含当前上下文)
-    for (const r of titled) {
-      const chainLine = fs.readFileSync(r.file, 'utf8').split('\n').find((l) => l.includes('"action":"task"'))!;
+    assert.ok(!rows.some((r) => r.side === true), 'side 档不入列表(用户裁定不进主菜单)');
+    // fork 整档继承+编号标题持久化:经 meta 清单扫 sideOf(与 daemon /sides 端点同口径)
+    const allNames = fs.readdirSync(sessionsDir(dataDir)).filter((f) => f.endsWith('.jsonl'));
+    let forkChecked = 0;
+    for (const name of allNames) {
+      const meta = readSessionMeta(dataDir, name.slice(0, -'.jsonl'.length));
+      if (meta.side !== true || meta.title === undefined) continue;
+      assert.match(meta.title, /^辅助对话 [12]$/, '编号标题持久化(辅助对话 N)');
+      const chainLine = fs.readFileSync(path.join(sessionsDir(dataDir), name), 'utf8').split('\n').find((l) => l.includes('"action":"task"'))!;
       const fork = JSON.parse(chainLine) as { steps: Array<{ observation?: string }> };
       assert.ok(fork.steps.some((st) => st.observation === '主任务'), 'fork 整档继承(当前最新上下文)');
+      forkChecked += 1;
     }
+    assert.equal(forkChecked, 2, '两份辅助档都在(独立会话档)');
   });
 });
