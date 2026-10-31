@@ -261,7 +261,7 @@ test('task_wait 未派发板任务可等:pending 非终态,success 立即收口'
   }
 });
 
-test('task_wait 重启自愈 cancelled 立即收口,不再把打开态当成可等的 failed', async () => {
+test('task_wait 重启自愈 cancelled 立即收口', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-interrupted-'));
   try {
     const store = new TeamStore(path.join(root, 'teams', 'main'));

@@ -364,8 +364,6 @@ export class Harness {
     // 呈现数据（模型面 schema 只取 name/description/parameters，零影响）。工厂文件（subagent.ts 等）
     // 不在 J1 改动清单，故在注册点附加
     this.tools.register({ ...makeSpawnTool(this.runner), display: { verb: 'SPAWN' } });
-    // task_stop：后台任务停止工具（规格 D8），账本在场恒装配；呈现动词同上注册点附加
-    this.tools.register({ ...makeTaskStopTool(this.tasks, this.team), display: { verb: 'TASK_STOP' } });
     // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
     // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔);
     // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;
@@ -387,9 +385,11 @@ export class Harness {
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     });
     this.taskboard.init();
+    // task_stop / task_wait 都消费板，注册在 taskboard 装配之后。
+    // task_stop：板任务 pending|running → cancelled（running 同时 ledger.stop）；纯台账任务保持 stopped；teammate 按名打断。
+    this.tools.register({ ...makeTaskStopTool(this.tasks, this.team, this.taskboard), display: { verb: 'TASK_STOP' } });
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配;
-    // 板引用后置注册(2026-10-19 未派发板任务可等——板态轮询,注册须在 taskboard 装配之后)
-    // 第三参 run 信号 getter(2026-10-26 立即暂停):task_wait 阻塞期响应 run 中断,即刻穿透返回
+    // 板终态 success|failed|cancelled（重启打开态为 cancelled）。第三参 run 信号：阻塞期响应 run 中断，即刻穿透返回
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
     // create_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
     // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
