@@ -14,16 +14,13 @@
       ],
       "configDefaults": {
         "browser": "chrome",
-        "headless": true,
-        "builtin": false
+        "mode": "headless",
+        "userDataDir": "{dataDir}/plugins/browser-use/profile"
       },
       "configArgs": {
         "browser": [
           "--browser",
           "{value}"
-        ],
-        "headless": [
-          "--headless"
         ],
         "isolated": [
           "--isolated"
@@ -36,14 +33,9 @@
           "--user-data-dir",
           "{value}"
         ],
-        "cdpEndpoint": [
-          "--cdp-endpoint",
+        "mode": [
+          "--mode",
           "{value}"
-        ],
-        "builtin": [
-          "--builtin",
-          "--builtin-meta",
-          "{dataDir}/plugins/browser-use/builtin-cdp.json"
         ]
       }
     }
@@ -52,6 +44,15 @@
     "skills"
   ],
   "configSchema": {
+    "mode": {
+      "type": "string",
+      "options": [
+        "headless",
+        "default",
+        "builtin"
+      ],
+      "description": "浏览器形态:无头浏览器(默认)/默认浏览器(自动打开系统默认)/内置浏览器(侧栏实时镜像)"
+    },
     "browser": {
       "type": "string",
       "options": [
@@ -61,15 +62,11 @@
         "webkit",
         "msedge"
       ],
-      "description": "Agent 浏览器内核（默认 chrome）"
-    },
-    "headless": {
-      "type": "boolean",
-      "description": "无界面运行（默认开：不弹浏览器窗口，过程经快照与侧栏跟随；关=弹窗可视可手动接管）"
+      "description": "无头档内核(默认 chrome)"
     },
     "isolated": {
       "type": "boolean",
-      "description": "一次性 profile（默认关；开=关闭即忘登录态）"
+      "description": "一次性 profile(默认关=登录态保留)"
     },
     "caps": {
       "type": "string",
@@ -83,19 +80,11 @@
         "testing"
       ],
       "multi": true,
-      "description": "附加能力组（默认无=精简工具面；组越多工具越多、越占模型上下文）"
+      "description": "附加能力组(默认无)"
     },
     "userDataDir": {
       "type": "string",
-      "description": "登录态 profile 目录（默认空=临时目录，建议 <dataDir>/plugins/browser-use/profile）"
-    },
-    "cdpEndpoint": {
-      "type": "string",
-      "description": "自己的浏览器 CDP 地址(非空即附着该浏览器,browser/headless 失效;如 http://127.0.0.1:9222,Chrome 需带 --remote-debugging-port 启动)"
-    },
-    "builtin": {
-      "type": "boolean",
-      "description": "内置侧栏浏览器(优先级高于 cdpEndpoint:起独立 Chromium,侧栏「内置浏览器」页实时镜像可点击;关=普通无头/有头模式)"
+      "description": "profile 目录(默认 <dataDir>/plugins/browser-use/profile)"
     }
   },
   "exposedTools": [
