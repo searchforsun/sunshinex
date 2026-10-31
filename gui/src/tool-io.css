@@ -16,9 +16,9 @@
   border-radius: var(--radius-md);
 }
 
-/* 图片带:上 4px 贴井、下 2px 收尾、左 10px=井内文字起点对齐 */
+/* 图片带:上 4px 贴井、下 2px 收尾;左 0=与井卡片左缘对齐(2026-10-31 用户裁定「图片往左移,对齐左侧」) */
 .entry-tool .tool-images {
-  margin: 4px 0 2px 10px;
+  margin: 4px 0 2px 0;
 }
 
 /* 展开体代码字面与思考行同灰阶节奏(承接 G14.198;字号钉死不随 .entry pre 预设漂移) */
