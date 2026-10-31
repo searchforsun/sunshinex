@@ -27,14 +27,17 @@ export function useChatSubmit(deps: {
   readonly images: string[];
   readonly setImages: Dispatch<SetStateAction<string[]>>;
   /** 提交被接受回调(2026-10-27 等待模型待态):idle 提交成功 resolve 即调——宿主据此时点
-   *  起待态计时,run-open 落地(run 条出现)即收 */
+   *  起待态计时,run-open 落地(run 条出现)即收���命令通道不调(命令无 run-open,调了=永转) */
   readonly onAccepted?: () => void;
+  /** 发送拦截(2026-10-31 用户报障「转圈时应该阻止发送,防止 409」):等待模型待态/提交在途期
+   *  Enter 与发送钮一律不发(输入保留);运行中不在此列(运行中=steer 排队语义合法) */
+  readonly sendBlocked?: boolean;
 }): {
   submitText: (text: string, images?: string[]) => Promise<void>;
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked } = deps;
 /** §7 提交路径单点(idle→submit/running→steer/plan→/plan):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
  *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
@@ -50,9 +53,14 @@ const submitText = useCallback(
       onSideChat?.();
       return Promise.resolve();
     }
+    // 命令通道判定前置(2026-10-31 用户报障「/compact 双回显」):daemon runCommand 自带 user 回显帧
+    // (入档权威,回放可见),GUI 不再本地回显命令——此前本地+daemon 双气泡
+    const isCommand = !running && !hasImages && sessMode !== 'plan' && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed)
+      ? (cmdData?.supported.some((c) => c.toLowerCase() === `/${(/^\/([a-z][\w-]*)/i.exec(trimmed)?.[1] ?? '').toLowerCase()}`) ?? false)
+      : false;
     // G14.89 运行中入队不本地回显:气泡等轮收束自动发送时由 submit 回显(队列语义=还没发生);
-    // idle/plan 提交即发生,照旧回显
-    if (!running) setChat((c) => appendUserMessage(c, trimmed, undefined, imgs));
+    // idle/plan 提交即发生,照旧回显;命令通道由 daemon 回显
+    if (!running && !isCommand) setChat((c) => appendUserMessage(c, trimmed, undefined, imgs));
     let req: Promise<void>;
     if (running) req = conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
     else if (hasImages) req = conn.sessionSubmit(sessionId, trimmed, imgs); // 携图:直走提交面(daemon plan-arm 通道自动分流;命令/plan /plan 拼接不承载图片)
@@ -62,8 +70,6 @@ const submitText = useCallback(
       // 未知名一律当普通文本提交(系统提示词 skills 清单含「/skill-id 引用优先加载」提示,
       // 模型自主判断)。此前一律先试命令通道、报文含 unsupported 才回落——daemon 现回 400
       // 报文不带该字样,回落失效直接倒错误条(「还是识别成命令了」)
-      const word = (/^\/([a-z][\w-]*)/i.exec(trimmed)?.[1] ?? '').toLowerCase();
-      const isCommand = cmdData?.supported.some((c) => c.toLowerCase() === `/${word}`) ?? false;
       if (isCommand) {
         req = conn
           .runCommand(sessionId, trimmed)
@@ -77,8 +83,9 @@ const submitText = useCallback(
     } else req = conn.sessionSubmit(sessionId, trimmed);
     return req
       .then(() => {
-        // idle 提交被接受(2026-10-27 等待模型待态):run-open 前的空窗起待态计时;steer/入队不置
-        if (!running) onAccepted?.();
+        // idle 提交被接受(2026-10-27 等待模型待态):run-open 前的空窗起待态计时;steer/入队不置;
+        // 命令通道不置(命令无 run-open——置了即永转+拦发,2026-10-31 /compact 报障)
+        if (!running && !isCommand) onAccepted?.();
       })
       .catch((err: unknown) => {
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
@@ -89,6 +96,7 @@ const submitText = useCallback(
 );
 
 const send = (): void => {
+  if (sendBlocked === true) return; // 待态/在途拦发(输入保留,防 409)
   const text = input.trim();
   if (text === '' && images.length === 0) return;
   setInput('');

@@ -317,7 +317,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   useEffect(() => {
     if (awaitModelSince === null) return;
     const last = chat.entries[chat.entries.length - 1];
-    if (last !== undefined && (last.kind === 'run' || last.kind === 'error')) setAwaitModelSince(null);
+    // tool 条亦收(命令三态行无 run-open;防御:任何非 user 新条即表示 daemon 已响应)
+    if (last !== undefined && (last.kind === 'run' || last.kind === 'error' || last.kind === 'tool')) setAwaitModelSince(null);
   }, [chat.entries, awaitModelSince]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -439,6 +440,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     images: pendingImages,
     setImages: setPendingImages,
     onAccepted: () => setAwaitModelSince(Date.now()),
+    sendBlocked: awaitModelSince !== null,
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;

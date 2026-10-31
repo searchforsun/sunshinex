@@ -205,7 +205,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                 aria-label="send"
                 data-tip={t('Send', '发送')}
                 onClick={send}
-                disabled={connState !== 'open' || seeding}
+                disabled={connState !== 'open' || seeding || sendLoading === true}
               >
                 {sendLoading === true ? (
                   /* 2026-10-29 用户裁定:loading 用真转圈(run-spinner 环,与运行态同语言)——箭头自转观感滑稽 */
