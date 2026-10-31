@@ -294,3 +294,26 @@ test('MCP PUT 新字段守卫：headers/enabled/disabledTools 坏形 400（装�
     fs.rmSync(proj, { recursive: true, force: true });
   }
 });
+
+test('PUT 记录内合并保留(2026-11-01「保存配置后插件自动关闭」根修钉):只存 config 不抹同记录 enabled', async () => {
+  await withFakeHome(async (home) => {
+    mkUserPlugin(home, 'browser-use', {
+      mcpServers: { srv: { command: 'node', args: ['s.js'] } },
+      configSchema: { mode: { type: 'string', options: ['headless', 'default', 'builtin'] } },
+    });
+    const settingsPath = path.join(home, '.sunshinex', 'settings.json');
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify({ version: 1, plugins: { 'browser-use': { enabled: true, config: { mode: 'headless' } } } }));
+    const r1 = await pluginsPut({ id: 'browser-use', config: { mode: 'default' } });
+    assert.equal(r1.status, 200);
+    const after = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { plugins: Record<string, { enabled?: boolean; config?: Record<string, unknown> }> };
+    assert.equal(after.plugins['browser-use']!.enabled, true, 'enabled 保留(根修前被抹=插件自动关闭)');
+    assert.deepEqual(after.plugins['browser-use']!.config, { mode: 'default' }, 'config 覆盖更新');
+    // 反向:只存 enabled 不抹 config
+    const r2 = await pluginsPut({ id: 'browser-use', enabled: false });
+    assert.equal(r2.status, 200);
+    const after2 = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as typeof after;
+    assert.equal(after2.plugins['browser-use']!.enabled, false, 'enabled 覆盖更新');
+    assert.deepEqual(after2.plugins['browser-use']!.config, { mode: 'default' }, 'config 保留(反向亦不抹)');
+  });
+});

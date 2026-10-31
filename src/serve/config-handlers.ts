@@ -877,8 +877,17 @@ export async function handlePluginsPut(io: ConfigHandlerIo, req: http.IncomingMe
     io.send(res, 404, { error: `plugin not found: ${id}` });
     return;
   }
-  // 记录级整面替换：只含入场字段（enabled/config 均缺 = 清空该插件记录的语义——显式写空面）
-  const record: Record<string, unknown> = {};
+  // 记录内合并保留(2026-11-01 用户报障「保存配置后插件自动关闭」根修):此前只写入场字段——
+  // 保存 config 即抹掉同记录的 enabled 键(回落 manifest defaultEnabled=false=浏览器插件「自动关闭」
+  // 真因;反向存 enabled 也曾丢 config)。现按既有记录深拷贝起步、入场字段覆盖;跨层级(项目遮蔽全局)
+  // 的整面语义在装载侧合并,不受影响。清某键走「源码」raw 面(布尔无法表达键删除,保留方向安全)
+  const prevRecord = (() => {
+    const prevAll = obj['plugins'];
+    if (typeof prevAll !== 'object' || prevAll === null || Array.isArray(prevAll)) return undefined;
+    const prev = (prevAll as Record<string, unknown>)[id];
+    return prev !== null && typeof prev === 'object' && !Array.isArray(prev) ? { ...(prev as Record<string, unknown>) } : undefined;
+  })();
+  const record: Record<string, unknown> = prevRecord ?? {};
   if (body?.enabled !== undefined) record['enabled'] = body.enabled;
   if (body?.config !== undefined) record['config'] = body.config;
   const existingPlugins = obj['plugins'];
