@@ -1616,7 +1616,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.108 flex 布局:滚动区可收缩(min-width 0),+ 钮恒在视口内跟随其后——此前 block 布局
    让 scroll 被内容撑开,标签多时 + 与整条溢出视口右缘 */.sx-tabstrip { display: flex; align-items: center; overflow: visible; }.sx-tabstrip-scroll { display: flex; align-items: center; gap: 2px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; } /* 2026-10-23 用户裁定:Chrome 同款页签宽度——滚动区伸展,页签按总宽均分(200 封顶/56 兜底)随总宽变窄连续收缩 */ /* 2026-10-31 用户裁定「+ 跟随页签不固定,过窄不跑丢覆盖」:+ 回滚动区贴末签(宽足=纯跟随,
    sticky 不生效);溢出时 sticky right:0 粘在滚动口右缘不被裁(底色遮住滑过的页签),二态一体;
-   弹层 fixed 钉屏(组件内联坐标) */.sx-strip-newtab { position: sticky; right: 0; display: inline-flex; flex: none; align-items: center; background: var(--surface); }
+   弹层 fixed 钉屏(组件内联坐标) */.sx-strip-newtab { position: sticky; right: 0; margin-left: auto; display: inline-flex; flex: none; align-items: center; background: var(--surface); } /* margin-left:auto=空隙态贴右 [|](用户裁定「过窄时贴着右边」);溢出态 auto 归零回末签+sticky 兜住——二态一体 */
 
 /* G14.40:右栏拖宽把手可视化收窄(8px 命中区不变,高亮改 2px 细线居中) */.sx-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; }.sx-resizer:hover::before, .sx-resizer.active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); }.sx-resizer:hover, .sx-resizer.active { background: transparent; }
 
