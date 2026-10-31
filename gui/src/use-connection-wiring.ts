@@ -104,7 +104,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
           return;
         }
-        if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+        if (e.type.startsWith('task-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else throttles.board.push({ sessionId, e }); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)

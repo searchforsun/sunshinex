@@ -25,11 +25,9 @@ export function boardRows(st: TuiState): BoardRow[] {
     }));
 }
 
-/** board 模态键分发 hook（Ctrl+T 任务视图，P2 spec §10.3；仿 use-browse-keys 形态）：
- *  收编任务视图整段按键分支（boardMode/boardCursor 状态 + Ctrl+T 进入）与 gate 行内审批——
- *  Enter 于 gated 行 → controller.askUser 问题卡（approve/deny）→ 裁决映射 taskboard.review
- *  （spec §10.3：approve 解锁派发 / deny 维持挂起；review 后板投影经 gate-resolved 事件自更新）；
- *  非 gated 行 Enter 无操作。局部瞬态不入 retain（重挂回落主视图，与 browse 的跨重挂存续不同——
+/** board 模态键分发 hook（Ctrl+T 任务视图；仿 use-browse-keys 形态）：
+ *  收编任务视图整段按键分支（boardMode/boardCursor 状态 + Ctrl+T 进入）。
+ *  Enter 吞键、不改板。局部瞬态不入 retain（重挂回落主视图，与 browse 的跨重挂存续不同——
  *  任务视图是检视面非操作现场）；与 Ctrl+B 浏览互斥由 App 判定序保证（browse 在场先吞键，反之亦然） */
 export function useBoardKeys({
   controller,
@@ -58,7 +56,7 @@ export function useBoardKeys({
   const handleKey = (input: string, key: RawKey): boolean => {
     if (boardModeRef.current) {
       const st = stateRef.current;
-      // gate 审批问题卡在场让键（模态卡优先，规格 §6）：卡裁决后回板视图，板态跨卡存续——
+      // 问询卡在场让键（模态卡优先）：卡裁决后回板视图，板态跨卡存续——
       // 不让键则问询卡键（↑↓/Enter）被板吞死，卡无法作答
       if (st.status === 'awaiting-question' && st.question) return false;
       const rows = boardRows(st);

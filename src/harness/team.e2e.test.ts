@@ -269,8 +269,8 @@ test('e2e team 帽排队复证:cap 15 × 每任务 10 tokens——恰 2 执行 1
     const s2 = rig.board.snapshot();
     assert.equal(s2.tasks[idC]!.status, 'pending', 'teammate 在场也不抢:claim 前置拦下');
     assert.ok(
-      !rig.events.some((e) => e.type === 'task-status-changed' && p(e).taskId === idC && p(e).status === 'claimed'),
-      'C 无 claimed 事件',
+      !rig.events.some((e) => e.type === 'task-status-changed' && p(e).taskId === idC),
+      'C 留 pending：无状态迁移事件',
     );
     assert.deepEqual(rig.forkCalls, [`Task ${idA}: A`, `Task ${idB}: B`], '执行数不变(帽前两批)');
     assert.ok(rig.board.summaryLines().includes('team budget exhausted (20/15) tokens'), '帽持续透出');

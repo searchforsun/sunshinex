@@ -1,4 +1,4 @@
-// 镜像属性测试(终审钉口径):TaskBoard 发射(task-*/gate-* SessionEvent)↔ boardEventFrom 翻译 ↔
+// 镜像属性测试:TaskBoard 发射(task-* SessionEvent)↔ boardEventFrom 翻译 ↔
 // applyBoardEvent 归约三方互为镜像——对代表性事件脚本,经真实 TaskBoard(假 runner 恒成功)逐变更收集事件,
 // 投影侧(翻译 + reducer)终态必须与真相侧 board.snapshot() 结构相等。
 // 口径边界:P2 起 set_dependency/assign 也发事件(task-dep-added/task-assigned),脚本补两步进覆盖;

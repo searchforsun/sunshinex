@@ -200,8 +200,8 @@ export function App({
   const { inspect, inspectExpanded, inspectRef, setInspectRetained, handleKey: handleInspectKey } = useInspectKeys({ controller, stateRef, store, onRequestRepaint });
   // 子智能体浏览模式（Ctrl+B）：状态与按键分支（含 Ctrl+B 进入）收编于 useBrowseKeys（D17-H2 模态拆件，行为零变化）
   const { browseMode, browseCursor, browseModeRef, handleKey: handleBrowseKey } = useBrowseKeys({ controller, stateRef, store, enterInspect: setInspectRetained });
-  // 任务视图模式（Ctrl+T，P2 spec §10.3）：状态与按键分支（含 gate 行内审批）收编 useBoardKeys——
-  // 行序派生 boardRows 单点、每页 8 行滑窗、gated ⚠ 高亮；局部瞬态不入 retain（检视面非操作现场）；
+  // 任务视图模式（Ctrl+T）：状态与按键分支收编 useBoardKeys——
+  // 行序派生 boardRows 单点、每页 8 行滑窗；局部瞬态不入 retain（检视面非操作现场）；
   // 与 Ctrl+B 互斥经判定序保证（browse 在场先吞键、board 在场时 browse hook 整体让位，见 useInput 分发）
   const { boardMode, boardCursor, boardModeRef, handleKey: handleBoardKey } = useBoardKeys({ controller, stateRef });
   // 等待队列管理面板（Ctrl+Q，P5 spec §12.3）：状态与按键分支收编 useQueueKeys——查看/编辑/删除/
@@ -381,9 +381,9 @@ export function App({
    * 2. browse 浏览态（use-browse-keys，在场恒吞键）：列表空自退；Esc 退浏览；↑↓ moveCursor 回环；
    *     Enter=running 行进 live 全屏/archived 行进回看，随后退浏览；Ctrl+C=退浏览+两次确认暂停
    * 3. Ctrl+B 进入浏览（use-browse-keys）：无状态门槛、位于问询卡之前，恒吞键（无可进列表亦吞）
-   * 4. board 任务视图态（use-board-keys，Ctrl+T，P2 spec §10.3；board 在场时 browse hook 整体让位=互斥）：
-   *     列表空自退；Esc 退视图；↑↓ moveCursor 回环；Enter=gated 行 askUser 问题卡（approve/deny）映射
-   *     taskboard.review（非 gated 行无操作；卡在场让键给第 6 位问询分支，卡裁决后回板视图）；
+   * 4. board 任务视图态（use-board-keys，Ctrl+T；board 在场时 browse hook 整体让位=互斥）：
+   *     列表空保持提示；Esc 退视图；↑↓ moveCursor 回环；Enter 吞键；
+   *     问询卡在场让键给第 6 位问询分支，卡裁决后回板视图；
    *     Ctrl+C=退视图+两次确认暂停
    * 5. Ctrl+T 进入任务视图（use-board-keys）：板上有任务才进，恒吞键（空板亦吞）；browse 在场时
    *     其在场分支已吞键，Ctrl+T 到不了此处（互斥对侧由判定序保证）
@@ -587,7 +587,7 @@ export function App({
       ) : null}
       {boardMode ? (
         // 任务视图（Ctrl+T，P2 spec §10.3）：任务板投影动态区承载——行序 boardRows 单点（id 数值序）、
-        // 每页 8 行窗口、gated ⚠ 高亮，动态区每帧自绘（board 事件经节流通知进帧）；在场时 BrowseList 与
+        // 每页 8 行窗口，动态区每帧自绘（board 事件经节流通知进帧）；在场时 BrowseList 与
         // ChildPanel 让位（同 browse 语义），Spinner/输入区保留
         <BoardList key="board-list" rows={boardRows(state)} cursor={boardCursor} />
       ) : null}

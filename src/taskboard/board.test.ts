@@ -795,8 +795,8 @@ test('认领归因:claim/markClaimed/executeOne 的 by 在 running 时落盘', a
       assert.equal(board.snapshot().tasks[idA]!.executedBy, 'fork');
       const forkEv = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === idA && (e.payload as Record<string, unknown>)?.status === 'running');
       assert.equal((forkEv!.payload as Record<string, unknown>)?.by, 'fork');
-      const claimed = board.claim('w1');
-      assert.equal(claimed?.id, idB);
+      const picked = board.claim('w1');
+      assert.equal(picked?.id, idB);
       assert.equal(board.snapshot().tasks[idB]!.executedBy, 'w1');
       const claimEv = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === idB && (e.payload as Record<string, unknown>)?.status === 'running');
       assert.equal((claimEv!.payload as Record<string, unknown>)?.by, 'w1');

@@ -60,7 +60,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
     let nextBoard = snap.board;
     let nextDelegations = snap.delegations;
     for (const f of replay) {
-      if (f.e.type.startsWith('task-') || f.e.type.startsWith('gate-')) {
+      if (f.e.type.startsWith('task-')) {
         nextBoard = applyBoardEvent(nextBoard, boardEventFrom(f.e));
       } else if (f.e.type.startsWith('delegation-')) {
         nextDelegations = applyDelegation(nextDelegations, f.e);

@@ -4,10 +4,10 @@ import { theme } from '../theme';
 
 /** 任务板行（Ctrl+T 任务视图，spec §10.3）：由 TuiState.board 经 boardRows（use-board-keys.ts 单点）派生——
  *  label = title + 依赖箭头 ` ← t2,t3`（英文 needs 语义用箭头省宽度）+ assignee 后缀 `@w1`；
- *  id 只作内部锚点（key/review），不上屏（2026-10-09 用户定版：行首任务号去除） */
+ *  id 只作内部锚点（key），不上屏（2026-10-09 用户定版：行首任务号去除） */
 export interface BoardRow {
   id: string;
-  /** 任务标题（gate 行内审批问句承载——id 不上屏后问句对行靠标题） */
+  /** 任务标题（id 不上屏，行文靠标题） */
   title: string;
   label: string;
   status: string;
@@ -16,7 +16,7 @@ export interface BoardRow {
 /** 每页窗口行数（BrowseList 同款滑窗口径）：每页 8 行，超出即翻页 */
 export const BOARD_PAGE_ROWS = 8;
 
-/** 任务板列表（Ctrl+T 任务视图，动态区承载）：行形态 `${符号}${gated?' ⚠':''} ${label}`（符号由 boardRows
+/** 任务板列表（Ctrl+T 任务视图，动态区承载）：行形态 `${符号} ${label}`（符号由 boardRows
  *  单点映射；id 不上屏，2026-10-09 用户定版）、每页 8 行窗口、光标行反色（❯ + 灰底，BrowseList 先例）——
  *  动态区每帧自绘，↑↓ 可见移动零重挂；空板渲染提示行（board 模态空板自退，此形态为组件层契约/防御） */
 export function BoardList({ rows, cursor }: { rows: BoardRow[]; cursor: number }): JSX.Element {

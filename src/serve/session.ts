@@ -738,7 +738,7 @@ export class SessionRuntime {
       // G14.56:runSteps=本轮自身步数(reactor seedLen 后去重计)——GUI run 尾部「本轮」口径
       this.runRunSteps = typeof e.payload.runSteps === 'number' ? e.payload.runSteps : undefined;
     }
-    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+    if (e.type.startsWith('task-')) {
       // G14.2xx 板面/委派/子智能体流落档已收归内核泵(shadow 事件,seglog 映射 journal 行)——
       // 本面只留影子投影更新,daemon/TUI 两写面自动继承
       const bev = boardEventFrom(e);

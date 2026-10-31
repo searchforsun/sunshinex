@@ -1333,13 +1333,13 @@ export class SessionController {
     // 转录条出自段级事件,原始分支只做通道/动态区/指标事务;子智能体事件内核自守卫零条目
     this.kernel.pump(e);
     // 委派/板事件分流(P1 收敛,spec §11):类型前缀判定前置——即便上游误打 subagent 标签也不误吞(终审裁定);
-    // delegation-* 进委派投影,task-*/gate-* 进板投影,两者都不触达主链消息分支
+    // delegation-* 进委派投影,task-* 进板投影,两者都不触达主链消息分支
     if (e.type.startsWith('delegation-')) {
       this.state = { ...this.state, delegations: applyDelegation(this.state.delegations, e) };
       this.notifyThrottled();
       return;
     }
-    if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
+    if (e.type.startsWith('task-')) {
       const board = applyBoardEvent(this.state.board, boardEventFrom(e));
       if (board !== this.state.board) {
         this.state = { ...this.state, board };

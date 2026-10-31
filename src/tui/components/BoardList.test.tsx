@@ -6,7 +6,7 @@ import { boardRows } from './use-board-keys';
 import type { TuiState } from '../session';
 import { emptyBoard, applyBoardEvent } from '../../taskboard/model';
 
-test('boardRows：TuiState.board 派生单点——id 数值序（t2 < t10）、label 组装箭头/assignee、gated 透传', () => {
+test('boardRows：TuiState.board 派生单点——id 数值序（t2 < t10）、label 组装箭头/assignee、五态符号', () => {
   let board = emptyBoard();
   board = applyBoardEvent(board, { t: 'task-created', taskId: 't10', title: 'T10', spec: 'x', dependsOn: [], teamId: 'tm1', ts: 1 });
   board = applyBoardEvent(board, { t: 'task-created', taskId: 't2', title: 'B', spec: 'x', dependsOn: ['t10'], teamId: 'tm1', ts: 2 });
@@ -19,7 +19,7 @@ test('boardRows：TuiState.board 派生单点——id 数值序（t2 < t10）、
 });
 
 
-test('BoardList：行形态 `<符号> ⚠ label`（id 不上屏,2026-10-09 用户定版）——gated ⚠ 高亮、非 gated 行无 ⚠、箭头/后缀由 label 承载(符号由 boardRows 单点映射,组件直显)', () => {
+test('BoardList：行形态 `<符号> label`（id 不上屏,2026-10-09 用户定版）——箭头/后缀由 label 承载(符号由 boardRows 单点映射,组件直显)', () => {
   const one = render(
     <BoardList
       rows={[

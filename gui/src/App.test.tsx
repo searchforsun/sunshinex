@@ -762,13 +762,14 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     expect(document.querySelector('.entry-user')?.textContent).toContain('stable');
   });
 
-  it('agent-message → notice 行;delegation 状态行零渲染(G14.213 内核语义,投影面照常喂入不倒面)', async () => {
+  it('agent-message 气泡展示来源名与正文;delegation 状态行零渲染', async () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }));
     fire(conn, ev('agent-message', undefined, { from: 'a', to: 'b', text: 'ping' }));
     expect(screen.queryByText('✻ dev started')).toBeNull();
-    expect(screen.getByText('[a → b] ping')).toBeDefined();
+    expect(document.querySelector('.agent-msg-from')?.textContent).toBe('a');
+    expect(document.querySelector('.agent-msg-text')?.textContent).toBe('ping');
   });
 });
 
@@ -1595,11 +1596,11 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     return { conn, unmount };
   }
 
-  it('播种窗内 task/gate/delegation 帧缓冲不投;整替后 ≤lastSeq 丢、>lastSeq 依序重放(增量不被整替吞)', async () => {
+  it('播种窗内 task/delegation 帧缓冲不投;整替后 ≤lastSeq 丢、>lastSeq 依序重放(增量不被整替吞)', async () => {
     const { conn, unmount } = await enterChatHeldBoard();
     openTasksTab();
     // 窗内三帧:seq 3(≤ lastSeq 丢)、seq 8 assigned(须重放)、seq 9 委派(须重放)
-    fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }), 3);
+    fire(conn, ev('task-blocked', undefined, { taskId: 't1' }), 3);
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }), 8);
     fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev', title: 'Base' }), 9);
     // 窗内不投:任务页默认在场,空板 + 委派空(帧在 boardPendingRef 缓冲)

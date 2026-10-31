@@ -555,13 +555,13 @@ test('⓱ 段开 running:token/reasoning 开启段显 running,封段删字段', 
   assert.equal(k.replay()[1]!.status, undefined);
 });
 
-test('⑯ 面事件透传落档(G14.2xx 内核层落库):task-/gate-/delegation-/子智能体流发 shadow 事件,转录面零扰动', () => {
+test('⑯ 面事件透传落档:task-/delegation-/子智能体流发 shadow 事件,转录面零扰动', () => {
   const events: Array<{ t: string }> = [];
   const k = new SessionKernel({ onKernelEvent: (e) => events.push({ t: e.t }) });
   pump(
     k,
     ev('task-created', undefined, { taskId: 't1', title: 'x' }),
-    ev('gate-waiting', undefined, { taskId: 't1' }),
+    ev('task-blocked', undefined, { taskId: 't1' }),
     ev('delegation-started', undefined, { delegationId: 'd1' }),
     ev('tool-call', undefined, { subagent: 'w1' }),
     ev('user', '普通消息'), // user 走 seg 面,不发 shadow

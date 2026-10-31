@@ -12,10 +12,9 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-/** App 集成：Ctrl+T 任务视图（P2 spec §10.3）——板投影行（id [status] ⚠ title ← deps @assignee）、
- *  ↑↓ 光标、gated 行 Enter → askUser 问题卡（approve/deny）→ 裁决映射 taskboard.review、
- *  gate-resolved 事件自更新投影、Esc 退出；board 与 browse 互斥（判定序保证，断言 board 在场方向） */
-test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审批问题卡映射 review/gate-resolved 自更新/Esc 退出', async () => {
+/** App 集成：Ctrl+T 任务视图——板投影行（符号 title ← deps @assignee）、
+ *  ↑↓ 光标、Esc 退出；board 与 browse 互斥（判定序保证，断言 board 在场方向） */
+test('App：Ctrl+T 任务视图——行投影/↑↓/Esc 退出，与 browse 互斥', async () => {
   const tmp = tmpdir('sunshinex-app-board-');
   let term: TestRenderResult | undefined;
   try {
@@ -24,8 +23,7 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
     });
-    // 板投影播种（事件口径生产同构）：t1 普通任务；t2 建即 gated（task-created + gate-waiting 两条表达，
-    // TaskBoard.create({gated:true}) 的发射序镜像）+ 依赖 t1 + assignee w1
+    // 板投影播种：t1 普通任务；t2 依赖 t1 + assignee w1
     ctrl.onEventForTest({ type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', dependsOn: [] } } as never);
     ctrl.onEventForTest({ type: 'task-created', ts: 101, payload: { taskId: 't2', title: 'B', dependsOn: ['t1'] } } as never);
     ctrl.onEventForTest({ type: 'task-assigned', ts: 102, payload: { taskId: 't2', assignee: 'w1' } } as never);

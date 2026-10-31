@@ -8,7 +8,7 @@ import type { ChangeFile, SessionEvent } from '../types';
  * - streaming 不入模型:开启中即流式中(state.openSeg/openRun 派生,§3.1b 词汇收缩内核侧)。
  * - reasoning 与 assistant 段顺序开闭(不交错)——真实事件流(思考先行)渲染等价,段行更规整。
  * - done 终答 mergeFinal(前缀重叠取长/否则补入,GUI 语义);与开启段同文不重复(collector ①b)。
- * - delegation-*、task-*、gate-* 不产条目(G14.213 状态提示不显示;board/delegation 另路投影)。
+ * - delegation-*、task-* 不产条目(状态不进转录;board/delegation 另路投影)。agent-message 与 inbox 消息步落 notice。
  * - notice 不做显示面过滤(G14.90/G14.106 是显示裁定,journal 审计面保留——过滤归消费方)。
  * - token 增量只进段聚合,不独立成条(§2 非目标:无 token 级日志)。
  */
@@ -500,7 +500,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       return { ...state, entries: replaceAt(state.entries, idx, { ...cur, meta }) };
     }
     default: {
-      // 非流内事件(route/approval 系/task 系/gate 系/delegation 系)一律先封流式段
+      // 非流内事件(route/approval 系/task 系/delegation 系)一律先封流式段
       // ——collector G14.213 同构:不产条目的事件也承担段边界职责;model-end 流内
       // 不封(每模型轮收尾即发——封段会把轮内正文与 done 终稿裂成重复两条,实测 TUI 往返抓出);
       // usage/step/ctx 已升级显式统计面分支(P9),不再走流内免封清单

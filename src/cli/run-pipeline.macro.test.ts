@@ -13,7 +13,7 @@ import type { TaskRegistry } from '../harness/tasks';
 
 /** 宏测（P2/T6）：不拉真 CLI 入口——直测 runPipeline 的板路径装配与驱动序列。
  *  真 TaskBoard（tmpdir 持久化）+ fake runner（恒 ok）+ templateToTaskSpecs →
- *  两段装配（assembleBoardTasks，导出面）→ settle/关单/审批驱动 → 断言依赖边落板、执行序、gated 语义。
+ *  两段装配（assembleBoardTasks，导出面）→ settle 驱动 → 断言依赖边落板、执行序、success 终态。
  *  板 id 为不透明方言（2026-10-19 起 task-<业务段>-<随机码>），断言一律捕获返回 id,不写 id 字面量。 */
 
 const TASK_LINE = (id: string, title: string): string => `Task ${id}: ${title}`;
@@ -44,7 +44,7 @@ function makeBoard(tmp: string, calls: string[], failSpec?: string): { board: Ta
   return { board, teamId: created.value.teamId };
 }
 
-test('宏测：两段装配落板（idMap/依赖边/gated）+ settle 关单驱动，五任务按模板序全终态', async () => {
+test('宏测：两段装配落板（idMap/依赖边）+ settle 驱动，五任务按模板序全终态', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-macro-pipeline-'));
   try {
     const calls: string[] = [];
@@ -59,7 +59,7 @@ test('宏测：两段装配落板（idMap/依赖边/gated）+ settle 关单驱�
     const ids = [...idMap.values()];
     assert.equal(new Set(ids).size, 5, '五任务 id 互异');
     for (const id of ids) assert.match(id, /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/, `板 id 新方言: ${id}`);
-    // 依赖边落板（板内 taskId 口径）+ gated 标记 + 任务 title/spec 承载模板映射
+    // 依赖边落板（板内 taskId 口径）+ 任务 title/spec 承载模板映射
     const id = (name: string): string => idMap.get(name)!;
     const st0 = board.snapshot();
     assert.deepEqual(st0.tasks[id('developer')]!.dependsOn, [id('planner')]);
@@ -86,7 +86,7 @@ test('宏测：两段装配落板（idMap/依赖边/gated）+ settle 关单驱�
   }
 });
 
-test('宏测：残留任务不越权——同板预置残留 failed 与交互 in-review，本轮只看管线任务集', async () => {
+test('宏测：残留任务不越权——同板预置残留 failed 与 cancelled，本轮只看管线任务集', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-macro-residual-'));
   try {
     const calls: string[] = [];

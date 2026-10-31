@@ -36,7 +36,6 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     const { board, teams } = makeBoard(tmp);
     const tools = makeTaskBoardTools(board, teams);
     assert.deepEqual(tools.map((t) => t.name).sort(), [...TASKBOARD_TOOL_NAMES].sort());
-    assert.equal(tools.find((t) => t.name === 'review_task'), undefined);
     assert.ok(tools.every((t) => t.category === 'task'));
     const createTeam = tools.find((t) => t.name === 'create_team')!;
     const teamOut = await createTeam.executor({ name: 'beta' });
@@ -44,9 +43,10 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     const teamId = /team (\S+) created/.exec(teamOut.stdout)![1]!;
     assert.match(teamId, /^team-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/);
     const create = tools.find((t) => t.name === 'create_task')!;
-    const required = create.parameters?.required ?? [];
-    assert.ok(required.includes('teamId'));
-    assert.ok(!required.includes('gated'));
+    assert.deepEqual(
+      [...(create.parameters?.required ?? [])].sort(),
+      ['assignee', 'dependsOn', 'executor', 'retryOf', 'spec', 'teamId', 'title'],
+    );
     const r = await create.executor({ teamId, title: 'A', spec: 'do A', dependsOn: null, assignee: null, executor: null, retryOf: null });
     assert.equal(r.exitCode, 0);
     const idA = createdId(r.stdout);
@@ -85,7 +85,7 @@ test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出'
   }
 });
 
-test('get_board 收编进 lead 面:摘要行+门标记+预算行(2026-10-20 缺口补齐回归)', async () => {
+test('get_board 收编进 lead 面:摘要行含 id/状态/标题,未设帽不透出预算', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools3-'));
   try {
     const { board, teams, teamId } = makeBoard(tmp);
