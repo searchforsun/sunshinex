@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X } from 'lucide-react';
+import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
 import { t } from '../../i18n';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
@@ -234,12 +234,34 @@ interface UserEntryOpts {
 
 /** 用户气泡图片条(2026-10-26 图片功能):文本上方横排缩略图(截图口径——图上文下);
  *  点击开 lightbox(缩放/复制/下载)。空图不渲染 */
+/** 图片占位标识(2026-10-31 用户裁定「无法渲染(原始图片删除了)也要渲染占位的图片标识」):
+ *  引用解析失败面——图标+文件名,不显破图;布局随缩略图位(.user-img-strip/.tool-images 通用) */
+export function ImageMissing({ name, size = 96 }: { name: string; size?: number }): JSX.Element {
+  // 默认 96×96=用户气泡缩略图同尺寸(app.css .user-img-strip img 口径);工具行可传小档
+  return (
+    <span
+      className="img-missing"
+      role="img"
+      aria-label={t('Image unavailable', '图片不可用')}
+      data-tip={`${t('Image unavailable', '图片不可用')}
+${name}`}
+      style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: size, height: size, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', color: 'var(--fg-secondary)', background: 'color-mix(in srgb, var(--fg-secondary) 6%, transparent)', fontSize: 10, overflow: 'hidden', padding: 4, textAlign: 'center', wordBreak: 'break-all', lineHeight: 1.2 }}
+    >
+      <ImageOff size={Math.max(14, Math.round(size / 5))} strokeWidth={1.75} aria-hidden="true" />
+      <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name.split(/[\/]/).pop() ?? name}</span>
+    </span>
+  );
+}
+
 function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | null; root?: string; images: readonly string[]; onOpen?: (src: string) => void }): JSX.Element | null {
-  const resolved = useResolvedImages(conn ?? null, root, images); // images-cache 引用 → dataURL(2026-10-31 裁定显示面)
+  const resolved = useResolvedImages(conn ?? null, root, images); // 本地地址 → dataURL;失败=null 占位(2026-10-31 裁定)
   if (images.length === 0) return null;
   return (
     <div className="user-img-strip">
       {images.map((src, i) => (
+        resolved[i] === null ? (
+          <ImageMissing key={`${i}:${src.slice(-24)}`} name={src} />
+        ) : (
         <img
           key={`${i}:${src.slice(-24)}`}
           src={resolved[i] || src}
@@ -249,8 +271,9 @@ function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | nu
           loading="lazy"
           decoding="async"
           className={onOpen !== undefined ? 'clickable' : undefined}
-          onClick={onOpen !== undefined ? () => onOpen(resolved[i] || src) : undefined}
+          onClick={onOpen !== undefined && resolved[i] ? () => onOpen(resolved[i]!) : undefined}
         />
+        )
       ))}
     </div>
   );

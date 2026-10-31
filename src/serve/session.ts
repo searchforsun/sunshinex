@@ -711,7 +711,14 @@ export class SessionRuntime {
    *  广播——同 tick 读 /snapshot 时 lastSeq 恒 ≥ 任何已广播帧的 seq（影子态与 seq 无交错半态）。
    *  投影与广播同源同序：snapshot 取到的影子态恒等于已广播事件的累积（无连接时投影照走——影子不依赖
    *  消费面在场） */
-  pump(e: SessionEvent): void {
+  pump(rawEvent: SessionEvent): void {
+    // 工具结果图片同赴 images-cache(2026-10-31 用户裁定扩展:工具下拉回显图也零 base64 入档)——
+    // 截屏/读图类工具的 payload.images dataURL 在泵口单点落盘换路径引用,journal/帧/快照全链路径串;
+    // 模型视觉面在 harness wire 内已消费 dataURL,不受影响
+    let e = rawEvent;
+    if (e.type === 'tool-result' && Array.isArray(e.payload?.images) && (e.payload!.images as unknown[]).length > 0) {
+      e = { ...e, payload: { ...e.payload, images: spillImages(this.root, e.payload!.images as string[]) } };
+    }
     const seq = this.opts.nextSeq();
     this.lastSeqNum = seq;
     const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e };
