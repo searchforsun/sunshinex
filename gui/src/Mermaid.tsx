@@ -199,23 +199,38 @@ export function Mermaid({
    *  帧(无则软源码),零错误面。候选两级:全文优先(末行恰完整=零滞后),失败退掉末行再试(token 多停
    *  行中,半截末行是最常见失败因;滞后 ≤1 行)。同源去重免重渲;不报 onStatus(草稿期动作钮本就
    *  不挂)。全文成图单槽写缓存(旧槽即删,零污染):闭合时块由尾块迁头块重挂载,初始态命中缓存
-   *  即零闪替换。每帧 chart 变化重排计时=带尾随的节流,流停后余量到期补渲最后一帧 */
+   *  即零闪替换。
+   *  状态机与 token 解耦(2026-10-30 用户报障「每次只渲染一段、不往下长」根修):首版以 chart 为
+   *  effect 依赖,每个 token 都清理上一实例——在途 render(几十到上百 ms)结果一律被丢,连续流式下
+   *  几乎每次试渲都被下一 token 作废,只在流停顿时偶尔成图。现改:在途渲染不受 token 打断(结果是
+   *  当前图的前缀,照样显示——单调生长);渲染/排程期间来的变化不打断,完成后按 chart 变化尾随再渲一次;
+   *  节流计时不随 token 重排;只有围栏闭合/卸载/主题换挡才终止在途 */
   const liveDoneRef = useRef<string | null>(null);
   const liveCachedKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    liveDoneRef.current = null; // 主题/字体换挡:同源也须重渲
-  }, [themeTick]);
-  useEffect(() => {
-    if (!draft) return;
-    let alive = true;
-    const attempt = async (): Promise<void> => {
-      liveLastRef.current = Date.now();
+  const chartRef = useRef(chart);
+  chartRef.current = chart;
+  const liveRef = useRef({ active: false, running: false, timer: null as ReturnType<typeof setTimeout> | null });
+  const liveSchedule = (): void => {
+    const st = liveRef.current;
+    if (!st.active) return;
+    if (st.running || st.timer !== null) return; // 在途完成后按 chart 变化尾随;已排程者到期读最新 chart
+    st.timer = setTimeout(() => {
+      st.timer = null;
+      void liveRun();
+    }, Math.max(0, LIVE_RENDER_INTERVAL_MS - (Date.now() - liveLastRef.current)));
+  };
+  const liveRun = async (): Promise<void> => {
+    const st = liveRef.current;
+    st.running = true;
+    liveLastRef.current = Date.now();
+    const chartNow = chartRef.current;
+    try {
       const mod = await mermaidReady;
-      if (!alive || mod === undefined) return;
+      if (mod === undefined || !st.active) return;
       const mermaid = mod.default;
       mermaid.initialize(mermaidInitConfig());
-      const nl = chart.lastIndexOf('\n');
-      const candidates = nl > 0 ? [chart, chart.slice(0, nl)] : [chart];
+      const nl = chartNow.lastIndexOf('\n');
+      const candidates = nl > 0 ? [chartNow, chartNow.slice(0, nl)] : [chartNow];
       for (const src of candidates) {
         if (src === liveDoneRef.current) return;
         liveSeqRef.current += 1;
@@ -223,9 +238,9 @@ export function Mermaid({
         try {
           const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
           const r = (await Promise.race([mermaid.render(liveId, repairMermaid(src)), timeout])) as { svg: string };
-          if (!alive) return;
+          if (!st.active) return;
           liveDoneRef.current = src;
-          if (src === chart) {
+          if (src === chartNow) {
             const key = cacheKey(currentTheme(), src);
             if (liveCachedKeyRef.current !== null) svgCache.delete(liveCachedKeyRef.current);
             if (svgCache.size >= 200) svgCache.clear();
@@ -237,18 +252,35 @@ export function Mermaid({
           return;
         } catch {
           removeMermaidTemp(liveId);
-          if (!alive) return; // 半截语法:静默试下一候选;全败保留上一帧
+          if (!st.active) return; // 半截语法:静默试下一候选;全败保留上一帧
         }
       }
-    };
-    const timer = setTimeout(() => {
-      void attempt();
-    }, Math.max(0, LIVE_RENDER_INTERVAL_MS - (Date.now() - liveLastRef.current)));
+    } finally {
+      st.running = false;
+      if (st.active && chartRef.current !== chartNow) liveSchedule(); // 在途期间有新 token:尾随补渲最新帧
+    }
+  };
+  // 生命周期:draft 期激活;闭合/卸载/主题换挡终止在途与排程(主题换挡随即重开并重渲——同源亦须换色)
+  useEffect(() => {
+    if (!draft) return;
+    const st = liveRef.current;
+    st.active = true;
+    liveDoneRef.current = null;
+    liveSchedule();
     return () => {
-      alive = false;
-      clearTimeout(timer);
+      st.active = false;
+      if (st.timer !== null) {
+        clearTimeout(st.timer);
+        st.timer = null;
+      }
     };
-  }, [chart, themeTick, draft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, themeTick]);
+  // token 到达:只排程(在途/已排程则合并),不打断在途渲染
+  useEffect(() => {
+    if (draft) liveSchedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart]);
 
   if (failed !== null) {
     return (

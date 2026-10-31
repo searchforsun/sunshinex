@@ -1152,6 +1152,37 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
+  it('mermaid 流式 live:连发 token 不作废在途渲染——流未停即成图且流停后补到最新帧(2026-10-30「只渲染一段不往下长」根修;此前每 token 清理实例,连续流式下在途全丢)', async () => {
+    const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    renderMock.mockImplementation(
+      (_id: string, src: string) => new Promise((res) => setTimeout(() => res({ svg: `<svg data-lines="${src.split('\n').length}"></svg>` }), 60)),
+    );
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'model-start', ts: Date.now() });
+      fire({ type: 'token', text: '```mermaid\ngraph TD\n', ts: Date.now() });
+      let firstSvgAt = -1;
+      for (let i = 0; i < 50; i += 1) {
+        await new Promise((r) => setTimeout(r, 20)); // token 间隔 20ms < render 60ms:在途恒有后续 token
+        fire({ type: 'token', text: `N${i}-->N${i + 1}\n`, ts: Date.now() });
+        if (firstSvgAt < 0 && document.querySelector('.entry-assistant [data-testid="mermaid-svg"]') !== null) firstSvgAt = i;
+      }
+      expect(firstSvgAt).toBeGreaterThanOrEqual(0); // 流进行中已成图
+      expect(firstSvgAt).toBeLessThan(45);
+      await waitFor(
+        () => {
+          const svg = document.querySelector('.entry-assistant [data-testid="mermaid-svg"] svg');
+          expect(Number(svg?.getAttribute('data-lines'))).toBeGreaterThanOrEqual(50); // 尾随补渲最新帧(graph TD+50 边)
+        },
+        { timeout: 3_000 },
+      );
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
+  });
+
   it('2026-10-25 裁定:在途尾块恒进解析器(实时渲染从上层统一定,不枚举结构前缀)——代码块/行内代码/引用行/散文逐 token 成形', async () => {
     mountChat([]);
     await flushed();
