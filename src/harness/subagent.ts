@@ -19,6 +19,7 @@ import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { TaskRegistry } from './tasks';
 import { FORK_EXCLUDED_TOOLS } from './tools/taskboard-tools';
+import { makeTaskWaitTool } from './tools/task-wait';
 import { parseFrontmatterKV } from './skills';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
 
@@ -341,8 +342,17 @@ export class SubagentRunner {
    * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子智能体不得改动主会话工作环境；
    * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 lead，子智能体不碰板；
    * send_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 lead+具名 teammate,fork 子面不发；
-   * send_message+create_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引) */
+   * send_message+create_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
+   * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁) */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
+    const bindExecWait = (face: ToolRegistry): ToolRegistry => {
+      if (face.get('task_wait') === undefined) return face;
+      face.unregister('task_wait');
+      if (this.deps.tasks !== undefined) {
+        face.register(makeTaskWaitTool(this.deps.tasks, undefined, undefined, { kinds: ['exec'] }));
+      }
+      return face;
+    };
     if (input?.tools && input.tools.length > 0) {
       const child = this.deps.registry.derive({ only: input.tools });
       child.unregister(TODO_TOOL_NAME);
@@ -350,9 +360,11 @@ export class SubagentRunner {
       child.unregister('ask_question');
       child.unregister('worktree');
       for (const n of FORK_EXCLUDED_TOOLS) child.unregister(n);
-      return child;
+      return bindExecWait(child);
     }
-    return this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', ...FORK_EXCLUDED_TOOLS] });
+    return bindExecWait(
+      this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', ...FORK_EXCLUDED_TOOLS] }),
+    );
   }
 
   /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行）。
@@ -458,7 +470,15 @@ export class SubagentRunner {
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
   async runSubagent(
     input: SubagentSpawnInput,
-    opts?: { taskLine?: string; label?: string; budget?: SubagentBudget; signal?: AbortSignal; taskId?: string },
+    opts?: {
+      taskLine?: string;
+      label?: string;
+      budget?: SubagentBudget;
+      signal?: AbortSignal;
+      taskId?: string;
+      /** 板任务契约:seed 不含主链(只 role/task 尾),执行体只见自包含 spec——与 create_task 文案「sees ONLY this」对齐 */
+      bare?: boolean;
+    },
   ): Promise<Result<{ reply: string; tokens: number }>> {
     const budget = opts?.budget ?? this.getBudget?.();
     if (!budget) {
@@ -523,7 +543,9 @@ export class SubagentRunner {
           return fail('INCOMPLETE', `[${finalLabel}] isolation failed (${created.error.code})`);
         }
       }
-      const base = this.deps.context.chainView();
+      // bare=板任务干净会话:主链不进 seed(防执行体看见 lead 的 create_task/task_wait 编排而「自等」);
+      // 普通 spawn 仍 fork=主链快照+尾追(前缀缓存第一要义)
+      const base = opts?.bare === true ? [] : this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
       const seedHistory: StepRecord[] = [...base];
       if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });

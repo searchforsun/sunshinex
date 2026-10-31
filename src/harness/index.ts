@@ -358,6 +358,7 @@ export class Harness {
                 from: () => name,
                 ...teammateSendTargets(this.team, teamId, name),
               }),
+              this.tasks, // task_wait 换装 exec-only(自动转后台可等;板任务不可等)
             ),
           },
         });
@@ -382,7 +383,6 @@ export class Harness {
     this.agentTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot));
     this.taskboard = new TaskBoard({
       store: new TeamStore(path.join(teamsRoot, 'main')),
-      runner: this.runner,
       registry: this.tasks,
       team: this.team,
       agentTeams: this.agentTeams,
@@ -410,38 +410,50 @@ export class Harness {
         additionalProperties: false,
         required: ['teamId', 'name', 'prompt', 'agent_id'],
         properties: {
-          teamId: { type: 'string', description: 'Team id from create_team. The teammate claims tasks on this team only.' },
-          name: { type: 'string', description: 'Teammate name (unique among live teammates on this team)' },
-          prompt: { type: ['string', 'null'], description: 'Role framing for the teammate (its standing duties); null requires agent_id' },
-          agent_id: { type: ['string', 'null'], description: 'Registered agent id — its frontmatter role becomes the framing; null uses prompt' },
+          teamId: { type: 'string', description: 'teamId from create_team; this teammate only claims that team\'s tasks.' },
+          name: { type: 'string', description: 'Unique display name among living teammates on the team.' },
+          prompt: {
+            type: ['string', 'null'],
+            description: 'Role framing (standing duties). Usual: non-empty text with agent_id JSON null.',
+          },
+          agent_id: {
+            type: ['string', 'null'],
+            description:
+              'Registered agent/preset id for framing, or JSON null when using prompt. Do not invent ids or pass the string "null".',
+          },
         },
       },
       description:
-        'Register a long-lived teammate on a team (teamId from create_team). Use this for complex multi-role work where tasks depend on each other and are assigned per role (create its work with create_task on the same teamId). A teammate is a persistent context carrier — its own child session with accumulated conversation memory; it claims and executes that team\'s board tasks, and tasks (not the teammate) carry the lifecycle: idle when no tasks match, interruptible per task via task_stop. For ordinary or one-shot subtasks, use spawn instead.',
-      category: 'subagent',
+        'Register a long-lived teammate on a team (teamId from create_team). Call before create_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with task_stop (member stays). One-shot subtasks outside the board: use spawn.',
+      category: 'task',
       fullObservation: true,
       executor: async (input) => {
         const raw = input as { teamId?: unknown; name?: unknown; prompt?: unknown; agent_id?: unknown };
+        const nullish = (v: unknown): boolean => v === null || v === 'null' || v === 'undefined' || v === '';
         const teamId = typeof raw.teamId === 'string' ? raw.teamId.trim() : '';
         const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-        const prompt = typeof raw.prompt === 'string' ? raw.prompt : undefined;
-        const agentId = typeof raw.agent_id === 'string' ? raw.agent_id : undefined;
+        const prompt = typeof raw.prompt === 'string' && !nullish(raw.prompt) ? raw.prompt : undefined;
+        const agentId = typeof raw.agent_id === 'string' && !nullish(raw.agent_id) ? raw.agent_id.trim() : undefined;
         if (teamId === '') throw new CodedToolError('INVALID_ARG', 'teamId is required');
         if (name === '') throw new CodedToolError('INVALID_ARG', 'name is required');
-        if (!prompt && !agentId) throw new CodedToolError('INVALID_ARG', 'prompt or agent_id is required (the teammate needs a role framing)');
+        if (!prompt && !agentId) {
+          throw new CodedToolError(
+            'INVALID_ARG',
+            'prompt or agent_id is required: pass a non-empty prompt with agent_id JSON null (usual), or a real registered agent_id',
+          );
+        }
         const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        // 回执名优先(GUI 折叠/展开同源);teamId 置尾供 create_task 绑定
         return {
           exitCode: 0,
-          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}; give it work with create_task); interrupt a running task via task_stop`,
+          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_task; interrupt via task_stop`,
           stderr: '',
           timedOut: false,
         };
       },
       display: { verb: 'TEAM' },
     });
-    for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams)) this.tools.register(t);
+    for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent)) this.tools.register(t);
     // send_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
     // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
     // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）

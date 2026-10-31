@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { boardEventFrom, applyBoardEvent, emptyBoard, applyDelegation } from './projection';
+import { boardEventFrom, applyBoardEvent, applyTeamNameEvent, emptyBoard, applyDelegation } from './projection';
 import type { SessionEvent } from '../../src/types';
 
 /**
@@ -19,6 +19,38 @@ describe('gui 板投影（boardEventFrom + applyBoardEvent 同源直跑）', () 
     for (const e of events) board = applyBoardEvent(board, boardEventFrom(e));
     expect(board.seq).toBe(1);
     expect(board.tasks['t1']).toMatchObject({ id: 't1', title: 'A', spec: 'do A', status: 'success', teamId: 'team-a' });
+  });
+
+  it('队名直播：team-created / task-created.teamName upsert，同 id 覆盖名', () => {
+    let teams = applyTeamNameEvent([], {
+      type: 'team-created',
+      ts: 10,
+      payload: { teamId: 'team-a', name: '测试小分队', createdAt: 1 },
+    });
+    expect(teams).toEqual([{ teamId: 'team-a', name: '测试小分队', createdAt: 1 }]);
+    teams = applyTeamNameEvent(teams, {
+      type: 'task-created',
+      ts: 20,
+      payload: { taskId: 't1', teamId: 'team-a', teamName: '测试小分队', teamCreatedAt: 1 },
+    });
+    expect(teams).toHaveLength(1);
+    teams = applyTeamNameEvent(teams, {
+      type: 'task-created',
+      ts: 30,
+      payload: { taskId: 't2', teamId: 'team-b', teamName: 'Beta', teamCreatedAt: 2 },
+    });
+    expect(teams).toEqual([
+      { teamId: 'team-a', name: '测试小分队', createdAt: 1 },
+      { teamId: 'team-b', name: 'Beta', createdAt: 2 },
+    ]);
+    // 无 teamName 的旧帧不改 teams（卡头仍靠快照）
+    expect(
+      applyTeamNameEvent(teams, {
+        type: 'task-created',
+        ts: 40,
+        payload: { taskId: 't3', teamId: 'team-c', title: 'x' },
+      }),
+    ).toEqual(teams);
   });
 
   it('委派投影一例：delegation-started → delegation-ended(done) 归约出终态委派条目', () => {

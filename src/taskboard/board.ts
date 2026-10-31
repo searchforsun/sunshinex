@@ -1,7 +1,5 @@
 import type { SessionEvent } from '../types';
-import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
-import { reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
 import { slugify } from '../slug';
 import {
@@ -50,10 +48,10 @@ export function isUserAbort(code?: string, message?: string): boolean {
 }
 
 /** TaskBoard 协调器:创建/依赖/指派/停止 + 事件发射 + event sourcing + 批量并行派发。
+ *  内部任务只经 teammate 认领/指派执行(与临时 fork 解耦);external-cli 为独立执行体。
  *  派发 pending→running;回写 running→success|failed|cancelled。init 只恢复不 kick。 */
 export interface TaskBoardDeps {
   store: TeamStore;
-  runner: SubagentRunner;
   registry: TaskRegistry;
   onEvent?: (e: SessionEvent) => void;
   now?: () => number;
@@ -63,14 +61,14 @@ export interface TaskBoardDeps {
   maxOpenTasks?: number;
   /** 容量退避重派间隔(ms):并发护栏拒绝后等多少再重派,缺省 1000(测试可注入短值) */
   retryDelayMs?: number;
-  /** teammate 注册表:assignee 命中活 teammate → runTask;未指派且有活 teammate → 留给 claim。
-   *  缺省/全停 = fork 路径。type-only 导入——teammate.ts 反向引 board 类型,双向值导入会成环 */
+  /** teammate 注册表:assignee 命中活 teammate → runTask;未指派 → 踢同队活成员 claim。
+   *  无活成员时任务留 pending,绝不临时 fork。type-only 导入——teammate.ts 反向引 board 类型,双向值导入会成环 */
   team?: TeamRegistry;
   /** AgentTeam 注册表:create 拒绝未知 teamId。测试注入桩或 Memory 后端 */
   agentTeams?: AgentTeamRegistry;
   /** team 预算帽(缺省不设):整板累计 tokens 上限,超帽 drain/claim 双前置拦截——任务留 pending 不失败 */
   teamTokenCap?: number;
-  /** external-cli 执行体:executorHint 'external-cli' 的任务路由至此;缺席则仍走内部路径 */
+  /** external-cli 执行体:executorHint 'external-cli' 的任务路由至此;缺席则内部任务仍只走认领 */
   externalExecutor?: ExternalExecutorLike;
 }
 
@@ -90,8 +88,6 @@ export class TaskBoard {
   private teamTokensUsed = 0;
   /** 帽耗尽 notice 已发(板实例级 one-shot) */
   private capNoticeEmitted = false;
-  /** fork 路径在飞执行:stopTask 据此 abort,并收口对应台账 */
-  private readonly inflight = new Map<string, { abort: () => void; ledgerId: string }>();
   private readonly closedLedgers = new Set<string>();
   private readonly now: () => number;
   private readonly maxOpen: number;
@@ -186,6 +182,15 @@ export class TaskBoard {
     }
     const open = Object.values(this.state.tasks).filter((t) => t.status === 'pending' || t.status === 'running').length;
     if (open >= this.maxOpen) return fail('INVALID_ARG', `task board open-task limit reached (${this.maxOpen}); stop existing tasks or wait for them to finish`);
+    if (input.assignee !== undefined && input.assignee.length > 0 && this.deps.team !== undefined) {
+      const mate = this.deps.team.get(input.assignee);
+      if (mate === undefined || mate.stopped || mate.teamId !== input.teamId) {
+        return fail(
+          'INVALID_ARG',
+          `unknown or inactive teammate "${input.assignee}" on team ${input.teamId}; create_teammate first, or pass assignee as JSON null for claim`,
+        );
+      }
+    }
     const genId = (): string => `task-${slugify(input.title, { max: 16, fallback: 'board' })}-${Math.random().toString(36).slice(2, 6)}`;
     let taskId = genId();
     while (this.state.tasks[taskId] !== undefined) taskId = genId();
@@ -198,10 +203,13 @@ export class TaskBoard {
     if (input.assignee !== undefined && input.assignee.length > 0) {
       this.applyAndPersist({ t: 'assigned', taskId, assignee: input.assignee, ts: this.now() });
     }
+    // teamName/teamCreatedAt：GUI 任务板卡头直播（teams 快照外的实时面）；缺注册表时省略，卡头回退 teamId
+    const teamMeta = this.deps.agentTeams?.get(input.teamId);
     this.emit('task-created', {
       taskId, title: input.title, spec: input.spec, dependsOn: deps, teamId: input.teamId,
       ...(input.retryOf !== undefined ? { retryOf: input.retryOf } : {}),
       ...(input.executor !== undefined ? { executorHint: input.executor } : {}),
+      ...(teamMeta !== undefined ? { teamName: teamMeta.name, teamCreatedAt: teamMeta.createdAt } : {}),
     });
     this.kick();
     return ok({ taskId });
@@ -230,8 +238,18 @@ export class TaskBoard {
     const task = this.state.tasks[taskId];
     if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
     if (typeof assignee !== 'string' || assignee.length === 0) return fail('INVALID_ARG', 'assignee must be non-empty');
+    if (this.deps.team !== undefined) {
+      const mate = this.deps.team.get(assignee);
+      if (mate === undefined || mate.stopped || mate.teamId !== task.teamId) {
+        return fail(
+          'INVALID_ARG',
+          `unknown or inactive teammate "${assignee}" on team ${task.teamId}; create_teammate first`,
+        );
+      }
+    }
     this.applyAndPersist({ t: 'assigned', taskId, assignee, ts: this.now() });
     this.emit('task-assigned', { taskId, assignee });
+    this.kick();
     return ok(undefined);
   }
 
@@ -247,15 +265,9 @@ export class TaskBoard {
     this.applyAndPersist({ t: 'status-changed', taskId, from, to: 'cancelled', ts: this.now(), note: 'stopped' });
     this.emit('task-status-changed', { taskId, from, status: 'cancelled', note: 'stopped' });
     this.emitBlockedDownstream(taskId);
-    const flight = this.inflight.get(taskId);
-    if (flight !== undefined) {
-      flight.abort();
-      this.finishLedger(flight.ledgerId, 'stopped');
-      this.inflight.delete(taskId);
-    }
     if (from === 'running' && task.executedBy === 'external-cli') {
       this.deps.externalExecutor?.stop?.(taskId);
-    } else if (from === 'running' && task.executedBy !== undefined && task.executedBy !== 'fork') {
+    } else if (from === 'running' && task.executedBy !== undefined) {
       this.deps.team?.get(task.executedBy)?.interruptCurrent();
     }
     return ok(undefined);
@@ -280,22 +292,6 @@ export class TaskBoard {
     if (this.closedLedgers.has(ledgerId)) return;
     this.closedLedgers.add(ledgerId);
     this.deps.registry.finish(ledgerId, status, opts);
-  }
-
-  /** 执行体在首次 await 之前返回的结果(并发护栏拒绝)可在一次微任务内观察到;真正执行仍 pending */
-  private async earlyResult<T>(p: Promise<T>): Promise<T | undefined> {
-    let settled = false;
-    let value!: T;
-    let rejected: unknown;
-    let didReject = false;
-    p.then(
-      (v) => { settled = true; value = v; },
-      (e) => { settled = true; didReject = true; rejected = e; },
-    );
-    await Promise.resolve();
-    if (!settled) return undefined;
-    if (didReject) throw rejected;
-    return value;
   }
 
   private enterRunning(taskId: string, by: string): boolean {
@@ -383,106 +379,30 @@ export class TaskBoard {
     }
   }
 
+  /** 内部任务只经 teammate 指派/认领;无活成员或指派未命中则留 pending(claimDeferred 防 drain 空转)。禁临时 fork。 */
   private async executeOne(task: BoardTask): Promise<void> {
     if (task.executorHint === 'external-cli' && this.deps.externalExecutor !== undefined) {
       await this.executeExternal(task, this.deps.externalExecutor);
       return;
     }
-    if (this.deps.team !== undefined) {
-      const tm = task.assignee !== undefined ? this.deps.team.get(task.assignee) : undefined;
+    const team = this.deps.team;
+    if (team !== undefined) {
+      const tm = task.assignee !== undefined ? team.get(task.assignee) : undefined;
       if (tm !== undefined && !tm.stopped && tm.teamId === task.teamId) {
         void tm.runTask(task).catch(() => { /* 单任务异常不倒灌派发;回写由执行体收口 */ });
         this.claimDeferred = true;
         return;
       }
       if (task.assignee === undefined) {
-        let kicked = false;
-        for (const name of this.deps.team.aliveNames()) {
-          const mate = this.deps.team.get(name);
+        for (const name of team.aliveNames()) {
+          const mate = team.get(name);
           if (mate !== undefined && !mate.stopped && mate.teamId === task.teamId) {
             mate.kick();
-            kicked = true;
-          }
-        }
-        if (kicked) {
-          this.claimDeferred = true;
-          return;
-        }
-      }
-    }
-    const ledger = this.deps.registry.submit({ kind: 'subagent', label: dispatchTag(task.id) });
-    const abort = new AbortController();
-    ledger.stop = () => abort.abort();
-    this.inflight.set(task.id, { abort: () => abort.abort(), ledgerId: ledger.id });
-    this.deps.registry.append(ledger.id, `[taskboard] ${task.id}: ${task.title}\n`);
-    const startedAt = this.now();
-    let phase: 'result' | 'concurrency' | 'cancelled' = 'result';
-    let okRun = false;
-    let reply = '';
-    let tokens = 0;
-    let errCode: string | undefined;
-    let errMsg: string | undefined;
-    try {
-      const runP = this.deps.runner.runSubagent(
-        { prompt: task.spec, label: dispatchTag(task.id) },
-        {
-          taskLine: `Task ${task.id}: ${task.title}`,
-          signal: abort.signal,
-          budget: {
-            maxSteps: reactorMaxStepsEnv() ?? 400,
-            ...(subagentTokenCapEnv() !== undefined ? { tokenCap: subagentTokenCapEnv() } : {}),
-            deadlineAt: Date.now() + this.taskTimeoutMs,
-          },
-        },
-      );
-      const early = await this.earlyResult(runP);
-      if (this.state.tasks[task.id]?.status === 'cancelled') {
-        phase = 'cancelled';
-      } else if (early !== undefined && !early.ok && early.error.code === 'CONCURRENCY_LIMIT') {
-        phase = 'concurrency';
-        this.capacityDeferred = true;
-      } else if (!this.enterRunning(task.id, 'fork')) {
-        phase = 'cancelled';
-      } else {
-        const r = early ?? await runP;
-        if (this.state.tasks[task.id]?.status === 'cancelled') {
-          phase = 'cancelled';
-        } else if (r.ok) {
-          okRun = true;
-          reply = r.value.reply;
-          tokens = r.value.tokens;
-        } else {
-          errCode = r.error.code;
-          errMsg = r.error.message;
-          if (errCode === 'CONCURRENCY_LIMIT' && this.state.tasks[task.id]?.status === 'pending') {
-            phase = 'concurrency';
-            this.capacityDeferred = true;
           }
         }
       }
-    } catch (e) {
-      if (this.state.tasks[task.id]?.status === 'cancelled') phase = 'cancelled';
-      okRun = false;
-      errCode = 'THROWN';
-      errMsg = e instanceof Error ? e.message : String(e);
-    } finally {
-      this.inflight.delete(task.id);
     }
-    if (phase === 'concurrency' || phase === 'cancelled' || this.state.tasks[task.id]?.status === 'cancelled') {
-      this.finishLedger(ledger.id, 'stopped');
-      return;
-    }
-    const durationMs = this.now() - startedAt;
-    if (okRun) {
-      this.finishExecution(task.id, { ok: true, by: 'fork', reply, tokens, durationMs }, ledger.id);
-    } else if (abort.signal.aborted || isUserAbort(errCode, errMsg)) {
-      this.finishExecution(task.id, {
-        ok: false, terminal: 'cancelled', by: 'fork',
-        error: { code: errCode ?? 'ABORTED', message: errMsg ?? 'aborted' },
-      }, ledger.id);
-    } else {
-      this.finishExecution(task.id, { ok: false, by: 'fork', error: { code: errCode, message: errMsg } }, ledger.id);
-    }
+    this.claimDeferred = true;
   }
 
   private async executeExternal(task: BoardTask, executor: ExternalExecutorLike): Promise<void> {

@@ -75,6 +75,7 @@ test('常量契约:FORK_EXCLUDED_TOOLS = send_message + create_teammate + 四件
   assert.deepEqual([...FORK_EXCLUDED_TOOLS], ['send_message', 'create_teammate', ...TASKBOARD_TOOL_NAMES]);
   assert.equal(FORK_EXCLUDED_TOOLS.length, TASKBOARD_TOOL_NAMES.length + 2);
   assert.ok(FORK_EXCLUDED_TOOLS.includes('create_teammate'), 'create_teammate 应在剔除族(板任务 fork 不得建成员)');
+  assert.equal(FORK_EXCLUDED_TOOLS.includes('task_wait' as typeof FORK_EXCLUDED_TOOLS[number]), false, 'task_wait 不入剔除族(子面保留等 exec)');
   for (const n of TASKBOARD_TOOL_NAMES) assert.ok(FORK_EXCLUDED_TOOLS.includes(n), `四件套 ${n} 应在剔除族`);
   // 三处消费点源码同源钉测(防再内联漂移;沿 prompt-language.test.ts 源扫描先例)
   const ROOT = path.resolve(__dirname, '..', '..');

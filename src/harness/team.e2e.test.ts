@@ -4,7 +4,7 @@
 //   delegation-started ×7 label 齐;按 payload.subagent
 //   分组三 teammate 分担(三组非空,并集覆盖 7 任务,均分不强求);t2/t3 started 晚于 t1 ended(依赖序)。
 // ② team 帽排队复证(T4 语义,裁定:不经 Harness 直构 TaskBoard——fake 模型无 usage 事件时 Reactor
-//   done 路径 tokensUsed=0,经 Harness 帽永不触发):fake runner 每任务 tokens 10 + teamTokenCap 15
+//   done 路径 tokensUsed=0,经 Harness 帽永不触发):stub teammate 每任务 tokens 10 + teamTokenCap 15
 //   → 3 任务恰 2 执行 1 pending + summaryLines 含 exhausted;真 Teammate 注入后 kick,claim 前置
 //   拦下空手而归(在场也不抢)。
 // ③ 外部同现(spec §8「与内部无感同现」):真 TaskBoard + stub externalExecutor + 真 Teammate,
@@ -27,7 +27,6 @@ import { PolicyEngine } from './security/policy';
 import { SafetyChain } from './security/chain';
 import { ToolRegistry } from './tools';
 import { FileStore } from '../storage/adapter';
-import type { SubagentRunner } from './subagent';
 import type { TaskRegistry } from './tasks';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
@@ -81,31 +80,55 @@ interface BoardRig {
   team: TeamRegistry;
   teamId: string;
   events: SessionEvent[];
-  forkCalls: string[];
+  /** stub worker 执行探针(认领路径);用例③有真 teammate 时恒空 */
+  workCalls: string[];
   makeTeammate: (name: string) => Teammate;
 }
 
-/** 直构 TaskBoard 装配(用例②③):fake fork runner(tokens 10)+ fake 台账 + 真 TeamRegistry,
+/** 直构 TaskBoard 装配(用例②③):stub worker(tokens 10)+ 真 TeamRegistry 可再注册真 Teammate,
  * 可选 teamTokenCap / externalExecutor 注入;真 Teammate(计数 fake 模型)工厂同 teammate.test.ts 口径 */
-function makeBoardRig(tmp: string, opts?: { teamTokenCap?: number; externalExecutor?: ExternalExecutorLike }): BoardRig {
+function makeBoardRig(tmp: string, opts?: { teamTokenCap?: number; externalExecutor?: ExternalExecutorLike; useStubWorker?: boolean }): BoardRig {
   const events: SessionEvent[] = [];
-  const forkCalls: string[] = [];
-  const runner = {
-    runSubagent: async (_input: unknown, o?: { taskLine?: string }) => {
-      const line = o?.taskLine ?? '';
-      forkCalls.push(line);
-      return { ok: true as const, value: { reply: `fork ${line}`, tokens: 10 } };
-    },
-  } as unknown as SubagentRunner;
+  const workCalls: string[] = [];
   const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry;
   const team = new TeamRegistry();
   const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore());
   const createdTeam = agentTeams.create('alpha');
   if (!createdTeam.ok) throw new Error(createdTeam.error.message);
   const teamId = createdTeam.value.teamId;
+  let boardRef: TaskBoard | undefined;
+  if (opts?.useStubWorker !== false) {
+    const worker = {
+      name: 'worker',
+      teamId,
+      stopped: false,
+      kick(): void {
+        const task = boardRef!.claim('worker', teamId);
+        if (task !== undefined) void this.runTask(task);
+      },
+      async runTask(task: BoardTask): Promise<void> {
+        const board = boardRef!;
+        if (!board.markClaimed(task.id, 'worker')) return;
+        workCalls.push(`Task ${task.id}: ${task.title}\n${task.spec}`);
+        await new Promise<void>((r) => setImmediate(r));
+        board.finishExecution(task.id, { ok: true, by: 'worker', reply: `done ${task.title}`, tokens: 10 });
+      },
+      interruptCurrent: () => false,
+    };
+    assert.ok(team.register({
+      name: 'worker',
+      teamId,
+      framing: 'stub',
+      get stopped() { return worker.stopped; },
+      isBusy: () => false,
+      kick: () => worker.kick(),
+      runTask: (t: BoardTask) => worker.runTask(t),
+      interruptCurrent: () => worker.interruptCurrent(),
+      stop: () => { worker.stopped = true; },
+    } as unknown as Teammate).ok);
+  }
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
-    runner,
     registry,
     team,
     agentTeams,
@@ -114,6 +137,7 @@ function makeBoardRig(tmp: string, opts?: { teamTokenCap?: number; externalExecu
     ...(opts?.teamTokenCap !== undefined ? { teamTokenCap: opts.teamTokenCap } : {}),
     ...(opts?.externalExecutor !== undefined ? { externalExecutor: opts.externalExecutor } : {}),
   });
+  boardRef = board;
   board.init();
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), tmp);
   const tools = new ToolRegistry();
@@ -132,7 +156,7 @@ function makeBoardRig(tmp: string, opts?: { teamTokenCap?: number; externalExecu
         onEvent: (e: SessionEvent) => events.push(e),
       },
     });
-  return { board, team, teamId, events, forkCalls, makeTeammate };
+  return { board, team, teamId, events, workCalls, makeTeammate };
 }
 
 test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/全 success', async () => {
@@ -237,7 +261,7 @@ test('e2e team 帽排队复证:cap 15 × 每任务 10 tokens——恰 2 执行 1
   let rig: BoardRig | undefined;
   try {
     rig = makeBoardRig(tmp, { teamTokenCap: 15 });
-    // fake runner 每任务 tokens 10,帽 15:A(10<15)→ B(20≥15)执行,C 留 pending(T4 语义复证)
+    // stub worker 每任务 tokens 10,帽 15:A(10<15)→ B(20≥15)执行,C 留 pending(T4 语义复证)
     const capA = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'a' });
     assert.ok(capA.ok);
     const idA = capA.value.taskId;
@@ -255,7 +279,7 @@ test('e2e team 帽排队复证:cap 15 × 每任务 10 tokens——恰 2 执行 1
     await drain();
     const s = rig.board.snapshot();
     assert.equal(s.tasks[idC]!.status, 'pending', '超帽留 pending 不失败(spec §5.6)');
-    assert.deepEqual(rig.forkCalls, [`Task ${idA}: A`, `Task ${idB}: B`], '恰两任务执行');
+    assert.deepEqual(rig.workCalls, [`Task ${idA}: A\na`, `Task ${idB}: B\nb`], '恰两任务执行');
     assert.ok(rig.board.summaryLines().includes('team budget exhausted (20/15) tokens'), `达帽尾行:${JSON.stringify(rig.board.summaryLines())}`);
     assert.ok(!rig.events.some((e) => e.type === 'task-blocked'), '超帽不是失败:不发 task-blocked');
     // 真 Teammate 注入(同一 team 注册表):kick 起 claim 循环——claim 前置(20≥15)空手而归,t3 不被抢
@@ -272,7 +296,7 @@ test('e2e team 帽排队复证:cap 15 × 每任务 10 tokens——恰 2 执行 1
       !rig.events.some((e) => e.type === 'task-status-changed' && p(e).taskId === idC),
       'C 留 pending：无状态迁移事件',
     );
-    assert.deepEqual(rig.forkCalls, [`Task ${idA}: A`, `Task ${idB}: B`], '执行数不变(帽前两批)');
+    assert.deepEqual(rig.workCalls, [`Task ${idA}: A\na`, `Task ${idB}: B\nb`], '执行数不变(帽前两批)');
     assert.ok(rig.board.summaryLines().includes('team budget exhausted (20/15) tokens'), '帽持续透出');
   } finally {
     rig?.team.stopAll();
@@ -291,7 +315,7 @@ test('e2e 外部同现:external-cli 任务与 teammate 任务并行——kind ex
         return { ok: true, reply: `external ${task.id} conclusion`, tokens: 3 };
       },
     };
-    rig = makeBoardRig(tmp, { externalExecutor });
+    rig = makeBoardRig(tmp, { externalExecutor, useStubWorker: false });
     // 真 teammate 在场(注册即 kick,空板自然收兵):普通任务(无 executorHint)由其 claim 消化
     const tm = rig.makeTeammate('w-ext');
     assert.ok(rig.team.register(tm).ok);
@@ -307,9 +331,9 @@ test('e2e 外部同现:external-cli 任务与 teammate 任务并行——kind ex
       return s.tasks[extId]?.status === 'success' && s.tasks[intId]?.status === 'success';
     }, 5_000, 50);
     assert.ok(done, '两任务均达 success');
-    // external 执行体恰被 external 任务触达(executorHint 路由接管,teammate/fork 不碰)
+    // external 执行体恰被 external 任务触达(executorHint 路由接管)
     assert.deepEqual(externalCalls, [extId], 'external executor 恰执行 EXT');
-    assert.deepEqual(rig.forkCalls, [], 'fork 路径零调用(有活 teammate)')
+    assert.deepEqual(rig.workCalls, []);
     // delegation 口径:external 任务 kind 'external-cli',teammate 任务 kind 'subagent',共存一 events 收集器
     const extStarted = rig.events.find((e) => e.type === 'delegation-started' && p(e).delegationId === extId);
     const intStarted = rig.events.find((e) => e.type === 'delegation-started' && p(e).delegationId === intId);

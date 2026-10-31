@@ -17,7 +17,6 @@ import { PolicyEngine } from '../harness/security/policy';
 import { SafetyChain } from '../harness/security/chain';
 import { ToolRegistry } from '../harness/tools';
 import { FileStore } from '../storage/adapter';
-import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 import type { ModelAdapter } from '../model/adapter';
 
@@ -66,17 +65,11 @@ interface Rig {
   addTeammate(name: string, model?: CountingAdapter, inbox?: Inbox): Teammate;
 }
 
-/** 装配:真 TaskBoard(fake fork runner 计数,P1 路径探测器)+ 可选 team + 真 Teammate(fake model) */
+/** 装配:真 TaskBoard + 可选 team + 真 Teammate(fake model)。
+ *  forkCalls 探针恒空(内部任务只经 teammate 认领/指派)。 */
 function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
   const events: SessionEvent[] = [];
   const forkCalls: string[] = [];
-  const runner = {
-    runSubagent: async (_input: unknown, o?: { taskLine?: string }) => {
-      const line = o?.taskLine ?? '';
-      forkCalls.push(line);
-      return { ok: true as const, value: { reply: `fork ${line}`, tokens: 7 } };
-    },
-  } as unknown as SubagentRunner;
   const ledgerSubmitted: string[] = [];
   const ledgerFinished: Array<[string, string]> = [];
   const registry = {
@@ -93,7 +86,6 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
   const teamId = createdTeam.value.teamId;
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
-    runner,
     registry,
     agentTeams,
     onEvent: (e) => events.push(e),
@@ -156,7 +148,7 @@ async function until(pred: () => boolean, ms = 2000): Promise<boolean> {
   return pred();
 }
 
-test('teammate 自主 claim:未指派任务串行消化至 success,fork 路径零调用,delegation 事件成对', async () => {
+test('teammate 自主 claim:未指派任务串行消化至 success,delegation 事件成对', async () => {
   const tmp = tmpdir('sunshinex-tm-claim-');
   try {
     const rig = makeRig(tmp, true);
@@ -171,8 +163,7 @@ test('teammate 自主 claim:未指派任务串行消化至 success,fork 路径�
     assert.ok(rb.ok);
     const idB = rb.value.taskId;
     await drain();
-    assert.equal(rig.forkCalls.length, 0, '活 teammate 在场:未指派任务不得走 P1 fork');
-    assert.notEqual(rig.board.snapshot().tasks[idA]!.status, 'running', 'fork 路径不落 running');
+    assert.equal(rig.forkCalls.length, 0);
     w1.kick(); // 显式踢点(派发路由已自动踢过,此处验证重入幂等)
     const done = await until(() => {
       const s = rig.board.snapshot();
@@ -183,7 +174,7 @@ test('teammate 自主 claim:未指派任务串行消化至 success,fork 路径�
     // 单飞串行顺序:先建者先消化(模型计数 1),后建者后消化(计数 2)
     assert.equal(s.tasks[idA]!.artifact?.conclusion, 'done 1', '先建任务先执行');
     assert.equal(s.tasks[idB]!.artifact?.conclusion, 'done 2', '后建任务后执行');
-    assert.equal(rig.forkCalls.length, 0, '全过程零 fork 调用');
+    assert.equal(rig.forkCalls.length, 0);
     // delegation 生命周期事件:started/ended × 2,delegationId=dispatchTag(板 id,新方言原样透传),kind subagent
     const started = rig.events.filter((e) => e.type === 'delegation-started');
     const ended = rig.events.filter((e) => e.type === 'delegation-ended');
@@ -212,21 +203,22 @@ test('teammate 自主 claim:未指派任务串行消化至 success,fork 路径�
   }
 });
 
-test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → P1 fork 退化', async () => {
-  // ① 无 team 注入:create 未指派 → fake runner 被调(P1 退化)
+test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → 任务保持 pending', async () => {
+  // ① 无 team 注入:create 未指派 → 任务保持 pending
   const tmpA = tmpdir('sunshinex-tm-route-a-');
   try {
     const rigA = makeRig(tmpA, false);
     const ra = rigA.board.create({ teamId: rigA.teamId, title: 'A', spec: 'a' });
     assert.ok(ra.ok);
     const idA = ra.value.taskId;
-    const okA = await until(() => rigA.board.snapshot().tasks[idA]?.status === 'success');
-    assert.ok(okA, '无 team:P1 fork 路径原样回写');
-    assert.equal(rigA.forkCalls.length, 1, 'fake runner 被调(P1 退化)');
+    await drain();
+    await drain();
+    assert.equal(rigA.board.snapshot().tasks[idA]!.status, 'pending', '无 team:任务保持 pending');
+    assert.equal(rigA.forkCalls.length, 0);
   } finally {
     fs.rmSync(tmpA, { recursive: true, force: true });
   }
-  // ② team 注册 w1:create assignee 'w1' → runTask 路径(fake runner 零调用)
+  // ② team 注册 w1:create assignee 'w1' → runTask 路径
   const tmpB = tmpdir('sunshinex-tm-route-b-');
   try {
     const rigB = makeRig(tmpB, true);
@@ -236,7 +228,7 @@ test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → P
     const idB = rb.value.taskId;
     const okB = await until(() => rigB.board.snapshot().tasks[idB]?.status === 'success');
     assert.ok(okB, '指派路由:teammate 消化回写 success');
-    assert.equal(rigB.forkCalls.length, 0, '指派命中 teammate:零 fork 调用');
+    assert.equal(rigB.forkCalls.length, 0);
     const ended = rigB.events.filter((e) => e.type === 'delegation-ended');
     assert.equal(ended.length, 1);
     assert.equal(ended[0]!.payload?.delegationId, idB, '新方言 id 自带类别段,dispatchTag 原样透传');
@@ -246,7 +238,7 @@ test('派发路由:assignee 命中活 teammate → runTask;无 team 注入 → P
   }
 });
 
-test('帽与停:超帽注册拒(显式小帽钉死构造缺省);停后 hasAlive=false,未指派任务回退 fork 路径', async () => {
+test('帽与停:超帽注册拒(显式小帽钉死构造缺省);停后 hasAlive=false,未指派任务保持 pending', async () => {
   const tmp = tmpdir('sunshinex-tm-cap-');
   try {
     const rig = makeRig(tmp, true, 4);
@@ -266,13 +258,14 @@ test('帽与停:超帽注册拒(显式小帽钉死构造缺省);停后 hasAlive=
     rig.team.stopAll();
     assert.equal(rig.team.hasAlive(), false, '全停后无存活');
     assert.deepEqual(rig.team.aliveNames(), []);
-    // 停后未指派任务回退 P1 fork 路径(fake runner 被调)
+    // 全停后未指派任务保持 pending(认领-only)
     const rc = rig.board.create({ teamId: rig.teamId, title: 'C', spec: 'c' });
     assert.ok(rc.ok);
     const idC = rc.value.taskId;
-    const done = await until(() => rig.board.snapshot().tasks[idC]?.status === 'success');
-    assert.ok(done, '无活 teammate:回退 fork 路径完成回写');
-    assert.equal(rig.forkCalls.length, 1, 'fake runner 被调(退化语义)');
+    await drain();
+    await drain();
+    assert.equal(rig.board.snapshot().tasks[idC]!.status, 'pending', '无活 teammate:任务保持 pending');
+    assert.equal(rig.forkCalls.length, 0);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -293,7 +286,7 @@ test('指派下游不饿死:上游未指派消化后,依赖它的下游任务(as
     assert.ok(t1Done, '上游消化至 success');
     const t2Done = await until(() => rig.board.snapshot().tasks[idB]?.status === 'success');
     assert.ok(t2Done, '指派下游不饿死,同样消化至 success');
-    assert.equal(rig.forkCalls.length, 0, '全程零 fork 调用');
+    assert.equal(rig.forkCalls.length, 0);
     const ended = rig.events.filter((e) => e.type === 'delegation-ended');
     assert.deepEqual(ended.map((e) => e.payload?.delegationId).sort(), [idA, idB].sort(), '两任务 delegation 成对收口');
   } finally {
@@ -317,7 +310,7 @@ test('同批双指派串行:两任务均 assignee w1 → 单 worker 串行消化
       return s.tasks[idA]?.status === 'success' && s.tasks[idB]?.status === 'success';
     });
     assert.ok(done, '两指派任务均消化');
-    assert.equal(rig.forkCalls.length, 0, '零 fork 调用');
+    assert.equal(rig.forkCalls.length, 0);
     const s = rig.board.snapshot();
     // 串行序由共享计数模型钉死:并发共享 ctx 的旧形态无法保证先建者先收口
     assert.equal(s.tasks[idA]!.artifact?.conclusion, 'done 1', '先建者先执行(串行序 1)');
@@ -506,15 +499,15 @@ test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 di
   const tmp = tmpdir('sunshinex-tm-ledger-');
   try {
     const rig = makeRig(tmp, true);
-    // teammate 先在场上,再建任务——create 的同步派发才走 teammate 认领路径(fork 探针零调用为证);
-    // 反序则任务被 create 即时派给 fork(退化语义),用例就测不到 teammate 台账面了
+    // teammate 先在场上,再建任务——create 的同步派发才走 teammate 认领路径;
+    // 反序则无活成员时任务留 pending,用例测不到 teammate 台账面
     rig.addTeammate('w1').kick();
     const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A' });
     assert.ok(ra.ok);
     const idA = ra.value.taskId;
     const settled = await until(() => rig.board.snapshot().tasks[idA]?.status === 'success');
     assert.ok(settled, '任务收口');
-    assert.deepEqual(rig.forkCalls, [], 'fork 探针零调用(确系 teammate 路径)');
+    assert.deepEqual(rig.forkCalls, []);
     assert.equal(rig.board.snapshot().tasks[idA]!.executedBy, 'w1', 'executedBy 落实际执行者(Ctrl+T 执行者列)');
     assert.deepEqual(rig.ledgerSubmitted, [idA], 'submit 以 dispatchTag(板 id) 标签登记(新方言原样透传)');
     assert.equal(rig.ledgerFinished.length, 1);

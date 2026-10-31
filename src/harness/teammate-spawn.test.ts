@@ -56,17 +56,20 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     // 注入只读对(get_board/get_task)
     assert.ok(h.tools.get('get_board') !== undefined, '主链面含 get_board(板读取权在 lead)');
     assert.equal(h.tools.get('get_task'), undefined, '主链面不得有 get_task');
-    const face = deriveTeammateRegistry(h.tools, h.taskboard);
+    const face = deriveTeammateRegistry(h.tools, h.taskboard, undefined, h.tasks);
     assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
     assert.equal(face.get('spawn'), undefined, 'teammate 面不得再生子代');
     assert.equal(face.get('create_task'), undefined, 'teammate 面不得碰板面写操作');
     assert.equal(face.get('create_teammate'), undefined, 'teammate 面不得再建成员(lead-only)');
-    // fork 子面剔除 send_message / create_teammate(消息身份与建成员属 lead)
+    assert.notEqual(face.get('task_wait'), undefined, 'teammate 面保留 task_wait(等 exec 自动转后台)');
+    // fork 子面剔除 send_message / create_teammate(消息身份与建成员属 lead);task_wait 保留为 exec-only
     assert.equal(h.runner.deriveChildRegistry({}).get('send_message'), undefined, 'fork 子面缺省派生不得含 send_message');
     assert.equal(h.runner.deriveChildRegistry({}).get('create_teammate'), undefined, 'fork 子面不得含 create_teammate');
+    assert.notEqual(h.runner.deriveChildRegistry({}).get('task_wait'), undefined, 'fork 子面保留 task_wait(exec-only)');
     assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'create_teammate', 'read'] }).get('send_message'), undefined, '显式 allowlist 亦恒剔除 send_message');
     assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'create_teammate', 'read'] }).get('create_teammate'), undefined, '显式 allowlist 亦恒剔除 create_teammate');
+    assert.notEqual(h.runner.deriveChildRegistry({ tools: ['task_wait', 'read'] }).get('task_wait'), undefined, '显式 allowlist 内 task_wait 换装保留');
     const created = h.taskboard.create({ teamId: TEAM_ID, title: 'A', spec: 'do A stuff' });
     assert.ok(created.ok);
     const aId = created.value.taskId;
@@ -84,6 +87,28 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
       (e: unknown) => e instanceof CodedToolError && e.code === 'INVALID_ARG',
       '未知 taskId 应 INVALID_ARG',
     );
+  } finally {
+    h?.team.stopAll();
+    h?.tasks.stopAll();
+    restore();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('create_teammate:agent_id 字符串 "null" 归一为缺席——只传 prompt 即可建队友(防 Subagent not found 死循环)', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-nullish-'));
+  const restore = seedTeam(tmp);
+  let h: Harness | undefined;
+  try {
+    h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
+    const r = await h.tools.execute(
+      'create_teammate',
+      { teamId: TEAM_ID, name: '小助手', prompt: 'help with board tasks', agent_id: 'null' },
+      h.safety,
+    );
+    assert.ok(r.ok && r.value.exitCode === 0, `agent_id:"null" 应成功:${JSON.stringify(r)}`);
+    assert.match(r.value.stdout, /teammate "小助手" started/);
+    assert.ok(h.team.aliveNames().includes('小助手'));
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();

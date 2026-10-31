@@ -213,22 +213,48 @@ test('task_wait 未派发板任务可等:pending 非终态,success 立即收口'
     const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
     const team = agentTeams.create('alpha');
     assert.ok(team.ok);
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
+    const teamId = team.value.teamId;
+    let boardRef: TaskBoard | undefined;
+    let hangResolve: (() => void) | undefined;
+    const hang = new Promise<void>((res) => { hangResolve = res; });
+    const worker = {
+      name: 'worker',
+      teamId,
+      stopped: false,
+      kick(): void {
+        const task = boardRef!.claim('worker', teamId);
+        if (task !== undefined) void this.runTask(task);
+      },
+      async runTask(task: { id: string; title: string }): Promise<void> {
+        const board = boardRef!;
+        if (!board.markClaimed(task.id, 'worker')) return;
+        if (task.title === 'Blocker') await hang;
+        else await new Promise<void>((r) => setImmediate(r));
+        board.finishExecution(task.id, { ok: true, by: 'worker', reply: 'r', tokens: 1 });
+      },
+      interruptCurrent: () => false,
+    };
+    const stubTeam = {
+      get: (name: string) => (name === 'worker' ? worker : undefined),
+      aliveNames: () => ['worker'],
+      hasAlive: () => true,
+    };
     const board = new TaskBoard({
       store: new TeamStore(path.join(root, 'teams', 'main')),
-      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'r', tokens: 1 } }; } } as never,
       registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
       agentTeams,
+      team: stubTeam as never,
       onEvent: () => {},
       now: (() => { let n = 1000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
-    const blocker = board.create({ teamId: team.value.teamId, title: 'Blocker', spec: 'hold' });
+    const blocker = board.create({ teamId, title: 'Blocker', spec: 'hold' });
     assert.ok(blocker.ok);
-    const created = board.create({ teamId: team.value.teamId, title: 'WaitDemo', spec: 'demo', dependsOn: [blocker.value.taskId] });
+    const created = board.create({ teamId, title: 'WaitDemo', spec: 'demo', dependsOn: [blocker.value.taskId] });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
+    await new Promise((r) => setImmediate(r));
     const registry = new ToolRegistry();
     registry.register(makeTaskWaitTool(tasks, board));
     const peek = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
@@ -238,7 +264,7 @@ test('task_wait 未派发板任务可等:pending 非终态,success 立即收口'
       assert.match(peek.value.stdout, /status peek/, 'peek 非阻塞');
       assert.doesNotMatch(peek.value.stdout, /all target tasks finished/);
     }
-    release();
+    hangResolve?.();
     for (let i = 0; i < 20 && board.snapshot().tasks[boardId]?.status !== 'success'; i++) {
       await new Promise((r) => setImmediate(r));
     }
@@ -270,7 +296,6 @@ test('task_wait 重启自愈 cancelled 立即收口', async () => {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const board = new TaskBoard({
       store,
-      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as never,
       registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
       onEvent: () => {},
       now: (() => { let n = 1000; return () => ++n; })(),
@@ -286,6 +311,30 @@ test('task_wait 重启自愈 cancelled 立即收口', async () => {
       assert.match(r.value.stdout, /\(board\) cancelled — CrashDemo/);
       assert.match(r.value.stdout, /to redo this work, create a new task with create_task/);
     }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_wait kinds=exec：可等 exec；拒 subagent/板派发台账；null 只收 exec running', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-execonly-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const ex = tasks.submit({ kind: 'exec', label: 'build' });
+    const sa = tasks.submit({ kind: 'subagent', label: 'task-board-a' });
+    tasks.finish(ex.id, 'done', { exitCode: 0 });
+    const registry = new ToolRegistry();
+    registry.register(makeTaskWaitTool(tasks, undefined, undefined, { kinds: ['exec'] }));
+    const okExec = await registry.execute('task_wait', { taskIds: [ex.id], timeoutSeconds: null }, stubSafety);
+    assert.ok(okExec.ok);
+    if (okExec.ok) assert.match(okExec.value.stdout, new RegExp(`${ex.id} \\(exec\\) done`));
+    const badSa = await registry.execute('task_wait', { taskIds: [sa.id], timeoutSeconds: 0 }, stubSafety);
+    assert.ok(!badSa.ok);
+    assert.match(badSa.error.message, /only accepts exec/);
+    // null：running 的 subagent 不计；无 exec running → 空回执
+    const empty = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: null }, stubSafety);
+    assert.ok(empty.ok);
+    if (empty.ok) assert.match(empty.value.stdout, /no background tasks running/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

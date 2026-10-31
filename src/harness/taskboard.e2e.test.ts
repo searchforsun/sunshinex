@@ -1,8 +1,5 @@
-// lead 建队建任务+依赖 → 自动派发(fork)→ 回写 success → task_wait(null) 拉模式唤醒。
-//
-// 卡序:create_team → create_task A → fork A done(派发发生在 create_task 执行器内)→
-// create_task B(A 已 success 才派发)→ fork B 耗时 exec → 主链 task_wait → fork B done → 主链收尾。
-// 板 id 不透明:卡 thunk 在消费时刻读 task-created 事件里的真实 id。
+// lead 建队 → create_teammate → create_task(依赖链) → 队友认领回写 → task_wait 拉模式唤醒。
+// 板 id 不透明:自 task-created 事件捕获。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -14,10 +11,20 @@ import type { ModelAdapter } from '../model/adapter';
 import { SessionEvent } from '../types';
 import { TASKBOARD_TOOL_NAMES } from './tools/taskboard-tools';
 
+const drain = () => new Promise((r) => setImmediate(r));
+
+async function until(pred: () => boolean, ms = 4000): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (pred()) return true;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  return pred();
+}
+
 test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、review 闭环', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbe2e-'));
   try {
-    // id 捕获:task-created 事件在建任务执行器内同步发射,后续卡的Thunk即可读真实板 id 装配依赖/裁决
     const events: SessionEvent[] = [];
     const ids: Record<'A' | 'B', string | undefined> = { A: undefined, B: undefined };
     const onEvent = (e: SessionEvent): void => {
@@ -28,68 +35,71 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
         if (p.title === 'B') ids.B = p.taskId as string;
       }
     };
-    // 消费顺序见文件头。fork 牌夹在主链派发牌与下一张主链牌之间。
-    const tc = (step: number, tool: string, input: unknown) => ({
-      finish: 'tool_calls' as const,
-      content: '',
-      toolCalls: [{ id: `call_${step}`, name: tool, argsJson: JSON.stringify(input) }],
-    });
-    const doneCard = (reply: string) => ({ finish: 'stop' as const, content: reply, toolCalls: [] });
-    let h: Harness;
-    const taskInput = (title: string, spec: string, dependsOn: string[] | null) => ({
-      teamId: h.agentTeams.list()[0]!.teamId,
-      title,
-      spec,
-      dependsOn,
-      assignee: null,
-      executor: null,
-      retryOf: null,
-    });
-    const cards: Array<() => ReturnType<typeof tc> | ReturnType<typeof doneCard>> = [
-      () => tc(0, 'create_team', { name: 'alpha' }),
-      () => tc(1, 'create_task', taskInput('A', 'produce A report', null)),
-      () => doneCard('A report done'),
-      () => tc(2, 'create_task', taskInput('B', 'produce B report', [ids.A!])),
-      () => tc(3, 'exec', { command: 'node -e "setTimeout(()=>{},400)"', background: null }),
-      () => tc(4, 'task_wait', { taskIds: null, timeoutSeconds: 30 }),
-      () => doneCard('B report done'),
-      () => doneCard('board closed'),
-    ];
-    let step = 0;
+    // 队友 Reactor 共用此模型:每任务一拍 stop 收口
     const model = {
       provider: 'openai',
       capabilities: { chat: true },
-      chat: async () => cards[step++]!(),
+      chat: async () => ({ finish: 'stop' as const, content: 'task done', toolCalls: [] }),
     } as unknown as ModelAdapter;
-    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent });
-    const r = await h.reactor.run({ goal: '完成板上任务并收尾' }, { maxSteps: 12 });
-    assert.equal(r.done, true);
-    assert.equal(r.reply, 'board closed');
+    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent });
+    const safety = h.safety;
+
+    const team = await h.tools.execute('create_team', { name: 'alpha' }, safety);
+    assert.ok(team.ok && team.value.exitCode === 0, `create_team: ${JSON.stringify(team)}`);
+    const teamId = h.agentTeams.list()[0]!.teamId;
+
+    const tm = await h.tools.execute(
+      'create_teammate',
+      { teamId, name: 'worker', prompt: 'claim board tasks and finish each', agent_id: null },
+      safety,
+    );
+    assert.ok(tm.ok && tm.value.exitCode === 0, `create_teammate: ${JSON.stringify(tm)}`);
+
+    const ca = await h.tools.execute(
+      'create_task',
+      { teamId, title: 'A', spec: 'produce A report', dependsOn: null, assignee: null, executor: null, retryOf: null },
+      safety,
+    );
+    assert.ok(ca.ok && ca.value.exitCode === 0, `create_task A: ${JSON.stringify(ca)}`);
+    await drain();
+    assert.ok(await until(() => ids.A !== undefined && h.taskboard.snapshot().tasks[ids.A!]?.status === 'success'));
+
+    const cb = await h.tools.execute(
+      'create_task',
+      { teamId, title: 'B', spec: 'produce B report', dependsOn: [ids.A!], assignee: null, executor: null, retryOf: null },
+      safety,
+    );
+    assert.ok(cb.ok && cb.value.exitCode === 0, `create_task B: ${JSON.stringify(cb)}`);
+    await drain();
+    assert.ok(await until(() => ids.B !== undefined && h.taskboard.snapshot().tasks[ids.B!]?.status === 'success'));
+
     assert.ok(ids.A !== undefined && ids.B !== undefined, '两任务 id 已自事件捕获');
+    // 显式 id:终态幂等回执(null=仅等「当前在跑」,已全部 success 时会报 no background tasks)
+    const wait = await h.tools.execute('task_wait', { taskIds: [ids.A!, ids.B!], timeoutSeconds: 30 }, safety);
+    assert.ok(wait.ok && wait.value.exitCode === 0, `task_wait: ${JSON.stringify(wait)}`);
+    assert.ok(
+      wait.value.stdout.includes('all target tasks finished') || /status=success/.test(wait.value.stdout),
+      `task_wait 应回执两任务终态,实际:${wait.value.stdout.slice(0, 240)}`,
+    );
+
     const s = h.taskboard.snapshot();
     assert.equal(s.tasks[ids.A!]!.status, 'success');
     assert.equal(s.tasks[ids.B!]!.status, 'success');
-    // 拉模式唤醒:主链 task_wait 真实阻塞后被 B 台账终态唤醒(回执为「全部完成」而非「无在跑任务」)
-    assert.ok(
-      r.steps.some((st) => st.observation.includes('all target tasks finished')),
-      `task_wait 应以「全部完成」回执唤醒,实际步骤观察:${r.steps.map((st) => st.observation.slice(0, 80)).join(' | ')}`,
-    );
-    // 终态回写:success 事件在场
+
     for (const id of [ids.A!, ids.B!]) {
       assert.ok(
         events.some((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === id && (e.payload as Record<string, unknown>)?.status === 'success'),
         `task ${id} 应有回写 success 事件`,
       );
     }
-    // 执行顺序:B 的委派事件必在 A 终态之后
     const idx = (pred: (e: SessionEvent) => boolean) => events.findIndex(pred);
     const aEnded = idx((e) => e.type === 'delegation-ended' && (e.payload as Record<string, unknown>)?.delegationId === ids.A);
     const bStarted = idx((e) => e.type === 'delegation-started' && (e.payload as Record<string, unknown>)?.delegationId === ids.B);
     assert.ok(aEnded >= 0 && bStarted > aEnded, `B 派发晚于 A 终态(${aEnded} < ${bStarted})`);
-    // 委派载荷口径:kind 'subagent' + label=委派标签(dispatchTag(板 id),task_wait 可按板 id 归一命中)
+    // 队友委派:kind subagent + label=队友名(非 task id)
     const bDel = events.find((e) => e.type === 'delegation-started' && (e.payload as Record<string, unknown>)?.delegationId === ids.B);
     assert.equal((bDel!.payload as Record<string, unknown>)?.kind, 'subagent');
-    assert.equal((bDel!.payload as Record<string, unknown>)?.label, ids.B);
+    assert.equal((bDel!.payload as Record<string, unknown>)?.label, 'worker');
     assert.ok(events.some((e) => e.type === 'task-created' && (e.payload as Record<string, unknown>)?.taskId === ids.A));
     assert.ok(events.some((e) => e.type === 'task-unlocked'));
   } finally {

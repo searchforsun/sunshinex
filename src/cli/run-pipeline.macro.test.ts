@@ -8,11 +8,12 @@ import { templateToTaskSpecs } from '../graph/templates';
 import { TaskBoard } from '../taskboard/board';
 import { TeamStore } from '../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../taskboard/team-registry';
-import type { SubagentRunner } from '../harness/subagent';
+import type { TeamRegistry } from '../taskboard/teammate';
+import type { BoardTask } from '../taskboard/model';
 import type { TaskRegistry } from '../harness/tasks';
 
 /** 宏测（P2/T6）：不拉真 CLI 入口——直测 runPipeline 的板路径装配与驱动序列。
- *  真 TaskBoard（tmpdir 持久化）+ fake runner（恒 ok）+ templateToTaskSpecs →
+ *  真 TaskBoard（tmpdir 持久化）+ stub teammate（认领后 finishExecution）+ templateToTaskSpecs →
  *  两段装配（assembleBoardTasks，导出面）→ settle 驱动 → 断言依赖边落板、执行序、success 终态。
  *  板 id 为不透明方言（2026-10-19 起 task-<业务段>-<随机码>），断言一律捕获返回 id,不写 id 字面量。 */
 
@@ -22,26 +23,46 @@ function makeBoard(tmp: string, calls: string[], failSpec?: string): { board: Ta
   const teams = new AgentTeamRegistry(new MemoryAgentTeamStore());
   const created = teams.create('pipeline');
   if (!created.ok) throw new Error(created.error.message);
+  const teamId = created.value.teamId;
+  let boardRef: TaskBoard | undefined;
+  const worker = {
+    name: 'worker',
+    teamId,
+    stopped: false,
+    kick(): void {
+      const task = boardRef!.claim('worker', teamId);
+      if (task !== undefined) void this.runTask(task);
+    },
+    async runTask(task: BoardTask): Promise<void> {
+      const board = boardRef!;
+      if (!board.markClaimed(task.id, 'worker')) return;
+      calls.push(TASK_LINE(task.id, task.title));
+      // 等 board.drain 收兵后再 finish→kick(否则 draining 中尾 kick 被吞)
+      await new Promise<void>((r) => setImmediate(r));
+      if (failSpec !== undefined && task.spec.includes(failSpec)) {
+        board.finishExecution(task.id, { ok: false, by: 'worker', error: { code: 'EXEC', message: 'residual failure' } });
+        return;
+      }
+      board.finishExecution(task.id, { ok: true, by: 'worker', reply: `reply of ${TASK_LINE(task.id, task.title)}`, tokens: 10 });
+    },
+    interruptCurrent: () => false,
+  };
+  const team = {
+    get: (name: string) => (name === 'worker' ? worker : undefined),
+    aliveNames: () => (worker.stopped ? [] : ['worker']),
+    hasAlive: () => !worker.stopped,
+  } as unknown as TeamRegistry;
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
-    runner: {
-      runSubagent: async (input: unknown, o?: { taskLine?: string }) => {
-        const line = o?.taskLine ?? '';
-        calls.push(line);
-        const prompt = typeof (input as { prompt?: unknown }).prompt === 'string' ? (input as { prompt: string }).prompt : '';
-        if (failSpec !== undefined && prompt.includes(failSpec)) {
-          return { ok: false as const, error: { code: 'EXEC', message: 'residual failure' } };
-        }
-        return { ok: true as const, value: { reply: `reply of ${line}`, tokens: 10 } };
-      },
-    } as unknown as SubagentRunner,
     registry: { submit: () => ({ id: 'm1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry,
     agentTeams: teams,
+    team,
     onEvent: () => {},
     now: (() => { let n = 1000; return () => ++n; })(),
   });
+  boardRef = board;
   board.init();
-  return { board, teamId: created.value.teamId };
+  return { board, teamId };
 }
 
 test('宏测：两段装配落板（idMap/依赖边）+ settle 驱动，五任务按模板序全终态', async () => {
@@ -101,6 +122,9 @@ test('宏测：残留任务不越权——同板预置残留 failed 与 cancelle
     const stoppedId = residualStopped.value.taskId;
     assert.ok(board.stopTask(stoppedId).ok);
     assert.equal(board.snapshot().tasks[stoppedId]!.status, 'cancelled');
+    // 等 create 当轮 drain 收兵与 stub 迟到回写落定,再装配本轮——否则 draining 中 create 尾 kick 被吞
+    await new Promise<void>((r) => setImmediate(r));
+    await new Promise<void>((r) => setImmediate(r));
     const asm = assembleBoardTasks(board, templateToTaskSpecs('目标（验收标准：c1=ok）'), teamId);
     assert.ok(asm.ok);
     const ids = [...asm.value.values()];

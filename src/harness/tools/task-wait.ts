@@ -3,6 +3,7 @@
 // （未派发也可等，轮询板态至 success/failed/cancelled）；teammate 长驻执行体是声明不是任务，不进账本、
 // 不在等待面（停止走 task_stop 按名）。taskIds=null 等当前全部 running；指定列表只等这些任务，已终态
 // 幂等即回；timeoutSeconds=0 非阻塞 peek；未知 id INVALID_ARG 附等待面投影（账本工作单元+板任务清单）。
+// 子面/队友：kinds=['exec']——可等自动转后台的 exec，不可等板任务/板派发台账(防自等死锁)。
 import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
@@ -12,6 +13,13 @@ const DEFAULT_TIMEOUT_SECONDS = 1800;
 const RECEIPT_TAIL_LINES = 200;
 /** 板任务终态：success 完成、failed 执行错误、cancelled 主动停止或重启自愈 */
 const BOARD_TERMINAL = new Set(['success', 'failed', 'cancelled']);
+
+export type TaskWaitKind = BackgroundTask['kind'];
+
+export interface TaskWaitToolOpts {
+  /** 可等待的台账 kind；缺省 exec+subagent。子面传 ['exec'] 排除板派发台账自等 */
+  readonly kinds?: readonly TaskWaitKind[];
+}
 
 function readTail(filePath: string, lines: number): string {
   try {
@@ -35,7 +43,16 @@ function receiptBody(t: BackgroundTask): string {
   return `${head}\n${readTail(t.outputFilePath, RECEIPT_TAIL_LINES)}`;
 }
 
-export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunSignal?: () => AbortSignal | undefined): RegisteredTool {
+export function makeTaskWaitTool(
+  tasks: TaskRegistry,
+  board?: TaskBoard,
+  getRunSignal?: () => AbortSignal | undefined,
+  opts?: TaskWaitToolOpts,
+): RegisteredTool {
+  const allowedKinds = new Set<TaskWaitKind>(opts?.kinds ?? ['exec', 'subagent']);
+  const allowBoard = board !== undefined && allowedKinds.has('subagent');
+  const execOnly = allowedKinds.size === 1 && allowedKinds.has('exec');
+
   return {
     parameters: {
       type: 'object',
@@ -45,19 +62,20 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
         taskIds: {
           type: ['array', 'null'],
           items: { type: 'string' },
-          description:
-            'Task ids to wait for: background work ids (label-slug-UTCtimestamp-rand, e.g. ["subagent-20261003T064522Z-a7f3"]) or board task ids as create_task/the board summary shows them (["task-build-parser-k3f2"]; older journals use short "t5" ids — accepted too). Board tasks are the task lifecycle authority: pre-dispatch ones (pending, not yet running) are valid targets — the call blocks until their work reaches a terminal state (success, failed, or cancelled). null waits for all currently running work. Already-finished ids return an idempotent receipt immediately.',
+          description: execOnly
+            ? 'Exec background ids; JSON null = all currently running exec work. Board task ids are not waitable on this face.'
+            : 'Board task ids from create_task/get_board (e.g. ["task-build-parser-k3f2"]), and/or background exec/spawn ledger ids. Prefer explicit board ids. JSON null = only work already running (pending board tasks are omitted — pass their ids). Finished ids return an immediate receipt.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],
-          description:
-            'Max seconds to block before returning the current status; null defaults to 1800; 0 is a non-blocking status peek (return the current snapshot immediately without waiting). After a timeout you can call task_wait again or task_stop.',
+          description: 'Block cap in seconds; JSON null = 1800; 0 = status peek without waiting.',
         },
       },
     },
     name: 'task_wait',
-    description:
-      'Block until work reaches a terminal state and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. Board terminal states are success, failed, and cancelled. failed is an execution error and is never auto-rerun; cancelled is an explicit stop, or a task that was still pending or running when the app restarted. Any terminal state returns immediately; the wait never hangs on a finished task (default cap 1800s). Wait targets are background work (exec, subagent forks) and board tasks — board tasks are the task lifecycle authority, even before dispatch; long-lived teammates are executors, not tasks, and are never wait targets (wait their board task ids). taskIds=null waits all currently running work; on timeout the current status is returned so you can keep waiting or stop the task. A failed or cancelled board task is terminal: to redo the work, create a new task with create_task.',
+    description: execOnly
+      ? 'Wait for an auto-backgrounded exec command (receipt: id, status, exit, log tail). JSON null waits running exec only. Board/teammate work is not waitable here — finish your own board task; the lead waits on board ids.'
+      : 'Wait until listed work reaches a terminal state; return id, kind, status, exit, and exec log tail or conclusion. Prefer board task ids from create_task. Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_task + retryOf). Teammates are executors, not wait targets — wait their board task ids. taskIds=null waits currently running work only. Default timeout 1800s.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -65,10 +83,12 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
       const rawTimeout = raw.timeoutSeconds ?? null;
       let ids: string[];
       let boardWaitIds: string[] = [];
+      const kindOk = (t: BackgroundTask): boolean => allowedKinds.has(t.kind);
       if (raw.taskIds === null || raw.taskIds === undefined) {
         // 长驻 teammate 条目排除(2026-10-06 契约收敛):teammate 存活即 running,等它=等到 task_stop——
         // task_wait(null) 的语义是「等在跑的活收口」,可收口面=exec/后台 spawn/板任务(dispatchTag(板 id) 登记条目)
-        ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
+        // 子面 kinds=['exec']：null 只等 exec，排除板派发台账(自等)
+        ids = tasks.list().filter((t) => t.status === 'running' && kindOk(t)).map((t) => t.id);
         if (ids.length === 0) {
           return { exitCode: 0, stdout: 'no background tasks running', stderr: '', timedOut: false };
         }
@@ -79,16 +99,22 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
         // id 分类:台账可解析(直接/resolveId 前缀)走台账等待;板上在册但台账无条目(pending、尚未 running)
         // 为合法等待对象,走板态轮询至 success/failed/cancelled;两者皆非才 INVALID_ARG
         ids = [];
-        const boardTasks = board?.snapshot().tasks ?? {};
+        const boardTasks = allowBoard ? (board?.snapshot().tasks ?? {}) : {};
         const boardKeyOf = (rawId: string): string | undefined => {
           if (boardTasks[rawId] !== undefined) return rawId;
           const m = /^task-(t\d+)$/.exec(rawId); // 旧档委派形态 task-tN → 板键 tN
           return m !== null && boardTasks[m[1]] !== undefined ? m[1] : undefined;
         };
         const unknown: string[] = [];
+        const kindRejected: string[] = [];
         for (const rawId of raw.taskIds.map(String)) {
           const rid = tasks.resolveId(rawId);
-          if (tasks.get(rid) !== undefined) {
+          const hit = tasks.get(rid);
+          if (hit !== undefined) {
+            if (!kindOk(hit)) {
+              kindRejected.push(`${rawId} (${hit.kind})`);
+              continue;
+            }
             ids.push(rid);
             continue;
           }
@@ -99,10 +125,17 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
           }
           unknown.push(rawId);
         }
+        if (kindRejected.length > 0) {
+          throw new CodedToolError(
+            'INVALID_ARG',
+            `task_wait on this face only accepts exec background work; not waitable: ${kindRejected.join(', ')}. Board/orchestration waits belong to the lead.`,
+          );
+        }
         if (unknown.length > 0) {
           // 错误清单=等待面投影(账本工作单元+板任务),数据自解释;面内不写补丁式解释文案
           const waitable = tasks
             .list()
+            .filter(kindOk)
             .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
             .join('; ');
           const boardList = Object.values(boardTasks)

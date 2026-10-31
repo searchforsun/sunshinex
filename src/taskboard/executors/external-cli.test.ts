@@ -6,7 +6,6 @@ import * as path from 'path';
 import type { SessionEvent } from '../../types';
 import type { ProcessSandbox } from '../../harness/security/sandbox';
 import type { TaskRegistry } from '../../harness/tasks';
-import type { SubagentRunner } from '../../harness/subagent';
 import { TaskBoard } from '../board';
 import { TeamStore } from '../store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../team-registry';
@@ -207,7 +206,6 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
   const tmp = tmpdir('sunshinex-tb-ext-board-');
   try {
     const events: SessionEvent[] = [];
-    const internalCalls: string[] = [];
     const externals: { task: { id: string; title: string; spec: string }; deadlineAt: number }[] = [];
     const externalExecutor = {
       run: async (task: { id: string; title: string; spec: string }, budget: { deadlineAt: number }) => {
@@ -216,12 +214,6 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
         return { ok: true, reply: 'external reply', tokens: 7 };
       },
     };
-    const runner = {
-      runSubagent: async (_i: unknown, o?: { taskLine?: string }) => {
-        internalCalls.push(o?.taskLine ?? '');
-        return { ok: true as const, value: { reply: 'r', tokens: 1 } };
-      },
-    } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
     const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
     const team = agentTeams.create('alpha');
@@ -229,7 +221,6 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
     const teamId = team.value.teamId;
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner,
       registry,
       agentTeams,
       externalExecutor,
@@ -245,7 +236,6 @@ test('board 路由:executorHint external-cli 任务走注入执行体(delegation
     assert.equal(s.tasks[aId]!.status, 'success', '强制回写 running→success');
     assert.equal(s.tasks[aId]!.artifact?.conclusion, 'external reply');
     assert.equal(s.tasks[aId]!.artifact?.tokens, 7);
-    assert.deepEqual(internalCalls, [], 'internal runner 零调用(external 路由接管)');
     assert.deepEqual(externals[0]!.task, { id: aId, title: 'A', spec: 'a' }, '执行体收到自包含 task');
     assert.ok(externals[0]!.deadlineAt > Date.now(), '预算 deadline 未来(板超时换算)');
     const started = events.find((e) => e.type === 'delegation-started');

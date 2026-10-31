@@ -7,7 +7,6 @@ import * as path from 'path';
 import { TaskBoard } from './board';
 import { AgentTeamRegistryStore, TeamStore } from './store';
 import { AgentTeamRegistry } from './team-registry';
-import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 
 function tmpdir(prefix: string): string {
@@ -37,13 +36,11 @@ test('kill -9 于 running 时刻:重启恢复,打开态落 cancelled、事件完
     // 存活性证明(4c 取最简稳健项):杀时进程仍活着——exitCode 非零或信号终局(fixture 两笔 create 均已成功才挂到此处)
     assert.ok(child.exitCode !== 0 || child.signalCode !== null, `强杀后应非零退出/信号终局,实际 exitCode=${child.exitCode} signal=${child.signalCode}`);
     // 重启恢复:同目录新协调器
-    const runner = { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'b9', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
     const teamsRoot = path.join(tmp, 'data', 'teams');
     const agentTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot));
     const board = new TaskBoard({
       store: new TeamStore(path.join(teamsRoot, 'main')),
-      runner,
       registry,
       agentTeams,
     });

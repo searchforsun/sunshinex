@@ -279,6 +279,7 @@ type SessionEventType =
   // 委派/任务事件:delegation-* 为委派生命周期;task-* 为任务板(创建/状态/解锁/阻塞/加边/指派);agent-message 为同队消息
   | 'task-created' | 'task-status-changed' | 'task-unlocked' | 'task-blocked'
   | 'task-dep-added' | 'task-assigned'
+  | 'team-created'
   | 'delegation-started' | 'delegation-ended'
   | 'agent-message';
 

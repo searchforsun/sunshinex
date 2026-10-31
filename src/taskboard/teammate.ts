@@ -1,6 +1,6 @@
-/** Teammate 长驻执行体(spec §5 P2):独立 ContextManager(零主链污染)+ 逐任务 fork-scope Reactor
+/** Teammate 长驻执行体:独立 ContextManager(零主链污染)+ 逐任务 fork-scope Reactor
  *  (事件经 tagger 打 payload.subagent 标,复用 ChildPanel 委派通道)+ 单飞 worker(指派队列优先、
- *  空则 claim,MemoryPipeline 闩形态)+ 派发路由退化语义(无活 teammate = P1 fork 原样)。
+ *  空则 claim,MemoryPipeline 闩形态)。板内任务只经 teammate 认领/指派执行;无活成员时任务留 pending。
  *  与 SubagentRunner 的分工:Runner 是主链按需 fork 的无状态单元;Teammate 是跨任务存续的有状态执行体,
  *  自有链(role 行 + 历次 task 行)即其记忆——每任务 Reactor 的 seed 经缺省 chainView() 取自 own chain。 */
 import type { SessionEvent } from '../types';
@@ -69,7 +69,7 @@ export class TeamRegistry {
     return this.teammates.get(name);
   }
 
-  /** 任一未停即活:executeOne 未指派分支的「留给 claim」判据(全停 → 回退 P1 fork) */
+  /** 任一未停即活:executeOne 未指派分支的「留给 claim」判据 */
   hasAlive(): boolean {
     for (const t of this.teammates.values()) if (!t.stopped) return true;
     return false;

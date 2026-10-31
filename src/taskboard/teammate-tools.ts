@@ -4,6 +4,8 @@
 import { CodedToolError, RegisteredTool, ToolRegistry } from '../harness/tools';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { makeGetBoardTool, TASKBOARD_TOOL_NAMES } from '../harness/tools/taskboard-tools';
+import { makeTaskWaitTool } from '../harness/tools/task-wait';
+import type { TaskRegistry } from '../harness/tasks';
 import type { TaskBoard } from './board';
 
 /** todo_write 工具名(harness/subagent.ts 同名私有常量的字面量对写——彼处不导出,导出面不值得
@@ -14,7 +16,7 @@ const TODO_TOOL_NAME = 'todo_write';
 export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
   const getBoard = makeGetBoardTool(
     board,
-    "Read the shared task board summary: one line per task in id order — id [status] title (needs deps) team=<teamId>, plus retryOf=<id> when set. Read-only; use get_task for one task's full spec, team, assignee and execution artifact.",
+    'Read-only board summary (id [status] title deps teamId [retryOf]). Use get_task for full spec/assignee/artifact of one task.',
   );
   const getTask: RegisteredTool = {
     parameters: {
@@ -27,7 +29,7 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
     },
     name: 'get_task',
     description:
-      'Read one task from the shared task board in full: id, status, title, teamId, self-contained spec, dependencies, retryOf when set, assignee and execution artifact (conclusion, tokens, duration). Read-only.',
+      'Read one board task in full (id, status, title, teamId, spec, dependsOn, assignee, retryOf, artifact). Read-only.',
     category: 'read',
     fullObservation: true,
     executor: async (input) => {
@@ -58,17 +60,23 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
 /** teammate 派生工具面(L1 注入单点):base 克隆剔 spawn/todo_write/ask_question/worktree/
  *  create_teammate+板四件套(成员不得建队/建成员/写板;与 fork 面 lead-only 同口径,但 send_message
  *  保留——T2 双面裁定:send_message 不入 TASKBOARD_TOOL_NAMES,teammate 面要有),
- *  再注册 get_board/get_task;messageTool 在场则追加注册 send_message;排己白名单由装配点闭包注入。
- *  原 registry 零突变;每次调用新面(装配期一次性,teammate.ts registryFactory 消费) */
+ *  再注册 get_board/get_task;messageTool 在场则追加注册 send_message;
+ *  task_wait 换装 kinds=['exec'](可等自动转后台的命令,不可等板任务——防自等死锁);
+ *  排己白名单由装配点闭包注入。原 registry 零突变;每次调用新面(装配期一次性,teammate.ts registryFactory 消费) */
 export function deriveTeammateRegistry(
   base: ToolRegistry,
   board: TaskBoard,
   messageTool?: RegisteredTool,
+  tasks?: TaskRegistry,
 ): ToolRegistry {
   const face = base.derive({
     exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'create_teammate', ...TASKBOARD_TOOL_NAMES],
   });
   for (const t of makeTeammateTools(board)) face.register(t);
   if (messageTool) face.register(messageTool);
+  if (face.get('task_wait') !== undefined) {
+    face.unregister('task_wait');
+    if (tasks !== undefined) face.register(makeTaskWaitTool(tasks, undefined, undefined, { kinds: ['exec'] }));
+  }
   return face;
 }

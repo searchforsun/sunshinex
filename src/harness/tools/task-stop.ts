@@ -83,13 +83,13 @@ export function makeTaskStopTool(tasks: TaskRegistry, team?: TeamRegistry, board
         taskId: {
           type: 'string',
           description:
-            'Id to stop. A board task id as create_task or the board summary shows it (e.g. "task-build-parser-k3f2"; legacy restored boards use "t5") stops a pending or running task as cancelled. A ledger id (label-slug-UTCtimestamp-rand, e.g. exec-20261003T064522Z-a7f3) stops background exec or a non-board subagent as stopped. A live teammate name interrupts its current task. Unknown ids return the current stoppable list in the error.',
+            'Board task id (cancel pending/running), background ledger id (stop exec/spawn), or living teammate name (interrupt current task only).',
         },
       },
     },
     name: 'task_stop',
     description:
-      'Stop work by id. Pending and running board tasks become cancelled; a running board task also aborts its executor and its ledger entry finishes stopped, while the teammate that was running it stays alive and keeps claiming later tasks. Background exec, timed-out-to-background exec, and background subagent entries that are not board tasks finish as stopped. Already-finished work returns an idempotent receipt of its terminal status (board: success, failed, or cancelled; ledger: done, failed, or stopped) and is not aborted again. A live teammate name interrupts only that teammate\'s current task. Unknown ids fail with the current stoppable list attached.',
+      'Stop work by id. Board pending/running → cancelled (running also aborts the executor); the teammate stays and can claim later tasks. Background exec/spawn ledger → stopped. A teammate name interrupts only that member\'s current task. Already-terminal ids return an idempotent receipt. Unknown ids fail with the stoppable list.',
     category: 'task',
     executor: async (input) => {
       const rawId = String(input.taskId ?? '').trim();

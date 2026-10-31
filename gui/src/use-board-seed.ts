@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { SnapshotResponse } from './connection';
 import type { SessionEvent } from '../../src/types';
-import { applyBoardEvent, applyDelegation, boardEventFrom, type SessionProjection } from './projection';
+import { applyBoardEvent, applyDelegation, applyTeamNameEvent, boardEventFrom, type SessionProjection } from './projection';
 import { applyAgentEvent, type AgentActivities } from './tabs/agent-activity';
 
 /**
@@ -59,9 +59,14 @@ export function useBoardSeed(deps: BoardSeedDeps): {
     });
     let nextBoard = snap.board;
     let nextDelegations = snap.delegations;
+    // 快照 teams 为基线；窗内 team-created / task-created.teamName 尾随合并（防整替吞掉建队后首帧队名）
+    let nextTeams = snap.teams ?? [];
     for (const f of replay) {
-      if (f.e.type.startsWith('task-')) {
+      if (f.e.type === 'team-created') {
+        nextTeams = applyTeamNameEvent(nextTeams, f.e);
+      } else if (f.e.type.startsWith('task-')) {
         nextBoard = applyBoardEvent(nextBoard, boardEventFrom(f.e));
+        if (f.e.type === 'task-created') nextTeams = applyTeamNameEvent(nextTeams, f.e);
       } else if (f.e.type.startsWith('delegation-')) {
         nextDelegations = applyDelegation(nextDelegations, f.e);
         // G8e-T2:delegation 帧补投子智能体聚合(与 board/delegation 同窗)——窗外路径本就投
@@ -70,7 +75,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
         if (sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
       }
     }
-    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [], teams: snap.teams ?? [] }));
+    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [], teams: nextTeams }));
   };
 
   return { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot };

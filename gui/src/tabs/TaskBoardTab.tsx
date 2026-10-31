@@ -8,7 +8,7 @@ import { shortStampMs } from '../ui-util';
 const TaskDag = lazy(() => import('./TaskDag'));
 
 /**
- * 任务板：一队一卡，卡头为团队名称（快照 teams.name）。
+ * 任务板：一队一卡，卡头为团队名称（teams.name：快照 + team-created / task-created 直播）。
  * 卡内列表 | DAG，只含该 teamId 的任务。
  * 五态只以点色表达：pending 灰、running 转圈、success 蓝、failed 红、cancelled 黄且标题划线。
  * pending 与 running 的行在 hover 时露出停止，点击上抛 onStopTask。
@@ -24,7 +24,7 @@ export interface BoardTeamRef {
 export interface TaskBoardTabProps {
   readonly board: TaskBoardState;
   readonly delegations: readonly Delegation[];
-  /** 快照 teams：卡头名称；缺名时回退 teamId */
+  /** 团队清单（快照 + team-created / task-created 直播）：卡头名称；缺名时回退 teamId */
   readonly teams?: readonly BoardTeamRef[];
   /** 点击任务/节点跳对应子智能体只读页签 */
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
@@ -36,13 +36,29 @@ export interface TaskBoardTabProps {
   readonly onRefresh?: () => Promise<void>;
 }
 
-/** 任务 → 执行子智能体：委派表按 delegationId/label 同文命中，title 同文兜底 */
+/** 任务 → 委派投影：按 delegationId/label 同文命中，title 同文兜底 */
 function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Delegation | undefined {
   const tag = /^t\d+$/.test(task.id) ? `task-${task.id}` : task.id;
   return (
     delegations.find((d) => d.id === tag || d.label === tag) ??
     delegations.find((d) => d.title !== undefined && d.title === task.title)
   );
+}
+
+/** 执行体显示名：优先板态 executedBy/assignee（队友名）；委派 label 与 task id 同文时不当作智能体名 */
+function agentDisplayName(task: BoardTask, d: Delegation | undefined): string {
+  const by = task.executedBy;
+  if (typeof by === 'string' && by !== '' && by !== 'external-cli') return by;
+  if (typeof task.assignee === 'string' && task.assignee !== '') return task.assignee;
+  if (d === undefined) return '';
+  const tag = /^t\d+$/.test(task.id) ? `task-${task.id}` : task.id;
+  if (d.label === tag || d.label === task.id) return '';
+  return d.label !== '' ? d.label : '';
+}
+
+function taskMatchesFocus(task: BoardTask, ref: string): boolean {
+  const norm = ref.replace(/^task-/, '');
+  return task.id === ref || task.id === norm || task.title === ref;
 }
 
 interface TeamGroup {
@@ -94,16 +110,30 @@ function TaskCard({
   delegations,
   onOpenAgent,
   onStopTask,
+  focus,
 }: {
   group: TeamGroup;
   board: TaskBoardState;
   delegations: readonly Delegation[];
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   onStopTask?: (taskId: string) => void;
+  focus?: { ref: string; nonce: number } | null;
 }): JSX.Element {
   const [view, setView] = useState<CardView>('list');
   const latestMs = group.tasks.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
   const byId = useMemo(() => new Map(group.tasks.map((x) => [x.id, x])), [group.tasks]);
+  const focusTaskId = useMemo(() => {
+    if (focus === undefined || focus === null || focus.ref === '') return undefined;
+    return group.tasks.find((task) => taskMatchesFocus(task, focus.ref))?.id;
+  }, [focus?.ref, focus?.nonce, group.tasks]);
+  const openTaskAgent = (task: BoardTask): void => {
+    const d = agentOfTask(task, delegations);
+    const agentName = agentDisplayName(task, d);
+    if (agentName === '' && d === undefined) return;
+    const label = agentName !== '' ? agentName : (d !== undefined && d.label !== '' ? d.label : task.id);
+    const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
+    onOpenAgent?.(label, agentName !== '' ? agentName : task.title, taskText);
+  };
   return (
     <section className="tb-card" data-team-id={group.teamId}>
       <div className="tb-card-head">
@@ -122,7 +152,7 @@ function TaskCard({
         <ul className="tb-task-list" aria-label="task list">
           {group.tasks.map((task) => {
             const d = agentOfTask(task, delegations);
-            const agentName = d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
+            const agentName = agentDisplayName(task, d);
             const title = task.title !== '' ? task.title : task.id;
             return (
               <li key={task.id} className={`tb-task-row task-status-${task.status}`}>
@@ -131,11 +161,7 @@ function TaskCard({
                   className="tb-task-main" data-task-id={task.id} data-task-title={task.title}
                   aria-label={`${task.id} [${task.status}] ${task.title}`}
                   data-tip={agentName !== '' ? t('View subagent', '查看子智能体') : undefined}
-                  onClick={() => {
-                    if (d === undefined) return;
-                    const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                    onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText);
-                  }}
+                  onClick={() => openTaskAgent(task)}
                 >
                   <span className={`tb-status-dot task-status-${task.status}`} aria-hidden="true" />
                   <span className={`tb-task-title${task.status === 'cancelled' ? ' tb-struck' : ''}`}>{title}</span>
@@ -170,16 +196,14 @@ function TaskCard({
                 agentOf={(taskId) => {
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return '';
-                  const d = agentOfTask(task, delegations);
-                  return d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
+                  return agentDisplayName(task, agentOfTask(task, delegations));
                 }}
+                focusId={focusTaskId}
+                focusNonce={focus?.nonce}
                 onTaskOpen={(taskId) => {
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return;
-                  const d = agentOfTask(task, delegations);
-                  if (d === undefined) return;
-                  const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                  onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText);
+                  openTaskAgent(task);
                 }}
                 onStopTask={onStopTask}
               />
@@ -248,6 +272,7 @@ export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onSt
             delegations={delegations}
             onOpenAgent={onOpenAgent}
             onStopTask={onStopTask}
+            focus={focus}
           />
         ))}
       </div>

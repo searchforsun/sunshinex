@@ -1,5 +1,5 @@
 // 镜像属性测试:TaskBoard 发射(task-* SessionEvent)↔ boardEventFrom 翻译 ↔
-// applyBoardEvent 归约三方互为镜像——对代表性事件脚本,经真实 TaskBoard(假 runner 恒成功)逐变更收集事件,
+// applyBoardEvent 归约三方互为镜像——对代表性事件脚本,经真实 TaskBoard(stub teammate 认领收口)逐变更收集事件,
 // 投影侧(翻译 + reducer)终态必须与真相侧 board.snapshot() 结构相等。
 // 口径边界:P2 起 set_dependency/assign 也发事件(task-dep-added/task-assigned),脚本补两步进覆盖;
 // 变更即发射是本属性成立的前提,不是缺口。
@@ -11,10 +11,11 @@ import * as path from 'path';
 import { TaskBoard } from './board';
 import { TeamStore } from './store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from './team-registry';
+import type { TeamRegistry } from './teammate';
+import type { BoardTask } from './model';
 import { applyBoardEvent, emptyBoard, TaskBoardState } from './model';
 import { boardEventFrom } from '../tui/session';
 import { SessionEvent } from '../types';
-import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 
 function tmpdir(prefix: string): string {
@@ -44,26 +45,46 @@ test('镜像属性:发射↔翻译↔归约的投影终态与真相板一致(代
   const tmp = tmpdir('sunshinex-tb-mirror-');
   try {
     const events: SessionEvent[] = [];
-    const runner = {
-      runSubagent: async (_i: unknown, o?: { taskLine?: string }) => {
-        const line = o?.taskLine ?? '';
-        if (line.endsWith(': C')) return { ok: false as const, error: { code: 'INCOMPLETE', message: 'no finish' } };
-        return { ok: true as const, value: { reply: `done:${line}`, tokens: 1 } };
-      },
-    } as unknown as SubagentRunner;
     const registry = { submit: () => ({ id: 'm1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
     const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
     const team = agentTeams.create('alpha');
     assert.ok(team.ok);
     const teamId = team.value.teamId;
+    let boardRef: TaskBoard | undefined;
+    const worker = {
+      name: 'worker',
+      teamId,
+      stopped: false,
+      kick(): void {
+        const task = boardRef!.claim('worker', teamId);
+        if (task !== undefined) void this.runTask(task);
+      },
+      async runTask(task: BoardTask): Promise<void> {
+        const board = boardRef!;
+        if (!board.markClaimed(task.id, 'worker')) return;
+        await new Promise<void>((r) => setImmediate(r));
+        if (task.title === 'C') {
+          board.finishExecution(task.id, { ok: false, by: 'worker', error: { code: 'INCOMPLETE', message: 'no finish' } });
+          return;
+        }
+        board.finishExecution(task.id, { ok: true, by: 'worker', reply: `done:${task.title}`, tokens: 1 });
+      },
+      interruptCurrent: () => false,
+    };
+    const stubTeam = {
+      get: (name: string) => (name === 'worker' ? worker : undefined),
+      aliveNames: () => (worker.stopped ? [] : ['worker']),
+      hasAlive: () => !worker.stopped,
+    } as unknown as TeamRegistry;
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner,
       registry,
       agentTeams,
+      team: stubTeam,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 5000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
 
     // A 成功解锁 B;C 失败挡住 D(task-blocked);再补依赖边与指派

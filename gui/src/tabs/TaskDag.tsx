@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import type { Edge, Node, NodeProps } from '@xyflow/react';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
@@ -47,6 +47,9 @@ export interface TaskDagProps {
   readonly onTaskOpen?: (taskId: string) => void;
   /** pending|running 节点 hover 停止 */
   readonly onStopTask?: (taskId: string) => void;
+  /** 正文点任务定位：命中节点居中并 flash */
+  readonly focusId?: string;
+  readonly focusNonce?: number;
 }
 
 const DagStopContext = createContext<((taskId: string) => void) | undefined>(undefined);
@@ -144,12 +147,12 @@ export function layoutTaskDag(
 
 /** 任务节点:状态点+任务名+执行子智能体行。pending/running hover 出停止。
  *  节点名恒单行截断——hover 全名走 data-tip。 */
-function TaskNode({ data }: NodeProps<Node<TaskNodeData, 'task'>>): JSX.Element {
+function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JSX.Element {
   const onStopTask = useContext(DagStopContext);
   const stoppable = data.status === 'pending' || data.status === 'running';
   return (
     <div
-      className={`tb-dag-node task-status-${data.status}${data.clickable ? ' clickable' : ''}`}
+      className={`tb-dag-node task-status-${data.status}${data.clickable ? ' clickable' : ''}${selected ? ' flash' : ''}`}
       aria-label={`${data.id} [${data.status}] ${data.title}`}
       data-tip={data.title}
     >
@@ -202,14 +205,39 @@ const NODE_TYPES = { task: TaskNode, terminal: TerminalNode };
  *  放大;钉同一份 padding/maxZoom 后复位=回到装载态,duration 给出可见的动画回正反馈 */
 const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1, duration: 300 };
 
-function TaskDagInner({ tasks, agentOf, onTaskOpen, onStopTask }: TaskDagProps): JSX.Element {
-  const { nodes, edges } = useMemo(() => layoutTaskDag(tasks, agentOf), [tasks, agentOf]);
-  const { fitView } = useReactFlow();
+function TaskDagInner({ tasks, agentOf, onTaskOpen, onStopTask, focusId, focusNonce }: TaskDagProps): JSX.Element {
+  const layout = useMemo(() => layoutTaskDag(tasks, agentOf), [tasks, agentOf]);
+  const { fitView, setCenter, getNode } = useReactFlow();
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   // 任务增减即回正视图(新任务可能落画面外);节点拖拽后的位置交布局重算统一
   useEffect(() => {
     const timer = setTimeout(() => void fitView(FIT_VIEW_OPTIONS), 30);
     return () => clearTimeout(timer);
-  }, [fitView, nodes.length]);
+  }, [fitView, layout.nodes.length]);
+  // 正文点任务：居中 + 短暂选中 flash
+  useEffect(() => {
+    if (focusId === undefined || focusId === '') return;
+    setSelectedId(focusId);
+    const timer = setTimeout(() => {
+      const node = getNode(focusId);
+      if (node !== undefined) {
+        const w = node.width ?? TASK_NODE_W;
+        const h = node.height ?? TASK_NODE_H;
+        void setCenter(node.position.x + w / 2, node.position.y + h / 2, { zoom: 1, duration: 300 });
+      } else {
+        void fitView({ ...FIT_VIEW_OPTIONS, nodes: [{ id: focusId }] });
+      }
+    }, 40);
+    const clear = setTimeout(() => setSelectedId(undefined), 1800);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clear);
+    };
+  }, [focusId, focusNonce, fitView, getNode, setCenter]);
+  const nodes = useMemo(
+    () => layout.nodes.map((n) => (n.id === selectedId ? { ...n, selected: true } : { ...n, selected: false })),
+    [layout.nodes, selectedId],
+  );
   const onNodeClick = useCallback<NonNullable<Parameters<typeof ReactFlow>[0]['onNodeClick']>>(
     (_, node) => {
       if (node.type === 'task' && (node.data as TaskNodeData).clickable === true) onTaskOpen?.(node.id);
@@ -221,7 +249,7 @@ function TaskDagInner({ tasks, agentOf, onTaskOpen, onStopTask }: TaskDagProps):
     <ReactFlow
       className="tb-dag-reactflow"
       nodes={nodes}
-      edges={edges}
+      edges={layout.edges}
       nodeTypes={NODE_TYPES}
       onNodeClick={onNodeClick}
       fitView

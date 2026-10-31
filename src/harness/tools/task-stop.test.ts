@@ -41,21 +41,74 @@ async function until(pred: () => boolean): Promise<void> {
 function openBoard(
   root: string,
   tasks: TaskRegistry,
-  runSubagent: (input: unknown, opts?: { signal?: AbortSignal }) => Promise<unknown>,
-): { board: TaskBoard; teamId: string } {
+  mode: 'hang' | 'success' = 'hang',
+): { board: TaskBoard; teamId: string; releaseHang: () => void; interrupted: () => boolean } {
   const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
   const created = agentTeams.create('alpha');
   if (!created.ok) throw new Error(created.error.message);
+  const teamId = created.value.teamId;
+  let boardRef: TaskBoard | undefined;
+  let hangResolve: (() => void) | undefined;
+  let aborted = false;
+  let hanging = false;
+  const worker = {
+    name: 'worker',
+    teamId,
+    stopped: false,
+    kick(): void {
+      const task = boardRef!.claim('worker', teamId);
+      if (task !== undefined) void this.runTask(task);
+    },
+    async runTask(task: { id: string; title: string; spec: string }): Promise<void> {
+      const board = boardRef!;
+      if (!board.markClaimed(task.id, 'worker')) return;
+      const ledger = tasks.submit({ kind: 'subagent', label: task.id.startsWith('task-') ? task.id : `task-${task.id}` });
+      const hang = mode === 'hang'
+        ? new Promise<void>((res) => { hanging = true; hangResolve = res; })
+        : Promise.resolve();
+      ledger.stop = () => { aborted = true; hangResolve?.(); };
+      if (mode === 'success') await new Promise<void>((r) => setImmediate(r));
+      else await hang;
+      hanging = false;
+      if (aborted) {
+        board.finishExecution(task.id, {
+          ok: false,
+          terminal: 'cancelled',
+          by: 'worker',
+          error: { code: 'ABORTED', message: 'aborted' },
+        }, ledger.id);
+        return;
+      }
+      board.finishExecution(task.id, { ok: true, by: 'worker', reply: 'r', tokens: 1 }, ledger.id);
+    },
+    interruptCurrent(): boolean {
+      if (!hanging || hangResolve === undefined) return false;
+      aborted = true;
+      hangResolve();
+      return true;
+    },
+  };
+  const stubTeam = {
+    get: (name: string) => (name === 'worker' ? worker : undefined),
+    aliveNames: () => ['worker'],
+    hasAlive: () => true,
+  } as unknown as TeamRegistry;
   const board = new TaskBoard({
     store: new TeamStore(path.join(root, 'teams', 'main')),
-    runner: { runSubagent } as never,
     registry: tasks,
     agentTeams,
+    team: stubTeam,
     onEvent: () => {},
     now: clock(),
   });
+  boardRef = board;
   board.init();
-  return { board, teamId: created.value.teamId };
+  return {
+    board,
+    teamId,
+    releaseHang: () => { hangResolve?.(); },
+    interrupted: () => aborted,
+  };
 }
 
 test('task_stop 命中 running：触发 stop 句柄、终态 stopped、回执确认', async () => {
@@ -147,19 +200,9 @@ test('task_stop 命中已终态任务：幂等回执当前终态，不重复触�
 
 test('task_stop 板 pending → cancelled', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-pending-'));
-  let release: () => void = () => {};
-  const hang = new Promise<void>((res) => { release = res; });
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    let aborted = false;
-    const { board, teamId } = openBoard(root, tasks, async (_input, o) => {
-      await new Promise<void>((res) => {
-        if (o?.signal?.aborted) { aborted = true; res(); return; }
-        o?.signal?.addEventListener('abort', () => { aborted = true; res(); }, { once: true });
-        hang.then(res);
-      });
-      return { ok: false as const, error: { code: 'ABORTED', message: 'aborted' } };
-    });
+    const { board, teamId, releaseHang, interrupted } = openBoard(root, tasks, 'hang');
     const running = board.create({ teamId, title: 'Run', spec: 'hold the lane' });
     assert.ok(running.ok);
     const runId = running.value.taskId;
@@ -176,33 +219,23 @@ test('task_stop 板 pending → cancelled', async () => {
     assert.match(r.value.stdout, new RegExp(`task ${holdId} cancelled`));
     assert.equal(board.snapshot().tasks[holdId]?.status, 'cancelled');
     assert.equal(board.snapshot().tasks[runId]?.status, 'running', '只停 pending，在跑的上游继续');
-    assert.equal(aborted, false, 'pending 无执行体，不 abort');
+    assert.equal(interrupted(), false, 'pending 无执行体，不 abort');
     const again = await registry.execute('task_stop', { taskId: holdId }, stubSafety);
     assert.ok(again.ok);
     assert.match(again.value.stdout, /already finished with status cancelled/);
     assert.equal(board.snapshot().tasks[holdId]?.status, 'cancelled');
-  } finally {
-    release();
+    releaseHang();
     await new Promise((r) => setImmediate(r));
+  } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
 test('task_stop 板 running → cancelled 并 abort 台账', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-running-'));
-  let release: () => void = () => {};
-  const hang = new Promise<void>((res) => { release = res; });
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    let aborted = false;
-    const { board, teamId } = openBoard(root, tasks, async (_input, o) => {
-      await new Promise<void>((res) => {
-        if (o?.signal?.aborted) { aborted = true; res(); return; }
-        o?.signal?.addEventListener('abort', () => { aborted = true; res(); }, { once: true });
-        hang.then(res);
-      });
-      return { ok: false as const, error: { code: 'ABORTED', message: 'aborted' } };
-    });
+    const { board, teamId, interrupted } = openBoard(root, tasks, 'hang');
     const created = board.create({ teamId, title: 'Run', spec: 'work' });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
@@ -222,7 +255,7 @@ test('task_stop 板 running → cancelled 并 abort 台账', async () => {
     assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.message}`);
     assert.match(r.value.stdout, new RegExp(`task ${boardId} cancelled`));
     assert.equal(board.snapshot().tasks[boardId]?.status, 'cancelled');
-    assert.equal(aborted, true, 'running 的 stop abort 执行体');
+    assert.equal(interrupted(), true, 'running 的 stop abort 执行体');
     assert.equal(stopCalls, 1, 'running 同时调用台账 stop');
     assert.equal(tasks.get(ledger.id)?.status, 'stopped');
     const again = await registry.execute('task_stop', { taskId: boardId }, stubSafety);
@@ -230,9 +263,8 @@ test('task_stop 板 running → cancelled 并 abort 台账', async () => {
     assert.match(again.value.stdout, /already finished with status cancelled/);
     assert.equal(stopCalls, 1, '终态不重复 abort');
     assert.equal(board.snapshot().tasks[boardId]?.status, 'cancelled');
-  } finally {
-    release();
     await new Promise((r) => setImmediate(r));
+  } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -241,7 +273,7 @@ test('task_stop 板 success 幂等回执，不重复 abort', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-success-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    const { board, teamId } = openBoard(root, tasks, async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }));
+    const { board, teamId } = openBoard(root, tasks, 'success');
     const created = board.create({ teamId, title: 'Run', spec: 'done fast' });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
@@ -264,18 +296,9 @@ test('task_stop 板 success 幂等回执，不重复 abort', async () => {
 
 test('task_stop 纯台账任务在板在场时仍落 stopped', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-ledger-'));
-  let release: () => void = () => {};
-  const hang = new Promise<void>((res) => { release = res; });
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    const { board, teamId } = openBoard(root, tasks, async (_input, o) => {
-      await new Promise<void>((res) => {
-        if (o?.signal?.aborted) { res(); return; }
-        o?.signal?.addEventListener('abort', () => res(), { once: true });
-        hang.then(res);
-      });
-      return { ok: false as const, error: { code: 'ABORTED', message: 'aborted' } };
-    });
+    const { board, teamId, releaseHang } = openBoard(root, tasks, 'hang');
     const created = board.create({ teamId, title: 'Run', spec: 'stay running' });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
@@ -294,9 +317,9 @@ test('task_stop 纯台账任务在板在场时仍落 stopped', async () => {
     assert.equal(stopped, true);
     assert.equal(tasks.get(exec.id)?.status, 'stopped');
     assert.equal(board.snapshot().tasks[boardId]?.status, 'running', '纯台账停止不改板任务');
-  } finally {
-    release();
+    releaseHang();
     await new Promise((r) => setImmediate(r));
+  } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

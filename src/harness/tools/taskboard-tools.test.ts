@@ -7,21 +7,46 @@ import { makeTaskBoardTools, TASKBOARD_TOOL_NAMES } from './taskboard-tools';
 import { TaskBoard } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
-import type { SubagentRunner } from '../subagent';
+import type { TeamRegistry } from '../../taskboard/teammate';
+import type { BoardTask } from '../../taskboard/model';
 import type { TaskRegistry } from '../tasks';
 
 function makeBoard(tmp: string): { board: TaskBoard; teams: AgentTeamRegistry; teamId: string } {
-  const runner = { runSubagent: async (_i: unknown, o?: { taskLine?: string }) => ({ ok: true as const, value: { reply: `r ${o?.taskLine ?? ''}`, tokens: 1 } }) } as unknown as SubagentRunner;
   const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
   const teams = new AgentTeamRegistry(new MemoryAgentTeamStore());
   const created = teams.create('alpha');
   if (!created.ok) throw new Error(created.error.message);
-  const board = new TaskBoard({ store: new TeamStore(path.join(tmp, 'teams', 'main')), runner, registry, agentTeams: teams });
+  const teamId = created.value.teamId;
+  let boardRef: TaskBoard | undefined;
+  const worker = {
+    name: 'worker',
+    teamId,
+    stopped: false,
+    kick(): void {
+      const task = boardRef!.claim('worker', teamId);
+      if (task !== undefined) void this.runTask(task);
+    },
+    async runTask(task: BoardTask): Promise<void> {
+      const board = boardRef!;
+      if (!board.markClaimed(task.id, 'worker')) return;
+      await new Promise<void>((r) => setImmediate(r));
+      board.finishExecution(task.id, { ok: true, by: 'worker', reply: `r ${task.title}`, tokens: 1 });
+    },
+    interruptCurrent: () => false,
+  };
+  const team = {
+    get: (name: string) => (name === 'worker' ? worker : undefined),
+    aliveNames: () => ['worker'],
+    hasAlive: () => true,
+  } as unknown as TeamRegistry;
+  const board = new TaskBoard({ store: new TeamStore(path.join(tmp, 'teams', 'main')), registry, agentTeams: teams, team });
+  boardRef = board;
   board.init();
-  return { board, teams, teamId: created.value.teamId };
+  return { board, teams, teamId };
 }
 
 const drain = () => new Promise((r) => setImmediate(r));
+const flushStub = async (): Promise<void> => { await drain(); await drain(); };
 
 /** 从 create_task observation 捕获真实板 id(回执标题优先、id= 置尾;随机段不可写字面量) */
 function createdId(stdout: string): string {
@@ -43,6 +68,8 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     assert.match(teamOut.stdout, /team "beta" created/);
     const teamId = /teamId=(\S+)/.exec(teamOut.stdout)![1]!;
     assert.match(teamId, /^team-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/);
+    assert.ok(teams.get(teamId) !== undefined, '队注册表含新建队');
+    assert.equal(teams.get(teamId)!.name, 'beta');
     const create = tools.find((t) => t.name === 'create_task')!;
     assert.deepEqual(
       [...(create.parameters?.required ?? [])].sort(),
@@ -58,6 +85,7 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     assert.deepEqual(update.parameters?.properties?.action && (update.parameters.properties.action as { enum?: string[] }).enum, ['assign', 'depend']);
     await assert.rejects(() => update.executor({ taskId: idA, action: 'cancel' }), /assign\|depend/, '取消不在 update_task');
     await assert.rejects(() => create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }), /unknown teamId/);
+    await flushStub();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -75,12 +103,13 @@ test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出'
     const rb = await create.executor({ teamId, title: 'B', spec: 'b', dependsOn: [idA], assignee: null, executor: null, retryOf: null });
     assert.equal(rb.exitCode, 0);
     const idB = createdId(rb.stdout);
-    await drain();
+    await flushStub();
     // A←B 加边即与既有 B→A 边成环:拒绝
     await assert.rejects(() => update.executor({ taskId: idA, action: 'depend', dependsOn: idB }), /cycle/, '环拒绝透出 INVALID_ARG');
     await assert.rejects(() => create.executor({ teamId, title: 'C', spec: 'c', dependsOn: ['tX'], assignee: null, executor: null, retryOf: null }), /unknown dependency/);
     // 未知 action:INVALID_ARG(动作枚举面)
     await assert.rejects(() => update.executor({ taskId: idA, action: 'nope' }), /unknown action/);
+    await flushStub();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -95,7 +124,7 @@ test('get_board 收编进 lead 面:摘要行含 id/状态/标题,未设帽不透
     const getBoard = tools.find((t) => t.name === 'get_board')!;
     const prev = await create.executor({ teamId, title: 'Prev', spec: 'p', dependsOn: null, assignee: null, executor: null, retryOf: null });
     const prevId = createdId(prev.stdout);
-    await drain();
+    await flushStub();
     assert.equal(board.snapshot().tasks[prevId]!.status, 'success');
     const r = await create.executor({ teamId, title: 'RetryDemo', spec: 'g', dependsOn: null, assignee: null, executor: null, retryOf: prevId });
     const id = createdId(r.stdout);
@@ -106,6 +135,7 @@ test('get_board 收编进 lead 面:摘要行含 id/状态/标题,未设帽不透
     assert.ok(prevLine?.includes(`team=${teamId}`), '无 retryOf 的任务仍带 teamId');
     assert.equal(prevLine?.includes('retryOf='), false);
     assert.ok(!out.stdout.includes('team budget'), '未设预算帽不透出预算行');
+    await flushStub();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

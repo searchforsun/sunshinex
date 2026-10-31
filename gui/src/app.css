@@ -1991,8 +1991,9 @@ div.agent-msg-bubble { cursor: default; }
 .sx-agent-thread .child-tool-mark.fail { color: var(--err); }
 .sx-agent-thread .child-thinking { font: 12px/1.6 var(--font-ui); color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* G14.176 任务板定位高亮(create_task 行点开:滚动居中+flash 退场) */
+/* G14.176 任务板定位高亮(create_task 行点开:滚动居中+flash 退场；DAG 节点同款) */
 .tb-task-main.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: var(--radius-sm); }
+.tb-dag-node.flash { background: color-mix(in srgb, var(--accent) 16%, var(--surface-soft)); box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* ===== G14.177 顶栏动态计数按钮(待办/任务/后台任务):靠右聚拢,不挤压标题与展开钮 ===== */
 /* G14.213 幽灵钮化:无底色无边框,顶栏 hover 浮现;待办钮转圈绿色;侧栏展开不再隐藏(组件面) */

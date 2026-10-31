@@ -5,7 +5,7 @@ import { createTrailingQueue } from './trailing-queue';
 import type { SessionEvent } from '../../src/types';
 import type { AgentActivities } from './tabs/agent-activity';
 import { applyAgentEvent } from './tabs/agent-activity';
-import { applyBoardEvent, applyDelegation, emptyBoard, boardEventFrom, type SessionProjection } from './projection';
+import { applyBoardEvent, applyDelegation, applyTeamNameEvent, emptyBoard, boardEventFrom, type SessionProjection } from './projection';
 import type { ChatSink } from './pages/Chat';
 
 /** D34 串态收口的投影空态(D42 自 App.tsx 随连接装配迁入导出——openSession/backHome 清零与
@@ -64,16 +64,23 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
     throttleRef.current = {
       board: createTrailingQueue<{ sessionId: string; e: SessionEvent }>((items) => {
         deps.setProjection((p) => {
-          let { board, delegations } = p;
+          let { board, delegations, teams } = p;
           for (const it of items) {
             // 终审 Important 修:切换后窗尾 drain 的陈会话事件弃用——切会话不清队,无标签则 A 的事件
             // 套进 B 的板(D34 串态收口破口);按 flush 时当前会话过滤,陈帧丢弃(权威态重播种自愈)
             if (it.sessionId !== deps.sessionRef.current) continue;
             const e = it.e;
-            if (e.type.startsWith('delegation-')) delegations = applyDelegation(delegations, e);
-            else board = applyBoardEvent(board, boardEventFrom(e));
+            if (e.type === 'team-created') {
+              teams = applyTeamNameEvent(teams, e);
+            } else if (e.type.startsWith('delegation-')) {
+              delegations = applyDelegation(delegations, e);
+            } else {
+              board = applyBoardEvent(board, boardEventFrom(e));
+              // task-created 携 teamName：卡头直播，不等快照刷新
+              if (e.type === 'task-created') teams = applyTeamNameEvent(teams, e);
+            }
           }
-          return { ...p, board, delegations };
+          return { ...p, board, delegations, teams };
         });
       }, LIVE_THROTTLE_MS),
       acts: createTrailingQueue<{ sessionId: string; fold: (a: AgentActivities) => AgentActivities }>((items) => {
@@ -104,8 +111,8 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
           return;
         }
-        if (e.type.startsWith('task-')) {
-          // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投
+        if (e.type === 'team-created' || e.type.startsWith('task-')) {
+          // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投；team-created 与板事件同窗，防快照整替吞掉建队名
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else throttles.board.push({ sessionId, e }); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)
           return;

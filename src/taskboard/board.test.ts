@@ -7,9 +7,10 @@ import { TaskBoard } from './board';
 import { TeamStore } from './store';
 import { makeTeammateTools } from './teammate-tools';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from './team-registry';
+import type { TeamRegistry } from './teammate';
+import type { BoardTask } from './model';
 import { SessionEvent } from '../types';
 import { teamTokenCapEnv } from '../config/termination-config';
-import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 
 function tmpdir(prefix: string): string {
@@ -25,67 +26,199 @@ function attachTeam(now: () => number = () => 1): { agentTeams: AgentTeamRegistr
 
 const registryStub = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry;
 
+/** 假 teammate 注册表:kick 认领后按 failTitles/hang/abortTitles 决定 finishExecution。
+ *  interruptCurrent 打断 hang;releaseHang 放行 hang 成功收口。 */
+function makeStubTeam(opts: {
+  teamId: string;
+  getBoard: () => TaskBoard;
+  failTitles?: string[];
+  abortTitles?: string[];
+  hangTitles?: string[];
+  hangAll?: boolean;
+  calls?: string[];
+  tokens?: number;
+}): { team: TeamRegistry; releaseHang: () => void; interrupted: () => boolean } {
+  const failTitles = new Set(opts.failTitles ?? []);
+  const abortTitles = new Set(opts.abortTitles ?? []);
+  const hangTitles = new Set(opts.hangTitles ?? []);
+  const calls = opts.calls ?? [];
+  const tokens = opts.tokens ?? 10;
+  let hangResolve: (() => void) | undefined;
+  let aborted = false;
+  let hanging = false;
+  let claiming = false;
+
+  const shouldHang = (title: string): boolean => opts.hangAll === true || hangTitles.has(title);
+
+  async function execute(task: BoardTask): Promise<void> {
+    const board = opts.getBoard();
+    const line = `Task ${task.id}: ${task.title}\n${task.spec}`;
+    calls.push(line);
+    // 让同 tick 内后续 create 先落板,并等 board.drain 收兵后再 finish→kick(否则 draining 中尾 kick 被吞)
+    await new Promise<void>((r) => setImmediate(r));
+    if (shouldHang(task.title)) {
+      hanging = true;
+      aborted = false;
+      await new Promise<void>((res) => { hangResolve = res; });
+      hanging = false;
+      hangResolve = undefined;
+      if (aborted) {
+        board.finishExecution(task.id, {
+          ok: false,
+          terminal: 'cancelled',
+          by: 'worker',
+          error: { code: 'ABORTED', message: 'aborted' },
+        });
+        return;
+      }
+    }
+    if (abortTitles.has(task.title)) {
+      board.finishExecution(task.id, {
+        ok: false,
+        terminal: 'cancelled',
+        by: 'worker',
+        error: { code: 'ABORTED', message: 'aborted' },
+      });
+      return;
+    }
+    if (failTitles.has(task.title)) {
+      board.finishExecution(task.id, {
+        ok: false,
+        by: 'worker',
+        error: { code: 'INCOMPLETE', message: 'no finish' },
+      });
+      return;
+    }
+    board.finishExecution(task.id, {
+      ok: true,
+      by: 'worker',
+      reply: `reply of ${line}`,
+      tokens,
+    });
+  }
+
+  const worker = {
+    name: 'worker',
+    teamId: opts.teamId,
+    stopped: false,
+    kick(): void {
+      if (claiming || worker.stopped) return;
+      claiming = true;
+      void (async () => {
+        try {
+          while (!worker.stopped) {
+            const task = opts.getBoard().claim('worker', opts.teamId);
+            if (task === undefined) break;
+            await execute(task);
+          }
+        } finally {
+          claiming = false;
+        }
+      })();
+    },
+    async runTask(task: BoardTask): Promise<void> {
+      const board = opts.getBoard();
+      if (!board.markClaimed(task.id, 'worker')) return;
+      await execute(task);
+    },
+    interruptCurrent(): boolean {
+      if (!hanging || hangResolve === undefined) return false;
+      aborted = true;
+      hangResolve();
+      return true;
+    },
+  };
+
+  const team = {
+    get: (name: string) => (name === 'worker' && !worker.stopped ? worker : undefined),
+    aliveNames: (teamId?: string) => {
+      if (worker.stopped) return [];
+      if (teamId !== undefined && worker.teamId !== teamId) return [];
+      return ['worker'];
+    },
+    hasAlive: () => !worker.stopped,
+    stop: () => { worker.stopped = true; worker.interruptCurrent(); },
+    stopAll: () => { worker.stopped = true; worker.interruptCurrent(); },
+    teamIdOf: (name: string) => (name === 'worker' && !worker.stopped ? worker.teamId : undefined),
+    register: () => ({ ok: true as const, value: undefined }),
+  } as unknown as TeamRegistry;
+
+  return {
+    team,
+    releaseHang: () => { hangResolve?.(); },
+    interrupted: () => aborted,
+  };
+}
+
 interface Harness {
   board: TaskBoard;
   events: SessionEvent[];
   calls: string[];
   teamId: string;
   agentTeams: AgentTeamRegistry;
+  team: TeamRegistry;
+  releaseHang: () => void;
 }
 
-function makeBoard(tmp: string, opts?: { failReplies?: string[]; teamTokenCap?: number }): Harness {
+function makeBoard(tmp: string, opts?: {
+  failTitles?: string[];
+  abortTitles?: string[];
+  hangTitles?: string[];
+  hangAll?: boolean;
+  teamTokenCap?: number;
+  tokens?: number;
+}): Harness {
   const events: SessionEvent[] = [];
   const calls: string[] = [];
-  const failReplies = opts?.failReplies ?? [];
   const { agentTeams, teamId } = attachTeam();
-  const runner = {
-    runSubagent: async (_input: unknown, o?: { taskLine?: string }) => {
-      const line = o?.taskLine ?? '';
-      calls.push(line);
-      if (failReplies.some((f) => line === f || line.endsWith(`: ${f}`))) return { ok: false as const, error: { code: 'INCOMPLETE', message: 'no finish' } };
-      return { ok: true as const, value: { reply: `reply of ${line}`, tokens: 10 } };
-    },
-  } as unknown as SubagentRunner;
+  let boardRef: TaskBoard | undefined;
+  const stub = makeStubTeam({
+    teamId,
+    getBoard: () => boardRef!,
+    failTitles: opts?.failTitles,
+    abortTitles: opts?.abortTitles,
+    hangTitles: opts?.hangTitles,
+    hangAll: opts?.hangAll,
+    calls,
+    tokens: opts?.tokens,
+  });
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
-    runner,
     registry: registryStub,
     agentTeams,
+    team: stub.team,
     onEvent: (e) => events.push(e),
     now: (() => { let n = 1000; return () => ++n; })(),
     ...(opts?.teamTokenCap !== undefined ? { teamTokenCap: opts.teamTokenCap } : {}),
   });
+  boardRef = board;
   board.init();
-  return { board, events, calls, teamId, agentTeams };
+  return { board, events, calls, teamId, agentTeams, team: stub.team, releaseHang: stub.releaseHang };
 }
 
 const drain = () => new Promise((r) => setImmediate(r));
+/** stub 经 setImmediate 收口:连等两拍覆盖 kick→finish→尾 kick */
+const flushStub = async (): Promise<void> => {
+  await drain();
+  await drain();
+};
 
 test('stopTask:pending 与 running → cancelled;终态幂等', async () => {
   const tmp = tmpdir('sunshinex-tb-stop-');
   try {
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
-    let aborted = false;
     const events: SessionEvent[] = [];
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: ['A'] });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: {
-        runSubagent: async (_i: unknown, o?: { signal?: AbortSignal }) => {
-          await new Promise<void>((res) => {
-            if (o?.signal?.aborted) { aborted = true; res(); return; }
-            o?.signal?.addEventListener('abort', () => { aborted = true; res(); }, { once: true });
-            hang.then(res);
-          });
-          return { ok: false as const, error: { code: 'ABORTED', message: 'aborted' } };
-        },
-      } as unknown as SubagentRunner,
       registry: { submit: () => ({ id: 's1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry,
       agentTeams,
+      team: stub.team,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 1000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     const a = board.create({ teamId, title: 'A', spec: 'a' });
     assert.ok(a.ok);
@@ -100,7 +233,7 @@ test('stopTask:pending 与 running → cancelled;终态幂等', async () => {
     assert.equal(board.snapshot().tasks[idB]!.status, 'cancelled');
     assert.ok(board.stopTask(idA).ok);
     assert.equal(board.snapshot().tasks[idA]!.status, 'cancelled');
-    assert.equal(aborted, true, 'running 的 stopTask abort 执行体');
+    assert.equal(stub.interrupted(), true, 'running 的 stopTask 经 interruptCurrent 打断 hang');
     const cancelled = events.filter((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'cancelled');
     assert.equal(cancelled.length, 2);
     const fromB = cancelled.find((e) => (e.payload as Record<string, unknown>).taskId === idB);
@@ -111,7 +244,6 @@ test('stopTask:pending 与 running → cancelled;终态幂等', async () => {
     assert.equal(again.ok, true, '终态幂等');
     assert.equal(events.filter((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'cancelled').length, 2, '终态不重复落事件');
     assert.equal(board.stopTask('missing').ok, false);
-    release();
     await drain();
     assert.equal(board.snapshot().tasks[idA]!.status, 'cancelled', '迟到回写不覆盖 cancelled');
   } finally {
@@ -122,17 +254,19 @@ test('stopTask:pending 与 running → cancelled;终态幂等', async () => {
 test('stopTask:上游 cancelled 向 pending 下游发 task-blocked', async () => {
   const tmp = tmpdir('sunshinex-tb-stop-block-');
   try {
-    const hang = new Promise<void>(() => {});
     const events: SessionEvent[] = [];
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: ['A'] });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'block')),
-      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'r', tokens: 1 } }; } } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 1000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     const a = board.create({ teamId, title: 'A', spec: 'a' });
     assert.ok(a.ok);
@@ -157,32 +291,32 @@ test('stopTask:上游 cancelled 向 pending 下游发 task-blocked', async () =>
 test('用户中止回写 cancelled:ABORTED 与 interrupted 不落 failed', async () => {
   const tmp = tmpdir('sunshinex-tb-abort-');
   try {
-    const cases: Array<{ title: string; error: { code: string; message: string } }> = [
-      { title: 'A', error: { code: 'ABORTED', message: 'aborted' } },
-      { title: 'B', error: { code: 'INCOMPLETE', message: '[fork] did not finish (interrupted)' } },
-    ];
-    for (const c of cases) {
+    const cases = ['A', 'B'];
+    for (const title of cases) {
       const events: SessionEvent[] = [];
       const { agentTeams, teamId } = attachTeam();
+      let boardRef: TaskBoard | undefined;
+      const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, abortTitles: [title] });
       const board = new TaskBoard({
-        store: new TeamStore(path.join(tmp, 'teams', c.title)),
-        runner: { runSubagent: async () => ({ ok: false as const, error: c.error }) } as unknown as SubagentRunner,
+        store: new TeamStore(path.join(tmp, 'teams', title)),
         registry: registryStub,
         agentTeams,
+        team: stub.team,
         onEvent: (e) => events.push(e),
         now: (() => { let n = 1000; return () => ++n; })(),
       });
+      boardRef = board;
       board.init();
-      const up = board.create({ teamId, title: c.title, spec: c.title });
+      const up = board.create({ teamId, title, spec: title });
       assert.ok(up.ok);
       const id = up.value.taskId;
-      const down = board.create({ teamId, title: `${c.title}-down`, spec: 'd', dependsOn: [id] });
+      const down = board.create({ teamId, title: `${title}-down`, spec: 'd', dependsOn: [id] });
       assert.ok(down.ok);
       await drain();
-      assert.equal(board.snapshot().tasks[id]!.status, 'cancelled', c.title);
+      assert.equal(board.snapshot().tasks[id]!.status, 'cancelled', title);
       assert.equal(board.snapshot().tasks[down.value.taskId]!.status, 'pending');
       const blocked = events.find((e) => e.type === 'task-blocked');
-      assert.ok(blocked, `${c.title} 下游 task-blocked`);
+      assert.ok(blocked, `${title} 下游 task-blocked`);
       assert.deepEqual((blocked!.payload as Record<string, unknown>).blockedBy, [id]);
     }
   } finally {
@@ -200,7 +334,6 @@ test('external-cli stopTask 调用 stop,已取消的委派收口不是 failed', 
     const { agentTeams, teamId } = attachTeam();
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
       externalExecutor: {
@@ -238,23 +371,24 @@ test('finishExecution:ok→success;error→failed;terminal cancelled', async () 
   const tmp = tmpdir('sunshinex-tb-finish5-');
   try {
     const run = async (title: string, report: Parameters<TaskBoard['finishExecution']>[1]) => {
-      let release: () => void = () => {};
-      const hang = new Promise<void>((res) => { release = res; });
       const { agentTeams, teamId } = attachTeam();
+      let boardRef: TaskBoard | undefined;
+      const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: [title] });
       const board = new TaskBoard({
         store: new TeamStore(path.join(tmp, 'teams', title)),
-        runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'late', tokens: 1 } }; } } as unknown as SubagentRunner,
         registry: registryStub,
         agentTeams,
+        team: stub.team,
         now: (() => { let n = 1000; return () => ++n; })(),
       });
+      boardRef = board;
       board.init();
       const created = board.create({ teamId, title, spec: title });
       assert.ok(created.ok);
       await drain();
       assert.equal(board.snapshot().tasks[created.value.taskId]!.status, 'running');
       const result = board.finishExecution(created.value.taskId, report);
-      release();
+      stub.releaseHang();
       await drain();
       return { board, id: created.value.taskId, result };
     };
@@ -269,7 +403,7 @@ test('finishExecution:ok→success;error→failed;terminal cancelled', async () 
     assert.ok(stopped.result.ok);
     assert.equal(stopped.board.snapshot().tasks[stopped.id]!.status, 'cancelled');
 
-    const h = makeBoard(tmp, { failReplies: ['Anchor'] });
+    const h = makeBoard(tmp, { failTitles: ['Anchor'] });
     const anchor = h.board.create({ teamId: h.teamId, title: 'Anchor', spec: 'a' });
     assert.ok(anchor.ok);
     await drain();
@@ -295,14 +429,17 @@ test('init:打开态自愈为 cancelled 事件落盘(from 为装载前态)', asy
     store.append({ t: 'status-changed', taskId: 'ok', from: 'pending', to: 'running', ts: 2 });
     store.append({ t: 'status-changed', taskId: 'ok', from: 'running', to: 'success', ts: 3 });
     const calls: string[] = [];
-    const { agentTeams } = attachTeam();
+    const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, calls });
     const board = new TaskBoard({
       store,
-      runner: { runSubagent: async () => { calls.push('run'); return { ok: true as const, value: { reply: 'r', tokens: 1 } }; } } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       now: () => 50,
     });
+    boardRef = board;
     board.init();
     const s = board.snapshot();
     assert.equal(s.tasks['p']!.status, 'cancelled');
@@ -322,19 +459,20 @@ test('init:打开态自愈为 cancelled 事件落盘(from 为装载前态)', asy
 test('create:未知 teamId 拒绝;retryOf 同队且前驱终态;dependsOn 同队', async () => {
   const tmp = tmpdir('sunshinex-tb-team-');
   try {
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
     const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
     const alpha = agentTeams.create('alpha');
     const beta = agentTeams.create('beta');
     assert.ok(alpha.ok && beta.ok);
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId: alpha.value.teamId, getBoard: () => boardRef!, hangTitles: ['Live'] });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'r', tokens: 1 } }; } } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       now: (() => { let n = 10; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     const unknown = board.create({ teamId: 'team-nope', title: 'A', spec: 'a' });
     assert.equal(unknown.ok, false);
@@ -362,8 +500,8 @@ test('create:未知 teamId 拒绝;retryOf 同队且前驱终态;dependsOn 同队
     const missingRetry = board.create({ teamId: alpha.value.teamId, title: 'Z', spec: 'z', retryOf: 'task-missing' });
     assert.equal(missingRetry.ok, false);
     if (!missingRetry.ok) assert.match(missingRetry.error.message, /retryOf task task-missing is not on team/);
-    release();
-    await drain();
+    stub.releaseHang();
+    await flushStub();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -372,24 +510,18 @@ test('create:未知 teamId 拒绝;retryOf 同队且前驱终态;dependsOn 同队
 test('依赖顺序:上游 running 时下游不派发;成功后下游 success', async () => {
   const tmp = tmpdir('sunshinex-tb-dep-');
   try {
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
     const calls: string[] = [];
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: ['A'], calls });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: {
-        runSubagent: async (_i: unknown, o?: { taskLine?: string }) => {
-          const line = o?.taskLine ?? '';
-          calls.push(line);
-          if (line.endsWith(': A')) await hang;
-          return { ok: true as const, value: { reply: `reply of ${line}`, tokens: 10 } };
-        },
-      } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       now: (() => { let n = 1000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     const a = board.create({ teamId, title: 'A', spec: 'do A' });
     assert.ok(a.ok);
@@ -398,13 +530,13 @@ test('依赖顺序:上游 running 时下游不派发;成功后下游 success', a
     assert.ok(b.ok);
     const idB = b.value.taskId;
     await drain();
-    assert.deepEqual(calls, [`Task ${idA}: A`]);
+    assert.deepEqual(calls, [`Task ${idA}: A\ndo A`]);
     assert.equal(board.snapshot().tasks[idA]!.status, 'running');
     assert.equal(board.snapshot().tasks[idB]!.status, 'pending');
-    release();
+    stub.releaseHang();
     await drain();
     await drain();
-    assert.deepEqual(calls, [`Task ${idA}: A`, `Task ${idB}: B`]);
+    assert.deepEqual(calls, [`Task ${idA}: A\ndo A`, `Task ${idB}: B\ndo B`]);
     assert.equal(board.snapshot().tasks[idA]!.status, 'success');
     assert.equal(board.snapshot().tasks[idB]!.status, 'success');
   } finally {
@@ -415,7 +547,7 @@ test('依赖顺序:上游 running 时下游不派发;成功后下游 success', a
 test('执行失败:回写 failed + 下游 task-blocked 不自动 skip', async () => {
   const tmp = tmpdir('sunshinex-tb-fail-');
   try {
-    const h = makeBoard(tmp, { failReplies: ['A'] });
+    const h = makeBoard(tmp, { failTitles: ['A'] });
     const a = h.board.create({ teamId: h.teamId, title: 'A', spec: 'do A' });
     assert.ok(a.ok);
     const idA = a.value.taskId;
@@ -435,72 +567,52 @@ test('执行失败:回写 failed + 下游 task-blocked 不自动 skip', async ()
   }
 });
 
-test('CONCURRENCY_LIMIT 留在 pending 后重派成功', async () => {
-  const tmp = tmpdir('sunshinex-tb-conc-');
+test('无 team 注入:未指派任务保持 pending', async () => {
+  const tmp = tmpdir('sunshinex-tb-noteam-');
   try {
-    const events: SessionEvent[] = [];
-    let refused = false;
     const { agentTeams, teamId } = attachTeam();
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: {
-        runSubagent: async () => {
-          if (!refused) {
-            refused = true;
-            return { ok: false as const, error: { code: 'CONCURRENCY_LIMIT', message: 'Subagent concurrency limit reached (8)' } };
-          }
-          return { ok: true as const, value: { reply: 'ok after retry', tokens: 5 } };
-        },
-      } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
-      onEvent: (e) => events.push(e),
       now: (() => { let n = 1000; return () => ++n; })(),
-      retryDelayMs: 10,
     });
     board.init();
     const r = board.create({ teamId, title: 'A', spec: 'a' });
     assert.ok(r.ok);
     const idA = r.value.taskId;
     await drain();
-    assert.equal(board.snapshot().tasks[idA]!.status, 'pending', '拒绝当时不进入 running');
     await new Promise((res) => setTimeout(res, 40));
-    assert.equal(board.snapshot().tasks[idA]!.status, 'success');
-    assert.ok(!events.some((e) => e.type === 'task-blocked'));
-    assert.ok(!events.some((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.note === 'concurrency limit, deferred'));
+    assert.equal(board.snapshot().tasks[idA]!.status, 'pending');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('CONCURRENCY_LIMIT 持续占用:退避定时器有界重试', async () => {
-  const tmp = tmpdir('sunshinex-tb-conc2-');
+test('无活 teammate:任务保持 pending,drain 有界', async () => {
+  const tmp = tmpdir('sunshinex-tb-deadteam-');
   try {
-    let calls = 0;
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef! });
+    stub.team.stopAll();
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: {
-        runSubagent: async () => {
-          calls += 1;
-          return { ok: false as const, error: { code: 'CONCURRENCY_LIMIT', message: 'limit' } };
-        },
-      } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       now: (() => { let n = 1000; return () => ++n; })(),
       retryDelayMs: 50,
     });
+    boardRef = board;
     board.init();
     const r = board.create({ teamId, title: 'A', spec: 'a' });
     assert.ok(r.ok);
     const idA = r.value.taskId;
-    await new Promise((res) => setTimeout(res, 500));
-    assert.ok(calls >= 2, `退避重派确有发生(实际 ${calls})`);
-    assert.ok(calls <= 16, `无热循环(实际 ${calls})`);
-    const lines = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8').split('\n').filter((l) => l.length > 0).length;
-    assert.ok(lines <= 40, `事件流有界(实际 ${lines})`);
+    await new Promise((res) => setTimeout(res, 200));
     assert.equal(board.snapshot().tasks[idA]!.status, 'pending');
+    const lines = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8').split('\n').filter((l) => l.length > 0).length;
+    assert.ok(lines <= 10, `事件流有界(实际 ${lines})`);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -509,7 +621,7 @@ test('CONCURRENCY_LIMIT 持续占用:退避定时器有界重试', async () => {
 test('set_dependency 环检测;限流;id 方言', async () => {
   const tmp = tmpdir('sunshinex-tb-cycle-');
   try {
-    const h = makeBoard(tmp, { failReplies: ['anchor'] });
+    const h = makeBoard(tmp, { failTitles: ['anchor'] });
     const anchor = h.board.create({ teamId: h.teamId, title: 'anchor', spec: 'a' });
     assert.ok(anchor.ok);
     const idAnchor = anchor.value.taskId;
@@ -549,6 +661,8 @@ test('create executor 提示入板', async () => {
     const ev = h.events.find((e) => e.type === 'task-created');
     assert.equal((ev!.payload as Record<string, unknown>).executorHint, 'external-cli');
     assert.equal((ev!.payload as Record<string, unknown>).teamId, h.teamId);
+    assert.equal((ev!.payload as Record<string, unknown>).teamName, 'alpha', '卡头直播：task-created 携注册表队名');
+    assert.equal((ev!.payload as Record<string, unknown>).teamCreatedAt, 1);
     await drain();
     assert.equal(h.board.snapshot().tasks[idA]!.status, 'success');
   } finally {
@@ -563,15 +677,16 @@ test('set_dependency/assign 发 task-dep-added/task-assigned', async () => {
     const a = h.board.create({ teamId: h.teamId, title: 'A', spec: 'a' });
     const b = h.board.create({ teamId: h.teamId, title: 'B', spec: 'b' });
     assert.ok(a.ok && b.ok);
-    await drain();
+    await flushStub();
     assert.ok(h.board.setDependency(b.value.taskId, a.value.taskId).ok);
     const dep = h.events.find((e) => e.type === 'task-dep-added');
     assert.deepEqual(dep!.payload, { taskId: b.value.taskId, dependsOn: a.value.taskId });
     assert.ok(h.board.setDependency(b.value.taskId, a.value.taskId).ok);
     assert.equal(h.events.filter((e) => e.type === 'task-dep-added').length, 1);
-    assert.ok(h.board.assign(a.value.taskId, 'alice').ok);
+    assert.ok(h.board.assign(a.value.taskId, 'worker').ok);
     const asg = h.events.find((e) => e.type === 'task-assigned');
-    assert.deepEqual(asg!.payload, { taskId: a.value.taskId, assignee: 'alice' });
+    assert.deepEqual(asg!.payload, { taskId: a.value.taskId, assignee: 'worker' });
+    await flushStub();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -580,7 +695,7 @@ test('set_dependency/assign 发 task-dep-added/task-assigned', async () => {
 test('summaryLines 英文化:needs 标记,无中文字符;teamId 常在,retryOf 有值才出现', async () => {
   const tmp = tmpdir('sunshinex-tb-en-');
   try {
-    const h = makeBoard(tmp, { failReplies: ['A'] });
+    const h = makeBoard(tmp, { failTitles: ['A'] });
     const a = h.board.create({ teamId: h.teamId, title: 'A', spec: 'a' });
     assert.ok(a.ok);
     await drain();
@@ -622,7 +737,6 @@ test('init:旧 events.jsonl 含 gate-set 与 claimed 不抛,未收口任务变�
     const { agentTeams } = attachTeam();
     const board = new TaskBoard({
       store: new TeamStore(dir),
-      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
     });
@@ -640,17 +754,18 @@ test('finishExecution 直调:artifact 与台账收口', async () => {
   try {
     const events: SessionEvent[] = [];
     const finishes: unknown[][] = [];
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: ['A'] });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'late', tokens: 1 } }; } } as unknown as SubagentRunner,
       registry: { submit: () => ({ id: 'fx1', stop: () => {} }), append: () => {}, finish: (...args: unknown[]) => { finishes.push(args); } } as unknown as TaskRegistry,
       agentTeams,
+      team: stub.team,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 1000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     const ra = board.create({ teamId, title: 'A', spec: 'a' });
     assert.ok(ra.ok);
@@ -664,7 +779,7 @@ test('finishExecution 直调:artifact 与台账收口', async () => {
     assert.equal(finishes[0]![1], 'done');
     const st = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.status === 'success');
     assert.equal((st!.payload as Record<string, unknown>).from, 'running');
-    release();
+    stub.releaseHang();
     await drain();
     assert.equal(board.snapshot().tasks[idA]!.status, 'success');
     assert.equal(finishes.length, 1, '迟到回写不重复 finish');
@@ -703,7 +818,6 @@ test('持久化往返:重启 init 将 pending 与 running 自愈为 cancelled', 
     store2.append({ t: 'status-changed', taskId: 't9', from: 'pending', to: 'running', ts: 2 });
     const board2 = new TaskBoard({
       store: store2,
-      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams: h1.agentTeams,
     });
@@ -749,14 +863,14 @@ test('team 预算帽:超帽留 pending,摘要与 notice,重启后续接用量', 
     const idC = rc.value.taskId;
     await drain();
     assert.equal(h.board.snapshot().tasks[idC]!.status, 'pending');
-    assert.deepEqual(h.calls, [`Task ${idA}: A`, `Task ${idB}: B`]);
+    assert.deepEqual(h.calls, [`Task ${idA}: A\na`, `Task ${idB}: B\nb`]);
     assert.ok(h.board.summaryLines().includes('team budget exhausted (20/15) tokens'));
     assert.ok(!h.events.some((e) => e.type === 'task-blocked'));
     const notices = h.events.filter((e) => e.type === 'notice');
     assert.equal(notices.length, 1);
     assert.equal(notices[0]!.text, 'team budget exhausted (20/15) tokens — new tasks stay pending until the cap is lifted');
     assert.deepEqual(notices[0]!.payload, { source: 'taskboard', used: 20, cap: 15 });
-    assert.ok(h.board.assign(idA, 'alice').ok);
+    assert.ok(h.board.assign(idA, 'worker').ok);
     await drain();
     assert.equal(h.board.snapshot().tasks[idC]!.status, 'pending');
     const rd = h.board.create({ teamId: h.teamId, title: 'D', spec: 'd' });
@@ -769,9 +883,9 @@ test('team 预算帽:超帽留 pending,摘要与 notice,重启后续接用量', 
 
     const board2 = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r2', tokens: 10 } }) } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams: h.agentTeams,
+      team: h.team,
       teamTokenCap: 15,
     });
     board2.init();
@@ -811,18 +925,19 @@ test('team 预算帽:超帽 claim 返回 undefined', async () => {
 test('认领归因:claim/markClaimed/executeOne 的 by 在 running 时落盘', async () => {
   const tmp = tmpdir('sunshinex-tb-by-');
   try {
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
     const events: SessionEvent[] = [];
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: ['A'] });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'late', tokens: 1 } }; } } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       onEvent: (e) => events.push(e),
       now: (() => { let n = 2000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     try {
       const ra = board.create({ teamId, title: 'A', spec: 'a' });
@@ -833,9 +948,9 @@ test('认领归因:claim/markClaimed/executeOne 的 by 在 running 时落盘', a
       assert.ok(rb.ok);
       const idB = rb.value.taskId;
       assert.equal(board.snapshot().tasks[idA]!.status, 'running');
-      assert.equal(board.snapshot().tasks[idA]!.executedBy, 'fork');
-      const forkEv = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === idA && (e.payload as Record<string, unknown>)?.status === 'running');
-      assert.equal((forkEv!.payload as Record<string, unknown>)?.by, 'fork');
+      assert.equal(board.snapshot().tasks[idA]!.executedBy, 'worker');
+      const workerEv = events.find((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === idA && (e.payload as Record<string, unknown>)?.status === 'running');
+      assert.equal((workerEv!.payload as Record<string, unknown>)?.by, 'worker');
       const picked = board.claim('w1');
       assert.equal(picked?.id, idB);
       assert.equal(board.snapshot().tasks[idB]!.executedBy, 'w1');
@@ -846,7 +961,7 @@ test('认领归因:claim/markClaimed/executeOne 的 by 在 running 时落盘', a
       assert.equal(board.markClaimed(idB, 'w2'), true);
       assert.equal(board.snapshot().tasks[idB]!.executedBy, 'w1');
     } finally {
-      release();
+      stub.releaseHang();
     }
     await drain();
   } finally {
@@ -854,7 +969,7 @@ test('认领归因:claim/markClaimed/executeOne 的 by 在 running 时落盘', a
   }
 });
 
-test('settle:快 runner 完成后早退', async () => {
+test('settle:快 stub 完成后早退', async () => {
   const tmp = tmpdir('sunshinex-tb-settle-fast-');
   try {
     const h = makeBoard(tmp);
@@ -871,25 +986,26 @@ test('settle:快 runner 完成后早退', async () => {
   }
 });
 
-test('settle:慢 runner 超时返回 running', async () => {
+test('settle:慢 hang stub 超时返回 running', async () => {
   const tmp = tmpdir('sunshinex-tb-settle-slow-');
   try {
-    let release: () => void = () => {};
-    const hang = new Promise<void>((res) => { release = res; });
     const { agentTeams, teamId } = attachTeam();
+    let boardRef: TaskBoard | undefined;
+    const stub = makeStubTeam({ teamId, getBoard: () => boardRef!, hangTitles: ['S'] });
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'late', tokens: 1 } }; } } as unknown as SubagentRunner,
       registry: registryStub,
       agentTeams,
+      team: stub.team,
       now: (() => { let n = 1000; return () => ++n; })(),
     });
+    boardRef = board;
     board.init();
     const r = board.create({ teamId, title: 'S', spec: 's' });
     assert.ok(r.ok);
     const st = await board.settle(150);
     assert.equal(st.tasks[r.value.taskId]!.status, 'running');
-    release();
+    stub.releaseHang();
     await new Promise((r2) => setTimeout(r2, 250));
     assert.equal(board.snapshot().tasks[r.value.taskId]!.status, 'success');
   } finally {

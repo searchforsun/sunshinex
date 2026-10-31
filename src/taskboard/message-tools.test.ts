@@ -112,12 +112,11 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
       category: 'read',
       executor: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
     });
-    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_teammate', ...TASKBOARD_TOOL_NAMES]) {
+    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_teammate', 'task_wait', ...TASKBOARD_TOOL_NAMES]) {
       base.register(dummy(name));
     }
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),
-      runner: {} as never,
       registry: {} as never,
     });
     const team = { aliveNames: () => ['w1', 'w2', 'w3'] };
@@ -141,6 +140,8 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     ]) {
       assert.equal(face.get(name), undefined, `teammate 面不得含 ${name}`);
     }
+    // 无 TaskRegistry 注入时卸下 lead 版 task_wait(防残留板等待);有 tasks 时换装 exec-only
+    assert.equal(face.get('task_wait'), undefined, '无 tasks 注入时 teammate 面不留 lead 版 task_wait');
     // 排己:自发(to=自己)不在白名单 → INVALID_ARG
     await assert.rejects(
       msgTool.executor({ to: 'w2', text: 'self' }),

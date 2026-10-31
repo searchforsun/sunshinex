@@ -34,13 +34,13 @@ export function makeSendMessageTool(deps: SendMessageToolDeps): RegisteredTool {
       additionalProperties: false,
       required: ['to', 'text'],
       properties: {
-        to: { type: ['string', 'null'], description: 'Recipient: a live teammate on the same team, or "lead" for the main session.' },
-        text: { type: ['string', 'null'], description: 'Message body (max 4000 chars). Delivered at the recipient task boundary; lead sees it immediately.' },
+        to: { type: ['string', 'null'], description: 'Living same-team teammate name, or "lead" for the main session.' },
+        text: { type: ['string', 'null'], description: 'Message body (max 4000 chars).' },
       },
     },
     name: 'send_message',
     description:
-      'Send a direct message to a live teammate on the same team, or to the main session (to="lead"). Cross-team recipients are rejected. Messages persist to the shared inbox; lead sees them immediately.',
+      'Send a message to a living teammate on the same team, or to lead (to="lead"). Cross-team rejected. Persists to the shared inbox; lead sees it immediately, teammates at their next task boundary.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
