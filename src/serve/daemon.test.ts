@@ -346,7 +346,8 @@ test('⑦b rename/title-get（G14.16 标题统一流）：建档后 rename 落�
     const stat = withTitle[0]!;
     assert.equal(stat.runs, 1, 'run 收尾 meta 累积');
     assert.equal(typeof stat.tokens, 'number');
-    assert.ok((stat.steps ?? 0) >= 1, '链步数累计');
+    // 步数=模型动作轮口径(2026-10-31 根修后):直答轮零工具出牌→零步,不写字段;有动作轮必 ≥1
+    assert.ok(stat.steps === undefined || stat.steps >= 1, '步数口径(动作轮;零动作轮不写字段)');
     assert.equal(typeof stat.createdAt, 'string', 'header createdAt 兜底');
     assert.ok((stat.ctxWindow ?? 0) > 0, '窗口预算落 meta');
     assert.equal(typeof stat.model, 'string', '模型标识落 meta');

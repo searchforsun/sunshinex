@@ -65,7 +65,10 @@ test('①c gui·model-start 开 run 条,done 封段:seconds 计 ts 差、steps/r
   );
   const run = es[1]!;
   assert.equal(run.md, '');
-  assert.deepEqual(run.meta, { seconds: 34, steps: 12, runSteps: 3, tokens: 8400, endedTs: 35_000 });
+  // done 载荷 steps/runSteps 不再透传(2026-10-31「1 轮 1 动作显示 5 步」根修):载荷是 reactor
+  // 链全宽步号(含指令注入/notice/工具回执行),与 stats 动作轮口径不一致;meta.steps/runSteps
+  // 权威=stats(kernel pump 同步,①c-b 钉),本例零 step 事件→非零门不带步数字段
+  assert.deepEqual(run.meta, { seconds: 34, tokens: 8400, endedTs: 35_000 });
   assert.equal(es[2]!.md, '你好', '终稿与流式段同文合并单条');
 });
 

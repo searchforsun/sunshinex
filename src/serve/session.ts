@@ -207,10 +207,6 @@ export class SessionRuntime {
   /** G14.17 run 内 usage/ctx 末值（pump 旁路捕获，run 收尾落旁车 meta 后随下次 submit 清零） */
   private runUsage?: { total: number; cache: number; prompt: number };
   private runCtxUsed?: number;
-  /** G14.20 done 载荷会话累计步数（steps 语义单一源,runmeta/旁车覆盖写） */
-  private runDoneSteps?: number;
-  /** G14.56 本轮自身步数(done 载荷 runSteps;runmeta 落档,GUI 回放 run 尾部「本轮」口径) */
-  private runRunSteps?: number;
   /** 会话 todo 批次权威投影(2026-10-31 用户裁定「任务历史持久化可见」):attach 自 journal 全量行
    *  派生(seedTodoBatches)+live 随段级事件增量维护(trackTodoEvent)——内核环形窗 CAP 2000 之外的
    *  老批次只有档上有,GUI 转录派生面覆盖不到;快照载荷以此为准(不留旧 daemon 兼容面) */
@@ -735,12 +731,6 @@ export class SessionRuntime {
       };
     } else if (e.type === 'ctx' && typeof e.payload?.used === 'number') {
       this.runCtxUsed = e.payload.used;
-    } else if (e.type === 'done' && typeof e.payload?.steps === 'number') {
-      // G14.20 steps 语义统一:done 载荷 steps=reactor 会话累计步数(steps.length 含种子链)——
-      // runmeta/旁车照抄该值(覆盖语义),与圆环/侧栏 meta 同一口径;链行增量口径废弃(少计)
-      this.runDoneSteps = e.payload.steps;
-      // G14.56:runSteps=本轮自身步数(reactor seedLen 后去重计)——GUI run 尾部「本轮」口径
-      this.runRunSteps = typeof e.payload.runSteps === 'number' ? e.payload.runSteps : undefined;
     }
     if (e.type.startsWith('task-') || e.type.startsWith('gate-')) {
       // G14.2xx 板面/委派/子智能体流落档已收归内核泵(shadow 事件,seglog 映射 journal 行)——
@@ -790,8 +780,6 @@ export class SessionRuntime {
     }).catch(() => {}); // 旁路:基线探测失败不阻断 run 启动,收尾按 runBaseKnown 收窄
     this.runUsage = undefined;
     this.runCtxUsed = undefined;
-    this.runDoneSteps = undefined;
-    this.runRunSteps = undefined;
     const hasImages = images !== undefined && images.length > 0;
     this.kernel.submit(goal, images);
     this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
@@ -823,8 +811,10 @@ export class SessionRuntime {
           // G14.210 停止态入档:中断/失败收口(非 done)→GUI 回放运行条显「已停止」
           ...(outcome?.stopReason !== undefined && outcome.stopReason !== 'done' ? { stopped: true } : {}),
           seconds,
-          ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}),
-          ...(this.runRunSteps !== undefined ? { runSteps: this.runRunSteps } : {}),
+          // G14.20 口径改宗(2026-10-31「1 轮 1 动作显示 5 步」根修):步数权威=内核 stats.sessionSteps
+          // (模型动作轮;reactor 链全宽步号含指令注入/notice/工具回执行,虚高且与 live 面板/reload 重建不一致)
+          ...(this.kernel.stats().sessionSteps > 0 ? { steps: this.kernel.stats().sessionSteps } : {}),
+          ...(this.kernel.turnSteps() > 0 ? { runSteps: this.kernel.turnSteps() } : {}),
           tokens: outcome?.tokensUsed,
           ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
           endedTs,
@@ -836,8 +826,8 @@ export class SessionRuntime {
           ts: endedTs,
           payload: {
             seconds,
-            ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}),
-            ...(this.runRunSteps !== undefined ? { runSteps: this.runRunSteps } : {}),
+            ...(this.kernel.stats().sessionSteps > 0 ? { steps: this.kernel.stats().sessionSteps } : {}),
+            ...(this.kernel.turnSteps() > 0 ? { runSteps: this.kernel.turnSteps() } : {}),
             tokens: outcome?.tokensUsed,
             ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
             endedTs,
@@ -854,7 +844,7 @@ export class SessionRuntime {
           writeSessionMeta(resolveDataDir(this.root), journalId, {
             updatedAt: endedTs,
             runs: (prev.runs ?? 0) + 1,
-            ...(this.runDoneSteps !== undefined ? { steps: this.runDoneSteps } : {}), // 累计口径覆盖写
+            ...(this.kernel.stats().sessionSteps > 0 ? { steps: this.kernel.stats().sessionSteps } : {}), // 累计口径覆盖写(stats 权威)
             tokens: (prev.tokens ?? 0) + (outcome.tokensUsed ?? 0),
             seconds: (prev.seconds ?? 0) + seconds,
             ...(u !== undefined ? { cacheTokens: (prev.cacheTokens ?? 0) + u.cache, promptTokens: (prev.promptTokens ?? 0) + u.prompt } : {}),

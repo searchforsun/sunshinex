@@ -435,11 +435,13 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
           const seconds = e.ts > run.ts ? Math.round((e.ts - run.ts) / 1000) : undefined;
           const p = e.payload ?? {};
           const stopped = typeof p.stopReason === 'string' && p.stopReason !== 'done';
+          // steps/runSteps 不取载荷(2026-10-31 用户报障「1 轮 1 动作显示 5 步」根修):done 载荷
+          // steps=reactor 链全宽步号(指令注入/MCP notice/工具回执行都占号),与内核 stats 的模型
+          // 动作轮口径不一致——live 面板 1、reload 后 applySeed 以 max(runmeta.steps) 重建即虚高。
+          // meta.steps/runSteps 权威=stats(kernel pump 逐变更同步),此处只补 done 特有面
           const meta: RunMeta = {
             ...(run.meta ?? {}),
             ...(seconds !== undefined ? { seconds } : {}),
-            ...(typeof p.steps === 'number' ? { steps: p.steps } : {}),
-            ...(typeof p.runSteps === 'number' ? { runSteps: p.runSteps } : {}),
             ...(typeof p.tokensUsed === 'number' ? { tokens: p.tokensUsed } : {}),
             ...(stopped ? { stopped: true } : {}),
             endedTs: e.ts,

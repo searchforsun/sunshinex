@@ -145,6 +145,11 @@ export class SessionKernel {
   }
 
   /** 会话统计只读视图(P9):计数器唯一权威——视图层只读渲染,不再各自累计 */
+  /** 本轮自身动作轮数(=sessionSteps-runStepsBase,runmeta.runSteps 口径;serve 收尾写面同源消费) */
+  turnSteps(): number {
+    return Math.max(0, this.state.stats.sessionSteps - this.runStepsBase);
+  }
+
   stats(): SessionStats {
     return this.state.stats;
   }
