@@ -27,12 +27,15 @@ export interface WebTabProps {
   readonly uid: string;
   /** 元数据回写(url/pageTitle/pageIcon 合并进标签 params;registry 绑定 sessionId,App 落 tab-state) */
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
+  /** 工作区根(2026-11-01 CDP 形态:内置浏览器端点发现按数据目录解析;缺省=纯 iframe 形态) */
+  readonly root?: string;
 }
 
 // normalizeWebUrl/webPageName 拆至 tab-meta.ts(2026-10-26 二期分包:registry 同步层消费纯函数,
 // WebTab 体 lazy 化)——此处再导出保既有消费面零迁移
 export { normalizeWebUrl, webPageName } from './tab-meta';
 import { normalizeWebUrl, webPageName } from './tab-meta';
+import { CdpPageView, useCdpBuiltinPage } from './CdpBrowserTab';
 
 /** 自由尺寸缩放档(适应窗口外固定倍率;浏览器设备模拟同款档位) */
 const DEVICE_SCALES = [50, 75, 100, 125, 150, 200] as const;
@@ -43,7 +46,11 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.Element {
+  // CDP 形态(2026-11-01 用户裁定「浏览器改成 cdp 形式」):插件 builtin 档在场即接管——工具栏
+  // (后退/前进/刷新/地址条)全部 CDP 化,画面=screencast 镜像;meta 不在场=纯 iframe 形态
+  const cdp = useCdpBuiltinPage(conn, root);
+  const cdpActive = cdp.status !== 'idle';
   const [nav, setNav] = useState<WebHistory>(() => {
     const raw = (params.url ?? '').trim();
     return raw === '' ? { urls: [], index: -1 } : { urls: [normalizeWebUrl(raw)], index: 0 };
@@ -123,6 +130,15 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
   const navigate = (): void => {
     if (input.trim() === '') return;
     const url = normalizeWebUrl(input);
+    if (cdpActive) {
+      cdp.navigate(url);
+      setNav((n) => {
+        const urls = [...n.urls.slice(0, n.index + 1), url];
+        return { urls, index: urls.length - 1 };
+      });
+      onMeta(uid, { url, pageTitle: webPageName(url) });
+      return;
+    }
     setNav((n) => {
       const urls = [...n.urls.slice(0, n.index + 1), url];
       return { urls, index: urls.length - 1 };
@@ -132,9 +148,28 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
     onMeta(uid, { url, pageTitle: webPageName(url) }); // 标签条标题/判重键随导航演进(页名 onLoad 再精化)
   };
 
-  const back = (): void => setNav((n) => (n.index > 0 ? { ...n, index: n.index - 1 } : n));
-  const forward = (): void => setNav((n) => (n.index < n.urls.length - 1 ? { ...n, index: n.index + 1 } : n));
-  const reload = (): void => setNonce((v) => v + 1);
+  const back = (): void => {
+    if (cdpActive) {
+      const target = (nav.urls[nav.index - 1] ?? '');
+      setNav((n) => ({ ...n, index: n.index - 1 }));
+      if (target !== '') cdp.navigate(target);
+      return;
+    }
+    setNav((n) => (n.index > 0 ? { ...n, index: n.index - 1 } : n));
+  };
+  const forward = (): void => {
+    if (cdpActive) {
+      const target = (nav.urls[nav.index + 1] ?? '');
+      setNav((n) => ({ ...n, index: n.index + 1 }));
+      if (target !== '') cdp.navigate(target);
+      return;
+    }
+    setNav((n) => (n.index < n.urls.length - 1 ? { ...n, index: n.index + 1 } : n));
+  };
+  const reload = (): void => {
+    if (cdpActive) { cdp.reload(); return; }
+    setNonce((v) => v + 1);
+  };
   // 2026-10-25 用户报障:window.open 在 Electron 里只开自家子窗,不是系统默认浏览器——
   // openExternalUrl 单点(桌面壳走 preload 桥 shell.openExternal,OS 默认浏览器承接;浏览器态回落 window.open)
   const openExternal = (): void => {
@@ -217,7 +252,7 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
           <input
             className="sx-web-url"
             aria-label="web url input"
-            value={input}
+            value={cdpActive ? (input !== '' && input !== cdp.url ? input : (cdp.url || input)) : input}
             placeholder={t('Type a URL and press Enter', '输入网址后回车')}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -396,7 +431,9 @@ export function WebTab({ conn, params, uid, onMeta }: WebTabProps): JSX.Element 
               background: 'var(--surface)',
             }}
           >
-            {active === null ? (
+            {cdpActive ? (
+              <CdpPageView cdp={cdp} />
+            ) : active === null ? (
               <div className="sx-web-empty">
                 <Globe size={56} strokeWidth={1} aria-hidden="true" />
                 <p className="sx-web-empty-title">{t('Browser', '浏览器')}</p>
