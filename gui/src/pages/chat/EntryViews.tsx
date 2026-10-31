@@ -465,14 +465,29 @@ function systemIconOf(entry: ChatEntry): ReactNode {
 }
 
 /** G14.19 旁白分类(G14 批):[skills]/[memory] 打头的学习/记忆系统信息用专用图标(Sparkles/
- *  Database 微着色)+剥标签前缀——与一般系统提示(Info 灰)一眼区分;非此类回 null 走 systemIconOf */
-function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string } | null {
+ *  Database 微着色)+剥标签前缀——与一般系统提示(Info 灰)一眼区分;非此类回 null 走 systemIconOf。
+ *  2026-10-31 用户裁定 i18n+可点:saved/updated/learned 动词本地化(添加记忆/更新记忆/添加技能/
+ *  更新技能),tag/ref 随返(渲染面 data-* 落 DOM,Chat 容器点击委托开对应侧栏页签定位) */
+function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string; tag?: 'memory' | 'skills'; ref?: string } | null {
   if (entry.kind !== 'notice') return null;
   if (entry.md.startsWith('[skills]')) {
-    return { icon: <Sparkles size={12} strokeWidth={1.75} aria-hidden="true" />, md: entry.md.slice('[skills]'.length).trimStart() };
+    const rest = entry.md.slice('[skills]'.length).trimStart();
+    const m = /^(learned|updated):\s*(\S+)/.exec(rest);
+    if (m !== null) {
+      const zh = m[1] === 'learned' ? t('Skill added', '添加技能') : t('Skill updated', '更新技能');
+      return { icon: <Sparkles size={12} strokeWidth={1.75} aria-hidden="true" />, md: `${zh}: ${m[2]}`, tag: 'skills', ref: m[2] };
+    }
+    return { icon: <Sparkles size={12} strokeWidth={1.75} aria-hidden="true" />, md: rest };
   }
   if (entry.md.startsWith('[memory]')) {
-    return { icon: <Database size={12} strokeWidth={1.75} aria-hidden="true" />, md: entry.md.slice('[memory]'.length).trimStart() };
+    const rest = entry.md.slice('[memory]'.length).trimStart();
+    const m = /^(saved|updated):\s*(.+)$/.exec(rest);
+    if (m !== null) {
+      const zh = m[1] === 'saved' ? t('Memory saved', '添加记忆') : t('Memory updated', '更新记忆');
+      const first = m[2].split(',')[0]?.trim() ?? '';
+      return { icon: <Database size={12} strokeWidth={1.75} aria-hidden="true" />, md: `${zh}: ${m[2]}`, tag: 'memory', ref: first };
+    }
+    return { icon: <Database size={12} strokeWidth={1.75} aria-hidden="true" />, md: rest };
   }
   return null;
 }
@@ -521,7 +536,12 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
     }
   }
   return (
-    <div className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}`}>
+    <div
+      className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}`}
+      {...(accent?.tag !== undefined
+        ? { 'data-notice-tag': accent.tag, 'data-notice-ref': accent.ref ?? '', 'data-notice-clickable': '1' }
+        : {})}
+    >
       <div className={`entry-md${icon !== null ? ' has-icon' : ''}`}>
         {icon !== null && <span className={`entry-icon${accent !== null ? ' accent' : ''}`}>{icon}</span>}
         <div className="entry-md-body">

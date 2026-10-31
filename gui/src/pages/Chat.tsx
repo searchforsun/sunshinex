@@ -79,7 +79,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, onOpenMemory, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onTurnGoal, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -586,6 +586,19 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
       )}
 
+      {/* 记忆/学习技能回显点击委托(2026-10-31 用户裁定「点击打开侧栏对应页签」):notice 行
+          data-notice-tag/ref 由 EntryViews 落 DOM,此处统一接管开页签+定位 */}
+      <div
+        style={{ display: 'contents' }}
+        onClick={(e) => {
+          const el = (e.target as HTMLElement).closest('[data-notice-tag]');
+          if (el === null) return;
+          const tag = el.getAttribute('data-notice-tag');
+          const ref = el.getAttribute('data-notice-ref') ?? '';
+          if (tag === 'memory') onOpenMemory?.(ref);
+          if (tag === 'skills') onOpenLearned?.();
+        }}
+      >
       <MessageList
         entries={chat.entries}
         structureVersion={chat.structureVersion}
@@ -616,6 +629,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         liveTokens={liveTokens}
         onOpenImage={setLightboxSrc}
       />
+      </div>
       {/* 2026-10-27 固定长纵向滚动条(用户裁定「长度应该固定,不像现在抖动分段」):仅主对话挂载
        *  (overlay 定位于 .sx-main);侧栏 dock/其余滚动面保原生条 */}
       {sideChat !== true && <ChatScrollbar containerRef={chatScrollRef} />}

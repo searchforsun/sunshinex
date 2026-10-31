@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Database, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import type { Connection, SessionTaskRow } from '../connection';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
@@ -175,13 +175,22 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
 }
 
 /** 记忆面板:/memory 清单(body 全文)+ /memory/rm 删除。
- *  G14.147 对标 diff 页交互:行点击展开详情(全文),删除=图标钮(单行 Trash/批量带计数) */
-export function MemoryTab({ conn, root }: { conn: Connection; root: string }): JSX.Element {
+ *  G14.147 对标 diff 页交互:行点击展开详情(全文),删除=图标钮(单行 Trash/批量带计数)。
+ *  2026-10-31 用户裁定显示优化:①行图标=Database(与正文 [memory] 回显同件) ②「project · 创建」
+ *  元信息行退役 ③详情=深色底固定高,过高纵向滚动 ④focus(memoryFocus 下发)展开并滚至对应行 */
+export function MemoryTab({ conn, root, focus }: { conn: Connection; root: string; focus?: { slug: string; nonce: number } }): JSX.Element {
   const fetcher = useCallback(() => conn.memoryList(root), [conn, root]);
   const { data, error, reload } = useFetch<MemoryRow[]>(fetcher, [conn, root]);
   const [selected, setSelected] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  useEffect(() => {
+    if (focus === undefined || data === null) return;
+    setExpandedSlug(focus.slug);
+    const li = rowRefs.current.get(focus.slug);
+    li?.scrollIntoView({ block: 'center' });
+  }, [focus, data]);
   const remove = (slugs: string[]): void => {
     if (slugs.length === 0 || root === '') return;
     setDeleting(true);
@@ -226,7 +235,14 @@ export function MemoryTab({ conn, root }: { conn: Connection; root: string }): J
       {root !== '' && data !== null && data.length > 0 && (
         <ul className="mem-list">
           {data.map((m) => (
-            <li key={m.slug} className={`mem-row${expandedSlug === m.slug ? ' open' : ''}`}>
+            <li
+              key={m.slug}
+              className={`mem-row${expandedSlug === m.slug ? ' open' : ''}`}
+              ref={(el) => {
+                if (el !== null) rowRefs.current.set(m.slug, el);
+                else rowRefs.current.delete(m.slug);
+              }}
+            >
               <div className="mem-rowline">
                 <label className="mem-check">
                   <input
@@ -237,6 +253,9 @@ export function MemoryTab({ conn, root }: { conn: Connection; root: string }): J
                     }
                   />
                 </label>
+                {/* 行图标与正文 [memory] 回显同件(Database,2026-10-31 用户裁定「记忆的图标和
+                    正文中的数据库图标一致」) */}
+                <Database size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
                 <span
                   className="mem-body"
                   role="button"
@@ -266,8 +285,58 @@ export function MemoryTab({ conn, root }: { conn: Connection; root: string }): J
               </div>
               {expandedSlug === m.slug && (
                 <div className="mem-detail">
-                  <div className="mem-meta">{m.type} · {t('created', '创建')} {m.created.slice(0, 10)}</div>
+                  {/* 2026-10-31 用户裁定:「project · 创建」元信息行退役;内容深色底+固定高滚动 */}
                   <pre className="mem-body-text">{m.body}</pre>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** 学习技能面板(2026-10-31 用户裁定「侧栏增加学习技能页签,页签样式内容和记忆一致」):
+ *  learned 源技能清单——行=Sparkles(与正文 [skills] 回显同件)+id+描述;展开=深色底固定高
+ *  纵向滚动(mem 同款类);删除面不设(学习技能生命周期在 skills 管线/设置面管理) */
+export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: string }): JSX.Element {
+  const fetcher = useCallback(() => conn.skillsGroups(root), [conn, root]);
+  const { data, error, reload } = useFetch(fetcher, [conn, root]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const learned = (data?.groups ?? []).filter((g) => g.source === 'learned').flatMap((g) => g.skills);
+  return (
+    <div className="insight-tab">
+      <div className="insight-bar">
+        <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
+          <RefreshCw size={13} strokeWidth={1.75} />
+        </button>
+      </div>
+      {error !== '' && <p className="home-error" role="alert">{error}</p>}
+      {root === '' && <p className="insight-empty">{t('Select a project to view learned skills', '选择项目后可查看学习技能')}</p>}
+      {root !== '' && data !== null && learned.length === 0 && <p className="insight-empty">{t('No learned skills yet', '暂无学习技能')}</p>}
+      {learned.length > 0 && (
+        <ul className="mem-list">
+          {learned.map((s) => (
+            <li key={s.id} className={`mem-row${expandedId === s.id ? ' open' : ''}`}>
+              <div className="mem-rowline">
+                <Sparkles size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
+                <span
+                  className="mem-body"
+                  role="button"
+                  tabIndex={0}
+                  data-tip={s.description}
+                  onClick={() => setExpandedId((v) => (v === s.id ? null : s.id))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') setExpandedId((v) => (v === s.id ? null : s.id));
+                  }}
+                >
+                  {s.id}
+                </span>
+              </div>
+              {expandedId === s.id && (
+                <div className="mem-detail">
+                  <pre className="mem-body-text">{s.description ?? t('(no description)', '(无描述)')}</pre>
                 </div>
               )}
             </li>

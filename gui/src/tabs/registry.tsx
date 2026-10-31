@@ -8,7 +8,7 @@
 
 import { lazy } from 'react';
 import { t } from '../i18n';
-import { FileText, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { FileText, GitCompare, ListTodo, Hourglass, Brain, MessageCircle, Sparkles, SquareTerminal, Bot, Globe } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -22,6 +22,7 @@ const TodoCardsTab = lazy(() => import('./TodoCardsTab').then((m) => ({ default:
 const TaskBoardTab = lazy(() => import('./TaskBoardTab').then((m) => ({ default: m.TaskBoardTab })));
 const BgTasksTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.BgTasksTab })));
 const MemoryTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.MemoryTab })));
+const LearnedSkillsTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.LearnedSkillsTab })));
 const WebTab = lazy(() => import('./WebTab').then((m) => ({ default: m.WebTab })));
 import type { MutableRefObject } from 'react';
 
@@ -76,6 +77,9 @@ export interface TabRenderProps {
   readonly startSideChat?: (insert?: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
   readonly root: string;
+  /** 记忆定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」:saved 回显行点击下发 slug,
+   *  MemoryTab 展开滚至对应行;nonce 防同 slug 重入不触发;他型忽略) */
+  readonly memoryFocus?: { slug: string; nonce: number };
   /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
   readonly chatSinkRef?: MutableRefObject<import('../pages/Chat').ChatSink | null>;
 }
@@ -90,6 +94,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   agent: Bot, // G14.175 子智能体只读转录页(机器人图标,用户裁决)
   bgtasks: Hourglass, // G14.180 后台任务(等待执行)
   memory: Brain, // G14.180 持久记忆
+  learned: Sparkles, // 学习技能(2026-10-31,[skills] 回显同族图标)
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
   web: Globe, // G8d 内嵌网页标签
 };
@@ -209,7 +214,15 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Memory', '记忆'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <MemoryTab conn={p.conn} root={p.root} />,
+    render: (p) => <MemoryTab conn={p.conn} root={p.root} focus={p.memoryFocus} />,
+  },
+  {
+    id: 'learned',
+    group: 'session',
+    title: () => t('Learned skills', '学习技能'),
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => <LearnedSkillsTab conn={p.conn} root={p.root} />,
   },
   {
     id: 'terminal',

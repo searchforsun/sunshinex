@@ -312,7 +312,14 @@ function AppShell(): JSX.Element {
   /** G14.174 重定位:agents 页签 id=任务板页签(卡片流;tab 持久化档兼容保留旧 id) */
   const openBoardTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
   const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
-  const openMemoryTab = useCallback((): void => { openTabInSession('memory'); }, [openTabInSession]);
+  /** 记忆页签+定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」):focus slug 随 render props
+   *  下发 MemoryTab,展开并滚至对应行;nonce 保证同 slug 重复点击仍触发 */
+  const [memoryFocus, setMemoryFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);
+  const openMemoryTab = useCallback((focus?: string): void => {
+    openTabInSession('memory');
+    setMemoryFocus(focus !== undefined && focus !== '' ? { slug: focus, nonce: Date.now() } : undefined);
+  }, [openTabInSession]);
+  const openLearnedTab = useCallback((): void => { openTabInSession('learned'); }, [openTabInSession]);
   /** 组头目录钮排队旗(2026-10-23 用户裁定):跨会话打开链(newSession→attach→openSession)落位后
    *  补开目录页签——openTabInSession 走 sessionRef,须等目标会话成为打开会话再消费 */
   /** 2026-10-27 目录树入左菜单层(用户裁定):menuDir={root,sessionId} 驱动 ProjectMenu 目录视图;
@@ -697,6 +704,7 @@ function AppShell(): JSX.Element {
                 onSessionsMutated={() => setRecentVersion((v) => v + 1)}
                 onSideChat={startSideChat}
                 onOpenMemory={openMemoryTab}
+                onOpenLearned={openLearnedTab}
                 onFork={onForkStable}
                 onOpError={showOpError}
                 onRewind={(turn) => {
@@ -812,6 +820,7 @@ function AppShell(): JSX.Element {
                       ptyIdFor,
                       onPtyAllocated: handlePtyAllocated,
                       chatSinkRef: t.params.sideId !== undefined ? sideSinksRef.current.get(t.params.sideId) : undefined,
+                      memoryFocus,
                     })
                     )}
                     </Suspense>

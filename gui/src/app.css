@@ -1820,6 +1820,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin: 0; font: 12px/1.7 var(--font-ui); color: var(--fg-secondary);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
+/* 记忆/学习技能详情(2026-10-31 用户裁定):内容深色底+固定高(240px)过高纵向滚动;行图标
+   Database/Sparkles 与正文回显同件 */
+.mem-detail .mem-body-text {
+  height: 240px; overflow-y: auto;
+  background: color-mix(in srgb, #000 32%, var(--surface));
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  padding: 8px 10px; color: var(--fg);
+}
+.mem-icon { flex: none; color: var(--fg-tertiary); }
+/* 记忆/学习技能回显行可点(点击开对应侧栏页签):手形+hover 亮 */
+.entry-notice[data-notice-clickable='1'] { cursor: pointer; }
+.entry-notice[data-notice-clickable='1']:hover { color: var(--fg); }
 .sx-changes-act .mem-count { color: var(--fg-on-solid); }
 
 /* G14.150 侧栏左缘统一列(x=14):品牌/新对话/项目组行 与 分区头(项目/最近会话) 对齐 */
