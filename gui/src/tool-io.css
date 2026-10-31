@@ -1,26 +1,27 @@
 /*
- * 工具展开体 I/O 井统一单点(2026-10-31 用户裁定「统一工具面的高度行距,别一个一个工具打补丁」):
- * .entry pre 的正文代码卡样式(bg/边框/圆角/margin 10px)此前渗进工具行展开体——exec/mcp/缺省
- * 三分支的 .tool-io-pre 全部长出卡片底+上下 10px 空隙,行距逃逸思考行节奏。此文件单点复位:
- * pre.tool-io-pre 裸显(零卡零距),节奏由 .tool-body-inner(顶 4px)与 .tool-exec(4px 0 2px)
- * 两处既有规则统一供给——电脑/浏览器操作(MCP)等全部工具同一形态,后续新增工具自动继承。
+ * 工具展开体 I/O 井统一单点(2026-10-31 用户裁定「统一工具面的高度行距,别一个一个工具打补丁」;
+ * 追加裁定「黑框保留」——上一步把 .entry pre 卡样式连距带框全复位过了界,本文件改为:
+ * 卡片(代码井)三分支统一保留,只统一间距节奏与图片对齐,不再裸显)。
+ * 病根回顾:.entry pre 的 margin 10px 上下渗进展开体=行距逃逸思考行节奏;卡本身是设计面。
  * 独立文件免触 app.css(用户并行在途编辑面),main.tsx 于 app.css 之后引入(同序覆盖)。
  */
 
+/* I/O 井=代码卡(.tool-io 同面):三分支(exec/mcp/缺省)同一底色圆角内距;margin 归零——
+   顶距由 .tool-body-inner(4px)单点供,底距由 .tool-exec 收,不再逐层叠加 */
 .entry-tool pre.tool-io-pre {
   margin: 0;
-  padding: 0;
-  background: transparent;
+  padding: 8px 10px;
+  background: var(--surface-code);
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-md);
 }
 
-/* 图片带与 I/O 井的间距同点收敛:上 4px 贴井,下 4px 收尾;左 8px 与井文字起点对齐 */
+/* 图片带:上 4px 贴井、下 2px 收尾、左 10px=井内文字起点对齐 */
 .entry-tool .tool-images {
-  margin: 4px 0 2px 8px;
+  margin: 4px 0 2px 10px;
 }
 
-/* 展开体代码井文字与思考行同灰阶节奏(承接 G14.198 口径,不随 .entry pre 字号漂移) */
+/* 展开体代码字面与思考行同灰阶节奏(承接 G14.198;字号钉死不随 .entry pre 预设漂移) */
 .entry-tool pre.tool-io-pre,
 .entry-tool .tool-exec pre {
   color: var(--fg-secondary);
