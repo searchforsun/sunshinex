@@ -229,17 +229,13 @@ export function seedChatFromSnapshot(
   s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
   // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起
   const seeded: ChatState = { ...s, tokens: s.k.stats.sessionTotalTokens, steps: s.k.stats.sessionSteps, cacheTokens: s.k.stats.sessionCacheTokens };
-  // open-run 基线注入(2026-10-31 用户实测「切换会话后运行中步数/tokens 乱掉,一会 0 一会 100+步」):
-  // 原空 runBases 使 Chat.tsx liveSteps 回退全量累计(stepsBase undefined 分支)——在飞 run 显示整段
-  // 会话累计;而窗口重建统计又只含已闭合 run(尾窗外旧 run 缺席)→ 同屏两口径互斥摆动。基线=窗口
-  // 重建累计 − 在飞回合步数估计(窗口内 openRun 之后的 tool 条目数:每模型步以工具调用收尾的通行
-  // 形态,最终答复步无工具,轻微低估可接受)——live step 帧自重建值续 +1 后「本轮」=估计+新增,单调
-  // 无跳变;tokens 基线=窗口重建累计(在飞回合 tokens 由首个 usage 帧的 turnTotal 全额自纠——
-  // P9 turnTotal=回合累计口径,首帧即补足窗口外缺失)
+  // open-run 基线注入(2026-10-31 用户实测「切换会话后运行中步数/tokens 乱掉」;底层收口=内核
+  // open run meta 随统计前进+runmeta 行增量落档,快照/装载两侧在飞回合统计精确)——基线=窗口重建
+  // 累计(已含在飞回合,精确非估算),live step/usage 帧自重建值续链「本轮」单调无跳变;无基线注入
+  // 则 liveSteps 回退全量累计分支(在飞 run 显整段会话累计)。旧 daemon(无增量 runmeta)在飞回合
+  // 不入重建值→「本轮」自切换后起算,欠计不摆动(过渡态可接受,重装即精确)
   if (cursors.openRun >= 0) {
-    let est = 0;
-    for (const e of seeded.k.entries) if (e.seq > cursors.openRun && e.kind === 'tool') est += 1;
-    seeded.runBases = { [cursors.openRun]: { steps: Math.max(0, seeded.steps - est), tokens: seeded.tokens } };
+    seeded.runBases = { [cursors.openRun]: { steps: seeded.steps, tokens: seeded.tokens } };
   }
   return { ...seeded, entries: mapEntries(seeded.k, seeded.runBases) };
 }

@@ -47,6 +47,11 @@ function kernelEventsToRows(events: KernelEvent[]): Record<string, unknown>[] {
     }
     if (e.t === 'stats') continue; // 统计面零落档(P9)
     if (e.t === 'shadow') continue; // 面事件透传行(G14.2xx)归 shadow 映射,本帮助面不消费
+    if (e.t === 'runmeta') {
+      const m = e.entry.meta;
+      if (m !== undefined) rows.push({ t: 'runmeta', ...(m.steps !== undefined ? { steps: m.steps } : {}), ...(m.runSteps !== undefined ? { runSteps: m.runSteps } : {}), ...(m.tokens !== undefined ? { tokens: m.tokens } : {}), ...(m.cacheTokens !== undefined ? { cacheTokens: m.cacheTokens } : {}) });
+      continue; // open run meta 增量行(与 kernelEventRows 同映射——往返断言覆盖在飞回合统计)
+    }
     rows.push({ t: 'truncate', upToSeq: e.upToSeq });
   }
   return rows;

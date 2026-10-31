@@ -33,7 +33,8 @@ export type KernelEvent =
   | { t: 'truncate'; upToSeq: number } // rewind/compact/reset 视界截断(upToSeq=0 即全清)
   | { t: 'steer'; items: SteerItem[] } // 等待队列变更(整列重写快照;持久化整列落一行,广播走全量列表)
   | { t: 'stats'; stats: SessionStats } // 会话统计变更(P9,全量快照;不落档——seed 自 run meta 重建)
-  | { t: 'shadow'; e: SessionEvent }; // G14.2xx 面事件透传落档(board/delegation/子智能体流)——凡界面可见皆落库,渲染层回溯共用;持久化映射见 seglog.kernelEventRows
+  | { t: 'shadow'; e: SessionEvent } // G14.2xx 面事件透传落档(board/delegation/子智能体流)——凡界面可见皆落库,渲染层回溯共用;持久化映射见 seglog.kernelEventRows
+  | { t: 'runmeta'; entry: KernelEntry }; // open run meta 随统计前进(2026-10-31 用户裁定「步数统计要持久化」)——增量落 runmeta 行,journal-only 不广播(切换会话/重启重建=在飞回合统计精确)
 
 /**
  * SessionKernel:会话转录唯一投影 + 事件泵(spec 2026-10-17-session-kernel §3/§6)。
@@ -51,6 +52,8 @@ export class SessionKernel {
   /** 等待队列(P5 内核化,spec §12):内核同体持有但不进 KernelState——队列非转录,不参与
    *  applyEvent 纯面;变更走 steer 事件外抛(持久化+广播双消费),装载经 steerRestore 回种防双写 */
   private steerItems: SteerItem[] = [];
+  /** run-open 时刻的会话累计步数(回合自身步数基线:runmeta.runSteps=累计−基线) */
+  private runStepsBase = 0;
   private readonly onKernelEvent?: (ev: KernelEvent) => void;
 
   constructor(opts?: { onKernelEvent?: (ev: KernelEvent) => void }) {
@@ -74,7 +77,37 @@ export class SessionKernel {
     }
     const prev = this.state;
     this.state = applyEvent(this.state, e);
-    if (prev.stats !== this.state.stats) this.emit({ t: 'stats', stats: this.state.stats });
+    if (prev.stats !== this.state.stats) {
+      this.emit({ t: 'stats', stats: this.state.stats });
+      // P9 落档收口(2026-10-31 用户裁定「步数统计要持久化,不能靠前端估算」):open run meta 随统计
+      // 前进并增量落 runmeta 行——此前 runmeta 只在 run 收尾落,运行中回合的步数/tokens 纯内存态,
+      // 切换会话/快照重建即丢。steps 载荷=会话累计(applySeed max 语义),runSteps=回合自身(基线=
+      // run-open 时刻累计),tokens/cache=回合累计;done 收尾既有 runmeta 覆盖写语义不变
+      if (this.state.openRun >= 0) {
+        const idx = this.state.entries.findIndex((x) => x.seq === this.state.openRun);
+        const runEntry = idx >= 0 ? this.state.entries[idx] : undefined;
+        if (runEntry !== undefined) {
+          // 非零门(零值不带——done 收尾 runmeta 的 deep-equal 面与既有覆盖语义不受污染)
+          const st = this.state.stats;
+          const meta = {
+            ...(runEntry.meta ?? {}),
+            ...(st.sessionSteps > 0 ? { steps: st.sessionSteps } : {}),
+            ...(st.sessionSteps - this.runStepsBase > 0 ? { runSteps: st.sessionSteps - this.runStepsBase } : {}),
+            ...(st.turnTokens > 0 ? { tokens: st.turnTokens } : {}),
+            ...(st.turnCacheTokens > 0 ? { cacheTokens: st.turnCacheTokens } : {}),
+          };
+          const before = runEntry.meta ?? {};
+          const changed = (Object.keys(meta) as Array<keyof typeof meta>).some((k) => meta[k] !== (before as typeof meta)[k]);
+          if (changed) {
+            const updated: KernelEntry = { ...runEntry, meta };
+            const entries = this.state.entries.slice();
+            entries[idx] = updated;
+            this.state = { ...this.state, entries };
+            this.emit({ t: 'runmeta', entry: updated });
+          }
+        }
+      }
+    }
     if (prev.entries === this.state.entries) return;
     const prevBySeq = new Map(prev.entries.map((x) => [x.seq, x]));
     for (const entry of this.state.entries) {
@@ -82,6 +115,7 @@ export class SessionKernel {
       if (before === undefined) {
         // 开启态:run 条(openRun 游标在场)与正文/思考开启段;done 无开启段直建的终答条目以闭合态出生
         const open = entry.kind === 'run' ? this.state.openRun === entry.seq : this.state.openSeg === entry.seq;
+        if (entry.kind === 'run' && open) this.runStepsBase = this.state.stats.sessionSteps; // 回合步数基线(runmeta.runSteps 减数)
         this.emit({ t: 'seg-open', entry, open });
         continue;
       }

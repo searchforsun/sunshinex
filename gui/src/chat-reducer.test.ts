@@ -288,7 +288,7 @@ describe('status·tokens·steps 聚合', () => {
 });
 
 describe('seedChatFromSnapshot（onResync 基线）', () => {
-  it('open-run 基线注入(2026-10-31 用户实测切换会话「本轮」0↔100+ 摆动收口):基线=窗口重建累计−在飞回合 tool 条目估计,live 减基线=估计+新增', () => {
+  it('open-run 基线注入(切换会话「本轮」摆动收口):基线=窗口重建累计(内核增量 runmeta 落档后精确含在飞回合),live 减基线单调', () => {
     // 窗口:闭合 run(meta steps=80 累计) + open run(seq=10) + 其后 3 个 tool 条目(在飞回合步数估计=3)
     const s = seedChatFromSnapshot(
       [
@@ -301,12 +301,12 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
       ] as never,
       { openRun: 10, openSeg: -1 },
     );
-    // 重建累计:steps=80(tokens=5000);基线 steps=80−3(估计)=77,tokens=5000
+    // 底层精确口径(open run meta 随统计落档后窗口重建已含在飞回合):基线=重建累计本身
+    // (旧 daemon 无增量 runmeta 时重建值不含在飞回合,「本轮」自切换后起算——欠计不摆动)
     expect(s.steps).toBe(80);
-    expect(s.runBases[10]).toEqual({ steps: 77, tokens: 5000 });
-    // live 减基线=3(估计)+新增,非全量 80
+    expect(s.runBases[10]).toEqual({ steps: 80, tokens: 5000 });
     const openRunView = s.entries.find((e) => e.key === 'k10');
-    expect(openRunView?.stepsBase).toBe(77);
+    expect(openRunView?.stepsBase).toBe(80);
     expect(openRunView?.tokensBase).toBe(5000);
   });
 

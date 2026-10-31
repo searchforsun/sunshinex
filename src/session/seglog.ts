@@ -28,6 +28,13 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
     return [{ t: 'subagent', e }];
   }
   if (ev.t === 'truncate') return [{ t: 'truncate', upToSeq: ev.upToSeq }];
+  if (ev.t === 'runmeta') {
+    // open run meta 增量落行(2026-10-31 用户裁定「步数统计要持久化」):fields 缺省=undefined,
+    // runMetaOf 净化面按缺省不覆盖(行面字段不予信任既有口径);对位=reduceSegRows 末个 run 条
+    const m = ev.entry.meta;
+    if (m === undefined) return [];
+    return [{ t: 'runmeta', ...(m.steps !== undefined ? { steps: m.steps } : {}), ...(m.runSteps !== undefined ? { runSteps: m.runSteps } : {}), ...(m.tokens !== undefined ? { tokens: m.tokens } : {}), ...(m.cacheTokens !== undefined ? { cacheTokens: m.cacheTokens } : {}) }];
+  }
   if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front, ...(x.images !== undefined ? { images: x.images } : {}) })) }];
   if (ev.t === 'stats') return []; // 统计面不落档(P9):非转录,装载自 run meta 重建
   const e = ev.entry;

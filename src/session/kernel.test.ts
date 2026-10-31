@@ -69,6 +69,28 @@ test('①c gui·model-start 开 run 条,done 封段:seconds 计 ts 差、steps/r
   assert.equal(es[2]!.md, '你好', '终稿与流式段同文合并单条');
 });
 
+test('①c-b open run meta 随统计前进+runmeta 事件增量落行(2026-10-31 用户裁定「步数统计要持久化」):运行中重建精确', () => {
+  const metas: Array<{ steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number } | undefined> = [];
+  const k2 = new SessionKernel({ onKernelEvent: (e) => { if (e.t === 'runmeta') metas.push(e.entry.meta); } });
+  pump(k2, ev('model-start', undefined, undefined, 1000));
+  pump(k2, ev('step', 'tool_call'), ev('usage', undefined, { turnTotal: 1200 }), ev('step', 'tool_call'), ev('usage', undefined, { turnTotal: 3400 }));
+  const run = k2.replay().find((e) => e.kind === 'run')!;
+  // live meta:steps=会话累计 2,runSteps=回合自身 2,tokens=回合累计 3400(非零门:零值字段不带)
+  assert.equal(run.meta?.steps, 2);
+  assert.equal(run.meta?.runSteps, 2);
+  assert.equal(run.meta?.tokens, 3400);
+  assert.equal(metas.length >= 2, true, '每次统计前进增量发 runmeta 事件');
+  // 重建:applySeed 自 open run meta 求和/取 max——切换会话/重启后统计精确(非 0 非全量)
+  const st = applySeed(initialKernelState(), k2.replay().map((e) => ({ ...e })));
+  assert.equal(st.stats.sessionSteps, 2);
+  assert.equal(st.stats.sessionTotalTokens, 3400);
+  // 无统计前进零事件(纯 token/正文帧不发 runmeta)
+  const k3 = new SessionKernel({ onKernelEvent: (e) => { if (e.t === 'runmeta') metas.push(undefined); } });
+  const before = metas.length;
+  pump(k3, ev('model-start', undefined, undefined, 1000), ev('token', 'hi'));
+  assert.equal(metas.length - before, 0, '纯正文帧零 runmeta(零值门)');
+});
+
 test('①d done 载荷 stopReason 非 done → meta.stopped(中断/失败收口显「已停止」)', () => {
   const k = new SessionKernel();
   pump(k, ev('model-start', undefined, undefined, 1000), ev('done', '', { stopReason: 'interrupted' }, 9000));
