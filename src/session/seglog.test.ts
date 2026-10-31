@@ -315,3 +315,14 @@ test('entriesToChainSteps:孤立 thinking(无后继 assistant)自落 note 行', 
   const steps = entriesToChainSteps([{ seq: 1, ts: 1, kind: 'thinking', md: 'alone' }]);
   assert.deepEqual(steps, [{ action: 'note', observation: '[thinking] alone' }]);
 });
+
+test('imagesOf 路径引用回读(2026-10-31 images-cache 裁定):seg 行本地图片地址不被净化丢弃', () => {
+  const entries = reduceSegRows([
+    { t: 'seg', kind: 'user', md: '带图', ts: 1, seq: 1, images: ['D:/data/images-cache/20261031T140114Z-5e8877a5cbeb.png'] },
+    { t: 'seg', kind: 'user', md: '旧档 dataURL', ts: 2, seq: 2, images: ['data:image/png;base64,AAAA'] },
+    { t: 'seg', kind: 'user', md: '垃圾串丢弃', ts: 3, seq: 3, images: ['not-an-image'] },
+  ]);
+  assert.deepEqual(entries[0]!.images, ['D:/data/images-cache/20261031T140114Z-5e8877a5cbeb.png'], '路径引用保留(重启回显不蒸发)');
+  assert.deepEqual(entries[1]!.images, ['data:image/png;base64,AAAA'], '旧档 dataURL 兼容');
+  assert.equal(entries[2]!.images, undefined, '非图片串仍弃(行面不予信任)');
+});

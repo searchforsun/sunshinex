@@ -119,10 +119,16 @@ export interface SegRowLike {
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** 行面 images 净化（dataURL 串数组；非串项丢弃、空列回落 undefined——行面字段不予信任） */
+/** 行面 images 净化（dataURL 或本地图片文件地址串数组；非串项丢弃、空列回落 undefined——行面字段
+ *  不予信任）。2026-10-31 images-cache 裁定后落档形态=绝对文件地址（恒正斜杠），dataURL 为旧档
+ *  兼容形态——两者都收；无扩展名又非 data: 的串仍弃（行面字段不予信任口径不破） */
 function imagesOf(raw: unknown): string[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  const out = raw.filter((x): x is string => typeof x === 'string' && x.startsWith('data:image/'));
+  const out = raw.filter(
+    (x): x is string =>
+      typeof x === 'string' &&
+      (x.startsWith('data:image/') || /^https?:\/\//i.test(x) || /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(x)),
+  );
   return out.length > 0 ? out : undefined;
 }
 
