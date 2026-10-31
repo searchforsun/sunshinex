@@ -190,10 +190,12 @@ test('stop 接线:run 进行中 ledgerTask.stop → killBackground(pid);kill 失
   assert.equal(typeof h.ledgers[0]!.stop, 'function', '台账 stop 句柄已挂(execBackground 返回 pid 后)');
   h.ledgers[0]!.stop!();
   assert.deepEqual(h.sandbox.killed, [123], 'stop 触发 killBackground(pid)');
+  exec.stop('t7');
+  assert.deepEqual(h.sandbox.killed, [123, 123], '板 stop(taskId) 与台账 stop 打到同一进程');
   // kill 失败吞(进程已死 ESRCH 等):stop 不向上炸,可重复调
   h.sandbox.throwOnKill = new Error('kill ESRCH');
   assert.doesNotThrow(() => h.ledgers[0]!.stop!());
-  assert.deepEqual(h.sandbox.killed, [123], 'kill 失败不再入账(task_stop 单点已兜底 finish)');
+  assert.deepEqual(h.sandbox.killed, [123, 123], 'kill 失败不再入账(task_stop 单点已兜底 finish)');
   // 收尾:exit 驱动 run 自然终值(迟到 exit 经 exit promise 收口)
   h.sandbox.exitPid(123, 0);
   const r = await p;

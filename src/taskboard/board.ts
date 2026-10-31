@@ -43,6 +43,12 @@ function isTerminal(status: TaskStatus): boolean {
   return status === 'success' || status === 'failed' || status === 'cancelled';
 }
 
+/** 用户中止、信号打断、ABORTED 归 cancelled；执行错误保持 failed */
+export function isUserAbort(code?: string, message?: string): boolean {
+  if (code === 'ABORTED') return true;
+  return /\bABORTED\b/.test(code ?? '') || /\b(interrupted|aborted)\b/i.test(message ?? '');
+}
+
 /** TaskBoard 协调器:创建/依赖/指派/停止 + 事件发射 + event sourcing + 批量并行派发。
  *  派发 pending→running;回写 running→success|failed|cancelled。init 只恢复不 kick。 */
 export interface TaskBoardDeps {
@@ -239,13 +245,16 @@ export class TaskBoard {
     const from = task.status;
     this.applyAndPersist({ t: 'status-changed', taskId, from, to: 'cancelled', ts: this.now(), note: 'stopped' });
     this.emit('task-status-changed', { taskId, from, status: 'cancelled', note: 'stopped' });
+    this.emitBlockedDownstream(taskId);
     const flight = this.inflight.get(taskId);
     if (flight !== undefined) {
       flight.abort();
       this.finishLedger(flight.ledgerId, 'stopped');
       this.inflight.delete(taskId);
     }
-    if (from === 'running' && task.executedBy !== undefined && task.executedBy !== 'fork' && task.executedBy !== 'external-cli') {
+    if (from === 'running' && task.executedBy === 'external-cli') {
+      this.deps.externalExecutor?.stop?.(taskId);
+    } else if (from === 'running' && task.executedBy !== undefined && task.executedBy !== 'fork') {
       this.deps.team?.get(task.executedBy)?.interruptCurrent();
     }
     return ok(undefined);
@@ -314,7 +323,7 @@ export class TaskBoard {
     return this.enterRunning(taskId, by);
   }
 
-  /** 上游 failed:直接下游 pending 者发 task-blocked */
+  /** 上游 failed 或 cancelled:直接下游 pending 者发 task-blocked */
   private emitBlockedDownstream(failedId: string): void {
     for (const t of Object.values(this.state.tasks)) {
       if (t.status === 'pending' && t.dependsOn.includes(failedId)) {
@@ -456,6 +465,11 @@ export class TaskBoard {
     const durationMs = this.now() - startedAt;
     if (okRun) {
       this.finishExecution(task.id, { ok: true, by: 'fork', reply, tokens, durationMs }, ledger.id);
+    } else if (abort.signal.aborted || isUserAbort(errCode, errMsg)) {
+      this.finishExecution(task.id, {
+        ok: false, terminal: 'cancelled', by: 'fork',
+        error: { code: errCode ?? 'ABORTED', message: errMsg ?? 'aborted' },
+      }, ledger.id);
     } else {
       this.finishExecution(task.id, { ok: false, by: 'fork', error: { code: errCode, message: errMsg } }, ledger.id);
     }
@@ -474,7 +488,7 @@ export class TaskBoard {
     }
     const durationMs = this.now() - startedAt;
     if (this.state.tasks[task.id]?.status === 'cancelled') {
-      this.emit('delegation-ended', { delegationId, kind: 'external-cli', status: 'failed', tokens: r.tokens });
+      this.emit('delegation-ended', { delegationId, kind: 'external-cli', status: 'skipped', tokens: r.tokens });
       return;
     }
     if (r.ok) {
@@ -521,7 +535,7 @@ export class TaskBoard {
       else if (to === 'cancelled') this.finishLedger(ledgerId, 'stopped');
       else this.finishLedger(ledgerId, 'failed');
     }
-    if (to === 'failed') this.emitBlockedDownstream(taskId);
+    if (to === 'failed' || to === 'cancelled') this.emitBlockedDownstream(taskId);
     this.kick();
     return ok(undefined);
   }

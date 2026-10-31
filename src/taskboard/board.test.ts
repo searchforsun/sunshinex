@@ -118,6 +118,121 @@ test('stopTask:pending 与 running → cancelled;终态幂等', async () => {
   }
 });
 
+test('stopTask:上游 cancelled 向 pending 下游发 task-blocked', async () => {
+  const tmp = tmpdir('sunshinex-tb-stop-block-');
+  try {
+    const hang = new Promise<void>(() => {});
+    const events: SessionEvent[] = [];
+    const { agentTeams, teamId } = attachTeam();
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'block')),
+      runner: { runSubagent: async () => { await hang; return { ok: true as const, value: { reply: 'r', tokens: 1 } }; } } as unknown as SubagentRunner,
+      registry: registryStub,
+      agentTeams,
+      onEvent: (e) => events.push(e),
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    const a = board.create({ teamId, title: 'A', spec: 'a' });
+    assert.ok(a.ok);
+    const idA = a.value.taskId;
+    const b = board.create({ teamId, title: 'B', spec: 'b', dependsOn: [idA] });
+    assert.ok(b.ok);
+    const idB = b.value.taskId;
+    await drain();
+    assert.equal(board.snapshot().tasks[idA]!.status, 'running');
+    assert.ok(board.stopTask(idA).ok);
+    assert.equal(board.snapshot().tasks[idA]!.status, 'cancelled');
+    assert.equal(board.snapshot().tasks[idB]!.status, 'pending');
+    const blocked = events.filter((e) => e.type === 'task-blocked');
+    assert.equal(blocked.length, 1);
+    assert.equal((blocked[0]!.payload as Record<string, unknown>).taskId, idB);
+    assert.deepEqual((blocked[0]!.payload as Record<string, unknown>).blockedBy, [idA]);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('用户中止回写 cancelled:ABORTED 与 interrupted 不落 failed', async () => {
+  const tmp = tmpdir('sunshinex-tb-abort-');
+  try {
+    const cases: Array<{ title: string; error: { code: string; message: string } }> = [
+      { title: 'A', error: { code: 'ABORTED', message: 'aborted' } },
+      { title: 'B', error: { code: 'INCOMPLETE', message: '[fork] did not finish (interrupted)' } },
+    ];
+    for (const c of cases) {
+      const events: SessionEvent[] = [];
+      const { agentTeams, teamId } = attachTeam();
+      const board = new TaskBoard({
+        store: new TeamStore(path.join(tmp, 'teams', c.title)),
+        runner: { runSubagent: async () => ({ ok: false as const, error: c.error }) } as unknown as SubagentRunner,
+        registry: registryStub,
+        agentTeams,
+        onEvent: (e) => events.push(e),
+        now: (() => { let n = 1000; return () => ++n; })(),
+      });
+      board.init();
+      const up = board.create({ teamId, title: c.title, spec: c.title });
+      assert.ok(up.ok);
+      const id = up.value.taskId;
+      const down = board.create({ teamId, title: `${c.title}-down`, spec: 'd', dependsOn: [id] });
+      assert.ok(down.ok);
+      await drain();
+      assert.equal(board.snapshot().tasks[id]!.status, 'cancelled', c.title);
+      assert.equal(board.snapshot().tasks[down.value.taskId]!.status, 'pending');
+      const blocked = events.find((e) => e.type === 'task-blocked');
+      assert.ok(blocked, `${c.title} 下游 task-blocked`);
+      assert.deepEqual((blocked!.payload as Record<string, unknown>).blockedBy, [id]);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('external-cli stopTask 调用 stop,已取消的委派收口不是 failed', async () => {
+  const tmp = tmpdir('sunshinex-tb-ext-stop-');
+  try {
+    const events: SessionEvent[] = [];
+    let release: () => void = () => {};
+    const hang = new Promise<void>((res) => { release = res; });
+    let stopped = '';
+    const { agentTeams, teamId } = attachTeam();
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(tmp, 'teams', 'main')),
+      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as unknown as SubagentRunner,
+      registry: registryStub,
+      agentTeams,
+      externalExecutor: {
+        stop: (id: string) => { stopped = id; },
+        run: async () => { await hang; return { ok: false, reply: 'killed', tokens: 3 }; },
+      },
+      onEvent: (e) => events.push(e),
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    const a = board.create({ teamId, title: 'A', spec: 'a', executor: 'external-cli' });
+    assert.ok(a.ok);
+    const idA = a.value.taskId;
+    const b = board.create({ teamId, title: 'B', spec: 'b', dependsOn: [idA] });
+    assert.ok(b.ok);
+    await drain();
+    assert.equal(board.snapshot().tasks[idA]!.status, 'running');
+    assert.ok(board.stopTask(idA).ok);
+    assert.equal(stopped, idA, 'external stop 被调用');
+    assert.equal(board.snapshot().tasks[b.value.taskId]!.status, 'pending');
+    assert.ok(events.some((e) => e.type === 'task-blocked'));
+    release();
+    await drain();
+    await drain();
+    assert.equal(board.snapshot().tasks[idA]!.status, 'cancelled', '迟到回写不覆盖 cancelled');
+    const ended = events.filter((e) => e.type === 'delegation-ended');
+    assert.equal(ended.length, 1);
+    assert.equal((ended[0]!.payload as Record<string, unknown>).status, 'skipped');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('finishExecution:ok→success;error→failed;terminal cancelled', async () => {
   const tmp = tmpdir('sunshinex-tb-finish5-');
   try {

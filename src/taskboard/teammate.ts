@@ -14,7 +14,7 @@ import type { ToolRegistry } from '../harness/tools';
 import type { TaskRegistry } from '../harness/tasks';
 import type { StorageAdapter } from '../storage/adapter';
 import type { Inbox } from './inbox';
-import { dispatchTag, type TaskBoard } from './board';
+import { dispatchTag, isUserAbort, type TaskBoard } from './board';
 import type { BoardTask } from './model';
 
 /** 队伍缺省帽(2026-10-06 用户实机反馈「4 太少」提至 8):主链上下文带宽是共享资源,teammate 转录都进
@@ -221,7 +221,7 @@ export class Teammate {
   private async execute(task: BoardTask): Promise<void> {
     if (!this.deps.board.markClaimed(task.id, this.name)) return; // 非 pending:静默放弃(已 running 的认领幂等放行)
     // 板任务台账登记(与 fork 路径同形 dispatchTag(板 id)):task_wait(null) 的可等面;stop=精确中止本任务
-    // (Reactor 收到 abort 即 !done→failed 回写;teammate 存活继续 claim 下一任务)
+    // (用户中止/interrupted/ABORTED 回写 cancelled;执行错误回写 failed;teammate 存活继续 claim 下一任务)
     const taskAbort = new AbortController();
     this.currentTaskAbort = taskAbort;
     const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: dispatchTag(task.id) });
@@ -237,7 +237,7 @@ export class Teammate {
     const delegationId = dispatchTag(task.id);
     // label = teammate 名(2026-10-06 用户定版 UI 语义:Ctrl+B 行显执行者名字,面板明细按名 join 转录;
     // delegationId 用同形标签保投影唯一键与台账对齐)
-    const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed', tokens?: number): void => {
+    const emitDelegation = (type: 'delegation-started' | 'delegation-ended', status?: 'done' | 'failed' | 'skipped', tokens?: number): void => {
       this.deps.onEvent?.({
         type,
         ts: Date.now(),
@@ -282,19 +282,14 @@ ${task.spec}` },
         },
       );
     } catch (e) {
-      // 异常收口:delegation failed + THROWN 回写(不向上抛——claim 循环/runTask 不因单任务炸停)
+      // 异常收口不向上抛——claim 循环/runTask 不因单任务炸停。信号中止回写 cancelled
       const message = e instanceof Error ? e.message : String(e);
-      this.deps.board.finishExecution(task.id, {
-        ok: false,
-        by: this.name,
-        durationMs: Date.now() - startedAt,
-        error: { code: 'THROWN', message },
-      }, ledger?.id);
-      emitDelegation('delegation-ended', 'failed', 0);
+      this.writeFailure(task.id, ledger?.id, taskAbort.signal, 'THROWN', message, Date.now() - startedAt);
+      this.endDelegation(task.id, emitDelegation, 0);
       this.currentTaskAbort = undefined;
       return;
     }
-    // 回写 running→success|failed;delegation-ended 后置于回写,终态宣告晚于状态落板
+    // 回写 running→success|failed|cancelled;delegation-ended 后置于回写,终态宣告晚于状态落板
     const reportBase = {
       by: this.name,
       ...(r.reply !== undefined ? { reply: r.reply } : {}),
@@ -303,13 +298,47 @@ ${task.spec}` },
     };
     if (r.done) this.deps.board.finishExecution(task.id, { ok: true, ...reportBase }, ledger?.id);
     else {
+      const message = r.stopReason ?? 'did not finish';
+      const cancel = taskAbort.signal.aborted || r.stopReason === 'interrupted' || isUserAbort('INCOMPLETE', message);
       this.deps.board.finishExecution(task.id, {
         ok: false,
+        ...(cancel ? { terminal: 'cancelled' as const } : {}),
         ...reportBase,
-        error: { code: 'INCOMPLETE', message: r.stopReason ?? 'did not finish' },
+        error: { code: cancel ? 'ABORTED' : 'INCOMPLETE', message },
       }, ledger?.id);
     }
-    emitDelegation('delegation-ended', r.done ? 'done' : 'failed', r.tokensUsed ?? 0);
+    this.endDelegation(task.id, emitDelegation, r.tokensUsed ?? 0);
     this.currentTaskAbort = undefined;
+  }
+
+  /** 执行异常回写。信号已中止或文案为 interrupted/ABORTED 时落 cancelled,否则 failed */
+  private writeFailure(
+    taskId: string,
+    ledgerId: string | undefined,
+    signal: AbortSignal,
+    code: string,
+    message: string,
+    durationMs: number,
+  ): void {
+    const cancel = signal.aborted || isUserAbort(code, message);
+    this.deps.board.finishExecution(taskId, {
+      ok: false,
+      ...(cancel ? { terminal: 'cancelled' as const } : {}),
+      by: this.name,
+      durationMs,
+      error: { code: cancel ? 'ABORTED' : code, message },
+    }, ledgerId);
+  }
+
+  /** 板已是 cancelled 时不把委派收口报成 failed */
+  private endDelegation(
+    taskId: string,
+    emit: (type: 'delegation-ended', status: 'done' | 'failed' | 'skipped', tokens: number) => void,
+    tokens: number,
+  ): void {
+    const status = this.deps.board.snapshot().tasks[taskId]?.status;
+    if (status === 'cancelled') emit('delegation-ended', 'skipped', tokens);
+    else if (status === 'success') emit('delegation-ended', 'done', tokens);
+    else emit('delegation-ended', 'failed', tokens);
   }
 }
