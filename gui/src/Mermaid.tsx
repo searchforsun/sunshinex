@@ -86,6 +86,22 @@ export function mermaidCacheClear(): void {
   svgCache.clear();
 }
 
+/** 渲染配置单点(live/正式两路同参)。suppressErrorRendering 必开(2026-10-30 用户报障「显示不出来了」
+ *  根因):mermaid 12.1 render 在 body 上挂临时容器 #d<id> 作画,parse 失败时 throw 落在
+ *  removeTempElements() 之前(draw 失败分支亦画完错误图直接 throw)——容器连同整张「Syntax error」
+ *  错误图永久残留 body;live 试渲令半截失败高频,残留逐块撑高 body,正文被推出视口。开关令其失败
+ *  即自清(错误面本就由本组件自绘,不依赖 mermaid 错误图) */
+function mermaidInitConfig(): Parameters<typeof import('mermaid').default.initialize>[0] {
+  return { startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', suppressErrorRendering: true, themeVariables: mermaidThemeVars() };
+}
+
+/** 失败兜底清残留(与 suppressErrorRendering 双保险):mermaid 临时容器 #d<id>(sandbox 态 #i<id>);
+ *  不动 #<id>——成图 svg 本身即以 id 落在本组件容器内 */
+function removeMermaidTemp(id: string): void {
+  document.getElementById(`d${id}`)?.remove();
+  document.getElementById(`i${id}`)?.remove();
+}
+
 /** G14.86 语法容错:未加引号的节点标签含 < / > / ? 时自动补双引号(模型产出高频病——
  *  裸标签遇 HTML 敏感字符 mermaid 解析必炸回退源码);已引号标签(含 <br>)不动 */
 export function repairMermaid(chart: string): string {
@@ -154,7 +170,7 @@ export function Mermaid({
         if (mod === undefined) throw new Error('mermaid unavailable');
         if (!alive) return;
         const mermaid = mod.default;
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
+        mermaid.initialize(mermaidInitConfig());
         const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
         const r = (await Promise.race([mermaid.render(idRef.current, repairMermaid(chart)), timeout])) as { svg: string };
         if (!alive) return;
@@ -164,6 +180,7 @@ export function Mermaid({
         setFailed(null);
         onStatusRef.current?.(true);
       } catch (e) {
+        removeMermaidTemp(idRef.current);
         if (!alive) return;
         const raw = e instanceof Error ? e.message : String(e);
         const msg = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'render failed';
@@ -196,15 +213,16 @@ export function Mermaid({
       const mod = await mermaidReady;
       if (!alive || mod === undefined) return;
       const mermaid = mod.default;
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', look: 'classic', themeVariables: mermaidThemeVars() });
+      mermaid.initialize(mermaidInitConfig());
       const nl = chart.lastIndexOf('\n');
       const candidates = nl > 0 ? [chart, chart.slice(0, nl)] : [chart];
       for (const src of candidates) {
         if (src === liveDoneRef.current) return;
+        liveSeqRef.current += 1;
+        const liveId = `${idRef.current}-live${liveSeqRef.current}`;
         try {
-          liveSeqRef.current += 1;
           const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('mermaid timeout')), RENDER_TIMEOUT_MS));
-          const r = (await Promise.race([mermaid.render(`${idRef.current}-live${liveSeqRef.current}`, repairMermaid(src)), timeout])) as { svg: string };
+          const r = (await Promise.race([mermaid.render(liveId, repairMermaid(src)), timeout])) as { svg: string };
           if (!alive) return;
           liveDoneRef.current = src;
           if (src === chart) {
@@ -218,6 +236,7 @@ export function Mermaid({
           setFailed(null);
           return;
         } catch {
+          removeMermaidTemp(liveId);
           if (!alive) return; // 半截语法:静默试下一候选;全败保留上一帧
         }
       }

@@ -1102,6 +1102,33 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
+  it('mermaid 失败残留清理(2026-10-30「显示不出来了」根修):mermaid 12.1 失败时把临时容器 #d<id> 留在 body——suppressErrorRendering 开+catch 兜底清,body 零残留', async () => {
+    const mermaidMod = await import('mermaid');
+    const renderMock = mermaidMod.default.render as ReturnType<typeof vi.fn>;
+    const initMock = mermaidMod.default.initialize as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    renderMock.mockImplementation((id: string) => {
+      const leak = document.createElement('div'); // 模拟 parse 失败:错误图容器先挂 body 再 throw(removeTempElements 在 throw 之后,永不执行)
+      leak.id = `d${id}`;
+      document.body.appendChild(leak);
+      return Promise.reject(new Error('Parse error'));
+    });
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'model-start', ts: Date.now() });
+      const base = renderMock.mock.calls.length;
+      fire({ type: 'token', text: ['```mermaid', 'graph TD', 'A-->'].join('\n'), ts: Date.now() });
+      await waitFor(() => expect(renderMock.mock.calls.length).toBeGreaterThanOrEqual(base + 2), { timeout: 5_000 }); // live 两候选均败
+      fire({ type: 'token', text: '\n```\n', ts: Date.now() });
+      expect(await screen.findByTestId('mermaid-error', {}, { timeout: 5_000 })).toBeTruthy(); // 闭合正式渲亦败
+      expect(document.querySelectorAll('body > div[id^="dmmd-"]')).toHaveLength(0);
+      expect(initMock.mock.calls.at(-1)?.[0]).toMatchObject({ suppressErrorRendering: true });
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
+  });
+
   it('mermaid 流式 live 试渲:后续半截语法失败保留上一成图帧,不回退源码(防图↔源码闪烁)', async () => {
     const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
     const original = renderMock.getMockImplementation();
