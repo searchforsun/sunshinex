@@ -116,6 +116,10 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   /** 聚合头锚定 rAF 句柄（卸载清理；窗口自终止） */
   const anchorRafs = useRef<number[]>([]);
+  /** 锚定中的滚动容器(2026-10-31 贴底不滚 bug 修复面):卸载清理时同步摘旗用——rAF 循环可被
+   *  卸载打断(流式重排重键致组件换实例),旗留在 dataset 上则 use-chat-scroll 贴底 effect
+   *  永久让位=「贴地时不自动往下滚」 */
+  const anchorContainerRef = useRef<HTMLElement | null>(null);
 
   /** 聚合头锚定 toggle（用户裁定「上侧不动、下侧向上吸附」）：记点击时头钮视口位，展开/收合后
    *  逐帧把头钮差值回钉到滚动容器——头在动画区上方，布局本身不动它，动的只有贴底跟随的
@@ -132,6 +136,7 @@ export const ToolSegBlock = memo(function ToolSegBlock({
     });
     if (container === null) return;
     container.dataset.groupAnchor = '1';
+    anchorContainerRef.current = container;
     const t0 = Date.now();
     const step = (): void => {
       const delta = headEl.getBoundingClientRect().top - before;
@@ -147,6 +152,12 @@ export const ToolSegBlock = memo(function ToolSegBlock({
 
   useEffect(() => () => {
     for (const id of anchorRafs.current) cancelAnimationFrame(id);
+    // 卸载破窗守卫:rAF 取消时同步摘旗——旗若残留,贴底跟随(每渲染归底 effect)永久让位
+    // (2026-10-31 用户报障「贴地时不自动往下滚」根因:流式重排打断锚定循环,旗漏清)
+    if (anchorContainerRef.current !== null) {
+      delete anchorContainerRef.current.dataset.groupAnchor;
+      anchorContainerRef.current = null;
+    }
   }, []);
 
   return (
