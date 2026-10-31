@@ -56,7 +56,7 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
     },
     name: 'task_wait',
     description:
-      'Block until work reaches a terminal state and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. Wait targets are background work (exec, subagent forks) and board tasks — board tasks are the task lifecycle authority, even before dispatch; long-lived teammates are executors, not tasks, and are never wait targets (wait their board task ids). taskIds=null waits all currently running work; on timeout the current status is returned so you can keep waiting or stop the task.',
+      'Block until work reaches a terminal state and return a receipt per task: id, kind, status, exit code, plus the exec log tail or the subagent conclusion. Terminal states include abnormal endings — failed (execution error, or interrupted: tasks mid-execution when the app restarts are marked failed, never auto-rerun) and cancelled; any terminal state returns immediately, the wait never hangs on a dead task (default cap 1800s). Wait targets are background work (exec, subagent forks) and board tasks — board tasks are the task lifecycle authority, even before dispatch; long-lived teammates are executors, not tasks, and are never wait targets (wait their board task ids). taskIds=null waits all currently running work; on timeout the current status is returned so you can keep waiting or stop the task. A failed board task is terminal and dead: to redo the work, create a new task with create_task.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -154,7 +154,15 @@ export function makeTaskWaitTool(tasks: TaskRegistry, board?: TaskBoard, getRunS
       for (const id of boardWaitIds) {
         const bt = board?.snapshot().tasks[id];
         if (bt === undefined) continue;
-        lines.push(`${id} (board) ${bt.status} — ${bt.title}${bt.status === 'in-review' ? ' (work finished, awaiting review)' : ''}`);
+        // 异常终态附重派指引(2026-10-31 用户裁定「终态可提示主动分发避免死态」):failed=执行丢失
+        // (含重启中断恢复)/失败,永不自动重跑——需要重做由 lead 重新 create_task
+        const hint =
+          bt.status === 'in-review'
+            ? ' (work finished, awaiting review)'
+            : bt.status === 'failed' || bt.status === 'cancelled'
+              ? ` — terminal; to redo this work, create a new task with create_task${bt.status === 'failed' ? ' (failed tasks are never auto-rerun; tasks interrupted by a restart land here too)' : ''}`
+              : '';
+        lines.push(`${id} (board) ${bt.status} — ${bt.title}${hint}`);
       }
       const head = result.settled
         ? `all target tasks finished (${ids.length + boardWaitIds.length})`
