@@ -233,6 +233,10 @@ const h = vi.hoisted(() => {
       this.snapshotCalls.push(id);
       return this.snapshotGate.then(() => this.snapshotResp);
     }
+    /** 辅助对话页签恢复面:缺省空(测不关心 side 恢复时零页签) */
+    sessionSides(_id: string): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>> {
+      return Promise.resolve([]);
+    }
     replyApproval(pid: string, decision: string): Promise<void> {
       if (this.replyReject !== null) return Promise.reject(this.replyReject);
       this.replyApprovalCalls.push([pid, decision]);
@@ -251,9 +255,6 @@ const h = vi.hoisted(() => {
     boardStop(sessionId: string, taskId: string): Promise<void> {
       this.boardStopCalls.push([sessionId, taskId]);
       return Promise.resolve();
-    }
-    sessionSides(): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>> {
-      return Promise.resolve([]);
     }
     readFile(sessionId: string, path: string): Promise<FileResp> {
       if (this.fileReject !== null) return Promise.reject(this.fileReject);
@@ -1093,7 +1094,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     await waitFor(() => expect(screen.getByRole('button', { name: 'dirA' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'dirA' }));
     fireEvent.click(await screen.findByRole('button', { name: 'a.ts' }));
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts']]));
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', '/w/root-a/dirA/a.ts']]));
     await waitFor(() => expect(screen.getByLabelText('file content')).toBeDefined());
     expect(document.querySelector('.mock-monaco-editor')!.getAttribute('data-language')).toBe('typescript'); // G14.5 monaco 面
     expect(document.querySelector('.files-breadcrumb')?.textContent).toContain('a.ts'); // 面包屑末级
@@ -1117,19 +1118,19 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     await waitFor(() => expect(screen.getByRole('button', { name: 'a.ts' })).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'a.ts' }));
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts']]));
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', '/w/root-a/dirA/a.ts']]));
     // —— 开 file 标签 B:左菜单树常驻(dirview 不随开档收起)点 b.ts 行 ——
     fireEvent.click(screen.getByRole('button', { name: 'b.ts' }));
     // 两文件标签在场且 B 活动(判重经 path:两 uid 两页)
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')).not.toBeNull();
     expect(document.querySelector('.sx-tab[data-title="b.ts"]')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts'], ['s1', 'w/root-a/dirA/b.ts']]));
+    await waitFor(() => expect(conn.readFileCalls).toEqual([['s1', '/w/root-a/dirA/a.ts'], ['s1', '/w/root-a/dirA/b.ts']]));
     // —— 切回 A:tabbody key=uid 强制重挂——initialPath 重新生效(第三笔加载请求 path=A)+ 路径输入回 A
     // (无 key 时 React 复用 B 的 Files 实例:effect no-op,无第三笔请求且路径输入残留 dirA/b.ts)
     // 左菜单树常驻(2026-10-27):树行与页签同名,页签用 DOM 定位
     fireEvent.click(document.querySelector('.sx-tab[data-title="a.ts"]') as HTMLElement);
     expect(document.querySelector('.sx-tab[data-title="a.ts"]')?.classList.contains('active')).toBe(true);
-    expect(conn.readFileCalls).toEqual([['s1', 'w/root-a/dirA/a.ts'], ['s1', 'w/root-a/dirA/b.ts']]); // 无重拉(去重)
+    expect(conn.readFileCalls).toEqual([['s1', '/w/root-a/dirA/a.ts'], ['s1', '/w/root-a/dirA/b.ts']]); // 无重拉(去重)
     expect(document.querySelector('.files-breadcrumb .files-crumb-name')?.textContent).toBe('a.ts');
     unmount();
   });

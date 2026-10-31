@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { chaseScrollBottom, rAFConverge } from './ui-util';
+import { chaseScrollBottom, cleanPathInput, isAbsPath, joinWsPath, normRel, rAFConverge, workspaceOfAbs } from './ui-util';
 
 /** rAFConverge/chaseScrollBottom 特征化钉(2026-10-27 技术债轮 D54② 抽取前先锚):
  *  rAF 用手工队列桩驱动(帧推进显式可控,不依赖 jsdom 的 rAF 实现与机热时序——判据来自
@@ -133,5 +133,43 @@ describe('chaseScrollBottom(贴底追平·特征化)', () => {
     raf.frames(1000);
     // 帧预算耗尽即停
     expect(raf.pending()).toBe(0);
+  });
+});
+
+describe('isAbsPath / joinWsPath / normRel(跨项目绝对路径)', () => {
+  it('isAbsPath:Win 盘符/UNC/Posix 前导斜杠', () => {
+    expect(isAbsPath('D:\\a\\b')).toBe(true);
+    expect(isAbsPath('D:/a/b')).toBe(true);
+    expect(isAbsPath('\\\\server\\share')).toBe(true);
+    expect(isAbsPath('/w/root-a/file.ts')).toBe(true);
+    expect(isAbsPath('README.md')).toBe(false);
+    expect(isAbsPath('dir/a.ts')).toBe(false);
+  });
+
+  it('joinWsPath:相对拼绝对;已绝对原样;目录尾斜杠保留', () => {
+    expect(joinWsPath('D:\\proj', 'README.md')).toBe('D:\\proj\\README.md');
+    expect(joinWsPath('D:\\proj', 'D:\\other\\x.ts')).toBe('D:\\other\\x.ts');
+    expect(joinWsPath('/w/root-a', 'dirA/fileA.ts')).toBe('/w/root-a/dirA/fileA.ts');
+    expect(joinWsPath('/w/root-a', 'dirA/')).toBe('/w/root-a/dirA/');
+  });
+
+  it('normRel:相对剥 ./ 与前导 /;Win 绝对原样', () => {
+    expect(normRel('./a/b')).toBe('a/b');
+    expect(normRel('/docs/a.png')).toBe('docs/a.png');
+    expect(normRel('D:\\proj\\a.ts')).toBe('D:\\proj\\a.ts');
+  });
+
+  it('cleanPathInput:剥 ./ 叠层与 file://;绝对/相对保留', () => {
+    expect(cleanPathInput('./D:\\proj\\src/')).toBe('D:\\proj\\src/');
+    expect(cleanPathInput('././gui/src/')).toBe('gui/src/');
+    expect(cleanPathInput('file:///w/a/b')).toBe('/w/a/b');
+  });
+
+  it('workspaceOfAbs:最长前缀;斜杠形态混用仍切对 rel;未命中 null', () => {
+    const roots = ['D:/ws/demo', 'D:\\ws\\demo\\nested'];
+    expect(workspaceOfAbs('D:\\ws\\demo\\src\\', roots)).toEqual({ root: 'D:/ws/demo', rel: 'src' });
+    expect(workspaceOfAbs('D:/ws/demo/nested/a.ts', roots)).toEqual({ root: 'D:\\ws\\demo\\nested', rel: 'a.ts' });
+    expect(workspaceOfAbs('D:\\ws\\demo', roots)).toEqual({ root: 'D:/ws/demo', rel: '' });
+    expect(workspaceOfAbs('D:\\other\\x', roots)).toBeNull();
   });
 });

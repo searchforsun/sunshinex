@@ -87,12 +87,26 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(document.querySelector('.sx-tab .sx-tab-fav')).toBeNull();
   });
 
-  it('「+」弹类型菜单,选中回调 onOpenType(折叠钮已迁右上窗控簇)', () => {
+  it('「+」弹类型菜单,选中回调 onOpenType(折叠钮已迁右上窗控簇);弹层 portal→body 置顶', () => {
     const handlers = { ...base };
     render(<TabStrip {...handlers} tabs={[]} activeUid={null} />);
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    const menu = screen.getByRole('menu', { name: 'new tab types' });
+    expect(menu.parentElement).toBe(document.body);
+    expect((menu as HTMLElement).style.zIndex).toBe('200');
     fireEvent.click(screen.getAllByRole('menuitem', { name: /Todos|待办/ })[0]);
     expect(handlers.onOpenType).toHaveBeenCalledWith('tasks');
+  });
+
+  it('+ 在滚区内跟末签;宽裕不钉 is-pinned', () => {
+    let s = ensureSession({}, 's1', registryProbe());
+    s = openTab(s, 's1', 'file', { path: 'a.ts' }, registryProbe());
+    render(<TabStrip {...base} tabs={s.s1.tabs} activeUid={s.s1.activeUid} />);
+    const add = document.querySelector('.sx-strip-newtab');
+    expect(add?.parentElement?.classList.contains('sx-tabstrip-scroll')).toBe(true);
+    expect(add?.previousElementSibling?.classList.contains('sx-tab')).toBe(true);
+    // jsdom 无真实布局宽,溢不出 → 不钉;真浏览器溢出才加 is-pinned
+    expect(add?.classList.contains('is-pinned')).toBe(false);
   });
 
   it('快捷键:Alt+W 关活动,Ctrl+Alt+→/← 切换', () => {

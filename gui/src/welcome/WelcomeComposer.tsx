@@ -518,6 +518,23 @@ export function WelcomeComposer({
           onImageOpen={setLightboxSrc}
           onPasteFiles={attachImages}
           highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n))}
+          onDropFile={(rel) => {
+            // 与会话内同构:拖入 → @文件名短写+账本记绝对/相对路径(目录保尾斜杠)
+            const bare = rel.replace(/[\\/]+$/, '');
+            const isDir = bare !== rel;
+            const ta = goalRef.current;
+            const pos = ta?.selectionStart ?? goal.length;
+            const base = bare.split(/[\\/]/).filter(Boolean).pop() ?? bare;
+            pickRelRef.current.set(base, isDir ? `${bare}/` : bare);
+            setGoal((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+            goalRef.current?.focus();
+            requestAnimationFrame(() => {
+              const g = goalRef.current;
+              if (g === null) return;
+              const to = Math.min(pos + base.length + 2, g.value.length);
+              g.setSelectionRange(to, to);
+            });
+          }}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
           placeholder={t('Describe the goal and press Enter…', '描述目标,回车开始…')}

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
+import { isAbsPath } from '../../ui-util';
 
 /** @ 引用域（D32 批C-5 拆分自 Chat.tsx）：@ 文件模糊匹配与面板渲染件、mention token 解析/
  *  原子编辑判定（整删/原子区间/beforeinput 判定/caret 定位）/输入框高亮/发送期展开/用户气泡
@@ -280,11 +281,14 @@ export function expandFileRefs(
     const bare = pathPart.replace(/[\\/]+$/, '');
     const isDirRef = /[\\/]$/.test(pathPart);
     const name = bare.split(/[\\/]/).pop() ?? bare;
-    const rel = bare.includes('/') ? bare : resolve?.(name);
+    // 含路径分隔(含 Win \)即整段路径;否则短写走 resolve
+    const rel = /[\\/]/.test(bare) ? bare : resolve?.(name);
     if (rel === undefined || rel === '') return raw;
     const dirHref = isDirRef || /[\\/]$/.test(rel);
     const relBody = rel.replace(/^\.\//, '').replace(/[\\/]+$/, '');
     const head = anchor !== null ? `${name} ${lines}` : name;
-    return `[${head}](./${relBody}${dirHref ? '/' : ''}${lines !== '' ? `#${lines}` : ''})`;
+    // 绝对路径原样作 href(勿加 ./ —— 否则 ./D:\proj\src/ 畸形,Files/目录开签全挂)
+    const hrefCore = isAbsPath(relBody) ? relBody : `./${relBody}`;
+    return `[${head}](${hrefCore}${dirHref ? '/' : ''}${lines !== '' ? `#${lines}` : ''})`;
   });
 }

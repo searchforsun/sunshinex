@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, FileText, ChevronsDown, Globe } from 'lucide-react';
 import { t } from '../i18n';
 import { zoomScale } from '../ui-zoom';
@@ -66,7 +67,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     onReopenClosed,
   } = props;
   const [menuOpen, setMenuOpen] = useState(false);
-  /** 「+」弹层 fixed 钉屏坐标(2026-10-23:+ 入滚动区后 absolute 弹层会被 overflow-x 裁切;
+  /** 「+」弹层 portal→body 的钉屏坐标(入滚动区后 absolute 会被 overflow 裁切/sticky 层叠压住页签体;
       开层瞬间以触发钮屏幕矩形定位,弹层右缘对齐钮右缘) */
   const [popPos, setPopPos] = useState<{ top: number; right: number } | null>(null);
   // G14.2xx 标签搜索弹窗(最左触发,纵向列打开的/最近关闭的标签页)
@@ -75,6 +76,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   /** G14.2xx 弹层锚容器(外点关闭的判定边界=各自触发钮容器,非整条——点条内标签/另一钮同样收) */
   const searchAnchorRef = useRef<HTMLDivElement>(null);
   const menuAnchorRef = useRef<HTMLDivElement>(null);
+  /** portal 弹层根(不在锚容器内——外点判定须并入,点菜单项勿先被 document 收掉) */
+  const menuPopRef = useRef<HTMLDivElement>(null);
   // G14.111 拖拽重排:draggable 标签 dragstart 记 uid,dragover 命中目标即回调重排(App 落数组)
   const dragUidRef = useRef<string | null>(null);
   // G14.2xx 同名消歧:file 标签撞名时显示最小区分相对路径(chrome 同位);引用随 tabs 变
@@ -82,23 +85,27 @@ export function TabStrip(props: TabStripProps): JSX.Element {
   /** G14.2xx 标题截断隐现(chrome 同形:无省略号,溢出即右缘渐隐)——逐标题量溢出打 data-cut */
   const scrollRef = useRef<HTMLDivElement>(null);
   const titleRefs = useRef(new Map<string, HTMLSpanElement>());
+  /** 滚区溢出时 + 才 sticky 贴右(盖下层);宽裕时跟在末签后——恒 sticky 会在 flex 下误钉死右侧 */
+  const [plusPinned, setPlusPinned] = useState(false);
   useLayoutEffect(() => {
     const mark = (): void => {
       for (const [, el] of titleRefs.current) {
         if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
         else el.removeAttribute('data-cut');
       }
+      const el = scrollRef.current;
+      if (el !== null) setPlusPinned(el.scrollWidth > el.clientWidth + 1);
     };
     mark();
     const el = scrollRef.current;
     if (el === null) return;
-    const ro = new ResizeObserver(mark); // 拖栏/标签增删改变 pill 宽 → 重量截断
+    const ro = new ResizeObserver(mark); // 拖栏/标签增删改变 pill 宽 → 重量截断/+ 钉态
     ro.observe(el);
     return () => ro.disconnect();
   }, [titles, tabs]);
 
-  // 弹窗外点关闭:判定边界=各自锚容器(V 触发钮容器/「+」触发钮容器)——点条内其他元素(标签/
-  // 折叠钮等)同属「其他地方」一律收;点弹层自身/触发钮不收(触发钮走 click 切换)
+  // 弹窗外点关闭:判定边界=各自锚容器(+ portal 弹层根)——点条内其他元素同属「其他地方」一律收;
+  // 点弹层自身/触发钮不收(触发钮走 click 切换)
   useEffect(() => {
     if (!menuOpen && !searchOpen) return;
     const onDown = (e: MouseEvent): void => {
@@ -106,8 +113,10 @@ export function TabStrip(props: TabStripProps): JSX.Element {
       if (searchOpen && searchAnchorRef.current !== null && !searchAnchorRef.current.contains(e.target)) {
         setSearchOpen(false);
       }
-      if (menuOpen && menuAnchorRef.current !== null && !menuAnchorRef.current.contains(e.target)) {
-        setMenuOpen(false);
+      if (menuOpen) {
+        const inAnchor = menuAnchorRef.current !== null && menuAnchorRef.current.contains(e.target);
+        const inPop = menuPopRef.current !== null && menuPopRef.current.contains(e.target);
+        if (!inAnchor && !inPop) setMenuOpen(false);
       }
     };
     // 外点收语义(各弹层各表其面,见 D49):本件=容器外 mousedown 即收(标签条无 Esc 面且不随滚动收——fixed 侧栏贴边)
@@ -163,9 +172,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           />
         )}
       </div>
-      {/* 2026-10-23 用户裁定:Chrome 同款页签宽度——滚动区伸展(flex:1 1 auto),页签按总宽
-          均分(200 封顶/56 兜底),随窗口/侧栏变窄连续收缩;+ 跟随末签,封顶余量留其右侧。
-          + 随之入滚动区(Chrome 同构,页签能分享总宽的前提);弹层 fixed 钉屏避开滚动区裁切 */}
+      {/* 页签+加号同入滚区:宽裕 + 跟末签;溢出才 sticky 贴滚口右缘(= [|] 左,底色盖下层) */}
       <div className="sx-tabstrip-scroll" ref={scrollRef}>
       {tabs.map((t) => {
         const entry = tabEntry(t.type);
@@ -244,28 +251,33 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           </button>
         );
       })}
-      {/* + 锚容器回滚动区(2026-10-31 用户裁定「+ 跟随页签,不固定」):贴末签随增删移动;溢出时
-          sticky right:0 粘在滚动口右缘=不被裁/不盖窗控(宽足时 sticky 不生效=纯跟随,二态一体)。
-          弹层 fixed 钉屏坐标=开层瞬间钮矩形 */}
-      <div className="sx-strip-newtab" ref={menuAnchorRef}>
-      <button
-        type="button"
-        aria-label="new tab"
-        className="sx-iconbtn"
-        disabled={disabled}
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          // fixed 钉屏偏移按 ui-zoom 跨空间契约归一:gBCR/innerWidth 是视觉 px,fixed 样式吃
-          // 本地 px——zoom≠1 桌面不归一即漂移 zoom 倍(先例:821ea9d 两栏拖拽/db5bf3e④ tooltip)
-          const z = zoomScale();
-          setPopPos({ top: (r.bottom + 4) / z, right: (window.innerWidth - r.right) / z });
-          setMenuOpen((o) => !o);
-        }}
-      >
-        <Plus size={16} strokeWidth={1.75} />
-      </button>
-      {menuOpen && popPos !== null && (
-        <div className="sx-menu-pop" style={{ position: 'fixed', top: popPos.top, right: popPos.right }} role="menu" aria-label="new tab types">
+      <div className={`sx-strip-newtab${plusPinned ? ' is-pinned' : ''}`} ref={menuAnchorRef}>
+        <button
+          type="button"
+          aria-label="new tab"
+          className="sx-iconbtn"
+          disabled={disabled}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            // fixed 钉屏偏移按 ui-zoom 跨空间契约归一:gBCR/innerWidth 是视觉 px,fixed 样式吃
+            // 本地 px——zoom≠1 桌面不归一即漂移 zoom 倍(先例:821ea9d 两栏拖拽/db5bf3e④ tooltip)
+            const z = zoomScale();
+            setPopPos({ top: (r.bottom + 4) / z, right: (window.innerWidth - r.right) / z });
+            setMenuOpen((o) => !o);
+          }}
+        >
+          <Plus size={16} strokeWidth={1.75} />
+        </button>
+      </div>
+      </div>
+      {menuOpen && popPos !== null && createPortal(
+        <div
+          ref={menuPopRef}
+          className="sx-menu-pop sx-strip-newtab-pop"
+          style={{ position: 'fixed', top: popPos.top, right: popPos.right, zIndex: 200 }}
+          role="menu"
+          aria-label="new tab types"
+        >
           {GROUP_ORDER.map((g) => {
             // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
             const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && (!welcomeOnly || e.id === 'web' || e.id === 'terminal'));
@@ -294,12 +306,9 @@ export function TabStrip(props: TabStripProps): JSX.Element {
               </div>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
-      </div>
-      </div>
-      {/* 页签条根节点即拖拽面;本带是滚动区右侧余量,按钮不在此带上 */}
-      <div className="sx-tabstrip-drag" data-drag-band aria-hidden="true" />
     </div>
   );
 }

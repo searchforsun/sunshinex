@@ -3,7 +3,7 @@
  * 左菜单 dirview 后,App 级「+菜单开目录」入口不存在;树惰拉/截断/重试/会话切换重置行为在
  * 组件面 verbatim 承接。文件行开标签经 openTab 回调断言,不再经 App 标签条)
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { DirectoryTab } from './DirectoryTab';
 import type { Connection, TreeResp } from '../connection';
@@ -79,9 +79,18 @@ describe('DirectoryTab(左菜单 dirview 承载的目录树;原 G8b 目录标签
     click('dirA');
     expect(screen.getByRole('button', { name: 'fileA.ts' })).toBeDefined();
     expect(treeCalls).toHaveLength(2);
-    // 点文件行:openTab('file', { path: 'dirA/fileA.ts' })
+    // 点文件行:绝对路径开签(root=/w/root-a)
     click('fileA.ts');
-    expect(openTabCalls).toEqual([['file', { path: 'dirA/fileA.ts' }]]);
+    expect(openTabCalls).toEqual([['file', { path: '/w/root-a/dirA/fileA.ts' }]]);
+    // 拖文件/目录载荷亦为绝对路径(跨项目 composer @ 账本)
+    const fileBtn = screen.getByRole('button', { name: 'fileB.ts' });
+    const dt = { setData: vi.fn(), effectAllowed: '' } as unknown as DataTransfer;
+    fireEvent.dragStart(fileBtn, { dataTransfer: dt });
+    expect(dt.setData).toHaveBeenCalledWith('text/sunshinex-file', '/w/root-a/fileB.ts');
+    const dirBtn = screen.getByRole('button', { name: 'dirA' });
+    const dt2 = { setData: vi.fn(), effectAllowed: '' } as unknown as DataTransfer;
+    fireEvent.dragStart(dirBtn, { dataTransfer: dt2 });
+    expect(dt2.setData).toHaveBeenCalledWith('text/sunshinex-file', '/w/root-a/dirA/');
   });
 
   it('truncated 标记:桩返 truncated:true → 行尾「…已截断」;子层拉失败 → 行内错误消息', async () => {
@@ -144,8 +153,8 @@ describe('DirectoryTab(左菜单 dirview 承载的目录树;原 G8b 目录标签
     await waitFor(() => expect(treeCalls).toEqual([['s1', ''], ['s1', 'dirA'], ['s2', ''], ['s2', 'dirA']]));
     expect(screen.getByRole('button', { name: 'fileB.ts' })).toBeDefined(); // s2 层(非陈旧 s1 层)
     expect(screen.queryByRole('button', { name: 'fileA.ts' })).toBeNull();
-    // 文件行以当前会话寻址开档(openTab 面;readFile 寻址由 App 侧标签体承接)
+    // 文件行绝对路径开档(跨会话同 root 仍 abs;readFile 由 App 标签体承接)
     click('fileB.ts');
-    expect(openTabCalls).toEqual([['file', { path: 'dirA/fileB.ts' }]]);
+    expect(openTabCalls).toEqual([['file', { path: '/w/root-a/dirA/fileB.ts' }]]);
   });
 });

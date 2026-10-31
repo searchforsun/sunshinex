@@ -90,7 +90,8 @@ export interface ProjectMenuProps {
   readonly onOpenDirectory: (root: string) => void;
   /** 2026-10-27 用户裁定:目录树入左菜单视图层——App 持状态(openProjectDirectory 落值),
    *  视图=返回+DirectoryTab 复用;文件行点击经 onOpenFileFromTree 开右侧文件标签 */
-  readonly dirView?: { readonly root: string; readonly sessionId: string } | null;
+  /** locate=相对目录(posix /),打开后 DirectoryTab 逐层展开定位 */
+  readonly dirView?: { readonly root: string; readonly sessionId: string; readonly locate?: string } | null;
   readonly onCloseDirView?: () => void;
   readonly onOpenFileFromTree?: (path: string, root: string) => void;
   /** 2026-10-24 用户裁定:菜单头收起钮(PanelLeft,搜索钮右侧)=宿主收起菜单(抽屉/关闭态由宿主管) */
@@ -580,13 +581,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               conn={conn as unknown as Connection}
               sessionId={dirView.sessionId}
               root={dirView.root}
+              locate={dirView.locate}
               openTab={(type, params) => {
+                // DirectoryTab 已在有 root 时产出绝对路径;此处原样上交(兼容旧相对入参)
                 if (type === 'file' && params !== undefined && typeof params.path === 'string') {
-                  // 树路径=相对 root;转绝对后交开标签面——绝对路径不受「当前会话 root」绑定,
-                  // 任意会话均可读(serve /file 信任判界已放行注册工作区根)
-                  const sep = dirView.root.includes('\\') ? '\\' : '/';
-                  const abs = dirView.root.replace(/[\/]+$/, '') + sep + params.path.replace(/^[\/]+/, '');
-                  onOpenFileFromTree?.(abs, dirView.root);
+                  onOpenFileFromTree?.(params.path, dirView.root);
                 }
               }}
             />

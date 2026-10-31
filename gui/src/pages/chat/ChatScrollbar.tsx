@@ -3,16 +3,16 @@ import type { MutableRefObject } from 'react';
 import { zoomScale } from '../../ui-zoom';
 
 /**
- * 正文纵向滚动条(2026-10-27 二次裁定,反转「长度恒定」):thumb 长度响应式=轨道×视口/内容比
- * (下限 32px),所见即内容量。轨道上下边界动态夹紧到滚动容器实际区域(锚 .sx-main)。
- * 贴底闩(2026-10-31):冷会话/流式渐进撑高时 MO 先于贴底归底改 scrollHeight——若只改长度、
- * 位置等 scroll 才钉底,thumb 底缘会先抬后落=上下抖;一旦贴底,后续几何同步同帧粘
- * y=trackH−th,不以滞后 scrollTop 重判脱闩(scroll 路径才更新闩)。同步源 scroll+RO+MO
- * 经 rAF 帧内合流;y 取整防亚像素闪。交互仅 thumb 拖拽;指针位移按 zoomScale() 归一。
- * 挂载面:仅主对话。
+ * 正文纵向滚动条:thumb 长度响应式=轨道×视口/内容比(下限 32px)。
+ * 贴底闩:MO 撑高先于归底时同帧粘 y=trackH−th。
+ * 滚动期稳态(2026-10-31 根修):历史债=content-visibility 水合 + 阅读态 overflow-anchor
+ * 回拉 + 滚动中 MO/RO 仍 layoutTrack——三源叠加=thumb/视口上下回退。本组件滚动窗内:
+ * ①只接受 scroll 改位置 ②冻结长度 ③吞掉 MO/RO(贴底除外仍粘底) ④临时 overflow-anchor:none
+ * 切断原生回拉。静默后一帧全量校正。
  */
 
 const THUMB_MIN = 32;
+const SCROLL_SETTLE_MS = 140;
 
 function thumbHeight(trackH: number, clientH: number, scrollH: number): number {
   return Math.max(THUMB_MIN, Math.round((clientH / scrollH) * trackH));
@@ -28,12 +28,14 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     const thumb = thumbRef.current;
     if (box === null || track === null || thumb === null) return;
 
-    /** 贴底闩:scroll 路径按距底≤4px 更新;MO 几何路径只读——撑高瞬间 scrollTop 未跟上仍粘底 */
     let lastPinned = false;
+    let scrolling = false;
+    let frozenTh: number | null = null;
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 进入滚动窗前的锚定值,静默后还原——避免长期污染 stick 路径的 syncOverflowAnchor */
+    let savedAnchor: string | null = null;
 
     const layoutTrack = (): void => {
-      // 轨道边界=锚 offsetParent 绝对坐标直写(防 top(n+1)=T−top(n)+2 周期振荡)。
-      // 同值写守卫:恒等字符串不落 DOM。zoom 契约:视觉差 /z 归一成本地 px
       const cr = box.getBoundingClientRect();
       const ar = track.offsetParent instanceof HTMLElement ? track.offsetParent.getBoundingClientRect() : null;
       const z = zoomScale();
@@ -45,46 +47,88 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
       }
     };
 
-    /** withPosition=true(scroll/RO):重判闩并写位置;false(MO):只改长度,闩开时同帧粘底 */
-    const writeThumb = (withPosition: boolean): void => {
-      layoutTrack();
+    const writeThumb = (withPosition: boolean, relayout: boolean): void => {
+      if (relayout) layoutTrack();
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
       if (max <= 1 || box.scrollHeight <= 0) {
         thumb.style.opacity = '0';
         return;
       }
+      if (trackH <= THUMB_MIN) return;
       if (withPosition) lastPinned = max - box.scrollTop <= 4;
-      const th = thumbHeight(trackH, box.clientHeight, box.scrollHeight);
+      let th: number;
+      if (scrolling && frozenTh !== null && !lastPinned) {
+        th = frozenTh;
+      } else {
+        th = thumbHeight(trackH, box.clientHeight, box.scrollHeight);
+        frozenTh = th;
+      }
       if (thumb.style.height !== `${th}px`) thumb.style.height = `${th}px`;
       if (!withPosition && !lastPinned) return;
       const y = lastPinned
         ? trackH - th
         : Math.min(Math.max((box.scrollTop / max) * (trackH - th), 0), trackH - th);
       thumb.style.opacity = '1';
-      // y 取整:zoom 树下分数 scrollTop→分数 translateY 落设备像素反复跳=亚像素闪烁
-      thumb.style.transform = `translateY(${Math.round(y)}px)`;
+      const next = `translateY(${Math.round(y)}px)`;
+      if (thumb.style.transform !== next) thumb.style.transform = next;
     };
 
-    // rAF 合流:流式期 scroll(贴底归底)+MO 高频交替,帧内合并至多一次同步
     let rafId: number | null = null;
-    let withPosition = false;
-    const requestSync = (position: boolean): void => {
-      if (position) withPosition = true;
+    let wantPosition = false;
+    let wantLayout = false;
+    const requestSync = (position: boolean, relayout: boolean): void => {
+      if (position) wantPosition = true;
+      if (relayout) wantLayout = true;
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
-        const p = withPosition;
-        withPosition = false;
-        writeThumb(p);
+        const p = wantPosition;
+        const l = wantLayout;
+        wantPosition = false;
+        wantLayout = false;
+        writeThumb(p, l);
       });
     };
 
-    const onScroll = (): void => requestSync(true);
+    const markScrolling = (): void => {
+      if (!scrolling) {
+        scrolling = true;
+        // 切断阅读态 overflow-anchor 回拉(历史 G14.211 auto × cv 水合 = 滚动中视口回退)
+        savedAnchor = box.style.overflowAnchor;
+        box.style.overflowAnchor = 'none';
+      }
+      if (settleTimer !== null) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        scrolling = false;
+        settleTimer = null;
+        if (savedAnchor !== null) {
+          box.style.overflowAnchor = savedAnchor;
+          savedAnchor = null;
+        }
+        requestSync(true, true);
+      }, SCROLL_SETTLE_MS);
+    };
+
+    const onScroll = (): void => {
+      markScrolling();
+      requestSync(true, false);
+    };
     box.addEventListener('scroll', onScroll, { passive: true });
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => requestSync(true)) : null;
+
+    // 滚动窗内吞掉 MO/RO(非贴底):历史路径滚动中仍 layoutTrack/改长 = thumb 回退主因之一;
+    // 贴底仍放行(冷加载粘底),但不重测轨道、不重判闩(scrollTop 滞后会误脱闩)
+    const onResize = (): void => {
+      if (scrolling && !lastPinned) return;
+      requestSync(false, !scrolling);
+    };
+    const onMutate = (): void => {
+      if (scrolling && !lastPinned) return;
+      requestSync(false, !scrolling);
+    };
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
     ro?.observe(box);
-    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => requestSync(false)) : null;
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(onMutate) : null;
     mo?.observe(box, { childList: true, subtree: true });
 
     let dragging = false;
@@ -101,12 +145,14 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
       const m = /translateY\((-?[\d.]+)px\)/.exec(thumb.style.transform);
       grab = yLocalOf(e) - (m !== null ? parseFloat(m[1]) : 0);
       dragging = true;
+      markScrolling();
       thumb.classList.add('sx-vbar-drag');
       thumb.setPointerCapture?.(e.pointerId);
       e.preventDefault();
     };
     const onMove = (e: PointerEvent): void => {
       if (!dragging) return;
+      markScrolling();
       const max = box.scrollHeight - box.clientHeight;
       const trackH = track.clientHeight;
       const th = thumb.offsetHeight;
@@ -125,9 +171,11 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
     thumb.addEventListener('pointerup', onUp);
     thumb.addEventListener('pointercancel', onUp);
 
-    writeThumb(true);
+    writeThumb(true, true);
     return () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (settleTimer !== null) clearTimeout(settleTimer);
+      if (savedAnchor !== null) box.style.overflowAnchor = savedAnchor;
       box.removeEventListener('scroll', onScroll);
       ro?.disconnect();
       mo?.disconnect();

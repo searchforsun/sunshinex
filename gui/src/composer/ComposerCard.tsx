@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { ClipboardEvent, CompositionEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
@@ -12,6 +12,8 @@ import { t } from '../i18n';
  * 行内内容(错误条)。label 即 textarea 的 aria-label(测试查询锚:'welcome goal'/'message input')。
  * G14.95 高亮层:highlight 在场 → textarea 文字透明,背后同步排版的高亮层着色 token
  * (@文件 //命令 //skill);缺省无层,textarea 正常显字。
+ * IME 组字期:composing 态去掉透明字并隐高亮——组字串只画在 textarea;透明叠层会把中文
+ * 候选确认前字迹藏掉。态须进 React state(会话流重渲频繁,纯 DOM class 会被 JSX className 盖回)。
  */
 export interface ComposerCardProps {
   /** textarea aria-label(查询锚) */
@@ -85,6 +87,8 @@ export function ComposerCard({
   highlight,
 }: ComposerCardProps): JSX.Element {
   const hlRef = useRef<HTMLDivElement | null>(null);
+  /** IME 组字中:高亮透明叠层藏字——组字期实色 textarea + 隐高亮;进 state 抗父级流式重渲盖 class */
+  const [composing, setComposing] = useState(false);
   /** 粘贴分流:剪贴板带图片文件即接管(图片不进文本,token 守卫无意义);纯文本粘贴走守卫 */
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
     const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
@@ -122,14 +126,14 @@ export function ComposerCard({
       {highlight !== undefined ? (
         /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
            天然无错位(此前 inset 挂卡根,少卡的 padding 位移 → 文字偏左上) */
-        <div className="sx-composer-inputwrap">
+        <div className={`sx-composer-inputwrap${composing ? ' is-composing' : ''}`}>
           <div className="sx-composer-highlight" aria-hidden="true" ref={hlRef}>
             {highlight}
           </div>
           <textarea
             ref={inputRef}
             aria-label={label}
-            className="sx-composer-input transparent-text"
+            className={composing ? 'sx-composer-input' : 'sx-composer-input transparent-text'}
             value={value}
             placeholder={placeholder}
             disabled={disabled}
@@ -138,19 +142,27 @@ export function ComposerCard({
             onKeyDown={onKeyDown}
             onBeforeInput={onBeforeInput}
             onPaste={handlePaste}
-            onCompositionStart={onCompositionGuard}
-            onCompositionEnd={onCompositionEndGuard}
+            onCompositionStart={(e) => {
+              setComposing(true);
+              onCompositionGuard?.(e);
+            }}
+            onCompositionEnd={() => {
+              setComposing(false);
+              onCompositionEndGuard?.();
+            }}
             onSelect={onSelectGuard}
             onClick={() => onInputClick?.()}
             onDragOver={(e) => {
-              if (onDropFile !== undefined && [...e.dataTransfer.types].includes('text/sunshinex-file')) e.preventDefault();
+              // 有 sunshinex-file 即放行放置(拦 text/plain 原生插入绝对路径——欢迎页未接
+              // onDropFile 时曾整段路径进框)
+              if ([...e.dataTransfer.types].includes('text/sunshinex-file')) e.preventDefault();
             }}
             onDrop={(e) => {
               const rel = e.dataTransfer.getData('text/sunshinex-file');
-              if (onDropFile !== undefined && rel !== '') {
+              if (rel !== '') {
                 e.preventDefault();
                 e.stopPropagation();
-                onDropFile(rel);
+                onDropFile?.(rel);
               }
             }}
             onScroll={(e) => {
@@ -175,8 +187,14 @@ export function ComposerCard({
           onKeyDown={onKeyDown}
           onBeforeInput={onBeforeInput}
           onPaste={handlePaste}
-          onCompositionStart={onCompositionGuard}
-          onCompositionEnd={onCompositionEndGuard}
+          onCompositionStart={(e) => {
+            setComposing(true);
+            onCompositionGuard?.(e);
+          }}
+          onCompositionEnd={() => {
+            setComposing(false);
+            onCompositionEndGuard?.();
+          }}
           onSelect={onSelectGuard}
         />
       )}

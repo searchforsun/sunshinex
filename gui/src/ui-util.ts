@@ -100,12 +100,15 @@ export function joinWsPath(root: string, relOrAbs: string): string {
 
 /** 相对路径归一单点(2026-10-27 技术债轮 G10 自 Files.tsx 上收——md 正文图片此前仅剥 file:// 头,
  *  `/docs/a.png`·`./docs/a.png` 形态在 Files 面可解析、MdImage 面 404 落 chip 的口径分叉根除):
- *  ./a/b 与 /a/b 都按会话根相对(前导斜杠的绝对化曾逃出信任域落 404;Windows 盘符绝对路径原样)。
- *  消费面:Files 页 /file 端点取读、md 图片 MdImage 装载 */
+ *  ./a/b 与 /a/b 都按会话根相对(前导斜杠剥掉)。Win 盘符/UNC 原样。
+ *  跨项目绝对路径开签请先 isAbsPath 分流,勿经本函数(posix /… 会被当相对剥头)。
+ *  消费面:md 图片 MdImage;Files 仅对非 abs 入参调用 */
 export function normRel(p: string): string {
-  let t = p.trim().replace(/\\/g, '/');
+  const trimmed = p.trim();
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\') || trimmed.startsWith('//')) return trimmed;
+  let t = trimmed.replace(/\\/g, '/');
   while (t.startsWith('./')) t = t.slice(2);
-  if (t.startsWith('/') && !/^[a-zA-Z]:/.test(t)) t = t.replace(/^\/+/, '');
+  if (t.startsWith('/')) t = t.replace(/^\/+/, '');
   return t;
 }
 

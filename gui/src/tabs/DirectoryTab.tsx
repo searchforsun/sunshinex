@@ -5,6 +5,7 @@ import type { Connection, TreeEntry, TreeSearchHit } from '../connection';
 import type { TabTypeId, TabParams } from './tab-state';
 import { FileIcon } from '../file-icon';
 import { t } from '../i18n';
+import { joinWsPath } from '../ui-util';
 
 /**
  * G8b 目录标签体(T7):会话 root 的逐层惰拉树——G14.7 对齐 VSCode 资源管理器:
@@ -216,8 +217,14 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
     fetchLayer(dirPath);
   };
 
+  /** 开签/拖拽载荷:有 root 时一律绝对路径——欢迎页与跨项目会话树相对路径会绑错会话根 404 */
+  const absOf = (rel: string, asDir = false): string => {
+    const marked = asDir && !/[\\/]$/.test(rel) ? `${rel}/` : rel;
+    return root !== undefined && root !== '' ? joinWsPath(root, marked) : marked;
+  };
+
   const openFile = (filePath: string): void => {
-    openTab('file', { path: filePath });
+    openTab('file', { path: absOf(filePath) });
   };
 
   /** G14.2xx 目录命中点击:回树面并逐层展开定位(祖先链全可见;缓存口径与 toggleDir 同源) */
@@ -341,10 +348,10 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
                   onClick={() => toggleDir(p)}
                   draggable
                   onDragStart={(e) => {
-                    // 拖目录名到输入框=@目录引用(与文件行同走 text/sunshinex-file;尾斜杠=内部标记,
-                    // composer 落点插 @短名 无斜杠,芯片/气泡经记账标记显黄目录)
-                    e.dataTransfer.setData('text/sunshinex-file', `${relNorm}/`);
-                    e.dataTransfer.setData('text/plain', `${relNorm}/`);
+                    // 拖目录=@目录引用;载荷绝对路径(跨项目/欢迎页账本可解析开签)
+                    const payload = absOf(relNorm, true);
+                    e.dataTransfer.setData('text/sunshinex-file', payload);
+                    e.dataTransfer.setData('text/plain', payload);
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                 >
@@ -369,9 +376,10 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
                   onClick={() => openFile(p)}
                   draggable
                   onDragStart={(e) => {
-                    // G14.144 拖文件名到输入框=自动 @文件(text/sunshinex-file 私有类型供 composer 接)
-                    e.dataTransfer.setData('text/sunshinex-file', relNorm);
-                    e.dataTransfer.setData('text/plain', relNorm);
+                    // G14.144 拖文件=@文件;载荷绝对路径(同开签口径)
+                    const payload = absOf(relNorm);
+                    e.dataTransfer.setData('text/sunshinex-file', payload);
+                    e.dataTransfer.setData('text/plain', payload);
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                 >

@@ -16,6 +16,7 @@ function stubBox(): { box: HTMLElement } {
 }
 
 function mount(barHost: HTMLElement): { thumb: HTMLElement } {
+  // 先挂空轨再桩 clientHeight,再触发 scroll——避免 useEffect 首帧 trackH=0 冻成 THUMB_MIN
   render(<ChatScrollbar containerRef={{ current: barHost }} />);
   const track = document.querySelector('.sx-vbar') as HTMLElement;
   const thumb = document.querySelector('.sx-vbar-thumb') as HTMLElement;
@@ -80,5 +81,22 @@ describe('ChatScrollbar', () => {
     box.dispatchEvent(new Event('scroll'));
     await flushFrame();
     expect(thumb.style.opacity).toBe('0');
+  });
+
+  it('滚动窗内吞 MO:中段滚动时撑高不改 thumb(防历史 cv/锚定回退)', async () => {
+    const { box } = stubBox();
+    const { thumb } = mount(box);
+    box.scrollTop = 750;
+    box.dispatchEvent(new Event('scroll'));
+    await flushFrame();
+    expect(thumb.style.height).toBe('75px');
+    expect(thumb.style.transform).toBe('translateY(113px)');
+
+    // 滚动窗未静默:MO 整段吞掉——高与位置都保持
+    Object.defineProperty(box, 'scrollHeight', { value: 3000, configurable: true });
+    box.appendChild(document.createElement('div'));
+    await flushFrame();
+    expect(thumb.style.height).toBe('75px');
+    expect(thumb.style.transform).toBe('translateY(113px)');
   });
 });
