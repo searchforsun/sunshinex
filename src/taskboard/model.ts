@@ -158,13 +158,16 @@ export function hasCycle(tasks: Array<{ id: string; dependsOn: string[] }>): str
   return null;
 }
 
-/** 恢复回池(§7.4):claimed 无终态记录 → pending;终态/其余不动。返回恢复清单供协调器 append 自愈事件 */
+/** 恢复回池(§7.4;2026-10-31 用户裁定改语义「中断即终态」):claimed 无终态记录 → **failed**
+ *  (中断=异常终态,如实显示;不再静默回池 pending——回池会让已完成工作被重派重执行,且 pending
+ *  在执行体死后无人认领,task_wait 等待面永远收不到终态=「永远等待」的病根)。终态/其余不动。
+ *  返回恢复清单供协调器 append 自愈事件。需要重做由 lead 重新 create_task(显式裁决优先于静默重跑) */
 export function recoverOnLoad(state: TaskBoardState): { state: TaskBoardState; recovered: string[] } {
   const recovered = Object.values(state.tasks).filter((t) => t.status === 'claimed').map((t) => t.id);
   if (recovered.length === 0) return { state, recovered };
   let next = state;
   for (const id of recovered) {
-    next = applyBoardEvent(next, { t: 'status-changed', taskId: id, from: 'claimed', to: 'pending', ts: Date.now(), note: 'recovered after restart' });
+    next = applyBoardEvent(next, { t: 'status-changed', taskId: id, from: 'claimed', to: 'failed', ts: Date.now(), note: 'interrupted by restart (execution lost — recreate the task if needed)' });
   }
   return { state: next, recovered };
 }

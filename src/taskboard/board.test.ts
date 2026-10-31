@@ -523,11 +523,11 @@ test('持久化往返:重启 init 恢复板,claimed 无终态回池(自愈事件
     });
     board2.init();
     const s = board2.snapshot();
-    assert.equal(s.tasks['t9']!.status, 'pending', 'claimed 回池(§7.4)');
+    assert.equal(s.tasks['t9']!.status, 'failed', '中断即终态(2026-10-31 裁定:回池 pending 曾致重派重执行+永等)');
     assert.equal(s.tasks[idA]!.status, 'in-review', '前板的 in-review 存续');
-    // 自愈事件已入流:再次裸 load(不 init)重放后 t9 应仍 pending(事件流自洽)
+    // 自愈事件已入流:再次裸 load(不 init)重放后 t9 应仍 failed(事件流自洽)
     const raw = fs.readFileSync(path.join(tmp, 'teams', 'main', 'events.jsonl'), 'utf8');
-    assert.ok(raw.includes('"note":"recovered after restart"'), '回池以事件落盘');
+    assert.ok(raw.includes('"note":"interrupted by restart'), '自愈事件以 failed+中断语义落盘');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

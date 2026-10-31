@@ -89,6 +89,6 @@ test('recoverOnLoad:claimed 回池、其余不动', () => {
   s = applyBoardEvent(s, { t: 'status-changed', taskId: 't2', from: 'in-review', to: 'done', ts: 3 });
   const r = recoverOnLoad(s);
   assert.deepEqual(r.recovered, ['t1']);
-  assert.equal(r.state.tasks['t1']!.status, 'pending');
+  assert.equal(r.state.tasks['t1']!.status, 'failed', '中断即终态(2026-10-31 裁定:静默回池曾致重派重执行+永等)');
   assert.equal(r.state.tasks['t2']!.status, 'done', '终态不动');
 });

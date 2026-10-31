@@ -91,8 +91,10 @@ export class TaskBoard {
     // 重启后帽语义续接,不因进程重启清零导致超额重放
     this.teamTokensUsed = Object.values(this.state.tasks).reduce((sum, t) => sum + (t.artifact?.tokens ?? 0), 0);
     for (const id of recovered) {
-      this.deps.store.append({ t: 'status-changed', taskId: id, from: 'claimed', to: 'pending', ts: this.now(), note: 'recovered after restart' });
-      this.emit('task-status-changed', { taskId: id, from: 'claimed', status: 'pending', note: 'recovered after restart' });
+      // 2026-10-31 用户裁定「中断即终态」:claimed 恢复落 failed(异常终态,task_wait 等待面立即
+      // 收到终态回执;静默回池 pending 曾致已完成工作重派重执行+无人认领任务永等)
+      this.deps.store.append({ t: 'status-changed', taskId: id, from: 'claimed', to: 'failed', ts: this.now(), note: 'interrupted by restart (execution lost — recreate the task if needed)' });
+      this.emit('task-status-changed', { taskId: id, from: 'claimed', status: 'failed', note: 'interrupted by restart (execution lost — recreate the task if needed)' });
     }
     // 惰性建档(Ruling 2「首写惰性建档」,2026-10-05 T4 评审裁定归 T3):init 接线进每个 Harness 构造后,
     // 空板(无 tasks 且 seq=0)且无恢复时不得落快照——未用过任务板的工作区零物化 teams/ 目录;有状态维持原行为。

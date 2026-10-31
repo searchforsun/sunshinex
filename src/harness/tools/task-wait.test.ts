@@ -248,3 +248,33 @@ test('task_wait 未派发板任务可等:板上在册即合法目标,轮询至�
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('task_wait 中断即终态(2026-10-31 裁定):重启恢复 claimed→failed,等待面立即收口不再永等', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-interrupted-'));
+  try {
+    const store = new TeamStore(path.join(root, 'teams', 'main'));
+    // 预置崩溃档:任务已 claim(执行中)即进程死——无终态记录
+    store.append({ t: 'task-created', taskId: 'task-demo-crash-xx01', title: 'CrashDemo', spec: 's', dependsOn: [], ts: 1 });
+    store.append({ t: 'status-changed', taskId: 'task-demo-crash-xx01', from: 'pending', to: 'claimed', ts: 2, by: 'code-analyst' });
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const board = new TaskBoard({
+      store,
+      runner: { runSubagent: async () => ({ ok: true as const, value: { reply: 'r', tokens: 1 } }) } as never,
+      registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init(); // recoverOnLoad:claimed → failed(interrupted by restart)
+    assert.equal(board.snapshot().tasks['task-demo-crash-xx01']!.status, 'failed', '恢复落 failed 终态');
+    const registry = new ToolRegistry();
+    registry.register(makeTaskWaitTool(tasks, board));
+    const r = await registry.execute('task_wait', { taskIds: ['task-demo-crash-xx01'], timeoutSeconds: 5 }, stubSafety);
+    assert.ok(r.ok);
+    if (r.ok) {
+      assert.match(r.value.stdout, /all target tasks finished \(1\)/, '中断终态立即收口(不再等满 timeout)');
+      assert.match(r.value.stdout, /\(board\) failed — CrashDemo/, '回执如实显示 failed');
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

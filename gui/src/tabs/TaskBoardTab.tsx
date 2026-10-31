@@ -132,6 +132,17 @@ function TaskCard({
                       {agentName}
                     </span>
                   )}
+                  {/* 异常态文本徽标(2026-10-31 用户裁定「状态要正确显示各种异常情况」):点标色对
+                      色弱/小点不可辨,失败/取消/评审中必须有可读词——运行态(pending/claimed)不缀词 */}
+                  {(task.status === 'failed' || task.status === 'cancelled' || task.status === 'in-review') && (
+                    <span
+                      className={`sx-badge${task.status === 'failed' ? ' sx-badge-warn' : ''}`}
+                      style={task.status === 'cancelled' ? { color: 'var(--fg-secondary)', borderColor: 'var(--border)' } : undefined}
+                      role="status"
+                    >
+                      {task.status === 'failed' ? t('failed', '失败') : task.status === 'cancelled' ? t('cancelled', '已取消') : t('in review', '评审中')}
+                    </span>
+                  )}
                 </button>
                 {task.gated === true && (
                   <span className="gate-actions">
