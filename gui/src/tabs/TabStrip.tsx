@@ -205,6 +205,14 @@ export function TabStrip(props: TabStripProps): JSX.Element {
               if (from !== null && from !== t.uid) onReorder?.(from, t.uid);
             }}
             onClick={() => onSelect(t.uid)}
+            onAuxClick={(e) => {
+              // 鼠标中键关页签(2026-10-31 用户裁定;浏览器同款):button 1=中键;preventDefault
+              // 压掉 Chromium 中键自动滚动手势,避免误触发
+              if (e.button === 1) {
+                e.preventDefault();
+                onClose(t.uid);
+              }
+            }}
           >
             {useFileIcon && filePath !== undefined ? (
               <FileIcon path={filePath} size={16} />
@@ -236,8 +244,10 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           </button>
         );
       })}
-      {/* + 锚容器(滚动区内);弹层开在其下,fixed 钉屏坐标=开层瞬间钮矩形 */}
-      <div className="sx-strip-newtab" style={{ position: 'relative', display: 'inline-flex', flex: 'none' }} ref={menuAnchorRef}>
+      {/* + 锚容器+拖拽带移出滚动区(2026-10-31 用户裁定「缩窄时 + 不要被盖到后面」):+ 恒钉
+          条上可见(页签滚动收缩自理);弹层 fixed 钉屏坐标=开层瞬间钮矩形 */}
+      </div>
+      <div className="sx-strip-newtab" ref={menuAnchorRef}>
       <button
         type="button"
         aria-label="new tab"
@@ -287,9 +297,8 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         </div>
       )}
       </div>
-      {/* 页签条根节点即拖拽面;本带是条内右侧余量,按钮不在此带上 */}
+      {/* 页签条根节点即拖拽面;本带是滚动区右侧余量(与 + 同层),按钮不在此带上 */}
       <div className="sx-tabstrip-drag" data-drag-band aria-hidden="true" />
-      </div>
     </div>
   );
 }
