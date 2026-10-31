@@ -38,7 +38,9 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
     cwd: session.root,
     cols,
     rows,
-    owner: session.id,
+    // owner=journalId(2026-10-31 用户实测切换会话「pty not found for session」根因修):运行时 id
+    // 每次打开重铸( ephemeral),journalId 才是稳定锚——切会话/收编换壳后终端凭 ptyId 重连不失效
+    owner: session.attachedJournalId ?? session.id,
     env: process.env as Record<string, string>,
   });
   io.send(res, 200, { ptyId });
@@ -48,7 +50,7 @@ export function handlePtyKill(io: PtyHandlerIo, res: http.ServerResponse, id: st
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
   const owner = io.ptyManager.ownerOf(ptyId);
-  if (owner !== undefined && owner !== session.id) {
+  if (owner !== undefined && owner !== session.id && owner !== session.attachedJournalId) {
     io.send(res, 404, { error: 'pty not found for session' });
     return;
   }

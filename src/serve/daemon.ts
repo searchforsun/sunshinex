@@ -369,7 +369,7 @@ export class GuiDaemon {
     // 0c) pty 全量插杀（G8b T3，teardown 插杀处之二）：逐会话 killAllFor 覆盖全部条目（owner 恒为
     //     会话 id——daemon 持 manager、session.ts 不引 pty 的 serve 分层面）。kill 同步注销，exit 帧
     //     异步送达在线 pty WS（尽力投递，网络面下一拍收口）；防孤儿 conpty 拖住 daemon close
-    for (const id of [...this.sessions.keys()]) this.ptyManager.killAllFor(id);
+    for (const [id, rt] of [...this.sessions.entries()]) this.ptyManager.killAllFor(rt.attachedJournalId ?? id);
     // 1) WS 面先收（daemon-ws hub.close：停 ping 计时器，逐连接 1001 Going Away 后 wss.close，
     //    pty 专用 WS 同拍退场）——先于 HTTP server close，升级连接与请求连接同序退场，server close
     //    时无存活的升级套接字拖尾
@@ -918,7 +918,7 @@ export class GuiDaemon {
       this.unwatchProjectRoot(session.root);
       // G8b T3 插杀（单会话回收处）：会话回收连带清杀其全部 pty（daemon 持 manager——serve 分层，
       // session.ts 不引 pty）；kill 同步注销 → 该会话 pty 的后续 WS 连入收 error 'pty not found'
-      this.ptyManager.killAllFor(key);
+      this.ptyManager.killAllFor(session.attachedJournalId ?? key); // 插杀锚=journalId(与 spawn owner 同锚)
       if (this.active === key) this.active = undefined;
     }
     purgeSession(dataDir, jid);

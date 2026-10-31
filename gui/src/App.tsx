@@ -34,6 +34,7 @@ import { useNavHistory } from './use-nav-history';
 import { useRestoreLast } from './use-restore-last';
 import { usePtyRegistry } from './use-pty-registry';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
+import { cleanPathInput, isAbsPath, joinWsPath, OPEN_DEFAULT_KEY, pathBasename, workspaceOfAbs } from './ui-util';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -308,7 +309,6 @@ function AppShell(): JSX.Element {
     // 不重建,闭包滞留聊天页 isWelcome=false,落座写成会话座;渲染层读 '@welcome' 恒空,开会话
     // 才见标签(草稿座迁移链忠实搬运了写错座的档)。fe55c46 修同族三处判定时此处依赖遗漏
   }, [openSessionId, isWelcome]);
-  const openFileTab = useCallback((p: string): void => { openTabInSession('file', { path: p }); }, [openTabInSession]);
   const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string): void => { openTabInSession('agent', { label, agentTitle, task }); }, [openTabInSession]);
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走
@@ -325,29 +325,18 @@ function AppShell(): JSX.Element {
     setMemoryFocus(focus !== undefined && focus !== '' ? { slug: focus, nonce: Date.now() } : undefined);
   }, [openTabInSession]);
   const openLearnedTab = useCallback((): void => { openTabInSession('learned'); }, [openTabInSession]);
-  /** 组头目录钮排队旗(2026-10-23 用户裁定):跨会话打开链(newSession→attach→openSession)落位后
-   *  补开目录页签——openTabInSession 走 sessionRef,须等目标会话成为打开会话再消费 */
-  /** 2026-10-27 目录树入左菜单层(用户裁定):menuDir={root,sessionId} 驱动 ProjectMenu 目录视图;
-   *  sessionId 由 ensureSessionForRoot 落值(首会话复用/零会话 newSession 建席——tree API 会话寻址) */
-  const [menuDir, setMenuDir] = useState<{ root: string; sessionId: string } | null>(null);
-  /** 树内点文件排队旗:目标会话成为打开会话后补开文件标签(欢迎页/无会话态先建席再进) */
-  const pendingFileTabRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (openSessionId === '' || pendingFileTabRef.current === null) return;
-    const p = pendingFileTabRef.current;
-    pendingFileTabRef.current = null;
-    openFileTab(p);
-    // eslint 不入依赖(openFileTab 恒稳:openTabInSession/setter)
-  }, [openSessionId]);
-  /** 组头目录钮(2026-10-23 用户裁定):当前会话属该项目→直接开目录页签;否则打开项目第一个
-   *  会话(恢复链同款 newSession→attach→openSession,收编以返回 id 为准)后补开目录页签。
-   *  项目无会话钮不渲染(组头侧 sessionCount 门) */
-  /** 组头目录钮(2026-10-27 用户裁定·目录树入左菜单层):常驻图标点击→ensureSessionForRoot
-   *  (首会话复用/零会话 newSession 建席)→菜单目录视图(setMenuCollapsed 解除,抽屉态保持悬浮);
-   *  失败可见化(fork/rewind 同口径) */
-  const openProjectDirectory = useCallback((root: string): void => {
+  /** 2026-10-27 目录树入左菜单层(用户裁定):menuDir={root,sessionId,locate?} 驱动 ProjectMenu 目录视图;
+   *  locate=相对目录,树打开后逐层展开定位;sessionId 由 ensureSessionForRoot 落值 */
+  const [menuDir, setMenuDir] = useState<{ root: string; sessionId: string; locate?: string } | null>(null);
+  /** 组头/正文目录链:ensureSession → 左菜单目录视图;locate 相对路径则树内展开定位 */
+  const openProjectDirectory = useCallback((root: string, locate?: string): void => {
     if (connInstance === null || root === '') return;
     setMenuClosed(false);
+    // 同项目目录视图已开:只换 locate(避免重拉建席)
+    if (menuDir !== null && menuDir.root === root) {
+      setMenuDir({ ...menuDir, locate });
+      return;
+    }
     void Promise.resolve()
       .then(() => connInstance.sessionsOf(root))
       .then((rows) => {
@@ -356,19 +345,57 @@ function AppShell(): JSX.Element {
           ? { sessionId: first.liveSessionId ?? connInstance.newSession(root).then((r) => r.sessionId) }
           : connInstance.newSession(root).then((r) => ({ sessionId: r.sessionId }));
       })
-      .then(({ sessionId }) => Promise.resolve(sessionId).then((sid) => setMenuDir({ root, sessionId: sid })))
+      .then(({ sessionId }) => Promise.resolve(sessionId).then((sid) => setMenuDir({ root, sessionId: sid, locate })))
       .catch(showOpError);
     // eslint 不入依赖(setMenuClosed/setMenuDir 恒稳;connInstance 由连接生命周期持有)
-  }, [connInstance]);
+  }, [connInstance, menuDir]);
+  /** 目录路径:在册项目 → 左侧树定位该项目+相对路径;否则按用户默认打开方式(资源管理器/vscode…)外开 */
+  const openDirectoryPath = useCallback((raw: string): void => {
+    if (connInstance === null) return;
+    const cleaned = cleanPathInput(raw);
+    const abs = isAbsPath(cleaned)
+      ? cleaned.replace(/[\\/]+$/, '') || cleaned
+      : joinWsPath(openRoot || '', cleaned).replace(/[\\/]+$/, '');
+    if (abs === '') return;
+    void connInstance
+      .workspaces()
+      .then((rows) => {
+        const hit = workspaceOfAbs(abs, rows.flatMap((r) => (r.root !== undefined && r.root !== '' ? [r.root] : [])));
+        if (hit !== null) {
+          openProjectDirectory(hit.root, hit.rel === '' ? undefined : hit.rel);
+          return;
+        }
+        return connInstance.openInEditor(abs, localStorage.getItem(OPEN_DEFAULT_KEY) ?? 'explorer');
+      })
+      .catch(showOpError);
+  }, [connInstance, openRoot, openProjectDirectory]);
+  /** 文件开签;尾斜杠=目录 → 走 openDirectoryPath(正文目录芯片/畸形 ./D:\\… 同口径) */
+  const openFileTab = useCallback((p: string): void => {
+    const cleaned = cleanPathInput(p);
+    if (/[\\/]$/.test(cleaned) || /[\\/]$/.test(p.trim())) {
+      openDirectoryPath(cleaned === '' ? p : cleaned);
+      return;
+    }
+    openTabInSession('file', { path: cleaned === '' ? p : cleaned });
+  }, [openTabInSession, openDirectoryPath]);
+  /** 树内点文件排队旗:目标会话成为打开会话后补开文件标签(欢迎页/无会话态先建席再进) */
+  const pendingFileTabRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openSessionId === '' || pendingFileTabRef.current === null) return;
+    const p0 = pendingFileTabRef.current;
+    pendingFileTabRef.current = null;
+    openFileTab(p0);
+  }, [openSessionId, openFileTab]);
   /** 树内点文件→右侧文件标签:有打开会话直接开(服务端信任根已放行跨项目);无会话(欢迎页)→
    *  建席+attach+openSession 进会话,标签经 pendingFileTabRef 排队补开 */
   const openFileFromTree = useCallback((path: string, root: string): void => {
+    const abs = joinWsPath(root, path);
     if (openSessionId !== '') {
-      openFileTab(path);
+      openFileTab(abs);
       return;
     }
     if (connInstance === null) return;
-    pendingFileTabRef.current = path;
+    pendingFileTabRef.current = abs;
     void Promise.resolve()
       .then(() => connInstance.sessionsOf(root))
       .then((rows) => {
@@ -461,6 +488,11 @@ function AppShell(): JSX.Element {
         return [...bySig.values()].sort((a, b) => a.ts - b.ts);
       })(),
       turnGoal, taskFocus, onOpenTask: openTaskFocus,
+      // 任务板顶部刷新(2026-10-31):sessionSnapshot 拉 journal 权威 board 整替投影(live WS 流照常在位)
+      refreshBoard: (sessionId: string): Promise<void> =>
+        connRef.current === null
+          ? Promise.resolve()
+          : connRef.current.sessionSnapshot(sessionId).then((snap) => setProjection((p) => ({ ...p, board: snap.board }))),
     }),
     [projection, reviewTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, turnGoal, taskFocus, openTaskFocus],
   );
@@ -781,6 +813,7 @@ function AppShell(): JSX.Element {
               activeUid={tabState.activeUid}
               disabled={page !== 'chat' && page !== 'welcome'}
               welcomeOnly={isWelcome}
+              projectName={openRoot !== '' ? pathBasename(openRoot.replace(/[\/]+$/, '')) : undefined}
               onSelect={(uid) => setTabStates((s) => setActive(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid))}
               onReorder={(from, to) => setTabStates((s) => reorderTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, from, to))}
               onClose={closeTabInSession}

@@ -39,6 +39,8 @@ export interface TabStripProps {
   readonly onCloseActive: () => void;
   /** G14.2xx 标签搜索弹窗:最近关闭历史(App 持有)+按索引重开;缺场=弹窗无「最近关闭」节 */
   readonly recentClosed?: readonly ClosedTab[];
+  /** 终端标签题(2026-10-31 用户裁定「终端标签名显项目名,多个 1234 递增」):项目名由宿主注入 */
+  readonly projectName?: string;
   readonly onReopenClosed?: (index: number) => void;
 }
 
@@ -53,6 +55,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     activeUid,
     disabled = false,
     welcomeOnly = false,
+    projectName,
     onSelect,
     onClose,
     onReorder,
@@ -167,7 +170,12 @@ export function TabStrip(props: TabStripProps): JSX.Element {
       {tabs.map((t) => {
         const entry = tabEntry(t.type);
         // G14.2xx file 标签撞名 → 最小区分相对路径;其余回落 registry 原题
-        const title = titles.get(t.uid) ?? entry.title(t.params);
+        // 终端标签题(2026-10-31 用户裁定):项目名;多个终端 1234 递增(项目名 n)
+        let title = titles.get(t.uid) ?? entry.title(t.params);
+        if (t.type === 'terminal' && projectName !== undefined && projectName !== '') {
+          const ord = tabs.filter((x) => x.type === 'terminal').indexOf(t) + 1;
+          title = tabs.filter((x) => x.type === 'terminal').length > 1 ? `${projectName} ${ord}` : projectName;
+        }
         const Icon = TAB_ICONS[t.type] ?? FileText;
         // G14.211 文件标签显对应文件类型图标(vscode-icons 集内);未命中回落通用文档图标
         const filePath = t.type === 'file' ? t.params.path : undefined;
