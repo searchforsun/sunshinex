@@ -1,0 +1,28 @@
+/*
+ * 工具展开体 I/O 井统一单点(2026-10-31 用户裁定「统一工具面的高度行距,别一个一个工具打补丁」):
+ * .entry pre 的正文代码卡样式(bg/边框/圆角/margin 10px)此前渗进工具行展开体——exec/mcp/缺省
+ * 三分支的 .tool-io-pre 全部长出卡片底+上下 10px 空隙,行距逃逸思考行节奏。此文件单点复位:
+ * pre.tool-io-pre 裸显(零卡零距),节奏由 .tool-body-inner(顶 4px)与 .tool-exec(4px 0 2px)
+ * 两处既有规则统一供给——电脑/浏览器操作(MCP)等全部工具同一形态,后续新增工具自动继承。
+ * 独立文件免触 app.css(用户并行在途编辑面),main.tsx 于 app.css 之后引入(同序覆盖)。
+ */
+
+.entry-tool pre.tool-io-pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+/* 图片带与 I/O 井的间距同点收敛:上 4px 贴井,下 4px 收尾;左 8px 与井文字起点对齐 */
+.entry-tool .tool-images {
+  margin: 4px 0 2px 8px;
+}
+
+/* 展开体代码井文字与思考行同灰阶节奏(承接 G14.198 口径,不随 .entry pre 字号漂移) */
+.entry-tool pre.tool-io-pre,
+.entry-tool .tool-exec pre {
+  color: var(--fg-secondary);
+  font: var(--f-code, 11.5px)/1.6 var(--font-mono);
+}

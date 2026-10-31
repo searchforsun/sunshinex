@@ -4,6 +4,7 @@ import { App } from './App';
 import { applyZoom, readZoomPref, zoomScale } from './ui-zoom';
 import { applyFontPreset, readFontPreset } from './font-preset';
 import './app.css';
+import './tool-io.css'; // 工具展开体 I/O 井统一单点(免触 app.css 用户在途编辑面)
 import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+rehype-katex):字体与排版样式全局一份
 
 /**
