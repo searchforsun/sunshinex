@@ -148,7 +148,7 @@ async function main() {
     // (Windows 无头 GPU 初始化失败亦为即时退出源);fresh profile
     const tryArgs = attempts === 1
       ? [...headlessArgs, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank']
-      : ['--headless', '--disable-gpu', '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'];
+      : ['--headless', '--disable-gpu', '--no-sandbox', '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`, 'about:blank'];
     const browser = spawn(exe, tryArgs, {
       stdio: ['ignore', 'ignore', 'pipe'],
       detached: true, // 常驻:脱离桥进程树(mcpClose 树杀 bridge/server 不连坐浏览器)
