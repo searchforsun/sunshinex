@@ -156,7 +156,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Todos', '待办'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <TodoCardsTab batches={p.services.todoBatches} />,
+    render: (p) => <TodoCardsTab batches={p.services.todoBatches} conn={p.conn} sessionId={p.sessionId} />,
   },
   {
     id: 'agents',
