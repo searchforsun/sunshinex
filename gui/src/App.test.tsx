@@ -78,6 +78,7 @@ const h = vi.hoisted(() => {
     replyAskCalls: Array<[string, GuiAskAnswer]> = [];
     deleteSessionCalls: string[] = [];
     boardReviewCalls: Array<[string, string, boolean]> = [];
+    boardStopCalls: Array<[string, string]> = [];
     readFileCalls: Array<[string, string]> = [];
     /** G6 Files 预览面应答(readFile 可编程) */
     fileResp: FileResp = { path: '/w/root-a/src/a.ts', content: 'const x = 1;\n' };
@@ -250,6 +251,10 @@ const h = vi.hoisted(() => {
     }
     boardReview(sessionId: string, taskId: string, approved: boolean): Promise<void> {
       this.boardReviewCalls.push([sessionId, taskId, approved]);
+      return Promise.resolve();
+    }
+    boardStop(sessionId: string, taskId: string): Promise<void> {
+      this.boardStopCalls.push([sessionId, taskId]);
       return Promise.resolve();
     }
     readFile(sessionId: string, path: string): Promise<FileResp> {
@@ -1486,21 +1491,18 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     unmount();
   });
 
-  it('板投影随事件:task-created/assigned/gate 帧 → Board List 行(t1 ⚠ @w1);Approve → conn.boardReview(s1, t1, true)', async () => {
+  it('板投影随事件:task-created 行在队卡;pending 停钮 → conn.boardStop', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     openTasksTab();
     fire(conn, taskCreated('t1', 'Demo'));
     fire(conn, taskCreated('t2', 'Next', ['t1']));
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }));
-    fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }));
-    // G8d T5:⚠ 已 Badge 化(sx-badge-warn span,⚠ 文本在内)——行文本断言剥 ⚠,徽标单独断言
-    // P1 Task 8:live 板帧 100ms 尾随——waitFor 过窗后三断言同拍成立
-    await waitFor(() => expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined()); // 任务板随事件直显(状态图标+任务名+@w1)
-    expect(document.querySelector('.sx-badge.sx-badge-warn')?.textContent).toBe('⚠');
+    await waitFor(() => expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined());
+    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
     expect(screen.getByRole('button', { name: 't2 [pending] Next' })).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: 'Approve t1' }));
-    await waitFor(() => expect(conn.boardReviewCalls).toEqual([['s1', 't1', true]]));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop t1' }));
+    await waitFor(() => expect(conn.boardStopCalls).toEqual([['s1', 't1']]));
     unmount();
   });
 
@@ -1544,7 +1546,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expect(document.querySelector('.tb-task-list')).toBeNull(); // s2 快照空板(而非 s1 残留)
     // —— 重开 s1:快照带板 → onSeeded 回填,任务页即快照权威态(无需事件帧)——
     conn.snapshotResp = snapshotOf({
-      board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], ts: 1 }),
+      board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Demo', spec: '', dependsOn: [], teamId: 'alpha', ts: 1 }),
     });
     fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
     await screen.findByLabelText('welcome');
@@ -1594,29 +1596,21 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
   it('播种窗内 task/gate/delegation 帧缓冲不投;整替后 ≤lastSeq 丢、>lastSeq 依序重放(增量不被整替吞)', async () => {
     const { conn, unmount } = await enterChatHeldBoard();
     openTasksTab();
-    // 窗内三帧:seq 3 gate-waiting(≤ lastSeq——快照已含其效果:门已 resolved)、seq 8 assigned(>——须重放)、
-    // seq 9 委派(>——须重放)
+    // 窗内三帧:seq 3(≤ lastSeq 丢)、seq 8 assigned(须重放)、seq 9 委派(须重放)
     fire(conn, ev('gate-waiting', undefined, { taskId: 't1' }), 3);
     fire(conn, ev('task-assigned', undefined, { taskId: 't1', assignee: 'w1' }), 8);
     fire(conn, ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'dev', title: 'Base' }), 9);
     // 窗内不投:任务页默认在场,空板 + 委派空(帧在 boardPendingRef 缓冲)
     expect(document.querySelector('.tb-task-list')).toBeNull();
     expect(screen.queryByLabelText('delegations')).toBeNull(); // 窗内帧缓冲,委派未投
-    // 种子:lastSeq 5;快照板 t1(Base,门已 resolved——seq 3 的效果已在快照内)
+    // 种子:lastSeq 5;快照板已有 t1
     conn.snapshotResp = snapshotOf({
       lastSeq: 5,
-      board: applyBoardEvent(
-        applyBoardEvent(
-          applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Base', spec: '', dependsOn: [], ts: 1 }),
-          { t: 'gate-set', taskId: 't1', ts: 2 },
-        ),
-        { t: 'gate-resolved', taskId: 't1', approved: true, ts: 3 },
-      ),
+      board: applyBoardEvent(emptyBoard(), { t: 'task-created', taskId: 't1', title: 'Base', spec: '', dependsOn: [], teamId: 'alpha', ts: 1 }),
     });
     conn.releaseSnapshot();
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    // 整替+过滤重放:t1 带 @w1 且无 ⚠(seq 8 重放——丢帧根修判据;seq 3 丢——若重放则门被重新挂上 ⚠,
-    // reducer 对 created 幂等故以 gate-set 重挂为 ≤ 过滤的可观测判据);seq 9 委派重放(行在场)
+    // 整替+过滤重放:seq 8/9 落在快照板上(t1 带委派名);seq 3 不重放
     expect(screen.getByRole('button', { name: 't1 [pending] Base' })).toBeDefined();
     expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('dev'); // 委派重放:行带子智能体名
     // 窗后帧直投(不再缓冲)

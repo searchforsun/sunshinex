@@ -1,49 +1,42 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, RefreshCw } from 'lucide-react';
+import { Bot, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
 
-/** DAG 视图懒载面(React Flow@xyflow/react + dagre 布局,开源组件——mermaid 拼源退役):
- *  节点=状态图标+任务名+🤖执行子智能体名,平移/缩放/控制钮组件内置;不进主 bundle */
+/** DAG 视图懒载面(React Flow + dagre)。节点与列表行共用五态点色与停钮。 */
 const TaskDag = lazy(() => import('./TaskDag'));
 
 /**
- * G14.174 「任务板」页签体(原 Agents 页签重定位):卡片流——任务按创建批次分卡(≈每轮一卡,
- * createdAt 间隔 >2min 即新批,时间由上到下、渲染最新在顶)。
- * G14.213 按用户设计重构:
- * - 卡头 = [列表|流程图 切换(左)] + 轮次用户输入(单行省略) + 时间(右)
- * - 只显示任务:页内 DELEGATIONS 委派段去除(委派状态走右侧徽标面);行=状态图标+任务名+
- *   执行子智能体名(仅执行/完成态显,等待态不显)→ 点击跳对应子智能体 页签(等待态不跳)
- * - 状态图标三态:运行(claimed/in_review)=转圈;完成=蓝点;等待(pending)=灰点;失败=红点
- * - DAG(G14.2xx 用户裁定换开源 DAG 渲染组件):React Flow(@xyflow/react)+dagre 自动布局
- *   (@dagrejs/dagre),替代 mermaid 拼源渲染——预设高度内组件自管平移/滚轮缩放/控制钮;
- *   START/END 虚拟节点补齐并行任务的起止形态;边=内置虚线流动动画;
- *   节点=状态图标+任务名+🤖子智能体名,点击跳对应子智能体(等待态无委派不跳)。
- * 测试钩子沿用:行内 Approve/Deny 按钮、aria-label `${id} [${status}] ${title}`。
+ * 任务板：一队一卡，卡头为团队名称（快照 teams.name）。
+ * 卡内列表 | DAG，只含该 teamId 的任务。
+ * 五态只以点色表达：pending 灰、running 转圈、success 蓝、failed 红、cancelled 黄且标题划线。
+ * pending 与 running 的行在 hover 时露出停止，点击上抛 onStopTask。
+ * 行点击打开执行中的子智能体转录。测试钩子：aria-label `${id} [${status}] ${title}`。
  */
+
+export interface BoardTeamRef {
+  readonly teamId: string;
+  readonly name: string;
+  readonly createdAt?: number;
+}
 
 export interface TaskBoardTabProps {
   readonly board: TaskBoardState;
   readonly delegations: readonly Delegation[];
-  /** 关联轮次用户输入(Chat 上抛最近一条 user 行) */
-  readonly turnGoal: string;
-  /** 点击任务/节点跳对应子智能体只读页签(App 注入 openTabInSession('agent',…)) */
+  /** 快照 teams：卡头名称；缺名时回退 teamId */
+  readonly teams?: readonly BoardTeamRef[];
+  /** 点击任务/节点跳对应子智能体只读页签 */
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
-  /** gate 行内审批(App 注入 conn.boardReview) */
-  readonly onReview?: (taskId: string, approved: boolean) => void;
-  /** G14.176 create_task 行点开的定位信号:ref=任务 id 或标题;nonce 变更即滚动+高亮对应行 */
+  /** pending|running 停止（App 注入 conn.boardStop） */
+  readonly onStopTask?: (taskId: string) => void;
+  /** create_task 行点开的定位信号：ref=任务 id 或标题；nonce 变更即滚动+高亮对应行 */
   readonly focus?: { ref: string; nonce: number } | null;
-  /** 顶部刷新钮(2026-10-31 用户裁定):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影;
-   *  onRefresh 返回 Promise,钮在此期间转圈。缺省=旧连接/测试桩,钮不渲染 */
+  /** 顶部刷新：sessionSnapshot 拉权威 board。返回 Promise 期间钮转圈 */
   readonly onRefresh?: () => Promise<void>;
 }
 
-/** 批次切分间隔:相邻创建时刻超过该值即视为新一轮任务的卡片(ms) */
-const BATCH_GAP_MS = 120_000;
-
-/** 任务 → 执行子智能体:委派表按 delegationId/label 同文命中——委派标签=dispatchTag(板 id):
- *  新方言(2026-10-19)板 id 自带 task- 类别段即本形,旧恢复档 tN 补 task- 前缀;title 同文兜底 */
+/** 任务 → 执行子智能体：委派表按 delegationId/label 同文命中，title 同文兜底 */
 function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Delegation | undefined {
   const tag = /^t\d+$/.test(task.id) ? `task-${task.id}` : task.id;
   return (
@@ -52,42 +45,67 @@ function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Deleg
   );
 }
 
-/** 创建批次分组:createdAt 升序扫描,间隔超 BATCH_GAP_MS 即新批(批内保 id 序) */
-function groupTasks(tasks: BoardTask[]): BoardTask[][] {
-  const sorted = [...tasks].sort((a, b) => (a.createdAt - b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true }));
-  const groups: BoardTask[][] = [];
-  for (const task of sorted) {
-    const last = groups[groups.length - 1];
-    const prev = last?.[last.length - 1];
-    if (last === undefined || (prev !== undefined && task.createdAt - prev.createdAt > BATCH_GAP_MS)) groups.push([task]);
-    else last!.push(task);
+interface TeamGroup {
+  teamId: string;
+  name: string;
+  tasks: BoardTask[];
+}
+
+function teamLabel(teamId: string, teams: readonly BoardTeamRef[]): string {
+  const hit = teams.find((team) => team.teamId === teamId);
+  if (hit !== undefined && hit.name !== '') return hit.name;
+  if (teamId !== '') return teamId;
+  return t('Team', '团队');
+}
+
+/** 一队一卡。已知团队按 createdAt 新者在上；快照未列的 teamId 按 id 排在后面。 */
+function groupByTeam(tasks: readonly BoardTask[], teams: readonly BoardTeamRef[]): TeamGroup[] {
+  const buckets = new Map<string, BoardTask[]>();
+  for (const task of tasks) {
+    const bucket = buckets.get(task.teamId);
+    if (bucket === undefined) buckets.set(task.teamId, [task]);
+    else bucket.push(task);
+  }
+  const sortTasks = (list: BoardTask[]): BoardTask[] =>
+    [...list].sort((a, b) => (a.createdAt - b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true }));
+  const seen = new Set<string>();
+  const groups: TeamGroup[] = [];
+  const known = teams
+    .filter((team) => buckets.has(team.teamId))
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  for (const team of known) {
+    if (seen.has(team.teamId)) continue;
+    seen.add(team.teamId);
+    groups.push({ teamId: team.teamId, name: teamLabel(team.teamId, teams), tasks: sortTasks(buckets.get(team.teamId) ?? []) });
+  }
+  for (const teamId of [...buckets.keys()].filter((id) => !seen.has(id)).sort((a, b) => a.localeCompare(b))) {
+    groups.push({ teamId, name: teamLabel(teamId, teams), tasks: sortTasks(buckets.get(teamId) ?? []) });
   }
   return groups;
 }
 
 type CardView = 'list' | 'dag';
 
-/** 单卡:头部=[列表|流程图(左)]+轮次输入(单行省略)+时间;体=列表|DAG 两型;DAG 可放大弹窗 */
+const STOPPABLE = new Set<BoardTask['status']>(['pending', 'running']);
+
 function TaskCard({
   group,
   board,
   delegations,
-  turnGoal,
   onOpenAgent,
-  onReview,
+  onStopTask,
 }: {
-  group: BoardTask[];
+  group: TeamGroup;
   board: TaskBoardState;
   delegations: readonly Delegation[];
-  turnGoal: string;
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
-  onReview?: (taskId: string, approved: boolean) => void;
+  onStopTask?: (taskId: string) => void;
 }): JSX.Element {
   const [view, setView] = useState<CardView>('list');
-  const latestMs = group.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
-  const byId = useMemo(() => new Map(group.map((x) => [x.id, x])), [group]);
+  const latestMs = group.tasks.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
+  const byId = useMemo(() => new Map(group.tasks.map((x) => [x.id, x])), [group.tasks]);
   return (
-    <section className="tb-card">
+    <section className="tb-card" data-team-id={group.teamId}>
       <div className="tb-card-head">
         <div className="view-toggle" role="group" aria-label="task card view">
           <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
@@ -97,62 +115,47 @@ function TaskCard({
             DAG
           </button>
         </div>
-        <span className="todo-card-goal">{turnGoal !== '' ? turnGoal : t('(no turn input)', '(未关联轮次输入)')}</span>
+        <span className="tb-team-name">{group.name}</span>
         <span className="todo-card-time">{shortStampMs(latestMs)}</span>
       </div>
       {view === 'list' ? (
         <ul className="tb-task-list" aria-label="task list">
-          {group.map((task) => {
+          {group.tasks.map((task) => {
             const d = agentOfTask(task, delegations);
-            // G14.213 子智能体名仅执行/完成态显(等待态无委派不显);点击仅委派在场可跳
             const agentName = d !== undefined ? (d.label !== '' ? d.label : (d.title ?? '')) : '';
+            const title = task.title !== '' ? task.title : task.id;
             return (
-              <li key={task.id} className={`tb-task-row task-status-${task.status}${task.gated === true ? ' gated' : ''}`}>
+              <li key={task.id} className={`tb-task-row task-status-${task.status}`}>
                 <button
                   type="button"
                   className="tb-task-main" data-task-id={task.id} data-task-title={task.title}
                   aria-label={`${task.id} [${task.status}] ${task.title}`}
                   data-tip={agentName !== '' ? t('View subagent', '查看子智能体') : undefined}
                   onClick={() => {
-                    if (d === undefined) return; // 等待态:无执行子智能体,不跳转
-                    // 2026-10-25 用户裁定:任务说明禁止截断——页签任务带=板任务说明全量
+                    if (d === undefined) return;
                     const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
                     onOpenAgent?.(d.label !== '' ? d.label : task.id, agentName !== '' ? agentName : task.title, taskText);
                   }}
                 >
                   <span className={`tb-status-dot task-status-${task.status}`} aria-hidden="true" />
-                  <span className="tb-task-title">
-                    {task.title !== '' ? task.title : task.id}
-                    {task.gated === true && <span className="sx-badge sx-badge-warn" role="img" aria-label="gate waiting">⚠</span>}
-                  </span>
+                  <span className={`tb-task-title${task.status === 'cancelled' ? ' tb-struck' : ''}`}>{title}</span>
                   {agentName !== '' && (
                     <span className="tb-task-agent">
-                      {/* G14.213 执行子智能体=机器人头标识(与 DAG 节点 🤖 同语言) */}
                       <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
                       {agentName}
                     </span>
                   )}
-                  {/* 异常态文本徽标(2026-10-31 用户裁定「状态要正确显示各种异常情况」):点标色对
-                      色弱/小点不可辨,失败/取消/评审中必须有可读词——运行态(pending/claimed)不缀词 */}
-                  {(task.status === 'failed' || task.status === 'cancelled' || task.status === 'in-review') && (
-                    <span
-                      className={`sx-badge${task.status === 'failed' ? ' sx-badge-warn' : ''}`}
-                      style={task.status === 'cancelled' ? { color: 'var(--fg-secondary)', borderColor: 'var(--border)' } : undefined}
-                      role="status"
-                    >
-                      {task.status === 'failed' ? t('failed', '失败') : task.status === 'cancelled' ? t('cancelled', '已取消') : t('in review', '评审中')}
-                    </span>
-                  )}
                 </button>
-                {task.gated === true && (
-                  <span className="gate-actions">
-                    <button type="button" className="approve" onClick={() => onReview?.(task.id, true)}>
-                      {`Approve ${task.id}`}
-                    </button>
-                    <button type="button" className="deny" onClick={() => onReview?.(task.id, false)}>
-                      {`Deny ${task.id}`}
-                    </button>
-                  </span>
+                {STOPPABLE.has(task.status) && (
+                  <button
+                    type="button"
+                    className="tb-stop"
+                    aria-label={`${t('Stop', '停止')} ${task.id}`}
+                    data-tip={t('Stop', '停止')}
+                    onClick={() => onStopTask?.(task.id)}
+                  >
+                    <Square size={11} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
                 )}
               </li>
             );
@@ -161,11 +164,9 @@ function TaskCard({
       ) : (
         <div className="tb-dag-wrap">
           <div className="board-dag-scroll tb-dag-scroll">
-            {/* G14.2xx 开源 DAG 组件(React Flow/dagre):节点=状态+任务名+🤖子智能体名,
-                点击 → 跳对应子智能体(等待态无委派不可点);lazy 载入,chunk 拉起前显占位 */}
             <Suspense fallback={<div className="tb-dag-loading">{t('Loading graph…', '流程图加载中…')}</div>}>
               <TaskDag
-                tasks={group}
+                tasks={group.tasks}
                 agentOf={(taskId) => {
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return '';
@@ -176,10 +177,11 @@ function TaskCard({
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return;
                   const d = agentOfTask(task, delegations);
-                  if (d === undefined) return; // 等待态:无执行子智能体,不可点
+                  if (d === undefined) return;
                   const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-                  onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText); // 任务说明不截断(2026-10-25 裁定)
+                  onOpenAgent?.(d.label !== '' ? d.label : task.id, d.title !== undefined && d.title !== '' ? d.title : task.title, taskText);
                 }}
+                onStopTask={onStopTask}
               />
             </Suspense>
           </div>
@@ -189,10 +191,8 @@ function TaskCard({
   );
 }
 
-
-export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onReview, focus, onRefresh }: TaskBoardTabProps): JSX.Element {
+export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onStopTask, focus, onRefresh }: TaskBoardTabProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  /** 刷新钮转圈(2026-10-31):在途自转,落定即停;重入禁 */
   const [refreshing, setRefreshing] = useState(false);
   const refresh = (): void => {
     if (refreshing || onRefresh === undefined) return;
@@ -206,7 +206,6 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
       </button>
     </div>
   );
-  // G14.176 定位高亮:nonce 变更→按 id/标题找行→滚动居中+flash 高亮(1.8s 退场)
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
     const norm = focus.ref.replace(/^task-/, '');
@@ -219,11 +218,11 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
     if (hit === undefined) return;
     hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
     hit.classList.add('flash');
-    const t = setTimeout(() => hit.classList.remove('flash'), 1800);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
+    return () => clearTimeout(timer);
   }, [focus?.nonce, focus?.ref]);
   const tasks = useMemo(() => Object.values(board.tasks), [board]);
-  const groups = useMemo(() => groupTasks(tasks), [tasks]);
+  const groups = useMemo(() => groupByTeam(tasks, teams), [tasks, teams]);
   if (tasks.length === 0) {
     return (
       <div className="insight-tab">
@@ -241,17 +240,16 @@ export function TaskBoardTab({ board, delegations, turnGoal, onOpenAgent, onRevi
     <div className="insight-tab">
       {bar}
       <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
-      {[...groups].reverse().map((group) => (
-        <TaskCard
-          key={group[0]?.id ?? `group-${group.length}`}
-          group={group}
-          board={board}
-          delegations={delegations}
-          turnGoal={turnGoal}
-          onOpenAgent={onOpenAgent}
-          onReview={onReview}
-        />
-      ))}
+        {groups.map((group) => (
+          <TaskCard
+            key={group.teamId}
+            group={group}
+            board={board}
+            delegations={delegations}
+            onOpenAgent={onOpenAgent}
+            onStopTask={onStopTask}
+          />
+        ))}
       </div>
     </div>
   );

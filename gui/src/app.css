@@ -314,8 +314,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 输入面贴底(G12 起 composer 卡面样式单源在 .sx-composer 段,旧 flex 席位规则退役) */
 
-/* === 任务板页签(滚动落 sx-tabbody;列表行卡/needs 文字列/gate 左条) === */.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-/* gated=warn 左条(inset 竖条零布局移,hover 不夺条);needs 箭头列随行文本,状态六态着色 */.task-row.gated { box-shadow: inset 2px 0 0 var(--warn); }.task-status-pending { color: var(--fg-secondary); }.task-status-claimed { color: var(--accent); }.task-status-in-review { color: var(--warn); }.task-status-done { color: var(--ok); }.task-status-failed { color: var(--err); }.task-status-cancelled { color: var(--fg-secondary); text-decoration: line-through; }.gate-actions { display: inline-flex; gap: 6px; margin-left: 12px; }.gate-actions .approve, .gate-actions .deny { padding: 1px 8px; font-size: 12px; }
+/* === 任务板页签(列表 | DAG) === */.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* 任务五态的字色不承载状态；点色与划线在 .tb-status-dot / .tb-struck */
 /* DAG 滚动壳(列表/流程图双卡共用的滚动容器) */.board-dag-scroll { overflow: auto; min-height: 0; }
 
 /* === Files 页(G14.5 vscode 形态:顶部路径面包屑+Monaco 只读源码面;输入行仅空/错误态) === */.files { display: flex; flex-direction: column; height: 100%; }
@@ -1708,16 +1708,26 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-time { flex: none; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .todo-card-list { padding: 4px 0 0 6px; }
 .tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tb-team-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.tb-task-row { display: flex; flex-direction: column; gap: 2px; }
+.tb-task-row { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.tb-struck { text-decoration: line-through; }
+.tb-stop {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: var(--radius-sm);
+  background: var(--surface-elevated); color: var(--fg-secondary); cursor: pointer;
+  opacity: 0; pointer-events: none;
+}
+.tb-task-row:hover .tb-stop,
+.tb-task-row:focus-within .tb-stop,
+.tb-dag-node:hover .tb-stop,
+.tb-dag-node:focus-within .tb-stop { opacity: 1; pointer-events: auto; }
+.tb-stop:hover { color: var(--err); }
 .tb-task-main { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; border: none; background: transparent; padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; color: var(--fg); font-size: 12.5px; }
 .tb-task-main:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
-/* G14.213 状态图标三态:运行(claimed/in_review)=灰转圈;完成=蓝点;等待(pending)=灰点;失败=红点。
-   2026-10-19 用户裁定两连:①蓝转圈退役对齐全局灰环语言(顶栏 run-spinner/侧栏会话行同款);
-   ②小圆点在根 zoom+flex 交叉轴小数取整下会被拉椭(border-radius:50% 依赖盒纵横比,实测
-   zoom≥1.1 档即现椭圆)——实心点改几何圆构造:radial-gradient(circle Rpx) 半径两轴
-   同值,盒取整不变形。2026-10-31 菱形二案:转圈退役 conic+mask 改 border 圆环(mask 光栅化
-   随机丢层根因,见 sx-session-dot.running 注);静态点 radial-gradient 两轮探针零异常保留 */
+/* 任务五态点:pending 灰(基类)、running 转圈、success 蓝、failed 红、cancelled 黄。
+   实心点用 radial-gradient 几何圆(zoom 取整不拉椭);转圈用 border 圆环(与全局运行环同档)。 */
 /* clip-path 正圆锁:全局 corner-shape:superellipse 会把 6px 盒收成菱形,径向/转圈同被裁;
    仅本选择器特殊处理,不动全局弧度 */
 .tb-status-dot {
@@ -1730,8 +1740,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   clip-path: circle(50% at 50% 50%);
   background: radial-gradient(circle 3px at 50% 50%, var(--fg-tertiary) 2.4px, transparent 2.8px);
 }
-.tb-status-dot.task-status-claimed,
-.tb-status-dot.task-status-in_review {
+.tb-status-dot.task-status-running {
   background: none;
   border: 1.9px solid var(--fg-tertiary);
   border-top-color: var(--fg);
@@ -1740,22 +1749,21 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border-radius: 50%;
   clip-path: circle(50% at 50% 50%);
   animation: sx-spin 1s linear infinite;
-} /* 2026-10-31 用户裁定「转圈要和其他运行转圈一样大」:claimed/in_review=任务板的运行态,
-  6px 档漏升(2026-10-28「全局统一 12px」只升了 bg-running/会话行)——补齐同档同环厚 */
-.tb-status-dot.task-status-done { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
+}
+.tb-status-dot.task-status-success { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.task-status-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
+.tb-status-dot.task-status-cancelled { background: radial-gradient(circle 3px at 50% 50%, #f5c542 2.4px, transparent 2.8px); }
 /* G14.213 DAG 预设高度;G14.2xx 渲染换开源图组件 React Flow(@xyflow/react)+dagre 布局
    (mermaid 拼源退役):平移/滚轮缩放/控制钮组件内置,外层壳不再滚动(防双滚动条) */
 .tb-dag-wrap { position: relative; }
 .tb-card .board-dag-scroll.tb-dag-scroll { height: clamp(320px, 52vh, 600px); overflow: hidden; }
 .tb-dag-flow { width: 100%; height: 100%; font: 12px var(--font-ui); }
 .tb-dag-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-tertiary); font-size: 12px; }
-/* 任务节点卡:状态点+任务名(+gated ⚠)+🤖执行子代理行——列表行同语言(task-status-* 钩子共用) */
-.tb-dag-node { width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
+/* 任务节点卡:状态点+任务名+执行子代理行(与列表行 task-status-* 同钩子) */
+.tb-dag-node { position: relative; width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .tb-dag-node.clickable { cursor: pointer; }
 .tb-dag-node.clickable:hover { border-color: var(--accent); }
-.tb-dag-node.gated { border-color: var(--warn); }
-.tb-dag-node.task-status-cancelled { opacity: 0.5; }
+.tb-dag-node .tb-stop { top: 4px; right: 4px; transform: none; }
 .tb-dag-node-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tb-dag-node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .tb-dag-node-agent { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

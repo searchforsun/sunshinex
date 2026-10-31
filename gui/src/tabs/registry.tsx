@@ -38,15 +38,16 @@ export interface TabServices {
   readonly board: import('../projection').TaskBoardState;
   readonly delegations: readonly import('../projection').Delegation[];
   readonly team: readonly { name: string; busy: boolean }[];
-  readonly onReview: (taskId: string, approved: boolean) => void;
+  /** 快照 teams：任务板卡头 */
+  readonly teams: readonly { teamId: string; name: string; createdAt: number }[];
+  /** 任务板停钮 → conn.boardStop */
+  readonly onStopTask: (taskId: string) => void;
   /** G8d 子智能体活动聚合(App 态 applyAgentEvent 归约;Agents 标签只读消费) */
   readonly agentActivities: import('./agent-activity').AgentActivities;
   /** G14.137 会话待办(todo_write 上抛):任务标签「会话待办」区数据源 */
   readonly todos: import('../../../src/types').TodoItem[];
   /** G14.174 待办批次(每批 todo_write 一卡;Chat 从转录重建上抛)——「待办」页签数据面 */
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
-  /** G14.174 关联轮次用户输入(Chat 上抛最近一条 user 行)——任务板/待办卡片头共用 */
-  readonly turnGoal: string;
   /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
   readonly taskFocus: { ref: string; nonce: number } | null;
   /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
@@ -172,10 +173,10 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
       <TaskBoardTab
         board={p.services.board}
         delegations={[...p.services.delegations]}
-        turnGoal={p.services.turnGoal}
+        teams={p.services.teams}
         focus={p.services.taskFocus}
-        onOpenAgent={(label, agentTitle) => p.openTab('agent', { label, agentTitle })}
-        onReview={p.services.onReview}
+        onOpenAgent={(label, agentTitle, task) => p.openTab('agent', { label, agentTitle, task })}
+        onStopTask={p.services.onStopTask}
         onRefresh={p.services.refreshBoard === undefined ? undefined : () => p.services.refreshBoard!(p.sessionId)}
       />
     ),

@@ -65,10 +65,9 @@ export interface ChatDerivedDeps {
   readonly chat: ChatState;
   readonly board?: TaskBoardState;
   readonly onTodoBatches?: (batches: TodoBatch[]) => void;
-  readonly onTurnGoal?: (goal: string) => void;
 }
 
-/** 用户气泡 md → 单行纯文本:剥引用前缀与链接标记(待办批次 goal 与关联轮次 turnGoal 共用单点) */
+/** 用户气泡 md → 单行纯文本:剥引用前缀与链接标记(待办批次 goal) */
 const stripGoal = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
 
 /** 电脑控制指示判定面单点在 computer-use-contract(2026-10-27 技术债轮收敛:server 名/动作集与
@@ -79,15 +78,14 @@ export { isComputerUseControlTool };
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;
   todoBatches: TodoBatch[];
-  turnGoal: string;
   todoActive: number;
   taskActive: number;
   /** 电脑控制徽标:控制类 computer-use 工具条在跑(顶栏「正在控制」判定) */
   computerUseActive: boolean;
 } {
-  const { chat, board, onTodoBatches, onTurnGoal } = deps;
+  const { chat, board, onTodoBatches } = deps;
   /** P1 派生冻结:依赖改成员集键(structureVersion+seedGen 防重置等值碰撞)——纯内容帧
-   *  (token/thinking delta)引用恒定,成员/种子变更才重算(下方 todoBatches/turnGoal 同口径) */
+   *  (token/thinking delta)引用恒定,成员/种子变更才重算(下方 todoBatches 同口径) */
   const taskNameOf = useMemo(() => taskNameResolverOf(chat.entries, board), [chat.structureVersion, chat.seedGen, board]);
   /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
    *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
@@ -121,17 +119,9 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     return [...bySig.values()].sort((a, b) => a.ts - b.ts);
   }, [chat.structureVersion, chat.seedGen]);
 
-  /** G14.177 顶栏动态计数:待办=末批(最新)未完成条目;任务板=pending+claimed 任务 */
+  /** 顶栏动态计数:待办=末批未完成条目;任务板=pending+running */
   const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;
-  const taskActive = board !== undefined ? Object.values(board.tasks).filter((x) => x.status === 'pending' || x.status === 'claimed').length : 0;
-  /** G14.174 关联轮次用户输入(最近一条 user 行;md 链接折叠为标签文本——goal 供单行省略头) */
-  const turnGoal = useMemo(() => {
-    for (let i = chat.entries.length - 1; i >= 0; i -= 1) {
-      const e = chat.entries[i]!;
-      if (e.kind === 'user') return stripGoal(e.md);
-    }
-    return '';
-  }, [chat.structureVersion, chat.seedGen]);
+  const taskActive = board !== undefined ? Object.values(board.tasks).filter((x) => x.status === 'pending' || x.status === 'running').length : 0;
 
   /** 电脑控制徽标(2026-10-27):运行轮内存在未收口的控制类 computer-use 工具条(pending/running)
    *  ——running 门使轮收束即隐(异常中断遗留的未决条不长久驻留);冻结键沿派生面同口径
@@ -153,10 +143,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     onTodoBatches?.(todoBatches);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSig]);
-  useEffect(() => {
-    onTurnGoal?.(turnGoal);
-  }, [turnGoal, onTurnGoal]);
-  return { taskNameOf, todoBatches, turnGoal, todoActive, taskActive, computerUseActive };
+  return { taskNameOf, todoBatches, todoActive, taskActive, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer

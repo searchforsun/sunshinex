@@ -70,7 +70,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
         if (sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
       }
     }
-    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [] }));
+    setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: snap.team ?? [], teams: snap.teams ?? [] }));
   };
 
   return { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot };

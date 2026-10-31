@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import type { Edge, Node, NodeProps } from '@xyflow/react';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { Bot } from 'lucide-react';
+import { Bot, Square } from 'lucide-react';
 import type { BoardTask } from '../projection';
 import { t } from '../i18n';
 import '@xyflow/react/dist/style.css';
@@ -11,9 +11,9 @@ import '@xyflow/react/dist/style.css';
  * 任务卡 DAG 视图(G14.2xx:mermaid 拼源渲染退役,改开源图组件 React Flow(@xyflow/react,MIT)+
  * dagre 自动布局(@dagrejs/dagre,MIT)——节点=任务状态图标+任务名+执行子智能体名,交互面(平移/滚轮
  * 缩放/控制钮)组件内置,mermaid 时代的拼源/容错/lightbox 全部不再需要。
- * 节点点击语义沿 G14.213:仅「有执行子智能体」的任务可点 → 上抛 onTaskOpen 跳对应子智能体 页签
- * (等待态无委派不可点);START/END 虚拟节点保留并行任务的起止形态。布局为纯函数(layoutTaskDag)
- * 可独立桩测:未知依赖边忽略(会话间补发交错防御,与 projection 侧同款纪律)、环交 dagre 自身割环兜底。
+ * 节点点击:仅「有执行子智能体」的任务可点 → 上抛 onTaskOpen。
+ * dependsOn 为实线依赖边；retryOf 为虚线并标「重试」，布局排在前驱之后。
+ * START/END 补齐并行任务的起止。未知依赖与集合外 retryOf 忽略；环交 dagre 割环。
  */
 
 /** 任务节点盒尺寸(dagre 布局步进 + React Flow 免实测尺寸的既定值;CSS 同值配套) */
@@ -30,7 +30,6 @@ export interface TaskNodeData extends Record<string, unknown> {
   id: string;
   title: string;
   status: BoardTask['status'];
-  gated: boolean;
   /** 执行子智能体显示名(空串=未派发:不显行、不可点) */
   agent: string;
   clickable: boolean;
@@ -46,7 +45,11 @@ export interface TaskDagProps {
   readonly agentOf: (taskId: string) => string;
   /** 任务节点点击上抛(仅 agentOf 命中的节点会触发) */
   readonly onTaskOpen?: (taskId: string) => void;
+  /** pending|running 节点 hover 停止 */
+  readonly onStopTask?: (taskId: string) => void;
 }
+
+const DagStopContext = createContext<((taskId: string) => void) | undefined>(undefined);
 
 /** 任务图 → { nodes, edges }(纯函数):dagre LR 分层布局,START→根任务/汇点→END 补起止;
  *  布局坐标为 dagre 中心点,转 React Flow 左上角落位;width/height 显式给出(免实测,jsdom 亦可渲) */
@@ -64,17 +67,37 @@ export function layoutTaskDag(
   g.setNode(START_ID, { width: TERMINAL_W, height: TERMINAL_H });
   g.setNode(END_ID, { width: TERMINAL_W, height: TERMINAL_H });
   const edges: Edge[] = [];
-  const link = (from: string, to: string): void => {
+  const link = (from: string, to: string, kind: 'frame' | 'dep' | 'retry'): void => {
     g.setEdge(from, to);
-    edges.push({ id: `e-${from}-${to}`, source: from, target: to });
+    if (kind === 'retry') {
+      edges.push({
+        id: `r-${from}-${to}`,
+        source: from,
+        target: to,
+        animated: false,
+        className: 'tb-dag-retry',
+        label: t('Retry', '重试'),
+        style: { strokeDasharray: '6 4' },
+      });
+      return;
+    }
+    edges.push({
+      id: `${kind === 'dep' ? 'd' : 'f'}-${from}-${to}`,
+      source: from,
+      target: to,
+      animated: false,
+      className: kind === 'dep' ? 'tb-dag-dep' : 'tb-dag-frame',
+    });
   };
   for (const task of sorted) {
-    // 缺依赖(引用集合外任务)的边忽略——跨会话补发流交错的既定防御(与 projection 侧同款纪律)
+    // 集合外的 dependsOn / retryOf 忽略（补发交错时引用尚未入图）
     const deps = task.dependsOn.filter((d) => inSet.has(d));
-    if (deps.length === 0) link(START_ID, task.id);
-    for (const d of deps) link(d, task.id);
-    const hasDown = sorted.some((x) => inSet.has(x.id) && x.dependsOn.includes(task.id));
-    if (!hasDown) link(task.id, END_ID);
+    const retryPred = task.retryOf !== undefined && inSet.has(task.retryOf) ? task.retryOf : undefined;
+    if (deps.length === 0 && retryPred === undefined) link(START_ID, task.id, 'frame');
+    for (const d of deps) link(d, task.id, 'dep');
+    if (retryPred !== undefined) link(retryPred, task.id, 'retry');
+    const hasDown = sorted.some((x) => x.dependsOn.includes(task.id) || x.retryOf === task.id);
+    if (!hasDown) link(task.id, END_ID, 'frame');
   }
   dagreLayout(g);
   const at = (id: string, w: number, h: number): { x: number; y: number } => {
@@ -108,7 +131,6 @@ export function layoutTaskDag(
             id: task.id,
             title: task.title !== '' ? task.title : task.id,
             status: task.status,
-            gated: task.gated === true,
             agent,
             clickable: agent !== '',
           },
@@ -120,23 +142,35 @@ export function layoutTaskDag(
   };
 }
 
-/** 任务节点:状态图标(列表行同款 tb-status-dot)+任务名(+gated ⚠)+执行子智能体行(🤖)。
- *  节点名恒单行截断——hover 显全名走全局 data-tip 单例(§13.1 规则 2 禁原生 title、规则 4 截断文本场景) */
+/** 任务节点:状态点+任务名+执行子智能体行。pending/running hover 出停止。
+ *  节点名恒单行截断——hover 全名走 data-tip。 */
 function TaskNode({ data }: NodeProps<Node<TaskNodeData, 'task'>>): JSX.Element {
+  const onStopTask = useContext(DagStopContext);
+  const stoppable = data.status === 'pending' || data.status === 'running';
   return (
     <div
-      className={`tb-dag-node task-status-${data.status}${data.clickable ? ' clickable' : ''}${data.gated ? ' gated' : ''}`}
+      className={`tb-dag-node task-status-${data.status}${data.clickable ? ' clickable' : ''}`}
       aria-label={`${data.id} [${data.status}] ${data.title}`}
       data-tip={data.title}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <div className="tb-dag-node-head">
         <span className={`tb-status-dot task-status-${data.status}`} aria-hidden="true" />
-        <span className="tb-dag-node-title">{data.title}</span>
-        {data.gated && (
-          <span className="sx-badge sx-badge-warn" role="img" aria-label="gate waiting">
-            ⚠
-          </span>
+        <span className={`tb-dag-node-title${data.status === 'cancelled' ? ' tb-struck' : ''}`}>{data.title}</span>
+        {stoppable && (
+          <button
+            type="button"
+            className="tb-stop"
+            aria-label={`${t('Stop', '停止')} ${data.id}`}
+            data-tip={t('Stop', '停止')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStopTask?.(data.id);
+            }}
+          >
+            <Square size={11} strokeWidth={1.75} aria-hidden="true" />
+          </button>
         )}
       </div>
       {data.agent !== '' && (
@@ -168,7 +202,7 @@ const NODE_TYPES = { task: TaskNode, terminal: TerminalNode };
  *  放大;钉同一份 padding/maxZoom 后复位=回到装载态,duration 给出可见的动画回正反馈 */
 const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1, duration: 300 };
 
-function TaskDagInner({ tasks, agentOf, onTaskOpen }: TaskDagProps): JSX.Element {
+function TaskDagInner({ tasks, agentOf, onTaskOpen, onStopTask }: TaskDagProps): JSX.Element {
   const { nodes, edges } = useMemo(() => layoutTaskDag(tasks, agentOf), [tasks, agentOf]);
   const { fitView } = useReactFlow();
   // 任务增减即回正视图(新任务可能落画面外);节点拖拽后的位置交布局重算统一
@@ -183,6 +217,7 @@ function TaskDagInner({ tasks, agentOf, onTaskOpen }: TaskDagProps): JSX.Element
     [onTaskOpen],
   );
   return (
+    <DagStopContext.Provider value={onStopTask}>
     <ReactFlow
       className="tb-dag-reactflow"
       nodes={nodes}
@@ -195,7 +230,7 @@ function TaskDagInner({ tasks, agentOf, onTaskOpen }: TaskDagProps): JSX.Element
       maxZoom={1.75}
       nodesConnectable={false}
       deleteKeyCode={null}
-      defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
+      defaultEdgeOptions={{ type: 'smoothstep', animated: false }}
       // G14.2xx 用户裁定:右下角 React Flow 水印去除(桌面内部应用,proOptions 官方开关)
       proOptions={{ hideAttribution: true }}
     >
@@ -203,6 +238,7 @@ function TaskDagInner({ tasks, agentOf, onTaskOpen }: TaskDagProps): JSX.Element
       {/* 控制钮(+/−/复位)钉右下角(G14.2xx 用户裁定,左下角退役) */}
       <Controls position="bottom-right" showInteractive={false} fitViewOptions={FIT_VIEW_OPTIONS} />
     </ReactFlow>
+    </DagStopContext.Provider>
   );
 }
 
