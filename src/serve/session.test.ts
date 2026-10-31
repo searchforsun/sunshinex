@@ -23,8 +23,16 @@ async function waitFor(pred: () => boolean, timeoutMs: number): Promise<void> {
   }
 }
 
+const TEAM_ID = 'team-alpha-test';
+
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+function seedTeam(dataDir: string): void {
+  const dir = path.join(dataDir, 'teams');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'registry.json'), JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]));
 }
 
 /** 挂起适配器（同 daemon.test.ts）：模型调用永挂直至 signal 中止——「运行中」锁的中正模拟 */
@@ -64,6 +72,7 @@ async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>,
   const tmp = tmpdir('sunshinex-session-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+  seedTeam(process.env.SUNSHINEX_DATA_DIR);
   let seq = 0;
   let pidSeq = 0;
   const frames: DaemonFrame[] = [];
@@ -121,7 +130,7 @@ test('① pump 平移面：帧恒 {kind:"event",sessionId,seq,e}、seq 计数在
 test('② 实跑平移面：submit 受理→running→done→idle；转录三类在场、board 影子落位、snapshotResponse 形态', async () => {
   // 消费序（taskboard.e2e 实测口径，同 daemon.contract ③）：create_task 牌 → done 牌收束
   const model = new ScriptedAdapter([
-    '{"tool":"create_task","input":{"title":"A","spec":"a","dependsOn":null,"assignee":null,"gated":null,"executor":null}}',
+    `{"tool":"create_task","input":{"teamId":"${TEAM_ID}","title":"A","spec":"a","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
     '{"done":true,"reply":"task created"}',
   ]);
   await withSession(model, async (ctx) => {

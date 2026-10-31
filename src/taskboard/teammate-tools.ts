@@ -14,7 +14,7 @@ const TODO_TOOL_NAME = 'todo_write';
 export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
   const getBoard = makeGetBoardTool(
     board,
-    "Read the shared task board summary: one line per task in id order — id [status] [gated] title (needs deps). Read-only; use get_task for one task's full spec, assignee and execution artifact.",
+    "Read the shared task board summary: one line per task in id order — id [status] title (needs deps). Read-only; use get_task for one task's full spec, assignee and execution artifact.",
   );
   const getTask: RegisteredTool = {
     parameters: {
@@ -27,7 +27,7 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
     },
     name: 'get_task',
     description:
-      'Read one task from the shared task board in full: id, status (with gate state), title, self-contained spec, dependencies, assignee and execution artifact (conclusion, tokens, duration). Read-only.',
+      'Read one task from the shared task board in full: id, status, title, self-contained spec, dependencies, assignee and execution artifact (conclusion, tokens, duration). Read-only.',
     category: 'read',
     fullObservation: true,
     executor: async (input) => {

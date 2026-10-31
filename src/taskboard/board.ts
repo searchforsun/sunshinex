@@ -305,10 +305,10 @@ export class TaskBoard {
     return true;
   }
 
-  /** teammate 自取:原子取首个 dispatchable 未指派任务 pending→running */
-  claim(assignee: string): BoardTask | undefined {
+  /** teammate 自取:原子取首个同队 dispatchable 未指派任务 pending→running。teamId 缺省时不按队过滤。 */
+  claim(assignee: string, teamId?: string): BoardTask | undefined {
     if (this.deps.teamTokenCap !== undefined && this.teamTokensUsed >= this.deps.teamTokenCap) return undefined;
-    const task = dispatchable(this.state).find((t) => t.assignee === undefined);
+    const task = dispatchable(this.state).find((t) => t.assignee === undefined && (teamId === undefined || t.teamId === teamId));
     if (task === undefined) return undefined;
     if (!this.enterRunning(task.id, assignee)) return undefined;
     return this.state.tasks[task.id];
@@ -389,15 +389,24 @@ export class TaskBoard {
     }
     if (this.deps.team !== undefined) {
       const tm = task.assignee !== undefined ? this.deps.team.get(task.assignee) : undefined;
-      if (tm !== undefined && !tm.stopped) {
+      if (tm !== undefined && !tm.stopped && tm.teamId === task.teamId) {
         void tm.runTask(task).catch(() => { /* 单任务异常不倒灌派发;回写由执行体收口 */ });
         this.claimDeferred = true;
         return;
       }
-      if (task.assignee === undefined && this.deps.team.hasAlive()) {
-        for (const name of this.deps.team.aliveNames()) this.deps.team.get(name)?.kick();
-        this.claimDeferred = true;
-        return;
+      if (task.assignee === undefined) {
+        let kicked = false;
+        for (const name of this.deps.team.aliveNames()) {
+          const mate = this.deps.team.get(name);
+          if (mate !== undefined && !mate.stopped && mate.teamId === task.teamId) {
+            mate.kick();
+            kicked = true;
+          }
+        }
+        if (kicked) {
+          this.claimDeferred = true;
+          return;
+        }
       }
     }
     const ledger = this.deps.registry.submit({ kind: 'subagent', label: dispatchTag(task.id) });

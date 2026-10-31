@@ -6,6 +6,7 @@ import { resolveKbEnv } from './config/env';
 import { modelTimeoutMsEnv } from './config/termination-config';
 import { LoopDeps } from './loop/engine';
 import type { TaskBoard } from './taskboard/board';
+import type { AgentTeamRegistry } from './taskboard/team-registry';
 import { ModelAdapter, ModelRouter, OpenAIAdapter, parseEffort, ScriptedAdapter, StubAdapter } from './model/adapter';
 import { choiceAdapterConfig } from './model/catalog';
 import type { ModelChoice } from './config/providers';
@@ -122,9 +123,11 @@ export function buildHarness(root: string, opts: HarnessAssemblyOpts = {}): Harn
 export interface CliRunDeps extends LoopDeps {
   /** 停全部 running 后台任务并落 [stopped: process exit] 终态行（规格 D9 任务属进程；teardownCliRun 消费） */
   stopAllTasks: () => void;
-  /** 任务板协调器透传（P2/T6）：pipeline 命令板路径消费——模板任务集落板/settle 收敛/审批映射 review；
+  /** 任务板协调器透传：pipeline 命令板路径消费——模板任务集落板并 settle 到终态；
    *  与 Harness 内建板同实例（事件/持久化同源），不另起装配 */
   taskboard: TaskBoard;
+  /** AgentTeam 注册表：pipeline 每次运行 create 一个队，任务绑该 teamId */
+  agentTeams: AgentTeamRegistry;
   /** O3 观测面：干预双计数快照（approvals=guard ask 决策数 / asks=问询接缝调用数）——run-loop 结果 JSON 承载 */
   askStats: () => { approvals: number; asks: number };
 }
@@ -161,6 +164,7 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     stopAllTasks: () => h.tasks.stopAll(),
     // 任务板透传（P2/T6）：pipeline 板路径经 deps.taskboard 消费（与 Harness 内建板同实例）
     taskboard: h.taskboard,
+    agentTeams: h.agentTeams,
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），命令收尾 close 防 stdio 子进程悬挂
     mcpReady: h.mcpReady,
     mcpClose: h.mcpClose,

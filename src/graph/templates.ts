@@ -56,14 +56,13 @@ export interface TemplateTaskSpec {
   title: string;
   spec: string;
   dependsOn: string[];
-  gated?: boolean;
 }
 
 /** 模板宏化（P2/T6）：softwarePipelineTemplate 的五节点链 → 自包含任务集（纯函数零 deps，不触 engine/GraphDeps）。
  *  - planner/developer/reviewer = role 任务：spec 首行 `Role: <framing>`（ROLE_PRESETS 经 rolePreset，与 makeRoleAgent
  *    的 fork 角色行同源单点），次行 `Current instruction: <goal>`（agents.ts taskLine 口径）；
  *  - test-verify = loop 任务：spec 注明 test-loop 语义（goal + ruleCheckers 清单）；
- *  - delivery-gate = gated 任务：交付前人工审批提示（板语义 pending 顶住派发，review(approved) 解锁）。
+ *  - delivery-gate = 链尾确认任务：依赖 reviewer 成功后派发。
  *  dependsOn 按模板边：planner[]、developer[planner]、test-verify[developer]、reviewer[test-verify]、
  *  delivery-gate[reviewer]。spec 恒英文单语（进执行体提示词，CLAUDE.md §15）。 */
 export function templateToTaskSpecs(goal: string, opts: { ruleCheckers?: string[] } = {}): TemplateTaskSpec[] {
@@ -79,6 +78,6 @@ export function templateToTaskSpecs(goal: string, opts: { ruleCheckers?: string[
     { id: 'developer', title: 'developer', spec: roleSpec('developer'), dependsOn: ['planner'] },
     { id: 'test-verify', title: 'test-verify', spec: testSpec, dependsOn: ['developer'] },
     { id: 'reviewer', title: 'reviewer', spec: roleSpec('reviewer'), dependsOn: ['test-verify'] },
-    { id: 'delivery-gate', title: 'delivery-gate', dependsOn: ['reviewer'], gated: true, spec: 'Delivery gate: human approval required before final delivery. Approve to finalize this pipeline run.' },
+    { id: 'delivery-gate', title: 'delivery-gate', dependsOn: ['reviewer'], spec: 'Delivery confirmation: finalize this pipeline run.' },
   ];
 }

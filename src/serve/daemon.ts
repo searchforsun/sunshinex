@@ -148,7 +148,7 @@ export class GuiDaemon {
   /** seq 泵计数（G3 seq 协议 + T1 全局裁定）：计数在先帧在后（首帧 seq=1），跨会话全局单调不重置——
    *  各会话 snapshot.lastSeq 同一计数器分配故各自单调 */
   private seqCounter = 0;
-  /** 激活会话（spec §7 Ruling 1）：最近 create/attach 的会话；裸端点与 board/review 挂它。UI 切换 =
+  /** 激活会话（spec §7 Ruling 1）：最近 create/attach 的会话；裸端点挂它。UI 切换 =
    *  纯前端状态，不改 daemon active（协议兼容层概念，不是 UI 状态） */
   private active?: string;
   private server?: http.Server;
@@ -477,8 +477,6 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/diff', auth: true, run: async (req, res, p) => this.handleDiff(req, res, p.id) },
     // G8b T4 tree 面：会话 root 内单层目录列举（Files 页树消费；忽略集/500 上限/判界语义见 handleTree）
     { method: 'GET', path: '/session/:id/tree', auth: true, run: async (req, res, p) => this.handleTree(req, res, p.id) },
-    // G5 看板服务面：lead 审批映射（gated 审批解锁 / in-review 关单——GUI Board 页消费）
-    { method: 'POST', path: '/session/:id/board/review', auth: true, run: (req, res, p) => this.handleBoardReview(req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
     // 2026-10-21 归档面:双寻址(daemon 会话 id 或 journalId)+ 跨工作区归档列表(归档页消费)
     { method: 'POST', path: '/session/:id/archive', auth: true, run: async (req, res, p) => {
@@ -855,12 +853,6 @@ export class GuiDaemon {
    *  链接 isDirectory()=false，win32 junction 同理，须 statSync 校正；断链/竞态消失的条目跳过）；
    *  排序=目录段先于文件段、同段 name 码点序；超 TREE_MAX_ENTRIES 截断+truncated:true →
    *  200 {entries:[{name,kind:'dir'|'file'}],truncated?} */
-
-  /** POST /session/:id/board/review {taskId, approved}（G5 看板服务面）：body 校验（taskId 非空
-   *  string + approved boolean → 400）→ 该会话 taskboard.review 双语义（gated → 审批：approved
-   *  解锁派发 / 拒绝维持；in-review → 关单：approved=done / 拒=failed）→ r.ok 200 {ok:true} /
-   *  fail 400 {error: r.error.message}（未知任务/状态不符直译）；未知 :id 404（sessionFor 单点）。
-   *  review 触发的 gate-resolved/task-status 事件经该会话 pump 自然广播（既有链，零新协议） */
 
   /** POST /session/:id/attach {journalId}（T2）：journalId 非空 string 校验 → 未知 :id 404 →
    *  attach 单点（INVALID_ARG→400 / INVALID_STATE→409）→ 200 {ok,sessionId}（并置激活） */
@@ -1289,10 +1281,6 @@ export class GuiDaemon {
 
   private async handleSessionMode(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
     await sessionHandlers.handleSessionMode(this.sessionIo, req, res, id);
-  }
-
-  private async handleBoardReview(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-    await sessionHandlers.handleBoardReview(this.sessionIo, req, res, id);
   }
 
   private async handleSessionRename(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {

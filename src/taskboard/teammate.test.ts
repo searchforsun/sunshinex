@@ -114,7 +114,7 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     onEvent: (e: SessionEvent) => events.push(e),
   });
   const makeTeammate = (name: string, model?: CountingAdapter, depInbox?: Inbox): Teammate =>
-    new Teammate({ name, framing: `framing of ${name}`, deps: depsOf(name, model ?? new CountingAdapter(), depInbox) });
+    new Teammate({ name, framing: `framing of ${name}`, teamId, deps: depsOf(name, model ?? new CountingAdapter(), depInbox) });
   return {
     board,
     team,

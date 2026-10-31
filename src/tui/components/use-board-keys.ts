@@ -2,16 +2,15 @@ import * as React from 'react';
 import { SessionController, TuiState } from '../session';
 import { moveCursor } from './OptionSelector';
 import { BoardRow } from './BoardList';
-import { t } from '../../i18n';
 import type { RawKey } from './use-input';
 
 /** 任务板行序单点（仿 browseRows，P2 spec §10.3）：Object.values 按 id 数值序（t2 < t10 的数值语义，
  *  summaryLines 同款 localeCompare numeric）；label = title + 依赖箭头 ` ← t2,t3`（英文 needs 语义用
  *  箭头省宽度）+ 执行者/指派后缀 `@w1`——↑↓ 键盘分发与动态区列表渲染共用同一函数，两侧永不漂移。
  *  状态符号制（2026-10-06 用户定版：与全 TUI 同一符号语言，替代英文状态词双份口径）——
- *  ○ 待派 / ▸ 执行中 / ◆ 待复核 / ✓ 完成 / ✗ 失败 / ⊘ 取消；gated 后缀 ⚠ 沿用 */
+ *  ○ 待派 / ▸ 执行中 / ✓ 完成 / ✗ 失败 / ⊘ 取消 */
 const STATUS_SYMBOL: Record<string, string> = {
-  pending: '○', claimed: '▸', 'in-review': '◆', done: '✓', failed: '✗', cancelled: '⊘',
+  pending: '○', running: '▸', success: '✓', failed: '✗', cancelled: '⊘',
 };
 
 export function boardRows(st: TuiState): BoardRow[] {
@@ -23,7 +22,6 @@ export function boardRows(st: TuiState): BoardRow[] {
       title: task.title,
       label: `${task.title}${task.dependsOn.length > 0 ? ` ← ${task.dependsOn.join(',')}` : ''}${(task.executedBy ?? task.assignee) !== undefined ? ` @${task.executedBy ?? task.assignee}` : ''}`,
       status: STATUS_SYMBOL[task.status] ?? task.status,
-      ...(task.gated === true ? { gated: true } : {}),
     }));
 }
 
@@ -74,24 +72,7 @@ export function useBoardKeys({
         setBoard(true, moveCursor(boardCursorRef.current, rows.length, key.upArrow ? -1 : 1));
         return true;
       }
-      if (key.return) {
-        const row = rows[Math.max(0, Math.min(rows.length - 1, boardCursorRef.current))];
-        if (row?.gated === true) {
-          // gate 行内审批（spec §10.3）：askUser 问题卡映射 review——approve 解锁派发/deny 维持挂起；
-          // 问句用标题锚行（2026-10-09 id 不上屏后问句对行靠标题；dismissed 静默沿问询卡取消语义）；
-          // review 同步裁决（gate-resolved 事件驱动投影自更新）
-          void (async () => {
-            const req = await controller.askUser({
-              question: t(`Approve gate on ${row.title}?`, `放行「${row.title}」的门？`),
-              options: [{ label: 'approve' }, { label: 'deny' }],
-            });
-            if (req.type === 'dismissed') return;
-            const approved = (req.type === 'selected' && req.labels[0] === 'approve') || (req.type === 'custom' && req.text === 'approve');
-            controller.runtime.harness.taskboard.review(row.id, { approved });
-          })();
-        }
-        return true; // 非 gated 行 Enter 无操作（仍吞键不落输入缓冲）
-      }
+      if (key.return) return true;
       // Ctrl+C：退出任务视图并走暂停确认分流（同主视图/browse 口径——检视态原语义只退视图）
       if (key.ctrl && input === 'c') {
         setBoard(false);

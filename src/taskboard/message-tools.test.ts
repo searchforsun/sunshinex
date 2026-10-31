@@ -122,8 +122,8 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     assert.ok(face.get('send_message') !== undefined, 'teammate 面应含 send_message');
     assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
-    // 禁入=写板三件套(create_task/update_task/review_task);get_board/get_task 是成员面合法只读对(已注入)
-    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_task', 'update_task', 'review_task']) {
+    // 禁入=写板工具(create_team/create_task/update_task);get_board/get_task 是成员面合法只读对(已注入)
+    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_team', 'create_task', 'update_task']) {
       assert.equal(face.get(name), undefined, `teammate 面不得含 ${name}`);
     }
     // 排己:自发(to=自己)不在白名单 → INVALID_ARG

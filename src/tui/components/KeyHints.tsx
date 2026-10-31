@@ -70,12 +70,10 @@ export function keyHintsFor(s: {
       ],
     };
   }
-  // 任务视图接管（Ctrl+T）：Enter=gated 行审批（卡在场时本条退场，由卡 hint 承载）；非 gated 行无操作
   if (s.board) {
     return {
       items: [
         { key: '↑↓', action: t('move', '移动') },
-        { key: 'Enter', action: t('review gate', '审批门') },
         { key: 'Esc', action: t('exit', '退出') },
       ],
     };

@@ -1,17 +1,8 @@
-// P1 端到端验收(spec §13):lead 建任务+依赖 → 自动派发(fork 顶替)→ harness 强制回写 →
-// task_wait(null) 拉模式唤醒 → review 裁决闭环。零产品码——装配正确性的行为证明。
+// lead 建队建任务+依赖 → 自动派发(fork)→ 回写 success → task_wait(null) 拉模式唤醒。
 //
-// 时序确定性依据(装配时序实测口径,卡序按此排布):
-// 1) fork 的首次模型调用发生在派发触发的工具执行器内(create_task/review_task 的 executor 里,
-//    board.kick → drain → runSubagent → child.run → chat 同步链)——即必然夹在主链「派发牌」与
-//    「下一张牌」两个模型位之间,与微任务跳数无关(主链 runBatch 不完不进下一轮);
-// 2) dispatchable 要求依赖全 done(model.ts):B 只在 review 关单 A 之后才派发——
-//    主链 review_task(A) 的执行器内同步派发 B,fork B 的首张牌紧随其后;
-// 3) 主链阻塞在 task_wait 工具执行器内时不发起模型调用,fork B 的第二张牌(done)独占脚本队列;
-//    fork B 的首张牌是带真实耗时的 exec(node setTimeout 400ms),保证主链 task_wait(null) 快照时
-//    B 的台账条目尚在 running(拉模式等待真实发生,而非空回执即回)。
-// 板 id 为不透明方言(2026-10-19 起 task-<业务段>-<随机码>):模型脚本经卡Thunk在消费时刻读事件捕获的
-// 真实 id 装配参数——写死 id 字面量即与方言漂移。
+// 卡序:create_team → create_task A → fork A done(派发发生在 create_task 执行器内)→
+// create_task B(A 已 success 才派发)→ fork B 耗时 exec → 主链 task_wait → fork B done → 主链收尾。
+// 板 id 不透明:卡 thunk 在消费时刻读 task-created 事件里的真实 id。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -37,25 +28,31 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
         if (p.title === 'B') ids.B = p.taskId as string;
       }
     };
-    // 数组位序(消费顺序):0 主链建 A → [1] fork A 出报告(done 单张牌,微任务链在主链下一张牌前收口:
-    // 回写 in-review + 台账 finish)→ 2 主链建 B(依赖 A,此时未派发)→ 3 主链裁决 A(执行器内同步
-    // 派发 B)→ [4] fork B 真实耗时 exec → 5 主链 task_wait(null) 阻塞等待 B 台账 →
-    // [6] fork B done(主链阻塞期间独占队列)→ 7 主链裁决 B → 8 主链收尾。
+    // 消费顺序见文件头。fork 牌夹在主链派发牌与下一张主链牌之间。
     const tc = (step: number, tool: string, input: unknown) => ({
       finish: 'tool_calls' as const,
       content: '',
       toolCalls: [{ id: `call_${step}`, name: tool, argsJson: JSON.stringify(input) }],
     });
     const doneCard = (reply: string) => ({ finish: 'stop' as const, content: reply, toolCalls: [] });
+    let h: Harness;
+    const taskInput = (title: string, spec: string, dependsOn: string[] | null) => ({
+      teamId: h.agentTeams.list()[0]!.teamId,
+      title,
+      spec,
+      dependsOn,
+      assignee: null,
+      executor: null,
+      retryOf: null,
+    });
     const cards: Array<() => ReturnType<typeof tc> | ReturnType<typeof doneCard>> = [
-      () => tc(0, 'create_task', { title: 'A', spec: 'produce A report', dependsOn: null, assignee: null }),
+      () => tc(0, 'create_team', { name: 'alpha' }),
+      () => tc(1, 'create_task', taskInput('A', 'produce A report', null)),
       () => doneCard('A report done'),
-      () => tc(2, 'create_task', { title: 'B', spec: 'produce B report', dependsOn: [ids.A!], assignee: null }),
-      () => tc(3, 'review_task', { taskId: ids.A!, approved: true, note: null }),
-      () => tc(4, 'exec', { command: 'node -e "setTimeout(()=>{},400)"', background: null }),
-      () => tc(5, 'task_wait', { taskIds: null, timeoutSeconds: 30 }),
+      () => tc(2, 'create_task', taskInput('B', 'produce B report', [ids.A!])),
+      () => tc(3, 'exec', { command: 'node -e "setTimeout(()=>{},400)"', background: null }),
+      () => tc(4, 'task_wait', { taskIds: null, timeoutSeconds: 30 }),
       () => doneCard('B report done'),
-      () => tc(7, 'review_task', { taskId: ids.B!, approved: true, note: null }),
       () => doneCard('board closed'),
     ];
     let step = 0;
@@ -64,24 +61,24 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
       capabilities: { chat: true },
       chat: async () => cards[step++]!(),
     } as unknown as ModelAdapter;
-    const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent });
+    h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent });
     const r = await h.reactor.run({ goal: '完成板上任务并收尾' }, { maxSteps: 12 });
     assert.equal(r.done, true);
     assert.equal(r.reply, 'board closed');
     assert.ok(ids.A !== undefined && ids.B !== undefined, '两任务 id 已自事件捕获');
     const s = h.taskboard.snapshot();
-    assert.equal(s.tasks[ids.A!]!.status, 'done');
-    assert.equal(s.tasks[ids.B!]!.status, 'done');
+    assert.equal(s.tasks[ids.A!]!.status, 'success');
+    assert.equal(s.tasks[ids.B!]!.status, 'success');
     // 拉模式唤醒:主链 task_wait 真实阻塞后被 B 台账终态唤醒(回执为「全部完成」而非「无在跑任务」)
     assert.ok(
       r.steps.some((st) => st.observation.includes('all target tasks finished')),
       `task_wait 应以「全部完成」回执唤醒,实际步骤观察:${r.steps.map((st) => st.observation.slice(0, 80)).join(' | ')}`,
     );
-    // 强制回写(§5.4):claimed → in-review 的事件证据(不依赖模型自觉)
+    // 终态回写:success 事件在场
     for (const id of [ids.A!, ids.B!]) {
       assert.ok(
-        events.some((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === id && (e.payload as Record<string, unknown>)?.status === 'in-review'),
-        `task ${id} 应有强制回写 claimed→in-review 事件`,
+        events.some((e) => e.type === 'task-status-changed' && (e.payload as Record<string, unknown>)?.taskId === id && (e.payload as Record<string, unknown>)?.status === 'success'),
+        `task ${id} 应有回写 success 事件`,
       );
     }
     // 执行顺序:B 的委派事件必在 A 终态之后
@@ -100,15 +97,13 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
   }
 });
 
-test('e2e:lead-only 不变量——主链面五件套在场,SubagentRunner 派生子面剔除', async () => {
+test('e2e:lead-only 不变量——主链面持有 TASKBOARD_TOOL_NAMES,SubagentRunner 派生子面剔除', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbe2e-lead-'));
   try {
     const h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
-    // 主链注册面与全量克隆面均持有五件套
-    assert.ok(TASKBOARD_TOOL_NAMES.every((n) => h.tools.get(n) !== undefined), '主链工具面应持有 taskboard 五件套');
+    assert.ok(TASKBOARD_TOOL_NAMES.every((n) => h.tools.get(n) !== undefined), '主链工具面应持有 taskboard 工具');
     const fullClone = h.tools.derive({ exclude: [] });
-    assert.ok(TASKBOARD_TOOL_NAMES.every((n) => fullClone.get(n) !== undefined), '全量克隆面应含 taskboard 五件套');
-    // harness 装配的同一 registry 经 SubagentRunner 派生子面(fork 工具面)剔除五件套 + spawn(既有不变量顺带钉)
+    assert.ok(TASKBOARD_TOOL_NAMES.every((n) => fullClone.get(n) !== undefined), '全量克隆面应含 taskboard 工具');
     const child = h.runner.deriveChildRegistry({});
     for (const n of TASKBOARD_TOOL_NAMES) {
       assert.ok(child.get(n) === undefined, `fork 子面不应见 ${n}`);

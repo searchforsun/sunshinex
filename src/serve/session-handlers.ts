@@ -424,27 +424,6 @@ export function handleSnapshot(io: SessionHandlerIo, res: http.ServerResponse, i
   io.send(res, 200, { ...session.snapshotResponse(page), pending: session.pendingSnapshot() });
 }
 
-export async function handleBoardReview(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
-  const parsed = await io.readJson(req);
-  if (!parsed.ok) {
-    io.send(res, parsed.status, { error: parsed.error });
-    return;
-  }
-  const body = parsed.body as { taskId?: unknown; approved?: unknown } | null;
-  if (typeof body?.taskId !== 'string' || body.taskId.length === 0 || typeof body.approved !== 'boolean') {
-    io.send(res, 400, { error: 'taskId must be a non-empty string and approved must be a boolean' });
-    return;
-  }
-  const session = io.sessionFor(res, id);
-  if (session === undefined) return;
-  const r = session.runtime.harness.taskboard.review(body.taskId, { approved: body.approved });
-  if (!r.ok) {
-    io.send(res, 400, { error: r.error.message });
-    return;
-  }
-  io.send(res, 200, { ok: true });
-}
-
 export async function handleAttach(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {

@@ -7,6 +7,7 @@ import { assembleBoardTasks, driveBoardPipeline } from './commands/run-pipeline'
 import { templateToTaskSpecs } from '../graph/templates';
 import { TaskBoard } from '../taskboard/board';
 import { TeamStore } from '../taskboard/store';
+import { AgentTeamRegistry, MemoryAgentTeamStore } from '../taskboard/team-registry';
 import type { SubagentRunner } from '../harness/subagent';
 import type { TaskRegistry } from '../harness/tasks';
 
@@ -17,32 +18,40 @@ import type { TaskRegistry } from '../harness/tasks';
 
 const TASK_LINE = (id: string, title: string): string => `Task ${id}: ${title}`;
 
-function makeBoard(tmp: string, calls: string[]): TaskBoard {
+function makeBoard(tmp: string, calls: string[], failSpec?: string): { board: TaskBoard; teamId: string } {
+  const teams = new AgentTeamRegistry(new MemoryAgentTeamStore());
+  const created = teams.create('pipeline');
+  if (!created.ok) throw new Error(created.error.message);
   const board = new TaskBoard({
     store: new TeamStore(path.join(tmp, 'teams', 'main')),
     runner: {
-      runSubagent: async (_input: unknown, o?: { taskLine?: string }) => {
+      runSubagent: async (input: unknown, o?: { taskLine?: string }) => {
         const line = o?.taskLine ?? '';
         calls.push(line);
+        const prompt = typeof (input as { prompt?: unknown }).prompt === 'string' ? (input as { prompt: string }).prompt : '';
+        if (failSpec !== undefined && prompt.includes(failSpec)) {
+          return { ok: false as const, error: { code: 'EXEC', message: 'residual failure' } };
+        }
         return { ok: true as const, value: { reply: `reply of ${line}`, tokens: 10 } };
       },
     } as unknown as SubagentRunner,
     registry: { submit: () => ({ id: 'm1', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as unknown as TaskRegistry,
+    agentTeams: teams,
     onEvent: () => {},
     now: (() => { let n = 1000; return () => ++n; })(),
   });
   board.init();
-  return board;
+  return { board, teamId: created.value.teamId };
 }
 
 test('宏测：两段装配落板（idMap/依赖边/gated）+ settle 关单驱动，五任务按模板序全终态', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-macro-pipeline-'));
   try {
     const calls: string[] = [];
-    const board = makeBoard(tmp, calls);
+    const { board, teamId } = makeBoard(tmp, calls);
     const goal = '实现 add 函数并保证测试正确（验收标准：c1=math.test.js 断言 add(1,2)===3）';
     const specs = templateToTaskSpecs(goal, { ruleCheckers: ['c1'] });
-    const asm = assembleBoardTasks(board, specs);
+    const asm = assembleBoardTasks(board, specs, teamId);
     assert.ok(asm.ok, `装配应成功：${asm.ok ? '' : asm.error.message}`);
     const idMap = asm.value;
     // idMap：模板节点 id → 板 taskId（创建序=模板序;板 id 为不透明方言,只断键序与值互异）
@@ -57,28 +66,16 @@ test('宏测：两段装配落板（idMap/依赖边/gated）+ settle 关单驱�
     assert.deepEqual(st0.tasks[id('test-verify')]!.dependsOn, [id('developer')]);
     assert.deepEqual(st0.tasks[id('reviewer')]!.dependsOn, [id('test-verify')]);
     assert.deepEqual(st0.tasks[id('delivery-gate')]!.dependsOn, [id('reviewer')]);
-    assert.equal(st0.tasks[id('delivery-gate')]!.gated, true, 'delivery-gate 落板为 gated 任务');
+    assert.equal(st0.tasks[id('delivery-gate')]!.teamId, teamId, '任务绑定本次 pipeline 队');
     assert.equal(st0.tasks[id('planner')]!.title, 'planner');
     assert.ok(st0.tasks[id('planner')]!.spec.startsWith('Role: '), 'role 任务的 spec 承载 Role 行');
 
-    // 首个 settle：链头 planner 执行进 in-review，下游 pending（依赖未 done 不派发）
-    let st = await board.settle(300);
-    assert.equal(st.tasks[id('planner')]!.status, 'in-review');
-    assert.equal(st.tasks[id('developer')]!.status, 'pending', '上游 in-review 未关单，下游不派发');
-
-    // 真驱动循环（runPipeline 同款导出面）：rl 注入审批 'y' 走 confirmApprovals gate 分支；
-    // warn 桩抛错 = review 失败守卫不静默（正常路径零 warn）
-    const result = await driveBoardPipeline(board, idMap.values(), {
-      rl: { question: async () => 'y' },
-      settleSliceMs: 50,
-      warn: (line) => { throw new Error(`unexpected warn: ${line}`); },
-    });
+    const result = await driveBoardPipeline(board, idMap.values(), { settleSliceMs: 50 });
     assert.equal(result.status, 'done');
-    // 回执按 id 字母序稳定排序(旧 tN 序恰等创建序掩盖了这一点)——集合相等断言,执行序由 calls 钉
     assert.deepEqual(result.tasks.map((t) => t.id).sort(), [...ids].sort(), '回执恰为本管线五任务');
-    for (const t of result.tasks) assert.equal(t.status, 'done', `${t.id} 关单为 done`);
-    st = board.snapshot();
-    assert.equal(st.tasks[id('delivery-gate')]!.status, 'done', 'gate 审批通过后执行并关单');
+    for (const t of result.tasks) assert.equal(t.status, 'success', `${t.id} 终态为 success`);
+    const st = board.snapshot();
+    assert.equal(st.tasks[id('delivery-gate')]!.status, 'success', '链尾任务执行到 success');
     assert.deepEqual(
       calls,
       ids.map((id, i) => TASK_LINE(id, ['planner', 'developer', 'test-verify', 'reviewer', 'delivery-gate'][i]!)),
@@ -93,40 +90,31 @@ test('宏测：残留任务不越权——同板预置残留 failed 与交互 in
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-macro-residual-'));
   try {
     const calls: string[] = [];
-    const board = makeBoard(tmp, calls);
-    // 残留 1：上轮失败任务（执行完 in-review 被 lead 拒绝关单 → failed）
-    const residualFailed = board.create({ title: 'residual-failed', spec: 'old run' });
+    const { board, teamId } = makeBoard(tmp, calls, 'old-failed');
+    const residualFailed = board.create({ teamId, title: 'residual-failed', spec: 'old-failed' });
     assert.ok(residualFailed.ok);
     const failedId = residualFailed.value.taskId;
     await board.settle(300);
-    assert.ok(board.review(failedId, { approved: false }).ok);
     assert.equal(board.snapshot().tasks[failedId]!.status, 'failed');
-    // 残留 2：上轮交互 in-review 任务（等人裁决，不该被本轮越权关单）
-    const residualReview = board.create({ title: 'residual-review', spec: 'old run' });
-    assert.ok(residualReview.ok);
-    const reviewId = residualReview.value.taskId;
-    await board.settle(300);
-    assert.equal(board.snapshot().tasks[reviewId]!.status, 'in-review');
-    // 本轮管线：装配五任务（planner 无依赖建即派发）;id 与残留任务互异、互不越权
-    const asm = assembleBoardTasks(board, templateToTaskSpecs('目标（验收标准：c1=ok）'));
+    const residualStopped = board.create({ teamId, title: 'residual-stopped', spec: 'old-stopped' });
+    assert.ok(residualStopped.ok);
+    const stoppedId = residualStopped.value.taskId;
+    assert.ok(board.stopTask(stoppedId).ok);
+    assert.equal(board.snapshot().tasks[stoppedId]!.status, 'cancelled');
+    const asm = assembleBoardTasks(board, templateToTaskSpecs('目标（验收标准：c1=ok）'), teamId);
     assert.ok(asm.ok);
     const ids = [...asm.value.values()];
     assert.equal(ids.length, 5, '本轮五任务');
-    assert.equal(new Set([...ids, failedId, reviewId]).size, 7, '本轮 id 与残留任务互异');
-    const result = await driveBoardPipeline(board, asm.value.values(), { rl: { question: async () => 'y' }, settleSliceMs: 50 });
-    // 残留 failed 不秒杀本轮：本轮五任务全 done，status done（整板视角会误判 failed）
+    assert.equal(new Set([...ids, failedId, stoppedId]).size, 7, '本轮 id 与残留任务互异');
+    const result = await driveBoardPipeline(board, asm.value.values(), { settleSliceMs: 50 });
     assert.equal(result.status, 'done', '残留 failed 任务不影响本轮判定');
     assert.deepEqual(result.tasks.map((t) => t.id).sort(), [...ids].sort(), '回执只含本管线任务');
-    for (const t of result.tasks) assert.equal(t.status, 'done');
-    // 残留任务原态保持：交互 in-review 未被本轮关单，failed 维持
+    for (const t of result.tasks) assert.equal(t.status, 'success');
     const st = board.snapshot();
-    assert.equal(st.tasks[reviewId]!.status, 'in-review', '残留交互 in-review 不被本轮越权关单');
+    assert.equal(st.tasks[stoppedId]!.status, 'cancelled', '残留 cancelled 维持原态');
     assert.equal(st.tasks[failedId]!.status, 'failed', '残留 failed 维持原态');
-    // 执行记录：残留任务各恰一次（装配期跑的），本轮零重派——runner 序 = 两残留 + 本轮五任务（依赖序）
-    assert.deepEqual(calls, [
-      TASK_LINE(failedId, 'residual-failed'), TASK_LINE(reviewId, 'residual-review'),
-      ...ids.map((id, i) => TASK_LINE(id, ['planner', 'developer', 'test-verify', 'reviewer', 'delivery-gate'][i]!)),
-    ]);
+    assert.ok(calls.includes(TASK_LINE(failedId, 'residual-failed')), '残留失败任务执行过一次');
+    for (const id of ids) assert.ok(calls.includes(TASK_LINE(id, board.snapshot().tasks[id]!.title)));
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

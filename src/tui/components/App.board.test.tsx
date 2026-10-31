@@ -7,7 +7,6 @@ import { render, type TestRenderResult } from '../test-ink';
 import { App } from './App';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
-import type { Result } from '../../result';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -30,20 +29,7 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     ctrl.onEventForTest({ type: 'task-created', ts: 100, payload: { taskId: 't1', title: 'A', dependsOn: [] } } as never);
     ctrl.onEventForTest({ type: 'task-created', ts: 101, payload: { taskId: 't2', title: 'B', dependsOn: ['t1'] } } as never);
     ctrl.onEventForTest({ type: 'task-assigned', ts: 102, payload: { taskId: 't2', assignee: 'w1' } } as never);
-    ctrl.onEventForTest({ type: 'gate-waiting', ts: 103, payload: { taskId: 't2' } } as never);
-    // 运行中委派一行（协议补齐：合成流无 Runner，运行行由 delegation 事件入投影）——常态 ChildPanel 承载，
-    // 同时使 Ctrl+B 有可进列表（互斥断言的前提：browse 可进而被判定序挡下）
     ctrl.onEventForTest({ type: 'delegation-started', ts: 104, payload: { delegationId: 'rv', kind: 'subagent', label: 'rv' } } as never);
-
-    // review 桩：捕获裁决参数。板投影是事件喂入的，harness 任务板不识 t2（真实路径里 gate-resolved 由
-    // taskboard.review 发射；此处断言 UI 裁决正确映射到 review 入参，事件回环经 onEventForTest 直喂）
-    const reviewCalls: Array<{ id: string; approved: boolean }> = [];
-    const board = ctrl.runtime.harness.taskboard;
-    const origReview = board.review.bind(board);
-    board.review = (id: string, opts: { approved: boolean; note?: string }): Result<void> => {
-      reviewCalls.push({ id, approved: opts.approved });
-      return origReview(id, opts);
-    };
 
     term = render(<App controller={ctrl} banner={{ version: '1.0.0', model: 'm', root: tmp }} />);
     const { write, lastFrame } = term;
@@ -55,9 +41,8 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     await new Promise((r) => setTimeout(r, 200));
     const entered = lastFrame() ?? '';
     assert.match(entered, /○ A/, '任务板行进动态区：`<符号> ${label}`（符号制,boardRows 单点映射;id 不上屏）');
-    assert.match(entered, /○ ⚠ B ← t1 @w1/, 'gated ⚠ 高亮 + 依赖箭头 ← + 指派后缀 @');
+    assert.match(entered, /○ B ← t1 @w1/, '依赖箭头 ← + 指派后缀 @');
     assert.match(entered, /❯ ○/, '光标缺省落首行（id 数值序最小）');
-    assert.match(entered, /review gate/, '键提示条切任务视图组（Enter=审批门）');
     assert.doesNotMatch(entered, /[✻✽✶✱✢] \[rv\]/, '任务视图在场 ChildPanel 让位（同 browse 语义；五帧全集锚定）');
 
     // 互斥（判定序保证，断言 board 在场方向）：Ctrl+B 有可进列表仍被吞——browse hook 整体让位
@@ -67,29 +52,9 @@ test('App：Ctrl+T 任务视图——行投影/gated ⚠/↑↓/gate 行内审�
     assert.match(afterB, /○ A/, '仍在任务视图（Ctrl+B 未切走）');
     assert.doesNotMatch(afterB, /Enter inspect/, 'browse 未进入（board 在场吞键，互斥）');
 
-    write('\u001b[B'); // ↓ 光标移到 gated 行 t2
+    write('\u001b[B'); // ↓ 光标移到第二行
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /❯ ○ ⚠/, '↓ 光标移到 gated 行');
-
-    write('\r'); // Enter 于 gated 行 → gate 审批问题卡（askUser 经问询管线挂起）
-    await new Promise((r) => setTimeout(r, 200));
-    const card = lastFrame() ?? '';
-    assert.match(card, /Approve gate on B\?/, 'gate 审批问题卡出现（问句按标题锚行——id 不上屏）');
-    assert.match(card, /approve/, 'approve 选项在卡（首项=光标缺省位）');
-
-    write('\r'); // Enter 提交首项 approve（问询卡接管键盘——board 让键给问询分支）
-    await new Promise((r) => setTimeout(r, 200));
-    assert.deepEqual(reviewCalls, [{ id: 't2', approved: true }], '裁决映射 taskboard.review(t2, approved)');
-    const answered = lastFrame() ?? '';
-    assert.doesNotMatch(answered, /Approve gate on/, '卡裁决后收起（回 prevStatus）');
-    assert.match(answered, /❯ ○ ⚠/, '板态跨审批卡存续（回板视图）');
-
-    // gate-resolved 事件自更新投影（生产由真实 taskboard 发射；直喂同构事件断言帧面恢复可派发形态）
-    ctrl.onEventForTest({ type: 'gate-resolved', ts: 200, payload: { taskId: 't2', approved: true } } as never);
-    await new Promise((r) => setTimeout(r, 200));
-    const resolved = lastFrame() ?? '';
-    assert.match(resolved, /○ B ← t1 @w1/, 'gate 解锁后行恢复 ○（无 ⚠）');
-    assert.doesNotMatch(resolved, /○ ⚠/, '⚠ 消失（gated 离场）');
+    assert.match(lastFrame() ?? '', /❯ ○ B/, '↓ 光标移到第二行');
 
     write('\u001b'); // Esc 退出任务视图回主界面
     await new Promise((r) => setTimeout(r, 150));

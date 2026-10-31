@@ -32,8 +32,16 @@ async function waitFor(pred: () => boolean, timeoutMs: number): Promise<void> {
   }
 }
 
+const TEAM_ID = 'team-alpha-test';
+
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+function seedTeam(dataDir: string): void {
+  const dir = path.join(dataDir, 'teams');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(dir + path.sep + 'registry.json', JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]));
 }
 
 /** 挂起适配器（同 daemon.test.ts）：模型调用永挂——「运行中」锁的可靠模拟（ScriptedAdapter done 卡瞬间收束） */
@@ -69,6 +77,7 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>, 
   const tmp = tmpdir('sunshinex-serve-contract-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+  seedTeam(process.env.SUNSHINEX_DATA_DIR);
   try {
     const daemon = new GuiDaemon({ model, staticRoot: staticRoot ?? path.join(tmp, 'dist-gui-absent') });
     const s = await daemon.start({ port: 0, token: 'test-token' });
@@ -214,7 +223,7 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
   // 消费序（taskboard.e2e 实测口径）：主链 create_task 牌 → 执行器内同步派发 fork（fork 消费下一张
   // done 牌）→ 主链再取（末位 done 牌重复供牌）→ run 收束。create_task 入参六件全给（T1 P2 形态）。
   const model = new ScriptedAdapter([
-    '{"tool":"create_task","input":{"title":"A","spec":"a","dependsOn":null,"assignee":null,"gated":null,"executor":null}}',
+    `{"tool":"create_task","input":{"teamId":"${TEAM_ID}","title":"A","spec":"a","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
     '{"done":true,"reply":"task created"}',
   ]);
   await withDaemon(model, async (ctx) => {

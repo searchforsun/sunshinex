@@ -89,6 +89,8 @@ export class TeamRegistry {
 /** 长驻执行体:一次装配跨任务存续;kick 起 claim 循环单飞消化未指派任务,runTask 承接指派路由 */
 export class Teammate {
   readonly name: string;
+  /** 所属 AgentTeam。认领与派发只处理同 teamId 的任务。 */
+  readonly teamId: string;
   private readonly framing: string;
   private readonly deps: TeammateDeps;
   /** 独立上下文(每 teammate 一份,永不共享主链):role/task 行的落点与每任务 Reactor 的 seed 源 */
@@ -107,8 +109,9 @@ export class Teammate {
    *  重启归零后重放由 msg-id 链前缀去重兜底(注入幂等 §7.3) */
   private inboxCursor = 0;
 
-  constructor(opts: { name: string; framing: string; deps: TeammateDeps }) {
+  constructor(opts: { name: string; framing: string; teamId: string; deps: TeammateDeps }) {
     this.name = opts.name;
+    this.teamId = opts.teamId;
     this.framing = opts.framing;
     this.deps = opts.deps;
     this.ctx = new ContextManager(opts.deps.root, opts.deps.store);
@@ -137,7 +140,7 @@ export class Teammate {
   private async worker(): Promise<void> {
     try {
       while (!this.stoppedFlag) {
-        const next = this.assignedQueue.length > 0 ? this.assignedQueue.shift() : this.deps.board.claim(this.name);
+        const next = this.assignedQueue.length > 0 ? this.assignedQueue.shift() : this.deps.board.claim(this.name, this.teamId);
         if (next === undefined) break;
         // 回合边界注入(T3):每轮 execute 前统一 drain inbox(指派与 claim 两路都过此口)——
         // 消息行先于本任务 task 行 append;注入异常吞并不阻断任务(cursor 未进,下轮重 poll 兜底)

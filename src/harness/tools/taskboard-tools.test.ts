@@ -6,15 +6,19 @@ import * as path from 'path';
 import { makeTaskBoardTools, TASKBOARD_TOOL_NAMES } from './taskboard-tools';
 import { TaskBoard } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
+import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
 import type { SubagentRunner } from '../subagent';
 import type { TaskRegistry } from '../tasks';
 
-function makeBoard(tmp: string): TaskBoard {
+function makeBoard(tmp: string): { board: TaskBoard; teams: AgentTeamRegistry; teamId: string } {
   const runner = { runSubagent: async (_i: unknown, o?: { taskLine?: string }) => ({ ok: true as const, value: { reply: `r ${o?.taskLine ?? ''}`, tokens: 1 } }) } as unknown as SubagentRunner;
   const registry = { submit: () => ({ id: 'b1', stop: () => {} }), append: () => {}, finish: () => {} } as unknown as TaskRegistry;
-  const board = new TaskBoard({ store: new TeamStore(path.join(tmp, 'teams', 'main')), runner, registry });
+  const teams = new AgentTeamRegistry(new MemoryAgentTeamStore());
+  const created = teams.create('alpha');
+  if (!created.ok) throw new Error(created.error.message);
+  const board = new TaskBoard({ store: new TeamStore(path.join(tmp, 'teams', 'main')), runner, registry, agentTeams: teams });
   board.init();
-  return board;
+  return { board, teams, teamId: created.value.teamId };
 }
 
 const drain = () => new Promise((r) => setImmediate(r));
@@ -26,32 +30,33 @@ function createdId(stdout: string): string {
   return m![1]!;
 }
 
-test('四件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;update_task cancel 动作', async () => {
+test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;create_team 返回 teamId;update_task 只接受 assign|depend', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools-'));
   try {
-    const board = makeBoard(tmp);
-    const tools = makeTaskBoardTools(board);
+    const { board, teams } = makeBoard(tmp);
+    const tools = makeTaskBoardTools(board, teams);
     assert.deepEqual(tools.map((t) => t.name).sort(), [...TASKBOARD_TOOL_NAMES].sort());
+    assert.equal(tools.find((t) => t.name === 'review_task'), undefined);
     assert.ok(tools.every((t) => t.category === 'task'));
+    const createTeam = tools.find((t) => t.name === 'create_team')!;
+    const teamOut = await createTeam.executor({ name: 'beta' });
+    assert.equal(teamOut.exitCode, 0);
+    const teamId = /team (\S+) created/.exec(teamOut.stdout)![1]!;
+    assert.match(teamId, /^team-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/);
     const create = tools.find((t) => t.name === 'create_task')!;
-    const r = await create.executor({ title: 'A', spec: 'do A', dependsOn: null, assignee: null });
+    const required = create.parameters?.required ?? [];
+    assert.ok(required.includes('teamId'));
+    assert.ok(!required.includes('gated'));
+    const r = await create.executor({ teamId, title: 'A', spec: 'do A', dependsOn: null, assignee: null, executor: null, retryOf: null });
     assert.equal(r.exitCode, 0);
     const idA = createdId(r.stdout);
     assert.match(idA, /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/, `新方言形态:${idA}`);
-    assert.ok(r.stdout.includes(idA), 'observation 含新任务 id');
+    assert.equal(board.snapshot().tasks[idA]!.teamId, teamId);
     await drain();
-    // update_task cancel 动作(旧 cancel_task 薄工具收束):gated 建即 pending——取消 → cancelled + 板摘要透出
-    const rx = await create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, gated: true });
-    assert.equal(rx.exitCode, 0);
-    const idX = createdId(rx.stdout);
-    assert.equal(board.snapshot().tasks[idX]!.status, 'pending', 'gated 停 pending(可取消面)');
     const update = tools.find((t) => t.name === 'update_task')!;
-    const c = await update.executor({ taskId: idX, action: 'cancel' });
-    assert.equal(c.exitCode, 0);
-    assert.match(c.stdout, /cancelled/, 'observation 确认取消');
-    assert.match(c.stdout, new RegExp(`${idX} \\[cancelled\\]`), '板摘要含 cancelled 行(容量已回收)');
-    assert.equal(board.snapshot().tasks[idX]!.status, 'cancelled');
-    await assert.rejects(() => update.executor({ taskId: idX, action: 'cancel' }), /cancel expects a pending task/, '终态取消经工具面透出 INVALID_ARG');
+    assert.deepEqual(update.parameters?.properties?.action && (update.parameters.properties.action as { enum?: string[] }).enum, ['assign', 'depend']);
+    await assert.rejects(() => update.executor({ taskId: idA, action: 'cancel' }), /assign\|depend/, '取消不在 update_task');
+    await assert.rejects(() => create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }), /unknown teamId/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -60,19 +65,19 @@ test('四件套:name/category 全集(TASKBOARD_TOOL_NAMES 随动)与 observation
 test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools2-'));
   try {
-    const board = makeBoard(tmp);
-    const tools = makeTaskBoardTools(board);
+    const { board, teams, teamId } = makeBoard(tmp);
+    const tools = makeTaskBoardTools(board, teams);
     const create = tools.find((t) => t.name === 'create_task')!;
     const update = tools.find((t) => t.name === 'update_task')!;
-    const ra = await create.executor({ title: 'A', spec: 'a', dependsOn: null, assignee: null });
+    const ra = await create.executor({ teamId, title: 'A', spec: 'a', dependsOn: null, assignee: null, executor: null, retryOf: null });
     const idA = createdId(ra.stdout);
-    const rb = await create.executor({ title: 'B', spec: 'b', dependsOn: [idA], assignee: null });
+    const rb = await create.executor({ teamId, title: 'B', spec: 'b', dependsOn: [idA], assignee: null, executor: null, retryOf: null });
     assert.equal(rb.exitCode, 0);
     const idB = createdId(rb.stdout);
     await drain();
     // A←B 加边即与既有 B→A 边成环:拒绝
     await assert.rejects(() => update.executor({ taskId: idA, action: 'depend', dependsOn: idB }), /cycle/, '环拒绝透出 INVALID_ARG');
-    await assert.rejects(() => create.executor({ title: 'C', spec: 'c', dependsOn: ['tX'], assignee: null }), /unknown dependency/);
+    await assert.rejects(() => create.executor({ teamId, title: 'C', spec: 'c', dependsOn: ['tX'], assignee: null, executor: null, retryOf: null }), /unknown dependency/);
     // 未知 action:INVALID_ARG(动作枚举面)
     await assert.rejects(() => update.executor({ taskId: idA, action: 'nope' }), /unknown action/);
   } finally {
@@ -83,14 +88,19 @@ test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出'
 test('get_board 收编进 lead 面:摘要行+门标记+预算行(2026-10-20 缺口补齐回归)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools3-'));
   try {
-    const board = makeBoard(tmp);
-    const tools = makeTaskBoardTools(board);
+    const { board, teams, teamId } = makeBoard(tmp);
+    const tools = makeTaskBoardTools(board, teams);
     const create = tools.find((t) => t.name === 'create_task')!;
     const getBoard = tools.find((t) => t.name === 'get_board')!;
-    const r = await create.executor({ title: 'GateDemo', spec: 'g', dependsOn: null, assignee: null, gated: true });
+    const prev = await create.executor({ teamId, title: 'Prev', spec: 'p', dependsOn: null, assignee: null, executor: null, retryOf: null });
+    const prevId = createdId(prev.stdout);
+    await drain();
+    assert.equal(board.snapshot().tasks[prevId]!.status, 'success');
+    const r = await create.executor({ teamId, title: 'RetryDemo', spec: 'g', dependsOn: null, assignee: null, executor: null, retryOf: prevId });
     const id = createdId(r.stdout);
+    assert.equal(board.snapshot().tasks[id]!.retryOf, prevId);
     const out = (await getBoard.executor({})) as { stdout: string };
-    assert.match(out.stdout, new RegExp(`${id} \\[pending\\] \\[gated\\] GateDemo`), '板摘要行含 id/状态/门标记/标题');
+    assert.match(out.stdout, new RegExp(`${id} \\[(pending|running|success)\\] RetryDemo`), '板摘要行含 id/状态/标题');
     assert.ok(!out.stdout.includes('team budget'), '未设预算帽不透出预算行');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

@@ -103,8 +103,10 @@ export class Harness {
   readonly tasks: TaskRegistry;
   /** edit 先读守卫（read-guard.ts）：read 记录快照 / edit 校验，NOT_READ·STALE_READ 硬闸 */
   readonly readGuard: ReadGuard;
-  /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单隐式 team main 的板面操作权威（测试/后续阶段消费） */
+  /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单物理板，任务按 teamId 聚合 */
   readonly taskboard: TaskBoard;
+  /** AgentTeam 注册表：create_team / create_teammate / create_task 共用同一实例 */
+  readonly agentTeams: AgentTeamRegistry;
   /** teammate 注册表（P2 spec §5 T3;2026-10-20 起 create_teammate 独立动词创建）
    *  建出的长驻执行体登记处；注入 TaskBoard 派发路由（assignee 命中/留 claim）与 spawn 分流接缝 */
   readonly team: TeamRegistry;
@@ -306,11 +308,14 @@ export class Harness {
     // (模型换名/先停后建;静默替换会停掉在跑 teammate 且台账悬空);已停同名 → 替换重建(register 原语义)。
     // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——task_stop 即停,日志承载启动行
     const teamAdapter = {
-      spawn: (input: SubagentSpawnInput): Result<{ name: string }> => {
+      spawn: (input: SubagentSpawnInput, teamId: string): Result<{ name: string }> => {
+        if (this.agentTeams.get(teamId) === undefined) {
+          return fail('INVALID_ARG', `unknown teamId: ${teamId}; create a team with create_team first`);
+        }
         const name = input.label ?? input.agent_id ?? 'worker';
         const incumbent = this.team.get(name);
         if (incumbent !== undefined && !incumbent.stopped) {
-          return fail('INVALID_ARG', `teammate name already active: ${name} (stop it via task_stop or spawn with a different label)`);
+          return fail('INVALID_ARG', `teammate name already exists on team ${incumbent.teamId}`);
         }
         let framing: string;
         if (input.agent_id !== undefined) {
@@ -326,6 +331,7 @@ export class Harness {
         const tm = new Teammate({
           name,
           framing,
+          teamId,
           deps: {
             safety: this.safety,
             model: this.model,
@@ -370,12 +376,13 @@ export class Harness {
     // external-cli 执行体(T5):claude code stream-json 适配,board 侧 executorHint 'external-cli' 路由接管
     // (无环:executors/external-cli 只依赖 sandbox/tasks/types/executor 接口,零 board 反向引用)
     const teamsRoot = path.join(resolveDataDir(base), 'teams');
+    this.agentTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot));
     this.taskboard = new TaskBoard({
       store: new TeamStore(path.join(teamsRoot, 'main')),
       runner: this.runner,
       registry: this.tasks,
       team: this.team,
-      agentTeams: new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot)),
+      agentTeams: this.agentTeams,
       externalExecutor: new ExternalCliExecutor({
         sandbox: this.sandbox,
         registry: this.tasks,
@@ -398,31 +405,34 @@ export class Harness {
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['name'],
+        required: ['teamId', 'name', 'prompt', 'agent_id'],
         properties: {
-          name: { type: 'string', description: 'Teammate name (unique among live teammates)' },
+          teamId: { type: 'string', description: 'Team id from create_team. The teammate claims tasks on this team only.' },
+          name: { type: 'string', description: 'Teammate name (unique among live teammates on this team)' },
           prompt: { type: ['string', 'null'], description: 'Role framing for the teammate (its standing duties); null requires agent_id' },
           agent_id: { type: ['string', 'null'], description: 'Registered agent id — its frontmatter role becomes the framing; null uses prompt' },
         },
       },
       description:
-        'Register a long-lived teammate on the shared task board (创建智能体团队成员,组成智能体团队) — the heavyweight form for complex multi-role work where tasks depend on and affect each other (dependency ordering, approval gates, per-role assignment; create its work with create_task). A teammate is a persistent context carrier — its own child session with accumulated conversation memory; it claims and executes board tasks, and tasks (not the teammate) carry the lifecycle: idle when no tasks match, interruptible per task via task_stop. For ordinary or one-shot subtasks, use spawn instead.',
+        'Register a long-lived teammate on a team (teamId from create_team). Use this for complex multi-role work where tasks depend on each other and are assigned per role (create its work with create_task on the same teamId). A teammate is a persistent context carrier — its own child session with accumulated conversation memory; it claims and executes that team\'s board tasks, and tasks (not the teammate) carry the lifecycle: idle when no tasks match, interruptible per task via task_stop. For ordinary or one-shot subtasks, use spawn instead.',
       category: 'subagent',
       fullObservation: true,
       executor: async (input) => {
-        const raw = input as { name?: unknown; prompt?: unknown; agent_id?: unknown };
+        const raw = input as { teamId?: unknown; name?: unknown; prompt?: unknown; agent_id?: unknown };
+        const teamId = typeof raw.teamId === 'string' ? raw.teamId.trim() : '';
         const name = typeof raw.name === 'string' ? raw.name.trim() : '';
         const prompt = typeof raw.prompt === 'string' ? raw.prompt : undefined;
         const agentId = typeof raw.agent_id === 'string' ? raw.agent_id : undefined;
+        if (teamId === '') throw new CodedToolError('INVALID_ARG', 'teamId is required');
         if (name === '') throw new CodedToolError('INVALID_ARG', 'name is required');
         if (!prompt && !agentId) throw new CodedToolError('INVALID_ARG', 'prompt or agent_id is required (the teammate needs a role framing)');
-        const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name });
+        const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks (give it work with create_task); tasks carry the lifecycle: interrupt one via task_stop <board task id>`, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `teammate ${r.value.name} started — claims unassigned board tasks on team ${teamId} (give it work with create_task); tasks carry the lifecycle: interrupt one via task_stop <board task id>`, stderr: '', timedOut: false };
       },
       display: { verb: 'TEAM' },
     });
-    for (const t of makeTaskBoardTools(this.taskboard)) this.tools.register(t);
+    for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams)) this.tools.register(t);
     // send_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
     // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
     // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）

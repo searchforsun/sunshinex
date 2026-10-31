@@ -11,8 +11,6 @@ export interface BoardRow {
   title: string;
   label: string;
   status: string;
-  /** gate 挂起行：Enter 行内审批（approve/deny 问题卡映射 review）；渲染为 ⚠ 高亮 */
-  gated?: boolean;
 }
 
 /** 每页窗口行数（BrowseList 同款滑窗口径）：每页 8 行，超出即翻页 */
@@ -40,7 +38,6 @@ export function BoardList({ rows, cursor }: { rows: BoardRow[]; cursor: number }
           <Text key={r.id} backgroundColor={selected ? 'gray' : undefined}>
             <Text dimColor={selected}>{selected ? '❯ ' : '  '}</Text>
             {r.status}
-            {r.gated === true ? <Text color={selected ? undefined : theme.warn}>{' ⚠'}</Text> : null}
             {` ${r.label}`}
           </Text>
         );
