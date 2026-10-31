@@ -150,6 +150,11 @@ async function main() {
     });
     browser.unref();
     browser.on('error', (e) => fail(`browser launch failed: ${e.message}`));
+    const errTail = [];
+    browser.stderr.on('data', (d) => {
+      errTail.push(String(d));
+      if (errTail.length > 20) errTail.shift();
+    });
     browser.stderr.on('data', (d) => {
       const m = /DevTools listening on (ws:\/\/\S+)/.exec(String(d));
       if (m === null || settled) return;
@@ -162,12 +167,13 @@ async function main() {
       if (settled) return;
       // 未打印 DevTools 即退出=profile 残留锁/损坏:清 profile 重试一次(仅一次,防循环)
       if (attempts < 2) {
+        process.stderr.write(`browser bridge: browser exited (code ${code}) stderr tail: ${errTail.join('').slice(-500) || '(empty)'}\n`);
         process.stderr.write('browser bridge: browser exited without DevTools endpoint — retrying with fresh profile\n');
         try { fs.rmSync(profile, { force: true, recursive: true }); } catch { /* 尽力 */ }
         attempt();
         return;
       }
-      fail(`browser exited (code ${code}) without DevTools endpoint`);
+      fail(`browser exited (code ${code}) without DevTools endpoint; stderr tail: ${errTail.join('').slice(-500) || '(empty)'}`);
     });
     // DevTools 行从未到且浏览器未退(极端挂死):15s 收口
     setTimeout(() => { if (!settled) fail('DevTools endpoint not observed in 15s'); }, 15000);
