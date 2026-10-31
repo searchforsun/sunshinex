@@ -76,10 +76,11 @@ export class SecurityGuard {
       const cls = this.mcpSafetyClass(tool);
       if (cls === 'observe') return { allowed: true };
       if (cls === 'act') {
+        // 档位语义（2026-11-01 用户裁定）：act 类直执行工具 full-access 自动授权、acceptEdits 弹确认、
+        // read-only 拒绝——「恒问线」退役（此前 full-access 也要弹,实测打断全自动桌面/浏览器流）
         if (this.mode === 'read-only') return { allowed: false, reason: 'COMMAND_DENIED: read-only mode denies plugin action tools' };
-        // 强制 ask（直执行类恒问线，任何档位不自动放行）：ask 标记由 preToolUseAsync 既有通道消费
-        // （asker 交互 + 会话 always，用户显式 always 即意图）；不计数 askDecisions（O3 口径为 policy 判 ask 面）
-        return { allowed: false, ask: true, reason: 'COMMAND_DENIED: plugin action tools always require approval' };
+        if (this.mode === 'full-access') return { allowed: true };
+        return { allowed: false, ask: true, reason: 'COMMAND_DENIED: plugin action tools require approval in acceptEdits mode' };
       }
       // confirm 不在此处理：落穿既有 policy ask 面（read-only 闸门拒/full-access 自动放行/acceptEdits ask+会话
       // always，经 preToolUseAsync 复用既有 sessionAllows），零新状态

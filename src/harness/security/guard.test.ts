@@ -149,15 +149,11 @@ function mkSafetyGuard(mode: PermissionMode, servers: string[] = ['computer-use'
   return g;
 }
 
-test('safety act：full-access 仍强制 ask（早退先于档位面）、read-only 直拒、acceptEdits ask', () => {
-  // full-access：act 早退发生在档位处理代码路径之前，decision==='ask' 面的自动放行分支不再命中
+test('safety act：full-access 自动授权（2026-11-01 裁定）、read-only 直拒、acceptEdits ask', () => {
+  // full-access：act 自动授权（2026-11-01 用户裁定;恒问线退役）
   const fa = mkSafetyGuard('full-access');
   const r = fa.preToolUse('mcp__computer-use__click', { x: 1, y: 2 });
-  assert.equal(r.allowed, false, 'full-access 不豁免 act 工具（免审批 ≠ 免问线）');
-  if (!r.allowed) {
-    assert.equal(r.ask, true, 'act 强制 ask（可交互豁免，非硬底线）');
-    assert.match(r.reason, /plugin action tools always require approval/);
-  }
+  assert.equal(r.allowed, true, 'full-access 自动授权 act 工具');
   // read-only：act 属直接执行类，硬拒（无 ask 标记，不可被 asker 豁免）
   const rr = mkSafetyGuard('read-only').preToolUse('mcp__computer-use__click', { x: 1, y: 2 });
   assert.equal(rr.allowed, false, 'read-only 直拒 act 工具');
@@ -231,7 +227,7 @@ test('safety 未声明 server/未声明工具名行为零变化（回归钉：�
 // 从真实内置根（plugins/computer-use，enabled 注入）合成 safety 表原值 setMcpSafety 注入——
 // manifest 声明与 guard 问线之间的装配面（harness 构造期同一路径）在真数据上闭环，改名/缺类即测红。
 
-test('safety 真接线：plugins/computer-use 真 manifest 声明下 act（click）full-access 仍强制 ask，observe 直放', () => {
+test('safety 真接线：plugins/computer-use 真 manifest 声明下 act（click）full-access 自动授权，observe 直放', () => {
   const userRoot = mkdtempSync(path.join(tmpdir(), 'guard-cu-u-'));
   try {
     const r = pluginMcpServers(undefined, {
@@ -244,11 +240,7 @@ test('safety 真接线：plugins/computer-use 真 manifest 声明下 act（click
     const g = new SecurityGuard(new PolicyEngine(), 'full-access', ['computer-use']);
     g.setMcpSafety({ 'computer-use': decl }); // 装配单点同形注入（harness/index.ts 构造期同一消费路径）
     const click = g.preToolUse('mcp__computer-use__click', { x: 1, y: 2 });
-    assert.equal(click.allowed, false, '真声明下 full-access 不豁免 act（免审批 ≠ 免问线）');
-    if (!click.allowed) {
-      assert.equal(click.ask, true, 'act 强制 ask');
-      assert.match(click.reason, /plugin action tools always require approval/);
-    }
+    assert.equal(click.allowed, true, '真声明下 full-access 自动授权 act（2026-11-01 裁定）');
     for (const mode of ['full-access', 'acceptEdits', 'read-only'] as const) {
       const m = new SecurityGuard(new PolicyEngine(), mode, ['computer-use']);
       m.setMcpSafety({ 'computer-use': decl });
@@ -259,20 +251,30 @@ test('safety 真接线：plugins/computer-use 真 manifest 声明下 act（click
   }
 });
 
-test('插件 act 类强制问线跨档位弹审批(2026-11-01 用户裁定「完全访问也要弹特殊确认」)', async () => {
-  const g = new SecurityGuard(new PolicyEngine(), 'full-access', ['computer-use']);
-  g.setMcpSafety({ 'computer-use': { act: ['app'] } });
-  const asked: string[] = [];
-  g.setAsker(async (req) => {
-    asked.push(req.subject);
+test('插件 act 类档位语义(2026-11-01 用户裁定:full-access 自动授权/acceptEdits 弹确认/read-only 拒绝)', async () => {
+  // full-access:自动授权不经 asker
+  const gf = new SecurityGuard(new PolicyEngine(), 'full-access', ['computer-use']);
+  gf.setMcpSafety({ 'computer-use': { act: ['app'] } });
+  let asked = 0;
+  gf.setAsker(async () => {
+    asked += 1;
     return 'allow';
   });
-  const d = await g.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
-  assert.equal(d.allowed, true, '用户放行即执行');
-  assert.equal(asked.length, 1, 'full-access 下仍弹审批(act 类任何档位不自动放行)');
-  // 拒绝路径:deny 落 COMMAND_DENIED rejected by user
-  g.setAsker(async () => 'deny');
-  const d2 = await g.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
-  assert.equal(d2.allowed, false);
-  assert.match(d2.allowed ? '' : d2.reason, /rejected by user/);
+  const df = await gf.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
+  assert.equal(df.allowed, true, 'full-access 自动放行');
+  assert.equal(asked, 0, '不经审批面');
+  // acceptEdits:弹确认;用户拒绝落 rejected by user
+  const ga = new SecurityGuard(new PolicyEngine(), 'acceptEdits', ['computer-use']);
+  ga.setMcpSafety({ 'computer-use': { act: ['app'] } });
+  ga.setAsker(async () => 'deny');
+  const da = await ga.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
+  assert.equal(da.allowed, false);
+  assert.match(da.allowed ? '' : da.reason, /rejected by user/);
+  // read-only:直拒不问
+  const gr = new SecurityGuard(new PolicyEngine(), 'read-only', ['computer-use']);
+  gr.setMcpSafety({ 'computer-use': { act: ['app'] } });
+  gr.setAsker(async () => 'allow');
+  const dr = await gr.preToolUseAsync('mcp__computer-use__app', { action: 'launch', target: 'notepad' });
+  assert.equal(dr.allowed, false);
+  assert.match(dr.allowed ? '' : dr.reason, /read-only mode denies/);
 });
