@@ -409,8 +409,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       return { ...state, stats: { ...state.stats, ctxUsed: used, ctxExact: exact } };
     }
     case 'step':
-      // P9 统计面:步数计账(model 动作步;done 收尾帧不计——与 TUI 旧口径一致)
-      if (e.text === 'done') return state;
+      // P9 统计面:步数计账=模型被调用的轮数(2026-10-31 二次裁定「终稿轮也计」):直答轮=1 步,
+      // 每个工具出牌批再+1——旧「done 收尾帧不计」TUI 口径使纯对话轮恒 0 步(重启后面板 2/0 病根)
       return { ...state, stats: { ...state.stats, sessionSteps: state.stats.sessionSteps + 1 } };
     case 'done': {
       // ① 思考段先封(thinking 先行);开启 assistant 段合并终稿(同文不重复),无开启段且终稿非空才独立成条

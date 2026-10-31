@@ -494,10 +494,10 @@ test('P9 统计面：子智能体 usage per-child 水位(增量并入 child 两�
   assert.deepEqual(s.childWatermarks, { r1: 1200, r2: 80 }, 'per-child 水位记账');
 });
 
-test('P9 统计面：step 计数排除 done 尾帧;ctx 水位 exact 采信/估算只上', () => {
+test('P9 统计面：step 计数含 done 终稿轮(2026-10-31 裁定:直答轮=1 步);ctx 水位 exact 采信/估算只上', () => {
   const k = new SessionKernel();
   pump(k, ev('step', '1'), ev('step', '2'), ev('step', 'done'));
-  assert.equal(k.stats().sessionSteps, 2, 'done 收尾帧不计步');
+  assert.equal(k.stats().sessionSteps, 3, '终稿轮也计步(旧「done 不计」口径使纯对话轮恒 0 步)');
   pump(k, ev('ctx', undefined, { used: 500, exact: false }));
   assert.equal(k.stats().ctxUsed, 500, '估算向上预告');
   pump(k, ev('ctx', undefined, { used: 300, exact: false }));
