@@ -91,6 +91,11 @@ const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: 
   maxTokens: { label: { en: 'Max tokens', zh: '单请求上限' }, en: 'Hard cap on tokens per request', zh: '单请求 token 硬顶' },
   subagentTokenCap: { label: { en: 'Subagent cap', zh: '子智能体上限' }, en: 'Token cap for subagents', zh: '子智能体 token 上限' },
   teamTokenCap: { label: { en: 'Team cap', zh: '团队上限' }, en: 'Token cap for the team registry', zh: '团队注册表 token 上限' },
+  agentTeams: {
+    label: { en: 'Agent teams', zh: '智能体团队' },
+    en: 'When off, hides the Agent teams tab and does not inject team tools',
+    zh: '关闭后隐藏智能体团队页签且不注入团队工具',
+  },
   maxSteps: { label: { en: 'Max steps', zh: '最大步数' }, en: 'Max reactor steps per run', zh: '单 run 最大 reactor 步数' },
   maxLoopIterations: { label: { en: 'Loop iterations', zh: '修正环轮数' }, en: 'Max verify-fix loop iterations', zh: '验收修正环最大轮数' },
   maxGraphNodes: { label: { en: 'Graph nodes', zh: '链路节点数' }, en: 'Max graph nodes per pipeline', zh: '全链路最大节点步数' },
@@ -150,6 +155,7 @@ const SELECT_DEFAULT_VALUES: Record<string, string> = {
   kbBackend: 'local-json',
   autoMemory: 'on',
   learnedSkills: 'on',
+  agentTeams: 'on',
   websearchProvider: 'bing-html',
 };
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
@@ -177,7 +183,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     title: { en: 'Context & limits', zh: '上下文与限额' },
     groups: [
       { title: { en: 'Context window', zh: '上下文窗口' }, fields: [num('contextWindow'), num('maxTokens')] },
-      { title: { en: 'Subagents & team', zh: '子智能体与团队' }, fields: [num('subagentTokenCap'), num('teamTokenCap')] },
+      { title: { en: 'Subagents & team', zh: '子智能体与团队' }, fields: [num('subagentTokenCap'), num('teamTokenCap'), sel('agentTeams', ON_OFF)] },
       { title: { en: 'Steps & loops', zh: '步数与循环' }, fields: [num('maxSteps'), num('maxLoopIterations'), num('maxGraphNodes')] },
       {
         title: { en: 'Safety fences', zh: '安全围栏' },
