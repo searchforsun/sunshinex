@@ -22,6 +22,7 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   language: 'SUNSHINEX_LANGUAGE',
   contextWindow: 'SUNSHINEX_CONTEXT_WINDOW',
   autoMemory: 'SUNSHINEX_AUTO_MEMORY',
+  agentTeams: 'SUNSHINEX_AGENT_TEAMS',
   learnedSkills: 'SUNSHINEX_LEARNED_SKILLS',
   learnedSkillLimit: 'SUNSHINEX_LEARNED_SKILL_LIMIT',
   memoryIdleKickMs: 'SUNSHINEX_MEMORY_IDLE_KICK_MS',

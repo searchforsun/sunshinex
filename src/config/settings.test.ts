@@ -284,9 +284,9 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：30 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：31 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 30, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判）');
+  assert.equal(entries.length, 31, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
@@ -294,6 +294,7 @@ test('SEMANTIC_KEYS 全表钉子：30 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['shell'], 'SUNSHINEX_SHELL');
   assert.equal(SEMANTIC_KEYS['globalSunshine'], 'SUNSHINEX_GLOBAL_SUNSHINE');
   assert.equal(SEMANTIC_KEYS['autoMemory'], 'SUNSHINEX_AUTO_MEMORY');
+  assert.equal(SEMANTIC_KEYS['agentTeams'], 'SUNSHINEX_AGENT_TEAMS');
   assert.equal(SEMANTIC_KEYS['learnedSkillLimit'], 'SUNSHINEX_LEARNED_SKILL_LIMIT');
   assert.equal(SEMANTIC_KEYS['memoryIdleKickMs'], 'SUNSHINEX_MEMORY_IDLE_KICK_MS');
   assert.equal(SEMANTIC_KEYS['stepDigestTotalChars'], 'SUNSHINEX_MEMORY_STEP_DIGEST_TOTAL_CHARS');
