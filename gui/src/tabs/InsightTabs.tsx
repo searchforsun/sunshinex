@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Check, Copy, Database, Pause, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Check, Copy, Database, CircleStop, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
@@ -137,11 +137,15 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
     copiedRowRef.current = id;
     copyText(label);
   };
+  /** 暂停/恢复失败可见化(2026-11-01 用户裁定「暂停之后不能恢复」体感根修):409(无暂停闭包)/
+   *  连接失败原先静默吞掉=点了没反应,横幅行如实报 */
+  const [actError, setActError] = useState('');
   const pauseTask = (e: React.MouseEvent, id: string, resume: boolean): void => {
     e.stopPropagation();
-    (resume ? conn.taskResume(sessionId, id) : conn.taskPause(sessionId, id).catch(() => {}))
-      .then(() => reload())
-      .catch(() => {});
+    const call = resume ? conn.taskResume(sessionId, id) : conn.taskPause(sessionId, id);
+    call
+      .then(() => { setActError(''); return reload(); })
+      .catch((err: unknown) => setActError(`${resume ? t('Resume failed', '恢复失败') : t('Pause failed', '暂停失败')}: ${err instanceof Error ? err.message : String(err)}`));
   };
   const rows = [...(data ?? [])].sort((a, b) => b.startedAt - a.startedAt);
   return (
@@ -158,6 +162,7 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
+      {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
       {data !== null && data.length === 0 && (
         <div className="board-empty-state" role="status">
           <p className="board-empty-title">{t('No background tasks', '暂无后台任务')}</p>
@@ -198,7 +203,7 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
                       data-tip={t('Pause', '暂停')}
                       onClick={(e) => pauseTask(e, r.id, false)}
                     >
-                      <Pause size={12} strokeWidth={1.75} />
+                      <CircleStop size={13} strokeWidth={1.75} />
                     </button>
                   )}
                   {r.status === 'paused' && typeof conn.taskResume === 'function' && (
