@@ -44,12 +44,14 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
       while (alive) {
         if (root === undefined || conn === null) { await new Promise((r) => setTimeout(r, 2000)); continue; }
         let ws: string | undefined;
+        let current = '';
         try {
           const meta = await conn.appFile(root, 'plugins/browser-use/builtin-cdp.json', 'data');
           // 文本文件载荷不带 type 字段(仅 directory/image 带)——按 content 可解析判定,勿判 type==='file'
           if (typeof meta.content === 'string' && meta.content.length > 0) {
-            const parsed = JSON.parse(meta.content) as { ws?: string };
+            const parsed = JSON.parse(meta.content) as { ws?: string; current?: string };
             if (typeof parsed.ws === 'string') ws = parsed.ws;
+            if (typeof parsed.current === 'string') current = parsed.current; // 自动化当前页(桥监视落盘)
           }
         } catch { /* 未在跑 */ }
         if (!alive) return;
@@ -57,9 +59,12 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
         try {
           // 端点发现走 daemon 代理(渲染层直连 DevTools HTTP 面被 CORS 拦)
           const targets = await conn.cdpTargets(root);
-          const pages = (targets as Array<{ type?: string; webSocketDebuggerUrl?: string; url?: string }>).filter((tg) => tg.type === 'page' && tg.webSocketDebuggerUrl !== undefined);
-          // 优先真实 URL 页(about:blank 常排前,空页挡住正主)
-          const page = pages.find((tg) => tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank') ?? pages[0];
+          const pages = (targets as Array<{ id?: string; type?: string; webSocketDebuggerUrl?: string; url?: string }>).filter((tg) => tg.type === 'page' && tg.webSocketDebuggerUrl !== undefined);
+          // 选页:桥监视的自动化当前页(meta.current,用户裁定「镜像跟自动化当前页」)优先——
+          // 多标签时列表序不含活跃度,启发式(首个非 about:blank)会误映旧标签;监视缺席才回落
+          const page = pages.find((tg) => current !== '' && tg.id === current)
+            ?? pages.find((tg) => tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank')
+            ?? pages[0];
           if (page?.webSocketDebuggerUrl === undefined) throw new Error('no page target');
           if (!alive) return;
           // 渲染层直连 DevTools 被其 Origin 保护拒绝(实测 readyState=3 秒断)——走 daemon
@@ -79,7 +84,16 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
               else { throw new Error('cdp socket closed'); }
             };
             sendRef.current = send;
-            const cleanup = (): void => { sendRef.current = null; if (alive) setStatus('down'); resolve(); };
+            // 已连期间跟页(2026-11-01 用户裁定「镜像跟自动化当前页」):轮询 meta.current,
+            // 桥侧切页即断开——外层循环重选页重连(旧实现连定后永不换页,模型开新页侧栏仍映旧标签)
+            const attachedId = page.id ?? '';
+            const follow = setInterval(() => {
+              void conn.appFile(root, 'plugins/browser-use/builtin-cdp.json', 'data').then((m) => {
+                const parsed = JSON.parse(m.content) as { current?: string };
+                if (typeof parsed.current === 'string' && parsed.current !== '' && parsed.current !== attachedId) sock.close();
+              }).catch(() => undefined);
+            }, 2000);
+            const cleanup = (): void => { clearInterval(follow); sendRef.current = null; if (alive) setStatus('down'); resolve(); };
             sock.onopen = () => {
               setStatus('live');
               for (const frame of queue.splice(0)) sock.send(frame);
