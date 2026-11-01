@@ -406,6 +406,14 @@ export class GuiDaemon {
         /* 缺档/坏档=无内置浏览器运行 */
       }
     }
+    // 3b-兜底) 按命令行标记收割(2026-11-01 实测踩坑:meta 被删/坏档时上刀扑空,而插件 profile
+    //     缺省在数据目录内(<dataDir>/plugins/browser-use/profile)——孤儿浏览器不死=整个数据目录
+    //     树被锁,用户面「应用关了文件夹删不掉」)。按 profile 路径特征扫 chrome 进程补刀,
+    //     不依赖 meta;非 win32 无 WMI 查询面,维持 meta 刀即可
+    if (process.platform === 'win32') {
+      const psScript = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*plugins/browser-use/profile*' -or $_.CommandLine -like '*plugins\\browser-use\\profile*' -or $_.CommandLine -like '*sunshinex-browser-*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+      spawnSync('powershell', ['-NoProfile', '-EncodedCommand', Buffer.from(psScript, 'utf16le').toString('base64')], { stdio: 'ignore', timeout: 15000 });
+    }
   }
 
   /** 内部路由表（T1 会话中心：会话维端点 + 裸端点激活别名；G2 /snapshot、G3 /steer 平移）；
