@@ -373,10 +373,28 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
  *  learned 源技能清单——行=Sparkles(与正文 [skills] 回显同件)+id+创建时间+删除(二段确认,
  *  与记忆行同语言;只作用于学习根 learnedSkillsDir,project/user 用户资产不可达);
  *  展开=深色底固定高纵md渲染(mem 同款类) */
-export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: string }): JSX.Element {
+export function LearnedSkillsTab({ conn, root, focus }: { conn: Connection; root: string; focus?: { slug: string; nonce: number } }): JSX.Element {
   const fetcher = useCallback(() => conn.skillsGroups(root), [conn, root]);
   const { data, error, reload, fetching } = useFetch(fetcher, [conn, root]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** 定位(2026-11-01 用户裁定「点击正文 学习|更新技能 → 侧栏展开指定技能」):focus slug 展开对应
+   *  行并滚至可见——数据在场的展开即时落,数据未到的等加载完成后落(useEffect 随 data/focus 重跑);
+   *  nonce 防同 slug 重入不触发 */
+  const listRef = useRef<HTMLUListElement | null>(null);
+  useEffect(() => {
+    if (focus === undefined || focus.slug === '') return;
+    setExpandedId(focus.slug);
+    // 数据已到场即滚;未到场等列表挂载(useEffect 依赖 data)
+    const el = listRef.current?.querySelector(`[data-skill-id="${focus.slug}"]`);
+    el?.scrollIntoView({ block: 'center' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
+  useEffect(() => {
+    if (focus === undefined || focus.slug === '' || data === null) return;
+    const el = listRef.current?.querySelector(`[data-skill-id="${focus.slug}"]`);
+    el?.scrollIntoView({ block: 'center' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce, data]);
   /** 删除二段确认(与记忆行同语义):首击武装(红),3s 内再击执行,超时解除 */
   const [armId, setArmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -412,9 +430,9 @@ export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: strin
         </div>
       )}
       {learned.length > 0 && (
-        <ul className="mem-list">
+        <ul className="mem-list" ref={listRef}>
           {learned.map((s) => (
-            <li key={s.id} className={`mem-row${expandedId === s.id ? ' open' : ''}`}>
+            <li key={s.id} data-skill-id={s.id} className={`mem-row${expandedId === s.id ? ' open' : ''}`}>
               <div className="mem-rowline">
                 <Sparkles size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
                 <span
@@ -452,12 +470,18 @@ export function LearnedSkillsTab({ conn, root }: { conn: Connection; root: strin
               </div>
               {expandedId === s.id && (
                 <div className="mem-detail">
-                  {/* 2026-10-31 用户裁定:描述渲染后的 md(标题/列表/代码呈现,非裸文本) */}
-                  <div className="mem-body-text mem-body-md">
-                    <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl}>
-                      {s.description ?? t('(no description)', '(无描述)')}
-                    </ReactMarkdown>
-                  </div>
+                  {/* 2026-11-01 用户裁定「学习技能内容要原样展示」:body 在场=原文件全文(frontmatter+正文)
+                      以 pre 裸文本直出(落盘即所见);旧 daemon/读失败无 body 退回 2026-10-31 的 description
+                      md 渲染面(不白屏) */}
+                  {typeof s.body === 'string' && s.body !== '' ? (
+                    <pre className="mem-body-text" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{s.body}</pre>
+                  ) : (
+                    <div className="mem-body-text mem-body-md">
+                      <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl}>
+                        {s.description ?? t('(no description)', '(无描述)')}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               )}
             </li>

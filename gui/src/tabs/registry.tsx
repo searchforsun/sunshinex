@@ -89,6 +89,9 @@ export interface TabRenderProps {
   /** 记忆定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」:saved 回显行点击下发 slug,
    *  MemoryTab 展开滚至对应行;nonce 防同 slug 重入不触发;他型忽略) */
   readonly memoryFocus?: { slug: string; nonce: number };
+  /** 学习技能定位(2026-11-01 用户裁定「点击正文 学习|更新技能 → 侧栏展开指定技能」:learned 回显行
+   *  点击下发 slug,LearnedSkillsTab 展开滚至对应行并原样展示正文;他型忽略) */
+  readonly learnedFocus?: { slug: string; nonce: number };
   /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
   readonly chatSinkRef?: MutableRefObject<import('../pages/Chat').ChatSink | null>;
 }
@@ -238,7 +241,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Learned skills', '学习技能'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <LearnedSkillsTab conn={p.conn} root={p.root} />,
+    render: (p) => <LearnedSkillsTab conn={p.conn} root={p.root} focus={p.learnedFocus} />,
   },
   {
     id: 'terminal',

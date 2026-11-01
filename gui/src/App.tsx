@@ -384,7 +384,13 @@ function AppShell(): JSX.Element {
     openTabInSession('memory');
     setMemoryFocus(focus !== undefined && focus !== '' ? { slug: focus, nonce: Date.now() } : undefined);
   }, [openTabInSession]);
-  const openLearnedTab = useCallback((): void => { openTabInSession('learned'); }, [openTabInSession]);
+  /** 学习技能页签+定位(2026-11-01 用户裁定「点击正文 学习|更新技能 → 侧栏展开指定技能,内容原样展示」):
+   *  与记忆同构——focus slug 随 render props 下发 LearnedSkillsTab,展开并滚至对应行 */
+  const [learnedFocus, setLearnedFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);
+  const openLearnedTab = useCallback((focus?: string): void => {
+    openTabInSession('learned');
+    setLearnedFocus(focus !== undefined && focus !== '' ? { slug: focus, nonce: Date.now() } : undefined);
+  }, [openTabInSession]);
   /** 2026-10-27 目录树入左菜单层(用户裁定):menuDir={root,sessionId,locate?} 驱动 ProjectMenu 目录视图;
    *  locate=相对目录,树打开后逐层展开定位;sessionId 由 ensureSessionForRoot 落值 */
   const [menuDir, setMenuDir] = useState<{ root: string; sessionId: string; locate?: string } | null>(null);
@@ -940,6 +946,7 @@ function AppShell(): JSX.Element {
                       onPtyAllocated: handlePtyAllocated,
                       chatSinkRef: t.params.sideId !== undefined ? sideSinksRef.current.get(t.params.sideId) : undefined,
                       memoryFocus,
+                      learnedFocus,
                     })
                     )}
                     </Suspense>

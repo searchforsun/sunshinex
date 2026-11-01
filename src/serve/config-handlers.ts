@@ -55,7 +55,7 @@ import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { userConfigDir } from '../config/env';
 import { loadEffectivePlugins } from '../config/plugins';
 import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
-import { loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, SkillsGroup } from '../harness/skills';
+import { learnedSkillsDir, loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, skillFileIn, SkillsGroup } from '../harness/skills';
 
 /** 配置面 HTTP 处理器（D31 分域拆分自 daemon.ts 类）：settings 结构化/raw、mcp 清单/探测/写、
  *  agents 清单/增删/正文、skills 清单、memory-stats——daemon 类状态的全部触点收敛于 io 三面
@@ -1122,9 +1122,20 @@ export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
     io.send(res, 200, { groups: enrichSkillsGroups(groups, root, ['user']) });
     return;
   }
-  io.send(res, 200, {
-    groups: enrichSkillsGroups(root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()], root, ['project', 'user', 'learned']),
-  });
+  const groups = enrichSkillsGroups(root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()], root, ['project', 'user', 'learned']);
+  // learned 行附 body(2026-11-01 用户裁定「学习技能内容原样展示」+「点击正文 学习|更新技能 →
+  // 侧栏展开指定技能」):GUI 学习技能页展开行直读原文件(frontmatter+正文,落盘即所见);仅 learned
+  // 组附(项目/user 用户资产不含正文投影,量控);读失败不落键(展开面退回 description 渲染)
+  for (const g of groups) {
+    if (g.source !== 'learned' || root === undefined) continue;
+    for (const row of g.skills) {
+      const file = skillFileIn(learnedSkillsDir(root), row.id);
+      try {
+        if (file !== undefined) row.body = fs.readFileSync(file, 'utf8');
+      } catch { /* 缺档/读失败:不落键 */ }
+    }
+  }
+  io.send(res, 200, { groups });
 }
 
 /** POST /settings/skills/rm {root, id}（2026-10-31 学习技能删除面,GUI 学习技能页签/TUI /skills-rm

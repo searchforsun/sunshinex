@@ -48,8 +48,9 @@ function projectSkillDirs(root: string): string[] {
 }
 
 /** 技能文件名查找单点（SKILL.md 标准名优先、skill.md 兜底）：装载与解析共用，防两处漂移。
- *  兜底理由——Windows/macOS 文件系统本不区分大小写（两者同一文件），Linux 显式补齐才保三平台装载结果一致 */
-function skillFileIn(dir: string, id: string): string | undefined {
+ *  兜底理由——Windows/macOS 文件系统本不区分大小写（两者同一文件），Linux 显式补齐才保三平台装载结果一致。
+ *  导出面(2026-11-01)：GUI 学习技能页「原样展示正文」按此定位读原文件 */
+export function skillFileIn(dir: string, id: string): string | undefined {
   return ['SKILL.md', 'skill.md'].map((f) => path.join(dir, id, f)).find((f) => fs.existsSync(f));
 }
 
@@ -135,7 +136,7 @@ export interface SkillsGroup {
   /** 项目归属显示名(设置·技能页项目筛选面;scope=all 跨项目枚举时携带——project 组=当前项目,
    *  learned 组=沉淀时项目;user 组无归属不载) */
   project?: string;
-  skills: Array<{ id: string; name?: string; description?: string; createdMs?: number }>;
+  skills: Array<{ id: string; name?: string; description?: string; createdMs?: number; /** 原样正文(2026-11-01 learned 组专附:SKILL.md/skill.md 原文件全文,GUI 展开行直读) */ body?: string }>;
 }
 
 /** 分组行投影：id 恒在，name/description 空串不透出（无 frontmatter 的技能行只含 id） */

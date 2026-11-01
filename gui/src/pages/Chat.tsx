@@ -633,7 +633,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           const tag = el.getAttribute('data-notice-tag');
           const ref = el.getAttribute('data-notice-ref') ?? '';
           if (tag === 'memory') onOpenMemory?.(ref);
-          if (tag === 'skills') onOpenLearned?.();
+          if (tag === 'skills') onOpenLearned?.(ref !== '' ? ref : undefined);
         }}
       >
       <MessageList

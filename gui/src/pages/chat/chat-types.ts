@@ -90,7 +90,7 @@ export interface ChatProps {
   /** G14.148 /memory(-rm) 拦截:开记忆标签(GUI 的删除面;daemon 命令通道不支持 TUI 交互多选) */
   onOpenMemory?: (focus?: string) => void;
   /** 学习技能页签(2026-10-31):[skills] learned/updated 回显行点击打开(App 开 learned 页签) */
-  onOpenLearned?: () => void;
+  onOpenLearned?: (skillId?: string) => void;
   /** G14.31 辅助对话全新视图:种子历史不落屏(上下文只在模型侧),开播即空会话观感 */
   freshView?: boolean;
   /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
