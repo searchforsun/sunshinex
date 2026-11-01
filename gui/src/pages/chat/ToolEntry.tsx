@@ -1,8 +1,8 @@
-import { memo, useContext, useEffect, useState } from 'react';
+import { Fragment, memo, useContext, useEffect, useState } from 'react';
 import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
-import { pathBasename } from '../../ui-util';
+import { openExternalUrl, pathBasename } from '../../ui-util';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
 import { DiffLines } from '../../diff-lines';
@@ -638,16 +638,16 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{teamName !== '' ? ` ${teamName}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && toolName === 'get_board' ? (
-        /* 看板后跟队名链接(回执 team= 解析);点开指定队卡 */
+        /* 看板后跟队名链接(回执 team= 解析);点开指定队卡;多链接均分省略 */
         boardTeamRefs.length > 0 && onOpenTask !== undefined ? (
-          <>
+          <span className="tool-link-list">
             {boardTeamRefs.map((team, i) => (
-              <span key={`${team.ref}:${i}`}>
-                {i === 0 ? ' ' : ', '}
+              <Fragment key={`${team.ref}:${i}`}>
+                {i > 0 ? <span className="tool-link-sep" aria-hidden="true">, </span> : null}
                 <span
                   role="button"
                   tabIndex={-1}
-                  className="tool-file-base tool-agent-link"
+                  className="tool-file-base tool-agent-link tool-link-chip"
                   data-tip={t('Open team board', '打开该团队任务板')}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -656,9 +656,9 @@ export const ToolEntryView = memo(function ToolEntryView({
                 >
                   {team.name}
                 </span>
-              </span>
+              </Fragment>
             ))}
-          </>
+          </span>
         ) : boardTeamRefs.length > 0 ? (
           <span className="tool-file-base tool-cmd">{' '}{boardTeamRefs.map((x) => x.name).join(', ')}</span>
         ) : null
@@ -742,16 +742,16 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageTo}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && toolName === 'task_wait' ? (
-        /* G14.167 折叠行带等待任务名(链接开板高亮;null=等全部在跑) */
+        /* G14.167 折叠行带等待任务名(链接开板高亮;null=等全部在跑);多链接均分省略 */
         waitTasks.length > 0 && onOpenTask !== undefined ? (
-          <>
+          <span className="tool-link-list">
             {waitTasks.map((task, i) => (
-              <span key={`${task.id}:${i}`}>
-                {i === 0 ? ' ' : ', '}
+              <Fragment key={`${task.id}:${i}`}>
+                {i > 0 ? <span className="tool-link-sep" aria-hidden="true">, </span> : null}
                 <span
                   role="button"
                   tabIndex={-1}
-                  className="tool-file-base tool-agent-link"
+                  className="tool-file-base tool-agent-link tool-link-chip"
                   data-tip={t('Open task board card', '在任务板中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -760,9 +760,9 @@ export const ToolEntryView = memo(function ToolEntryView({
                 >
                   {task.name}
                 </span>
-              </span>
+              </Fragment>
             ))}
-          </>
+          </span>
         ) : (
           <span className="tool-file-base tool-cmd">
             {' '}
@@ -774,14 +774,13 @@ export const ToolEntryView = memo(function ToolEntryView({
           </span>
         )
       ) : !hideTargetWhileRunning && taskOpName !== undefined ? (
-        /* G14.214 task_* 折叠行带任务名(链接开板高亮;set_dependency 双名「任务 ← 依赖目标」) */
+        /* G14.214 task_* 折叠行带任务名(链接开板高亮;set_dependency 双名「任务 ← 依赖目标」);多链接均分省略 */
         onOpenTask !== undefined ? (
-          <>
-            {' '}
+          <span className="tool-link-list">
             <span
               role="button"
               tabIndex={-1}
-              className="tool-file-base tool-agent-link"
+              className="tool-file-base tool-agent-link tool-link-chip"
               data-tip={t('Open task board card', '在任务板中定位')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -793,11 +792,11 @@ export const ToolEntryView = memo(function ToolEntryView({
             </span>
             {taskOpDepName !== undefined && (
               <>
-                {' ← '}
+                <span className="tool-link-sep" aria-hidden="true"> ← </span>
                 <span
                   role="button"
                   tabIndex={-1}
-                  className="tool-file-base tool-agent-link"
+                  className="tool-file-base tool-agent-link tool-link-chip"
                   data-tip={t('Open task board card', '在任务板中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -811,11 +810,11 @@ export const ToolEntryView = memo(function ToolEntryView({
             )}
             {toolName === 'assign' && typeof input.assignee === 'string' && input.assignee !== '' && onOpenAgent !== undefined && (
               <>
-                {' · '}
+                <span className="tool-link-sep" aria-hidden="true"> · </span>
                 <span
                   role="button"
                   tabIndex={-1}
-                  className="tool-file-base tool-agent-link"
+                  className="tool-file-base tool-agent-link tool-link-chip"
                   data-tip={t('View teammate', '查看队友')}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -826,7 +825,7 @@ export const ToolEntryView = memo(function ToolEntryView({
                 </span>
               </>
             )}
-          </>
+          </span>
         ) : (
           <span className="tool-file-base tool-cmd">
             {' '}{taskOpName}
@@ -847,18 +846,11 @@ export const ToolEntryView = memo(function ToolEntryView({
    *  todo_write=本地化清单(G14.138,daemon 英文结果不进展开面);其余=输出原文 */
   let body: JSX.Element;
   if (toolName === 'send_message') {
+    // 正文进工具井(.tool-md=surface-code 黑框,与 skill/ask 同面);回执次级灰跟在正文下
     body = (
-      <div className="tool-detail">
-        {messageText !== '' && (
-          <div className="tool-msg-body" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: resultText !== '' ? 8 : 0 }}>
-            {messageText}
-          </div>
-        )}
-        {resultText !== '' && (
-          <div className="tool-msg-receipt" style={{ color: 'var(--fg-secondary)', fontSize: 12 }}>
-            {resultText}
-          </div>
-        )}
+      <div className="tool-md tool-msg">
+        {messageText !== '' && <div className="tool-msg-body">{messageText}</div>}
+        {resultText !== '' && <div className="tool-msg-receipt">{resultText}</div>}
         {messageText === '' && resultText === '' && <div className="tool-todo-empty">{t('(empty)', '（空）')}</div>}
       </div>
     );
@@ -1005,9 +997,36 @@ export const ToolEntryView = memo(function ToolEntryView({
         )}
       </div>
     );
+  } else if (toolName === 'websearch') {
+    // 2026-11-01 用户裁定「网址名做链接不显示 url,点击开系统默认浏览器」:websearch 输出结构化解析——
+    // 标题=可点链接(preload 桥 shell.openExternal,OS 默认浏览器承接),URL 行不显示,摘要保留
+    const hits = parseWebSearchOutput(fullResult);
+    body =
+      hits.length > 0 ? (
+        <div className="tool-websearch">
+          {hits.map((h) => (
+            <div key={h.n} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 13 }}>
+                {h.n}.{' '}
+                <a
+                  href={h.url}
+                  style={{ color: 'var(--accent, #6ea8fe)' }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openExternalUrl(h.url);
+                  }}
+                >
+                  {h.title}
+                </a>
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', paddingLeft: 14 }}>{h.snippet}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>
+      );
   } else {
-    body = <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>;
-  }
 
   return (
     <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
@@ -1036,3 +1055,15 @@ export const ToolEntryView = memo(function ToolEntryView({
     </div>
   );
 });
+
+/** websearch stdout → 结构化条目(2026-11-01 展开面链接化):格式=「N. 标题⏎ 空格+URL⏎ 摘要(可多行)」,
+ *  记录界=下一行「N. 」;不匹配整段返回空数组(退回原文展示) */
+export function parseWebSearchOutput(text: string): Array<{ n: number; title: string; url: string; snippet: string }> {
+  const out: Array<{ n: number; title: string; url: string; snippet: string }> = [];
+  const re = /^(\d+)\. (.+)\n\s+(https?:\S+)\n([\s\S]*?)(?=(?:\n\d+\. )|$)/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    out.push({ n: Number(m[1]), title: m[2].trim(), url: m[3], snippet: m[4].trim() });
+  }
+  return out;
+}
