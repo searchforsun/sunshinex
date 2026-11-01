@@ -47,6 +47,7 @@ import { loadMcpServers } from '../config';
 import { pluginMcpServers } from '../config/plugins';
 import { loadPermissions } from '../config/permissions';
 import { resolveImageHistoryLimit } from '../config/image-history';
+import { agentTeamsEnabled } from '../config/agent-teams';
 import * as fs from 'fs';
 import { McpHost } from './mcp/client';
 import type { KnowledgeBase } from './knowledge';
@@ -420,78 +421,80 @@ export class Harness {
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.taskboard), display: { verb: 'TASK_STOP' } });
     // task_wait：仅 exec/spawn 台账等待（板 id 拒识点名 agent_team_task_wait）；第三参 run 信号穿透阻塞期
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
-    // agent_team_task_wait / agent_team_task_stop：板域；Task 6 再按 agentTeams 条件注册
-    this.tools.register({
-      ...makeAgentTeamTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal),
-      display: { verb: 'AGENT_TEAM_TASK_WAIT' },
-    });
-    this.tools.register({
-      ...makeAgentTeamTaskStopTool(this.tasks, this.team, this.taskboard),
-      display: { verb: 'AGENT_TEAM_TASK_STOP' },
-    });
-    // create_agent_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
-    // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
-    this.tools.register({
-      name: 'create_agent_teammate',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['teamId', 'name', 'prompt', 'agent_id'],
-        properties: {
-          teamId: { type: 'string', description: 'teamId from create_agent_team; this teammate only claims that team\'s tasks.' },
-          name: { type: 'string', description: 'Unique display name among living teammates on the team.' },
-          prompt: {
-            type: ['string', 'null'],
-            description: 'Role framing (standing duties). Usual: non-empty text with agent_id JSON null.',
-          },
-          agent_id: {
-            type: ['string', 'null'],
-            description:
-              'Registered agent/preset id for framing, or JSON null when using prompt. Do not invent ids or pass the string "null".',
+    // 智能体团队八件套：agentTeams 关则不注入模型面（板协调器仍构造，盘数据不删）
+    if (agentTeamsEnabled(base)) {
+      this.tools.register({
+        ...makeAgentTeamTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal),
+        display: { verb: 'AGENT_TEAM_TASK_WAIT' },
+      });
+      this.tools.register({
+        ...makeAgentTeamTaskStopTool(this.tasks, this.team, this.taskboard),
+        display: { verb: 'AGENT_TEAM_TASK_STOP' },
+      });
+      // create_agent_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
+      // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
+      this.tools.register({
+        name: 'create_agent_teammate',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['teamId', 'name', 'prompt', 'agent_id'],
+          properties: {
+            teamId: { type: 'string', description: 'teamId from create_agent_team; this teammate only claims that team\'s tasks.' },
+            name: { type: 'string', description: 'Unique display name among living teammates on the team.' },
+            prompt: {
+              type: ['string', 'null'],
+              description: 'Role framing (standing duties). Usual: non-empty text with agent_id JSON null.',
+            },
+            agent_id: {
+              type: ['string', 'null'],
+              description:
+                'Registered agent/preset id for framing, or JSON null when using prompt. Do not invent ids or pass the string "null".',
+            },
           },
         },
-      },
-      description:
-        'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with agent_team_task_stop (member stays). One-shot subtasks outside the board: use spawn.',
-      category: 'task',
-      fullObservation: true,
-      executor: async (input) => {
-        const raw = input as { teamId?: unknown; name?: unknown; prompt?: unknown; agent_id?: unknown };
-        const nullish = (v: unknown): boolean => v === null || v === 'null' || v === 'undefined' || v === '';
-        const teamId = typeof raw.teamId === 'string' ? raw.teamId.trim() : '';
-        const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-        const prompt = typeof raw.prompt === 'string' && !nullish(raw.prompt) ? raw.prompt : undefined;
-        const agentId = typeof raw.agent_id === 'string' && !nullish(raw.agent_id) ? raw.agent_id.trim() : undefined;
-        if (teamId === '') throw new CodedToolError('INVALID_ARG', 'teamId is required');
-        if (name === '') throw new CodedToolError('INVALID_ARG', 'name is required');
-        if (!prompt && !agentId) {
-          throw new CodedToolError(
-            'INVALID_ARG',
-            'prompt or agent_id is required: pass a non-empty prompt with agent_id JSON null (usual), or a real registered agent_id',
-          );
-        }
-        const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
-        if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
-        return {
-          exitCode: 0,
-          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_agent_team_task; interrupt via agent_team_task_stop`,
-          stderr: '',
-          timedOut: false,
-        };
-      },
-      display: { verb: 'TEAM' },
-    });
-    for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent)) this.tools.register(t);
-    // send_agent_team_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
-    // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
-    // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）
-    this.tools.register(makeSendMessageTool({
-      inbox: this.inbox,
-      ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-      knownRecipients: () => this.team.aliveNames(),
-      from: () => 'lead',
-      recipientTeamId: (name) => this.team.teamIdOf(name),
-    }));
+        description:
+          'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with agent_team_task_stop (member stays). One-shot subtasks outside the board: use spawn.',
+        category: 'task',
+        fullObservation: true,
+        executor: async (input) => {
+          const raw = input as { teamId?: unknown; name?: unknown; prompt?: unknown; agent_id?: unknown };
+          const nullish = (v: unknown): boolean => v === null || v === 'null' || v === 'undefined' || v === '';
+          const teamId = typeof raw.teamId === 'string' ? raw.teamId.trim() : '';
+          const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+          const prompt = typeof raw.prompt === 'string' && !nullish(raw.prompt) ? raw.prompt : undefined;
+          const agentId = typeof raw.agent_id === 'string' && !nullish(raw.agent_id) ? raw.agent_id.trim() : undefined;
+          if (teamId === '') throw new CodedToolError('INVALID_ARG', 'teamId is required');
+          if (name === '') throw new CodedToolError('INVALID_ARG', 'name is required');
+          if (!prompt && !agentId) {
+            throw new CodedToolError(
+              'INVALID_ARG',
+              'prompt or agent_id is required: pass a non-empty prompt with agent_id JSON null (usual), or a real registered agent_id',
+            );
+          }
+          const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
+          if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
+          return {
+            exitCode: 0,
+            stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_agent_team_task; interrupt via agent_team_task_stop`,
+            stderr: '',
+            timedOut: false,
+          };
+        },
+        display: { verb: 'TEAM' },
+      });
+      for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent)) this.tools.register(t);
+      // send_agent_team_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
+      // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
+      // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）
+      this.tools.register(makeSendMessageTool({
+        inbox: this.inbox,
+        ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+        knownRecipients: () => this.team.aliveNames(),
+        from: () => 'lead',
+        recipientTeamId: (name) => this.team.teamIdOf(name),
+      }));
+    }
     // P7:稳定段观测面装配口径缓存(outputStyle 是 run 级常量)——harness.stableSegment 与 reactor
     // 构造行同源,不引入第二份 deps 面
     this.stableOutputStyle = opts.outputStyle;
