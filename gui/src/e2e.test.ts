@@ -822,7 +822,7 @@ describe('G6 Board 全链:队卡 + 五态行 → DAG 节点 → Stop → cancell
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
       const openLabel = new RegExp(`^${taskId} \\[(pending|running)\\] HoldDemo$`);
       await waitFor(() => expect(screen.getByRole('button', { name: openLabel })).toBeDefined(), { timeout: 10_000 });
       expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
@@ -1104,13 +1104,13 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       // —— G14.27/38:零标签缺省折叠——展开右栏后空态(推荐卡片)在场,再经「+」菜单开「任务」——
       await expandPanel();
       await waitFor(() => expect(container.querySelector('.sx-tab-empty')).not.toBeNull(), { timeout: 5_000 });
-      expect(tabsByTitle(container, bi('Task board', '任务板')).length).toBe(0); // 不再默认开
+      expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(0); // 不再默认开
 
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Task board', '任务板')).length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).toContain('active'); // sx-tab active
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
+      await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).toContain('active'); // sx-tab active
       expect(tabsByTitle(container, REL).length).toBe(0); // Diff 标签未开
       // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
       // 轮询判据(2026-10-27 技术债轮:registry lazy+keep-alive 下标签体异步挂载,直读断言在
@@ -1138,7 +1138,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       fireEvent.click(pathBtn!);
       await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // Diff 标签活动
-      expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).not.toContain('active'); // 任务失活
+      expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).not.toContain('active'); // 任务失活
       expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 任务 + Diff
 
       // —— Diff 标签体:G14.109 统一 ChangesView(工作区未提交变动列表;真 daemon /changes 端点)
@@ -1203,8 +1203,8 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Task board', '任务板')).length).toBe(1), { timeout: 5_000 });
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
+      await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
 
       // —— 既有 taskboard 卡片流(文件头 CARDS 同款):提交 → done 收束 → 板/委派投影落位 ——
       const input = screen.getByLabelText('message input');
@@ -1223,17 +1223,17 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Todos', '待办')).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, bi('Todos', '待办'))[0]!.className).toContain('active');
-      expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).not.toContain('active');
+      expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).not.toContain('active');
       expect(container.querySelector('.sx-tabbody .taskboard-cards')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留
 
       // —— 切回「任务」标签 → 看板消费:任务行文本在场(既有 Board 断言面)+ 委派侧栏 ——
-      fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')!);
+      fireEvent.click(container.querySelector<HTMLButtonElement>('.sx-tab[data-title="智能体团队"], .sx-tab[data-title="Agent teams"]')!);
       // 板 id 不透明方言:行名 `${id} [success] Demo` 正则定位,id 自 aria-label 捕获
       await waitFor(() => expect(screen.getByRole('button', { name: /\[success\] Demo$/ })).toBeDefined(), { timeout: 10_000 });
       expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
       const demoRow = screen.getByRole('button', { name: /\[success\] Demo$/ });
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;
-      expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).toContain('active');
+      expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).toContain('active');
       // 委派面(G14.213 任务板重构:旧 .delegation-list 侧栏退役):fork 委派落任务行内执行
       // 子智能体徽标(agentOfTask 按委派标签命中 → 🤖 徽标入行);状态面已在行名 [success] 断过
       await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
@@ -1666,9 +1666,9 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-      fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Task board', '任务板')).length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, bi('Task board', '任务板'))[0]!.className).toContain('active');
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
+      await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).toContain('active');
       await waitFor(() => expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(), { timeout: 5_000 }); // 任务板页签体挂载(lazy 轮询判据,同 G8a 归因)
 
       // —— 委派投影(G14.213 任务板重构:旧板 .delegation-main 行退役):fork 委派落任务行内

@@ -38,10 +38,10 @@ export interface TabServices {
   // App 投影面(G8a:任务标签消费;后续批次按需扩)
   readonly board: import('../projection').TaskBoardState;
   readonly delegations: readonly import('../projection').Delegation[];
-  readonly team: readonly { name: string; busy: boolean }[];
-  /** 快照 teams：任务板卡头 */
+  readonly team: readonly { name: string; busy: boolean; teamId?: string }[];
+  /** 快照 teams：智能体团队卡头 */
   readonly teams: readonly { teamId: string; name: string; createdAt: number }[];
-  /** 任务板停钮 → conn.boardStop */
+  /** 智能体团队停钮 → conn.boardStop */
   readonly onStopTask: (taskId: string) => void;
   /** G8d 子智能体活动聚合(App 态 applyAgentEvent 归约;Agents 标签只读消费) */
   readonly agentActivities: import('./agent-activity').AgentActivities;
@@ -51,13 +51,13 @@ export interface TabServices {
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
   readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
-  /** G14.2xx b create_agent_team_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
+  /** G14.2xx b create_agent_team_task 行任务名点击 → 开智能体团队页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
    *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名/站标 → 标签 params;App 落 patchTabMeta) */
   readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
-  /** 任务板顶部刷新(2026-10-31):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影。
-   *  可选(旧装配/测试桩缺省,任务板刷新钮不渲染) */
+  /** 智能体团队顶部刷新(2026-10-31):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影。
+   *  可选(旧装配/测试桩缺省,刷新钮不渲染) */
   readonly refreshBoard?: (sessionId: string) => Promise<void>;
 }
 
@@ -178,8 +178,8 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'agents',
     group: 'session',
-    // G14.174 重定位:Agents 页签 → 任务板(卡片流双卡型:任务列表|流程图,逐卡切换)
-    title: () => t('Task board', '任务板'),
+    // 智能体团队页签(一队一卡；卡内成员|任务|编排)
+    title: () => t('Agent teams', '智能体团队'),
     resolveKey: () => '',
     singleton: true,
     render: (p) => (
@@ -187,6 +187,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         board={p.services.board}
         delegations={[...p.services.delegations]}
         teams={p.services.teams}
+        members={[...p.services.team]}
         focus={p.services.taskFocus}
         onOpenAgent={(label, agentTitle, task) => p.openTab('agent', { label, agentTitle, task })}
         onStopTask={p.services.onStopTask}

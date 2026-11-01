@@ -77,7 +77,7 @@ export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionI
         </button>
       )}
       {taskActive > 0 && (
-        <button type="button" className="chat-dyn-btn" data-tip={t('Open task board', '打开任务板')} onClick={() => onOpenTab?.('agents')}>
+        <button type="button" className="chat-dyn-btn" data-tip={t('Open agent teams', '打开智能体团队')} onClick={() => onOpenTab?.('agents')}>
           <span className="run-spinner" aria-hidden="true" />
           {t(`${taskActive} tasks`, `${taskActive} 任务`)}
         </button>

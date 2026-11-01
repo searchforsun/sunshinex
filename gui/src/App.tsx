@@ -187,6 +187,32 @@ function AppShell(): JSX.Element {
    *  settings + 公共持久化偏好上收(/app/gui-state 覆盖本地,zoom/theme/fontPreset)两件一次性同步 */
   useAppearanceSync(connInstance);
 
+  /** agentTeams 开关(settings 语义键;缺省 true)——关则藏「智能体团队」页签菜单项并拒开签 */
+  const [agentTeamsOn, setAgentTeamsOn] = useState(true);
+  useEffect(() => {
+    if (connInstance === null) return;
+    let alive = true;
+    void connInstance.settings(openRoot !== '' ? openRoot : undefined).then(
+      (view) => {
+        if (!alive) return;
+        const row = view.keys.find((k) => k.key === 'agentTeams');
+        const v = row?.value;
+        if (v === null || v === undefined || v === '') {
+          setAgentTeamsOn(true);
+          return;
+        }
+        const n = v.trim().toLowerCase();
+        setAgentTeamsOn(n === 'on' || n === 'true');
+      },
+      () => {
+        if (alive) setAgentTeamsOn(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [connInstance, openRoot]);
+
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
   /** 挂起确认解除刷侧栏(2026-10-31 主菜单「?」图标):Chat 移卡(settle)派 sx-pending-settled,
@@ -347,9 +373,19 @@ function AppShell(): JSX.Element {
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走
    *  browser_navigate 时 Chat 上抛 url,此处开 web 页签跟随(判重由 openTabInSession 承担) */
   const openWebTab = useCallback((url: string): void => { openTabInSession('web', { url }); }, [openTabInSession]);
-  /** G14.174 重定位:agents 页签 id=任务板页签(卡片流;tab 持久化档兼容保留旧 id) */
-  const openBoardTab = useCallback((): void => { openTabInSession('agents', {}); }, [openTabInSession]);
-  const openTabType = useCallback((type: TabTypeId): void => { openTabInSession(type, {}); }, [openTabInSession]);
+  /** agents 页签 id=智能体团队页签(卡片流;tab 持久化档兼容保留旧 id);agentTeams 关闭时不挂载 */
+  const openBoardTab = useCallback((): void => {
+    if (!agentTeamsOn) return;
+    openTabInSession('agents', {});
+  }, [openTabInSession, agentTeamsOn]);
+  const openTabType = useCallback((type: TabTypeId): void => {
+    if (type === 'agents' && !agentTeamsOn) return;
+    openTabInSession(type, {});
+  }, [openTabInSession, agentTeamsOn]);
+  const hiddenMenuIds = useMemo(
+    () => (agentTeamsOn ? undefined : new Set<string>(['agents'])),
+    [agentTeamsOn],
+  );
 
   /** 内置浏览器自动开签(2026-11-01 用户裁定「会自动打开浏览器页签+输入对应网址」):插件 builtin
    *  档在跑(meta 在场)即自动开「浏览器」页签——WebTab CDP 形态自动接管镜像与 URL 回显;
@@ -896,11 +932,13 @@ function AppShell(): JSX.Element {
                   startSideChat();
                   return;
                 }
+                if (t === 'agents' && !agentTeamsOn) return;
                 openTabInSession(t, tabEntry(t).mintParams?.());
               }}
               onCycle={(d) => setTabStates((s) => cycleTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, d))}
               recentClosed={tabState.recentClosed}
               onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, i, PROBE))}
+              hiddenMenuIds={hiddenMenuIds}
               onCloseActive={() => {
                 const uid = tabState.activeUid;
                 if (uid !== null) closeTabInSession(uid);

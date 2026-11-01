@@ -27,8 +27,8 @@ export interface SessionProjection {
   board: TaskBoardState;
   sessionTodos: TodoItem[];
   delegations: Delegation[];
-  team: Array<{ name: string; busy: boolean }>;
-  /** 快照 teams：任务板一队一卡的标题 */
+  team: Array<{ name: string; busy: boolean; teamId?: string }>;
+  /** 快照 teams：智能体团队一队一卡的标题 */
   teams: BoardTeamRef[];
 }
 

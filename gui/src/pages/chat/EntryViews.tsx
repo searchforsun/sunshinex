@@ -612,7 +612,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
             <button
               type="button"
               className="agent-msg-from"
-              data-tip={t('View teammate', '查看队友')}
+              data-tip={t('View member', '查看成员')}
               onClick={() => onOpenAgent(msg.from, msg.from)}
             >
               {msg.from}

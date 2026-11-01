@@ -97,7 +97,7 @@ interface TeamRow {
 interface SnapshotBody {
   board: { tasks: Record<string, BoardTaskRow> };
   delegations: Array<{ id: string; kind: string; status: string }>;
-  team?: Array<{ name: string; busy: boolean }>;
+  team?: Array<{ name: string; busy: boolean; teamId?: string }>;
   teams?: TeamRow[];
 }
 
@@ -149,6 +149,7 @@ test('snapshot.team：create_agent_teammate 建队友 w1 → team 段含 name �
     assert.ok(w1, 'team 段含 spawn 建出的 w1');
     assert.equal(typeof w1.busy, 'boolean', 'busy 布尔（TeamRegistry.get/isBusy 同源）');
     assert.equal(w1.busy, false, '空闲 teammate busy=false');
+    assert.equal(w1.teamId, TEAM_ID, 'team 段带所属 teamId');
   });
 });
 

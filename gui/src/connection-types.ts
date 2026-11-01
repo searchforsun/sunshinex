@@ -106,7 +106,7 @@ export interface SnapshotResponse {
   tier?: 'small' | 'medium' | 'large';
   effort?: string;
   queued?: Array<{ seq: number; text: string; images?: string[] }>;
-  team?: Array<{ name: string; busy: boolean }>;
+  team?: Array<{ name: string; busy: boolean; teamId?: string }>;
   /** 工作区团队注册表（daemon 快照必发） */
   teams?: Array<{ teamId: string; name: string; createdAt: number }>;
   /** 挂起段 kind 三值(阶段三 plan-arm 增 plan-approval):reseed 据此重建挂起卡(卡内容唯一来源) */

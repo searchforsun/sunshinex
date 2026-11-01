@@ -465,7 +465,7 @@ function expandSidebarIfCollapsed(): void {
 function openTasksTab(): void {
   expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') })); // G14.174:看板面迁任务板页签
+  fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') })); // G14.174:看板面迁任务板页签
 }
 
 /** 目录树入口(2026-10-27 用户裁定·目录树入左菜单):组行目录钮开左菜单 dirview——
@@ -767,7 +767,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }));
-    fire(conn, ev('agent-message', undefined, { from: 'a', to: 'b', text: 'ping' }));
+    fire(conn, ev('agent-message', undefined, { from: 'a', to: 'lead', text: 'ping' }));
     expect(screen.queryByText('✻ dev started')).toBeNull();
     expect(document.querySelector('.agent-msg-from')?.textContent).toBe('a');
     expect(document.querySelector('.agent-msg-text')?.textContent).toBe('ping');
@@ -1063,7 +1063,7 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
   it('右栏标签切换:默认「任务」页(Board);「+」菜单开文件标签 → Files 预览面,Chat 恒挂零重播种', async () => {
     const { conn, unmount } = await enterChat();
     openTasksTab(); // G14.27:不再默认开,显式打开
-    expect(document.querySelector('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')?.classList.contains('active')).toBe(true);
+    expect(document.querySelector('.sx-tab[data-title="智能体团队"], .sx-tab[data-title="Agent teams"]')?.classList.contains('active')).toBe(true);
     await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(screen.getByLabelText('message input')).toBeDefined();
     expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:开标签不重播种
@@ -1174,7 +1174,8 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     await waitFor(() => expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeDefined());
     // nonce 多实例:mintParams 铸唯一 resolveKey → 再开 = 第二个终端标签(非判重聚焦既有)
     openTerminal();
-    expect(document.querySelectorAll('.sx-tab[data-title="终端"], .sx-tab[data-title="Terminal"]')).toHaveLength(2);
+    // 终端标签题=项目名(openRoot basename);多开递增「root-a 2」
+    expect(document.querySelectorAll('.sx-tab[data-type="terminal"]')).toHaveLength(2);
     await waitFor(() => expect(conn.openPtyCalls).toHaveLength(2)); // 活动切换重挂:新实例再分配
     unmount();
   });
@@ -1193,9 +1194,9 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeDefined()); // 重挂完成(重连既有 p1)
     expect(conn.openPtyCalls).toHaveLength(1); // 重连径:还原面不再分配
-    fireEvent.click(screen.getByRole('button', { name: /^(?:close tab Terminal|close tab 终端)$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^close tab root-a$/ }));
     await waitFor(() => expect(conn.killPtyCalls).toEqual([['s1', 'p1']]));
-    expect(document.querySelector('.sx-tab[data-title="终端"], .sx-tab[data-title="Terminal"]')).toBeNull(); // 标签已移除(承继「任务」)
+    expect(document.querySelector('.sx-tab[data-type="terminal"]')).toBeNull(); // 标签已移除(承继「任务」)
     unmount();
   });
 
@@ -1211,8 +1212,8 @@ describe('G8b 终端标签:+菜单 nonce 多实例 + jsdom 降级面 + 关标签
     expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口')).closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:终端面隐藏保留
     await waitFor(() => expect(document.querySelector('.todo-cards')).not.toBeNull()); // lazy 标签体
     expect(conn.killPtyCalls).toEqual([]); // 卸载≠kill
-    // 切回「终端」:重挂走重连径(ptyIdFor 命中既有记账)——openPty 计数不变,降级面照常
-    fireEvent.click(screen.getByRole('button', { name: bi('Terminal', '终端') }));
+    // 切回终端页签(题=项目名):重挂走重连径(ptyIdFor 命中既有记账)——openPty 计数不变,降级面照常
+    fireEvent.click(document.querySelector('.sx-tab[data-type="terminal"]')!);
     await waitFor(() => expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeDefined());
     expect(conn.openPtyCalls).toHaveLength(1); // 重连既有 pty,不再分配(spec U-D5 等同本地底线)
     unmount();
@@ -1306,9 +1307,9 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     // 「+」菜单开任务板页签(G14.174:Agents → 任务板):任务行在场(状态点+任务名+子智能体名)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-    expect(document.querySelector('.sx-tab[data-title="任务板"], .sx-tab[data-title="Task board"]')?.classList.contains('active')).toBe(true);
-    expect(screen.getByLabelText('task board')).toBeDefined();
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
+    expect(document.querySelector('.sx-tab[data-title="智能体团队"], .sx-tab[data-title="Agent teams"]')?.classList.contains('active')).toBe(true);
+    expect(screen.getByLabelText('agent teams')).toBeDefined();
     const row = await screen.findByRole('button', { name: 't1 [pending] searcher 分析' }); // P1 Task 8:live 板帧 100ms 尾随,findBy 轮询过窗
     expect(row.textContent).toContain('searcher'); // 执行子智能体名(委派 label)
     expect(row.closest('.tb-task-row')?.className).toContain('task-status-pending'); // 状态点=灰(等待)
@@ -1336,7 +1337,7 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     fire(conn, ev('delegation-ended', undefined, { label: 'reviewer', delegationId: 'reviewer', kind: 'subagent', status: 'failed' }));
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
     const row = await screen.findByRole('button', { name: 't2 [pending] reviewer 审阅' }); // P1 Task 8:live 板帧过窗
     expect(row.textContent).toContain('reviewer'); // 执行子智能体名(已执行态显)
     fireEvent.click(row);
@@ -1366,8 +1367,8 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     fireOther(conn, ev('token', '他会话子智能体', { subagent: 'ghost' }));
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
-    expect(screen.getByText(/^Task board is empty|任务板为空$/)).toBeDefined(); // 他会话帧零投影
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
+    expect(screen.getByText(/^Agent teams is empty|智能体团队为空$/)).toBeDefined(); // 他会话帧零投影
     expect(screen.queryByLabelText('open agent ghost')).toBeNull();
     unmount();
   });
@@ -1485,10 +1486,10 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
-    expect(document.querySelector('[aria-label="task board"]')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留(裸 DOM 查询,inert 子树对 a11y 查询不可达)
+    expect(document.querySelector('[aria-label="agent teams"]')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:隐藏保留(裸 DOM 查询,inert 子树对 a11y 查询不可达)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
     await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
     unmount();
@@ -1615,7 +1616,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     // 整替+过滤重放:seq 8/9 落在快照板上(t1 带委派名);seq 3 不重放
     expect(screen.getByRole('button', { name: 't1 [pending] Base' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('dev'); // 委派重放:行带子智能体名
+    expect(screen.getByRole('button', { name: 't1 [pending] Base' }).textContent).toContain('w1'); // task-assigned 优先于委派 label
     // 窗后帧直投(不再缓冲)
     fire(conn, taskEv('t2', 'Live'), 10);
     await waitFor(() => expect(screen.getByRole('button', { name: 't2 [pending] Live' })).toBeDefined()); // P1 Task 8:live 板帧过窗
@@ -1644,7 +1645,7 @@ describe('G6 板投影 seq 门:seeding 期帧缓冲 → onSeeded 后过滤重放
     // 失败终态现存委派投影,行内不再出「失败」徽标——G14.213 只显示任务)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: bi('Task board', '任务板') }));
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
     expect(screen.getAllByText('reviewer').length).toBeGreaterThan(0);
     expect(document.querySelector('.sx-subagent-dot')).toBeNull();
     unmount();
@@ -1746,8 +1747,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([...generalRows, { key: 'contextWindow', value: '100000', source: 'project', envOverride: false }]);
     openSettings();
     // 面板拉取:settings(root=openRoot)
-    // [0]=App 语言同步全局拉取(G10-C3c)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a']));
+    // 前缀=App 语言同步 + agentTeams 解析(全局/项目) + 面板拉取
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a']));
     // 行渲染:select 触发钮显当值标签(en→English);text 行值 = 行 value ?? 缺省空(default 行空串)
     expect(screen.getByLabelText('language').textContent).toContain('English');
     expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
@@ -1768,7 +1769,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // toast 出现(sx-toast,3s 自隐——测试窗内恒在场)
     expect(screen.getByText(/Applied — takes effect|已生效：新建会话起/)).toBeDefined();
     // 保存成功后重拉 settings
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
     // select 换项自动保存(project 桶:language source=project)
     fireEvent.click(screen.getByLabelText('language'));
     fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
@@ -1808,12 +1809,12 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'slow-a', source: 'global', envOverride: false }]);
     conn.holdSettings(); // A(通用面板)首笔应答悬挂(单发门:后续直通)
     openSettings();
-    // [0]=App 语言同步全局拉取(G10-C3c);[1]=通用面板拉取(被 hold)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a']));
+    // 前缀=语言同步+agentTeams;末项=通用面板拉取(被 hold)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a']));
     // 快切「记忆」:B 应答直通落定(通用卸载,language 行不在场)
     conn.settingsView = settingsViewOf([{ key: 'autoMemory', value: 'on', source: 'default', envOverride: false }]);
     fireEvent.click(screen.getByRole('button', { name: 'Memory' }));
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '/w/root-a', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
     // 切回「通用」:C 应答直通落定(fast-b)
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'fast-b', source: 'global', envOverride: false }]);
     fireEvent.click(screen.getByRole('button', { name: 'General' }));

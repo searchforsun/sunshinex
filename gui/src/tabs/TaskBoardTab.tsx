@@ -8,8 +8,8 @@ import { shortStampMs } from '../ui-util';
 const TaskDag = lazy(() => import('./TaskDag'));
 
 /**
- * 任务板：一队一卡，卡头为团队名称（teams.name：快照 + team-created / task-created 直播）。
- * 卡内列表 | DAG，只含该 teamId 的任务。
+ * 智能体团队页签：一队一卡，卡头为团队名称（teams.name：快照 + team-created / task-created 直播）。
+ * 卡内三分栏：成员 | 任务 | 编排（默认任务）。
  * 五态只以点色表达：pending 灰、running 转圈、success 蓝、failed 红、cancelled 黄且标题划线。
  * pending 与 running 的行在 hover 时露出停止，点击上抛 onStopTask。
  * 行点击打开执行中的子智能体转录。测试钩子：aria-label `${id} [${status}] ${title}`。
@@ -21,16 +21,25 @@ export interface BoardTeamRef {
   readonly createdAt?: number;
 }
 
+/** 存活成员（快照 team 段；teamId 用于按队过滤） */
+export interface TeamMemberRef {
+  readonly name: string;
+  readonly busy: boolean;
+  readonly teamId?: string;
+}
+
 export interface TaskBoardTabProps {
   readonly board: TaskBoardState;
   readonly delegations: readonly Delegation[];
   /** 团队清单（快照 + team-created / task-created 直播）：卡头名称；缺名时回退 teamId */
   readonly teams?: readonly BoardTeamRef[];
-  /** 点击任务/节点跳对应子智能体只读页签 */
+  /** 存活成员清单（快照 team）；按队卡 teamId 过滤 */
+  readonly members?: readonly TeamMemberRef[];
+  /** 点击任务/节点/成员跳对应子智能体只读页签 */
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** pending|running 停止（App 注入 conn.boardStop） */
   readonly onStopTask?: (taskId: string) => void;
-  /** 工具行点开的定位信号：kind=task 高亮任务行；kind=team 高亮队卡（ref=teamId 或队名） */
+  /** 工具行点开的定位信号：kind=task 高亮任务行并切到任务栏；kind=team 高亮队卡（ref=teamId 或队名） */
   readonly focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   /** 顶部刷新：sessionSnapshot 拉权威 board。返回 Promise 期间钮转圈 */
   readonly onRefresh?: () => Promise<void>;
@@ -45,7 +54,7 @@ function agentOfTask(task: BoardTask, delegations: readonly Delegation[]): Deleg
   );
 }
 
-/** 执行体显示名：优先板态 executedBy/assignee（队友名）；委派 label 与 task id 同文时不当作智能体名 */
+/** 执行体显示名：优先板态 executedBy/assignee（成员名）；委派 label 与 task id 同文时不当作智能体名 */
 function agentDisplayName(task: BoardTask, d: Delegation | undefined): string {
   const by = task.executedBy;
   if (typeof by === 'string' && by !== '' && by !== 'external-cli') return by;
@@ -98,7 +107,27 @@ function groupByTeam(tasks: readonly BoardTask[], teams: readonly BoardTeamRef[]
   return groups;
 }
 
-type CardView = 'list' | 'dag';
+/** 队卡成员：优先 teamId 精确匹配；缺 teamId 的旧快照回落——单队全显，多队则按任务 assignee/executedBy 归属 */
+function membersOfTeam(
+  teamId: string,
+  members: readonly TeamMemberRef[],
+  tasks: readonly BoardTask[],
+  teamCount: number,
+): TeamMemberRef[] {
+  const withId = members.filter((m) => typeof m.teamId === 'string' && m.teamId !== '');
+  if (withId.length > 0) return withId.filter((m) => m.teamId === teamId);
+  if (teamCount <= 1) return [...members];
+  const names = new Set<string>();
+  for (const task of tasks) {
+    if (typeof task.assignee === 'string' && task.assignee !== '') names.add(task.assignee);
+    if (typeof task.executedBy === 'string' && task.executedBy !== '' && task.executedBy !== 'external-cli') {
+      names.add(task.executedBy);
+    }
+  }
+  return members.filter((m) => names.has(m.name));
+}
+
+type CardView = 'members' | 'tasks' | 'orchestration';
 
 const STOPPABLE = new Set<BoardTask['status']>(['pending', 'running']);
 
@@ -106,6 +135,8 @@ function TaskCard({
   group,
   board,
   delegations,
+  members,
+  teamCount,
   onOpenAgent,
   onStopTask,
   focus,
@@ -113,17 +144,28 @@ function TaskCard({
   group: TeamGroup;
   board: TaskBoardState;
   delegations: readonly Delegation[];
+  members: readonly TeamMemberRef[];
+  teamCount: number;
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   onStopTask?: (taskId: string) => void;
   focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
 }): JSX.Element {
-  const [view, setView] = useState<CardView>('list');
+  const [view, setView] = useState<CardView>('tasks');
   const latestMs = group.tasks.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
   const byId = useMemo(() => new Map(group.tasks.map((x) => [x.id, x])), [group.tasks]);
   const focusTaskId = useMemo(() => {
     if (focus === undefined || focus === null || focus.ref === '' || focus.kind === 'team') return undefined;
     return group.tasks.find((task) => taskMatchesFocus(task, focus.ref))?.id;
   }, [focus?.ref, focus?.nonce, focus?.kind, group.tasks]);
+  // 工具行定位到任务：切到任务栏（编排面 DAG 自带 focusId，仍可高亮）
+  useEffect(() => {
+    if (focusTaskId === undefined) return;
+    setView('tasks');
+  }, [focus?.nonce, focusTaskId]);
+  const teamMembers = useMemo(
+    () => membersOfTeam(group.teamId, members, group.tasks, teamCount),
+    [group.teamId, group.tasks, members, teamCount],
+  );
   const openTaskAgent = (task: BoardTask): void => {
     const d = agentOfTask(task, delegations);
     const agentName = agentDisplayName(task, d);
@@ -136,17 +178,48 @@ function TaskCard({
     <section className="tb-card" data-team-id={group.teamId}>
       <div className="tb-card-head">
         <div className="view-toggle" role="group" aria-label="task card view">
-          <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'active' : ''} onClick={() => setView('list')}>
-            {t('List', '列表')}
+          <button type="button" aria-pressed={view === 'members'} className={view === 'members' ? 'active' : ''} onClick={() => setView('members')}>
+            {t('Members', '成员')}
           </button>
-          <button type="button" aria-pressed={view === 'dag'} className={view === 'dag' ? 'active' : ''} onClick={() => setView('dag')}>
-            DAG
+          <button type="button" aria-pressed={view === 'tasks'} className={view === 'tasks' ? 'active' : ''} onClick={() => setView('tasks')}>
+            {t('Tasks', '任务')}
+          </button>
+          <button type="button" aria-pressed={view === 'orchestration'} className={view === 'orchestration' ? 'active' : ''} onClick={() => setView('orchestration')}>
+            {t('Orchestration', '编排')}
           </button>
         </div>
         <span className="tb-team-name">{group.name}</span>
         <span className="todo-card-time">{shortStampMs(latestMs)}</span>
       </div>
-      {view === 'list' ? (
+      {view === 'members' ? (
+        teamMembers.length === 0 ? (
+          <div className="board-empty-state tb-members-empty" role="status">
+            <p className="board-empty-title">{t('No members', '暂无成员')}</p>
+          </div>
+        ) : (
+          <ul className="tb-task-list" aria-label="member list">
+            {teamMembers.map((m) => (
+              <li key={m.name} className={`tb-task-row${m.busy ? ' task-status-running' : ''}`}>
+                <button
+                  type="button"
+                  className="tb-task-main"
+                  data-member-name={m.name}
+                  aria-label={`${m.name}${m.busy ? ' [busy]' : ''}`}
+                  data-tip={t('Open member transcript', '打开成员转录')}
+                  onClick={() => onOpenAgent?.(m.name, m.name)}
+                >
+                  <span className={`tb-status-dot${m.busy ? ' task-status-running' : ' task-status-pending'}`} aria-hidden="true" />
+                  <span className="tb-task-title">{m.name}</span>
+                  <span className="tb-task-agent">
+                    <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
+                    {m.busy ? t('busy', '忙碌') : t('idle', '空闲')}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : view === 'tasks' ? (
         <ul className="tb-task-list" aria-label="task list">
           {group.tasks.map((task) => {
             const d = agentOfTask(task, delegations);
@@ -213,7 +286,7 @@ function TaskCard({
   );
 }
 
-export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onStopTask, focus, onRefresh }: TaskBoardTabProps): JSX.Element {
+export function TaskBoardTab({ board, delegations, teams = [], members = [], onOpenAgent, onStopTask, focus, onRefresh }: TaskBoardTabProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const refresh = (): void => {
@@ -262,10 +335,10 @@ export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onSt
     return (
       <div className="insight-tab">
         {bar}
-        <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
+        <div className="taskboard-cards" aria-label="agent teams" ref={rootRef}>
           <div className="board-empty-state" role="status">
-            <p className="board-empty-title">{t('Task board is empty', '任务板为空')}</p>
-            <p className="board-empty-hint">{t('Tasks appear here once agents create them.', '智能体创建任务后会显示在这里。')}</p>
+            <p className="board-empty-title">{t('Agent teams is empty', '智能体团队为空')}</p>
+            <p className="board-empty-hint">{t('Teams appear here once agents create them.', '智能体创建团队后会显示在这里。')}</p>
           </div>
         </div>
       </div>
@@ -274,13 +347,15 @@ export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onSt
   return (
     <div className="insight-tab">
       {bar}
-      <div className="taskboard-cards" aria-label="task board" ref={rootRef}>
+      <div className="taskboard-cards" aria-label="agent teams" ref={rootRef}>
         {groups.map((group) => (
           <TaskCard
             key={group.teamId}
             group={group}
             board={board}
             delegations={delegations}
+            members={members}
+            teamCount={groups.length}
             onOpenAgent={onOpenAgent}
             onStopTask={onStopTask}
             focus={focus}

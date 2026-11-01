@@ -49,6 +49,48 @@ describe('TaskBoardTab 队卡', () => {
     expect(screen.queryByText('(未关联轮次输入)')).toBeNull();
   });
 
+  it('三分栏默认任务；成员|任务|编排可切换；成员行 click 触发 onOpenAgent', () => {
+    const onOpenAgent = vi.fn();
+    render(
+      <TaskBoardTab
+        board={boardOf([task('t1', { teamId: 'alpha', title: '甲' })])}
+        delegations={[]}
+        teams={[{ teamId: 'alpha', name: 'Alpha Squad', createdAt: 1 }]}
+        members={[
+          { name: 'w1', busy: false, teamId: 'alpha' },
+          { name: 'w2', busy: true, teamId: 'beta' },
+        ]}
+        onOpenAgent={onOpenAgent}
+      />,
+    );
+    const toggle = screen.getByRole('group', { name: 'task card view' });
+    expect(toggle.querySelector('button.active')?.textContent).toMatch(/Tasks|任务/);
+    expect(screen.getByRole('list', { name: 'task list' })).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: /Members|成员/ }));
+    expect(screen.getByRole('list', { name: 'member list' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'w1' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /w2/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'w1' }));
+    expect(onOpenAgent).toHaveBeenCalledWith('w1', 'w1');
+
+    fireEvent.click(screen.getByRole('button', { name: /Orchestration|编排/ }));
+    expect(document.querySelector('.tb-dag-wrap')).not.toBeNull();
+  });
+
+  it('成员空态「暂无成员」', () => {
+    render(
+      <TaskBoardTab
+        board={boardOf([task('t1', { teamId: 'alpha', title: '甲' })])}
+        delegations={[]}
+        teams={[{ teamId: 'alpha', name: 'Alpha Squad', createdAt: 1 }]}
+        members={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Members|成员/ }));
+    expect(screen.getByText(/^No members|暂无成员$/)).toBeDefined();
+  });
+
   it('失败任务无文字徽标，也无 Approve/Deny', () => {
     render(
       <TaskBoardTab
@@ -101,7 +143,7 @@ describe('TaskBoardTab 队卡', () => {
   });
 });
 
-describe('任务板点色 class', () => {
+describe('智能体团队点色 class', () => {
   it('running 转圈、success 蓝点、cancelled 黄点规则挂在 task-status-* 上', () => {
     const cssPath = [resolve(process.cwd(), 'src/app.css'), resolve(process.cwd(), 'gui/src/app.css')].find((p) => {
       try { readFileSync(p); return true; } catch { return false; }

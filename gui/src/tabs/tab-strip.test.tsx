@@ -33,7 +33,7 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal + G8d diff/agents/web)', () => 
     const agents = TAB_REGISTRY[3]!;
     expect(agents.singleton).toBe(true);
     expect(agents.group).toBe('session');
-    expect(agents.title({})).toBe('Task board'); // G14.174 重定位:Agents 页签 → 任务板
+    expect(agents.title({})).toBe('Agent teams'); // 智能体团队页签
     expect(agents.resolveKey({})).toBe('');
     const agent = TAB_REGISTRY.find((e) => e.id === 'agent')!;
     expect(agent.singleton).toBe(false); // G14.164 by label 多实例:同 agent 重开=聚焦

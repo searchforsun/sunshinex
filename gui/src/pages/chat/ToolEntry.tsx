@@ -15,17 +15,29 @@ import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
 import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import type { DiffResp } from '../../connection';
 
-/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);任务板工具专属图标(去扳手默认) */
+/** 智能体团队工具固定名单(八名)→ 折叠行 agent_teams 标识 */
+export const AGENT_TEAM_TOOLS = new Set([
+  'create_agent_team',
+  'create_agent_teammate',
+  'create_agent_team_task',
+  'update_agent_team_task',
+  'get_agent_team_board',
+  'send_agent_team_message',
+  'agent_team_task_wait',
+  'agent_team_task_stop',
+]);
+
+/** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);智能体团队工具专属图标(去扳手默认) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
   worktree: GitBranch, spawn: Bot, task_stop: Square, agent_team_task_stop: Square, task_wait: Hourglass, agent_team_task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
-  create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
+  create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus,
   // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
   create_agent_team: UsersRound,
   create_agent_teammate: UsersRound,
-  update_agent_team_task: ListChecks, get_agent_team_board: Kanban, probe: Radar, // 2026-10-31 用户裁定「内置工具还没有完全 i18n 化」:任务板更新/看板读取/探测三件专属图标(退役扳手兜底)
+  update_agent_team_task: ListChecks, get_agent_team_board: Kanban, probe: Radar,
   send_agent_team_message: Send,
   get_task: ClipboardList,
 };
@@ -82,11 +94,11 @@ const TOOL_VERB_ZH: Record<string, string> = {
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
   kb_search: '检索知识库', ask_question: '提问',
-  create_agent_team_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
+  create_agent_team_task: '创建团队任务', set_dependency: '设置依赖', assign: '分派',
   create_agent_team: '创建智能体团队',
-  create_agent_teammate: '创建智能体团队成员',
-  update_agent_team_task: '更新任务', get_agent_team_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
-  send_agent_team_message: '发送消息', get_task: '读取任务',
+  create_agent_teammate: '创建团队成员',
+  update_agent_team_task: '更新团队任务', get_agent_team_board: '查看团队看板', probe: '探测',
+  send_agent_team_message: '发送团队消息', get_task: '读取任务',
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -208,10 +220,10 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   websearch: ['Searching the web', '正在搜索网页'],
   memory_write: ['Saving memory', '正在保存记忆'],
   spawn: ['Dispatching subagent', '正在分派子智能体'],
-  create_agent_teammate: ['Creating teammate', '正在创建智能体团队成员'],
+  create_agent_teammate: ['Creating member', '正在创建团队成员'],
   create_agent_team: ['Creating team', '正在创建智能体团队'],
-  update_agent_team_task: ['Updating task', '正在更新任务'], get_agent_team_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
-  send_agent_team_message: ['Sending message', '正在发送消息'], get_task: ['Reading task', '正在读取任务'],
+  update_agent_team_task: ['Updating team task', '正在更新团队任务'], get_agent_team_board: ['Reading team board', '正在查看团队看板'], probe: ['Probing', '正在探测'],
+  send_agent_team_message: ['Sending team message', '正在发送团队消息'], get_task: ['Reading task', '正在读取任务'],
   task_wait: ['Waiting for tasks', '正在等待任务'],
   agent_team_task_wait: ['Waiting for team tasks', '正在等待团队任务'],
   task_stop: ['Stopping task', '正在停止任务'],
@@ -220,7 +232,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   worktree: ['Preparing worktree', '正在准备工作树'],
   kb_search: ['Searching knowledge base', '正在检索知识库'],
   ask_question: ['Waiting for answer', '正在等待回答'],
-  create_agent_team_task: ['Creating task', '正在创建任务'],
+  create_agent_team_task: ['Creating team task', '正在创建团队任务'],
   set_dependency: ['Setting dependency', '正在设置依赖'],
   assign: ['Assigning task', '正在分派任务'],
 };
@@ -423,7 +435,7 @@ export const ToolEntryView = memo(function ToolEntryView({
           ? input.agent_id
           : ''
       : '';
-  /** 2026-10-24 create_agent_teammate 队友名(name 必填)——与 spawn 同款:运行态文案+折叠行蓝色链接 */
+  /** create_agent_teammate 成员名(name 必填)——与 spawn 同款:运行态文案+折叠行蓝色链接 */
   const teammateName =
     toolName === 'create_agent_teammate' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
   /** create_agent_team 队名——折叠行「创建智能体团队 {name}」;运行态同构 */
@@ -480,13 +492,12 @@ export const ToolEntryView = memo(function ToolEntryView({
   const runningLabel = (() => {
     // G14.166 spawn 运行态带子智能体名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
-    // 2026-10-24 create_agent_teammate 运行态带队友名(与 spawn 同构)
-    if (toolName === 'create_agent_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
+    if (toolName === 'create_agent_teammate' && teammateName !== '') return t(`Creating member ${teammateName}`, `正在创建团队成员 ${teammateName}`);
     if (toolName === 'create_agent_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
-    if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending message to ${messageTo}`, `正在发送消息给 ${messageTo}`);
-    // create_agent_team_task 运行态带任务标题——「正在创建任务 调研项目结构」,id 不进折叠行
+    if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending team message to ${messageTo}`, `正在发送团队消息给 ${messageTo}`);
+    // create_agent_team_task 运行态带任务标题——「正在创建团队任务 …」,id 不进折叠行
     if (toolName === 'create_agent_team_task' && typeof input.title === 'string' && input.title !== '') {
-      return t(`Creating task ${input.title}`, `正在创建任务 ${input.title}`);
+      return t(`Creating team task ${input.title}`, `正在创建团队任务 ${input.title}`);
     }
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
     if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
@@ -564,9 +575,15 @@ export const ToolEntryView = memo(function ToolEntryView({
     || (toolName === 'create_agent_team_task' && createTaskTitle !== '')
     || toolName === 'skill' || taskOpName !== undefined
   );
+  const isAgentTeamTool = AGENT_TEAM_TOOLS.has(toolName);
+  const agentTeamsBadge = isAgentTeamTool ? (
+    <span className="tool-badge tool-badge-agent-teams" data-tip={t('Agent teams', '智能体团队')}>
+      {t('agent_teams', '智能体团队')}
+    </span>
+  ) : null;
   const verbSpan = executing ? (
     // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
-    <span className="tool-verb exec-running">
+    <span className={`tool-verb exec-running${isAgentTeamTool ? ' tool-verb-agent-teams' : ''}`}>
       <span className="exec-running-text">{runningLabel}</span>
     </span>
   ) : toolName === 'ask_question' ? (
@@ -578,10 +595,11 @@ export const ToolEntryView = memo(function ToolEntryView({
   ) : toolName === 'task_wait' ? (
     <span className="tool-verb">{t('task_wait', '等待任务')}</span>
   ) : (
-    <span className="tool-verb">{zhToolName(toolName)}</span>
+    <span className={`tool-verb${isAgentTeamTool ? ' tool-verb-agent-teams' : ''}`}>{zhToolName(toolName)}</span>
   );
   const collapsed = (
     <>
+      {agentTeamsBadge}
       {verbSpan}
       {path !== undefined && (isWrite || toolName === 'read') ? (
         <>
@@ -629,7 +647,7 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Open team board', '打开该团队任务板')}
+            data-tip={t('Open this team', '打开该团队')}
             onClick={(e) => {
               e.stopPropagation();
               const idHit = /teamId=([^\s);,]+)/.exec(resultText);
@@ -652,7 +670,7 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Open team board', '打开该团队任务板')}
+                  data-tip={t('Open this team', '打开该团队')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenTask(`team:${team.ref}`);
@@ -667,13 +685,13 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{' '}{boardTeamRefs.map((x) => x.name).join(', ')}</span>
         ) : null
       ) : !hideTargetWhileRunning && toolName === 'create_agent_team_task' ? (
-        /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
+        /* 折叠行带任务名;任务名=蓝色链接,点开智能体团队定位高亮对应卡 */
         onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
           <span
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Open task board card', '在任务板中定位')}
+            data-tip={t('Locate in agent teams', '在智能体团队中定位')}
             onClick={(e) => {
               e.stopPropagation();
               // 回执名优先形态 `task "…" created (id=task-xxx)`——按 id= 取真 id,旧形态兜底
@@ -710,13 +728,13 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && toolName === 'create_agent_teammate' ? (
-        /* 2026-10-24 折叠行带队友名(蓝色链接同 spawn,点开对应 agent 只读标签页) */
+        /* 折叠行带成员名(蓝色链接同 spawn,点开对应 agent 只读标签页) */
         teammateName !== '' && onOpenAgent !== undefined ? (
           <span
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('View teammate', '查看队友')}
+            data-tip={t('View member', '查看成员')}
             onClick={(e) => {
               e.stopPropagation(); // 不触发行展开
               onOpenAgent(teammateName, teammateName, typeof input.prompt === 'string' ? input.prompt : undefined); // 任务说明不截断(同 spawn,2026-10-25 裁定)
@@ -728,13 +746,13 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{teammateName !== '' ? ` ${teammateName}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && toolName === 'send_agent_team_message' ? (
-        /* 折叠行带收件人名(lead 纯文本;队友名可点开转录);正文进展开体 */
+        /* 折叠行带收件人名(lead 纯文本;成员名可点开转录);正文进展开体 */
         messageTo !== '' && messageTo !== 'lead' && onOpenAgent !== undefined ? (
           <span
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('View teammate', '查看队友')}
+            data-tip={t('View member', '查看成员')}
             onClick={(e) => {
               e.stopPropagation();
               onOpenAgent(messageTo, messageTo);
@@ -756,7 +774,7 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Open task board card', '在任务板中定位')}
+                  data-tip={t('Locate in agent teams', '在智能体团队中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenTask(task.id);
@@ -785,7 +803,7 @@ export const ToolEntryView = memo(function ToolEntryView({
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-agent-link tool-link-chip"
-              data-tip={t('Open task board card', '在任务板中定位')}
+              data-tip={t('Locate in agent teams', '在智能体团队中定位')}
               onClick={(e) => {
                 e.stopPropagation();
                 const id = typeof input.taskId === 'string' ? input.taskId : taskOpName;
@@ -801,7 +819,7 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Open task board card', '在任务板中定位')}
+                  data-tip={t('Locate in agent teams', '在智能体团队中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
                     const id = typeof input.dependsOn === 'string' ? input.dependsOn : taskOpDepName;
@@ -819,7 +837,7 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('View teammate', '查看队友')}
+                  data-tip={t('View member', '查看成员')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenAgent(input.assignee as string, input.assignee as string);

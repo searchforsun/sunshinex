@@ -43,6 +43,8 @@ export interface TabStripProps {
   /** 终端标签题(2026-10-31 用户裁定「终端标签名显项目名,多个 1234 递增」):项目名由宿主注入 */
   readonly projectName?: string;
   readonly onReopenClosed?: (index: number) => void;
+  /** 额外隐藏于「+」菜单的类型(如 agentTeams 关闭时藏 agents) */
+  readonly hiddenMenuIds?: ReadonlySet<string>;
 }
 
 /** 「+」菜单分节序:content → session → tools */
@@ -65,6 +67,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     onCloseActive,
     recentClosed,
     onReopenClosed,
+    hiddenMenuIds,
   } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   /** 「+」弹层 portal→body 的钉屏坐标(入滚动区后 absolute 会被 overflow 裁切/sticky 层叠压住页签体;
@@ -280,7 +283,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         >
           {GROUP_ORDER.map((g) => {
             // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
-            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && (!welcomeOnly || e.id === 'web' || e.id === 'terminal'));
+            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && (!welcomeOnly || e.id === 'web' || e.id === 'terminal'));
             if (entries.length === 0) return null;
             return (
               <div key={g} role="group" aria-label={g}>
