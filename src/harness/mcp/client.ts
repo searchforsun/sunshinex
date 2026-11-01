@@ -348,14 +348,59 @@ export class McpHost {
         if (Buffer.byteLength(JSON.stringify(args), 'utf8') > MAX_ARGS_BYTES) {
           throw new CodedToolError('MCP_ARGS_TOO_LARGE', `MCP args too large (>${MAX_ARGS_BYTES} bytes): ${fqName}`);
         }
-        const res = await withTimeout(
-          client.callTool({ name: toolName, arguments: args }),
-          timeoutMs,
-          'MCP_TIMEOUT',
-          `MCP call timed out (${timeoutMs}ms): ${fqName}`,
-        );
-        return execResultFromMcp(fqName, res);
+        // 断链重试(2026-11-01 用户裁定「运行中调用异常应触发重试,2 次后如实回报」):连接类错误
+        // (server 进程死亡/管道断/transport 关闭)重连该 server 后重试调用,最多 2 次;穷尽抛
+        // MCP_CONNECT_FAILED 如实告知模型(server 不可达),不再吞进备用方案歧义。超时/业务错误
+        // (MCP_TIMEOUT/isError)不在此列——非断链语义,重连无益
+        let attempts = 0;
+        for (;;) {
+          try {
+            const res = await withTimeout(
+              client.callTool({ name: toolName, arguments: args }),
+              timeoutMs,
+              'MCP_TIMEOUT',
+              `MCP call timed out (${timeoutMs}ms): ${fqName}`,
+            );
+            return execResultFromMcp(fqName, res);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (!/connection closed|transport (closed|error)|not connected|-32000/i.test(msg) || attempts >= 2) {
+              if (attempts > 0) throw new CodedToolError('MCP_CONNECT_FAILED', `MCP server unreachable after ${attempts} reconnect attempts (${server}): ${msg.slice(0, 200)}`);
+              throw e;
+            }
+            attempts += 1;
+            this.writeAssemblyLog(server, `tool call hit broken connection — reconnect #${attempts}: ${msg.slice(0, 120)}`);
+            await this.reconnectServer(server);
+          }
+        }
       },
     };
+  }
+
+  /** 单 server 重连(断链重试面):撤旧连接(树杀死进程)→ 新传输连接 → 清单拉取重注册(同名覆盖;
+   *  工具面可能已变,以重连后为准)。失败抛错由调用方计数 */
+  private async reconnectServer(server: string): Promise<void> {
+    const cfg = this.servers.find((s) => s.name === server);
+    if (cfg === undefined) throw new CodedToolError('MCP_CONNECT_FAILED', `server config not found: ${server}`);
+    const old = this.conns.get(server);
+    if (old !== undefined) {
+      this.conns.delete(server);
+      const pid = pidOf(old.transport);
+      await old.client.close().catch(() => {});
+      if (pid !== null) killProcessTree(pid);
+    }
+    const transport = this.makeTransport(cfg);
+    const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
+    this.attachStderrLog(cfg, transport);
+    await client.connect(transport);
+    const listed = await client.listTools();
+    const disabled = new Set(cfg.disabledTools ?? []);
+    for (const t of listed.tools) {
+      if (disabled.has(t.name)) continue;
+      const spec = this.makeTool(server, client, t.name, { description: t.description, inputSchema: t.inputSchema });
+      this.registry.register(spec);
+      this.registeredNames.add(spec.name);
+    }
+    this.conns.set(server, { client, transport, config: cfg });
   }
 }
