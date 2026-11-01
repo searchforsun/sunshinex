@@ -47,10 +47,11 @@ interface WebHistory {
 }
 
 export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.Element {
-  // CDP 形态(2026-11-01 用户裁定「浏览器改成 cdp 形式」):插件 builtin 档在场即接管——工具栏
-  // (后退/前进/刷新/地址条)全部 CDP 化,画面=screencast 镜像;meta 不在场=纯 iframe 形态
+  // CDP 形态(2026-11-01 用户裁定「浏览器改成 cdp 形式」):仅**连上**(live/握手 connecting)才接管
+  // ——down(浏览器死/目标消失)回落纯 iframe 形态,用户自己侧栏浏览不被黑画布劫持(实测踩坑:
+  // 部署重启 teardown 收割持久浏览器后, stale meta+空 targets → down → 全黑接管)
   const cdp = useCdpBuiltinPage(conn, root);
-  const cdpActive = cdp.status !== 'idle';
+  const cdpActive = cdp.status === 'live' || cdp.status === 'connecting';
   const [nav, setNav] = useState<WebHistory>(() => {
     const raw = (params.url ?? '').trim();
     return raw === '' ? { urls: [], index: -1 } : { urls: [normalizeWebUrl(raw)], index: 0 };

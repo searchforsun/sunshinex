@@ -57,33 +57,51 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
         try {
           // 端点发现走 daemon 代理(渲染层直连 DevTools HTTP 面被 CORS 拦)
           const targets = await conn.cdpTargets(root);
-          const page = (targets as Array<{ type?: string; webSocketDebuggerUrl?: string; url?: string }>).find((tg) => tg.type === 'page' && tg.webSocketDebuggerUrl !== undefined);
+          const pages = (targets as Array<{ type?: string; webSocketDebuggerUrl?: string; url?: string }>).filter((tg) => tg.type === 'page' && tg.webSocketDebuggerUrl !== undefined);
+          // 优先真实 URL 页(about:blank 常排前,空页挡住正主)
+          const page = pages.find((tg) => tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank') ?? pages[0];
           if (page?.webSocketDebuggerUrl === undefined) throw new Error('no page target');
           if (!alive) return;
+          // 渲染层直连 DevTools 被其 Origin 保护拒绝(实测 readyState=3 秒断)——走 daemon
+          // /app/cdp-ws 透明中继(剥 Origin 改写 Host 代为握手,握手后字节级双通)
+          const targetPath = page.webSocketDebuggerUrl!.replace(/^wss?:\/\/[^/]+\//, '');
           await new Promise<void>((resolve) => {
             setStatus('connecting');
             let seq = 1;
-            const sock = new WebSocket(page.webSocketDebuggerUrl!);
-            const send = (method: string, params?: Record<string, unknown>): void => { sock.send(JSON.stringify({ id: seq++, method, params })); };
+            const sock = new WebSocket(conn.cdpWsUrl(root, targetPath));
+            // CONNECTING 期 send 直抛 InvalidStateError(WebTab setViewport effect 随 cdpActive
+            // 即刻触发,实测未捕获异常卸掉整棵 React 树=全应用黑屏)——排队等 open 统一冲刷
+            const queue: Array<string> = [];
+            const send = (method: string, params?: Record<string, unknown>): void => {
+              const frame = JSON.stringify({ id: seq++, method, params });
+              if (sock.readyState === WebSocket.OPEN) sock.send(frame);
+              else if (sock.readyState === WebSocket.CONNECTING) queue.push(frame);
+              else { throw new Error('cdp socket closed'); }
+            };
             sendRef.current = send;
             const cleanup = (): void => { sendRef.current = null; if (alive) setStatus('down'); resolve(); };
             sock.onopen = () => {
               setStatus('live');
+              for (const frame of queue.splice(0)) sock.send(frame);
               send('Page.enable');
               send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: 1600, maxHeight: 1200, everyNthFrame: 1 });
             };
             sock.onmessage = (ev) => {
               const msg = JSON.parse(String(ev.data)) as { method?: string; params?: Record<string, unknown> };
               if (msg.method === 'Page.screencastFrame' && canvasRef.current !== null) {
-                const p = msg.params as { data: string; metadata: { pageSize: { width: number; height: number } }; sessionId: number };
+                // metadata.pageSize 可缺(headless about:blank 空表面实测 undefined)——缺省回落
+                // 帧图自身尺寸,勿让 onload 内抛 TypeError(=连上后画布永远黑屏,实测踩坑)
+                const p = msg.params as { data: string; metadata?: { pageSize?: { width?: number; height?: number } }; sessionId: number };
                 const img = new Image();
                 img.onload = () => {
                   const cv = canvasRef.current;
                   if (cv === null) return;
-                  cv.width = p.metadata.pageSize.width;
-                  cv.height = p.metadata.pageSize.height;
+                  const w = p.metadata?.pageSize?.width ?? img.width;
+                  const h = p.metadata?.pageSize?.height ?? img.height;
+                  cv.width = w;
+                  cv.height = h;
                   cv.getContext('2d')?.drawImage(img, 0, 0);
-                  scaleRef.current = { sx: p.metadata.pageSize.width / Math.max(1, cv.clientWidth), sy: p.metadata.pageSize.height / Math.max(1, cv.clientHeight) };
+                  scaleRef.current = { sx: w / Math.max(1, cv.clientWidth), sy: h / Math.max(1, cv.clientHeight) };
                 };
                 img.src = `data:image/jpeg;base64,${p.data}`;
                 send('Page.screencastFrameAck', { sessionId: p.sessionId });
