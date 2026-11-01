@@ -1176,6 +1176,7 @@ export class SessionRuntime {
    */
   async reset(): Promise<void> {
     await this.abortAndSettle(); // plan 流程在途同断面收口（信号中止+挂卡拒绝回填,见 abortAndSettle）
+    this.current = undefined; // 有界 settle 超时后仍清锁，避免 status 假 running
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) {
@@ -1184,7 +1185,8 @@ export class SessionRuntime {
       this.persistSnapshotRow(); // 快照翻新：reset 换新运行时重读磁盘,末行落新拍（续写同档,末条为准）
     }
     await this.disposeRuntime(old);
-    this.board = emptyBoard();
+    // 软重置续写同 journal：板投影跟 harness/盘面（syncSessionStores 已收养），不强制空板
+    this.board = this.runtimeImpl.harness.taskboard.snapshot();
     this.delegations = [];
     this.todos = []; // 真 /new 等价：待办清单随换新清空（TUI 软重置同语义）
     this.todoBatches = []; // 真 /new 等价：todo 批次权威投影随换新清空（2026-10-31 同上口径）

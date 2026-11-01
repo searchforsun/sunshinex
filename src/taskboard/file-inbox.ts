@@ -8,13 +8,16 @@ import { AgentMessage, Inbox } from './inbox';
  *  卡死收件箱」教训的结构性回避,TeamStore.load 同款)。
  *  id 唯一性跨重启:构造后首次对某 agent send 时懒重放其文件,seq = 现有最大 id 序号、clock = 现有
  *  最大 ts——ts = max(clock+1, Date.now()) 严格单调(MemoryInbox 同款语义,换实现不换语义)。
- *  目录惰性建档:send 才 mkdir,poll 只读不建。 */
+ *  目录惰性建档:send 才 mkdir,poll 只读不建。未 adopt / 未传目录前零落盘（harness 未绑 journal 态）。 */
 export class FileInbox implements Inbox {
   private dirMade = false;
   /** 每 agent 一份(id seq + ts clock);未 send 过的 agent 无条目 = 未重放初始化 */
   private readonly stateByAgent = new Map<string, { seq: number; clock: number }>();
+  private inboxDir: string | undefined;
 
-  constructor(private inboxDir: string) {}
+  constructor(inboxDir?: string) {
+    this.inboxDir = inboxDir;
+  }
 
   /** 会话收养：切到新会话 inbox 目录并清空进程内序号（下次 send 自文件重放）。 */
   adopt(inboxDir: string): void {
@@ -23,13 +26,18 @@ export class FileInbox implements Inbox {
     this.stateByAgent.clear();
   }
 
+  private requireDir(): string {
+    if (this.inboxDir === undefined) throw new Error('inbox not bound to a session journal');
+    return this.inboxDir;
+  }
+
   private fileFor(agent: string): string {
-    return path.join(this.inboxDir, `${agent}.jsonl`);
+    return path.join(this.requireDir(), `${agent}.jsonl`);
   }
 
   private ensureDir(): void {
     if (this.dirMade) return;
-    fs.mkdirSync(this.inboxDir, { recursive: true });
+    fs.mkdirSync(this.requireDir(), { recursive: true });
     this.dirMade = true;
   }
 
@@ -81,6 +89,7 @@ export class FileInbox implements Inbox {
   }
 
   poll(agent: string, since: number): AgentMessage[] {
+    if (this.inboxDir === undefined) return [];
     return this.readMessages(this.fileFor(agent)).filter((m) => m.to === agent && m.ts > since);
   }
 }

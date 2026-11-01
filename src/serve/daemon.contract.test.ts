@@ -8,6 +8,8 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
+import { MemoryAgentTeamStore } from '../taskboard/team-registry';
+import type { AgentTeamRegistry } from '../taskboard/team-registry';
 
 /** G1 契约收口测试（T1 会话中心迁移）：全链（submit → WS 事件序 → done → 二轮续推——① 起两轮跨会话）
  *  + API 面收口（404 hint/401/409/400）。helper 形态照 daemon.ws.test.ts / daemon.test.ts 惯例，自包含 */
@@ -38,10 +40,11 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-function seedTeam(dataDir: string): void {
-  const dir = path.join(dataDir, 'teams');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(dir + path.sep + 'registry.json', JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]));
+/** 经 harness 注册表注入固定 teamId（会话隔离后不再写工作区级 teams/registry.json） */
+function seedTeam(agentTeams: AgentTeamRegistry): void {
+  const store = new MemoryAgentTeamStore();
+  store.save([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]);
+  agentTeams.adopt(store);
 }
 
 /** 挂起适配器（同 daemon.test.ts）：模型调用永挂——「运行中」锁的可靠模拟（ScriptedAdapter done 卡瞬间收束） */
@@ -77,7 +80,6 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>, 
   const tmp = tmpdir('sunshinex-serve-contract-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
-  seedTeam(process.env.SUNSHINEX_DATA_DIR);
   try {
     const daemon = new GuiDaemon({ model, staticRoot: staticRoot ?? path.join(tmp, 'dist-gui-absent') });
     const s = await daemon.start({ port: 0, token: 'test-token' });
@@ -102,7 +104,11 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>, 
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      // win32：收口后偶发目录锁（watcher/句柄迟滞），不挡断言
+    }
   }
 }
 
@@ -227,6 +233,7 @@ test('③ GET /session/:id/snapshot：含工具卡 run 后 messages 三类在场
     '{"done":true,"reply":"task created"}',
   ]);
   await withDaemon(model, async (ctx) => {
+    seedTeam(ctx.daemon.get(ctx.sid)!.runtime.harness.agentTeams);
     // 鉴权面同 submit/interrupt：无 token 401
     const noTok = await fetch(`${ctx.http}/session/${ctx.sid}/snapshot`);
     assert.equal(noTok.status, 401);

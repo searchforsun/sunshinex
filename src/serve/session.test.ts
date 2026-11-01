@@ -9,6 +9,8 @@ import type { SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
+import { MemoryAgentTeamStore } from '../taskboard/team-registry';
+import type { AgentTeamRegistry } from '../taskboard/team-registry';
 
 /** T1 SessionRuntime 平移面测试：从 daemon 单会话态抽出的会话运行时——帧形(sessionId+seq)/影子投影/
  *  转录/submit 202 语义/interrupt/status/snapshotResponse 形态/reset 软重置/teardown 有界收口。
@@ -29,10 +31,11 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
-function seedTeam(dataDir: string): void {
-  const dir = path.join(dataDir, 'teams');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'registry.json'), JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]));
+/** 经 harness 注册表注入固定 teamId（会话隔离后不再写工作区级 teams/registry.json） */
+function seedTeam(agentTeams: AgentTeamRegistry): void {
+  const store = new MemoryAgentTeamStore();
+  store.save([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]);
+  agentTeams.adopt(store);
 }
 
 /** 挂起适配器（同 daemon.test.ts）：模型调用永挂直至 signal 中止——「运行中」锁的中正模拟 */
@@ -72,7 +75,6 @@ async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>,
   const tmp = tmpdir('sunshinex-session-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
-  seedTeam(process.env.SUNSHINEX_DATA_DIR);
   let seq = 0;
   let pidSeq = 0;
   const frames: DaemonFrame[] = [];
@@ -90,12 +92,17 @@ async function withSession(model: ModelAdapter, fn: (ctx: Ctx) => Promise<void>,
       mintPid: () => `pt${(pidSeq += 1)}`, // 测试面铸造(产线=daemon `p<n>` 单调,语义同)
       ...(extra ?? {}),
     });
+    seedTeam(session.runtime.harness.agentTeams);
     await fn({ session, frames, tmp });
   } finally {
     await session?.teardown();
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      // win32：收口后偶发目录锁（watcher/句柄迟滞），不挡断言
+    }
   }
 }
 
@@ -170,6 +177,7 @@ test('③ run 锁平移面：运行中二次 submit 拒（409 面）；interrupt
     const first = ctx.session.submit('长任务');
     assert.deepEqual(first, { ok: true });
     await waitFor(() => ctx.session.status() === 'running', 3000);
+    await waitFor(() => ctx.session.snapshotResponse().openRun >= 0, 3000);
     assert.ok(ctx.session.snapshotResponse().openRun >= 0, '运行中快照携带内核 openRun 游标(模型轮已开 run 条)');
     const second = ctx.session.submit('再来');
     assert.deepEqual(second, { ok: false, status: 409, error: 'run in progress' }, '运行中 submit 拒且不排队');
@@ -239,7 +247,11 @@ test('⑤ teardown 平移面：signal 无视的悬挂 run 有界收口（≤3s�
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      // win32：收口后偶发目录锁
+    }
   }
 });
 

@@ -7,6 +7,8 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest } from '../types';
+import { MemoryAgentTeamStore } from '../taskboard/team-registry';
+import type { AgentTeamRegistry } from '../taskboard/team-registry';
 
 const TEAM_ID = 'team-alpha-test';
 
@@ -23,6 +25,13 @@ async function waitFor(pred: () => boolean, timeoutMs: number): Promise<void> {
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+/** 经 harness 注册表注入固定 teamId（会话隔离后不再写工作区级 teams/registry.json） */
+function seedTeam(agentTeams: AgentTeamRegistry): void {
+  const store = new MemoryAgentTeamStore();
+  store.save([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]);
+  agentTeams.adopt(store);
 }
 
 interface Ctx {
@@ -43,11 +52,6 @@ async function withBoardDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<vo
   const tmp = tmpdir('sunshinex-serve-board-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
-  fs.mkdirSync(path.join(process.env.SUNSHINEX_DATA_DIR, 'teams'), { recursive: true });
-  fs.writeFileSync(
-    path.join(process.env.SUNSHINEX_DATA_DIR, 'teams', 'registry.json'),
-    JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]),
-  );
   try {
     const daemon = new GuiDaemon({ model, staticRoot: path.join(tmp, 'dist-gui-absent') });
     const s = await daemon.start({ port: 0, token: 'test-token' });
@@ -56,6 +60,10 @@ async function withBoardDaemon(model: ModelAdapter, fn: (ctx: Ctx) => Promise<vo
     const nr = await fetch(`${http}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: tmp }) });
     assert.equal(nr.status, 200, 'session/new 应 200');
     const sid = ((await nr.json()) as { sessionId: string }).sessionId;
+    const session = daemon.get(sid)!;
+    seedTeam(session.runtime.harness.agentTeams);
+    // 先铸造 journal 并收养会话团队根：避免首笔板事件泵触发 adopt→recoverOnLoad 把打开态任务自愈为 cancelled
+    session.persistSnapshotRow();
     const post = async (goal: string, target: string): Promise<void> => {
       const r = await fetch(`${http}/session/${target}/submit`, { method: 'POST', headers: H, body: JSON.stringify({ goal }) });
       assert.equal(r.status, 202, 'submit 应 202');
@@ -149,7 +157,14 @@ test('POST /session/:id/board/stop：pending→cancelled；running→cancelled �
     const seeded = await snapOf(ctx, ctx.sid);
     assert.ok(seeded.teams?.some((t) => t.teamId === TEAM_ID && t.name === 'alpha' && t.createdAt === 1), '快照 teams 含已注册队');
 
-    const board = ctx.daemon.get(ctx.sid)!.runtime.harness.taskboard;
+    const harness = ctx.daemon.get(ctx.sid)!.runtime.harness;
+    // 板任务仅经 teammate 认领进 running；HangAdapter 使认领后挂起，便于 stop 测 running 态
+    const ct = harness.tools.get('create_teammate');
+    assert.ok(ct, 'create_teammate 在场');
+    const spawned = await ct.executor({ teamId: TEAM_ID, name: 'w1', prompt: 'hold board tasks', agent_id: null });
+    assert.equal(spawned.exitCode, 0, `create_teammate: ${spawned.stdout}`);
+
+    const board = harness.taskboard;
     const createdA = board.create({ teamId: TEAM_ID, title: 'Run', spec: 'hold' });
     assert.ok(createdA.ok);
     const idA = createdA.value.taskId;

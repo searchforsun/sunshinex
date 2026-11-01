@@ -19,12 +19,6 @@ export class AgentTeamRegistryStore implements AgentTeamStoreBackend {
 
   constructor(private teamsRoot: string) {}
 
-  /** 会话收养：切到新会话根并重读清单（调用方随后以 load 结果覆写内存表） */
-  adopt(teamsRoot: string): void {
-    this.teamsRoot = teamsRoot;
-    this.dirMade = false;
-  }
-
   private registryPath(): string {
     return path.join(this.teamsRoot, 'registry.json');
   }
@@ -107,12 +101,6 @@ export class TeamStore implements TeamStoreBackend {
   private dirMade = false;
 
   constructor(private teamDir: string) {}
-
-  /** 会话收养：切目录后由 TaskBoard.init 重放新根。 */
-  adopt(teamDir: string): void {
-    this.teamDir = teamDir;
-    this.dirMade = false;
-  }
 
   private eventsPath(): string {
     return path.join(this.teamDir, 'events.jsonl');

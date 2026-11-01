@@ -6,7 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Harness } from './index';
 import { sessionTeamsRoot, resolveDataDir } from '../config/data-dir';
-import { AgentTeamRegistryStore } from '../taskboard/store';
+import { AgentTeamRegistryStore, TeamStore } from '../taskboard/store';
 import { AgentTeamRegistry } from '../taskboard/team-registry';
 
 test('adoptSessionTeams:两 journal 各有独立注册表，互不串读', () => {
@@ -93,6 +93,39 @@ test('已绑会话切换不回流：旧队留在原 journal，新 journal 空板
     assert.equal(oldReload.list()[0]!.name, 'Keep');
     assert.equal(newReload.list().length, 0);
     assert.equal(fs.existsSync(path.join(sessionTeamsRoot(dataDir, 'j-new'), 'registry.json')), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('journal A 建队+任务后 adopt B：列表与板皆空，A 盘仍有队与任务', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-session-teams-ab-'));
+  try {
+    const h = new Harness({ root: tmp, mode: 'full-access', learnSkills: false });
+    h.adoptSessionTeams('j-a');
+    const created = h.agentTeams.create('Alpha');
+    assert.ok(created.ok);
+    const teamId = created.value.teamId;
+    const task = h.taskboard.create({ teamId, title: 'Ship', spec: 'do it' });
+    assert.ok(task.ok);
+    const taskId = task.value.taskId;
+    assert.equal(h.agentTeams.list().length, 1);
+    assert.equal(Object.keys(h.taskboard.snapshot().tasks).length, 1);
+
+    h.adoptSessionTeams('j-b');
+    assert.equal(h.agentTeams.list().length, 0, 'B 空注册表');
+    assert.equal(Object.keys(h.taskboard.snapshot().tasks).length, 0, 'B 空板');
+
+    const dataDir = resolveDataDir(tmp);
+    const aRoot = sessionTeamsRoot(dataDir, 'j-a');
+    const aTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(aRoot));
+    assert.equal(aTeams.list().length, 1);
+    assert.equal(aTeams.list()[0]!.teamId, teamId);
+    const aBoard = new TeamStore(path.join(aRoot, 'main'));
+    const snap = aBoard.load();
+    assert.equal(Object.keys(snap.tasks).length, 1);
+    assert.equal(snap.tasks[taskId]?.title, 'Ship');
+    assert.equal(fs.existsSync(path.join(sessionTeamsRoot(dataDir, 'j-b'), 'registry.json')), false);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

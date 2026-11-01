@@ -319,8 +319,9 @@ export class Harness {
     // 认领与 send_message 仅同 teamId——不跨队共享。
     this.dataDir = resolveDataDir(base);
     this.memoryBoardStore = new MemoryTeamStore();
-    this.inbox = new FileInbox(path.join(this.dataDir, 'teams', '.unbound', 'main', 'inbox'));
-    this.inboxCursors = new InboxCursorStore(path.join(this.dataDir, 'teams', '.unbound', 'inbox-cursors.json'));
+    // 未绑 journal：零盘面占位；adoptSessionTeams 才切到会话根（不写 teams/.unbound）
+    this.inbox = new FileInbox();
+    this.inboxCursors = new InboxCursorStore();
     this.teamsBoundJournalId = undefined;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
@@ -360,6 +361,8 @@ export class Harness {
             root: base,
             store,
             board: this.taskboard,
+            // 板任务台账：execute 内 submit(dispatchTag)——task_wait/board/stop 可等可停；队友实体本身不进账本
+            tasks: this.tasks,
             // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_message
             // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
             inbox: this.inbox,
