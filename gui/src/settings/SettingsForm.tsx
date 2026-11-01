@@ -227,9 +227,9 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
         title: { en: 'Web search', zh: '网页搜索' },
         fields: [
           sel('websearchProvider', [
-            { v: 'bing-html', l: 'bing (cn.bing.com, default)' },
+            { v: 'bing-html', l: 'bing-html' },
             { v: 'duckduckgo', l: 'duckduckgo' },
-            { v: 'bing', l: 'bing api (key)' },
+            { v: 'bing', l: 'bing' },
           ]),
           text('websearchEndpoint'),
         ],
