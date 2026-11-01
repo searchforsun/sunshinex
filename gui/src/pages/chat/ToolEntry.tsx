@@ -1003,25 +1003,27 @@ export const ToolEntryView = memo(function ToolEntryView({
     const hits = parseWebSearchOutput(fullResult);
     body =
       hits.length > 0 ? (
-        <div className="tool-websearch">
-          {hits.map((h) => (
-            <div key={h.n} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 13 }}>
-                {h.n}.{' '}
-                <a
-                  href={h.url}
-                  style={{ color: 'var(--accent, #6ea8fe)' }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openExternalUrl(h.url);
-                  }}
-                >
-                  {h.title}
-                </a>
+        <div className="tool-exec">
+          <div className="tool-io-pre">
+            {hits.map((h) => (
+              <div key={h.n} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 13 }}>
+                  {h.n}.{' '}
+                  <a
+                    href={h.url}
+                    style={{ color: 'var(--accent, #6ea8fe)' }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      openExternalUrl(h.url);
+                    }}
+                  >
+                    {h.title}
+                  </a>
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', paddingLeft: 14 }}>{h.snippet}</div>
               </div>
-              <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', paddingLeft: 14 }}>{h.snippet}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       ) : (
         <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>
