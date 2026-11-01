@@ -153,6 +153,28 @@ export class McpHost {
     return this.failedNames.size > 0;
   }
 
+  /** 每轮 run 入口连通性验证(2026-11-01 用户裁定「每轮发送会话都尝试验证一下连通性」):
+   *  stdio 连接按子进程存活探测(process.kill(pid,0),微秒级零协议往返,1s 预算内富余)——
+   *  server 进程中途死亡(成功挂载后被杀/崩溃)此前不在重建判据=工具悄悄失效到会话重启;
+   *  死亡即入 failedNames(宿主既有失败重建面接管,下轮... 实际=本判定同轮内即触发重建)。
+   *  pid 不可得(http/sse 传输或 SDK 已清 _process)跳过不误判;探活只记账不抛错 */
+  livenessCheck(): void {
+    for (const [name, conn] of this.conns) {
+      if (conn.config.transport === 'http' || conn.config.transport === 'sse') continue;
+      const pid = pidOf(conn.transport);
+      let dead = false;
+      if (pid === null) {
+        dead = true; // SDK 已清进程对象=连接已终结
+      } else {
+        try { process.kill(pid, 0); } catch { dead = true; }
+      }
+      if (dead && !this.failedNames.has(name)) {
+        this.failedNames.add(name);
+        this.writeAssemblyLog(name, 'liveness check: server process no longer alive — rebuild scheduled');
+      }
+    }
+  }
+
   /** stdio server stderr 落盘(2026-11-01 用户报障「关 headless 插件即消失」定位面):SDK 缺省
    *  丢弃子进程 stderr——有头启动失败/崩溃原因不可见。pipe 后逐行 append 到 <logDir>/<name>.log
    *  (尽力而为,写失败不影响连接);日志即诊断源 */

@@ -225,6 +225,7 @@ export class Harness {
       // 失败重建(2026-11-01「失败连接被缓存永不重试」根修):连接失败的 server 留在 host 的死连接里,
       // sig 未变直通即永不重试(模型侧表现=工具永不挂载,重启会话才恢复)——存在失败 server 时
       // 走下方重建(close 撤旧牌→重连重注册),成功 server 同步重注册(幂等,漂移零行)
+      mcpHost?.livenessCheck(); // 每轮连通性验证(2026-11-01 用户裁定:进程存活探测,微秒级)——server 中途死亡入失败名单触发同轮重建
       if (sig === mcpSig && (mcpHost !== undefined || fresh.length === 0) && mcpHost?.hasFailedServers() !== true) return []; // 未变更：已注册直通/空配置零开销
       const before = mcpEverRegistered ? mcpToolSnapshot() : null;
       if (mcpHost) {
