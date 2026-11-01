@@ -27,3 +27,8 @@
   color: var(--fg-secondary);
   font: var(--f-code, 11.5px)/1.6 var(--font-mono);
 }
+
+/* 后台任务暂停/恢复钮(2026-11-01 用户裁定「外椭圆内方图标,hover 显示红色线」):圆描边透明常态,
+   hover 红描边红字;恢复钮(Play)同待遇 */
+.tb-card .bg-act { border: 1px solid transparent; border-radius: 50%; }
+.tb-card .bg-act:hover { color: var(--err, #e5484d); border-color: var(--err, #e5484d); }
