@@ -154,25 +154,41 @@ export class McpHost {
   }
 
   /** 每轮 run 入口连通性验证(2026-11-01 用户裁定「每轮发送会话都尝试验证一下连通性」):
-   *  stdio 连接按子进程存活探测(process.kill(pid,0),微秒级零协议往返,1s 预算内富余)——
-   *  server 进程中途死亡(成功挂载后被杀/崩溃)此前不在重建判据=工具悄悄失效到会话重启;
-   *  死亡即入 failedNames(宿主既有失败重建面接管,下轮... 实际=本判定同轮内即触发重建)。
-   *  pid 不可得(http/sse 传输或 SDK 已清 _process)跳过不误判;探活只记账不抛错 */
-  livenessCheck(): void {
+   *  stdio:子进程存活探测(process.kill(pid,0),微秒级零协议往返);http/sse:MCP 协议级 ping
+   *  (并行发起、单服务器 1s 超时封顶,总耗时=最慢者;本地服务器毫秒级)——server 中途死亡
+   *  此前不在重建判据=工具悄悄失效到会话重启;死亡即入 failedNames(宿主既有失败重建面接管,
+   *  同轮内即触发重建)。探活只记账不抛错 */
+  async livenessCheck(): Promise<void> {
+    const checks: Array<Promise<void>> = [];
     for (const [name, conn] of this.conns) {
-      if (conn.config.transport === 'http' || conn.config.transport === 'sse') continue;
-      const pid = pidOf(conn.transport);
-      let dead = false;
-      if (pid === null) {
-        dead = true; // SDK 已清进程对象=连接已终结
-      } else {
-        try { process.kill(pid, 0); } catch { dead = true; }
+      if (conn.config.transport === 'http' || conn.config.transport === 'sse') {
+        checks.push((async () => {
+          try {
+            await conn.client.ping({ signal: AbortSignal.timeout(1000) });
+          } catch {
+            if (!this.failedNames.has(name)) {
+              this.failedNames.add(name);
+              this.writeAssemblyLog(name, 'liveness check: http/sse ping failed — rebuild scheduled');
+            }
+          }
+        })());
+        continue;
       }
-      if (dead && !this.failedNames.has(name)) {
-        this.failedNames.add(name);
-        this.writeAssemblyLog(name, 'liveness check: server process no longer alive — rebuild scheduled');
-      }
+      checks.push((async () => {
+        const pid = pidOf(conn.transport);
+        let dead = false;
+        if (pid === null) {
+          dead = true; // SDK 已清进程对象=连接已终结
+        } else {
+          try { process.kill(pid, 0); } catch { dead = true; }
+        }
+        if (dead && !this.failedNames.has(name)) {
+          this.failedNames.add(name);
+          this.writeAssemblyLog(name, 'liveness check: server process no longer alive — rebuild scheduled');
+        }
+      })());
     }
+    await Promise.all(checks);
   }
 
   /** stdio server stderr 落盘(2026-11-01 用户报障「关 headless 插件即消失」定位面):SDK 缺省

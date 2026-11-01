@@ -183,18 +183,24 @@ test('McpHost.close 撤销本次注册的全部工具——收口后注册表零
   assert.ok(registry.get('builtin_read'), '二次 close 不误撤销他方工具');
 });
 
-test('livenessCheck:server 进程死亡入失败名单触发重建判据(2026-11-01 用户裁定「每轮验证连通性」);http/sse 跳过', () => {
+test('livenessCheck 连通性验证(2026-11-01 用户裁定「每轮尝试验证」):stdio 死亡 pid/http ping 失败入名单,健康 ping 幂等', async () => {
   const registry = new ToolRegistry();
   const host = new McpHost([{ name: 'dead', command: 'node', args: ['-e', 'process.exit(0)'] }], registry);
   // 直构死连接:pid=不存在的进程(SDK 场景=server 已崩/被杀,transport 进程对象已亡或 pid 失效)
   const fakeConn = { client: {}, transport: { pid: 999999999 }, config: { name: 'dead', command: 'node', args: [] } };
   (host as unknown as { conns: Map<string, unknown> }).conns.set('dead', fakeConn);
-  host.livenessCheck();
+  await host.livenessCheck();
   assert.equal(host.hasFailedServers(), true, '死亡 server 入失败名单(宿主重建判据)');
-  // http/sse 传输跳过探活(无 pid 可靠语义,不误判)
+  // http/sse:协议级 ping——ping 失败入名单
   const host2 = new McpHost([{ name: 'web', transport: 'http', url: 'http://127.0.0.1:1' }], registry);
-  const fake2 = { client: {}, transport: {}, config: { name: 'web', transport: 'http', url: 'http://127.0.0.1:1' } };
+  const fake2 = { client: { ping: async () => { throw new Error('down'); } }, transport: {}, config: { name: 'web', transport: 'http', url: 'http://127.0.0.1:1' } };
   (host2 as unknown as { conns: Map<string, unknown> }).conns.set('web', fake2);
-  host2.livenessCheck();
-  assert.equal(host2.hasFailedServers(), false, 'http/sse 跳过(不误判)');
+  await host2.livenessCheck();
+  assert.equal(host2.hasFailedServers(), true, 'http/sse ping 失败入名单');
+  // 健康回声:幂等不误判
+  const host3 = new McpHost([{ name: 'ok', transport: 'http', url: 'http://127.0.0.1:2' }], registry);
+  const fake3 = { client: { ping: async () => undefined }, transport: {}, config: { name: 'ok', transport: 'http', url: 'http://127.0.0.1:2' } };
+  (host3 as unknown as { conns: Map<string, unknown> }).conns.set('ok', fake3);
+  await host3.livenessCheck();
+  assert.equal(host3.hasFailedServers(), false, '健康 ping 不误判');
 });
