@@ -87,7 +87,9 @@ function fixedChrome() {
 }
 
 function writeMeta(ws, pid, extra) {
-  if (metaPath === undefined) return;
+  // meta 是 builtin 档专用约定(侧栏镜像端点发现/退出收割都认它)——default 档拉起的是用户
+  // 自己的可见浏览器,写了会诱导 GUI 镜像/收割挂错实例
+  if (metaPath === undefined || mode !== 'builtin') return;
   try {
     fs.mkdirSync(path.dirname(metaPath), { recursive: true });
     fs.writeFileSync(metaPath, JSON.stringify({ ws, pid, mode, startedAt: Date.now(), ...extra }));
@@ -99,6 +101,7 @@ function writeMeta(ws, pid, extra) {
  *  meta.current(侧栏据此选页,不再误映旧标签)。不订阅浏览器级 targetCreated/InfoChanged 事件:
  *  Playwright 在场后其连接会令监视连接的 ongoing 事件静默(实测复现,只有 discover 初批可达) */
 function watchCurrentPage(ws) {
+  if (mode !== 'builtin') return; // meta.current 是 builtin 档约定(default 档不参与侧栏镜像)
   const port = /:(\d+)\//.exec(ws)?.[1];
   if (port === undefined) return;
   const lastUrl = new Map(); // targetId → 上轮 URL(判变)
@@ -169,7 +172,10 @@ async function main() {
   const existingMeta = metaPath !== undefined && fs.existsSync(metaPath)
     ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
     : undefined;
-  if (existingMeta !== undefined && typeof existingMeta.ws === 'string' && (await probeAlive(existingMeta))) {
+  // 常驻复用:meta 实例活着即直接注端点,不重启——**仅 builtin 档**(用户裁定 2026-11-01「选了
+  // 默认浏览器还走内置」根修:default 档语义=拉起用户自己的可见浏览器,复用块原先不分校形,
+  // 内置 Chrome 活着就把它挂上=default 档永远走内置;default 档不读不写 builtin meta)
+  if (mode === 'builtin' && existingMeta !== undefined && typeof existingMeta.ws === 'string' && (await probeAlive(existingMeta))) {
     writeMeta(existingMeta.ws, existingMeta.pid ?? 0);
     watchCurrentPage(existingMeta.ws);
     const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });

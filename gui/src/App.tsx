@@ -353,7 +353,9 @@ function AppShell(): JSX.Element {
 
   /** 内置浏览器自动开签(2026-11-01 用户裁定「会自动打开浏览器页签+输入对应网址」):插件 builtin
    *  档在跑(meta 在场)即自动开「浏览器」页签——WebTab CDP 形态自动接管镜像与 URL 回显;
-   *  每会话一次(页签在场/插件关停不重开不撤销) */
+   *  守卫=每轮重置(2026-11-01「不自动打开,切会话才显示」根修:原守卫每会话一次,同会话上一轮
+   *  开过/被关即锁死整会话,新一轮 run 不再开;改由 Chat onRunStart 提交受理即清守卫,每轮 run
+   *  都允许开签) */
   const cdpAutoRef = useRef<string>('');
   useEffect(() => {
     if (connInstance === null || page !== 'chat' || openRoot === '') return;
@@ -805,6 +807,7 @@ function AppShell(): JSX.Element {
                 onOpenDiff={openDiffTab}
                 onOpenAgent={openAgentTab}
                 onOpenWeb={openWebTab}
+                onRunStart={() => { cdpAutoRef.current = ''; }}
                 onOpenTask={(ref) => {
                   openBoardTab();
                   setTaskFocus({ ref, nonce: Date.now() });
