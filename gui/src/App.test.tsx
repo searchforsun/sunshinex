@@ -1387,21 +1387,20 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     fireEvent.keyDown(screen.getByLabelText('web url input'), { key: 'Enter' });
   };
 
-  it('+菜单开 web → url 输入 example.com 回车 → iframe 在场 title=https://example.com(无 scheme 补全)+ sandbox 四值', async () => {
+  it('+菜单开 web → url 输入 example.com 回车 → webview 在场 src=https://example.com(无 scheme 补全)', async () => {
     const { unmount } = await enterChat();
     openWeb();
     expect(document.querySelector('.sx-tab[data-title="Browser"]')?.classList.contains('active')).toBe(true);
     await waitFor(() => expect(screen.getByLabelText('web tab')).toBeDefined()); // lazy 标签体 chunk 解析
-    // 裸开无 active:VSCode Simple Browser 同形空态(地球+引导)、无 iframe
+    // 裸开无 active:VSCode Simple Browser 同形空态(地球+引导)、无 webview
+    // (M1 融合:会话绑定档=webview 真实嵌入页面,截屏画布/iframe 双退役)
     expect(screen.getByText(/Paste or type a URL|粘贴或输入 URL/)).toBeDefined();
-    expect(document.querySelector('.sx-web-frame')).toBeNull();
-    // 回车开档:无 :// 前缀 → 补 https://(title=规范化 url);沙盒四值原样
+    expect(document.querySelector('webview')).toBeNull();
+    // 回车开档:无 :// 前缀 → 补 https://(src=规范化 url)
     submitUrl('  example.com ');
-    const frame = document.querySelector('.sx-web-frame');
-    expect(frame).not.toBeNull();
-    expect(frame?.getAttribute('title')).toBe('https://example.com'); // 首尾空白亦去
-    expect(frame?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-same-origin allow-popups');
-    expect(frame?.getAttribute('src')).toBe('https://example.com');
+    const wv = document.querySelector('webview');
+    expect(wv).not.toBeNull();
+    expect(wv?.getAttribute('src')).toBe('https://example.com');
     unmount();
   });
 
@@ -1409,7 +1408,7 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     const { unmount } = await enterChat();
     openWeb();
     submitUrl('example.com');
-    expect(document.querySelector('.sx-web-frame')).not.toBeNull();
+    expect(document.querySelector('webview')).not.toBeNull();
     // 导航即回写 params:标签条标题 url→页名(host),判重键随 url 演进(uid 不再恒 web:)
     expect(document.querySelector('.sx-tab[data-title="example.com"]')).not.toBeNull();
     // 切去任务页(web 失活)→ +菜单再开 web:裸档 key='' ≠ 导航后键 → 新立裸档(浏览器「+ 新标签页」语义)
@@ -1441,23 +1440,23 @@ describe('G8d Web 标签:url 输入开档/scheme 补全/判重/外开/刷新重�
     unmount();
   });
 
-  it('刷新钮:nonce bump → iframe key 变更强制重挂(DOM 节替换,title 不变)', async () => {
+  it('刷新钮(builtin webview 档):reload 语义,页签不重挂 url 不变', async () => {
     await enterChat();
     openWeb();
     submitUrl('example.com');
-    const before = document.querySelector('.sx-web-frame');
+    const before = document.querySelector('webview');
     expect(before).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: bi('Reload', '刷新') }));
-    const after = document.querySelector('.sx-web-frame');
-    expect(after).not.toBe(before); // key=`${url}#${nonce}` 变更 → 重挂(新 DOM 节)
-    expect(after?.getAttribute('title')).toBe('https://example.com'); // url 未变仅 bump
+    const after = document.querySelector('webview');
+    expect(after).toBe(before); // webview 原生 reload:节点不重挂,src 不变
+    expect(after?.getAttribute('src')).toBe('https://example.com');
   });
 
-  it('带 scheme 输入原样:http://localhost:3000 → title 原样(含 :// 不补 https)', async () => {
+  it('带 scheme 输入原样:http://localhost:3000 → src 原样(含 :// 不补 https)', async () => {
     const { unmount } = await enterChat();
     openWeb();
     submitUrl('http://localhost:3000');
-    expect(document.querySelector('.sx-web-frame')?.getAttribute('title')).toBe('http://localhost:3000');
+    expect(document.querySelector('webview')?.getAttribute('src')).toBe('http://localhost:3000');
     unmount();
   });
 });

@@ -35,7 +35,19 @@ export interface WebTabProps {
 // WebTab 体 lazy 化)——此处再导出保既有消费面零迁移
 export { normalizeWebUrl, webPageName } from './tab-meta';
 import { normalizeWebUrl, webPageName } from './tab-meta';
-import { CdpPageView, useCdpBuiltinPage } from './CdpBrowserTab';
+
+/** Electron webview 标签方法面(M1 内置浏览器融合:真实嵌入页面——点击/输入/滚轮原生,截屏
+ *  映射画布退役;壳侧 webviewTag:true + will-attach-webview 安全纪律) */
+interface WvElement extends HTMLElement {
+  loadURL(url: string): void;
+  goBack(): void;
+  goForward(): void;
+  reload(): void;
+  canGoBack(): boolean;
+  canGoForward(): boolean;
+  getURL(): string;
+  setZoomFactor(factor: number): void;
+}
 
 /** 自由尺寸缩放档(适应窗口外固定倍率;浏览器设备模拟同款档位) */
 const DEVICE_SCALES = [50, 75, 100, 125, 150, 200] as const;
@@ -47,11 +59,21 @@ interface WebHistory {
 }
 
 export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.Element {
-  // CDP 形态(2026-11-01 用户裁定「浏览器改成 cdp 形式」):仅**连上**(live/握手 connecting)才接管
-  // ——down(浏览器死/目标消失)回落纯 iframe 形态,用户自己侧栏浏览不被黑画布劫持(实测踩坑:
-  // 部署重启 teardown 收割持久浏览器后, stale meta+空 targets → down → 全黑接管)
-  const cdp = useCdpBuiltinPage(conn, root);
-  const cdpActive = cdp.status === 'live' || cdp.status === 'connecting';
+  // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
+  // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
+  // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
+  // 同一 webview,模型打开的页签=用户眼前的页签
+  const builtin = root !== undefined;
+  const wvRef = useRef<WvElement | null>(null);
+  /** 首个导航目标(null=未开页,空态引导面);后续导航经 loadURL 驱动,不改 src(防重挂) */
+  const [wvTarget, setWvTarget] = useState<string | null>(
+    builtin ? (params.url !== undefined && params.url !== '' ? normalizeWebUrl(params.url) : null) : null,
+  );
+  /** webview 实时态:当前 URL/后退前进可用性/缩放(did-navigate 族事件随动) */
+  const [wvUrl, setWvUrl] = useState('');
+  const [wvCanBack, setWvCanBack] = useState(false);
+  const [wvCanFwd, setWvCanFwd] = useState(false);
+  const [wvZoom, setWvZoom] = useState(1);
   const [nav, setNav] = useState<WebHistory>(() => {
     const raw = (params.url ?? '').trim();
     return raw === '' ? { urls: [], index: -1 } : { urls: [normalizeWebUrl(raw)], index: 0 };
@@ -63,13 +85,6 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   /** G14.2xx 自由尺寸(设备模拟):开关/宽高 px(缺省=面板现尺寸)/适应窗口|固定倍率。
    *  2026-11-01 用户裁定 CDP 镜像档**缺省开**(镜像即固定视口语义,尺寸面直接可见可填) */
   const [deviceMode, setDeviceMode] = useState(true);
-  // CDP 镜像跟页名(2026-11-01 用户裁定「浏览器名字带访问名」):镜像当前页 URL 变化即回写标签
-  // 页名——只写 pageTitle 不写 url(判重键随 url 演进会致标签重键漂移)
-  useEffect(() => {
-    if (!cdpActive || cdp.url === '') return;
-    onMeta(uid, { pageTitle: webPageName(cdp.url) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cdpActive, cdp.url]);
   const [devW, setDevW] = useState<number | null>(null);
   const [devH, setDevH] = useState<number | null>(null);
   const [devFit, setDevFit] = useState(true);
@@ -112,13 +127,43 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   const fitScale =
     deviceW > 0 && deviceH > 0 && wrapSize.w > 0 ? Math.min(wrapSize.w / deviceW, wrapSize.h / deviceH) : 1;
   const deviceScale = devFit ? fitScale : devZoom;
-  // CDP 形态:自由尺寸 W×H 下发内置浏览器本体视口(Emulation.setDeviceMetricsOverride)——
-  // 镜像画布随页面实际尺寸自适应;关闭设备模拟即清覆盖回落默认视口
+
+  // webview 事件随动(M1):did-navigate 族 → URL/后退前进态/地址栏回显/标签页名回写;
+  // page-title-updated → 真页名(原生事件,iframe 时代的服务端代取降为兜底)
   useEffect(() => {
-    if (!cdpActive) return;
-    cdp.setViewport(deviceMode ? deviceW : null, deviceMode ? deviceH : undefined);
+    if (!builtin || wvTarget === null) return;
+    const wv = wvRef.current as (WvElement & {
+      addEventListener(type: string, fn: (ev: Event & { title?: string }) => void): void;
+      removeEventListener(type: string, fn: (ev: Event & { title?: string }) => void): void;
+    }) | null;
+    if (wv === null) return;
+    const onNav = (): void => {
+      const u = wv.getURL();
+      setWvUrl(u);
+      setWvCanBack(wv.canGoBack());
+      setWvCanFwd(wv.canGoForward());
+      if (u !== '' && u !== 'about:blank') {
+        setInput(u);
+        onMeta(uid, { url: u, pageTitle: webPageName(u) });
+        syncPageMeta(u);
+      }
+    };
+    const onTitle = (ev: Event & { title?: string }): void => {
+      const title = ev.title;
+      if (typeof title === 'string' && title !== '') onMeta(uid, { pageTitle: title });
+    };
+    wv.addEventListener('did-navigate', onNav);
+    wv.addEventListener('did-navigate-in-page', onNav);
+    wv.addEventListener('dom-ready', onNav);
+    wv.addEventListener('page-title-updated', onTitle);
+    return () => {
+      wv.removeEventListener('did-navigate', onNav);
+      wv.removeEventListener('did-navigate-in-page', onNav);
+      wv.removeEventListener('dom-ready', onNav);
+      wv.removeEventListener('page-title-updated', onTitle);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cdpActive, deviceMode, deviceW, deviceH]);
+  }, [builtin, wvTarget === null, uid]);
 
   // 缩放档弹层点外即收(面板内点按任意处;菜单行在 anchor 内不触发)
   useEffect(() => {
@@ -146,12 +191,12 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   const navigate = (): void => {
     if (input.trim() === '') return;
     const url = normalizeWebUrl(input);
-    if (cdpActive) {
-      cdp.navigate(url);
-      setNav((n) => {
-        const urls = [...n.urls.slice(0, n.index + 1), url];
-        return { urls, index: urls.length - 1 };
-      });
+    if (builtin) {
+      // webview 档:已挂载经 loadURL 驱动(不换 src 防重挂);未挂载置 wvTarget 走初值渲染
+      setWvTarget((prev) => (prev === null ? url : prev));
+      setInput(url);
+      setWvUrl(url); // 即时回显(did-navigate 事件后由 getURL 权威覆盖;外开钮即刻可用)
+      if (wvTarget !== null) wvRef.current?.loadURL(url);
       onMeta(uid, { url, pageTitle: webPageName(url) });
       return;
     }
@@ -165,31 +210,27 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   };
 
   const back = (): void => {
-    if (cdpActive) {
-      const target = (nav.urls[nav.index - 1] ?? '');
-      setNav((n) => ({ ...n, index: n.index - 1 }));
-      if (target !== '') cdp.navigate(target);
-      return;
-    }
+    if (builtin) { wvRef.current?.goBack(); return; }
     setNav((n) => (n.index > 0 ? { ...n, index: n.index - 1 } : n));
   };
   const forward = (): void => {
-    if (cdpActive) {
-      const target = (nav.urls[nav.index + 1] ?? '');
-      setNav((n) => ({ ...n, index: n.index + 1 }));
-      if (target !== '') cdp.navigate(target);
-      return;
-    }
+    if (builtin) { wvRef.current?.goForward(); return; }
     setNav((n) => (n.index < n.urls.length - 1 ? { ...n, index: n.index + 1 } : n));
   };
   const reload = (): void => {
-    if (cdpActive) { cdp.reload(); return; }
+    if (builtin) { wvRef.current?.reload(); return; }
     setNonce((v) => v + 1);
+  };
+  /** webview 缩放(setZoomFactor,浏览器原生缩放语义) */
+  const setZoom = (f: number): void => {
+    setWvZoom(f);
+    wvRef.current?.setZoomFactor(f);
   };
   // 2026-10-25 用户报障:window.open 在 Electron 里只开自家子窗,不是系统默认浏览器——
   // openExternalUrl 单点(桌面壳走 preload 桥 shell.openExternal,OS 默认浏览器承接;浏览器态回落 window.open)
   const openExternal = (): void => {
-    if (active !== null) openExternalUrl(active);
+    const target = builtin ? (wvUrl !== '' ? wvUrl : null) : active;
+    if (target !== null) openExternalUrl(target);
   };
 
   /** 页名/站标精化(2026-10-25 用户报障「页签只显 host+地球,应显网页标题+站标」):跨域帧
@@ -238,7 +279,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
           className="sx-web-nav"
           aria-label={t('Back', '后退')}
           data-tip={t('Back', '后退')}
-          disabled={nav.index <= 0}
+          disabled={builtin ? !wvCanBack : nav.index <= 0}
           onClick={back}
         >
           <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -248,7 +289,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
           className="sx-web-nav"
           aria-label={t('Forward', '前进')}
           data-tip={t('Forward', '前进')}
-          disabled={nav.index >= nav.urls.length - 1}
+          disabled={builtin ? !wvCanFwd : nav.index >= nav.urls.length - 1}
           onClick={forward}
         >
           <ArrowRight size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -258,16 +299,16 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
           className="sx-web-nav"
           aria-label={t('Reload', '刷新')}
           data-tip={t('Reload', '刷新')}
-          disabled={active === null}
+          disabled={builtin ? wvTarget === null : active === null}
           onClick={reload}
         >
           <RotateCw size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        {cdpActive && (
+        {builtin && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flex: 'none' }}>
-            <button type="button" className="sx-web-nav" aria-label={t('Zoom out', '缩小')} data-tip={t('Zoom out', '缩小')} onClick={() => cdp.setZoom(Math.max(0.25, cdp.zoom - 0.1))}>{'−'}</button>
-            <button type="button" className="sx-web-nav" aria-label={t('Reset zoom', '重置缩放')} data-tip={t('Reset zoom', '重置缩放')} style={{ fontSize: 10, minWidth: 34 }} onClick={() => cdp.setZoom(1)}>{Math.round(cdp.zoom * 100)}%</button>
-            <button type="button" className="sx-web-nav" aria-label={t('Zoom in', '放大')} data-tip={t('Zoom in', '放大')} onClick={() => cdp.setZoom(Math.min(3, cdp.zoom + 0.1))}>{'+'}</button>
+            <button type="button" className="sx-web-nav" aria-label={t('Zoom out', '缩小')} data-tip={t('Zoom out', '缩小')} onClick={() => setZoom(Math.max(0.25, wvZoom - 0.1))}>{'−'}</button>
+            <button type="button" className="sx-web-nav" aria-label={t('Reset zoom', '重置缩放')} data-tip={t('Reset zoom', '重置缩放')} style={{ fontSize: 10, minWidth: 34 }} onClick={() => setZoom(1)}>{Math.round(wvZoom * 100)}%</button>
+            <button type="button" className="sx-web-nav" aria-label={t('Zoom in', '放大')} data-tip={t('Zoom in', '放大')} onClick={() => setZoom(Math.min(3, wvZoom + 0.1))}>{'+'}</button>
           </span>
         )}
         <div className="sx-web-url-box">
@@ -275,7 +316,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
           <input
             className="sx-web-url"
             aria-label="web url input"
-            value={cdpActive ? (input !== '' && input !== cdp.url ? input : (cdp.url || input)) : input}
+            value={builtin ? (input !== '' && input !== wvUrl ? input : (wvUrl || input)) : input}
             placeholder={t('Type a URL and press Enter', '输入网址后回车')}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -306,7 +347,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={active === null}
+                  disabled={builtin ? wvUrl === '' : active === null}
                   onClick={() => {
                     openExternal();
                     setMoreOpen(false);
@@ -319,7 +360,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={active === null}
+                    disabled={builtin ? wvUrl === '' : active === null}
                     onClick={() => {
                       devtoolsBridge();
                       setMoreOpen(false);
@@ -454,8 +495,24 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
               background: 'var(--surface)',
             }}
           >
-            {cdpActive ? (
-              <CdpPageView cdp={cdp} />
+            {builtin ? (
+              wvTarget === null ? (
+                <div className="sx-web-empty">
+                  <Globe size={56} strokeWidth={1} aria-hidden="true" />
+                  <p className="sx-web-empty-title">{t('Browser', '浏览器')}</p>
+                  <p className="sx-web-empty-hint">{t('Paste or type a URL to open a page.', '粘贴或输入 URL 以打开网页。')}</p>
+                </div>
+              ) : (
+                /* M1 真实嵌入页面:partition 持久化登录态(独立于应用会话);弹窗放行由壳侧
+                   setWindowOpenHandler 外开承接;无 node/无壳 API(will-attach-webview 纪律) */
+                <webview
+                  ref={wvRef as React.RefObject<HTMLElement>}
+                  src={wvTarget}
+                  partition="persist:sx-builtin"
+                  allowpopups={false}
+                  style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface-code)' }}
+                />
+              )
             ) : active === null ? (
               <div className="sx-web-empty">
                 <Globe size={56} strokeWidth={1} aria-hidden="true" />

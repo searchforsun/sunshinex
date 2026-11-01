@@ -1692,8 +1692,8 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
   }, 60_000);
 });
 
-describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost → iframe 沙盒/外开 stub → 刷新重挂', () => {
-  it('建会话 → +菜单「Web」→ 标签开且活动 → 空态引导 → url 输入回车 → iframe(title/src/沙盒)→ 外开 window.open 实参 → 刷新重挂新节点', async () => {
+describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost → webview(src)/外开 stub(M1 融合档)', () => {
+  it('建会话 → +菜单「Web」→ 标签开且活动 → 空态引导 → url 输入回车 → webview(src)→ 外开 window.open 实参 → 刷新节点不换', async () => {
     const env = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"web 场景无需模型轮"}']));
     const TARGET = 'http://localhost:8123/'; // localhost 目标(真外站零拉取;含 :// 不补 scheme)
     try {
@@ -1723,25 +1723,25 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       fireEvent.change(urlInput, { target: { value: TARGET } });
       fireEvent.keyDown(urlInput, { key: 'Enter' });
 
-      // —— iframe 落定:title=active(无障碍名/测试锚),src 原样,sandbox 四值;空态退场 ——
-      const frame1 = container.querySelector('iframe.sx-web-frame');
-      expect(frame1?.getAttribute('title')).toBe(TARGET);
-      expect(frame1?.getAttribute('src')).toBe(TARGET);
-      expect(frame1?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-same-origin allow-popups');
+      // —— webview 落定(M1 融合:真实嵌入页面,src 原样;jsdom 下为未知自定义元素)——
+      const wv1 = container.querySelector('webview');
+      expect(wv1?.getAttribute('src')).toBe(TARGET);
       expect(container.querySelector('.sx-web-empty')).toBeNull();
 
       // —— 外开钮:window.open stub(jsdom noop)→ 点击断言实参(_blank + noopener 隔离 opener)——
+      // (2026-10-31 起外开入口在 ⋯ 更多操作菜单内)
       const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-      fireEvent.click(screen.getByRole('button', { name: /^(?:Open in system browser|在系统浏览器打开)$/ }));
+      fireEvent.click(screen.getByRole('button', { name: bi('More actions', '更多操作') }));
+      fireEvent.click(screen.getByRole('menuitem', { name: bi('Open in system browser', '在默认浏览器中打开') }));
       expect(openSpy).toHaveBeenCalledTimes(1);
       expect(openSpy).toHaveBeenCalledWith(TARGET, '_blank', 'noopener,noreferrer');
       openSpy.mockRestore();
 
-      // —— 刷新重挂:nonce bump 入 iframe key → 强制重挂(新 DOM 节点;url 不变)——
-      const before = container.querySelector('iframe.sx-web-frame');
+      // —— 刷新(builtin webview 档):原生 reload 语义,节点不重挂 src 不变 ——
+      const before = container.querySelector('webview');
       fireEvent.click(screen.getByRole('button', { name: bi('Reload', '刷新') }));
-      const after = container.querySelector('iframe.sx-web-frame');
-      expect(after).not.toBe(before);
+      const after = container.querySelector('webview');
+      expect(after).toBe(before);
       expect(after?.getAttribute('src')).toBe(TARGET);
     } finally {
       await env.stop();

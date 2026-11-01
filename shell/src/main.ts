@@ -139,11 +139,31 @@ if (!app.requestSingleInstanceLock()) {
       titleBarStyle: 'hidden',
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
+        webviewTag: true, // M1 内置浏览器融合:GUI WebTab builtin 档以 <webview> 承载真实页面
       },
     });
     mainWindow = win;
     win.setMenu(null);
     Menu.setApplicationMenu(null); // 托盘右键菜单独立建template,不受应用菜单清空影响
+    // webview guest 安全纪律(2026-11-01 M1 融合):禁 node/preload(guest 只是无痕页面容器)+
+    // http(s)/about 之外的 src 拒挂;弹窗(window.open/_blank)一律外开系统默认浏览器(页面语义
+    // 与「在默认浏览器中打开」菜单一致,不在应用内开子窗)
+    app.on('web-contents-created', (_event, wc) => {
+      if (wc.getType() !== 'webview') return;
+      wc.on('will-attach-webview', (att, webPreferences, params) => {
+        delete webPreferences.preload;
+        webPreferences.nodeIntegration = false;
+        const src = typeof params.src === 'string' ? params.src : '';
+        if (!/^https?:\/\//i.test(src) && src !== 'about:blank') att.preventDefault();
+      });
+      wc.setWindowOpenHandler(({ url }) => {
+        try {
+          const u = new URL(url);
+          if (u.protocol === 'http:' || u.protocol === 'https:') void shell.openExternal(url);
+        } catch { /* 非法 url 静默拒 */ }
+        return { action: 'deny' };
+      });
+    });
     // 窗控 IPC(渲染层 −□× 按钮):最小化/最大化切换/关闭(关闭走 close 事件=驻留 hide 语义);
     // maximize/unmaximize 回推渲染层换 □/restore 字形
     ipcMain.on('win:minimize', () => mainWindow?.minimize());
