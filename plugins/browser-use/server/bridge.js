@@ -173,12 +173,16 @@ async function main() {
       b.unref();
       pid = b.pid;
     }
-    // 轮询 CDP 就绪(最多 20s)
+    // 轮询 CDP 就绪(最多 20s);就绪即从 /json/version 取**完整浏览器端点**(带 GUID——
+    // WMI 路径无 stderr 可解析,缺 GUID 的裸地址 Playwright connect 会 404,实测踩坑)
     let ws = '';
     for (let i = 0; i < 40; i += 1) {
       try {
         const r = await fetch('http://127.0.0.1:' + port + '/json/version', { signal: AbortSignal.timeout(1500) });
-        if (r.ok) { ws = 'ws://127.0.0.1:' + port + '/devtools/browser/'; break; }
+        if (r.ok) {
+          const v = await r.json();
+          if (typeof v.webSocketDebuggerUrl === 'string' && v.webSocketDebuggerUrl !== '') { ws = v.webSocketDebuggerUrl; break; }
+        }
       } catch { /* 未就绪,继续轮询 */ }
       await new Promise((r2) => setTimeout(r2, 500));
     }
