@@ -18,6 +18,13 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   /** 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」):主窗 detach 独立 DevTools 窗,
    *  检查器帧选择器可定位 WebTab iframe;已开再点=关闭(toggle) */
   openDevtools: (): void => void ipcRenderer.send('web:open-devtools'),
+  /** M2 融合:guest 弹窗 URL 由主进程转发(main setWindowOpenHandler → builtin:open-url),
+   *  GUI 开新侧栏 web 页签(和浏览器一样;退订返回卸载用) */
+  onOpenUrl: (cb: (url: string) => void): (() => void) => {
+    const handler = (_: unknown, url: string): void => cb(url);
+    ipcRenderer.on('builtin:open-url', handler);
+    return () => void ipcRenderer.removeListener('builtin:open-url', handler);
+  },
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);
     ipcRenderer.on('win:maximized', handler);

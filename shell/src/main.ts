@@ -11,6 +11,12 @@ import { PRODUCT_LOGO_DATA_URL } from './lib/product-logo';
 import { startDaemon } from './daemon';
 import type { ShellDaemon } from './daemon';
 
+// M2 内置浏览器融合:真实 CDP 调试口(Chromium 写 userData/DevToolsActivePort,daemon 内 facade
+// 过滤代理只向插件暴露侧栏 <webview> target——应用自身 UI 永不可见)。ready 前装配。
+// 固定调试口(实测 port 0 写了 DevToolsActivePort 却不监听):冲突概率极低,冲突时调试服务器
+// 启动失败 → DevToolsActivePort 缺更新 → facade 优雅降级(builtin 档回落,其余功能不受影响)
+app.commandLine.appendSwitch('remote-debugging-port', '57679');
+
 // M2 内置浏览器融合:真实 CDP 调试口(端口=临时,Chromium 写 userData/DevToolsActivePort,daemon
 // 内 facade 过滤代理只向插件暴露侧栏 <webview> target——应用自身 UI 永不可见)。ready 前装配
 app.commandLine.appendSwitch('remote-debugging-port', '0');
@@ -144,6 +150,7 @@ if (!app.requestSingleInstanceLock()) {
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
         webviewTag: true, // M1 内置浏览器融合:GUI WebTab builtin 档以 <webview> 承载真实页面
+        sandbox: false, // webview 标签不支持沙箱渲染器(实测:guest 创建瞬间渲染进程崩溃=全窗黑)
       },
     });
     mainWindow = win;
@@ -161,9 +168,13 @@ if (!app.requestSingleInstanceLock()) {
         if (!/^https?:\/\//i.test(src) && src !== 'about:blank') att.preventDefault();
       });
       wc.setWindowOpenHandler(({ url }) => {
+        // M2 融合(2026-11-02 用户裁定「页内超链接开新页签,和浏览器一样」):guest 弹窗不外开,
+        // 转发 GUI 开新侧栏 web 页签(App onOpenWeb 消费,判重由 openTab 承担);非 http(s) 纯拒
         try {
           const u = new URL(url);
-          if (u.protocol === 'http:' || u.protocol === 'https:') void shell.openExternal(url);
+          const gui = mainWindow;
+          const guiReady = gui !== undefined && !gui.isDestroyed();
+          if ((u.protocol === 'http:' || u.protocol === 'https:') && guiReady) gui.webContents.send('builtin:open-url', url);
         } catch { /* 非法 url 静默拒 */ }
         return { action: 'deny' };
       });

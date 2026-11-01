@@ -128,15 +128,16 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     deviceW > 0 && deviceH > 0 && wrapSize.w > 0 ? Math.min(wrapSize.w / deviceW, wrapSize.h / deviceH) : 1;
   const deviceScale = devFit ? fitScale : devZoom;
 
-  // webview 事件随动(M1):did-navigate 族 → URL/后退前进态/地址栏回显/标签页名回写;
-  // page-title-updated → 真页名(原生事件,iframe 时代的服务端代取降为兜底)
-  useEffect(() => {
-    if (!builtin || wvTarget === null) return;
-    const wv = wvRef.current as (WvElement & {
+  /** webview 事件挂接(M1/M2):**ref 回调**形态——元素挂载瞬间即挂事件并补读当前 URL
+   *  (effect 形态会在 webview src 自动加载后才挂,did-navigate/页名首拍必丢,实测
+   *  「只有第一个页签有名字,其余页签无名」即此);did-navigate 族 → URL/后退前进态/
+   *  地址栏回显/标签页名回写;page-title-updated → 真页名 */
+  const attachWv = (el: HTMLElement | null): void => {
+    wvRef.current = el as WvElement | null;
+    if (el === null) return;
+    const wv = el as WvElement & {
       addEventListener(type: string, fn: (ev: Event & { title?: string }) => void): void;
-      removeEventListener(type: string, fn: (ev: Event & { title?: string }) => void): void;
-    }) | null;
-    if (wv === null) return;
+    };
     const onNav = (): void => {
       const u = wv.getURL();
       setWvUrl(u);
@@ -156,14 +157,8 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     wv.addEventListener('did-navigate-in-page', onNav);
     wv.addEventListener('dom-ready', onNav);
     wv.addEventListener('page-title-updated', onTitle);
-    return () => {
-      wv.removeEventListener('did-navigate', onNav);
-      wv.removeEventListener('did-navigate-in-page', onNav);
-      wv.removeEventListener('dom-ready', onNav);
-      wv.removeEventListener('page-title-updated', onTitle);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [builtin, wvTarget === null, uid]);
+    onNav(); // 挂上即补读(事件早于挂接的首拍在此补偿)
+  };
 
   // 缩放档弹层点外即收(面板内点按任意处;菜单行在 anchor 内不触发)
   useEffect(() => {
@@ -506,7 +501,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
                 /* M1 真实嵌入页面:partition 持久化登录态(独立于应用会话);弹窗放行由壳侧
                    setWindowOpenHandler 外开承接;无 node/无壳 API(will-attach-webview 纪律) */
                 <webview
-                  ref={wvRef as React.RefObject<HTMLElement>}
+                  ref={attachWv}
                   src={wvTarget}
                   partition="persist:sx-builtin"
                   allowpopups={false}

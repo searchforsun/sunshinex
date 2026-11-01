@@ -382,6 +382,14 @@ function AppShell(): JSX.Element {
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走
    *  browser_navigate 时 Chat 上抛 url,此处开 web 页签跟随(判重由 openTabInSession 承担) */
   const openWebTab = useCallback((url: string): void => { openTabInSession('web', { url }); }, [openTabInSession]);
+  /** M2 融合(2026-11-02 用户裁定「页内超链接开新页签,和浏览器一样」):guest 弹窗 URL 由壳转发
+   *  (main setWindowOpenHandler → builtin:open-url),此处开新侧栏 web 页签;判重由 openTab 承担 */
+  useEffect(() => {
+    const bridge = (window as unknown as { sunshinexWindow?: { onOpenUrl?: (cb: (url: string) => void) => () => void } }).sunshinexWindow;
+    if (bridge?.onOpenUrl === undefined) return;
+    return bridge.onOpenUrl((url) => openWebTab(url));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /** agents 页签 id=智能体团队页签(卡片流;tab 持久化档兼容保留旧 id);agentTeams 关闭时不挂载 */
   const openBoardTab = useCallback((): void => {
     if (!agentTeamsOn) return;
