@@ -1,5 +1,5 @@
 import { CodedToolError } from '../tools';
-import { BING_ENDPOINT, DDG_ENDPOINT, isBingMode, resolveWebSearchEndpoint } from '../security/websearch-endpoint';
+import { BING_ENDPOINT, BING_HTML_ENDPOINT, DDG_ENDPOINT, isBingHtmlMode, isBingMode, resolveFallbackEndpoint, resolveWebSearchEndpoint } from '../security/websearch-endpoint';
 
 /** 搜索结果归一化条目（provider 无关）：websearch 工具 stdout 渲染的最小单元 */
 export interface WebSearchHit {
@@ -50,11 +50,70 @@ class BingProvider implements WebSearchProvider {
   }
 }
 
-/** 按环境装配：SUNSHINEX_WEBSEARCH_PROVIDER=bing 切 Bing，缺省 DuckDuckGo */
+/** Bing 网页版 Provider（cn.bing.com HTML 刮取,无 key;2026-11-01 用户环境 DDG 被网关拦实测超时,
+ *  cn.bing.com 实测 200 可达）。解析 li.b_algo → h2>a(href,title) + 首个 <p> 摘要;结构漂移返回空列表
+ *  （表达「无结果」,不误报失败——与 DDG 解析器同纪律） */
+class BingHtmlProvider implements WebSearchProvider {
+  constructor(private endpoint = BING_HTML_ENDPOINT) {}
+
+  async search(query: string, count: number): Promise<WebSearchHit[]> {
+    const url = new URL(this.endpoint);
+    url.searchParams.set('q', query);
+    url.searchParams.set('count', String(count));
+    const res = await fetch(url, {
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' },
+    });
+    if (!res.ok) throw new CodedToolError('websearch_upstream', `Search upstream HTTP ${res.status}`);
+    return parseBingHtml(await res.text(), count);
+  }
+}
+
+/** Bing 网页版 HTML → 归一化结果:逐 li.b_algo 段取 h2>a 链接与首个 <p> 段 */
+export function parseBingHtml(html: string, count: number): WebSearchHit[] {
+  const blocks = html.split('<li class="b_algo"').slice(1);
+  const hits: WebSearchHit[] = [];
+  for (const block of blocks) {
+    if (hits.length >= count) break;
+    const link = /<h2[^>]*><a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i.exec(block);
+    if (link === null) continue;
+    const snippet = /<p[^>]*>([\s\S]*?)<\/p>/i.exec(block);
+    hits.push({ title: stripTags(link[2]), url: stripTags(link[1]), snippet: snippet !== null ? stripTags(snippet[1]) : '' });
+  }
+  return hits;
+}
+
+/** 主引擎失败自动回落（2026-11-01 用户网关拦境外站,DDG fetch failed→cn.bing 可达）:
+ *  网络类失败（fetch failed/超时/上游非 2xx）即换备引擎;两台都失败抛原始错误 */
+class FallbackProvider implements WebSearchProvider {
+  constructor(private primary: WebSearchProvider, private fallback: WebSearchProvider | undefined) {}
+
+  async search(query: string, count: number): Promise<WebSearchHit[]> {
+    try {
+      return await this.primary.search(query, count);
+    } catch (e) {
+      if (this.fallback === undefined) throw e;
+      try {
+        return await this.fallback.search(query, count);
+      } catch {
+        throw e; // 备引擎也失败:抛主引擎原始错误（诊断面指向用户配置的主引擎）
+      }
+    }
+  }
+}
+
+/** 按环境装配：SUNSHINEX_WEBSEARCH_PROVIDER=bing 切 Bing API/=bing-html 切 Bing 网页版,缺省 DuckDuckGo;
+ *  显式端点(SUNSHINEX_WEBSEARCH_ENDPOINT)不回落(自托管权威);bing-api 主引擎不回落(凭据问题换引擎无益) */
 export function resolveWebSearchProvider(): WebSearchProvider {
   // Provider 与 guard 同源消费 SUNSHINEX_WEBSEARCH_ENDPOINT 覆盖：判界主机与实际抓取主机必须一致
   const endpoint = resolveWebSearchEndpoint();
-  return isBingMode() ? new BingProvider(endpoint) : new DuckDuckGoProvider(endpoint);
+  const primary: WebSearchProvider = isBingMode()
+    ? new BingProvider(endpoint)
+    : isBingHtmlMode()
+      ? new BingHtmlProvider(endpoint)
+      : new DuckDuckGoProvider(endpoint);
+  const fb = resolveFallbackEndpoint();
+  const alternate: WebSearchProvider | undefined = fb === undefined ? undefined : fb === BING_HTML_ENDPOINT ? new BingHtmlProvider(fb) : new DuckDuckGoProvider(fb);
+  return new FallbackProvider(primary, alternate);
 }
 
 /** DDG HTML → 归一化结果：只依赖 result__a / result__snippet 两个 class；结构漂移返回空列表（表达「无结果」，不误报失败） */
@@ -99,7 +158,8 @@ function stripTags(s: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#x27;|&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
+    .replace(/&nbsp;|&ensp;|&emsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
     .replace(/\s+/g, ' ')
     .trim();
 }

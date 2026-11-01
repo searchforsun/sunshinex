@@ -292,8 +292,10 @@ export class McpHost {
         }
         const actual = client.getServerVersion()?.name;
         if (actual !== cfg.name) {
-          // 身份软提示（不再跳过）：照常 listTools+注册，差异上屏供诊断
-          report.warnings.push(`identity note (${cfg.name}): serverInfo.name=${actual ?? '(unknown)'} (accepted)`);
+          // 身份软提示（不再跳过）：照常 listTools+注册。差异只落装配日志文件(诊断价值在日志
+          // ——警告单会被 engine.run 每轮尾追进对话链,诊断噪声每轮刷屏,用户裁定 2026-11-01
+          // 「警告去掉或优化」;主流服务器常态差异无行动价值)
+          this.writeAssemblyLog(cfg.name, `identity note: serverInfo.name=${actual ?? '(unknown)'} (accepted, config name kept)`);
         }
         this.conns.set(cfg.name, { client, transport, config: cfg });
         const listed = await client.listTools();
