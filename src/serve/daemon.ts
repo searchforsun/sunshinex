@@ -2,6 +2,7 @@
 import '../warning-filter';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { ModelAdapter, parseEffort } from '../model/adapter';
 import type { Result } from '../result';
@@ -385,6 +386,26 @@ export class GuiDaemon {
     }
     // 3) 全会话运行时内脏收口（并发）：stopAll → drain → mcpClose（序同 CLI teardownCliRun 现场）
     await Promise.all([...this.sessions.values()].map((s) => s.dispose()));
+    // 3b) 内置浏览器常驻实例收割(2026-11-01 用户裁定「应用停止时,也要停止内置本地 mcp 服务」):
+    //     builtin 档浏览器为 detached 孤儿(跨 run 树杀存活的常驻设计,复用面靠 meta),应用退出
+    //     时按各工作区 meta pid 全量收割——mcpClose 树杀 bridge/server 已含于 dispose,唯孤儿浏览器
+    //     需此补刀;跨工作区同 pid 去重;缺档(无内置浏览器运行)/收割失败静默(尽力而为)
+    const killedBrowsers = new Set<number>();
+    for (const [, rt] of [...this.sessions.entries()]) {
+      const metaPath = path.join(resolveDataDir(rt.root), 'plugins', 'browser-use', 'builtin-cdp.json');
+      try {
+        const pid = (JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { pid?: unknown }).pid;
+        if (typeof pid !== 'number' || pid <= 0 || killedBrowsers.has(pid)) continue;
+        killedBrowsers.add(pid);
+        if (process.platform === 'win32') {
+          spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
+        } else {
+          try { process.kill(-pid, 'SIGKILL'); } catch { try { process.kill(pid, 'SIGKILL'); } catch { /* 尽力 */ } }
+        }
+      } catch {
+        /* 缺档/坏档=无内置浏览器运行 */
+      }
+    }
   }
 
   /** 内部路由表（T1 会话中心：会话维端点 + 裸端点激活别名；G2 /snapshot、G3 /steer 平移）；
