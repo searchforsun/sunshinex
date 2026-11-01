@@ -60,8 +60,16 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   /** 刷新 bump:入 iframe key —— 变更即强制重挂(= 重新加载) */
   const [nonce, setNonce] = useState(0);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  /** G14.2xx 自由尺寸(设备模拟):开关/宽高 px(缺省=面板现尺寸)/适应窗口|固定倍率 */
-  const [deviceMode, setDeviceMode] = useState(false);
+  /** G14.2xx 自由尺寸(设备模拟):开关/宽高 px(缺省=面板现尺寸)/适应窗口|固定倍率。
+   *  2026-11-01 用户裁定 CDP 镜像档**缺省开**(镜像即固定视口语义,尺寸面直接可见可填) */
+  const [deviceMode, setDeviceMode] = useState(true);
+  // CDP 镜像跟页名(2026-11-01 用户裁定「浏览器名字带访问名」):镜像当前页 URL 变化即回写标签
+  // 页名——只写 pageTitle 不写 url(判重键随 url 演进会致标签重键漂移)
+  useEffect(() => {
+    if (!cdpActive || cdp.url === '') return;
+    onMeta(uid, { pageTitle: webPageName(cdp.url) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cdpActive, cdp.url]);
   const [devW, setDevW] = useState<number | null>(null);
   const [devH, setDevH] = useState<number | null>(null);
   const [devFit, setDevFit] = useState(true);

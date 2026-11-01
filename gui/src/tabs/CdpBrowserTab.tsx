@@ -70,6 +70,9 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
           // 渲染层直连 DevTools 被其 Origin 保护拒绝(实测 readyState=3 秒断)——走 daemon
           // /app/cdp-ws 透明中继(剥 Origin 改写 Host 代为握手,握手后字节级双通)
           const targetPath = page.webSocketDebuggerUrl!.replace(/^wss?:\/\/[^/]+\//, '');
+          // 连接即取当前页 URL(frameNavigated 只在导航时发,连接后无导航则 url 恒空——
+          // 地址栏/标签页名(跟页名回写消费 cdp.url)就永远空着;/json/list 的 url 即现值)
+          if (page.url !== undefined && page.url !== '' && page.url !== 'about:blank') setUrl(page.url);
           await new Promise<void>((resolve) => {
             setStatus('connecting');
             let seq = 1;
