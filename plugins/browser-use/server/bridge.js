@@ -162,6 +162,23 @@ async function probeAlive(meta) {
 }
 
 async function main() {
+  // M2 融合档(2026-11-01 用户裁定「插件打开的也是普通页签」):builtin 档不再自起 Chrome——
+  // meta 由 daemon(壳进程)周期落盘,ws=壳内 CDP facade(只暴露侧栏 webview 的附加面);
+  // 探活成功即 spawn server 挂 facade,模型导航/点击的就是用户眼前的页签
+  if (mode === 'builtin') {
+    const meta = metaPath !== undefined && fs.existsSync(metaPath)
+      ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
+      : undefined;
+    if (meta !== undefined && typeof meta.ws === 'string' && (await probeAlive(meta))) {
+      writeMeta(meta.ws, meta.pid ?? 0, { kind: 'shell' });
+      watchCurrentPage(meta.ws);
+      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', meta.ws], { stdio: 'inherit' });
+      server.on('exit', () => process.exit(0));
+      return;
+    }
+    process.stderr.write('browser bridge: builtin facade unavailable' + String.fromCharCode(10));
+    process.exit(1);
+  }
   const exe = mode === 'default' ? defaultBrowserExe() : fixedChrome();
   const profile = isolated === true
     ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-browser-')), 'profile')

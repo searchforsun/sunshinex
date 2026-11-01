@@ -2,6 +2,7 @@
 import '../warning-filter';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { ModelAdapter, parseEffort } from '../model/adapter';
@@ -42,6 +43,7 @@ import type { FileHandlerIo } from './file-handlers';
 import * as lifecycle from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';
 import { WsHub } from './daemon-ws';
+import { startBuiltinFacade } from './cdp-facade';
 import {
   GUI_ASSETS_HINT,
   mimeOf,
@@ -180,6 +182,9 @@ export class GuiDaemon {
    *  合一：外部编辑走 watcher、内部写走直发，同键不双发；project 写通知另担补监听——见 start 注）。
    *  句柄面：start 开、teardown 收 */
   private readonly watcher = new ConfigWatcher();
+  /** M2 内置浏览器融合面(壳内 CDP facade,只暴露侧栏 webview):electron 在场才启,纯 node 降级 */
+  private builtinFacade: { facade: import('./cdp-facade').BuiltinFacade; ws: string } | undefined;
+  private builtinMetaTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
@@ -323,6 +328,8 @@ export class GuiDaemon {
     });
     this.server = server;
     this.wsHub.attach(server, token);
+    // M2 融合面过滤闸需要 daemon 自身 origin(GUI 渲染层 target 按 http://127.0.0.1:<port> 过滤)
+    process.env.SUNSHINEX_DAEMON_PORT = String((server.address() as { port: number }).port);
     // 任务14 配置监听装配：全局目录（userConfigDir——HOME/部署重定向口，测试钉 tmp HOME 即 hermetic）
     // + 写回环抑制/直发钩子 + 变更→config-changed 帧广播（无 seq，broadcastFrame 全连接直发）
     this.watcher.watchGlobal(userConfigDir());
@@ -338,6 +345,18 @@ export class GuiDaemon {
       this.broadcastFrame({ kind: 'config-changed', resource, scope, root }); // 帧下行由直发承担
     });
     this.watcher.onChange((c) => this.broadcastFrame({ kind: 'config-changed', ...c }));
+    // M2 融合面启动(尽力而为:electron 缺场/端口失败静默降级——插件 builtin 档回落旧桥路径);
+    // 在场即向注册工作区落融合 meta 并周期重写(新工作区/重启端口漂移自愈)
+    const startFacadeOnce = (): void => {
+      if (this.builtinFacade !== undefined) return;
+      void startBuiltinFacade((m) => console.log(`[cdp-facade] ${m}`)).then((h) => {
+        this.builtinFacade = h;
+        if (h === undefined) return; // 未就绪(DevToolsActivePort 未落盘等):下个周期重试
+        this.writeBuiltinMetas();
+      });
+    };
+    startFacadeOnce();
+    this.builtinMetaTimer = setInterval(() => { startFacadeOnce(); this.writeBuiltinMetas(); }, 5_000);
     // 静态面探测（启动一次，缓存布尔）：index.html 在场才挂静态——缺场 GET 保持 G1 的 404+hint 原样
     this.staticReady = fs.existsSync(path.join(this.staticRoot, 'index.html'));
     const addr = server.address();
@@ -360,6 +379,9 @@ export class GuiDaemon {
    *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（逐会话收口序在会话维
    *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
+    // -2) M2 融合面收口:meta 周期写停 + facade ws 停(先于收割——收割删壳 kind 指针档防死端口误导)
+    if (this.builtinMetaTimer !== undefined) clearInterval(this.builtinMetaTimer);
+    this.builtinFacade?.facade.stop();
     // -1) 内置浏览器收割**最先**执行(2026-11-01 实测踩坑:壳侧 close 有界等待仅 5s,teardown 前段
     //     步骤(全会话 abort/WS/HTTP 收口/mcpClose)任一拖住即超时放行退出——排末尾的收割刀没跑到,
     //     孤儿 Chrome 锁死数据目录(用户面「应用关了文件夹删不掉」);收割独立于其它收口步骤且为
@@ -409,8 +431,11 @@ export class GuiDaemon {
     for (const [, rt] of [...this.sessions.entries()]) {
       const metaPath = path.join(resolveDataDir(rt.root), 'plugins', 'browser-use', 'builtin-cdp.json');
       try {
-        const pid = (JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { pid?: unknown }).pid;
-        if (typeof pid !== 'number' || pid <= 0 || killedBrowsers.has(pid)) continue;
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { pid?: unknown; kind?: unknown };
+        // M2 融合档(kind:'shell'):meta 指向壳内 facade,pid=壳进程自身——绝不可杀(等于自杀)
+        if (meta.kind === 'shell') continue;
+        const pid = meta.pid;
+        if (typeof pid !== 'number' || pid <= 0 || pid === process.pid || killedBrowsers.has(pid)) continue;
         killedBrowsers.add(pid);
         if (process.platform === 'win32') {
           spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
@@ -421,9 +446,44 @@ export class GuiDaemon {
         /* 缺档/坏档=无内置浏览器运行 */
       }
     }
+    // M2 融合档元数据清扫:kind:'shell' 指针档随 daemon 退场删除(死端口 meta 留盘误导 GUI 代理/判定)
+    for (const [, rt] of [...this.sessions.entries()]) {
+      try {
+        const metaPath = path.join(resolveDataDir(rt.root), 'plugins', 'browser-use', 'builtin-cdp.json');
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { kind?: unknown };
+        if (meta.kind === 'shell') fs.rmSync(metaPath, { force: true });
+      } catch { /* 尽力 */ }
+    }
     if (process.platform === 'win32') {
       const psScript = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*plugins/browser-use/profile*' -or $_.CommandLine -like '*plugins\\browser-use\\profile*' -or $_.CommandLine -like '*sunshinex-browser-*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
       spawnSync('powershell', ['-NoProfile', '-EncodedCommand', Buffer.from(psScript, 'utf16le').toString('base64')], { stdio: 'ignore', timeout: 15000 });
+    }
+  }
+
+  /** M2 融合 meta 写面:facade 在场即向全部注册工作区落 builtin-cdp.json(kind:'shell',
+   *  ws=壳内 facade)——bridge builtin 档 spawn server 前读它取附加端点;周期重写(新工作区/
+   *  重启端口漂移自愈)。扫描语义同 handleWorkspaces(root 派生自 workspace.json+默认锚点降级) */
+  private writeBuiltinMetas(): void {
+    if (this.builtinFacade === undefined) return;
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(projectsRoot(), { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      const dataDir = path.join(projectsRoot(), ent.name, 'data');
+      let root: string | undefined;
+      try {
+        const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
+        if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
+      } catch { /* 历史工作区无档/坏档 */ }
+      if (root === undefined && ent.name.includes('sunshinex-default')) {
+        root = path.join(os.tmpdir(), 'sunshinex-default'); // G14.96 默认锚点降级(同 handleWorkspaces)
+      }
+      if (root === undefined) continue;
+      try {
+        const metaPath = path.join(resolveDataDir(root), 'plugins', 'browser-use', 'builtin-cdp.json');
+        fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+        fs.writeFileSync(metaPath, JSON.stringify({ kind: 'shell', ws: this.builtinFacade.ws, pid: process.pid, mode: 'builtin', startedAt: Date.now() }));
+      } catch { /* 尽力 */ }
     }
   }
 
@@ -537,7 +597,18 @@ export class GuiDaemon {
     // 2026-10-27 欢迎页全局草稿:App 级文件读（注册工作区根信任域,不绑会话;handler 同步,async 包一层
     // 适配 Route.run 的 Promise<void> 契约——f08cbd6 带伤入库,HEAD tsc 不通,技术债轮补直）
     { method: 'GET', path: '/app/file', auth: true, run: async (req, res) => fileHandlers.handleAppFile(this.fileIo, req, res) },
-    { method: 'GET', path: '/app/cdp-targets', auth: true, run: async (req, res) => fileHandlers.handleCdpTargets(this.fileIo, req, res) },
+    { method: 'GET', path: '/app/cdp-targets', auth: true, run: async (req, res) => {
+        // M2 融合档优先:facade 在场(壳内 webview 面)直查 facade /json/list;缺席回落 meta+桥端口旧路径
+        if (this.builtinFacade !== undefined) {
+          try {
+            const httpBase = this.builtinFacade.ws.replace(/^ws/, 'http').replace(/\/devtools\/browser$/, '');
+            const r = await fetch(`${httpBase}/json/list`, { signal: AbortSignal.timeout(2000) });
+            this.send(res, 200, { targets: (JSON.parse(await r.text()) as unknown[]) });
+            return;
+          } catch { /* facade 暂不可达:回落 meta 面 */ }
+        }
+        fileHandlers.handleCdpTargets(this.fileIo, req, res);
+      } },
     // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
     { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
     { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },
