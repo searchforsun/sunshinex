@@ -275,6 +275,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         conn={p.conn}
         params={p.params}
         uid={p.uid}
+        root={p.root}
         onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)}
       />
     ),
