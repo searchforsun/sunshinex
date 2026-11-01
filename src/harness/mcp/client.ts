@@ -138,12 +138,20 @@ export class McpHost {
    *  否则 close 后注册表残留死连接工具（guard 名单仍放行、executor 指向已关 client，调用必败），
    *  重连虽可同覆盖重注册，但「收口后零残留」是 close 的语义底线（harness.mcpClose 收口幂等钉） */
   private registeredNames = new Set<string>();
+  /** 连接/装配失败名单(2026-11-01「失败连接被缓存永不重试」根修):失败 server 名集合——
+   *  宿主据此在下次 run 重建 host(失败连接留存在 Map 里 = 工具永不挂载且永不重试) */
+  private failedNames = new Set<string>();
 
   constructor(
     private servers: McpServerConfig[],
     private registry: ToolRegistry,
     private opts: McpHostOptions = {},
   ) {}
+
+  /** 存在连接/装配失败的 server(宿主重建判据;空=false 全部就绪零重建) */
+  hasFailedServers(): boolean {
+    return this.failedNames.size > 0;
+  }
 
   /** stdio server stderr 落盘(2026-11-01 用户报障「关 headless 插件即消失」定位面):SDK 缺省
    *  丢弃子进程 stderr——有头启动失败/崩溃原因不可见。pipe 后逐行 append 到 <logDir>/<name>.log
@@ -242,6 +250,7 @@ export class McpHost {
           const msg = e instanceof Error ? e.message : String(e);
           report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
           this.writeAssemblyLog(cfg.name, `connection failed: ${msg}`);
+          this.failedNames.add(cfg.name);
           continue;
         }
         const actual = client.getServerVersion()?.name;
@@ -264,6 +273,7 @@ export class McpHost {
         const msg = e instanceof Error ? e.message : String(e);
         report.warnings.push(`assembly failed (${cfg.name}): ${msg.slice(0, 120)}`);
         this.writeAssemblyLog(cfg.name, `assembly failed: ${msg}`);
+        this.failedNames.add(cfg.name);
       }
     }
     return report;
