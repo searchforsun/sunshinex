@@ -142,6 +142,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   // "maxTokens": 2000000,                          // 主链单次提交 token 硬顶（累计用量量纲）；缺省不设——预算是兜底不是限制，护栏交给步数与墙钟
   // "subagentTokenCap": 1000000,                   // 子智能体 token 硬顶（独享值，不继承主链剩余）；缺省不设
   // "teamTokenCap": 1000000,                       // 团队 token 硬顶（主代理团队侧限额，用满后新任务排队，见 5.6）；缺省不设
+  "agentTeams": "on",                                // 智能体团队能力 on|off（关=不注入 agent_team_* 工具；GUI 隐藏「智能体团队」页签）；缺省 on
 
   // ── 界面 ──────────────────────────────────────────────
   "language": "en",                                  // 界面语言 en|zh（--language 参数优先）
@@ -248,7 +249,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
     ├── sessions/               # 会话日志（/resume、--resume、--continue 据此恢复）
-    ├── teams/<journalId>/      # 会话级智能体团队/任务板/inbox（与 journal 同键；新会话空板）
+    ├── teams/<journalId>/      # 会话级智能体团队/板/inbox（与 journal 同键；新会话空板）
     ├── memory/                 # 持久记忆：MEMORY.md 索引 + <slug>.md 记录
     ├── skills/                 # 自动沉淀的学习技能
     ├── worktrees/              # worktree 隔离工作树（见 5.5）与登记表 registry.json
@@ -308,7 +309,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/plan <目标>` | 先规划后执行，见 5.1 |
 | `/status` | 会话与账本摘要 |
 | `/terminal-setup` | 一键配置终端键位：Windows Terminal 写入 Shift+Enter 换行绑定并解绑 Alt+Enter（写前备份、幂等）；未找到 WT 时给 VSCode 指引 |
-| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径，行内附输出末 4KB 尾读；账本随会话持久化，重开/重启可回溯；后台 exec 与后台子智能体产生，模型以 `task_wait` 等待到终态并取回执、以 `task_stop` 工具停止） |
+| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径，行内附输出末 4KB 尾读；账本随会话持久化，重开/重启可回溯；后台 exec 与后台子智能体产生，模型以 `task_wait` / `task_stop` 等待或停止——仅台账 exec/spawn；板任务走 `agent_team_task_wait` / `agent_team_task_stop`，见 5.6） |
 | `/skill` | 加载技能进上下文：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定即载入、本会话重复加载回执已加载 |
 | `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出，技能行附来源/遮蔽标注（project/user/learned/plugin，被遮蔽条目点名胜者来源） |
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，首项标注「默认」（缺省模型=首源首模型）、当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
@@ -359,7 +360,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
 - 预算护栏：子智能体不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
 - 自定义角色：项目级放 `<项目>/.sunshinex/agents/{id}/agent.md`，全局级放 `~/.sunshinex/agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。frontmatter 可选 `enabled`（缺省 `true`；`false` = 从注册表剔除，等同不存在，`/agents` 面板仍可见可再启用）。两级装载序 后装遮蔽：全局 → 项目新家（同名就近遮蔽）。历史旧位置 `<项目>/agents/` 在首次装载/列举时一次性自动迁入新家（同 id 撞新家按陈旧重复删旧副本），此后盘上只有标准两级。启停与增删改：`/agents` 面板或 `sunshinex agents` 子命令。
-- 团队形态：`create_agent_teammate` 工具创建智能体团队成员（长驻，自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
+- 团队形态：`create_agent_teammate` 工具创建智能体团队成员（长驻，自主认领团队任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
 
@@ -388,9 +389,11 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 生命周期：树落数据目录 `worktrees/<name>/`、分支 `worktree-<name>` 从当前 HEAD 分叉。干净树随会话自动清理（含分支），脏树保留并标记待处置；CLI 非交互路径一律保留。
 
-### 5.6 任务板与团队协作
+### 5.6 智能体团队与任务协作
 
-任务清单：可设依赖、可挂审批门；按会话 `journalId` 落盘（`data/teams/<journalId>/`），同会话重启恢复，`/new` 新会话空板。
+任务清单：可设依赖、可挂审批门；按会话 `journalId` 落盘（`data/teams/<journalId>/`），同会话重启恢复，`/new` 新会话空板。总开关 `agentTeams`（settings / `SUNSHINEX_AGENT_TEAMS`，缺省开）：关则不注册下列团队工具。
+
+**模型工具**（`agentTeams` 开时注入）：`create_agent_team` → `create_agent_teammate` → `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message`；等待与停止板任务用 `agent_team_task_wait` / `agent_team_task_stop`（与通用 `task_wait` / `task_stop` 分域——后者只服务 exec/spawn 台账）。
 
 **对话操作**：
 
@@ -402,7 +405,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | 「取消 t4」 | 取消未开始的任务 |
 | 「等跑完」 | 等待并汇报各任务结果 |
 
-**Ctrl+T 任务板**（与 `Ctrl+B` 互斥）：
+**Ctrl+T 团队看板**（与 `Ctrl+B` 互斥）：
 
 | 键 | 作用 |
 | --- | --- |
@@ -412,14 +415,14 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 行示例：`task-build-parser-k3f2 ○ ⚠ 标题 ← task-run-tests-a8c1 @w1`——状态用全 TUI 统一符号：○ 待派 · ▸ 执行中 · ◆ 待复核 · ✓ 完成 · ✗ 失败 · ⊘ 取消；`@名字` 为执行者（已执行显实际执行者，未执行显指派）。
 
-**智能体团队成员（teammate）**（成员=上下文承载体：独立子会话+自有记忆，本身无生命周期、无停止概念；生命周期属于板任务——任务完成成员回归待命。智能体团队 = 多成员共享任务板协作的形态，长驻分工用；小探查用 5.3 spawn 一次性子智能体即可；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
+**智能体团队成员**（成员=上下文承载体：独立子会话+自有记忆，本身无生命周期、无停止概念；生命周期属于板任务——任务完成成员回归待命。智能体团队 = 多成员共享看板协作的形态，长驻分工用；小探查用 5.3 spawn 一次性子智能体即可；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
 
 | 操作 | 方法 |
 | --- | --- |
-| 开 | 「创建智能体团队成员 reviewer」（模型走 create_agent_teammate）；或指定 `.sunshinex/agents/{id}/agent.md` 注册角色作框定（项目级/全局级见 5.3） |
-| 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为 agent 间交流） |
-| 打断当前任务 | 转录页两次 `Ctrl+C`（只打断这一个任务，成员保留续认领）；或 `task_stop <板任务 id>` / `task_stop 成员名` |
-| 消息 | teammate 间可互发，转录可见 |
+| 开 | 「创建智能体团队成员 reviewer」（模型走 `create_agent_teammate`）；或指定 `.sunshinex/agents/{id}/agent.md` 注册角色作框定（项目级/全局级见 5.3） |
+| 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为成员间交流） |
+| 打断当前任务 | 转录页两次 `Ctrl+C`（只打断这一个任务，成员保留续认领）；或 `agent_team_task_stop <板任务 id>` / `agent_team_task_stop <成员名>` |
+| 消息 | 成员间可互发（`send_agent_team_message`），转录可见 |
 | 看板对照 | `Ctrl+B` 行 = `名字 · 当前任务`；`Ctrl+T` 行 = 任务 + 状态符号 + 执行者 |
 
 **预算帽**：环境变量 `SUNSHINEX_TEAM_TOKEN_CAP=<tokens>`；用满后新任务排队，提示 `team budget exhausted`。
@@ -557,7 +560,7 @@ pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包
 | `Tab` | `/` 开头时补全命令；否则切换历史折叠 / 展开（含待办卡） |
 | `Ctrl+O` | 展开当前一个轮次（自最近一次输入起）的全部工具与思考行全文 |
 | `Ctrl+B` | 子智能体浏览模式：`↑/↓` 在 SPAWN 调用行间移动高亮，`Enter` 展开/折叠该行（思考与工具转录），`Esc` 退出；运行中不可进入 |
-| `Ctrl+T` | 任务板视图：`↑/↓` 在任务行间移动，`Enter` 于门挂起（⚠）行弹 approve / deny 审批卡，`Esc` 退出；与 `Ctrl+B` 互斥（见 5.6） |
+| `Ctrl+T` | 智能体团队看板：`↑/↓` 在任务行间移动，`Enter` 于门挂起（⚠）行弹 approve / deny 审批卡，`Esc` 退出；与 `Ctrl+B` 互斥（见 5.6） |
 | `Ctrl+Q` | 排队管理面板：查看 / 编辑 / 删除 / 插入 / 直接发送 / 置首 / 重排等待队列（见第七节） |
 | `↑` / `↓` | 输入历史（最近 100 条）；运行中且输入为空：`↑` 撤回排队（见第七节） |
 | `←` / `→`、`Home` / `End` | 光标移动（`Ctrl+A` / `Ctrl+E` 跳首尾） |

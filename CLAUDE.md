@@ -93,7 +93,7 @@ src/
   images.ts           # 图片附件共享面（MAX_IMAGES ≤8/parseImagesParam 校验/appendImages 钳制/imageMarkers 占位标记；serve HTTP + TUI + GUI 单源，dataURL 形态全链零转码）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
-  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir / plugins（插件两级装载+启用态合并+MCP 名单合成）/ image-history（imageHistoryLimit 语义键解析，0-50 渲染半径）
+  config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts（agentTeams 启用解析单点）/ permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir / plugins（插件两级装载+启用态合并+MCP 名单合成）/ image-history（imageHistoryLimit 语义键解析，0-50 渲染半径）
   tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
   harness/
     index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
@@ -109,8 +109,8 @@ src/
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
-    tools/task-stop.ts # task_stop 工具（按 id 停止后台任务；装配期与 spawn 一并注册进主链）
-    tools/task-wait.ts # task_wait 工具（阻塞等待后台任务到终态；装配期与 task_stop 一并注册进主链）
+    tools/task-stop.ts # task_stop（仅 exec/spawn 台账）与 agent_team_task_stop（板任务/成员打断；agentTeams 开时注册）
+    tools/task-wait.ts # task_wait（仅 exec/spawn 台账）与 agent_team_task_wait（板任务等待；agentTeams 开时注册）
     tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输）
     subagent.ts       # 子智能体执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
@@ -122,7 +122,7 @@ src/
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
-  taskboard/          # 任务板域模型与协调器（model 纯 reducer/board 协调/store 落盘/translate 事件翻译/teammate 长驻队友/inbox 消息收件/executors 执行体）
+  taskboard/          # 智能体团队域模型与协调器（model 纯 reducer/board 协调/store 按 journalId 落盘/translate 事件翻译/teammate 长驻成员/inbox 消息收件/executors 执行体）
   delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
   session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件与 shadow 透传）、entry.ts 条目模型、seglog.ts kernel 事件→journal v3 行映射（kernelEventRows）；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
   serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v3 单档唯一写者链路 kernelEventRows）
@@ -153,8 +153,8 @@ SUNSHINE.md          # 项目业务配置
 - 新增共享类型需在 `src/types.ts` 登记
 - **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
   - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
-  - 另册：`spawn`（`subagent.ts` 工厂，子智能体派生）/ `task_stop`（`tools/task-stop.ts`，按 id 停止后台 exec/超时转后台/后台子智能体）/ `task_wait`（`tools/task-wait.ts`，阻塞等待后台任务到终态并内联回执 exec 日志尾部/子智能体结论）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
-  - 任务板与团队（`taskboard-tools.ts` + `teammate-tools.ts` 工厂，`harness/index.ts` 装配）：`create_agent_team`（建队并返回 teamId）/ `create_agent_teammate`（长驻成员创建，与 spawn 分立动词，必带 teamId）/ `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message`（主链面）；板态为 `pending` / `running` / `success` / `failed` / `cancelled`；teammate 成员面派生时剔板面写件、换注 `get_agent_team_board`/`get_task` 读取
+  - 另册：`spawn`（`subagent.ts` 工厂，子智能体派生）/ `task_stop`（`tools/task-stop.ts`，仅停止 exec/超时转后台/后台 spawn 台账任务）/ `task_wait`（`tools/task-wait.ts`，仅等待上述台账到终态并内联回执 exec 日志尾部/子智能体结论；板 id 拒识点名 `agent_team_task_wait`）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
+  - 智能体团队（`taskboard-tools.ts` + `teammate-tools.ts` / `message-tools.ts` 工厂，`harness/index.ts` 按 `agentTeams` 条件装配，缺省开；语义键 `agentTeams` / 槽 `SUNSHINEX_AGENT_TEAMS`，解析单点 `config/agent-teams.ts`）：`create_agent_team`（建队并返回 teamId）/ `create_agent_teammate`（长驻成员创建，与 spawn 分立动词，必带 teamId）/ `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message` / `agent_team_task_wait`（仅板任务）/ `agent_team_task_stop`（板任务取消 + 按名打断成员）；板态为 `pending` / `running` / `success` / `failed` / `cancelled`；关开关则八件套不注入模型面且 GUI 隐藏「智能体团队」页签；成员面派生时剔板面写件、换注 `get_agent_team_board`/`get_task` 读取
   - 插件贡献工具不入内置清单：插件经 manifest 贡献 MCP server，工具以 `mcp__<server>__<tool>` 前缀进模型工具面（登记制与用户 mcp.json 同通道；插件 = 治理层——manifest/开关/审批，运行时是进程外 MCP server，开发规范 `docs/PLUGIN-DEV.md`）。guard 按 manifest `safety` 三类声明驱动问线：`act` 任何档位强制 ask（full-access 不豁免）、`confirm` 落穿通用 ask + 会话一次放行、`observe` 只读白名单直放；未声明走通用 MCP 审批。MCP 插件工具 schema 由 server 经 `tools/list` 下发，harness 不手写插件工具清单与 schema（上条声明化纪律只约束 harness 自有工具）
 - **原始工具面复用、核心能力专属工具**：原始操作面（文件读写/搜索/命令/网络）能靠既有原子工具（`read` / `write` / `grep` / `glob` / `exec` …）与既有参数完成的，一律不新增专属工具；**核心 harness 能力**（记忆沉淀、技能沉淀、子智能体派生、后台任务停止等平台功能）可为模型定义专属工具——效果优先，给模型便利、精确的操作手脚，不以原始工具拼凑模拟平台语义。工具清单属稳定段（§11），每加一个工具即一次全量前缀断点，新增仍须论证并经用户裁决、数量克制。**工具参数声明化**：每个工具必须以 JSON Schema 声明 `parameters`（function calling strict 兼容口径——`additionalProperties` 显式闭合、可选项以 null 联合进 `required`；自由入参属例外，须显式登记 `additionalProperties: true` 宽松点），新工具不带 schema 不得入清单
 - 依赖引入原则：零依赖不是硬规则。优先 node: 内置模块；允许引入优秀且必要的第三方依赖。引入标准：解决真实问题、维护活跃、类型完善（或随附 .d.ts）、许可证兼容、依赖面（含传递依赖）可控；引入时登记 `package.json`、在 README/Arch-Plan 标注用途，并跑全量 build/test 验证
@@ -174,7 +174,7 @@ SUNSHINE.md          # 项目业务配置
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Landlock self-restrict-then-exec launcher，Linux-only），收敛于 `src/harness/security/landlock.ts` 接缝；包缺失/内核不支持静默降级不阻断 | SUNSHINEX_SANDBOX=off 回 JS 层检查 + 容器部署口径 |
 | ws | GUI daemon WebSocket 服务面（会话事件流 / PTY 帧下行），收敛于 `src/serve/daemon.ts` 接缝 | 事件面退 HTTP 快照轮询（GET 快照路径已在） |
 | node-pty | GUI 终端标签伪终端宿主（PTY 分配与 I/O 中继），收敛于 `src/serve/pty.ts` 接缝（原生模块，安装期编译） | 终端标签降级不可用提示，daemon 其余面不受影响 |
-| @xyflow/react + @dagrejs/dagre | GUI 任务板依赖图（React Flow 图面渲染 + dagre 自动分层布局），收敛于 `gui/src/tabs/TaskDag.tsx` | 降级为列表视图（列表/流程图双卡切换已在）；布局算法接缝在 `layoutTaskDag` 纯函数 |
+| @xyflow/react + @dagrejs/dagre | GUI 智能体团队编排图（React Flow 图面渲染 + dagre 自动分层布局），收敛于 `gui/src/tabs/TaskDag.tsx` | 降级为任务列表（队卡「任务|编排」切换已在）；布局算法接缝在 `layoutTaskDag` 纯函数 |
 | @playwright/mcp | browser-use 内置插件的浏览器操作 MCP server（钉版；**插件目录工作区开发依赖，非主仓依赖**——发版链 esbuild 全图内联进 `server/index.js` 单文件束，目标机零补装），收敛于 `plugins/browser-use/` | 插件不启用即零依赖面；换任意 MCP 浏览器 server 改 manifest 即可 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
@@ -287,7 +287,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 图渲染 | mermaid | 已引入 | 会话流 mermaid 围栏渲染（懒加载/主题随 data-theme/失败回落），收敛于 `gui/src/Mermaid.tsx` |
 | GUI 图标 | lucide-react + @iconify/react（vscode-icons 集） | 已引入 | 界面图标与文件树文件图标 |
 | GUI 终端 | @xterm/xterm + @xterm/addon-fit（前端）+ node-pty（宿主） | 已引入 | 内嵌终端：gui 渲染、daemon 经 node-pty 分配 PTY（原生模块，§5 台账） |
-| GUI 任务板 DAG | @xyflow/react + @dagrejs/dagre | 已引入 | 任务依赖图渲染与自动布局（React Flow 图面：平移/缩放/控制钮内置；dagre 分层），收敛于 `gui/src/tabs/TaskDag.tsx`（§5 台账同行） |
+| GUI 智能体团队编排 | @xyflow/react + @dagrejs/dagre | 已引入 | 队卡「编排」依赖图渲染与自动布局（React Flow 图面：平移/缩放/控制钮内置；dagre 分层），收敛于 `gui/src/tabs/TaskDag.tsx`（§5 台账同行） |
 | GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
 | GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
@@ -296,7 +296,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
 - **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写（收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层）——TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。落位分三档：
-  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放；团队/任务板/队内 inbox 落 `data/teams/<journalId>/`（与 journal 同键，新会话空板，不跨会话；队友认领与 `send_agent_team_message` 仅同 `teamId`）。
+  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放；智能体团队/板/队内 inbox 落 `data/teams/<journalId>/`（与 journal 同键，新会话空板，不跨会话；成员认领与 `send_agent_team_message` 仅同 `teamId`）。
   - **工作区级共享**（记忆/学习技能/KB/workspace.json）：`data/` 其余子目录，跨会话共用（语义即共享，非缺陷）。
   - **面私有 UI 态**（GUI 标签页开闭/激活/宽度/折叠与最近关闭、面板偏好；TUI 渲染态等）：落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，粒度镜像共享层——按会话键的（GUI 标签态=Record<sessionId,…>，盘为真相源、变更防抖写透）落 `gui/sessions/<journalId>.json`，**档键=journal id**（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按会话 id 存档刷新后必空），与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`；应用级指针档（lastRoot/lastJournalId 恢复现场入口）是**机器级**状态，落 `userConfigDir()/gui/ui-state.json`（`~/.sunshinex/gui/`，projects 根保持纯 slug 工作区位）；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。
   - **判断口径**：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`）。

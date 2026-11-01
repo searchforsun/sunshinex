@@ -108,7 +108,7 @@ export class Harness {
   readonly tasks: TaskRegistry;
   /** edit 先读守卫（read-guard.ts）：read 记录快照 / edit 校验，NOT_READ·STALE_READ 硬闸 */
   readonly readGuard: ReadGuard;
-  /** 任务板协调器：会话内单物理板，任务按 teamId 聚合；队友认领/消息仅队内 */
+  /** 智能体团队板协调器：会话内单物理板，任务按 teamId 聚合；成员认领/消息仅队内 */
   readonly taskboard: TaskBoard;
   /** AgentTeam 注册表：create_agent_team / create_agent_teammate / create_agent_team_task 共用同一实例（按会话落盘） */
   readonly agentTeams: AgentTeamRegistry;
@@ -117,7 +117,7 @@ export class Harness {
   readonly team: TeamRegistry;
   /** agent 间消息收件箱：会话 teams 根下 main/inbox/<agent>.jsonl；主链与 teammate 面共用 */
   readonly inbox: FileInbox;
-  /** 队友 inbox 消费位点（与 inbox 同会话根；adoptSessionTeams 同批切换） */
+  /** 成员 inbox 消费位点（与 inbox 同会话根；adoptSessionTeams 同批切换） */
   private readonly inboxCursors: InboxCursorStore;
   /** 工作区数据根（adoptSessionTeams 拼会话 teams 路径） */
   private readonly dataDir: string;
@@ -316,7 +316,7 @@ export class Harness {
     // 同点注入 TaskBoard 派发路由(T2 接缝 team?:TeamRegistry)
     this.team = new TeamRegistry();
     // 团队/板/inbox 按会话隔离：构造期驻内存（或显式 teamsSessionId 立即落盘）；daemon/TUI
-    // 在 journal 铸造后 adoptSessionTeams(journalId)。队友名会话内唯一（inbox 按名落档）；
+    // 在 journal 铸造后 adoptSessionTeams(journalId)。成员名会话内唯一（inbox 按名落档）；
     // 认领与 send_agent_team_message 仅同 teamId——不跨队共享。
     this.dataDir = resolveDataDir(base);
     this.memoryBoardStore = new MemoryTeamStore();
@@ -362,7 +362,7 @@ export class Harness {
             root: base,
             store,
             board: this.taskboard,
-            // 板任务台账：execute 内 submit(dispatchTag)——task_wait/board/stop 可等可停；队友实体本身不进账本
+            // 板任务台账：execute 内 submit(dispatchTag)——agent_team_task_wait/stop 可等可停；成员实体本身不进账本
             tasks: this.tasks,
             // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_agent_team_message
             // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
