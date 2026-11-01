@@ -341,8 +341,8 @@ export class SubagentRunner {
    * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
    * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子智能体不得改动主会话工作环境；
    * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 lead，子智能体不碰板；
-   * send_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 lead+具名 teammate,fork 子面不发；
-   * send_message+create_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
+   * send_agent_team_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 lead+具名 teammate,fork 子面不发；
+   * send_agent_team_message+create_agent_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
    * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁) */
   deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
     const bindExecWait = (face: ToolRegistry): ToolRegistry => {
@@ -476,7 +476,7 @@ export class SubagentRunner {
       budget?: SubagentBudget;
       signal?: AbortSignal;
       taskId?: string;
-      /** 板任务契约:seed 不含主链(只 role/task 尾),执行体只见自包含 spec——与 create_task 文案「sees ONLY this」对齐 */
+      /** 板任务契约:seed 不含主链(只 role/task 尾),执行体只见自包含 spec——与 create_agent_team_task 文案「sees ONLY this」对齐 */
       bare?: boolean;
     },
   ): Promise<Result<{ reply: string; tokens: number }>> {
@@ -543,7 +543,7 @@ export class SubagentRunner {
           return fail('INCOMPLETE', `[${finalLabel}] isolation failed (${created.error.code})`);
         }
       }
-      // bare=板任务干净会话:主链不进 seed(防执行体看见 lead 的 create_task/task_wait 编排而「自等」);
+      // bare=板任务干净会话:主链不进 seed(防执行体看见 lead 的 create_agent_team_task/task_wait 编排而「自等」);
       // 普通 spawn 仍 fork=主链快照+尾追(前缀缓存第一要义)
       const base = opts?.bare === true ? [] : this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
@@ -631,7 +631,7 @@ export class SubagentRunner {
 
 /** teammate 创建接缝（P2 spec §5，裁定：回调形态避免本文件反向值 import Teammate——taskboard 侧类型环）：
  *  spawn 分流命中时经此建长驻 teammate；回执 name 供观察行组装 */
-/** teammate 创建接缝(create_teammate 工具消费):长驻执行体的登记动作——与 spawn 分立的两个动词,
+/** teammate 创建接缝(create_agent_teammate 工具消费):长驻执行体的登记动作——与 spawn 分立的两个动词,
  *  各自一份契约(2026-10-20 定位定版:重量级通道不再作为 spawn 的隐藏参数) */
 export interface TeamSpawnSeam {
   spawn(input: SubagentSpawnInput): Result<{ name: string }>;
@@ -641,7 +641,7 @@ export interface TeamSpawnSeam {
  * 同轮 tools 数组批量并行由 reactor 并行闸门放行（subagent 类非 bash）；本身无直接 IO 副作用
  * （guard manual 分支免审批），子智能体内部每个工具调用独立过安全链。
  * 单一职责(2026-10-20 定位定版):spawn 只产一次性 fork 子智能体——长驻 teammate 经独立的
- * create_teammate 动词创建(两个动词两份契约,防重量级通道被顺手误选) */
+ * create_agent_teammate 动词创建(两个动词两份契约,防重量级通道被顺手误选) */
 export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
   return {
     parameters: {
@@ -665,7 +665,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     executor: async (input) => {
       const spec = normalizeSpawnInput(input as SubagentSpawnInput);
       runner.validateSpawnInput(spec);
-      // 长驻 teammate 不在本工具面:create_teammate 动词独立承载(两动词两契约,见工厂注释)
+      // 长驻 teammate 不在本工具面:create_agent_teammate 动词独立承载(两动词两契约,见工厂注释)
       if (spec.background === true) {
         const started = runner.spawnBackground(spec);
         return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})`, stderr: '', timedOut: false };

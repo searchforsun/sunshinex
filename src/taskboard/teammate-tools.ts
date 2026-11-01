@@ -1,4 +1,4 @@
-// T3(P2 spec §5):teammate 只读板工具面——get_board / get_task。L1 注入目标:只进 teammate 派生面
+// T3(P2 spec §5):teammate 只读板工具面——get_agent_team_board / get_task。L1 注入目标:只进 teammate 派生面
 // (deriveTeammateRegistry),主链面与 fork 子面均零注册(板面操作权归主链 lead,teammate 只读拉详情)。
 // 文案恒英文单语(工具 description 直接进模型面)。
 import { CodedToolError, RegisteredTool, ToolRegistry } from '../harness/tools';
@@ -12,7 +12,7 @@ import type { TaskBoard } from './board';
  *  为一个字面量扩 API;drift 由本文件与 deriveChildRegistry 两队剔除断言钉住) */
 const TODO_TOOL_NAME = 'todo_write';
 
-/** teammate 只读板工具对:get_board(共享工厂,成员面描述)+ get_task({taskId},单任务全量) */
+/** teammate 只读板工具对:get_agent_team_board(共享工厂,成员面描述)+ get_task({taskId},单任务全量) */
 export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
   const getBoard = makeGetBoardTool(
     board,
@@ -58,9 +58,9 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
 }
 
 /** teammate 派生工具面(L1 注入单点):base 克隆剔 spawn/todo_write/ask_question/worktree/
- *  create_teammate+板四件套(成员不得建队/建成员/写板;与 fork 面 lead-only 同口径,但 send_message
- *  保留——T2 双面裁定:send_message 不入 TASKBOARD_TOOL_NAMES,teammate 面要有),
- *  再注册 get_board/get_task;messageTool 在场则追加注册 send_message;
+ *  create_agent_teammate+板四件套(成员不得建队/建成员/写板;与 fork 面 lead-only 同口径,但 send_agent_team_message
+ *  保留——T2 双面裁定:send_agent_team_message 不入 TASKBOARD_TOOL_NAMES,teammate 面要有),
+ *  再注册 get_agent_team_board/get_task;messageTool 在场则追加注册 send_agent_team_message;
  *  task_wait 换装 kinds=['exec'](可等自动转后台的命令,不可等板任务——防自等死锁);
  *  排己白名单由装配点闭包注入。原 registry 零突变;每次调用新面(装配期一次性,teammate.ts registryFactory 消费) */
 export function deriveTeammateRegistry(
@@ -70,7 +70,7 @@ export function deriveTeammateRegistry(
   tasks?: TaskRegistry,
 ): ToolRegistry {
   const face = base.derive({
-    exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'create_teammate', ...TASKBOARD_TOOL_NAMES],
+    exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'create_agent_teammate', ...TASKBOARD_TOOL_NAMES],
   });
   for (const t of makeTeammateTools(board)) face.register(t);
   if (messageTool) face.register(messageTool);

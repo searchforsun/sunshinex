@@ -476,7 +476,7 @@ test('create:未知 teamId 拒绝;retryOf 同队且前驱终态;dependsOn 同队
     board.init();
     const unknown = board.create({ teamId: 'team-nope', title: 'A', spec: 'a' });
     assert.equal(unknown.ok, false);
-    if (!unknown.ok) assert.match(unknown.error.message, /unknown teamId: team-nope; create a team with create_team first/);
+    if (!unknown.ok) assert.match(unknown.error.message, /unknown teamId: team-nope; create a team with create_agent_team first/);
     const live = board.create({ teamId: alpha.value.teamId, title: 'Live', spec: 'live' });
     assert.ok(live.ok);
     const idLive = live.value.taskId;

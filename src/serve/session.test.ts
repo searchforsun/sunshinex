@@ -1,4 +1,4 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -135,9 +135,9 @@ test('① pump 平移面：帧恒 {kind:"event",sessionId,seq,e}、seq 计数在
 });
 
 test('② 实跑平移面：submit 受理→running→done→idle；转录三类在场、board 影子落位、snapshotResponse 形态', async () => {
-  // 消费序（taskboard.e2e 实测口径，同 daemon.contract ③）：create_task 牌 → done 牌收束
+  // 消费序（taskboard.e2e 实测口径，同 daemon.contract ③）：create_agent_team_task 牌 → done 牌收束
   const model = new ScriptedAdapter([
-    `{"tool":"create_task","input":{"teamId":"${TEAM_ID}","title":"A","spec":"a","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
+    `{"tool":"create_agent_team_task","input":{"teamId":"${TEAM_ID}","title":"A","spec":"a","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
     '{"done":true,"reply":"task created"}',
   ]);
   await withSession(model, async (ctx) => {

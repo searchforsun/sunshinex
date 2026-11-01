@@ -359,7 +359,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 展开状态跨窗口缩放保留；`/resume` 恢复后回落折叠。
 - 预算护栏：子智能体不设 token 硬顶（护栏交给步数与墙钟），需要限时配 `subagentTokenCap`（独享值，不继承主链剩余）；步数上限与主链同源（`maxSteps`）。
 - 自定义角色：项目级放 `<项目>/.sunshinex/agents/{id}/agent.md`，全局级放 `~/.sunshinex/agents/{id}/agent.md`（frontmatter `name`、正文写职责）；可声明 `isolation: worktree` 获得独立工作树（见 5.5）。frontmatter 可选 `enabled`（缺省 `true`；`false` = 从注册表剔除，等同不存在，`/agents` 面板仍可见可再启用）。两级装载序 后装遮蔽：全局 → 项目新家（同名就近遮蔽）。历史旧位置 `<项目>/agents/` 在首次装载/列举时一次性自动迁入新家（同 id 撞新家按陈旧重复删旧副本），此后盘上只有标准两级。启停与增删改：`/agents` 面板或 `sunshinex agents` 子命令。
-- 团队形态：`create_teammate` 工具创建智能体团队成员（长驻，自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
+- 团队形态：`create_agent_teammate` 工具创建智能体团队成员（长驻，自主认领任务板任务，见 5.6）；frontmatter `executor: external-cli` 交外部 CLI 执行体。
 
 ### 5.4 会话回退与分叉（/rewind · /fork）
 
@@ -416,7 +416,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 | 操作 | 方法 |
 | --- | --- |
-| 开 | 「创建智能体团队成员 reviewer」（模型走 create_teammate）；或指定 `.sunshinex/agents/{id}/agent.md` 注册角色作框定（项目级/全局级见 5.3） |
+| 开 | 「创建智能体团队成员 reviewer」（模型走 create_agent_teammate）；或指定 `.sunshinex/agents/{id}/agent.md` 注册角色作框定（项目级/全局级见 5.3） |
 | 看 | `Ctrl+B` → `Enter` 转录（行 = `名字 · 当前任务`；转录内每轮任务为灰底内容带，`✉` 行为 agent 间交流） |
 | 打断当前任务 | 转录页两次 `Ctrl+C`（只打断这一个任务，成员保留续认领）；或 `task_stop <板任务 id>` / `task_stop 成员名` |
 | 消息 | teammate 间可互发，转录可见 |

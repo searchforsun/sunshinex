@@ -172,7 +172,7 @@ test('e2e spec 验收:3 teammate 消化 7 任务——claim 分担/依赖序/全
     assert.ok(team.ok, `create team 应成功:${team.ok ? '' : team.error.message}`);
     const teamId = team.value.teamId;
     for (const w of ['w1', 'w2', 'w3']) {
-      const r = await h.tools.execute('create_teammate', { teamId, name: w, prompt: `worker ${w}: claim board tasks and finish each` }, h.safety);
+      const r = await h.tools.execute('create_agent_teammate', { teamId, name: w, prompt: `worker ${w}: claim board tasks and finish each` }, h.safety);
       assert.ok(r.ok && r.value.exitCode === 0, `spawn ${w} 应成功:${JSON.stringify(r)}`);
       assert.ok(new RegExp(`teammate "?${w}"? started`).test(r.value.stdout), `spawn 回执应含 teammate ${w} started`);
     }

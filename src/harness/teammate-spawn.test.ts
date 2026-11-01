@@ -1,5 +1,5 @@
-/** T3(create_teammate + teammate 工具面):独立动词建长驻执行体 → TeamRegistry
- *  长驻 teammate(非 fork);teammate 派生面 get_board/get_task 只读注入、主链面零污染;task_stop 可停。 */
+/** T3(create_agent_teammate + teammate 工具面):独立动词建长驻执行体 → TeamRegistry
+ *  长驻 teammate(非 fork);teammate 派生面 get_agent_team_board/get_task 只读注入、主链面零污染;task_stop 可停。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -9,27 +9,32 @@ import { Harness } from './index';
 import { CodedToolError } from './tools';
 import { ScriptedAdapter } from '../model/adapter';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
-import { resolveDataDir } from '../config/data-dir';
+import { MemoryAgentTeamStore } from '../taskboard/team-registry';
+import type { AgentTeamRegistry } from '../taskboard/team-registry';
 
 const TEAM_ID = 'team-alpha-test';
 
-function seedTeam(root: string): () => void {
+/** 经 harness 注册表注入固定 teamId（会话隔离后不再写工作区级 teams/registry.json） */
+function seedTeam(agentTeams: AgentTeamRegistry): void {
+  const store = new MemoryAgentTeamStore();
+  store.save([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]);
+  agentTeams.adopt(store);
+}
+
+function withDataDir(root: string): () => void {
   const prev = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(root, 'data');
-  const dir = path.join(resolveDataDir(root), 'teams');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'registry.json'), JSON.stringify([{ teamId: TEAM_ID, name: 'alpha', createdAt: 1 }]));
   return () => {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prev;
   };
 }
 
-const TEAM_ENVELOPE = JSON.stringify({ tool: 'create_teammate', input: { teamId: TEAM_ID, name: 'w1', prompt: 'review stuff' } });
+const TEAM_ENVELOPE = JSON.stringify({ tool: 'create_agent_teammate', input: { teamId: TEAM_ID, name: 'w1', prompt: 'review stuff' } });
 
-test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_board/get_task,task_stop 按名可停', async () => {
+test('create_agent_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_agent_team_board/get_task,task_stop 按名可停', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-1-'));
-  const restore = seedTeam(tmp);
+  const restore = withDataDir(tmp);
   let h: Harness | undefined;
   try {
     const model = new ScriptedAdapter([
@@ -37,6 +42,7 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
     h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
+    seedTeam(h.agentTeams);
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true, '主链应正常收束');
     const obs = r.steps.map((s) => s.observation).join('\n');
@@ -52,23 +58,23 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     assert.ok(stopOut.ok, `task_stop 按名打断应成功`);
     if (stopOut.ok) assert.match(stopOut.value.stdout, /idle|interrupted/, '回执按在跑与否分流');
     assert.equal(h.team.get('w1')!.stopped, false, '成员存活(不消亡)');
-    // 面隔离(2026-10-20 收束后):get_board 读权收编进主链面;teammate 派生面剔除写板四件套、
-    // 注入只读对(get_board/get_task)
-    assert.ok(h.tools.get('get_board') !== undefined, '主链面含 get_board(板读取权在 lead)');
+    // 面隔离(2026-10-20 收束后):get_agent_team_board 读权收编进主链面;teammate 派生面剔除写板四件套、
+    // 注入只读对(get_agent_team_board/get_task)
+    assert.ok(h.tools.get('get_agent_team_board') !== undefined, '主链面含 get_agent_team_board(板读取权在 lead)');
     assert.equal(h.tools.get('get_task'), undefined, '主链面不得有 get_task');
     const face = deriveTeammateRegistry(h.tools, h.taskboard, undefined, h.tasks);
-    assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');
+    assert.ok(face.get('get_agent_team_board') !== undefined, 'teammate 面应含 get_agent_team_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
     assert.equal(face.get('spawn'), undefined, 'teammate 面不得再生子代');
-    assert.equal(face.get('create_task'), undefined, 'teammate 面不得碰板面写操作');
-    assert.equal(face.get('create_teammate'), undefined, 'teammate 面不得再建成员(lead-only)');
+    assert.equal(face.get('create_agent_team_task'), undefined, 'teammate 面不得碰板面写操作');
+    assert.equal(face.get('create_agent_teammate'), undefined, 'teammate 面不得再建成员(lead-only)');
     assert.notEqual(face.get('task_wait'), undefined, 'teammate 面保留 task_wait(等 exec 自动转后台)');
-    // fork 子面剔除 send_message / create_teammate(消息身份与建成员属 lead);task_wait 保留为 exec-only
-    assert.equal(h.runner.deriveChildRegistry({}).get('send_message'), undefined, 'fork 子面缺省派生不得含 send_message');
-    assert.equal(h.runner.deriveChildRegistry({}).get('create_teammate'), undefined, 'fork 子面不得含 create_teammate');
+    // fork 子面剔除 send_agent_team_message / create_agent_teammate(消息身份与建成员属 lead);task_wait 保留为 exec-only
+    assert.equal(h.runner.deriveChildRegistry({}).get('send_agent_team_message'), undefined, 'fork 子面缺省派生不得含 send_agent_team_message');
+    assert.equal(h.runner.deriveChildRegistry({}).get('create_agent_teammate'), undefined, 'fork 子面不得含 create_agent_teammate');
     assert.notEqual(h.runner.deriveChildRegistry({}).get('task_wait'), undefined, 'fork 子面保留 task_wait(exec-only)');
-    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'create_teammate', 'read'] }).get('send_message'), undefined, '显式 allowlist 亦恒剔除 send_message');
-    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_message', 'create_teammate', 'read'] }).get('create_teammate'), undefined, '显式 allowlist 亦恒剔除 create_teammate');
+    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_agent_team_message', 'create_agent_teammate', 'read'] }).get('send_agent_team_message'), undefined, '显式 allowlist 亦恒剔除 send_agent_team_message');
+    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_agent_team_message', 'create_agent_teammate', 'read'] }).get('create_agent_teammate'), undefined, '显式 allowlist 亦恒剔除 create_agent_teammate');
     assert.notEqual(h.runner.deriveChildRegistry({ tools: ['task_wait', 'read'] }).get('task_wait'), undefined, '显式 allowlist 内 task_wait 换装保留');
     const created = h.taskboard.create({ teamId: TEAM_ID, title: 'A', spec: 'do A stuff' });
     assert.ok(created.ok);
@@ -76,8 +82,8 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
     await new Promise((r) => setImmediate(r));
     await new Promise((r) => setImmediate(r));
     const status = h.taskboard.snapshot().tasks[aId]!.status;
-    const boardOut = (await face.get('get_board')!.executor({})) as { stdout: string };
-    assert.ok(boardOut.stdout.includes(`${aId} [${status}] A`), 'get_board 应回板摘要行');
+    const boardOut = (await face.get('get_agent_team_board')!.executor({})) as { stdout: string };
+    assert.ok(boardOut.stdout.includes(`${aId} [${status}] A`), 'get_agent_team_board 应回板摘要行');
     const taskOut = (await face.get('get_task')!.executor({ taskId: aId })) as { stdout: string };
     assert.ok(taskOut.stdout.includes(`id: ${aId}`));
     assert.match(taskOut.stdout, new RegExp(`status: ${status}`));
@@ -95,14 +101,15 @@ test('create_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 star
   }
 });
 
-test('create_teammate:agent_id 字符串 "null" 归一为缺席——只传 prompt 即可建队友(防 Subagent not found 死循环)', async () => {
+test('create_agent_teammate:agent_id 字符串 "null" 归一为缺席——只传 prompt 即可建队友(防 Subagent not found 死循环)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-nullish-'));
-  const restore = seedTeam(tmp);
+  const restore = withDataDir(tmp);
   let h: Harness | undefined;
   try {
     h = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
+    seedTeam(h.agentTeams);
     const r = await h.tools.execute(
-      'create_teammate',
+      'create_agent_teammate',
       { teamId: TEAM_ID, name: '小助手', prompt: 'help with board tasks', agent_id: 'null' },
       h.safety,
     );
@@ -117,9 +124,9 @@ test('create_teammate:agent_id 字符串 "null" 归一为缺席——只传 prom
   }
 });
 
-test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队友框定(name=agent_id)', async () => {
+test('create_agent_teammate 带 agent_id:目录注册角色的 frontmatter 成为队友框定(name=agent_id)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-2-'));
-  const restore = seedTeam(tmp);
+  const restore = withDataDir(tmp);
   let h: Harness | undefined;
   try {
     fs.mkdirSync(path.join(tmp, 'agents', 'ee'), { recursive: true });
@@ -129,14 +136,15 @@ test('create_teammate 带 agent_id:目录注册角色的 frontmatter 成为队�
       'utf8',
     );
     const model = new ScriptedAdapter([
-      JSON.stringify({ tool: 'create_teammate', input: { teamId: TEAM_ID, name: 'ee', agent_id: 'ee' } }),
+      JSON.stringify({ tool: 'create_agent_teammate', input: { teamId: TEAM_ID, name: 'ee', agent_id: 'ee' } }),
       JSON.stringify({ done: true, reply: '主链完成' }),
     ]);
     h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false });
+    seedTeam(h.agentTeams);
     const r = await h.reactor.run({ goal: '主任务' }, { maxSteps: 5 });
     assert.equal(r.done, true);
     const obs = r.steps.map((s) => s.observation).join('\n');
-    assert.ok(obs.includes('teammate "ee" started') || obs.includes('teammate ee started'), `create_teammate 应建 teammate ee,实际:${obs}`);
+    assert.ok(obs.includes('teammate "ee" started') || obs.includes('teammate ee started'), `create_agent_teammate 应建 teammate ee,实际:${obs}`);
     assert.ok(h.team.aliveNames().includes('ee'));
   } finally {
     h?.team.stopAll();

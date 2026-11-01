@@ -45,7 +45,7 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
       ];
       const tpl = factory(
         // fork 私有面收口(「spawn 只在主链工具面」全局不变量)+ fork 面剔除族闭合(L2 终审 Important):
-        // 子面剔 spawn,并同源剔 FORK_EXCLUDED_TOOLS(send_message / create_teammate / 板四件套
+        // 子面剔 spawn,并同源剔 FORK_EXCLUDED_TOOLS(send_agent_team_message / create_agent_teammate / 板四件套
         // ——防 lead 冒充,与 subagent/loop 同一常量)
         { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...FORK_EXCLUDED_TOOLS] }), scope: 'fork' as const },
         {

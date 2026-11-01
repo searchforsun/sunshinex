@@ -81,7 +81,7 @@ test('App：Ctrl+T 空板也进视图——「任务板为空」提示框给真�
     term = render(<App controller={ctrl} />);
     const { write, lastFrame } = term;
     await new Promise((r) => setTimeout(r, 150));
-    // 无任何 task 事件（空板投影，真实生产形态：lead 未走 create_task 直接派 teammate）
+    // 无任何 task 事件（空板投影，真实生产形态：lead 未走 create_agent_team_task 直接派 teammate）
     write('\u0014'); // Ctrl+T 进入任务视图
     await new Promise((r) => setTimeout(r, 150));
     assert.match(lastFrame() ?? '', /task board empty/, '空板提示框在场（非静默吞键；t() 测试环境走英文缺省）');

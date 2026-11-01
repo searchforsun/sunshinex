@@ -328,7 +328,7 @@ export function applySubagentChatEvent(s: ChatState, e: SessionEvent): ChatState
   }
   // P1 structureVersion:成员变更 O(1) 差分——内核 append-only,长度/首键不变即成员集不变;
   // 第三条件:尾条目 result 引用跃迁(tool-result 原位配对——内核换条目对象、视图重映射后
-  // result undefined→对象,长度与首键均不变,create_task 等标题自 result.text 读出,漏检即
+  // result undefined→对象,长度与首键均不变,create_agent_team_task 等标题自 result.text 读出,漏检即
   // taskNameOf 冻结陈旧到下一成员帧)。token replaceAt 只换 md,result 恒 undefined===undefined,
   // 冻结面不受影响(seed 整替不经此路,自身置 1);空→空不算变更。纯内容帧计数恒定,派生冻结 memo key(spec §3.3)
   const entries = mapEntries(next.k, next.runBases);

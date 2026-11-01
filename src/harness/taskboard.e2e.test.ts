@@ -1,4 +1,4 @@
-// lead 建队 → create_teammate → create_task(依赖链) → 队友认领回写 → task_wait 拉模式唤醒。
+// lead 建队 → create_agent_teammate → create_agent_team_task(依赖链) → 队友认领回写 → task_wait 拉模式唤醒。
 // 板 id 不透明:自 task-created 事件捕获。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -44,32 +44,32 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
     const h = new Harness({ root: tmp, mode: 'full-access', model, learnSkills: false, onEvent });
     const safety = h.safety;
 
-    const team = await h.tools.execute('create_team', { name: 'alpha' }, safety);
-    assert.ok(team.ok && team.value.exitCode === 0, `create_team: ${JSON.stringify(team)}`);
+    const team = await h.tools.execute('create_agent_team', { name: 'alpha' }, safety);
+    assert.ok(team.ok && team.value.exitCode === 0, `create_agent_team: ${JSON.stringify(team)}`);
     const teamId = h.agentTeams.list()[0]!.teamId;
 
     const tm = await h.tools.execute(
-      'create_teammate',
+      'create_agent_teammate',
       { teamId, name: 'worker', prompt: 'claim board tasks and finish each', agent_id: null },
       safety,
     );
-    assert.ok(tm.ok && tm.value.exitCode === 0, `create_teammate: ${JSON.stringify(tm)}`);
+    assert.ok(tm.ok && tm.value.exitCode === 0, `create_agent_teammate: ${JSON.stringify(tm)}`);
 
     const ca = await h.tools.execute(
-      'create_task',
+      'create_agent_team_task',
       { teamId, title: 'A', spec: 'produce A report', dependsOn: null, assignee: null, executor: null, retryOf: null },
       safety,
     );
-    assert.ok(ca.ok && ca.value.exitCode === 0, `create_task A: ${JSON.stringify(ca)}`);
+    assert.ok(ca.ok && ca.value.exitCode === 0, `create_agent_team_task A: ${JSON.stringify(ca)}`);
     await drain();
     assert.ok(await until(() => ids.A !== undefined && h.taskboard.snapshot().tasks[ids.A!]?.status === 'success'));
 
     const cb = await h.tools.execute(
-      'create_task',
+      'create_agent_team_task',
       { teamId, title: 'B', spec: 'produce B report', dependsOn: [ids.A!], assignee: null, executor: null, retryOf: null },
       safety,
     );
-    assert.ok(cb.ok && cb.value.exitCode === 0, `create_task B: ${JSON.stringify(cb)}`);
+    assert.ok(cb.ok && cb.value.exitCode === 0, `create_agent_team_task B: ${JSON.stringify(cb)}`);
     await drain();
     assert.ok(await until(() => ids.B !== undefined && h.taskboard.snapshot().tasks[ids.B!]?.status === 'success'));
 

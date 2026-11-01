@@ -1434,7 +1434,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* ① 折叠行与正文同一 x 起点(entry 的 8px 内缩为唯一锚;hover pill 左缘贴文字) */.entry-tool { padding: 2px 0; }.entry-tool .tool-summary { padding: 2px 8px; }.entry-thinking { padding: 2px 0; }.entry-thinking .thinking-summary { padding: 2px 8px; }
 /* 折叠行分型文本:文件名强调/相对路径弱色/diff stat 双色 */.tool-file-base { color: var(--fg-secondary); font-weight: 500; white-space: nowrap; }
 /* G14.26:exec 命令内容与动词同灰度(secondary/400)——继承 500 加重显得比动词亮,用户裁定卸掉 */.tool-cmd { color: var(--fg-secondary); font-weight: 400; }.tool-file-link { cursor: pointer; }
-/* G14.171/G14.176 名称链接(spawn/create_task):蓝色字体提示可点(2026-10-24 用户裁定,反转旧「不用 accent 亮蓝」) */.tool-agent-link { color: var(--accent); font-weight: 500; cursor: pointer; }.tool-agent-link:hover { text-decoration: underline; }
+/* G14.171/G14.176 名称链接(spawn/create_agent_team_task):蓝色字体提示可点(2026-10-24 用户裁定,反转旧「不用 accent 亮蓝」) */.tool-agent-link { color: var(--accent); font-weight: 500; cursor: pointer; }.tool-agent-link:hover { text-decoration: underline; }
 /* G14.12:工作区外文件整条绝对路径(超长省略) */
 .tool-file-link:hover { text-decoration: underline; }.tool-file-rel { color: var(--fg-tertiary); font-weight: 400; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.tool-stat { font-family: var(--font-mono); font-size: 11px; flex: none; }.tool-stat-add { color: var(--ok); }.tool-stat-del { color: var(--err); }
 /* ⑤ exec 展开:$ 命令行(hljs bash 高亮)+输出原文,无 Input/Output 分节标 */.tool-exec { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; }.tool-exec-cmd {
@@ -1988,7 +1988,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 .sx-agent-thread .child-tool-mark.fail { color: var(--err); }
 .sx-agent-thread .child-thinking { font: 12px/1.6 var(--font-ui); color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* G14.176 任务板定位高亮(create_task 行点开:滚动居中+flash 退场；DAG 节点同款；队名/看板链接触发队卡) */
+/* G14.176 任务板定位高亮(create_agent_team_task 行点开:滚动居中+flash 退场；DAG 节点同款；队名/看板链接触发队卡) */
 .tb-task-main.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: var(--radius-sm); }
 .tb-dag-node.flash { background: color-mix(in srgb, var(--accent) 16%, var(--surface-soft)); box-shadow: inset 0 0 0 1px var(--accent); }
 .tb-card.flash { box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-elevated)); }

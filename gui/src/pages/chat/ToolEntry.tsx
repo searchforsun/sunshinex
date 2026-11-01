@@ -21,12 +21,12 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
   worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
-  create_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
+  create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
   // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
-  create_team: UsersRound,
-  create_teammate: UsersRound,
-  update_task: ListChecks, get_board: Kanban, probe: Radar, // 2026-10-31 用户裁定「内置工具还没有完全 i18n 化」:任务板更新/看板读取/探测三件专属图标(退役扳手兜底)
-  send_message: Send,
+  create_agent_team: UsersRound,
+  create_agent_teammate: UsersRound,
+  update_agent_team_task: ListChecks, get_agent_team_board: Kanban, probe: Radar, // 2026-10-31 用户裁定「内置工具还没有完全 i18n 化」:任务板更新/看板读取/探测三件专属图标(退役扳手兜底)
+  send_agent_team_message: Send,
   get_task: ClipboardList,
 };
 
@@ -81,11 +81,11 @@ const TOOL_VERB_ZH: Record<string, string> = {
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
-  create_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
-  create_team: '创建智能体团队',
-  create_teammate: '创建智能体团队成员',
-  update_task: '更新任务', get_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
-  send_message: '发送消息', get_task: '读取任务',
+  create_agent_team_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
+  create_agent_team: '创建智能体团队',
+  create_agent_teammate: '创建智能体团队成员',
+  update_agent_team_task: '更新任务', get_agent_team_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
+  send_agent_team_message: '发送消息', get_task: '读取任务',
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -207,29 +207,29 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   websearch: ['Searching the web', '正在搜索网页'],
   memory_write: ['Saving memory', '正在保存记忆'],
   spawn: ['Dispatching subagent', '正在分派子智能体'],
-  create_teammate: ['Creating teammate', '正在创建智能体团队成员'],
-  create_team: ['Creating team', '正在创建智能体团队'],
-  update_task: ['Updating task', '正在更新任务'], get_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
-  send_message: ['Sending message', '正在发送消息'], get_task: ['Reading task', '正在读取任务'],
+  create_agent_teammate: ['Creating teammate', '正在创建智能体团队成员'],
+  create_agent_team: ['Creating team', '正在创建智能体团队'],
+  update_agent_team_task: ['Updating task', '正在更新任务'], get_agent_team_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
+  send_agent_team_message: ['Sending message', '正在发送消息'], get_task: ['Reading task', '正在读取任务'],
   task_wait: ['Waiting for tasks', '正在等待任务'],
   task_stop: ['Stopping task', '正在停止任务'],
   todo_write: ['Updating todos', '正在更新待办'],
   worktree: ['Preparing worktree', '正在准备工作树'],
   kb_search: ['Searching knowledge base', '正在检索知识库'],
   ask_question: ['Waiting for answer', '正在等待回答'],
-  create_task: ['Creating task', '正在创建任务'],
+  create_agent_team_task: ['Creating task', '正在创建任务'],
   set_dependency: ['Setting dependency', '正在设置依赖'],
   assign: ['Assigning task', '正在分派任务'],
 };
 
 /** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
  *  折叠行默认分型只出动词——任务名经 taskNameOf 单点解析后跟行 */
-const TASK_OP_TOOLS = new Set(['task_stop', 'update_task', 'assign', 'set_dependency', 'get_task']);
+const TASK_OP_TOOLS = new Set(['task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task']);
 
 /** G14.214 运行态动词对（拼接任务名替代泛文案，仿 spawn G14.166 先例）；折叠行动词走 zhToolName 既有映射 */
 const TASK_OP_RUNNING: Record<string, [string, string]> = {
   task_stop: ['Stopping', '正在停止'],
-  update_task: ['Updating', '正在更新'],
+  update_agent_team_task: ['Updating', '正在更新'],
   assign: ['Assigning', '正在分派'],
   set_dependency: ['Setting dependency of', '正在设置依赖'],
   get_task: ['Reading task', '正在读取任务'],
@@ -361,9 +361,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenTask?: (taskRef: string) => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
-  /** 队名解析(get_board/create_team;缺省显示原 ref) */
+  /** 队名解析(get_agent_team_board/create_agent_team;缺省显示原 ref) */
   teamNameOf?: (ref: string) => string;
-  /** 会话团队清单(get_board 单队回落队名) */
+  /** 会话团队清单(get_agent_team_board 单队回落队名) */
   teams?: readonly { teamId: string; name: string }[];
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
@@ -419,26 +419,26 @@ export const ToolEntryView = memo(function ToolEntryView({
           ? input.agent_id
           : ''
       : '';
-  /** 2026-10-24 create_teammate 队友名(name 必填)——与 spawn 同款:运行态文案+折叠行蓝色链接 */
+  /** 2026-10-24 create_agent_teammate 队友名(name 必填)——与 spawn 同款:运行态文案+折叠行蓝色链接 */
   const teammateName =
-    toolName === 'create_teammate' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
-  /** create_team 队名——折叠行「创建智能体团队 {name}」;运行态同构 */
+    toolName === 'create_agent_teammate' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
+  /** create_agent_team 队名——折叠行「创建智能体团队 {name}」;运行态同构 */
   const teamName =
-    toolName === 'create_team' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
-  /** send_message 收件人与正文(展开体显示正文;折叠行只跟收件人名) */
+    toolName === 'create_agent_team' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
+  /** send_agent_team_message 收件人与正文(展开体显示正文;折叠行只跟收件人名) */
   const messageTo =
-    toolName === 'send_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
+    toolName === 'send_agent_team_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
   const messageText =
-    toolName === 'send_message' && typeof input.text === 'string' ? input.text : '';
+    toolName === 'send_agent_team_message' && typeof input.text === 'string' ? input.text : '';
   /** G14.172 task_wait 折叠行任务名(taskNameOf 单点解析)——用户裁决「等待任务显示任务名称,不要用 id」;保留 id 供链接定位 */
   const waitTasks = toolName === 'task_wait'
     ? (Array.isArray(input.taskIds) ? (input.taskIds as unknown[]) : [])
         .filter((x): x is string => typeof x === 'string' && x !== '')
         .map((id) => ({ id, name: taskNameOf !== undefined ? taskNameOf(id) : id }))
     : [];
-  /** get_board 折叠行队名:回执 team=… 去重 → 队名解析;无 team 行且会话仅一队时回落该队 */
+  /** get_agent_team_board 折叠行队名:回执 team=… 去重 → 队名解析;无 team 行且会话仅一队时回落该队 */
   const boardTeamRefs = (() => {
-    if (toolName !== 'get_board') return [] as Array<{ ref: string; name: string }>;
+    if (toolName !== 'get_agent_team_board') return [] as Array<{ ref: string; name: string }>;
     const ids = [...new Set([...resultText.matchAll(/\bteam=([^\s\]]+)/g)].map((m) => m[1]!))];
     if (ids.length > 0) {
       return ids.map((id) => ({ ref: id, name: teamNameOf !== undefined ? teamNameOf(id) : id }));
@@ -476,12 +476,12 @@ export const ToolEntryView = memo(function ToolEntryView({
   const runningLabel = (() => {
     // G14.166 spawn 运行态带子智能体名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
-    // 2026-10-24 create_teammate 运行态带队友名(与 spawn 同构)
-    if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
-    if (toolName === 'create_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
-    if (toolName === 'send_message' && messageTo !== '') return t(`Sending message to ${messageTo}`, `正在发送消息给 ${messageTo}`);
-    // create_task 运行态带任务标题——「正在创建任务 调研项目结构」,id 不进折叠行
-    if (toolName === 'create_task' && typeof input.title === 'string' && input.title !== '') {
+    // 2026-10-24 create_agent_teammate 运行态带队友名(与 spawn 同构)
+    if (toolName === 'create_agent_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
+    if (toolName === 'create_agent_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
+    if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending message to ${messageTo}`, `正在发送消息给 ${messageTo}`);
+    // create_agent_team_task 运行态带任务标题——「正在创建任务 调研项目结构」,id 不进折叠行
+    if (toolName === 'create_agent_team_task' && typeof input.title === 'string' && input.title !== '') {
       return t(`Creating task ${input.title}`, `正在创建任务 ${input.title}`);
     }
     // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
@@ -553,11 +553,11 @@ export const ToolEntryView = memo(function ToolEntryView({
 
   /** 折叠行主体(G14 分型;2026-10-22 用户裁定:运行态=流光动词标签+目标内容同行——spawn/skill/
  *  taskOp 的流光标签已含目标名故不重示):文件工具=文件名+相对路径(+stat);exec=完整命令;其余=动词+目标 */
-  const createTaskTitle = toolName === 'create_task' && typeof input.title === 'string' ? input.title : '';
+  const createTaskTitle = toolName === 'create_agent_team_task' && typeof input.title === 'string' ? input.title : '';
   const hideTargetWhileRunning = executing && (
-    toolName === 'spawn' || toolName === 'create_teammate' || toolName === 'create_team'
-    || toolName === 'send_message'
-    || (toolName === 'create_task' && createTaskTitle !== '')
+    toolName === 'spawn' || toolName === 'create_agent_teammate' || toolName === 'create_agent_team'
+    || toolName === 'send_agent_team_message'
+    || (toolName === 'create_agent_team_task' && createTaskTitle !== '')
     || toolName === 'skill' || taskOpName !== undefined
   );
   const verbSpan = executing ? (
@@ -618,7 +618,7 @@ export const ToolEntryView = memo(function ToolEntryView({
           const done = arr.filter((o) => (o ?? {}).status === 'completed').length;
           return <span className="tool-file-base tool-cmd">{' '}{done}/{arr.length}</span>;
         })()
-      ) : !hideTargetWhileRunning && toolName === 'create_team' ? (
+      ) : !hideTargetWhileRunning && toolName === 'create_agent_team' ? (
         /* 折叠行「创建智能体团队 {name}」——队名蓝色链接开指定队卡 */
         teamName !== '' && onOpenTask !== undefined ? (
           <span
@@ -637,7 +637,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : (
           <span className="tool-file-base tool-cmd">{teamName !== '' ? ` ${teamName}` : ''}</span>
         )
-      ) : !hideTargetWhileRunning && toolName === 'get_board' ? (
+      ) : !hideTargetWhileRunning && toolName === 'get_agent_team_board' ? (
         /* 看板后跟队名链接(回执 team= 解析);点开指定队卡;多链接均分省略 */
         boardTeamRefs.length > 0 && onOpenTask !== undefined ? (
           <span className="tool-link-list">
@@ -662,7 +662,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : boardTeamRefs.length > 0 ? (
           <span className="tool-file-base tool-cmd">{' '}{boardTeamRefs.map((x) => x.name).join(', ')}</span>
         ) : null
-      ) : !hideTargetWhileRunning && toolName === 'create_task' ? (
+      ) : !hideTargetWhileRunning && toolName === 'create_agent_team_task' ? (
         /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
         onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
           <span
@@ -705,7 +705,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : (
           <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>
         )
-      ) : !hideTargetWhileRunning && toolName === 'create_teammate' ? (
+      ) : !hideTargetWhileRunning && toolName === 'create_agent_teammate' ? (
         /* 2026-10-24 折叠行带队友名(蓝色链接同 spawn,点开对应 agent 只读标签页) */
         teammateName !== '' && onOpenAgent !== undefined ? (
           <span
@@ -723,7 +723,7 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : (
           <span className="tool-file-base tool-cmd">{teammateName !== '' ? ` ${teammateName}` : ''}</span>
         )
-      ) : !hideTargetWhileRunning && toolName === 'send_message' ? (
+      ) : !hideTargetWhileRunning && toolName === 'send_agent_team_message' ? (
         /* 折叠行带收件人名(lead 纯文本;队友名可点开转录);正文进展开体 */
         messageTo !== '' && messageTo !== 'lead' && onOpenAgent !== undefined ? (
           <span
@@ -845,7 +845,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 展开面主体(G14 分型):write/edit=行级 diff 面板;skill=md 正文;exec=$ 命令高亮+输出;
    *  todo_write=本地化清单(G14.138,daemon 英文结果不进展开面);其余=输出原文 */
   let body: JSX.Element;
-  if (toolName === 'send_message') {
+  if (toolName === 'send_agent_team_message') {
     // 正文进工具井(.tool-md=surface-code 黑框,与 skill/ask 同面);回执次级灰跟在正文下
     body = (
       <div className="tool-md tool-msg">

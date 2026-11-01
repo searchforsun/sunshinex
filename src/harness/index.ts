@@ -109,9 +109,9 @@ export class Harness {
   readonly readGuard: ReadGuard;
   /** 任务板协调器：会话内单物理板，任务按 teamId 聚合；队友认领/消息仅队内 */
   readonly taskboard: TaskBoard;
-  /** AgentTeam 注册表：create_team / create_teammate / create_task 共用同一实例（按会话落盘） */
+  /** AgentTeam 注册表：create_agent_team / create_agent_teammate / create_agent_team_task 共用同一实例（按会话落盘） */
   readonly agentTeams: AgentTeamRegistry;
-  /** teammate 注册表（P2 spec §5 T3;2026-10-20 起 create_teammate 独立动词创建）
+  /** teammate 注册表（P2 spec §5 T3;2026-10-20 起 create_agent_teammate 独立动词创建）
    *  建出的长驻执行体登记处；注入 TaskBoard 派发路由（assignee 命中/留 claim）与 spawn 分流接缝 */
   readonly team: TeamRegistry;
   /** agent 间消息收件箱：会话 teams 根下 main/inbox/<agent>.jsonl；主链与 teammate 面共用 */
@@ -316,7 +316,7 @@ export class Harness {
     this.team = new TeamRegistry();
     // 团队/板/inbox 按会话隔离：构造期驻内存（或显式 teamsSessionId 立即落盘）；daemon/TUI
     // 在 journal 铸造后 adoptSessionTeams(journalId)。队友名会话内唯一（inbox 按名落档）；
-    // 认领与 send_message 仅同 teamId——不跨队共享。
+    // 认领与 send_agent_team_message 仅同 teamId——不跨队共享。
     this.dataDir = resolveDataDir(base);
     this.memoryBoardStore = new MemoryTeamStore();
     // 未绑 journal：零盘面占位；adoptSessionTeams 才切到会话根（不写 teams/.unbound）
@@ -325,14 +325,14 @@ export class Harness {
     this.teamsBoundJournalId = undefined;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
-    // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_board/get_task)。
+    // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_agent_team_board/get_task)。
     // 重名裁定(T2 register 为替换语义,spawn 通道在其上收紧):活名重复 spawn → INVALID_ARG fail-fast
     // (模型换名/先停后建;静默替换会停掉在跑 teammate 且台账悬空);已停同名 → 替换重建(register 原语义)。
     // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——task_stop 即停,日志承载启动行
     const teamAdapter = {
       spawn: (input: SubagentSpawnInput, teamId: string): Result<{ name: string }> => {
         if (this.agentTeams.get(teamId) === undefined) {
-          return fail('INVALID_ARG', `unknown teamId: ${teamId}; create a team with create_team first`);
+          return fail('INVALID_ARG', `unknown teamId: ${teamId}; create a team with create_agent_team first`);
         }
         const name = input.label ?? input.agent_id ?? 'worker';
         const incumbent = this.team.get(name);
@@ -363,7 +363,7 @@ export class Harness {
             board: this.taskboard,
             // 板任务台账：execute 内 submit(dispatchTag)——task_wait/board/stop 可等可停；队友实体本身不进账本
             tasks: this.tasks,
-            // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_message
+            // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_agent_team_message
             // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
             inbox: this.inbox,
             inboxCursors: this.inboxCursors,
@@ -371,7 +371,7 @@ export class Harness {
             registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
               b,
               this.taskboard,
-              // teammate 面 send_message:同队存活(排己);lead 由工具恒放行。from = teammate 名
+              // teammate 面 send_agent_team_message:同队存活(排己);lead 由工具恒放行。from = teammate 名
               makeSendMessageTool({
                 inbox: this.inbox,
                 ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
@@ -421,16 +421,16 @@ export class Harness {
     // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配;
     // 板终态 success|failed|cancelled（重启打开态为 cancelled）。第三参 run 信号：阻塞期响应 run 中断，即刻穿透返回
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
-    // create_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
+    // create_agent_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
     // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
     this.tools.register({
-      name: 'create_teammate',
+      name: 'create_agent_teammate',
       parameters: {
         type: 'object',
         additionalProperties: false,
         required: ['teamId', 'name', 'prompt', 'agent_id'],
         properties: {
-          teamId: { type: 'string', description: 'teamId from create_team; this teammate only claims that team\'s tasks.' },
+          teamId: { type: 'string', description: 'teamId from create_agent_team; this teammate only claims that team\'s tasks.' },
           name: { type: 'string', description: 'Unique display name among living teammates on the team.' },
           prompt: {
             type: ['string', 'null'],
@@ -444,7 +444,7 @@ export class Harness {
         },
       },
       description:
-        'Register a long-lived teammate on a team (teamId from create_team). Call before create_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with task_stop (member stays). One-shot subtasks outside the board: use spawn.',
+        'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with task_stop (member stays). One-shot subtasks outside the board: use spawn.',
       category: 'task',
       fullObservation: true,
       executor: async (input) => {
@@ -466,7 +466,7 @@ export class Harness {
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
         return {
           exitCode: 0,
-          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_task; interrupt via task_stop`,
+          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_agent_team_task; interrupt via task_stop`,
           stderr: '',
           timedOut: false,
         };
@@ -474,7 +474,7 @@ export class Harness {
       display: { verb: 'TEAM' },
     });
     for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent)) this.tools.register(t);
-    // send_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
+    // send_agent_team_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
     // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
     // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）
     this.tools.register(makeSendMessageTool({
@@ -516,7 +516,7 @@ export class Harness {
   /**
    * 会话团队收养（与 tasks.adoptLedger 同拍）：journalId 稳定身份下把注册表/板/inbox/位点
    * 切到 `<dataDir>/teams/<journalId>/`。同键幂等。
-   * 未绑定→首绑：内存已有队/板且盘空则回流落盘（铸造略晚于首笔 create_team 的窄窗）。
+   * 未绑定→首绑：内存已有队/板且盘空则回流落盘（铸造略晚于首笔 create_agent_team 的窄窗）。
    * 已绑会话切换：停清成员、不回流，按目标 journal 盘面装载（新会话空板）。
    * 不读旧工作区级 `teams/` 根——零兼容。
    */

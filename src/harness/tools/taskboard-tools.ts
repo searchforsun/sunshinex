@@ -1,19 +1,19 @@
-// TaskBoard lead 工具面:create_team / create_task / update_task / get_board。
-// update_task 只保留 assign|depend;取消走 task_stop。观察尾附板摘要(summaryLines)。
-// lead-only:板四件套 + create_teammate 经 FORK_EXCLUDED_TOOLS 剔出子面。
+// TaskBoard lead 工具面:create_agent_team / create_agent_team_task / update_agent_team_task / get_agent_team_board。
+// update_agent_team_task 只保留 assign|depend;取消走 task_stop。观察尾附板摘要(summaryLines)。
+// lead-only:板四件套 + create_agent_teammate 经 FORK_EXCLUDED_TOOLS 剔出子面。
 import { CodedToolError, RegisteredTool } from '../tools';
 import { fail } from '../../result';
 import type { SessionEvent } from '../../types';
 import type { TaskBoard } from '../../taskboard/board';
 import type { AgentTeamRegistry } from '../../taskboard/team-registry';
 
-export const TASKBOARD_TOOL_NAMES = ['create_team', 'create_task', 'update_task', 'get_board'] as const;
+export const TASKBOARD_TOOL_NAMES = ['create_agent_team', 'create_agent_team_task', 'update_agent_team_task', 'get_agent_team_board'] as const;
 
-/** 子智能体派生面剔除族:send_message + create_teammate + 板四件套(建队/建任务/建成员属 lead)。
+/** 子智能体派生面剔除族:send_agent_team_message + create_agent_teammate + 板四件套(建队/建任务/建成员属 lead)。
  *  三处 fork-scope 派生点同源;增名即扩剔(harness/fork-face.test.ts)。 */
-export const FORK_EXCLUDED_TOOLS = ['send_message', 'create_teammate', ...TASKBOARD_TOOL_NAMES] as const;
+export const FORK_EXCLUDED_TOOLS = ['send_agent_team_message', 'create_agent_teammate', ...TASKBOARD_TOOL_NAMES] as const;
 
-/** JSON null / 字面 "null" / 空串 → 缺席(与 spawn/create_teammate 同病单点) */
+/** JSON null / 字面 "null" / 空串 → 缺席(与 spawn/create_agent_teammate 同病单点) */
 function nullish(v: unknown): boolean {
   return v === null || v === 'null' || v === 'undefined' || v === '';
 }
@@ -37,9 +37,9 @@ export function makeTaskBoardTools(
         name: { type: 'string', description: 'Display name for the team card; the system assigns teamId.' },
       },
     },
-    name: 'create_team',
+    name: 'create_agent_team',
     description:
-      'Create a team and return teamId. Typical order: create_team → create_teammate (one or more) → create_task. Board tasks are work items claimed by teammates on this teamId; without living teammates they stay pending. Several teams may exist in one session; tasks and messages stay inside one team.',
+      'Create a team and return teamId. Typical order: create_agent_team → create_agent_teammate (one or more) → create_agent_team_task. Board tasks are work items claimed by teammates on this teamId; without living teammates they stay pending. Several teams may exist in one session; tasks and messages stay inside one team.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -53,7 +53,7 @@ export function makeTaskBoardTools(
       });
       return {
         exitCode: 0,
-        stdout: `team "${r.value.name}" created — teamId=${r.value.teamId} (bind create_teammate / create_task to this teamId)`,
+        stdout: `team "${r.value.name}" created — teamId=${r.value.teamId} (bind create_agent_teammate / create_agent_team_task to this teamId)`,
         stderr: '',
         timedOut: false,
       };
@@ -66,7 +66,7 @@ export function makeTaskBoardTools(
       additionalProperties: false,
       required: ['teamId', 'title', 'spec', 'dependsOn', 'assignee', 'executor', 'retryOf'],
       properties: {
-        teamId: { type: 'string', description: 'teamId from create_team.' },
+        teamId: { type: 'string', description: 'teamId from create_agent_team.' },
         title: { type: ['string', 'null'], description: 'Short title on the board.' },
         spec: {
           type: ['string', 'null'],
@@ -92,9 +92,9 @@ export function makeTaskBoardTools(
         },
       },
     },
-    name: 'create_task',
+    name: 'create_agent_team_task',
     description:
-      'Add a work item to a team board (teamId from create_team). Call create_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Wait with task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null only covers work already running). Terminal states (success/failed/cancelled) are final — redo via a new create_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
+      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Wait with task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null only covers work already running). Terminal states (success/failed/cancelled) are final — redo via a new create_agent_team_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -153,9 +153,9 @@ export function makeTaskBoardTools(
         dependsOn: { type: ['string', 'null'], description: 'Dependency task id when action=depend; JSON null otherwise.' },
       },
     },
-    name: 'update_task',
+    name: 'update_agent_team_task',
     description:
-      'Change a non-terminal board task: assign routes it to a living teammate on the same team (triggers claim); depend adds a same-team dependency edge. Terminal tasks cannot be updated — recreate with create_task and retryOf. Cancel with task_stop.',
+      'Change a non-terminal board task: assign routes it to a living teammate on the same team (triggers claim); depend adds a same-team dependency edge. Terminal tasks cannot be updated — recreate with create_agent_team_task and retryOf. Cancel with task_stop.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -176,7 +176,7 @@ export function makeTaskBoardTools(
   return [createTeam, createTask, updateTask, makeGetBoardTool(board)];
 }
 
-/** get_board 工厂(lead / teammate 面共享);description 可按面覆盖 */
+/** get_agent_team_board 工厂(lead / teammate 面共享);description 可按面覆盖 */
 export function makeGetBoardTool(board: TaskBoard, description?: string): RegisteredTool {
   return {
     parameters: {
@@ -185,10 +185,10 @@ export function makeGetBoardTool(board: TaskBoard, description?: string): Regist
       required: [],
       properties: {},
     },
-    name: 'get_board',
+    name: 'get_agent_team_board',
     description:
       description ??
-      'Read board task lines: id [status] title (needs deps) team=<teamId> [retryOf=…], plus budget line when capped. Does not list teammates — use names from create_teammate receipts. Authority for planning and task_wait board ids.',
+      'Read board task lines: id [status] title (needs deps) team=<teamId> [retryOf=…], plus budget line when capped. Does not list teammates — use names from create_agent_teammate receipts. Authority for planning and task_wait board ids.',
     category: 'task',
     fullObservation: true,
     executor: async () => {

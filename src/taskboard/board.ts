@@ -171,7 +171,7 @@ export class TaskBoard {
       return fail('INVALID_ARG', 'create requires non-empty title and spec');
     }
     if (typeof input.teamId !== 'string' || input.teamId.length === 0 || this.deps.agentTeams?.get(input.teamId) === undefined) {
-      return fail('INVALID_ARG', `unknown teamId: ${String(input.teamId ?? '')}; create a team with create_team first`);
+      return fail('INVALID_ARG', `unknown teamId: ${String(input.teamId ?? '')}; create a team with create_agent_team first`);
     }
     const deps = input.dependsOn ?? [];
     const unknown = deps.filter((d) => this.state.tasks[d] === undefined);
@@ -193,7 +193,7 @@ export class TaskBoard {
       if (mate === undefined || mate.stopped || mate.teamId !== input.teamId) {
         return fail(
           'INVALID_ARG',
-          `unknown or inactive teammate "${input.assignee}" on team ${input.teamId}; create_teammate first, or pass assignee as JSON null for claim`,
+          `unknown or inactive teammate "${input.assignee}" on team ${input.teamId}; create_agent_teammate first, or pass assignee as JSON null for claim`,
         );
       }
     }
@@ -249,7 +249,7 @@ export class TaskBoard {
       if (mate === undefined || mate.stopped || mate.teamId !== task.teamId) {
         return fail(
           'INVALID_ARG',
-          `unknown or inactive teammate "${assignee}" on team ${task.teamId}; create_teammate first`,
+          `unknown or inactive teammate "${assignee}" on team ${task.teamId}; create_agent_teammate first`,
         );
       }
     }

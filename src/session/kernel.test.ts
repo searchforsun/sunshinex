@@ -110,17 +110,17 @@ test('①e gui·mergeFinal 前缀重叠取长:流式 acc 是终稿前缀 → 终
 
 test('② tool-call+tool-result 同 callId:单条配对(name/result/input 全量随档)', () => {
   const k = new SessionKernel();
-  k.pump(ev('tool-call', 'create_task', { callId: 'c1', input: { title: 'A' }, status: 'pending' }));
+  k.pump(ev('tool-call', 'create_agent_team_task', { callId: 'c1', input: { title: 'A' }, status: 'pending' }));
   assert.equal(k.replay().length, 1, 'call 先到:占位条先入');
   assert.equal(k.replay()[0]!.md, '', 'tool md 恒空(字段单源)');
   assert.equal(k.replay()[0]!.status, 'pending', 'call 发射即前态');
-  k.pump(ev('tool-result', 'task t1 created\nboard: t1 pending', { callId: 'c1', ok: true, tool: 'create_task', status: 'completed' }));
+  k.pump(ev('tool-result', 'task t1 created\nboard: t1 pending', { callId: 'c1', ok: true, tool: 'create_agent_team_task', status: 'completed' }));
   const es = k.replay();
   assert.equal(es.length, 1, '同 callId 配对归并为单条(不新增条目)');
   assert.equal(es[0]!.kind, 'tool');
   assert.equal(es[0]!.md, '', 'tool md 恒空(name/result/input 字段单源)');
   assert.equal(es[0]!.status, undefined, 'result 收口即终态(字段省略)');
-  assert.equal(es[0]!.name, 'create_task');
+  assert.equal(es[0]!.name, 'create_agent_team_task');
   assert.deepEqual(es[0]!.input, { title: 'A' });
   assert.deepEqual(es[0]!.result, { text: 'task t1 created\nboard: t1 pending', ok: true });
   assert.equal(es[0]!.ts, 4242);

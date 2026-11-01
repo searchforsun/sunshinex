@@ -8,7 +8,7 @@ import type { TodoBatch } from './ToolEntry';
  *  经 deps 注入 chat/board 与上抛回调;P11 T7 字段单源——工具条 name/input 直读内核条目
  *  (工具 input 旁路暂存与 md 首行解析双通道退役)。 */
 
-/** G14.172 任务名映射(转录自建):create_task 回执 `task tN created` → 标题——板投影是内存态
+/** G14.172 任务名映射(转录自建):create_agent_team_task 回执 `task tN created` → 标题——板投影是内存态
  *  (daemon 重启即空),历史会话的任务名只能从转录回执重建;task-tN 台账业务段一并入表。
  *  P11 T7:标题直读 entry.input(name/input 内核字段全量随档);P11 T8:任务 id 取 result
  *  回执文本(text 优先,full 兜底)——tool md 恒空,回执不再落 md。
@@ -18,7 +18,7 @@ import type { TodoBatch } from './ToolEntry';
 function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
   const m = new Map<string, string>();
   for (const e of entries) {
-    if (e.kind !== 'tool' || e.name !== 'create_task') continue;
+    if (e.kind !== 'tool' || e.name !== 'create_agent_team_task') continue;
     const input = e.input ?? {};
     const title = typeof input.title === 'string' ? input.title.trim() : '';
     const receipt = e.result?.text ?? e.result?.full ?? '';
@@ -63,14 +63,14 @@ export function taskNameResolverOf(entries: readonly ChatEntry[], board: TaskBoa
   };
 }
 
-/** 队名解析:投影 teams 直查 → 转录 create_team 回执映射 → 原 ref 兜底 */
+/** 队名解析:投影 teams 直查 → 转录 create_agent_team 回执映射 → 原 ref 兜底 */
 export function teamNameResolverOf(
   entries: readonly ChatEntry[],
   teams: readonly BoardTeamRef[] | undefined,
 ): (ref: string) => string {
   const fromReceipt = new Map<string, string>();
   for (const e of entries) {
-    if (e.kind !== 'tool' || e.name !== 'create_team') continue;
+    if (e.kind !== 'tool' || e.name !== 'create_agent_team') continue;
     const input = e.input ?? {};
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     const receipt = e.result?.text ?? e.result?.full ?? '';

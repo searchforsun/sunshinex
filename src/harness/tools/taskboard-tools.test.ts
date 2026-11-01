@@ -48,21 +48,21 @@ function makeBoard(tmp: string): { board: TaskBoard; teams: AgentTeamRegistry; t
 const drain = () => new Promise((r) => setImmediate(r));
 const flushStub = async (): Promise<void> => { await drain(); await drain(); };
 
-/** 从 create_task observation 捕获真实板 id(回执标题优先、id= 置尾;随机段不可写字面量) */
+/** 从 create_agent_team_task observation 捕获真实板 id(回执标题优先、id= 置尾;随机段不可写字面量) */
 function createdId(stdout: string): string {
   const m = /id=([^\s);,]+)/.exec(stdout);
   assert.ok(m, `observation 含新任务 id:${stdout}`);
   return m![1]!;
 }
 
-test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;create_team 返回 teamId;update_task 只接受 assign|depend', async () => {
+test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;create_agent_team 返回 teamId;update_agent_team_task 只接受 assign|depend', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools-'));
   try {
     const { board, teams } = makeBoard(tmp);
     const tools = makeTaskBoardTools(board, teams);
     assert.deepEqual(tools.map((t) => t.name).sort(), [...TASKBOARD_TOOL_NAMES].sort());
     assert.ok(tools.every((t) => t.category === 'task'));
-    const createTeam = tools.find((t) => t.name === 'create_team')!;
+    const createTeam = tools.find((t) => t.name === 'create_agent_team')!;
     const teamOut = await createTeam.executor({ name: 'beta' });
     assert.equal(teamOut.exitCode, 0);
     assert.match(teamOut.stdout, /team "beta" created/);
@@ -70,7 +70,7 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     assert.match(teamId, /^team-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/);
     assert.ok(teams.get(teamId) !== undefined, '队注册表含新建队');
     assert.equal(teams.get(teamId)!.name, 'beta');
-    const create = tools.find((t) => t.name === 'create_task')!;
+    const create = tools.find((t) => t.name === 'create_agent_team_task')!;
     assert.deepEqual(
       [...(create.parameters?.required ?? [])].sort(),
       ['assignee', 'dependsOn', 'executor', 'retryOf', 'spec', 'teamId', 'title'],
@@ -81,9 +81,9 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
     assert.match(idA, /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/, `新方言形态:${idA}`);
     assert.equal(board.snapshot().tasks[idA]!.teamId, teamId);
     await drain();
-    const update = tools.find((t) => t.name === 'update_task')!;
+    const update = tools.find((t) => t.name === 'update_agent_team_task')!;
     assert.deepEqual(update.parameters?.properties?.action && (update.parameters.properties.action as { enum?: string[] }).enum, ['assign', 'depend']);
-    await assert.rejects(() => update.executor({ taskId: idA, action: 'cancel' }), /assign\|depend/, '取消不在 update_task');
+    await assert.rejects(() => update.executor({ taskId: idA, action: 'cancel' }), /assign\|depend/, '取消不在 update_agent_team_task');
     await assert.rejects(() => create.executor({ title: 'X', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }), /unknown teamId/);
     await flushStub();
   } finally {
@@ -91,13 +91,13 @@ test('工具名全集(TASKBOARD_TOOL_NAMES 随动)与 observation 带板摘要;c
   }
 });
 
-test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出', async () => {
+test('create_agent_team_task 依赖校验 + update_agent_team_task depend 环拒绝经工具面透出', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools2-'));
   try {
     const { board, teams, teamId } = makeBoard(tmp);
     const tools = makeTaskBoardTools(board, teams);
-    const create = tools.find((t) => t.name === 'create_task')!;
-    const update = tools.find((t) => t.name === 'update_task')!;
+    const create = tools.find((t) => t.name === 'create_agent_team_task')!;
+    const update = tools.find((t) => t.name === 'update_agent_team_task')!;
     const ra = await create.executor({ teamId, title: 'A', spec: 'a', dependsOn: null, assignee: null, executor: null, retryOf: null });
     const idA = createdId(ra.stdout);
     const rb = await create.executor({ teamId, title: 'B', spec: 'b', dependsOn: [idA], assignee: null, executor: null, retryOf: null });
@@ -115,13 +115,13 @@ test('create_task 依赖校验 + update_task depend 环拒绝经工具面透出'
   }
 });
 
-test('get_board 收编进 lead 面:摘要行含 id/状态/标题,未设帽不透出预算', async () => {
+test('get_agent_team_board 收编进 lead 面:摘要行含 id/状态/标题,未设帽不透出预算', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tbtools3-'));
   try {
     const { board, teams, teamId } = makeBoard(tmp);
     const tools = makeTaskBoardTools(board, teams);
-    const create = tools.find((t) => t.name === 'create_task')!;
-    const getBoard = tools.find((t) => t.name === 'get_board')!;
+    const create = tools.find((t) => t.name === 'create_agent_team_task')!;
+    const getBoard = tools.find((t) => t.name === 'get_agent_team_board')!;
     const prev = await create.executor({ teamId, title: 'Prev', spec: 'p', dependsOn: null, assignee: null, executor: null, retryOf: null });
     const prevId = createdId(prev.stdout);
     await flushStub();

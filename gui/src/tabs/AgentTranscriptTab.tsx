@@ -28,7 +28,7 @@ import type { ChatEntry } from '../chat-reducer';
  *   自带 border-bottom 与主对话单线同源）；②底部 run-live-line（spinner+本轮 steps+tokens，
  *   liveSteps/liveTokens 同 Chat 末个 streaming run 基线差值口径）；③工具行回调链补全
  *   （onOpenFile/onOpenDiff/onOpenAgent/onOpenTask/taskNameOf——read 行点击开文件标签、write
- *   ⇄ 开 diff、spawn 名开转录、create_task 名定位任务板，与主对话逐项同构）；④正文文件链接
+ *   ⇄ 开 diff、spawn 名开转录、create_agent_team_task 名定位任务板，与主对话逐项同构）；④正文文件链接
  *   （ChatEntryView onOpenFile）与轮尾 RunFooter（复制+统计，无 fork）；⑤taskNameOf 走
  *   taskNameResolverOf 纯函数单点（与主对话 useChatDerived 同源）；⑥容器挂 .chat 类——间距
  *   系统（gap/工具行相邻收紧/入场动画）与主对话完全同源

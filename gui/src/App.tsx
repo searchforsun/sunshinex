@@ -135,7 +135,7 @@ function AppShell(): JSX.Element {
   /** 快照权威投影(2026-10-31 用户裁定「任务历史持久化可见」):daemon journal 全量派生,经 onSeeded
    *  播种;与转录派生值合并(同签名派生优先——live 批次 ts 更新),环窗/尾窗外的老批次由此可见 */
   const [seededTodoBatches, setSeededTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
-  /** G14.176 create_task 行点开的定位信号(任务板滚动高亮对应卡) */
+  /** G14.176 create_agent_team_task 行点开的定位信号(任务板滚动高亮对应卡) */
   const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
   const connRef = useRef<Connection | null>(null);
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
@@ -542,7 +542,7 @@ function AppShell(): JSX.Element {
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }): void => {
     setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
   }, []);
-  /** 工具行定位:开任务板页签 + focus。`team:` 前缀=队卡定位；其余=任务行高亮(create_task/task_wait/update_task 等) */
+  /** 工具行定位:开任务板页签 + focus。`team:` 前缀=队卡定位；其余=任务行高亮(create_agent_team_task/task_wait/update_agent_team_task 等) */
   const openTaskFocus = useCallback((ref: string): void => {
     openBoardTab();
     if (ref.startsWith('team:')) setTaskFocus({ ref: ref.slice(5), nonce: Date.now(), kind: 'team' });

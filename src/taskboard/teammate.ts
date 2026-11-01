@@ -104,7 +104,7 @@ export class TeamRegistry {
   }
 }
 
-/** teammate 面 send_message 的收件闭包:同 teamId 存活成员(排己);lead 由工具内恒放行 */
+/** teammate 面 send_agent_team_message 的收件闭包:同 teamId 存活成员(排己);lead 由工具内恒放行 */
 export function teammateSendTargets(team: TeamRegistry, teamId: string, self: string): {
   knownRecipients: () => string[];
   teamId: () => string;
@@ -289,7 +289,7 @@ export class Teammate {
     emitDelegation('delegation-started');
     // 任务带(2026-10-06 用户定版:子智能体转录内「每轮任务内容」像主 agent 用户内容一样分带呈现)——
     // tagged step + taskBand 载荷,onChildEvent 落 ChildLine{kind:'task'},ChildInspector 灰底带渲染;
-    // 与 send_message 交流行(kind:'message',✉)视觉区分
+    // 与 send_agent_team_message 交流行(kind:'message',✉)视觉区分
     this.deps.onEvent?.({
       type: 'step', text: '', ts: Date.now(),
       payload: { subagent: this.name, taskBand: `Task ${task.id}: ${task.title}

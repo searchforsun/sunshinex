@@ -89,19 +89,19 @@ function toolRowRe(re: RegExp | string): HTMLButtonElement | null {
  * 连接层语义迁移:T2 起 daemon 无绑 root、裸端点=激活别名(无 active 409)——本套全面迁 :id 形态
  * (newSession 先建会话);重连语义=onReset+全量重放(旧 onResync 载荷路径退役,App 级重置重播种
  * 经 App.test 单测,本套覆盖连接层半边:第二次 onReset、补发帧全量再投、快照全量在场)。
- * 全链事件序:主链 create_task(绑定已注册 teamId)→ 板派发 fork(fork 消费末位 done 牌)→
+ * 全链事件序:主链 create_agent_team_task(绑定已注册 teamId)→ 板派发 fork(fork 消费末位 done 牌)→
  * 回写 success → 主链再取(末位 done 牌重复供牌)→ run 收束。收敛判据 =
  * snapshot status idle + 板/委派落位,不以首个 done 为准。
- * startDaemon 写入队注册表 team-alpha-e2e / Alpha,脚本里的 create_task 绑定该 teamId。
+ * startDaemon 写入队注册表 team-alpha-e2e / Alpha,脚本里的 create_agent_team_task 绑定该 teamId。
  */
 
-/** 已注册队伍:create_task 的 teamId 必须命中 registry,卡头名称取快照 teams.name */
+/** 已注册队伍:create_agent_team_task 的 teamId 必须命中 registry,卡头名称取快照 teams.name */
 const E2E_TEAM_ID = 'team-alpha-e2e';
 const E2E_TEAM_NAME = 'Alpha';
 
-/** 两卡脚本:create_task 建 Demo(五态,无门禁入参)+ done 终答;末位 done 牌重复供牌(ScriptedAdapter 语义) */
+/** 两卡脚本:create_agent_team_task 建 Demo(五态,无门禁入参)+ done 终答;末位 done 牌重复供牌(ScriptedAdapter 语义) */
 const CARDS = [
-  `{"tool":"create_task","input":{"teamId":"${E2E_TEAM_ID}","title":"Demo","spec":"demo task","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
+  `{"tool":"create_agent_team_task","input":{"teamId":"${E2E_TEAM_ID}","title":"Demo","spec":"demo task","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
   '{"done":true,"reply":"all done"}',
 ];
 
@@ -132,7 +132,7 @@ class HoldDispatchAdapter implements ModelAdapter {
         content: '',
         toolCalls: [{
           id: 'call_0',
-          name: 'create_task',
+          name: 'create_agent_team_task',
           argsJson: JSON.stringify({
             teamId: E2E_TEAM_ID,
             title: 'HoldDemo',
@@ -281,7 +281,7 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
     const tool = snap1.messages.find((m) => m.kind === 'tool');
     expect(tool).toBeDefined();
     expect(tool!.md).toBe(''); // P11:tool md 恒空(字段单源 name/input/result)
-    expect(tool!.name).toBe('create_task');
+    expect(tool!.name).toBe('create_agent_team_task');
 
     // —— 板:任务在场(板 id 不透明方言,从快照捕获),fork 完成回写 success,归属预置队伍 ——
     const taskId = Object.keys(snap1.board.tasks)[0]!;
@@ -290,7 +290,7 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
     expect(snap1.board.tasks[taskId]?.teamId).toBe(E2E_TEAM_ID);
     expect(snap1.teams?.some((t) => t.teamId === E2E_TEAM_ID && t.name === E2E_TEAM_NAME)).toBe(true);
 
-    // —— 委派:create_task 经板派发 fork,delegation 事件流经影子投影(delegationId=dispatchTag(板 id))——
+    // —— 委派:create_agent_team_task 经板派发 fork,delegation 事件流经影子投影(delegationId=dispatchTag(板 id))——
     const del = snap1.delegations.find((d) => d.id === taskId);
     expect(del).toBeDefined();
     expect(del!.kind).toBe('subagent');
@@ -784,7 +784,7 @@ describe('2026-10-21 受控删除:归档态 journalId 直调 daemon API → 真�
 });
 
 /* ============================================================
- * G6 Board GUI-e2e:真 daemon + HoldDispatchAdapter。create_task 绑定预置队伍,
+ * G6 Board GUI-e2e:真 daemon + HoldDispatchAdapter。create_agent_team_task 绑定预置队伍,
  * fork 挂起使任务停在 pending|running。队卡卡头为队名;列表与 DAG 为五态点色;
  * 停钮走 board/stop,任务进入 cancelled(标题划线)。无审批行。
  * ============================================================ */
@@ -1751,7 +1751,7 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
   }, 45_000);
 });
 
-/** G14.2xx 断线重连 resilience(真 daemon 全链):create_task run 落档(board/delegation 影子行随泵
+/** G14.2xx 断线重连 resilience(真 daemon 全链):create_agent_team_task run 落档(board/delegation 影子行随泵
  *  入 journal)→ 停第一 daemon → journal 数据迁入新 projects 根(等价真实迁移)→ 新 daemon 同 root
  *  起服 → newSession+attach 两步 → snapshot.board 含 t1 且委派在场——重启后板面/委派不再空。 */
 describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
@@ -1759,7 +1759,7 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
     vi.stubGlobal('WebSocket', NodeWebSocket);
     const mkPost = (base: string) => async (p: string, body: unknown): Promise<Record<string, unknown>> =>
       (await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Record<string, unknown>;
-    // —— 第一 daemon:CARDS 全链(create_task → 板派发 fork → 收束)——
+    // —— 第一 daemon:CARDS 全链(create_agent_team_task → 板派发 fork → 收束)——
     const fx = await startDaemon(new ScriptedAdapter(CARDS));
     const base = `http://127.0.0.1:${fx.port}`;
     const post = mkPost(base);
@@ -1767,7 +1767,7 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
       const ns = (await post('/session/new', { root: fx.root })) as { sessionId: string };
       await post(`/session/${ns.sessionId}/submit`, { goal: 'create demo task' });
       // 收敛判据=快照 idle 且板面已见任务(提交后 run 起跑有窗:种子态即 idle,只等 idle 会在
-      // 起跑前竞态通过——create_task 落板是「run 真跑过」的实证,再等 idle 才是收束)
+      // 起跑前竞态通过——create_agent_team_task 落板是「run 真跑过」的实证,再等 idle 才是收束)
       await waitFor(
         async () => {
           const snap = (await (await fetch(`${base}/session/${ns.sessionId}/snapshot`)).json()) as {

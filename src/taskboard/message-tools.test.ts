@@ -1,4 +1,4 @@
-/** send_message 双面工具——同队白名单 / 跨队拒绝 / text 非空≤4000 → FileInbox 落盘 →
+/** send_agent_team_message 双面工具——同队白名单 / 跨队拒绝 / text 非空≤4000 → FileInbox 落盘 →
  *  agent-message 事件 → 回执;from()/knownRecipients()/teamId() 经闭包注入。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -38,7 +38,7 @@ test('合法投递:落盘 jsonl(from/to/text)+ 事件载荷 deepEqual + 回执�
         return 'lead';
       },
     });
-    assert.equal(tool.name, 'send_message');
+    assert.equal(tool.name, 'send_agent_team_message');
     assert.equal(tool.category, 'task');
     const out = (await tool.executor({ to: 'w1', text: 'hi' })) as { stdout: string };
     assert.match(out.stdout, /^message m1 delivered to w1$/, '回执文案 message <id> delivered to <to>');
@@ -73,7 +73,7 @@ test('to 校验:未知名拒(INVALID_ARG, not a live member);lead 恒可达', as
     });
     await assert.rejects(
       tool.executor({ to: 'ghost', text: 'hi' }),
-      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message to ghost: not a live member of team team-main',
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_agent_team_message to ghost: not a live member of team team-main',
       '未知 to 应 INVALID_ARG 且文案为 not a live member',
     );
     // lead 直达(knownRecipients 不含 lead 也合法——'lead' 恒可达)
@@ -101,7 +101,7 @@ test('text 校验:空文本拒、4001 超长拒(≤4000 合法)', async () => {
   }
 });
 
-test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/get_board/get_task 在场、五件套不在场;排己 knownRecipients 闭包拒自发', async () => {
+test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_agent_team_message/get_agent_team_board/get_task 在场、五件套不在场;排己 knownRecipients 闭包拒自发', async () => {
   const tmp = tmpdir('sunshinex-tb-msgtool-4-');
   try {
     const base = new ToolRegistry();
@@ -112,7 +112,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
       category: 'read',
       executor: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
     });
-    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_teammate', 'task_wait', ...TASKBOARD_TOOL_NAMES]) {
+    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_agent_teammate', 'task_wait', ...TASKBOARD_TOOL_NAMES]) {
       base.register(dummy(name));
     }
     const board = new TaskBoard({
@@ -130,13 +130,13 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
       recipientTeamId: (n) => (team.aliveNames().includes(n) ? 'team-a' : undefined),
     });
     const face = deriveTeammateRegistry(base, board, msgTool);
-    assert.ok(face.get('send_message') !== undefined, 'teammate 面应含 send_message');
-    assert.ok(face.get('get_board') !== undefined, 'teammate 面应含 get_board');
+    assert.ok(face.get('send_agent_team_message') !== undefined, 'teammate 面应含 send_agent_team_message');
+    assert.ok(face.get('get_agent_team_board') !== undefined, 'teammate 面应含 get_agent_team_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
-    // 禁入=建成员+写板工具;get_board/get_task 是成员面合法只读对(已注入)
+    // 禁入=建成员+写板工具;get_agent_team_board/get_task 是成员面合法只读对(已注入)
     for (const name of [
-      SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_teammate',
-      'create_team', 'create_task', 'update_task',
+      SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_agent_teammate',
+      'create_agent_team', 'create_agent_team_task', 'update_agent_team_task',
     ]) {
       assert.equal(face.get(name), undefined, `teammate 面不得含 ${name}`);
     }
@@ -145,7 +145,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
     // 排己:自发(to=自己)不在白名单 → INVALID_ARG
     await assert.rejects(
       msgTool.executor({ to: 'w2', text: 'self' }),
-      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message to w2: not a live member of team team-a',
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_agent_team_message to w2: not a live member of team team-a',
       'teammate 面不得给自己发消息',
     );
     // teammate 面发给 lead/他队友合法,from 注入为 teammate 名
@@ -158,7 +158,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_message/ge
   }
 });
 
-test('跨队 to 拒绝 cannot send_message across teams;同队与 lead 放行且不落跨队档', async () => {
+test('跨队 to 拒绝 cannot send_agent_team_message across teams;同队与 lead 放行且不落跨队档', async () => {
   const tmp = tmpdir('sunshinex-tb-msgtool-cross-');
   try {
     const inbox = new FileInbox(path.join(tmp, 'inbox'));
@@ -171,13 +171,13 @@ test('跨队 to 拒绝 cannot send_message across teams;同队与 lead 放行且
     });
     await assert.rejects(
       tool.executor({ to: 'w9', text: 'cross' }),
-      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message across teams',
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_agent_team_message across teams',
       '跨队收件人应拒绝',
     );
     assert.equal(fs.existsSync(path.join(tmp, 'inbox', 'w9.jsonl')), false, '拒绝不得落档');
     await assert.rejects(
       tool.executor({ to: 'ghost', text: 'nope' }),
-      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_message to ghost: not a live member of team team-a',
+      (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_agent_team_message to ghost: not a live member of team team-a',
     );
     const same = (await tool.executor({ to: 'w2', text: 'same team' })) as { stdout: string };
     assert.match(same.stdout, /^message m1 delivered to w2$/);

@@ -12,7 +12,7 @@ import type { AgentTeamRegistry } from '../taskboard/team-registry';
 
 const TEAM_ID = 'team-alpha-test';
 
-/** snapshot.team：create_teammate 绑定已注册 teamId 后，快照 team 段含 name 与 busy。 */
+/** snapshot.team：create_agent_teammate 绑定已注册 teamId 后，快照 team 段含 name 与 busy。 */
 
 /** 轮询等待（同 daemon.ws.test.ts 惯例）：20ms 片轮询直至 pred 为真，超时抛错 */
 async function waitFor(pred: () => boolean, timeoutMs: number): Promise<void> {
@@ -132,9 +132,9 @@ async function snapOf(ctx: Ctx, sid: string): Promise<SnapshotBody> {
   assert.equal(r.status, 200, 'snapshot 应 200');
   return (await r.json()) as SnapshotBody;
 }
-test('snapshot.team：create_teammate 建队友 w1 → team 段含 name 与 busy', { timeout: 30_000 }, async () => {
+test('snapshot.team：create_agent_teammate 建队友 w1 → team 段含 name 与 busy', { timeout: 30_000 }, async () => {
   const model = new ScriptedAdapter([
-    JSON.stringify({ tool: 'create_teammate', input: { teamId: TEAM_ID, name: 'w1', prompt: 'worker w1 framing' } }),
+    JSON.stringify({ tool: 'create_agent_teammate', input: { teamId: TEAM_ID, name: 'w1', prompt: 'worker w1 framing' } }),
     '{"done":true,"reply":"teammate spawned"}',
   ]);
   await withBoardDaemon(model, async (ctx) => {
@@ -159,10 +159,10 @@ test('POST /session/:id/board/stop：pending→cancelled；running→cancelled �
 
     const harness = ctx.daemon.get(ctx.sid)!.runtime.harness;
     // 板任务仅经 teammate 认领进 running；HangAdapter 使认领后挂起，便于 stop 测 running 态
-    const ct = harness.tools.get('create_teammate');
-    assert.ok(ct, 'create_teammate 在场');
+    const ct = harness.tools.get('create_agent_teammate');
+    assert.ok(ct, 'create_agent_teammate 在场');
     const spawned = await ct.executor({ teamId: TEAM_ID, name: 'w1', prompt: 'hold board tasks', agent_id: null });
-    assert.equal(spawned.exitCode, 0, `create_teammate: ${spawned.stdout}`);
+    assert.equal(spawned.exitCode, 0, `create_agent_teammate: ${spawned.stdout}`);
 
     const board = harness.taskboard;
     const createdA = board.create({ teamId: TEAM_ID, title: 'Run', spec: 'hold' });

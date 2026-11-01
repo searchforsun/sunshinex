@@ -57,7 +57,7 @@ test('teamsSessionId 构造即绑盘；同键 adopt 幂等', () => {
   }
 });
 
-test('未绑定首绑回流：铸造前 create_team 写入目标 journal', () => {
+test('未绑定首绑回流：铸造前 create_agent_team 写入目标 journal', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-session-teams-reflux-'));
   try {
     const h = new Harness({ root: tmp, mode: 'full-access', learnSkills: false });

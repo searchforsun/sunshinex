@@ -1,4 +1,4 @@
-/** 智能体团队业务流 e2e:create_team → create_teammate → create_task(指派+依赖) → get_board → task_wait。
+/** 智能体团队业务流 e2e:create_agent_team → create_agent_teammate → create_agent_team_task(指派+依赖) → get_agent_team_board → task_wait。
  *  依赖序(B 派发晚于 A 的 success)、成员存活、任务收口为 success。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,7 +24,7 @@ async function until(pred: () => boolean, ms = 30_000, step = 100): Promise<bool
 
 const p = (e: SessionEvent): Record<string, unknown> => e.payload ?? {};
 
-test('团队业务流:create_team→create_teammate→指派+依赖任务→get_board→task_wait,依赖序与成员存活', async () => {
+test('团队业务流:create_agent_team→create_agent_teammate→指派+依赖任务→get_agent_team_board→task_wait,依赖序与成员存活', async () => {
   const tmp = tmpdir('sunshinex-team-flow-');
   let h: Harness | undefined;
   const events: SessionEvent[] = [];
@@ -43,22 +43,22 @@ test('团队业务流:create_team→create_teammate→指派+依赖任务→get_
     assert.ok(team.ok, `create team 应成功:${team.ok ? '' : team.error.message}`);
     const teamId = team.value.teamId;
 
-    const tm = await h.tools.execute('create_teammate', { teamId, name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
-    assert.ok(tm.ok && tm.value.exitCode === 0, `create_teammate 应成功:${JSON.stringify(tm)}`);
+    const tm = await h.tools.execute('create_agent_teammate', { teamId, name: 'w1', prompt: 'worker w1: claim board tasks and finish each' }, h.safety);
+    assert.ok(tm.ok && tm.value.exitCode === 0, `create_agent_teammate 应成功:${JSON.stringify(tm)}`);
     assert.ok(/teammate "?w1"? started/.test(tm.value.stdout), '回执含启动确认');
     assert.ok(!/stop via task_stop/.test(tm.value.stdout), '回执无停止叙事(成员=上下文承载体,无停止概念)');
 
-    const ca = await h.tools.execute('create_task', { teamId, title: 'A', spec: 'do A', dependsOn: null, assignee: 'w1', executor: null, retryOf: null }, h.safety);
+    const ca = await h.tools.execute('create_agent_team_task', { teamId, title: 'A', spec: 'do A', dependsOn: null, assignee: 'w1', executor: null, retryOf: null }, h.safety);
     assert.ok(ca.ok, `create A 应成功:${JSON.stringify(ca)}`);
     const idA = /id=([^\s);,]+)/.exec((ca as { value: { stdout: string } }).value.stdout)![1]!;
-    const cb = await h.tools.execute('create_task', { teamId, title: 'B', spec: 'do B', dependsOn: [idA], assignee: 'w1', executor: null, retryOf: null }, h.safety);
+    const cb = await h.tools.execute('create_agent_team_task', { teamId, title: 'B', spec: 'do B', dependsOn: [idA], assignee: 'w1', executor: null, retryOf: null }, h.safety);
     assert.ok(cb.ok, `create B 应成功:${JSON.stringify(cb)}`);
     const idB = /id=([^\s);,]+)/.exec((cb as { ok: true; value: { stdout: string } }).value.stdout)![1]!;
     assert.notEqual(idA, idB, '两任务 id 互异(不透明方言)');
 
-    // ③ get_board 读面(lead 缺口补齐):两任务行在场,含状态与标题
-    const gb = await h.tools.execute('get_board', {}, h.safety);
-    assert.ok(gb.ok && (gb.value.stdout.includes(idA) || gb.value.stdout.includes(idB)), 'get_board 应含板任务');
+    // ③ get_agent_team_board 读面(lead 缺口补齐):两任务行在场,含状态与标题
+    const gb = await h.tools.execute('get_agent_team_board', {}, h.safety);
+    assert.ok(gb.ok && (gb.value.stdout.includes(idA) || gb.value.stdout.includes(idB)), 'get_agent_team_board 应含板任务');
 
     try {
       await until(() => h!.taskboard.snapshot().tasks[idA]?.status === 'success');

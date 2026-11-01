@@ -51,7 +51,7 @@ export interface TabServices {
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
   readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
-  /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
+  /** G14.2xx b create_agent_team_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
    *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名/站标 → 标签 params;App 落 patchTabMeta) */
@@ -211,7 +211,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         teams={p.services.teams}
         task={p.params.task}
         // G14.2xx b 工具行/正文回调链与主对话同构(App openTabInSession 同一开签口径——
-        // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_task 名定位任务板)
+        // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_agent_team_task 名定位任务板)
         onOpenFile={fileTabOf(p)}
         onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
         onOpenAgent={(label2, agentTitle, task2) => p.openTab('agent', { label: label2, agentTitle, task: task2 })}

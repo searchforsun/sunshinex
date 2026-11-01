@@ -1,7 +1,7 @@
 /** L2 终审 Important(fork 面剔除未闭合):loop/graph 两处 fork-scope 派生点曾只剔 spawn——
- *  send_message / create_teammate / 板四件套会泄入 fork 子面(板任务内部 fork 曾误调 create_teammate)。
+ *  send_agent_team_message / create_agent_teammate / 板四件套会泄入 fork 子面(板任务内部 fork 曾误调 create_agent_teammate)。
  *  修复裁定:三处派生点(subagent deriveChildRegistry / loop agentNode / graph makeLoopNode)同源消费
- *  FORK_EXCLUDED_TOOLS(send_message + create_teammate + TASKBOARD_TOOL_NAMES);常量即契约——本文件钉测常量内容 +
+ *  FORK_EXCLUDED_TOOLS(send_agent_team_message + create_agent_teammate + TASKBOARD_TOOL_NAMES);常量即契约——本文件钉测常量内容 +
  *  直测三处派生输出面(loop/graph 用 derive 间谍捕获产品派生点产物,不经内部实现细节)。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ function makeFaceDeps(root: string): { deps: LoopDeps; faces: ToolRegistry[] } {
   const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
   const registry = new ToolRegistry();
   for (const t of builtinTools(safety, root)) registry.register(t);
-  // 假件(spawn/send_message/四件套):证明确实被派生剔除,而非本就不在场
+  // 假件(spawn/send_agent_team_message/四件套):证明确实被派生剔除,而非本就不在场
   for (const name of FAMILY) registry.register(dummy(name));
   const faces: ToolRegistry[] = [];
   const realDerive = registry.derive.bind(registry);
@@ -71,10 +71,10 @@ const loopCtx = (): LoopContext => ({
   termination: { maxIterations: 2, timeoutMs: 60_000 } as LoopTermination,
 });
 
-test('常量契约:FORK_EXCLUDED_TOOLS = send_message + create_teammate + 四件套(单点定义,三派生点同源)', () => {
-  assert.deepEqual([...FORK_EXCLUDED_TOOLS], ['send_message', 'create_teammate', ...TASKBOARD_TOOL_NAMES]);
+test('常量契约:FORK_EXCLUDED_TOOLS = send_agent_team_message + create_agent_teammate + 四件套(单点定义,三派生点同源)', () => {
+  assert.deepEqual([...FORK_EXCLUDED_TOOLS], ['send_agent_team_message', 'create_agent_teammate', ...TASKBOARD_TOOL_NAMES]);
   assert.equal(FORK_EXCLUDED_TOOLS.length, TASKBOARD_TOOL_NAMES.length + 2);
-  assert.ok(FORK_EXCLUDED_TOOLS.includes('create_teammate'), 'create_teammate 应在剔除族(板任务 fork 不得建成员)');
+  assert.ok(FORK_EXCLUDED_TOOLS.includes('create_agent_teammate'), 'create_agent_teammate 应在剔除族(板任务 fork 不得建成员)');
   assert.equal(FORK_EXCLUDED_TOOLS.includes('task_wait' as typeof FORK_EXCLUDED_TOOLS[number]), false, 'task_wait 不入剔除族(子面保留等 exec)');
   for (const n of TASKBOARD_TOOL_NAMES) assert.ok(FORK_EXCLUDED_TOOLS.includes(n), `四件套 ${n} 应在剔除族`);
   // 三处消费点源码同源钉测(防再内联漂移;沿 prompt-language.test.ts 源扫描先例)
@@ -85,7 +85,7 @@ test('常量契约:FORK_EXCLUDED_TOOLS = send_message + create_teammate + 四件
   }
 });
 
-test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支均剔 send_message+create_teammate+四件套(真 Harness)', async () => {
+test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支均剔 send_agent_team_message+create_agent_teammate+四件套(真 Harness)', async () => {
   const tmp = mktmp('sunshinex-forkface-sub-');
   let h: Harness | undefined;
   try {
@@ -95,7 +95,7 @@ test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支�
     }
     const faceDefault = h.runner.deriveChildRegistry({});
     for (const name of FAMILY) assert.equal(faceDefault.get(name), undefined, `缺省派生不得含 ${name}`);
-    const faceAllow = h.runner.deriveChildRegistry({ tools: ['send_message', 'create_task', 'read'] });
+    const faceAllow = h.runner.deriveChildRegistry({ tools: ['send_agent_team_message', 'create_agent_team_task', 'read'] });
     for (const name of FORK_EXCLUDED_TOOLS) assert.equal(faceAllow.get(name), undefined, `显式 allowlist 亦恒剔 ${name}`);
     assert.notEqual(faceAllow.get('read'), undefined, 'allowlist 内普通工具应保留');
   } finally {
@@ -105,7 +105,7 @@ test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支�
   }
 });
 
-test('loop 派生点:agentNode scope=fork 的私有面剔 send_message+四件套(直测产品派生点输出面)', async () => {
+test('loop 派生点:agentNode scope=fork 的私有面剔 send_agent_team_message+四件套(直测产品派生点输出面)', async () => {
   const tmp = mktmp('sunshinex-forkface-loop-');
   try {
     const { deps, faces } = makeFaceDeps(tmp);
@@ -128,7 +128,7 @@ test('loop 派生点:agentNode scope=fork 的私有面剔 send_message+四件套
   }
 });
 
-test('graph 派生点:makeLoopNode fork 面剔 send_message+四件套(直测产品派生点输出面)', async () => {
+test('graph 派生点:makeLoopNode fork 面剔 send_agent_team_message+四件套(直测产品派生点输出面)', async () => {
   const tmp = mktmp('sunshinex-forkface-graph-');
   try {
     const { deps, faces } = makeFaceDeps(tmp);

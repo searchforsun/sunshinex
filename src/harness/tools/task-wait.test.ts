@@ -309,7 +309,7 @@ test('task_wait 重启自愈 cancelled 立即收口', async () => {
     if (r.ok) {
       assert.match(r.value.stdout, /all target tasks finished \(1\)/, 'cancelled 立即收口');
       assert.match(r.value.stdout, /\(board\) cancelled — CrashDemo/);
-      assert.match(r.value.stdout, /to redo this work, create a new task with create_task/);
+      assert.match(r.value.stdout, /to redo this work, create a new task with create_agent_team_task/);
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

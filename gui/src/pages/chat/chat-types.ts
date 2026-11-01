@@ -62,7 +62,7 @@ export interface ChatProps {
   onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
   /** G14.172 task_wait 行任务名解析材料(任务板投影;App 注入会话板) */
   board?: TaskBoardState;
-  /** 队名解析材料(get_board/create_team 链接;App 注入投影 teams) */
+  /** 队名解析材料(get_agent_team_board/create_agent_team 链接;App 注入投影 teams) */
   teams?: readonly import('../../projection').BoardTeamRef[];
   /** G14.174 待办批次上抛(每批 todo_write 一卡:时间/关联轮次输入/条目;App 经 services 供待办页签) */
   onTodoBatches?: (batches: TodoBatch[]) => void;

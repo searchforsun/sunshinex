@@ -830,35 +830,35 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[2]!.textContent).not.toMatch(/spawn\s+\S/); // 无名:只出动词,不编名
   });
 
-  it('create_teammate / create_team 折叠行名优先(创建智能体团队成员|创建智能体团队 {名})', async () => {
+  it('create_agent_teammate / create_agent_team 折叠行名优先(创建智能体团队成员|创建智能体团队 {名})', async () => {
     const onOpenAgent = vi.fn();
     render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
     await flushed();
-    fire({ type: 'tool-call', text: 'create_teammate', ts: Date.now(), payload: { callId: 'tm1', input: { name: '分析-内核架构', prompt: 'x' } } });
+    fire({ type: 'tool-call', text: 'create_agent_teammate', ts: Date.now(), payload: { callId: 'tm1', input: { name: '分析-内核架构', prompt: 'x' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'tm1' } });
-    fire({ type: 'tool-call', text: 'create_teammate', ts: Date.now(), payload: { callId: 'tm2', input: { prompt: 'x' } } });
+    fire({ type: 'tool-call', text: 'create_agent_teammate', ts: Date.now(), payload: { callId: 'tm2', input: { prompt: 'x' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'tm2' } });
-    fire({ type: 'tool-call', text: 'create_team', ts: Date.now(), payload: { callId: 'ct0', input: { name: '调研组' } } });
+    fire({ type: 'tool-call', text: 'create_agent_team', ts: Date.now(), payload: { callId: 'ct0', input: { name: '调研组' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'ct0' } });
     const rows = [...document.querySelectorAll('.entry-tool')];
     expect(rows).toHaveLength(3);
     const link = rows[0]!.querySelector('.tool-agent-link');
     expect(link).not.toBeNull();
     expect(link!.textContent).toContain('分析-内核架构');
-    expect(rows[0]!.textContent).toMatch(/创建智能体团队成员|Creating teammate|create_teammate/);
+    expect(rows[0]!.textContent).toMatch(/创建智能体团队成员|Creating teammate|create_agent_teammate/);
     fireEvent.click(link!);
     expect(onOpenAgent).toHaveBeenCalledWith('分析-内核架构', '分析-内核架构', 'x');
-    expect(rows[1]!.textContent).toMatch(/创建智能体团队成员|Creating teammate|create_teammate/); // 无名:只出动词
+    expect(rows[1]!.textContent).toMatch(/创建智能体团队成员|Creating teammate|create_agent_teammate/); // 无名:只出动词
     expect(rows[2]!.textContent).toContain('调研组');
-    expect(rows[2]!.textContent).toMatch(/创建智能体团队|Creating team|create_team/);
+    expect(rows[2]!.textContent).toMatch(/创建智能体团队|Creating team|create_agent_team/);
   });
 
-  it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_task 标题;null=全部后台任务)', async () => {
-    // 历史/重启场景板投影为空——任务名从转录里的 create_task 回执重建(task tN created → 标题)
+  it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_agent_team_task 标题;null=全部后台任务)', async () => {
+    // 历史/重启场景板投影为空——任务名从转录里的 create_agent_team_task 回执重建(task tN created → 标题)
     // P11 T7/T8:标题直读 entry.input 字段;任务 id 提取读 result 回执文本(tool md 恒空——夹具 md:'' 钉字段单源)
     mountChat([
-      { seq: 1, kind: 'tool', name: 'create_task', input: { teamId: 'team-a', title: '分析：TUI 交互面', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '' },
-      { seq: 2, kind: 'tool', name: 'create_task', input: { teamId: 'team-a', title: '分析：GUI 交互面', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t3 created; dispatch is automatic', ok: true }, md: '' },
+      { seq: 1, kind: 'tool', name: 'create_agent_team_task', input: { teamId: 'team-a', title: '分析：TUI 交互面', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '' },
+      { seq: 2, kind: 'tool', name: 'create_agent_team_task', input: { teamId: 'team-a', title: '分析：GUI 交互面', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t3 created; dispatch is automatic', ok: true }, md: '' },
     ] as never);
     await flushed();
     fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['t2', 't3'], timeoutSeconds: null } } });
@@ -877,20 +877,20 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[2]!.textContent).toMatch(/全部后台任务|all background tasks/); // null 语义本地化
   });
 
-  it('task_* 折叠行带任务名(update_task/task_stop/set_dependency 经 taskNameOf;task_stop 完成态取回执 label;set_dependency 双名箭头)', async () => {
+  it('task_* 折叠行带任务名(update_agent_team_task/task_stop/set_dependency 经 taskNameOf;task_stop 完成态取回执 label;set_dependency 双名箭头)', async () => {
     mountChat([
       // 标题直读 entry.input;任务 id 提取读 result 回执文本(tool md 恒空)
-      { seq: 1, kind: 'tool', name: 'create_task', input: { teamId: 'team-a', title: '架构评审', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t1 created; dispatch is automatic', ok: true }, md: '' },
-      { seq: 2, kind: 'tool', name: 'create_task', input: { teamId: 'team-a', title: '用例补齐', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '' },
+      { seq: 1, kind: 'tool', name: 'create_agent_team_task', input: { teamId: 'team-a', title: '架构评审', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t1 created; dispatch is automatic', ok: true }, md: '' },
+      { seq: 2, kind: 'tool', name: 'create_agent_team_task', input: { teamId: 'team-a', title: '用例补齐', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t2 created; dispatch is automatic', ok: true }, md: '' },
     ] as never);
     await flushed();
-    fire({ type: 'tool-call', text: 'update_task', ts: Date.now(), payload: { callId: 'r1', input: { taskId: 't1', action: 'assign', assignee: 'w1' } } });
+    fire({ type: 'tool-call', text: 'update_agent_team_task', ts: Date.now(), payload: { callId: 'r1', input: { taskId: 't1', action: 'assign', assignee: 'w1' } } });
     fire({ type: 'tool-result', text: 'assigned', ts: Date.now(), payload: { callId: 'r1' } });
     fire({ type: 'tool-call', text: 'task_stop', ts: Date.now(), payload: { callId: 'st1', input: { taskId: 'exec-20261017T101010Z-ab12' } } });
     fire({ type: 'tool-result', text: 'task exec-20261017T101010Z-ab12 stopped (架构分析)', ts: Date.now(), payload: { callId: 'st1' } });
     fire({ type: 'tool-call', text: 'set_dependency', ts: Date.now(), payload: { callId: 'd1', input: { taskId: 't2', dependsOn: 't1' } } });
     fire({ type: 'tool-result', text: 'dependency added', ts: Date.now(), payload: { callId: 'd1' } });
-    const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => /update_task|task_stop|set_dependency/.test(x.textContent ?? ''));
+    const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => /update_agent_team_task|task_stop|set_dependency/.test(x.textContent ?? ''));
     expect(rows).toHaveLength(3);
     // 断言钉折叠壳(.tool-summary)——entry 全量 textContent 含隐藏展开体(原始结果行自带 id,不属折叠行展示面)
     const sum = (i: number): string => rows[i]!.querySelector('.tool-summary')?.textContent ?? '';
@@ -1318,18 +1318,18 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelectorAll('.tool-group-head')).toHaveLength(1); // 全段仅一组
   });
 
-  it('G14.168 create_task 折叠行带任务名;zh 态动词本地化(en 态原字面;未登记工具回退原名)', async () => {
+  it('G14.168 create_agent_team_task 折叠行带任务名;zh 态动词本地化(en 态原字面;未登记工具回退原名)', async () => {
     mountChat([]);
     await flushed();
-    fire({ type: 'tool-call', text: 'create_task', ts: Date.now(), payload: { callId: 'ct1', input: { teamId: 'team-a', title: '架构分析', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null } } });
+    fire({ type: 'tool-call', text: 'create_agent_team_task', ts: Date.now(), payload: { callId: 'ct1', input: { teamId: 'team-a', title: '架构分析', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null } } });
     fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct1' } });
     let row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
-    expect(row.textContent).toContain('create_task'); // en 态原字面
+    expect(row.textContent).toContain('create_agent_team_task'); // en 态原字面
     expect(row.textContent).toContain('架构分析'); // 任务名跟行
     // zh 态:已渲染行不回溯,新入行即中文化
     setLanguage('zh');
     try {
-      fire({ type: 'tool-call', text: 'create_task', ts: Date.now(), payload: { callId: 'ct2', input: { teamId: 'team-a', title: '测试构建', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null } } });
+      fire({ type: 'tool-call', text: 'create_agent_team_task', ts: Date.now(), payload: { callId: 'ct2', input: { teamId: 'team-a', title: '测试构建', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null } } });
       fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct2' } });
       row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
       expect(row.textContent).toContain('创建任务'); // G14.216 命名口径(替代「建单」两字压缩)

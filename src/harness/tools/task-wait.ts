@@ -64,7 +64,7 @@ export function makeTaskWaitTool(
           items: { type: 'string' },
           description: execOnly
             ? 'Exec background ids; JSON null = all currently running exec work. Board task ids are not waitable on this face.'
-            : 'Board task ids from create_task/get_board (e.g. ["task-build-parser-k3f2"]), and/or background exec/spawn ledger ids. Prefer explicit board ids. JSON null = only work already running (pending board tasks are omitted — pass their ids). Finished ids return an immediate receipt.',
+            : 'Board task ids from create_agent_team_task/get_agent_team_board (e.g. ["task-build-parser-k3f2"]), and/or background exec/spawn ledger ids. Prefer explicit board ids. JSON null = only work already running (pending board tasks are omitted — pass their ids). Finished ids return an immediate receipt.',
         },
         timeoutSeconds: {
           type: ['number', 'null'],
@@ -75,7 +75,7 @@ export function makeTaskWaitTool(
     name: 'task_wait',
     description: execOnly
       ? 'Wait for an auto-backgrounded exec command (receipt: id, status, exit, log tail). JSON null waits running exec only. Board/teammate work is not waitable here — finish your own board task; the lead waits on board ids.'
-      : 'Wait until listed work reaches a terminal state; return id, kind, status, exit, and exec log tail or conclusion. Prefer board task ids from create_task. Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_task + retryOf). Teammates are executors, not wait targets — wait their board task ids. taskIds=null waits currently running work only. Default timeout 1800s.',
+      : 'Wait until listed work reaches a terminal state; return id, kind, status, exit, and exec log tail or conclusion. Prefer board task ids from create_agent_team_task. Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_agent_team_task + retryOf). Teammates are executors, not wait targets — wait their board task ids. taskIds=null waits currently running work only. Default timeout 1800s.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -186,10 +186,10 @@ export function makeTaskWaitTool(
       for (const id of boardWaitIds) {
         const bt = board?.snapshot().tasks[id];
         if (bt === undefined) continue;
-        // failed=执行错误;cancelled=主动停止或重启自愈。两者都须 create_task 重做;success 即完成
+        // failed=执行错误;cancelled=主动停止或重启自愈。两者都须 create_agent_team_task 重做;success 即完成
         const hint =
           bt.status === 'failed' || bt.status === 'cancelled'
-            ? ' — terminal; to redo this work, create a new task with create_task'
+            ? ' — terminal; to redo this work, create a new task with create_agent_team_task'
             : '';
         lines.push(`${id} (board) ${bt.status} — ${bt.title}${hint}`);
       }
