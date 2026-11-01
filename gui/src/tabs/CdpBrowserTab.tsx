@@ -46,7 +46,8 @@ export function useCdpBuiltinPage(conn: Connection | null, root: string | undefi
         let ws: string | undefined;
         try {
           const meta = await conn.appFile(root, 'plugins/browser-use/builtin-cdp.json', 'data');
-          if (meta.type === 'file') {
+          // 文本文件载荷不带 type 字段(仅 directory/image 带)——按 content 可解析判定,勿判 type==='file'
+          if (typeof meta.content === 'string' && meta.content.length > 0) {
             const parsed = JSON.parse(meta.content) as { ws?: string };
             if (typeof parsed.ws === 'string') ws = parsed.ws;
           }
