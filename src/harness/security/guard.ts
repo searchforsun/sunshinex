@@ -123,10 +123,10 @@ export class SecurityGuard {
     if (WRITE_TOOL_NAMES.has(tool) && this.hasPathInput(input)) return { allowed: true };
     // spawn 无直接 IO 副作用（派生即编排；子智能体内部每个工具调用独立过安全链），acceptEdits 下免审批放行
     if (tool === 'spawn') return { allowed: true };
-    // task_stop：后台账本状态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），acceptEdits 下免审批对齐 spawn 先例
-    if (tool === 'task_stop') return { allowed: true };
-    // task_wait：等待面回执读账本已登记的任务日志，零直接 IO 副作用，acceptEdits 下免审批对齐 task_stop 先例
-    if (tool === 'task_wait') return { allowed: true };
+    // task_stop / agent_team_task_stop：账本或板态操作，零直接 IO 副作用（进程组终止经由账本已登记的 stop 句柄），acceptEdits 下免审批对齐 spawn 先例
+    if (tool === 'task_stop' || tool === 'agent_team_task_stop') return { allowed: true };
+    // task_wait / agent_team_task_wait：等待面回执读账本/板态，零直接 IO 副作用，acceptEdits 下免审批对齐 task_stop 先例
+    if (tool === 'task_wait' || tool === 'agent_team_task_wait') return { allowed: true };
     return { allowed: false, ask: true, reason: 'COMMAND_DENIED: acceptEdits mode requires interactive confirmation' };
   }
 

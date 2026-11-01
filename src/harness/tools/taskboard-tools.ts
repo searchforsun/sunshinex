@@ -1,6 +1,6 @@
 // TaskBoard lead 工具面:create_agent_team / create_agent_team_task / update_agent_team_task / get_agent_team_board。
-// update_agent_team_task 只保留 assign|depend;取消走 task_stop。观察尾附板摘要(summaryLines)。
-// lead-only:板四件套 + create_agent_teammate + agent_team_task_wait 经 FORK_EXCLUDED_TOOLS 剔出子面。
+// update_agent_team_task 只保留 assign|depend;取消走 agent_team_task_stop。观察尾附板摘要(summaryLines)。
+// lead-only:板四件套 + create_agent_teammate + agent_team_task_wait/stop 经 FORK_EXCLUDED_TOOLS 剔出子面。
 import { CodedToolError, RegisteredTool } from '../tools';
 import { fail } from '../../result';
 import type { SessionEvent } from '../../types';
@@ -9,9 +9,15 @@ import type { AgentTeamRegistry } from '../../taskboard/team-registry';
 
 export const TASKBOARD_TOOL_NAMES = ['create_agent_team', 'create_agent_team_task', 'update_agent_team_task', 'get_agent_team_board'] as const;
 
-/** 子智能体派生面剔除族:send_agent_team_message + create_agent_teammate + 板四件套 + agent_team_task_wait(lead-only)。
+/** 子智能体派生面剔除族:send_agent_team_message + create_agent_teammate + 板四件套 + agent_team_task_wait/stop(lead-only)。
  *  三处 fork-scope 派生点同源;增名即扩剔(harness/fork-face.test.ts)。 */
-export const FORK_EXCLUDED_TOOLS = ['send_agent_team_message', 'create_agent_teammate', 'agent_team_task_wait', ...TASKBOARD_TOOL_NAMES] as const;
+export const FORK_EXCLUDED_TOOLS = [
+  'send_agent_team_message',
+  'create_agent_teammate',
+  'agent_team_task_wait',
+  'agent_team_task_stop',
+  ...TASKBOARD_TOOL_NAMES,
+] as const;
 
 /** JSON null / 字面 "null" / 空串 → 缺席(与 spawn/create_agent_teammate 同病单点) */
 function nullish(v: unknown): boolean {
@@ -147,7 +153,7 @@ export function makeTaskBoardTools(
         action: {
           type: 'string',
           enum: ['assign', 'depend'],
-          description: 'assign = set living teammate (needs assignee); depend = add dependency (needs dependsOn). Stop with task_stop.',
+          description: 'assign = set living teammate (needs assignee); depend = add dependency (needs dependsOn). Stop with agent_team_task_stop.',
         },
         assignee: { type: ['string', 'null'], description: 'Living teammate name when action=assign; JSON null otherwise.' },
         dependsOn: { type: ['string', 'null'], description: 'Dependency task id when action=depend; JSON null otherwise.' },
@@ -155,7 +161,7 @@ export function makeTaskBoardTools(
     },
     name: 'update_agent_team_task',
     description:
-      'Change a non-terminal board task: assign routes it to a living teammate on the same team (triggers claim); depend adds a same-team dependency edge. Terminal tasks cannot be updated — recreate with create_agent_team_task and retryOf. Cancel with task_stop.',
+      'Change a non-terminal board task: assign routes it to a living teammate on the same team (triggers claim); depend adds a same-team dependency edge. Terminal tasks cannot be updated — recreate with create_agent_team_task and retryOf. Cancel with agent_team_task_stop.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

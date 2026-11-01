@@ -19,7 +19,7 @@ import type { DiffResp } from '../../connection';
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
-  worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: Hourglass, kb_search: BookOpen,
+  worktree: GitBranch, spawn: Bot, task_stop: Square, agent_team_task_stop: Square, task_wait: Hourglass, agent_team_task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
   create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
   // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
@@ -80,7 +80,8 @@ const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', edit: '编辑', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
-  task_wait: '等待任务', kb_search: '检索知识库', ask_question: '提问',
+  agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
+  kb_search: '检索知识库', ask_question: '提问',
   create_agent_team_task: '创建任务', set_dependency: '设置依赖', assign: '分派',
   create_agent_team: '创建智能体团队',
   create_agent_teammate: '创建智能体团队成员',
@@ -212,7 +213,9 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   update_agent_team_task: ['Updating task', '正在更新任务'], get_agent_team_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
   send_agent_team_message: ['Sending message', '正在发送消息'], get_task: ['Reading task', '正在读取任务'],
   task_wait: ['Waiting for tasks', '正在等待任务'],
+  agent_team_task_wait: ['Waiting for team tasks', '正在等待团队任务'],
   task_stop: ['Stopping task', '正在停止任务'],
+  agent_team_task_stop: ['Stopping team task', '正在停止团队任务'],
   todo_write: ['Updating todos', '正在更新待办'],
   worktree: ['Preparing worktree', '正在准备工作树'],
   kb_search: ['Searching knowledge base', '正在检索知识库'],
@@ -224,11 +227,12 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
 
 /** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
  *  折叠行默认分型只出动词——任务名经 taskNameOf 单点解析后跟行 */
-const TASK_OP_TOOLS = new Set(['task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task']);
+const TASK_OP_TOOLS = new Set(['task_stop', 'agent_team_task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task']);
 
 /** G14.214 运行态动词对（拼接任务名替代泛文案，仿 spawn G14.166 先例）；折叠行动词走 zhToolName 既有映射 */
 const TASK_OP_RUNNING: Record<string, [string, string]> = {
   task_stop: ['Stopping', '正在停止'],
+  agent_team_task_stop: ['Stopping', '正在停止'],
   update_agent_team_task: ['Updating', '正在更新'],
   assign: ['Assigning', '正在分派'],
   set_dependency: ['Setting dependency of', '正在设置依赖'],

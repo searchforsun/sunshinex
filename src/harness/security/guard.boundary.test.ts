@@ -46,10 +46,12 @@ test('会话目录登记与判定（含自身；clear 同步清理）', () => {
   assert.equal(g.sessionDirAllowed(dir), false);
 });
 
-test('acceptEdits 档账本操作免审批：task_stop / task_wait 直放（零直接 IO 副作用，对齐 spawn 先例）', () => {
+test('acceptEdits 档账本/板域操作免审批：task_stop·wait 与 agent_team_task_stop·wait 直放（零直接 IO 副作用，对齐 spawn 先例）', () => {
   const g = new SecurityGuard(new PolicyEngine(), 'acceptEdits');
   assert.equal(g.preToolUse('task_stop', { taskId: 'b1' }).allowed, true, 'task_stop 账本状态操作免审批');
   assert.equal(g.preToolUse('task_wait', { taskIds: ['b1'], timeoutSeconds: 30 }).allowed, true, 'task_wait 账本读操作免审批');
+  assert.equal(g.preToolUse('agent_team_task_stop', { taskId: 't1' }).allowed, true, 'agent_team_task_stop 板态操作免审批');
+  assert.equal(g.preToolUse('agent_team_task_wait', { taskIds: ['t1'], timeoutSeconds: 30 }).allowed, true, 'agent_team_task_wait 板态等待免审批');
 });
 
 test('resolveAsk：无 asker 返回 null（宁停不误）；有 asker 原样回传决策', async () => {

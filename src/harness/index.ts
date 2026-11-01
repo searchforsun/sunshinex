@@ -7,7 +7,7 @@ import { createReadGuard, type ReadGuard } from './tools/read-guard';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
-import { makeTaskStopTool } from './tools/task-stop';
+import { makeAgentTeamTaskStopTool, makeTaskStopTool } from './tools/task-stop';
 import { makeAgentTeamTaskWaitTool, makeTaskWaitTool } from './tools/task-wait';
 import { makeTaskBoardTools } from './tools/taskboard-tools';
 import { SecurityGuard } from './security/guard';
@@ -328,7 +328,7 @@ export class Harness {
     // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_agent_team_board/get_task)。
     // 重名裁定(T2 register 为替换语义,spawn 通道在其上收紧):活名重复 spawn → INVALID_ARG fail-fast
     // (模型换名/先停后建;静默替换会停掉在跑 teammate 且台账悬空);已停同名 → 替换重建(register 原语义)。
-    // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——task_stop 即停,日志承载启动行
+    // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——板派发中止/成员打断由 agent_team_task_stop,日志承载启动行
     const teamAdapter = {
       spawn: (input: SubagentSpawnInput, teamId: string): Result<{ name: string }> => {
         if (this.agentTeams.get(teamId) === undefined) {
@@ -386,7 +386,7 @@ export class Harness {
         if (!registered.ok) return registered;
         // teammate 定位(2026-10-20 用户裁决):长驻执行体是「声明」不是任务——无生命周期、不进任务
         // 账本(账本只承载有生命周期的工作单元,假 running 态即语义污染,task_wait 等待面随之纯净);
-        // 存活面=TeamRegistry(退出链 team.stopAll() 收口),停止走 task_stop 按名寻址
+        // 存活面=TeamRegistry(退出链 team.stopAll() 收口),打断走 agent_team_task_stop 按名寻址
         tm.kick(); // 建即起 claim 循环(「claims unassigned tasks」承诺即时生效;空板自然收兵零开销)
         return ok({ name });
       },
@@ -415,15 +415,19 @@ export class Harness {
     if (opts.teamsSessionId !== undefined && opts.teamsSessionId.length > 0) {
       this.adoptSessionTeams(opts.teamsSessionId);
     }
-    // task_stop / task_wait 都消费板，注册在 taskboard 装配之后。
-    // task_stop：板任务 pending|running → cancelled（running 同时 ledger.stop）；纯台账任务保持 stopped；teammate 按名打断。
-    this.tools.register({ ...makeTaskStopTool(this.tasks, this.team, this.taskboard), display: { verb: 'TASK_STOP' } });
+    // task_stop / task_wait / 团队 wait·stop 注册在 taskboard 装配之后（板供拒识或板域操作）。
+    // task_stop：仅 exec/spawn 台账；板 id 拒识点名 agent_team_task_stop。
+    this.tools.register({ ...makeTaskStopTool(this.tasks, this.taskboard), display: { verb: 'TASK_STOP' } });
     // task_wait：仅 exec/spawn 台账等待（板 id 拒识点名 agent_team_task_wait）；第三参 run 信号穿透阻塞期
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
-    // agent_team_task_wait：仅板任务（可含板派发台账 id）；Task 6 再按 agentTeams 条件注册
+    // agent_team_task_wait / agent_team_task_stop：板域；Task 6 再按 agentTeams 条件注册
     this.tools.register({
       ...makeAgentTeamTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal),
       display: { verb: 'AGENT_TEAM_TASK_WAIT' },
+    });
+    this.tools.register({
+      ...makeAgentTeamTaskStopTool(this.tasks, this.team, this.taskboard),
+      display: { verb: 'AGENT_TEAM_TASK_STOP' },
     });
     // create_agent_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
     // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
@@ -448,7 +452,7 @@ export class Harness {
         },
       },
       description:
-        'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with task_stop (member stays). One-shot subtasks outside the board: use spawn.',
+        'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with agent_team_task_stop (member stays). One-shot subtasks outside the board: use spawn.',
       category: 'task',
       fullObservation: true,
       executor: async (input) => {
@@ -470,7 +474,7 @@ export class Harness {
         if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
         return {
           exitCode: 0,
-          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_agent_team_task; interrupt via task_stop`,
+          stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_agent_team_task; interrupt via agent_team_task_stop`,
           stderr: '',
           timedOut: false,
         };

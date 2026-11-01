@@ -1,7 +1,7 @@
-// task_stop：按 id 停止工作。
-// 板任务是生命周期权威：pending|running → board.stopTask 落 cancelled；running 再调台账 stop，执行体中止、台账终态 stopped。
-// 纯台账任务（后台 exec / 非板子智能体）保持 stopped。
-// 终态幂等回执当前态，不重复 abort。teammate 按名只打断当前任务，成员继续存活并领取后续板任务。
+// task_stop：仅停台账 exec/spawn（及超时转后台）后台条目。
+// agent_team_task_stop：板任务取消（stopBoardTask）+ 按名打断存活成员（TeamRegistry）。
+// 分域拒识：task_stop 遇板 id → INVALID_ARG 点名 agent_team_task_stop；对称拒识纯台账 id。
+// 终态幂等回执当前态，不重复 abort。成员按名只打断当前任务，成员继续存活并领取后续板任务。
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
 import type { TeamRegistry } from '../../taskboard/teammate';
@@ -48,7 +48,7 @@ export interface BoardStopReceipt {
   alreadyFinished: boolean;
 }
 
-/** 板任务停：pending|running → cancelled；running 再 abort 台账。非板 id 返回 undefined，调用方走台账/队友面。 */
+/** 板任务停：pending|running → cancelled；running 再 abort 台账。非板 id 返回 undefined，调用方走成员面或拒识。 */
 export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: string): Result<BoardStopReceipt> | undefined {
   const boardKey = boardKeyOf(board, tasks, rawId);
   if (boardKey === undefined) return undefined;
@@ -73,7 +73,8 @@ function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefined): v
   }
 }
 
-export function makeTaskStopTool(tasks: TaskRegistry, team?: TeamRegistry, board?: TaskBoard): RegisteredTool {
+/** 台账停止：exec / spawn。板 id → INVALID_ARG 点名 agent_team_task_stop。board 仅供拒识。 */
+export function makeTaskStopTool(tasks: TaskRegistry, board?: TaskBoard): RegisteredTool {
   return {
     parameters: {
       type: 'object',
@@ -83,55 +84,100 @@ export function makeTaskStopTool(tasks: TaskRegistry, team?: TeamRegistry, board
         taskId: {
           type: 'string',
           description:
-            'Board task id (cancel pending/running), background ledger id (stop exec/spawn), or living teammate name (interrupt current task only).',
+            'Background exec/spawn ledger id only. Board task ids and living teammate names belong to agent_team_task_stop.',
         },
       },
     },
     name: 'task_stop',
     description:
-      'Stop work by id. Board pending/running → cancelled (running also aborts the executor); the teammate stays and can claim later tasks. Background exec/spawn ledger → stopped. A teammate name interrupts only that member\'s current task. Already-terminal ids return an idempotent receipt. Unknown ids fail with the stoppable list.',
+      'Stop a background exec/spawn ledger task by id. Board task ids and living teammate names belong to agent_team_task_stop. Already-terminal ledger ids return an idempotent receipt. Unknown ids fail with the stoppable ledger list.',
     category: 'task',
     executor: async (input) => {
       const rawId = String(input.taskId ?? '').trim();
       if (rawId === '') throw new CodedToolError('INVALID_ARG', 'taskId is required');
-      if (board !== undefined) {
-        const stopped = stopBoardTask(board, tasks, rawId);
-        if (stopped !== undefined) {
-          if (!stopped.ok) throw new CodedToolError(stopped.error.code, stopped.error.message);
-          const { taskId, status, title, alreadyFinished } = stopped.value;
-          return alreadyFinished
-            ? receipt(`task ${taskId} already finished with status ${status}`)
-            : receipt(`task ${taskId} cancelled (${title})`);
-        }
+      if (board !== undefined && boardKeyOf(board, tasks, rawId) !== undefined) {
+        throw new CodedToolError(
+          'INVALID_ARG',
+          `Board task ids belong to agent_team_task_stop, not task_stop: ${rawId}`,
+        );
       }
       const taskId = tasks.resolveId(rawId);
       const task = tasks.get(taskId);
       if (task === undefined) {
-        // 控制面(与等待面分立):teammate 按名打断其当前任务——成员=上下文承载体(无生命周期,不消亡),
-        // 任务才有生命周期;打断后成员存活继续 claim 后续板任务
-        const tm = team?.get(rawId);
-        if (tm !== undefined) {
-          const interrupted = tm.interruptCurrent();
-          return receipt(interrupted
-            ? `teammate ${rawId} current task interrupted (teammate persists and keeps claiming board tasks)`
-            : `teammate ${rawId} is idle — no running task to interrupt`);
-        }
         const ledger = tasks
           .list()
           .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
           .join('; ');
-        const mates = team?.aliveNames().map((n) => `${n} (teammate, interrupt by name)`) ?? [];
-        const boardList = Object.values(board?.snapshot().tasks ?? {})
-          .map((t) => `${t.id} (board, ${t.status}) ${t.title}`)
-          .join('; ');
-        const surface = [...mates, ledger, boardList].filter((x) => x !== '').join('; ');
-        throw new CodedToolError('INVALID_ARG', `Unknown task id: ${rawId}. Stoppable now: ${surface === '' ? '(none)' : surface}`);
+        throw new CodedToolError(
+          'INVALID_ARG',
+          `Unknown task id: ${rawId}. Stoppable now: ${ledger === '' ? '(none)' : ledger}. Board task ids and teammate names use agent_team_task_stop.`,
+        );
       }
       if (task.status === 'running') {
         abortLedger(tasks, task);
         return receipt(`task ${taskId} stopped (${task.label})`);
       }
       return receipt(`task ${taskId} already finished with status ${task.status}`);
+    },
+  };
+}
+
+/** 板任务取消 + 按名打断成员。纯台账 exec/spawn id → INVALID_ARG 点名 task_stop。 */
+export function makeAgentTeamTaskStopTool(tasks: TaskRegistry, team: TeamRegistry, board: TaskBoard): RegisteredTool {
+  return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['taskId'],
+      properties: {
+        taskId: {
+          type: 'string',
+          description:
+            'Board task id (cancel pending/running) or living teammate name (interrupt current task only). Exec/spawn-only ledger ids belong to task_stop.',
+        },
+      },
+    },
+    name: 'agent_team_task_stop',
+    description:
+      'Stop team work by id. Board pending/running → cancelled (running also aborts the executor); the teammate stays and can claim later tasks. A teammate name interrupts only that member\'s current task. Already-terminal board ids return an idempotent receipt. Exec/spawn-only ledger ids belong to task_stop.',
+    category: 'task',
+    executor: async (input) => {
+      const rawId = String(input.taskId ?? '').trim();
+      if (rawId === '') throw new CodedToolError('INVALID_ARG', 'taskId is required');
+      const stopped = stopBoardTask(board, tasks, rawId);
+      if (stopped !== undefined) {
+        if (!stopped.ok) throw new CodedToolError(stopped.error.code, stopped.error.message);
+        const { taskId, status, title, alreadyFinished } = stopped.value;
+        return alreadyFinished
+          ? receipt(`task ${taskId} already finished with status ${status}`)
+          : receipt(`task ${taskId} cancelled (${title})`);
+      }
+      const tm = team.get(rawId);
+      if (tm !== undefined) {
+        const interrupted = tm.interruptCurrent();
+        return receipt(
+          interrupted
+            ? `teammate ${rawId} current task interrupted (teammate persists and keeps claiming board tasks)`
+            : `teammate ${rawId} is idle — no running task to interrupt`,
+        );
+      }
+      const taskId = tasks.resolveId(rawId);
+      const task = tasks.get(taskId);
+      if (task !== undefined) {
+        throw new CodedToolError(
+          'INVALID_ARG',
+          `agent_team_task_stop only accepts board task ids and living teammate names; exec/spawn-only ids belong to task_stop: ${rawId} (${task.kind})`,
+        );
+      }
+      const mates = team.aliveNames().map((n) => `${n} (teammate, interrupt by name)`);
+      const boardList = Object.values(board.snapshot().tasks)
+        .map((t) => `${t.id} (board, ${t.status}) ${t.title}`)
+        .join('; ');
+      const surface = [...mates, boardList].filter((x) => x !== '').join('; ');
+      throw new CodedToolError(
+        'INVALID_ARG',
+        `Unknown task id: ${rawId}. Stoppable now: ${surface === '' ? '(none)' : surface}`,
+      );
     },
   };
 }

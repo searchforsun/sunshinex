@@ -1,5 +1,5 @@
 /** T3(create_agent_teammate + teammate 工具面):独立动词建长驻执行体 → TeamRegistry
- *  长驻 teammate(非 fork);teammate 派生面 get_agent_team_board/get_task 只读注入、主链面零污染;task_stop 可停。 */
+ *  长驻 teammate(非 fork);teammate 派生面 get_agent_team_board/get_task 只读注入、主链面零污染;agent_team_task_stop 按名可打断。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -32,7 +32,7 @@ function withDataDir(root: string): () => void {
 
 const TEAM_ENVELOPE = JSON.stringify({ tool: 'create_agent_teammate', input: { teamId: TEAM_ID, name: 'w1', prompt: 'review stuff' } });
 
-test('create_agent_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_agent_team_board/get_task,task_stop 按名可停', async () => {
+test('create_agent_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w1 started,主链面零污染、teammate 面含 get_agent_team_board/get_task,agent_team_task_stop 按名可打断', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-1-'));
   const restore = withDataDir(tmp);
   let h: Harness | undefined;
@@ -48,14 +48,14 @@ test('create_agent_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w
     const obs = r.steps.map((s) => s.observation).join('\n');
     assert.ok(/teammate "?w1"? started/.test(obs), `spawn 观察应含 teammate w1 started,实际:${obs}`);
     // 长驻体定位(2026-10-20 用户裁决「teammate 是声明不是任务」):存活面=TeamRegistry 活名,
-    // 不进任务账本(账本只承载有生命周期的工作单元);停止=task_stop 按名寻址
+    // 不进任务账本(账本只承载有生命周期的工作单元);打断=agent_team_task_stop 按名寻址
     assert.ok(h.team.aliveNames().includes('w1'), 'w1 应为活 teammate');
     assert.ok(!h.tasks.list().some((t) => t.label === 'w1'), 'teammate 不进任务账本(无生命周期不入工作单元账)');
-    // task_stop 按名=打断当前任务,成员存活(上下文承载体无停止概念;任务才有生命周期)
-    const stopOut = (await h.tools.execute('task_stop', { taskId: 'w1' }, h.safety)) as
+    // agent_team_task_stop 按名=打断当前任务,成员存活(上下文承载体无停止概念;任务才有生命周期)
+    const stopOut = (await h.tools.execute('agent_team_task_stop', { taskId: 'w1' }, h.safety)) as
       | { ok: true; value: { stdout: string } }
       | { ok: false; error: { message: string } };
-    assert.ok(stopOut.ok, `task_stop 按名打断应成功`);
+    assert.ok(stopOut.ok, `agent_team_task_stop 按名打断应成功`);
     if (stopOut.ok) assert.match(stopOut.value.stdout, /idle|interrupted/, '回执按在跑与否分流');
     assert.equal(h.team.get('w1')!.stopped, false, '成员存活(不消亡)');
     // 面隔离(2026-10-20 收束后):get_agent_team_board 读权收编进主链面;teammate 派生面剔除写板四件套、

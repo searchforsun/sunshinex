@@ -233,7 +233,7 @@ export class Teammate {
   stop(): void {
     this.stoppedFlag = true;
     this.abort.abort();
-    this.currentTaskAbort?.abort(); // 在跑任务随停(否则 task_stop teammate 后 Reactor 还要跑到回合尾)
+    this.currentTaskAbort?.abort(); // 在跑任务随停(否则 agent_team_task_stop 按名打断后 Reactor 还要跑到回合尾)
   }
 
   /** 打断当前在跑任务(2026-10-20 定位定版:成员=上下文承载体无生命周期,任务才有生命周期)——
@@ -257,7 +257,7 @@ export class Teammate {
   }
 
   /** 单任务执行(claim 循环与 runTask 共用):认领 → own chain 预置 → 逐任务 Reactor(fork) → 强制回写 */
-  /** 当前在跑任务的 abort 句柄(task_stop 按板 id 归一命中本条目;teammate 级 stop 亦级联) */
+  /** 当前在跑任务的 abort 句柄(agent_team_task_stop 按板 id 归一命中本条目;teammate 级 stop 亦级联) */
   private currentTaskAbort?: AbortController;
 
   private async execute(task: BoardTask): Promise<void> {

@@ -1,7 +1,7 @@
 /** L2 终审 Important(fork 面剔除未闭合):loop/graph 两处 fork-scope 派生点曾只剔 spawn——
  *  send_agent_team_message / create_agent_teammate / 板四件套会泄入 fork 子面(板任务内部 fork 曾误调 create_agent_teammate)。
  *  修复裁定:三处派生点(subagent deriveChildRegistry / loop agentNode / graph makeLoopNode)同源消费
- *  FORK_EXCLUDED_TOOLS(send_agent_team_message + create_agent_teammate + agent_team_task_wait + TASKBOARD_TOOL_NAMES);常量即契约——本文件钉测常量内容 +
+ *  FORK_EXCLUDED_TOOLS(send_agent_team_message + create_agent_teammate + agent_team_task_wait/stop + TASKBOARD_TOOL_NAMES);常量即契约——本文件钉测常量内容 +
  *  直测三处派生输出面(loop/graph 用 derive 间谍捕获产品派生点产物,不经内部实现细节)。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -71,12 +71,17 @@ const loopCtx = (): LoopContext => ({
   termination: { maxIterations: 2, timeoutMs: 60_000 } as LoopTermination,
 });
 
-test('常量契约:FORK_EXCLUDED_TOOLS = send_agent_team_message + create_agent_teammate + agent_team_task_wait + 四件套(单点定义,三派生点同源)', () => {
-  assert.deepEqual([...FORK_EXCLUDED_TOOLS], ['send_agent_team_message', 'create_agent_teammate', 'agent_team_task_wait', ...TASKBOARD_TOOL_NAMES]);
-  assert.equal(FORK_EXCLUDED_TOOLS.length, TASKBOARD_TOOL_NAMES.length + 3);
+test('常量契约:FORK_EXCLUDED_TOOLS = send_agent_team_message + create_agent_teammate + agent_team_task_wait/stop + 四件套(单点定义,三派生点同源)', () => {
+  assert.deepEqual(
+    [...FORK_EXCLUDED_TOOLS],
+    ['send_agent_team_message', 'create_agent_teammate', 'agent_team_task_wait', 'agent_team_task_stop', ...TASKBOARD_TOOL_NAMES],
+  );
+  assert.equal(FORK_EXCLUDED_TOOLS.length, TASKBOARD_TOOL_NAMES.length + 4);
   assert.ok(FORK_EXCLUDED_TOOLS.includes('create_agent_teammate'), 'create_agent_teammate 应在剔除族(板任务 fork 不得建成员)');
   assert.ok(FORK_EXCLUDED_TOOLS.includes('agent_team_task_wait'), 'agent_team_task_wait 应在剔除族(lead-only)');
+  assert.ok(FORK_EXCLUDED_TOOLS.includes('agent_team_task_stop'), 'agent_team_task_stop 应在剔除族(lead-only)');
   assert.equal(FORK_EXCLUDED_TOOLS.includes('task_wait' as typeof FORK_EXCLUDED_TOOLS[number]), false, 'task_wait 不入剔除族(子面保留等 exec)');
+  assert.equal(FORK_EXCLUDED_TOOLS.includes('task_stop' as typeof FORK_EXCLUDED_TOOLS[number]), false, 'task_stop 不入剔除族(子面保留停 exec)');
   for (const n of TASKBOARD_TOOL_NAMES) assert.ok(FORK_EXCLUDED_TOOLS.includes(n), `四件套 ${n} 应在剔除族`);
   // 三处消费点源码同源钉测(防再内联漂移;沿 prompt-language.test.ts 源扫描先例)
   const ROOT = path.resolve(__dirname, '..', '..');

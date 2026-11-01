@@ -49,9 +49,9 @@ function extractTarget(tool: string, input: unknown, meta: ToolDisplayMeta | und
     const arr = Array.isArray(obj.todos) ? (obj.todos as unknown[]) : [];
     return `${arr.length} items`;
   }
-  if (tool === 'task_wait') {
+  if (tool === 'task_wait' || tool === 'agent_team_task_wait') {
     // 平台专属工具（§87 另册）的可读 target（2026-09-30 用户裁决：参数不再以裸 JSON 兜底直出）：
-    // taskIds 逗号连接（null=全部 running 任务），timeoutSeconds 尾追
+    // taskIds 逗号连接（null=全部 running/板任务），timeoutSeconds 尾追
     const ids = Array.isArray(obj.taskIds)
       ? (obj.taskIds as unknown[]).filter((v): v is string => typeof v === 'string' && v.length > 0).join(',')
       : '';
@@ -59,7 +59,7 @@ function extractTarget(tool: string, input: unknown, meta: ToolDisplayMeta | und
     const base = ids.length > 0 ? ids : t('all running', '全部 running');
     return `${base}${timeout}`;
   }
-  if (tool === 'task_stop') {
+  if (tool === 'task_stop' || tool === 'agent_team_task_stop') {
     return strVal(obj.taskId) ?? '';
   }
   const fields = meta?.targetFields;

@@ -1,5 +1,5 @@
-// task_stop 行为：纯台账 running → stopped；板任务 pending|running → cancelled（running 同时 abort 台账）；
-// 终态幂等回执；未命中列出现存任务；teammate 按名打断。
+// task_stop：纯台账 running → stopped；终态幂等；未命中列出现存台账；板 id 拒识点名 agent_team_task_stop。
+// agent_team_task_stop：板 pending|running → cancelled（running 同时 abort 台账）；成员按名打断；exec id 拒识点名 task_stop。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
@@ -10,7 +10,7 @@ import { TaskBoard } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
 import type { TeamRegistry } from '../../taskboard/teammate';
-import { makeTaskStopTool } from './task-stop';
+import { makeAgentTeamTaskStopTool, makeTaskStopTool } from './task-stop';
 import { ToolRegistry } from '../tools';
 
 /** 最小安全链桩：evaluateAsync 直通放行、maskResult 原样返回（task_stop 非文件/bash 面，不触发路径判定） */
@@ -42,7 +42,13 @@ function openBoard(
   root: string,
   tasks: TaskRegistry,
   mode: 'hang' | 'success' = 'hang',
-): { board: TaskBoard; teamId: string; releaseHang: () => void; interrupted: () => boolean } {
+): {
+  board: TaskBoard;
+  team: TeamRegistry;
+  teamId: string;
+  releaseHang: () => void;
+  interrupted: () => boolean;
+} {
   const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
   const created = agentTeams.create('alpha');
   if (!created.ok) throw new Error(created.error.message);
@@ -105,6 +111,7 @@ function openBoard(
   board.init();
   return {
     board,
+    team: stubTeam,
     teamId,
     releaseHang: () => { hangResolve?.(); },
     interrupted: () => aborted,
@@ -147,12 +154,12 @@ test('task_stop 未命中 ID：报错列出现存任务 id+label（规格 D8 照
   }
 });
 
-test('task_stop 板任务原生 id 归一：tN → 派发台账条目(2026-10-19 真机「板 id 直停报错」回归)', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-board-'));
+test('task_stop 无板在场时仍可按台账 resolveId 停派发形态条目', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-ledger-resolve-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     let stopped = false;
-    // 真实派发登记形态(teammate.ts execute):submit label='task-t5' → 台账 id=task-t5-<ts>-<rand>
+    // 无板在场：resolveId('t5') 命中 label=task-t5 的台账条目（纯台账面）
     const ledger = tasks.submit({ kind: 'subagent', label: 'task-t5' });
     assert.match(ledger.id, /^task-t5-/, '前置:台账 id 为 task-tN 完整方言形态');
     ledger.stop = () => {
@@ -161,18 +168,16 @@ test('task_stop 板任务原生 id 归一：tN → 派发台账条目(2026-10-19
     };
     const registry = makeRegistry(tasks);
     const r = await registry.execute('task_stop', { taskId: 't5' }, stubSafety);
-    assert.ok(r.ok, `期望按板 id 命中，实际 ${r.ok ? '' : r.error.message}`);
+    assert.ok(r.ok, `期望按 resolveId 命中，实际 ${r.ok ? '' : r.error.message}`);
     assert.equal(stopped, true, 'stop 句柄已触发');
     assert.match(r.value.stdout, /task-t5-/, '回执按台账 id 报告');
     assert.equal(tasks.get(ledger.id)?.status, 'stopped');
-    // delegationId 形态 task-t5 同样命中
     const ledger2 = tasks.submit({ kind: 'subagent', label: 'task-t6' });
     ledger2.stop = () => tasks.finish(ledger2.id, 'stopped', { marker: '[stopped]' });
     const r2 = await registry.execute('task_stop', { taskId: 'task-t6' }, stubSafety);
     assert.ok(r2.ok, 'delegationId 形态 task-tN 同样归一命中');
-    // 真未知 id 仍报错
     const r3 = await registry.execute('task_stop', { taskId: 't99' }, stubSafety);
-    assert.ok(!r3.ok, '无派发条目的板 id 仍 INVALID_ARG');
+    assert.ok(!r3.ok, '无派发条目仍 INVALID_ARG');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -198,11 +203,11 @@ test('task_stop 命中已终态任务：幂等回执当前终态，不重复触�
   }
 });
 
-test('task_stop 板 pending → cancelled', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-pending-'));
+test('agent_team_task_stop 板 pending → cancelled', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamstop-pending-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    const { board, teamId, releaseHang, interrupted } = openBoard(root, tasks, 'hang');
+    const { board, teamId, releaseHang, interrupted, team } = openBoard(root, tasks, 'hang');
     const running = board.create({ teamId, title: 'Run', spec: 'hold the lane' });
     assert.ok(running.ok);
     const runId = running.value.taskId;
@@ -213,14 +218,14 @@ test('task_stop 板 pending → cancelled', async () => {
     const holdId = pending.value.taskId;
     assert.equal(board.snapshot().tasks[holdId]?.status, 'pending');
     const registry = new ToolRegistry();
-    registry.register(makeTaskStopTool(tasks, undefined, board));
-    const r = await registry.execute('task_stop', { taskId: holdId }, stubSafety);
+    registry.register(makeAgentTeamTaskStopTool(tasks, team, board));
+    const r = await registry.execute('agent_team_task_stop', { taskId: holdId }, stubSafety);
     assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.message}`);
     assert.match(r.value.stdout, new RegExp(`task ${holdId} cancelled`));
     assert.equal(board.snapshot().tasks[holdId]?.status, 'cancelled');
     assert.equal(board.snapshot().tasks[runId]?.status, 'running', '只停 pending，在跑的上游继续');
     assert.equal(interrupted(), false, 'pending 无执行体，不 abort');
-    const again = await registry.execute('task_stop', { taskId: holdId }, stubSafety);
+    const again = await registry.execute('agent_team_task_stop', { taskId: holdId }, stubSafety);
     assert.ok(again.ok);
     assert.match(again.value.stdout, /already finished with status cancelled/);
     assert.equal(board.snapshot().tasks[holdId]?.status, 'cancelled');
@@ -231,11 +236,11 @@ test('task_stop 板 pending → cancelled', async () => {
   }
 });
 
-test('task_stop 板 running → cancelled 并 abort 台账', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-running-'));
+test('agent_team_task_stop 板 running → cancelled 并 abort 台账', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamstop-running-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    const { board, teamId, interrupted } = openBoard(root, tasks, 'hang');
+    const { board, teamId, interrupted, team } = openBoard(root, tasks, 'hang');
     const created = board.create({ teamId, title: 'Run', spec: 'work' });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
@@ -250,15 +255,15 @@ test('task_stop 板 running → cancelled 并 abort 台账', async () => {
       orig?.();
     };
     const registry = new ToolRegistry();
-    registry.register(makeTaskStopTool(tasks, undefined, board));
-    const r = await registry.execute('task_stop', { taskId: boardId }, stubSafety);
+    registry.register(makeAgentTeamTaskStopTool(tasks, team, board));
+    const r = await registry.execute('agent_team_task_stop', { taskId: boardId }, stubSafety);
     assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.message}`);
     assert.match(r.value.stdout, new RegExp(`task ${boardId} cancelled`));
     assert.equal(board.snapshot().tasks[boardId]?.status, 'cancelled');
     assert.equal(interrupted(), true, 'running 的 stop abort 执行体');
     assert.equal(stopCalls, 1, 'running 同时调用台账 stop');
     assert.equal(tasks.get(ledger.id)?.status, 'stopped');
-    const again = await registry.execute('task_stop', { taskId: boardId }, stubSafety);
+    const again = await registry.execute('agent_team_task_stop', { taskId: boardId }, stubSafety);
     assert.ok(again.ok);
     assert.match(again.value.stdout, /already finished with status cancelled/);
     assert.equal(stopCalls, 1, '终态不重复 abort');
@@ -269,11 +274,11 @@ test('task_stop 板 running → cancelled 并 abort 台账', async () => {
   }
 });
 
-test('task_stop 板 success 幂等回执，不重复 abort', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-success-'));
+test('agent_team_task_stop 板 success 幂等回执，不重复 abort', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamstop-success-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    const { board, teamId } = openBoard(root, tasks, 'success');
+    const { board, teamId, team } = openBoard(root, tasks, 'success');
     const created = board.create({ teamId, title: 'Run', spec: 'done fast' });
     assert.ok(created.ok);
     const boardId = created.value.taskId;
@@ -283,8 +288,8 @@ test('task_stop 板 success 幂等回执，不重复 abort', async () => {
     let stopCalls = 0;
     if (ledger !== undefined) ledger.stop = () => { stopCalls++; };
     const registry = new ToolRegistry();
-    registry.register(makeTaskStopTool(tasks, undefined, board));
-    const r = await registry.execute('task_stop', { taskId: boardId }, stubSafety);
+    registry.register(makeAgentTeamTaskStopTool(tasks, team, board));
+    const r = await registry.execute('agent_team_task_stop', { taskId: boardId }, stubSafety);
     assert.ok(r.ok, `期望幂等 ok，实际 ${r.ok ? '' : r.error.message}`);
     assert.match(r.value.stdout, /already finished with status success/);
     assert.equal(board.snapshot().tasks[boardId]?.status, 'success');
@@ -310,7 +315,7 @@ test('task_stop 纯台账任务在板在场时仍落 stopped', async () => {
       tasks.finish(exec.id, 'stopped', { marker: '[stopped: task_stop]' });
     };
     const registry = new ToolRegistry();
-    registry.register(makeTaskStopTool(tasks, undefined, board));
+    registry.register(makeTaskStopTool(tasks, board));
     const r = await registry.execute('task_stop', { taskId: exec.id }, stubSafety);
     assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.message}`);
     assert.match(r.value.stdout, /stopped/);
@@ -324,8 +329,8 @@ test('task_stop 纯台账任务在板在场时仍落 stopped', async () => {
   }
 });
 
-test('task_stop 按 teammate 名打断当前任务', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-mate-'));
+test('agent_team_task_stop 按成员名打断当前任务', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamstop-mate-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     let interrupted = false;
@@ -335,12 +340,66 @@ test('task_stop 按 teammate 名打断当前任务', async () => {
         : undefined),
       aliveNames: () => ['coder'],
     } as unknown as TeamRegistry;
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      registry: tasks,
+      agentTeams,
+      team,
+      onEvent: () => {},
+      now: clock(),
+    });
+    board.init();
     const registry = new ToolRegistry();
-    registry.register(makeTaskStopTool(tasks, team));
-    const r = await registry.execute('task_stop', { taskId: 'coder' }, stubSafety);
+    registry.register(makeAgentTeamTaskStopTool(tasks, team, board));
+    const r = await registry.execute('agent_team_task_stop', { taskId: 'coder' }, stubSafety);
     assert.ok(r.ok, `期望 ok，实际 ${r.ok ? '' : r.error.message}`);
     assert.equal(interrupted, true);
     assert.match(r.value.stdout, /teammate coder current task interrupted/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_stop 板任务 id：INVALID_ARG 点名 agent_team_task_stop', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstop-board-reject-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const { board, teamId, releaseHang } = openBoard(root, tasks, 'hang');
+    const created = board.create({ teamId, title: 'Hold', spec: 'wait' });
+    assert.ok(created.ok);
+    const boardId = created.value.taskId;
+    const registry = new ToolRegistry();
+    registry.register(makeTaskStopTool(tasks, board));
+    const r = await registry.execute('task_stop', { taskId: boardId }, stubSafety);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.error.code, 'INVALID_ARG');
+      assert.match(r.error.message, /agent_team_task_stop/);
+    }
+    releaseHang();
+    await new Promise((res) => setImmediate(res));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent_team_task_stop exec id：INVALID_ARG 点名 task_stop', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamstop-exec-reject-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const ex = tasks.submit({ kind: 'exec', label: 'build-only' });
+    const { board, releaseHang, team } = openBoard(root, tasks, 'hang');
+    const registry = new ToolRegistry();
+    registry.register(makeAgentTeamTaskStopTool(tasks, team, board));
+    const r = await registry.execute('agent_team_task_stop', { taskId: ex.id }, stubSafety);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.error.code, 'INVALID_ARG');
+      assert.match(r.error.message, /task_stop/);
+    }
+    releaseHang();
+    await new Promise((res) => setImmediate(res));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

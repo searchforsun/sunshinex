@@ -418,7 +418,7 @@ export async function handleSessionMode(io: SessionHandlerIo, req: http.Incoming
 }
 
 
-/** POST /session/:id/board/stop {taskId}：与 task_stop 板分支同语义——pending|running → cancelled，running 再 abort 台账。 */
+/** POST /session/:id/board/stop {taskId}：与 agent_team_task_stop 板分支同语义——pending|running → cancelled，running 再 abort 台账。 */
 export async function handleBoardStop(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
