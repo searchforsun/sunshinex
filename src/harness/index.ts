@@ -24,8 +24,8 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
-import { AgentTeamRegistryStore, TeamStore } from '../taskboard/store';
-import { AgentTeamRegistry } from '../taskboard/team-registry';
+import { AgentTeamRegistryStore, MemoryTeamStore, TeamStore } from '../taskboard/store';
+import { AgentTeamRegistry, MemoryAgentTeamStore } from '../taskboard/team-registry';
 import { TeamRegistry, Teammate, teammateSendTargets } from '../taskboard/teammate';
 import { InboxCursorStore } from '../taskboard/inbox-cursors';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
@@ -37,7 +37,7 @@ import { MemoryPipeline } from './memory/pipeline';
 import { writeMemoryFact } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
 import type { SettlePayload } from './reactor';
-import { resolveDataDir } from '../config/data-dir';
+import { resolveDataDir, sessionTeamsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { teamTokenCapEnv } from '../config/termination-config';
@@ -77,6 +77,9 @@ export interface HarnessOptions {
   /** KB 知识库实例（D18 整栈接线）：由装配根（runtime.ts buildDeps / selfcheck）经 assembleKnowledgeBase 构造注入；
    *  缺省 undefined → kb_search 维持 kb_not_configured 确定降级（「未配置」是合法确定态，非缺陷） */
   kb?: KnowledgeBase;
+  /** 会话团队根键（journalId）。缺省未绑定时团队/板/inbox 驻内存；daemon/TUI 在 journal 铸造后
+   *  经 adoptSessionTeams 收养。测试可直接传入以落盘。 */
+  teamsSessionId?: string;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -104,16 +107,23 @@ export class Harness {
   readonly tasks: TaskRegistry;
   /** edit 先读守卫（read-guard.ts）：read 记录快照 / edit 校验，NOT_READ·STALE_READ 硬闸 */
   readonly readGuard: ReadGuard;
-  /** 任务板协调器（spec 2026-10-04 §13 P1）：工作区单物理板，任务按 teamId 聚合 */
+  /** 任务板协调器：会话内单物理板，任务按 teamId 聚合；队友认领/消息仅队内 */
   readonly taskboard: TaskBoard;
-  /** AgentTeam 注册表：create_team / create_teammate / create_task 共用同一实例 */
+  /** AgentTeam 注册表：create_team / create_teammate / create_task 共用同一实例（按会话落盘） */
   readonly agentTeams: AgentTeamRegistry;
   /** teammate 注册表（P2 spec §5 T3;2026-10-20 起 create_teammate 独立动词创建）
    *  建出的长驻执行体登记处；注入 TaskBoard 派发路由（assignee 命中/留 claim）与 spawn 分流接缝 */
   readonly team: TeamRegistry;
-  /** agent 间消息收件箱（P2 agent-message,T2）:<dataDir>/teams/main/inbox/<agent>.jsonl append-only 落档;
-   *  主链面与 teammate 面 send_message 共用同一实例（跨面投递单一真相源;lead 收件即 lead.jsonl） */
+  /** agent 间消息收件箱：会话 teams 根下 main/inbox/<agent>.jsonl；主链与 teammate 面共用 */
   readonly inbox: FileInbox;
+  /** 队友 inbox 消费位点（与 inbox 同会话根；adoptSessionTeams 同批切换） */
+  private readonly inboxCursors: InboxCursorStore;
+  /** 工作区数据根（adoptSessionTeams 拼会话 teams 路径） */
+  private readonly dataDir: string;
+  /** 已绑定的会话团队键；同键重复收养幂等 */
+  private teamsBoundJournalId: string | undefined;
+  /** 未落盘前的内存板（adopt 时若盘空则回流事件） */
+  private memoryBoardStore: MemoryTeamStore | undefined;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
@@ -304,11 +314,14 @@ export class Harness {
     // TeamRegistry(P2 T3):先于 spawn 注册构造——teamAdapter 闭包经 this 引用注册表与任务板(执行期才解引用);
     // 同点注入 TaskBoard 派发路由(T2 接缝 team?:TeamRegistry)
     this.team = new TeamRegistry();
-    // FileInbox 装配（P2 agent-message,T2）:teams/main/inbox 与任务板同 team 目录族;构造零 IO
-    // （send 才惰性建档）,与 taskboard.init 的空板零物化纪律一致。消费位点与 inbox 同 teams 根。
-    const teamsRoot = path.join(resolveDataDir(base), 'teams');
-    this.inbox = new FileInbox(path.join(teamsRoot, 'main', 'inbox'));
-    const inboxCursors = new InboxCursorStore(path.join(teamsRoot, 'inbox-cursors.json'));
+    // 团队/板/inbox 按会话隔离：构造期驻内存（或显式 teamsSessionId 立即落盘）；daemon/TUI
+    // 在 journal 铸造后 adoptSessionTeams(journalId)。队友名会话内唯一（inbox 按名落档）；
+    // 认领与 send_message 仅同 teamId——不跨队共享。
+    this.dataDir = resolveDataDir(base);
+    this.memoryBoardStore = new MemoryTeamStore();
+    this.inbox = new FileInbox(path.join(this.dataDir, 'teams', '.unbound', 'main', 'inbox'));
+    this.inboxCursors = new InboxCursorStore(path.join(this.dataDir, 'teams', '.unbound', 'inbox-cursors.json'));
+    this.teamsBoundJournalId = undefined;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
     // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_board/get_task)。
@@ -350,7 +363,7 @@ export class Harness {
             // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_message
             // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
             inbox: this.inbox,
-            inboxCursors,
+            inboxCursors: this.inboxCursors,
             ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
             registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
               b,
@@ -379,14 +392,11 @@ export class Harness {
     // 呈现数据（模型面 schema 只取 name/description/parameters，零影响）。工厂文件（subagent.ts 等）
     // 不在 J1 改动清单，故在注册点附加
     this.tools.register({ ...makeSpawnTool(this.runner), display: { verb: 'SPAWN' } });
-    // TaskBoard(spec 2026-10-04 §13 P1):工作区单隐式 team main(Ruling 2),teams 目录走统一定位面;
-    // init 只恢复不 kick;lead 工具五件套 lead-only(deriveChildRegistry 扩剔);
-    // team 预算帽(T4,spec §5.6):SUNSHINEX_TEAM_TOKEN_CAP 缺省不设,装配期解析一次 fail-fast;
-    // external-cli 执行体(T5):claude code stream-json 适配,board 侧 executorHint 'external-cli' 路由接管
-    // (无环:executors/external-cli 只依赖 sandbox/tasks/types/executor 接口,零 board 反向引用)
-    this.agentTeams = new AgentTeamRegistry(new AgentTeamRegistryStore(teamsRoot));
+    // TaskBoard:会话内单物理板;init 只恢复不 kick;lead 工具面;team 预算帽缺省不设;
+    // external-cli 执行体路由(无环:executors 零 board 反向引用)
+    this.agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore());
     this.taskboard = new TaskBoard({
-      store: new TeamStore(path.join(teamsRoot, 'main')),
+      store: this.memoryBoardStore,
       registry: this.tasks,
       team: this.team,
       agentTeams: this.agentTeams,
@@ -399,6 +409,9 @@ export class Harness {
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     });
     this.taskboard.init();
+    if (opts.teamsSessionId !== undefined && opts.teamsSessionId.length > 0) {
+      this.adoptSessionTeams(opts.teamsSessionId);
+    }
     // task_stop / task_wait 都消费板，注册在 taskboard 装配之后。
     // task_stop：板任务 pending|running → cancelled（running 同时 ledger.stop）；纯台账任务保持 stopped；teammate 按名打断。
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.team, this.taskboard), display: { verb: 'TASK_STOP' } });
@@ -495,6 +508,37 @@ export class Harness {
       ...this.settleHooks,
     });
     this.ledger = ledger;
+  }
+
+  /**
+   * 会话团队收养（与 tasks.adoptLedger 同拍）：journalId 稳定身份下把注册表/板/inbox/位点
+   * 切到 `<dataDir>/teams/<journalId>/`。同键幂等。
+   * 未绑定→首绑：内存已有队/板且盘空则回流落盘（铸造略晚于首笔 create_team 的窄窗）。
+   * 已绑会话切换：停清成员、不回流，按目标 journal 盘面装载（新会话空板）。
+   * 不读旧工作区级 `teams/` 根——零兼容。
+   */
+  adoptSessionTeams(journalId: string): void {
+    if (journalId.length === 0) return;
+    if (this.teamsBoundJournalId === journalId) return;
+    const wasUnbound = this.teamsBoundJournalId === undefined;
+    if (!wasUnbound) this.team.clear();
+    const root = sessionTeamsRoot(this.dataDir, journalId);
+    const regStore = new AgentTeamRegistryStore(root);
+    const priorTeams = this.agentTeams.list();
+    if (wasUnbound && priorTeams.length > 0 && regStore.load().length === 0) regStore.save(priorTeams);
+    this.agentTeams.adopt(regStore);
+
+    const boardStore = new TeamStore(path.join(root, 'main'));
+    const diskSnap = boardStore.load();
+    const diskEmpty = Object.keys(diskSnap.tasks).length === 0 && diskSnap.seq === 0;
+    if (wasUnbound && diskEmpty && this.memoryBoardStore !== undefined) {
+      for (const ev of this.memoryBoardStore.drainEvents()) boardStore.append(ev);
+    }
+    this.taskboard.adoptStore(boardStore);
+    this.memoryBoardStore = undefined;
+    this.inbox.adopt(path.join(root, 'main', 'inbox'));
+    this.inboxCursors.adopt(path.join(root, 'inbox-cursors.json'));
+    this.teamsBoundJournalId = journalId;
   }
 
   /** 稳定段观测面（P7:出执行器命名空间）——/context 构成观测消费,与 Reactor chatRound 装配同一

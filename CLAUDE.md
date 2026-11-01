@@ -296,8 +296,8 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
 - **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写（收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层）——TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。落位分三档：
-  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放。
-  - **工作区级共享**（记忆/学习技能/任务板/KB/workspace.json）：`data/` 其余子目录，跨会话共用（语义即共享，非缺陷）。
+  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放；团队/任务板/队内 inbox 落 `data/teams/<journalId>/`（与 journal 同键，新会话空板，不跨会话；队友认领与 `send_message` 仅同 `teamId`）。
+  - **工作区级共享**（记忆/学习技能/KB/workspace.json）：`data/` 其余子目录，跨会话共用（语义即共享，非缺陷）。
   - **面私有 UI 态**（GUI 标签页开闭/激活/宽度/折叠与最近关闭、面板偏好；TUI 渲染态等）：落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，粒度镜像共享层——按会话键的（GUI 标签态=Record<sessionId,…>，盘为真相源、变更防抖写透）落 `gui/sessions/<journalId>.json`，**档键=journal id**（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按会话 id 存档刷新后必空），与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`；应用级指针档（lastRoot/lastJournalId 恢复现场入口）是**机器级**状态，落 `userConfigDir()/gui/ui-state.json`（`~/.sunshinex/gui/`，projects 根保持纯 slug 工作区位）；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。
   - **判断口径**：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`）。
 - **体验基线**：交互细节向对标产品看齐——快捷键符合终端惯例、输出有渲染降级（窄终端/无色彩环境不花屏）、状态与错误信息用户可读；体验取舍拿不准时以「明星产品怎么做」为参照。

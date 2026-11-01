@@ -36,6 +36,11 @@ export function projectsRoot(): string {
   return path.join(userConfigDir(), 'projects');
 }
 
+/** 会话级团队/任务板根：`<dataDir>/teams/<journalId>/`（注册表、板事件、inbox 同会话隔离；不跨会话）。 */
+export function sessionTeamsRoot(dataDir: string, journalId: string): string {
+  return path.join(dataDir, 'teams', journalId);
+}
+
 /** 解析当前工作区数据目录：直指覆盖 > projects 根覆盖 > 缺省全局（HOME 可建）> 项目内回退；子目录由各写入面自行 mkdir */
 export function resolveDataDir(root: string): string {
   const override = process.env.SUNSHINEX_DATA_DIR;

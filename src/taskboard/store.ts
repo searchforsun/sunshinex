@@ -13,11 +13,17 @@ export interface AgentTeamStoreBackend {
   save(teams: AgentTeamRecord[]): void;
 }
 
-/** AgentTeam 清单持久化：与 per-team events 同 `<dataDir>/teams/` 根，单文件 registry.json */
+/** AgentTeam 清单持久化：与板事件同会话 teams 根（`<dataDir>/teams/<journalId>/`），单文件 registry.json */
 export class AgentTeamRegistryStore implements AgentTeamStoreBackend {
   private dirMade = false;
 
-  constructor(private readonly teamsRoot: string) {}
+  constructor(private teamsRoot: string) {}
+
+  /** 会话收养：切到新会话根并重读清单（调用方随后以 load 结果覆写内存表） */
+  adopt(teamsRoot: string): void {
+    this.teamsRoot = teamsRoot;
+    this.dirMade = false;
+  }
 
   private registryPath(): string {
     return path.join(this.teamsRoot, 'registry.json');
@@ -61,14 +67,52 @@ function isAgentTeamRecord(v: unknown): v is AgentTeamRecord {
   return typeof o.teamId === 'string' && typeof o.name === 'string' && typeof o.createdAt === 'number';
 }
 
-/** team 目录 event sourcing(spec §7.2):events.jsonl 为协调状态唯一真相源(append-only 单行原子),
- *  board.json 为物化快照缓存(tmp+rename 原子写,FileStore 先例)——P1 写不读,载入走全量重放
- *  (Ruling 5;快照读取优化 P2)。损坏行跳过 = Claude Code「单条脏数据卡死收件箱」教训的结构性回避(§7.3)。
- *  目录惰性建档:首写才 mkdir,空 team 零文件。inbox/ 子目录 P1 不建(随 P2 agent-message 落地,Ruling 7)。 */
-export class TeamStore {
+/** 板事件存储接缝：磁盘 TeamStore 与会话未绑定前的 MemoryTeamStore 共用。 */
+export interface TeamStoreBackend {
+  append(ev: BoardEvent): void;
+  writeSnapshot(state: TaskBoardState): void;
+  load(): TaskBoardState;
+}
+
+/** 会话未绑定 journal 前的内存板（零盘面；adopt 后换成 TeamStore）。 */
+export class MemoryTeamStore implements TeamStoreBackend {
+  private events: BoardEvent[] = [];
+
+  append(ev: BoardEvent): void {
+    this.events = [...this.events, ev];
+  }
+
+  writeSnapshot(_state: TaskBoardState): void {
+    // 内存态无快照文件
+  }
+
+  load(): TaskBoardState {
+    let state = emptyBoard();
+    for (const ev of this.events) state = applyBoardEvent(state, ev);
+    return state;
+  }
+
+  /** adopt 回流：盘空时把内存事件灌进会话 TeamStore */
+  drainEvents(): BoardEvent[] {
+    const out = this.events;
+    this.events = [];
+    return out;
+  }
+}
+
+/** team 目录 event sourcing:events.jsonl 为协调状态唯一真相源(append-only 单行原子),
+ *  board.json 为物化快照缓存(tmp+rename 原子写)——载入走全量重放。损坏行跳过。
+ *  目录惰性建档:首写才 mkdir。落位在会话根 `<dataDir>/teams/<journalId>/main/`。 */
+export class TeamStore implements TeamStoreBackend {
   private dirMade = false;
 
-  constructor(private readonly teamDir: string) {}
+  constructor(private teamDir: string) {}
+
+  /** 会话收养：切目录后由 TaskBoard.init 重放新根。 */
+  adopt(teamDir: string): void {
+    this.teamDir = teamDir;
+    this.dirMade = false;
+  }
 
   private eventsPath(): string {
     return path.join(this.teamDir, 'events.jsonl');
@@ -93,14 +137,13 @@ export class TeamStore {
     fs.renameSync(tmp, target);
   }
 
-  /** 全量重放载入(P1 真相路径):文件缺失 = 空 team;损坏行(无换行截断/非法 JSON/缺 t 字段)跳过不炸。
-   *  未知事件类型与非法迁移由 applyBoardEvent 保持原状态,不把旧状态名写入五态。 */
+  /** 全量重放载入:文件缺失 = 空板;损坏行跳过不炸。 */
   load(): TaskBoardState {
     let raw: string;
     try {
       raw = fs.readFileSync(this.eventsPath(), 'utf8');
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyBoard(); // 缺文件 = 新 team;其余读错误(EACCES 等)上抛不吞
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyBoard();
       throw e;
     }
     let state = emptyBoard();
@@ -111,7 +154,7 @@ export class TeamStore {
         const parsed = JSON.parse(line) as BoardEvent;
         if (typeof parsed.t === 'string') ev = parsed;
       } catch {
-        ev = undefined; // 崩溃截断行:跳过该行
+        ev = undefined;
       }
       if (ev !== undefined) state = applyBoardEvent(state, ev);
     }

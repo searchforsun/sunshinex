@@ -1,11 +1,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-/** 队友 inbox 消费位点:<teams>/inbox-cursors.json。键为 teammate 名,值为已消费的最大消息 ts。 */
+/** 队友 inbox 消费位点:会话 teams 根下 inbox-cursors.json。键为 teammate 名,值为已消费的最大消息 ts。 */
 export class InboxCursorStore {
   private cursors?: Record<string, number>;
 
-  constructor(private readonly file: string) {}
+  constructor(private file: string) {}
+
+  /** 会话收养：切位点文件并丢弃内存缓存（下次 load 自新文件）。 */
+  adopt(file: string): void {
+    this.file = file;
+    this.cursors = undefined;
+  }
 
   load(agent: string): number {
     return this.read()[agent] ?? 0;

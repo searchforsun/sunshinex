@@ -26,14 +26,22 @@ function genTeamId(name: string, exists: (id: string) => boolean): string {
   return teamId;
 }
 
-/** AgentTeam 注册表：create/get/list；teamId 方言 team-<slug>-<4rand> */
+/** AgentTeam 注册表：create/get/list；teamId 方言 team-<slug>-<4rand>；清单按会话落盘 */
 export class AgentTeamRegistry {
   private teams: AgentTeam[];
+  private store: AgentTeamStoreBackend;
 
   constructor(
-    private readonly store: AgentTeamStoreBackend,
+    store: AgentTeamStoreBackend,
     private readonly now: () => number = Date.now,
   ) {
+    this.store = store;
+    this.teams = store.load();
+  }
+
+  /** 会话收养：换后端并重载清单（同会话重复收养幂等）。 */
+  adopt(store: AgentTeamStoreBackend): void {
+    this.store = store;
     this.teams = store.load();
   }
 

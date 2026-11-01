@@ -12,6 +12,7 @@ import type { ChatItem } from './chat-model';
 import { reduceSteerRows, reduceSegRows } from '../session/seglog';
 import { isQuietNotice, type KernelEntry } from '../session/entry';
 import type { SessionController } from './session';
+import { emptyBoard } from '../taskboard/model';
 
 // D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：会话谱系命令族（resume/rewind/fork/branchFlow 一族）迁出；
 // 恢复三面直注入逻辑随族走，SessionController 保留 resumeLatest 公开薄委托（构造器 --continue 消费）。
@@ -195,13 +196,15 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
     live: undefined,
     children: [],
     delegations: [],
-    // 板投影重播种自工作区真相源(harness 任务板快照):任务板是工作区级状态,不随会话恢复清空
-    board: ctrl.runtime.harness.taskboard.snapshot(),
+    // 板投影先占空位；attach + 会话团队收养后再自 harness 真相源回填（按 journalId 隔离）
+    board: emptyBoard(),
   };
   ctrl.restoredUi = { history: replay.history, expandAll: replay.view.expandAll, latestFull: replay.view.latestFull };
   ctrl.kernelSeedForRestore(entries); // 转录面入核:后续 live 条目 seg 行 seq 续接(P3)
   ctrl.queueRestore(reduceSteerRows(parsed.events)); // 等待队列回种(P5):末条 steer 行整列恢复
   ctrl.ensureJournal().attach(meta.id);
+  ctrl.bindSessionStores();
+  ctrl.state = { ...ctrl.state, board: ctrl.runtime.harness.taskboard.snapshot() };
   // 崩溃档兜底回灌（2026-10-30 spec §2）：seg 面有而链没有的在飞窗口归约成链行 appendChain——
   // 走单点故压缩/面板/后续 seed 自动一致；attach 之后执行,回灌行经订阅落 journal chain 行（恢复
   // 即持久化）。正常档窗口恒空、零开销;回灌失败不阻塞 resume——恢复永远可用,只是兜底少一条

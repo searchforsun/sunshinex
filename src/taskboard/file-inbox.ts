@@ -14,7 +14,14 @@ export class FileInbox implements Inbox {
   /** 每 agent 一份(id seq + ts clock);未 send 过的 agent 无条目 = 未重放初始化 */
   private readonly stateByAgent = new Map<string, { seq: number; clock: number }>();
 
-  constructor(private readonly inboxDir: string) {}
+  constructor(private inboxDir: string) {}
+
+  /** 会话收养：切到新会话 inbox 目录并清空进程内序号（下次 send 自文件重放）。 */
+  adopt(inboxDir: string): void {
+    this.inboxDir = inboxDir;
+    this.dirMade = false;
+    this.stateByAgent.clear();
+  }
 
   private fileFor(agent: string): string {
     return path.join(this.inboxDir, `${agent}.jsonl`);

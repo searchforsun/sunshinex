@@ -611,8 +611,25 @@ export class SessionController {
    *  journal 未建档则先建档（v3 header 即铸）再落 ctx-snap 行;无 journal（理论不可达,守卫）no-op */
   persistSnapshotRow(): void {
     if (this.journal === undefined) return;
-    if (this.journal.currentId === undefined) this.journal.start(3);
+    if (this.journal.currentId === undefined) {
+      this.journal.start(3);
+      this.syncSessionStores();
+    }
     this.journal.log({ t: 'ctx-snap', ...this.runtime.harness.context.snapshotExport() } as unknown as Parameters<SessionJournal['log']>[0]);
+  }
+
+  /** 会话维落盘收养：任务账本 + 团队/板/inbox（与 serve SessionRuntime 同口径）。
+   *  resume/attach 后公开调用，使板投影对齐该会话根。 */
+  bindSessionStores(): void {
+    this.syncSessionStores();
+  }
+
+  private syncSessionStores(): void {
+    const journalId = this.journal?.currentId;
+    if (journalId === undefined) return;
+    const dataDir = resolveDataDir(this.root);
+    this.runtime.harness.tasks.adoptLedger(path.join(dataDir, 'tasks', `ledger-${journalId}.jsonl`));
+    this.runtime.harness.adoptSessionTeams(journalId);
   }
 
   /** 快照型事件接线（规格 2026-09-22 D5）：变更点即时 log 的单点构造器，防四处拼装漂移；
@@ -900,6 +917,7 @@ export class SessionController {
   /** 会话软重置单点（/new·/delete 共用）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回 */
   private softResetToNewSession(): void {
     this.journal?.rotate(newSessionId());
+    this.syncSessionStores(); // 新 journalId 收养空团队/板（与任务账本同拍）
     this.kernelSeedForRestore([]); // 内核换新(空转录)——旧会话段行随旧档,新档从零起
     this.runtime.harness.security.clearSessionAllows();
     this.memoryOverride = undefined;
@@ -928,7 +946,7 @@ export class SessionController {
       },
       children: [],
       delegations: [],
-      // 板投影重播种自工作区真相源(harness 任务板快照):任务板是工作区级状态,不随会话轮转化清空
+      // 板投影对齐本会话 harness 真相源（新 journal 空板）
       board: this.runtime.harness.taskboard.snapshot(),
       task: initialTaskState(),
       ...(this.state.tier ? { tier: this.state.tier } : {}),

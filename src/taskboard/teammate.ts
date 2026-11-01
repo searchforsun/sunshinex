@@ -91,6 +91,12 @@ export class TeamRegistry {
     for (const t of this.teammates.values()) t.stop();
   }
 
+  /** 会话切换收口：停全部成员并清空登记（帽配额随新会话从零计）。 */
+  clear(): void {
+    this.stopAll();
+    this.teammates.clear();
+  }
+
   aliveNames(teamId?: string): string[] {
     return [...this.teammates.values()]
       .filter((t) => !t.stopped && (teamId === undefined || t.teamId === teamId))

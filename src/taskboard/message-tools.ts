@@ -3,14 +3,14 @@
 // 落档(append-only jsonl)→ agent-message 事件(lead 投递轨 = 事件即时呈现 + 落档;teammate 面消息在其
 // 回合边界注入消费)。文案恒英文单语(工具 description/回执直接进模型面)。
 import { CodedToolError, RegisteredTool } from '../harness/tools';
-import type { FileInbox } from './file-inbox';
+import type { Inbox } from './inbox';
 import type { SessionEvent } from '../types';
 
 /** text 上限(spec §5.5 消息体约束):超长违拒,不截断——发件方自查自改 */
 const MAX_TEXT = 4000;
 
 export interface SendMessageToolDeps {
-  inbox: FileInbox;
+  inbox: Inbox;
   /** agent-message 事件出口(透传装配层 onEvent;缺省零副作用) */
   onEvent?: (e: SessionEvent) => void;
   /** 同队存活成员(不含 'lead'——'lead' 恒可达由工具内判;teammate 面注入时排己) */

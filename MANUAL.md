@@ -248,6 +248,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
     ├── sessions/               # 会话日志（/resume、--resume、--continue 据此恢复）
+    ├── teams/<journalId>/      # 会话级智能体团队/任务板/inbox（与 journal 同键；新会话空板）
     ├── memory/                 # 持久记忆：MEMORY.md 索引 + <slug>.md 记录
     ├── skills/                 # 自动沉淀的学习技能
     ├── worktrees/              # worktree 隔离工作树（见 5.5）与登记表 registry.json
@@ -389,7 +390,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 ### 5.6 任务板与团队协作
 
-任务清单：可设依赖、可挂审批门；跨会话保留（`/new` 不清、重启恢复）。
+任务清单：可设依赖、可挂审批门；按会话 `journalId` 落盘（`data/teams/<journalId>/`），同会话重启恢复，`/new` 新会话空板。
 
 **对话操作**：
 

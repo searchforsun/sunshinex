@@ -6,7 +6,7 @@ import {
   applyBoardEvent, BoardEvent, BoardTask, dispatchable, emptyBoard, hasCycle,
   recoverOnLoad, TaskBoardState, TaskStatus, transitionError, transitionLegal,
 } from './model';
-import type { TeamStore } from './store';
+import type { TeamStoreBackend } from './store';
 import type { TeamRegistry } from './teammate';
 import type { AgentTeamRegistry } from './team-registry';
 import type { ExternalExecutorLike } from './executors/external-cli';
@@ -51,7 +51,7 @@ export function isUserAbort(code?: string, message?: string): boolean {
  *  内部任务只经 teammate 认领/指派执行(与临时 fork 解耦);external-cli 为独立执行体。
  *  派发 pending→running;回写 running→success|failed|cancelled。init 只恢复不 kick。 */
 export interface TaskBoardDeps {
-  store: TeamStore;
+  store: TeamStoreBackend;
   registry: TaskRegistry;
   onEvent?: (e: SessionEvent) => void;
   now?: () => number;
@@ -101,6 +101,12 @@ export class TaskBoard {
     this.retryDelayMs = deps.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   }
 
+  /** 会话收养：换存储后端后重放自愈（与 init 同路径；调用方保证无在途 drain）。 */
+  adoptStore(store: TeamStoreBackend): void {
+    this.deps.store = store;
+    this.init();
+  }
+
   /** 载入恢复:重放后 pending 与 running 自愈为 cancelled(事件落流,from 为装载前态),不 kick */
   init(): void {
     const loaded = this.deps.store.load();
@@ -115,7 +121,7 @@ export class TaskBoard {
       this.deps.store.append({ t: 'status-changed', taskId: id, from, to: 'cancelled', ts: this.now(), note });
       this.emit('task-status-changed', { taskId: id, from, status: 'cancelled', note });
     }
-    // 空板(无 tasks 且 seq=0)且无恢复时不落快照——未用过任务板的工作区零物化 teams/ 目录
+    // 空板(无 tasks 且 seq=0)且无恢复时不落快照——未用过任务板的会话零物化 teams/ 目录
     if (Object.keys(this.state.tasks).length === 0 && this.state.seq === 0 && recovered.length === 0) return;
     this.deps.store.writeSnapshot(this.state);
   }

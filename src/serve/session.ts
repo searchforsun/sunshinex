@@ -656,20 +656,18 @@ export class SessionRuntime {
 
   attachJournal(journal: SessionJournal): void {
     this.journal = journal;
-    this.syncTasksLedger();
+    this.syncSessionStores();
     this.hookJournalSink();
   }
 
-  /** 后台任务账本收养（2026-10-24 回溯裁定+严重 bug 修复）：daemon 会话 sun-id 每次 newSession
-   *  都新铸（journalId 才是稳定身份——GUI 打开会话=newSession+attach 两连）——账本路径不得在
-   *  装配期按 sun-id 定死,须在 journal 挂上时按 journalId 收养（装载回放+后续追加切到该文件）。
-   *  reset 换 Harness 后重收养（journal 仍在 SessionRuntime 身上）。幂等:重放对已在账条目零副作用 */
-  private syncTasksLedger(): void {
+  /** 会话维落盘收养：后台任务账本 + 团队/板/inbox（journalId 稳定身份；铸造后与 attach 同拍）。
+   *  reset 换 Harness 后重收养。幂等。 */
+  private syncSessionStores(): void {
     const journalId = this.journal?.currentId;
     if (journalId === undefined) return;
-    this.runtimeImpl.harness.tasks.adoptLedger(
-      path.join(resolveDataDir(this.opts.root), 'tasks', `ledger-${journalId}.jsonl`),
-    );
+    const dataDir = resolveDataDir(this.opts.root);
+    this.runtimeImpl.harness.tasks.adoptLedger(path.join(dataDir, 'tasks', `ledger-${journalId}.jsonl`));
+    this.runtimeImpl.harness.adoptSessionTeams(journalId);
   }
 
   /** journal 落盘订阅单点（单槽，后注册覆盖——attachJournal 重挂天然幂等不双写）：attach 与 reset 换新
@@ -697,12 +695,16 @@ export class SessionRuntime {
     const j = this.journal;
     if (j === undefined || j.currentId !== undefined) return;
     j.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
+    this.syncSessionStores(); // journalId 此刻才有——团队/账本按会话根收养，须在首笔工具前完成
     this.persistSnapshotRow();
   }
 
   persistSnapshotRow(): void {
     if (this.journal === undefined) return;
-    if (this.journal.currentId === undefined) this.journal.start(3);
+    if (this.journal.currentId === undefined) {
+      this.journal.start(3);
+      this.syncSessionStores();
+    }
     this.journal.log({ t: 'ctx-snap', ...this.runtimeImpl.harness.context.snapshotExport() } as unknown as Parameters<SessionJournal['log']>[0]);
   }
 
@@ -1178,7 +1180,7 @@ export class SessionRuntime {
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) {
       this.hookJournalSink();
-      this.syncTasksLedger();
+      this.syncSessionStores();
       this.persistSnapshotRow(); // 快照翻新：reset 换新运行时重读磁盘,末行落新拍（续写同档,末条为准）
     }
     await this.disposeRuntime(old);
