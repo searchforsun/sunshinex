@@ -70,7 +70,7 @@ export function deriveTeammateRegistry(
   tasks?: TaskRegistry,
 ): ToolRegistry {
   const face = base.derive({
-    exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'create_agent_teammate', ...TASKBOARD_TOOL_NAMES],
+    exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'create_agent_teammate', 'agent_team_task_wait', ...TASKBOARD_TOOL_NAMES],
   });
   for (const t of makeTeammateTools(board)) face.register(t);
   if (messageTool) face.register(messageTool);

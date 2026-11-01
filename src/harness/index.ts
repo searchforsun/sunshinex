@@ -8,7 +8,7 @@ import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
 import { makeTaskStopTool } from './tools/task-stop';
-import { makeTaskWaitTool } from './tools/task-wait';
+import { makeAgentTeamTaskWaitTool, makeTaskWaitTool } from './tools/task-wait';
 import { makeTaskBoardTools } from './tools/taskboard-tools';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -418,9 +418,13 @@ export class Harness {
     // task_stop / task_wait 都消费板，注册在 taskboard 装配之后。
     // task_stop：板任务 pending|running → cancelled（running 同时 ledger.stop）；纯台账任务保持 stopped；teammate 按名打断。
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.team, this.taskboard), display: { verb: 'TASK_STOP' } });
-    // task_wait：后台任务等待工具（规格 docs/superpowers/specs/2026-09-26-task-wait-design.md），账本在场恒装配;
-    // 板终态 success|failed|cancelled（重启打开态为 cancelled）。第三参 run 信号：阻塞期响应 run 中断，即刻穿透返回
+    // task_wait：仅 exec/spawn 台账等待（板 id 拒识点名 agent_team_task_wait）；第三参 run 信号穿透阻塞期
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
+    // agent_team_task_wait：仅板任务（可含板派发台账 id）；Task 6 再按 agentTeams 条件注册
+    this.tools.register({
+      ...makeAgentTeamTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal),
+      display: { verb: 'AGENT_TEAM_TASK_WAIT' },
+    });
     // create_agent_teammate：长驻执行体创建(2026-10-20 与 spawn 分家的独立动词)——team 接缝的模型面出口,
     // 复杂多角色相互依赖工程专用;spawn 回归纯一次性 fork(两动词两契约,重量级通道不再作为隐藏参数)
     this.tools.register({

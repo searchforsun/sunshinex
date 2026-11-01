@@ -11,7 +11,7 @@ import { TaskRegistry } from '../tasks';
 import { TaskBoard } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
-import { makeTaskWaitTool } from './task-wait';
+import { makeAgentTeamTaskWaitTool, makeTaskWaitTool } from './task-wait';
 import { ToolRegistry } from '../tools';
 
 const stubSafety = {
@@ -206,8 +206,8 @@ test('task_wait 板任务原生 id 归一：tN/delegationId 形态命中派发�
   }
 });
 
-test('task_wait 未派发板任务可等:pending 非终态,success 立即收口', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-boardpre-'));
+test('agent_team_task_wait 未派发板任务可等:pending 非终态,success 立即收口', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamwait-boardpre-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
@@ -256,8 +256,8 @@ test('task_wait 未派发板任务可等:pending 非终态,success 立即收口'
     const boardId = created.value.taskId;
     await new Promise((r) => setImmediate(r));
     const registry = new ToolRegistry();
-    registry.register(makeTaskWaitTool(tasks, board));
-    const peek = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
+    registry.register(makeAgentTeamTaskWaitTool(tasks, board));
+    const peek = await registry.execute('agent_team_task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
     assert.ok(peek.ok, `板任务应合法,实际 ${peek.ok ? '' : peek.error?.message}`);
     if (peek.ok) {
       assert.match(peek.value.stdout, /\(board\) pending — WaitDemo/, '回执含板态与标题');
@@ -269,26 +269,26 @@ test('task_wait 未派发板任务可等:pending 非终态,success 立即收口'
       await new Promise((r) => setImmediate(r));
     }
     assert.equal(board.snapshot().tasks[boardId]!.status, 'success');
-    const settled = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 1 }, stubSafety);
+    const settled = await registry.execute('agent_team_task_wait', { taskIds: [boardId], timeoutSeconds: 1 }, stubSafety);
     assert.ok(settled.ok);
     if (settled.ok) {
       assert.match(settled.value.stdout, /all target tasks finished \(1\)/, 'success 即终态,立即收口');
       assert.match(settled.value.stdout, /\(board\) success — WaitDemo/);
       assert.doesNotMatch(settled.value.stdout, /to redo this work/);
     }
-    const bad = await registry.execute('task_wait', { taskIds: ['task-not-on-board-x9z9'], timeoutSeconds: 0 }, stubSafety);
+    const bad = await registry.execute('agent_team_task_wait', { taskIds: ['task-not-on-board-x9z9'], timeoutSeconds: 0 }, stubSafety);
     assert.ok(!bad.ok, '板/台账皆无仍报错');
     if (!bad.ok) {
-      assert.match(bad.error.message, /Waitable now — tasks:/, '错误清单=等待面投影');
-      assert.match(bad.error.message, /board: .*WaitDemo/, '板任务在册即列(数据自解释,无补丁文案)');
+      assert.match(bad.error.message, /Waitable now — board:/, '错误清单=板等待面投影');
+      assert.match(bad.error.message, /WaitDemo/, '板任务在册即列(数据自解释,无补丁文案)');
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('task_wait 重启自愈 cancelled 立即收口', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-interrupted-'));
+test('agent_team_task_wait 重启自愈 cancelled 立即收口', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamwait-interrupted-'));
   try {
     const store = new TeamStore(path.join(root, 'teams', 'main'));
     store.append({ t: 'task-created', taskId: 'task-demo-crash-xx01', title: 'CrashDemo', spec: 's', dependsOn: [], teamId: 'team-alpha-ab12', ts: 1 });
@@ -303,8 +303,8 @@ test('task_wait 重启自愈 cancelled 立即收口', async () => {
     board.init();
     assert.equal(board.snapshot().tasks['task-demo-crash-xx01']!.status, 'cancelled', '重启自愈为 cancelled');
     const registry = new ToolRegistry();
-    registry.register(makeTaskWaitTool(tasks, board));
-    const r = await registry.execute('task_wait', { taskIds: ['task-demo-crash-xx01'], timeoutSeconds: 1 }, stubSafety);
+    registry.register(makeAgentTeamTaskWaitTool(tasks, board));
+    const r = await registry.execute('agent_team_task_wait', { taskIds: ['task-demo-crash-xx01'], timeoutSeconds: 1 }, stubSafety);
     assert.ok(r.ok);
     if (r.ok) {
       assert.match(r.value.stdout, /all target tasks finished \(1\)/, 'cancelled 立即收口');
@@ -335,6 +335,69 @@ test('task_wait kinds=exec：可等 exec；拒 subagent/板派发台账；null �
     const empty = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: null }, stubSafety);
     assert.ok(empty.ok);
     if (empty.ok) assert.match(empty.value.stdout, /no background tasks running/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_wait 板任务 id：INVALID_ARG 点名 agent_team_task_wait', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-board-reject-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      agentTeams,
+      team: { get: () => undefined, aliveNames: () => [], hasAlive: () => false } as never,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    const created = board.create({ teamId, title: 'BoardOnly', spec: 's' });
+    assert.ok(created.ok);
+    const boardId = created.value.taskId;
+    const registry = new ToolRegistry();
+    registry.register(makeTaskWaitTool(tasks, board));
+    const r = await registry.execute('task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.error.code, 'INVALID_ARG');
+      assert.match(r.error.message, /agent_team_task_wait/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent_team_task_wait exec id：INVALID_ARG 点名 task_wait', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamwait-exec-reject-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const ex = tasks.submit({ kind: 'exec', label: 'build-only' });
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      agentTeams,
+      team: { get: () => undefined, aliveNames: () => [], hasAlive: () => false } as never,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    const registry = new ToolRegistry();
+    registry.register(makeAgentTeamTaskWaitTool(tasks, board));
+    const r = await registry.execute('agent_team_task_wait', { taskIds: [ex.id], timeoutSeconds: 0 }, stubSafety);
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.error.code, 'INVALID_ARG');
+      assert.match(r.error.message, /task_wait/);
+    }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

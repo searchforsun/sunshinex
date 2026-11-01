@@ -112,7 +112,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_agent_team
       category: 'read',
       executor: async () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
     });
-    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_agent_teammate', 'task_wait', ...TASKBOARD_TOOL_NAMES]) {
+    for (const name of [SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_agent_teammate', 'agent_team_task_wait', 'task_wait', ...TASKBOARD_TOOL_NAMES]) {
       base.register(dummy(name));
     }
     const board = new TaskBoard({
@@ -135,7 +135,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_agent_team
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
     // 禁入=建成员+写板工具;get_agent_team_board/get_task 是成员面合法只读对(已注入)
     for (const name of [
-      SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_agent_teammate',
+      SPAWN_TOOL_NAME, 'todo_write', 'ask_question', 'worktree', 'create_agent_teammate', 'agent_team_task_wait',
       'create_agent_team', 'create_agent_team_task', 'update_agent_team_task',
     ]) {
       assert.equal(face.get(name), undefined, `teammate 面不得含 ${name}`);

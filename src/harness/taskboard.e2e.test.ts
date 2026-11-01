@@ -1,4 +1,4 @@
-// lead 建队 → create_agent_teammate → create_agent_team_task(依赖链) → 队友认领回写 → task_wait 拉模式唤醒。
+// lead 建队 → create_agent_teammate → create_agent_team_task(依赖链) → 队友认领回写 → agent_team_task_wait 拉模式唤醒。
 // 板 id 不透明:自 task-created 事件捕获。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -75,11 +75,11 @@ test('e2e:依赖链顺序执行、强制回写、task_wait 拉模式唤醒、rev
 
     assert.ok(ids.A !== undefined && ids.B !== undefined, '两任务 id 已自事件捕获');
     // 显式 id:终态幂等回执(null=仅等「当前在跑」,已全部 success 时会报 no background tasks)
-    const wait = await h.tools.execute('task_wait', { taskIds: [ids.A!, ids.B!], timeoutSeconds: 30 }, safety);
-    assert.ok(wait.ok && wait.value.exitCode === 0, `task_wait: ${JSON.stringify(wait)}`);
+    const wait = await h.tools.execute('agent_team_task_wait', { taskIds: [ids.A!, ids.B!], timeoutSeconds: 30 }, safety);
+    assert.ok(wait.ok && wait.value.exitCode === 0, `agent_team_task_wait: ${JSON.stringify(wait)}`);
     assert.ok(
       wait.value.stdout.includes('all target tasks finished') || /status=success/.test(wait.value.stdout),
-      `task_wait 应回执两任务终态,实际:${wait.value.stdout.slice(0, 240)}`,
+      `agent_team_task_wait 应回执两任务终态,实际:${wait.value.stdout.slice(0, 240)}`,
     );
 
     const s = h.taskboard.snapshot();

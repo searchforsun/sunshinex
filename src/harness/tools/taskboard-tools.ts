@@ -1,6 +1,6 @@
 // TaskBoard lead 工具面:create_agent_team / create_agent_team_task / update_agent_team_task / get_agent_team_board。
 // update_agent_team_task 只保留 assign|depend;取消走 task_stop。观察尾附板摘要(summaryLines)。
-// lead-only:板四件套 + create_agent_teammate 经 FORK_EXCLUDED_TOOLS 剔出子面。
+// lead-only:板四件套 + create_agent_teammate + agent_team_task_wait 经 FORK_EXCLUDED_TOOLS 剔出子面。
 import { CodedToolError, RegisteredTool } from '../tools';
 import { fail } from '../../result';
 import type { SessionEvent } from '../../types';
@@ -9,9 +9,9 @@ import type { AgentTeamRegistry } from '../../taskboard/team-registry';
 
 export const TASKBOARD_TOOL_NAMES = ['create_agent_team', 'create_agent_team_task', 'update_agent_team_task', 'get_agent_team_board'] as const;
 
-/** 子智能体派生面剔除族:send_agent_team_message + create_agent_teammate + 板四件套(建队/建任务/建成员属 lead)。
+/** 子智能体派生面剔除族:send_agent_team_message + create_agent_teammate + 板四件套 + agent_team_task_wait(lead-only)。
  *  三处 fork-scope 派生点同源;增名即扩剔(harness/fork-face.test.ts)。 */
-export const FORK_EXCLUDED_TOOLS = ['send_agent_team_message', 'create_agent_teammate', ...TASKBOARD_TOOL_NAMES] as const;
+export const FORK_EXCLUDED_TOOLS = ['send_agent_team_message', 'create_agent_teammate', 'agent_team_task_wait', ...TASKBOARD_TOOL_NAMES] as const;
 
 /** JSON null / 字面 "null" / 空串 → 缺席(与 spawn/create_agent_teammate 同病单点) */
 function nullish(v: unknown): boolean {
@@ -94,7 +94,7 @@ export function makeTaskBoardTools(
     },
     name: 'create_agent_team_task',
     description:
-      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Wait with task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null only covers work already running). Terminal states (success/failed/cancelled) are final — redo via a new create_agent_team_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
+      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Wait with agent_team_task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null covers non-terminal board tasks). Terminal states (success/failed/cancelled) are final — redo via a new create_agent_team_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -128,7 +128,7 @@ export function makeTaskBoardTools(
       return {
         exitCode: 0,
         stdout: [
-          `task ${titleBit} created (id=${r.value.taskId}); wait with task_wait taskIds=["${r.value.taskId}"] (or other board ids)`,
+          `task ${titleBit} created (id=${r.value.taskId}); wait with agent_team_task_wait taskIds=["${r.value.taskId}"] (or other board ids)`,
           boardTail(board),
         ].join('\n'),
         stderr: '',
@@ -188,7 +188,7 @@ export function makeGetBoardTool(board: TaskBoard, description?: string): Regist
     name: 'get_agent_team_board',
     description:
       description ??
-      'Read board task lines: id [status] title (needs deps) team=<teamId> [retryOf=…], plus budget line when capped. Does not list teammates — use names from create_agent_teammate receipts. Authority for planning and task_wait board ids.',
+      'Read board task lines: id [status] title (needs deps) team=<teamId> [retryOf=…], plus budget line when capped. Does not list teammates — use names from create_agent_teammate receipts. Authority for planning and agent_team_task_wait board ids.',
     category: 'task',
     fullObservation: true,
     executor: async () => {
