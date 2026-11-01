@@ -1027,6 +1027,8 @@ export const ToolEntryView = memo(function ToolEntryView({
         <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>
       );
   } else {
+    body = <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>;
+  }
 
   return (
     <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
