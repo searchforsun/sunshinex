@@ -150,7 +150,7 @@ const SELECT_DEFAULT_VALUES: Record<string, string> = {
   kbBackend: 'local-json',
   autoMemory: 'on',
   learnedSkills: 'on',
-  websearchProvider: 'duckduckgo',
+  websearchProvider: 'bing-html',
 };
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
 
@@ -227,8 +227,9 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
         title: { en: 'Web search', zh: '网页搜索' },
         fields: [
           sel('websearchProvider', [
+            { v: 'bing-html', l: 'bing (cn.bing.com, default)' },
             { v: 'duckduckgo', l: 'duckduckgo' },
-            { v: 'tavily', l: 'tavily' },
+            { v: 'bing', l: 'bing api (key)' },
           ]),
           text('websearchEndpoint'),
         ],

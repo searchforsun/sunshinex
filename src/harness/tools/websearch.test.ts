@@ -10,7 +10,7 @@ import { PolicyEngine } from '../security/policy';
 import { ProcessSandbox } from '../security/sandbox';
 import { SafetyChain } from '../security/chain';
 import { builtinTools } from './builtin';
-import { parseDuckDuckGoHtml, WebSearchHit, WebSearchProvider } from './websearch';
+import { parseBingHtml, parseDuckDuckGoHtml, WebSearchHit, WebSearchProvider } from './websearch';
 
 /** DDG HTML 结构样例（覆盖 uddg 跳转链接、直链、实体转义、加粗摘要） */
 const FIXTURE = [
@@ -126,7 +126,7 @@ test('websearch：Harness 零配置 + 端点覆盖，全链路走本地 mock', a
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-harness-ws-'));
   const srv = await startEngine(FIXTURE);
   try {
-    await withEnv({ SUNSHINEX_WEBSEARCH_ENDPOINT: srv.url }, async () => {
+    await withEnv({ SUNSHINEX_WEBSEARCH_ENDPOINT: srv.url, SUNSHINEX_WEBSEARCH_PROVIDER: 'duckduckgo' }, async () => {
       const { Harness } = await import('../index');
       const h = new Harness({ root, mode: 'full-access' });
       const r = await h.tools.execute('websearch', { query: 'sunshine' }, h.safety);
@@ -139,4 +139,22 @@ test('websearch：Harness 零配置 + 端点覆盖，全链路走本地 mock', a
   } finally {
     srv.close();
   }
+});
+
+/** bing-html 解析(2026-11-01 缺省引擎):li.b_algo → h2>a + 首个 <p>;实体/转义清洗净化 */
+test('parseBingHtml：li.b_algo 标题/URL/摘要解析(缺省引擎)', () => {
+  const html = [
+    '<ul id="b_results">',
+    '  <li class="b_algo"><h2><a href="https://example.dev/docs">Example <b>Docs</b></a></h2>',
+    '    <p>has &amp; symbols &amp; <b>bold</b></p></li>',
+    '  <li class="b_algo"><h2><a href="https://direct.example.net/">Direct Link</a></h2>',
+    '    <p>second &ensp;snippet</p></li>',
+  ].join('\n');
+  const hits = parseBingHtml(html, 5);
+  assert.equal(hits.length, 2);
+  assert.equal(hits[0].title, 'Example Docs');
+  assert.equal(hits[0].url, 'https://example.dev/docs');
+  assert.equal(hits[0].snippet, 'has & symbols & bold');
+  assert.equal(hits[1].url, 'https://direct.example.net/');
+  assert.equal(hits[1].snippet, 'second snippet');
 });

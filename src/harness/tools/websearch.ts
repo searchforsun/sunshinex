@@ -1,5 +1,5 @@
 import { CodedToolError } from '../tools';
-import { BING_ENDPOINT, BING_HTML_ENDPOINT, DDG_ENDPOINT, isBingHtmlMode, isBingMode, resolveFallbackEndpoint, resolveWebSearchEndpoint } from '../security/websearch-endpoint';
+import { BING_ENDPOINT, BING_HTML_ENDPOINT, DDG_ENDPOINT, isBingHtmlMode, isBingMode, resolveWebSearchEndpoint } from '../security/websearch-endpoint';
 
 /** 搜索结果归一化条目（provider 无关）：websearch 工具 stdout 渲染的最小单元 */
 export interface WebSearchHit {
@@ -82,38 +82,14 @@ export function parseBingHtml(html: string, count: number): WebSearchHit[] {
   return hits;
 }
 
-/** 主引擎失败自动回落（2026-11-01 用户网关拦境外站,DDG fetch failed→cn.bing 可达）:
- *  网络类失败（fetch failed/超时/上游非 2xx）即换备引擎;两台都失败抛原始错误 */
-class FallbackProvider implements WebSearchProvider {
-  constructor(private primary: WebSearchProvider, private fallback: WebSearchProvider | undefined) {}
-
-  async search(query: string, count: number): Promise<WebSearchHit[]> {
-    try {
-      return await this.primary.search(query, count);
-    } catch (e) {
-      if (this.fallback === undefined) throw e;
-      try {
-        return await this.fallback.search(query, count);
-      } catch {
-        throw e; // 备引擎也失败:抛主引擎原始错误（诊断面指向用户配置的主引擎）
-      }
-    }
-  }
-}
-
-/** 按环境装配：SUNSHINEX_WEBSEARCH_PROVIDER=bing 切 Bing API/=bing-html 切 Bing 网页版,缺省 DuckDuckGo;
- *  显式端点(SUNSHINEX_WEBSEARCH_ENDPOINT)不回落(自托管权威);bing-api 主引擎不回落(凭据问题换引擎无益) */
+/** 按环境装配（2026-11-01 用户裁定「缺省配通的路径,不要过度兜底」):缺省 bing-html(国内可达),
+ *  SUNSHINEX_WEBSEARCH_PROVIDER=duckduckgo/bing 显式切换;SUNSHINEX_WEBSEARCH_ENDPOINT 自托管权威 */
 export function resolveWebSearchProvider(): WebSearchProvider {
   // Provider 与 guard 同源消费 SUNSHINEX_WEBSEARCH_ENDPOINT 覆盖：判界主机与实际抓取主机必须一致
   const endpoint = resolveWebSearchEndpoint();
-  const primary: WebSearchProvider = isBingMode()
-    ? new BingProvider(endpoint)
-    : isBingHtmlMode()
-      ? new BingHtmlProvider(endpoint)
-      : new DuckDuckGoProvider(endpoint);
-  const fb = resolveFallbackEndpoint();
-  const alternate: WebSearchProvider | undefined = fb === undefined ? undefined : fb === BING_HTML_ENDPOINT ? new BingHtmlProvider(fb) : new DuckDuckGoProvider(fb);
-  return new FallbackProvider(primary, alternate);
+  if (isBingMode()) return new BingProvider(endpoint);
+  if (isBingHtmlMode()) return new BingHtmlProvider(endpoint);
+  return new DuckDuckGoProvider(endpoint);
 }
 
 /** DDG HTML → 归一化结果：只依赖 result__a / result__snippet 两个 class；结构漂移返回空列表（表达「无结果」，不误报失败） */
