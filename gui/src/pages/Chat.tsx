@@ -282,12 +282,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     prevRunNotifRef.current = running;
     if (prev === running || running) return; // 只报完成沿
     if (document.hasFocus()) return; // 前台在看=无需提醒
-    // 标题带具体会话名(2026-10-31 用户裁定「显示具体会话的名称已完成」);点击经壳桥唤起——
+    // 文案定版(2026-11-01 用户裁定):标题「运行完成」,正文「任务:{会话名称}」;点击经壳桥唤起——
     // hide-on-close/最小化窗 window.focus() 无效,preload focusMain → 主进程 show+focus(还原最小化)
     const name = displayTitle.trim();
     try {
       const n = new Notification(t('Run finished', '运行完成'), {
-        body: name !== '' ? `「${name}」${t('The session task has completed.', '会话任务已完成。')}` : t('The session task has completed.', '会话任务已完成。'),
+        body: name !== '' ? `${t('Task', '任务')}：${name}` : t('The session task has completed.', '会话任务已完成。'),
         silent: false,
       });
       n.onclick = (): void => {
