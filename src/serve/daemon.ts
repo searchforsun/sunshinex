@@ -342,6 +342,10 @@ export class GuiDaemon {
     this.staticReady = fs.existsSync(path.join(this.staticRoot, 'index.html'));
     const addr = server.address();
     if (addr === null || typeof addr === 'string') throw new Error('GuiDaemon: listen address unavailable');
+    // 退出兜底收割(2026-11-01「应用停止也要停内置 mcp 服务」belt):teardown 首刀之外,任何优雅
+    // 退出路径(未走 close 的 process.exit/未捕获异常等)也收割——exit 钩子只跑同步码,spawnSync
+    // 合法;强杀(TerminateProcess)不触发属物理极限。幂等:二次收割杀已死 pid 无害
+    process.once('exit', () => this.reapBuiltinBrowsers());
     return { port: addr.port, token, close: () => this.close() };
   }
 
@@ -356,6 +360,11 @@ export class GuiDaemon {
    *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（逐会话收口序在会话维
    *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
+    // -1) 内置浏览器收割**最先**执行(2026-11-01 实测踩坑:壳侧 close 有界等待仅 5s,teardown 前段
+    //     步骤(全会话 abort/WS/HTTP 收口/mcpClose)任一拖住即超时放行退出——排末尾的收割刀没跑到,
+    //     孤儿 Chrome 锁死数据目录(用户面「应用关了文件夹删不掉」);收割独立于其它收口步骤且为
+    //     同步 spawnSync,置顶后即使后续被有界等待截断也已杀净)
+    this.reapBuiltinBrowsers();
     // 0-) 配置监听面先收（任务14）：摘写通知钩子（还原缺省 no-op——收口途中 catalog 写不再产帧）+
     //     watcher.close 全组拆句柄清回调（防收口途中残留 fs 事件再产广播）；project 组随 close 全拆，
     //     无需逐会话 unwatch
@@ -386,10 +395,16 @@ export class GuiDaemon {
     }
     // 3) 全会话运行时内脏收口（并发）：stopAll → drain → mcpClose（序同 CLI teardownCliRun 现场）
     await Promise.all([...this.sessions.values()].map((s) => s.dispose()));
-    // 3b) 内置浏览器常驻实例收割(2026-11-01 用户裁定「应用停止时,也要停止内置本地 mcp 服务」):
-    //     builtin 档浏览器为 detached 孤儿(跨 run 树杀存活的常驻设计,复用面靠 meta),应用退出
-    //     时按各工作区 meta pid 全量收割——mcpClose 树杀 bridge/server 已含于 dispose,唯孤儿浏览器
-    //     需此补刀;跨工作区同 pid 去重;缺档(无内置浏览器运行)/收割失败静默(尽力而为)
+  }
+
+  /** 内置浏览器常驻实例收割（2026-11-01 用户裁定「应用停止时,也要停止内置本地 mcp服务」）：
+   *  builtin 档浏览器为 detached 孤儿（跨 run 树杀存活的常驻设计，复用面靠 meta），应用退出时
+   *  全量收割——mcpClose 树杀 bridge/server 已含于 dispose，唯孤儿浏览器需此补刀。两刀：
+   *  ①按各工作区 meta pid（跨工作区同 pid 去重；缺档/坏档=扑空静默）②按命令行 profile 标记
+   *  兜底（meta 被删/坏档时①扑空，而 profile 缺省在数据目录内 → 孤儿浏览器锁死整棵数据目录
+   *  树，用户面「应用关了文件夹删不掉」——不依赖 meta 扫 chrome 补刀）。全同步 spawnSync：
+   *  调用点即完成，不会被壳侧有界 close 截断在半途 */
+  private reapBuiltinBrowsers(): void {
     const killedBrowsers = new Set<number>();
     for (const [, rt] of [...this.sessions.entries()]) {
       const metaPath = path.join(resolveDataDir(rt.root), 'plugins', 'browser-use', 'builtin-cdp.json');
@@ -406,10 +421,6 @@ export class GuiDaemon {
         /* 缺档/坏档=无内置浏览器运行 */
       }
     }
-    // 3b-兜底) 按命令行标记收割(2026-11-01 实测踩坑:meta 被删/坏档时上刀扑空,而插件 profile
-    //     缺省在数据目录内(<dataDir>/plugins/browser-use/profile)——孤儿浏览器不死=整个数据目录
-    //     树被锁,用户面「应用关了文件夹删不掉」)。按 profile 路径特征扫 chrome 进程补刀,
-    //     不依赖 meta;非 win32 无 WMI 查询面,维持 meta 刀即可
     if (process.platform === 'win32') {
       const psScript = "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*plugins/browser-use/profile*' -or $_.CommandLine -like '*plugins\\browser-use\\profile*' -or $_.CommandLine -like '*sunshinex-browser-*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
       spawnSync('powershell', ['-NoProfile', '-EncodedCommand', Buffer.from(psScript, 'utf16le').toString('base64')], { stdio: 'ignore', timeout: 15000 });
