@@ -1841,6 +1841,22 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(screen.getByLabelText('autoMemory').textContent).toContain('on');
     unmount();
   });
+
+  it('agentTeams=off:关设置后重读→剔除已开 agents 页签且 +菜单藏「智能体团队」', async () => {
+    const { conn, unmount } = await enterChat();
+    openTasksTab();
+    expect(document.querySelector('.sx-tab[data-title="智能体团队"], .sx-tab[data-title="Agent teams"]')).not.toBeNull();
+    conn.settingsView = settingsViewOf([{ key: 'agentTeams', value: 'off', source: 'global', envOverride: false }]);
+    openSettings();
+    fireEvent.click(screen.getByRole('button', { name: 'back to sessions' }));
+    await waitFor(() =>
+      expect(document.querySelector('.sx-tab[data-title="智能体团队"], .sx-tab[data-title="Agent teams"]')).toBeNull(),
+    );
+    expandSidebarIfCollapsed();
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    expect(screen.queryByRole('menuitem', { name: bi('Agent teams', '智能体团队') })).toBeNull();
+    unmount();
+  });
 });
 
 

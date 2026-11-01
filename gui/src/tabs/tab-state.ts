@@ -165,6 +165,25 @@ export function openTab(
 /** 最近关闭历史深度(新者在前;超出截尾——chrome 同量级) */
 const RECENT_CLOSED_CAP = 10;
 
+/** 跨会话剔除某类型页签(开席 + recentClosed)——agentTeams 关闭时收口 agents 历史签/盘档残留;
+ *  活动位若被剔则承继首个剩余签;全席无变化时原引用返回 */
+export function stripTabType(states: TabStates, type: TabTypeId): TabStates {
+  let changed = false;
+  const next: TabStates = { ...states };
+  for (const [sid, cur] of Object.entries(states)) {
+    const tabs = cur.tabs.filter((t) => t.type !== type);
+    const recentClosed = cur.recentClosed.filter((c) => c.type !== type);
+    if (tabs.length === cur.tabs.length && recentClosed.length === cur.recentClosed.length) continue;
+    changed = true;
+    const activeUid =
+      cur.activeUid !== null && tabs.some((t) => t.uid === cur.activeUid)
+        ? cur.activeUid
+        : (tabs[0]?.uid ?? null);
+    next[sid] = { ...cur, tabs, activeUid, recentClosed };
+  }
+  return changed ? next : states;
+}
+
 /**
  * 关标签:关活动 → 承继位取删后 min(关闭索引, tabs.length-1)(=右邻优先、无右取左;
  * 清空 → null);关非活动 → 活动不变。uid 不在席/会话缺席 → 原引用返回(未动)。

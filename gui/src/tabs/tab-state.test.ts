@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   emptyTabSession, ensureSession, openTab, closeTab, cycleTab,
-  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, type SingletonProbe,
+  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, stripTabType, type SingletonProbe,
 } from './tab-state';
 
 /** 判重/单例探针(T3 registry 提供真实现;此处 stub 同口径:file 按 path,tasks 单例) */
@@ -115,6 +115,27 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     const labels3 = disambiguateTabTitles(s3.s3.tabs);
     expect(labels3.get(s3.s3.tabs[0]!.uid)).toBe('README.md');
     expect(labels3.has(s3.s3.tabs[1]!.uid)).toBe(false);
+  });
+
+  it('stripTabType:跨会话剔除指定类型开席+recentClosed;活动位承继;无变化原引用', () => {
+    const agentsProbe: SingletonProbe = {
+      isSingleton: (t) => t === 'tasks' || t === 'agents',
+      resolveKey: (t, p) => (t === 'file' ? p.path ?? '' : ''),
+    };
+    let s = ensureSession({}, 's1', agentsProbe);
+    s = openTab(s, 's1', 'file', { path: 'a.ts' }, agentsProbe);
+    s = openTab(s, 's1', 'agents', {}, agentsProbe);
+    s = openTab(s, 's1', 'tasks', {}, agentsProbe);
+    expect(s.s1.activeUid).toBe('tasks:');
+    s = closeTab(s, 's1', 'agents:'); // 进 recentClosed
+    expect(s.s1.recentClosed.some((c) => c.type === 'agents')).toBe(true);
+    s = openTab(s, 's1', 'agents', {}, agentsProbe); // 再开并置活动
+    expect(s.s1.activeUid).toBe('agents:');
+    const stripped = stripTabType(s, 'agents');
+    expect(stripped.s1.tabs.map((t) => t.type)).toEqual(['file', 'tasks']);
+    expect(stripped.s1.activeUid).toBe('file:a.ts'); // 活动被剔 → 首个剩余
+    expect(stripped.s1.recentClosed.some((c) => c.type === 'agents')).toBe(false);
+    expect(stripTabType(stripped, 'agents')).toBe(stripped); // 无变化原引用
   });
 
   it('G14.2xx 标签搜索数据面:openTab 落 createdAt;closeTab 压 recentClosed 头部(cap 10);reopenClosed 按索引重开随弹随消', () => {

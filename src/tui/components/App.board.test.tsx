@@ -84,10 +84,10 @@ test('App：Ctrl+T 空板也进视图——「任务板为空」提示框给真�
     // 无任何 task 事件（空板投影，真实生产形态：lead 未走 create_agent_team_task 直接派 teammate）
     write('\u0014'); // Ctrl+T 进入任务视图
     await new Promise((r) => setTimeout(r, 150));
-    assert.match(lastFrame() ?? '', /task board empty/, '空板提示框在场（非静默吞键；t() 测试环境走英文缺省）');
+    assert.match(lastFrame() ?? '', /agent teams empty/, '空板提示框在场（非静默吞键；t() 测试环境走英文缺省）');
     write('\u001b'); // Esc 退出
     await new Promise((r) => setTimeout(r, 150));
-    assert.doesNotMatch(lastFrame() ?? '', /task board empty/, 'Esc 退出空板视图');
+    assert.doesNotMatch(lastFrame() ?? '', /agent teams empty/, 'Esc 退出空板视图');
   } finally {
     term?.unmount();
     fs.rmSync(tmp, { recursive: true, force: true });

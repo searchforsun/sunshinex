@@ -23,7 +23,7 @@ export function BoardList({ rows, cursor }: { rows: BoardRow[]; cursor: number }
   if (rows.length === 0) {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1}>
-        <Text dimColor>{t('(task board empty — Ctrl+T to toggle)', '（任务板为空——Ctrl+T 切换）')}</Text>
+        <Text dimColor>{t('(agent teams empty — Ctrl+T to toggle)', '（智能体团队为空——Ctrl+T 切换）')}</Text>
       </Box>
     );
   }

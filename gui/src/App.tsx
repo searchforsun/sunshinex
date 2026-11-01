@@ -19,7 +19,7 @@ import { Suspense } from 'react';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, stripTabType } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -187,8 +187,10 @@ function AppShell(): JSX.Element {
    *  settings + 公共持久化偏好上收(/app/gui-state 覆盖本地,zoom/theme/fontPreset)两件一次性同步 */
   useAppearanceSync(connInstance);
 
-  /** agentTeams 开关(settings 语义键;缺省 true)——关则藏「智能体团队」页签菜单项并拒开签 */
+  /** agentTeams 开关(settings 语义键;缺省 true)——关则藏「智能体团队」页签菜单项并拒开签;
+   *  settingsEpoch 在关设置壳时递增,保存后重读开关(autosave 已落盘) */
   const [agentTeamsOn, setAgentTeamsOn] = useState(true);
+  const [settingsEpoch, setSettingsEpoch] = useState(0);
   useEffect(() => {
     if (connInstance === null) return;
     let alive = true;
@@ -211,7 +213,13 @@ function AppShell(): JSX.Element {
     return () => {
       alive = false;
     };
-  }, [connInstance, openRoot]);
+  }, [connInstance, openRoot, settingsEpoch]);
+
+  /** agentTeams 关闭:剔除已开/盘档残留的 agents 页签(含 recentClosed,防重开旁路) */
+  useEffect(() => {
+    if (agentTeamsOn) return;
+    setTabStates((st) => stripTabType(st, 'agents'));
+  }, [agentTeamsOn]);
 
   useEffect(() => () => resizeCleanupRef.current?.(), []);
 
@@ -347,9 +355,10 @@ function AppShell(): JSX.Element {
   }, [openRoot]);
 
   /** G8c-T8 回会话态(返回钮/Esc 同路径):page 态未动——开设置前是 chat 则回 chat(Chat 重挂
-   *  重播种),welcome 则回欢迎空态;useCallback 零依赖稳定(SettingsShell Esc effect 依赖面) */
+   *  重播种),welcome 则回欢迎空态;关壳即 bump settingsEpoch 重读 agentTeams(表单 autosave 已落) */
   const closeSettings = useCallback((): void => {
     setSettingsOpen(false);
+    setSettingsEpoch((v) => v + 1);
   }, []);
 
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
@@ -852,6 +861,7 @@ function AppShell(): JSX.Element {
                 onRunStart={() => { cdpAutoRef.current = ''; }}
                 onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
+                agentTeamsOn={agentTeamsOn}
                 board={projection.board}
                 teams={projection.teams}
                 onTodoBatches={setTodoBatches}
@@ -937,7 +947,12 @@ function AppShell(): JSX.Element {
               }}
               onCycle={(d) => setTabStates((s) => cycleTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, d))}
               recentClosed={tabState.recentClosed}
-              onReopenClosed={(i) => setTabStates((s) => reopenClosed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, i, PROBE))}
+              onReopenClosed={(i) => {
+                const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
+                const entry = tabState.recentClosed[i];
+                if (entry?.type === 'agents' && !agentTeamsOn) return;
+                setTabStates((s) => reopenClosed(s, seat, i, PROBE));
+              }}
               hiddenMenuIds={hiddenMenuIds}
               onCloseActive={() => {
                 const uid = tabState.activeUid;

@@ -1411,6 +1411,29 @@ describe('G14.41 write 行 diffstat 保留', () => {
 
 
 describe('G14.177 顶栏动态计数按钮', () => {
+  it('agentTeamsOn=false → 团队任务计数钮不渲染(待办钮仍可显)', async () => {
+    const onOpenTab = vi.fn();
+    const board = {
+      tasks: { t1: { id: 't1', title: 'A', status: 'running', createdAt: 1 } },
+      dependencies: {},
+    } as never;
+    render(
+      <Chat
+        conn={connOf([], 'running')}
+        sessionId="s1"
+        connState="open"
+        onBack={() => {}}
+        sinkRef={sinkRef}
+        onOpenTab={onOpenTab}
+        board={board}
+        agentTeamsOn={false}
+      />,
+    );
+    await flushed();
+    expect(document.querySelector('.chat-dyn-btn')).toBeNull(); // 仅团队任务在跑 → 整组隐
+    expect(onOpenTab).not.toHaveBeenCalled();
+  });
+
   it('运行中+待办未完成>0 → 显「N 待办」按钮,点击 onOpenTab(tasks);全完成(0)不渲染;G14.213 轮次收束即隐(未完结也隐)', async () => {
     const onOpenTab = vi.fn();
     const seeds = [

@@ -70,6 +70,6 @@ test(`BoardList：每页 ${BOARD_PAGE_ROWS} 行滑窗、页脚页码，翻页窗
 
 test('BoardList：空板渲染提示行（board 模态空板自退，此为组件层契约）', () => {
   const one = render(<BoardList rows={[]} cursor={0} />);
-  assert.match(one.lastFrame() ?? '', /task board empty — Ctrl\+T to toggle/, '空板提示行在位');
+  assert.match(one.lastFrame() ?? '', /agent teams empty — Ctrl\+T to toggle/, '空板提示行在位');
   one.unmount();
 });
