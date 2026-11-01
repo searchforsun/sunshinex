@@ -174,17 +174,16 @@ export class McpHost {
         })());
         continue;
       }
+      // stdio 也走协议级 ping(Windows pid 复用+SDK 进程对象残留会使 kill(pid,0) 误判存活,
+      // 失败 server 被跳过重建=工具静默失效,实测踩坑):协议往返毫秒级,1s 超时封顶
       checks.push((async () => {
-        const pid = pidOf(conn.transport);
-        let dead = false;
-        if (pid === null) {
-          dead = true; // SDK 已清进程对象=连接已终结
-        } else {
-          try { process.kill(pid, 0); } catch { dead = true; }
-        }
-        if (dead && !this.failedNames.has(name)) {
-          this.failedNames.add(name);
-          this.writeAssemblyLog(name, 'liveness check: server process no longer alive — rebuild scheduled');
+        try {
+          await conn.client.ping({ signal: AbortSignal.timeout(1000) });
+        } catch {
+          if (!this.failedNames.has(name)) {
+            this.failedNames.add(name);
+            this.writeAssemblyLog(name, 'liveness check: stdio ping failed — rebuild scheduled');
+          }
         }
       })());
     }
