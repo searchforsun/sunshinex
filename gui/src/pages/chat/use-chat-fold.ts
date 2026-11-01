@@ -8,15 +8,22 @@ import type { ChatEntry, ChatState } from '../../chat-reducer';
 
 /** 轮次折叠簇(D32 第六批批F-5 自 Chat.tsx 平移,行为零变化):collapsedRuns/G14.136 段内中间
  *  正文折叠 hiddenKeys/G14.48 展开折叠防闪动校正/entry 面回调稳定化(G14.211)。 */
+/** 成员消息旁白(`[from → to] text`):轮次折叠时与工具同行收合 */
+function isAgentMessageNotice(e: ChatEntry): boolean {
+  return e.kind === 'notice' && /^\[[^\]]+ → [^\]]+\]/.test(e.md);
+}
+
 /** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;hiddenKeys=折叠区间内的
- *  工具/思考行 key(用户气泡/回复/旁白保留)。G14.73:隐藏条目保持挂载,渲染层包进
- *  seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
+ *  工具/思考/轮内插入用户条/成员消息。最终回复与新开场用户条保留。G14.73:隐藏条目保持挂载,
+ *  渲染层包进 seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
  *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
  *  (phase 叙述/中间解释默认不露),展开轮时照常可见。
  *  G14.2xx b:投影抽纯函数单点——主对话 hook 与子智能体转录页(本地折叠态)同源消费 */
 export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns: ReadonlySet<string>): ReadonlySet<string> {
   const s = new Set<string>();
   let hide = false;
+  /** 本轮是否已见 sealed 终答——此前的 user=轮内插入(随折);其后的 user=新开场(复位 hide) */
+  let sawFinalAssistant = false;
   /** 段内 sealed assistant 收集:段收口(run 再启/流尽)时除末条外入 hidden */
   let segAssistants: string[] = [];
   const closeSeg = (): void => {
@@ -27,21 +34,31 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
     if (e.kind === 'run') {
       closeSeg();
       hide = collapsedRuns.has(e.key);
+      sawFinalAssistant = false;
       continue;
     }
     if (e.kind === 'assistant') {
-      if (e.streaming !== true) segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
+      if (e.streaming !== true) {
+        segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
+        sawFinalAssistant = true;
+      }
       continue;
     }
     if (e.kind === 'user') {
+      if (hide && !sawFinalAssistant) {
+        // 轮内插入(运行中/终答前):与工具同行收进折叠区
+        s.add(e.key);
+        continue;
+      }
       closeSeg();
-      // user 条=新段起点,其后的工具/思考行不属于上一轮折叠区(2026-10-31 用户报障「命令没反应」:
-      // /compact 气泡后的命令三态行被折进上一轮已折叠区——此前只收段不复位 hide)
+      // 新开场用户条:其后工具不属于上一轮折叠区(2026-10-31「/compact 三态行不显示」钉)
       hide = false;
+      sawFinalAssistant = false;
       continue;
     }
     // 斜杠命令三态行=系统提示行,不受折叠影响(2026-10-31 裁定)
-    if (hide && (e.kind === 'tool' || e.kind === 'thinking') && !(e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/'))) s.add(e.key);
+    if (hide && e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/')) continue;
+    if (hide && (e.kind === 'tool' || e.kind === 'thinking' || isAgentMessageNotice(e))) s.add(e.key);
   }
   closeSeg();
   return s;
@@ -95,11 +112,7 @@ export function useChatFold(deps: {
   onEntryRestore: (p: string) => void;
 } {
   const { chat, setChat, conn, sessionId, onOpenDiff, chatScrollRef, chatStickRef } = deps;
-/** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;hiddenKeys=折叠区间内的
- *  工具/思考行 key(用户气泡/回复/旁白保留)。G14.73:隐藏条目保持挂载,渲染层包进
- *  seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
- *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
- *  (phase 叙述/中间解释默认不露),展开轮时照常可见 */
+/** G14.31 轮次折叠:见 collapsedHiddenKeys(工具/思考/轮内插入/成员消息随折;终答与新开场保留) */
 const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
 // 2026-10-24 用户裁定:轮次完成(sealed)自动折叠工具/思考行——手动展开不回折
 useAutoCollapseRuns(chat.entries, setCollapsedRuns);

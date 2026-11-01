@@ -56,12 +56,14 @@ export interface ChatProps {
   /** 轮次发起回执(2026-11-01「不自动打开浏览器,切会话才显示」根修配套):提交被接受即回执,
    *  App 据此重置内置浏览器自动开签守卫——每轮 run 都允许自动开签(同会话上一轮开过/被关不锁死) */
   onRunStart?: () => void;
-  /** G14.176 create_task 行任务名=蓝色链接:点开任务板并定位高亮对应卡(App 接 openTabInSession('agents')+focus 定位) */
+  /** 工具行任务名/队名链接:任务 ref 开任务板高亮卡;`team:` 前缀开指定队卡(App 接 openTaskFocus) */
   onOpenTask?: (taskRef: string) => void;
   /** G14.177 顶栏动态计数按钮:打开对应页签(待办=tasks/任务板=agents/后台任务=bgtasks) */
   onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
   /** G14.172 task_wait 行任务名解析材料(任务板投影;App 注入会话板) */
   board?: TaskBoardState;
+  /** 队名解析材料(get_board/create_team 链接;App 注入投影 teams) */
+  teams?: readonly import('../../projection').BoardTeamRef[];
   /** G14.174 待办批次上抛(每批 todo_write 一卡:时间/关联轮次输入/条目;App 经 services 供待办页签) */
   onTodoBatches?: (batches: TodoBatch[]) => void;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */

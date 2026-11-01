@@ -136,7 +136,7 @@ function AppShell(): JSX.Element {
    *  播种;与转录派生值合并(同签名派生优先——live 批次 ts 更新),环窗/尾窗外的老批次由此可见 */
   const [seededTodoBatches, setSeededTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
   /** G14.176 create_task 行点开的定位信号(任务板滚动高亮对应卡) */
-  const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number } | null>(null);
+  const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
   const connRef = useRef<Connection | null>(null);
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
   const sessionRef = useRef<string>('');
@@ -536,11 +536,11 @@ function AppShell(): JSX.Element {
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }): void => {
     setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
   }, []);
-  /** G14.2xx b create_task 行任务名定位(子智能体转录页与 Chat onOpenTask 同一口径):开任务板页签
-   *  +focus 信号(nonce 变更即滚动高亮);useCallback 零依赖稳定 */
+  /** 工具行定位:开任务板页签 + focus。`team:` 前缀=队卡定位；其余=任务行高亮(create_task/task_wait/update_task 等) */
   const openTaskFocus = useCallback((ref: string): void => {
     openBoardTab();
-    setTaskFocus({ ref, nonce: Date.now() });
+    if (ref.startsWith('team:')) setTaskFocus({ ref: ref.slice(5), nonce: Date.now(), kind: 'team' });
+    else setTaskFocus({ ref, nonce: Date.now(), kind: 'task' });
   }, [openBoardTab]);
   const services = useMemo<TabServices>(
     () => ({
@@ -808,12 +808,10 @@ function AppShell(): JSX.Element {
                 onOpenAgent={openAgentTab}
                 onOpenWeb={openWebTab}
                 onRunStart={() => { cdpAutoRef.current = ''; }}
-                onOpenTask={(ref) => {
-                  openBoardTab();
-                  setTaskFocus({ ref, nonce: Date.now() });
-                }}
+                onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
                 board={projection.board}
+                teams={projection.teams}
                 onTodoBatches={setTodoBatches}
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}

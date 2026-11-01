@@ -380,9 +380,11 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       // 不封段(G14.51):done 必发,收口让位——运行中旁路错误只入条,开启段留给 done 合并
       return appendEntry(state, { ts: e.ts, kind: 'error', md: e.text ?? 'error' });
     case 'agent-message': {
+      // 主会话只投影投递给 lead 的消息(inbox 本就只落 to 档;队友互发不进 lead 转录——可观测面在收件人页)
       const p = e.payload as { from?: unknown; to?: unknown; text?: unknown } | undefined;
+      const to = typeof p?.to === 'string' && p.to.length > 0 ? p.to : '';
+      if (to !== 'lead') return state;
       const from = typeof p?.from === 'string' && p.from.length > 0 ? p.from : '?';
-      const to = typeof p?.to === 'string' && p.to.length > 0 ? p.to : '?';
       const sealed = sealSeg(state, e.ts);
       return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: `[${from} → ${to}] ${typeof p?.text === 'string' ? p.text : ''}` });
     }

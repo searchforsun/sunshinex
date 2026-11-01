@@ -582,6 +582,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
+  const { status: copied, copy: copyText } = useCopyFeedback();
   // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建);
   // isDir=目录解析(目录链接显黄目录;context 缺省恒 false——代理转录等无会话索引面按文件)
   const isDir = useDirResolver();
@@ -602,24 +603,36 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
     [onOpenFile, isDir, mermaidDraft, openDir],
   );
   if (msg !== null) {
-    const copy = (
-      <>
-        {icon !== null && <span className="entry-icon">{icon}</span>}
-        <span className="agent-msg-copy">
-          <span className="agent-msg-from">{msg.from}</span>
-          {msg.text !== '' && <span className="agent-msg-text">{msg.text}</span>}
-        </span>
-      </>
-    );
+    // 与插入档用户胶囊同形(+发送人名可点;无编辑):限高折叠 + 下沿复制
     return (
-      <div className="entry entry-notice agent-msg">
-        {onOpenAgent !== undefined ? (
-          <button type="button" className="agent-msg-bubble" data-from={msg.from} onClick={() => onOpenAgent(msg.from, msg.from)}>
-            {copy}
-          </button>
-        ) : (
-          <div className="agent-msg-bubble" data-from={msg.from}>{copy}</div>
+      <div className="entry entry-user entry-user-insert agent-msg" data-from={msg.from}>
+        <div className="agent-msg-head">
+          <MessageSquare size={12} strokeWidth={1.75} aria-hidden="true" />
+          {onOpenAgent !== undefined ? (
+            <button
+              type="button"
+              className="agent-msg-from"
+              data-tip={t('View teammate', '查看队友')}
+              onClick={() => onOpenAgent(msg.from, msg.from)}
+            >
+              {msg.from}
+            </button>
+          ) : (
+            <span className="agent-msg-from">{msg.from}</span>
+          )}
+        </div>
+        {msg.text !== '' && (
+          <CollapsibleBubble text={msg.text} render={(md) => <div className="agent-msg-text">{md}</div>} />
         )}
+        <div className="user-actions">
+          <TipButton
+            className="user-action"
+            tip={copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
+            label="Copy"
+            icon={copied === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => copyText(msg.text)}
+          />
+        </div>
       </div>
     );
   }

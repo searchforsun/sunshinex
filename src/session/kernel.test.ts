@@ -176,17 +176,18 @@ test('⑥ kind 扩:error→error(缺 text 回落);notice→notice;delegation-sta
     ev('delegation-started', undefined, { delegationId: 'd1', kind: 'subagent', label: 'build' }),
     ev('delegation-ended', undefined, { delegationId: 'd1', kind: 'subagent', label: 'build', status: 'done' }),
     ev('delegation-ended', undefined, { delegationId: 'd2', kind: 'graph-node', label: 'deploy', status: 'failed' }),
-    ev('agent-message', undefined, { messageId: 'm1', from: 'lead', to: 'worker', text: '先跑测试' }),
+    ev('agent-message', undefined, { messageId: 'm0', from: 'w1', to: 'w2', text: '队友互发不上屏' }),
+    ev('agent-message', undefined, { messageId: 'm1', from: 'w1', to: 'lead', text: '先跑测试' }),
   );
   const es = k.replay();
   assert.deepEqual(
     es.map((e) => e.kind),
     ['error', 'error', 'notice', 'notice'],
-    '只产 error/notice 两 kind;delegation 状态不入转录(G14.213)',
+    '只产 error/notice 两 kind;delegation 状态不入转录(G14.213);队友互发 agent-message 零条目',
   );
   assert.deepEqual(
     es.map((e) => e.md),
-    ['boom', 'error', '技能已安装', '[lead → worker] 先跑测试'],
+    ['boom', 'error', '技能已安装', '[w1 → lead] 先跑测试'],
   );
   for (let i = 1; i < es.length; i++) assert.ok(es[i]!.seq > es[i - 1]!.seq, 'kind 扩条目共用同一 seq 单调序列');
 });

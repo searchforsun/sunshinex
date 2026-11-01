@@ -1897,33 +1897,30 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 记忆/学习技能回显行可点(点击开对应侧栏页签):手形+hover 亮 */
 .entry-notice[data-notice-clickable='1'] { cursor: pointer; }
 .entry-notice[data-notice-clickable='1']:hover { color: var(--fg); }
-/* 成员消息气泡：来源名可点，打开该智能体转录 */
-.entry-notice.agent-msg {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-composer);
-  color: var(--fg);
-  font-size: 13px;
-  padding: 8px 12px;
-}
-.agent-msg-bubble {
+/* 成员消息=插入档用户胶囊(+发送人名;无编辑);折叠/复制与用户气泡同形 */
+.entry-user.agent-msg { border-left: none; }
+.agent-msg-head {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
+  align-items: center;
+  gap: 6px;
+  max-width: 85%;
+  margin: 0 2px 4px 0;
+  color: var(--fg-secondary);
+  font-size: 12px;
+}
+.agent-msg-from {
   margin: 0;
   padding: 0;
   border: none;
   background: transparent;
-  color: inherit;
+  color: var(--accent);
   font: inherit;
-  text-align: left;
-  cursor: pointer;
+  font-weight: 600;
+  cursor: default;
 }
-div.agent-msg-bubble { cursor: default; }
-.agent-msg-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.agent-msg-from { color: var(--accent); font-weight: 600; }
-.agent-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+button.agent-msg-from { cursor: pointer; }
+button.agent-msg-from:hover { text-decoration: underline; }
+.agent-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
 
 /* G14.150 侧栏左缘统一列(x=14):品牌/新对话/项目组行 与 分区头(项目/最近会话) 对齐 */
 .sx-brand { margin-left: 6px; }
@@ -1991,9 +1988,10 @@ div.agent-msg-bubble { cursor: default; }
 .sx-agent-thread .child-tool-mark.fail { color: var(--err); }
 .sx-agent-thread .child-thinking { font: 12px/1.6 var(--font-ui); color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-/* G14.176 任务板定位高亮(create_task 行点开:滚动居中+flash 退场；DAG 节点同款) */
+/* G14.176 任务板定位高亮(create_task 行点开:滚动居中+flash 退场；DAG 节点同款；队名/看板链接触发队卡) */
 .tb-task-main.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: var(--radius-sm); }
 .tb-dag-node.flash { background: color-mix(in srgb, var(--accent) 16%, var(--surface-soft)); box-shadow: inset 0 0 0 1px var(--accent); }
+.tb-card.flash { box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-elevated)); }
 
 /* ===== G14.177 顶栏动态计数按钮(待办/任务/后台任务):靠右聚拢,不挤压标题与展开钮 ===== */
 /* G14.213 幽灵钮化:无底色无边框,顶栏 hover 浮现;待办钮转圈绿色;侧栏展开不再隐藏(组件面) */
@@ -2699,10 +2697,9 @@ input.sx-setting-input { width: 100%; }
 .sx-raw-editor { font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); }
 .mermaid-fallback { font: var(--f-code, 12px)/var(--f-code-lh, 1.6) var(--font-mono); }
 
-/* 用户气泡上间距分档(2026-10-27 用户裁定):新回合用户消息与上方内容拉开(含图片条——图片在
-   entry 内首节点,margin 自动落在图片上方);运行中插入/辅助对话(entry-user-insert)保持紧凑 */
+/* 用户气泡上间距分档:首条新开场拉开;插入档(后续用户条/运行中插入/辅助对话/成员消息)上下同距紧凑 */
 .entry-user { margin-top: 60px; margin-bottom: 15px; }
-.entry-user.entry-user-insert { margin-top: 10px; margin-bottom: 0; }
+.entry-user.entry-user-insert { margin-top: 10px; margin-bottom: 10px; }
 
 /* ===== 正文纵向滚动条(自绘 overlay):长度响应式;贴底闩/滚动期冻结见 ChatScrollbar。
    原生条必须彻底灭迹——width:0(单 display:none 仍可能留 1px 亮轨,与自绘条并排=右侧亮细线) */

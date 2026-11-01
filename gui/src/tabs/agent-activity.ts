@@ -145,9 +145,16 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
       return withChat(card.status === 'running' ? { ...card, status: 'done' } : card);
     }
     default: {
-      // G14.175 任务带(teammate 派发的任务内容=子智能体的用户输入):step.taskBand 捕获上浮
+      // 任务带→用户气泡入转录(每轮任务一条,与主对话用户条同形;仅改 taskBand 字段会丢掉上一轮)
       if (e.type === 'step' && typeof p?.taskBand === 'string' && p.taskBand !== '' && card.taskBand !== p.taskBand) {
-        return withChat({ ...card, taskBand: p.taskBand });
+        const userEv: SessionEvent = {
+          type: 'user',
+          text: p.taskBand,
+          ts: e.ts,
+          payload: { subagent: label },
+        };
+        const chatWithUser = applySubagentChatEvent(card.chat, userEv);
+        return withChat({ ...card, taskBand: p.taskBand, chat: chatWithUser });
       }
       // G14.2xx b:model-start/step 等流内事件过 chat 投影(run 条开启=运行态/steps 计数——
       // 此前 default 原引用返回,转录页 status 恒 idle、steps 恒 0、run-live 行无数据的病根);

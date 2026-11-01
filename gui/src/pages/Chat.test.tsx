@@ -628,18 +628,19 @@ describe('思考行(G11 §3)', () => {
 });
 
 describe('系统行图标(G11 §4)', () => {
-  it('notice 通用=Info/agent 消息=MessageSquare,error=AlertCircle——均 .entry-icon 前置;delegation 状态行零渲染(G14.213)', async () => {
+  it('notice 通用=Info;队友互发不上主会话;投递 lead=右侧气泡;delegation 零渲染;error=AlertCircle', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'notice', text: 'hello', ts: Date.now() });
     expect(document.querySelector('.entry-notice .entry-icon svg')).not.toBeNull();
     expect(document.querySelector('.entry-notice')?.textContent).toContain('hello');
     fire({ type: 'delegation-started', payload: { label: 'dev', delegationId: 'd1' }, ts: Date.now() });
-    expect(document.querySelectorAll('.entry-notice .entry-icon').length).toBe(1); // 委派状态行不入主流
+    expect(document.querySelectorAll('.entry-notice').length).toBe(1); // 委派状态行不入主流
     fire({ type: 'agent-message', payload: { from: 'boss', to: 'dev', text: 'hi' }, ts: Date.now() });
-    expect(document.querySelectorAll('.entry-notice .entry-icon').length).toBe(2);
+    expect(document.querySelector('.agent-msg')).toBeNull(); // 队友互发不进 lead
+    fire({ type: 'agent-message', payload: { from: 'boss', to: 'lead', text: 'hi lead' }, ts: Date.now() });
     expect(document.querySelector('.agent-msg-from')?.textContent).toBe('boss');
-    expect(document.querySelector('.agent-msg-text')?.textContent).toBe('hi');
+    expect(document.querySelector('.agent-msg-text')?.textContent).toBe('hi lead');
     fire({ type: 'error', text: 'boom', ts: Date.now() });
     expect(document.querySelector('.entry-error .entry-icon svg')).not.toBeNull();
   });
@@ -651,7 +652,7 @@ describe('系统行图标(G11 §4)', () => {
     fire({ type: 'agent-message', payload: { from: 'w1', to: 'lead', text: '做完了', messageId: 'm1' }, ts: Date.now() });
     expect(document.querySelector('.agent-msg-from')?.textContent).toBe('w1');
     expect(document.querySelector('.agent-msg-text')?.textContent).toBe('做完了');
-    fireEvent.click(document.querySelector('.agent-msg-bubble')!);
+    fireEvent.click(document.querySelector('.agent-msg-from')!);
     expect(onOpenAgent).toHaveBeenCalledWith('w1', 'w1', undefined);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import type { TaskBoardState } from '../../projection';
+import type { BoardTeamRef, TaskBoardState } from '../../projection';
 import type { ChatEntry, ChatState } from '../../chat-reducer';
 import type { TodoBatch } from './ToolEntry';
 
@@ -63,9 +63,34 @@ export function taskNameResolverOf(entries: readonly ChatEntry[], board: TaskBoa
   };
 }
 
+/** 队名解析:投影 teams 直查 → 转录 create_team 回执映射 → 原 ref 兜底 */
+export function teamNameResolverOf(
+  entries: readonly ChatEntry[],
+  teams: readonly BoardTeamRef[] | undefined,
+): (ref: string) => string {
+  const fromReceipt = new Map<string, string>();
+  for (const e of entries) {
+    if (e.kind !== 'tool' || e.name !== 'create_team') continue;
+    const input = e.input ?? {};
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    const receipt = e.result?.text ?? e.result?.full ?? '';
+    const idHit = /teamId=([^\s);,]+)/.exec(receipt);
+    if (name === '') continue;
+    if (idHit !== null) fromReceipt.set(idHit[1]!, name);
+    fromReceipt.set(name, name);
+  }
+  return (ref: string): string => {
+    if (ref === '') return ref;
+    const hit = teams?.find((t) => t.teamId === ref || t.name === ref);
+    if (hit !== undefined && hit.name !== '') return hit.name;
+    return fromReceipt.get(ref) ?? ref;
+  };
+}
+
 export interface ChatDerivedDeps {
   readonly chat: ChatState;
   readonly board?: TaskBoardState;
+  readonly teams?: readonly BoardTeamRef[];
   readonly onTodoBatches?: (batches: TodoBatch[]) => void;
 }
 
@@ -79,16 +104,18 @@ export { isComputerUseControlTool };
 
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;
+  teamNameOf: (ref: string) => string;
   todoBatches: TodoBatch[];
   todoActive: number;
   taskActive: number;
   /** 电脑控制徽标:控制类 computer-use 工具条在跑(顶栏「正在控制」判定) */
   computerUseActive: boolean;
 } {
-  const { chat, board, onTodoBatches } = deps;
+  const { chat, board, teams, onTodoBatches } = deps;
   /** P1 派生冻结:依赖改成员集键(structureVersion+seedGen 防重置等值碰撞)——纯内容帧
    *  (token/thinking delta)引用恒定,成员/种子变更才重算(下方 todoBatches 同口径) */
   const taskNameOf = useMemo(() => taskNameResolverOf(chat.entries, board), [chat.structureVersion, chat.seedGen, board]);
+  const teamNameOf = useMemo(() => teamNameResolverOf(chat.entries, teams), [chat.structureVersion, chat.seedGen, teams]);
   /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
    *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
    *  P11 T7 字段单源:清单直读 entry.input.todos(内核条目 name/input 全量随档,旁路/md
@@ -145,7 +172,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     onTodoBatches?.(todoBatches);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSig]);
-  return { taskNameOf, todoBatches, todoActive, taskActive, computerUseActive };
+  return { taskNameOf, teamNameOf, todoBatches, todoActive, taskActive, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer

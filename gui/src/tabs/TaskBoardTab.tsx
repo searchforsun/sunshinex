@@ -30,8 +30,8 @@ export interface TaskBoardTabProps {
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** pending|running 停止（App 注入 conn.boardStop） */
   readonly onStopTask?: (taskId: string) => void;
-  /** create_task 行点开的定位信号：ref=任务 id 或标题；nonce 变更即滚动+高亮对应行 */
-  readonly focus?: { ref: string; nonce: number } | null;
+  /** 工具行点开的定位信号：kind=task 高亮任务行；kind=team 高亮队卡（ref=teamId 或队名） */
+  readonly focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   /** 顶部刷新：sessionSnapshot 拉权威 board。返回 Promise 期间钮转圈 */
   readonly onRefresh?: () => Promise<void>;
 }
@@ -74,7 +74,7 @@ function teamLabel(teamId: string, teams: readonly BoardTeamRef[]): string {
   return t('Team', '团队');
 }
 
-/** 一队一卡。已知团队按 createdAt 新者在上；快照未列的 teamId 按 id 排在后面。 */
+  /** 一队一卡。已知团队（含尚无任务的空队）按 createdAt 新者在上；快照未列的 teamId 按 id 排在后面。 */
 function groupByTeam(tasks: readonly BoardTask[], teams: readonly BoardTeamRef[]): TeamGroup[] {
   const buckets = new Map<string, BoardTask[]>();
   for (const task of tasks) {
@@ -86,9 +86,7 @@ function groupByTeam(tasks: readonly BoardTask[], teams: readonly BoardTeamRef[]
     [...list].sort((a, b) => (a.createdAt - b.createdAt) || a.id.localeCompare(b.id, undefined, { numeric: true }));
   const seen = new Set<string>();
   const groups: TeamGroup[] = [];
-  const known = teams
-    .filter((team) => buckets.has(team.teamId))
-    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  const known = [...teams].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   for (const team of known) {
     if (seen.has(team.teamId)) continue;
     seen.add(team.teamId);
@@ -117,15 +115,15 @@ function TaskCard({
   delegations: readonly Delegation[];
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   onStopTask?: (taskId: string) => void;
-  focus?: { ref: string; nonce: number } | null;
+  focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
 }): JSX.Element {
   const [view, setView] = useState<CardView>('list');
   const latestMs = group.tasks.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
   const byId = useMemo(() => new Map(group.tasks.map((x) => [x.id, x])), [group.tasks]);
   const focusTaskId = useMemo(() => {
-    if (focus === undefined || focus === null || focus.ref === '') return undefined;
+    if (focus === undefined || focus === null || focus.ref === '' || focus.kind === 'team') return undefined;
     return group.tasks.find((task) => taskMatchesFocus(task, focus.ref))?.id;
-  }, [focus?.ref, focus?.nonce, group.tasks]);
+  }, [focus?.ref, focus?.nonce, focus?.kind, group.tasks]);
   const openTaskAgent = (task: BoardTask): void => {
     const d = agentOfTask(task, delegations);
     const agentName = agentDisplayName(task, d);
@@ -232,6 +230,19 @@ export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onSt
   );
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
+    if (focus.kind === 'team') {
+      const cards = [...(rootRef.current?.querySelectorAll('.tb-card') ?? [])];
+      const hit = cards.find((card) => {
+        const id = card.getAttribute('data-team-id') ?? '';
+        const name = card.querySelector('.tb-team-name')?.textContent ?? '';
+        return id === focus.ref || name === focus.ref;
+      });
+      if (hit === undefined) return;
+      hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      hit.classList.add('flash');
+      const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
+      return () => clearTimeout(timer);
+    }
     const norm = focus.ref.replace(/^task-/, '');
     const rows = [...(rootRef.current?.querySelectorAll('.tb-task-main') ?? [])];
     const hit = rows.find((r) => {
@@ -244,10 +255,10 @@ export function TaskBoardTab({ board, delegations, teams = [], onOpenAgent, onSt
     hit.classList.add('flash');
     const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
     return () => clearTimeout(timer);
-  }, [focus?.nonce, focus?.ref]);
+  }, [focus?.nonce, focus?.ref, focus?.kind]);
   const tasks = useMemo(() => Object.values(board.tasks), [board]);
   const groups = useMemo(() => groupByTeam(tasks, teams), [tasks, teams]);
-  if (tasks.length === 0) {
+  if (tasks.length === 0 && teams.length === 0) {
     return (
       <div className="insight-tab">
         {bar}

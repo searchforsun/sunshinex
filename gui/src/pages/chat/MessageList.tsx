@@ -39,6 +39,8 @@ export interface MessageListProps {
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   readonly onOpenTask?: (ref: string) => void;
   readonly taskNameOf: (id: string) => string;
+  readonly teamNameOf?: (ref: string) => string;
+  readonly teams?: readonly { teamId: string; name: string }[];
   readonly collapsedRuns: ReadonlySet<string>;
   readonly toggleRun: (key: string) => void;
   readonly submitText: (text: string, images?: string[]) => Promise<void>;
@@ -77,6 +79,8 @@ interface DayGroupProps {
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   readonly onOpenTask?: (ref: string) => void;
   readonly taskNameOf: (id: string) => string;
+  readonly teamNameOf?: (ref: string) => string;
+  readonly teams?: readonly { teamId: string; name: string }[];
   readonly toggleRun: (key: string) => void;
   readonly submitText: (text: string) => Promise<void>;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
@@ -92,7 +96,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, teamNameOf, teams, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, sideChat } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -105,10 +109,37 @@ const DayGroupBlock = memo(
         onOpenAgent={onOpenAgent}
         onOpenTask={onOpenTask}
         taskNameOf={taskNameOf}
+        teamNameOf={teamNameOf}
+        teams={teams}
       />
-    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf]);
+    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} />, [onEntryOpenDiff]);
+    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenAgent={onOpenAgent} />, [onEntryOpenDiff, onOpenAgent]);
+    const renderFoldEntry = useCallback((e2: ChatEntry) => {
+      if (e2.kind === 'user') {
+        return (
+          <UserEntryView
+            key={e2.key}
+            entry={e2}
+            insert
+            onSend={submitText}
+            onOpenFile={onOpenFile}
+            onOpenImage={onOpenImage}
+            conn={conn}
+            root={root}
+          />
+        );
+      }
+      return (
+        <ChatEntryView
+          key={e2.key}
+          entry={e2}
+          onOpenDiff={onEntryOpenDiff}
+          onOpenAgent={onOpenAgent}
+          onOpenFile={onOpenFile}
+        />
+      );
+    }, [submitText, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenAgent]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(
@@ -117,11 +148,12 @@ const DayGroupBlock = memo(
         </div>,
       );
     }
-    /** G14.73:连续的折叠区条目(工具/思考)聚成一段,包进 seg-collapse 平滑容器——
+    /** G14.73:连续的折叠区条目(工具/思考/轮内插入/成员消息)聚成一段,包进 seg-collapse——
      *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
     let seg: ChatEntry[] = [];
-    /** 最近 run 行(逐条目插入判定):用户条目前的 run 仍 streaming=该条是运行中插入 */
+    /** 最近 run 行 + 是否已见用户条:首条开场保留大上距;其后/运行中插入/辅助对话=紧凑插入档 */
     let lastRun: ChatEntry | undefined;
+    let seenUser = false;
     const flushSeg = (): void => {
       if (seg.length === 0) return;
       const segEntries = seg;
@@ -133,20 +165,25 @@ const DayGroupBlock = memo(
           renderTool={renderTool}
           renderThinking={renderThinking}
           renderAssistant={renderAssistant}
+          renderEntry={renderFoldEntry}
         />,
       );
       seg = [];
     };
     for (const entry of entries) {
       if (entry.kind === 'run') lastRun = entry;
-      // G14.136 折叠态的中间正文随工具/思考一起进 seg-collapse 平滑折叠
+      // G14.136 折叠态的中间正文/轮内插入/成员消息随工具进 seg-collapse 平滑折叠
       if (isCommandEntry(entry)) {
         // 斜杠命令三态=系统提示行(2026-10-31 裁定):不进工具段聚合
         flushSeg();
         nodes.push(<CommandEntryView key={entry.key} entry={entry} />);
         continue;
       }
-      if (entry.kind === 'tool' || entry.kind === 'thinking' || (entry.kind === 'assistant' && hiddenKeys.has(entry.key))) {
+      if (
+        entry.kind === 'tool'
+        || entry.kind === 'thinking'
+        || ((entry.kind === 'assistant' || entry.kind === 'user' || entry.kind === 'notice') && hiddenKeys.has(entry.key))
+      ) {
         seg.push(entry);
         continue;
       }
@@ -161,11 +198,13 @@ const DayGroupBlock = memo(
           />,
         );
       } else if (entry.kind === 'user') {
+        const insert = sideChat === true || seenUser || lastRun?.streaming === true;
+        seenUser = true;
         nodes.push(
           <UserEntryView
             key={entry.key}
             entry={entry}
-            insert={lastRun?.streaming === true} // 辅助对话同享新回合间距(2026-10-27 用户裁定:含子智能体/辅助会话)
+            insert={insert}
             onSend={submitText}
             onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
             onOpenImage={onOpenImage}
@@ -206,6 +245,8 @@ const DayGroupBlock = memo(
     && prev.onOpenAgent === next.onOpenAgent
     && prev.onOpenTask === next.onOpenTask
     && prev.taskNameOf === next.taskNameOf
+    && prev.teamNameOf === next.teamNameOf
+    && prev.teams === next.teams
     && prev.toggleRun === next.toggleRun
     && prev.submitText === next.submitText
     && prev.onEntryOpenDiff === next.onEntryOpenDiff
@@ -251,6 +292,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const onOpenTaskOpt = useCallback(() => opt(onOpenTaskStable, propsRef.current.onOpenTask), [onOpenTaskStable]);
   const onForkOpt = useCallback(() => opt(onForkStable, propsRef.current.onFork), [onForkStable]);
   const taskNameOfStable = useCallback((id: string) => propsRef.current.taskNameOf(id), []);
+  const teamNameOfStable = useCallback((ref: string) => propsRef.current.teamNameOf?.(ref) ?? ref, []);
+  const teamNameOfOpt = useCallback(() => opt(teamNameOfStable, propsRef.current.teamNameOf), [teamNameOfStable]);
   const callIdOfStable = useCallback((e: ChatEntry) => propsRef.current.callIdOf(e), []);
   const toggleRunStable = useCallback((key: string) => propsRef.current.toggleRun(key), []);
   const submitTextStable = useCallback((text: string, images?: string[]) => propsRef.current.submitText(text, images), []);
@@ -339,6 +382,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
             onOpenAgent={onOpenAgentOpt()}
             onOpenTask={onOpenTaskOpt()}
             taskNameOf={taskNameOfStable}
+            teamNameOf={teamNameOfOpt()}
+            teams={props.teams}
             toggleRun={toggleRunStable}
             submitText={submitTextStable}
             runFooterByEntry={runFooterByEntry}

@@ -1,5 +1,5 @@
 import { memo, useContext, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { pathBasename } from '../../ui-util';
@@ -22,8 +22,12 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   worktree: GitBranch, spawn: Bot, task_stop: Square, task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
   create_task: ListPlus, set_dependency: GitMerge, assign: UserPlus, // G14.168 看板工具
-  create_teammate: UsersRound, // 2026-10-31 用户裁定「智能体团队的工具没有特殊图标」:团队成员创建件(区别于 spawn 的 Bot 单体/assign 的 UserPlus 单加)
+  // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
+  create_team: UsersRound,
+  create_teammate: UsersRound,
   update_task: ListChecks, get_board: Kanban, probe: Radar, // 2026-10-31 用户裁定「内置工具还没有完全 i18n 化」:任务板更新/看板读取/探测三件专属图标(退役扳手兜底)
+  send_message: Send,
+  get_task: ClipboardList,
 };
 
 /** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick,
@@ -81,6 +85,7 @@ const TOOL_VERB_ZH: Record<string, string> = {
   create_team: '创建智能体团队',
   create_teammate: '创建智能体团队成员',
   update_task: '更新任务', get_board: '看板', probe: '探测', // 2026-10-31 i18n 补全(看板=项目既定自然词)
+  send_message: '发送消息', get_task: '读取任务',
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -205,6 +210,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   create_teammate: ['Creating teammate', '正在创建智能体团队成员'],
   create_team: ['Creating team', '正在创建智能体团队'],
   update_task: ['Updating task', '正在更新任务'], get_board: ['Reading board', '正在读取看板'], probe: ['Probing', '正在探测'], // 2026-10-31 i18n 补全
+  send_message: ['Sending message', '正在发送消息'], get_task: ['Reading task', '正在读取任务'],
   task_wait: ['Waiting for tasks', '正在等待任务'],
   task_stop: ['Stopping task', '正在停止任务'],
   todo_write: ['Updating todos', '正在更新待办'],
@@ -218,7 +224,7 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
 
 /** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
  *  折叠行默认分型只出动词——任务名经 taskNameOf 单点解析后跟行 */
-const TASK_OP_TOOLS = new Set(['task_stop', 'update_task', 'assign', 'set_dependency']);
+const TASK_OP_TOOLS = new Set(['task_stop', 'update_task', 'assign', 'set_dependency', 'get_task']);
 
 /** G14.214 运行态动词对（拼接任务名替代泛文案，仿 spawn G14.166 先例）；折叠行动词走 zhToolName 既有映射 */
 const TASK_OP_RUNNING: Record<string, [string, string]> = {
@@ -226,6 +232,7 @@ const TASK_OP_RUNNING: Record<string, [string, string]> = {
   update_task: ['Updating', '正在更新'],
   assign: ['Assigning', '正在分派'],
   set_dependency: ['Setting dependency of', '正在设置依赖'],
+  get_task: ['Reading task', '正在读取任务'],
 };
 
 /** 文件行拆分(G14.8):basename + 所在目录(恒显,根目录 = './')——文件名后永远看得到位置 */
@@ -339,6 +346,8 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenAgent,
   onOpenTask,
   taskNameOf,
+  teamNameOf,
+  teams,
 }: {
   entry: ChatEntry;
   conn: Connection;
@@ -348,10 +357,14 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenDiff?: (callId: string, path: string) => void;
   /** G14.171 spawn 行子智能体名=蓝色链接,点开对应 agent 只读标签页(App 注入 openTabInSession) */
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
-  /** G14.176 create_task 行任务名=蓝色链接,点开任务板定位高亮对应卡(App 注入) */
+  /** 任务名/队名链接:任务 ref 开板高亮;`team:` 前缀开指定队卡(App 注入 openTaskFocus) */
   onOpenTask?: (taskRef: string) => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
+  /** 队名解析(get_board/create_team;缺省显示原 ref) */
+  teamNameOf?: (ref: string) => string;
+  /** 会话团队清单(get_board 单队回落队名) */
+  teams?: readonly { teamId: string; name: string }[];
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** 2026-10-26 三期 §4.5:快照分页剥 result.full——展开且缺 full 时按 seq 单条拉观测端点;
@@ -412,16 +425,30 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** create_team 队名——折叠行「创建智能体团队 {name}」;运行态同构 */
   const teamName =
     toolName === 'create_team' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
-  /** G14.172 task_wait 折叠行任务名(taskNameOf 单点解析;同名去重)——用户裁决「等待任务显示任务名称,不要用 id」 */
-  const waitTaskNames = toolName === 'task_wait'
-    ? [
-        ...new Set(
-          (Array.isArray(input.taskIds) ? (input.taskIds as unknown[]) : [])
-            .filter((x): x is string => typeof x === 'string')
-            .map((id) => (taskNameOf !== undefined ? taskNameOf(id) : id)),
-        ),
-      ]
+  /** send_message 收件人与正文(展开体显示正文;折叠行只跟收件人名) */
+  const messageTo =
+    toolName === 'send_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
+  const messageText =
+    toolName === 'send_message' && typeof input.text === 'string' ? input.text : '';
+  /** G14.172 task_wait 折叠行任务名(taskNameOf 单点解析)——用户裁决「等待任务显示任务名称,不要用 id」;保留 id 供链接定位 */
+  const waitTasks = toolName === 'task_wait'
+    ? (Array.isArray(input.taskIds) ? (input.taskIds as unknown[]) : [])
+        .filter((x): x is string => typeof x === 'string' && x !== '')
+        .map((id) => ({ id, name: taskNameOf !== undefined ? taskNameOf(id) : id }))
     : [];
+  /** get_board 折叠行队名:回执 team=… 去重 → 队名解析;无 team 行且会话仅一队时回落该队 */
+  const boardTeamRefs = (() => {
+    if (toolName !== 'get_board') return [] as Array<{ ref: string; name: string }>;
+    const ids = [...new Set([...resultText.matchAll(/\bteam=([^\s\]]+)/g)].map((m) => m[1]!))];
+    if (ids.length > 0) {
+      return ids.map((id) => ({ ref: id, name: teamNameOf !== undefined ? teamNameOf(id) : id }));
+    }
+    if (teams !== undefined && teams.length === 1) {
+      const only = teams[0]!;
+      return [{ ref: only.teamId, name: only.name !== '' ? only.name : only.teamId }];
+    }
+    return [] as Array<{ ref: string; name: string }>;
+  })();
   /** G14.214 task_* 折叠行/运行态任务名：input.taskId 经 taskNameOf 单点解析（board 直查→转录映射→短 id 兜底，
    *  与 task_wait G14.172 同口径）；set_dependency 额外解析 dependsOn（「任务 ← 依赖目标」双名）。
    *  缺 taskId/解析器（测试桩、种子条旧格式）不进该分型，回落默认动词行 */
@@ -452,6 +479,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     // 2026-10-24 create_teammate 运行态带队友名(与 spawn 同构)
     if (toolName === 'create_teammate' && teammateName !== '') return t(`Creating teammate ${teammateName}`, `正在创建智能体团队成员 ${teammateName}`);
     if (toolName === 'create_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
+    if (toolName === 'send_message' && messageTo !== '') return t(`Sending message to ${messageTo}`, `正在发送消息给 ${messageTo}`);
     // create_task 运行态带任务标题——「正在创建任务 调研项目结构」,id 不进折叠行
     if (toolName === 'create_task' && typeof input.title === 'string' && input.title !== '') {
       return t(`Creating task ${input.title}`, `正在创建任务 ${input.title}`);
@@ -528,6 +556,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   const createTaskTitle = toolName === 'create_task' && typeof input.title === 'string' ? input.title : '';
   const hideTargetWhileRunning = executing && (
     toolName === 'spawn' || toolName === 'create_teammate' || toolName === 'create_team'
+    || toolName === 'send_message'
     || (toolName === 'create_task' && createTaskTitle !== '')
     || toolName === 'skill' || taskOpName !== undefined
   );
@@ -590,8 +619,49 @@ export const ToolEntryView = memo(function ToolEntryView({
           return <span className="tool-file-base tool-cmd">{' '}{done}/{arr.length}</span>;
         })()
       ) : !hideTargetWhileRunning && toolName === 'create_team' ? (
-        /* 折叠行「创建智能体团队 {name}」——队名跟动词,id 不进折叠行(回执/展开体承载) */
-        <span className="tool-file-base tool-cmd">{teamName !== '' ? ` ${teamName}` : ''}</span>
+        /* 折叠行「创建智能体团队 {name}」——队名蓝色链接开指定队卡 */
+        teamName !== '' && onOpenTask !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('Open team board', '打开该团队任务板')}
+            onClick={(e) => {
+              e.stopPropagation();
+              const idHit = /teamId=([^\s);,]+)/.exec(resultText);
+              onOpenTask(`team:${idHit !== null ? idHit[1]! : teamName}`);
+            }}
+          >
+            {' '}{teamName}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">{teamName !== '' ? ` ${teamName}` : ''}</span>
+        )
+      ) : !hideTargetWhileRunning && toolName === 'get_board' ? (
+        /* 看板后跟队名链接(回执 team= 解析);点开指定队卡 */
+        boardTeamRefs.length > 0 && onOpenTask !== undefined ? (
+          <>
+            {boardTeamRefs.map((team, i) => (
+              <span key={`${team.ref}:${i}`}>
+                {i === 0 ? ' ' : ', '}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="tool-file-base tool-agent-link"
+                  data-tip={t('Open team board', '打开该团队任务板')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenTask(`team:${team.ref}`);
+                  }}
+                >
+                  {team.name}
+                </span>
+              </span>
+            ))}
+          </>
+        ) : boardTeamRefs.length > 0 ? (
+          <span className="tool-file-base tool-cmd">{' '}{boardTeamRefs.map((x) => x.name).join(', ')}</span>
+        ) : null
       ) : !hideTargetWhileRunning && toolName === 'create_task' ? (
         /* G14.168 折叠行带任务名;G14.176 任务名=蓝色链接,点开任务板定位高亮对应卡 */
         onOpenTask !== undefined && typeof input.title === 'string' && input.title !== '' ? (
@@ -653,22 +723,116 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : (
           <span className="tool-file-base tool-cmd">{teammateName !== '' ? ` ${teammateName}` : ''}</span>
         )
+      ) : !hideTargetWhileRunning && toolName === 'send_message' ? (
+        /* 折叠行带收件人名(lead 纯文本;队友名可点开转录);正文进展开体 */
+        messageTo !== '' && messageTo !== 'lead' && onOpenAgent !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('View teammate', '查看队友')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAgent(messageTo, messageTo);
+            }}
+          >
+            {' '}{messageTo}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageTo}` : ''}</span>
+        )
       ) : !hideTargetWhileRunning && toolName === 'task_wait' ? (
-        /* G14.167 折叠行带等待任务名(G14.172:任务板解析为任务名,不用 id;null=等全部在跑) */
-        <span className="tool-file-base tool-cmd">
-          {' '}
-          {waitTaskNames.length > 0
-            ? waitTaskNames.join(', ')
-            : Array.isArray(input.taskIds)
-              ? ''
-              : t('all background tasks', '全部后台任务')}
-        </span>
+        /* G14.167 折叠行带等待任务名(链接开板高亮;null=等全部在跑) */
+        waitTasks.length > 0 && onOpenTask !== undefined ? (
+          <>
+            {waitTasks.map((task, i) => (
+              <span key={`${task.id}:${i}`}>
+                {i === 0 ? ' ' : ', '}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="tool-file-base tool-agent-link"
+                  data-tip={t('Open task board card', '在任务板中定位')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenTask(task.id);
+                  }}
+                >
+                  {task.name}
+                </span>
+              </span>
+            ))}
+          </>
+        ) : (
+          <span className="tool-file-base tool-cmd">
+            {' '}
+            {waitTasks.length > 0
+              ? waitTasks.map((x) => x.name).join(', ')
+              : Array.isArray(input.taskIds)
+                ? ''
+                : t('all background tasks', '全部后台任务')}
+          </span>
+        )
       ) : !hideTargetWhileRunning && taskOpName !== undefined ? (
-        /* G14.214 task_* 折叠行带任务名(复审/停止/门审/取消/分派;set_dependency 双名「任务 ← 依赖目标」) */
-        <span className="tool-file-base tool-cmd">
-          {' '}{taskOpName}
-          {taskOpDepName !== undefined && ` ← ${taskOpDepName}`}
-        </span>
+        /* G14.214 task_* 折叠行带任务名(链接开板高亮;set_dependency 双名「任务 ← 依赖目标」) */
+        onOpenTask !== undefined ? (
+          <>
+            {' '}
+            <span
+              role="button"
+              tabIndex={-1}
+              className="tool-file-base tool-agent-link"
+              data-tip={t('Open task board card', '在任务板中定位')}
+              onClick={(e) => {
+                e.stopPropagation();
+                const id = typeof input.taskId === 'string' ? input.taskId : taskOpName;
+                onOpenTask(id);
+              }}
+            >
+              {taskOpName}
+            </span>
+            {taskOpDepName !== undefined && (
+              <>
+                {' ← '}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="tool-file-base tool-agent-link"
+                  data-tip={t('Open task board card', '在任务板中定位')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const id = typeof input.dependsOn === 'string' ? input.dependsOn : taskOpDepName;
+                    onOpenTask(id);
+                  }}
+                >
+                  {taskOpDepName}
+                </span>
+              </>
+            )}
+            {toolName === 'assign' && typeof input.assignee === 'string' && input.assignee !== '' && onOpenAgent !== undefined && (
+              <>
+                {' · '}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="tool-file-base tool-agent-link"
+                  data-tip={t('View teammate', '查看队友')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenAgent(input.assignee as string, input.assignee as string);
+                  }}
+                >
+                  {input.assignee as string}
+                </span>
+              </>
+            )}
+          </>
+        ) : (
+          <span className="tool-file-base tool-cmd">
+            {' '}{taskOpName}
+            {taskOpDepName !== undefined && ` ← ${taskOpDepName}`}
+          </span>
+        )
       ) : command !== undefined ? (
         /* G14.50:展开态不重复命令文本(下方 $ 行已完整示出) */
         <span className="tool-file-base tool-cmd">{' '}{command}</span>
@@ -682,7 +846,23 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 展开面主体(G14 分型):write/edit=行级 diff 面板;skill=md 正文;exec=$ 命令高亮+输出;
    *  todo_write=本地化清单(G14.138,daemon 英文结果不进展开面);其余=输出原文 */
   let body: JSX.Element;
-  if (toolName === 'todo_write') {
+  if (toolName === 'send_message') {
+    body = (
+      <div className="tool-detail">
+        {messageText !== '' && (
+          <div className="tool-msg-body" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: resultText !== '' ? 8 : 0 }}>
+            {messageText}
+          </div>
+        )}
+        {resultText !== '' && (
+          <div className="tool-msg-receipt" style={{ color: 'var(--fg-secondary)', fontSize: 12 }}>
+            {resultText}
+          </div>
+        )}
+        {messageText === '' && resultText === '' && <div className="tool-todo-empty">{t('(empty)', '（空）')}</div>}
+      </div>
+    );
+  } else if (toolName === 'todo_write') {
     const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
     body = (
       <div className="tool-todos" aria-label="todo list">

@@ -49,8 +49,8 @@ export interface TabServices {
   readonly todos: import('../../../src/types').TodoItem[];
   /** G14.174 待办批次(每批 todo_write 一卡;Chat 从转录重建上抛)——「待办」页签数据面 */
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
-  /** G14.176 create_task 行点开的定位信号(App 注入;nonce 变更即滚动高亮) */
-  readonly taskFocus: { ref: string; nonce: number } | null;
+  /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
+  readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   /** G14.2xx b create_task 行任务名点击 → 开任务板页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
    *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
@@ -205,6 +205,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         sessionId={p.sessionId}
         activities={p.services.agentActivities[p.params.label ?? '']}
         board={p.services.board}
+        teams={p.services.teams}
         task={p.params.task}
         // G14.2xx b 工具行/正文回调链与主对话同构(App openTabInSession 同一开签口径——
         // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_task 名定位任务板)

@@ -185,6 +185,20 @@ describe('G14.2xx b chat 投影对标主对话(reasoning/run/steps 入核)', () 
   });
 });
 
+describe('任务带写入用户气泡', () => {
+  it('连续两轮 taskBand 各产一条 user 条目(上一轮不丢)', () => {
+    let s = applyAgentEvent({}, sub('step', 'w1', '', { taskBand: 'Task t1: 第一轮' }));
+    expect(s.w1!.taskBand).toBe('Task t1: 第一轮');
+    expect(s.w1!.chat.entries.filter((e) => e.kind === 'user').map((e) => e.md)).toEqual(['Task t1: 第一轮']);
+    s = applyAgentEvent(s, sub('step', 'w1', '', { taskBand: 'Task t2: 第二轮' }));
+    expect(s.w1!.taskBand).toBe('Task t2: 第二轮');
+    expect(s.w1!.chat.entries.filter((e) => e.kind === 'user').map((e) => e.md)).toEqual([
+      'Task t1: 第一轮',
+      'Task t2: 第二轮',
+    ]);
+  });
+});
+
 describe('重复投递帧 done 必封投影(2026-10-31 重启后重复时间线+永转根修钉)', () => {
   it('卡已 done 后整流重放:第二份 done 必过 chat 投影封 run(openRun 不悬空——转录页不永转)', () => {
     const stream = [

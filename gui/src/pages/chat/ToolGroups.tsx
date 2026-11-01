@@ -89,7 +89,8 @@ function segPropsEqual(prev: ToolSegBlockProps, next: ToolSegBlockProps): boolea
     && prev.closed === next.closed
     && prev.renderTool === next.renderTool
     && prev.renderThinking === next.renderThinking
-    && prev.renderAssistant === next.renderAssistant;
+    && prev.renderAssistant === next.renderAssistant
+    && prev.renderEntry === next.renderEntry;
 }
 
 interface ToolSegBlockProps {
@@ -98,6 +99,8 @@ interface ToolSegBlockProps {
   renderTool: (e: ChatEntry) => ReactNode;
   renderThinking: (e: ChatEntry) => ReactNode;
   renderAssistant: (e: ChatEntry) => ReactNode;
+  /** 轮内插入用户条/成员消息等随折条目(缺省走 renderAssistant——ChatEntryView 可渲 notice) */
+  renderEntry?: (e: ChatEntry) => ReactNode;
 }
 
 /** 会话折叠段块（Chat flushSeg 抽件，G14.73 seg-collapse 壳不变）：段内条目经 buildSegNodes 聚合——
@@ -110,6 +113,7 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   renderTool,
   renderThinking,
   renderAssistant,
+  renderEntry,
 }: ToolSegBlockProps): JSX.Element {
   const nodes = buildSegNodes(seg);
   /** 展开态（聚合头点击）：gkey 集合——键含首成员 key，计数增长键不变、展开态跨渲染保持 */
@@ -165,7 +169,9 @@ export const ToolSegBlock = memo(function ToolSegBlock({
       <div className="seg-inner">
         {nodes.map((n) => {
           if (n.type === 'entry') {
-            return n.entry.kind === 'thinking' ? renderThinking(n.entry) : renderAssistant(n.entry);
+            if (n.entry.kind === 'thinking') return renderThinking(n.entry);
+            if (n.entry.kind === 'assistant') return renderAssistant(n.entry);
+            return (renderEntry ?? renderAssistant)(n.entry);
           }
           if (n.type === 'tool') return renderTool(n.entry);
           const isOpen = expanded.has(n.gkey);

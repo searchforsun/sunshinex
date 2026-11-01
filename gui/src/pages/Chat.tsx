@@ -79,7 +79,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -209,9 +209,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived
    *  (P11 T7 起字段单源:工具 input 暂存注入随旁路退役) */
-  const { taskNameOf, todoActive, taskActive, computerUseActive } = useChatDerived({
+  const { taskNameOf, teamNameOf, todoActive, taskActive, computerUseActive } = useChatDerived({
     chat,
     board,
+    teams,
     onTodoBatches,
   });
   // 2026-10-26 滚动卡点修复:runFooter 投影引用稳定化——此前逐渲染 new Map,组级 memo 比较器恒失配,
@@ -649,6 +650,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onOpenAgent={onOpenAgent}
         onOpenTask={onOpenTask}
         taskNameOf={taskNameOf}
+        teamNameOf={teamNameOf}
+        teams={teams}
         collapsedRuns={collapsedRuns}
         toggleRun={toggleRun}
         submitText={submitText}

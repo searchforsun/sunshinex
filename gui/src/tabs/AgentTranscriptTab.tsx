@@ -9,7 +9,7 @@ import { ChatEntryView, CollapsibleBubble, ThinkingEntryView, ToolEntryView } fr
 import { RunEntryView } from '../pages/chat/EntryViews';
 import { ToolSegBlock } from '../pages/chat/ToolGroups';
 import { useCopyFeedback } from '../use-copy-feedback';
-import { runFooterMapOf, taskNameResolverOf } from '../pages/chat/use-chat-derived';
+import { runFooterMapOf, taskNameResolverOf, teamNameResolverOf } from '../pages/chat/use-chat-derived';
 import { collapsedHiddenKeys, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
 import type { ChatEntry } from '../chat-reducer';
 
@@ -47,13 +47,14 @@ export interface AgentTranscriptTabProps {
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   readonly onOpenTask?: (ref: string) => void;
+  readonly teams?: readonly import('../projection').BoardTeamRef[];
 }
 
 /** G14.2xx 转录=同源内核投影条目直渲（agent-activity 卡挂 chat: ChatState,applySubagentChatEvent
  *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
-export function AgentTranscriptTab({ conn, sessionId, activities, board, task, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask }: AgentTranscriptTabProps): JSX.Element {
+export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.2xx 回到底部钮:非贴底即显(同主对话 G14.74 口径;80px 阈值同贴底判定) */
   const [atBottom, setAtBottom] = useState(true);
@@ -62,6 +63,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
   const chat = activities?.chat;
   const entries = chat?.entries ?? [];
   const taskNameOf = useMemo(() => taskNameResolverOf(entries, board), [entries, board]);
+  const teamNameOf = useMemo(() => teamNameResolverOf(entries, teams), [entries, teams]);
   // G14.2xx b 轮尾操作条(主对话同件):各段末条 assistant 挂复制+封段统计(runFooterMapOf 单点;
   // onFork 不传——只读转录面无分叉语义)
   const runFooterByEntry = useMemo(() => runFooterMapOf(entries, chat?.status ?? 'idle'), [entries, chat?.status]);
@@ -109,7 +111,9 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
   const liveTokens =
     lastLiveRun?.tokensBase !== undefined && chat !== undefined ? Math.max(0, chat.tokens - lastLiveRun.tokensBase) : (chat?.tokens ?? 0);
 
-  const userText = activities?.taskBand ?? task ?? '';
+  // 任务带已写入 chat 用户条时不再头顶重复贴一条;仅开档参数 / 旧投影无用户条时回落
+  const hasUserInChat = entries.some((e) => e.kind === 'user');
+  const userText = !hasUserInChat ? (activities?.taskBand ?? task ?? '') : '';
   // G14.202 复制钮:右下角,hover 行时显示(参考主对话复制钮方位);点击回显已复制(useCopyFeedback 单点)
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** G14.2xx 工具/思考段 = 主对话 ToolSegBlock 同件:同类型相邻已完成工具行聚合并可平级展开
@@ -117,6 +121,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
    *  hiddenKeys 折叠区间内的工具/思考行进 seg-collapse 平滑容器) */
   const nodes: JSX.Element[] = [];
   let seg: ChatEntry[] = [];
+  let seenUser = false;
   const flushSeg = (): void => {
     if (seg.length === 0) return;
     const segEntries = seg;
@@ -137,21 +142,66 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, task, o
             onOpenAgent={onOpenAgent}
             onOpenTask={onOpenTask}
             taskNameOf={taskNameOf}
+            teamNameOf={teamNameOf}
+            teams={teams}
           />
         )}
         renderThinking={(e2) => <ThinkingEntryView key={e2.key} entry={e2} />}
         renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
+        renderEntry={(e2) => {
+          if (e2.kind === 'user') {
+            return (
+              <div key={e2.key} className="entry entry-user child-user-entry entry-user-insert" data-entry-key={e2.key}>
+                <CollapsibleBubble text={e2.md} render={(md) => <div className="child-user-text">{md}</div>} />
+                <button
+                  type="button"
+                  className="child-copy"
+                  aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
+                  data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
+                  onClick={() => copyText(e2.md)}
+                >
+                  {copied === 'ok' ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+                </button>
+              </div>
+            );
+          }
+          return <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />;
+        }}
       />,
     );
     seg = [];
   };
   for (const e of entries) {
-    // G14.136 同款:工具/思考行与折叠区间内的中间 sealed assistant 进段(轮折叠一起收合)
-    if (e.kind === 'tool' || e.kind === 'thinking' || (e.kind === 'assistant' && hiddenKeys.has(e.key))) {
+    // 工具/思考/轮内插入/成员消息进段(与主对话 collapsedHiddenKeys 同口径)
+    if (
+      e.kind === 'tool'
+      || e.kind === 'thinking'
+      || ((e.kind === 'assistant' || e.kind === 'user' || e.kind === 'notice') && hiddenKeys.has(e.key))
+    ) {
       seg.push(e);
       continue;
     }
     flushSeg();
+    // 每轮任务带=用户气泡(首条正常间距,后续当插入态收紧)
+    if (e.kind === 'user') {
+      const insert = seenUser;
+      seenUser = true;
+      nodes.push(
+        <div key={e.key} className={`entry entry-user child-user-entry${insert ? ' entry-user-insert' : ''}`} data-entry-key={e.key}>
+          <CollapsibleBubble text={e.md} render={(md) => <div className="child-user-text">{md}</div>} />
+          <button
+            type="button"
+            className="child-copy"
+            aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
+            data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
+            onClick={() => copyText(e.md)}
+          >
+            {copied === 'ok' ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          </button>
+        </div>,
+      );
+      continue;
+    }
     // G14.2xx b run 条走 RunEntryView(主对话同件:streaming=运行中秒针行,sealed=已运行 Xs;
     // 自带 border-bottom 分割线);sealed 行=轮折叠开关(collapsed/onToggle 主对话同款)
     if (e.kind === 'run') {

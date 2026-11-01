@@ -130,11 +130,12 @@ describe('AgentTranscriptTab 对标主对话', () => {
     const { container } = render(
       <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.w2} board={boardStub} onOpenAgent={onOpenAgent} />,
     );
-    const bubbles = container.querySelectorAll('.agent-msg-bubble');
+    const bubbles = container.querySelectorAll('.agent-msg');
     expect(bubbles).toHaveLength(1);
     expect(container.querySelector('.agent-msg-from')?.textContent).toBe('w1');
     expect(bubbles[0]?.textContent).toContain('先看测试');
-    fireEvent.click(bubbles[0]!);
+    expect(bubbles[0]?.classList.contains('entry-user-insert')).toBe(true);
+    fireEvent.click(container.querySelector('.agent-msg-from')!);
     expect(onOpenAgent).toHaveBeenCalledWith('w1', 'w1');
   });
 
