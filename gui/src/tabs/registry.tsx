@@ -226,7 +226,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Background tasks', '后台任务'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} />,
+    render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} openTab={p.openTab} />,
   },
   {
     id: 'memory',

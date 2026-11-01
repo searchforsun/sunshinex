@@ -133,10 +133,10 @@ export interface Connection {
    *  真后台执行——subagent/teammate 账本行退役(子智能体/队友在任务板·agent 页签已有专面,双处
    *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用)。行形 SessionTaskRow 单点(connection-types) */
   sessionTasks(id: string): Promise<SessionTaskRow[]>;
-  /** POST /session/:id/tasks/pause|resume {id: taskId}：后台任务暂停/恢复（2026-10-31 GUI 暂停钮）。
-   *  409=任务无暂停闭包（subagent/重放孤儿账）;404=会话/任务未知;幂等=已是目标态 200 */
-  taskPause(id: string, taskId: string): Promise<void>;
-  taskResume(id: string, taskId: string): Promise<void>;
+  /** POST /session/:id/tasks/stop {id: taskId}：后台任务停止（2026-11-02 用户裁定「暂停=复用
+   *  task_stop,撤恢复」）。task_stop 同语义（exec 杀进程树/subagent 打断线），终态 stopped 即
+   *  task_wait 可见；404=会话/任务未知；幂等=已终态 200 */
+  taskStop(id: string, taskId: string): Promise<void>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
   memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
@@ -564,13 +564,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       // 白名单:只留 exec 类真后台执行(subagent/teammate 各有专面)——见接口注
       return getJson<SessionTaskRow[]>(
         '/session/' + encodeURIComponent(id) + '/tasks',
-      ).then((rows) => rows.filter((r) => r.kind === 'exec'));
+      ).then((rows) => rows); // 2026-11-02 用户裁定「后台的 spawn 加回来」:subagent 后台行不再滤除(停止=task_stop 语义可停子智能体;行点击跳转录页)
     },
-    async taskPause(id: string, taskId: string): Promise<void> {
-      await post('/session/' + encodeURIComponent(id) + '/tasks/pause', { id: taskId });
-    },
-    async taskResume(id: string, taskId: string): Promise<void> {
-      await post('/session/' + encodeURIComponent(id) + '/tasks/resume', { id: taskId });
+    async taskStop(id: string, taskId: string): Promise<void> {
+      await post('/session/' + encodeURIComponent(id) + '/tasks/stop', { id: taskId });
     },
     memoryList(root: string) {
       return getJson('/memory?root=' + encodeURIComponent(root));

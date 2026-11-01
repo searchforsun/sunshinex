@@ -417,8 +417,6 @@ export interface ToolBackend {
   killBackground?(pid: number): void;
   /** 挂起/恢复后台任务进程树（GUI 暂停钮后端）：win32 走 ntdll 挂起（树枚举），POSIX SIGSTOP/SIGCONT。
    *  返回 true=树已挂起/恢复（账本据此翻状态），false=进程已死等不可挂起（状态不动） */
-  suspendBackground?(pid: number): boolean;
-  resumeBackground?(pid: number): boolean;
   readFile(absPath: string): string;
   /** 写入含父目录自动创建（维持现行 write 语义） */
   writeFile(absPath: string, content: string): void;

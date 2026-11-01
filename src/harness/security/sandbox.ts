@@ -153,60 +153,7 @@ export class ProcessSandbox implements ToolBackend {
     return ok({ pid: child.pid ?? 0 });
   }
 
-  /** 挂起/恢复后台任务进程树（GUI 暂停钮后端，2026-10-31）：win32=PowerShell P/Invoke ntdll
-   *  NtSuspendProcess/NtResumeProcess（无内置挂起 API；树枚举 Win32_Process ParentProcessId BFS，
-   *  挂起先子后根、恢复先根后子——恢复顺序保证父 shell 先醒不提前收割子）；POSIX=SIGSTOP/SIGCONT
-   *  按组投递回退单 pid。返回 true=树已挂起/恢复；false=根进程已死等（账本状态不动）。
-   *  平台形态只允许落本文件（CLAUDE.md §14），与 killBackground 同位 */
-  suspendBackground(pid: number): boolean {
-    return this.suspendTree(pid, true);
-  }
 
-  resumeBackground(pid: number): boolean {
-    return this.suspendTree(pid, false);
-  }
-
-  private suspendTree(pid: number, suspend: boolean): boolean {
-    if (pid <= 0) return false;
-    if (process.platform === 'win32') {
-      const action = suspend ? 'NtSuspendProcess' : 'NtResumeProcess';
-      // 树枚举+逐 pid 投递一把梭（CIM 快照在先,避免逐 pid 查询;根先判活省整棵树扫描）
-      const ps = `(Add-Type '
-using System;
-using System.Runtime.InteropServices;
-public static class NtSuspend {
-  [DllImport("kernel32.dll", SetLastError=true)] public static extern IntPtr OpenProcess(uint a, bool i, int p);
-  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
-  [DllImport("ntdll.dll")] public static extern int NtSuspendProcess(IntPtr h);
-  [DllImport("ntdll.dll")] public static extern int NtResumeProcess(IntPtr h);
-}');
-$ErrorActionPreference='Stop'
-$root=${pid}
-try { $null=Get-Process -Id $root -ErrorAction Stop } catch { exit 2 }
-$procs=Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
-$ids=New-Object System.Collections.Generic.List[int]
-$frontier=@($root)
-while ($frontier.Count -gt 0) {
-  $next=@()
-  foreach ($p in $frontier) { $ids.Add([int]$p); foreach ($c in ($procs | Where-Object { $_.ParentProcessId -eq $p })) { $next += [int]$c.ProcessId } }
-  $frontier=$next
-}
-${suspend ? '$ids.Reverse()' : ''}
-$h=[NtSuspend]::OpenProcess(0x0800,$false,$root)
-if ($h -eq [IntPtr]::Zero) { exit 3 }
-try { foreach ($i in $ids) { $ph=[NtSuspend]::OpenProcess(0x0800,$false,$i); if ($ph -ne [IntPtr]::Zero) { $null=[NtSuspend]::${action}($ph); $null=[NtSuspend]::CloseHandle($ph) } } }
-finally { $null=[NtSuspend]::CloseHandle($h) }
-exit 0`
-      const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true, encoding: 'utf8', timeout: 15000 });
-      return r.status === 0;
-    }
-    try {
-      process.kill(-pid, suspend ? 'SIGSTOP' : 'SIGCONT');
-      return true;
-    } catch {
-      try { process.kill(pid, suspend ? 'SIGSTOP' : 'SIGCONT'); return true; } catch { return false; }
-    }
-  }
 
   /** 按进程组/进程树终止后台任务（task_stop 单点后端）：POSIX 杀 -pid 组，Windows 杀 /T 树。
    *  返回时进程树已收割完毕——调用方（task_stop、测试夹具清理）得以在此之后安全释放 cwd 目录句柄。 */

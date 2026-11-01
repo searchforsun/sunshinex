@@ -19,7 +19,7 @@ import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { resolveDataDir } from '../config/data-dir';
 import { validSessionId } from './session-id';
-import { stopBoardTask } from '../harness/tools/task-stop';
+import { abortLedger, stopBoardTask } from '../harness/tools/task-stop';
 
 /** 会话控制面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：submit/interrupt/steer 族/reset/snapshot/
  *  anchors/tier/effort/model/mode/command/tasks/context/board-stop/rename/title/attach——类状态
@@ -238,16 +238,20 @@ export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerRespons
 /** POST /session/:id/tasks/pause|resume（2026-10-31 GUI 暂停钮）：body {id: taskId}；经 resolveId
  *  归一（task_wait 同款）。409=该任务无暂停闭包（subagent/重放孤儿账——挂起面仅 exec 活账在），
  *  404=会话/任务未知。幂等：已是目标态原样 200 */
-export function handleTaskPause(io: SessionHandlerIo, res: http.ServerResponse, id: string, taskId: string, paused: boolean): void {
+export function handleTaskStop(io: SessionHandlerIo, res: http.ServerResponse, id: string, taskId: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const tid = session.runtime.harness.tasks.resolveId(taskId);
   const t = session.runtime.harness.tasks.get(tid);
   if (t === undefined) return io.send(res, 404, { error: 'unknown task' });
-  const closure = paused ? t.pause : t.resume;
-  if (closure === undefined) return io.send(res, 409, { error: paused ? 'task not pausable' : 'task not resumable' });
-  closure();
-  io.send(res, 200, { id: t.id, status: t.status });
+  // 2026-11-02 用户裁定「暂停就是复用 task_stop,task_wait 能监听到就可以;不要自己加逻辑」:
+  // GUI 后台任务停止钮=task_stop 同语义(abortLedger:exec 杀进程树/subagent 打断线)——终态落
+  // 'stopped',task_wait 等待面自然收敛;挂起/恢复面(NtSuspend/任务账 paused 翻面)整面退役
+  if (t.status !== 'running' && t.status !== 'paused') {
+    return io.send(res, 200, { id: t.id, status: t.status, receipt: `task ${t.id} already finished with status ${t.status}` });
+  }
+  abortLedger(session.runtime.harness.tasks, t);
+  io.send(res, 200, { id: t.id, status: session.runtime.harness.tasks.get(tid)?.status ?? 'stopped' });
 }
 
 

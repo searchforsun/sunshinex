@@ -64,7 +64,7 @@ export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: stri
 }
 
 /** 执行体中止并收口台账。stop 句柄由提交方挂载（fork/teammate=abort，external=强杀）；已终态的 finish 幂等 */
-function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefined): void {
+export function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefined): void {
   if (ledger === undefined) return;
   ledger.stop?.();
   const now = tasks.get(ledger.id);
