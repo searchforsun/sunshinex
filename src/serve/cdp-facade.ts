@@ -34,7 +34,13 @@ export interface FacadeOpts {
   openTab?: (url: string) => void;
   /** 模型关页(Target.closeTarget)→ 让 GUI 关掉该 target 对应的侧栏页签;缺省=拒绝 closeTarget */
   closeTab?: (targetId: string) => boolean;
+  /** 文本输入前后让 GUI 聚焦/归还该 target 的侧栏 webview:guest 只在宿主 webview 元素持有焦点时
+   *  收文本输入(实测 Input.insertText/char 键事件在未聚焦时静默丢失=fill 后值为空) */
+  focusTab?: (targetId: string, phase: 'begin' | 'end') => boolean;
 }
+
+/** 聚焦 IPC 到渲染层生效的余量(焦点切换走 GUI 进程,先于 insertText 落到 guest) */
+const FOCUS_SETTLE_MS = 50;
 
 /** createTarget 应答前等本连接收到该 target 的 attachedToTarget 的上限(Playwright newPage 在应答
  *  后立即按 targetId 取已附加页,真实 Chrome 恒先发 attach 后应答——不等即 '_page' of undefined) */
@@ -137,6 +143,10 @@ export class BuiltinFacade {
     // 待发队列:playwright 首命令可在 real open 前到达(实测竞窗)——open 前缓存,open 即冲刷
     const outbox: string[] = [];
     const attached = new Set<string>();
+    /** flatten 会话 id → targetId(Input.* 命令带 sessionId,据此找到对应侧栏页签) */
+    const sessionTargets = new Map<string, string>();
+    /** 已聚焦待归还的 insertText 命令 id → targetId(应答到达即归还焦点) */
+    const focusPending = new Map<number, string>();
     const attachWaiters = new Map<string, () => void>();
     const waitAttached = (targetId: string): Promise<void> =>
       attached.has(targetId)
@@ -178,9 +188,15 @@ export class BuiltinFacade {
         }
       }
       this.sendTo(ws, msg);
+      if (typeof msg.id === 'number' && focusPending.has(msg.id)) {
+        this.opts.focusTab?.(focusPending.get(msg.id)!, 'end');
+        focusPending.delete(msg.id);
+      }
       if (msg.method === 'Target.attachedToTarget') {
-        const tid = (msg.params as { targetInfo?: { targetId?: string } } | undefined)?.targetInfo?.targetId;
+        const ap = msg.params as { sessionId?: string; targetInfo?: { targetId?: string } } | undefined;
+        const tid = ap?.targetInfo?.targetId;
         if (typeof tid === 'string') {
+          if (typeof ap?.sessionId === 'string') sessionTargets.set(ap.sessionId, tid);
           attached.add(tid);
           attachWaiters.get(tid)?.();
           attachWaiters.delete(tid);
@@ -224,8 +240,18 @@ export class BuiltinFacade {
           return;
         }
       }
-      if (real.readyState === WebSocket.OPEN) real.send(String(data));
-      else if (real.readyState === WebSocket.CONNECTING) outbox.push(String(data));
+      const forward = (): void => {
+        if (real.readyState === WebSocket.OPEN) real.send(String(data));
+        else if (real.readyState === WebSocket.CONNECTING) outbox.push(String(data));
+      };
+      const sid = (msg as { sessionId?: unknown }).sessionId;
+      const tid = msg.method === 'Input.insertText' && typeof sid === 'string' ? sessionTargets.get(sid) : undefined;
+      if (tid !== undefined && typeof msg.id === 'number' && this.opts.focusTab?.(tid, 'begin') === true) {
+        focusPending.set(msg.id, tid);
+        setTimeout(forward, FOCUS_SETTLE_MS);
+        return;
+      }
+      forward();
     });
     ws.on('close', () => real.close());
   }
@@ -310,7 +336,14 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
     gui.webContents.send('builtin:close-webcontents', wc.id);
     return true;
   };
-  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, closeTab });
+  const focusTab = (targetId: string, phase: 'begin' | 'end'): boolean => {
+    const wc = et.webContents?.fromDevToolsTargetId?.(targetId);
+    const gui = guiWindow();
+    if (wc === undefined || gui === undefined) return false;
+    gui.webContents.send('builtin:focus-webcontents', wc.id, phase);
+    return true;
+  };
+  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, closeTab, focusTab });
   return facade.start().then(() => ({ facade, ws: facade.endpoint })).catch((err) => {
     log?.(`facade start failed: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

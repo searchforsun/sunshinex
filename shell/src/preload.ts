@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     ipcRenderer.on('builtin:close-webcontents', handler);
     return () => void ipcRenderer.removeListener('builtin:close-webcontents', handler);
   },
+  /** 模型文本输入前后(facade Input.insertText):聚焦对应 webview,应答后归还焦点 */
+  onFocusWebContents: (cb: (webContentsId: number, phase: 'begin' | 'end') => void): (() => void) => {
+    const handler = (_: unknown, id: number, phase: 'begin' | 'end'): void => cb(id, phase);
+    ipcRenderer.on('builtin:focus-webcontents', handler);
+    return () => void ipcRenderer.removeListener('builtin:focus-webcontents', handler);
+  },
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);
     ipcRenderer.on('win:maximized', handler);

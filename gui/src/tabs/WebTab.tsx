@@ -80,6 +80,28 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose }: WebTabProps
       } catch { /* webview 未 attach:getWebContentsId 抛错,非本页签 */ }
     });
   }, [builtin]);
+  /** 模型文本输入:guest 只在宿主 webview 元素有焦点时收文本——begin 记下原焦点并聚焦 webview,
+   *  end 若焦点仍在 webview 则归还(用户在输入框打字不被长时间抢走) */
+  useEffect(() => {
+    const bridge = (window as unknown as { sunshinexWindow?: { onFocusWebContents?: (cb: (id: number, phase: 'begin' | 'end') => void) => () => void } }).sunshinexWindow?.onFocusWebContents;
+    if (!builtin || bridge === undefined) return;
+    let prev: Element | null = null;
+    return bridge((id, phase) => {
+      const wv = wvRef.current;
+      try {
+        if (wv === null || wv.getWebContentsId() !== id) return;
+      } catch {
+        return;
+      }
+      if (phase === 'begin') {
+        if (document.activeElement !== wv) prev = document.activeElement;
+        wv.focus();
+      } else {
+        if (prev instanceof HTMLElement && document.activeElement === wv) prev.focus();
+        prev = null;
+      }
+    });
+  }, [builtin]);
   /** 首个导航目标(null=未开页,空态引导面);后续导航经 loadURL 驱动,不改 src(防重挂) */
   const [wvTarget, setWvTarget] = useState<string | null>(
     builtin ? (params.url === 'about:blank' ? 'about:blank' : params.url !== undefined && params.url !== '' ? normalizeWebUrl(params.url) : null) : null,
