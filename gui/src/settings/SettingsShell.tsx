@@ -143,7 +143,12 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
           projects.push({ value: r, label: scopeTargetLabel(r) });
         }
         projects.sort((a, b) => (a.label < b.label ? -1 : a.label > b.label ? 1 : 0)); // 按项目名(码点序)
-        if (root !== '' && !seen.has(root)) projects.push({ value: root, label: scopeTargetLabel(root) }); // 打开项目不在注册表:仍列入
+        // 'default' 是欢迎页默认工作区的字面哨兵(锚点未解析前),真身=注册表里 sunshinex-default
+        // 锚点行:映射过去并选中它,不另列一个名为 default 的伪项目
+        if (root === 'default') {
+          const anchor = projects.find((p) => p.label.startsWith('sunshinex-default'));
+          if (anchor !== undefined) setTargetRoot((cur) => (cur === 'default' ? anchor.value : cur));
+        } else if (root !== '' && !seen.has(root)) projects.push({ value: root, label: scopeTargetLabel(root) }); // 打开项目不在注册表:仍列入
         setScopeOptions([{ value: '', label: t('Global', '全局') }, ...projects]);
       },
       () => {

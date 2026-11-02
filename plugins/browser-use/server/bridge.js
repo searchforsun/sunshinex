@@ -118,10 +118,21 @@ async function main() {
   // meta 由 daemon(壳进程)周期落盘,ws=壳内 CDP facade(只暴露侧栏 webview 的附加面);
   // 探活成功即 spawn server 挂 facade,模型导航/点击的就是用户眼前的页签
   if (mode === 'builtin') {
-    const meta = metaPath !== undefined && fs.existsSync(metaPath)
+    // 应用刚启动时 meta 可能仍指向上个进程的死端口,或 facade 尚未起来(daemon 每 5s 重写 meta):
+    // 有界等待重读探活,不在首次失败即退(实测重启后首轮浏览器任务「MCP 连接失败」即此竞窗)
+    const readMeta = () => (metaPath !== undefined && fs.existsSync(metaPath)
       ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
-      : undefined;
-    if (meta !== undefined && typeof meta.ws === 'string' && (await probeAlive(meta))) {
+      : undefined);
+    let meta;
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      meta = readMeta();
+      if (meta !== undefined && typeof meta.ws === 'string' && (await probeAlive(meta))) break;
+      meta = undefined;
+      if (Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (meta !== undefined) {
       writeMeta(meta.ws, meta.pid ?? 0, { kind: 'shell' });
           const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', meta.ws], { stdio: 'inherit', cwd: serverCwd });
       server.on('exit', () => process.exit(0));

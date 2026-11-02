@@ -141,6 +141,10 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     };
     // 页名/站标以 webview 自身事件为准:dom-ready 晚于 page-title-updated,回写时取 getTitle()
     // 而非 host,否则真页名被 host 覆盖(实测页签只剩「baidu.com」)
+    // 站标兜底:page-favicon-updated 可能早于挂接/恢复页签时不再触发——换站点时经 daemon
+    // /web/meta 代取一次;事件到达即以事件为准(faviconSeen),代取应答不覆盖
+    let navHost = '';
+    let faviconSeen = false;
     const onNav = (): void => {
       const u = wv.getURL();
       setWvUrl(u);
@@ -150,6 +154,17 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
         setInput(u);
         const t = typeof wv.getTitle === 'function' ? wv.getTitle().trim() : '';
         onMeta(uid, { url: u, pageTitle: t !== '' && t !== u ? t : webPageName(u) });
+        const host = webPageName(u);
+        if (host !== navHost) {
+          navHost = host;
+          faviconSeen = false;
+          conn
+            .fetchWebMeta(u)
+            .then((meta) => {
+              if (!faviconSeen && navHost === host && meta.icon !== '') onMeta(uid, { pageIcon: meta.icon });
+            })
+            .catch(() => undefined);
+        }
       }
     };
     const onTitle = (ev: Event & { title?: string }): void => {
@@ -158,7 +173,10 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     };
     const onFavicon = (ev: Event & { favicons?: string[] }): void => {
       const icon = ev.favicons?.[0];
-      if (typeof icon === 'string' && icon !== '') onMeta(uid, { pageIcon: icon });
+      if (typeof icon === 'string' && icon !== '') {
+        faviconSeen = true;
+        onMeta(uid, { pageIcon: icon });
+      }
     };
     wv.addEventListener('did-navigate', onNav);
     wv.addEventListener('did-navigate-in-page', onNav);
