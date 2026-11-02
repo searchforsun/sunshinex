@@ -10,7 +10,7 @@ import { RunEntryView } from '../pages/chat/EntryViews';
 import { ToolSegBlock } from '../pages/chat/ToolGroups';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf, teamNameResolverOf } from '../pages/chat/use-chat-derived';
-import { collapsedHiddenKeys, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
+import { collapsedHiddenKeys, isMidRunInsert, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
 import type { ChatEntry } from '../chat-reducer';
 
 /**
@@ -121,7 +121,6 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
    *  hiddenKeys 折叠区间内的工具/思考行进 seg-collapse 平滑容器) */
   const nodes: JSX.Element[] = [];
   let seg: ChatEntry[] = [];
-  let seenUser = false;
   const flushSeg = (): void => {
     if (seg.length === 0) return;
     const segEntries = seg;
@@ -171,8 +170,9 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     );
     seg = [];
   };
-  for (const e of entries) {
-    // 工具/思考/轮内插入/成员消息进段(与主对话 collapsedHiddenKeys 同口径)
+  for (let i = 0; i < entries.length; i += 1) {
+    const e = entries[i]!;
+    // 工具/思考/成员消息/记忆·技能旁白进段(与主对话 collapsedHiddenKeys 同口径;轮内插入用户条不上折叠行)
     if (
       e.kind === 'tool'
       || e.kind === 'thinking'
@@ -182,10 +182,9 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
       continue;
     }
     flushSeg();
-    // 每轮任务带=用户气泡(首条正常间距,后续当插入态收紧)
+    // 每轮任务带=用户气泡(新开场 60px;轮内插入 entry-user-insert 上下 10px)
     if (e.kind === 'user') {
-      const insert = seenUser;
-      seenUser = true;
+      const insert = isMidRunInsert(entries, i);
       nodes.push(
         <div key={e.key} className={`entry entry-user child-user-entry${insert ? ' entry-user-insert' : ''}`} data-entry-key={e.key}>
           <CollapsibleBubble text={e.md} render={(md) => <div className="child-user-text">{md}</div>} />

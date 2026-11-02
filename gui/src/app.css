@@ -2718,7 +2718,7 @@ input.sx-setting-input { width: 100%; }
 .sx-raw-editor { font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); }
 .mermaid-fallback { font: var(--f-code, 12px)/var(--f-code-lh, 1.6) var(--font-mono); }
 
-/* 用户气泡上间距分档:首条新开场拉开;插入档(后续用户条/运行中插入/辅助对话/成员消息)上下同距紧凑 */
+/* 用户气泡上间距:新开场 60px;轮内插入/辅助对话/成员消息 entry-user-insert 上下 10px */
 .entry-user { margin-top: 60px; margin-bottom: 15px; }
 .entry-user.entry-user-insert { margin-top: 10px; margin-bottom: 10px; }
 

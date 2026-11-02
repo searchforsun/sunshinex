@@ -18,6 +18,7 @@ import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, Thinking
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
 import { ChatRail } from './ChatRail';
+import { isMidRunInsert } from './use-chat-fold';
 
 /** 会话流列表(D32 第六批批F-3 自 Chat.tsx 平移):空态/按日分组/段折叠聚合
  *  (ToolSegBlock)/run·user·assistant 行派发/运行状态行。滚动容器 ref 与贴底旁路 ref 留宿主
@@ -148,12 +149,10 @@ const DayGroupBlock = memo(
         </div>,
       );
     }
-    /** G14.73:连续的折叠区条目(工具/思考/轮内插入/成员消息)聚成一段,包进 seg-collapse——
+    /** G14.73:连续的折叠区条目(工具/思考/成员消息/记忆·技能旁白)聚成一段,包进 seg-collapse——
      *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
     let seg: ChatEntry[] = [];
-    /** 最近 run 行 + 是否已见用户条:首条开场保留大上距;其后/运行中插入/辅助对话=紧凑插入档 */
-    let lastRun: ChatEntry | undefined;
-    let seenUser = false;
+    /** 用户气泡上距:新开场 60px;轮内插入与辅助对话走 entry-user-insert 上下 10px */
     const flushSeg = (): void => {
       if (seg.length === 0) return;
       const segEntries = seg;
@@ -170,9 +169,9 @@ const DayGroupBlock = memo(
       );
       seg = [];
     };
-    for (const entry of entries) {
-      if (entry.kind === 'run') lastRun = entry;
-      // G14.136 折叠态的中间正文/轮内插入/成员消息随工具进 seg-collapse 平滑折叠
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i]!;
+      // G14.136 折叠态的中间正文/成员消息随工具进 seg-collapse;轮内插入用户条不上折叠行
       if (isCommandEntry(entry)) {
         // 斜杠命令三态=系统提示行(2026-10-31 裁定):不进工具段聚合
         flushSeg();
@@ -198,8 +197,7 @@ const DayGroupBlock = memo(
           />,
         );
       } else if (entry.kind === 'user') {
-        const insert = sideChat === true || seenUser || lastRun?.streaming === true;
-        seenUser = true;
+        const insert = sideChat === true || isMidRunInsert(entries, i);
         nodes.push(
           <UserEntryView
             key={entry.key}

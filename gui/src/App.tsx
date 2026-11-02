@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t } from './i18n';
 import { t as tLabel } from './i18n';
-import { GitCompare, Globe, MessageCircle, ListTodo, Copy, Minus, PanelRight, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react';
+import { GitCompare, Globe, MessageCircle, Copy, Minus, PanelRight, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
 import type { Connection, ConnectionState } from './connection';
 import type { TodoItem } from '../../src/types';
@@ -1089,7 +1089,8 @@ function AppShell(): JSX.Element {
                       ] as [string, LucideIcon, string, () => void][]
                     : [
                         ['side', MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],
-                        ['tasks', ListTodo, t('Todos', '待办'), (): void => openTabInSession('tasks')],
+                        ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
+                        ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
                         ['diff', GitCompare, t('Review', '审查'), (): void => openTabInSession('diff')],
                       ] as [string, LucideIcon, string, () => void][]).map(([key, Icon, label, onClick]) => (
                     <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>

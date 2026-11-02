@@ -13,52 +13,70 @@ function isAgentMessageNotice(e: ChatEntry): boolean {
   return e.kind === 'notice' && /^\[[^\]]+ → [^\]]+\]/.test(e.md);
 }
 
+/** 记忆/技能沉淀旁白(`[memory]`/`[skills]`):与工具同行进折叠行 */
+function isMemoryOrSkillNotice(e: ChatEntry): boolean {
+  return e.kind === 'notice' && (e.md.startsWith('[memory]') || e.md.startsWith('[skills]'));
+}
+
+/** 随轮折叠的旁白(成员消息 + 记忆/技能沉淀);普通系统提示保留可见 */
+function isFoldNotice(e: ChatEntry): boolean {
+  return isAgentMessageNotice(e) || isMemoryOrSkillNotice(e);
+}
+
+/** 轮内插入判定:当前位置之后、下一 run/user 之前还有本轮工作条目(非斜杠工具/思考/正文/折叠旁白)。
+ *  插入气泡本身不上折叠行、走紧凑边距(entry-user-insert 上下 10px),且不得复位 hide */
+export function isMidRunInsert(entries: readonly ChatEntry[], from: number): boolean {
+  for (let j = from + 1; j < entries.length; j += 1) {
+    const n = entries[j]!;
+    if (n.kind === 'run' || n.kind === 'user') return false;
+    if (n.kind === 'tool' && typeof n.name === 'string' && n.name.startsWith('/')) continue;
+    if (n.kind === 'tool' || n.kind === 'thinking' || n.kind === 'assistant' || isFoldNotice(n)) return true;
+  }
+  return false;
+}
+
 /** G14.31 轮次折叠:collapsedRuns=被封段的 Worked 行 key 集;hiddenKeys=折叠区间内的
- *  工具/思考/轮内插入用户条/成员消息。最终回复与新开场用户条保留。G14.73:隐藏条目保持挂载,
+ *  工具/思考/成员消息/记忆·技能沉淀旁白。最终回复与用户条(含轮内插入)保留可见。G14.73:隐藏条目保持挂载,
  *  渲染层包进 seg-collapse 平滑容器(展开/收合高度过渡),不再瞬切。
  *  G14.136 折叠不显非最终正文:段内 sealed assistant 除末条(=最终回复)外一并随轮折叠
  *  (phase 叙述/中间解释默认不露),展开轮时照常可见。
+ *  轮内插入:不上折叠行、不复位 hide(其后工具仍折);新开场用户条才收段复位。
  *  G14.2xx b:投影抽纯函数单点——主对话 hook 与子智能体转录页(本地折叠态)同源消费 */
 export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns: ReadonlySet<string>): ReadonlySet<string> {
   const s = new Set<string>();
   let hide = false;
-  /** 本轮是否已见 sealed 终答——此前的 user=轮内插入(随折);其后的 user=新开场(复位 hide) */
-  let sawFinalAssistant = false;
-  /** 段内 sealed assistant 收集:段收口(run 再启/流尽)时除末条外入 hidden */
+  /** 段内 sealed assistant 收集:段收口(run 再启/流尽/新开场)时除末条外入 hidden */
   let segAssistants: string[] = [];
   const closeSeg = (): void => {
     if (hide) for (let i = 0; i < segAssistants.length - 1; i += 1) s.add(segAssistants[i]!);
     segAssistants = [];
   };
-  for (const e of entries) {
+  for (let i = 0; i < entries.length; i += 1) {
+    const e = entries[i]!;
     if (e.kind === 'run') {
       closeSeg();
       hide = collapsedRuns.has(e.key);
-      sawFinalAssistant = false;
       continue;
     }
     if (e.kind === 'assistant') {
       if (e.streaming !== true) {
         segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
-        sawFinalAssistant = true;
       }
       continue;
     }
     if (e.kind === 'user') {
-      if (hide && !sawFinalAssistant) {
-        // 轮内插入(运行中/终答前):与工具同行收进折叠区
-        s.add(e.key);
+      if (hide && isMidRunInsert(entries, i)) {
+        // 轮内插入:可见、不进折叠行、保持 hide 使后续工具/思考仍折
         continue;
       }
       closeSeg();
       // 新开场用户条:其后工具不属于上一轮折叠区(2026-10-31「/compact 三态行不显示」钉)
       hide = false;
-      sawFinalAssistant = false;
       continue;
     }
     // 斜杠命令三态行=系统提示行,不受折叠影响(2026-10-31 裁定)
     if (hide && e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/')) continue;
-    if (hide && (e.kind === 'tool' || e.kind === 'thinking' || isAgentMessageNotice(e))) s.add(e.key);
+    if (hide && (e.kind === 'tool' || e.kind === 'thinking' || isFoldNotice(e))) s.add(e.key);
   }
   closeSeg();
   return s;
@@ -112,7 +130,7 @@ export function useChatFold(deps: {
   onEntryRestore: (p: string) => void;
 } {
   const { chat, setChat, conn, sessionId, onOpenDiff, chatScrollRef, chatStickRef } = deps;
-/** G14.31 轮次折叠:见 collapsedHiddenKeys(工具/思考/轮内插入/成员消息随折;终答与新开场保留) */
+/** G14.31 轮次折叠:见 collapsedHiddenKeys(工具/思考/成员消息/记忆·技能旁白随折;用户条含轮内插入可见;终答与新开场保留) */
 const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
 // 2026-10-24 用户裁定:轮次完成(sealed)自动折叠工具/思考行——手动展开不回折
 useAutoCollapseRuns(chat.entries, setCollapsedRuns);
