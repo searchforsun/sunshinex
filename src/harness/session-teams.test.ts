@@ -98,6 +98,41 @@ test('已绑会话切换不回流：旧队留在原 journal，新 journal 空板
   }
 });
 
+test('成员名册落盘：create_agent_teammate 后新进程 adopt 同 journal 复原 aliveNames', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-session-teams-roster-'));
+  try {
+    const h1 = new Harness({ root: tmp, mode: 'full-access', learnSkills: false });
+    h1.adoptSessionTeams('j-roster');
+    const team = h1.agentTeams.create('协作测试团队');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
+    const tm = await h1.tools.execute(
+      'create_agent_teammate',
+      { teamId, name: '调研员', prompt: 'research MapReduce', agent_id: null },
+      h1.safety,
+    );
+    assert.ok(tm.ok && tm.value.exitCode === 0, `create_agent_teammate: ${JSON.stringify(tm)}`);
+    assert.deepEqual(h1.team.aliveNames(), ['调研员']);
+    const dataDir = resolveDataDir(tmp);
+    const rosterPath = path.join(sessionTeamsRoot(dataDir, 'j-roster'), 'teammates.json');
+    assert.ok(fs.existsSync(rosterPath), 'teammates.json 应落盘');
+    const rosterRaw = JSON.parse(fs.readFileSync(rosterPath, 'utf8')) as Array<{ name: string; createdAt: number }>;
+    assert.equal(rosterRaw[0]?.name, '调研员');
+    assert.ok(typeof rosterRaw[0]?.createdAt === 'number' && rosterRaw[0]!.createdAt > 0, '名册含创建时刻');
+    const createdAt = rosterRaw[0]!.createdAt;
+    h1.team.stopAll();
+
+    const h2 = new Harness({ root: tmp, mode: 'full-access', learnSkills: false });
+    h2.adoptSessionTeams('j-roster');
+    assert.deepEqual(h2.team.aliveNames(), ['调研员'], '新进程应复原成员');
+    assert.equal(h2.team.teamIdOf('调研员'), teamId);
+    assert.equal(h2.team.get('调研员')?.createdAt, createdAt, '复原保留创建时刻');
+    h2.team.stopAll();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('journal A 建队+任务后 adopt B：列表与板皆空，A 盘仍有队与任务', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-session-teams-ab-'));
   try {

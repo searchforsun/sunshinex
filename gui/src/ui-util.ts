@@ -160,6 +160,15 @@ export function shortStampMs(ms: number): string {
   return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
+/** 时长(m→m:ss,h 进位 h:mm:ss;秒位定宽——tabular-nums 在 CSS 面)。Insight/智能体团队共用。 */
+export function fmtDurMs(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
 /** 毫秒时刻 → 本地短时刻(HH:mm;run 尾部完成时间):非法日期回退 '--:--' */
 export function shortClockMs(ms: number): string {
   const d = new Date(ms);

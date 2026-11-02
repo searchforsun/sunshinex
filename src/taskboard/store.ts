@@ -61,6 +61,75 @@ function isAgentTeamRecord(v: unknown): v is AgentTeamRecord {
   return typeof o.teamId === 'string' && typeof o.name === 'string' && typeof o.createdAt === 'number';
 }
 
+/** 成员名册落盘记录：长驻执行体身份（子会话抽象），按会话 teams 根持久化 */
+export interface TeammateRosterRecord {
+  name: string;
+  teamId: string;
+  framing: string;
+  /** 创建时刻(ms)；旧档缺省=0，GUI 不显示 */
+  createdAt: number;
+}
+
+export interface TeammateRosterStoreBackend {
+  load(): TeammateRosterRecord[];
+  save(rows: TeammateRosterRecord[]): void;
+}
+
+/** 成员名册：`<dataDir>/teams/<journalId>/teammates.json`——重启后重建 Teammate 实例 */
+export class TeammateRosterStore implements TeammateRosterStoreBackend {
+  private dirMade = false;
+
+  constructor(private teamsRoot: string) {}
+
+  private rosterPath(): string {
+    return path.join(this.teamsRoot, 'teammates.json');
+  }
+
+  private ensureDir(): void {
+    if (this.dirMade) return;
+    fs.mkdirSync(this.teamsRoot, { recursive: true });
+    this.dirMade = true;
+  }
+
+  load(): TeammateRosterRecord[] {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(this.rosterPath(), 'utf8');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      const out: TeammateRosterRecord[] = [];
+      for (const item of parsed) {
+        const rec = parseTeammateRosterRecord(item);
+        if (rec !== undefined) out.push(rec);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  save(rows: TeammateRosterRecord[]): void {
+    this.ensureDir();
+    const target = this.rosterPath();
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(rows), 'utf8');
+    fs.renameSync(tmp, target);
+  }
+}
+
+function parseTeammateRosterRecord(v: unknown): TeammateRosterRecord | undefined {
+  if (typeof v !== 'object' || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  if (typeof o.name !== 'string' || typeof o.teamId !== 'string' || typeof o.framing !== 'string') return undefined;
+  const createdAt = typeof o.createdAt === 'number' && Number.isFinite(o.createdAt) ? o.createdAt : 0;
+  return { name: o.name, teamId: o.teamId, framing: o.framing, createdAt };
+}
+
 /** 板事件存储接缝：磁盘 TeamStore 与会话未绑定前的 MemoryTeamStore 共用。 */
 export interface TeamStoreBackend {
   append(ev: BoardEvent): void;

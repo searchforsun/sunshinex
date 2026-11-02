@@ -24,7 +24,7 @@ import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
-import { AgentTeamRegistryStore, MemoryTeamStore, TeamStore } from '../taskboard/store';
+import { AgentTeamRegistryStore, MemoryTeamStore, TeamStore, TeammateRosterStore, type TeammateRosterRecord } from '../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../taskboard/team-registry';
 import { TeamRegistry, Teammate, teammateSendTargets } from '../taskboard/teammate';
 import { InboxCursorStore } from '../taskboard/inbox-cursors';
@@ -125,6 +125,12 @@ export class Harness {
   private teamsBoundJournalId: string | undefined;
   /** 未落盘前的内存板（adopt 时若盘空则回流事件） */
   private memoryBoardStore: MemoryTeamStore | undefined;
+  /** 未绑 journal 时的成员名册（首绑回流）；绑后改写 TeammateRosterStore */
+  private memoryRoster: TeammateRosterRecord[] = [];
+  /** 会话成员名册落盘（teammates.json）；未绑时 undefined */
+  private rosterStore: TeammateRosterStore | undefined;
+  /** 成员重建工厂（adopt 读盘复原；与 create_agent_teammate 同构造路径） */
+  private restoreTeammate: ((rec: TeammateRosterRecord) => Result<{ name: string }>) | undefined;
   /** per-run 成本账本（聚合本实例全部 run 的 tokens/路由决策） */
   readonly ledger: RunLedger;
   /** 后台沉淀管线（规格 §3.1）：CLI/TUI 共用，收口入队 → 空闲/收尾消化 */
@@ -330,16 +336,69 @@ export class Harness {
     // 重名裁定(T2 register 为替换语义,spawn 通道在其上收紧):活名重复 spawn → INVALID_ARG fail-fast
     // (模型换名/先停后建;静默替换会停掉在跑 teammate 且台账悬空);已停同名 → 替换重建(register 原语义)。
     // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——板派发中止/成员打断由 agent_team_task_stop,日志承载启动行
+    const persistRoster = (rec: TeammateRosterRecord): void => {
+      if (this.rosterStore !== undefined) {
+        const rows = this.rosterStore.load().filter((r) => r.name !== rec.name);
+        rows.push(rec);
+        this.rosterStore.save(rows);
+      } else {
+        this.memoryRoster = [...this.memoryRoster.filter((r) => r.name !== rec.name), rec];
+      }
+    };
+    const mountTeammate = (name: string, framing: string, teamId: string, createdAt?: number): Result<{ name: string }> => {
+      if (this.agentTeams.get(teamId) === undefined) {
+        return fail('INVALID_ARG', `unknown teamId: ${teamId}; create a team with create_agent_team first`);
+      }
+      const incumbent = this.team.get(name);
+      if (incumbent !== undefined && !incumbent.stopped) {
+        return fail('INVALID_ARG', `teammate name already exists on team ${incumbent.teamId}`);
+      }
+      const tm = new Teammate({
+        name,
+        framing,
+        teamId,
+        ...(createdAt !== undefined && createdAt > 0 ? { createdAt } : {}),
+        deps: {
+          safety: this.safety,
+          model: this.model,
+          registry: this.tools,
+          root: base,
+          store,
+          board: this.taskboard,
+          // 板任务台账：execute 内 submit(dispatchTag)——agent_team_task_wait/stop 可等可停；成员实体本身不进账本
+          tasks: this.tasks,
+          // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_agent_team_message
+          // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
+          inbox: this.inbox,
+          inboxCursors: this.inboxCursors,
+          ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+          registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
+            b,
+            this.taskboard,
+            // teammate 面 send_agent_team_message:同队存活(排己);lead 由工具恒放行。from = teammate 名
+            makeSendMessageTool({
+              inbox: this.inbox,
+              ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
+              from: () => name,
+              ...teammateSendTargets(this.team, teamId, name),
+            }),
+            this.tasks, // task_wait 换装 exec-only(自动转后台可等;板任务不可等)
+          ),
+        },
+      });
+      const registered = this.team.register(tm);
+      if (!registered.ok) return registered;
+      persistRoster({ name, teamId, framing, createdAt: tm.createdAt });
+      // teammate 定位(2026-10-20 用户裁决):长驻执行体是「声明」不是任务——无生命周期、不进任务
+      // 账本(账本只承载有生命周期的工作单元,假 running 态即语义污染,task_wait 等待面随之纯净);
+      // 存活面=TeamRegistry(退出链 team.stopAll() 收口),打断走 agent_team_task_stop 按名寻址
+      tm.kick(); // 建即起 claim 循环(「claims unassigned tasks」承诺即时生效;空板自然收兵零开销)
+      return ok({ name });
+    };
+    this.restoreTeammate = (rec) => mountTeammate(rec.name, rec.framing, rec.teamId, rec.createdAt);
     const teamAdapter = {
       spawn: (input: SubagentSpawnInput, teamId: string): Result<{ name: string }> => {
-        if (this.agentTeams.get(teamId) === undefined) {
-          return fail('INVALID_ARG', `unknown teamId: ${teamId}; create a team with create_agent_team first`);
-        }
         const name = input.label ?? input.agent_id ?? 'worker';
-        const incumbent = this.team.get(name);
-        if (incumbent !== undefined && !incumbent.stopped) {
-          return fail('INVALID_ARG', `teammate name already exists on team ${incumbent.teamId}`);
-        }
         let framing: string;
         if (input.agent_id !== undefined) {
           try {
@@ -351,45 +410,7 @@ export class Harness {
         } else {
           framing = (input.prompt ?? '').slice(0, 300);
         }
-        const tm = new Teammate({
-          name,
-          framing,
-          teamId,
-          deps: {
-            safety: this.safety,
-            model: this.model,
-            registry: this.tools,
-            root: base,
-            store,
-            board: this.taskboard,
-            // 板任务台账：execute 内 submit(dispatchTag)——agent_team_task_wait/stop 可等可停；成员实体本身不进账本
-            tasks: this.tasks,
-            // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_agent_team_message
-            // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
-            inbox: this.inbox,
-            inboxCursors: this.inboxCursors,
-            ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-            registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
-              b,
-              this.taskboard,
-              // teammate 面 send_agent_team_message:同队存活(排己);lead 由工具恒放行。from = teammate 名
-              makeSendMessageTool({
-                inbox: this.inbox,
-                ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-                from: () => name,
-                ...teammateSendTargets(this.team, teamId, name),
-              }),
-              this.tasks, // task_wait 换装 exec-only(自动转后台可等;板任务不可等)
-            ),
-          },
-        });
-        const registered = this.team.register(tm);
-        if (!registered.ok) return registered;
-        // teammate 定位(2026-10-20 用户裁决):长驻执行体是「声明」不是任务——无生命周期、不进任务
-        // 账本(账本只承载有生命周期的工作单元,假 running 态即语义污染,task_wait 等待面随之纯净);
-        // 存活面=TeamRegistry(退出链 team.stopAll() 收口),打断走 agent_team_task_stop 按名寻址
-        tm.kick(); // 建即起 claim 循环(「claims unassigned tasks」承诺即时生效;空板自然收兵零开销)
-        return ok({ name });
+        return mountTeammate(name, framing, teamId);
       },
     };
     // spawn 注册附带呈现元数据（D26/J1）：调用行动词迁自 tui/tool-verbs 旧 VERBS 表；display 为纯
@@ -552,6 +573,21 @@ export class Harness {
     this.memoryBoardStore = undefined;
     this.inbox.adopt(path.join(root, 'main', 'inbox'));
     this.inboxCursors.adopt(path.join(root, 'inbox-cursors.json'));
+
+    // 成员名册：首绑回流内存；切换/新进程按盘复原 Teammate（子会话抽象跨重启）
+    const roster = new TeammateRosterStore(root);
+    if (wasUnbound && this.memoryRoster.length > 0 && roster.load().length === 0) {
+      roster.save(this.memoryRoster);
+    }
+    this.memoryRoster = [];
+    this.rosterStore = roster;
+    if (this.team.aliveNames().length === 0 && this.restoreTeammate !== undefined) {
+      for (const rec of roster.load()) {
+        if (this.agentTeams.get(rec.teamId) === undefined) continue;
+        this.restoreTeammate(rec);
+      }
+    }
+
     this.teamsBoundJournalId = journalId;
   }
 

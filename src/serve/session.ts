@@ -88,7 +88,7 @@ export interface SessionSnapshot {
   delegations: Delegation[];
   status: 'idle' | 'running';
   lastSeq: number;
-  team: Array<{ name: string; busy: boolean; teamId?: string }>;
+  team: Array<{ name: string; busy: boolean; teamId?: string; createdAt?: number }>;
   /** 工作区 AgentTeam 注册表投影（teamId/name/createdAt） */
   teams: AgentTeam[];
   /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
@@ -1363,13 +1363,17 @@ export class SessionRuntime {
       archived: this.attachedJournalId !== undefined
         ? readSessionMeta(resolveDataDir(this.root), this.attachedJournalId).archived === true
         : false,
-      team: this.runtimeImpl.harness.team.aliveNames().map((name) => ({
-        name,
-        busy: this.runtimeImpl.harness.team.get(name)?.isBusy() ?? false,
-        ...(this.runtimeImpl.harness.team.teamIdOf(name) !== undefined
-          ? { teamId: this.runtimeImpl.harness.team.teamIdOf(name)! }
-          : {}),
-      })),
+      team: this.runtimeImpl.harness.team.aliveNames().map((name) => {
+        const tm = this.runtimeImpl.harness.team.get(name);
+        return {
+          name,
+          busy: tm?.isBusy() ?? false,
+          ...(this.runtimeImpl.harness.team.teamIdOf(name) !== undefined
+            ? { teamId: this.runtimeImpl.harness.team.teamIdOf(name)! }
+            : {}),
+          ...(tm !== undefined && tm.createdAt > 0 ? { createdAt: tm.createdAt } : {}),
+        };
+      }),
       teams: this.runtimeImpl.harness.agentTeams.list(),
     };
   }

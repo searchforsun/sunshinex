@@ -5,6 +5,7 @@ import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
 import { Bot, Square } from 'lucide-react';
 import type { BoardTask } from '../projection';
 import { t } from '../i18n';
+import { fmtDurMs } from '../ui-util';
 import '@xyflow/react/dist/style.css';
 
 /**
@@ -33,6 +34,8 @@ export interface TaskNodeData extends Record<string, unknown> {
   /** 执行子智能体显示名(空串=未派发:不显行、不可点) */
   agent: string;
   clickable: boolean;
+  /** 完成/运行耗时(ms)；缺省不显 */
+  durationMs?: number;
 }
 
 interface TerminalNodeData extends Record<string, unknown> {
@@ -43,6 +46,8 @@ export interface TaskDagProps {
   readonly tasks: readonly BoardTask[];
   /** taskId → 执行子智能体显示名(未派发回空串);布局(有无代理行)与可点判定共用同一单点 */
   readonly agentOf: (taskId: string) => string;
+  /** taskId → 耗时 ms（完成态 artifact / 运行中实时）；缺省不显 */
+  readonly durationOf?: (taskId: string) => number | undefined;
   /** 任务节点点击上抛(仅 agentOf 命中的节点会触发) */
   readonly onTaskOpen?: (taskId: string) => void;
   /** pending|running 节点 hover 停止 */
@@ -59,13 +64,19 @@ const DagStopContext = createContext<((taskId: string) => void) | undefined>(und
 export function layoutTaskDag(
   tasks: readonly BoardTask[],
   agentOf: (taskId: string) => string,
+  durationOf: (taskId: string) => number | undefined = () => undefined,
 ): { nodes: Node[]; edges: Edge[] } {
   const sorted = [...tasks].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
   const inSet = new Set(sorted.map((x) => x.id));
   const g = new DagreGraph();
   g.setGraph({ rankdir: 'LR', nodesep: 26, ranksep: 64, marginx: 8, marginy: 8 });
   g.setDefaultEdgeLabel(() => ({}));
-  const heightOf = (task: BoardTask): number => (agentOf(task.id) !== '' ? TASK_NODE_H : TASK_NODE_H_COMPACT);
+  const heightOf = (task: BoardTask): number => {
+    const hasAgent = agentOf(task.id) !== '';
+    const hasDur = durationOf(task.id) !== undefined;
+    if (hasAgent || hasDur) return TASK_NODE_H;
+    return TASK_NODE_H_COMPACT;
+  };
   for (const task of sorted) g.setNode(task.id, { width: TASK_NODE_W, height: heightOf(task) });
   g.setNode(START_ID, { width: TERMINAL_W, height: TERMINAL_H });
   g.setNode(END_ID, { width: TERMINAL_W, height: TERMINAL_H });
@@ -123,6 +134,7 @@ export function layoutTaskDag(
       ...sorted.map((task) => {
         const h = heightOf(task);
         const agent = agentOf(task.id);
+        const durationMs = durationOf(task.id);
         return {
           id: task.id,
           type: 'task' as const,
@@ -136,6 +148,7 @@ export function layoutTaskDag(
             status: task.status,
             agent,
             clickable: agent !== '',
+            ...(durationMs !== undefined ? { durationMs } : {}),
           },
         };
       }),
@@ -176,10 +189,17 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
           </button>
         )}
       </div>
-      {data.agent !== '' && (
-        <div className="tb-dag-node-agent">
-          <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
-          {data.agent}
+      {(data.agent !== '' || data.durationMs !== undefined) && (
+        <div className="tb-dag-node-meta">
+          {data.agent !== '' && (
+            <span className="tb-dag-node-agent">
+              <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
+              {data.agent}
+            </span>
+          )}
+          {data.durationMs !== undefined && (
+            <span className="bg-dur">{fmtDurMs(data.durationMs)}</span>
+          )}
         </div>
       )}
       <Handle type="source" position={Position.Right} isConnectable={false} />
@@ -205,8 +225,11 @@ const NODE_TYPES = { task: TaskNode, terminal: TerminalNode };
  *  放大;钉同一份 padding/maxZoom 后复位=回到装载态,duration 给出可见的动画回正反馈 */
 const FIT_VIEW_OPTIONS = { padding: 0.12, maxZoom: 1, duration: 300 };
 
-function TaskDagInner({ tasks, agentOf, onTaskOpen, onStopTask, focusId, focusNonce }: TaskDagProps): JSX.Element {
-  const layout = useMemo(() => layoutTaskDag(tasks, agentOf), [tasks, agentOf]);
+function TaskDagInner({ tasks, agentOf, durationOf, onTaskOpen, onStopTask, focusId, focusNonce }: TaskDagProps): JSX.Element {
+  const layout = useMemo(
+    () => layoutTaskDag(tasks, agentOf, durationOf),
+    [tasks, agentOf, durationOf],
+  );
   const { fitView, setCenter, getNode } = useReactFlow();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   // 任务增减即回正视图(新任务可能落画面外);节点拖拽后的位置交布局重算统一

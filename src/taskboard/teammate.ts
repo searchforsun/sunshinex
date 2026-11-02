@@ -122,6 +122,8 @@ export class Teammate {
   readonly name: string;
   /** 所属 AgentTeam。认领与派发只处理同 teamId 的任务。 */
   readonly teamId: string;
+  /** 创建时刻(ms)：名册落盘 / 快照 team.createdAt / GUI 成员行时间面 */
+  readonly createdAt: number;
   private readonly framing: string;
   private readonly deps: TeammateDeps;
   /** 独立上下文(每 teammate 一份,永不共享主链):role/task 行的落点与每任务 Reactor 的 seed 源 */
@@ -139,9 +141,10 @@ export class Teammate {
   /** inbox 消费位点:已消费的最大 ts;poll 取严格大于此值。构造时从 inboxCursors 读回,drain 推进后写回 */
   private inboxCursor: number;
 
-  constructor(opts: { name: string; framing: string; teamId: string; deps: TeammateDeps }) {
+  constructor(opts: { name: string; framing: string; teamId: string; deps: TeammateDeps; createdAt?: number }) {
     this.name = opts.name;
     this.teamId = opts.teamId;
+    this.createdAt = opts.createdAt !== undefined && opts.createdAt > 0 ? opts.createdAt : Date.now();
     this.framing = opts.framing;
     this.deps = opts.deps;
     this.ctx = new ContextManager(opts.deps.root, opts.deps.store);

@@ -69,6 +69,19 @@ describe('layoutTaskDag(纯函数)', () => {
     expect(hOf.get('t1')).toBeGreaterThan(hOf.get('t2')!);
   });
 
+  it('durationOf 写入节点 data.durationMs；有耗时亦抬高节点', () => {
+    const tasks = [task('t1', { status: 'success' }), task('t2', { dependsOn: ['t1'] })];
+    const { nodes } = layoutTaskDag(
+      tasks,
+      () => '',
+      (id) => (id === 't1' ? 45_000 : undefined),
+    );
+    const t1 = nodes.find((n) => n.id === 't1');
+    const t2 = nodes.find((n) => n.id === 't2');
+    expect((t1?.data as { durationMs?: number }).durationMs).toBe(45_000);
+    expect(t1!.height).toBeGreaterThan(t2!.height!);
+  });
+
   it('dependsOn 实线；retryOf 虚线标重试且排在前驱之后', () => {
     const tasks = [
       task('t1', { status: 'failed' }),

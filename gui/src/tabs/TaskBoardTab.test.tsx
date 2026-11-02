@@ -91,6 +91,33 @@ describe('TaskBoardTab 队卡', () => {
     expect(screen.getByText(/^No members|暂无成员$/)).toBeDefined();
   });
 
+  it('任务行显创建时间与完成耗时；成员行显创建时间', () => {
+    const created = Date.UTC(2026, 10, 1, 15, 30); // 本地会折算；断言走 shortStampMs 同源
+    render(
+      <TaskBoardTab
+        board={boardOf([
+          task('t1', {
+            teamId: 'alpha',
+            title: '甲',
+            status: 'success',
+            createdAt: created,
+            updatedAt: created + 90_000,
+            artifact: { durationMs: 90_000 },
+          }),
+        ])}
+        delegations={[]}
+        teams={[{ teamId: 'alpha', name: 'Alpha Squad', createdAt: created }]}
+        members={[{ name: 'w1', busy: false, teamId: 'alpha', createdAt: created }]}
+      />,
+    );
+    const taskRow = screen.getByRole('button', { name: /t1 \[success\]/ });
+    expect(taskRow.querySelector('.bg-dur')?.textContent).toBe('1:30');
+    expect(taskRow.querySelector('.todo-card-time')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Members|成员/ }));
+    const memberRow = screen.getByRole('button', { name: 'w1' });
+    expect(memberRow.querySelector('.todo-card-time')).not.toBeNull();
+  });
+
   it('失败任务无文字徽标，也无 Approve/Deny', () => {
     render(
       <TaskBoardTab
@@ -136,7 +163,10 @@ describe('TaskBoardTab 队卡', () => {
     );
     expect(document.querySelector('.tb-status-dot.task-status-running')).not.toBeNull();
     expect(document.querySelector('.tb-status-dot.task-status-success')).not.toBeNull();
+    // 二段确认：首击武装，再击执行
     fireEvent.click(screen.getByRole('button', { name: 'Stop t1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop t1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop t2' }));
     fireEvent.click(screen.getByRole('button', { name: 'Stop t2' }));
     expect(onStopTask.mock.calls).toEqual([['t1'], ['t2']]);
     expect(screen.queryByRole('button', { name: 'Stop t3' })).toBeNull();
