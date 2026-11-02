@@ -10,15 +10,54 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { hasJsonComments, stripJsonComments, loadGlobalSettings, loadProjectSettings } from '../config/settings';
+import { t } from '../i18n';
 import type { ResourceKind, Scope } from './types';
 
 /** 项目作用域写面 root 必备守卫单点：root 缺失即 INVALID 拒写（resource 点名资源面进文案）——
  *  写面绝不借道 cwd 兜底，凭空落 cwd 是伪写（mcpWriteTarget 先例裁定上收）；返回验过的 root */
 export function requireProjectRoot(scope: Scope, root: string | null, resource: string): string {
   if (scope === 'project' && root === null) {
-    throw new CatalogWriteError('INVALID', `project-scope ${resource} write requires root`);
+    throw new CatalogWriteError(
+      'INVALID',
+      t(`project-scope ${resource} write requires a project root (--root)`, `project 作用域的 ${resource} 写需要项目根（--root）`),
+    );
   }
   return root as string;
+}
+
+/** 写面读守卫单点（D60 五模块公共体上收）：COMMENTS 先于一切内容守卫（结构化写会毁注释，Task 15 映射
+ *  409 引流 raw 编辑面）→ 畸形 JSON/根非对象 INVALID 拒写不覆盖（readJsoncDoc 降级为空 doc，照写等于毁掉
+ *  用户既有内容）。返回守卫通过的读结果供调用方手术 */
+export function readWritableDoc(file: string): ReturnType<typeof readJsoncDoc> {
+  const read = readJsoncDoc(file);
+  if (read.hasComments) {
+    throw new CatalogWriteError(
+      'COMMENTS',
+      t(
+        `${file} contains JSONC comments — a structured write would destroy them; remove the comments via the raw editor and retry`,
+        `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`,
+      ),
+    );
+  }
+  if (read.exists && read.warnings.length > 0) {
+    throw new CatalogWriteError('INVALID', read.warnings[0]!);
+  }
+  return read;
+}
+
+/** 落盘收口单点（D60 五模块公共体上收）：新档补 version:1（settings schema 口径；mcp.json 无 version
+ *  语义走 bootstrapVersion:false 保持既有形态）→ 原子写 2-space + 尾随换行 → 写通知（resource/scope/root
+ *  透传，与 watcher 映射同构；零变化路径由调用方先行短路，不经本函数） */
+export function finishCatalogWrite(
+  file: string,
+  doc: Record<string, unknown>,
+  existed: boolean,
+  notify: { resource: ResourceKind; scope: Scope; root: string | null },
+  opts?: { bootstrapVersion?: boolean },
+): void {
+  if (opts?.bootstrapVersion !== false && !existed && doc['version'] === undefined) doc['version'] = 1;
+  writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
+  notifyCatalogWrite(notify.resource, notify.scope, notify.root);
 }
 
 /** 目标 scope 的 settings.json 落位单点：global=<userConfigDir>/settings.json、
@@ -44,11 +83,23 @@ export function readJsoncDoc(file: string): { exists: boolean; raw: string; doc:
   try {
     const parsed = JSON.parse(stripJsonComments(raw));
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { exists: true, raw, doc: {}, hasComments, warnings: [`${file} 根须为对象，已按空处理`] };
+      return {
+        exists: true,
+        raw,
+        doc: {},
+        hasComments,
+        warnings: [t(`${file} root must be a JSON object — treated as empty`, `${file} 根须为对象，已按空处理`)],
+      };
     }
     return { exists: true, raw, doc: parsed as Record<string, unknown>, hasComments, warnings: [] };
   } catch (e) {
-    return { exists: true, raw, doc: {}, hasComments, warnings: [`${file} 解析失败：${(e as Error).message}`] };
+    return {
+      exists: true,
+      raw,
+      doc: {},
+      hasComments,
+      warnings: [t(`${file} failed to parse: ${(e as Error).message}`, `${file} 解析失败：${(e as Error).message}`)],
+    };
   }
 }
 

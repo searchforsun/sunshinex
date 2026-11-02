@@ -11,7 +11,7 @@ import { userConfigDir } from '../config/env';
 import { parseMcpJsonFile } from '../config';
 import type { McpServerConfig } from '../types';
 import type { Listing, Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot } from './io';
+import { CatalogWriteError, finishCatalogWrite, readJsoncDoc, readWritableDoc, requireProjectRoot } from './io';
 import { approvalState } from './approvals';
 
 /** catalog 列表条目：name/scope 定位 + 遮蔽标注 + 原始 server 配置 + 审批态（project 接批准阀，global 恒 'none'） */
@@ -99,13 +99,7 @@ function mcpWriteTarget(scope: Scope, root: string | null): string {
  */
 function mutateMcpServers(scope: Scope, root: string | null, fn: (servers: Record<string, unknown>) => void): void {
   const file = mcpWriteTarget(scope, root);
-  const read = readJsoncDoc(file);
-  if (read.hasComments) {
-    throw new CatalogWriteError('COMMENTS', `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`);
-  }
-  if (read.exists && read.warnings.length > 0) {
-    throw new CatalogWriteError('INVALID', read.warnings[0]!);
-  }
+  const read = readWritableDoc(file); // 守卫公共体单点（io，D60）
   const section = read.doc['mcpServers'];
   const servers: Record<string, unknown> =
     typeof section === 'object' && section !== null && !Array.isArray(section)
@@ -115,8 +109,7 @@ function mutateMcpServers(scope: Scope, root: string | null, fn: (servers: Recor
   fn(servers);
   if (JSON.stringify(servers) === before) return; // 零变化不落盘（无盘上副作用——幂等重放不产写通知帧）
   read.doc['mcpServers'] = servers;
-  writeJsonAtomic(file, JSON.stringify(read.doc, null, 2) + '\n');
-  notifyCatalogWrite('mcp', scope, root);
+  finishCatalogWrite(file, read.doc, read.exists, { resource: 'mcp', scope, root }, { bootstrapVersion: false }); // mcp.json 无 version 语义不引导
 }
 
 /**

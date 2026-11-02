@@ -39,14 +39,14 @@ import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
 import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../catalog/providers';
 import type { ProviderModelInput, ProviderUpsertPatch } from '../catalog/providers';
 import { addPermission, removePermission } from '../catalog/permissions';
-import { CatalogWriteError } from '../catalog/io';
+import { CatalogWriteError, writeJsonAtomic } from '../catalog/io';
 import {
   hasJsonComments,
   loadGlobalSettings,
   loadProjectSettings,
   parseSettingsFile,
   SEMANTIC_KEYS,
-  surgicalSettingsUpdate,
+  applySettingsUpdates,
   getSelfFilledSlots,
 } from '../config/settings';
 import { resolveProviderApiKey } from '../config/providers';
@@ -163,54 +163,22 @@ export async function handleSettingsPut(io: ConfigHandlerIo, req: http.IncomingM
     io.send(res, 409, { error: `settings file not readable: ${target}` });
     return;
   }
-  if (raw !== null && hasJsonComments(raw)) {
-    // 注释保留式手术写(设置自动保存轮):逐行只动目标键,行尾注释/缩进/其余键逐字保真;
-    // 不支持形态(多行/嵌套值、单行对象、复验不过)→ 仍 409 引流 raw 编辑面,零盘上副作用
-    const patched = surgicalSettingsUpdate(raw, updates as Record<string, string | number | null>);
-    if (patched === null) {
+  // 结构化改写管线单点（config/settings applySettingsUpdates，D60 批B1：注释手术/解析守卫/version
+  // 守卫/键手术与 CLI settings set 共用；失败呈现保 HTTP 409 文案，零盘上副作用）
+  const applied = applySettingsUpdates(raw, updates as Record<string, string | number | null>);
+  if (!applied.ok) {
+    if (applied.reason === 'comments-unsupported') {
       io.send(res, 409, { error: 'file contains comments in an unsupported layout', hint: 'use raw editor' });
-      return;
+    } else if (applied.reason === 'invalid-json') {
+      io.send(res, 409, { error: `settings file is not valid JSON: ${applied.detail}` });
+    } else if (applied.reason === 'root-not-object') {
+      io.send(res, 409, { error: 'settings root must be a JSON object' });
+    } else {
+      io.send(res, 409, { error: `unsupported settings version: ${applied.detail}` });
     }
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    const tmpPatched = `${target}.tmp-${process.pid}-${Date.now()}`;
-    fs.writeFileSync(tmpPatched, patched, 'utf8');
-    fs.renameSync(tmpPatched, target);
-    io.reloadSettingsChain(root);
-    io.send(res, 200, { ok: true });
     return;
   }
-  let obj: Record<string, unknown>;
-  if (raw === null) {
-    obj = { version: 1 };
-  } else {
-    let parsedRoot: unknown;
-    try {
-      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 同口径）
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
-      return;
-    }
-    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
-      io.send(res, 409, { error: 'settings root must be a JSON object' });
-      return;
-    }
-    const existing = parsedRoot as Record<string, unknown>;
-    if ((existing['version'] ?? 1) !== 1) {
-      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
-      return;
-    }
-    obj = existing;
-  }
-  for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
-    if (value === null) delete obj[key];
-    else obj[key] = value;
-  }
-  // 原子写：同目录 tmp + rename（rename 在两平台均原子替换目标）；.sunshinex 目录缺则递归建
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmpFile, target);
+  writeJsonAtomic(target, applied.text); // 原子写单点（catalog/io，D60）
   io.reloadSettingsChain(root);
   io.send(res, 200, { ok: true });
 }
@@ -487,10 +455,7 @@ export async function handleMcpPut(io: ConfigHandlerIo, req: http.IncomingMessag
     obj = parsedRoot as Record<string, unknown>;
   }
   obj['mcpServers'] = record; // 整块替换（mcpServers 键以外顶层键原样保留，与 T2 settings PUT 同语义）
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmpFile, target);
+  writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
   io.send(res, 200, { ok: true }); // 不触发 settings reload——mcp 装配期语义
 }
 
@@ -898,10 +863,7 @@ export async function handlePluginsPut(io: ConfigHandlerIo, req: http.IncomingMe
   pluginsMap[id] = record;
   obj['plugins'] = pluginsMap;
   // 原子写：同目录 tmp + rename（rename 在两平台均原子替换目标）；.sunshinex 目录缺则递归建
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  const tmpFile = `${target}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmpFile, target);
+  writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
   if (root !== undefined) io.reloadSettingsChain(root); // plugins 键随 settings 链生效；无 root 无项目锚不 reload
   io.send(res, 200, { ok: true });
 }

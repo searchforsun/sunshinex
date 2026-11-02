@@ -9,11 +9,13 @@
  * 后续一律经此），写纪律沿 catalog/plugins、catalog/approvals 同款——见写面节注释。
  */
 import { loadProvidersFull, providerApiKeyEnv, resolveProviderApiKey } from '../config/providers';
+import { t } from '../i18n';
 import type { ModelChoice, ParsedProviderEntry } from '../config/providers';
 import { parseEffort, EFFORT_ORDER } from '../model/effort';
 import type { ReasoningEffort, ModelTier } from '../types';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot, settingsPathOf } from './io';
+import { CatalogWriteError, finishCatalogWrite, readWritableDoc, requireProjectRoot, settingsPathOf } from './io';
+import type { readJsoncDoc } from './io';
 
 /** 单个源条目：config 解析面的源级分组（name/baseUrl/源级显式字段/models 条目显式值）+ 密钥面 */
 export interface ProviderEntry extends ParsedProviderEntry {
@@ -84,24 +86,7 @@ function providerWriteFile(root: string | null, scope: Scope): string {
 /** 写面文件守卫公共体（各写函数第一步）：COMMENTS 先于一切内容守卫 → 畸形 JSON/根非对象 INVALID 拒写不覆盖 */
 function readWriteDoc(root: string | null, scope: Scope): { file: string; read: ReturnType<typeof readJsoncDoc> } {
   const file = providerWriteFile(root, scope);
-  const read = readJsoncDoc(file);
-  if (read.hasComments) {
-    throw new CatalogWriteError('COMMENTS', `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`);
-  }
-  if (read.exists && read.warnings.length > 0) {
-    // 畸形 JSON/根非对象：readJsoncDoc 降级为空 doc，照写等于毁掉用户既有内容——拒写引流修文件
-    throw new CatalogWriteError('INVALID', read.warnings[0]!);
-  }
-  return { file, read };
-}
-
-/** 落盘收口：新档补 version:1（settings schema 口径，plugins/approvals 同款）→ 原子写 2-space + 尾随换行
- *  → 任务14 写通知（root/scope 透传自各写函数；写的是目标 scope 的 settings.json → ('settings', scope, root)，
- *  与 watcher settings.json 映射同构——六写经本单点统一回填） */
-function finishWrite(root: string | null, scope: Scope, file: string, read: ReturnType<typeof readJsoncDoc>, doc: Record<string, unknown>): void {
-  if (!read.exists && doc['version'] === undefined) doc['version'] = 1;
-  writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
-  notifyCatalogWrite('settings', scope, root);
+  return { file, read: readWritableDoc(file) }; // 守卫公共体单点（io readWritableDoc，D60）
 }
 
 /** 对象形状裁决（条目/env 块通用）：非对象或数组 → undefined */
@@ -168,7 +153,7 @@ function normalizeModelEntry(label: string, input: ProviderModelInput): ParsedPr
   }
   const model = typeof input.model === 'string' ? input.model.trim() : '';
   if (model === '') {
-    throw new CatalogWriteError('INVALID', `providers.${label} models 条目 model 须为非空字符串`);
+    throw new CatalogWriteError('INVALID', t(`providers.${label} models entry \"model\" must be a non-empty string`, `providers.${label} models 条目 model 须为非空字符串`));
   }
   const sub = `${label} models.${model}`;
   if (input.contextWindow !== undefined) assertWindow(sub, input.contextWindow);
@@ -202,7 +187,7 @@ function buildModelList(label: string, models: ProviderModelInput[]): ParsedProv
 /** provider 身份参数归一：非字符串或空白 → INVALID */
 function providerLabel(provider: string): string {
   const label = typeof provider === 'string' ? provider.trim() : '';
-  if (label === '') throw new CatalogWriteError('INVALID', 'provider name 须为非空字符串');
+  if (label === '') throw new CatalogWriteError('INVALID', t('provider name must be a non-empty string', 'provider name 须为非空字符串'));
   return label;
 }
 
@@ -220,14 +205,14 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
   const label = providerLabel(name);
   // patch 全量校验（先于任何 mutation）：baseUrl trim 后非空、显式值逐位合法
   const baseUrl = patch.baseUrl !== undefined ? (typeof patch.baseUrl === 'string' ? patch.baseUrl.trim() : '') : undefined;
-  if (baseUrl === '') throw new CatalogWriteError('INVALID', `providers.${label} baseUrl 须为非空字符串`);
+  if (baseUrl === '') throw new CatalogWriteError('INVALID', t(`providers.${label} baseUrl must be a non-empty string`, `providers.${label} baseUrl 须为非空字符串`));
   if (patch.contextWindow !== undefined) assertWindow(label, patch.contextWindow);
   if (patch.reasoningEffort !== undefined) assertEffort(label, patch.reasoningEffort);
   if (patch.supportsImages !== undefined && typeof patch.supportsImages !== 'boolean') {
     throw new CatalogWriteError('INVALID', `providers.${label} supportsImages 须为布尔，收到 ${JSON.stringify(patch.supportsImages)}`);
   }
   const patchName = patch.name !== undefined ? (typeof patch.name === 'string' ? patch.name.trim() : '') : undefined;
-  if (patchName === '') throw new CatalogWriteError('INVALID', 'patch.name 在场时须为非空字符串');
+  if (patchName === '') throw new CatalogWriteError('INVALID', t('patch.name must be a non-empty string when present', 'patch.name 在场时须为非空字符串'));
   const doc = read.doc;
   const arr = providersArrayOf(doc);
   const idx = entryIndexByName(arr, label);
@@ -248,7 +233,7 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
       ...(patch.supportsImages !== undefined ? { supportsImages: patch.supportsImages } : {}),
       models: buildModelList(label, patch.models),
     });
-    finishWrite(root, scope, file, read, doc);
+    finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
     return;
   }
   // update 路径：增量手术（未提字段不动，其余键原样透传）
@@ -266,13 +251,13 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
   if (patch.supportsImages !== undefined) next['supportsImages'] = patch.supportsImages;
   if (patch.models !== undefined) {
     if (!Array.isArray(patch.models) || patch.models.length === 0) {
-      throw new CatalogWriteError('INVALID', `providers.${label} models 替换须为非空数组（models 空的源是非法形态）`);
+      throw new CatalogWriteError('INVALID', t(`providers.${label} models replacement must be a non-empty array (a source with empty models is invalid)`, `providers.${label} models 替换须为非空数组（models 空的源是非法形态）`));
     }
     next['models'] = buildModelList(label, patch.models);
   }
   if (JSON.stringify(cur) !== JSON.stringify(next)) {
     arr[idx] = next;
-    finishWrite(root, scope, file, read, doc);
+    finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
   }
 }
 
@@ -286,7 +271,7 @@ export function removeProvider(root: string | null, scope: Scope, name: string):
   const idx = entryIndexByName(arr, label);
   if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
   arr.splice(idx, 1);
-  finishWrite(root, scope, file, read, doc);
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }
 
 /** 追加一个模型到指定源：同源同模型名已存在（字符串速记/对象两形态都算同名）→ INVALID（幂等拒绝）；
@@ -305,7 +290,7 @@ export function modelAdd(root: string | null, scope: Scope, provider: string, en
     throw new CatalogWriteError('INVALID', `providers.${label} 模型已存在: ${built.model}（同名重复拒绝）`);
   }
   cur['models'] = [...(Array.isArray(rawModels) ? rawModels : []), built];
-  finishWrite(root, scope, file, read, doc);
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }
 
 /** 摘除一个模型：源不在/模型不在 → INVALID；最后一条模型摘除后源整条删除（providers 条目 models
@@ -314,7 +299,7 @@ export function modelRemove(root: string | null, scope: Scope, provider: string,
   const { file, read } = readWriteDoc(root, scope);
   const label = providerLabel(provider);
   const target = typeof model === 'string' ? model.trim() : '';
-  if (target === '') throw new CatalogWriteError('INVALID', 'model 名须为非空字符串');
+  if (target === '') throw new CatalogWriteError('INVALID', t('model name must be a non-empty string', 'model 名须为非空字符串'));
   const doc = read.doc;
   const arr = providersArrayOf(doc);
   const idx = entryIndexByName(arr, label);
@@ -326,7 +311,7 @@ export function modelRemove(root: string | null, scope: Scope, provider: string,
   if (at === -1) throw new CatalogWriteError('INVALID', `providers.${label} 模型不存在: ${target}`);
   models.splice(at, 1);
   if (models.length === 0) arr.splice(idx, 1); // 空自动删源：models 空的源是非法形态
-  finishWrite(root, scope, file, read, doc);
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }
 
 /** 相邻调序：up=与前一位互换、down=与后一位互换（choices 序 = providers 序 × models 序，调序即调
@@ -335,7 +320,7 @@ export function modelMove(root: string | null, scope: Scope, provider: string, m
   const { file, read } = readWriteDoc(root, scope);
   const label = providerLabel(provider);
   const target = typeof model === 'string' ? model.trim() : '';
-  if (target === '') throw new CatalogWriteError('INVALID', 'model 名须为非空字符串');
+  if (target === '') throw new CatalogWriteError('INVALID', t('model name must be a non-empty string', 'model 名须为非空字符串'));
   if (direction !== 'up' && direction !== 'down') {
     throw new CatalogWriteError('INVALID', `direction 须为 up|down，收到 ${JSON.stringify(direction)}`);
   }
@@ -353,7 +338,7 @@ export function modelMove(root: string | null, scope: Scope, provider: string, m
     throw new CatalogWriteError('INVALID', `providers.${label} 模型 ${target} 已在${direction === 'up' ? '顶' : '底'}部，无从再${direction === 'up' ? '上' : '下'}移`);
   }
   [models[at], models[swapWith]] = [models[swapWith]!, models[at]!];
-  finishWrite(root, scope, file, read, doc);
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }
 
 /**
@@ -379,7 +364,7 @@ export function setProviderApiKey(root: string | null, scope: Scope, provider: s
     // env 块缺失（或形状坏）：删不存在的行 = 零变化不落盘；落值则整键重建（形状坏不保留垃圾）
     if (apiKey === '') return;
     doc['env'] = { [slot]: apiKey };
-    finishWrite(root, scope, file, read, doc);
+    finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
     return;
   }
   if (apiKey === '') {
@@ -389,5 +374,5 @@ export function setProviderApiKey(root: string | null, scope: Scope, provider: s
     if (env[slot] === apiKey) return; // 零变化不落盘
     env[slot] = apiKey;
   }
-  finishWrite(root, scope, file, read, doc);
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }

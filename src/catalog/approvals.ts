@@ -14,7 +14,7 @@
  *   两键互斥维护：记入一侧同时对向除名（批准/拒绝互为终态，同名不共存两键；对向键形状坏不动——读面宽容）。
  * - 全局级条目不过本阀：全局 mcp.json 在 userConfigDir（用户手配，非仓库供给），恒 'none' 由调用面（catalog/mcp）保证。
  */
-import { readJsoncDoc, writeJsonAtomic, CatalogWriteError, notifyCatalogWrite } from './io';
+import { finishCatalogWrite, readWritableDoc } from './io';
 import { loadGlobalSettings, parseSettingsFile } from '../config/settings';
 import { projectSlug } from '../config/data-dir';
 
@@ -58,14 +58,7 @@ function setApproval(
   opposite: 'mcpApprovals' | 'mcpDenied',
 ): void {
   const file = loadGlobalSettings();
-  const read = readJsoncDoc(file);
-  if (read.hasComments) {
-    throw new CatalogWriteError('COMMENTS', `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`);
-  }
-  if (read.exists && read.warnings.length > 0) {
-    // 畸形 JSON/根非对象：readJsoncDoc 降级为空 doc，照写等于毁掉用户既有内容——拒写引流修文件
-    throw new CatalogWriteError('INVALID', read.warnings[0]!);
-  }
+  const read = readWritableDoc(file); // 守卫公共体单点（io，D60）
   const doc = read.doc;
   const slug = projectSlug(root);
   let changed = false;
@@ -96,8 +89,6 @@ function setApproval(
     }
   }
   if (!changed) return;
-  if (!read.exists && doc['version'] === undefined) doc['version'] = 1; // 新档补 version:1（settings schema 口径，daemon T2/T4 同款）
-  writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
-  // 任务14 写通知：写的是全局 settings.json → ('settings','global',null)（与 watcher 全局映射同构，approve/deny 共用本公共体）
-  notifyCatalogWrite('settings', 'global', null);
+  // 写通知：全局 settings.json → ('settings','global',null)（approve/deny 共用）——收口公共体单点（D60）
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope: 'global', root: null });
 }

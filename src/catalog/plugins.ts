@@ -18,7 +18,7 @@
  */
 import { loadEffectivePlugins, type EffectivePlugin } from '../config/plugins';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot, settingsPathOf } from './io';
+import { CatalogWriteError, finishCatalogWrite, readWritableDoc, requireProjectRoot, settingsPathOf } from './io';
 
 /** 两级清单（loadEffectivePlugins 薄包装）：plugins + 装载聚合警告单；root=null 仅全局装载（无项目锚） */
 export function listPlugins(root: string | null): { plugins: EffectivePlugin[]; warnings: string[] } {
@@ -41,14 +41,7 @@ function updatePluginRecord(
   patch: (prev: Record<string, unknown>) => Record<string, unknown>,
 ): void {
   const file = settingsPathOf(scope, requireProjectRoot(scope, root, 'plugin'));
-  const read = readJsoncDoc(file);
-  if (read.hasComments) {
-    throw new CatalogWriteError('COMMENTS', `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`);
-  }
-  if (read.exists && read.warnings.length > 0) {
-    // 畸形 JSON/根非对象：readJsoncDoc 降级为空 doc，照写等于毁掉用户既有内容——拒写引流修文件
-    throw new CatalogWriteError('INVALID', read.warnings[0]!);
-  }
+  const read = readWritableDoc(file); // 守卫公共体单点（io，D60）
   // id 定位（文件守卫后——见模块头）：无装载态的 id 无从写语义键（与 handlePluginsPut 404 同源判据）
   if (!listPlugins(root).plugins.some((p) => p.manifest.id === id)) {
     throw new CatalogWriteError('INVALID', `plugin not found: ${id}`);
@@ -58,13 +51,10 @@ function updatePluginRecord(
   doc['plugins'] = pluginsMap;
   const prev = recordOf(pluginsMap[id]);
   const record = patch(prev ?? {});
-  if (prev === undefined || JSON.stringify(prev) !== JSON.stringify(record)) {
+    if (prev === undefined || JSON.stringify(prev) !== JSON.stringify(record)) {
     pluginsMap[id] = record;
-    if (!read.exists && doc['version'] === undefined) doc['version'] = 1; // 新档补 version:1（settings schema 口径，approvals 同款）
-    writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
-    // 任务14 写通知：写的是目标 scope 的 settings.json（plugins 语义键）→ ('settings', scope, root)
-    // （与 watcher settings.json 映射同构；零变化不落盘路径不通知——无盘上副作用即无变更事件）
-    notifyCatalogWrite('settings', scope, root);
+    // 写通知：目标 scope settings.json（plugins 语义键）→ ('settings', scope, root)——收口公共体单点（D60）
+    finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
   }
 }
 

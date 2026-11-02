@@ -271,6 +271,49 @@ export function hasJsonComments(text: string): boolean {
  * 产出一律经 JSON.parse(剥注释) 复验：不可解析或未触及键值漂移 → 返回 null（调用方 409，零盘上副作用）。
  * BOM 原样保真；行注释 `//` 与跨行块注释状态机口径与 stripJsonComments 一致。
  */
+/** 结构化改写管线单点（D60 批B1：serve handleSettingsPut 与 CLI settings setCmd 共用，此前近乎逐行
+ *  两份复制）：raw（null=新档）+ 键值变更 → 含注释走注释保留式手术（不支持形态=失败）；否则 BOM
+ *  容忍解析 + 根形态 + version 守卫（新档补 version:1）→ 键手术（null=delete）→ 产出目标文件全文
+ *  （2-space + 尾换行）。零 IO 零呈现：落盘归调用方（writeJsonAtomic），失败呈现各表其面（HTTP 409
+ *  文案 / CLI 双语 error 行），reason 枚举承载分域。 */
+export type SettingsSurgeryResult =
+  | { ok: true; text: string }
+  | { ok: false; reason: 'comments-unsupported' | 'invalid-json' | 'root-not-object' | 'unsupported-version'; detail?: string };
+
+export function applySettingsUpdates(
+  raw: string | null,
+  updates: Record<string, string | number | null>,
+): SettingsSurgeryResult {
+  if (raw !== null && hasJsonComments(raw)) {
+    const patched = surgicalSettingsUpdate(raw, updates);
+    if (patched === null) return { ok: false, reason: 'comments-unsupported' };
+    return { ok: true, text: patched };
+  }
+  let obj: Record<string, unknown>;
+  if (raw === null) {
+    obj = { version: 1 };
+  } else {
+    let parsedRoot: unknown;
+    try {
+      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 同口径）
+    } catch (err) {
+      return { ok: false, reason: 'invalid-json', detail: err instanceof Error ? err.message : String(err) };
+    }
+    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+      return { ok: false, reason: 'root-not-object' };
+    }
+    obj = parsedRoot as Record<string, unknown>;
+    if ((obj['version'] ?? 1) !== 1) {
+      return { ok: false, reason: 'unsupported-version', detail: JSON.stringify(obj['version'] ?? 1) };
+    }
+  }
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === null) delete obj[key];
+    else obj[key] = value;
+  }
+  return { ok: true, text: JSON.stringify(obj, null, 2) + '\n' };
+}
+
 export function surgicalSettingsUpdate(
   raw: string,
   updates: Record<string, string | number | null>,

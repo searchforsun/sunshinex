@@ -17,10 +17,9 @@ import * as fs from 'node:fs';
 import {
   SEMANTIC_KEYS,
   getSelfFilledSlots,
-  hasJsonComments,
   loadGlobalSettings,
   loadProjectSettings,
-  surgicalSettingsUpdate,
+  applySettingsUpdates,
 } from '../../config/settings';
 import { effectiveKeyRow, fileSlots } from '../../serve/config-helpers';
 import { notifyCatalogWrite, settingsPathOf, writeJsonAtomic } from '../../catalog/io';
@@ -80,49 +79,33 @@ function setCmd(args: string[]): number {
   }
   const file = settingsPathOf(target.scope, target.root);
   const raw = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-  if (raw !== null && hasJsonComments(raw)) {
-    // 注释保留式手术写（handleSettingsPut 同款）：只动目标键，行尾注释/缩进/其余键逐字保真；
-    // 不支持形态（多行/嵌套值、单行对象、复验不过）→ error 引流 raw 编辑面，零盘上副作用
-    const patched = surgicalSettingsUpdate(raw, { [key]: value });
-    if (patched === null) {
+  // 结构化改写管线单点（config/settings applySettingsUpdates，D60 批B1：与 serve handleSettingsPut
+  // 共用；失败呈现保 CLI 双语 error 文案，零盘上副作用）
+  const applied = applySettingsUpdates(raw, { [key]: value });
+  if (!applied.ok) {
+    if (applied.reason === 'comments-unsupported') {
       console.error(t(
         'error: settings file contains comments in an unsupported layout; edit it manually',
         'error：settings 文件含本面不支持的注释排版；请手工编辑该文件',
       ));
-      return 1;
-    }
-    writeJsonAtomic(file, patched);
-  } else {
-    let obj: Record<string, unknown>;
-    if (raw === null) {
-      obj = { version: 1 }; // 新档补 version:1（settings schema 口径，handleSettingsPut 同款）
-    } else {
-      try {
-        obj = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw) as Record<string, unknown>; // BOM 容忍（与 parseSettingsFile 同口径）
-      } catch (e) {
-        const reason = e instanceof Error ? e.message : String(e);
-        console.error(t(
-          `error: settings file is not valid JSON: ${file}: ${reason}`,
-          `error：settings 文件非合法 JSON：${file}：${reason}`,
-        ));
-        return 1;
-      }
-    }
-    if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
-      console.error(t(`error: settings root must be a JSON object: ${file}`, `error：settings 根必须是 JSON 对象：${file}`));
-      return 1;
-    }
-    if ((obj['version'] ?? 1) !== 1) {
+    } else if (applied.reason === 'invalid-json') {
+      const reason = applied.detail ?? '';
       console.error(t(
-        `error: unsupported settings version: ${JSON.stringify(obj['version'] ?? 1)}: ${file}`,
-        `error：settings version 仅支持 1，收到 ${JSON.stringify(obj['version'] ?? 1)}：${file}`,
+        `error: settings file is not valid JSON: ${file}: ${reason}`,
+        `error：settings 文件非合法 JSON：${file}：${reason}`,
       ));
-      return 1;
+    } else if (applied.reason === 'root-not-object') {
+      console.error(t(`error: settings root must be a JSON object: ${file}`, `error：settings 根必须是 JSON 对象：${file}`));
+    } else {
+      console.error(t(
+        `error: unsupported settings version: ${applied.detail ?? ''}: ${file}`,
+        `error：settings version 仅支持 1，收到 ${applied.detail ?? ''}：${file}`,
+      ));
     }
-    obj[key] = value;
-    // 原子写：writeJsonAtomic（同目录 tmp + rename，目录缺则建）——与 catalog 写面同一纪律单点
-    writeJsonAtomic(file, JSON.stringify(obj, null, 2) + '\n');
+    return 1;
   }
+  // 原子写：writeJsonAtomic（同目录 tmp + rename，目录缺则建）——与 catalog 写面同一纪律单点
+  writeJsonAtomic(file, applied.text);
   // 写通知（catalog 纪律同构）：settings 语义键落盘 → ('settings', scope, root)（watcher 映射同构；
   // scope=global 由 notify 单点归一 root=null）
   notifyCatalogWrite('settings', target.scope, target.root);

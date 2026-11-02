@@ -27,10 +27,11 @@
  *   · 全部返回 void、零打印。
  */
 import { readLevel } from '../config/permissions';
+import { t } from '../i18n';
 import type { PermissionsConfig } from '../config/permissions';
 import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot, settingsPathOf } from './io';
+import { CatalogWriteError, finishCatalogWrite, readWritableDoc, requireProjectRoot, settingsPathOf } from './io';
 
 /** 空 permissions 面（坏形/缺级/缺键统一缺省形态，与 config/permissions EMPTY 同构） */
 const EMPTY: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
@@ -82,19 +83,11 @@ function permissionsRecordOf(doc: Record<string, unknown>): Record<string, unkno
  *  mode='add'：去重幂等（trim 对齐比对）；mode='remove'：缺失（值缺/槽缺/键缺/键形状坏）→ INVALID */
 function mutatePermission(root: string | null, scope: Scope, list: PermissionList, value: string, mode: 'add' | 'remove'): void {
   const file = permissionWriteFile(root, scope); // 文件落位守卫在先——但让位目标文件的 COMMENTS（下一守卫）
-  const read = readJsoncDoc(file);
-  if (read.hasComments) {
-    // COMMENTS 先于一切内容守卫（providers 同序——其前仅有文件位置守卫）：value 非法等让位，
-    // 先收口文件可写性再谈内容对错
-    throw new CatalogWriteError('COMMENTS', `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`);
-  }
-  if (read.exists && read.warnings.length > 0) {
-    // 畸形 JSON/根非对象：readJsoncDoc 降级为空 doc，照写等于毁掉用户既有内容——拒写引流修文件
-    throw new CatalogWriteError('INVALID', read.warnings[0]!);
-  }
+  // COMMENTS/畸形守卫公共体单点（io readWritableDoc，D60）——COMMENTS 先于一切内容守卫：value 非法等让位
+  const read = readWritableDoc(file);
   const rule = typeof value === 'string' ? value.trim() : '';
   if (rule === '') {
-    throw new CatalogWriteError('INVALID', `permissions.${list} value 须为非空字符串`);
+    throw new CatalogWriteError('INVALID', t(`permissions.${list} value must be a non-empty string`, `permissions.${list} value 须为非空字符串`));
   }
   const doc = read.doc;
   const perms = permissionsRecordOf(doc);
@@ -103,7 +96,7 @@ function mutatePermission(root: string | null, scope: Scope, list: PermissionLis
     // remove：只在「字符串数组且含目标」时手术——槽缺失/形状坏/值不在一律 INVALID（严格语义非幂等；
     // 对形状坏键的 add 才做整键重置，remove 拒写优于静默重置——用户坏数据不被写面顺手清掉）
     if (!Array.isArray(cur) || !cur.some((v) => typeof v === 'string' && v.trim() === rule)) {
-      throw new CatalogWriteError('INVALID', `permissions.${list} 规则不存在: ${rule}`);
+      throw new CatalogWriteError('INVALID', t(`permissions.${list} rule not found: ${rule}`, `permissions.${list} 规则不存在: ${rule}`));
     }
     perms[list] = (cur as string[]).filter((v) => !(typeof v === 'string' && v.trim() === rule));
   } else {
@@ -111,11 +104,9 @@ function mutatePermission(root: string | null, scope: Scope, list: PermissionLis
     if (Array.isArray(cur) && cur.some((v) => typeof v === 'string' && v.trim() === rule)) return; // 零变化不落盘
     perms[list] = [...(Array.isArray(cur) ? (cur as string[]) : []), rule];
   }
-  if (!read.exists && doc['version'] === undefined) doc['version'] = 1; // 新档补 version:1（settings schema 口径）
-  writeJsonAtomic(file, JSON.stringify(doc, null, 2) + '\n');
-  // 任务14 写通知：写的是该 scope 的 settings.json 物理文件 → ('settings', scope, root)——resource
-  // 恒 'settings' 与 watcher 映射同构（模块头注），'permissions' 不经本通道
-  notifyCatalogWrite('settings', scope, root);
+  // 写通知：该 scope settings.json 物理文件 → ('settings', scope, root)（resource 恒 'settings' 与 watcher
+  // 映射同构，'permissions' 不经本通道）——收口公共体单点（D60）
+  finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }
 
 /** 追加一条规则到指定 scope settings 的 permissions.<list>：去重幂等（同值 trim 对齐在场零落盘） */
