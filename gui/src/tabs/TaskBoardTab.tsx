@@ -383,6 +383,13 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   );
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
+    // 定位共体（team/task 两分型仅选择器与判别面不同，滚动+flash+清理由此单点承载）
+    const flashAndScroll = (hit: Element): (() => void) => {
+      hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      hit.classList.add('flash');
+      const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
+      return () => clearTimeout(timer);
+    };
     if (focus.kind === 'team') {
       const cards = [...(rootRef.current?.querySelectorAll('.tb-card') ?? [])];
       const hit = cards.find((card) => {
@@ -390,11 +397,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
         const name = card.querySelector('.tb-team-name')?.textContent ?? '';
         return id === focus.ref || name === focus.ref;
       });
-      if (hit === undefined) return;
-      hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      hit.classList.add('flash');
-      const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
-      return () => clearTimeout(timer);
+      return hit === undefined ? undefined : flashAndScroll(hit);
     }
     const norm = focus.ref.replace(/^task-/, '');
     const rows = [...(rootRef.current?.querySelectorAll('.tb-task-main') ?? [])];
@@ -403,11 +406,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
       const title = r.getAttribute('data-task-title') ?? '';
       return id === focus.ref || id === norm || title === focus.ref;
     });
-    if (hit === undefined) return;
-    hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    hit.classList.add('flash');
-    const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
-    return () => clearTimeout(timer);
+    return hit === undefined ? undefined : flashAndScroll(hit);
   }, [focus?.nonce, focus?.ref, focus?.kind]);
   const tasks = useMemo(() => Object.values(board.tasks), [board]);
   const groups = useMemo(() => groupByTeam(tasks, teams), [tasks, teams]);

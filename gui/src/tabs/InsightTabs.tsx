@@ -526,18 +526,21 @@ export function LearnedSkillsTab({
    *  行并滚至可见——数据在场的展开即时落,数据未到的等加载完成后落(useEffect 随 data/focus 重跑);
    *  nonce 防同 slug 重入不触发 */
   const listRef = useRef<HTMLUListElement | null>(null);
+  // 定位滚动单点（nonce 即时面/data 到场面两 effect 共用，D63 小对收敛）
+  const scrollToSkill = (slug: string): void => {
+    const el = listRef.current?.querySelector(`[data-skill-id="${slug}"]`);
+    el?.scrollIntoView({ block: 'center' });
+  };
   useEffect(() => {
     if (focus === undefined || focus.slug === '') return;
     setExpandedId(focus.slug);
     // 数据已到场即滚;未到场等列表挂载(useEffect 依赖 data)
-    const el = listRef.current?.querySelector(`[data-skill-id="${focus.slug}"]`);
-    el?.scrollIntoView({ block: 'center' });
+    scrollToSkill(focus.slug);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.nonce]);
   useEffect(() => {
     if (focus === undefined || focus.slug === '' || data === null) return;
-    const el = listRef.current?.querySelector(`[data-skill-id="${focus.slug}"]`);
-    el?.scrollIntoView({ block: 'center' });
+    scrollToSkill(focus.slug);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.nonce, data]);
   /** 删除二段确认(与记忆行同语义):首击武装(红),3s 内再击执行,超时解除 */
