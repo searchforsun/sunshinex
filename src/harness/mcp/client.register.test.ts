@@ -94,3 +94,22 @@ test('registerTools 装配面：disabledTools 短名过滤——命中不注册�
     await miss.host.close();
   }
 });
+
+test('慢启动服务不拖住装配:超连接预算即返回(不计失败、不触发重建),后台连上后工具补注册', async () => {
+  const registry = new ToolRegistry();
+  // 延迟 1.5s 才加载模拟服务(模拟插件冷启动慢/桥接等待);argv 补位使其读到 --name slow
+  const slow = "setTimeout(()=>{process.argv.push('x','--name','slow');require(require('path').resolve('scripts/mock-mcp-server.js'))},1500)";
+  const host = new McpHost([{ name: 'slow', command: 'node', args: ['-e', slow] }], registry, { connectBudgetMs: 300 });
+  try {
+    const t0 = Date.now();
+    const report = await host.registerTools();
+    assert.ok(Date.now() - t0 < 1000, `装配须在预算附近返回(实际 ${Date.now() - t0}ms)`);
+    assert.equal(report.registered, 0);
+    assert.equal(host.hasFailedServers(), false, '慢≠失败:不得触发宿主重建');
+    const deadline = Date.now() + 15_000;
+    while (registry.get('mcp__slow__echo') === undefined && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    assert.ok(registry.get('mcp__slow__echo') !== undefined, '后台连上后工具补注册');
+  } finally {
+    await host.close();
+  }
+});

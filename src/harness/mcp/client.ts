@@ -11,11 +11,16 @@ import { ExecResult, JsonSchema, McpServerConfig, ToolCategory, ToolInput } from
 import { MAX_IMAGES } from '../../images';
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
+/** 装配期单台 MCP 连接预算:插件/服务启动慢或挂住时不拖住发送(实测浏览器插件故障时每轮卡 10s+);
+ *  超时即本轮先不带它的工具,连接在后台继续,连上后工具补注册(注册表实时,后续步骤可见) */
+const MCP_CONNECT_BUDGET_MS = 1_000;
 const MAX_ARGS_BYTES = 64 * 1024;
 
 interface McpHostOptions {
   /** 单次 tools/call 超时（缺省 30s；测试注入短超时用） */
   callTimeoutMs?: number;
+  /** 装配期单台连接预算(ms,缺省 MCP_CONNECT_BUDGET_MS):超时不阻塞本轮,后台续连,连上即补注册 */
+  connectBudgetMs?: number;
   /** stdio server stderr 日志目录(缺省不落):<logDir>/<server>.log append——插件崩退/有头启动失败的诊断源 */
   logDir?: string;
 }
@@ -154,6 +159,8 @@ export class McpHost {
   /** 连接/装配失败名单(2026-11-01「失败连接被缓存永不重试」根修):失败 server 名集合——
    *  宿主据此在下次 run 重建 host(失败连接留存在 Map 里 = 工具永不挂载且永不重试) */
   private failedNames = new Set<string>();
+  /** close 后到达的后台连接须就地关闭(不得复活已收口的 host) */
+  private closed = false;
 
   constructor(
     private servers: McpServerConfig[],
@@ -306,8 +313,10 @@ export class McpHost {
    *  主流客户端均不做此校验，改为软提示照常注册（guard 名单按配置键，冒名面本就由登记制承载） */
   async registerTools(): Promise<McpAssemblyReport> {
     const report: McpAssemblyReport = { registered: 0, warnings: [] };
+    const todo: McpServerConfig[] = [];
+    const seen = new Set<string>();
     for (const cfg of this.servers) {
-      if (this.conns.has(cfg.name)) {
+      if (this.conns.has(cfg.name) || seen.has(cfg.name)) {
         report.warnings.push(`duplicate MCP server name (${cfg.name}) skipped`);
         continue;
       }
@@ -317,39 +326,68 @@ export class McpHost {
         report.warnings.push(`server disabled (${cfg.name}): enabled=false, skipped`);
         continue;
       }
-      let client: Client;
-      let transport: Transport;
-      try {
-        ({ client, transport } = await this.dial(cfg));
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
-        this.writeAssemblyLog(cfg.name, `connection failed: ${msg}`);
-        this.failedNames.add(cfg.name);
-        continue;
-      }
-      try {
-        const actual = client.getServerVersion()?.name;
-        if (actual !== cfg.name) {
-          // 身份软提示（不再跳过）：照常 listTools+注册。差异只落装配日志文件(诊断价值在日志
-          // ——警告单会被 engine.run 每轮尾追进对话链,诊断噪声每轮刷屏,用户裁定 2026-11-01
-          // 「警告去掉或优化」;主流服务器常态差异无行动价值)
-          this.writeAssemblyLog(cfg.name, `identity note: serverInfo.name=${actual ?? '(unknown)'} (accepted, config name kept)`);
-        }
-        this.conns.set(cfg.name, { client, transport, config: cfg });
-        report.registered += this.registerListedTools(cfg.name, await client.listTools());
-      } catch (e) {
-        // 形态守卫/清单拉取等残余失败同样只损失本服务器（降级语义），收警告继续
-        const msg = e instanceof Error ? e.message : String(e);
-        report.warnings.push(`assembly failed (${cfg.name}): ${msg.slice(0, 120)}`);
-        this.writeAssemblyLog(cfg.name, `assembly failed: ${msg}`);
-        this.failedNames.add(cfg.name);
-      }
+      seen.add(cfg.name);
+      todo.push(cfg);
     }
+    // 并行连接,每台限时:超预算的服务本轮跳过(不计失败、不触发重建),后台续连成功即补注册
+    const budget = this.opts.connectBudgetMs ?? MCP_CONNECT_BUDGET_MS;
+    await Promise.all(todo.map(async (cfg) => {
+      const attempt = this.connectAndRegister(cfg);
+      let timer: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([
+        attempt.then((n) => ({ kind: 'ok' as const, n }), (e: unknown) => ({ kind: 'err' as const, msg: e instanceof Error ? e.message : String(e) })),
+        new Promise<{ kind: 'slow' }>((r) => { timer = setTimeout(() => r({ kind: 'slow' }), budget); }),
+      ]);
+      clearTimeout(timer);
+      if (outcome.kind === 'ok') report.registered += outcome.n;
+      else if (outcome.kind === 'err') report.warnings.push(outcome.msg);
+      else {
+        this.writeAssemblyLog(cfg.name, `not ready within ${budget}ms — continuing in background, tools join when connected`);
+        attempt.catch(() => {}); // 失败已在 connectAndRegister 内记账/落日志
+      }
+    }));
     return report;
   }
 
+  /** 单台连接+注册;失败记 failedNames/落日志并以警告文案抛出(连接失败/装配失败两类) */
+  private async connectAndRegister(cfg: McpServerConfig): Promise<number> {
+    let client: Client;
+    let transport: Transport;
+    try {
+      ({ client, transport } = await this.dial(cfg));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.writeAssemblyLog(cfg.name, `connection failed: ${msg}`);
+      this.failedNames.add(cfg.name);
+      throw new Error(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
+    }
+    if (this.closed) {
+      const pid = pidOf(transport);
+      await client.close().catch(() => {});
+      if (pid !== null) killProcessTree(pid);
+      return 0;
+    }
+    try {
+      const actual = client.getServerVersion()?.name;
+      if (actual !== cfg.name) {
+        // 身份软提示（不再跳过）：照常 listTools+注册。差异只落装配日志文件(诊断价值在日志
+        // ——警告单会被 engine.run 每轮尾追进对话链,诊断噪声每轮刷屏,用户裁定 2026-11-01
+        // 「警告去掉或优化」;主流服务器常态差异无行动价值)
+        this.writeAssemblyLog(cfg.name, `identity note: serverInfo.name=${actual ?? '(unknown)'} (accepted, config name kept)`);
+      }
+      this.conns.set(cfg.name, { client, transport, config: cfg });
+      return this.registerListedTools(cfg.name, await client.listTools());
+    } catch (e) {
+      // 形态守卫/清单拉取等残余失败同样只损失本服务器（降级语义）
+      const msg = e instanceof Error ? e.message : String(e);
+      this.writeAssemblyLog(cfg.name, `assembly failed: ${msg}`);
+      this.failedNames.add(cfg.name);
+      throw new Error(`assembly failed (${cfg.name}): ${msg.slice(0, 120)}`);
+    }
+  }
+
   async close(): Promise<void> {
+    this.closed = true;
     // 撤牌先于断链：close 后注册表零 mcp 残留（收口语义底线）——残留工具 executor 指向已关 client，
     // guard 名单却仍放行，模型调用必败且死相难查
     for (const name of this.registeredNames) this.registry.unregister(name);

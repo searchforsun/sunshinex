@@ -101,6 +101,14 @@ export class BuiltinFacade {
     if (real === undefined) throw new Error('DevToolsActivePort 不可读——壳未开 --remote-debugging-port(M2 需要)');
     this.realPort = real.port;
     this.realBrowserPath = real.browserPath;
+    // DevToolsActivePort 可能是旧实例残留(本实例调试口绑定失败时不会改写)——不通即不启动,
+    // 由 daemon 周期重试;否则 facade 代理到死端口,插件每轮拿到 502 白等
+    try {
+      const r = await fetch(`${this.realHttp()}/json/version`, { signal: AbortSignal.timeout(1500) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch (e) {
+      throw new Error(`real CDP endpoint 127.0.0.1:${this.realPort} unreachable (${e instanceof Error ? e.message : String(e)})`);
+    }
     this.log(`real CDP endpoint: 127.0.0.1:${this.realPort}/${this.realBrowserPath}`);
     this.httpSrv = http.createServer((req, res) => {
       // HTTP 面:GUI 代理(handleCdpTargets)消费 /json/list——透传真实列表并按白名单过滤

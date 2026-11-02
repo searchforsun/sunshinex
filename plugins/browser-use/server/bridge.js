@@ -90,13 +90,19 @@ function writeMeta(ws, pid, extra) {
 }
 
 async function probeAlive(meta) {
+  return (await probeStatus(meta)) === 'ok';
+}
+
+/** 探活三态:ok / refused(端口未起或已死——应用刚启动时可自愈)/ bad(facade 在应答但真实浏览器
+ *  调试口不可达,如 502——短期不会自愈,应立即放弃) */
+async function probeStatus(meta) {
   try {
     const port = /:(\d+)\//.exec(meta.ws);
-    if (port === null) return false;
+    if (port === null) return 'bad';
     const r = await fetch('http://127.0.0.1:' + port[1] + '/json/version', { signal: AbortSignal.timeout(1500) });
-    return r.ok;
+    return r.ok ? 'ok' : 'bad';
   } catch {
-    return false;
+    return 'refused';
   }
 }
 
@@ -110,13 +116,19 @@ async function main() {
     const readMeta = () => (metaPath !== undefined && fs.existsSync(metaPath)
       ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
       : undefined);
+    // 只等可自愈的情形:meta 缺席最多 3s(daemon 启动即写)、端口拒连最多 15s(重启竞态);
+    // facade 已应答但报错(真实调试口不可达)连续 2 次即放弃——宿主侧另有每台 1s 装配预算兜底
     let meta;
-    const deadline = Date.now() + 15000;
+    const t0 = Date.now();
+    let bad = 0;
     for (;;) {
       meta = readMeta();
-      if (meta !== undefined && typeof meta.ws === 'string' && (await probeAlive(meta))) break;
+      const st = meta !== undefined && typeof meta.ws === 'string' ? await probeStatus(meta) : 'missing';
+      if (st === 'ok') break;
       meta = undefined;
-      if (Date.now() > deadline) break;
+      if (st === 'bad') bad += 1;
+      const elapsed = Date.now() - t0;
+      if (bad >= 2 || (st === 'missing' && elapsed > 3000) || elapsed > 15000) break;
       await new Promise((r) => setTimeout(r, 500));
     }
     if (meta !== undefined) {

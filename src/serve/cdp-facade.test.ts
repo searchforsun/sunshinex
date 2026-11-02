@@ -15,6 +15,11 @@ function startFakeReal(): Promise<{ httpPort: number; wsPort: number; stop: () =
     { targetId: 'wv-7', type: 'webview', url: 'https://www.baidu.com/', title: '百度' },
   ];
   const httpSrv = http.createServer((req, res) => {
+    if ((req.url ?? '').startsWith('/json/version')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ Browser: 'fake' }));
+      return;
+    }
     if ((req.url ?? '').startsWith('/json/list')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(targets));
@@ -169,4 +174,18 @@ test('agent 驱动型命令切侧栏页签:同页连续操作只切一次;求值
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 1, y: 1 }, sid);
   assert.deepEqual(activated, ['wv-7']);
   ws.close();
+});
+
+test('DevToolsActivePort 指向死端口(旧实例残留)时拒绝启动——不代理到死端口让插件每轮拿 502', async () => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'facade-test-'));
+  const probe = http.createServer();
+  await new Promise<void>((r) => probe.listen(0, '127.0.0.1', () => r()));
+  const deadPort = (probe.address() as { port: number }).port;
+  await new Promise<void>((r) => probe.close(() => r()));
+  fs.writeFileSync(path.join(tmpDir, 'DevToolsActivePort'), `${deadPort}
+/devtools/browser/x
+`);
+  facade = new BuiltinFacade({ userDataDir: tmpDir, localOriginPrefix: 'http://127.0.0.1:57677' });
+  await assert.rejects(facade.start(), /unreachable/);
+  facade = undefined;
 });
