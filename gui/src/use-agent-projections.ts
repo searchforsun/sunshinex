@@ -25,6 +25,10 @@ const CHAT_MEM_TTL_MS = 3_600_000;
 export function useAgentBuckets(): {
   agentActivitiesBySession: Record<string, AgentActivities>;
   bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void;
+  /** 水合整替前丢本会话待 flush 的 folds(节流队 drop 之外的第二道——已入 bumpActs 窗的同源帧) */
+  dropPendingFolds: (sessionId: string) => void;
+  /** 立即排空 folds 窗(水合 replace 后同步落盘,防 100ms 内迟到 seed 帧插在 replace 之后) */
+  flushActsNow: () => void;
 } {
   const [agentActivitiesBySession, setAgentActivitiesBySession] = useState<Record<string, AgentActivities>>({});
   /** 子智能体桶 LRU 触碰序(上限 ACTS_LRU_MAX=8):最近使用的会话桶保留,久不用的淘汰——内存有界 */
@@ -66,7 +70,21 @@ export function useAgentBuckets(): {
       flushTimerRef.current = window.setTimeout(flushActs, 100);
     }
   }, [flushActs]);
-  return { agentActivitiesBySession, bumpActs };
+  const dropPendingFolds = useCallback((sessionId: string): void => {
+    pendingFoldsRef.current.delete(sessionId);
+    if (pendingFoldsRef.current.size === 0 && flushTimerRef.current !== undefined) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = undefined;
+    }
+  }, []);
+  const flushActsNow = useCallback((): void => {
+    if (flushTimerRef.current !== undefined) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = undefined;
+    }
+    flushActs();
+  }, [flushActs]);
+  return { agentActivitiesBySession, bumpActs, dropPendingFolds, flushActsNow };
 }
 
 /** G14.2xx b 转录内存缓存(LRU 4 会话):Chat 卸载时写回最新投影,重挂载即以缓存态直渲
@@ -132,14 +150,18 @@ export function useShadowHydrationRefs(): {
   shadowHydratedRef: MutableRefObject<Set<string>>;
   shadowHydratingRef: MutableRefObject<Set<string>>;
   shadowBufRef: MutableRefObject<Map<string, Array<{ e: SessionEvent; seq: number }>>>;
+  /** 水合 cut 水位(会话→seq):落定后 seq≤cut 的迟到 seedShadow 帧一律丢弃——防 journal 全量
+   *  重放后再被 attach 突发帧第二遍应用(工具+正文双渲染病根) */
+  shadowCutRef: MutableRefObject<Map<string, number>>;
 } {
   const shadowHydratingRef = useRef<Set<string>>(new Set());
   const shadowHydratedRef = useRef<Set<string>>(new Set());
   /** 在途缓冲按会话分桶(并发水合互踩防线——A 在途时切 B,B 的清桶不得冲掉 A 的在途帧) */
   const shadowBufRef = useRef<Map<string, Array<{ e: SessionEvent; seq: number }>>>(new Map());
+  const shadowCutRef = useRef<Map<string, number>>(new Map());
   /** 影子子智能体帧判定(与内核 shadow 透传同口径的子智能体子集) */
   const shadowHydrateRef = useRef<((sessionId: string) => void) | null>(null);
-  return { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef };
+  return { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef };
 }
 
 /** 影子水合单点绑定(每渲染调用——重赋 hydrate ref,闭包恒取最新 connInstance;onReset/
@@ -150,12 +172,14 @@ export function bindShadowHydration(
   connInstance: Connection | null,
   dropPendingActs?: (sessionId: string) => void,
   busyTeam?: { ready: MutableRefObject<boolean>; names: MutableRefObject<ReadonlySet<string>> },
+  settle?: { dropPendingFolds: (sessionId: string) => void; flushActsNow: () => void },
 ): void {
-  const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef } = refs;
+  const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef } = refs;
   shadowHydrateRef.current = (sessionId: string): void => {
     if (connInstance === null) return;
     if (shadowHydratingRef.current.has(sessionId)) return; // 在途幂等
     shadowHydratingRef.current.add(sessionId);
+    shadowCutRef.current.delete(sessionId); // 重水合前清旧水位,放行在途缓冲
     shadowBufRef.current.set(sessionId, []);
     const buf = (): Array<{ e: SessionEvent; seq: number }> => shadowBufRef.current.get(sessionId) ?? [];
     const fold = (acts: AgentActivities, e: SessionEvent): AgentActivities =>
@@ -174,18 +198,20 @@ export function bindShadowHydration(
         }
         shadowBufRef.current.delete(sessionId);
         shadowHydratingRef.current.delete(sessionId);
-        // 水合整替前的 live folds 丢弃(2026-10-31「重启后重复渲染时间线」根修):hydrating 置位前
-        // 已入尾随队列的同源帧 folds——journal 行集已含(落档先于广播),过期 fold 落在重建态上即
-        // 第二遍应用;且其 done 会被卡幂等面吞(已根修为必过投影)——双保险此处直接弃源
+        shadowCutRef.current.set(sessionId, cut); // 迟到 seed 帧 seq≤cut 丢弃
+        // 水合整替前的 live folds 双道丢弃(节流队 + bumpActs 窗)——journal 已含同源帧,
+        // 过期 fold 落在重建态上即第二遍应用(工具+正文双渲染)
         dropPendingActs?.(sessionId);
-        // 按会话桶整替(只覆本会话,他桶内存缓存不动)
+        settle?.dropPendingFolds(sessionId);
         bumpActs(sessionId, () => acts);
+        settle?.flushActsNow(); // replace 同步落盘,防 100ms 窗内迟到帧插在 replace 后
       },
       () => {
         // 拉取失败(daemon 未附/旧版无端点):摘标记放行实时帧直投并允许下次触发点重试
         shadowBufRef.current.delete(sessionId);
         shadowHydratingRef.current.delete(sessionId);
         shadowHydratedRef.current.delete(sessionId);
+        shadowCutRef.current.delete(sessionId);
       },
     );
   };

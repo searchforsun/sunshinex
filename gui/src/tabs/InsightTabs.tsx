@@ -144,7 +144,7 @@ export function BgTasksTab({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [hasRunning]);
-  // task_wait 定位:滚至行 + flash;exec 展开详情,subagent 只高亮(点击另开转录)
+  // task_wait 定位:滚至行(不加描边 flash——用户裁定「跳转不加边框」);exec 展开详情
   useEffect(() => {
     if (focus === undefined || data === null) return;
     const row = data.find((r) => r.id === focus.id);
@@ -152,12 +152,7 @@ export function BgTasksTab({
     if (row.kind !== 'subagent') {
       setExpanded((cur) => new Set(cur).add(focus.id));
     }
-    const el = rowRefs.current.get(focus.id);
-    if (el === undefined) return;
-    el.scrollIntoView({ block: 'center' });
-    el.classList.add('flash');
-    const timer = setTimeout(() => el.classList.remove('flash'), 1800);
-    return () => clearTimeout(timer);
+    rowRefs.current.get(focus.id)?.scrollIntoView({ block: 'center' });
   }, [focus, data]);
   /** 运行时长停表(2026-10-31 暂停面):终态=endedAt;暂停中=pausedAt 冻结点;其余=now——均扣已折算暂停段 */
   const durOf = (r: SessionTaskRow): string =>

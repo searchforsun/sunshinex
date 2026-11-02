@@ -60,9 +60,10 @@ export class TaskRegistry {
   }
 
   /** 账本重放（构造装载与 adoptLedger 共用）：逐行 submit/finish;崩溃截断行/坏行跳过不炸（TeamStore
-   *  同教训）。孤儿判定按行内 pid:异进程的 running 行=进程已死 → stopped（endedAt=重放时刻）;同进程
-   *  running=同一 daemon 里别处活账（attach 收养场景）保持 running。已有同 id 活条目（本实例先建的）
-   *  活条目胜出不回填——live 永远是新真相 */
+   *  同教训）。孤儿收口两段：submit 先原样入账、finish 行权威翻转终态；整档回放后再把「异进程且仍
+   *  running」标 stopped——若 submit 时先标孤儿 stopped，后续 finish done 会被 running 守卫吞掉
+   *  （重启后台任务蓝点变灰、时长漂到墙钟的病根）。同进程 running=同一 daemon 别处活账保持。
+   *  已有同 id 活条目（本实例先建的）活条目胜出不回填——live 永远是新真相 */
   private replayLedger(file: string): void {
     let raw: string;
     try {
@@ -70,6 +71,7 @@ export class TaskRegistry {
     } catch {
       return; // 缺文件(新会话)/读失败:空账本起步,尽力回溯不炸装配
     }
+    const foreignRunning = new Set<string>();
     for (const line of raw.split('\n')) {
       if (line.length === 0) continue;
       let row: TaskLedgerRow | undefined;
@@ -83,18 +85,25 @@ export class TaskRegistry {
       if (row === undefined) continue;
       if (row.op === 'submit') {
         if (this.tasks.has(row.task.id)) continue; // live 胜出:本实例已在账的条目不被账本回填覆盖
-        const orphan = row.task.status === 'running' && row.pid !== process.pid;
-        const t: BackgroundTask = orphan
-          ? { ...row.task, status: 'stopped', endedAt: Date.now() }
-          : { ...row.task };
-        this.tasks.set(t.id, t);
+        this.tasks.set(row.task.id, { ...row.task });
+        if (row.task.status === 'running' && row.pid !== process.pid) foreignRunning.add(row.task.id);
+        else foreignRunning.delete(row.task.id);
       } else {
         const t = this.tasks.get(row.id);
-        if (t !== undefined && t.status === 'running') {
+        if (t !== undefined && (t.status === 'running' || t.status === 'paused')) {
           t.status = row.status;
           t.endedAt = row.endedAt;
           if (row.exitCode !== undefined) t.exitCode = row.exitCode;
+          foreignRunning.delete(row.id); // finish 已权威收口,不再孤儿标
         }
+      }
+    }
+    const now = Date.now();
+    for (const id of foreignRunning) {
+      const t = this.tasks.get(id);
+      if (t !== undefined && t.status === 'running') {
+        t.status = 'stopped';
+        t.endedAt = now;
       }
     }
   }

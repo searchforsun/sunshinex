@@ -127,7 +127,7 @@ function AppShell(): JSX.Element {
   const { opError, showOpError } = useOpError();
   /** G8d/G14.2xx 子智能体活动聚合按会话分桶+LRU(use-agent-projections 单点;onEvent 归约与
    *  services.agentActivities 消费) */
-  const { agentActivitiesBySession, bumpActs } = useAgentBuckets();
+  const { agentActivitiesBySession, bumpActs, dropPendingFolds, flushActsNow } = useAgentBuckets();
   /** G14.2xx b 转录内存缓存(use-agent-projections 单点):Chat 卸载写回/重挂缓存直渲 */
   const { chatMemGet, chatMemPut } = useChatMemory((key) => runningIds.has(key)); // TTL 豁免:运行中会话不剔(60min,2026-10-26)
   /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
@@ -172,7 +172,7 @@ function AppShell(): JSX.Element {
 
   /** G14.2xx b 影子水合四 ref(use-agent-projections 工厂;refs 先声明解「水合需连接实例、
    *  装配需截流 refs」的环——onEvent 截流路由/onReset 重建/会话打开触发消费原样) */
-  const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef } = useShadowHydrationRefs();
+  const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef } = useShadowHydrationRefs();
   /** 水合整替前 live folds 丢弃口(wiring 装配期赋值,水合绑定面消费——见 ConnectionWiringDeps 注) */
   const dropPendingActsRef = useRef<((sessionId: string) => void) | null>(null);
 
@@ -181,17 +181,18 @@ function AppShell(): JSX.Element {
    *  sessionRef 与各 ref 免陈旧(原口径) */
   const connInstance = useConnectionWiring({
     sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
-    shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, dropPendingActsRef, connRef,
+    shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, dropPendingActsRef, connRef,
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
     setTodoBatches, setConnState,
   });
   /** 影子水合单点绑定:每渲染重赋 hydrate ref(闭包恒取最新连接实例) */
   bindShadowHydration(
-    { shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef },
+    { shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef, shadowCutRef },
     bumpActs,
     connInstance,
     (sid) => dropPendingActsRef.current?.(sid),
     { ready: busyTeamReadyRef, names: busyTeamRef },
+    { dropPendingFolds, flushActsNow },
   );
 
   /** 外观偏好同步(use-appearance-sync 单点,2026-10-27 技术债轮 D53 批E 外提):语言源随 daemon

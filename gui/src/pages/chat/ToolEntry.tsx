@@ -690,23 +690,21 @@ export const ToolEntryView = memo(function ToolEntryView({
           </span>
         )
       ) : !hideTargetWhileRunning && toolName === 'spawn' ? (
-        /* G14.166 折叠行带子智能体名(G14.171:蓝色 chip 气泡,点开对应 agent 只读标签页) */
+        /* G14.166 折叠行带子智能体名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
         spawnAgentName !== '' && onOpenAgent !== undefined ? (
-          <span className="tool-link-list">
-            <span
-              role="button"
-              tabIndex={-1}
-              className="tool-file-base tool-agent-link tool-link-chip"
-              data-tip={t('View subagent', '查看子智能体')}
-              onClick={(e) => {
-                e.stopPropagation(); // 不触发行展开
-                // 2026-10-25 用户裁定:任务说明禁止截断——开签 task 兜底仍传全量 prompt(与 harness
-                // 现发的 taskBand 双通道;截断即「任务说明被拦腰砍」)
-                onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
-              }}
-            >
-              {spawnAgentName}
-            </span>
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('View subagent', '查看子智能体')}
+            onClick={(e) => {
+              e.stopPropagation(); // 不触发行展开
+              // 2026-10-25 用户裁定:任务说明禁止截断——开签 task 兜底仍传全量 prompt(与 harness
+              // 现发的 taskBand 双通道;截断即「任务说明被拦腰砍」)
+              onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
+            }}
+          >
+            {' '}{spawnAgentName}
           </span>
         ) : (
           <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>

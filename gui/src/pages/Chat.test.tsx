@@ -863,6 +863,25 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[2]!.textContent).toMatch(/创建智能体团队|Creating team|create_agent_team/);
   });
 
+  it('task_wait 后台 spawn:展示名取 spawn 行 label(CJK label 的 id 业务段会塌成 spawn 碎片)', async () => {
+    mountChat([
+      {
+        seq: 1,
+        kind: 'tool',
+        name: 'spawn',
+        input: { prompt: '算一下', label: '后台spawn测试', background: true, agent_id: null, tools: null, isolation: null },
+        result: { text: 'task spawn-20261102T084100Z-ab12 started (output: /tmp/x.log)', ok: true },
+        md: '',
+      },
+    ] as never);
+    await flushed();
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['spawn-20261102T084100Z-ab12'], timeoutSeconds: null } } });
+    fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w1' } });
+    const row = [...document.querySelectorAll('.entry-tool')].find((x) => /等待|task_wait/.test(x.textContent ?? ''));
+    expect(row?.textContent).toContain('后台spawn测试');
+    expect(row?.querySelector('.tool-summary')?.textContent).not.toMatch(/\bspawn\b(?!测试)/);
+  });
+
   it('G14.167 task_wait 折叠行带等待任务名(G14.172 转录自建映射:台账长 id 剥尾/剥前缀命中 create_agent_team_task 标题;null=全部后台任务)', async () => {
     // 历史/重启场景板投影为空——任务名从转录里的 create_agent_team_task 回执重建(task tN created → 标题)
     // P11 T7/T8:标题直读 entry.input 字段;任务 id 提取读 result 回执文本(tool md 恒空——夹具 md:'' 钉字段单源)

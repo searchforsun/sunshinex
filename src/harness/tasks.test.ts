@@ -168,6 +168,29 @@ test('账本:孤儿 running 行装载即 stopped(异进程 pid 判定);同进程
   }
 });
 
+test('账本:异进程 submit 后跟 finish done——finish 权威覆盖,不落孤儿 stopped(重启蓝点/时长病根)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg-finish-over-orphan-'));
+  try {
+    const ledger = path.join(dir, 'tasks', 'ledger-fin.jsonl');
+    fs.mkdirSync(path.dirname(ledger), { recursive: true });
+    const startedAt = Date.now() - 120_000;
+    const endedAt = startedAt + 25_000;
+    fs.writeFileSync(
+      ledger,
+      [
+        `${JSON.stringify({ op: 'submit', pid: 999999, task: { id: 'spawn-1', kind: 'subagent', label: '后台spawn测试', status: 'running', outputFilePath: path.join(dir, 'tasks', 'spawn-1.log'), startedAt } })}\n`,
+        `${JSON.stringify({ op: 'finish', id: 'spawn-1', status: 'done', endedAt })}\n`,
+      ].join(''),
+      'utf8',
+    );
+    const row = new TaskRegistry(dir, ledger).list().find((x) => x.id === 'spawn-1')!;
+    assert.equal(row.status, 'done', 'finish done 盖过异进程 submit 的孤儿占位');
+    assert.equal(row.endedAt, endedAt, 'endedAt 取 finish 行,非重放墙钟');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('账本:adoptLedger 收养(journalId 稳定身份)——装载回放+后续追加切文件;幂等重放零副作用', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tasks-lg5-'));
   try {

@@ -34,6 +34,8 @@ export interface ConnectionWiringDeps {
   shadowHydratedRef: MutableRefObject<Set<string>>;
   shadowHydratingRef: MutableRefObject<Set<string>>;
   shadowBufRef: MutableRefObject<Map<string, Array<{ e: SessionEvent; seq: number }>>>;
+  /** 水合 cut 水位:seq≤cut 的迟到 seedShadow 帧丢弃(见 useShadowHydrationRefs.shadowCutRef) */
+  shadowCutRef: MutableRefObject<Map<string, number>>;
   /** 水合整替前的同源 live folds 丢弃口(wiring 装配期赋值;App 转交 bindShadowHydration):
    *  attach seedShadow 突发帧在 hydrating 置位前已入 100ms 尾随队列——settle 整替若先于 flush,
    *  过期 fold 落在重建态上即第二遍应用(重复时间线病根);丢弃安全前提=影子帧落档先于广播 */
@@ -95,7 +97,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
   useEffect(() => {
     const {
       sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
-      shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, connRef,
+      shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, connRef,
       reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
       setTodoBatches, setConnState,
     } = deps;
@@ -137,6 +139,9 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
             buf.push({ e, seq });
             return;
           }
+          // 水合已落定:seq≤cut 的迟到 seedShadow 帧丢弃(journal 全量已含,再应用=工具+正文双渲染)
+          const cut = shadowCutRef.current.get(sessionId);
+          if (cut !== undefined && seq <= cut) return;
           // G8d 子智能体事件另轨(Agents 标签聚合):不投 chat——chat reducer 入口另有同判过滤兜底
           // (种子重放等路径仍过 reducer,零害保留);建卡/行化/水位在此单点归约
           throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });

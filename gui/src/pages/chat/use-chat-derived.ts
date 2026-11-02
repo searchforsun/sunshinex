@@ -39,6 +39,19 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
     const moved = /command moved to background after timeout: task (\S+)/.exec(receipt);
     if (moved !== null) m.set(moved[1]!, command);
   }
+  // 后台 spawn:`task <id> started` → 展示名=label ?? agent_id(CJK label 的 id 业务段会塌成
+  // ASCII 碎片如「spawn」,短 id 兜底即误显「spawn」——须用转录名盖住)
+  for (const e of entries) {
+    if (e.kind !== 'tool' || e.name !== 'spawn') continue;
+    const input = e.input ?? {};
+    const name =
+      (typeof input.label === 'string' && input.label.trim() !== '' ? input.label.trim() : '')
+      || (typeof input.agent_id === 'string' && input.agent_id.trim() !== '' ? input.agent_id.trim() : '');
+    if (name === '') continue;
+    const receipt = e.result?.text ?? e.result?.full ?? '';
+    const started = /task (\S+) started/.exec(receipt);
+    if (started !== null) m.set(started[1]!, name);
+  }
   return m;
 }
 
