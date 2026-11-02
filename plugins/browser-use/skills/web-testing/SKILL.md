@@ -25,6 +25,7 @@ version: 0.1.0
 - **`browser_find` 优先**：只在当前页快照里按文本（大小写不敏感子串）或正则检索，返回命中节点及根路径上下文。只需定位一个元素拿它的 ref 时，比整页 snapshot 便宜得多——大页面上先 find，找不到再 snapshot。
 - 整页 `browser_snapshot` 只在「需要通读页面结构 / 列举可操作项」时取；支持 `depth` 限深、`target` 限子树，可进一步控预算。
 - `browser_take_screenshot` 截图仅供人看与视觉核对，**不能拿截图出牌**——操作永远走 snapshot ref。
+- 截图/快照/下载等输出文件统一落在 `<项目 data>/plugins/browser-use/output/`(显式 `filename` 也落这里),工具结果里给的是**绝对路径**——直接用该路径 Read/引用,不要在项目目录里搜索或猜相对路径。
 
 ## tab 管理
 

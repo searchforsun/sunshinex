@@ -335,16 +335,16 @@ export function pluginMcpServers(projectRoot: string | undefined, opts: Paramete
       if (seen.has(name)) { warnings.push(`插件 server ${name} 撞名（${p.manifest.id}），字典序后者跳过`); continue; }
       seen.add(name);
       const merged = { ...cfg.configDefaults, ...p.config };
-      const args = [...(cfg.args ?? [])];
+      // {dataDir} 令牌(2026-11-01 内置浏览器档):展开为该工作区数据目录绝对路径(斜杠规范形)——
+      // 桥接进程/GUI 约定文件位不靠 cwd 推断;静态 args 同样展开(截图等输出目录落项目 data)
+      const dataDirToken = resolveDataDir(projectRoot ?? process.cwd()).split(path.sep).join('/');
+      const args = (cfg.args ?? []).map((a) => a.replaceAll('{dataDir}', dataDirToken));
       for (const [key, patterns] of Object.entries(cfg.configArgs ?? {})) {
         const v = merged[key];
         if (v === undefined) continue;
         // pattern（configArgs 值 = string[]）为整体裁决单位：含 {value} 的 pattern 逐元素展开
         // （占位替换 + 非占位元素原样透传——"--browser","{value}" 空格双元素形态）；不含 {value} 的
         // 旗标 pattern 仅布尔 true 追加（非 true 值不得把字符串当旗标落参）
-        // {dataDir} 令牌(2026-11-01 内置浏览器档):展开为该工作区数据目录绝对路径(斜杠规范形)——
-        // 桥接进程/GUI 约定文件位不靠 cwd 推断
-        const dataDirToken = resolveDataDir(projectRoot ?? process.cwd()).split(path.sep).join('/');
         if (patterns.some((pat) => pat.includes('{value}'))) {
           for (const pat of patterns) args.push((pat.includes('{value}') ? pat.replace('{value}', String(v)) : pat).replaceAll('{dataDir}', dataDirToken));
         } else if (v === true) {

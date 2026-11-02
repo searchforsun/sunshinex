@@ -10,7 +10,11 @@
       "command": "node",
       "cwd": ".",
       "args": [
-        "server/bridge.js"
+        "server/bridge.js",
+        "--output-dir",
+        "{dataDir}/plugins/browser-use/output",
+        "--file-paths",
+        "absolute"
       ],
       "configDefaults": {
         "browser": "chrome",

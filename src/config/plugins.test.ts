@@ -418,7 +418,11 @@ test('真实内置根装载 computer-use：未启用不出；enabled 后合成 s
     const srv = r.servers.find((s) => s.name === 'computer-use');
     assert.ok(srv, 'enabled 后 pluginMcpServers 出 computer-use server');
     assert.equal(srv!.command, 'node');
-    assert.deepEqual(srv!.args, ['server/index.js'], 'args 指向插件内平铺构建产物（Task 17 布局）');
+    assert.equal(srv!.args![0], 'server/index.js', 'args 指向插件内平铺构建产物（Task 17 布局）');
+    // 截图落盘目录:静态 args 的 {dataDir} 令牌展开为工作区数据目录绝对路径(斜杠规范形)
+    assert.equal(srv!.args![1], '--output-dir');
+    assert.match(String(srv!.args![2]), /^[A-Za-z]:\/.*\/data\/plugins\/computer-use\/screenshots$|^\/.*\/data\/plugins\/computer-use\/screenshots$/);
+    assert.ok(!String(srv!.args![2]).includes('{dataDir}'));
     assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'server', 'index.js')), 'cwd "." 解析为插件根且可直跑产物在位');
     // safety 三类逐字对齐 spec §2.2 示例（guard 问线驱动面；缺类/错名即测红）
     assert.deepEqual(r.safety['computer-use'], {

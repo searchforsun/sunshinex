@@ -43,13 +43,19 @@ const metaPath = takeWithArg('--builtin-meta');
 const userDataDirArg = takeWithArg('--user-data-dir');
 const isolated = hasFlag('--isolated');
 const serverJs = path.join(__dirname, 'index.js');
+// server 工作目录=输出目录(<项目 data>/plugins/browser-use/output):Playwright MCP 把显式文件名
+// (如 browser_take_screenshot filename)解析到工作区根=cwd,cwd 若是插件目录,文件落进安装目录、
+// 模型找不到;配合 --file-paths absolute,结果文本恒报绝对路径
+const outIdx = argv.indexOf('--output-dir');
+const serverCwd = outIdx >= 0 && argv[outIdx + 1] !== undefined ? argv[outIdx + 1] : process.cwd();
+try { fs.mkdirSync(serverCwd, { recursive: true }); } catch { /* 尽力:失败时 spawn 报错可见 */ }
 // 非 headless 档:server 不自起浏览器——自起族旗标与 --cdp-endpoint 互斥,不剥即 server 参校验报错退出
 const serverArgs = mode === 'headless'
   ? [...argv, '--headless']
   : argv.filter((a, i) => !['--browser', '--headless', '--executable-path'].includes(a) && argv[i - 1] !== '--browser' && argv[i - 1] !== '--executable-path');
 
 if (mode === 'headless') {
-  const child = spawn(process.execPath, [serverJs, ...serverArgs], { stdio: 'inherit' });
+  const child = spawn(process.execPath, [serverJs, ...serverArgs], { stdio: 'inherit', cwd: serverCwd });
   child.on('exit', (c) => process.exit(c ?? 0));
   return;
 }
@@ -117,7 +123,7 @@ async function main() {
       : undefined;
     if (meta !== undefined && typeof meta.ws === 'string' && (await probeAlive(meta))) {
       writeMeta(meta.ws, meta.pid ?? 0, { kind: 'shell' });
-          const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', meta.ws], { stdio: 'inherit' });
+          const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', meta.ws], { stdio: 'inherit', cwd: serverCwd });
       server.on('exit', () => process.exit(0));
       return;
     }
@@ -139,7 +145,7 @@ async function main() {
   // 内置 Chrome 活着就把它挂上=default 档永远走内置;default 档不读不写 builtin meta)
   if (mode === 'builtin' && existingMeta !== undefined && typeof existingMeta.ws === 'string' && (await probeAlive(existingMeta))) {
     writeMeta(existingMeta.ws, existingMeta.pid ?? 0);
-      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });
+      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit', cwd: serverCwd });
     server.on('exit', () => process.exit(0));
     return;
   }
@@ -211,7 +217,7 @@ async function main() {
     settled = true;
     alive = false;
     writeMeta(ws, pid);
-      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', ws], { stdio: 'inherit' });
+      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', ws], { stdio: 'inherit', cwd: serverCwd });
     server.on('exit', () => process.exit(0)); // 浏览器常驻不随杀(下条消息经 probeAlive 复用)
   }
 
