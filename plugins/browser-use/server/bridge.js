@@ -116,8 +116,8 @@ async function main() {
     const readMeta = () => (metaPath !== undefined && fs.existsSync(metaPath)
       ? (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })()
       : undefined);
-    // 只等可自愈的情形:meta 缺席最多 3s(daemon 启动即写)、端口拒连最多 15s(重启竞态);
-    // facade 已应答但报错(真实调试口不可达)连续 2 次即放弃——宿主侧另有每台 1s 装配预算兜底
+    // 兜底最多 3s(meta 缺席/端口拒连=重启竞态,与宿主装配预算同值;放弃后宿主下轮重建重连);
+    // facade 已应答但报错(真实调试口不可达)连续 2 次即提前放弃
     let meta;
     const t0 = Date.now();
     let bad = 0;
@@ -128,7 +128,7 @@ async function main() {
       meta = undefined;
       if (st === 'bad') bad += 1;
       const elapsed = Date.now() - t0;
-      if (bad >= 2 || (st === 'missing' && elapsed > 3000) || elapsed > 15000) break;
+      if (bad >= 2 || elapsed > 3000) break;
       await new Promise((r) => setTimeout(r, 500));
     }
     if (meta !== undefined) {

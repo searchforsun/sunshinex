@@ -13,7 +13,7 @@ import { MAX_IMAGES } from '../../images';
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
 /** 装配期单台 MCP 连接预算:插件/服务启动慢或挂住时不拖住发送(实测浏览器插件故障时每轮卡 10s+);
  *  超时即本轮先不带它的工具,连接在后台继续,连上后工具补注册(注册表实时,后续步骤可见) */
-const MCP_CONNECT_BUDGET_MS = 1_000;
+const MCP_CONNECT_BUDGET_MS = 3_000;
 const MAX_ARGS_BYTES = 64 * 1024;
 
 interface McpHostOptions {
