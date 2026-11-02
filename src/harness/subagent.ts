@@ -522,6 +522,19 @@ export class SubagentRunner {
     };
     try {
       emitDelegation('delegation-started');
+      // Fork 任务带→GUI 转录页用户气泡(teammate 路径本就发 taskBand;fork 此前只靠开签 task
+      // 参数——后台任务页整行跳转录时无 prompt 可传,气泡缺场)。step+taskBand 与队友同口径。
+      if (spec.taskLine !== '') {
+        this.deps.onEvent?.({
+          type: 'step',
+          ts: Date.now(),
+          payload: {
+            subagent: finalLabel,
+            taskBand: spec.taskLine,
+            ...(opts?.taskId !== undefined ? { subagentTaskId: opts.taskId } : {}),
+          },
+        });
+      }
       // D2 双通道声明（入参优先于 frontmatter）；D3 静默兜底——root 缺失或非 git 仓 → iso 静默置空，
       // 零链行、主工作区执行（隔离是增强非承诺）；是仓但建树失败 → fail-bounded 补丁行回链，父任务不炸
       const declaredByAgent = (() => {

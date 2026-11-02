@@ -361,7 +361,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenDiff?: (callId: string, path: string) => void;
   /** G14.171 spawn 行子智能体名=蓝色链接,点开对应 agent 只读标签页(App 注入 openTabInSession) */
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
-  /** 任务名/队名链接:任务 ref 开板高亮;`team:` 前缀开指定队卡(App 注入 openTaskFocus) */
+  /** 任务名/队名链接:`bg:` 前缀=后台任务账本行;`team:` 前缀开指定队卡;其余开板高亮(App openTaskFocus) */
   onOpenTask?: (taskRef: string) => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
@@ -434,8 +434,9 @@ export const ToolEntryView = memo(function ToolEntryView({
     toolName === 'send_agent_team_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
   const messageText =
     toolName === 'send_agent_team_message' && typeof input.text === 'string' ? input.text : '';
-  /** G14.172 task_wait 折叠行任务名(taskNameOf 单点解析)——用户裁决「等待任务显示任务名称,不要用 id」;保留 id 供链接定位 */
-  const waitTasks = toolName === 'task_wait'
+  /** G14.172 等待行任务名(taskNameOf 单点解析)——用户裁决「等待任务显示任务名称,不要用 id」;保留 id 供链接定位。
+   *  task_wait=后台账本;agent_team_task_wait=板任务——点击路由前缀分立 */
+  const waitTasks = toolName === 'task_wait' || toolName === 'agent_team_task_wait'
     ? (Array.isArray(input.taskIds) ? (input.taskIds as unknown[]) : [])
         .filter((x): x is string => typeof x === 'string' && x !== '')
         .map((id) => ({ id, name: taskNameOf !== undefined ? taskNameOf(id) : id }))
@@ -689,21 +690,23 @@ export const ToolEntryView = memo(function ToolEntryView({
           </span>
         )
       ) : !hideTargetWhileRunning && toolName === 'spawn' ? (
-        /* G14.166 折叠行带子智能体名(G14.171:蓝色链接,点开对应 agent 只读标签页) */
+        /* G14.166 折叠行带子智能体名(G14.171:蓝色 chip 气泡,点开对应 agent 只读标签页) */
         spawnAgentName !== '' && onOpenAgent !== undefined ? (
-          <span
-            role="button"
-            tabIndex={-1}
-            className="tool-file-base tool-agent-link"
-            data-tip={t('View subagent', '查看子智能体')}
-            onClick={(e) => {
-              e.stopPropagation(); // 不触发行展开
-              // 2026-10-25 用户裁定:任务说明禁止截断——fork 型子智能体无 taskBand,页签任务带即此
-              // prompt,截断即「任务说明被拦腰砍」(展示文本=开档参数全量,模型侧本就全量)
-              onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
-            }}
-          >
-            {' '}{spawnAgentName}
+          <span className="tool-link-list">
+            <span
+              role="button"
+              tabIndex={-1}
+              className="tool-file-base tool-agent-link tool-link-chip"
+              data-tip={t('View subagent', '查看子智能体')}
+              onClick={(e) => {
+                e.stopPropagation(); // 不触发行展开
+                // 2026-10-25 用户裁定:任务说明禁止截断——开签 task 兜底仍传全量 prompt(与 harness
+                // 现发的 taskBand 双通道;截断即「任务说明被拦腰砍」)
+                onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
+              }}
+            >
+              {spawnAgentName}
+            </span>
           </span>
         ) : (
           <span className="tool-file-base tool-cmd">{spawnAgentName !== '' ? ` ${spawnAgentName}` : ''}</span>
@@ -745,7 +748,39 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageTo}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && toolName === 'task_wait' ? (
-        /* G14.167 折叠行带等待任务名(链接开板高亮;null=等全部在跑);多链接均分省略 */
+        /* G14.167 折叠行带等待任务名(链接开后台任务页签定位行;null=等全部在跑);多链接均分省略 */
+        waitTasks.length > 0 && onOpenTask !== undefined ? (
+          <span className="tool-link-list">
+            {waitTasks.map((task, i) => (
+              <Fragment key={`${task.id}:${i}`}>
+                {i > 0 ? <span className="tool-link-sep" aria-hidden="true">, </span> : null}
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="tool-file-base tool-agent-link tool-link-chip"
+                  data-tip={t('Locate in background tasks', '在后台任务中定位')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenTask(`bg:${task.id}`);
+                  }}
+                >
+                  {task.name}
+                </span>
+              </Fragment>
+            ))}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">
+            {' '}
+            {waitTasks.length > 0
+              ? waitTasks.map((x) => x.name).join(', ')
+              : Array.isArray(input.taskIds)
+                ? ''
+                : t('all background tasks', '全部后台任务')}
+          </span>
+        )
+      ) : !hideTargetWhileRunning && toolName === 'agent_team_task_wait' ? (
+        /* 板等待:链接开智能体团队定位对应任务卡(与 task_wait 后台账本分立) */
         waitTasks.length > 0 && onOpenTask !== undefined ? (
           <span className="tool-link-list">
             {waitTasks.map((task, i) => (
@@ -773,7 +808,7 @@ export const ToolEntryView = memo(function ToolEntryView({
               ? waitTasks.map((x) => x.name).join(', ')
               : Array.isArray(input.taskIds)
                 ? ''
-                : t('all background tasks', '全部后台任务')}
+                : t('all board tasks', '全部团队任务')}
           </span>
         )
       ) : !hideTargetWhileRunning && taskOpName !== undefined ? (

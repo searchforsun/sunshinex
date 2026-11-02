@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Check, Copy, Database, CircleStop, RefreshCw, Sparkles, SquareTerminal, Trash2 } from 'lucide-react';
+import { Check, Copy, Database, CircleStop, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
@@ -102,13 +102,32 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
   );
 }
 
+/** 从后台 spawn 日志首行解析 prompt(落盘形 `[spawn background] <agent>: <prompt>`)——开转录页
+ *  任务气泡兜底;live taskBand 在场时 AgentTranscriptTab 优先用活动流,此仅补缺 */
+function spawnPromptOf(tail: string | undefined): string | undefined {
+  if (tail === undefined || tail === '') return undefined;
+  const m = /^\[spawn background\] [^:\n]*: (.*)$/m.exec(tail);
+  const prompt = m?.[1]?.trim();
+  return prompt !== undefined && prompt !== '' ? prompt : undefined;
+}
+
 /** 后台任务面板:/tasks 账本行(exec 运行面,与任务板分立)。2026-10-24 用户裁定行制改版:
  *  单行=状态图标+运行时长+命令(一行省略)+创建时间。2026-10-31 用户裁定三改:①运行时长前移到
  *  状态图标后(与右缘创建时间在视觉轴上分开) ②展开详情摘「命令/结果」自解释标题,命令行右缘
  *  复制钮 ③运行中行暂停钮/暂停中恢复钮(hover 显现;exec 活账闭包,subagent/重放账 409 静默)。
- *  运行时长停表扣 pausedMs(暂停段不计时);点击展开命令详情与结果(服务端输出尾读,结果区最大
- *  高度内部滚动)。运行中时长 1s 实时跳 */
-export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; sessionId: string; openTab?: (type: TabTypeId, params?: TabParams) => void }): JSX.Element {
+ *  运行时长停表扣 pausedMs(暂停段不计时);exec 点击展开命令详情与结果;subagent 整行直开转录
+ *  (不展开)。运行中时长 1s 实时跳。focus=task_wait 行点击定位(滚至+flash;exec 顺带展开) */
+export function BgTasksTab({
+  conn,
+  sessionId,
+  openTab,
+  focus,
+}: {
+  conn: Connection;
+  sessionId: string;
+  openTab?: (type: TabTypeId, params?: TabParams) => void;
+  focus?: { id: string; nonce: number };
+}): JSX.Element {
   const { data, error, reload, fetching } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // 复制回显(2026-10-31 用户裁定「与正文中复制按钮一致」):useCopyFeedback 单点+Check 图标交换
@@ -116,6 +135,7 @@ export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; ses
   const { status: copyStatus, copy: copyText } = useCopyFeedback();
   const copiedRowRef = useRef<string | null>(null);
   const copied = (id: string): boolean => copiedRowRef.current === id && copyStatus === 'ok';
+  const rowRefs = useRef(new Map<string, HTMLElement>());
   // 运行中时长实时:有 running 任务才起 1s 定时器(终态行用 endedAt 恒定,零无谓重渲染)
   const [now, setNow] = useState(Date.now());
   const hasRunning = (data ?? []).some((r) => r.status === 'running');
@@ -124,6 +144,21 @@ export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; ses
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [hasRunning]);
+  // task_wait 定位:滚至行 + flash;exec 展开详情,subagent 只高亮(点击另开转录)
+  useEffect(() => {
+    if (focus === undefined || data === null) return;
+    const row = data.find((r) => r.id === focus.id);
+    if (row === undefined) return;
+    if (row.kind !== 'subagent') {
+      setExpanded((cur) => new Set(cur).add(focus.id));
+    }
+    const el = rowRefs.current.get(focus.id);
+    if (el === undefined) return;
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('flash');
+    const timer = setTimeout(() => el.classList.remove('flash'), 1800);
+    return () => clearTimeout(timer);
+  }, [focus, data]);
   /** 运行时长停表(2026-10-31 暂停面):终态=endedAt;暂停中=pausedAt 冻结点;其余=now——均扣已折算暂停段 */
   const durOf = (r: SessionTaskRow): string =>
     fmtDur(Math.max(0, (r.endedAt ?? (r.status === 'paused' ? (r.pausedAt ?? now) : now)) - r.startedAt - (r.pausedMs ?? 0)));
@@ -134,6 +169,10 @@ export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; ses
       else next.add(id);
       return next;
     });
+  const openSubagent = (r: SessionTaskRow): void => {
+    if (openTab === undefined) return;
+    openTab('agent', { label: r.label, agentTitle: r.label, task: spawnPromptOf(r.outputTail) });
+  };
   const copyCmd = (id: string, label: string): void => {
     copiedRowRef.current = id;
     copyText(label);
@@ -174,19 +213,34 @@ export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; ses
       {data !== null && data.length > 0 && (
         <div className="todo-cards" aria-label="background tasks">
           {rows.map((r) => {
-            const open = expanded.has(r.id);
+            const isSub = r.kind === 'subagent';
+            const open = !isSub && expanded.has(r.id);
+            const onHead = (): void => {
+              // subagent:整行直开转录(不展开);exec:展开/收起详情
+              if (isSub) openSubagent(r);
+              else toggle(r.id);
+            };
             return (
-              <section key={r.id} className="tb-card">
+              <section
+                key={r.id}
+                className="tb-card"
+                data-task-id={r.id}
+                ref={(el) => {
+                  if (el !== null) rowRefs.current.set(r.id, el);
+                  else rowRefs.current.delete(r.id);
+                }}
+              >
                 <div
                   className="todo-card-head"
                   role="button"
                   tabIndex={0}
-                  aria-expanded={open}
-                  onClick={() => toggle(r.id)}
+                  aria-expanded={isSub ? undefined : open}
+                  data-tip={isSub ? t('Open subagent', '打开子智能体') : undefined}
+                  onClick={onHead}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      toggle(r.id);
+                      onHead();
                     }
                   }}
                 >
@@ -217,22 +271,6 @@ export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; ses
                       }}
                     >
                       <CircleStop size={13} strokeWidth={1.75} />
-                    </button>
-                  )}
-                  {/* 转录跳转(2026-11-02 用户裁定「spawn 后台任务点击跳转到转录页」):subagent 行
-                      按标签开智能体转录页签(与板委派行点开同型);exec 行无转录不显 */}
-                  {r.kind === 'subagent' && openTab !== undefined && (
-                    <button
-                      type="button"
-                      className="sx-changes-act bg-act"
-                      aria-label={`open transcript ${r.id}`}
-                      data-tip={t('Open transcript', '打开转录')}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openTab('agent', { label: r.label });
-                      }}
-                    >
-                      <SquareTerminal size={12} strokeWidth={1.75} />
                     </button>
                   )}
                   <span className="todo-card-time">{shortStampMs(r.startedAt)}</span>

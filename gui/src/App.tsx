@@ -582,12 +582,23 @@ function AppShell(): JSX.Element {
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }): void => {
     setTabStates((s) => patchTabMeta(s, sessionId, uid, patch));
   }, []);
-  /** 工具行定位:开任务板页签 + focus。`team:` 前缀=队卡定位；其余=任务行高亮(create_agent_team_task/task_wait/update_agent_team_task 等) */
+  /** 后台任务页签+行定位(task_wait 链路;与板面 openTaskFocus 分立——账本≠板) */
+  const [bgFocus, setBgFocus] = useState<{ id: string; nonce: number } | undefined>(undefined);
+  const openBgTaskFocus = useCallback((id: string): void => {
+    openTabInSession('bgtasks');
+    if (id !== '') setBgFocus({ id, nonce: Date.now() });
+  }, [openTabInSession]);
+  /** 工具行定位:开任务板页签 + focus。`bg:` 前缀=后台任务账本行(task_wait);
+   *  `team:` 前缀=队卡定位；其余=板任务行高亮(create_agent_team_task/agent_team_task_wait 等) */
   const openTaskFocus = useCallback((ref: string): void => {
+    if (ref.startsWith('bg:')) {
+      openBgTaskFocus(ref.slice(3));
+      return;
+    }
     openBoardTab();
     if (ref.startsWith('team:')) setTaskFocus({ ref: ref.slice(5), nonce: Date.now(), kind: 'team' });
     else setTaskFocus({ ref, nonce: Date.now(), kind: 'task' });
-  }, [openBoardTab]);
+  }, [openBoardTab, openBgTaskFocus]);
   const services = useMemo<TabServices>(
     () => ({
       board: projection.board, delegations: [...projection.delegations], team: [...projection.team], teams: projection.teams, onStopTask: stopTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos],
@@ -994,6 +1005,7 @@ function AppShell(): JSX.Element {
                       chatSinkRef: t.params.sideId !== undefined ? sideSinksRef.current.get(t.params.sideId) : undefined,
                       memoryFocus,
                       learnedFocus,
+                      bgFocus,
                     })
                     )}
                     </Suspense>

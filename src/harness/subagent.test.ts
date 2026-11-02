@@ -631,6 +631,10 @@ test('Runner 事件透传：子智能体事件经 onEvent 流出并带 subagent 
     assert.ok(events.some((e) => e.type === 'done'), 'done 事件应透传');
     const doneEvt = events.find((e) => e.type === 'done')!;
     assert.equal(doneEvt.payload?.subagent, 'evt', '透传事件带子智能体标识');
+    const band = events.find((e) => e.type === 'step' && typeof e.payload?.taskBand === 'string');
+    assert.ok(band !== undefined, 'fork 起步应发 taskBand(GUI 转录页用户气泡)');
+    assert.equal(band!.payload?.subagent, 'evt');
+    assert.equal(band!.payload?.taskBand, '发点事件');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
