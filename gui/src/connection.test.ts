@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach , type MockInstance } from 'vitest';
+import type { GuiAskAnswer } from './connection-types';
 import type { SessionEvent } from '../../src/types';
 import { emptyBoard } from './projection';
 import { createConnection } from './connection';
@@ -84,7 +85,7 @@ const snap = (lastSeq: number): FullSnapshot => ({
 const ev = (type: SessionEvent['type'], ts: number): SessionEvent => ({ type, ts });
 
 let conn: Connection | undefined;
-let delaySpy: ReturnType<typeof vi.spyOn>;
+let delaySpy: MockInstance<typeof setTimeout>;
 let fetchQueue: RespLike[];
 const fetchLog: Array<{ url: string; init: RequestInit | undefined }> = [];
 
@@ -484,7 +485,7 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
 
   it('⑨ G4 回执/回收 HTTP 面:replyApproval/replyAsk/deleteSession 的 URL/method/body;非 2xx 抛错含 status', async () => {
     conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
-    const answer = { type: 'selected', labels: ['a', 'b'] } as const;
+    const answer: GuiAskAnswer = { type: 'selected', labels: ['a', 'b'] };
     fetchQueue.push(ok(), ok(), ok(), ok(), ok(), ok());
     await conn.replyApproval('p 1', 'always');
     await conn.replyAsk('p/2', answer);

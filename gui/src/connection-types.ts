@@ -40,6 +40,12 @@ export interface SnapshotMessage {
   kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
   md: string;
   images?: string[];
+  /** tool 消息面（session/entry 模型同形）：配对条名/入参/结果/三态与 callId（折叠行渲染与 e2e 断言消费） */
+  callId?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  result?: string;
+  status?: 'pending' | 'running' | 'done'; // 对齐 session/entry 内核三态（无 failed：失败语义在 result 内容面）
 }
 
 /** G4 审批挂起请求(gui 侧契约声明;对齐 daemon ApprovalFrame.req 即 src/types ApprovalRequest

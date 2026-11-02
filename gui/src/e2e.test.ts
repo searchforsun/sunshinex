@@ -26,6 +26,7 @@ import { createElement } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 // 主仓 dist 直引(G2 装配裁定):gui pretest 先 clean+tsc 主仓,保证 dist 在场且新鲜——e2e 消费的
 // 就是发布形态(dist/serve/daemon + dist/model/adapter 的 ScriptedAdapter),非 TS 源旁路
+// @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { GuiDaemon } from '../../dist/serve/daemon';
 
 /** G14.66:悬浮提示统一 data-tip(原生 title 退役)——组头/会话行经 data 属性定位。
@@ -41,9 +42,13 @@ async function findOpenSessionRow(): Promise<HTMLElement> {
   await waitFor(() => expect(document.querySelectorAll('.sx-collapse.open [data-session-row]').length).toBeGreaterThan(0), { timeout: 5_000 });
   return document.querySelectorAll('.sx-collapse.open [data-session-row]')[0] as HTMLElement;
 }
+// @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { ScriptedAdapter } from '../../dist/model/adapter';
+// @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import type { ModelAdapter } from '../../dist/model/adapter';
+// @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { resolveDataDir } from '../../dist/config/data-dir';
+// @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { SessionJournal } from '../../dist/tui/session-journal';
 import type { ChatRequest, ChatResult, SessionEvent } from '../../src/types';
 import { createConnection } from './connection';
@@ -229,7 +234,7 @@ class HoldDispatchAdapter implements ModelAdapter {
 async function startDaemon(
   model: ModelAdapter | ((outDir: string) => ModelAdapter),
   staticRoot?: string,
-): Promise<{ port: number; root: string; out: string; stop(): Promise<void> }> {
+): Promise<{ port: number; root: string; out: string; projects: string; stop(): Promise<void> }> {
   vi.stubGlobal('WebSocket', NodeWebSocket);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-g35-e2e-'));
   const root = path.join(tmp, 'root'); // 会话根(New session/DirPicker 确认目标)
@@ -422,14 +427,6 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
         fireEvent.change(input, { target: { value: goal } });
         fireEvent.keyDown(input, { key: 'Enter' });
       };
-      const openTabByMenu = async (name: string): Promise<void> => {
-        await expandPanel();
-        await expandPanel();
-        fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
-        await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
-        fireEvent.click(screen.getByRole('menuitem', { name }));
-        await new Promise((r) => setTimeout(r, 200));
-      };
       const backHome = async (): Promise<void> => {
         fireEvent.click(screen.getByRole('button', { name: /new chat/i }));
         await screen.findByLabelText('welcome', {}, { timeout: 5_000 }); // G8a:Home 退役,返回=欢迎空态
@@ -469,7 +466,6 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       fireEvent.click(await findGroupByRoot(env.root));
       await new Promise((r) => setTimeout(r, 150)); // 收起态落定再展开(jsdom 同拍双击会命中旧闭包 handler)
       fireEvent.click(await findGroupByRoot(env.root));
-      const groupList = await screen.findByRole('list', { name: 'sessions' }, { timeout: 5_000 });
       // P1 Task 7:活查询轮询(冻结快照数组观察不到 sessionsOf 重拉——30ms 合帧扰动暴露的
       // 测试固有竞态;断言语义不变:列表最终收齐 s1 播种档 + s2 新建档)
       await waitFor(
@@ -695,7 +691,7 @@ describe('G4/G6 工作区编辑审批闭环:UI 切 Workspace edits 建会话 →
     const WRITE_NAME = 'g4-e2e-approval.txt';
     const WRITE_CONTENT = 'acceptEdits-allow-payload';
     const env = await startDaemon(
-      (out) =>
+      (out: string) =>
         new ScriptedAdapter([
           JSON.stringify({ tool: 'write', input: { path: path.join(out, WRITE_NAME), content: WRITE_CONTENT } }),
           '{"done":true,"reply":"审批放行后收束"}',
@@ -968,7 +964,7 @@ describe('G7 write 执行 + fetchDiff 双列:full-access 域内写(预置旧文�
       expect(container.querySelector('.status-idle')).toBeDefined();
 
       // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffLines 行级 old/new 双行 ——
-      fireEvent.click(toolRowRe(`write ${REL} `))!;
+      fireEvent.click(toolRowRe(`write ${REL} `)!);
       await waitFor(
         () => expect(container.querySelector('.diff-line.del')?.textContent).toContain(OLD),
         { timeout: 5_000 },
@@ -1033,7 +1029,7 @@ describe('G7 挂起中断线重连恢复:manual 越域 write 挂起(断线窗内
     const CONTENT = 'recovered-allow-payload';
     let gated: GatedFirstRoundAdapter | undefined;
     const env = await startDaemon(
-      (out) =>
+      (out: string) =>
         (gated = new GatedFirstRoundAdapter([
           JSON.stringify({ tool: 'write', input: { path: path.join(out, NAME), content: CONTENT } }),
           '{"done":true,"reply":"恢复后收束"}',
@@ -1197,7 +1193,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
 
       // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → **Diff 标签**开且活动(title=path)——
       //    (G8d T2 语义变更:callId 在场主通道 onOpenDiff;旧断言面 Files/.files-view 随接线退役)
-      fireEvent.click(toolRowRe(`write ${REL} `))!;
+      fireEvent.click(toolRowRe(`write ${REL} `)!);
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.getAttribute('aria-label')).toBe(REL);
       // 双语容忍正解(2026-10-27 技术债轮 K2:openDiffTitle t() 化,测试环境缺省 en)
@@ -1384,7 +1380,7 @@ interface E2ePtyFrame {
 
 /** pty 专用 WS 开连接+帧收集(子协议 bearer.<token> 鉴权——gui PtySocket 的浏览器形态;
  *  message 监听构造后立刻挂:首帧 replay 可与握手响应同 TCP 段到,等 open 再挂会丢帧) */
-function openPtyWs(url: string, token: string): Promise<{ ws: NodeWebSocket; frames: E2ePtyFrame[] }> {
+function openPtyWs(url: string, token?: string): Promise<{ ws: NodeWebSocket; frames: E2ePtyFrame[] }> {
   return new Promise((resolve, reject) => {
     const ws = new NodeWebSocket(url, [`bearer.${token}`]);
     const frames: E2ePtyFrame[] = [];
@@ -1570,8 +1566,8 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       // —— 设置态(ProjectMenu 底栏设置钮)→ 通用面板(缺省)→ 改 language 键(自绘下拉:触发钮
       //    aria-label=language → 选项 role=option;自动生效轮:换项即存,无保存钮)→ toast「已生效」——
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
-      await screen.findByLabelText('settings pane general', { timeout: 5_000 });
-      fireEvent.click(await screen.findByLabelText('language', { timeout: 5_000 }));
+      await screen.findByLabelText('settings pane general', {}, { timeout: 5_000 });
+      fireEvent.click(await screen.findByLabelText('language', {}, { timeout: 5_000 }));
       fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
       await screen.findByText(/Applied — takes effect for new sessions|已生效：新建会话起/, {}, { timeout: 5_000 }); // toast(3s 自隐,即拍在场;上一步已切 zh,渲染中文面——钉双语容忍,App.test 第十一轮同解)
       // 保存后重拉:language 触发钮显新值标签(来源归因 project——写回项目档)
@@ -1637,7 +1633,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
 
       // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
       fireEvent.click(screen.getByRole('button', { name: 'MCP' }));
-      await screen.findByLabelText('settings pane MCP', { timeout: 5_000 });
+      await screen.findByLabelText('settings pane MCP', {}, { timeout: 5_000 });
       // MCP 面 2026-10-28 T21 骨架重构:ResourceCard(.sx-rc,title=服务端名);命令行落 details 内 meta
       await waitFor(() => expect(container.querySelector('.sx-rc .sx-rc-title')?.textContent).toBe('bad'), { timeout: 5_000 });
       expect(container.querySelector('.sx-rc')?.textContent).toContain('definitely-missing-xyz');
@@ -1656,9 +1652,9 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       // —— 智能体面(导航项):「+ 新增」→ 弹窗 id/name(写作用域=壳 scope,project 缺省)→ 保存 →
       //    ResourceCard 清单含 e2e-agent(T21 骨架:.sx-rc title=id,副题=name)——
       fireEvent.click(screen.getByRole('button', { name: bi('Agents', '智能体') }));
-      await screen.findByLabelText('settings pane agents', { timeout: 5_000 });
+      await screen.findByLabelText('settings pane agents', {}, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: bi('+ New', '+ 新增') }));
-      await screen.findByLabelText('agent id', { timeout: 5_000 });
+      await screen.findByLabelText('agent id', {}, { timeout: 5_000 });
       fireEvent.change(screen.getByLabelText('agent id'), { target: { value: 'e2e-agent' } });
       fireEvent.change(screen.getByLabelText('agent name'), { target: { value: 'E2E' } });
       fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
@@ -1825,7 +1821,7 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
   it('run 收束落档 → 重启(数据迁移)→ attach → snapshot.board 回种任务、delegations 非空', async () => {
     vi.stubGlobal('WebSocket', NodeWebSocket);
     const mkPost = (base: string) => async (p: string, body: unknown): Promise<Record<string, unknown>> =>
-      (await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Record<string, unknown>;
+      (await (await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json()) as Record<string, unknown>;
     // —— 第一 daemon:板面全链(建队→队友→任务 → 认领收束)——
     const fx = await startDaemon(new BoardCardsAdapter());
     const base = `http://127.0.0.1:${fx.port}`;
