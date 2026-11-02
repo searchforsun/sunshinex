@@ -314,7 +314,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 输入面贴底(G12 起 composer 卡面样式单源在 .sx-composer 段,旧 flex 席位规则退役) */
 
 /* === 智能体团队页签(成员 | 任务 | 编排) === */.view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); }.view-toggle button { padding: 2px 12px; border-radius: var(--radius-xs); font-size: 12px; color: var(--fg-secondary); }.view-toggle button:hover { color: var(--fg); }.view-toggle button.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.task-row { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); overflow-wrap: anywhere; }.task-row:hover { border-color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-/* 智能体团队工具折叠行徽标 */.tool-badge-agent-teams { flex: none; font-size: 10px; line-height: 14px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--radius-xs); padding: 0 5px; }.tool-verb-agent-teams { color: var(--fg); }
 /* 任务五态的字色不承载状态；点色与划线在 .tb-status-dot / .tb-struck */
 /* DAG 滚动壳(列表/流程图双卡共用的滚动容器) */.board-dag-scroll { overflow: auto; min-height: 0; }
 
@@ -1792,7 +1791,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-dag-node .tb-stop { top: 4px; right: 4px; transform: none; }
 .tb-dag-node-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tb-dag-node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
-.tb-dag-node-agent { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-dag-node-agent { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tb-dag-node-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 /* START/END 虚拟节点:弱化虚线胶囊(纯形态,aria-hidden) */
 .tb-dag-terminal { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: var(--surface-elevated); border: 1px dashed var(--border-strong); border-radius: 999px; color: var(--fg-tertiary); font-size: 11px; }
 /* React Flow 面换肤(组件令牌 → sx 令牌,light/dark 随 html[data-theme] 自动):连线随 fg、

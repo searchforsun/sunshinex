@@ -169,7 +169,8 @@ const RECENT_CLOSED_CAP = 10;
  *  活动位若被剔则承继首个剩余签;全席无变化时原引用返回 */
 export function stripTabType(states: TabStates, type: TabTypeId): TabStates {
   let changed = false;
-  const next: TabStates = { ...states };
+  // 可变中间表：TabStates=Readonly<Record> 禁止 next[sid]= 赋值(TS2542)
+  const next: Record<string, TabSessionState> = { ...states };
   for (const [sid, cur] of Object.entries(states)) {
     const tabs = cur.tabs.filter((t) => t.type !== type);
     const recentClosed = cur.recentClosed.filter((c) => c.type !== type);

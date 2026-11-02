@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
-import { applyAgentEvent } from './tabs/agent-activity';
+import { applyAgentEvent, sealOrphanAgentRuns } from './tabs/agent-activity';
 import type { AgentActivities } from './tabs/agent-activity';
 import type { SessionEvent } from '../../src/types';
 import type { Connection } from './connection';
@@ -149,6 +149,7 @@ export function bindShadowHydration(
   bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void,
   connInstance: Connection | null,
   dropPendingActs?: (sessionId: string) => void,
+  busyTeam?: { ready: MutableRefObject<boolean>; names: MutableRefObject<ReadonlySet<string>> },
 ): void {
   const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef } = refs;
   shadowHydrateRef.current = (sessionId: string): void => {
@@ -166,6 +167,10 @@ export function bindShadowHydration(
         for (const e of events) acts = fold(acts, e); // journal 全量(到读档时刻)
         for (const { e, seq } of buf()) {
           if (seq > cut) acts = fold(acts, e); // 读档后到达的帧只在缓冲
+        }
+        // 快照已到才封：整替会盖掉 seed 侧封口，须在此再封非 busy 悬空 run
+        if (busyTeam?.ready.current === true) {
+          acts = sealOrphanAgentRuns(acts, busyTeam.names.current);
         }
         shadowBufRef.current.delete(sessionId);
         shadowHydratingRef.current.delete(sessionId);

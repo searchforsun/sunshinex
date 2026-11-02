@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
-import { shortStampMs } from '../ui-util';
+import { fmtDurMs, shortStampMs } from '../ui-util';
 
 /** DAG 视图懒载面(React Flow + dagre)。节点与列表行共用五态点色与停钮。 */
 const TaskDag = lazy(() => import('./TaskDag'));
@@ -21,11 +21,12 @@ export interface BoardTeamRef {
   readonly createdAt?: number;
 }
 
-/** 存活成员（快照 team 段；teamId 用于按队过滤） */
+/** 存活成员（快照 team 段；teamId 用于按队过滤；createdAt=名册创建时刻） */
 export interface TeamMemberRef {
   readonly name: string;
   readonly busy: boolean;
   readonly teamId?: string;
+  readonly createdAt?: number;
 }
 
 export interface TaskBoardTabProps {
@@ -131,12 +132,24 @@ type CardView = 'members' | 'tasks' | 'orchestration';
 
 const STOPPABLE = new Set<BoardTask['status']>(['pending', 'running']);
 
+/** 完成耗时=artifact.durationMs；运行中=自进入 running 的 updatedAt 起算（板态无独立 startedAt） */
+function taskDurationMs(task: BoardTask, now: number): number | undefined {
+  const finished = task.artifact?.durationMs;
+  if (typeof finished === 'number' && finished >= 0
+    && (task.status === 'success' || task.status === 'failed' || task.status === 'cancelled')) {
+    return finished;
+  }
+  if (task.status === 'running' && task.updatedAt > 0) return Math.max(0, now - task.updatedAt);
+  return undefined;
+}
+
 function TaskCard({
   group,
   board,
   delegations,
   members,
   teamCount,
+  teamCreatedAt,
   onOpenAgent,
   onStopTask,
   focus,
@@ -146,12 +159,24 @@ function TaskCard({
   delegations: readonly Delegation[];
   members: readonly TeamMemberRef[];
   teamCount: number;
+  teamCreatedAt?: number;
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   onStopTask?: (taskId: string) => void;
   focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
 }): JSX.Element {
   const [view, setView] = useState<CardView>('tasks');
-  const latestMs = group.tasks.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
+  /** 停止二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击红边武装,3s 内再击执行 */
+  const [armedStop, setArmedStop] = useState<string | null>(null);
+  const hasRunning = group.tasks.some((x) => x.status === 'running');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hasRunning) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasRunning]);
+  const headStamp = teamCreatedAt !== undefined && teamCreatedAt > 0
+    ? teamCreatedAt
+    : group.tasks.reduce((m, x) => Math.max(m, x.updatedAt ?? 0), 0);
   const byId = useMemo(() => new Map(group.tasks.map((x) => [x.id, x])), [group.tasks]);
   const focusTaskId = useMemo(() => {
     if (focus === undefined || focus === null || focus.ref === '' || focus.kind === 'team') return undefined;
@@ -189,7 +214,7 @@ function TaskCard({
           </button>
         </div>
         <span className="tb-team-name">{group.name}</span>
-        <span className="todo-card-time">{shortStampMs(latestMs)}</span>
+        {headStamp > 0 && <span className="todo-card-time">{shortStampMs(headStamp)}</span>}
       </div>
       {view === 'members' ? (
         teamMembers.length === 0 ? (
@@ -214,6 +239,9 @@ function TaskCard({
                     <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
                     {m.busy ? t('busy', '忙碌') : t('idle', '空闲')}
                   </span>
+                  {typeof m.createdAt === 'number' && m.createdAt > 0 && (
+                    <span className="todo-card-time">{shortStampMs(m.createdAt)}</span>
+                  )}
                 </button>
               </li>
             ))}
@@ -225,6 +253,7 @@ function TaskCard({
             const d = agentOfTask(task, delegations);
             const agentName = agentDisplayName(task, d);
             const title = task.title !== '' ? task.title : task.id;
+            const dur = taskDurationMs(task, now);
             return (
               <li key={task.id} className={`tb-task-row task-status-${task.status}`}>
                 <button
@@ -242,14 +271,24 @@ function TaskCard({
                       {agentName}
                     </span>
                   )}
+                  {dur !== undefined && <span className="bg-dur">{fmtDurMs(dur)}</span>}
+                  {task.createdAt > 0 && <span className="todo-card-time">{shortStampMs(task.createdAt)}</span>}
                 </button>
                 {STOPPABLE.has(task.status) && (
                   <button
                     type="button"
-                    className="tb-stop"
+                    className={`tb-stop${armedStop === task.id ? ' arm' : ''}`}
                     aria-label={`${t('Stop', '停止')} ${task.id}`}
-                    data-tip={t('Stop', '停止')}
-                    onClick={() => onStopTask?.(task.id)}
+                    data-tip={armedStop === task.id ? t('Click again to confirm', '再次点击确认') : t('Stop', '停止')}
+                    onClick={() => {
+                      if (armedStop === task.id) {
+                        setArmedStop(null);
+                        onStopTask?.(task.id);
+                      } else {
+                        setArmedStop(task.id);
+                        setTimeout(() => setArmedStop((cur) => (cur === task.id ? null : cur)), 3000);
+                      }
+                    }}
                   >
                     <Square size={11} strokeWidth={1.75} aria-hidden="true" />
                   </button>
@@ -268,6 +307,11 @@ function TaskCard({
                   const task = byId.get(taskId) ?? board.tasks[taskId];
                   if (task === undefined) return '';
                   return agentDisplayName(task, agentOfTask(task, delegations));
+                }}
+                durationOf={(taskId) => {
+                  const task = byId.get(taskId) ?? board.tasks[taskId];
+                  if (task === undefined) return undefined;
+                  return taskDurationMs(task, now);
                 }}
                 focusId={focusTaskId}
                 focusNonce={focus?.nonce}
@@ -331,6 +375,13 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   }, [focus?.nonce, focus?.ref, focus?.kind]);
   const tasks = useMemo(() => Object.values(board.tasks), [board]);
   const groups = useMemo(() => groupByTeam(tasks, teams), [tasks, teams]);
+  const createdAtOf = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const team of teams) {
+      if (typeof team.createdAt === 'number' && team.createdAt > 0) m.set(team.teamId, team.createdAt);
+    }
+    return m;
+  }, [teams]);
   if (tasks.length === 0 && teams.length === 0) {
     return (
       <div className="insight-tab">
@@ -356,6 +407,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
             delegations={delegations}
             members={members}
             teamCount={groups.length}
+            teamCreatedAt={createdAtOf.get(group.teamId)}
             onOpenAgent={onOpenAgent}
             onStopTask={onStopTask}
             focus={focus}

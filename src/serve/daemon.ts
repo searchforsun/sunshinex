@@ -557,17 +557,14 @@ export class GuiDaemon {
     { method: 'POST', path: '/memory/rm', auth: true, run: (req, res) => this.handleMemoryRm(req, res) },
     { method: 'GET', path: '/memory', auth: true, run: async (req, res) => this.handleMemoryList(req, res) },
     { method: 'GET', path: '/session/:id/tasks', auth: true, run: async (_req, res, p) => this.handleSessionTasks(res, p.id) },
-    // 后台任务暂停/恢复面（2026-10-31 GUI 暂停钮）：body {id: taskId}
-    { method: 'POST', path: '/session/:id/tasks/pause', auth: true, run: async (req, res, p) => {
+    // 后台任务停止面（2026-11-02 用户裁定「暂停=复用 task_stop,撤恢复」）：body {id: taskId}——
+    // task_stop 同语义（abortLedger：exec 杀进程树/subagent 打断线），终态 stopped 即 task_wait 可见
+    { method: 'POST', path: '/session/:id/tasks/stop', auth: true, run: async (req, res, p) => {
         const parsed = await this.readJson(req);
         if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-        sessionHandlers.handleTaskPause(this.sessionIo, res, p.id, String((parsed.body as { id?: unknown }).id ?? ''), true);
+        sessionHandlers.handleTaskStop(this.sessionIo, res, p.id, String((parsed.body as { id?: unknown }).id ?? ''));
       } },
-    { method: 'POST', path: '/session/:id/tasks/resume', auth: true, run: async (req, res, p) => {
-        const parsed = await this.readJson(req);
-        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
-        sessionHandlers.handleTaskPause(this.sessionIo, res, p.id, String((parsed.body as { id?: unknown }).id ?? ''), false);
-      } },
+
     { method: 'GET', path: '/session/:id/context', auth: true, run: async (_req, res, p) => this.handleSessionContext(res, p.id) },
     // G14.2xx b 影子投影水合面:journal shadow 行全量(board/delegation/subagent)+ cut 水位——
     // GUI 刷新/重连后会话打开时拉取清零重放(WS 环窗对长会话子智能体流必溢出,恢复唯一可靠入口)

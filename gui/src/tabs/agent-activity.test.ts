@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SessionEvent } from '../../../src/types';
-import { applyAgentEvent } from './agent-activity';
+import { applyAgentEvent, sealOrphanAgentRuns } from './agent-activity';
 
 /**
  * G8d 子智能体活动聚合 reducer 纯测(task-3):payload.subagent 标签事件按 label 聚卡——
@@ -217,5 +217,21 @@ describe('重复投递帧 done 必封投影(2026-10-31 重启后重复时间线+
     expect(s.ca!.chat.status).toBe('idle'); // 根修前=running(第二份 run 永不闭合)
     const runs = s.ca!.chat.entries.filter((e) => e.kind === 'run');
     for (const r of runs) expect(r.streaming).toBeUndefined(); // 每个 run 条均封段
+  });
+});
+
+describe('sealOrphanAgentRuns(重启后悬空 run 封口)', () => {
+  it('非 busy 成员的 open run 封段；busy 成员保留 running', () => {
+    let s = applyAgentEvent({}, sub('model-start', '调研员'));
+    s = applyAgentEvent(s, sub('token', '调研员', '半截'));
+    s = applyAgentEvent(s, sub('model-start', '分析师'));
+    s = applyAgentEvent(s, sub('token', '分析师', '在飞'));
+    expect(s['调研员']!.chat.status).toBe('running');
+    expect(s['分析师']!.chat.status).toBe('running');
+    const sealed = sealOrphanAgentRuns(s, new Set(['分析师']));
+    expect(sealed['调研员']!.chat.status).toBe('idle');
+    expect(sealed['调研员']!.status).toBe('done');
+    expect(sealed['分析师']!.chat.status).toBe('running');
+    expect(sealOrphanAgentRuns(sealed, new Set(['分析师']))).toBe(sealed); // 幂等
   });
 });

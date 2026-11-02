@@ -15,18 +15,6 @@ import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
 import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import type { DiffResp } from '../../connection';
 
-/** 智能体团队工具固定名单(八名)→ 折叠行 agent_teams 标识 */
-export const AGENT_TEAM_TOOLS = new Set([
-  'create_agent_team',
-  'create_agent_teammate',
-  'create_agent_team_task',
-  'update_agent_team_task',
-  'get_agent_team_board',
-  'send_agent_team_message',
-  'agent_team_task_wait',
-  'agent_team_task_stop',
-]);
-
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);智能体团队工具专属图标(去扳手默认) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
@@ -575,15 +563,9 @@ export const ToolEntryView = memo(function ToolEntryView({
     || (toolName === 'create_agent_team_task' && createTaskTitle !== '')
     || toolName === 'skill' || taskOpName !== undefined
   );
-  const isAgentTeamTool = AGENT_TEAM_TOOLS.has(toolName);
-  const agentTeamsBadge = isAgentTeamTool ? (
-    <span className="tool-badge tool-badge-agent-teams" data-tip={t('Agent teams', '智能体团队')}>
-      {t('agent_teams', '智能体团队')}
-    </span>
-  ) : null;
   const verbSpan = executing ? (
     // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
-    <span className={`tool-verb exec-running${isAgentTeamTool ? ' tool-verb-agent-teams' : ''}`}>
+    <span className="tool-verb exec-running">
       <span className="exec-running-text">{runningLabel}</span>
     </span>
   ) : toolName === 'ask_question' ? (
@@ -595,11 +577,10 @@ export const ToolEntryView = memo(function ToolEntryView({
   ) : toolName === 'task_wait' ? (
     <span className="tool-verb">{t('task_wait', '等待任务')}</span>
   ) : (
-    <span className={`tool-verb${isAgentTeamTool ? ' tool-verb-agent-teams' : ''}`}>{zhToolName(toolName)}</span>
+    <span className="tool-verb">{zhToolName(toolName)}</span>
   );
   const collapsed = (
     <>
-      {agentTeamsBadge}
       {verbSpan}
       {path !== undefined && (isWrite || toolName === 'read') ? (
         <>

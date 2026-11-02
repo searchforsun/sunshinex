@@ -79,6 +79,31 @@ function isInboundStep(e: SessionEvent): boolean {
   return typeof p.from === 'string' && p.from.length > 0 && typeof p.text === 'string';
 }
 
+/**
+ * 重启/水合后封悬空 run：journal 里未收口的 model-start 会让 chat.status 停在 running，
+ * 转录页底部永转；板侧 recoverOnLoad 已把任务标 cancelled，两边不一致。
+ * busyNames = 快照 team 段中 busy=true 的成员——仅跳过仍在飞的执行体（页面刷新保活流）。
+ */
+export function sealOrphanAgentRuns(
+  s: AgentActivities,
+  busyNames: ReadonlySet<string>,
+): AgentActivities {
+  let next = s;
+  let changed = false;
+  for (const [label, card] of Object.entries(s)) {
+    if (busyNames.has(label)) continue;
+    if (card.status !== 'running' && card.chat.status !== 'running') continue;
+    next = applyAgentEvent(next, {
+      type: 'done',
+      text: '',
+      ts: Date.now(),
+      payload: { subagent: label, stopReason: 'interrupted' },
+    });
+    changed = true;
+  }
+  return changed ? next : s;
+}
+
 export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActivities {
   const p = e.payload as { subagent?: unknown; label?: unknown; status?: unknown; turnTotal?: unknown; ok?: unknown; tool?: unknown; input?: unknown; taskBand?: unknown; to?: unknown } | undefined;
   if (e.type === 'agent-message') {

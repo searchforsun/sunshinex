@@ -32,3 +32,6 @@
    hover 红描边红字;恢复钮(Play)同待遇 */
 .tb-card .bg-act { border: 1px solid transparent; border-radius: 50%; }
 .tb-card .bg-act:hover { color: var(--err, #e5484d); border-color: var(--err, #e5484d); }
+
+/* 停止钮二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击红边框+红字,再击执行 */
+.tb-stop.arm, .tb-card .bg-act.arm { color: var(--err, #e5484d); border-color: var(--err, #e5484d); opacity: 1; }

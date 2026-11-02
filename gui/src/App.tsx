@@ -147,11 +147,16 @@ function AppShell(): JSX.Element {
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
   /** 板播种窗(use-board-seed 单点,2026-10-27 技术债轮 D53 批F 外提):G6 seq 门缓冲/重开/
    *  快照回填一条域一条文件;refs 穿透 use-connection-wiring 帧路由 */
+  /** 快照 team.busy 权威(封悬空 agent run；与影子水合共用) */
+  const busyTeamRef = useRef<ReadonlySet<string>>(new Set());
+  const busyTeamReadyRef = useRef(false);
   const { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot } = useBoardSeed({
     sessionRef,
     setRunningIds,
     setProjection,
     bumpActs,
+    busyTeamRef,
+    busyTeamReadyRef,
   });
   /** 拖宽在途清理句柄:mouseup 解绑外,卸载兜底解绑(会话切走/组件卸毁不泄漏 window 监听) */
   const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -181,7 +186,13 @@ function AppShell(): JSX.Element {
     setTodoBatches, setConnState,
   });
   /** 影子水合单点绑定:每渲染重赋 hydrate ref(闭包恒取最新连接实例) */
-  bindShadowHydration({ shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef }, bumpActs, connInstance, (sid) => dropPendingActsRef.current?.(sid));
+  bindShadowHydration(
+    { shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef },
+    bumpActs,
+    connInstance,
+    (sid) => dropPendingActsRef.current?.(sid),
+    { ready: busyTeamReadyRef, names: busyTeamRef },
+  );
 
   /** 外观偏好同步(use-appearance-sync 单点,2026-10-27 技术债轮 D53 批E 外提):语言源随 daemon
    *  settings + 公共持久化偏好上收(/app/gui-state 覆盖本地,zoom/theme/fontPreset)两件一次性同步 */

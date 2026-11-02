@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Check, Copy, Database, CircleStop, Play, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Check, Copy, Database, CircleStop, RefreshCw, Sparkles, SquareTerminal, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
 import type { Connection, SessionTaskRow } from '../connection';
 import { t } from '../i18n';
+import type { TabParams, TabTypeId } from './tab-state';
 import { shortStampMs } from '../ui-util';
 
 /**
@@ -107,7 +108,7 @@ export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: s
  *  复制钮 ③运行中行暂停钮/暂停中恢复钮(hover 显现;exec 活账闭包,subagent/重放账 409 静默)。
  *  运行时长停表扣 pausedMs(暂停段不计时);点击展开命令详情与结果(服务端输出尾读,结果区最大
  *  高度内部滚动)。运行中时长 1s 实时跳 */
-export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
+export function BgTasksTab({ conn, sessionId, openTab }: { conn: Connection; sessionId: string; openTab?: (type: TabTypeId, params?: TabParams) => void }): JSX.Element {
   const { data, error, reload, fetching } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // 复制回显(2026-10-31 用户裁定「与正文中复制按钮一致」):useCopyFeedback 单点+Check 图标交换
@@ -140,12 +141,13 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
   /** 暂停/恢复失败可见化(2026-11-01 用户裁定「暂停之后不能恢复」体感根修):409(无暂停闭包)/
    *  连接失败原先静默吞掉=点了没反应,横幅行如实报 */
   const [actError, setActError] = useState('');
-  const pauseTask = (e: React.MouseEvent, id: string, resume: boolean): void => {
+  /** 二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击武装,3s 内再击执行 */
+  const [armedId, setArmedId] = useState<string | null>(null);
+  const stopTask = (e: React.MouseEvent, id: string): void => {
     e.stopPropagation();
-    const call = resume ? conn.taskResume(sessionId, id) : conn.taskPause(sessionId, id);
-    call
+    conn.taskStop(sessionId, id)
       .then(() => { setActError(''); return reload(); })
-      .catch((err: unknown) => setActError(`${resume ? t('Resume failed', '恢复失败') : t('Pause failed', '暂停失败')}: ${err instanceof Error ? err.message : String(err)}`));
+      .catch((err: unknown) => setActError(`${t('Stop failed', '停止失败')}: ${err instanceof Error ? err.message : String(err)}`));
   };
   const rows = [...(data ?? [])].sort((a, b) => b.startedAt - a.startedAt);
   return (
@@ -194,27 +196,43 @@ export function BgTasksTab({ conn, sessionId }: { conn: Connection; sessionId: s
                   {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
                   <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>{durOf(r)}</span>
                   <span className="todo-card-goal bg-cmd" data-tip={r.label}>{r.label}</span>
-                  {/* 暂停/恢复(2026-10-31):仅 exec 活账有闭包(daemon 409 静默兜旧档);hover 显现 */}
-                  {r.status === 'running' && typeof conn.taskPause === 'function' && (
+                  {/* 停止(2026-11-02 用户裁定「暂停=复用 task_stop,撤恢复」+「二次确认,点击变红边框」):
+                      running/paused 行 hover 显现;二段确认——首击武装(红边框),3s 内再击执行,超时解除;
+                      subagent 行=打断线正确停子智能体(exec=杀进程树) */}
+                  {(r.status === 'running' || r.status === 'paused') && typeof conn.taskStop === 'function' && (
                     <button
                       type="button"
-                      className="sx-changes-act bg-act"
-                      aria-label={`pause ${r.id}`}
-                      data-tip={t('Pause', '暂停')}
-                      onClick={(e) => pauseTask(e, r.id, false)}
+                      className={`sx-changes-act bg-act${armedId === r.id ? ' arm' : ''}`}
+                      aria-label={`stop ${r.id}`}
+                      data-tip={armedId === r.id ? t('Click again to confirm', '再次点击确认') : t('Stop', '停止')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (armedId === r.id) {
+                          setArmedId(null);
+                          stopTask(e, r.id);
+                        } else {
+                          setArmedId(r.id);
+                          setTimeout(() => setArmedId((cur) => (cur === r.id ? null : cur)), 3000);
+                        }
+                      }}
                     >
                       <CircleStop size={13} strokeWidth={1.75} />
                     </button>
                   )}
-                  {r.status === 'paused' && typeof conn.taskResume === 'function' && (
+                  {/* 转录跳转(2026-11-02 用户裁定「spawn 后台任务点击跳转到转录页」):subagent 行
+                      按标签开智能体转录页签(与板委派行点开同型);exec 行无转录不显 */}
+                  {r.kind === 'subagent' && openTab !== undefined && (
                     <button
                       type="button"
                       className="sx-changes-act bg-act"
-                      aria-label={`resume ${r.id}`}
-                      data-tip={t('Resume', '恢复')}
-                      onClick={(e) => pauseTask(e, r.id, true)}
+                      aria-label={`open transcript ${r.id}`}
+                      data-tip={t('Open transcript', '打开转录')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openTab('agent', { label: r.label });
+                      }}
                     >
-                      <Play size={12} strokeWidth={1.75} />
+                      <SquareTerminal size={12} strokeWidth={1.75} />
                     </button>
                   )}
                   <span className="todo-card-time">{shortStampMs(r.startedAt)}</span>

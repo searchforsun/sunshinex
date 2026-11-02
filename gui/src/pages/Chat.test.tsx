@@ -830,7 +830,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(rows[2]!.textContent).not.toMatch(/spawn\s+\S/); // 无名:只出动词,不编名
   });
 
-  it('create_agent_teammate / create_agent_team 折叠行名优先(创建团队成员|创建智能体团队 {名})+agent_teams 徽标', async () => {
+  it('create_agent_teammate / create_agent_team 折叠行名优先(创建团队成员|创建智能体团队 {名})', async () => {
     const onOpenAgent = vi.fn();
     render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
     await flushed();
@@ -842,7 +842,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'ct0' } });
     const rows = [...document.querySelectorAll('.entry-tool')];
     expect(rows).toHaveLength(3);
-    expect(rows[0]!.querySelector('.tool-badge-agent-teams')).not.toBeNull();
+    expect(rows[0]!.querySelector('.tool-badge-agent-teams')).toBeNull();
     const link = rows[0]!.querySelector('.tool-agent-link');
     expect(link).not.toBeNull();
     expect(link!.textContent).toContain('分析-内核架构');
@@ -1334,7 +1334,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct2' } });
       row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
       expect(row.textContent).toContain('创建团队任务');
-      expect(row.querySelector('.tool-badge-agent-teams')).not.toBeNull();
+      expect(row.querySelector('.tool-badge-agent-teams')).toBeNull();
       expect(row.textContent).toContain('测试构建');
       // 未登记工具(MCP 面)回退原名不硬翻
       fire({ type: 'tool-call', text: 'mcp_foo_bar', ts: Date.now(), payload: { callId: 'm1', input: {} } });
