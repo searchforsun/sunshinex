@@ -157,16 +157,20 @@ if (!app.requestSingleInstanceLock()) {
     win.setMenu(null);
     Menu.setApplicationMenu(null); // 托盘右键菜单独立建template,不受应用菜单清空影响
     // webview guest 安全纪律(2026-11-01 M1 融合):禁 node/preload(guest 只是无痕页面容器)+
-    // http(s)/about 之外的 src 拒挂;弹窗(window.open/_blank)一律外开系统默认浏览器(页面语义
-    // 与「在默认浏览器中打开」菜单一致,不在应用内开子窗)
+    // http(s)/about 之外的 src 拒挂;弹窗(window.open/_blank)不开原生子窗,转发 GUI 开新侧栏页签
     app.on('web-contents-created', (_event, wc) => {
+      // will-attach-webview 由**宿主**(主窗 webContents)发出——挂在 guest 上永不触发(曾如此,
+      // preload 剥离/非 http(s) src 拦截形同虚设)
+      if (wc.getType() === 'window') {
+        wc.on('will-attach-webview', (att, webPreferences, params) => {
+          delete webPreferences.preload;
+          webPreferences.nodeIntegration = false;
+          const src = typeof params.src === 'string' ? params.src : '';
+          if (!/^https?:\/\//i.test(src) && src !== 'about:blank') att.preventDefault();
+        });
+        return;
+      }
       if (wc.getType() !== 'webview') return;
-      wc.on('will-attach-webview', (att, webPreferences, params) => {
-        delete webPreferences.preload;
-        webPreferences.nodeIntegration = false;
-        const src = typeof params.src === 'string' ? params.src : '';
-        if (!/^https?:\/\//i.test(src) && src !== 'about:blank') att.preventDefault();
-      });
       wc.setWindowOpenHandler(({ url }) => {
         // M2 融合(2026-11-02 用户裁定「页内超链接开新页签,和浏览器一样」):guest 弹窗不外开,
         // 转发 GUI 开新侧栏 web 页签(App onOpenWeb 消费,判重由 openTab 承担);非 http(s) 纯拒
