@@ -7,12 +7,12 @@ import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
 import type { TaskBoard } from '../../taskboard/board';
+import { BOARD_TERMINAL, type TaskStatus } from '../../taskboard/model';
 import { dispatchTag } from '../../taskboard/board';
 
 const DEFAULT_TIMEOUT_SECONDS = 1800;
 const RECEIPT_TAIL_LINES = 200;
 /** 板任务终态：success 完成、failed 执行错误、cancelled 主动停止或重启自愈 */
-const BOARD_TERMINAL = new Set(['success', 'failed', 'cancelled']);
 
 export type TaskWaitKind = BackgroundTask['kind'];
 
@@ -70,8 +70,9 @@ async function waitMixed(
   timeoutSeconds: number,
   signal: AbortSignal | undefined,
 ): Promise<Awaited<ReturnType<TaskRegistry['waitUntilSettled']>>> {
-  const boardStatus = (id: string): string | undefined => board?.snapshot().tasks[id]?.status;
-  const boardPending = (): string[] => boardWaitIds.filter((id) => !BOARD_TERMINAL.has(boardStatus(id) ?? ''));
+  const boardStatus = (id: string): TaskStatus | undefined => board?.snapshot().tasks[id]?.status;
+  // 未知 id 按未终态处理（等待面保守——宁多等不早放）
+  const boardPending = (): string[] => boardWaitIds.filter((id) => !BOARD_TERMINAL.has(boardStatus(id) ?? 'pending'));
   if (boardWaitIds.length === 0) {
     return tasks.waitUntilSettled(ids, timeoutSeconds * 1000, signal);
   }

@@ -5,6 +5,9 @@
 
 export type TaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
 
+/** 板终态集合单点（stop 拒识/wait 判等/board 流转三面共用，D63 收敛）：pending/running 可流转，三终态幂等 */
+export const BOARD_TERMINAL: ReadonlySet<TaskStatus> = new Set<TaskStatus>(['success', 'failed', 'cancelled']);
+
 export interface BoardTask {
   id: string;
   title: string;

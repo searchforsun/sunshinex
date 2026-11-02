@@ -38,7 +38,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 | `sunshinex selfcheck` | 骨架自检 |
 | `sunshinex run <dir> --goal="..."` | 标准验收修正环（非 done 退出码 1） |
 | `sunshinex pipeline <dir> --goal="..." [--yes]` | 五节点流水线 gate 审批（`--yes` 跳过交互直接批准） |
-| `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 acceptEdits 权限档装配；详见 [MANUAL-GUI](MANUAL-GUI.md)） |
+| `sunshinex serve [目录] [--port=N] [--token=T] [--manual]` | 启动 GUI daemon（HTTP+WebSocket，浏览器访问 GUI；缺省绑定回环且免鉴权，显式 `--token` 才启用鉴权、`--port` 缺省 7788、`--manual` 预选会话以 acceptEdits 权限档装配；详见 [MANUAL-GUI](MANUAL-GUI.md)）。安全口径：回环绑定为第一道（不对外监听）；免鉴权档下浏览器侧其他页面可发跨站简单 POST 触及 daemon 全部端点（含打开编辑器等本机操作）——单用户本机工具的登记接受面；不可信同机环境请启用 `--token` |
 | `sunshinex skills install <git-url \| owner/repo \| 本地目录> [--force]` | 安装技能到全局技能根 `~/.sunshinex/skills`（同名已存在缺省跳过，`--force` 覆盖） |
 | `sunshinex kb-index [目录]` | 构建知识库索引（对目录内 md/txt 走计费 embedding；缺省当前工作区，`node_modules` 与隐藏目录跳过；`kb_search` 检索源，见第二节 KB 配置） |
 | `sunshinex plugins list [--root <目录>] \| enable\|disable <id> [--scope=global\|project]` | 插件清单与启停：两级装载结果（id / 版本 / 来源 / 启用态 / 贡献面 / 告警），见 6.4 |

@@ -6,7 +6,7 @@ import * as path from 'path';
 import { AgentRole, ModelTier, OutputStyle, SessionEvent, SubagentSpawnInput } from '../types';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
-import { CodedToolError, RegisteredTool, ToolRegistry } from './tools';
+import { CodedToolError, RegisteredTool, ToolRegistry, jsonAbsent } from './tools';
 import { createWorktree, isRepo, removeWorktree, subagentTreeName } from './worktree';
 import { dataDirReal } from '../config/data-dir';
 import { agentsDir, listAgents, migrateLegacyAgentsOnce } from '../catalog/agents';
@@ -213,13 +213,12 @@ export function loadAgentsView(projectRoot: string, globalDir: string): AgentsVi
  *  字面量（第二道）→ 执行入口（validateSpawnInput / runSubagent / spawnBackground）再各归一一次，纯为防御性
  *  幂等（任一层漏过不致坏）——权威层在本函数，重复归一非漂移 */
 export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInput {
-  const lit = (v: unknown): boolean => v === null || v === 'null' || v === 'undefined';
   return {
     ...input,
-    agent_id: input.agent_id !== undefined && lit(input.agent_id) ? undefined : input.agent_id,
-    label: input.label !== undefined && lit(input.label) ? undefined : input.label,
-    tools: Array.isArray(input.tools) ? input.tools.filter((t) => !lit(t)) : input.tools,
-    isolation: input.isolation !== undefined && lit(input.isolation) ? undefined : input.isolation,
+    agent_id: input.agent_id !== undefined && jsonAbsent(input.agent_id) ? undefined : input.agent_id,
+    label: input.label !== undefined && jsonAbsent(input.label) ? undefined : input.label,
+    tools: Array.isArray(input.tools) ? input.tools.filter((t) => !jsonAbsent(t)) : input.tools,
+    isolation: input.isolation !== undefined && jsonAbsent(input.isolation) ? undefined : input.isolation,
   };
 }
 
@@ -382,17 +381,6 @@ export class SubagentRunner {
       if (!this.deps.registry.has(t)) {
         throw new CodedToolError('INVALID_ARG', `Unknown tool: ${t}`);
       }
-    }
-  }
-
-  /** 角色声明的执行体路由（P2 spawn 双通道判据）：agent.md frontmatter `executor` 透出；
-   *  内建预设/未声明/未知名 → undefined（未知名不在此报错——fork 路径 resolveSpawnSpec 统一 fail-fast） */
-  agentExecutor(id: string | undefined): 'internal-team' | 'external-cli' | undefined {
-    if (id === undefined) return undefined;
-    try {
-      return this.agents.resolve(id).executor;
-    } catch {
-      return undefined;
     }
   }
 

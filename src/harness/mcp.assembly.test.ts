@@ -110,6 +110,39 @@ function engineDeps(root: string, extra: Partial<LoopDeps>): { deps: LoopDeps } 
   };
 }
 
+test('警告单链面一次化（D59）：持续失败同文案只报一次；恢复出单摘录后同文案重报（换回全量实现必红）', async () => {
+  await withHome(async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-warnonce-'));
+    const bad = { dead: { command: 'sunshinex-missing-cmd-for-warnonce-pin' } };
+    writeProjectMcpJson(root, bad);
+    approveMcpServer(root, 'dead');
+    const h = new Harness({ root, mode: 'full-access' });
+    try {
+      await h.mcpReady();
+      const first = h.mcpWarningsOnce();
+      assert.equal(first.length, 1, '首次上报：失败警告进链面');
+      await h.mcpReady(); // 持续失败：每轮重建同文案刷新警告单
+      assert.equal(h.mcpWarningsOnce().length, 0, '持续失败同文案不得每轮重复进链（O(runs) 刷屏病根，D59）');
+      assert.equal(h.mcpWarnings().length, 1, '展示面（TUI/自检）保持全量口径');
+      // 恢复：配置换好 server → 重建成功警告单收缩 → 摘已上报记录
+      const good = { fs: { command: 'node', args: ['scripts/mock-mcp-server.js', '--name', 'fs'] } };
+      writeProjectMcpJson(root, good);
+      approveMcpServer(root, 'fs');
+      await h.mcpReady();
+      assert.equal(h.mcpWarningsOnce().length, 0, '恢复后警告单为空');
+      // 再失败（同 server 同命令=同文案）：状态变更须重新进链——摘录未发生即此处空（旧实现必红）
+      writeProjectMcpJson(root, bad);
+      await h.mcpReady();
+      const again = h.mcpWarningsOnce();
+      assert.equal(again.length, 1, '恢复后再失败须重新上报（内容收缩摘已上报记录的判别面）');
+      assert.match(again[0]!, /connection failed \(dead\)/);
+    } finally {
+      await h.mcpClose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 test('LoopEngine mcpReady 拒绝 → 确定性 failed（MCP_ASSEMBLY_FAILED），不进首节点', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-mcp-assembly-'));
   const seen: string[] = [];

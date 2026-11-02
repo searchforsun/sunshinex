@@ -1,7 +1,7 @@
 // TaskBoard lead 工具面:create_agent_team / create_agent_team_task / update_agent_team_task / get_agent_team_board。
 // update_agent_team_task 只保留 assign|depend;取消走 agent_team_task_stop。观察尾附板摘要(summaryLines)。
 // lead-only:板四件套 + create_agent_teammate + agent_team_task_wait/stop 经 FORK_EXCLUDED_TOOLS 剔出子面。
-import { CodedToolError, RegisteredTool } from '../tools';
+import { CodedToolError, RegisteredTool, jsonAbsent } from '../tools';
 import { fail } from '../../result';
 import type { SessionEvent } from '../../types';
 import type { TaskBoard } from '../../taskboard/board';
@@ -18,11 +18,6 @@ export const FORK_EXCLUDED_TOOLS = [
   'agent_team_task_stop',
   ...TASKBOARD_TOOL_NAMES,
 ] as const;
-
-/** JSON null / 字面 "null" / 空串 → 缺席(与 spawn/create_agent_teammate 同病单点) */
-function nullish(v: unknown): boolean {
-  return v === null || v === 'null' || v === 'undefined' || v === '';
-}
 
 function boardTail(board: TaskBoard): string {
   const lines = board.summaryLines();
@@ -114,10 +109,10 @@ export function makeTaskBoardTools(
         retryOf?: string | null;
       };
       const executor = raw.executor === 'internal' || raw.executor === 'external-cli' ? raw.executor : undefined;
-      const retryOf = typeof raw.retryOf === 'string' && !nullish(raw.retryOf) ? raw.retryOf.trim() : undefined;
-      const assignee = typeof raw.assignee === 'string' && !nullish(raw.assignee) ? raw.assignee.trim() : undefined;
+      const retryOf = typeof raw.retryOf === 'string' && !jsonAbsent(raw.retryOf, true) ? raw.retryOf.trim() : undefined;
+      const assignee = typeof raw.assignee === 'string' && !jsonAbsent(raw.assignee, true) ? raw.assignee.trim() : undefined;
       const dependsOn = Array.isArray(raw.dependsOn)
-        ? raw.dependsOn.map(String).filter((d) => d !== '' && !nullish(d))
+        ? raw.dependsOn.map(String).filter((d) => d !== '' && !jsonAbsent(d, true))
         : undefined;
       const r = board.create({
         teamId: String(raw.teamId ?? ''),

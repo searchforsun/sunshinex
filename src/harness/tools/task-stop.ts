@@ -5,10 +5,9 @@
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
 import type { TeamRegistry } from '../../taskboard/teammate';
+import { BOARD_TERMINAL } from '../../taskboard/model';
 import { dispatchTag, type TaskBoard } from '../../taskboard/board';
 import { fail, ok, type Result } from '../../result';
-
-const BOARD_TERMINAL = new Set(['success', 'failed', 'cancelled']);
 
 function receipt(stdout: string): { exitCode: number; stdout: string; stderr: string; timedOut: boolean } {
   return { exitCode: 0, stdout, stderr: '', timedOut: false };

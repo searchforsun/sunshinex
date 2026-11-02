@@ -168,7 +168,7 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），命令收尾 close 防 stdio 子进程悬挂
     mcpReady: h.mcpReady,
     mcpClose: h.mcpClose,
-    mcpWarnings: h.mcpWarnings,
+    mcpWarnings: h.mcpWarningsOnce, // 链面一次化（D59）：同文案只进链一次；TUI/selfcheck 展示面走全量
     // 沉淀双钩子透传（规格 §3.1）：loop 内构造的 Reactor 收口同样零等待入队（此前 loop 路径未接＝真缺口）
     ...h.settleHooks,
     // 渲染期图片历史半径透传（spec §3.2 settings 键）：loop 内构造的 Reactor 与单发 Reactor 同源消费

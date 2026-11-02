@@ -84,7 +84,7 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     // MCP 装配生命周期透传：run 入口 await ready（工具注册完成才进首节点），dispose 收口防 stdio 子进程悬挂
     mcpReady: harness.mcpReady,
     mcpClose: harness.mcpClose,
-    mcpWarnings: harness.mcpWarnings,
+    mcpWarnings: harness.mcpWarningsOnce, // 链面一次化（D59）：同文案只进链一次；TUI 展示面走全量
     // 输出样式分叉：TUI 文字面缺省恒 terminal——围栏带语言标签、图示走 ASCII（CLI 不注入、保持缺省通用约定）
     outputStyle: opts.outputStyle ?? 'terminal',
     pipeline: harness.pipeline,

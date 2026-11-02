@@ -1,7 +1,7 @@
 import type { AskUserSeam, OutputStyle, SteerLine, SubagentSpawnInput, TodoItem } from '../types';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
-import { CodedToolError, ToolRegistry } from './tools';
+import { CodedToolError, ToolRegistry, jsonAbsent } from './tools';
 import { builtinTools } from './tools/builtin';
 import { createReadGuard, type ReadGuard } from './tools/read-guard';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
@@ -151,8 +151,13 @@ export class Harness {
   readonly mcpReady: () => Promise<string[]>;
   /** MCP 连接收口（stdio 子进程防悬挂事件循环）：CLI 命令收尾与 TUI dispose 调用；未连接时幂等 no-op */
   readonly mcpClose: () => Promise<void>;
-  /** MCP 装配警告单（降级语义）：服务器连接/握手/重名失败只损失该服务器工具，警告收集后继续装配其余服务器 */
+  /** MCP 装配警告单（降级语义）：服务器连接/握手/重名失败只损失该服务器工具，警告收集后继续装配其余服务器。
+   *  全量口径（TUI 上屏/selfcheck 报表消费） */
   readonly mcpWarnings: () => string[];
+  /** 警告单链面一次化（D59）：持续失败 server 的同文案只返回一次——每轮 run 重建失败警告单刷新为同内容,
+   *  链面每轮 append 即 O(runs) 刷屏（engine 置 notice 行）；恢复（内容收缩）即摘其上报记录——
+   *  「恢复后再失败」是状态变更须重新尾追。展示面走 mcpWarnings 全量 */
+  readonly mcpWarningsOnce: () => string[];
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
@@ -257,6 +262,7 @@ export class Harness {
     // 追加发生在 Reactor 种子捕获之前）；未变更且已注册零开销直通
     let mcpHost: McpHost | undefined;
     let mcpWarnings: string[] = [...pluginMcp.warnings]; // 合成期告警（用户遮蔽/插件撞名/装载告警）并入既有警告单通道
+    const reportedMcpWarnings = new Set<string>(); // 链面已上报集合（mcpWarningsOnce 去重账，恢复摘录见 mcpReady）
     let mcpSig = JSON.stringify(mcpServers); // 装配基线（合并后 server 配置集；plugin 贡献随合成入列）
     let mcpEverRegistered = false; // 是否曾真实注册过工具面（未注册过的新配置不产漂移行——模型没见过旧面）
     const mcpToolSnapshot = (): Map<string, string> =>
@@ -292,6 +298,11 @@ export class Harness {
         mcpHost = undefined; // 注册链失败复位，下次 run 重试连接（失败经 run 入口转确定性 failed，不静默直通）
         throw e;
       }
+      // 已上报集合随单收敛（D59）：警告内容收缩（某 server 恢复出单）即摘其上报记录——
+      // 「恢复后再失败」对链面是状态变更须重新可见；持续失败同文案保持已上报（每轮静默）
+      for (const w of [...reportedMcpWarnings]) {
+        if (!mcpWarnings.includes(w)) reportedMcpWarnings.delete(w);
+      }
       // guard 名单/safety 表对齐新配置（注册成功才对齐——失败路径保留旧名单，下次 run 重试）
       this.security.setMcpServers(fresh.map((s) => s.name));
       this.security.setMcpSafety(freshPlugin.safety);
@@ -321,6 +332,11 @@ export class Harness {
       if (h) await h.close();
     };
     this.mcpWarnings = () => mcpWarnings;
+    this.mcpWarningsOnce = () => {
+      const fresh = mcpWarnings.filter((w) => !reportedMcpWarnings.has(w));
+      for (const w of fresh) reportedMcpWarnings.add(w);
+      return fresh;
+    };
     this.settleHooks = {
       settle: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'learned', ...r }),
       settleMemory: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'memory', ...r }),
@@ -507,11 +523,10 @@ export class Harness {
         fullObservation: true,
         executor: async (input) => {
           const raw = input as { teamId?: unknown; name?: unknown; prompt?: unknown; agent_id?: unknown };
-          const nullish = (v: unknown): boolean => v === null || v === 'null' || v === 'undefined' || v === '';
           const teamId = typeof raw.teamId === 'string' ? raw.teamId.trim() : '';
           const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-          const prompt = typeof raw.prompt === 'string' && !nullish(raw.prompt) ? raw.prompt : undefined;
-          const agentId = typeof raw.agent_id === 'string' && !nullish(raw.agent_id) ? raw.agent_id.trim() : undefined;
+          const prompt = typeof raw.prompt === 'string' && !jsonAbsent(raw.prompt, true) ? raw.prompt : undefined;
+          const agentId = typeof raw.agent_id === 'string' && !jsonAbsent(raw.agent_id, true) ? raw.agent_id.trim() : undefined;
           if (teamId === '') throw new CodedToolError('INVALID_ARG', 'teamId is required');
           if (name === '') throw new CodedToolError('INVALID_ARG', 'name is required');
           if (!prompt && !agentId) {

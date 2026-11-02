@@ -56,7 +56,7 @@ node scripts/deploy-gui.mjs reinstall --pristine    # 净装：连用户态历�
 | 真实模型 e2e | `node scripts/e2e-real.mjs` | **手动门**（花真金 token，不进门禁）：直答冒烟 + write 工具落盘闭环（脚本侧逐字验盘）两条场景，真适配器/流式/工具链/安全链全链只有此门能验；前提＝settings.json env 块已配密钥（D5 资产化） |
 | 长任务基准集 | `node scripts/eval-run.mjs [--only <id>]` | **手动门**（花真金 token，不进门禁）：5 固定任务（创建/跨文件重构/测试闭环/日志聚合/编辑精度）量化完成率与人工干预次数（guard ask 决策 + ask_question 调用双计数），脚本验盘为权威判定；任务库 src/eval/tasks.ts（wiring 门禁进 pnpm test）；报告落 eval-results/（gitignore） |
 
-联调辅助：`pnpm --dir gui run typecheck`（GUI TS 严格检查）；`pnpm --dir gui run dev`（vite 热迭代，`VITE_SERVE_URL=<daemon 地址>` 指向后端）；`pnpm cli serve` 起 GUI daemon → `http://127.0.0.1:7788/`（host 恒回环不对外；`--port=N` 覆盖 / `--port=0` 临时端口；缺省免鉴权，显式 `--token` 启用）。daemon 服务 dist-gui 静态产物——改完 GUI 源码须 `pnpm gui:build` 再刷新才生效（dev 热更免重建）。
+联调辅助：`pnpm --dir gui run typecheck`（GUI TS 严格检查）；`pnpm --dir gui run dev`（vite 热迭代，`VITE_SERVE_URL=<daemon 地址>` 指向后端）；`pnpm cli serve` 起 GUI daemon → `http://127.0.0.1:7788/`（host 恒回环不对外；`--port=N` 覆盖 / `--port=0` 临时端口；缺省免鉴权，显式 `--token` 启用）。**HTTP posture（登记的接受面，D58 裁定 2026-11-02）**：产品定位=单用户本机工具，安全第一道=回环绑定不对外；缺省免鉴权档不验 Host/Origin、readJson 不验 Content-Type——浏览器侧任意页面可发跨站 simple POST（理论可达面，后果上限=本机同权限操作：读写会话/配置/拉起本机应用），该面显式接受；多用户/不可信本机环境用 `--token` 鉴权档收紧。daemon 服务 dist-gui 静态产物——改完 GUI 源码须 `pnpm gui:build` 再刷新才生效（dev 热更免重建）。
 
 ### 上线部署（发版链）
 

@@ -41,6 +41,12 @@ export interface RegisteredTool extends ToolSpec {
 }
 
 /** 工具域带码错误：executor 以业务错误码中止执行（registry 转译为同码 Result.fail，降级语义不再笼统 EXEC_FAILED） */
+/** JSON null / 字面 "null"/"undefined"（可选空串）缺席判定单点（D63 三份收敛）：spawn 归一与团队
+ *  工具参解析同族——includeEmpty=空串并入缺席面（taskboard 族语义；spawn 族空串为合法值故不含） */
+export function jsonAbsent(v: unknown, includeEmpty = false): boolean {
+  return v === null || v === 'null' || v === 'undefined' || (includeEmpty === true && v === '');
+}
+
 export class CodedToolError extends Error {
   constructor(
     readonly code: string,

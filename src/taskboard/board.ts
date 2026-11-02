@@ -3,7 +3,7 @@ import type { TaskRegistry } from '../harness/tasks';
 import { fail, ok, Result } from '../result';
 import { slugify } from '../slug';
 import {
-  applyBoardEvent, BoardEvent, BoardTask, dispatchable, emptyBoard, hasCycle,
+  applyBoardEvent, BOARD_TERMINAL, BoardEvent, BoardTask, dispatchable, emptyBoard, hasCycle,
   recoverOnLoad, TaskBoardState, TaskStatus, transitionError, transitionLegal,
 } from './model';
 import type { TeamStoreBackend } from './store';
@@ -35,10 +35,6 @@ export type ExecutionReport =
 
 function statusTransitionError(taskId: string, from: TaskStatus, to: TaskStatus): string {
   return transitionError(from, to).replace('cannot transition from', `cannot transition ${taskId} from`);
-}
-
-function isTerminal(status: TaskStatus): boolean {
-  return status === 'success' || status === 'failed' || status === 'cancelled';
 }
 
 /** 用户中止、信号打断、ABORTED 归 cancelled；执行错误保持 failed */
@@ -182,7 +178,7 @@ export class TaskBoard {
       const prev = this.state.tasks[input.retryOf];
       if (prev === undefined) return fail('INVALID_ARG', `retryOf task ${input.retryOf} is not on team ${input.teamId}`);
       if (prev.teamId !== input.teamId) return fail('INVALID_ARG', `retryOf task ${input.retryOf} does not belong to team ${input.teamId}`);
-      if (!isTerminal(prev.status)) {
+      if (!BOARD_TERMINAL.has(prev.status)) {
         return fail('INVALID_ARG', `retryOf task ${input.retryOf} is still ${prev.status}; stop it or wait for a terminal state first`);
       }
     }
@@ -263,7 +259,7 @@ export class TaskBoard {
   stopTask(taskId: string): Result<void> {
     const task = this.state.tasks[taskId];
     if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
-    if (isTerminal(task.status)) return ok(undefined);
+    if (BOARD_TERMINAL.has(task.status)) return ok(undefined);
     if (!transitionLegal(task.status, 'cancelled')) {
       return fail('INVALID_STATE', statusTransitionError(taskId, task.status, 'cancelled'));
     }
@@ -441,7 +437,7 @@ export class TaskBoard {
     if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
     const to: TaskStatus = r.ok ? 'success' : (r.terminal ?? 'failed');
     if (task.status !== 'running') {
-      if (isTerminal(task.status)) {
+      if (BOARD_TERMINAL.has(task.status)) {
         if (ledgerId !== undefined) {
           const ledgerStatus = task.status === 'success' ? 'done' : task.status === 'cancelled' ? 'stopped' : 'failed';
           this.finishLedger(ledgerId, ledgerStatus, task.status === 'success' ? { marker: `[conclusion] ${r.ok ? (r.reply ?? '') : ''}\n` } : undefined);

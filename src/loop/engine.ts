@@ -67,7 +67,8 @@ export interface LoopDeps {
   mcpReady?: () => Promise<string[] | void>;
   /** MCP 连接收口（Harness 注入）：CLI 命令收尾关闭 stdio 子进程，防悬挂事件循环 */
   mcpClose?: () => Promise<void>;
-  /** MCP 装配警告单（Harness 注入，降级语义）：服务器失败只损失该服务器工具，警告由呈现面上屏 */
+  /** MCP 装配警告单·链面（Harness 注入）：一次化口径（同文案只进链一次，恢复摘录后重报）——
+   *  每轮 append 持续失败 server 的同文案即 O(runs) 刷屏（D59）；展示面（TUI 上屏/自检）走 harness.mcpWarnings 全量 */
   mcpWarnings?: () => string[];
   /** 沉淀双钩子透传（harness 装配注入）：loop 内构造的 Reactor 与单发 Reactor 同语义——收口零等待入队、全终态触发 */
   settle?: (r: import('../harness/reactor').SettlePayload) => string | void | Promise<string | void>;
