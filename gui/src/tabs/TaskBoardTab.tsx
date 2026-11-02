@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, RefreshCw, Square } from 'lucide-react';
+import { AlarmClock, Bot, Clock, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import { fmtDurMs, shortStampMs } from '../ui-util';
@@ -215,7 +215,12 @@ function TaskCard({
           </button>
         </div>
         <span className="tb-team-name">{group.name}</span>
-        {headStamp > 0 && <span className="todo-card-time">{shortStampMs(headStamp)}</span>}
+        {headStamp > 0 && (
+          <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
+            <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+            {shortStampMs(headStamp)}
+          </span>
+        )}
       </div>
       {view === 'members' ? (
         teamMembers.length === 0 ? (
@@ -241,7 +246,10 @@ function TaskCard({
                     {m.busy ? t('busy', '忙碌') : t('idle', '空闲')}
                   </span>
                   {typeof m.createdAt === 'number' && m.createdAt > 0 && (
-                    <span className="todo-card-time">{shortStampMs(m.createdAt)}</span>
+                    <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
+                      <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                      {shortStampMs(m.createdAt)}
+                    </span>
                   )}
                 </button>
               </li>
@@ -272,8 +280,18 @@ function TaskCard({
                       {agentName}
                     </span>
                   )}
-                  {dur !== undefined && <span className="bg-dur">{fmtDurMs(dur)}</span>}
-                  {task.createdAt > 0 && <span className="todo-card-time">{shortStampMs(task.createdAt)}</span>}
+                  {dur !== undefined && (
+                    <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
+                      <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
+                      {fmtDurMs(dur)}
+                    </span>
+                  )}
+                  {task.createdAt > 0 && (
+                    <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
+                      <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                      {shortStampMs(task.createdAt)}
+                    </span>
+                  )}
                 </button>
                 {STOPPABLE.has(task.status) && (
                   <button

@@ -932,6 +932,35 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(sum(2)).toContain('架构评审');
   });
 
+  it('task_stop 链接开后台任务页签(bg: 前缀);板面 task_* 仍开智能体团队', async () => {
+    const onOpenTask = vi.fn();
+    render(
+      <Chat
+        conn={connOf([])}
+        sessionId="s1"
+        connState="open"
+        onBack={() => {}}
+        sinkRef={sinkRef}
+        onOpenTask={onOpenTask}
+      />,
+    );
+    await flushed();
+    fire({ type: 'tool-call', text: 'task_stop', ts: Date.now(), payload: { callId: 'st1', input: { taskId: 'exec-1' } } });
+    fire({ type: 'tool-result', text: 'task exec-1 stopped (echo hello)', ts: Date.now(), payload: { callId: 'st1' } });
+    fire({ type: 'tool-call', text: 'update_agent_team_task', ts: Date.now(), payload: { callId: 'u1', input: { taskId: 't1', action: 'assign', assignee: 'w1' } } });
+    fire({ type: 'tool-result', text: 'assigned', ts: Date.now(), payload: { callId: 'u1' } });
+    const stopLink = document.querySelector('.entry-tool .tool-agent-link') as HTMLElement;
+    expect(stopLink?.getAttribute('data-tip')).toMatch(/后台任务|background tasks/);
+    fireEvent.click(stopLink);
+    expect(onOpenTask).toHaveBeenCalledWith('bg:exec-1');
+    const boardLinks = [...document.querySelectorAll('.entry-tool .tool-agent-link')].filter((el) =>
+      /智能体团队|agent teams/.test(el.getAttribute('data-tip') ?? ''),
+    );
+    expect(boardLinks.length).toBeGreaterThan(0);
+    fireEvent.click(boardLinks[0]!);
+    expect(onOpenTask).toHaveBeenCalledWith('t1');
+  });
+
   it('G14.215 相邻同类已完成工具行>1 折为聚合头;点击展开成员平级铺开(原生工具行);计数 1 不聚合', async () => {
     mountChat([]);
     await flushed();
@@ -1515,6 +1544,22 @@ describe('G14.181 用户气泡限高折叠', () => {
     await flushed();
     expect(document.querySelector('.user-bubble-clamped')).toBeNull();
     expect(document.querySelector('.user-bubble-toggle')).toBeNull();
+  });
+
+  it('队友消息长气泡同款限高折叠', async () => {
+    const longText = '需求文档已完成。'.repeat(80);
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get: () => 500 });
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'agent-message', payload: { from: '需求分析师', to: 'lead', text: longText }, ts: Date.now() });
+      expect(document.querySelector('.agent-msg .user-bubble-clamped')).not.toBeNull();
+      expect(document.querySelector('.agent-msg .user-bubble-toggle-row')).not.toBeNull();
+      fireEvent.click(screen.getByLabelText('Expand'));
+      expect(document.querySelector('.agent-msg .user-bubble-clamped')).toBeNull();
+    } finally {
+      delete (HTMLElement.prototype as unknown as { scrollHeight?: unknown }).scrollHeight;
+    }
   });
 });
 

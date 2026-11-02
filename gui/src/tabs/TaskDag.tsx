@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import type { Edge, Node, NodeProps } from '@xyflow/react';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { Bot, Square } from 'lucide-react';
+import { AlarmClock, Bot, Square } from 'lucide-react';
 import type { BoardTask } from '../projection';
 import { t } from '../i18n';
 import { fmtDurMs } from '../ui-util';
@@ -198,7 +198,10 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
             </span>
           )}
           {data.durationMs !== undefined && (
-            <span className="bg-dur">{fmtDurMs(data.durationMs)}</span>
+            <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
+              <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
+              {fmtDurMs(data.durationMs)}
+            </span>
           )}
         </div>
       )}

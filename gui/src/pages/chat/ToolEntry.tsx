@@ -810,18 +810,21 @@ export const ToolEntryView = memo(function ToolEntryView({
           </span>
         )
       ) : !hideTargetWhileRunning && taskOpName !== undefined ? (
-        /* G14.214 task_* 折叠行带任务名(链接开板高亮;set_dependency 双名「任务 ← 依赖目标」);多链接均分省略 */
+        /* G14.214 task_* 折叠行带任务名(链接开板高亮;set_dependency 双名「任务 ← 依赖目标」);多链接均分省略。
+         *  task_stop=后台账本(与 task_wait 同 bg: 前缀),其余板面工具开智能体团队 */
         onOpenTask !== undefined ? (
           <span className="tool-link-list">
             <span
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-agent-link tool-link-chip"
-              data-tip={t('Locate in agent teams', '在智能体团队中定位')}
+              data-tip={toolName === 'task_stop'
+                ? t('Locate in background tasks', '在后台任务中定位')
+                : t('Locate in agent teams', '在智能体团队中定位')}
               onClick={(e) => {
                 e.stopPropagation();
                 const id = typeof input.taskId === 'string' ? input.taskId : taskOpName;
-                onOpenTask(id);
+                onOpenTask(toolName === 'task_stop' ? `bg:${id}` : id);
               }}
             >
               {taskOpName}

@@ -1748,7 +1748,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
 .todo-card-goal { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.todo-card-time { flex: none; font: 11px var(--font-mono); color: var(--fg-tertiary); }
+.todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 11px var(--font-mono); color: var(--fg-tertiary); }
+.todo-card-time svg { flex: none; }
 .todo-card-list { padding: 4px 0 0 6px; }
 .tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tb-team-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2055,7 +2056,8 @@ button.agent-msg-from:hover { text-decoration: underline; }
  * 结果区最大高度内部滚动(有界滚动语义同 DAG 面板)。2026-10-31 运行时长前移到图标后
  * (用户裁定「运行时间显示在开头」),与右缘创建时间分轴:时长=运行中语义,提亮一档 */
 .bg-cmd { font-family: var(--font-mono); font-size: 12px; }
-.bg-dur { flex: none; color: var(--fg-secondary); font: 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.bg-dur { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--fg-secondary); font: 11px var(--font-mono); font-variant-numeric: tabular-nums; }
+.bg-dur svg { flex: none; }
 .bg-output {
   margin: 0; width: 100%; max-height: 240px; overflow-y: auto; padding: 6px 8px;
   background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-sm);

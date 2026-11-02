@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, ChevronDown, ChevronRight, Check, RefreshCw } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight, Check, Clock, RefreshCw } from 'lucide-react';
 import { t } from '../i18n';
 import { shortStampMs } from '../ui-util';
 import type { Connection } from '../connection';
@@ -90,7 +90,10 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce }: TodoCar
                 {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
                 <span className="todo-card-count">{`${done}/${b.items.length}`}</span>
                 <span className="todo-card-goal">{b.goal !== '' ? b.goal : t('(no turn input)', '(未关联轮次输入)')}</span>
-                <span className="todo-card-time">{shortStampMs(b.ts)}</span>
+                <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
+                  <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                  {shortStampMs(b.ts)}
+                </span>
               </button>
               {open && (
                 <ul className="board-todos-list todo-card-list">

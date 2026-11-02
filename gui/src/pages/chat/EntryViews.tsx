@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
@@ -279,17 +279,25 @@ function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | nu
   );
 }
 /** G14.181/G14.202 用户气泡限高折叠:默认 168px;折叠态最后一行渐变隐现(加强);
- *  展开钮在气泡下侧居中(独占一行不占内容);展开钮=气泡下侧居中独钮;复制归各页自有动作行 */
+ *  展开钮在气泡下侧居中(独占一行不占内容);展开钮=气泡下侧居中独钮;复制归各页自有动作行。
+ *  量测走 useLayoutEffect+ResizeObserver:队友消息/子智能体任务带首帧常在 flex 未定宽时
+ *  scrollHeight 偏小(一次 useEffect 钉死不折),布局收敛后须再量 */
 const USER_BUBBLE_CLAMP = 168;
 export function CollapsibleBubble({ text, render }: { text: string; render: (md: string) => ReactNode }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [clamped, setClamped] = useState(false);
   const innerRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = innerRef.current;
     if (el === null) return;
     // scrollHeight=内容全高(与 max-height/overflow 无关)——超过阈值才出浮钮
-    setClamped(el.scrollHeight > USER_BUBBLE_CLAMP + 8);
+    const measure = (): void => {
+      setClamped(el.scrollHeight > USER_BUBBLE_CLAMP + 8);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [text]);
   const shown = open || !clamped;
   return (

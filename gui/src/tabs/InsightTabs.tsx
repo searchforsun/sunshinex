@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Check, Copy, Database, Square, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { AlarmClock, Check, Clock, Copy, Database, Square, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
@@ -295,7 +295,10 @@ export function BgTasksTab({
                   {/* 状态点对齐智能体团队:灰转圈=running,蓝=done,红=failed,黄=stopped */}
                   <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
                   {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
-                  <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>{durOf(r)}</span>
+                  <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
+                    <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
+                    {durOf(r)}
+                  </span>
                   <span className="todo-card-goal bg-cmd" data-tip={r.label}>{r.label}</span>
                   {/* 停止:空心方块图标与智能体团队同形;running 行 hover 显现;
                       二段确认——首击武装(红边框),3s 内再击执行,超时解除 */}
@@ -319,7 +322,10 @@ export function BgTasksTab({
                       <Square size={11} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   )}
-                  <span className="todo-card-time">{shortStampMs(r.startedAt)}</span>
+                  <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
+                    <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                    {shortStampMs(r.startedAt)}
+                  </span>
                 </div>
                 {open && (
                   <div className="bg-detail">
