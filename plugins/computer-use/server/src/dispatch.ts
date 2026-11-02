@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import type { CallToolResult, ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import type { WorkerClient } from './types';
 import { TOOLS } from './tools';
@@ -36,6 +38,31 @@ export interface ShotMeta {
 }
 
 let lastMeta: ShotMeta | null = null;
+
+/** 截图落盘目录(宿主经 --output-dir 指向 <项目 data>/plugins/computer-use/screenshots);
+ *  null=只回内联图不落盘。落盘后结果文本带绝对路径,模型可直接 Read/引用 */
+let screenshotDir: string | null = null;
+/** 落盘保留张数上限(按文件名时间戳淘汰最旧,防目录无界增长) */
+const SCREENSHOT_KEEP = 50;
+
+export function setScreenshotDir(dir: string | null): void {
+  screenshotDir = dir;
+}
+
+function saveScreenshot(b64: string): string | undefined {
+  if (screenshotDir === null) return undefined;
+  try {
+    fs.mkdirSync(screenshotDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+    const file = path.join(screenshotDir, `shot-${stamp}-${Math.random().toString(36).slice(2, 6)}.jpg`);
+    fs.writeFileSync(file, Buffer.from(b64, 'base64'));
+    const old = fs.readdirSync(screenshotDir).filter((n) => n.startsWith('shot-') && n.endsWith('.jpg')).sort();
+    for (const n of old.slice(0, Math.max(0, old.length - SCREENSHOT_KEEP))) fs.rmSync(path.join(screenshotDir, n), { force: true });
+    return file.split(path.sep).join('/');
+  } catch {
+    return undefined; // 落盘尽力:失败不影响内联图回执
+  }
+}
 
 /** 读最近一次截图记账（动作工具消费；无成功截图时为 null——动作工具据此报错引导先截图）。 */
 export function lastShotMeta(): ShotMeta | null {
@@ -87,7 +114,8 @@ async function runScreenshot(worker: WorkerClient, args: Record<string, unknown>
   const res = await worker.op<ShotResult>('screenshot', params);
   const scale: ScreenMeta = { origWidth: res.w, origHeight: res.h, sentWidth: res.sentW, sentHeight: res.sentH };
   lastMeta = { scale, originX: res.x, originY: res.y, cursor: res.cursor, foreground: res.foreground };
-  const metaText = JSON.stringify({ scale, cursor: res.cursor, foreground: res.foreground });
+  const savedPath = saveScreenshot(res.b64);
+  const metaText = JSON.stringify({ scale, cursor: res.cursor, foreground: res.foreground, ...(savedPath !== undefined ? { savedPath } : {}) });
   const content: (ImageContent | TextContent)[] = [
     { type: 'image', data: res.b64, mimeType: 'image/jpeg' },
     { type: 'text', text: metaText },
@@ -217,7 +245,7 @@ async function runClick(worker: WorkerClient, args: Record<string, unknown>): Pr
   const y = requireNum(args.y);
   if (x === null || y === null) return invalid('click: x and y must be finite numbers (pixel coordinates in the last screenshot)');
   let button: 'left' | 'right' | 'middle' = 'left';
-  if (args.button === 'right' || args.button === 'middle') button = args.button;
+  if (args.button === 'left' || args.button === 'right' || args.button === 'middle') button = args.button;
   else if (args.button !== null && args.button !== undefined) return invalid(`click: invalid button ${JSON.stringify(args.button)} (expected left|right|middle or null)`);
   const clicks = Math.min(3, Math.max(1, Math.round(num(args.clicks, 1))));
   const phys = remapToPhysical(meta, x, y);

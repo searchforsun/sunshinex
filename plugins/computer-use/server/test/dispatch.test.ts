@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { dispatchTool, lastShotMeta, resetLastShotMetaForTest } from '../src/dispatch';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { dispatchTool, lastShotMeta, resetLastShotMetaForTest, setScreenshotDir } from '../src/dispatch';
 import { WorkerError } from '../src/worker';
 import type { WorkerClient } from '../src/types';
 
@@ -108,6 +111,12 @@ test('click：坐标按 lastMeta 反算物理值（scale+origin）下发；无 l
   const r = await dispatchTool(h.worker, 'click', { x: 100, y: 50, button: null, clicks: null });
   assert.equal(r.isError, undefined);
   assert.deepEqual(h.calls[1].params, { x: -1720, y: 100, button: 'left', clicks: 1 });
+  // 显式 'left'(schema 枚举值)必须放行——曾漏判只认 right/middle,模型传 left 被拒
+  const r2 = await dispatchTool(h.worker, 'click', { x: 100, y: 50, button: 'left', clicks: 2 });
+  assert.equal(r2.isError, undefined);
+  assert.deepEqual(h.calls[2].params, { x: -1720, y: 100, button: 'left', clicks: 2 });
+  const r3 = await dispatchTool(h.worker, 'click', { x: 100, y: 50, button: 'side', clicks: 1 });
+  assert.equal(r3.isError, true);
 });
 
 test('type/key：参数整形透传（text 直传；keys 数组 String 化+修剪空项）', async () => {
@@ -204,4 +213,22 @@ test('未登记工具仍走 unknown tool 错误（既有协议面不回退）', 
   const r = await dispatchTool(h.worker, 'nope', {});
   assert.equal(r.isError, true);
   assert.equal((r.content[0] as { text: string }).text, 'unknown tool: nope');
+});
+
+test('screenshot 落盘:设了输出目录则存 jpg 并在结果文本带绝对路径(模型可直接引用);未设不落盘', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-shot-'));
+  try {
+    const h = fakeWorker(() => FULL_SHOT);
+    setScreenshotDir(dir);
+    const r = await dispatchTool(h.worker, 'screenshot', {});
+    const meta = JSON.parse((r.content[1] as { text: string }).text) as { savedPath?: string };
+    assert.ok(meta.savedPath !== undefined && path.isAbsolute(meta.savedPath));
+    assert.ok(fs.existsSync(meta.savedPath!));
+    setScreenshotDir(null);
+    const r2 = await dispatchTool(h.worker, 'screenshot', {});
+    assert.equal((JSON.parse((r2.content[1] as { text: string }).text) as { savedPath?: string }).savedPath, undefined);
+  } finally {
+    setScreenshotDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

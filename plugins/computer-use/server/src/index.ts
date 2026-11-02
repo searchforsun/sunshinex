@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, type Tool } from '@modelcontextprotocol/sdk/types.js';
 import { TOOLS } from './tools';
-import { dispatchTool } from './dispatch';
+import { dispatchTool, setScreenshotDir } from './dispatch';
 import { createWorker } from './worker';
 import type { WorkerClient } from './types';
 
@@ -26,6 +26,8 @@ export function createServer(worker: WorkerClient): Server {
  *  持久 PowerShell 子进程（createWorker，Task 18）协议面已通；worker 生命周期随本进程收口
  *  （宿主关管道 → process.exit → worker stdin EOF → PS 主循环退出，无孤儿进程）。 */
 async function main(): Promise<void> {
+  const oi = process.argv.indexOf('--output-dir');
+  if (oi >= 0 && process.argv[oi + 1] !== undefined) setScreenshotDir(process.argv[oi + 1]!);
   const worker: WorkerClient = createWorker();
   const server = createServer(worker);
   const transport = new StdioServerTransport();
