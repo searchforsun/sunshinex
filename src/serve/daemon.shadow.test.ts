@@ -111,10 +111,11 @@ test('WS 回放面跳过 shadow 帧:新连接补发窗只含主链帧(恢复唯�
   });
 });
 
-test('isShadowEvent 判定单点:板面/委派/子智能体三族命中,主链流内事件不命中', () => {
-  for (const type of ['task-created', 'gate-requested', 'delegation-started']) {
+test('isShadowEvent 判定单点:板面/委派/子智能体三族命中,审批门/主链流内事件不命中', () => {
+  for (const type of ['task-created', 'delegation-started']) {
     assert.equal(isShadowEvent({ type, ts: 0 } as SessionEvent), true, `${type} 命中`);
   }
+  assert.equal(isShadowEvent({ type: 'gate-requested', ts: 0 } as unknown as SessionEvent), false, '审批门族随 14647f0 扫除审批残留退役,不再命中');
   assert.equal(isShadowEvent({ type: 'token', payload: { subagent: 'w' }, ts: 0 } as SessionEvent), true, 'subagent 标签命中');
   assert.equal(isShadowEvent({ type: 'token', text: 'x', ts: 0 } as SessionEvent), false, '主链 token 不命中');
   assert.equal(isShadowEvent({ type: 'usage', payload: { turnTotal: 5 }, ts: 0 } as SessionEvent), false, '主链 usage 不命中');

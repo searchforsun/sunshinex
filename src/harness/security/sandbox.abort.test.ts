@@ -63,7 +63,8 @@ test('转后台前的同步窗口:信号中止即 EXEC_ABORTED(不等转换、�
   const elapsed = Date.now() - t0;
   assert.equal(r.ok, false, '同步窗口内中止不得落「转后台 ok」');
   assert.equal((r as { error: { code: string } }).error.code, 'EXEC_ABORTED');
-  assert.ok(elapsed < 2000, `同步窗口内应立即收割(实际 ${elapsed}ms)`);
+  // 上限 3.5s:仍远早于 4s 转后台/5s 自然结束(语义判据不变),满载全量下实测 2.05s 越过旧 2s 线
+  assert.ok(elapsed < 3500, `同步窗口内应立即收割(实际 ${elapsed}ms)`);
 });
 
 test('已转后台不追杀:转换完成后信号中止,后台任务照常存活到自然结束', async () => {

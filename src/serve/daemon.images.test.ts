@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -7,7 +8,7 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { KernelEntry } from '../session/entry';
 
-/** 图片附件端到端（daemon 级）：HTTP submit/steer 携带 images（dataURL）→ 转录 user 条/队列条目原样承载；
+/** 图片附件端到端（daemon 级）：HTTP submit/steer 携带 images（dataURL）→ 落盘 images-cache，转录 user 条/队列条目随行路径引用（2026-10-31 裁定，base64 不进档）；
  *  载荷校验面（>8 张/坏形态/超限 body/空文+图）；快照 queued 随行 images（GUI 队列编辑回填数据源）。
  *  装配样板沿 daemon.pending.test.ts：SUNSHINEX_DATA_DIR 钉 tmp、token 固定、port 0。 */
 
@@ -46,6 +47,22 @@ async function withImagesDaemon(fn: (http: string, H: Record<string, string>, si
   }
 }
 
+/** images-cache 引用断言（2026-10-31 裁定：dataURL 落盘 → <dataDir>/images-cache/<时间戳>-<hash>.<ext>，
+ *  转录/队列条目随行路径串，base64 不再进档；内容寻址命名，落盘字节=原 dataURL 载荷） */
+function assertCacheRef(actual: unknown, dataUrl: string, label: string): void {
+  const m = /^data:image\/([a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  assert.ok(m, `${label} 源 dataURL 形态`);
+  const bytes = Buffer.from(m[2]!, 'base64');
+  const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+  const ext = m[1] === 'png' ? 'png' : 'jpg';
+  const dir = path.join(process.env.SUNSHINEX_DATA_DIR!, 'images-cache').replaceAll('\\', '/');
+  const ref = String(actual);
+  assert.ok(ref.startsWith(`${dir}/`), `${label} 应为数据目录 images-cache 绝对地址`);
+  assert.ok(ref.endsWith(`-${hash}.${ext}`), `${label} 应内容寻址命名`);
+  assert.ok(!ref.includes('\\'), '引用串恒正斜杠');
+  assert.deepEqual(fs.readFileSync(ref), bytes, `${label} 落盘字节=原载荷`);
+}
+
 async function snapshot(http: string, H: Record<string, string>, sid: string): Promise<Snap> {
   const r = await fetch(`${http}/session/${sid}/snapshot`, { headers: H });
   assert.equal(r.status, 200);
@@ -71,7 +88,9 @@ test('submit 携图：202 → 转录 user 条 md+images 原样承载（快照面
     const user = snap.messages.find((m) => m.kind === 'user');
     assert.ok(user, 'user 条在档');
     assert.equal(user!.md, '看这张图');
-    assert.deepEqual(user!.images, [PNG, JPEG], '转录条 images 原样随档');
+    assert.equal(user!.images!.length, 2, '转录条随行两张图');
+    assertCacheRef(user!.images![0], PNG, '转录条图1'); // 2026-10-31 裁定：落盘路径引用，非原 dataURL
+    assertCacheRef(user!.images![1], JPEG, '转录条图2');
   });
 });
 
@@ -84,7 +103,8 @@ test('空文+纯图 submit：202（图片即消息），user 条 md 空、images
     const snap = await snapshot(http, H, s);
     const user = snap.messages.find((m) => m.kind === 'user');
     assert.equal(user!.md, '');
-    assert.deepEqual(user!.images, [PNG]);
+    assert.equal(user!.images!.length, 1, '纯图一张随档');
+    assertCacheRef(user!.images![0], PNG, '纯图条');
   });
 });
 
@@ -96,7 +116,8 @@ test('运行中 steer 携图：队列条目随行 images（快照 queued 面—�
     const snap = await snapshot(http, H, s);
     assert.equal(snap.queued.length, 1, '队列一条');
     assert.equal(snap.queued[0]!.text, '带图插话');
-    assert.deepEqual(snap.queued[0]!.images, [PNG], '队列条目随行 images');
+    assert.equal(snap.queued[0]!.images!.length, 1, '队列条目随行一张图');
+    assertCacheRef(snap.queued[0]!.images![0], PNG, '队列条目图');
   });
 });
 

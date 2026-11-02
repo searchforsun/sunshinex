@@ -1435,8 +1435,9 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Terminal', '终端') }));
-      await waitFor(() => expect(tabsByTitle(container, bi('Terminal', '终端')).length).toBe(1), { timeout: 5_000 });
-      expect(tabsByTitle(container, bi('Terminal', '终端'))[0]!.className).toContain('active'); // 终端标签开且活动
+      // 终端标签题=项目名(44a4b0a:basename(root),单终端不带序号)——fixture 工作区尾段 'root'
+      await waitFor(() => expect(tabsByTitle(container, 'root').length).toBe(1), { timeout: 5_000 });
+      expect(tabsByTitle(container, 'root')[0]!.className).toContain('active'); // 终端标签开且活动
       // 降级面:openPty 落定后守卫触发(分配先行,降级不吞分配——关标签 kill 链照常可寻址)
       await waitFor(() => expect(screen.getByText(bi('Terminal rendering requires a real browser window', '终端渲染需要真浏览器窗口'))).toBeDefined(), { timeout: 15_000 });
 

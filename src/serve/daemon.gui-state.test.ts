@@ -57,28 +57,32 @@ async function withDaemon(model: ModelAdapter, fn: (ctx: { base: string; tmp: st
   }
 }
 
-test('gui-state:档键=journalId(跨重启稳定;出生写语义:出生即附档,PUT 写透直落);落 <slug>/gui/sessions/<journalId>.json', async () => {
+test('gui-state:档键=journalId(跨重启稳定;占座壳零档,首 run 建档后 PUT 写透直落);落 <slug>/gui/sessions/<journalId>.json', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, daemon, tmp }) => {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
     const r = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root }) });
     const { sessionId } = (await r.json()) as { sessionId: string };
 
-    // 出生写语义(2026-10-31 spec §2)下新会话出生即附 journal:PUT 写透直落盘(旧「未附 no-op
-    // 不落盘」前提随出生写作废——孤儿档防线已由档本身在场所取代),GET 原样回读
+    // 幽灵会话根修(52edb56)后改回首条实质事件建档:占座壳(newSession 零事件)零档——
+    // attachedJournalId 缺席,PUT no-op 不落盘(persisted:false 防孤儿档),GET 回 {state:null}
     const state = { v: 1, tabs: [{ uid: 'file:a.ts', type: 'file', params: { path: 'a.ts' }, createdAt: 1 }], activeUid: 'file:a.ts', collapsed: false, width: 520, recentClosed: [] };
-    const journalId = daemon.get(sessionId)!.attachedJournalId!; // 出生档即档键
-    assert.notEqual(journalId, undefined, '出生即附 journal');
+    assert.equal(daemon.get(sessionId)!.attachedJournalId, undefined, '占座壳零档(未建档)');
     let resp = await fetch(`${base}/session/${sessionId}/gui-state`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ state }) });
-    assert.deepEqual(await resp.json(), { ok: true }, '出生会话 PUT 写透');
+    assert.deepEqual(await resp.json(), { ok: true, persisted: false }, '未附档 PUT no-op 不落盘');
     resp = await fetch(`${base}/session/${sessionId}/gui-state`, { headers: { authorization: 'Bearer test-token' } });
-    assert.deepEqual(await resp.json(), { state }, 'GET 原样回读');
+    assert.deepEqual(await resp.json(), { state: null }, '未附档 GET 回 null');
 
-    // 跑一轮 → 同出生 journal 续写(出生写语义:档键不换),PUT v2 覆写同档、GET 取回 v2
+    // 跑一轮 → 首条实质事件建档(档键=journalId),此后 PUT 写透直落、GET 原样回读
     resp = await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: 'run' }) });
     assert.equal(resp.status, 202);
     await waitFor(() => daemon.get(sessionId)!.status() === 'idle', 20_000);
-    assert.equal(daemon.get(sessionId)!.attachedJournalId!, journalId, '档键跨 run 稳定(出生档续写)');
+    const journalId = daemon.get(sessionId)!.attachedJournalId;
+    assert.notEqual(journalId, undefined, '首 run 建档即附 journal');
+    resp = await fetch(`${base}/session/${sessionId}/gui-state`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ state }) });
+    assert.deepEqual(await resp.json(), { ok: true }, '建档后 PUT 写透');
+    resp = await fetch(`${base}/session/${sessionId}/gui-state`, { headers: { authorization: 'Bearer test-token' } });
+    assert.deepEqual(await resp.json(), { state }, 'GET 原样回读');
     const state2 = { ...state, v: 2 };
     resp = await fetch(`${base}/session/${sessionId}/gui-state`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ state: state2 }) });
     assert.equal(resp.status, 200);

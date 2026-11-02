@@ -2027,6 +2027,9 @@ interface SkillsRow {
   description?: string;
   sourceDir?: string;
   shadowedBy?: string;
+  /** learned 行富化:createdMs=条目创建时刻(2026-10-31);body=SKILL.md 原文(2026-11-01,仅常规视图 root 锚定组附) */
+  createdMs?: number;
+  body?: string;
 }
 
 /** GET /settings/skills 应答整体(断言用;project=scope=all 跨项目视图的归属名) */
@@ -2072,7 +2075,13 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(group('user').skills, [
         { id: 'alpha', name: 'Alpha User', description: 'user one', sourceDir: path.join(home, '.sunshinex', 'skills', 'alpha'), shadowedBy: 'project' },
       ], 'user 组=全局 userSkillsDir 直扫;shadowedBy=当前项目同名 project 技能');
-      assert.deepEqual(group('learned').skills, [{ id: 'learned-one', name: 'Learned One', sourceDir: path.join(tmp, 'data', 'skills', 'learned-one') }], 'learned 组=resolveDataDir(root)/skills');
+      // learned 行富化(2026-10-31 createdMs+2026-11-01 body 原文):sourceDir/createdMs/body 随行
+      const learned = group('learned').skills[0];
+      assert.equal(learned.id, 'learned-one');
+      assert.equal(learned.name, 'Learned One');
+      assert.equal(learned.sourceDir, path.join(tmp, 'data', 'skills', 'learned-one'), 'learned 组=resolveDataDir(root)/skills');
+      assert.ok((learned.createdMs ?? 0) > 0, 'learned 行带 createdMs(学习技能页创建时间列)');
+      assert.equal(learned.body, '---\nname: Learned One\n---\nlbody\n', 'learned 行附 body=SKILL.md 原文(frontmatter+正文,落盘即所见)');
       // 跨组不去重:project 与 user 各持 alpha(展示面重复 id 保留,GUI 可标注多源同名)
       assert.equal(body.groups.filter((g) => g.skills.some((s) => s.id === 'alpha')).length, 2, '跨组同名不去重:两组各在');
     });
@@ -2103,11 +2112,13 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       const projGroup = body.groups.find((g) => g.source === 'project')!;
       assert.equal(projGroup.project, 'proj', 'project 组归属=当前项目显示名(basename(root))');
       assert.deepEqual(projGroup.skills, [{ id: 'alpha', name: 'Alpha', description: 'd' }]);
-      assert.deepEqual(
-        body.groups.filter((g) => g.source === 'learned'),
-        [{ source: 'learned', project: 'xyz-root', skills: [{ id: 'learned-xyz', name: 'Learned Xyz' }] }],
-        '跨项目学习沉淀逐项目分组:归属=workspace.json 根 basename(缺档回退 slug)',
-      );
+      // 跨项目学习沉淀逐项目分组:归属=workspace.json 根 basename(缺档回退 slug);
+      // learned 行带 createdMs(2026-10-31);scope=all 不附 body(仅常规视图 root 锚定组附)
+      const learnedAll = body.groups.filter((g) => g.source === 'learned');
+      assert.deepEqual(learnedAll.map((g) => ({ source: g.source, project: g.project, skills: g.skills.map((s) => ({ id: s.id, name: s.name, body: s.body })) })), [
+        { source: 'learned', project: 'xyz-root', skills: [{ id: 'learned-xyz', name: 'Learned Xyz', body: undefined }] },
+      ], 'scope=all learned 组归属=跨项目域名;body 不附');
+      assert.ok((learnedAll[0].skills[0].createdMs ?? 0) > 0, 'learned 行带 createdMs');
     });
   });
 

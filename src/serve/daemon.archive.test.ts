@@ -200,9 +200,12 @@ test('command 气泡入档:POST /command 后 journal 有命令 user 行+结果 n
     const r = await fetch(`${base}/session/${sessionId}/command`, { method: 'POST', headers: AUTH, body: JSON.stringify({ line: '/status' }) });
     assert.equal(r.status, 200);
 
-    // 回放可见面双行钉:命令气泡(user)+结果回执(notice)——刷新/回溯时「执行过什么命令」可见
+    // 回放可见面双行钉:命令气泡(user)+结果回执(tool 行三态——2026-10-31 裁定,notice 不再旁路落行)——刷新/回溯时「执行过什么命令」可见
     const replay = reduceSegRows(parseJournalFile(path.join(dir, `${jid}.jsonl`)).events);
     assert.ok(replay.some((e) => e.kind === 'user' && e.md === '/status'), '命令行 user 气泡入档(回放可见)');
-    assert.ok(replay.some((e) => e.kind === 'notice' && e.md.length > 0), '结果回执 notice 行入档');
+    const cmdTool = replay.find((e) => e.kind === 'tool' && e.name === '/status');
+    assert.ok(cmdTool, '命令 tool 行入档(三态回执面)');
+    assert.equal(cmdTool!.status, undefined, '命令 tool 行终态(done)');
+    assert.ok(cmdTool!.result !== undefined && cmdTool!.result!.ok && cmdTool!.result!.text.length > 0, '结果回执随 tool 行 result 载荷入档');
   });
 });

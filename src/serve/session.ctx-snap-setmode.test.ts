@@ -98,13 +98,14 @@ test('setMode 换铸：快照内存直传字节稳定,不重读磁盘', { timeou
     assert.ok(!postSnap.items.some((it) => it.content.includes('v2 line')), '磁盘 SUNSHINE.md 新内容未烘进快照');
     assert.ok(!postSnap.items.some((it) => it.content.includes('brand new skill')), '磁盘新技能未烘进快照');
 
-    // 5) 零 snap 事件落档：restoreSnapshot 直注入不触发订阅,档内 ctx-snap 行数不变（出生写唯一）
+    // 5) 后续 run 照常在换铸后运行时上跑（换铸不破坏会话活性）
+    assert.equal(s.submit('跑一轮').ok, true, '换铸后提交受理');
+    await waitFor(() => s.status() === 'idle', 30_000);
+
+    // 6) 零 snap 事件落档：restoreSnapshot 直注入不触发订阅,档内 ctx-snap 行数不变（出生写唯一）。
+    //    出生档自 52edb56 幽灵会话根修起改惰性铸造——首条实质事件才建档,故读档须在首 run 之后
     const jid = s.attachedJournalId!;
     const events = parseJournalFile(path.join(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`)).events;
     assert.equal(events.filter((e) => e.t === 'ctx-snap').length, 1, '换铸零 snap 落档（出生写唯一）');
-
-    // 6) 后续 run 照常在换铸后运行时上跑（换铸不破坏会话活性）
-    assert.equal(s.submit('跑一轮').ok, true, '换铸后提交受理');
-    await waitFor(() => s.status() === 'idle', 30_000);
   });
 });
