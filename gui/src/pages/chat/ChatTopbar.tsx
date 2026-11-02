@@ -32,7 +32,12 @@ export function ChatDynButtons({ todoActive, taskActive, bgRunning, running, onO
   // (.chat-dyn-buttons shrink 999——空间不足几乎全由本组吸收,标题不因让位被裁到看不全)
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [tight, setTight] = useState(false);
-  const shown = running && (todoActive > 0 || taskActive > 0 || bgRunning > 0);
+  // 待办/团队任务随轮次收束即隐;后台任务不受轮次门控——进程独立于轮次存活(含应用重启后仍在跑
+  // 的任务,会话此时空闲),只要还有 running 就显示
+  const todoShown = running && todoActive > 0;
+  const taskShown = running && taskActive > 0;
+  const bgShown = bgRunning > 0;
+  const shown = todoShown || taskShown || bgShown;
   useEffect(() => {
     const el = wrapRef.current;
     if (!shown || el === null) return;
@@ -46,19 +51,19 @@ export function ChatDynButtons({ todoActive, taskActive, bgRunning, running, onO
 
   return (
     <div className={`chat-dyn-buttons${tight ? ' tight' : ''}`} ref={wrapRef} role="group" aria-label="live counters">
-      {todoActive > 0 && (
+      {todoShown && (
         <button type="button" className="chat-dyn-btn todo" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
           <span className="run-spinner" aria-hidden="true" />
           {t(`${todoActive} todos`, `${todoActive} 待办`)}
         </button>
       )}
-      {taskActive > 0 && (
+      {taskShown && (
         <button type="button" className="chat-dyn-btn" data-tip={t('Open agent teams', '打开智能体团队')} onClick={() => onOpenTab?.('agents')}>
           <span className="run-spinner" aria-hidden="true" />
           {t(`${taskActive} team tasks`, `${taskActive} 团队任务`)}
         </button>
       )}
-      {bgRunning > 0 && (
+      {bgShown && (
         <button type="button" className="chat-dyn-btn" data-tip={t('Open background tasks', '打开后台任务')} onClick={() => onOpenTab?.('bgtasks')}>
           <span className="run-spinner" aria-hidden="true" />
           {t(`${bgRunning} background`, `${bgRunning} 后台任务`)}

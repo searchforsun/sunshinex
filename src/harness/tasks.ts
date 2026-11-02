@@ -22,6 +22,11 @@ export interface BackgroundTask {
   stop?: () => void;
 }
 
+/** 本进程提交的活任务对象(进程级):同一 daemon 内会话 runtime 重建(换模式等)会新建 TaskRegistry
+ *  并重放账本——重放若复制出新对象,stop 句柄(进程 kill 闭包)丢失,停止只改账不杀进程(实测 python
+ *  服务停后仍监听端口)。同进程 running 行改为复用此处的同一对象:stop/终态在新旧账本间共享 */
+const liveTasks = new Map<string, BackgroundTask>();
+
 /** owner 作用域（后台任务线规格 D9）：AsyncLocalStorage 承载 fork 归属，并发 fork 互不串号 */
 const ownerStorage = new AsyncLocalStorage<string>();
 
@@ -86,7 +91,8 @@ export class TaskRegistry {
       if (row === undefined) continue;
       if (row.op === 'submit') {
         if (this.tasks.has(row.task.id)) continue; // live 胜出:本实例已在账的条目不被账本回填覆盖
-        this.tasks.set(row.task.id, { ...row.task });
+        const live = row.pid === process.pid ? liveTasks.get(row.task.id) : undefined;
+        this.tasks.set(row.task.id, live ?? { ...row.task });
         if (row.task.status === 'running' && row.pid !== process.pid) foreignRunning.add(row.task.id);
         else foreignRunning.delete(row.task.id);
       } else {
@@ -160,6 +166,7 @@ export class TaskRegistry {
       ownerRun: input.ownerRun ?? this.currentOwner(),
     };
     this.tasks.set(id, task);
+    liveTasks.set(id, task);
     this.appendLedger({ op: 'submit', pid: process.pid, task });
     this.onChange?.(task);
     return task;
@@ -180,6 +187,7 @@ export class TaskRegistry {
     t.status = status;
     t.endedAt = Date.now();
     if (opts?.exitCode !== undefined) t.exitCode = opts.exitCode;
+    liveTasks.delete(taskId);
     this.appendLedger({
       op: 'finish',
       id: taskId,

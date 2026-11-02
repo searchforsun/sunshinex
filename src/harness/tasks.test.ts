@@ -247,3 +247,25 @@ test('账本:坏行/乱序行跳过不炸;无账本路径 = 纯内存零 ledger 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('同进程账本重放复用活任务对象:另一 registry 停止时真正调用 stop(杀进程)而非只改账', async () => {
+  const { abortLedger } = await import('./tools/task-stop');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-shared-'));
+  try {
+    const ledger = path.join(dir, 'ledger.jsonl');
+    const a = new TaskRegistry(dir, ledger);
+    const t = a.submit({ kind: 'exec', label: 'python -m http.server' });
+    let killed = 0;
+    t.stop = () => { killed++; };
+    // 会话 runtime 重建:同进程新 registry 收养同一账本
+    const b = new TaskRegistry(dir);
+    b.adoptLedger(ledger);
+    const seen = b.get(t.id);
+    assert.ok(seen !== undefined && seen.status === 'running');
+    abortLedger(b, seen);
+    assert.equal(killed, 1, 'stop 句柄须随共享对象可达');
+    assert.equal(a.get(t.id)?.status, 'stopped', '终态在新旧账本间共享');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
