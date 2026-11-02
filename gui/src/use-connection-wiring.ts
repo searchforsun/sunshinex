@@ -5,7 +5,7 @@ import { createTrailingQueue } from './trailing-queue';
 import type { SessionEvent } from '../../src/types';
 import type { AgentActivities } from './tabs/agent-activity';
 import { applyAgentEvent } from './tabs/agent-activity';
-import { applyBoardEvent, applyDelegation, applyTeamNameEvent, emptyBoard, boardEventFrom, type SessionProjection } from './projection';
+import { applyBgTaskEvent, applyBoardEvent, applyDelegation, applyTeamMemberEvent, applyTeamNameEvent, emptyBoard, boardEventFrom, type BgTaskRow, type SessionProjection } from './projection';
 import type { ChatSink } from './pages/Chat';
 
 /** D34 串态收口的投影空态(D42 自 App.tsx 随连接装配迁入导出——openSession/backHome 清零与
@@ -48,6 +48,10 @@ export interface ConnectionWiringDeps {
   setProjection: Dispatch<SetStateAction<SessionProjection>>;
   setTodoBatches: Dispatch<SetStateAction<import('./pages/Chat').TodoBatch[]>>;
   setConnState: Dispatch<SetStateAction<ConnectionState>>;
+  /** 后台任务账本 live(bg-task 事件 upsert;开会话/手动刷新仍走 GET) */
+  setBgTasks: Dispatch<SetStateAction<BgTaskRow[]>>;
+  /** 记忆/学习技能清单变点(catalog-changed → 对应页签重拉) */
+  setCatalogTick: Dispatch<SetStateAction<{ memory: number; learned: number }>>;
 }
 
 /**
@@ -66,7 +70,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
     throttleRef.current = {
       board: createTrailingQueue<{ sessionId: string; e: SessionEvent }>((items) => {
         deps.setProjection((p) => {
-          let { board, delegations, teams } = p;
+          let { board, delegations, teams, team } = p;
           for (const it of items) {
             // 终审 Important 修:切换后窗尾 drain 的陈会话事件弃用——切会话不清队,无标签则 A 的事件
             // 套进 B 的板(D34 串态收口破口);按 flush 时当前会话过滤,陈帧丢弃(权威态重播种自愈)
@@ -74,15 +78,19 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
             const e = it.e;
             if (e.type === 'team-created') {
               teams = applyTeamNameEvent(teams, e);
+            } else if (e.type === 'teammate-created') {
+              team = applyTeamMemberEvent(team, e);
             } else if (e.type.startsWith('delegation-')) {
               delegations = applyDelegation(delegations, e);
+              // 成员 busy 与委派同拍直播(teammate execute 起止已推 delegation-*)
+              team = applyTeamMemberEvent(team, e);
             } else {
               board = applyBoardEvent(board, boardEventFrom(e));
               // task-created 携 teamName：卡头直播，不等快照刷新
               if (e.type === 'task-created') teams = applyTeamNameEvent(teams, e);
             }
           }
-          return { ...p, board, delegations, teams };
+          return { ...p, board, delegations, teams, team };
         });
       }, LIVE_THROTTLE_MS),
       acts: createTrailingQueue<{ sessionId: string; fold: (a: AgentActivities) => AgentActivities }>((items) => {
@@ -99,7 +107,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
       sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
       shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, connRef,
       reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
-      setTodoBatches, setConnState,
+      setTodoBatches, setConnState, setBgTasks, setCatalogTick,
     } = deps;
     const conn = createConnection({
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
@@ -113,8 +121,18 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
           return;
         }
-        if (e.type === 'team-created' || e.type.startsWith('task-')) {
-          // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投；team-created 与板事件同窗，防快照整替吞掉建队名
+        if (e.type === 'bg-task') {
+          setBgTasks((rows) => applyBgTaskEvent(rows, e));
+          return;
+        }
+        if (e.type === 'catalog-changed') {
+          const kind = typeof e.payload?.kind === 'string' ? e.payload.kind : '';
+          if (kind === 'memory') setCatalogTick((t) => ({ ...t, memory: t.memory + 1 }));
+          else if (kind === 'learned') setCatalogTick((t) => ({ ...t, learned: t.learned + 1 }));
+          return;
+        }
+        if (e.type === 'team-created' || e.type === 'teammate-created' || e.type.startsWith('task-')) {
+          // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投；team/teammate-created 与板事件同窗
           if (boardSeedingRef.current) boardPendingRef.current.push({ e, seq });
           else throttles.board.push({ sessionId, e }); // P1 Task 8:live 板事件 100ms 尾随合并(水合/回放路径不经此)
           return;
@@ -158,6 +176,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         reopenBoardSeedWindow();
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:board/todos/delegations/team 一处整替
         setTodoBatches([]);
+        setBgTasks([]);
         if (sessionRef.current !== '') bumpActs(sessionRef.current, () => ({})); // G8d:仅当前会话桶清零(重连影子水合重建;他会话缓存不动)
         chatSinkRef.current?.reset();
         // G14.2xx b 重连影子重水合:WS 回放已不含 shadow 帧(环窗溢出+回放面跳过,恢复唯一入口=
@@ -207,6 +226,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         reopenBoardSeedWindow();
         setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之一随收口补齐(纪律落实)
         setTodoBatches([]);
+        setBgTasks([]);
         if (sessionRef.current !== '') bumpActs(sessionRef.current, () => ({})); // G8d:会话维 reset 清当前桶(swap 新 Harness,旧卡作废)
         chatSinkRef.current?.resetSession();
       },

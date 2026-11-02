@@ -31,7 +31,7 @@ test('task-dep-added/task-assigned 翻译(P2 新型)', () => {
   );
 });
 
-test('task-status-changed 翻译:from/状态键 status→to;缺省回退 pending', () => {
+test('task-status-changed 翻译:from/状态键 status→to;缺省回退 pending;success 富字段透传', () => {
   assert.deepEqual(
     boardEventFrom({ type: 'task-status-changed', ts: 104, payload: { taskId: 't1', from: 'pending', status: 'running' } }),
     { t: 'status-changed', taskId: 't1', from: 'pending', to: 'running', ts: 104 },
@@ -40,6 +40,14 @@ test('task-status-changed 翻译:from/状态键 status→to;缺省回退 pending
   assert.deepEqual(
     boardEventFrom({ type: 'task-status-changed', ts: 105, payload: { taskId: 't9' } }),
     { t: 'status-changed', taskId: 't9', from: 'pending', to: 'pending', ts: 105 },
+  );
+  assert.deepEqual(
+    boardEventFrom({
+      type: 'task-status-changed',
+      ts: 106,
+      payload: { taskId: 't1', from: 'running', status: 'success', by: 'dev', conclusion: 'ok', tokens: 9, durationMs: 1200 },
+    }),
+    { t: 'status-changed', taskId: 't1', from: 'running', to: 'success', ts: 106, by: 'dev', conclusion: 'ok', tokens: 9, durationMs: 1200 },
   );
 });
 

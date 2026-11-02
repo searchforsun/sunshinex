@@ -2,12 +2,19 @@
 /**
  * 测试专用 mock MCP server：stdio JSON-RPC（零依赖零网络）。
  * 协议面：initialize → tools/list（单 echo 工具）→ tools/call；按行 JSON 收发。
- * 用法：node scripts/mock-mcp-server.js [--delay <ms>] [--name <name>]
+ * 用法：node scripts/mock-mcp-server.js [--delay <ms>] [--name <name>] [--die-on-call <n|all>] [--fail-call]
  * - --delay <ms>：仅 tools/call 响应延迟（供客户端超时用例）；握手与 tools/list 不延迟
  * - --name <name>：改写 serverInfo.name（供「未登记服务器」越权用例）
+ * - --die-on-call <n|all>：第 n 次 tools/call 不回包直接退出进程（n=all 恒杀）——供断链重试用例
+ *   造「server 中途死亡」真实现场（客户端 pending 请求收传输层连接类错误）。注意：重连拉起的是
+ *   全新进程，计数随之归零——「只死一次、重连后恢复」场景用 --die-once-file
+ * - --die-once-file <path>：tools/call 时若该哨兵文件不存在则创建之并退出进程（跨重启恰死一次），
+ *   存在则正常服务——重连后的新进程见到哨兵即恢复健康
+ * - --fail-call：tools/call 回 isError:true 结果（业务失败面，供「业务错误不重试」对照用例）
  */
 'use strict';
 
+const fs = require('node:fs');
 const argv = process.argv.slice(2);
 
 function argOf(flag, fallback) {
@@ -17,6 +24,10 @@ function argOf(flag, fallback) {
 
 const CALL_DELAY_MS = parseInt(argOf('--delay', '0'), 10);
 const SERVER_NAME = argOf('--name', 'mock-fs');
+const DIE_ON_CALL = argOf('--die-on-call', '');
+const DIE_ONCE_FILE = argOf('--die-once-file', '');
+const FAIL_CALL = argv.includes('--fail-call');
+let callCount = 0;
 
 const TOOLS = [
   {
@@ -59,8 +70,15 @@ function handle(line) {
         reply(id, { tools: TOOLS });
         break;
       case 'tools/call': {
+        callCount += 1;
+        if (DIE_ONCE_FILE !== '' && !fs.existsSync(DIE_ONCE_FILE)) {
+          fs.writeFileSync(DIE_ONCE_FILE, '1');
+          process.exit(1); // 不回包直接死亡：客户端 pending 请求收传输层「Connection closed」（断链真实现场）
+        }
+        if (DIE_ON_CALL === 'all') process.exit(1);
         const text = String((params && params.arguments && params.arguments.text) ?? '');
-        reply(id, { content: [{ type: 'text', text: `echo: ${text}` }] });
+        if (FAIL_CALL) reply(id, { content: [{ type: 'text', text: 'boom' }], isError: true });
+        else reply(id, { content: [{ type: 'text', text: `echo: ${text}` }] });
         break;
       }
       default:

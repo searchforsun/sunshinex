@@ -23,7 +23,7 @@ import {
   surgicalSettingsUpdate,
 } from '../../config/settings';
 import { effectiveKeyRow, fileSlots } from '../../serve/config-helpers';
-import { notifyCatalogWrite, writeJsonAtomic } from '../../catalog/io';
+import { notifyCatalogWrite, settingsPathOf, writeJsonAtomic } from '../../catalog/io';
 import { t } from '../../i18n';
 import { resolveTarget } from './catalog-common';
 
@@ -78,7 +78,7 @@ function setCmd(args: string[]): number {
     console.error(t(`error: unknown settings key: ${key}`, `error：未知设置键：${key}`));
     return 1;
   }
-  const file = target.scope === 'global' ? loadGlobalSettings() : loadProjectSettings(target.root ?? process.cwd());
+  const file = settingsPathOf(target.scope, target.root);
   const raw = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   if (raw !== null && hasJsonComments(raw)) {
     // 注释保留式手术写（handleSettingsPut 同款）：只动目标键，行尾注释/缩进/其余键逐字保真；

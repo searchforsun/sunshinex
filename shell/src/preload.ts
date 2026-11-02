@@ -25,6 +25,13 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     ipcRenderer.on('builtin:open-url', handler);
     return () => void ipcRenderer.removeListener('builtin:open-url', handler);
   },
+  /** 模型关页(facade closeTarget):主进程按 CDP target 解出 guest webContents id 下发,持有该 webview
+   *  的侧栏页签自行关闭 */
+  onCloseWebContents: (cb: (webContentsId: number) => void): (() => void) => {
+    const handler = (_: unknown, id: number): void => cb(id);
+    ipcRenderer.on('builtin:close-webcontents', handler);
+    return () => void ipcRenderer.removeListener('builtin:close-webcontents', handler);
+  },
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);
     ipcRenderer.on('win:maximized', handler);

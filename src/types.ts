@@ -276,12 +276,18 @@ type SessionEventType =
   // P5 等待队列变更帧(spec §12):队列任何变更广播全量列表(payload.items)——TUI/GUI 实时识别,
   // 退役快照轮询;不经 pump 主链(旁路帧:不喂转录内核/影子投影,防边界误闭合)
   | 'queue'
-  // 委派/任务事件:delegation-* 为委派生命周期;task-* 为任务板(创建/状态/解锁/阻塞/加边/指派);agent-message 为同队消息
+  // 委派/任务事件:delegation-* 为委派生命周期;task-* 为任务板(创建/状态/解锁/阻塞/加边/指派);
+  // teammate-created 为长驻成员名册直播(与 team-created 队卡同形);agent-message 为同队消息
   | 'task-created' | 'task-status-changed' | 'task-unlocked' | 'task-blocked'
   | 'task-dep-added' | 'task-assigned'
   | 'team-created'
+  | 'teammate-created'
   | 'delegation-started' | 'delegation-ended'
-  | 'agent-message';
+  | 'agent-message'
+  // 后台任务账本直播(TaskRegistry submit/finish;GUI 后台任务页签/顶栏计数)
+  | 'bg-task'
+  // 记忆/学习技能清单变点(memory_write·沉淀管线落盘;GUI 对应页签主动重拉)
+  | 'catalog-changed';
 
 export interface SessionEvent {
   type: SessionEventType;

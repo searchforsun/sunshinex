@@ -1037,20 +1037,13 @@ export const ToolEntryView = memo(function ToolEntryView({
     // 2026-11-01 用户裁定「网址名做链接不显示 url,点击开系统默认浏览器」:websearch 输出结构化解析——
     // 标题=可点链接(preload 桥 shell.openExternal,OS 默认浏览器承接),URL 行不显示,摘要保留
     const hits = parseWebSearchOutput(fullResult);
+    // 卡片四条(底色/圆角/内距/margin)走 tool-io-pre 类单点(tool-io.css,2026-11-02 技术债轮回归);
+    // div 专属高度帽与字号行距内联保留
     body =
       hits.length > 0 ? (
         <div
           className="tool-io-pre"
-          style={{
-            margin: 0,
-            padding: '8px 10px',
-            background: 'var(--surface-code)',
-            borderRadius: 'var(--radius-md)',
-            maxHeight: 280,
-            overflow: 'auto',
-            fontSize: 12.5,
-            lineHeight: 1.6,
-          }}
+          style={{ maxHeight: 280, overflow: 'auto', fontSize: 12.5, lineHeight: 1.6 }}
         >
             {hits.map((h) => (
               <div key={h.n} style={{ marginBottom: 10 }}>

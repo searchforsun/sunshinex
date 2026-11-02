@@ -465,6 +465,14 @@ export class TaskBoard {
       taskId, from: 'running', status: to,
       ...(r.by !== undefined ? { by: r.by } : {}),
       ...(note !== undefined ? { note } : {}),
+      // GUI 影子板/journal 与物理板同载 artifact(重启后编排耗时/任务面同源)
+      ...(to === 'success'
+        ? {
+          conclusion: r.reply ?? '',
+          tokens: r.tokens ?? 0,
+          ...(r.durationMs !== undefined ? { durationMs: r.durationMs } : {}),
+        }
+        : {}),
     });
     if (ledgerId !== undefined) {
       if (to === 'success') this.finishLedger(ledgerId, 'done', { marker: `[conclusion] ${r.reply ?? ''}\n` });

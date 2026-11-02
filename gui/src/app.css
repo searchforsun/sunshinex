@@ -1435,9 +1435,24 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 折叠行分型文本:文件名强调/相对路径弱色/diff stat 双色 */.tool-file-base { color: var(--fg-secondary); font-weight: 500; white-space: nowrap; }
 /* G14.26:exec 命令内容与动词同灰度(secondary/400)——继承 500 加重显得比动词亮,用户裁定卸掉 */.tool-cmd { color: var(--fg-secondary); font-weight: 400; }.tool-file-link { cursor: pointer; }
 /* G14.171/G14.176 名称链接(spawn/create_agent_team_task):蓝色字体提示可点(2026-10-24 用户裁定,反转旧「不用 accent 亮蓝」) */.tool-agent-link { color: var(--accent); font-weight: 500; cursor: pointer; }.tool-agent-link:hover { text-decoration: underline; }
-/* 多任务名链接分隔(等待行等);芯片类名保留语义锚,视觉=纯蓝链(跳转不加描边框) */
-.tool-link-list { display: inline; min-width: 0; }
-.tool-link-sep { color: var(--fg-tertiary); }
+/* 多任务名链接分隔(等待行等);芯片类名保留语义锚,视觉=纯蓝链(跳转不加描边框)。
+   单行省略:list 吃剩余宽,chip 等 shrink 系数下长名(命令)先被截——flex-basis=内容宽 */
+.tool-link-list {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tool-link-sep { color: var(--fg-tertiary); flex: none; }
+.tool-link-chip {
+  flex: 0 1 auto;
+  min-width: 3ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* G14.12:工作区外文件整条绝对路径(超长省略) */
 .tool-file-link:hover { text-decoration: underline; }.tool-file-rel { color: var(--fg-tertiary); font-weight: 400; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.tool-stat { font-family: var(--font-mono); font-size: 11px; flex: none; }.tool-stat-add { color: var(--ok); }.tool-stat-del { color: var(--err); }
 /* ⑤ exec 展开:$ 命令行(hljs bash 高亮)+输出原文,无 Input/Output 分节标 */.tool-exec { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; }.tool-exec-cmd {
@@ -2013,7 +2028,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 
 
 /* ===== G14.178 后台任务卡片流:状态点色 + 展开详情行 ===== */
-/* 后台任务三态:运行=灰转圈,完成=蓝点,失败=红点,停止=灰点。转圈用 border 环+clip-path 正圆锁 */
+/* 后台任务四态对齐智能体团队:运行=灰转圈,完成=蓝(success),失败=红,停止/暂停=黄(cancelled) */
 .tb-status-dot.bg-running {
   background: none;
   border: 1.9px solid var(--fg-tertiary);
@@ -2024,7 +2039,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 }
 .tb-status-dot.bg-done { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.bg-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
-.tb-status-dot.bg-stopped { background: radial-gradient(circle 3px at 50% 50%, var(--fg-tertiary) 2.4px, transparent 2.8px); }
+.tb-status-dot.bg-stopped { background: radial-gradient(circle 3px at 50% 50%, #f5c542 2.4px, transparent 2.8px); }
 .bg-detail { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 0 14px; }
 /* 2026-10-31 用户裁定:摘「命令/结果」自解释标题——命令行=全文+右缘复制钮;bg-detail-key 组退役。
    左缘 14px=状态点(6)+间隙(8),与前移的运行时长列左缘同轴(「左侧和时间对齐」) */
@@ -2873,16 +2888,6 @@ input.sx-setting-input { width: 100%; }
 .sx-rc-subtitle { color: var(--fg-secondary); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .sx-rc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .sx-rc-details summary { color: var(--fg-secondary); font-size: 12px; cursor: pointer; }
-/* 右侧滑出编辑抽屉(背板+右侧 aside;浮层 z 高于设置态菜单抽屉 z96) */
-.sx-drawer-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, 0.35); }
-.sx-editor-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 121; width: min(420px, 90vw); background: var(--surface); border-left: 1px solid var(--border-strong); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; }
-.sx-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.sx-drawer-head h3 { margin: 0; font-size: 14px; }
-.sx-drawer-close { border: none; background: transparent; color: var(--fg-secondary); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
-.sx-drawer-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.sx-drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
-.sx-drawer-fields { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.sx-drawer-actions { margin-top: auto; }
 /* 空态/错误条 */
 .sx-empty-state { margin: 0; color: var(--fg-tertiary); font-size: 13px; padding: 18px 0; text-align: center; }
 .sx-error-banner { margin: 0; color: var(--warn); font-size: 12px; border: 1px solid var(--warn); border-radius: var(--radius-md); padding: 6px 8px; }

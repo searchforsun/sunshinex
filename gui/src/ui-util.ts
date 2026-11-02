@@ -25,7 +25,7 @@ export function errText(err: unknown): string {
  *  window.open 在 Electron 里只开自家子窗,不是系统浏览器。浏览器态(无桥)回落 window.open。
  *  消费面:md 链接组件(正文/气泡 a 点击)、WebTab ↗ 钮 */
 export function openExternalUrl(url: string): void {
-  const bridge = (window as unknown as { sunshinexWindow?: { openExternal?: (url: string) => Promise<{ ok: boolean }> } }).sunshinexWindow;
+  const bridge = window.sunshinexWindow;
   if (bridge?.openExternal !== undefined) void bridge.openExternal(url).catch(() => {});
   else window.open(url, '_blank', 'noopener,noreferrer');
 }

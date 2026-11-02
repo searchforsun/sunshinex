@@ -3,7 +3,6 @@ import { Bot, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import { fmtDurMs, shortStampMs } from '../ui-util';
-
 /** DAG 视图懒载面(React Flow + dagre)。节点与列表行共用五态点色与停钮。 */
 const TaskDag = lazy(() => import('./TaskDag'));
 
@@ -42,8 +41,10 @@ export interface TaskBoardTabProps {
   readonly onStopTask?: (taskId: string) => void;
   /** 工具行点开的定位信号：kind=task 高亮任务行并切到任务栏；kind=team 高亮队卡（ref=teamId 或队名） */
   readonly focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
-  /** 顶部刷新：sessionSnapshot 拉权威 board。返回 Promise 期间钮转圈 */
+  /** 顶部刷新：sessionSnapshot 拉权威 board/teams/team。返回 Promise 期间钮转圈 */
   readonly onRefresh?: () => Promise<void>;
+  /** 正文/顶栏打开侧栏时 App 递增——主动刷一次 */
+  readonly refreshNonce?: number;
 }
 
 /** 任务 → 委派投影：按 delegationId/label 同文命中，title 同文兜底 */
@@ -230,7 +231,7 @@ function TaskCard({
                   className="tb-task-main"
                   data-member-name={m.name}
                   aria-label={`${m.name}${m.busy ? ' [busy]' : ''}`}
-                  data-tip={t('Open member transcript', '打开成员转录')}
+                  data-tip={t('Open subagent', '打开子智能体')}
                   onClick={() => onOpenAgent?.(m.name, m.name)}
                 >
                   <span className={`tb-status-dot${m.busy ? ' task-status-running' : ' task-status-pending'}`} aria-hidden="true" />
@@ -330,19 +331,36 @@ function TaskCard({
   );
 }
 
-export function TaskBoardTab({ board, delegations, teams = [], members = [], onOpenAgent, onStopTask, focus, onRefresh }: TaskBoardTabProps): JSX.Element {
+export function TaskBoardTab({ board, delegations, teams = [], members = [], onOpenAgent, onStopTask, focus, onRefresh, refreshNonce }: TaskBoardTabProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // 刷新失败可见化(D30 口径:静默吞=点了没反应;InsightTabs 停止失败横幅同款形态)
+  const [actError, setActError] = useState('');
   const refresh = (): void => {
     if (refreshing || onRefresh === undefined) return;
     setRefreshing(true);
-    void onRefresh().catch(() => {}).finally(() => setRefreshing(false));
+    void onRefresh()
+      .then(() => setActError(''))
+      .catch((err: unknown) => setActError(`${t('Refresh failed', '刷新失败')}: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setRefreshing(false));
   };
+  // 正文打开 / 工具行定位:主动拉快照(成员名册仅快照有;busy 靠 delegation 直播)
+  useEffect(() => {
+    if (refreshNonce === undefined || onRefresh === undefined) return;
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshNonce]);
+  useEffect(() => {
+    if (focus === undefined || focus === null || onRefresh === undefined) return;
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
   const bar = onRefresh !== undefined && (
     <div className="insight-bar tb-board-bar">
       <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={refreshing ? t('Refreshing…', '刷新中…') : t('Refresh', '刷新')} disabled={refreshing} onClick={refresh}>
         <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
       </button>
+      {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
     </div>
   );
   useEffect(() => {

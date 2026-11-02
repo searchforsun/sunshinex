@@ -98,6 +98,7 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
   assert.equal(((targets.result!.targetInfos as Array<{ type: string }>)[0]!).type, 'page');
   // createTarget 拒面(页签生命周期归 GUI)
   const deny = await send('Target.createTarget', { url: 'https://example.com' });
-  assert.match(String(deny.error!.message), /侧栏/);
+  // 错误文案英文单语(§15:CDP 错误经 Playwright→MCP 工具结果回流进模型面)
+  assert.match(String(deny.error!.message), /sidebar browser tabs are managed by the GUI/);
   ws.close();
 });

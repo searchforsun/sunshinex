@@ -461,16 +461,27 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
           const seconds = e.ts > run.ts ? Math.round((e.ts - run.ts) / 1000) : undefined;
           const p = e.payload ?? {};
           const stopped = typeof p.stopReason === 'string' && p.stopReason !== 'done';
-          // steps/runSteps 不取载荷(2026-10-31 用户报障「1 轮 1 动作显示 5 步」根修):done 载荷
-          // steps=reactor 链全宽步号(指令注入/MCP notice/工具回执行都占号),与内核 stats 的模型
-          // 动作轮口径不一致——live 面板 1、reload 后 applySeed 以 max(runmeta.steps) 重建即虚高。
-          // meta.steps/runSteps 权威=stats(kernel pump 逐变更同步),此处只补 done 特有面
+          // steps/runSteps 不取 done 载荷(2026-10-31「1 轮 1 动作显示 5 步」根修):载荷=reactor
+          // 链全宽步号,与 stats 模型动作轮口径不一致。权威=stats——主链 live 另有 kernel pump
+          // 逐变更同步;子智能体投影/影子水合只走 applyEvent,须在 done 落盘 stats,否则重启后
+          // RunFooter 仅剩 tokens/时刻、步数蒸发。本轮=会话累计 − 前一收口 run 的累计水位。
+          const steps = st.stats.sessionSteps;
+          let baseline = 0;
+          for (let i = ridx - 1; i >= 0; i -= 1) {
+            const prev = st.entries[i]!;
+            if (prev.kind === 'run' && typeof prev.meta?.steps === 'number') {
+              baseline = prev.meta.steps;
+              break;
+            }
+          }
+          const runSteps = Math.max(0, steps - baseline);
           const meta: RunMeta = {
             ...(run.meta ?? {}),
             ...(seconds !== undefined ? { seconds } : {}),
             ...(typeof p.tokensUsed === 'number' ? { tokens: p.tokensUsed } : {}),
             ...(stopped ? { stopped: true } : {}),
             endedTs: e.ts,
+            ...(steps > 0 ? { steps, runSteps } : {}),
           };
           st = { ...st, entries: replaceAt(st.entries, ridx, { ...run, status: undefined, meta }) };
         }
@@ -503,6 +514,10 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       };
       return { ...state, entries: replaceAt(state.entries, idx, { ...cur, meta }) };
     }
+    case 'bg-task':
+    case 'catalog-changed':
+      // GUI 旁路直播(后台账本/清单变点):不产转录条目、不承担段边界——中途收口不得拆流式正文
+      return state;
     default: {
       // 非流内事件(route/approval 系/task 系/delegation 系)一律先封流式段
       // ——collector G14.213 同构:不产条目的事件也承担段边界职责;model-end 流内

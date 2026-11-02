@@ -68,7 +68,7 @@ export function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefi
   if (ledger === undefined) return;
   ledger.stop?.();
   const now = tasks.get(ledger.id);
-  if (now !== undefined && (now.status === 'running' || now.status === 'paused')) {
+  if (now !== undefined && now.status === 'running') {
     tasks.finish(ledger.id, 'stopped', { marker: '[stopped: task_stop]' });
   }
 }

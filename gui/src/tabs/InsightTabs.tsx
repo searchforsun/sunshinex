@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Check, Copy, Database, CircleStop, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Check, Copy, Database, Square, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
-import type { Connection, SessionTaskRow } from '../connection';
+import type { Connection } from '../connection';
+import type { BgTaskRow } from '../projection';
 import { t } from '../i18n';
 import type { TabParams, TabTypeId } from './tab-state';
 import { shortStampMs } from '../ui-util';
@@ -27,11 +28,16 @@ type CtxBreakdown = {
 
 type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string; body: string };
 
-function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; error: string; reload: () => void; fetching: boolean } {
+function useFetch<T>(
+  fn: () => Promise<T>,
+  deps: unknown[],
+  opts?: { refreshNonce?: number; catalogNonce?: number },
+): { data: T | null; error: string; reload: () => void; fetching: boolean } {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState('');
   const [tick, setTick] = useState(0);
   const [fetching, setFetching] = useState(true);
+  const reload = useCallback(() => setTick((v) => v + 1), []);
   useEffect(() => {
     let alive = true;
     setFetching(true);
@@ -55,7 +61,17 @@ function useFetch<T>(fn: () => Promise<T>, deps: unknown[]): { data: T | null; e
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
-  return { data, error, reload: () => setTick((v) => v + 1), fetching };
+  // 正文/顶栏打开侧栏:主动刷一次
+  useEffect(() => {
+    if (opts?.refreshNonce === undefined) return;
+    setTick((v) => v + 1);
+  }, [opts?.refreshNonce]);
+  // catalog-changed 直播:清单变点重拉
+  useEffect(() => {
+    if (opts?.catalogNonce === undefined) return;
+    setTick((v) => v + 1);
+  }, [opts?.catalogNonce]);
+  return { data, error, reload, fetching };
 }
 
 const pct = (tokens: number, total: number): string => `${Math.round((tokens / Math.max(1, total)) * 100)}%`;
@@ -70,8 +86,20 @@ const fmtDur = (ms: number): string => {
 };
 
 /** 上下文面板:/context 结构化面——分段条 + 总量/窗口余量 */
-export function ContextTab({ conn, sessionId }: { conn: Connection; sessionId: string }): JSX.Element {
-  const { data, error, reload, fetching } = useFetch<CtxBreakdown>(() => conn.sessionContext(sessionId), [conn, sessionId]);
+export function ContextTab({
+  conn,
+  sessionId,
+  refreshNonce,
+}: {
+  conn: Connection;
+  sessionId: string;
+  refreshNonce?: number;
+}): JSX.Element {
+  const { data, error, reload, fetching } = useFetch<CtxBreakdown>(
+    () => conn.sessionContext(sessionId),
+    [conn, sessionId],
+    { refreshNonce },
+  );
   return (
     <div className="insight-tab">
       <div className="insight-bar">
@@ -114,21 +142,48 @@ function spawnPromptOf(tail: string | undefined): string | undefined {
 /** 后台任务面板:/tasks 账本行(exec 运行面,与任务板分立)。2026-10-24 用户裁定行制改版:
  *  单行=状态图标+运行时长+命令(一行省略)+创建时间。2026-10-31 用户裁定三改:①运行时长前移到
  *  状态图标后(与右缘创建时间在视觉轴上分开) ②展开详情摘「命令/结果」自解释标题,命令行右缘
- *  复制钮 ③运行中行暂停钮/暂停中恢复钮(hover 显现;exec 活账闭包,subagent/重放账 409 静默)。
- *  运行时长停表扣 pausedMs(暂停段不计时);exec 点击展开命令详情与结果;subagent 整行直开转录
+ *  复制钮 ③展开详情摘自解释标题。exec 点击展开命令详情与结果;subagent 整行直开转录
  *  (不展开)。运行中时长 1s 实时跳。focus=task_wait 行点击定位(滚至+flash;exec 顺带展开) */
 export function BgTasksTab({
   conn,
   sessionId,
   openTab,
   focus,
+  rows: liveRows,
+  onRefresh,
+  refreshNonce,
 }: {
   conn: Connection;
   sessionId: string;
   openTab?: (type: TabTypeId, params?: TabParams) => void;
   focus?: { id: string; nonce: number };
+  /** App 维护的 live 账本(bg-task 事件 + 开会话 GET) */
+  rows: readonly BgTaskRow[];
+  /** 手动/开签刷新:GET /tasks 整替(带回 outputTail) */
+  onRefresh?: () => Promise<void>;
+  refreshNonce?: number;
 }): JSX.Element {
-  const { data, error, reload, fetching } = useFetch<SessionTaskRow[]>(() => conn.sessionTasks(sessionId), [conn, sessionId]);
+  const [fetching, setFetching] = useState(false);
+  const [error, setError] = useState('');
+  const reload = useCallback((): void => {
+    if (onRefresh === undefined || fetching) return;
+    setFetching(true);
+    void onRefresh()
+      .then(() => setError(''))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setFetching(false));
+  }, [onRefresh, fetching]);
+  // 正文/顶栏打开 或 focus 定位:主动 GET 一次(带 outputTail)
+  useEffect(() => {
+    if (refreshNonce === undefined) return;
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshNonce]);
+  useEffect(() => {
+    if (focus === undefined) return;
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   // 复制回显(2026-10-31 用户裁定「与正文中复制按钮一致」):useCopyFeedback 单点+Check 图标交换
   // ——status=最近一次复制结果,ltRid 锚定到触发行(多行面板仅命中行显 √)
@@ -138,7 +193,7 @@ export function BgTasksTab({
   const rowRefs = useRef(new Map<string, HTMLElement>());
   // 运行中时长实时:有 running 任务才起 1s 定时器(终态行用 endedAt 恒定,零无谓重渲染)
   const [now, setNow] = useState(Date.now());
-  const hasRunning = (data ?? []).some((r) => r.status === 'running');
+  const hasRunning = liveRows.some((r) => r.status === 'running');
   useEffect(() => {
     if (!hasRunning) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -146,17 +201,16 @@ export function BgTasksTab({
   }, [hasRunning]);
   // task_wait 定位:滚至行(不加描边 flash——用户裁定「跳转不加边框」);exec 展开详情
   useEffect(() => {
-    if (focus === undefined || data === null) return;
-    const row = data.find((r) => r.id === focus.id);
+    if (focus === undefined) return;
+    const row = liveRows.find((r) => r.id === focus.id);
     if (row === undefined) return;
     if (row.kind !== 'subagent') {
       setExpanded((cur) => new Set(cur).add(focus.id));
     }
     rowRefs.current.get(focus.id)?.scrollIntoView({ block: 'center' });
-  }, [focus, data]);
-  /** 运行时长停表(2026-10-31 暂停面):终态=endedAt;暂停中=pausedAt 冻结点;其余=now——均扣已折算暂停段 */
-  const durOf = (r: SessionTaskRow): string =>
-    fmtDur(Math.max(0, (r.endedAt ?? (r.status === 'paused' ? (r.pausedAt ?? now) : now)) - r.startedAt - (r.pausedMs ?? 0)));
+  }, [focus, liveRows]);
+  /** 运行时长:终态=endedAt,运行中=now 实时跳 */
+  const durOf = (r: BgTaskRow): string => fmtDur(Math.max(0, (r.endedAt ?? now) - r.startedAt));
   const toggle = (id: string): void =>
     setExpanded((cur) => {
       const next = new Set(cur);
@@ -164,7 +218,7 @@ export function BgTasksTab({
       else next.add(id);
       return next;
     });
-  const openSubagent = (r: SessionTaskRow): void => {
+  const openSubagent = (r: BgTaskRow): void => {
     if (openTab === undefined) return;
     openTab('agent', { label: r.label, agentTitle: r.label, task: spawnPromptOf(r.outputTail) });
   };
@@ -172,18 +226,17 @@ export function BgTasksTab({
     copiedRowRef.current = id;
     copyText(label);
   };
-  /** 暂停/恢复失败可见化(2026-11-01 用户裁定「暂停之后不能恢复」体感根修):409(无暂停闭包)/
-   *  连接失败原先静默吞掉=点了没反应,横幅行如实报 */
+  /** 停止失败可见化 */
   const [actError, setActError] = useState('');
   /** 二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击武装,3s 内再击执行 */
   const [armedId, setArmedId] = useState<string | null>(null);
   const stopTask = (e: React.MouseEvent, id: string): void => {
     e.stopPropagation();
     conn.taskStop(sessionId, id)
-      .then(() => { setActError(''); return reload(); })
+      .then(() => { setActError(''); return onRefresh?.(); })
       .catch((err: unknown) => setActError(`${t('Stop failed', '停止失败')}: ${err instanceof Error ? err.message : String(err)}`));
   };
-  const rows = [...(data ?? [])].sort((a, b) => b.startedAt - a.startedAt);
+  const rows = [...liveRows].sort((a, b) => b.startedAt - a.startedAt);
   return (
     <div className="insight-tab">
       <div className="insight-bar">
@@ -199,13 +252,13 @@ export function BgTasksTab({
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
-      {data !== null && data.length === 0 && (
+      {rows.length === 0 && (
         <div className="board-empty-state" role="status">
           <p className="board-empty-title">{t('No background tasks', '暂无后台任务')}</p>
           <p className="board-empty-hint">{t('Background exec/spawn tasks will appear here.', '后台 exec/spawn 任务会显示在这里。')}</p>
         </div>
       )}
-      {data !== null && data.length > 0 && (
+      {rows.length > 0 && (
         <div className="todo-cards" aria-label="background tasks">
           {rows.map((r) => {
             const isSub = r.kind === 'subagent';
@@ -239,16 +292,14 @@ export function BgTasksTab({
                     }
                   }}
                 >
-                  {/* 2026-10-24 用户裁定:状态点与全项目同款(tb-status-dot)——灰转圈=running,
-                   *  蓝点=done,红点=failed,灰点=stopped/paused(paused 静态灰点+时长冻结) */}
-                  <span className={`tb-status-dot bg-${r.status === 'paused' ? 'stopped' : r.status}`} aria-hidden="true" />
+                  {/* 状态点对齐智能体团队:灰转圈=running,蓝=done,红=failed,黄=stopped */}
+                  <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
                   {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
                   <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>{durOf(r)}</span>
                   <span className="todo-card-goal bg-cmd" data-tip={r.label}>{r.label}</span>
-                  {/* 停止(2026-11-02 用户裁定「暂停=复用 task_stop,撤恢复」+「二次确认,点击变红边框」):
-                      running/paused 行 hover 显现;二段确认——首击武装(红边框),3s 内再击执行,超时解除;
-                      subagent 行=打断线正确停子智能体(exec=杀进程树) */}
-                  {(r.status === 'running' || r.status === 'paused') && typeof conn.taskStop === 'function' && (
+                  {/* 停止:空心方块图标与智能体团队同形;running 行 hover 显现;
+                      二段确认——首击武装(红边框),3s 内再击执行,超时解除 */}
+                  {r.status === 'running' && typeof conn.taskStop === 'function' && (
                     <button
                       type="button"
                       className={`sx-changes-act bg-act${armedId === r.id ? ' arm' : ''}`}
@@ -265,7 +316,7 @@ export function BgTasksTab({
                         }
                       }}
                     >
-                      <CircleStop size={13} strokeWidth={1.75} />
+                      <Square size={11} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   )}
                   <span className="todo-card-time">{shortStampMs(r.startedAt)}</span>
@@ -308,9 +359,25 @@ export function BgTasksTab({
  *  2026-10-31 用户裁定显示优化:①行图标=Database(与正文 [memory] 回显同件) ②「project · 创建」
  *  元信息行退役 ③详情=深色底固定高,过高纵向滚动 ④focus(memoryFocus 下发)展开并滚至对应行
  *  ⑤批量勾选入口退役(「去掉批量删除入口」)——单行删除二段确认保留 */
-export function MemoryTab({ conn, root, focus }: { conn: Connection; root: string; focus?: { slug: string; nonce: number } }): JSX.Element {
+export function MemoryTab({
+  conn,
+  root,
+  focus,
+  refreshNonce,
+  catalogNonce,
+}: {
+  conn: Connection;
+  root: string;
+  focus?: { slug: string; nonce: number };
+  refreshNonce?: number;
+  /** catalog-changed(memory) 递增 → 重拉清单 */
+  catalogNonce?: number;
+}): JSX.Element {
   const fetcher = useCallback(() => conn.memoryList(root), [conn, root]);
-  const { data, error, reload, fetching } = useFetch<MemoryRow[]>(fetcher, [conn, root]);
+  const { data, error, reload, fetching } = useFetch<MemoryRow[]>(fetcher, [conn, root], {
+    refreshNonce,
+    catalogNonce,
+  });
   const [deleting, setDeleting] = useState(false);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   /** 删除二段确认(共享 ConfirmDeleteButton 同语义):首击武装(红),3s 内再击执行,超时解除 */
@@ -429,9 +496,25 @@ export function MemoryTab({ conn, root, focus }: { conn: Connection; root: strin
  *  learned 源技能清单——行=Sparkles(与正文 [skills] 回显同件)+id+创建时间+删除(二段确认,
  *  与记忆行同语言;只作用于学习根 learnedSkillsDir,project/user 用户资产不可达);
  *  展开=深色底固定高纵md渲染(mem 同款类) */
-export function LearnedSkillsTab({ conn, root, focus }: { conn: Connection; root: string; focus?: { slug: string; nonce: number } }): JSX.Element {
+export function LearnedSkillsTab({
+  conn,
+  root,
+  focus,
+  refreshNonce,
+  catalogNonce,
+}: {
+  conn: Connection;
+  root: string;
+  focus?: { slug: string; nonce: number };
+  refreshNonce?: number;
+  /** catalog-changed(learned) 递增 → 重拉清单 */
+  catalogNonce?: number;
+}): JSX.Element {
   const fetcher = useCallback(() => conn.skillsGroups(root), [conn, root]);
-  const { data, error, reload, fetching } = useFetch(fetcher, [conn, root]);
+  const { data, error, reload, fetching } = useFetch(fetcher, [conn, root], {
+    refreshNonce,
+    catalogNonce,
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   /** 定位(2026-11-01 用户裁定「点击正文 学习|更新技能 → 侧栏展开指定技能」):focus slug 展开对应
    *  行并滚至可见——数据在场的展开即时落,数据未到的等加载完成后落(useEffect 随 data/focus 重跑);
@@ -454,6 +537,8 @@ export function LearnedSkillsTab({ conn, root, focus }: { conn: Connection; root
   /** 删除二段确认(与记忆行同语义):首击武装(红),3s 内再击执行,超时解除 */
   const [armId, setArmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // 删除失败可见化(D30 口径:无 catch=unhandled rejection+零反馈;InsightTabs 停止失败横幅同款)
+  const [actError, setActError] = useState('');
   useEffect(() => {
     if (armId === null) return;
     const t = setTimeout(() => setArmId(null), 3000);
@@ -463,7 +548,10 @@ export function LearnedSkillsTab({ conn, root, focus }: { conn: Connection; root
   const remove = (id: string): void => {
     if (root === '') return;
     setDeleting(true);
-    conn.skillsRemove(root, id).then(reload).finally(() => setDeleting(false));
+    conn.skillsRemove(root, id)
+      .then(() => { setActError(''); return reload(); })
+      .catch((err: unknown) => setActError(`${t('Delete failed', '删除失败')}: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setDeleting(false));
   };
   return (
     <div className="insight-tab">
@@ -473,6 +561,7 @@ export function LearnedSkillsTab({ conn, root, focus }: { conn: Connection; root
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
+      {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
       {root === '' && (
         <div className="board-empty-state" role="status">
           <p className="board-empty-title">{t('No project selected', '未选择项目')}</p>

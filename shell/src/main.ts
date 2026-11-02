@@ -17,10 +17,6 @@ import type { ShellDaemon } from './daemon';
 // 启动失败 → DevToolsActivePort 缺更新 → facade 优雅降级(builtin 档回落,其余功能不受影响)
 app.commandLine.appendSwitch('remote-debugging-port', '57679');
 
-// M2 内置浏览器融合:真实 CDP 调试口(端口=临时,Chromium 写 userData/DevToolsActivePort,daemon
-// 内 facade 过滤代理只向插件暴露侧栏 <webview> target——应用自身 UI 永不可见)。ready 前装配
-app.commandLine.appendSwitch('remote-debugging-port', '0');
-
 /** smoke 收口总超时（ms）：ready-to-show 未至 / 收口悬挂的整体守卫，超时按失败退 1（T4 门禁判据） */
 const SMOKE_TOTAL_TIMEOUT_MS = 45_000; // 满载机器(发版验证链后)冷启余量:15s 曾在发布环境瞬态超时,45s 仍远小于外层门
 /** daemon close 的有界等待（ms）：close 悬挂不阻塞退出——有界等待完仍按正常收口走 quit。

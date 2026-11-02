@@ -13,6 +13,10 @@
 
 import { pathBasename, pathSegments } from '../ui-util';
 
+/** 欢迎页草稿座键(临时会话思想:@welcome 座内存 only 恒不落盘,首条消息整座迁移该会话)——
+ *  常量落叶子防环(App 与 use-shell-layout 双消费) */
+export const WELCOME_TAB_SEAT = '@welcome';
+
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
 export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'agent' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'learned' | 'sidechat'; /* learned=学习技能(2026-10-31,[skills] 回显点击打开);directory 退役(2026-10-29 用户裁定「不要兼容」):盘档消毒 TAB_TYPES 同步滤除,旧盘 directory 页签开席即弃 */
 

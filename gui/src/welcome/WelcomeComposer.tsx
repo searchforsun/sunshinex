@@ -332,14 +332,27 @@ export function WelcomeComposer({
     return () => document.removeEventListener('mousedown', onDown);
   }, [branchOpen]);
   const checkoutBranch = (branch: string): void => {
-    void conn.gitCheckout(picked, branch).then(() => {
-      void conn.gitBranches(picked).then((r) => setGitBr(r.branches.length > 0 ? r : null));
-    });
+    void conn
+      .gitCheckout(picked, branch)
+      .then(() => conn.gitBranches(picked))
+      .then((r) => setGitBr(r.branches.length > 0 ? r : null))
+      .catch((err: unknown) => setHint(`${t('Branch switch failed', '切换分支失败')}: ${err instanceof Error ? err.message : String(err)}`));
   };
   /** 浏览新文件夹(G10 用户裁定 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
    *  目录(旧 showDirectoryPicker 拿不到路径按 name 建目录的行为废除)。已登记幂等(daemon
    *  workspace.json 同 root 直返 ok)。 */
+  /** 登记成功收口单点(三入口共用:桌面壳对话框/浏览器态对话框/DirPicker 确认):
+   *  幂等追加(slug 判重)+选中+收项目菜单+静默回源(skills 闸随 picked 重置+列表与侧栏/mtime 对齐) */
+  const adoptWorkspace = (res: { slug: string; root: string }): void => {
+    setRows((prev) => {
+      const list = prev ?? [];
+      return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
+    });
+    setPicked(res.root);
+    setProjOpen(false);
+    void refreshRows();
+  };
   const browseFolder = async (): Promise<void> => {
     setHint('');
     const shell = window.sunshinex;
@@ -347,14 +360,7 @@ export function WelcomeComposer({
       const p = await shell.pickFolder();
       if (p === null) return;
       try {
-        const res = await conn.createWorkspace({ path: p });
-        setRows((prev) => {
-          const list = prev ?? [];
-          return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
-        });
-        setPicked(res.root);
-        setProjOpen(false);
-        void refreshRows(); // 静默回源:skills 闸随 picked 重置(上方 effect)+列表与侧栏/mtime 对齐
+        adoptWorkspace(await conn.createWorkspace({ path: p }));
       } catch (err) {
         setHint(err instanceof Error ? err.message : String(err));
       }
@@ -366,14 +372,7 @@ export function WelcomeComposer({
     if (picked === null) return;
     if (picked !== 'unsupported' && picked !== 'denied' && picked !== 'timeout') {
       try {
-        const res = await conn.createWorkspace({ path: picked.path });
-        setRows((prev) => {
-          const list = prev ?? [];
-          return list.some((x) => x.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
-        });
-        setPicked(res.root);
-        setProjOpen(false);
-        void refreshRows(); // 静默回源(同桌面壳分支)
+        adoptWorkspace(await conn.createWorkspace({ path: picked.path }));
       } catch (err) {
         setHint(err instanceof Error ? err.message : String(err));
       }
@@ -388,15 +387,7 @@ export function WelcomeComposer({
     setDirOpen(false);
     conn
       .createWorkspace({ path: p })
-      .then((res) => {
-        setRows((prev) => {
-          const list = prev ?? [];
-          return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
-        });
-        setPicked(res.root);
-        setProjOpen(false);
-        void refreshRows(); // 静默回源:skills 闸随 picked 重置+列表对齐
-      })
+      .then(adoptWorkspace)
       .catch((err: unknown) => setHint(err instanceof Error ? err.message : String(err)));
   };
   // pill 回显文案四态(data-tip 与 pill-label 同源;窄视口 CSS 塌缩面 sx-main-narrow 不变)

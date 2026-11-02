@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { boardEventFrom, applyBoardEvent, applyTeamNameEvent, emptyBoard, applyDelegation } from './projection';
+import {
+  boardEventFrom,
+  applyBoardEvent,
+  applyBgTaskEvent,
+  applyTeamMemberEvent,
+  applyTeamNameEvent,
+  emptyBoard,
+  applyDelegation,
+} from './projection';
 import type { SessionEvent } from '../../src/types';
 
 /**
@@ -68,5 +76,75 @@ describe('gui 板投影（boardEventFrom + applyBoardEvent 同源直跑）', () 
     });
     expect(delegations).toHaveLength(1);
     expect(delegations[0]).toMatchObject({ id: 'task-t1', status: 'done', endedAt: 201, tokens: 5, reply: 'ok' });
+  });
+
+  it('成员名册直播：teammate-created 登记；名册内 delegation 翻转 busy；spawn 同形委派不入册', () => {
+    let team = applyTeamMemberEvent([], {
+      type: 'teammate-created',
+      ts: 10,
+      payload: { name: '需求分析师', teamId: 'team-a', createdAt: 1, busy: false },
+    });
+    expect(team).toEqual([{ name: '需求分析师', busy: false, teamId: 'team-a', createdAt: 1 }]);
+    team = applyTeamMemberEvent(team, {
+      type: 'delegation-started',
+      ts: 20,
+      payload: { delegationId: 'task-t1', kind: 'subagent', label: '需求分析师', title: '分析需求' },
+    });
+    expect(team[0]!.busy).toBe(true);
+    team = applyTeamMemberEvent(team, {
+      type: 'delegation-ended',
+      ts: 30,
+      payload: { delegationId: 'task-t1', kind: 'subagent', label: '需求分析师', status: 'done' },
+    });
+    expect(team[0]!.busy).toBe(false);
+    // 未在名册的 spawn fork 委派不误入成员栏
+    expect(
+      applyTeamMemberEvent(team, {
+        type: 'delegation-started',
+        ts: 40,
+        payload: { delegationId: 'spawn-1', kind: 'subagent', label: 'researcher' },
+      }),
+    ).toEqual(team);
+  });
+
+  it('后台任务直播：bg-task upsert；保留既有 outputTail；非 exec/subagent 忽略', () => {
+    let rows = applyBgTaskEvent([], {
+      type: 'bg-task',
+      ts: 10,
+      payload: { id: 'bg1', kind: 'exec', label: 'sleep 30', status: 'running', startedAt: 10 },
+    });
+    expect(rows).toEqual([{ id: 'bg1', kind: 'exec', label: 'sleep 30', status: 'running', startedAt: 10 }]);
+    rows = applyBgTaskEvent(rows, {
+      type: 'bg-task',
+      ts: 20,
+      payload: {
+        id: 'bg1',
+        kind: 'exec',
+        label: 'sleep 30',
+        status: 'done',
+        startedAt: 10,
+        endedAt: 20,
+        exitCode: 0,
+      },
+    });
+    expect(rows[0]).toMatchObject({ id: 'bg1', status: 'done', endedAt: 20, exitCode: 0 });
+    // GET 播种的尾部在事件更新后仍保留
+    rows = applyBgTaskEvent(
+      [{ id: 'bg1', kind: 'exec', label: 'sleep 30', status: 'running', startedAt: 10, outputTail: 'out…', outputTruncated: true }],
+      {
+        type: 'bg-task',
+        ts: 30,
+        payload: { id: 'bg1', kind: 'exec', label: 'sleep 30', status: 'stopped', startedAt: 10, endedAt: 30 },
+      },
+    );
+    expect(rows[0]).toMatchObject({ status: 'stopped', outputTail: 'out…', outputTruncated: true });
+    // teammate 等非账本 kind 不入后台任务面
+    expect(
+      applyBgTaskEvent(rows, {
+        type: 'bg-task',
+        ts: 40,
+        payload: { id: 'tm1', kind: 'teammate', label: '分析师', status: 'running', startedAt: 40 },
+      }),
+    ).toEqual(rows);
   });
 });

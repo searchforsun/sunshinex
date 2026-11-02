@@ -5,8 +5,8 @@
  * 其 settingsReader 注入面同日改为按 scope 双询问）。本模块是合并读面的配套读写面：
  * - 读 = listPlugins：loadEffectivePlugins 薄包装（root=null 仅全局装载；零增值字段先不做）；
  * - 写 = setPluginEnabled/setPluginConfig：目标 scope 的 settings.json plugins.<id> 记录读改写，
- *   记录内另一字段保留（开关写保 config、config 写保 enabled）——与 handlePluginsPut「记录级整面替换」
- *   不同：catalog 面按字段手术（CLI/设置页增量写场景，不丢用户手写的另一半）。
+ *   记录内另一字段保留（开关写保 config、config 写保 enabled）——handlePluginsPut 同口径
+ *   （2026-11-01 记录内合并保留后两写面语义一致；跨层级遮蔽语义在装载侧合并）。
  * 写纪律沿 catalog/approvals（Task 3）同款：
  * - 读原文（readJsoncDoc）→ 改 doc → writeJsonAtomic 原子写回；盘上形态 2-space + 尾随换行，新档补 version:1；
  * - 目标文件含 JSONC 注释 → CatalogWriteError('COMMENTS')（结构化整写会毁注释，Task 15 映射 409 引流 raw 编辑面）；
@@ -17,19 +17,12 @@
  * - 定位面对他级 settings 畸形 fail-fast 抛错沿装载链同纪律不在此兜（静默降级会演变成「配置没生效」的排查泥潭）。
  */
 import { loadEffectivePlugins, type EffectivePlugin } from '../config/plugins';
-import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite } from './io';
+import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot, settingsPathOf } from './io';
 
 /** 两级清单（loadEffectivePlugins 薄包装）：plugins + 装载聚合警告单；root=null 仅全局装载（无项目锚） */
 export function listPlugins(root: string | null): { plugins: EffectivePlugin[]; warnings: string[] } {
   return loadEffectivePlugins(root ?? undefined);
-}
-
-/** 目标 scope 的 settings.json 落位：project=<root>/.sunshinex/settings.json（root 缺省回退 cwd，
- *  与 mcpJsonPath 无项目上下文口径一致）；global=<userConfigDir>/settings.json */
-function settingsPath(scope: Scope, root: string | null): string {
-  return scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root ?? process.cwd());
 }
 
 /** plugins.<id> 记录形状裁决：{enabled?, config?} 浅对象；形状坏按无记录处理（装载面告警忽略坏记录，写面重建） */
@@ -47,7 +40,7 @@ function updatePluginRecord(
   id: string,
   patch: (prev: Record<string, unknown>) => Record<string, unknown>,
 ): void {
-  const file = settingsPath(scope, root);
+  const file = settingsPathOf(scope, requireProjectRoot(scope, root, 'plugin'));
   const read = readJsoncDoc(file);
   if (read.hasComments) {
     throw new CatalogWriteError('COMMENTS', `${file} 含 JSONC 注释，结构化写会毁注释；请经 raw 编辑面移除注释后重试`);

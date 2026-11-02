@@ -102,7 +102,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 }
 ```
 
-模型配置唯一事实源 = `providers` 列表：缺省模型恒为**第一个 provider 的第一个 model**（清单序即优先级）。`model` / `baseUrl` / `modelSmall` / `modelMedium` / `modelLarge` 五个散键已退役（2026-10-28），`dataDir` 等历史键同样不再识别——这些键与拼错的未知键同判（启动打一条通用未知键告警、不生效），配置一律写 `providers` 列表；没配 `providers` 时直接 `export SUNSHINEX_MODEL=…` / `SUNSHINEX_BASE_URL=…` 的单模型环境变量形态仍可用。
+模型配置唯一事实源 = `providers` 列表：缺省模型恒为**第一个 provider 的第一个 model**（清单序即优先级）。语义键表以本节模板为准——拼写错误或表外键（含 `model` / `dataDir` 等形近历史键）一律按未知键同判（启动打一条通用未知键告警、不生效），模型配置一律写 `providers` 列表；没配 `providers` 时直接 `export SUNSHINEX_MODEL=…` / `SUNSHINEX_BASE_URL=…` 的单模型环境变量形态仍可用。
 
 修改配置后新开会话生效（运行中会话不热切换；GUI 设置页的实时刷新只影响面板显示，见第三节「配置实时同步」）。
 
@@ -162,7 +162,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   "kbDataDir": "",                                   // 知识库目录；留空 = 数据目录/kb
   "embeddingBaseUrl": "",                            // 嵌入服务；留空 = 回退主模型同名字段
   "embeddingModel": "",
-  "websearchProvider": "duckduckgo",                 // duckduckgo | bing
+  "websearchProvider": "bing-html",                  // bing-html（缺省）| duckduckgo | bing；bing 需 SUNSHINEX_BING_API_KEY
   "websearchEndpoint": "",                           // 搜索端点覆盖；留空 = 提供方缺省
 
   // ── 目录覆盖（留空即用缺省，见第三节）────────────────
@@ -202,16 +202,16 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 }
 ```
 
-- 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`tier` ≡ `SUNSHINEX_TIER`），环境变量仍最高优先。散键退役后 `SUNSHINEX_MODEL` / `SUNSHINEX_BASE_URL` 两个环境槽本身不退役——无 `providers` 时直接导出仍按单模型形态装配。
+- 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`tier` ≡ `SUNSHINEX_TIER`），环境变量仍最高优先。`SUNSHINEX_MODEL` / `SUNSHINEX_BASE_URL` 两个环境槽保持有效——无 `providers` 时直接导出仍按单模型形态装配。
 - `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`；`sunshinex providers key <源>` 交互写入）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
-- 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）——取代退役的 `modelSmall` / `modelMedium` / `modelLarge` 三键。
+- 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）（档位标注是 tier 路由的唯一数据源。）
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 
 ### MCP 服务器（mcp.json）
 
-MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）：
+MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。可靠性口径：每轮任务入口对各 server 做连通性探活（协议级 ping，1s 封顶），失败 server 同轮重建；运行中调用遇连接断链（server 进程死亡/管道断）自动重连并重试，最多 2 次，穷尽如实回报 `MCP_CONNECT_FAILED`（超时与业务错误不重试）：
 
 ```json
 {
@@ -572,7 +572,7 @@ pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包
 | 现象 | 处理 |
 | --- | --- |
 | 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `providers`（首源 `baseUrl` 与 `env` 密钥槽，全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽（`providers test <源>` 可探活） |
-| 启动告警「未知语义键 "model" / "dataDir" …」 | 存量散键/历史键设置：这些键已不再识别（与拼错键同判，告警不致命）——模型配置改写 `providers` 列表（见第二节）；未配 providers 时 env 直导出形态仍可用 |
+| 启动告警「未知语义键 "model" / "dataDir" …」 | 形近历史键与拼错键同判（告警不致命）——模型配置改写 `providers` 列表（见第二节）；未配 providers 时 env 直导出形态仍可用 |
 | 输入没反应 | 正在等待审批或计划确认：按 `y` / `a` / `n` |
 | 写操作总被拒 | 当前是 `read-only` 档：重启以 `--mode=acceptEdits`（或缺省档）启动 |
 | 看不到思考过程 | 端点未回传 reasoning 字段，属正常降级，不影响答复 |

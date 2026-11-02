@@ -7,10 +7,10 @@
 | 能力 | Linux | macOS | Windows |
 |------|-------|-------|---------|
 | 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
-| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate） | 支持 | 支持 | 支持（单行命令） |
+| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings） | 支持 | 支持 | 支持（单行命令） |
 | 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测；无 Git 时 PowerShell，末位 cmd 兜底） |
 | GUI 浏览器模式（`serve` daemon + web 前端） | 支持 | 支持 | 支持 |
-| GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS + portable 双产物） |
+| GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS 单安装包） |
 | 内置插件 | browser-use 可用；computer-use 不支持（manifest 平台声明置灰） | 同 Linux | browser-use / computer-use 均可用（server 单文件束，目标机零补装；browser-use 浏览器走系统品牌通道） |
 
 部署条件（三平台通用）：
@@ -40,4 +40,4 @@ Windows 注意事项：
 - 推荐安装 Git for Windows 后直接使用（自动探测生效）；WSL 内按 Linux 口径亦完整可用。便携版/自定义安装位置若未被自动发现（如未挂 PATH 且不在标准安装根下）：设置环境变量 `SUNSHINEX_SHELL` 指向 `bash.exe`/`sh.exe` 即可。
 - **命令形态建议**：`exec` 在既无 Git Bash 又无 PowerShell 时才回落 `cmd /c`，此时命令集与引号语义与 sh 相差最远（`ls`/`cat` 不可用、`node -e "…"` 的引号会被当字面量、退出码不反映实际）；命中 PowerShell 时命令须按 PowerShell 语义书写（非 sh 语义）。要跨平台稳定，用脚本文件承载逻辑（`node script.js`）或安装 Git for Windows。
 - **测试口径**：仓库测试不得依赖宿主 shell 方言（不以 `ls`/`cat`/内联 `node -e` 作断言前提），shell 语义用例集中在 `src/harness/security/sandbox.test.ts`。
-- **子进程执行收敛面**：工具命令执行（模型可调命令）单点 `ProcessSandbox`（`src/harness/security/sandbox.ts`，平台分支唯一落点）；三类登记的既有收敛单点例外——①工具型 git 直调：`cli/commands/skills-install.ts`（浅克隆）/`harness/worktree.ts`（execGit 助手）/`serve/session-changes.ts`（git()），均参数数组零 shell 拼接（安装期/工作区簿记用途，经沙箱闸门无增益）；②GUI 终端 pty 接缝：`serve/pty.ts`（node-pty 宿主）——PTY 是终端仿真非沙箱命令，不可经 ProcessSandbox（§5 依赖台账在册），其 shell 选择（`pty-handlers.ts` powershell→SHELL→/bin/bash）与 win32 收口闸属该接缝域；③serve 面扫描根平台分支（`workspace-handlers.ts` win32 跳过 home）——目录枚举非命令执行，不在沙箱规则射程。
+- **子进程执行收敛面**：工具命令执行（模型可调命令）单点 `ProcessSandbox`（`src/harness/security/sandbox.ts`，平台分支唯一落点）；三类登记的既有收敛单点例外——①工具型 git 直调：`cli/commands/skills-install.ts`（浅克隆）/`harness/worktree.ts`（execGit 助手）/`serve/session-changes.ts`（git()），均参数数组零 shell 拼接（安装期/工作区簿记用途，经沙箱闸门无增益）；②GUI 终端 pty 接缝：`serve/pty.ts`（node-pty 宿主）——PTY 是终端仿真非沙箱命令，不可经 ProcessSandbox（§5 依赖台账在册），其 shell 选择（`pty-handlers.ts` powershell→SHELL→/bin/bash）与 win32 收口闸属该接缝域；③serve 面扫描根平台分支（`workspace-handlers.ts` win32 跳过 home）——目录枚举非命令执行，不在沙箱规则射程；④宿主侧进程收割/清扫面（自身生命周期管理非模型可调命令）：`harness/mcp/client.ts` killProcessTree（stdio 子进程树终结兜底）/ `security/sandbox.ts` killBackground / `serve/daemon.ts` reapBuiltinBrowsers（内置浏览器兜底收割，PowerShell CIM 扫描+taskkill 树杀）——三类同族登记，平台分支就地维护。

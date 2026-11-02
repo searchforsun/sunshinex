@@ -190,6 +190,25 @@ export class Harness {
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
     // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
     this.tasks = new TaskRegistry(resolveDataDir(base));
+    // 后台任务账本直播(GUI 侧栏/顶栏计数):submit/finish 旁路;adopt 重放不经 onChange
+    if (opts.onEvent) {
+      const emit = opts.onEvent;
+      this.tasks.setOnChange((task) => {
+        emit({
+          type: 'bg-task',
+          ts: Date.now(),
+          payload: {
+            id: task.id,
+            kind: task.kind,
+            label: task.label,
+            status: task.status,
+            startedAt: task.startedAt,
+            ...(task.endedAt !== undefined ? { endedAt: task.endedAt } : {}),
+            ...(task.exitCode !== undefined ? { exitCode: task.exitCode } : {}),
+          },
+        });
+      });
+    }
     // edit 先读守卫(read 记录快照/edit 校验 NOT_READ·STALE_READ):随运行时铸造——setMode/reset 换铸
     // 即新守卫,换铸后目标文件须重读再改(与快照出生重建同族语义);写入面(write 工具)不设闸(全量覆写
     // 自带完整内容,无 old_string 错位面)
@@ -202,7 +221,12 @@ export class Harness {
       archive: createToolOutputArchive(() => resolveDataDir(base)),
       skills: this.skills,
       memory: guardMemoryWrite,
-      memoryWrite: (input) => writeMemoryFact({ root: base, ...input }),
+      memoryWrite: (input) => {
+        const r = writeMemoryFact({ root: base, ...input });
+        // 记忆清单变点直播(GUI 记忆页签主动重拉;与沉淀管线 catalog-changed 同形)
+        if (r.ok) opts.onEvent?.({ type: 'catalog-changed', payload: { kind: 'memory' }, ts: Date.now() });
+        return r;
+      },
       ask: opts.ask ?? headlessAskStub,
       writeSnapshot: this.writeSnapshot,
       activeRoot: () => this.safety.activeRoot,
@@ -220,6 +244,9 @@ export class Harness {
       notify: (source, text) => {
         this.context.appendChain([{ action: 'notice', observation: text }]);
         opts.onEvent?.({ type: 'notice', text, payload: { source, text }, ts: Date.now() });
+        // 记忆/学习技能落盘变点→侧栏清单直播(跳过「未应用」说明行等非清单变文案:仅 skills/memory 源)
+        if (source === 'memory') opts.onEvent?.({ type: 'catalog-changed', payload: { kind: 'memory' }, ts: Date.now() });
+        if (source === 'skills') opts.onEvent?.({ type: 'catalog-changed', payload: { kind: 'learned' }, ts: Date.now() });
       },
       learnedEnabled: () => opts.learnSkills ?? resolveMemoryConfig().learnedSkills,
       memoryEnabled: () => (opts.memoryOverride ?? resolveMemoryConfig().autoMemory) === true,
@@ -495,6 +522,18 @@ export class Harness {
           }
           const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
           if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
+          // 成员名册直播(与 create_agent_team → team-created 同形):GUI 队卡「成员」栏不靠快照轮询
+          const tm = this.team.get(r.value.name);
+          opts.onEvent?.({
+            type: 'teammate-created',
+            payload: {
+              name: r.value.name,
+              teamId,
+              createdAt: tm?.createdAt ?? Date.now(),
+              busy: tm?.isBusy() ?? false,
+            },
+            ts: Date.now(),
+          });
           return {
             exitCode: 0,
             stdout: `teammate "${r.value.name}" started — claims unassigned board tasks (teamId=${teamId}); give work with create_agent_team_task; interrupt via agent_team_task_stop`,

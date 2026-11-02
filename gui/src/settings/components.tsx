@@ -27,9 +27,8 @@ import { Select } from './controls';
  *   行与控件行两段纵向,字级/间距对齐 .sx-setting-label/.sx-setting-desc;纯容器零逻辑
  *   (children 原样透传,受控件/aria-label 全由消费方持有)。
  * 样式零新依赖:全部走 app.css 既有令牌(--surface-elevated/--border/--radius 系列/--warn…),
- * 新类前缀 sx-scope-/sx-search-/sx-rc-/sx-drawer-/sx-empty-/sx-error-(Task 21 追加段)+
- * sx-editor-modal-/sx-res-toolbar(2026-10-29 追加段;旧 sx-drawer-* 容器类留置不删——app.css
- * 并行热区只加不改)+ sx-modal-field-(2026-10-30 追加段,同纯加法纪律)。
+ * 新类前缀 sx-scope-/sx-search-/sx-rc-/sx-drawer-field/sx-empty-/sx-error-(Task 21 追加段)+
+ * sx-editor-modal-/sx-res-toolbar(2026-10-29 追加段)+ sx-modal-field-(2026-10-30 追加段,同纯加法纪律)。
  * 字符串一律渲染期 t(en,zh)(G14.213 设置面 i18n 纪律)。
  */
 

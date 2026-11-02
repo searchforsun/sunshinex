@@ -397,6 +397,34 @@ test('⑭ reducer 纯件:applyEvent 零副作用(入参态不变)', () => {
   assert.equal(s2.pending.length, 1);
 });
 
+test('⑭b GUI 旁路直播:bg-task/catalog-changed 不封流式段、不产条目', () => {
+  const s0 = applyEvent(initialKernelState(), ev('token', 'hello'));
+  assert.equal(s0.openSeg >= 0, true, '流式段开启');
+  const s1 = applyEvent(s0, { type: 'bg-task', ts: 2, payload: { id: 'bg1', kind: 'exec', status: 'done' } });
+  assert.equal(s1.openSeg, s0.openSeg, 'bg-task 不封段');
+  assert.equal(s1.entries.length, s0.entries.length);
+  const s2 = applyEvent(s1, { type: 'catalog-changed', ts: 3, payload: { kind: 'memory' } });
+  assert.equal(s2.openSeg, s0.openSeg, 'catalog-changed 不封段');
+  assert.equal(s2.entries.length, s0.entries.length);
+  const s3 = applyEvent(s2, ev('token', ' world'));
+  const idx = s3.entries.findIndex((x) => x.seq === s3.openSeg);
+  assert.equal(s3.entries[idx]?.md, 'hello world', '旁路事件后正文续拼同一开启段');
+});
+
+test('⑭c done 从 stats 落 steps(子智能体/影子水合只走 applyEvent,不经 kernel pump 同步)', () => {
+  let s = initialKernelState();
+  s = applyEvent(s, ev('model-start', undefined, undefined, 1000));
+  s = applyEvent(s, ev('step', 'tool_call', undefined, 1100));
+  s = applyEvent(s, ev('step', 'tool_call', undefined, 1200));
+  s = applyEvent(s, ev('token', '答', undefined, 1300));
+  s = applyEvent(s, ev('done', '答', { tokensUsed: 500, stopReason: 'done' }, 2000));
+  const run = s.entries.find((e) => e.kind === 'run');
+  assert.equal(run?.meta?.steps, 2, 'stats.sessionSteps 落入 meta');
+  assert.equal(run?.meta?.runSteps, 2);
+  assert.equal(run?.meta?.tokens, 500);
+  assert.equal(run?.meta?.endedTs, 2000);
+});
+
 test('⑮ 子智能体事件另轨:payload.subagent 零条目(G8d 入口过滤单点)', () => {
   const k = new SessionKernel();
   pump(k, ev('token', '子智能体正文', { subagent: 'w1' }), ev('tool-call', 'read', { callId: 's1', subagent: 'w1' }), ev('user', '主流'));

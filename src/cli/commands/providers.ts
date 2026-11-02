@@ -25,9 +25,9 @@ import CliTable3 from 'cli-table3';
 import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../../catalog/providers';
 import type { ProviderModelInput, ProviderUpsertPatch } from '../../catalog/providers';
 import { providerApiKeyEnv, resolveProviderApiKey } from '../../config/providers';
-import { loadGlobalSettings, loadProjectSettings } from '../../config/settings';
 import { t } from '../../i18n';
 import { PROVIDERS_FLAG_KEYS, entryArg, resolveTarget, runCatalogWrite } from './catalog-common';
+import { settingsPathOf } from '../../catalog/io';
 
 function printUsage(): void {
   console.error(t(
@@ -48,10 +48,9 @@ function printUsage(): void {
   ));
 }
 
-/** ok 行的落盘文件路径（写落位 = 装载读位，settings-cli 同款口径）：project=<root>/.sunshinex/settings.json、
- *  global=~/.sunshinex/settings.json */
+/** ok 行的落盘文件路径（写落位 = 装载读位）：catalog settingsPathOf 单点 */
 function settingsFileOf(scope: 'global' | 'project', root: string | null): string {
-  return scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root ?? process.cwd());
+  return settingsPathOf(scope, root);
 }
 
 /* ---------- list ---------- */

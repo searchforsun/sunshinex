@@ -11,7 +11,7 @@ import { userConfigDir } from '../config/env';
 import { parseMcpJsonFile } from '../config';
 import type { McpServerConfig } from '../types';
 import type { Listing, Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite } from './io';
+import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot } from './io';
 import { approvalState } from './approvals';
 
 /** catalog 列表条目：name/scope 定位 + 遮蔽标注 + 原始 server 配置 + 审批态（project 接批准阀，global 恒 'none'） */
@@ -88,10 +88,7 @@ export function listMcpServers(root: string | null, globalDir?: string): Listing
 /** project 作用域 root 必备守卫（写面四函数共用）：mcpJsonPath 的 root:null→cwd 回退仅为读面签名
  *  全整改兜底，写面绝不借道——凭空落 cwd 是伪写（agentWriteTarget 同款裁定）。返回 mcp.json 落位 */
 function mcpWriteTarget(scope: Scope, root: string | null): string {
-  if (scope === 'project' && root === null) {
-    throw new CatalogWriteError('INVALID', 'project-scope mcp write requires root');
-  }
-  return mcpJsonPath(scope, root);
+  return mcpJsonPath(scope, requireProjectRoot(scope, root, 'mcp'));
 }
 
 /**

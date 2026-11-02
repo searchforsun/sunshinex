@@ -78,7 +78,8 @@ sunshinex plugins list                                       # id/version/来源
 | `defaultEnabled` | 否 | 缺省 `false`；仅 settings 未配置该插件时作初值 |
 | `mcpServers` | 否 | 键 = server 名，值 = 贡献条目（§4.1） |
 | `skills` | 否 | 插件内技能目录（相对插件根，§4.2） |
-| `configSchema` | 否 | 键 → `{type, description}`；v1 仅设置页展示，不强校验 config 值（§5） |
+| `exposedTools` | 否 | 缺省暴露的 MCP 工具短名清单（设置面工具开关渲染源+卡片计数；实际暴露由 server caps 决定） |
+| `configSchema` | 否 | 键 → `{type, description?, options?, multi?}`（options=枚举值集→下拉，multi=可多选）；v1 仅设置页展示，不强校验 config 值（§5） |
 | `commands` / `hooks` / `agents` / `tools` | — | 保留贡献点名（v1 未实现）：出现即告警「已忽略」，名字留作前向兼容 |
 
 **JSON Schema artifact**：`plugins/schema/plugin-manifest.schema.json`（JSON Schema draft-07，随包分发）——装载器、校验 CLI、编辑器补全/第三方预检同源消费。编辑器补全用法：VS Code 工作区设置配 `"json.schemas": [{ "fileMatch": ["plugin.json"], "url": "./plugins/schema/plugin-manifest.schema.json" }]`；或在 manifest 内直接写 `"$schema"` 指向该文件（解析器按未知字段告警忽略，不拒载）。
@@ -157,7 +158,7 @@ settings 语义键（两级：全局 `~/.sunshinex/settings.json` 与项目级 `
 ```
 
   1. `merged = { ...configDefaults, ...settings config }`（用户值覆盖缺省）；
-  2. `configArgs` 逐键展开：值 `undefined` → 整键跳过；模板含 `{value}` → 替换为 `String(值)`；不含 `{value}` → 仅当值为布尔 `true` 才追加纯旗标（非 true 不落参，防字符串误当旗标）；
+  2. `configArgs` 逐键展开：值 `undefined` → 整键跳过；模板含 `{value}` → 替换为 `String(值)`；模板含 `{dataDir}` → 替换为项目 data 目录绝对路径；不含 `{value}`/`{dataDir}` → 仅当值为布尔 `true` 才追加纯旗标（非 true 不落参，防字符串误当旗标）；
   3. `configEnv`：值 `String(值)` 注入 env。
 
   上例 settings config 为 `{ "port": 4000, "verbose": true, "tag": "x" }` 时，最终启动参数 = `["server.js", "--port=4000", "--verbose", "--tag=x"]`；`token` 未配置 → env 不含 `DEMO_TOKEN`；若 `verbose` 落缺省 `false` → 无旗标。

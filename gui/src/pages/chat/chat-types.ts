@@ -62,6 +62,8 @@ export interface ChatProps {
   onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
   /** agentTeams 开关(缺省 true):关则顶栏不显团队任务计数钮 */
   agentTeamsOn?: boolean;
+  /** 后台任务 running 数(App 经 bg-task 直播;顶栏动态计数) */
+  bgRunning?: number;
   /** G14.172 task_wait 行任务名解析材料(任务板投影;App 注入会话板) */
   board?: TaskBoardState;
   /** 队名解析材料(get_agent_team_board/create_agent_team 链接;App 注入投影 teams) */

@@ -119,7 +119,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                   type="button"
                   className="steer-act"
                   disabled={locked}
-                  data-tip={t('Pause current round and start next with this', '暂停当前轮次,直接开启下一轮发送本条')}
+                  data-tip={t('Pause the session and send this now', '暂停会话并立即发送消息')}
                   onClick={() => {
                     markInflight(q.seq);
                     void pauseAndSend(q);
@@ -132,7 +132,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                   type="button"
                   className="steer-act"
                   disabled={locked}
-                  data-tip={t('Move to front, inject at next step', '提到队首,下一轮立即插入发送')}
+                  data-tip={t('Insert this message into the session', '插入消息到会话中')}
                   onClick={() => {
                     markInflight(q.seq);
                     conn.frontSteer(sessionId, q.seq).then(refreshQueued, () => {});

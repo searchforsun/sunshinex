@@ -359,6 +359,17 @@ export class SessionRuntime {
   }
 
   /**
+   * attachJournal 收养 TeamStore 后:GUI 影子板改以物理板快照为权威——journal 影子回放缺
+   * artifact.durationMs(旧 emit 未带)且与盘面 createdAt 偶发不一致;物理板 event sourcing
+   * 含完整 createdAt/耗时,重启后任务/编排时间面同源。盘空则保留 seedShadow 板(旧档兜底)。
+   */
+  pullBoardFromHarness(): void {
+    const physical = this.runtimeImpl.harness.taskboard.snapshot();
+    if (Object.keys(physical.tasks).length === 0) return;
+    this.board = physical;
+  }
+
+  /**
    * attach 后板投影对齐:Harness TaskBoard.init 已把打开态自愈为 cancelled,但 seedShadow 会从
    * journal 回放旧 running/pending 盖回影子板——GUI 出现不可停孤儿(物理板已终态、stop 幂等无事件)。
    * 物理板为生命周期权威:影子打开态跟 harness 对齐,差异经 pump 落档+广播。

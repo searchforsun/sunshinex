@@ -13,15 +13,18 @@ import type { TodoBatch } from '../pages/Chat';
  * 2026-10-31 用户裁定:骨架对齐后台任务页签(insight-tab+bar+todo-cards,消双层边距)+
  * 顶部刷新钮——conn.sessionSnapshot 拉 daemon journal 派生的 todoBatches 权威投影,
  * 拉到的非空集覆盖 store 派生面(底层最新数据;拉失败/空集回退 store 实时投影)。
+ * 清单变点靠 Chat 转录派生 live 推送;开签/手动刷新走 GET 快照权威面。
  */
 
 export interface TodoCardsTabProps {
   readonly batches: readonly TodoBatch[];
   readonly conn: Connection;
   readonly sessionId: string;
+  /** 正文/顶栏打开侧栏时 App 递增——主动刷一次 */
+  readonly refreshNonce?: number;
 }
 
-export function TodoCardsTab({ batches, conn, sessionId }: TodoCardsTabProps): JSX.Element {
+export function TodoCardsTab({ batches, conn, sessionId, refreshNonce }: TodoCardsTabProps): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   /** 刷新面:快照拉到的 todoBatches(权威投影);非空才覆盖 store 派生面,空集=旧 daemon/无记录回退 */
   const [refreshed, setRefreshed] = useState<readonly TodoBatch[]>([]);
@@ -33,6 +36,11 @@ export function TodoCardsTab({ batches, conn, sessionId }: TodoCardsTabProps): J
       .catch(() => {})
       .finally(() => setRefreshing(false));
   };
+  useEffect(() => {
+    if (refreshNonce === undefined) return;
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshNonce]);
   const view = refreshed.length > 0 ? refreshed : batches;
   const lastKey = view.length > 0 ? view[view.length - 1]!.key : '';
   /** 折叠集合:挂载即末批展开(batches 页签打开时已填);新批到来跟随展开,手动折叠后不再打扰 */

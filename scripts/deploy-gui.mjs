@@ -94,7 +94,6 @@ const launchApp = () => {
   // 静默秒退 exit 21(stderr 全空,与实测一致)。explorer 以当前登录用户的普通完整性代启,
   // 应用降权运行,子进程链恢复正常
   powershell(`Start-Process explorer.exe -ArgumentList '${installExe}'`);
-  powershell('ie4uinit.exe -show');
   // Windows 图标缓存轻量刷新:exe 同路径反复替换后缓存留白图标(2026-10-29 实测),ie4uinit 重建即可
   powershell('ie4uinit.exe -show');
 };

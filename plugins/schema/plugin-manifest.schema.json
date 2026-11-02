@@ -62,7 +62,7 @@
     },
     "configSchema": {
       "type": "object",
-      "description": "config 键 → {type, description}；v1 仅设置页展示，不强校验 config 值",
+      "description": "config 键 → {type, description?, options?, multi?}；v1 仅设置页展示，不强校验 config 值（options=枚举值集→下拉，multi=可多选）",
       "additionalProperties": {
         "type": "object",
         "properties": {
@@ -71,6 +71,13 @@
           },
           "description": {
             "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "multi": {
+            "type": "boolean"
           }
         },
         "required": [

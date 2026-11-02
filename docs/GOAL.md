@@ -19,9 +19,9 @@ Sunshinex 是个人开发者本机运行的通用 AI Agent：以复杂编码长�
 
 | 交互面 | 对标 | 定位 |
 |--------|------|------|
-| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate / tui） |
+| CLI | — | 基础执行面（已交付：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings / tui） |
 | TUI | Claude Code | 第一入口，v1.0 默认交互面，持续打磨 |
-| GUI | Codex 工作台 | 已交付：对话交互 + 代码预览 / diff + 任务板（列表 / 流程图）+ 终端 / Web 标签 + 设置管理面（Electron 桌面壳与浏览器双形态） |
+| GUI | Codex 工作台 | 已交付：对话交互 + 代码预览 / diff + 智能体团队任务板（成员 / 任务 / 编排）+ 终端 / 内置浏览器页签 + 设置管理面（Electron 桌面壳与浏览器双形态） |
 
 三面共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；最外层一律开源组件优先（CLAUDE.md §13）。
 

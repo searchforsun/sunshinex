@@ -145,7 +145,7 @@ export function usageText(): string {
   sunshinex agents list|add|remove|enable|disable [--scope=global|project] [--root <dir>] [--json]
                                           manage the agent catalog (add <id> --name=<n> [--description=<d>] [--memory] [--isolation=worktree] [--executor=internal-team|external-cli] [--body-file=<path>])
   sunshinex settings get <key> | set <key> <value> [--scope=global|project]
-                                          read or write a semantic settings key (retired keys print guidance and exit 1)
+                                          read or write a semantic settings key (unknown keys fail with exit 1)
   sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <dir>] [--json]
                                           manage the MCP server catalog (add <name> --command=<cmd> [--arg=a] [--env=K=V] | --url=<u>; project .sunshinex/mcp.json or global ~/.sunshinex/mcp.json)
   sunshinex providers list|add|set|remove|key|test [--scope=global|project] [--root <dir>] [--json]

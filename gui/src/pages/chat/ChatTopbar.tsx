@@ -18,38 +18,14 @@ import { loadSeenMap, persistSeenMap, stampSeen } from '../../sidebar/project-me
  *  (挂载点去掉 collapsed 门);③幽灵钮化——无底色。
  *  G14.2xx 用户裁定:常显(旧「顶栏 hover 浮现」退役);三钮图标统一灰色转圈(待办钮的绿对号
  *  退役——对号读作「已完成数」与计数语义相反;todoActive 本就是 in_progress+pending 之和) */
-export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionId, onOpenTab }: {
+export function ChatDynButtons({ todoActive, taskActive, bgRunning, running, onOpenTab }: {
   todoActive: number;
   taskActive: number;
+  /** 后台 running 数(App 经 bg-task 直播维护,撤 5s GET 轮询) */
+  bgRunning: number;
   running: boolean;
-  conn: Connection;
-  sessionId: string;
   onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
 }): JSX.Element | null {
-  const [bgRunning, setBgRunning] = useState(0);
-  useEffect(() => {
-    // 测试桩/旧连接可能未实现 sessionTasks——探活失败静默零计数(按钮全隐,不炸树)
-    if (typeof conn.sessionTasks !== 'function') return;
-    let alive = true;
-    const poll = (): void => {
-      Promise.resolve()
-        .then(() => conn.sessionTasks(sessionId))
-        .then(
-          (rows) => {
-            if (alive) setBgRunning(rows.filter((r) => r.status === 'running').length);
-          },
-          () => undefined,
-        )
-          // 轮询失败按计数保持降级(顶栏徽标非权威数据,下一拍重拉)
-        .catch(() => undefined);
-    };
-    poll();
-    const timer = window.setInterval(poll, 5000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [conn, sessionId]);
   // G14.213 轮次收束即隐:running 熄灭按钮组整体不显(待办/任务是否完结无关)
   // 过多隐现(2026-10-29 用户裁定「只有真的显示才占会话名位置;过多隐现」):容器被压缩时挂
   // tight 右缘渐隐 mask(与标题 clipped 同款 RO 判定);压缩优先级由 flex 收缩权重承担
@@ -79,7 +55,7 @@ export function ChatDynButtons({ todoActive, taskActive, running, conn, sessionI
       {taskActive > 0 && (
         <button type="button" className="chat-dyn-btn" data-tip={t('Open agent teams', '打开智能体团队')} onClick={() => onOpenTab?.('agents')}>
           <span className="run-spinner" aria-hidden="true" />
-          {t(`${taskActive} tasks`, `${taskActive} 任务`)}
+          {t(`${taskActive} team tasks`, `${taskActive} 团队任务`)}
         </button>
       )}
       {bgRunning > 0 && (
@@ -105,6 +81,8 @@ export interface ChatTopbarProps {
   readonly running: boolean;
   readonly todoActive: number;
   readonly taskActive: number;
+  /** 后台 running 数(App bg-task 直播) */
+  readonly bgRunning?: number;
   readonly conn: Connection;
   readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks') => void);
   /** 「打开」分体钮失败可见化面(D57④:App showOpError 经 Chat 透传,探测/打开失败 sx-toast) */
@@ -129,7 +107,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, bgRunning = 0, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -418,7 +396,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             <MoreHorizontal size={16} strokeWidth={1.75} />
           </button>
         )}
-        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} running={running} conn={conn} sessionId={sessionId} onOpenTab={onOpenTab} />
+        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} bgRunning={bgRunning} running={running} onOpenTab={onOpenTab} />
         {/* 2026-10-27 用户裁定:电脑控制期间会话名行右亮「正在控制」边框徽标(控制类 computer-use
             工具在跑,use-chat-derived 派生,轮收束即隐) */}
         {computerUseActive === true && (

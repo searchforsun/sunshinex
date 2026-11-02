@@ -227,27 +227,21 @@ export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerRespons
     startedAt: t2.startedAt,
     ...(t2.endedAt !== undefined ? { endedAt: t2.endedAt } : {}),
     ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
-    // 暂停面（2026-10-31）：pausedMs=已折算暂停总时长;pausedAt=进行中暂停段起点(运行时长停表点)
-    ...(t2.pausedMs !== undefined ? { pausedMs: t2.pausedMs } : {}),
-    ...(t2.pausedAt !== undefined ? { pausedAt: t2.pausedAt } : {}),
     ...taskOutputTail(t2.outputFilePath),
   }));
   io.send(res, 200, rows);
 }
 
-/** POST /session/:id/tasks/pause|resume（2026-10-31 GUI 暂停钮）：body {id: taskId}；经 resolveId
- *  归一（task_wait 同款）。409=该任务无暂停闭包（subagent/重放孤儿账——挂起面仅 exec 活账在），
- *  404=会话/任务未知。幂等：已是目标态原样 200 */
+/** POST /session/:id/tasks/stop（2026-11-02 用户裁定「暂停就是复用 task_stop」）：body {id: taskId}；
+ *  经 resolveId 归一（task_wait 同款）。停止语义=abortLedger（exec 杀进程树/subagent 打断线），终态落
+ *  'stopped'，task_wait 等待面自然收敛。404=会话/任务未知；已终态幂等回执 200 */
 export function handleTaskStop(io: SessionHandlerIo, res: http.ServerResponse, id: string, taskId: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const tid = session.runtime.harness.tasks.resolveId(taskId);
   const t = session.runtime.harness.tasks.get(tid);
   if (t === undefined) return io.send(res, 404, { error: 'unknown task' });
-  // 2026-11-02 用户裁定「暂停就是复用 task_stop,task_wait 能监听到就可以;不要自己加逻辑」:
-  // GUI 后台任务停止钮=task_stop 同语义(abortLedger:exec 杀进程树/subagent 打断线)——终态落
-  // 'stopped',task_wait 等待面自然收敛;挂起/恢复面(NtSuspend/任务账 paused 翻面)整面退役
-  if (t.status !== 'running' && t.status !== 'paused') {
+  if (t.status !== 'running') {
     return io.send(res, 200, { id: t.id, status: t.status, receipt: `task ${t.id} already finished with status ${t.status}` });
   }
   abortLedger(session.runtime.harness.tasks, t);

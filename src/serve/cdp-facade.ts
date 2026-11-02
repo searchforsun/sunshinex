@@ -32,7 +32,13 @@ export interface FacadeOpts {
   log?: (msg: string) => void;
   /** 模型开新页(Target.createTarget)→ 让 GUI 开一个侧栏浏览器页签;缺省=拒绝 createTarget */
   openTab?: (url: string) => void;
+  /** 模型关页(Target.closeTarget)→ 让 GUI 关掉该 target 对应的侧栏页签;缺省=拒绝 closeTarget */
+  closeTab?: (targetId: string) => boolean;
 }
+
+/** createTarget 应答前等本连接收到该 target 的 attachedToTarget 的上限(Playwright newPage 在应答
+ *  后立即按 targetId 取已附加页,真实 Chrome 恒先发 attach 后应答——不等即 '_page' of undefined) */
+const ATTACH_WAIT_MS = 5_000;
 
 /** createTarget 等新侧栏 webview 出现的上限(GUI 无会话页/渲染层卡住时不无限等) */
 const CREATE_TARGET_TIMEOUT_MS = 10_000;
@@ -130,6 +136,15 @@ export class BuiltinFacade {
   private attachReal(ws: WebSocket): void {
     // 待发队列:playwright 首命令可在 real open 前到达(实测竞窗)——open 前缓存,open 即冲刷
     const outbox: string[] = [];
+    const attached = new Set<string>();
+    const attachWaiters = new Map<string, () => void>();
+    const waitAttached = (targetId: string): Promise<void> =>
+      attached.has(targetId)
+        ? Promise.resolve()
+        : new Promise((resolve) => {
+            const timer = setTimeout(() => { attachWaiters.delete(targetId); resolve(); }, ATTACH_WAIT_MS);
+            attachWaiters.set(targetId, () => { clearTimeout(timer); resolve(); });
+          });
     const real = new WebSocket(`ws://127.0.0.1:${this.realPort}/${this.realBrowserPath}`);
     real.on('message', (data) => {
       let msg: { id?: number; method?: string; params?: Record<string, unknown>; result?: Record<string, unknown> };
@@ -163,6 +178,14 @@ export class BuiltinFacade {
         }
       }
       this.sendTo(ws, msg);
+      if (msg.method === 'Target.attachedToTarget') {
+        const tid = (msg.params as { targetInfo?: { targetId?: string } } | undefined)?.targetInfo?.targetId;
+        if (typeof tid === 'string') {
+          attached.add(tid);
+          attachWaiters.get(tid)?.();
+          attachWaiters.delete(tid);
+        }
+      }
     });
     real.on('open', () => { for (const m of outbox.splice(0)) real.send(m); });
     real.on('close', () => ws.close());
@@ -174,13 +197,23 @@ export class BuiltinFacade {
       if (msg.method === 'Target.createTarget' && this.opts.openTab !== undefined) {
         const url = typeof msg.params?.url === 'string' && msg.params.url !== '' ? msg.params.url : 'about:blank';
         void this.createViaGui(url).then(
-          (targetId) => this.sendTo(ws, { id: msg.id, result: { targetId } }),
+          async (targetId) => {
+            await waitAttached(targetId);
+            this.sendTo(ws, { id: msg.id, result: { targetId } });
+          },
           (err: unknown) => this.sendTo(ws, { id: msg.id, error: { code: -32000, message: err instanceof Error ? err.message : String(err) } }),
         );
         return;
       }
+      if (msg.method === 'Target.closeTarget' && this.opts.closeTab !== undefined) {
+        const tid = typeof msg.params?.targetId === 'string' ? msg.params.targetId : '';
+        // 关页=关侧栏页签(webview 卸载→真实端点自然发 targetDestroyed,Playwright 据此收口)
+        const ok = !this.blockedSeen.has(tid) && this.opts.closeTab(tid);
+        this.sendTo(ws, ok ? { id: msg.id, result: { success: true } } : { id: msg.id, error: { code: -32000, message: `no sidebar browser tab for target ${tid}` } });
+        return;
+      }
       if (msg.method === 'Target.createTarget' || msg.method === 'Target.closeTarget') {
-        this.sendTo(ws, { id: msg.id, error: { code: -32000, message: '内置浏览器页签由侧栏管理(不支持 create/close target)' } });
+        this.sendTo(ws, { id: msg.id, error: { code: -32000, message: 'sidebar browser tabs are managed by the GUI (create/close target not supported)' } });
         return;
       }
       // attach 面兜底:即使真实列表漏过滤,attach 到记账过的非白名单 id 报确定错误
@@ -218,7 +251,7 @@ export class BuiltinFacade {
     // 页签按 url 判重:已有空白页签时 GUI 聚焦旧签而非新开,复用它
     const blank = (await this.webviewIds().catch(() => [])).find((t) => t.url === 'about:blank' || t.url === url);
     if (blank !== undefined) return blank.id;
-    throw new Error('侧栏浏览器页签未能打开(请先打开一个会话)');
+    throw new Error('failed to open a sidebar browser tab (open a session first)');
   }
 
   private sendTo(ws: WebSocket, payload: Record<string, unknown>): void {
@@ -247,21 +280,37 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
   const et = electron as {
     app?: { getPath(name: string): string; commandLine?: { hasSwitch?(s: string): boolean } };
     BrowserWindow?: { getAllWindows(): Array<{ isDestroyed(): boolean; webContents: { getURL(): string; send(ch: string, ...a: unknown[]): void } }> };
+    webContents?: { fromDevToolsTargetId?(id: string): { id: number } | undefined };
   };
   if (et.app === undefined) return Promise.resolve(undefined); // node 环境(npm 包字符串/缺 app)
   if (!et.app.commandLine?.hasSwitch?.('remote-debugging-port')) {
-    log?.('facade: 壳未开 remote-debugging-port,内置浏览器融合面停用');
+    log?.('facade: shell has no remote-debugging-port switch, builtin browser fusion disabled');
     return Promise.resolve(undefined);
   }
   const userData = et.app.getPath('userData');
   const port = process.env.SUNSHINEX_DAEMON_PORT ?? '';
+  // 端口空=启动序异常(正常调用序 daemon listen 回调先落槽)——空端口使 origin 前缀退化为
+  // 'http://127.0.0.1:':GUI 窗判定与 blockedUrl 过滤双双过宽(本机全部回环页被当 GUI 自身滤掉),
+  // 显式停用融合面优于过宽过滤
+  if (port === '') {
+    log?.('facade: daemon port unknown, builtin browser fusion disabled');
+    return Promise.resolve(undefined);
+  }
   const origin = `http://127.0.0.1:${port}`;
   // 主窗=加载 daemon origin 的窗口(排除独立 DevTools 窗);同 popup 转发通道 builtin:open-url
+  const guiWindow = () => et.BrowserWindow?.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().startsWith(origin));
   const openTab = (url: string): void => {
-    const gui = et.BrowserWindow?.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().startsWith(origin));
-    gui?.webContents.send('builtin:open-url', url);
+    guiWindow()?.webContents.send('builtin:open-url', url);
   };
-  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab });
+  // CDP targetId → guest webContents id(GUI 侧 webview.getWebContentsId() 同值)→ GUI 关对应页签
+  const closeTab = (targetId: string): boolean => {
+    const wc = et.webContents?.fromDevToolsTargetId?.(targetId);
+    const gui = guiWindow();
+    if (wc === undefined || gui === undefined) return false;
+    gui.webContents.send('builtin:close-webcontents', wc.id);
+    return true;
+  };
+  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, closeTab });
   return facade.start().then(() => ({ facade, ws: facade.endpoint })).catch((err) => {
     log?.(`facade start failed: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

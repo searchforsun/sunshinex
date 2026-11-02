@@ -201,6 +201,8 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   const journal = new SessionJournal(dataDir);
   journal.attach(journalId);
   session.attachJournal(journal);
+  // 物理板已收养 TeamStore:影子板改跟盘面快照(createdAt/durationMs 权威),再 reconcile 收孤儿
+  session.pullBoardFromHarness();
   // 物理板 init 自愈 cancelled 后,journal 回放会把旧 running/pending 盖回影子——对齐权威板并落档
   // (须在 attachJournal 之后,reconcile 的 pump 才能把 cancelled 写入 journal 防下次再孤儿)
   session.reconcileBoardWithHarness();

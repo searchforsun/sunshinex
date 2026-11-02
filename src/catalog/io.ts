@@ -9,15 +9,31 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { hasJsonComments, stripJsonComments } from '../config/settings';
+import { hasJsonComments, stripJsonComments, loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import type { ResourceKind, Scope } from './types';
+
+/** 项目作用域写面 root 必备守卫单点：root 缺失即 INVALID 拒写（resource 点名资源面进文案）——
+ *  写面绝不借道 cwd 兜底，凭空落 cwd 是伪写（mcpWriteTarget 先例裁定上收）；返回验过的 root */
+export function requireProjectRoot(scope: Scope, root: string | null, resource: string): string {
+  if (scope === 'project' && root === null) {
+    throw new CatalogWriteError('INVALID', `project-scope ${resource} write requires root`);
+  }
+  return root as string;
+}
+
+/** 目标 scope 的 settings.json 落位单点：global=<userConfigDir>/settings.json、
+ *  project=<root>/.sunshinex/settings.json（写落位=装载读位；root 缺省回退 cwd 仅服务无项目
+ *  上下文的读面签名，写面经 requireProjectRoot 拒 null 后此分支不可达） */
+export function settingsPathOf(scope: Scope, root: string | null): string {
+  return scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root ?? process.cwd());
+}
 
 /** 写入被拒：code=COMMENTS（目标文件含 JSONC 注释，结构化整写会毁注释）或 INVALID（内容不合法） */
 export class CatalogWriteError extends Error {
   constructor(readonly code: 'COMMENTS' | 'INVALID', message: string) { super(message); }
 }
 
-export function ensureDir(dir: string): void {
+function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 

@@ -27,6 +27,8 @@ export interface WebTabProps {
   readonly uid: string;
   /** 元数据回写(url/pageTitle/pageIcon 合并进标签 params;registry 绑定 sessionId,App 落 tab-state) */
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
+  /** 关闭本页签(模型 browser_tabs close 经 facade→壳→此处) */
+  readonly onClose?: () => void;
   /** 工作区根(2026-11-01 CDP 形态:内置浏览器端点发现按数据目录解析;缺省=纯 iframe 形态) */
   readonly root?: string;
 }
@@ -47,6 +49,7 @@ interface WvElement extends HTMLElement {
   canGoForward(): boolean;
   getURL(): string;
   setZoomFactor(factor: number): void;
+  getWebContentsId(): number;
 }
 
 /** 自由尺寸缩放档(适应窗口外固定倍率;浏览器设备模拟同款档位) */
@@ -58,13 +61,25 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta, root, onClose }: WebTabProps): JSX.Element {
   // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
   // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
   // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
   // 同一 webview,模型打开的页签=用户眼前的页签
   const builtin = root !== undefined;
   const wvRef = useRef<WvElement | null>(null);
+  /** 模型关页:主进程下发 guest webContents id,是本页签的 webview 即关闭自身 */
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const bridge = window.sunshinexWindow?.onCloseWebContents;
+    if (!builtin || bridge === undefined) return;
+    return bridge((id) => {
+      try {
+        if (wvRef.current?.getWebContentsId() === id) onCloseRef.current?.();
+      } catch { /* webview 未 attach:getWebContentsId 抛错,非本页签 */ }
+    });
+  }, [builtin]);
   /** 首个导航目标(null=未开页,空态引导面);后续导航经 loadURL 驱动,不改 src(防重挂) */
   const [wvTarget, setWvTarget] = useState<string | null>(
     builtin ? (params.url === 'about:blank' ? 'about:blank' : params.url !== undefined && params.url !== '' ? normalizeWebUrl(params.url) : null) : null,
@@ -209,7 +224,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     window.addEventListener('pointerdown', close);
     return () => window.removeEventListener('pointerdown', close);
   }, [moreOpen]);
-  const devtoolsBridge = (window as unknown as { sunshinexWindow?: { openDevtools?: () => void } }).sunshinexWindow?.openDevtools;
+  const devtoolsBridge = window.sunshinexWindow?.openDevtools;
 
   const navigate = (): void => {
     if (input.trim() === '') return;

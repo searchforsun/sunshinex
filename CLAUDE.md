@@ -82,7 +82,7 @@ NODE_OPTIONS=--use-system-ca pnpm shell:dist          # 全链单命令：版本
 ```text
 src/
   index.ts            # npm/pnpm start 入口（装载 settings.json 配置链）
-  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate；worktree-launch --worktree 装配前解析）
+  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings；worktree-launch --worktree 装配前解析）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildHarness 单点 + buildDeps CLI 整形：CLI/TUI/GUI 三面共用）
@@ -93,6 +93,7 @@ src/
   images.ts           # 图片附件共享面（MAX_IMAGES ≤8/parseImagesParam 校验/appendImages 钳制/imageMarkers 占位标记；serve HTTP + TUI + GUI 单源，dataURL 形态全链零转码）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
+  catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、plugins、mcp、skills、approvals、permissions 读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts（agentTeams 启用解析单点）/ permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir / plugins（插件两级装载+启用态合并+MCP 名单合成）/ image-history（imageHistoryLimit 语义键解析，0-50 渲染半径）
   tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
   harness/
@@ -112,7 +113,7 @@ src/
     tools/task-stop.ts # task_stop（仅 exec/spawn 台账）与 agent_team_task_stop（板任务/成员打断；agentTeams 开时注册）
     tools/task-wait.ts # task_wait（仅 exec/spawn 台账）与 agent_team_task_wait（板任务等待；agentTeams 开时注册）
     tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
-    mcp/              # MCP 客户端（官方 SDK 接缝，三传输）
+    mcp/              # MCP 客户端（官方 SDK 接缝，三传输；每轮 run 入口探活+失败重建、断链重连重试 ≤2 次）
     subagent.ts       # 子智能体执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
     worktree.ts       # git worktree 单点模块（create/remove/list/isDirty/subagentTreeName）
     prompts/          # 提示词模板单点（shared 稳定段共享行；judge/summarizer/memory/learned 一次性调用模板）
@@ -122,7 +123,7 @@ src/
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
-  taskboard/          # 智能体团队域模型与协调器（model 纯 reducer/board 协调/store 按 journalId 落盘/translate 事件翻译/teammate 长驻成员/inbox 消息收件/executors 执行体）
+  taskboard/          # 智能体团队域模型与协调器（model 纯 reducer/board 协调/store 按 journalId 落盘/translate 事件翻译/teammate 长驻成员/team-registry 成员跨重启登记/inbox 消息收件/executors 执行体）
   delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
   session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件与 shadow 透传）、entry.ts 条目模型、seglog.ts kernel 事件→journal v3 行映射（kernelEventRows）；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
   serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v3 单档唯一写者链路 kernelEventRows）
@@ -291,7 +292,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
 | GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
-| GUI 内嵌浏览器 | WebContentsView | 规划选型 | Electron ≥ 30 原生 API（现行 Web 标签为 iframe，禁内嵌站点走系统外开） |
+| GUI 内嵌浏览器 | Electron `<webview>`（内建零依赖） | 已引入 | Web 标签真实页面承载（地址栏/前进后退/缩放/页内链接开新页签；登录态 persist partition；browser-use 插件自动化经壳内 CDP facade 附着同一页签），收敛于 `gui/src/tabs/WebTab.tsx` + 壳 webview 纪律（`shell/src/main.ts`） |
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | 容器化执行/进程管理，按需引入；电脑控制已由 computer-use 内置插件交付（桌面 PowerShell worker，win32-only，见 `docs/PLUGIN-DEV.md`） |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。

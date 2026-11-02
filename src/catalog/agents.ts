@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { userConfigDir } from '../config/env';
 import { parseAgentFrontmatter } from '../harness/subagent';
-import { CatalogWriteError, writeJsonAtomic, notifyCatalogWrite } from './io';
+import { CatalogWriteError, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot } from './io';
 import type { Listing, Scope } from './types';
 
 /** PUT /settings/agents 的 id 安全面（单点；Task 15 自 serve/config-helpers 上收——T6 评审移交：
@@ -211,10 +211,7 @@ function agentWriteTarget(root: string | null, scope: Scope, id: string): string
   if (!AGENT_ID_RE.test(id)) {
     throw new CatalogWriteError('INVALID', `invalid agent id: ${JSON.stringify(id)} (must match ${AGENT_ID_RE.source})`);
   }
-  if (scope === 'project' && root === null) {
-    throw new CatalogWriteError('INVALID', 'project-scope agent write requires root');
-  }
-  return path.join(agentsDir(scope, root), id);
+  return path.join(agentsDir(scope, requireProjectRoot(scope, root, 'agent')), id);
 }
 
 /** 新增/整写一个 agent 定义（Task 6 写面收口）：renderAgentMd 生成 → 写前 round-trip（真解析器

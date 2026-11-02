@@ -19,7 +19,7 @@ graph LR
 
 ```text
 src/
-  cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index / plugins list·validate；裸命令进交互终端）
+  cli/       # CLI 执行面（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings；裸命令进交互终端）
   tui/       # 交互式终端（ink + React，对标 Claude Code，v1.0 默认入口）
   session/   # 会话内核（SessionKernel：转录/等待队列唯一投影 + v3 段级会话档读写）与 KernelRuntime 装配单点（CLI/TUI/GUI 共用）
   harness/   # 运行时底座：闭环引擎、工具面与内置工具、安全链、上下文、记忆、技能、MCP、子智能体、知识库
@@ -28,6 +28,7 @@ src/
   model/     # 模型适配 + 三档算力路由
   taskboard/ delegation/   # 任务板与委派投影域模型（TUI/GUI 同源）
   serve/     # GUI daemon（HTTP + WebSocket 服务、PTY 中继、配置面）
+  catalog/   # 设置存储结构化单点（providers/agents/plugins/mcp/skills/permissions 的读写面，CLI/TUI/serve 共用）
   config/ storage/   # 配置装载、存储底座
 gui/         # 浏览器 GUI 前端（React 18 + Vite 工作区包，构建产物 dist-gui/）
 shell/       # Electron 桌面壳工作区包（托盘驻留、全局快捷键、安装包打包）
@@ -61,16 +62,23 @@ pnpm install                   # .npmrc 已把 store 固定到仓内，依赖安
 pnpm cli                       # 构建并启动交互式终端（缺省 acceptEdits 权限模式）
 ```
 
-模型配置写进 `~/.sunshinex/settings.json`（语义键承载设置、`env` 块放密钥；任意 OpenAI 协议兼容供应商均可，如 BigModel、DeepSeek、OpenRouter、vLLM 本地部署等）：
+模型配置写进 `~/.sunshinex/settings.json`（providers 列表=模型配置唯一事实源，`env` 块放密钥；任意 OpenAI 协议兼容供应商均可，如 BigModel、DeepSeek、OpenRouter、vLLM 本地部署等）：
 
 ```json
 {
   "version": 1,
-  "model": "<模型名>",
-  "baseUrl": "https://<端点>/v1",
+  "providers": [
+    {
+      "name": "<供应商名>",
+      "baseUrl": "https://<端点>/v1",
+      "models": [{ "model": "<模型名>" }]
+    }
+  ],
   "env": { "SUNSHINEX_API_KEY": "sk-…" }
 }
 ```
+
+providers 也可经 CLI 结构化管理：`sunshinex providers add/set/key/test`（见 [MANUAL](MANUAL.md) 命令总表）。
 
 配置优先级：已导出环境变量 > 项目级 `.sunshinex/settings.json` > 全局级 `~/.sunshinex/settings.json` > 内置缺省。全部配置项见 [MANUAL](MANUAL.md)。
 

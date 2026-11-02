@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, existsSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { KNOWN_KEYS, RESERVED, loadEffectivePlugins, parsePluginManifest, pluginMcpServers } from './plugins';
+import { resolveDataDir } from './data-dir';
 
 function tmpPlugin(manifest: unknown): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'plug-'));
@@ -421,7 +422,10 @@ test('真实内置根装载 computer-use：未启用不出；enabled 后合成 s
     assert.equal(srv!.args![0], 'server/index.js', 'args 指向插件内平铺构建产物（Task 17 布局）');
     // 截图落盘目录:静态 args 的 {dataDir} 令牌展开为工作区数据目录绝对路径(斜杠规范形)
     assert.equal(srv!.args![1], '--output-dir');
-    assert.match(String(srv!.args![2]), /^[A-Za-z]:\/.*\/data\/plugins\/computer-use\/screenshots$|^\/.*\/data\/plugins\/computer-use\/screenshots$/);
+    // 钉 {dataDir} → resolveDataDir(cwd) 逐字同源(斜杠规范形)——不钉 /data/ 路径段:官方 runner
+    // 恒设 SUNSHINEX_DATA_DIR 直指覆盖(.data-test,无 data 段),路径段钉只在裸跑环境成立(环境
+    // 敏感假红,2026-11-02 技术债轮根修);同源等值钉在两种解析形态下都成立且判别力更强
+    assert.equal(String(srv!.args![2]), resolveDataDir(process.cwd()).split(path.sep).join('/') + '/plugins/computer-use/screenshots');
     assert.ok(!String(srv!.args![2]).includes('{dataDir}'));
     assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'server', 'index.js')), 'cwd "." 解析为插件根且可直跑产物在位');
     // safety 三类逐字对齐 spec §2.2 示例（guard 问线驱动面；缺类/错名即测红）

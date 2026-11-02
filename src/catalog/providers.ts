@@ -10,11 +10,10 @@
  */
 import { loadProvidersFull, providerApiKeyEnv, resolveProviderApiKey } from '../config/providers';
 import type { ModelChoice, ParsedProviderEntry } from '../config/providers';
-import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { parseEffort, EFFORT_ORDER } from '../model/effort';
 import type { ReasoningEffort, ModelTier } from '../types';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite } from './io';
+import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot, settingsPathOf } from './io';
 
 /** 单个源条目：config 解析面的源级分组（name/baseUrl/源级显式字段/models 条目显式值）+ 密钥面 */
 export interface ProviderEntry extends ParsedProviderEntry {
@@ -79,10 +78,7 @@ export interface ProviderUpsertPatch {
 /** 写面目标文件落位 + project root 必备守卫（agentWriteTarget 先例）：project=<root>/.sunshinex/settings.json、
  *  global=<userConfigDir>/settings.json（loadGlobalSettings/loadProjectSettings 单点，写落位 = 装载读位） */
 function providerWriteFile(root: string | null, scope: Scope): string {
-  if (scope === 'project' && root === null) {
-    throw new CatalogWriteError('INVALID', 'project-scope provider write requires root');
-  }
-  return scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root as string);
+  return settingsPathOf(scope, requireProjectRoot(scope, root, 'provider'));
 }
 
 /** 写面文件守卫公共体（各写函数第一步）：COMMENTS 先于一切内容守卫 → 畸形 JSON/根非对象 INVALID 拒写不覆盖 */

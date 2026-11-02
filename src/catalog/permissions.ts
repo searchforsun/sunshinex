@@ -30,7 +30,7 @@ import { readLevel } from '../config/permissions';
 import type { PermissionsConfig } from '../config/permissions';
 import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import type { Scope } from './types';
-import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite } from './io';
+import { CatalogWriteError, readJsoncDoc, writeJsonAtomic, notifyCatalogWrite, requireProjectRoot, settingsPathOf } from './io';
 
 /** 空 permissions 面（坏形/缺级/缺键统一缺省形态，与 config/permissions EMPTY 同构） */
 const EMPTY: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
@@ -65,10 +65,7 @@ export type PermissionList = 'deny' | 'allow' | 'additionalDirs';
 /** 写面目标文件落位 + project root 必备守卫（providers providerWriteFile 同款）：project 写落位 =
  *  装载读位（loadProjectSettings/loadGlobalSettings 单点） */
 function permissionWriteFile(root: string | null, scope: Scope): string {
-  if (scope === 'project' && root === null) {
-    throw new CatalogWriteError('INVALID', 'project-scope permissions write requires root');
-  }
-  return scope === 'global' ? loadGlobalSettings() : loadProjectSettings(root as string);
+  return settingsPathOf(scope, requireProjectRoot(scope, root, 'permissions'));
 }
 
 /** doc 的 permissions 对象取面：键形状坏（非对象）→ 整键重置（plugins/providers 键同款先例）。

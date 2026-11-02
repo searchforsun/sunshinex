@@ -14,7 +14,8 @@
         "--output-dir",
         "{dataDir}/plugins/browser-use/output",
         "--file-paths",
-        "absolute"
+        "absolute",
+        "--allow-unrestricted-file-access"
       ],
       "configDefaults": {
         "browser": "chrome",

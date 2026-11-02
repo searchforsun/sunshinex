@@ -59,6 +59,10 @@ export interface TabServices {
   /** 智能体团队顶部刷新(2026-10-31):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影。
    *  可选(旧装配/测试桩缺省,刷新钮不渲染) */
   readonly refreshBoard?: (sessionId: string) => Promise<void>;
+  /** 后台任务账本 live(App 经 bg-task 事件维护;开签/手动刷新仍走 GET 带 outputTail) */
+  readonly bgTasks?: readonly import('../projection').BgTaskRow[];
+  /** 手动刷新后台任务(GET /tasks → 整替 App bgTasks) */
+  readonly onRefreshBgTasks?: () => Promise<void>;
 }
 
 export interface TabRenderProps {
@@ -94,6 +98,10 @@ export interface TabRenderProps {
   readonly learnedFocus?: { slug: string; nonce: number };
   /** 后台任务定位(task_wait 行点击:开 bgtasks 页签并 flash 指定账本行;他型忽略) */
   readonly bgFocus?: { id: string; nonce: number };
+  /** 可刷新侧栏打开信号(App openTabInSession 递增;带刷新钮页签据此主动拉一次) */
+  readonly panelRefreshNonce?: number;
+  /** 记忆/学习技能清单变点(catalog-changed 递增) */
+  readonly catalogTick?: { memory: number; learned: number };
   /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
   readonly chatSinkRef?: MutableRefObject<import('../pages/Chat').ChatSink | null>;
 }
@@ -175,7 +183,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Todos', '待办'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <TodoCardsTab batches={p.services.todoBatches} conn={p.conn} sessionId={p.sessionId} />,
+    render: (p) => (
+      <TodoCardsTab
+        batches={p.services.todoBatches}
+        conn={p.conn}
+        sessionId={p.sessionId}
+        refreshNonce={p.panelRefreshNonce}
+      />
+    ),
   },
   {
     id: 'agents',
@@ -194,6 +209,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onOpenAgent={(label, agentTitle, task) => p.openTab('agent', { label, agentTitle, task })}
         onStopTask={p.services.onStopTask}
         onRefresh={p.services.refreshBoard === undefined ? undefined : () => p.services.refreshBoard!(p.sessionId)}
+        refreshNonce={p.panelRefreshNonce}
       />
     ),
   },
@@ -228,7 +244,17 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Background tasks', '后台任务'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <BgTasksTab conn={p.conn} sessionId={p.sessionId} openTab={p.openTab} focus={p.bgFocus} />,
+    render: (p) => (
+      <BgTasksTab
+        conn={p.conn}
+        sessionId={p.sessionId}
+        openTab={p.openTab}
+        focus={p.bgFocus}
+        rows={p.services.bgTasks ?? []}
+        onRefresh={p.services.onRefreshBgTasks}
+        refreshNonce={p.panelRefreshNonce}
+      />
+    ),
   },
   {
     id: 'memory',
@@ -236,7 +262,15 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Memory', '记忆'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <MemoryTab conn={p.conn} root={p.root} focus={p.memoryFocus} />,
+    render: (p) => (
+      <MemoryTab
+        conn={p.conn}
+        root={p.root}
+        focus={p.memoryFocus}
+        refreshNonce={p.panelRefreshNonce}
+        catalogNonce={(p.catalogTick?.memory ?? 0) > 0 ? p.catalogTick!.memory : undefined}
+      />
+    ),
   },
   {
     id: 'learned',
@@ -244,7 +278,15 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: () => t('Learned skills', '学习技能'),
     resolveKey: () => '',
     singleton: true,
-    render: (p) => <LearnedSkillsTab conn={p.conn} root={p.root} focus={p.learnedFocus} />,
+    render: (p) => (
+      <LearnedSkillsTab
+        conn={p.conn}
+        root={p.root}
+        focus={p.learnedFocus}
+        refreshNonce={p.panelRefreshNonce}
+        catalogNonce={(p.catalogTick?.learned ?? 0) > 0 ? p.catalogTick!.learned : undefined}
+      />
+    ),
   },
   {
     id: 'terminal',
@@ -283,6 +325,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         params={p.params}
         uid={p.uid}
         root={p.root}
+        onClose={() => p.closeTab(p.uid)}
         onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)}
       />
     ),

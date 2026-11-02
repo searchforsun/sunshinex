@@ -798,8 +798,8 @@ export function handlePluginsGet(io: ConfigHandlerIo, req: http.IncomingMessage,
  *  语义键），定位器因**他级** settings 畸形抛错（target 已过守卫，抛点必在另一级）→ 放行写入：
  *  结构化写不因无关级文件现状 500（T2 ⑲「reload 逐级容错」同精神），且未定位到的 id 记录落盘
  *  无害（装载面按 id 查表，陌生记录自然闲置）。
- *  写面：记录级整面替换（plugins.<id> 只含本次入场字段——与 loadEffectivePlugins「项目记录整体
- *  遮蔽全局记录」的合并语义一致，不做记录内深并）；既有 plugins 键形状坏（非对象）→ 整键重置
+ *  写面：记录内合并保留（既有记录深拷贝起步、入场字段覆盖——2026-11-01「保存配置后插件自动关闭」
+ *  根修；跨层级的整面语义在装载侧合并）；既有 plugins 键形状坏（非对象）→ 整键重置
  *  （装载面本就告警忽略坏形状，写面不保留垃圾）；id 来自装载面定位，ID_RE（^[a-z0-9]+(-[a-z0-9]+)*$）
  *  已滤 '__proto__' 一类原型键，普通对象赋值安全。原子写（同目录 tmp+rename，T2/T4 同款）；
  *  成功 root 在场时 reloadSettingsChain(root)（plugins 键随 settings 链生效；无 root 无项目锚不

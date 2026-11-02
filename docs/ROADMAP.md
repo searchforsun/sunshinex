@@ -120,7 +120,7 @@ flowchart TB
 - [x] GUI 管理面：智能体 / MCP 管理（设置页增删改 + 测试连接）、记忆清单与删除（右栏记忆面板）、技能与权限只读查看（编辑走文件面）
 - [x] 双端数据同步：配置、任务、记忆、日志（CLI/TUI/GUI 三面同源）（同 dataDir 三面同源：会话 journal/工作区注册表/write blob 互通）
 - [x] 系统托盘、全局快捷键（壳批次 H1-H4 已交付：Electron 44 桌面壳——托盘驻留序 / 全局快捷键 Alt+Shift+S / 原生外开 / NSIS+portable 双产物，spec 2026-10-08-shell-electron-design.md；门禁=主仓 1781/0+gui 245/0+e2e 19/0+shell 14/0+双冒烟 0）
-- [ ] 消息通知（桌面端系统通知）
+- [x] 消息通知（桌面端系统通知：run 完成 Notification + 点击经 win:focus-main 唤起主窗）
 
 **交付物**：交互式 TUI（第一入口，含会话持久化 / resume / rewind / fork）+ 桌面端 GUI v1（对话交互 / 代码预览 / diff / 任务看板 / 终端 / 设置管理面），CLI/TUI/GUI 三面数据互通。GUI 线 G1-G7 已交付（daemon 会话中心/对话页/审批问询/看板/预览 diff/收口）+ 壳批次 H1-H4 已交付（Electron 打包/托盘/快捷键）。
 **验收**：TUI 会话内完成一次含计划确认、审批与修正环的真实任务（流式可视、待办同步）；CLI 与 GUI 双端共享同一数据底座，核心功能可视化可用。已过：GUI 无头 e2e 11 例全绿 + 全量测试/selfcheck 门禁绿。
@@ -149,8 +149,11 @@ flowchart TB
 - [x] 模型 SDK 接入 OpenAI 协议兼容供应商（settings.json 配置，模型侧原生 function calling）
 - [x] 阶段五 5A 主体（会话 REPL、流式渲染、plan、审批与选择器、会话持久化 + resume + rewind/fork、中断与 steering、记忆/技能命令族、effort、上下文压缩模型驱动六要素、后台任务账本与 task 工具族、worktree 隔离）
 - [x] 插件治理层（manifestVersion 1 规范 + JSON Schema、两级装载 + 启用态合并、guard 声明式 safety 三类问线、`plugins list/validate` CLI、设置页插件 pane、工具结果图片通道；内置 browser-use / computer-use 双形态——规格 docs/superpowers/specs/2026-10-26-plugin-system-browser-computer-use-design.md）
+- [x] 智能体团队（agentTeams 八件套工具面 + taskboard 域模型按 journalId 会话隔离持久化 + GUI 三分栏页签；规格 docs/superpowers/specs/2026-11-01-agent-teams-tools-gui-design.md）
+- [x] 设置存储规范化 catalog（providers/agents/plugins/mcp/skills/permissions 结构化读写单点 + 目录监听实时同步 + CLI 结构化管理命令族 + GUI 设置六面板共享 kit）
+- [x] 内置浏览器融合（GUI Web 标签 webview 真实页面 + 壳 CDP facade 过滤代理——browser-use 插件自动化附着侧栏同一页签；M1/M2/M3 三批）
 
-当前基线（2026-10-21 实测）：tsc strict 零报错、全量 1882 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 全量 363 例全绿（含真 daemon e2e）。实施记录见各 plan 执行回写与 reports/。
+当前基线（2026-11-02 实测）：tsc strict 零报错、全量 2200+ 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 全量 500+ 例全绿（含真 daemon e2e）。实施记录见各 plan 执行回写与 reports/。
 
 下一步（目标形态排期，见 docs/GOAL.md）：长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子智能体生态沉淀分享）。
 
@@ -167,4 +170,4 @@ flowchart TB
 
 ## 7. 目录结构
 
-实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/taskboard`、`src/delegation`、`src/serve`、`src/storage`、`src/config`、`src/runtime.ts`、`src/tui`、`src/cli`；GUI 双件为根级 pnpm 工作区包 `gui/`（React 前端，构建产物 dist-gui/）与 `shell/`（Electron 桌面壳）。逐文件说明见根目录 `CLAUDE.md §3`。
+实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/taskboard`、`src/delegation`、`src/serve`、`src/catalog`、`src/storage`、`src/config`、`src/runtime.ts`、`src/tui`、`src/cli`；GUI 双件为根级 pnpm 工作区包 `gui/`（React 前端，构建产物 dist-gui/）与 `shell/`（Electron 桌面壳）。逐文件说明见根目录 `CLAUDE.md §3`。

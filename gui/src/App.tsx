@@ -19,7 +19,8 @@ import { Suspense } from 'react';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, stripTabType } from './tabs/tab-state';
+import { REFRESHABLE_TAB_TYPES } from './tabs/sidebar-refresh';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, stripTabType, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -83,7 +84,6 @@ declare global {
 const PROBE = registryProbe();
 
 /** 2026-10-27 欢迎页全局草稿座:无会话(欢迎页)时侧栏标签落此键——临时会话思想(2026-10-29 定版):发出去(欢迎页建席)整座继承到新会话并重获空座;开既有会话零交集 */
-const WELCOME_TAB_SEAT = '@welcome';
 
 export function App(): JSX.Element {
   // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
@@ -135,6 +135,10 @@ function AppShell(): JSX.Element {
   /** 快照权威投影(2026-10-31 用户裁定「任务历史持久化可见」):daemon journal 全量派生,经 onSeeded
    *  播种;与转录派生值合并(同签名派生优先——live 批次 ts 更新),环窗/尾窗外的老批次由此可见 */
   const [seededTodoBatches, setSeededTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
+  /** 后台任务账本(bg-task 直播 + 开会话/手动 GET 播种;顶栏计数与后台任务页签同源) */
+  const [bgTasks, setBgTasks] = useState<import('./projection').BgTaskRow[]>([]);
+  /** 记忆/学习技能清单变点(catalog-changed 递增 → 对应页签重拉) */
+  const [catalogTick, setCatalogTick] = useState({ memory: 0, learned: 0 });
   /** G14.176 create_agent_team_task 行点开的定位信号(任务板滚动高亮对应卡) */
   const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
   const connRef = useRef<Connection | null>(null);
@@ -183,8 +187,27 @@ function AppShell(): JSX.Element {
     sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
     shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, dropPendingActsRef, connRef,
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
-    setTodoBatches, setConnState,
+    setTodoBatches, setConnState, setBgTasks, setCatalogTick,
   });
+  // 开会话播种后台任务账本(GET 一次带 outputTail;之后靠 bg-task 直播,撤 5s 轮询)
+  useEffect(() => {
+    if (connInstance === null || openSessionId === '') {
+      setBgTasks([]);
+      return;
+    }
+    let alive = true;
+    void connInstance.sessionTasks(openSessionId).then(
+      (rows) => {
+        if (alive) setBgTasks(rows);
+      },
+      () => {
+        if (alive) setBgTasks([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [connInstance, openSessionId]);
   /** 影子水合单点绑定:每渲染重赋 hydrate ref(闭包恒取最新连接实例) */
   bindShadowHydration(
     { shadowHydrateRef, shadowHydratingRef, shadowBufRef, shadowHydratedRef, shadowCutRef },
@@ -377,6 +400,8 @@ function AppShell(): JSX.Element {
    *  tab-state(同目标重开=聚焦既有,单例类型单份)。G14.211 useCallback+sessionRef 零依赖
    *  稳定:内联闭包随 App 渲染换新,击穿 ChatEntryView memo——点一次文件=全列表重渲染闪帧
    *  (正文抖动源之一);sessionRef 恒同步 openSessionId,无过期闭包面 */
+  /** 可刷新侧栏打开信号:正文/顶栏每次 open 递增,页签据此主动拉一次 */
+  const [panelRefreshNonce, setPanelRefreshNonce] = useState<number | undefined>(undefined);
   const openTabInSession = useCallback((type: TabTypeId, params: TabParams = {}): void => {
     // 2026-10-27 欢迎页全局草稿:无会话(欢迎页)写 '@welcome' 草稿座——临时会话思想:发出去
     // (欢迎页建席,openSession 第 4 参)才整座继承到新会话;开既有会话零交集(继承门见 openSession)
@@ -384,6 +409,8 @@ function AppShell(): JSX.Element {
     // G14.38:程序化开标签即展开右栏(默认折叠下 write/diff/目录跳转/卡片开面板均可见)
     setTabStates((st) => setCollapsed(st, seat, false));
     setTabStates((s) => openTab(s, seat, type, params, PROBE));
+    // 带刷新钮的侧栏:打开即刷一次(keep-alive 常挂时仅切激活不会重挂载)
+    if (REFRESHABLE_TAB_TYPES.has(type)) setPanelRefreshNonce(Date.now());
     // isWelcome 必入依赖(2026-10-29 用户实测「欢迎页点浏览器/终端不开,开会话才见=绑定错了」
     // 根修):5232DCE 起进欢迎页不清 openSessionId——chat→welcome 若 openSessionId 不变,本回调
     // 不重建,闭包滞留聊天页 isWelcome=false,落座写成会话座;渲染层读 '@welcome' 恒空,开会话
@@ -400,7 +427,7 @@ function AppShell(): JSX.Element {
   const openWebTabRef = useRef(openWebTab);
   openWebTabRef.current = openWebTab;
   useEffect(() => {
-    const bridge = (window as unknown as { sunshinexWindow?: { onOpenUrl?: (cb: (url: string) => void) => () => void } }).sunshinexWindow;
+    const bridge = window.sunshinexWindow;
     if (bridge?.onOpenUrl === undefined) return;
     return bridge.onOpenUrl((url) => openWebTabRef.current(url));
   }, []);
@@ -602,6 +629,19 @@ function AppShell(): JSX.Element {
     if (ref.startsWith('team:')) setTaskFocus({ ref: ref.slice(5), nonce: Date.now(), kind: 'team' });
     else setTaskFocus({ ref, nonce: Date.now(), kind: 'task' });
   }, [openBoardTab, openBgTaskFocus]);
+  /** 智能体团队刷新:快照整替 board/teams/team/delegations(成员名册仅快照有——漏 team 即「暂无成员」) */
+  const refreshBoard = useCallback((sessionId: string): Promise<void> => {
+    if (connRef.current === null) return Promise.resolve();
+    return connRef.current.sessionSnapshot(sessionId).then((snap) =>
+      setProjection((p) => ({
+        ...p,
+        board: snap.board,
+        teams: snap.teams ?? [],
+        team: snap.team ?? [],
+        delegations: snap.delegations ?? [],
+      })),
+    );
+  }, []);
   const services = useMemo<TabServices>(
     () => ({
       board: projection.board, delegations: [...projection.delegations], team: [...projection.team], teams: projection.teams, onStopTask: stopTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos],
@@ -613,13 +653,14 @@ function AppShell(): JSX.Element {
         return [...bySig.values()].sort((a, b) => a.ts - b.ts);
       })(),
       taskFocus, onOpenTask: openTaskFocus,
-      // 任务板顶部刷新(2026-10-31):sessionSnapshot 拉 journal 权威 board 整替投影(live WS 流照常在位)
-      refreshBoard: (sessionId: string): Promise<void> =>
+      refreshBoard,
+      bgTasks,
+      onRefreshBgTasks: (): Promise<void> =>
         connRef.current === null
           ? Promise.resolve()
-          : connRef.current.sessionSnapshot(sessionId).then((snap) => setProjection((p) => ({ ...p, board: snap.board, teams: snap.teams ?? [] }))),
+          : connRef.current.sessionTasks(openSessionId).then((rows) => setBgTasks(rows)),
     }),
-    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus],
+    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, refreshBoard, bgTasks],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -870,6 +911,7 @@ function AppShell(): JSX.Element {
                 onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
                 agentTeamsOn={agentTeamsOn}
+                bgRunning={bgTasks.filter((r) => r.status === 'running').length}
                 board={projection.board}
                 teams={projection.teams}
                 onTodoBatches={setTodoBatches}
@@ -1009,6 +1051,8 @@ function AppShell(): JSX.Element {
                       memoryFocus,
                       learnedFocus,
                       bgFocus,
+                      panelRefreshNonce,
+                      catalogTick,
                     })
                     )}
                     </Suspense>
@@ -1077,24 +1121,10 @@ function AppShell(): JSX.Element {
 const IS_SHELL =
   typeof navigator !== 'undefined' &&
   navigator.userAgent.includes('Electron') &&
-  typeof (window as unknown as { sunshinexWindow?: unknown }).sunshinexWindow !== 'undefined';
+  typeof window.sunshinexWindow !== 'undefined';
 
-/** 桌面窗控桥(preload 注入;浏览器态无此全局) */
-interface SunshinexWindowBridge {
-  minimize: () => void;
-  toggleMaximize: () => void;
-  /** 通知点击唤起主窗(2026-10-31):win:focus-main → show+restore+focus;旧壳缺省=window.focus 兜底 */
-  focusMain?: () => void;
-  close: () => void;
-  /** 2026-10-25:Web 标签「在系统浏览器打开」——shell.openExternal,OS 默认浏览器承接(非 Electron 子窗) */
-  openExternal?: (url: string) => Promise<{ ok: boolean }>;
-  onMaximizedChange: (cb: (v: boolean) => void) => () => void;
-  /** 抽屉程序化拖窗(2026-10-29):可选——旧壳无此方法 ?. 静默跳过 */
-  dragStart?: () => void;
-  dragEnd?: () => void;
-}
-const winBridge = (): SunshinexWindowBridge | undefined =>
-  IS_SHELL ? (window as unknown as { sunshinexWindow?: SunshinexWindowBridge }).sunshinexWindow : undefined;
+/** 桌面窗控桥(preload 注入;浏览器态无此全局——形态单点声明见 env-global.d.ts Window.sunshinexWindow) */
+const winBridge = (): Window['sunshinexWindow'] => (IS_SHELL ? window.sunshinexWindow : undefined);
 
 /** 桌面窗控簇:[|] 侧栏开关(唯一渲染——web 贴窗口最右/桌面 −□× 左,同件同尺寸不随收展
  *  变形,页签条自有钮已退役)+ − □ × 自绘按钮(桌面态)——sx-iconbtn 同款圆角 hover,

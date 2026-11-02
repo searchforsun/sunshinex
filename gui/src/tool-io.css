@@ -8,7 +8,8 @@
 
 /* I/O 井=代码卡(.tool-io 同面):三分支(exec/mcp/缺省)同一底色圆角内距;margin 归零——
    顶距由 .tool-body-inner(4px)单点供,底距由 .tool-exec 收,不再逐层叠加 */
-.entry-tool pre.tool-io-pre {
+.entry-tool pre.tool-io-pre,
+.entry-tool .tool-io-pre {
   margin: 0;
   padding: 8px 10px;
   background: var(--surface-code);

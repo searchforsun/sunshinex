@@ -64,6 +64,19 @@ function withTimeout<T>(p: Promise<T>, ms: number, code: string, message: string
   return Promise.race([p, gate]).finally(() => clearTimeout(timer));
 }
 
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** 断链类错误判定单点（断链重试链的错误分类面）。自家码恒非断链——withTimeout 的 MCP_TIMEOUT 与
+ *  execResultFromMcp 的 MCP_TOOL_ERROR、参数闸门码各表其面，重试状态不得改写其语义；SDK 传输层
+ *  失败无稳定异常类型面：McpError 带 JSON-RPC 码（-32000=连接类），传输死亡的裸 Error 按报文签名兜底 */
+function isBrokenConnectionError(e: unknown): boolean {
+  if (e instanceof CodedToolError) return false;
+  if ((e as { code?: unknown }).code === -32000) return true;
+  return /connection closed|transport (closed|error)|not connected/i.test(errMsg(e));
+}
+
 /**
  * MCP 宿主：官方 SDK 传输接缝（stdio / streamable http / sse 三分支收敛于本文件，替换客户端实现不动主链）。
  * 注册链 = 懒 spawn → 握手身份校验（配置名 ≠ serverInfo.name 即拒，防冒名绕过 guard 登记制）
@@ -254,6 +267,39 @@ export class McpHost {
     }
   }
 
+  /** 拨号单点：传输工厂→SDK client→connect→stderr 日志挂靠（装配与断链重连两条路径共用，编排零双写）。
+   *  连接失败路径显式关闭半开传输并树杀已 spawn 子进程（SSE 的 EventSource 重连循环会残留 Socket 句柄，
+   *  半开 stdio 子进程同样挂事件循环），错误原样上抛——警告收单/失败记账归各调用方 */
+  private async dial(cfg: McpServerConfig): Promise<{ client: Client; transport: Transport }> {
+    const transport = this.makeTransport(cfg);
+    const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
+    try {
+      await client.connect(transport);
+    } catch (e) {
+      this.attachStderrLog(cfg, transport); // 失败路径同样挂(子进程可能已 spawn,崩退现场必落)
+      const halfOpenPid = pidOf(transport);
+      await client.close().catch(() => {});
+      if (halfOpenPid !== null) killProcessTree(halfOpenPid);
+      throw e;
+    }
+    this.attachStderrLog(cfg, transport); // spawn 完成后 transport.stderr 才存在——挂靠必须在 connect 之后(pre-connect 恒 null=日志恒空的病根)
+    return { client, transport };
+  }
+
+  /** 清单拉取后逐工具注册（disabledTools 短名过滤），返回注册数（装配面报数与重连面覆盖注册共用） */
+  private registerListedTools(server: string, listed: { tools: Array<{ name: string; description?: string; inputSchema?: unknown }> }): number {
+    let registered = 0;
+    const disabled = new Set(this.servers.find((s) => s.name === server)?.disabledTools ?? []);
+    for (const t of listed.tools) {
+      if (disabled.has(t.name)) continue; // 逐工具停用（短名过滤）：装配期不注册即模型不可见
+      const spec = this.makeTool(server, t.name, { description: t.description, inputSchema: t.inputSchema });
+      this.registry.register(spec);
+      this.registeredNames.add(spec.name); // 收口账：close 撤牌名单（名字取自 spec.name，单源免漂移）
+      registered += 1;
+    }
+    return registered;
+  }
+
   /** 逐服务器连接并注册工具：单台失败只损失该服务器工具（降级语义），失败收进警告单返回、不中断其余服务器装配。
    *  2026-10-26 两处放宽（用户实测主流服务器被拦）：①enabled=false 整机跳过（不连接不注册，软提示）；
    *  ②握手身份不符不再硬拒——serverInfo.name 与配置键不同是主流服务器的常态（lark-project-mcp 等），
@@ -271,25 +317,18 @@ export class McpHost {
         report.warnings.push(`server disabled (${cfg.name}): enabled=false, skipped`);
         continue;
       }
+      let client: Client;
+      let transport: Transport;
       try {
-        const transport = this.makeTransport(cfg);
-        const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
-        try {
-          await client.connect(transport);
-          this.attachStderrLog(cfg, transport); // spawn 完成后 transport.stderr 才存在——挂靠必须在 connect 之后(pre-connect 恒 null=日志恒空的病根)
-        } catch (e) {
-          this.attachStderrLog(cfg, transport); // 失败路径同样挂(子进程可能已 spawn,崩退现场必落)
-          // 失败路径须显式关闭半开传输：SSE 的 EventSource 重连循环会残留 Socket 句柄，挂住测试进程不退出
-          const halfOpenPid = pidOf(transport);
-          await client.close().catch(() => {});
-          // 半开 stdio 子进程同样挂事件循环（握手超时但子进程已 spawn 的现场）——同 close 路径树终结
-          if (halfOpenPid !== null) killProcessTree(halfOpenPid);
-          const msg = e instanceof Error ? e.message : String(e);
-          report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
-          this.writeAssemblyLog(cfg.name, `connection failed: ${msg}`);
-          this.failedNames.add(cfg.name);
-          continue;
-        }
+        ({ client, transport } = await this.dial(cfg));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        report.warnings.push(`connection failed (${cfg.name}): ${msg.slice(0, 120)}`);
+        this.writeAssemblyLog(cfg.name, `connection failed: ${msg}`);
+        this.failedNames.add(cfg.name);
+        continue;
+      }
+      try {
         const actual = client.getServerVersion()?.name;
         if (actual !== cfg.name) {
           // 身份软提示（不再跳过）：照常 listTools+注册。差异只落装配日志文件(诊断价值在日志
@@ -298,15 +337,7 @@ export class McpHost {
           this.writeAssemblyLog(cfg.name, `identity note: serverInfo.name=${actual ?? '(unknown)'} (accepted, config name kept)`);
         }
         this.conns.set(cfg.name, { client, transport, config: cfg });
-        const listed = await client.listTools();
-        const disabled = new Set(cfg.disabledTools ?? []);
-        for (const t of listed.tools) {
-          if (disabled.has(t.name)) continue; // 逐工具停用（短名过滤）：装配期不注册即模型不可见
-          const spec = this.makeTool(cfg.name, client, t.name, { description: t.description, inputSchema: t.inputSchema });
-          this.registry.register(spec);
-          this.registeredNames.add(spec.name); // 收口账：close 撤牌名单（名字取自 spec.name，单源免漂移）
-          report.registered += 1;
-        }
+        report.registered += this.registerListedTools(cfg.name, await client.listTools());
       } catch (e) {
         // 形态守卫/清单拉取等残余失败同样只损失本服务器（降级语义），收警告继续
         const msg = e instanceof Error ? e.message : String(e);
@@ -334,8 +365,10 @@ export class McpHost {
     this.conns.clear();
   }
 
-  /** 单工具注册面：执行器做参数体积闸门与超时收束，安全闸门（登记制/模式豁免）统一在 guard */
-  private makeTool(server: string, client: Client, toolName: string, tool?: { description?: string; inputSchema?: unknown }): RegisteredTool {
+  /** 单工具注册面：执行器做参数体积闸门与超时收束，安全闸门（登记制/模式豁免）统一在 guard。
+   *  连接不闭包捕获——执行器每次尝试按 server 名解析当前连接（conns 单源）：重连覆盖注册后，
+   *  在途重试（与后续调用）都落在活连接上；闭包持有注册时的 client 会使重试永远打在死连接上 */
+  private makeTool(server: string, toolName: string, tool?: { description?: string; inputSchema?: unknown }): RegisteredTool {
     const fqName = `mcp__${server}__${toolName}`;
     const timeoutMs = this.opts.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
     const parameters = toToolSpecParameters(tool?.inputSchema);
@@ -352,25 +385,26 @@ export class McpHost {
         // 断链重试(2026-11-01 用户裁定「运行中调用异常应触发重试,2 次后如实回报」):连接类错误
         // (server 进程死亡/管道断/transport 关闭)重连该 server 后重试调用,最多 2 次;穷尽抛
         // MCP_CONNECT_FAILED 如实告知模型(server 不可达),不再吞进备用方案歧义。超时/业务错误
-        // (MCP_TIMEOUT/isError)不在此列——非断链语义,重连无益
+        // (MCP_TIMEOUT/isError)不在此列——非断链语义,重连无益,且重试状态不改写其错误分类学
         let attempts = 0;
         for (;;) {
+          const conn = this.conns.get(server);
+          if (conn === undefined) throw new CodedToolError('MCP_CONNECT_FAILED', `MCP server not connected: ${server}`);
           try {
             const res = await withTimeout(
-              client.callTool({ name: toolName, arguments: args }),
+              conn.client.callTool({ name: toolName, arguments: args }),
               timeoutMs,
               'MCP_TIMEOUT',
               `MCP call timed out (${timeoutMs}ms): ${fqName}`,
             );
             return execResultFromMcp(fqName, res);
           } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            if (!/connection closed|transport (closed|error)|not connected|-32000/i.test(msg) || attempts >= 2) {
-              if (attempts > 0) throw new CodedToolError('MCP_CONNECT_FAILED', `MCP server unreachable after ${attempts} reconnect attempts (${server}): ${msg.slice(0, 200)}`);
-              throw e;
+            if (!isBrokenConnectionError(e)) throw e; // 非断链如实原抛——超时穷尽后仍报 MCP_TIMEOUT,不误标 server unreachable
+            if (attempts >= 2) {
+              throw new CodedToolError('MCP_CONNECT_FAILED', `MCP server unreachable after ${attempts} reconnect attempts (${server}): ${errMsg(e).slice(0, 200)}`);
             }
             attempts += 1;
-            this.writeAssemblyLog(server, `tool call hit broken connection — reconnect #${attempts}: ${msg.slice(0, 120)}`);
+            this.writeAssemblyLog(server, `tool call hit broken connection — reconnect #${attempts}: ${errMsg(e).slice(0, 120)}`);
             await this.reconnectServer(server);
           }
         }
@@ -378,7 +412,7 @@ export class McpHost {
     };
   }
 
-  /** 单 server 重连(断链重试面):撤旧连接(树杀死进程)→ 新传输连接 → 清单拉取重注册(同名覆盖;
+  /** 单 server 重连(断链重试面):撤旧连接(树杀死进程)→ 拨号单点重连 → 清单拉取重注册(同名覆盖;
    *  工具面可能已变,以重连后为准)。失败抛错由调用方计数 */
   private async reconnectServer(server: string): Promise<void> {
     const cfg = this.servers.find((s) => s.name === server);
@@ -390,18 +424,8 @@ export class McpHost {
       await old.client.close().catch(() => {});
       if (pid !== null) killProcessTree(pid);
     }
-    const transport = this.makeTransport(cfg);
-    const client = new Client({ name: 'sunshinex-mcp-host', version: '0.1.0' });
-    this.attachStderrLog(cfg, transport);
-    await client.connect(transport);
-    const listed = await client.listTools();
-    const disabled = new Set(cfg.disabledTools ?? []);
-    for (const t of listed.tools) {
-      if (disabled.has(t.name)) continue;
-      const spec = this.makeTool(server, client, t.name, { description: t.description, inputSchema: t.inputSchema });
-      this.registry.register(spec);
-      this.registeredNames.add(spec.name);
-    }
+    const { client, transport } = await this.dial(cfg);
+    this.registerListedTools(server, await client.listTools());
     this.conns.set(server, { client, transport, config: cfg });
   }
 }

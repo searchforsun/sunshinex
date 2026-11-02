@@ -27,7 +27,7 @@ createRoot(root).render(
 // 已 remove(可选调用,静默无副作用)
 requestAnimationFrame(() => {
   requestAnimationFrame(() => {
-    (window as unknown as { __sxBootDone?: () => void }).__sxBootDone?.();
+    window.__sxBootDone?.();
   });
 });
 
