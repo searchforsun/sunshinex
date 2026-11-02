@@ -89,44 +89,111 @@ function toolRowRe(re: RegExp | string): HTMLButtonElement | null {
  * 连接层语义迁移:T2 起 daemon 无绑 root、裸端点=激活别名(无 active 409)——本套全面迁 :id 形态
  * (newSession 先建会话);重连语义=onReset+全量重放(旧 onResync 载荷路径退役,App 级重置重播种
  * 经 App.test 单测,本套覆盖连接层半边:第二次 onReset、补发帧全量再投、快照全量在场)。
- * 全链事件序:主链 create_agent_team_task(绑定已注册 teamId)→ 板派发 fork(fork 消费末位 done 牌)→
- * 回写 success → 主链再取(末位 done 牌重复供牌)→ run 收束。收敛判据 =
- * snapshot status idle + 板/委派落位,不以首个 done 为准。
- * startDaemon 写入队注册表 team-alpha-e2e / Alpha,脚本里的 create_agent_team_task 绑定该 teamId。
+ * 全链事件序:主链 create_agent_team → create_agent_teammate → create_agent_team_task →
+ * 队友认领回写 success → 主链 done 收束。收敛判据 = snapshot status idle + 板/委派落位。
  */
 
-/** 已注册队伍:create_agent_team_task 的 teamId 必须命中 registry,卡头名称取快照 teams.name */
-const E2E_TEAM_ID = 'team-alpha-e2e';
+/** 队名固定;teamId 由 create_agent_team 运行时生成(会话隔离后不再预置工作区级 registry) */
 const E2E_TEAM_NAME = 'Alpha';
+const E2E_WORKER = 'worker';
 
-/** 两卡脚本:create_agent_team_task 建 Demo(五态,无门禁入参)+ done 终答;末位 done 牌重复供牌(ScriptedAdapter 语义) */
-const CARDS = [
-  `{"tool":"create_agent_team_task","input":{"teamId":"${E2E_TEAM_ID}","title":"Demo","spec":"demo task","dependsOn":null,"assignee":null,"executor":null,"retryOf":null}}`,
-  '{"done":true,"reply":"all done"}',
-];
-
-/** 会话根数据目录预置队伍,供 harness 启动时 load */
-function seedE2eTeam(root: string): void {
-  const dir = path.join(resolveDataDir(root), 'teams');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, 'registry.json'),
-    JSON.stringify([{ teamId: E2E_TEAM_ID, name: E2E_TEAM_NAME, createdAt: 1 }]),
-  );
+/** 自模型上下文捞 create_agent_team 回执中的 teamId=…(工具观察尾追) */
+function teamIdFromReq(req: ChatRequest): string | undefined {
+  for (let i = req.messages.length - 1; i >= 0; i--) {
+    const m = req.messages[i]!;
+    if (m.role !== 'tool' && m.role !== 'user' && m.role !== 'assistant') continue;
+    const text = typeof m.content === 'string' ? m.content : '';
+    const hit = /teamId=([a-z0-9-]+)/i.exec(text);
+    if (hit) return hit[1];
+  }
+  return undefined;
 }
 
-/** 首轮建任务,其后轮(含 fork)挂起,直到 release:任务停在 pending/running,供停钮断言 */
-class HoldDispatchAdapter implements ModelAdapter {
-  readonly provider = 'hold-dispatch';
-  private calls = 0;
-  private readonly pending: Array<() => void> = [];
+/** 板面全链适配器:建队 → 建队友 → 建任务 → done(末位粘性,队友 Reactor 与主链收口共用) */
+class BoardCardsAdapter implements ModelAdapter {
+  readonly provider = 'board-cards';
+  private phase: 'team' | 'teammate' | 'task' | 'done' = 'team';
+  private teamId: string | undefined;
 
-  release(): void {
-    for (const resolve of this.pending.splice(0)) resolve();
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    if (this.phase === 'team') {
+      this.phase = 'teammate';
+      return {
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{ id: 'call_team', name: 'create_agent_team', argsJson: JSON.stringify({ name: E2E_TEAM_NAME }) }],
+      };
+    }
+    if (this.phase === 'teammate') {
+      this.teamId = teamIdFromReq(req) ?? this.teamId;
+      this.phase = 'task';
+      return {
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{
+          id: 'call_tm',
+          name: 'create_agent_teammate',
+          argsJson: JSON.stringify({
+            teamId: this.teamId,
+            name: E2E_WORKER,
+            prompt: 'claim board tasks and finish each',
+            agent_id: null,
+          }),
+        }],
+      };
+    }
+    if (this.phase === 'task') {
+      this.teamId = teamIdFromReq(req) ?? this.teamId;
+      this.phase = 'done';
+      return {
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{
+          id: 'call_task',
+          name: 'create_agent_team_task',
+          argsJson: JSON.stringify({
+            teamId: this.teamId,
+            title: 'Demo',
+            spec: 'demo task',
+            dependsOn: null,
+            assignee: null,
+            executor: null,
+            retryOf: null,
+          }),
+        }],
+      };
+    }
+    return { finish: 'stop', content: 'all done', toolCalls: [] };
   }
 
-  async chat(_req: ChatRequest): Promise<ChatResult> {
-    if (this.calls++ === 0) {
+  async chatStream(req: ChatRequest, onDelta: (t: string) => void): Promise<ChatResult> {
+    const r = await this.chat(req);
+    for (const ch of r.content) onDelta(ch);
+    return r;
+  }
+}
+
+/** 建队+建任务(无队友 → 任务留 pending,供停钮断言);主链 done 收口,不挂起 */
+class HoldDispatchAdapter implements ModelAdapter {
+  readonly provider = 'hold-dispatch';
+  private phase: 'team' | 'task' | 'done' = 'team';
+  private teamId: string | undefined;
+
+  /** 兼容旧调用面(finally hold.release());现无挂起态,空操作 */
+  release(): void {}
+
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    if (this.phase === 'team') {
+      this.phase = 'task';
+      return {
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{ id: 'call_team', name: 'create_agent_team', argsJson: JSON.stringify({ name: E2E_TEAM_NAME }) }],
+      };
+    }
+    if (this.phase === 'task') {
+      this.teamId = teamIdFromReq(req) ?? this.teamId;
+      this.phase = 'done';
       return {
         finish: 'tool_calls',
         content: '',
@@ -134,7 +201,7 @@ class HoldDispatchAdapter implements ModelAdapter {
           id: 'call_0',
           name: 'create_agent_team_task',
           argsJson: JSON.stringify({
-            teamId: E2E_TEAM_ID,
+            teamId: this.teamId,
             title: 'HoldDemo',
             spec: 'hold until stop',
             dependsOn: null,
@@ -145,12 +212,11 @@ class HoldDispatchAdapter implements ModelAdapter {
         }],
       };
     }
-    await new Promise<void>((resolve) => { this.pending.push(resolve); });
     return { finish: 'stop', content: 'held', toolCalls: [] };
   }
 
-  async chatStream(_req: ChatRequest, onDelta: (t: string) => void): Promise<ChatResult> {
-    const r = await this.chat(_req);
+  async chatStream(req: ChatRequest, onDelta: (t: string) => void): Promise<ChatResult> {
+    const r = await this.chat(req);
     for (const ch of r.content) onDelta(ch);
     return r;
   }
@@ -172,7 +238,6 @@ async function startDaemon(
   fs.mkdirSync(out, { recursive: true });
   const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
   process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
-  seedE2eTeam(root);
   // 语言钉 en(2026-10-22 用户档语言泄漏观察项落地):开发者 ~/.sunshinex/settings.json 的
   // language 键经 daemon settings 下发 App 会翻转渲染语言,断言面机器相关——显式钉 en 去机器相关
   const prevLanguage = process.env.SUNSHINEX_LANGUAGE;
@@ -229,7 +294,7 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
   beforeAll(async () => {
     // jsdom 自带 WebSocket 对 subprotocol 握手语义不可靠,以 node ws 客户端替换 globalThis——
     // 连接层代码面仍只依赖 WHATWG WebSocket 形态(new WebSocket(url, protocols))
-    env = await startDaemon(new ScriptedAdapter(CARDS));
+    env = await startDaemon(new BoardCardsAdapter());
     conn = createConnection({
       baseUrl: `http://127.0.0.1:${env.port}`,
       onEvent: (sessionId, e) => frames.push({ sessionId, e }),
@@ -278,17 +343,17 @@ describe('G2 无头验收(会话维迁移):真 daemon 全链 → sessionSnapshot
     // —— 转录(粗粒度三类):user 提交回显 / assistant 终答 / tool 配对条 ——
     expect(snap1.messages.some((m) => m.kind === 'user' && m.md === 'run demo')).toBe(true); // P11:user 裸文(v3 零前缀)
     expect(snap1.messages.some((m) => m.kind === 'assistant' && m.md === 'all done')).toBe(true);
-    const tool = snap1.messages.find((m) => m.kind === 'tool');
+    const tool = snap1.messages.find((m) => m.kind === 'tool' && m.name === 'create_agent_team_task');
     expect(tool).toBeDefined();
     expect(tool!.md).toBe(''); // P11:tool md 恒空(字段单源 name/input/result)
-    expect(tool!.name).toBe('create_agent_team_task');
 
     // —— 板:任务在场(板 id 不透明方言,从快照捕获),fork 完成回写 success,归属预置队伍 ——
     const taskId = Object.keys(snap1.board.tasks)[0]!;
     expect(snap1.board.tasks[taskId]?.title).toBe('Demo');
     expect(snap1.board.tasks[taskId]?.status).toBe('success');
-    expect(snap1.board.tasks[taskId]?.teamId).toBe(E2E_TEAM_ID);
-    expect(snap1.teams?.some((t) => t.teamId === E2E_TEAM_ID && t.name === E2E_TEAM_NAME)).toBe(true);
+    const teamId = snap1.board.tasks[taskId]?.teamId;
+    expect(teamId).toBeTruthy();
+    expect(snap1.teams?.some((t) => t.teamId === teamId && t.name === E2E_TEAM_NAME)).toBe(true);
 
     // —— 委派:create_agent_team_task 经板派发 fork,delegation 事件流经影子投影(delegationId=dispatchTag(板 id))——
     const del = snap1.delegations.find((d) => d.id === taskId);
@@ -826,17 +891,19 @@ describe('G6 Board 全链:队卡 + 五态行 → DAG 节点 → Stop → cancell
       const openLabel = new RegExp(`^${taskId} \\[(pending|running)\\] HoldDemo$`);
       await waitFor(() => expect(screen.getByRole('button', { name: openLabel })).toBeDefined(), { timeout: 10_000 });
       expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
-      expect(container.querySelector('.tb-card')?.getAttribute('data-team-id')).toBe(E2E_TEAM_ID);
+      expect(container.querySelector('.tb-card')?.getAttribute('data-team-id')).toBeTruthy();
       expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
       expect(screen.queryByRole('button', { name: /Deny/ })).toBeNull();
       expect(container.querySelector('.sx-badge.sx-badge-warn')).toBeNull();
 
-      fireEvent.click(screen.getByRole('button', { name: 'DAG' }));
+      fireEvent.click(screen.getByRole('button', { name: bi('Orchestration', '编排') }));
       await waitFor(() => expect(container.querySelector('.tb-dag-wrap')).not.toBeNull(), { timeout: 5_000 });
       await waitFor(() => expect(screen.getByLabelText(openLabel)).not.toBeNull(), { timeout: 10_000 });
       expect(screen.getByRole('button', { name: `Stop ${taskId}` })).toBeDefined();
 
-      fireEvent.click(screen.getByRole('button', { name: 'List' }));
+      fireEvent.click(screen.getByRole('button', { name: bi('Tasks', '任务') }));
+      // 二段确认:首击武装、再击执行
+      fireEvent.click(screen.getByRole('button', { name: `Stop ${taskId}` }));
       fireEvent.click(screen.getByRole('button', { name: `Stop ${taskId}` }));
       await waitFor(() => expect(screen.getByRole('button', { name: `${taskId} [cancelled] HoldDemo` })).toBeDefined(), { timeout: 10_000 });
       expect(container.querySelector('.tb-task-title.tb-struck')?.textContent).toBe('HoldDemo');
@@ -1185,7 +1252,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
 
 describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务标签 → 任务行在场', () => {
   it('提交 CARDS → done 收束 → 开待办页签(任务失活)→ 切回「任务」标签 → 任务行/委派落位', async () => {
-    const env = await startDaemon(new ScriptedAdapter(CARDS));
+    const env = await startDaemon(new BoardCardsAdapter());
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
@@ -1206,7 +1273,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
 
-      // —— 既有 taskboard 卡片流(文件头 CARDS 同款):提交 → done 收束 → 板/委派投影落位 ——
+      // —— 板面全链(建队→队友→任务):提交 → done 收束 → 板/委派投影落位 ——
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
       fireEvent.change(input, { target: { value: 'run demo' } });
@@ -1234,9 +1301,8 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       const demoRow = screen.getByRole('button', { name: /\[success\] Demo$/ });
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;
       expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).toContain('active');
-      // 委派面(G14.213 任务板重构:旧 .delegation-list 侧栏退役):fork 委派落任务行内执行
-      // 子智能体徽标(agentOfTask 按委派标签命中 → 🤖 徽标入行);状态面已在行名 [success] 断过
-      await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
+      // 委派面:队友认领落任务行内执行体徽标;状态面已在行名 [success] 断过;id 在 data-task-id
+      expect(container.querySelector(`[data-task-id="${taskId}"]`)).not.toBeNull();
     } finally {
       await env.stop();
       vi.unstubAllEnvs();
@@ -1637,7 +1703,7 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
 
 describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体事件聚合 → 开标签 → 卡在场 + mini 转录展开', () => {
   it('提交 CARDS → done 收束 → +菜单开 Agents 标签 → 任务卡(label/完成)+ 点卡转录行在场 → 再点收起', async () => {
-    const env = await startDaemon(new ScriptedAdapter(CARDS));
+    const env = await startDaemon(new BoardCardsAdapter());
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${env.port}`);
       const { container } = render(createElement(App));
@@ -1652,7 +1718,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
     fireEvent.keyDown(goalInput, { key: 'Enter' });
       await waitFor(() => expect(screen.getByText(/./, { selector: '.chat-title-text' })).toBeDefined(), { timeout: 5_000 });
 
-      // —— 既有 taskboard 卡片流(CARDS 同款):提交 → 委派 fork 派发 → 主链 done 收束 ——
+      // —— 板面全链:提交 → 队友认领派发 → 主链 done 收束 ——
       const input = screen.getByLabelText('message input');
       await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false), { timeout: 5_000 });
       fireEvent.change(input, { target: { value: 'run demo' } });
@@ -1677,7 +1743,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
       expect(container.querySelector('.tb-team-name')?.textContent).toBe(E2E_TEAM_NAME);
       const demoRow = screen.getByRole('button', { name: /\[success\] Demo$/ });
       const taskId = (demoRow.getAttribute('aria-label') ?? demoRow.textContent ?? '').split(' ')[0]!;
-      await waitFor(() => expect(container.querySelector('.taskboard-cards')?.textContent).toContain(taskId), { timeout: 10_000 });
+      expect(container.querySelector(`[data-task-id="${taskId}"]`)).not.toBeNull();
 
       // —— 点任务行开只读转录页(行内 onOpenAgent 跳转,辅助对话式单独打开无输入框):转录行含终稿全文 ——
       fireEvent.click(demoRow);
@@ -1759,8 +1825,8 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
     vi.stubGlobal('WebSocket', NodeWebSocket);
     const mkPost = (base: string) => async (p: string, body: unknown): Promise<Record<string, unknown>> =>
       (await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Record<string, unknown>;
-    // —— 第一 daemon:CARDS 全链(create_agent_team_task → 板派发 fork → 收束)——
-    const fx = await startDaemon(new ScriptedAdapter(CARDS));
+    // —— 第一 daemon:板面全链(建队→队友→任务 → 认领收束)——
+    const fx = await startDaemon(new BoardCardsAdapter());
     const base = `http://127.0.0.1:${fx.port}`;
     const post = mkPost(base);
     try {

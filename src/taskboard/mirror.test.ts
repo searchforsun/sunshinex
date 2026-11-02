@@ -71,10 +71,19 @@ test('镜像属性:发射↔翻译↔归约的投影终态与真相板一致(代
       },
       interruptCurrent: () => false,
     };
+    // 指派面活成员(不认领不执行)——assign 须命中同队存活名
+    const extLead = {
+      name: 'ext-lead',
+      teamId,
+      stopped: false,
+      kick(): void {},
+      async runTask(): Promise<void> {},
+      interruptCurrent: () => false,
+    };
     const stubTeam = {
-      get: (name: string) => (name === 'worker' ? worker : undefined),
-      aliveNames: () => (worker.stopped ? [] : ['worker']),
-      hasAlive: () => !worker.stopped,
+      get: (name: string) => (name === 'worker' ? worker : name === 'ext-lead' ? extLead : undefined),
+      aliveNames: () => [worker, extLead].filter((m) => !m.stopped).map((m) => m.name),
+      hasAlive: () => !worker.stopped || !extLead.stopped,
     } as unknown as TeamRegistry;
     const board = new TaskBoard({
       store: new TeamStore(path.join(tmp, 'teams', 'main')),

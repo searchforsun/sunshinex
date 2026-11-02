@@ -218,7 +218,7 @@ export interface TreeSearchResp {
   truncated?: boolean;
 }
 
-/** GET /session/:id/tasks 行形（exec 类真后台执行账本，服务端已过滤 subagent/teammate 专面）：
+/** GET /session/:id/tasks 行形（exec + 后台 spawn/subagent；conn.sessionTasks 滤掉 teammate）：
  *  endedAt=终态时刻（时长计算）；outputTail=输出末 4KB 尾读（结果区直示），outputTruncated=头截断。
  *  2026-10-31 暂停面：pausedMs=已折算暂停总时长（运行时长停表扣减），pausedAt=进行中暂停段起点
  *  （status==='paused' 时运行时长的冻结基准点） */

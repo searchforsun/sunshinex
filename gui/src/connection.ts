@@ -129,9 +129,9 @@ export interface Connection {
    *  (G14.2xx b 影子投影水合——刷新/重连后会话打开时拉取清零重放;WS 环窗 512 对长会话子智能体流
    *  必溢出,恢复唯一可靠入口)。cut=服务端读档时刻泵水位:在途缓冲帧按 seq>cut 重放,零丢帧零重复 */
   shadowEvents(id: string): Promise<{ events: SessionEvent[]; cut: number }>;
-  /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。G14.2xx 用户裁定:本面只记录 exec 类
-   *  真后台执行——subagent/teammate 账本行退役(子智能体/队友在任务板·agent 页签已有专面,双处
-   *  同显重复);本方法单点过滤(顶栏计数与后台任务页签共用)。行形 SessionTaskRow 单点(connection-types) */
+  /** GET /session/:id/tasks:后台任务账本行(G10-C6 面板)。本面保留 exec + 后台 spawn(subagent)
+   *  ——2026-11-02 用户裁定 spawn 行回归(停止=task_stop 打断线;行点击跳转录页);teammate 行仍滤
+   *  (队卡/成员面专属)。本方法单点过滤(顶栏计数与后台任务页签共用)。行形 SessionTaskRow 单点 */
   sessionTasks(id: string): Promise<SessionTaskRow[]>;
   /** POST /session/:id/tasks/stop {id: taskId}：后台任务停止（2026-11-02 用户裁定「暂停=复用
    *  task_stop,撤恢复」）。task_stop 同语义（exec 杀进程树/subagent 打断线），终态 stopped 即
@@ -558,10 +558,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson<{ events: SessionEvent[]; cut: number }>('/session/' + encodeURIComponent(id) + '/shadow-events');
     },
     sessionTasks(id: string) {
-      // 白名单:只留 exec 类真后台执行(subagent/teammate 各有专面)——见接口注
+      // exec + 后台 spawn(subagent);teammate 走队卡专面——见接口注
       return getJson<SessionTaskRow[]>(
         '/session/' + encodeURIComponent(id) + '/tasks',
-      ).then((rows) => rows); // 2026-11-02 用户裁定「后台的 spawn 加回来」:subagent 后台行不再滤除(停止=task_stop 语义可停子智能体;行点击跳转录页)
+      ).then((rows) => rows.filter((r) => r.kind === 'exec' || r.kind === 'subagent'));
     },
     async taskStop(id: string, taskId: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/tasks/stop', { id: taskId });

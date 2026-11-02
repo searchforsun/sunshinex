@@ -1505,6 +1505,8 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     await waitFor(() => expect(screen.getByRole('button', { name: 't1 [pending] Demo' })).toBeDefined());
     expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
     expect(screen.getByRole('button', { name: 't2 [pending] Next' })).toBeDefined();
+    // 二段确认:首击武装、再击执行(与 TaskBoardTab.test 同口径)
+    fireEvent.click(screen.getByRole('button', { name: 'Stop t1' }));
     fireEvent.click(screen.getByRole('button', { name: 'Stop t1' }));
     await waitFor(() => expect(conn.boardStopCalls).toEqual([['s1', 't1']]));
     unmount();

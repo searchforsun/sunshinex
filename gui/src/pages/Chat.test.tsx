@@ -677,6 +677,13 @@ describe('表格容器(G11 §5.3)', () => {
 });
 
 describe('run 尾部操作条(G11 §6)', () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.resolve()) },
+      configurable: true,
+    });
+  });
+
   it('末条正文下挂条:复制/fork 钮与 steps/tokens/时间', async () => {
     const onFork = vi.fn();
     render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onFork={onFork} />);
@@ -684,7 +691,9 @@ describe('run 尾部操作条(G11 §6)', () => {
     const now = Date.now();
     fire({ type: 'model-start', ts: now });
     fire({ type: 'token', text: '答', ts: now });
-    fire({ type: 'done', text: '答', ts: now, payload: { steps: 12, tokensUsed: 8400 } });
+    fire({ type: 'done', text: '答', ts: now, payload: { tokensUsed: 8400 } });
+    // 生产面 serve 收尾 runmeta 补本轮步数(GUI applyEvent 无 kernel.pump live meta 同步)
+    fire({ type: 'runmeta', ts: now, payload: { steps: 12, runSteps: 12 } });
     const footer = document.querySelector('.run-footer');
     expect(footer?.textContent).toContain('12 steps');
     expect(footer?.textContent).toContain('8.4k tokens');

@@ -22,7 +22,7 @@ test('keyHintsFor 矩阵：空闲两态与 inspect/browse/board/pauseConfirm（/
   const browse = keyHintsFor({ status: 'idle', browse: true })!;
   assert.deepEqual(browse.items.map((i) => i.key), ['↑↓', 'Enter', 'Esc'], '浏览接管键');
   const board = keyHintsFor({ status: 'idle', board: true })!;
-  assert.deepEqual(board.items.map((i) => i.key), ['↑↓', 'Enter', 'Esc'], '任务视图接管键（Ctrl+T，P2 spec §10.3；Enter=gate 行审批）');
+  assert.deepEqual(board.items.map((i) => i.key), ['↑↓', 'Esc'], '任务视图接管键（Ctrl+T；板内无审批门,Enter 不进条）');
   const queue = keyHintsFor({ status: 'idle', queue: true })!;
   assert.deepEqual(queue.items.map((i) => i.key), ['↑↓', 'E', 'D', 'N', 'I', 'F', 'Ctrl+↑↓', 'Esc'], '等待队列面板接管键（Ctrl+Q，P5 spec §12.3）');
   const pause = keyHintsFor({ status: 'running', pauseConfirm: true })!;

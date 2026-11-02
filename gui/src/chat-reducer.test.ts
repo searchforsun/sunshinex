@@ -143,14 +143,15 @@ describe('五 kind 与 notice 系映射', () => {
         ev('notice', 'hello'),
         ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }),
         ev('delegation-ended', undefined, { label: 'dev', status: 'done' }),
-        ev('agent-message', undefined, { from: 'boss', to: 'dev', text: 'hi' }),
+        ev('agent-message', undefined, { from: 'boss', to: 'dev', text: '队友互发不上屏' }),
+        ev('agent-message', undefined, { from: 'boss', to: 'lead', text: 'hi' }),
       ],
       appendUserMessage(initialChatState(), 'go'),
     );
     expect(s.entries.map((e) => `${e.kind}|${e.md}`)).toEqual([
       'user|go',
       'notice|hello',
-      'notice|[boss → dev] hi',
+      'notice|[boss → lead] hi',
     ]);
   });
 
@@ -458,10 +459,12 @@ describe('run 边界条目(G11 状态行:idle→running 插入,done/error 封段
     expect(s.entries).toHaveLength(1);
   });
 
-  it('done 封段:去 streaming 标、seconds 计 ts 差、steps/tokens 透传 done 载荷、endedTs 回填', () => {
+  it('done 封段:去 streaming 标、seconds 计 ts 差、runmeta 补 steps、tokens 透传 done 载荷、endedTs 回填', () => {
     let s = applyChatEvent(initialChatState(), { type: 'model-start', ts: 1_000 } as SessionEvent);
     s = applyChatEvent(s, { type: 'token', text: '答', ts: 2_000 } as SessionEvent);
-    s = applyChatEvent(s, { type: 'done', text: '答', ts: 34_500, payload: { steps: 12, tokensUsed: 8400 } } as SessionEvent);
+    s = applyChatEvent(s, { type: 'done', text: '答', ts: 34_500, payload: { tokensUsed: 8400 } } as SessionEvent);
+    // GUI 归约走 applyEvent(无 SessionKernel.pump 的 live meta 同步);生产面 serve 收尾发 runmeta 补 steps
+    s = applyChatEvent(s, { type: 'runmeta', ts: 34_500, payload: { steps: 12, runSteps: 12 } } as SessionEvent);
     const run = s.entries.find((e) => e.kind === 'run')!;
     expect(run).toMatchObject({ kind: 'run', streaming: undefined, seconds: 34, steps: 12, tokens: 8400, endedTs: 34_500 });
   });

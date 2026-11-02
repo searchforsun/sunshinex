@@ -689,7 +689,7 @@ test('会话控制器：/new 归零会话缓存累计（会话级口径的软重
   }
 });
 
-test('会话控制器：turns/steps 会话累计——跨任务累加、done 帧不计步、/new 归零', async () => {
+test('会话控制器：turns/steps 会话累计——跨任务累加、终稿轮计步、/new 归零', async () => {
   const tmp = tmpdir('sunshinex-sess-turns-');
   fs.writeFileSync(path.join(tmp, 'b.txt'), 'y');
   try {
@@ -697,22 +697,22 @@ test('会话控制器：turns/steps 会话累计——跨任务累加、done 帧
       root: tmp,
       mode: 'full-access',
       model: usageModel([
-        { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务一：直答，零工具步
-        { cache: 900, prompt: 1000, reply: '{"tool":"read","input":{"path":"b.txt"}}' }, // 任务二步 1：读工具
-        { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务二收尾帧（不计步）
+        { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务一：直答 = 1 动作轮
+        { cache: 900, prompt: 1000, reply: '{"tool":"read","input":{"path":"b.txt"}}' }, // 任务二：工具出牌批 +1
+        { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务二：终稿轮再 +1
       ]),
     });
     await ctrl.submit('任务一');
     await ctrl.waitIdle();
     let m = ctrl.getState().metrics;
     assert.equal(m.sessionTurns, 1, '任务一计 1 轮');
-    assert.equal(m.sessionSteps, 0, '无工具动作不计步（done 帧不计）');
+    assert.equal(m.sessionSteps, 1, '直答终稿轮计 1 步（动作轮口径）');
 
     await ctrl.submit('任务二');
     await ctrl.waitIdle();
     m = ctrl.getState().metrics;
     assert.equal(m.sessionTurns, 2, '轮次跨任务累加');
-    assert.equal(m.sessionSteps, 1, '工具步计 1、done 收尾帧不计');
+    assert.equal(m.sessionSteps, 3, '工具出牌批 + 终稿轮 = 累计 3');
 
     await ctrl.submit('/new');
     m = ctrl.getState().metrics;

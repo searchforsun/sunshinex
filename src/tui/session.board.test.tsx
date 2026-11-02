@@ -79,30 +79,28 @@ test('/new 重置板投影', () => {
   }
 });
 
-test('/new 重播种板投影:任务从工作区真相源(harness 任务板快照)回填,不随轮转化清空', async () => {
+test('/new 换会话：板按 journal 隔离——本会话板有任务, /new 切到空板', async () => {
   const tmp = tmpdir('sunshinex-sess-boardseed-');
   const restore = pinData(tmp);
   try {
-    // ScriptedAdapter 预置一张 done 牌:taskboard.create 自动派发的真实 fork 一次收口,drain 落定
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const team = ctrl.runtime.harness.agentTeams.create('alpha');
     assert.ok(team.ok);
     const r = ctrl.runtime.harness.taskboard.create({ teamId: team.value.teamId, title: 'A', spec: 'a' });
-    // id 方言钉(2026-10-19「t1/t2 无意义」裁决):task-<业务段>-<随机码>,单字符标题业务段折叠回退 'board'
     assert.ok(r.ok && /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/.test(r.value.taskId), `板 id 新方言,实际 ${r.ok ? r.value.taskId : r.error.message}`);
     const id = r.ok ? r.value.taskId : '';
-    const settle = async (pred: () => boolean, ticks = 200): Promise<void> => {
+    // 无活队友 → 任务留 pending(禁临时 fork);事件投影仍进板
+    const settle = async (pred: () => boolean, ticks = 50): Promise<void> => {
       for (let i = 0; i < ticks && !pred(); i++) await new Promise((res) => setImmediate(res));
     };
-    await settle(() => ctrl.runtime.harness.taskboard.snapshot().tasks[id]?.status === 'success');
+    await settle(() => ctrl.getState().board.tasks[id] !== undefined);
     const before = ctrl.getState().board;
-    assert.equal(before.tasks[id]!.status, 'success', '事件投影已进板');
+    assert.equal(before.tasks[id]!.status, 'pending', '无队友认领时任务留 pending');
     assert.equal(before.tasks[id]!.spec, 'a', '投影携带真实 spec(task-created 事件带 spec)');
     void ctrl.submit('/new');
     const after = ctrl.getState().board;
-    assert.ok(after.tasks[id] !== undefined, '/new 后板投影重播种自 harness 快照,任务仍在');
-    assert.equal(after.tasks[id]!.status, 'success');
-    assert.equal(after.tasks[id]!.spec, 'a');
+    // 会话隔离: /new 铸造新 journal,板/队切到空盘(旧 journal 盘面仍保留,不跨会话回填)
+    assert.equal(Object.keys(after.tasks).length, 0, '/new 后新会话空板');
   } finally {
     restore();
     fs.rmSync(tmp, { recursive: true, force: true });
