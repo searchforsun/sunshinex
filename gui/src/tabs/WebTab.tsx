@@ -157,7 +157,9 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     wv.addEventListener('did-navigate-in-page', onNav);
     wv.addEventListener('dom-ready', onNav);
     wv.addEventListener('page-title-updated', onTitle);
-    onNav(); // 挂上即补读(事件早于挂接的首拍在此补偿)
+    try {
+      if (typeof wv.getURL === 'function') onNav(); // 挂上即补读(事件早于挂接的首拍在此补偿);jsdom 无方法跳过
+    } catch { /* 尽力 */ }
   };
 
   // 缩放档弹层点外即收(面板内点按任意处;菜单行在 anchor 内不触发)

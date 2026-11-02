@@ -96,60 +96,6 @@ function writeMeta(ws, pid, extra) {
   } catch { /* 尽力落盘 */ }
 }
 
-/** 当前页跟踪(2026-11-01 用户裁定「侧栏镜像跟自动化当前页」):轮询 /json/list,按 **URL 变化**
- *  打活跃时间戳——新建标签(URL 从无到有)与同页导航(URL 变更)都取最新者为自动化当前页,落
- *  meta.current(侧栏据此选页,不再误映旧标签)。不订阅浏览器级 targetCreated/InfoChanged 事件:
- *  Playwright 在场后其连接会令监视连接的 ongoing 事件静默(实测复现,只有 discover 初批可达) */
-function watchCurrentPage(ws) {
-  if (mode !== 'builtin') return; // meta.current 是 builtin 档约定(default 档不参与侧栏镜像)
-  const port = /:(\d+)\//.exec(ws)?.[1];
-  if (port === undefined) return;
-  const lastUrl = new Map(); // targetId → 上轮 URL(判变)
-  let current = '';
-  let lastStamp = 0;
-  const flush = () => {
-    const meta = (() => { try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return undefined; } })();
-    if (meta === undefined || typeof meta.ws !== 'string') return;
-    writeMeta(meta.ws, meta.pid, { current });
-  };
-  const tick = async () => {
-    try {
-      const list = await (await fetch('http://127.0.0.1:' + port + '/json/list', { signal: AbortSignal.timeout(1500) })).json();
-      let changed = false;
-      for (const t of list) {
-        if (t.type !== 'page' || typeof t.id !== 'string') continue;
-        const prev = lastUrl.get(t.id);
-        if (prev === undefined) {
-          // 新标签出现=即当前页(模型新开页必然随后操作);初次全量只登记不选
-          lastUrl.set(t.id, t.url);
-          if (lastStamp > 0) { current = t.id; lastStamp = Date.now(); changed = true; }
-        } else if (prev !== t.url) {
-          // 同页导航(URL 变更)=活跃
-          lastUrl.set(t.id, t.url);
-          current = t.id;
-          lastStamp = Date.now();
-          changed = true;
-        }
-      }
-      if (changed) flush();
-      else if (current === '') {
-        // 初批:挑首个非空 URL 页作为落点(无活跃证据时的次优),仅一次
-        const first = list.find((t) => t.type === 'page' && t.url !== '' && t.url !== 'about:blank');
-        if (first !== undefined) { current = first.id; lastStamp = Date.now(); flush(); }
-      }
-    } catch { /* 浏览器暂不可达:下轮再试 */ }
-  };
-  let stopped = false;
-  const loop = async () => {
-    while (!stopped) {
-      await tick();
-      await new Promise((r) => setTimeout(r, 1500));
-    }
-  };
-  void loop();
-  return () => { stopped = true; };
-}
-
 async function probeAlive(meta) {
   try {
     const port = /:(\d+)\//.exec(meta.ws);
@@ -171,8 +117,7 @@ async function main() {
       : undefined;
     if (meta !== undefined && typeof meta.ws === 'string' && (await probeAlive(meta))) {
       writeMeta(meta.ws, meta.pid ?? 0, { kind: 'shell' });
-      watchCurrentPage(meta.ws);
-      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', meta.ws], { stdio: 'inherit' });
+          const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', meta.ws], { stdio: 'inherit' });
       server.on('exit', () => process.exit(0));
       return;
     }
@@ -194,8 +139,7 @@ async function main() {
   // 内置 Chrome 活着就把它挂上=default 档永远走内置;default 档不读不写 builtin meta)
   if (mode === 'builtin' && existingMeta !== undefined && typeof existingMeta.ws === 'string' && (await probeAlive(existingMeta))) {
     writeMeta(existingMeta.ws, existingMeta.pid ?? 0);
-    watchCurrentPage(existingMeta.ws);
-    const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });
+      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', existingMeta.ws], { stdio: 'inherit' });
     server.on('exit', () => process.exit(0));
     return;
   }
@@ -267,8 +211,7 @@ async function main() {
     settled = true;
     alive = false;
     writeMeta(ws, pid);
-    watchCurrentPage(ws);
-    const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', ws], { stdio: 'inherit' });
+      const server = spawn(process.execPath, [serverJs, ...serverArgs, '--cdp-endpoint', ws], { stdio: 'inherit' });
     server.on('exit', () => process.exit(0)); // 浏览器常驻不随杀(下条消息经 probeAlive 复用)
   }
 

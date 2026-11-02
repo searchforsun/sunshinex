@@ -4,7 +4,6 @@ import { isShadowEvent, type EventFrame, type SessionRuntime } from './session';
 import type { DaemonFrame } from './daemon-wire';
 import { BATCH_FLUSH_MS, urlOf } from './daemon-wire';
 import { safeDecode } from './daemon-static';
-import { relayCdpUpgrade } from './cdp-relay';
 import type { PtyManager } from './pty';
 
 /** WS 保活节拍：30s 一 ping；pong 静默超 60s 即 terminate（close 事件统一清理） */
@@ -106,12 +105,6 @@ export class WsHub {
         return;
       }
       const pathname = urlOf(req).pathname;
-      if (pathname === '/app/cdp-ws') {
-        // 内置浏览器侧栏镜像(2026-11-01):CDP WS 透明中继——鉴权已在上方同双形态先行,
-        // 中继面剥 Origin 改写 Host 代为对 DevTools 握手(渲染层带 Origin 直连被拒,见 cdp-relay)
-        relayCdpUpgrade(req, socket, head, urlOf(req));
-        return;
-      }
       const m = /^\/session\/([^/]+)\/pty\/([^/]+)$/.exec(pathname);
       if (m) {
         // 段解码失败按字面处理（get 未命中 → error 帧，fail-closed 不放行错位寻址）

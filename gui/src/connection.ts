@@ -176,9 +176,6 @@ export interface Connection {
   /** GET /app/file?root=&path=（2026-10-27 欢迎页全局草稿）:无会话文件读,信任域=注册工作区根+数据目录 */
   cdpTargets(root: string): Promise<Array<{ type?: string; url?: string }>>;
   appFile(root: string, filePath: string, scope?: 'data'): Promise<FileResp>;
-  /** CDP WS 中继面（2026-11-01 内置浏览器镜像）:daemon /app/cdp-ws 的 ws 地址——渲染层直连
-   *  DevTools 被 Origin 保护拒绝,经 daemon 透明中继握手转发 */
-  cdpWsUrl(root: string, target: string): string;
   /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
    *  callId 无帧/会话）以 HTTP 失败抛错——Chat write 展开退单列现内容的判据 */
   fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
@@ -654,12 +651,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async appFile(root: string, filePath: string, scope?: 'data'): Promise<FileResp> {
       return getJson<FileResp>(`/app/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(filePath)}${scope === 'data' ? '&scope=data' : ''}`);
     },
-    cdpWsUrl(root: string, target: string): string {
-      // http→ws 同型转换(connection-transport toWsUrl 同语义);token 借 query 携带(中继经 upgrade
-      // 面双形态鉴权,query 不参与——仅循环回环兜底档 token=undefined)
-      const wsBase = base.replace(/^http/, 'ws');
-      return `${wsBase}/app/cdp-ws?root=${encodeURIComponent(root)}&target=${encodeURIComponent(target)}`;
-    },
+
     async openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
       const body: { root: string; cols?: number; rows?: number } = { root };
       if (cols !== undefined) body.cols = cols;
