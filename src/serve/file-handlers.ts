@@ -6,6 +6,7 @@ import type { SessionRuntime } from './session';
 import { MAX_PREVIEW_BYTES, insideTrustedRoots, realPathOf, readFileBounded } from './daemon-static';
 import { urlOf } from './daemon-wire';
 import { projectsRoot, resolveDataDir } from '../config/data-dir';
+import { builtinCdpMetaPath } from './builtin-browser';
 import { imageMimeOf, READ_IMAGE_MAX_BYTES } from '../images';
 
 /** 会话文件面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：/file 只读预览（信任根判界+有界读+
@@ -305,7 +306,7 @@ export async function handleCdpTargets(io: FileHandlerIo, req: http.IncomingMess
   const rootParam = url.searchParams.get('root') ?? '';
   const empty = (): void => io.send(res, 200, { targets: [] });
   if (rootParam === '') { empty(); return; }
-  const metaPath = path.join(resolveDataDir(rootParam), 'plugins', 'browser-use', 'builtin-cdp.json');
+  const metaPath = builtinCdpMetaPath(resolveDataDir(rootParam)); // 融合 meta 落位单点（D61）
   let meta: { ws?: unknown };
   try {
     meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { ws?: unknown };
