@@ -62,6 +62,11 @@ const h = vi.hoisted(() => {
     gitBranches(): Promise<{ current: string; branches: string[] }> {
       return Promise.resolve({ current: 'main', branches: ['main'] });
     }
+    /** 后台任务行桩(c9d9af5 侧栏推送线 App.tsx 拉取面;缺法=挂载 effect 即抛连坐全文件——
+     *  最小桩共补,缺口归特性线门禁,2026-11-02 技术债轮归因声明) */
+    sessionTasks(): Promise<never[]> {
+      return Promise.resolve([]);
+    }
     gitCheckout(): Promise<void> { return Promise.resolve(); }
     workspaceRows: WorkspaceRow[] = [{ root: '/w/root-a', slug: 'ws-root-a', mtime: 1, sessionCount: 1 }];
     sessionRows: SessionRow[] = [{ id: 'j1', file: '/d/j1.jsonl', updatedAt: 1, firstUser: '老会话摘要' }];
