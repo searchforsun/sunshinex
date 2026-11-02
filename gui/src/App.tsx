@@ -384,11 +384,13 @@ function AppShell(): JSX.Element {
   const openWebTab = useCallback((url: string): void => { openTabInSession('web', { url }); }, [openTabInSession]);
   /** M2 融合(2026-11-02 用户裁定「页内超链接开新页签,和浏览器一样」):guest 弹窗 URL 由壳转发
    *  (main setWindowOpenHandler → builtin:open-url),此处开新侧栏 web 页签;判重由 openTab 承担 */
+  // 订阅只挂一次,回调经 ref 取最新 openWebTab(闭包滞留首帧会话座=开签落错座,页签不可见)
+  const openWebTabRef = useRef(openWebTab);
+  openWebTabRef.current = openWebTab;
   useEffect(() => {
     const bridge = (window as unknown as { sunshinexWindow?: { onOpenUrl?: (cb: (url: string) => void) => () => void } }).sunshinexWindow;
     if (bridge?.onOpenUrl === undefined) return;
-    return bridge.onOpenUrl((url) => openWebTab(url));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return bridge.onOpenUrl((url) => openWebTabRef.current(url));
   }, []);
   /** agents 页签 id=智能体团队页签(卡片流;tab 持久化档兼容保留旧 id);agentTeams 关闭时不挂载 */
   const openBoardTab = useCallback((): void => {
