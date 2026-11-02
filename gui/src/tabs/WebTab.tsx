@@ -67,7 +67,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
   const wvRef = useRef<WvElement | null>(null);
   /** 首个导航目标(null=未开页,空态引导面);后续导航经 loadURL 驱动,不改 src(防重挂) */
   const [wvTarget, setWvTarget] = useState<string | null>(
-    builtin ? (params.url !== undefined && params.url !== '' ? normalizeWebUrl(params.url) : null) : null,
+    builtin ? (params.url === 'about:blank' ? 'about:blank' : params.url !== undefined && params.url !== '' ? normalizeWebUrl(params.url) : null) : null,
   );
   /** webview 实时态:当前 URL/后退前进可用性/缩放(did-navigate 族事件随动) */
   const [wvUrl, setWvUrl] = useState('');
@@ -78,7 +78,7 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     const raw = (params.url ?? '').trim();
     return raw === '' ? { urls: [], index: -1 } : { urls: [normalizeWebUrl(raw)], index: 0 };
   });
-  const [input, setInput] = useState(params.url ?? '');
+  const [input, setInput] = useState(params.url === 'about:blank' ? '' : (params.url ?? ''));
   /** 刷新 bump:入 iframe key —— 变更即强制重挂(= 重新加载) */
   const [nonce, setNonce] = useState(0);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
@@ -136,8 +136,11 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
     wvRef.current = el as WvElement | null;
     if (el === null) return;
     const wv = el as WvElement & {
-      addEventListener(type: string, fn: (ev: Event & { title?: string }) => void): void;
+      addEventListener(type: string, fn: (ev: Event & { title?: string; favicons?: string[] }) => void): void;
+      getTitle?: () => string;
     };
+    // 页名/站标以 webview 自身事件为准:dom-ready 晚于 page-title-updated,回写时取 getTitle()
+    // 而非 host,否则真页名被 host 覆盖(实测页签只剩「baidu.com」)
     const onNav = (): void => {
       const u = wv.getURL();
       setWvUrl(u);
@@ -145,18 +148,23 @@ export function WebTab({ conn, params, uid, onMeta, root }: WebTabProps): JSX.El
       setWvCanFwd(wv.canGoForward());
       if (u !== '' && u !== 'about:blank') {
         setInput(u);
-        onMeta(uid, { url: u, pageTitle: webPageName(u) });
-        syncPageMeta(u);
+        const t = typeof wv.getTitle === 'function' ? wv.getTitle().trim() : '';
+        onMeta(uid, { url: u, pageTitle: t !== '' && t !== u ? t : webPageName(u) });
       }
     };
     const onTitle = (ev: Event & { title?: string }): void => {
       const title = ev.title;
       if (typeof title === 'string' && title !== '') onMeta(uid, { pageTitle: title });
     };
+    const onFavicon = (ev: Event & { favicons?: string[] }): void => {
+      const icon = ev.favicons?.[0];
+      if (typeof icon === 'string' && icon !== '') onMeta(uid, { pageIcon: icon });
+    };
     wv.addEventListener('did-navigate', onNav);
     wv.addEventListener('did-navigate-in-page', onNav);
     wv.addEventListener('dom-ready', onNav);
     wv.addEventListener('page-title-updated', onTitle);
+    wv.addEventListener('page-favicon-updated', onFavicon);
     try {
       if (typeof wv.getURL === 'function') onNav(); // 挂上即补读(事件早于挂接的首拍在此补偿);jsdom 无方法跳过
     } catch { /* 尽力 */ }

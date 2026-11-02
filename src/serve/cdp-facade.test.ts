@@ -12,7 +12,7 @@ import { BuiltinFacade } from './cdp-facade';
 function startFakeReal(): Promise<{ httpPort: number; wsPort: number; stop: () => void }> {
   const targets = [
     { targetId: 'gui-1', type: 'page', url: 'http://127.0.0.1:57677/?token=x', title: 'Sunshinex' },
-    { targetId: 'wv-7', type: 'page', url: 'https://www.baidu.com/', title: '百度' },
+    { targetId: 'wv-7', type: 'webview', url: 'https://www.baidu.com/', title: '百度' },
   ];
   const httpSrv = http.createServer((req, res) => {
     if ((req.url ?? '').startsWith('/json/list')) {
@@ -62,7 +62,7 @@ afterEach(() => { facade?.stop(); fake?.stop(); if (tmpDir !== undefined) fs.rmS
 /** 装 DevToolsActivePort 指向假真实端点(首行=端口,次行=browser 路径,真实形态同构) */
 const prepareEndpointFile = (): void => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'facade-test-'));
-  fs.writeFileSync(path.join(tmpDir, 'DevToolsActivePort'), `${fake!.httpPort}\ndevtools/browser\n`);
+  fs.writeFileSync(path.join(tmpDir, 'DevToolsActivePort'), `${fake!.httpPort}\n/devtools/browser\n`);
 };
 
 test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;createTarget 拒面', async () => {
@@ -76,6 +76,7 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
   const list = JSON.parse(await (await fetch(`${httpBase}/json/list`)).text()) as Array<{ targetId?: string; url?: string }>;
   assert.equal(list.length, 1);
   assert.equal(list[0]!.targetId, 'wv-7');
+  assert.equal((list[0] as { type?: string }).type, 'page');
 
   // ws 面:playwright getTargets 应答同滤
   const ws = new WebSocket(facade.endpoint);
@@ -93,6 +94,8 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
   const targets = await send('Target.getTargets');
   assert.equal((targets.result!.targetInfos as unknown[]).length, 1);
   assert.equal(((targets.result!.targetInfos as Array<{ targetId: string }>)[0]!).targetId, 'wv-7');
+  // 侧栏 webview 对外改报 page(Playwright 只认 page,否则插件看不到侧栏页签)
+  assert.equal(((targets.result!.targetInfos as Array<{ type: string }>)[0]!).type, 'page');
   // createTarget 拒面(页签生命周期归 GUI)
   const deny = await send('Target.createTarget', { url: 'https://example.com' });
   assert.match(String(deny.error!.message), /侧栏/);

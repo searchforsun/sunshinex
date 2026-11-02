@@ -18,13 +18,24 @@ import { WebSocketServer, WebSocket } from 'ws';
 
 const json = (v: unknown): string => JSON.stringify(v);
 
+/** 侧栏 <webview> guest 在真实端点报 type:'webview',Playwright 只认 'page'(实测 webview target 被整体
+ *  忽略,插件看不到侧栏页签)——对外统一改报 'page' */
+const asPage = (t: { type?: string }): void => {
+  if (t.type === 'webview') t.type = 'page';
+};
+
 export interface FacadeOpts {
   /** 壳 userData 路径(读 DevToolsActivePort) */
   userDataDir: string;
   /** daemon 自身 origin 前缀(如 http://127.0.0.1:57677)——GUI 渲染层 target 按此前缀过滤 */
   localOriginPrefix: string;
   log?: (msg: string) => void;
+  /** 模型开新页(Target.createTarget)→ 让 GUI 开一个侧栏浏览器页签;缺省=拒绝 createTarget */
+  openTab?: (url: string) => void;
 }
+
+/** createTarget 等新侧栏 webview 出现的上限(GUI 无会话页/渲染层卡住时不无限等) */
+const CREATE_TARGET_TIMEOUT_MS = 10_000;
 
 export class BuiltinFacade {
   private wss: WebSocketServer | undefined;
@@ -59,7 +70,7 @@ export class BuiltinFacade {
       const [portLine, pathLine] = raw.split('\n').map((x) => x.trim());
       const port = Number(portLine);
       if (!Number.isFinite(port) || port <= 0) return undefined;
-      return { port, browserPath: pathLine !== undefined && pathLine !== '' ? pathLine : 'devtools/browser' };
+      return { port, browserPath: pathLine !== undefined && pathLine !== '' ? pathLine.replace(/^\/+/, '') : 'devtools/browser' };
     } catch {
       return undefined;
     }
@@ -83,6 +94,7 @@ export class BuiltinFacade {
             res.writeHead(200, { 'content-type': 'application/json' });
             if (url.pathname === '/json/version') { res.end(text); return; }
             const arr = JSON.parse(text) as Array<{ url?: string; type?: string }>;
+            for (const t of arr) asPage(t);
             res.end(json(arr.filter((t) => !(t.type === 'page' && this.blockedUrl(t.url)))));
           } catch {
             res.writeHead(502);
@@ -125,11 +137,13 @@ export class BuiltinFacade {
       // 应答过滤:getTargets/getTargetInfo 摘除非白名单 target
       const result = (msg.result ?? {}) as { targetInfos?: Array<{ targetId?: string; url?: string; type?: string }>; targetInfo?: { targetId?: string; url?: string; type?: string } };
       if (result.targetInfos !== undefined) {
+        for (const t of result.targetInfos) asPage(t);
         for (const t of result.targetInfos) {
           if (typeof t.targetId === 'string' && this.blockedUrl(t.url) && t.type === 'page') this.blockedSeen.add(t.targetId);
         }
         result.targetInfos = result.targetInfos.filter((t) => !(t.type === 'page' && this.blockedUrl(t.url)));
       }
+      if (result.targetInfo !== undefined) asPage(result.targetInfo);
       if (result.targetInfo !== undefined && result.targetInfo.type === 'page' && this.blockedUrl(result.targetInfo.url)) {
         if (typeof result.targetInfo.targetId === 'string') this.blockedSeen.add(result.targetInfo.targetId);
         delete result.targetInfo;
@@ -139,6 +153,7 @@ export class BuiltinFacade {
         const p = msg.params as { targetInfo?: { targetId?: string; url?: string; type?: string }; targetId?: string } | undefined;
         const info = p?.targetInfo;
         if (info !== undefined) {
+          asPage(info);
           if (typeof info.targetId === 'string' && info.type === 'page' && this.blockedUrl(info.url)) this.blockedSeen.add(info.targetId);
           if (info.type === 'page' && this.blockedUrl(info.url)) return;
         }
@@ -156,6 +171,14 @@ export class BuiltinFacade {
       let msg: { id?: number; method?: string; params?: Record<string, unknown> };
       try { msg = JSON.parse(String(data)); } catch { return; }
       // 拒面:页签生命周期归 GUI(模型不可开/关 target)
+      if (msg.method === 'Target.createTarget' && this.opts.openTab !== undefined) {
+        const url = typeof msg.params?.url === 'string' && msg.params.url !== '' ? msg.params.url : 'about:blank';
+        void this.createViaGui(url).then(
+          (targetId) => this.sendTo(ws, { id: msg.id, result: { targetId } }),
+          (err: unknown) => this.sendTo(ws, { id: msg.id, error: { code: -32000, message: err instanceof Error ? err.message : String(err) } }),
+        );
+        return;
+      }
       if (msg.method === 'Target.createTarget' || msg.method === 'Target.closeTarget') {
         this.sendTo(ws, { id: msg.id, error: { code: -32000, message: '内置浏览器页签由侧栏管理(不支持 create/close target)' } });
         return;
@@ -175,6 +198,28 @@ export class BuiltinFacade {
   }
 
   private readonly clientSockets = new Set<WebSocket>();
+
+  private async webviewIds(): Promise<Array<{ id: string; url: string }>> {
+    const r = await fetch(`${this.realHttp()}/json/list`, { signal: AbortSignal.timeout(2000) });
+    const arr = JSON.parse(await r.text()) as Array<{ id?: string; type?: string; url?: string }>;
+    return arr.filter((t) => t.type === 'webview' && typeof t.id === 'string').map((t) => ({ id: t.id as string, url: t.url ?? '' }));
+  }
+
+  /** 新页签由 GUI 开(页签生命周期归侧栏),轮询真实列表等新 webview target 出现;超时报错 */
+  private async createViaGui(url: string): Promise<string> {
+    const before = new Set((await this.webviewIds()).map((t) => t.id));
+    this.opts.openTab?.(url);
+    const deadline = Date.now() + CREATE_TARGET_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200));
+      const fresh = (await this.webviewIds().catch(() => [])).find((t) => !before.has(t.id));
+      if (fresh !== undefined) return fresh.id;
+    }
+    // 页签按 url 判重:已有空白页签时 GUI 聚焦旧签而非新开,复用它
+    const blank = (await this.webviewIds().catch(() => [])).find((t) => t.url === 'about:blank' || t.url === url);
+    if (blank !== undefined) return blank.id;
+    throw new Error('侧栏浏览器页签未能打开(请先打开一个会话)');
+  }
 
   private sendTo(ws: WebSocket, payload: Record<string, unknown>): void {
     if (ws.readyState === WebSocket.OPEN) ws.send(json(payload));
@@ -201,6 +246,7 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
   if (typeof electron !== 'object' || electron === null) return Promise.resolve(undefined);
   const et = electron as {
     app?: { getPath(name: string): string; commandLine?: { hasSwitch?(s: string): boolean } };
+    BrowserWindow?: { getAllWindows(): Array<{ isDestroyed(): boolean; webContents: { getURL(): string; send(ch: string, ...a: unknown[]): void } }> };
   };
   if (et.app === undefined) return Promise.resolve(undefined); // node 环境(npm 包字符串/缺 app)
   if (!et.app.commandLine?.hasSwitch?.('remote-debugging-port')) {
@@ -209,7 +255,13 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
   }
   const userData = et.app.getPath('userData');
   const port = process.env.SUNSHINEX_DAEMON_PORT ?? '';
-  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: `http://127.0.0.1:${port}`, log });
+  const origin = `http://127.0.0.1:${port}`;
+  // 主窗=加载 daemon origin 的窗口(排除独立 DevTools 窗);同 popup 转发通道 builtin:open-url
+  const openTab = (url: string): void => {
+    const gui = et.BrowserWindow?.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().startsWith(origin));
+    gui?.webContents.send('builtin:open-url', url);
+  };
+  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab });
   return facade.start().then(() => ({ facade, ws: facade.endpoint })).catch((err) => {
     log?.(`facade start failed: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

@@ -404,32 +404,6 @@ function AppShell(): JSX.Element {
     [agentTeamsOn],
   );
 
-  /** 内置浏览器自动开签(2026-11-01 用户裁定「会自动打开浏览器页签+输入对应网址」):插件 builtin
-   *  档在跑(meta 在场)即自动开「浏览器」页签——WebTab CDP 形态自动接管镜像与 URL 回显;
-   *  守卫=每轮重置(2026-11-01「不自动打开,切会话才显示」根修:原守卫每会话一次,同会话上一轮
-   *  开过/被关即锁死整会话,新一轮 run 不再开;改由 Chat onRunStart 提交受理即清守卫,每轮 run
-   *  都允许开签) */
-  const cdpAutoRef = useRef<string>('');
-  useEffect(() => {
-    if (connInstance === null || page !== 'chat' || openRoot === '') return;
-    const key = `${openSessionId}:${openRoot}`;
-    const timer = window.setInterval(() => {
-      void connInstance
-        .cdpTargets(openRoot)
-        .then((targets) => {
-          if (cdpAutoRef.current === key) return;
-          // 开签条件=真实网址(about:blank 起始页不算):daemon 代理 /app/cdp-targets(渲染层直连
-          // DevTools HTTP 面被 CORS 拦,自动开签曾静默失败)
-          const real = targets.some((tg) => tg.type === 'page' && tg.url !== undefined && tg.url !== '' && tg.url !== 'about:blank' && !tg.url.startsWith('devtools://'));
-          if (!real) return;
-          cdpAutoRef.current = key;
-          openTabInSession('web', {});
-        })
-        .catch(() => undefined);
-    }, 5000);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connInstance, page, openRoot, openSessionId]);
   /** 记忆页签+定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」):focus slug 随 render props
    *  下发 MemoryTab,展开并滚至对应行;nonce 保证同 slug 重复点击仍触发 */
   const [memoryFocus, setMemoryFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);
@@ -866,7 +840,6 @@ function AppShell(): JSX.Element {
                 onOpenDiff={openDiffTab}
                 onOpenAgent={openAgentTab}
                 onOpenWeb={openWebTab}
-                onRunStart={() => { cdpAutoRef.current = ''; }}
                 onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
                 agentTeamsOn={agentTeamsOn}
