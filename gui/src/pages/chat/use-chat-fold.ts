@@ -8,7 +8,7 @@ import type { ChatEntry, ChatState } from '../../chat-reducer';
 
 /** 轮次折叠簇(D32 第六批批F-5 自 Chat.tsx 平移,行为零变化):collapsedRuns/G14.136 段内中间
  *  正文折叠 hiddenKeys/G14.48 展开折叠防闪动校正/entry 面回调稳定化(G14.211)。 */
-/** 成员消息旁白(`[from → to] text`):轮次折叠时与工具同行收合 */
+/** 成员消息旁白(`[from → to] text`):与轮内插入同待遇——可见、不进折叠行、不复位 hide */
 function isAgentMessageNotice(e: ChatEntry): boolean {
   return e.kind === 'notice' && /^\[[^\]]+ → [^\]]+\]/.test(e.md);
 }
@@ -18,9 +18,9 @@ function isMemoryOrSkillNotice(e: ChatEntry): boolean {
   return e.kind === 'notice' && (e.md.startsWith('[memory]') || e.md.startsWith('[skills]'));
 }
 
-/** 随轮折叠的旁白(成员消息 + 记忆/技能沉淀);普通系统提示保留可见 */
+/** 随轮折叠的旁白(记忆/技能沉淀);成员消息与普通系统提示保留可见 */
 function isFoldNotice(e: ChatEntry): boolean {
-  return isAgentMessageNotice(e) || isMemoryOrSkillNotice(e);
+  return isMemoryOrSkillNotice(e);
 }
 
 /** 轮内插入判定:当前位置之后、下一 run/user 之前还有本轮工作条目(非斜杠工具/思考/正文/折叠旁白)。
@@ -30,7 +30,7 @@ export function isMidRunInsert(entries: readonly ChatEntry[], from: number): boo
     const n = entries[j]!;
     if (n.kind === 'run' || n.kind === 'user') return false;
     if (n.kind === 'tool' && typeof n.name === 'string' && n.name.startsWith('/')) continue;
-    if (n.kind === 'tool' || n.kind === 'thinking' || n.kind === 'assistant' || isFoldNotice(n)) return true;
+    if (n.kind === 'tool' || n.kind === 'thinking' || n.kind === 'assistant' || isFoldNotice(n) || isAgentMessageNotice(n)) return true;
   }
   return false;
 }

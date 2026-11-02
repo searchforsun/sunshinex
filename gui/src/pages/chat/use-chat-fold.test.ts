@@ -36,7 +36,7 @@ describe('collapsedHiddenKeys 折叠区间边界', () => {
     const hidden = collapsedHiddenKeys(entries, new Set(['r1']));
     expect(hidden.has('t1')).toBe(true);
     expect(hidden.has('u-ins')).toBe(false); // 插入可见、不进折叠行
-    expect(hidden.has('msg')).toBe(true); // 插入后成员消息仍折
+    expect(hidden.has('msg')).toBe(false); // 成员消息同插入:可见、不进折叠行
     expect(hidden.has('n1')).toBe(false); // 普通旁白保留
     expect(hidden.has('t2')).toBe(true); // 插入后工具仍折(不因插入复位 hide)
     expect(hidden.has('u2')).toBe(false);
