@@ -29,6 +29,8 @@ export interface WebTabProps {
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
   /** 关闭本页签(模型 browser_tabs close 经 facade→壳→此处) */
   readonly onClose?: () => void;
+  /** 切到本页签(agent 正在驱动本页) */
+  readonly onActivate?: () => void;
   /** 工作区根(2026-11-01 CDP 形态:内置浏览器端点发现按数据目录解析;缺省=纯 iframe 形态) */
   readonly root?: string;
 }
@@ -61,7 +63,7 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta, root, onClose }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate }: WebTabProps): JSX.Element {
   // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
   // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
   // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
@@ -71,6 +73,17 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose }: WebTabProps
   /** 模型关页:主进程下发 guest webContents id,是本页签的 webview 即关闭自身 */
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const onActivateRef = useRef(onActivate);
+  onActivateRef.current = onActivate;
+  useEffect(() => {
+    const bridge = (window as unknown as { sunshinexWindow?: { onActivateWebContents?: (cb: (id: number) => void) => () => void } }).sunshinexWindow?.onActivateWebContents;
+    if (!builtin || bridge === undefined) return;
+    return bridge((id) => {
+      try {
+        if (wvRef.current?.getWebContentsId() === id) onActivateRef.current?.();
+      } catch { /* 未 attach */ }
+    });
+  }, [builtin]);
   useEffect(() => {
     const bridge = window.sunshinexWindow?.onCloseWebContents;
     if (!builtin || bridge === undefined) return;

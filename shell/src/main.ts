@@ -16,6 +16,9 @@ import type { ShellDaemon } from './daemon';
 // 固定调试口(实测 port 0 写了 DevToolsActivePort 却不监听):冲突概率极低,冲突时调试服务器
 // 启动失败 → DevToolsActivePort 缺更新 → facade 优雅降级(builtin 档回落,其余功能不受影响)
 app.commandLine.appendSwitch('remote-debugging-port', '57679');
+// 侧栏 webview 遮挡/切后台后停画(DOM 存活、画面冻结/残留脏区):Windows 原生遮挡计算会把被盖住的
+// 窗口判为不可见并停合成——关掉;配合 backgroundThrottling:false 保持后台/被遮挡时照常绘制
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 /** smoke 收口总超时（ms）：ready-to-show 未至 / 收口悬挂的整体守卫，超时按失败退 1（T4 门禁判据） */
 const SMOKE_TOTAL_TIMEOUT_MS = 45_000; // 满载机器(发版验证链后)冷启余量:15s 曾在发布环境瞬态超时,45s 仍远小于外层门
@@ -147,6 +150,7 @@ if (!app.requestSingleInstanceLock()) {
         preload: path.join(__dirname, 'preload.cjs'),
         webviewTag: true, // M1 内置浏览器融合:GUI WebTab builtin 档以 <webview> 承载真实页面
         sandbox: false, // webview 标签不支持沙箱渲染器(实测:guest 创建瞬间渲染进程崩溃=全窗黑)
+        backgroundThrottling: false,
       },
     });
     mainWindow = win;
@@ -161,6 +165,7 @@ if (!app.requestSingleInstanceLock()) {
         wc.on('will-attach-webview', (att, webPreferences, params) => {
           delete webPreferences.preload;
           webPreferences.nodeIntegration = false;
+          webPreferences.backgroundThrottling = false;
           const src = typeof params.src === 'string' ? params.src : '';
           if (!/^https?:\/\//i.test(src) && src !== 'about:blank') att.preventDefault();
         });

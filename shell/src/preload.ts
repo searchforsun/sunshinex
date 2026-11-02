@@ -38,6 +38,12 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     ipcRenderer.on('builtin:focus-webcontents', handler);
     return () => void ipcRenderer.removeListener('builtin:focus-webcontents', handler);
   },
+  /** agent 驱动某侧栏页签(facade 导航/输入/截图):切到该页签,用户所见即 agent 所操作 */
+  onActivateWebContents: (cb: (webContentsId: number) => void): (() => void) => {
+    const handler = (_: unknown, id: number): void => cb(id);
+    ipcRenderer.on('builtin:activate-webcontents', handler);
+    return () => void ipcRenderer.removeListener('builtin:activate-webcontents', handler);
+  },
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);
     ipcRenderer.on('win:maximized', handler);

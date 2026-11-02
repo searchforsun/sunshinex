@@ -37,7 +37,15 @@ export interface FacadeOpts {
   /** 文本输入前后让 GUI 聚焦/归还该 target 的侧栏 webview:guest 只在宿主 webview 元素持有焦点时
    *  收文本输入(实测 Input.insertText/char 键事件在未聚焦时静默丢失=fill 后值为空) */
   focusTab?: (targetId: string, phase: 'begin' | 'end') => boolean;
+  /** agent 驱动某 target(导航/输入/截图)时让 GUI 切到对应侧栏页签——隐藏页签(display:none)的
+   *  webview 停止绘制,截图黑屏;且用户看的页签与 agent 操作的页签须一致 */
+  activateTab?: (targetId: string) => void;
+  /** agent 驱动时确保主窗可见:最小化窗口 Chromium 不出帧(截图超时/画面冻结),不抢焦点地还原 */
+  ensureVisible?: () => void;
 }
+
+/** 触发侧栏切页的「驱动型」命令(读 DOM/求值不切,避免后台查询抢走用户视图) */
+const DRIVING_METHODS = new Set(['Page.navigate', 'Page.reload', 'Page.captureScreenshot', 'Input.dispatchMouseEvent', 'Input.dispatchKeyEvent', 'Input.insertText', 'Input.dispatchTouchEvent']);
 
 /** 聚焦 IPC 到渲染层生效的余量(焦点切换走 GUI 进程,先于 insertText 落到 guest) */
 const FOCUS_SETTLE_MS = 50;
@@ -147,6 +155,7 @@ export class BuiltinFacade {
     const sessionTargets = new Map<string, string>();
     /** 已聚焦待归还的 insertText 命令 id → targetId(应答到达即归还焦点) */
     const focusPending = new Map<number, string>();
+    let lastActivated: string | undefined;
     const attachWaiters = new Map<string, () => void>();
     const waitAttached = (targetId: string): Promise<void> =>
       attached.has(targetId)
@@ -245,6 +254,15 @@ export class BuiltinFacade {
         else if (real.readyState === WebSocket.CONNECTING) outbox.push(String(data));
       };
       const sid = (msg as { sessionId?: unknown }).sessionId;
+      if (msg.method !== undefined && DRIVING_METHODS.has(msg.method) && typeof sid === 'string') {
+        this.opts.ensureVisible?.();
+        const driven = sessionTargets.get(sid);
+        // 只在 agent 换了目标页签时切(同页连续操作不重复发 IPC;用户中途手动切走后,agent 下一次换页才拉回)
+        if (driven !== undefined && driven !== lastActivated) {
+          lastActivated = driven;
+          this.opts.activateTab?.(driven);
+        }
+      }
       const tid = msg.method === 'Input.insertText' && typeof sid === 'string' ? sessionTargets.get(sid) : undefined;
       if (tid !== undefined && typeof msg.id === 'number' && this.opts.focusTab?.(tid, 'begin') === true) {
         focusPending.set(msg.id, tid);
@@ -305,7 +323,7 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
   if (typeof electron !== 'object' || electron === null) return Promise.resolve(undefined);
   const et = electron as {
     app?: { getPath(name: string): string; commandLine?: { hasSwitch?(s: string): boolean } };
-    BrowserWindow?: { getAllWindows(): Array<{ isDestroyed(): boolean; webContents: { getURL(): string; send(ch: string, ...a: unknown[]): void } }> };
+    BrowserWindow?: { getAllWindows(): Array<{ isDestroyed(): boolean; isMinimized(): boolean; showInactive(): void; webContents: { getURL(): string; send(ch: string, ...a: unknown[]): void } }> };
     webContents?: { fromDevToolsTargetId?(id: string): { id: number } | undefined };
   };
   if (et.app === undefined) return Promise.resolve(undefined); // node 环境(npm 包字符串/缺 app)
@@ -343,7 +361,15 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
     gui.webContents.send('builtin:focus-webcontents', wc.id, phase);
     return true;
   };
-  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, closeTab, focusTab });
+  const activateTab = (targetId: string): void => {
+    const wc = et.webContents?.fromDevToolsTargetId?.(targetId);
+    if (wc !== undefined) guiWindow()?.webContents.send('builtin:activate-webcontents', wc.id);
+  };
+  const ensureVisible = (): void => {
+    const gui = guiWindow();
+    if (gui !== undefined && gui.isMinimized()) gui.showInactive();
+  };
+  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, closeTab, focusTab, activateTab, ensureVisible });
   return facade.start().then(() => ({ facade, ws: facade.endpoint })).catch((err) => {
     log?.(`facade start failed: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

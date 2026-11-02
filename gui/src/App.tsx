@@ -607,6 +607,14 @@ function AppShell(): JSX.Element {
    *  G8d 子智能体活动聚合(agent 只读转录页只读) */
   /** G14.2xx web 标签元数据回写:页内导航 url/页名 → patchTabMeta(标签条标题/判重键同源演进,
    *  浏览器原生标签形);useCallback 零依赖稳定——services useMemo 不因回写重建 */
+  /** 页签切换(agent 驱动内置浏览器页签时侧栏跟随):同 onTabMeta 双座都试,并展开收起的侧栏 */
+  const onActivateTab = useCallback((sessionId: string, uid: string): void => {
+    setTabStates((s) => {
+      const has = (seat: string): boolean => s[seat]?.tabs.some((t) => t.uid === uid) === true;
+      const seat = has(sessionId) ? sessionId : has(WELCOME_TAB_SEAT) ? WELCOME_TAB_SEAT : undefined;
+      return seat === undefined ? s : setActive(setCollapsed(s, seat, false), seat, uid);
+    });
+  }, []);
   const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }): void => {
     // 欢迎页页签落 '@welcome' 草稿座,而渲染传入的 sessionId 是 openSessionId(欢迎页不清,指向上个
     // 会话)——只按 sessionId 回写会落空,欢迎页浏览器页签名/站标永不更新;uid 全局唯一,双座都试
@@ -644,7 +652,7 @@ function AppShell(): JSX.Element {
   }, []);
   const services = useMemo<TabServices>(
     () => ({
-      board: projection.board, delegations: [...projection.delegations], team: [...projection.team], teams: projection.teams, onStopTask: stopTask, onTabMeta, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos],
+      board: projection.board, delegations: [...projection.delegations], team: [...projection.team], teams: projection.teams, onStopTask: stopTask, onTabMeta, onActivateTab, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos],
       // todo 批次合并(权威播种+转录派生):同签名派生优先(条目随回填/live 更新 ts 更新),ts 正序
       todoBatches: (() => {
         const bySig = new Map<string, import('./pages/Chat').TodoBatch>();

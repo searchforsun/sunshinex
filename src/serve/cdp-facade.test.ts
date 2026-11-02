@@ -141,3 +141,32 @@ test('closeTarget 交 GUI 关页签;Input.insertText 前后聚焦/归还侧栏 w
   assert.deepEqual(focus, ['begin:wv-7', 'end:wv-7']);
   ws.close();
 });
+
+test('agent 驱动型命令切侧栏页签:同页连续操作只切一次;求值类命令不切', async () => {
+  fake = await startFakeReal();
+  prepareEndpointFile();
+  const activated: string[] = [];
+  facade = new BuiltinFacade({ userDataDir: tmpDir!, localOriginPrefix: 'http://127.0.0.1:57677', activateTab: (tid) => activated.push(tid) });
+  await facade.start();
+  const ws = new WebSocket(facade.endpoint);
+  await new Promise((r) => ws.on('open', r));
+  const pending = new Map<number, (v: any) => void>();
+  let seq = 0;
+  ws.on('message', (raw) => {
+    const m = JSON.parse(String(raw)) as { id?: number };
+    if (typeof m.id === 'number' && pending.has(m.id)) { pending.get(m.id)!(m); pending.delete(m.id); }
+  });
+  const send = (method: string, params?: Record<string, unknown>, sessionId?: string): Promise<{ result?: Record<string, unknown> }> => {
+    const id = ++seq;
+    return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) })); });
+  };
+  const att = await send('Target.attachToTarget', { targetId: 'wv-7', flatten: true });
+  const sid = String(att.result!.sessionId);
+  await new Promise((r) => setTimeout(r, 20));
+  await send('Runtime.evaluate', { expression: '1' }, sid);
+  assert.deepEqual(activated, []);
+  await send('Page.navigate', { url: 'https://example.com' }, sid);
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 1, y: 1 }, sid);
+  assert.deepEqual(activated, ['wv-7']);
+  ws.close();
+});

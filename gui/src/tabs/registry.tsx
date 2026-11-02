@@ -56,6 +56,8 @@ export interface TabServices {
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名/站标 → 标签 params;App 落 patchTabMeta) */
   readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
+  /** 切到该页签(内置浏览器:agent 驱动哪个页签,侧栏就显示哪个——用户所见即 agent 所操作) */
+  readonly onActivateTab?: (sessionId: string, uid: string) => void;
   /** 智能体团队顶部刷新(2026-10-31):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影。
    *  可选(旧装配/测试桩缺省,刷新钮不渲染) */
   readonly refreshBoard?: (sessionId: string) => Promise<void>;
@@ -326,6 +328,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         uid={p.uid}
         root={p.root}
         onClose={() => p.closeTab(p.uid)}
+        onActivate={() => p.services.onActivateTab?.(p.sessionId, p.uid)}
         onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)}
       />
     ),
