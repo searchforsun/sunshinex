@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { pathBasename } from '../ui-util';
+import { pathBasename, withMinSpin } from '../ui-util';
 import { Check, ChevronDown, ChevronUp, Loader2, RefreshCw, Upload, GitCommitVertical } from 'lucide-react';
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
@@ -64,7 +64,7 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
   const refresh = useCallback((): void => {
     if (refreshing) return;
     setRefreshing(true);
-    (conn.sessionChanges?.(sessionId) ?? Promise.resolve({ branch: '', files: [] })).then(
+    withMinSpin(conn.sessionChanges?.(sessionId) ?? Promise.resolve({ branch: '', files: [] })).then(
       (r) => {
         setBranch(r.branch);
         setFiles(r.files);

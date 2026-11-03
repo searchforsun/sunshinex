@@ -8,7 +8,7 @@ import type { Connection } from '../connection';
 import type { BgTaskRow } from '../projection';
 import { t } from '../i18n';
 import type { TabParams, TabTypeId } from './tab-state';
-import { shortStampMs } from '../ui-util';
+import { shortStampMs, withMinSpin } from '../ui-util';
 
 /**
  * G10-C6 右栏三面板(spec §7 映射:/context /tasks /memory 的 GUI 承载):
@@ -41,7 +41,7 @@ function useFetch<T>(
   useEffect(() => {
     let alive = true;
     setFetching(true);
-    fn().then(
+    withMinSpin(fn()).then(
       (d) => {
         if (alive) {
           setData(d);
@@ -168,7 +168,7 @@ export function BgTasksTab({
   const reload = useCallback((): void => {
     if (onRefresh === undefined || fetching) return;
     setFetching(true);
-    void onRefresh()
+    void withMinSpin(onRefresh())
       .then(() => setError(''))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setFetching(false));

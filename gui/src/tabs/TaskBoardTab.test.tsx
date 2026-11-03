@@ -182,7 +182,7 @@ describe('智能体团队点色 class', () => {
     const css = readFileSync(cssPath!, 'utf8');
     expect(css).toMatch(/\.tb-status-dot\.task-status-running\s*\{[^}]*animation:\s*sx-spin/);
     expect(css).toMatch(/\.tb-status-dot\.task-status-success\s*\{[^}]*var\(--accent\)/);
-    expect(css).toMatch(/\.tb-status-dot\.task-status-cancelled\s*\{[^}]*#f5c542/);
+    expect(css).toMatch(/\.tb-status-dot\.task-status-cancelled\s*\{[^}]*var\(--warn\)/);
     expect(css).toMatch(/\.tb-struck\s*\{[^}]*line-through/);
   });
 });

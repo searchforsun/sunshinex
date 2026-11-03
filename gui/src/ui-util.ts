@@ -227,6 +227,12 @@ export async function pickWorkspaceFolder(
  *  每帧 measure() 取偏差——|delta|≤eps 记一帧稳定(连续 2 帧即收口),否则 apply(delta) 并清稳定计数;
  *  150 帧封顶(content-visibility 水合级联 24 帧封顶实测残差 87px 的口径,两处原值同源);el 离开
  *  DOM 提前终止。消费面:chaseScrollBottom(贴底,eps=1)/ChatRail jump(跳转,eps=2) */
+/** 刷新转圈最短窗口(2026-11-03 用户裁定「全局刷新按钮都要转圈」):localhost 快照毫秒级即回,
+ *  refreshing true→false 同帧翻转 React 不重绘转圈帧=「刷新不转圈」体感;统一 ≥500ms 展示窗 */
+export function withMinSpin<T>(p: Promise<T>, ms = 500): Promise<T> {
+  return Promise.all([p, new Promise<void>((resolve) => setTimeout(resolve, ms))]).then(([v]) => v);
+}
+
 export function rAFConverge(el: HTMLElement, measure: () => number, apply: (delta: number) => void, eps: number): void {
   let tries = 0;
   let stable = 0;

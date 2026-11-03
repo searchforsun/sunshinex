@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AlarmClock, Bot, Clock, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
-import { fmtDurMs, shortStampMs } from '../ui-util';
+import { fmtDurMs, shortStampMs, withMinSpin } from '../ui-util';
 /** DAG 视图懒载面(React Flow + dagre)。节点与列表行共用五态点色与停钮。 */
 const TaskDag = lazy(() => import('./TaskDag'));
 
@@ -357,7 +357,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   const refresh = (): void => {
     if (refreshing || onRefresh === undefined) return;
     setRefreshing(true);
-    void onRefresh()
+    void withMinSpin(onRefresh())
       .then(() => setActError(''))
       .catch((err: unknown) => setActError(`${t('Refresh failed', '刷新失败')}: ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => setRefreshing(false));

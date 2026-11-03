@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronRight, Check, Clock, RefreshCw } from 'lucide-react';
 import { t } from '../i18n';
-import { shortStampMs } from '../ui-util';
+import { shortStampMs, withMinSpin } from '../ui-util';
 import type { Connection } from '../connection';
 import type { TodoBatch } from '../pages/Chat';
 
@@ -33,7 +33,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate 
   const refresh = (): void => {
     if (refreshing) return;
     setRefreshing(true);
-    conn.sessionSnapshot(sessionId)
+    withMinSpin(conn.sessionSnapshot(sessionId))
       .then((snap) => setRefreshed(snap.todoBatches ?? []))
       .catch(() => {})
       .finally(() => setRefreshing(false));
