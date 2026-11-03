@@ -19,7 +19,7 @@ describe('TodoCardsTab 主名字定位', () => {
     const { container } = render(
       <TodoCardsTab batches={[batch({ key: 'k3', userKey: 'k1' })]} conn={connStub} sessionId="s1" onLocate={onLocate} />,
     );
-    const goal = container.querySelector<HTMLElement>('.todo-card-goal.todo-card-goal-link')!;
+    const goal = container.querySelector<HTMLElement>('.todo-card-goal .todo-card-goal-link')!;
     expect(goal).not.toBeNull();
     expect(goal.textContent).toContain('测试一下电脑操作');
     fireEvent.click(goal);

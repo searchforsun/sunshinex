@@ -91,18 +91,20 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate 
               <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(b.key)}>
                 {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
                 <span className="todo-card-count">{`${done}/${b.items.length}`}</span>
-                <span
-                  role="button"
-                  tabIndex={-1}
-                  className={'todo-card-goal' + (b.userKey !== undefined && onLocate !== undefined ? ' todo-card-goal-link' : '')}
-                  data-tip={b.userKey !== undefined && onLocate !== undefined ? t('Locate in chat', '定位到正文气泡') : undefined}
-                  onClick={(e2) => {
-                    if (b.userKey === undefined || onLocate === undefined) return;
-                    e2.stopPropagation();
-                    onLocate(b);
-                  }}
-                >
-                  {b.goal !== '' ? b.goal : t('(no turn input)', '(未关联轮次输入)')}
+                <span className="todo-card-goal">
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    className={b.userKey !== undefined && onLocate !== undefined ? 'todo-card-goal-link' : undefined}
+                    data-tip={b.userKey !== undefined && onLocate !== undefined ? t('Locate in chat', '定位到正文气泡') : undefined}
+                    onClick={(e2) => {
+                      if (b.userKey === undefined || onLocate === undefined) return;
+                      e2.stopPropagation();
+                      onLocate(b);
+                    }}
+                  >
+                    {b.goal !== '' ? b.goal : t('(no turn input)', '(未关联轮次输入)')}
+                  </span>
                 </span>
                 <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
                   <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
