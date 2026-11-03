@@ -1752,8 +1752,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
 /* 2026-11-03 待办卡主名字=定位钮:点击滚到对应正文输入气泡(有 userKey 的批次才可点) */
-.todo-card-goal-link { cursor: pointer; }
-.todo-card-goal-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.todo-card-goal-link { cursor: pointer; border-radius: var(--radius-xs); padding: 0 3px; margin: 0 -3px; }
+.todo-card-goal-link:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); } /* 2026-11-03 用户裁定:悬停轻高亮即可,无下划线 */
 
 .todo-card-goal { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 11px var(--font-mono); color: var(--fg-tertiary); }
