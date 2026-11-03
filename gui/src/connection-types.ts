@@ -44,7 +44,8 @@ export interface SnapshotMessage {
   callId?: string;
   name?: string;
   input?: Record<string, unknown>;
-  result?: string;
+  /** tool 条配对结果(wire 真值=对象形,src/serve/session.ts 快照序列化只剥 full——8c7be9e 曾误补 string 形) */
+  result?: { text: string; ok: boolean; full?: string };
   status?: 'pending' | 'running' | 'done'; // 对齐 session/entry 内核三态（无 failed：失败语义在 result 内容面）
 }
 
