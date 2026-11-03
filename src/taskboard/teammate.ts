@@ -269,7 +269,7 @@ export class Teammate {
     // (用户中止/interrupted/ABORTED 回写 cancelled;执行错误回写 failed;teammate 存活继续 claim 下一任务)
     const taskAbort = new AbortController();
     this.currentTaskAbort = taskAbort;
-    const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: dispatchTag(task.id) });
+    const ledger = this.deps.tasks?.submit({ kind: 'subagent', label: dispatchTag(task.id), boardDispatch: true });
     if (ledger !== undefined) ledger.stop = () => taskAbort.abort();
     // own chain 预置:首任务前 role 行(角色框定),每任务前 task 行(自包含指令)——seed 经 Reactor 缺省取 own chain
     if (!this.framed) {

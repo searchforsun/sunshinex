@@ -20,6 +20,11 @@ export interface BackgroundTask {
   ownerRun?: string;
   /** 停止执行单点（exec=进程 kill、subagent=中断线 abort）；提交方挂载，账本透传——kill 与 abort 两类差异收敛在提交方闭包，账本零 kind 分派 */
   stop?: () => void;
+  /** 板任务派发登记（2026-11-03 用户裁定「等待团队任务不进后台任务面」）：teammate 执行板任务时
+   *  向账本登记 dispatchTag 条目，仅供 task_wait/agent_team_task_wait 等待面与台账回执消费——
+   *  GUI 后台任务面（/tasks 端点 + bg-task 直播事件）按此标过滤，团队任务的呈现归任务板。
+   *  落在 task 对象随 submit 行持久化，账本重放后仍携带 */
+  boardDispatch?: boolean;
 }
 
 /** 本进程提交的活任务对象(进程级):同一 daemon 内会话 runtime 重建(换模式等)会新建 TaskRegistry
@@ -143,7 +148,7 @@ export class TaskRegistry {
     return ownerStorage.getStore() ?? 'main';
   }
 
-  submit(input: { kind: 'exec' | 'subagent'; label: string; ownerRun?: string }): BackgroundTask {
+  submit(input: { kind: 'exec' | 'subagent'; label: string; ownerRun?: string; boardDispatch?: boolean }): BackgroundTask {
     const gen = (): string =>
       `${slugify(input.label, { max: 16, fallback: input.kind })}-${utcCompactStamp()}-${Math.random().toString(36).slice(2, 6)}`;
     let id = gen();
@@ -164,6 +169,7 @@ export class TaskRegistry {
       outputFilePath,
       startedAt: Date.now(),
       ownerRun: input.ownerRun ?? this.currentOwner(),
+      ...(input.boardDispatch === true ? { boardDispatch: true } : {}),
     };
     this.tasks.set(id, task);
     liveTasks.set(id, task);

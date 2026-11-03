@@ -210,10 +210,13 @@ export class Harness {
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
     // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
     this.tasks = new TaskRegistry(resolveDataDir(base));
-    // 后台任务账本直播(GUI 侧栏/顶栏计数):submit/finish 旁路;adopt 重放不经 onChange
+    // 后台任务账本直播(GUI 侧栏/顶栏计数):submit/finish 旁路;adopt 重放不经 onChange。
+    // 板任务派发登记(boardDispatch)不直播(2026-11-03 用户裁定「等待团队任务不进后台任务面」)——
+    // 团队任务呈现归任务板,/tasks 端点同口径过滤
     if (opts.onEvent) {
       const emit = opts.onEvent;
       this.tasks.setOnChange((task) => {
+        if (task.boardDispatch === true) return;
         emit({
           type: 'bg-task',
           ts: Date.now(),

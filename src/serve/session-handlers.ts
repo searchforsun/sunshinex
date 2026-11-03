@@ -219,7 +219,11 @@ function taskOutputTail(file: string): { outputTail: string; outputTruncated?: b
 export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
-  const rows = session.runtime.harness.tasks.list().map((t2) => ({
+  // 板任务派发登记(boardDispatch)不进 GUI 后台任务面(2026-11-03 用户裁定):团队任务归任务板呈现,
+  // 此处只剩 exec / 后台 spawn(subagent);等待面(task_wait/agent_team_task_wait)仍见全量账本
+  const rows = session.runtime.harness.tasks.list()
+    .filter((t2) => t2.boardDispatch !== true)
+    .map((t2) => ({
     id: t2.id,
     kind: t2.kind,
     label: t2.label,

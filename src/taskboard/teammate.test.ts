@@ -55,6 +55,8 @@ interface Rig {
   events: SessionEvent[];
   forkCalls: string[];
   ledgerSubmitted: string[];
+  /** submit 入参 boardDispatch 旗(板任务派发登记不进 GUI 后台任务面的承载) */
+  ledgerBoardDispatch: boolean[];
   ledgerFinished: Array<[string, string]>;
   /** 真 FileInbox(与装配面同语义;测试按需注入 teammate deps) */
   inbox: FileInbox;
@@ -71,9 +73,10 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
   const events: SessionEvent[] = [];
   const forkCalls: string[] = [];
   const ledgerSubmitted: string[] = [];
+  const ledgerBoardDispatch: boolean[] = [];
   const ledgerFinished: Array<[string, string]> = [];
   const registry = {
-    submit: (input: { kind: string; label: string }) => { ledgerSubmitted.push(input.label); return { id: `lg${ledgerSubmitted.length}`, stop: () => {} }; },
+    submit: (input: { kind: string; label: string; boardDispatch?: boolean }) => { ledgerSubmitted.push(input.label); ledgerBoardDispatch.push(input.boardDispatch === true); return { id: `lg${ledgerSubmitted.length}`, stop: () => {} }; },
     append: () => {},
     finish: (id: string, status: string) => { ledgerFinished.push([id, status]); },
     list: () => [],
@@ -124,6 +127,7 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     forkCalls,
     ledgerSubmitted,
     ledgerFinished,
+    ledgerBoardDispatch,
     inbox,
     cursors,
     makeTeammate,
@@ -510,6 +514,7 @@ test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 di
     assert.deepEqual(rig.forkCalls, []);
     assert.equal(rig.board.snapshot().tasks[idA]!.executedBy, 'w1', 'executedBy 落实际执行者(Ctrl+T 执行者列)');
     assert.deepEqual(rig.ledgerSubmitted, [idA], 'submit 以 dispatchTag(板 id) 标签登记(新方言原样透传)');
+    assert.deepEqual(rig.ledgerBoardDispatch, [true], '派发登记带 boardDispatch 旗(GUI 后台任务面过滤承载)');
     assert.equal(rig.ledgerFinished.length, 1);
     assert.equal(rig.ledgerFinished[0]![0], 'lg1');
     assert.equal(rig.ledgerFinished[0]![1], 'done');
