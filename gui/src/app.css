@@ -76,22 +76,19 @@
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', 'Microsoft YaHei', monospace;
 }[data-theme='light'] {
   color-scheme: light;
-  /* 2026-11-03 用户裁定:亮色组件对比参照暗色重校——暗色层阶(under 暗于 base / elevated 亮于 base
-     一档 / soft 更强 / code 退一档)在亮色同构:base 取浅灰,elevated/浮层纯白 pops,under 深一档,
-     soft 再深一档,code 白一档;海拔随白卡对灰底略增 */
-  --surface: #f4f4f4;
-  --surface-under: #ebebeb;
+  --surface: #fff;
+  --surface-under: #f9f9f9;
   --surface-elevated: #fff;
-  --surface-soft: #e6e6e6;
-  --surface-code: #fbfbfb;
+  --surface-soft: #f3f3f3;
+  --surface-code: #fcfcfc;
   --fg: #1a1c1f;
   --fg-on-solid: #fff;
-  --bubble-user: color-mix(in srgb, var(--fg) 8%, transparent);
+  --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
   --ok: #00a240;
   --warn: #e25507;
   --err: #e02e2a;
-  --elev-card: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.1);
+  --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
+  --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.04);
   --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   --syntax-comment: #4f4f4f;
   --syntax-keyword: #ab4f7a;
