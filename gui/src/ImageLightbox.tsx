@@ -113,18 +113,18 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
         }}
       />
       <div className="sx-lightbox-bar" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="sx-lightbox-act" aria-label={t('Zoom in', '放大')} data-tip={t('Zoom in', '放大')} onClick={() => zoomBy(SCALE_STEP)}>
+        <button type="button" className="sx-lightbox-act" aria-label={t('Zoom in', '放大')} data-tip={`${t('Zoom in', '放大')} · +`} onClick={() => zoomBy(SCALE_STEP)}>
           <Plus size={14} strokeWidth={2} aria-hidden="true" />
         </button>
         <span className="sx-lightbox-pct" aria-live="polite">{pct}%</span>
-        <button type="button" className="sx-lightbox-act" aria-label={t('Zoom out', '缩小')} data-tip={t('Zoom out', '缩小')} onClick={() => zoomBy(1 / SCALE_STEP)}>
+        <button type="button" className="sx-lightbox-act" aria-label={t('Zoom out', '缩小')} data-tip={`${t('Zoom out', '缩小')} · -`} onClick={() => zoomBy(1 / SCALE_STEP)}>
           <Minus size={14} strokeWidth={2} aria-hidden="true" />
         </button>
         <button
           type="button"
           className="sx-lightbox-act"
           aria-label={t('Reset zoom', '重置缩放')}
-          data-tip={t('Reset zoom', '重置缩放')}
+          data-tip={`${t('Reset zoom', '重置缩放')} · 0`}
           onClick={() => {
             setScale(1);
             setOffset({ x: 0, y: 0 });
@@ -146,7 +146,7 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
           <Download size={13} strokeWidth={2} aria-hidden="true" />
         </a>
         <span className="sx-lightbox-sep" aria-hidden="true" />
-        <button type="button" className="sx-lightbox-act" aria-label={t('Close', '关闭')} data-tip={t('Close', '关闭')} onClick={onClose}>
+        <button type="button" className="sx-lightbox-act" aria-label={t('Close', '关闭')} data-tip={`${t('Close', '关闭')} · Esc`} onClick={onClose}>
           <X size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>

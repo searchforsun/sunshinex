@@ -203,7 +203,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                 type="button"
                 className={`send tip-right${sendLoading === true ? ' loading' : ''}`}
                 aria-label="send"
-                data-tip={t('Send', '发送')}
+                data-tip={`${t('Send', '发送')} · Enter`}
                 onClick={send}
                 disabled={connState !== 'open' || seeding || sendLoading === true}
               >

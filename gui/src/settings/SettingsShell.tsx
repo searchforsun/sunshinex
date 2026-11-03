@@ -17,6 +17,7 @@ import { PermissionsPane } from './PermissionsPane';
 import type { PermissionsPaneConn } from './PermissionsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
+import { ShortcutsPane } from './ShortcutsPane';
 import type { SettingsScope, ScopeOption } from './components';
 import { defaultScopeOptions, scopeTargetLabel } from './components';
 import type { WorkspaceRow } from '../connection';
@@ -100,7 +101,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
       { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
     ],
   },
-  { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }] },
+  { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }, { id: 'shortcuts', title: { en: 'Shortcuts', zh: '快捷键' } }] },
 ];
 const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
 
@@ -206,6 +207,9 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
         return <SkillsPane key="skills" conn={conn} root={targetRoot} title={t('Skills', '技能')} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.skills} />;
       case 'permissions':
         return <PermissionsPane key="permissions" conn={conn} root={root} title={t('Permissions', '权限')} scope={scope} refreshTick={refreshTick.permissions} />;
+      case 'shortcuts':
+        // 快捷键说明页(纯静态文档面,无连接面/读写)
+        return <ShortcutsPane key="shortcuts" />;
       default:
         return <RawPane key="raw" conn={conn} root={root} scope={scope} />;
     }
@@ -219,7 +223,8 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
       <nav className="sx-menu sx-settings-menu" aria-label={t('settings', '设置')}>
         <header className="sx-menu-head sx-settings-head" data-drag-band>
           {/* 2026-10-29 用户裁定:返回钮套用侧栏目录视图返回钮同款样式槽(sx-new-chat=图标+文字胶囊) */}
-          <button type="button" className="sx-new-chat" onClick={onBack} aria-label="back to sessions">
+          {/* 悬浮提示带键位:Esc 与本钮同路径回会话态(§快捷键说明页) */}
+          <button type="button" className="sx-new-chat" onClick={onBack} aria-label="back to sessions" data-tip={`${t('Back', '返回')} · Esc`}>
             <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
             <span>{t('Back', '返回')}</span>
           </button>

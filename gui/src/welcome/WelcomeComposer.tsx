@@ -901,7 +901,7 @@ export function WelcomeComposer({
                 type="button"
                 className="send"
                 aria-label="send"
-                data-tip={t('Send', '发送')}
+                data-tip={`${t('Send', '发送')} · Enter`}
                 disabled={busy || (goal.trim() === '' && images.length === 0) || picked === ''}
                 onClick={send}
               >

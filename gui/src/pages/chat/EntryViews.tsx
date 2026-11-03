@@ -434,7 +434,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
           />
           <div className="user-edit-foot">
             <TipButton tip={t('Cancel', '取消')} label="cancel edit" icon={<X size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setEditing(false)} />
-            <button type="button" className="user-edit-send" aria-label="send edit" data-tip={t('Send', '发送')} onClick={sendEdit}>
+            <button type="button" className="user-edit-send" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendEdit}>
               <ArrowUp size={14} strokeWidth={2.25} aria-hidden="true" />
             </button>
           </div>

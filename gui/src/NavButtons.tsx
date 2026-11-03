@@ -9,10 +9,10 @@ import type { NavControls } from './nav-history';
 export function NavButtons({ nav }: { nav: NavControls }): JSX.Element {
   return (
     <div className="sx-navbtns" role="group" aria-label="navigation history">
-      <button type="button" className="sx-winbtn" aria-label="nav back" data-tip={t('Back', '后退')} disabled={!nav.canBack} onClick={nav.back}>
+      <button type="button" className="sx-winbtn" aria-label="nav back" data-tip={`${t('Back', '后退')} · Alt+←`} disabled={!nav.canBack} onClick={nav.back}>
         <ArrowLeft size={15} strokeWidth={1.75} aria-hidden="true" />
       </button>
-      <button type="button" className="sx-winbtn" aria-label="nav forward" data-tip={t('Forward', '前进')} disabled={!nav.canForward} onClick={nav.forward}>
+      <button type="button" className="sx-winbtn" aria-label="nav forward" data-tip={`${t('Forward', '前进')} · Alt+→`} disabled={!nav.canForward} onClick={nav.forward}>
         <ArrowRight size={15} strokeWidth={1.75} aria-hidden="true" />
       </button>
     </div>

@@ -3124,3 +3124,16 @@ input.sx-setting-input { width: 100%; }
 .tool-icon-browser { color: var(--fg-secondary); }
 /* 自由尺寸控件独立一行(2026-10-31 用户裁定:不挤网址右侧;冗余标签/说明去除,控件居中) */
 .sx-web-dev-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--surface); }
+
+/* ============ 设置·快捷键说明页(ShortcutsPane) ============ */
+/* 分组卡列示:组标题+键位/描述两列行;键位以 kbd 徽标渲染(键帽观感,与全局 data-tip 卡同族观感) */
+.sx-shortcuts-page { max-width: 720px; }
+.sx-shortcuts-intro { font-size: 12.5px; color: var(--fg-tertiary); margin: 0 0 16px; }
+.sx-shortcuts-group { margin-bottom: 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-md, 10px); background: var(--surface); }
+.sx-shortcuts-title { font-size: 13px; font-weight: 600; color: var(--fg); margin: 0 0 6px; }
+.sx-shortcuts-rows { display: flex; flex-direction: column; }
+.sx-shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--fg) 6%, transparent); }
+.sx-shortcut-row:last-child { border-bottom: none; }
+.sx-shortcut-keys { display: flex; align-items: center; gap: 4px; flex: none; }
+.sx-shortcut-desc { color: var(--fg-secondary); font-size: 12.5px; text-align: right; min-width: 0; }
+.sx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 18px; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: 5px; }
