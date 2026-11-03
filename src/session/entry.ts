@@ -460,7 +460,9 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
         if (run !== undefined && run.kind === 'run') {
           const seconds = e.ts > run.ts ? Math.round((e.ts - run.ts) / 1000) : undefined;
           const p = e.payload ?? {};
-          const stopped = typeof p.stopReason === 'string' && p.stopReason !== 'done';
+          // plan-presented（2026-11-03 交稿协议）与 done 同类:规划 run 正常收束（交稿成功停卡等人裁决),
+          // 不算「停止」——GUI run 行显示「已运行 X」而非「已停止」;该 stopReason 仅规划 fork run 可达
+          const stopped = typeof p.stopReason === 'string' && p.stopReason !== 'done' && p.stopReason !== 'plan-presented';
           // steps/runSteps 不取 done 载荷(2026-10-31「1 轮 1 动作显示 5 步」根修):载荷=reactor
           // 链全宽步号,与 stats 模型动作轮口径不一致。权威=stats——主链 live 另有 kernel pump
           // 逐变更同步;子智能体投影/影子水合只走 applyEvent,须在 done 落盘 stats,否则重启后

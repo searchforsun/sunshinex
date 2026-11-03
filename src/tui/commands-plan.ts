@@ -61,6 +61,7 @@ export async function confirmPlanOn(ctrl: SessionController, yes: boolean, feedb
  *  planFlowSettled（2026-11-03）：整体收束 promise 挂 ctrl,replanOn/plan off 前置有界等待锚。
  *  images=随行图片仅首轮规划透传（修订轮提示词已含旧计划书全文,图片随首轮 seed 已在链;serve 同构） */
 export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: string[]): Promise<void> {
+  const startedAt = Date.now(); // 交稿收束 runmeta 行时长基线（fork run 唯一终态行锚）
   ctrl.state = {
     ...ctrl.state,
     status: 'running',
@@ -169,6 +170,10 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
             ctrl.pushMsg('system', card);
             ctrl.state = { ...ctrl.state, status: 'awaiting-plan' };
             ctrl.notify();
+            // fork run 终态 runmeta 行（serve 同构）:交稿=正常收束,带 endedTs 无 stopped——回放不触发
+            // 悬空强制 stopped 规则,run 行显「已运行 X」（ask_question 同观感）
+            ctrl.ensureJournal();
+            ctrl.journal?.log({ t: 'runmeta', seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)), endedTs: Date.now() });
             openGateOnce(); // submit 半径到此为止：裁决后续段由 confirmPlan 驱动
             return;
           }

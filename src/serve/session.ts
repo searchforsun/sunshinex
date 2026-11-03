@@ -1048,6 +1048,7 @@ export class SessionRuntime {
    *  半径,由 resolvePendingPlanApproval 的回执驱动后台续跑——「提交后停在确认卡」的公开语义不变。 */
   private runPlanArm(goal: string, images?: string[]): void {
     this.planFlowRunning = true;
+    const startedAt = Date.now(); // 交稿收束 runmeta 行的时长基线（fork run 唯一终态行锚）
     const abort = new AbortController();
     this.planAbort = abort;
     // 用户目标回显（kernel.submit 单点：user 段入转录+WS 广播+journal 行;TUI /plan 输入回显同构）——
@@ -1150,6 +1151,10 @@ export class SessionRuntime {
               planCardMeta.name = e.name;
               if (e.path !== undefined) planCardMeta.path = e.path; else delete planCardMeta.path;
               revising = false;
+              // fork run 终态 runmeta 行（2026-11-03 交稿协议,仅此一处写）:交稿=规划 run 正常收束,
+              // 带 endedTs 无 stopped——回放 seglog 悬空强制 stopped 规则不触发,重启后 run 行显
+              // 「已运行 X」而非「已停止」（ask_question 同观感:停在等待裁决而非停止）
+              this.journal?.log({ t: 'runmeta', seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)), endedTs: Date.now() } as unknown as Parameters<SessionJournal['log']>[0]);
               return; // 卡面=plan-approval 帧+挂起表快照（awaitApproval 接缝登记）,无独立状态行
             }
             if (e.type === 'revising') {
@@ -1211,26 +1216,15 @@ export class SessionRuntime {
           for (const n of notices) this.runtimeImpl.harness.context.appendChain([{ action: 'notice', observation: n }]);
           for (const n of notices) this.pump({ type: 'notice', text: n, ts: Date.now() });
           // 落所选档（2026-11-03 修订:批准卡三选,r.mode 权威、缺省 acceptEdits 由 plan-flow 兜底;
-          // spec §4.4/§5.1 绑定:真切换,arm 解除）。idle 时刻合法（锁已在裁决点放行;
-          // busy 面 unreachable——planFlowRunning 挡新提交,流程外无并发 run 源）。重建 runtime 后新
-          // guard 基档即所选档、asker 接线经装配单点自动就位（isAcceptEdits 判定）——serve 相对
-          // TUI 的优势：TUI 需 setBaseMode 手动通道,serve 装配映射单点承接。
-          // planFlowInternal 旁路：流程内切换不得自触 disarm 收口（abortPlanFlowAndSettle 会中止自己）;
-          // busy 即中止流程（终审修复 c：防御纵深——旧形态忽略返回值,busy 也照跑执行段;即便 a/b 已封
-          // 主路径,此处不再带病续跑）
-          const ctx = this.runtimeImpl.harness.context;
-          const carry = { chain: ctx.chainView(), chainFrom: ctx.chainFromView(), compacted: ctx.compactedView() };
-          const prevSnap = ctx.snapshotExport(); // 换铸前捕快照（批准续段位点,与 carry 同拍——内存直传载荷）
-          if ((await this.setMode(r.mode, { planFlowInternal: true })) === 'busy') {
-            this.pump({ type: 'notice', text: 'Plan approved — execution cancelled (mode switch failed)', ts: Date.now() });
-            return;
-          }
-          // setMode 换新运行时=换上下文链（reset 同路径）——批准续段必须站在含计划书的原链上执行：
-          // 快照-换新-restoreSession 回种（daemon attach 同构;直注入不触发订阅,零双写）
-          this.runtimeImpl.harness.context.restoreSession(carry);
-          this.runtimeImpl.harness.context.restoreSnapshot(prevSnap); // 快照内存直传(不经 journal,同会话中途换铸字节稳定)
+          // spec §4.4/§5.1 绑定:真切换,arm 解除）。**轻量直切（重建退役）**:setBaseMode 纯字段写,
+          // 链原地零位移（换铸五件套 carry/snapshotExport/restoreSession/restoreSnapshot/重挂订阅
+          // 全部退役——它们只为修重建副作用而生）;前缀缓存天然保。asker serve 无条件就位,降档
+          // acceptEdits 的 ask 卡直落挂起表。idle 时刻合法（锁已在裁决点放行）。
+          this.currentMode = r.mode; // arm 解除+快照 mode 字段权威落档(轻量直切无换铸,须显式写)
+          this.runtimeImpl.harness.security.setBaseMode(r.mode);
+          this.persistSelection({ mode: r.mode });
           this.pump({ type: 'notice', text: r.mode === 'full-access' ? 'Switched to full access mode' : 'Switched to workspace edit mode', ts: Date.now() });
-          // 阶段二锁（执行段）：批准续段整段持锁（409 拒并发提交）+沙箱信号重装（换新后落新 runtime）
+          // 阶段二锁（执行段）：批准续段整段持锁（409 拒并发提交）+沙箱信号重装（执行段 run 信号）
           this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
           let openExec!: () => void;
           const execDone = new Promise<void>((resolve) => {
@@ -1408,21 +1402,23 @@ export class SessionRuntime {
     return okSwitch;
   }
 
-  /** 权限模式切换（G10-C1b）：非 plan 档 idle-only（运行中 409 面归 daemon handler）;重建 runtime 与
-   *  reset 同路径,转录/影子投影独立字段不受损;换新 runtime 后重挂 journal 落盘订阅（hookJournalSink
-   *  单槽幂等）。plan 流程标记（阶段三 plan-arm;2026-11-03 修订 /plan 三态）：setMode('plan') 即武装
-   *  ——**武装快路径,任何状态可用、幂等、永不 busy**：arm 只是 currentMode 标记位（装配映射恒
-   *  acceptEdits）,不重建运行时;运行中武装对下一次提交生效（重建推迟到批准落档/用户切档等自然收口点;
-   *  规划轮权限面走 read-only 覆盖,与基档无关）。本方法即「手动切档解除」路径（切离 plan 档=disarm）。
-   *  回放语义（spec §5.2,跨重启不恢复 arm）：本路径经 persistSelection 照写 mode:'plan' 落 meta 旁车,
-   *  但 attach 回放只认现值三档（daemon.ts 装载序,'plan' 照写不照回）——armed 天然不跨重启,无需新增
-   *  持久化;已批准的计划书随链（'plan' 行）回放。
-   *  disarm 收口（终审修复 b）：plan 流程在途时切离 plan,卡挂起期锁已放行（idle）——旧形态只查 idle
-   *  即实切,在途 planFlow 被孤儿化（用户点旧卡驱动续段与新任务并发跑;拒绝路径 revising 的 read-only
-   *  覆盖还会拒掉用户任务的写操作）。现切离前先经 abortPlanFlowAndSettle 单点中止流程（信号+挂卡
-   *  拒绝回填+有界等收束）再换新运行时;批准续段自身的落档切换走 planFlowInternal 旁路（流程内切换
-   *  不得自中止）。异步化即为此等待;武装快路径不触收口。 */
-  async setMode(mode: SessionMode, opts?: { planFlowInternal?: boolean }): Promise<'ok' | 'busy'> {
+  /** 权限模式切换（G10-C1b;2026-11-03 重建退役）：真档轻量直切——档位在装配期只进 guard 构造参数
+   *  （session.ts assemble 映射）,全消费点（guard/chain）按每次工具调用活读,`security.setBaseMode`
+   *  纯字段写即全链生效:**运行中切真档不再 busy,下一未决调用按新档判决;在飞调用/子进程不回溯**。
+   *  换铸（assemble 重建+快照直传回种）是 v1 复用 reset 路径的惯性,非 mode 依赖——随本修订退役,连同
+   *  其修补机械（快照直传/hookJournalSink 重挂/链 restore）。两个有意差异登记:①sessionAllows/
+   *  sessionDirAllows 跨档保留（加法语义,旧换铸清空）;②readGuard 不换铸（降档免重读,旧换铸「强制
+   *  重读」语义退役）。边界保留:规划轮 read-only 覆盖在座（planFlowPlanning）切真档仍 busy——override
+   *  遮蔽窗口不放开;切离 plan 且流程在途保留 disarm 收口（中止在途流程,语义不变）。
+   *  plan 流程标记（阶段三 plan-arm;/plan 三态）：setMode('plan') 即武装——武装快路径,任何状态可用、
+   *  幂等、永不 busy：arm 只是 currentMode 标记位（装配映射恒 acceptEdits）,不重建运行时;运行中武装
+   *  对下一次提交生效;规划轮权限面走 read-only 覆盖,与基档无关。本方法即「手动切档解除」路径（切离
+   *  plan 档=disarm）。回放语义（spec §5.2,跨重启不恢复 arm）：persistSelection 照写 mode:'plan' 落
+   *  meta 旁车,attach 回放只认现值三档（'plan' 照写不照回）——armed 不跨重启;已批准的计划书随链回放。
+   *  disarm 收口史（终审修复 b）：卡挂起期切离 plan 若只查 idle 即实切,在途 planFlow 被孤儿化——现切离
+   *  前先经 abortPlanFlowAndSettle 单点中止流程（信号+挂卡拒绝回填+有界等收束）;批准续段自身已改
+   *  setBaseMode 直切（无流程可中止,planFlowInternal 旁路与换铸五件套一并退役）。 */
+  async setMode(mode: SessionMode): Promise<'ok' | 'busy'> {
     // 武装快路径（2026-11-03）：置标记+落 meta 即回,零重建零 busy——运行中武装=对下一次提交生效
     if (mode === 'plan') {
       if (this.currentMode === 'plan') return 'ok'; // 同档幂等
@@ -1430,20 +1426,14 @@ export class SessionRuntime {
       this.persistSelection({ mode });
       return 'ok';
     }
-    if (this.status() !== 'idle') return 'busy';
+    // 边界①:read-only override 实际在座（规划轮调研中）基档活改被遮蔽到 exitReadOnly——切真档 busy
+    // 不放开;挂卡期 override 已退出（exitReadOnly 随规划任务结束）,切真档=disarm 合法
+    if (this.runtimeImpl.harness.security.overrideActive) return 'busy';
+    // 边界②:disarm 收口——切离 plan 且流程在途,中止在途流程（挂卡拒绝回填+有界等收束）
+    if (this.planFlowRunning) await this.abortPlanFlowAndSettle();
     if (mode === this.currentMode) return 'ok';
-    if (this.planFlowRunning && !opts?.planFlowInternal) {
-      await this.abortPlanFlowAndSettle();
-      if (this.status() !== 'idle') return 'busy'; // 防御:收束窗口内有新 run 起跑则拒切（不换新运行时压 run）
-    }
-    // 换铸快照内存直传（2026-10-31 spec §4,Task 6）：旧运行时 dispose/换新前捕快照,换新后直注入回种
-    // ——不经 journal 回程、不重读磁盘,同会话中途换铸前缀字节稳定（离场磁盘变更留给追尾,不烘进快照;
-    // 直注入不触发订阅,零 snap 事件零落档）。内存导出恒合法,拒收分支（false）理论不可达
-    const prevSnap = this.runtimeImpl.harness.context.snapshotExport();
     this.currentMode = mode;
-    this.runtimeImpl = this.assemble();
-    this.runtimeImpl.harness.context.restoreSnapshot(prevSnap);
-    if (this.journal !== undefined) this.hookJournalSink();
+    this.runtimeImpl.harness.security.setBaseMode(mode); // guard 纯字段写,下一未决调用即按新档判决
     this.persistSelection({ mode }); // G14.2xx 模式切换即刻落 meta(attach 回放)
     return 'ok';
   }

@@ -164,6 +164,9 @@ export class SecurityGuard {
   private override: PermissionMode | undefined;
   enterModeOverride(mode: PermissionMode): void { this.override = mode; }
   exitModeOverride(): void { this.override = undefined; }
+  /** override 活跃外窥（2026-11-03 轻量切档边界):规划轮 read-only 覆盖在座=true——真档 setBaseMode
+   *  活改在此窗口被遮蔽到 exitReadOnly,serve setMode 边界据此 busy 不放开 */
+  get overrideActive(): boolean { return this.override !== undefined; }
 
   /** exit_plan 武装位（2026-11-03 交稿协议）：规划轮在途标记——宿主 enterReadOnly 接缝置 true、
    *  exitReadOnly 接缝置 false（与 read-only 覆盖同生命周期同配对纪律）。guard 判据单点,

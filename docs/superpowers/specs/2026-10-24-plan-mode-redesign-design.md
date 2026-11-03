@@ -236,3 +236,18 @@ pill/菜单/帮助文案经 i18n `t()` 单表维护;read-only 拒绝消息出路
 - TUI：同构（卡头计划名行/落盘/合成链行/逐项执行）。
 - harness：name 透传+persistPlan 调用+卡事件带 path;derivePlanName 截断/兜底。
 - GUI：交稿行折叠链接点击 onOpenFile、展开体三态、live 无 path 降级;PlanCard 卡头链接/降级。
+
+---
+
+## 11. 2026-11-03 补遗:交稿停卡态修正 + 权限档轻量切换(重建退役)
+
+### 11.1 交稿停卡显示修正
+
+exit_plan 交稿 = 规划 run 正常收束（ask_question 同观感:停在等待裁决而非「已停止」）。两处修正:①kernel done 归约（entry.ts）stopped 映射豁免 plan-presented——live run 行显「已运行 X」;②fork 规划 run 补落终态 runmeta 行（awaiting-approval 时宿主写,带 endedTs/seconds 无 stopped,TUI/serve 同构）——回放 seglog 悬空强制 stopped 规则不再触发。
+
+### 11.2 权限档轻量切换（重建退役,运行中即时生效）
+
+- **语义**:真档切换不再 idle-only/409——`setBaseMode` 纯字段写,下一未决工具调用按新档判决（guard/chain 全消费点活读;在飞调用/子进程不回溯）。换铸（assemble 重建+快照直传回种）退役:档位在装配期只进 guard 构造参数,重建是 v1 复用 reset 路径的惯性（54497be）,非 mode 依赖。
+- **边界保留**:①规划轮 read-only 覆盖在座（guard.overrideActive）切真档 busy——遮蔽窗口不放开;②切离 plan 且流程在途保留 disarm 收口。
+- **有意差异登记**:①sessionAllows/sessionDirAllows 跨档保留（旧换铸清空;加法语义）;②readGuard 不换铸（降档免重读,旧换铸「强制重读」退役）;③asker serve 无条件就位（档位门退役）,降档 acceptEdits 的 ask 卡直落挂起表;④批准续段改 setBaseMode 直切——换铸五件套（carry/snapshotExport/restoreSession/restoreSnapshot/重挂订阅）退役,链原地零位移（前缀缓存天然保,比换铸回种更强）。
+- **测试**:运行中切 read-only → 同 run 下一写调用 COMMAND_DENIED（门控适配器确定性时序）;既有 ctx-snap/switch/disarm 锚全绿。
