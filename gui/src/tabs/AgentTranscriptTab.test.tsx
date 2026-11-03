@@ -204,7 +204,7 @@ describe('AgentTranscriptTab 任务定位(2026-11-03 用户裁定)', () => {
     let s: AgentActivities = {};
     s = applyAgentEvent(s, sub('step', 'an', '', { taskBand: 'Task task-a-3333: A' + '\n' + 'spec a' }));
     const base = { conn: connStub, sessionId: 's1', board: boardStub, task: '兜底' };
-    const { container, rerender } = render(<AgentTranscriptTab {...base} activities={s.an} focusTaskId="task-b-4444" />);
+    const { rerender } = render(<AgentTranscriptTab {...base} activities={s.an} focusTaskId="task-b-4444" />);
     expect(scrollSpy).not.toHaveBeenCalled();
     // B 的任务带到达 → 命中
     s = applyAgentEvent(s, sub('step', 'an', '', { taskBand: 'Task task-b-4444: B' + '\n' + 'spec b' }));
