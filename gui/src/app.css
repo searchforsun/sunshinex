@@ -1814,7 +1814,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }
 .tb-status-dot.task-status-success { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.task-status-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
-.tb-status-dot.task-status-cancelled { background: radial-gradient(circle 3px at 50% 50%, #f5c542 2.4px, transparent 2.8px); }
+.tb-status-dot.task-status-cancelled { background: radial-gradient(circle 3px at 50% 50%, var(--warn) 2.4px, transparent 2.8px); }
 /* G14.213 DAG 预设高度;G14.2xx 渲染换开源图组件 React Flow(@xyflow/react)+dagre 布局
    (mermaid 拼源退役):平移/滚轮缩放/控制钮组件内置,外层壳不再滚动(防双滚动条) */
 .tb-dag-wrap { position: relative; }
@@ -2063,7 +2063,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 }
 .tb-status-dot.bg-done { background: radial-gradient(circle 3px at 50% 50%, var(--accent) 2.4px, transparent 2.8px); }
 .tb-status-dot.bg-failed { background: radial-gradient(circle 3px at 50% 50%, var(--err) 2.4px, transparent 2.8px); }
-.tb-status-dot.bg-stopped { background: radial-gradient(circle 3px at 50% 50%, #f5c542 2.4px, transparent 2.8px); }
+.tb-status-dot.bg-stopped { background: radial-gradient(circle 3px at 50% 50%, var(--warn) 2.4px, transparent 2.8px); }
 .bg-detail { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 0 14px; }
 /* 2026-10-31 用户裁定:摘「命令/结果」自解释标题——命令行=全文+右缘复制钮;bg-detail-key 组退役。
    左缘 14px=状态点(6)+间隙(8),与前移的运行时长列左缘同轴(「左侧和时间对齐」) */
