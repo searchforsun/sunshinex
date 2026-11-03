@@ -1751,7 +1751,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .todo-card-time svg { flex: none; }
 .todo-card-list { padding: 4px 0 0 6px; }
-.tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 6px; /* 右内距同 .tb-task-main 水平 6px:队名行时标与下方任务行时标右沿对齐 */ }
 .tb-team-name { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-task-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .tb-task-row { position: relative; display: flex; flex-direction: column; gap: 2px; }
@@ -1836,7 +1836,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-item.todo-completed .todo-text { color: var(--fg-tertiary); text-decoration: line-through; }
 
 /* G14.138 todo_write 工具体:本地化清单(daemon 英文结果不进 UI);G14.169 标记并圆圈三态(.todo-dot 共用) */
-.tool-todos { border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; }
+.tool-todos { margin: 4px 0 0; border-radius: var(--radius-md); background: var(--surface-code); display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; }
 .tool-todo { display: flex; align-items: baseline; gap: 8px; font: 12.5px/1.6 var(--font-ui); }
 .tool-todo-text { color: var(--fg); overflow-wrap: anywhere; }
 .tool-todo-in_progress .tool-todo-text { font-weight: 500; }

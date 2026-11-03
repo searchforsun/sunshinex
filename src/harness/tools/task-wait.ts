@@ -1,5 +1,6 @@
 // task_wait：仅等台账 exec / spawn(subagent) 后台任务到终态并内联回执（对标 CC TaskOutput）。
-// agent_team_task_wait：仅等板任务（可含板派发台账 id）；板态轮询至 success/failed/cancelled。
+// agent_team_task_wait：仅等板任务（可含板派发台账 id）；事件等待——任一板任务状态偏离入口快照即回
+// （2026-11-02 用户裁定：不是等全部，lead 每次变更都要能即时反应），全部终态 success/failed/cancelled 仍收口。
 // 分域拒识：task_wait 遇板 id → INVALID_ARG 点名 agent_team_task_wait；对称拒识 exec/spawn 纯后台 id。
 // taskIds=null：task_wait 等当前 running 台账；agent_team_task_wait 等板上非终态任务。
 // timeoutSeconds=0 非阻塞 peek；子面 kinds=['exec'] 防板派发台账自等。
@@ -62,6 +63,23 @@ function parseTimeout(rawTimeout: number | null): number {
   return timeoutSeconds;
 }
 
+/** 板态变化（任一即醒）：from=本次调用入口快照，to=醒时板态 */
+interface BoardChange {
+  readonly id: string;
+  readonly from: TaskStatus;
+  readonly to: TaskStatus;
+}
+
+interface WaitResult {
+  settled: boolean;
+  tasks: BackgroundTask[];
+  /** 本次等待期间观察到的板态变化；台账路径恒空 */
+  changes: BoardChange[];
+}
+
+/** 等待面：台账 ids 等到 settled；板 ids 以调用入口板态为基线，任一板任务状态偏离基线即醒
+ *  （不是等全部——任一 pending→running / running→终态都算事件，lead 据此即时反应后再续等），
+ *  全部终态仍以 settled 收口。未知 id 按 pending 处理（保守：宁多等不早放） */
 async function waitMixed(
   tasks: TaskRegistry,
   ids: string[],
@@ -69,31 +87,44 @@ async function waitMixed(
   boardWaitIds: string[],
   timeoutSeconds: number,
   signal: AbortSignal | undefined,
-): Promise<Awaited<ReturnType<TaskRegistry['waitUntilSettled']>>> {
-  const boardStatus = (id: string): TaskStatus | undefined => board?.snapshot().tasks[id]?.status;
-  // 未知 id 按未终态处理（等待面保守——宁多等不早放）
-  const boardPending = (): string[] => boardWaitIds.filter((id) => !BOARD_TERMINAL.has(boardStatus(id) ?? 'pending'));
+): Promise<WaitResult> {
+  const boardStatus = (id: string): TaskStatus => board?.snapshot().tasks[id]?.status ?? 'pending';
+  const boardPending = (): string[] => boardWaitIds.filter((id) => !BOARD_TERMINAL.has(boardStatus(id)));
   if (boardWaitIds.length === 0) {
-    return tasks.waitUntilSettled(ids, timeoutSeconds * 1000, signal);
+    return { ...(await tasks.waitUntilSettled(ids, timeoutSeconds * 1000, signal)), changes: [] };
   }
+  const baseline = new Map(boardWaitIds.map((id) => [id, boardStatus(id)] as const));
+  const changesNow = (): BoardChange[] => {
+    const out: BoardChange[] = [];
+    for (const [id, from] of baseline) {
+      const to = boardStatus(id);
+      if (to !== from) out.push({ id, from, to });
+    }
+    return out;
+  };
+  const collect = (): BackgroundTask[] => ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined);
   const deadline = Date.now() + timeoutSeconds * 1000;
   for (;;) {
     if (signal?.aborted) {
-      return { settled: false, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
+      return { settled: false, tasks: collect(), changes: [] };
     }
     const ledgerRunning = ids.filter((id) => tasks.get(id)?.status === 'running');
     if (ledgerRunning.length === 0 && boardPending().length === 0) {
-      return { settled: true, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
+      return { settled: true, tasks: collect(), changes: changesNow() };
+    }
+    const changes = changesNow();
+    if (changes.length > 0) {
+      return { settled: false, tasks: collect(), changes };
     }
     if (Date.now() >= deadline) {
-      return { settled: false, tasks: ids.map((id) => tasks.get(id)!).filter((t) => t !== undefined) };
+      return { settled: false, tasks: collect(), changes: [] };
     }
     await new Promise((r) => setTimeout(r, 200));
   }
 }
 
 function formatReceipt(
-  result: Awaited<ReturnType<TaskRegistry['waitUntilSettled']>>,
+  result: WaitResult,
   board: TaskBoard | undefined,
   boardWaitIds: string[],
   timeoutSeconds: number,
@@ -101,9 +132,11 @@ function formatReceipt(
   againTool: string,
 ): { exitCode: number; stdout: string; stderr: string; timedOut: false } {
   const lines = result.tasks.map((t) => receiptBody(t, againTool));
+  let unfinishedBoard = 0;
   for (const id of boardWaitIds) {
     const bt = board?.snapshot().tasks[id];
     if (bt === undefined) continue;
+    if (!BOARD_TERMINAL.has(bt.status)) unfinishedBoard += 1;
     const hint =
       bt.status === 'failed' || bt.status === 'cancelled'
         ? ' — terminal; to redo this work, create a new task with create_agent_team_task'
@@ -113,11 +146,13 @@ function formatReceipt(
   const total = result.tasks.length + boardWaitIds.length;
   const head = result.settled
     ? `all target tasks finished (${total})`
-    : signal?.aborted === true
-      ? 'aborted by user; tasks still running are marked below'
-      : timeoutSeconds === 0
-        ? 'status peek (timeoutSeconds=0, non-blocking); tasks still running are marked below'
-        : `timeout after ${timeoutSeconds}s; tasks still running are marked below`;
+    : result.changes.length > 0
+      ? `status changed: ${result.changes.map((c) => `${c.id} ${c.from} → ${c.to}`).join(', ')}; ${unfinishedBoard} of ${boardWaitIds.length} board task(s) still unfinished — call ${againTool} again to keep waiting`
+      : signal?.aborted === true
+        ? 'aborted by user; tasks still running are marked below'
+        : timeoutSeconds === 0
+          ? 'status peek (timeoutSeconds=0, non-blocking); tasks still running are marked below'
+          : `timeout after ${timeoutSeconds}s; tasks still running are marked below`;
   return { exitCode: 0, stdout: [head, ...lines].join('\n'), stderr: '', timedOut: false };
 }
 
@@ -239,11 +274,11 @@ export function makeAgentTeamTaskWaitTool(
 ): RegisteredTool {
   return {
     parameters: sharedParams(
-      'Board task ids from create_agent_team_task/get_agent_team_board (e.g. ["task-build-parser-k3f2"]), and/or board-dispatch ledger ids. Prefer explicit board ids. JSON null = non-terminal board tasks. Finished ids return an immediate receipt. Exec/spawn-only ledger ids belong to task_wait.',
+      'Board task ids from create_agent_team_task/get_agent_team_board (e.g. ["task-build-parser-k3f2"]), and/or board-dispatch ledger ids. Prefer explicit board ids. JSON null = non-terminal board tasks. Already-terminal ids never block (all-terminal returns an immediate receipt). Exec/spawn-only ledger ids belong to task_wait.',
     ),
     name: 'agent_team_task_wait',
     description:
-      'Wait until listed board tasks reach a terminal state; return board status (and dispatch ledger receipt when present). Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_agent_team_task + retryOf). Exec/spawn-only background ids belong to task_wait. taskIds=null waits non-terminal board tasks. Default timeout 1800s.',
+      'Wait on board tasks and return as soon as ANY listed task changes status (pending → running, running → success/failed/cancelled) or all are terminal — it is an event wait, not wait-for-all. The receipt names the change(s) and how many are still unfinished; react (assign, retry, message) and call again to keep waiting. Returns board status per task (and dispatch ledger receipt when present). Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_agent_team_task + retryOf). Exec/spawn-only background ids belong to task_wait. taskIds=null waits non-terminal board tasks. Default timeout 1800s.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

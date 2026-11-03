@@ -232,12 +232,19 @@ export function seedChatFromSnapshot(
   // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起
   const seeded: ChatState = { ...s, tokens: s.k.stats.sessionTotalTokens, steps: s.k.stats.sessionSteps, cacheTokens: s.k.stats.sessionCacheTokens };
   // open-run 基线注入(2026-10-31 用户实测「切换会话后运行中步数/tokens 乱掉」;底层收口=内核
-  // open run meta 随统计前进+runmeta 行增量落档,快照/装载两侧在飞回合统计精确)——基线=窗口重建
-  // 累计(已含在飞回合,精确非估算),live step/usage 帧自重建值续链「本轮」单调无跳变;无基线注入
-  // 则 liveSteps 回退全量累计分支(在飞 run 显整段会话累计)。旧 daemon(无增量 runmeta)在飞回合
-  // 不入重建值→「本轮」自切换后起算,欠计不摆动(过渡态可接受,重装即精确)
+  // open run meta 随统计前进+runmeta 行增量落档,快照/装载两侧在飞回合统计精确)——基线=run-open
+  // 时刻累计=窗口重建累计 − 在飞回合自身(runmeta.runSteps/tokens 即回合口径),live step/usage 帧
+  // 自重建值续链「本轮」单调无跳变且不从 0 起(2026-11-02 用户实测「切回来从 0 步」:此前基线取
+  // 重建累计本身,已含在飞回合进度,切回即归零)。旧 daemon(无增量 runmeta)在飞 run 无 meta→
+  // 减数 0,「本轮」自切换后起算,欠计不摆动(过渡态可接受,重装即精确)
   if (cursors.openRun >= 0) {
-    seeded.runBases = { [cursors.openRun]: { steps: seeded.steps, tokens: seeded.tokens } };
+    const openMeta = seeded.k.entries.find((e) => e.kind === 'run' && e.seq === cursors.openRun)?.meta;
+    seeded.runBases = {
+      [cursors.openRun]: {
+        steps: Math.max(0, seeded.steps - (openMeta?.runSteps ?? 0)),
+        tokens: Math.max(0, seeded.tokens - (openMeta?.tokens ?? 0)),
+      },
+    };
   }
   return { ...seeded, entries: mapEntries(seeded.k, seeded.runBases) };
 }

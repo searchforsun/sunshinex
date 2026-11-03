@@ -302,13 +302,36 @@ describe('seedChatFromSnapshot（onResync 基线）', () => {
       ] as never,
       { openRun: 10, openSeg: -1 },
     );
-    // 底层精确口径(open run meta 随统计落档后窗口重建已含在飞回合):基线=重建累计本身
-    // (旧 daemon 无增量 runmeta 时重建值不含在飞回合,「本轮」自切换后起算——欠计不摆动)
+    // 旧 daemon 口径(在飞 run 无 runmeta):重建累计不含在飞回合,基线=重建累计本身,「本轮」自切换后起算——欠计不摆动
     expect(s.steps).toBe(80);
     expect(s.runBases[10]).toEqual({ steps: 80, tokens: 5000 });
     const openRunView = s.entries.find((e) => e.key === 'k10');
     expect(openRunView?.stepsBase).toBe(80);
     expect(openRunView?.tokensBase).toBe(5000);
+  });
+
+  it('open-run 带增量 runmeta(2026-11-02「切回来从 0 步」):基线=重建累计−在飞回合自身,切回即显在飞回合已走步数/tokens', () => {
+    // 闭合 run 累计 80 步/5000 tokens;在飞 run 已走 6 步(runmeta.runSteps=6,steps=86 累计)、1200 tokens(回合口径)
+    const s = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'run', md: '', meta: { steps: 80, tokens: 5000, endedTs: 2 } },
+        { seq: 2, ts: 2, kind: 'user', md: 'next goal' },
+        { seq: 10, ts: 3, kind: 'run', md: '', meta: { steps: 86, runSteps: 6, tokens: 1200 } },
+        { seq: 11, ts: 4, kind: 'tool', md: '', name: 'read', result: { text: 'ok', ok: true } },
+      ] as never,
+      { openRun: 10, openSeg: -1 },
+    );
+    expect(s.steps).toBe(86);
+    expect(s.tokens).toBe(6200);
+    // 基线=run-open 时刻累计(86−6 / 6200−1200):Chat liveSteps=steps−stepsBase=6,而非 0
+    expect(s.runBases[10]).toEqual({ steps: 80, tokens: 5000 });
+    const openRunView = s.entries.find((e) => e.key === 'k10');
+    expect(openRunView?.stepsBase).toBe(80);
+    expect(openRunView?.tokensBase).toBe(5000);
+    expect(s.steps - openRunView!.stepsBase!).toBe(6);
+    // 后续 step 事件续链单调:7 步
+    const next = applyChatEvent(s, ev('step', 'x'));
+    expect(next.steps - openRunView!.stepsBase!).toBe(7);
   });
 
   it('无 open run(openRun=-1)不注入基线(回放会话原口径不变)', () => {

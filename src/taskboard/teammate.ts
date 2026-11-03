@@ -2,7 +2,7 @@
  *  (事件经 tagger 打 payload.subagent 标,复用 ChildPanel 委派通道)+ 单飞 worker(指派队列优先、
  *  空则 claim,MemoryPipeline 闩形态)。板内任务只经 teammate 认领/指派执行;无活成员时任务留 pending。
  *  与 SubagentRunner 的分工:Runner 是主链按需 fork 的无状态单元;Teammate 是跨任务存续的有状态执行体,
- *  自有链(role 行 + 历次 task 行)即其记忆——每任务 Reactor 的 seed 经缺省 chainView() 取自 own chain。 */
+ *  自有链(role 行 + 历次 task 行 + 每任务闭合行)即其记忆——每任务 Reactor 的 seed 经缺省 chainView() 取自 own chain。 */
 import type { SessionEvent } from '../types';
 import { maxTeammatesEnv, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
@@ -330,6 +330,7 @@ ${task.spec}` },
       // 异常收口不向上抛——claim 循环/runTask 不因单任务炸停。信号中止回写 cancelled
       const message = e instanceof Error ? e.message : String(e);
       this.writeFailure(task.id, ledger?.id, taskAbort.signal, 'THROWN', message, Date.now() - startedAt);
+      this.closeTaskInChain(task, undefined, message);
       this.endDelegation(task.id, emitDelegation, 0);
       this.currentTaskAbort = undefined;
       return;
@@ -352,8 +353,31 @@ ${task.spec}` },
         error: { code: cancel ? 'ABORTED' : 'INCOMPLETE', message },
       }, ledger?.id);
     }
+    this.closeTaskInChain(task, r.done ? r.reply : undefined, r.done ? undefined : (r.stopReason ?? 'did not finish'));
     this.endDelegation(task.id, emitDelegation, r.tokensUsed ?? 0);
     this.currentTaskAbort = undefined;
+  }
+
+  /** 任务闭合行(2026-11-02 用户实测「暂停 t1 后接 t2 的成员把 t1 也顺手做了」):fork 作用域零回写,
+   *  own chain 收口时若只剩 role+Task 指令行,下一任务的 Reactor 种子会把已取消/已完成的历史指令
+   *  当未完成活照做——每任务终态回写后追一行闭合说明(成功带结论短摘;cancelled 明示勿执行/勿上报;
+   *  failed 明示勿自行重试),链成为自解释记忆。尽力而为:落链失败不影响任务收口 */
+  private closeTaskInChain(task: BoardTask, reply: string | undefined, error: string | undefined): void {
+    try {
+      const status = this.deps.board.snapshot().tasks[task.id]?.status;
+      const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}…` : s);
+      let line: string;
+      if (status === 'success') {
+        line = `Task ${task.id} finished (success)${reply !== undefined && reply !== '' ? ` — conclusion: ${clip(reply, 300)}` : ''}`;
+      } else if (status === 'cancelled') {
+        line = `Task ${task.id} was cancelled (stopped by user/lead) — it is closed; do not perform, resume or report it unless it reappears as a new task`;
+      } else {
+        line = `Task ${task.id} failed${error !== undefined && error !== '' ? ` (${clip(error, 300)})` : ''} — closed; do not retry on your own, wait for a recreated task`;
+      }
+      this.ctx.appendChain([{ action: 'note', observation: line }]);
+    } catch {
+      /* 吞错:闭合行缺失好过收口被打断(worker 存续纪律) */
+    }
   }
 
   /** 执行异常回写。信号已中止或文案为 interrupted/ABORTED 时落 cancelled,否则 failed */

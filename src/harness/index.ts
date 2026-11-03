@@ -518,7 +518,7 @@ export class Harness {
           },
         },
         description:
-          'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks; interrupt the current task with agent_team_task_stop (member stays). One-shot subtasks outside the board: use spawn.',
+          'Register a long-lived teammate on a team (teamId from create_agent_team). Call before create_agent_team_task: board tasks run when this teammate claims unassigned work or is assigned. Usual call: teamId + name + prompt, agent_id JSON null. Teammates keep context across tasks and run one task at a time; interrupt the current task with agent_team_task_stop (member stays). One-shot subtasks outside the board: use spawn.',
         category: 'task',
         fullObservation: true,
         executor: async (input) => {

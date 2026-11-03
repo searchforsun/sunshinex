@@ -80,7 +80,7 @@ export function makeTaskBoardTools(
         },
         assignee: {
           type: ['string', 'null'],
-          description: 'Living teammate name on this team, or JSON null so any idle teammate may claim it.',
+          description: 'Living teammate name on this team, or JSON null so any idle teammate may claim it. A busy assignee queues the task (one task at a time per teammate).',
         },
         executor: {
           type: ['string', 'null'],
@@ -95,7 +95,7 @@ export function makeTaskBoardTools(
     },
     name: 'create_agent_team_task',
     description:
-      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Wait with agent_team_task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null covers non-terminal board tasks). Terminal states (success/failed/cancelled) are final — redo via a new create_agent_team_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
+      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Teammates run one task at a time: assigning a busy teammate queues the task behind its current work (the receipt notes it); assignee=null lets any idle teammate claim it. Wait with agent_team_task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null covers non-terminal board tasks). Terminal states (success/failed/cancelled) are final — redo via a new create_agent_team_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -126,10 +126,13 @@ export function makeTaskBoardTools(
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
       const title = String(raw.title ?? '').trim();
       const titleBit = title !== '' ? `"${title}"` : r.value.taskId;
+      // 指派忙碌成员的排队提示(C):入队不并行——lead 看得见后果
+      const queueHint = assignee !== undefined ? board.assignmentQueueHint(assignee, r.value.taskId) : undefined;
       return {
         exitCode: 0,
         stdout: [
           `task ${titleBit} created (id=${r.value.taskId}); wait with agent_team_task_wait taskIds=["${r.value.taskId}"] (or other board ids)`,
+          ...(queueHint !== undefined ? [queueHint] : []),
           boardTail(board),
         ].join('\n'),
         stderr: '',
@@ -170,7 +173,8 @@ export function makeTaskBoardTools(
             ? board.setDependency(taskId, String(raw.dependsOn ?? ''))
             : fail('INVALID_ARG', `unknown action: ${action} (assign|depend)`);
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error.message);
-      return { exitCode: 0, stdout: [`updated: ${taskId} ${action}`, boardTail(board)].join('\n'), stderr: '', timedOut: false };
+      const queueHint = action === 'assign' ? board.assignmentQueueHint(String(raw.assignee ?? ''), taskId) : undefined;
+      return { exitCode: 0, stdout: [`updated: ${taskId} ${action}`, ...(queueHint !== undefined ? [queueHint] : []), boardTail(board)].join('\n'), stderr: '', timedOut: false };
     },
   };
 

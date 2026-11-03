@@ -517,3 +517,70 @@ test('板任务台账登记(2026-10-06 契约收敛):teammate 干的活提交 di
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+/** 可挂起 fake 模型:gate() 预埋一次挂起,该次 chat 等放行或 req.signal 中止(拒绝);其余轮次即回 stop */
+class GatedAdapter implements ModelAdapter {
+  readonly provider = 'gated';
+  readonly chats: string[] = [];
+  private readonly gates: Array<Promise<void>> = [];
+  gate(): () => void {
+    let release!: () => void;
+    this.gates.push(new Promise<void>((r) => { release = r; }));
+    return release;
+  }
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    this.chats.push(req.messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n'));
+    const gate = this.gates.shift();
+    if (gate !== undefined) {
+      await new Promise<void>((resolve, reject) => {
+        const onAbort = (): void => reject(new Error('aborted by signal'));
+        req.signal?.addEventListener('abort', onAbort, { once: true });
+        void gate.then(() => { req.signal?.removeEventListener('abort', onAbort); resolve(); });
+      });
+    }
+    return { finish: 'stop', content: `done ${this.chats.length}`, toolCalls: [] };
+  }
+}
+
+test('任务闭合行(2026-11-02):取消/完成收口后 own chain 追终态说明,下一任务 seed 可见——被暂停的任务不再被同成员顺手重做', async () => {
+  const tmp = tmpdir('sunshinex-tm-close-');
+  try {
+    const rig = makeRig(tmp, true);
+    const model = new GatedAdapter();
+    rig.addTeammate('w1', model as unknown as CountingAdapter);
+    model.gate(); // 首任务挂起,等用户停止
+    const ra = rig.board.create({ teamId: rig.teamId, title: 'Spec doc', spec: 'write docs/spec.md', assignee: 'w1' });
+    const rb = rig.board.create({ teamId: rig.teamId, title: 'Readme', spec: 'write docs/README.md', assignee: 'w1' });
+    assert.ok(ra.ok && rb.ok);
+    const idA = ra.value.taskId;
+    const idB = rb.value.taskId;
+    assert.ok(await until(() => model.chats.length >= 1), 'A 的首轮 chat 已发起(挂起中)');
+    // 让在飞 drain 收口再停(桩模型同步执行,stop 落在 drain 微任务收尾窗内会被吞——真模型异步无此窗)
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.match(model.chats[0]!, new RegExp(`Task ${idA}: Spec doc`));
+    assert.doesNotMatch(model.chats[0]!, new RegExp(`Task ${idB}:`), 'A 在跑时 B 仍在指派队列,不入 A 的种子');
+    // 用户停止 A → interruptCurrent → 模型调用随信号中止 → 板 cancelled;worker 继续消化 B
+    const stopped = rig.board.stopTask(idA);
+    assert.ok(stopped.ok);
+    assert.ok(await until(() => rig.board.snapshot().tasks[idA]?.status === 'cancelled'), 'A cancelled');
+    const okB = await until(() => rig.board.snapshot().tasks[idB]?.status === 'success');
+    assert.ok(okB, `B 照常完成; A=${rig.board.snapshot().tasks[idA]?.status} B=${rig.board.snapshot().tasks[idB]?.status} chats=${model.chats.length} events=${rig.events.filter((e) => e.type === 'task-status-changed' || e.type.startsWith('delegation')).map((e) => `${e.type}:${JSON.stringify(e.payload)}`).join(' | ')}`);
+    assert.ok(model.chats.length >= 2, 'B 发起过 chat');
+    const seedB = model.chats[1]!;
+    assert.ok(seedB.includes(`Task ${idA} was cancelled (stopped by user/lead) — it is closed; do not perform, resume or report it`), `B 的种子含 A 的取消闭合行:${seedB}`);
+    assert.match(seedB, new RegExp(`Task ${idB}: Readme`));
+    // 闭合行位于 A 指令行之后、B 指令行之前(链序=时间序)
+    assert.ok(seedB.indexOf(`Task ${idA}: Spec doc`) < seedB.indexOf(`Task ${idA} was cancelled`), '闭合行在 A 指令之后');
+    assert.ok(seedB.indexOf(`Task ${idA} was cancelled`) < seedB.indexOf(`Task ${idB}: Readme`), '闭合行在 B 指令之前');
+    // 成功闭合:再派 C,其种子含 B 的 success 闭合行(带结论短摘)
+    const rc = rig.board.create({ teamId: rig.teamId, title: 'Third', spec: 'c', assignee: 'w1' });
+    assert.ok(rc.ok);
+    assert.ok(await until(() => rig.board.snapshot().tasks[rc.value.taskId]?.status === 'success'), 'C 完成');
+    const seedC = model.chats[2]!;
+    assert.ok(seedC.includes(`Task ${idB} finished (success) — conclusion: done 2`), `C 的种子含 B 的成功闭合行:${seedC}`);
+    assert.match(seedC, new RegExp(`Task ${idA} was cancelled`), '历史闭合行保留');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

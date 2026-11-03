@@ -255,6 +255,24 @@ export class TaskBoard {
     return ok(undefined);
   }
 
+  /** 指派排队提示(2026-11-02 用户裁定 C,随后做减法:只陈述状态,不给规划建议——"这是团队不是严格 DAG"):
+   *  成员单飞一次一个任务,指派忙碌成员=入队不并行;lead 的 create/assign 回执附此行,看得见排队事实。
+   *  忙碌判据=成员 isBusy() ∪ 板上该成员在跑(executedBy)∪ 已指派未开跑(pending assignee);
+   *  excludeTaskId 排除本次指派的任务自身。空闲返回 undefined(回执零噪声) */
+  assignmentQueueHint(assignee: string, excludeTaskId?: string): string | undefined {
+    const mate = this.deps.team?.get(assignee) as { isBusy?: () => boolean } | undefined;
+    const busy = typeof mate?.isBusy === 'function' && mate.isBusy();
+    const others = Object.values(this.state.tasks).filter((t) => t.id !== excludeTaskId);
+    const running = others.filter((t) => t.status === 'running' && t.executedBy === assignee);
+    const queued = others.filter((t) => t.status === 'pending' && t.assignee === assignee);
+    if (!busy && running.length === 0 && queued.length === 0) return undefined;
+    const bits: string[] = [];
+    if (running.length > 0) bits.push(`running ${running.map((t) => t.id).join(', ')}`);
+    else if (busy) bits.push('running a task');
+    if (queued.length > 0) bits.push(`${queued.length} assigned task(s) already waiting`);
+    return `queue note: teammate "${assignee}" is busy (${bits.join('; ')}) — this task waits its turn (teammates run one task at a time)`;
+  }
+
   /** pending|running → cancelled。终态幂等成功,不重复 abort。 */
   stopTask(taskId: string): Result<void> {
     const task = this.state.tasks[taskId];
@@ -272,6 +290,9 @@ export class TaskBoard {
     } else if (from === 'running' && task.executedBy !== undefined) {
       this.deps.team?.get(task.executedBy)?.interruptCurrent();
     }
+    // 停止=释放执行槽,与 finishExecution 终态路径同样重派(2026-11-02):成员随后的回写因已终态
+    // 早返不 kick,待派任务(如 drain 在飞期建的、kick 被吞的)会一直 pending 到下个无关板事件
+    this.kick();
     return ok(undefined);
   }
 

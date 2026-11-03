@@ -316,6 +316,98 @@ test('agent_team_task_wait 重启自愈 cancelled 立即收口', async () => {
   }
 });
 
+test('agent_team_task_wait 事件等待:任一板任务状态变更即回,不等全部(2026-11-02 用户裁定)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-teamwait-anychange-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
+    let boardRef: TaskBoard | undefined;
+    // 两任务各自挂起,按标题分别放行——A 先完成而 B 仍 running 时等待面必须已醒
+    const gates = new Map<string, () => void>();
+    const holds = new Map<string, Promise<void>>();
+    for (const title of ['HoldA', 'HoldB']) {
+      holds.set(title, new Promise<void>((res) => { gates.set(title, res); }));
+    }
+    const worker = {
+      name: 'worker',
+      teamId,
+      stopped: false,
+      kick(): void {
+        // 一次 kick 认领全部可派发任务(两任务并行挂起)
+        for (;;) {
+          const task = boardRef!.claim('worker', teamId);
+          if (task === undefined) return;
+          void this.runTask(task);
+        }
+      },
+      async runTask(task: { id: string; title: string }): Promise<void> {
+        const board = boardRef!;
+        if (!board.markClaimed(task.id, 'worker')) return;
+        await holds.get(task.title);
+        board.finishExecution(task.id, { ok: true, by: 'worker', reply: 'r', tokens: 1 });
+      },
+      interruptCurrent: () => false,
+    };
+    const stubTeam = {
+      get: (name: string) => (name === 'worker' ? worker : undefined),
+      aliveNames: () => ['worker'],
+      hasAlive: () => true,
+    };
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      agentTeams,
+      team: stubTeam as never,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    boardRef = board;
+    board.init();
+    const a = board.create({ teamId, title: 'HoldA', spec: 'a' });
+    assert.ok(a.ok);
+    // 让首轮 drain 收兵再建 B(drain 在飞时 kick 被吞,B 会留 pending——与本测无关的派发节奏)
+    await new Promise((r) => setImmediate(r));
+    const b = board.create({ teamId, title: 'HoldB', spec: 'b' });
+    assert.ok(b.ok);
+    for (let i = 0; i < 20 && (board.snapshot().tasks[a.value.taskId]?.status !== 'running' || board.snapshot().tasks[b.value.taskId]?.status !== 'running'); i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+    assert.equal(board.snapshot().tasks[a.value.taskId]!.status, 'running');
+    assert.equal(board.snapshot().tasks[b.value.taskId]!.status, 'running');
+    const registry = new ToolRegistry();
+    registry.register(makeAgentTeamTaskWaitTool(tasks, board));
+    // 入口快照 A/B 皆 running;放行 A → A success、B 仍 running → 等待面须立即回(远早于 5s 超时)
+    const waiting = registry.execute('agent_team_task_wait', { taskIds: [a.value.taskId, b.value.taskId], timeoutSeconds: 5 }, stubSafety);
+    await new Promise((r) => setTimeout(r, 50));
+    gates.get('HoldA')!();
+    const t0 = Date.now();
+    const r = await waiting;
+    assert.ok(Date.now() - t0 < 3000, '任一变更即醒,不应等到超时');
+    assert.ok(r.ok);
+    if (r.ok) {
+      assert.match(r.value.stdout, new RegExp(`^status changed: ${a.value.taskId} running → success; 1 of 2 board task\\(s\\) still unfinished — call agent_team_task_wait again`), '头行点名变更与余量');
+      assert.match(r.value.stdout, /\(board\) success — HoldA/);
+      assert.match(r.value.stdout, /\(board\) running — HoldB/, 'B 仍 running 照常列出');
+      assert.doesNotMatch(r.value.stdout, /all target tasks finished/);
+      assert.doesNotMatch(r.value.stdout, /timeout after/);
+    }
+    // 无变更期间仍阻塞到超时(基线=入口快照,已终态 A 不再触发)
+    const idle = await registry.execute('agent_team_task_wait', { taskIds: [a.value.taskId, b.value.taskId], timeoutSeconds: 0.3 }, stubSafety);
+    assert.ok(idle.ok);
+    if (idle.ok) assert.match(idle.value.stdout, /^timeout after 0.3s/, '已终态 id 不算变更,无事件则超时');
+    // 放行 B → 全部终态按 settled 收口
+    gates.get('HoldB')!();
+    const done = await registry.execute('agent_team_task_wait', { taskIds: [a.value.taskId, b.value.taskId], timeoutSeconds: 5 }, stubSafety);
+    assert.ok(done.ok);
+    if (done.ok) assert.match(done.value.stdout, /^all target tasks finished \(2\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('task_wait kinds=exec：可等 exec；拒 subagent/板派发台账；null 只收 exec running', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-execonly-'));
   try {
