@@ -257,6 +257,11 @@ export function ComposerPlusPanel({
           )}
         </>
       )}
+      {/* 快捷键提示脚行(2026-11-03 用户裁定):面板末行固定占用——@ 添加文件/选命令技能,Ctrl+V 粘贴图片 */}
+      <div className="sx-plus-foot">
+        <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file / pick command or skill', '添加文件 / 选择命令或技能')}</span>
+        <span className="sx-plus-hint"><kbd>Ctrl+V</kbd>{t('Paste image', '粘贴图片')}</span>
+      </div>
     </div>
   );
 }
