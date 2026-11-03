@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ListTodo } from 'lucide-react';
+import { NotebookPen } from 'lucide-react';
 import { t } from '../../i18n';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
 
@@ -37,7 +37,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
     <div className="pending-card plan-card">
       <div className="card-head">
         <span className="card-head-icon">
-          <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" />
+          <NotebookPen size={15} strokeWidth={1.75} aria-hidden="true" />
         </span>
         <div className="card-title">{t('Plan approval', '计划确认')}</div>
         {name !== undefined && name !== '' ? (

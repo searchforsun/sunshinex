@@ -1124,7 +1124,7 @@ export class SessionRuntime {
             this.ensureMintedWithBirth();
             const jid = this.journal?.currentId;
             if (jid === undefined) return {};
-            return { path: writePlanDoc(resolveDataDir(this.root), jid, doc) };
+            return { path: writePlanDoc(resolveDataDir(this.root), jid, _name, doc) };
           },
           todosSnapshot: () => this.todos.map((td) => ({ text: td.text, status: td.status })),
           chainAppendPlan: (doc) => {

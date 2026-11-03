@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useState } from 'react';
-import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon } from 'lucide-react';
+import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { openExternalUrl } from '../../ui-util';
@@ -21,7 +21,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
   worktree: GitBranch, spawn: Bot, task_stop: Square, agent_team_task_stop: Square, task_wait: Hourglass, agent_team_task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
-  exit_plan: ListTodo, // 交稿行(2026-11-03 交稿协议):计划图标同 plan pill
+  exit_plan: NotebookPen, // 交稿行(2026-11-03 交稿协议):计划图标同 plan pill(2026-11-03 换 NotebookPen,与待办 ListTodo 区分)
   create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus,
   // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
   create_agent_team: UsersRound,

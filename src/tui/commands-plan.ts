@@ -138,7 +138,7 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
           ctrl.ensureJournal();
           const jid = ctrl.journal?.currentId;
           if (jid === undefined) return {};
-          return { path: writePlanDoc(resolveDataDir(ctrl.root), jid, doc) };
+          return { path: writePlanDoc(resolveDataDir(ctrl.root), jid, _name, doc) };
         },
         todosSnapshot: () => ctrl.getState().todos.map((td) => ({ text: td.text, status: td.status })),
         chainAppendPlan: (doc) => {

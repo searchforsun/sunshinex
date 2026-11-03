@@ -281,10 +281,15 @@ export function sessionsDir(dataDir: string): string {
  *  命名沿用 `<id>.` 旁车前缀先例（<id>.jsonl/<id>.meta.json 同族）：purgeSession 的前缀全家清理
  *  天然覆盖——删除会话即删除计划文件（删除即无痕纪律,零新增清理面）。每轮修订覆盖写（journal
  *  全量留档不受影响——链 'plan' 行与工具行才是权威事实源,文件是给人看的工件） */
-export function writePlanDoc(dataDir: string, journalId: string, doc: string): string {
+export function writePlanDoc(dataDir: string, journalId: string, name: string, doc: string): string {
   const file = path.join(sessionsDir(dataDir), `${journalId}.plan.md`);
   fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
-  fs.writeFileSync(file, doc, 'utf8');
+  // 文件首行=计划名(2026-11-03 用户裁定「计划文件要有计划名」):提示词骨架不含 H1 标题——doc 无前导
+  // `# ` 标题时前置 `# <name>`,有则保留原文(模型自拟标题优先,不双标题)
+  const firstLine = doc.slice(0, Math.max(0, doc.indexOf('\n') + 1));
+  const hasTitle = /^[ \t]*# /.test(firstLine);
+  const body = hasTitle ? doc : `# ${name}\n\n${doc}`;
+  fs.writeFileSync(file, body, 'utf8');
   return file;
 }
 

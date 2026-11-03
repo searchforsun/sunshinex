@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { ArrowDown, Eye, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import { ArrowDown, Eye, NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
 import { ImageLightbox } from '../ImageLightbox';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { loadDraftImages, saveDraftImages } from '../draft-images';
@@ -63,9 +63,9 @@ import type { ChatProps } from './chat/chat-types';
 
 
 /** G14.133 权限档统一图标(pill 与菜单同源——静态 Hand 两套渲染退役;权限档改名对齐后端):
- *  plan=ListTodo / read-only=Eye / acceptEdits=ShieldCheck / full-access=Unlock(plan 阶段一置灰流程标记) */
+ *  plan=NotebookPen / read-only=Eye / acceptEdits=ShieldCheck / full-access=Unlock(2026-11-03:plan 换 NotebookPen——原 ListTodo 与待办图标撞车,用户裁定换掉) */
 export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan'; size?: number }): JSX.Element {
-  const Icon = mode === 'plan' ? ListTodo : mode === 'read-only' ? Eye : mode === 'acceptEdits' ? ShieldCheck : Unlock;
+  const Icon = mode === 'plan' ? NotebookPen : mode === 'read-only' ? Eye : mode === 'acceptEdits' ? ShieldCheck : Unlock;
   return <Icon size={size} strokeWidth={1.75} aria-hidden="true" />;
 }
 

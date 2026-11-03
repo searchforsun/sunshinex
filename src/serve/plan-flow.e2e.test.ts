@@ -436,7 +436,9 @@ test('serve 交稿协议：exit_plan 终止规划 run——卡带计划名+plan.
       assert.equal(frame?.req.name, '重构认证模块', '卡带计划名（exit_plan 出牌权威）');
       assert.ok(typeof frame?.req.path === 'string' && frame.req.path.endsWith('.plan.md'), '卡带计划文件绝对路径');
       assert.ok(fs.existsSync(frame.req.path!), '计划书已落盘');
-      assert.match(fs.readFileSync(frame.req.path!, 'utf8'), /重构认证模块/, '落盘内容=计划书全文');
+      const planFileText = fs.readFileSync(frame.req.path!, 'utf8');
+      assert.match(planFileText, /^# 重构认证模块/, '文件首行=计划名(H1 缺席时前置,用户裁定「计划文件要有计划名」)');
+      assert.match(planFileText, /1\. 步骤A/, '计划书全文随行');
       assert.equal(ctx.session.status(), 'idle', '挂卡期锁已放行');
       assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: true }), true);
       await waitFor(() => ctx.session.status() === 'idle' && ctx.session.snapshotResponse().mode === 'acceptEdits', 10_000, '批准落档+执行收尾');
