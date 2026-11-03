@@ -743,9 +743,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   box-shadow: var(--elev-composer);
   padding: 12px 14px 10px;
 }
-/* 2026-11-03 用户裁定 A:输入框撤全局超椭圆(G14.206c * 级联),恢复正圆弧——superellipse(1.5)
-   同值半径观感偏方,大卡面上更显紧;radius 仍走 --radius-composer 22px 铁律不变 */
-@supports (corner-shape: superellipse(1.5)) {  .sx-composer { corner-shape: initial; }
+/* 2026-11-03 用户裁定:主对话输入框的正圆弧同步到消息面——编辑卡(.user-edit-card)/成员消息与
+   插入会话/辅助会话/子智能体任务带的用户气泡(.user-bubble 全族)同享正圆弧;superellipse(1.5)
+   同值观感偏方,正圆观感统一;radius 仍走 22px token 铁律不变,全局其余面维持超椭圆 */
+@supports (corner-shape: superellipse(1.5)) {
+  .sx-composer, .user-edit-card, .user-bubble, .composer-pill.composer-plus-btn { corner-shape: initial; }
 }.sx-composer-input {
   width: 100%;
   min-height: 44px;
@@ -882,7 +884,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-composer-foot .model-pill .model-effort-chip, .sx-composer-foot .model-pill .pill-chevron { flex: none; }
 .sx-composer-foot.pills-tight .model-pill { mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); }
 .sx-composer-foot.pills-tight .model-pill .pill-label { mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); } /* 溢出态:右缘 14px 渐隐(隐现) */
-/* 2026-10-24 用户裁定:composer「+」=正方形圆角矩形(等宽高居中,不随 10px 横 padding 拉成长条) */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; /* 固定 8px:28px 高下全局 22px 弧=整圆,读不出「方形圆角矩形」(2026-10-24 裁定) */ }
+/* composer「+」=正方形圆角钮(等宽高居中,不随 10px 横 padding 拉成长条);2026-11-03 用户裁定:
+   弧度入统一正圆弧(上条豁免组)——8px 特例撤,radius-sm 22px 在 28px 高下≈整圆 */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); }
 /* 2026-10-24 用户裁定:pill 文本永不折行(「完全访/问」「glm-5.3-/flash」断字难看),窄端右组
    (模型 pill)走 flex 压缩+mask 渐隐(规则见上 model-pill 段),不省略号 */
 .composer-pills-right .composer-pill { min-width: 0; flex: 0 1 auto; }
