@@ -44,7 +44,7 @@
   --radius-row: 9999px;
   /* 海拔 */
   --elev-card: 0 4px 16px rgba(0, 0, 0, 0.2);
-  --elev-prominent: 0 0 0 0.5px var(--border-strong), 0 3px 7.5px rgba(0, 0, 0, 0.18), 0 0 20px rgba(0, 0, 0, 0.2);
+  --elev-prominent: 0 0 0 0.5px var(--border-strong), 0 3px 7.5px rgba(0, 0, 0, 0.18); /* 2026-11-03 浮层毛刺根除(用户裁定):撤 0 0 20px 远晕层——corner-shape 下远晕不随角形渲染=浮层角部残块;0.5px 描边+近距投影贴合随形 */
   /* 2026-11-03 毛刺根除(用户实测:输入框/编辑卡角部光斑缺角,气泡无阴影即无):80px 大晕层与
      inset 高光在 corner-shape 下不随角形渲染=角部亮/暗残块;收敛为两层贴合阴影 */
   --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -87,7 +87,7 @@
   --warn: #e25507;
   --err: #e02e2a;
   --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
-  --elev-prominent: 0 0 0 0.5px var(--border-strong), 0 3px 7.5px rgba(0, 0, 0, 0.04), 0 0 20px rgba(0, 0, 0, 0.05);
+  --elev-prominent: 0 0 0 0.5px var(--border-strong), 0 3px 7.5px rgba(0, 0, 0, 0.04);
   --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   --syntax-comment: #4f4f4f;
   --syntax-keyword: #ab4f7a;
@@ -3137,4 +3137,4 @@ input.sx-setting-input { width: 100%; }
 .sx-shortcut-row:last-child { border-bottom: none; }
 .sx-shortcut-keys { display: flex; align-items: center; gap: 4px; flex: none; }
 .sx-shortcut-desc { color: var(--fg-secondary); font-size: 12.5px; text-align: right; min-width: 0; }
-.sx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 18px; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: 5px; }
+.sx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 18px; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--radius-sm); }
