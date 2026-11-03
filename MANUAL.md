@@ -58,7 +58,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 | `sunshinex plugins` | `list [--root <目录>]` / `validate <目录>` / `enable` / `disable <id> [--scope=global\|project]` | 插件清单 / manifest 校验 / 启停（写 settings `plugins` 键，见 6.4） |
 | `sunshinex providers` | `list` / `add <名> --base-url=<地址> --models=m1,m2,…` / `set <名>`（增量更新，同 add 字段）/ `remove` / `key <名>`（隐藏输入写 env 块）/ `test <名>`（探测 `<baseUrl>/models`）| 模型提供方管理；模型行二级：`providers model add\|remove\|move <源> <模型> [--tier=small\|medium\|large] [--direction=up\|down]`——清单序即缺省序（首位=默认模型），`--tier` 标注档位路由 |
 | `sunshinex skills` | `list [--scope=all\|project\|global] [--json]`（另有 `install` 见上表） | 沿来源链列技能（project/user/learned/plugin 分组 + 遮蔽标注） |
-| `sunshinex settings` | `get <键>` / `set <键> <值> [--scope=global\|project]` | 读语义设置键（打印生效值与来源）/ 写键；退役键（如 `model`）打印处置指引并退出码 1 |
+| `sunshinex settings` | `get <键>` / `set <键> <值> [--scope=global\|project]` | 读语义设置键（打印生效值与来源）/ 写键；未知键（含形近退役键如 `model`）报未知设置键错误并退出码 1 |
 
 **启动参数**（全部命令通用）
 
@@ -185,7 +185,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
 
   // ── 插件 ──────────────────────────────────────────────
   "plugins": {                                       // 插件启用态与配置（见 6.4）；两级 per-id 项目遮蔽全局（同 id 记录整面替换，config 不深并）
-    "browser-use": { "enabled": true, "config": {} } // enabled 缺省 = manifest defaultEnabled（缺省 false）；config 原样透传插件
+    "browser-use": { "enabled": true }                 // 内置插件只有开关（enabled 缺省 = manifest defaultEnabled）；config 仅对用户级插件生效
   },
 
   // ── 项目 MCP 批准阀（approve/deny 动作自动维护，一般无需手改）──
@@ -309,7 +309,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/plan <目标>` | 先规划后执行，见 5.1 |
 | `/status` | 会话与账本摘要 |
 | `/terminal-setup` | 一键配置终端键位：Windows Terminal 写入 Shift+Enter 换行绑定并解绑 Alt+Enter（写前备份、幂等）；未找到 WT 时给 VSCode 指引 |
-| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径，行内附输出末 4KB 尾读；账本随会话持久化，重开/重启可回溯；后台 exec 与后台子智能体产生，模型以 `task_wait` / `task_stop` 等待或停止——仅台账 exec/spawn；板任务走 `agent_team_task_wait` / `agent_team_task_stop`，见 5.6） |
+| `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径，输出用 `read` 查看——GUI 任务面板附末 4KB 尾读；账本随会话持久化，重开/重启可回溯；后台 exec 与后台子智能体产生，模型以 `task_wait` / `task_stop` 等待或停止——仅台账 exec/spawn；板任务走 `agent_team_task_wait` / `agent_team_task_stop`，见 5.6） |
 | `/skill` | 加载技能进上下文：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定即载入、本会话重复加载回执已加载 |
 | `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出，技能行附来源/遮蔽标注（project/user/learned/plugin，被遮蔽条目点名胜者来源） |
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，首项标注「默认」（缺省模型=首源首模型）、当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
@@ -391,7 +391,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 ### 5.6 智能体团队与任务协作
 
-任务清单：可设依赖、可挂审批门；按会话 `journalId` 落盘（`data/teams/<journalId>/`），同会话重启恢复，`/new` 新会话空板。总开关 `agentTeams`（settings / `SUNSHINEX_AGENT_TEAMS`，缺省开）：关则不注册下列团队工具。
+任务清单：可设依赖（失败/取消自动拦住下游）与 `retryOf` 重试链；按会话 `journalId` 落盘（`data/teams/<journalId>/`），同会话重启恢复，`/new` 新会话空板。总开关 `agentTeams`（settings / `SUNSHINEX_AGENT_TEAMS`，缺省开）：关则不注册下列团队工具。
 
 **模型工具**（`agentTeams` 开时注入）：`create_agent_team` → `create_agent_teammate` → `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message`；等待与停止板任务用 `agent_team_task_wait` / `agent_team_task_stop`（与通用 `task_wait` / `task_stop` 分域——后者只服务 exec/spawn 台账）。
 
@@ -400,8 +400,8 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | 你说 | 效果 |
 | --- | --- |
 | 「拆成任务按依赖跑」 | 建任务，前置完成后自动开始 |
-| 「t2 要我先确认」 | 挂审批门 |
-| 「task-<id> 通过」 / 「task-<id> 不通过」 | 复核：完成 / 失败（失败拦住下游） |
+| 「t2 依赖 t1」 | 设置依赖：t1 终态前 t2 保持 pending（失败/取消拦住下游） |
+| 「重跑 task-<id>」 | 取消旧任务后以 `retryOf` 重试（新任务接续依赖链） |
 | 「取消 t4」 | 取消未开始的任务 |
 | 「等跑完」 | 等待并汇报各任务结果 |
 
@@ -410,10 +410,10 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | 键 | 作用 |
 | --- | --- |
 | `↑` / `↓` | 移动 |
-| `Enter` | `⚠` 行：approve / deny 审批卡 |
+| `Enter` | 无动作（任务行选择态；面板无审批卡——审批走会话对话流） |
 | `Esc` | 退出 |
 
-行示例：`task-build-parser-k3f2 ○ ⚠ 标题 ← task-run-tests-a8c1 @w1`——状态用全 TUI 统一符号：○ 待派 · ▸ 执行中 · ◆ 待复核 · ✓ 完成 · ✗ 失败 · ⊘ 取消；`@名字` 为执行者（已执行显实际执行者，未执行显指派）。
+行示例：`○ 标题 ← task-run-tests-a8c1 @w1`（行首任务号不上屏，仅作内部锚点）——状态用全 TUI 统一符号：○ 待派 · ▸ 执行中 · ✓ 完成 · ✗ 失败 · ⊘ 取消；`@名字` 为执行者（已执行显实际执行者，未执行显指派）。
 
 **智能体团队成员**（成员=上下文承载体：独立子会话+自有记忆，本身无生命周期、无停止概念；生命周期属于板任务——任务完成成员回归待命。智能体团队 = 多成员共享看板协作的形态，长驻分工用；小探查用 5.3 spawn 一次性子智能体即可；缺省上限 8，环境变量 `SUNSHINEX_MAX_TEAMMATES=<n>` 可调）：
 
@@ -491,15 +491,15 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 内置 | `<安装目录>/plugins/<id>/` | 随包分发 |
 | 用户级 | `~/.sunshinex/plugins/<id>/` | 自装插件；同 id 遮蔽内置 |
 
-**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json），内置插件声明的第三方依赖须在目标机**首次启用前**补装。例外：**两内置插件均已单文件束化**（0.5.0 重发起：依赖图内联进各自 `server/index.js`，目标机零补装——computer-use 用系统 powershell；browser-use 用系统 Chrome，均系统 node 即可）。旧包（重发前）的 browser-use 补装步骤：
+**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json），内置插件声明的第三方依赖须在目标机**首次启用前**补装。例外：**两内置插件均已单文件束化**（0.5.0 重发起：依赖图内联进各自单文件束，browser-use 现为 `server/index.js`+`server/host.js` 双束（host 为启动入口），目标机零补装——computer-use 用系统 powershell；browser-use 用系统 Chrome，均系统 node 即可）。旧包（重发前）的 browser-use 补装步骤：
 
 ```bash
 pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包用 npm --prefix <包内 plugins/browser-use 路径> install
 ```
 
-跳过该步的表现：启用插件后会话装配时该 server 连接失败，警告单出现 `assembly failed (browser-use): …`——降级语义，只损失此单 server 的工具，会话照常不中断；补装后**新开会话**即恢复。浏览器内核方面，缺省 `browser=chrome` 走系统已装的 Chrome/Edge 等品牌通道，无须另下内核；换 `chromium` 才需 `npx playwright install chromium`。
+跳过该步的表现：启用插件后会话装配时该 server 连接失败，警告单出现 `assembly failed (browser-use): …`——降级语义，只损失此单 server 的工具，会话照常不中断；补装后**新开会话**即恢复。浏览器形态按运行环境自动定：桌面端（Electron）用内置侧栏页签（builtin）、网页端（serve）用系统默认浏览器（default）、命令行/TUI 用无头浏览器（headless，系统已装 Chrome 通道）——无须配置，也无须另下内核。
 
-**仓库工作区形态（当前版）**：两束产物 gitignore 不入库——checkout 后在插件目录跑一次 `node build.mjs`（`plugins/browser-use`、`plugins/computer-use` 各一，esbuild 现构建出 `server/index.js`），否则启用即 `assembly failed`；发版链 `scripts/release.mjs` 已前置该构建，开发机手动跑即可。
+**仓库工作区形态（当前版）**：两束产物 gitignore 不入库——checkout 后在插件目录跑一次 `node build.mjs`（`plugins/browser-use`、`plugins/computer-use` 各一，esbuild 构建出 `server/index.js` 与 `server/host.js`——后者为 browser-use manifest 启动入口），否则启用即 `assembly failed`；发版链 `scripts/release.mjs` 已前置该构建，开发机手动跑即可。
 
 **启用/禁用**（改完对新会话生效，运行中会话不热切换）：
 
@@ -508,7 +508,7 @@ pnpm --dir plugins/browser-use install   # 仓库工作区形态；npm 装的包
 | GUI | 设置页「插件」卡片开关（平台不支持置灰；manifest 非法的插件在 pane 尾以告警徽标列出） |
 | 手编 settings.json | `plugins` 语义键（见第二节字段表）：`"plugins": { "<id>": { "enabled": true, "config": {} } }`；两级文件项目遮蔽全局，未配置的插件用 manifest `defaultEnabled`（缺省关） |
 
-`config` 原样透传给插件（装配期与 manifest 缺省合并后展开为启动参数/环境变量），`configSchema` 各键含义见设置页展示。
+用户级插件 `config` 原样透传（装配期与 manifest 缺省合并后展开为启动参数/环境变量），`configSchema` 各键含义见设置页展示；内置插件只有开关（settings 遗留 config 一律不生效，设置页内置卡无配置入口）。
 
 **安全与信任模型**：插件作者在 manifest 里对工具自声明三类风险，审批按声明驱动（`permissions.deny` 规则可随时覆盖，规则写法 `mcp__<server>__*`）：
 

@@ -19,7 +19,7 @@
 ```bash
 pnpm install    # 安装依赖（pnpm 版本由 packageManager 钉定、corepack 对齐；store 固定仓内 .pnpm-store）
 pnpm build      # 编译 TS 到 dist/（tsc -p tsconfig.json）
-pnpm start      # 运行入口（node dist/index.js）
+pnpm start      # 运行入口（node dist/cli/index.js）
 pnpm cli        # CLI 执行面（内置自动构建，自动装载 settings.json）
 pnpm selfcheck  # 编译并运行骨架自检（dist 可启动性；shell/isolation 决议上屏）
 pnpm gui:build  # 构建 GUI 前端产物 dist-gui/（gui/ 工作区包）
@@ -54,7 +54,7 @@ node scripts/deploy-gui.mjs reinstall --pristine    # 净装：连用户态历�
 | GUI e2e 单跑 | `pnpm --dir gui run test:e2e` | pretest 先构建 dist-gui，只跑 e2e 文件（主仓 dist 须先在） |
 | 桌面壳 | `pnpm --filter sunshinex-shell run test`；冒烟 `pnpm shell:smoke` | 壳单测（vitest）；冒烟＝electron 真启动：起 → 页面加载完成 → 有序退，退出码判过 |
 | 真实模型 e2e | `node scripts/e2e-real.mjs` | **手动门**（花真金 token，不进门禁）：直答冒烟 + write 工具落盘闭环（脚本侧逐字验盘）两条场景，真适配器/流式/工具链/安全链全链只有此门能验；前提＝settings.json env 块已配密钥（D5 资产化） |
-| 长任务基准集 | `node scripts/eval-run.mjs [--only <id>]` | **手动门**（花真金 token，不进门禁）：5 固定任务（创建/跨文件重构/测试闭环/日志聚合/编辑精度）量化完成率与人工干预次数（guard ask 决策 + ask_question 调用双计数），脚本验盘为权威判定；任务库 src/eval/tasks.ts（wiring 门禁进 pnpm test）；报告落 eval-results/（gitignore） |
+| 长任务基准集 | `node scripts/eval-run.mjs [--only <id>]` | **手动门**（花真金 token，不进门禁）：6 固定任务（创建/跨文件重构/测试闭环/日志聚合/编辑精度/长循环多步创建）量化完成率与人工干预次数（guard ask 决策 + ask_question 调用双计数），脚本验盘为权威判定；任务库 src/eval/tasks.ts（wiring 门禁进 pnpm test）；报告落 eval-results/（gitignore） |
 
 联调辅助：`pnpm --dir gui run typecheck`（GUI TS 严格检查）；`pnpm --dir gui run dev`（vite 热迭代，`VITE_SERVE_URL=<daemon 地址>` 指向后端）；`pnpm cli serve` 起 GUI daemon → `http://127.0.0.1:7788/`（host 恒回环不对外；`--port=N` 覆盖 / `--port=0` 临时端口；缺省免鉴权，显式 `--token` 启用）。**HTTP posture（登记的接受面，D58 裁定 2026-11-02）**：产品定位=单用户本机工具，安全第一道=回环绑定不对外；缺省免鉴权档不验 Host/Origin、readJson 不验 Content-Type——浏览器侧任意页面可发跨站 simple POST（理论可达面，后果上限=本机同权限操作：读写会话/配置/拉起本机应用），该面显式接受；多用户/不可信本机环境用 `--token` 鉴权档收紧。daemon 服务 dist-gui 静态产物——改完 GUI 源码须 `pnpm gui:build` 再刷新才生效（dev 热更免重建）。
 
@@ -81,7 +81,7 @@ NODE_OPTIONS=--use-system-ca pnpm shell:dist          # 全链单命令：版本
 
 ```text
 src/
-  index.ts            # npm/pnpm start 入口（装载 settings.json 配置链）
+  index.ts            # package.json main 库导出面（loadSettingsChain/buildModel/buildHarness 再导出，零副作用；可执行入口唯一落 cli/index.ts）
   cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings；worktree-launch --worktree 装配前解析）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
@@ -89,6 +89,7 @@ src/
   paths.ts            # 路径工具单点（isWithin 子树判界，§14）
   textmatch.ts        # 文本匹配原语单点（escapeRegExp/globToRegex，permissions/rules/sandbox 共用）
   slug.ts             # slug 折叠单点（ASCII 小写折叠，tasks/worktree/learned 三方言共用）
+  idstamp.ts          # UTC 紧凑时间戳单点（后台任务 id/session journal 等可排序标识段）
   i18n.ts             # 外观双语 t(en, zh) 调用时求值（§15）
   images.ts           # 图片附件共享面（MAX_IMAGES ≤8/parseImagesParam 校验/appendImages 钳制/imageMarkers 占位标记；serve HTTP + TUI + GUI 单源，dataURL 形态全链零转码）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
@@ -105,11 +106,12 @@ src/
     plan-flow.ts      # 计划流程编排单点（planning→awaiting-approval→approved/revising 状态机；TUI/serve 薄壳消费，纯流程零 IO）
     guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
-    skills.ts         # 技能装载与调度（五根兼容链+全局+学习级、resolve 回退链、清单注入）
+    skills.ts         # 技能装载与调度（项目单根+全局+学习级+插件链尾、resolve 回退链、清单注入）
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
+    browser-host.ts   # 浏览器宿主装配单点（browser-use 插件连接改写为每进程宿主 HTTP 连接：会话浏览器键/座位/数据目录/facade 端点入 URL，宿主起不来只损失浏览器工具）
     tools/task-stop.ts # task_stop（仅 exec/spawn 台账）与 agent_team_task_stop（板任务/成员打断；agentTeams 开时注册）
     tools/task-wait.ts # task_wait（仅 exec/spawn 台账）与 agent_team_task_wait（板任务等待；agentTeams 开时注册）
     tasks.ts          # 统一后台任务账本（exec/spawn 后台与超时转后台的 ID/生命周期/状态单点）
@@ -123,6 +125,7 @@ src/
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
   model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
+  eval/               # 长任务基准集（tasks 任务库+report 聚合；手动门 scripts/eval-run.mjs 的数据面）
   taskboard/          # 智能体团队域模型与协调器（model 纯 reducer/board 协调/store 按 journalId 落盘/translate 事件翻译/teammate 长驻成员/team-registry 成员跨重启登记/inbox 消息收件/executors 执行体）
   delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
   session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件与 shadow 透传）、entry.ts 条目模型、seglog.ts kernel 事件→journal v3 行映射（kernelEventRows）；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
@@ -132,7 +135,7 @@ gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/无边框自绘窗控/NSIS 单安装包打包；daemon 进程内动态 import 装配，壳与主仓零编译期耦合）
 plugins/             # 插件工作区根（内置插件 plugin.json + 校验 artifact plugins/schema/；用户级根 ~/.sunshinex/plugins/；开发指南 docs/PLUGIN-DEV.md）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
-agents/               # 用户子智能体目录（{id}/agent.md，装配期一次性加载 fail-fast）
+agents/               # 用户子智能体目录（约定根，可缺省——不存在=空注册；{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置
 ```
 
@@ -176,7 +179,7 @@ SUNSHINE.md          # 项目业务配置
 | ws | GUI daemon WebSocket 服务面（会话事件流 / PTY 帧下行），收敛于 `src/serve/daemon.ts` 接缝 | 事件面退 HTTP 快照轮询（GET 快照路径已在） |
 | node-pty | GUI 终端标签伪终端宿主（PTY 分配与 I/O 中继），收敛于 `src/serve/pty.ts` 接缝（原生模块，安装期编译） | 终端标签降级不可用提示，daemon 其余面不受影响 |
 | @xyflow/react + @dagrejs/dagre | GUI 智能体团队编排图（React Flow 图面渲染 + dagre 自动分层布局），收敛于 `gui/src/tabs/TaskDag.tsx` | 降级为任务列表（队卡「任务|编排」切换已在）；布局算法接缝在 `layoutTaskDag` 纯函数 |
-| @playwright/mcp | browser-use 内置插件的浏览器操作 MCP server（钉版；**插件目录工作区开发依赖，非主仓依赖**——发版链 esbuild 全图内联进 `server/index.js` 单文件束，目标机零补装），收敛于 `plugins/browser-use/` | 插件不启用即零依赖面；换任意 MCP 浏览器 server 改 manifest 即可 |
+| @playwright/mcp | browser-use 内置插件的浏览器操作 MCP server（钉版；**插件目录工作区开发依赖，非主仓依赖**——发版链 esbuild 全图内联为双单文件束 `server/index.js`+`server/host.js`（host 为 manifest 启动入口），目标机零补装），收敛于 `plugins/browser-use/` | 插件不启用即零依赖面；换任意 MCP 浏览器 server 改 manifest 即可 |
 
 GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不在此重复；转正时逐项按依赖引入原则评审并更新该表。
 
@@ -186,7 +189,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - 装载优先级（右侧遮蔽左侧，id 撞名就近遮蔽；resolve 仅 SKILL_NOT_FOUND 逐级回退、SKILL_PARAM_MISSING 就近不回退）：
 
 ```text
-.cursor < .codex < .claude < .agents < .sunshinex（项目级，原生恒最优先）
+.sunshinex（项目级单根，原生恒最优先；只认 {root}/.sunshinex/skills/{id}/SKILL.md 标准形态）
   > ~/.sunshinex/skills/（全局用户级，SUNSHINEX_USER_SKILLS_DIR 覆盖）
   > ~/.sunshinex/projects/<工作区>/data/skills/（学习级，LearnedSkillStore 自动沉淀，FIFO 上限）
   > plugins/<id>/skills/（内置插件技能根，最低优先级；启用且平台可用的插件才并入链尾）
@@ -292,7 +295,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
 | GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
-| GUI 内嵌浏览器 | Electron `<webview>`（内建零依赖） | 已引入 | Web 标签真实页面承载（地址栏/前进后退/缩放/页内链接开新页签；登录态 persist partition；browser-use 插件自动化经壳内 CDP facade 附着同一页签），收敛于 `gui/src/tabs/WebTab.tsx` + 壳 webview 纪律（`shell/src/main.ts`） |
+| GUI 内嵌浏览器 | Electron `<webview>`（内建零依赖） | 已引入 | Web 标签真实页面承载（地址栏/前进后退/缩放/页内链接开新页签）；页签常驻池按会话座位常挂、登录态按会话持久分区 `persist:sx-<浏览器键>`；browser-use 自动化经每会话 facade 连接驱动本会话分区页签，收敛于 `gui/src/tabs/WebTab.tsx`+`WebTabPool.tsx` + 壳 webview 纪律（`shell/src/main.ts`） |
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | 容器化执行/进程管理，按需引入；电脑控制已由 computer-use 内置插件交付（桌面 PowerShell worker，win32-only，见 `docs/PLUGIN-DEV.md`） |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。

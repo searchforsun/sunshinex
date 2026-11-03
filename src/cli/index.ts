@@ -186,7 +186,7 @@ export function usageText(): string {
   sunshinex agents list|add|remove|enable|disable [--scope=global|project] [--root <目录>] [--json]
                                           管理子智能体目录（add <id> --name=<名称> [--description=<描述>] [--memory] [--isolation=worktree] [--executor=internal-team|external-cli] [--body-file=<路径>]）
   sunshinex settings get <键> | set <键> <值> [--scope=global|project]
-                                          读写语义设置键（退役键打印处置指引并退出码 1）
+                                          读写语义设置键（未知键报错并退出码 1）
   sunshinex mcp list|add|remove|enable|disable|test|approve|deny [--scope=global|project] [--root <目录>] [--json]
                                           管理 MCP server 目录（add <名称> --command=<命令> [--arg=a] [--env=K=V] | --url=<地址>；项目 .sunshinex/mcp.json 或全局 ~/.sunshinex/mcp.json）
   sunshinex providers list|add|set|remove|key|test [--scope=global|project] [--root <目录>] [--json]

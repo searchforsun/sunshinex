@@ -10,5 +10,5 @@ sunshinex
 
 # 编码规范
 - 使用 TypeScript，开启 strict 模式
-- 模块按 harness / loop / graph / model / storage 分层
+- 模块按 harness / loop / graph / model / serve / catalog / taskboard 等分层（全量分层与目录见 CLAUDE.md §3）
 - 写操作前先评估影响面，改动后自检

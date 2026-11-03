@@ -106,7 +106,7 @@ mcpServers 条目两级容错：**声明面 fail-closed**——`safety` 在场�
 | `command` | 是 | stdio 启动命令；`transport` 出现 `http`/`sse` 该条告警跳过（远程 server 支持后置） |
 | `args` | 否 | 启动参数（configArgs 展开前的基参） |
 | `env` | 否 | 子进程环境变量：叠加继承宿主环境，同键覆盖宿主 |
-| `transport` | 否 | 缺省 `stdio`（v1 仅此一种） |
+| `transport` | 否 | 缺省 `stdio`（v1 仅此一种；manifest 面恒按 stdio 声明——browser-use 为唯一特例：装配期被改写为每进程浏览器宿主的 Streamable HTTP 连接，宿主起不来只损失浏览器工具） |
 | `cwd` | 否 | 子进程工作目录；`"."` = 插件根（装载期解析为插件根绝对路径）。其它相对路径按 harness 进程 cwd 解析、跨机不可靠——优先 `"."` 或绝对路径 |
 | `safety` | 否 | 声明式安全三类（§8）；形状矛盾整条跳过 |
 | `configArgs` | 否 | config 键 → 参数模板数组（展开规则 §5） |
@@ -157,8 +157,8 @@ settings 语义键（两级：全局 `~/.sunshinex/settings.json` 与项目级 `
 }
 ```
 
-  1. `merged = { ...configDefaults, ...settings config }`（用户值覆盖缺省）；
-  2. `configArgs` 逐键展开：值 `undefined` → 整键跳过；模板含 `{value}` → 替换为 `String(值)`；模板含 `{dataDir}` → 替换为项目 data 目录绝对路径；不含 `{value}`/`{dataDir}` → 仅当值为布尔 `true` 才追加纯旗标（非 true 不落参，防字符串误当旗标）；
+  1. `merged = { ...configDefaults, ...settings config }`（用户值覆盖缺省）；**内置插件只有开关**：settings 遗留 config（含遗留 disabledTools）对内置插件一律不生效（merged 取缺省空档）——配置面仅用户级插件承载；
+  2. `configArgs` 逐键展开：值 `undefined` → 整键跳过；模板含 `{value}` → 替换为 `String(值)`；模板含 `{dataDir}` → 替换为项目 data 目录绝对路径；不含 `{value}`/`{dataDir}` → 仅当值为布尔 `true` 才追加纯旗标（非 true 不落参，防字符串误当旗标）。**静态 `args` 同样做 `{dataDir}` 展开**（截图等输出目录落会话数据目录的承载方式）；
   3. `configEnv`：值 `String(值)` 注入 env。
 
   上例 settings config 为 `{ "port": 4000, "verbose": true, "tag": "x" }` 时，最终启动参数 = `["server.js", "--port=4000", "--verbose", "--tag=x"]`；`token` 未配置 → env 不含 `DEMO_TOKEN`；若 `verbose` 落缺省 `false` → 无旗标。
@@ -173,7 +173,7 @@ discovered   两级根扫描发现，manifest 合法入表（非法整插件跳�
 ```
 
 - **生效时机 = 下次会话装配**：设置页开关 / `sunshinex plugins enable|disable` / 手编 settings 改完对新会话生效；运行中会话不热切换（进程生命周期属 McpHost，热插拔后置）。
-- 进程生命周期随 harness：懒装配（首次 run 前 `mcpReady` 连接注册；无启用 server 时零开销直通）→ 会话收尾 `mcpClose` 收口（CLI 收尾 / TUI dispose / daemon 停机同源）。浏览器类有头进程同随此收口。
+- 进程生命周期随 harness：懒装配（首次 run 前 `mcpReady` 连接注册；无启用 server 时零开销直通）→ 会话收尾 `mcpClose` 收口（CLI 收尾 / TUI dispose / daemon 停机同源）。浏览器宿主随进程收口（stdin 管道断开即保存状态退出）；会话收口仅关本会话 MCP 连接与浏览器上下文，浏览器与宿主跨会话常驻。
 - `platforms` 不匹配：装载层只标记不丢弃（设置页置灰列示），装配期剔除。
 
 ## 7. 调试
@@ -228,8 +228,8 @@ safety 三类 = 插件作者对所贡献工具的**自声明**风险类别；gua
 
 ### browser-use（M2：包装现成 server）
 
-- 思路：把现成 npm MCP server（`@playwright/mcp`）**钉版**为插件目录依赖（插件目录 = pnpm 工作区包），manifest 以 `node <插件>/node_modules/@playwright/mcp/cli.js` 直启——运行时零 npx 网络依赖；相对路径 + `cwd` 锚定插件根。（交付形态已演进为 esbuild 单文件束 `server/index.js` 零补装——本节为规划存档,以仓内 `plugins/browser-use/` 为准）
-- `configArgs` 映射 settings config → server 参数（浏览器选择 / headless / isolated profile / caps），`configDefaults` 给缺省值。
+- 思路：把现成 npm MCP server（`@playwright/mcp`）**钉版**为插件目录依赖（插件目录 = pnpm 工作区包），manifest 以 `node <插件>/node_modules/@playwright/mcp/cli.js` 直启——运行时零 npx 网络依赖；相对路径 + `cwd` 锚定插件根。（交付形态已演进：现入口为 `server/host.js` 会话隔离宿主束（esbuild 双单文件束、零补装；内置插件只有开关）——本节为规划存档,以仓内 `plugins/browser-use/` 为准）
+- `configArgs` 映射 settings config → server 参数（M2 时代形态：浏览器选择 / headless / isolated profile / caps）——内置插件只有开关后此机制仅用户级插件承载，browser-use 现状 manifest 无配置面。
 - `safety` 不声明：浏览器操作走既有通用 MCP 审批行为；敏感面建议用户以 deny 规则兜底（如 `deny mcp__browser-use__browser_run_code_unsafe`）。
 - 规划字段：`platforms: ["win32", "darwin", "linux"]`、`defaultEnabled: false`、server 名 `browser-use`。
 

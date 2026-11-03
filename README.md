@@ -141,7 +141,7 @@ scripts/release.mjs --no-gui                   # 只发 TUI tgz（跳过 GUI 安
 
 ## 扩展机制
 
-- **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级兼容链（`.cursor < .codex < .claude < .agents < .sunshinex`，只装载标准形态）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
+- **技能**：标准形态 `{根}/skills/{id}/SKILL.md`，同名就近遮蔽——项目级单根 `.sunshinex/skills/`（只装载标准形态 `{id}/SKILL.md`）> 全局级 `~/.sunshinex/skills/` > 学习级（任务成功自动沉淀，FIFO 上限）。技能清单随会话注入，模型经内置 `skill` 工具按需加载全文。
 - **子智能体**：`agents/{id}/agent.md` 注册制（frontmatter 可声明 `isolation: worktree` 隔离、`executor: internal-team` 长驻 teammate / `external-cli` 外部执行体）；**第三方工具**：MCP 服务器登记于项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex/mcp.json`（`mcpServers` 键，与主流 MCP 客户端格式兼容；项目级同名条目遮蔽全局，与技能装载链同构；登记表为空 = MCP 工具全禁）。
 - **插件**：把进程外 MCP server 与技能包成可开关的治理单元——manifest 声明贡献面、缺省开关与工具审批分级（`safety` 三类）；内置 browser-use / computer-use 双形态样例，用户级 `~/.sunshinex/plugins/` 同 id 遮蔽内置；`sunshinex plugins list` / `plugins validate` 自查，开发指南 [docs/PLUGIN-DEV.md](docs/PLUGIN-DEV.md)。
 - **问询交互**：模型可经内置 `ask_question` 工具主动向你发起选择题（单选 / 多选 / 「Other…」自由输入），TUI 呈现选择器卡，`↑`/`↓` + `Enter` 作答，`Esc` 跳过。

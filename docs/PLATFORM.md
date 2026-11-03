@@ -7,11 +7,11 @@
 | 能力 | Linux | macOS | Windows |
 |------|-------|-------|---------|
 | 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
-| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings） | 支持 | 支持 | 支持（单行命令） |
+| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings / tui） | 支持 | 支持 | 支持（单行命令） |
 | 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测；无 Git 时 PowerShell，末位 cmd 兜底） |
 | GUI 浏览器模式（`serve` daemon + web 前端） | 支持 | 支持 | 支持 |
 | GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS 单安装包） |
-| 内置插件 | browser-use 可用；computer-use 不支持（manifest 平台声明置灰） | 同 Linux | browser-use / computer-use 均可用（server 单文件束，目标机零补装；browser-use 浏览器走系统品牌通道） |
+| 内置插件 | browser-use 可用；computer-use 不支持（manifest 平台声明置灰） | 同 Linux | browser-use / computer-use 均可用（两束均单文件内联〔browser-use 含宿主束 host.js〕，目标机零补装；浏览器形态按环境定：桌面=内置侧栏页签 / serve=系统默认浏览器 / TUI·CLI=无头〔系统已装 Chrome〕） |
 
 部署条件（三平台通用）：
 
@@ -20,7 +20,7 @@
 3. 写入 `~/.sunshinex/settings.json`（语义键 + `env` 块填密钥，模板见 MANUAL.md 第二节）；未配置密钥时可用 `--model stub` 先验证链路。
 4. 包管理器统一 pnpm（`packageManager` 钉版，corepack 启用后自动对齐版本）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，依赖安装与缓存随仓库走。
 5. GUI 面（可选）：`node-pty` 为原生模块（安装期编译，serve 与终端标签依赖）；桌面端安装包经 `pnpm shell:dist` 产出（esbuild daemon 束 + node-pty 预编译产物装配，见 `scripts/prepare-pty-resource.mjs`），CI 打包矩阵当前仅 Windows。
-6. 内置插件（可选启用）：两插件 server 均单文件束（依赖内联，目标机零补装——npm 打包恒剔除 node_modules 亦无碍）；browser-use 浏览器走系统已装品牌通道（换 chromium 内核才需 `npx playwright install chromium`，MANUAL 6.4）；computer-use 仅 Windows（持久 PowerShell worker 执行器）。
+6. 内置插件（可选启用）：两插件束均单文件内联（依赖内联，目标机零补装——npm 打包恒剔除 node_modules 亦无碍；browser-use 含宿主束 host.js 即 manifest 启动入口）；浏览器形态按环境定：桌面端内置侧栏页签 / serve 系统默认浏览器 / TUI·CLI 无头（系统已装 Chrome 通道）；computer-use 仅 Windows（持久 PowerShell worker 执行器）。
 
 平台契约的机器强制（声明即须可执行）：
 
@@ -40,4 +40,4 @@ Windows 注意事项：
 - 推荐安装 Git for Windows 后直接使用（自动探测生效）；WSL 内按 Linux 口径亦完整可用。便携版/自定义安装位置若未被自动发现（如未挂 PATH 且不在标准安装根下）：设置环境变量 `SUNSHINEX_SHELL` 指向 `bash.exe`/`sh.exe` 即可。
 - **命令形态建议**：`exec` 在既无 Git Bash 又无 PowerShell 时才回落 `cmd /c`，此时命令集与引号语义与 sh 相差最远（`ls`/`cat` 不可用、`node -e "…"` 的引号会被当字面量、退出码不反映实际）；命中 PowerShell 时命令须按 PowerShell 语义书写（非 sh 语义）。要跨平台稳定，用脚本文件承载逻辑（`node script.js`）或安装 Git for Windows。
 - **测试口径**：仓库测试不得依赖宿主 shell 方言（不以 `ls`/`cat`/内联 `node -e` 作断言前提），shell 语义用例集中在 `src/harness/security/sandbox.test.ts`。
-- **子进程执行收敛面**：工具命令执行（模型可调命令）单点 `ProcessSandbox`（`src/harness/security/sandbox.ts`，平台分支唯一落点）；三类登记的既有收敛单点例外——①工具型 git 直调：`cli/commands/skills-install.ts`（浅克隆）/`harness/worktree.ts`（execGit 助手）/`serve/session-changes.ts`（git()），均参数数组零 shell 拼接（安装期/工作区簿记用途，经沙箱闸门无增益）；②GUI 终端 pty 接缝：`serve/pty.ts`（node-pty 宿主）——PTY 是终端仿真非沙箱命令，不可经 ProcessSandbox（§5 依赖台账在册），其 shell 选择（`pty-handlers.ts` powershell→SHELL→/bin/bash）与 win32 收口闸属该接缝域；③serve 面扫描根平台分支（`workspace-handlers.ts` win32 跳过 home）——目录枚举非命令执行，不在沙箱规则射程；④宿主侧进程收割/清扫面（自身生命周期管理非模型可调命令）：`harness/mcp/client.ts` killProcessTree（stdio 子进程树终结兜底）/ `security/sandbox.ts` killBackground / `serve/daemon.ts` reapBuiltinBrowsers（内置浏览器兜底收割，PowerShell CIM 扫描+taskkill 树杀）——三类同族登记，平台分支就地维护。
+- **子进程执行收敛面**：工具命令执行（模型可调命令）单点 `ProcessSandbox`（`src/harness/security/sandbox.ts`，平台分支唯一落点）；三类登记的既有收敛单点例外——①工具型 git 直调：`cli/commands/skills-install.ts`（浅克隆）/`harness/worktree.ts`（execGit 助手）/`serve/session-changes.ts`（git()），均参数数组零 shell 拼接（安装期/工作区簿记用途，经沙箱闸门无增益）；②GUI 终端 pty 接缝：`serve/pty.ts`（node-pty 宿主）——PTY 是终端仿真非沙箱命令，不可经 ProcessSandbox（§5 依赖台账在册），其 shell 选择（`pty-handlers.ts` powershell→SHELL→/bin/bash）与 win32 收口闸属该接缝域；③serve 面扫描根平台分支（`workspace-handlers.ts` win32 跳过 home）——目录枚举非命令执行，不在沙箱规则射程；④宿主侧进程收割/清扫面（自身生命周期管理非模型可调命令）：`harness/mcp/client.ts` killProcessTree（stdio 子进程树终结兜底）/ `security/sandbox.ts` killBackground / `serve/builtin-browser.ts` reapBuiltinBrowsers（内置浏览器兜底收割，daemon 薄委托；PowerShell CIM 扫描+taskkill 树杀）——三类同族登记，平台分支就地维护。
