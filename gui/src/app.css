@@ -88,7 +88,7 @@
   --warn: #e25507;
   --err: #e02e2a;
   --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
-  --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.04);
+  --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.08); /* 2026-11-03:白对白分层靠投影,较 Codex 原值略加深一档(无环无远晕,铁律 5 口径) */
   --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   --syntax-comment: #4f4f4f;
   --syntax-keyword: #ab4f7a;
