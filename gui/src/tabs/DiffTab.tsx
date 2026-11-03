@@ -46,6 +46,8 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
   const [branch, setBranch] = useState('');
   const [files, setFiles] = useState<ChangeFile[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  /** 刷新在途(2026-11-03 用户裁定:全局刷新按钮都要转圈) */
+  const [refreshing, setRefreshing] = useState(false);
   /** G14.120 单开 accordion:同一时刻至多展开一个文件的 diff(开新即合旧),纵向滚动交外层 */
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [contents, setContents] = useState<Record<string, { oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>>({});
@@ -60,6 +62,8 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
   const [autoPathInList, setAutoPathInList] = useState<boolean | null>(null);
 
   const refresh = useCallback((): void => {
+    if (refreshing) return;
+    setRefreshing(true);
     (conn.sessionChanges?.(sessionId) ?? Promise.resolve({ branch: '', files: [] })).then(
       (r) => {
         setBranch(r.branch);
@@ -68,8 +72,8 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
         if (autoPath !== undefined) setAutoPathInList(r.files.some((f) => f.path === autoPath));
       },
       (err: unknown) => setLoadErr(err instanceof Error ? err.message : String(err)),
-    );
-  }, [conn, sessionId, autoPath]);
+    ).finally(() => setRefreshing(false));
+  }, [conn, sessionId, autoPath, refreshing]);
 
   useEffect(() => {
     refresh();
@@ -145,7 +149,7 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
             )}
           </button>
           <button type="button" className="sx-changes-act" aria-label={t('Refresh', '刷新')} data-tip={t('Refresh', '刷新')} onClick={refresh}>
-            <RefreshCw size={13} strokeWidth={1.75} aria-hidden="true" />
+            <RefreshCw size={13} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />
           </button>
         </span>
       </div>

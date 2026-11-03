@@ -71,6 +71,8 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => INITIAL_EXPANDED);
   /** G14.7 文件过滤(VSCode「搜索文件」同位):非空 = 全层级服务端搜索(命中面替代树面) */
   const [filter, setFilter] = useState('');
+  /** 刷新在途(2026-11-03 用户裁定:全局刷新按钮都要转圈) */
+  const [refreshing, setRefreshing] = useState(false);
   /** G14.2xx 搜索态机(见 SearchState) */
   const [search, setSearch] = useState<SearchState>({ status: 'idle' });
   /** 搜索回包乱序守卫:仅最新 seq 可落态(防抖连打,慢包不覆盖新词结果) */
@@ -146,13 +148,17 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
 
   /** 动作钮:刷新 = 整树重置重拉 + git 状态重拉;搜索在场时强制索引重建重搜(服务端 refresh=1) */
   const refresh = useCallback((): void => {
+    if (refreshing) return;
+    setRefreshing(true);
     setNodes(new Map([['', { status: 'loading' }]]));
     setExpanded(new Set());
     gitRefresh();
     fetchRoot();
     const q = filter.trim();
     if (q !== '') runSearch(q, true);
-  }, [conn, sessionId, setNode, gitRefresh, fetchRoot, filter, runSearch]);
+    // 树载荷本身逐目录异步落位,转圈走短窗(600ms)兜底——避免无 in-flight 信号时永转
+    window.setTimeout(() => setRefreshing(false), 600);
+  }, [conn, sessionId, setNode, gitRefresh, fetchRoot, filter, runSearch, refreshing]);
 
   const collapseAll = useCallback((): void => setExpanded(new Set()), []);
 
@@ -411,7 +417,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
           <span className="sx-tree-head-name" data-tip={root}>{wsName}</span>
           <span className="sx-tree-head-actions">
             <button type="button" className="sx-iconbtn" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={refresh}>
-              <RefreshCw size={13} strokeWidth={1.75} />
+              <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
             </button>
             <button type="button" className="sx-iconbtn" aria-label="collapse all" data-tip={t('Collapse All', '全部折叠')} onClick={collapseAll}>
               <ChevronsDownUp size={13} strokeWidth={1.75} />
