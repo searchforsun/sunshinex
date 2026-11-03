@@ -236,6 +236,13 @@ export class SessionRuntime {
   /** plan 流程整体收束 promise（abortAndSettle 有界等待锚）：reset/teardown 等它落定（≤2s）防换新
    *  运行时与续跑段竞写 */
   private planFlowSettled?: Promise<void>;
+  /** planFlow 执行段在途标记（2026-11-03 /plan 三态）：批准续段 runPlanItems 持锁期置位——planFlowRunning
+   *  跨规划/挂卡/执行全程,三态分流需区分「可 replan 的规划/挂卡期」与「执行段」（后者档位已落非 plan,
+   *  /plan <目标> 走 steer 同普通运行态,不中断在途执行） */
+  private planExecuting = false;
+  /** replan 静默位（2026-11-03）：replan 中止旧流程期间的 interrupted notice 抑制——替换语义自带
+   *  「已按新目标重新规划」回执,不再叠「规划已中断」双文案 */
+  private planReplanQuiet = false;
   /** 会话 todo 清单（todo_write 接缝收写,装配单点 onTodos 注入）：planFlow todosSnapshot 权威源
    *  （规划轮模型 todo_write 快照即步骤权威,TUI state.todos 同构）+批准续段逐项勾选承载 */
   private todos: TodoItem[] = [];
@@ -296,10 +303,12 @@ export class SessionRuntime {
       })
       .filter((x) => x.text !== '');
     if (items.length === 0) return;
-    const batch: SessionTodoBatch = { key: `t${en.seq}`, ts: en.ts, goal: this.todoLastGoal, items };
-    const idx = this.todoBatches.findIndex((b) => b.key === batch.key);
-    if (idx >= 0) this.todoBatches[idx] = batch;
-    else this.todoBatches.push(batch);
+    // 2026-11-03 用户裁定「待办要加唯一 id,不要每次覆盖更新都生成新的面板」:签名=条目文本集——
+    // 同签=同一份待办进度推进,就地更状态(唯一 id=key/ts 首写落定不漂),不另立新卡
+    const sig = items.map((i) => i.text).join('|');
+    const idx = this.todoBatches.findIndex((b) => b.items.map((i) => i.text).join('|') === sig);
+    if (idx >= 0) this.todoBatches[idx] = { ...this.todoBatches[idx], items };
+    else this.todoBatches.push({ key: `t${en.seq}`, ts: en.ts, goal: this.todoLastGoal, items });
   }
 
   /** journal 全量行 → todo 批次(attach 播种单点,2026-10-31 用户裁定「任务历史持久化可见」):
@@ -333,9 +342,14 @@ export class SessionRuntime {
       if (idx >= 0) this.todoBatches[idx] = batch;
       else this.todoBatches.push(batch);
     }
+    // 2026-11-03 用户裁定:同签(同一份待办)合并保留**首写** key/ts(唯一 id 稳定,创建时间=首写
+    // 时刻),条目状态取最新——与 live 路径唯一 id 语义对齐
     const sigOf = (b: SessionTodoBatch): string => b.items.map((i) => i.text).join('|');
     const bySig = new Map<string, SessionTodoBatch>();
-    for (const b of [...this.todoBatches].sort((a, b) => a.ts - b.ts)) bySig.set(sigOf(b), b);
+    for (const b of [...this.todoBatches].sort((a, b) => a.ts - b.ts)) {
+      const prev = bySig.get(sigOf(b));
+      bySig.set(sigOf(b), prev !== undefined ? { ...prev, items: b.items } : b);
+    }
     this.todoBatches = [...bySig.values()].sort((a, b) => a.ts - b.ts);
   }
 
@@ -984,6 +998,42 @@ export class SessionRuntime {
     return this.currentMode === 'plan';
   }
 
+  /** 武装外窥（2026-11-03 /plan 三态,命令通道分流消费） */
+  isPlanArmed(): boolean {
+    return this.planArmed();
+  }
+
+  /** 规划/挂卡期外窥（planFlowRunning 全程标记扣除执行段——执行段档位已落非 plan,/plan <目标>
+   *  走 steer 同普通运行态,不中断在途执行;规划轮/挂卡期才可 replan 替换） */
+  planFlowPlanning(): boolean {
+    return this.planFlowRunning && !this.planExecuting;
+  }
+
+  /** 重新规划（2026-11-03 /plan 三态）：规划在途/挂卡期以新目标替换——中止在途流程（信号+挂卡拒绝
+   *  回填+有界等收束;planReplanQuiet 抑制「规划已中断」notice）后起新流程。回执文案归调用面
+   *  （命令通道 notice 捕获为工具结果载荷）;收束窗口竞态防御（setMode disarm 同款）：收束后有新
+   *  run 起跑则不压 run,目标转队列（pump 直落转录） */
+  async replan(goal: string): Promise<void> {
+    this.planReplanQuiet = true;
+    try {
+      await this.abortPlanFlowAndSettle();
+    } finally {
+      this.planReplanQuiet = false;
+    }
+    if (this.status() === 'running') {
+      this.pump({ type: 'notice', text: 'Re-plan superseded by a running task — goal queued', ts: Date.now() });
+      this.steer(goal);
+      return;
+    }
+    this.runPlanArm(goal);
+  }
+
+  /** plan 流程中止外窥（2026-11-03 /plan off）：abortPlanFlowAndSettle 公开薄壳——命令通道 disarm
+   *  前中止规划/挂卡期流程（信号+挂卡拒绝回填+有界等收束） */
+  async abortPlanFlow(): Promise<void> {
+    await this.abortPlanFlowAndSettle();
+  }
+
   /** /plan 规划流程壳（spec §5.1;TUI startPlanFlow 同构,serve 侧裁决经挂起表回执路由驱动）：
    *  runPlanFlow 纯流程编排的宿主消费,IO 全走接缝。submit 半径只到用户裁决点：首轮规划在阶段一锁内
    *  跑到 awaiting-approval（或中断/超限/无产物终态）——卡登记+广播后放行锁（idle 时刻合法是批准续段
@@ -1051,14 +1101,22 @@ export class SessionRuntime {
               return;
             }
             if (e.type === 'aborted') {
-              // failed 臂如实措辞（终审修复,spec §7：规划失败不再谎报 interrupted,stopReason 透传入文）
+              // replan 静默位（2026-11-03）：替换路径的中断不落「规划已中断」——replan 自带回执文案
+              if (e.reason === 'interrupted' && this.planReplanQuiet) {
+                releaseGateOnce(); // 无裁决点路径也放行 submit 半径
+                return;
+              }
+              // failed 臂如实措辞（终审修复,spec §7：规划失败不再谎报 interrupted,stopReason 透传入文）;
+              // discarded（2026-11-03 修订）：空反馈驳回=放弃本轮,武装保持——下条提交（仍 armed）重新规划
               const why = e.reason === 'interrupted'
                 ? 'Planning interrupted'
                 : e.reason === 'exhausted'
                   ? 'Plan rejected 3 times — stopped, nothing executed'
                   : e.reason === 'empty'
                     ? 'Planning produced no steps — cancelled'
-                    : `Planning failed: ${e.stopReason ?? 'unknown'}`;
+                    : e.reason === 'discarded'
+                      ? 'Plan discarded — still in plan mode; submit a new goal to re-plan'
+                      : `Planning failed: ${e.stopReason ?? 'unknown'}`;
               this.pump({ type: 'notice', text: why, ts: Date.now() });
               releaseGateOnce(); // 无裁决点路径（中断/超限/无产物）也放行 submit 半径
               return;
@@ -1075,9 +1133,10 @@ export class SessionRuntime {
           const notices = this.runtimeImpl.harness.context.checkConstantsDrift();
           for (const n of notices) this.runtimeImpl.harness.context.appendChain([{ action: 'notice', observation: n }]);
           for (const n of notices) this.pump({ type: 'notice', text: n, ts: Date.now() });
-          // 落 acceptEdits（spec §4.4/§5.1 绑定：真切换,arm 解除）。idle 时刻合法（锁已在裁决点放行;
+          // 落所选档（2026-11-03 修订:批准卡三选,r.mode 权威、缺省 acceptEdits 由 plan-flow 兜底;
+          // spec §4.4/§5.1 绑定:真切换,arm 解除）。idle 时刻合法（锁已在裁决点放行;
           // busy 面 unreachable——planFlowRunning 挡新提交,流程外无并发 run 源）。重建 runtime 后新
-          // guard 基档即 acceptEdits、asker 接线经装配单点自动就位（isAcceptEdits 判定）——serve 相对
+          // guard 基档即所选档、asker 接线经装配单点自动就位（isAcceptEdits 判定）——serve 相对
           // TUI 的优势：TUI 需 setBaseMode 手动通道,serve 装配映射单点承接。
           // planFlowInternal 旁路：流程内切换不得自触 disarm 收口（abortPlanFlowAndSettle 会中止自己）;
           // busy 即中止流程（终审修复 c：防御纵深——旧形态忽略返回值,busy 也照跑执行段;即便 a/b 已封
@@ -1085,7 +1144,7 @@ export class SessionRuntime {
           const ctx = this.runtimeImpl.harness.context;
           const carry = { chain: ctx.chainView(), chainFrom: ctx.chainFromView(), compacted: ctx.compactedView() };
           const prevSnap = ctx.snapshotExport(); // 换铸前捕快照（批准续段位点,与 carry 同拍——内存直传载荷）
-          if ((await this.setMode('acceptEdits', { planFlowInternal: true })) === 'busy') {
+          if ((await this.setMode(r.mode, { planFlowInternal: true })) === 'busy') {
             this.pump({ type: 'notice', text: 'Plan approved — execution cancelled (mode switch failed)', ts: Date.now() });
             return;
           }
@@ -1093,7 +1152,7 @@ export class SessionRuntime {
           // 快照-换新-restoreSession 回种（daemon attach 同构;直注入不触发订阅,零双写）
           this.runtimeImpl.harness.context.restoreSession(carry);
           this.runtimeImpl.harness.context.restoreSnapshot(prevSnap); // 快照内存直传(不经 journal,同会话中途换铸字节稳定)
-          this.pump({ type: 'notice', text: 'Switched to workspace edit mode', ts: Date.now() });
+          this.pump({ type: 'notice', text: r.mode === 'full-access' ? 'Switched to full access mode' : 'Switched to workspace edit mode', ts: Date.now() });
           // 阶段二锁（执行段）：批准续段整段持锁（409 拒并发提交）+沙箱信号重装（换新后落新 runtime）
           this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
           let openExec!: () => void;
@@ -1101,9 +1160,11 @@ export class SessionRuntime {
             openExec = resolve;
           });
           this.current = { abort, done: execDone };
+          this.planExecuting = true; // /plan 三态：执行段在途标记（planFlowPlanning 扣除面）
           try {
             await this.runPlanItems(r.items);
           } finally {
+            this.planExecuting = false;
             if (this.current?.abort === abort) this.current = undefined;
             this.runtimeImpl.harness.sandbox.setRunSignal(undefined);
             openExec();
@@ -1270,19 +1331,28 @@ export class SessionRuntime {
     return okSwitch;
   }
 
-  /** 权限模式切换（G10-C1b）：idle-only（运行中 409 面归 daemon handler）;重建 runtime 与 reset 同路径,
-   *  转录/影子投影独立字段不受损;换新 runtime 后重挂 journal 落盘订阅（hookJournalSink 单槽幂等）。
-   *  plan 流程标记（阶段三 plan-arm）：setMode('plan') 即 armed——本方法即「手动切档解除」路径
-   *  （切离 plan 档=disarm）;setMode('plan')/『/plan 命令』为武装位。回放语义（spec §5.2,跨重启不恢复
-   *  arm）：本路径经 persistSelection 照写 mode:'plan' 落 meta 旁车,但 attach 回放只认现值三档
-   *  （daemon.ts 装载序,'plan' 照写不照回）——armed 天然不跨重启,无需新增持久化;已批准的计划书随链
-   *  （'plan' 行）回放。
+  /** 权限模式切换（G10-C1b）：非 plan 档 idle-only（运行中 409 面归 daemon handler）;重建 runtime 与
+   *  reset 同路径,转录/影子投影独立字段不受损;换新 runtime 后重挂 journal 落盘订阅（hookJournalSink
+   *  单槽幂等）。plan 流程标记（阶段三 plan-arm;2026-11-03 修订 /plan 三态）：setMode('plan') 即武装
+   *  ——**武装快路径,任何状态可用、幂等、永不 busy**：arm 只是 currentMode 标记位（装配映射恒
+   *  acceptEdits）,不重建运行时;运行中武装对下一次提交生效（重建推迟到批准落档/用户切档等自然收口点;
+   *  规划轮权限面走 read-only 覆盖,与基档无关）。本方法即「手动切档解除」路径（切离 plan 档=disarm）。
+   *  回放语义（spec §5.2,跨重启不恢复 arm）：本路径经 persistSelection 照写 mode:'plan' 落 meta 旁车,
+   *  但 attach 回放只认现值三档（daemon.ts 装载序,'plan' 照写不照回）——armed 天然不跨重启,无需新增
+   *  持久化;已批准的计划书随链（'plan' 行）回放。
    *  disarm 收口（终审修复 b）：plan 流程在途时切离 plan,卡挂起期锁已放行（idle）——旧形态只查 idle
    *  即实切,在途 planFlow 被孤儿化（用户点旧卡驱动续段与新任务并发跑;拒绝路径 revising 的 read-only
    *  覆盖还会拒掉用户任务的写操作）。现切离前先经 abortPlanFlowAndSettle 单点中止流程（信号+挂卡
    *  拒绝回填+有界等收束）再换新运行时;批准续段自身的落档切换走 planFlowInternal 旁路（流程内切换
-   *  不得自中止）。异步化即为此等待;setMode('plan') 同档幂等早退,不触收口。 */
+   *  不得自中止）。异步化即为此等待;武装快路径不触收口。 */
   async setMode(mode: SessionMode, opts?: { planFlowInternal?: boolean }): Promise<'ok' | 'busy'> {
+    // 武装快路径（2026-11-03）：置标记+落 meta 即回,零重建零 busy——运行中武装=对下一次提交生效
+    if (mode === 'plan') {
+      if (this.currentMode === 'plan') return 'ok'; // 同档幂等
+      this.currentMode = 'plan';
+      this.persistSelection({ mode });
+      return 'ok';
+    }
     if (this.status() !== 'idle') return 'busy';
     if (mode === this.currentMode) return 'ok';
     if (this.planFlowRunning && !opts?.planFlowInternal) {
