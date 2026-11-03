@@ -747,7 +747,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    插入会话/辅助会话/子智能体任务带的用户气泡(.user-bubble 全族)同享正圆弧;superellipse(1.5)
    同值观感偏方,正圆观感统一;radius 仍走 22px token 铁律不变,全局其余面维持超椭圆 */
 @supports (corner-shape: superellipse(1.5)) {
-  .sx-composer, .user-edit-card, .user-bubble { corner-shape: initial; }
+  .sx-composer, .user-edit-card { corner-shape: initial; }
 }.sx-composer-input {
   width: 100%;
   min-height: 44px;
@@ -1758,6 +1758,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-11-03 待办卡主名字=定位钮:点击滚到对应正文输入气泡(有 userKey 的批次才可点) */
 .todo-card-goal-link { cursor: pointer; }
 .todo-card-goal-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* 2026-11-03 用户裁定「发送键不对称」:整圆钮(9999px)撤全局超椭圆——superellipse(1.5) 在
+   满圆半径上把圆压方=不圆整;发送/编辑卡发送/composer「+」三处恢复几何正圆 */
+.sx-composer .send, .user-edit-send, .composer-pill.composer-plus-btn { corner-shape: initial; }
 .todo-card-goal { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .todo-card-time svg { flex: none; }
