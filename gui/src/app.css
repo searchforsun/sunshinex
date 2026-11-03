@@ -3139,3 +3139,10 @@ input.sx-setting-input { width: 100%; }
 .sx-shortcut-keys { display: flex; align-items: center; gap: 4px; flex: none; }
 .sx-shortcut-desc { color: var(--fg-secondary); font-size: 12.5px; text-align: right; min-width: 0; }
 .sx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 18px; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--radius-sm); }
+
+/* disabled 钮保留悬浮提示面:全局 button:disabled pointer-events:none 会杀 data-tip hover
+   (键位提示多挂在常 disabled 钮上——后退/前进/空输入发送);disabled 钮本就不派发 click,
+   恢复 pointer-events 只回 hover 面,不引入可点语义。置文件尾以胜过同特异性晚置规则
+   (.sx-composer .send:disabled / .sx-web-nav:disabled 的 pointer-events:none);
+   曾随 493bb0f 入库、a3011810 revert 时误伤冲掉,此处补回 */
+button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }

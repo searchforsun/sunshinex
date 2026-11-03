@@ -82,6 +82,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
     items: [
       { id: 'general', title: { en: 'General', zh: '通用' } },
       { id: 'providers', title: { en: 'Models & providers', zh: '模型与提供方' } },
+      { id: 'shortcuts', title: { en: 'Shortcuts', zh: '快捷键' } },
     ],
   },
   {
@@ -101,7 +102,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
       { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
     ],
   },
-  { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }, { id: 'shortcuts', title: { en: 'Shortcuts', zh: '快捷键' } }] },
+  { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }] },
 ];
 const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
 

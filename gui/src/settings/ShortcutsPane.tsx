@@ -76,6 +76,8 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
 export function ShortcutsPane(): JSX.Element {
   return (
     <section className="sx-settings-form sx-settings-body" aria-label="settings pane shortcuts">
+      {/* 与 SettingsForm 各面板同款 <h2> 标题(导航项文字一致),对齐设置页版式 */}
+      <h2>{t('Shortcuts', '快捷键')}</h2>
       <div className="sx-shortcuts-page">
         <p className="sx-shortcuts-intro">{t('Keyboard shortcuts available across the desktop app.', '桌面端全应用可用的键盘快捷键。')}</p>
         {SHORTCUT_GROUPS.map((g) => (
