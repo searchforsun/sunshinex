@@ -21,6 +21,10 @@ function makeWorkspace(dir: string, slug: string, root?: string): string {
 
 test('reapBuiltinBrowsers：shell 档自保跳过+指针档清扫；非 shell pid 进刀不炸；缺档静默', () => {
   const prev = process.env.SUNSHINEX_PROJECTS_DIR;
+  // 全量跑测预载 test-env.cjs 设了 SUNSHINEX_DATA_DIR(优先级高于 PROJECTS_DIR),不清则 resolveDataDir
+  // 不走 PROJECTS_DIR/<slug>/data,夹具与被测路径错位(单跑过、全量必挂)
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  delete process.env.SUNSHINEX_DATA_DIR;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bb-reap-'));
   process.env.SUNSHINEX_PROJECTS_DIR = dir;
   // 函数契约=按工作区 root 经 resolveDataDir 解析数据目录（PROJECTS_DIR/<slug>/data）——夹具沿同径
@@ -44,6 +48,7 @@ test('reapBuiltinBrowsers：shell 档自保跳过+指针档清扫；非 shell pi
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
     else process.env.SUNSHINEX_PROJECTS_DIR = prev;
+    if (prevData !== undefined) process.env.SUNSHINEX_DATA_DIR = prevData;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
