@@ -457,10 +457,8 @@ export interface RuntimeSafetyGate {
 export type ToolExecutor = (input: ToolInput, runtimeSafety?: RuntimeSafetyGate) => Promise<ExecResult>;
 
 /** 终止原因：done=正常完成；model-error=模型调用失败；其余为护栏触发（D7 顺序：超时 → 预算 → 迭代/步数） */
-/** 任务终态原因（interrupted=用户主动中断：Esc/Ctrl+C 触发，模型与工具调用经 AbortSignal 尽快停下；
- *  plan-presented=exit_plan 交稿终止（2026-11-03 交稿协议：终止型工具——规划轮模型调研完显式出牌,
- *  仅出现在 fork 规划 run,主链 run 经 guard 拒绝不可达;宿主规划接缝读暂存槽转译,不经 describeIncomplete 面） */
-export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-error' | 'interrupted' | 'plan-presented';
+/** 任务终态原因（interrupted=用户主动中断：Esc/Ctrl+C 触发，模型与工具调用经 AbortSignal 尽快停下） */
+export type StopReason = 'done' | 'max-steps' | 'deadline' | 'budget' | 'model-error' | 'interrupted';
 
 /** 护栏可返回的越限原因（不含「正常完成」与「模型失败」——那两类由调用方判定） */
 export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget'>;

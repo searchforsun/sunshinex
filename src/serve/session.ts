@@ -8,7 +8,7 @@ import type { ModelTier, ReasoningEffort } from '../types';
 import { ModelSwitcher } from '../model/catalog';
 import type { KernelRuntime } from '../session/runtime';
 import type { ModelAdapter } from '../model/adapter';
-import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, RunOutcome, SessionEvent, TodoItem } from '../types';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, SessionEvent, TodoItem } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import type { TaskBoardState } from '../taskboard/model';
 import type { AgentTeam } from '../taskboard/team-registry';
@@ -24,9 +24,8 @@ import type { SegRowLike } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
-import { runPlanFlow, PLAN_TASK_LABEL, PLAN_MAX_ROUNDS } from '../harness/plan-flow';
-import type { PlanDecision } from '../harness/plan-flow';
-import { formatToolCallLine } from '../harness/context/messages';
+import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/plan-flow';
+import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
@@ -229,28 +228,44 @@ export class SessionRuntime {
   /** 当前权限模式（G10-C1b 可变面）：setMode 重建 runtime（reset 同路径,转录/影子投影独立不受损） */
   private currentMode: SessionMode;
 
-  // ---- plan-arm（阶段三 spec §5.1）：mode==='plan' 即 armed 的流程在途态三件 ----
+  // ---- plan 模式（2026-11-03 无感化,ask_question 同构）：无宿主编排状态机——armed 提交=会话作用域
+  // run（read-only 覆盖在座）,exit_plan executor 弹卡阻塞等裁决,裁决落档后同 run 无感继续。----
+  // （旧 planFlow 六件/合成链行/replan 静默位全部随状态机消解退役,挂起复用 approval/ask 挂起表形态）
 
-  /** planFlow 消费壳在途标记（TUI 同名同语义）：armed 空闲提交拦截为 planFlow 后置位,流程终态
-   *  （批准执行收尾/中断/超限/无产物）复位;裁决点挂卡期保持 true——armed+idle+在途的提交 409
-   *  （单流程在途,裁决走挂起表回执端点,不排队）。公开判定仅类内消费（interrupt/submit/abortAndSettle） */
-  private planFlowRunning = false;
-  /** plan 流程中断源（TUI taskAbort 同构）：规划轮 fork run/执行段逐项 run/挂卡期中止判定共用同一
-   *  信号——interrupt()/abortAndSettle() 直达;流程不在途 undefined */
-  private planAbort?: AbortController;
-  /** plan 流程整体收束 promise（abortAndSettle 有界等待锚）：reset/teardown 等它落定（≤2s）防换新
-   *  运行时与续跑段竞写 */
-  private planFlowSettled?: Promise<void>;
-  /** planFlow 执行段在途标记（2026-11-03 /plan 三态）：批准续段 runPlanItems 持锁期置位——planFlowRunning
-   *  跨规划/挂卡/执行全程,三态分流需区分「可 replan 的规划/挂卡期」与「执行段」（后者档位已落非 plan,
-   *  /plan <目标> 走 steer 同普通运行态,不中断在途执行） */
-  private planExecuting = false;
-  /** replan 静默位（2026-11-03）：replan 中止旧流程期间的 interrupted notice 抑制——替换语义自带
-   *  「已按新目标重新规划」回执,不再叠「规划已中断」双文案 */
-  private planReplanQuiet = false;
-  /** 会话 todo 清单（todo_write 接缝收写,装配单点 onTodos 注入）：planFlow todosSnapshot 权威源
-   *  （规划轮模型 todo_write 快照即步骤权威,TUI state.todos 同构）+批准续段逐项勾选承载 */
+  /** 会话 todo 清单（todo_write 接缝收写,装配单点 onTodos 注入）：交稿批准时宿主按计划书 Steps 播种,
+   *  执行期模型 todo_write 自管维护 */
   private todos: TodoItem[] = [];
+  /** 当前 run 的任务目标（armed 提交时记录）：exit_plan 漏 name 时 derivePlanName 兜底派生源 */
+  private activeGoal = '';
+
+  /** arm 判定单点：mode==='plan' 即 armed——下条提交走 read-only 覆盖+exit_plan 交稿协议 */
+  private planArmed(): boolean {
+    return this.currentMode === 'plan';
+  }
+
+  /** 武装外窥（/plan 三态,命令通道分流消费） */
+  isPlanArmed(): boolean {
+    return this.planArmed();
+  }
+
+  /** 交稿挂起卡在途外窥（/plan <目标> 挂卡期分流:弃卡+重新提交） */
+  hasPlanPending(): boolean {
+    for (const entry of this.pending.values()) if (entry.kind === 'plan-approval') return true;
+    return false;
+  }
+
+  /** exit_plan 挂起接缝（2026-11-03 无感化,ask_question 同构）：落盘计划文件+挂起行（卡/帧）+
+   *  阻塞等裁决;批准落档由 resolvePendingPlanApproval 在 executor 恢复前完成。run 不收口——
+   *  界面保持运行中（与 ask_question「等待回答」同观感） */
+  private async planAwaitDecision(name: string, doc: string): Promise<PlanDecision> {
+    this.ensureMintedWithBirth();
+    const items = parseNumberedSteps(doc);
+    const dName = name !== '' ? name : derivePlanName(this.activeGoal);
+    let path: string | undefined;
+    const jid = this.journal?.currentId;
+    if (jid !== undefined) path = writePlanDoc(resolveDataDir(this.root), jid, dName, doc);
+    return await this.awaitPlanApproval({ name: dName, path, doc, items });
+  }
 
   /** 转录条目数外窥(装载互斥判据与测试面) */
   transcriptCount(): number {
@@ -477,8 +492,10 @@ export class SessionRuntime {
       onEvent: (e) => this.pump(e),
       onApproval: (req) => this.suspendApproval(req),
       onAskUser: (req) => this.suspendAsk(req),
-      // todo_write 接缝（planFlow todosSnapshot 权威源,spec §4.1）：会话级 todos 字段单点收写——
-      // 规划轮模型 todo_write 的快照即计划步骤权威（TUI state.todos 同构）,批准续段逐项勾选同字段承载
+      // exit_plan 挂起接缝（2026-11-03 无感化,ask_question 同构）：弹卡阻塞等裁决（run 不收口）,
+      // 批准落档（landPlanDecision）在 reply 路径 executor 恢复前完成
+      plan: { awaitDecision: (name, doc) => this.planAwaitDecision(name, doc) },
+      // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;
       },
@@ -550,18 +567,12 @@ export class SessionRuntime {
    *  中止已置位的 ghost 窗直接拒绝回填不入表（suspendApproval 先例）。决策由 resolvePendingPlanApproval
    *  经回执路由回填驱动流程续跑（TUI planDecide 回填单点的表驱动同构——寻址键 pid 入挂起表,不再设
    *  planDecide 字段） */
-  private awaitPlanApproval(card: { name: string; path?: string; doc: string; items: string[] }, onParked: () => void): Promise<PlanDecision> {
+  private awaitPlanApproval(card: { name: string; path?: string; doc: string; items: string[] }): Promise<PlanDecision> {
     return new Promise((resolve) => {
-      if (this.planAbort?.signal.aborted) {
-        resolve({ approved: false });
-        onParked();
-        return;
-      }
       const pid = this.opts.mintPid();
       this.pending.set(pid, { kind: 'plan-approval', req: card, resolve });
       const frame: PlanApprovalFrame = { kind: 'plan-approval', sessionId: this.id, pid, req: card };
       this.opts.broadcast(frame);
-      onParked(); // 裁决点放行 submit 半径：锁交还（idle 时刻合法是批准续段 setMode 的前置）
     });
   }
 
@@ -571,9 +582,29 @@ export class SessionRuntime {
     const entry = this.pending.get(pid);
     if (entry === undefined || entry.kind !== 'plan-approval') return false;
     this.pending.delete(pid);
+    // 落档钩（2026-11-03 无感化）:**批准在 executor 恢复前落档**——exit override+真档 setBaseMode+
+    // arm 解除+todos 按 Steps 播种;此后 executor 恢复,模型以已放权的档位同 run 无感继续实施。
+    // 驳回:只读维持(带反馈=修订环回喂);空反馈=放弃本轮→中断 run 回输入态(arm 保持,executor 凭
+    // 信号中止)
+    if (decision.approved) {
+      this.landPlanDecision(decision.mode ?? 'acceptEdits', entry.req.items);
+    } else if ((decision.feedback ?? '').trim() === '') {
+      this.pump({ type: 'notice', text: 'Plan discarded — still in plan mode; submit a new goal to re-plan', ts: Date.now() });
+      this.interrupt();
+    }
     entry.resolve(decision);
     this.pump({ type: 'notice', text: `plan-approval ${pid} resolved: ${decision.approved ? 'approved' : 'rejected'}`, ts: Date.now() });
     return true;
+  }
+
+  /** 批准落档单点（2026-11-03 无感化,executor 恢复前调用）：exit read-only 覆盖+真档 setBaseMode
+   *  （guard 活改,下一未决调用即放权）+arm 解除+todos 按 Steps 播种（执行期模型 todo_write 自管） */
+  private landPlanDecision(mode: PlanLandMode, items: string[]): void {
+    this.runtimeImpl.harness.security.exitModeOverride();
+    this.currentMode = mode;
+    this.runtimeImpl.harness.security.setBaseMode(mode);
+    this.persistSelection({ mode });
+    this.setTodos(items.map((t): TodoItem => ({ text: t, status: 'pending' })));
   }
 
   /** plan 挂起卡拒绝回填单点（中断/reset/teardown 路径;TUI approval.ts interrupt→confirmPlan(false)
@@ -846,19 +877,14 @@ export class SessionRuntime {
    * 标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源） */
   submit(goal: string, images?: string[]): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
-    // plan flow 在途一律 409（终审修复 a：不论 armed——disarm 收口窗口/中断后 settle 前的提交也拒,
-    // 沿既有文案口径。主路径防并发:planFlow 无内部串行化,放行即与续跑段竞写）
-    if (this.planFlowRunning) return { ok: false, status: 409, error: 'plan flow in progress' };
-    // plan-arm 提交通道（spec §5.1）：mode==='plan' 即 armed——armed 空闲提交经 planFlow 规划流程
-    // （TUI /plan 同构:规划→确认卡→批准落档→逐项执行）;流程在途（含裁决点挂卡——idle+planFlowRunning）
-    // 一律 409 不排队,裁决走挂起表回执端点。批准自动解除（续段 setMode 切走）/手动切档解除/拒绝保持。
     // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进
-    // 上下文/档/wire(见 images-cache.ts 头注);此入口覆盖 submit 与 plan-arm 全部提交面
+    // 上下文/档/wire(见 images-cache.ts 头注);此入口覆盖普通提交与计划模式提交全部提交面
     images = spillImages(this.root, images);
-    if (this.planArmed()) {
-      this.runPlanArm(goal, images);
-      return { ok: true };
-    }
+    // 计划模式（2026-11-03 无感化,ask_question 同构）：armed 提交=read-only 覆盖在座+计划提示 note,
+    // 走**普通会话作用域 run**——不再 fork/不再宿主编排;模型调研后 exit_plan 弹卡阻塞等裁决
+    // （run 不收口）,裁决落档后同 run 无感继续。计划名兜底派生源记录
+    const armed = this.planArmed();
+    if (armed) this.activeGoal = goal;
     const abort = new AbortController();
     // G14.2xx 立即停止:run 信号装入沙箱——interrupt 时在途 exec 子进程即刻收割(不再等步边界)
     this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
@@ -872,6 +898,12 @@ export class SessionRuntime {
     this.runUsage = undefined;
     this.runCtxUsed = undefined;
     const hasImages = images !== undefined && images.length > 0;
+    if (armed) {
+      // 计划模式:read-only 覆盖在座(调研期强制只读;批准落档时退出)+提示 note(退出/批准结果都回喂模型)
+      this.runtimeImpl.harness.security.enterModeOverride('read-only');
+      this.runtimeImpl.harness.security.setExitPlanArmed(true);
+      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: PLAN_MODE_NOTE }]);
+    }
     this.kernel.submit(goal, images);
     this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
@@ -948,6 +980,9 @@ export class SessionRuntime {
       })
       .finally(() => {
         this.current = undefined;
+        // 计划模式收尾(2026-11-03 无感化):run 结束时 read-only 覆盖仍在座(未批准即结束——驳回放弃/
+        // 中断/异常)→退出覆盖(批准路径已在落档钩退出,此处幂等);退出计划工具武装随 currentMode
+        if (this.runtimeImpl.harness.security.overrideActive) this.runtimeImpl.harness.security.exitModeOverride();
         // G14.2xx 立即停止:轮收束即摘 run 信号(在途 exec 收割只属本轮;下轮 submit 重装)
         this.runtimeImpl.harness.sandbox.setRunSignal(undefined);
         // G14.89 轮收束自动发下一轮:队列非空即取队首续跑(排队语义=等当前轮完成自动发);
@@ -976,336 +1011,25 @@ export class SessionRuntime {
   }
 
   /** 中止当前 run：步边界/在途模型调用经 signal 即刻中止（reactor 既有语义），runTask 以
-   *  stopReason=interrupted 收束后 finally 清锁。plan 流程在途（规划轮/裁决点挂卡/执行段）同为
-   *  中断面：共用 abortPlanFlowAndSettle 单点（信号中止+挂卡拒绝回填+有界等收束,fire-and-forget——
-   *  收尾可观测面由流程自身的 aborted 回执承载;settle 等待的强制的只在 reset/teardown/disarm） */
+   *  stopReason=interrupted 收束后 finally 清锁。阻塞中的 exit_plan 挂起 executor 同为中断面：
+   *  denyPlanPendings 回填（放弃/拒绝）+中止信号,executor 恢复后 run 以 interrupted 收束 */
   /** 命令执行中止句柄(2026-10-31 用户裁定「命令运行态可中断,中断后显示命令中断提示」):runCommand
    *  在途期挂载,interrupt 无 run 在途时转中止命令;收尾清空 */
   commandAbort?: AbortController;
 
   interrupt(): SessionInterruptResult {
-    if (!this.current && !this.planFlowRunning) {
+    if (!this.current) {
       if (this.commandAbort !== undefined && !this.commandAbort.signal.aborted) {
         this.commandAbort.abort();
         return { ok: true };
       }
       return { ok: false, error: 'no run in progress' };
     }
-    this.current?.abort.abort();
-    void this.abortPlanFlowAndSettle();
+    this.current.abort.abort();
+    // 挂起型交稿卡（2026-11-03 无感化）:阻塞中的 exit_plan executor 凭 deny 回填+中止信号收尾
+    // （放弃本轮/中断语义,arm 保持由 currentMode 决定）
+    this.denyPlanPendings();
     return { ok: true };
-  }
-
-  // ---- plan-arm（阶段三 spec §5.1）：armed 提交的 planFlow 消费壳,接缝同构 TUI startPlanFlow ----
-
-  /** arm 判定单点（spec §5.1）：mode==='plan' 即 armed——下条空闲 submit 经 planFlow。批准落
-   *  acceptEdits 自动解除（setMode 切走）/手动切档解除/拒绝保持 armed;装配映射恒 acceptEdits
-   *  （Task 3）,此处只管流程。 */
-  private planArmed(): boolean {
-    return this.currentMode === 'plan';
-  }
-
-  /** 武装外窥（2026-11-03 /plan 三态,命令通道分流消费） */
-  isPlanArmed(): boolean {
-    return this.planArmed();
-  }
-
-  /** 规划/挂卡期外窥（planFlowRunning 全程标记扣除执行段——执行段档位已落非 plan,/plan <目标>
-   *  走 steer 同普通运行态,不中断在途执行;规划轮/挂卡期才可 replan 替换） */
-  planFlowPlanning(): boolean {
-    return this.planFlowRunning && !this.planExecuting;
-  }
-
-  /** 重新规划（2026-11-03 /plan 三态）：规划在途/挂卡期以新目标替换——中止在途流程（信号+挂卡拒绝
-   *  回填+有界等收束;planReplanQuiet 抑制「规划已中断」notice）后起新流程。回执文案归调用面
-   *  （命令通道 notice 捕获为工具结果载荷）;收束窗口竞态防御（setMode disarm 同款）：收束后有新
-   *  run 起跑则不压 run,目标转队列（pump 直落转录） */
-  async replan(goal: string): Promise<void> {
-    this.planReplanQuiet = true;
-    try {
-      await this.abortPlanFlowAndSettle();
-    } finally {
-      this.planReplanQuiet = false;
-    }
-    if (this.status() === 'running') {
-      this.pump({ type: 'notice', text: 'Re-plan superseded by a running task — goal queued', ts: Date.now() });
-      this.steer(goal);
-      return;
-    }
-    this.runPlanArm(goal);
-  }
-
-  /** plan 流程中止外窥（2026-11-03 /plan off）：abortPlanFlowAndSettle 公开薄壳——命令通道 disarm
-   *  前中止规划/挂卡期流程（信号+挂卡拒绝回填+有界等收束） */
-  async abortPlanFlow(): Promise<void> {
-    await this.abortPlanFlowAndSettle();
-  }
-
-  /** /plan 规划流程壳（spec §5.1;TUI startPlanFlow 同构,serve 侧裁决经挂起表回执路由驱动）：
-   *  runPlanFlow 纯流程编排的宿主消费,IO 全走接缝。submit 半径只到用户裁决点：首轮规划在阶段一锁内
-   *  跑到 awaiting-approval（或中断/超限/无产物终态）——卡登记+广播后放行锁（idle 时刻合法是批准续段
-   *  setMode 的前置）;裁决后续段（批准=落 acceptEdits+逐项执行;拒绝=修订重入/超限收尾）脱离 submit
-   *  半径,由 resolvePendingPlanApproval 的回执驱动后台续跑——「提交后停在确认卡」的公开语义不变。 */
-  private runPlanArm(goal: string, images?: string[]): void {
-    this.planFlowRunning = true;
-    const startedAt = Date.now(); // 交稿收束 runmeta 行的时长基线（fork run 唯一终态行锚）
-    const abort = new AbortController();
-    this.planAbort = abort;
-    // 用户目标回显（kernel.submit 单点：user 段入转录+WS 广播+journal 行;TUI /plan 输入回显同构）——
-    // 目标自身不进链（TUI 同裁定：goal 只是观测标签,规划提示词经 fork seedHistory 承载）
-    this.kernel.submit(goal, images);
-    let openGate!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      openGate = resolve;
-    });
-    let gated = false;
-    const releaseGateOnce = (): void => {
-      if (gated) return;
-      gated = true;
-      if (this.current?.abort === abort) this.current = undefined; // 裁决点/终态放行：idle 时刻合法（setMode 前置）
-      this.runtimeImpl.harness.sandbox.setRunSignal(undefined);
-      openGate();
-    };
-    // 阶段一锁（submit 半径）：受理即持锁（409 拒二次提交）+ run 信号装入沙箱（interrupt 在途 exec 即刻收割）
-    this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
-    this.current = { abort, done: gate };
-    let openFlow!: () => void;
-    const flowSettled = new Promise<void>((resolve) => {
-      openFlow = resolve;
-    });
-    this.planFlowSettled = flowSettled;
-    // 前轮计划书宿主侧留存（TUI 同构 rider：驳回环重入,revising 轮拼进规划提示词前部——plan-flow 模块不动）
-    let lastPlanDoc: string | undefined;
-    let revising = false;
-    // 交稿面闭包（2026-11-03,TUI 同构）：planName/planPath=awaiting-approval 臂更新;lastRound=驳回行 round 文案;
-    // planCardMeta=awaitApproval 消费面（卡元数据,合成行 path 来源）
-    let planName: string | undefined;
-    let planPath: string | undefined;
-    let lastRound = 1;
-    const planCardMeta: { name: string; path?: string } = { name: '' };
-    /** 合成 exit_plan 链行（TUI 同构）：[tool-call({name,path}) , tool-result('decision: …')]——回放权威,
-     *  live 面 fork onEvent 事件帧已实时显示（链行不带 doc,全文走 'plan' 行）;有交稿事实才合成 */
-    const appendExitPlanRows = (decision: string): void => {
-      if (planName === undefined) return;
-      this.runtimeImpl.harness.context.appendChain([
-        { action: 'tool-call', observation: formatToolCallLine('exit_plan', JSON.stringify({ name: planName, ...(planPath !== undefined ? { path: planPath } : {}) })) },
-        { action: 'tool-result', observation: decision },
-      ]);
-    };
-    const decisionTextOf = (d: PlanDecision, interrupted: boolean): string => {
-      if (interrupted) return 'decision: interrupted — no plan decision';
-      if (d.approved) return `decision: implement via ${d.mode === 'full-access' ? 'full access' : 'workspace edits'}`;
-      if (d.feedback !== undefined && d.feedback.trim() !== '') return `decision: rejected with feedback — revision round ${Math.min(lastRound + 1, PLAN_MAX_ROUNDS)}/${PLAN_MAX_ROUNDS}`;
-      return 'decision: discarded by user (no feedback)';
-    };
-    void (async () => {
-      try {
-        const r = await runPlanFlow(goal, {
-          // 中断信号沿规划任务透传（TUI runInternalTask 同构,第三参对齐接缝签名）。
-          // 交稿转译（2026-11-03,TUI 同构）：plan-presented → 读暂存槽,doc 进 reply 通道（plan-flow 既有
-          // 「reply=计划书」判定即权威,状态机零改动）;name 一并带出（卡/落盘/合成行展示）
-          runPlanningTask: (prompt, signal) => {
-            const full = revising && lastPlanDoc
-              ? `Previous plan document (rejected — revise it per the feedback below):\n${lastPlanDoc}\n\n${prompt}`
-              : prompt;
-            const inner = this.runPlanningTask(full, signal, revising ? undefined : images); // 用户随行图片仅首轮规划透传（修订轮提示词已含旧计划书全文,图片随首轮 seed 已在链）
-            return inner.then((out) => {
-              if (out.stopReason === 'plan-presented') {
-                const presented = this.runtimeImpl.harness.takePresentedPlan();
-                return { done: true, reply: presented?.doc ?? '', ...(presented !== undefined ? { name: presented.name } : {}) };
-              }
-              return { done: out.done, ...(out.stopReason !== undefined ? { stopReason: out.stopReason } : {}), ...(out.reply !== undefined ? { reply: out.reply } : {}) };
-            });
-          },
-          enterReadOnly: () => {
-            this.runtimeImpl.harness.security.enterModeOverride('read-only');
-            this.runtimeImpl.harness.security.setExitPlanArmed(true); // 交稿协议：exit_plan 仅规划轮放行
-          },
-          exitReadOnly: () => {
-            this.runtimeImpl.harness.security.exitModeOverride();
-            this.runtimeImpl.harness.security.setExitPlanArmed(false);
-          },
-          // 计划书落盘（2026-11-03,TUI 同构）：born-write 铸档后写 <dataDir>/sessions/<journalId>.plan.md（每轮覆盖写）
-          persistPlan: (_name, doc) => {
-            this.ensureMintedWithBirth();
-            const jid = this.journal?.currentId;
-            if (jid === undefined) return {};
-            return { path: writePlanDoc(resolveDataDir(this.root), jid, _name, doc) };
-          },
-          todosSnapshot: () => this.todos.map((td) => ({ text: td.text, status: td.status })),
-          chainAppendPlan: (doc) => {
-            // 计划书入链（ChainAction 'plan',批准后一次）。'plan' 行**不进**推理轮半径——Task 8 移交
-            // 裁定（TUI 已留注释：messages lastTaskIdx 只锚 'task'）,serve 侧同裁定同注释：执行段
-            // 首步 runTask 经同链读到计划书,推理轮半径无需纳入。
-            this.runtimeImpl.harness.context.appendChain([{ action: 'plan', observation: doc }]);
-          },
-          emit: (e) => {
-            if (e.type === 'planning') {
-              lastRound = e.round;
-              return; // 运行态已由阶段一锁承载（status running）,无独立状态行
-            }
-            if (e.type === 'awaiting-approval') {
-              lastPlanDoc = e.doc; // 前轮计划书留存（revising 轮拼提示词用）
-              planName = e.name; // 交稿面闭包更新（合成链行/挂起行数据源）
-              planPath = e.path;
-              planCardMeta.name = e.name;
-              if (e.path !== undefined) planCardMeta.path = e.path; else delete planCardMeta.path;
-              revising = false;
-              // fork run 终态 runmeta 行（2026-11-03 交稿协议,仅此一处写）:交稿=规划 run 正常收束,
-              // 带 endedTs 无 stopped——回放 seglog 悬空强制 stopped 规则不触发,重启后 run 行显
-              // 「已运行 X」而非「已停止」（ask_question 同观感:停在等待裁决而非停止）
-              this.journal?.log({ t: 'runmeta', seconds: Math.max(1, Math.round((Date.now() - startedAt) / 1000)), endedTs: Date.now() } as unknown as Parameters<SessionJournal['log']>[0]);
-              return; // 卡面=plan-approval 帧+挂起表快照（awaitApproval 接缝登记）,无独立状态行
-            }
-            if (e.type === 'revising') {
-              revising = true;
-              lastRound = e.round;
-              this.pump({ type: 'notice', text: `Revising plan with your feedback (round ${e.round}/${PLAN_MAX_ROUNDS})`, ts: Date.now() });
-              return;
-            }
-            if (e.type === 'aborted') {
-              // 合成链行补终态（2026-11-03,TUI 同构）：有交稿事实才合成（empty/failed/首轮中断无调用,零合成）;
-              // exhausted 的末轮驳回行已由 awaitApproval 合成,此处零重复
-              if (planName !== undefined) {
-                appendExitPlanRows(
-                  e.reason === 'interrupted'
-                    ? 'decision: interrupted — no plan decision'
-                    : e.reason === 'exhausted'
-                      ? `decision: rejected ${PLAN_MAX_ROUNDS} times (exhausted)`
-                      : e.reason === 'discarded'
-                        ? 'decision: discarded by user (no feedback)'
-                        : `decision: planning failed (${e.stopReason ?? 'unknown'})`,
-                );
-              }
-              // replan 静默位（2026-11-03）：替换路径的中断不落「规划已中断」——replan 自带回执文案
-              if (e.reason === 'interrupted' && this.planReplanQuiet) {
-                releaseGateOnce(); // 无裁决点路径也放行 submit 半径
-                return;
-              }
-              // failed 臂如实措辞（终审修复,spec §7：规划失败不再谎报 interrupted,stopReason 透传入文）;
-              // discarded（2026-11-03 修订）：空反馈驳回=放弃本轮,武装保持——下条提交（仍 armed）重新规划
-              const why = e.reason === 'interrupted'
-                ? 'Planning interrupted'
-                : e.reason === 'exhausted'
-                  ? 'Plan rejected 3 times — stopped, nothing executed'
-                  : e.reason === 'empty'
-                    ? 'Planning produced no steps — cancelled'
-                    : e.reason === 'discarded'
-                      ? 'Plan discarded — still in plan mode; submit a new goal to re-plan'
-                      : `Planning failed: ${e.stopReason ?? 'unknown'}`;
-              this.pump({ type: 'notice', text: why, ts: Date.now() });
-              releaseGateOnce(); // 无裁决点路径（中断/超限/无产物）也放行 submit 半径
-              return;
-            }
-            // approved：产物经返回值 r 承载,续段在下方 r 分支
-            this.pump({ type: 'notice', text: `Plan approved — executing ${e.items.length} step(s)`, ts: Date.now() });
-          },
-          // 裁决回填（合成链行时点,TUI 同构）：决策先合成行（tool-call→tool-result 链序在 'plan' 行之前——
-          // 红线①不破）再交还 plan-flow;interrupted 判别用流程 abort 信号（denyPending 回填路径信号已置位）
-          awaitApproval: (doc, items) =>
-            this.awaitPlanApproval({ name: planCardMeta.name, path: planCardMeta.path, doc, items }, releaseGateOnce).then((d) => {
-              appendExitPlanRows(decisionTextOf(d, abort.signal.aborted));
-              return d;
-            }),
-          signal: abort.signal,
-        });
-        if (r) {
-          // 批准续段（单点,TUI 同构：漂移探测 → 落 acceptEdits → 逐项执行）。链序保证：planFlow 已先
-          // chainAppendPlan 再返回——计划书行严格先于本段的执行指令行入链
-          const notices = this.runtimeImpl.harness.context.checkConstantsDrift();
-          for (const n of notices) this.runtimeImpl.harness.context.appendChain([{ action: 'notice', observation: n }]);
-          for (const n of notices) this.pump({ type: 'notice', text: n, ts: Date.now() });
-          // 落所选档（2026-11-03 修订:批准卡三选,r.mode 权威、缺省 acceptEdits 由 plan-flow 兜底;
-          // spec §4.4/§5.1 绑定:真切换,arm 解除）。**轻量直切（重建退役）**:setBaseMode 纯字段写,
-          // 链原地零位移（换铸五件套 carry/snapshotExport/restoreSession/restoreSnapshot/重挂订阅
-          // 全部退役——它们只为修重建副作用而生）;前缀缓存天然保。asker serve 无条件就位,降档
-          // acceptEdits 的 ask 卡直落挂起表。idle 时刻合法（锁已在裁决点放行）。
-          this.currentMode = r.mode; // arm 解除+快照 mode 字段权威落档(轻量直切无换铸,须显式写)
-          this.runtimeImpl.harness.security.setBaseMode(r.mode);
-          this.persistSelection({ mode: r.mode });
-          this.pump({ type: 'notice', text: r.mode === 'full-access' ? 'Switched to full access mode' : 'Switched to workspace edit mode', ts: Date.now() });
-          // 阶段二锁（执行段）：批准续段整段持锁（409 拒并发提交）+沙箱信号重装（执行段 run 信号）
-          this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
-          let openExec!: () => void;
-          const execDone = new Promise<void>((resolve) => {
-            openExec = resolve;
-          });
-          this.current = { abort, done: execDone };
-          this.planExecuting = true; // /plan 三态：执行段在途标记（planFlowPlanning 扣除面）
-          try {
-            await this.runPlanItems(r.items);
-          } finally {
-            this.planExecuting = false;
-            if (this.current?.abort === abort) this.current = undefined;
-            this.runtimeImpl.harness.sandbox.setRunSignal(undefined);
-            openExec();
-          }
-        }
-        // aborted：三分支回执已在 emit 臂如实落地,此处零事务（防双份文案）
-      } catch (e) {
-        this.pump({ type: 'error', text: 'Planning failed: ' + (e instanceof Error ? e.message : String(e)), ts: Date.now() });
-        releaseGateOnce(); // 防御：壳异常也放行 submit 半径
-      } finally {
-        this.planFlowRunning = false;
-        this.planAbort = undefined;
-        this.planFlowSettled = undefined;
-        if (this.current?.abort === abort) this.current = undefined;
-        releaseGateOnce(); // 防御：任何出口都放行 submit 半径
-        openFlow();
-      }
-    })();
-  }
-
-  /** 规划轮任务（TUI runInternalTask 同构）：fork 隔离执行——提示词不进会话链（§11 边界登记）,终态零
-   *  主链回写。第二参 signal：planFlow 接缝显式传递（与流程中断源同源,签名对齐 PlanFlowSeams） */
-  private runPlanningTask(prompt: string, signal?: AbortSignal, images?: string[]): Promise<RunOutcome> {
-    const ctx = this.runtimeImpl.harness.context;
-    const base = ctx.chainView();
-    const hasImages = images !== undefined && images.length > 0;
-    return this.runtimeImpl.runTask(PLAN_TASK_LABEL, {
-      scope: 'fork',
-      seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt, ...(hasImages ? { images } : {}) }],
-      ...(this.tier ? { tier: this.tier } : {}),
-      ...(this.effort ? { effort: this.effort } : {}),
-      ...(signal ? { signal } : {}),
-    });
-  }
-
-  /** 逐项执行计划（批准续段;TUI runPlanItems 同构）：每步一个主链 run,完成即勾选 todo（宁停不误——
-   *  单项失败/中断即停,剩余保持未完成）;进度经既有事件面（notice）广播。 */
-  private async runPlanItems(items: string[]): Promise<void> {
-    const abort = this.planAbort;
-    const ctx = this.runtimeImpl.harness.context;
-    this.setTodos(items.map((t): TodoItem => ({ text: t, status: 'pending' })));
-    // 计划纪律走链（只增不改;§15 写链面英文单语,TUI 同一行文案）
-    ctx.appendChain([{ action: 'note', observation: 'Plan discipline: each round completes only the last "Current instruction"; do not execute, anticipate, or reorder other tasks.' }]);
-    for (let i = 0; i < items.length; i++) {
-      // 中断检查在循环体首行（终审修复,与 TUI 同构）：「上一步完成后信号才落地」的竞窗下,被跳过
-      // 步骤的指令行不再入链、待办不再误标 in_progress（旧形态先 append/标 in_progress 再查）
-      if (abort?.signal.aborted) break; // 上一步被中断：不进下一 plan 步
-      this.pump({ type: 'notice', text: `Step ${i + 1}/${items.length} — ${items[i]}`, ts: Date.now() });
-      this.setTodos(this.todos.map((td) => (td.text === items[i] && td.status === 'pending' ? { ...td, status: 'in_progress' } : td)));
-      ctx.appendInstructionLine(`Current instruction: ${items[i]}`);
-      try {
-        const r: RunOutcome = await this.runtimeImpl.runTask(items[i], {
-          ...(this.tier ? { tier: this.tier } : {}),
-          ...(this.effort ? { effort: this.effort } : {}),
-          ...(abort ? { signal: abort.signal } : {}),
-        });
-        if (r.stopReason === 'interrupted') {
-          this.pump({ type: 'notice', text: 'Task interrupted — completed steps kept on the chain', ts: Date.now() });
-          break;
-        }
-        if (!r.done) {
-          this.pump({ type: 'notice', text: `Step incomplete: ${items[i]}; remaining steps paused`, ts: Date.now() });
-          break;
-        }
-        this.setTodos(this.todos.map((td) => (td.text === items[i] ? { ...td, status: 'completed' } : td)));
-      } catch (e) {
-        this.pump({ type: 'notice', text: `Step failed: ${items[i]} (${e instanceof Error ? e.message : String(e)}); remaining steps paused`, ts: Date.now() });
-        break;
-      }
-    }
   }
 
   /** todo 清单唯一写点（装配 onTodos 收写与批准续段勾选共用;会话级字段,reset 换新清空） */
@@ -1328,7 +1052,7 @@ export class SessionRuntime {
    * 的 journal 不 seal 不解挂（会话存活，续写同 journal——T2 语义）——落盘订阅随新运行时重挂。
    */
   async reset(): Promise<void> {
-    await this.abortAndSettle(); // plan 流程在途同断面收口（信号中止+挂卡拒绝回填,见 abortAndSettle）
+    this.denyPlanPendings(); // plan 挂起卡拒绝回填（阻塞 executor 凭信号收尾）
     this.current = undefined; // 有界 settle 超时后仍清锁，避免 status 假 running
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
@@ -1408,7 +1132,7 @@ export class SessionRuntime {
    *  换铸（assemble 重建+快照直传回种）是 v1 复用 reset 路径的惯性,非 mode 依赖——随本修订退役,连同
    *  其修补机械（快照直传/hookJournalSink 重挂/链 restore）。两个有意差异登记:①sessionAllows/
    *  sessionDirAllows 跨档保留（加法语义,旧换铸清空）;②readGuard 不换铸（降档免重读,旧换铸「强制
-   *  重读」语义退役）。边界保留:规划轮 read-only 覆盖在座（planFlowPlanning）切真档仍 busy——override
+   *  重读」语义退役）。边界保留:规划轮 read-only 覆盖在座（overrideActive）切真档仍 busy——override
    *  遮蔽窗口不放开;切离 plan 且流程在途保留 disarm 收口（中止在途流程,语义不变）。
    *  plan 流程标记（阶段三 plan-arm;/plan 三态）：setMode('plan') 即武装——武装快路径,任何状态可用、
    *  幂等、永不 busy：arm 只是 currentMode 标记位（装配映射恒 acceptEdits）,不重建运行时;运行中武装
@@ -1419,18 +1143,21 @@ export class SessionRuntime {
    *  前先经 abortPlanFlowAndSettle 单点中止流程（信号+挂卡拒绝回填+有界等收束）;批准续段自身已改
    *  setBaseMode 直切（无流程可中止,planFlowInternal 旁路与换铸五件套一并退役）。 */
   async setMode(mode: SessionMode): Promise<'ok' | 'busy'> {
-    // 武装快路径（2026-11-03）：置标记+落 meta 即回,零重建零 busy——运行中武装=对下一次提交生效
+    // 武装快路径（2026-11-03）：置标记+落 meta+武装 exit_plan 即回,零重建零 busy
     if (mode === 'plan') {
       if (this.currentMode === 'plan') return 'ok'; // 同档幂等
       this.currentMode = 'plan';
+      this.runtimeImpl.harness.security.setExitPlanArmed(true);
       this.persistSelection({ mode });
       return 'ok';
     }
-    // 边界①:read-only override 实际在座（规划轮调研中）基档活改被遮蔽到 exitReadOnly——切真档 busy
-    // 不放开;挂卡期 override 已退出（exitReadOnly 随规划任务结束）,切真档=disarm 合法
-    if (this.runtimeImpl.harness.security.overrideActive) return 'busy';
-    // 边界②:disarm 收口——切离 plan 且流程在途,中止在途流程（挂卡拒绝回填+有界等收束）
-    if (this.planFlowRunning) await this.abortPlanFlowAndSettle();
+    // 边界:disarm——切离 plan 且 run 在途（调研/挂卡阻塞中）,中断 run（挂起卡拒绝回填）并退出 override;
+    // 真档直切后新基档即时生效（运行中不再 busy——guard 活读,在飞不回溯）;解除 exit_plan 武装
+    if (this.planArmed() && this.current !== undefined) this.interrupt();
+    this.runtimeImpl.harness.security.exitModeOverride();
+    this.runtimeImpl.harness.security.setExitPlanArmed(false);
+    if (this.planArmed() && this.current !== undefined) this.interrupt();
+    this.runtimeImpl.harness.security.exitModeOverride();
     if (mode === this.currentMode) return 'ok';
     this.currentMode = mode;
     this.runtimeImpl.harness.security.setBaseMode(mode); // guard 纯字段写,下一未决调用即按新档判决
@@ -1482,6 +1209,7 @@ export class SessionRuntime {
   }
 
   snapshotResponse(page?: SessionSnapshotPage): SessionSnapshot {
+    void this.todos; // 会话 todo 投影读面（批准播种/模型 todo_write 收写;GUI 面走 todo-batches）——TS6133 豁免读
     const full = this.kernel.replay();
     // 2026-10-26 三期:缺省尾窗 200(首屏);before/limit 向前翻页(补全页,缺省 600 上限 2000)。
     // result.full 恒剥(载荷瘦身,全量观测走 entry/observation 按需端点);journal 落盘不动
@@ -1564,11 +1292,11 @@ export class SessionRuntime {
   /** 收口步骤 0：在跑 run 即刻中止（T1 评审裁定：悬挂 run 的 promise 会拖住事件循环/测试收口；路径同
    *  /interrupt）→ 被中止 run 的 settle 钩子（沉淀入队）需收口后才进 drain——2000ms 有界防 signal
    *  无视的工具悬挂 teardown（终审裁定）；done 先胜即清残留 timer，不给事件循环留 2s 尾巴。
-   *  plan 流程在途同断面：abortPlanFlowAndSettle 单点先行（流程整体收束后再等 run settle——防
-   *  reset 换新运行时与续跑段竞写） */
+   *  阻塞中的 exit_plan 挂起 executor 同为中断面：denyPlanPendings 回填（放弃/拒绝）→ executor 恢复
+   *  凭中止信号收尾 */
   async abortAndSettle(): Promise<void> {
     this.current?.abort.abort();
-    await this.abortPlanFlowAndSettle();
+    this.denyPlanPendings();
     if (!this.current) return;
     const current = this.current;
     let settleTimer: NodeJS.Timeout | undefined;
@@ -1581,26 +1309,6 @@ export class SessionRuntime {
     clearTimeout(settleTimer);
   }
 
-  /** plan 流程在途中止单点（终审修复 b：镜像 abortAndSettle 形态收敛为一个内部操作）——
-   *  planAbort.abort()（流程信号:规划轮在途调用/执行段逐项 run/挂卡期中止判定共用）+
-   *  denyPlanPendings()（挂卡拒绝回填——decide 回填后流程凭已置位的中止信号走 aborted 收尾,
-   *  产物不注入执行不启动）+ 有界等 planFlowSettled（≤2s;挂卡期 current 已放行,流程收束 promise
-   *  是唯一等待锚——防调用方换新运行时与续跑段竞写）。interrupt（fire-and-forget）/abortAndSettle
-   *  （reset/teardown 前置）/setMode 切离 plan（disarm）各路共用;流程不在途零事务幂等 */
-  private async abortPlanFlowAndSettle(): Promise<void> {
-    if (!this.planFlowRunning) return;
-    this.planAbort?.abort();
-    this.denyPlanPendings();
-    const flowSettled = this.planFlowSettled;
-    if (flowSettled === undefined) return;
-    let settleTimer: NodeJS.Timeout | undefined;
-    const bail = new Promise<void>((resolve) => {
-      settleTimer = setTimeout(resolve, ABORTED_RUN_SETTLE_MS);
-    });
-    // race 面吞拒同 abortAndSettle：等「落定」不随其失败
-    await Promise.race([flowSettled.catch(() => undefined), bail]);
-    clearTimeout(settleTimer);
-  }
 
   /** 收口步骤 3-5（当前运行时）：停全部后台任务（同 CLI D24：任务执行体先停、通道后关，stopAll 同步
    *  纯本地记账不抛）→ 排空后台沉淀管线（此时无新入队源，drain 即终态）→ MCP 连接收口（stdio 子进程

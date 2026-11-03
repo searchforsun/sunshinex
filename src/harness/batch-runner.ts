@@ -58,7 +58,7 @@ export class BatchRunner {
     this.batchCounts.clear();
   }
 
-  async runBatch(input: BatchRunInput): Promise<{ terminalCalled: boolean }> {
+  async runBatch(input: BatchRunInput): Promise<void> {
     const { calls, argsOf, step, ledger } = input;
     // 执行面校验（参数 schema 表达不了的跨调用约束）：批内含状态类调用（前后有序依赖）→ 整轮按出牌顺序串行执行，
     // 保证先到的调用完成后后者才开跑、副作用顺序与模型意图一致；仅超上限仍拒绝。单调用不限
@@ -108,7 +108,7 @@ export class BatchRunner {
         this.deps.emit('tool-result', rejection.slice(0, 200), { ok: false, full: rejection, tool: calls[i].name, callId: callIds[i], status: 'failed' });
         ledger.resultRow(rejection);
       }
-      return { terminalCalled: false };
+      return;
     }
 
     const runOne = (c: ToolCallSpec, args: Record<string, unknown> | null) =>
@@ -177,10 +177,7 @@ export class BatchRunner {
         return tail;
       }));
     }
-    // 批后记账（出牌顺序）：观察行入链 + read/grep 成功结果文件追踪——经 ledger 回调整块承载。
-    // terminal 工具（2026-11-03 交稿协议）：成功执行即置批级终止标志（被拒/坏参/重复跳过不算——
-    // 模型看拒绝行自行调整,终态性只在真实交稿成立）;reactor 收束 stopReason 并结束 run
-    let terminalCalled = false;
+    // 批后记账（出牌顺序）：观察行入链 + read/grep 成功结果文件追踪——经 ledger 回调整块承载
     for (let i = 0; i < calls.length; i++) {
       const c = calls[i];
       const args = argsOf[i];
@@ -190,12 +187,10 @@ export class BatchRunner {
         const p = (args as { path?: unknown } | null)?.path;
         if (typeof p === 'string' && p.length > 0) ledger.trackFile(p);
       }
-      if (r !== null && r.ok && this.deps.registry.get(c.name)?.terminal === true) terminalCalled = true;
     }
     // 整批全拒只回写现象观察行（工具结果行已完整呈现拒绝事实），不发旁路事件——
     // 系统层再报一次即同事实双报（TUI 渲染成 ✗ 错误红行）；被拒步骤可跳过，
     // 续跑/换路/收束的判断权在模型
-    return { terminalCalled };
   }
 }
 

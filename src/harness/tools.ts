@@ -38,10 +38,6 @@ export interface RegisteredTool extends ToolSpec {
    *  的输出（skill 策划全文、子智能体结论、task_wait 回执）；上下文超限由反应式压缩兜底（CLAUDE.md §12），
    *  不是截断口的职责 */
   readonly fullObservation?: boolean;
-  /** 终止型工具（可选，2026-11-03 交稿协议）：执行成功即终止本 run（reactor 收束 stopReason='plan-presented'，
-   *  产物经 harness 暂存槽由宿主规划接缝取走；执行失败/被拒不终止——模型看拒绝行自行调整）。
-   *  先例语义对标 ask_question 的「挂起等外决」，差别在交稿即收束而非挂起 */
-  readonly terminal?: boolean;
 }
 
 /** 工具域带码错误：executor 以业务错误码中止执行（registry 转译为同码 Result.fail，降级语义不再笼统 EXEC_FAILED） */

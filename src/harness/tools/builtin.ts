@@ -112,9 +112,9 @@ export function builtinTools(
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
     readGuard?: ReadGuard;
-    /** exit_plan 交稿接缝（2026-11-03 交稿协议）：present 写 harness 暂存槽（terminal 工具终止 run 后由
-     *  宿主规划接缝 takePresentedPlan 取走）。接缝不在场不注册（ask 先例） */
-    plan?: { present: (name: string, doc: string) => void };
+    /** exit_plan 交稿接缝（2026-11-03 无感化,ask_question 同构）：awaitDecision 弹卡阻塞等裁决
+     *  （run 不收口）——裁决即工具结果回喂,模型同 run 无感继续。接缝不在场不注册（ask 先例） */
+    plan?: { awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }> };
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
@@ -742,9 +742,9 @@ export function builtinTools(
     },
   });
 
-  // exit_plan（2026-11-03 交稿协议,方案 B 转正）：规划轮交稿终止型工具——模型调研完显式出牌,
-  // doc 进 harness 暂存槽、本 run 以 plan-presented 收束（terminal 面）;guard 只在规划轮放行
-  // （exitPlanArmed,拒绝不终止——模型看拒绝行自行调整）。接缝不在场不注册（ask 先例）
+  // exit_plan（2026-11-03 无感化,ask_question 同构）：挂起型交稿工具——模型调研完显式出牌,executor
+  // 弹卡阻塞等裁决（run 不收口,界面保持运行中）,裁决作为工具结果回喂,模型同 run 无感继续。
+  // guard 只在计划模式放行（exitPlanArmed;拒绝不终止——模型看拒绝行自行调整）。接缝不在场不注册（ask 先例）
   if (plan) {
     const planSeam = plan;
     tools.push({
@@ -759,19 +759,23 @@ export function builtinTools(
       },
       name: 'exit_plan',
       description:
-        'Present your plan for user approval and end the planning round. Call this ONLY in plan mode after you have finished investigating (read-only research) and the plan is ready. The plan document is shown to the user as a confirmation card; execution starts only after they approve. Do not call it in normal (non-plan) work.',
+        'Present your plan for user approval. Call this ONLY in plan mode after you have finished investigating (read-only research) and the plan is ready. Blocks until the user decides: approval returns permission to implement in this same session; rejection returns feedback to revise with. Do not call it in normal (non-plan) work.',
       category: 'plan',
       display: { verb: 'PLAN', targetFields: ['name'] },
-      terminal: true,
       executor: async (input: ToolInput) => {
         // name 可空(2026-11-03 实测:glm 出牌漏 name→INVALID_ARG 硬失败→交稿不达;缺省交由
-        // plan-flow derivePlanName(goal) 兜底,槽内空名即走派生);doc 缺失仍是硬错误(无计划书即无交稿)
+        // 宿主 derivePlanName(goal) 兜底);doc 缺失仍是硬错误(无计划书即无交稿)
         const name = typeof input.name === 'string' ? input.name.trim() : '';
         const doc = typeof input.doc === 'string' ? input.doc : '';
         if (doc.trim() === '') throw new CodedToolError('INVALID_ARG', 'doc must be the full plan document in markdown (non-empty)');
-        planSeam.present(name, doc);
-        const shown = name !== '' ? name : '(untitled plan)';
-        return execOut(`plan presented: ${shown} — awaiting user decision (approve lands the execution mode; reject returns feedback for a revision round)`);
+        const decision = await planSeam.awaitDecision(name, doc);
+        if (decision.approved) {
+          return execOut(`plan approved — implement via ${decision.mode === 'full-access' ? 'full access' : 'workspace edits'}; maintain progress with todo_write as you go`);
+        }
+        if (decision.feedback !== undefined && decision.feedback.trim() !== '') {
+          return execOut(`plan rejected — revise it per this feedback and call exit_plan again: ${decision.feedback}`);
+        }
+        return execOut('plan rejected without feedback');
       },
     });
   }

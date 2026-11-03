@@ -230,19 +230,17 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
   }
 
   if (cmd === '/plan') {
-    // 2026-11-03 修订（/plan 三态,spec 修订节）：/plan=纯切档（武装）——任何状态可用、幂等、永不 busy
-    // （arm 只是 currentMode 标记位,不重建运行时;运行中武装对下一次提交生效,GUI pill 同路径受益）。
-    // 带目标按会话状态三态分流：规划/挂卡期→replan 按新目标重新规划（不再 409,旧流程中止+旧卡撤）;
-    // 执行段/普通任务在途→入 steer 队列（当前 run 收口后经 arm 拦截自然转规划,不中断在途工作）;
-    // 空闲→立即规划。off=解除武装（规划/挂卡期先中止流程;执行段档位已非 plan=armed 不成立,如实提示;
-    // 普通 run 在途的真切档仍 idle-only,busy 提示稍后）
+    // 2026-11-03 无感化（ask_question 同构）：/plan=纯切档（武装）——任何状态可用、幂等、永不 busy。
+    // 带目标分流：挂卡在途→中断弃卡+按新目标重新提交；run 在途（调研/普通任务）→入 steer 队列
+    // （run 收口后经 arm 拦截自然转规划,不中断在途工作）；空闲→立即提交（read-only 覆盖+会话作用域 run）。
+    // off=解除武装（run 在途先中断弃卡;空闲直接落 acceptEdits）
     const arg = line.trim().split(/\s+/).slice(1).join(' ').trim();
     if (arg === 'off') {
       if (!s.isPlanArmed()) {
         notice(t('Not in plan mode', '当前不在计划模式'));
         return 'ok';
       }
-      if (s.planFlowPlanning()) await s.abortPlanFlow(); // 规划/挂卡期先中止（挂卡拒绝回填,卡撤）
+      if (s.status() === 'running') await s.interrupt(); // 放弃在途(调研/挂卡阻塞)——回输入态
       if ((await s.setMode('acceptEdits')) !== 'ok') {
         notice(t('Busy — leave plan mode when the session is idle', '会话忙——空闲后再退出计划模式'));
         return 'ok';
@@ -253,7 +251,6 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     const wasArmed = s.isPlanArmed();
     await s.setMode('plan'); // 武装快路径:恒 ok
     if (arg.length === 0) {
-      // 裸 /plan=只武装不提交,幂等可重复发送
       notice(
         wasArmed
           ? t('Already in plan mode', '已处于计划模式')
@@ -261,10 +258,11 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       );
       return 'ok';
     }
-    if (s.planFlowPlanning()) {
-      await s.replan(arg);
-      notice(t('Re-planning with the new goal', '已按新目标重新规划'));
-      return 'ok';
+    if (s.hasPlanPending()) {
+      // 挂卡期:新目标=放弃当前卡（拒绝回填+run 中断收尾）,按新目标重新提交
+      await s.interrupt();
+      const deadline = Date.now() + 2000;
+      while (s.status() === 'running' && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
     }
     if (s.status() === 'running') {
       s.steer(arg);

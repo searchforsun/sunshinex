@@ -59,6 +59,9 @@ const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
   ask?: AskUserSeam;
+  /** exit_plan 挂起接缝（2026-11-03 无感化）：awaitDecision 弹卡阻塞等裁决,裁决即工具结果回喂;
+   *  接缝缺省不注册（ask 先例） */
+  plan?: { awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }> };
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
   root?: string;
   model?: ModelAdapter;
@@ -109,17 +112,6 @@ export class Harness {
   readonly tasks: TaskRegistry;
   /** edit 先读守卫（read-guard.ts）：read 记录快照 / edit 校验，NOT_READ·STALE_READ 硬闸 */
   readonly readGuard: ReadGuard;
-  /** exit_plan 交稿暂存槽（2026-11-03 交稿协议）：terminal 工具 executor 经接缝写入，
-   *  宿主规划接缝（stopReason==='plan-presented'）经 takePresentedPlan 读即清——doc 不走 reply 通道 */
-  private presentedPlan?: { name: string; doc: string };
-
-  /** 交稿产物读即清单点：宿主规划接缝在 stopReason==='plan-presented' 时取走（缺位=交稿槽空,兜底回退 reply 通道） */
-  takePresentedPlan(): { name: string; doc: string } | undefined {
-    const p = this.presentedPlan;
-    this.presentedPlan = undefined;
-    return p;
-  }
-
   /** 智能体团队板协调器：会话内单物理板，任务按 teamId 聚合；成员认领/消息仅队内 */
   readonly taskboard: TaskBoard;
   /** AgentTeam 注册表：create_agent_team / create_agent_teammate / create_agent_team_task 共用同一实例（按会话落盘） */
@@ -256,7 +248,7 @@ export class Harness {
       todos: opts.todos ?? { set: () => {} },
       tasks: this.tasks,
       readGuard: this.readGuard, // edit 先读守卫(2026-10-31 用户裁定):随运行时铸造,换铸后须重读再改
-      plan: { present: (name, doc) => { this.presentedPlan = { name, doc }; } }, // exit_plan 交稿接缝(2026-11-03):槽写面,读走 takePresentedPlan
+      plan: opts.plan, // exit_plan 挂起接缝(2026-11-03 无感化):宿主 awaitDecision 弹卡等裁决
     })) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();

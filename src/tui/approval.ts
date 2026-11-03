@@ -105,19 +105,10 @@ export function interrupt(ctrl: SessionController): boolean {
     ctrl.state = { ...ctrl.state, question: undefined };
     pendingQ.resolve({ type: 'dismissed' });
   }
-  // 待确认计划：planFlow 在途=中断转裁决回填语义（rider:signal 边界——awaitApproval 期间 signal 中止后,
-  // 若放任 approved 决定,runPlanFlow 仍会 chainAppendPlan 注入产物并返回给壳续跑执行段;故此处必须转为
-  // confirmPlan(false)：decide 回填后流程凭已置位的中止信号走 aborted-interrupted 收尾,产物不注入、执行不启动）；
-  // 流程不在途的悬卡=旧式放弃（防御路径,沿既有出清）
+  // 待确认计划（2026-11-03 无感化）：exit_plan executor 阻塞等裁决中——中断=deny 回填放弃本轮
+  // （executor 恢复凭中止信号收尾,run interrupted;arm 保持）。悬卡无 run 在途=旧式弃卡（防御路径）
   if (ctrl.pendingPlan) {
-    if (ctrl.planFlowRunning) {
-      void ctrl.confirmPlan(false);
-      return true;
-    }
-    ctrl.pendingPlan = undefined;
-    ctrl.state = { ...ctrl.state, status: 'idle' };
-    ctrl.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
-    ctrl.notify();
+    void ctrl.confirmPlan(false);
     return true;
   }
   // 排队穿插行随中断**保留并转暂停**（2026-10-19 用户裁决「中断不丢弃队列」，废止旧「中断即丢弃」）：

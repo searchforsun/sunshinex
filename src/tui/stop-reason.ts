@@ -18,7 +18,6 @@ export function describeIncomplete(stopReason: StopReason | undefined): string {
     case 'done':
     case 'model-error':
     case 'interrupted': // 用户主动中断：回执由 session 层发（Esc/Ctrl+C 语义），此处不重复
-    case 'plan-presented': // exit_plan 交稿终止（2026-11-03）：规划 fork run 专属,宿主接缝读槽转译,非「未完成」
     case undefined:
       return '';
     default: {
