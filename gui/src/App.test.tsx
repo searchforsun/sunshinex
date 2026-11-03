@@ -376,10 +376,12 @@ const h = vi.hoisted(() => {
     archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>> {
       return Promise.resolve([]); // 归档清单:测试缺省空
     }
-    /** G14.2xx b 影子水合面:测试缺省空行集(子智能体投影恢复无档);可编程面留 shadowResp */
-    shadowResp: { events: import('../../src/types').SessionEvent[]; cut: number } = { events: [], cut: 0 };
+    /** G14.2xx b 影子水合面:journal 语义——fire 的直播帧同步入档,读档时刻快照;cut 缺省 -1
+     *  (测试帧 seq 缺省 0,真 daemon 帧 seq 恒正——cut=0 会把读档后的全部直播帧当「迟到种子帧」丢弃);
+     *  可编程面留 shadowResp */
+    shadowResp: { events: import('../../src/types').SessionEvent[]; cut: number } = { events: [], cut: -1 };
     shadowEvents(_id: string): Promise<{ events: import('../../src/types').SessionEvent[]; cut: number }> {
-      return Promise.resolve(this.shadowResp);
+      return Promise.resolve({ events: [...this.shadowResp.events], cut: this.shadowResp.cut });
     }
     close(): void {
       this.closed = true;
@@ -490,6 +492,7 @@ async function enterChat(): Promise<{ conn: Conn; unmount: () => void }> {
 }
 
 const fire = (conn: Conn, e: SessionEvent, seq = 0): void => {
+  conn.shadowResp.events.push(e); // 真 daemon 语义:直播帧同时落 journal(影子水合读档可见)
   act(() => conn.opts.onEvent('s1', e, seq));
 };
 
@@ -1067,11 +1070,15 @@ describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () =
 describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转', () => {
   it('右栏标签切换:默认「任务」页(Board);「+」菜单开文件标签 → Files 预览面,Chat 恒挂零重播种', async () => {
     const { conn, unmount } = await enterChat();
+    // Chat 常驻零重播种判据(2026-11-03):打开可刷新面板会按设计再拉快照(c9d9af5),快照调用计数不再
+    // 等价于「Chat 播种次数」——改为直播哨兵:重播种会以快照整替转录,哨兵消失即失败
+    openConn(conn);
+    fire(conn, ev('notice', 'SENTINEL-NORESEED'));
     openTasksTab(); // G14.27:不再默认开,显式打开
     expect(document.querySelector('.sx-tab[data-title="智能体团队"], .sx-tab[data-title="Agent teams"]')?.classList.contains('active')).toBe(true);
     await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(screen.getByLabelText('message input')).toBeDefined();
-    expect(conn.snapshotCalls).toHaveLength(1); // Chat 常驻:开标签不重播种
+    expect(document.body.textContent).toContain('SENTINEL-NORESEED'); // 未重播种
     // G14.159 文件已移出「+」菜单;2026-10-27 目录树入左菜单——经左菜单树文件行开档(真实用户路径)
     conn.treeByPath = { '': { entries: [{ name: 'fileA.ts', kind: 'file' }] } };
     openSidebarTree();
@@ -1079,13 +1086,13 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     await waitFor(() => expect(screen.getByLabelText('files')).toBeDefined()); // lazy 标签体 chunk 解析
     expect(document.querySelector('.sx-tab[data-title="fileA.ts"]')?.classList.contains('active')).toBe(true);
     expect(document.querySelector('.taskboard-cards')?.closest('.sx-tabbody')?.getAttribute('inert')).toBe(''); // keep-alive:board 面隐藏保留
-    expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
+    expect(document.body.textContent).toContain('SENTINEL-NORESEED'); // 未重播种
     // 切回「任务」标签:Board 回归(仍零重播种)
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Todos', '待办') }));
     await waitFor(() => expect(document.querySelector('.todo-cards')).not.toBeNull()); // lazy 标签体
-    expect(conn.snapshotCalls).toHaveLength(1);
+    expect(document.body.textContent).toContain('SENTINEL-NORESEED'); // 未重播种
     unmount();
   });
 
@@ -1482,11 +1489,15 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
 
   it('任务板页默认在场(空板空态);开目录标签再切回,看板回归(Chat 恒挂不重播种)', async () => {
     const { conn, unmount } = await enterChat();
+    // Chat 常驻零重播种判据(2026-11-03):打开可刷新面板会按设计再拉快照(c9d9af5),快照调用计数不再
+    // 等价于「Chat 播种次数」——改为直播哨兵:重播种会以快照整替转录,哨兵消失即失败
+    openConn(conn);
+    fire(conn, ev('notice', 'SENTINEL-NORESEED'));
     openTasksTab(); // G14.27:不再默认开——菜单显式打开后空态在场
     await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
     expect(document.querySelector('.tb-task-list')).toBeNull(); // 空板无任务列表
     expect(screen.getByLabelText('message input')).toBeDefined();
-    expect(conn.snapshotCalls).toHaveLength(1); // 播种恰一次
+    expect(document.body.textContent).toContain('SENTINEL-NORESEED'); // 未重播种
     // G14.159 文件已移出「+」菜单;2026-10-27 目录树入左菜单——开待办页签(任务板失活)→ 切回「任务板」:回归零重播种
     expandSidebarIfCollapsed();
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
@@ -1496,7 +1507,7 @@ describe('G5 Board(右栏默认任务页):板/委派投影 + team(快照) + 会�
     fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
     fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
     await waitFor(() => expect(document.querySelector('.taskboard-cards')).not.toBeNull()); // lazy 标签体 chunk 解析
-    expect(conn.snapshotCalls).toHaveLength(1); // 无第二次播种
+    expect(document.body.textContent).toContain('SENTINEL-NORESEED'); // 未重播种
     unmount();
   });
 

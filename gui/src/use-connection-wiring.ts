@@ -30,6 +30,8 @@ export interface ConnectionWiringDeps {
   sideSinksRef: MutableRefObject<Map<string, MutableRefObject<ChatSink | null>>>;
   boardPendingRef: MutableRefObject<Array<{ e: SessionEvent; seq: number }>>;
   boardSeedingRef: MutableRefObject<boolean>;
+  /** 近期板帧环(面板刷新快照整替后 seq 门重放源;缺省=不记) */
+  boardRecentRef?: MutableRefObject<Array<{ e: SessionEvent; seq: number }>>;
   shadowHydrateRef: MutableRefObject<((sessionId: string) => void) | null>;
   shadowHydratedRef: MutableRefObject<Set<string>>;
   shadowHydratingRef: MutableRefObject<Set<string>>;
@@ -104,7 +106,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
   };
   useEffect(() => {
     const {
-      sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
+      sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef, boardRecentRef,
       shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, connRef,
       reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
       setTodoBatches, setConnState, setBgTasks, setCatalogTick,
@@ -130,6 +132,11 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           if (kind === 'memory') setCatalogTick((t) => ({ ...t, memory: t.memory + 1 }));
           else if (kind === 'learned') setCatalogTick((t) => ({ ...t, learned: t.learned + 1 }));
           return;
+        }
+        if (boardRecentRef !== undefined && (e.type === 'team-created' || e.type === 'teammate-created' || e.type.startsWith('task-') || e.type.startsWith('delegation-'))) {
+          const ring = boardRecentRef.current;
+          ring.push({ e, seq });
+          if (ring.length > 1000) ring.splice(0, ring.length - 1000);
         }
         if (e.type === 'team-created' || e.type === 'teammate-created' || e.type.startsWith('task-')) {
           // G6 seq 门:播种窗内缓冲(onSeeded 后过滤重放),窗外直投；team/teammate-created 与板事件同窗

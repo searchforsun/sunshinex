@@ -157,7 +157,7 @@ function AppShell(): JSX.Element {
   /** 快照 team.busy 权威(封悬空 agent run；与影子水合共用) */
   const busyTeamRef = useRef<ReadonlySet<string>>(new Set());
   const busyTeamReadyRef = useRef(false);
-  const { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot } = useBoardSeed({
+  const { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot, boardRecentRef, refreshFromSnapshot } = useBoardSeed({
     sessionRef,
     setRunningIds,
     setProjection,
@@ -187,7 +187,7 @@ function AppShell(): JSX.Element {
    *  钩子,依赖注入面见 ConnectionWiringDeps——装配一次([]),闭包取首渲染值,会话切换经
    *  sessionRef 与各 ref 免陈旧(原口径) */
   const connInstance = useConnectionWiring({
-    sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef,
+    sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef, boardRecentRef,
     shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, dropPendingActsRef, connRef,
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
     setTodoBatches, setConnState, setBgTasks, setCatalogTick,
@@ -669,15 +669,10 @@ function AppShell(): JSX.Element {
   /** 智能体团队刷新:快照整替 board/teams/team/delegations(成员名册仅快照有——漏 team 即「暂无成员」) */
   const refreshBoard = useCallback((sessionId: string): Promise<void> => {
     if (connRef.current === null) return Promise.resolve();
-    return connRef.current.sessionSnapshot(sessionId).then((snap) =>
-      setProjection((p) => ({
-        ...p,
-        board: snap.board,
-        teams: snap.teams ?? [],
-        team: snap.team ?? [],
-        delegations: snap.delegations ?? [],
-      })),
-    );
+    // seq 门:快照可能早于在途帧——整替后重放更新的近期帧(直接整替曾吞掉刷新期间到达的增量)
+    return connRef.current.sessionSnapshot(sessionId).then((snap) => {
+      if (sessionId === sessionRef.current) refreshFromSnapshot(snap);
+    });
   }, []);
   const services = useMemo<TabServices>(
     () => ({

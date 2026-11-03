@@ -32,6 +32,10 @@ export function useBoardSeed(deps: BoardSeedDeps): {
   reopenBoardSeedWindow: () => void;
   /** G5 Chat 播种回调:快照权威态回填 App 投影 */
   seedFromSnapshot: (snap: SnapshotResponse) => void;
+  /** 近期板帧环(窗内外都记,带 seq):刷新快照整替后按 lastSeq 重放,在途增量不被吞 */
+  boardRecentRef: MutableRefObject<Array<{ e: SessionEvent; seq: number }>>;
+  /** 面板刷新(智能体团队/任务板刷新钮、打开即刷):快照整替 + 近期帧 seq 门重放 */
+  refreshFromSnapshot: (snap: SnapshotResponse) => void;
 } {
   const { sessionRef, setRunningIds, setProjection, bumpActs, busyTeamRef, busyTeamReadyRef } = deps;
   /** G6 板投影 seq 门:播种窗(快照在途)内 board/delegation 帧缓冲(与 Chat pendingRef 同构
@@ -39,9 +43,11 @@ export function useBoardSeed(deps: BoardSeedDeps): {
   const boardPendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
   /** 板播种窗开关:true = 快照在途(帧入缓冲不直投);onSeeded 落定置 false */
   const boardSeedingRef = useRef(true);
+  const boardRecentRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
 
   const reopenBoardSeedWindow = (): void => {
     boardPendingRef.current = [];
+    boardRecentRef.current = [];
     boardSeedingRef.current = true;
     // 会话切换/重连：busy 权威随新快照再立，避免沿用上一会话 busy 名误留悬空 run
     busyTeamReadyRef.current = false;
@@ -58,12 +64,18 @@ export function useBoardSeed(deps: BoardSeedDeps): {
     const replay = boardPendingRef.current.filter((f) => f.seq > lastSeq);
     boardPendingRef.current = [];
     boardSeedingRef.current = false;
+    mergeSnapshot(snap, replay, true);
     // G14.2xx 运行态对表(零额外请求,复用 reseed 快照的 status 权威):attach 收编运行中/
     // 重启重开均归位;非运行清同会话残留(修「已完成仍在转圈」的跨会话布尔卡滞)
     setRunningIds((s) => {
       const without = new Set([...s].filter((x) => x !== sessionRef.current));
       return snap.status === 'running' && sessionRef.current !== '' ? new Set([...without, sessionRef.current]) : without;
     });
+  };
+
+  /** 快照整替 + 帧重放单点(播种与面板刷新共用):replayActs=重放 delegation 帧时一并投子智能体
+   *  聚合(播种窗内帧未投过;刷新时近期帧早已直投,不重复投) */
+  const mergeSnapshot = (snap: SnapshotResponse, replay: Array<{ e: SessionEvent; seq: number }>, replayActs: boolean): void => {
     let nextBoard = snap.board;
     let nextDelegations = snap.delegations;
     // 快照 teams/team 为基线；窗内 team-created / teammate-created / task-created / delegation 尾随合并
@@ -83,7 +95,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
         // G8e-T2:delegation 帧补投子智能体聚合(与 board/delegation 同窗)——窗外路径本就投
         // applyAgentEvent(权威终语:ended failed→error/done→done;label 命中既有卡才动),
         // 窗内缓冲帧此前只重放板/委派不投聚合,delegation 终语在播种窗内被吞(卡滞 running)
-        if (sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
+        if (replayActs && sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
       }
     }
     const busy = new Set(nextTeam.filter((m) => m.busy).map((m) => m.name));
@@ -96,5 +108,13 @@ export function useBoardSeed(deps: BoardSeedDeps): {
     }
   };
 
-  return { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot };
+  /** 面板刷新:快照可能先于在途帧生成——整替后重放 seq > lastSeq 的近期帧(播种窗开着时其
+   *  缓冲帧也在环内,Chat 播种落定会再以权威快照整替) */
+  const refreshFromSnapshot = (snap: SnapshotResponse): void => {
+    const lastSeq = (snap as SnapshotResponse & { lastSeq?: number }).lastSeq ?? 0;
+    // 无 seq 的帧(旧 daemon/回放路径)无法判定先后,按「快照之后」重放(板/委派应用幂等)
+    mergeSnapshot(snap, boardRecentRef.current.filter((f) => !(f.seq <= lastSeq)), false);
+  };
+
+  return { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot, boardRecentRef, refreshFromSnapshot };
 }
