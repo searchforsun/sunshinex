@@ -116,6 +116,15 @@ export function WebTabPool({
   );
 }
 
+/** 浏览器键(=journalId)对应的池项座位:会话按 journalId 删除时据分区反查运行时座位 */
+export function seatsOfBrowserKey(key: string): string[] {
+  const part = `persist:sx-${key}`;
+  return Array.from(document.querySelectorAll('.sx-webpool-item'))
+    .filter((el) => el.querySelector('webview')?.getAttribute('partition') === part)
+    .map((el) => (el as HTMLElement).dataset.seat ?? '')
+    .filter((s) => s !== '');
+}
+
 /** 持有某 guest webContents 的池项座位(页内弹窗按开启者归座) */
 export function seatOfWebContents(webContentsId: number): string | undefined {
   for (const el of Array.from(document.querySelectorAll('.sx-webpool-item'))) {

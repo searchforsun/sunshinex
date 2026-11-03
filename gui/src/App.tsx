@@ -16,7 +16,8 @@ import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { Suspense } from 'react';
-import { WebTabPool, seatOfWebContents } from './tabs/WebTabPool';
+import { WebTabPool, seatOfWebContents, seatsOfBrowserKey } from './tabs/WebTabPool';
+import { SESSION_DELETED_EVENT } from './session-events';
 import type { WebPoolItem } from './tabs/WebTabPool';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
@@ -428,6 +429,21 @@ function AppShell(): JSX.Element {
   // 订阅只挂一次,回调经 ref 取最新 openWebTab(闭包滞留首帧会话座=开签落错座,页签不可见)
   const openWebTabRef = useRef(openWebTab);
   openWebTabRef.current = openWebTab;
+  // 会话删除:卸载其座位的页签(常驻池里的 webview 随之销毁,不再占资源)
+  useEffect(() => {
+    const onDeleted = (e: Event): void => {
+      const id = (e as CustomEvent<string>).detail;
+      const seats = new Set([id, ...seatsOfBrowserKey(id)]);
+      setTabStates((s) => {
+        if (![...seats].some((seat) => s[seat] !== undefined)) return s;
+        const next = { ...s };
+        for (const seat of seats) delete next[seat];
+        return next;
+      });
+    };
+    window.addEventListener(SESSION_DELETED_EVENT, onDeleted);
+    return () => window.removeEventListener(SESSION_DELETED_EVENT, onDeleted);
+  }, []);
   const curSeatRef = useRef('');
   curSeatRef.current = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
   useEffect(() => {

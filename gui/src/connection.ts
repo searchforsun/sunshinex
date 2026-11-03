@@ -1,4 +1,6 @@
+import { SESSION_DELETED_EVENT } from './session-events';
 import { createConnectionTransport, DEFAULT_BACKOFF_BASE_MS } from './connection-transport';
+
 export { toWsUrl } from './connection-transport';
 export * from './connection-types';
 import type {
@@ -625,7 +627,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson<DiffResp>(`/session/${encodeURIComponent(sessionId)}/diff?callId=${encodeURIComponent(callId)}${p}`);
     },
     deleteSession(id: string): Promise<void> {
-      return post(`/session/${encodeURIComponent(id)}/delete`);
+      // 删除成功广播(id=运行时 id 或 journalId,daemon 双寻址):浏览器页签池据此卸载该会话的常驻 webview
+      return post(`/session/${encodeURIComponent(id)}/delete`).then(() => {
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_DELETED_EVENT, { detail: id }));
+      });
     },
     archiveSession(id: string, archived: boolean): Promise<void> {
       return postJson(`/session/${encodeURIComponent(id)}/archive`, { archived });
