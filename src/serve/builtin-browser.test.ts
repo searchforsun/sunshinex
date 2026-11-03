@@ -74,3 +74,27 @@ test('purgeBrowserState:删除会话的浏览器状态文件与输出目录,他�
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test('sweepOrphanBrowserState:无对应会话档的状态文件/输出目录清除,有档的保留(大小写不敏感)', async () => {
+  const { sweepOrphanBrowserState } = await import('./builtin-browser');
+  const prev = process.env.SUNSHINEX_DATA_DIR;
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-sweep-'));
+  process.env.SUNSHINEX_DATA_DIR = dataDir;
+  try {
+    const base = path.join(dataDir, 'plugins', 'browser-use');
+    fs.mkdirSync(path.join(dataDir, 'sessions'), { recursive: true });
+    fs.writeFileSync(path.join(dataDir, 'sessions', '20261103T051016Z-Live.jsonl'), '{}\n');
+    fs.mkdirSync(path.join(base, 'state'), { recursive: true });
+    for (const k of ['20261103T051016Z-Live', 'gone-jid', 'proc-123-abc']) {
+      fs.writeFileSync(path.join(base, 'state', `${k}.json`), '{}');
+      fs.mkdirSync(path.join(base, 'output', k), { recursive: true });
+    }
+    sweepOrphanBrowserState();
+    assert.deepEqual(fs.readdirSync(path.join(base, 'state')), ['20261103T051016Z-Live.json']);
+    assert.deepEqual(fs.readdirSync(path.join(base, 'output')), ['20261103T051016Z-Live']);
+  } finally {
+    if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prev;
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});

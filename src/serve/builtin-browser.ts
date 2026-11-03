@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resolveDataDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir } from '../config/data-dir';
 
 /** 融合 meta 落位单点（收割/清扫/meta 周期写/file-handlers 代理面四面共用） */
 export function builtinCdpMetaPath(dataDir: string): string {
@@ -109,4 +109,51 @@ export function purgeBrowserState(dataDir: string, key: string): void {
   const s = ses.fromPartition(`persist:sx-${key}`);
   void s.clearStorageData().catch(() => undefined);
   void s.clearCache().catch(() => undefined);
+}
+
+/** 启动清扫孤儿浏览器状态(2026-11-03):浏览器键=journalId,无对应会话档的状态/输出/侧栏分区均为孤儿
+ *  ——birth-only 会话被启动清扫删档后残留、测试/实验遗留、旧共享分区 sx-builtin(按会话隔离后无消费者)。
+ *  须在任何 webview 加载前跑(分区目录此时未被占用);Electron 分区目录名小写化,按小写比对 */
+export function sweepOrphanBrowserState(): number {
+  let removed = 0;
+  const journals = new Set<string>();
+  // 数据目录显式覆盖(测试/便携部署)=全部会话同在该目录,只扫它,绝不碰真实项目根
+  const override = process.env.SUNSHINEX_DATA_DIR;
+  let dataDirs: string[];
+  if (override !== undefined && override !== '') dataDirs = [path.resolve(override)];
+  else {
+    let projects: fs.Dirent[] = [];
+    try { projects = fs.readdirSync(projectsRoot(), { withFileTypes: true }); } catch { /* 无项目根 */ }
+    dataDirs = projects.filter((e) => e.isDirectory()).map((e) => path.join(projectsRoot(), e.name, 'data'));
+  }
+  for (const d of dataDirs) {
+    try {
+      for (const n of fs.readdirSync(path.join(d, 'sessions'))) if (n.endsWith('.jsonl')) journals.add(n.slice(0, -'.jsonl'.length).toLowerCase());
+    } catch { /* 无会话目录 */ }
+  }
+  const rm = (p: string): void => {
+    try { fs.rmSync(p, { recursive: true, force: true }); removed += 1; } catch { /* 占用:下次再清 */ }
+  };
+  for (const d of dataDirs) {
+    const base = path.join(d, 'plugins', 'browser-use');
+    try {
+      for (const n of fs.readdirSync(path.join(base, 'state'))) if (n.endsWith('.json') && !journals.has(n.slice(0, -'.json'.length).toLowerCase())) rm(path.join(base, 'state', n));
+    } catch { /* 无 */ }
+    try {
+      for (const n of fs.readdirSync(path.join(base, 'output'))) if (!journals.has(n.toLowerCase())) rm(path.join(base, 'output', n));
+    } catch { /* 无 */ }
+  }
+  let electron: unknown;
+  try { electron = require('electron'); } catch { return removed; }
+  const app = (electron as { app?: { getPath(n: string): string } }).app;
+  if (app === undefined) return removed;
+  const partitions = path.join(app.getPath('userData'), 'Partitions');
+  try {
+    for (const n of fs.readdirSync(partitions)) {
+      if (!n.startsWith('sx-')) continue;
+      if (journals.has(n.slice('sx-'.length).toLowerCase())) continue;
+      rm(path.join(partitions, n));
+    }
+  } catch { /* 无分区目录 */ }
+  return removed;
 }

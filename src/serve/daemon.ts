@@ -42,7 +42,7 @@ import * as lifecycle from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
-import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost } from './builtin-browser';
+import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
 import {
   GUI_ASSETS_HINT,
   mimeOf,
@@ -317,6 +317,7 @@ export class GuiDaemon {
     try {
       const swept = lifecycle.sweepBirthOnlyJournals();
       if (swept > 0) console.log(`[daemon] swept ${swept} birth-only journal(s)`);
+      sweepOrphanBrowserState(); // 删档后的浏览器状态/输出/侧栏分区随之清扫(此刻尚无 webview 占用分区)
     } catch {
       /* 清扫失败不阻塞启动(下次 boot 再扫) */
     }

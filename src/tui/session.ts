@@ -431,6 +431,13 @@ export class SessionController {
     // 注入不限档(2026-11-01 同 GUI 侧裁定:插件 act 类强制问线任何档位都要弹审批;full-access
     // 常规 ask 在 guard 层自动放行不经 asker,注入零档位副作用)
     this.runtime.harness.security.setAsker(suspendAskerFor(this));
+    // 浏览器插件会话身份(2026-11-03 浏览器状态按会话隔离):键=journalId(未建档即建档),命令行无头浏览器
+    // 的 Cookie/本地存储随会话跨重启保留(恢复会话即续用同一登录态)
+    this.runtime.harness.browserSession = () => {
+      const j = this.ensureJournal();
+      if (j.currentId === undefined) this.persistSnapshotRow();
+      return { key: j.currentId ?? `tui-${process.pid}`, seat: '' };
+    };
     this.state = { ...this.state, metrics: { ...this.state.metrics, runs: this.runtime.harness.ledger.summary().runs } };
     if (opts.tier) this.state = { ...this.state, tier: opts.tier };
     if (opts.effort) this.state = { ...this.state, effort: opts.effort };
