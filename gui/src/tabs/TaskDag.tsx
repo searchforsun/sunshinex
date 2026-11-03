@@ -99,7 +99,8 @@ export function layoutTaskDag(
       id: `${kind === 'dep' ? 'd' : 'f'}-${from}-${to}`,
       source: from,
       target: to,
-      animated: false,
+      // 2026-11-03 用户裁定:依赖线=数据流动效果(RF 内建 animated 流动虚线,dashdraw 沿路径推进)
+      animated: true,
       className: kind === 'dep' ? 'tb-dag-dep' : 'tb-dag-frame',
     });
   };
@@ -284,7 +285,7 @@ function TaskDagInner({ tasks, agentOf, durationOf, onTaskOpen, onStopTask, focu
       maxZoom={1.75}
       nodesConnectable={false}
       deleteKeyCode={null}
-      defaultEdgeOptions={{ type: 'smoothstep', animated: false }}
+      defaultEdgeOptions={{ type: 'smoothstep', animated: true }}
       // G14.2xx 用户裁定:右下角 React Flow 水印去除(桌面内部应用,proOptions 官方开关)
       proOptions={{ hideAttribution: true }}
     >
