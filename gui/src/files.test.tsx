@@ -336,4 +336,37 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     expect(document.querySelector('.diff-panel')).toBeNull(); // input 字段缺面——无 DiffPanel
     unmount();
   });
+
+it('折叠行=提交计划+计划名蓝色链接(回放合成行带 path),点击 onOpenFile 开侧栏计划文件;展开体示裁决文本', async () => {
+  const onOpenFile = vi.fn();
+  const { sinkRef, unmount } = await mountChat({ onOpenFile });
+  act(() => {
+    // 回放合成行形态:tool-call 入参 {name,path}（宿主 appendChain 时注入,不含 doc）
+    sinkRef.current!.on(ev('tool-call', 'exit_plan', { input: { name: '重构认证模块', path: 'D:/data/sessions/j1.plan.md' }, callId: 'c9', status: 'pending' }), 1);
+    sinkRef.current!.on(ev('tool-result', 'decision: implement via workspace edits', { tool: 'exit_plan', callId: 'c9', status: 'completed' }), 2);
+  });
+  const row = toolRow('提交计划 重构认证模块') ?? toolRow('exit_plan 重构认证模块');
+  expect(row).toBeDefined();
+  const link = document.querySelector('.tool-agent-link');
+  expect(link?.textContent).toContain('重构认证模块');
+  fireEvent.click(link!);
+  expect(onOpenFile).toHaveBeenCalledWith('D:/data/sessions/j1.plan.md');
+  fireEvent.click(row!); // 展开:裁决文本（ask-answer 同款三态面）
+  expect(document.querySelector('.ask-answer')?.textContent).toContain('decision: implement via workspace edits');
+  unmount();
+});
+
+it('live fork 帧（无 path）:计划名降级纯文本不可点,点击入口归确认卡头链接', async () => {
+  const onOpenFile = vi.fn();
+  const { sinkRef, unmount } = await mountChat({ onOpenFile });
+  act(() => {
+    // live 帧=模型出牌原文 {name,doc}（无 path）
+    sinkRef.current!.on(ev('tool-call', 'exit_plan', { input: { name: '重构认证模块', doc: '# 计划' }, callId: 'c10', status: 'completed' }), 1);
+    sinkRef.current!.on(ev('tool-result', 'plan presented: 重构认证模块', { tool: 'exit_plan', callId: 'c10', status: 'completed' }), 2);
+  });
+  expect(document.querySelector('.tool-agent-link')).toBeNull(); // 无 path 零链接
+  expect(Array.from(document.querySelectorAll('.tool-summary')).some((r) => r.textContent?.includes('重构认证模块'))).toBe(true);
+  expect(onOpenFile).not.toHaveBeenCalled();
+  unmount();
+});
 });

@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { SessionRuntime } from './session';
 import { runCommand } from './session-commands';
+import { SessionJournal } from '../tui/session-journal';
 import type { DaemonFrame } from './daemon-wire';
 import type { SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
@@ -414,5 +415,61 @@ test('serve /plan 三态：命令通道裸 /plan=幂等武装+如实回执,/plan
     assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
     await waitFor(() => ctx.session.status() === 'idle', 10_000);
     assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '解除后提交零计划卡');
+  });
+});
+
+// ---- 2026-11-03 交稿协议（exit_plan 终止型工具）——模型显式出牌交稿/落盘/合成链行/guard 拒绝/purge 无痕 ----
+
+test('serve 交稿协议：exit_plan 终止规划 run——卡带计划名+plan.md 落盘,批准后合成链行 tool-call→tool-result→plan', async () => {
+  const model = new ScriptedAdapter([
+    { toolCalls: [{ name: 'exit_plan', args: { name: '重构认证模块', doc: '# 重构认证模块\n1. 步骤A' } }] }, // 交稿出牌（结构化步骤）
+    '{"done":true,"reply":"步骤A 完成"}', // 执行包（终答=字符串 DSL 步）
+  ]);
+  await withSession(
+    model,
+    async (ctx) => {
+      ctx.session.attachJournal(new SessionJournal(path.join(ctx.tmp, 'data'))); // 生产形态:daemon attach 后才受理提交（journalId 由此可得）
+      assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
+      const card = planCard(ctx.session, ctx.frames);
+      const frame = ctx.frames.filter((f) => f.kind === 'plan-approval').at(-1) as { pid: string; req: { name?: string; path?: string; doc: string } } | undefined;
+      assert.equal(frame?.req.name, '重构认证模块', '卡带计划名（exit_plan 出牌权威）');
+      assert.ok(typeof frame?.req.path === 'string' && frame.req.path.endsWith('.plan.md'), '卡带计划文件绝对路径');
+      assert.ok(fs.existsSync(frame.req.path!), '计划书已落盘');
+      assert.match(fs.readFileSync(frame.req.path!, 'utf8'), /重构认证模块/, '落盘内容=计划书全文');
+      assert.equal(ctx.session.status(), 'idle', '挂卡期锁已放行');
+      assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: true }), true);
+      await waitFor(() => ctx.session.status() === 'idle' && ctx.session.snapshotResponse().mode === 'acceptEdits', 10_000, '批准落档+执行收尾');
+      // 合成链行（回放权威）：tool-call(带 name/path)→tool-result(decision)→plan 行——链序红线不破
+      const chain = chainOf(ctx.session);
+      const callIdx = chain.findIndex((st) => st.action === 'tool-call' && st.observation.includes('exit_plan'));
+      const resultIdx = chain.findIndex((st) => st.action === 'tool-result' && st.observation.includes('decision: implement via workspace edits'));
+      const planIdx = chain.findIndex((st) => st.action === 'plan');
+      assert.ok(callIdx >= 0 && resultIdx > callIdx && planIdx > resultIdx, '链序:交稿调用→裁决结果→计划书行');
+      assert.match(chain[callIdx]!.observation, /重构认证模块/, '合成调用行携带计划名');
+      assert.match(chain[callIdx]!.observation, /plan\.md/, '合成调用行携带计划文件路径');
+      // 判别力锚:终止型交稿后规划 run 不再续轮（无二次模型调用——执行包只被批准续段消费）
+      assert.equal(ctx.session.runtime.harness.security.mode, 'acceptEdits', '批准落工作区编辑档');
+    },
+    { mode: 'plan' },
+  );
+});
+
+test('serve 交稿协议：guard 非规划轮拒 exit_plan——普通任务调 exit_plan 被拒不终止,无计划卡', async () => {
+  const model = new ScriptedAdapter([
+    { toolCalls: [{ name: 'exit_plan', args: { name: '越权交稿', doc: '# 不该出现' } }] }, // 普通任务里出牌交稿
+    '{"done":true,"reply":"普通任务完成"}', // 拒绝后模型自行收尾（终答=字符串 DSL 步）
+  ]);
+  await withSession(model, async (ctx) => {
+    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '前提:非 plan-arm');
+    assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
+    await waitFor(() => ctx.session.status() === 'idle', 10_000, '普通任务收尾');
+    assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '拒绝不产计划卡(不终止 run)');
+    const chain = chainOf(ctx.session);
+    assert.ok(
+      chain.some((st) => st.action === 'tool-result' && st.observation.includes('exit_plan is only available')),
+      '拒绝观察行带出路提示(模型可自行调整)',
+    );
+    assert.ok(chain.some((st) => st.observation.includes('普通任务完成')), 'run 未被终止,模型收尾完成');
   });
 });

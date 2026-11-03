@@ -206,3 +206,33 @@ pill/菜单/帮助文案经 i18n `t()` 单表维护;read-only 拒绝消息出路
 - serve `plan-flow.e2e.test.ts`:运行中武装不 busy、挂卡期 replan(单槽+旧卡 404+文案抑制)、运行中 /plan 命令入队→收口转规划、full-access 落档、裸 /plan 幂等+off(10 例);
 - TUI `session.plan.test.ts`:裸 /plan 幂等武装/off、运行中入队→队列转规划、挂卡期 replan、空反馈放弃 vs 带反馈超限、中断 armed 保持(19 例);App.selector 三选项翻新;
 - GUI `PlanCard.test.tsx`/`Chat.test.tsx`:三按钮决策体/常驻反馈框/Enter 快捷驳回/单槽。
+
+---
+
+## 10. 2026-11-03 交稿协议(方案 B 转正):exit_plan 模型工具 + 计划书落盘 + 工具行链接化(已实施,三端)
+
+§8 预留的方案 B 与「计划书落盘」两项演进本轮落地（会话裁定 2026-11-03：模型显式出牌交稿 + 计划工件化）。
+
+### 10.1 交稿协议
+
+- **exit_plan(name, doc) 模型工具**：规划轮模型调研完显式出牌交稿——name=计划名短语（模型起名）,doc=完整 markdown 计划书。terminal 工具：执行成功即终止规划 run（`stopReason='plan-presented'` 新词汇）,doc 进 harness 暂存槽（`takePresentedPlan()` 读即清）;宿主 `runPlanningTask` 接缝转译——`plan-presented` → `{done:true, reply:doc, name}`,**plan-flow 状态机零改动**（「reply=计划书」既有判定即权威通道）。
+- **纯 reply 兜底保留**：模型忘调工具直接说完 → done+reply 照旧当计划书（双通道自然互斥）,name 从 goal 派生（截 24 字符,`derivePlanName`）。
+- **guard 判决**：`exitPlanArmed` 武装位（宿主 enterReadOnly/exitReadOnly 接缝配对置位/清除,与 read-only 覆盖同生命周期）——仅规划轮放行;非规划轮硬拒带出路提示,拒绝不终止（模型看拒绝行自行调整）。子智能体子面剔除 exit_plan（规划轮是宿主级 fork,与子面无关）。工具清单恒下发口径不变（guard 判决,不裁剪清单）。
+- **terminal 机制**：`RegisteredTool.terminal` 新字段;BatchRunner 执行成功置批级标志（被拒/坏参/重复跳过不算）;reactor 批后检查 → 收束 `stopReason`。ToolCategory 新增 `'plan'`（批次串行独占集成员）。
+
+### 10.2 计划书落盘
+
+- `<dataDir>/sessions/<journalId>.plan.md`：awaiting-approval 时宿主 born-write 铸档后写（每轮修订覆盖写）;`<id>.` 旁车前缀先例——purgeSession 前缀全家清理天然覆盖（删除会话即删计划文件,零新增清理面）。计划名是展示元数据,文件名固定。文件是给人看的工件——权威事实源仍是链（'plan' 行 + 合成工具行）。
+- 接缝形态：plan-flow `persistPlan(name, doc) → {path}`（state 机只透传 name/path,零 IO 政策不变）,写盘单源 `writePlanDoc`（session-journal.ts,TUI/serve 共用）。
+
+### 10.3 合成链行与 GUI 链接化
+
+- **合成链行（回放权威）**：宿主在裁决回填/终态时向主链 append `[tool-call('exit_plan',{name,path}), tool-result('decision: …')]`——链序在 'plan' 行之前（红线①不破）;live 面靠 fork onEvent 事件帧实时显示（现状已通）;有交稿事实（awaiting-approval 到过）才合成,exhausted 末轮驳回行由 awaitApproval 合成零重复。decision 文本三态：implement via workspace edits / full access、rejected with feedback (round N)、discarded by user、interrupted、planning failed。
+- **两处蓝色链接**：①工具行折叠行「提交计划 · <计划名>」链接（path 在场可点——回放合成行有 path,live fork 帧入参是模型原文无 path,降级纯文本,live 点击入口归②）→ `onOpenFile` 开侧栏 file 页签;②确认卡卡头计划名链接（live 权威入口）。文件打开走既有 `/session/:id/file` 端点（数据目录已放行+绝对路径原样,零新端点）。
+
+### 10.4 测试锚
+
+- serve e2e：exit_plan 交稿→卡带 name/path+plan.md 落盘→批准合成链行序（tool-call→tool-result→plan）;guard 非规划轮拒（不终止、无卡、拒绝行带出路提示）。
+- TUI：同构（卡头计划名行/落盘/合成链行/逐项执行）。
+- harness：name 透传+persistPlan 调用+卡事件带 path;derivePlanName 截断/兜底。
+- GUI：交稿行折叠链接点击 onOpenFile、展开体三态、live 无 path 降级;PlanCard 卡头链接/降级。

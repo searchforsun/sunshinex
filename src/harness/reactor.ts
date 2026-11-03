@@ -354,6 +354,13 @@ export class Reactor {
           this.emit('step', 'done', { step });
           break;
         }
+        // 终止型工具交稿（2026-11-03 交稿协议）：本 run 以 plan-presented 收束（产物走 harness 暂存槽,
+        // 不经 reply 通道）;轮边界照常入链（工具调用/结果事实行不丢;fork 作用域本就不回写主链）
+        if (outcome.terminal !== undefined) {
+          appendNewSteps();
+          stopReason = outcome.terminal;
+          break;
+        }
         // 轮边界增量入链(2026-10-30 spec §1):本轮链行已完成即落主链;done 轮归收束点(与 reply 行同批)
         appendNewSteps();
       } catch (e) {
@@ -512,7 +519,7 @@ export class Reactor {
     hooks: UsageHooks,
     effort: ReasoningEffort | undefined,
     signal: AbortSignal | undefined,
-  ): Promise<{ done: boolean; reply?: string; reasoning?: string; thinkSeconds?: number }> {
+  ): Promise<{ done: boolean; reply?: string; reasoning?: string; thinkSeconds?: number; terminal?: StopReason }> {
     const startedAt = Date.now();
     this.emit('model-start', undefined, { step });
     const messages = buildMessages({
@@ -583,8 +590,9 @@ export class Reactor {
     });
 
     // 批次执行面整体委派 BatchRunner（H5）：签名去重/串行超限政策/串并扇出/逐结果回发。
-    // 链行记账（观察行按出牌顺序入链）与文件追踪以回调整块注入——批次面不持链、不捕 Reactor
-    await this.batches.runBatch({
+    // 链行记账（观察行按出牌顺序入链）与文件追踪以回调整块注入——批次面不持链、不捕 Reactor。
+    // terminal 工具（2026-11-03 交稿协议）：成功执行即携终止原因回主循环（收束 stopReason=plan-presented）
+    const batch = await this.batches.runBatch({
       calls,
       argsOf,
       step,
@@ -593,6 +601,7 @@ export class Reactor {
         trackFile: (p) => this.deps.context.trackFile(p),
       },
     });
+    if (batch.terminalCalled) return { done: false, terminal: 'plan-presented' };
     return { done: false };
   }
 }

@@ -33,7 +33,7 @@ const TOOL_VERB_ZH: Record<string, string> = {
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
-  kb_search: '检索知识库', ask_question: '提问',
+  kb_search: '检索知识库', ask_question: '提问', exit_plan: '提交计划',
   create_agent_team_task: '创建团队任务', set_dependency: '设置依赖', assign: '分派',
   create_agent_team: '创建智能体团队',
   create_agent_teammate: '创建团队成员',
@@ -111,6 +111,13 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
     if (flat.length <= 72) return flat;
     return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
   }
+  if (name === 'exit_plan') {
+    const v = input.name;
+    if (typeof v !== 'string' || v === '') return undefined;
+    const flat = (v.split('\n')[0] ?? v).trim();
+    if (flat.length <= 72) return flat;
+    return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
+  }
   const key =
     name === 'exec'
       ? 'command'
@@ -172,6 +179,7 @@ export const RUNNING_LABELS: Record<string, [string, string]> = {
   worktree: ['Preparing worktree', '正在准备工作树'],
   kb_search: ['Searching knowledge base', '正在检索知识库'],
   ask_question: ['Waiting for answer', '正在等待回答'],
+  exit_plan: ['Presenting plan', '正在提交计划'],
   create_agent_team_task: ['Creating team task', '正在创建团队任务'],
   set_dependency: ['Setting dependency', '正在设置依赖'],
   assign: ['Assigning task', '正在分派任务'],

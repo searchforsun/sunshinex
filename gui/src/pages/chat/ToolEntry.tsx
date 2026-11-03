@@ -21,6 +21,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
   worktree: GitBranch, spawn: Bot, task_stop: Square, agent_team_task_stop: Square, task_wait: Hourglass, agent_team_task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
+  exit_plan: ListTodo, // 交稿行(2026-11-03 交稿协议):计划图标同 plan pill
   create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus,
   // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
   create_agent_team: UsersRound,
@@ -156,6 +157,11 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** create_agent_team 队名——折叠行「创建智能体团队 {name}」;运行态同构 */
   const teamName =
     toolName === 'create_agent_team' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
+  /** exit_plan 交稿行（2026-11-03 交稿协议）：计划名+计划文件链接。path 只在回放合成链行（宿主 appendChain
+   *  时入参 {name,path}）;live fork 帧入参是模型出牌原文 {name,doc} 无 path——链接降级纯文本,
+   *  live 期点击入口归确认卡头链接（PlanCard） */
+  const planName = toolName === 'exit_plan' && typeof input.name === 'string' && input.name !== '' ? input.name : '';
+  const planFilePath = toolName === 'exit_plan' && path !== undefined && onOpenFile !== undefined ? path : undefined;
   /** send_agent_team_message 收件人与正文(展开体显示正文;折叠行只跟收件人名) */
   const messageTo =
     toolName === 'send_agent_team_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
@@ -220,6 +226,8 @@ export const ToolEntryView = memo(function ToolEntryView({
     // task_* 运行态带任务名——「正在更新 架构评审」替代泛文案（taskOpName 已在场即有值）
     const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
     if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
+    // exit_plan 运行态带计划名——「正在提交计划 重构认证模块」
+    if (toolName === 'exit_plan' && planName !== '') return t(`Presenting plan ${planName}`, `正在提交计划 ${planName}`);
     // 2026-10-26 MCP 工具运行态带本地化工具名——「正在调用 截屏」(双语对随语言切换,与完成态同口径)
     const mcp = mcpToolParts(toolName);
     // 运行态带本地化工具名(2026-10-30 用户裁定;双语对渲染期求值)
@@ -349,6 +357,25 @@ export const ToolEntryView = memo(function ToolEntryView({
           const done = arr.filter((o) => (o ?? {}).status === 'completed').length;
           return <span className="tool-file-base tool-cmd">{' '}{done}/{arr.length}</span>;
         })()
+      ) : !hideTargetWhileRunning && toolName === 'exit_plan' ? (
+        /* 交稿行（2026-11-03）：计划名蓝色链接开侧栏计划文件（planFilePath 在场=回放合成行;live fork 帧无
+           path 降级纯文本,点击入口归确认卡头链接） */
+        planName !== '' && planFilePath !== undefined && onOpenFile !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('Open plan file', '打开计划文件')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFile(planFilePath);
+            }}
+          >
+            {' '}{planName}
+          </span>
+        ) : planName !== '' ? (
+          <span className="tool-file-base tool-cmd">{' '}{planName}</span>
+        ) : null
       ) : !hideTargetWhileRunning && toolName === 'create_agent_team' ? (
         /* 折叠行「创建智能体团队 {name}」——队名蓝色链接开指定队卡 */
         teamName !== '' && onOpenTask !== undefined ? (
@@ -718,6 +745,35 @@ export const ToolEntryView = memo(function ToolEntryView({
         <div className={`ask-answer kind-${answerRow.kind}`}>
           {answerRow.kind === 'waiting' && <span className="run-spinner" aria-hidden="true" />}
           <span className="ask-answer-text">{answerRow.text}</span>
+        </div>
+      </div>
+    );
+  } else if (toolName === 'exit_plan') {
+    // 交稿体（2026-11-03）：计划名(加重)+裁决状态行（ask-answer 同款三态面——等待态 spinner,
+    // 终态显 decision 文本）;计划文件链接在场即附(点击开侧栏 file 页签)
+    const planExecuting = entry.status === 'pending' || entry.status === 'running';
+    body = (
+      <div className="tool-md ask-record">
+        <div className="ask-q">{planName !== '' ? planName : t('Plan', '计划')}</div>
+        <div className={`ask-answer ${planExecuting ? 'kind-waiting' : 'kind-answer'}`}>
+          {planExecuting && <span className="run-spinner" aria-hidden="true" />}
+          <span className="ask-answer-text">
+            {planFilePath !== undefined && onOpenFile !== undefined ? (
+              <span
+                role="button"
+                tabIndex={-1}
+                className="tool-file-base tool-file-link"
+                data-tip={t('Open plan file', '打开计划文件')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenFile(planFilePath);
+                }}
+              >
+                {t('Open plan file', '打开计划文件')}
+              </span>
+            ) : null}
+            {planExecuting ? t('Awaiting user decision', '等待用户裁决') : fullResult !== '' ? stripAnsi(fullResult) : ''}
+          </span>
         </div>
       </div>
     );

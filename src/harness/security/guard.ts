@@ -91,6 +91,14 @@ export class SecurityGuard {
     // todo_write（todo_write 规格 D4）：零 IO 副作用的进程内状态写，三档放行（对标 ask_question/spawn 先例）；
     // deny 规则与破坏性硬底线仍先行
     if (tool === 'todo_write') return { allowed: true };
+    // exit_plan（2026-11-03 交稿协议）：仅规划轮放行——exitPlanArmed 由宿主 enterReadOnly/exitReadOnly
+    // 接缝配对置位/清除（与 read-only 覆盖同生命周期）;非规划轮（普通任务/子面/闲挂）硬拒并带出路提示,
+    // 模型看拒绝行自行调整（终态性由 terminal 工具面承载,拒绝不终止）
+    if (tool === 'exit_plan') {
+      return this.exitPlanArmed === true
+        ? { allowed: true }
+        : { allowed: false, reason: 'COMMAND_DENIED: exit_plan is only available during plan-mode planning rounds — research first, then present the plan with exit_plan when ready' };
+    }
     // worktree 工具（规格 D7）：deny 规则仍先行；单发独占由 reactor 并行闸门承载；
     // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；read-only 闸门：
     // create/exit 拦截（写语义：建树+切换活动根），list 只读放行（与 Read/Grep/Glob 同列白名单语义）
@@ -156,6 +164,17 @@ export class SecurityGuard {
   private override: PermissionMode | undefined;
   enterModeOverride(mode: PermissionMode): void { this.override = mode; }
   exitModeOverride(): void { this.override = undefined; }
+
+  /** exit_plan 武装位（2026-11-03 交稿协议）：规划轮在途标记——宿主 enterReadOnly 接缝置 true、
+   *  exitReadOnly 接缝置 false（与 read-only 覆盖同生命周期同配对纪律）。guard 判据单点,
+   *  工具清单恒下发不裁剪（spec §1 enforcement 哲学） */
+  private exitPlanArmed = false;
+  setExitPlanArmed(armed: boolean): void {
+    this.exitPlanArmed = armed;
+  }
+  get exitPlanArmedNow(): boolean {
+    return this.exitPlanArmed;
+  }
 
   /** 基档切换通道（spec §4.4 批准落档:planFlow 批准续段/宿主消费;Task8 审查裁定——只回执不实切被推翻）：
    *  运行中模式切换的 409 纪律由宿主保证（guard 判定面无并发写源） */

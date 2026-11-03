@@ -24,8 +24,10 @@ export interface PlanCardDecision {
   feedback?: string;
 }
 
-/** plan-approval 挂起卡:doc=计划书 markdown 全文(滚动区渲染);items=步骤清单(执行权威,不重复上屏) */
-export function PlanCard({ doc, onDecide }: { doc: string; items: string[]; onDecide: (d: PlanCardDecision) => void }): JSX.Element {
+/** plan-approval 挂起卡:doc=计划书 markdown 全文(滚动区渲染);items=步骤清单(执行权威,不重复上屏);
+ *  name/path=计划名与计划文件绝对路径（2026-11-03 交稿协议）——卡头蓝色链接点击 onOpenFile 开侧栏原文
+ *  （/session/:id/file 数据目录已放行,零新端点）;path 缺席（未落盘/旧 daemon）降级纯文本 */
+export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: string; items: string[]; name?: string; path?: string; onOpenFile?: (p: string) => void; onDecide: (d: PlanCardDecision) => void }): JSX.Element {
   const [feedback, setFeedback] = useState('');
   const sendReject = (): void => {
     const text = feedback.trim();
@@ -38,6 +40,24 @@ export function PlanCard({ doc, onDecide }: { doc: string; items: string[]; onDe
           <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" />
         </span>
         <div className="card-title">{t('Plan approval', '计划确认')}</div>
+        {name !== undefined && name !== '' ? (
+          path !== undefined && onOpenFile !== undefined ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              className="card-title tool-file-base tool-file-link"
+              data-tip={t('Open plan file', '打开计划文件')}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFile(path);
+              }}
+            >
+              {name}
+            </span>
+          ) : (
+            <span className="card-title">{name}</span>
+          )
+        ) : null}
       </div>
       <div className="plan-card-doc tool-md">
         <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>

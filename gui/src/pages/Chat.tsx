@@ -715,7 +715,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             反馈回执后移卡恢复输入框;裁决期间 composer 由 dock 顶替(同 G14.88 审批挂起口径) */
           <div className="ask-dock">
             {planCards.map((c) => (
-              <PlanCard key={c.pid} doc={c.req.doc} items={c.req.items} onDecide={(d) => sendPlanApproval(c.pid, d)} />
+              <PlanCard key={c.pid} doc={c.req.doc} items={c.req.items} name={c.req.name} path={c.req.path} onOpenFile={onOpenFile} onDecide={(d) => sendPlanApproval(c.pid, d)} />
             ))}
           </div>
         ) : approvalCards.length > 0 ? (

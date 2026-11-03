@@ -112,10 +112,13 @@ export function builtinTools(
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
     readGuard?: ReadGuard;
+    /** exit_plan 交稿接缝（2026-11-03 交稿协议）：present 写 harness 暂存槽（terminal 工具终止 run 后由
+     *  宿主规划接缝 takePresentedPlan 取走）。接缝不在场不注册（ask 先例） */
+    plan?: { present: (name: string, doc: string) => void };
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
-  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard } = opts;
+  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard, plan } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -738,6 +741,38 @@ export function builtinTools(
       throw new CodedToolError('INVALID_ARG', `unknown worktree action: ${action} (expect create|exit|list)`);
     },
   });
+
+  // exit_plan（2026-11-03 交稿协议,方案 B 转正）：规划轮交稿终止型工具——模型调研完显式出牌,
+  // doc 进 harness 暂存槽、本 run 以 plan-presented 收束（terminal 面）;guard 只在规划轮放行
+  // （exitPlanArmed,拒绝不终止——模型看拒绝行自行调整）。接缝不在场不注册（ask 先例）
+  if (plan) {
+    const planSeam = plan;
+    tools.push({
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'doc'],
+        properties: {
+          name: { type: 'string', description: 'Short plan title (a few words, shown to the user as the plan name; e.g. "Refactor auth module")' },
+          doc: { type: 'string', description: 'The full plan document in markdown — sections: Background, Approach, Files, Steps (numbered "1. ..."), Risks, Verification. This exact text is what the user reviews and approves.' },
+        },
+      },
+      name: 'exit_plan',
+      description:
+        'Present your plan for user approval and end the planning round. Call this ONLY in plan mode after you have finished investigating (read-only research) and the plan is ready. The plan document is shown to the user as a confirmation card; execution starts only after they approve. Do not call it in normal (non-plan) work.',
+      category: 'plan',
+      display: { verb: 'PLAN', targetFields: ['name'] },
+      terminal: true,
+      executor: async (input: ToolInput) => {
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        const doc = typeof input.doc === 'string' ? input.doc : '';
+        if (name === '') throw new CodedToolError('INVALID_ARG', 'name must be a non-empty short plan title');
+        if (doc.trim() === '') throw new CodedToolError('INVALID_ARG', 'doc must be the full plan document in markdown (non-empty)');
+        planSeam.present(name, doc);
+        return execOut(`plan presented: ${name} — awaiting user decision (approve lands the execution mode; reject returns feedback for a revision round)`);
+      },
+    });
+  }
 
   return tools;
 }

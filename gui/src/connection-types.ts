@@ -70,9 +70,13 @@ export interface GuiAskReq {
   filterable?: boolean;
 }
 
-/** 阶段三 plan-arm 计划审批挂起请求(对齐 serve PlanApprovalFrame.req 字面,spec §5.1):
- *  doc=计划书 markdown 全文,items=步骤清单——PlanCard 渲染载荷,回执寻址仍统一帧顶层 pid */
+/** 阶段三 plan-arm 计划审批挂起请求(对齐 serve PlanApprovalFrame.req 字面,spec §5.1;
+ *  2026-11-03 交稿协议 +name/path):doc=计划书 markdown 全文,items=步骤清单——PlanCard 渲染载荷,
+ *  回执寻址仍统一帧顶层 pid;name=计划名(exit_plan 出牌/兜底派生),path=计划文件绝对路径
+ *  (落盘成功才有——卡头链接经 /session/:id/file 打开侧栏原文) */
 export interface GuiPlanApprovalReq {
+  name?: string;
+  path?: string;
   doc: string;
   items: string[];
 }

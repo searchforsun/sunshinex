@@ -43,7 +43,9 @@ export interface PlanApprovalFrame {
   kind: 'plan-approval';
   sessionId: string;
   pid: string;
-  req: { doc: string; items: string[] };
+  /** name=计划名（exit_plan 出牌/纯 reply 兜底派生）;path=计划文件绝对路径（落盘成功才有——GUI 卡头与
+   *  工具行链接经 /session/:id/file 打开,数据目录已放行） */
+  req: { name?: string; path?: string; doc: string; items: string[] };
 }
 
 /** reset 通知帧（G4 裁定 7）：无 seq——GUI 收到即清该会话本地投影并重播种（sessionSnapshot） */

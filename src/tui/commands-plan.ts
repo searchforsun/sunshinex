@@ -1,9 +1,12 @@
 import { t } from '../i18n';
 import type { RunOutcome, StopReason } from '../types';
 import { runPlanFlow, PLAN_MAX_ROUNDS } from '../harness/plan-flow';
-import type { PlanLandMode } from '../harness/plan-flow';
+import type { PlanLandMode, PlanDecision } from '../harness/plan-flow';
+import { formatToolCallLine } from '../harness/context/messages';
 import { PLAN_TASK_LABEL } from './chat-model';
 import { describeIncomplete } from './stop-reason';
+import { writePlanDoc } from './session-journal';
+import { resolveDataDir } from '../config/data-dir';
 import { pushInterruptedNotice, suspendAskerFor, interrupt } from './approval';
 import type { SessionController } from './session';
 
@@ -78,22 +81,65 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
   // 否则步骤正文会被归档抑制位吞掉
   ctrl.md.planReplyNoArchive = true;
   // 前轮计划书宿主侧留存（spec §4.3 rider：驳回环重入,revising 轮拼进规划提示词前部——plan-flow 模块不动,
-  // 拼装在宿主接缝实现内）;revising 事件臂置位、awaiting-approval 臂复位
+  // 拼装在宿主接缝实现内）;revising 事件臂置位、awaiting-approval 臂复位。
+  // 交稿面闭包（2026-11-03）：planName/planPath=awaiting-approval 臂更新（合成链行与卡/挂起行数据源）,
+  // lastRound=revising/planning 臂更新（驳回行 round 文案）;flowSignal=入口捕获的中断信号（interrupt 会清
+  // ctrl.taskAbort,合成行的 interrupted 判别靠这份引用）
   let lastPlanDoc: string | undefined;
   let revising = false;
+  let planName: string | undefined;
+  let planPath: string | undefined;
+  let lastRound = 1;
+  const flowSignal = ctrl.taskAbort?.signal;
+  /** 合成 exit_plan 链行（回放权威;live 面 fork onEvent 事件帧已实时显示,合成行只补回放）：
+   *  [tool-call('exit_plan',{name,path}) , tool-result('decision: …')]——不带 doc（回放轻,全文走 'plan' 行）。
+   *  有交稿事实（awaiting-approval 到过）才合成;appendChain 主链尾追,fork 零回写红线不受影响 */
+  const appendExitPlanRows = (decision: string): void => {
+    if (planName === undefined) return;
+    ctrl.runtime.harness.context.appendChain([
+      { action: 'tool-call', observation: formatToolCallLine('exit_plan', JSON.stringify({ name: planName, ...(planPath !== undefined ? { path: planPath } : {}) })) },
+      { action: 'tool-result', observation: decision },
+    ]);
+  };
+  const decisionTextOf = (d: PlanDecision, interrupted: boolean): string => {
+    if (interrupted) return 'decision: interrupted — no plan decision';
+    if (d.approved) return `decision: implement via ${d.mode === 'full-access' ? 'full access' : 'workspace edits'}`;
+    if (d.feedback !== undefined && d.feedback.trim() !== '') return `decision: rejected with feedback — revision round ${Math.min(lastRound + 1, PLAN_MAX_ROUNDS)}/${PLAN_MAX_ROUNDS}`;
+    return 'decision: discarded by user (no feedback)';
+  };
   void (async () => {
     try {
       const r = await runPlanFlow(goal, {
-        // 中断信号沿 runInternalTask 既有的 taskAbort 透传,第三参对齐接缝签名（同源信号显式传递）
-        runPlanningTask: (prompt, signal) => {
+        // 中断信号沿 runInternalTask 既有的 taskAbort 透传,第三参对齐接缝签名（同源信号显式传递）。
+        // 交稿转译（2026-11-03）：plan-presented → 读 harness 暂存槽,doc 进 reply 通道（plan-flow 既有
+        // 「reply=计划书」判定即权威,状态机零改动）;name 一并带出（卡/落盘/合成行展示）
+        runPlanningTask: async (prompt, signal) => {
           // 驳回环重入：前轮计划书拼进提示词前部（英文单语,§15 提示词面不进语言轴）+ 模块自带的反馈段
           const full = revising && lastPlanDoc
             ? `Previous plan document (rejected — revise it per the feedback below):\n${lastPlanDoc}\n\n${prompt}`
             : prompt;
-          return ctrl.runInternalTask(full, PLAN_TASK_LABEL, signal, revising ? undefined : images);
+          const out: RunOutcome = await ctrl.runInternalTask(full, PLAN_TASK_LABEL, signal, revising ? undefined : images);
+          if (out.stopReason === 'plan-presented') {
+            const presented = ctrl.runtime.harness.takePresentedPlan();
+            return { done: true, reply: presented?.doc ?? '', ...(presented !== undefined ? { name: presented.name } : {}) };
+          }
+          return { done: out.done, ...(out.stopReason !== undefined ? { stopReason: out.stopReason } : {}), ...(out.reply !== undefined ? { reply: out.reply } : {}) };
         },
-        enterReadOnly: () => ctrl.runtime.harness.security.enterModeOverride('read-only'),
-        exitReadOnly: () => ctrl.runtime.harness.security.exitModeOverride(),
+        enterReadOnly: () => {
+          ctrl.runtime.harness.security.enterModeOverride('read-only');
+          ctrl.runtime.harness.security.setExitPlanArmed(true); // 交稿协议：exit_plan 仅规划轮放行
+        },
+        exitReadOnly: () => {
+          ctrl.runtime.harness.security.exitModeOverride();
+          ctrl.runtime.harness.security.setExitPlanArmed(false);
+        },
+        // 计划书落盘（2026-11-03）：born-write 铸档后写 <dataDir>/sessions/<journalId>.plan.md（每轮覆盖写）
+        persistPlan: (_name, doc) => {
+          ctrl.ensureJournal();
+          const jid = ctrl.journal?.currentId;
+          if (jid === undefined) return {};
+          return { path: writePlanDoc(resolveDataDir(ctrl.root), jid, doc) };
+        },
         todosSnapshot: () => ctrl.getState().todos.map((td) => ({ text: td.text, status: td.status })),
         chainAppendPlan: (doc) => {
           // 计划书入链（spec §4.4,ChainAction 'plan',批准后一次）。'plan' 行**不进** lastTaskIdx 推理轮半径
@@ -102,13 +148,19 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
           ctrl.runtime.harness.context.appendChain([{ action: 'plan', observation: doc }]);
         },
         emit: (e) => {
-          if (e.type === 'planning') return; // 状态置 running 已在入口沿现实现完成
+          if (e.type === 'planning') {
+            lastRound = e.round;
+            return; // 状态置 running 已在入口沿现实现完成
+          }
           if (e.type === 'awaiting-approval') {
             lastPlanDoc = e.doc; // 前轮计划书留存（revising 轮拼提示词用）
+            planName = e.name; // 交稿面闭包更新（合成链行/挂起行数据源）
+            planPath = e.path;
             revising = false;
-            ctrl.pendingPlan = { doc: e.doc, items: e.items };
+            ctrl.pendingPlan = { name: e.name, path: e.path, doc: e.doc, items: e.items };
             const card = [
               t('Plan confirmation (/plan)', '计划确认卡（/plan）'),
+              t(`Plan: ${e.name}`, `计划：${e.name}`),
               e.doc,
               '---',
               ...e.items.map((item, i) => `${i + 1}. ${item}`),
@@ -122,12 +174,26 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
           }
           if (e.type === 'revising') {
             revising = true;
+            lastRound = e.round;
             ctrl.pushMsg('system', t(`Revising plan with your feedback (round ${e.round}/${PLAN_MAX_ROUNDS})`, `按反馈修订计划中（第 ${e.round}/${PLAN_MAX_ROUNDS} 轮）`));
             ctrl.state = { ...ctrl.state, status: 'running' }; // 状态卫生：修订轮规划在途,旧确认卡随裁决已出清
             ctrl.notify();
             return;
           }
           if (e.type === 'aborted') {
+            // 合成链行补终态（2026-11-03）：有交稿事实才合成（empty/failed/首轮中断无 exit_plan 调用,零合成）;
+            // exhausted 的末轮驳回行已由 awaitApproval 合成,此处零重复
+            if (planName !== undefined) {
+              appendExitPlanRows(
+                e.reason === 'interrupted'
+                  ? 'decision: interrupted — no plan decision'
+                  : e.reason === 'exhausted'
+                    ? `decision: rejected ${PLAN_MAX_ROUNDS} times (exhausted)`
+                    : e.reason === 'discarded'
+                      ? 'decision: discarded by user (no feedback)'
+                      : `decision: planning failed (${e.stopReason ?? 'unknown'})`,
+              );
+            }
             // replan 静默位（2026-11-03）：替换路径的中断不落「规划已中断」——replanOn 自带回执文案
             const quiet = e.reason === 'interrupted' && ctrl.planReplanQuiet;
             // failed 臂如实措辞（终审修复:spec §7 规划失败不再谎报 interrupted）——沿 describeIncomplete
@@ -151,7 +217,13 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
           }
           // approved：产物经返回值 r 承载,续段在下方 r 分支
         },
-        awaitApproval: () => new Promise((resolve) => { ctrl.planDecide = resolve; }),
+        // 裁决回填（合成链行时点）：决策先合成行（tool-call→tool-result 链序在 'plan' 行之前——红线①不破）,
+        // 再把决策交还 plan-flow;interrupted 判别用入口捕获的 flowSignal（interrupt 会清 ctrl.taskAbort）
+        awaitApproval: async () => {
+          const d: PlanDecision = await new Promise((resolve) => { ctrl.planDecide = resolve; });
+          appendExitPlanRows(decisionTextOf(d, flowSignal?.aborted === true));
+          return d;
+        },
         signal: ctrl.taskAbort?.signal,
       });
       ctrl.md.planReplyNoArchive = false; // 规划段出口即复位：执行段/后续任务正文不再被抑制

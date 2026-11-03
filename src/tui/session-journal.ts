@@ -276,6 +276,18 @@ export function sessionsDir(dataDir: string): string {
   return path.join(dataDir, 'sessions');
 }
 
+/** 计划书落盘单点（2026-11-03 交稿协议）：`<dataDir>/sessions/<journalId>.plan.md` 覆盖写，
+ *  返回绝对路径（GUI 经既有 /session/:id/file 端点打开——数据目录已放行,零新端点）。
+ *  命名沿用 `<id>.` 旁车前缀先例（<id>.jsonl/<id>.meta.json 同族）：purgeSession 的前缀全家清理
+ *  天然覆盖——删除会话即删除计划文件（删除即无痕纪律,零新增清理面）。每轮修订覆盖写（journal
+ *  全量留档不受影响——链 'plan' 行与工具行才是权威事实源,文件是给人看的工件） */
+export function writePlanDoc(dataDir: string, journalId: string, doc: string): string {
+  const file = path.join(sessionsDir(dataDir), `${journalId}.plan.md`);
+  fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
+  fs.writeFileSync(file, doc, 'utf8');
+  return file;
+}
+
 /** 逐行解析：坏行（尾行撕裂/中段损坏）停在上一条完整事件并标 truncated（fail-bounded） */
 export function parseJournalFile(file: string): ParsedJournal {
   const events: JournalEvent[] = [];

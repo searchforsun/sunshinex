@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runPlanFlow, parseNumberedSteps, PLAN_TASK_LABEL, PLAN_MAX_ROUNDS } from './plan-flow';
+import { runPlanFlow, parseNumberedSteps, derivePlanName, PLAN_TASK_LABEL, PLAN_MAX_ROUNDS } from './plan-flow';
 import type { PlanStep, PlanFlowEvent, PlanFlowSeams } from './plan-flow';
 
 /** 全 mock 接缝帮手：默认规划产出 '# 计划\n1. A\n2. B'、todos 空、批准;over 逐缝覆写。
@@ -164,4 +164,32 @@ test('parseNumberedSteps 逐字迁移锚（session.ts 现实现语义等价勿�
 test('单源常量锚：PLAN_TASK_LABEL 迁 harness（D10 单源,tui re-export 同值）+ PLAN_MAX_ROUNDS=3', () => {
   assert.equal(PLAN_TASK_LABEL, 'Produce an investigation-backed plan document');
   assert.equal(PLAN_MAX_ROUNDS, 3);
+});
+
+test('交稿协议（2026-11-03）：name 透传与 persistPlan 接缝——exit_plan 名权威、纯 reply 兜底派生、卡事件带 path', async () => {
+  // exit_plan 名权威 + persistPlan 回传 path 进事件
+  const persisted: Array<{ name: string; doc: string }> = [];
+  const s1 = mockSeams({
+    runPlanningTask: async () => ({ done: true, reply: '# 交稿计划\n1. A', name: '重构认证模块' }),
+    persistPlan: (name, doc) => { persisted.push({ name, doc }); return { path: '/tmp/x.plan.md' }; },
+  });
+  const r1 = await runPlanFlow('g', s1);
+  assert.deepEqual(persisted, [{ name: '重构认证模块', doc: '# 交稿计划\n1. A' }], 'persistPlan 每轮 awaiting-approval 前调用');
+  const card = s1.emitted.find((e) => e.type === 'awaiting-approval') as Extract<PlanFlowEvent, { type: 'awaiting-approval' }>;
+  assert.equal(card.name, '重构认证模块', '卡事件带计划名');
+  assert.equal(card.path, '/tmp/x.plan.md', '卡事件带落盘路径');
+  assert.equal(r1?.doc, '# 交稿计划\n1. A', 'reply 通道=计划书全文（交稿转译后与兜底同形,状态机零改动锚）');
+  // 纯 reply 兜底：name 从 goal 派生;persistPlan 缺省（旧宿主）=不落盘,事件不带 path
+  const s2 = mockSeams({ runPlanningTask: async () => ({ done: true, reply: '# 计划\n1. A' }) });
+  await runPlanFlow('重构认证模块并补齐回归测试用例', s2);
+  const card2 = s2.emitted.find((e) => e.type === 'awaiting-approval') as Extract<PlanFlowEvent, { type: 'awaiting-approval' }>;
+  assert.equal(card2.name, derivePlanName('重构认证模块并补齐回归测试用例'), '兜底名=goal 派生');
+  assert.equal(card2.path, undefined, '未落盘不带 path');
+  assert.ok(card2.name.length <= 25, '派生名截断在 24 字符内');
+});
+
+test('derivePlanName：压缩空白/截断/空 goal 兜底', () => {
+  assert.equal(derivePlanName('  做   一件事  '), '做 一件事');
+  assert.equal(derivePlanName('一句话超过二十四个字符的目标需要被截断处理才行哦真长'), '一句话超过二十四个字符的目标需要被截断处理才行哦…');
+  assert.equal(derivePlanName(''), 'Plan');
 });

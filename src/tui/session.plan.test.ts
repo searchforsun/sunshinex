@@ -754,3 +754,38 @@ test('/plan：先武装再输入任务说明——普通文本提交经 armed �
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('/plan：exit_plan 交稿协议——模型出牌终止规划 run,卡带计划名,plan.md 落盘,批准后合成链行（2026-11-03）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-exit-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        { toolCalls: [{ name: 'exit_plan', args: { name: '重构认证模块', doc: '# 重构认证模块\n1. 步骤A' } }] }, // 交稿出牌（终止型）
+        '{"done":true,"reply":"步骤A 完成"}', // 执行包（字符串 DSL 步）
+      ]),
+    });
+    await ctrl.submit('/plan 做一件事');
+    await waitFor(() => ctrl.getState().status === 'awaiting-plan', '交稿后确认卡到场');
+    assert.match(ctrl.getState().messages.at(-1)?.text ?? '', /Plan: 重构认证模块|计划：重构认证模块/, '卡带计划名（TUI 卡头行）');
+    assert.match(ctrl.getState().messages.at(-1)?.text ?? '', /步骤A/, '计划书全文随卡');
+    // 落盘：born-write 铸档 → <dataDir>/sessions/<journalId>.plan.md
+    const jid = ctrl.journal?.currentId;
+    assert.ok(jid !== undefined, 'persistPlan born-write 铸档');
+    const planFile = path.join(resolveDataDir(tmp), 'sessions', `${jid}.plan.md`);
+    assert.ok(fs.existsSync(planFile), '计划书已落盘');
+    assert.match(fs.readFileSync(planFile, 'utf8'), /重构认证模块/, '落盘内容=计划书全文');
+    await ctrl.confirmPlan(true, undefined, 'acceptEdits');
+    await ctrl.waitIdle();
+    // 合成链行：tool-call(带 name/path)→tool-result(decision)→plan 行——链序红线不破
+    const chain = chainOf(ctrl);
+    const callIdx = chain.findIndex((s) => s.action === 'tool-call' && s.observation.includes('exit_plan'));
+    const resultIdx = chain.findIndex((s) => s.action === 'tool-result' && s.observation.includes('decision: implement via workspace edits'));
+    const planIdx = chain.findIndex((s) => s.action === 'plan');
+    assert.ok(callIdx >= 0 && resultIdx > callIdx && planIdx > resultIdx, '链序:交稿调用→裁决结果→计划书行');
+    assert.match(chain[callIdx]!.observation, /重构认证模块/, '合成调用行携带计划名');
+    assert.equal(ctrl.getState().todos.filter((td) => td.status === 'completed').length, 1, '批准后逐项执行');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

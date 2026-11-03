@@ -5,12 +5,22 @@
 
 export interface PlanStep { text: string; status: 'pending' | 'in_progress' | 'completed' }
 
+/** 规划接缝单轮返回（2026-11-03 交稿协议扩员）：宿主 runPlanningTask 在 stopReason==='plan-presented'
+ *  时读 harness 暂存槽转译——reply=计划书全文（权威通道,与纯 reply 兜底同形）,name=模型 exit_plan
+ *  出牌的计划名（纯 reply 兜底由宿主从 goal 派生） */
+export interface PlanningRoundOutcome {
+  done: boolean;
+  stopReason?: string;
+  reply?: string;
+  name?: string;
+}
+
 /** 批准落档档位（2026-11-03 修订:批准卡三选,缺省 acceptEdits——full-access 必须显式选择） */
 export type PlanLandMode = 'acceptEdits' | 'full-access';
 
 export type PlanFlowEvent =
   | { type: 'planning'; round: number }
-  | { type: 'awaiting-approval'; doc: string; items: string[] }
+  | { type: 'awaiting-approval'; name: string; doc: string; items: string[]; path?: string }
   | { type: 'revising'; round: number }
   | { type: 'approved'; doc: string; items: string[] }
   /** aborted：中断/超限/无产物/规划任务非中断失败/拒绝无反馈放弃。stopReason=规划 run 的原始终止原因透传
@@ -21,13 +31,16 @@ export type PlanFlowEvent =
 export interface PlanDecision { approved: boolean; mode?: PlanLandMode; feedback?: string }
 
 export interface PlanFlowSeams {
-  runPlanningTask(prompt: string, signal?: AbortSignal): Promise<{ done: boolean; stopReason?: string; reply?: string }>;
+  runPlanningTask(prompt: string, signal?: AbortSignal): Promise<PlanningRoundOutcome>;
   enterReadOnly(): void;
   exitReadOnly(): void;
   todosSnapshot(): PlanStep[];
   chainAppendPlan(doc: string): void;
   emit(e: PlanFlowEvent): void;
   awaitApproval(doc: string, items: string[]): Promise<PlanDecision>;
+  /** 计划书落盘接缝（2026-11-03 交稿协议）：宿主写 <dataDir>/sessions/<journalId>.plan.md 并回传绝对路径;
+   *  awaitCard 时调用（每轮修订覆盖写）——state 机只透传 name/path,零 IO 政策不变 */
+  persistPlan?: (name: string, doc: string) => { path?: string };
   signal?: AbortSignal;
 }
 
@@ -44,6 +57,12 @@ function planPrompt(goal: string, feedback?: string): string {
     (feedback ? `\nThe previous plan was rejected with this feedback — revise the plan accordingly:\n${feedback}` : '') +
     `\nGoal: ${goal}`
   );
+}
+
+/** 计划名兜底派生（纯 reply 路径无 exit_plan 名）：goal 压缩空白截 24 字符 */
+export function derivePlanName(goal: string): string {
+  const flat = goal.replace(/\s+/g, ' ').trim();
+  return flat.length <= 24 ? (flat === '' ? 'Plan' : flat) : flat.slice(0, 24) + '…';
 }
 
 /** 正文编号行解析（todos 兜底路径;**逐字迁移** src/tui/session.ts:620-624 现实现——split→trim→去编号前缀→滤空,行为等价勿加戏） */
@@ -63,7 +82,7 @@ export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?:
     }
     seams.emit(round === 1 ? { type: 'planning', round } : { type: 'revising', round });
     seams.enterReadOnly();
-    let out: { done: boolean; stopReason?: string; reply?: string };
+    let out: PlanningRoundOutcome;
     try {
       // feedback 变量随轮更新:首轮=入参初始反馈,修订轮=上一轮拒绝反馈(拒绝后重写)——修订重入必须携带反馈
       out = await seams.runPlanningTask(planPrompt(goal, feedback), seams.signal);
@@ -81,6 +100,8 @@ export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?:
       return null;
     }
     const doc = out.reply ?? '';
+    // 计划名（2026-11-03 交稿协议）：exit_plan 出牌名权威;纯 reply 兜底从 goal 派生（截 24 字符）
+    const planName = out.name !== undefined && out.name.trim() !== '' ? out.name.trim() : derivePlanName(goal);
     // todos 权威:todo_write 快照优先于正文解析(空文本项滤除)
     const items = seams.todosSnapshot().map((t) => t.text).filter((t) => t.trim() !== '');
     // todos 空 → 正文编号行兜底:先筛编号行再交 parseNumberedSteps 去前缀——散文/标题行不作步骤
@@ -92,7 +113,10 @@ export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?:
       seams.emit({ type: 'aborted', reason: 'empty' });
       return null;
     }
-    seams.emit({ type: 'awaiting-approval', doc, items: finalItems });
+    // 计划书落盘（2026-11-03 交稿协议）：emit 前写盘（宿主接缝,每轮修订覆盖写）,卡与合成链行携 name/path;
+    // 接缝缺省（旧宿主/单测）=不落盘,name 仍透传（卡头展示用）
+    const persisted = seams.persistPlan?.(planName, doc);
+    seams.emit({ type: 'awaiting-approval', name: planName, doc, items: finalItems, ...(persisted?.path !== undefined ? { path: persisted.path } : {}) });
     const d = await seams.awaitApproval(doc, finalItems);
     // 判定序（2026-11-03 修订）：信号中止最优先（TUI Esc/serve interrupt 先 abort 再回填拒绝——
     // 产物不得注入、执行不得启动,沿 approval.ts rider 语义）;其次空反馈驳回=放弃本轮（discarded,

@@ -364,7 +364,7 @@ export class SessionController {
   private kickTimer?: ReturnType<typeof setInterval>;
   /** 挂起的计划确认卡（/plan 流程,spec §4.3 重造=计划书全文+步骤清单）；confirmPlan 裁决后清除——
    *  公开 = 拆分件 approval 中断路径消费 */
-  pendingPlan?: { doc: string; items: string[] };
+  pendingPlan?: { name: string; path?: string; doc: string; items: string[] };
   /** planFlow 裁决回填口（awaitApproval 接缝的宿主侧单点,confirmPlan 回填）；壳收尾清空防悬空 */
   planDecide?: (d: { approved: boolean; mode?: 'acceptEdits' | 'full-access'; feedback?: string }) => void; // 公开 = 拆分件 commands-plan 回填消费（D52;2026-11-03 批准卡三选 +mode）
   /** planFlow 消费壳在途标记：公开 = 拆分件 approval 中断路径消费（rider:awaiting-approval 期间中断必须

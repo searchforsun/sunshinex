@@ -26,6 +26,8 @@ import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile } from
 import { resolveRunWindow } from '../config/termination-config';
 import { runPlanFlow, PLAN_TASK_LABEL, PLAN_MAX_ROUNDS } from '../harness/plan-flow';
 import type { PlanDecision } from '../harness/plan-flow';
+import { formatToolCallLine } from '../harness/context/messages';
+import { writePlanDoc } from '../tui/session-journal';
 import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
 import type { ChangeFile } from '../types';
@@ -164,7 +166,7 @@ export interface SessionRuntimeOpts {
 export type PendingEntry =
   | { kind: 'approval'; req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }
   | { kind: 'ask'; req: AskUserRequest; resolve: (a: AskUserAnswer) => void }
-  | { kind: 'plan-approval'; req: { doc: string; items: string[] }; resolve: (d: PlanDecision) => void };
+  | { kind: 'plan-approval'; req: { name?: string; path?: string; doc: string; items: string[] }; resolve: (d: PlanDecision) => void };
 
 /** snapshot 挂起段行（G5/P6 后由会话自产）：kind 判别与挂起表同源（approval/ask/plan-approval）；
  *  pid 为 daemon 级铸造票据——跨会话卡恢复（GUI 重启/刷新后重放挂起面）的寻址键；req=挂起表
@@ -543,7 +545,7 @@ export class SessionRuntime {
    *  中止已置位的 ghost 窗直接拒绝回填不入表（suspendApproval 先例）。决策由 resolvePendingPlanApproval
    *  经回执路由回填驱动流程续跑（TUI planDecide 回填单点的表驱动同构——寻址键 pid 入挂起表,不再设
    *  planDecide 字段） */
-  private awaitPlanApproval(doc: string, items: string[], onParked: () => void): Promise<PlanDecision> {
+  private awaitPlanApproval(card: { name: string; path?: string; doc: string; items: string[] }, onParked: () => void): Promise<PlanDecision> {
     return new Promise((resolve) => {
       if (this.planAbort?.signal.aborted) {
         resolve({ approved: false });
@@ -551,8 +553,8 @@ export class SessionRuntime {
         return;
       }
       const pid = this.opts.mintPid();
-      this.pending.set(pid, { kind: 'plan-approval', req: { doc, items }, resolve });
-      const frame: PlanApprovalFrame = { kind: 'plan-approval', sessionId: this.id, pid, req: { doc, items } };
+      this.pending.set(pid, { kind: 'plan-approval', req: card, resolve });
+      const frame: PlanApprovalFrame = { kind: 'plan-approval', sessionId: this.id, pid, req: card };
       this.opts.broadcast(frame);
       onParked(); // 裁决点放行 submit 半径：锁交还（idle 时刻合法是批准续段 setMode 的前置）
     });
@@ -1069,18 +1071,61 @@ export class SessionRuntime {
     // 前轮计划书宿主侧留存（TUI 同构 rider：驳回环重入,revising 轮拼进规划提示词前部——plan-flow 模块不动）
     let lastPlanDoc: string | undefined;
     let revising = false;
+    // 交稿面闭包（2026-11-03,TUI 同构）：planName/planPath=awaiting-approval 臂更新;lastRound=驳回行 round 文案;
+    // planCardMeta=awaitApproval 消费面（卡元数据,合成行 path 来源）
+    let planName: string | undefined;
+    let planPath: string | undefined;
+    let lastRound = 1;
+    const planCardMeta: { name: string; path?: string } = { name: '' };
+    /** 合成 exit_plan 链行（TUI 同构）：[tool-call({name,path}) , tool-result('decision: …')]——回放权威,
+     *  live 面 fork onEvent 事件帧已实时显示（链行不带 doc,全文走 'plan' 行）;有交稿事实才合成 */
+    const appendExitPlanRows = (decision: string): void => {
+      if (planName === undefined) return;
+      this.runtimeImpl.harness.context.appendChain([
+        { action: 'tool-call', observation: formatToolCallLine('exit_plan', JSON.stringify({ name: planName, ...(planPath !== undefined ? { path: planPath } : {}) })) },
+        { action: 'tool-result', observation: decision },
+      ]);
+    };
+    const decisionTextOf = (d: PlanDecision, interrupted: boolean): string => {
+      if (interrupted) return 'decision: interrupted — no plan decision';
+      if (d.approved) return `decision: implement via ${d.mode === 'full-access' ? 'full access' : 'workspace edits'}`;
+      if (d.feedback !== undefined && d.feedback.trim() !== '') return `decision: rejected with feedback — revision round ${Math.min(lastRound + 1, PLAN_MAX_ROUNDS)}/${PLAN_MAX_ROUNDS}`;
+      return 'decision: discarded by user (no feedback)';
+    };
     void (async () => {
       try {
         const r = await runPlanFlow(goal, {
-          // 中断信号沿规划任务透传（TUI runInternalTask 同构,第三参对齐接缝签名）
+          // 中断信号沿规划任务透传（TUI runInternalTask 同构,第三参对齐接缝签名）。
+          // 交稿转译（2026-11-03,TUI 同构）：plan-presented → 读暂存槽,doc 进 reply 通道（plan-flow 既有
+          // 「reply=计划书」判定即权威,状态机零改动）;name 一并带出（卡/落盘/合成行展示）
           runPlanningTask: (prompt, signal) => {
             const full = revising && lastPlanDoc
               ? `Previous plan document (rejected — revise it per the feedback below):\n${lastPlanDoc}\n\n${prompt}`
               : prompt;
-            return this.runPlanningTask(full, signal, revising ? undefined : images); // 用户随行图片仅首轮规划透传（修订轮提示词已含旧计划书全文,图片随首轮 seed 已在链）
+            const inner = this.runPlanningTask(full, signal, revising ? undefined : images); // 用户随行图片仅首轮规划透传（修订轮提示词已含旧计划书全文,图片随首轮 seed 已在链）
+            return inner.then((out) => {
+              if (out.stopReason === 'plan-presented') {
+                const presented = this.runtimeImpl.harness.takePresentedPlan();
+                return { done: true, reply: presented?.doc ?? '', ...(presented !== undefined ? { name: presented.name } : {}) };
+              }
+              return { done: out.done, ...(out.stopReason !== undefined ? { stopReason: out.stopReason } : {}), ...(out.reply !== undefined ? { reply: out.reply } : {}) };
+            });
           },
-          enterReadOnly: () => this.runtimeImpl.harness.security.enterModeOverride('read-only'),
-          exitReadOnly: () => this.runtimeImpl.harness.security.exitModeOverride(),
+          enterReadOnly: () => {
+            this.runtimeImpl.harness.security.enterModeOverride('read-only');
+            this.runtimeImpl.harness.security.setExitPlanArmed(true); // 交稿协议：exit_plan 仅规划轮放行
+          },
+          exitReadOnly: () => {
+            this.runtimeImpl.harness.security.exitModeOverride();
+            this.runtimeImpl.harness.security.setExitPlanArmed(false);
+          },
+          // 计划书落盘（2026-11-03,TUI 同构）：born-write 铸档后写 <dataDir>/sessions/<journalId>.plan.md（每轮覆盖写）
+          persistPlan: (_name, doc) => {
+            this.ensureMintedWithBirth();
+            const jid = this.journal?.currentId;
+            if (jid === undefined) return {};
+            return { path: writePlanDoc(resolveDataDir(this.root), jid, doc) };
+          },
           todosSnapshot: () => this.todos.map((td) => ({ text: td.text, status: td.status })),
           chainAppendPlan: (doc) => {
             // 计划书入链（ChainAction 'plan',批准后一次）。'plan' 行**不进**推理轮半径——Task 8 移交
@@ -1089,18 +1134,39 @@ export class SessionRuntime {
             this.runtimeImpl.harness.context.appendChain([{ action: 'plan', observation: doc }]);
           },
           emit: (e) => {
-            if (e.type === 'planning') return; // 运行态已由阶段一锁承载（status running）,无独立状态行
+            if (e.type === 'planning') {
+              lastRound = e.round;
+              return; // 运行态已由阶段一锁承载（status running）,无独立状态行
+            }
             if (e.type === 'awaiting-approval') {
               lastPlanDoc = e.doc; // 前轮计划书留存（revising 轮拼提示词用）
+              planName = e.name; // 交稿面闭包更新（合成链行/挂起行数据源）
+              planPath = e.path;
+              planCardMeta.name = e.name;
+              if (e.path !== undefined) planCardMeta.path = e.path; else delete planCardMeta.path;
               revising = false;
               return; // 卡面=plan-approval 帧+挂起表快照（awaitApproval 接缝登记）,无独立状态行
             }
             if (e.type === 'revising') {
               revising = true;
+              lastRound = e.round;
               this.pump({ type: 'notice', text: `Revising plan with your feedback (round ${e.round}/${PLAN_MAX_ROUNDS})`, ts: Date.now() });
               return;
             }
             if (e.type === 'aborted') {
+              // 合成链行补终态（2026-11-03,TUI 同构）：有交稿事实才合成（empty/failed/首轮中断无调用,零合成）;
+              // exhausted 的末轮驳回行已由 awaitApproval 合成,此处零重复
+              if (planName !== undefined) {
+                appendExitPlanRows(
+                  e.reason === 'interrupted'
+                    ? 'decision: interrupted — no plan decision'
+                    : e.reason === 'exhausted'
+                      ? `decision: rejected ${PLAN_MAX_ROUNDS} times (exhausted)`
+                      : e.reason === 'discarded'
+                        ? 'decision: discarded by user (no feedback)'
+                        : `decision: planning failed (${e.stopReason ?? 'unknown'})`,
+                );
+              }
               // replan 静默位（2026-11-03）：替换路径的中断不落「规划已中断」——replan 自带回执文案
               if (e.reason === 'interrupted' && this.planReplanQuiet) {
                 releaseGateOnce(); // 无裁决点路径也放行 submit 半径
@@ -1124,7 +1190,13 @@ export class SessionRuntime {
             // approved：产物经返回值 r 承载,续段在下方 r 分支
             this.pump({ type: 'notice', text: `Plan approved — executing ${e.items.length} step(s)`, ts: Date.now() });
           },
-          awaitApproval: (doc, items) => this.awaitPlanApproval(doc, items, releaseGateOnce),
+          // 裁决回填（合成链行时点,TUI 同构）：决策先合成行（tool-call→tool-result 链序在 'plan' 行之前——
+          // 红线①不破）再交还 plan-flow;interrupted 判别用流程 abort 信号（denyPending 回填路径信号已置位）
+          awaitApproval: (doc, items) =>
+            this.awaitPlanApproval({ name: planCardMeta.name, path: planCardMeta.path, doc, items }, releaseGateOnce).then((d) => {
+              appendExitPlanRows(decisionTextOf(d, abort.signal.aborted));
+              return d;
+            }),
           signal: abort.signal,
         });
         if (r) {

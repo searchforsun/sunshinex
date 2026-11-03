@@ -358,11 +358,12 @@ export class SubagentRunner {
       child.unregister(SPAWN_TOOL_NAME);
       child.unregister('ask_question');
       child.unregister('worktree');
+      child.unregister('exit_plan'); // 交稿协议（2026-11-03）：子面不可交稿（规划轮是宿主级 fork,与子智能体无关）
       for (const n of FORK_EXCLUDED_TOOLS) child.unregister(n);
       return bindExecWait(child);
     }
     return bindExecWait(
-      this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', ...FORK_EXCLUDED_TOOLS] }),
+      this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...FORK_EXCLUDED_TOOLS] }),
     );
   }
 
