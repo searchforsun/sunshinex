@@ -75,7 +75,9 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              sendReject();
+              // 空文本 Enter 无操作(2026-11-03 用户实测「没做选择就被拒」:点进反馈框误按 Enter=立即
+              // 驳回放弃的陷阱)——带反馈 Enter 才提交修订;放弃本轮必须显式点「驳回」按钮
+              if (feedback.trim() !== '') sendReject();
             }
           }}
         />

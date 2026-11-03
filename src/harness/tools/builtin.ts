@@ -753,7 +753,7 @@ export function builtinTools(
         additionalProperties: false,
         required: ['name', 'doc'],
         properties: {
-          name: { type: 'string', description: 'Short plan title (a few words, shown to the user as the plan name; e.g. "Refactor auth module")' },
+          name: { type: ['string', 'null'], description: 'Short plan title (a few words, shown to the user as the plan name; e.g. "Refactor auth module"). Omit or null to derive it from the goal.' },
           doc: { type: 'string', description: 'The full plan document in markdown — sections: Background, Approach, Files, Steps (numbered "1. ..."), Risks, Verification. This exact text is what the user reviews and approves.' },
         },
       },
@@ -764,12 +764,14 @@ export function builtinTools(
       display: { verb: 'PLAN', targetFields: ['name'] },
       terminal: true,
       executor: async (input: ToolInput) => {
+        // name 可空(2026-11-03 实测:glm 出牌漏 name→INVALID_ARG 硬失败→交稿不达;缺省交由
+        // plan-flow derivePlanName(goal) 兜底,槽内空名即走派生);doc 缺失仍是硬错误(无计划书即无交稿)
         const name = typeof input.name === 'string' ? input.name.trim() : '';
         const doc = typeof input.doc === 'string' ? input.doc : '';
-        if (name === '') throw new CodedToolError('INVALID_ARG', 'name must be a non-empty short plan title');
         if (doc.trim() === '') throw new CodedToolError('INVALID_ARG', 'doc must be the full plan document in markdown (non-empty)');
         planSeam.present(name, doc);
-        return execOut(`plan presented: ${name} — awaiting user decision (approve lands the execution mode; reject returns feedback for a revision round)`);
+        const shown = name !== '' ? name : '(untitled plan)';
+        return execOut(`plan presented: ${shown} — awaiting user decision (approve lands the execution mode; reject returns feedback for a revision round)`);
       },
     });
   }

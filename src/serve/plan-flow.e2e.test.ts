@@ -457,6 +457,25 @@ test('serve 交稿协议：exit_plan 终止规划 run——卡带计划名+plan.
   );
 });
 
+test('serve 交稿协议：exit_plan 漏 name=可空兜底——卡名从 goal 派生,交稿不硬失败(2026-11-03 实测根因)', async () => {
+  const model = new ScriptedAdapter([
+    { toolCalls: [{ name: 'exit_plan', args: { doc: '# 演示计划\n1. 步骤D' } }] }, // 漏 name 出牌(实测形态)
+    '{"done":true,"reply":"步骤D 完成"}',
+  ]);
+  await withSession(
+    model,
+    async (ctx) => {
+      ctx.session.attachJournal(new SessionJournal(path.join(ctx.tmp, 'data'))); // 生产形态:attach 后落盘可达
+      assert.deepEqual(ctx.session.submit('给 demo.js 补一组验证用例并跑绿'), { ok: true });
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
+      const frame = ctx.frames.filter((f) => f.kind === 'plan-approval').at(-1) as { pid: string; req: { name?: string; path?: string; doc: string } } | undefined;
+      assert.equal(frame?.req.name, '给 demo.js 补一组验证用例并跑绿', '缺 name=卡名从 goal 派生(derivePlanName,交稿不硬失败)');
+      assert.ok(fs.existsSync(frame?.req.path ?? ''), '计划书落盘(首行=派生名)');
+    },
+    { mode: 'plan' },
+  );
+});
+
 test('serve 交稿协议：guard 非规划轮拒 exit_plan——普通任务调 exit_plan 被拒不终止,无计划卡', async () => {
   const model = new ScriptedAdapter([
     { toolCalls: [{ name: 'exit_plan', args: { name: '越权交稿', doc: '# 不该出现' } }] }, // 普通任务里出牌交稿
