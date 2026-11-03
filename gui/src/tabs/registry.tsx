@@ -208,7 +208,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         teams={p.services.teams}
         members={[...p.services.team]}
         focus={p.services.taskFocus}
-        onOpenAgent={(label, agentTitle, task) => p.openTab('agent', { label, agentTitle, task })}
+        onOpenAgent={(label, agentTitle, task, focusTaskId) => p.openTab('agent', { label, agentTitle, task, focusTaskId })}
         onStopTask={p.services.onStopTask}
         onRefresh={p.services.refreshBoard === undefined ? undefined : () => p.services.refreshBoard!(p.sessionId)}
         refreshNonce={p.panelRefreshNonce}
@@ -231,6 +231,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         board={p.services.board}
         teams={p.services.teams}
         task={p.params.task}
+        focusTaskId={p.params.focusTaskId}
         // G14.2xx b 工具行/正文回调链与主对话同构(App openTabInSession 同一开签口径——
         // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_agent_team_task 名定位任务板)
         onOpenFile={fileTabOf(p)}

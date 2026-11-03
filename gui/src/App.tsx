@@ -420,7 +420,7 @@ function AppShell(): JSX.Element {
     // 才见标签(草稿座迁移链忠实搬运了写错座的档)。fe55c46 修同族三处判定时此处依赖遗漏
   }, [openSessionId, isWelcome]);
   const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
-  const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string): void => { openTabInSession('agent', { label, agentTitle, task }); }, [openTabInSession]);
+  const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走
    *  browser_navigate 时 Chat 上抛 url,此处开 web 页签跟随(判重由 openTabInSession 承担) */
   const openWebTab = useCallback((url: string): void => { openTabInSession('web', { url }); }, [openTabInSession]);

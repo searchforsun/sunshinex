@@ -42,6 +42,9 @@ export interface TabParams {
   readonly agentTitle?: string;
   /** G14.175 子智能体的用户输入(任务内容):spawn 行带 prompt、看板行带任务标题——无活动流时的正文兜底 */
   readonly task?: string;
+  /** 2026-11-03 任务定位:任务板/编排点开成员转录时携带板任务 id——转录页滚至该任务气泡并闪光
+   *  (成员可能连跑多个任务;同 agent 重开=聚焦+params 刷新,换任务再点即换定位目标) */
+  readonly focusTaskId?: string;
   /** G14.2xx web 页名回写(WebTab onLoad 取 document.title;标签条标题派生 title() 优先消费) */
   readonly pageTitle?: string;
   /** 2026-10-25 web 站标 URL(daemon /web/meta 服务端代取;标签条渲染 favicon,缺席/加载失败退地球) */

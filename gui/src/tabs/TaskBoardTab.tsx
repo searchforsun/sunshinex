@@ -35,8 +35,8 @@ export interface TaskBoardTabProps {
   readonly teams?: readonly BoardTeamRef[];
   /** 存活成员清单（快照 team）；按队卡 teamId 过滤 */
   readonly members?: readonly TeamMemberRef[];
-  /** 点击任务/节点/成员跳对应子智能体只读页签 */
-  readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  /** 点击任务/节点/成员跳对应子智能体只读页签(第 4 参=板任务 id,转录页定位到该任务气泡) */
+  readonly onOpenAgent?: (label: string, agentTitle: string, task?: string, focusTaskId?: string) => void;
   /** pending|running 停止（App 注入 conn.boardStop） */
   readonly onStopTask?: (taskId: string) => void;
   /** 工具行点开的定位信号：kind=task 高亮任务行并切到任务栏；kind=team 高亮队卡（ref=teamId 或队名） */
@@ -161,7 +161,7 @@ function TaskCard({
   members: readonly TeamMemberRef[];
   teamCount: number;
   teamCreatedAt?: number;
-  onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  onOpenAgent?: (label: string, agentTitle: string, task?: string, focusTaskId?: string) => void;
   onStopTask?: (taskId: string) => void;
   focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
 }): JSX.Element {
@@ -198,7 +198,7 @@ function TaskCard({
     if (agentName === '' && d === undefined) return;
     const label = agentName !== '' ? agentName : (d !== undefined && d.label !== '' ? d.label : task.id);
     const taskText = (task.title !== '' ? `${task.title}\n` : '') + task.spec;
-    onOpenAgent?.(label, agentName !== '' ? agentName : task.title, taskText);
+    onOpenAgent?.(label, agentName !== '' ? agentName : task.title, taskText, task.id);
   };
   return (
     <section className="tb-card" data-team-id={group.teamId}>

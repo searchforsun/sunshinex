@@ -42,6 +42,8 @@ export interface AgentTranscriptTabProps {
   readonly board: TaskBoardState;
   /** 开档定格的任务内容（用户输入兜底；无 taskBand 时上屏） */
   readonly task?: string;
+  /** 任务定位(2026-11-03):任务板/编排点开成员转录时携带的板任务 id——命中该任务气泡即滚至+闪光 */
+  readonly focusTaskId?: string;
   /** 与主对话同构的回调链（App openTab 系注入；缺省=对应交互退化纯文本） */
   readonly onOpenFile?: (p: string) => void;
   readonly onOpenDiff?: (callId: string, p: string) => void;
@@ -54,7 +56,7 @@ export interface AgentTranscriptTabProps {
  *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
-export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask }: AgentTranscriptTabProps): JSX.Element {
+export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.2xx 回到底部钮:非贴底即显(同主对话 G14.74 口径;80px 阈值同贴底判定) */
   const [atBottom, setAtBottom] = useState(true);
@@ -91,6 +93,24 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     const el = bodyRef.current;
     if (el !== null && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [entries, activities?.currentTool]);
+  /** 任务气泡定位(2026-11-03 用户裁定「任务板/编排点开子智能体时定位到该条任务的气泡」):成员
+   *  连跑多个任务,转录内每任务一条带(Task <id>: … 前缀的用户条)——focusTaskId 命中即
+   *  scrollIntoView+accent 闪光并闩住;未命中(任务尚未开跑,气泡未出)随 entries 流入继续试。
+   *  闩按 focusTaskId 值:同 agent 页签换任务重开(openTab 判重聚焦+params 刷新)即换定位目标;
+   *  定位同时撤贴底跟随,流式续行不再拽回底部 */
+  const focusedTaskRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (focusTaskId === undefined || focusTaskId === focusedTaskRef.current) return;
+    const hit = entries.find((e) => e.kind === 'user' && e.md.startsWith(`Task ${focusTaskId}:`));
+    if (hit === undefined) return;
+    focusedTaskRef.current = focusTaskId;
+    const el = bodyRef.current?.querySelector<HTMLElement>(`[data-entry-key="${hit.key}"]`) ?? null;
+    if (el === null) return;
+    stickRef.current = false;
+    el.scrollIntoView({ block: 'start' });
+    el.classList.add('focus-flash');
+    window.setTimeout(() => el.classList.remove('focus-flash'), 1800);
+  }, [focusTaskId, entries]);
   const onScroll = (): void => {
     const el = bodyRef.current;
     if (el !== null) {
