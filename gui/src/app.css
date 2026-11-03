@@ -1906,11 +1906,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin: 0; font: 12px/1.7 var(--font-ui); color: var(--fg-secondary);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-/* 记忆/学习技能详情(2026-10-31 用户裁定):内容深色底+固定高(240px)过高纵向滚动;行图标
-   Database/Sparkles 与正文回显同件 */
+/* 记忆/学习技能详情(2026-10-31 用户裁定):内容井底+固定高(240px)过高纵向滚动;行图标
+   Database/Sparkles 与正文回显同件。2026-11-04 亮色修:原「32% 黑混入 surface」是暗色口径——
+   亮色下白底混黑成中灰大卡(用户实测);改走 --surface-code 井 token(暗=深井不变,亮=浅井) */
 .mem-detail .mem-body-text {
   height: 240px; overflow-y: auto;
-  background: color-mix(in srgb, #000 32%, var(--surface));
+  background: var(--surface-code);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
   padding: 8px 10px; color: var(--fg);
 }
