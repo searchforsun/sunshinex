@@ -810,11 +810,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G12 三轮:pill 弹层锚按钮(+pill-anchor)/「+」附加面板(卡顶同宽:命令/技能/文件) ===== */.pill-anchor { position: relative; display: inline-flex; }.sx-plus-panel {
   position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 25;
-  max-height: 360px; overflow-y: auto;
+  max-height: 360px;
   background: var(--surface-elevated); border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent); backdrop-filter: blur(16px); padding: 4px;
   display: flex; flex-direction: column;
-}.sx-plus-sec { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary); }.sx-plus-row { display: flex; align-items: center; gap: 8px; /* 2026-10-26 baseline→center:图标与文字垂直居中对齐(用户截图「选择图片」图标显高) */ width: 100%; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); color: var(--fg); }.sx-plus-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-plus-name { font-family: var(--font-mono); font-size: 12px; flex: none; }.sx-plus-desc { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-plus-empty { padding: 4px 10px; font-size: 12px; color: var(--fg-tertiary); }
+}
+/* 2026-11-03 用户裁定:滚动收敛到内容层,脚行钉底恒显 */
+.sx-plus-scroll { overflow-y: auto; min-height: 0; }
+.sx-plus-panel .sx-plus-foot { flex: none; }.sx-plus-sec { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary); }.sx-plus-row { display: flex; align-items: center; gap: 8px; /* 2026-10-26 baseline→center:图标与文字垂直居中对齐(用户截图「选择图片」图标显高) */ width: 100%; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); color: var(--fg); }.sx-plus-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-plus-name { font-family: var(--font-mono); font-size: 12px; flex: none; }.sx-plus-desc { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-plus-empty { padding: 4px 10px; font-size: 12px; color: var(--fg-tertiary); }
 
 /* ===== G9-B5 打磨收尾(spec §5):弹层浮面制/动效统一/reduced-motion ===== */.sx-menu-pop {
   border: none;

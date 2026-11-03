@@ -159,6 +159,7 @@ export function ComposerPlusPanel({
 
   return (
     <div className="sx-plus-panel" role="menu" aria-label={t('Add context', '添加附件')}>
+      <div className="sx-plus-scroll">
       {/* 附件区(2026-10-26 置首):图片选择开系统文件资源管理器;隐藏 input 承接 onChange */}
       {onAttachImages !== undefined && (
         <>
@@ -257,9 +258,11 @@ export function ComposerPlusPanel({
           )}
         </>
       )}
-      {/* 快捷键提示脚行(2026-11-03 用户裁定):面板末行固定占用——@ 添加文件/选命令技能,Ctrl+V 粘贴图片 */}
+      </div>
+      {/* 快捷键提示脚行(2026-11-03 用户裁定):钉底恒显——@ 添加文件 / 选择命令或技能 / Ctrl+V 粘贴图片 */}
       <div className="sx-plus-foot">
-        <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file / pick command or skill', '添加文件 / 选择命令或技能')}</span>
+        <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file', '添加文件')}</span>
+        <span className="sx-plus-hint"><kbd>/</kbd>{t('Pick command or skill', '选择命令或技能')}</span>
         <span className="sx-plus-hint"><kbd>Ctrl+V</kbd>{t('Paste image', '粘贴图片')}</span>
       </div>
     </div>
