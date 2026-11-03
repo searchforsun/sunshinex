@@ -12,7 +12,8 @@ import { BuiltinFacade } from './cdp-facade';
 function startFakeReal(): Promise<{ httpPort: number; wsPort: number; stop: () => void }> {
   const targets = [
     { targetId: 'gui-1', type: 'page', url: 'http://127.0.0.1:57677/?token=x', title: 'Sunshinex' },
-    { targetId: 'wv-7', type: 'webview', url: 'https://www.baidu.com/', title: '百度' },
+    { targetId: 'wv-7', type: 'webview', url: 'https://www.baidu.com/', title: '百度', browserContextId: 'ctx-a' },
+    { targetId: 'wv-9', type: 'webview', url: 'https://example.org/', title: 'B', browserContextId: 'ctx-b' },
   ];
   const httpSrv = http.createServer((req, res) => {
     if ((req.url ?? '').startsWith('/json/version')) {
@@ -79,8 +80,7 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
   // HTTP 面(GUI /app/cdp-targets 消费形态):仅 webview
   const httpBase = facade.endpoint.replace(/^ws/, 'http').replace(/\/devtools\/browser$/, '');
   const list = JSON.parse(await (await fetch(`${httpBase}/json/list`)).text()) as Array<{ targetId?: string; url?: string }>;
-  assert.equal(list.length, 1);
-  assert.equal(list[0]!.targetId, 'wv-7');
+  assert.deepEqual(list.map((t) => t.targetId), ['wv-7', 'wv-9']);
   assert.equal((list[0] as { type?: string }).type, 'page');
 
   // ws 面:playwright getTargets 应答同滤
@@ -97,8 +97,7 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
     return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params })); });
   };
   const targets = await send('Target.getTargets');
-  assert.equal((targets.result!.targetInfos as unknown[]).length, 1);
-  assert.equal(((targets.result!.targetInfos as Array<{ targetId: string }>)[0]!).targetId, 'wv-7');
+  assert.deepEqual((targets.result!.targetInfos as Array<{ targetId: string }>).map((t) => t.targetId), ['wv-7', 'wv-9']);
   // 侧栏 webview 对外改报 page(Playwright 只认 page,否则插件看不到侧栏页签)
   assert.equal(((targets.result!.targetInfos as Array<{ type: string }>)[0]!).type, 'page');
   // createTarget 拒面(页签生命周期归 GUI)
@@ -188,4 +187,40 @@ test('DevToolsActivePort 指向死端口(旧实例残留)时拒绝启动——�
   facade = new BuiltinFacade({ userDataDir: tmpDir, localOriginPrefix: 'http://127.0.0.1:57677' });
   await assert.rejects(facade.start(), /unreachable/);
   facade = undefined;
+});
+
+test('会话连接(/session/<key>?seat=):只见本会话分区的 target;建页开在该会话座位;关浏览器/建删上下文拒绝', async () => {
+  fake = await startFakeReal();
+  prepareEndpointFile();
+  const opened: Array<{ url: string; seat?: string; key?: string }> = [];
+  facade = new BuiltinFacade({
+    userDataDir: tmpDir!,
+    localOriginPrefix: 'http://127.0.0.1:57677',
+    belongs: (tid, key) => (key === 'jid-a' && tid === 'wv-7') || (key === 'jid-b' && tid === 'wv-9'),
+    openTab: (url, scope) => { opened.push({ url, seat: scope?.seat, key: scope?.key }); },
+  });
+  await facade.start();
+  const base = facade.endpoint.replace(/\/devtools\/browser$/, '');
+  const ws = new WebSocket(`${base}/session/jid-b?seat=sun-2`);
+  await new Promise((r) => ws.on('open', r));
+  const pending = new Map<number, (v: any) => void>();
+  let seq = 0;
+  ws.on('message', (raw) => {
+    const m = JSON.parse(String(raw)) as { id?: number };
+    if (typeof m.id === 'number' && pending.has(m.id)) { pending.get(m.id)!(m); pending.delete(m.id); }
+  });
+  const send = (method: string, params?: Record<string, unknown>): Promise<{ result?: Record<string, unknown>; error?: { message: string } }> => {
+    const id = ++seq;
+    return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params })); });
+  };
+  const targets = await send('Target.getTargets');
+  assert.deepEqual((targets.result!.targetInfos as Array<{ targetId: string }>).map((t) => t.targetId), ['wv-9'], '只见本会话分区');
+  for (const m of ['Browser.close', 'Target.createBrowserContext', 'Target.disposeBrowserContext']) {
+    assert.match(String((await send(m, {})).error?.message), /not allowed/, m);
+  }
+  // createTarget:GUI 开页带本会话座位+键(fake 不会真出新 target,10s 超时前已记下调用即可)
+  void send('Target.createTarget', { url: 'https://example.com' });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(opened, [{ url: 'https://example.com', seat: 'sun-2', key: 'jid-b' }]);
+  ws.close();
 });

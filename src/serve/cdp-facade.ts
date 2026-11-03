@@ -30,8 +30,11 @@ export interface FacadeOpts {
   /** daemon 自身 origin 前缀(如 http://127.0.0.1:57677)——GUI 渲染层 target 按此前缀过滤 */
   localOriginPrefix: string;
   log?: (msg: string) => void;
-  /** 模型开新页(Target.createTarget)→ 让 GUI 开一个侧栏浏览器页签;缺省=拒绝 createTarget */
-  openTab?: (url: string) => void;
+  /** 模型开新页(Target.createTarget)→ 让 GUI 开一个侧栏浏览器页签(会话连接带 scope:开在该会话
+   *  座位、用该会话分区);缺省=拒绝 createTarget */
+  openTab?: (url: string, scope?: SessionScope) => void;
+  /** target 是否属于会话浏览器键对应的持久分区(persist:sx-<key>)——会话连接的可见性闸 */
+  belongs?: (targetId: string, key: string) => boolean;
   /** 模型关页(Target.closeTarget)→ 让 GUI 关掉该 target 对应的侧栏页签;缺省=拒绝 closeTarget */
   closeTab?: (targetId: string) => boolean;
   /** 文本输入前后让 GUI 聚焦/归还该 target 的侧栏 webview:guest 只在宿主 webview 元素持有焦点时
@@ -42,6 +45,23 @@ export interface FacadeOpts {
   activateTab?: (targetId: string) => void;
   /** agent 驱动时确保主窗可见:最小化窗口 Chromium 不出帧(截图超时/画面冻结),不抢焦点地还原 */
   ensureVisible?: () => void;
+}
+
+/** 会话连接身份(2026-11-03 浏览器状态按会话隔离):key=浏览器键(journalId,分区 persist:sx-<key>),
+ *  seat=GUI 页签座位(运行时会话 id)。连接路径 /session/<key>?seat=<seat> */
+export interface SessionScope {
+  key: string;
+  seat: string;
+}
+
+/** 会话连接一律拒绝的命令:关整个浏览器(=关应用)/建删浏览器上下文(上下文=会话分区,归 GUI 管) */
+const FORBIDDEN_METHODS = new Set(['Browser.close', 'Browser.crash', 'Browser.crashGpuProcess', 'Target.createBrowserContext', 'Target.disposeBrowserContext']);
+
+export function parseScope(url: string | undefined): SessionScope | undefined {
+  const u = new URL(url ?? '/', 'http://127.0.0.1');
+  const m = /^\/session\/([^/]+)$/.exec(u.pathname);
+  if (m === null) return undefined;
+  return { key: decodeURIComponent(m[1]!), seat: u.searchParams.get('seat') ?? '' };
 }
 
 /** 触发侧栏切页的「驱动型」命令(读 DOM/求值不切,避免后台查询抢走用户视图) */
@@ -63,8 +83,6 @@ export class BuiltinFacade {
   private port = 0;
   private realPort = 0;
   private realBrowserPath = 'devtools/browser';
-  /** 非白名单 target 记账:attachedToTarget 被吞的 target 的 destroyed 事件同吞 */
-  private readonly blockedSeen = new Set<string>();
 
   constructor(private readonly opts: FacadeOpts) {}
 
@@ -139,7 +157,7 @@ export class BuiltinFacade {
       this.wss?.handleUpgrade(req, socket, head, (ws) => {
         this.clientSockets.add(ws);
         ws.on('close', () => this.clientSockets.delete(ws));
-        this.attachReal(ws);
+        this.attachReal(ws, parseScope(req.url));
       });
     });
     return new Promise((resolve) => {
@@ -155,7 +173,21 @@ export class BuiltinFacade {
    *  - ws→real:createTarget/closeTarget 拒面(页签生命周期归 GUI);
    *  - real→ws:getTargets/getTargetInfo 应答摘非白名单 target;attachedToTarget/targetInfoChanged
    *    携非白名单 targetInfo 整事件吞(targetDestroyed 同步记账);destroyed 同吞 */
-  private attachReal(ws: WebSocket): void {
+  private attachReal(ws: WebSocket, scope?: SessionScope): void {
+    /** 本连接可见性:GUI 自身页恒滤;会话连接只放行本会话分区的 target(首个命中即学到其
+     *  browserContextId,此后同上下文的 iframe/worker 一并放行,他会话上下文一律不可见) */
+    let scopeCtx: string | undefined;
+    const blocked = new Set<string>();
+    const allow = (t: { targetId?: string; url?: string; type?: string; browserContextId?: string }): boolean => {
+      if (t.type === 'page' && this.blockedUrl(t.url)) return false;
+      if (scope === undefined) return true;
+      if (scopeCtx !== undefined) return t.browserContextId === scopeCtx;
+      if (typeof t.targetId === 'string' && this.opts.belongs?.(t.targetId, scope.key) === true) {
+        scopeCtx = t.browserContextId;
+        return true;
+      }
+      return false;
+    };
     // 待发队列:playwright 首命令可在 real open 前到达(实测竞窗)——open 前缓存,open 即冲刷
     const outbox: string[] = [];
     const attached = new Set<string>();
@@ -177,30 +209,36 @@ export class BuiltinFacade {
       let msg: { id?: number; method?: string; params?: Record<string, unknown>; result?: Record<string, unknown> };
       try { msg = JSON.parse(String(data)); } catch { return; }
       // 应答过滤:getTargets/getTargetInfo 摘除非白名单 target
-      const result = (msg.result ?? {}) as { targetInfos?: Array<{ targetId?: string; url?: string; type?: string }>; targetInfo?: { targetId?: string; url?: string; type?: string } };
+      type Info = { targetId?: string; url?: string; type?: string; browserContextId?: string };
+      const result = (msg.result ?? {}) as { targetInfos?: Info[]; targetInfo?: Info };
       if (result.targetInfos !== undefined) {
         for (const t of result.targetInfos) asPage(t);
-        for (const t of result.targetInfos) {
-          if (typeof t.targetId === 'string' && this.blockedUrl(t.url) && t.type === 'page') this.blockedSeen.add(t.targetId);
+        result.targetInfos = result.targetInfos.filter((t) => {
+          const ok = allow(t);
+          if (!ok && typeof t.targetId === 'string') blocked.add(t.targetId);
+          return ok;
+        });
+      }
+      if (result.targetInfo !== undefined) {
+        asPage(result.targetInfo);
+        if (!allow(result.targetInfo)) {
+          if (typeof result.targetInfo.targetId === 'string') blocked.add(result.targetInfo.targetId);
+          delete result.targetInfo;
         }
-        result.targetInfos = result.targetInfos.filter((t) => !(t.type === 'page' && this.blockedUrl(t.url)));
       }
-      if (result.targetInfo !== undefined) asPage(result.targetInfo);
-      if (result.targetInfo !== undefined && result.targetInfo.type === 'page' && this.blockedUrl(result.targetInfo.url)) {
-        if (typeof result.targetInfo.targetId === 'string') this.blockedSeen.add(result.targetInfo.targetId);
-        delete result.targetInfo;
-      }
-      // 事件过滤:非白名单 target 的 attach/info/destroyed 事件整吞
+      // 事件过滤:不可见 target 的 attach/info/destroyed 事件整吞
       if (msg.method !== undefined) {
-        const p = msg.params as { targetInfo?: { targetId?: string; url?: string; type?: string }; targetId?: string } | undefined;
+        const p = msg.params as { targetInfo?: Info; targetId?: string } | undefined;
         const info = p?.targetInfo;
         if (info !== undefined) {
           asPage(info);
-          if (typeof info.targetId === 'string' && info.type === 'page' && this.blockedUrl(info.url)) this.blockedSeen.add(info.targetId);
-          if (info.type === 'page' && this.blockedUrl(info.url)) return;
+          if (!allow(info)) {
+            if (typeof info.targetId === 'string') blocked.add(info.targetId);
+            return;
+          }
         }
-        if (msg.method === 'Target.targetDestroyed' && typeof p?.targetId === 'string' && this.blockedSeen.has(p.targetId)) {
-          this.blockedSeen.delete(p.targetId);
+        if (msg.method === 'Target.targetDestroyed' && typeof p?.targetId === 'string' && blocked.has(p.targetId)) {
+          blocked.delete(p.targetId);
           return;
         }
       }
@@ -227,9 +265,13 @@ export class BuiltinFacade {
       let msg: { id?: number; method?: string; params?: Record<string, unknown> };
       try { msg = JSON.parse(String(data)); } catch { return; }
       // 拒面:页签生命周期归 GUI(模型不可开/关 target)
+      if (msg.method !== undefined && FORBIDDEN_METHODS.has(msg.method)) {
+        this.sendTo(ws, { id: msg.id, error: { code: -32000, message: `${msg.method} is not allowed on the sidebar browser` } });
+        return;
+      }
       if (msg.method === 'Target.createTarget' && this.opts.openTab !== undefined) {
         const url = typeof msg.params?.url === 'string' && msg.params.url !== '' ? msg.params.url : 'about:blank';
-        void this.createViaGui(url).then(
+        void this.createViaGui(url, scope).then(
           async (targetId) => {
             await waitAttached(targetId);
             this.sendTo(ws, { id: msg.id, result: { targetId } });
@@ -241,7 +283,7 @@ export class BuiltinFacade {
       if (msg.method === 'Target.closeTarget' && this.opts.closeTab !== undefined) {
         const tid = typeof msg.params?.targetId === 'string' ? msg.params.targetId : '';
         // 关页=关侧栏页签(webview 卸载→真实端点自然发 targetDestroyed,Playwright 据此收口)
-        const ok = !this.blockedSeen.has(tid) && this.opts.closeTab(tid);
+        const ok = !blocked.has(tid) && this.opts.closeTab(tid);
         this.sendTo(ws, ok ? { id: msg.id, result: { success: true } } : { id: msg.id, error: { code: -32000, message: `no sidebar browser tab for target ${tid}` } });
         return;
       }
@@ -252,7 +294,7 @@ export class BuiltinFacade {
       // attach 面兜底:即使真实列表漏过滤,attach 到记账过的非白名单 id 报确定错误
       if (msg.method === 'Target.attachToTarget') {
         const tid = typeof msg.params?.targetId === 'string' ? msg.params.targetId : '';
-        if (this.blockedSeen.has(tid)) {
+        if (blocked.has(tid)) {
           this.sendTo(ws, { id: msg.id, error: { code: -32000, message: 'target not allowed' } });
           return;
         }
@@ -291,17 +333,18 @@ export class BuiltinFacade {
   }
 
   /** 新页签由 GUI 开(页签生命周期归侧栏),轮询真实列表等新 webview target 出现;超时报错 */
-  private async createViaGui(url: string): Promise<string> {
+  private async createViaGui(url: string, scope?: SessionScope): Promise<string> {
+    const mine = (id: string): boolean => scope === undefined || this.opts.belongs?.(id, scope.key) === true;
     const before = new Set((await this.webviewIds()).map((t) => t.id));
-    this.opts.openTab?.(url);
+    this.opts.openTab?.(url, scope);
     const deadline = Date.now() + CREATE_TARGET_TIMEOUT_MS;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 200));
-      const fresh = (await this.webviewIds().catch(() => [])).find((t) => !before.has(t.id));
+      const fresh = (await this.webviewIds().catch(() => [])).find((t) => !before.has(t.id) && mine(t.id));
       if (fresh !== undefined) return fresh.id;
     }
     // 页签按 url 判重:已有空白页签时 GUI 聚焦旧签而非新开,复用它
-    const blank = (await this.webviewIds().catch(() => [])).find((t) => t.url === 'about:blank' || t.url === url);
+    const blank = (await this.webviewIds().catch(() => [])).find((t) => (t.url === 'about:blank' || t.url === url) && mine(t.id));
     if (blank !== undefined) return blank.id;
     throw new Error('failed to open a sidebar browser tab (open a session first)');
   }
@@ -332,7 +375,8 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
   const et = electron as {
     app?: { getPath(name: string): string; commandLine?: { hasSwitch?(s: string): boolean } };
     BrowserWindow?: { getAllWindows(): Array<{ isDestroyed(): boolean; isMinimized(): boolean; showInactive(): void; webContents: { getURL(): string; send(ch: string, ...a: unknown[]): void } }> };
-    webContents?: { fromDevToolsTargetId?(id: string): { id: number } | undefined };
+    webContents?: { fromDevToolsTargetId?(id: string): { id: number; session?: unknown } | undefined };
+    session?: { fromPartition(partition: string): unknown };
   };
   if (et.app === undefined) return Promise.resolve(undefined); // node 环境(npm 包字符串/缺 app)
   if (!et.app.commandLine?.hasSwitch?.('remote-debugging-port')) {
@@ -351,8 +395,14 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
   const origin = `http://127.0.0.1:${port}`;
   // 主窗=加载 daemon origin 的窗口(排除独立 DevTools 窗);同 popup 转发通道 builtin:open-url
   const guiWindow = () => et.BrowserWindow?.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().startsWith(origin));
-  const openTab = (url: string): void => {
-    guiWindow()?.webContents.send('builtin:open-url', url);
+  // 会话连接开页:带座位+浏览器键,GUI 开在该会话座位并用其分区(用户当前看的会话不受影响)
+  const openTab = (url: string, scope?: SessionScope): void => {
+    guiWindow()?.webContents.send('builtin:open-url', url, scope !== undefined ? { seat: scope.seat, key: scope.key } : undefined);
+  };
+  // 分区归属:Electron 同名分区 session 对象唯一(fromPartition 缓存),按对象同一性判定
+  const belongs = (targetId: string, key: string): boolean => {
+    const wc = et.webContents?.fromDevToolsTargetId?.(targetId);
+    return wc !== undefined && et.session !== undefined && wc.session === et.session.fromPartition(`persist:sx-${key}`);
   };
   // CDP targetId → guest webContents id(GUI 侧 webview.getWebContentsId() 同值)→ GUI 关对应页签
   const closeTab = (targetId: string): boolean => {
@@ -377,7 +427,7 @@ export function startBuiltinFacade(log?: (msg: string) => void): Promise<{ facad
     const gui = guiWindow();
     if (gui !== undefined && gui.isMinimized()) gui.showInactive();
   };
-  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, closeTab, focusTab, activateTab, ensureVisible });
+  const facade = new BuiltinFacade({ userDataDir: userData, localOriginPrefix: origin, log, openTab, belongs, closeTab, focusTab, activateTab, ensureVisible });
   return facade.start().then(() => ({ facade, ws: facade.endpoint })).catch((err) => {
     log?.(`facade start failed: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

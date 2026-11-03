@@ -510,6 +510,11 @@ export class GuiDaemon {
         sessionHandlers.handleTaskStop(this.sessionIo, res, p.id, String((parsed.body as { id?: unknown }).id ?? ''));
       } },
 
+    // 内置浏览器会话键(2026-11-03):GUI 侧栏 webview 持久分区 persist:sx-<key> 与插件连接同键
+    { method: 'GET', path: '/session/:id/browser-key', auth: true, run: async (_req, res, p) => {
+        const s = this.sessionFor(res, p.id);
+        if (s !== undefined) this.send(res, 200, { key: s.ensureBrowserKey() });
+      } },
     { method: 'GET', path: '/session/:id/context', auth: true, run: async (_req, res, p) => this.handleSessionContext(res, p.id) },
     // G14.2xx b 影子投影水合面:journal shadow 行全量(board/delegation/subagent)+ cut 水位——
     // GUI 刷新/重连后会话打开时拉取清零重放(WS 环窗对长会话子智能体流必溢出,恢复唯一可靠入口)

@@ -464,6 +464,8 @@ export class SessionRuntime {
     });
     // 插入发送（front 置首条目）步边界消费口：取走即回显——user 帧（live 气泡）+ kernel user 条
     // （journal/快照,重连后不缺席）。此前 front 注入只落 steps 链,GUI 全程无气泡（2026-10-25 用户报障）
+    // 内置浏览器按会话隔离(2026-11-03):插件 MCP 连接取本会话浏览器键(=journalId)与侧栏座位(运行时 id)
+    rt.harness.browserSession = () => ({ key: this.ensureBrowserKey(), seat: this.id });
     rt.harness.steerSource = () => {
       const lines = this.kernel.steerDrain();
       for (const line of lines) {
@@ -700,6 +702,14 @@ export class SessionRuntime {
   /** 快照落档单点（2026-10-31 spec §2）：出生写与翻新写共用——journal 未建档则先建档（惰性建档
    *  口径在此退役：出生写后每次 newSession 即铸造 header+ctx-snap 档,「空会话零文件」不变式由
    *  spec §2 显式废除,空会话档案增长是出生写语义的既定成本）;无 journal（理论不可达,守卫）no-op */
+  /** 内置浏览器会话键(2026-11-03 浏览器状态按会话隔离):= journalId——稳定身份,重启不变;侧栏
+   *  webview 持久分区 persist:sx-<键> 与浏览器插件 MCP 连接同键。未建档即建档:取键只发生在打开浏览器
+   *  页签/浏览器插件首次装配,均为实质交互,不产幽灵会话;无 journal(测试桩)回落运行时 id */
+  ensureBrowserKey(): string {
+    this.ensureMintedWithBirth();
+    return this.journal?.currentId ?? this.id;
+  }
+
   /** 建档单点(出生写伴随):首条实质事件(链行/段级行任一路先到)触发建档——header 后立即落
    *  ctx-snap 出生行,两写路(链订阅/段级落档)共用,防「seg 行先铸档漏出生行」分叉 */
   private ensureMintedWithBirth(): void {

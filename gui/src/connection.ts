@@ -137,6 +137,9 @@ export interface Connection {
    *  task_stop,撤恢复」）。task_stop 同语义（exec 杀进程树/subagent 打断线），终态 stopped 即
    *  task_wait 可见；404=会话/任务未知；幂等=已终态 200 */
   taskStop(id: string, taskId: string): Promise<void>;
+  /** GET /session/:id/browser-key:内置浏览器会话键(=journalId,未建档即建档)——侧栏 webview
+   *  持久分区 persist:sx-<key>,与浏览器插件 MCP 连接同键(浏览器状态按会话隔离) */
+  browserKey?(id: string): Promise<string>;
   /** GET /memory?root=:记忆清单(G10-C6 面板) */
   memoryList(root: string): Promise<Array<{ slug: string; type: string; created: string; modified: string; description: string; body: string }>>;
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
@@ -556,6 +559,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     shadowEvents(id: string) {
       return getJson<{ events: SessionEvent[]; cut: number }>('/session/' + encodeURIComponent(id) + '/shadow-events');
+    },
+    browserKey(id: string) {
+      return getJson<{ key: string }>('/session/' + encodeURIComponent(id) + '/browser-key').then((r) => r.key);
     },
     sessionTasks(id: string) {
       // exec + 后台 spawn(subagent);teammate 走队卡专面——见接口注

@@ -138,6 +138,9 @@ export class Harness {
   /** 步边界穿插源(P5 内核化,spec §12):等待队列态归会话内核(SteeringChannel 退役),会话层装配时
    *  挂入取走口(缺省空——不挂即无穿插);Reactor 步边界经此取走置首条目(text+随行 images)注入当前轮 */
   steerSource: () => SteerLine[] = () => [];
+  /** 浏览器会话身份(serve 会话挂载):key=浏览器状态键(journalId),seat=GUI 页签座位(运行时 id)。
+   *  缺省(TUI/测试)由浏览器插件装配回落进程级随机键 */
+  browserSession: (() => { key: string; seat: string }) | undefined = undefined;
   /** 沉淀双钩子单点（规格 §3.1/§3.5）：单发 Reactor 与 loop 内构造的 Reactor 同源透传，防两处拼装漂移 */
   readonly settleHooks: {
     settle: (r: SettlePayload) => string | undefined;
