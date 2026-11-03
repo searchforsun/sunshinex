@@ -55,7 +55,7 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
             <div className="pill-anchor">
               <button
                 type="button"
-                className="composer-pill"
+                className={'composer-pill' + (sessMode === 'full-access' ? ' mode-pill-warn' : '')}
                 aria-label="session mode"
                 aria-expanded={pillOpen === 'mode'}
                 data-tip={modeLabel}
