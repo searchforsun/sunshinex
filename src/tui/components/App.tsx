@@ -84,7 +84,7 @@ export function buildSlashMenu(buffer: string, skills: readonly SlashMenuSkillSo
 function inputPlaceholder(status: TuiState['status'], planArmed = false): string {
   switch (status) {
     case 'awaiting-approval': return t('Awaiting approval: y approve once / a allow for session / n deny', '等待审批：y 放行一次 / a 本会话放行 / n 拒绝');
-    case 'awaiting-plan': return t('Plan awaiting confirmation: y implement (workspace edits) / f implement (full access) / n reject with feedback / Esc discard', '计划待确认：y 实施（工作区编辑）/ f 实施（完全访问）/ n 拒绝（附反馈）/ Esc 放弃');
+    case 'awaiting-plan': return t('Plan awaiting confirmation: y implement (workspace edits) / f implement (full access) / n re-plan with feedback / Esc discard', '计划待确认：y 实施（工作区编辑）/ f 实施（完全访问）/ n 重新计划（附反馈）/ Esc 放弃');
     case 'awaiting-question': return t('Answer the question above: up/down move · space select · enter submit · esc dismiss', '请回答上方问题：↑/↓ 移动 · 空格选定 · 回车提交 · Esc 放弃');
     case 'running': return t('Running… (input will queue)', '运行中…（输入将排队）');
     case 'error': return t('Previous task failed; enter a new task to continue', '上次任务出错；输入新任务继续');
@@ -109,7 +109,7 @@ function planSelectorOptions(): { label: string; description?: string }[] {
   return [
     { label: t('Implement (workspace edits)', '实施（工作区编辑）'), description: t('land acceptEdits and run the steps (default)', '落工作区编辑档逐项执行（缺省）') },
     { label: t('Implement (full access)', '实施（完全访问）'), description: t('land full-access and run the steps', '落完全访问档逐项执行') },
-    { label: t('Reject with feedback (n)', '驳回（n）'), description: t('enter feedback to revise; Esc discards this round', '输入反馈修订；Esc 放弃本轮') },
+    { label: t('Re-plan with feedback (n)', '重新计划（n）'), description: t('enter feedback to revise; Esc discards this round', '输入反馈修订；Esc 放弃本轮') },
   ];
 }
 
@@ -629,7 +629,7 @@ export function App({
           options={planSelectorOptions()}
           cursor={pCursorState}
           picked={[]}
-          hint={t('y approve · n reject with feedback · esc discard', 'y 批准 · n 拒绝（附反馈）· Esc 放弃')}
+          hint={t('y implement (workspace edits) · f implement (full access) · n re-plan with feedback · esc discard', 'y 实施（工作区编辑）· f 实施（完全访问）· n 重新计划（附反馈）· Esc 放弃')}
         />
       ) : null}
       {state.question ? (

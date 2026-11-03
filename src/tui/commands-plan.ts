@@ -164,7 +164,7 @@ export function startPlanFlowOn(ctrl: SessionController, goal: string, images?: 
               e.doc,
               '---',
               ...e.items.map((item, i) => `${i + 1}. ${item}`),
-              t(`${e.items.length} items; y implement (workspace edits) / f implement (full access) / n reject with feedback / Esc discard`, `${e.items.length} 项；y 实施（工作区编辑）/ f 实施（完全访问）/ n 拒绝（附反馈）/ Esc 放弃`),
+              t(`${e.items.length} items; y implement (workspace edits) / f implement (full access) / n re-plan with feedback / Esc discard`, `${e.items.length} 项；y 实施（工作区编辑）/ f 实施（完全访问）/ n 重新计划（附反馈）/ Esc 放弃`),
             ].join('\n');
             ctrl.pushMsg('system', card);
             ctrl.state = { ...ctrl.state, status: 'awaiting-plan' };

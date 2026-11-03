@@ -374,7 +374,7 @@ export const ToolEntryView = memo(function ToolEntryView({
             {' '}{planName}
           </span>
         ) : planName !== '' ? (
-          <span className="tool-file-base tool-cmd">{' '}{planName}</span>
+          <span className="tool-file-base tool-agent-link">{' '}{planName}</span>
         ) : null
       ) : !hideTargetWhileRunning && toolName === 'create_agent_team' ? (
         /* 折叠行「创建智能体团队 {name}」——队名蓝色链接开指定队卡 */
@@ -754,7 +754,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     const planExecuting = entry.status === 'pending' || entry.status === 'running';
     body = (
       <div className="tool-md ask-record">
-        <div className="ask-q">{planName !== '' ? planName : t('Plan', '计划')}</div>
+        <div className="ask-q plan-name-link">{planName !== '' ? planName : t('Plan', '计划')}</div>
         <div className={`ask-answer ${planExecuting ? 'kind-waiting' : 'kind-answer'}`}>
           {planExecuting && <span className="run-spinner" aria-hidden="true" />}
           <span className="ask-answer-text">

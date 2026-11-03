@@ -4,8 +4,8 @@ import { PlanCard } from './PlanCard';
 import type { PlanCardDecision } from './PlanCard';
 
 /** PlanCard 组件直测(2026-11-03 修订重排锚):计划书 markdown 渲染;三按钮=实施·工作区编辑(缺省档)/
- *  实施·完全访问/驳回——前两者回执 {approved:true, mode}（full-access 必须显式选择）,驳回取常驻
- *  反馈框文本（带文本=修订环回执,空文本=放弃本轮不带 feedback）;Enter 快捷驳回（Shift+Enter 换行
+ *  实施·完全访问/重新计划——前两者回执 {approved:true, mode}（full-access 必须显式选择）,重新计划取常驻
+ *  反馈框文本（带文本=修订环回执,空文本=放弃本轮不带 feedback）;Enter 快捷重新计划（Shift+Enter 换行
  *  不提交,与 composer 键位同构）。判别力:决策体缺 mode 或反馈面语义漂移即红。 */
 
 describe('PlanCard(计划确认卡 2026-11-03 重排:滚动文档+常驻反馈+三按钮)', () => {
@@ -19,22 +19,25 @@ describe('PlanCard(计划确认卡 2026-11-03 重排:滚动文档+常驻反馈+�
     expect(decisions[0]).toEqual({ approved: true, mode: 'acceptEdits' });
     fireEvent.click(screen.getByText(/Implement \(full access\)|实施（完全访问）/));
     expect(decisions[1]).toEqual({ approved: true, mode: 'full-access' });
-    expect(decisions).toHaveLength(2); // 驳回按钮未被误触(三按钮独立)
+    expect(decisions).toHaveLength(2); // 重新计划按钮未被误触(三按钮独立)
   });
 
-  it('常驻反馈框:带文本驳回=修订环回执;空文本驳回=放弃本轮(不带 feedback);Enter 快捷驳回,Shift+Enter 换行', () => {
+  it('常驻反馈框:带文本重新计划=修订环回执;空文本重新计划=放弃本轮(不带 feedback);Enter 快捷重新计划,Shift+Enter 换行', () => {
     const decisions: PlanCardDecision[] = [];
     render(<PlanCard doc="plan" items={['X']} onDecide={(d) => decisions.push(d)} />);
     const box = screen.getByRole('textbox') as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: '第二步拆细' } });
-    fireEvent.click(screen.getByText(/Reject|驳回/));
+    fireEvent.click(screen.getByText(/Re-plan|重新计划/));
     expect(decisions[0]).toEqual({ approved: false, feedback: '第二步拆细' });
     fireEvent.change(box, { target: { value: '   ' } });
-    fireEvent.click(screen.getByText(/Reject|驳回/));
-    expect(decisions[1]).toEqual({ approved: false }); // 空文本驳回不带 feedback 字段(=放弃本轮,armed 保持)
+    fireEvent.click(screen.getByText(/Re-plan|重新计划/));
+    expect(decisions[1]).toEqual({ approved: false }); // 空文本重新计划不带 feedback 字段(=放弃本轮,armed 保持)
+    fireEvent.change(box, { target: { value: '   ' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(decisions).toHaveLength(2); // 空文本 Enter 无操作(2026-11-03:误按 Enter 不得立即放弃本轮)
     fireEvent.change(box, { target: { value: '再改' } });
     fireEvent.keyDown(box, { key: 'Enter' });
-    expect(decisions[2]).toEqual({ approved: false, feedback: '再改' }); // Enter 快捷驳回
+    expect(decisions[2]).toEqual({ approved: false, feedback: '再改' }); // Enter 快捷重新计划
     expect(decisions).toHaveLength(3); // Enter 已提交,不再触发点击路径
     fireEvent.change(box, { target: { value: '换行不提交' } });
     fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });

@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, Eye, ListTodo, ShieldCheck, Square, Unlock } from 'lucide-react';
+import { ArrowUp, ChevronDown, Eye, NotebookPen, ShieldCheck, Square, Unlock } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import { ContextRing } from '../../context-ring';
@@ -32,7 +32,7 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
   const modeLabel = sessMode === 'plan' ? t('Plan mode', '计划模式') : sessMode === 'read-only' ? t('Read-only', '只读模式') : sessMode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
   // 菜单四项两段(spec §3.4):plan 置顶(阶段三 plan-arm 接通正式开放)+分组线+只读/工作区编辑/完全访问
   const modeRows: ModeMenuRow[] = [
-    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
+    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <NotebookPen size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { separator: true },
     { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read-only analysis, no changes', '只读分析，不改文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Direct edits in-workspace, asks outside', '工作区内直接改，域外需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },

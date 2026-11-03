@@ -884,8 +884,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-composer-foot .model-pill .model-effort-chip, .sx-composer-foot .model-pill .pill-chevron { flex: none; }
 .sx-composer-foot.pills-tight .model-pill { mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); }
 .sx-composer-foot.pills-tight .model-pill .pill-label { mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); } /* 溢出态:右缘 14px 渐隐(隐现) */
-/* composer「+」=正方形圆角钮(等宽高居中,不随 10px 横 padding 拉成长条);2026-11-03 用户裁定:
-   不入正圆豁免——28px 高下 22px 弧≈整圆,键帽形圆角矩形(8px)读感正确 */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+/* composer「+」=圆形钮(2026-11-03 用户裁定:与输入键 ↑ 同款整圆弧,9999px 同 .send);等宽高居中,不随 10px 横 padding 拉成长条 */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; }
 /* 2026-10-24 用户裁定:pill 文本永不折行(「完全访/问」「glm-5.3-/flash」断字难看),窄端右组
    (模型 pill)走 flex 压缩+mask 渐隐(规则见上 model-pill 段),不省略号 */
 .composer-pills-right .composer-pill { min-width: 0; flex: 0 1 auto; }
@@ -1756,6 +1755,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card, .tb-card { flex: none; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
+/* 2026-11-03 待办卡主名字=定位钮:点击滚到对应正文输入气泡(有 userKey 的批次才可点) */
+.todo-card-goal-link { cursor: pointer; }
+.todo-card-goal-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .todo-card-goal { flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .todo-card-time svg { flex: none; }

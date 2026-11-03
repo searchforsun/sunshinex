@@ -364,9 +364,11 @@ it('live fork 帧（无 path）:计划名降级纯文本不可点,点击入口�
     sinkRef.current!.on(ev('tool-call', 'exit_plan', { input: { name: '重构认证模块', doc: '# 计划' }, callId: 'c10', status: 'completed' }), 1);
     sinkRef.current!.on(ev('tool-result', 'plan presented: 重构认证模块', { tool: 'exit_plan', callId: 'c10', status: 'completed' }), 2);
   });
-  expect(document.querySelector('.tool-agent-link')).toBeNull(); // 无 path 零链接
-  expect(Array.from(document.querySelectorAll('.tool-summary')).some((r) => r.textContent?.includes('重构认证模块'))).toBe(true);
-  expect(onOpenFile).not.toHaveBeenCalled();
+  // 无 path:计划名仍蓝色(tool-agent-link 面)但不可点——点击入口归确认卡头链接
+  const liveLink = document.querySelector('.tool-summary .tool-agent-link');
+  expect(liveLink?.textContent).toContain('重构认证模块');
+  fireEvent.click(liveLink!);
+  expect(onOpenFile).not.toHaveBeenCalled(); // 无 path 零回调(不可点)
   unmount();
 });
 });

@@ -45,7 +45,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
             <span
               role="button"
               tabIndex={-1}
-              className="card-title tool-file-base tool-file-link"
+              className="card-title plan-name-link"
               data-tip={t('Open plan file', '打开计划文件')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -55,7 +55,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
               {name}
             </span>
           ) : (
-            <span className="card-title">{name}</span>
+            <span className="card-title plan-name-link">{name}</span>
           )
         ) : null}
       </div>
@@ -70,7 +70,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
           className="plan-card-feedback-input"
           rows={2}
           value={feedback}
-          placeholder={t('What should change? (optional — Enter rejects with feedback)', '需要调整什么？（可不填——Enter 带反馈驳回）')}
+          placeholder={t('What should change? (optional — Enter re-plans with feedback)', '需要调整什么？（可不填——Enter 带反馈重新计划）')}
           onChange={(e) => setFeedback(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -90,7 +90,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
           {t('Implement (full access)', '实施（完全访问）')}
         </button>
         <button type="button" onClick={sendReject}>
-          {t('Reject', '驳回')}
+          {t('Re-plan', '重新计划')}
         </button>
       </div>
     </div>
