@@ -3,13 +3,25 @@ import { randomBytes } from 'crypto';
 import * as path from 'path';
 import type { McpServerConfig } from '../types';
 
-/** 浏览器插件宿主(2026-11-03 浏览器状态按会话隔离):每个进程(daemon/CLI)只起一个宿主,
- *  全部会话经 HTTP 各连一条 MCP 连接(宿主 createConnection+contextGetter 给每会话专属上下文)。
- *  宿主=插件内 server/host.js(stdin 管道由本进程持有,进程退出即宿主保存状态退出)。 */
+/** 内置插件单进程宿主(2026-11-03):每个进程(daemon/CLI)每个插件只起一个宿主,全部会话经 HTTP
+ *  各连一条 MCP 连接,会话键/项目数据目录随连接 URL 下发,宿主按连接隔离会话态——
+ *  - browser-use:server/host.js(每会话专属浏览器上下文,状态按会话持久)
+ *  - computer-use:server/index.js --http(桌面共享;每会话「最近截图坐标系」与截图目录隔离)
+ *  宿主 stdin 管道由本进程持有,进程退出即宿主收尾退出。 */
 export type BrowserHostMode = 'builtin' | 'default' | 'headless';
 
-/** 浏览器插件 server 名(manifest mcpServers 键):装配期改写为宿主 HTTP 连接 */
+/** 浏览器插件 server 名(manifest mcpServers 键) */
 export const BROWSER_SERVER_NAME = 'browser-use';
+
+/** 单进程宿主化的插件 server(manifest mcpServers 键)→ 宿主启动脚本与参数 */
+const HOSTED: Record<string, { script: string; args: () => string[] }> = {
+  [BROWSER_SERVER_NAME]: { script: path.join('server', 'host.js'), args: () => ['--mode', browserHostMode()] },
+  'computer-use': { script: path.join('server', 'index.js'), args: () => ['--http'] },
+};
+
+export function isHostedServer(name: string): boolean {
+  return Object.prototype.hasOwnProperty.call(HOSTED, name);
+}
 
 /** 运行环境→浏览器形态(用户不可选):桌面壳(daemon 在 Electron 主进程)=内置侧栏;
  *  sunshinex serve(网页端)=系统默认浏览器;其余(TUI/CLI)=无头 */
@@ -22,12 +34,13 @@ export function browserHostMode(): BrowserHostMode {
 /** 宿主启动上限:超时视为失败(本轮不挂浏览器工具,下轮重试) */
 const HOST_START_TIMEOUT_MS = 10_000;
 
-let host: Promise<{ port: number; token: string }> | undefined;
+const hosts = new Map<string, Promise<{ port: number; token: string }>>();
 
-function startHost(pluginDir: string): Promise<{ port: number; token: string }> {
+function startHost(name: string, pluginDir: string): Promise<{ port: number; token: string }> {
   const token = randomBytes(16).toString('hex');
+  const spec = HOSTED[name]!;
   return new Promise((resolve, reject) => {
-    const child = spawn('node', [path.join(pluginDir, 'server', 'host.js'), '--mode', browserHostMode(), '--token', token], {
+    const child = spawn('node', [path.join(pluginDir, spec.script), ...spec.args(), '--token', token], {
       cwd: pluginDir,
       stdio: ['pipe', 'pipe', 'inherit'],
       windowsHide: true,
@@ -36,9 +49,9 @@ function startHost(pluginDir: string): Promise<{ port: number; token: string }> 
     const fail = (msg: string): void => {
       if (settled) return;
       settled = true;
-      host = undefined;
+      hosts.delete(name);
       child.kill();
-      reject(new Error(`browser host failed to start: ${msg}`));
+      reject(new Error(`${name} host failed to start: ${msg}`));
     };
     const timer = setTimeout(() => fail(`no response within ${HOST_START_TIMEOUT_MS}ms`), HOST_START_TIMEOUT_MS);
     let buf = '';
@@ -62,7 +75,7 @@ function startHost(pluginDir: string): Promise<{ port: number; token: string }> 
     child.on('exit', (code) => {
       clearTimeout(timer);
       if (!settled) fail(`exited with code ${code}`);
-      else host = undefined;
+      else hosts.delete(name);
     });
     child.unref();
     (child.stdout as unknown as { unref?: () => void }).unref?.();
@@ -70,23 +83,27 @@ function startHost(pluginDir: string): Promise<{ port: number; token: string }> 
   });
 }
 
-function ensureHost(pluginDir: string): Promise<{ port: number; token: string }> {
-  host ??= startHost(pluginDir);
-  return host;
+function ensureHost(name: string, pluginDir: string): Promise<{ port: number; token: string }> {
+  let h = hosts.get(name);
+  if (h === undefined) {
+    h = startHost(name, pluginDir);
+    hosts.set(name, h);
+  }
+  return h;
 }
 
-/** 把插件 manifest 的浏览器 server(stdio 占位)改写为宿主 HTTP 连接:URL 携带本会话浏览器键/座位/
- *  项目数据目录(+桌面 facade 端点),宿主据此给出该会话的专属浏览器上下文与输出目录 */
-export async function browserHostServer(
+/** 把单进程宿主化插件的 manifest server(stdio 占位)改写为宿主 HTTP 连接:URL 携带本会话键/座位/
+ *  项目数据目录(浏览器另带桌面 facade 端点),宿主据此给出该会话的隔离态与输出目录 */
+export async function hostedPluginServer(
   cfg: McpServerConfig,
   session: { key: string; seat: string },
   dataDir: string,
 ): Promise<McpServerConfig> {
-  if (cfg.cwd === undefined) throw new Error('browser plugin directory unknown');
-  const h = await ensureHost(cfg.cwd);
+  if (cfg.cwd === undefined) throw new Error(`${cfg.name} plugin directory unknown`);
+  const h = await ensureHost(cfg.name, cfg.cwd);
   const q = new URLSearchParams({ key: session.key, seat: session.seat, dataDir });
   const cdp = process.env.SUNSHINEX_BUILTIN_CDP;
-  if (browserHostMode() === 'builtin' && cdp !== undefined && cdp !== '') q.set('cdp', cdp);
+  if (cfg.name === BROWSER_SERVER_NAME && browserHostMode() === 'builtin' && cdp !== undefined && cdp !== '') q.set('cdp', cdp);
   return {
     name: cfg.name,
     transport: 'http',

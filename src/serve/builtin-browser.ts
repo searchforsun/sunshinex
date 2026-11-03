@@ -102,6 +102,8 @@ export function purgeBrowserState(dataDir: string, key: string): void {
   const base = path.join(dataDir, 'plugins', 'browser-use');
   fs.rmSync(path.join(base, 'state', `${key}.json`), { force: true });
   fs.rmSync(path.join(base, 'output', key), { recursive: true, force: true });
+  // 桌面操作插件同为单进程宿主,截图按会话分目录(同键)
+  fs.rmSync(path.join(dataDir, 'plugins', 'computer-use', 'screenshots', key), { recursive: true, force: true });
   let electron: unknown;
   try { electron = require('electron'); } catch { return; }
   const ses = (electron as { session?: { fromPartition(p: string): { clearStorageData(): Promise<void>; clearCache(): Promise<void> } } }).session;
@@ -141,6 +143,11 @@ export function sweepOrphanBrowserState(): number {
     } catch { /* 无 */ }
     try {
       for (const n of fs.readdirSync(path.join(base, 'output'))) if (!journals.has(n.toLowerCase())) rm(path.join(base, 'output', n));
+    } catch { /* 无 */ }
+    // 桌面操作截图(按会话分目录;旧版平铺的 shot-*.jpg 同属无主,一并清)
+    const shots = path.join(d, 'plugins', 'computer-use', 'screenshots');
+    try {
+      for (const n of fs.readdirSync(shots)) if (!journals.has(n.toLowerCase())) rm(path.join(shots, n));
     } catch { /* 无 */ }
   }
   let electron: unknown;

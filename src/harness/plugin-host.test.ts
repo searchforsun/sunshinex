@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { browserHostMode, browserHostServer } from './browser-host';
+import { browserHostMode, hostedPluginServer } from './plugin-host';
 
 const pluginDir = path.resolve(__dirname, '../../plugins/browser-use');
 const hostBuilt = fs.existsSync(path.join(pluginDir, 'server', 'host.js'));
@@ -27,8 +27,8 @@ test('浏览器宿主:一进程服务多会话——同一宿主端口,URL 携�
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-test-'));
   const placeholder = { name: 'browser-use', command: 'node', args: ['server/host.js'], cwd: pluginDir };
   try {
-    const a = await browserHostServer(placeholder, { key: 'jid-a', seat: 'sun-1' }, dataDir);
-    const b = await browserHostServer(placeholder, { key: 'jid-b', seat: 'sun-2' }, dataDir);
+    const a = await hostedPluginServer(placeholder, { key: 'jid-a', seat: 'sun-1' }, dataDir);
+    const b = await hostedPluginServer(placeholder, { key: 'jid-b', seat: 'sun-2' }, dataDir);
     assert.equal(a.transport, 'http');
     assert.equal(new URL(a.url!).port, new URL(b.url!).port, '同一宿主');
     assert.equal(new URL(a.url!).searchParams.get('key'), 'jid-a');
@@ -41,6 +41,23 @@ test('浏览器宿主:一进程服务多会话——同一宿主端口,URL 携�
     await c.close();
     const noAuth = await fetch(a.url!, { method: 'POST', body: '{}' });
     assert.equal(noAuth.status, 401);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('computer-use 单进程宿主:两会话同一宿主端口,URL 各带会话键;握手出桌面工具', { skip: process.platform !== 'win32' || !fs.existsSync(path.resolve(__dirname, '../../plugins/computer-use/server/index.js')) }, async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cu-host-test-'));
+  const placeholder = { name: 'computer-use', command: 'node', args: ['server/index.js'], cwd: path.resolve(__dirname, '../../plugins/computer-use') };
+  try {
+    const a = await hostedPluginServer(placeholder, { key: 'jid-a', seat: '' }, dataDir);
+    const b = await hostedPluginServer(placeholder, { key: 'jid-b', seat: '' }, dataDir);
+    assert.equal(new URL(a.url!).port, new URL(b.url!).port, '同一宿主');
+    const c = new Client({ name: 't', version: '1' });
+    await c.connect(new StreamableHTTPClientTransport(new URL(a.url!), { requestInit: { headers: a.headers! } }));
+    const tools = await c.listTools();
+    assert.ok(tools.tools.some((t) => t.name === 'screenshot'));
+    await c.close();
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

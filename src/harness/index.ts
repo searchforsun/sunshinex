@@ -50,7 +50,7 @@ import { resolveImageHistoryLimit } from '../config/image-history';
 import { agentTeamsEnabled } from '../config/agent-teams';
 import * as fs from 'fs';
 import { McpHost } from './mcp/client';
-import { BROWSER_SERVER_NAME, browserHostServer } from './browser-host';
+import { hostedPluginServer, isHostedServer } from './plugin-host';
 import type { KnowledgeBase } from './knowledge';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
@@ -276,15 +276,15 @@ export class Harness {
     this.mcpReady = async (): Promise<string[]> => {
       const freshUser = loadMcpServers(base);
       const freshPlugin = pluginMcpServers(base, { userServerNames: new Set(freshUser.map((s) => s.name)) });
-      // 浏览器插件改写为本进程浏览器宿主的 HTTP 连接(带本会话浏览器键)——状态按会话隔离、一宿主服务全部会话;
-      // 宿主起不来只损失浏览器工具(警告),不拖垮整轮装配
+      // 内置插件(浏览器/桌面操作)改写为本进程单宿主的 HTTP 连接(带本会话键)——会话态隔离、一宿主服务全部会话;
+      // 宿主起不来只损失该插件工具(警告),不拖垮整轮装配
       const hostWarnings: string[] = [];
       const pluginServers = await Promise.all(freshPlugin.servers.map(async (s) => {
-        if (s.name !== BROWSER_SERVER_NAME) return s;
+        if (!isHostedServer(s.name)) return s;
         try {
-          return await browserHostServer(s, this.browserSession?.() ?? { key: fallbackBrowserKey, seat: '' }, resolveDataDir(base));
+          return await hostedPluginServer(s, this.browserSession?.() ?? { key: fallbackBrowserKey, seat: '' }, resolveDataDir(base));
         } catch (e) {
-          hostWarnings.push(`browser plugin unavailable: ${e instanceof Error ? e.message : String(e)}`);
+          hostWarnings.push(`${s.name} plugin unavailable: ${e instanceof Error ? e.message : String(e)}`);
           return undefined;
         }
       }));

@@ -3,6 +3,6 @@
   "platforms": ["win32"],
   "defaultEnabled": false,
   "mcpServers": { "computer-use": { "command": "node", "cwd": ".",
-    "args": ["server/index.js", "--output-dir", "{dataDir}/plugins/computer-use/screenshots"],
+    "args": ["server/index.js"],
     "safety": { "act": ["click", "type", "key", "scroll", "drag", "app"], "confirm": ["screenshot"], "observe": ["uia_snapshot", "window_list"] } } },
   "skills": ["skills"] }

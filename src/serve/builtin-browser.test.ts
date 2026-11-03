@@ -89,7 +89,12 @@ test('sweepOrphanBrowserState:无对应会话档的状态文件/输出目录清�
       fs.writeFileSync(path.join(base, 'state', `${k}.json`), '{}');
       fs.mkdirSync(path.join(base, 'output', k), { recursive: true });
     }
+    const shots = path.join(dataDir, 'plugins', 'computer-use', 'screenshots');
+    fs.mkdirSync(path.join(shots, '20261103T051016Z-Live'), { recursive: true });
+    fs.mkdirSync(path.join(shots, 'gone-jid'), { recursive: true });
+    fs.writeFileSync(path.join(shots, 'shot-old-flat.jpg'), 'x');
     sweepOrphanBrowserState();
+    assert.deepEqual(fs.readdirSync(shots), ['20261103T051016Z-Live'], '桌面操作截图同规则清扫');
     assert.deepEqual(fs.readdirSync(path.join(base, 'state')), ['20261103T051016Z-Live.json']);
     assert.deepEqual(fs.readdirSync(path.join(base, 'output')), ['20261103T051016Z-Live']);
   } finally {

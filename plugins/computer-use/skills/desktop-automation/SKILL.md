@@ -24,7 +24,7 @@ version: 0.1.0
 - click/scroll/drag 的坐标全部以**最近一次成功截图回传的 `scale` 元数据**为基准（`scale.sentWidth/sentHeight` 即你看到的那张图的像素空间）——server 侧自动反算回物理屏幕坐标，你不要自己做任何缩放置账。
 - **谁截图谁坐标**：坐标只在「紧接其后」有效；中间插了任何改变屏幕的动作就作废，重截。
 - 无有效截图时动作类（click/scroll/drag/type）直接报错引导先截图——看到该错误就先 `screenshot`，不要重试同一坐标。
-- 截图同时落盘到 `<项目 data>/plugins/computer-use/screenshots/`(保留最近 50 张),结果文本 JSON 的 `savedPath` 是**绝对路径**——要引用/给用户看/再读这张图就用它,不要猜目录、不要全盘搜索。
+- 截图同时落盘到本会话的 `<项目 data>/plugins/computer-use/screenshots/<会话>/`(保留最近 50 张;动作坐标只认本会话最近一次截图),结果文本 JSON 的 `savedPath` 是**绝对路径**——要引用/给用户看/再读这张图就用它,不要猜目录、不要全盘搜索。
 - `uia_snapshot` 的 BoundingRect 是物理像素，与截图坐标系不同源：按元素操作优先走「截一张图 → 在图上对元素位置出坐标」。
 
 ## 省步数

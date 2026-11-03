@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { CallToolResult, ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
@@ -37,19 +38,33 @@ export interface ShotMeta {
   foreground?: string;
 }
 
-let lastMeta: ShotMeta | null = null;
+/** 会话态(2026-11-03 单进程多会话):最近截图记账 + 截图落盘目录。桌面本身是共享的,但「最近截图
+ *  坐标系」与截图文件按会话隔离——HTTP 宿主每条 MCP 连接一份,经 AsyncLocalStorage 随调用传递(并发
+ *  会话的 await 交错不串态);stdio 单会话形态与测试走缺省态 */
+export interface ShotSession {
+  lastMeta: ShotMeta | null;
+  screenshotDir: string | null;
+}
+const defaultSession: ShotSession = { lastMeta: null, screenshotDir: null };
+const sessionStore = new AsyncLocalStorage<ShotSession>();
+const cur = (): ShotSession => sessionStore.getStore() ?? defaultSession;
+
+export function newShotSession(screenshotDir: string | null): ShotSession {
+  return { lastMeta: null, screenshotDir };
+}
 
 /** 截图落盘目录(宿主经 --output-dir 指向 <项目 data>/plugins/computer-use/screenshots);
  *  null=只回内联图不落盘。落盘后结果文本带绝对路径,模型可直接 Read/引用 */
-let screenshotDir: string | null = null;
+
 /** 落盘保留张数上限(按文件名时间戳淘汰最旧,防目录无界增长) */
 const SCREENSHOT_KEEP = 50;
 
 export function setScreenshotDir(dir: string | null): void {
-  screenshotDir = dir;
+  defaultSession.screenshotDir = dir;
 }
 
 function saveScreenshot(b64: string): string | undefined {
+  const screenshotDir = cur().screenshotDir;
   if (screenshotDir === null) return undefined;
   try {
     fs.mkdirSync(screenshotDir, { recursive: true });
@@ -66,12 +81,12 @@ function saveScreenshot(b64: string): string | undefined {
 
 /** 读最近一次截图记账（动作工具消费；无成功截图时为 null——动作工具据此报错引导先截图）。 */
 export function lastShotMeta(): ShotMeta | null {
-  return lastMeta;
+  return cur().lastMeta;
 }
 
 /** 清会话态记账（仅测试缝：dispatch 模块级单点，测试据此与文件内用例顺序无关化）。 */
 export function resetLastShotMetaForTest(): void {
-  lastMeta = null;
+  defaultSession.lastMeta = null;
 }
 
 /** worker screenshot 回执形态（worker.ps1.ts Invoke-Screenshot 的 result；cursor/foreground PS 侧好取即取）。 */
@@ -113,7 +128,7 @@ async function runScreenshot(worker: WorkerClient, args: Record<string, unknown>
   }
   const res = await worker.op<ShotResult>('screenshot', params);
   const scale: ScreenMeta = { origWidth: res.w, origHeight: res.h, sentWidth: res.sentW, sentHeight: res.sentH };
-  lastMeta = { scale, originX: res.x, originY: res.y, cursor: res.cursor, foreground: res.foreground };
+  cur().lastMeta = { scale, originX: res.x, originY: res.y, cursor: res.cursor, foreground: res.foreground };
   const savedPath = saveScreenshot(res.b64);
   const metaText = JSON.stringify({ scale, cursor: res.cursor, foreground: res.foreground, ...(savedPath !== undefined ? { savedPath } : {}) });
   const content: (ImageContent | TextContent)[] = [
@@ -143,7 +158,8 @@ async function runWindowList(worker: WorkerClient): Promise<CallToolResult> {
   return { content: [{ type: 'text', text }] };
 }
 
-export async function dispatchTool(worker: WorkerClient, name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+export async function dispatchTool(worker: WorkerClient, name: string, args: Record<string, unknown>, session?: ShotSession): Promise<CallToolResult> {
+  if (session !== undefined) return sessionStore.run(session, () => dispatchTool(worker, name, args));
   if (!TOOLS.some((t) => t.name === name)) {
     return { content: [{ type: 'text', text: `unknown tool: ${name}` }], isError: true };
   }
