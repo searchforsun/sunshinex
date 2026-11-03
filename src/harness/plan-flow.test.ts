@@ -40,12 +40,19 @@ function mockSeams(over: Partial<PlanFlowSeams> = {}): MockSeams {
   return Object.assign(base, over);
 }
 
-test('主路径：规划→批准→返回产物,read-only 覆盖成对进出', async () => {
+test('主路径：规划→批准→返回产物,read-only 覆盖成对进出;mode 缺省 acceptEdits', async () => {
   const s = mockSeams();
   const r = await runPlanFlow('做一件事', s);
-  assert.deepEqual(r, { doc: '# 计划\n1. A\n2. B', items: ['A', 'B'] });
+  assert.deepEqual(r, { doc: '# 计划\n1. A\n2. B', items: ['A', 'B'], mode: 'acceptEdits' });
   assert.deepEqual(s.events, ['planning', 'awaiting-approval', 'approved']);
   assert.ok(s.readonlyOn() === false, 'exit 后覆盖应已解除');
+});
+
+test('批准带 mode：决策体档位随产物回传宿主落档（2026-11-03 批准卡三选）', async () => {
+  const s = mockSeams({ awaitApproval: async () => ({ approved: true, mode: 'full-access' }) });
+  const r = await runPlanFlow('g', s);
+  assert.equal(r?.mode, 'full-access', '显式选择的档位必须回传,宿主据此落档');
+  assert.equal(s.chainCalls(), 1, '链注入语义不随选档变化');
 });
 
 test('判别力锚：规划轮进入 read-only 覆盖（漏掉 enter 即红）', async () => {
@@ -118,6 +125,32 @@ test('aborted reason 四值判别：interrupted（信号置位）/exhausted/empt
   const sExh = mockSeams({ awaitApproval: async () => ({ approved: false, feedback: `fb${++n}` }) });
   await runPlanFlow('g', sExh);
   assert.equal(abortedOf(sExh).reason, 'exhausted');
+});
+
+test('空反馈驳回 = 放弃本轮（discarded）：不烧修订轮,流程停（2026-11-03 修订）', async () => {
+  let runs = 0;
+  const s = mockSeams({
+    runPlanningTask: async () => { runs++; return { done: true, reply: '# 计划\n1. A' }; },
+    awaitApproval: async () => ({ approved: false }), // 无 feedback=纯拒绝
+  });
+  assert.equal(await runPlanFlow('g', s), null);
+  assert.equal(runs, 1, '空反馈驳回不得重入规划轮（旧行为=无理由盲改烧 3 轮）');
+  assert.equal(abortedOf(s).reason, 'discarded');
+  assert.equal(abortedOf(s).stopReason, undefined);
+  assert.equal(s.chainCalls(), 0, '放弃路径不得注入产物');
+});
+
+test('判定序：信号中止优先于空反馈驳回（TUI Esc=先 abort 再回填拒绝,必须回执 interrupted）', async () => {
+  const signal = new AbortController();
+  const s = mockSeams({
+    signal: signal.signal,
+    awaitApproval: async () => {
+      signal.abort(); // 宿主 interrupt 路径时序：abort 先落地,awaitApproval 随后回填 {approved:false}
+      return { approved: false };
+    },
+  });
+  assert.equal(await runPlanFlow('g', s), null);
+  assert.equal(abortedOf(s).reason, 'interrupted', '信号置位时空反馈拒绝应判中断而非放弃');
 });
 
 test('parseNumberedSteps 逐字迁移锚（session.ts 现实现语义等价勿加戏）：split→trim→去编号前缀→滤空', () => {

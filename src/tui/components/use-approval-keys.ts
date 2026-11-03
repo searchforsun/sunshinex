@@ -63,20 +63,32 @@ export function useApprovalKeys({
       if (Number.isInteger(an) && an >= 1 && an <= 3) { controller.resolveApproval(approvalDecisionByIndex(an - 1)); return true; }
       return true;
     }
-    // plan 确认卡（spec §4.2-4.4 重造）：y 批准；n=进入反馈输入态（不再直接放弃）；↑↓ 移动 / Space·Enter 提交 /
-    // 1-2 快选。Esc 分支不可达（App 判定序全局 Esc 在本层之前截获——中断路径经 approval 拦截转 confirmPlan(false)）。
-    // 反馈输入态（n 之后）：键面让位 composer——本 hook 放行（return false）,可打印/编辑键落输入缓冲；
-    // Enter 经输入行编辑→controller.submit 入口拦截为 confirmPlan(false, 反馈文本),Esc 走全局中断位同上
+    // plan 确认卡（spec §4.2-4.4;2026-11-03 批准卡三选）：y=实施（工作区编辑,缺省档）/ f=实施（完全访问,
+    // 显式选择）/ n=进入反馈输入态（修订环）;↑↓ 移动 / Space·Enter 提交 / 1-3 快选。Esc 分支不可达
+    // （App 判定序全局 Esc 在本层之前截获——中断路径经 approval 拦截转 confirmPlan(false),harness 判定序
+    // 信号优先=中断语义）。反馈输入态（n 之后）：键面让位 composer——本 hook 放行（return false）,
+    // 可打印/编辑键落输入缓冲;Enter 经输入行编辑→controller.submit 入口拦截为 confirmPlan(false, 反馈文本),
+    // Esc 走全局中断位同上
     if (status === 'awaiting-plan') {
       if (controller.planFeedbackMode === true) return false;
-      if (input === 'y') { void controller.confirmPlan(true); return true; }
+      if (input === 'y') { void controller.confirmPlan(true, undefined, 'acceptEdits'); return true; }
+      if (input === 'f') { void controller.confirmPlan(true, undefined, 'full-access'); return true; }
       if (input === 'n') { controller.planFeedbackMode = true; return true; }
       if (key.escape) { void controller.confirmPlan(false); return true; }
-      if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, 2, -1)); return true; }
-      if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, 2, 1)); return true; }
-      if (key.return || input === ' ') { void controller.confirmPlan(pCursorRef.current === 0); return true; }
+      if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, 3, -1)); return true; }
+      if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, 3, 1)); return true; }
+      if (key.return || input === ' ') {
+        const idx = pCursorRef.current;
+        if (idx === 2) { controller.planFeedbackMode = true; return true; }
+        void controller.confirmPlan(true, undefined, idx === 0 ? 'acceptEdits' : 'full-access');
+        return true;
+      }
       const pn = Number.parseInt(input, 10);
-      if (pn === 1 || pn === 2) { void controller.confirmPlan(pn === 1); return true; }
+      if (pn >= 1 && pn <= 3) {
+        if (pn === 3) { controller.planFeedbackMode = true; return true; }
+        void controller.confirmPlan(true, undefined, pn === 1 ? 'acceptEdits' : 'full-access');
+        return true;
+      }
       return true;
     }
     return false;

@@ -27,7 +27,7 @@ export function slashCommandDescriptions(): Record<string, string> {
     delete: t('delete this session (must be archived first)', '删除当前会话（须先归档）'),
     compact: t('compress context', '压缩上下文'),
     context: t('context usage breakdown', '上下文各段占比与大小'),
-    plan: t('plan first, execute on approval', '先规划后执行'),
+    plan: t('plan mode: bare=arm · /plan <goal> plan it · /plan off leave', '计划模式：裸 /plan 武装 · /plan <目标> 规划 · /plan off 退出'),
     goal: t('run the verify-fix loop', '运行完整验收修正环'),
     model: t('switch model (settings providers)', '切换模型（多源清单）'),
     'model-tier': t('switch model tier', '切换模型档位'),

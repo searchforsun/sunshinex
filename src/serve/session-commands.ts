@@ -230,23 +230,48 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
   }
 
   if (cmd === '/plan') {
-    // plan-arm（阶段三 spec §5.1）：/plan <目标> = 单选 plan 档(armed)+提交——submit 入口拦截转
-    // planFlow(TUI /plan 同构:规划→确认卡→批准落档→逐项执行)。档位切换 busy(运行中)/提交 409
-    // (流程在途)统一 busy 面归 HTTP 409;裸 /plan(缺目标)=只武装不提交(TUI 用法提示同构——后续
-    // 空闲提交经 armed 拦截自然进入规划流程)
-    // setMode 异步化(终审修复:disarm 收口)后武装位照常 await——arm 至 plan 不触收口(同档幂等/无流程即直落)
-    if ((await s.setMode('plan')) !== 'ok') return 'busy';
-    const goal = line.trim().split(/\s+/).slice(1).join(' ').trim();
-    if (goal.length === 0) {
+    // 2026-11-03 修订（/plan 三态,spec 修订节）：/plan=纯切档（武装）——任何状态可用、幂等、永不 busy
+    // （arm 只是 currentMode 标记位,不重建运行时;运行中武装对下一次提交生效,GUI pill 同路径受益）。
+    // 带目标按会话状态三态分流：规划/挂卡期→replan 按新目标重新规划（不再 409,旧流程中止+旧卡撤）;
+    // 执行段/普通任务在途→入 steer 队列（当前 run 收口后经 arm 拦截自然转规划,不中断在途工作）;
+    // 空闲→立即规划。off=解除武装（规划/挂卡期先中止流程;执行段档位已非 plan=armed 不成立,如实提示;
+    // 普通 run 在途的真切档仍 idle-only,busy 提示稍后）
+    const arg = line.trim().split(/\s+/).slice(1).join(' ').trim();
+    if (arg === 'off') {
+      if (!s.isPlanArmed()) {
+        notice(t('Not in plan mode', '当前不在计划模式'));
+        return 'ok';
+      }
+      if (s.planFlowPlanning()) await s.abortPlanFlow(); // 规划/挂卡期先中止（挂卡拒绝回填,卡撤）
+      if ((await s.setMode('acceptEdits')) !== 'ok') {
+        notice(t('Busy — leave plan mode when the session is idle', '会话忙——空闲后再退出计划模式'));
+        return 'ok';
+      }
+      notice(t('Left plan mode', '已退出计划模式'));
+      return 'ok';
+    }
+    const wasArmed = s.isPlanArmed();
+    await s.setMode('plan'); // 武装快路径:恒 ok
+    if (arg.length === 0) {
+      // 裸 /plan=只武装不提交,幂等可重复发送
       notice(
-        t(
-          'Usage: /plan <goal> — plan numbered steps first, confirm, then execute step by step',
-          '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行',
-        ),
+        wasArmed
+          ? t('Already in plan mode', '已处于计划模式')
+          : t('Plan mode on — submissions will be planned first', '已进入计划模式：提交将先规划再确认实施'),
       );
       return 'ok';
     }
-    const r = s.submit(goal);
+    if (s.planFlowPlanning()) {
+      await s.replan(arg);
+      notice(t('Re-planning with the new goal', '已按新目标重新规划'));
+      return 'ok';
+    }
+    if (s.status() === 'running') {
+      s.steer(arg);
+      notice(t('Queued — planning will start when the current task finishes', '已入队：当前任务收口后将先规划'));
+      return 'ok';
+    }
+    const r = s.submit(arg);
     return r.ok ? 'ok' : 'busy';
   }
 

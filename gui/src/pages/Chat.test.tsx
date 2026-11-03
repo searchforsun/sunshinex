@@ -391,7 +391,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     expect(setSessionMode).toHaveBeenCalledWith('s1', 'acceptEdits');
   });
 
-  it('plan-approval 挂起:快照 pending 段重建计划确认卡(reseed 复现沿 approval 卡先例),批准回执 replyPlanApproval({approved:true}) 并移卡', async () => {
+  it('plan-approval 挂起:快照 pending 段重建计划确认卡(reseed 复现沿 approval 卡先例),批准回执 replyPlanApproval({approved,mode}) 并移卡(2026-11-03 三按钮)', async () => {
     const replyPlanApproval = vi.fn(() => Promise.resolve());
     const conn = connOf([]);
     (conn as unknown as Record<string, unknown>).replyPlanApproval = replyPlanApproval;
@@ -407,11 +407,31 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
       });
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     expect(await screen.findByText(/Plan approval|计划确认/)).toBeTruthy(); // 卡复现(快照挂起段重建)
-    expect(screen.getByRole('heading', { level: 1, name: '计划书' })).toBeTruthy(); // 计划书 markdown 渲染
-    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['第一步', '第二步']); // 步骤只读清单
-    fireEvent.click(screen.getByText(/Approve|批准/));
-    await waitFor(() => expect(replyPlanApproval).toHaveBeenCalledWith('p-plan-1', { approved: true })); // 决策体走 plan-approval 通道
+    expect(screen.getByRole('heading', { level: 1, name: '计划书' })).toBeTruthy(); // 计划书 markdown 渲染(滚动区,items 不再独立渲染 ol)
+    fireEvent.click(screen.getByText(/Implement \(workspace edits\)|实施（工作区编辑）/)); // 缺省档按钮(primary)
+    await waitFor(() => expect(replyPlanApproval).toHaveBeenCalledWith('p-plan-1', { approved: true, mode: 'acceptEdits' })); // 决策体走 plan-approval 通道(带缺省档)
     await waitFor(() => expect(screen.queryByText(/Plan approval|计划确认/)).toBeNull()); // 回执落定移卡(dock 还 composer)
+  });
+
+  it('计划模式武装:普通文本直走 sessionSubmit(不包 /plan 命令;先补 arm 竞窗,快路径幂等)', async () => {
+    // 2026-11-03 修订:废除 armed 消息包 '/plan <文本>' 命令的包装(命令气泡+命令三态行=双份噪音,
+    // 用户消息不被改写)——arm 竞窗经 setSessionMode('plan') 快路径收口,armed 拦截在 daemon submit 单点
+    const sessionSubmit = vi.fn(() => Promise.resolve());
+    const setSessionMode = vi.fn(() => Promise.resolve());
+    const runCommand = vi.fn(() => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    (conn as unknown as Record<string, unknown>).setSessionMode = setSessionMode;
+    (conn as unknown as Record<string, unknown>).runCommand = runCommand;
+    (conn as unknown as Record<string, unknown>).sessionSnapshot = () =>
+      Promise.resolve({ messages: [], status: 'idle', openRun: -1, openSeg: -1, board: { tasks: [] }, delegations: [], team: [], pending: [], mode: 'plan', lastSeq: 0 });
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const box = await screen.findByRole('textbox', { name: 'message input' });
+    fireEvent.change(box, { target: { value: '帮我做X' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+    await waitFor(() => expect(sessionSubmit).toHaveBeenCalledWith('s1', '帮我做X')); // 普通提交面,消息原文不变形
+    expect(setSessionMode).toHaveBeenCalledWith('s1', 'plan'); // pill 乐观态与 daemon 的竞窗收口
+    expect(runCommand).not.toHaveBeenCalled(); // 不再走命令通道(用户消息零改写)
   });
 
   it('排队 chips:snapshot.queued 回显渲染,撤回钮调 cancelSteer(seq)', async () => {

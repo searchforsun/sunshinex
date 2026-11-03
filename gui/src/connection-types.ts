@@ -77,10 +77,12 @@ export interface GuiPlanApprovalReq {
   items: string[];
 }
 
-/** 阶段三 plan-arm 决策体(与 serve harness PlanDecision 同构):approved=false 可携 feedback
- *  进修订轮;feedback 空=纯拒绝。POST /plan-approval/:pid 请求体字面 */
+/** 阶段三 plan-arm 决策体(与 serve harness PlanDecision 同构):mode=批准落档档位(2026-11-03 修订
+ *  批准卡三选,缺省 acceptEdits);approved=false 携 feedback 进修订轮,feedback 空=纯拒绝(2026-11-03
+ *  修订=放弃本轮流程,armed 保持)。POST /plan-approval/:pid 请求体字面 */
 export interface GuiPlanDecision {
   approved: boolean;
+  mode?: 'acceptEdits' | 'full-access';
   feedback?: string;
 }
 

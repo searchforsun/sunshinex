@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { SessionRuntime } from './session';
+import { runCommand } from './session-commands';
 import type { DaemonFrame } from './daemon-wire';
 import type { SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
@@ -162,12 +163,17 @@ test('serve plan-arm：拒绝附反馈→revising→3 轮超限保持 armed 不�
       assert.deepEqual(ctx.session.submit('再规划'), { ok: true });
       await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000, 'armed 再提交入规划流程');
       const card2 = planCard(ctx.session, ctx.frames);
-      ctx.session.resolvePendingPlanApproval(card2.pid, { approved: false });
-      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval' && r.pid !== card2.pid), 10_000, '修订轮新卡');
-      // 收尾:中断在途流程(teardown 前不留悬挂 run;中断不解除 arm 已由第三例专钉)
-      assert.deepEqual(ctx.session.interrupt(), { ok: true });
-      await waitFor(() => ctx.session.status() === 'idle' && ctx.session.pendingSnapshot().length === 0, 10_000, '中断收尾');
-      assert.equal(ctx.session.snapshotResponse().mode, 'plan', '再拒仍保持 armed');
+      // 2026-11-03 修订:空反馈拒绝=放弃本轮（discarded）——流程收尾不烧修订轮（不产新卡）,武装保持。
+      // （旧锚=无理由盲改一轮出新卡,正是本轮废除的浪费语义;带反馈的修订环由上文 i<2 轮钉住）
+      assert.equal(ctx.session.resolvePendingPlanApproval(card2.pid, { approved: false }), true, '空反馈拒绝回执命中');
+      await waitFor(
+        () => ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'notice' && String(f.e.text ?? '').includes('Plan discarded')),
+        10_000,
+        '放弃如实回执',
+      );
+      await waitFor(() => ctx.session.pendingSnapshot().length === 0, 10_000, '挂卡出清');
+      assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '放弃不产修订轮新卡');
+      assert.equal(ctx.session.snapshotResponse().mode, 'plan', '放弃仍保持 armed（下条提交重新规划）');
     },
     { mode: 'plan' },
   );
@@ -298,4 +304,115 @@ test('serve plan-arm：执行段中断检查在循环顶——被跳过步骤的
   } finally {
     (runtimeMod as unknown as { createKernelRuntime: typeof origCreate }).createKernelRuntime = origCreate;
   }
+});
+
+// ---- 2026-11-03 修订（/plan 三态）——武装快路径 / replan / steer 分流 / 批准卡选档 / 命令通道 ----
+
+test('serve /plan 三态：运行中武装不 busy——setMode(plan) 恒 ok,收口后提交转规划', async () => {
+  const model = new ScriptedAdapter([
+    '{"done":true,"reply":"普通任务完成"}', // 普通任务
+    '{"done":true,"reply":"# 计划\\n1. 步骤X"}', // 规划包
+  ]);
+  await withSession(model, async (ctx) => {
+    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '前提:缺省档非 plan');
+    assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
+    await waitFor(() => ctx.session.status() === 'running', 10_000);
+    // 2026-11-03 武装快路径:运行中武装=置标记+落 meta,零重建零 busy（旧形态此处 'busy'→HTTP 409）
+    assert.equal(await ctx.session.setMode('plan'), 'ok', '运行中武装不 busy');
+    assert.equal(ctx.session.isPlanArmed(), true, '武装即刻成立(对下一次提交生效)');
+    await waitFor(() => ctx.session.status() === 'idle', 10_000, '普通任务收口');
+    assert.equal(ctx.session.isPlanArmed(), true, '收口后武装保持');
+    assert.deepEqual(ctx.session.submit('规划这件事'), { ok: true });
+    await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000, 'armed 提交入规划流程');
+  });
+});
+
+test('serve /plan 三态：挂卡期 replan——旧卡撤+新目标新卡（不再 409,单槽不叠卡,中断文案抑制）', async () => {
+  const model = new ScriptedAdapter([
+    '{"done":true,"reply":"# 计划一\\n1. 步骤A"}',
+    '{"done":true,"reply":"# 计划二\\n1. 步骤B"}',
+  ]);
+  await withSession(
+    model,
+    async (ctx) => {
+      assert.deepEqual(ctx.session.submit('旧目标'), { ok: true });
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
+      const card = planCard(ctx.session, ctx.frames);
+      await ctx.session.replan('新目标');
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval' && r.pid !== card.pid), 10_000, 'replan 新卡');
+      assert.equal(ctx.session.pendingSnapshot().filter((r) => r.kind === 'plan-approval').length, 1, '单槽:旧卡已撤不叠卡');
+      assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: true }), false, '旧卡已删表(回执=404 面)');
+      assert.ok(
+        !ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'notice' && String(f.e.text ?? '').includes('Planning interrupted')),
+        'replan 静默位:替换路径不落「规划已中断」双文案',
+      );
+      const frame = ctx.frames.filter((f) => f.kind === 'plan-approval').at(-1) as { req: { doc: string } } | undefined;
+      assert.match(frame?.req.doc ?? '', /# 计划二/, '新卡携带新目标计划书');
+    },
+    { mode: 'plan' },
+  );
+});
+
+test('serve /plan 三态：普通任务在途 /plan <目标> 命令=武装+入 steer 队列——收口后经 arm 拦截转规划', async () => {
+  const model = new ScriptedAdapter([
+    '{"done":true,"reply":"普通任务完成"}', // 普通任务
+    '{"done":true,"reply":"# 计划\\n1. 步骤Y"}', // 规划包
+  ]);
+  await withSession(model, async (ctx) => {
+    assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
+    await waitFor(() => ctx.session.status() === 'running', 10_000);
+    // 命令通道三分支之「在途」臂:旧形态返回 'busy'→HTTP 409;现=武装+入队,不中断在途工作
+    assert.equal(await runCommand(ctx.session, '/plan 规划目标'), 'ok', '/plan 命令在运行态不再 busy');
+    assert.equal(ctx.session.isPlanArmed(), true, '运行中武装生效');
+    await waitFor(() => ctx.session.status() === 'idle', 10_000, '普通任务收口');
+    // 队列补跑经 submit→arm 拦截转 planFlow（steer 消费路径既有语义,此处端到端钉住）
+    await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000, '队列目标转规划');
+  });
+});
+
+test('serve /plan 三态：批准卡三选——mode=full-access 落完全访问档(arm 解除,内核基档真切换)', async () => {
+  const model = new ScriptedAdapter([
+    '{"done":true,"reply":"# 计划\\n1. 步骤Z"}', // 规划包
+    '{"done":true,"reply":"步骤Z 完成"}', // 执行包
+  ]);
+  await withSession(
+    model,
+    async (ctx) => {
+      assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
+      await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
+      const card = planCard(ctx.session, ctx.frames);
+      assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: true, mode: 'full-access' }), true, '选完全访问批准');
+      await waitFor(() => ctx.session.status() === 'idle' && ctx.session.snapshotResponse().mode === 'full-access', 10_000, 'full-access 落档+执行收尾');
+      assert.equal(ctx.session.runtime.harness.security.mode, 'full-access', '内核 guard 基档真切换');
+      const chain = chainOf(ctx.session);
+      const planIdx = chain.findIndex((st) => st.action === 'plan');
+      const stepIdx = chain.findIndex((st) => st.action === 'task' && st.observation.includes('Current instruction: 步骤Z'));
+      assert.ok(planIdx >= 0 && stepIdx > planIdx, '链序红线不随选档变化(计划书行先于执行指令行)');
+    },
+    { mode: 'plan' },
+  );
+});
+
+test('serve /plan 三态：命令通道裸 /plan=幂等武装+如实回执,/plan off=解除武装', async () => {
+  const model = new ScriptedAdapter(['{"done":true,"reply":"普通任务完成"}']);
+  await withSession(model, async (ctx) => {
+    // 裸 /plan:首次=进入
+    assert.equal(await runCommand(ctx.session, '/plan'), 'ok');
+    assert.equal(ctx.session.isPlanArmed(), true, '裸 /plan 武装');
+    assert.ok(
+      ctx.frames.some((f) => f.kind === 'event' && f.e.type === 'tool-result' && String(f.e.text ?? '').includes('Plan mode on')),
+      '武装回执(命令三态行 tool-result 载荷,非 notice 事件)',
+    );
+    // 重复发送:幂等不解除
+    assert.equal(await runCommand(ctx.session, '/plan'), 'ok');
+    assert.equal(ctx.session.isPlanArmed(), true, '重复 /plan 不解除(幂等)');
+    // off:解除(闲置态,无流程在途)
+    assert.equal(await runCommand(ctx.session, '/plan off'), 'ok');
+    assert.equal(ctx.session.isPlanArmed(), false, '/plan off 解除武装');
+    assert.equal(ctx.session.snapshotResponse().mode, 'acceptEdits', 'off 落工作区编辑档(disarm 缺省档)');
+    // 解除后普通提交走普通任务
+    assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
+    await waitFor(() => ctx.session.status() === 'idle', 10_000);
+    assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '解除后提交零计划卡');
+  });
 });

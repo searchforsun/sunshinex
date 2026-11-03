@@ -102,8 +102,8 @@ test('App：plan 确认选择器——Enter（首项）执行计划', async () =
     const p = ctrl.submit('/plan make greeting');
     await waitFor(() => ctrl.getState().status === 'awaiting-plan');
     term = render(<App controller={ctrl} />);
-    await waitFor(() => (term?.lastFrame() ?? '').includes('Execute plan'), 3000);
-    term.write('\r'); // 首项 = Execute plan
+    await waitFor(() => (term?.lastFrame() ?? '').includes('Implement (workspace edits)'), 3000);
+    term.write('\r'); // 首项 = Implement (workspace edits)（2026-11-03 批准卡三选,缺省档）
     await p;
     await ctrl.waitIdle();
     assert.equal(fs.readFileSync(path.join(tmp, 'p.txt'), 'utf8'), 'hi', 'Enter 首项应执行计划');

@@ -1,20 +1,24 @@
-/** planFlow 共享模块（spec 2026-10-24-plan-mode-redesign §4）：计划流程编排单点,TUI/serve 薄壳消费。
+/** planFlow 共享模块（spec 2026-10-24-plan-mode-redesign §4;2026-11-03 修订 /plan 三态与批准卡选档）：计划流程编排单点,TUI/serve 薄壳消费。
  *  纯流程零 IO 政策——规划任务/待办面/档位覆盖/链注入/审批全部走接缝;状态机:
- *  planning → awaiting-approval →(批准)approved |(拒绝+反馈)revising → planning;
+ *  planning → awaiting-approval →(批准)approved |(拒绝+反馈)revising → planning |(拒绝无反馈)aborted-discarded;
  *  中断/超限/无产物 aborted。依赖方向:harness 内自洽,宿主(tui/serve)注入接缝。 */
 
 export interface PlanStep { text: string; status: 'pending' | 'in_progress' | 'completed' }
+
+/** 批准落档档位（2026-11-03 修订:批准卡三选,缺省 acceptEdits——full-access 必须显式选择） */
+export type PlanLandMode = 'acceptEdits' | 'full-access';
 
 export type PlanFlowEvent =
   | { type: 'planning'; round: number }
   | { type: 'awaiting-approval'; doc: string; items: string[] }
   | { type: 'revising'; round: number }
   | { type: 'approved'; doc: string; items: string[] }
-  /** aborted：中断/超限/无产物/规划任务非中断失败。stopReason=规划 run 的原始终止原因透传
-   *  （spec §7 如实回执——宿主回执措辞据此区分「已中断」与「规划失败: <原因>」,不再一律谎报 interrupted） */
-  | { type: 'aborted'; reason: 'interrupted' | 'exhausted' | 'empty' | 'failed'; stopReason?: string };
+  /** aborted：中断/超限/无产物/规划任务非中断失败/拒绝无反馈放弃。stopReason=规划 run 的原始终止原因透传
+   *  （spec §7 如实回执——宿主回执措辞据此区分「已中断」与「规划失败: <原因>」,不再一律谎报 interrupted;
+   *  discarded=2026-11-03 修订:空反馈驳回=放弃本轮,不烧修订轮,武装是否保持属宿主语义） */
+  | { type: 'aborted'; reason: 'interrupted' | 'exhausted' | 'empty' | 'failed' | 'discarded'; stopReason?: string };
 
-export interface PlanDecision { approved: boolean; feedback?: string }
+export interface PlanDecision { approved: boolean; mode?: PlanLandMode; feedback?: string }
 
 export interface PlanFlowSeams {
   runPlanningTask(prompt: string, signal?: AbortSignal): Promise<{ done: boolean; stopReason?: string; reply?: string }>;
@@ -51,7 +55,7 @@ export function parseNumberedSteps(text: string): string[] {
     .filter((l) => l.length > 0);
 }
 
-export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?: string): Promise<{ doc: string; items: string[] } | null> {
+export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?: string): Promise<{ doc: string; items: string[]; mode: PlanLandMode } | null> {
   for (let round = 1; round <= PLAN_MAX_ROUNDS; round++) {
     if (seams.signal?.aborted) {
       seams.emit({ type: 'aborted', reason: 'interrupted' });
@@ -90,10 +94,22 @@ export async function runPlanFlow(goal: string, seams: PlanFlowSeams, feedback?:
     }
     seams.emit({ type: 'awaiting-approval', doc, items: finalItems });
     const d = await seams.awaitApproval(doc, finalItems);
+    // 判定序（2026-11-03 修订）：信号中止最优先（TUI Esc/serve interrupt 先 abort 再回填拒绝——
+    // 产物不得注入、执行不得启动,沿 approval.ts rider 语义）;其次空反馈驳回=放弃本轮（discarded,
+    // 不烧修订轮额度）;有反馈才进修订环
+    if (seams.signal?.aborted) {
+      seams.emit({ type: 'aborted', reason: 'interrupted' });
+      return null;
+    }
+    if (!d.approved && d.feedback === undefined) {
+      seams.emit({ type: 'aborted', reason: 'discarded' });
+      return null;
+    }
     if (d.approved) {
+      const mode: PlanLandMode = d.mode ?? 'acceptEdits';
       seams.chainAppendPlan(doc);
       seams.emit({ type: 'approved', doc, items: finalItems });
-      return { doc, items: finalItems };
+      return { doc, items: finalItems, mode };
     }
     feedback = d.feedback;
   }

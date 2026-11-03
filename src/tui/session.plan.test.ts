@@ -60,8 +60,8 @@ test('/plan：规划（planFlow 规划轮）→ 确认 → 逐项执行 → 待�
     // 确认卡=计划书全文形态（spec §4.3）：doc + 分隔线 + 编号步骤 + 键位提示
     const card = ctrl.getState().messages.at(-1)?.text ?? '';
     assert.match(card, /Plan confirmation/, '确认卡标题');
-    assert.match(card, /y approve \/ n reject with feedback \/ Esc discard|y 批准 \/ n 拒绝（附反馈）/, '确认卡键位提示（n=拒绝附反馈）');
-    await ctrl.confirmPlan(true);
+    assert.match(card, /y implement \(workspace edits\)|y 实施（工作区编辑）/, '确认卡键位提示（2026-11-03 三选:y 缺省档/f 完全访问/n 驳回附反馈）');
+    await ctrl.confirmPlan(true, undefined, 'acceptEdits');
     await ctrl.waitIdle();
     assert.equal(
       ctrl.getState().messages.filter((m) => m.role === 'assistant' && m.text.includes('步骤A 完成')).length,
@@ -104,7 +104,7 @@ test('/plan：确认裁决时点主动探测——起草后 SUNSHINE.md 变化 �
   }
 });
 
-test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () => {
+test('/plan：裸 /plan=幂等武装/off 解除;运行中 /plan <目标>=入队不拒（2026-11-03 三态）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan3-'));
   try {
     const ctrl = new SessionController({
@@ -113,24 +113,38 @@ test('/plan：缺目标给用法提示；非 idle 拒绝并发规划', async () 
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch p.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',
+        '{"done":true,"reply":"1. 步骤Q"}', // 队列目标收口后经 armed 拦截转规划的规划包
       ]),
     });
+    // 裸 /plan:武装+如实回执(旧形态=Usage 提示;2026-11-03 裸 /plan=纯切档,幂等可重复)
+    await ctrl.submit('/plan');
+    assert.equal(ctrl.planArmed, true, '裸 /plan 武装');
+    assert.ok(
+      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('Plan mode on')),
+      '武装回执',
+    );
     await ctrl.submit('/plan');
     assert.ok(
-      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('Usage: /plan')),
-      '缺目标应给用法提示',
+      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('Already in plan mode')),
+      '重复发送幂等(已处于计划模式),不解除',
     );
-    // 运行中（审批挂起）拒绝并发规划
+    assert.equal(ctrl.planArmed, true, '重复 /plan 不解除');
+    await ctrl.submit('/plan off');
+    assert.equal(ctrl.planArmed, false, '/plan off 解除武装');
+    // 普通任务运行中（审批挂起）带目标:武装+入 steer 队列不拒（旧形态「planning unavailable now」拒绝,废除）
     const p = ctrl.submit('跑个命令');
     await waitFor(() => ctrl.getState().status === 'awaiting-approval', '审批挂起');
     await ctrl.submit('/plan 并发规划');
-    assert.ok(
-      ctrl.getState().messages.some((m) => m.role === 'system' && m.text.includes('planning unavailable now')),
-      '非 idle 应拒绝并发规划',
-    );
+    assert.equal(ctrl.planArmed, true, '运行中武装生效');
+    assert.equal(ctrl.steeringPending(), 1, '运行中 /plan <目标> 入队(不中断在途工作)');
     await ctrl.resolveApproval('deny');
-    await p;
-    await ctrl.waitIdle();
+    await p; // submit 半径含 drainQueue:补跑 gate 在卡登记后放行——p 落定即卡在场
+    // 队列收口补跑经 armed 拦截转 planFlow:确认卡到达即证
+    assert.equal(ctrl.getState().status, 'awaiting-plan', '队列目标转规划(确认卡到场)');
+    assert.equal(ctrl.planArmed, true, '规划在途 armed 保持');
+    await ctrl.submit('/plan off');
+    assert.equal(ctrl.planArmed, false, '/plan off 解除武装(挂卡期先中止流程)');
+    await waitFor(() => ctrl.getState().status === 'idle', 'off 中止规划收口');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -507,28 +521,47 @@ test('/plan：拒绝附反馈 → 修订轮重入（前轮计划书+反馈进规
   }
 });
 
-test('/plan：3 轮拒绝超限回 idle 不执行（驳回环收口）', async () => {
+test('/plan：空反馈拒绝=放弃本轮（discarded,不烧修订轮）;带反馈 3 轮超限不执行（驳回环收口）', async () => {
+  // 2026-11-03 修订:空反馈拒绝=放弃本轮（discarded）——流程即停,武装保持（下条提交重新规划）;
+  // 旧锚=无理由盲改一轮出新卡（浪费语义,废除）。带反馈的修订环与超限由下半段钉住。
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-exhaust-'));
   try {
+    // —— 上半:空反馈拒绝 → 放弃本轮 ——
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter(['{"done":true,"reply":"1. 只有一项"}']),
     });
     await ctrl.submit('/plan 另一件事');
     assert.equal(ctrl.getState().status, 'awaiting-plan');
-    for (let i = 0; i < 3; i++) {
-      await ctrl.confirmPlan(false);
-      if (i < 2) await waitFor(() => ctrl.getState().status === 'awaiting-plan', `第 ${i + 2} 轮确认卡`);
-    }
+    await ctrl.confirmPlan(false); // 无反馈=纯拒绝
     await ctrl.waitIdle();
-    assert.equal(ctrl.getState().status, 'idle', '超限收尾回输入态');
-    assert.equal(ctrl.getState().todos.length, 0, '拒绝超限不产生待办');
+    assert.equal(ctrl.getState().status, 'idle', '放弃本轮收尾回输入态');
+    assert.equal(ctrl.getState().todos.length, 0, '放弃不产生待办');
+    assert.match(messageTexts(ctrl), /Plan discarded|已放弃本轮计划/, '放弃如实回执（不烧修订轮,无修订轮提示）');
+    assert.equal(ctrl.planArmed, true, '放弃仍保持 armed（下条提交重新规划）');
+    assert.ok(!chainOf(ctrl).some((s) => s.action === 'plan'), '未批准不注入计划书');
+    assert.ok(!chainOf(ctrl).some((s) => s.action === 'task'), '放弃不执行任何步骤');
+
+    // —— 下半:带反馈 3 轮 → 超限如实回执不执行 ——
+    const ctrl2 = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter(['{"done":true,"reply":"1. 只有一项"}']),
+    });
+    await ctrl2.submit('/plan 另一件事');
+    assert.equal(ctrl2.getState().status, 'awaiting-plan');
+    for (let i = 0; i < 3; i++) {
+      await ctrl2.confirmPlan(false, `fb${i}`); // 带反馈=修订环
+      if (i < 2) await waitFor(() => ctrl2.getState().status === 'awaiting-plan', `第 ${i + 2} 轮确认卡`);
+    }
+    await ctrl2.waitIdle();
+    assert.equal(ctrl2.getState().status, 'idle', '超限收尾回输入态');
+    assert.equal(ctrl2.getState().todos.length, 0, '拒绝超限不产生待办');
     assert.match(
-      messageTexts(ctrl),
+      messageTexts(ctrl2),
       /Plan rejected 3 times — stopped, nothing executed|计划已被拒 3 轮——已停止，未执行任何步骤/,
       '超限如实回执',
     );
-    assert.ok(!chainOf(ctrl).some((s) => s.action === 'plan'), '未批准不注入计划书');
+    assert.ok(!chainOf(ctrl2).some((s) => s.action === 'plan'), '未批准不注入计划书');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -597,7 +630,10 @@ test('/plan：等待批准中中断——流程中止回 idle,产物不注入不
     assert.equal(ctrl.getState().todos.length, 0, '中断后不执行不建待办');
     assert.match(messageTexts(ctrl), /Planning interrupted|规划已中断/, '中断如实回执（planFlow aborted-interrupted）');
     assert.ok(!chainOf(ctrl).some((s) => s.action === 'plan'), '中断路径产物不注入链（rider:signal 边界）');
-    assert.ok(!messageTexts(ctrl).includes('Plan discarded'), '在途中断不走旧式放弃回执');
+    assert.ok(!messageTexts(ctrl).includes('Plan discarded'), '在途中断不走放弃回执（harness 判定序信号优先于空反馈拒绝）');
+    // 2026-11-03:中断保持 armed——新任务按普通任务跑须先退计划模式（armed 提交会再入规划流程）
+    await ctrl.submit('/plan off');
+    assert.equal(ctrl.planArmed, false, '/plan off 解除武装');
     // planReplyNoArchive 复位验证：中断后新任务的正文正常入档（不被抑制位吞掉）
     await ctrl.submit('新任务');
     await ctrl.waitIdle();
@@ -642,6 +678,78 @@ test('/plan：执行段中断检查在循环顶——被跳过步骤的指令行
       [{ text: '步骤A', status: 'completed' }, { text: '步骤B', status: 'pending' }],
       '步骤 B 保持 pending（旧形态先标 in_progress 再查中断）',
     );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/plan：挂卡期 /plan <新目标>=replan——旧流程中止+新目标新卡,中断文案抑制（2026-11-03 三态）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-replan-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步骤A"}', // 旧目标规划包
+        '{"done":true,"reply":"1. 步骤B"}', // 新目标规划包
+        '{"done":true,"reply":"步骤B 完成"}', // 执行包
+      ]),
+    });
+    await ctrl.submit('/plan 旧目标');
+    await waitFor(() => ctrl.getState().status === 'awaiting-plan', '旧目标确认卡');
+    assert.match(ctrl.getState().messages.at(-1)?.text ?? '', /步骤A/, '旧卡在场');
+    // 挂卡期带新目标:armed+pendingPlan → replanOn(旧流程中止+旧卡撤,不再排队/拒绝)
+    await ctrl.submit('/plan 新目标');
+    await waitFor(
+      () => ctrl.getState().status === 'awaiting-plan' && (ctrl.getState().messages.at(-1)?.text ?? '').includes('步骤B'),
+      '新目标确认卡',
+    );
+    assert.ok(
+      ctrl.getState().messages.some((m) => m.text.includes('Re-planning with the new goal') || m.text.includes('已按新目标重新规划')),
+      'replan 回执上屏',
+    );
+    assert.ok(
+      !ctrl.getState().messages.some((m) => m.text.includes('Planning interrupted') || m.text.includes('规划已中断')),
+      'replan 静默位:替换路径不落「规划已中断」双文案',
+    );
+    await ctrl.confirmPlan(true, undefined, 'acceptEdits');
+    await ctrl.waitIdle();
+    assert.ok(
+      ctrl.getState().todos.every((t) => t.status === 'completed') && ctrl.getState().todos.some((t) => t.text.includes('步骤B')),
+      '新目标计划批准后逐项执行(旧计划书不残留)',
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('/plan：先武装再输入任务说明——普通文本提交经 armed 拦截进规划（2026-11-03 三态主用法）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan-arm-first-'));
+  try {
+    const ctrl = new SessionController({
+      root: tmp,
+      model: new ScriptedAdapter([
+        '{"done":true,"reply":"1. 步骤A\\n2. 步骤B"}', // 规划包
+        '{"done":true,"reply":"步骤A 完成"}',
+        '{"done":true,"reply":"步骤B 完成"}',
+      ]),
+    });
+    await ctrl.submit('/plan'); // 先切计划模式（裸命令,不提交任何目标）
+    assert.equal(ctrl.planArmed, true);
+    await ctrl.submit('给导出函数补测试并跑绿'); // 再输入任务说明:armed 空闲提交→planFlow
+    await waitFor(() => ctrl.getState().status === 'awaiting-plan', 'armed 提交进规划(确认卡到场)');
+    assert.match(ctrl.getState().messages.at(-1)?.text ?? '', /步骤A/, '计划书随卡上屏');
+    assert.ok(
+      !chainOf(ctrl).some((s) => s.action === 'task' || s.action === 'plan'),
+      '武装提交与规划轮零主链写入(链前缀不动,规划提示词走 fork seed)',
+    );
+    await ctrl.confirmPlan(true, undefined, 'acceptEdits');
+    await ctrl.waitIdle();
+    assert.equal(ctrl.getState().todos.filter((t) => t.status === 'completed').length, 2, '批准后逐项执行');
+    // 主链上用户任务文本以计划书行+指令行形态出现在批准后（规划期不提前入链）
+    const chain = chainOf(ctrl);
+    const planIdx = chain.findIndex((s) => s.action === 'plan');
+    const stepIdx = chain.findIndex((s) => s.action === 'task' && s.observation.includes('Current instruction'));
+    assert.ok(planIdx >= 0 && stepIdx > planIdx, '链序:计划书行先于执行指令行（批准后尾追,前缀缓存零破坏）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

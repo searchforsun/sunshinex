@@ -79,15 +79,18 @@ export function buildSlashMenu(buffer: string, skills: readonly SlashMenuSkillSo
   return [...builtins, ...skillEntries].filter((e) => e.cmd.startsWith(q));
 }
 
-/** 输入框占位文案（按会话状态分流；纯函数便于断言） */
-function inputPlaceholder(status: TuiState['status']): string {
+/** 输入框占位文案（按会话状态分流;armed=计划模式武装（2026-11-03 三态）换提示——「为什么我发的消息
+ *  没直接执行」的第一解释位;纯函数便于断言） */
+function inputPlaceholder(status: TuiState['status'], planArmed = false): string {
   switch (status) {
     case 'awaiting-approval': return t('Awaiting approval: y approve once / a allow for session / n deny', '等待审批：y 放行一次 / a 本会话放行 / n 拒绝');
-    case 'awaiting-plan': return t('Plan awaiting confirmation: y approve / n reject with feedback / Esc discard', '计划待确认：y 批准 / n 拒绝（附反馈）/ Esc 放弃');
+    case 'awaiting-plan': return t('Plan awaiting confirmation: y implement (workspace edits) / f implement (full access) / n reject with feedback / Esc discard', '计划待确认：y 实施（工作区编辑）/ f 实施（完全访问）/ n 拒绝（附反馈）/ Esc 放弃');
     case 'awaiting-question': return t('Answer the question above: up/down move · space select · enter submit · esc dismiss', '请回答上方问题：↑/↓ 移动 · 空格选定 · 回车提交 · Esc 放弃');
     case 'running': return t('Running… (input will queue)', '运行中…（输入将排队）');
     case 'error': return t('Previous task failed; enter a new task to continue', '上次任务出错；输入新任务继续');
-    default: return t('Type a task, Enter to send · /help for commands', '输入任务，Enter 发送 · /help 查看命令');
+    default: return planArmed
+      ? t('Plan mode — submissions will be planned first (/plan off to leave)', '计划模式：提交将先规划再确认实施（/plan off 退出）')
+      : t('Type a task, Enter to send · /help for commands', '输入任务，Enter 发送 · /help 查看命令');
   }
 }
 
@@ -100,11 +103,13 @@ export function approvalSelectorOptions(): { label: string; description?: string
   ];
 }
 
-/** plan 确认选择器选项（首项=执行；Esc 同第二项放弃） */
+/** plan 确认选择器选项（2026-11-03 批准卡三选,与 use-approval-keys y/f/n/1-3 同序：实施工作区编辑（缺省）/
+ *  实施完全访问（显式选择）/ 驳回附反馈;Esc 同中断=放弃本轮） */
 function planSelectorOptions(): { label: string; description?: string }[] {
   return [
-    { label: t('Execute plan', '执行计划'), description: t('run the steps above', '逐项执行上述计划') },
-    { label: t('Keep planning (esc)', '放弃 (esc)'), description: t('discard and return to input', '放弃并回到输入态') },
+    { label: t('Implement (workspace edits)', '实施（工作区编辑）'), description: t('land acceptEdits and run the steps (default)', '落工作区编辑档逐项执行（缺省）') },
+    { label: t('Implement (full access)', '实施（完全访问）'), description: t('land full-access and run the steps', '落完全访问档逐项执行') },
+    { label: t('Reject with feedback (n)', '驳回（n）'), description: t('enter feedback to revise; Esc discards this round', '输入反馈修订；Esc 放弃本轮') },
   ];
 }
 
@@ -396,8 +401,9 @@ export function App({
    * 8. Esc 全局分流（App 保留）：暂停卡撤卡 → interrupt 可达即中断 → 输入非空=清空（空输入无操作，不退出）
    * 9. 审批卡 awaiting-approval（use-approval-keys，模态恒吞键）：y/a/n 快捷；Esc=deny；↑↓；
    *     Space/Enter=光标行裁决；数字 1-3 快选
-   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y 批准；n=进入反馈输入态（键面让位 composer——
-   *     Enter 经 submit 入口拦截=confirmPlan(false,反馈文本)、Esc=全局中断位转 confirmPlan(false)）；↑↓；Space/Enter；1-2 快选
+   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y=实施工作区编辑（缺省档）/ f=实施完全访问 /
+   *     n=进入反馈输入态（键面让位 composer——Enter 经 submit 入口拦截=confirmPlan(false,反馈文本)、
+   *     Esc=全局中断位转 confirmPlan(false)=放弃本轮,harness 判定序信号优先）；↑↓；Space/Enter；1-3 快选
    * 11. Tab 分流（App 保留）：/ 前缀=斜杠补全（exact 词池内循环邻位+空格 / 补面板选中项+空格）；
    *     否则=expandAll+todoExpanded 同步翻转（store 先写）并 recordView
    * 12. Ctrl+O（App 保留）：latestFull 内容深度翻转并 recordView
@@ -669,7 +675,7 @@ export function App({
       <InputBox
         buffer={buffer}
         cursor={cursor}
-        placeholder={inputPlaceholder(state.status)}
+        placeholder={inputPlaceholder(state.status, controller.planArmed)}
         active={state.status === 'idle' || state.status === 'error'}
         attachments={attachments}
       />

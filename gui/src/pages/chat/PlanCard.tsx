@@ -4,23 +4,28 @@ import { ListTodo } from 'lucide-react';
 import { t } from '../../i18n';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
 
-/** 计划确认卡(task 10,spec §5.2 阶段三 plan-arm GUI 面):planFlow 裁决卡的渲染件——
- *  计划书 markdown(沿 GUI 既有 markdown 通道,mdComponentsPlain 无链接版+keepUrl,ToolEntry
- *  结果区同款)+步骤清单只读+批准/拒绝两按钮(拒绝展开反馈输入框)。纯渲染+onDecide 回调,
- *  挂起生命周期(cards 状态/回执寻址)归 use-session-events(ApprovalCard 同款分工);
- *  回执经 connection.replyPlanApproval → POST /plan-approval/:pid,决策体 PlanDecision 同构
- *  {approved, feedback?}——批准落工作区编辑自动解除,拒绝(+反馈)保持 armed 进修订轮。 */
+/** 计划确认卡(2026-11-03 修订重排:滚动文档区+常驻反馈框+三按钮;spec §5.2 阶段三 plan-arm GUI 面):
+ *  计划书 markdown(沿 GUI 既有 markdown 通道,mdComponentsPlain 无链接版+keepUrl,ToolEntry 结果区
+ *  同款)纵向滚动(max-height min(44vh,460px),修订轮换 pid remount 天然回顶);反馈框常驻
+ *  (Enter=驳回提交,Shift+Enter 换行——与 composer 键位同构);三按钮=实施·工作区编辑(primary 缺省档)/
+ *  实施·完全访问(平级非 primary,无二次确认——pill 直选 full-access 同权)/驳回=取框内文本
+ *  (空文本=纯拒绝=放弃本轮流程,decision 不带 feedback,armed 保持)。
+ *  items 不再独立渲染 ol(Steps 节已随 doc 全文在滚动区内,双份同内容上下排即冗余;items 仍是执行
+ *  权威——逐项执行的勾选进度走会话 todo 面)。纯渲染+onDecide 回调,挂起生命周期(cards 状态/回执
+ *  寻址)归 use-session-events(ApprovalCard 同款分工);回执经 connection.replyPlanApproval →
+ *  POST /plan-approval/:pid,决策体 PlanDecision 同构 {approved, mode?, feedback?}——批准落所选档
+ *  自动解除(arm 随 setMode 切走解除),拒绝(+反馈)保持 armed 进修订轮,空反馈拒绝=放弃本轮仍 armed。 */
 
-/** 决策体(与 serve harness PlanDecision 同构;feedback 空=不带字段) */
+/** 决策体(与 serve harness PlanDecision 同构;mode=批准落档档位,缺省 acceptEdits——full-access
+ *  必须显式选择;feedback 空=不带字段) */
 export interface PlanCardDecision {
   approved: boolean;
+  mode?: 'acceptEdits' | 'full-access';
   feedback?: string;
 }
 
-/** plan-approval 挂起卡:doc=计划书 markdown 全文;items=步骤清单(只读呈现,不承载勾选态)。
- *  批准即回执;拒绝切换反馈输入态,提交时非空 feedback 随决策体携带(空=纯拒绝) */
-export function PlanCard({ doc, items, onDecide }: { doc: string; items: string[]; onDecide: (d: PlanCardDecision) => void }): JSX.Element {
-  const [rejecting, setRejecting] = useState(false);
+/** plan-approval 挂起卡:doc=计划书 markdown 全文(滚动区渲染);items=步骤清单(执行权威,不重复上屏) */
+export function PlanCard({ doc, onDecide }: { doc: string; items: string[]; onDecide: (d: PlanCardDecision) => void }): JSX.Element {
   const [feedback, setFeedback] = useState('');
   const sendReject = (): void => {
     const text = feedback.trim();
@@ -39,42 +44,33 @@ export function PlanCard({ doc, items, onDecide }: { doc: string; items: string[
           {doc}
         </ReactMarkdown>
       </div>
-      {items.length > 0 && (
-        <ol className="plan-card-items">
-          {items.map((it, i) => (
-            <li key={i}>{it}</li>
-          ))}
-        </ol>
-      )}
-      {rejecting ? (
-        <div className="plan-card-feedback">
-          <textarea
-            aria-label="plan feedback"
-            className="plan-card-feedback-input"
-            rows={2}
-            value={feedback}
-            placeholder={t('What should change? (optional)', '需要调整什么？（可不填）')}
-            onChange={(e) => setFeedback(e.target.value)}
-          />
-          <div className="card-actions">
-            <button type="button" className="primary" onClick={sendReject}>
-              {t('Send', '提交')}
-            </button>
-            <button type="button" onClick={() => setRejecting(false)}>
-              {t('Back', '返回')}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="card-actions">
-          <button type="button" className="primary" onClick={() => onDecide({ approved: true })}>
-            {t('Approve', '批准')}
-          </button>
-          <button type="button" onClick={() => setRejecting(true)}>
-            {t('Reject', '拒绝')}
-          </button>
-        </div>
-      )}
+      <div className="plan-card-feedback">
+        <textarea
+          aria-label="plan feedback"
+          className="plan-card-feedback-input"
+          rows={2}
+          value={feedback}
+          placeholder={t('What should change? (optional — Enter rejects with feedback)', '需要调整什么？（可不填——Enter 带反馈驳回）')}
+          onChange={(e) => setFeedback(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              sendReject();
+            }
+          }}
+        />
+      </div>
+      <div className="card-actions">
+        <button type="button" className="primary" onClick={() => onDecide({ approved: true, mode: 'acceptEdits' })}>
+          {t('Implement (workspace edits)', '实施（工作区编辑）')}
+        </button>
+        <button type="button" onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
+          {t('Implement (full access)', '实施（完全访问）')}
+        </button>
+        <button type="button" onClick={sendReject}>
+          {t('Reject', '驳回')}
+        </button>
+      </div>
     </div>
   );
 }

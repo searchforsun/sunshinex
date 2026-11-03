@@ -159,3 +159,50 @@ pill/菜单/帮助文案经 i18n `t()` 单表维护;read-only 拒绝消息出路
 - dontAsk 主流语义档(「该问不问直接拒」)面向 headless/batch;
 - 计划书落盘与跨会话引用(CC plans 式);
 - auto 档(分类器后台安全检查)远期评估。
+
+---
+
+## 9. 2026-11-03 修订:/plan 三态与批准卡选档(已实施,三端)
+
+会话裁定(用户 2026-11-03):/plan 本质是切档快捷方式——不应被在途状态挡出 busy/409;带目标即「按这个(重新)规划」;批准卡给执行档选择。本节推翻/扩员原裁定如下,实现已落地(§9.1-9.3 三端)。
+
+### 9.0 裁定变更记录
+
+| 原裁定 | 修订后 |
+| --- | --- |
+| ③ 批准后固定落 acceptEdits、批准卡不设选档 | 批准卡三选:实施·工作区编辑(缺省 primary)/实施·完全访问(显式选择,无二次确认——pill 直选 full-access 同权)/驳回附反馈;决策体 `{approved, mode?, feedback?}` 缺省 acceptEdits 兜底 |
+| §5.1 serve /plan:档位切换 busy(运行中)/提交 409(流程在途) | 武装快路径:`setMode('plan')` 恒 ok——arm 只是 currentMode 标记(装配映射恒 acceptEdits,内核档不动),不重建运行时、任何状态可用、幂等、永不 busy;运行中武装对下一次提交生效 |
+| 拒绝(无反馈)=无理由修订重入(烧轮次) | 空反馈拒绝=放弃本轮(aborted-discarded):流程即停、武装保持、不烧修订轮;带反馈才进修订环;判定序=信号中断最优先(TUI Esc/serve interrupt 先 abort 再回填拒绝,必须回执 interrupted 不误判 discarded) |
+| ⑤ 方案 B(exit_plan 模型工具)留作演进 | 维持演进(本轮不做);计划书落盘同样维持演进 |
+
+### 9.1 /plan 命令三态(三端口径)
+
+- **裸 `/plan`**=纯切档(武装),幂等可重复;解除三路径=批准自动落所选档/`/plan off` 或 pill 切走/重启不恢复(原 §5.1 arm 语义沿用)。TUI 补齐裸武装(旧=Usage 提示),armed 可见性=系统回执+输入框提示文案(TUI)/pill(TUI 原无档位面,本轮新增输入提示位)。
+- **`/plan <目标>`**=武装+按目标规划,按会话状态三分:
+  1. 空闲→立即启动 planFlow(原语义);
+  2. **规划在途/挂卡期→replan**:中止当前流程(信号+挂卡拒绝回填+有界等收束,`planReplanQuiet` 抑制「规划已中断」双文案)+以新目标重启;旧卡删表(GUI 单槽换卡,回执=404 面)——不再 409;
+  3. **执行段/普通任务在途→武装+入 steer 队列**:不中断在途工作,当前 run 收口后队列补跑经 armed 拦截转规划(serve 递归 submit→arm 拦截既有路径;TUI drainQueue 增 armed 判定)。
+- **`/plan off`**=解除武装(规划/挂卡期先中止流程;执行段 armed 已不成立=如实提示;普通 run 在途的真切档仍 idle-only,busy 提示稍后)。
+- **GUI 武装提交通道(2026-11-03 用户裁定)**:pill/`/plan` 切计划模式后,普通文本(含图片)**直接走普通提交通道**,daemon submit 单点的 armed 拦截自动转 planFlow——**废除旧形态「armed 消息整行包成 `/plan <文本>` 命令」**(用户消息被改写成命令气泡+命令三态行=双份噪音,且 `/status` 等命令词在 armed 下被误吞);pill 乐观态与 daemon 的竞窗经 `setSessionMode('plan')` 快路径前置收口(幂等恒 ok),命令词不补(命令自管武装,`/plan off` 解除不被顶掉)。
+- 区分「可 replan」与「执行段」:serve `planExecuting`/TUI `planExecuting` 标记(runPlanItems 持锁期置位)——执行段档位已落非 plan,armed 不成立。
+
+### 9.2 GUI PlanCard 重排(2026-11-03)
+
+- 计划书 markdown 限高纵向滚动(`max-height: min(44vh, 460px)`,修订轮换 pid remount 天然回顶)——长计划书不再把 dock 撑到顶;
+- items 独立只读 `<ol>` 退役(Steps 节已随 doc 全文渲染,双份同内容即冗余;items 仍是执行权威,勾选进度走会话 todo 面);
+- 反馈框常驻(拒绝面不再藏二级态;Enter=驳回提交、Shift+Enter 换行,composer 键位同构);
+- 三按钮(§9.0);空文本驳回=放弃本轮(决策体不带 feedback);
+- **plan 卡单槽**:新 plan-approval 帧先清同 kind 旧卡再挂(wire 无「挂起撤下」帧,本地不清会叠卡;reseed 同走此口)。
+
+### 9.3 serve/TUI 机制面
+
+- serve:`SessionRuntime.setMode('plan')` 武装快路径;`replan(goal)` 公开(静默中止+重启);`planFlowPlanning()`/`isPlanArmed()`/`abortPlanFlow()` 外窥;批准续段 `setMode(r.mode,{planFlowInternal})` 落所选档;`/plan-approval/:pid` 回执校验 mode∈{acceptEdits,full-access};aborted 臂增 discarded 文案。
+- TUI:控制器 `planArmed`/`planExecuting`/`planReplanQuiet`/`planFlowSettled` 四标记;submit 分流三态(armed+规划/挂卡=replan,armed+idle=planFlow,其余沿 steer);drainQueue armed 判定;`landAcceptEditsOn` 泛化 `landModeOn(mode)`(armed 解除+setBaseMode+asker 仅 acceptEdits 接线);确认卡四键 `y`/`f`/`n`/`Esc`+选择器三选项;/new 软重置清新武装位。
+- harness:`PlanDecision.mode?`/`PlanLandMode`;aborted reason 增 `discarded`;`runPlanFlow` 判定序(信号→空反馈驳回→修订环)与产物 `{doc,items,mode}`。
+
+### 9.4 测试锚(2026-11-03)
+
+- harness `plan-flow.test.ts`:空反馈→discarded 不烧轮、信号优先序、mode 回传(12 例);
+- serve `plan-flow.e2e.test.ts`:运行中武装不 busy、挂卡期 replan(单槽+旧卡 404+文案抑制)、运行中 /plan 命令入队→收口转规划、full-access 落档、裸 /plan 幂等+off(10 例);
+- TUI `session.plan.test.ts`:裸 /plan 幂等武装/off、运行中入队→队列转规划、挂卡期 replan、空反馈放弃 vs 带反馈超限、中断 armed 保持(19 例);App.selector 三选项翻新;
+- GUI `PlanCard.test.tsx`/`Chat.test.tsx`:三按钮决策体/常驻反馈框/Enter 快捷驳回/单槽。

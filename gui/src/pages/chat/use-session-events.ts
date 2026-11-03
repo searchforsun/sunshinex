@@ -108,6 +108,12 @@ export function useSessionEvents(deps: {
   const removeCard = useCallback((pid: string): void => {
     setCards((cs) => cs.filter((c) => c.pid !== pid));
   }, []);
+  /** plan 审批卡单槽（2026-11-03 修订）：新 plan-approval 帧先清同 kind 旧卡再挂——修订轮/重新规划
+   *  换 pid 新卡到达时 daemon 挂起表旧行已删,但 wire 无「挂起撤下」帧,本地不清会叠两张旧新卡;
+   *  reseed 重建同走此口（快照 pending 段是唯一权威,同槽覆盖） */
+  const addPlanCard = useCallback((card: PendingCard): void => {
+    setCards((cs) => [...cs.filter((c) => c.kind !== 'plan-approval' && c.pid !== card.pid), card]);
+  }, []);
 
   /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 → sessionSnapshot 播种 → 种子落定后
    *  过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投 + G7 挂起卡重建(snapshot.pending 逐项——
@@ -166,7 +172,7 @@ export function useSessionEvents(deps: {
           if (typeof row?.pid !== 'string' || row.pid.length === 0) continue;
           if (row.kind === 'approval') addCard({ kind: 'approval', pid: row.pid, req: (row.req ?? {}) as GuiApprovalReq });
           else if (row.kind === 'ask') addCard({ kind: 'ask', pid: row.pid, req: (row.req ?? {}) as GuiAskReq });
-          else if (row.kind === 'plan-approval') addCard({ kind: 'plan-approval', pid: row.pid, req: (row.req ?? { doc: '', items: [] }) as GuiPlanApprovalReq });
+          else if (row.kind === 'plan-approval') addPlanCard({ kind: 'plan-approval', pid: row.pid, req: (row.req ?? { doc: '', items: [] }) as GuiPlanApprovalReq });
         }
       },
       (err: unknown) => {
@@ -177,7 +183,7 @@ export function useSessionEvents(deps: {
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
       },
     );
-  }, [conn, sessionId, addCard]);
+  }, [conn, sessionId, addCard, addPlanCard]);
 
   /** G4 回执收口单点(2026-10-27 技术债轮 G8:approval/ask/plan 三通道同构块收敛):寻址用帧顶层
    *  pid(T1 契约);成功移卡,失败(404 已决等)也移——不悬挂。失败面不再倒 error 条:挂起生命周期
@@ -273,7 +279,7 @@ export function useSessionEvents(deps: {
       reset: () => reseed(),
       onApproval: (pid, req) => addCard({ kind: 'approval', pid, req }),
       onAsk: (pid, req) => addCard({ kind: 'ask', pid, req }),
-      onPlanApproval: (pid, req) => addCard({ kind: 'plan-approval', pid, req }),
+      onPlanApproval: (pid, req) => addPlanCard({ kind: 'plan-approval', pid, req }),
       resetSession: () => {
         setCards([]); // daemon reset 已 deny/dismissed 回填该会话全部挂起——本地卡随之清
         reseed();

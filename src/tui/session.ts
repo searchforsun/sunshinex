@@ -18,7 +18,7 @@ import {
   interrupt as interruptNow,
   pushInterruptedNotice,
 } from './approval';
-import { confirmPlanOn, startPlanFlowOn } from './commands-plan';
+import { confirmPlanOn, startPlanFlowOn, replanOn, settlePlanAbortOn } from './commands-plan';
 import { skillCommandIdsOn, skillMenuEntriesOn } from './commands-skills';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
@@ -366,11 +366,24 @@ export class SessionController {
    *  公开 = 拆分件 approval 中断路径消费 */
   pendingPlan?: { doc: string; items: string[] };
   /** planFlow 裁决回填口（awaitApproval 接缝的宿主侧单点,confirmPlan 回填）；壳收尾清空防悬空 */
-  planDecide?: (d: { approved: boolean; feedback?: string }) => void; // 公开 = 拆分件 commands-plan 回填消费（D52）
+  planDecide?: (d: { approved: boolean; mode?: 'acceptEdits' | 'full-access'; feedback?: string }) => void; // 公开 = 拆分件 commands-plan 回填消费（D52;2026-11-03 批准卡三选 +mode）
   /** planFlow 消费壳在途标记：公开 = 拆分件 approval 中断路径消费（rider:awaiting-approval 期间中断必须
    *  转为 confirmPlan(false) 裁决回填——abort 信号与 approved 决定竞态时 planFlow 仍会注入产物并返回,
    *  放任即「中断后继续执行」;转裁决回填后流程凭中止信号走 aborted-interrupted 收尾） */
   planFlowRunning = false;
+  /** 计划模式武装位（2026-11-03 /plan 三态,serve planArmed 同构）：裸 /plan 武装（幂等可重复,任何状态
+   *  可用）/plan off 或批准落档解除;armed 自然语言提交经 submit 分流转 planFlow,drainQueue 队列行同判。
+   *  公开 = commands-plan/commands-session 与 App 输入提示消费 */
+  planArmed = false;
+  /** planFlow 执行段在途（runPlanItemsOn 持锁期置位）：三态分流区分「规划/挂卡期」（可 replan 替换）与
+   *  「执行段」（档位已落非 plan,armed 不成立——steer 同普通运行态,不中断在途执行） */
+  planExecuting = false;
+  /** replan 静默位（2026-11-03）：replanOn 中止旧流程期间的「规划已中断」notice 抑制——替换语义自带
+   *  「已按新目标重新规划」回执,不叠双文案。公开 = commands-plan 消费壳 aborted 臂读 */
+  planReplanQuiet = false;
+  /** planFlow 整体收束 promise（startPlanFlowOn finally 落定）：replanOn /plan off 前置有界等待锚
+   *  （≤2s,serve planFlowSettled 同构）——防旧壳 finally 清新流程态（planFlowRunning/taskAbort 竞写） */
+  planFlowSettled?: Promise<void>;
   /** 计划卡反馈输入态（n 进入,confirmPlan 提交出清）：公开 = 组件层 use-approval-keys 键面让位 +
    *  submit 入口拦截为 confirmPlan(false, text)（spec §4.3 拒绝反馈环） */
   planFeedbackMode?: boolean;
@@ -527,11 +540,31 @@ export class SessionController {
       await this.handleSlash(text);
       return;
     }
+    // 计划模式三态（2026-11-03,serve submit 同构）：armed+规划在途/挂卡期=按新目标重新规划（replan,
+    // 不再排队/拒绝;执行段 planExecuting 已排除——档位已落非 plan,armed 不成立走下方 steer）。
+    // awaiting-plan 悬卡并存的自然语言输入旧形态直跑新任务（怪路径）,现按 replan 语义收口
+    if (this.planArmed && !this.planExecuting && (this.planFlowRunning || this.pendingPlan !== undefined)) {
+      this.pushMsg('user', text, imgs !== undefined ? { images: imgs } : undefined);
+      this.kernel.submit(text, imgs);
+      this.md.clear();
+      await replanOn(this, text);
+      await this.drainQueue();
+      return;
+    }
     if (this.state.status === 'running' || this.state.status === 'awaiting-approval' || this.state.status === 'awaiting-question') {
       // 运行中穿插（对标 CC queued messages，与 GUI 对齐）：**排队态零上屏**——队列权威在内核持久
       // 队列(P5),Ctrl+Q 面板底层取数呈现;真正发送(drainQueue 收口补跑)才以 user 行入对话+内核转录
       // (2026-10-19 用户裁决「队列只有真正发送的才显示到对话中」——排队即回显双行即刷屏病根)
       this.kernel.steerEnqueue(text, imgs);
+      return;
+    }
+    // armed 空闲提交（2026-11-03 三态）：计划模式下自然语言提交转 planFlow（规划→确认卡→批准落档→逐项执行）
+    if (this.planArmed) {
+      this.pushMsg('user', text, imgs !== undefined ? { images: imgs } : undefined);
+      this.kernel.submit(text, imgs);
+      this.md.clear();
+      await startPlanFlowOn(this, text, imgs);
+      await this.drainQueue();
       return;
     }
     this.pushMsg('user', text, imgs !== undefined ? { images: imgs } : undefined);
@@ -597,10 +630,11 @@ export class SessionController {
     }
   }
 
-  /** 计划确认卡裁决（spec §4.2-4.4）：薄委托 commands-plan.confirmPlanOn（D52 拆分；链序=计划书行
-   *  先于执行指令行、裁决回填竞序两红线注记随拆分件，组件与测试调用面零变化） */
-  async confirmPlan(yes: boolean, feedback?: string): Promise<void> {
-    return confirmPlanOn(this, yes, feedback);
+  /** 计划确认卡裁决（spec §4.2-4.4;2026-11-03 批准卡三选 +mode）：薄委托 commands-plan.confirmPlanOn
+   *  （D52 拆分；链序=计划书行先于执行指令行、裁决回填竞序两红线注记随拆分件,组件与测试调用面零变化;
+   *  mode 缺省=plan-flow acceptEdits 兜底,full-access 须显式传） */
+  async confirmPlan(yes: boolean, feedback?: string, mode?: 'acceptEdits' | 'full-access'): Promise<void> {
+    return confirmPlanOn(this, yes, feedback, mode);
   }
 
 
@@ -775,13 +809,14 @@ export class SessionController {
   /** 内部 verbose 任务（/init）：fork 隔离执行——提示词不进会话链（§11 边界登记），终态零主链回写。
    *  第三参 signal：planFlow 接缝显式传递（与 this.taskAbort 同源,签名对齐 PlanFlowSeams.runPlanningTask）;
    *  缺省回落 taskAbort——既有调用方零改动 */
-  async runInternalTask(prompt: string, label: string, signal?: AbortSignal): Promise<RunOutcome> { // 公开 = 拆分件 commands-plan 消费（D52）
+  async runInternalTask(prompt: string, label: string, signal?: AbortSignal, images?: string[]): Promise<RunOutcome> { // 公开 = 拆分件 commands-plan 消费（D52）
     const ctx = this.runtime.harness.context;
     const base = ctx.chainView();
     const abort = signal ?? this.taskAbort?.signal;
+    const hasImages = images !== undefined && images.length > 0;
     return this.runtime.runTask(label, {
       scope: 'fork',
-      seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt }],
+      seedHistory: [...base, { step: (base.length > 0 ? base[base.length - 1].step : 0) + 1, action: 'task', observation: prompt, ...(hasImages ? { images } : {}) }],
       ...(this.state.tier ? { tier: this.state.tier } : {}),
       ...(this.state.effort ? { effort: this.state.effort } : {}),
       ...(abort ? { signal: abort } : {}),
@@ -917,7 +952,10 @@ export class SessionController {
       const imgs = it.images;
       this.pushMsg('user', it.text, imgs !== undefined ? { images: imgs } : undefined);
       this.kernel.submit(it.text, imgs);
-      await this.runTaskFlow(it.text, undefined, imgs);
+      // armed 队列行转规划（2026-11-03 三态）：运行中武装后入队的目标,收口补跑经 armed 拦截进 planFlow
+      // （serve steer 消费递归 submit→arm 拦截同构）
+      if (this.planArmed) await startPlanFlowOn(this, it.text, imgs);
+      else await this.runTaskFlow(it.text, undefined, imgs);
     }
   }
 
@@ -931,6 +969,8 @@ export class SessionController {
     setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
     this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
     this.state = { ...this.state, queuePaused: undefined }; // 新会话起点：队列暂停态一并清除(队列条目随内核换新已清)
+    this.planArmed = false; // 新会话起点：计划模式武装随换新解除（/plan 三态,2026-11-03）
+    this.planExecuting = false;
     this.md.clear();
     this.state = {
       messages: [],
@@ -1220,16 +1260,40 @@ export class SessionController {
       return;
     }
     if (cmd === '/plan') {
+      // 2026-11-03 三态（serve /plan 命令同构）：裸 /plan=纯切档（武装）——任何状态可用、幂等可重复
+      // 发送;off=解除武装（规划/挂卡期先中止流程;执行段 armed 已不成立,如实提示）;带目标按会话状态
+      // 三分：规划/挂卡期=replan 按新目标重新规划（不再拒）;运行中=入 steer 队列（收口经 armed 拦截
+      // 转规划,不中断在途工作）;空闲=立即规划
+      const arg = text.slice(cmd.length).trim();
+      if (arg === 'off') {
+        if (!this.planArmed) {
+          this.pushMsg('system', t('Not in plan mode', '当前不在计划模式'), { level: 'warn' });
+          return;
+        }
+        if (this.planFlowRunning && !this.planExecuting) await settlePlanAbortOn(this); // 规划/挂卡期先中止（信号+拒绝回填+有界等收束）
+        this.planArmed = false;
+        this.pushMsg('system', t('Left plan mode', '已退出计划模式'));
+        return;
+      }
+      const wasArmed = this.planArmed;
+      this.planArmed = true;
+      if (!wasArmed) {
+        this.pushMsg('system', t('Plan mode on — submissions will be planned first (/plan off to leave)', '已进入计划模式：提交将先规划再确认实施（/plan off 退出）'));
+      } else if (!arg) {
+        this.pushMsg('system', t('Already in plan mode', '已处于计划模式'));
+      }
+      if (!arg) return; // 裸 /plan=只武装不提交
+      if (!this.planExecuting && (this.planFlowRunning || this.pendingPlan !== undefined)) {
+        await replanOn(this, arg); // 规划/挂卡期:按新目标重新规划（旧流程中止+旧卡撤）
+        return;
+      }
       if (this.state.status !== 'idle') {
-        this.pushMsg('system', t('A task is running; planning unavailable now', '当前有任务进行中，暂不能开始规划'), { level: 'warn' });
+        // 运行中(普通任务/执行段):不中断在途工作,目标入队——收口 drainQueue 经 armed 拦截转规划
+        this.kernel.steerEnqueue(arg);
+        this.pushMsg('system', t('Queued — planning will start when the current task finishes', '已入队：当前任务收口后将先规划'));
         return;
       }
-      const goal = text.slice(cmd.length).trim();
-      if (!goal) {
-        this.pushMsg('system', t('Usage: /plan <goal> — plan numbered steps first, confirm, then execute step by step', '用法：/plan <目标>——先规划产出编号步骤，确认后逐项执行'), { level: 'warn' });
-        return;
-      }
-      await startPlanFlowOn(this, goal);
+      await startPlanFlowOn(this, arg);
       return;
     }
     if (cmd === '/goal') {
