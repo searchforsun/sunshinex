@@ -9,6 +9,8 @@ import { BuiltinFacade } from './cdp-facade';
 
 /** 假「真实 CDP 端点」:HTTP /json/list 双 target(GUI 自身=blocked + 侧栏 webview=allowed)
  *  + ws 端点回显 getTargets 应答/attachedToTarget 事件(含 blocked)/createTarget 应答 */
+/** 假真实端点收到的全部命令(含 facade 自发命令),供断言 */
+const realReceived: Array<{ method: string; params?: Record<string, unknown>; sessionId?: string }> = [];
 function startFakeReal(): Promise<{ httpPort: number; wsPort: number; stop: () => void }> {
   const targets = [
     { targetId: 'gui-1', type: 'page', url: 'http://127.0.0.1:57677/?token=x', title: 'Sunshinex' },
@@ -34,6 +36,13 @@ function startFakeReal(): Promise<{ httpPort: number; wsPort: number; stop: () =
       let seq = 0;
       ws.on('message', (raw) => {
         const m = JSON.parse(String(raw)) as { id: number; method: string; params?: Record<string, unknown> };
+        realReceived.push(m as { method: string; params?: Record<string, unknown>; sessionId?: string });
+        if (m.method === 'Target.setAutoAttach') {
+          // 真实 Chrome:自动附加既有 target 到本连接(各带 sessionId,waitingForDebugger)
+          ws.send(JSON.stringify({ id: m.id, result: {} }));
+          for (const t of targets) ws.send(JSON.stringify({ method: 'Target.attachedToTarget', params: { sessionId: `auto.${t.targetId}`, targetInfo: t, waitingForDebugger: true } }));
+          return;
+        }
         if (m.method === 'Target.getTargets') {
           ws.send(JSON.stringify({ id: m.id, result: { targetInfos: targets } }));
         } else if (m.method === 'Target.attachToTarget') {
@@ -222,5 +231,32 @@ test('会话连接(/session/<key>?seat=):只见本会话分区的 target;建页�
   void send('Target.createTarget', { url: 'https://example.com' });
   await new Promise((r) => setTimeout(r, 300));
   assert.deepEqual(opened, [{ url: 'https://example.com', seat: 'sun-2', key: 'jid-b' }]);
+  ws.close();
+});
+
+test('会话连接被自动附加到不可见 target 时代为放行并脱附(否则他会话页面卡在等调试器——第二个会话导航必超时)', async () => {
+  fake = await startFakeReal();
+  prepareEndpointFile();
+  realReceived.length = 0;
+  facade = new BuiltinFacade({
+    userDataDir: tmpDir!,
+    localOriginPrefix: 'http://127.0.0.1:57677',
+    belongs: (tid, key) => key === 'jid-b' && tid === 'wv-9',
+  });
+  await facade.start();
+  const base = facade.endpoint.replace(/\/devtools\/browser$/, '');
+  const ws = new WebSocket(`${base}/session/jid-b?seat=s`);
+  await new Promise((r) => ws.on('open', r));
+  const seen: string[] = [];
+  ws.on('message', (raw) => {
+    const m = JSON.parse(String(raw)) as { method?: string; params?: { targetInfo?: { targetId?: string } } };
+    if (m.method === 'Target.attachedToTarget') seen.push(String(m.params?.targetInfo?.targetId));
+  });
+  ws.send(JSON.stringify({ id: 1, method: 'Target.setAutoAttach', params: { autoAttach: true, waitForDebuggerOnStart: true, flatten: true } }));
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepEqual(seen, ['wv-9'], '客户端只见本会话 target');
+  const own = realReceived.filter((m) => m.sessionId === 'auto.wv-7' || m.params?.sessionId === 'auto.wv-7').map((m) => m.method);
+  assert.deepEqual(own, ['Runtime.runIfWaitingForDebugger', 'Target.detachFromTarget'], '他会话 target 被放行并脱附');
+  assert.equal(realReceived.some((m) => m.sessionId === 'auto.gui-1' && m.method === 'Runtime.runIfWaitingForDebugger'), true, 'GUI 自身页同样放行');
   ws.close();
 });

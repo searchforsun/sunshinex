@@ -205,9 +205,20 @@ export class BuiltinFacade {
             attachWaiters.set(targetId, () => { clearTimeout(timer); resolve(); });
           });
     const real = new WebSocket(`ws://127.0.0.1:${this.realPort}/${this.realBrowserPath}`);
+    /** facade 自发命令的 id 段(与客户端 id 不撞;应答不转发) */
+    let ownId = 1_000_000_000;
+    const ownIds = new Set<number>();
+    const sendOwn = (method: string, params: Record<string, unknown>, sessionId?: string): void => {
+      const id = ++ownId;
+      ownIds.add(id);
+      const raw = JSON.stringify({ id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) });
+      if (real.readyState === WebSocket.OPEN) real.send(raw);
+      else outbox.push(raw);
+    };
     real.on('message', (data) => {
       let msg: { id?: number; method?: string; params?: Record<string, unknown>; result?: Record<string, unknown> };
       try { msg = JSON.parse(String(data)); } catch { return; }
+      if (typeof msg.id === 'number' && ownIds.delete(msg.id)) return;
       // 应答过滤:getTargets/getTargetInfo 摘除非白名单 target
       type Info = { targetId?: string; url?: string; type?: string; browserContextId?: string };
       const result = (msg.result ?? {}) as { targetInfos?: Info[]; targetInfo?: Info };
@@ -234,6 +245,14 @@ export class BuiltinFacade {
           asPage(info);
           if (!allow(info)) {
             if (typeof info.targetId === 'string') blocked.add(info.targetId);
+            // 不可见 target 被真实端点自动附加到本连接(客户端 setAutoAttach waitForDebuggerOnStart):
+            // 吞掉事件而不放行=该 target 在本连接上永远停在「等调试器」,别的会话的页面被挂住
+            // (实测第二个会话的导航必超时)——facade 代为放行并脱附
+            const sid = (msg.params as { sessionId?: unknown } | undefined)?.sessionId;
+            if (msg.method === 'Target.attachedToTarget' && typeof sid === 'string') {
+              sendOwn('Runtime.runIfWaitingForDebugger', {}, sid);
+              sendOwn('Target.detachFromTarget', { sessionId: sid });
+            }
             return;
           }
         }
