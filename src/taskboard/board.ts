@@ -181,6 +181,10 @@ export class TaskBoard {
       if (!BOARD_TERMINAL.has(prev.status)) {
         return fail('INVALID_ARG', `retryOf task ${input.retryOf} is still ${prev.status}; stop it or wait for a terminal state first`);
       }
+      // 2026-11-04 用户裁定:retryOf 仅限异常终态(failed/cancelled)——success 是完成,重做=独立新任务
+      if (prev.status === 'success') {
+        return fail('INVALID_ARG', `retryOf task ${input.retryOf} already succeeded; retry is only for abnormal ends (failed/cancelled) — create an independent task instead`);
+      }
     }
     const open = Object.values(this.state.tasks).filter((t) => t.status === 'pending' || t.status === 'running').length;
     if (open >= this.maxOpen) return fail('INVALID_ARG', `task board open-task limit reached (${this.maxOpen}); stop existing tasks or wait for them to finish`);

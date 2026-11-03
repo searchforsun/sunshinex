@@ -126,11 +126,17 @@ test('get_agent_team_board 收编进 lead 面:摘要行含 id/状态/标题,未�
     const prevId = createdId(prev.stdout);
     await flushStub();
     assert.equal(board.snapshot().tasks[prevId]!.status, 'success');
-    const r = await create.executor({ teamId, title: 'RetryDemo', spec: 'g', dependsOn: null, assignee: null, executor: null, retryOf: prevId });
+    // 2026-11-04 用户裁定:retryOf 仅限异常终态——success 拒绝
+    await assert.rejects(() => create.executor({ teamId, title: 'RetryDemo', spec: 'g', dependsOn: null, assignee: null, executor: null, retryOf: prevId }), /retry is only for abnormal ends/);
+    // cancelled 可重试:新任务建后即停(异常终态)
+    const prev2 = await create.executor({ teamId, title: 'Prev2', spec: 'p2', dependsOn: null, assignee: null, executor: null, retryOf: null });
+    const prev2Id = createdId(prev2.stdout);
+    assert.ok(board.stopTask(prev2Id).ok, '停 Prev2=cancelled');
+    const r = await create.executor({ teamId, title: 'RetryDemo', spec: 'g', dependsOn: null, assignee: null, executor: null, retryOf: prev2Id });
     const id = createdId(r.stdout);
-    assert.equal(board.snapshot().tasks[id]!.retryOf, prevId);
+    assert.equal(board.snapshot().tasks[id]!.retryOf, prev2Id);
     const out = (await getBoard.executor({})) as { stdout: string };
-    assert.match(out.stdout, new RegExp(`${id} \\[(pending|running|success)\\] RetryDemo team=${teamId} retryOf=${prevId}`), '板摘要行含 id/状态/标题/teamId/retryOf');
+    assert.match(out.stdout, new RegExp(`${id} \\[(pending|running|success)\\] RetryDemo team=${teamId} retryOf=${prev2Id}`), '板摘要行含 id/状态/标题/teamId/retryOf');
     const prevLine = out.stdout.split('\n').find((l) => l.startsWith(prevId));
     assert.ok(prevLine?.includes(`team=${teamId}`), '无 retryOf 的任务仍带 teamId');
     assert.equal(prevLine?.includes('retryOf='), false);

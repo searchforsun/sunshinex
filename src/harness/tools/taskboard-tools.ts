@@ -89,13 +89,13 @@ export function makeTaskBoardTools(
         },
         retryOf: {
           type: ['string', 'null'],
-          description: 'JSON null normally; set to a terminal same-team task id only when recreating that work.',
+          description: 'JSON null normally; set to a FAILED/CANCELLED same-team task id only when recreating that work (success tasks cannot be retried — create an independent task).',
         },
       },
     },
     name: 'create_agent_team_task',
     description:
-      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Teammates run one task at a time: assigning a busy teammate queues the task behind its current work (the receipt notes it); assignee=null lets any idle teammate claim it. Wait with agent_team_task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null covers non-terminal board tasks). Terminal states (success/failed/cancelled) are final — redo via a new create_agent_team_task with retryOf. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
+      'Add a work item to a team board (teamId from create_agent_team). Call create_agent_teammate on that team first — tasks run only when a living teammate claims or is assigned them; they stay pending otherwise. After dependencies are all success the task becomes claimable. Teammates run one task at a time: assigning a busy teammate queues the task behind its current work (the receipt notes it); assignee=null lets any idle teammate claim it. Wait with agent_team_task_wait on the board task id(s) from the receipt (prefer explicit ids; taskIds=null covers non-terminal board tasks). Terminal states are final; failed/cancelled work can be redone via a new create_agent_team_task with retryOf, while success cannot be retried — create an independent task instead. For a single one-shot subtask outside the board, use spawn. Unused optional fields: JSON null (not the string "null").',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

@@ -1012,3 +1012,50 @@ test('settle:慢 hang stub 超时返回 running', async () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('retryOf 仅限异常终态(2026-11-04 用户裁定):success 拒绝,pending/running 拒,failed/cancelled 可重试', async () => {
+  const tmpdir = (prefix: string): string => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const root = tmpdir('sunshinex-board-retryof-');
+  try {
+    const registry = { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never;
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      registry,
+      agentTeams,
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    board.init();
+    // pending 拒(既有口径)
+    const p = board.create({ teamId, title: 'P', spec: 'p' });
+    assert.ok(p.ok);
+    const pending = board.create({ teamId, title: 'R1', spec: 'r', retryOf: p.value.taskId });
+    assert.ok(!pending.ok);
+    assert.match(pending.error.message, /still pending/);
+    // cancelled 可重试
+    assert.ok(board.stopTask(p.value.taskId).ok);
+    const okRetry = board.create({ teamId, title: 'R2', spec: 'r', retryOf: p.value.taskId });
+    assert.ok(okRetry.ok, `cancelled 可重试:${okRetry.ok ? '' : okRetry.error.message}`);
+    assert.equal(board.snapshot().tasks[okRetry.value.taskId]!.retryOf, p.value.taskId);
+    // failed 可重试
+    const f = board.create({ teamId, title: 'F', spec: 'f' });
+    assert.ok(f.ok);
+    assert.ok(board.markClaimed(f.value.taskId, 'w'));
+    assert.ok(board.finishExecution(f.value.taskId, { ok: false, error: { code: 'X', message: 'boom' } }).ok);
+    const failRetry = board.create({ teamId, title: 'R3', spec: 'r', retryOf: f.value.taskId });
+    assert.ok(failRetry.ok, `failed 可重试:${failRetry.ok ? '' : failRetry.error.message}`);
+    // success 拒绝(2026-11-04 新口径)
+    const s = board.create({ teamId, title: 'S', spec: 's' });
+    assert.ok(s.ok);
+    assert.ok(board.markClaimed(s.value.taskId, 'w'));
+    assert.ok(board.finishExecution(s.value.taskId, { ok: true, reply: 'done' }).ok);
+    const successRetry = board.create({ teamId, title: 'R4', spec: 'r', retryOf: s.value.taskId });
+    assert.ok(!successRetry.ok);
+    assert.match(successRetry.error.message, /retry is only for abnormal ends/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
