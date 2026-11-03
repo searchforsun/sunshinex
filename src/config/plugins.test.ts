@@ -253,6 +253,7 @@ test('装载根下缺 plugin.json 的目录（schema artifact 类非插件条目
 // ---- pluginMcpServers（MCP 名单合成：configArgs/configEnv 展开 + 用户遮蔽/撞名字典序 + safety 收集）----
 // 装载 opts（builtinRoot/userRoot/settingsReader/platform）经同名注入面透传，免真写 HOME 与平台断言跳变
 
+// 以下三例的样例插件放在用户根:内置插件只有开关、不吃 config(2026-11-03 用户裁定),config 展开机制只服务用户插件
 test('configArgs 展开：缺省 config 只吃 configDefaults；布尔 true 走旗标；{value} 占位替换；cwd "." 解析为插件目录', () => {
   const bRoot = mkdtempSync(path.join(tmpdir(), 'plug-b-'));
   const dir = mkPluginIn(bRoot, 'demo', {
@@ -270,20 +271,20 @@ test('configArgs 展开：缺省 config 只吃 configDefaults；布尔 true 走�
   });
   const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
   // settings 未配 → configDefaults 兜底（browser=chrome），headless 无值整键跳过
-  const noCfg = pluginMcpServers(undefined, { builtinRoot: bRoot, userRoot: uRoot, settingsReader: () => null });
+  const noCfg = pluginMcpServers(undefined, { builtinRoot: uRoot, userRoot: bRoot, settingsReader: () => null });
   assert.deepEqual(noCfg.servers, [{ name: 'b', command: 'node', args: ['x', '--browser=chrome'], cwd: dir }]);
   // settings 配置覆盖缺省：headless=true 走旗标追加，browser={value} 替换为 firefox
   const withCfg = pluginMcpServers(undefined, {
-    builtinRoot: bRoot,
-    userRoot: uRoot,
+    builtinRoot: uRoot,
+    userRoot: bRoot,
     settingsReader: () => ({ plugins: { demo: { config: { headless: true, browser: 'firefox' } } } }),
   });
   assert.deepEqual(withCfg.servers[0]!.args, ['x', '--headless', '--browser=firefox']);
   assert.deepEqual(withCfg.warnings, []);
   // 布尔 false：旗标不追加（true 才落参）；{value} 键无 config 覆盖时吃缺省
   const off = pluginMcpServers(undefined, {
-    builtinRoot: bRoot,
-    userRoot: uRoot,
+    builtinRoot: uRoot,
+    userRoot: bRoot,
     settingsReader: () => ({ plugins: { demo: { config: { headless: false } } } }),
   });
   assert.deepEqual(off.servers[0]!.args, ['x', '--browser=chrome']);
@@ -302,11 +303,11 @@ test('configArgs 空格双元素形态（["--browser","{value}"]）：旗标与�
     },
   });
   const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
-  const r = pluginMcpServers(undefined, { builtinRoot: bRoot, userRoot: uRoot, settingsReader: () => null });
+  const r = pluginMcpServers(undefined, { builtinRoot: uRoot, userRoot: bRoot, settingsReader: () => null });
   assert.deepEqual(r.servers[0]!.args, ['cli.js', '--browser', 'chrome'], '{value} pattern 整体裁决：非占位旗标元素原样透传');
   const withCfg = pluginMcpServers(undefined, {
-    builtinRoot: bRoot,
-    userRoot: uRoot,
+    builtinRoot: uRoot,
+    userRoot: bRoot,
     settingsReader: () => ({ plugins: { demo: { config: { caps: 'vision' } } } }),
   });
   assert.deepEqual(withCfg.servers[0]!.args, ['cli.js', '--browser', 'chrome', '--caps', 'vision']);
@@ -323,8 +324,8 @@ test('configEnv 展开：env 键 ← config 值字符串化（数字同理）；
   });
   const uRoot = mkdtempSync(path.join(tmpdir(), 'plug-u-'));
   const r = pluginMcpServers(undefined, {
-    builtinRoot: bRoot,
-    userRoot: uRoot,
+    builtinRoot: uRoot,
+    userRoot: bRoot,
     settingsReader: () => ({ plugins: { demo: { config: { port: 3000 } } } }),
   });
   const e = r.servers.find((s) => s.name === 'e')!;
@@ -379,7 +380,7 @@ test('safety 收集：server 名 → 三类声明；禁用与平台不可用插�
 // ---- 真实内置根装载钉（plugins/browser-use 随仓落地，Task 15 装配联调）----
 // builtinRoot 锚真实仓内 plugins/（dist 面两级上溯同式），用户根/设置注入隔离保持确定性
 
-test('真实内置根装载 browser-use：未启用不出 server；enabled 后合成 server 且 args 含 --browser chrome（configDefaults 兜底）', () => {
+test('真实内置根装载 browser-use：未启用不出 server；enabled 后合成宿主占位 server；遗留 config 不生效(内置插件只有开关)', () => {
   const builtinRoot = path.resolve(__dirname, '../../plugins');
   const userRoot = mkdtempSync(path.join(tmpdir(), 'plug-real-u-')); // 不读真 HOME 用户根，免环境漂移
   try {
@@ -388,15 +389,16 @@ test('真实内置根装载 browser-use：未启用不出 server；enabled 后�
     const r = pluginMcpServers(undefined, {
       builtinRoot,
       userRoot,
-      settingsReader: () => ({ plugins: { 'browser-use': { enabled: true } } }),
+      // 遗留旧配置(mode/caps/disabledTools)须被忽略
+      settingsReader: () => ({ plugins: { 'browser-use': { enabled: true, config: { mode: 'headless', caps: 'vision', disabledTools: ['browser_click'] } } } }),
     });
     assert.deepEqual(r.warnings, [], '随仓 manifest 合法装载零告警（坏钉即测红）');
     const srv = r.servers.find((s) => s.name === 'browser-use');
     assert.ok(srv, 'enabled 后 pluginMcpServers 出 browser-use server');
     assert.equal(srv!.command, 'node');
-    const i = srv!.args!.indexOf('--browser');
-    assert.ok(i >= 0 && srv!.args![i + 1] === 'chrome', 'configDefaults browser=chrome → args 含 --browser chrome');
-    assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'server', 'index.js')), 'cwd "." 解析为插件根，单文件束 server/index.js 在位（缺失则跑 plugins/browser-use/build.mjs 现构建）');
+    assert.deepEqual(srv!.args, ['server/host.js'], '宿主占位(装配期改写为浏览器宿主 HTTP 连接)');
+    assert.equal(srv!.disabledTools, undefined, '内置插件不吃 config.disabledTools');
+    assert.ok(srv!.cwd !== undefined && existsSync(path.join(srv!.cwd, 'server', 'host.js')), 'cwd "." 解析为插件根，宿主束 server/host.js 在位（缺失则跑 plugins/browser-use/build.mjs 现构建）');
   } finally {
     rmSync(userRoot, { recursive: true, force: true });
   }

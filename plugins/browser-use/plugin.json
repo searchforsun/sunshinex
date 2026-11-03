@@ -2,98 +2,21 @@
   "manifestVersion": 1,
   "id": "browser-use",
   "name": "浏览器操作",
-  "version": "0.1.0",
-  "description": "Playwright 浏览器自动化(无头/默认浏览器/内置侧栏)",
+  "version": "0.2.0",
+  "description": "浏览器自动化:桌面端用内置侧栏浏览器,网页端用系统默认浏览器,命令行用无头浏览器;浏览器状态按会话隔离",
   "defaultEnabled": false,
   "mcpServers": {
     "browser-use": {
       "command": "node",
       "cwd": ".",
       "args": [
-        "server/bridge.js",
-        "--output-dir",
-        "{dataDir}/plugins/browser-use/output",
-        "--file-paths",
-        "absolute",
-        "--allow-unrestricted-file-access"
-      ],
-      "configDefaults": {
-        "browser": "chrome",
-        "mode": "headless",
-        "userDataDir": "{dataDir}/plugins/browser-use/profile"
-      },
-      "configArgs": {
-        "browser": [
-          "--browser",
-          "{value}"
-        ],
-        "isolated": [
-          "--isolated"
-        ],
-        "caps": [
-          "--caps",
-          "{value}"
-        ],
-        "userDataDir": [
-          "--user-data-dir",
-          "{value}"
-        ],
-        "mode": [
-          "--mode",
-          "{value}",
-          "--builtin-meta",
-          "{dataDir}/plugins/browser-use/builtin-cdp.json"
-        ]
-      }
+        "server/host.js"
+      ]
     }
   },
   "skills": [
     "skills"
   ],
-  "configSchema": {
-    "mode": {
-      "type": "string",
-      "options": [
-        "headless",
-        "default",
-        "builtin"
-      ],
-      "description": "浏览器形态"
-    },
-    "browser": {
-      "type": "string",
-      "options": [
-        "chrome",
-        "chromium",
-        "firefox",
-        "webkit",
-        "msedge"
-      ],
-      "description": "无头档内核"
-    },
-    "isolated": {
-      "type": "boolean",
-      "description": "一次性 profile(默认关=登录态保留)"
-    },
-    "caps": {
-      "type": "string",
-      "options": [
-        "config",
-        "network",
-        "storage",
-        "devtools",
-        "vision",
-        "pdf",
-        "testing"
-      ],
-      "multi": true,
-      "description": "附加能力组"
-    },
-    "userDataDir": {
-      "type": "string",
-      "description": "profile 目录(默认 data/plugins/browser-use/profile)"
-    }
-  },
   "exposedTools": [
     "browser_close",
     "browser_resize",

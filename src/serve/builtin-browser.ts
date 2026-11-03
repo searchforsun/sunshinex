@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { projectsRoot, resolveDataDir } from '../config/data-dir';
+import { resolveDataDir } from '../config/data-dir';
 
 /** 融合 meta 落位单点（收割/清扫/meta 周期写/file-handlers 代理面四面共用） */
 export function builtinCdpMetaPath(dataDir: string): string {
@@ -94,27 +94,3 @@ export function reapBuiltinBrowsers(roots: Array<string>): void {
   }
 }
 
-/** M2 融合 meta 写面:facade 在场即向全部注册工作区落 builtin-cdp.json(kind:'shell',
- *  ws=壳内 facade)——bridge builtin 档 spawn server 前读它取附加端点;周期重写(新工作区/
- *  重启端口漂移自愈)。扫描语义同 handleWorkspaces(root 派生自 workspace.json+默认锚点降级) */
-export function writeShellMetas(ws: string): void {
-  let entries: fs.Dirent[] = [];
-  try { entries = fs.readdirSync(projectsRoot(), { withFileTypes: true }); } catch { return; }
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    const dataDir = path.join(projectsRoot(), ent.name, 'data');
-    let root: string | undefined;
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dataDir, 'workspace.json'), 'utf8')) as { root?: unknown };
-      if (typeof raw?.root === 'string' && raw.root.length > 0) root = raw.root;
-    } catch { /* 历史工作区无档/坏档 */ }
-    if (root === undefined && ent.name.includes('sunshinex-default')) {
-      root = path.join(os.tmpdir(), 'sunshinex-default'); // G14.96 默认锚点降级(同 handleWorkspaces)
-    }
-    if (root === undefined) continue;
-    try {
-      fs.mkdirSync(path.dirname(builtinCdpMetaPath(resolveDataDir(root))), { recursive: true });
-      fs.writeFileSync(builtinCdpMetaPath(resolveDataDir(root)), JSON.stringify({ kind: 'shell', ws, pid: process.pid, mode: 'builtin', startedAt: Date.now() }));
-    } catch { /* 尽力 */ }
-  }
-}

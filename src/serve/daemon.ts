@@ -42,7 +42,7 @@ import * as lifecycle from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
-import { reapBuiltinBrowsers as reapBuiltinBrowsersHost, writeShellMetas } from './builtin-browser';
+import { reapBuiltinBrowsers as reapBuiltinBrowsersHost } from './builtin-browser';
 import {
   GUI_ASSETS_HINT,
   mimeOf,
@@ -351,11 +351,12 @@ export class GuiDaemon {
       void startBuiltinFacade((m) => console.log(`[cdp-facade] ${m}`)).then((h) => {
         this.builtinFacade = h;
         if (h === undefined) return; // 未就绪(DevToolsActivePort 未落盘等):下个周期重试
-        this.writeBuiltinMetas();
+        // 浏览器宿主(同进程 harness 装配)按会话连 facade 端点 <base>/session/<key>
+        process.env.SUNSHINEX_BUILTIN_CDP = h.ws.replace(/\/devtools\/browser$/, '');
       });
     };
     startFacadeOnce();
-    this.builtinMetaTimer = setInterval(() => { startFacadeOnce(); this.writeBuiltinMetas(); }, 5_000);
+    this.builtinMetaTimer = setInterval(startFacadeOnce, 5_000);
     // 静态面探测（启动一次，缓存布尔）：index.html 在场才挂静态——缺场 GET 保持 G1 的 404+hint 原样
     this.staticReady = fs.existsSync(path.join(this.staticRoot, 'index.html'));
     const addr = server.address();
@@ -381,6 +382,7 @@ export class GuiDaemon {
     // -2) M2 融合面收口:meta 周期写停 + facade ws 停(先于收割——收割删壳 kind 指针档防死端口误导)
     if (this.builtinMetaTimer !== undefined) clearInterval(this.builtinMetaTimer);
     this.builtinFacade?.facade.stop();
+    delete process.env.SUNSHINEX_BUILTIN_CDP;
     // -1) 内置浏览器收割**最先**执行(2026-11-01 实测踩坑:壳侧 close 有界等待仅 5s,teardown 前段
     //     步骤(全会话 abort/WS/HTTP 收口/mcpClose)任一拖住即超时放行退出——排末尾的收割刀没跑到,
     //     孤儿 Chrome 锁死数据目录(用户面「应用关了文件夹删不掉」);收割独立于其它收口步骤且为
@@ -426,11 +428,6 @@ export class GuiDaemon {
     reapBuiltinBrowsersHost([...this.sessions.values()].map((rt) => rt.root));
   }
 
-  /** M2 融合 meta 周期写（宿主侧单点 serve/builtin-browser，D61 外提）：facade ws 注入 */
-  private writeBuiltinMetas(): void {
-    if (this.builtinFacade === undefined) return;
-    writeShellMetas(this.builtinFacade.ws);
-  }
 
   /** 内部路由表（T1 会话中心：会话维端点 + 裸端点激活别名；G2 /snapshot、G3 /steer 平移）；
    *  静态资源走 dispatch 的 GET 兜底分支，不占路由表 */
@@ -544,18 +541,6 @@ export class GuiDaemon {
     // 2026-10-27 欢迎页全局草稿:App 级文件读（注册工作区根信任域,不绑会话;handler 同步,async 包一层
     // 适配 Route.run 的 Promise<void> 契约——f08cbd6 带伤入库,HEAD tsc 不通,技术债轮补直）
     { method: 'GET', path: '/app/file', auth: true, run: async (req, res) => fileHandlers.handleAppFile(this.fileIo, req, res) },
-    { method: 'GET', path: '/app/cdp-targets', auth: true, run: async (req, res) => {
-        // M2 融合档优先:facade 在场(壳内 webview 面)直查 facade /json/list;缺席回落 meta+桥端口旧路径
-        if (this.builtinFacade !== undefined) {
-          try {
-            const httpBase = this.builtinFacade.ws.replace(/^ws/, 'http').replace(/\/devtools\/browser$/, '');
-            const r = await fetch(`${httpBase}/json/list`, { signal: AbortSignal.timeout(2000) });
-            this.send(res, 200, { targets: (JSON.parse(await r.text()) as unknown[]) });
-            return;
-          } catch { /* facade 暂不可达:回落 meta 面 */ }
-        }
-        fileHandlers.handleCdpTargets(this.fileIo, req, res);
-      } },
     // G4 挂起回执面：pid 为 daemon 级挂起票据（会话无关路由——pid 本身寻址，无会话维前缀）
     { method: 'POST', path: '/approval/:pid', auth: true, run: (req, res, p) => this.handleApprovalReply(req, res, p.pid) },
     { method: 'POST', path: '/ask/:pid/reply', auth: true, run: (req, res, p) => this.handleAskReply(req, res, p.pid) },

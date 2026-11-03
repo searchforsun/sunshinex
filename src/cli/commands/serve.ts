@@ -21,6 +21,8 @@ export const SERVE_DEFAULT_PORT = 7788;
  * G5：`--mode=manual` 与 `--manual` 同义（解析后等价，CLI mode 白名单单点校验在前）。
  */
 export async function runServe(args: CliArgs): Promise<void> {
+  // 浏览器插件形态按运行环境定(用户不可选):网页端=系统默认浏览器(桌面壳另由 Electron 判定为内置侧栏)
+  process.env.SUNSHINEX_HOST = 'serve';
   // 目录来源统一单点（规格 §6.2）：与 run/pipeline 同判据——--workdir 优先，位置参数目录报 unrecognized 不启动。
   // 会话中心降级（spec §3）：预选缺省无——空注册表启动，会话经 GUI 首页/HTTP 创建
   const d = resolveDirArg(args);

@@ -41,6 +41,24 @@ await esbuild.build({
   logLevel: 'info',
 });
 
+// 浏览器宿主束(2026-11-03 按会话隔离):一个进程服务全部会话,createConnection(contextGetter) 复用
+// Playwright MCP 工具;playwright 与 MCP SDK 在 pnpm 隔离布局下需显式 nodePaths(@playwright/mcp 同级 store
+// 目录供 playwright,仓根 node_modules 供 @modelcontextprotocol/sdk)
+const mcpStoreHits = globSync(path.join(PKG, '..', '..', 'node_modules', '.pnpm', '@playwright+mcp@*', 'node_modules'));
+if (mcpStoreHits.length === 0) throw new Error('@playwright/mcp store 目录未找到——先在仓库根跑 pnpm install');
+await esbuild.build({
+  entryPoints: [path.join(PKG, 'src', 'host.mjs')],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  target: 'node22',
+  outfile: path.join(PKG, 'server', 'host.js'),
+  sourcemap: false,
+  nodePaths: [mcpStoreHits[0], path.join(PKG, '..', '..', 'node_modules')],
+  plugins: [stubOptionalDeps],
+  logLevel: 'info',
+});
+
 const pwRoot = resolvePwRoot();
 const { copyFileSync } = await import('node:fs');
 copyFileSync(path.join(pwRoot, 'browsers.json'), path.join(PKG, 'browsers.json'));

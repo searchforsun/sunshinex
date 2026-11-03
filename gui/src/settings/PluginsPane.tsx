@@ -66,9 +66,7 @@ export interface PluginsPaneProps {
 /** 枚举值显示 label(2026-11-01 用户裁定「枚举值即说明,用 label+i18n」):值名即键,t() 落中文;
  *  未命中映射原样显示(自定义值/其他插件枚举零破坏) */
 function optLabelOf(key: string, o: string): string {
-  const labels: Record<string, Record<string, string>> = {
-    mode: { headless: t('Headless browser', '无头浏览器'), default: t('Default browser', '默认浏览器'), builtin: t('Built-in browser', '内置浏览器') },
-  };
+  const labels: Record<string, Record<string, string>> = {};
   return labels[key]?.[o] ?? o;
 }
 
@@ -321,7 +319,8 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                 enabled={p.enabled}
                 onToggle={writable ? () => toggle(p) : undefined}
                 body={cardBodyOf(p)}
-                actions={
+                // 内置插件只有开关(2026-11-03 用户裁定):不出「配置」入口
+                actions={p.source === 'builtin' ? undefined : (
                   <button
                     type="button"
                     aria-label={`${t('Configure', '配置')} ${p.name}`}
@@ -331,7 +330,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                   >
                     {t('Configure', '配置')}
                   </button>
-                }
+                )}
               />
             );
           })}

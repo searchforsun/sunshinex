@@ -50,6 +50,7 @@ import { resolveImageHistoryLimit } from '../config/image-history';
 import { agentTeamsEnabled } from '../config/agent-teams';
 import * as fs from 'fs';
 import { McpHost } from './mcp/client';
+import { BROWSER_SERVER_NAME, browserHostServer } from './browser-host';
 import type { KnowledgeBase } from './knowledge';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
@@ -270,10 +271,24 @@ export class Harness {
     let mcpEverRegistered = false; // 是否曾真实注册过工具面（未注册过的新配置不产漂移行——模型没见过旧面）
     const mcpToolSnapshot = (): Map<string, string> =>
       new Map(this.tools.list().filter((t) => t.name.startsWith('mcp__')).map((t) => [t.name, t.description]));
+    /** 无会话身份(TUI/测试)时的浏览器键:本 harness 实例专属(会话间隔离,不跨进程持久) */
+    const fallbackBrowserKey = `proc-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
     this.mcpReady = async (): Promise<string[]> => {
       const freshUser = loadMcpServers(base);
       const freshPlugin = pluginMcpServers(base, { userServerNames: new Set(freshUser.map((s) => s.name)) });
-      const fresh = [...freshUser, ...freshPlugin.servers].filter((s) => s.enabled !== false);
+      // 浏览器插件改写为本进程浏览器宿主的 HTTP 连接(带本会话浏览器键)——状态按会话隔离、一宿主服务全部会话;
+      // 宿主起不来只损失浏览器工具(警告),不拖垮整轮装配
+      const hostWarnings: string[] = [];
+      const pluginServers = await Promise.all(freshPlugin.servers.map(async (s) => {
+        if (s.name !== BROWSER_SERVER_NAME) return s;
+        try {
+          return await browserHostServer(s, this.browserSession?.() ?? { key: fallbackBrowserKey, seat: '' }, resolveDataDir(base));
+        } catch (e) {
+          hostWarnings.push(`browser plugin unavailable: ${e instanceof Error ? e.message : String(e)}`);
+          return undefined;
+        }
+      }));
+      const fresh = [...freshUser, ...pluginServers.filter((s) => s !== undefined)].filter((s) => s.enabled !== false);
       const sig = JSON.stringify(fresh);
       // 失败重建(2026-11-01「失败连接被缓存永不重试」根修):连接失败的 server 留在 host 的死连接里,
       // sig 未变直通即永不重试(模型侧表现=工具永不挂载,重启会话才恢复)——存在失败 server 时
@@ -296,7 +311,7 @@ export class Harness {
       mcpHost = new McpHost(fresh, this.tools, { logDir: path.join(resolveDataDir(base), 'plugins', 'logs') });
       try {
         const report = await mcpHost.registerTools();
-        mcpWarnings = [...freshPlugin.warnings, ...report.warnings];
+        mcpWarnings = [...freshPlugin.warnings, ...hostWarnings, ...report.warnings];
       } catch (e) {
         mcpHost = undefined; // 注册链失败复位，下次 run 重试连接（失败经 run 入口转确定性 failed，不静默直通）
         throw e;

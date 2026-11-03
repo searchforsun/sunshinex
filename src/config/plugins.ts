@@ -334,7 +334,8 @@ export function pluginMcpServers(projectRoot: string | undefined, opts: Paramete
       if (userServerNames?.has(name)) { warnings.push(`插件 server ${name}（${p.manifest.id}）被用户 mcp.json 遮蔽，跳过`); continue; }
       if (seen.has(name)) { warnings.push(`插件 server ${name} 撞名（${p.manifest.id}），字典序后者跳过`); continue; }
       seen.add(name);
-      const merged = { ...cfg.configDefaults, ...p.config };
+      // 内置插件只有开关(2026-11-03 用户裁定):settings 里遗留的 config(旧 mode/isolated/disabledTools 等)一律不生效
+      const merged = { ...cfg.configDefaults, ...(p.source === 'builtin' ? {} : p.config) };
       // {dataDir} 令牌(2026-11-01 内置浏览器档):展开为该工作区数据目录绝对路径(斜杠规范形)——
       // 桥接进程/GUI 约定文件位不靠 cwd 推断;静态 args 同样展开(截图等输出目录落项目 data)
       const dataDirToken = resolveDataDir(projectRoot ?? process.cwd()).split(path.sep).join('/');

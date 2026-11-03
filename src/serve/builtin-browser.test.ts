@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { projectSlug } from '../config/data-dir';
-import { reapBuiltinBrowsers, writeShellMetas, builtinCdpMetaPath } from './builtin-browser';
+import { reapBuiltinBrowsers, builtinCdpMetaPath } from './builtin-browser';
 
 /** 内置浏览器收割面钉（D63 L 项清偿：直杀进程面此前零直接测试——外提纯函数后 roots 注入可离线钉）。
  *  不钉真实树杀效果（win32 taskkill 对假 pid 静默失败=无害），钉的是账面行为：shell 档自保跳过+清扫、
@@ -48,33 +48,3 @@ test('reapBuiltinBrowsers：shell 档自保跳过+指针档清扫；非 shell pi
   }
 });
 
-test('writeShellMetas：workspace.json root 落 meta（kind shell）；默认锚点降级；无根档跳过', () => {
-  const prev = process.env.SUNSHINEX_PROJECTS_DIR;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bb-meta-'));
-  process.env.SUNSHINEX_PROJECTS_DIR = dir;
-  try {
-    const dataA = path.join(dir, projectSlug('D:/w/a'), 'data');
-    makeWorkspace(dataA, '.', 'D:/w/a');
-    fs.mkdirSync(path.join(dir, 'ws-noroot', 'data'), { recursive: true }); // 无 workspace.json=无根档
-    writeShellMetas('ws://facade');
-    const metaA = JSON.parse(fs.readFileSync(builtinCdpMetaPath(dataA), 'utf8')) as { kind: string; ws: string; pid: number };
-    assert.equal(metaA.kind, 'shell');
-    assert.equal(metaA.ws, 'ws://facade');
-    assert.equal(metaA.pid, process.pid, 'meta pid=壳进程自身（收割自保判据的写入端）');
-    const norootMeta = path.join(dir, 'ws-noroot', 'data', 'plugins', 'browser-use', 'builtin-cdp.json');
-    assert.equal(fs.existsSync(norootMeta), false, '无根档跳过不落 meta');
-    // 默认锚点降级（G14.96）：sunshinex-default 无 workspace.json → root=tmp/<锚点>，
-    // meta 落其 resolveDataDir 解析位（PROJECTS_DIR/<slug(tmp锚点)>/data——slug 走解析链非目录名直拼）
-    const anchorRoot = path.join(os.tmpdir(), 'sunshinex-default');
-    const dataDef = path.join(dir, projectSlug(anchorRoot), 'data');
-    fs.mkdirSync(path.join(dir, 'sunshinex-default'), { recursive: true }); // 写面靠 readdir 发现工作区目录
-    writeShellMetas('ws://facade');
-    const defMeta = builtinCdpMetaPath(dataDef);
-    assert.equal(fs.existsSync(defMeta), true, '默认锚点降级照落 meta');
-    assert.equal(fs.existsSync(path.join(dir, 'sunshinex-default', 'data')), false, '降级锚点不落目录名直拼位');
-  } finally {
-    if (prev === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
-    else process.env.SUNSHINEX_PROJECTS_DIR = prev;
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});

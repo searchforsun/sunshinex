@@ -6,7 +6,6 @@ import type { SessionRuntime } from './session';
 import { MAX_PREVIEW_BYTES, insideTrustedRoots, realPathOf, readFileBounded } from './daemon-static';
 import { urlOf } from './daemon-wire';
 import { projectsRoot, resolveDataDir } from '../config/data-dir';
-import { builtinCdpMetaPath } from './builtin-browser';
 import { imageMimeOf, READ_IMAGE_MAX_BYTES } from '../images';
 
 /** 会话文件面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：/file 只读预览（信任根判界+有界读+
@@ -298,32 +297,6 @@ function sendFilePayload(io: FileHandlerIo, res: http.ServerResponse, abs: strin
   io.send(res, 200, { path: abs, content: read.content, ...(read.truncated ? { truncated: true } : {}) });
 }
 
-/** GET /app/cdp-targets?root=（2026-11-01 内置浏览器档）：读 builtin-cdp.json meta → 代理
- *  Chrome DevTools /json/list。GUI 渲染层直连 127.0.0.1 会被 CORS 拦（DevTools 面不带跨域头,
- *  自动开签/镜像端点发现静默失败)——daemon 侧 fetch 无 CORS,单点代理。缺档/浏览器未跑回空列 */
-export async function handleCdpTargets(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const url = urlOf(req);
-  const rootParam = url.searchParams.get('root') ?? '';
-  const empty = (): void => io.send(res, 200, { targets: [] });
-  if (rootParam === '') { empty(); return; }
-  const metaPath = builtinCdpMetaPath(resolveDataDir(rootParam)); // 融合 meta 落位单点（D61）
-  let meta: { ws?: unknown };
-  try {
-    meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as { ws?: unknown };
-  } catch {
-    empty();
-    return;
-  }
-  const port = typeof meta.ws === 'string' ? /:(\d+)\//.exec(meta.ws)?.[1] : undefined;
-  if (port === undefined) { empty(); return; }
-  try {
-    const r = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) });
-    const targets = (await r.json()) as unknown[];
-    io.send(res, 200, { targets });
-  } catch {
-    empty(); // 浏览器死了:空列(GUI 重试/桥自愈)
-  }
-}
 
 /** App 级文件读（2026-10-27 欢迎页全局草稿:文件页签不绑会话）:GET /app/file?root=&path=。
  *  信任域=注册工作区根(与 sessions-list/handleFile 的 inWorkspaceRoots 同源扫描)+该 root 的

@@ -18,13 +18,14 @@ import type { PluginRow } from '../../connection';
  * 测试基准语言钉 en(test-setup G14.104),断言单语 en。
  */
 
-/** 行构造器:daemon GET /settings/plugins 行形(PluginRow)的合法缺省,逐例覆写差面 */
+/** 行构造器:daemon GET /settings/plugins 行形(PluginRow)的合法缺省,逐例覆写差面。缺省=用户插件
+ *  (配置抽屉只对用户插件开放;内置插件只有开关,见末例) */
 const row = (over: Partial<PluginRow> = {}): PluginRow => ({
   id: 'browser-use',
   name: 'Browser Use',
   version: '1.0.0',
   description: 'Browser automation via plugin MCP',
-  source: 'builtin',
+  source: 'user',
   enabled: true,
   platformSupported: true,
   servers: ['browser'],
@@ -225,5 +226,11 @@ describe('PluginsPane(搜索+配置抽屉+作用域开关)', () => {
     // 壳回写 targetRoot('')后随 props 回流(scope=global+root=''):读面按新目标重拉(global 省参)
     rerender(<PluginsPane conn={conn} root="" scope="global" scopeOptions={scopeOptions} onScopeChange={(v) => raised.push(v)} />);
     await waitFor(() => expect(pluginsCalls).toEqual(['/w/proj', undefined]));
+  });
+  it('内置插件只有开关(2026-11-03 用户裁定):卡片无「配置」入口,开关仍可用', async () => {
+    const { conn } = connOf([row({ source: 'builtin' }), row({ id: 'mine', name: 'Mine' })]);
+    render(<PluginsPane conn={conn} root="" />);
+    await screen.findByRole('button', { name: 'Configure Mine' });
+    expect(screen.queryByRole('button', { name: 'Configure Browser Use' })).toBeNull();
   });
 });
