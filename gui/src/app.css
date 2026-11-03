@@ -1823,7 +1823,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-dag-loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--fg-tertiary); font-size: 12px; }
 /* 2026-11-03 用户裁定:重试线标签去白盒(RF 默认白底黑字突兀)——透底+次级灰字随主题;亮色节点边框加一档(白底 8% 描边不可见) */
 .tb-dag-retry .react-flow__edge-textbg { fill: transparent; }
-.tb-dag-retry .react-flow__edge-text { fill: var(--fg-tertiary); font-size: 10px; }
+.tb-dag-retry .react-flow__edge-text { fill: var(--fg-secondary); font-size: 11px; font-weight: 500; } /* 2026-11-04 用户裁定:不突兀但要清晰——次级灰(70%)+半粗,无底盒 */
 [data-theme='light'] .tb-dag-node { border-color: color-mix(in srgb, var(--fg) 16%, transparent); }
 /* 任务节点卡:状态点+任务名+执行子代理行(与列表行 task-status-* 同钩子) */
 .tb-dag-node { position: relative; width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
