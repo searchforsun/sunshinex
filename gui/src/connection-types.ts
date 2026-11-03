@@ -128,7 +128,7 @@ export interface SnapshotResponse {
   archived?: boolean;
   /** todo 批次权威投影(2026-10-31 用户裁定「任务历史持久化可见」):daemon journal 全量派生+live 增量,
    *  GUI「待办」页签直显——不再仅靠转录派生(内核环窗/尾窗之外的老批次派生面看不到) */
-  todoBatches?: Array<{ key: string; ts: number; goal: string; items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }> }>;
+  todoBatches?: Array<{ key: string; ts: number; goal: string; userKey?: string; items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }> }>;
 }
 
 /** GET /workspaces 行（T2 工作区注册表，对齐主仓 daemon.ts WorkspaceRow）：root 经 workspace.json

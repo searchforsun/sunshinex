@@ -22,9 +22,11 @@ export interface TodoCardsTabProps {
   readonly sessionId: string;
   /** 正文/顶栏打开侧栏时 App 递增——主动刷一次 */
   readonly refreshNonce?: number;
+  /** 主名字点击定位(2026-11-03):滚到该批关联轮次的正文输入气泡;无 userKey(旧投影)不可点 */
+  readonly onLocate?: (batch: TodoBatch) => void;
 }
 
-export function TodoCardsTab({ batches, conn, sessionId, refreshNonce }: TodoCardsTabProps): JSX.Element {
+export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate }: TodoCardsTabProps): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   /** 刷新面:快照拉到的 todoBatches(权威投影);非空才覆盖 store 派生面,空集=旧 daemon/无记录回退 */
   const [refreshed, setRefreshed] = useState<readonly TodoBatch[]>([]);
@@ -89,7 +91,19 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce }: TodoCar
               <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(b.key)}>
                 {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
                 <span className="todo-card-count">{`${done}/${b.items.length}`}</span>
-                <span className="todo-card-goal">{b.goal !== '' ? b.goal : t('(no turn input)', '(未关联轮次输入)')}</span>
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className={'todo-card-goal' + (b.userKey !== undefined && onLocate !== undefined ? ' todo-card-goal-link' : '')}
+                  data-tip={b.userKey !== undefined && onLocate !== undefined ? t('Locate in chat', '定位到正文气泡') : undefined}
+                  onClick={(e2) => {
+                    if (b.userKey === undefined || onLocate === undefined) return;
+                    e2.stopPropagation();
+                    onLocate(b);
+                  }}
+                >
+                  {b.goal !== '' ? b.goal : t('(no turn input)', '(未关联轮次输入)')}
+                </span>
                 <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
                   <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
                   {shortStampMs(b.ts)}

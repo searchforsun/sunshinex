@@ -73,6 +73,8 @@ export interface SessionTodoBatch {
   key: string;
   ts: number;
   goal: string;
+  /** 关联轮次用户条(2026-11-03 待办卡定位面):正文 chat 条目键 k<seq>——GUI 凭此滚到对应输入气泡 */
+  userKey?: string;
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
 }
 
@@ -218,6 +220,7 @@ export class SessionRuntime {
   private todoBatches: SessionTodoBatch[] = [];
   /** todo 批次归属 goal(最近一条 user 行 md;live 与播种同口径) */
   private todoLastGoal = '';
+  private todoLastUserSeq = 0;
   /** attach/出生挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
    *  daemon 侧新会话出生即挂（惰性建档——首 run 首条 append 才落盘，空会话零文件）；resume 转录由
    *  事件转录面承担，msg 行非 TUI ChatItem（daemon 档只落 chain） */
@@ -292,6 +295,7 @@ export class SessionRuntime {
     const en = ev.entry;
     if (en.kind === 'user') {
       this.todoLastGoal = en.md;
+      this.todoLastUserSeq = en.seq;
       return;
     }
     if (en.kind !== 'tool' || en.name !== 'todo_write') return;
@@ -310,7 +314,7 @@ export class SessionRuntime {
     const sig = items.map((i) => i.text).join('|');
     const idx = this.todoBatches.findIndex((b) => b.items.map((i) => i.text).join('|') === sig);
     if (idx >= 0) this.todoBatches[idx] = { ...this.todoBatches[idx], items };
-    else this.todoBatches.push({ key: `t${en.seq}`, ts: en.ts, goal: this.todoLastGoal, items });
+    else this.todoBatches.push({ key: `t${en.seq}`, ts: en.ts, goal: this.todoLastGoal, userKey: `k${this.todoLastUserSeq}`, items });
   }
 
   /** journal 全量行 → todo 批次(attach 播种单点,2026-10-31 用户裁定「任务历史持久化可见」):
@@ -322,6 +326,7 @@ export class SessionRuntime {
       const kind = typeof row.kind === 'string' ? row.kind : undefined;
       if (kind === 'user') {
         if (typeof row.md === 'string') this.todoLastGoal = row.md;
+        if (typeof row.seq === 'number') this.todoLastUserSeq = row.seq;
         continue;
       }
       if (kind !== 'tool') continue;
@@ -339,7 +344,7 @@ export class SessionRuntime {
         })
         .filter((x) => x.text !== '');
       if (items.length === 0) continue;
-      const batch: SessionTodoBatch = { key: `t${seq}`, ts: typeof row.ts === 'number' ? row.ts : 0, goal: this.todoLastGoal, items };
+      const batch: SessionTodoBatch = { key: `t${seq}`, ts: typeof row.ts === 'number' ? row.ts : 0, goal: this.todoLastGoal, userKey: `k${this.todoLastUserSeq}`, items };
       const idx = this.todoBatches.findIndex((b) => b.key === batch.key);
       if (idx >= 0) this.todoBatches[idx] = batch;
       else this.todoBatches.push(batch);

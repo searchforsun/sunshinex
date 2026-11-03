@@ -136,8 +136,12 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   const todoBatches = useMemo<TodoBatch[]>(() => {
     const out: TodoBatch[] = [];
     let lastGoal = '';
+    let lastUserKey: string | undefined = undefined;
     for (const e of chat.entries) {
-      if (e.kind === 'user') lastGoal = stripGoal(e.md);
+      if (e.kind === 'user') {
+        lastGoal = stripGoal(e.md);
+        lastUserKey = e.key;
+      }
       if (e.kind !== 'tool' || e.name !== 'todo_write') continue;
       const input = e.input ?? {};
       const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
@@ -148,7 +152,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
         }))
         .filter((x) => x.text !== '');
       if (items.length === 0) continue;
-      out.push({ key: e.key, ts: e.ts ?? 0, goal: lastGoal, items });
+      out.push({ key: e.key, ts: e.ts ?? 0, goal: lastGoal, userKey: lastUserKey, items });
     }
     // G14.179 同清单合并:条目文本签名相同=同一份待办的进度推进(0/3→2/3→3/3 三卡即重复——
     // 用户裁决「同属一个不拆」),按签名只保留最新一批,按其时间正序输出

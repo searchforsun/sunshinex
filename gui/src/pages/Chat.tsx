@@ -9,7 +9,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { chaseScrollBottom, pathBasename } from '../ui-util';
+import { chaseScrollBottom, pathBasename, rAFConverge } from '../ui-util';
 import { stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
@@ -79,7 +79,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -128,6 +128,20 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** 跟随闩位移指纹:上次 scroll 事件时的 scrollTop——本次事件里它没变=纯内容生长
    *  (钉底位被新内容顶成距底>0),不得据此释放 stick(二修根因见 handleChatScroll 注) */
   const chatLastTopRef = useRef(0);
+  /** 待办卡主名字定位(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡——锚定+迭代校正
+   *  (ChatRail jump 同款,content-visibility 离屏估算高一次到位必偏),定位即撤贴底跟随 */
+  useEffect(() => {
+    if (todoFocus === null || todoFocus === undefined) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(todoFocus.key)}"]`);
+    if (node === null) return;
+    chatStickRef.current = false;
+    el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    rAFConverge(el, () => node.getBoundingClientRect().top - el.getBoundingClientRect().top, (delta) => {
+      el.scrollTop += delta;
+    }, 2);
+  }, [todoFocus, chatScrollRef, chatStickRef]);
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);

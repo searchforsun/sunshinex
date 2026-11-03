@@ -20,6 +20,8 @@ export interface TodoBatch {
   key: string;
   ts: number;
   goal: string;
+  /** 关联轮次用户条键(k<seq>,2026-11-03 待办卡定位面):待办页签点主名字滚到该正文气泡;旧投影无 */
+  userKey?: string;
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
 }
 

@@ -70,6 +70,8 @@ export interface ChatProps {
   teams?: readonly import('../../projection').BoardTeamRef[];
   /** G14.174 待办批次上抛(每批 todo_write 一卡:时间/关联轮次输入/条目;App 经 services 供待办页签) */
   onTodoBatches?: (batches: TodoBatch[]) => void;
+  /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡 */
+  todoFocus?: { key: string; nonce: number } | null;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
   onRewind?: (turn: number) => void;
   /** 会话级操作错误上抛(2026-10-21 归档 F4):App showOpError 通道(与 fork/rewind 同一 sx-toast

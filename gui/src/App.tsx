@@ -144,6 +144,12 @@ function AppShell(): JSX.Element {
   const [catalogTick, setCatalogTick] = useState({ memory: 0, learned: 0 });
   /** G14.176 create_agent_team_task 行点开的定位信号(任务板滚动高亮对应卡) */
   const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
+  /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文气泡(Chat 消费) */
+  const [todoFocus, setTodoFocus] = useState<{ key: string; nonce: number } | null>(null);
+  const onLocateTodo = useCallback((batch: import('./pages/Chat').TodoBatch): void => {
+    if (batch.userKey === undefined) return;
+    setTodoFocus({ key: batch.userKey, nonce: Date.now() });
+  }, []);
   const connRef = useRef<Connection | null>(null);
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
   const sessionRef = useRef<string>('');
@@ -684,7 +690,7 @@ function AppShell(): JSX.Element {
         for (const b of todoBatches) bySig.set(b.items.map((i) => i.text).join('|'), b);
         return [...bySig.values()].sort((a, b) => a.ts - b.ts);
       })(),
-      taskFocus, onOpenTask: openTaskFocus,
+      taskFocus, onOpenTask: openTaskFocus, onLocateTodo,
       refreshBoard,
       bgTasks,
       onRefreshBgTasks: (): Promise<void> =>
@@ -692,7 +698,7 @@ function AppShell(): JSX.Element {
           ? Promise.resolve()
           : connRef.current.sessionTasks(openSessionId).then((rows) => setBgTasks(rows)),
     }),
-    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, refreshBoard, bgTasks],
+    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, refreshBoard, bgTasks],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -952,6 +958,7 @@ function AppShell(): JSX.Element {
                 board={projection.board}
                 teams={projection.teams}
                 onTodoBatches={setTodoBatches}
+                todoFocus={todoFocus}
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}
