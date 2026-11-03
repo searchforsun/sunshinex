@@ -50,6 +50,9 @@ export class ProcessSandbox implements ToolBackend {
   }
 
   async exec(cmd: string, opts?: ExecOpts): Promise<Result<ExecResult>> {
+    // 已中止的 run 不再拉起命令:原先照常 spawn 再收割(用户已停仍有命令短暂执行=副作用风险,
+    // 且收割等进程树退出白耗约 2s)
+    if (this.runSignal?.aborted === true) return fail('EXEC_ABORTED', 'aborted by user');
     const timeoutMs = opts?.timeoutMs ?? 1_800_000;
     const shell = resolveShell();
     const file = opts?.wrap !== undefined ? opts.wrap.file : shell.file;
