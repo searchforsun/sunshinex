@@ -731,7 +731,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* diff 标题双色沿 ok/err 语义,弱化为 secondary */.sx-diff-tab .diff-title-old { color: var(--err); }.sx-diff-tab .diff-title-new { color: var(--ok); }
 
 /* ===== G12 统一 composer 卡(spec §4 G9-B4 收编):欢迎页/会话同一实现,卡面单源 .sx-composer;
-   elevated 面+三层海拔+22px 超椭圆;32px 圆形实心钮;footer 左 pills/右动作 space-between ===== */.sx-composer {
+   elevated 面+三层海拔+22px 圆弧(2026-11-03 用户裁定 A:composer 撤全局超椭圆(G14.206c 级联),正圆 22px 同值观感更圆润);
+   32px 圆形实心钮;footer 左 pills/右动作 space-between ===== */.sx-composer {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -742,7 +743,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   box-shadow: var(--elev-composer);
   padding: 12px 14px 10px;
 }
-@supports (corner-shape: superellipse(1.5)) {  .sx-composer { corner-shape: superellipse(1.5); }
+/* 2026-11-03 用户裁定 A:输入框撤全局超椭圆(G14.206c * 级联),恢复正圆弧——superellipse(1.5)
+   同值半径观感偏方,大卡面上更显紧;radius 仍走 --radius-composer 22px 铁律不变 */
+@supports (corner-shape: superellipse(1.5)) {  .sx-composer { corner-shape: initial; }
 }.sx-composer-input {
   width: 100%;
   min-height: 44px;
@@ -1214,9 +1217,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .chat-dock .approval-card { position: relative; z-index: 1; border-radius: var(--radius-composer); }.approval-card .card-head { display: flex; align-items: center; gap: 8px; }.approval-card .card-head-icon { display: inline-flex; color: var(--warn); flex: none; }.approval-card .card-actions, .plan-card .card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }.approval-card .card-actions button, .plan-card .card-actions button {
   padding: 5px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--surface-soft); color: var(--fg); font-size: 12px; cursor: pointer;
-}.approval-card .card-actions button.primary, .plan-card .card-actions button.primary {
-  border-color: transparent; color: var(--fg-on-solid);
-  background: var(--fg);
+}.chat-dock .approval-card .card-actions button.primary, .chat-dock .plan-card .card-actions button.primary {
+  /* 2026-11-03 修:加 .chat-dock 前缀抬优先级压过 .pending-card .card-actions button:not(.approve):not(.deny)
+     的 color:var(--fg)(4 类>3 类且本规则在后)——浅色字叠浅色胶囊=主按钮文字隐形(实测计划卡主按钮空胶囊) */
+  padding: 5px 14px; border-radius: var(--radius-sm); border: 1px solid transparent;
+  color: var(--fg-on-solid); background: var(--fg);
 }
 /* 计划确认卡体(2026-11-03 修订重排):计划书 md 滚动区(限高纵向滚——长计划书不再把 dock 撑到顶,
    修订轮换 pid remount 天然回顶;计划书井复用 .tool-md 面零新增)+常驻反馈输入(拒绝面不再藏二级态,
