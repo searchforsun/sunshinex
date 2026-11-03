@@ -80,6 +80,7 @@ const h = vi.hoisted(() => {
     attachCalls: Array<[string, string]> = [];
     snapshotCalls: string[] = [];
     replyApprovalCalls: Array<[string, string]> = [];
+    replyPlanApprovalCalls: Array<[string, { approved: boolean; mode?: string; feedback?: string }]> = [];
     replyAskCalls: Array<[string, GuiAskAnswer]> = [];
     deleteSessionCalls: string[] = [];
     boardStopCalls: Array<[string, string]> = [];
@@ -245,6 +246,10 @@ const h = vi.hoisted(() => {
     replyApproval(pid: string, decision: string): Promise<void> {
       if (this.replyReject !== null) return Promise.reject(this.replyReject);
       this.replyApprovalCalls.push([pid, decision]);
+      return Promise.resolve();
+    }
+    replyPlanApproval(pid: string, decision: { approved: boolean; mode?: string; feedback?: string }): Promise<void> {
+      this.replyPlanApprovalCalls.push([pid, decision]);
       return Promise.resolve();
     }
     replyAsk(pid: string, answer: GuiAskAnswer): Promise<void> {
@@ -933,6 +938,40 @@ describe('底部输入区:Enter 分流与 Stop(会话维 :id)', () => {
 });
 
 describe('G4 挂起卡片区:审批/问询回执(pid 契约)与 reset 帧', () => {
+describe('exit_plan 交稿卡(2026-11-03 交稿协议):经 App 装配面 opts 回调的 live 帧链路', () => {
+  const planReq = { name: '重构认证模块', path: 'D:/data/sessions/j1.plan.md', doc: '# 重构认证模块\n1. 步骤A', items: ['步骤A'] };
+
+  it('plan-approval 帧 → dock 计划卡渲染(计划名+doc)+批准回执携 mode 并移卡', async () => {
+    const { conn, unmount } = await enterChat();
+    act(() => conn.opts.onPlanApproval?.('s1', 'p-plan-1', planReq));
+    expect(screen.getAllByText('重构认证模块').length).toBeGreaterThanOrEqual(2); // 卡头计划名链接 + doc 标题双呈现
+    expect(screen.getByRole('heading', { level: 1, name: '重构认证模块' })).toBeDefined(); // doc 渲染
+    fireEvent.click(screen.getByText(/Implement \(workspace edits\)|实施（工作区编辑）/));
+    await waitFor(() => expect(conn.replyPlanApprovalCalls).toEqual([['p-plan-1', { approved: true, mode: 'acceptEdits' }]]));
+    await waitFor(() => expect(screen.queryAllByText('重构认证模块')).toEqual([])); // 回执落定移卡
+    unmount();
+  });
+
+  it('G5 回归:run 收束(running→idle)不清 plan-approval 卡——交稿帧先于 run-close 到达的顺序竞态(桌面实测根因)', async () => {
+    const { conn, unmount } = await enterChat();
+    act(() => {
+      fire(conn, ev('model-start'), 1); // 开 run:status running
+      conn.opts.onPlanApproval?.('s1', 'p-plan-g5', planReq); // 交稿帧先到(卡渲染)
+      fire(conn, ev('model-end'), 2); // run 收束:status idle——G5 旧形态此处无差别清空=卡被抹
+    });
+    expect(screen.getAllByText('重构认证模块').length).toBeGreaterThanOrEqual(2); // 卡必须存活(planFlow 停在卡上,挂起行存活)
+    // approval 卡照旧被清(G5 原语义不回归)
+    act(() => conn.opts.onApproval?.('s1', 'p-ap-g5', { id: 'ap-g5', kind: 'write', subject: 'rm -rf /tmp/y', reason: 'destructive' }));
+    act(() => {
+      fire(conn, ev('model-start'), 3);
+      fire(conn, ev('model-end'), 4);
+    });
+    await waitFor(() => expect(screen.queryByText('[approval write] rm -rf /tmp/y')).toBeNull());
+    expect(screen.getAllByText('重构认证模块').length).toBeGreaterThanOrEqual(2); // plan 卡仍在
+    unmount();
+  });
+});
+
   const apReq: GuiApprovalReq = { id: 'ap-3', kind: 'write', subject: 'rm -rf /tmp/x', reason: 'destructive command' };
   const apTitle = '[approval write] rm -rf /tmp/x';
 

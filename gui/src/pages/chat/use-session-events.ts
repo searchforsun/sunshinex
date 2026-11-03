@@ -321,11 +321,15 @@ export function useSessionEvents(deps: {
   }, [deps.chat.history, conn, sessionId, deps.freshView]);
 
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
-   *  时置空本地卡列表;reseed 落定的 idle 快照亦经此路径(挂起已回填,不重建——见文件头裁定) */
+   *  时清 approval/ask 卡;**plan-approval 卡保留**（2026-11-03 交稿协议）：planFlow 恰是「停在卡上、
+   *  run 已收束、挂起行存活」的形态——exit_plan 交稿帧先于 run-close 事件到达时,本效应的无差别清空
+   *  会把刚渲染的确认卡抹掉(实测桌面端「交稿后不弹确认卡」根因)。中断路径不受影响:denyPlanPendings
+   *  回填后 pending 行已删,daemon 侧本就不该再有卡。reseed 落定的 idle 快照走 prev=null 豁免
+   *  (reseed 置 prevStatusRef=null),不触发本清空;其 pending 重建(addPlanCard)在快照落定后,无竞态 */
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = chat.status;
-    if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards([]);
+    if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards((cs) => cs.filter((c) => c.kind === 'plan-approval'));
   }, [chat.status]);
 
   return { cards, seeding, sendApproval, sendAsk, sendPlanApproval };

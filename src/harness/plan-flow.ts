@@ -52,8 +52,10 @@ export const PLAN_TASK_LABEL = 'Produce an investigation-backed plan document';
 function planPrompt(goal: string, feedback?: string): string {
   return (
     `${PLAN_TASK_LABEL} for the goal below. First investigate the relevant code with Read/Grep/Glob (the session is temporarily read-only). ` +
-    `Then reply with the full plan document in markdown — sections: Background, Approach, Files, Steps (numbered "1. ..."), Risks, Verification. ` +
-    `Also call todo_write once with the full step list (every item pending), one todo per step, matching the Steps section.` +
+    `Then submit the plan by calling the exit_plan tool: doc = the full plan document in markdown ` +
+    `(sections: Background, Approach, Files, Steps (numbered "1. ..."), Risks, Verification), name = a short plan title. ` +
+    `The plan text goes into the exit_plan call ONLY — never write the plan document into your reply text; keep the reply itself minimal. ` +
+    `Do not call todo_write for plan steps — the Steps section of the plan document is the single source of steps.` +
     (feedback ? `\nThe previous plan was rejected with this feedback — revise the plan accordingly:\n${feedback}` : '') +
     `\nGoal: ${goal}`
   );
