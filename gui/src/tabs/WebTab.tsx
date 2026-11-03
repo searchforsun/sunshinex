@@ -29,6 +29,8 @@ export interface WebTabProps {
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
   /** 关闭本页签(模型 browser_tabs close 经 facade→壳→此处) */
   readonly onClose?: () => void;
+  /** webview 分区(浏览器页签池按会话下发:persist:sx-<浏览器键>/草稿内存分区);缺省共用旧分区 */
+  readonly partition?: string;
   /** 切到本页签(agent 正在驱动本页) */
   readonly onActivate?: () => void;
   /** 工作区根(2026-11-01 CDP 形态:内置浏览器端点发现按数据目录解析;缺省=纯 iframe 形态) */
@@ -63,7 +65,7 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, partition }: WebTabProps): JSX.Element {
   // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
   // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
   // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
@@ -581,7 +583,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate }:
                 <webview
                   ref={attachWv}
                   src={wvTarget}
-                  partition="persist:sx-builtin"
+                  partition={partition ?? 'persist:sx-builtin'}
                   /* 缺 allowpopups 时 Electron 在 setWindowOpenHandler 之前就吞掉弹窗(_blank/window.open
                    * 全静默);放开后主进程 handler 恒 deny 原生窗,只转发 http(s) 开新侧栏页签 */
                   allowpopups="true"

@@ -30,7 +30,8 @@ interface Window {
     openDevtools?: () => void;
     /** M2 融合：guest 弹窗 URL 由主进程转发（main setWindowOpenHandler → builtin:open-url），
      *  GUI 开新侧栏 web 页签；退订返回卸载用 */
-    onOpenUrl?: (cb: (url: string) => void) => () => void;
+    /** target:会话连接开页(seat/key)或页内弹窗(openerWebContentsId)——决定开在哪个会话座位 */
+    onOpenUrl?: (cb: (url: string, target?: { seat?: string; key?: string; openerWebContentsId?: number }) => void) => () => void;
     /** 模型关 Web 页签：主进程下发 guest webContents id，页签自判非即忽略；退订返回卸载用 */
     onCloseWebContents?: (cb: (id: number) => void) => () => void;
     onCloseWebContents?: (cb: (webContentsId: number) => void) => () => void;

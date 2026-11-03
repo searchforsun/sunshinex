@@ -16,6 +16,8 @@ import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { Suspense } from 'react';
+import { WebTabPool, seatOfWebContents } from './tabs/WebTabPool';
+import type { WebPoolItem } from './tabs/WebTabPool';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
@@ -426,10 +428,21 @@ function AppShell(): JSX.Element {
   // 订阅只挂一次,回调经 ref 取最新 openWebTab(闭包滞留首帧会话座=开签落错座,页签不可见)
   const openWebTabRef = useRef(openWebTab);
   openWebTabRef.current = openWebTab;
+  const curSeatRef = useRef('');
+  curSeatRef.current = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
   useEffect(() => {
     const bridge = window.sunshinexWindow;
     if (bridge?.onOpenUrl === undefined) return;
-    return bridge.onOpenUrl((url) => openWebTabRef.current(url));
+    // 归座(浏览器状态按会话隔离):agent 开页带座位;页内弹窗按开启者 webview 所在座位;
+    // 非当前座位只入该座位(后台会话的 agent 不打扰用户视图),当前座位走既有开签(展开侧栏)
+    return bridge.onOpenUrl((url, target) => {
+      const seat = target?.seat ?? (target?.openerWebContentsId !== undefined ? seatOfWebContents(target.openerWebContentsId) : undefined);
+      if (seat === undefined || seat === '' || seat === curSeatRef.current) {
+        openWebTabRef.current(url);
+        return;
+      }
+      setTabStates((s) => openTab(ensureSession(s, seat, PROBE), seat, 'web', { url }, PROBE));
+    });
   }, []);
   /** agents 页签 id=智能体团队页签(卡片流;tab 持久化档兼容保留旧 id);agentTeams 关闭时不挂载 */
   const openBoardTab = useCallback((): void => {
@@ -692,6 +705,11 @@ function AppShell(): JSX.Element {
   const sidebarRef = useRef<HTMLElement | null>(null);
   /** 活动标签滚动容器(自绘 vbar 数据源):仅活动 tabbody 绑定——keep-alive 隐藏面零监听零几何 */
   const tabBodyRef = useRef<HTMLDivElement | null>(null);
+  /** 浏览器页签池:全部座位的 web 页签(切会话/收侧栏/进设置不卸载,后台会话 agent 仍可驱动) */
+  const webPoolItems = useMemo<WebPoolItem[]>(
+    () => Object.entries(tabStates).flatMap(([seat, st]) => st.tabs.filter((t) => t.type === 'web').map((t) => ({ seat, uid: t.uid, params: t.params }))),
+    [tabStates],
+  );
   /** 三栏几何簇(use-shell-layout 单点,2026-10-27 技术债轮 D53 批C-1 外提):视口跟踪/浮窗阈值/
    *  抽屉态/菜单与右栏渲染期钳制/占宽/拖宽手柄,判定序与裁定注释随码在钩子内 */
   const {
@@ -1041,6 +1059,9 @@ function AppShell(): JSX.Element {
                         <div className="sx-tab-empty-title">{tLabel('Available after a session starts', '会话开始后可用')}</div>
                         <div className="sx-tab-empty-sub">{tLabel('This panel is session-bound. Send a message to bind the draft sidebar to a session.', '此面板绑定会话。发送一条消息即可把当前草稿侧栏绑定到会话。')}</div>
                       </div>
+                    ) : t.type === 'web' ? (
+                      // 浏览器页签体=占位框:webview 常驻在应用根的页签池(WebTabPool),按此框对位显示
+                      <div className="sx-webslot" style={{ height: '100%' }} />
                     ) : (
                     tabEntry(t.type).render({
                       conn: connInstance,
@@ -1110,6 +1131,19 @@ function AppShell(): JSX.Element {
         <div className="sx-toast" role="alert">
           {opError}
         </div>
+      )}
+      {connInstance !== null && (
+        <WebTabPool
+          conn={connInstance}
+          items={webPoolItems}
+          visibleUid={(page === 'chat' || page === 'welcome') && !settingsOpen && !tabState.collapsed && activeTab?.type === 'web' ? activeTab.uid : null}
+          anchorRef={tabBodyRef}
+          root={openRoot}
+          draftSeat={WELCOME_TAB_SEAT}
+          onMeta={onTabMeta}
+          onClose={(seat, uid) => setTabStates((s) => closeTab(s, seat, uid))}
+          onActivate={onActivateTab}
+        />
       )}
       {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}

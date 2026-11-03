@@ -189,7 +189,7 @@ if (!app.requestSingleInstanceLock()) {
           const u = new URL(url);
           const gui = mainWindow;
           const guiReady = gui !== undefined && !gui.isDestroyed();
-          if ((u.protocol === 'http:' || u.protocol === 'https:') && guiReady) gui.webContents.send('builtin:open-url', url);
+          if ((u.protocol === 'http:' || u.protocol === 'https:') && guiReady) gui.webContents.send('builtin:open-url', url, { openerWebContentsId: wc.id });
         } catch { /* 非法 url 静默拒 */ }
         return { action: 'deny' };
       });

@@ -20,8 +20,8 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   openDevtools: (): void => void ipcRenderer.send('web:open-devtools'),
   /** M2 融合:guest 弹窗 URL 由主进程转发(main setWindowOpenHandler → builtin:open-url),
    *  GUI 开新侧栏 web 页签(和浏览器一样;退订返回卸载用) */
-  onOpenUrl: (cb: (url: string) => void): (() => void) => {
-    const handler = (_: unknown, url: string): void => cb(url);
+  onOpenUrl: (cb: (url: string, target?: { seat?: string; key?: string; openerWebContentsId?: number }) => void): (() => void) => {
+    const handler = (_: unknown, url: string, target?: { seat?: string; key?: string; openerWebContentsId?: number }): void => cb(url, target);
     ipcRenderer.on('builtin:open-url', handler);
     return () => void ipcRenderer.removeListener('builtin:open-url', handler);
   },
