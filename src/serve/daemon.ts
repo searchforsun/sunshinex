@@ -42,7 +42,7 @@ import * as lifecycle from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
-import { reapBuiltinBrowsers as reapBuiltinBrowsersHost } from './builtin-browser';
+import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost } from './builtin-browser';
 import {
   GUI_ASSETS_HINT,
   mimeOf,
@@ -966,6 +966,8 @@ export class GuiDaemon {
       if (this.active === key) this.active = undefined;
     }
     purgeSession(dataDir, jid);
+    purgeBrowserState(dataDir, jid); // 浏览器键=journalId:状态文件/输出目录/侧栏分区随会话删除
+
     this.send(res, 200, { ok: true });
   }
 

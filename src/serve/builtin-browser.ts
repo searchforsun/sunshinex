@@ -94,3 +94,19 @@ export function reapBuiltinBrowsers(roots: Array<string>): void {
   }
 }
 
+
+/** 删除会话时清理其浏览器状态(2026-11-03 浏览器状态按会话隔离):宿主状态文件 state/<key>.json、
+ *  输出目录 output/<key>/,以及桌面侧栏的持久分区 persist:sx-<key>(运行中目录被占用删不掉,
+ *  先清空存储——Cookie/本地存储/缓存即刻失效;空目录待下次删除/重装时随用户数据清理) */
+export function purgeBrowserState(dataDir: string, key: string): void {
+  const base = path.join(dataDir, 'plugins', 'browser-use');
+  fs.rmSync(path.join(base, 'state', `${key}.json`), { force: true });
+  fs.rmSync(path.join(base, 'output', key), { recursive: true, force: true });
+  let electron: unknown;
+  try { electron = require('electron'); } catch { return; }
+  const ses = (electron as { session?: { fromPartition(p: string): { clearStorageData(): Promise<void>; clearCache(): Promise<void> } } }).session;
+  if (ses === undefined) return;
+  const s = ses.fromPartition(`persist:sx-${key}`);
+  void s.clearStorageData().catch(() => undefined);
+  void s.clearCache().catch(() => undefined);
+}

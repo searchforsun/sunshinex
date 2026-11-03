@@ -48,3 +48,24 @@ test('reapBuiltinBrowsers：shell 档自保跳过+指针档清扫；非 shell pi
   }
 });
 
+
+test('purgeBrowserState:删除会话的浏览器状态文件与输出目录,他会话不受影响', async () => {
+  const { purgeBrowserState } = await import('./builtin-browser');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-purge-'));
+  try {
+    const base = path.join(dataDir, 'plugins', 'browser-use');
+    fs.mkdirSync(path.join(base, 'state'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'output', 'jid-a'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'output', 'jid-b'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'state', 'jid-a.json'), '{}');
+    fs.writeFileSync(path.join(base, 'state', 'jid-b.json'), '{}');
+    fs.writeFileSync(path.join(base, 'output', 'jid-a', 'shot.png'), 'x');
+    purgeBrowserState(dataDir, 'jid-a');
+    assert.equal(fs.existsSync(path.join(base, 'state', 'jid-a.json')), false);
+    assert.equal(fs.existsSync(path.join(base, 'output', 'jid-a')), false);
+    assert.equal(fs.existsSync(path.join(base, 'state', 'jid-b.json')), true);
+    assert.equal(fs.existsSync(path.join(base, 'output', 'jid-b')), true);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
