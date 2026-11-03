@@ -93,9 +93,9 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     const el = bodyRef.current;
     if (el !== null && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [entries, activities?.currentTool]);
-  /** 任务气泡定位(2026-11-03 用户裁定「任务板/编排点开子智能体时定位到该条任务的气泡」):成员
-   *  连跑多个任务,转录内每任务一条带(Task <id>: … 前缀的用户条)——focusTaskId 命中即
-   *  scrollIntoView+accent 闪光并闩住;未命中(任务尚未开跑,气泡未出)随 entries 流入继续试。
+  /** 任务气泡定位(2026-11-03 用户裁定「任务板/编排点开子智能体时定位到该条任务的气泡」;同日裁定
+   *  只滚不加闪光):成员连跑多个任务,转录内每任务一条带(Task <id>: … 前缀的用户条)——focusTaskId
+   *  命中即 scrollIntoView 并闩住;未命中(任务尚未开跑,气泡未出)随 entries 流入继续试。
    *  闩按 focusTaskId 值:同 agent 页签换任务重开(openTab 判重聚焦+params 刷新)即换定位目标;
    *  定位同时撤贴底跟随,流式续行不再拽回底部 */
   const focusedTaskRef = useRef<string | null>(null);
@@ -108,8 +108,6 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     if (el === null) return;
     stickRef.current = false;
     el.scrollIntoView({ block: 'start' });
-    el.classList.add('focus-flash');
-    window.setTimeout(() => el.classList.remove('focus-flash'), 1800);
   }, [focusTaskId, entries]);
   const onScroll = (): void => {
     const el = bodyRef.current;

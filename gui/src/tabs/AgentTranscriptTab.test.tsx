@@ -175,7 +175,7 @@ describe('AgentTranscriptTab 对标主对话', () => {
 });
 
 describe('AgentTranscriptTab 任务定位(2026-11-03 用户裁定)', () => {
-  it('focusTaskId 命中该任务气泡 scrollIntoView+focus-flash;换目标即换定位(闩按值,不重复拽同一条)', () => {
+  it('focusTaskId 命中该任务气泡 scrollIntoView(只滚不闪光,2026-11-03 裁定);换目标即换定位(闩按值)', () => {
     const scrollSpy = vi.fn();
     (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scrollSpy;
     // 成员连跑两任务:两条任务带(各以 Task <板id>: 开头),中间隔一个已封轮
@@ -189,19 +189,16 @@ describe('AgentTranscriptTab 任务定位(2026-11-03 用户裁定)', () => {
     const bubbles = container.querySelectorAll<HTMLElement>('.child-user-entry');
     expect(bubbles.length).toBe(2);
     expect(scrollSpy).toHaveBeenCalledTimes(1);
-    expect(bubbles[1]!.classList.contains('focus-flash')).toBe(true);
-    expect(bubbles[0]!.classList.contains('focus-flash')).toBe(false);
     // 同 agent 页签换任务重开(openTab 判重聚焦+params 刷新):定位目标切到 A
     rerender(<AgentTranscriptTab {...base} focusTaskId="task-a-1111" />);
     expect(scrollSpy).toHaveBeenCalledTimes(2);
-    expect(bubbles[0]!.classList.contains('focus-flash')).toBe(true);
     // 同目标再渲染:闩生效,不重复滚动
     rerender(<AgentTranscriptTab {...base} focusTaskId="task-a-1111" />);
     expect(scrollSpy).toHaveBeenCalledTimes(2);
     unmount();
   });
 
-  it('目标气泡未出(任务未开跑)不滚动不闪光;任务带流入后命中', () => {
+  it('目标气泡未出(任务未开跑)不滚动;任务带流入后命中', () => {
     const scrollSpy = vi.fn();
     (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scrollSpy;
     let s: AgentActivities = {};
@@ -209,11 +206,9 @@ describe('AgentTranscriptTab 任务定位(2026-11-03 用户裁定)', () => {
     const base = { conn: connStub, sessionId: 's1', board: boardStub, task: '兜底' };
     const { container, rerender } = render(<AgentTranscriptTab {...base} activities={s.an} focusTaskId="task-b-4444" />);
     expect(scrollSpy).not.toHaveBeenCalled();
-    expect(container.querySelector('.focus-flash')).toBeNull();
     // B 的任务带到达 → 命中
     s = applyAgentEvent(s, sub('step', 'an', '', { taskBand: 'Task task-b-4444: B' + '\n' + 'spec b' }));
     rerender(<AgentTranscriptTab {...base} activities={s.an} focusTaskId="task-b-4444" />);
     expect(scrollSpy).toHaveBeenCalledTimes(1);
-    expect(container.querySelectorAll('.child-user-entry.focus-flash')).toHaveLength(1);
   });
 });

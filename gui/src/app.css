@@ -2077,10 +2077,6 @@ button.agent-msg-from:hover { text-decoration: underline; }
 .child-copy { position: absolute; right: 6px; top: 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; padding: 0 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); } /* G14.202b 气泡外右下,hover 行显 */
 .child-user-entry { position: relative; width: 100%; }
 .child-user-entry:hover .child-copy { opacity: 1; color: var(--fg); }
-/* 任务气泡定位闪光(2026-11-03 用户裁定「任务板/编排点开子智能体定位到该任务气泡」):AgentTranscriptTab
-   命中 focusTaskId 后 scrollIntoView + accent 描边渐隐,1.8s 自灭(与任务板行 flash 同族);圆角同 bubble 面 */
-.child-user-entry.focus-flash { border-radius: var(--radius-md); animation: sx-task-focus-flash 1.8s var(--ease-enter); }
-@keyframes sx-task-focus-flash { 0%, 55% { box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); } 100% { box-shadow: none; background: transparent; } }
 .user-bubble-clamped { position: relative; }
 .user-bubble-clamped::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: linear-gradient(180deg, transparent, var(--bubble-user) 92%); border-radius: 0 0 var(--radius-composer) var(--radius-composer); pointer-events: none; }
 .user-bubble-toggle { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 18px; border: 1px solid var(--border-strong, var(--border)); background: var(--surface-elevated); color: var(--fg); cursor: pointer; border-radius: 9999px; box-shadow: 0 2px 6px color-mix(in srgb, black 40%, transparent); } /* G14.206d 清晰可见(此前无边框灰字几乎不可见) */
