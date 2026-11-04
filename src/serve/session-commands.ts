@@ -4,14 +4,16 @@ import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
 import { resolveDataDir } from '../config/data-dir';
 import { markSessionArchived, purgeSession, readSessionMeta } from '../tui/session-journal';
-import { t } from '../i18n';
 import type { SessionRuntime } from './session';
 
 /** command 直跑通道(G10 spec §6):TUI handleSlash 分支的 daemon 移植层。
  *  纪律:操作共享 runtime 单点;纯函数(chainToHistoryItems/runCompaction/contextBreakdown)从
  *  harness/context 公开面直接 import——零复制;pushMsg → transcript.push(notice)。
  *  支持集按批扩:重流程分支(/init /goal /plan /skill /kb-index /memory-add /memory-gc /tasks)随
- *  planFlow 等共享化逐批入列,GET /commands 消费面置灰判定同步。 */
+ *  planFlow 等共享化逐批入列,GET /commands 消费面置灰判定同步。
+ *  回执文案=规范英文单语产出(2026-11-04 裁定:底层产出语言中立原始语言——agent 动态内容与报错
+ *  除外;语言渲染归前端:GUI 固定头模式表 gui/src/i18n-notice.ts、TUI 自身 t()。daemon 语言不再
+ *  影响回执,改文案须与 GUI 模式表两处同添) */
 
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
 export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan', '/skills-rm'] as const;
@@ -81,11 +83,11 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
   }
 }
 
-/** 命令中断文案(命令名专属;GUI 系统提示行直显) */
+/** 命令中断文案(命令名专属;规范英文产出,GUI 模式表承载中文渲染) */
 function interruptedLabel(cmd: string): string {
-  if (cmd === '/compact') return t('Context compaction interrupted', '上下文压缩已中断');
-  if (cmd === '/plan') return t('Planning interrupted', '规划已中断');
-  return t(`${cmd} interrupted`, `${cmd} 已中断`);
+  if (cmd === '/compact') return 'Context compaction interrupted';
+  if (cmd === '/plan') return 'Planning interrupted';
+  return `${cmd} interrupted`;
 }
 
 /** 命令体(三态包装拆出):notice=结果捕获(不再旁路落 notice 行) */
@@ -93,12 +95,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
 
   if (cmd === '/status') {
     const snap = s.snapshotResponse();
-    notice(
-      t(
-        `session ${s.id} · ${snap.status} · model ${snap.model ?? 'default'} · mode ${snap.mode}`,
-        `会话 ${s.id} · ${snap.status === 'running' ? '运行中' : '空闲'} · 模型 ${snap.model ?? '缺省主模型'} · 权限 ${snap.mode}`,
-      ),
-    );
+    notice(`session ${s.id} · ${snap.status} · model ${snap.model ?? 'default'} · mode ${snap.mode}`);
     return 'ok';
   }
 
@@ -106,7 +103,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     // 压缩协调单点(与 Reactor 自动压缩同链路):补链参与 → 压缩 → 摘要 → 折链(TUI /compact 同形移植)
     // 过程回执先行(2026-10-31 用户裁定「发送后正文显示压缩中说明」):压缩成功才落完成回执,
     // 中途失败/中断无完成行=链面自动回滚语义(runCompaction apply 前零副作用)
-    notice(t('Compacting context', '上下文压缩中')); // 运行态由波纹承载,不用 … 标识(2026-10-31 裁定)
+    notice('Compacting context'); // 运行态由波纹承载,不用 … 标识(2026-10-31 裁定)
     const ctx = s.runtime.harness.context;
     const chainItems = chainToHistoryItems(ctx.chainView());
     const items = ctx.assemble(chainItems);
@@ -121,12 +118,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       ...(signal !== undefined ? { signal } : {}), // 中断信号:apply 前检查,中断即零副作用回滚
     });
     const after = ctx.window.estimate(ctx.assemble()).used;
-    notice(
-      t(
-        `Compressed: ${r.chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`,
-        `已压缩:${r.chunks.length} 个摘要块重注入(水位 ${before} → ${after} tokens)`,
-      ),
-    );
+    notice(`Compressed: ${r.chunks.length} summary chunks re-injected (ctx ${before} → ${after} tokens)`);
     return 'ok';
   }
 
@@ -146,10 +138,10 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       chainFrom: ctx.chainFromView(),
     });
     notice(
-      t('Context breakdown', '上下文构成') +
+      'Context breakdown' +
         ':\n' +
         b.parts.map((p) => `${p.id}: ${p.tokens} (${Math.round((p.tokens / Math.max(1, b.total)) * 100)}%)`).join('\n') +
-        `\n${t('total', '总量')} ${b.total} / ${b.window}`,
+        `\ntotal ${b.total} / ${b.window}`,
     );
     return 'ok';
   }
@@ -157,23 +149,18 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
   if (cmd === '/memory-on' || cmd === '/memory-off') {
     const on = cmd === '/memory-on';
     setMemorySessionOverride(on); // 会话内覆盖单点(与 TUI 同一全局控制面;daemon 侧即全局生效)
-    notice(
-      t(
-        `Persistent memory ${on ? 'on' : 'off'} for this session`,
-        `本会话持久记忆已${on ? '开启' : '关闭'}`,
-      ),
-    );
+    notice(`Persistent memory ${on ? 'on' : 'off'} for this session`);
     return 'ok';
   }
 
   if (cmd === '/archive') {
     const jid = s.attachedJournalId;
     if (jid === undefined) {
-      notice(t('Nothing to archive yet', '暂无可归档的会话档'));
+      notice('Nothing to archive yet');
       return 'ok';
     }
     markSessionArchived(resolveDataDir(s.root), jid, true);
-    notice(t('Session archived', '已归档'));
+    notice('Session archived');
     return 'ok';
   }
   if (cmd === '/unarchive') {
@@ -181,32 +168,32 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     // 跨会话撤销走归档会话页（撤销钮同 markSessionArchived false 原语）
     const jid = s.attachedJournalId;
     if (jid === undefined) {
-      notice(t('Nothing to unarchive yet', '暂无可撤销归档的会话档'));
+      notice('Nothing to unarchive yet');
       return 'ok';
     }
     const dataDir = resolveDataDir(s.root);
     if (readSessionMeta(dataDir, jid).archived !== true) {
-      notice(t('Session is not archived', '该会话未在归档中'));
+      notice('Session is not archived');
       return 'ok';
     }
     markSessionArchived(dataDir, jid, false);
-    notice(t('Session unarchived', '已撤销归档'));
+    notice('Session unarchived');
     return 'ok';
   }
   if (cmd === '/delete') {
     const jid = s.attachedJournalId;
     if (jid === undefined) {
-      notice(t('Nothing to delete yet', '暂无可删除的会话档'));
+      notice('Nothing to delete yet');
       return 'ok';
     }
     const dataDir = resolveDataDir(s.root);
     if (readSessionMeta(dataDir, jid).archived !== true) {
-      notice(t('Archive first (/archive), then /delete', '先归档（/archive）再删除'));
+      notice('Archive first (/archive), then /delete');
       return 'ok';
     }
     // 序即正确性(终审 F2):notice 趁运行时在座广播(teardown 后 pump 只入快照不再外发)→ await
     // teardown(seal 落最后一笔)→ purgeSession——旧序 purge 在前,异步 teardown 的 seal 复活已清档
-    notice(t('Session deleted', '已删除'));
+    notice('Session deleted');
     await s.teardown();
     purgeSession(dataDir, jid);
     return 'ok';
@@ -217,15 +204,11 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     // 只作用于学习根(learnedSkillsDir(root)),project/user 用户资产不可达;TUI /skills-rm 同径
     const id = line.trim().split(/\s+/).slice(1).join(' ').trim();
     if (id.length === 0) {
-      notice(t('Usage: /skills-rm <id> — remove a learned skill from this workspace', '用法：/skills-rm <id>——删除本工作区的一个学习技能'));
+      notice('Usage: /skills-rm <id> — remove a learned skill from this workspace');
       return 'ok';
     }
     const r = removeLearnedSkill(s.root, id);
-    notice(
-      r === 'ok'
-        ? t(`Learned skill removed: ${id}`, `已删除学习技能：${id}`)
-        : t(`No learned skill '${id}' in this workspace`, `本工作区没有学习技能 '${id}'`),
-    );
+    notice(r === 'ok' ? `Learned skill removed: ${id}` : `No learned skill '${id}' in this workspace`);
     return 'ok';
   }
 
@@ -237,25 +220,21 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     const arg = line.trim().split(/\s+/).slice(1).join(' ').trim();
     if (arg === 'off') {
       if (!s.isPlanArmed()) {
-        notice(t('Not in plan mode', '当前不在计划模式'));
+        notice('Not in plan mode');
         return 'ok';
       }
       if (s.status() === 'running') await s.interrupt(); // 放弃在途(调研/挂卡阻塞)——回输入态
       if ((await s.setMode('acceptEdits')) !== 'ok') {
-        notice(t('Busy — leave plan mode when the session is idle', '会话忙——空闲后再退出计划模式'));
+        notice('Busy — leave plan mode when the session is idle');
         return 'ok';
       }
-      notice(t('Left plan mode', '已退出计划模式'));
+      notice('Left plan mode');
       return 'ok';
     }
     const wasArmed = s.isPlanArmed();
     await s.setMode('plan'); // 武装快路径:恒 ok
     if (arg.length === 0) {
-      notice(
-        wasArmed
-          ? t('Already in plan mode', '已处于计划模式')
-          : t('Plan mode on — submissions will be planned first', '已进入计划模式：提交将先规划再确认实施'),
-      );
+      notice(wasArmed ? 'Already in plan mode' : 'Plan mode on — submissions will be planned first');
       return 'ok';
     }
     if (s.hasPlanPending()) {
@@ -266,7 +245,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     }
     if (s.status() === 'running') {
       s.steer(arg);
-      notice(t('Queued — planning will start when the current task finishes', '已入队：当前任务收口后将先规划'));
+      notice('Queued — planning will start when the current task finishes');
       return 'ok';
     }
     const r = s.submit(arg);

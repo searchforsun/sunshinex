@@ -1,6 +1,7 @@
 import type { SessionEvent } from '../../src/types';
 import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
 import { localizeNotice } from './i18n-notice';
+import { getLanguage, t } from './i18n';
 
 /**
  * G3 chat 投影 → P4 内核视图层(session-kernel spec §6 P4):事件→转录的投影逻辑全数退役,
@@ -126,6 +127,7 @@ const mapCache = new WeakMap<KernelState, {
   kernel: readonly KernelEntry[];
   parallel: Array<ChatEntry | null>;
   mapped: ChatEntry[];
+  lang: string;
 }>();
 
 /** 种子代次计数:每次 seedChatFromSnapshot 递增,随 ChatState.seedGen 下发——派生 memo 与
@@ -137,15 +139,17 @@ let seedGenCounter = 0;
  *  run meta→view 字段(steps=runSteps 优先「本轮」口径)+open run 注入基线;delegation 已被内核滤除 */
 function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: number } | undefined): ChatEntry {
   {
-    const sig = `${open ? 'o' : '-'}|${e.kind === 'run' && base !== undefined ? 'b' : '-'}`;
+    // 语言入 sig(2026-11-04 裁定「固定提示随 GUI 语言渲染」):切语言后 sig 失配即重算 md 翻面
+    const sig = `${open ? 'o' : '-'}|${e.kind === 'run' && base !== undefined ? 'b' : '-'}|${getLanguage()}`;
     const hit = viewCache.get(e);
     if (hit !== undefined && hit.sig === sig) {
       return hit.view;
     }
     // P11 渲染中立条目:user md 内核写面恒裸文(v3),直透零归一(剥 `> ` 前缀分支退役——
     // 与 TUI restore 同向);error 补 `Error: ` 前缀(前缀归渲染面——与 TUI live/restore 同形)
-    // 命令回执本地化(2026-10-31 用户裁定):档面英文恒定(提示词契约),渲染面按模式映射中文
-    const md = e.kind === 'notice' ? localizeNotice(e.md) : e.kind === 'error' ? `Error: ${e.md}` : e.md;
+    // 固定头渲染面本地化(2026-11-04 裁定细化):notice 固定回执/告警头按模式表映射
+    // (i18n-notice——动态内容捕获组透传);error 固定告警头 `Error: ` 随 GUI 语言
+    const md = e.kind === 'notice' ? localizeNotice(e.md) : e.kind === 'error' ? `${t('Error', '错误')}: ${e.md}` : e.md;
     const view: ChatEntry = {
       key: `k${e.seq}`,
       kind: e.kind,
@@ -181,9 +185,12 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
 }
 
 function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
+  // 语言入缓存键域(2026-11-04 裁定「固定提示随 GUI 语言渲染」):切语言后 ①② 级复用失效全量
+  // 重算翻面——未变位直取上次产物仅在语言不变时成立(否则旧语言视图跨切换复活)
+  const lang = getLanguage();
   const hit = mapCache.get(k);
-  if (hit !== undefined && hit.runBases === runBases) return hit.mapped; // ①纯统计帧:零重算
-  const prev = hit;
+  if (hit !== undefined && hit.runBases === runBases && hit.lang === lang) return hit.mapped; // ①纯统计帧:零重算
+  const prev = hit !== undefined && hit.lang === lang ? hit : undefined;
   const out: ChatEntry[] = [];
   const parallel: Array<ChatEntry | null> = new Array(k.entries.length).fill(null);
   for (let i = 0; i < k.entries.length; i += 1) {
@@ -205,7 +212,7 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
     parallel[i] = view;
     out.push(view);
   }
-  mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped: out });
+  mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped: out, lang });
   return out;
 }
 

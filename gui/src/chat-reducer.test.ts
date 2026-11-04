@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { SessionEvent } from '../../src/types';
 import { applyChatEvent, appendUserMessage, initialChatState, seedChatFromSnapshot, prependSeed } from './chat-reducer';
+import { setLanguage } from './i18n';
+
+/** D37 家族先例(App.test):产品面 t() 化后钉 en 防跨文件/前序用例语言泄漏——固定头语言面用例显式翻语言 */
+beforeEach(() => setLanguage('en'));
 
 /**
  * G3 chat reducer 纯测：流式 token 拼接 / done 收段（重叠覆盖+不重叠补入）/ 工具 callId 配对
@@ -689,5 +693,22 @@ describe('prependSeed(2026-10-26 三期历史链)', () => {
     expect(out.structureVersion).toBeGreaterThan(s.structureVersion);
     const empty = prependSeed(out, [], { oldestSeq: 8, hasMore: false });
     expect(empty).toBe(out);
+  });
+});
+
+describe('固定头随语言渲染(2026-11-04 裁定细化:error 告警头/notice 回执头随 GUI 语言)', () => {
+  it('zh 语言:error 前缀翻「错误」且 notice 固定回执走模式表映射', () => {
+    setLanguage('zh');
+    const s = fold([ev('model-start'), ev('error', 'boom'), ev('notice', 'Left plan mode')]);
+    expect(s.entries[1]).toMatchObject({ kind: 'error', md: '错误: boom' });
+    expect(s.entries[2]).toMatchObject({ kind: 'notice', md: '已退出计划模式' });
+  });
+
+  it('缓存语言键域:en 基线态切 zh 后续帧全量重算,旧语言视图不复活(回归钉)', () => {
+    const s1 = fold([ev('model-start'), ev('error', 'boom')]); // 顶层 beforeEach 钉 en
+    expect(s1.entries[1]).toMatchObject({ md: 'Error: boom' });
+    setLanguage('zh');
+    const s2 = applyChatEvent(s1, ev('token', 'x'));
+    expect(s2.entries[1]).toMatchObject({ md: '错误: boom' });
   });
 });
