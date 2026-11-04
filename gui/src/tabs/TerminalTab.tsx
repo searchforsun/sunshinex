@@ -195,6 +195,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             }, 100);
           });
           if (cancelled || !dead || sawFrame || exited) return;
+          setSocketError(null); // 回退新开=旧档报错已兑现(「pty not found」),新会话不应再背旧错条
           observer?.disconnect();
           socket?.dispose();
           term?.dispose();
