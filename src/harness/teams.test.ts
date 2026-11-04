@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { formatTeamsIndex, loadTeams, resolveTeam } from './teams';
+import { formatAgentCard, formatTeamCard, formatTeamsIndex, loadTeams, resolveTeam } from './teams';
 
 function fixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-'));
@@ -46,4 +46,35 @@ test('resolveTeam 三态', () => {
   const missing = resolveTeam(root, 'nope', path.join(root, 'uhome'));
   assert.equal(missing.ok, false);
   if (!missing.ok) assert.equal(missing.error.code, 'TEAM_NOT_FOUND');
+});
+
+test('formatTeamCard: 领队星标 + missing 注记 + 章程原文', () => {
+  const root = fixture();
+  // brief 原文 `.value as never as import('../types').TeamManifest` 在 strict 下不过 tsc（判别联合直取 .value 即 TS2339，
+  // 同 Task1 报告偏差③类）；assert.ok 收窄后 .value 本就携 TeamManifest 形，裸用即可
+  const resolved = resolveTeam(root, 'fullstack-delivery', path.join(root, 'uhome'));
+  assert.ok(resolved.ok);
+  const m = resolved.value;
+  const card = formatTeamCard(
+    m,
+    [
+      { id: 'planner', name: 'Planner', description: 'requirement breakdown' },
+      { id: 'developer', name: 'Dev', description: 'implementation' },
+      { id: 'tester', name: '', description: '', missing: true },
+    ],
+    '接力交付章程正文',
+  );
+  assert.ok(card.startsWith('[team] fullstack-delivery — 全栈交付小队'));
+  assert.ok(card.includes('- *developer — Dev: implementation')); // lead 星标
+  assert.ok(card.includes('- planner — Planner: requirement breakdown'));
+  assert.ok(card.includes('(not registered)'));
+  assert.ok(card.includes('create_agent_team + create_agent_teammate'));
+  assert.ok(card.includes('接力交付章程正文'));
+});
+
+test('formatAgentCard: 固定骨架 + spawn 指引', () => {
+  const card = formatAgentCard({ id: 'developer', name: 'Dev', description: 'implementation', framing: 'write code' });
+  assert.ok(card.startsWith('[agent] developer — Dev'));
+  assert.ok(card.includes('role:\nwrite code'));
+  assert.ok(card.includes('delegate via spawn (agent_id="developer"'));
 });

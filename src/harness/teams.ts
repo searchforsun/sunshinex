@@ -129,3 +129,36 @@ export function createTeamsFacade(root: string): TeamsFacade {
     resolve: (id) => resolveTeam(root, id),
   };
 }
+
+/** 成员行素材（调用方自 agents 清单现读组装；missing 成员显式注记） */
+export interface TeamMemberRow { id: string; name: string; description: string; missing?: boolean }
+
+/** 团队章程卡单点（team 工具观察原文，spec §3.3）：lead 星标、missing 注记、章程原文随卡 */
+export function formatTeamCard(m: TeamManifest, members: TeamMemberRow[], body: string): string {
+  const rows = m.members.map((id) => {
+    const row = members.find((r) => r.id === id);
+    if (row === undefined || row.missing) return `- ${id} (not registered)`;
+    const star = id === (m.lead ?? m.members[0]) ? '*' : '';
+    return `- ${star}${id} — ${row.name}: ${row.description}`;
+  });
+  return [
+    `[team] ${m.id} — ${m.name}`,
+    `description: ${m.description}`,
+    'members (lead marked *):',
+    ...rows,
+    'charter:',
+    body,
+    'usage: instantiate with create_agent_team + create_agent_teammate (agent_id as above), then create_agent_team_task per the charter.',
+  ].join('\n');
+}
+
+/** 智能体卡单点（agent 工具观察原文，spec §3.3）：角色框定原文随卡、硬指引 spawn 委派 */
+export function formatAgentCard(a: { id: string; name: string; description: string; framing: string }): string {
+  return [
+    `[agent] ${a.id} — ${a.name}`,
+    `description: ${a.description}`,
+    'role:',
+    a.framing,
+    `usage: delegate via spawn (agent_id="${a.id}", prompt=<the task>); do not absorb the role yourself.`,
+  ].join('\n');
+}

@@ -678,3 +678,30 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     },
   };
 }
+
+/** agents 宽容清单（spec 2026-11-04 §2.1 agents 清单数据源）：内置四角色恒在 + 两级目录逐条宽容扫描
+ *  （坏档跳过不抛，与 Registry fail-fast 有意不同——快照装配面尽力而为）；就近遮蔽项目胜、enabled:false 剔除 */
+export function listAgentDefs(root: string, globalDir?: string): Array<{ id: string; name: string; description: string; framing: string }> {
+  const out = new Map<string, { id: string; name: string; description: string; framing: string }>();
+  for (const role of Object.keys(ROLE_PRESETS) as AgentRole[]) {
+    const p = ROLE_PRESETS[role];
+    out.set(role, { id: role, name: p.label, description: p.framing, framing: p.framing });
+  }
+  const dirs = [agentsDir('global', root, globalDir), agentsDir('project', root, globalDir)];
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const file = path.join(dir, entry.name, 'agent.md');
+      if (!fs.existsSync(file)) continue;
+      try {
+        const meta = parseAgentFrontmatter(fs.readFileSync(file, 'utf8'));
+        if (!meta.enabled) continue;
+        out.set(entry.name, { id: entry.name, name: meta.name, description: meta.description, framing: meta.body });
+      } catch {
+        // 单条目坏档：跳过（快照装配面宽容语义）
+      }
+    }
+  }
+  return [...out.values()];
+}
