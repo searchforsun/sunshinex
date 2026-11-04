@@ -11,6 +11,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { listTeams, upsertTeam, removeTeam, setTeamEnabled } from './teams';
 import { agentsDir } from './agents';
+import { CatalogWriteError } from './io';
+import { parseTeamFrontmatter } from '../harness/teams';
 
 /** HOME 钉桩 + 夹具：<root>/uhome 充 userConfigDir（HOME=<root>/uhome → userTeamsDir()=
  *  <uhome>/.sunshinex/teams 与写面同物理目录）；<uhome>/agents 经 agentsDir 显式传参预建
@@ -81,5 +83,57 @@ test('remove 缺失抛 INVALID；setTeamEnabled 保序手术 + enabled 行 round
     setTeamEnabled(root, 'global', 'solo', false);
     const t = listTeams(root).entries.find((e) => e.id === 'solo')!;
     assert.equal(t.enabled, false);
+  });
+});
+
+// ---------- 写面自防御（Task 1）：id 词法 + version 单行校验 + round-trip 补比 version ----------
+// 对照 upsertAgent 写面纪律：坏输入 CatalogWriteError('INVALID') 拒写，校验先于任何落盘动作——
+// 盘上零目录（零部分写）。
+
+/** 写面 INVALID 断言器：CatalogWriteError 且 code==='INVALID'（镜像 agents.test.ts invalid 单点，防裸 Error 误绿） */
+function invalid(fn: () => void): void {
+  assert.throws(fn, (e: unknown) => e instanceof CatalogWriteError && e.code === 'INVALID');
+}
+
+test('upsert 自防御: id 词法拒写（../evil、a/b、空串 → INVALID；消息镜像 upsertAgent）+ 合法 fullstack-delivery 落盘', () => {
+  withFixture((root) => {
+    invalid(() => upsertTeam(root, 'global', '../evil', { name: 'x', members: ['planner'] }));
+    invalid(() => upsertTeam(root, 'global', 'a/b', { name: 'x', members: ['planner'] }));
+    invalid(() => upsertTeam(root, 'global', '', { name: 'x', members: ['planner'] }));
+    // 消息钉死：镜像 upsertAgent 入口错误风格（词法同款 AGENT_ID_RE，前缀 team id invalid；
+    // (must match ...) 尾注含 AGENT_ID_RE.source 原文锚点，与 agents 写面逐字同构）
+    assert.throws(
+      () => upsertTeam(root, 'global', '../evil', { name: 'x', members: ['planner'] }),
+      (e: unknown) => e instanceof CatalogWriteError && e.message === 'team id invalid: "../evil" (must match ^[A-Za-z0-9][A-Za-z0-9_-]*$)',
+    );
+    upsertTeam(root, 'global', 'fullstack-delivery', { name: '全栈交付', members: ['planner'] });
+    assert.equal(fs.existsSync(path.join(root, 'uhome', '.sunshinex', 'teams', 'fullstack-delivery', 'team.md')), true, '合法 id 正常落盘');
+  });
+});
+
+test('upsert 自防御: 多行 version 拒写 INVALID 且盘上零目录；非串 version 拒写', () => {
+  withFixture((root) => {
+    invalid(() => upsertTeam(root, 'global', 't1', { name: 'x', members: ['planner'], version: '2.0\n.0' }));
+    invalid(() => upsertTeam(root, 'global', 't1', { name: 'x', members: ['planner'], version: '2.0\r.0' }));
+    assert.equal(fs.existsSync(path.join(root, 'uhome', '.sunshinex', 'teams', 't1')), false, '拒写零部分写：目录不存在');
+    invalid(() => upsertTeam(root, 'global', 't1', { name: 'x', members: ['planner'], version: 2 as unknown as string }));
+    invalid(() => upsertTeam(root, 'global', 't1', { name: 'x', members: ['planner'], version: null as unknown as string }));
+    assert.equal(fs.existsSync(path.join(root, 'uhome', '.sunshinex', 'teams', 't1')), false);
+    // 消息钉死（brief 逐字）
+    assert.throws(
+      () => upsertTeam(root, 'global', 't1', { name: 'x', members: ['planner'], version: 'a\nb' }),
+      (e: unknown) => e instanceof CatalogWriteError && e.message === 'team version must be a single-line string',
+    );
+  });
+});
+
+test('upsert: version round-trip——显式 2.0.0 读回 2.0.0；省略缺省 0.1.0（parseTeamFrontmatter 回填闭环）', () => {
+  withFixture((root) => {
+    upsertTeam(root, 'global', 'v2', { name: 'v2队', members: ['planner'], version: '2.0.0' });
+    const v2 = parseTeamFrontmatter(fs.readFileSync(path.join(root, 'uhome', '.sunshinex', 'teams', 'v2', 'team.md'), 'utf8'));
+    assert.equal(v2.version, '2.0.0');
+    upsertTeam(root, 'global', 'v0', { name: 'v0队', members: ['planner'] });
+    const v0 = parseTeamFrontmatter(fs.readFileSync(path.join(root, 'uhome', '.sunshinex', 'teams', 'v0', 'team.md'), 'utf8'));
+    assert.equal(v0.version, '0.1.0');
   });
 });
