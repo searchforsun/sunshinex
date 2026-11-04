@@ -331,10 +331,14 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       return; // 页面导航中/执行环境异常:静默收场
     }
     if (picked === null || picked.html === '') return;
+    // 2026-11-04 用户裁定:整块包进 browser-element 围栏(会话渲染=代码卡特殊样式,不散行裸 html)
     const text = [
-      `[浏览器元素] 页签 #${wcId ?? '?'} · ${picked.title} · ${picked.url}`,
+      '```browser-element',
+      `页签 #${wcId ?? '?'}`,
+      `标题: ${picked.title}`,
+      `网址: ${picked.url}`,
       `定位: ${picked.path}`,
-      '```html',
+      '---',
       picked.html,
       '```',
     ].join('\n');
