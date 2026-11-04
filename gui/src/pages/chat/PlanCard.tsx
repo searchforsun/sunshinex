@@ -12,7 +12,7 @@ import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
  *  放弃语义归取消钮,不再兼义);实施按当前档——只读域(plan/read-only)双键=实施·工作区编辑(primary
  *  缺省档)+实施·完全访问(warn 黄警示,Unlock);可写域(acceptEdits/full-access)单键=实施(当前档,
  *  图标随档)——批准即维持本档,无落档切换(档位操作走 pill,不混入计划卡)。
- *  窄应用框响应式:仅实施类按钮带前置图标(取消/重新计划恒文字),容器查询 <480px 隐文字仅图标,再窄 flex-wrap 换行。
+ *  实施钮双域统一「{图标} 实施」(hover 显「在工作区编辑/完全访问下实施」),取消/重新计划纯文字;<480px 实施钮折纯图标,再窄换行。
  *  items 不再独立渲染 ol(Steps 节已随 doc 全文在滚动区内,双份同内容上下排即冗余;items 仍是执行
  *  权威——执行进度走会话 todo 面)。纯渲染+onDecide 回调,挂起生命周期(cards 状态/回执
  *  寻址)归 use-session-events(ApprovalCard 同款分工);回执经 connection.replyPlanApproval →
@@ -89,24 +89,26 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' 
       {/* 按钮排布(2026-11-04 用户裁定):取消 | 重新计划 | 实施——取消=放弃本轮(decision 不带 feedback);
           重新计划必须反馈框有内容(空=禁用,放弃走取消,空文本不再兼义);实施:可写域单键=维持当前档
           (plain 实施,图标随档);只读域双键=工作区编辑(primary)/完全访问(warn 黄警示)。
-          窄应用框:仅实施类按钮带前置图标(2026-11-04 用户裁定:只有工作区编辑和完全访问前面加图标),容器查询 <480px 折叠为纯图标(data-tip 保语义),再窄 flex-wrap 换行 */}
+          实施钮=「{图标} 实施」双域统一(2026-11-04 用户裁定:档名后缀撤下,hover 显落档说明),取消/重新计划纯文字;容器查询 <480px 隐文字纯图标,再窄 flex-wrap 换行 */}
       <div className="card-actions">
         <button type="button" onClick={() => onDecide({ approved: false })}>{t('Cancel', '取消')}</button>
         <button type="button" disabled={feedback.trim() === ''} onClick={sendRePlan}>{t('Re-plan', '重新计划')}</button>
         {writable ? (
-          <button type="button" className="primary" data-tip={mode === 'full-access' ? t('Implement in full access mode', '以完全访问档实施') : t('Implement in workspace edits mode', '以工作区编辑档实施')} onClick={() => onDecide({ approved: true, mode })}>
+          <button type="button" className="primary" data-tip={mode === 'full-access' ? t('Implement under full access', '在完全访问下实施') : t('Implement under workspace edits', '在工作区编辑下实施')} onClick={() => onDecide({ approved: true, mode })}>
             {mode === 'full-access' ? <Unlock size={14} strokeWidth={2} aria-hidden="true" /> : <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />}
             <span className="btn-label">{t('Implement', '实施')}</span>
           </button>
         ) : (
           <>
-            <button type="button" className="primary" data-tip={t('Implement in workspace edits mode', '以工作区编辑档实施')} onClick={() => onDecide({ approved: true, mode: 'acceptEdits' })}>
+            {/* 实施钮=「{图标} 实施」(2026-11-04 用户裁定):档名后缀撤下——落档说明收进 hover
+                (data-tip 全局 tooltip;可访问名=aria-label,与 hover 文案同源) */}
+            <button type="button" className="primary" aria-label={t('Implement under workspace edits', '在工作区编辑下实施')} data-tip={t('Implement under workspace edits', '在工作区编辑下实施')} onClick={() => onDecide({ approved: true, mode: 'acceptEdits' })}>
               <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
-              <span className="btn-label">{t('Implement (workspace edits)', '实施（工作区编辑）')}</span>
+              <span className="btn-label">{t('Implement', '实施')}</span>
             </button>
-            <button type="button" className="warn" data-tip={t('Implement in full access mode', '以完全访问档实施')} onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
+            <button type="button" className="warn" aria-label={t('Implement under full access', '在完全访问下实施')} data-tip={t('Implement under full access', '在完全访问下实施')} onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
               <Unlock size={14} strokeWidth={2} aria-hidden="true" />
-              <span className="btn-label">{t('Implement (full access)', '实施（完全访问）')}</span>
+              <span className="btn-label">{t('Implement', '实施')}</span>
             </button>
           </>
         )}

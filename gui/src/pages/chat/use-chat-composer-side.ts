@@ -21,7 +21,6 @@ export function useChatComposerSide(deps: {
 useEffect(() => {
   const onInsert = (ev: Event): void => {
     const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string }>).detail;
-    if (detail === undefined || typeof detail.text !== 'string' || detail.text === '') return;
     // 2026-11-04 元素/终端片段引用:token 落输入框(⟦…⟧ 高亮芯片),全量内容入账本发送期展开
     if (detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {
       refContents.current.set(detail.token, detail.content);
@@ -33,6 +32,7 @@ useEffect(() => {
       });
       return;
     }
+    if (detail === undefined || typeof detail.text !== 'string' || detail.text === '') return;
     // G14.211 短写 token(@文件名:L):全相对路径入账本,发送期 expandFileRefs 据此展开
     if (typeof detail.rel === 'string' && detail.rel !== '') {
       const base = detail.rel.split(/[\\/]/).pop() ?? detail.rel;

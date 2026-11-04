@@ -4,8 +4,9 @@ import { PlanCard } from './PlanCard';
 import type { PlanCardDecision } from './PlanCard';
 
 /** PlanCard 组件直测(2026-11-03 修订重排锚;2026-11-04 泛化+按钮排布锚):计划书 markdown 渲染;
- *  按钮排布=取消|重新计划|实施,集随当前档——只读域(缺省)实施双键=工作区编辑(缺省档)+完全访问
- *  (warn),可写域实施单键=plain 实施(回执=当前档)。重新计划必须反馈框有内容(空=禁用),取消=放弃
+ *  按钮排布=取消|重新计划|实施,集随当前档——实施钮双域统一「{图标} 实施」(可见文字 plain,
+ *  落档说明在 aria-label/hover):只读域双键=工作区编辑(缺省档)+完全访问(warn),可写域单键
+ *  (回执=当前档)。重新计划必须反馈框有内容(空=禁用),取消=放弃
  *  本轮(decision 不带 feedback,与框内文本无关);Enter 快捷重新计划(Shift+Enter 换行不提交)。
  *  判别力:决策体缺 mode 或反馈面/按钮域语义漂移即红。 */
 
@@ -17,9 +18,11 @@ describe('PlanCard(计划确认卡 2026-11-03 重排;2026-11-04 按钮排布 取
     // Steps 随 doc 全文在滚动区（md 有序列表渲染 2 行）;旧独立只读 <ol> 已退役——总 listitem 数=md 渲染数,无重复
     expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toEqual(['A', 'B']);
     expect(screen.getByText(/Cancel|取消/)).toBeTruthy(); // 取消钮在场(放弃本轮单义承载)
-    fireEvent.click(screen.getByText(/Implement \(workspace edits\)|实施（工作区编辑）/));
+    // 实施钮=「{图标} 实施」双域统一(2026-11-04):可见文字 plain 实施,落档说明在 aria-label/hover
+    expect(screen.getAllByText(/^Implement$|^实施$/)).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /Implement under workspace edits|在工作区编辑下实施/ }));
     expect(decisions[0]).toEqual({ approved: true, mode: 'acceptEdits' });
-    fireEvent.click(screen.getByText(/Implement \(full access\)|实施（完全访问）/));
+    fireEvent.click(screen.getByRole('button', { name: /Implement under full access|在完全访问下实施/ }));
     expect(decisions[1]).toEqual({ approved: true, mode: 'full-access' });
     expect(decisions).toHaveLength(2); // 取消/重新计划未被误触(四钮独立)
   });
