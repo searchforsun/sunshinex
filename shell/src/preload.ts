@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   openExternal: (url: string): Promise<{ ok: boolean }> => ipcRenderer.invoke('shell:open-external', url),
   /** 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」):主窗 detach 独立 DevTools 窗,
    *  检查器帧选择器可定位 WebTab iframe;已开再点=关闭(toggle) */
-  openDevtools: (): void => void ipcRenderer.send('web:open-devtools'),
+  openDevtools: (webContentsId?: number): void => void ipcRenderer.send('web:open-devtools', webContentsId),
   /** M2 融合:guest 弹窗 URL 由主进程转发(main setWindowOpenHandler → builtin:open-url),
    *  GUI 开新侧栏 web 页签(和浏览器一样;退订返回卸载用) */
   onOpenUrl: (cb: (url: string, target?: { seat?: string; key?: string; openerWebContentsId?: number }) => void): (() => void) => {

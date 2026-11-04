@@ -27,7 +27,7 @@ interface Window {
     /** Web 标签「在系统浏览器打开」——shell.openExternal，OS 默认浏览器承接 */
     openExternal?: (url: string) => Promise<{ ok: boolean }>;
     /** 内置浏览器调试（⋯菜单→打开调试工具，主窗 detach 独立 DevTools 窗，toggle 语义） */
-    openDevtools?: () => void;
+    openDevtools?: (webContentsId?: number) => void;
     /** M2 融合：guest 弹窗 URL 由主进程转发（main setWindowOpenHandler → builtin:open-url），
      *  GUI 开新侧栏 web 页签；退订返回卸载用 */
     /** target:会话连接开页(seat/key)或页内弹窗(openerWebContentsId)——决定开在哪个会话座位 */

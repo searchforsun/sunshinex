@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, webContents } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { clampSize, lockedDragBounds } from './lib/window-drag';
 import { appUrl, LOOPBACK } from './lib/app-url';
@@ -323,10 +323,13 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
 
-    // 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」):主窗 detach 独立 DevTools
-    // 窗——检查器内以帧选择器定位 WebTab iframe(同页全帧可检);已开再点=关闭(toggle 语义)
-    ipcMain.on('web:open-devtools', () => {
-      const wc = mainWindow !== undefined && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined;
+    // 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」;2026-11-04 用户裁定改宗:
+    // DevTools 只挂内置浏览器页签的 guest webContents——WebTab 迁 webview 后主窗 DevTools 只见
+    // top 文档,检不到页签);renderer 传 webview webContentsId 直挂其 detach DevTools;
+    // id 缺席(iframe 态/旧渲染)回退主窗。已开再点=关闭(toggle 语义)
+    ipcMain.on('web:open-devtools', (_event, wcId: unknown) => {
+      const guest = typeof wcId === 'number' ? webContents.fromId(wcId) : undefined;
+      const wc = guest !== undefined && !guest.isDestroyed() ? guest : mainWindow !== undefined && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined;
       if (wc === undefined) return;
       if (wc.isDevToolsOpened()) wc.closeDevTools();
       else wc.openDevTools({ mode: 'detach' });

@@ -46,6 +46,8 @@ import { normalizeWebUrl, webPageName } from './tab-meta';
  *  映射画布退役;壳侧 webviewTag:true + will-attach-webview 安全纪律) */
 interface WvElement extends HTMLElement {
   loadURL(url: string): void;
+  /** guest webContents id(2026-11-03 调试工具定位面:DevTools 直挂 webview 而非桌面端主窗) */
+  getWebContentsId?(): number;
   goBack(): void;
   goForward(): void;
   reload(): void;
@@ -437,7 +439,9 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
                     role="menuitem"
                     disabled={builtin ? wvUrl === '' : active === null}
                     onClick={() => {
-                      devtoolsBridge();
+                      // 2026-11-04 用户裁定:DevTools 只挂内置浏览器页签(webview 的 guest wc),
+                      // 不落桌面端主窗;id 缺席(iframe 态/旧壳)由壳侧回退主窗
+                      devtoolsBridge(wvRef.current?.getWebContentsId?.());
                       setMoreOpen(false);
                     }}
                   >
