@@ -306,8 +306,8 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* ---- G8e T6 遗留页面样式波(G2-G7 测试钩子类族补全:Chat/Board/Files/DirPicker/token-gate
    + 三残余(sx-pty/sx-tree/sx-raw-warnings)——青色令牌口径,类名/组件/断言零改,纯 CSS) ---- */
 
-/* 全局滚动条:webkit 细条 8px(thumb=--border,hover 提亮 --fg-1) *//* G14.2xx 拖宽期 iframe 指针事件让位:光标进入 iframe(如 web 标签整页内容)后 mousemove/mouseup 被帧文档吞掉,window 监听收不到 → 拖拽冻结;拖宽全程 pointer-events:none 令事件穿回父文档 */
-.sx-shell.sx-dragging iframe { pointer-events: none; }
+/* 全局滚动条:webkit 细条 8px(thumb=--border,hover 提亮 --fg-1) *//* G14.2xx 拖宽期 iframe 指针事件让位:光标进入 iframe(如 web 标签整页内容)后 mousemove/mouseup 被帧文档吞掉,window 监听收不到 → 拖拽冻结;拖宽全程 pointer-events:none 令事件穿回父文档。2026-11-04 补 webview:M1 融合后浏览器页签=Electron webview(独立 guest 进程),缩小侧栏右拖光标进入网页即冻结(实测「拖到网页上就拖不动了」),iframe 单 selector 漏盖 */
+.sx-shell.sx-dragging iframe, .sx-shell.sx-dragging webview { pointer-events: none; }
 html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动条整体去除(滚动都在面板内) */::-webkit-scrollbar { width: 5px; height: 5px; }::-webkit-scrollbar-track { background: transparent; }::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--fg) 30%, transparent); border-radius: 4px; border: 1px solid transparent; background-clip: padding-box; }::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }/* 2026-11-03 终端选区工具条包含块锚(.sx-pty 原无定位,absolute 落点以本盒为基准) */
 .sx-pty { position: relative; }
 /* 2026-11-03 用户裁定:纵向条上下内收 10px——22px 大圆弧的容器里 thumb 满行程会顶进圆角区(角部越界毛边),内收后行程贴直边段 */::-webkit-scrollbar-track:vertical { margin-block: 10px; }::selection { background: color-mix(in srgb, var(--fg) 28%, transparent); }
