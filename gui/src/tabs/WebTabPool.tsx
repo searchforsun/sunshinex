@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Connection } from '../connection';
 import { zoomScale } from '../ui-zoom';
@@ -21,8 +21,6 @@ export const DRAFT_PARTITION = 'sx-draft';
 
 /** 离屏位置(远离视口但保持真实尺寸,guest 照常布局/出帧) */
 const OFFSCREEN_X = -100_000;
-
-interface Rect { left: number; top: number; width: number; height: number }
 
 export function WebTabPool({
   conn,
@@ -65,25 +63,42 @@ export function WebTabPool({
     }
   }, [items, conn, draftSeat]);
 
-  const [rect, setRect] = useState<Rect>({ left: 0, top: 0, width: 800, height: 600 });
+  /** 池项元素表(直写寻址;回调 ref 挂卸维护) */
+  const itemEls = useRef(new Map<string, HTMLDivElement>());
+  const setItemRef = (uid: string) => (el: HTMLDivElement | null): void => {
+    if (el === null) itemEls.current.delete(uid);
+    else itemEls.current.set(uid, el);
+  };
+  /** 对位单帧:占位框 gBCR(视觉 px)→ 可见池项样式(本地 px=视觉/zoom,ui-zoom 跨空间契约;
+   *  zoom1.25 不除即整体右移 25% 左侧空白+宽度放大 25% 右侧越视口)。**直写 DOM 不经 React
+   *  状态**——状态一帧一渲染提交在拖栏这类连续布局变化下必然滞后(WebTab 全子树 reconcile
+   *  更重),实测左缘拖影、框溢出侧栏边界;直写与测量同帧落笔,paint 前即锚定占位框 */
+  const applyRect = (): void => {
+    const anchor = anchorRef.current;
+    const item = visibleUid === null ? undefined : itemEls.current.get(visibleUid);
+    if (anchor === null || item === undefined) return;
+    const r = anchor.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return;
+    const z = zoomScale();
+    const s = item.style;
+    s.left = `${r.left / z}px`;
+    s.top = `${r.top / z}px`;
+    s.width = `${r.width / z}px`;
+    s.height = `${r.height / z}px`;
+  };
+  // 可见项切换(挂载/换签)同步写位:layout effect 在 paint 前生效,无「首帧落旧位」闪面
+  useLayoutEffect(() => {
+    applyRect();
+  }, [visibleUid, anchorRef]);
+  // 逐帧跟随(拖栏/收展开/窗口缩放)
   useEffect(() => {
     if (visibleUid === null) return;
     let raf = 0;
     const tick = (): void => {
-      const el = anchorRef.current;
-      if (el !== null) {
-        const r = el.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) {
-          // gBCR=视觉 px,本池项 position:fixed 在 html zoom 子树内样式 px=本地值(视觉/zoom)——
-          // 不除即错位+超宽(ui-zoom 跨空间契约;zoom1.25 实测:池项整体右移 25%,右侧越视口)
-          const z = zoomScale();
-          const next: Rect = { left: r.left / z, top: r.top / z, width: r.width / z, height: r.height / z };
-          setRect((p) => (p.left === next.left && p.top === next.top && p.width === next.width && p.height === next.height ? p : next));
-        }
-      }
+      applyRect();
       raf = requestAnimationFrame(tick);
     };
-    tick();
+    raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [visibleUid, anchorRef]);
 
@@ -95,10 +110,14 @@ export function WebTabPool({
         return (
           <div
             key={it.uid}
+            ref={setItemRef(it.uid)}
             className="sx-webpool-item"
             data-seat={it.seat}
             data-uid={it.uid}
-            style={{ position: 'fixed', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface)', left: vis ? rect.left : OFFSCREEN_X, top: vis ? rect.top : 0, width: rect.width, height: rect.height }}
+            /* 动态定位值(left/top/width/height)不入 style prop——React 重渲染会按 prop 复位
+             * 内联样式,冲掉直写值造成回跳;prop 只持离屏位(不可见恒离屏),可见项四值全归
+             * applyRect 直写管 */
+            style={{ position: 'fixed', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface)', ...(vis ? {} : { left: OFFSCREEN_X, top: 0 }) }}
             {...(vis ? {} : { inert: '' as unknown as boolean, 'aria-hidden': true })}
           >
             {part !== undefined && (

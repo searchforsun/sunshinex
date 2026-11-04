@@ -84,4 +84,39 @@ describe('WebTabPool 对位 zoom 归一', () => {
     expect(item.style.left).toBe('322px');
     expect(item.style.width).toBe('978px');
   });
+
+  it('直写韧性:重渲染(style prop 不持动态四值)不复位直写定位', async () => {
+    anchor.getBoundingClientRect = () => rectMock();
+    const { container, rerender } = render(
+      <WebTabPool
+        conn={stubConn()}
+        items={ITEMS}
+        visibleUid="u1"
+        anchorRef={{ current: anchor }}
+        root="/r"
+        draftSeat="s1"
+        onMeta={() => {}}
+        onClose={() => {}}
+        onActivate={() => {}}
+      />,
+    );
+    await frame();
+    // 换新回调身份触发重渲染(流式会话每秒多次的形态):动态四值不在 prop,React 复位不了直写值
+    rerender(
+      <WebTabPool
+        conn={stubConn()}
+        items={ITEMS}
+        visibleUid="u1"
+        anchorRef={{ current: anchor }}
+        root="/r"
+        draftSeat="s1"
+        onMeta={() => {}}
+        onClose={() => {}}
+        onActivate={() => {}}
+      />,
+    );
+    const item = container.querySelector('.sx-webpool-item') as HTMLElement;
+    expect(item.style.left).toBe('322px');
+    expect(item.style.width).toBe('978px');
+  });
 });
