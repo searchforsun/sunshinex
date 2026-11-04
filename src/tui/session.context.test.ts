@@ -113,7 +113,7 @@ test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致�
     const parts = ctx.snapshotPartsView();
     assert.ok(parts.instructions.length > 0, '指令段非空（SUNSHINE.md 已写盘）');
     assert.deepEqual(
-      [...parts.instructions, ...parts.skills, ...parts.memory].map((i) => i.content),
+      [...parts.instructions, ...parts.skills, ...parts.agents, ...parts.teams, ...parts.memory].map((i) => i.content),
       ctx.snapshotView().map((i) => i.content),
       '分段展平与混合快照逐字节同源（分段只是观测切面，不改装配面）',
     );
@@ -122,6 +122,8 @@ test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致�
       stableSegment: ctrl.runtime.harness.stableSegment(),
       instructions: parts.instructions,
       skills: parts.skills,
+      agents: parts.agents,
+      teams: parts.teams,
       memory: parts.memory,
       compacted: ctx.compactedView(),
       chain: ctx.chainView(),

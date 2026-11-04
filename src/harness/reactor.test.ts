@@ -329,16 +329,17 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // budget {700,400}：threshold 300，摘要/重读预算各 200。标定基线三段演进（2026-10-30 重标定）：
+  // budget {874,400}：threshold 474，摘要/重读预算各 200。标定基线四段演进（2026-11-04 agents 清单段进快照再抬底数 +174）：
   //   ①恒在记忆引导条目 694 字符/0 CJK ≈174 tok（4991d8a 增 supersession 预授权行后的底数，M5 轮1 时代 122/487 已过期）；
-  //   ②M5 轮2（59931b5）起 foldableItems 剔除会话常量——引导条目不进摘要素材，摘要=纯 history 行；
-  //   ③bd8e349 轮边界增量入链后 chainFoldedCount 在新步已入链时非零 → 摘要尾带 Full trace 归档指针行（约 +25 tok）。
-  // 故 budget.total 由 600 抬到 700（600 时代 step3 est 恰好越 total 触发硬越限旁路、二次压缩破「records 收敛于 1」）：
-  // step1 est=174≤300 不过阈、不压缩；观察只入 history（不写记忆）：
-  // step2 est=174+191(tool-call 11+tool-result f×700 180)=365>300 滞回门（2-(-2)≥2）触发；
-  //   chunks=[tool-call,tool-result] 191≤摘要预算 200 原样入摘要，收敛后 est=174+234(摘要含 checksum 头+trace 行)+180(重读 f)≈588≤700 即止（records 1）；
-  // step3 est≈588+17(step2 新 history 行)=605≤700 无硬越限，滞回门（3-2=1<2）挡住，records 保持 1
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 700, reserve: 400 } });
+  //   ②agents 清单段（内置四角色恒在，2026-11-04 §2.1）≈174 tok —— 装配底数=348；
+  //   ③M5 轮2（59931b5）起 foldableItems 剔除会话常量——引导/agents 条目不进摘要素材，摘要=纯 history 行；
+  //   ④bd8e349 轮边界增量入链后 chainFoldedCount 在新步已入链时非零 → 摘要尾带 Full trace 归档指针行（约 +25 tok）。
+  // 故 budget.total 随恒在段底数整体 +174（700→874；threshold 同抬 474，摘要/重读预算不动——压缩块选择逐位不变）：
+  // step1 est=348≤474 不过阈、不压缩；观察只入 history（不写记忆）：
+  // step2 est=348+191(tool-call 11+tool-result f×700 180)=539>474 滞回门（2-(-2)≥2）触发；
+  //   chunks=[tool-call,tool-result] 191≤摘要预算 200 原样入摘要，收敛后 est=348+234(摘要含 checksum 头+trace 行)+180(重读 f)=762≤874 即止（records 1）；
+  // step3 est=762+17(step2 新 history 行)=779≤874 无硬越限，滞回门（3-2=1<2）挡住，records 保持 1
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 874, reserve: 400 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.ok(prompts[1].includes('[Compacted summary'), '触发轮当轮以收敛后上下文组装');
@@ -352,7 +353,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
-  // CJK 1 字符=1 token 便于精算。budget {700,500}：threshold 200，摘要/重读预算各 250
+  // CJK 1 字符=1 token 便于精算。budget {874,500}：threshold 374，摘要/重读预算各 250
   fs.writeFileSync(path.join(tmp, 'f.txt'), '压'.repeat(80));
   fs.writeFileSync(path.join(tmp, 'g.txt'), '压'.repeat(700));
   const prompts: string[] = [];
@@ -368,14 +369,15 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // 观察只入 history 后按新语义标定（「装配底数」由 3 tok 抬到 122 tok：M5 恒在记忆引导条目，+119；正文 487 字符 / 0 CJK ≈122 tok）：
-  //   阈值 200 = 122 底数 + 78 余量；摘要/重读预算各 250（须 ≥ step2 原始块 205，否则摘要条目被截断、两轮 chunks 同构退化为 replay）
-  // step1 est=122≤200 不过阈（不压）；step2 est=122+83(hist f×80)=205>200 滞回门（2-(-2)≥2）触发（records 1）：
-  //   chunks=[引导条目 122,hist1 83]=205≤摘要预算 250 原样入摘要，收敛后 est=122+223(摘要)+84(重读 f)=429≤700 即止；
-  // step3 读 g 后 est=429+703>700 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：可丢块（上一轮摘要条目、hist2）按序丢尽，
-  //   chunks 变为 [引导条目, 重读 f]（与 step2 的 [引导条目,hist1] 不同 → 非 replay），records 2；
-  // 收敛环有界：可丢块丢尽后 est=122+224(摘要)=346≤700 环止（rounds=1，fail-bounded）
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 700, reserve: 500 } });
+  // 观察只入 history 后按新语义标定（「装配底数」两轮抬升：M5 恒在记忆引导条目 +119 至 122 tok；2026-11-04 agents 清单段
+  //   （内置四角色恒在）再 +174 —— 底数 ≈296 tok，正文 487 字符 / 0 CJK 计入其中）：
+  //   budget.total 随恒在段底数整体 +174（700→874；threshold 同抬 374，摘要/重读预算各 250 不动——压缩块选择逐位不变，
+  //   仍须 ≥ step2 原始块 205，否则摘要条目被截断、两轮 chunks 同构退化为 replay）
+  // step1 est=296≤374 不过阈（不压）；step2 est=296+83(hist f×80)=379>374 滞回门（2-(-2)≥2）触发（records 1）：
+  //   收敛后 est≤874 即止；step3 读 g 后 est>874 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：可丢块（上一轮摘要条目、hist2）
+  //   按序丢尽，chunks 与 step2 不同构（→ 非 replay），records 2；
+  // 收敛环有界：可丢块丢尽后 est≤874 环止（rounds=1，fail-bounded）
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 874, reserve: 500 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(

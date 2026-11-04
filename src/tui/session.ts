@@ -1244,6 +1244,8 @@ export class SessionController {
         stableSegment: this.runtime.harness.stableSegment(),
         instructions: parts.instructions,
         skills: parts.skills,
+        agents: parts.agents,
+        teams: parts.teams,
         memory: parts.memory,
         compacted: ctx.compactedView(),
         chain: ctx.chainView(),

@@ -263,6 +263,8 @@ export function handleSessionContext(io: SessionHandlerIo, res: http.ServerRespo
     stableSegment: session.runtime.harness.stableSegment(),
     instructions: parts.instructions,
     skills: parts.skills,
+    agents: parts.agents,
+    teams: parts.teams,
     memory: parts.memory,
     compacted: ctx.compactedView(),
     chain: ctx.chainView(),

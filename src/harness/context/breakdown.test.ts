@@ -12,6 +12,8 @@ function base(over: Partial<Parameters<typeof contextBreakdown>[0]> = {}) {
     stableSegment: 'stable segment line',
     instructions: [item('SUNSHINE line A'), item('SUNSHINE line B')],
     skills: [item('Available skills: a, b')],
+    agents: [],
+    teams: [],
     memory: [item('Persistent memory: lead')],
     compacted: [item('[Compacted summary checksum=ab]\nsummary body')],
     chain: [
@@ -43,7 +45,7 @@ test('breakdown：分段 token 与各面独立估算一致，Σ parts = total，
 
 test('breakdown：分段固定装配序；skill 块缺席不占段、在场置尾', () => {
   const absent = contextBreakdown(base());
-  assert.deepEqual(absent.parts.map((p) => p.id), ['stable', 'instructions', 'skills', 'memory', 'compacted', 'chain'], '无技能块时六段固定序');
+  assert.deepEqual(absent.parts.map((p) => p.id), ['stable', 'instructions', 'skills', 'agents', 'teams', 'memory', 'compacted', 'chain'], '无技能块时八段固定序（agents/teams 位列 skills 之后、memory 之前，spec 2026-11-04 §2.1 段位定型）');
   const present = contextBreakdown(base({ skill: 'skill body text' }));
   assert.equal(present.parts[present.parts.length - 1].id, 'skill', '技能块置尾');
   assert.equal(present.parts[present.parts.length - 1].tokens, estimateTokens('skill body text'), '技能块独立估算');
@@ -60,10 +62,10 @@ test('breakdown：链动作细分覆盖全链（未登记动作归 note），tok
   }
 });
 
-test('breakdown：全空上下文六段保留（空态也是事实），free 随窗口；超限 free 钳 0 不为负', () => {
-  const empty = contextBreakdown({ ...base(), instructions: [], skills: [], memory: [], compacted: [], chain: [], chainFrom: 0 });
-  assert.deepEqual(empty.parts.map((p) => p.id), ['stable', 'instructions', 'skills', 'memory', 'compacted', 'chain'], '空段保留恒定六段');
-  assert.deepEqual(empty.parts.slice(1).map((p) => p.tokens), [0, 0, 0, 0, 0], '空段 tokens 全零');
+test('breakdown：全空上下文八段保留（空态也是事实），free 随窗口；超限 free 钳 0 不为负', () => {
+  const empty = contextBreakdown({ ...base(), instructions: [], skills: [], agents: [], teams: [], memory: [], compacted: [], chain: [], chainFrom: 0 });
+  assert.deepEqual(empty.parts.map((p) => p.id), ['stable', 'instructions', 'skills', 'agents', 'teams', 'memory', 'compacted', 'chain'], '空段保留恒定八段');
+  assert.deepEqual(empty.parts.slice(1).map((p) => p.tokens), [0, 0, 0, 0, 0, 0, 0], '空段 tokens 全零');
   assert.equal(empty.total, estimateTokens('stable segment line'), '总量=稳定段');
   const over = contextBreakdown({ ...base(), window: 1 });
   assert.equal(over.free, 0, '超限钳 0');

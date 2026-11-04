@@ -138,6 +138,8 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       stableSegment: s.runtime.harness.stableSegment(),
       instructions: parts.instructions,
       skills: parts.skills,
+      agents: parts.agents,
+      teams: parts.teams,
       memory: parts.memory,
       compacted: ctx.compactedView(),
       chain: ctx.chainView(),

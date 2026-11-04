@@ -88,7 +88,10 @@ test('P3/T4-2 数据流：developer 任务文本应含 planner 上游产出', as
   const { deps, recording } = makeDeps(tmp, new ScriptedAdapter(SCRIPT));
   const tpl = softwarePipelineTemplate(deps, PIPELINE_OPTS(tmp));
   await tpl.engine.run('实现一个 add 函数并保证测试正确');
-  const devPrompt = recording.prompts.find((p) => p.includes('developer'));
+  // 锚定 developer 子面角色行（fork roleLine 'Your role: Developer (developer)'，resolveSpawnSpec 单点）而非
+  // 'developer' 字样——2026-11-04 起 agents 清单段进冻结快照，planner 等一切提示词同样含 '- Developer (id: developer)'
+  // 清单行，泛匹配 'developer' 会误锚 planner 的调用
+  const devPrompt = recording.prompts.find((p) => p.includes('Your role: Developer (developer)'));
   assert.ok(devPrompt, '应存在 developer 的模型调用');
   assert.ok(devPrompt.includes('方案：实现 add 函数'), 'planner 产出应作为上游上下文进入 developer 任务文本');
 });
