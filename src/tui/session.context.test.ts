@@ -86,7 +86,7 @@ test('resolveContextWindow（J6 双源收敛单点）：modelWindow 优先 > env
   }
 });
 
-test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带参形态统一无法识别', async () => {
+test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带参形态命令词命中不再报无法识别', async () => {
   process.env.SUNSHINEX_CONTEXT_WINDOW = '5000';
   const tmp = tmpdir('sunshinex-ctx-window-');
   try {
@@ -96,7 +96,7 @@ test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带�
     assert.ok(text.includes('/ 5,000 tokens'), '窗口分母随配置');
     await ctrl.submit('/context extra');
     const warn = ctrl.getState().messages.find((m) => m.role === 'system' && m.text.includes('Unrecognized command'));
-    assert.equal(warn?.level, 'warn', '带参形态统一无法识别（裸形式守卫）');
+    assert.equal(warn, undefined, '未命中 warn 分支退役（spec 2026-11-04 §4.1）：命令词命中 /context 分支，尾参忽略');
   } finally {
     delete process.env.SUNSHINEX_CONTEXT_WINDOW;
     fs.rmSync(tmp, { recursive: true, force: true });

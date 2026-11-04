@@ -115,7 +115,7 @@ test('/resume：>8 条 filterable 全量卡——一次问询直达恢复（规�
   }
 });
 
-test('/resume：带参形态统一无法识别（裸形式守卫，规格 D2）', async () => {
+test('/resume：带参形态命令词命中分支（尾参忽略，不再报无法识别——spec 2026-11-04 §4.1）', async () => {
   const tmp = tmpRoot();
   const prev = process.env.SUNSHINEX_DATA_DIR;
   pinDataDir(tmp);
@@ -124,7 +124,8 @@ test('/resume：带参形态统一无法识别（裸形式守卫，规格 D2）'
     await ctrl.submit('/resume 1');
     await ctrl.submit('/resume some-id');
     const texts = messageTexts(ctrl);
-    assert.ok(texts.includes('Unrecognized command. Use /help to see available commands'), '带参枚举形态统一文案');
+    assert.ok(!texts.includes('Unrecognized command'), '未命中 warn 分支退役：带参不再报无法识别');
+    assert.ok(/No saved sessions yet|暂无已保存会话/.test(texts), '命令词命中 /resume 分支照走（空目录回执，尾参忽略）');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;
     fs.rmSync(tmp, { recursive: true, force: true });

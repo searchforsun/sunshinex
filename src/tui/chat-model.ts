@@ -293,13 +293,11 @@ export function slashHelp(): string[] {
     t('  /memory-on     enable memory for this session', '  /memory-on     本会话开启持久记忆'),
     t('  /memory-off    disable memory for this session', '  /memory-off    本会话关闭持久记忆'),
     t('  /tasks         list background tasks (id/kind/status/label, output path)', '  /tasks         列出后台任务（id/类型/状态/标签，输出路径）'),
-    t('  /skill         load a skill into context (selector, type to filter)', '  /skill         加载技能进上下文（选择卡，输入筛选）'),
+    t('  /skill         insert a skill reference (selector, type to filter)', '  /skill         插入技能引用（选择卡，输入筛选）'),
     t('  /status        session & ledger summary', '  /status        会话与账本摘要'),
     t('  /terminal-setup configure terminal keys (Shift+Enter newline, Windows Terminal)', '  /terminal-setup 配置终端键位（Shift+Enter 换行，Windows Terminal）'),
     t('  /help          show this list', '  /help          本清单'),
   ];
-  // 技能命令一行引导：完整列表经 /skill 选择卡筛选（type-to-filter），/<技能id> 直调形态同源分发
-  lines.push(t('  Skills: invoke /<skill-id> directly; browse with /skill', '  技能命令：直接 /<技能id> 调用；完整列表经 /skill 筛选'));
   return lines;
 }
 
