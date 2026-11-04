@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
+import { Globe, SquareTerminal } from 'lucide-react';
 import { isAbsPath } from '../../ui-util';
 
 /** @ 引用域（D32 批C-5 拆分自 Chat.tsx）：@ 文件模糊匹配与面板渲染件、mention token 解析/
@@ -104,12 +105,13 @@ export function FilePalette({
  *  返回分段序列(plain 原样、file/cmd/skill 着色)——输入框高亮层与用户气泡共用一套口径 */
 export interface MentionToken {
   text: string;
-  kind: 'plain' | 'file' | 'cmd' | 'skill';
+  kind: 'plain' | 'file' | 'cmd' | 'skill' | 'ref';
 }
 
 export function splitMentionTokens(text: string): MentionToken[] {
   // G14.121 @ 分支扩 `:\\`:绝对路径 token(D:/ws/a.ts、D:\ws\a.ts)整体着色
-  const re = /@[\w./:\\-]+|(^|\s)(\/[a-z][\w-]*)/gi;
+  // 2026-11-04 ref 分支:⟦…⟧ 元素/终端片段引用(选取面插入,发送期 expandRefContents 展开全量)
+  const re = /@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-z][\w-]*)/gi;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
@@ -117,6 +119,7 @@ export function splitMentionTokens(text: string): MentionToken[] {
     const matched = m[0];
     if (idx > last) out.push({ text: text.slice(last, idx), kind: 'plain' });
     if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
+    else if (matched.startsWith('⟦')) out.push({ text: matched, kind: 'ref' });
     else {
       const lead = m[1] ?? '';
       if (lead !== '') out.push({ text: lead, kind: 'plain' });
@@ -139,6 +142,7 @@ export function renderUserMd(md: string): string {
       .map((t) => {
         if (t.kind === 'plain') return t.text;
         if (t.kind === 'file') return '`' + (t.text.startsWith('@') ? t.text.slice(1) : t.text) + '`';
+        if (t.kind === 'ref') return '`' + t.text.slice(1, -1) + '`';
         return '`' + t.text + '`';
       })
       .join('');
@@ -251,6 +255,18 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
         </span>
       );
     }
+    if (tk.kind === 'ref') {
+      const inner = tk.text.slice(1, -1);
+      const isTerm = inner.startsWith('终端');
+      return (
+        <span key={i} className="hn hn-ref">
+          <span className="hn-ref-ico" aria-hidden="true">
+            {isTerm ? <SquareTerminal size={11} strokeWidth={1.75} /> : <Globe size={11} strokeWidth={1.75} />}
+          </span>
+          {inner}
+        </span>
+      );
+    }
     return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
   });
 
@@ -291,4 +307,10 @@ export function expandFileRefs(
     const hrefCore = isAbsPath(relBody) ? relBody : `./${relBody}`;
     return `[${head}](${hrefCore}${dirHref ? '/' : ''}${lines !== '' ? `#${lines}` : ''})`;
   });
+}
+
+/** 2026-11-04 元素/终端片段引用发送期展开(用户裁定「实际内容 agent 知道即可,composer 只显简标识」):
+ *  ⟦…⟧ token → 账本(refContents)中的全量内容(围栏包裹);无账本命中原样保留 */
+export function expandRefContents(text: string, contents: ReadonlyMap<string, string>): string {
+  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, inner: string) => contents.get(`⟦${inner}⟧`) ?? raw);
 }

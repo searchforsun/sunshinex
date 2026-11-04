@@ -8,18 +8,31 @@ import { splitMentionTokens, tokenSpanAt } from './mention';
  *  发送期口径)。@ 面板键链留宿主(第二十轮裁定不动)。 */
 export function useChatComposerSide(deps: {
   readonly pickRelRef: MutableRefObject<Map<string, string>>;
+  /** 2026-11-04 元素/终端片段引用账本(token 全文⟦…⟧→全量内容;发送期 expandRefContents 展开) */
+  readonly refContents: MutableRefObject<Map<string, string>>;
   readonly inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   readonly setInput: Dispatch<SetStateAction<string>>;
   readonly input: string;
   readonly resolveFileRef: (name: string) => string | undefined;
   readonly onOpenFile?: (p: string) => void;
 }): { onInputClick: () => void } {
-  const { pickRelRef, inputRef, setInput, input, resolveFileRef, onOpenFile } = deps;
+  const { pickRelRef, refContents, inputRef, setInput, input, resolveFileRef, onOpenFile } = deps;
 /** G14.139 文件标签选区「添加到会话」:接收插入事件(文件图标+文件名(L30-L35) token 落输入框) */
 useEffect(() => {
   const onInsert = (ev: Event): void => {
-    const detail = (ev as CustomEvent<{ text?: string; rel?: string }>).detail;
+    const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string }>).detail;
     if (detail === undefined || typeof detail.text !== 'string' || detail.text === '') return;
+    // 2026-11-04 元素/终端片段引用:token 落输入框(⟦…⟧ 高亮芯片),全量内容入账本发送期展开
+    if (detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {
+      refContents.current.set(detail.token, detail.content);
+      setInput((prev) => (prev.trim() === '' ? `${detail.token} ` : `${prev.replace(/\s+$/, '')} ${detail.token} `));
+      inputRef.current?.focus();
+      requestAnimationFrame(() => {
+        const ta = inputRef.current;
+        if (ta !== null) ta.setSelectionRange(ta.value.length, ta.value.length);
+      });
+      return;
+    }
     // G14.211 短写 token(@文件名:L):全相对路径入账本,发送期 expandFileRefs 据此展开
     if (typeof detail.rel === 'string' && detail.rel !== '') {
       const base = detail.rel.split(/[\\/]/).pop() ?? detail.rel;

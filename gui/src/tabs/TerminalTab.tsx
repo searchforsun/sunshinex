@@ -248,7 +248,9 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           <button
             type="button"
             onClick={() => {
-              window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text: selBar.text } }));
+              // 2026-11-04 用户裁定:终端片段也走简标识芯片(⟦终端片段⟧),原文入账本发送期展开
+              const token = '⟦终端片段⟧';
+              window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content: selBar.text } }));
               setSelBar(null);
             }}
           >

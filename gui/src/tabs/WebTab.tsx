@@ -332,7 +332,9 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     }
     if (picked === null || picked.html === '') return;
     // 2026-11-04 用户裁定:整块包进 browser-element 围栏(会话渲染=代码卡特殊样式,不散行裸 html)
-    const text = [
+    // 全量内容(围栏包裹,agent 可读);主对话入口=⟦token⟧ 简标识落输入框(内容入账本发送期展开,
+    // 用户裁定「composer 只显简标识」);辅助会话=整段直发(无 token 管线)
+    const content = [
       '```browser-element',
       `页签 #${wcId ?? '?'}`,
       `标题: ${picked.title}`,
@@ -342,8 +344,9 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       picked.html,
       '```',
     ].join('\n');
-    if (to === 'side') startSideChat?.(text);
-    else window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text } }));
+    const token = `⟦网页#${(wcId ?? 0).toString(36)} · ${picked.path}⟧`;
+    if (to === 'side') startSideChat?.(content);
+    else window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content } }));
   };
 
   const navigate = (): void => {

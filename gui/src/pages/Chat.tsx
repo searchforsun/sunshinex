@@ -42,7 +42,7 @@ import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
-import { expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, slashTokenAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, renderMentionSpans, slashTokenAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, slashTokenAt, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
@@ -158,6 +158,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, []);
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析第一优先) */
   const pickRelRef = useRef(new Map<string, string>());
+  /** 元素/终端片段引用账本(2026-11-04):⟦token⟧→全量内容,发送/排队期 expandRefContents 展开 */
+  const refContentsRef = useRef(new Map<string, string>());
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
@@ -180,7 +182,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     sessionId,
     root,
     resolveFileRef,
-    expandFileRefs,
+    // 排队(steer)路径同口径:ref token 先展开全量再走 @ 文件展开
+    (text, r, resolve) => expandRefContents(expandFileRefs(text, r, resolve), refContentsRef.current),
     setChat,
   );
   const { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds, setSkillCmds } = useCommandPalette(conn, sessionId);
@@ -460,6 +463,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     sessMode,
     root,
     resolveFileRef,
+    refContents: refContentsRef.current,
     cmdData,
     setChat,
     onSideChat,
@@ -491,6 +495,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [jumpToBottom, sendRaw]);
   const { onInputClick } = useChatComposerSide({
     pickRelRef,
+    refContents: refContentsRef,
     inputRef,
     setInput,
     input,

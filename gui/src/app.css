@@ -1999,6 +1999,9 @@ button.agent-msg-from:hover { text-decoration: underline; }
   font: 11.5px var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .files-selbar button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* 2026-11-04 元素/终端片段引用芯片(⟦…⟧ token):accent 浅底圆角小件,图标+定位说明 */
+.hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: var(--radius-xs); padding: 1px 6px; font-size: 12px; }
+.hn-ref .hn-ref-ico { display: inline-flex; align-items: center; flex: none; }
 
 /* G14.158 web 缩放容器:缩放时允许横向滚动(内容超出即出横滚条);fit=等比撑满 */
 .sx-web-frame-wrap { flex: 1; min-height: 0; overflow: auto; display: flex; scrollbar-gutter: stable; /* G14.2xx 滚动条占位恒定:设备宽高默认取自面板,缩放后差亚像素即滚动条出现/消失互锁,RO 重算再抖(振荡回环根除) */ }
