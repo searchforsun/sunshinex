@@ -18,4 +18,8 @@ describe('$ / # 软引用 token（spec 2026-11-04 §3.1）', () => {
     const kinds = splitMentionTokens('#t1 加 $a1').filter((t) => t.kind === 'team' || t.kind === 'agent').map((t) => t.kind);
     expect(kinds).toEqual(['team', 'agent']);
   });
+  it('既有 / 词法不回归(正则旗改动 i→显式 a-zA-Z 的等价钉)', () => {
+    expect(splitMentionTokens('/cmd x').find((t) => t.text === '/cmd')).toEqual({ text: '/cmd', kind: 'cmd' });
+    expect(splitMentionTokens('a /sk b').find((t) => t.text === '/sk')).toEqual({ text: '/sk', kind: 'skill' });
+  });
 });
