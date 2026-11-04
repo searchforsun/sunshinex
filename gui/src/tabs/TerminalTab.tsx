@@ -146,8 +146,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
                 term?.write(`\r\n[${t(`Process exited with code ${f.code}`, `进程已退出 code ${f.code}`)}]`);
                 setExitCode(f.code);
               } else if (f.t === 'error') {
-                if (reused) dead = true; // 盘档 ptyId 已死:回退信号(reused 直连面才有回退语义)
-                setSocketError(f.message);
+                // 2026-11-04 用户裁定「重启后连报错条都不闪」:盘档直连且零数据帧=死档,静默回退
+                // (error 条不亮);有回放=会话曾活,错误属运行期,照常显示
+                if (reused && !sawFrame) dead = true;
+                else setSocketError(f.message);
               }
             },
             // 状态面(G8e-T2 断连提示):server 侧关(error 后 close(1008)/掉线)且非卸载 dispose
