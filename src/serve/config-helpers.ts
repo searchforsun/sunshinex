@@ -15,6 +15,9 @@ import { memoryDir } from '../harness/memory/store';
 // type-only 引用（编译期擦除，运行时零依赖；AGENT_ID_RE 亦已上收 catalog/agents 单点——Task 15
 // 依 T6 评审移交消除 catalog→serve 运行时依赖倒置，消费方改从 catalog import）
 import type { AgentFrontmatterInput } from '../catalog/agents';
+// agents-teams P1 Task 2：members 词法复用 AGENT_ID_RE（成员按 id 引用 agents 注册表——单点不散抄；
+// serve→catalog 运行时依赖与 config-handlers 同向，合法）
+import { AGENT_ID_RE } from '../catalog/agents';
 
 /** /settings 配置面模块级助手（D31 分域拆分自 daemon.ts，G8c T2-T6 原域）：只读视图的文件级拆解、
  *  effective 判定、mcp 两级遮蔽视图行与单台真探测、agent.md 生成与输入校验、记忆统计——叶子模块，
@@ -247,6 +250,64 @@ export function parseAgentFrontmatterInput(raw: unknown): AgentFrontmatterInput 
     ...(f.memory === true ? { memory: true } : {}),
     ...(isolation !== undefined ? { isolation } : {}),
     ...(executor !== undefined ? { executor } : {}),
+  };
+}
+
+/** teams upsert frontmatter 输入校验+归一（agents-teams P1 Task 2，parseAgentFrontmatterInput 同款
+ *  throw→400 形态）：name 必填非空白单行（先行 trim 归一——parseFrontmatterKV 值域 trim，输入面先
+ *  归一防写后回读的回环比对误报）；description/version/lead 可选单行字符串（frontmatter 是单行 KV
+ *  词法，含换行的值会注入伪键，多行内容属 body 面）；enabled 可选布尔；members **必填**非空数组、
+ *  逐项 string 且匹配 agent-id 词法（AGENT_ID_RE 单点——成员按 id 引用 agents 注册表；逐项 trim 去
+ *  空白、大小写留原样——归一/去重/lead∈members 交 catalog upsertTeam 层，本面只守词法形状）。
+ *  id 词法不在本面：PUT/body 入口 isValidTeamId 严格 kebab 守卫（AMENDMENT 2026-11-04——catalog
+ *  teamWriteTarget P0 起即 enforce kebab，入口同口径防坏 id 漏到 409） */
+export interface TeamFrontmatterInput {
+  name: string;
+  description?: string;
+  version?: string;
+  members: string[];
+  lead?: string;
+  enabled?: boolean;
+}
+
+export function parseTeamFrontmatterInput(raw: unknown): TeamFrontmatterInput {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error('frontmatter must be an object with required name and members');
+  }
+  const f = raw as Record<string, unknown>;
+  if (typeof f.name !== 'string' || f.name.trim().length === 0 || /\r|\n/.test(f.name)) {
+    throw new Error('frontmatter.name required (non-empty single-line string)');
+  }
+  const oneLine = (label: string, v: unknown): string | undefined => {
+    if (v === undefined) return undefined;
+    if (typeof v !== 'string') throw new Error(`${label} must be a string`);
+    if (/\r|\n/.test(v)) throw new Error(`${label} must be single-line (multi-line content belongs in body)`);
+    return v;
+  };
+  const description = oneLine('frontmatter.description', f.description);
+  const version = oneLine('frontmatter.version', f.version);
+  const lead = oneLine('frontmatter.lead', f.lead);
+  if (!Array.isArray(f.members) || f.members.length === 0) {
+    throw new Error('frontmatter.members required (non-empty array of agent ids)');
+  }
+  const members: string[] = [];
+  for (const m of f.members) {
+    const id = typeof m === 'string' ? m.trim() : '';
+    if (!AGENT_ID_RE.test(id)) {
+      throw new Error(`frontmatter.members items must match ${AGENT_ID_RE.source} (agent ids)`);
+    }
+    members.push(id);
+  }
+  if (f.enabled !== undefined && typeof f.enabled !== 'boolean') {
+    throw new Error('frontmatter.enabled must be a boolean');
+  }
+  return {
+    name: f.name.trim(),
+    members,
+    ...(description !== undefined ? { description } : {}),
+    ...(version !== undefined ? { version } : {}),
+    ...(lead !== undefined ? { lead } : {}),
+    ...(f.enabled !== undefined ? { enabled: f.enabled } : {}),
   };
 }
 

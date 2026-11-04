@@ -7,8 +7,8 @@
 export type Scope = 'global' | 'project';
 
 /** catalog 面覆盖的资源种类；'teams' = 预定义智能体团队（catalog/teams 写通知，Task 3）——watcher
- *  侧 teams 目录映射尚未接线（P1），teams 写走 onCatalogWrite 直发广播，watcher 事件对 teams 路径
- *  映射不出（mapFilename 返回 null）被忽略，无回声抑制键冲突 */
+ *  侧 teams 目录映射 P1 已接线（watch.ts mapFilename teams 段 + watchGlobal/watchProject teams
+ *  子目录 spec），teams 写经 notifyCatalogWrite 直发帧 + watcher suppress 防回声，与 agents 同套 */
 export type ResourceKind = 'mcp' | 'agents' | 'plugins' | 'skills' | 'providers' | 'permissions' | 'settings' | 'teams';
 
 /**

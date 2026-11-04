@@ -2,7 +2,7 @@
  * catalog/watch（任务13）：配置变更监听原语——目录级 fs.watch + 300ms 防抖 + 写回环抑制 + 失败降级。
  * 供任务14 daemon 接线，构成配置双向实时同步的「外部变更感知」半边；零新依赖，只用 node:fs.watch。
  * 设计口径（win32 实测口径）：
- * - fs.watch 按目录监听：globalDir 本层 + agents/plugins 子目录；项目侧监听 <root>/.sunshinex 本层 + skills/agents 子目录。
+ * - fs.watch 按目录监听：globalDir 本层 + agents/plugins/teams 子目录；项目侧监听 <root>/.sunshinex 本层 + skills/agents/teams 子目录。
  * - Windows 上编辑器原子替换/重命名的事件常落在目录上、filename 可能只是子目录名——一律以
  *   「哪个被监听目录响了」定 scope/root 与固定 resource，本层文件再按 filename 前缀映射，不依赖单一 filename 的精确性。
  * - 同 (resource,scope,root) 300ms 防抖合并为一次回调；suppress() 在窗口期丢弃对应事件并撤销已挂起的防抖
@@ -36,15 +36,16 @@ function changeKey(c: { resource: ResourceKind; scope: Scope; root: string | nul
 
 /**
  * filename（可能含子路径、win32 反斜杠）→ ResourceKind；映射不出返回 null（无关/临时文件，忽略）。
- * 路径段优先（skills/agents/plugins 子目录事件，win32 目录级冒泡时 filename 常只是子目录名），
+ * 路径段优先（skills/agents/plugins/teams 子目录事件，win32 目录级冒泡时 filename 常只是子目录名），
  * 本层文件按 basename 精确匹配（原子写 rename 事件落在最终文件名上）。
  */
-function mapFilename(filename: string): ResourceKind | null {
+export function mapFilename(filename: string): ResourceKind | null {
   const segments = filename.replace(/\\/g, '/').split('/');
   for (const s of segments) {
     if (s === 'skills') return 'skills';
     if (s === 'agents') return 'agents';
     if (s === 'plugins') return 'plugins';
+    if (s === 'teams') return 'teams';
   }
   const base = segments[segments.length - 1];
   if (base === 'settings.json') return 'settings';
@@ -61,22 +62,24 @@ export class ConfigWatcher {
   private suppressedUntil = new Map<string, number>();
   private closed = false;
 
-  /** 监听全局目录：globalDir 本层文件（settings.json/mcp.json）+ agents/ plugins/ 子目录（缺失的子目录逐个降级，不影响其余） */
+  /** 监听全局目录：globalDir 本层文件（settings.json/mcp.json）+ agents/ plugins/ teams/ 子目录（缺失的子目录逐个降级，不影响其余） */
   watchGlobal(globalDir: string): void {
     this.watchGroup('global', [
       { dir: globalDir, resource: null, scope: 'global', root: null },
       { dir: path.join(globalDir, 'agents'), resource: 'agents', scope: 'global', root: null },
       { dir: path.join(globalDir, 'plugins'), resource: 'plugins', scope: 'global', root: null },
+      { dir: path.join(globalDir, 'teams'), resource: 'teams', scope: 'global', root: null },
     ]);
   }
 
-  /** 监听项目根：<root>/.sunshinex 整目录（本层文件 + skills/ agents/ 子目录）；重复监听同一 root 幂等跳过 */
+  /** 监听项目根：<root>/.sunshinex 整目录（本层文件 + skills/ agents/ teams/ 子目录）；重复监听同一 root 幂等跳过 */
   watchProject(root: string): void {
     const base = path.join(root, '.sunshinex');
     this.watchGroup(`project:${path.resolve(root)}`, [
       { dir: base, resource: null, scope: 'project', root },
       { dir: path.join(base, 'skills'), resource: 'skills', scope: 'project', root },
       { dir: path.join(base, 'agents'), resource: 'agents', scope: 'project', root },
+      { dir: path.join(base, 'teams'), resource: 'teams', scope: 'project', root },
     ]);
   }
 

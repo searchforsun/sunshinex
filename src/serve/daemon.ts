@@ -660,6 +660,12 @@ export class GuiDaemon {
     // G8d T3 agents 全文面：agent.md frontmatter 后正文全文（AgentsPane 编辑播种升级——清单面
     // bodyPreview 200 帽的引流端点；id/scope 守卫与定位裁定同 PUT 面）
     { method: 'GET', path: '/settings/agents/body', auth: true, run: async (req, res) => this.handleAgentsBodyGet(req, res) },
+    // agents-teams P1 teams 面：两级宽容清单 + 表单增删改 + team.md 章程全文（镜像 agents 三端点全套
+    // 裁定——handler 薄封装 catalog/teams 写面，config-changed 帧由写内 notify 直发；id 词法严格 kebab
+    // isValidTeamId 单点；写盘不触发 settings reload，装配期语义）
+    { method: 'GET', path: '/settings/teams', auth: true, run: async (req, res) => this.handleTeamsGet(req, res) },
+    { method: 'PUT', path: '/settings/teams', auth: true, run: (req, res) => this.handleTeamsPut(req, res) },
+    { method: 'GET', path: '/settings/teams/body', auth: true, run: async (req, res) => this.handleTeamsBodyGet(req, res) },
     // G8c T6 skills/memory-stats 面：三源分组清单（project 五根合并一组/user 全局/learned 工作区锚定；
     // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
     { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
@@ -1085,6 +1091,18 @@ export class GuiDaemon {
 
   private handleAgentsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     configHandlers.handleAgentsBodyGet(this.configIo, req, res);
+  }
+
+  private handleTeamsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    configHandlers.handleTeamsGet(this.configIo, req, res);
+  }
+
+  private async handleTeamsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handleTeamsPut(this.configIo, req, res);
+  }
+
+  private handleTeamsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    configHandlers.handleTeamsBodyGet(this.configIo, req, res);
   }
 
   private handleSkillsGet(req: http.IncomingMessage, res: http.ServerResponse): void {

@@ -15,8 +15,10 @@ import {
   mcpRow,
   memoryStats,
   parseAgentFrontmatterInput,
+  parseTeamFrontmatterInput,
   probeMcpServer,
   validateMcpRawContent,
+  type TeamFrontmatterInput,
 } from './config-helpers';
 // Task 6 起 renderAgentMd（生成器）居 catalog/agents——serve 层不再直用（upsert 经 catalog
 // upsertAgent 内部生成）；Task 15 起 agents 写面（upsert/remove/setEnabled）与 AGENT_ID_RE
@@ -30,6 +32,11 @@ import {
   type AgentFrontmatterInput,
   type AgentUpsertSpec,
 } from '../catalog/agents';
+// agents-teams P1 Task 2：teams 读写面收口 catalog 单点（id 词法 isValidTeamId 严格 kebab harness
+// 单点——AMENDMENT 2026-11-04：catalog teamWriteTarget P0 起即 enforce kebab，serve 入口同口径防坏
+// id 漏 409；team.md 装载解析 parseTeamFrontmatter 同单点）
+import { isValidTeamId, parseTeamFrontmatter } from '../harness/teams';
+import { listTeams, removeTeam, setTeamEnabled, teamsDir, upsertTeam, type TeamUpsertSpec } from '../catalog/teams';
 // Task 15 mcp 写面：单条目操作（add/remove/enable/disable）+ 两级视图读面（approval 标注进响应）
 import { listMcpServers, removeMcpServer, setMcpServerEnabled, upsertMcpServer } from '../catalog/mcp';
 import { listSkills } from '../catalog/skills';
@@ -1033,6 +1040,191 @@ export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessa
   } catch (err) {
     io.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
   }
+}
+
+/** GET /settings/teams?root=（agents-teams P1 Task 2，Settings 页 Teams 清单数据源——镜像
+ *  handleAgentsGet 裁定，差异两处见行注）：catalog listTeams 单点两级宽容清单（项目遮蔽全局标
+ *  shadowedBy、missing 对 agents 生效集∪内建四角色 id 现算、坏档入 warnings 不抛死——视图面不重复
+ *  装配链裁决）。teams 无 builtins（响应只设 view 键）。行映射镜像 agents GET 的 bodyPreview 200 帽
+ *  （handleAgentsGet 经 loadAgentsView 内建；本面 handler 侧自映射——TeamEntry.body → bodyPreview 截
+ *  200，全文走 /settings/teams/body 引流端点；shadowedBy → shadowed 布尔供 GUI 灰显+角标；sourceDir
+ *  属 catalog 内部定位面不透出）。无 root → root:null 直传（listTeams 接口原生可空：项目级整体跳过
+ *  只列全局——较 agents 的 tmp 哨兵目录更直，观感行为一致：仅全局清单） */
+export function handleTeamsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const rootParam = url.searchParams.get('root');
+  const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : null;
+  const listing = listTeams(root);
+  io.send(res, 200, {
+    view: {
+      entries: listing.entries.map((e) => ({
+        id: e.id,
+        name: e.name,
+        description: e.description,
+        version: e.version,
+        members: e.members,
+        ...(e.lead !== undefined ? { lead: e.lead } : {}),
+        missing: e.missing,
+        source: e.source,
+        shadowed: e.shadowedBy !== undefined,
+        bodyPreview: e.body.slice(0, 200),
+        enabled: e.enabled,
+      })),
+      warnings: listing.warnings,
+    },
+  });
+}
+
+/** PUT /settings/teams {root?, scope, op, id, frontmatter?, body?}（agents-teams P1 Task 2，TeamsPane
+ *  表单增删改——handleAgentsPut 同构镜像：本 handler 只剩请求形态校验与 CatalogWriteError→HTTP 码
+ *  映射，文件操作/校验/原子写/写通知全在 catalog/teams 单点；config-changed WS 帧由写内 notify 直发，
+ *  本 handler 不自行广播防双发。与 agents 的差异一处：id 词法用 isValidTeamId 严格 kebab（AMENDMENT
+ *  2026-11-04——catalog teamWriteTarget P0 起即 enforce kebab，permissive AGENT_ID_RE 检查会放
+ *  'MixedCase' 一类坏 id 到 409 混淆面，入口即同口径单点））：
+ *  - op 四值/scope 二值/scope=project 必带 root/global 恒忽略 root（与 agents/raw/mcp 面同裁定）
+ *  - upsert：parseTeamFrontmatterInput 单点校验+归一（首错 400，零部分写）→ body 非串 400 →
+ *    catalog upsertTeam（renderTeamMd 生成 + 写前 round-trip 过真解析器 + 原子落盘——坏内容不进 tmp）
+ *  - delete：catalog removeTeam（rm -rf 条目整目录含同级私有文件；缺失 INVALID）——缺失 INVALID
+ *    就地吞作幂等 200（agents 同契约，:936-945 同款）
+ *  - enable/disable：catalog setTeamEnabled（frontmatter enabled 行保序手术 + 写后回环）；
+ *    enabled 可选回显面须布尔且与 op 同义（op 是权威）；条目缺失 → 409（写面只认标准两级）
+ *  CatalogWriteError 映射沿 sendCatalogWriteError 单点（INVALID → 409 {error} 无 hint；COMMENTS
+ *  不可达——team.md 无注释形态）。IO 失败不经本地捕获——沿 dispatch 500 收口 */
+export async function handleTeamsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown; enabled?: unknown } | null;
+  const op = body?.op;
+  if (op !== 'upsert' && op !== 'delete' && op !== 'enable' && op !== 'disable') {
+    io.send(res, 400, { error: 'op must be "upsert" | "delete" | "enable" | "disable"' });
+    return;
+  }
+  const id = body?.id;
+  // AMENDMENT（ledger 2026-11-04）：id 词法 = 严格 kebab isValidTeamId（harness 单点，与 catalog
+  // teamWriteTarget P0 同口径）——id 直接拼目录路径，路径分隔/穿越/大写/点开头/下划线一律 400
+  if (typeof id !== 'string' || !isValidTeamId(id)) {
+    io.send(res, 400, { error: 'id must match /^[a-z0-9]+(-[a-z0-9]+)*$/ (used as a directory name)' });
+    return;
+  }
+  const scope = body?.scope;
+  if (scope !== 'project' && scope !== 'global') {
+    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+    return;
+  }
+  const rootRaw = body?.root;
+  if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
+    io.send(res, 400, { error: 'root required for scope=project' });
+    return;
+  }
+  const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
+  if (op === 'delete') {
+    try {
+      removeTeam(root, scope, id); // catalog 收口：rm -rf 条目整目录（含同级私有文件）
+    } catch (err) {
+      // 缺失 INVALID 就地吞（幂等契约：从未存在与已删同 ok）。非 catalog 面（IO 竞态等）→
+      // dispatch 500（removeTeam 的 invalid-id 分支已被上方 isValidTeamId 守卫拦截，不可达）
+      if (!(err instanceof CatalogWriteError)) throw err;
+    }
+    io.send(res, 200, { ok: true });
+    return;
+  }
+  if (op === 'enable' || op === 'disable') {
+    const enabled = op === 'enable';
+    // enabled 可选回显面：在场须布尔且与 op 同义（op 是权威——防 {op:'enable', enabled:false} 一类
+    // 自相矛盾请求静默择一）
+    if (body?.enabled !== undefined && (typeof body.enabled !== 'boolean' || body.enabled !== enabled)) {
+      io.send(res, 400, { error: `enabled must be ${enabled} for op="${op}" (or omit it)` });
+      return;
+    }
+    try {
+      setTeamEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（写面只认标准两级）
+    } catch (err) {
+      if (!sendCatalogWriteError(io, res, err)) throw err;
+      return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
+    }
+    io.send(res, 200, { ok: true }); // 不触发 settings reload——teams 装配期语义（新会话生效）
+    return;
+  }
+  // upsert 校验面（首错 400，零部分写）：frontmatter 经 parseTeamFrontmatterInput 单点校验+归一
+  let fm: TeamFrontmatterInput;
+  try {
+    fm = parseTeamFrontmatterInput(body?.frontmatter);
+  } catch (err) {
+    io.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  const bodyText = body?.body;
+  if (bodyText !== undefined && typeof bodyText !== 'string') {
+    io.send(res, 400, { error: 'body must be a string' });
+    return;
+  }
+  // catalog upsertTeam：生成 + 写前 round-trip（验证口径=装载口径）+ 原子落盘 + notify 直发——
+  // serve 侧零文件操作
+  const spec: TeamUpsertSpec = {
+    name: fm.name,
+    members: fm.members,
+    ...(fm.description !== undefined ? { description: fm.description } : {}),
+    ...(fm.version !== undefined ? { version: fm.version } : {}),
+    ...(fm.lead !== undefined ? { lead: fm.lead } : {}),
+    ...(fm.enabled !== undefined ? { enabled: fm.enabled } : {}),
+    body: bodyText ?? '',
+  };
+  try {
+    upsertTeam(root, scope, id, spec);
+  } catch (err) {
+    if (!sendCatalogWriteError(io, res, err)) throw err;
+    return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
+  }
+  io.send(res, 200, { ok: true }); // 不触发 settings reload——teams 装配期语义（新会话生效）
+}
+
+/** GET /settings/teams/body?scope=project|global&id=&root=（agents-teams P1 Task 2，TeamsPane 编辑
+ *  章程全文装载——镜像 handleAgentsBodyGet 全套裁定）：读条目 team.md（落位解析：project=
+ *  <root>/.sunshinex/teams、global=<userConfigDir>/teams——catalog teamsDir 单点）的 frontmatter 后
+ *  章程原文全文（清单面 bodyPreview 的 200 帽在此不适用）。frontmatter 校验在本面显式收口——
+ *  parseTeamFrontmatter 词法宽容不抛（缺块回空 KV），畸形以显式 400 收口（缺块/缺 name 两断，消息
+ *  风格镜像 agents body 端点 parser 原文）。错误面：坏 scope/坏 id（isValidTeamId 严格 kebab 同 PUT
+ *  守卫——AMENDMENT）/scope=project 缺 root → 400；文件缺 → 404（回显 `${scope}/teams/${id}` 相对
+ *  定位——不泄 daemon 主机绝对路径，GUI 可原样呈现）；畸形 frontmatter → 400。scope=global 恒忽略
+ *  root（定位面，PUT 同裁定） */
+export function handleTeamsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const scope = url.searchParams.get('scope');
+  if (scope !== 'project' && scope !== 'global') {
+    io.send(res, 400, { error: 'scope must be "project" or "global"' });
+    return;
+  }
+  const id = url.searchParams.get('id');
+  if (id === null || !isValidTeamId(id)) {
+    io.send(res, 400, { error: 'id must match /^[a-z0-9]+(-[a-z0-9]+)*$/ (used as a directory name)' });
+    return;
+  }
+  const rootParam = url.searchParams.get('root');
+  if (scope === 'project' && (rootParam === null || rootParam.length === 0)) {
+    io.send(res, 400, { error: 'root required for scope=project' });
+    return;
+  }
+  // 落位解析（catalog teamsDir 单点）：project=<root>/.sunshinex/teams、global=<userConfigDir>/teams
+  const scopeRoot = scope === 'project' ? path.resolve(rootParam as string) : null;
+  const file = path.join(teamsDir(scope, scopeRoot), id, 'team.md');
+  if (!fs.existsSync(file)) {
+    io.send(res, 404, { error: `team.md not found: ${scope}/teams/${id}` });
+    return;
+  }
+  const md = fs.readFileSync(file, 'utf8'); // existsSync 后读失败（竞态移除等）沿 dispatch 500 收口
+  const m = /^---\s*\n([\s\S]*?)\n---/.exec(md); // FRONTMATTER 词法（skills/subagent 同款单行块）
+  if (!m) {
+    io.send(res, 400, { error: 'team.md missing frontmatter' });
+    return;
+  }
+  if (!parseTeamFrontmatter(md).name) {
+    io.send(res, 400, { error: 'team.md frontmatter missing name' });
+    return;
+  }
+  io.send(res, 200, { body: md.slice(m[0].length).trim() }); // 正文全文（frontmatter 闭合后 trim，清单面 200 帽不适用）
 }
 
 /** GET /settings/skills 应答行富化形（T6 基形 + Task 25 附加字段，行基形零变化纯附加）：

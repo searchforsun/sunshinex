@@ -5,7 +5,7 @@
 import { test } from 'node:test'; import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os'; import { join } from 'node:path';
-import { ConfigWatcher, type ConfigChange } from './watch';
+import { ConfigWatcher, mapFilename, type ConfigChange } from './watch';
 
 /** 固定等待（反向断言的观察窗口/写前就绪缓冲） */
 const waitMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
@@ -113,4 +113,51 @@ test('close() 后写文件不再回调', async () => {
     await waitMs(1600); // 上界 ≥1.5s：close 后确无迟到回调
     assert.equal(got.length, before);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------- agents-teams P1 Task 2：teams 目录接线（mapFilename teams 段 + watch 全局/项目 teams 子目录） ----------
+
+test('mapFilename: teams 路径段映射 teams（win32 目录冒泡 filename 只剩子目录名同判）；无关文件仍 null', () => {
+  assert.equal(mapFilename('teams/t1/team.md'), 'teams'); // 子路径含 teams 段
+  assert.equal(mapFilename('teams\\t1\\team.md'), 'teams'); // win32 反斜杠归一
+  assert.equal(mapFilename('teams'), 'teams'); // win32 目录级事件 filename 常只是子目录名
+  assert.equal(mapFilename('t1/team.md'), null); // 无 teams/skills/agents/plugins 段仍不映射
+});
+
+test('写 globalDir/teams/g1/team.md → 收 teams/global/null（watchGlobal 挂 teams 子目录）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cw-gteams-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  mkdirSync(join(dir, 'teams'), { recursive: true }); // 结构先于监听存在（缺失目录会降级跳过）
+  mkdirSync(join(dir, 'agents'), { recursive: true });
+  w.watchGlobal(dir);
+  try {
+    await waitMs(250);
+    const teamDir = join(dir, 'teams', 'g1');
+    mkdirSync(teamDir, { recursive: true });
+    writeFileSync(join(teamDir, 'team.md'), '---\nname: G\nmembers: tester\n---\n');
+    await waitFor(() => got.some(c => c.resource === 'teams' && c.scope === 'global' && c.root === null));
+    await waitMs(800); // teams/ 子目录与 globalDir 本层两路事件同键 → 防抖合并为一次
+    assert.equal(got.filter(c => c.resource === 'teams').length, 1);
+  } finally { w.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('写 project/.sunshinex/teams/t1/team.md → 收 teams/project/root（watchProject 挂 teams 子目录）', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cw-pteams-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  mkdirSync(join(root, '.sunshinex', 'teams'), { recursive: true });
+  mkdirSync(join(root, '.sunshinex', 'agents'), { recursive: true });
+  w.watchProject(root);
+  try {
+    await waitMs(250);
+    const teamDir = join(root, '.sunshinex', 'teams', 't1');
+    mkdirSync(teamDir, { recursive: true });
+    writeFileSync(join(teamDir, 'team.md'), '---\nname: T\nmembers: planner\n---\n');
+    await waitFor(() => got.some(c => c.resource === 'teams' && c.scope === 'project' && c.root === root));
+    await waitMs(800); // base 层与 teams/ 两路事件同键 → 防抖合并为一次
+    assert.equal(got.filter(c => c.resource === 'teams').length, 1);
+  } finally { w.close(); rmSync(root, { recursive: true, force: true }); }
 });
