@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bug, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, MoreHorizontal, MousePointerClick, RotateCw } from 'lucide-react';
 import type { TabParams } from './tab-state';
 import { t } from '../i18n';
+import { zoomScale } from '../ui-zoom';
 import { openExternalUrl } from '../ui-util';
 
 /**
@@ -197,12 +198,49 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
   const [hDraft, setHDraft] = useState<string | null>(null);
   /** 面板内容区实时尺寸(适应窗口比例/自由尺寸缺省值的输入;RO 随拖栏/折叠即时跟) */
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [wrapSize, setWrapSize] = useState({ w: 0, h: 0 });
+  const scalerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
 
   const active = nav.index >= 0 ? (nav.urls[nav.index] ?? null) : null;
   /** meta 回写竞态守卫(async 应答 vs 已导航):恒指最新 active(渲染期直写,MessageList propsRef 手法) */
   const activeRef = useRef<string | null>(active);
   activeRef.current = active;
+
+  // 视口 px 缺省=16:9 标准档 1280×720(开启时定格,此后只随手动输入变——不随侧栏宽度漂移);
+  // 侧栏拖宽只影响呈现:适应窗口态重算倍率刚好占满,固定倍率态超出走滚动
+  const deviceW = devW ?? 1280;
+  const deviceH = devH ?? 720;
+  /** scale 计算入参镜像(propsRef 手法,activeRef 同款):RO 回调读 ref 免闭包陈旧 */
+  const scaleInputsRef = useRef({ deviceMode, deviceW, deviceH, devFit, devZoom });
+  scaleInputsRef.current = { deviceMode, deviceW, deviceH, devFit, devZoom };
+  /** 视口缩放直写(2026-11-04 用户实测「从最小宽度放大延迟/宽间隙」根修):原链 RO→setWrapSize→
+   *  React 提交——React 18 非事件上下文更新走 Scheduler 宏任务,提交可落 paint 后,连续拖宽下
+   *  scaler 每帧慢一拍=盒子滞后边界(宽侧栏时 scaler 高度约束尺寸不随宽变,故「顺滑」无感;
+   *  从最小宽度放大时盒子逐帧膨胀,滞后即宽间隙)。现 RO 回调(paint 前阶段)与测量同帧直写 DOM。
+   *  zoom 契约:gBCR 视觉 px /zoomScale 落本地,再减 wrap 8px×2 padding(=contentRect 口径) */
+  const applyScale = (): void => {
+    const wrap = wrapRef.current;
+    const scaler = scalerRef.current;
+    const inner = innerRef.current;
+    if (wrap === null || scaler === null || inner === null) return;
+    const inp = scaleInputsRef.current;
+    if (!inp.deviceMode) {
+      inner.style.transform = '';
+      return;
+    }
+    const z = zoomScale();
+    const b = wrap.getBoundingClientRect();
+    const w = b.width / z - 16;
+    const h = b.height / z - 16;
+    if (!(w > 0) || !(h > 0)) return; // 隐藏态(切签 display:none)保上次值
+    const fit = Math.min(w / inp.deviceW, h / inp.deviceH);
+    const scale = inp.devFit ? fit : inp.devZoom;
+    scaler.style.width = `${Math.round(inp.deviceW * scale)}px`;
+    scaler.style.height = `${Math.round(inp.deviceH * scale)}px`;
+    inner.style.transform = `scale(${scale})`;
+  };
+  // 尺寸入参/档位变化即重算(RO 只管容器尺寸);mount 同步一帧(paint 前生效)
+  useLayoutEffect(applyScale, [deviceMode, deviceW, deviceH, devFit, devZoom]);
 
   // 历史位移(back/forward)时输入框随 active 同步(VSCode 同形)
   useEffect(() => {
@@ -213,21 +251,10 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
   useEffect(() => {
     const el = wrapRef.current;
     if (el === null) return;
-    const ro = new ResizeObserver((entries) => {
-      const r = entries[0]?.contentRect;
-      if (r !== undefined) setWrapSize({ w: r.width, h: r.height });
-    });
+    const ro = new ResizeObserver(() => applyScale());
     ro.observe(el);
     return () => ro.disconnect();
   }, [active === null]);
-
-  // 视口 px 缺省=16:9 标准档 1280×720(开启时定格,此后只随手动输入变——不随侧栏宽度漂移);
-  // 侧栏拖宽只影响呈现:适应窗口态经 RO 重算倍率刚好占满,固定倍率态超出走滚动
-  const deviceW = devW ?? 1280;
-  const deviceH = devH ?? 720;
-  const fitScale =
-    deviceW > 0 && deviceH > 0 && wrapSize.w > 0 ? Math.min(wrapSize.w / deviceW, wrapSize.h / deviceH) : 1;
-  const deviceScale = devFit ? fitScale : devZoom;
 
   /** webview 事件挂接(M1/M2):**ref 回调**形态——元素挂载瞬间即挂事件并补读当前 URL
    *  (effect 形态会在 webview src 自动加载后才挂,did-navigate/页名首拍必丢,实测
@@ -668,18 +695,15 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       {/* 缩放结构恒在场(未开页同样显示目标区域——自由尺寸空态=视口框内引导面) */}
       <div className={`sx-web-frame-wrap${deviceMode ? ' device' : ''}`} ref={wrapRef}>
         <div
+          ref={scalerRef}
           className={`sx-web-scaler${deviceMode ? ' device' : ''}`}
-          style={
-            deviceMode
-              ? { width: Math.round(deviceW * deviceScale), height: Math.round(deviceH * deviceScale) }
-              : { width: '100%', height: '100%' }
-          }
+          style={deviceMode ? undefined : { width: '100%', height: '100%' }}
         >
           <div
+            ref={innerRef}
             style={{
               width: deviceMode ? deviceW : '100%',
               height: deviceMode ? deviceH : '100%',
-              transform: deviceMode ? `scale(${deviceScale})` : undefined,
               transformOrigin: 'top left',
               display: 'flex',
               flexDirection: 'column',
