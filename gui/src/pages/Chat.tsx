@@ -115,9 +115,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
   /** 归档态(2026-10-21):快照播种对齐(sessMode 同链,use-session-events reseed 回填)——顶栏归档钮/徽标三态 */
   const [archived, setArchived] = useState(false);
-  /** fork 血缘(2026-11-04 用户裁定「分叉于会话」横幅):快照播种对齐,切会话 reseed 换读——
-   *  MessageList 首行横幅(点击回父会话,经 onOpenSession) */
-  const [forkedFrom, setForkedFrom] = useState<{ sessionId: string; title: string } | undefined>(undefined);
   /** pill 开合('plus' = + 附加面板) */
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
   /** textarea 引用(+ 面板插入收口后焦点回输入框) */
@@ -213,7 +210,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setSessMode,
     setSessEffort,
     setArchived,
-    setForkedFrom,
     submitTextRef,
     flushScrollMem,
   });
@@ -702,7 +698,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onEntryOpenDiff={onEntryOpenDiff}
         onEntryRestore={onEntryRestore}
         onFork={onForkRun}
-        forkedFrom={forkedFrom}
         onOpenSession={onOpenSession}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}

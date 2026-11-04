@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, History, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
+import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, GitFork, History, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
 import { t } from '../../i18n';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
@@ -584,7 +584,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void }): JSX.Element {
   const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
@@ -641,6 +641,32 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
         </div>
       </div>
     );
+  }
+  if (entry.kind === 'notice' && entry.md.startsWith('[fork-origin]')) {
+    // fork 分界横幅(合成 notice 条目,use-session-events 播种注入):图标前置行内+父会话题可点回源;
+    // 坏编码退普通 notice 渲染不丢行
+    let info: { sessionId: string; title: string } | null = null;
+    try {
+      const parsed = JSON.parse(entry.md.slice('[fork-origin]'.length)) as { sessionId?: unknown; title?: unknown };
+      if (typeof parsed.sessionId === 'string' && typeof parsed.title === 'string') info = { sessionId: parsed.sessionId, title: parsed.title };
+    } catch {
+      /* 退普通 notice */
+    }
+    if (info !== null) {
+      return (
+        <div className="entry entry-notice fork-origin" role="status">
+          <span className="entry-icon">
+            <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <div className="entry-md">
+            {t('Forked from session', '分叉于会话')}：
+            <button type="button" className="fork-origin-link" onClick={() => onOpenSession?.(info!.sessionId)}>
+              {info!.title}
+            </button>
+          </div>
+        </div>
+      );
+    }
   }
   return (
     <div

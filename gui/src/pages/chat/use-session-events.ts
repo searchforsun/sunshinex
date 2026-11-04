@@ -46,9 +46,6 @@ export function useSessionEvents(deps: {
   setSessEffort: Dispatch<SetStateAction<string | undefined>>;
   /** 归档态播种(2026-10-21:snapshot.archived 回填——顶栏归档钮/徽标三态;旧 daemon 无字段=未归档面) */
   setArchived: Dispatch<SetStateAction<boolean>>;
-  /** fork 血缘播种(2026-11-04 用户裁定「分叉于会话」横幅):snapshot.forkedFrom 回填;切会话
-   *  reseed 即换读(非 fork 档=undefined 清位) */
-  setForkedFrom: Dispatch<SetStateAction<{ sessionId: string; title: string } | undefined>>;
   /** G14.213 欢迎页接力取用(ref 跳板,声明在 Chat、赋值随 submitText 定义) */
   submitTextRef: MutableRefObject<(text: string, images?: string[]) => Promise<void>>;
   /** G14.212 滚动位存档落盘(unmount 兜底;滚动子系统留 Chat,函数注入) */
@@ -80,7 +77,6 @@ export function useSessionEvents(deps: {
     setSessMode,
     setSessEffort,
     setArchived,
-    setForkedFrom,
     submitTextRef,
     flushScrollMem,
   } = deps;
@@ -139,7 +135,6 @@ export function useSessionEvents(deps: {
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
         setSessEffort(snap.effort);
         setArchived(snap.archived === true); // 2026-10-21 归档态播种(sessMode 同链;缺字段=未归档面)
-        setForkedFrom(snap.forkedFrom); // fork 血缘播种(「分叉于会话」横幅面;非 fork 档=undefined 清位)
         // P10:status 读内核游标(seed 内派生),快照 status 字段不再入参
         let next = seedChatFromSnapshot(snap.messages, {
           openRun: snap.openRun ?? -1,
@@ -151,6 +146,13 @@ export function useSessionEvents(deps: {
         } else if (snap.hasMore !== undefined) {
           // 2026-10-26 三期历史链:尾窗播种(服务端缺省 200)元数据入态——后台加载链(下方 effect)消费
           next = { ...next, history: { total: snap.total ?? snap.messages.length, oldestSeq: snap.oldestSeq ?? 0, hasMore: snap.hasMore === true, complete: snap.hasMore !== true } };
+        }
+        // fork 分界横幅=**合成 notice 条目**(2026-11-04 用户裁定,实测修订):注入点在种子后、直播
+        // 帧回放前——条目序天然「复制段末、新内容前」,新 run 条与末行 stats 不再被横幅纵向切开
+        // (此前横幅渲染在 dayGroups 外,新 run 条目在组内,视觉上并进工具行)。GUI 本地态不落档,
+        // reseed 按 snapshot.forkedFrom 重注入;md=[fork-origin]+JSON,ChatEntryView 专支渲染
+        if (snap.forkedFrom !== undefined) {
+          next = applyChatEvent(next, { type: 'notice', text: `[fork-origin]${JSON.stringify(snap.forkedFrom)}`, ts: Date.now() });
         }
         for (const f of pendingRef.current) {
           if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)

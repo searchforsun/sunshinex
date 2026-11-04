@@ -1,6 +1,5 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { GitFork } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -52,8 +51,7 @@ export interface MessageListProps {
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
   readonly onFork?: (runKey: string) => void;
-  /** fork 血缘横幅(2026-11-04 用户裁定):首行「分叉于会话:{名}」,点击回父会话 */
-  readonly forkedFrom?: { sessionId: string; title: string };
+  /** fork 分界横幅回父会话(横幅=合成 notice 条目由 ChatEntryView 专支渲染) */
   readonly onOpenSession?: (sessionId: string) => void;
   readonly onEntryToggleClick: (e: ReactMouseEvent<HTMLDivElement>) => void;
   /** 2026-10-26 图片功能(并行):气泡图片条点击 → lightbox(App 持 src 态) */
@@ -96,6 +94,8 @@ interface DayGroupProps {
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
   readonly onFork?: (runKey: string) => void;
+  /** fork 分界横幅回父会话(合成条目渲染面) */
+  readonly onOpenSession?: (sessionId: string) => void;
   readonly onOpenImage?: (src: string) => void;
   /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
   readonly root?: string;
@@ -105,7 +105,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -230,6 +230,7 @@ const DayGroupBlock = memo(
             onFork={onFork}
             onOpenFile={onOpenFile}
             onOpenAgent={onOpenAgent}
+            onOpenSession={onOpenSession}
           />,
         );
       }
@@ -298,6 +299,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const onOpenAgentOpt = useCallback(() => opt(onOpenAgentStable, propsRef.current.onOpenAgent), [onOpenAgentStable]);
   const onOpenTaskOpt = useCallback(() => opt(onOpenTaskStable, propsRef.current.onOpenTask), [onOpenTaskStable]);
   const onForkOpt = useCallback(() => opt(onForkStable, propsRef.current.onFork), [onForkStable]);
+  const onOpenSessionStable = useCallback((sid: string) => propsRef.current.onOpenSession?.(sid), []);
+  const onOpenSessionOpt = useCallback(() => opt(onOpenSessionStable, propsRef.current.onOpenSession), [onOpenSessionStable]);
   const taskNameOfStable = useCallback((id: string) => propsRef.current.taskNameOf(id), []);
   const teamNameOfStable = useCallback((ref: string) => propsRef.current.teamNameOf?.(ref) ?? ref, []);
   const teamNameOfOpt = useCallback(() => opt(teamNameOfStable, propsRef.current.teamNameOf), [teamNameOfStable]);
@@ -397,29 +400,11 @@ export function MessageList(props: MessageListProps): JSX.Element {
             onEntryOpenDiff={onEntryOpenDiffStable}
             onEntryRestore={onEntryRestoreStable}
             onFork={onForkOpt()}
+            onOpenSession={onOpenSessionOpt()}
             onOpenImage={onOpenImage}
             sideChat={sideChat}
           />
         ))}
-        {/* fork 血缘横幅(2026-11-04 用户裁定):置于复制内容**末尾**(分叉点标记——上方=来自父会话
-            的历史,下方=子会话新内容),点击回父会话(onOpenSession 经 propsRef 取最新) */}
-        {props.forkedFrom !== undefined && (
-          <div className="entry entry-notice fork-origin" role="status">
-            <span className="entry-icon">
-              <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
-            </span>
-            <div className="entry-md">
-              {t('Forked from session', '分叉于会话')}：
-              <button
-                type="button"
-                className="fork-origin-link"
-                onClick={() => propsRef.current.onOpenSession?.(props.forkedFrom!.sessionId)}
-              >
-                {props.forkedFrom!.title}
-              </button>
-            </div>
-          </div>
-        )}
         {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
             原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
         {running && (
