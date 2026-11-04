@@ -440,7 +440,8 @@ export type AgentsOpInput =
  *  （接线裁定：wire 序 global→project——pane 侧排显示副本 project 先，仅显示序）；missing=members 中
  *  不在 agents 生效集∪内建四角色的 id 现算（GUI 以警示 chip 呈现）；lead 可选领队（∈ members）；version
  *  可选版本单行；enabled 启停声明（frontmatter enabled 行）——契约=恒布尔（缺省 true 由 daemon 显式化），
- *  缺键=daemon 未显式，TeamsPane 开关不渲染（gating 沿 T23 agents 同款）。 */
+ *  enabled 恒由 serve 面携带（handleTeamsGet 恒发 `enabled: e.enabled`，catalog TeamEntry.enabled 非可选
+ *  布尔）；TeamsPane 的 typeof 守卫仅为前向兼容防御（缺键面不会出现，守卫不裁行为）。 */
 export interface TeamEntryView {
   id: string;
   name: string;
