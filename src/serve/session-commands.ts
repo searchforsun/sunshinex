@@ -131,7 +131,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
   }
 
   if (cmd === '/context') {
-    // 上下文构成观测(只读零副作用):技能块走 peek 不消费、不经 assemble、不写链(TUI /context 同形移植)
+    // 上下文构成观测(只读零副作用):不经 assemble、不写链(TUI /context 同形移植)
     const ctx = s.runtime.harness.context;
     const parts = ctx.snapshotPartsView();
     const b = contextBreakdown({
@@ -143,7 +143,6 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       memory: parts.memory,
       compacted: ctx.compactedView(),
       chain: ctx.chainView(),
-      skill: ctx.peekSkill(),
       window: resolveRunWindow(s.runtime.harness.model),
       chainFrom: ctx.chainFromView(),
     });

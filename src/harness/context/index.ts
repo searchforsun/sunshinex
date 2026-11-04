@@ -46,7 +46,7 @@ interface ContextSessionState {
   compacted: ContextItem[];
 }
 
-/** 上下文与记忆管理门面（D25/H3 拆分后余留职责：快照装载 / 最近文件 LRU / 技能待注入槽 / 会话恢复与订阅 /
+/** 上下文与记忆管理门面（D25/H3 拆分后余留职责：快照装载 / 最近文件 LRU / 会话恢复与订阅 /
  *  Compact Instructions 提取 / 门面转发）：漂移探测→DriftDetector、链账本→ChainLedger、压缩协调→CompactionCoordinator，
  *  三件经构造注入依赖、不反向依赖本门面；公开方法签名与语义逐一不变（reactor/tui/graph 消费方零改动）。 */
 export class ContextManager {
@@ -56,7 +56,6 @@ export class ContextManager {
   readonly archive: ArchiveStore;
 
   private recent: string[] = [];
-  private pendingSkill: string | null = null;
   /** SUNSHINE.md「Compact Instructions」区缓存（与装配快照同源；E 项）：压缩摘要生成时注入 prompt */
   private compactInstructions: string | null = null;
   /** 装配快照（规格 G 项）：SUNSHINE.md 会话冻结——构造时读盘一次，assemble 只读快照 */
@@ -152,11 +151,6 @@ export class ContextManager {
     return this.compaction.apply(chunks, opts);
   }
 
-  /** 技能首帧注入槽：set 后的下一次 assemble 尾追携带（kind=system），消费即清——技能正文不随后续帧重复 */
-  setSkillBlock(content: string): void {
-    this.pendingSkill = content;
-  }
-
   /** 会话变更订阅（会话日志单一事实源挂钩，规格 §5）：appendChain/applyCompaction/trimChainFront 三类变更发出；传 undefined 取消 */
   onContextChange(cb?: (c: ContextChange) => void): void {
     this.changeSink = cb;
@@ -215,11 +209,10 @@ export class ContextManager {
     this.changeSink?.({ kind: 'compact', chainFrom: this.ledger.fromView(), compacted: this.compaction.compactedView() });
   }
 
-  /** 会话级重置（/new）：清链、压缩水位、压缩块与待注入技能块；账本与最近文件登记保留 */
+  /** 会话级重置（/new）：清链、压缩水位与压缩块；账本与最近文件登记保留 */
   resetSession(): void {
     this.ledger.reset();
     this.compaction.clearCompacted();
-    this.pendingSkill = null;
     this.reloadContext(); // /new = 新会话（G 项刷新点）：快照重读
   }
 
@@ -252,19 +245,7 @@ export class ContextManager {
     return this.ledger.fromView();
   }
 
-  /** 待注入技能块只读窥视（与 takePendingSkill 同源不消费）：/context 观测用——观测不得改变装配面 */
-  peekSkill(): string | null {
-    return this.pendingSkill;
-  }
-
-  /** 技能块消费（与 assemble 消费即清同语义）：chat 消息面经此取用置尾，不经 assemble 消费 */
-  takePendingSkill(): string | null {
-    const s = this.pendingSkill;
-    this.pendingSkill = null;
-    return s;
-  }
-
-  /** 统一装配（fork 模型段序）：loader → 压缩块 → history（会话链经 reactor 缺省 seed 流入）→ 技能块（尾追）
+  /** 统一装配（fork 模型段序）：loader → 压缩块 → history（会话链经 reactor 缺省 seed 流入）
    *  goal 槽与记忆段已取消（CLAUDE.md §11：真实任务文本走链尾「当前指令行」，链即记忆） */
   assemble(history: ContextItem[] = []): ContextItem[] {
     const items: ContextItem[] = [];
@@ -273,10 +254,6 @@ export class ContextManager {
     items.push(...this.contextSnapshot);
     items.push(...this.compaction.compactedView());
     items.push(...history);
-    if (this.pendingSkill !== null) {
-      items.push({ kind: 'system', content: this.pendingSkill });
-      this.pendingSkill = null;
-    }
     return items;
   }
 

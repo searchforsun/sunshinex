@@ -268,7 +268,6 @@ export function handleSessionContext(io: SessionHandlerIo, res: http.ServerRespo
     memory: parts.memory,
     compacted: ctx.compactedView(),
     chain: ctx.chainView(),
-    skill: ctx.peekSkill(),
     window: resolveRunWindow(session.runtime.harness.model),
     chainFrom: ctx.chainFromView(),
   });

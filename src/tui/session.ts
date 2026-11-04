@@ -1238,8 +1238,8 @@ export class SessionController {
       return;
     }
     if (cmd === '/context') {
-      // 上下文构成观测（只读零副作用）：分段与 buildMessages 消息面同构（稳定段+快照三段+压缩块+链+技能块），
-      // 窗口分母与 Reactor 压缩判定同源；技能块走 peek 不消费、不经 assemble、不写链——观测不改变被观测面
+      // 上下文构成观测（只读零副作用）：分段与 buildMessages 消息面同构（稳定段+快照分段+压缩块+链），
+      // 窗口分母与 Reactor 压缩判定同源；不经 assemble、不写链——观测不改变被观测面
       const ctx = this.runtime.harness.context;
       const parts = ctx.snapshotPartsView();
       const b = contextBreakdown({
@@ -1251,7 +1251,6 @@ export class SessionController {
         memory: parts.memory,
         compacted: ctx.compactedView(),
         chain: ctx.chainView(),
-        skill: ctx.peekSkill(),
         window: resolveRunWindow(this.runtime.harness.model),
         chainFrom: ctx.chainFromView(),
       });

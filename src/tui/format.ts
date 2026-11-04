@@ -32,7 +32,6 @@ function partLabel(id: BreakdownPartId): string {
     case 'memory': return t('memory index', '记忆索引');
     case 'compacted': return t('compacted summary', '压缩摘要');
     case 'chain': return t('session chain', '会话链');
-    case 'skill': return t('skill block (pending)', '技能块（待注入）');
   }
 }
 
@@ -42,7 +41,6 @@ function partNote(id: BreakdownPartId, count: number, chainFrom: number): string
     case 'instructions': return count > 0 ? t(`${count} lines`, `${count} 行`) : '';
     case 'compacted': return count > 0 ? t(`${count} block(s), folding ${chainFrom} chain steps`, `${count} 块，已折叠链前缀 ${chainFrom} 行`) : '';
     case 'chain': return count > 0 ? t(`${count} steps`, `${count} 行`) : '';
-    case 'skill': return '';
     default: return '';
   }
 }

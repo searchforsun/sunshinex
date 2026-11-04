@@ -79,7 +79,7 @@ export interface SkillManifest {
   name: string;
   description: string;
   version: string;
-  /** 技能模板形参名列表（阶段四技能调度：skillRef.params 按 manifest.params 白名单过滤） */
+  /** 技能模板形参名列表（skill 工具 resolve 时按 manifest.params 白名单过滤） */
   params?: string[];
   /** 技能形态（阶段四：prompt = 上下文注入模板；缺省视作 prompt） */
   kind?: 'prompt';
@@ -373,12 +373,6 @@ export interface KbHit {
   file?: string;
 }
 
-/** 技能引用（运行时上下文注入载体：id 定位技能，params 填充 manifest.params 模板形参） */
-export interface SkillRef {
-  id: string;
-  params?: Record<string, string>;
-}
-
 /** MCP 服务器装配配置（项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json 的 `mcpServers` 键解析产物，项目级 id 撞名遮蔽全局）。transport 缺省 = stdio；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用。
  *  2026-10-26 用户实测第三种主流形态：`{ url, headers, enabled }`（gitnexus 风格）——headers 随 http/sse
  *  请求透传（Bearer 鉴权面）、enabled=false 整机停用（装配与 guard 名单同跳过）、无 scheme url 容错补 http:// */
@@ -500,8 +494,7 @@ export type ChainAction =
   | 'deficit' /* 修正环验收缺口（loop check） */
   | 'node' /* graph/子智能体节点结论行（graph nodes/subagent） */
   | 'memory' /* 记忆注入行（subagent fork 前缀） */
-  | 'role' /* 角色框定行（subagent fork 前缀） */
-  | 'skill'; /* 技能注入行（tui session） */
+  | 'role'; /* 角色框定行（subagent fork 前缀） */
 
 export interface HistoryStep {
   step: number;

@@ -258,7 +258,7 @@ export function formatSkillsIndex(manifests: SkillManifest[]): string | null {
     .join('\n');
 }
 
-/** 技能回执头行单点（skill 工具回执 / /skill 链注入 / loop skillRef 块三方同源，防格式漂移）：
+/** 技能回执头行单点（skill 工具回执 / /skill 链注入两方同源，防格式漂移）：
  *  首行与既有格式逐字节一致（会话去重判据依赖 `(id=x v=` 前缀）；sourceRoot 在位时第二行携带来源目录——
  *  技能正文引用伴随文件（脚本/资源）时模型按此目录而非项目根解析 */
 export function skillHeader(m: SkillManifest): string {
@@ -266,7 +266,7 @@ export function skillHeader(m: SkillManifest): string {
   return m.sourceRoot !== undefined ? `${head}\nDirectory: ${m.sourceRoot}` : head;
 }
 
-/** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；结构兼容 LoopDeps.skills） */
+/** 技能门面：装配根暴露 list/get/resolve 三能力（Harness.skills；skill 工具接缝消费） */
 export interface SkillsFacade {
   list(): SkillManifest[];
   get(id: string): SkillManifest | undefined;

@@ -318,15 +318,13 @@ export class Reactor {
       this.emit('ctx', undefined, { used: est.used, exact: false });
 
       // think：chat 消息视图单通道（tools 字段下发、tool_calls 结构化动作）；错误经本 try 统一兜底（中断/超长反应式压缩/model-error）。
-      // 旁路技能块先取（assemble 消费即清，消息面单独置尾——est 估算暂时低估一个技能块，可容许）
-      const chatSkill = this.deps.context.takePendingSkill();
       try {
         // usage 为 per-request 全量值：聚合用「基线 + 本请求覆盖」而非盲目累加——
         // 端点在多个流式帧重复携带 usage 时覆盖语义天然幂等，漏算与重复累计两类口径病一次消除
         usageBase = tokensUsed;
         cacheBase = cacheHitTokens;
         promptBase = promptTokens;
-        const outcome = await this.chatRound(adapter, steps, step, compactedUpToStep, chatSkill, {
+        const outcome = await this.chatRound(adapter, steps, step, compactedUpToStep, {
           onCache: (c) => {
             if (c > 0) cacheHitTokens = cacheBase + c;
           },
@@ -508,7 +506,6 @@ export class Reactor {
     steps: StepRecord[],
     step: number,
     fromStep: number,
-    skill: string | null,
     hooks: UsageHooks,
     effort: ReasoningEffort | undefined,
     signal: AbortSignal | undefined,
@@ -521,7 +518,6 @@ export class Reactor {
       compacted: this.deps.context.compactedView(),
       // 压缩水位过滤：压缩点前的链行已折叠进压缩块，不得双份回流（runCompaction 契约）
       chain: steps.filter((s) => s.step > fromStep),
-      pendingSkill: skill,
     }, this.deps.imageHistoryLimit ?? DEFAULT_IMAGE_HISTORY_LIMIT);
     const tools = [...this.deps.registry.list()]
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))

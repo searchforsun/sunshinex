@@ -9,7 +9,7 @@ import type { ContextItem, HistoryStep, ChatMessage } from '../../types';
  * ②链行→消息全分支：task→user；reply→assistant；notice/note/deficit/node→user 元信息行；
  *   phase 行→pending 旁白（并入后续 assistant content）；tool-call 连续批→assistant+tool_calls（id 按序合成 call_N，
  *   端点只要求消息内自洽）；tool-result→role:tool 按序配对；孤立观察行（过渡期现行形态）降级 user 不炸
- * ③压缩块=单条 user 且折叠其后旧消息（不双份钉子）；技能块=置尾 user（[skill] 前缀）
+ * ③压缩块=单条 user 且折叠其后旧消息（不双份钉子）
  * ④前缀稳定钉子：链尾追一行→消息序列仅尾部增长（序列化逐字节前缀）；fork 首帧=主链末帧严格前缀
  */
 
@@ -130,18 +130,6 @@ test('压缩块=单条 user，且压缩后链切片不再出现（不双份）',
   const comp = msgs.filter((m) => m.role === 'user' && m.content.startsWith('[Compacted summary'));
   assert.equal(comp.length, 1);
   assert.equal(msgs.filter((m) => m.role === 'system').length, 1, '压缩块不得混入 system#2');
-});
-
-test('技能块置尾：user（[skill] 前缀）位于消息序列末尾', () => {
-  const msgs = buildMessages({
-    stableSegment: STABLE,
-    snapshot: [],
-    compacted: [],
-    chain: chain([{ action: 'task', observation: 'Current instruction: go' }]),
-    pendingSkill: 'skill body here',
-  });
-  const last = msgs[msgs.length - 1];
-  assert.deepEqual(last, { role: 'user', content: '[skill] skill body here' });
 });
 
 test('前缀稳定钉子：链尾追一行→消息序列仅尾部增长（序列化严格前缀）', () => {

@@ -23,7 +23,6 @@ function base(over: Partial<Parameters<typeof contextBreakdown>[0]> = {}) {
       step('tool-result', 'file content here'),
       step(undefined, 'unlabeled legacy row'),
     ] as HistoryStep[],
-    skill: null,
     window: 1000,
     chainFrom: 2,
     ...over,
@@ -43,12 +42,9 @@ test('breakdown：分段 token 与各面独立估算一致，Σ parts = total，
   assert.equal(b.chainFrom, 2, '压缩水位透传');
 });
 
-test('breakdown：分段固定装配序；skill 块缺席不占段、在场置尾', () => {
-  const absent = contextBreakdown(base());
-  assert.deepEqual(absent.parts.map((p) => p.id), ['stable', 'instructions', 'skills', 'agents', 'teams', 'memory', 'compacted', 'chain'], '无技能块时八段固定序（agents/teams 位列 skills 之后、memory 之前，spec 2026-11-04 §2.1 段位定型）');
-  const present = contextBreakdown(base({ skill: 'skill body text' }));
-  assert.equal(present.parts[present.parts.length - 1].id, 'skill', '技能块置尾');
-  assert.equal(present.parts[present.parts.length - 1].tokens, estimateTokens('skill body text'), '技能块独立估算');
+test('breakdown：分段固定装配序（八段恒定，无技能待注入段）', () => {
+  const b = contextBreakdown(base());
+  assert.deepEqual(b.parts.map((p) => p.id), ['stable', 'instructions', 'skills', 'agents', 'teams', 'memory', 'compacted', 'chain'], '八段固定序（agents/teams 位列 skills 之后、memory 之前，spec 2026-11-04 §2.1 段位定型）');
 });
 
 test('breakdown：链动作细分覆盖全链（未登记动作归 note），tokens 降序', () => {

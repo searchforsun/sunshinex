@@ -51,18 +51,15 @@ test('会话控制器：/context 输出各段大小与占窗口比例，链段�
   }
 });
 
-test('会话控制器：/context 只读钉——不消费待注入技能块、不写链、两次输出逐字节一致', async () => {
+test('会话控制器：/context 只读钉——不写链、两次输出逐字节一致', async () => {
   const tmp = tmpdir('sunshinex-ctx-readonly-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     const ctx = ctrl.runtime.harness.context;
-    ctx.setSkillBlock('demo skill body for pending injection');
     ctx.appendChain([{ action: 'task', observation: 'Current instruction: demo' }]);
     const chainBefore = ctx.chainView().length;
     await ctrl.submit('/context');
     const first = ctrl.getState().messages.filter((m) => m.role === 'system').at(-1)?.text ?? '';
-    assert.ok(first.includes('skill block (pending)'), '待注入技能块呈现为独立分段');
-    assert.equal(ctx.peekSkill(), 'demo skill body for pending injection', 'peek 不消费：技能块仍待下次装配注入');
     assert.equal(ctx.chainView().length, chainBefore, '观测不写链');
     await ctrl.submit('/context');
     const second = ctrl.getState().messages.filter((m) => m.role === 'system').at(-1)?.text ?? '';
@@ -103,7 +100,7 @@ test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带�
   }
 });
 
-test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致（快照分段/压缩水位/peek 三源齐备）', async () => {
+test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致（快照分段/压缩水位齐备）', async () => {
   const tmp = tmpdir('sunshinex-ctx-parts-');
   try {
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '- 只有一行约定\n');
@@ -127,7 +124,6 @@ test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致�
       memory: parts.memory,
       compacted: ctx.compactedView(),
       chain: ctx.chainView(),
-      skill: ctx.peekSkill(),
       window: 200_000,
       chainFrom: ctx.chainFromView(),
     });
