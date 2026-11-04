@@ -10,7 +10,7 @@ import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
  *  (Enter=带反馈重新计划,Shift+Enter 换行——与 composer 键位同构)。按钮排布(2026-11-04 用户裁定)
  *  取消|重新计划|实施:取消=放弃本轮(decision 不带 feedback);重新计划必须反馈框有内容(空=禁用,
  *  放弃语义归取消钮,不再兼义);实施按当前档——只读域(plan/read-only)双键=实施·工作区编辑(primary
- *  缺省档)+实施·完全访问(warn 黄警示,Unlock);可写域(acceptEdits/full-access)单键=实施(当前档,
+ *  缺省档)+实施·完全访问(Unlock 黄图标警示);可写域(acceptEdits/full-access)单键=实施(当前档,
  *  图标随档)——批准即维持本档,无落档切换(档位操作走 pill,不混入计划卡)。
  *  实施钮双域统一「{图标} 实施」(hover 显「在工作区编辑/完全访问下实施」),取消/重新计划纯文字;<480px 实施钮折纯图标,再窄换行。
  *  items 不再独立渲染 ol(Steps 节已随 doc 全文在滚动区内,双份同内容上下排即冗余;items 仍是执行
@@ -95,7 +95,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' 
         <button type="button" disabled={feedback.trim() === ''} onClick={sendRePlan}>{t('Re-plan', '重新计划')}</button>
         {writable ? (
           <button type="button" className="primary" data-tip={mode === 'full-access' ? t('Implement under full access', '在完全访问下实施') : t('Implement under workspace edits', '在工作区编辑下实施')} onClick={() => onDecide({ approved: true, mode })}>
-            {mode === 'full-access' ? <Unlock size={14} strokeWidth={2} aria-hidden="true" /> : <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />}
+            {mode === 'full-access' ? <Unlock size={14} strokeWidth={2} aria-hidden="true" className="ico-warn" /> : <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />}
             <span className="btn-label">{t('Implement', '实施')}</span>
           </button>
         ) : (
@@ -106,8 +106,9 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' 
               <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
               <span className="btn-label">{t('Implement', '实施')}</span>
             </button>
-            <button type="button" className="warn" aria-label={t('Implement under full access', '在完全访问下实施')} data-tip={t('Implement under full access', '在完全访问下实施')} onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
-              <Unlock size={14} strokeWidth={2} aria-hidden="true" />
+            <button type="button" aria-label={t('Implement under full access', '在完全访问下实施')} data-tip={t('Implement under full access', '在完全访问下实施')} onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
+              {/* 完全访问=黄图标警示(2026-11-04 用户裁定「图标显示黄色就可以」——整钮黄退役) */}
+              <Unlock size={14} strokeWidth={2} aria-hidden="true" className="ico-warn" />
               <span className="btn-label">{t('Implement', '实施')}</span>
             </button>
           </>

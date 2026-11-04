@@ -227,7 +227,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
     if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
     // exit_plan 运行态带计划名——「正在提交计划 重构认证模块」
-    if (toolName === 'exit_plan' && planName !== '') return t(`Presenting plan ${planName}`, `正在提交计划 ${planName}`);
+    if (toolName === 'exit_plan' && planName !== '') return t('Presenting plan', '正在提交计划'); // 计划名归蓝链(2026-11-04 用户裁定「只显示蓝色」——折叠行名+链双显退役)
     // 2026-10-26 MCP 工具运行态带本地化工具名——「正在调用 截屏」(双语对随语言切换,与完成态同口径)
     const mcp = mcpToolParts(toolName);
     // 运行态带本地化工具名(2026-10-30 用户裁定;双语对渲染期求值)
@@ -374,7 +374,24 @@ export const ToolEntryView = memo(function ToolEntryView({
             {' '}{planName}
           </span>
         ) : planName !== '' ? (
-          <span className="tool-file-base tool-agent-link">{' '}{planName}</span>
+          /* live 帧无 path(模型出牌原文 {name,doc};path 只在回放合成行)——点击经计划清单按名寻路
+             (conn.sessionPlans,修订覆盖写=同会话单份,名命中即最新计划);测试桩无此法静默零操作 */
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('Open plan file', '打开计划文件')}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (typeof conn.sessionPlans !== 'function') return;
+              void conn.sessionPlans(sessionId).then((r) => {
+                const hit = r.plans.find((pl) => pl.name === planName) ?? r.plans[0];
+                if (hit !== undefined && onOpenFile !== undefined) onOpenFile(hit.path);
+              }).catch(() => {});
+            }}
+          >
+            {' '}{planName}
+          </span>
         ) : null
       ) : !hideTargetWhileRunning && toolName === 'create_agent_team' ? (
         /* 折叠行「创建智能体团队 {name}」——队名蓝色链接开指定队卡 */
@@ -754,7 +771,8 @@ export const ToolEntryView = memo(function ToolEntryView({
     const planExecuting = entry.status === 'pending' || entry.status === 'running';
     body = (
       <div className="tool-md ask-record">
-        <div className="ask-q plan-name-link">{planName !== '' ? planName : t('Plan', '计划')}</div>
+        {/* 2026-11-04 用户裁定:展开体计划名不可交互不蓝——plan-name-link 摘除 */}
+        <div className="ask-q">{planName !== '' ? planName : t('Plan', '计划')}</div>
         <div className={`ask-answer ${planExecuting ? 'kind-waiting' : 'kind-answer'}`}>
           {planExecuting && <span className="run-spinner" aria-hidden="true" />}
           <span className="ask-answer-text">

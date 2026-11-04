@@ -23,15 +23,10 @@ describe('localizeNotice /plan 全族', () => {
     expect(localizeNotice('Busy — leave plan mode when the session is idle')).toBe('会话忙——空闲后再退出计划模式');
   });
 
-  it('带目标提交的入队提示与弃卡提示', () => {
+  it('带目标提交的入队提示(计划裁决诊断行已退役:2026-11-04 用户裁定「用户不关心,从底层去掉」——卡面即结果)', () => {
     expect(localizeNotice('Queued — planning will start when the current task finishes')).toBe('已入队：当前任务收口后将先规划');
-    expect(localizeNotice('Plan discarded — submit a new goal to re-plan')).toBe('计划已弃——提交新目标即可重新规划');
-  });
-
-  it('plan-approval 裁决诊断行:pid 捕获组透传(2026-11-04 术语:重新计划/放弃,无拒绝)', () => {
-    expect(localizeNotice('plan-approval p12 resolved: approved')).toBe('计划 p12 已批准');
-    expect(localizeNotice('plan-approval p3 resolved: re-planned')).toBe('计划 p3 转入重新计划');
-    expect(localizeNotice('plan-approval p4 resolved: discarded')).toBe('计划 p4 已放弃');
+    // 计划裁决不再 pump 系统提示:英文原行透传(无 zh 映射)即证映射面已摘
+    expect(localizeNotice('plan-approval p12 resolved: approved')).toBe('plan-approval p12 resolved: approved');
   });
 
   it('规划中断标签', () => {

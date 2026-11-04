@@ -18,10 +18,6 @@ const PATTERNS: ReadonlyArray<{ re: RegExp; zh: string }> = [
   { re: /^Not in plan mode$/, zh: '当前不在计划模式' },
   { re: /^Busy — leave plan mode when the session is idle$/, zh: '会话忙——空闲后再退出计划模式' },
   { re: /^Queued — planning will start when the current task finishes$/, zh: '已入队：当前任务收口后将先规划' },
-  { re: /^Plan discarded — submit a new goal to re-plan$/, zh: '计划已弃——提交新目标即可重新规划' },
-  { re: /^plan-approval (\S+) resolved: approved$/, zh: '计划 $1 已批准' },
-  { re: /^plan-approval (\S+) resolved: re-planned$/, zh: '计划 $1 转入重新计划' },
-  { re: /^plan-approval (\S+) resolved: discarded$/, zh: '计划 $1 已放弃' },
   { re: /^Planning interrupted$/, zh: '规划已中断' },
   // —— 挂起裁决诊断行（session.ts pump：approval/ask 回执提示）——
   { re: /^approval (\S+) resolved: allow$/, zh: '审批 $1 已裁决：允许' },

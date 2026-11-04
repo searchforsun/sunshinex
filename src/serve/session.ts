@@ -579,7 +579,8 @@ export class SessionRuntime {
   }
 
   /** plan 审批回执（kind 判别——plan 回执打到 approval/ask 挂起 = false→HTTP 404 面,反之亦然）：
-   *  删表→resolve→notice 入转录三面（回执留痕,沿 approval/ask 既有形态） */
+   *  删表→resolve——裁决不 pump 系统提示（2026-11-04 用户裁定「用户不关心,从底层去掉」:卡面即结果,
+   *  转录零诊断行;approval/ask 回执诊断行保留不受影响） */
   resolvePendingPlanApproval(pid: string, decision: PlanDecision): boolean {
     const entry = this.pending.get(pid);
     if (entry === undefined || entry.kind !== 'plan-approval') return false;
@@ -594,12 +595,9 @@ export class SessionRuntime {
       const fallback: PlanLandMode = this.currentMode === 'full-access' ? 'full-access' : 'acceptEdits';
       this.landPlanDecision(decision.mode ?? fallback, entry.req.items);
     } else if ((decision.feedback ?? '').trim() === '') {
-      this.pump({ type: 'notice', text: 'Plan discarded — submit a new goal to re-plan', ts: Date.now() });
-      this.interrupt();
+      this.interrupt(); // 空反馈=放弃本轮:中断 run 回输入态(2026-11-04 用户裁定:裁决系统提示不入转录——卡面即结果,用户不关心诊断行)
     }
     entry.resolve(decision);
-    const verdict = decision.approved ? 'approved' : (decision.feedback ?? '').trim() !== '' ? 're-planned' : 'discarded';
-    this.pump({ type: 'notice', text: `plan-approval ${pid} resolved: ${verdict}`, ts: Date.now() });
     return true;
   }
 
