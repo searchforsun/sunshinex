@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { t } from '../../i18n';
+import { zoomScale } from '../../ui-zoom';
 
 /**
  * 正文圈选悬浮动作条(2026-11-04 用户裁定「主对话正文与子智能体正文圈选后显示 添加到主对话/
@@ -41,9 +42,11 @@ export function SelActionsOverlay(props: {
         setSel(null);
         return;
       }
+      // gBCR=视觉 px,fixed 条在 zoom 子树内样式 px=本地值——zoomScale 归一(Files 选区条同口径)
+      const z = zoomScale();
       setSel({
-        top: Math.max(8, rect.top - 40),
-        left: Math.max(8, rect.left),
+        top: Math.max(8, rect.top / z - 40 / z),
+        left: Math.max(8, rect.left / z),
         text: text.trim().slice(0, 2000),
       });
     };

@@ -9,6 +9,7 @@ import type { PtyFrame } from './pty-codec';
 import { toWsUrl } from '../connection';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
+import { zoomScale } from '../ui-zoom';
 import type { TabParams } from './tab-state';
 
 /**
@@ -173,8 +174,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           const onMouseUp = (e: MouseEvent): void => {
             const sel = term?.getSelection() ?? '';
             if (sel.trim() === '') return;
+            // client 坐标=视觉 px,absolute 条在 zoom 子树内样式 px=本地值——zoomScale 归一
+            const z = zoomScale();
             const rect = container.getBoundingClientRect();
-            setSelBar({ x: e.clientX - rect.left, y: e.clientY - rect.top, text: sel.trim() });
+            setSelBar({ x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z, text: sel.trim() });
           };
           container.addEventListener('mouseup', onMouseUp);
           term.onSelectionChange(() => {
