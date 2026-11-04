@@ -159,7 +159,7 @@ export interface Connection {
   sessionInterrupt(id: string): Promise<void>;
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
    *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
-  sessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }>;
+  sessionSnapshot(id: string, page?: { before?: number; limit?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }>;
   /** 2026-10-26 三期 §4.5:按需全量观测(快照分页剥 full 后,工具行展开按 seq 单条拉) */
   fetchObservation(id: string, seq: number): Promise<{ seq: number; text?: string; full?: string }>;
   /** POST /approval/:pid {decision}（G4）：decision ∈ 'allow'|'always'|'deny'——回执寻址用帧
@@ -378,11 +378,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
     return (await res.json()) as T;
   }
 
-  /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗） */
-  async function fetchSessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }> {
+  /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗）。
+   *  bumpSeq=false 供辅助拉取（批准后的 mode 轻同步等）——只读数据不动 seq 门（2026-11-04 实测
+   *  根修:批准回执落定→executor 同拍恢复→tool-result 帧在途;此刻辅助快照应答先行处理即把
+   *  lastSeq 抬过在途帧序,帧落门内被当重放丢=交稿行永卡「正在提交」） */
+  async function fetchSessionSnapshot(id: string, page?: { before?: number; limit?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }> {
     const gen = transport.generation();
     const q = page !== undefined ? `?before=${page.before}&limit=${page.limit}` : '';
     const resp = await getJson<SnapshotResponse & { lastSeq: number }>(`/session/${encodeURIComponent(id)}/snapshot${q}`);
+    if (opts?.bumpSeq === false) return resp;
     if (gen === transport.generation() && resp.lastSeq > (transport.lastSeqBySession.get(id) ?? 0)) {
       transport.lastSeqBySession.set(id, resp.lastSeq);
     }
@@ -599,8 +603,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
     sessionInterrupt(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/interrupt`);
     },
-    sessionSnapshot(id: string, page?: { before?: number; limit?: number }): Promise<SnapshotResponse & { lastSeq: number }> {
-      return fetchSessionSnapshot(id, page);
+    sessionSnapshot(id: string, page?: { before?: number; limit?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }> {
+      return fetchSessionSnapshot(id, page, opts);
     },
     fetchObservation(id: string, seq: number) {
       return getJson<{ seq: number; text?: string; full?: string }>(`/session/${encodeURIComponent(id)}/entry/${seq}/observation`);

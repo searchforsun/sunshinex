@@ -231,7 +231,7 @@ export function useSessionEvents(deps: {
         // 「计划模式」直到下次快照才翻)。回执落定后拉快照做 mode-only 轻同步(零投影重置——
         // 重播种会闪全文;模式漂移只在批准此刻发生,其余 pill 同步面不动)
         reply
-          .then(() => conn.sessionSnapshot(sessionId))
+          .then(() => conn.sessionSnapshot(sessionId, undefined, { bumpSeq: false })) // 辅助拉取不动 seq 门——回执落定 executor 同拍恢复,tool-result 帧在途,抬门即吞帧(交稿行永卡提交中)
           .then((snap) => {
             if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
           })

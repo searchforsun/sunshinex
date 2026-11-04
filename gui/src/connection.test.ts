@@ -292,6 +292,25 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     expect(seen).toEqual(['s1:8', 's2:3']);
   });
 
+  it('⑤c bumpSeq=false 辅助拉取不抬过滤基线(2026-11-04 根修锚:批准后 mode 轻同步拉快照若抬门,回执落定 executor 同拍恢复的在途 tool-result 帧被当重放吞=交稿行永卡提交中)', async () => {
+    const seen: string[] = [];
+    conn = createConnection({
+      baseUrl: 'http://x',
+      token: 't',
+      onEvent: (sessionId, _e, seq) => seen.push(`${sessionId}:${seq}`),
+      onReset: () => {},
+      backoffBaseMs: 1,
+    });
+    const ws = last();
+    ws.openNow();
+    fetchQueue.push(ok(snap(9)));
+    await conn.sessionSnapshot('s1', undefined, { bumpSeq: false });
+    await flush();
+    expect(seen).toEqual([]);
+    ws.recv('s1', 9, ev('token', 1)); // 基线未抬:同序在途帧照投(对照 ⑤ 同序即丢)
+    expect(seen).toEqual(['s1:9']);
+  });
+
   it('⑤b 慢到 snapshot 应答:掉线换代后落定不抬基线——不污新连接的全量重放窗', async () => {
     const seen: string[] = [];
     conn = createConnection({
