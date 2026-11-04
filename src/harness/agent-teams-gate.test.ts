@@ -74,3 +74,30 @@ test('agentTeams 缺省 true → 八个团队工具齐全', () => {
     }
   });
 });
+
+test('agentTeams off：teams/agents 清单照注、team/agent 工具照注册、八件套不注入', () => {
+  withIsolatedHarnessRoot((root) => {
+    process.env.SUNSHINEX_AGENT_TEAMS = 'off';
+    // 预置一个 team.md：断言「关开关只关八件套注入，不关清单观测面」（catalog 面与工具面解耦）
+    const teamsDir = path.join(root, '.sunshinex', 'teams', 'fullstack-delivery');
+    fs.mkdirSync(teamsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(teamsDir, 'team.md'),
+      '---\nname: 全栈交付小队\ndescription: 一站式交付\nmembers: planner developer\n---\n章程',
+    );
+    const h = new Harness({ root, mode: 'full-access', learnSkills: false });
+    // 断言1: teams/agents 清单段照注（snapshot 面不随 agentTeams 收缩；agents 段恒在）
+    const parts = h.context.snapshotPartsView();
+    assert.equal(parts.teams.length, 1, 'teams index segment still injected with agentTeams off');
+    assert.ok(parts.teams[0]!.content.includes('全栈交付小队'), 'preset team listed in teams segment');
+    assert.ok(parts.teams[0]!.content.includes('#team-id'), 'team segment lead line declares soft reference');
+    assert.equal(parts.agents.length, 1, 'agents index segment stays present (builtins keep it constant)');
+    // 断言2: team/agent 工具照注册（接缝在场即注册，与开关无关）
+    assert.ok(h.tools.get('team'), 'team tool stays registered');
+    assert.ok(h.tools.get('agent'), 'agent tool stays registered');
+    // 断言3: 八件套（含 create_agent_team / create_agent_teammate）不注入
+    for (const name of TEAM_TOOLS) {
+      assert.equal(h.tools.get(name), undefined, `${name} must be absent when SUNSHINEX_AGENT_TEAMS=off`);
+    }
+  });
+});

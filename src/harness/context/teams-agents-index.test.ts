@@ -10,7 +10,8 @@ import { ContextManager } from './index';
 process.env.SUNSHINEX_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ta-data-'));
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-ta-home-'));
 
-function fixtureCtx(): ContextManager {
+/** 预置盘面（一 team 一 agent）；root 单独出料——确定性钉子要「同一 root 两个独立实例」 */
+function fixtureRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ctx-teams-'));
   const teamsDir = path.join(root, '.sunshinex', 'teams', 'fullstack-delivery');
   fs.mkdirSync(teamsDir, { recursive: true });
@@ -18,7 +19,11 @@ function fixtureCtx(): ContextManager {
   const agentDir = path.join(root, '.sunshinex', 'agents', 'devx');
   fs.mkdirSync(agentDir, { recursive: true });
   fs.writeFileSync(path.join(agentDir, 'agent.md'), '---\nname: DevX\ndescription: 编码实现\n---\n写代码的框定');
-  return new ContextManager(root, {} as never);
+  return root;
+}
+
+function fixtureCtx(): ContextManager {
+  return new ContextManager(fixtureRoot(), {} as never);
 }
 
 test('快照注入 agents/teams 清单段（确定性、system kind）', () => {
@@ -29,6 +34,15 @@ test('快照注入 agents/teams 清单段（确定性、system kind）', () => {
   assert.ok(parts.teams[0]!.content.includes('- 全栈交付小队 (id: fullstack-delivery)'));
   assert.ok(parts.teams[0]!.content.includes('#team-id')); // lead 行声明软引用（plan §1105：用户以 "#team-id" 引用团队）
   assert.ok(ctx.snapshotExport().items.every((it) => it.kind === 'system' || it.kind === 'instruction'));
+});
+
+test('快照确定性：同盘两次 rebuild 逐字节同输出（禁时变字段回归钉）', () => {
+  // 同一 root 两个独立 ContextManager（快照重建同构）：清单段含内置 agents 段，导出 items + sig 全量比对——
+  // 任一段混入时间戳/随机序/盘绝对路径即失配（快照前缀逐字节稳定是压缩与恢复面的前提）
+  const root = fixtureRoot();
+  const ctx1 = new ContextManager(root, {} as never);
+  const ctx2 = new ContextManager(root, {} as never);
+  assert.equal(JSON.stringify(ctx1.snapshotExport()), JSON.stringify(ctx2.snapshotExport()));
 });
 
 test('空目录：teams 零注入（无 teams 段）；agents 段恒在（内置四角色）', () => {
