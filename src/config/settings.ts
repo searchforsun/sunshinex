@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { userConfigDir } from './env';
-import { t } from '../i18n';
+import { t, setLanguage, parseLanguage } from '../i18n';
 
 /**
  * 语义键 → SUNSHINEX_* 环境槽映射表（全仓唯一权威）。
@@ -556,6 +556,13 @@ export function loadSettingsChain(projectRoot: string): void {
   try {
     for (const result of [applySettings(loadProjectSettings(projectRoot)), applySettings(loadGlobalSettings())]) {
       for (const w of result.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
+    }
+    // 装载链尾:i18n 语言跟随 settings(SUNSHINEX_LANGUAGE 槽已由 applySettings 写入 env)——
+    // CLI/桌面 daemon 共用同一路径,daemon t() 语言不再恒 en(用户实测:命令通道通知英文无 i18n)
+    const lang = process.env.SUNSHINEX_LANGUAGE;
+    if (lang) {
+      const parsed = parseLanguage(lang);
+      if (parsed) setLanguage(parsed);
     }
   } catch (err) {
     console.error(t(
