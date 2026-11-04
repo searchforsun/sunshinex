@@ -523,6 +523,8 @@ export class GuiDaemon {
     { method: 'GET', path: '/session/:id/diff', auth: true, run: async (req, res, p) => this.handleDiff(req, res, p.id) },
     // G8b T4 tree 面：会话 root 内单层目录列举（Files 页树消费；忽略集/500 上限/判界语义见 handleTree）
     { method: 'GET', path: '/session/:id/tree', auth: true, run: async (req, res, p) => this.handleTree(req, res, p.id) },
+    // 2026-11-04 计划页签数据面：数据目录计划书清单（名/绝对路径/末次生成时刻，mtime 降序——PlansTab 消费）
+    { method: 'GET', path: '/session/:id/plans', auth: true, run: async (req, res, p) => fileHandlers.handlePlans(this.sessionIo, req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
     // 2026-10-21 归档面:双寻址(daemon 会话 id 或 journalId)+ 跨工作区归档列表(归档页消费)
     { method: 'POST', path: '/session/:id/archive', auth: true, run: async (req, res, p) => {

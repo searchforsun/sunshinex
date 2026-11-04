@@ -346,6 +346,45 @@ export function handleAppFile(io: FileHandlerIo, req: http.IncomingMessage, res:
   sendFilePayload(io, res, abs);
 }
 
+/** GET /session/:id/plans(2026-11-04 计划页签数据面):扫数据目录 sessions/*.plan.md——每会话一份
+ *  计划书(修订覆盖写,mtime=末次生成时刻),行={name(文件首行非空行=计划名,剥 H1 前缀),path(绝对,
+ *  /session/:id/file 直开),mtime};mtime 降序(最近生成在前)。无数据目录/坏档静默跳过(清单面,
+ *  读取失败即少一行,不以错示人) */
+export function handlePlans(io: FileHandlerIo, _req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  const dir = path.join(resolveDataDir(session.root), 'sessions');
+  let files: fs.Dirent[] = [];
+  try {
+    files = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    /* 无数据目录=零计划,空清单回执 */
+  }
+  const plans: Array<{ name: string; path: string; mtime: number }> = [];
+  for (const ent of files) {
+    if (!ent.isFile() || !ent.name.endsWith('.plan.md')) continue;
+    const abs = path.join(dir, ent.name);
+    let mtime = 0;
+    let name = '';
+    try {
+      mtime = fs.statSync(abs).mtimeMs;
+      const head = fs.readFileSync(abs, 'utf8').slice(0, 4096); // 首行计划名在前 4KB 必达
+      for (const line of head.split('\n')) {
+        const t = line.trim();
+        if (t !== '') {
+          name = t.replace(/^#\s*/, '');
+          break;
+        }
+      }
+    } catch {
+      continue; // 坏档(撕裂/被删)跳过
+    }
+    plans.push({ name, path: abs, mtime });
+  }
+  plans.sort((a, b) => b.mtime - a.mtime);
+  io.send(res, 200, { plans });
+}
+
 export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
   const url = urlOf(req);
   const callId = url.searchParams.get('callId');

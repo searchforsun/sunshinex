@@ -178,6 +178,10 @@ export interface Connection {
   /** GET /session/:id/file?path=（G6 预览面）：path 相对会话 root 或绝对均可；403(越界)/404(不
    *  存在/目录)/415(二进制)以 HTTP 失败抛错（消息含 status）——Files 页错误态消费 */
   readFile(sessionId: string, path: string): Promise<FileResp>;
+  /** GET /session/:id/plans(2026-11-04 计划页签):数据目录计划书清单——name=文件首行计划名,
+   *  path=绝对路径(/session/:id/file 直开),mtime=末次生成时刻(ms,修订覆盖写即刷新);mtime 降序 */
+  sessionPlans(sessionId: string): Promise<{ plans: Array<{ name: string; path: string; mtime: number }> }>;
+
   /** GET /app/file?root=&path=（2026-10-27 欢迎页全局草稿）:无会话文件读,信任域=注册工作区根+数据目录 */
   appFile(root: string, filePath: string, scope?: 'data'): Promise<FileResp>;
   /** GET /session/:id/diff?callId=（G7 diff 面）：write 调用双内容（见 DiffResp）；404（无快照/
@@ -620,6 +624,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     readFile(sessionId: string, filePath: string): Promise<FileResp> {
       return getJson<FileResp>(`/session/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(filePath)}`);
+    },
+    sessionPlans(sessionId: string): Promise<{ plans: Array<{ name: string; path: string; mtime: number }> }> {
+      return getJson(`/session/${encodeURIComponent(sessionId)}/plans`);
     },
     fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp> {
       // path 随参(G14.4):callId 未中(重放会话)时 daemon 按 journal snapshots 行回退真 pre-image
