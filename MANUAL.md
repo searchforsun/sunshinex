@@ -315,6 +315,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，首项标注「默认」（缺省模型=首源首模型）、当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
 | `/mcp` | MCP 服务器面板：两级清单卡（名称/作用域/启用状态点/遮蔽标注/审批态，项目待确认服务器带「待确认」徽标与批准指引）；`/mcp enable|disable|approve|deny <名称>` 就地启停（写所在作用域 mcp.json）与项目批准阀审批（写全局 settings），执行后回显并重绘；新增/编辑经 `sunshinex mcp` 子命令 |
 | `/agents` | 子智能体面板：两级位置清单卡（id/作用域/遮蔽标注/启用状态/描述）；`/agents enable|disable <id>` 就地启停（写所在作用域 agent.md enabled 行）；新增/编辑经 `sunshinex agents` 子命令 |
+| `/teams` | 智能体团队面板：两级清单卡（id/作用域/遮蔽标注/启用状态/成员与缺失成员警示），只读——编辑经 GUI 设置（Agent Teams）或 CLI catalog API（面板不做表单）；消息中以 `$<agent-id>` 点名智能体、`#<team-id>` 引用团队（引用未匹配在册条目时发送侧给一条提示，原文照发） |
 | `/plugins` | 插件面板：内置+用户两级清单卡（id/启用状态/来源段/平台可用性）；`/plugins enable|disable <id>` 写项目 settings 插件启用键；配置与安装经 `sunshinex plugins` 子命令 |
 | `/providers` | 模型提供方面板：只读清单卡（源名/模型数/密钥槽在场状态/默认源标注）+ 编辑引导（`sunshinex providers` 子命令或 `$EDITOR settings.json`；面板不做表单） |
 | `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效）；各档实际选中的模型 = providers models 条目的 `tier` 标注（同档取第一，无标注回缺省模型） |

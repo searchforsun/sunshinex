@@ -41,6 +41,7 @@ import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-m
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
 import { mcpPanel } from './commands-mcp';
 import { agentsPanel } from './commands-agents';
+import { teamsPanel, pushUnknownRefHint } from './commands-teams';
 import { pluginsPanel } from './commands-plugins';
 import { providersPanel } from './commands-providers';
 import { resumeFlow, btwFlow, branchFlow, unarchiveFlow, resumeLatest as resumeLatestFrom } from './commands-session';
@@ -546,6 +547,7 @@ export class SessionController {
       this.md.clear();
       this.runtime.harness.security.enterModeOverride('read-only');
       this.runtime.harness.context.appendChain([{ action: 'note', observation: PLAN_MODE_NOTE }]);
+      pushUnknownRefHint(this, text); // agents-teams P1 Task 5：派发前只读提示（原文照发，见 commands-teams）
       void this.runTaskFlow(text, undefined, imgs); // fire-and-forget:submit 半径到卡
       return;
     }
@@ -560,6 +562,7 @@ export class SessionController {
     // 内核转录(P3):自然语言轮=对话 user 条(新轮与 steer 补跑两支同源;slash 命令回显不入转录面)
     this.kernel.submit(text, imgs);
     this.md.clear();
+    pushUnknownRefHint(this, text); // agents-teams P1 Task 5：派发前只读提示（原文照发，见 commands-teams）
     await this.runTaskFlow(text, undefined, imgs);
     await this.drainQueue();
   }
@@ -952,6 +955,7 @@ export class SessionController {
       const imgs = it.images;
       this.pushMsg('user', it.text, imgs !== undefined ? { images: imgs } : undefined);
       this.kernel.submit(it.text, imgs);
+      pushUnknownRefHint(this, it.text); // agents-teams P1 Task 5：排队行真正发送时刻同检（提示跟随派发时刻）
       // armed 队列行=计划模式任务轮（2026-11-03 无感化）：override+note+普通会话作用域 run
       if (this.planArmed) {
         // armed 队列行=计划模式任务轮:override+note,普通会话作用域 run(exit_plan 弹卡阻塞)
@@ -1174,6 +1178,11 @@ export class SessionController {
       agentsPanel(this, text.slice(cmd.length).trim());
       return;
     }
+    if (cmd === '/teams') {
+      // 团队面板（agents-teams P1 Task 5）：无参两级清单卡（只读，写引导 GUI/CLI——spec §6.3）——细节见拆分件 commands-teams
+      teamsPanel(this, text.slice(cmd.length).trim());
+      return;
+    }
     if (cmd === '/plugins') {
       // 插件面板（Task 20）：无参两级清单卡；enable|disable <id> 写项目 settings——细节见拆分件 commands-plugins
       pluginsPanel(this, text.slice(cmd.length).trim());
@@ -1332,6 +1341,7 @@ export class SessionController {
     }
     // G14.95 / 前缀未匹配任何命令 → 当普通文本(与 GUI 同语义):模型自主判断
     // (系统提示词 skills 清单含「/skill-id 引用优先加载」提示),不再报「无法识别命令」
+    pushUnknownRefHint(this, text); // agents-teams P1 Task 5：落点同检（派发前只读提示，原文照发）
     await this.runTaskFlow(text);
   }
 
