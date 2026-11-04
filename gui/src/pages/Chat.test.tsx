@@ -1693,6 +1693,38 @@ describe('P1 行级 memo render-count(Task 3):token 突发/交错帧已落位 to
   });
 });
 
+describe('命令面板(/ 面板,2026-11-04 skills 硬载退役)', () => {
+  it('`/` 面板仅含 GET /commands 内置清单(supported 过滤),零 skillCmds 拉取、无技能项混入', async () => {
+    setLanguage('zh');
+    const skillCommands = vi.fn(() => Promise.resolve([{ id: 'pdf', description: 'pdf 工具' }]));
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).skillCommands = skillCommands;
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '/' } });
+    await screen.findByRole('listbox', { name: '命令面板' }); // 面板开
+    const names = (): Array<string | null> => [...document.querySelectorAll('.cmd-palette .cmd-name')].map((el) => el.textContent);
+    expect(names()).toEqual(['/status', '/compact']); // 仅内置命令(/plan 不在 supported 不列);无 /pdf 技能项
+    await flushed();
+    expect(skillCommands).not.toHaveBeenCalled(); // 无 skillCmds 数据面拉取
+    expect(names()).toEqual(['/status', '/compact']); // 拉取窗口过后仍无技能项混入
+  });
+
+  it('行中 `/` token 不弹面板(atStart 门:技能软引用=纯文本语义,面板=纯内置命令)', async () => {
+    setLanguage('zh');
+    const skillCommands = vi.fn(() => Promise.resolve([{ id: 'pdf', description: 'pdf 工具' }]));
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).skillCommands = skillCommands;
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '前文 /' } }); // 中间 / 曾=仅技能池(旧面板混入面)
+    await flushed();
+    await flushed();
+    expect(document.querySelector('.cmd-palette')).toBeNull(); // 技能池退役,面板不开
+    expect(skillCommands).not.toHaveBeenCalled();
+  });
+});
+
 describe('等待模型待态(2026-10-27)', () => {
   it('idle 提交被接受→发送钮 loading;run-open 落地→收', async () => {
     setLanguage('zh');

@@ -87,8 +87,6 @@ export interface Connection {
   /** 辅助对话清单(2026-10-31 用户裁定「辅助对话持久化+编号页签」):主会话的 side 档;
    *  sessionId=在座会话 id(daemon 重启后缺席,页签恢复仅限同 daemon 生命周期) */
   sessionSides(id: string): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>>;
-  /** G14.95 技能命令清单(会话维):GUI 命令面板混入技能项 */
-  skillCommands(id: string): Promise<Array<{ id: string; description: string }>>;
   /** G14.99 工作区未提交变动面（Diff 标签数据源） */
   sessionChanges(id: string): Promise<{ branch: string; files: Array<{ path: string; status: string; added: number | null; deleted: number | null }> }>;
   /** G14.112 目录树 git 状态映射(含 ignored 目录折叠):path → modified/untracked/deleted/renamed/ignored */
@@ -480,9 +478,6 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     commands() {
       return getJson('/commands');
-    },
-    skillCommands(id: string) {
-      return getJson<Array<{ id: string; description: string }>>(`/session/${encodeURIComponent(id)}/skill-commands`);
     },
     sessionChanges(id: string) {
       return getJson(`/session/${encodeURIComponent(id)}/changes`);

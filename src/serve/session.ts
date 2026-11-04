@@ -27,7 +27,6 @@ import { resolveRunWindow } from '../config/termination-config';
 import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/plan-flow';
 import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
-import { SLASH_COMMANDS } from '../tui/slash-commands';
 import { listChanges, diffChangeSets } from './session-changes';
 import type { ChangeFile } from '../types';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
@@ -1185,17 +1184,6 @@ export class SessionRuntime {
   /** P5 队列编辑(spec §12.2):第 seq 条文本改写;越界/空白 false */
   steerEdit(seq: number, text: string): boolean {
     return this.kernel.steerEditAt(seq, text);
-  }
-
-  /** G14.95 技能命令清单(会话维,/session/:id/skill-commands 数据面):字符集合法+撞名内置词排除
-   *  (TUI skillCommandIds 同口径),GUI 命令面板混入技能项 */
-  skillCommands(): Array<{ id: string; description: string }> {
-    const builtin = new Set(SLASH_COMMANDS.map((c) => c.slice(1)));
-    return this.runtimeImpl.harness.skills
-      .list()
-      .filter((m) => /^[a-z0-9][a-z0-9_-]*$/.test(m.id) && !builtin.has(m.id))
-      .map((m) => ({ id: m.id, description: m.description }))
-      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
   /** 排队插话(G10-C1d):内核队列快照(P5),seq=位置下标(每次变更重排,cancel 寻址键) */

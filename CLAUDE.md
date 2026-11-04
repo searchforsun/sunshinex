@@ -107,10 +107,11 @@ src/
     guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
     skills.ts         # 技能装载与调度（项目单根+全局+学习级+插件链尾、resolve 回退链、清单注入）
+    teams.ts          # 团队目录装载与调度（两级遮蔽、索引注入、resolve 三态、章程卡）
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question/worktree/todo_write）
+    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/team/agent/memory_write/ask_question/worktree/todo_write）
     browser-host.ts   # 浏览器宿主装配单点（browser-use 插件连接改写为每进程宿主 HTTP 连接：会话浏览器键/座位/数据目录/facade 端点入 URL，宿主起不来只损失浏览器工具）
     tools/task-stop.ts # task_stop（仅 exec/spawn 台账）与 agent_team_task_stop（板任务/成员打断；agentTeams 开时注册）
     tools/task-wait.ts # task_wait（仅 exec/spawn 台账）与 agent_team_task_wait（板任务等待；agentTeams 开时注册）
@@ -135,6 +136,7 @@ gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/无边框自绘窗控/NSIS 单安装包打包；daemon 进程内动态 import 装配，壳与主仓零编译期耦合）
 plugins/             # 插件工作区根（内置插件 plugin.json + 校验 artifact plugins/schema/；用户级根 ~/.sunshinex/plugins/；开发指南 docs/PLUGIN-DEV.md）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；兼容根见 §6）
+.sunshinex/teams/     # 项目级智能体团队目录（标准形态 {id}/team.md，正文=章程；两级遮蔽与软引用见 §6）
 agents/               # 用户子智能体目录（约定根，可缺省——不存在=空注册；{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置
 ```
@@ -156,7 +158,7 @@ SUNSHINE.md          # 项目业务配置
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
 - **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
-  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
+  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `team` / `agent` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
   - 另册：`spawn`（`subagent.ts` 工厂，子智能体派生）/ `task_stop`（`tools/task-stop.ts`，仅停止 exec/超时转后台/后台 spawn 台账任务）/ `task_wait`（`tools/task-wait.ts`，仅等待上述台账到终态并内联回执 exec 日志尾部/子智能体结论；板 id 拒识点名 `agent_team_task_wait`）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
   - 智能体团队（`taskboard-tools.ts` + `teammate-tools.ts` / `message-tools.ts` 工厂，`harness/index.ts` 按 `agentTeams` 条件装配，缺省开；语义键 `agentTeams` / 槽 `SUNSHINEX_AGENT_TEAMS`，解析单点 `config/agent-teams.ts`）：`create_agent_team`（建队并返回 teamId）/ `create_agent_teammate`（长驻成员创建，与 spawn 分立动词，必带 teamId）/ `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message` / `agent_team_task_wait`（仅板任务）/ `agent_team_task_stop`（板任务取消 + 按名打断成员）；板态为 `pending` / `running` / `success` / `failed` / `cancelled`；关开关则八件套不注入模型面且 GUI 隐藏「智能体团队」页签；成员面派生时剔板面写件、换注 `get_agent_team_board`/`get_task` 读取
   - 插件贡献工具不入内置清单：插件经 manifest 贡献 MCP server，工具以 `mcp__<server>__<tool>` 前缀进模型工具面（登记制与用户 mcp.json 同通道；插件 = 治理层——manifest/开关/审批，运行时是进程外 MCP server，开发规范 `docs/PLUGIN-DEV.md`）。guard 按 manifest `safety` 三类声明驱动问线：`act` 任何档位强制 ask（full-access 不豁免）、`confirm` 落穿通用 ask + 会话一次放行、`observe` 只读白名单直放；未声明走通用 MCP 审批。MCP 插件工具 schema 由 server 经 `tools/list` 下发，harness 不手写插件工具清单与 schema（上条声明化纪律只约束 harness 自有工具）
@@ -195,7 +197,8 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
   > plugins/<id>/skills/（内置插件技能根，最低优先级；启用且平台可用的插件才并入链尾）
 ```
 
-- 技能发现与加载（对标 Claude Code 渐进披露）：name+description 清单由 `formatSkillsIndex` 注入会话冻结段（会话级常量、随快照刷新点重读），模型据清单经 `skill` 工具按 id 加载正文——正文以工具观察尾追进链（装配面前缀零击穿）；`skillRef` 为 loop 内部模板面，仍走置尾一次性注入。
+- 技能发现与加载（对标 Claude Code 渐进披露）：name+description 清单由 `formatSkillsIndex` 注入会话冻结段（会话级常量、随快照刷新点重读），模型据清单经 `skill` 工具按 id 加载正文——正文以工具观察尾追进链（装配面前缀零击穿）。技能用户侧入口 = 消息内 `/skill-id` 软引用（模型经清单匹配后 `skill` 工具加载）与 `/skill` 选择卡（插入引用）；命令面仅内置命令（2026-11-04 spec §4）。
+- 智能体团队：`.sunshinex/teams/{id}/team.md`（frontmatter name/description/members/lead/enabled，正文=章程），成员按 id 引用 agents 注册表；清单进冻结快照，`#team-id` 软引用经 `team` 工具加载章程，实例化走八件套（受 `agentTeams` 门禁）；`$agent-id` 软引用经 `agent` 工具出卡、spawn 委派。
 
 ## 7. 提交与验证
 
@@ -240,14 +243,13 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 [压缩块]     会话链前缀折叠摘要                                   ← 唯一合法重写产物
 [会话链]     任务指令行+全量执行轨迹+结论/节点结论/补丁行           ← 主链 append-only，只在尾部变
 [fork 尾追]  角色行+节点任务行+私有步骤                            ← 仅 graph 节点/子智能体
-[技能块]     一次性注入置尾（loop skillRef 内部面）                ← 出现/消失击穿面≈0
 ```
 
 主任务、plan 步骤、loop 修正轮都是主链追加；graph 节点与子智能体是主链 fork（私有步骤不回主链，只回写结论/补丁行）。任何相邻帧、跨任务帧、主链↔fork 首帧的差异只允许出现在尾部。
 
 核心不变量（违反即回归；任何新能力先回答「落在提示词哪个位置、击穿多长前缀」）：
 
-- **消息视图单一来源**：任务执行轮的模型上下文只由 `buildMessages` 派生（`context/messages.ts`：稳定段+快照+压缩块+链+技能块 → ChatMessage 序列）；稳定段文本单点 `stableSegmentOf`（`prompts/shared.ts`，Reactor/Harness 观测面同源零第二拼装）；loop/graph 角色框定与任务文本复用该主链（判据仲裁等独立一次性调用除外——模板收在 `prompts/`，其内部拼装同样禁时变字段）；各层禁止绕开单点自行拼提示词。
+- **消息视图单一来源**：任务执行轮的模型上下文只由 `buildMessages` 派生（`context/messages.ts`：稳定段+快照+压缩块+链 → ChatMessage 序列）；稳定段文本单点 `stableSegmentOf`（`prompts/shared.ts`，Reactor/Harness 观测面同源零第二拼装）；loop/graph 角色框定与任务文本复用该主链（判据仲裁等独立一次性调用除外——模板收在 `prompts/`，其内部拼装同样禁时变字段）；各层禁止绕开单点自行拼提示词。
 - **前置段字节冻结**：压缩块之前的所有内容逐字节稳定——禁时间戳/随机值/时变字段（git 状态、计数器等）；工具清单按名排序；工作目录等环境事实为会话级常量；观察与事件一律尾部追加，禁止写回任何前置段——链即记忆。
 - **只增不改**：会话链 append-only，过期信息以补丁行追加修正、不就地改写；压缩是唯一合法重写点（预算驱动、带滞回节流）；任务边界不重置上下文——新任务/新步骤以「当前指令行」尾追进链。
 - **消息形态不变量**：tools 清单为请求级字段（`tools`），不进提示词文本、前缀零占用；system 双消息（稳定段 + 会话冻结段）逐字节冻结语义同前置段
