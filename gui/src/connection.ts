@@ -1,4 +1,4 @@
-import { SESSION_DELETED_EVENT } from './session-events';
+import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT } from './session-events';
 import { createConnectionTransport, DEFAULT_BACKOFF_BASE_MS } from './connection-transport';
 
 export { toWsUrl } from './connection-transport';
@@ -635,7 +635,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       });
     },
     archiveSession(id: string, archived: boolean): Promise<void> {
-      return postJson(`/session/${encodeURIComponent(id)}/archive`, { archived });
+      // 归档成功广播(仅真归档;撤销不发):App 据此把正开着的该会话主对话送回欢迎页
+      return postJson(`/session/${encodeURIComponent(id)}/archive`, { archived }).then(() => {
+        if (archived && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_ARCHIVED_EVENT, { detail: id }));
+      });
     },
     archivedSessions() {
       return getJson('/sessions/archived');

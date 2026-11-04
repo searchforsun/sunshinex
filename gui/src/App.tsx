@@ -17,7 +17,7 @@ import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { Suspense } from 'react';
 import { WebTabPool, seatOfWebContents, seatsOfBrowserKey } from './tabs/WebTabPool';
-import { SESSION_DELETED_EVENT } from './session-events';
+import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT } from './session-events';
 import type { WebPoolItem } from './tabs/WebTabPool';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
@@ -156,6 +156,9 @@ function AppShell(): JSX.Element {
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
   const sessionRef = useRef<string>('');
   sessionRef.current = openSessionId;
+  /** journalId 镜像(删除/归档事件双寻址比对:事件 detail 可能是运行时 id 或 journalId) */
+  const openJournalIdRef = useRef<string>('');
+  openJournalIdRef.current = openJournalId;
   /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
   const chatSinkRef = useRef<ChatSink | null>(null);
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
@@ -397,6 +400,9 @@ function AppShell(): JSX.Element {
     leaveToWelcome();
     recordNav({ k: 'welcome' });
   };
+  /** 归档/删除当前会话回欢迎页(2026-11-04 用户裁定):事件监听挂一次,经 ref 取最新 backHome */
+  const backHomeRef = useRef(backHome);
+  backHomeRef.current = backHome;
 
   /** 应用级导航历史(use-nav-history 单点,2026-10-27 技术债轮 D53 批D 外提):记录/回放/控制面/
    *  Alt+←/→ 键面一条链一个文件(navLock 回放抑制/零过期闭包语义随码);落点动词注入
@@ -447,10 +453,12 @@ function AppShell(): JSX.Element {
   // 订阅只挂一次,回调经 ref 取最新 openWebTab(闭包滞留首帧会话座=开签落错座,页签不可见)
   const openWebTabRef = useRef(openWebTab);
   openWebTabRef.current = openWebTab;
-  // 会话删除:卸载其座位的页签(常驻池里的 webview 随之销毁,不再占资源)
+  // 会话删除:卸载其座位的页签(常驻池里的 webview 随之销毁,不再占资源);删的是正开会话则
+  // 主对话回欢迎页(2026-11-04 用户裁定,归档同裁定)
   useEffect(() => {
     const onDeleted = (e: Event): void => {
       const id = (e as CustomEvent<string>).detail;
+      if (id === sessionRef.current || id === openJournalIdRef.current) backHomeRef.current();
       const seats = new Set([id, ...seatsOfBrowserKey(id)]);
       setTabStates((s) => {
         if (![...seats].some((seat) => s[seat] !== undefined)) return s;
@@ -459,8 +467,16 @@ function AppShell(): JSX.Element {
         return next;
       });
     };
+    const onArchived = (e: Event): void => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id === sessionRef.current || id === openJournalIdRef.current) backHomeRef.current();
+    };
     window.addEventListener(SESSION_DELETED_EVENT, onDeleted);
-    return () => window.removeEventListener(SESSION_DELETED_EVENT, onDeleted);
+    window.addEventListener(SESSION_ARCHIVED_EVENT, onArchived);
+    return () => {
+      window.removeEventListener(SESSION_DELETED_EVENT, onDeleted);
+      window.removeEventListener(SESSION_ARCHIVED_EVENT, onArchived);
+    };
   }, []);
   const curSeatRef = useRef('');
   curSeatRef.current = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
