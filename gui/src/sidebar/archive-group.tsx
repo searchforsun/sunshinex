@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArchiveRestore, Folder, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Clock, Folder, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { pathBasename, relTime } from '../ui-util';
 import { RECENT_VISIBLE_DEFAULT, RECENT_VISIBLE_STEP, useConfirmOutsideCancel } from './project-menu-util';
@@ -55,7 +55,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
           <span className="sx-archive-item-main">
             <span className="sx-archive-title-row">
               <span className="sx-archive-title">{r.title ?? r.id}</span>
-              <span className="sx-archive-time">{relTime(r.updatedAt)}</span>
+              <span className="sx-archive-time time-stamp"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{relTime(r.updatedAt)}</span>
             </span>
             <span className="sx-archive-slug-row">
               <Folder size={11} strokeWidth={1.75} aria-hidden="true" />
