@@ -24,9 +24,11 @@ export interface TodoCardsTabProps {
   readonly refreshNonce?: number;
   /** 主名字点击定位(2026-11-03):滚到该批关联轮次的正文输入气泡;无 userKey(旧投影)不可点 */
   readonly onLocate?: (batch: TodoBatch) => void;
+  /** 2026-11-04 待办行点击定位信号:按清单签名匹配卡,滚动+闪光+自动展开 */
+  readonly locateSig?: { sig: string; nonce: number } | null;
 }
 
-export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate }: TodoCardsTabProps): JSX.Element {
+export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate, locateSig }: TodoCardsTabProps): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   /** 刷新面:快照拉到的 todoBatches(权威投影);非空才覆盖 store 派生面,空集=旧 daemon/无记录回退 */
   const [refreshed, setRefreshed] = useState<readonly TodoBatch[]>([]);
@@ -54,6 +56,19 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate 
       setExpanded((s) => new Set([...s, lastKey]));
     }
   }, [lastKey, autoKey]);
+  /** 待办行点击定位(2026-11-04 用户裁定「点待办字样打开侧栏对应待办」):按清单签名匹配卡,
+   *  自动展开+滚动居中+accent 闪光 1.8s;无匹配签名(旧批次/被合并)静默 */
+  const [flashKey, setFlashKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (locateSig === undefined || locateSig === null) return;
+    const hit = view.find((b) => b.items.map((x) => x.text).join('\n') === locateSig.sig);
+    if (hit === undefined) return;
+    setExpanded((s) => new Set([...s, hit.key]));
+    setFlashKey(hit.key);
+    const el = document.querySelector(`[data-batch-key="${CSS.escape(hit.key)}"]`);
+    el?.scrollIntoView({ block: 'center' });
+    window.setTimeout(() => setFlashKey(null), 1800);
+  }, [locateSig, view]);
   const toggle = (key: string): void => {
     setExpanded((s) => {
       const next = new Set(s);
@@ -87,7 +102,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate 
           const done = b.items.filter((x) => x.status === 'completed').length;
           const open = expanded.has(b.key);
           return (
-            <section key={b.key} className="todo-card">
+            <section key={b.key} data-batch-key={b.key} className={'todo-card' + (flashKey === b.key ? ' focus-flash' : '')}>
               <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(b.key)}>
                 {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
                 <span className="todo-card-count">{`${done}/${b.items.length}`}</span>

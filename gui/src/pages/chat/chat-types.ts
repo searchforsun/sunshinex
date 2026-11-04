@@ -74,6 +74,8 @@ export interface ChatProps {
   todoFocus?: { key: string; nonce: number } | null;
   /** 2026-11-04 正文圈选·辅助会话提问通道(添加到主对话=insert-ref 事件,组件内置) */
   onSideAsk?: (text: string) => void;
+  /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡(App 开页签+落定位信号) */
+  onTodoLocate?: (todos: Array<{ text: string; status: string }>) => void;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
   onRewind?: (turn: number) => void;
   /** 会话级操作错误上抛(2026-10-21 归档 F4):App showOpError 通道(与 fork/rewind 同一 sx-toast

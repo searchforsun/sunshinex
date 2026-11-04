@@ -1784,6 +1784,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card, .tb-card { flex: none; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
+/* 2026-11-04 待办行点击定位闪光:accent 描边 1.8s 自灭(Chat 端 ToolEntry「待办」字样触发) */
+.todo-card.focus-flash { box-shadow: inset 0 0 0 1px var(--accent); }
 /* 2026-11-03 待办卡主名字=定位钮:点击滚到对应正文输入气泡(有 userKey 的批次才可点);
    点击面=文字内联 span(外层 goal 仍 flex:1 撑位,非文字区点击落头部折叠);2026-11-03 用户裁定:无 hover 高亮 */
 .todo-card-goal-link { cursor: pointer; }

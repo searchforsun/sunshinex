@@ -35,6 +35,8 @@ export interface MessageListProps {
   readonly sessionId: string;
   /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
   readonly root?: string;
+  /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡 */
+  readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
   readonly onOpenFile?: (p: string) => void;
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
@@ -79,6 +81,8 @@ interface DayGroupProps {
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   readonly onOpenTask?: (ref: string) => void;
+  /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡 */
+  readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
   readonly taskNameOf: (id: string) => string;
   readonly teamNameOf?: (ref: string) => string;
   readonly teams?: readonly { teamId: string; name: string }[];
@@ -97,7 +101,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, teamNameOf, teams, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenImage, sideChat } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -109,11 +113,12 @@ const DayGroupBlock = memo(
         onOpenDiff={onOpenDiff}
         onOpenAgent={onOpenAgent}
         onOpenTask={onOpenTask}
+        onOpenTodos={onOpenTodos}
         taskNameOf={taskNameOf}
         teamNameOf={teamNameOf}
         teams={teams}
       />
-    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, taskNameOf, teamNameOf, teams]);
+    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
     const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenAgent={onOpenAgent} />, [onEntryOpenDiff, onOpenAgent]);
     const renderFoldEntry = useCallback((e2: ChatEntry) => {

@@ -52,6 +52,8 @@ export interface TabServices {
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
   readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
+  /** 2026-11-04 待办行点击定位信号:待办页签滚到同签名卡并闪光 */
+  readonly todoLocateSig: { sig: string; nonce: number } | null;
   /** 待办卡主名字定位(2026-11-03):滚到该批关联轮次的正文输入气泡 */
   readonly onLocateTodo?: (batch: import('../pages/Chat').TodoBatch) => void;
   /** G14.2xx b create_agent_team_task 行任务名点击 → 开智能体团队页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
@@ -196,6 +198,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         sessionId={p.sessionId}
         refreshNonce={p.panelRefreshNonce}
         onLocate={p.services.onLocateTodo}
+        locateSig={p.services.todoLocateSig}
       />
     ),
   },

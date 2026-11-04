@@ -77,6 +77,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenFile,
   onOpenDiff,
   onOpenAgent,
+  onOpenTodos,
   onOpenTask,
   taskNameOf,
   teamNameOf,
@@ -92,6 +93,8 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** 任务名/队名链接:`bg:` 前缀=后台任务账本行;`team:` 前缀开指定队卡;其余开板高亮(App openTaskFocus) */
   onOpenTask?: (taskRef: string) => void;
+  /** 2026-11-04 用户裁定:点「待办」字样打开侧栏待办页签并定位对应卡 */
+  onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
   /** 队名解析(get_agent_team_board/create_agent_team;缺省显示原 ref) */
@@ -308,7 +311,21 @@ export const ToolEntryView = memo(function ToolEntryView({
   ) : toolName === 'ask_question' ? (
     <span className="tool-verb">{t('ask', '提问')}</span>
   ) : toolName === 'todo_write' ? (
-    <span className="tool-verb">{t('todo', '待办')}</span>
+    <span
+      className="tool-verb"
+      role={onOpenTodos !== undefined ? 'button' : undefined}
+      tabIndex={onOpenTodos !== undefined ? -1 : undefined}
+      style={onOpenTodos !== undefined ? { cursor: 'pointer' } : undefined}
+      data-tip={onOpenTodos !== undefined ? t('Locate in todos tab', '定位到待办页签') : undefined}
+      onClick={(e) => {
+        if (onOpenTodos === undefined) return;
+        e.stopPropagation();
+        const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
+        onOpenTodos(arr.map((o) => ({ text: String((o ?? {}).text ?? ''), status: String((o ?? {}).status ?? 'pending') })));
+      }}
+    >
+      {t('todo', '待办')}
+    </span>
   ) : toolName === 'spawn' ? (
     <span className="tool-verb">{t('spawn', '分派子智能体')}</span>
   ) : toolName === 'task_wait' ? (

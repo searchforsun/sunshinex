@@ -146,6 +146,8 @@ function AppShell(): JSX.Element {
   const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
   /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文气泡(Chat 消费) */
   const [todoFocus, setTodoFocus] = useState<{ key: string; nonce: number } | null>(null);
+  /** 2026-11-04 待办行点击定位信号(Chat 待办字样→开待办页签+定位对应卡) */
+  const [todoLocateSig, setTodoLocateSig] = useState<{ sig: string; nonce: number } | null>(null);
   const onLocateTodo = useCallback((batch: import('./pages/Chat').TodoBatch): void => {
     if (batch.userKey === undefined) return;
     setTodoFocus({ key: batch.userKey, nonce: Date.now() });
@@ -690,7 +692,7 @@ function AppShell(): JSX.Element {
         for (const b of todoBatches) bySig.set(b.items.map((i) => i.text).join('|'), b);
         return [...bySig.values()].sort((a, b) => a.ts - b.ts);
       })(),
-      taskFocus, onOpenTask: openTaskFocus, onLocateTodo,
+      taskFocus, onOpenTask: openTaskFocus, todoLocateSig, onLocateTodo,
       refreshBoard,
       bgTasks,
       onRefreshBgTasks: (): Promise<void> =>
@@ -698,7 +700,7 @@ function AppShell(): JSX.Element {
           ? Promise.resolve()
           : connRef.current.sessionTasks(openSessionId).then((rows) => setBgTasks(rows)),
     }),
-    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, refreshBoard, bgTasks],
+    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, todoLocateSig, refreshBoard, bgTasks],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -960,6 +962,10 @@ function AppShell(): JSX.Element {
                 onTodoBatches={setTodoBatches}
                 todoFocus={todoFocus}
                 onSideAsk={startSideChat}
+                onTodoLocate={(todos) => {
+                  openTabType('tasks');
+                  setTodoLocateSig({ sig: todos.map((t2) => t2.text).join('\n'), nonce: Date.now() });
+                }}
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}
