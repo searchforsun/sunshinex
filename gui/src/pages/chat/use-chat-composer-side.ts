@@ -22,7 +22,7 @@ useEffect(() => {
   const onInsert = (ev: Event): void => {
     const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string }>).detail;
     // 2026-11-04 元素/终端片段引用:token 落输入框(⟦…⟧ 高亮芯片),全量内容入账本发送期展开
-    if (detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {
+    if (detail !== undefined && detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {
       refContents.current.set(detail.token, detail.content);
       setInput((prev) => (prev.trim() === '' ? `${detail.token} ` : `${prev.replace(/\s+$/, '')} ${detail.token} `));
       inputRef.current?.focus();
