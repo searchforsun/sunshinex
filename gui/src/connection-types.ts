@@ -437,6 +437,61 @@ export type AgentsOpInput =
   | { op: 'delete'; scope: 'project' | 'global'; root?: string; id: string }
   | { op: 'enable' | 'disable'; scope: 'project' | 'global'; root?: string; id: string; enabled?: boolean };
 
+/** GET /settings/teams view.entries 行（agents-teams P1 Task 3，对齐 serve handleTeamsGet 只读投影——
+ *  镜像 AgentEntryView 排版）：source 两级归因 + shadowed 被遮蔽标记 + bodyPreview 章程前 200 字符
+ *  （防长章程击穿设置面板，全文走 /settings/teams/body）。teams 特有面：members 成员 agent id 数组
+ *  （接线裁定：wire 序 global→project——pane 侧排显示副本 project 先，仅显示序）；missing=members 中
+ *  不在 agents 生效集∪内建四角色的 id 现算（GUI 以警示 chip 呈现）；lead 可选领队（∈ members）；version
+ *  可选版本单行；enabled 启停声明（frontmatter enabled 行）——契约=恒布尔（缺省 true 由 daemon 显式化），
+ *  enabled 恒由 serve 面携带（handleTeamsGet 恒发 `enabled: e.enabled`，catalog TeamEntry.enabled 非可选
+ *  布尔）；TeamsPane 的 typeof 守卫仅为前向兼容防御（缺键面不会出现，守卫不裁行为）。 */
+export interface TeamEntryView {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+  members: string[];
+  lead?: string;
+  missing: string[];
+  source: 'project' | 'global';
+  shadowed: boolean;
+  bodyPreview: string;
+  enabled?: boolean;
+}
+
+/** 两级宽容清单（agents-teams P1 Task 2，对齐 serve handleTeamsGet 应答）：生效+被遮蔽全量 +
+ *  逐文件告警（畸形文件不抛死，路径入 warnings）。teams 无 builtins（响应只设 view 键）。 */
+export interface TeamsView {
+  entries: TeamEntryView[];
+  warnings: string[];
+}
+
+/** PUT /settings/teams upsert 的 frontmatter 面（agents-teams P1，对齐 serve parseTeamFrontmatterInput）：
+ *  name/members 必填（members 非空 agent id 数组），可选键按需——字符串值须单行（frontmatter 是单行
+ *  KV 词法，多行内容属 body 面；单行约束由 daemon 400 面守卫）；lead 须 ∈ members、去重由 catalog
+ *  upsertTeam 层裁决（GUI 提交面预守卫：失效 lead 不落键）。 */
+export interface TeamFrontmatterInput {
+  name: string;
+  description?: string;
+  version?: string;
+  members: string[];
+  lead?: string;
+  enabled?: boolean;
+}
+
+/** PUT /settings/teams 请求体（agents-teams P1 Task 2/3，TeamsPane 卡片化写面——镜像 AgentsOpInput
+ *  排版）：op 四值判别联合——形状门逐 op 钉死：
+ *  - upsert/delete：scope 必带（'project' 必带 root——服务端 400 守卫，'global' 恒忽略省参）；
+ *    upsert 携 frontmatter（name+members 必填）+ body（缺省空串）。
+ *  - enable/disable：scope 必带 + id 定位；enabled 可选回显面（服务端校验须与 op 同义，op 是
+ *    权威——矛盾体 400）。条目缺失 → 409 无 hint；delete 缺失幂等 ok。
+ *  id 词法=isValidTeamId 严格 kebab（AMENDMENT 2026-11-04：daemon 入口 400 同口径）。错误语义沿
+ *  op 族裁定：400=纯请求形状、409=写面——以 HTTP 失败抛错；成功 200 {ok:true} */
+export type TeamsOpInput =
+  | { op: 'upsert'; scope: 'project' | 'global'; root?: string; id: string; frontmatter?: TeamFrontmatterInput; body?: string }
+  | { op: 'delete'; scope: 'project' | 'global'; root?: string; id: string }
+  | { op: 'enable' | 'disable'; scope: 'project' | 'global'; root?: string; id: string; enabled?: boolean };
+
 /** 技能三源分组行（T6，对齐主仓 SkillsGroup）：source 三段 project/user/learned；组内去重沿装载
  *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id。
  *  project=项目归属显示名（scope=all 跨项目视图携带——项目筛选数据面；常规视图不载）。

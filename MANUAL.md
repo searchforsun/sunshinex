@@ -310,11 +310,12 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/status` | 会话与账本摘要 |
 | `/terminal-setup` | 一键配置终端键位：Windows Terminal 写入 Shift+Enter 换行绑定并解绑 Alt+Enter（写前备份、幂等）；未找到 WT 时给 VSCode 指引 |
 | `/tasks` | 列出后台任务（id/类型/状态/标签与输出文件路径，输出用 `read` 查看——GUI 任务面板附末 4KB 尾读；账本随会话持久化，重开/重启可回溯；后台 exec 与后台子智能体产生，模型以 `task_wait` / `task_stop` 等待或停止——仅台账 exec/spawn；板任务走 `agent_team_task_wait` / `agent_team_task_stop`，见 5.6） |
-| `/skill` | 加载技能进上下文：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定即载入、本会话重复加载回执已加载 |
-| `/<技能id>` | 技能即命令：裸形式仅加载（语义同 `/skill` 选定）；带意图 `/<id> <意图>` 加载后一步派发任务；撞名内置命令的技能不注册（内置优先，仍经 `/skill` 卡加载）；命令 token=技能 id，限 `[a-z0-9][a-z0-9_-]*`；Tab 补全与 `/help` 技能段同步列出，技能行附来源/遮蔽标注（project/user/learned/plugin，被遮蔽条目点名胜者来源） |
+| `/skill` | 插入技能引用（浏览兜底）：选择卡列出可用技能（`↑`/`↓` 选择、输入即筛选、`Esc` 取消），选定把 `/技能id ` 插入输入框（可补意图后一并提交），不直接载入上下文 |
+| `/<技能id>` | 技能软引用（消息内文本）：在消息中书写 `/技能id`（可后接任务意图），模型按 skills 清单匹配后经 `skill` 工具软加载；技能不再注册为命令、无 Tab 补全（命令面仅纯内置命令——2026-11-04 agents-teams 目录规格 §4） |
 | `/model` | 切换模型：选择卡列出 `providers` 多源清单（`源/模型` 即选即切，首项标注「默认」（缺省模型=首源首模型）、当前项标注，对后续任务生效）；未配置 `providers` 时给配置指引 |
 | `/mcp` | MCP 服务器面板：两级清单卡（名称/作用域/启用状态点/遮蔽标注/审批态，项目待确认服务器带「待确认」徽标与批准指引）；`/mcp enable|disable|approve|deny <名称>` 就地启停（写所在作用域 mcp.json）与项目批准阀审批（写全局 settings），执行后回显并重绘；新增/编辑经 `sunshinex mcp` 子命令 |
 | `/agents` | 子智能体面板：两级位置清单卡（id/作用域/遮蔽标注/启用状态/描述）；`/agents enable|disable <id>` 就地启停（写所在作用域 agent.md enabled 行）；新增/编辑经 `sunshinex agents` 子命令 |
+| `/teams` | 智能体团队面板：两级清单卡（id/作用域/遮蔽标注/启用状态/成员与缺失成员警示），只读——编辑经 GUI 设置（Agent Teams）或 CLI catalog API（面板不做表单）；消息中以 `$<agent-id>` 点名智能体、`#<team-id>` 引用团队（引用未匹配在册条目时发送侧给一条提示，原文照发） |
 | `/plugins` | 插件面板：内置+用户两级清单卡（id/启用状态/来源段/平台可用性）；`/plugins enable|disable <id>` 写项目 settings 插件启用键；配置与安装经 `sunshinex plugins` 子命令 |
 | `/providers` | 模型提供方面板：只读清单卡（源名/模型数/密钥槽在场状态/默认源标注）+ 编辑引导（`sunshinex providers` 子命令或 `$EDITOR settings.json`；面板不做表单） |
 | `/model-tier` | 切换模型档位：选择卡三档即选即切（当前档标注，对后续任务生效）；各档实际选中的模型 = providers models 条目的 `tier` 标注（同档取第一，无标注回缺省模型） |

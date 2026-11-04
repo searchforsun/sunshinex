@@ -21,7 +21,7 @@ import * as path from 'path';
 import { userTeamsDir } from '../config/data-dir';
 import { isValidTeamId, parseTeamFrontmatter } from '../harness/teams';
 import { ROLE_PRESETS } from '../harness/subagent';
-import { listAgents, patchEnabledLine } from './agents';
+import { AGENT_ID_RE, listAgents, patchEnabledLine } from './agents';
 import { CatalogWriteError, notifyCatalogWrite, requireProjectRoot, writeJsonAtomic } from './io';
 import type { Listing, Scope } from './types';
 
@@ -135,8 +135,13 @@ function teamWriteTarget(root: string | null, scope: Scope, id: string): string 
  *  parseTeamFrontmatter + 字段回环）→ writeJsonAtomic 原子落盘（同目录 tmp+rename）。校验先于任何
  *  落盘动作——坏内容根本不进 tmp，目标与目录零触碰。校验口径：name 必填非空白单行；members 非空、
  *  逐项 agent id 词法、去重后唯一（空白项 trim 剔除）；description 单行（换行注入伪键拒收，多行内容
- *  属 body）；lead ∈ members（解析面对越界 lead 静默丢弃，写了不生效的死行不如写面即拒） */
+ *  属 body）；version 可选，给定时须单行 string（不校验 semver 词形，缺省 0.1.0 由 renderTeamMd/
+ *  解析面承载）；lead ∈ members（解析面对越界 lead 静默丢弃，写了不生效的死行不如写面即拒）；id 词法
+ *  入口校验镜像 upsertAgent（AGENT_ID_RE 同款词法同款消息风格；teamWriteTarget 的 isValidTeamId
+ *  更严仍兜底路径安全） */
 export function upsertTeam(root: string | null, scope: Scope, id: string, spec: TeamUpsertSpec): void {
+  // id 词法校验（镜像 upsertAgent 入口 AGENT_ID_RE 同款；错误消息 catalog 风格前缀 team id invalid）
+  if (!AGENT_ID_RE.test(id)) throw new CatalogWriteError('INVALID', `team id invalid: ${JSON.stringify(id)} (must match ${AGENT_ID_RE.source})`);
   const dir = teamWriteTarget(root, scope, id);
   if (typeof spec.name !== 'string' || spec.name.trim().length === 0 || /\r|\n/.test(spec.name)) {
     throw new CatalogWriteError('INVALID', 'team name required (non-empty single-line string)');
@@ -146,6 +151,10 @@ export function upsertTeam(root: string | null, scope: Scope, id: string, spec: 
   for (const m of members) if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(m)) throw new CatalogWriteError('INVALID', `team member id invalid: ${JSON.stringify(m)}`);
   if (new Set(members).size !== members.length) throw new CatalogWriteError('INVALID', 'team members must be unique');
   if (spec.description !== undefined && /\r|\n/.test(spec.description)) throw new CatalogWriteError('INVALID', 'team description must be single-line');
+  // version 可选；给定时须单行 string（不校验 semver 词形——写面只守词法，语义版本号不属此层职责）
+  if (spec.version !== undefined && (typeof spec.version !== 'string' || /\r|\n/.test(spec.version))) {
+    throw new CatalogWriteError('INVALID', 'team version must be a single-line string');
+  }
   const lead = spec.lead !== undefined ? String(spec.lead).trim() : undefined;
   if (lead !== undefined && !members.includes(lead)) throw new CatalogWriteError('INVALID', `team lead must be one of members, got ${JSON.stringify(lead)}`);
   const md = renderTeamMd({ name: spec.name.trim(), ...(spec.description !== undefined ? { description: spec.description } : {}), ...(spec.version !== undefined ? { version: spec.version } : {}), members, ...(lead !== undefined ? { lead } : {}), ...(spec.enabled === false ? { enabled: false } : {}) }, spec.body ?? '');
@@ -160,6 +169,8 @@ export function upsertTeam(root: string | null, scope: Scope, id: string, spec: 
     throw new CatalogWriteError('INVALID', `round-trip mismatch (<teams>/${id}/team.md)`);
   }
   if (meta.enabled !== (spec.enabled !== false)) throw new CatalogWriteError('INVALID', `round-trip enabled mismatch (<teams>/${id}/team.md)`);
+  // version 回环：parseTeamFrontmatter 对缺省回填 0.1.0——spec 省略 version 即与回填值自动闭环
+  if (meta.version !== (spec.version ?? '0.1.0')) throw new CatalogWriteError('INVALID', `round-trip version mismatch (<teams>/${id}/team.md)`);
   writeJsonAtomic(path.join(dir, 'team.md'), md);
   // 写通知：team.md 落盘 → ('teams', scope, root)（resource 'teams' 为本任务新入 ResourceKind；
   // watcher 侧 teams 目录映射 P1 接线，当前无回声键冲突——见 catalog/types.ts 注）

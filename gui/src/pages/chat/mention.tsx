@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
 import { Globe, SquareTerminal } from 'lucide-react';
 import { isAbsPath } from '../../ui-util';
+import type { RefItem } from './ref-palette';
 
 /** @ 引用域（D32 批C-5 拆分自 Chat.tsx）：@ 文件模糊匹配与面板渲染件、mention token 解析/
  *  原子编辑判定（整删/原子区间/beforeinput 判定/caret 定位）/输入框高亮/发送期展开/用户气泡
@@ -94,6 +95,62 @@ export function FilePalette({
             <span className="file-palette-name">{base}</span>
             {dir !== '' && <span className="file-palette-dir">{dir}</span>}
           </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** agents-teams P1 Task 4（spec §3.2）：$/# 引用面板（智能体/团队双组单游标）——行=符号着色 +
+ *  id + 展示名后缀，组头分节（Agents/Teams），空组由调用面过滤（flatRefItems 只含非空组），
+ *  全空=调用面不开面板（与 @ 面板同门）。键盘（↑↓ 循环/Enter 插入/Esc）在 use-composer-keys
+ *  与 @ 面板同链；插入文本由调用面拼装（R4：`$id `/`#id ` 尾随空格，插入即终态无记账）。 */
+export function RefPalette({
+  items,
+  active,
+  onPick,
+  onHover,
+}: {
+  items: RefItem[];
+  active: number;
+  onPick: (item: RefItem) => void;
+  onHover: (i: number) => void;
+}): JSX.Element {
+  // G14.163 同款：↑↓ 移动时选中项滚入可视区(block:nearest 最小滚动)
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [active, items]);
+  return (
+    <div className="ref-palette" role="listbox" aria-label={t('Agents and teams', '智能体与团队')}>
+      {items.map((item, i) => {
+        // 组头:首行恒带头($ 行=Agents、# 行=Teams——空组已被 flatRefItems 滤除,过滤后只剩
+        // 团队行时首行直接落 Teams 头);此后首个 # 行前插 Teams 头
+        const head =
+          item.sym === '#' && (i === 0 || items[i - 1]?.sym === '$')
+            ? t('Teams', '团队')
+            : i === 0
+              ? t('Agents', '智能体')
+              : null;
+        return (
+          <Fragment key={`${item.sym}${item.id}`}>
+            {head !== null && <div className="ref-palette-head">{head}</div>}
+            <button
+              ref={i === active ? activeRef : undefined}
+              type="button"
+              role="option"
+              aria-selected={i === active}
+              className={`ref-palette-row${i === active ? ' active' : ''}`}
+              onMouseEnter={() => onHover(i)}
+              onClick={() => onPick(item)}
+            >
+              <span className={`ref-palette-sym ref-palette-sym-${item.sym === '$' ? 'agent' : 'team'}`} aria-hidden="true">
+                {item.sym}
+              </span>
+              <span className="ref-palette-id">{item.id}</span>
+              <span className="ref-palette-name">{item.name}</span>
+            </button>
+          </Fragment>
         );
       })}
     </div>

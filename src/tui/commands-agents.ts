@@ -50,6 +50,9 @@ function agentsListing(ctrl: SessionController): void {
   for (const e of listing.entries) lines.push(agentRow(e));
   for (const w of listing.warnings) lines.push(t(`warning: ${w}`, `警告：${w}`));
   lines.push(t('Usage: /agents enable|disable <id>', '用法：/agents enable|disable <id>'));
+  // agents-teams P1（Task 5）：$ 软引用点名用法提示（与 /teams 的 #<team-id> 用法行对偶——
+  // spec §3.2「发起不设斜杠命令：$id 任务点名、#id 目标拉队，直打即达」）
+  lines.push(t('Usage: name a single agent in your message as $<agent-id>', '用法：在消息中以 $<agent-id> 点名单个智能体'));
   ctrl.pushMsg('system', lines.join('\n'));
 }
 

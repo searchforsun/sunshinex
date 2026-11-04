@@ -3,6 +3,8 @@ import type { Connection } from '../../connection';
 import type { CmdItem } from '../../CommandPalette';
 import { pathBasename } from '../../ui-util';
 import { atomicRange, rankFileHits, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './mention';
+import type { RefEntries, RefPal } from './ref-palette';
+import { flatRefItems, refTokenAt } from './ref-palette';
 import { slashItemsFor } from './use-command-palette';
 
 /**
@@ -43,6 +45,15 @@ export function useComposerKeys(deps: {
   readonly loadWorkspaceFiles: () => Promise<string[]>;
   /** @短写 → 相对路径记账表（发送期 expandFileRefs 解析第一优先） */
   readonly pickRelRef: MutableRefObject<Map<string, string>>;
+  /** $/# 引用面板态（agents-teams P1 Task 4，spec §3.2——形态/活性锚/键控全镜像 @ 面板） */
+  readonly refPal: RefPal | null;
+  readonly setRefPal: Dispatch<SetStateAction<RefPal | null>>;
+  /** 两目录缓存（agents+teams id/name 投影；Chat 首触懒拉,失败静默空列） */
+  readonly refEntries: RefEntries;
+  readonly refActive: number;
+  readonly setRefActive: Dispatch<SetStateAction<number>>;
+  /** 首触懒加载（Chat 提供,内部自缓存——每次命中调它,重复触发零网络） */
+  readonly loadRefEntries: () => void;
   readonly cmdData: ComposerCmdData | null;
   readonly setCmdData: Dispatch<SetStateAction<ComposerCmdData | null>>;
   readonly cmdActive: number;
@@ -59,7 +70,7 @@ export function useComposerKeys(deps: {
   onCompositionEndGuard: () => void;
   onSelectGuard: () => void;
 } {
-  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, cmdData, setCmdData, cmdActive, setCmdActive, conn, sessionId, send, onOpenMemory } = deps;
+  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, refPal, setRefPal, refEntries, refActive, setRefActive, loadRefEntries, cmdData, setCmdData, cmdActive, setCmdActive, conn, sessionId, send, onOpenMemory } = deps;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // G14.212 token 原子性:不可在 token 中间落字(字符键/空格/IME Process)——阻止并把
@@ -124,6 +135,48 @@ export function useComposerKeys(deps: {
     // 命中旧文件,面板滞留且 Enter 可幽灵插入
     const taEl = e.currentTarget as HTMLTextAreaElement;
     const caret = taEl.selectionStart ?? input.length;
+    // agents-teams P1 §3.2 $/# 引用面板(双组单游标,优先于 @// 键面):caret 前 $/# token 命中
+    // 即开面板 + 首触懒加载(loadRefEntries 自缓存,重复命中零网络);活性锚镜像 G14.211 @(锚位
+    // 非 $/# 即关——键面 preventDefault 直改输入不触发 onChange,残锚面板在此收口)。命中符号
+    // token 与 @// 后缀互斥(同一 caret 前缀不可能同时以 @词与 $/#词 收尾),故此处收口的键
+    // (↑↓/Esc/Enter)不会再落入下方 @// 面板分支
+    const refTok = refTokenAt(input, caret);
+    if (refTok !== null) {
+      setRefPal(refTok);
+      // 游标重置只住 Chat onChange(查询变更点)——键面不重置(评审 2026-11-04):refTok 在
+      // caret 贴 token 时每次键击都命中,此处若 setRefActive(0) 会排在方向键函数式更新之前,
+      // ↑↓ 恒落第二行/末行,跨组循环死;@ 键控面同款先例(从不重置 filePalActive)
+      loadRefEntries();
+    } else if (refPal !== null && input[refPal.from] !== '$' && input[refPal.from] !== '#') {
+      setRefPal(null);
+    }
+    const effRefPal = refTok ?? refPal;
+    if (effRefPal !== null && (refTok !== null || input[effRefPal.from] === '$' || input[effRefPal.from] === '#')) {
+      const items = flatRefItems(refEntries, effRefPal.query);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (items.length > 0) {
+          setRefActive((a) => (e.key === 'ArrowDown' ? (a + 1) % items.length : (a - 1 + items.length) % items.length));
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setRefPal(null);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && items.length > 0) {
+        e.preventDefault();
+        // R4 裁定:插入 `$id `/`#id `(尾随空格)即终态——无 @ 的 pickRelRef 记账语义,
+        // 发送期零展开;替换区间=from..query 尾(镜像 @ 键控插入面)
+        const item = items[Math.min(refActive, items.length - 1)];
+        const from = effRefPal.from;
+        const end = from + 1 + effRefPal.query.length;
+        setInput((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
+        setRefPal(null);
+        return;
+      }
+    }
     const atMatch = /@([\w./:\\-]*)$/.exec(input.slice(0, caret));
     if (atMatch !== null) {
       setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });

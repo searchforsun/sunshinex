@@ -54,3 +54,14 @@ test('Task 20：/mcp /agents /plugins /providers 注册进 SLASH_COMMANDS 且各
     assert.ok(typeof d === 'string' && d.length > 0, `${c} 应有非空本地化描述`);
   }
 });
+
+test('agents-teams P1：/teams 注册进 SLASH_COMMANDS 且有运行期描述（紧随 /agents，Tab 循环序同源）', () => {
+  assert.ok(SLASH_COMMANDS.includes('/teams'), '/teams 应注册进 SLASH_COMMANDS（菜单/补全/GUI /commands 同源）');
+  assert.equal(
+    SLASH_COMMANDS.indexOf('/teams'),
+    SLASH_COMMANDS.indexOf('/agents') + 1,
+    '/teams 应紧随 /agents（清单序即 Tab 循环顺序）',
+  );
+  const d = slashCommandDescriptions().teams;
+  assert.ok(typeof d === 'string' && d.length > 0, '/teams 应有非空本地化描述');
+});

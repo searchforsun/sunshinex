@@ -236,6 +236,11 @@ test('/agents：面板列 id/scope/启停/描述；enable|disable 写所在作�
     const text = sysTexts(ctrl).join('\n');
     assert.ok(/reviewer \[project\] on/.test(text), `面板应列 reviewer [project] on：${JSON.stringify(text)}`);
     assert.ok(/Reviewer|reviews code/.test(text), '面板行应带 name/description');
+    // agents-teams P1（Task 5）：列表卡附 $<agent-id> 点名用法提示行（$ 软引用与 /teams 的 # 对偶）
+    assert.ok(
+      /Usage: name a single agent in your message as \$<agent-id>|用法：.*\$<agent-id>/.test(text),
+      `列表卡应附 $<agent-id> 用法行：${JSON.stringify(text)}`,
+    );
     await ctrl.submit('/agents disable reviewer');
     const md = fs.readFileSync(path.join(dir, 'agent.md'), 'utf8');
     assert.ok(/^enabled: false$/m.test(md), 'disable 应写 agent.md enabled:false 行');

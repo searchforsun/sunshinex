@@ -938,6 +938,20 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.file-palette-row.active, .file-palette-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.file-palette-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 /* G14.124 目录后缀(右侧灰):与技能行/变动列表同构 */.file-palette-dir { color: var(--fg-tertiary); font-size: 11px; } /* G14.135 目录后缀紧跟文件名(不甩最右) */.file-palette-empty { padding: 6px 8px; font-size: 12px; color: var(--fg-tertiary); }
 
+/* agents-teams P1 Task 4:$/# 引用面板(浮层几何/行配方镜像 .file-palette;双组单游标,组头小字) */
+.ref-palette {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 6px);
+  max-height: 260px; overflow-y: auto; z-index: 30;
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--elev-prominent);
+  padding: 4px; display: flex; flex-direction: column; gap: 1px;
+}.ref-palette-head { padding: 5px 8px 3px; font-size: 11px; color: var(--fg-tertiary); }.ref-palette-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: var(--radius-sm);
+  border: none; background: transparent; color: var(--fg);
+  font-size: 12px; cursor: pointer; text-align: left;
+}.ref-palette-row.active, .ref-palette-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.ref-palette-id { font-family: var(--font-mono); font-weight: 500; }.ref-palette-name { color: var(--fg-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 符号着色:$ / # 徽标同源变量(--accent/--warn,不新增硬编码色) */.ref-palette-sym-agent { color: var(--accent); }.ref-palette-sym-team { color: var(--warn); }
+
 /* G14.87:排队嵌入条(欢迎页 options-bar 同形——比卡窄 16px 居中、暗一档、上两角全圆下两角
  * 取直坐在输入卡顶,无独立卡感);行透明无边框,hover 显选中背景;折叠摘要行不推高 dock */.steer-queue {
   position: relative; /* 提到 dock 渐隐层上——渐变只作用正文,dock 自身内容不吃淡化 */
@@ -2979,6 +2993,9 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-denied { color: var(--err); border-color: var(--err); }
 .sx-rc:has(.sx-mcp-denied) { border-color: color-mix(in srgb, var(--err) 55%, var(--border)); }
 .sx-rc:has(.sx-shadow-tag) { opacity: 0.5; } /* 被项目遮蔽灰显(沿旧 .sx-mcp-card.shadowed 语言;仅 ResourceCard 卡) */
+/* 团队成员缺失 chip(agents-teams P1 TeamsPane):成员 id 不在 agents 生效集——warn 警示描边,
+   组合子叠加 .sx-chip 用(既有 warn chip 先例 .sx-mcp-gate 同令牌同形态;无现成 teams 语义类,按裁定补一条) */
+.sx-chip-missing { color: var(--warn); border-color: var(--warn); }
 /* T26 提供方默认模型 chip(choices[0] 所属——ok 绿描边,与普值 chip 视觉区分) */
 .sx-chip.sx-provider-default { color: var(--ok); border-color: var(--ok); }
 /* 2026-10-29 用户裁定追加段(纯加法;app.css 并行热区只加不改——旧 sx-drawer-* 容器类留置不删,历史段回看):

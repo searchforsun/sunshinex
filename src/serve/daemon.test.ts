@@ -2019,6 +2019,246 @@ describe('G8d T3 GET /settings/agents/body 端点', () => {
   });
 });
 
+// ---------- agents-teams P1 Task 2:/settings/teams 三端点(两级清单+表单增删改+team.md 章程全文;镜像 agents 三端点裁定) ----------
+
+/** GET /settings/teams 应答 view.entries 行(listTeams TeamEntry 只读投影;断言整体面) */
+interface TeamEntryRow {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  members: string[];
+  lead?: string;
+  /** members 中未解析到的 agent id(catalog listTeams 现算——对 agents 生效集∪内建四角色) */
+  missing: string[];
+  source: 'project' | 'global';
+  shadowed: boolean;
+  enabled: boolean;
+  bodyPreview: string;
+}
+
+/** GET /settings/teams 应答整体(断言用子集面;teams 无 builtins——响应不设 builtins 键) */
+interface TeamsBody {
+  view: { entries: TeamEntryRow[]; warnings: string[] };
+}
+
+describe('agents-teams P1 /settings/teams 端点', () => {
+  test('㊻ GET 两级清单+missing 富化(members 指向不存在 agent;内建角色合法)+同名遮蔽;无 token 401;无 root=仅全局', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const writeTeam = (baseDir: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(baseDir, 'teams', id), { recursive: true });
+        fs.writeFileSync(path.join(baseDir, 'teams', id, 'team.md'), md, 'utf8');
+      };
+      // 项目级:proj-team(members 含 planner 内建角色→合法不算 missing+ghost→missing)+shared(与全局
+      // 同名→全局行 shadowed)+off(enabled:false 照列);全局级落 userConfigDir=<home>/.sunshinex
+      writeTeam(path.join(proj, '.sunshinex'), 'proj-team', '---\nname: Proj Team\ndescription: project team\nversion: 1.0.0\nmembers: planner ghost\nlead: planner\n---\ncharter body\n');
+      writeTeam(path.join(proj, '.sunshinex'), 'shared', '---\nname: Shared P\nmembers: planner\n---\nfrom project\n');
+      writeTeam(path.join(proj, '.sunshinex'), 'off', '---\nname: Off Team\nmembers: planner\nenabled: false\n---\noff body\n');
+      const globalDir = path.join(home, '.sunshinex');
+      writeTeam(globalDir, 'global-team', '---\nname: Global Team\nmembers: developer\n---\nglobal body\n');
+      writeTeam(globalDir, 'shared', '---\nname: Shared G\nmembers: developer\n---\nfrom global\n');
+
+      const noAuth = await fetch(`${base}/settings/teams`);
+      assert.equal(noAuth.status, 401, '/settings/teams 无 token 401');
+
+      const r = await fetch(`${base}/settings/teams?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as TeamsBody;
+      const ids = body.view.entries.map((e) => e.id);
+      assert.deepEqual(new Set(ids), new Set(['proj-team', 'shared', 'off', 'global-team']), '清单=项目 3+全局 2(同名两行)');
+      assert.deepEqual(body.view.entries.find((e) => e.id === 'proj-team'), {
+        id: 'proj-team', name: 'Proj Team', description: 'project team', version: '1.0.0',
+        members: ['planner', 'ghost'], lead: 'planner', missing: ['ghost'],
+        source: 'project', shadowed: false, enabled: true, bodyPreview: 'charter body',
+      }, '项目条目全字段:missing 只含未解析成员(内建 planner 合法)+lead 透出+bodyPreview=章程预览');
+      assert.deepEqual(body.view.entries.filter((e) => e.id === 'shared'), [
+        { id: 'shared', name: 'Shared G', description: '', version: '0.1.0', members: ['developer'], missing: [], source: 'global', shadowed: true, enabled: true, bodyPreview: 'from global' },
+        { id: 'shared', name: 'Shared P', description: '', version: '0.1.0', members: ['planner'], missing: [], source: 'project', shadowed: false, enabled: true, bodyPreview: 'from project' },
+      ], '同名两行:全局行 shadowed=true 仍列示+项目行生效(序沿 catalog listTeams 层序 global→project——与 harness teamsChain 装载序同构,缺省键回填 version 0.1.0/description 空串)');
+      assert.equal(body.view.entries.find((e) => e.id === 'off')?.enabled, false, 'enabled:false 行照列(启停是视图操作)');
+      assert.deepEqual(body.view.warnings, [], '合法档零 warnings');
+
+      // 无 root=仅全局清单(listTeams root:null 项目级整体跳过——不扫 cwd 相对 teams/)
+      const g = await fetch(`${base}/settings/teams`, { headers: AUTH });
+      assert.equal(g.status, 200);
+      const gBody = (await g.json()) as TeamsBody;
+      assert.deepEqual(
+        gBody.view.entries.map((e) => [e.id, e.source, e.shadowed]).sort(),
+        [['global-team', 'global', false], ['shared', 'global', false]],
+        '无 root 只出全局面(shared 不再被项目遮蔽)',
+      );
+    });
+  });
+
+  test('㊼ 校验面 400:坏 id(严格 kebab——大写/下划线/尾连字符拒,路径分隔/穿越/点开头亦拒)+缺 name+members 空/非数组/坏词法+多行 version+坏 op/scope+缺 root;零盘上副作用', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      fs.mkdirSync(proj, { recursive: true });
+      const put = async (b: unknown): Promise<Response> =>
+        fetch(`${base}/settings/teams`, { method: 'PUT', headers: AUTH, body: JSON.stringify(b) });
+      const good = { root: proj, scope: 'project', op: 'upsert', id: 'ok-team', frontmatter: { name: 'Ok', members: ['planner'] } };
+
+      // id 安全面(AMENDMENT 2026-11-04:严格 kebab isValidTeamId 单点——catalog teamWriteTarget P0
+      // 起即 enforce kebab,入口同口径防坏 id 漏到 409;agent 词法放行的大写/下划线在此 400):
+      // 路径分隔/穿越/点开头/空/空白/首连字符/大写/下划线/尾连字符 一律 400(upsert 与 delete 同守卫)
+      for (const id of ['a/b', '../escape', '.hidden', 'a b', '-x', '', 'a\\b', 'MixedCase', 'snake_case', 'a-']) {
+        const r = await put({ ...good, id });
+        assert.equal(r.status, 400, `upsert id=${JSON.stringify(id)} → 400`);
+        const d = await put({ root: proj, scope: 'project', op: 'delete', id });
+        assert.equal(d.status, 400, `delete id=${JSON.stringify(id)} → 400`);
+      }
+
+      // frontmatter 面:name 必填非空白单行;members 必填非空数组且逐项 agent-id 词法
+      for (const fm of [undefined, {}, { members: ['planner'] }, { name: '', members: ['planner'] }, { name: '  ', members: ['planner'] }, { name: 'a\nb', members: ['planner'] }, { name: 'Ok' }, { name: 'Ok', members: [] }, { name: 'Ok', members: 'planner' }, { name: 'Ok', members: ['planner', 'a b'] }, { name: 'Ok', members: ['planner', 123] }]) {
+        const r = await put({ ...good, frontmatter: fm });
+        assert.equal(r.status, 400, `frontmatter=${JSON.stringify(fm)} → 400`);
+      }
+
+      // 可选键类型面:单行 KV 词法——字符串键含换行即拒(换行注入伪键);enabled 非布尔拒;body 非串拒
+      const badDesc = await put({ ...good, frontmatter: { name: 'Ok', members: ['planner'], description: 'x\nmembers: y' } });
+      assert.equal(badDesc.status, 400, 'description 含换行 → 400');
+      const badVer = await put({ ...good, frontmatter: { name: 'Ok', members: ['planner'], version: '1\n2' } });
+      assert.equal(badVer.status, 400, 'version 多行 → 400');
+      const badEnabled = await put({ ...good, frontmatter: { name: 'Ok', members: ['planner'], enabled: 'yes' } });
+      assert.equal(badEnabled.status, 400, 'enabled 非布尔 → 400');
+      const badBody = await put({ ...good, body: 123 });
+      assert.equal(badBody.status, 400, 'body 非串 → 400');
+
+      // 请求形态面:坏 op/坏 scope/scope=project 缺 root
+      const badOp = await put({ ...good, op: 'bogus' });
+      assert.equal(badOp.status, 400, '未知 op → 400');
+      const badScope = await put({ ...good, scope: 'team' });
+      assert.equal(badScope.status, 400, '未知 scope → 400');
+      const noRoot = await put({ scope: 'project', op: 'upsert', id: 'ok-team', frontmatter: { name: 'Ok', members: ['planner'] } });
+      assert.equal(noRoot.status, 400, 'scope=project 缺 root → 400');
+
+      assert.equal(fs.existsSync(path.join(proj, '.sunshinex', 'teams')), false, '400 面零盘上副作用(teams 目录不建)');
+    });
+  });
+
+  test('㊽ upsert→GET 含条目(members/lead/version/source/bodyPreview 200 帽)→enable/disable(GET enabled 翻转;缺失 id 409)→delete→GET 不含+幂等再 delete 同 200;global 落 userConfigDir(root 忽略)', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const put = async (b: unknown): Promise<Response> =>
+        fetch(`${base}/settings/teams`, { method: 'PUT', headers: AUTH, body: JSON.stringify(b) });
+      const getRow = async (root?: string): Promise<TeamEntryRow | undefined> => {
+        const q = root !== undefined ? `?root=${encodeURIComponent(root)}` : '';
+        const b = (await (await fetch(`${base}/settings/teams${q}`, { headers: AUTH })).json()) as TeamsBody;
+        return b.view.entries.find((e) => e.id === 'full-team');
+      };
+
+      // project 全量形状:多行章程正文(bodyPreview 200 帽);members 含未解析 ghost→missing 富化
+      const longBody = `${'章程条款。'.repeat(80)}\n收尾条款。`;
+      const up = await put({
+        root: proj, scope: 'project', op: 'upsert', id: 'full-team',
+        frontmatter: { name: 'Full Team', description: 'full shape', version: '2.0.0', members: ['planner', 'ghost'], lead: 'planner' },
+        body: longBody,
+      });
+      assert.equal(up.status, 200, 'project upsert 应 200');
+      assert.deepEqual(await up.json(), { ok: true });
+      assert.ok(fs.existsSync(path.join(proj, '.sunshinex', 'teams', 'full-team', 'team.md')), '落位=<root>/.sunshinex/teams/<id>/team.md(catalog teamsDir 单点)');
+
+      const row = await getRow(proj);
+      assert.deepEqual(row, {
+        id: 'full-team', name: 'Full Team', description: 'full shape', version: '2.0.0',
+        members: ['planner', 'ghost'], lead: 'planner', missing: ['ghost'],
+        source: 'project', shadowed: false, enabled: true, bodyPreview: longBody.slice(0, 200),
+      }, '新条目全字段透出(bodyPreview 200 帽+missing 含未解析 ghost)');
+      assert.equal(row?.bodyPreview.length, 200, 'bodyPreview 200 帽');
+
+      // disable → GET enabled:false → enable(enabled 与 op 同义回显面)→ true
+      const off = await put({ root: proj, scope: 'project', op: 'disable', id: 'full-team' });
+      assert.equal(off.status, 200);
+      assert.equal((await getRow(proj))?.enabled, false, 'disable 后 GET enabled:false');
+      const on = await put({ root: proj, scope: 'project', op: 'enable', id: 'full-team', enabled: true });
+      assert.equal(on.status, 200, 'enabled 回显与 op 同义 → 200');
+      assert.equal((await getRow(proj))?.enabled, true, 'enable 后 GET enabled:true');
+      // enable/disable 于缺失 id → 409(镜像 agents;幂等只属 delete)
+      const missEn = await put({ root: proj, scope: 'project', op: 'enable', id: 'absent-team' });
+      assert.equal(missEn.status, 409, 'enable 缺失 id → 409');
+
+      // delete → 目录整删+GET 不含;再 delete/从未存在 幂等 200
+      const del = await put({ root: proj, scope: 'project', op: 'delete', id: 'full-team' });
+      assert.equal(del.status, 200);
+      assert.deepEqual(await del.json(), { ok: true });
+      assert.equal(fs.existsSync(path.join(proj, '.sunshinex', 'teams', 'full-team')), false, '目录已整删(catalog removeTeam rm -rf)');
+      const again = await put({ root: proj, scope: 'project', op: 'delete', id: 'full-team' });
+      assert.equal(again.status, 200, '重复 delete 幂等 200');
+      const ghost = await put({ root: proj, scope: 'project', op: 'delete', id: 'never-was' });
+      assert.deepEqual(await ghost.json(), { ok: true }, '删除不存在的 id → 幂等 ok');
+
+      // global:落 userConfigDir(root decoy 被忽略——定位面与 agents 同裁定)
+      const decoy = path.join(tmp, 'who-cares');
+      const upG = await put({ root: decoy, scope: 'global', op: 'upsert', id: 'g-team', frontmatter: { name: 'G Team', members: ['tester'] } });
+      assert.equal(upG.status, 200);
+      assert.ok(fs.existsSync(path.join(home, '.sunshinex', 'teams', 'g-team', 'team.md')), 'global upsert 落 userConfigDir');
+      assert.equal(fs.existsSync(decoy), false, 'scope=global 忽略 root:不产生目录副作用');
+      const delG = await put({ root: decoy, scope: 'global', op: 'delete', id: 'g-team' });
+      assert.equal(delG.status, 200);
+      assert.equal(fs.existsSync(path.join(home, '.sunshinex', 'teams', 'g-team')), false, 'global delete 落 userConfigDir(root 忽略)');
+    });
+  });
+});
+
+describe('agents-teams P1 GET /settings/teams/body 端点', () => {
+  test('㊾ 两 scope 往返:章程全文(多段>200 不截断,不含 frontmatter);404 缺失(相对路径文案);畸形 frontmatter 400;严格 kebab 坏 id 400;global 忽略 root;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const writeTeam = (teamsBase: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(teamsBase, id), { recursive: true });
+        fs.writeFileSync(path.join(teamsBase, id, 'team.md'), md, 'utf8');
+      };
+      const longBody = `章程第一段。\n${'很长的章程行。'.repeat(40)}\n收尾段。`;
+      writeTeam(path.join(proj, '.sunshinex', 'teams'), 'p-team', `---\nname: P Team\nmembers: planner\n---\n${longBody}`);
+      writeTeam(path.join(home, '.sunshinex', 'teams'), 'g-team', `---\nname: G Team\nmembers: tester\n---\n${longBody}`);
+      writeTeam(path.join(proj, '.sunshinex', 'teams'), 'broken', 'no frontmatter here\n');
+
+      const noAuth = await fetch(`${base}/settings/teams/body?scope=project&id=p-team&root=${encodeURIComponent(proj)}`);
+      assert.equal(noAuth.status, 401, '无 token 401');
+
+      // project 往返:body=frontmatter 后章程全文(清单面 bodyPreview 200 帽在此不适用)
+      const p = await fetch(`${base}/settings/teams/body?scope=project&id=p-team&root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(p.status, 200);
+      const pBody = (await p.json()) as { body: string };
+      assert.equal(pBody.body, longBody, '章程全文逐字(不截断)');
+      assert.ok(!pBody.body.includes('name: P Team'), '不含 frontmatter');
+      assert.ok(pBody.body.length > 200, '超 200 字章程不截断');
+
+      // global 往返:root 被忽略(decoy 不定位)
+      const decoy = path.join(tmp, 'who-cares');
+      const g = await fetch(`${base}/settings/teams/body?scope=global&id=g-team&root=${encodeURIComponent(decoy)}`, { headers: AUTH });
+      assert.equal(g.status, 200);
+      assert.equal(((await g.json()) as { body: string }).body, longBody, 'global 落 userConfigDir(root 忽略)');
+
+      // 404:project/global 缺文件;回显 ${scope}/teams/${id} 相对定位——不泄绝对路径
+      const p404 = await fetch(`${base}/settings/teams/body?scope=project&id=absent-team&root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(p404.status, 404);
+      const pErr = ((await p404.json()) as { error: string }).error;
+      assert.equal(pErr, 'team.md not found: project/teams/absent-team', 'project 404 文案=scope/teams/id 相对定位');
+      assert.ok(!pErr.includes(proj) && !pErr.includes(tmp), 'project 404 不泄绝对路径');
+      const g404 = await fetch(`${base}/settings/teams/body?scope=global&id=absent-team`, { headers: AUTH });
+      assert.equal(g404.status, 404);
+      assert.equal(((await g404.json()) as { error: string }).error, 'team.md not found: global/teams/absent-team', 'global 404 文案=scope/teams/id 相对定位');
+
+      // 400 坏 id:严格 kebab(AMENDMENT 同 PUT 守卫)——大写/穿越/空 一律 400
+      for (const id of ['a/b', '../escape', 'MixedCase', '']) {
+        const r2 = await fetch(`${base}/settings/teams/body?scope=project&id=${encodeURIComponent(id)}&root=${encodeURIComponent(proj)}`, { headers: AUTH });
+        assert.equal(r2.status, 400, `id=${JSON.stringify(id)} → 400`);
+      }
+
+      // 400 坏 scope / scope=project 缺 root / 畸形 frontmatter(指名 frontmatter)
+      const badScope = await fetch(`${base}/settings/teams/body?scope=team&id=p-team`, { headers: AUTH });
+      assert.equal(badScope.status, 400);
+      const noRoot = await fetch(`${base}/settings/teams/body?scope=project&id=p-team`, { headers: AUTH });
+      assert.equal(noRoot.status, 400);
+      const broken = await fetch(`${base}/settings/teams/body?scope=project&id=broken&root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(broken.status, 400);
+      assert.ok((((await broken.json()) as { error: string }).error).includes('frontmatter'), '错误指名 frontmatter');
+    });
+  });
+});
+
 // ---------- G8c T6:/settings/skills + /settings/memory-stats 端点(技能三源分组清单+主域记忆概览) ----------
 
 /** GET /settings/skills 应答行(skills.ts SkillsGroup 只读投影;name/description 空串不透出。

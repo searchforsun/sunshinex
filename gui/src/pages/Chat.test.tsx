@@ -1762,3 +1762,148 @@ describe('等待模型待态(2026-10-27)', () => {
     expect(document.querySelector('.send.loading')).toBeNull();
   });
 });
+
+describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
+  /** agentsView/teamsView 桩(挂到 connOf 桩上;entries 行带 shadowed/source 全字段——装配面投影
+   *  id+name 且剔 shadowed 行,同 id 两级行只留生效者) */
+  function withCatalog(conn: Connection, agents: Array<{ id: string; name: string; source?: string; shadowed?: boolean }>, teams: Array<{ id: string; name: string }>): void {
+    const c = conn as unknown as Record<string, unknown>;
+    c.agentsView = vi.fn(() =>
+      Promise.resolve({
+        builtins: [],
+        view: { entries: agents.map((a) => ({ bodyPreview: '', shadowed: false, source: 'project', ...a })), warnings: [] },
+      }),
+    );
+    c.teamsView = vi.fn(() =>
+      Promise.resolve({ view: { entries: teams.map((tm) => ({ ...tm, members: [], missing: [], bodyPreview: '', shadowed: false, source: 'project' })), warnings: [] } }),
+    );
+  }
+
+  it('输入 $ 面板出现(双组头),Enter 插入 $devx (尾随空格)并关闭;懒加载单次+shadowed 行剔除', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(
+      conn,
+      [
+        { id: 'devx', name: 'Dev X' },
+        { id: 'planner', name: 'Planner' },
+        { id: 'devx', name: 'Dev X', source: 'global', shadowed: true }, // 同 id 被遮蔽行:面板不重复列
+      ],
+      [{ id: 'core-team', name: 'Core' }],
+    );
+    render(<Chat conn={conn} sessionId="s-ref-1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' }); // 面板开
+    const ids = (): Array<string | null> => [...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent);
+    expect(ids()).toEqual(['devx', 'planner', 'core-team']); // 生效集投影(shadowed devx 不重复列)
+    expect([...document.querySelectorAll('.ref-palette-head')].map((el) => el.textContent)).toEqual(['智能体', '团队']); // 双组头
+    const agentsView = (conn as unknown as Record<string, unknown>).agentsView as ReturnType<typeof vi.fn>;
+    expect(agentsView).toHaveBeenCalledTimes(1); // 首触懒加载单次
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    expect(ta.value).toBe('$devx '); // R4:插入 `$id ` 尾随空格,插入即终态
+    expect(document.querySelector('.ref-palette')).toBeNull(); // 面板关闭
+  });
+
+  it('↑↓ 跨两组连续导航:↓×2 选中第三行,↑ 可逆,Enter 插入所选(评审锚:键面不重置游标)', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }, { id: 'planner', name: 'Planner' }], [{ id: 'core-team', name: 'Core' }]);
+    render(<Chat conn={conn} sessionId="s-ref-6" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    const activeId = (): string => document.querySelector('.ref-palette-row.active .ref-palette-id')?.textContent ?? '';
+    expect(activeId()).toBe('devx'); // 游标起点=首行
+    fireEvent.keyDown(ta, { key: 'ArrowDown' });
+    expect(activeId()).toBe('planner');
+    fireEvent.keyDown(ta, { key: 'ArrowDown' });
+    expect(activeId()).toBe('core-team'); // 跨组连续编号($ 组尽即入 # 组)
+    fireEvent.keyDown(ta, { key: 'ArrowUp' });
+    expect(activeId()).toBe('planner'); // 回退可逆
+    fireEvent.keyDown(ta, { key: 'ArrowDown' });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    expect(ta.value).toBe('#core-team '); // 第三行插入(尾随空格)
+    expect(document.querySelector('.ref-palette')).toBeNull();
+  });
+
+  it('# 触发只余团队组(过滤后首行直接落 Teams 头),Enter 插入 #core-team ', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], [{ id: 'core-team', name: 'Core' }]);
+    render(<Chat conn={conn} sessionId="s-ref-2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '#core' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    expect([...document.querySelectorAll('.ref-palette-head')].map((el) => el.textContent)).toEqual(['团队']);
+    expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['core-team']);
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    expect(ta.value).toBe('#core-team ');
+    expect(document.querySelector('.ref-palette')).toBeNull();
+  });
+
+  it('点击面板行插入对应 token($id 尾随空格)并收面板', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }, { id: 'planner', name: 'Planner' }], []);
+    render(<Chat conn={conn} sessionId="s-ref-7" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    const rows = [...document.querySelectorAll('.ref-palette-row')];
+    fireEvent.click(rows[1]!); // 第二行 planner
+    expect(ta.value).toBe('$planner ');
+    expect(document.querySelector('.ref-palette')).toBeNull();
+  });
+
+  it('Esc 关闭面板不插入', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], []);
+    render(<Chat conn={conn} sessionId="s-ref-3" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    fireEvent.keyDown(ta, { key: 'Escape' });
+    expect(document.querySelector('.ref-palette')).toBeNull();
+    expect(ta.value).toBe('$'); // 原文不动
+  });
+
+  it('未知引用提示:发送含未知 $token 聚合一条 transient 提示(role=status),原文照发', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    const sessionSubmit = vi.fn((_id: string, _text: string) => Promise.resolve());
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], [{ id: 'core-team', name: 'Core' }]);
+    render(<Chat conn={conn} sessionId="s-ref-4" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } }); // 先开一次面板 → entries 缓存落位
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    fireEvent.change(ta, { target: { value: '叫 $ghost 上场,拉 #phantom' } }); // 未命中条目
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    const hint = document.querySelector('.sx-img-hint');
+    expect(hint).not.toBeNull();
+    expect(hint!.getAttribute('role')).toBe('status');
+    expect(hint!.textContent).toBe('$ghost #phantom 未匹配到在册条目——已按原文发送'); // 聚合一处
+    await act(async () => {}); // 排水提交 promise
+    expect(sessionSubmit).toHaveBeenCalledTimes(1);
+    expect(sessionSubmit.mock.calls[0]?.[1]).toBe('叫 $ghost 上场,拉 #phantom'); // 照发原文,不改写
+  });
+
+  it('entries 从未拉过(palette 未开)=跳过未知引用检查,不为提示补拉(R5)', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    const sessionSubmit = vi.fn(() => Promise.resolve());
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], []);
+    render(<Chat conn={conn} sessionId="s-ref-5" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '叫 $ghost 上场' } }); // 直接发送,面板从未打开
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    expect(document.querySelector('.sx-img-hint')).toBeNull(); // 零提示(检查被跳过)
+    await act(async () => {});
+    expect(sessionSubmit).toHaveBeenCalledTimes(1); // 照发原文
+    const agentsView = (conn as unknown as Record<string, unknown>).agentsView as ReturnType<typeof vi.fn>;
+    expect(agentsView).not.toHaveBeenCalled(); // 不为此发网络请求
+  });
+});

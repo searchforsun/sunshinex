@@ -282,6 +282,7 @@ export function slashHelp(): string[] {
     t('  /model-effort  switch reasoning effort (selector)', '  /model-effort  切换思考强度（选择卡）'),
     t('  /mcp           MCP servers panel: list / enable|disable|approve|deny <name>', '  /mcp           MCP 服务器面板：清单/启停/批准/拒绝'),
     t('  /agents        subagents panel: list / enable|disable <id>', '  /agents        子智能体面板：清单/启停'),
+    t('  /teams         agent teams panel (read-only listing)', '  /teams         智能体团队面板（只读清单）'),
     t('  /plugins       plugins panel: list / enable|disable <id>', '  /plugins       插件面板：清单/启停'),
     t('  /providers     model providers panel (read-only, edit via CLI)', '  /providers     模型提供方面板（只读，编辑走 CLI）'),
     t('  /add-dir <dir>  extend trusted directories (read+write, this session)', '  /add-dir <dir>  扩展信任目录（读写，本会话内生效）'),

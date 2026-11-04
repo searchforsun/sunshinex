@@ -17,6 +17,8 @@ import { PermissionsPane } from './PermissionsPane';
 import type { PermissionsPaneConn } from './PermissionsPane';
 import { RawPane } from './RawPane';
 import type { RawPaneConn } from './RawPane';
+import { TeamsPane } from './TeamsPane';
+import type { TeamsPaneConn } from './TeamsPane';
 import { ShortcutsPane } from './ShortcutsPane';
 import type { SettingsScope, ScopeOption } from './components';
 import { defaultScopeOptions, scopeTargetLabel } from './components';
@@ -59,6 +61,9 @@ import type { ConfigChangedSource } from './use-config-changed';
  * ——'all' 态壳层不感知(壳不下发 root,SkillsPane 自持 scope=all 拉取);全局/项目两态仍上抛
  * 同步本壳 targetRoot。④提供方页即全局(模型/提供方全局豁免)——本壳不再向 ProvidersPane
  * 下发 root/scope/选项面,页面工具栏只留新增钮。
+ * 2026-11-04 agents-teams P1 Task 3:导航十二项——Integrations 组 agents 后插「智能体团队」
+ * (TeamsPane,spec §6.2):teams 三端点(GET 清单/PUT op 写面/GET body 章程全文)接线,五件套
+ * (root/scope/onScopeChange/scopeOptions/refreshTick.teams)下发同款,目标选择器状态留本壳。
  */
 
 /** 壳连接面:全部面板连接面的并集(结构满足即收,App 传整只 Connection)。
@@ -68,8 +73,10 @@ import type { ConfigChangedSource } from './use-config-changed';
  *  的 conn 依赖;App 的 Connection 已供 onConfigChanged 注册点)。T26 并入 ProvidersPaneConn
  *  (providers 面扩 putProviderOp op 端点写面——旧形=SettingsFormConn 子集无需单列)。
  *  2026-10-29 目标选择器并入 workspaces()(GET /workspaces 注册表——五资源页作用域下拉的
- *  注册项目清单数据源;既有端点,零新造) */
-export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
+ *  注册项目清单数据源;既有端点,零新造)。2026-11-04 agents-teams P1 Task 3 并入
+ *  TeamsPaneConn(teams 三端点:teamsView/putTeamOp/teamBody——成员多选数据源复用
+ *  AgentsPaneConn.agentsView) */
+export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, TeamsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
   /** GET /workspaces:工作区注册表扫描(T2;行含 slug+root——root 缺档历史行不可选) */
   workspaces(): Promise<WorkspaceRow[]>;
 }
@@ -100,6 +107,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
       { id: 'mcp', title: { en: 'MCP', zh: 'MCP' } },
       { id: 'plugins', title: { en: 'Plugins', zh: '插件' } },
       { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
+      { id: 'teams', title: { en: 'Agent Teams', zh: '智能体团队' } },
     ],
   },
   { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }] },
@@ -202,6 +210,9 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
         return <PluginsPane key="plugins" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.plugins} />;
       case 'agents':
         return <AgentsPane key="agents" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.agents} />;
+      case 'teams':
+        // agents-teams P1 Task 3:智能体团队面(TeamsPane 五件套下发同款——目标选择器状态留本壳)
+        return <TeamsPane key="teams" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.teams} />;
       case 'skills':
         // 2026-10-29 用户裁定:Skills 工具栏合并为项目下拉(全部项目|全局|项目们)——'all' 态
         // 壳层不感知(pane 自持 scope=all 拉取,不上抛);全局/项目两态经 onScopeChange 同步本壳

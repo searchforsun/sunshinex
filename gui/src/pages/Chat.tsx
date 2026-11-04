@@ -42,7 +42,7 @@ import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
-import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, renderMentionSpans, slashTokenAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
 import { SelActionsOverlay } from './chat/SelActionsOverlay';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, slashTokenAt, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
@@ -52,6 +52,8 @@ export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import type { AskPick } from './chat/PendingCards';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
+import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
+import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 export { ToolEntryView } from './chat/ToolEntry';
@@ -147,12 +149,23 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
   const [filePalActive, setFilePalActive] = useState(0);
+  /** agents-teams P1 §3.2 $/# 引用面板:触发态 + 两目录缓存(agents/teams id+name 投影)+单游标。
+   *  entries 懒加载(refEntriesLoadedRef 门:首次命中拉一次,失败静默空列=面板照开仅无项;
+   *  R5:未知引用提示只认这份缓存,从未拉过=跳过检查,不为提示补拉) */
+  const [refPal, setRefPal] = useState<RefPal | null>(null);
+  const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
+  const [refActive, setRefActive] = useState(0);
+  const refEntriesLoadedRef = useRef(false);
   // G14.211 @ 面板点外即收:收口此前只有 Esc/改写输入两条路,焦点离开输入框后 Esc 不可达、
   // 点外无处理 = 面板滞留(「无法关闭」直感)。pointerdown 落 composer 卡外即收;面板行在
   // 卡内(overlays 锚卡根),选中点击不受影响
   useEffect(() => {
     const onDocPointerDown = (e: PointerEvent): void => {
-      if (e.target instanceof Element && !e.target.closest('.sx-composer')) setFilePal(null);
+      // G14.211 点外即收(@ 与 $/# 两面板同款:面板行锚 composer 卡内,卡内点不受影响)
+      if (e.target instanceof Element && !e.target.closest('.sx-composer')) {
+        setFilePal(null);
+        setRefPal(null);
+      }
     };
     document.addEventListener('pointerdown', onDocPointerDown);
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
@@ -165,6 +178,23 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
   const { resolveFileRef, loadWorkspaceFiles, filesVer } = useWorkspaceFiles(conn, sessionId, root, pickRelRef);
+  /** agents-teams P1 §3.2 引用目录懒加载:并行 agentsView+teamsView(root 同口径守卫——缺省/
+   *  空串/'default' 走全局清单),结果投影 id+name(shadowed 行剔除——同 id 两级行只留生效者),
+   *  缓存于 ref(首次命中后零网络);失败静默空列——面板照开仅无项(R5 不为提示补拉) */
+  const loadRefEntries = useCallback((): void => {
+    if (refEntriesLoadedRef.current) return;
+    refEntriesLoadedRef.current = true;
+    const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
+    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
+      ([a, tv]) => {
+        setRefEntries({
+          agents: a.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
+          teams: tv.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
+        });
+      },
+      () => {}, // 失败静默:entries 保持空列(面板无项不开;不重试——零网络纪律)
+    );
+  }, [conn, root]);
   /** 目录引用解析(md 链接面/输入框高亮层共用):记账表优先、索引兜底——值带尾斜杠=目录
    *  (内部标记,显示/插入一律无斜杠)。依赖 filesVer:缓存落定即换新引用→context 值变化,
    *  驱动 memo 封存条目(会话恢复先于异步索引渲染)重渲补上黄目录图标 */
@@ -500,9 +530,21 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     }
   }, [chatScrollRef]);
   const send = useCallback((): void => {
+    // agents-teams P1 R5 未知引用提示(发送入口只读检查,use-chat-submit 零改动):entries 已
+    // 拉过才对照(从未拉过=跳过,不为提示补拉);拉过但两组全空=拉取失败(或空目录)不提示
+    // (评审 2026-11-04:失败静默空列若照检,每条含 $/# 消息都会吃到假「未匹配」提示)。
+    // 未命中者聚合一条 transient 提示(imgHint 同款 role="status" 自隐行),原文照发——
+    // 不拦截、不改写
+    if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
+      const unknown = unknownRefTokens(input, refEntries);
+      if (unknown.length > 0) {
+        const list = unknown.join(' ');
+        showImgHint(t(`No registered match for ${list} — sent as-is`, `${list} 未匹配到在册条目——已按原文发送`));
+      }
+    }
     jumpToBottom();
     sendRaw();
-  }, [jumpToBottom, sendRaw]);
+  }, [jumpToBottom, sendRaw, input, refEntries, showImgHint]);
   const { onInputClick } = useChatComposerSide({
     pickRelRef,
     refContents: refContentsRef,
@@ -528,6 +570,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setFilePalActive,
     loadWorkspaceFiles,
     pickRelRef,
+    refPal,
+    setRefPal,
+    refEntries,
+    refActive,
+    setRefActive,
+    loadRefEntries,
     cmdData,
     setCmdData,
     cmdActive,
@@ -544,6 +592,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const slashPanelItems: CmdItem[] | null = (() => {
     const caret = inputRef.current?.selectionStart ?? input.length;
     const items = slashItemsFor(cmdData, slashTokenAt(input, caret));
+    return items.length > 0 ? items : null;
+  })();
+
+  /** agents-teams P1 §3.2 $/# 引用面板项(渲染期):触发态在场 + 活性锚校验(G14.211 同款:
+   *  锚位非 $/# 即不开)+ 过滤非空才开(全空=不开,与 @ 同门)。overlays 链首位=互斥收口:
+   *  引用面板在场时 @/+/命令面板一律不渲染 */
+  const refPanelItems: RefItem[] | null = (() => {
+    if (refPal === null) return null;
+    if (input[refPal.from] !== '$' && input[refPal.from] !== '#') return null;
+    const items = flatRefItems(refEntries, refPal.query);
     return items.length > 0 ? items : null;
   })();
 
@@ -790,13 +848,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           // G14.124 面板跟随输入(光标前 @token 即开,裸 @ 也开);无匹配=渲染面自然关闭
           const caret = inputRef.current?.selectionStart ?? v.length;
           const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
+          // agents-teams P1 §3.2 $/# 引用面板同款跟随(与 @ 互斥:同一 caret 前缀不可能同时
+          // 以 @词与 $/#词 收尾;@ 命中即收引用面板,反之亦然)
+          const rt = refTokenAt(v, caret);
           if (m !== null) {
             setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
             // G14.2xx 查询变更即重置 active:残留箭头位在新命中集上会指向邻项(回车选中非目标)
             setFilePalActive(0);
             void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
-          } else if (filePal !== null) {
-            setFilePal(null);
+            setRefPal(null);
+          } else if (rt !== null) {
+            setRefPal(rt);
+            setRefActive(0);
+            loadRefEntries();
+          } else {
+            if (filePal !== null) setFilePal(null);
+            if (refPal !== null) setRefPal(null);
           }
         }}
         onKeyDown={composerKeys.onKeyDown}
@@ -806,9 +873,30 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onCompositionEndGuard={composerKeys.onCompositionEndGuard}
         onSelectGuard={composerKeys.onSelectGuard}
         overlays={
-          // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染;
-          // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染
-          filePal !== null && input[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
+          // agents-teams P1 §3.2 $/# 引用面板(链首=与 @/+/命令面板互斥;R4 插入 `$id `/`#id `
+          // 尾随空格即终态,无记账;光标钉插入 token 后沿——G14.211 同款)
+          refPanelItems !== null && refPal !== null ? (
+            <RefPalette
+              items={refPanelItems}
+              active={Math.min(refActive, refPanelItems.length - 1)}
+              onHover={setRefActive}
+              onPick={(item) => {
+                const from = refPal.from;
+                const end = from + 1 + refPal.query.length;
+                setInput((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
+                setRefPal(null);
+                inputRef.current?.focus();
+                requestAnimationFrame(() => {
+                  const ta = inputRef.current;
+                  if (ta === null) return;
+                  const to = Math.min(from + item.id.length + 2, ta.value.length);
+                  ta.setSelectionRange(to, to);
+                });
+              }}
+            />
+          ) : // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染;
+            // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染
+            filePal !== null && input[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
             <FilePalette
               items={rankFileHits(filePalFiles, filePal.query)}
               active={Math.min(filePalActive, 11)}
