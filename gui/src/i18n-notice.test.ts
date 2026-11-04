@@ -11,6 +11,36 @@ import { setLanguage } from './i18n';
 /** 映射面用例钉 zh（语言门：en 整行透传，专测见末组） */
 beforeEach(() => setLanguage('zh'));
 
+describe('localizeNotice exit_plan 裁决回执(工具行包裹的固定系统提示)', () => {
+  it('批准两档:档位词进中文(完全访问/工作区编辑,与模式 pill 同源措辞)', () => {
+    expect(localizeNotice('plan approved — implement via full access; maintain progress with todo_write as you go')).toBe(
+      '计划已批准——以完全访问实施；用 todo_write 保持进度',
+    );
+    expect(localizeNotice('plan approved — implement via workspace edits; maintain progress with todo_write as you go')).toBe(
+      '计划已批准——以工作区编辑实施；用 todo_write 保持进度',
+    );
+  });
+
+  it('重新计划:反馈动态内容捕获透传(含多行反馈)', () => {
+    expect(localizeNotice('re-plan requested — revise the plan per this feedback and call exit_plan again: 第二步拆细')).toBe(
+      '请求重新计划——按此反馈修订计划后再次调用 exit_plan：第二步拆细',
+    );
+    expect(localizeNotice('re-plan requested — revise the plan per this feedback and call exit_plan again: 第一步错了\n第二步缺验收')).toBe(
+      '请求重新计划——按此反馈修订计划后再次调用 exit_plan：第一步错了\n第二步缺验收',
+    );
+  });
+
+  it('弃卡提示与 en 门透传', () => {
+    expect(localizeNotice('plan discarded — continue the current task normally; do not resubmit unless the user asks')).toBe(
+      '计划已弃——继续当前任务；除非用户要求，不要重新提交',
+    );
+    setLanguage('en');
+    expect(localizeNotice('plan approved — implement via full access; maintain progress with todo_write as you go')).toBe(
+      'plan approved — implement via full access; maintain progress with todo_write as you go',
+    );
+  });
+});
+
 describe('localizeNotice /plan 全族', () => {
   it('bare /plan 武装与幂等提示', () => {
     expect(localizeNotice('Plan mode on — submissions will be planned first')).toBe('已进入计划模式：提交将先规划再确认实施');

@@ -1,6 +1,7 @@
 import { Fragment, memo, useEffect, useState } from 'react';
 import { Check, ArrowRight, FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
+import { localizeNotice } from '../../i18n-notice';
 import { highlightCommand, stripAnsi } from '../../highlight';
 import { openExternalUrl } from '../../ui-util';
 import type { ChatEntry } from '../../chat-reducer';
@@ -790,7 +791,7 @@ export const ToolEntryView = memo(function ToolEntryView({
                 {t('Open plan file', '打开计划文件')}
               </span>
             ) : null}
-            {planExecuting ? t('Awaiting user decision', '等待用户裁决') : fullResult !== '' ? stripAnsi(fullResult) : ''}
+            {planExecuting ? t('Awaiting user decision', '等待用户裁决') : fullResult !== '' ? localizeNotice(stripAnsi(fullResult)) : ''}
           </span>
         </div>
       </div>
