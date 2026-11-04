@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { NotebookPen, RotateCcw, ShieldCheck, Unlock, X } from 'lucide-react';
+import { NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
 import { t } from '../../i18n';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
 
@@ -12,7 +12,7 @@ import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
  *  放弃语义归取消钮,不再兼义);实施按当前档——只读域(plan/read-only)双键=实施·工作区编辑(primary
  *  缺省档)+实施·完全访问(warn 黄警示,Unlock);可写域(acceptEdits/full-access)单键=实施(当前档,
  *  图标随档)——批准即维持本档,无落档切换(档位操作走 pill,不混入计划卡)。
- *  窄应用框响应式:按钮带前置图标,容器查询 <480px 隐文字仅图标(title 保语义),再窄 flex-wrap 换行。
+ *  窄应用框响应式:仅实施类按钮带前置图标(取消/重新计划恒文字),容器查询 <480px 隐文字仅图标,再窄 flex-wrap 换行。
  *  items 不再独立渲染 ol(Steps 节已随 doc 全文在滚动区内,双份同内容上下排即冗余;items 仍是执行
  *  权威——执行进度走会话 todo 面)。纯渲染+onDecide 回调,挂起生命周期(cards 状态/回执
  *  寻址)归 use-session-events(ApprovalCard 同款分工);回执经 connection.replyPlanApproval →
@@ -89,16 +89,10 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' 
       {/* 按钮排布(2026-11-04 用户裁定):取消 | 重新计划 | 实施——取消=放弃本轮(decision 不带 feedback);
           重新计划必须反馈框有内容(空=禁用,放弃走取消,空文本不再兼义);实施:可写域单键=维持当前档
           (plain 实施,图标随档);只读域双键=工作区编辑(primary)/完全访问(warn 黄警示)。
-          窄应用框:按钮带前置图标,容器查询 <480px 折叠为纯图标(title 保语义),再窄 flex-wrap 换行 */}
+          窄应用框:仅实施类按钮带前置图标(2026-11-04 用户裁定:只有工作区编辑和完全访问前面加图标),容器查询 <480px 折叠为纯图标(data-tip 保语义),再窄 flex-wrap 换行 */}
       <div className="card-actions">
-        <button type="button" data-tip={t('Discard this round', '放弃本轮')} onClick={() => onDecide({ approved: false })}>
-          <X size={14} strokeWidth={2} aria-hidden="true" />
-          <span className="btn-label">{t('Cancel', '取消')}</span>
-        </button>
-        <button type="button" data-tip={t('Re-plan with feedback', '带反馈重新计划')} disabled={feedback.trim() === ''} onClick={sendRePlan}>
-          <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
-          <span className="btn-label">{t('Re-plan', '重新计划')}</span>
-        </button>
+        <button type="button" onClick={() => onDecide({ approved: false })}>{t('Cancel', '取消')}</button>
+        <button type="button" disabled={feedback.trim() === ''} onClick={sendRePlan}>{t('Re-plan', '重新计划')}</button>
         {writable ? (
           <button type="button" className="primary" data-tip={mode === 'full-access' ? t('Implement in full access mode', '以完全访问档实施') : t('Implement in workspace edits mode', '以工作区编辑档实施')} onClick={() => onDecide({ approved: true, mode })}>
             {mode === 'full-access' ? <Unlock size={14} strokeWidth={2} aria-hidden="true" /> : <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />}
