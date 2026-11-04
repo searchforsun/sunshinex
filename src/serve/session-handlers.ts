@@ -13,7 +13,7 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { branchFrom, copySessionStores, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -657,6 +657,7 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
   } catch (err) {
     return io.send(res, 500, { error: 'branch failed: ' + String((err as Error).message) });
   }
+  if (kind === 'fork') copySessionStores(dataDir, srcId, newId); // 会话级静态存储随 fork 克隆(账本/团队面/辅助档;attach 收养前落位)
   if (kind === 'fork') {
     if (side) {
       // 2026-10-31 用户裁定「辅助对话持久化可见+编号」:父档 sideCount 独立计数持久化,

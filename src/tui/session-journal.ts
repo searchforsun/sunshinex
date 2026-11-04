@@ -554,6 +554,48 @@ export function forkIncludeCut(parsed: ParsedJournal, anchors: JournalAnchor[], 
 }
 
 /**
+ * 会话级静态存储随 fork 复制（2026-11-04 用户裁定「fork 之上静态内容记录完整复制」）——三件
+ * journalId 键控的物理面，fork 换 id 后子会话 adoptSessionStores 收养空壳即丢，此处逐一克隆：
+ * ①后台任务账本 `<dataDir>/tasks/ledger-<jid>.jsonl`（静态记录；运行中任务归父会话进程=动态不复制）
+ * ②智能体团队物理面 `<dataDir>/teams/<jid>/`（注册表/板/inbox 位点递归；成员进程动态不复制）
+ * ③辅助对话档（meta sideOf 回指父档）：整档换 id 复制、sideOf 改指子档——子会话 sides 清单可见。
+ * 待办/看板影子/子 agent 归档记录在 journal 行内,随 branchFrom 前缀复制原生覆盖,不在此列。
+ * 单件失败不阻断 fork（尽力复制,查无文件静默跳过）。
+ */
+export function copySessionStores(dataDir: string, srcId: string, newId: string): void {
+  const ledgerSrc = path.join(dataDir, 'tasks', `ledger-${srcId}.jsonl`);
+  try {
+    if (fs.existsSync(ledgerSrc)) {
+      fs.mkdirSync(path.join(dataDir, 'tasks'), { recursive: true });
+      fs.copyFileSync(ledgerSrc, path.join(dataDir, 'tasks', `ledger-${newId}.jsonl`));
+    }
+  } catch {
+    /* 账本复制失败不阻断 */
+  }
+  try {
+    const teamsSrc = path.join(dataDir, 'teams', srcId);
+    if (fs.existsSync(teamsSrc)) fs.cpSync(teamsSrc, path.join(dataDir, 'teams', newId), { recursive: true });
+  } catch {
+    /* 团队面复制失败不阻断 */
+  }
+  const dir = sessionsDir(dataDir);
+  if (!fs.existsSync(dir)) return;
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith('.jsonl')) continue;
+    const sideJid = name.slice(0, -'.jsonl'.length);
+    try {
+      const meta = readSessionMeta(dataDir, sideJid);
+      if (meta.side !== true || meta.sideOf !== srcId) continue;
+      const lines = parseJournalFile(path.join(dir, name)).lines.length;
+      const sideNewId = branchFrom(dataDir, sideJid, lines, 'fork');
+      writeSessionMeta(dataDir, sideNewId, { side: true, ...(meta.title !== undefined ? { title: meta.title } : {}), sideOf: newId });
+    } catch {
+      /* 单个辅助档复制失败不阻断 */
+    }
+  }
+}
+
+/**
  * 分档原语（规格 2026-09-20 rewind+fork §5.2）：复制源档第 1..upToLine 行到新档（第 2..upToLine 行逐字节相等），
  * header 重写（新 id / 新 createdAt / forkedFrom 血缘），写新档；源档零改动。
  * 任一前缀行非合法 JSON、upToLine 越界、源档缺失即 throw Error('INVALID_ARG: ...')，零副作用。

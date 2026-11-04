@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { handleBranch, handleSessionTasks } from './session-handlers';
 import { TaskRegistry } from '../harness/tasks';
-import { SessionJournal, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { SessionJournal, copySessionStores, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
 
 test('handleSessionTasks 过滤板任务派发登记(boardDispatch):GUI 后台任务面只剩 exec/后台 spawn(2026-11-03 用户裁定)', () => {
@@ -77,6 +77,41 @@ test('handleBranch fork 子档题兜底:父未题名取首条 user 摘要(与列
     await handleBranch(io, {} as never, {} as never, 's1', 'fork');
     assert.equal(readSessionMeta(dataDir, newJid).title, 'Fork of 调研认证模块的重构方案', '首条 user 兜底+截 60 字');
     assert.equal(readSessionMeta(dataDir, sessionsDir(dataDir)).title, undefined, '哨兵:目录级无 meta 不误读');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('copySessionStores:账本/团队面/辅助档随 fork 克隆,sideOf 改指子档(2026-11-04 静态内容复制裁定)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-sess-cp-'));
+  try {
+    const dataDir = resolveDataDir(root);
+    const j = new SessionJournal(dataDir);
+    j.start();
+    j.log({ t: 'user', text: '主问' });
+    const srcId = j.currentId!;
+    fs.mkdirSync(path.join(dataDir, 'tasks'), { recursive: true });
+    const ledgerRow = '{"kind":"exec"}\n';
+    fs.writeFileSync(path.join(dataDir, 'tasks', `ledger-${srcId}.jsonl`), ledgerRow, 'utf8');
+    fs.mkdirSync(path.join(dataDir, 'teams', srcId, 'main'), { recursive: true });
+    fs.writeFileSync(path.join(dataDir, 'teams', srcId, 'main', 'board.json'), '{}', 'utf8');
+    const side = new SessionJournal(dataDir);
+    side.start();
+    side.log({ t: 'user', text: '旁问' });
+    const sideJid = side.currentId!;
+    writeSessionMeta(dataDir, sideJid, { side: true, title: '辅助对话 1', sideOf: srcId });
+
+    copySessionStores(dataDir, srcId, 'child-jid');
+
+    assert.equal(fs.readFileSync(path.join(dataDir, 'tasks', 'ledger-child-jid.jsonl'), 'utf8'), ledgerRow, '账本克隆');
+    assert.equal(fs.existsSync(path.join(dataDir, 'teams', 'child-jid', 'main', 'board.json')), true, '团队面递归克隆');
+    const dir = sessionsDir(dataDir);
+    const cloned = fs.readdirSync(dir).filter((n) => n.endsWith('.jsonl')).map((n) => n.slice(0, -'.jsonl'.length))
+      .map((jid) => ({ jid, meta: readSessionMeta(dataDir, jid) }))
+      .find((r) => r.meta.side === true && r.meta.sideOf === 'child-jid');
+    assert.ok(cloned !== undefined, '辅助档克隆且 sideOf 改指子档');
+    assert.equal(cloned.meta.title, '辅助对话 1', '辅助档题沿带');
+    assert.equal(fs.existsSync(path.join(dir, `${cloned.jid}.jsonl`)), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
