@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { NotebookPen, RefreshCw } from 'lucide-react';
+import { Clock, NotebookPen, RefreshCw } from 'lucide-react';
 import { t } from '../i18n';
 import type { Connection } from '../connection';
 import { shortStampMs, withMinSpin } from '../ui-util';
@@ -91,7 +91,7 @@ export function PlansTab({
                 >
                   {pl.name === '' ? t('Untitled plan', '未命名计划') : pl.name}
                 </span>
-                <span className="mem-date">{shortStampMs(pl.mtime)}</span>
+                <span className="mem-date"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{shortStampMs(pl.mtime)}</span>
               </div>
             </li>
           ))}
