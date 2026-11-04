@@ -339,7 +339,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 6px 12px; border-bottom: 1px solid var(--border-subtle);
   font: 12px var(--font-ui); color: var(--fg-secondary);
   mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
-}.files-crumb { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }.files-crumb-sep { color: var(--fg-tertiary); }.files-crumb-seg { color: var(--fg-secondary); white-space: nowrap; }.files-crumb-name { color: var(--fg); font-weight: 600; white-space: nowrap; } /* 2026-10-28 用户裁定:路径隐现=横向裁剪淡出,末段长文件名禁折行(实测折三行顶出版面) */
+}.files-crumb { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }.files-crumb-sep { color: var(--fg-tertiary); }.files-crumb-seg { color: var(--fg-secondary); white-space: nowrap; }.files-crumb-name { color: var(--fg); font-weight: 600; white-space: nowrap; } /* 2026-10-28 用户裁定:路径隐现=横向裁剪淡出,末段长文件名禁折行(实测折三行顶出版面) */ /* 2026-11-04 末段文件图标回归(面包屑曾丢失;13px 与分隔箭头同档) */.files-crumb-ico { display: inline-flex; align-items: center; }.files-crumb-ico svg, .files-crumb-ico img { width: 13px; height: 13px; }
 /* G14.134 动作钮(md 预览切换/复制)常驻内容区右上角——不靠 hover,直接可见 */.files-head { flex: none; display: flex; align-items: center; gap: 6px; }.files-head-actions { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }.files-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }.files-actions {
   position: absolute; top: 6px; right: 10px; z-index: 3;
   display: flex; gap: 2px;

@@ -8,6 +8,7 @@ import { zoomScale } from '../ui-zoom';
 import { monacoLangOf, useSxTheme } from '../monaco-setup';
 import { monacoCodeFontOptions } from '../font-preset';
 import { t } from '../i18n';
+import { FileIcon } from '../file-icon';
 import { isAbsPath, normRel, OPEN_DEFAULT_KEY } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
@@ -227,6 +228,12 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
               {segments.map((seg, i) => (
                 <span key={`${seg}:${i}`} className="files-crumb">
                   {i > 0 && <ChevronRight size={12} strokeWidth={1.75} className="files-crumb-sep" aria-hidden="true" />}
+                  {/* 2026-11-04 用户裁定:末段文件名前补回文件图标(面包屑曾一度丢失) */}
+                  {i === segments.length - 1 && i > 0 && load.file !== null && (
+                    <span className="files-crumb-ico" aria-hidden="true">
+                      <FileIcon path={load.file.path} />
+                    </span>
+                  )}
                   <span className={i === segments.length - 1 ? 'files-crumb-name' : 'files-crumb-seg'}>{seg}</span>
                 </span>
               ))}
