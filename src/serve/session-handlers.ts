@@ -634,7 +634,9 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
   const side = (parsed.body as { side?: unknown }).side === true; // G14.29:辅助会话标记(列表滤除)
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
-  if (session.status() === 'running') return io.send(res, 409, { error: 'session is running' });
+  // 2026-11-04 用户裁定「辅助会话=观察主对话当前状态,运行中也能 fork」:side fork 放行——
+  // journal 追加写、fork 只读复制已落盘行,与运行中的源会话互不干扰;普通 rewind/fork 仍拦
+  if (session.status() === 'running' && !side) return io.send(res, 409, { error: 'session is running' });
   const srcId = session.attachedJournalId;
   if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
   const dataDir = resolveDataDir(session.root);

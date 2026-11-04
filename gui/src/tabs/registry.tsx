@@ -7,6 +7,7 @@
  */
 
 import { lazy } from 'react';
+import { useState } from 'react';
 import { t } from '../i18n';
 import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
@@ -93,8 +94,15 @@ export interface TabRenderProps {
    *  方式外开」):App openFileTab——尾斜杠/目录回抛走 openDirectoryPath,file 照旧开签;缺省回落
    *  openTab(直开 file 签,旧行为) */
   readonly openFilePath?: (path: string) => void;
-  /** G14.154 辅助对话带问启动(fork+开辅助标签;文件选区「在辅助对话中提问」通道) */
+  /** G14.154 辅助对话带问启动(文件选区「在辅助对话中提问」通道)——开/聚焦草稿页,首条发送
+   *  才 fork(2026-11-04 用户裁定,见 upgradeSideChat) */
   readonly startSideChat?: (insert?: string) => void;
+  /** 2026-11-04 草稿升级(首条发送才 fork):App 注入——fork 主会话(运行中亦放行)、取编号题、
+   *  params 落 sideId 并登记首条目标(sideGoal);拒绝(无会话/连接断)以 rejection 上抛 */
+  readonly upgradeSideChat?: (uid: string, text: string) => Promise<void>;
+  /** 首条目标(升级后挂真 Chat 时经 pendingGoal 播种落定自动提交;App 态位,done 即清) */
+  readonly sideGoal?: { root: string; goal: string };
+  readonly onSideGoalDone?: (uid: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
   readonly root: string;
   /** 记忆定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」:saved 回显行点击下发 slug,
@@ -363,6 +371,9 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     group: 'session',
     // G14.29 辅助对话:fork 旁路会话绑定的完整 Chat(sideId 寻址;帧路由经 App chatSinkRef)
     // 题=持久化编号(辅助对话 N,daemon fork 时落 meta;开签经 params.title 注入)
+    // 2026-11-04 「首条发送才 fork」:无 sideId=草稿页(复用同一页,类似欢迎页临时会话)——
+    // SideChatDraft 收首条 → upgradeSideChat fork 主对话整档 → params 落 sideId 挂真 Chat,
+    // 首条文本经 sideGoal/pendingGoal 播种落定自动提交
     title: (params) => params.title ?? t('Side chat', '辅助对话'),
     resolveKey: (params) => params.sideId ?? '',
     singleton: false,
@@ -381,16 +392,72 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             fixedTitle=""
             sideChat
             initialInsert={p.params.insert}
+            pendingGoal={p.sideGoal}
+            onPendingGoalDone={() => p.onSideGoalDone?.(p.uid)}
           />
         </div>
+      ) : p.upgradeSideChat !== undefined ? (
+        <SideChatDraft uid={p.uid} insert={p.params.insert} onUpgrade={p.upgradeSideChat} />
       ) : (
-        // G14.2xx:无 sideId 的裸档走不到(+菜单已特判走 startSideChat)——防御性提示面
+        // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
           <p>{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</p>
         </div>
       ),
     },
   ];
+
+/** 辅助对话草稿页(2026-11-04 首条发送才 fork):空态提示+单输入卡;发送=升级(fork 主对话
+ *  整档→挂真 Chat→首条自动提交)。busy 防重入;失败落行内错误条保草稿 */
+function SideChatDraft({ uid, insert, onUpgrade }: { uid: string; insert?: string; onUpgrade: (uid: string, text: string) => Promise<void> }): JSX.Element {
+  const [text, setText] = useState(insert ?? '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const send = (): void => {
+    const v = text.trim();
+    if (v === '' || busy) return;
+    setBusy(true);
+    setErr('');
+    void onUpgrade(uid, v).then(
+      () => undefined, // 升级成→真 Chat 挂载,本组件卸载;首条经 pendingGoal 自动提交
+      (e: unknown) => {
+        setBusy(false);
+        setErr(e instanceof Error ? e.message : String(e));
+      },
+    );
+  };
+  return (
+    <div className="sx-sidechat sx-sidechat-draft">
+      <div className="sx-sidechat-draft-hint">
+        {t('Sending the first message forks the main conversation as of now — the side chat observes, the main chat stays untouched.', '发送第一条消息时,将分叉主对话当前内容为辅助会话——辅助对话只观察,主对话不受影响。')}
+      </div>
+      <div className="sx-sidechat-draft-card">
+        <textarea
+          aria-label="side chat draft input"
+          className="sx-sidechat-draft-input"
+          autoFocus
+          rows={3}
+          value={text}
+          placeholder={t('Ask about the main conversation…', '针对主对话提问…')}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') e.currentTarget.blur();
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        <div className="sx-sidechat-draft-foot">
+          {err !== '' && <span className="sx-sidechat-draft-err">{err}</span>}
+          <button type="button" className="sx-sidechat-draft-send" disabled={busy || text.trim() === ''} onClick={send}>
+            {busy ? t('Forking…', '分叉中…') : t('Send', '发送')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** 查表:缺则 throw(开档/渲染面共用;新类型入表前先炸可见,不静默) */
 export function tabEntry(id: TabTypeId): TabTypeEntry {

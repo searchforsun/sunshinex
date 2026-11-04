@@ -293,24 +293,29 @@ function AppShell(): JSX.Element {
   /** 左栏选中会话(attach/新建完成):切路由(Chat 装配期自播种基线)+ ensureSession 建席
    *  (缺省「任务」页)+ 板投影/team 清零(会话切换串态防线——快照落定后经 onSeeded 重建
    *  权威态)+ 播种窗重开;tabStates 已有该会话则原样(重开同会话标签还原) */
-  /** G14.29 辅助对话:fork 主会话整档(side 标记,列表滤除)→ 右栏 sidechat 标签绑定旁路会话。
-   *  帧路由经 sideSinksRef(onEvent 同键转投);卡点与 /btw /side 输入拦截同汇本口 */
+  /** G14.29 辅助对话:右栏 sidechat 标签绑定旁路会话。帧路由经 sideSinksRef(onEvent 同键转投);
+   *  卡点与 /btw /side 输入拦截同汇本口。
+   *  2026-11-04 用户裁定「发送第一条才 fork」:点开只开草稿页签(不 fork;sidechat 判重键
+   *  sideId 缺='' 互判重聚焦既有——类似欢迎页临时会话,每次打开复用同一草稿页),首条发送时
+   *  才 fork 主对话整档(见 upgradeSideChat) */
   const startSideChat = (insert?: string): void => {
+    if (openSessionId === '') return;
+    openTabInSession('sidechat', insert !== undefined && insert !== '' ? { insert } : {});
+  };
+  /** 草稿升级(2026-11-04 首条发送才 fork):fork 主会话(side 标记;daemon 运行中亦放行——
+   *  只读复制与源会话互不干扰)→ 取持久化编号题 → 首条文本登记 App 态位(挂真 Chat 后经
+   *  pendingGoal 自动提交;重启态位丢失=不发,安全)→ params 落 sideId(判重键/真 Chat 随之挂) */
+  const [sideGoals, setSideGoals] = useState<Map<string, { root: string; goal: string }>>(new Map());
+  const upgradeSideChat = async (uid: string, text: string): Promise<void> => {
     const conn = connRef.current;
     if (conn === null || openSessionId === '') return;
-    void (async () => {
-      try {
-        const anchors = await conn.sessionAnchors(openSessionId);
-        const last = anchors.length > 0 ? anchors[anchors.length - 1]!.turn : 1;
-        const r = await conn.forkSession(openSessionId, last, true);
-        sideSinksRef.current.set(r.sessionId, { current: null });
-        // 持久化编号题(daemon fork 落 meta「辅助对话 N」;2026-10-31 用户裁定页签显编号)
-        const title = await conn.getSessionTitle(r.sessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : undefined)).catch(() => undefined);
-        openTabInSession('sidechat', { sideId: r.sessionId, insert, ...(title !== undefined ? { title } : {}) });
-      } catch {
-        /* fork 失败静默(旁路非关键路径) */
-      }
-    })();
+    const r = await conn.forkSession(openSessionId, 1, true);
+    sideSinksRef.current.set(r.sessionId, { current: null });
+    // 持久化编号题(daemon fork 落 meta「辅助对话 N」;2026-10-31 用户裁定页签显编号)
+    const title = await conn.getSessionTitle(r.sessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : undefined)).catch(() => undefined);
+    if (text.trim() !== '') setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: text }));
+    const patch = { sideId: r.sessionId, ...(title !== undefined ? { title } : {}) };
+    setTabStates((s) => patchTabMeta(patchTabMeta(s, openSessionId, uid, patch), WELCOME_TAB_SEAT, uid, patch));
   };
 
   /** 辅助对话页签恢复(2026-10-31 用户裁定「辅助对话持久化+编号页签」):重进主会话即按 /sides
@@ -1150,6 +1155,9 @@ function AppShell(): JSX.Element {
                       openFilePath: openFileTab, // 目录回抛走左树定位/配置打开方式外开(2026-10-30)
                       closeTab: closeTabInSession,
                       startSideChat,
+                      upgradeSideChat,
+                      sideGoal: sideGoals.get(t.uid),
+                      onSideGoalDone: (uid2: string) => setSideGoals((m) => { const n = new Map(m); n.delete(uid2); return n; }),
                       ptyIdFor,
                       onPtyAllocated: handlePtyAllocated,
                       chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId) : undefined,

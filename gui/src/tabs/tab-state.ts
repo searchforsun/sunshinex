@@ -261,7 +261,7 @@ export function patchTabMeta(
   states: TabStates,
   sessionId: string,
   uid: string,
-  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string },
+  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; sideId?: string; title?: string; insert?: string },
 ): TabStates {
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
@@ -272,6 +272,9 @@ export function patchTabMeta(
     && target.params.pageTitle === params.pageTitle
     && target.params.pageIcon === params.pageIcon
     && target.params.ptyId === params.ptyId
+    && target.params.sideId === params.sideId
+    && target.params.title === params.title
+    && target.params.insert === params.insert
   ) return states;
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
