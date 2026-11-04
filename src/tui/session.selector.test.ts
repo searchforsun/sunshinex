@@ -124,7 +124,7 @@ test('/resume：带参形态命令词命中分支（尾参忽略，不再报无�
     await ctrl.submit('/resume 1');
     await ctrl.submit('/resume some-id');
     const texts = messageTexts(ctrl);
-    assert.ok(!texts.includes('Unrecognized command'), '未命中 warn 分支退役：带参不再报无法识别');
+    assert.ok(!texts.split('\n').some((x) => x.includes('Unrecognized command')), '未命中 warn 分支退役：带参不再报无法识别');
     assert.ok(/No saved sessions yet|暂无已保存会话/.test(texts), '命令词命中 /resume 分支照走（空目录回执，尾参忽略）');
   } finally {
     if (prev === undefined) delete process.env.SUNSHINEX_DATA_DIR; else process.env.SUNSHINEX_DATA_DIR = prev;

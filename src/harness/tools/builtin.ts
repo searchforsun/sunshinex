@@ -852,7 +852,7 @@ export function makeAgentTool(agents: { get(id: string): { id: string; name: str
     },
     name: 'agent',
     description:
-      "Load an agent's card (role framing) by id when the user references an agent like \"$agent-id\" or the task matches an entry in the available agents list; use only ids from the list — never invent one. Then delegate the task via spawn with that agent_id — do not absorb the role yourself. Agents are live: one announced by a later [agents] notice is usable by its id immediately",
+      "Load an agent's card (role framing) by id when the user references an agent like \"$agent-id\" or the task matches an entry in the available agents list; use only ids from the list — never invent one. Then delegate the task via spawn with that agent_id — do not absorb the role yourself. The agents list is a session snapshot: an agent added later is announced by an [agents] notice and becomes usable in a new session (the registry is frozen for the current session)",
     category: 'read' as const,
     fullObservation: true,
     executor: async (input: ToolInput) => {

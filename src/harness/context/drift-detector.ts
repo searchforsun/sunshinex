@@ -74,7 +74,7 @@ export class DriftDetector {
     }
     const agents = agentSig(this.deps.root);
     if (agents !== this.agentsBaseline) {
-      out.push(...sigDiffNotices('[agents]', this.agentsBaseline, agents, 'load the agent card with the agent tool'));
+      out.push(...sigDiffNotices('[agents]', this.agentsBaseline, agents, 'load the agent card with the agent tool (usable in a new session)'));
       this.agentsBaseline = agents;
     }
     const teams = teamSig(this.deps.root);

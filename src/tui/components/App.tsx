@@ -259,7 +259,9 @@ export function App({
   React.useEffect(() => {
     controller.onPrefillInput((text) => {
       store.buffer = text;
+      store.cursor = text.length;
       setBuffer(text);
+      setCursor(text.length);
     });
   }, [controller]);
   // 现场回写：无依赖数组——每次渲染后同步最新值到 retain，重挂前的最后一帧即最新现场

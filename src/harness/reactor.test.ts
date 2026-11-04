@@ -353,7 +353,7 @@ test('收敛环有界且滞回生效：压缩当轮生效、下一新步被门�
 
 test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 fail-bounded）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reactor9-'));
-  // CJK 1 字符=1 token 便于精算。budget {874,500}：threshold 374，摘要/重读预算各 250
+  // CJK 1 字符=1 token 便于精算。budget {953,500}：threshold 453，摘要/重读预算各 250
   fs.writeFileSync(path.join(tmp, 'f.txt'), '压'.repeat(80));
   fs.writeFileSync(path.join(tmp, 'g.txt'), '压'.repeat(700));
   const prompts: string[] = [];
@@ -369,15 +369,16 @@ test('硬越限旁路：est > total 时滞回被旁路立即压缩（环有界 f
   for (const t of builtinTools(safety, tmp)) registry.register(t);
   const context = new ContextManager(tmp, new FileStore(tmp));
   const reactor = new Reactor({ registry, safety, context, model });
-  // 观察只入 history 后按新语义标定（「装配底数」两轮抬升：M5 恒在记忆引导条目 +119 至 122 tok；2026-11-04 agents 清单段
-  //   （内置四角色恒在）再 +174 —— 底数 ≈296 tok，正文 487 字符 / 0 CJK 计入其中）：
-  //   budget.total 随恒在段底数整体 +174（700→874；threshold 同抬 374，摘要/重读预算各 250 不动——压缩块选择逐位不变，
+  // 观察只入 history 后按新语义标定（「装配底数」三轮抬升：M5 恒在记忆引导条目 +119 至 122 tok；2026-11-04 agents 清单段
+  //   （内置四角色恒在）再 +174；2026-11-04 fix(review) agents 域 liveness 承诺改口（清单 lead/工具描述会话冻结措辞拉长）再 +79
+  //   —— 底数 ≈375 tok，正文 487 字符 / 0 CJK 计入其中）：
+  //   budget.total 随恒在段底数整体抬升（700→874→953；threshold 同抬 374→453，摘要/重读预算各 250 不动——压缩块选择逐位不变，
   //   仍须 ≥ step2 原始块 205，否则摘要条目被截断、两轮 chunks 同构退化为 replay）
-  // step1 est=296≤374 不过阈（不压）；step2 est=296+83(hist f×80)=379>374 滞回门（2-(-2)≥2）触发（records 1）：
-  //   收敛后 est≤874 即止；step3 读 g 后 est>874 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：可丢块（上一轮摘要条目、hist2）
+  // step1 est=375≤453 不过阈（不压）；step2 est=375+83(hist f×80)=458>453 滞回门（2-(-2)≥2）触发（records 1）：
+  //   收敛后 est≤953 即止；step3 读 g 后 est>953 硬越限旁路——滞回门（3-2=1<2）闭合仍立即压缩：可丢块（上一轮摘要条目、hist2）
   //   按序丢尽，chunks 与 step2 不同构（→ 非 replay），records 2；
-  // 收敛环有界：可丢块丢尽后 est≤874 环止（rounds=1，fail-bounded）
-  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 874, reserve: 500 } });
+  // 收敛环有界：可丢块丢尽后 est≤953 环止（rounds=1，fail-bounded）
+  const r = await reactor.run({ goal: 'g' }, { maxSteps: 3, budget: { total: 953, reserve: 500 } });
   assert.equal(r.done, true);
   assert.equal(prompts.length, 3);
   assert.equal(
