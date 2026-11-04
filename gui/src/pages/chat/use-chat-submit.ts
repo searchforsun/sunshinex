@@ -58,11 +58,13 @@ const submitText = useCallback(
       onSideChat?.();
       return Promise.resolve();
     }
-    // 命令通道判定前置(2026-10-31 用户报障「/compact 双回显」):daemon runCommand 自带 user 回显帧
-    // (入档权威,回放可见),GUI 不再本地回显命令——此前本地+daemon 双气泡。armed 不再排除命令词
-    // (2026-11-03:命令自管武装,armed 下 /status 等照走命令通道;'/plan off' 解除不被顶掉)
+    // 命令通道判定(2026-11-03 修):**内置命令 /plan 恒识别为命令,不依赖 cmdData**——cmdData 异步
+    // 在途/未加载时 isCommand 误 false → /plan 被当普通文本发给模型(用户实测根因)。/plan 是计划
+    // 模式底层命令,恒走命令通道(底层承载);其余 / 词仍依赖 cmdData(skills/未知名回落纯文本)
+    const cmdName = /^\/([a-z][\w-]*)/i.exec(trimmed)?.[1]?.toLowerCase() ?? '';
+    const isBuiltinPlan = cmdName === 'plan';
     const isCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed)
-      ? (cmdData?.supported.some((c) => c.toLowerCase() === `/${(/^\/([a-z][\w-]*)/i.exec(trimmed)?.[1] ?? '').toLowerCase()}`) ?? false)
+      ? isBuiltinPlan || (cmdData?.supported.some((c) => c.toLowerCase() === `/${cmdName}`) ?? false)
       : false;
     const dispatch = (): Promise<void> => {
       if (running) return conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
