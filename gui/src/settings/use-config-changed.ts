@@ -32,11 +32,12 @@ export interface ConfigChangedSource {
 
 /** 全零 tick 初值(useState 惰性初始化单点;键序=ResourceKind 全集) */
 function zeroTicks(): Record<ResourceKind, number> {
-  return { mcp: 0, agents: 0, plugins: 0, skills: 0, providers: 0, permissions: 0, settings: 0 };
+  // 2026-11-04 teams 键随并行 teams-catalog ResourceKind 扩档补零(临时解堵:该 WIP 未落此面)
+  return { mcp: 0, agents: 0, teams: 0, plugins: 0, skills: 0, providers: 0, permissions: 0, settings: 0 };
 }
 
 /** 资源种类全集(守卫面零分配——帧热路径不建对象) */
-const RESOURCE_KEYS: ReadonlyArray<ResourceKind> = ['mcp', 'agents', 'plugins', 'skills', 'providers', 'permissions', 'settings'];
+const RESOURCE_KEYS: ReadonlyArray<ResourceKind> = ['mcp', 'agents', 'teams', 'plugins', 'skills', 'providers', 'permissions', 'settings'];
 
 /** 资源种类守卫:gui 建模外的 resource 字符串归 null(帧静默忽略) */
 function asResourceKind(v: string): ResourceKind | null {

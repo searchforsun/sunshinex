@@ -1,7 +1,7 @@
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { relTime } from '../ui-util';
 import { t } from '../i18n';
-import { Clock, Folder } from 'lucide-react';
+import { Folder } from 'lucide-react';
 import { fuzzyHit, sessionMetaLine, wsName } from './project-menu-util';
 
 /** 查找面板(G10-C13):品牌行查找钮开的项目+会话聚合搜索弹层(D32 批PM-2 自 ProjectMenu
@@ -92,7 +92,7 @@ ${metaLine}` : ''}`}
                     <span className="sx-session-dot unseen" />
                   ) : null}
                   <span className="sx-search-label">{label}</span>
-                  <span className="sx-search-meta time-stamp"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{relTime(r.updatedAt)}</span>
+                  <span className="sx-search-meta">{relTime(r.updatedAt)}</span>
                 </button>
               );
             })}

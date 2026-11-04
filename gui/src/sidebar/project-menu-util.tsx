@@ -286,7 +286,7 @@ export function SessionRow(props: {
         {props.label}
       </span>
       {hover !== null && <SessionHoverCard label={props.label} info={props.info} anchor={hover} />}
-      <span className="session-meta time-stamp"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{relTime(props.updatedAt)}</span>
+      <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
         <ArchiveConfirmButton
           active={props.confirmId === props.rowId}

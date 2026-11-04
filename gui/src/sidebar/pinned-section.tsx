@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, Clock, PinOff } from 'lucide-react';
+import { Archive, PinOff } from 'lucide-react';
 import { t } from '../i18n';
 import { relTime } from '../ui-util';
 import { useConfirmOutsideCancel } from './project-menu-util';
@@ -91,7 +91,7 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
               ) : (
                 <>
                   {/* 右槽:默认时间,hover 换归档钮(同槽切换);margin -8 对齐新会话钮中心线 */}
-                  <span className="sx-pin-time time-stamp"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{relTime(p.updatedAt)}</span>
+                  <span className="sx-pin-time">{relTime(p.updatedAt)}</span>
                   <button
                     type="button"
                     className="sx-iconbtn sx-pin-archive"

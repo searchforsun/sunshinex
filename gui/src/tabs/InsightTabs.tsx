@@ -464,7 +464,7 @@ export function MemoryTab({
                 >
                   {m.description}
                 </span>
-                <span className="mem-date time-stamp"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{m.modified.slice(0, 10)}</span>
+                <span className="mem-date"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{m.modified.slice(0, 10)}</span>
                 <button
                   type="button"
                   className={`sx-changes-act mem-del${armSlug === m.slug ? ' arm' : ''}`}
@@ -602,7 +602,7 @@ export function LearnedSkillsTab({
                   {s.id}
                 </span>
                 {/* 创建时间(2026-10-31 用户裁定「显示创建时间等」):birthtime 回退 mtime,缺省不列 */}
-                {s.createdMs !== undefined && <span className="mem-date time-stamp"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{new Date(s.createdMs).toISOString().slice(0, 10)}</span>}
+                {s.createdMs !== undefined && <span className="mem-date"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{new Date(s.createdMs).toISOString().slice(0, 10)}</span>}
                 <button
                   type="button"
                   className={`sx-changes-act mem-del${armId === s.id ? ' arm' : ''}`}
