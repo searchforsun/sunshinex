@@ -312,6 +312,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onPtyAllocated={p.onPtyAllocated}
         draft={p.sessionId === ''}
         draftRoot={p.root}
+        onSideAsk={(text: string) => p.startSideChat?.(text)}
       />
     ),
   },

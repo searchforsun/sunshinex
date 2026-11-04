@@ -48,6 +48,8 @@ export interface TerminalTabProps {
    *  WS 寻址会话段用 '@welcome' 占位(serve 帧中继只按 ptyId 寻址,段不校验) */
   readonly draft?: boolean;
   readonly draftRoot?: string;
+  /** 选区工具条·辅助会话(2026-11-03 用户裁定「终端选中后也能添加到会话/辅助会话」):缺省不渲染该动作 */
+  readonly onSideAsk?: (text: string) => void;
 }
 
 /** xterm 主题:取 app.css 设计令牌字面值(G8a spec §3;G8d U-D21 青色重定——CSS 变量无法跨
@@ -60,7 +62,7 @@ const XTERM_THEME = {
   selectionBackground: 'rgba(34, 211, 238, 0.25)',
 } as const;
 
-export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '' }: TerminalTabProps): JSX.Element {
+export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   /** jsdom 守卫落定面:无布局 → 降级(降级时 pty 已分配记账,关标签链照常 kill) */
   const [fallback, setFallback] = useState(false);
@@ -68,6 +70,9 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
   const [socketError, setSocketError] = useState<string | null>(null);
   /** exit 帧 code(退出态条;term 内另有换行提示) */
   const [exitCode, setExitCode] = useState<number | null>(null);
+  /** 选区悬浮工具条(2026-11-03 用户裁定「终端选中后添加到会话/辅助会话」):xterm 选区非空即显,
+   *  位置=mouseup 落点(相对容器);双动作=原文入主对话 composer(事件同 Files 页)/辅助会话提问 */
+  const [selBar, setSelBar] = useState<{ x: number; y: number; text: string } | null>(null);
 
   useEffect(() => {
     let socket: PtySocket | null = null;
@@ -83,6 +88,8 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     /** exit 帧已达标志(G8e 终审 C):exit 后 server 侧 close(1000) 属正常退出收尾——退出语义
      *  已写 code 行+态条,「连接已断开」横幅词不实(pty 已死,重连也必 404);closed 跳过 */
     let exited = false;
+    /** 选区工具条附加监听卸载钩子(mouseup;重连回退轮换 term 时换挂) */
+    const cleanupExtra = { current: (null as unknown as (() => void) | null) };
 
     /** fit 后同步 pty 尺寸(装配尾一次 + ResizeObserver 每回调) */
     const syncSize = (): void => {
@@ -160,6 +167,19 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             },
           });
           term.onData((d) => socket?.sendInput(d));
+          // 选区工具条(2026-11-03):选区清空即隐;mouseup 落点定条位(容器相对坐标,钳制到容器内)
+          const onMouseUp = (e: MouseEvent): void => {
+            const sel = term?.getSelection() ?? '';
+            if (sel.trim() === '') return;
+            const rect = container.getBoundingClientRect();
+            setSelBar({ x: e.clientX - rect.left, y: e.clientY - rect.top, text: sel.trim() });
+          };
+          container.addEventListener('mouseup', onMouseUp);
+          term.onSelectionChange(() => {
+            if ((term?.getSelection() ?? '').trim() === '') setSelBar(null);
+          });
+          const offMouseUp = (): void => container.removeEventListener('mouseup', onMouseUp);
+          cleanupExtra.current = offMouseUp;
           syncSize();
           observer = new ResizeObserver(syncSize);
           observer.observe(container);
@@ -202,6 +222,8 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     return () => {
       cancelled = true;
       window.removeEventListener('sunshinex:font-preset', onFontPreset);
+      cleanupExtra.current?.();
+      cleanupExtra.current = null;
       observer?.disconnect();
       socket?.dispose();
       term?.dispose(); // 不 killPty——kill 归 App 关标签链(pty 生命周期属标签不属渲染)
@@ -217,6 +239,34 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
       {/* 高度链:.sx-tabbody(flex 定高)→ .sx-pty → 容器——sx-pty-* 样式归 G8b-e(app.css 冻结),
           FitAddon 量的是容器盒,须满高才可 fit */}
       <div ref={containerRef} className="sx-pty-term" style={{ height: '100%' }} />
+      {selBar !== null && (
+        <div
+          className="files-selbar"
+          style={{ position: 'absolute', top: Math.max(0, selBar.y - 34), left: Math.max(selBar.x - 40, 8) }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text: selBar.text } }));
+              setSelBar(null);
+            }}
+          >
+            {t('Add to current task', '添加到当前任务')}
+          </button>
+          {onSideAsk !== undefined && (
+            <button
+              type="button"
+              onClick={() => {
+                onSideAsk(selBar.text);
+                setSelBar(null);
+              }}
+            >
+              {t('Ask in side chat', '在辅助会话中提问')}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
