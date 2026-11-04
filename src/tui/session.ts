@@ -362,6 +362,40 @@ export class SessionController {
   pendingApproval?: { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void };
   /** 空闲兜底节拍（规格 §3.5）：仅 idle 且后台队列非空时消费；unref 不阻塞进程退出 */
   private kickTimer?: ReturnType<typeof setInterval>;
+  /** 非计划模式切入审批(2026-11-03)：exit_plan 在非 armed run 中被调时,弹审批卡请求切入计划模式
+   *  （挂起形态与 suspendAskerFor 同构——awaiting-approval+审批卡,30s 超时自动 deny）。**不预武装**
+   *  ——批准才 arm+进 read-only 覆盖+计划提示 note(与 armed 提交同构);拒/超时→false(executor 返回
+   *  拒绝文本,模型不再重试),run 原态恢复(executor 恢复自然收口,不在此伪造 idle) */
+  private async requestPlanModeSwitch(timeoutMs: number): Promise<boolean> {
+    const req: ApprovalRequest = {
+      id: `plan-switch-${Date.now()}`,
+      kind: 'write',
+      subject: 'Agent requests plan mode',
+      reason: 'exit_plan called outside plan mode — approve to enter plan mode and review the proposed plan',
+    };
+    this.state = { ...this.state, status: 'awaiting-approval', approval: req, task: this.state.task.phase === 'tool-pending' ? { ...this.state.task, phase: 'tool-awaiting' } : this.state.task };
+    this.notify();
+    const decision = await Promise.race([
+      new Promise<ApprovalDecision>((resolve) => {
+        this.pendingApproval = { req, resolve };
+      }),
+      new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), timeoutMs)),
+    ]);
+    // 摘卡:超时=deny 回填(复用 resolveApproval 清理面,竞胜路径的挂起 Promise 一并了结);拒=回填方已摘
+    if (decision === 'timeout') await resolveApprovalOn(this, 'deny');
+    else {
+      this.pendingApproval = undefined;
+      this.state = { ...this.state, approval: undefined };
+    }
+    this.state = { ...this.state, status: 'running', task: this.state.task.phase === 'tool-awaiting' ? { ...this.state.task, phase: 'tool-pending' } : this.state.task };
+    this.notify();
+    if (decision !== 'allow') return false;
+    this.planArmed = true;
+    this.runtime.harness.security.enterModeOverride('read-only');
+    this.runtime.harness.context.appendChain([{ action: 'note', observation: PLAN_MODE_NOTE }]);
+    return true;
+  }
+
   /** 挂起的计划确认卡（/plan 流程,spec §4.3 重造=计划书全文+步骤清单）；confirmPlan 裁决后清除——
    *  公开 = 拆分件 approval 中断路径消费 */
   pendingPlan?: { name: string; path?: string; doc: string; items: string[] };
@@ -427,7 +461,11 @@ export class SessionController {
       onEvent: (e) => this.onEvent(e),
       onAskUser: opts.onAskUser ?? ((req) => this.askUser(req)),
       onTodos: (items) => this.setTodos(items),
-      plan: { awaitDecision: (name, doc) => planAwaitDecisionOn(this, name, doc) },
+      plan: {
+        isArmed: () => this.planArmed,
+        requestModeSwitch: (timeoutMs) => this.requestPlanModeSwitch(timeoutMs),
+        awaitDecision: (name, doc) => planAwaitDecisionOn(this, name, doc),
+      },
     });
     this.autoAsker = opts.asker;
     // 终端化审批闭包迁拆分件 approval（挂起语义不变：guard ask → 挂起 → 裁决回填 → 继续）

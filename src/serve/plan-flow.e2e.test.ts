@@ -157,7 +157,7 @@ test('serve 无感：空反馈驳回=放弃本轮——run 中断回输入态,ar
     { mode: 'plan' },
   );
 });
-test('serve 交稿协议：guard 非 armed 拒 exit_plan——普通任务调 exit_plan 被拒不终止,无计划卡', async () => {
+test('serve 交稿协议：非 armed 调 exit_plan=切入审批卡——拒→拒绝文本回喂不产计划卡(run 不终止)', async () => {
   const model = new ScriptedAdapter([
     { toolCalls: [{ name: 'exit_plan', args: { name: '越权交稿', doc: '# 不该出现' } }] },
     '{"done":true,"reply":"普通任务完成"}',
@@ -165,12 +165,17 @@ test('serve 交稿协议：guard 非 armed 拒 exit_plan——普通任务调 ex
   await withSession(model, async (ctx) => {
     assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '前提:非 plan-arm');
     assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
-    await waitFor(() => ctx.session.status() === 'idle', 10_000, '普通任务收尾');
+    await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'approval'), 10_000, '切入审批卡(30s 窗口,拒绝即刻)');
+    const row = ctx.session.pendingSnapshot().find((r) => r.kind === 'approval');
+    assert.ok(row, '挂起表应有 approval 行');
+    assert.equal(ctx.session.resolvePendingApproval(row.pid, 'deny'), true, '拒绝切入');
+    await waitFor(() => ctx.session.status() === 'idle', 10_000, '拒绝后 run 收尾');
+    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '拒绝不切档(原档保持)');
     assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '拒绝不产计划卡(不终止 run)');
     const chain = chainOf(ctx.session);
     assert.ok(
-      chain.some((st) => st.action === 'tool-result' && st.observation.includes('exit_plan is only available')),
-      '拒绝观察行带出路提示(模型可自行调整)',
+      chain.some((st) => st.action === 'tool-result' && st.observation.includes('exit_plan denied')),
+      '拒绝文本回喂(模型可自行调整)',
     );
     assert.ok(chain.some((st) => st.observation.includes('普通任务完成')), 'run 未被终止,模型收尾完成');
   });
@@ -197,10 +202,10 @@ test('serve 交稿协议：exit_plan 漏 name=可空兜底——卡名从 goal �
 
 test('serve 无感：挂卡期切档=弃卡+落新档;armed 再入→新目标→重新规划', async () => {
   const model = new ScriptedAdapter([
-    '{"tool":"write","input":{"path":"after-disarm.txt","content":"ok"},"done":false}',
+    { toolCalls: [{ name: 'exit_plan', args: { name: '重规划计划', doc: '# 重规划计划\n1. 步骤R' } }] }, // 交稿挂卡
+    '{"tool":"write","input":{"path":"after-disarm.txt","content":"ok"},"done":false}', // disarm 后普通任务
     '{"done":true,"reply":"普通任务完成"}',
-    { toolCalls: [{ name: 'exit_plan', args: { name: '重规划计划', doc: '# 重规划计划\n1. 步骤R' } }] },
-    '{"done":true,"reply":"重规划实施完成"}',
+    { toolCalls: [{ name: 'exit_plan', args: { name: '再入计划', doc: '# 再入计划\n1. 步骤S' } }] }, // armed 再入重新规划
   ]);
   await withSession(
     model,
@@ -210,6 +215,7 @@ test('serve 无感：挂卡期切档=弃卡+落新档;armed 再入→新目标�
       planCard(ctx.session, ctx.frames);
       assert.equal(await ctx.session.setMode('acceptEdits'), 'ok', '挂卡期切真档受理(轻量直切)');
       await waitFor(() => ctx.session.pendingSnapshot().length === 0, 10_000, '挂卡被拒清表');
+      await waitFor(() => ctx.session.status() === 'idle', 10_000, 'disarm 中止收尾(run 在途清零)');
       assert.equal(ctx.session.snapshotResponse().mode, 'acceptEdits', 'disarm 实切');
       assert.deepEqual(ctx.session.submit('普通任务'), { ok: true }, 'disarm 后普通提交直受理');
       await waitFor(() => ctx.session.status() === 'idle', 10_000, '普通任务收尾');

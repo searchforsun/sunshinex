@@ -13,6 +13,14 @@ function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+async function waitFor(cond: () => boolean, timeoutMs = 8000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error('waitFor timeout');
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 /** 钩子适配器：reasoning/usage 可注入，token 逐字流式（验证会话归约对三类增量事件的消费） */
 class HookAdapter implements ModelAdapter {
   readonly provider = 'hooks';
@@ -116,23 +124,27 @@ test('会话归约：工具调用/结果两行形态（英文动词 + ✓/✗）
   }
 });
 
-test('会话归约：/plan 逐项执行落 Step 步骤行', async () => {
+test('会话归约：/plan 批准=卡上屏+待办播种（无感化:旧 Step 逐项行退役,进度=todo 卡）', async () => {
   const tmp = tmpdir('sunshinex-stream5-');
   try {
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        '{"done":true,"reply":"1. 建 a\\n2. 建 b"}',
-        '{"done":true,"reply":"a 完成"}',
-        '{"done":true,"reply":"b 完成"}',
+        { toolCalls: [{ name: 'exit_plan', args: { name: '建文件计划', doc: '# 建文件计划\n1. 建 a\n2. 建 b' } }] },
+        '{"done":true,"reply":"完成"}',
       ]),
     });
     await ctrl.submit('/plan 建两个文件');
-    assert.equal(ctrl.getState().status, 'awaiting-plan');
+    await waitFor(() => ctrl.getState().status === 'awaiting-plan');
     await ctrl.confirmPlan(true);
     await ctrl.waitIdle();
-    const steps = ctrl.getState().messages.filter((m) => m.role === 'step').map((m) => m.text);
-    assert.deepEqual(steps, ['Step 1/2 — 建 a', 'Step 2/2 — 建 b']);
+    const st = ctrl.getState();
+    assert.ok(
+      st.messages.some((m) => m.role === 'system' && m.text.includes('建文件计划')),
+      '计划卡上屏（卡含计划名+计划书全文）',
+    );
+    assert.equal(st.todos.length, 2, '批准按计划书 Steps 播种待办');
+    assert.ok(!st.messages.some((m) => /^Step \d/.test(m.text)), '旧 Step 逐项行退役（无感化:同 run 实施,进度=todo 卡）');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

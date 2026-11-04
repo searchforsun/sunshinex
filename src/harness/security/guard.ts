@@ -91,14 +91,9 @@ export class SecurityGuard {
     // todo_write（todo_write 规格 D4）：零 IO 副作用的进程内状态写，三档放行（对标 ask_question/spawn 先例）；
     // deny 规则与破坏性硬底线仍先行
     if (tool === 'todo_write') return { allowed: true };
-    // exit_plan（2026-11-03 交稿协议）：仅规划轮放行——exitPlanArmed 由宿主 enterReadOnly/exitReadOnly
-    // 接缝配对置位/清除（与 read-only 覆盖同生命周期）;非规划轮（普通任务/子面/闲挂）硬拒并带出路提示,
-    // 模型看拒绝行自行调整（终态性由 terminal 工具面承载,拒绝不终止）
-    if (tool === 'exit_plan') {
-      return this.exitPlanArmed === true
-        ? { allowed: true }
-        : { allowed: false, reason: 'COMMAND_DENIED: exit_plan is only available during plan-mode planning rounds — research first, then present the plan with exit_plan when ready' };
-    }
+    // exit_plan（2026-11-03 无感化）：guard 恒放行——armed 判定与非 armed 时的模式切换审批
+    // 由 executor 面承载（planSeam.isArmed/requestModeSwitch;非 armed 时弹审批卡请求切入,30s 超时）
+    if (tool === 'exit_plan') return { allowed: true };
     // worktree 工具（规格 D7）：deny 规则仍先行；单发独占由 reactor 并行闸门承载；
     // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；read-only 闸门：
     // create/exit 拦截（写语义：建树+切换活动根），list 只读放行（与 Read/Grep/Glob 同列白名单语义）

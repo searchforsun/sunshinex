@@ -243,6 +243,11 @@ export class SessionRuntime {
     return this.currentMode === 'plan';
   }
 
+  /** exit_plan 武装切换（2026-11-03 无感化）：计划模式进入/退出时同步 guard.exitPlanArmed */
+  setExitPlanArmed(armed: boolean): void {
+    this.runtimeImpl.harness.security.setExitPlanArmed(armed);
+  }
+
   /** 武装外窥（/plan 三态,命令通道分流消费） */
   isPlanArmed(): boolean {
     return this.planArmed();
@@ -252,6 +257,28 @@ export class SessionRuntime {
   hasPlanPending(): boolean {
     for (const entry of this.pending.values()) if (entry.kind === 'plan-approval') return true;
     return false;
+  }
+
+  /** 非计划模式切入审批(2026-11-03)：exit_plan 在非 armed run 中被调时,弹审批卡请求切入计划模式
+   *  (复用 approval 挂起形态,30s 超时自动 deny+撤卡)。**不预切档**——批准才 setMode('plan')+进
+   *  read-only 覆盖(与 armed 提交同构)+计划提示 note;拒/超时→false(executor 返回拒绝文本,模型不再
+   *  重试),原档原态不动(run 在途由 executor 恢复自然收口) */
+  private async requestPlanModeSwitch(timeoutMs: number): Promise<boolean> {
+    const req: ApprovalRequest = {
+      id: `plan-switch-${Date.now()}`,
+      kind: 'write',
+      subject: 'Agent requests plan mode',
+      reason: 'exit_plan called outside plan mode — approve to enter plan mode and review the proposed plan',
+    };
+    const decisionPromise = this.suspendApproval(req);
+    const timeout = new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), timeoutMs));
+    const result = await Promise.race([decisionPromise, timeout]);
+    if (result === 'timeout') this.denyPending(); // 撤卡(超时竞胜,deny 回填)
+    if (result !== 'allow') return false;
+    await this.setMode('plan');
+    this.runtimeImpl.harness.security.enterModeOverride('read-only');
+    this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: PLAN_MODE_NOTE }]);
+    return true;
   }
 
   /** exit_plan 挂起接缝（2026-11-03 无感化,ask_question 同构）：落盘计划文件+挂起行（卡/帧）+
@@ -494,7 +521,11 @@ export class SessionRuntime {
       onAskUser: (req) => this.suspendAsk(req),
       // exit_plan 挂起接缝（2026-11-03 无感化,ask_question 同构）：弹卡阻塞等裁决（run 不收口）,
       // 批准落档（landPlanDecision）在 reply 路径 executor 恢复前完成
-      plan: { awaitDecision: (name, doc) => this.planAwaitDecision(name, doc) },
+      plan: {
+        isArmed: () => this.planArmed(),
+        requestModeSwitch: (timeoutMs: number) => this.requestPlanModeSwitch(timeoutMs),
+        awaitDecision: (name, doc) => this.planAwaitDecision(name, doc),
+      },
       // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;
@@ -1132,16 +1163,15 @@ export class SessionRuntime {
    *  换铸（assemble 重建+快照直传回种）是 v1 复用 reset 路径的惯性,非 mode 依赖——随本修订退役,连同
    *  其修补机械（快照直传/hookJournalSink 重挂/链 restore）。两个有意差异登记:①sessionAllows/
    *  sessionDirAllows 跨档保留（加法语义,旧换铸清空）;②readGuard 不换铸（降档免重读,旧换铸「强制
-   *  重读」语义退役）。边界保留:规划轮 read-only 覆盖在座（overrideActive）切真档仍 busy——override
-   *  遮蔽窗口不放开;切离 plan 且流程在途保留 disarm 收口（中止在途流程,语义不变）。
+   *  重读」语义退役）。边界（2026-11-03 无感化）:挂卡期切真档=弃卡+中断收口（不再 busy——卡挂起
+   *  的 run 由 interrupt 收口,guard 活读承载真档即时生效）;切离 plan 保留 disarm 收口（中止在途,语义不变）。
    *  plan 流程标记（阶段三 plan-arm;/plan 三态）：setMode('plan') 即武装——武装快路径,任何状态可用、
    *  幂等、永不 busy：arm 只是 currentMode 标记位（装配映射恒 acceptEdits）,不重建运行时;运行中武装
    *  对下一次提交生效;规划轮权限面走 read-only 覆盖,与基档无关。本方法即「手动切档解除」路径（切离
    *  plan 档=disarm）。回放语义（spec §5.2,跨重启不恢复 arm）：persistSelection 照写 mode:'plan' 落
    *  meta 旁车,attach 回放只认现值三档（'plan' 照写不照回）——armed 不跨重启;已批准的计划书随链回放。
-   *  disarm 收口史（终审修复 b）：卡挂起期切离 plan 若只查 idle 即实切,在途 planFlow 被孤儿化——现切离
-   *  前先经 abortPlanFlowAndSettle 单点中止流程（信号+挂卡拒绝回填+有界等收束）;批准续段自身已改
-   *  setBaseMode 直切（无流程可中止,planFlowInternal 旁路与换铸五件套一并退役）。 */
+   *  disarm 收口（2026-11-03 无感化）：切离 plan 且 run 在途（调研/挂卡阻塞中）即 interrupt——挂起卡
+   *  拒绝回填+run 收口回输入态;批准续段=同 run 直切（setBaseMode,无流程可中止——planFlow 状态机已退役）。 */
   async setMode(mode: SessionMode): Promise<'ok' | 'busy'> {
     // 武装快路径（2026-11-03）：置标记+落 meta+武装 exit_plan 即回,零重建零 busy
     if (mode === 'plan') {
@@ -1156,8 +1186,6 @@ export class SessionRuntime {
     if (this.planArmed() && this.current !== undefined) this.interrupt();
     this.runtimeImpl.harness.security.exitModeOverride();
     this.runtimeImpl.harness.security.setExitPlanArmed(false);
-    if (this.planArmed() && this.current !== undefined) this.interrupt();
-    this.runtimeImpl.harness.security.exitModeOverride();
     if (mode === this.currentMode) return 'ok';
     this.currentMode = mode;
     this.runtimeImpl.harness.security.setBaseMode(mode); // guard 纯字段写,下一未决调用即按新档判决

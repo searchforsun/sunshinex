@@ -6,8 +6,17 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { KernelRuntime, RunOutcome } from '../session/runtime';
 import { Harness } from '../harness';
+import { ScriptedAdapter } from '../model/adapter';
 import type { ChatResult } from '../types';
 import type { ModelAdapter } from '../model/adapter';
+
+async function waitFor(cond: () => boolean, what: string, timeoutMs = 8000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline) throw new Error('waitFor timeout: ' + what);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 /**
  * 假运行时：只兑现会话层真正消费的契约。其余调用恒回传入的 outcome，供未完成路径断言。
@@ -59,26 +68,25 @@ test('会话层：完成后不追加未完成提示', async () => {
   }
 });
 
-test('会话层：规划项未完成不得报成功（runPlanItems）', async () => {
+test('会话层：计划实施 run 未完成不得报成功（无感化:批准续段=同 run,未完成终止必须上屏）', async () => {
   const tmp = tmpdir('sunshinex-inc3-');
   try {
-    // 规划轮由假 runtime 按 goal 分流兑现（回编号步骤计划，见 fakeRuntime）；
-    // 仅计划项执行回未完成 outcome——本用例断言的是后者不得被报成功
-    const harness = new Harness({ root: tmp, mode: 'full-access' });
+    // 批准续段=同一 run 无感继续（planFlow 逐项执行已退役）——模型自行收束为未完成终止,
+    // 本用例断言:未完成不报成功、播种待办不被误勾
     const ctrl = new SessionController({
       root: tmp,
-      runtime: fakeRuntime(harness, { done: false, tokensUsed: 0, stopReason: 'budget' }),
+      model: new ScriptedAdapter([
+        { toolCalls: [{ name: 'exit_plan', args: { name: '两件事计划', doc: '# 两件事计划\n1. 第一步\n2. 第二步' } }] },
+        '{"done":false,"reply":"实施中断"}', // 批准后续段未完成收束
+      ]),
     });
     await ctrl.submit('/plan 做两件事');
-    assert.equal(ctrl.getState().status, 'awaiting-plan', '应先产出计划确认卡');
+    await waitFor(() => ctrl.getState().status === 'awaiting-plan', '计划确认卡');
     await ctrl.confirmPlan(true);
-    // 重造后 confirmPlan 只做裁决回填（decide 单点）,批准续段（逐项执行）由 planFlow 消费壳后台续跑——
-    // 等待收尾再断言（旧实现 confirmPlan await 到逐项执行完成,语义随 §4.2-4.4 更新）
     await ctrl.waitIdle();
     const st = ctrl.getState();
     const texts = st.messages.map((m) => m.text).join('\n');
-    assert.match(texts, /Incomplete: token budget exhausted/);
-    assert.match(texts, /Step incomplete: 第一步/);
+    assert.match(texts, /Incomplete:/, '未完成终止必须对用户可见，不得静默');
     assert.ok(!/已完成：/.test(texts), '未完成的规划项不得被报成功');
     assert.notEqual(st.todos[0]?.status, 'completed', '未完成项不得勾选待办（三态下停留 in_progress/pending）');
     assert.equal(st.todos[1]?.status, 'pending', '剩余步骤保持未完成');

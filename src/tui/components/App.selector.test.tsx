@@ -94,7 +94,7 @@ test('App：plan 确认选择器——Enter（首项）执行计划', async () =
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        '{"done":true,"reply":"1. write greeting to p.txt"}',
+        { toolCalls: [{ name: 'exit_plan', args: { name: 'greeting 计划', doc: '# greeting 计划\n1. write greeting to p.txt' } }] },
         '{"tool":"write","input":{"path":"p.txt","content":"hi"},"done":false}',
         '{"done":true,"reply":"step done"}',
       ]),
@@ -119,7 +119,9 @@ test('App：plan 确认 n=进入反馈输入态（键让位 composer）,Esc 中�
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"1. step one"}', '{"done":true,"reply":"done"}']),
+      model: new ScriptedAdapter([
+        { toolCalls: [{ name: 'exit_plan', args: { name: 'step one 计划', doc: '# step one 计划\n1. step one' } }] },
+      ]),
     });
     const p = ctrl.submit('/plan anything');
     await waitFor(() => ctrl.getState().status === 'awaiting-plan');
@@ -130,11 +132,11 @@ test('App：plan 确认 n=进入反馈输入态（键让位 composer）,Esc 中�
     term.write('make it shorter'); // 键面让位 composer:文本落输入缓冲
     await flushKey(term);
     assert.ok((term?.lastFrame() ?? '').includes('make it shorter'), '反馈态键入应落入 composer 缓冲');
-    term.write('\u001B'); // Esc=全局中断位→approval 拦截转 confirmPlan(false)→中止信号收尾
+    term.write('\u001B'); // Esc=全局中断位→approval 拦截转 confirmPlan(false)→放弃本轮（arm 保持）
     await p;
     await ctrl.waitIdle();
     assert.equal(ctrl.getState().status, 'idle', '中断后回输入态');
-    assert.ok(messageTexts(ctrl).includes('Planning interrupted'), '中断回执上屏（不走旧式放弃回执）');
+    assert.match(messageTexts(ctrl), /Plan discarded|已放弃执行计划/, '放弃回执上屏（Esc=无反馈放弃本轮,不走修订环）');
     assert.equal(ctrl.getState().todos.length, 0, '中断不执行不建待办');
   } finally {
     term?.unmount();

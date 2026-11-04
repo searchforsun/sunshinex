@@ -150,11 +150,11 @@ test('/plan：裸 /plan=幂等武装/off 解除;运行中 <目标> 入队收口�
     await ctrl.submit('/plan 规划这件事');
     assert.equal(ctrl.planArmed, true, '运行中武装生效');
     await ctrl.resolveApproval('allow');
-    await p;
-    await ctrl.waitIdle();
+    // p 不先 await:drainQueue 对 armed 队列行内联起规划 run,交稿挂卡阻塞在 run 内——先等卡,裁决后 p 才收口
     await waitFor(() => ctrl.getState().status === 'awaiting-plan', '队列目标转规划');
     assert.equal(ctrl.planArmed, true, '规划在途 armed 保持');
     await ctrl.confirmPlan(true, undefined, 'acceptEdits');
+    await p;
     await ctrl.waitIdle();
     assert.equal(ctrl.planArmed, false, '批准落档 arm 解除');
   } finally {

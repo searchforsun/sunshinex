@@ -43,6 +43,12 @@ export async function planAwaitDecisionOn(ctrl: SessionController, name: string,
   ctrl.state = { ...ctrl.state, status: 'awaiting-plan' };
   ctrl.notify();
   const decision: PlanDecision = await new Promise((resolve) => { ctrl.planDecide = resolve; });
+  // 摘卡即回 running（2026-11-03 卡间单义化）：裁决间隙 status 不再停留 awaiting-plan——修订环两卡
+  // 之间「awaiting-plan」只指新卡在挂(测试等待面/UI pill 单义,驳回回喂轮不被误认)
+  if (ctrl.state.status === 'awaiting-plan') {
+    ctrl.state = { ...ctrl.state, status: 'running' };
+    ctrl.notify();
+  }
   if (decision.approved) {
     // 落档在 executor 恢复前:退出只读覆盖（调研期强制解除）+落所选档+待办播种——
     // 模型恢复后写操作即时放行（guard 活读）

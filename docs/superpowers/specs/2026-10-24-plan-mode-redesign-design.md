@@ -251,3 +251,24 @@ exit_plan 交稿 = 规划 run 正常收束（ask_question 同观感:停在等待
 - **边界保留**:①规划轮 read-only 覆盖在座（guard.overrideActive）切真档 busy——遮蔽窗口不放开;②切离 plan 且流程在途保留 disarm 收口。
 - **有意差异登记**:①sessionAllows/sessionDirAllows 跨档保留（旧换铸清空;加法语义）;②readGuard 不换铸（降档免重读,旧换铸「强制重读」退役）;③asker serve 无条件就位（档位门退役）,降档 acceptEdits 的 ask 卡直落挂起表;④批准续段改 setBaseMode 直切——换铸五件套（carry/snapshotExport/restoreSession/restoreSnapshot/重挂订阅）退役,链原地零位移（前缀缓存天然保,比换铸回种更强）。
 - **测试**:运行中切 read-only → 同 run 下一写调用 COMMAND_DENIED（门控适配器确定性时序）;既有 ctx-snap/switch/disarm 锚全绿。
+
+## 12. 2026-11-03 架构收敛:exit_plan 挂起工具(ask_question 同构) + planFlow 状态机消解(已实施,三端)
+
+### 12.1 语义定稿(权威口径,覆盖 §4/§5/§10/§11 冲突面)
+
+1. **计划模式 = 「read-only 强制(override 在座) + exit_plan 挂起工具」**,不再是宿主编排的状态机。流转:arm(pill/`/plan`)→提交任务→**会话作用域 run**→模型调研(过程在正文可见)→`exit_plan(name, doc)`→executor **弹卡并阻塞等待裁决**(run 不收口——界面保持运行中,与 ask_question「等待回答」同观感)→裁决:
+   - **批准(mode)**→宿主在 executor 恢复**前**落档:exit override+`setBaseMode(mode)`+armed 解除+按计划书 Steps 播种 todos→executor 返回批准回执→**同一个 run 无感继续实施**(guard 活读,写操作即时放行)。
+   - **驳回带反馈**→维持只读→executor 返回修订指引(反馈内嵌)→模型原地修订→再次 exit_plan→新卡。**无轮次上限**(模型自然迭代取代 PLAN_MAX_ROUNDS;`runPlanItems`/合成链行/`'plan'` 行注入/planFlow fork 全部退役)。
+   - **驳回空反馈**→宿主中断 run 回输入态(arm 保持)。
+   - Esc/中断→同放弃(既有 deny 回填路径)。
+2. **非武装会话模型主动交稿=切入审批**(§10「guard 硬拒」退役):exit_plan 在非 armed run 被调时 executor 先弹「切入计划模式」审批卡(复用 approval 挂起,**30 秒超时自动 deny**)。批准→setMode('plan')+进 read-only 覆盖+计划提示 note→出计划卡;拒/超时→executor 返回拒绝文本(模型不再重试),原档原态不动(**不预切档不预武装**——批准才切)。guard 对 exit_plan 恒放行(armed 判定由 executor/seam 承载)。
+3. **todo_write 回归执行期模型自管**(规划期仍不需要);交稿即正文事实:exit_plan 工具调用行(含 doc 入参)天然落主链,合成链行机制退役;`stopReason='plan-presented'`/terminal 工具面/BatchRunner terminalCalled 退役(exit_plan 不再终止 run,ToolCategory 'plan' 串行独占保留)。
+4. **awaiting-plan 单义化(TUI)**:卡挂起期 status='awaiting-plan',摘卡即回 'running'——修订环两卡之间该状态只指新卡在挂(测试等待面/UI pill 单义)。
+
+### 12.2 planSeam 接缝(harness→宿主单点)
+
+`{ isArmed(): boolean; requestModeSwitch(timeoutMs): Promise<boolean>; awaitDecision(name, doc): Promise<PlanDecision> }`——seam 不在=工具不注册(ask 先例)。宿主实现:serve=挂起表 plan-approval 行+帧+resolvePendingPlanApproval(批准落档钩在 executor 恢复前);TUI=pendingPlan 卡+planDecide 回填+confirmPlanOn 落档。`/plan` 三态口径不变(arm 幂等/`<goal>`=提交/off=解除;运行中 `<goal>`=入队收口转规划;挂卡期=弃卡重新规划)。
+
+### 12.3 验收锚
+
+armed 提交→exit_plan 挂起(status 保持 running/awaiting-plan——无感锚)→批准→**同 run** 实施(链含工具调用行+todo_write)→done;驳回带反馈→原地修订再出牌;空反馈→放弃回输入态(arm 保持);非 armed→切入审批(拒→拒绝文本+原档不动,无计划卡);挂卡期切真档=弃卡+中断收口(不再 busy);轻量切档全组(§11.2)保持。

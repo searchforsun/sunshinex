@@ -161,13 +161,13 @@ test('App：manual 档 root 内写自动落盘（键盘提交、无审批卡，�
   }
 });
 
-test('App：键盘 y 在计划卡上确认执行（待办全勾）', async () => {
+test('App：键盘 y 在计划卡上确认执行（待办按 Steps 播种）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-app5-'));
   try {
     const ctrl = new SessionController({
       root: tmp,
       model: new ScriptedAdapter([
-        '{"done":true,"reply":"1. 步甲\\n2. 步乙"}',
+        { toolCalls: [{ name: 'exit_plan', args: { name: '演练计划', doc: '# 演练计划\n1. 步甲\n2. 步乙' } }] },
         '{"done":true,"reply":"步甲完成"}',
         '{"done":true,"reply":"步乙完成"}',
       ]),
@@ -182,7 +182,8 @@ test('App：键盘 y 在计划卡上确认执行（待办全勾）', async () =>
     write('y');
     await ctrl.waitIdle(15000);
     const st = ctrl.getState();
-    assert.ok(st.todos.length === 2 && st.todos.every((t) => t.status === 'completed'), '键盘 y 确认后计划应逐项执行并全勾');
+    assert.equal(st.todos.length, 2, '键盘 y 确认后按计划书 Steps 播种待办');
+    assert.ok(st.todos.every((t) => t.status === 'pending'), '播种待办为待办态(执行期进度由模型 todo_write 自管,无感化同 run 实施不代勾)');
     unmount();
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

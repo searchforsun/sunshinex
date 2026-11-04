@@ -112,9 +112,14 @@ export function builtinTools(
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
     readGuard?: ReadGuard;
-    /** exit_plan 交稿接缝（2026-11-03 无感化,ask_question 同构）：awaitDecision 弹卡阻塞等裁决
-     *  （run 不收口）——裁决即工具结果回喂,模型同 run 无感继续。接缝不在场不注册（ask 先例） */
-    plan?: { awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }> };
+    /** exit_plan 交稿接缝（2026-11-03 无感化,ask_question 同构）：isArmed 计划模式判定;
+     *  requestModeSwitch 非 armed 时弹审批请求切入(30s 超时);awaitDecision 弹卡阻塞等裁决。
+     *  接缝不在场不注册（ask 先例） */
+    plan?: {
+      isArmed(): boolean;
+      requestModeSwitch(timeoutMs: number): Promise<boolean>;
+      awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
+    };
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
@@ -768,6 +773,13 @@ export function builtinTools(
         const name = typeof input.name === 'string' ? input.name.trim() : '';
         const doc = typeof input.doc === 'string' ? input.doc : '';
         if (doc.trim() === '') throw new CodedToolError('INVALID_ARG', 'doc must be the full plan document in markdown (non-empty)');
+        // 非 armed 时请求用户批准切入计划模式(30s 超时自动拒;armed=已在计划模式,直接交稿)
+        if (!planSeam.isArmed()) {
+          const switchOk = await planSeam.requestModeSwitch(30_000);
+          if (!switchOk) {
+            return execOut('exit_plan denied — user did not approve plan mode switch within timeout. Do not call exit_plan again.');
+          }
+        }
         const decision = await planSeam.awaitDecision(name, doc);
         if (decision.approved) {
           return execOut(`plan approved — implement via ${decision.mode === 'full-access' ? 'full access' : 'workspace edits'}; maintain progress with todo_write as you go`);
