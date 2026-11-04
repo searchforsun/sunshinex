@@ -395,10 +395,12 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     const replyPlanApproval = vi.fn(() => Promise.resolve());
     const conn = connOf([]);
     (conn as unknown as Record<string, unknown>).replyPlanApproval = replyPlanApproval;
+    let snapCalls = 0;
     (conn as unknown as Record<string, unknown>).sessionSnapshot = () =>
       Promise.resolve({
         messages: [],
         status: 'running',
+        mode: snapCalls++ === 0 ? 'plan' : 'full-access', // 首拉=计划模式(卡在挂);批准后轻同步拉=已落完全访问
         board: { tasks: [] },
         delegations: [],
         team: [],
@@ -408,9 +410,13 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     expect(await screen.findByText(/Plan approval|计划确认/)).toBeTruthy(); // 卡复现(快照挂起段重建)
     expect(screen.getByRole('heading', { level: 1, name: '计划书' })).toBeTruthy(); // 计划书 markdown 渲染(滚动区,items 不再独立渲染 ol)
-    fireEvent.click(screen.getByText(/^Implement$|实施$/)); // 可写域三钮卡(2026-11-04 排布:取消|重新计划|实施 plain,实施=维持当前档)
+    // 首拉 mode=plan → 只读域卡:实施双键「{图标} 实施」(可见文字同名,按 aria-label 寻址)
+    fireEvent.click(screen.getByRole('button', { name: /Implement under full access|在完全访问下实施/ }));
     await waitFor(() => expect(replyPlanApproval).toHaveBeenCalledWith('p-plan-1', { approved: true, mode: 'full-access' })); // 决策体走 plan-approval 通道(带当前档)
     await waitFor(() => expect(screen.queryByText(/Plan approval|计划确认/)).toBeNull()); // 回执落定移卡(dock 还 composer)
+    // 批准后 pill 即时跟档(2026-11-04 实测根修:批准后 pill 停留计划模式到下次快照)——回执落定后
+    // mode-only 轻同步拉快照,pill 翻「完全访问」
+    await waitFor(() => expect(screen.getByText(/Full access|完全访问/)).toBeTruthy());
   });
 
   it('计划模式武装:普通文本直走 sessionSubmit(不包 /plan 命令;先补 arm 竞窗,快路径幂等)', async () => {

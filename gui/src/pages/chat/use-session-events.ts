@@ -219,9 +219,21 @@ export function useSessionEvents(deps: {
   /** 阶段三 plan-arm 裁决回执:沿 approval/ask 回执通道同口径 */
   const sendPlanApproval = useCallback(
     (pid: string, decision: GuiPlanDecision): void => {
-      settle(conn.replyPlanApproval(pid, decision), pid);
+      const reply = conn.replyPlanApproval(pid, decision);
+      settle(reply, pid);
+      if (decision.approved) {
+        // 批准=落所选档(可写域=维持当前档)——pill 即时跟档(2026-11-04 实测:批准后 pill 停留
+        // 「计划模式」直到下次快照才翻)。回执落定后拉快照做 mode-only 轻同步(零投影重置——
+        // 重播种会闪全文;模式漂移只在批准此刻发生,其余 pill 同步面不动)
+        reply
+          .then(() => conn.sessionSnapshot(sessionId))
+          .then((snap) => {
+            if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
+          })
+          .catch(() => {});
+      }
     },
-    [conn, settle],
+    [conn, settle, sessionId, setSessMode],
   );
 
   useEffect(() => {
