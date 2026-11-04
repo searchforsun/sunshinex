@@ -30,6 +30,9 @@ export interface KernelRuntimeOpts {
   onTodos?: (items: TodoItem[]) => void;
   /** 输出样式分叉（交互面级，进稳定段）：缺省恒 terminal（TUI 面专属约束）；留参数仅为显式覆盖语义 */
   outputStyle?: OutputStyle;
+  /** exit_plan 挂起接缝（2026-11-03 无感化,ask_question 同构）：awaitDecision 弹卡阻塞等裁决,
+   *  裁决即工具结果回喂——透传 buildHarness plan seam;缺省不注册 */
+  plan?: { awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }> };
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
@@ -50,6 +53,7 @@ export interface KernelRuntime {
 export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
   const harness = buildHarness(opts.root, {
     ...(opts.onAskUser ? { ask: opts.onAskUser } : {}),
+    ...(opts.plan ? { plan: opts.plan } : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.mode ? { mode: opts.mode } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
