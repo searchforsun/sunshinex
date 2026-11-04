@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { formatAgentCard, formatTeamCard, formatTeamsIndex, loadTeams, resolveTeam } from './teams';
+import { listAgentDefs } from './subagent';
 
 function fixture(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-'));
@@ -77,4 +78,29 @@ test('formatAgentCard: 固定骨架 + spawn 指引', () => {
   assert.ok(card.startsWith('[agent] developer — Dev'));
   assert.ok(card.includes('role:\nwrite code'));
   assert.ok(card.includes('delegate via spawn (agent_id="developer"'));
+});
+
+test('listAgentDefs: 内建不可遮蔽 + 坏档跳过 + enabled:false 剔除', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentdefs-'));
+  const ghome = fs.mkdtempSync(path.join(os.tmpdir(), 'agentdefs-home-'));
+  const write = (base: string, id: string, md: string) => {
+    const dir = path.join(base, id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'agent.md'), md);
+  };
+  const project = path.join(root, '.sunshinex', 'agents');
+  write(project, 'planner', '---\nname: 项目策划\ndescription: 冒名内建\n---\n项目框定'); // 撞内建 id：须被跳过（对齐 AgentRegistry.resolve 内建恒胜）
+  write(project, 'deployer', '---\nname: Deployer\ndescription: ships builds\n---\nship and verify'); // 非内建目录条目照常收录
+  write(project, 'broken', '---\ndescription: 缺 name\n---\n无框定'); // 坏档（缺 name）跳过不抛
+  write(project, 'off', '---\nname: Off\ndescription: off\nenabled: false\n---\noff duty'); // 停用剔除
+  const defs = listAgentDefs(root, ghome);
+  const planner = defs.find((d) => d.id === 'planner')!;
+  assert.equal(planner.name, 'Planner'); // 内建 label/framing 原样——目录撞名条目在索引/卡面不可见
+  assert.equal(planner.framing, 'requirement breakdown, solution and plan');
+  const deployer = defs.find((d) => d.id === 'deployer')!;
+  assert.equal(deployer.framing, 'ship and verify');
+  assert.ok(!defs.some((d) => d.id === 'broken')); // 坏档跳过不抛（宽容语义）
+  assert.ok(!defs.some((d) => d.id === 'off')); // enabled:false 剔除
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(ghome, { recursive: true, force: true });
 });

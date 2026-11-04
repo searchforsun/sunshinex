@@ -680,7 +680,9 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
 }
 
 /** agents 宽容清单（spec 2026-11-04 §2.1 agents 清单数据源）：内置四角色恒在 + 两级目录逐条宽容扫描
- *  （坏档跳过不抛，与 Registry fail-fast 有意不同——快照装配面尽力而为）；就近遮蔽项目胜、enabled:false 剔除 */
+ *  （坏档跳过不抛，与 Registry fail-fast 有意不同——快照装配面尽力而为）；目录级间就近遮蔽项目胜、
+ *  enabled:false 剔除；内建 id 不可被目录条目遮蔽（评审裁定对齐 AgentRegistry.resolve 现状语义：
+ *  内建恒胜是 spawn 面运行期真相，索引/卡面须如实承诺——撞名目录条目跳过不 set、不标遮蔽） */
 export function listAgentDefs(root: string, globalDir?: string): Array<{ id: string; name: string; description: string; framing: string }> {
   const out = new Map<string, { id: string; name: string; description: string; framing: string }>();
   for (const role of Object.keys(ROLE_PRESETS) as AgentRole[]) {
@@ -692,6 +694,8 @@ export function listAgentDefs(root: string, globalDir?: string): Array<{ id: str
     if (!fs.existsSync(dir)) continue;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
+      // 内建 id 保护（hasOwnProperty 防原型链误伤：'constructor' 等非内建条目照走装载面）
+      if (Object.prototype.hasOwnProperty.call(ROLE_PRESETS, entry.name)) continue;
       const file = path.join(dir, entry.name, 'agent.md');
       if (!fs.existsSync(file)) continue;
       try {
