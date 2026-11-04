@@ -470,6 +470,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setImages: setPendingImages,
     onAccepted: () => { setAwaitModelSince(Date.now()); onRunStart?.(); },
     sendBlocked: awaitModelSince !== null,
+    onPlanModeChanged: setSessMode,
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;

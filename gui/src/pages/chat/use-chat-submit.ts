@@ -10,11 +10,9 @@ import { expandFileRefs } from './mention';
  *  图片附件(2026-10-26):submitText 第二参 images(dataURL 列)——随 submit/steer 透传;携图时
  *  跳过 /btw·命令通道(命令/旁路面不承载图片,直走 sessionSubmit——daemon plan-arm 提交通道
  *  自行分流),空文+纯图合法(图片即消息)。
- *  计划模式(2026-11-03 无感化):armed 提交=read-only 覆盖+会话作用域 run,exit_plan 弹卡阻塞;
- *  /plan 系命令 GUI 本地拦截(不走命令通道——服务端 notice 的 daemon t() 语言与 GUI 解耦):
- *  /plan → setSessionMode('plan') + 本地 pill 同步;/plan <goal> → setSessionMode('plan') +
- *  sessionSubmit(goal) (armed 拦截转规划);/plan off → setSessionMode('acceptEdits')。
- *  命令词不补 arm(命令自管武装,'/plan off' 解除不被顶掉)。 */
+ *  计划模式(2026-11-03 无感化):/plan 系命令照走命令通道(命令是底层实现,GUI 只是渲染层,
+ *  不在上层拦截底层命令)。/plan 命令成功后由宿主回调同步 sessMode pill 显示(渲染层跟随,
+ *  不改底层命令语义)。 */
 export function useChatSubmit(deps: {
   readonly conn: Connection;
   readonly sessionId: string;
@@ -37,8 +35,7 @@ export function useChatSubmit(deps: {
   /** 发送拦截(2026-10-31 用户报障「转圈时应该阻止发送,防止 409」):等待模型待态/提交在途期
    *  Enter 与发送钮一律不发(输入保留);运行中不在此列(运行中=steer 排队语义合法) */
   readonly sendBlocked?: boolean;
-  /** 计划模式 GUI 状态同步（2026-11-03 无感化）：/plan 系命令后由宿主更新 sessMode pill 显示;
-   *  不传则不影响既有调用方 */
+  /** 计划模式 pill 同步回调(2026-11-03):/plan 系命令成功后由宿主更新 sessMode 显示 */
   readonly onPlanModeChanged?: (mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan') => void;
 }): {
   submitText: (text: string, images?: string[]) => Promise<void>;
@@ -61,45 +58,34 @@ const submitText = useCallback(
       onSideChat?.();
       return Promise.resolve();
     }
-    // 计划模式 GUI 本地拦截(2026-11-03 无感化):/plan 系命令不走命令通道——服务端 notice 的
-    // daemon t() 语言与 GUI 解耦(英文提示无 i18n)。GUI 本地调 setSessionMode API(轻量快路径)
-    // + 本地 pill 同步,服务端 armed 拦截在 submit 单点兜住
-    if (/^\/plan\b/.test(trimmed) && sessMode === 'plan') {
-      const arg = trimmed.replace(/^\/plan\s*/, '').trim();
-      if (arg === 'off') {
-        onPlanModeChanged?.('acceptEdits');
-        return conn.setSessionMode(sessionId, 'acceptEdits').then(() => undefined);
-      }
-      onPlanModeChanged?.('plan');
-      if (arg === '') return Promise.resolve(); // 裸 /plan=只武装
-      // /plan <goal>:武装已就位,直接提交目标(armed 拦截转规划)
-      return conn.sessionSubmit(sessionId, arg).then(() => undefined);
-    }
     // 命令通道判定前置(2026-10-31 用户报障「/compact 双回显」):daemon runCommand 自带 user 回显帧
     // (入档权威,回放可见),GUI 不再本地回显命令——此前本地+daemon 双气泡。armed 不再排除命令词
     // (2026-11-03:命令自管武装,armed 下 /status 等照走命令通道;'/plan off' 解除不被顶掉)
     const isCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed)
       ? (cmdData?.supported.some((c) => c.toLowerCase() === `/${(/^\/([a-z][\w-]*)/i.exec(trimmed)?.[1] ?? '').toLowerCase()}`) ?? false)
       : false;
-    // 计划模式 arm 竞窗收口(2026-11-03):pill 乐观置选与 daemon setMode 异步在途的窗口内提交,
-    // 先补 arm(快路径幂等恒 ok)再提交/入队,armed 拦截在 daemon submit 单点兜住;命令词不补。
-    // 仅 plan 模式走「先 arm 后发」(微任务有序);非 plan 路径保持原同步形态(编辑卡/待态时序锚不动的纪律)
     const dispatch = (): Promise<void> => {
       if (running) return conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
-      if (hasImages) return conn.sessionSubmit(sessionId, trimmed, imgs);
+      if (hasImages) return conn.sessionSubmit(sessionId, trimmed, imgs); // 携图:直走提交面(daemon armed 拦截转 planFlow;命令/旁路面不承载图片)
       if (isCommand) {
-        // /plan 系命令从 sessMode==='plan' 路径已在上方拦截——此处为其他命令词(不走命令通道的场景已在前面排除)
+        // G14.213 skills 回归纯文本:仅「daemon supported 清单内」的 / 词走命令通道,skills/
+        // 未知名一律当普通文本提交(系统提示词 skills 清单含「/skill-id 引用优先加载」提示,
+        // 模型自主判断)。此前一律先试命令通道、报文含 unsupported 才回落——daemon 现回 400
+        // 报文不带该字样,回落失效直接倒错误条(「还是识别成命令了」)
         return conn
           .runCommand(sessionId, trimmed)
           .catch(async (err: unknown) => {
             const msg = err instanceof Error ? err.message : String(err);
-            if (!/unsupported|400|bad request/i.test(msg)) throw err;
-            await conn.sessionSubmit(sessionId, trimmed);
+            if (!/unsupported|400|bad request/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
+            await conn.sessionSubmit(sessionId, trimmed); // 清单过期兜底:命令通道拒即回退纯文本
           })
           .then(() => undefined);
       }
       return conn.sessionSubmit(sessionId, trimmed);
     };
+    // 计划模式 arm 竞窗收口(2026-11-03):pill 乐观置选与 daemon setMode 异步在途的窗口内提交,
+    // 先补 arm(快路径幂等恒 ok)再提交/入队,armed 拦截在 daemon submit 单点兜住;命令词不补。
+    // 仅 plan 模式走「先 arm 后发」(微任务有序);非 plan 路径保持原同步形态(编辑卡/待态时序锚不动的纪律)
     const ensureArm: Promise<void> = sessMode === 'plan' && !isCommand
       ? conn.setSessionMode(sessionId, 'plan').catch(() => undefined)
       : Promise.resolve();
@@ -109,6 +95,13 @@ const submitText = useCallback(
     let req: Promise<void>;
     if (sessMode === 'plan' && !isCommand) req = ensureArm.then(dispatch);
     else req = dispatch();
+    // /plan 系命令成功后同步 sessMode pill 显示(渲染层跟随,不改底层命令语义)
+    if (/^\/plan\b/.test(trimmed) && !hasImages) {
+      const isOff = trimmed.trim() === '/plan off';
+      void req.then(() => {
+        onPlanModeChanged?.(isOff ? 'acceptEdits' : 'plan');
+      });
+    }
     return req
       .then(() => {
         if (!running && !isCommand) onAccepted?.();
@@ -119,7 +112,7 @@ const submitText = useCallback(
       });
   },
   [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, onAccepted, onPlanModeChanged],
-  );
+);
 const send = (): void => {
     if (sendBlocked === true) return;
     const text = input.trim();
