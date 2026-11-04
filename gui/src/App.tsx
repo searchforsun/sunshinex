@@ -959,6 +959,7 @@ function AppShell(): JSX.Element {
                 teams={projection.teams}
                 onTodoBatches={setTodoBatches}
                 todoFocus={todoFocus}
+                onSideAsk={startSideChat}
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}

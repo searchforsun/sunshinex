@@ -43,6 +43,7 @@ import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
 import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, renderMentionSpans, slashTokenAt } from './chat/mention';
+import { SelActionsOverlay } from './chat/SelActionsOverlay';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, slashTokenAt, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
@@ -79,7 +80,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -658,6 +659,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           if (tag === 'skills') onOpenLearned?.(ref !== '' ? ref : undefined);
         }}
       >
+      <SelActionsOverlay
+        containerRef={chatScrollRef}
+        onInsert={(text) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text } }))}
+        onSideAsk={(text) => onSideAsk?.(text)}
+      />
       <MessageList
         entries={chat.entries}
         structureVersion={chat.structureVersion}

@@ -72,6 +72,8 @@ export interface ChatProps {
   onTodoBatches?: (batches: TodoBatch[]) => void;
   /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡 */
   todoFocus?: { key: string; nonce: number } | null;
+  /** 2026-11-04 正文圈选·辅助会话提问通道(添加到主对话=insert-ref 事件,组件内置) */
+  onSideAsk?: (text: string) => void;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
   onRewind?: (turn: number) => void;
   /** 会话级操作错误上抛(2026-10-21 归档 F4):App showOpError 通道(与 fork/rewind 同一 sx-toast

@@ -11,6 +11,7 @@ import { ToolSegBlock } from '../pages/chat/ToolGroups';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf, teamNameResolverOf } from '../pages/chat/use-chat-derived';
 import { collapsedHiddenKeys, isMidRunInsert, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
+import { SelActionsOverlay } from '../pages/chat/SelActionsOverlay';
 import type { ChatEntry } from '../chat-reducer';
 
 /**
@@ -46,6 +47,9 @@ export interface AgentTranscriptTabProps {
   readonly focusTaskId?: string;
   /** 与主对话同构的回调链（App openTab 系注入；缺省=对应交互退化纯文本） */
   readonly onOpenFile?: (p: string) => void;
+  /** 2026-11-04 正文圈选(用户裁定):圈选正文浮出 添加到主对话/辅助对话 动作条 */
+  readonly onInsertMain?: (text: string) => void;
+  readonly onSideAsk?: (text: string) => void;
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   readonly onOpenTask?: (ref: string) => void;
@@ -56,7 +60,7 @@ export interface AgentTranscriptTabProps {
  *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
-export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask }: AgentTranscriptTabProps): JSX.Element {
+export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onInsertMain, onSideAsk }: AgentTranscriptTabProps): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.2xx 回到底部钮:非贴底即显(同主对话 G14.74 口径;80px 阈值同贴底判定) */
   const [atBottom, setAtBottom] = useState(true);
@@ -234,6 +238,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
   return (
     <div className="sx-agent-page" aria-label="agent transcript">
       {/* G14.202 页头去除(名称与页签重复;状态/委派徽标与 tokens 同去——转录页只留内容) */}
+      <SelActionsOverlay containerRef={bodyRef} onInsert={onInsertMain ?? (() => {})} onSideAsk={onSideAsk} />
       <div className="sx-agent-page-body sx-agent-thread chat" ref={bodyRef} onScroll={onScroll}>
         {userText !== '' && (
           <div className="entry entry-user child-user-entry">

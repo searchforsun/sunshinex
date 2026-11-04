@@ -8,7 +8,7 @@
 
 import { lazy } from 'react';
 import { t } from '../i18n';
-import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe } from 'lucide-react';
+import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -19,6 +19,7 @@ const TerminalTab = lazy(() => import('./TerminalTab').then((m) => ({ default: m
 const DiffTab = lazy(() => import('./DiffTab').then((m) => ({ default: m.DiffTab })));
 const AgentTranscriptTab = lazy(() => import('./AgentTranscriptTab').then((m) => ({ default: m.AgentTranscriptTab })));
 const TodoCardsTab = lazy(() => import('./TodoCardsTab').then((m) => ({ default: m.TodoCardsTab })));
+const PlansTab = lazy(() => import('./PlansTab').then((m) => ({ default: m.PlansTab })));
 const TaskBoardTab = lazy(() => import('./TaskBoardTab').then((m) => ({ default: m.TaskBoardTab })));
 const BgTasksTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.BgTasksTab })));
 const MemoryTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.MemoryTab })));
@@ -121,6 +122,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   bgtasks: Hourglass, // G14.180 后台任务(等待执行)
   memory: Database, // G14.180 持久记忆(2026-10-31 用户裁定:与正文 [memory] 回显同件,Brain 退役)
   learned: Sparkles, // 学习技能(2026-10-31,[skills] 回显同族图标)
+  plans: NotebookPen, // 计划页签(2026-11-04,与计划卡卡头/计划模式 pill 同件)
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
   web: Globe, // G8d 内嵌网页标签
 };
@@ -198,6 +200,17 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     ),
   },
   {
+    id: 'plans',
+    group: 'session',
+    // 计划页签(2026-11-04 用户裁定):数据目录计划书清单——每行=计划名+生成时间,点击开侧栏原文
+    title: () => t('Plans', '计划'),
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => (
+      <PlansTab conn={p.conn} sessionId={p.sessionId} refreshNonce={p.panelRefreshNonce} onOpenFile={fileTabOf(p)} />
+    ),
+  },
+  {
     id: 'agents',
     group: 'session',
     // 智能体团队页签(一队一卡；卡内成员|任务|编排)
@@ -235,6 +248,8 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         teams={p.services.teams}
         task={p.params.task}
         focusTaskId={p.params.focusTaskId}
+        onInsertMain={(text: string) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text } }))}
+        onSideAsk={(text: string) => p.startSideChat?.(text)}
         // G14.2xx b 工具行/正文回调链与主对话同构(App openTabInSession 同一开签口径——
         // read 行点击开文件标签/write ⇄ 开 diff/spawn 名开转录/create_agent_team_task 名定位任务板)
         onOpenFile={fileTabOf(p)}
