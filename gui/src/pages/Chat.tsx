@@ -512,9 +512,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [chatScrollRef]);
   const send = useCallback((): void => {
     // agents-teams P1 R5 未知引用提示(发送入口只读检查,use-chat-submit 零改动):entries 已
-    // 拉过才对照(从未拉过=跳过,不为提示补拉);未命中者聚合一条 transient 提示(imgHint 同款
-    // role="status" 自隐行),原文照发——不拦截、不改写
-    if (refEntriesLoadedRef.current) {
+    // 拉过才对照(从未拉过=跳过,不为提示补拉);拉过但两组全空=拉取失败(或空目录)不提示
+    // (评审 2026-11-04:失败静默空列若照检,每条含 $/# 消息都会吃到假「未匹配」提示)。
+    // 未命中者聚合一条 transient 提示(imgHint 同款 role="status" 自隐行),原文照发——
+    // 不拦截、不改写
+    if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
       const unknown = unknownRefTokens(input, refEntries);
       if (unknown.length > 0) {
         const list = unknown.join(' ');

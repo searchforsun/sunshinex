@@ -1801,6 +1801,28 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     expect(document.querySelector('.ref-palette')).toBeNull(); // 面板关闭
   });
 
+  it('↑↓ 跨两组连续导航:↓×2 选中第三行,↑ 可逆,Enter 插入所选(评审锚:键面不重置游标)', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }, { id: 'planner', name: 'Planner' }], [{ id: 'core-team', name: 'Core' }]);
+    render(<Chat conn={conn} sessionId="s-ref-6" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    const activeId = (): string => document.querySelector('.ref-palette-row.active .ref-palette-id')?.textContent ?? '';
+    expect(activeId()).toBe('devx'); // 游标起点=首行
+    fireEvent.keyDown(ta, { key: 'ArrowDown' });
+    expect(activeId()).toBe('planner');
+    fireEvent.keyDown(ta, { key: 'ArrowDown' });
+    expect(activeId()).toBe('core-team'); // 跨组连续编号($ 组尽即入 # 组)
+    fireEvent.keyDown(ta, { key: 'ArrowUp' });
+    expect(activeId()).toBe('planner'); // 回退可逆
+    fireEvent.keyDown(ta, { key: 'ArrowDown' });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    expect(ta.value).toBe('#core-team '); // 第三行插入(尾随空格)
+    expect(document.querySelector('.ref-palette')).toBeNull();
+  });
+
   it('# 触发只余团队组(过滤后首行直接落 Teams 头),Enter 插入 #core-team ', async () => {
     setLanguage('zh');
     const conn = connOf([]);
@@ -1813,6 +1835,20 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['core-team']);
     fireEvent.keyDown(ta, { key: 'Enter' });
     expect(ta.value).toBe('#core-team ');
+    expect(document.querySelector('.ref-palette')).toBeNull();
+  });
+
+  it('点击面板行插入对应 token($id 尾随空格)并收面板', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }, { id: 'planner', name: 'Planner' }], []);
+    render(<Chat conn={conn} sessionId="s-ref-7" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    const rows = [...document.querySelectorAll('.ref-palette-row')];
+    fireEvent.click(rows[1]!); // 第二行 planner
+    expect(ta.value).toBe('$planner ');
     expect(document.querySelector('.ref-palette')).toBeNull();
   });
 

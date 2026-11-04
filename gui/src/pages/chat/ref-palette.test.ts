@@ -70,6 +70,12 @@ describe('filterRefEntries(id 前缀过滤)', () => {
       teams: [ENTRIES.teams[0]],
     });
   });
+  it('大小写不敏感:catalog 大写 id(DevX 词法允许)被小写 query(dev)前缀命中', () => {
+    expect(filterRefEntries({ agents: [{ id: 'DevX', name: 'Dev X' }], teams: [] }, 'dev')).toEqual({
+      agents: [{ id: 'DevX', name: 'Dev X' }],
+      teams: [],
+    });
+  });
   it('无命中=空组(面板不开)', () => {
     expect(filterRefEntries(ENTRIES, 'zzz')).toEqual({ agents: [], teams: [] });
   });

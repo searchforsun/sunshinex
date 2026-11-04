@@ -143,7 +143,9 @@ export function useComposerKeys(deps: {
     const refTok = refTokenAt(input, caret);
     if (refTok !== null) {
       setRefPal(refTok);
-      setRefActive(0); // G14.124 同款:查询变更即重置游标(残留箭头位在新命中集上会指向邻项)
+      // 游标重置只住 Chat onChange(查询变更点)——键面不重置(评审 2026-11-04):refTok 在
+      // caret 贴 token 时每次键击都命中,此处若 setRefActive(0) 会排在方向键函数式更新之前,
+      // ↑↓ 恒落第二行/末行,跨组循环死;@ 键控面同款先例(从不重置 filePalActive)
       loadRefEntries();
     } else if (refPal !== null && input[refPal.from] !== '$' && input[refPal.from] !== '#') {
       setRefPal(null);
@@ -155,7 +157,6 @@ export function useComposerKeys(deps: {
         e.preventDefault();
         if (items.length > 0) {
           setRefActive((a) => (e.key === 'ArrowDown' ? (a + 1) % items.length : (a - 1 + items.length) % items.length));
-          setRefPal((rp) => rp ?? { query: '', from: 0, sym: '$' });
         }
         return;
       }
