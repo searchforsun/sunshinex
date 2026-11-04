@@ -10,7 +10,7 @@ import { useResolvedImages } from '../../images-cache';
 import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
-import { buildMdComponents, buildUserMdComponents, keepUrl, renderUserMd, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
+import { buildMdComponents, keepUrl, renderMentionSpans, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { MdImage, useDirOpener } from './md-render';
@@ -337,10 +337,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenFile, onOpenImage, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {  /** G14.116 文件 token 组件面(去 @ 显形+图标+点击开侧栏);onOpenFile 缺场=纯 chip 不可点 */
-  const isDir = useDirResolver();
-  const openDir = useDirOpener();
-  const mdComponents = useMemo(() => buildUserMdComponents(onOpenFile, isDir, openDir ?? undefined), [onOpenFile, isDir, openDir]);
+export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenImage, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   const [rewindOpen, setRewindOpen] = useState(false);
   const copy = (): void => {
@@ -452,9 +449,10 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
         <CollapsibleBubble
           text={entry.md}
           render={(md) => (
-            md.trim() !== '' ? (
-              <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponents}>{renderUserMd(md)}</ReactMarkdown>
-            ) : null
+            /* 2026-11-04 用户裁定:用户气泡不做任何 md 格式化渲染(标题/加粗/代码块/表格/链接
+               一律原文)——仅 @文件 /命令 ⟦引用⟧ 特殊 token 走 chip 高亮(renderMentionSpans,
+               与输入框高亮同口径);换行经 pre-wrap 保真 */
+            md.trim() !== '' ? <div className="user-md-plain">{renderMentionSpans(md)}</div> : null
           )}
         />
       )}

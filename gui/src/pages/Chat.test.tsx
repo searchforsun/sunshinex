@@ -235,7 +235,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(web?.getAttribute('href')).toBe('https://example.com'); // web 链接不受影响
   });
 
-  it('G14.124 气泡 md 链接(引用回显形态):file href 渲染为可点文件引用', async () => {
+  it('2026-11-04 用户裁定:气泡不做 md 格式化——md 链接原文显示,不渲染可点文件引用', async () => {
     const onOpenFile = vi.fn();
     render(
       <Chat
@@ -247,16 +247,17 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
         onOpenFile={onOpenFile}
       />,
     );
-    const link = await screen.findByRole('button', { name: 'steer-verify.txt' });
-    expect(link.className).toContain('file-link');
-    expect(link.getAttribute('data-tip')).toBe('C:/Users/x/sunshinex-default/steer-verify.txt');
+    await screen.findAllByText(/steer-verify\.txt/); // 原文在场(含链接语法整段)
+    expect(document.querySelector('.user-bubble .file-link')).toBeNull(); // 不做文件引用渲染
+    expect(document.querySelector('.user-bubble a')).toBeNull(); // 不解析 md 链接
+    expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it('G14.125 气泡非标引用不做文件渲染:@token 退通用 code chip,只认标准 md 链接(G14.124)', async () => {
+  it('2026-11-04 用户裁定:@/特殊 token 走 chip 高亮,但不落 code 元素、不解析 md', async () => {
     const onOpenFile = vi.fn();
     render(
       <Chat
-        conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '看一下 @changes-bar-probe.md 就好 /plan 别的' }])}
+        conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '看一下 @changes-bar-probe.md 就好 /plan 别的 **不加粗**' }])}
         sessionId="s1"
         connState="open"
         onBack={() => {}}
@@ -264,23 +265,26 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
         onOpenFile={onOpenFile}
       />,
     );
-    await screen.findAllByText(/changes-bar-probe\.md/); // 气泡 chip+标题回落同文(取在场即可)
+    await screen.findAllByText(/changes-bar-probe\.md/);
     expect(document.querySelector('.user-bubble .file-link')).toBeNull(); // 无专属文件渲染
-    expect(document.querySelectorAll('.user-bubble code').length).toBeGreaterThanOrEqual(2); // @token 与 /plan 均通用 chip
+    expect(document.querySelectorAll('.user-bubble .hn').length).toBeGreaterThanOrEqual(2); // @token 与 /plan 走 chip 高亮
+    expect(document.querySelector('.user-bubble code')).toBeNull(); // 不落 code 元素
+    expect(document.querySelector('.user-bubble strong')).toBeNull(); // md 加粗不解析
     expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it('用户气泡围栏不格式化:mermaid/代码块走 plain fence,无 code-block/mermaid 卡', async () => {
+  it('用户气泡围栏不格式化:mermaid/代码块原文显示,无 code-block/mermaid 卡', async () => {
     mountChat([{
       seq: 1,
       ts: DAY1,
       kind: 'user',
       md: ['```mermaid', 'stateDiagram-v2', '[*] --> pending', '```'].join('\n'),
     }]);
-    await waitFor(() => expect(document.querySelector('.user-bubble-fence')).not.toBeNull());
-    expect(document.querySelector('.user-bubble-fence')!.textContent).toContain('stateDiagram-v2');
+    await waitFor(() => expect(document.querySelector('.user-md-plain')).not.toBeNull());
+    expect(document.querySelector('.user-md-plain')!.textContent).toContain('stateDiagram-v2');
     expect(document.querySelector('.user-bubble .code-block')).toBeNull();
     expect(document.querySelector('.user-bubble .mermaid-block')).toBeNull();
+    expect(document.querySelector('.user-bubble pre')).toBeNull();
   });
 
   it('复制钮写入剪贴板(剥 > 前缀),成功示「已复制」', async () => {
