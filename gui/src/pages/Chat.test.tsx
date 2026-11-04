@@ -408,7 +408,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     expect(await screen.findByText(/Plan approval|计划确认/)).toBeTruthy(); // 卡复现(快照挂起段重建)
     expect(screen.getByRole('heading', { level: 1, name: '计划书' })).toBeTruthy(); // 计划书 markdown 渲染(滚动区,items 不再独立渲染 ol)
-    fireEvent.click(screen.getByText(/Implement \(full access\)|实施（完全访问）/)); // 可写域两键卡(2026-11-04 泛化:会话缺省 full-access,实施=维持当前档)
+    fireEvent.click(screen.getByText(/^Implement$|实施$/)); // 可写域三钮卡(2026-11-04 排布:取消|重新计划|实施 plain,实施=维持当前档)
     await waitFor(() => expect(replyPlanApproval).toHaveBeenCalledWith('p-plan-1', { approved: true, mode: 'full-access' })); // 决策体走 plan-approval 通道(带当前档)
     await waitFor(() => expect(screen.queryByText(/Plan approval|计划确认/)).toBeNull()); // 回执落定移卡(dock 还 composer)
   });

@@ -1227,7 +1227,22 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .chat-dock .approval-card { position: relative; z-index: 1; border-radius: var(--radius-composer); }.approval-card .card-head { display: flex; align-items: center; gap: 8px; }.approval-card .card-head-icon { display: inline-flex; color: var(--warn); flex: none; }.approval-card .card-actions, .plan-card .card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }.approval-card .card-actions button, .plan-card .card-actions button {
   padding: 5px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
   background: var(--surface-soft); color: var(--fg); font-size: 12px; cursor: pointer;
-}.chat-dock .approval-card .card-actions button.primary, .chat-dock .plan-card .card-actions button.primary {
+}/* plan-card 按钮排布(2026-11-04 用户裁定):取消|重新计划|实施——前置图标+文字;重新计划空反馈禁用;
+   完全访问=warn 黄警示(全访问 pill 同语义同色);窄应用框容器查询折叠(icons 容器=卡片自身):
+   <480px 文字隐去纯图标(data-tip/title 保语义),flex-wrap 恒开——再窄换行成多排 */
+.plan-card { container-type: inline-size; }
+.plan-card .card-actions { flex-wrap: wrap; }
+.plan-card .card-actions button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.plan-card .card-actions button svg { flex: none; }
+.plan-card .card-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.chat-dock .plan-card .card-actions button.warn {
+  padding: 5px 14px; border-radius: var(--radius-sm);
+  color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+.chat-dock .plan-card .card-actions button.warn:hover:not(:disabled) { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+@container (max-width: 480px) { .plan-card .card-actions .btn-label { display: none; } }
+.chat-dock .approval-card .card-actions button.primary, .chat-dock .plan-card .card-actions button.primary {
   /* 2026-11-03 修:加 .chat-dock 前缀抬优先级压过 .pending-card .card-actions button:not(.approve):not(.deny)
      的 color:var(--fg)(4 类>3 类且本规则在后)——浅色字叠浅色胶囊=主按钮文字隐形(实测计划卡主按钮空胶囊) */
   padding: 5px 14px; border-radius: var(--radius-sm); border: 1px solid transparent;
