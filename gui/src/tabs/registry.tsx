@@ -335,6 +335,8 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onClose={() => p.closeTab(p.uid)}
         onActivate={() => p.services.onActivateTab?.(p.sessionId, p.uid)}
         onMeta={(uid, patch) => p.services.onTabMeta(p.sessionId, uid, patch)}
+        onSideAsk={(text: string) => p.startSideChat?.(text)}
+        startSideChat={(text: string) => p.startSideChat?.(text)}
       />
     ),
   },

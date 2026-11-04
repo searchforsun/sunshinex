@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bug, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, MoreHorizontal, RotateCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bug, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, MoreHorizontal, MousePointerClick, RotateCw } from 'lucide-react';
 import type { TabParams } from './tab-state';
 import { t } from '../i18n';
 import { openExternalUrl } from '../ui-util';
@@ -18,6 +18,49 @@ import { openExternalUrl } from '../ui-util';
  * 关=流式宽 + 缩放 −/%/+。
  */
 
+/** 元素拾取脚本(2026-11-04 元素选取面):注入页内——悬停高亮/点击捕获/Escape 取消;
+ *  回传 {url,title,path,html}(html 截 2000 字防大 DOM 灌会话);capture 阶段拦截页面自身点击 */
+const PICK_ELEMENT_JS = String.raw`
+(() => new Promise((resolve) => {
+  const mark = '__sx_pick';
+  document.getElementById(mark)?.remove();
+  const style = document.createElement('style');
+  style.id = mark;
+  style.textContent = '.__sx_pick_hover{outline:2px solid #22d3ee !important;outline-offset:1px !important;cursor:crosshair !important}';
+  document.head.appendChild(style);
+  let last = null;
+  const cleanup = () => {
+    document.removeEventListener('mousemove', onMove, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKey, true);
+    if (last) last.classList.remove('__sx_pick_hover');
+    style.remove();
+  };
+  const onMove = (e) => {
+    e.stopPropagation();
+    if (last && last !== e.target) last.classList.remove('__sx_pick_hover');
+    last = e.target;
+    last.classList.add('__sx_pick_hover');
+  };
+  const describe = (el) => {
+    let path = el.tagName.toLowerCase();
+    if (el.id) path += '#' + el.id;
+    else if (el.className && typeof el.className === 'string') path += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.');
+    return { url: location.href, title: document.title, path, html: (el.outerHTML || '').slice(0, 2000) };
+  };
+  const onClick = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    cleanup();
+    resolve(describe(e.target));
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); cleanup(); resolve(null); }
+  };
+  document.addEventListener('mousemove', onMove, true);
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('keydown', onKey, true);
+}))`;
+
 export interface WebTabProps {
   /** daemon 连接(2026-10-25 页名/站标服务端代取——iframe 跨域拒访,fetchWebMeta 尽力而为) */
   readonly conn: import('../connection').Connection;
@@ -28,6 +71,10 @@ export interface WebTabProps {
   /** 元数据回写(url/pageTitle/pageIcon 合并进标签 params;registry 绑定 sessionId,App 落 tab-state) */
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
   /** 关闭本页签(模型 browser_tabs close 经 facade→壳→此处) */
+  /** 辅助会话提问通道(2026-11-04 元素选取面:选取元素→辅助会话;缺省不渲染该入口) */
+  readonly onSideAsk?: (text: string) => void;
+  /** 主对话 composer 插入通道(2026-11-04 元素选取面)——缺省走全局 insert-ref 事件 */
+  readonly startSideChat?: (text: string) => void;
   readonly onClose?: () => void;
   /** webview 分区(浏览器页签池按会话下发:persist:sx-<浏览器键>/草稿内存分区);缺省共用旧分区 */
   readonly partition?: string;
@@ -46,8 +93,8 @@ import { normalizeWebUrl, webPageName } from './tab-meta';
  *  映射画布退役;壳侧 webviewTag:true + will-attach-webview 安全纪律) */
 interface WvElement extends HTMLElement {
   loadURL(url: string): void;
-  /** guest webContents id(2026-11-03 调试工具定位面:DevTools 直挂 webview 而非桌面端主窗) */
-  getWebContentsId?(): number;
+  /** 页内执行(2026-11-04 元素选取模式:注入拾取脚本,Promise 回传选中元素数据/Escape=null) */
+  executeJavaScript?(code: string, userGesture?: boolean): Promise<unknown>;
   goBack(): void;
   goForward(): void;
   reload(): void;
@@ -67,7 +114,7 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, partition }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, partition, onSideAsk, startSideChat }: WebTabProps): JSX.Element {
   // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
   // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
   // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
@@ -264,6 +311,36 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     return () => window.removeEventListener('pointerdown', close);
   }, [moreOpen]);
   const devtoolsBridge = window.sunshinexWindow?.openDevtools;
+  /* 元素选取模式(2026-11-04 用户裁定「选中元素发到会话,补页签 id/网址等元数据」):
+     注入拾取脚本→悬停高亮→点击捕获(定位路径+outerHTML 片段)+页元数据,Escape 取消;
+     DevTools 开着也能用(不走其选中态,通道独立)。两入口:发主对话(事件通道)/发辅助会话 */
+  const pickElement = async (to: 'main' | 'side'): Promise<void> => {
+    const wv = wvRef.current;
+    if (wv === null || wv.executeJavaScript === undefined) return;
+    setMoreOpen(false);
+    let wcId: number | undefined;
+    try {
+      wcId = wv.getWebContentsId();
+    } catch {
+      wcId = undefined;
+    }
+    let picked: { url: string; title: string; path: string; html: string } | null = null;
+    try {
+      picked = (await wv.executeJavaScript(PICK_ELEMENT_JS, true)) as { url: string; title: string; path: string; html: string } | null;
+    } catch {
+      return; // 页面导航中/执行环境异常:静默收场
+    }
+    if (picked === null || picked.html === '') return;
+    const text = [
+      `[浏览器元素] 页签 #${wcId ?? '?'} · ${picked.title} · ${picked.url}`,
+      `定位: ${picked.path}`,
+      '```html',
+      picked.html,
+      '```',
+    ].join('\n');
+    if (to === 'side') startSideChat?.(text);
+    else window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text } }));
+  };
 
   const navigate = (): void => {
     if (input.trim() === '') return;
@@ -447,6 +524,18 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
                   >
                     <Bug size={12} strokeWidth={1.75} aria-hidden="true" />
                     {t('Open DevTools', '打开调试工具')}
+                  </button>
+                )}
+                {builtin && wvUrl !== '' && (
+                  <button type="button" role="menuitem" onClick={() => void pickElement('main')}>
+                    <MousePointerClick size={12} strokeWidth={1.75} aria-hidden="true" />
+                    {t('Pick element → main chat', '选取元素 → 主对话')}
+                  </button>
+                )}
+                {builtin && wvUrl !== '' && onSideAsk !== undefined && (
+                  <button type="button" role="menuitem" onClick={() => void pickElement('side')}>
+                    <MousePointerClick size={12} strokeWidth={1.75} aria-hidden="true" />
+                    {t('Pick element → side chat', '选取元素 → 辅助会话')}
                   </button>
                 )}
               </div>
