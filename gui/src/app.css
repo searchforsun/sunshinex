@@ -1265,7 +1265,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* fork 血缘横幅(2026-11-04 用户裁定「分叉于会话」分叉点系统提示,点击回父会话):图标在文字**前面**
    行内排(标准通知行的 .entry-icon 为前置列需 .entry-md.has-icon 包裹,横幅直接子级会纵排到文字上方
-   ——flex 行内自纠);距上侧内容 20px(用户裁定) */.fork-origin { display: flex; align-items: center; gap: 6px; margin-top: 20px; }.fork-origin .entry-icon { margin-top: 0; }.fork-origin-link { background: none; border: none; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; font: inherit; }.fork-origin-link:hover { text-decoration: underline; }
+   ——flex 行内自纠);距上侧内容 30px(用户裁定,2026-11-04 20→30) */.fork-origin { display: flex; align-items: center; gap: 6px; margin-top: 30px; }.fork-origin .entry-icon { margin-top: 0; }.fork-origin-link { background: none; border: none; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; font: inherit; }.fork-origin-link:hover { text-decoration: underline; }
 
 /* G14.84:ask_question 记录体——问题+回答结果(或已跳过),普通展开区域包裹(tool-md 同排版) */.tool-ask { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 4px; }.tool-ask .ask-q { font-size: 13px; font-weight: 600; color: var(--fg); }
 /* G14.102 回答行:回答/自定义=accent 内容;skip=灰斜体;无前缀 */.tool-ask .ask-answer { display: flex; align-items: center; gap: 6px; margin-top: 2px; padding-top: 6px; border-top: 1px dashed var(--border); font-size: 12px; }.tool-ask .ask-answer .ask-answer-text { color: var(--fg); }.tool-ask .ask-answer.kind-answer .ask-answer-text, .tool-ask .ask-answer.kind-custom .ask-answer-text { color: var(--accent); }.tool-ask .ask-answer.kind-dismissed .ask-answer-text { color: var(--fg-tertiary); font-style: italic; }.tool-ask .ask-answer-icon { display: inline-flex; color: var(--accent); }.tool-ask .ask-answer-text { color: var(--fg); }
