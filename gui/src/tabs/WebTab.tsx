@@ -314,37 +314,49 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
   /* 元素选取模式(2026-11-04 用户裁定「选中元素发到会话,补页签 id/网址等元数据」):
      注入拾取脚本→悬停高亮→点击捕获(定位路径+outerHTML 片段)+页元数据,Escape 取消;
      DevTools 开着也能用(不走其选中态,通道独立)。两入口:发主对话(事件通道)/发辅助会话 */
-  const pickElement = async (to: 'main' | 'side'): Promise<void> => {
+  /* 2026-11-04 用户裁定改两段式交互:①菜单「选取元素」单一入口→注入拾取脚本(悬停高亮/点击捕获/
+     Esc 取消),选取中宿主显示提示条;②捕获后宿主浮出选择卡(添加到主对话/辅助会话/取消)。
+     注入失败可见化(此前静默=「点了没反应」体感) */
+  const [pickState, setPickState] = useState<'idle' | 'picking' | 'failed'>('idle');
+  const [pickedEl, setPickedEl] = useState<{ wcId: number; url: string; title: string; path: string; html: string } | null>(null);
+  const pickElement = async (): Promise<void> => {
     const wv = wvRef.current;
-    if (wv === null || wv.executeJavaScript === undefined) return;
+    if (wv === null || wv.executeJavaScript === undefined || pickState === 'picking') return;
     setMoreOpen(false);
-    let wcId: number | undefined;
+    let wcId = 0;
     try {
       wcId = wv.getWebContentsId();
     } catch {
-      wcId = undefined;
+      setPickState('failed');
+      return;
     }
-    let picked: { url: string; title: string; path: string; html: string } | null = null;
+    setPickState('picking');
     try {
-      picked = (await wv.executeJavaScript(PICK_ELEMENT_JS, true)) as { url: string; title: string; path: string; html: string } | null;
+      const picked = (await wv.executeJavaScript(PICK_ELEMENT_JS, true)) as { url: string; title: string; path: string; html: string } | null;
+      setPickState('idle');
+      if (picked === null || picked.html === '') return; // Esc 取消
+      setPickedEl({ wcId, url: picked.url, title: picked.title, path: picked.path, html: picked.html });
     } catch {
-      return; // 页面导航中/执行环境异常:静默收场
+      setPickState('failed'); // 注入失败可见化(导航中/CSP/页环境异常)
     }
-    if (picked === null || picked.html === '') return;
-    // 2026-11-04 用户裁定:整块包进 browser-element 围栏(会话渲染=代码卡特殊样式,不散行裸 html)
-    // 全量内容(围栏包裹,agent 可读);主对话入口=⟦token⟧ 简标识落输入框(内容入账本发送期展开,
-    // 用户裁定「composer 只显简标识」);辅助会话=整段直发(无 token 管线)
+  };
+  /** 选择卡动作:整块围栏内容——主对话=⟦token⟧ 简标识落 composer(内容入账本发送期展开),
+      辅助会话=整段直发(无 token 管线) */
+  const sendPicked = (to: 'main' | 'side'): void => {
+    const el = pickedEl;
+    if (el === null) return;
+    setPickedEl(null);
     const content = [
       '```browser-element',
-      `页签 #${wcId ?? '?'}`,
-      `标题: ${picked.title}`,
-      `网址: ${picked.url}`,
-      `定位: ${picked.path}`,
+      `页签 #${el.wcId}`,
+      `标题: ${el.title}`,
+      `网址: ${el.url}`,
+      `定位: ${el.path}`,
       '---',
-      picked.html,
+      el.html,
       '```',
     ].join('\n');
-    const token = `⟦网页#${(wcId ?? 0).toString(36)} · ${picked.path}⟧`;
+    const token = `⟦网页#${el.wcId.toString(36)} · ${el.path}⟧`;
     if (to === 'side') startSideChat?.(content);
     else window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content } }));
   };
@@ -534,15 +546,9 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
                   </button>
                 )}
                 {builtin && wvUrl !== '' && (
-                  <button type="button" role="menuitem" onClick={() => void pickElement('main')}>
+                  <button type="button" role="menuitem" onClick={() => void pickElement()}>
                     <MousePointerClick size={12} strokeWidth={1.75} aria-hidden="true" />
-                    {t('Pick element → main chat', '选取元素 → 主对话')}
-                  </button>
-                )}
-                {builtin && wvUrl !== '' && onSideAsk !== undefined && (
-                  <button type="button" role="menuitem" onClick={() => void pickElement('side')}>
-                    <MousePointerClick size={12} strokeWidth={1.75} aria-hidden="true" />
-                    {t('Pick element → side chat', '选取元素 → 辅助会话')}
+                    {t('Pick element', '选取元素')}
                   </button>
                 )}
               </div>
@@ -711,6 +717,25 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
           </div>
         </div>
       </div>
+      {/* 元素选取反馈面(2026-11-04 用户裁定:可见化两段式交互):选取中提示条 + 捕获后选择卡 */}
+      {pickState === 'picking' && (
+        <div className="sx-web-pickhint" role="status">
+          {t('Picking element — click the target, Esc to cancel', '正在选取元素——点击页面目标，Esc 取消')}
+        </div>
+      )}
+      {pickState === 'failed' && (
+        <div className="sx-web-pickhint err" role="alert">
+          {t('Element picking unavailable on this page', '当前页面无法选取元素')}
+        </div>
+      )}
+      {pickedEl !== null && (
+        <div className="sx-web-pickcard">
+          <span className="sx-web-pickcard-path">{pickedEl.path}</span>
+          <button type="button" onClick={() => sendPicked('main')}>{t('Add to main chat', '添加到主对话')}</button>
+          {onSideAsk !== undefined && <button type="button" onClick={() => sendPicked('side')}>{t('Ask in side chat', '辅助会话提问')}</button>}
+          <button type="button" aria-label={t('Cancel', '取消')} data-tip={t('Cancel', '取消')} onClick={() => setPickedEl(null)}>×</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -272,7 +272,15 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 
 /* Web 标签体(G8d T4 挂名;G14.6 对齐 VSCode Simple Browser):导航工具行+锁形 URL 框+居中空态;
    G14.2xx overflow hidden 定高自守——iframe 缩放/内容高度不出本页,滚动只属内层 wrap(纵向
-   不再越视口传导到 tabbody) */.sx-web-tab { display: flex; flex-direction: column; height: 100%; overflow: hidden; }.sx-web-bar {
+   不再越视口传导到 tabbody) */.sx-web-tab { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+/* 2026-11-04 元素选取反馈面:选取中提示条/失败条/捕获后选择卡(宿主 chrome,不注入第二套 UI) */
+.sx-web-tab { position: relative; }
+.sx-web-pickhint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 4px 12px; border-radius: 999px; background: var(--surface-elevated); border: 1px solid var(--border); box-shadow: var(--elev-card); color: var(--fg-secondary); font-size: 11.5px; white-space: nowrap; pointer-events: none; }
+.sx-web-pickhint.err { color: var(--err); border-color: var(--err); pointer-events: auto; }
+.sx-web-pickcard { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border); box-shadow: var(--elev-card); }
+.sx-web-pickcard-path { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--font-mono); color: var(--fg-tertiary); }
+.sx-web-pickcard button { padding: 3px 10px; border: none; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); font: 11.5px var(--font-ui); cursor: pointer; white-space: nowrap; }
+.sx-web-pickcard button:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }.sx-web-bar {
   flex: none; display: flex; align-items: center; gap: 2px;
   padding: 4px 6px; border-bottom: 1px solid var(--border-subtle);
 }.sx-web-nav {
