@@ -275,9 +275,11 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
    不再越视口传导到 tabbody) */.sx-web-tab { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 /* 2026-11-04 元素选取反馈面:选取中提示条/失败条/捕获后选择卡(宿主 chrome,不注入第二套 UI) */
 .sx-web-tab { position: relative; }
-.sx-web-pickhint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 4px 12px; border-radius: 999px; background: var(--surface-elevated); border: 1px solid var(--border); box-shadow: var(--elev-card); color: var(--fg-secondary); font-size: 11.5px; white-space: nowrap; pointer-events: none; }
-.sx-web-pickhint.err { color: var(--err); border-color: var(--err); pointer-events: auto; }
-.sx-web-pickcard { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border); box-shadow: var(--elev-card); }
+/* 2026-11-04 用户裁定:浮层提示去描边(铁律 5——描边+投影叠 999px 弧即毛刺)——hairline/层次
+   归收敛投影 elev-composer,错误态只用文字色不再描边 */
+.sx-web-pickhint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 4px 12px; border-radius: 999px; background: var(--surface-elevated); box-shadow: var(--elev-composer); color: var(--fg-secondary); font-size: 11.5px; white-space: nowrap; pointer-events: none; }
+.sx-web-pickhint.err { color: var(--err); pointer-events: auto; }
+.sx-web-pickcard { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-composer); background: var(--surface-elevated); box-shadow: var(--elev-composer); }
 .sx-web-pickcard-path { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--font-mono); color: var(--fg-tertiary); }
 .sx-web-pickcard button { padding: 3px 10px; border: none; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); font: 11.5px var(--font-ui); cursor: pointer; white-space: nowrap; }
 .sx-web-pickcard button:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }.sx-web-bar {
