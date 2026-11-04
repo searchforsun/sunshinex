@@ -9,7 +9,7 @@ import { SlashMenu, SlashMenuEntry, slashMenuWindow, SLASH_MENU_MAX_ROWS } from 
 import { SLASH_COMMANDS } from '../slash-commands';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
-import { readSkillUsage, recordSkillUsage } from '../skill-usage';
+import { readSkillUsage, recordSkillUsage } from '../../catalog/skill-usage';
 
 /** 全局技能目录重定向（与他测同惯例）：本机装有真实全局技能（插件目录）时 skills.list()
  *  会扫入，skill-usage 用例的 skillMenuEntries 断言必须只见到用例自置技能 */

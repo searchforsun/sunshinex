@@ -22,6 +22,7 @@ import { ContextManager } from './context';
 import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { SkillsFacade, createSkillsFacade } from './skills';
+import { TeamsFacade, createTeamsFacade } from './teams';
 import { TaskRegistry } from './tasks';
 import { TaskBoard } from '../taskboard/board';
 import { AgentTeamRegistryStore, MemoryTeamStore, TeamStore, TeammateRosterStore, type TeammateRosterRecord } from '../taskboard/store';
@@ -104,6 +105,9 @@ export class Harness {
   /** 稳定段 outputStyle 装配口径（P7,构造期缓存——run 级常量） */
   private readonly stableOutputStyle?: OutputStyle;
   readonly skills: SkillsFacade;
+  /** 团队门面（team 工具接缝；spec 2026-11-04 §3.3）：live 只读视图——每次 resolve 现读两级目录链，
+   *  会中新建/停用即时可见（skills 同款惰性纪律，纯构造零副作用） */
+  readonly teams: TeamsFacade;
   /** write 影子快照单点（rewind/fork 规格 §6.1）：write 工具落盘前捕获 pre-image，任务收口随 user 事件落盘 */
   readonly writeSnapshot: ReturnType<typeof makeWriteSnapshotSink>;
   /** 子智能体执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
@@ -197,6 +201,14 @@ export class Harness {
     this.permissionWarningList = perms.warnings;
     // 技能门面先于工具装配创建（skill 工具经它按 id 解析正文；纯构造无副作用）
     this.skills = createSkillsFacade(base);
+    // 团队门面先于工具装配创建（team 工具经它按 id 解析章程，spec 2026-11-04 §3.3；纯构造无副作用——list/get/resolve 全惰性现读）
+    this.teams = createTeamsFacade(base);
+    // 子智能体注册表（hoist 自 runner 装配点，2026-11-04 §3.3）：team/agent 工具接缝与下方 SubagentRunnerDeps
+    // 共用同一同名局部（同实例零二义）；agents 两级目录（全局 userConfigDir() + 项目 root）装配期一次性加载
+    // fail-fast（项目遮蔽全局；运行期零增删）
+    const agents = new AgentRegistry();
+    agents.registerBuiltins();
+    agents.loadAgents(base, userConfigDir());
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
     this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
@@ -249,6 +261,10 @@ export class Harness {
       tasks: this.tasks,
       readGuard: this.readGuard, // edit 先读守卫(2026-10-31 用户裁定):随运行时铸造,换铸后须重读再改
       plan: opts.plan, // exit_plan 挂起接缝(2026-11-03 无感化):宿主 awaitDecision 弹卡等裁决
+      teams: this.teams, // team 工具接缝(spec 2026-11-04 §3.3):live 只读门面,接缝在场即注册
+      // agent 工具接缝(spec §3.3):Registry.resolve 是 throw 语义,包 try/catch 适配成三态 undefined——
+      // 内建/目录条目统一出卡面,装配面其余字段(memory/isolation/executor)不透模型
+      agents: { get: (id: string) => { try { return agents.resolve(id); } catch { return undefined; } } },
     })) this.tools.register(t);
     this.context = new ContextManager(base, store);
     this.model = opts.model ?? new StubAdapter();
@@ -366,11 +382,7 @@ export class Harness {
       settle: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'learned', ...r }),
       settleMemory: (r: SettlePayload) => this.pipeline.enqueue({ kind: 'memory', ...r }),
     };
-    // 子智能体执行单元：注册表/安全链/上下文/模型同源装配；agents 两级目录（全局 userConfigDir() + 项目 root）
-    // 装配期一次性加载 fail-fast（项目遮蔽全局；运行期零增删）
-    const agents = new AgentRegistry();
-    agents.registerBuiltins();
-    agents.loadAgents(base, userConfigDir());
+    // 子智能体执行单元：注册表/安全链/上下文/模型同源装配（registry 实例于工具装配点前 hoist 构造——同上引用同名局部）
     this.runner = new SubagentRunner(
       {
         registry: this.tools,

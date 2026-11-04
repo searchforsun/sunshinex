@@ -36,7 +36,7 @@ import { kernelEventRows } from '../session/seglog';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
 import { LiveTaskState, applyTaskState, initialTaskState } from './task-state';
-import { recordSkillUsage } from './skill-usage';
+import { recordSkillUsage } from '../catalog/skill-usage';
 import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
 import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-memory';
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';

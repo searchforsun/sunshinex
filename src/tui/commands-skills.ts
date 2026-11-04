@@ -1,5 +1,5 @@
 import { SLASH_COMMANDS } from './slash-commands';
-import { readSkillUsage } from './skill-usage';
+import { readSkillUsage } from '../catalog/skill-usage';
 import { listSkills } from '../catalog/skills';
 import type { SkillSource } from '../catalog/skills';
 import type { SessionController } from './session';
