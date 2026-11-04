@@ -160,6 +160,16 @@ function AppShell(): JSX.Element {
   const chatSinkRef = useRef<ChatSink | null>(null);
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
+  /** sink 取得/补注册(2026-11-04 用户实测:重启后恢复的辅助对话页签空壳——startSideChat 才注册
+   *  sink,恢复路径缺表被 registry 判无 sink 落提示面;页签还原时惰性补位,帧路由即刻可用) */
+  const sideSinkFor = (sideId: string): MutableRefObject<ChatSink | null> => {
+    let sink = sideSinksRef.current.get(sideId);
+    if (sink === undefined) {
+      sink = { current: null };
+      sideSinksRef.current.set(sideId, sink);
+    }
+    return sink;
+  };
   /** 板播种窗(use-board-seed 单点,2026-10-27 技术债轮 D53 批F 外提):G6 seq 门缓冲/重开/
    *  快照回填一条域一条文件;refs 穿透 use-connection-wiring 帧路由 */
   /** 快照 team.busy 权威(封悬空 agent run；与影子水合共用) */
@@ -1101,7 +1111,7 @@ function AppShell(): JSX.Element {
                       startSideChat,
                       ptyIdFor,
                       onPtyAllocated: handlePtyAllocated,
-                      chatSinkRef: t.params.sideId !== undefined ? sideSinksRef.current.get(t.params.sideId) : undefined,
+                      chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId) : undefined,
                       memoryFocus,
                       learnedFocus,
                       bgFocus,
