@@ -46,6 +46,9 @@ export function useSessionEvents(deps: {
   setSessEffort: Dispatch<SetStateAction<string | undefined>>;
   /** 归档态播种(2026-10-21:snapshot.archived 回填——顶栏归档钮/徽标三态;旧 daemon 无字段=未归档面) */
   setArchived: Dispatch<SetStateAction<boolean>>;
+  /** fork 血缘播种(2026-11-04 用户裁定「分叉于会话」横幅):snapshot.forkedFrom 回填;切会话
+   *  reseed 即换读(非 fork 档=undefined 清位) */
+  setForkedFrom: Dispatch<SetStateAction<{ sessionId: string; title: string } | undefined>>;
   /** G14.213 欢迎页接力取用(ref 跳板,声明在 Chat、赋值随 submitText 定义) */
   submitTextRef: MutableRefObject<(text: string, images?: string[]) => Promise<void>>;
   /** G14.212 滚动位存档落盘(unmount 兜底;滚动子系统留 Chat,函数注入) */
@@ -77,6 +80,7 @@ export function useSessionEvents(deps: {
     setSessMode,
     setSessEffort,
     setArchived,
+    setForkedFrom,
     submitTextRef,
     flushScrollMem,
   } = deps;
@@ -135,6 +139,7 @@ export function useSessionEvents(deps: {
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
         setSessEffort(snap.effort);
         setArchived(snap.archived === true); // 2026-10-21 归档态播种(sessMode 同链;缺字段=未归档面)
+        setForkedFrom(snap.forkedFrom); // fork 血缘播种(「分叉于会话」横幅面;非 fork 档=undefined 清位)
         // P10:status 读内核游标(seed 内派生),快照 status 字段不再入参
         let next = seedChatFromSnapshot(snap.messages, {
           openRun: snap.openRun ?? -1,

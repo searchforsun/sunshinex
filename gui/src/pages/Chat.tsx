@@ -80,7 +80,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -115,6 +115,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
   /** 归档态(2026-10-21):快照播种对齐(sessMode 同链,use-session-events reseed 回填)——顶栏归档钮/徽标三态 */
   const [archived, setArchived] = useState(false);
+  /** fork 血缘(2026-11-04 用户裁定「分叉于会话」横幅):快照播种对齐,切会话 reseed 换读——
+   *  MessageList 首行横幅(点击回父会话,经 onOpenSession) */
+  const [forkedFrom, setForkedFrom] = useState<{ sessionId: string; title: string } | undefined>(undefined);
   /** pill 开合('plus' = + 附加面板) */
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
   /** textarea 引用(+ 面板插入收口后焦点回输入框) */
@@ -210,6 +213,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setSessMode,
     setSessEffort,
     setArchived,
+    setForkedFrom,
     submitTextRef,
     flushScrollMem,
   });
@@ -228,6 +232,25 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const runFooterPrevRef = useRef<ReadonlyMap<string, ChatEntry>>(new Map());
   runFooterPrevRef.current = runFooterMapOfStable(runFooterPrevRef.current, chat.entries, chat.status);
   const runFooterByEntry = runFooterPrevRef.current;
+
+  /** run 条目键→轮次序位(2026-11-04 逐轮 fork):run 在转录中的 1-based 序=daemon 轮锚点序
+   *  (每轮一 task 行),宿主按此分档——点哪轮,fork 其上全部记录。ref 镜像保引用恒稳(MessageList
+   *  组级 memo 判等不破) */
+  const chatEntriesRef = useRef(chat.entries);
+  chatEntriesRef.current = chat.entries;
+  const onForkRef = useRef(onFork);
+  onForkRef.current = onFork;
+  const onForkRun = useCallback((runKey: string): void => {
+    let n = 0;
+    for (const e of chatEntriesRef.current) {
+      if (e.kind !== 'run') continue;
+      n += 1;
+      if (e.key === runKey) {
+        onForkRef.current?.(n);
+        return;
+      }
+    }
+  }, []);
 
   // 滚动四 effects + 轮次折叠簇(批F-5):refs 宿主持有,行为零变化
   const { dockRef } = useChatScroll({
@@ -678,7 +701,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         runFooterByEntry={runFooterByEntry}
         onEntryOpenDiff={onEntryOpenDiff}
         onEntryRestore={onEntryRestore}
-        onFork={onFork}
+        onFork={onForkRun}
+        forkedFrom={forkedFrom}
+        onOpenSession={onOpenSession}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
         chatScrollRef={chatScrollRef}

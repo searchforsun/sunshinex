@@ -13,8 +13,10 @@ import { FileIcon } from '../../file-icon';
  */
 
 /** run 尾部操作条(G11 §6,对标 Codex 回复工具行):复制该条 md/fork 新会话 + 封段统计
- *  (steps·tokens·HH:mm,数据缺省逐项省略)。常显淡灰(截图裁定),钮 hover 提亮 */
-export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undefined; onFork?: () => void }): JSX.Element {
+ *  (steps·tokens·HH:mm,数据缺省逐项省略)。常显淡灰(截图裁定),钮 hover 提亮。
+ *  onFork 收 run 条目键(2026-11-04 用户裁定「fork 显示点击点之上所有记录」):宿主按 run
+ *  在转录中的序位换算轮次,分档切在该轮之前——点哪轮,fork 上面的所有记录 */
+export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undefined; onFork?: (runKey: string) => void }): JSX.Element {
   const { status, copy } = useCopyFeedback();
   const time = run?.endedTs !== undefined ? shortClockMs(run.endedTs) : undefined;
   return (
@@ -25,7 +27,7 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
         icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
         onClick={() => copy(text)}
       />
-      {onFork !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={onFork} />}
+      {onFork !== undefined && run !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => onFork(run.key)} />}
       {(run?.steps !== undefined || run?.tokens !== undefined) && (
         <span className="run-stats">
           {run?.steps !== undefined && <span>{t(`${run.steps} steps`, `${run.steps} 步`)}</span>}

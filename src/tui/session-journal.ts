@@ -410,6 +410,33 @@ export function reduceJournal(events: JournalEvent[]): JournalReplay {
   return r;
 }
 
+/** 会话显示标题单点（fork 命名/快照血缘面消费）：meta.title 优先；未题名扫档头 8 行取首条
+ *  用户输入/链首 task 观测（与 listSessions 摘要同口径）截 60 字；全空回退 fallback（调用方给
+ *  root 名等），再退 journalId 短码。fork 子档题=`Fork of ${本值}`——父档已带前缀即递归链接 */
+export function journalDisplayTitle(dataDir: string, journalId: string, fallback?: string): string {
+  const meta = readSessionMeta(dataDir, journalId);
+  if (meta.title !== undefined && meta.title.trim() !== '') return meta.title.trim();
+  const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
+  try {
+    for (const line of fs.readFileSync(file, 'utf8').split('\n').slice(0, 8)) {
+      if (!line.trim()) continue;
+      try {
+        const e = JSON.parse(line) as JournalEvent;
+        if (e.t === 'user' && e.text.trim() !== '') return e.text.trim().slice(0, 60);
+        if (e.t === 'chain') {
+          const task = e.steps.find((s) => s.action === 'task' && s.observation.length > 0);
+          if (task !== undefined) return task.observation.trim().slice(0, 60);
+        }
+      } catch {
+        break; // 坏行截断（事件级落盘在飞崩溃窗口），退 fallback
+      }
+    }
+  } catch {
+    /* 读失败退 fallback */
+  }
+  return fallback ?? journalId.slice(0, 8);
+}
+
 /** 档案列表（/resume 无参展示）：mtime 降序；扫文件头 8 行取首条用户输入摘要与分档血缘（零重放成本） */
 export function listSessions(dataDir: string): SessionMeta[] {
   const dir = sessionsDir(dataDir);

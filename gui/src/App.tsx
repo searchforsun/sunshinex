@@ -611,19 +611,32 @@ function AppShell(): JSX.Element {
     // eslint 不入依赖(openSession 恒稳;connInstance 由连接生命周期持有)
   }, [openSessionId, openFileTab, connInstance]);
   /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
-  const forkLatestRef = useRef(() => {});
-  forkLatestRef.current = (): void => {
+  const forkLatestRef = useRef((_turn?: number) => {});
+  forkLatestRef.current = (turn?: number): void => {
     if (connInstance === null) return;
     void connInstance
       .sessionAnchors(openSessionId)
       .then(async (a) => {
-        const last = a.length > 0 ? a[a.length - 1]!.turn : 1;
+        // 逐轮 fork(2026-11-04 用户裁定「fork 显示点击点之上所有记录」):turn 在场=点击 run 的
+        // 轮序位(点哪轮,分档切在该轮锚点前=新会话时间线即其上全部记录);缺省=最近轮(原行为)
+        const last = turn ?? (a.length > 0 ? a[a.length - 1]!.turn : 1);
         const r = await connInstance.forkSession(openSessionId, last);
+        // 侧栏内容随 fork 复制(2026-11-04 用户裁定):父座位页签克隆到子座位——旁路对话页签除外
+        // (sidechat 语义绑定父档),终端剥 ptyId(pty 归父会话进程,子会话点开即新开);active 不
+        // 还原(「侧栏不必还原成父会话的打开状态」)——子座位空 active,页签条全在
+        setTabStates((s) => {
+          const p = s[openSessionId];
+          if (p === undefined || p.tabs.length === 0) return s;
+          const tabs = p.tabs
+            .filter((t) => t.type !== 'sidechat')
+            .map((t) => (t.params.ptyId !== undefined ? { ...t, params: { ...t.params, ptyId: undefined } } : t));
+          return { ...s, [r.sessionId]: { ...emptyTabSession(), tabs, activeUid: null } };
+        });
         openSession(r.sessionId, openRoot);
       })
       .catch(showOpError);
   };
-  const onForkStable = useCallback((): void => { forkLatestRef.current(); }, []);
+  const onForkStable = useCallback((turn: number): void => { forkLatestRef.current(turn); }, []);
 
   /** pty 记账(use-pty-registry 单点,2026-10-27 技术债轮 D53 批F 外提):terminal 标签 uid→ptyId */
   const { handlePtyAllocated, ptyIdFor, takePtyId } = usePtyRegistry(openSessionId, setTabStates);
@@ -1002,6 +1015,7 @@ function AppShell(): JSX.Element {
                 onOpenMemory={openMemoryTab}
                 onOpenLearned={openLearnedTab}
                 onFork={onForkStable}
+                onOpenSession={(sid) => openSession(sid, openRoot)}
                 onOpError={showOpError}
                 onRewind={(turn) => {
                   void connInstance

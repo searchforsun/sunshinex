@@ -13,7 +13,7 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { branchFrom, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -663,6 +663,11 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
       writeSessionMeta(dataDir, srcId, { sideCount: seq });
       writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: srcId });
       pruneSideForkArchive(dataDir, newId);
+    } else {
+      // fork 子档题=`Fork of 父显示题`(2026-11-04 用户裁定:前缀显性化,递归 fork 自然链名——
+      // 父档已带前缀即 Fork of Fork of …)。父显示题经 journalDisplayTitle 单点(meta 题/首条
+      // 输入摘要/源 root 名兜底),落 meta 后 /sessions 列表与标题面即显
+      writeSessionMeta(dataDir, newId, { title: `Fork of ${journalDisplayTitle(dataDir, srcId, path.basename(session.root))}` });
     }
     const created = io.createSession(session.root);
     if (!created.ok) return io.send(res, 500, { error: created.error.message });

@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { GitFork } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -50,7 +51,10 @@ export interface MessageListProps {
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
-  readonly onFork?: () => void;
+  readonly onFork?: (runKey: string) => void;
+  /** fork 血缘横幅(2026-11-04 用户裁定):首行「分叉于会话:{名}」,点击回父会话 */
+  readonly forkedFrom?: { sessionId: string; title: string };
+  readonly onOpenSession?: (sessionId: string) => void;
   readonly onEntryToggleClick: (e: ReactMouseEvent<HTMLDivElement>) => void;
   /** 2026-10-26 图片功能(并行):气泡图片条点击 → lightbox(App 持 src 态) */
   readonly onOpenImage?: (src: string) => void;
@@ -91,7 +95,7 @@ interface DayGroupProps {
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
-  readonly onFork?: () => void;
+  readonly onFork?: (runKey: string) => void;
   readonly onOpenImage?: (src: string) => void;
   /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
   readonly root?: string;
@@ -287,7 +291,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const onOpenDiffStable = useCallback((callId: string, p: string) => propsRef.current.onOpenDiff?.(callId, p), []);
   const onOpenAgentStable = useCallback((label: string, agentTitle: string, task?: string) => propsRef.current.onOpenAgent?.(label, agentTitle, task), []);
   const onOpenTaskStable = useCallback((ref: string) => propsRef.current.onOpenTask?.(ref), []);
-  const onForkStable = useCallback(() => propsRef.current.onFork?.(), []);
+  const onForkStable = useCallback((runKey: string) => propsRef.current.onFork?.(runKey), []);
   /** 可选回调在场判定同样走 ref(getter 零依赖稳定;返回值=包装或 undefined,两支引用各自恒定) */
   const onOpenFileOpt = useCallback(() => opt(onOpenFileStable, propsRef.current.onOpenFile), [onOpenFileStable]);
   const onOpenDiffOpt = useCallback(() => opt(onOpenDiffStable, propsRef.current.onOpenDiff), [onOpenDiffStable]);
@@ -366,6 +370,25 @@ export function MessageList(props: MessageListProps): JSX.Element {
           <button type="button" className="chat-earlier" onClick={showEarlier}>
             {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}
           </button>
+        )}
+        {/* fork 血缘横幅(2026-11-04 用户裁定):首行系统提示「分叉于会话:{名}」——点击回父会话
+            (onOpenSession 经 propsRef 取最新;root 同源由宿主装配) */}
+        {props.forkedFrom !== undefined && (
+          <div className="entry entry-notice fork-origin" role="status">
+            <span className="entry-icon">
+              <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <div className="entry-md">
+              {t('Forked from session', '分叉于会话')}：
+              <button
+                type="button"
+                className="fork-origin-link"
+                onClick={() => propsRef.current.onOpenSession?.(props.forkedFrom!.sessionId)}
+              >
+                {props.forkedFrom!.title}
+              </button>
+            </div>
+          </div>
         )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染)。
             G14.31 折叠轮/组级 memo 见 DayGroupBlock 注 */}

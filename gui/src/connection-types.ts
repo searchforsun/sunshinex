@@ -129,6 +129,9 @@ export interface SnapshotResponse {
   /** todo 批次权威投影(2026-10-31 用户裁定「任务历史持久化可见」):daemon journal 全量派生+live 增量,
    *  GUI「待办」页签直显——不再仅靠转录派生(内核环窗/尾窗之外的老批次派生面看不到) */
   todoBatches?: Array<{ key: string; ts: number; goal: string; userKey?: string; items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }> }>;
+  /** fork 血缘(2026-11-04 用户裁定「分叉于会话」横幅面):daemon 快照 header 读数——kind='fork'
+   *  主链分档才有;可选防旧 daemon。title=父档显示题,sessionId=点击横幅回父会话的寻址键 */
+  forkedFrom?: { sessionId: string; title: string };
 }
 
 /** GET /workspaces 行（T2 工作区注册表，对齐主仓 daemon.ts WorkspaceRow）：root 经 workspace.json

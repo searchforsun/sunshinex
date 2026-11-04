@@ -76,13 +76,17 @@ export interface ChatProps {
   onSideAsk?: (text: string) => void;
   /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡(App 开页签+落定位信号) */
   onTodoLocate?: (todos: Array<{ text: string; status: string }>) => void;
+  /** 2026-11-04 fork 横幅导航:「分叉于会话」点击回父会话(App openSession;root 同源) */
+  onOpenSession?: (sessionId: string) => void;
   /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
   onRewind?: (turn: number) => void;
   /** 会话级操作错误上抛(2026-10-21 归档 F4):App showOpError 通道(与 fork/rewind 同一 sx-toast
    *  错误条)——顶栏归档失败不再静默回摆,错误文案透传上屏;可选防测试桩免配 */
   onOpError?: (err: unknown) => void;
-  /** G10-C4 分叉新会话(从最近任务轮;/fork 底层);App 接 forkSession+openSession;可选 */
-  onFork?: () => void;
+  /** G10-C4 分叉新会话(/fork 底层);App 接 forkSession+openSession;可选。
+   *  2026-11-04 用户裁定「fork 显示点击点之上所有记录」:收轮次序位(turn=1-based,点击的
+   *  run 在转录中的序),宿主按该轮锚点分档——新会话时间线=点击点之上全部记录 */
+  onFork?: (turn: number) => void;
   /** G10 欢迎页接力:播种完成后提交的 welcome 目标(setWelcomeGoal 写入;提交即回调清位) */
   pendingGoal?: { root: string; goal: string; images?: string[] };
   onPendingGoalDone?: () => void;

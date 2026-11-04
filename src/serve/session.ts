@@ -22,7 +22,7 @@ import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '
 import { kernelEventRows } from '../session/seglog';
 import type { SegRowLike } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
-import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile } from '../tui/session-journal';
+import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile, journalDisplayTitle } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/plan-flow';
 import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
@@ -105,6 +105,9 @@ export interface SessionSnapshot {
   archived: boolean;
   /** todo 批次权威投影(2026-10-31 用户裁定):journal 全量派生+live 增量——GUI 直显,无旧档兼容面 */
   todoBatches: SessionTodoBatch[];
+  /** fork 血缘(2026-11-04 用户裁定「分叉于会话」横幅面):journal header forkedFrom 读数(kind='fork'
+   *  主链分档;side=辅助档不显)。title=父档显示题(journalDisplayTitle 单点)。原生会话缺省缺席 */
+  forkedFrom?: { sessionId: string; title: string };
 }
 
 /** snapshot 挂起段行（G5）：kind 判别与 daemon 挂起表同源（approval/ask/plan-approval——阶段三
@@ -216,6 +219,8 @@ export class SessionRuntime {
    *  派生(seedTodoBatches)+live 随段级事件增量维护(trackTodoEvent)——内核环形窗 CAP 2000 之外的
    *  老批次只有档上有,GUI 转录派生面覆盖不到;快照载荷以此为准(不留旧 daemon 兼容面) */
   private todoBatches: SessionTodoBatch[] = [];
+  /** fork 血缘读数缓存( lineage 随档不变,按 journalId 键控失效——换挂/轮转后重读) */
+  private forkedFromCache: { jid: string; info: SessionSnapshot['forkedFrom'] } | null = null;
   /** todo 批次归属 goal(最近一条 user 行 md;live 与播种同口径) */
   private todoLastGoal = '';
   private todoLastUserSeq = 0;
@@ -1194,6 +1199,27 @@ export class SessionRuntime {
     return this.kernel.steerRemoveAt(seq);
   }
 
+  /** fork 血缘读数(header 单行读+按 journalId 缓存):kind='fork' 主链分档才显(side=辅助档不显,
+   *  原生档无字段=undefined)。title=父档显示题(journalDisplayTitle 单点;父同 root,fallback=root 名) */
+  private forkedFromInfo(): SessionSnapshot['forkedFrom'] {
+    const jid = this.attachedJournalId;
+    if (jid === undefined) return undefined;
+    if (this.forkedFromCache?.jid === jid) return this.forkedFromCache.info;
+    let info: SessionSnapshot['forkedFrom'];
+    try {
+      const first = fs.readFileSync(path.join(sessionsDir(resolveDataDir(this.root)), `${jid}.jsonl`), 'utf8').split('\n')[0] ?? '';
+      const header = JSON.parse(first) as JournalEvent;
+      const ff = header.t === 'header' ? header.forkedFrom : undefined;
+      info = ff !== undefined && ff.kind === 'fork'
+        ? { sessionId: ff.sourceSessionId, title: journalDisplayTitle(resolveDataDir(this.root), ff.sourceSessionId, path.basename(this.root)) }
+        : undefined;
+    } catch {
+      info = undefined;
+    }
+    this.forkedFromCache = { jid, info };
+    return info;
+  }
+
   snapshotResponse(page?: SessionSnapshotPage): SessionSnapshot {
     void this.todos; // 会话 todo 投影读面（批准播种/模型 todo_write 收写;GUI 面走 todo-batches）——TS6133 豁免读
     const full = this.kernel.replay();
@@ -1235,6 +1261,7 @@ export class SessionRuntime {
       archived: this.attachedJournalId !== undefined
         ? readSessionMeta(resolveDataDir(this.root), this.attachedJournalId).archived === true
         : false,
+      ...(this.forkedFromInfo() !== undefined ? { forkedFrom: this.forkedFromInfo() } : {}),
       team: this.runtimeImpl.harness.team.aliveNames().map((name) => {
         const tm = this.runtimeImpl.harness.team.get(name);
         return {
