@@ -3208,3 +3208,12 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 2026-11-03 用户裁定:亮色下拖动条族太暗——侧栏分割线与聊天刻度条亮色减档(暗色不变) */
 [data-theme='light'] .sx-sidebar { border-left-color: color-mix(in srgb, var(--fg) 5%, transparent); }
 [data-theme='light'] .sx-rail-bar { background: color-mix(in srgb, var(--fg) 20%, transparent); }
+
+/* 2026-11-04 用户裁定:侧栏页签「第一行带分割线的头行」统一与窗控簇行同高(--toolbar-h 40px,
+   内容垂直居中,原 padding 撑高各行低的高低不一)——px 定高在 html zoom 缩放下整体等比,放大
+   缩小恒对齐。覆盖面:文件面包屑行/变动分支条/浏览器地址行 */
+.files-head { height: var(--toolbar-h); }
+.files-breadcrumb { padding: 0 12px; height: 100%; }
+.sx-changes-bar { height: var(--toolbar-h); padding: 0 12px; }
+.sx-diff-tab .sx-changes-bar { padding: 0 22px; }
+.sx-web-bar { height: var(--toolbar-h); padding: 0 6px; }

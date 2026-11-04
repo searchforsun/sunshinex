@@ -147,13 +147,8 @@ export function useSessionEvents(deps: {
           // 2026-10-26 三期历史链:尾窗播种(服务端缺省 200)元数据入态——后台加载链(下方 effect)消费
           next = { ...next, history: { total: snap.total ?? snap.messages.length, oldestSeq: snap.oldestSeq ?? 0, hasMore: snap.hasMore === true, complete: snap.hasMore !== true } };
         }
-        // fork 分界横幅=**合成 notice 条目**(2026-11-04 用户裁定,实测修订):注入点在种子后、直播
-        // 帧回放前——条目序天然「复制段末、新内容前」,新 run 条与末行 stats 不再被横幅纵向切开
-        // (此前横幅渲染在 dayGroups 外,新 run 条目在组内,视觉上并进工具行)。GUI 本地态不落档,
-        // reseed 按 snapshot.forkedFrom 重注入;md=[fork-origin]+JSON,ChatEntryView 专支渲染
-        if (snap.forkedFrom !== undefined) {
-          next = applyChatEvent(next, { type: 'notice', text: `[fork-origin]${JSON.stringify(snap.forkedFrom)}`, ts: Date.now() });
-        }
+        // fork 分界横幅归 daemon attach 装载面合成(见 session-lifecycle:upToLine 边界 splice,内存态
+        // 不落档)——快照 messages 已含横幅条目,GUI 零注入;此前 GUI 重播种追加=每次重进漂到转录底部
         for (const f of pendingRef.current) {
           if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)
         }

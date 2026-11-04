@@ -643,7 +643,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
     );
   }
   if (entry.kind === 'notice' && entry.md.startsWith('[fork-origin]')) {
-    // fork 分界横幅(合成 notice 条目,use-session-events 播种注入):图标前置行内+父会话题可点回源;
+    // fork 分割点(合成 notice 段行,daemon attach 按 upToLine 边界装载):文案即分割语义——
+    // 本行**以上**=fork 前来自父会话的内容,**以下**=子会话新内容;父会话名可点回源。
     // 坏编码退普通 notice 渲染不丢行
     let info: { sessionId: string; title: string } | null = null;
     try {
@@ -659,7 +660,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
             <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
           </span>
           <div className="entry-md">
-            {t('Forked from session', '分叉于会话')}：
+            {t('Content above forked from session', '以上内容分叉自会话')}：
             <button type="button" className="fork-origin-link" onClick={() => onOpenSession?.(info!.sessionId)}>
               {info!.title}
             </button>

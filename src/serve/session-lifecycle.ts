@@ -8,7 +8,7 @@ import { SessionRuntime } from './session';
 import type { DaemonFrame } from './daemon-wire';
 import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
-import { SessionJournal, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir } from '../tui/session-journal';
+import { SessionJournal, journalDisplayTitle, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../tui/session-journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import { projectsRoot, projectSlug, resolveDataDir } from '../config/data-dir';
 
@@ -166,6 +166,21 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
   if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
   const replayEvents = parseJournalFile(file).events;
+  // fork 分界横幅(2026-11-04 用户裁定「固定到 fork 位置,不随新内容漂移」):header.upToLine=复制段
+  // 末行(文件 1-based)——合成 notice 段行 splice 进重放事件,**内存态不落档**,重放/重启/重进恒现
+  // 且位置恒在复制段末、子会话自有内容前(此前 GUI 重播种时追加=每次重进漂到转录底部)。旧子档
+  // (横幅行缺席)统一覆盖;GUI ChatEntryView 专支渲染,TUI 无此行
+  const headerRow = replayEvents[0];
+  const ff = headerRow !== undefined && headerRow.t === 'header' ? headerRow.forkedFrom : undefined;
+  if (ff !== undefined && ff.kind === 'fork' && ff.upToLine >= 1) {
+    const idx = Math.min(ff.upToLine, replayEvents.length);
+    const info = JSON.stringify({
+      sessionId: ff.sourceSessionId,
+      title: journalDisplayTitle(dataDir, ff.sourceSessionId, path.basename(session.root)),
+    });
+    // ts/seq 缺省:reduceSegRows 编号器自增(显式 seq 会与相邻复制行撞号→GUI 视图键碰撞)
+    replayEvents.splice(idx, 0, { t: 'seg', kind: 'notice', md: `[fork-origin]${info}` } as unknown as JournalEvent);
+  }
   const replay = reduceJournal(replayEvents);
   if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
