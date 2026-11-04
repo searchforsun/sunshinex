@@ -323,11 +323,16 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     const wv = wvRef.current;
     if (wv === null || wv.executeJavaScript === undefined || pickState === 'picking') return;
     setMoreOpen(false);
+    const failHint = (): void => {
+      // 2026-11-04 用户裁定:失败提示=通知框形态,3s 自愈回落,不常驻
+      setPickState('failed');
+      window.setTimeout(() => setPickState((c) => (c === 'failed' ? 'idle' : c)), 3000);
+    };
     let wcId = 0;
     try {
       wcId = wv.getWebContentsId();
     } catch {
-      setPickState('failed');
+      failHint();
       return;
     }
     setPickState('picking');
@@ -337,7 +342,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       if (picked === null || picked.html === '') return; // Esc 取消
       setPickedEl({ wcId, url: picked.url, title: picked.title, path: picked.path, html: picked.html });
     } catch {
-      setPickState('failed'); // 注入失败可见化(导航中/CSP/页环境异常)
+      failHint(); // 注入失败可见化(导航中/CSP/页环境异常)
     }
   };
   /** 选择卡动作:整块围栏内容——主对话=⟦token⟧ 简标识落 composer(内容入账本发送期展开),
@@ -545,8 +550,13 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
                     {t('Open DevTools', '打开调试工具')}
                   </button>
                 )}
-                {builtin && wvUrl !== '' && (
-                  <button type="button" role="menuitem" onClick={() => void pickElement()}>
+                {devtoolsBridge !== undefined && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={builtin ? wvUrl === '' : active === null}
+                    onClick={() => void pickElement()}
+                  >
                     <MousePointerClick size={12} strokeWidth={1.75} aria-hidden="true" />
                     {t('Pick element', '选取元素')}
                   </button>
@@ -729,12 +739,15 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
         </div>
       )}
       {pickedEl !== null && (
-        <div className="sx-web-pickcard">
-          <span className="sx-web-pickcard-path">{pickedEl.path}</span>
-          <button type="button" onClick={() => sendPicked('main')}>{t('Add to main chat', '添加到主对话')}</button>
-          {onSideAsk !== undefined && <button type="button" onClick={() => sendPicked('side')}>{t('Ask in side chat', '辅助会话提问')}</button>}
-          <button type="button" aria-label={t('Cancel', '取消')} data-tip={t('Cancel', '取消')} onClick={() => setPickedEl(null)}>×</button>
-        </div>
+        <>
+          {/* 2026-11-04 用户裁定:点其他地方自动收卡(透明幕布在卡后,卡上点击不受影响) */}
+          <div style={{ position: 'fixed', inset: 0, zIndex: 29, background: 'transparent' }} onClick={() => setPickedEl(null)} />
+          <div className="sx-web-pickcard">
+            <span className="sx-web-pickcard-path">{pickedEl.path}</span>
+            <button type="button" onClick={() => sendPicked('main')}>{t('Add to main chat', '添加到主对话')}</button>
+            {onSideAsk !== undefined && <button type="button" onClick={() => sendPicked('side')}>{t('Ask in side chat', '辅助会话提问')}</button>}
+          </div>
+        </>
       )}
     </div>
   );
