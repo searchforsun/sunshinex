@@ -88,6 +88,26 @@ export interface SkillManifest {
   sourceRoot?: string;
 }
 
+/** 智能体团队清单（teams/{id}/team.md 解析结果；spec 2026-11-04 §1.3）：成员按 id 引用 agents 注册表，
+ *  missing=装载期解析失败的成员 id（fail-soft，UI 警示、卡片只列存活成员） */
+export interface TeamManifest {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  /** 成员 agent id 白名单（空格分隔 frontmatter 词法，词法同 skills.params） */
+  members: string[];
+  /** 领队 member id（缺省 members 首个；必须 ∈ members） */
+  lead?: string;
+  enabled: boolean;
+  source: 'project' | 'user';
+  sourceDir: string;
+  /** 被更高优先级同 id 遮蔽时 = 胜者来源名 */
+  shadowedBy?: 'project' | 'user';
+  /** members 中未解析到的 id（仅调用方提供 agentIds 时填充） */
+  missing: string[];
+}
+
 /** 项目上下文（SUNSHINE.md 解析结果） */
 export interface ProjectContext {
   name: string;
