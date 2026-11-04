@@ -371,25 +371,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
             {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}
           </button>
         )}
-        {/* fork 血缘横幅(2026-11-04 用户裁定):首行系统提示「分叉于会话:{名}」——点击回父会话
-            (onOpenSession 经 propsRef 取最新;root 同源由宿主装配) */}
-        {props.forkedFrom !== undefined && (
-          <div className="entry entry-notice fork-origin" role="status">
-            <span className="entry-icon">
-              <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
-            </span>
-            <div className="entry-md">
-              {t('Forked from session', '分叉于会话')}：
-              <button
-                type="button"
-                className="fork-origin-link"
-                onClick={() => propsRef.current.onOpenSession?.(props.forkedFrom!.sessionId)}
-              >
-                {props.forkedFrom!.title}
-              </button>
-            </div>
-          </div>
-        )}
         {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染)。
             G14.31 折叠轮/组级 memo 见 DayGroupBlock 注 */}
         {dayGroups.map((g) => (
@@ -420,6 +401,25 @@ export function MessageList(props: MessageListProps): JSX.Element {
             sideChat={sideChat}
           />
         ))}
+        {/* fork 血缘横幅(2026-11-04 用户裁定):置于复制内容**末尾**(分叉点标记——上方=来自父会话
+            的历史,下方=子会话新内容),点击回父会话(onOpenSession 经 propsRef 取最新) */}
+        {props.forkedFrom !== undefined && (
+          <div className="entry entry-notice fork-origin" role="status">
+            <span className="entry-icon">
+              <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <div className="entry-md">
+              {t('Forked from session', '分叉于会话')}：
+              <button
+                type="button"
+                className="fork-origin-link"
+                onClick={() => propsRef.current.onOpenSession?.(props.forkedFrom!.sessionId)}
+              >
+                {props.forkedFrom!.title}
+              </button>
+            </div>
+          </div>
+        )}
         {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
             原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
         {running && (

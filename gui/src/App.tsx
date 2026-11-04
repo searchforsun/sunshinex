@@ -1015,7 +1015,18 @@ function AppShell(): JSX.Element {
                 onOpenMemory={openMemoryTab}
                 onOpenLearned={openLearnedTab}
                 onFork={onForkStable}
-                onOpenSession={(sid) => openSession(sid, openRoot)}
+                onOpenSession={(sid) => {
+                  // fork 横幅回父会话(attach 两步同侧栏 attachJournal):sid=父 journal id——daemon
+                  // 重启后 runtime 表按新壳 id 重挂,裸 journal id snapshot 404(实测);newSession 壳+
+                  // attach 收养,返回 id 为准(在座运行中收编/换挂),journalId 随行保滚动位稳定键
+                  const conn = connRef.current;
+                  if (conn === null) return;
+                  void conn
+                    .newSession(openRoot)
+                    .then(({ sessionId }) => conn.attach(sessionId, sid).then((r) => r.sessionId))
+                    .then((canonical) => openSession(canonical, openRoot, sid))
+                    .catch(showOpError);
+                }}
                 onOpError={showOpError}
                 onRewind={(turn) => {
                   void connInstance

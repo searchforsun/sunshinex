@@ -5,6 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   SessionJournal,
+  forkIncludeCut,
+  listAnchors,
   listSessions,
   markSessionArchived,
   newSessionId,
@@ -16,6 +18,7 @@ import {
   writeSessionMeta,
   type JournalEvent,
 } from './session-journal';
+type ParsedJournal = ReturnType<typeof parseJournalFile>;
 
 const tmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-jr-'));
 
@@ -371,4 +374,35 @@ test('reduceJournal: ctx-snap 载荷不合法视同不存在（坏档不炸归�
   assert.equal(r.snapshot?.items[0]?.content, 'ok');
   const r2 = reduceJournal([{ t: 'header', v: 3, id: 'x', createdAt: 'c' } as unknown as JournalEvent, bad]);
   assert.equal(r2.snapshot, undefined);
+});
+
+test('forkIncludeCut:含点击轮整轮+回撤下轮悬挂 user 段行(GUI 档形,实测 29/30 线)', () => {
+  // 档形=实测 vph1:seg user 先于其 chain task 行;锚点=chain task 行(listAnchors 无 user 事件回退)
+  const rows: JournalEvent[] = [
+    { t: 'header', v: 3, id: 'x', createdAt: 'c' },
+    { t: 'seg', kind: 'user', text: '第一问' } as unknown as JournalEvent,      // L2
+    { t: 'chain', steps: [{ action: 'task', observation: '第一问' }] } as unknown as JournalEvent, // L3
+    { t: 'seg', kind: 'assistant', text: '答' } as unknown as JournalEvent,     // L4
+    { t: 'chain', steps: [{ action: 'note', observation: 'note' }] } as unknown as JournalEvent, // L5
+    { t: 'seg', kind: 'user', text: '第二问' } as unknown as JournalEvent,      // L6 悬挂面
+    { t: 'chain', steps: [{ action: 'task', observation: '第二问' }] } as unknown as JournalEvent, // L7
+    { t: 'seg', kind: 'assistant', text: '答2' } as unknown as JournalEvent,    // L8
+  ];
+  const parsed: ParsedJournal = { events: rows, lines: rows.map((r) => JSON.stringify(r)), truncated: false };
+  const anchors = listAnchors(parsed);
+  assert.deepEqual(anchors.map((a) => a.line), [3, 7]);
+  assert.equal(forkIncludeCut(parsed, anchors, 1), 5, '轮1:切 L5(L6 user 段行回撤,轮1 内容含 L4 note 完整)');
+  assert.equal(forkIncludeCut(parsed, anchors, 2), 8, '末轮:整档');
+});
+
+test('forkIncludeCut:TUI 档 user 事件行同形回撤', () => {
+  const rows: JournalEvent[] = [
+    { t: 'header', v: 3, id: 'x', createdAt: 'c' },
+    { t: 'user', text: '第一问' },                                  // L2
+    { t: 'user', text: '第二问' },                                  // L3
+  ];
+  const parsed: ParsedJournal = { events: rows, lines: rows.map((r) => JSON.stringify(r)), truncated: false };
+  const anchors = listAnchors(parsed);
+  assert.equal(forkIncludeCut(parsed, anchors, 1), 1, '轮1:下轮 user 行回撤后=仅 header');
+  assert.equal(forkIncludeCut(parsed, anchors, 2), 3, '末轮:整档');
 });

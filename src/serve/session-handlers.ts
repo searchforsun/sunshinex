@@ -13,7 +13,7 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { branchFrom, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -643,10 +643,13 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
     // G14.29 辅助 fork:整档继承(上下文完整),turn 不参与寻址
     cutLine = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')).lines.length;
   } else {
-    const anchors = listAnchors(parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')));
+    const jrnl = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl'));
+    const anchors = listAnchors(jrnl);
     const anchor = anchors[turn - 1];
     if (anchor === undefined) return io.send(res, 400, { error: 'no such turn' });
-    cutLine = anchor.line - 1; // 锚点行不进新档(规格 §5.2)
+    // fork=含点击轮整轮(2026-11-04 用户裁定「点哪轮 fork 其上全部」实测修订:旧切点在点击轮
+    // 锚点前=点击轮内容不进子档+下轮 user 段行悬挂);rewind 仍锚点行不进新档(规格 §5.2)
+    cutLine = kind === 'fork' ? forkIncludeCut(jrnl, anchors, turn) : anchor.line - 1;
   }
   let newId: string;
   try {

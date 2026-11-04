@@ -535,6 +535,25 @@ export function listAnchors(parsed: ParsedJournal): JournalAnchor[] {
 }
 
 /**
+ * fork 含轮切点（2026-11-04 用户裁定「fork 显示点击点之上所有记录」→点击轮**整轮含**）：
+ * 切在下一轮锚点行之前；紧贴切点的下轮 user 行回撤——GUI 档 SEG user 行先于其 task 链行落档
+ * （实测父档 29=user 段/30=task 链行，切 29 即悬挂下轮输入气泡），TUI 档 user 事件行同形同撤。
+ * 末轮（无下轮锚点）=整档长度。rewind 不走此函数（锚点行不进新档的规格语义不变）。
+ */
+export function forkIncludeCut(parsed: ParsedJournal, anchors: JournalAnchor[], turn: number): number {
+  const next = anchors[turn]; // 1-based turn → 下一轮锚点 = anchors[turn]
+  if (next === undefined) return parsed.lines.length;
+  let cut = next.line - 1;
+  while (cut > 1) {
+    const ev = parsed.events[cut - 1];
+    const danglingUser = ev !== undefined && (ev.t === 'user' || (ev.t === 'seg' && (ev as { kind?: string }).kind === 'user'));
+    if (!danglingUser) break;
+    cut -= 1;
+  }
+  return cut;
+}
+
+/**
  * 分档原语（规格 2026-09-20 rewind+fork §5.2）：复制源档第 1..upToLine 行到新档（第 2..upToLine 行逐字节相等），
  * header 重写（新 id / 新 createdAt / forkedFrom 血缘），写新档；源档零改动。
  * 任一前缀行非合法 JSON、upToLine 越界、源档缺失即 throw Error('INVALID_ARG: ...')，零副作用。
