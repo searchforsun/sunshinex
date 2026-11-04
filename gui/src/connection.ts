@@ -28,6 +28,8 @@ import type {
   SettingsView,
   SkillsGroup,
   SnapshotResponse,
+  TeamsOpInput,
+  TeamsView,
   TreeResp,
   TreeSearchResp,
   WorkspaceRow,
@@ -264,6 +266,20 @@ export interface Connection {
    *  frontmatter 后正文全文（bodyPreview 200 帽不适用）；root 缺省省查询参（scope=global 忽略
    *  root）；404（缺文件）/400（坏 id·scope=project 缺 root·畸形 frontmatter）以 HTTP 失败抛错 */
   agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
+  /** GET /settings/teams?root=（agents-teams P1 Task 2，TeamsPane 清单数据源）：两级宽容清单
+   *  （root 缺省 = 仅全局清单；teams 无 builtins——响应只设 view 键；wire 序 global→project） */
+  teamsView(root?: string): Promise<{ view: TeamsView }>;
+  /** PUT /settings/teams {root?, scope, op, id, frontmatter?, body?}（agents-teams P1 Task 2/3，
+   *  TeamsPane 卡片化写面）：op 四值判别联合（upsert/delete/enable/disable——agents putAgentOp 同款
+   *  单端点形态，无独立 /op 路由）；input 原文即请求体（global 省 root 不留空串伪参）；id 词法=
+   *  严格 kebab（daemon 入口 400 同口径）；400=纯请求形状、409=写面（hint 引流 raw 编辑面），
+   *  以 HTTP 失败抛错；成功 200 {ok:true} */
+  putTeamOp(input: TeamsOpInput): Promise<void>;
+  /** GET /settings/teams/body?scope=&id=&root=（agents-teams P1 Task 2，TeamsPane 编辑章程全文
+   *  装载——agentBody 同款）：team.md frontmatter 后章程原文全文（bodyPreview 200 帽不适用）；
+   *  root 缺省省查询参（scope=global 忽略 root）；404（缺文件）/400（坏 id·scope=project 缺 root·
+   *  畸形 frontmatter）以 HTTP 失败抛错 */
+  teamBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
   /** GET /settings/skills?root=（T6）：三源分组固定序 project/user/learned（root 缺省 = 仅 user 组） */
   /** all=true：跨项目视图（scope=all——user 全局 + 当前项目 project 组 + 全项目学习沉淀逐项目
    *  分组，组带 project 归属名）；缺省 = 当前 root 视图（T6 原语义，composer 技能清单消费） */
@@ -752,6 +768,21 @@ export function createConnection(opts: ConnectionOpts): Connection {
     agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {
       const query = `scope=${scope}&id=${encodeURIComponent(id)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`;
       return getJson<{ body: string }>(`/settings/agents/body?${query}`);
+    },
+    // ---- agents-teams P1：teams 三端点镜像 agents 三面（Task 2 serve 落地，Task 3 GUI 接线）----
+    teamsView(root?: string): Promise<{ view: TeamsView }> {
+      return getJson<{ view: TeamsView }>(root === undefined ? '/settings/teams' : `/settings/teams?root=${encodeURIComponent(root)}`);
+    },
+    putTeamOp(input: TeamsOpInput): Promise<void> {
+      // input 原文即请求体（putAgentOp/putMcpOp 同款——scope=global 省参不留 root 空串伪参）。
+      // 端点=PUT /settings/teams（agents-teams P1 Task 2——teams 面无独立 /op 端点，handleTeamsPut
+      // 单点收 op 四值），错误组装走 putOp（error/hint 透出）
+      return putOp('/settings/teams', input);
+    },
+    // 章程全文面:agentBody 同款——root 缺省省查询参;scope=global 时 root 定位面被服务端忽略
+    teamBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {
+      const query = `scope=${scope}&id=${encodeURIComponent(id)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`;
+      return getJson<{ body: string }>(`/settings/teams/body?${query}`);
     },
     skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }> {
       const parts = [root === undefined ? '' : `root=${encodeURIComponent(root)}`, ...(all === true ? ['scope=all'] : [])].filter(Boolean);

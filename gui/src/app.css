@@ -2961,6 +2961,9 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-denied { color: var(--err); border-color: var(--err); }
 .sx-rc:has(.sx-mcp-denied) { border-color: color-mix(in srgb, var(--err) 55%, var(--border)); }
 .sx-rc:has(.sx-shadow-tag) { opacity: 0.5; } /* 被项目遮蔽灰显(沿旧 .sx-mcp-card.shadowed 语言;仅 ResourceCard 卡) */
+/* 团队成员缺失 chip(agents-teams P1 TeamsPane):成员 id 不在 agents 生效集——warn 警示描边,
+   组合子叠加 .sx-chip 用(既有 warn chip 先例 .sx-mcp-gate 同令牌同形态;无现成 teams 语义类,按裁定补一条) */
+.sx-chip-missing { color: var(--warn); border-color: var(--warn); }
 /* T26 提供方默认模型 chip(choices[0] 所属——ok 绿描边,与普值 chip 视觉区分) */
 .sx-chip.sx-provider-default { color: var(--ok); border-color: var(--ok); }
 /* 2026-10-29 用户裁定追加段(纯加法;app.css 并行热区只加不改——旧 sx-drawer-* 容器类留置不删,历史段回看):
