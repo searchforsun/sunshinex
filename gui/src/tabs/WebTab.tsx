@@ -346,15 +346,62 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
      注入失败可见化(此前静默=「点了没反应」体感) */
   const [pickState, setPickState] = useState<'idle' | 'picking' | 'failed'>('idle');
   const [pickedEl, setPickedEl] = useState<{ wcId: number; url: string; title: string; path: string; html: string } | null>(null);
+  /** 桥面拾取在途态(订阅回调寻址;refs 免闭包陈旧) */
+  const pickWcRef = useRef(0);
+  const pickViaBridgeRef = useRef(false);
+  /** 桥面拾取结果回投订阅(2026-11-04 CDP Overlay inspect):info=null=Esc 取消;收口即 stop
+   *  (清检视态+还 debugger)。mount 级订阅一次,wcId 寻址判非本页忽略 */
+  useEffect(() => {
+    const sub = window.sunshinexWindow?.onPickNode;
+    if (sub === undefined) return;
+    return sub((wcId, info) => {
+      if (pickViaBridgeRef.current !== true || pickWcRef.current !== wcId) return;
+      pickViaBridgeRef.current = false;
+      void window.sunshinexWindow?.pickElementStop?.(wcId);
+      setPickState('idle');
+      if (info !== null && info.html !== '') setPickedEl({ wcId, url: info.url, title: info.title, path: info.path, html: info.html });
+    });
+  }, []);
+  // 卸载兜底:拾取在途即退(检视态悬着+debugger 挂着都不可残留)
+  useEffect(
+    () => () => {
+      if (pickViaBridgeRef.current) void window.sunshinexWindow?.pickElementStop?.(pickWcRef.current);
+    },
+    [],
+  );
   const pickElement = async (): Promise<void> => {
     const wv = wvRef.current;
-    if (wv === null || wv.executeJavaScript === undefined || pickState === 'picking') return;
-    setMoreOpen(false);
+    if (wv === null || pickState === 'picking') return;
     const failHint = (): void => {
       // 2026-11-04 用户裁定:失败提示=通知框形态,3s 自愈回落,不常驻
       setPickState('failed');
       window.setTimeout(() => setPickState((c) => (c === 'failed' ? 'idle' : c)), 3000);
     };
+    setMoreOpen(false);
+    const bridge = window.sunshinexWindow?.pickElementStart;
+    if (bridge !== undefined && wv.executeJavaScript !== undefined) {
+      // 桌面壳桥面(2026-11-04 用户裁定「任何页面都能选取,参考开源实现」):CDP Overlay inspect=
+      // DevTools 检视同源——原生蓝框+showInfo 信息条(标签/尺寸/颜色/字体)+点击拦截全在浏览器层,
+      // 不注脚本,任意 CSP/框架页面可用(注入版被页面环境卡死即此弃因)。结果经 onPickNode 回投
+      let wcId = 0;
+      try {
+        wcId = wv.getWebContentsId();
+      } catch {
+        failHint();
+        return;
+      }
+      setPickState('picking');
+      pickWcRef.current = wcId;
+      pickViaBridgeRef.current = true;
+      const r = await bridge(wcId).catch(() => ({ ok: false, error: 'bridge failed' }));
+      if (r.ok !== true) {
+        pickViaBridgeRef.current = false;
+        failHint();
+      }
+      return;
+    }
+    // 注入兜底(纯浏览器 iframe 态/旧壳):原 executeJavaScript 拾取脚本
+    if (wv.executeJavaScript === undefined) return;
     let wcId = 0;
     try {
       wcId = wv.getWebContentsId();

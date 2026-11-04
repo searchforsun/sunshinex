@@ -28,6 +28,11 @@ interface Window {
     openExternal?: (url: string) => Promise<{ ok: boolean }>;
     /** 内置浏览器调试（⋯菜单→打开调试工具，主窗 detach 独立 DevTools 窗，toggle 语义） */
     openDevtools?: (webContentsId?: number) => void;
+    /** 元素拾取（2026-11-04,CDP Overlay inspect=DevTools 同源——浏览器层高亮/信息条/点击拦截,
+     *  任意页面可选;旧壳缺席 → WebTab 注入脚本兜底）。onPickNode:info=null=Esc 取消 */
+    pickElementStart?: (webContentsId: number) => Promise<{ ok: boolean; error?: string }>;
+    pickElementStop?: (webContentsId: number) => Promise<void>;
+    onPickNode?: (cb: (webContentsId: number, info: { path: string; html: string; url: string; title: string } | null) => void) => () => void;
     /** M2 融合：guest 弹窗 URL 由主进程转发（main setWindowOpenHandler → builtin:open-url），
      *  GUI 开新侧栏 web 页签；退订返回卸载用 */
     /** target:会话连接开页(seat/key)或页内弹窗(openerWebContentsId)——决定开在哪个会话座位 */

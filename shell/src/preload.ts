@@ -18,6 +18,16 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
   /** 内置浏览器调试(2026-10-31 用户裁定「⋯菜单→打开调试工具」):主窗 detach 独立 DevTools 窗,
    *  检查器帧选择器可定位 WebTab iframe;已开再点=关闭(toggle) */
   openDevtools: (webContentsId?: number): void => void ipcRenderer.send('web:open-devtools', webContentsId),
+  /** 元素拾取(2026-11-04 用户裁定「任何页面都能选取」,CDP Overlay inspect=DevTools 同源):
+   *  start=进入浏览器原生检视模式(高亮/信息条/点击拦截全在浏览器层,任意页面可选);
+   *  stop=退出检视并还 debugger;onPickNode=节点拾取(null=Esc 取消)回投,退订返回卸载用 */
+  pickElementStart: (webContentsId: number): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('web:pick-start', webContentsId),
+  pickElementStop: (webContentsId: number): Promise<void> => ipcRenderer.invoke('web:pick-stop', webContentsId),
+  onPickNode: (cb: (webContentsId: number, info: { path: string; html: string; url: string; title: string } | null) => void): (() => void) => {
+    const handler = (_: unknown, id: number, info: { path: string; html: string; url: string; title: string } | null): void => cb(id, info);
+    ipcRenderer.on('builtin:pick-node', handler);
+    return () => void ipcRenderer.removeListener('builtin:pick-node', handler);
+  },
   /** M2 融合:guest 弹窗 URL 由主进程转发(main setWindowOpenHandler → builtin:open-url),
    *  GUI 开新侧栏 web 页签(和浏览器一样;退订返回卸载用) */
   onOpenUrl: (cb: (url: string, target?: { seat?: string; key?: string; openerWebContentsId?: number }) => void): (() => void) => {

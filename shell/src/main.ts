@@ -335,6 +335,100 @@ if (!app.requestSingleInstanceLock()) {
       else wc.openDevTools({ mode: 'detach' });
     });
 
+    // 元素拾取(2026-11-04 用户裁定「理论上任何页面都能选取元素,参考开源实现」):CDP Overlay
+    // inspect 模式=DevTools 元素检视同源——高亮蓝框/showInfo 信息条(标签+尺寸+颜色+字体)/点击
+    // 拦截全在浏览器层,不往页面注入脚本,任意 CSP/框架页面可用(注入版被页面环境卡死即此弃因)。
+    // 流程:pick-start → setInspectMode(searchForNode) → 用户悬停原生高亮 → 点击
+    // Overlay.inspectNodeRequested → 主进程 CDP 取节点数据(标签路径/outerHTML/页题址)发
+    // renderer(builtin:pick-node) → 渲染层选择卡收口 → pick-stop 清检视态并脱挂 debugger
+    // (webContents.debugger 单客户端,用完即还);Esc=inspectModeCanceled → 发 null=取消。
+    // 高亮颜色对齐截图样式:content 淡蓝填充+蓝边框,showInfo 画 DevTools 同款信息条。
+    type PickSession = {
+      onMessage: (ev: { preventDefault: () => void; readonly defaultPrevented: boolean }, method: string, params: Record<string, unknown>, sessionId: string) => void;
+      onDetached: (ev: { preventDefault: () => void; readonly defaultPrevented: boolean }, reason: string) => void;
+    };
+    const picks = new Map<number, PickSession>();
+    const gatherPickNode = async (guest: Electron.WebContents, backendNodeId: number): Promise<{ path: string; html: string; url: string; title: string }> => {
+      const send = <T>(method: string, params?: Record<string, unknown>): Promise<T> => guest.debugger.sendCommand(method, params) as Promise<T>;
+      const node = await send<{ node: { nodeName: string; attributes?: string[]; localName?: string } }>('DOM.describeNode', { backendNodeId, depth: 0 });
+      const tag = (node.node.localName ?? node.node.nodeName ?? 'div').toLowerCase();
+      const attrs = node.node.attributes ?? [];
+      let path = tag;
+      const idV = attrs[attrs.indexOf('id') + 1];
+      if (attrs.includes('id') && typeof idV === 'string' && idV !== '') path += `#${idV}`;
+      const clsV = attrs[attrs.indexOf('class') + 1];
+      if (attrs.includes('class') && typeof clsV === 'string' && clsV.trim() !== '') path += clsV.trim().split(/\s+/).slice(0, 2).map((c) => `.${c}`).join('');
+      let html = '';
+      try {
+        html = (await send<{ outerHTML: string }>('DOM.getOuterHTML', { backendNodeId })).outerHTML.slice(0, 4000);
+      } catch { /* 尽力 */ }
+      return { path, html, url: guest.getURL(), title: guest.getTitle() };
+    };
+    ipcMain.handle('web:pick-start', async (_event, wcId: unknown): Promise<{ ok: boolean; error?: string }> => {
+      const guest = typeof wcId === 'number' ? webContents.fromId(wcId) : undefined;
+      if (guest === undefined || guest.isDestroyed()) return { ok: false, error: 'webview gone' };
+      const dbg = guest.debugger;
+      try {
+        await dbg.attach('1.3');
+        await dbg.sendCommand('DOM.enable');
+        await dbg.sendCommand('CSS.enable');
+        await dbg.sendCommand('Overlay.enable');
+        await dbg.sendCommand('Overlay.setInspectMode', {
+          mode: 'searchForNode',
+          highlightConfig: {
+            showInfo: true,
+            contentColor: { r: 111, g: 168, b: 220, a: 0.55 },
+            paddingColor: { r: 147, g: 196, b: 125, a: 0.44 },
+            borderColor: { r: 111, g: 168, b: 220, a: 1 },
+            marginColor: { r: 246, g: 178, b: 107, a: 0.55 },
+          },
+        });
+      } catch (err) {
+        try { dbg.detach(); } catch { /* 尽力 */ }
+        return { ok: false, error: String(err) };
+      }
+      const id = guest.id;
+      const onMessage = (_ev: { preventDefault: () => void; readonly defaultPrevented: boolean }, method: string, params: Record<string, unknown>, _sessionId: string): void => {
+        if (mainWindow === undefined || mainWindow.isDestroyed()) return;
+        if (method === 'Overlay.inspectNodeRequested') {
+          const backendNodeId = typeof params.backendNodeId === 'number' ? params.backendNodeId : -1;
+          if (backendNodeId < 0) return;
+          void gatherPickNode(guest, backendNodeId).then(
+            (info) => mainWindow?.webContents.send('builtin:pick-node', id, info),
+            () => mainWindow?.webContents.send('builtin:pick-node', id, null),
+          );
+        } else if (method === 'Overlay.inspectModeCanceled') {
+          mainWindow.webContents.send('builtin:pick-node', id, null);
+        }
+      };
+      const onDetached = (): void => {
+        picks.delete(id);
+      };
+      dbg.on('message', onMessage);
+      dbg.on('detach', onDetached);
+      picks.set(id, { onMessage, onDetached });
+      return { ok: true };
+    });
+    ipcMain.handle('web:pick-stop', (_event, wcId: unknown): void => {
+      const guest = typeof wcId === 'number' ? webContents.fromId(wcId) : undefined;
+      if (guest === undefined || guest.isDestroyed()) return;
+      const sess = picks.get(guest.id);
+      if (sess !== undefined) {
+        guest.debugger.removeListener('message', sess.onMessage);
+        guest.debugger.removeListener('detach', sess.onDetached);
+        picks.delete(guest.id);
+      }
+      const dbg = guest.debugger;
+      void Promise.allSettled([
+        dbg.sendCommand('Overlay.setInspectMode', { mode: 'none' }),
+        dbg.sendCommand('Overlay.disable'),
+        dbg.sendCommand('DOM.disable'),
+        dbg.sendCommand('CSS.disable'),
+      ]).then(() => {
+        try { dbg.detach(); } catch { /* 尽力 */ }
+      });
+    });
+
     // 「浏览文件夹」原生目录选择（2026-10-27 创建新项目慢修复）：preload 桥 window.sunshinex.pickFolder
     // →系统对话框选完即回绝对路径——GUI 两处创建入口（欢迎页/侧栏 pickAndAdd）探测到此桥即不再走
     // 浏览器态标记定位兜底（全盘 BFS 同步 readdir 阻塞 daemon 主线程，实测 3.7s+/深目录更劣）。
