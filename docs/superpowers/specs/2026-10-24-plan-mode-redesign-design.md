@@ -261,7 +261,7 @@ exit_plan 交稿 = 规划 run 正常收束（ask_question 同观感:停在等待
    - **驳回带反馈**→维持只读→executor 返回修订指引(反馈内嵌)→模型原地修订→再次 exit_plan→新卡。**无轮次上限**(模型自然迭代取代 PLAN_MAX_ROUNDS;`runPlanItems`/合成链行/`'plan'` 行注入/planFlow fork 全部退役)。
    - **驳回空反馈**→宿主中断 run 回输入态(arm 保持)。
    - Esc/中断→同放弃(既有 deny 回填路径)。
-2. **非武装会话模型主动交稿=切入审批**(§10「guard 硬拒」退役):exit_plan 在非 armed run 被调时 executor 先弹「切入计划模式」审批卡(复用 approval 挂起,**30 秒超时自动 deny**)。批准→setMode('plan')+进 read-only 覆盖+计划提示 note→出计划卡;拒/超时→executor 返回拒绝文本(模型不再重试),原档原态不动(**不预切档不预武装**——批准才切)。guard 对 exit_plan 恒放行(armed 判定由 executor/seam 承载)。
+2. **通用提案工具(2026-11-04 泛化,覆盖同日早前「切入审批」试验)**:exit_plan 任何权限档可调——审批面=计划卡本体,无切入预审批(预审批的同意对象错位:内容已成稿才问模式)。卡按钮集按当前档自适应:**只读域**(plan/read-only)三键=实施(工作区编辑)/实施(完全访问)/重新计划(批准=选落档);**可写域**(acceptEdits/full-access)两键=实施(当前档)/重新计划(批准=维持本档,无落档切换,landPlanDecision mode 缺省=当前档)。重新计划带反馈=修订环回喂(空反馈=放弃本轮);裁决诊断行 verdict=approved/re-planned/discarded(无 rejected 词汇)。guard 恒放行;exitPlanArmed 武装位退役。
 3. **todo_write 回归执行期模型自管**(规划期仍不需要);交稿即正文事实:exit_plan 工具调用行(含 doc 入参)天然落主链,合成链行机制退役;`stopReason='plan-presented'`/terminal 工具面/BatchRunner terminalCalled 退役(exit_plan 不再终止 run,ToolCategory 'plan' 串行独占保留)。
 4. **awaiting-plan 单义化(TUI)**:卡挂起期 status='awaiting-plan',摘卡即回 'running'——修订环两卡之间该状态只指新卡在挂(测试等待面/UI pill 单义)。
 

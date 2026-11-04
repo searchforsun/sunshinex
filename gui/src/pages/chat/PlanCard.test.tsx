@@ -3,10 +3,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { PlanCard } from './PlanCard';
 import type { PlanCardDecision } from './PlanCard';
 
-/** PlanCard 组件直测(2026-11-03 修订重排锚):计划书 markdown 渲染;三按钮=实施·工作区编辑(缺省档)/
- *  实施·完全访问/重新计划——前两者回执 {approved:true, mode}（full-access 必须显式选择）,重新计划取常驻
- *  反馈框文本（带文本=修订环回执,空文本=放弃本轮不带 feedback）;Enter 快捷重新计划（Shift+Enter 换行
- *  不提交,与 composer 键位同构）。判别力:决策体缺 mode 或反馈面语义漂移即红。 */
+/** PlanCard 组件直测(2026-11-03 修订重排锚;2026-11-04 泛化锚):计划书 markdown 渲染;按钮集随当前档
+ *  自适应——缺省(plan/只读域)三键=实施·工作区编辑(缺省档)/实施·完全访问/重新计划,可写域两键=实施
+ *  (当前档)+重新计划。实施回执 {approved:true, mode},重新计划取常驻反馈框文本（带文本=修订环回执,
+ *  空文本=放弃本轮不带 feedback）;Enter 快捷重新计划（Shift+Enter 换行不提交,与 composer 键位同构）。
+ *  判别力:决策体缺 mode 或反馈面/按钮域语义漂移即红。 */
 
 describe('PlanCard(计划确认卡 2026-11-03 重排:滚动文档+常驻反馈+三按钮)', () => {
   it('计划书 markdown 渲染;实施两按钮分别回执 approve+mode 两档;items 不再独立渲染 ol', () => {
@@ -42,6 +43,19 @@ describe('PlanCard(计划确认卡 2026-11-03 重排:滚动文档+常驻反馈+�
     fireEvent.change(box, { target: { value: '换行不提交' } });
     fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
     expect(decisions).toHaveLength(3); // Shift+Enter 换行不提交
+  });
+
+  it('按钮集随当前档自适应(2026-11-04 泛化):可写域两键=实施(当前档)+重新计划,实施回执=当前档', () => {
+    const decisions: PlanCardDecision[] = [];
+    const { unmount } = render(<PlanCard doc="plan" items={['A']} mode="full-access" onDecide={(d) => decisions.push(d)} />);
+    expect(screen.getByText(/Implement \(full access\)|实施（完全访问）/)).toBeTruthy();
+    expect(screen.queryByText(/Implement \(workspace edits\)|实施（工作区编辑）/)).toBeNull();
+    fireEvent.click(screen.getByText(/Implement \(full access\)|实施（完全访问）/));
+    expect(decisions[0]).toEqual({ approved: true, mode: 'full-access' }); // 批准=维持当前档,无落档切换
+    unmount();
+    render(<PlanCard doc="plan" items={['A']} mode="acceptEdits" onDecide={(d) => decisions.push(d)} />);
+    fireEvent.click(screen.getByText(/Implement \(workspace edits\)|实施（工作区编辑）/));
+    expect(decisions[1]).toEqual({ approved: true, mode: 'acceptEdits' });
   });
 
   it('计划名卡头链接（2026-11-03 交稿协议）:path+onOpenFile 在场=蓝色链接点击开侧栏原文;缺席降级纯文本', () => {

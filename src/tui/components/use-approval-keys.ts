@@ -63,30 +63,35 @@ export function useApprovalKeys({
       if (Number.isInteger(an) && an >= 1 && an <= 3) { controller.resolveApproval(approvalDecisionByIndex(an - 1)); return true; }
       return true;
     }
-    // plan 确认卡（spec §4.2-4.4;2026-11-03 批准卡三选）：y=实施（工作区编辑,缺省档）/ f=实施（完全访问,
-    // 显式选择）/ n=进入反馈输入态（修订环）;↑↓ 移动 / Space·Enter 提交 / 1-3 快选。Esc 分支不可达
-    // （App 判定序全局 Esc 在本层之前截获——中断路径经 approval 拦截转 confirmPlan(false),harness 判定序
-    // 信号优先=中断语义）。反馈输入态（n 之后）：键面让位 composer——本 hook 放行（return false）,
-    // 可打印/编辑键落输入缓冲;Enter 经输入行编辑→controller.submit 入口拦截为 confirmPlan(false, 反馈文本),
-    // Esc 走全局中断位同上
+    // plan 确认卡（spec §4.2-4.4;2026-11-04 泛化:键位随当前档自适应）：只读域（plan/read-only）
+    // y=实施（工作区编辑,缺省档）/ f=实施（完全访问,显式选择）/ n=进入反馈输入态（重新计划环）;
+    // 可写域（acceptEdits/full-access）y=实施（当前档——批准即维持本档,无落档切换）/ f 无键
+    // （档位切换不混入计划卡）/ n 同上。↑↓ 移动 / Space·Enter 提交 / 数字快选（域定键数）。
+    // Esc 分支不可达（App 判定序全局 Esc 在本层之前截获——中断路径经 approval 拦截转 confirmPlan(false),
+    // harness 判定序信号优先=中断语义）。反馈输入态（n 之后）：键面让位 composer——本 hook 放行
+    // （return false）,可打印/编辑键落输入缓冲;Enter 经输入行编辑→controller.submit 入口拦截为
+    // confirmPlan(false, 反馈文本),Esc 走全局中断位同上
     if (status === 'awaiting-plan') {
       if (controller.planFeedbackMode === true) return false;
-      if (input === 'y') { void controller.confirmPlan(true, undefined, 'acceptEdits'); return true; }
-      if (input === 'f') { void controller.confirmPlan(true, undefined, 'full-access'); return true; }
+      const mode = controller.runtime.harness.security.mode;
+      const writable = mode === 'acceptEdits' || mode === 'full-access';
+      if (input === 'y') { void controller.confirmPlan(true, undefined, writable ? mode : 'acceptEdits'); return true; }
+      if (input === 'f' && !writable) { void controller.confirmPlan(true, undefined, 'full-access'); return true; }
       if (input === 'n') { controller.planFeedbackMode = true; return true; }
       if (key.escape) { void controller.confirmPlan(false); return true; }
-      if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, 3, -1)); return true; }
-      if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, 3, 1)); return true; }
+      const arity = writable ? 2 : 3;
+      if (key.upArrow) { setPCursor(moveCursor(pCursorRef.current, arity, -1)); return true; }
+      if (key.downArrow) { setPCursor(moveCursor(pCursorRef.current, arity, 1)); return true; }
       if (key.return || input === ' ') {
         const idx = pCursorRef.current;
-        if (idx === 2) { controller.planFeedbackMode = true; return true; }
-        void controller.confirmPlan(true, undefined, idx === 0 ? 'acceptEdits' : 'full-access');
+        if (idx === arity - 1) { controller.planFeedbackMode = true; return true; }
+        void controller.confirmPlan(true, undefined, idx === 0 ? (writable ? mode : 'acceptEdits') : 'full-access');
         return true;
       }
       const pn = Number.parseInt(input, 10);
-      if (pn >= 1 && pn <= 3) {
-        if (pn === 3) { controller.planFeedbackMode = true; return true; }
-        void controller.confirmPlan(true, undefined, pn === 1 ? 'acceptEdits' : 'full-access');
+      if (pn >= 1 && pn <= arity) {
+        if (pn === arity) { controller.planFeedbackMode = true; return true; }
+        void controller.confirmPlan(true, undefined, pn === 1 ? (writable ? mode : 'acceptEdits') : 'full-access');
         return true;
       }
       return true;

@@ -59,12 +59,10 @@ const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
   ask?: AskUserSeam;
-  /** exit_plan 挂起接缝（2026-11-03 无感化）：awaitDecision 弹卡阻塞等裁决,裁决即工具结果回喂;
-   *  isArmed 计划模式在途判定;requestModeSwitch 非 armed 时弹审批请求切入(30s 超时)。
+  /** exit_plan 出牌接缝（2026-11-03 无感化;2026-11-04 泛化为通用提案工具）：awaitDecision 弹卡
+   *  阻塞等裁决,裁决即工具结果回喂——审批面=计划卡本体（按钮集按当前档自适应,宿主侧承载）。
    *  接缝缺省不注册（ask 先例） */
   plan?: {
-    isArmed(): boolean;
-    requestModeSwitch(timeoutMs: number): Promise<boolean>;
     awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
   };
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */

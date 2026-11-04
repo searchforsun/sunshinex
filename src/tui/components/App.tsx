@@ -104,7 +104,7 @@ export function approvalSelectorOptions(): { label: string; description?: string
 }
 
 /** plan 确认选择器选项（2026-11-03 批准卡三选,与 use-approval-keys y/f/n/1-3 同序：实施工作区编辑（缺省）/
- *  实施完全访问（显式选择）/ 驳回附反馈;Esc 同中断=放弃本轮） */
+ *  实施完全访问（显式选择）/ 重新计划附反馈;Esc 同中断=放弃本轮） */
 function planSelectorOptions(): { label: string; description?: string }[] {
   return [
     { label: t('Implement (workspace edits)', '实施（工作区编辑）'), description: t('land acceptEdits and run the steps (default)', '落工作区编辑档逐项执行（缺省）') },
@@ -401,8 +401,8 @@ export function App({
    * 8. Esc 全局分流（App 保留）：暂停卡撤卡 → interrupt 可达即中断 → 输入非空=清空（空输入无操作，不退出）
    * 9. 审批卡 awaiting-approval（use-approval-keys，模态恒吞键）：y/a/n 快捷；Esc=deny；↑↓；
    *     Space/Enter=光标行裁决；数字 1-3 快选
-   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键）：y=实施工作区编辑（缺省档）/ f=实施完全访问 /
-   *     n=进入反馈输入态（键面让位 composer——Enter 经 submit 入口拦截=confirmPlan(false,反馈文本)、
+   * 10. plan 卡 awaiting-plan（use-approval-keys，模态恒吞键；2026-11-04 键位随当前档自适应）：只读域 y=实施工作区编辑（缺省档）/ f=实施完全访问；可写域 y=实施当前档（无 f）/
+   *     n=进入反馈输入态（键面让位 composer——Enter 经 submit 入口拦截=confirmPlan(false,反馈文本=重新计划)、
    *     Esc=全局中断位转 confirmPlan(false)=放弃本轮,harness 判定序信号优先）；↑↓；Space/Enter；1-3 快选
    * 11. Tab 分流（App 保留）：/ 前缀=斜杠补全（exact 词池内循环邻位+空格 / 补面板选中项+空格）；
    *     否则=expandAll+todoExpanded 同步翻转（store 先写）并 recordView

@@ -10,8 +10,8 @@ import { ScriptedAdapter } from '../model/adapter';
 
 /** 计划模式无感化测试（2026-11-03,ask_question 同构）：armed 提交=会话作用域 run（read-only 覆盖在座）
  *  ——模型调研后 exit_plan 弹卡阻塞等裁决（run 不收口,status 保持 running/awaiting-plan 视角）,
- *  裁决回填 → executor 恢复同 run 无感继续（批准=落档放权原地实施;驳回带反馈=原地修订再出牌;
- *  空反馈驳回=中断 run 放弃本轮,arm 保持）。裁决回执链路:confirmPlan → planDecide → seam 恢复。 */
+ *  裁决回填 → executor 恢复同 run 无感继续（批准=落档放权原地实施;重新计划带反馈=原地修订再出牌;
+ *  空反馈放弃=中断 run 放弃本轮,arm 保持）。裁决回执链路:confirmPlan → planDecide → seam 恢复。 */
 
 async function waitFor(cond: () => boolean, what: string, timeoutMs = 8000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -74,7 +74,7 @@ test('/plan：armed 提交→exit_plan 挂起(status running→awaiting-plan)→
   void prevLang;
 });
 
-test('/plan：驳回带反馈→executor 恢复原地修订→再次出牌→批准实施(修订环自然迭代,无轮次上限)', async () => {
+test('/plan：重新计划带反馈→executor 恢复原地修订→再次出牌→批准实施(修订环自然迭代,无轮次上限)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan2-'));
   try {
     const ctrl = new SessionController({
@@ -102,7 +102,7 @@ test('/plan：驳回带反馈→executor 恢复原地修订→再次出牌→批
   }
 });
 
-test('/plan：空反馈驳回=放弃本轮——run 中断回输入态,arm 保持(2026-11-03 用户裁定)', async () => {
+test('/plan：空反馈放弃=放弃本轮——run 中断回输入态,arm 保持(2026-11-03 用户裁定)', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-plan3-'));
   try {
     const ctrl = new SessionController({

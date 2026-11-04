@@ -112,12 +112,9 @@ export function builtinTools(
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
     readGuard?: ReadGuard;
-    /** exit_plan 交稿接缝（2026-11-03 无感化,ask_question 同构）：isArmed 计划模式判定;
-     *  requestModeSwitch 非 armed 时弹审批请求切入(30s 超时);awaitDecision 弹卡阻塞等裁决。
-     *  接缝不在场不注册（ask 先例） */
+    /** exit_plan 出牌接缝（2026-11-03 无感化,ask_question 同构;2026-11-04 泛化）：awaitDecision
+     *  弹卡阻塞等裁决——审批面=计划卡本体（按钮集按当前档自适应,宿主侧承载）。接缝不在场不注册 */
     plan?: {
-      isArmed(): boolean;
-      requestModeSwitch(timeoutMs: number): Promise<boolean>;
       awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
     };
   } = {},
@@ -747,9 +744,10 @@ export function builtinTools(
     },
   });
 
-  // exit_plan（2026-11-03 无感化,ask_question 同构）：挂起型交稿工具——模型调研完显式出牌,executor
-  // 弹卡阻塞等裁决（run 不收口,界面保持运行中）,裁决作为工具结果回喂,模型同 run 无感继续。
-  // guard 只在计划模式放行（exitPlanArmed;拒绝不终止——模型看拒绝行自行调整）。接缝不在场不注册（ask 先例）
+  // exit_plan（2026-11-03 无感化,ask_question 同构;2026-11-04 泛化为通用提案工具）：挂起型出牌工具
+  // ——模型调研完显式出牌,executor 弹卡阻塞等裁决（run 不收口,界面保持运行中）,裁决作为工具结果回喂,
+  // 模型同 run 无感继续。**任何权限档可调**（非计划模式专属）——审批面=计划卡本体,按钮集按当前档
+  // 自适应（只读域=选落档三键;可写域=维持当前档两键）。接缝不在场不注册（ask 先例）
   if (plan) {
     const planSeam = plan;
     tools.push({
@@ -764,7 +762,7 @@ export function builtinTools(
       },
       name: 'exit_plan',
       description:
-        'Present your plan for user approval. Call this ONLY in plan mode after you have finished investigating (read-only research) and the plan is ready. Blocks until the user decides: approval returns permission to implement in this same session; rejection returns feedback to revise with. Do not call it in normal (non-plan) work.',
+        'Present your plan for user approval before implementing it. Research first (read the relevant code), then call this with the complete plan document. Blocks until the user decides on the plan card: approval returns the go-ahead to implement in this same session; a re-plan request returns feedback to revise with (call again with the revised plan).',
       category: 'plan',
       display: { verb: 'PLAN', targetFields: ['name'] },
       executor: async (input: ToolInput) => {
@@ -773,21 +771,14 @@ export function builtinTools(
         const name = typeof input.name === 'string' ? input.name.trim() : '';
         const doc = typeof input.doc === 'string' ? input.doc : '';
         if (doc.trim() === '') throw new CodedToolError('INVALID_ARG', 'doc must be the full plan document in markdown (non-empty)');
-        // 非 armed 时请求用户批准切入计划模式(30s 超时自动拒;armed=已在计划模式,直接交稿)
-        if (!planSeam.isArmed()) {
-          const switchOk = await planSeam.requestModeSwitch(30_000);
-          if (!switchOk) {
-            return execOut('exit_plan denied — user did not approve plan mode switch within timeout. Do not call exit_plan again.');
-          }
-        }
         const decision = await planSeam.awaitDecision(name, doc);
         if (decision.approved) {
           return execOut(`plan approved — implement via ${decision.mode === 'full-access' ? 'full access' : 'workspace edits'}; maintain progress with todo_write as you go`);
         }
         if (decision.feedback !== undefined && decision.feedback.trim() !== '') {
-          return execOut(`plan rejected — revise it per this feedback and call exit_plan again: ${decision.feedback}`);
+          return execOut(`re-plan requested — revise the plan per this feedback and call exit_plan again: ${decision.feedback}`);
         }
-        return execOut('plan rejected without feedback');
+        return execOut('plan discarded — continue the current task normally; do not resubmit unless the user asks');
       },
     });
   }

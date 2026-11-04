@@ -946,8 +946,8 @@ describe('exit_plan 交稿卡(2026-11-03 交稿协议):经 App 装配面 opts �
     act(() => conn.opts.onPlanApproval?.('s1', 'p-plan-1', planReq));
     expect(screen.getAllByText('重构认证模块').length).toBeGreaterThanOrEqual(2); // 卡头计划名链接 + doc 标题双呈现
     expect(screen.getByRole('heading', { level: 1, name: '重构认证模块' })).toBeDefined(); // doc 渲染
-    fireEvent.click(screen.getByText(/Implement \(workspace edits\)|实施（工作区编辑）/));
-    await waitFor(() => expect(conn.replyPlanApprovalCalls).toEqual([['p-plan-1', { approved: true, mode: 'acceptEdits' }]]));
+    fireEvent.click(screen.getByText(/Implement \(full access\)|实施（完全访问）/)); // 可写域两键卡(2026-11-04 泛化:快照会话缺省 full-access,实施=维持当前档)
+    await waitFor(() => expect(conn.replyPlanApprovalCalls).toEqual([['p-plan-1', { approved: true, mode: 'full-access' }]]));
     await waitFor(() => expect(screen.queryAllByText('重构认证模块')).toEqual([])); // 回执落定移卡
     unmount();
   });

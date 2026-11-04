@@ -329,8 +329,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [askCards.length]);
   /** G14.88 审批卡 dock 化:挂起时 dock 变确认框(输入框/队列隐藏),确认后恢复——与 ask 同形 */
   const approvalCards = cards.filter((c) => c.kind === 'approval');
-  /** 阶段三 plan-arm(spec §5.2):plan-approval 裁决卡——PlanCard(计划书 markdown+步骤+批准/反馈),
-   *  dock 挂载与 approval 同形;回执经 sendPlanApproval(批准落工作区编辑自动解除,拒绝保持) */
+  /** 阶段三 plan-arm(spec §5.2):plan-approval 裁决卡——PlanCard(计划书 markdown+步骤+批准/重新计划,
+   *  按钮集随 sessMode 自适应:只读域三键选落档/可写域两键维持当前档),dock 挂载与 approval 同形;
+   *  回执经 sendPlanApproval(批准落所选档自动解除,重新计划保持) */
   const planCards = cards.filter((c) => c.kind === 'plan-approval');
   const lastLiveRun = running
     ? [...chat.entries].reverse().find((e) => e.kind === 'run' && e.streaming === true)
@@ -735,7 +736,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             反馈回执后移卡恢复输入框;裁决期间 composer 由 dock 顶替(同 G14.88 审批挂起口径) */
           <div className="ask-dock">
             {planCards.map((c) => (
-              <PlanCard key={c.pid} doc={c.req.doc} items={c.req.items} name={c.req.name} path={c.req.path} onOpenFile={onOpenFile} onDecide={(d) => sendPlanApproval(c.pid, d)} />
+              <PlanCard key={c.pid} doc={c.req.doc} items={c.req.items} name={c.req.name} path={c.req.path} mode={sessMode} onOpenFile={onOpenFile} onDecide={(d) => sendPlanApproval(c.pid, d)} />
             ))}
           </div>
         ) : approvalCards.length > 0 ? (

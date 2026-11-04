@@ -25,12 +25,13 @@ describe('localizeNotice /plan 全族', () => {
 
   it('带目标提交的入队提示与弃卡提示', () => {
     expect(localizeNotice('Queued — planning will start when the current task finishes')).toBe('已入队：当前任务收口后将先规划');
-    expect(localizeNotice('Plan discarded — still in plan mode; submit a new goal to re-plan')).toBe('计划已弃——仍处计划模式；提交新目标即可重新规划');
+    expect(localizeNotice('Plan discarded — submit a new goal to re-plan')).toBe('计划已弃——提交新目标即可重新规划');
   });
 
-  it('plan-approval 裁决诊断行:pid 捕获组透传', () => {
+  it('plan-approval 裁决诊断行:pid 捕获组透传(2026-11-04 术语:重新计划/放弃,无拒绝)', () => {
     expect(localizeNotice('plan-approval p12 resolved: approved')).toBe('计划 p12 已批准');
-    expect(localizeNotice('plan-approval p3 resolved: rejected')).toBe('计划 p3 已拒绝');
+    expect(localizeNotice('plan-approval p3 resolved: re-planned')).toBe('计划 p3 转入重新计划');
+    expect(localizeNotice('plan-approval p4 resolved: discarded')).toBe('计划 p4 已放弃');
   });
 
   it('规划中断标签', () => {

@@ -556,7 +556,7 @@ export async function handleAskReply(io: SessionHandlerIo, req: http.IncomingMes
 /** POST /plan-approval/:pid {approved,mode?,feedback?}（阶段三 plan-arm,spec §5.1;2026-11-03 修订
  *  批准卡三选）：planFlow 裁决回执——沿既有审批路由同形：approved 必布尔（400）、mode 可选且仅
  *  acceptEdits|full-access（400,缺省 acceptEdits 由 plan-flow 兜底）、feedback 可选非空字符串（400;
- *  无 feedback 的 approved:false=放弃本轮,空反馈不 400——GUI 驳回空框即此形态）;命中且 kind 对
+ *  无 feedback 的 approved:false=放弃本轮,空反馈不 400——GUI 重新计划空框即此形态）;命中且 kind 对
  *  resolve+notice（会话面）+200;未知 pid/已决（重复回执）/kind 错配（plan 卡错打 approval 端点等）
  *  统一 404 */
 export async function handlePlanApprovalReply(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {

@@ -91,8 +91,8 @@ export class SecurityGuard {
     // todo_write（todo_write 规格 D4）：零 IO 副作用的进程内状态写，三档放行（对标 ask_question/spawn 先例）；
     // deny 规则与破坏性硬底线仍先行
     if (tool === 'todo_write') return { allowed: true };
-    // exit_plan（2026-11-03 无感化）：guard 恒放行——armed 判定与非 armed 时的模式切换审批
-    // 由 executor 面承载（planSeam.isArmed/requestModeSwitch;非 armed 时弹审批卡请求切入,30s 超时）
+    // exit_plan（2026-11-04 泛化为通用提案工具）：guard 恒放行——审批面=计划卡本体（宿主弹卡,
+    // 按钮集按当前档自适应）
     if (tool === 'exit_plan') return { allowed: true };
     // worktree 工具（规格 D7）：deny 规则仍先行；单发独占由 reactor 并行闸门承载；
     // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；read-only 闸门：
@@ -162,17 +162,6 @@ export class SecurityGuard {
   /** override 活跃外窥（2026-11-03 轻量切档边界):规划轮 read-only 覆盖在座=true——真档 setBaseMode
    *  活改在此窗口被遮蔽到 exitReadOnly,serve setMode 边界据此 busy 不放开 */
   get overrideActive(): boolean { return this.override !== undefined; }
-
-  /** exit_plan 武装位（2026-11-03 交稿协议）：规划轮在途标记——宿主 enterReadOnly 接缝置 true、
-   *  exitReadOnly 接缝置 false（与 read-only 覆盖同生命周期同配对纪律）。guard 判据单点,
-   *  工具清单恒下发不裁剪（spec §1 enforcement 哲学） */
-  private exitPlanArmed = false;
-  setExitPlanArmed(armed: boolean): void {
-    this.exitPlanArmed = armed;
-  }
-  get exitPlanArmedNow(): boolean {
-    return this.exitPlanArmed;
-  }
 
   /** 基档切换通道（spec §4.4 批准落档:planFlow 批准续段/宿主消费;Task8 审查裁定——只回执不实切被推翻）：
    *  运行中模式切换的 409 纪律由宿主保证（guard 判定面无并发写源） */

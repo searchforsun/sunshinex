@@ -12,8 +12,9 @@ import { SessionJournal } from '../tui/session-journal';
 
 /** serve 计划模式 e2e（2026-11-03 无感化,ask_question 同构）：armed 提交=会话作用域 run（read-only
  *  覆盖在座）,exit_plan executor 弹卡阻塞等裁决（run 不收口——无感锚:挂卡期 status running）,
- *  裁决回执 → executor 恢复同 run 无感继续（批准=落档放权原地实施;驳回带反馈=原地修订再出牌;
- *  空反馈驳回=中断 run 放弃本轮,arm 保持）。轻量切档/运行中武装见 session-switch.test。 */
+ *  裁决回执 → executor 恢复同 run 无感继续（批准=落档放权原地实施;重新计划带反馈=原地修订再出牌;
+ *  空反馈=中断 run 放弃本轮）。2026-11-04 泛化:exit_plan 任何档可调（通用提案工具）——卡按钮集按
+ *  当前档自适应（只读域三键选落档/可写域两键维持当前档）。轻量切档/运行中武装见 session-switch.test。 */
 
 async function waitFor(pred: () => boolean, timeoutMs: number, what = '条件'): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -110,7 +111,7 @@ test('serve 无感主链路：armed 提交→exit_plan 挂起(status 保持 runn
   );
 });
 
-test('serve 无感：驳回带反馈→executor 恢复原地修订→再次出牌新卡→批准实施', async () => {
+test('serve 无感：重新计划带反馈→executor 恢复原地修订→再次出牌新卡→批准实施', async () => {
   const model = new ScriptedAdapter([
     { toolCalls: [{ name: 'exit_plan', args: { name: '计划一', doc: '# 计划一\n1. 步骤A' } }] },
     { toolCalls: [{ name: 'exit_plan', args: { name: '计划二', doc: '# 计划二\n1. 步骤B' } }] }, // 修订后再次出牌
@@ -123,7 +124,7 @@ test('serve 无感：驳回带反馈→executor 恢复原地修订→再次出�
       assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
       await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
       const card1 = planCard(ctx.session, ctx.frames);
-      assert.equal(ctx.session.resolvePendingPlanApproval(card1.pid, { approved: false, feedback: '改成步骤B' }), true, '带反馈驳回回执命中');
+      assert.equal(ctx.session.resolvePendingPlanApproval(card1.pid, { approved: false, feedback: '改成步骤B' }), true, '带反馈重新计划回执命中');
       await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000, '修订后新卡');
       const card2 = planCard(ctx.session, ctx.frames);
       assert.ok(card2.pid !== card1.pid, '新卡新 pid');
@@ -131,13 +132,13 @@ test('serve 无感：驳回带反馈→executor 恢复原地修订→再次出�
       await waitFor(() => ctx.session.status() === 'idle', 10_000, '批准后实施收束');
       const chain = chainOf(ctx.session);
       assert.equal(chain.filter((st) => st.action === 'tool-call' && st.observation.includes('exit_plan')).length, 2, '两次交稿调用行(修订环自然迭代)');
-      assert.ok(chain.some((st) => st.observation.includes('revise it per this feedback')), '反馈回喂行在场');
+      assert.ok(chain.some((st) => st.observation.includes('re-plan requested')), '重新计划回喂行在场');
     },
     { mode: 'plan' },
   );
 });
 
-test('serve 无感：空反馈驳回=放弃本轮——run 中断回输入态,arm 保持(2026-11-03 用户裁定)', async () => {
+test('serve 无感：空反馈=放弃本轮——run 中断回输入态,arm 保持(2026-11-03 用户裁定)', async () => {
   const model = new ScriptedAdapter([
     { toolCalls: [{ name: 'exit_plan', args: { name: '计划X', doc: '# 计划X\n1. 步骤X' } }] },
     '{"done":true,"reply":"重新规划后实施"}',
@@ -148,7 +149,7 @@ test('serve 无感：空反馈驳回=放弃本轮——run 中断回输入态,ar
       assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
       await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000);
       const card = planCard(ctx.session, ctx.frames);
-      assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: false }), true, '空反馈驳回回执命中');
+      assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: false }), true, '空反馈放弃回执命中');
       await waitFor(() => ctx.session.status() === 'idle', 10_000, '放弃本轮:run 中断回输入态');
       assert.equal(ctx.session.snapshotResponse().mode, 'plan', '放弃仍保持 armed(下条提交重新规划)');
       assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '放弃不产修订轮新卡');
@@ -157,27 +158,26 @@ test('serve 无感：空反馈驳回=放弃本轮——run 中断回输入态,ar
     { mode: 'plan' },
   );
 });
-test('serve 交稿协议：非 armed 调 exit_plan=切入审批卡——拒→拒绝文本回喂不产计划卡(run 不终止)', async () => {
+test('serve 泛化：非 armed 出牌=计划卡直出(可写域两键)——实施=维持当前档,同 run 无感实施', async () => {
   const model = new ScriptedAdapter([
-    { toolCalls: [{ name: 'exit_plan', args: { name: '越权交稿', doc: '# 不该出现' } }] },
-    '{"done":true,"reply":"普通任务完成"}',
+    { toolCalls: [{ name: 'exit_plan', args: { name: '提案计划', doc: '# 提案计划\n1. 步骤W' } }] },
+    '{"tool":"write","input":{"path":"direct-plan.txt","content":"ok"},"done":false}',
+    '{"done":true,"reply":"实施完成"}',
   ]);
   await withSession(model, async (ctx) => {
-    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '前提:非 plan-arm');
-    assert.deepEqual(ctx.session.submit('普通任务'), { ok: true });
-    await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'approval'), 10_000, '切入审批卡(30s 窗口,拒绝即刻)');
-    const row = ctx.session.pendingSnapshot().find((r) => r.kind === 'approval');
-    assert.ok(row, '挂起表应有 approval 行');
-    assert.equal(ctx.session.resolvePendingApproval(row.pid, 'deny'), true, '拒绝切入');
-    await waitFor(() => ctx.session.status() === 'idle', 10_000, '拒绝后 run 收尾');
-    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '拒绝不切档(原档保持)');
-    assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), false, '拒绝不产计划卡(不终止 run)');
+    ctx.session.attachJournal(new SessionJournal(path.join(ctx.tmp, 'data')));
+    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '前提:可写域(full-access),非 plan-arm');
+    assert.deepEqual(ctx.session.submit('做一件事'), { ok: true });
+    await waitFor(() => ctx.session.pendingSnapshot().some((r) => r.kind === 'plan-approval'), 10_000, '计划卡直出(无切入预审批)');
+    assert.equal(ctx.session.pendingSnapshot().some((r) => r.kind === 'approval'), false, '无切入审批卡(2026-11-04:卡本体即审批面)');
+    assert.equal(ctx.session.status(), 'running', '挂卡期 run 不收口(ask 同观感)');
+    const card = planCard(ctx.session, ctx.frames);
+    assert.equal(ctx.session.resolvePendingPlanApproval(card.pid, { approved: true, mode: 'full-access' }), true, '实施(当前档)回执命中');
+    await waitFor(() => ctx.session.status() === 'idle', 10_000, '批准后同 run 实施收束');
+    assert.equal(ctx.session.snapshotResponse().mode, 'full-access', '可写域批准=维持当前档(无落档切换)');
+    assert.ok(fs.existsSync(path.join(ctx.tmp, 'direct-plan.txt')), '同 run 无感实施(write 落盘)');
     const chain = chainOf(ctx.session);
-    assert.ok(
-      chain.some((st) => st.action === 'tool-result' && st.observation.includes('exit_plan denied')),
-      '拒绝文本回喂(模型可自行调整)',
-    );
-    assert.ok(chain.some((st) => st.observation.includes('普通任务完成')), 'run 未被终止,模型收尾完成');
+    assert.ok(chain.some((st) => st.action === 'tool-result' && st.observation.includes('plan approved')), '批准回喂行在场');
   });
 });
 

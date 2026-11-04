@@ -4,17 +4,19 @@ import { NotebookPen } from 'lucide-react';
 import { t } from '../../i18n';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
 
-/** 计划确认卡(2026-11-03 修订重排:滚动文档区+常驻反馈框+三按钮;spec §5.2 阶段三 plan-arm GUI 面):
+/** 计划确认卡(2026-11-03 修订重排:滚动文档区+常驻反馈框;2026-11-04 泛化:按钮集随当前档自适应):
  *  计划书 markdown(沿 GUI 既有 markdown 通道,mdComponentsPlain 无链接版+keepUrl,ToolEntry 结果区
  *  同款)纵向滚动(max-height min(44vh,460px),修订轮换 pid remount 天然回顶);反馈框常驻
- *  (Enter=驳回提交,Shift+Enter 换行——与 composer 键位同构);三按钮=实施·工作区编辑(primary 缺省档)/
- *  实施·完全访问(平级非 primary,无二次确认——pill 直选 full-access 同权)/驳回=取框内文本
- *  (空文本=纯拒绝=放弃本轮流程,decision 不带 feedback,armed 保持)。
+ *  (Enter=带反馈重新计划,Shift+Enter 换行——与 composer 键位同构)。按钮集按当前档:
+ *  只读域(plan/read-only)三键=实施·工作区编辑(primary 缺省档)/实施·完全访问(平级非 primary,
+ *  无二次确认——pill 直选 full-access 同权)/重新计划=取框内文本;可写域(acceptEdits/full-access)
+ *  两键=实施(当前档,primary)/重新计划——批准即维持本档,无落档切换(档位操作走 pill,不混入计划卡)。
+ *  空文本重新计划=放弃本轮流程(decision 不带 feedback,run 中断回输入态)。
  *  items 不再独立渲染 ol(Steps 节已随 doc 全文在滚动区内,双份同内容上下排即冗余;items 仍是执行
- *  权威——逐项执行的勾选进度走会话 todo 面)。纯渲染+onDecide 回调,挂起生命周期(cards 状态/回执
+ *  权威——执行进度走会话 todo 面)。纯渲染+onDecide 回调,挂起生命周期(cards 状态/回执
  *  寻址)归 use-session-events(ApprovalCard 同款分工);回执经 connection.replyPlanApproval →
  *  POST /plan-approval/:pid,决策体 PlanDecision 同构 {approved, mode?, feedback?}——批准落所选档
- *  自动解除(arm 随 setMode 切走解除),拒绝(+反馈)保持 armed 进修订轮,空反馈拒绝=放弃本轮仍 armed。 */
+ *  (可写域=当前档),重新计划(+反馈)进修订环,空反馈=放弃本轮。 */
 
 /** 决策体(与 serve harness PlanDecision 同构;mode=批准落档档位,缺省 acceptEdits——full-access
  *  必须显式选择;feedback 空=不带字段) */
@@ -27,9 +29,10 @@ export interface PlanCardDecision {
 /** plan-approval 挂起卡:doc=计划书 markdown 全文(滚动区渲染);items=步骤清单(执行权威,不重复上屏);
  *  name/path=计划名与计划文件绝对路径（2026-11-03 交稿协议）——卡头蓝色链接点击 onOpenFile 开侧栏原文
  *  （/session/:id/file 数据目录已放行,零新端点）;path 缺席（未落盘/旧 daemon）降级纯文本 */
-export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: string; items: string[]; name?: string; path?: string; onOpenFile?: (p: string) => void; onDecide: (d: PlanCardDecision) => void }): JSX.Element {
+export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' }: { doc: string; items: string[]; name?: string; path?: string; onOpenFile?: (p: string) => void; onDecide: (d: PlanCardDecision) => void; mode?: 'read-only' | 'acceptEdits' | 'full-access' | 'plan' }): JSX.Element {
   const [feedback, setFeedback] = useState('');
-  const sendReject = (): void => {
+  const writable = mode === 'acceptEdits' || mode === 'full-access'; // 可写域=两键卡(实施=维持当前档)
+  const sendRePlan = (): void => {
     const text = feedback.trim();
     onDecide(text === '' ? { approved: false } : { approved: false, feedback: text });
   };
@@ -76,20 +79,22 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide }: { doc: strin
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               // 空文本 Enter 无操作(2026-11-03 用户实测「没做选择就被拒」:点进反馈框误按 Enter=立即
-              // 驳回放弃的陷阱)——带反馈 Enter 才提交修订;放弃本轮必须显式点「驳回」按钮
-              if (feedback.trim() !== '') sendReject();
+              // 放弃的陷阱)——带反馈 Enter 才提交重新计划;放弃本轮必须 Esc/显式关闭
+              if (feedback.trim() !== '') sendRePlan();
             }
           }}
         />
       </div>
       <div className="card-actions">
-        <button type="button" className="primary" onClick={() => onDecide({ approved: true, mode: 'acceptEdits' })}>
-          {t('Implement (workspace edits)', '实施（工作区编辑）')}
+        <button type="button" className="primary" onClick={() => onDecide({ approved: true, mode: writable ? mode : 'acceptEdits' })}>
+          {writable && mode === 'full-access' ? t('Implement (full access)', '实施（完全访问）') : t('Implement (workspace edits)', '实施（工作区编辑）')}
         </button>
-        <button type="button" onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
-          {t('Implement (full access)', '实施（完全访问）')}
-        </button>
-        <button type="button" onClick={sendReject}>
+        {!writable && (
+          <button type="button" onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
+            {t('Implement (full access)', '实施（完全访问）')}
+          </button>
+        )}
+        <button type="button" onClick={sendRePlan}>
           {t('Re-plan', '重新计划')}
         </button>
       </div>

@@ -30,11 +30,9 @@ export interface KernelRuntimeOpts {
   onTodos?: (items: TodoItem[]) => void;
   /** 输出样式分叉（交互面级，进稳定段）：缺省恒 terminal（TUI 面专属约束）；留参数仅为显式覆盖语义 */
   outputStyle?: OutputStyle;
-  /** exit_plan 挂起接缝（2026-11-03 无感化,ask_question 同构）：awaitDecision 弹卡阻塞等裁决,
+  /** exit_plan 出牌接缝（2026-11-03 无感化;2026-11-04 泛化）：awaitDecision 弹卡阻塞等裁决,
    *  裁决即工具结果回喂——透传 buildHarness plan seam;缺省不注册 */
   plan?: {
-    isArmed(): boolean;
-    requestModeSwitch(timeoutMs: number): Promise<boolean>;
     awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
   };
 }
