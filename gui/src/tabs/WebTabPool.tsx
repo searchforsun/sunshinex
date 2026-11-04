@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Connection } from '../connection';
+import { zoomScale } from '../ui-zoom';
 import type { TabParams } from './tab-state';
 import { WebTab } from './WebTab';
 
@@ -73,7 +74,11 @@ export function WebTabPool({
       if (el !== null) {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
-          setRect((p) => (p.left === r.left && p.top === r.top && p.width === r.width && p.height === r.height ? p : { left: r.left, top: r.top, width: r.width, height: r.height }));
+          // gBCR=视觉 px,本池项 position:fixed 在 html zoom 子树内样式 px=本地值(视觉/zoom)——
+          // 不除即错位+超宽(ui-zoom 跨空间契约;zoom1.25 实测:池项整体右移 25%,右侧越视口)
+          const z = zoomScale();
+          const next: Rect = { left: r.left / z, top: r.top / z, width: r.width / z, height: r.height / z };
+          setRect((p) => (p.left === next.left && p.top === next.top && p.width === next.width && p.height === next.height ? p : next));
         }
       }
       raf = requestAnimationFrame(tick);

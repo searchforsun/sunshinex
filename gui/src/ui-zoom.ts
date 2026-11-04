@@ -8,7 +8,8 @@
  * 写入本地样式」处一律经 zoomScale() 归一(消费点:main.tsx 悬浮提示 tip 自身 zoom=1 不缩、
  * context-ring 弹层越界回推、Files 选区工具条定位、Chat dock 余垫/滚动校正/mermaid 盘点、
  * SessionRowMenu fixed 弹层单点[ChatTopbar ⋯·归档确认/projects 移除确认三调用方]、
- * TabStrip「+」弹层钉屏坐标)。
+ * TabStrip「+」弹层钉屏坐标、WebTabPool 常驻池对位[占位框 gBCR→fixed 池项,浏览器页签
+ * 左空白/右侧越视口的根因即此漏归一])。
  */
 export type UiZoom = '0.9' | '1' | '1.1' | '1.25' | '1.5';
 
