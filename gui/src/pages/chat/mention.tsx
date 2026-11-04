@@ -101,17 +101,21 @@ export function FilePalette({
 }
 
 /** G14.85 工具体用无链接版(输出面不需要文件交互) */
-/** G14.95 token 提取:@路径=文件引用;/词(行首/空白后)=命令或技能引用。
- *  返回分段序列(plain 原样、file/cmd/skill 着色)——输入框高亮层与用户气泡共用一套口径 */
+/** G14.95 token 提取:@路径=文件引用;/词(行首/空白后)=命令或技能引用;2026-11-04 §3.1 扩
+ *  $智能体/#团队 软引用(词边界起手+小写首字符:#L30/#Title/词中 $var 天然不命中)。
+ *  返回分段序列(plain 原样、其余着色)——输入框高亮层与用户气泡共用一套口径 */
 export interface MentionToken {
   text: string;
-  kind: 'plain' | 'file' | 'cmd' | 'skill' | 'ref';
+  kind: 'plain' | 'file' | 'cmd' | 'skill' | 'ref' | 'agent' | 'team';
 }
 
 export function splitMentionTokens(text: string): MentionToken[] {
   // G14.121 @ 分支扩 `:\\`:绝对路径 token(D:/ws/a.ts、D:\ws\a.ts)整体着色
   // 2026-11-04 ref 分支:⟦…⟧ 元素/终端片段引用(选取面插入,发送期 expandRefContents 展开全量)
-  const re = /@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-z][\w-]*)/gi;
+  // 2026-11-04 §3.1 加 $/# 软引用支:词边界组+小写首字符(小写限定即测试语义——
+  // #L30 行锚/#Title/词中 $var 均不误伤)。原 /gi 的 i 对 @、/ 两支只有 [a-z] 一处生效,
+  // 改显式 [a-zA-Z] 后两支逐字节不变;保 i 则 #Title 反而命中,故全局旗降为 /g
+  const re = /@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
@@ -120,12 +124,18 @@ export function splitMentionTokens(text: string): MentionToken[] {
     if (idx > last) out.push({ text: text.slice(last, idx), kind: 'plain' });
     if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
     else if (matched.startsWith('⟦')) out.push({ text: matched, kind: 'ref' });
-    else {
+    else if (matched.startsWith('/') || m[2] !== undefined) {
       const lead = m[1] ?? '';
       if (lead !== '') out.push({ text: lead, kind: 'plain' });
       const word = m[2] ?? '';
       const atLineStart = idx === 0;
       out.push({ text: word, kind: atLineStart ? 'cmd' : 'skill' });
+    } else {
+      // $/# 软引用:lead(行首为空串/空白)记 plain,token 按 $→agent、#→team
+      const lead = m[3] ?? '';
+      if (lead !== '') out.push({ text: lead, kind: 'plain' });
+      const word = m[4] ?? '';
+      out.push({ text: word, kind: word.startsWith('$') ? 'agent' : 'team' });
     }
     last = idx + matched.length;
   }
@@ -135,7 +145,9 @@ export function splitMentionTokens(text: string): MentionToken[] {
 
 /** 用户气泡 markdown 的 token 视觉化:token 包行内 code(特殊样式),原文不变(复制走 entry.md);
  *  P10:内核 `> ` 前缀已在投影层剥除(chat-reducer mapEntries)——此处收裸文本,仅对行内内容做 token 包装。
- *  G14.116 file token 显形去 @ 前缀(图标+名称由 buildUserMdComponents 接管) */
+ *  G14.116 file token 显形去 @ 前缀(图标+名称由 buildUserMdComponents 接管)。
+ *  2026-11-04 §3.1:$/# 软引用(agent/team)与 cmd/skill 同款行内 code 包装(尾分支自然覆盖,
+ *  色别不在气泡处硬编码——composer 高亮层以 hn-agent/hn-team 类区分,CSS 侧取 --accent/--warn 变量) */
 export function renderUserMd(md: string): string {
   const wrap = (line: string): string =>
     splitMentionTokens(line)
@@ -228,7 +240,9 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
  *  G14.211 显形=原始字形(tokenBody 原样,行锚 :L 段弱色)——显示宽度逐字形等于原文,
  *  光标恒贴芯片右沿;此前 basename/`(L..L)` 变换画宽>原文宽,光标后留缝。
  *  lookup=目录解析(Chat/欢迎页注入记账+索引):命中值带尾斜杠=目录引用 → 黄目录图标
- *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别) */
+ *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别)。
+ *  2026-11-04 §3.1:agent/team 走尾分支同款 `hn-${kind}` 类(hn-agent/hn-team,CSS 侧取
+ *  --accent/--warn 区分,不新增硬编码色) */
 export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
@@ -276,7 +290,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  daemon 相对会话根解析;纯文件名 token 经 resolve 解析(选中记账/最近索引兜底),解析不到原样保留。
  *  目录引用(token 尾斜杠 `@src/`,或 resolve 命中带尾斜杠的索引目录项):href 保尾斜杠——
  *  气泡链接面(FileIcon 尾斜杠判目录)显黄目录,点击交 Files 目录移交;头名剥尾斜杠 */
-/** / 令牌解析:caret 前 /词。atStart=开头(命令+技能) / 中间(仅技能)。原 Chat.tsx 模块层导出
+/** / 令牌解析:caret 前 /词。atStart=开头(内置命令面板)/中间(不弹面板;/skill-id 软引用=纯文本)。原 Chat.tsx 模块层导出
  *  (App 欢迎页 /命令 目标分流复用)下沉本件——与 atomicRange/tokenSpanAt 同族原语单点 */
 export const slashTokenAt = (text: string, caret: number): { query: string; from: number; atStart: boolean } | null => {
   const m = /\/([\w-]*)$/.exec(text.slice(0, caret));

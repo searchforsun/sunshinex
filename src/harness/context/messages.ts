@@ -53,8 +53,6 @@ interface BuildMessagesInput {
   compacted: ContextItem[];
   /** 会话链（唯一事实源） */
   chain: HistoryStep[];
-  /** 待置尾技能块（skillRef 消费即清语义由调用方持有） */
-  pendingSkill?: string | null;
 }
 
 /** 链序列 → 消息序列（确定性纯函数；相邻调用仅尾部增长——前缀稳定回归钉子见 messages.test.ts）。
@@ -181,7 +179,7 @@ export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = DEF
       if (row.reasoning !== undefined && inCurrentTurn(idx)) pendingReasoning = row.reasoning;
       continue;
     }
-    // task/plan/reply/notice/note/deficit/node/memory/role/skill（ChainAction 闭集内全部剩余词汇）：批先闭合，reply→assistant，其余（含指令/计划书行与元信息行）→user
+    // task/plan/reply/notice/note/deficit/node/memory/role（ChainAction 闭集内全部剩余词汇）：批先闭合，reply→assistant，其余（含指令/计划书行与元信息行）→user
     flushBatch();
     if (action === 'reply') {
       msgs.push({ role: 'assistant', content: row.observation });
@@ -198,9 +196,6 @@ export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = DEF
     msgs.push({ role: 'assistant', content: pendingPhase });
     pendingPhase = null;
     pendingReasoning = undefined;
-  }
-  if (input.pendingSkill != null && input.pendingSkill !== '') {
-    msgs.push({ role: 'user', content: `[skill] ${input.pendingSkill}` });
   }
   return msgs;
 }

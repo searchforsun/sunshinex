@@ -153,7 +153,6 @@ export function buildDeps(root: string, flags: Record<string, string | boolean |
     registry: h.tools,
     context: h.context,
     model: buildModel(flags),
-    skills: h.skills,
     root,
     runner: h.runner,
     // O3 观测面：干预双计数（权限面=guard ask 决策数 / 问询面=seam 调用数）——run-loop 结果 JSON 承载

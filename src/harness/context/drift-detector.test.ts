@@ -55,7 +55,9 @@ test('exportSig/restoreBaselines: 基线随快照走——回种后 detect 不�
   assert.equal(d.detect().length, 1); // 变更检出,基线前进
   assert.deepEqual(d.detect(), []);
   d.restoreBaselines({ skills: '', memory: '', sunshinex: 'v1', globalSunshine: null }); // 回种旧基线
-  assert.deepEqual(d.detect().map((s) => s.startsWith('SUNSHINE.md changed')), [true]); // 旧基线 vs 新磁盘 → 再报一次(追尾语义)
+  // 2026-11-04 起 sig 扩 agents/teams 字段：旧形态入参缺字段 → 基线缺省 ''（零迁移容忍）——
+  // 首检除 SUNSHINE 追尾外还会把磁盘清单现值当新增告知（[agents]/[teams] added），故本钉只锚 SUNSHINE 追尾行
+  assert.equal(d.detect().filter((s) => s.startsWith('SUNSHINE.md changed')).length, 1, '旧基线 vs 新磁盘 → 再报一次(追尾语义)');
   assert.equal(d.exportSig().sunshinex, 'v2'); // 基线已随比对前进
 });
 

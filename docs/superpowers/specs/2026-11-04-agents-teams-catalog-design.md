@@ -74,7 +74,7 @@ enabled: true
 | `description` | 是 | 一句话描述；进索引行，截 128 字符 |
 | `members` | 是 | 空格分隔的 **agent id** 白名单（词法同 skills `params`） |
 | `lead` | 否 | 领队 member id，缺省 members 首个；必须是 members 之一 |
-| `enabled` | 否 | 缺省 true；false 时索引不列、`#ref` 不匹配 |
+| `enabled` | 否 | 缺省 true；false 时索引行标注 (disabled)（模型知情可引导用户启用）、`#ref` 解析三态拒 TEAM_DISABLED |
 | `version` | 否 | 缺省 0.1.0 |
 
 ### 1.3 引用语义（按引用不按值）

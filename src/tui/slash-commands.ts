@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 
-/** 内置斜杠命令清单唯一源（规格 2026-09-22-skill-as-command D6）：
+/** 内置斜杠命令清单唯一源：TUI 分发/补全/help 与 GUI /commands 同源消费；
+ *  技能已退出命令面（2026-11-04 agents-teams-catalog spec §4），命令面仅内置命令。
  *  App 重导出保持既有 import 路径（components/App），session 消费同一单点防双清单漂移；
  *  顺序即 Tab 循环顺序（handleSlash 分支与 /help 文案的相邻排布同源：/terminal-setup 紧随 /status，
  *  2026-10-03 批A D1 补登——实现与 /help 文案早已在场，清单缺席即三源漂移病根）。 */
@@ -15,7 +16,7 @@ export function slashCommandDescriptions(): Record<string, string> {
     status: t('session & ledger summary', '会话与账本摘要'),
     'terminal-setup': t('configure terminal keys (Shift+Enter newline, Windows Terminal)', '配置终端键位（Shift+Enter 换行，Windows Terminal）'),
     tasks: t('list background tasks', '列出后台任务'),
-    skill: t('load a skill into context', '加载技能进上下文'),
+    skill: t('insert a skill reference into the input', '插入技能引用到输入框'),
     new: t('new session (soft reset)', '新会话（软重置）'),
     resume: t('resume a saved session', '恢复已保存会话'),
     rewind: t('rewind to an earlier turn', '回退到更早的任务轮'),

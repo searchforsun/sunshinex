@@ -17,25 +17,13 @@ function setup() {
   return { root, cm };
 }
 
-test('assemble 段序（fork 模型）：SUNSHINE.md → history → 技能块置尾；无 goal 位、无记忆段', () => {
-  const { root, cm } = setup();
-  fs.writeFileSync(path.join(root, 'SUNSHINE.md'), '# 项目规范：禁用 any 类型\n');
-  cm.setSkillBlock('技能正文：示范');
-  const items1 = cm.assemble([{ kind: 'history', content: '1: task -> 步骤一' }]);
-  assert.ok(items1[0].content.includes('禁用 any 类型'), 'SUNSHINE.md 居首');
-  assert.equal(items1[items1.length - 1].kind, 'system', '技能块必须置尾');
-  assert.ok(items1[items1.length - 1].content.includes('技能正文'));
-  assert.ok(!items1.some((i) => i.kind === 'memory'), '记忆段已退出装配面');
-  // goal 槽已取消：装配产物仅为 loader/rules 行级指令、history 与技能块，不再有 goal 注入位
-  assert.ok(items1.some((i) => i.kind === 'history' && i.content === '1: task -> 步骤一'), 'history 条目按传入原样进入');
-  // 技能消失帧：其余段逐字节稳定（§11 尾部差异公理）
-  const items2 = cm.assemble([
-    { kind: 'history', content: '1: task -> 步骤一' },
-    { kind: 'history', content: '2: reply -> 完成' },
-  ]);
-  const text1 = items1.slice(0, -1).map((i) => i.content).join('\n');
-  const text2 = items2.map((i) => i.content).join('\n');
-  assert.ok(text2.startsWith(text1), '技能消失后其余段必须前缀稳定');
+test('assemble 段序（fork 模型）：SUNSHINE.md 居首 → history；无 goal 位、无记忆段、无技能置尾槽', () => {
+  const { cm } = setup();
+  const items = cm.assemble([{ kind: 'history', content: '1: task -> 步骤一' }]);
+  assert.ok(items[0].content.includes('禁用 any 类型'), 'SUNSHINE.md 居首');
+  assert.ok(!items.some((i) => i.kind === 'memory'), '记忆段已退出装配面');
+  // goal 槽已取消：装配产物仅为快照段与 history，不再有 goal 注入位（待注入技能槽已退役——正文经 skill 工具按需加载）
+  assert.ok(items.some((i) => i.kind === 'history' && i.content === '1: task -> 步骤一'), 'history 条目按传入原样进入');
 });
 
 test('会话链 API：追加定号、水位裁剪、跳号保留、resetSession 清空', () => {

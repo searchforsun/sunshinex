@@ -9,7 +9,7 @@ import { SlashMenu, SlashMenuEntry, slashMenuWindow, SLASH_MENU_MAX_ROWS } from 
 import { SLASH_COMMANDS } from '../slash-commands';
 import { SessionController } from '../session';
 import { ScriptedAdapter } from '../../model/adapter';
-import { readSkillUsage, recordSkillUsage } from '../skill-usage';
+import { readSkillUsage, recordSkillUsage } from '../../catalog/skill-usage';
 
 /** 全局技能目录重定向（与他测同惯例）：本机装有真实全局技能（插件目录）时 skills.list()
  *  会扫入，skill-usage 用例的 skillMenuEntries 断言必须只见到用例自置技能 */
@@ -201,7 +201,7 @@ test('App：技能命令入面板（描述上屏），最近使用排前', async
 
 /* ---------- 会话层：最近使用落盘与菜单源排序 ---------- */
 
-test('skill-usage：record/read 往返；loadSkill 成功与去重两径记录、failed 不记；skillMenuEntries 最近在前', async () => {
+test('skill-usage：record/read 往返；使用记录驱动 skillMenuEntries 最近在前（硬载退役后排序源=/skill 卡插入落盘）', async () => {
   const tmp = tmpDir('sunshinex-slashmenu4-');
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
   try {
@@ -214,11 +214,10 @@ test('skill-usage：record/read 往返；loadSkill 成功与去重两径记录�
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${id}\ndescription: d ${id}\nversion: 1.0.0\n---\n\nBody.`);
     }
-    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
-    await ctrl.submit('/two-skill'); // 加载成功 → 记录
-    await ctrl.submit('/two-skill'); // 去重回执 → 也记录
+    recordSkillUsage(tmp, 'two-skill'); // 使用记录单点：/skill 卡选定插入路径（spec 2026-11-04 §4.3）
     const usage = readSkillUsage(tmp);
-    assert.ok(typeof usage['two-skill'] === 'number', 'loadSkill 成功路径记录最近使用');
+    assert.ok(typeof usage['two-skill'] === 'number', '使用记录落盘（排序源）');
+    const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     const menu = ctrl.skillMenuEntries();
     assert.deepEqual(menu.map((m) => m.id), ['two-skill', 'one-skill'], '最近使用的技能排前，未使用殿后');
     assert.equal(menu[0]!.description, 'd two-skill', '描述随菜单源透出');

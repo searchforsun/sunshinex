@@ -554,7 +554,6 @@ export class GuiDaemon {
     { method: 'GET', path: '/sessions', auth: true, run: async (req, res) => this.handleSessions(req, res) },
     { method: 'GET', path: '/sessions/recent', auth: true, run: async (_req, res) => this.handleSessionsRecent(res) },
     { method: 'GET', path: '/commands', auth: true, run: async (_req, res) => this.send(res, 200, { ...listCommands(), supported: COMMAND_SUPPORT }) },
-    { method: 'GET', path: '/session/:id/skill-commands', auth: true, run: async (_req, res, p) => this.send(res, 200, this.sessionFor(res, p.id)?.skillCommands() ?? []) },
     // G14.113 分支清单/切换(欢迎页分支选择弹窗;root 必传 query/body)
     { method: 'GET', path: '/git/branches', auth: true, run: async (req, res) => {
         const root = urlOf(req).searchParams.get('root') ?? '';

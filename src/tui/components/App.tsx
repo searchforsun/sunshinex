@@ -213,7 +213,7 @@ export function App({
   // 插入/直接发送/置首/重排；轻模态（任务卡在场让位自关），局部瞬态不入 retain（board 同口径）
   const { queueMode, queueCursor, queueModeRef, draft: queueDraft, draftSeq: queueDraftSeq, handleKey: handleQueueKey } = useQueueKeys({ controller, stateRef });
   // 技能命令池快照（规格 D6/D7）：会话层 skillMenuEntries 同源（附描述与最近使用）；挂载即读 + 回合边界
-  // （sessionTurns 变化）刷新，不逐键读盘——最近使用排序在会话层 loadSkill 落盘后下回合生效
+  // （sessionTurns 变化）刷新，不逐键读盘——最近使用排序在 /skill 卡选定落盘（recordSkillUsage）后下回合生效
   const [skillMenu, setSkillMenu] = React.useState<SlashMenuSkillSource[]>(() => controller.skillMenuEntries());
   React.useEffect(() => {
     setSkillMenu(controller.skillMenuEntries());
@@ -254,6 +254,16 @@ export function App({
       setCursor(b.length);
     }
   });
+  // /skill 卡选定回填（spec 2026-11-04 §4.2 硬载退役改插入引用）：挂载期注册单槽回填——store 同步
+  // （跨重挂现场保留）+ setState 双写，与 takeBackfill 回填同口径（不提交，用户补意图后自行发送）
+  React.useEffect(() => {
+    controller.onPrefillInput((text) => {
+      store.buffer = text;
+      store.cursor = text.length;
+      setBuffer(text);
+      setCursor(text.length);
+    });
+  }, [controller]);
   // 现场回写：无依赖数组——每次渲染后同步最新值到 retain，重挂前的最后一帧即最新现场
   React.useEffect(() => {
     store.buffer = buffer;

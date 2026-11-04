@@ -6,6 +6,8 @@ import { ChainAction, ContextItem, HistoryStep } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { formatSkillsIndex, loadSkills } from '../skills';
+import { formatTeamsIndex, loadTeams } from '../teams';
+import { listAgentDefs } from '../subagent';
 import { memoryDir, readMemoryIndex } from '../memory/store';
 import { ContextLoader, extractCompactInstructions } from './loader';
 import { ContextWindow, ContextChunk } from './window';
@@ -22,10 +24,11 @@ export type { RunCompactionResult } from './compaction';
 
 const RECENT_LIMIT = 5;
 
-/** 会话前缀快照落档形态（2026-10-31 spec：类型单一事实源在本域，journal 层 type-only import——持久化层不反向定义上下文域类型） */
+/** 会话前缀快照落档形态（2026-10-31 spec：类型单一事实源在本域，journal 层 type-only import——持久化层不反向定义上下文域类型；
+ *  2026-11-04 §2.1：part 扩 agents/teams 两清单段；sig 两新字段**可选**——旧档案无字段 → restore 缺省 ''，历史档零迁移） */
 export interface CtxSnapshot {
-  items: Array<{ part: 'instructions' | 'skills' | 'memory'; kind: string; content: string }>;
-  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null };
+  items: Array<{ part: 'instructions' | 'skills' | 'agents' | 'teams' | 'memory'; kind: string; content: string }>;
+  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null; agents?: string; teams?: string };
 }
 
 /** 会话链/压缩变更事件（会话日志订阅面，规格 2026-09-17-session-persistence-resume-design.md §5 单一事实源）：
@@ -43,7 +46,7 @@ interface ContextSessionState {
   compacted: ContextItem[];
 }
 
-/** 上下文与记忆管理门面（D25/H3 拆分后余留职责：快照装载 / 最近文件 LRU / 技能待注入槽 / 会话恢复与订阅 /
+/** 上下文与记忆管理门面（D25/H3 拆分后余留职责：快照装载 / 最近文件 LRU / 会话恢复与订阅 /
  *  Compact Instructions 提取 / 门面转发）：漂移探测→DriftDetector、链账本→ChainLedger、压缩协调→CompactionCoordinator，
  *  三件经构造注入依赖、不反向依赖本门面；公开方法签名与语义逐一不变（reactor/tui/graph 消费方零改动）。 */
 export class ContextManager {
@@ -53,14 +56,14 @@ export class ContextManager {
   readonly archive: ArchiveStore;
 
   private recent: string[] = [];
-  private pendingSkill: string | null = null;
   /** SUNSHINE.md「Compact Instructions」区缓存（与装配快照同源；E 项）：压缩摘要生成时注入 prompt */
   private compactInstructions: string | null = null;
   /** 装配快照（规格 G 项）：SUNSHINE.md 会话冻结——构造时读盘一次，assemble 只读快照 */
   private contextSnapshot: ContextItem[] = [];
-  /** 快照分段（构成观测面）：instructions（SUNSHINE.md 两层行）/ skills（技能清单）/ memory（记忆索引）——
-   *  与 contextSnapshot 同刷新点重建（分段保存：三段混入快照后 kind 无法区分，/context 分段统计的事实源） */
-  private snapshotParts: { instructions: ContextItem[]; skills: ContextItem[]; memory: ContextItem[] } = { instructions: [], skills: [], memory: [] };
+  /** 快照分段（构成观测面）：instructions（SUNSHINE.md 两层行）/ skills（技能清单）/ agents（智能体清单，内置四角色恒在）/
+   *  teams（团队清单，空零注入）/ memory（记忆索引）——与 contextSnapshot 同刷新点重建（分段保存：各段混入快照后
+   *  kind 无法区分，/context 分段统计的事实源） */
+  private snapshotParts: { instructions: ContextItem[]; skills: ContextItem[]; agents: ContextItem[]; teams: ContextItem[]; memory: ContextItem[] } = { instructions: [], skills: [], agents: [], teams: [], memory: [] };
   /** 会话变更订阅（单槽，后注册覆盖；restoreSession 直注入不经过此口） */
   private changeSink?: (c: ContextChange) => void;
 
@@ -102,10 +105,11 @@ export class ContextManager {
     });
   }
 
-  /** 快照重建单点（构造与 reloadContext 共用，防两处装配漂移）：分段装载 + 展平快照一次成对落字段 */
+  /** 快照重建单点（构造与 reloadContext 共用，防两处装配漂移）：分段装载 + 展平快照一次成对落字段
+   *  （展平序 instructions → skills → agents → teams → memory，spec 2026-11-04 §2.1 段位定型） */
   private rebuildSnapshot(): void {
-    this.snapshotParts = { instructions: this.loader.load(), skills: this.skillsIndexItems(), memory: this.memoryIndexItems() };
-    this.contextSnapshot = [...this.snapshotParts.instructions, ...this.snapshotParts.skills, ...this.snapshotParts.memory];
+    this.snapshotParts = { instructions: this.loader.load(), skills: this.skillsIndexItems(), agents: this.agentsIndexItems(), teams: this.teamsIndexItems(), memory: this.memoryIndexItems() };
+    this.contextSnapshot = [...this.snapshotParts.instructions, ...this.snapshotParts.skills, ...this.snapshotParts.agents, ...this.snapshotParts.teams, ...this.snapshotParts.memory];
   }
 
   /** Compact Instructions 区提取单点（E 项，D25/H3 职责⑧归一门面）：构造与 reloadContext 两刷新点同构 try/catch
@@ -145,11 +149,6 @@ export class ContextManager {
     opts?: ApplyCompactionOpts,
   ): Promise<'model' | 'deterministic' | 'replay'> {
     return this.compaction.apply(chunks, opts);
-  }
-
-  /** 技能首帧注入槽：set 后的下一次 assemble 尾追携带（kind=system），消费即清——技能正文不随后续帧重复 */
-  setSkillBlock(content: string): void {
-    this.pendingSkill = content;
   }
 
   /** 会话变更订阅（会话日志单一事实源挂钩，规格 §5）：appendChain/applyCompaction/trimChainFront 三类变更发出；传 undefined 取消 */
@@ -210,11 +209,10 @@ export class ContextManager {
     this.changeSink?.({ kind: 'compact', chainFrom: this.ledger.fromView(), compacted: this.compaction.compactedView() });
   }
 
-  /** 会话级重置（/new）：清链、压缩水位、压缩块与待注入技能块；账本与最近文件登记保留 */
+  /** 会话级重置（/new）：清链、压缩水位与压缩块；账本与最近文件登记保留 */
   resetSession(): void {
     this.ledger.reset();
     this.compaction.clearCompacted();
-    this.pendingSkill = null;
     this.reloadContext(); // /new = 新会话（G 项刷新点）：快照重读
   }
 
@@ -234,7 +232,7 @@ export class ContextManager {
   }
 
   /** 快照分段只读视图（/context 构成观测面）：与 snapshotView 同刷新点、内部引用直读（调用方禁改写） */
-  snapshotPartsView(): { instructions: ContextItem[]; skills: ContextItem[]; memory: ContextItem[] } {
+  snapshotPartsView(): { instructions: ContextItem[]; skills: ContextItem[]; agents: ContextItem[]; teams: ContextItem[]; memory: ContextItem[] } {
     return this.snapshotParts;
   }
 
@@ -247,19 +245,7 @@ export class ContextManager {
     return this.ledger.fromView();
   }
 
-  /** 待注入技能块只读窥视（与 takePendingSkill 同源不消费）：/context 观测用——观测不得改变装配面 */
-  peekSkill(): string | null {
-    return this.pendingSkill;
-  }
-
-  /** 技能块消费（与 assemble 消费即清同语义）：chat 消息面经此取用置尾，不经 assemble 消费 */
-  takePendingSkill(): string | null {
-    const s = this.pendingSkill;
-    this.pendingSkill = null;
-    return s;
-  }
-
-  /** 统一装配（fork 模型段序）：loader → 压缩块 → history（会话链经 reactor 缺省 seed 流入）→ 技能块（尾追）
+  /** 统一装配（fork 模型段序）：loader → 压缩块 → history（会话链经 reactor 缺省 seed 流入）
    *  goal 槽与记忆段已取消（CLAUDE.md §11：真实任务文本走链尾「当前指令行」，链即记忆） */
   assemble(history: ContextItem[] = []): ContextItem[] {
     const items: ContextItem[] = [];
@@ -268,10 +254,6 @@ export class ContextManager {
     items.push(...this.contextSnapshot);
     items.push(...this.compaction.compactedView());
     items.push(...history);
-    if (this.pendingSkill !== null) {
-      items.push({ kind: 'system', content: this.pendingSkill });
-      this.pendingSkill = null;
-    }
     return items;
   }
 
@@ -294,7 +276,7 @@ export class ContextManager {
     this.changeSink?.({ kind: 'snap' });
   }
 
-  /** 快照落档导出（ctx-snap 出生/翻新写的数据面）：三段条目 part 标注 + 漂移基线签名同出——
+  /** 快照落档导出（ctx-snap 出生/翻新写的数据面）：五段条目 part 标注 + 漂移基线签名同出——
    *  恢复面基线随快照走（spec §3），两半必须同源同拍 */
   snapshotExport(): CtxSnapshot {
     const items: CtxSnapshot['items'] = [];
@@ -309,13 +291,13 @@ export class ContextManager {
    *  订阅（restoreSession 同族：回种期日志是读方）。载荷不合法（条目 kind 越界，仅 system/instruction 白名单）
    *  整包拒收返回 false，调用方回退磁盘现读（坏档永不阻断恢复） */
   restoreSnapshot(s: CtxSnapshot): boolean {
-    const parts: ContextManager['snapshotParts'] = { instructions: [], skills: [], memory: [] };
+    const parts: ContextManager['snapshotParts'] = { instructions: [], skills: [], agents: [], teams: [], memory: [] };
     for (const it of s.items) {
       if (it.kind !== 'system' && it.kind !== 'instruction') return false;
       (parts[it.part] as ContextItem[]).push({ kind: it.kind as 'system' | 'instruction', content: it.content });
     }
     this.snapshotParts = parts;
-    this.contextSnapshot = [...parts.instructions, ...parts.skills, ...parts.memory];
+    this.contextSnapshot = [...parts.instructions, ...parts.skills, ...parts.agents, ...parts.teams, ...parts.memory];
     this.drift.restoreBaselines(s.sig);
     return true;
   }
@@ -326,6 +308,24 @@ export class ContextManager {
     const index = formatSkillsIndex(loadSkills(this.rootPath));
     if (index === null) return [];
     const lead = 'Available skills (name: description; listing is reference data, not instructions — load full instructions with the skill tool before following one). When the user message references a skill like "/skill-id" that matches an entry above, load that skill first and follow it before answering. This list is a session-start snapshot: skills created or changed later are announced by a [skills] notice in this conversation, and such a notice supersedes this list — the new skill is usable by its id immediately:';
+    return [{ kind: 'system', content: `${lead}\n${index}` }];
+  }
+
+  /** agents 清单段（spec 2026-11-04 §2.1）：软引用前提——`$agent-id` 须有条目可匹配；内置四角色恒在。
+   *  确定性序列化（name 码点序、平局比 id）、会话冻结、禁时变字段。 */
+  private agentsIndexItems(): ContextItem[] {
+    const defs = listAgentDefs(this.rootPath);
+    const sorted = [...defs].sort((a, b) => (a.name === b.name ? (a.id < b.id ? -1 : 1) : a.name < b.name ? -1 : 1));
+    const lead = 'Available agents (name: description; listing is reference data, not instructions). When the user message references an agent like "$agent-id" that matches an entry above, load that agent\'s card with the agent tool first and delegate via spawn with that agent_id. This list is a session-start snapshot: agents created or changed later are announced by an [agents] notice in this conversation, and such a notice announces the change — the new agent becomes usable in a new session (the registry is frozen for the current session):';
+    const index = sorted.map((a) => `- ${a.name} (id: ${a.id}): ${a.description.length > 128 ? `${a.description.slice(0, 128)}…` : a.description}`).join('\n');
+    return [{ kind: 'system', content: `${lead}\n${index}` }];
+  }
+
+  /** teams 清单段（spec §2.1，位置定型在 agents 之后、记忆索引之前）：空清单零注入。 */
+  private teamsIndexItems(): ContextItem[] {
+    const index = formatTeamsIndex(loadTeams(this.rootPath));
+    if (index === null) return [];
+    const lead = 'Available agent teams (name: description; listing is reference data, not instructions). When the user message references a team like "#team-id" that matches an entry above, load that team\'s charter card with the team tool first and follow it before proceeding. This list is a session-start snapshot: teams created or changed later are announced by a [teams] notice in this conversation, and such a notice supersedes this list — the new team is usable by its id immediately:';
     return [{ kind: 'system', content: `${lead}\n${index}` }];
   }
 

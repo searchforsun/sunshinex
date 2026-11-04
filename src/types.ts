@@ -79,13 +79,33 @@ export interface SkillManifest {
   name: string;
   description: string;
   version: string;
-  /** 技能模板形参名列表（阶段四技能调度：skillRef.params 按 manifest.params 白名单过滤） */
+  /** 技能模板形参名列表（skill 工具 resolve 时按 manifest.params 白名单过滤） */
   params?: string[];
   /** 技能形态（阶段四：prompt = 上下文注入模板；缺省视作 prompt） */
   kind?: 'prompt';
   /** 技能所在目录绝对路径（装载/解析时带上）：技能
    *  正文引用的伴随文件（脚本/资源）须按此目录解析，缺来源标注时模型按项目根解析找不到文件 */
   sourceRoot?: string;
+}
+
+/** 智能体团队清单（teams/{id}/team.md 解析结果；spec 2026-11-04 §1.3）：成员按 id 引用 agents 注册表，
+ *  missing=装载期解析失败的成员 id（fail-soft，UI 警示、卡片只列存活成员） */
+export interface TeamManifest {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  /** 成员 agent id 白名单（空格分隔 frontmatter 词法，词法同 skills.params） */
+  members: string[];
+  /** 领队 member id（缺省 members 首个；必须 ∈ members） */
+  lead?: string;
+  enabled: boolean;
+  source: 'project' | 'user';
+  sourceDir: string;
+  /** 被更高优先级同 id 遮蔽时 = 胜者来源名 */
+  shadowedBy?: 'project' | 'user';
+  /** members 中未解析到的 id（仅调用方提供 agentIds 时填充） */
+  missing: string[];
 }
 
 /** 项目上下文（SUNSHINE.md 解析结果） */
@@ -353,12 +373,6 @@ export interface KbHit {
   file?: string;
 }
 
-/** 技能引用（运行时上下文注入载体：id 定位技能，params 填充 manifest.params 模板形参） */
-export interface SkillRef {
-  id: string;
-  params?: Record<string, string>;
-}
-
 /** MCP 服务器装配配置（项目级 .sunshinex/mcp.json 与全局 ~/.sunshinex/mcp.json 的 `mcpServers` 键解析产物，项目级 id 撞名遮蔽全局）。transport 缺省 = stdio；url 仅远程传输（http/sse）使用，command/args 仅 stdio 使用。
  *  2026-10-26 用户实测第三种主流形态：`{ url, headers, enabled }`（gitnexus 风格）——headers 随 http/sse
  *  请求透传（Bearer 鉴权面）、enabled=false 整机停用（装配与 guard 名单同跳过）、无 scheme url 容错补 http:// */
@@ -480,8 +494,7 @@ export type ChainAction =
   | 'deficit' /* 修正环验收缺口（loop check） */
   | 'node' /* graph/子智能体节点结论行（graph nodes/subagent） */
   | 'memory' /* 记忆注入行（subagent fork 前缀） */
-  | 'role' /* 角色框定行（subagent fork 前缀） */
-  | 'skill'; /* 技能注入行（tui session） */
+  | 'role'; /* 角色框定行（subagent fork 前缀） */
 
 export interface HistoryStep {
   step: number;

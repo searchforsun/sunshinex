@@ -45,8 +45,6 @@ export function useComposerKeys(deps: {
   readonly pickRelRef: MutableRefObject<Map<string, string>>;
   readonly cmdData: ComposerCmdData | null;
   readonly setCmdData: Dispatch<SetStateAction<ComposerCmdData | null>>;
-  /** 技能池快照(useCommandPalette 形态:{id,description};slashItemsFor 消费侧) */
-  readonly skillCmds: Array<{ id: string; description: string }>;
   readonly cmdActive: number;
   readonly setCmdActive: Dispatch<SetStateAction<number>>;
   readonly conn: Connection;
@@ -61,7 +59,7 @@ export function useComposerKeys(deps: {
   onCompositionEndGuard: () => void;
   onSelectGuard: () => void;
 } {
-  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, cmdData, setCmdData, skillCmds, cmdActive, setCmdActive, conn, sessionId, send, onOpenMemory } = deps;
+  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, cmdData, setCmdData, cmdActive, setCmdActive, conn, sessionId, send, onOpenMemory } = deps;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // G14.212 token 原子性:不可在 token 中间落字(字符键/空格/IME Process)——阻止并把
@@ -163,9 +161,9 @@ export function useComposerKeys(deps: {
         return;
       }
     }
-    // G14.95 / 面板:开头=命令+技能;中间=仅技能;无匹配(items 空)面板不开=自动关
+    // G14.95 / 面板:开头=内置命令清单;中间不弹(技能=软引用纯文本语义,面板=纯命令);无匹配(items 空)面板不开=自动关
     const slashToken = atMatch === null ? slashTokenAt(input, caret) : null;
-    const slashItems = slashItemsFor(cmdData, skillCmds, slashToken);
+    const slashItems = slashItemsFor(cmdData, slashToken);
     if (slashToken !== null && slashItems.length > 0) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -187,8 +185,8 @@ export function useComposerKeys(deps: {
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         const item: CmdItem | undefined = slashItems[Math.min(cmdActive, slashItems.length - 1)];
-        // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单);skill 项不在此列——
-        // 落底部纯文本发送(daemon 已 400,skills 普通文本语义)
+        // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单;清单外 /词——含 /skill-id
+        // 软引用——不入面板,整行经提交通道落纯文本)
         if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {
           e.preventDefault();
           setInput('');
@@ -196,7 +194,7 @@ export function useComposerKeys(deps: {
           conn.runCommand(sessionId, input).catch(() => {});
           return;
         }
-        // 补全仅当 / 词尚未敲完(无参数);skill 项参数已敲同样落底部纯文本发送
+        // 补全仅当 / 词尚未敲完(无参数)
         if (item !== undefined && !input.includes(' ')) {
           e.preventDefault();
           setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret)); // 补全,面板续开收参数

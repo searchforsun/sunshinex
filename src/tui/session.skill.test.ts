@@ -5,13 +5,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
+import { readSkillUsage } from '../catalog/skill-usage';
 import { resolveDataDir } from '../config/data-dir';
 import { listSessions, parseJournalFile, reduceJournal } from './session-journal';
 
-// 关断 learned 沉淀（控制面键 SUNSHINEX_LEARNED_SKILLS，env > 缺省 on）：本套件第 5 例的
-// 成功任务会经 settle 管线把 goal 沉淀为 learned 技能、写进本文件私有数据目录
-// （SUNSHINEX_DATA_DIR 钉定的 .data-test/tui-session.skill/skills），目录跨运行残留会污染
-// 技能清单断言（deepEqual 全量序 / 9 项计数），单文件第二次运行必红。消费点
+// 关断 learned 沉淀（控制面键 SUNSHINEX_LEARNED_SKILLS，env > 缺省 on）：消费点
 // （MemoryPipeline.runDeterministic / consumeLearned）对该键逐项实时判门，off 即零落盘；
 // 且 learnedSkills 不受 /memory 会话覆盖影响，模块加载期设置一次即可全文件生效。
 // 必须在任意 SessionController 构造前（即本行之后）执行——判门是运行时求值，装配期不冻结。
@@ -58,12 +56,10 @@ function sysTexts(ctrl: SessionController): string[] {
 }
 
 /** 项目级技能夹具（.sunshinex/skills/<id>/SKILL.md，优先级链最高根） */
-function writeSkill(root: string, id: string, name: string, description: string, extraFm = ''): void {
+function writeSkill(root: string, id: string, name: string, description: string): void {
   const dir = path.join(root, '.sunshinex', 'skills', id);
   fs.mkdirSync(dir, { recursive: true });
-  const lines = ['---', `name: ${name}`, `description: ${description}`, 'version: 1.0.0'];
-  if (extraFm) lines.push(extraFm);
-  lines.push('---', '', `Body of ${name}.`);
+  const lines = ['---', `name: ${name}`, `description: ${description}`, 'version: 1.0.0', '---', '', `Body of ${name}.`];
   fs.writeFileSync(path.join(dir, 'SKILL.md'), lines.join('\n'));
 }
 
@@ -74,11 +70,16 @@ function chainEntries(root: string): Array<{ action?: string; observation: strin
   return reduceJournal(parseJournalFile(meta.file).events).chain;
 }
 
-test('/skill：选择卡列技能、选定即链尾追注入 + 回执', async () => {
+// /skill 改插入引用（spec 2026-11-04 §4.2 硬载退役）：选定即把 `/id ` 回填输入框（用户补意图后提交——
+// 模型经清单+skill 工具软加载）；链上零注入、无硬载回执；使用记录保留（选择卡排序源）
+
+test('/skill：选择卡列技能、选定即回填 /id 引用（零链上注入、无硬载回执）', async () => {
   await withRoot(async (root) => {
     writeSkill(root, 'greet', 'Greet', 'Say hello to someone');
     writeSkill(root, 'retro', 'Retro', 'Conduct a retrospective');
     const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
+    const prefilled: string[] = [];
+    ctrl.onPrefillInput((x) => prefilled.push(x)); // prefill spy（App 输入框回填接缝同款注册面）
     const p = ctrl.submit('/skill');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
     const q = ctrl.getState().question;
@@ -87,10 +88,10 @@ test('/skill：选择卡列技能、选定即链尾追注入 + 回执', async ()
     assert.deepEqual(q!.options.map((o) => o.label), ['Greet', 'Retro'], '按名排序（formatSkillsIndex 同比较器）');
     ctrl.resolveAskAnswer({ type: 'selected', labels: ['Greet'] });
     await p;
-    const entry = chainEntries(root).find((s) => s.action === 'skill');
-    assert.ok(entry, '链上出现 action=skill 条目');
-    assert.match(entry!.observation, /^\[Skill\] Greet \(id=greet v=1\.0\.0\)\nDirectory: .+\n\nBody of Greet\./, '头行对齐 loop skillRef 格式 + 来源目录行 + 正文随后');
-    assert.ok(sysTexts(ctrl).some((x) => /Skill loaded: Greet/.test(x)), '加载回执上屏');
+    assert.deepEqual(prefilled, ['/greet '], '选定即回填 /id 引用（尾随空格留意图位）');
+    assert.equal(chainEntries(root).filter((s) => s.action === 'skill').length, 0, '零链上注入（硬载退役）');
+    assert.ok(!sysTexts(ctrl).some((x) => /Skill loaded|已加载/.test(x)), '无硬载回执');
+    assert.ok(typeof readSkillUsage(root)['greet'] === 'number', '选定即记使用（选择卡排序源）');
     assert.equal(ctrl.getState().status, 'idle');
   });
 });
@@ -110,47 +111,7 @@ test('/skill：>8 技能全量选项 + filterable 标记（筛选在渲染层，
   });
 });
 
-test('/skill：重复加载去重——回执已加载、链上仅一条', async () => {
-  await withRoot(async (root) => {
-    writeSkill(root, 'greet', 'Greet', 'Say hello');
-    const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
-    const p1 = ctrl.submit('/skill');
-    await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: ['Greet'] });
-    await p1;
-    const p2 = ctrl.submit('/skill');
-    await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: ['Greet'] });
-    await p2;
-    assert.ok(sysTexts(ctrl).some((x) => /already loaded|已加载/.test(x)), '去重回执');
-    assert.equal(chainEntries(root).filter((s) => s.action === 'skill' && s.observation.includes('(id=greet v=')).length, 1, '链上恰好一条');
-  });
-});
-
-test('/skill：含必填模板参数的技能——resolve 失败 warn 回执零注入', async () => {
-  await withRoot(async (root) => {
-    // 会话锚定（批跑竞态）：数据目录按测试文件私有共享，chainEntries 取 mtime 最新会话——
-    // 全量批跑高负载下前序用例 journal 晚到落盘会顶掉本用例会话的「最新」位，读到含 skill 条目的旧会话误判。
-    // 先快照既有会话文件，断言只统计本用例新建的会话，杜绝跨用例 mtime 竞态
-    const dataDir = resolveDataDir(root);
-    const before = new Set(listSessions(dataDir).map((m) => m.file));
-    writeSkill(root, 'paramed', 'Paramed', 'Needs a param', 'params: target');
-    const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
-    const p = ctrl.submit('/skill');
-    await waitFor(() => ctrl.getState().status === 'awaiting-question');
-    ctrl.resolveAskAnswer({ type: 'selected', labels: ['Paramed'] });
-    await p;
-    assert.ok(sysTexts(ctrl).some((x) => x.includes('SKILL_PARAM_MISSING')), 'resolve 失败回执带错误码');
-    const fresh = listSessions(dataDir).filter((m) => !before.has(m.file));
-    assert.equal(
-      fresh.flatMap((m) => reduceJournal(parseJournalFile(m.file).events).chain).filter((s) => s.action === 'skill').length,
-      0,
-      '零注入',
-    );
-  });
-});
-
-test('/skill：空清单回执不弹卡；运行中拒绝；带参形态无法识别；dismissed 静默', async () => {
+test('/skill：空清单回执不弹卡；运行中拒绝；带参形态命令词命中卡照弹；dismissed 静默零回填', async () => {
   await withRoot(async (root) => {
     const ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });
     await ctrl.submit('/skill');
@@ -173,17 +134,26 @@ test('/skill：空清单回执不弹卡；运行中拒绝；带参形态无法�
     guarded.resolveApproval('deny');
     await task;
 
-    // 带参形态走裸形式守卫（D1，不在 FREE_TEXT_ARGS 集）
+    // 带参形态：命令词命中 /skill 分支（尾参忽略，卡照常弹出——裸形式守卫随硬载退役）
     const bare = new SessionController({ root, model: new ScriptedAdapter([]) });
-    await bare.submit('/skill greet');
-    assert.ok(sysTexts(bare).some((x) => x.includes('Unrecognized command')), '带参形态统一无法识别');
+    const barePrefilled: string[] = [];
+    bare.onPrefillInput((x) => barePrefilled.push(x));
+    const pBare = bare.submit('/skill greet');
+    await waitFor(() => bare.getState().status === 'awaiting-question');
+    assert.ok(bare.getState().question?.options.some((o) => o.label === 'Greet'), '带参形态仍走 /skill 卡');
+    bare.resolveAskAnswer({ type: 'dismissed' });
+    await pBare;
+    assert.deepEqual(barePrefilled, [], '带参 dismissed 零回填');
 
-    // dismissed 静默：无「Skill loaded」回执
+    // dismissed 静默：无「Skill loaded」回执、零回填
     const quiet = new SessionController({ root, model: new ScriptedAdapter([]) });
+    const quietPrefilled: string[] = [];
+    quiet.onPrefillInput((x) => quietPrefilled.push(x));
     const p = quiet.submit('/skill');
     await waitFor(() => quiet.getState().status === 'awaiting-question');
     quiet.resolveAskAnswer({ type: 'dismissed' });
     await p;
     assert.ok(!sysTexts(quiet).some((x) => /Skill loaded/.test(x)), 'dismissed 零回执');
+    assert.deepEqual(quietPrefilled, [], 'dismissed 零回填');
   });
 });

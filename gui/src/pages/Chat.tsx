@@ -187,18 +187,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     (text, r, resolve) => expandRefContents(expandFileRefs(text, r, resolve), refContentsRef.current),
     setChat,
   );
-  const { cmdData, setCmdData, cmdActive, setCmdActive, skillCmds, setSkillCmds } = useCommandPalette(conn, sessionId);
-  /** 2026-10-31 用户裁定:会话内 `/` 面板打开即拉最新技能清单——skillCmds 原按 [conn,sessionId]
-   *  只拉一次,会话中新建技能永不入面板(欢迎页 5s 节流同口径);窗口内重复触发静默跳过 */
-  const SKILL_CMDS_THROTTLE_MS = 5000;
-  const skillCmdsAtRef = useRef(0);
-  useEffect(() => {
-    if (slashTokenAt(input, inputRef.current?.selectionStart ?? input.length) === null) return;
-    if (Date.now() - skillCmdsAtRef.current < SKILL_CMDS_THROTTLE_MS) return;
-    skillCmdsAtRef.current = Date.now();
-    (conn.skillCommands?.(sessionId) ?? Promise.resolve([])).then(setSkillCmds, () => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, conn, sessionId]);
+  const { cmdData, setCmdData, cmdActive, setCmdActive } = useCommandPalette(conn);
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string, images?: string[]) => Promise<void>>(() => Promise.resolve());
@@ -522,7 +511,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     pickRelRef,
     cmdData,
     setCmdData,
-    skillCmds,
     cmdActive,
     setCmdActive,
     conn,
@@ -536,7 +524,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关) */
   const slashPanelItems: CmdItem[] | null = (() => {
     const caret = inputRef.current?.selectionStart ?? input.length;
-    const items = slashItemsFor(cmdData, skillCmds, slashTokenAt(input, caret));
+    const items = slashItemsFor(cmdData, slashTokenAt(input, caret));
     return items.length > 0 ? items : null;
   })();
 

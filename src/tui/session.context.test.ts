@@ -51,18 +51,15 @@ test('会话控制器：/context 输出各段大小与占窗口比例，链段�
   }
 });
 
-test('会话控制器：/context 只读钉——不消费待注入技能块、不写链、两次输出逐字节一致', async () => {
+test('会话控制器：/context 只读钉——不写链、两次输出逐字节一致', async () => {
   const tmp = tmpdir('sunshinex-ctx-readonly-');
   try {
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter([]) });
     const ctx = ctrl.runtime.harness.context;
-    ctx.setSkillBlock('demo skill body for pending injection');
     ctx.appendChain([{ action: 'task', observation: 'Current instruction: demo' }]);
     const chainBefore = ctx.chainView().length;
     await ctrl.submit('/context');
     const first = ctrl.getState().messages.filter((m) => m.role === 'system').at(-1)?.text ?? '';
-    assert.ok(first.includes('skill block (pending)'), '待注入技能块呈现为独立分段');
-    assert.equal(ctx.peekSkill(), 'demo skill body for pending injection', 'peek 不消费：技能块仍待下次装配注入');
     assert.equal(ctx.chainView().length, chainBefore, '观测不写链');
     await ctrl.submit('/context');
     const second = ctrl.getState().messages.filter((m) => m.role === 'system').at(-1)?.text ?? '';
@@ -86,7 +83,7 @@ test('resolveContextWindow（J6 双源收敛单点）：modelWindow 优先 > env
   }
 });
 
-test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带参形态统一无法识别', async () => {
+test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带参形态命令词命中不再报无法识别', async () => {
   process.env.SUNSHINEX_CONTEXT_WINDOW = '5000';
   const tmp = tmpdir('sunshinex-ctx-window-');
   try {
@@ -96,14 +93,14 @@ test('会话控制器：/context 窗口分母随 SUNSHINEX_CONTEXT_WINDOW，带�
     assert.ok(text.includes('/ 5,000 tokens'), '窗口分母随配置');
     await ctrl.submit('/context extra');
     const warn = ctrl.getState().messages.find((m) => m.role === 'system' && m.text.includes('Unrecognized command'));
-    assert.equal(warn?.level, 'warn', '带参形态统一无法识别（裸形式守卫）');
+    assert.equal(warn, undefined, '未命中 warn 分支退役（spec 2026-11-04 §4.1）：命令词命中 /context 分支，尾参忽略');
   } finally {
     delete process.env.SUNSHINEX_CONTEXT_WINDOW;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致（快照分段/压缩水位/peek 三源齐备）', async () => {
+test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致（快照分段/压缩水位齐备）', async () => {
   const tmp = tmpdir('sunshinex-ctx-parts-');
   try {
     fs.writeFileSync(path.join(tmp, 'SUNSHINE.md'), '- 只有一行约定\n');
@@ -113,7 +110,7 @@ test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致�
     const parts = ctx.snapshotPartsView();
     assert.ok(parts.instructions.length > 0, '指令段非空（SUNSHINE.md 已写盘）');
     assert.deepEqual(
-      [...parts.instructions, ...parts.skills, ...parts.memory].map((i) => i.content),
+      [...parts.instructions, ...parts.skills, ...parts.agents, ...parts.teams, ...parts.memory].map((i) => i.content),
       ctx.snapshotView().map((i) => i.content),
       '分段展平与混合快照逐字节同源（分段只是观测切面，不改装配面）',
     );
@@ -122,10 +119,11 @@ test('构成口径自洽：TUI 分支输入与 contextBreakdown 纯函数一致�
       stableSegment: ctrl.runtime.harness.stableSegment(),
       instructions: parts.instructions,
       skills: parts.skills,
+      agents: parts.agents,
+      teams: parts.teams,
       memory: parts.memory,
       compacted: ctx.compactedView(),
       chain: ctx.chainView(),
-      skill: ctx.peekSkill(),
       window: 200_000,
       chainFrom: ctx.chainFromView(),
     });

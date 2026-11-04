@@ -279,7 +279,7 @@ export function removeAgent(root: string | null, scope: Scope, id: string): void
  *  行尾注释风格均保真）。frontmatter 块缺失/未闭合 → INVALID。逐行 trim 判定容忍 CRLF（仅被替换/
  *  插入的行归一 \n，其余行原样）。词法说明：行级手术需行位信息，parseFrontmatterKV 只出 KV 不出行位，
  *  故本面自扫 `---` 块界（块界判定与 harness FRONTMATTER 词法同形） */
-function patchEnabledLine(md: string, id: string, enabled: boolean): string {
+export function patchEnabledLine(md: string, id: string, enabled: boolean): string {
   const lines = md.split('\n');
   if ((lines[0] ?? '').trim() !== '---') {
     throw new CatalogWriteError('INVALID', `agent.md missing frontmatter: <agents>/${id}/agent.md`);

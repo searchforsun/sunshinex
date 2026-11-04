@@ -7,14 +7,11 @@ import {
   ModelTier,
   NodeOutput,
   SessionEvent,
-  SkillRef,
   SteerLine,
   StopReason,
 } from '../types';
 import { guardrailStop, describeGuardrailHit } from '../harness/guardrail';
 import { ModelAdapter, ModelRouter } from '../model/adapter';
-import { Result } from '../result';
-import { ResolvedSkill, skillHeader } from '../harness/skills';
 import { ToolRegistry } from '../harness/tools';
 import { SafetyChain } from '../harness/security/chain';
 import { ContextManager } from '../harness/context';
@@ -27,12 +24,7 @@ export type LoopNodeFn = (ctx: LoopContext, input: NodeOutput | null) => Promise
 /** 节点：公共字段 + 执行函数（淘汰占位 LoopNode 接口） */
 export type LoopEngineNode = LoopNodeBase & { run: LoopNodeFn };
 
-/** 技能解析接缝：skillRef 调度的装配位（缺省不启用；结构兼容 SkillsFacade） */
-interface SkillResolver {
-  resolve(id: string, params?: Record<string, string>): Result<ResolvedSkill>;
-}
-
-/** 依赖容器（T4 收紧：显式五件套；router/skills 可选——档位兜底与技能调度为渐进装配位） */
+/** 依赖容器（T4 收紧：显式五件套；router 可选——档位兜底为渐进装配位） */
 export interface LoopDeps {
   safety: SafetyChain;
   registry: ToolRegistry;
@@ -41,7 +33,6 @@ export interface LoopDeps {
   /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
   root?: string;
   router?: ModelRouter;
-  skills?: SkillResolver;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给循环内构造的 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;
   /** per-run 成本账本透传：Loop/Graph 内构造的 Reactor 同样落 runs/<id>（成本观测不分通道） */
@@ -115,10 +106,10 @@ export class LoopEngine {
     if (this.nodes.length === 0) throw new Error('LoopEngine: node list is empty');
   }
 
-  /** 运行至终态；skillRef 触发技能首帧注入（解析失败即 failed，不静默） */
+  /** 运行至终态 */
   async run(
     goal: string,
-    opts?: { state?: Record<string, unknown>; skillRef?: SkillRef },
+    opts?: { state?: Record<string, unknown> },
   ): Promise<LoopRunResult> {
     // MCP 装配就绪门槛（fail-fast 收敛为确定性失败）：mcp__ 工具注册完成后才进首节点
     if (this.deps.mcpReady) {
@@ -137,17 +128,6 @@ export class LoopEngine {
       for (const w of warnings) {
         this.deps.context.appendChain([{ action: 'notice', observation: `MCP warning: ${w}` }]);
       }
-    }
-    if (opts?.skillRef) {
-      if (!this.deps.skills) {
-        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: 'SKILL_NOT_CONFIGURED: LoopDeps has no skill resolver (skills)' };
-      }
-      const resolved = this.deps.skills.resolve(opts.skillRef.id, opts.skillRef.params);
-      if (!resolved.ok) {
-        return { status: 'failed', iterations: 0, tokensUsed: 0, state: {}, error: `${resolved.error.code}: ${resolved.error.message}` };
-      }
-      const m = resolved.value.manifest;
-      this.deps.context.setSkillBlock(`${skillHeader(m)}\n${resolved.value.body}`);
     }
     const ctx: LoopContext = {
       iteration: 0,

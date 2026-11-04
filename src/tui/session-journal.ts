@@ -321,18 +321,31 @@ function normalizeTodoItems(raw: unknown[]): TodoItem[] {
   });
 }
 
-/** ctx-snap 行面净化单点（行面字段不予信任——journal 既有口径）：任一字段形态不合法即整行视同不存在 */
+/** ctx-snap 行面净化单点（行面字段不予信任——journal 既有口径）：任一字段形态不合法即整行视同不存在。
+ *  part 五值闭集（2026-11-04 §2.1 扩 agents/teams——旧档三值行原样通过，五段行不再被误判坏档）；
+ *  sig 两新字段可选（在场须为 string，缺省即旧档形态——restore 侧 `?? ''` 容错，归约面不吞不补） */
 function normalizeCtxSnap(items: unknown, sig: unknown): CtxSnapshot | undefined {
   if (!Array.isArray(items) || typeof sig !== 'object' || sig === null) return undefined;
   const out: CtxSnapshot['items'] = [];
   for (const it of items) {
     const o = (it ?? {}) as { part?: unknown; kind?: unknown; content?: unknown };
-    if ((o.part !== 'instructions' && o.part !== 'skills' && o.part !== 'memory') || typeof o.kind !== 'string' || typeof o.content !== 'string') return undefined;
+    if ((o.part !== 'instructions' && o.part !== 'skills' && o.part !== 'agents' && o.part !== 'teams' && o.part !== 'memory') || typeof o.kind !== 'string' || typeof o.content !== 'string') return undefined;
     out.push({ part: o.part, kind: o.kind, content: o.content });
   }
   const s = sig as Record<string, unknown>;
   if (typeof s.skills !== 'string' || typeof s.memory !== 'string' || !(s.sunshinex === null || typeof s.sunshinex === 'string') || !(s.globalSunshine === null || typeof s.globalSunshine === 'string')) return undefined;
-  return { items: out, sig: { skills: s.skills, memory: s.memory, sunshinex: s.sunshinex as string | null, globalSunshine: s.globalSunshine as string | null } };
+  if (!(s.agents === undefined || typeof s.agents === 'string') || !(s.teams === undefined || typeof s.teams === 'string')) return undefined;
+  return {
+    items: out,
+    sig: {
+      skills: s.skills,
+      memory: s.memory,
+      sunshinex: s.sunshinex as string | null,
+      globalSunshine: s.globalSunshine as string | null,
+      ...(typeof s.agents === 'string' ? { agents: s.agents } : {}),
+      ...(typeof s.teams === 'string' ? { teams: s.teams } : {}),
+    },
+  };
 }
 
 /** 重放归约（封闭词汇 v1）：链累积、压缩后态覆盖（末值语义）、消息直汇、user 汇输入历史、todos/model/view 末值覆盖 */

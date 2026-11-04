@@ -20,13 +20,12 @@ import {
 } from './approval';
 import { confirmPlanOn, planAwaitDecisionOn } from './commands-plan';
 import { PLAN_MODE_NOTE } from '../harness/plan-flow';
-import { skillCommandIdsOn, skillMenuEntriesOn } from './commands-skills';
+import { skillMenuEntriesOn } from './commands-skills';
 import { toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { sunshineInitGoal } from '../harness/sunshine-init';
-import { skillHeader } from '../harness/skills';
 import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, newSessionId, markSessionArchived, purgeSession, readSessionMeta, writeSessionMeta } from './session-journal';
@@ -36,7 +35,7 @@ import { kernelEventRows } from '../session/seglog';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
 import { LiveTaskState, applyTaskState, initialTaskState } from './task-state';
-import { recordSkillUsage } from './skill-usage';
+import { recordSkillUsage } from '../catalog/skill-usage';
 import { configureWindowsTerminal, wtSettingsCandidates } from './terminal-setup';
 import { memoryList, memoryAdd, memoryRm, memoryGc, kbIndex } from './commands-memory';
 import { modelSwitch, modelTierSwitch, modelEffortSwitch } from './commands-model';
@@ -580,6 +579,17 @@ export class SessionController {
     resolveAskAnswerOn(this, a);
   }
 
+  /** 输入框回填接缝（spec 2026-11-04 §4.2，镜像 askUser 薄委托形态）：App 挂载期注册；单槽覆盖——/skill 卡与后续 palette 共用 */
+  private prefillSink?: (text: string) => void;
+  /** 输入框回填注册（App 挂载期注册；单槽覆盖——/skill 卡与后续 palette 共用） */
+  onPrefillInput(cb: (text: string) => void): void {
+    this.prefillSink = cb;
+  }
+  /** 回填输入框（不提交；用户补意图后自行发送） */
+  prefillInput(text: string): void {
+    this.prefillSink?.(text);
+  }
+
   /** 第一次 Ctrl+C（运行中）：挂起暂停确认卡（薄委托拆分件 approval）——status 保持 running、abort 不触发；
    *  已挂卡或非运行态返回 false（App 层据此回落既有分流） */
   requestPause(): boolean {
@@ -1003,20 +1013,11 @@ export class SessionController {
     this.pushMsg('system', t('Soft reset: messages, todos, session chain and compacted summary cleared; session approvals cleared (memory & ledger kept)', '软重置：消息、待办、会话链与压缩摘要已清空，会话级审批登记已清除（记忆与账本保留）'));
   }
 
-  /** 斜杠命令分发面：命令只认裸形式（规格 D2），选择卡经 askUser 挂起回填 */
+  /** 斜杠命令分发面：命中内置清单走命令分支；未命中一律当普通文本派发（skills/$/# 软引用同语义，
+   *  系统提示词清单 lead 行声明模型匹配面——spec 2026-11-04 §4.1，GUI「未知名回落纯文本」口径对齐）；
+   *  选择卡经 askUser 挂起回填 */
   private async handleSlash(text: string): Promise<void> {
     const cmd = text.split(/\s+/)[0] ?? text;
-    // 命令只认裸形式（规格 D2）：一切带参枚举形态与不在清单的命令词统一无法识别；
-    // 自由文本参数命令（目标/关注点/记忆内容/目录路径）不在枚举范围，带参放行；
-    // Task 20 catalog 面板族（/mcp /agents /plugins）带枚举子命令+条目名尾参，同豁免——
-    // 参数合法性由拆分件子命令解析面裁决（未知动作/名称回用法或错误行，不落任务流）
-    const FREE_TEXT_ARGS = new Set(['/compact', '/plan', '/goal', '/memory-add', '/add-dir', '/kb-index', '/btw', '/side', '/mcp', '/agents', '/plugins']);
-    // 技能命令（规格 2026-09-22-skill-as-command D4）：意图尾参为自由文本，与 FREE_TEXT_ARGS 同豁免；命中与否由尾部技能分发面裁决
-    const isSkillCommand = this.skillCommandIds().includes(cmd.slice(1));
-    if (!FREE_TEXT_ARGS.has(cmd) && !isSkillCommand && text !== cmd) {
-      this.pushMsg('system', t('Unrecognized command. Use /help to see available commands', '无法识别命令，使用 /help 查看使用方法'), { level: 'warn' });
-      return;
-    }
     if (cmd === '/help') {
       this.pushMsg('system', slashHelp().join('\n'));
       return;
@@ -1097,7 +1098,8 @@ export class SessionController {
       return;
     }
     if (cmd === '/skill') {
-      // 技能选择卡（规格 D1/D5）：裸形式、单选选定即链尾追加载；带参形态由裸形式守卫统一无法识别
+      // 技能选择卡（spec 2026-11-04 §4.2 硬载退役改插入引用）：单选选定即回填 `/id ` 到输入框
+      // （用户补意图后提交——模型经清单+skill 工具软加载）
       await this.skillFlow();
       return;
     }
@@ -1184,7 +1186,7 @@ export class SessionController {
     }
     if (cmd === '/resume') {
       // 恢复入口（规格 §6/D6）：无参选择卡（mtime 降序 + 首条输入摘要）；>8 条 filterable 全量卡（筛选在渲染层）；翻页统一渲染层滑窗（2026-09-30 口径）
-      // 带参形态已由裸形式守卫统一无法识别——此处只认无参；流程体迁拆分件 commands-session
+      // 带参形态命令词命中同分支（尾参忽略）；流程体迁拆分件 commands-session
       if (this.state.status !== 'idle') {
         this.pushMsg('system', t('A task is running; /resume unavailable now', '当前有任务进行中，暂不能执行 /resume'), { level: 'warn' });
         return;
@@ -1194,7 +1196,7 @@ export class SessionController {
     }
     if (cmd === '/btw' || cmd === '/side') {
       // G14.29 辅助问答（对标 Codex /side /btw）：fork 整档旁路 + 隔离一轮，答案旁白落屏不进主链；
-      // idle 守卫沿 /resume 先例；问题为自由文本尾参（FREE_TEXT_ARGS 同豁免）
+      // idle 守卫沿 /resume 先例；问题为自由文本尾参（命令词命中分支，尾参即问题文本）
       if (this.state.status !== 'idle') {
         this.pushMsg('system', t('A task is running; /btw unavailable now', '当前有任务进行中，暂不能执行 /btw'), { level: 'warn' });
         return;
@@ -1236,18 +1238,19 @@ export class SessionController {
       return;
     }
     if (cmd === '/context') {
-      // 上下文构成观测（只读零副作用）：分段与 buildMessages 消息面同构（稳定段+快照三段+压缩块+链+技能块），
-      // 窗口分母与 Reactor 压缩判定同源；技能块走 peek 不消费、不经 assemble、不写链——观测不改变被观测面
+      // 上下文构成观测（只读零副作用）：分段与 buildMessages 消息面同构（稳定段+快照分段+压缩块+链），
+      // 窗口分母与 Reactor 压缩判定同源；不经 assemble、不写链——观测不改变被观测面
       const ctx = this.runtime.harness.context;
       const parts = ctx.snapshotPartsView();
       const b = contextBreakdown({
         stableSegment: this.runtime.harness.stableSegment(),
         instructions: parts.instructions,
         skills: parts.skills,
+        agents: parts.agents,
+        teams: parts.teams,
         memory: parts.memory,
         compacted: ctx.compactedView(),
         chain: ctx.chainView(),
-        skill: ctx.peekSkill(),
         window: resolveRunWindow(this.runtime.harness.model),
         chainFrom: ctx.chainFromView(),
       });
@@ -1327,26 +1330,9 @@ export class SessionController {
       this.pushMsg('system', t(`Persistent memory ${on ? 'on' : 'off'} for this session (persist with the SUNSHINEX_AUTO_MEMORY env var)`, `本会话持久记忆已${on ? '开启' : '关闭'}（持久化请设环境变量 SUNSHINEX_AUTO_MEMORY）`));
       return;
     }
-    // 技能命令分发（规格 2026-09-22-skill-as-command D2–D5）：内置命令全部落空后查注册表（内置优先 D1——撞名技能不注册，此处天然不可达）
-    if (this.skillCommandIds().includes(cmd.slice(1))) {
-      if (this.state.status !== 'idle') {
-        this.pushMsg('system', t(`A task is running; ${cmd} unavailable now`, `当前有任务进行中，暂不能执行 ${cmd}`), { level: 'warn' });
-        return;
-      }
-      const loaded = this.loadSkill(cmd.slice(1));
-      const intent = text.slice(cmd.length).trim();
-      // D4：确定性加载成功后意图原样派发标准环（与 /goal 同款解析）；裸形式无意图止于加载（D3）；failed 不派发
-      if (loaded !== 'failed' && intent) await this.runTaskFlow(intent);
-      return;
-    }
     // G14.95 / 前缀未匹配任何命令 → 当普通文本(与 GUI 同语义):模型自主判断
     // (系统提示词 skills 清单含「/skill-id 引用优先加载」提示),不再报「无法识别命令」
     await this.runTaskFlow(text);
-  }
-
-  /** 技能命令注册表（D52 薄委托 commands-skills，调用面零变化） */
-  skillCommandIds(): string[] {
-    return skillCommandIdsOn(this);
   }
 
   /** 纵向命令面板技能源（D52 薄委托 commands-skills，调用面零变化；Task 20 起附来源/遮蔽标注） */
@@ -1354,30 +1340,8 @@ export class SessionController {
     return skillMenuEntriesOn(this);
   }
 
-  /** 技能加载单点（规格 D3，自 skillFlow 尾段提取）：链上去重 → resolve → 链尾追持久注入 → 回执；
-   *  /skill 选择卡与 /<技能id> 命令同源消费；failed 不派发后续任务（D4）；
-   *  成功/去重两径记录最近使用（2026-09-30 纵向命令面板排序源），failed 不记 */
-  private loadSkill(id: string): 'loaded' | 'already' | 'failed' {
-    if (this.runtime.harness.context.chainView().some((s) => s.action === 'skill' && s.observation.includes(`(id=${id} v=`))) {
-      this.pushMsg('system', t(`Skill ${id} already loaded in this session`, `技能 ${id} 本会话已加载`));
-      recordSkillUsage(this.root, id);
-      return 'already';
-    }
-    const r = this.runtime.harness.skills.resolve(id);
-    if (!r.ok) {
-      this.pushMsg('system', t(`Skill load failed: ${r.error.message}`, `技能加载失败：${r.error.message}`), { level: 'warn' });
-      return 'failed';
-    }
-    const m = r.value.manifest;
-    // 链尾追持久注入（先例 D2）：头行对齐 loop skillRef 既有格式，正文随后续每帧经链携带
-    this.runtime.harness.context.appendChain([{ action: 'skill', observation: `${skillHeader(m)}\n\n${r.value.body}` }]);
-    this.pushMsg('system', t(`Skill loaded: ${m.name} (id=${m.id}) — included in context for subsequent tasks`, `技能已加载：${m.name}（id=${m.id}）——随后续任务进上下文`));
-    recordSkillUsage(this.root, id);
-    return 'loaded';
-  }
-
-  /** /skill 技能选择卡（规格 D1–D5）：单选选定即加载；正文经链尾追持久注入（与模型 skill 工具观察同语义），
-   *  链上同 id 去重；>8 项 filterable（筛选在渲染层，会话层全量直出） */
+  /** /skill 技能选择卡（spec 2026-11-04 §4.2：硬载退役，改插入引用）：选定即把 `/id ` 回填输入框
+   *  （用户补意图后提交——模型经清单+skill 工具软加载）；>8 项 filterable 保留 */
   private async skillFlow(): Promise<void> {
     if (this.state.status !== 'idle') {
       this.pushMsg('system', t('A task is running; /skill unavailable now', '当前有任务进行中，暂不能执行 /skill'), { level: 'warn' });
@@ -1397,24 +1361,15 @@ export class SessionController {
       return { label, description: m.description.length > 128 ? `${m.description.slice(0, 128)}…` : m.description };
     });
     const answer = await this.askUser({
-      question: t('Load which skill? (type to filter)', '加载哪个技能？（输入即筛选）'),
+      question: t('Insert which skill reference? (type to filter)', '插入哪个技能引用？（输入即筛选）'),
       options,
-      ...(options.length > 8 ? { filterable: true } : {}),
+      ...(options.length > 8 ? { filterable: true } as const : {}),
     });
-    if (answer.type !== 'selected') return; // dismissed 静默（规格 D4，沿既有卡取消语义）
+    if (answer.type !== 'selected') return;
     const id = labelToId.get(answer.labels[0] ?? '');
     if (id === undefined) return;
-    const loaded = this.runtime.harness.context.chainView().some((s) => s.action === 'skill' && s.observation.includes(`(id=${id} v=`));
-    if (loaded) {
-      this.pushMsg('system', t(`Skill ${id} already loaded in this session`, `技能 ${id} 本会话已加载`));
-      return;
-    }
-    const r = this.runtime.harness.skills.resolve(id);
-    if (!r.ok) {
-      this.pushMsg('system', t(`Skill load failed: ${r.error.message}`, `技能加载失败：${r.error.message}`), { level: 'warn' });
-      return;
-    }
-    this.loadSkill(id);
+    recordSkillUsage(this.root, id); // 排序源：选择卡插入也是使用（spec §4.3）
+    this.prefillInput(`/${id} `);
   }
 
   private onEvent(e: SessionEvent): void {

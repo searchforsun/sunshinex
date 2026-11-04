@@ -82,3 +82,8 @@ export function userSkillsDir(): string {
   if (override !== undefined && override.length > 0) return path.resolve(override);
   return path.join(userConfigDir(), 'skills');
 }
+
+/** 全局团队目录（预定义智能体团队用户级根，spec 2026-11-04 §1.1；SUNSHINEX_USER_SKILLS_DIR 不影响本目录） */
+export function userTeamsDir(): string {
+  return path.join(userConfigDir(), 'teams');
+}

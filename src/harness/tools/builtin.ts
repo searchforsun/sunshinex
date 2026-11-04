@@ -9,6 +9,8 @@ import { ExecResult, ToolInput, TodoStatus } from '../../types';
 import { Result } from '../../result';
 import { KnowledgeBase } from '../knowledge/index';
 import { SkillsFacade, skillHeader } from '../skills';
+import { formatTeamCard, formatAgentCard, TeamsFacade } from '../teams';
+import { recordSkillUsage } from '../../catalog/skill-usage';
 import { ReadGuard } from './read-guard';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive } from './output-archive';
@@ -117,10 +119,16 @@ export function builtinTools(
     plan?: {
       awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
     };
+    /** team 工具接缝（spec 2026-11-04 §3.3）：teams 门面（live——每次 resolve 现读两级目录链）；
+     *  接缝不在场不注册（ask/memoryWrite 先例——graph/fork 等无接缝装配清单零变化） */
+    teams?: TeamsFacade;
+    /** agent 工具接缝（spec §3.3）：agents 清单窄视图 get（缺 id 回 undefined）——装配层以
+     *  AgentRegistry.resolve 包 try/catch 适配（throw 语义 → 三态 undefined），目录条目不暴露装配面其余字段 */
+    agents?: { get(id: string): { id: string; name: string; description: string; framing: string } | undefined };
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
-  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard, plan } = opts;
+  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard, plan, teams, agents } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
@@ -313,11 +321,16 @@ export function builtinTools(
         if (raw !== undefined && (typeof raw !== 'object' || raw === null)) throw new CodedToolError('INVALID_ARG', 'params must be a name→value object');
         const r = skills.resolve(id, raw as Record<string, string> | undefined);
         if (!r.ok) throw new CodedToolError(r.error.code, `${r.error.code}: ${r.error.message}`);
+        recordSkillUsage(root, id); // 最近使用排序源（2026-09-30）：硬载退役后唯一记账点（spec §4.3）
         // 正文整读（fullObservation）：SKILL.md 是策划物料、按需装载即全读——不走 fitOut 归档（恢复指针式
         // 二跳破坏「加载指令」语义）；超限上下文由反应式压缩兜底（§12）
         return execOut(`${skillHeader(r.value.manifest)}\n\n${r.value.body}`);
       },
     },
+    // team/agent 工具（spec 2026-11-04 §3.3）：接缝在场才注册（缺省不注册——graph/fork 等无接缝装配零变化）；
+    // 注册顺位在 skill 条目之后（模型面清单按名排序下发，注册序不影响 prompt 字节布局）
+    ...(teams !== undefined ? [makeTeamTool(teams, agents)] : []),
+    ...(agents !== undefined ? [makeAgentTool(agents)] : []),
     {
       parameters: {
         type: 'object',
@@ -784,4 +797,73 @@ export function builtinTools(
   }
 
   return tools;
+}
+
+/** 模块级 execOut（team/agent 两工厂回执单点，形状=skill 工具同款 in-scope 助手）：工厂在模块层、
+ *  builtinTools 内的同名 execOut 闭包不可达——同形状落此；builtinTools 内局部 const 遮蔽本函数（合法、
+ *  语义各自一致），工厂体保持 brief 逐字 */
+function execOut(stdout: string): ExecResult {
+  return { exitCode: 0, stdout, stderr: '', timedOut: false };
+}
+
+/** team 工具（spec 2026-11-04 §3.3，镜像 skill 工具）：清单内 id 才可用、teams 是 live 的；
+ *  观察原文=章程卡整读不截断（fullObservation） */
+export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: import('../../types').TeamManifest } | { ok: false; error: { code: string; message: string } } }, agents?: { get(id: string): { id: string; name: string; description: string; framing: string } | undefined }) {
+  return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Team id from the available agent teams list' } },
+    },
+    name: 'team',
+    description:
+      "Load a team's charter card by id when the user references a team like \"#team-id\" or the task matches an entry in the available agent teams list; use only ids from the list — never invent one; the charter is returned verbatim and never truncated. Teams are live: one you create (or one announced by a later [teams] notice) is usable by its id immediately. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
+    category: 'read' as const,
+    fullObservation: true,
+    executor: async (input: ToolInput) => {
+      const id = String(input.id ?? '').trim();
+      if (id === '') throw new CodedToolError('INVALID_ARG', 'Missing team id');
+      const r = teams.resolve(id);
+      if (!r.ok) throw new CodedToolError(r.error.code, `${r.error.code}: ${r.error.message}`);
+      const m = r.value as import('../../types').TeamManifest;
+      // 成员行现算（调用方自 agents 清单组装，teams.ts §3.3）：在册出名/描述，缺册显式注记 missing
+      const members = m.members.map((mid) => {
+        const a = agents?.get(mid);
+        return a !== undefined ? { id: mid, name: a.name, description: a.description } : { id: mid, name: '', description: '', missing: true };
+      });
+      // 章程正文自 sourceDir/team.md 整读（frontmatter 剥离）；缺档/读败回落行——卡骨架恒完整，不炸工具
+      let body = '';
+      try {
+        body = fs.readFileSync(path.join(m.sourceDir, 'team.md'), 'utf8').replace(/^---\s*\n([\s\S]*?)\n---/, '').trim();
+      } catch {
+        body = '(charter body unavailable)';
+      }
+      return execOut(formatTeamCard(m, members, body));
+    },
+  };
+}
+
+/** agent 工具（spec §3.3）：清单内 id 出卡（角色框定原文随卡）、不在册 NOT_IN_CATALOG */
+export function makeAgentTool(agents: { get(id: string): { id: string; name: string; description: string; framing: string } | undefined }) {
+  return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['id'],
+      properties: { id: { type: 'string', description: 'Agent id from the available agents list' } },
+    },
+    name: 'agent',
+    description:
+      "Load an agent's card (role framing) by id when the user references an agent like \"$agent-id\" or the task matches an entry in the available agents list; use only ids from the list — never invent one. Then delegate the task via spawn with that agent_id — do not absorb the role yourself. The agents list is a session snapshot: an agent added later is announced by an [agents] notice and becomes usable in a new session (the registry is frozen for the current session)",
+    category: 'read' as const,
+    fullObservation: true,
+    executor: async (input: ToolInput) => {
+      const id = String(input.id ?? '').trim();
+      if (id === '') throw new CodedToolError('INVALID_ARG', 'Missing agent id');
+      const a = agents.get(id);
+      if (a === undefined) throw new CodedToolError('NOT_IN_CATALOG', `NOT_IN_CATALOG: agent not registered: ${id}`);
+      return execOut(formatAgentCard(a));
+    },
+  };
 }
