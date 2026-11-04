@@ -63,6 +63,11 @@ export const TASK_FOCUS_LINE =
 export const SKILLS_INSTALL_LINE =
   'To install skills, write them directly as <root>/skills/<id>/SKILL.md (frontmatter: name/description/version) under the project skills root (.sunshinex/skills) or the global skills root (~/.sunshinex/skills); users can also run `sunshinex skills install <git-url|owner/repo|dir>` to install into the global root. settings.json files (project and global) are protected and never editable by you.';
 
+/** 团队安装政策行（spec 2026-11-04 §5）：模型可自助预定义团队（members 引用 agents 注册表 id），
+ *  settings.json 两级受保护与 SKILLS_INSTALL_LINE 同口径 */
+export const TEAMS_INSTALL_LINE =
+  'To predefine agent teams, write them directly as <root>/teams/<id>/team.md (frontmatter: name/description/members (space-separated agent ids)/lead/enabled; body = team charter) under the project teams root (.sunshinex/teams) or the global teams root (~/.sunshinex/teams); members must reference registered agent ids (built-in planner/developer/tester/reviewer or .sunshinex/agents/<id>/agent.md). Users reference a team with "#team-id". settings.json files (project and global) are protected and never editable by you.';
+
 /** 工作目录环境事实行（会话级常量；root 由消费点解析后传入） */
 export function workDirLine(root: string): string {
   return `Current working directory (project root): ${root}`;
@@ -98,6 +103,7 @@ export function stableSegmentOf(opts: {
     REFERENCE_DATA_LINE,
     TASK_FOCUS_LINE,
     SKILLS_INSTALL_LINE,
+    TEAMS_INSTALL_LINE,
     workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
     FILE_PATH_LINE,
   ].join('\n');
