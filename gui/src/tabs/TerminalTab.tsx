@@ -9,6 +9,7 @@ import type { PtyFrame } from './pty-codec';
 import { toWsUrl } from '../connection';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
+import { currentTheme, watchThemeChange } from '../theme';
 import { zoomScale } from '../ui-zoom';
 import type { TabParams } from './tab-state';
 
@@ -62,6 +63,18 @@ const XTERM_THEME = {
   cursor: '#22d3ee',
   selectionBackground: 'rgba(34, 211, 238, 0.25)',
 } as const;
+/** 亮色档(2026-11-04 用户裁定「亮色模式终端显亮色」):bg=--surface-code #fcfcfc /
+ *  fg=--fg #1a1c1f / cursor=--accent #339cff;ANSI 16 色缺省——PowerShell 前景按 256/truecolor
+ *  发色,深底专用色罕见,亮底缺省谱可读 */
+const XTERM_THEME_LIGHT = {
+  background: '#fcfcfc',
+  foreground: '#1a1c1f',
+  cursor: '#339cff',
+  selectionBackground: 'rgba(51, 156, 255, 0.25)',
+} as const;
+/** 当前生效主题对应的 xterm 主题(mount 取一次;切换经 watchThemeChange 热更 options.theme) */
+const xtermThemeFor = (th: 'dark' | 'light'): { background: string; foreground: string; cursor: string; selectionBackground: string } =>
+  th === 'light' ? XTERM_THEME_LIGHT : XTERM_THEME;
 
 export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,6 +104,8 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     let exited = false;
     /** 选区工具条附加监听卸载钩子(mouseup;重连回退轮换 term 时换挂) */
     const cleanupExtra = { current: (null as unknown as (() => void) | null) };
+    /** 主题热随退订(xterm 装配期挂;effect 卸载解) */
+    let unwatchTheme: (() => void) | null = null;
 
     /** fit 后同步 pty 尺寸(装配尾一次 + ResizeObserver 每回调) */
     const syncSize = (): void => {
@@ -128,7 +143,12 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           }
           // ③ xterm + FitAddon + pty WS 装配
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
-          term = new Terminal({ theme: XTERM_THEME, fontFamily: fontSpec.family, fontSize: fontSpec.size });
+          term = new Terminal({ theme: xtermThemeFor(currentTheme()), fontFamily: fontSpec.family, fontSize: fontSpec.size });
+          // 主题热随(2026-11-04 亮色终端裁定):html[data-theme] 变更即换 theme,存活的 pty 不重连
+          const unwatch = watchThemeChange(() => {
+            if (term !== null) term.options.theme = xtermThemeFor(currentTheme());
+          });
+          unwatchTheme = unwatch;
           fit = new FitAddon();
           term.loadAddon(fit);
           term.open(container);
@@ -227,6 +247,8 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     window.addEventListener('sunshinex:font-preset', onFontPreset);
     return () => {
       cancelled = true;
+      unwatchTheme?.();
+      unwatchTheme = null;
       window.removeEventListener('sunshinex:font-preset', onFontPreset);
       cleanupExtra.current?.();
       cleanupExtra.current = null;
