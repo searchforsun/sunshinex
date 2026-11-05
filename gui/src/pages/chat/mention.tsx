@@ -399,6 +399,14 @@ const PANEL_H = 300;
 
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number; w: number; below: boolean } | null>(null);
+  // 2026-11-05 用户裁定「hover 提示可悬停」:指针从 chip 移入面板不关(面板 pointer-events:auto
+  // 可滚动查看),移出面板/chip 才关——chip mouseleave 延迟 160ms 关,面板 mouseenter 取消
+  const hideTimer = useRef<number | undefined>(undefined);
+  const closeLater = (): void => {
+    window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => setTip(null), 160);
+  };
+  const keepOpen = (): void => window.clearTimeout(hideTimer.current);
   // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
   const ico = isTerm ? (
     <SquareTerminal size={11} strokeWidth={1.75} />
@@ -408,21 +416,23 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     <Globe size={11} strokeWidth={1.75} />
   );
   const onEnter = (e: ReactMouseEvent<HTMLSpanElement>): void => {
+    keepOpen();
     const r = e.currentTarget.getBoundingClientRect();
     const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
     const z = zoomScale();
     const wLocal = PANEL_W / z;
     const mL = (main?.left ?? 0) + 8;
     const mR = (main?.right ?? window.innerWidth) - 8;
-    const x = Math.min(Math.max(r.left, mL), Math.max(mR - PANEL_W, mL)) / z;
+    // 坐标整数化(2026-11-05):除 zoom 后落分数 px,1px 边框跨设备像素=边缘毛刺
+    const x = Math.round(Math.min(Math.max(r.left, mL), Math.max(mR - PANEL_W, mL)) / z);
     // 2026-11-05 用户裁定:面板恒在芯片上方;上方放不下(满高露不全)且下方空间更大才翻下方,
     // 高度=所在侧可用空间与满高取小,超出纵向滚动(CSS overflow:auto)
     const spaceAbove = r.top - 8;
     const spaceBelow = window.innerHeight - r.bottom - 12;
     const below = spaceAbove < PANEL_H && spaceBelow > spaceAbove;
-    const h = (below ? Math.min(PANEL_H, spaceBelow) : Math.min(PANEL_H, Math.max(spaceAbove, 140))) / z;
+    const h = Math.round((below ? Math.min(PANEL_H, spaceBelow) : Math.min(PANEL_H, Math.max(spaceAbove, 140))) / z);
     // 贴边(2026-11-05 用户裁定「贴着 chip 的上下边缘」):间隙 2px
-    setTip({ x, y: (below ? r.bottom + 2 : r.top - 2) / z, h, w: wLocal, below });
+    setTip({ x, y: Math.round((below ? r.bottom + 2 : r.top - 2) / z), h, w: wLocal, below });
   };
   // 面板挂 body 层:避开 .chat-dock 等 transform 祖先的包含块劫持(fixed 才是真视口定位)
   const panel =
@@ -431,6 +441,8 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     createPortal(
       <span
         className="ref-chip-preview"
+        onMouseEnter={keepOpen}
+        onMouseLeave={() => setTip(null)}
         style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h, width: tip.w } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h, width: tip.w }}
       >
         <pre>{content}</pre>
@@ -444,7 +456,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
           className="hn hn-ref ref-chip"
           onMouseDown={(e) => e.preventDefault()}
           onMouseEnter={onEnter}
-          onMouseLeave={() => setTip(null)}
+          onMouseLeave={closeLater}
         >
           <span className="hn-ref-at" aria-hidden="true">⟦</span>
           {inner}
@@ -457,7 +469,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
   }
   return (
     <>
-      <span className="hn hn-ref ref-chip" onMouseEnter={onEnter} onMouseLeave={() => setTip(null)}>
+      <span className="hn hn-ref ref-chip" onMouseEnter={onEnter} onMouseLeave={closeLater}>
         <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
         {inner}
       </span>
@@ -504,7 +516,8 @@ export function refContentRegister(token: string, content: string): void {
 }
 
 /** 正文/终端片段 token 铸造(2026-11-05 用户裁定「正文圈选也要 chip」):按类会话级计数,
- *  同类二铸即 ·N——账本/注册表以 token 全文为键,固定 token 二次圈选会把先选内容互覆 */
+ *  同类二铸即 ·N——账本/注册表以 token 全文为键,固定 token 二次圈选会把先选内容互覆。
+ */
 const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
   const base = kind === 'body' ? '正文片段' : '终端片段';
