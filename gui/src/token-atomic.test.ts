@@ -20,7 +20,8 @@ describe('atomicRange G14.212 token 原子区间', () => {
     expect(atomicRange(TEXT, 0, 9)).toEqual([0, 9]);
   });
   it('跨 token 部分命中 → 扩为并集', () => {
-    expect(atomicRange(TEXT, 5, 12)).toEqual([0, 16]);
+    // 行中 /memory 已裁定=普通文本(2026-11-05)——区间跨 @token 与明文:左缘扩 @token 整体,右缘落明文不动
+    expect(atomicRange(TEXT, 5, 12)).toEqual([0, 12]);
   });
   it('token 尾边界光标 → 放行(:L 行锚续写落点)', () => {
     expect(atomicRange(TEXT, 8, 8)).toEqual([8, 8]);

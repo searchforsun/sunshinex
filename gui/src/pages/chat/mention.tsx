@@ -187,7 +187,9 @@ export function splitMentionTokens(text: string): MentionToken[] {
       if (lead !== '') out.push({ text: lead, kind: 'plain' });
       const word = m[2] ?? '';
       const atLineStart = idx === 0;
-      out.push({ text: word, kind: atLineStart ? 'cmd' : 'skill' });
+      // 2026-11-05 用户裁定:行中 / = 普通文本——任意词都亮 skill 徽标噪声大,行中不再标
+      //(消息内 /skill-id 软引用由模型按清单匹配,无徽标不碍加载);仅行首 /词 保 cmd 徽标
+      out.push({ text: word, kind: atLineStart ? 'cmd' : 'plain' });
     } else {
       // $/# 软引用:lead(行首为空串/空白)记 plain,token 按 $→agent、#→team
       const lead = m[3] ?? '';

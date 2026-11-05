@@ -151,7 +151,8 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(tokenDeleteRange(text, 10, 'Backspace')).toEqual([4, 21]);   // 中间也整删
     expect(tokenDeleteRange(text, 4, 'Delete')).toEqual([4, 21]);       // 首位 Delete 整删
     expect(tokenDeleteRange(text, 2, 'Backspace')).toBeNull();          // 明文不命中
-    expect(tokenDeleteRange(text, 26, 'Backspace')).toEqual([24, 29]);  // /plan 命令 token 同整删
+    expect(tokenDeleteRange(text, 26, 'Backspace')).toBeNull();         // 行中 /plan = 普通文本(2026-11-05 裁定),无 token 整删
+    expect(tokenDeleteRange('/plan 和', 3, 'Backspace')).toEqual([0, 5]); // 行首 / 命令 token 同整删
     expect(tokenDeleteRange(text, 0, 'Delete')).toBeNull();             // 首位 Delete 无 token
   });
 
@@ -268,7 +269,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     );
     await screen.findAllByText(/changes-bar-probe\.md/);
     expect(document.querySelector('.user-bubble .file-link')).toBeNull(); // 无专属文件渲染
-    expect(document.querySelectorAll('.user-bubble .hn').length).toBeGreaterThanOrEqual(2); // @token 与 /plan 走 chip 高亮
+    expect(document.querySelectorAll('.user-bubble .hn').length).toBeGreaterThanOrEqual(1); // @token 走 chip 高亮(行中 /plan 已裁定=普通文本,2026-11-05)
     expect(document.querySelector('.user-bubble code')).toBeNull(); // 不落 code 元素
     expect(document.querySelector('.user-bubble strong')).toBeNull(); // md 加粗不解析
     expect(onOpenFile).not.toHaveBeenCalled();
