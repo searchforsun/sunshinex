@@ -794,7 +794,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * (12% 蒙版同 badge-warn 既有 pattern)——语义变量随主题暗/亮两套,不新增硬编码色 */.sx-composer-highlight .hn-agent { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }.sx-composer-highlight .hn-team { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
 /* 2026-11-04 ref 芯片 hover 预览(用户裁定「正文/终端/网页元素等 chip hover 显示全文;文件/命令
  * 等有意义 token 不 hover」):高亮层整体 pointer-events:none,ref 芯片单独放行使悬停可达
- * (mousedown preventDefault 在组件侧保 textarea 焦点);预览面板 fixed 随主题 */.sx-composer-highlight .hn-ref { pointer-events: auto; }
+ * (mousedown preventDefault 在组件侧保 textarea 焦点);预览面板 fixed 随主题。
+ * 2026-11-04 续:高亮层 z-index 提到 textarea 之上(层级在下=textarea 挡尽指针事件,ref 悬停
+ * 永不触发;none 区穿透打字不受影响)+ref 芯片显形宽度=原文宽度(⟦⟧ 透明保字宽同 file @ 手法,
+ * 图标绝对定位落 ⟦ 字符位——内联图标多占宽+定界符缺位=光标脱开 chip 的根因) */.sx-composer-highlight { z-index: 1; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; padding: 0; }
+.sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; }
 .ref-chip { cursor: default; }
 .ref-chip-preview { position: fixed; z-index: 80; max-width: 520px; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); pointer-events: none; }
 .ref-chip-preview pre { margin: 0; font: 11px var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
@@ -951,6 +957,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: var(--surface-elevated); border: 1px solid var(--border);
   border-radius: var(--radius-lg); box-shadow: var(--elev-prominent);
   padding: 4px; display: flex; flex-direction: column; gap: 1px;
+}
+/* 空态引导行(2026-11-05 用户实测:零目录时静默隐藏=弹了等于没弹——池空指路设置面,非交互行) */
+.ref-palette-empty { padding: 8px 10px; font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); }
 }.ref-palette-head { padding: 5px 8px 3px; font-size: 11px; color: var(--fg-tertiary); }.ref-palette-row {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 8px; border-radius: var(--radius-sm);

@@ -102,19 +102,24 @@ export function FilePalette({
 }
 
 /** agents-teams P1 Task 4（spec §3.2）：$/# 引用面板（智能体/团队双组单游标）——行=符号着色 +
- *  id + 展示名后缀，组头分节（Agents/Teams），空组由调用面过滤（flatRefItems 只含非空组），
- *  全空=调用面不开面板（与 @ 面板同门）。键盘（↑↓ 循环/Enter 插入/Esc）在 use-composer-keys
- *  与 @ 面板同链；插入文本由调用面拼装（R4：`$id `/`#id ` 尾随空格，插入即终态无记账）。 */
+ *  id + 展示名后缀，组头分节（Agents/Teams），空组由调用面过滤（flatRefItems 只含非空组）；
+ *  全池空/过滤无命中=渲染 emptyHint 引导行（2026-11-05 用户实测裁定：静默隐藏=弹了等于没弹）。
+ *  键盘（↑↓ 循环/Enter 插入/Esc）在 use-composer-keys 与 @ 面板同链；插入文本由调用面拼装
+ *  （R4：`$id `/`#id ` 尾随空格，插入即终态无记账）。 */
 export function RefPalette({
   items,
   active,
   onPick,
   onHover,
+  emptyHint,
 }: {
   items: RefItem[];
   active: number;
   onPick: (item: RefItem) => void;
   onHover: (i: number) => void;
+  /** 空态引导(2026-11-05 用户实测:零目录时面板静默隐藏=弹了等于没弹)——items 空时渲染
+   *  非交互提示行(池空=指路设置面;有池无匹配=无匹配),面板不再以空渲染关自己的门 */
+  emptyHint?: string;
 }): JSX.Element {
   // G14.163 同款：↑↓ 移动时选中项滚入可视区(block:nearest 最小滚动)
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -123,6 +128,7 @@ export function RefPalette({
   }, [active, items]);
   return (
     <div className="ref-palette" role="listbox" aria-label={t('Agents and teams', '智能体与团队')}>
+      {items.length === 0 && emptyHint !== undefined && <div className="ref-palette-empty">{emptyHint}</div>}
       {items.map((item, i) => {
         // 组头:首行恒带头($ 行=Agents、# 行=Teams——空组已被 flatRefItems 滤除,过滤后只剩
         // 团队行时首行直接落 Teams 头);此后首个 # 行前插 Teams 头
@@ -303,7 +309,7 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
  *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别)。
  *  2026-11-04 §3.1:agent/team 走尾分支同款 `hn-${kind}` 类(hn-agent/hn-team,CSS 侧取
  *  --accent/--warn 区分,不新增硬编码色) */
-export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void): ReactNode =>
+export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void, composer?: boolean): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
     if (tk.kind === 'mdlink') {
@@ -354,7 +360,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       const inner = tk.text.slice(1, -1);
       const isTerm = inner.startsWith('终端');
       const content = refContents?.get(tk.text) ?? refContentRegistry.get(tk.text) ?? '';
-      return <RefTokenChip key={i} text={tk.text} inner={inner} isTerm={isTerm} content={content} />;
+      return <RefTokenChip key={i} inner={inner} isTerm={isTerm} content={content} composer={composer === true} />;
     }
     return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
   });
@@ -362,26 +368,43 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
 /** 2026-11-04 ref 芯片 hover 预览(用户裁定「输入框/用户气泡/队列/编辑都保持 chip 状态,hover
  *  时显示具体内容」):固定定位面板随 chip 悬停显隐,内容=账本/注册表全文;指针穿透不抢悬停。
  *  2026-11-04 裁定续:恒上侧(面板底缘贴 chip 顶缘),水平钳回主对话区(.sx-main,缺席回退视口),
- *  可用高度钳 max-height 超出纵向滚动 */
-export function RefTokenChip({ inner, isTerm, content }: { text?: string; inner: string; isTerm: boolean; content: string }): JSX.Element {
+ *  可用高度钳 max-height 超出纵向滚动。
+ *  composer=true(输入框高亮层):显形宽度=原文宽度硬约束——⟦⟧ 定界符保留占位(透明,同 file
+ *  芯片 @ 保字宽手法),图标绝对定位落 ⟦ 字符位(内联图标多占宽+定界符缺位=光标脱开 chip 的
+ *  根因);气泡/队列无约束,图标内联+定界符不渲染 */
+export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number } | null>(null);
-  return (
-    <span
-      className="hn hn-ref ref-chip"
-      onMouseDown={(e) => e.preventDefault()}
-      onMouseEnter={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
-        const mL = (main?.left ?? 0) + 8;
-        const mR = (main?.right ?? window.innerWidth) - 8;
-        const x = Math.min(Math.max(r.left, mL), Math.max(mR - 520, mL));
-        setTip({ x, y: r.top - 6, h: Math.min(300, Math.max(r.top - 16, 140)) });
-      }}
-      onMouseLeave={() => setTip(null)}
-    >
-      <span className="hn-ref-ico" aria-hidden="true">
-        {isTerm ? <SquareTerminal size={11} strokeWidth={1.75} /> : <Globe size={11} strokeWidth={1.75} />}
+  const ico = isTerm ? <SquareTerminal size={11} strokeWidth={1.75} /> : <Globe size={11} strokeWidth={1.75} />;
+  if (composer === true) {
+    return (
+      <span
+        className="hn hn-ref ref-chip"
+        onMouseDown={(e) => e.preventDefault()}
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
+          const mL = (main?.left ?? 0) + 8;
+          const mR = (main?.right ?? window.innerWidth) - 8;
+          const x = Math.min(Math.max(r.left, mL), Math.max(mR - 520, mL));
+          setTip({ x, y: r.top - 6, h: Math.min(300, Math.max(r.top - 16, 140)) });
+        }}
+        onMouseLeave={() => setTip(null)}
+      >
+        <span className="hn-ref-at" aria-hidden="true">⟦</span>
+        <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
+        {inner}
+        <span className="hn-ref-at" aria-hidden="true">⟧</span>
+        {tip !== null && content !== '' && (
+          <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>
+            <pre>{content}</pre>
+          </span>
+        )}
       </span>
+    );
+  }
+  return (
+    <span className="hn hn-ref ref-chip">
+      <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
       {inner}
       {tip !== null && content !== '' && (
         <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>

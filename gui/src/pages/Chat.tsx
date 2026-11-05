@@ -188,7 +188,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
       ([a, tv]) => {
         setRefEntries({
-          agents: a.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
+          // 内置四角色并入候选池(2026-11-05 用户实测:零注册目录下 $ 弹了等于没弹)——内置本就
+          // 可 $ 引用(spawn/agent 工具均收,agents 索引同源),同 id 注册行不重复列(builtin-first)
+          agents: [
+            ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
+            ...a.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
+          ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
           teams: tv.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
         });
       },
@@ -601,12 +606,14 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const refPanelItems: RefItem[] | null = (() => {
     if (refPal === null) return null;
     if (input[refPal.from] !== '$' && input[refPal.from] !== '#') return null;
-    const items = flatRefItems(refEntries, refPal.query);
-    return items.length > 0 ? items : null;
+    // 空命中也返回 [](面板照开 + 空态引导,不再静默隐藏——用户实测:零目录时 $/# 弹了等于没弹;
+    // 池空指路设置面,有池无匹配报无匹配)
+    return flatRefItems(refEntries, refPal.query);
   })();
 
-  /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本 */
-  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef, refContentsRef.current);
+  /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本;
+   *  composer=true:ref 芯片 ⟦⟧ 定界符保字宽+图标绝对定位(显形宽度=原文宽度硬约束) */
+  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef, refContentsRef.current, undefined, true);
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位)。
@@ -875,10 +882,18 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         overlays={
           // agents-teams P1 §3.2 $/# 引用面板(链首=与 @/+/命令面板互斥;R4 插入 `$id `/`#id `
           // 尾随空格即终态,无记账;光标钉插入 token 后沿——G14.211 同款)
-          refPanelItems !== null && refPal !== null ? (
+          refPal !== null && refPanelItems !== null ? (
             <RefPalette
               items={refPanelItems}
-              active={Math.min(refActive, refPanelItems.length - 1)}
+              emptyHint={
+                refEntries.agents.length === 0 && refEntries.teams.length === 0
+                  ? t(
+                      'No registered agents or teams yet — create them in Settings → Agents / Agent Teams, then reference here with $ or #',
+                      '尚无在册智能体/团队 — 在 设置 → 智能体 / 智能体团队 创建后，即可在此 $ 引用 / # 拉队',
+                    )
+                  : t('No matching entry', '无匹配条目')
+              }
+              active={Math.max(0, Math.min(refActive, refPanelItems.length - 1))}
               onHover={setRefActive}
               onPick={(item) => {
                 const from = refPal.from;
@@ -927,6 +942,23 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               root={root}
               onAttachImages={addImageFiles}
               onInsert={(text) => {
+                if (text === '$' || text === '#') {
+                  // 引用触发行(2026-11-05 用户实测补):+ 面板插入裸符号并就地开引用面板——
+                  // 程序化插入不触发 onChange,触发检测就地重演(锚=插入符号位,query 空起手)
+                  const next = input.trim() === '' ? text : `${input.replace(/\s+$/, '')} ${text}`;
+                  setInput(next);
+                  setPillOpen(null);
+                  setRefPal({ query: '', from: next.length - 1, sym: text });
+                  setRefActive(0);
+                  loadRefEntries();
+                  inputRef.current?.focus();
+                  requestAnimationFrame(() => {
+                    const ta = inputRef.current;
+                    if (ta === null) return;
+                    ta.setSelectionRange(next.length, next.length);
+                  });
+                  return;
+                }
                 setInput((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
                 setPillOpen(null);
                 inputRef.current?.focus();

@@ -468,7 +468,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
             md.trim() !== '' ? (
               <div className="user-md-plain">
                 {splitBrowserFences(md).map((seg, i) =>
-                  'fence' in seg ? <RefTokenChip key={i} text={`⟦${seg.label}⟧`} inner={seg.label} isTerm={false} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text, undefined, undefined, onOpenFile)}</Fragment>,
+                  'fence' in seg ? <RefTokenChip key={i} inner={seg.label} isTerm={false} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text, undefined, undefined, onOpenFile)}</Fragment>,
                 )}
               </div>
             ) : null
