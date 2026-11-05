@@ -122,6 +122,8 @@ const h = vi.hoisted(() => {
     /** G8c T9 智能体面:agentsView/putAgent 两桩(putAgentReject 注入 400 面) */
     agentsViewResp: { builtins: BuiltinRole[]; view: AgentsView } = { builtins: [], view: { entries: [], warnings: [] } };
     agentsViewCalls: string[] = [];
+    /** 2026-11-05 欢迎页 $/# 引用面板:teamsView 桩(应答可编程,缺省空表) */
+    teamsViewResp: { view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } } = { view: { entries: [], warnings: [] } };
     putAgentCalls: PutAgentInput[] = [];
     putAgentReject: Error | null = null;
     /** G8d T3 全文面:agentBody 应答/拒可编程(缺省拒 404——失败回退面);调用记录 [scope, id, root 归一 ''] */
@@ -325,6 +327,9 @@ const h = vi.hoisted(() => {
     agentsView(root?: string): Promise<{ builtins: BuiltinRole[]; view: AgentsView }> {
       this.agentsViewCalls.push(root ?? '');
       return Promise.resolve(this.agentsViewResp);
+    }
+    teamsView(_root?: string): Promise<{ view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }> {
+      return Promise.resolve(this.teamsViewResp);
     }
     putAgent(input: PutAgentInput): Promise<void> {
       if (this.putAgentReject !== null) return Promise.reject(this.putAgentReject);
@@ -543,6 +548,24 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(screen.getByLabelText('welcome')).toBeDefined();
     expect(screen.queryByLabelText('message input')).toBeNull();
     expect(screen.queryByText('s1', { selector: '.chat-title-text' })).toBeNull();
+  });
+
+  it('欢迎页 $ 触发引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——内置四角色在列,Enter 插入 $planner', async () => {
+    const { conn } = mount();
+    conn.agentsViewResp = {
+      builtins: [
+        { role: 'planner', name: 'Planner', framing: 'Plans' },
+        { role: 'developer', name: 'Dev', framing: 'Codes' },
+      ],
+      view: { entries: [], warnings: [] },
+    };
+    const ta = (await screen.findByLabelText('welcome goal')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    const box = await screen.findByRole('listbox', { name: 'Agents and teams' }); // App.test 全局 en 语言
+    expect([...box.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['planner', 'developer']);
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    expect(ta.value).toBe('$planner '); // 插 `$id ` 尾随空格,面板收
+    expect(document.querySelector('.ref-palette')).toBeNull();
   });
 
   it('左栏 Attach 链 → chat:Chat 页挂载渲染 sessionId(newSession→attach 两步)+ 返回 welcome', async () => {

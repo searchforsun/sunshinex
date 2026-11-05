@@ -4,7 +4,10 @@ import { ArrowUp, ChevronDown, Eye, Folder, GitBranch, ListTodo, ShieldCheck, Un
 import { pathBasename, pickWorkspaceFolder } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
+import { RefPalette } from '../pages/chat/mention';
 import { CommandPalette, filterCommands } from '../CommandPalette';
+import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
+import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerCard } from '../composer/ComposerCard';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
@@ -78,6 +81,31 @@ export function WelcomeComposer({
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
   const [filePalActive, setFilePalActive] = useState(0);
+  /** $/# 引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——检测/懒加载/键盘/overlays 四件套
+   *  全按 Chat 页同款;数据源缺法(conn 桩未挂)=面板永不触发 */
+  const [refPal, setRefPal] = useState<RefPal | null>(null);
+  const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
+  const [refActive, setRefActive] = useState(0);
+  const refEntriesLoadedRef = useRef(false);
+  const loadRefEntries = (): void => {
+    if (refEntriesLoadedRef.current) return;
+    if (conn.agentsView === undefined || conn.teamsView === undefined) return;
+    refEntriesLoadedRef.current = true;
+    const refRoot = picked !== '' ? picked : undefined;
+    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
+      ([a, tv]) => {
+        setRefEntries({
+          // 内置四角色并入候选池+同 id 去重(builtin-first)——与会话页 Chat 同口径
+          agents: [
+            ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
+            ...a.view.entries.filter((e) => e.shadowed !== true).map((e) => ({ id: e.id, name: e.name })),
+          ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
+          teams: tv.view.entries.filter((e) => e.shadowed !== true).map((e) => ({ id: e.id, name: e.name })),
+        });
+      },
+      () => {}, // 失败静默空列(面板照开仅空态引导;不重试——零网络纪律)
+    );
+  };
   // G14.211 @ 面板点外即收(与会话内 Chat 同构):焦点离开输入框后 Esc 不可达,点外须收口
   useEffect(() => {
     // 外点收语义声明(D49,各弹层各表其面):本组四个弹层(项目/分支/模型/plus)同为「容器外
@@ -293,12 +321,12 @@ export function WelcomeComposer({
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
-  /** G14.213 欢迎页 / 面板项(渲染期,光标位置):行首 /token → 命令+技能;空=面板不开 */
+  /** G14.213 欢迎页 / 面板项(渲染期,光标位置):行首 /token → 命令+技能;行中 → 仅技能池
+   *  (2026-11-05 用户二次裁定与会话内同构);空=面板不开 */
   const welcomeSlashItems = (() => {
     const caret = goalRef.current?.selectionStart ?? goal.length;
     const tok = slashTokenAt(goal, caret);
-    if (tok === null || !tok.atStart || welcomeCmdData === null || `/${tok.query}` === (welcomeSlashDismissed ?? '\u0000')) return null;
-    const cmds = filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, tok.query, welcomeCmdData.supported);
+    if (tok === null || welcomeCmdData === null || `/${tok.query}` === (welcomeSlashDismissed ?? '\u0000')) return null;
     const q = tok.query.toLowerCase();
     const skills = welcomeSkills
       .filter((s) => q === '' || s.id.toLowerCase().startsWith(q) || s.id.toLowerCase().includes(q))
@@ -307,6 +335,7 @@ export function WelcomeComposer({
         const idx = s.id.toLowerCase().indexOf(q);
         return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
       });
+    const cmds = tok.atStart && welcomeCmdData !== null ? filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, tok.query, welcomeCmdData.supported) : [];
     const all = [...cmds, ...skills];
     return all.length > 0 ? all : null;
   })();
@@ -536,16 +565,24 @@ export function WelcomeComposer({
             // G14.124 面板跟随输入(光标前 @token 即开);无匹配=渲染面自然关闭
             const caret = goalRef.current?.selectionStart ?? v.length;
             const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
+            const rt = refTokenAt(v, caret);
             if (m !== null) {
               setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
               setFilePalActive(0); // G14.2xx 查询变更即重置 active(残留箭头位回车选中邻项)
+              setRefPal(null); // 面板互斥(与 Chat 同款)
               if (picked !== '') {
                 void conn
                   .workspaceFiles(picked)
                   .then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => setFilePalFiles([]));
               }
-            } else if (filePal !== null) {
-              setFilePal(null);
+            } else if (rt !== null) {
+              // $/# 引用面板触发(2026-11-05 用户裁定:欢迎页与会话页同构)——锚符号+空 query 起手
+              setRefPal(rt);
+              setRefActive(0);
+              loadRefEntries();
+            } else {
+              if (filePal !== null) setFilePal(null);
+              if (refPal !== null) setRefPal(null);
             }
           }}
           onKeyDown={(e) => {
@@ -602,6 +639,7 @@ export function WelcomeComposer({
             const atMatch = /@([\w./:\\-]*)$/.exec(goal.slice(0, caret));
             if (atMatch !== null) {
               setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
+              setRefPal(null); // 面板互斥
               if (picked !== '') {
                 void conn
                   .workspaceFiles(picked)
@@ -609,6 +647,38 @@ export function WelcomeComposer({
               }
             } else if (filePal !== null) {
               setFilePal(null);
+            }
+            // $/# 引用面板键分支(2026-11-05;先于 @/命令面板——同 Chat 链序):↑↓ 单域循环、
+            // Esc 收、Enter 插 `$id `/`#id ` 尾随空格并钉光标;锚符号已被改写=面板不拦键
+            const effRefTok = refTokenAt(goal, caret);
+            const effRefPal = effRefTok ?? refPal;
+            if (effRefPal !== null && (effRefTok !== null || goal[effRefPal.from] === effRefPal.sym)) {
+              const refItems = flatRefItems(refEntries, effRefPal.query, effRefPal.sym);
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (refItems.length > 0) {
+                  setRefActive((a) => (e.key === 'ArrowDown' ? (a + 1) % refItems.length : (a - 1 + refItems.length) % refItems.length));
+                }
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setRefPal(null);
+                return;
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && refItems.length > 0) {
+                e.preventDefault();
+                const item = refItems[Math.min(refActive, refItems.length - 1)];
+                setGoal((prev) => prev.slice(0, effRefPal.from) + `${item.sym}${item.id} ` + prev.slice(Math.max(effRefPal.from + 1 + effRefPal.query.length, effRefPal.from)));
+                setRefPal(null);
+                requestAnimationFrame(() => {
+                  const g = goalRef.current;
+                  if (g === null) return;
+                  const to = Math.min(effRefPal.from + item.id.length + 2, g.value.length);
+                  g.setSelectionRange(to, to);
+                });
+                return;
+              }
             }
             const items = picked === '' ? [] : rankFileHits(filePalFiles, filePal?.query ?? '');
             if (filePal !== null && items.length > 0) {
@@ -643,14 +713,14 @@ export function WelcomeComposer({
                 return;
               }
             }
-            // G14.213 欢迎页 / 命令+技能面板(与会话内同构):行首 /token → 面板;↑↓ 选择、
-            // Enter/Tab 补全 `/cmd `(执行发生在会话建立后:pendingGoal 经 submitText 命令门控),
-            // Esc 本次收起;无匹配=面板不开
+            // G14.213 欢迎页 / 命令+技能面板(与会话内同构):行首 /token → 命令+技能,行中 → 仅
+            // 技能池(2026-11-05 用户二次裁定);↑↓ 选择、Enter/Tab 补全 `/cmd `(执行发生在会话
+            // 建立后:pendingGoal 经 submitText 命令门控),Esc 本次收起;无匹配=面板不开
             const slashTok = slashTokenAt(goal, caret);
             const slashItems =
-              slashTok !== null && slashTok.atStart && welcomeCmdData !== null && `/${slashTok.query}` !== (welcomeSlashDismissed ?? '\u0000')
+              slashTok !== null && welcomeCmdData !== null && `/${slashTok.query}` !== (welcomeSlashDismissed ?? '\u0000')
                 ? [
-                  ...filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, slashTok.query, welcomeCmdData.supported),
+                  ...(slashTok.atStart ? filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, slashTok.query, welcomeCmdData.supported) : []),
                   ...welcomeSkills
                     .filter((s) => slashTok.query === '' || s.id.toLowerCase().startsWith(slashTok.query.toLowerCase()) || s.id.toLowerCase().includes(slashTok.query.toLowerCase()))
                     .slice(0, 8)
@@ -736,7 +806,40 @@ export function WelcomeComposer({
               if (span !== null) ta.setSelectionRange(span[1], span[1]);
             }}
           overlays={
-            // G14.121 @ 文件面板优先(命中才渲染;点击行=插入绝对路径,面板收起);
+            // $/# 引用面板链首(2026-11-05;与 Chat 同构互斥:在场时 @/+/命令面板一律不渲染)
+            refPal !== null && goal[refPal.from] === refPal.sym ? (
+              (() => {
+                const items = flatRefItems(refEntries, refPal.query, refPal.sym);
+                const emptyHint =
+                  refEntries.agents.length === 0 && refEntries.teams.length === 0
+                    ? t(
+                        'No registered agents or teams yet — create them in Settings → Agents / Agent Teams, then reference here with $ or #',
+                        '尚无在册智能体/团队 — 在 设置 → 智能体 / 智能体团队 创建后，即可在此 $ 引用 / # 拉队',
+                      )
+                    : t('No matching entry', '无匹配条目');
+                return (
+                  <RefPalette
+                    items={items}
+                    emptyHint={emptyHint}
+                    active={Math.max(0, Math.min(refActive, items.length - 1))}
+                    onHover={setRefActive}
+                    onPick={(item) => {
+                      const from = refPal.from;
+                      const end = from + 1 + refPal.query.length;
+                      setGoal((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
+                      setRefPal(null);
+                      goalRef.current?.focus();
+                      requestAnimationFrame(() => {
+                        const g = goalRef.current;
+                        if (g === null) return;
+                        const to = Math.min(from + item.id.length + 2, g.value.length);
+                        g.setSelectionRange(to, to);
+                      });
+                    }}
+                  />
+                );
+              })()
+            ) : // G14.121 @ 文件面板优先(命中才渲染;点击行=插入绝对路径,面板收起);
             // G14.211 锚点校验:@ 被删后面板残留在此拦下(同 Chat 渲染面)
             filePal !== null && picked !== '' && goal[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
               <FilePalette

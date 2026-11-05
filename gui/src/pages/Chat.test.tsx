@@ -151,8 +151,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     expect(tokenDeleteRange(text, 10, 'Backspace')).toEqual([4, 21]);   // 中间也整删
     expect(tokenDeleteRange(text, 4, 'Delete')).toEqual([4, 21]);       // 首位 Delete 整删
     expect(tokenDeleteRange(text, 2, 'Backspace')).toBeNull();          // 明文不命中
-    expect(tokenDeleteRange(text, 26, 'Backspace')).toBeNull();         // 行中 /plan = 普通文本(2026-11-05 裁定),无 token 整删
-    expect(tokenDeleteRange('/plan 和', 3, 'Backspace')).toEqual([0, 5]); // 行首 / 命令 token 同整删
+    expect(tokenDeleteRange(text, 26, 'Backspace')).toEqual([24, 29]);  // /plan 行中 skill token 同整删
     expect(tokenDeleteRange(text, 0, 'Delete')).toBeNull();             // 首位 Delete 无 token
   });
 
@@ -269,7 +268,7 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     );
     await screen.findAllByText(/changes-bar-probe\.md/);
     expect(document.querySelector('.user-bubble .file-link')).toBeNull(); // 无专属文件渲染
-    expect(document.querySelectorAll('.user-bubble .hn').length).toBeGreaterThanOrEqual(1); // @token 走 chip 高亮(行中 /plan 已裁定=普通文本,2026-11-05)
+    expect(document.querySelectorAll('.user-bubble .hn').length).toBeGreaterThanOrEqual(2); // @token 与 /plan(skill chip)走 chip 高亮
     expect(document.querySelector('.user-bubble code')).toBeNull(); // 不落 code 元素
     expect(document.querySelector('.user-bubble strong')).toBeNull(); // md 加粗不解析
     expect(onOpenFile).not.toHaveBeenCalled();
@@ -1744,14 +1743,19 @@ describe('命令面板(/ 面板,2026-11-05 技能引用行回归——用户裁�
     expect(sessionSubmit.mock.calls[0]?.[1]).toBe('/pdf 处理报告'); // 纯文本软引用照发
   });
 
-  it('行中 `/` token 不弹面板(atStart 门)', async () => {
+  it('行中 `/` 也要弹——仅技能池(2026-11-05 用户二次裁定:命令面板只在行首);无匹配=自动关', async () => {
     setLanguage('zh');
     const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() =>
+      Promise.resolve({ groups: [{ source: 'project', skills: [{ id: 'pdf', description: 'pdf 工具' }] }] }),
+    );
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
-    fireEvent.change(ta, { target: { value: '前文 /' } }); // 中间 / 不触发
-    await flushed();
-    await flushed();
+    fireEvent.change(ta, { target: { value: '前文 /' } });
+    await screen.findByRole('listbox', { name: '命令面板' }); // 行中也弹
+    const names = (): Array<string | null> => [...document.querySelectorAll('.cmd-palette .cmd-name')].map((el) => el.textContent);
+    expect(names()).toEqual(['/pdf']); // 仅技能行,零命令行(命令面板只在行首)
+    fireEvent.change(ta, { target: { value: '前文 /z' } }); // 无匹配 → 面板自动关
     expect(document.querySelector('.cmd-palette')).toBeNull();
   });
 });

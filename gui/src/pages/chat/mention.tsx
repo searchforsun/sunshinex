@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
-import { Globe, SquareTerminal } from 'lucide-react';
+import { FileText, Globe, SquareTerminal } from 'lucide-react';
 import { isAbsPath } from '../../ui-util';
 import type { RefItem } from './ref-palette';
 
@@ -187,9 +187,9 @@ export function splitMentionTokens(text: string): MentionToken[] {
       if (lead !== '') out.push({ text: lead, kind: 'plain' });
       const word = m[2] ?? '';
       const atLineStart = idx === 0;
-      // 2026-11-05 用户裁定:行中 / = 普通文本——任意词都亮 skill 徽标噪声大,行中不再标
-      //(消息内 /skill-id 软引用由模型按清单匹配,无徽标不碍加载);仅行首 /词 保 cmd 徽标
-      out.push({ text: word, kind: atLineStart ? 'cmd' : 'plain' });
+      // 2026-11-05 用户二次裁定:行中 /word 保 skill 芯片照亮(视觉),「普通文本」仅指派发语义
+      //(整条照发、模型软加载,无徽标不碍加载的反面——无芯片才碍用户识别);行首 /词 = cmd
+      out.push({ text: word, kind: atLineStart ? 'cmd' : 'skill' });
     } else {
       // $/# 软引用:lead(行首为空串/空白)记 plain,token 按 $→agent、#→team
       const lead = m[3] ?? '';
@@ -375,7 +375,14 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  根因);气泡/队列无约束,图标内联+定界符不渲染 */
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number } | null>(null);
-  const ico = isTerm ? <SquareTerminal size={11} strokeWidth={1.75} /> : <Globe size={11} strokeWidth={1.75} />;
+  // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
+  const ico = isTerm ? (
+    <SquareTerminal size={11} strokeWidth={1.75} />
+  ) : inner.startsWith('正文') ? (
+    <FileText size={11} strokeWidth={1.75} />
+  ) : (
+    <Globe size={11} strokeWidth={1.75} />
+  );
   if (composer === true) {
     return (
       <span
@@ -419,22 +426,36 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
 /** ref 全文注册表(会话级,insert-ref 落账同步写):气泡/队列等无账本 prop 的渲染面 hover 取数源 */
 export const refContentRegistry = new Map<string, string>();
 
+/** 正文/终端片段 token 铸造(2026-11-05 用户裁定「正文圈选也要 chip」):按类会话级计数,
+ *  同类二铸即 ·N——账本/注册表以 token 全文为键,固定 token 二次圈选会把先选内容互覆 */
+const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
+export function mintSnippetToken(kind: 'body' | 'term'): string {
+  const base = kind === 'body' ? '正文片段' : '终端片段';
+  snippetSeq[kind] += 1;
+  return snippetSeq[kind] === 1 ? `⟦${base}⟧` : `⟦${base}·${snippetSeq[kind]}⟧`;
+}
+
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
  *  全文围栏在显示侧折叠回芯片——段序列=原文段 | 围栏段(fence=围栏体,token=回填重 token 化的
- *  token 全文,label 从页签/定位行提取)。2026-11-04 续:扩 text-selection(终端片段围栏化落档) */
-export function splitBrowserFences(md: string): Array<{ text: string } | { fence: string; kind: 'browser-element' | 'text-selection'; label: string; token: string }> {
-  const out: Array<{ text: string } | { fence: string; kind: 'browser-element' | 'text-selection'; label: string; token: string }> = [];
-  const re = /```(browser-element|text-selection)\n([\s\S]*?)```/g;
+ *  token 全文,label 从页签/定位行提取)。2026-11-04 续:扩 text-selection(终端片段围栏化落档);
+ *  2026-11-05 续:扩 body-snippet(正文圈选围栏化落档,与终端同构、标签/图标分型) */
+export function splitBrowserFences(md: string): Array<{ text: string } | { fence: string; kind: 'browser-element' | 'text-selection' | 'body-snippet'; label: string; token: string }> {
+  const out: Array<{ text: string } | { fence: string; kind: 'browser-element' | 'text-selection' | 'body-snippet'; label: string; token: string }> = [];
+  const re = /```(browser-element|text-selection|body-snippet)\n([\s\S]*?)```/g;
   let last = 0;
   let termSeq = 0;
+  let bodySeq = 0;
   for (const m of md.matchAll(re)) {
     const idx = m.index ?? 0;
     if (idx > last) out.push({ text: md.slice(last, idx) });
-    const kind = (m[1] ?? 'browser-element') as 'browser-element' | 'text-selection';
+    const kind = (m[1] ?? 'browser-element') as 'browser-element' | 'text-selection' | 'body-snippet';
     const body = m[2] ?? '';
     if (kind === 'text-selection') {
       termSeq += 1;
       out.push({ fence: body, kind, label: '终端片段', token: termSeq === 1 ? '⟦终端片段⟧' : `⟦终端片段·${termSeq}⟧` });
+    } else if (kind === 'body-snippet') {
+      bodySeq += 1;
+      out.push({ fence: body, kind, label: '正文片段', token: bodySeq === 1 ? '⟦正文片段⟧' : `⟦正文片段·${bodySeq}⟧` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
@@ -449,7 +470,7 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
 
 /** 编辑回填重 token 化(2026-11-04 用户裁定「编辑页也保持 chip」):载入的展开档文按围栏折回
  *  token 并记账(写传入账本+会话注册表),composer 恢复芯片态;重发经 expandRefContents 展开
- *  回原形态(browser 围栏体原样含标记,终端片段重围栏化)。账本缺省=会话注册表(展开面有兜底) */
+ *  回原形态(browser 围栏体原样含标记,终端/正文片段重围栏化)。账本缺省=会话注册表(展开面有兜底) */
 export function rebuildPickTokens(md: string, ledger: Map<string, string> = refContentRegistry): string {
   const out: string[] = [];
   for (const seg of splitBrowserFences(md)) {
@@ -511,8 +532,13 @@ export function expandRefContents(text: string, contents: ReadonlyMap<string, st
     // 注册表兜底(2026-11-04):编辑回填重 token 化只写注册表即可全链生效(气泡 hover/重发展开)
     const c = contents.get(raw) ?? refContentRegistry.get(raw);
     if (c === undefined) return raw;
-    // 终端片段落档围栏化(用户裁定「正文片段也要 chip」):raw 选区→text-selection 围栏——
-    // 气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。尾随换行归一(重展开逐字节回原)
+    // 落档围栏化:raw 选区→围栏——气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。
+    // 尾随换行归一(重展开逐字节回原)。围栏 kind 即显示侧标签判据:终端→text-selection、
+    // 正文(2026-11-05 用户裁定「正文也要 chip」)→body-snippet
+    if (raw.startsWith('⟦正文') && !c.startsWith('```')) {
+      const body = c.endsWith('\n') ? c.slice(0, -1) : c;
+      return `\`\`\`body-snippet\n${body}\n\`\`\``;
+    }
     if (raw.startsWith('⟦终端') && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`text-selection\n${body}\n\`\`\``;

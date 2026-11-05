@@ -19,6 +19,9 @@ export interface WelcomeComposerConn {
   skillsGroups(root?: string): Promise<{
     groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string }> }>;
   }>;
+  /** $/# 引用面板数据源(2026-11-05;可选——旧测试桩/降级面缺名即面板不渲染,守卫口径同 onConfigChanged?) */
+  agentsView?(root?: string): Promise<{ builtins: Array<{ role: string; name: string }>; view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }>;
+  teamsView?(root?: string): Promise<{ view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }>;
   tree(sessionId: string, path?: string): Promise<{ entries: Array<{ name: string; kind: 'dir' | 'file' }>; truncated?: boolean }>;
   /** 缺省模型名回显(G13 反馈轮):settings model 键——欢迎页 pill 显示具体模型而非静态「default model」 */
   settings(root?: string): Promise<{

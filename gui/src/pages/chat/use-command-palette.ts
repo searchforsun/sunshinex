@@ -69,21 +69,21 @@ export function useCommandPalette(
   return { cmdData, setCmdData, cmdActive, setCmdActive, skills };
 }
 
-/** slash 面板令牌清单:开头=内置命令清单(G10-C4 单一数据面) + 技能引用行(2026-11-05 用户裁定
- *  回归——kind='skill',G14.213 纯文本语义:Enter 有参=普通发送落软引用,不回命令通道;点击/Tab=
- *  补全 `/id `),中间不弹(atStart 门),无匹配=空。命令在前技能在后,各自按命中位排序 */
+/** slash 面板令牌清单(2026-11-05 用户二次裁定:行中 / 也要弹——仅技能池,行首=命令+技能;
+ *  kind='skill',G14.213 纯文本语义:Enter 有参=普通发送落软引用,不回命令通道;点击/Tab=
+ *  补全 `/id `)。命令在前技能在后,各自按命中位排序;无匹配=空(面板自动关) */
 export function slashItemsFor(
   data: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null,
   token: { query: string; atStart: boolean } | null,
   skills: SkillRow[] = [],
 ): CmdItem[] {
   if (token === null) return [];
-  if (!token.atStart || data === null) return [];
-  const cmds = filterCommands(data.commands, data.descriptions, token.query, data.supported);
   const q = token.query.toLowerCase();
   const skillItems = skills
     .map((s) => ({ cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: s.id.toLowerCase().indexOf(q), ok: true, kind: 'skill' as const }))
     .filter((x) => x.idx >= 0)
     .sort((a, b) => a.idx - b.idx);
-  return [...cmds, ...skillItems];
+  if (!token.atStart) return skillItems; // 行中 = 仅技能池(命令面板只在行首)
+  if (data === null) return skillItems; // 命令清单未达,技能照弹
+  return [...filterCommands(data.commands, data.descriptions, token.query, data.supported), ...skillItems];
 }
