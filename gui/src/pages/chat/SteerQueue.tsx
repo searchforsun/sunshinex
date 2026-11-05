@@ -1,9 +1,9 @@
 import { ArrowUpToLine, ChevronDown, CornerDownRight, GripVertical, Image as ImageIcon, PenLine, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
-import { renderMentionSpans } from './mention';
+import { RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences } from './mention';
 
 /** 排队 chips 条(D32 第六批批F-2 自 Chat.tsx 平移):折叠摘要行+拖拽排序清单,立即/插入/
  *  放回输入框编辑/删除四动作。内联编辑退役(2026-10-26 用户裁定:队列编辑统一走输入框——
@@ -108,7 +108,19 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     {q.images.length > 4 && <span className="steer-img-more">+{q.images.length - 4}</span>}
                   </span>
                 )}
-                {q.text !== '' ? renderMentionSpans(q.text) : <span className="steer-img-only"><ImageIcon size={12} strokeWidth={1.75} aria-hidden="true" />{t('(image)', '(图片)')}</span>}
+                {q.text !== '' ? (
+                  /* 2026-11-05 用户裁定「发送到队列就没有 chip 了」:排队态存的是发送期展开档
+                     (⟦token⟧ 已围栏化),行渲染与用户气泡同构折叠回芯片(hover 同件) */
+                  splitBrowserFences(q.text).map((seg, i) =>
+                    'fence' in seg ? (
+                      <RefTokenChip key={i} inner={seg.label} isTerm={seg.kind === 'text-selection'} content={seg.fence} />
+                    ) : (
+                      <Fragment key={i}>{renderMentionSpans(seg.text)}</Fragment>
+                    ),
+                  )
+                ) : (
+                  <span className="steer-img-only"><ImageIcon size={12} strokeWidth={1.75} aria-hidden="true" />{t('(image)', '(图片)')}</span>
+                )}
               </span>
               <span className="steer-row-actions">
                 {busy ? (
@@ -152,8 +164,10 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     setQueued((qs) => qs.filter((x) => x.seq !== q.seq));
                     // cancel 失败=daemon 队列保留原条目,下次 refreshQueued 重拉自纠(行重现可再操作)
                     conn.cancelSteer(sessionId, q.seq).catch(() => {});
-                    // 队列编辑统一走输入框(2026-10-26 裁定):文本+随行图片一并回填,编辑后重发
-                    setInput(q.text);
+                    // 队列编辑统一走输入框(2026-10-26 裁定):文本+随行图片一并回填,编辑后重发;
+                    // 2026-11-05:回填重 token 化(围栏折回芯片+注册表记账)——q.text 是展开档,
+                    // 直灌输入框=裸围栏原文(用户实测截图),重发还会二次展开
+                    setInput(q.text === '' ? '' : rebuildPickTokens(q.text));
                     setImages(q.images ?? []);
                   }}
                 >

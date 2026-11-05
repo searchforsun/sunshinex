@@ -379,8 +379,12 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  芯片 @ 保字宽手法),图标绝对定位挂芯片尾缘(2026-11-05 实测 ⟦ 字形advance仅 5.4px,13px
  *  图标压进「正」字 7.6px=「图标挤在一起」根因;尾部是插入即带的尾随空格,无常驻墨迹可栖);
  *  气泡/队列无约束,图标内联+定界符不渲染 */
+/** 预览面板几何(2026-11-05 用户裁定「固定宽度,有最大高度,纵向滚动」):宽度恒 420(CSS 侧
+ *  小视口钳 100vw),满高 300;水平钳回主对话区以此宽推算右界 */
+const PANEL_W = 420;
+
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
-  const [tip, setTip] = useState<{ x: number; y: number; h: number } | null>(null);
+  const [tip, setTip] = useState<{ x: number; y: number; h: number; below: boolean } | null>(null);
   // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
   const ico = isTerm ? (
     <SquareTerminal size={11} strokeWidth={1.75} />
@@ -394,15 +398,24 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
     const mL = (main?.left ?? 0) + 8;
     const mR = (main?.right ?? window.innerWidth) - 8;
-    const x = Math.min(Math.max(r.left, mL), Math.max(mR - 520, mL));
-    setTip({ x, y: r.top - 6, h: Math.min(300, Math.max(r.top - 16, 140)) });
+    const x = Math.min(Math.max(r.left, mL), Math.max(mR - PANEL_W, mL));
+    // 2026-11-05 用户裁定:面板恒在芯片上方;上方放不下(满高 300 露不全)且下方空间更大才翻下方,
+    // 高度=所在侧可用空间与满高取小,超出纵向滚动(CSS overflow:auto)
+    const spaceAbove = r.top - 8;
+    const spaceBelow = window.innerHeight - r.bottom - 12;
+    const below = spaceAbove < 300 && spaceBelow > spaceAbove;
+    const h = below ? Math.min(300, spaceBelow) : Math.min(300, Math.max(spaceAbove, 140));
+    setTip({ x, y: below ? r.bottom + 6 : r.top - 6, h, below });
   };
   // 面板挂 body 层:避开 .chat-dock 等 transform 祖先的包含块劫持(fixed 才是真视口定位)
   const panel =
     tip !== null &&
     content !== '' &&
     createPortal(
-      <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>
+      <span
+        className="ref-chip-preview"
+        style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}
+      >
         <pre>{content}</pre>
       </span>,
       document.body,

@@ -806,11 +806,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 图标绝对定位落 ⟦ 字符位——内联图标多占宽+定界符缺位=光标脱开 chip 的根因) */.sx-composer-highlight { z-index: 1; }
 .sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; padding: 0; }
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
-/* 2026-11-05 实测:⟦ 字形 advance 仅 5.4px,13px 图标挂头部压进「正」字 7.6px(用户裁定
- * 「图标挤在一起」根因)——图标改挂芯片尾缘:插入即带尾随空格,那里无常驻墨迹可栖 */
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: auto; right: -14px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; }
+/* 2026-11-05 实测:⟦ 字形 advance 仅 5.4px——图标回字前(用户裁定「应该在字前面」):挂
+ * left:-7px/11px,恰好只覆盖透明 ⟦ 与芯片左侧空白区(正字起点 5.4px 不沾);头部满宽 13px
+ * 压字形态与挂尾缘形态均废 */
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -7px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; display: inline-flex; align-items: center; justify-content: center; }
 .ref-chip { cursor: default; }
-.ref-chip-preview { position: fixed; z-index: 80; max-width: 520px; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); pointer-events: none; }
+/* 2026-11-05 用户裁定:固定宽度(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
+ * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
+.ref-chip-preview { position: fixed; z-index: 80; width: min(420px, calc(100vw - 24px)); max-height: 300px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); pointer-events: none; }
 .ref-chip-preview pre { margin: 0; font: 11px var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
  * 左侧是裁剪边界,图标落到 @ 字符位并以 chip 底色填充 */.sx-composer-highlight .hn-file { position: relative; }.sx-composer-highlight .hn-file .hn-file-at { color: transparent; }
