@@ -794,10 +794,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.sx-composer-input.transparent-text { color: transparent; caret-color: var(--fg); }
 /* IME 组字期:隐高亮层,textarea 实色显组字串(否则 transparent-text 把候选确认前字迹藏掉) */
 .sx-composer-inputwrap.is-composing .sx-composer-highlight { visibility: hidden; }
-.sx-composer-highlight .hn { border-radius: var(--radius-sm); padding: 0 1px; }.sx-composer-highlight .hn-cmd { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-/* G14.132 file token 无蒙版(与气泡 file-link 同视觉:icon+accent 文件名) */.sx-composer-highlight .hn-file { color: var(--accent); background: transparent; }.sx-composer-highlight .hn-skill { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-style: italic; }
+.sx-composer-highlight .hn { padding: 0; }.sx-composer-highlight .hn-cmd { color: var(--accent); }
+/* G14.132 file token 无蒙版(与气泡 file-link 同视觉:icon+accent 文件名) */.sx-composer-highlight .hn-file { color: var(--accent); background: transparent; }.sx-composer-highlight .hn-skill { color: var(--accent); font-style: italic; }
 /* 2026-11-04 §3.1 $智能体/#团队 软引用 token 分色:agent=accent 系(同 cmd)、team=warn 系
- * (12% 蒙版同 badge-warn 既有 pattern)——语义变量随主题暗/亮两套,不新增硬编码色 */.sx-composer-highlight .hn-agent { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }.sx-composer-highlight .hn-team { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+ * (12% 蒙版同 badge-warn 既有 pattern)——语义变量随主题暗/亮两套,不新增硬编码色 */.sx-composer-highlight .hn-agent { color: var(--accent); }.sx-composer-highlight .hn-team { color: var(--warn); }
 /* 2026-11-04 ref 芯片 hover 预览(用户裁定「正文/终端/网页元素等 chip hover 显示全文;文件/命令
  * 等有意义 token 不 hover」):高亮层整体 pointer-events:none,ref 芯片单独放行使悬停可达
  * (mousedown preventDefault 在组件侧保 textarea 焦点);预览面板 fixed 随主题。
@@ -808,30 +808,30 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * composer 芯片继承后每枚比原始字形宽 8px(定界符 span 与 label 文本两个 flex item 之间各
  * 垫 4px),逐枚累积=光标漂移;display:inline 回字形逐字排(气泡正确正因它是普通 inline),
  * 图标已 absolute 不依赖 flex;gap:0 显式钉死 */
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline-flex; align-items: center; gap: 0; padding: 0 3px; margin: 0 -3px; font: inherit; }
-/* 2026-11-05 终版几何(用户裁定「改成和气泡一致」):气泡同款盒原样上 composer——padding 1px 6px
- * + 负 margin 抵消:垂直 -1px 抵 1px(inline-flex 盒高不变=多行零纵向漂移);水平 ±6px=pill 左右
- * 各延 6px,延伸落点=透明的 ⟦⟧ 字形区+空格,不与可见墨迹冲突;图标 11px(气泡同尺寸)绝对定位
- * 悬出左缘 [−5.5,5.5] 恰覆盖 ⟦ 字形区 [0,5.4] 零压字;advance=margin(−12)+pad(12)+content=
- * content ✓ 逐字对齐不变。at-span 保持 flex item 占其字形位(label 落点精确) */
-.sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; flex: none; }
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -2.5px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; padding: 0; margin: 0; font: inherit; color: var(--accent); }
+/* 2026-11-05 用户裁定「去掉背景边框,渲染成 {图标} 文本,只是字体颜色有区别」:芯片=pill 的整个
+ * 几何死结(⟦ 预算 5.4px 放不下 icon+边距/负边距互吞邻芯片/行首出界/垂直膨胀遮挡)自此消形——
+ * 无背景无边框,pill 观感退役;composer 图标 absolute 悬于 ⟦ 字形区左缘 [−3.6,5.4](10px,
+ * 零压字,行首左探 1.6px 落在卡 padding 内),文字即字形逐字排零漂移;配色 accent(#team 走
+ * .hn-team warn 既有分色) */
+.sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -3.6px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; display: inline-flex; align-items: center; justify-content: center; }
 .sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
 /* 2026-11-05 用户裁定「有背景的 chip 左右都要有合理边距(同用户气泡),/ # $ 正文 终端 网页;
  * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
  * 10% 蒙版不显),内容字形位/advance 双不动,光标零漂移;顺带归一 /#$ 原无补偿的 1px padding
  * 与文件芯片的隐形 2px(同为漂移源) */
-.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 0 3px; margin: 0 -3px; }
+
 .sx-composer-highlight .hn-file { padding: 0; margin: 0; }
 /* 2026-11-05 用户裁定「# \$ 气泡和队列没有 chip 高亮」:/$# 芯片此前只有 composer 作用域
  * 样式,气泡/队列裸文——按 .hn-ref 基础 pattern(inline-flex+tint+radius+padding 1px 6px)
  * 补非 composer 面(气泡 user-md-plain/队列 steer-row-text),配色随 composer 同变量 */
-.user-md-plain .hn-cmd, .steer-row-text .hn-cmd { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.user-md-plain .hn-skill, .steer-row-text .hn-skill { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-style: italic; }
-.user-md-plain .hn-agent, .steer-row-text .hn-agent { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.user-md-plain .hn-team, .steer-row-text .hn-team { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.user-md-plain .hn-cmd, .steer-row-text .hn-cmd { color: var(--accent); }
+.user-md-plain .hn-skill, .steer-row-text .hn-skill { color: var(--accent); font-style: italic; }
+.user-md-plain .hn-agent, .steer-row-text .hn-agent { color: var(--accent); }
+.user-md-plain .hn-team, .steer-row-text .hn-team { color: var(--warn); }
 .user-md-plain .hn-cmd, .user-md-plain .hn-skill, .user-md-plain .hn-agent, .user-md-plain .hn-team,
-.steer-row-text .hn-cmd, .steer-row-text .hn-skill, .steer-row-text .hn-agent, .steer-row-text .hn-team { display: inline-flex; align-items: center; border-radius: var(--radius-sm); padding: 1px 6px; font-size: 12px; }
+.steer-row-text .hn-cmd, .steer-row-text .hn-skill, .steer-row-text .hn-agent, .steer-row-text .hn-team { font-size: 12px; }
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
  * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
@@ -2104,7 +2104,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 }
 .files-selbar button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 /* 2026-11-04 元素/终端片段引用芯片(⟦…⟧ token):accent 浅底圆角小件,图标+定位说明 */
-.hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 12px; }
+.hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 12px; }
 .hn-ref .hn-ref-ico { display: inline-flex; align-items: center; flex: none; }
 
 /* G14.158 web 缩放容器:缩放时允许横向滚动(内容超出即出横滚条);fit=等比撑满 */
