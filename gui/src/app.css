@@ -804,12 +804,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 2026-11-04 续:高亮层 z-index 提到 textarea 之上(层级在下=textarea 挡尽指针事件,ref 悬停
  * 永不触发;none 区穿透打字不受影响)+ref 芯片显形宽度=原文宽度(⟦⟧ 透明保字宽同 file @ 手法,
  * 图标绝对定位落 ⟦ 字符位——内联图标多占宽+定界符缺位=光标脱开 chip 的根因) */.sx-composer-highlight { z-index: 1; }
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; padding: 0; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; padding: 0 0 0 4px; margin-left: -4px; }
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
-/* 2026-11-05 二改(用户实测「超出左侧」):composer 文字列内边距仅 2px,图标任何左探都出界
- * ——学文件芯片几何:挂 left:0/8px,只盖透明 ⟦(5.4px)+字头 2.6px(与文件芯片 @ 的 2px
- * 重叠同级);svg 随盒缩放 */
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; display: inline-flex; align-items: center; justify-content: center; }
+/* 2026-11-05 三改(用户实测「图标左侧没有边距,有点丑」):pill 左延伸 4px(margin-left -4px
+ * 补 padding-left 4px——内容字形位不动、advance 不变,布局零影响)给图标留边距;图标挂
+ * left:-2px/8px=距 pill 左缘 2px,右缘距「正」字 0.6px 不压字;composer 文字列内边距 2px,
+ * pill 左缘恰好贴文字列左界不出界 */
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -2px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; display: inline-flex; align-items: center; justify-content: center; }
 .sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
 import { FileText, Globe, SquareTerminal } from 'lucide-react';
@@ -381,12 +382,15 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  芯片 @ 保字宽手法),图标绝对定位挂芯片尾缘(2026-11-05 实测 ⟦ 字形advance仅 5.4px,13px
  *  图标压进「正」字 7.6px=「图标挤在一起」根因;尾部是插入即带的尾随空格,无常驻墨迹可栖);
  *  气泡/队列无约束,图标内联+定界符不渲染 */
-/** 预览面板几何(2026-11-05 用户裁定「宽度降到 300px」):宽度恒 300(CSS 侧小视口钳 100vw),
- *  满高 300;水平钳回主对话区以此宽推算右界 */
+/** 预览面板几何(2026-11-05 用户裁定「宽度降到 300px」):视觉宽度恒 300,满高 300;水平钳回
+ *  主对话区以此宽推算右界。样式写入一律经 zoomScale 归一——ui-zoom 契约:html zoom 子树内
+ *  gBCR=视觉 px、样式 px=本地值(视觉/zoom),面板 Portal 落 body 同处 zoom 子树,漏归一即
+ *  位移下坠右移(zoom≠1 时 hover「跑远了」的根因) */
 const PANEL_W = 300;
+const PANEL_H = 300;
 
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
-  const [tip, setTip] = useState<{ x: number; y: number; h: number; below: boolean } | null>(null);
+  const [tip, setTip] = useState<{ x: number; y: number; h: number; w: number; below: boolean } | null>(null);
   // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
   const ico = isTerm ? (
     <SquareTerminal size={11} strokeWidth={1.75} />
@@ -398,17 +402,19 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
   const onEnter = (e: ReactMouseEvent<HTMLSpanElement>): void => {
     const r = e.currentTarget.getBoundingClientRect();
     const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
+    const z = zoomScale();
+    const wLocal = PANEL_W / z;
     const mL = (main?.left ?? 0) + 8;
     const mR = (main?.right ?? window.innerWidth) - 8;
-    const x = Math.min(Math.max(r.left, mL), Math.max(mR - PANEL_W, mL));
-    // 2026-11-05 用户裁定:面板恒在芯片上方;上方放不下(满高 300 露不全)且下方空间更大才翻下方,
+    const x = Math.min(Math.max(r.left, mL), Math.max(mR - PANEL_W, mL)) / z;
+    // 2026-11-05 用户裁定:面板恒在芯片上方;上方放不下(满高露不全)且下方空间更大才翻下方,
     // 高度=所在侧可用空间与满高取小,超出纵向滚动(CSS overflow:auto)
     const spaceAbove = r.top - 8;
     const spaceBelow = window.innerHeight - r.bottom - 12;
-    const below = spaceAbove < 300 && spaceBelow > spaceAbove;
-    const h = below ? Math.min(300, spaceBelow) : Math.min(300, Math.max(spaceAbove, 140));
+    const below = spaceAbove < PANEL_H && spaceBelow > spaceAbove;
+    const h = (below ? Math.min(PANEL_H, spaceBelow) : Math.min(PANEL_H, Math.max(spaceAbove, 140))) / z;
     // 贴边(2026-11-05 用户裁定「贴着 chip 的上下边缘」):间隙 2px
-    setTip({ x, y: below ? r.bottom + 2 : r.top - 2, h, below });
+    setTip({ x, y: (below ? r.bottom + 2 : r.top - 2) / z, h, w: wLocal, below });
   };
   // 面板挂 body 层:避开 .chat-dock 等 transform 祖先的包含块劫持(fixed 才是真视口定位)
   const panel =
@@ -417,7 +423,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     createPortal(
       <span
         className="ref-chip-preview"
-        style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}
+        style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h, width: tip.w } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h, width: tip.w }}
       >
         <pre>{content}</pre>
       </span>,
@@ -457,10 +463,11 @@ export const refContentRegistry = new Map<string, string>();
 const REG_STORE_KEY = 'sunshinex:ref-registry';
 // 重载自愈(2026-11-05 用户实测「字面量 token 发出」根因):Chromium reload 以表单恢复把
 // composer 里的 ⟦token⟧ 文本带回来,而注册表是模块内存——JS 上下文重建即空,发送期
-// expandRefContents 查不到内容=字面 token 直达 agent(浏览器实测复现:刷新后输入框 token
-// 仍在、注册表已空)。注册表写穿 sessionStorage(同 webview 会话存活),装载时回灌。
+// expandRefContents 查不到内容=字面 token 直达 agent。持久层 localStorage(2026-11-05 二改:
+// sessionStorage 不活进程,重启即空=「重启后无法显示 hover 弹窗」根因;daemon 端口偏好已
+// 落盘复用、GUI origin 稳定,localStorage 跨 launch 存续——与语言/主题/zoom 同通路),装载时回灌。
 try {
-  const saved = sessionStorage.getItem(REG_STORE_KEY);
+  const saved = localStorage.getItem(REG_STORE_KEY);
   if (saved !== null) {
     for (const [k, v] of JSON.parse(saved) as Array<[string, string]>) refContentRegistry.set(k, v);
   }
@@ -476,7 +483,7 @@ function persistRegistry(): void {
     try {
       // 上限 40 条(选取全文 ≤2000 字/条,防 5MB 配额击穿);Map 插入序=铸造序,弃最老
       const entries = [...refContentRegistry].slice(-40);
-      sessionStorage.setItem(REG_STORE_KEY, JSON.stringify(entries));
+      localStorage.setItem(REG_STORE_KEY, JSON.stringify(entries));
     } catch {
       // 配额/隐私模式写失败即弃:内存注册表仍支撑本会话全链
     }
