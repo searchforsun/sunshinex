@@ -346,6 +346,14 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
   const [editing, setEditing] = useState(false);
   const [editLightbox, setEditLightbox] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState('');
+  // 编辑卡自增高(2026-11-05 同输入框根修):软换行长行不加换行=rows 不变,按内容高度自增(封顶 240px)
+  const editTaRef = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    const ta = editTaRef.current;
+    if (ta === null) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
+  }, [draft, editing]);
   const [draftImages, setDraftImages] = useState<string[]>([]);
   /** IME 组字期守卫(2026-11-04):编辑卡芯片高亮层复用 composer 口径——组字期隐高亮层,
    *  透明 textarea 显组字串(否则中文组字不可见) */
@@ -424,6 +432,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
               {renderMentionSpans(draft, undefined, undefined, onOpenFile, true)}
             </div>
             <textarea
+              ref={editTaRef}
               aria-label="edit message"
               className="user-edit-input sx-composer-input transparent-text"
               autoFocus

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { ClipboardEvent, CompositionEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
@@ -93,6 +93,16 @@ export function ComposerCard({
   highlight,
 }: ComposerCardProps): JSX.Element {
   const hlRef = useRef<HTMLDivElement | null>(null);
+  // 自增高(2026-11-05 用户实测「手动输入不长高只有粘贴才长」):rows 随换行数派生,软换行的长行不加 
+
+  // =rows 不变→过早出纵向滚动条;改为按内容实际高度自增(scrollHeight,封顶 240px 与 CSS max-height 同源)
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    const ta = taRef.current;
+    if (ta === null) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
+  }, [value, rows, highlight]);
   /** IME 组字起点(组字段范围上抛用;null=无组字) */
   const compStartRef = useRef<number | null>(null);
   /** 粘贴分流:剪贴板带图片文件即接管(图片不进文本,token 守卫无意义);纯文本粘贴走守卫 */
@@ -137,7 +147,7 @@ export function ComposerCard({
             {highlight}
           </div>
           <textarea
-            ref={inputRef}
+            ref={(el) => { taRef.current = el; if (inputRef !== undefined) inputRef.current = el; }}
             aria-label={label}
             className="sx-composer-input transparent-text"
             spellCheck={false}
