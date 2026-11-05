@@ -80,6 +80,7 @@ function connOf(messages: Seed[], status: 'idle' | 'running' = 'idle'): Connecti
     cancelSteer: vi.fn(() => Promise.resolve()),
     runCommand: vi.fn(() => Promise.resolve()),
     commands: () => Promise.resolve({ commands: ['/status', '/compact', '/plan'], descriptions: { status: 's', compact: 'c', plan: 'p' }, supported: ['/status', '/compact'] }),
+    skillsGroups: () => Promise.resolve({ groups: [] }), // / 面板技能引用行数据面(默认空;按测试覆写)
     sessionContext: () => Promise.resolve({ parts: [{ id: 'stable', tokens: 429, count: 1 }, { id: 'chain', tokens: 26, count: 3 }], chainByAction: [], total: 6577, window: 1_000_000, free: 993_423 }),
   } as unknown as Connection;
 }
@@ -1703,35 +1704,54 @@ describe('P1 行级 memo render-count(Task 3):token 突发/交错帧已落位 to
   });
 });
 
-describe('命令面板(/ 面板,2026-11-04 skills 硬载退役)', () => {
-  it('`/` 面板仅含 GET /commands 内置清单(supported 过滤),零 skillCmds 拉取、无技能项混入', async () => {
+describe('命令面板(/ 面板,2026-11-05 技能引用行回归——用户裁定)', () => {
+  it('`/` 面板=内置命令(supported 过滤)在前 + 技能引用行(kind=skill)在后;点击技能行补全 `/id `', async () => {
     setLanguage('zh');
-    const skillCommands = vi.fn(() => Promise.resolve([{ id: 'pdf', description: 'pdf 工具' }]));
     const conn = connOf([]);
-    (conn as unknown as Record<string, unknown>).skillCommands = skillCommands;
+    (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() =>
+      Promise.resolve({ groups: [{ source: 'project', skills: [{ id: 'pdf', description: 'pdf 工具' }] }] }),
+    );
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '/' } });
     await screen.findByRole('listbox', { name: '命令面板' }); // 面板开
+    await screen.findByText('/pdf'); // 技能引用行异步落位
     const names = (): Array<string | null> => [...document.querySelectorAll('.cmd-palette .cmd-name')].map((el) => el.textContent);
-    expect(names()).toEqual(['/status', '/compact']); // 仅内置命令(/plan 不在 supported 不列);无 /pdf 技能项
-    await flushed();
-    expect(skillCommands).not.toHaveBeenCalled(); // 无 skillCmds 数据面拉取
-    expect(names()).toEqual(['/status', '/compact']); // 拉取窗口过后仍无技能项混入
+    expect(names()).toEqual(['/status', '/compact', '/pdf']); // 命令在前(/plan 不在 supported 不列),技能行在后
+    const skillRow = [...document.querySelectorAll('.cmd-palette .cmd-name')].find((el) => el.textContent === '/pdf');
+    fireEvent.click(skillRow!.closest('button')!);
+    expect(ta.value).toBe('/pdf '); // 补全插入(软引用纯文本,不 runCommand)
   });
 
-  it('行中 `/` token 不弹面板(atStart 门:技能软引用=纯文本语义,面板=纯内置命令)', async () => {
+  it('技能行 Enter 有参=普通发送落软引用(kind=skill 不回命令通道,零 runCommand)', async () => {
     setLanguage('zh');
-    const skillCommands = vi.fn(() => Promise.resolve([{ id: 'pdf', description: 'pdf 工具' }]));
+    const runCommand = vi.fn(() => Promise.resolve());
+    const sessionSubmit = vi.fn(() => Promise.resolve());
     const conn = connOf([]);
-    (conn as unknown as Record<string, unknown>).skillCommands = skillCommands;
+    (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() =>
+      Promise.resolve({ groups: [{ source: 'user', skills: [{ id: 'pdf', description: 'pdf 工具' }] }] }),
+    );
+    (conn as unknown as Record<string, unknown>).runCommand = runCommand;
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
     render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
-    fireEvent.change(ta, { target: { value: '前文 /' } }); // 中间 / 曾=仅技能池(旧面板混入面)
+    fireEvent.change(ta, { target: { value: '/pdf 处理报告' } }); // 有参:token 离开 caret 端=面板自动关
+    expect(document.querySelector('.cmd-palette')).toBeNull();
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    await flushed();
+    expect(runCommand).not.toHaveBeenCalled(); // 零命令派发(P0 口径不变)
+    expect(sessionSubmit.mock.calls[0]?.[1]).toBe('/pdf 处理报告'); // 纯文本软引用照发
+  });
+
+  it('行中 `/` token 不弹面板(atStart 门)', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '前文 /' } }); // 中间 / 不触发
     await flushed();
     await flushed();
-    expect(document.querySelector('.cmd-palette')).toBeNull(); // 技能池退役,面板不开
-    expect(skillCommands).not.toHaveBeenCalled();
+    expect(document.querySelector('.cmd-palette')).toBeNull();
   });
 });
 
@@ -1779,7 +1799,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     );
   }
 
-  it('输入 $ 面板出现(双组头),Enter 插入 $devx (尾随空格)并关闭;懒加载单次+shadowed 行剔除', async () => {
+  it('输入 $ 面板出现($ 单域,无组头文字),Enter 插入 $devx (尾随空格)并关闭;懒加载单次+shadowed 行剔除', async () => {
     setLanguage('zh');
     const conn = connOf([]);
     withCatalog(
@@ -1796,8 +1816,8 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     fireEvent.change(ta, { target: { value: '$' } });
     await screen.findByRole('listbox', { name: '智能体与团队' }); // 面板开
     const ids = (): Array<string | null> => [...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent);
-    expect(ids()).toEqual(['devx', 'planner', 'core-team']); // 生效集投影(shadowed devx 不重复列)
-    expect([...document.querySelectorAll('.ref-palette-head')].map((el) => el.textContent)).toEqual(['智能体', '团队']); // 双组头
+    expect(ids()).toEqual(['devx', 'planner']); // $ 单域=仅智能体(2026-11-05 裁定:teams 不混列);shadowed devx 不重复列
+    expect(document.querySelector('.ref-palette-head')).toBeNull(); // 组头文字退役(符号着色自明)
     const agentsView = (conn as unknown as Record<string, unknown>).agentsView as ReturnType<typeof vi.fn>;
     expect(agentsView).toHaveBeenCalledTimes(1); // 首触懒加载单次
     fireEvent.keyDown(ta, { key: 'Enter' });
@@ -1805,7 +1825,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     expect(document.querySelector('.ref-palette')).toBeNull(); // 面板关闭
   });
 
-  it('↑↓ 跨两组连续导航:↓×2 选中第三行,↑ 可逆,Enter 插入所选(评审锚:键面不重置游标)', async () => {
+  it('↑↓ 单域循环导航:↓ 循环回卷首,↑ 可逆,Enter 插入所选(评审锚:键面不重置游标;$ 单域)', async () => {
     setLanguage('zh');
     const conn = connOf([]);
     withCatalog(conn, [{ id: 'devx', name: 'Dev X' }, { id: 'planner', name: 'Planner' }], [{ id: 'core-team', name: 'Core' }]);
@@ -1818,25 +1838,24 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     fireEvent.keyDown(ta, { key: 'ArrowDown' });
     expect(activeId()).toBe('planner');
     fireEvent.keyDown(ta, { key: 'ArrowDown' });
-    expect(activeId()).toBe('core-team'); // 跨组连续编号($ 组尽即入 # 组)
+    expect(activeId()).toBe('devx'); // 单域尾行循环回卷首($/# 拆开后无跨组编号)
     fireEvent.keyDown(ta, { key: 'ArrowUp' });
     expect(activeId()).toBe('planner'); // 回退可逆
-    fireEvent.keyDown(ta, { key: 'ArrowDown' });
     fireEvent.keyDown(ta, { key: 'Enter' });
-    expect(ta.value).toBe('#core-team '); // 第三行插入(尾随空格)
+    expect(ta.value).toBe('$planner '); // 插入所选(尾随空格)
     expect(document.querySelector('.ref-palette')).toBeNull();
   });
 
-  it('# 触发只余团队组(过滤后首行直接落 Teams 头),Enter 插入 #core-team ', async () => {
+  it('# 触发单域=仅团队行(智能体不混列,2026-11-05 裁定),Enter 插入 #core-team ', async () => {
     setLanguage('zh');
     const conn = connOf([]);
     withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], [{ id: 'core-team', name: 'Core' }]);
     render(<Chat conn={conn} sessionId="s-ref-2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
-    fireEvent.change(ta, { target: { value: '#core' } });
+    fireEvent.change(ta, { target: { value: '#' } });
     await screen.findByRole('listbox', { name: '智能体与团队' });
-    expect([...document.querySelectorAll('.ref-palette-head')].map((el) => el.textContent)).toEqual(['团队']);
-    expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['core-team']);
+    expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['core-team']); // devx 不混列
+    expect(document.querySelectorAll('.ref-palette-row')[0]?.textContent).toContain('#'); // 符号着色行自明(无组头文字)
     fireEvent.keyDown(ta, { key: 'Enter' });
     expect(ta.value).toBe('#core-team ');
     expect(document.querySelector('.ref-palette')).toBeNull();
@@ -1947,21 +1966,22 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     expect(ta.value).toBe('$'); // 原文不动
   });
 
-  it('+ 面板引用触发行(2026-11-05 用户实测):点击「$ 引用智能体」插入裸符号并就地开面板(程序化插入不触发 onChange 的就地重演)', async () => {
+  it('+ 面板智能体/团队实体分组(2026-11-05 用户裁定:技能后同构分区)——点击行插整 token(`$id `),引用面板不开', async () => {
     setLanguage('zh');
     const conn = connOf([]);
-    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], []);
-    (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() => Promise.resolve({ groups: [] })); // + 面板技能区桩
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], [{ id: 'core-team', name: 'Core' }]);
+    (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() => Promise.resolve({ groups: [] })); // 技能区桩
     (conn as unknown as Record<string, unknown>).tree = vi.fn(() => Promise.resolve({ entries: [] })); // 文件区桩(sessionId 在场即拉)
     render(<Chat conn={conn} sessionId="s-ref-10" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.click(screen.getByLabelText('add attachment')); // + pill → 附加面板
-    const row = [...document.querySelectorAll('.sx-plus-row')].find((el) => el.textContent === '$引用智能体');
-    expect(row).toBeDefined(); // 引用区在座
-    fireEvent.click(row!);
-    expect(ta.value).toBe('$'); // 裸符号落输入框(空文本从零起手)
-    expect(screen.queryByText('引用智能体')).toBeNull(); // + 面板已收
-    await screen.findByRole('listbox', { name: '智能体与团队' }); // 引用面板就地开
-    expect(document.querySelector('.ref-palette-id')?.textContent).toBe('devx'); // 候选池在位
+    await screen.findByText('devx'); // 智能体/团队区数据异步落位
+    const secs = (): Array<string | null> => [...document.querySelectorAll('.sx-plus-sec')].map((el) => el.textContent);
+    expect(secs()).toContain('智能体'); // 实体分组在座(技能后)
+    expect(secs()).toContain('智能体团队');
+    const agentRow = [...document.querySelectorAll('.sx-plus-row')].find((el) => el.querySelector('.sx-plus-name')?.textContent === 'devx');
+    fireEvent.click(agentRow!);
+    expect(ta.value).toBe('$devx '); // 整 token 插入(尾随空格)
+    expect(document.querySelector('.ref-palette')).toBeNull(); // 完整 token 不触发引用面板
   });
 });

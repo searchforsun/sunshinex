@@ -58,6 +58,9 @@ export function useComposerKeys(deps: {
   readonly setCmdData: Dispatch<SetStateAction<ComposerCmdData | null>>;
   readonly cmdActive: number;
   readonly setCmdActive: Dispatch<SetStateAction<number>>;
+  /** 技能引用行(2026-11-05 用户裁定:技能回归 / 触发面板——与渲染面 slashPanelItems 同源,
+   *  键盘清单与 DOM 清单防漂移) */
+  readonly skills: Array<{ id: string; desc: string }>;
   readonly conn: Connection;
   readonly sessionId: string;
   readonly send: () => void;
@@ -70,7 +73,7 @@ export function useComposerKeys(deps: {
   onCompositionEndGuard: () => void;
   onSelectGuard: () => void;
 } {
-  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, refPal, setRefPal, refEntries, refActive, setRefActive, loadRefEntries, cmdData, setCmdData, cmdActive, setCmdActive, conn, sessionId, send, onOpenMemory } = deps;
+  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, refPal, setRefPal, refEntries, refActive, setRefActive, loadRefEntries, cmdData, setCmdData, cmdActive, setCmdActive, skills, conn, sessionId, send, onOpenMemory } = deps;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // G14.212 token 原子性:不可在 token 中间落字(字符键/空格/IME Process)——阻止并把
@@ -152,7 +155,8 @@ export function useComposerKeys(deps: {
     }
     const effRefPal = refTok ?? refPal;
     if (effRefPal !== null && (refTok !== null || input[effRefPal.from] === '$' || input[effRefPal.from] === '#')) {
-      const items = flatRefItems(refEntries, effRefPal.query);
+      // $/# 拆开各自单域(2026-11-05 用户裁定)——与渲染面 slashPanelItems/refPanelItems 同源防漂移
+      const items = flatRefItems(refEntries, effRefPal.query, effRefPal.sym);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         if (items.length > 0) {
@@ -214,9 +218,10 @@ export function useComposerKeys(deps: {
         return;
       }
     }
-    // G14.95 / 面板:开头=内置命令清单;中间不弹(技能=软引用纯文本语义,面板=纯命令);无匹配(items 空)面板不开=自动关
+    // G14.95 / 面板:内置命令清单 + 技能引用行(2026-11-05 用户裁定回归;kind='skill' 插入语义,
+    // 命令通道退役口径不变);无匹配(items 空)面板不开=自动关
     const slashToken = atMatch === null ? slashTokenAt(input, caret) : null;
-    const slashItems = slashItemsFor(cmdData, slashToken);
+    const slashItems = slashItemsFor(cmdData, slashToken, skills);
     if (slashToken !== null && slashItems.length > 0) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -238,8 +243,8 @@ export function useComposerKeys(deps: {
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         const item: CmdItem | undefined = slashItems[Math.min(cmdActive, slashItems.length - 1)];
-        // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单;清单外 /词——含 /skill-id
-        // 软引用——不入面板,整行经提交通道落纯文本)
+        // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单;kind='skill' 行不走此支——
+        // 有参 Enter 落到面外 send()=纯文本软引用,零命令派发)
         if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {
           e.preventDefault();
           setInput('');

@@ -81,21 +81,15 @@ describe('filterRefEntries(id 前缀过滤)', () => {
   });
 });
 
-describe('flatRefItems(双组扁平单游标)', () => {
-  it('agents 在前 teams 在后,sym 随行', () => {
-    expect(flatRefItems(ENTRIES, '').map((i) => `${i.sym}${i.id}`)).toEqual([
-      '$devx',
-      '$devops',
-      '$planner',
-      '#core-team',
-      '#fullstack-delivery',
-    ]);
+describe('flatRefItems(单域扁平——2026-11-05 用户裁定:$ / # 拆开各弹各的)', () => {
+  it("sym='$' 只出 agents 行", () => {
+    expect(flatRefItems(ENTRIES, '', '$').map((i) => `${i.sym}${i.id}`)).toEqual(['$devx', '$devops', '$planner']);
   });
-  it('过滤+扁平一体(query=dev 只剩两 $ 行)', () => {
-    expect(flatRefItems(ENTRIES, 'dev')).toEqual([
-      { id: 'devx', name: 'Dev X', sym: '$' },
-      { id: 'devops', name: 'Dev Ops', sym: '$' },
-    ]);
+  it("sym='#' 只出 teams 行", () => {
+    expect(flatRefItems(ENTRIES, '', '#').map((i) => `${i.sym}${i.id}`)).toEqual(['#core-team', '#fullstack-delivery']);
+  });
+  it('过滤+扁平一体(sym=#,query=full 只剩一行)', () => {
+    expect(flatRefItems(ENTRIES, 'full', '#')).toEqual([{ id: 'fullstack-delivery', name: 'Fullstack', sym: '#' }]);
   });
 });
 

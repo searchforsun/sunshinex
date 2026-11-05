@@ -101,11 +101,10 @@ export function FilePalette({
   );
 }
 
-/** agents-teams P1 Task 4（spec §3.2）：$/# 引用面板（智能体/团队双组单游标）——行=符号着色 +
- *  id + 展示名后缀，组头分节（Agents/Teams），空组由调用面过滤（flatRefItems 只含非空组）；
- *  全池空/过滤无命中=渲染 emptyHint 引导行（2026-11-05 用户实测裁定：静默隐藏=弹了等于没弹）。
- *  键盘（↑↓ 循环/Enter 插入/Esc）在 use-composer-keys 与 @ 面板同链；插入文本由调用面拼装
- *  （R4：`$id `/`#id ` 尾随空格，插入即终态无记账）。 */
+/** agents-teams P1 Task 4（spec §3.2）：$/# 引用面板（2026-11-05 用户裁定：$ 与 # 拆开，各自
+ *  单域单游标，行=符号着色 + id + 展示名后缀，无组头文字）；全池空/过滤无命中=渲染 emptyHint
+ *  引导行（静默隐藏=弹了等于没弹）。键盘（↑↓ 循环/Enter 插入/Esc）在 use-composer-keys 与
+ *  @ 面板同链；插入文本由调用面拼装（R4：`$id `/`#id ` 尾随空格，插入即终态无记账）。 */
 export function RefPalette({
   items,
   active,
@@ -130,17 +129,10 @@ export function RefPalette({
     <div className="ref-palette" role="listbox" aria-label={t('Agents and teams', '智能体与团队')}>
       {items.length === 0 && emptyHint !== undefined && <div className="ref-palette-empty">{emptyHint}</div>}
       {items.map((item, i) => {
-        // 组头:首行恒带头($ 行=Agents、# 行=Teams——空组已被 flatRefItems 滤除,过滤后只剩
-        // 团队行时首行直接落 Teams 头);此后首个 # 行前插 Teams 头
-        const head =
-          item.sym === '#' && (i === 0 || items[i - 1]?.sym === '$')
-            ? t('Teams', '团队')
-            : i === 0
-              ? t('Agents', '智能体')
-              : null;
+        // 组头文字退役(2026-11-05 用户裁定:#$ 面板不显示「智能体」等文字头——行首符号着色已
+        // 自明,$/# 又拆开各自单域,头部再标域属冗余)
         return (
           <Fragment key={`${item.sym}${item.id}`}>
-            {head !== null && <div className="ref-palette-head">{head}</div>}
             <button
               ref={i === active ? activeRef : undefined}
               type="button"
@@ -419,22 +411,49 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
 export const refContentRegistry = new Map<string, string>();
 
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
- *  全文围栏在显示侧折叠回芯片——段序列=原文段 | 围栏段(content=围栏体,chip 标签从页签/定位行提取) */
-export function splitBrowserFences(md: string): Array<{ text: string } | { fence: string; label: string }> {
-  const out: Array<{ text: string } | { fence: string; label: string }> = [];
-  const re = /```browser-element\n([\s\S]*?)```/g;
+ *  全文围栏在显示侧折叠回芯片——段序列=原文段 | 围栏段(fence=围栏体,token=回填重 token 化的
+ *  token 全文,label 从页签/定位行提取)。2026-11-04 续:扩 text-selection(终端片段围栏化落档) */
+export function splitBrowserFences(md: string): Array<{ text: string } | { fence: string; kind: 'browser-element' | 'text-selection'; label: string; token: string }> {
+  const out: Array<{ text: string } | { fence: string; kind: 'browser-element' | 'text-selection'; label: string; token: string }> = [];
+  const re = /```(browser-element|text-selection)\n([\s\S]*?)```/g;
   let last = 0;
+  let termSeq = 0;
   for (const m of md.matchAll(re)) {
     const idx = m.index ?? 0;
     if (idx > last) out.push({ text: md.slice(last, idx) });
-    const body = m[1] ?? '';
-    const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
-    const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
-    out.push({ fence: body, label: pid !== '' ? `网页#${pid}${loc !== '' ? ` · ${loc}` : ''}` : '网页元素' });
+    const kind = (m[1] ?? 'browser-element') as 'browser-element' | 'text-selection';
+    const body = m[2] ?? '';
+    if (kind === 'text-selection') {
+      termSeq += 1;
+      out.push({ fence: body, kind, label: '终端片段', token: termSeq === 1 ? '⟦终端片段⟧' : `⟦终端片段·${termSeq}⟧` });
+    } else {
+      const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
+      const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
+      const label = pid !== '' ? `网页#${pid}${loc !== '' ? ` · ${loc}` : ''}` : '网页元素';
+      out.push({ fence: body, kind, label, token: `⟦${label}⟧` });
+    }
     last = idx + m[0].length;
   }
   if (last < md.length) out.push({ text: md.slice(last) });
   return out;
+}
+
+/** 编辑回填重 token 化(2026-11-04 用户裁定「编辑页也保持 chip」):载入的展开档文按围栏折回
+ *  token 并记账(写传入账本+会话注册表),composer 恢复芯片态;重发经 expandRefContents 展开
+ *  回原形态(browser 围栏体原样含标记,终端片段重围栏化)。账本缺省=会话注册表(展开面有兜底) */
+export function rebuildPickTokens(md: string, ledger: Map<string, string> = refContentRegistry): string {
+  const out: string[] = [];
+  for (const seg of splitBrowserFences(md)) {
+    if ('text' in seg) {
+      out.push(seg.text);
+      continue;
+    }
+    const content = seg.kind === 'browser-element' ? `\`\`\`browser-element\n${seg.fence}\`\`\`` : seg.fence;
+    ledger.set(seg.token, content);
+    refContentRegistry.set(seg.token, content);
+    out.push(seg.token);
+  }
+  return out.join('');
 }
 
 /** G14.129/139 @ 引用发送期展开:输入框短写 `@文件名`(选中记账)或 `@相对路径` 或
@@ -479,5 +498,16 @@ export function expandFileRefs(
 /** 2026-11-04 元素/终端片段引用发送期展开(用户裁定「实际内容 agent 知道即可,composer 只显简标识」):
  *  ⟦…⟧ token → 账本(refContents)中的全量内容(围栏包裹);无账本命中原样保留 */
 export function expandRefContents(text: string, contents: ReadonlyMap<string, string>): string {
-  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, inner: string) => contents.get(`⟦${inner}⟧`) ?? raw);
+  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, _inner: string) => {
+    // 注册表兜底(2026-11-04):编辑回填重 token 化只写注册表即可全链生效(气泡 hover/重发展开)
+    const c = contents.get(raw) ?? refContentRegistry.get(raw);
+    if (c === undefined) return raw;
+    // 终端片段落档围栏化(用户裁定「正文片段也要 chip」):raw 选区→text-selection 围栏——
+    // 气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。尾随换行归一(重展开逐字节回原)
+    if (raw.startsWith('⟦终端') && !c.startsWith('```')) {
+      const body = c.endsWith('\n') ? c.slice(0, -1) : c;
+      return `\`\`\`text-selection\n${body}\n\`\`\``;
+    }
+    return c;
+  });
 }

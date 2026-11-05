@@ -53,13 +53,11 @@ export function filterRefEntries(entries: RefEntries, query: string): RefEntries
   return { agents: entries.agents.filter(hit), teams: entries.teams.filter(hit) };
 }
 
-/** 过滤 + 双组扁平（agents 在前 teams 在后——键盘 ↑↓ 跨两组连续编号的行源） */
-export function flatRefItems(entries: RefEntries, query: string): RefItem[] {
-  const { agents, teams } = filterRefEntries(entries, query);
-  return [
-    ...agents.map((e) => ({ ...e, sym: '$' as const })),
-    ...teams.map((e) => ({ ...e, sym: '#' as const })),
-  ];
+/** 过滤 + 单域扁平（2026-11-05 用户裁定：$ 与 # 拆开各弹各的，不再同面板双组混列——
+ *  sym 决定取哪组；键盘 ↑↓ 在单组内循环） */
+export function flatRefItems(entries: RefEntries, query: string, sym: '$' | '#'): RefItem[] {
+  const hit = sym === '$' ? filterRefEntries(entries, query).agents : filterRefEntries(entries, query).teams;
+  return hit.map((e) => ({ ...e, sym }));
 }
 
 /** R5 未知引用聚合（发送前只读检查）：消息里全部 $/# token（与 token 解析面同词法：

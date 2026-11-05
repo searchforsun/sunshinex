@@ -7,14 +7,15 @@ import { FileIcon } from '../file-icon';
 
 /**
  * 「+」附加面板(G12 统一 composer):浮在输入卡上方、与卡同宽(absolute left/right 0,锚
- * `.sx-composer`,经 ComposerCard overlays 槽渲染)。五区列表:
+ * `.sx-composer`,经 ComposerCard overlays 槽渲染)。六区列表:
  * - 附件(2026-10-26 图片功能,置首):图片选择——系统文件资源管理器(input type=file
  *   accept=image/*),多选;调用面 onAttachImages 承接装载与 ≤8 张钳制。欢迎页不传不渲染;
- * - 引用(2026-11-05 用户实测补,agents-teams P1):插入裸 `$`/`#` 并就地开引用面板——调用面
- *   onInsert 对两符号特判(程序化插入不触发 onChange,检测就地重演);
  * - 命令:GET /commands,点击插入 `/cmd `(回车执行——会话内走 / 命令通道);
  * - 技能:GET /settings/skills 三源(project/user/learned)按 id 去重合并,点击插入 `/<id>`
  *   (G14.213 skills 纯文本语义:不再走 /skill <id> 命令形态——daemon 已 400);
+ * - 智能体(2026-11-05 用户裁定,与技能区同构):agentsView 内置四角色+两级注册表生效集
+ *   (builtin-first 去重),点击插入 `$<id> `——$ 软引用纯文本,提交链零改动;
+ * - 智能体团队(同上):teamsView 生效集,点击插入 `#<id> `;
  * - 文件:仅会话内(sessionId 在场)——GET /session/:id/tree 逐级浏览工作区目录,点击文件插入
  *   相对路径;欢迎页无会话不渲染此区。
  * 插入即收口:调用面 onInsert 负责落文本+关面板+焦点回输入框。
@@ -24,6 +25,9 @@ export interface PlusPanelConn {
   skillsGroups(root?: string): Promise<{
     groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string }> }>;
   }>;
+  /** 智能体/团队区数据源(2026-11-05;可选——桩面未挂即区块不渲染) */
+  agentsView?(root?: string): Promise<{ builtins: Array<{ role: string; name: string }>; view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }>;
+  teamsView?(root?: string): Promise<{ view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }>;
   tree(sessionId: string, path?: string): Promise<{ entries: Array<{ name: string; kind: 'dir' | 'file' }>; truncated?: boolean }>;
   /** G14.128 工作区文件索引(文件区平铺:名+相对目录,最近改动优先);缺省回落 tree 浏览 */
   workspaceFiles?(root: string): Promise<{ files: Array<{ path: string; mtime: number }> }>;
@@ -128,6 +132,34 @@ export function ComposerPlusPanel({
     };
   }, [conn, sessionId, path]);
 
+  /** 智能体/团队区数据(2026-11-05):内置四角色+生效集(builtin-first 去重,shadowed 行剔除);
+   *  失败静默空列(区块显示「暂无」,不拖垮其余分区)。root 同 Chat 守卫(空/'default'=全局) */
+  const [agents, setAgents] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [teams, setTeams] = useState<Array<{ id: string; name: string }> | null>(null);
+  useEffect(() => {
+    if (conn.agentsView === undefined || conn.teamsView === undefined) return;
+    const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
+    let alive = true;
+    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
+      ([a, tv]) => {
+        if (!alive) return;
+        setAgents([
+          ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
+          ...a.view.entries.filter((e) => e.shadowed !== true).map((e) => ({ id: e.id, name: e.name })),
+        ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i));
+        setTeams(tv.view.entries.filter((e) => e.shadowed !== true).map((e) => ({ id: e.id, name: e.name })));
+      },
+      () => {
+        if (!alive) return;
+        setAgents([]);
+        setTeams([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, root]);
+
   /** G14.128 文件区平铺(工作区索引):名+相对目录后缀,最近改动优先;root 缺场回落 tree 浏览 */
   const [indexed, setIndexed] = useState<Array<{ rel: string; base: string; dir: string }> | null>(null);
   useEffect(() => {
@@ -192,28 +224,7 @@ export function ComposerPlusPanel({
           />
         </>
       )}
-      {/* 引用触发区(2026-11-05 用户实测补):插入裸符号并就地开 $/# 引用面板(调用面 onInsert 特判) */}
-      <div className="sx-plus-sec">{t('References', '引用')}</div>
-      <button
-        type="button"
-        role="menuitem"
-        className="sx-plus-row"
-        data-tip={t('Type an agent id after $', '符号后接智能体 id')}
-        onClick={() => onInsert('$')}
-      >
-        <span className="sx-plus-name">$</span>
-        <span className="sx-plus-desc">{t('Reference an agent', '引用智能体')}</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className="sx-plus-row"
-        data-tip={t('Type a team id after #', '符号后接团队 id')}
-        onClick={() => onInsert('#')}
-      >
-        <span className="sx-plus-name">#</span>
-        <span className="sx-plus-desc">{t('Reference a team', '引用团队')}</span>
-      </button>
+      {/* 引用区已退役(2026-11-05 用户裁定:改为技能区后的 智能体/智能体团队 实体分组——见下) */}
       <div className="sx-plus-sec">{t('Commands', '命令')}</div>
       {cmds === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {cmds !== null && cmds.length === 0 && <div className="sx-plus-empty">{t('No commands', '暂无命令')}</div>}
@@ -232,6 +243,34 @@ export function ComposerPlusPanel({
           <span className="sx-plus-desc">{s.desc}</span>
         </button>
       ))}
+      {/* 智能体/智能体团队区(2026-11-05 用户裁定:与技能区同构的实体分组,置于技能后)——
+          内置四角色+生效集(builtin-first 去重),点击插 `$<id> `/`#<id> `($ # 软引用纯文本) */}
+      {conn.agentsView !== undefined && (
+        <>
+          <div className="sx-plus-sec">{t('Agents', '智能体')}</div>
+          {agents === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
+          {agents !== null && agents.length === 0 && <div className="sx-plus-empty">{t('No agents', '暂无智能体')}</div>}
+          {agents?.map((a) => (
+            <button key={`$${a.id}`} type="button" role="menuitem" className="sx-plus-row" data-tip={a.name} onClick={() => onInsert(`$${a.id} `)}>
+              <span className="sx-plus-name">{a.id}</span>
+              <span className="sx-plus-desc">{a.name}</span>
+            </button>
+          ))}
+        </>
+      )}
+      {conn.teamsView !== undefined && (
+        <>
+          <div className="sx-plus-sec">{t('Agent Teams', '智能体团队')}</div>
+          {teams === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
+          {teams !== null && teams.length === 0 && <div className="sx-plus-empty">{t('No teams', '暂无团队')}</div>}
+          {teams?.map((tm) => (
+            <button key={`#${tm.id}`} type="button" role="menuitem" className="sx-plus-row" data-tip={tm.name} onClick={() => onInsert(`#${tm.id} `)}>
+              <span className="sx-plus-name">{tm.id}</span>
+              <span className="sx-plus-desc">{tm.name}</span>
+            </button>
+          ))}
+        </>
+      )}
       {/* G14.128 文件区:root 索引在场即渲染(欢迎页也可用);否则会话内回落 tree 浏览 */}
       {(indexed !== null || sessionId !== undefined) && (
         <>

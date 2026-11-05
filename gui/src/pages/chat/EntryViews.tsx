@@ -10,7 +10,7 @@ import { useResolvedImages } from '../../images-cache';
 import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
-import { buildMdComponents, keepUrl, RefTokenChip, renderMentionSpans, splitBrowserFences, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
+import { buildMdComponents, keepUrl, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { MdImage, useDirOpener } from './md-render';
@@ -351,7 +351,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
    *  透明 textarea 显组字串(否则中文组字不可见) */
   const [editComposing, setEditComposing] = useState(false);
   const openEdit = (): void => {
-    setDraft(entry.md);
+    // 编辑回填重 token 化(2026-11-04 用户裁定「编辑页也保持 chip」):载入的展开档文按围栏折回
+    // token+注册表记账——composer 恢复芯片态,重发经 expandRefContents(注册表兜底)展开回原形态
+    setDraft(rebuildPickTokens(entry.md));
     setDraftImages(entry.images ?? []); // 编辑卡预填原条图片（随行重发/可移除）
     setEditing(true);
   };
@@ -468,7 +470,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
             md.trim() !== '' ? (
               <div className="user-md-plain">
                 {splitBrowserFences(md).map((seg, i) =>
-                  'fence' in seg ? <RefTokenChip key={i} inner={seg.label} isTerm={false} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text, undefined, undefined, onOpenFile)}</Fragment>,
+                  'fence' in seg ? <RefTokenChip key={i} inner={seg.label} isTerm={seg.kind === 'text-selection'} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text, undefined, undefined, onOpenFile)}</Fragment>,
                 )}
               </div>
             ) : null

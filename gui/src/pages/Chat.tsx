@@ -44,7 +44,7 @@ import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
 import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
 import { SelActionsOverlay } from './chat/SelActionsOverlay';
-export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
 import { DirResolverContext, MdImageContext } from './chat/md-render';
@@ -222,7 +222,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     (text, r, resolve) => expandRefContents(expandFileRefs(text, r, resolve), refContentsRef.current),
     setChat,
   );
-  const { cmdData, setCmdData, cmdActive, setCmdActive } = useCommandPalette(conn);
+  const { cmdData, setCmdData, cmdActive, setCmdActive, skills } = useCommandPalette(conn, root);
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string, images?: string[]) => Promise<void>>(() => Promise.resolve());
@@ -585,6 +585,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     setCmdData,
     cmdActive,
     setCmdActive,
+    skills,
     conn,
     sessionId,
     send,
@@ -596,7 +597,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关) */
   const slashPanelItems: CmdItem[] | null = (() => {
     const caret = inputRef.current?.selectionStart ?? input.length;
-    const items = slashItemsFor(cmdData, slashTokenAt(input, caret));
+    // 2026-11-05 用户裁定:技能回归 / 触发面板(插入引用行,kind='skill'——G14.213 纯文本语义,
+    // Enter 有参=普通发送落软引用,不回命令通道;P0 命令派发退役口径不变)
+    const items = slashItemsFor(cmdData, slashTokenAt(input, caret), skills ?? []);
     return items.length > 0 ? items : null;
   })();
 
@@ -607,8 +610,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     if (refPal === null) return null;
     if (input[refPal.from] !== '$' && input[refPal.from] !== '#') return null;
     // 空命中也返回 [](面板照开 + 空态引导,不再静默隐藏——用户实测:零目录时 $/# 弹了等于没弹;
-    // 池空指路设置面,有池无匹配报无匹配)
-    return flatRefItems(refEntries, refPal.query);
+    // 池空指路设置面,有池无匹配报无匹配)。$/# 拆开各自单域(2026-11-05 用户裁定)
+    return flatRefItems(refEntries, refPal.query, refPal.sym);
   })();
 
   /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本;
@@ -942,23 +945,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               root={root}
               onAttachImages={addImageFiles}
               onInsert={(text) => {
-                if (text === '$' || text === '#') {
-                  // 引用触发行(2026-11-05 用户实测补):+ 面板插入裸符号并就地开引用面板——
-                  // 程序化插入不触发 onChange,触发检测就地重演(锚=插入符号位,query 空起手)
-                  const next = input.trim() === '' ? text : `${input.replace(/\s+$/, '')} ${text}`;
-                  setInput(next);
-                  setPillOpen(null);
-                  setRefPal({ query: '', from: next.length - 1, sym: text });
-                  setRefActive(0);
-                  loadRefEntries();
-                  inputRef.current?.focus();
-                  requestAnimationFrame(() => {
-                    const ta = inputRef.current;
-                    if (ta === null) return;
-                    ta.setSelectionRange(next.length, next.length);
-                  });
-                  return;
-                }
+                // 2026-11-05 用户裁定:+面板智能体/团队区插整 token(`$id `/`#id `)——与命令/技能
+                // 行同款落文本即收,不再有裸符号触发行(引用面板交给输入触发)
                 setInput((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
                 setPillOpen(null);
                 inputRef.current?.focus();

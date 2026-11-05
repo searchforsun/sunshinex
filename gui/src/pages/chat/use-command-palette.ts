@@ -12,28 +12,78 @@ export interface CmdData {
   supported: string[];
 }
 
-export function useCommandPalette(conn: Connection): {
+/** 技能行数据（2026-11-05 用户裁定：技能回归 / 触发面板——插入引用行，非命令派发；
+ *  三源合并去重同 + 面板技能区口径） */
+export interface SkillRow {
+  id: string;
+  desc: string;
+}
+
+export function useCommandPalette(
+  conn: Connection,
+  /** 工作区 root（skills project 组源；缺省/空/'default' 只拉 user/learned——Chat 同款守卫） */
+  root?: string,
+): {
   cmdData: CmdData | null;
   setCmdData: React.Dispatch<React.SetStateAction<CmdData | null>>;
   cmdActive: number;
   setCmdActive: React.Dispatch<React.SetStateAction<number>>;
+  skills: SkillRow[];
 } {
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<CmdData | null>(null);
   const [cmdActive, setCmdActive] = useState(0);
+  const [skills, setSkills] = useState<SkillRow[]>([]);
   /** 命令面板数据源(G10-C4):GET /commands 单点(清单/描述/supported) */
   useEffect(() => {
     conn.commands().then(setCmdData, () => setCmdData(null));
   }, [conn]);
-  return { cmdData, setCmdData, cmdActive, setCmdActive };
+  /** 技能行(2026-11-05):GET /settings/skills 三源去重合并(与 + 面板技能区同款投影);
+   *  失败静默空列(面板仅少技能组,不拖垮命令清单) */
+  useEffect(() => {
+    if (typeof conn.skillsGroups !== 'function') return; // 桩面缺法即空技能行(+面板同款守卫)
+    const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
+    let alive = true;
+    conn.skillsGroups(refRoot).then(
+      (r) => {
+        if (!alive) return;
+        const seen = new Set<string>();
+        const rows: SkillRow[] = [];
+        for (const g of r.groups) {
+          for (const s of g.skills) {
+            if (seen.has(s.id)) continue;
+            seen.add(s.id);
+            rows.push({ id: s.id, desc: s.description ?? s.name ?? '' });
+          }
+        }
+        setSkills(rows);
+      },
+      () => {
+        if (alive) setSkills([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, root]);
+  return { cmdData, setCmdData, cmdActive, setCmdActive, skills };
 }
 
-/** slash 面板令牌清单:开头=内置命令清单(G10-C4 单一数据面),中间不弹(atStart 门),无匹配=空 */
+/** slash 面板令牌清单:开头=内置命令清单(G10-C4 单一数据面) + 技能引用行(2026-11-05 用户裁定
+ *  回归——kind='skill',G14.213 纯文本语义:Enter 有参=普通发送落软引用,不回命令通道;点击/Tab=
+ *  补全 `/id `),中间不弹(atStart 门),无匹配=空。命令在前技能在后,各自按命中位排序 */
 export function slashItemsFor(
   data: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null,
   token: { query: string; atStart: boolean } | null,
+  skills: SkillRow[] = [],
 ): CmdItem[] {
   if (token === null) return [];
   if (!token.atStart || data === null) return [];
-  return filterCommands(data.commands, data.descriptions, token.query, data.supported);
+  const cmds = filterCommands(data.commands, data.descriptions, token.query, data.supported);
+  const q = token.query.toLowerCase();
+  const skillItems = skills
+    .map((s) => ({ cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: s.id.toLowerCase().indexOf(q), ok: true, kind: 'skill' as const }))
+    .filter((x) => x.idx >= 0)
+    .sort((a, b) => a.idx - b.idx);
+  return [...cmds, ...skillItems];
 }
