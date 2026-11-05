@@ -76,7 +76,7 @@ export function FilePalette({
   }, [active, items]);
   return (
     <div className="file-palette" role="listbox" aria-label={t('Workspace files', '工作区文件')}>
-      {header !== undefined && <div className="ref-palette-head">{header}</div>}
+      {header !== undefined && <div className="sx-plus-sec">{header}</div>}
       {items.length === 0 && <div className="file-palette-empty">{t('No matching files', '无匹配文件')}</div>}
       {items.map((f, i) => {
         // 目录项(工作区索引 dirs,尾斜杠内部标记):黄目录图标(FileIcon 尾斜杠判)即区分,
@@ -135,7 +135,7 @@ export function RefPalette({
   }, [active, items]);
   return (
     <div className="ref-palette" role="listbox" aria-label={t('Sub-agents and agent teams', '子智能体与智能体团队')}>
-      {header !== undefined && <div className="ref-palette-head">{header}</div>}
+      {header !== undefined && <div className="sx-plus-sec">{header}</div>}
       {items.length === 0 && emptyHint !== undefined && <div className="ref-palette-empty">{emptyHint}</div>}
       {items.map((item, i) => {
         // 组头文字退役(2026-11-05 用户裁定:#$ 面板不显示「智能体」等文字头——行首符号着色已

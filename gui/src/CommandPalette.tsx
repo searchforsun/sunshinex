@@ -103,7 +103,7 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element {
   }, [active, items]);
   return (
     <div className="cmd-palette" role="listbox" aria-label={t('command palette', '命令面板')}>
-      {props.header !== undefined && <div className="ref-palette-head">{props.header}</div>}
+      {props.header !== undefined && <div className="sx-plus-sec">{props.header}</div>}
       {items.length === 0 && <div className="cmd-empty">{t('No matching command', '没有匹配的命令')}</div>}
       {items.map((item, i) => {
         const desc = cmdDescOf(item.name, item.desc); // 渲染期本地化(内置命令 zh 表;技能项回落原文)
