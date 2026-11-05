@@ -1,55 +1,96 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
-import { ErrorBanner } from './components';
 
 /**
- * 全局规范面板（2026-11-05 用户裁定，编码分组）：编辑全局 SUNSHINE.md（跨工作区个人标准，
- * 对标 ~/.claude/CLAUDE.md）——GET /settings/sunshine 装载原文+路径，PUT 原子写回；脏检查
- * （未改动禁存）、还原按钮、refreshTick 变化重拉（外部/他窗改动信号，watcher 'sunshine' 键）。
- * 编辑器 320px 固定高（与 TeamsPane 章程详情/编辑同款裁定）。仅全局作用域，无 root 参数。
+ * 全局规范面板（2026-11-05 用户裁定，编码分组）——**形态对标「高级」raw 面**（sx-raw-card 卡、
+ * sx-raw-editor 自增长编辑器 ≥320、sx-save-bar 保存、sx-toast 3s 自隐），零冗余说明文字。
+ * 数据面：GET/PUT /settings/sunshine 读写全局 SUNSHINE.md（跨工作区个人标准，对标
+ * ~/.claude/CLAUDE.md；路径/读/写单点在 harness/context/loader.ts，PUT 原子写）。
+ * 回显面：mount/refreshTick 变化即自动重读（外部/他窗改动信号，watcher 'sunshine' 键）——
+ * 重读以磁盘为准（本地未存编辑被磁盘值覆盖=「重新读取」同语义）。「保存」恒可（loaded 门），
+ * 保存成功 toast「新建会话起」（stable segment 装配期语义）。
  */
+
+/** 空文件示例占位（SUNSHINE.md=Markdown 规范条文，# 标题/条目行均司） */
+const EXAMPLE = {
+  en: `Example:\n# Conventions\n- Always respond in Chinese\n- Prefer small, reviewed changes`,
+  zh: `示例:\n# 规范\n- 全程中文回复\n- 小步修改，逐条评审`,
+};
+
+/** raw 面连接面(结构满足即收,App 传整只 Connection) */
 export interface GlobalRulesPaneConn {
   sunshineGet(): Promise<{ content: string; path: string; exists: boolean }>;
   sunshinePut(content: string): Promise<void>;
 }
 
-export function GlobalRulesPane({ conn, refreshTick }: { conn: GlobalRulesPaneConn; refreshTick?: number }): JSX.Element {
-  const [origin, setOrigin] = useState(''); // 磁盘原文（脏检查基线；保存成功后同步）
-  const [text, setText] = useState(''); // 编辑缓冲
-  const [path, setPath] = useState('');
-  const [exists, setExists] = useState(false);
+export interface GlobalRulesPaneProps {
+  readonly conn: GlobalRulesPaneConn;
+  /** config-changed 'sunshine' tick（壳下发）：变化即自动重读磁盘（外部/他窗改动信号） */
+  readonly refreshTick?: number;
+}
+
+export function GlobalRulesPane({ conn, refreshTick }: GlobalRulesPaneProps): JSX.Element {
+  const [content, setContent] = useState('');
+  /** 未读取态判据（raw 同款）：mount/tick 重读在途保存禁用——陈旧内容不写 */
+  const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** read 代计数（在途竞态守卫，镜像 SettingsForm loadGenRef）：tick 重读发起即递增，迟到应答弃 */
+  const readGenRef = useRef(0);
+  /** 编辑器自增长锚（raw 同款：高度随原文撑开，下限 320，滚动交外层面） */
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const load = useCallback(() => {
+  useEffect(() => {
+    const el = editorRef.current;
+    if (el === null) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight + 2, 320)}px`;
+  }, [content]);
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
+  /** 自动回显：mount 与 refreshTick 变化即重读（读中清错误/toast；迟到应答代不齐弃） */
+  const read = useCallback((): void => {
+    const gen = ++readGenRef.current;
+    setLoadError('');
+    setSaveError('');
+    setToast('');
     conn.sunshineGet().then(
-      (r) => {
-        setOrigin(r.content);
-        setText(r.content);
-        setPath(r.path);
-        setExists(r.exists);
-        setLoadError('');
+      (v) => {
+        if (readGenRef.current !== gen) return;
+        setContent(v.content ?? ''); // 缺文件 = 空编辑器（首存建档）
+        setLoaded(true);
       },
-      (err: unknown) => setLoadError(errText(err)),
+      (err: unknown) => {
+        if (readGenRef.current !== gen) return;
+        setLoadError(errText(err));
+      },
     );
   }, [conn]);
 
   useEffect(() => {
-    load();
-  }, [load, refreshTick]);
+    read();
+  }, [read, refreshTick]);
 
-  const dirty = text !== origin;
   const save = (): void => {
-    if (!dirty || saving) return;
+    if (saving || !loaded) return;
     setSaving(true);
     setSaveError('');
-    conn.sunshinePut(text).then(
+    conn.sunshinePut(content).then(
       () => {
         setSaving(false);
-        setOrigin(text); // 基线推进（脏检查复位）
-        setExists(true); // 首存即建档
+        setToast(t('Saved — applies to new sessions', '已保存：新建会话起'));
+        if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToast(''), 3_000);
       },
       (err: unknown) => {
         setSaving(false);
@@ -59,29 +100,37 @@ export function GlobalRulesPane({ conn, refreshTick }: { conn: GlobalRulesPaneCo
   };
 
   return (
-    <div className="sx-global-rules" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12, color: 'var(--fg-secondary)' }}>
-        {t('Global norms file', '全局规范文件')}：<code style={{ fontFamily: 'var(--font-mono)' }}>{path}</code>
-        {!exists && <span style={{ marginLeft: 8 }}>{t('not created yet — saving creates it', '尚未创建——保存即建档')}</span>}
+    <section className="sx-settings-form sx-settings-body" aria-label="settings pane global rules">
+      <h2>{t('Global norms (SUNSHINE.md)', '全局规范(SUNSHINE.md)')}</h2>
+      <div className="sx-card sx-raw-card">
+        <div className="sx-raw-controls">
+          <button type="button" onClick={read}>
+            {t('Reload', '重新读取')}
+          </button>
+        </div>
+        {loadError !== '' && <p className="home-error" role="alert">{loadError}</p>}
+        <textarea
+          aria-label="global rules editor"
+          className="sx-raw-editor"
+          ref={editorRef}
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          rows={20}
+          spellCheck={false}
+          placeholder={t(EXAMPLE.en, EXAMPLE.zh)}
+        />
+        <div className="sx-save-bar">
+          <button type="button" className="sx-settings-save" disabled={saving || !loaded} onClick={save}>
+            {t('Save', '保存')}
+          </button>
+        </div>
+        {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}
       </div>
-      {loadError !== '' && <ErrorBanner text={loadError} />}
-      {saveError !== '' && <ErrorBanner text={saveError} />}
-      <textarea
-        aria-label="global rules editor"
-        className="sx-team-body-editor"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        spellCheck={false}
-      />
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button type="button" onClick={save} disabled={!dirty || saving}>
-          {saving ? t('Saving…', '保存中…') : t('Save', '保存')}
-        </button>
-        <button type="button" onClick={load} disabled={!dirty || saving}>
-          {t('Revert', '还原')}
-        </button>
-        {dirty && <span style={{ fontSize: 12, color: 'var(--warn)' }}>{t('Unsaved changes', '有未保存修改')}</span>}
-      </div>
-    </div>
+      {toast !== '' && (
+        <div className="sx-toast" role="status">
+          {toast}
+        </div>
+      )}
+    </section>
   );
 }
