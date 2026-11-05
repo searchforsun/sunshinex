@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { GlobalRulesPane } from '../GlobalRulesPane';
 import type { GlobalRulesPaneConn } from '../GlobalRulesPane';
