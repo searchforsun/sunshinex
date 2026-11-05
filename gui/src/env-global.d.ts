@@ -33,8 +33,6 @@ interface Window {
     pickElementStart?: (webContentsId: number) => Promise<{ ok: boolean; error?: string }>;
     pickElementStop?: (webContentsId: number) => Promise<void>;
     onPickNode?: (cb: (webContentsId: number, info: { path: string; html: string; url: string; title: string } | null) => void) => () => void;
-    /** 悬停回投(宿主主题化提示条数据源;原生 showInfo 跟页面配色不可主题化) */
-    onPickHover?: (cb: (webContentsId: number, info: { tag: string; box: { x: number; y: number; w: number; h: number }; color: string; font: string } | null) => void) => () => void;
     /** M2 融合：guest 弹窗 URL 由主进程转发（main setWindowOpenHandler → builtin:open-url），
      *  GUI 开新侧栏 web 页签；退订返回卸载用 */
     /** target:会话连接开页(seat/key)或页内弹窗(openerWebContentsId)——决定开在哪个会话座位 */

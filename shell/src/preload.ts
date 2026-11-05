@@ -28,13 +28,6 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     ipcRenderer.on('builtin:pick-node', handler);
     return () => void ipcRenderer.removeListener('builtin:pick-node', handler);
   },
-  /** 悬停回投(宿主提示条数据源;原生 showInfo 跟页面配色,暗色应用刺眼故自绘随主题):
-   *  info=null 无效帧;退订返回卸载用 */
-  onPickHover: (cb: (webContentsId: number, info: { tag: string; box: { x: number; y: number; w: number; h: number }; color: string; font: string } | null) => void): (() => void) => {
-    const handler = (_: unknown, id: number, info: { tag: string; box: { x: number; y: number; w: number; h: number }; color: string; font: string } | null): void => cb(id, info);
-    ipcRenderer.on('builtin:pick-hover', handler);
-    return () => void ipcRenderer.removeListener('builtin:pick-hover', handler);
-  },
   /** M2 融合:guest 弹窗 URL 由主进程转发(main setWindowOpenHandler → builtin:open-url),
    *  GUI 开新侧栏 web 页签(和浏览器一样;退订返回卸载用) */
   onOpenUrl: (cb: (url: string, target?: { seat?: string; key?: string; openerWebContentsId?: number }) => void): (() => void) => {

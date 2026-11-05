@@ -337,13 +337,9 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
   /* 元素选取模式(2026-11-04 用户裁定「选中元素发到会话,补页签 id/网址等元数据」):
      注入拾取脚本→悬停高亮→点击捕获(定位路径+outerHTML 片段)+页元数据,Escape 取消;
      DevTools 开着也能用(不走其选中态,通道独立)。两入口:发主对话(事件通道)/发辅助会话 */
-  /* 2026-11-04 用户裁定改两段式交互:①菜单「选取元素」单一入口→注入拾取脚本(悬停高亮/点击捕获/
-     Esc 取消),选取中宿主显示提示条;②捕获后宿主浮出选择卡(添加到主对话/辅助会话/取消)。
-     注入失败可见化(此前静默=「点了没反应」体感) */
+  /* 2026-11-04 CDP Overlay inspect 改宗+交互简化(用户裁定):工具条独立钮(自由尺寸前,检视中
+     active 态)→原生高亮+showInfo 信息条→点击直投主对话;点网页外/Esc 自动退出 */
   const [pickState, setPickState] = useState<'idle' | 'picking' | 'failed'>('idle');
-  /** 悬停提示条(宿主自绘,随应用主题;原生 showInfo 跟页面配色不可控即此弃用):
-   *  tag/box=CDP 回投,sx/sy=盒左上角映射到视口坐标(inner 可视矩形线性映射) */
-  const [hoverTip, setHoverTip] = useState<{ tag: string; color: string; font: string; bw: number; bh: number; sx: number; sy: number } | null>(null);
   /** 桥面拾取在途态(订阅回调寻址;refs 免闭包陈旧) */
   const pickWcRef = useRef(0);
   const pickViaBridgeRef = useRef(false);
@@ -367,7 +363,6 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     pickViaBridgeRef.current = false;
     void window.sunshinexWindow?.pickElementStop?.(pickWcRef.current);
     setPickState('idle');
-    setHoverTip(null);
   };
   /** 桥面拾取结果订阅:节点点击=直投主对话收口;null=Esc 取消。mount 级订阅一次,wcId 寻址判非本页忽略 */
   useEffect(() => {
@@ -377,25 +372,6 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       if (pickViaBridgeRef.current !== true || pickWcRef.current !== wcId) return;
       exitPick();
       if (info !== null && info.html !== '') insertPicked({ wcId, url: info.url, title: info.title, path: info.path, html: info.html });
-    });
-  }, []);
-  /** 悬停回投订阅:盒模型 guest px 经 inner 可视矩形线性映射视口坐标(k=rect宽/deviceW=scale×zoom 合成系数) */
-  useEffect(() => {
-    const sub = window.sunshinexWindow?.onPickHover;
-    if (sub === undefined) return;
-    return sub((wcId, info) => {
-      if (pickViaBridgeRef.current !== true || pickWcRef.current !== wcId || info === null) {
-        setHoverTip(null);
-        return;
-      }
-      const inner = innerRef.current;
-      if (inner === null) {
-        setHoverTip(null);
-        return;
-      }
-      const r = inner.getBoundingClientRect();
-      const k = r.width / (scaleInputsRef.current.deviceW || 1);
-      setHoverTip({ tag: info.tag, color: info.color, font: info.font, bw: info.box.w, bh: info.box.h, sx: r.left + info.box.x * k, sy: r.top + info.box.y * k });
     });
   }, []);
   // 点击非网页区=自动退出(2026-11-04 用户裁定):host DOM 事件不经 webview,网页内点击被
@@ -415,17 +391,21 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
   );
   const pickElement = async (): Promise<void> => {
     const wv = wvRef.current;
-    if (wv === null || pickState === 'picking') return;
+    if (wv === null) return;
+    if (pickState === 'picking') {
+      // 检视中再点=取消(2026-11-04 用户裁定:按钮开合态随检视,选中/点外/Esc/再点均收)
+      exitPick();
+      return;
+    }
     const failHint = (): void => {
       // 2026-11-04 用户裁定:失败提示=通知框形态,3s 自愈回落,不常驻
       setPickState('failed');
       window.setTimeout(() => setPickState((c) => (c === 'failed' ? 'idle' : c)), 3000);
     };
-    setMoreOpen(false);
     const bridge = window.sunshinexWindow?.pickElementStart;
     if (bridge !== undefined && wv.executeJavaScript !== undefined) {
       // 桌面壳桥面(2026-11-04 用户裁定「任何页面都能选取,参考开源实现」):CDP Overlay inspect=
-      // DevTools 检视同源——原生蓝框+点击拦截在浏览器层(提示条宿主自绘随主题),不注脚本,
+      // DevTools 检视同源——原生蓝框+showInfo 信息条+点击拦截在浏览器层,不注脚本,
       // 任意 CSP/框架页面可用(注入版被页面环境卡死即此弃因)。结果经 onPickNode 回投
       let wcId = 0;
       try {
@@ -648,21 +628,24 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
                     {t('Open DevTools', '打开调试工具')}
                   </button>
                 )}
-                {devtoolsBridge !== undefined && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={builtin ? wvUrl === '' : active === null}
-                    onClick={() => void pickElement()}
-                  >
-                    <MousePointerClick size={12} strokeWidth={1.75} aria-hidden="true" />
-                    {t('Pick element', '选取元素')}
-                  </button>
-                )}
               </div>
             </>
           )}
         </div>
+        {/* 元素拾取独立钮(2026-11-04 用户裁定:从 ⋯ 菜单抽出置自由尺寸前;检视中=active 态,
+            选中/点外/Esc/再点均收——状态机见 pickElement/exitPick);仅桥面在场渲染(新壳) */}
+        {builtin && window.sunshinexWindow?.pickElementStart !== undefined && (
+          <button
+            type="button"
+            className={`sx-web-nav${pickState === 'picking' ? ' active' : ''}`}
+            aria-label={t('Pick element', '选取元素')}
+            aria-pressed={pickState === 'picking'}
+            data-tip={t('Pick element', '选取元素')}
+            onClick={() => void pickElement()}
+          >
+            <MousePointerClick size={13} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        )}
         {/* G14.2xx 自由尺寸开关(设备模拟形):开=缺省 16:9 标准档 1280×720 定格为视口 px(此后
             只随输入变,不随侧栏漂移)+缩放下拉;关=流式+缩放钮。开关留条上;宽高/缩放控件
             2026-10-31 用户裁定移至独立一行(不挤网址右侧) */}
@@ -825,26 +808,6 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       {pickState === 'failed' && (
         <div className="sx-web-pickhint err" role="alert">
           {t('Element picking unavailable on this page', '当前页面无法选取元素')}
-        </div>
-      )}
-      {/* 悬停提示条(宿主自绘随主题;锚=节点盒左上,DevTools 同构:标签+尺寸/Color/Font) */}
-      {pickState === 'picking' && hoverTip !== null && (
-        <div
-          className="sx-web-picktip"
-          style={{ left: Math.min(hoverTip.sx, window.innerWidth - 180), top: Math.max(hoverTip.sy - 6, 4) }}
-        >
-          <div className="sx-web-picktip-row head">
-            <span className="sx-web-picktip-tag">{hoverTip.tag}</span>
-            <span className="sx-web-picktip-dim">{`${hoverTip.bw}×${hoverTip.bh}`}</span>
-          </div>
-          <div className="sx-web-picktip-row">
-            <span className="sx-web-picktip-label">{t('Color', '颜色')}</span>
-            <span className="sx-web-picktip-val">{hoverTip.color}</span>
-          </div>
-          <div className="sx-web-picktip-row">
-            <span className="sx-web-picktip-label">{t('Font', '字体')}</span>
-            <span className="sx-web-picktip-val">{hoverTip.font}</span>
-          </div>
         </div>
       )}
     </div>
