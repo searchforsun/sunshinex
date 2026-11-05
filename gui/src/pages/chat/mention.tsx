@@ -60,11 +60,14 @@ export function FilePalette({
   active,
   onPick,
   onHover,
+  header,
 }: {
   items: string[];
   active: number;
   onPick: (p: string) => void;
   onHover: (i: number) => void;
+  /** 首行域标(2026-11-05 用户裁定:「@ 文件」) */
+  header?: string;
 }): JSX.Element {
   // G14.163 ↑↓ 移动时选中项滚入可视区(block:nearest 最小滚动;过滤后 items 变也跟随)
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -73,6 +76,7 @@ export function FilePalette({
   }, [active, items]);
   return (
     <div className="file-palette" role="listbox" aria-label={t('Workspace files', '工作区文件')}>
+      {header !== undefined && <div className="ref-palette-head">{header}</div>}
       {items.length === 0 && <div className="file-palette-empty">{t('No matching files', '无匹配文件')}</div>}
       {items.map((f, i) => {
         // 目录项(工作区索引 dirs,尾斜杠内部标记):黄目录图标(FileIcon 尾斜杠判)即区分,
@@ -112,6 +116,7 @@ export function RefPalette({
   onPick,
   onHover,
   emptyHint,
+  header,
 }: {
   items: RefItem[];
   active: number;
@@ -120,6 +125,8 @@ export function RefPalette({
   /** 空态引导(2026-11-05 用户实测:零目录时面板静默隐藏=弹了等于没弹)——items 空时渲染
    *  非交互提示行(池空=指路设置面;有池无匹配=无匹配),面板不再以空渲染关自己的门 */
   emptyHint?: string;
+  /** 首行域标(2026-11-05 用户裁定:「$ 子智能体」/「# 智能体团队」——$/# 拆开各自单域后此行自明域属) */
+  header?: string;
 }): JSX.Element {
   // G14.163 同款：↑↓ 移动时选中项滚入可视区(block:nearest 最小滚动)
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -128,6 +135,7 @@ export function RefPalette({
   }, [active, items]);
   return (
     <div className="ref-palette" role="listbox" aria-label={t('Sub-agents and agent teams', '子智能体与智能体团队')}>
+      {header !== undefined && <div className="ref-palette-head">{header}</div>}
       {items.length === 0 && emptyHint !== undefined && <div className="ref-palette-empty">{emptyHint}</div>}
       {items.map((item, i) => {
         // 组头文字退役(2026-11-05 用户裁定:#$ 面板不显示「智能体」等文字头——行首符号着色已

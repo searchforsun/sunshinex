@@ -90,6 +90,8 @@ export interface CommandPaletteProps {
   readonly active: number;
   readonly onHover: (index: number) => void;
   readonly onPick: (item: CmdItem) => void;
+  /** 首行域标(2026-11-05 用户裁定:弹层第一行示「/ 命令 技能」——命令/技能上下分组说明) */
+  readonly header?: string;
 }
 
 export function CommandPalette(props: CommandPaletteProps): JSX.Element {
@@ -101,6 +103,7 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element {
   }, [active, items]);
   return (
     <div className="cmd-palette" role="listbox" aria-label={t('command palette', '命令面板')}>
+      {props.header !== undefined && <div className="ref-palette-head">{props.header}</div>}
       {items.length === 0 && <div className="cmd-empty">{t('No matching command', '没有匹配的命令')}</div>}
       {items.map((item, i) => {
         const desc = cmdDescOf(item.name, item.desc); // 渲染期本地化(内置命令 zh 表;技能项回落原文)

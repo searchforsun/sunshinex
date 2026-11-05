@@ -1822,7 +1822,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     await screen.findByRole('listbox', { name: '子智能体与智能体团队' }); // 面板开
     const ids = (): Array<string | null> => [...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent);
     expect(ids()).toEqual(['devx', 'planner']); // $ 单域=仅智能体(2026-11-05 裁定:teams 不混列);shadowed devx 不重复列
-    expect(document.querySelector('.ref-palette-head')).toBeNull(); // 组头文字退役(符号着色自明)
+    expect(document.querySelector('.ref-palette-head')?.textContent).toBe('$ 子智能体'); // 首行域标(2026-11-05 裁定:$ 单域标自身)
     const agentsView = (conn as unknown as Record<string, unknown>).agentsView as ReturnType<typeof vi.fn>;
     expect(agentsView).toHaveBeenCalledTimes(1); // 首触懒加载单次
     fireEvent.keyDown(ta, { key: 'Enter' });

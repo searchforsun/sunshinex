@@ -274,7 +274,7 @@ export function ComposerPlusPanel({
       {/* G14.128 文件区:root 索引在场即渲染(欢迎页也可用);否则会话内回落 tree 浏览 */}
       {(indexed !== null || sessionId !== undefined) && (
         <>
-          <div className="sx-plus-sec">{t('Files', '文件')}</div>
+          <div className="sx-plus-sec">{t('Add file', '添加文件')}</div>
           {indexed !== null ? (
             <>
               {/* G14.128 平铺索引:名+相对目录后缀(@ 同源),点击插入 @相对路径 */}
@@ -324,8 +324,8 @@ export function ComposerPlusPanel({
       </div>
       {/* 快捷键提示脚行(2026-11-03 用户裁定):钉底恒显——@ 添加文件 / 选择命令或技能 / $ # 引用 / Ctrl+V 粘贴图片 */}
       <div className="sx-plus-foot">
-        <span className="sx-plus-hint"><kbd>@</kbd>{t('Files', '文件')}</span>
-        <span className="sx-plus-hint"><kbd>/</kbd>{t('Commands / skills (grouped)', '命令 技能(上下分组)')}</span>
+        <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file', '添加文件')}</span>
+        <span className="sx-plus-hint"><kbd>/</kbd>{t('Pick command or skill', '选择命令或技能')}</span>
         <span className="sx-plus-hint"><kbd>$</kbd>{t('Sub-agents', '子智能体')}</span>
         <span className="sx-plus-hint"><kbd>#</kbd>{t('Agent teams', '智能体团队')}</span>
         <span className="sx-plus-hint"><kbd>Ctrl+V</kbd>{t('Paste image', '粘贴图片')}</span>
