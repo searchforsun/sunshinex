@@ -33,15 +33,15 @@ export interface TodoBatch {
 const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', edit: '编辑', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
-  team: '加载智能体团队', agent: '加载子智能体', // agents-teams P0 章程卡工具(2026-11-05 用户裁定补登记)
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
-  agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
   kb_search: '检索知识库', ask_question: '提问', exit_plan: '提交计划',
+  team: '加载智能体团队', agent: '加载子智能体', // agents-teams P0 章程卡工具(2026-11-05 用户裁定补登记,与八件套同族)
   create_agent_team_task: '创建团队任务', set_dependency: '设置依赖', assign: '分派',
   create_agent_team: '创建智能体团队',
   create_agent_teammate: '创建团队成员',
   update_agent_team_task: '更新团队任务', get_agent_team_board: '查看团队看板', probe: '探测',
   send_agent_team_message: '发送团队消息', get_task: '读取任务',
+  agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
