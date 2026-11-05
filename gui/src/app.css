@@ -777,6 +777,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border-radius: 0;
   padding: 4px 2px;
   font: inherit;
+  /* 行高显式 px(2026-11-05 用户实测「粘贴后光标与内容高度对不上」):无单位倍数会在高亮层
+     按 各自字号/emoji 回退字体 各自计算行盒=行格漂移;px 行高继承恒定,光标格=可见行格 */
+  line-height: calc(var(--f-base-size, 14px) * var(--f-base-lh, 1.6));
   resize: none;
 }.sx-composer-input:focus { border: none; outline: none; }
 /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
@@ -786,7 +789,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   overflow: hidden;
   padding: 4px 2px;
   font: inherit;
-  line-height: inherit;
+  /* 行高显式 px(2026-11-05 用户实测「粘贴后光标与内容高度对不上」):无单位倍数按各自字号/
+     emoji 回退字体各自算行盒=行格漂移;px 行高继承恒定,光标格=可见行格(与 .sx-composer-input 同式) */
+  line-height: calc(var(--f-base-size, 14px) * var(--f-base-lh, 1.6));
   color: var(--fg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
