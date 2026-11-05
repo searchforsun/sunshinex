@@ -8,10 +8,10 @@ import { expandRefContents, mintSnippetToken, rebuildPickTokens, refContentRegis
  *  5.4px 预算=图标位(全角【】迁移实测否决——尾侧全角字形宽=光标飞,前侧宽随字体浮动=图标压字)。 */
 describe('mintSnippetToken 铸造', () => {
   it('同类二铸即 ·N,正文/终端独立计数', () => {
-    expect(mintSnippetToken('body')).toBe('📄文本片段');
-    expect(mintSnippetToken('body')).toBe('📄文本片段·2');
-    expect(mintSnippetToken('term')).toBe('💻终端片段');
-    expect(mintSnippetToken('term')).toBe('💻终端片段·2');
+    expect(mintSnippetToken('body')).toBe('⟦文本片段⟧');
+    expect(mintSnippetToken('body')).toBe('⟦文本片段·2⟧');
+    expect(mintSnippetToken('term')).toBe('⟦终端片段⟧');
+    expect(mintSnippetToken('term')).toBe('⟦终端片段·2⟧');
   });
 });
 
@@ -53,7 +53,7 @@ describe('splitBrowserFences 显示侧折叠(标签 i18n+顺序编号)', () => {
   it('body-snippet 围栏折回正文片段芯片段(原文段保留)', () => {
     expect(splitBrowserFences('甲```body-snippet\n引文\n```乙')).toEqual([
       { text: '甲' },
-      { fence: '引文\n', kind: 'body-snippet', label: '文本片段', token: '📄文本片段' },
+      { fence: '引文\n', kind: 'body-snippet', label: '文本片段', token: '⟦文本片段⟧' },
       { text: '乙' },
     ]);
   });
@@ -86,7 +86,7 @@ describe('rebuildPickTokens 编辑回填回环', () => {
   it('body-snippet 档文折回 token;展开∘回填逐字节回原', () => {
     const md = '说明 ```body-snippet\n第一行\n第二行\n``` 结尾';
     const back = rebuildPickTokens(md);
-    expect(back).toBe('说明 📄文本片段 结尾');
+    expect(back).toBe('说明 ⟦文本片段⟧ 结尾');
     expect(expandRefContents(back, new Map())).toBe(md);
   });
 
