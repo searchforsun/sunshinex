@@ -1819,7 +1819,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' }); // 面板开
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' }); // 面板开
     const ids = (): Array<string | null> => [...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent);
     expect(ids()).toEqual(['devx', 'planner']); // $ 单域=仅智能体(2026-11-05 裁定:teams 不混列);shadowed devx 不重复列
     expect(document.querySelector('.ref-palette-head')).toBeNull(); // 组头文字退役(符号着色自明)
@@ -1837,7 +1837,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-6" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' });
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     const activeId = (): string => document.querySelector('.ref-palette-row.active .ref-palette-id')?.textContent ?? '';
     expect(activeId()).toBe('devx'); // 游标起点=首行
     fireEvent.keyDown(ta, { key: 'ArrowDown' });
@@ -1858,7 +1858,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '#' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' });
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['core-team']); // devx 不混列
     expect(document.querySelectorAll('.ref-palette-row')[0]?.textContent).toContain('#'); // 符号着色行自明(无组头文字)
     fireEvent.keyDown(ta, { key: 'Enter' });
@@ -1873,7 +1873,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-7" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' });
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     const rows = [...document.querySelectorAll('.ref-palette-row')];
     fireEvent.click(rows[1]!); // 第二行 planner
     expect(ta.value).toBe('$planner ');
@@ -1887,7 +1887,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-3" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' });
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     fireEvent.keyDown(ta, { key: 'Escape' });
     expect(document.querySelector('.ref-palette')).toBeNull();
     expect(ta.value).toBe('$'); // 原文不动
@@ -1902,7 +1902,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-4" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } }); // 先开一次面板 → entries 缓存落位
-    await screen.findByRole('listbox', { name: '智能体与团队' });
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     fireEvent.change(ta, { target: { value: '叫 $ghost 上场,拉 #phantom' } }); // 未命中条目
     fireEvent.keyDown(ta, { key: 'Enter' });
     const hint = document.querySelector('.sx-img-hint');
@@ -1949,7 +1949,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-8" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' });
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual([
       'planner',
       'developer',
@@ -1964,7 +1964,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-9" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    await screen.findByRole('listbox', { name: '智能体与团队' }); // 面板开(空态不再自隐)
+    await screen.findByRole('listbox', { name: '子智能体与智能体团队' }); // 面板开(空态不再自隐)
     expect(document.querySelector('.ref-palette-empty')?.textContent).toContain('尚无在册'); // 指路设置面
     fireEvent.keyDown(ta, { key: 'Escape' });
     expect(document.querySelector('.ref-palette')).toBeNull(); // Esc 照关
@@ -1982,7 +1982,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     fireEvent.click(screen.getByLabelText('add attachment')); // + pill → 附加面板
     await screen.findByText('devx'); // 智能体/团队区数据异步落位
     const secs = (): Array<string | null> => [...document.querySelectorAll('.sx-plus-sec')].map((el) => el.textContent);
-    expect(secs()).toContain('智能体'); // 实体分组在座(技能后)
+    expect(secs()).toContain('子智能体'); // 实体分组在座(技能后)
     expect(secs()).toContain('智能体团队');
     const agentRow = [...document.querySelectorAll('.sx-plus-row')].find((el) => el.querySelector('.sx-plus-name')?.textContent === 'devx');
     fireEvent.click(agentRow!);

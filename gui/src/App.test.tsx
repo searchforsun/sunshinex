@@ -561,7 +561,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     };
     const ta = (await screen.findByLabelText('welcome goal')) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '$' } });
-    const box = await screen.findByRole('listbox', { name: 'Agents and teams' }); // App.test 全局 en 语言
+    const box = await screen.findByRole('listbox', { name: 'Sub-agents and agent teams' }); // App.test 全局 en 语言
     expect([...box.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['planner', 'developer']);
     fireEvent.keyDown(ta, { key: 'Enter' });
     expect(ta.value).toBe('$planner '); // 插 `$id ` 尾随空格,面板收

@@ -247,9 +247,9 @@ export function ComposerPlusPanel({
           内置四角色+生效集(builtin-first 去重),点击插 `$<id> `/`#<id> `($ # 软引用纯文本) */}
       {conn.agentsView !== undefined && (
         <>
-          <div className="sx-plus-sec">{t('Agents', '智能体')}</div>
+          <div className="sx-plus-sec">{t('Sub-agents', '子智能体')}</div>
           {agents === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
-          {agents !== null && agents.length === 0 && <div className="sx-plus-empty">{t('No agents', '暂无智能体')}</div>}
+          {agents !== null && agents.length === 0 && <div className="sx-plus-empty">{t('No sub-agents', '暂无子智能体')}</div>}
           {agents?.map((a) => (
             <button key={`$${a.id}`} type="button" role="menuitem" className="sx-plus-row" data-tip={a.name} onClick={() => onInsert(`$${a.id} `)}>
               <span className="sx-plus-name">{a.id}</span>
@@ -326,7 +326,7 @@ export function ComposerPlusPanel({
       <div className="sx-plus-foot">
         <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file', '添加文件')}</span>
         <span className="sx-plus-hint"><kbd>/</kbd>{t('Pick command or skill', '选择命令或技能')}</span>
-        <span className="sx-plus-hint"><kbd>$</kbd>{t('Agents', '智能体')}</span>
+        <span className="sx-plus-hint"><kbd>$</kbd>{t('Sub-agents', '子智能体')}</span>
         <span className="sx-plus-hint"><kbd>#</kbd>{t('Teams', '团队')}</span>
         <span className="sx-plus-hint"><kbd>Ctrl+V</kbd>{t('Paste image', '粘贴图片')}</span>
       </div>

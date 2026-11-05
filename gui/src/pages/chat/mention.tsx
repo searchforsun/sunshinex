@@ -126,7 +126,7 @@ export function RefPalette({
     activeRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [active, items]);
   return (
-    <div className="ref-palette" role="listbox" aria-label={t('Agents and teams', '智能体与团队')}>
+    <div className="ref-palette" role="listbox" aria-label={t('Sub-agents and agent teams', '子智能体与智能体团队')}>
       {items.length === 0 && emptyHint !== undefined && <div className="ref-palette-empty">{emptyHint}</div>}
       {items.map((item, i) => {
         // 组头文字退役(2026-11-05 用户裁定:#$ 面板不显示「智能体」等文字头——行首符号着色已

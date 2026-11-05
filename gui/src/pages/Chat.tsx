@@ -891,8 +891,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               emptyHint={
                 refEntries.agents.length === 0 && refEntries.teams.length === 0
                   ? t(
-                      'No registered agents or teams yet — create them in Settings → Agents / Agent Teams, then reference here with $ or #',
-                      '尚无在册智能体/团队 — 在 设置 → 智能体 / 智能体团队 创建后，即可在此 $ 引用 / # 拉队',
+                      'No registered sub-agents or teams yet — create them in Settings → Agents / Agent Teams, then reference here with $ or #',
+                      '尚无在册子智能体/团队 — 在 设置 → 智能体 / 智能体团队 创建后，即可在此 $ 引用 / # 拉队',
                     )
                   : t('No matching entry', '无匹配条目')
               }
