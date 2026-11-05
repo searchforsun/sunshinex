@@ -27,9 +27,10 @@ useEffect(() => {
       const token: string = detail.token;
       refContents.current.set(token, detail.content);
       refContentRegister(token, detail.content);
-      // 2026-11-05 用户裁定「光标贴 chip」:ref token 不再补尾随空格——⟧ 定界符自身占位,
-      // 光标钉在 token 末即贴芯片(用户自己决定是否敲空格续写)
-      setInput((prev) => (prev.trim() === '' ? token : `${prev.replace(/\s+$/, '')}　${token}`));
+      // 2026-11-05 用户裁定「光标贴 chip」:ref token 不再补尾随空格——光标钉在 token 末即贴芯片
+      // (用户自己决定是否敲空格续写)。分隔符退回半角空格(原全角　是旧尾悬图标吃空格的补偿,
+      // 图标已收进头部占位区,半角即可;全角在气泡 markdown 管线被吞=芯片粘连、且间距过大)
+      setInput((prev) => (prev.trim() === '' ? token : `${prev.replace(/\s+$/, '')} ${token}`));
       inputRef.current?.focus();
       requestAnimationFrame(() => {
         const ta = inputRef.current;
@@ -44,9 +45,8 @@ useEffect(() => {
       const base = detail.rel.split(/[\\/]/).pop() ?? detail.rel;
       pickRelRef.current.set(base, detail.rel);
     }
-    // 整条即 ref token(正文圈选 {text} 通道)同款不补尾随空格,光标贴芯片
-    const bareRef = /^(?:【[^】]{1,120}】|⟦[^⟧]{1,120}⟧)$/.test(text);
-    setInput((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')}${bareRef ? '　' : ' '}${text}`));
+    // 整条即 ref token(正文圈选 {text} 通道)同款不补尾随空格,光标贴芯片;分隔符半角空格(同上)
+    setInput((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')} ${text}`));
     inputRef.current?.focus();
     // G14.211 光标钉尾:focus 恢复的是 textarea 旧光标位(此前离开输入框时留在原处),
     // 渲染提交后一帧再设到末尾——否则光标落回旧位=token 中间(「不挨着文件」)

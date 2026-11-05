@@ -905,7 +905,13 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
               onPick={(item) => {
                 const from = refPal.from;
                 const end = from + 1 + refPal.query.length;
-                setInput((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
+                // 分隔符守卫(2026-11-05):锚位前贴着 ⟧(芯片尾沿,无空白)时补半角空格——
+                // 否则 $id/#id 直接粘在芯片后,tokenizer (^|\s) 不识别=引用渲染成白文
+                setInput((prev) => {
+                  const head = prev.slice(0, from);
+                  const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
+                  return head + sep + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from));
+                });
                 setRefPal(null);
                 inputRef.current?.focus();
                 requestAnimationFrame(() => {
@@ -965,7 +971,12 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
                 const tok = slashTokenAt(input, input.length);
                 const from = tok !== null ? tok.from : input.length;
                 const caret = inputRef.current?.selectionStart ?? input.length;
-                setInput(input.slice(0, from) + item.cmd + ' ' + input.slice(caret));
+                // 分隔符守卫(2026-11-05):落点前贴着 ⟧(芯片尾沿,透明不显)时补半角空格——
+                // 芯片后落选 /cmd 即粘成 ⟧/cmd,tokenizer (^|\s) 不识别=「文本后面的技能
+                // 无法识别成命令蓝色」根因之二
+                const head = input.slice(0, from);
+                const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
+                setInput(head + sep + item.cmd + ' ' + input.slice(caret));
               };
               return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
             })()

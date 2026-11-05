@@ -51,6 +51,12 @@ describe('splitMentionTokens 解析', () => {
   it('⟦…⟧ 解析为 ref token(带头部占位区)', () => {
     expect(splitMentionTokens('x ⟦  文本片段·4⟧ y').find((k) => k.text === '⟦  文本片段·4⟧')?.kind).toBe('ref');
   });
+
+  it('/cmd 贴芯片尾沿也成 skill 芯片(⟧ 边界;带前导空格双形)', () => {
+    expect(splitMentionTokens('⟦  文本片段⟧/deploy').some((k) => k.kind === 'skill' && k.text === '/deploy')).toBe(true);
+    expect(splitMentionTokens('⟦  文本片段⟧ /deploy').some((k) => k.kind === 'skill' && k.text === '/deploy')).toBe(true);
+    expect(splitMentionTokens('⟦  文本片段⟧$qa').some((k) => k.kind === 'agent' && k.text === '$qa')).toBe(true);
+  });
 });
 
 describe('splitBrowserFences 显示侧折叠(标签 i18n+顺序编号)', () => {
