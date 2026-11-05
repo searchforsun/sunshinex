@@ -465,6 +465,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
         onMouseLeave={() => setTip(null)}
         style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h, width: tip.w } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h, width: tip.w }}
       >
+        <span className="ref-chip-preview-head">{ico}<span>{inner}</span></span>
         <pre>{content}</pre>
       </span>,
       document.body,
