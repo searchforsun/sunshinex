@@ -163,7 +163,7 @@ export function RefPalette({
  *  返回分段序列(plain 原样、其余着色)——输入框高亮层与用户气泡共用一套口径 */
 export interface MentionToken {
   text: string;
-  kind: 'plain' | 'file' | 'cmd' | 'skill' | 'ref' | 'agent' | 'team';
+  kind: 'plain' | 'file' | 'cmd' | 'skill' | 'ref' | 'agent' | 'team' | 'mdlink';
 }
 
 export function splitMentionTokens(text: string): MentionToken[] {
@@ -172,14 +172,17 @@ export function splitMentionTokens(text: string): MentionToken[] {
   // 2026-11-04 §3.1 加 $/# 软引用支:词边界组+小写首字符(小写限定即测试语义——
   // #L30 行锚/#Title/词中 $var 均不误伤)。原 /gi 的 i 对 @、/ 两支只有 [a-z] 一处生效,
   // 改显式 [a-zA-Z] 后两支逐字节不变;保 i 则 #Title 反而命中,故全局旗降为 /g
-  const re = /@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
+  // 2026-11-04 md 链接支(首支,无捕获组不位移):发送期展开落档的文件引用形态
+  // `[名 L19-L22](路径#L19-L22)` 整体成原子 token——编辑回填/气泡/队列按文件芯片渲染
+  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
     const idx = m.index ?? 0;
     const matched = m[0];
     if (idx > last) out.push({ text: text.slice(last, idx), kind: 'plain' });
-    if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
+    if (matched.startsWith('[')) out.push({ text: matched, kind: 'mdlink' });
+    else if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
     else if (matched.startsWith('⟦')) out.push({ text: matched, kind: 'ref' });
     else if (matched.startsWith('/') || m[2] !== undefined) {
       const lead = m[1] ?? '';
@@ -300,9 +303,26 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
  *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别)。
  *  2026-11-04 §3.1:agent/team 走尾分支同款 `hn-${kind}` 类(hn-agent/hn-team,CSS 侧取
  *  --accent/--warn 区分,不新增硬编码色) */
-export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>): ReactNode =>
+export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
+    if (tk.kind === 'mdlink') {
+      // 发送期展开落档的文件引用链接形态(2026-11-04 用户裁定「用户气泡/编辑页保持 chip」):
+      // 文件芯片同款渲染,label=链接文字(文件名+行段),有跳转通道即点击开文件(剥 #行锚——
+      // 文件页签不识锚,路径段打开);composer 高亮层指针穿透只显形,气泡/队列带通道可跳
+      const m2 = /^\[([^\]\n]+)\]\(([^()\s]+)\)$/.exec(tk.text);
+      const label = m2?.[1] ?? tk.text;
+      const href = m2?.[2] ?? '';
+      const open = href !== '' && onOpenFile !== undefined ? () => onOpenFile(href.replace(/#[^#]*$/, '')) : undefined;
+      return (
+        <span key={i} className="hn hn-file hn-mdlink" onClick={open} style={open !== undefined ? { cursor: 'pointer' } : undefined}>
+          <span className="hn-file-ico" aria-hidden="true">
+            <FileIcon path={label} />
+          </span>
+          {label}
+        </span>
+      );
+    }
     if (tk.kind === 'file') {
       const tokenBody = tk.text.slice(1);
       const anchor = /^(.*)(:L\d+(?:-L\d+)?)$/.exec(tokenBody);

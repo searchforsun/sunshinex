@@ -337,7 +337,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenImage, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenImage, onOpenFile, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   const [rewindOpen, setRewindOpen] = useState(false);
   const copy = (): void => {
@@ -456,7 +456,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
             md.trim() !== '' ? (
               <div className="user-md-plain">
                 {splitBrowserFences(md).map((seg, i) =>
-                  'fence' in seg ? <RefTokenChip key={i} text={`⟦${seg.label}⟧`} inner={seg.label} isTerm={false} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text)}</Fragment>,
+                  'fence' in seg ? <RefTokenChip key={i} text={`⟦${seg.label}⟧`} inner={seg.label} isTerm={false} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text, undefined, undefined, onOpenFile)}</Fragment>,
                 )}
               </div>
             ) : null
