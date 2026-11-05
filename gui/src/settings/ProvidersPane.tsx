@@ -316,11 +316,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
   /** 页面即全局(2026-10-29 用户裁定):工具栏只留新增钮——无下拉无搜索,卡列表全量呈现 */
   const entries = allEntries;
   const loading = view === null && loadError === '';
-  /** 生效默认模型 = choices[0](首源首模型;服务端恒切,T11 裁定)。choices 空=无默认标注 */
-  const defaultId =
-    view !== null && view.providers.choices.length > 0
-      ? `${view.providers.choices[0]!.provider}/${view.providers.choices[0]!.model}`
-      : '';
   return (
     <div className="sx-settings-complex">
       {/* 请求参数卡恒全局(2026-10-29 用户裁定豁免):root 恒 ''——读仅全局、写恒 global 桶,
@@ -360,7 +355,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                       {e.models.map((m) => (
                         <Fragment key={m.model}>
                           <span className="sx-chip">{m.model}</span>
-                          {`${e.name}/${m.model}` === defaultId && <span className="sx-chip sx-provider-default">{t('Default', '默认')}</span>}
                         </Fragment>
                       ))}
                     </>

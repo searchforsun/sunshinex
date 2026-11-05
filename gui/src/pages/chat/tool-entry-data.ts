@@ -34,8 +34,9 @@ const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', edit: '编辑', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
+  agent: '加载子智能体', // agents-teams P0 章程卡工具(2026-11-05 用户裁定:agent 属子智能体域,不受智能体团队控制)
   kb_search: '检索知识库', ask_question: '提问', exit_plan: '提交计划',
-  team: '加载智能体团队', agent: '加载子智能体', // agents-teams P0 章程卡工具(2026-11-05 用户裁定补登记,与八件套同族)
+  team: '加载智能体团队', // 智能体团队域(与八件套同族)
   create_agent_team_task: '创建团队任务', set_dependency: '设置依赖', assign: '分派',
   create_agent_team: '创建智能体团队',
   create_agent_teammate: '创建团队成员',

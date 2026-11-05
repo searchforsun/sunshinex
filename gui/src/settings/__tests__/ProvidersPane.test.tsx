@@ -107,7 +107,7 @@ const connOf = (
 };
 
 describe('ProvidersPane(卡片化+op 写面)', () => {
-  it('卡片渲染:名/baseUrl 副行/models chips/默认标记(choices[0] 所属)+密钥状态点+warnings;请求参数卡在', async () => {
+  it('卡片渲染:名/baseUrl 副行/models chips(2026-11-05 用户裁定:默认标记退役)+密钥状态点+warnings;请求参数卡在', async () => {
     const { conn, settingsCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
     expect(await screen.findByText('p1')).toBeDefined();
@@ -116,7 +116,7 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     expect(screen.getByText('m1')).toBeDefined(); // models chips
     expect(screen.getByText('m2')).toBeDefined();
     expect(screen.getByText('m9')).toBeDefined();
-    expect(screen.getAllByText('Default')).toHaveLength(1); // 默认标记恒一处(choices[0]=p1/m1)
+    expect(screen.queryByText('Default')).toBeNull(); // 默认标记退役
     expect(document.querySelector('.sx-api-dot.present')).not.toBeNull(); // p1 密钥在场=绿点(entries 行 apiKeyPresent)
     expect(document.querySelectorAll('.sx-api-dot.missing')).toHaveLength(1); // p2 缺=灰点
     expect((document.querySelector('.sx-api-dot.missing') as HTMLElement).getAttribute('data-tip')).toBe('SUNSHINEX_API_KEY_P2'); // tip=entries 行 apiKeyEnv
