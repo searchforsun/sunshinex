@@ -376,7 +376,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       let inner = tk.text.slice(1, -1);
       // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变
       if (composer === true) {
-        const baseM = /^(正文片段|终端片段|网页#[^·]*)(?:·\d+)?$/.exec(inner);
+        const baseM = /^(文本片段|正文片段|终端片段|网页#[^·]*)(?:·\d+)?$/.exec(inner);
         if (baseM !== null) {
           const n = (refSeq.get(baseM[1]) ?? 0) + 1;
           refSeq.set(baseM[1], n);
@@ -385,7 +385,8 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       }
       const isTerm = inner.startsWith('终端');
       // 显示标签 i18n(§15 外观双语):键保持 zh 规范形,显示随界面语言
-      inner = inner.startsWith('正文片段') ? t('Body snippet', '正文片段') + inner.slice(4)
+      inner = inner.startsWith('文本片段') ? t('Text snippet', '文本片段') + inner.slice(4)
+        : inner.startsWith('正文片段') ? t('Body snippet', '正文片段') + inner.slice(4)
         : inner.startsWith('终端片段') ? t('Terminal snippet', '终端片段') + inner.slice(4)
         : inner.startsWith('网页#') ? `${t('Web', '网页')}#${inner.slice(3)}`
         : inner === '网页元素' ? t('Web element', '网页元素')
@@ -429,7 +430,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
   // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
   const ico = isTerm ? (
     <SquareTerminal size={11} strokeWidth={1.75} />
-  ) : inner.startsWith('正文') || inner.startsWith('Body') ? (
+  ) : inner.startsWith('文本') || inner.startsWith('正文') || inner.startsWith('Body') || inner.startsWith('Text') ? (
     <FileText size={11} strokeWidth={1.75} />
   ) : (
     <Globe size={11} strokeWidth={1.75} />
@@ -539,7 +540,7 @@ export function refContentRegister(token: string, content: string): void {
  */
 const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
-  const base = kind === 'body' ? '正文片段' : '终端片段';
+  const base = kind === 'body' ? '文本片段' : '终端片段';
   snippetSeq[kind] += 1;
   return snippetSeq[kind] === 1 ? `⟦${base}⟧` : `⟦${base}·${snippetSeq[kind]}⟧`;
 }
@@ -564,7 +565,7 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
       out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦终端片段⟧' : `⟦终端片段·${termSeq}⟧` });
     } else if (kind === 'body-snippet') {
       bodySeq += 1;
-      out.push({ fence: body, kind, label: t('Body snippet', '正文片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦正文片段⟧' : `⟦正文片段·${bodySeq}⟧` });
+      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦文本片段⟧' : `⟦文本片段·${bodySeq}⟧` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
@@ -644,7 +645,7 @@ export function expandRefContents(text: string, contents: ReadonlyMap<string, st
     // 落档围栏化:raw 选区→围栏——气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。
     // 尾随换行归一(重展开逐字节回原)。围栏 kind 即显示侧标签判据:终端→text-selection、
     // 正文(2026-11-05 用户裁定「正文也要 chip」)→body-snippet
-    if (raw.startsWith('⟦正文') && !c.startsWith('```')) {
+    if ((raw.startsWith('⟦文本') || raw.startsWith('⟦正文')) && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`body-snippet\n${body}\n\`\`\``;
     }
