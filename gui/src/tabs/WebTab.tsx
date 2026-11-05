@@ -72,10 +72,6 @@ export interface WebTabProps {
   /** 元数据回写(url/pageTitle/pageIcon 合并进标签 params;registry 绑定 sessionId,App 落 tab-state) */
   readonly onMeta: (uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
   /** 关闭本页签(模型 browser_tabs close 经 facade→壳→此处) */
-  /** 辅助会话提问通道(2026-11-04 元素选取面:选取元素→辅助会话;缺省不渲染该入口) */
-  readonly onSideAsk?: (text: string) => void;
-  /** 主对话 composer 插入通道(2026-11-04 元素选取面)——缺省走全局 insert-ref 事件 */
-  readonly startSideChat?: (text: string) => void;
   readonly onClose?: () => void;
   /** webview 分区(浏览器页签池按会话下发:persist:sx-<浏览器键>/草稿内存分区);缺省共用旧分区 */
   readonly partition?: string;
@@ -115,7 +111,7 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, partition, onSideAsk, startSideChat }: WebTabProps): JSX.Element {
+export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, partition }: WebTabProps): JSX.Element {
   // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
   // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
   // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
@@ -345,23 +341,71 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
      Esc 取消),选取中宿主显示提示条;②捕获后宿主浮出选择卡(添加到主对话/辅助会话/取消)。
      注入失败可见化(此前静默=「点了没反应」体感) */
   const [pickState, setPickState] = useState<'idle' | 'picking' | 'failed'>('idle');
-  const [pickedEl, setPickedEl] = useState<{ wcId: number; url: string; title: string; path: string; html: string } | null>(null);
+  /** 悬停提示条(宿主自绘,随应用主题;原生 showInfo 跟页面配色不可控即此弃用):
+   *  tag/box=CDP 回投,sx/sy=盒左上角映射到视口坐标(inner 可视矩形线性映射) */
+  const [hoverTip, setHoverTip] = useState<{ tag: string; color: string; font: string; bw: number; bh: number; sx: number; sy: number } | null>(null);
   /** 桥面拾取在途态(订阅回调寻址;refs 免闭包陈旧) */
   const pickWcRef = useRef(0);
   const pickViaBridgeRef = useRef(false);
-  /** 桥面拾取结果回投订阅(2026-11-04 CDP Overlay inspect):info=null=Esc 取消;收口即 stop
-   *  (清检视态+还 debugger)。mount 级订阅一次,wcId 寻址判非本页忽略 */
+  /** 拾取结果直投主对话(2026-11-04 用户裁定「点击后自动放到主对话框,不用再次点击」:选择卡
+   *  两段式退役)——⟦token⟧ 简标识落 composer(内容入账本发送期展开) */
+  const insertPicked = (el: { wcId: number; url: string; title: string; path: string; html: string }): void => {
+    const content = [
+      '```browser-element',
+      `页签 #${el.wcId}`,
+      `标题: ${el.title}`,
+      `网址: ${el.url}`,
+      `定位: ${el.path}`,
+      '---',
+      el.html,
+      '```',
+    ].join('\n');
+    const token = `⟦网页#${el.wcId.toString(36)} · ${el.path}⟧`;
+    window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content } }));
+  };
+  const exitPick = (): void => {
+    pickViaBridgeRef.current = false;
+    void window.sunshinexWindow?.pickElementStop?.(pickWcRef.current);
+    setPickState('idle');
+    setHoverTip(null);
+  };
+  /** 桥面拾取结果订阅:节点点击=直投主对话收口;null=Esc 取消。mount 级订阅一次,wcId 寻址判非本页忽略 */
   useEffect(() => {
     const sub = window.sunshinexWindow?.onPickNode;
     if (sub === undefined) return;
     return sub((wcId, info) => {
       if (pickViaBridgeRef.current !== true || pickWcRef.current !== wcId) return;
-      pickViaBridgeRef.current = false;
-      void window.sunshinexWindow?.pickElementStop?.(wcId);
-      setPickState('idle');
-      if (info !== null && info.html !== '') setPickedEl({ wcId, url: info.url, title: info.title, path: info.path, html: info.html });
+      exitPick();
+      if (info !== null && info.html !== '') insertPicked({ wcId, url: info.url, title: info.title, path: info.path, html: info.html });
     });
   }, []);
+  /** 悬停回投订阅:盒模型 guest px 经 inner 可视矩形线性映射视口坐标(k=rect宽/deviceW=scale×zoom 合成系数) */
+  useEffect(() => {
+    const sub = window.sunshinexWindow?.onPickHover;
+    if (sub === undefined) return;
+    return sub((wcId, info) => {
+      if (pickViaBridgeRef.current !== true || pickWcRef.current !== wcId || info === null) {
+        setHoverTip(null);
+        return;
+      }
+      const inner = innerRef.current;
+      if (inner === null) {
+        setHoverTip(null);
+        return;
+      }
+      const r = inner.getBoundingClientRect();
+      const k = r.width / (scaleInputsRef.current.deviceW || 1);
+      setHoverTip({ tag: info.tag, color: info.color, font: info.font, bw: info.box.w, bh: info.box.h, sx: r.left + info.box.x * k, sy: r.top + info.box.y * k });
+    });
+  }, []);
+  // 点击非网页区=自动退出(2026-11-04 用户裁定):host DOM 事件不经 webview,网页内点击被
+  // inspect 模式拦截不冒泡到宿主——picking 期宿主任一 pointerdown 即页外,捕获段先于 UI 处理
+  useEffect(() => {
+    if (pickState !== 'picking' || pickViaBridgeRef.current !== true) return;
+    const onDown = (): void => exitPick();
+    window.addEventListener('pointerdown', onDown, true);
+    return () => window.removeEventListener('pointerdown', onDown, true);
+  }, [pickState]);
   // 卸载兜底:拾取在途即退(检视态悬着+debugger 挂着都不可残留)
   useEffect(
     () => () => {
@@ -381,8 +425,8 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     const bridge = window.sunshinexWindow?.pickElementStart;
     if (bridge !== undefined && wv.executeJavaScript !== undefined) {
       // 桌面壳桥面(2026-11-04 用户裁定「任何页面都能选取,参考开源实现」):CDP Overlay inspect=
-      // DevTools 检视同源——原生蓝框+showInfo 信息条(标签/尺寸/颜色/字体)+点击拦截全在浏览器层,
-      // 不注脚本,任意 CSP/框架页面可用(注入版被页面环境卡死即此弃因)。结果经 onPickNode 回投
+      // DevTools 检视同源——原生蓝框+点击拦截在浏览器层(提示条宿主自绘随主题),不注脚本,
+      // 任意 CSP/框架页面可用(注入版被页面环境卡死即此弃因)。结果经 onPickNode 回投
       let wcId = 0;
       try {
         wcId = wv.getWebContentsId();
@@ -400,7 +444,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       }
       return;
     }
-    // 注入兜底(纯浏览器 iframe 态/旧壳):原 executeJavaScript 拾取脚本
+    // 注入兜底(纯浏览器 iframe 态/旧壳):原 executeJavaScript 拾取脚本,同样直投主对话
     if (wv.executeJavaScript === undefined) return;
     let wcId = 0;
     try {
@@ -414,30 +458,10 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       const picked = (await wv.executeJavaScript(PICK_ELEMENT_JS, true)) as { url: string; title: string; path: string; html: string } | null;
       setPickState('idle');
       if (picked === null || picked.html === '') return; // Esc 取消
-      setPickedEl({ wcId, url: picked.url, title: picked.title, path: picked.path, html: picked.html });
+      insertPicked({ wcId, url: picked.url, title: picked.title, path: picked.path, html: picked.html });
     } catch {
       failHint(); // 注入失败可见化(导航中/CSP/页环境异常)
     }
-  };
-  /** 选择卡动作:整块围栏内容——主对话=⟦token⟧ 简标识落 composer(内容入账本发送期展开),
-      辅助会话=整段直发(无 token 管线) */
-  const sendPicked = (to: 'main' | 'side'): void => {
-    const el = pickedEl;
-    if (el === null) return;
-    setPickedEl(null);
-    const content = [
-      '```browser-element',
-      `页签 #${el.wcId}`,
-      `标题: ${el.title}`,
-      `网址: ${el.url}`,
-      `定位: ${el.path}`,
-      '---',
-      el.html,
-      '```',
-    ].join('\n');
-    const token = `⟦网页#${el.wcId.toString(36)} · ${el.path}⟧`;
-    if (to === 'side') startSideChat?.(content);
-    else window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content } }));
   };
 
   const navigate = (): void => {
@@ -798,27 +822,30 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
           </div>
         </div>
       </div>
-      {/* 元素选取反馈面(2026-11-04 用户裁定:可见化两段式交互):选取中提示条 + 捕获后选择卡 */}
-      {pickState === 'picking' && (
-        <div className="sx-web-pickhint" role="status">
-          {t('Picking element — click the target, Esc to cancel', '正在选取元素——点击页面目标，Esc 取消')}
-        </div>
-      )}
       {pickState === 'failed' && (
         <div className="sx-web-pickhint err" role="alert">
           {t('Element picking unavailable on this page', '当前页面无法选取元素')}
         </div>
       )}
-      {pickedEl !== null && (
-        <>
-          {/* 2026-11-04 用户裁定:点其他地方自动收卡(透明幕布在卡后,卡上点击不受影响) */}
-          <div style={{ position: 'fixed', inset: 0, zIndex: 29, background: 'transparent' }} onClick={() => setPickedEl(null)} />
-          <div className="sx-web-pickcard">
-            <span className="sx-web-pickcard-path">{pickedEl.path}</span>
-            <button type="button" onClick={() => sendPicked('main')}>{t('Add to main chat', '添加到主对话')}</button>
-            {onSideAsk !== undefined && <button type="button" onClick={() => sendPicked('side')}>{t('Ask in side chat', '辅助会话提问')}</button>}
+      {/* 悬停提示条(宿主自绘随主题;锚=节点盒左上,DevTools 同构:标签+尺寸/Color/Font) */}
+      {pickState === 'picking' && hoverTip !== null && (
+        <div
+          className="sx-web-picktip"
+          style={{ left: Math.min(hoverTip.sx, window.innerWidth - 180), top: Math.max(hoverTip.sy - 6, 4) }}
+        >
+          <div className="sx-web-picktip-row head">
+            <span className="sx-web-picktip-tag">{hoverTip.tag}</span>
+            <span className="sx-web-picktip-dim">{`${hoverTip.bw}×${hoverTip.bh}`}</span>
           </div>
-        </>
+          <div className="sx-web-picktip-row">
+            <span className="sx-web-picktip-label">{t('Color', '颜色')}</span>
+            <span className="sx-web-picktip-val">{hoverTip.color}</span>
+          </div>
+          <div className="sx-web-picktip-row">
+            <span className="sx-web-picktip-label">{t('Font', '字体')}</span>
+            <span className="sx-web-picktip-val">{hoverTip.font}</span>
+          </div>
+        </div>
       )}
     </div>
   );

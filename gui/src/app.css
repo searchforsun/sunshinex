@@ -279,10 +279,17 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
    归收敛投影 elev-composer,错误态只用文字色不再描边 */
 .sx-web-pickhint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 4px 12px; border-radius: 999px; background: var(--surface-elevated); box-shadow: var(--elev-composer); color: var(--fg-secondary); font-size: 11.5px; white-space: nowrap; pointer-events: none; }
 .sx-web-pickhint.err { color: var(--err); pointer-events: auto; }
-.sx-web-pickcard { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-composer); background: var(--surface-elevated); box-shadow: var(--elev-composer); }
-.sx-web-pickcard-path { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--font-mono); color: var(--fg-tertiary); }
-.sx-web-pickcard button { padding: 3px 10px; border: none; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); font: 11.5px var(--font-ui); cursor: pointer; white-space: nowrap; }
-.sx-web-pickcard button:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }.sx-web-bar {
+/* 元素拾取悬停提示条(2026-11-04 用户裁定:随应用主题暗/亮;原生 showInfo 跟页面配色弃用,宿主
+ * 自绘 DevTools 信息条同构)——fixed 贴视口,锚=节点盒左上上浮 6px;行=标签灰左+等宽值右,头行
+ * tag 加粗+尺寸右对齐 */
+.sx-web-picktip { position: fixed; z-index: 60; transform: translateY(-100%); min-width: 168px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); color: var(--fg); font: 11px var(--font-ui); pointer-events: none; }
+.sx-web-picktip-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 1px 0; }
+.sx-web-picktip-row.head { border-bottom: 1px solid var(--border); padding-bottom: 3px; margin-bottom: 3px; }
+.sx-web-picktip-tag { font-weight: 600; font-family: var(--font-mono); }
+.sx-web-picktip-dim { font: 10.5px var(--font-mono); color: var(--fg-secondary); }
+.sx-web-picktip-label { color: var(--fg-tertiary); }
+.sx-web-picktip-val { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10.5px var(--font-mono); }
+.sx-web-bar {
   flex: none; display: flex; align-items: center; gap: 2px;
   padding: 4px 6px; border-bottom: 1px solid var(--border-subtle);
 }.sx-web-nav {

@@ -346,8 +346,37 @@ if (!app.requestSingleInstanceLock()) {
     type PickSession = {
       onMessage: (ev: { preventDefault: () => void; readonly defaultPrevented: boolean }, method: string, params: Record<string, unknown>, sessionId: string) => void;
       onDetached: (ev: { preventDefault: () => void; readonly defaultPrevented: boolean }, reason: string) => void;
+      /** 悬停回投节流:同节点不重查,取数在途丢弃中间帧(悬停事件每移一次目标节点即发) */
+      lastHover: number;
+      hoverBusy: boolean;
     };
     const picks = new Map<number, PickSession>();
+    /** 悬停节点信息(宿主提示条数据源):标签+盒模型( guest 视口 px)+颜色/字体——尺寸颜色经
+     *  computedStyle,盒模型取 content 四角包络 */
+    const gatherHover = async (guest: Electron.WebContents, nodeId: number): Promise<{ tag: string; box: { x: number; y: number; w: number; h: number }; color: string; font: string } | null> => {
+      const send = <T>(method: string, params?: Record<string, unknown>): Promise<T> => guest.debugger.sendCommand(method, params) as Promise<T>;
+      const node = await send<{ node: { nodeName: string; localName?: string } }>('DOM.describeNode', { nodeId, depth: 0 });
+      const bm = await send<{ model: { content: number[] } }>('DOM.getBoxModel', { nodeId });
+      const q = bm.model.content;
+      const xs = [q[0], q[2], q[4], q[6]];
+      const ys = [q[1], q[3], q[5], q[7]];
+      const box = {
+        x: Math.round(Math.min(...xs)),
+        y: Math.round(Math.min(...ys)),
+        w: Math.round(Math.max(...xs) - Math.min(...xs)),
+        h: Math.round(Math.max(...ys) - Math.min(...ys)),
+      };
+      let color = '';
+      let font = '';
+      try {
+        const cs = await send<{ computedStyle: Array<{ name: string; value: string }> }>('CSS.getComputedStyleForNode', { nodeId });
+        const map = new Map(cs.computedStyle.map((p) => [p.name, p.value]));
+        color = map.get('color') ?? '';
+        const fam = (map.get('font-family') ?? '').split(',').slice(0, 2).join(',').trim();
+        font = `${map.get('font-size') ?? ''} ${fam}`.trim();
+      } catch { /* 尽力 */ }
+      return { tag: (node.node.localName ?? node.node.nodeName ?? 'div').toLowerCase(), box, color, font };
+    };
     const gatherPickNode = async (guest: Electron.WebContents, backendNodeId: number): Promise<{ path: string; html: string; url: string; title: string }> => {
       const send = <T>(method: string, params?: Record<string, unknown>): Promise<T> => guest.debugger.sendCommand(method, params) as Promise<T>;
       const node = await send<{ node: { nodeName: string; attributes?: string[]; localName?: string } }>('DOM.describeNode', { backendNodeId, depth: 0 });
@@ -375,8 +404,10 @@ if (!app.requestSingleInstanceLock()) {
         await dbg.sendCommand('Overlay.enable');
         await dbg.sendCommand('Overlay.setInspectMode', {
           mode: 'searchForNode',
+          // showInfo=false:原生信息条跟页面配色(浅色页面亮条),暗色应用下刺眼——提示条改宿主
+          // 自绘(builtin:pick-hover 回投节点盒模型+颜色/字体,渲染层按主题画)
           highlightConfig: {
-            showInfo: true,
+            showInfo: false,
             contentColor: { r: 111, g: 168, b: 220, a: 0.55 },
             paddingColor: { r: 147, g: 196, b: 125, a: 0.44 },
             borderColor: { r: 111, g: 168, b: 220, a: 1 },
@@ -388,6 +419,7 @@ if (!app.requestSingleInstanceLock()) {
         return { ok: false, error: String(err) };
       }
       const id = guest.id;
+      const sess: PickSession = { lastHover: -1, hoverBusy: false, onMessage: () => {}, onDetached: () => {} };
       const onMessage = (_ev: { preventDefault: () => void; readonly defaultPrevented: boolean }, method: string, params: Record<string, unknown>, _sessionId: string): void => {
         if (mainWindow === undefined || mainWindow.isDestroyed()) return;
         if (method === 'Overlay.inspectNodeRequested') {
@@ -399,14 +431,30 @@ if (!app.requestSingleInstanceLock()) {
           );
         } else if (method === 'Overlay.inspectModeCanceled') {
           mainWindow.webContents.send('builtin:pick-node', id, null);
+        } else if (method === 'DOM.nodeHighlightRequested') {
+          // 悬停回投(宿主提示条数据源):同节点/取数在途即弃帧,完毕追末值
+          const nodeId = typeof params.nodeId === 'number' ? params.nodeId : -1;
+          if (nodeId < 0 || nodeId === sess.lastHover || sess.hoverBusy) return;
+          sess.lastHover = nodeId;
+          sess.hoverBusy = true;
+          void gatherHover(guest, nodeId).then(
+            (info) => {
+              sess.hoverBusy = false;
+              if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('builtin:pick-hover', id, info);
+            },
+            () => {
+              sess.hoverBusy = false;
+            },
+          );
         }
       };
+      sess.onMessage = onMessage;
       const onDetached = (): void => {
         picks.delete(id);
       };
       dbg.on('message', onMessage);
       dbg.on('detach', onDetached);
-      picks.set(id, { onMessage, onDetached });
+      picks.set(id, sess);
       return { ok: true };
     });
     ipcMain.handle('web:pick-stop', (_event, wcId: unknown): void => {
