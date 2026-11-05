@@ -810,7 +810,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 补 padding-left 4px——内容字形位不动、advance 不变,布局零影响)给图标留边距;图标挂
  * left:-2px/8px=距 pill 左缘 2px,右缘距「正」字 0.6px 不压字;composer 文字列内边距 2px,
  * pill 左缘恰好贴文字列左界不出界 */
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -2px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; display: inline-flex; align-items: center; justify-content: center; }
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; display: inline-flex; align-items: center; justify-content: center; }
 .sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
