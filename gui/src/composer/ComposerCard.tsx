@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import type { ClipboardEvent, CompositionEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
@@ -12,8 +12,9 @@ import { t } from '../i18n';
  * 行内内容(错误条)。label 即 textarea 的 aria-label(测试查询锚:'welcome goal'/'message input')。
  * G14.95 高亮层:highlight 在场 → textarea 文字透明,背后同步排版的高亮层着色 token
  * (@文件 //命令 //skill);缺省无层,textarea 正常显字。
- * IME 组字期:composing 态去掉透明字并隐高亮——组字串只画在 textarea;透明叠层会把中文
- * 候选确认前字迹藏掉。态须进 React state(会话流重渲频繁,纯 DOM class 会被 JSX className 盖回)。
+ * IME 组字期(2026-11-05 用户实测「组字期芯片消失」根修):不再隐高亮层/实色切换——textarea
+ * 恒透明(单绘制无叠影),组字段由调用面经 onCompositionRange 回抛在高亮层压平为普通前景段
+ * (既有芯片全程保留);组字下划线由浏览器装饰层绘制,不受透明字影响。
  */
 export interface ComposerCardProps {
   /** textarea aria-label(查询锚) */
@@ -30,6 +31,10 @@ export interface ComposerCardProps {
   onBeforeInput?: (e: FormEvent<HTMLTextAreaElement>) => void;
   onPasteGuard?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   onCompositionGuard?: (e: CompositionEvent<HTMLTextAreaElement>) => void;
+  /** 组字段范围上抛(2026-11-05 用户裁定「组字期芯片消失」根修):组字开始/更新/结束三拍回抛
+   *  {start,end}(end=start+data.length;结束=null)——调用面据此把组字段在高亮层压平为普通段,
+   *  叠层恒可见(既有芯片不再随组字隐藏),textarea 恒透明(单绘制无叠影) */
+  onCompositionRange?: (range: { start: number; end: number } | null) => void;
   /** G14.213 光标不落 token 中间:选区变化归位(↑↓/Home/End 等原生移动的兜底) */
   onSelectGuard?: () => void;
   onCompositionEndGuard?: () => void;
@@ -70,6 +75,7 @@ export function ComposerCard({
   onBeforeInput,
   onPasteGuard,
   onCompositionGuard,
+  onCompositionRange,
   onSelectGuard,
   onCompositionEndGuard,
   onInputClick,
@@ -87,8 +93,8 @@ export function ComposerCard({
   highlight,
 }: ComposerCardProps): JSX.Element {
   const hlRef = useRef<HTMLDivElement | null>(null);
-  /** IME 组字中:高亮透明叠层藏字——组字期实色 textarea + 隐高亮;进 state 抗父级流式重渲盖 class */
-  const [composing, setComposing] = useState(false);
+  /** IME 组字起点(组字段范围上抛用;null=无组字) */
+  const compStartRef = useRef<number | null>(null);
   /** 粘贴分流:剪贴板带图片文件即接管(图片不进文本,token 守卫无意义);纯文本粘贴走守卫 */
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
     const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
@@ -126,14 +132,15 @@ export function ComposerCard({
       {highlight !== undefined ? (
         /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
            天然无错位(此前 inset 挂卡根,少卡的 padding 位移 → 文字偏左上) */
-        <div className={`sx-composer-inputwrap${composing ? ' is-composing' : ''}`}>
+        <div className="sx-composer-inputwrap">
           <div className="sx-composer-highlight" aria-hidden="true" ref={hlRef}>
             {highlight}
           </div>
           <textarea
             ref={inputRef}
             aria-label={label}
-            className={composing ? 'sx-composer-input' : 'sx-composer-input transparent-text'}
+            className="sx-composer-input transparent-text"
+            spellCheck={false}
             value={value}
             placeholder={placeholder}
             disabled={disabled}
@@ -143,11 +150,17 @@ export function ComposerCard({
             onBeforeInput={onBeforeInput}
             onPaste={handlePaste}
             onCompositionStart={(e) => {
-              setComposing(true);
+              compStartRef.current = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+              onCompositionRange?.({ start: compStartRef.current, end: compStartRef.current });
               onCompositionGuard?.(e);
             }}
+            onCompositionUpdate={(e) => {
+              const start = compStartRef.current;
+              if (start !== null) onCompositionRange?.({ start, end: start + e.data.length });
+            }}
             onCompositionEnd={() => {
-              setComposing(false);
+              compStartRef.current = null;
+              onCompositionRange?.(null);
               onCompositionEndGuard?.();
             }}
             onSelect={onSelectGuard}
@@ -187,14 +200,8 @@ export function ComposerCard({
           onKeyDown={onKeyDown}
           onBeforeInput={onBeforeInput}
           onPaste={handlePaste}
-          onCompositionStart={(e) => {
-            setComposing(true);
-            onCompositionGuard?.(e);
-          }}
-          onCompositionEnd={() => {
-            setComposing(false);
-            onCompositionEndGuard?.();
-          }}
+          onCompositionStart={(e) => onCompositionGuard?.(e)}
+          onCompositionEnd={() => onCompositionEndGuard?.()}
           onSelect={onSelectGuard}
         />
       )}

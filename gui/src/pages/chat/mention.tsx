@@ -307,9 +307,16 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
  *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别)。
  *  2026-11-04 §3.1:agent/team 走尾分支同款 `hn-${kind}` 类(hn-agent/hn-team,CSS 侧取
  *  --accent/--warn 区分,不新增硬编码色) */
-export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void, composer?: boolean): ReactNode =>
-  splitMentionTokens(text).map((tk, i) => {
-    if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
+export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void, composer?: boolean, compRange?: { start: number; end: number } | null): ReactNode => {
+  // IME 组字段压平(2026-11-05 用户实测「组字期芯片消失」根修):与组字范围交叠的 token 渲染为
+  // 普通段——叠层恒可见(既有芯片保留),组字串以普通前景色由叠层绘制(textarea 恒透明,单绘制)
+  let pos = 0;
+  return splitMentionTokens(text).map((tk, i) => {
+    const ts = pos;
+    const te = pos + tk.text.length;
+    pos = te;
+    const composingOverlap = compRange !== undefined && compRange !== null && ts < compRange.end && te > compRange.start;
+    if (tk.kind === 'plain' || composingOverlap) return <span key={i}>{tk.text}</span>;
     if (tk.kind === 'mdlink') {
       // 发送期展开落档的文件引用链接形态(2026-11-04 用户裁定「当作特殊 chip,不露 md 原文;
       // 2026-11-04 续:与输入框完全一致」)=composer 文件芯片同构:FileIcon+全名(accent)+
@@ -369,6 +376,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
     }
     return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
   });
+};
 
 /** 2026-11-04 ref 芯片 hover 预览(用户裁定「输入框/用户气泡/队列/编辑都保持 chip 状态,hover
  *  时显示具体内容」):固定定位面板随 chip 悬停显隐,内容=账本/注册表全文;指针穿透不抢悬停。

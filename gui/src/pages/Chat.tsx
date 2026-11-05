@@ -616,7 +616,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本;
    *  composer=true:ref 芯片 ⟦⟧ 定界符保字宽+图标绝对定位(显形宽度=原文宽度硬约束) */
-  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef, refContentsRef.current, undefined, true);
+  /** IME 组字段范围(compositionstart/update/end 三拍回抛,ComposerCard 上抛)——高亮层把与范围
+   *  交叠的 token 压平为普通段,既有芯片全程保留(2026-11-05 用户实测「组字期芯片消失」根修) */
+  const [compRange, setCompRange] = useState<{ start: number; end: number } | null>(null);
+  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef, refContentsRef.current, undefined, true, compRange);
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位)。
@@ -880,6 +883,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onBeforeInput={composerKeys.onBeforeInput}
         onPasteGuard={composerKeys.onPasteGuard}
         onCompositionGuard={composerKeys.onCompositionGuard}
+        onCompositionRange={setCompRange}
         onCompositionEndGuard={composerKeys.onCompositionEndGuard}
         onSelectGuard={composerKeys.onSelectGuard}
         overlays={
