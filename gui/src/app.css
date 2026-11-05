@@ -799,6 +799,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.132 file token 无蒙版(与气泡 file-link 同视觉:icon+accent 文件名) */.sx-composer-highlight .hn-file { color: var(--accent); background: transparent; }.sx-composer-highlight .hn-skill { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-style: italic; }
 /* 2026-11-04 §3.1 $智能体/#团队 软引用 token 分色:agent=accent 系(同 cmd)、team=warn 系
  * (12% 蒙版同 badge-warn 既有 pattern)——语义变量随主题暗/亮两套,不新增硬编码色 */.sx-composer-highlight .hn-agent { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }.sx-composer-highlight .hn-team { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+/* 2026-11-04 ref 芯片 hover 预览(用户裁定「正文/终端/网页元素等 chip hover 显示全文;文件/命令
+ * 等有意义 token 不 hover」):高亮层整体 pointer-events:none,ref 芯片单独放行使悬停可达
+ * (mousedown preventDefault 在组件侧保 textarea 焦点);预览面板 fixed 随主题 */.sx-composer-highlight .hn-ref { pointer-events: auto; }
+.ref-chip { cursor: default; }
+.ref-chip-preview { position: fixed; z-index: 80; max-width: 520px; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); pointer-events: none; }
+.ref-chip-preview pre { margin: 0; font: 11px var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
  * 左侧是裁剪边界,图标落到 @ 字符位并以 chip 底色填充 */.sx-composer-highlight .hn-file { position: relative; }.sx-composer-highlight .hn-file .hn-file-at { color: transparent; }
 /* G14.132 图标统一落 @ 字符位(透明 @ 保字宽;无蒙版,不依赖行首分型) */.sx-composer-highlight .hn-file .hn-file-ico {

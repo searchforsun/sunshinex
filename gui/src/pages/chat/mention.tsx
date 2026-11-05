@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
@@ -300,7 +300,7 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
  *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别)。
  *  2026-11-04 §3.1:agent/team 走尾分支同款 `hn-${kind}` 类(hn-agent/hn-team,CSS 侧取
  *  --accent/--warn 区分,不新增硬编码色) */
-export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined): ReactNode =>
+export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
     if (tk.kind === 'file') {
@@ -329,17 +329,62 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
     if (tk.kind === 'ref') {
       const inner = tk.text.slice(1, -1);
       const isTerm = inner.startsWith('终端');
-      return (
-        <span key={i} className="hn hn-ref">
-          <span className="hn-ref-ico" aria-hidden="true">
-            {isTerm ? <SquareTerminal size={11} strokeWidth={1.75} /> : <Globe size={11} strokeWidth={1.75} />}
-          </span>
-          {inner}
-        </span>
-      );
+      const content = refContents?.get(tk.text) ?? refContentRegistry.get(tk.text) ?? '';
+      return <RefTokenChip key={i} text={tk.text} inner={inner} isTerm={isTerm} content={content} />;
     }
     return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
   });
+
+/** 2026-11-04 ref 芯片 hover 预览(用户裁定「输入框/用户气泡/队列/编辑都保持 chip 状态,hover
+ *  时显示具体内容」):固定定位面板随 chip 悬停显隐,内容=账本/注册表全文;指针穿透不抢悬停,
+ *  贴视口钳位,近底上翻 */
+export function RefTokenChip({ inner, isTerm, content }: { text?: string; inner: string; isTerm: boolean; content: string }): JSX.Element {
+  const [tip, setTip] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  return (
+    <span
+      className="hn hn-ref ref-chip"
+      onMouseDown={(e) => e.preventDefault()}
+      onMouseEnter={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const below = r.bottom + 240 <= window.innerHeight;
+        setTip({ x: Math.min(Math.max(r.left, 8), Math.max(window.innerWidth - 540, 8)), y: below ? r.bottom + 6 : r.top - 6, below });
+      }}
+      onMouseLeave={() => setTip(null)}
+    >
+      <span className="hn-ref-ico" aria-hidden="true">
+        {isTerm ? <SquareTerminal size={11} strokeWidth={1.75} /> : <Globe size={11} strokeWidth={1.75} />}
+      </span>
+      {inner}
+      {tip !== null && content !== '' && (
+        <span className="ref-chip-preview" style={tip.below ? { left: tip.x, top: tip.y } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)' }}>
+          <pre>{content}</pre>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** ref 全文注册表(会话级,insert-ref 落账同步写):气泡/队列等无账本 prop 的渲染面 hover 取数源 */
+export const refContentRegistry = new Map<string, string>();
+
+/** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
+ *  全文围栏在显示侧折叠回芯片——段序列=原文段 | 围栏段(content=围栏体,chip 标签从页签/定位行提取) */
+export function splitBrowserFences(md: string): Array<{ text: string } | { fence: string; label: string }> {
+  const out: Array<{ text: string } | { fence: string; label: string }> = [];
+  const re = /```browser-element\n([\s\S]*?)```/g;
+  let last = 0;
+  for (const m of md.matchAll(re)) {
+    const idx = m.index ?? 0;
+    if (idx > last) out.push({ text: md.slice(last, idx) });
+    const body = m[1] ?? '';
+    const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
+    const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
+    out.push({ fence: body, label: pid !== '' ? `网页#${pid}${loc !== '' ? ` · ${loc}` : ''}` : '网页元素' });
+    last = idx + m[0].length;
+  }
+  if (last < md.length) out.push({ text: md.slice(last) });
+  return out;
+}
 
 /** G14.129/139 @ 引用发送期展开:输入框短写 `@文件名`(选中记账)或 `@相对路径` 或
  *  `@相对路径:L30-L35`(文件标签选区加引用) → md 原生超链接——行锚形态

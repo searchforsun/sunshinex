@@ -44,7 +44,7 @@ import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
 import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
 import { SelActionsOverlay } from './chat/SelActionsOverlay';
-export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, renderMentionSpans, renderUserMd, slashTokenAt, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
 import { DirResolverContext, MdImageContext } from './chat/md-render';
@@ -605,8 +605,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     return items.length > 0 ? items : null;
   })();
 
-  /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版) */
-  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef);
+  /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本 */
+  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef, refContentsRef.current);
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位)。

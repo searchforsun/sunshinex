@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, GitFork, History, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useResolvedImages } from '../../images-cache';
 import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
-import { buildMdComponents, keepUrl, renderMentionSpans, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
+import { buildMdComponents, keepUrl, RefTokenChip, renderMentionSpans, splitBrowserFences, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { MdImage, useDirOpener } from './md-render';
@@ -451,8 +451,15 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
           render={(md) => (
             /* 2026-11-04 用户裁定:用户气泡不做任何 md 格式化渲染(标题/加粗/代码块/表格/链接
                一律原文)——仅 @文件 /命令 ⟦引用⟧ 特殊 token 走 chip 高亮(renderMentionSpans,
-               与输入框高亮同口径);换行经 pre-wrap 保真 */
-            md.trim() !== '' ? <div className="user-md-plain">{renderMentionSpans(md)}</div> : null
+               与输入框高亮同口径);换行经 pre-wrap 保真。2026-11-04 裁定续:发送期展开落档的
+               browser-element 全文围栏在显示侧折叠回芯片(hover 展开全文,splitBrowserFences) */
+            md.trim() !== '' ? (
+              <div className="user-md-plain">
+                {splitBrowserFences(md).map((seg, i) =>
+                  'fence' in seg ? <RefTokenChip key={i} text={`⟦${seg.label}⟧`} inner={seg.label} isTerm={false} content={seg.fence} /> : <Fragment key={i}>{renderMentionSpans(seg.text)}</Fragment>,
+                )}
+              </div>
+            ) : null
           )}
         />
       )}
