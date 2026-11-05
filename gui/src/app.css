@@ -808,14 +808,17 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * composer 芯片继承后每枚比原始字形宽 8px(定界符 span 与 label 文本两个 flex item 之间各
  * 垫 4px),逐枚累积=光标漂移;display:inline 回字形逐字排(气泡正确正因它是普通 inline),
  * 图标已 absolute 不依赖 flex;gap:0 显式钉死 */
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; gap: 0; padding: 0 0 0 4px; margin-left: -4px; font: inherit; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; gap: 0; padding: 0 6px; margin: 0 -6px; font: inherit; }
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
-/* 2026-11-05 三改(用户实测「图标左侧没有边距,有点丑」):pill 左延伸 4px(margin-left -4px
- * 补 padding-left 4px——内容字形位不动、advance 不变,布局零影响)给图标留边距;图标挂
- * left:-2px/8px=距 pill 左缘 2px,右缘距「正」字 0.6px 不压字;composer 文字列内边距 2px,
- * pill 左缘恰好贴文字列左界不出界 */
+/* 图标挂 left:2px(定位基准=pill 盒,已含左延伸 6px)→距 pill 左缘 2px,右缘距「正」字不压 */
 .sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; display: inline-flex; align-items: center; justify-content: center; }
 .sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
+/* 2026-11-05 用户裁定「有背景的 chip 左右都要有合理边距(同用户气泡),/ # $ 正文 终端 网页;
+ * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
+ * 10% 蒙版不显),内容字形位/advance 双不动,光标零漂移;顺带归一 /#$ 原无补偿的 1px padding
+ * 与文件芯片的隐形 2px(同为漂移源) */
+.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 0 6px; margin: 0 -6px; }
+.sx-composer-highlight .hn-file { padding: 0; margin: 0; }
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
  * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
