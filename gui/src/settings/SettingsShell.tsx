@@ -11,6 +11,8 @@ import { PluginsPane } from './PluginsPane';
 import type { PluginsPaneConn } from './PluginsPane';
 import { AgentsPane } from './AgentsPane';
 import type { AgentsPaneConn } from './AgentsPane';
+import { GlobalRulesPane } from './GlobalRulesPane';
+import type { GlobalRulesPaneConn } from './GlobalRulesPane';
 import { SkillsPane } from './SkillsPane';
 import type { SkillsPaneConn } from './SkillsPane';
 import { PermissionsPane } from './PermissionsPane';
@@ -76,7 +78,7 @@ import type { ConfigChangedSource } from './use-config-changed';
  *  注册项目清单数据源;既有端点,零新造)。2026-11-04 agents-teams P1 Task 3 并入
  *  TeamsPaneConn(teams 三端点:teamsView/putTeamOp/teamBody——成员多选数据源复用
  *  AgentsPaneConn.agentsView) */
-export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, TeamsPaneConn, SkillsPaneConn, PermissionsPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
+export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, TeamsPaneConn, SkillsPaneConn, PermissionsPaneConn, GlobalRulesPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
   /** GET /workspaces:工作区注册表扫描(T2;行含 slug+root——root 缺档历史行不可选) */
   workspaces(): Promise<WorkspaceRow[]>;
 }
@@ -97,6 +99,7 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
     items: [
       { id: 'limits', title: { en: 'Context & limits', zh: '上下文与限额' } },
       { id: 'memory', title: { en: 'Memory', zh: '记忆' } },
+      { id: 'global-rules', title: { en: 'Global norms', zh: '全局规范' } },
       { id: 'kb', title: { en: 'Knowledge & search', zh: '知识库与搜索' } },
     ],
   },
@@ -210,6 +213,9 @@ export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.E
         return <PluginsPane key="plugins" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.plugins} />;
       case 'agents':
         return <AgentsPane key="agents" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.agents} />;
+      case 'global-rules':
+        // 全局规范(2026-11-05):全局 SUNSHINE.md 编辑器——仅全局作用域,无 root/下拉
+        return <GlobalRulesPane key="global-rules" conn={conn} refreshTick={refreshTick.sunshine} />;
       case 'teams':
         // agents-teams P1 Task 3:智能体团队面(TeamsPane 五件套下发同款——目标选择器状态留本壳)
         return <TeamsPane key="teams" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.teams} />;

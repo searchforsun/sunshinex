@@ -164,3 +164,10 @@ test('写 project/.sunshinex/teams/t1/team.md → 收 teams/project/root（watch
     assert.ok(got.filter(c => c.resource === 'teams').length <= 2);
   } finally { w.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+// ---------- 全局规范(2026-11-05 设置页「全局规范」面板)：globalDir 本层 SUNSHINE.md 映射 ----------
+
+test('mapFilename: SUNSHINE.md 本层文件映射 sunshine；子目录 SUNSHINE.md 不误判（段循环不含文件名）', () => {
+  assert.equal(mapFilename('SUNSHINE.md'), 'sunshine'); // globalDir 本层原子写 rename 事件落最终名
+  assert.equal(mapFilename('agents/x/SUNSHINE.md'), 'agents'); // 子目录 SUNSHINE.md 先按段循环归 agents(段优先)
+});

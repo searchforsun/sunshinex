@@ -2,11 +2,27 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ContextItem } from '../../types';
 import { userConfigDir } from '../../config/env';
+import { writeJsonAtomic } from '../../catalog/io';
 
-/** 全局约定文件路径：SUNSHINEX_GLOBAL_SUNSHINE 覆盖（测试钉扎/多配置并存），缺省 ~/.sunshinex/SUNSHINE.md（对标 ~/.claude/CLAUDE.md，跨工作区个人标准） */
-function globalSunshinePath(): string {
+/** 全局约定文件路径：SUNSHINEX_GLOBAL_SUNSHINE 覆盖（测试钉扎/多配置并存），缺省 ~/.sunshinex/SUNSHINE.md（对标 ~/.claude/CLAUDE.md，跨工作区个人标准）。
+ *  导出供 serve 面（设置页「全局规范」GET/PUT）单点取径——路径口径全库只此一处 */
+export function globalSunshinePath(): string {
   const override = (process.env.SUNSHINEX_GLOBAL_SUNSHINE ?? '').trim();
   return override.length > 0 ? override : path.join(userConfigDir(), 'SUNSHINE.md');
+}
+
+/** 全局层原文（独立函数面：serve GET 复用，与 ContextLoader 实例解耦；不存在/不可读 → null） */
+export function readGlobalSunshineText(file: string = globalSunshinePath()): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** 全局规范写回（2026-11-05 设置页「全局规范」PUT）：原子写（同目录 tmp+rename），目录缺省即建 */
+export function writeGlobalSunshine(content: string, file: string = globalSunshinePath()): void {
+  writeJsonAtomic(file, content);
 }
 
 /** 分层指令加载：全局 ~/.sunshinex/SUNSHINE.md → 项目 SUNSHINE.md（全局在前、项目更近模型注意力）；均支持 @path import 展开（递归 4 层） */
@@ -30,13 +46,9 @@ export class ContextLoader {
     }
   }
 
-  /** 全局层原始文本（漂移检测基线与比对用，语义同 readSunshinex） */
+  /** 全局层原始文本（漂移检测基线与比对用，语义同 readSunshinex）——委托独立函数面(serve GET 同口径) */
   readGlobalSunshine(): string | null {
-    try {
-      return fs.readFileSync(this.globalFile, 'utf8');
-    } catch {
-      return null;
-    }
+    return readGlobalSunshineText(this.globalFile);
   }
 
   /** 全局层绝对路径（漂移说明 read 指针用） */

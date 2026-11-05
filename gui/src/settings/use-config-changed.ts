@@ -34,11 +34,12 @@ export interface ConfigChangedSource {
 function zeroTicks(): Record<ResourceKind, number> {
   // teams 键自 2026-11-04 agents-teams P1 起为正式消费面——TeamsPane 经 refreshTick.teams 订阅
   // (config-changed 重拉信号,SettingsShell renderPane 下发);键位不再是并行 WIP 预留位
-  return { mcp: 0, agents: 0, teams: 0, plugins: 0, skills: 0, providers: 0, permissions: 0, settings: 0 };
+  return { mcp: 0, agents: 0, teams: 0, plugins: 0, skills: 0, providers: 0, permissions: 0, settings: 0, sunshine: 0 };
 }
 
-/** 资源种类全集(守卫面零分配——帧热路径不建对象;teams 键 2026-11-04 起由 TeamsPane 在场消费) */
-const RESOURCE_KEYS: ReadonlyArray<ResourceKind> = ['mcp', 'agents', 'teams', 'plugins', 'skills', 'providers', 'permissions', 'settings'];
+/** 资源种类全集(守卫面零分配——帧热路径不建对象;teams 键 2026-11-04 起由 TeamsPane 在场消费;
+ *  sunshine 键 2026-11-05 起由全局规范面板消费——外部/他窗改全局 SUNSHINE.md 即重拉) */
+const RESOURCE_KEYS: ReadonlyArray<ResourceKind> = ['mcp', 'agents', 'teams', 'plugins', 'skills', 'providers', 'permissions', 'settings', 'sunshine'];
 
 /** 资源种类守卫:gui 建模外的 resource 字符串归 null(帧静默忽略) */
 function asResourceKind(v: string): ResourceKind | null {

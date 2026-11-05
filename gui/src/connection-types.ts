@@ -412,6 +412,14 @@ export interface AgentsView {
   warnings: string[];
 }
 
+/** GET /settings/sunshine 响应（2026-11-05 设置页「全局规范」面板）：全局 SUNSHINE.md 原文 +
+ *  绝对路径（env SUNSHINEX_GLOBAL_SUNSHINE 解析口径）+ 存在性（缺失不 404，content 为空串） */
+export interface GlobalRulesView {
+  content: string;
+  path: string;
+  exists: boolean;
+}
+
 /** PUT /settings/agents upsert 的 frontmatter 面（T5）：name 必填，可选键按需——字符串值须单行
  *  （frontmatter 是单行 KV 词法，多行内容属 body 面；单行约束由 daemon 400 面守卫） */
 export interface AgentFrontmatterInput {

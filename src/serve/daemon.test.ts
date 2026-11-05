@@ -2470,3 +2470,52 @@ test('attach 版本守卫:v2 档拒载(INVALID_ARG,message 含 v3 与 purge 指�
     }
   });
 });
+
+describe('全局规范 GET/PUT /settings/sunshine(2026-11-05 设置页「全局规范」面板)', () => {
+  test('㊶ GET 缺失=exists false+空 content;PUT 写入→GET 往返一致;盘上真落 fakeHome/.sunshinex/SUNSHINE.md', async () => {
+    await withSettingsDaemon(async ({ base, home }) => {
+      const get1 = await fetch(`${base}/settings/sunshine`, { headers: AUTH });
+      assert.equal(get1.status, 200);
+      const v1 = (await get1.json()) as { content: string; path: string; exists: boolean };
+      assert.equal(v1.exists, false);
+      assert.equal(v1.content, '');
+      assert.ok(v1.path.endsWith('SUNSHINE.md'), 'path 指向全局 SUNSHINE.md');
+      assert.ok(v1.path.includes(home), '路径在 fake home 内(env 解析口径)');
+
+      const put = await fetch(`${base}/settings/sunshine`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ content: '规范一：全库中文注释\n' }) });
+      assert.equal(put.status, 200);
+      const putBody = (await put.json()) as { ok: boolean };
+      assert.equal(putBody.ok, true);
+
+      const get2 = await fetch(`${base}/settings/sunshine`, { headers: AUTH });
+      const v2 = (await get2.json()) as { content: string; exists: boolean };
+      assert.equal(v2.exists, true);
+      assert.equal(v2.content, '规范一：全库中文注释\n');
+
+      const onDisk = fs.readFileSync(path.join(home, '.sunshinex', 'SUNSHINE.md'), 'utf8');
+      assert.equal(onDisk, '规范一：全库中文注释\n'); // 真落盘(原子写)
+    });
+  });
+
+  test('㊷ PUT 校验 400:content 非串/缺失;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base }) => {
+      const bad = await fetch(`${base}/settings/sunshine`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ content: 42 }) });
+      assert.equal(bad.status, 400);
+      const missing = await fetch(`${base}/settings/sunshine`, { method: 'PUT', headers: AUTH, body: JSON.stringify({}) });
+      assert.equal(missing.status, 400);
+      const noAuth = await fetch(`${base}/settings/sunshine`);
+      assert.equal(noAuth.status, 401);
+    });
+  });
+
+  test('㊸ PUT 空串=清空合法;PUT 后 exists 翻转 true(建档)', async () => {
+    await withSettingsDaemon(async ({ base }) => {
+      await fetch(`${base}/settings/sunshine`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ content: 'x' }) });
+      const clear = await fetch(`${base}/settings/sunshine`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ content: '' }) });
+      assert.equal(clear.status, 200);
+      const v = (await (await fetch(`${base}/settings/sunshine`, { headers: AUTH })).json()) as { content: string; exists: boolean };
+      assert.equal(v.content, '');
+      assert.equal(v.exists, true); // 文件存在但为空——exists=文件在,不因空串回 false
+    });
+  });
+});

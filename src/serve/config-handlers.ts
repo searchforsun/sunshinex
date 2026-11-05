@@ -4,6 +4,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { MemoryStore } from '../harness/memory/store';
+import { globalSunshinePath, readGlobalSunshineText, writeGlobalSunshine } from '../harness/context/loader';
 import { strArr, strRecord } from '../config';
 import { urlOf } from './daemon-wire';
 import {
@@ -1361,4 +1362,32 @@ export function handleMemoryList(io: ConfigHandlerIo, req: http.IncomingMessage,
     slug: m.slug, type: m.type, created: m.created, modified: m.modified, description: m.description, body: m.body,
   }));
   io.send(res, 200, rows);
+}
+
+/* ---------- 全局规范(2026-11-05 设置页「全局规范」面板):全局 SUNSHINE.md 读写 ----------
+ *  跨工作区个人标准文件(~/.sunshinex/SUNSHINE.md,SUNSHINEX_GLOBAL_SUNSHINE 可覆盖),
+ *  路径/读/写单点在 harness/context/loader.ts;此处只做 HTTP 面:GET 原文+路径+存在性,
+ *  PUT 原子写回+回声抑制/直发帧由 daemon 包装层注入 notify(写发生在 daemon 进程内) */
+
+/** GET /settings/sunshine → 200 {content, path, exists}(缺失=content 空串+exists false,不 404——编辑器首开即可用) */
+export function handleSunshineGet(io: ConfigHandlerIo, res: http.ServerResponse): void {
+  const text = readGlobalSunshineText();
+  io.send(res, 200, { content: text ?? '', path: globalSunshinePath(), exists: text !== null });
+}
+
+/** PUT /settings/sunshine body {content}(string 必填,400;1MB readJson 帽沿用)→ 原子写 → notify(抑制+直发)→ 200 {ok:true} */
+export async function handleSunshinePut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, notify?: (file: string) => void): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { content?: unknown } | null;
+  if (typeof body?.content !== 'string') {
+    io.send(res, 400, { error: 'content must be a string' });
+    return;
+  }
+  writeGlobalSunshine(body.content);
+  notify?.(globalSunshinePath());
+  io.send(res, 200, { ok: true });
 }

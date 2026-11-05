@@ -26,6 +26,7 @@ import type {
   SessionRow,
   SessionTaskRow,
   SettingsView,
+  GlobalRulesView,
   SkillsGroup,
   SnapshotResponse,
   TeamsOpInput,
@@ -266,6 +267,10 @@ export interface Connection {
    *  frontmatter 后正文全文（bodyPreview 200 帽不适用）；root 缺省省查询参（scope=global 忽略
    *  root）；404（缺文件）/400（坏 id·scope=project 缺 root·畸形 frontmatter）以 HTTP 失败抛错 */
   agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
+  /** GET /settings/sunshine（2026-11-05 设置页「全局规范」面板）：全局 SUNSHINE.md 原文+绝对路径+存在性（缺失不 404——编辑器首开即可用） */
+  sunshineGet(): Promise<GlobalRulesView>;
+  /** PUT /settings/sunshine body {content}：全局规范原子写回（校验 400/网络失败抛错由面板呈现） */
+  sunshinePut(content: string): Promise<void>;
   /** GET /settings/teams?root=（agents-teams P1 Task 2，TeamsPane 清单数据源）：两级宽容清单
    *  （root 缺省 = 仅全局清单；teams 无 builtins——响应只设 view 键；wire 序 global→project） */
   teamsView(root?: string): Promise<{ view: TeamsView }>;
@@ -775,6 +780,13 @@ export function createConnection(opts: ConnectionOpts): Connection {
     agentBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {
       const query = `scope=${scope}&id=${encodeURIComponent(id)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`;
       return getJson<{ body: string }>(`/settings/agents/body?${query}`);
+    },
+    // ---- 全局规范(2026-11-05 设置页「全局规范」面板):全局 SUNSHINE.md 读写两方法 ----
+    sunshineGet(): Promise<GlobalRulesView> {
+      return getJson<GlobalRulesView>('/settings/sunshine');
+    },
+    sunshinePut(content: string): Promise<void> {
+      return putOp('/settings/sunshine', { content });
     },
     // ---- agents-teams P1：teams 三端点镜像 agents 三面（Task 2 serve 落地，Task 3 GUI 接线）----
     teamsView(root?: string): Promise<{ view: TeamsView }> {

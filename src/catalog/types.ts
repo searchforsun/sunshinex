@@ -9,7 +9,7 @@ export type Scope = 'global' | 'project';
 /** catalog 面覆盖的资源种类；'teams' = 预定义智能体团队（catalog/teams 写通知，Task 3）——watcher
  *  侧 teams 目录映射 P1 已接线（watch.ts mapFilename teams 段 + watchGlobal/watchProject teams
  *  子目录 spec），teams 写经 notifyCatalogWrite 直发帧 + watcher suppress 防回声，与 agents 同套 */
-export type ResourceKind = 'mcp' | 'agents' | 'plugins' | 'skills' | 'providers' | 'permissions' | 'settings' | 'teams';
+export type ResourceKind = 'mcp' | 'agents' | 'plugins' | 'skills' | 'providers' | 'permissions' | 'settings' | 'teams' | 'sunshine';
 
 /**
  * 列举产物：entries + warnings（D7 容错口径的列举形态——缺文件/畸形条目不算错，

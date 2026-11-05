@@ -666,6 +666,10 @@ export class GuiDaemon {
     { method: 'GET', path: '/settings/teams', auth: true, run: async (req, res) => this.handleTeamsGet(req, res) },
     { method: 'PUT', path: '/settings/teams', auth: true, run: (req, res) => this.handleTeamsPut(req, res) },
     { method: 'GET', path: '/settings/teams/body', auth: true, run: async (req, res) => this.handleTeamsBodyGet(req, res) },
+    // 全局规范面(2026-11-05 设置页「全局规范」):全局 SUNSHINE.md 原文读写——PUT 写在 daemon 进程
+    // 内,回声抑制+直发帧经 notify 注入(handleSunshinePut 薄面,watcher 'sunshine' 键同 suppress 口径)
+    { method: 'GET', path: '/settings/sunshine', auth: true, run: async (_req, res) => configHandlers.handleSunshineGet(this.configIo, res) },
+    { method: 'PUT', path: '/settings/sunshine', auth: true, run: async (req, res) => configHandlers.handleSunshinePut(this.configIo, req, res, () => this.notifySunshineWrite()) },
     // G8c T6 skills/memory-stats 面：三源分组清单（project 五根合并一组/user 全局/learned 工作区锚定；
     // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
     { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
@@ -1111,6 +1115,13 @@ export class GuiDaemon {
 
   private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     configHandlers.handleMemoryStatsGet(this.configIo, req, res);
+  }
+
+  /** 全局规范写后通知(2026-11-05):watcher 抑制(写发生在本进程,防自触回声)+config-changed 直发——
+   *  与 onCatalogWrite 钩子同套两路合一,唯 sunshine 无 catalog 面,由 PUT 包装层就地注入 */
+  private notifySunshineWrite(): void {
+    this.watcher.suppress('sunshine', 'global', null);
+    this.broadcastFrame({ kind: 'config-changed', resource: 'sunshine', scope: 'global', root: null });
   }
 
   // ---------- D31 批2 分域：会话控制面迁 session-handlers.ts（io 九面：send/readJson/sessionFor/

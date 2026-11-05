@@ -50,6 +50,7 @@ export function mapFilename(filename: string): ResourceKind | null {
   const base = segments[segments.length - 1];
   if (base === 'settings.json') return 'settings';
   if (base === 'mcp.json') return 'mcp';
+  if (base === 'SUNSHINE.md') return 'sunshine'; // 全局规范(2026-11-05 设置页「全局规范」面板)——globalDir 本层
   return null;
 }
 
