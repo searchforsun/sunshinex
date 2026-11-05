@@ -303,34 +303,27 @@ export function tokenSpanAt(text: string, caret: number): [number, number] | nul
  *  (内部标记,插入/显示文本无斜杠;token 自带尾斜杠的直写形态同样识别)。
  *  2026-11-04 §3.1:agent/team 走尾分支同款 `hn-${kind}` 类(hn-agent/hn-team,CSS 侧取
  *  --accent/--warn 区分,不新增硬编码色) */
-export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void, compact?: boolean): ReactNode =>
+export const renderMentionSpans = (text: string, lookup?: (name: string) => string | undefined, refContents?: ReadonlyMap<string, string>, onOpenFile?: (p: string) => void): ReactNode =>
   splitMentionTokens(text).map((tk, i) => {
     if (tk.kind === 'plain') return <span key={i}>{tk.text}</span>;
     if (tk.kind === 'mdlink') {
-      // 发送期展开落档的文件引用链接形态(2026-11-04 用户裁定「当作特殊 chip,不露 md 原文」):
-      // 文件芯片渲染,compact=紧凑短标签(气泡/队列——长文件名中段省略,全名进 title;composer
-      // 高亮层显形宽度须与 textarea 逐字对齐,保持全字长),有跳转通道即点击开文件(剥 #行锚)
+      // 发送期展开落档的文件引用链接形态(2026-11-04 用户裁定「当作特殊 chip,不露 md 原文;
+      // 2026-11-04 续:与输入框完全一致」)=composer 文件芯片同构:FileIcon+全名(accent)+
+      // 弱色 :行段(冒号在内,与 @token 形态逐字同构);有跳转通道即点击开文件(剥 #行锚)
       const m2 = /^\[([^\]\n]+)\]\(([^()\s]+)\)$/.exec(tk.text);
       const full = m2?.[1] ?? tk.text;
       const href = m2?.[2] ?? '';
       const anchorM = / (L\d+(?:-L\d+)?)$/.exec(full);
       const range = anchorM?.[1] ?? '';
       const name = range !== '' ? full.slice(0, full.length - range.length - 1) : full;
-      const shortName = name.length > 20 ? `${name.slice(0, 9)}…${name.slice(-7)}` : name;
-      const label = compact === true ? `${shortName}${range !== '' ? ` ${range}` : ''}` : full;
       const open = href !== '' && onOpenFile !== undefined ? () => onOpenFile(href.replace(/#[^#]*$/, '')) : undefined;
       return (
-        <span
-          key={i}
-          className="hn hn-file hn-mdlink"
-          onClick={open}
-          title={full}
-          style={open !== undefined ? { cursor: 'pointer' } : undefined}
-        >
+        <span key={i} className="hn hn-file hn-mdlink" onClick={open} title={full} style={open !== undefined ? { cursor: 'pointer' } : undefined}>
           <span className="hn-file-ico" aria-hidden="true">
             <FileIcon path={name} />
           </span>
-          {label}
+          {name}
+          {range !== '' && <span className="hn-file-lines">:{range}</span>}
         </span>
       );
     }
