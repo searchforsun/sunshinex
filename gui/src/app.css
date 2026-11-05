@@ -831,7 +831,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .user-md-plain .hn-agent, .steer-row-text .hn-agent { color: var(--accent); }
 .user-md-plain .hn-team, .steer-row-text .hn-team { color: var(--warn); }
 .user-md-plain .hn-cmd, .user-md-plain .hn-skill, .user-md-plain .hn-agent, .user-md-plain .hn-team,
-.steer-row-text .hn-cmd, .steer-row-text .hn-skill, .steer-row-text .hn-agent, .steer-row-text .hn-team { font-size: 12px; }
+.steer-row-text .hn-cmd, .steer-row-text .hn-skill, .steer-row-text .hn-agent, .steer-row-text .hn-team { font-size: var(--f-base-size, 14px); }
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
  * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
@@ -2104,7 +2104,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 }
 .files-selbar button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 /* 2026-11-04 元素/终端片段引用芯片(⟦…⟧ token):accent 浅底圆角小件,图标+定位说明 */
-.hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 12px; }
+.hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: var(--f-base-size, 14px); }
 .hn-ref .hn-ref-ico { display: inline-flex; align-items: center; flex: none; }
 
 /* G14.158 web 缩放容器:缩放时允许横向滚动(内容超出即出横滚条);fit=等比撑满 */
