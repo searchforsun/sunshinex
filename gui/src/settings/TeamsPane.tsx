@@ -121,6 +121,9 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<TeamFormState | null>(null);
   const [formError, setFormError] = useState('');
+  /** 卡面章程详情全文缓存(2026-11-05 用户裁定:详情展开=320px 固定高纵滚,编辑器同高)——
+   *  key=`${source}:${id}`;展开首拍拉 teamBody 全文,失败回退 bodyPreview(防重拉循环) */
+  const [bodyMap, setBodyMap] = useState<Record<string, string>>({});
 
   /** 作用域裁定：壳下发优先，缺省按 root 推断（壳缺省同款——无 root 强制 global） */
   const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
@@ -371,7 +374,23 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                   }
                 >
                   {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
-                  <pre>{e.bodyPreview}</pre>
+                  {/* 章程详情(2026-11-05 用户裁定):点击展开=320px 固定高纵滚,展开首拍拉全文
+                      (失败回退 200 字预览);与编辑器章程区同高 */}
+                  <details
+                    className="sx-team-body"
+                    onToggle={(ev) => {
+                      if (!(ev.target as HTMLDetailsElement).open) return;
+                      const key = `${e.source}:${e.id}`;
+                      if (bodyMap[key] !== undefined) return;
+                      conn.teamBody(e.source, e.id, root === '' ? undefined : root).then(
+                        (r) => setBodyMap((m) => ({ ...m, [key]: r.body })),
+                        () => setBodyMap((m) => ({ ...m, [key]: e.bodyPreview })),
+                      );
+                    }}
+                  >
+                    <summary>{t('Charter', '章程')}</summary>
+                    <pre>{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</pre>
+                  </details>
                 </ResourceCard>
               );
             })}
@@ -437,7 +456,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
             {t('enabled (takes effect in new sessions)', 'enabled(新会话装配生效)')}
           </label>
           <ModalField label={t('Body (team.md charter)', '章程(team.md body)')}>
-            <textarea aria-label="team body" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={4} spellCheck={false} />
+            <textarea aria-label="team body" className="sx-team-body-editor" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} spellCheck={false} />
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>

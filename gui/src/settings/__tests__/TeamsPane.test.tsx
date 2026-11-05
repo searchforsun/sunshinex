@@ -270,4 +270,24 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete core(Project)' })); // 确认(段名恒定)
     await waitFor(() => expect(opCalls).toEqual([{ op: 'delete', scope: 'project', root: '/w/proj', id: 'core' }]));
   });
+
+  it('卡面章程详情(2026-11-05 用户裁定:320px 纵滚同编辑器):展开首拍拉全文并渲染', async () => {
+    const h = connOf([row({ bodyPreview: 'Team charter.' })], { fullBody: 'FULL CHARTER BODY — many lines.' });
+    render(<TeamsPane conn={h.conn} root="/w/proj" />);
+    await screen.findByText('core');
+    fireEvent.click(screen.getByText('Charter')); // 展开 → onToggle 拉 teamBody 全文
+    await screen.findByText('FULL CHARTER BODY — many lines.'); // 全文替换 200 字预览
+    expect(h.bodyCalls).toContainEqual(['project', 'core', '/w/proj']);
+  });
+
+  it('章程详情拉取失败 → 回退 bodyPreview;缓存已落,再展开不重拉(防循环)', async () => {
+    const h = connOf([row({ bodyPreview: 'Team charter.' })]); // fullBody 缺省拒
+    render(<TeamsPane conn={h.conn} root="/w/proj" />);
+    await screen.findByText('core');
+    fireEvent.click(screen.getByText('Charter'));
+    await screen.findByText('Team charter.'); // 预览回退仍在
+    fireEvent.click(screen.getByText('Charter')); // 收起
+    fireEvent.click(screen.getByText('Charter')); // 再展开
+    expect(h.bodyCalls).toHaveLength(1); // 缓存(=预览)已落,零重拉
+  });
 });
