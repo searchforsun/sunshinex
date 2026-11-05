@@ -806,7 +806,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 图标绝对定位落 ⟦ 字符位——内联图标多占宽+定界符缺位=光标脱开 chip 的根因) */.sx-composer-highlight { z-index: 1; }
 .sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; padding: 0; }
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; }
+/* 2026-11-05 实测:⟦ 字形 advance 仅 5.4px,13px 图标挂头部压进「正」字 7.6px(用户裁定
+ * 「图标挤在一起」根因)——图标改挂芯片尾缘:插入即带尾随空格,那里无常驻墨迹可栖 */
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: auto; right: -14px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; }
 .ref-chip { cursor: default; }
 .ref-chip-preview { position: fixed; z-index: 80; max-width: 520px; max-height: 260px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); pointer-events: none; }
 .ref-chip-preview pre { margin: 0; font: 11px var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }

@@ -417,10 +417,11 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
           )}
           {editLightbox !== undefined && <ImageLightbox src={editLightbox} onClose={() => setEditLightbox(undefined)} />}
           {/* 芯片高亮层(2026-11-04 用户裁定「编辑页同主对话 chip 格式」):composer 同构——
-              透明 textarea+mention spans 覆盖层(@ 透明/行段弱色/mdlink 文件芯片),IME 守卫同款 */}
+              透明 textarea+mention spans 覆盖层(@ 透明/行段弱色/mdlink 文件芯片),IME 守卫同款;
+              第5参 composer=true(2026-11-05):ref 芯片走显形宽度=原文形态,内联图标会破坏逐字对齐 */}
           <div className={`sx-composer-inputwrap${editComposing ? ' is-composing' : ''}`}>
             <div className="sx-composer-highlight" aria-hidden="true">
-              {renderMentionSpans(draft, undefined, undefined, onOpenFile)}
+              {renderMentionSpans(draft, undefined, undefined, onOpenFile, true)}
             </div>
             <textarea
               aria-label="edit message"

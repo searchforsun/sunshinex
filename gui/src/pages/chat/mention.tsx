@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
 import { FileText, Globe, SquareTerminal } from 'lucide-react';
@@ -370,9 +371,14 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  时显示具体内容」):固定定位面板随 chip 悬停显隐,内容=账本/注册表全文;指针穿透不抢悬停。
  *  2026-11-04 裁定续:恒上侧(面板底缘贴 chip 顶缘),水平钳回主对话区(.sx-main,缺席回退视口),
  *  可用高度钳 max-height 超出纵向滚动。
+ *  2026-11-05 实测根修两件:①面板 Portal 到 body——.chat-dock 携侧栏开合滑动 transform,
+ *  position:fixed 后代的包含块被它劫持,视口坐标被相对 dock 解释=面板落到视口外(hover「无弹窗」
+ *  真因,数据与 handlers 一直在);②气泡/队列分支补 hover handlers(此前仅 composer 分支有,
+ *  「任意选取有 hover」缺半边)。
  *  composer=true(输入框高亮层):显形宽度=原文宽度硬约束——⟦⟧ 定界符保留占位(透明,同 file
- *  芯片 @ 保字宽手法),图标绝对定位落 ⟦ 字符位(内联图标多占宽+定界符缺位=光标脱开 chip 的
- *  根因);气泡/队列无约束,图标内联+定界符不渲染 */
+ *  芯片 @ 保字宽手法),图标绝对定位挂芯片尾缘(2026-11-05 实测 ⟦ 字形advance仅 5.4px,13px
+ *  图标压进「正」字 7.6px=「图标挤在一起」根因;尾部是插入即带的尾随空格,无常驻墨迹可栖);
+ *  气泡/队列无约束,图标内联+定界符不渲染 */
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number } | null>(null);
   // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
@@ -383,43 +389,50 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
   ) : (
     <Globe size={11} strokeWidth={1.75} />
   );
+  const onEnter = (e: ReactMouseEvent<HTMLSpanElement>): void => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
+    const mL = (main?.left ?? 0) + 8;
+    const mR = (main?.right ?? window.innerWidth) - 8;
+    const x = Math.min(Math.max(r.left, mL), Math.max(mR - 520, mL));
+    setTip({ x, y: r.top - 6, h: Math.min(300, Math.max(r.top - 16, 140)) });
+  };
+  // 面板挂 body 层:避开 .chat-dock 等 transform 祖先的包含块劫持(fixed 才是真视口定位)
+  const panel =
+    tip !== null &&
+    content !== '' &&
+    createPortal(
+      <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>
+        <pre>{content}</pre>
+      </span>,
+      document.body,
+    );
   if (composer === true) {
     return (
-      <span
-        className="hn hn-ref ref-chip"
-        onMouseDown={(e) => e.preventDefault()}
-        onMouseEnter={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
-          const mL = (main?.left ?? 0) + 8;
-          const mR = (main?.right ?? window.innerWidth) - 8;
-          const x = Math.min(Math.max(r.left, mL), Math.max(mR - 520, mL));
-          setTip({ x, y: r.top - 6, h: Math.min(300, Math.max(r.top - 16, 140)) });
-        }}
-        onMouseLeave={() => setTip(null)}
-      >
-        <span className="hn-ref-at" aria-hidden="true">⟦</span>
-        <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
-        {inner}
-        <span className="hn-ref-at" aria-hidden="true">⟧</span>
-        {tip !== null && content !== '' && (
-          <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>
-            <pre>{content}</pre>
-          </span>
-        )}
-      </span>
+      <>
+        <span
+          className="hn hn-ref ref-chip"
+          onMouseDown={(e) => e.preventDefault()}
+          onMouseEnter={onEnter}
+          onMouseLeave={() => setTip(null)}
+        >
+          <span className="hn-ref-at" aria-hidden="true">⟦</span>
+          {inner}
+          <span className="hn-ref-at" aria-hidden="true">⟧</span>
+          <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
+        </span>
+        {panel}
+      </>
     );
   }
   return (
-    <span className="hn hn-ref ref-chip">
-      <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
-      {inner}
-      {tip !== null && content !== '' && (
-        <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>
-          <pre>{content}</pre>
-        </span>
-      )}
-    </span>
+    <>
+      <span className="hn hn-ref ref-chip" onMouseEnter={onEnter} onMouseLeave={() => setTip(null)}>
+        <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
+        {inner}
+      </span>
+      {panel}
+    </>
   );
 }
 
