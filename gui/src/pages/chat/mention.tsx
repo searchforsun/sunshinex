@@ -374,6 +374,13 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
     }
     if (tk.kind === 'ref') {
       let inner = tk.text.slice(1, -1);
+      // 头部图标占位区(2026-11-05 用户裁定「把图标当作真正的文本来渲染」思想落地,emoji 定案禁用):
+      // token 原文头部铸两个空格=composer 图标预算(⟦ 字形 advance 仅 5.4px 放不下 11px 图标,
+      // 全角【】迁移两败:尾宽光标飞/前宽随字体浮——占位走原文空格则层对齐仍由文本驱动,零测量);
+      // 显示/判型一律剥除,composer 高亮层原样回显(占位宽度是层对齐硬约束,不能剥)
+      const padM = /^ {1,2}/.exec(inner);
+      const pad = padM !== null ? padM[0] : '';
+      inner = inner.slice(pad.length);
       // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变
       if (composer === true) {
         const baseM = /^(文本片段|正文片段|终端片段|网页#[^·]*)(?:·\d+)?$/.exec(inner);
@@ -384,13 +391,13 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
         }
       }
       const isTerm = inner.startsWith('终端');
-      // 显示标签 i18n(§15 外观双语):键保持 zh 规范形,显示随界面语言
-      inner = inner.startsWith('文本片段') ? t('Text snippet', '文本片段') + inner.slice(4)
+      // 显示标签 i18n(§15 外观双语):键保持 zh 规范形,显示随界面语言;重组回头部占位区
+      inner = pad + (inner.startsWith('文本片段') ? t('Text snippet', '文本片段') + inner.slice(4)
         : inner.startsWith('正文片段') ? t('Body snippet', '正文片段') + inner.slice(4)
         : inner.startsWith('终端片段') ? t('Terminal snippet', '终端片段') + inner.slice(4)
         : inner.startsWith('网页#') ? `${t('Web', '网页')}#${inner.slice(3)}`
         : inner === '网页元素' ? t('Web element', '网页元素')
-        : inner;
+        : inner);
       const content = refContents?.get(tk.text) ?? refContentRegistry.get(tk.text) ?? '';
       return <RefTokenChip key={i} inner={inner} isTerm={isTerm} content={content} composer={composer === true} />;
     }
@@ -427,10 +434,12 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     hideTimer.current = window.setTimeout(() => setTip(null), 160);
   };
   const keepOpen = (): void => window.clearTimeout(hideTimer.current);
-  // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
+  // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球;
+  // 头部图标占位区(原文两空格)判型/气泡显示/面板头剥除,composer 分支原样回显(inner 含 pad=层对齐)
+  const bare = inner.replace(/^ {1,2}/, '');
   const ico = isTerm ? (
     <SquareTerminal size={11} strokeWidth={1.75} />
-  ) : inner.startsWith('文本') || inner.startsWith('正文') || inner.startsWith('Body') || inner.startsWith('Text') ? (
+  ) : bare.startsWith('文本') || bare.startsWith('正文') || bare.startsWith('Body') || bare.startsWith('Text') ? (
     <FileText size={11} strokeWidth={1.75} />
   ) : (
     <Globe size={11} strokeWidth={1.75} />
@@ -465,7 +474,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
         onMouseLeave={() => setTip(null)}
         style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h, width: tip.w } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h, width: tip.w }}
       >
-        <span className="ref-chip-preview-head">{ico}<span>{inner}</span></span>
+        <span className="ref-chip-preview-head">{ico}<span>{bare}</span></span>
         <pre>{content}</pre>
       </span>,
       document.body,
@@ -492,7 +501,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     <>
       <span className="hn hn-ref ref-chip" onMouseEnter={onEnter} onMouseLeave={closeLater}>
         <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
-        {inner}
+        {bare}
       </span>
       {panel}
     </>
@@ -543,7 +552,7 @@ const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
   const base = kind === 'body' ? '文本片段' : '终端片段';
   snippetSeq[kind] += 1;
-  return snippetSeq[kind] === 1 ? `⟦${base}⟧` : `⟦${base}·${snippetSeq[kind]}⟧`;
+  return snippetSeq[kind] === 1 ? `⟦  ${base}⟧` : `⟦  ${base}·${snippetSeq[kind]}⟧`;
 }
 
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
@@ -563,15 +572,15 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
     const body = m[2] ?? '';
     if (kind === 'text-selection') {
       termSeq += 1;
-      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦终端片段⟧' : `⟦终端片段·${termSeq}⟧` });
+      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦  终端片段⟧' : `⟦  终端片段·${termSeq}⟧` });
     } else if (kind === 'body-snippet') {
       bodySeq += 1;
-      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦文本片段⟧' : `⟦文本片段·${bodySeq}⟧` });
+      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦  文本片段⟧' : `⟦  文本片段·${bodySeq}⟧` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
       const label = pid !== '' ? `${t('Web', '网页')}#${pid}${loc !== '' ? ` · ${loc}` : ''}` : t('Web element', '网页元素');
-      out.push({ fence: body, kind, label, token: `⟦${label}⟧` });
+      out.push({ fence: body, kind, label, token: `⟦  ${label}⟧` });
     }
     last = idx + m[0].length;
   }
@@ -639,18 +648,20 @@ export function expandFileRefs(
 /** 2026-11-04 元素/终端片段引用发送期展开(用户裁定「实际内容 agent 知道即可,composer 只显简标识」):
  *  ⟦…⟧ token → 账本(refContents)中的全量内容(围栏包裹);无账本命中原样保留 */
 export function expandRefContents(text: string, contents: ReadonlyMap<string, string>): string {
-  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, _inner: string) => {
+  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, rawInner: string) => {
     // 注册表兜底(2026-11-04):编辑回填重 token 化只写注册表即可全链生效(气泡 hover/重发展开)
     const c = contents.get(raw) ?? refContentRegistry.get(raw);
     if (c === undefined) return raw;
+    // 判型用剥除头部占位区的内文(2026-11-05 头部图标占位区;旧无占位 token 双形兼容)
+    const label = rawInner.replace(/^ {1,2}/, '');
     // 落档围栏化:raw 选区→围栏——气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。
     // 尾随换行归一(重展开逐字节回原)。围栏 kind 即显示侧标签判据:终端→text-selection、
     // 正文(2026-11-05 用户裁定「正文也要 chip」)→body-snippet
-    if ((raw.startsWith('⟦文本') || raw.startsWith('⟦正文')) && !c.startsWith('```')) {
+    if ((label.startsWith('文本') || label.startsWith('正文')) && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`body-snippet\n${body}\n\`\`\``;
     }
-    if (raw.startsWith('⟦终端') && !c.startsWith('```')) {
+    if (label.startsWith('终端') && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`text-selection\n${body}\n\`\`\``;
     }

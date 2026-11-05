@@ -356,7 +356,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       el.html,
       '```',
     ].join('\n');
-    const token = `⟦网页#${el.wcId.toString(36)} · ${el.path}⟧`;
+    const token = `⟦  网页#${el.wcId.toString(36)} · ${el.path}⟧`;
     window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content } }));
   };
   const exitPick = (): void => {
