@@ -73,7 +73,8 @@ export function useComposerKeys(deps: {
   onCompositionEndGuard: () => void;
   onSelectGuard: () => void;
 } {
-  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, refPal, setRefPal, refEntries, refActive, setRefActive, loadRefEntries, cmdData, setCmdData, cmdActive, setCmdActive, skills, conn, sessionId, send, onOpenMemory } = deps;
+  // conn/sessionId 随整行直跑分支退役(2026-11-06)自解构移除,接口字段保留(调用面零改)
+  const { input, setInput, inputRef, composingRef, filePal, setFilePal, filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, pickRelRef, refPal, setRefPal, refEntries, refActive, setRefActive, loadRefEntries, cmdData, setCmdData, cmdActive, setCmdActive, skills, send, onOpenMemory } = deps;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // G14.212 token 原子性:不可在 token 中间落字(字符键/空格/IME Process)——阻止并把
@@ -242,17 +243,11 @@ export function useComposerKeys(deps: {
         return;
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+        // 2026-11-06 用户裁定「不要自动发出去;不要限制输入;识别到正确命令就执行,不能就当作
+        // 普通文本」:撤整行直跑分支——此前面开+有参 Enter 即 runCommand(整行),非真命令也被
+        // 命令通道吞且 .catch(()=>{}) 静默零回执。Enter 一律落 send(),真伪判定单点在 submitText
+        // (supported 清单内→命令通道,其余→普通文本);面板仅余无参补全
         const item: CmdItem | undefined = slashItems[Math.min(cmdActive, slashItems.length - 1)];
-        // G14.213 命令项+参数已敲:整行直跑(supported 判定在清单;kind='skill' 行不走此支——
-        // 有参 Enter 落到面外 send()=纯文本软引用,零命令派发)
-        if (item !== undefined && item.kind === 'cmd' && input.includes(' ') && item.ok && slashToken.atStart) {
-          e.preventDefault();
-          setInput('');
-          // 命令回执/错误经 WS notice 帧可见化(命令气泡已入档);catch 只兜 HTTP 层——网络失败=命令未执行零回执,输入已清空的轻损失(D30 口径:可见化由主提交路径承担)
-          conn.runCommand(sessionId, input).catch(() => {});
-          return;
-        }
-        // 补全仅当 / 词尚未敲完(无参数)
         if (item !== undefined && !input.includes(' ')) {
           e.preventDefault();
           setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret)); // 补全,面板续开收参数
