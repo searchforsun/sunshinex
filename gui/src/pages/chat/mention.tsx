@@ -176,7 +176,7 @@ export function splitMentionTokens(text: string): MentionToken[] {
   // 改显式 [a-zA-Z] 后两支逐字节不变;保 i 则 #Title 反而命中,故全局旗降为 /g
   // 2026-11-04 md 链接支(首支,无捕获组不位移):发送期展开落档的文件引用形态
   // `[名 L19-L22](路径#L19-L22)` 整体成原子 token——编辑回填/气泡/队列按文件芯片渲染
-  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
+  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|【(?:正文片段|终端片段|网页#)[^】]{0,110}】|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
@@ -185,7 +185,7 @@ export function splitMentionTokens(text: string): MentionToken[] {
     if (idx > last) out.push({ text: text.slice(last, idx), kind: 'plain' });
     if (matched.startsWith('[')) out.push({ text: matched, kind: 'mdlink' });
     else if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
-    else if (matched.startsWith('⟦')) out.push({ text: matched, kind: 'ref' });
+    else if (matched.startsWith('⟦') || matched.startsWith('【')) out.push({ text: matched, kind: 'ref' });
     else if (matched.startsWith('/') || m[2] !== undefined) {
       const lead = m[1] ?? '';
       if (lead !== '') out.push({ text: lead, kind: 'plain' });
@@ -311,6 +311,10 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
   // IME 组字段压平(2026-11-05 用户实测「组字期芯片消失」根修):与组字范围交叠的 token 渲染为
   // 普通段——叠层恒可见(既有芯片保留),组字串以普通前景色由叠层绘制(textarea 恒透明,单绘制)
   let pos = 0;
+  // 2026-11-05 编号一致性(用户实测「输入框 ·4 气泡队列却是 ·1·2」):composer/编辑卡按草稿内
+  // 出现顺序重编号(同基类第 2 枚起 ·n)——发送期展开保持草稿顺序,气泡/队列的围栏折叠即按同序
+  // 编号,两面恒一致;账本/注册表键仍用原始 mint 全文(tk.text),内容查找不受显示编号影响
+  const refSeq = new Map<string, number>();
   return splitMentionTokens(text).map((tk, i) => {
     const ts = pos;
     const te = pos + tk.text.length;
@@ -369,7 +373,16 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       );
     }
     if (tk.kind === 'ref') {
-      const inner = tk.text.slice(1, -1);
+      let inner = tk.text.slice(1, -1);
+      // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变
+      if (composer === true) {
+        const baseM = /^(正文片段|终端片段|网页#[^·]*)(?:·\d+)?$/.exec(inner);
+        if (baseM !== null) {
+          const n = (refSeq.get(baseM[1]) ?? 0) + 1;
+          refSeq.set(baseM[1], n);
+          inner = n === 1 ? baseM[1] : `${baseM[1]}·${n}`;
+        }
+      }
       const isTerm = inner.startsWith('终端');
       const content = refContents?.get(tk.text) ?? refContentRegistry.get(tk.text) ?? '';
       return <RefTokenChip key={i} inner={inner} isTerm={isTerm} content={content} composer={composer === true} />;
@@ -522,7 +535,7 @@ const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
   const base = kind === 'body' ? '正文片段' : '终端片段';
   snippetSeq[kind] += 1;
-  return snippetSeq[kind] === 1 ? `⟦${base}⟧` : `⟦${base}·${snippetSeq[kind]}⟧`;
+  return snippetSeq[kind] === 1 ? `【${base}】` : `【${base}·${snippetSeq[kind]}】`;
 }
 
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
@@ -542,15 +555,15 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
     const body = m[2] ?? '';
     if (kind === 'text-selection') {
       termSeq += 1;
-      out.push({ fence: body, kind, label: '终端片段', token: termSeq === 1 ? '⟦终端片段⟧' : `⟦终端片段·${termSeq}⟧` });
+      out.push({ fence: body, kind, label: '终端片段', token: termSeq === 1 ? '【终端片段】' : `【终端片段·${termSeq}】` });
     } else if (kind === 'body-snippet') {
       bodySeq += 1;
-      out.push({ fence: body, kind, label: '正文片段', token: bodySeq === 1 ? '⟦正文片段⟧' : `⟦正文片段·${bodySeq}⟧` });
+      out.push({ fence: body, kind, label: '正文片段', token: bodySeq === 1 ? '【正文片段】' : `【正文片段·${bodySeq}】` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
       const label = pid !== '' ? `网页#${pid}${loc !== '' ? ` · ${loc}` : ''}` : '网页元素';
-      out.push({ fence: body, kind, label, token: `⟦${label}⟧` });
+      out.push({ fence: body, kind, label, token: `【${label}】` });
     }
     last = idx + m[0].length;
   }
@@ -618,18 +631,18 @@ export function expandFileRefs(
 /** 2026-11-04 元素/终端片段引用发送期展开(用户裁定「实际内容 agent 知道即可,composer 只显简标识」):
  *  ⟦…⟧ token → 账本(refContents)中的全量内容(围栏包裹);无账本命中原样保留 */
 export function expandRefContents(text: string, contents: ReadonlyMap<string, string>): string {
-  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, _inner: string) => {
+  return text.replace(/【[^】]{1,120}】|⟦[^⟧]{1,120}⟧/g, (raw: string) => {
     // 注册表兜底(2026-11-04):编辑回填重 token 化只写注册表即可全链生效(气泡 hover/重发展开)
     const c = contents.get(raw) ?? refContentRegistry.get(raw);
     if (c === undefined) return raw;
     // 落档围栏化:raw 选区→围栏——气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。
     // 尾随换行归一(重展开逐字节回原)。围栏 kind 即显示侧标签判据:终端→text-selection、
     // 正文(2026-11-05 用户裁定「正文也要 chip」)→body-snippet
-    if (raw.startsWith('⟦正文') && !c.startsWith('```')) {
+    if ((raw.startsWith('【正文') || raw.startsWith('⟦正文')) && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`body-snippet\n${body}\n\`\`\``;
     }
-    if (raw.startsWith('⟦终端') && !c.startsWith('```')) {
+    if ((raw.startsWith('【终端') || raw.startsWith('⟦终端')) && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`text-selection\n${body}\n\`\`\``;
     }

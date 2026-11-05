@@ -45,7 +45,7 @@ useEffect(() => {
       pickRelRef.current.set(base, detail.rel);
     }
     // 整条即 ref token(正文圈选 {text} 通道)同款不补尾随空格,光标贴芯片
-    const bareRef = /^⟦[^⟧]{1,120}⟧$/.test(text);
+    const bareRef = /^(?:【[^】]{1,120}】|⟦[^⟧]{1,120}⟧)$/.test(text);
     setInput((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')} ${text}${bareRef ? '' : ' '}`));
     inputRef.current?.focus();
     // G14.211 光标钉尾:focus 恢复的是 textarea 旧光标位(此前离开输入框时留在原处),
