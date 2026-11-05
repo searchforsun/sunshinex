@@ -347,6 +347,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
   const [editLightbox, setEditLightbox] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState('');
   const [draftImages, setDraftImages] = useState<string[]>([]);
+  /** IME 组字期守卫(2026-11-04):编辑卡芯片高亮层复用 composer 口径——组字期隐高亮层,
+   *  透明 textarea 显组字串(否则中文组字不可见) */
+  const [editComposing, setEditComposing] = useState(false);
   const openEdit = (): void => {
     setDraft(entry.md);
     setDraftImages(entry.images ?? []); // 编辑卡预填原条图片（随行重发/可移除）
@@ -411,24 +414,33 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
             </div>
           )}
           {editLightbox !== undefined && <ImageLightbox src={editLightbox} onClose={() => setEditLightbox(undefined)} />}
-          <textarea
-            aria-label="edit message"
-            className="user-edit-input"
-            autoFocus
-            value={draft}
-            rows={Math.min(6, Math.max(1, (draft.match(/\n/g) ?? []).length + 1))}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setEditing(false);
-              }
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                sendEdit();
-              }
-            }}
-          />
+          {/* 芯片高亮层(2026-11-04 用户裁定「编辑页同主对话 chip 格式」):composer 同构——
+              透明 textarea+mention spans 覆盖层(@ 透明/行段弱色/mdlink 文件芯片),IME 守卫同款 */}
+          <div className={`sx-composer-inputwrap${editComposing ? ' is-composing' : ''}`}>
+            <div className="sx-composer-highlight" aria-hidden="true">
+              {renderMentionSpans(draft)}
+            </div>
+            <textarea
+              aria-label="edit message"
+              className="user-edit-input sx-composer-input transparent-text"
+              autoFocus
+              value={draft}
+              rows={Math.min(6, Math.max(1, (draft.match(/\n/g) ?? []).length + 1))}
+              onChange={(e) => setDraft(e.target.value)}
+              onCompositionStart={() => setEditComposing(true)}
+              onCompositionEnd={() => setEditComposing(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditing(false);
+                }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  sendEdit();
+                }
+              }}
+            />
+          </div>
           <div className="user-edit-foot">
             <TipButton tip={t('Cancel', '取消')} label="cancel edit" icon={<X size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setEditing(false)} />
             <button type="button" className="user-edit-send" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendEdit}>

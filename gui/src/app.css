@@ -672,6 +672,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    仅 @/⟦⟧ 特殊 token chip 高亮(.hn 系全局档,输入框同款) */
 .entry-user .user-md-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
 .entry-user .user-md-plain p { margin: 0; }
+/* 2026-11-04 用户裁定「用户气泡/队列同主对话 chip 格式」:文件 token 的 @ 字符在非 composer
+ * 面不显(无显形宽度不变约束,直接不占位;composer 高亮层走透明保字宽既有规则) */
+.entry-user .user-md-plain .hn-file .hn-file-at, .steer-row-text .hn-file .hn-file-at { display: none; }
 /* 复制钮 hover 浮现:绝对定位挂气泡下沿——不占布局高度(原 flex 占位即用户消息"下边距大"的根因) */.entry-user .user-actions {
   position: absolute;
   /* 2026-10-26 七轮:回到气泡下方(用户裁定「应该显示在气泡下面」;六轮收进盒内压住了气泡文字);
