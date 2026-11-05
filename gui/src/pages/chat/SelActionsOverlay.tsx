@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { t } from '../../i18n';
 import { zoomScale } from '../../ui-zoom';
+import { mintSnippetToken, refContentRegistry } from './mention';
 
 /**
  * 正文圈选悬浮动作条(2026-11-04 用户裁定「主对话正文与子智能体正文圈选后显示 添加到主对话/
  * 辅助对话」):容器内文本选区非空即浮出(fixed 锚选区矩形上方),双动作:
- * - 添加到当前任务:选中文本(截 2000 字)经全局 insert-ref 事件落主对话 composer——
- *   跨页签可达(子智能体转录页圈选也能送主对话);
+ * - 添加到当前任务:选中文本(截 2000 字)铸 ⟦正文片段⟧ token——原文入会话注册表(hover 预览
+ *   与发送期 expandRefContents 的 body-snippet 围栏展开都从注册表取数),token 经全局 insert-ref
+ *   落主对话 composer 折芯片(2026-11-05 用户裁定「正文也要 chip」;跨页签可达,子智能体转录页
+ *   圈选也能送主对话);
  * - 辅助会话提问:onSideAsk 注入通道(宿主注入,缺席不渲染该钮)。
  * 显隐:mouseup 读选区(锚点须在容器内)/容器滚动即隐;Esc 显式关闭。条上 mousedown 保选区。
  */
@@ -74,7 +77,11 @@ export function SelActionsOverlay(props: {
       <button
         type="button"
         onClick={() => {
-          onInsert(sel.text);
+          // 正文圈选芯片化(2026-11-05):token 走 {text} 通道落 composer 即折芯片,注册表
+          // 记账后 hover/展开全链兜底(账本通道 ref 是终端选取专用,这里无需)
+          const token = mintSnippetToken('body');
+          refContentRegistry.set(token, sel.text);
+          onInsert(token);
           setSel(null);
         }}
       >

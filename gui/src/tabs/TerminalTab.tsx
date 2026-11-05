@@ -9,6 +9,7 @@ import type { PtyFrame } from './pty-codec';
 import { toWsUrl } from '../connection';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
+import { mintSnippetToken } from '../pages/chat/mention';
 import { currentTheme, watchThemeChange } from '../theme';
 import { zoomScale } from '../ui-zoom';
 import type { TabParams } from './tab-state';
@@ -276,8 +277,9 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           <button
             type="button"
             onClick={() => {
-              // 2026-11-04 用户裁定:终端片段也走简标识芯片(⟦终端片段⟧),原文入账本发送期展开
-              const token = '⟦终端片段⟧';
+              // 2026-11-04 用户裁定:终端片段也走简标识芯片(⟦终端片段⟧),原文入账本发送期展开;
+              // 2026-11-05 续:铸造走 mintSnippetToken——同类二铸 ·N,固定 token 会把先选内容互覆
+              const token = mintSnippetToken('term');
               window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token, content: selBar.text } }));
               setSelBar(null);
             }}
