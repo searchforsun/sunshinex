@@ -108,7 +108,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     {q.images.length > 4 && <span className="steer-img-more">+{q.images.length - 4}</span>}
                   </span>
                 )}
-                {q.text !== '' ? renderMentionSpans(q.text) : <span className="steer-img-only"><ImageIcon size={12} strokeWidth={1.75} aria-hidden="true" />{t('(image)', '(图片)')}</span>}
+                {q.text !== '' ? renderMentionSpans(q.text, undefined, undefined, undefined, true) : <span className="steer-img-only"><ImageIcon size={12} strokeWidth={1.75} aria-hidden="true" />{t('(image)', '(图片)')}</span>}
               </span>
               <span className="steer-row-actions">
                 {busy ? (
