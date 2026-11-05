@@ -923,7 +923,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-composer-foot.pills-tight .model-pill { mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); }
 .sx-composer-foot.pills-tight .model-pill .pill-label { mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent); } /* 溢出态:右缘 14px 渐隐(隐现) */
 /* + 面板末行快捷键提示(2026-11-03 用户裁定):@ 添加文件/选命令技能 与 Ctrl+V 粘贴图片,分割线脚行 */
-.sx-plus-foot { display: flex; justify-content: flex-start; align-items: center; gap: 12px; padding: 6px 8px 4px; border-top: 1px solid var(--border-subtle); color: var(--fg-tertiary); font-size: 11px; } /* 2026-11-03 用户裁定:三条贴左成簇,不两端散开 */
+.sx-plus-foot { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 2px 12px; padding: 6px 8px 4px; border-top: 1px solid var(--border-subtle); color: var(--fg-tertiary); font-size: 11px; } /* 2026-11-03 用户裁定:三条贴左成簇,不两端散开;2026-11-05 加 $/# 两 chips 后窄面板溢出截断——flex-wrap 换行,行距 2px 列距 12px */
 .sx-plus-foot .sx-plus-hint { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .sx-plus-foot kbd { font: 10.5px var(--font-mono); background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 1px 4px; color: var(--fg-secondary); }
 /* composer「+」=圆角方钮(2026-11-03 用户裁定:与「回到底部」钮同款 999px+全局超椭圆);等宽高居中,不随 10px 横 padding 拉成长条 */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; }
