@@ -808,7 +808,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * composer 芯片继承后每枚比原始字形宽 8px(定界符 span 与 label 文本两个 flex item 之间各
  * 垫 4px),逐枚累积=光标漂移;display:inline 回字形逐字排(气泡正确正因它是普通 inline),
  * 图标已 absolute 不依赖 flex;gap:0 显式钉死 */
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline-flex; align-items: center; gap: 0; padding: 1px 6px; margin: -1px -6px; font: inherit; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline-flex; align-items: center; gap: 0; padding: 1px 3px; margin: -1px -3px; font: inherit; }
 /* 2026-11-05 终版几何(用户裁定「改成和气泡一致」):气泡同款盒原样上 composer——padding 1px 6px
  * + 负 margin 抵消:垂直 -1px 抵 1px(inline-flex 盒高不变=多行零纵向漂移);水平 ±6px=pill 左右
  * 各延 6px,延伸落点=透明的 ⟦⟧ 字形区+空格,不与可见墨迹冲突;图标 11px(气泡同尺寸)绝对定位
@@ -821,7 +821,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
  * 10% 蒙版不显),内容字形位/advance 双不动,光标零漂移;顺带归一 /#$ 原无补偿的 1px padding
  * 与文件芯片的隐形 2px(同为漂移源) */
-.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 1px 6px; margin: -1px -6px; }
+.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 1px 3px; margin: -1px -3px; }
 .sx-composer-highlight .hn-file { padding: 0; margin: 0; }
 /* 2026-11-05 用户裁定「# \$ 气泡和队列没有 chip 高亮」:/$# 芯片此前只有 composer 作用域
  * 样式,气泡/队列裸文——按 .hn-ref 基础 pattern(inline-flex+tint+radius+padding 1px 6px)
