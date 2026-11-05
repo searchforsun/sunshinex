@@ -808,13 +808,15 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * composer 芯片继承后每枚比原始字形宽 8px(定界符 span 与 label 文本两个 flex item 之间各
  * 垫 4px),逐枚累积=光标漂移;display:inline 回字形逐字排(气泡正确正因它是普通 inline),
  * 图标已 absolute 不依赖 flex;gap:0 显式钉死 */
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; gap: 0; padding: 0; margin: 0; font: inherit; }
-/* 2026-11-05 终版几何(用户裁定「前缀图标+一致性」):pill 左延伸 2px(恰等 textarea 内边距,
- * 行首零出界),图标 7px 挂 left:1px=距 pill 左缘 1px、右缘距「正」字 0.6px 不压字,描边 2.2
- * 保小尺寸可读;定界符透明保字宽(⟦⟧ 各 5.4px=label 右侧天然呼吸,邻芯片间距=真空格 3px+) */
-.sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -1px; top: 50%; transform: translateY(-50%); width: 9px; height: 9px; display: inline-flex; align-items: center; justify-content: center; }
-.sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; stroke-width: 2.2; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline-flex; align-items: center; gap: 0; padding: 1px 6px; margin: -1px -6px; font: inherit; }
+/* 2026-11-05 终版几何(用户裁定「改成和气泡一致」):气泡同款盒原样上 composer——padding 1px 6px
+ * + 负 margin 抵消:垂直 -1px 抵 1px(inline-flex 盒高不变=多行零纵向漂移);水平 ±6px=pill 左右
+ * 各延 6px,延伸落点=透明的 ⟦⟧ 字形区+空格,不与可见墨迹冲突;图标 11px(气泡同尺寸)绝对定位
+ * 悬出左缘 [−5.5,5.5] 恰覆盖 ⟦ 字形区 [0,5.4] 零压字;advance=margin(−12)+pad(12)+content=
+ * content ✓ 逐字对齐不变。at-span 保持 flex item 占其字形位(label 落点精确) */
+.sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; flex: none; }
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: -2.8px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
 /* 2026-11-05 用户裁定「有背景的 chip 左右都要有合理边距(同用户气泡),/ # $ 正文 终端 网页;
  * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
  * 10% 蒙版不显),内容字形位/advance 双不动,光标零漂移;顺带归一 /#$ 原无补偿的 1px padding
