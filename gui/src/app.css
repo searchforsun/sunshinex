@@ -3235,15 +3235,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-diff-tab .sx-changes-bar { padding: 0 22px; }
 .sx-web-bar { height: var(--toolbar-h); padding: 0 6px; }
 
-/* 2026-11-04 辅助对话草稿页(首条发送才 fork,复用同一草稿页):空态提示+单输入卡,
-   复用输入卡族弧度;发送钮=胶囊 accent,与 composer 同语言 */
-.sx-sidechat-draft { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; height: 100%; padding: 24px; }
-.sx-sidechat-draft-hint { max-width: 420px; text-align: center; color: var(--fg-tertiary); font-size: 12px; line-height: 1.6; }
-.sx-sidechat-draft-card { width: min(100%, 480px); display: flex; flex-direction: column; gap: 8px; background: var(--surface-elevated); border-radius: var(--radius-composer); box-shadow: var(--elev-composer); padding: 10px 12px; }
-.sx-sidechat-draft-input { resize: none; border: none; outline: none; background: transparent; color: var(--fg); font: 13px/1.6 var(--font-ui); }
-.sx-sidechat-draft-input::placeholder { color: var(--fg-tertiary); }
-.sx-sidechat-draft-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 24px; }
-.sx-sidechat-draft-err { color: var(--err); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-sidechat-draft-send { flex: none; padding: 4px 14px; border: none; border-radius: 999px; background: var(--accent); color: var(--fg-on-solid, #fff); font: 12px var(--font-ui); cursor: pointer; }
-.sx-sidechat-draft-send:disabled { opacity: 0.45; cursor: default; }
-.sx-sidechat-draft-send:not(:disabled):hover { filter: brightness(1.08); }
+/* 2026-11-04 辅助对话草稿页(2026-11-05 用户裁定「表层复用主对话,改底层不改表层」):
+   原提示语+主对话同款 ComposerCard——布局走 .sx-sidechat chat/composer 同构,卡面零新样式 */
+.sx-sidechat-draft .chat-slot { flex: 1; min-height: 0; }
+.sx-sidechat-draft-hint { flex: none; text-align: center; color: var(--fg-tertiary); font-size: 12px; padding: 18px 16px 0; }
+.sx-sidechat-draft-composer { display: flex; flex-direction: column; flex: none; margin: 0 auto 12px; }

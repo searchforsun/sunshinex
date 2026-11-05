@@ -8,6 +8,8 @@
 
 import { lazy } from 'react';
 import { useState } from 'react';
+import { ArrowUp, Loader2 } from 'lucide-react';
+import { ComposerCard } from '../composer/ComposerCard';
 import { t } from '../i18n';
 import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
@@ -407,8 +409,9 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     },
   ];
 
-/** 辅助对话草稿页(2026-11-04 首条发送才 fork):空态提示+单输入卡;发送=升级(fork 主对话
- *  整档→挂真 Chat→首条自动提交)。busy 防重入;失败落行内错误条保草稿 */
+/** 辅助对话草稿页(2026-11-04 首条发送才 fork):表层=主对话同款 ComposerCard+原提示语,
+   底层=发送时才升级(fork 主对话整档→挂真 Chat→首条自动提交)。busy 防重入;失败落
+   composer 行内错误条保草稿 */
 function SideChatDraft({ uid, insert, onUpgrade }: { uid: string; insert?: string; onUpgrade: (uid: string, text: string) => Promise<void> }): JSX.Element {
   const [text, setText] = useState(insert ?? '');
   const [busy, setBusy] = useState(false);
@@ -428,18 +431,16 @@ function SideChatDraft({ uid, insert, onUpgrade }: { uid: string; insert?: strin
   };
   return (
     <div className="sx-sidechat sx-sidechat-draft">
-      <div className="sx-sidechat-draft-hint">
-        {t('Sending the first message forks the main conversation as of now — the side chat observes, the main chat stays untouched.', '发送第一条消息时,将分叉主对话当前内容为辅助会话——辅助对话只观察,主对话不受影响。')}
-      </div>
-      <div className="sx-sidechat-draft-card">
-        <textarea
-          aria-label="side chat draft input"
-          className="sx-sidechat-draft-input"
-          autoFocus
-          rows={3}
+      <div className="chat-slot" aria-hidden="true" />
+      <div className="sx-sidechat-draft-hint" role="status">{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</div>
+      <div className="composer sx-sidechat-draft-composer">
+        <ComposerCard
+          label="side chat draft"
           value={text}
-          placeholder={t('Ask about the main conversation…', '针对主对话提问…')}
-          onChange={(e) => setText(e.target.value)}
+          rows={Math.min(6, Math.max(1, (text.match(/\n/g) ?? []).length + 1))}
+          placeholder={t('Ask something…', '问点什么…')}
+          disabled={busy}
+          onChange={setText}
           onKeyDown={(e) => {
             if (e.key === 'Escape') e.currentTarget.blur();
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -447,13 +448,20 @@ function SideChatDraft({ uid, insert, onUpgrade }: { uid: string; insert?: strin
               send();
             }
           }}
+          belowInput={err !== '' ? <div className="sx-img-hint" role="status">{err}</div> : undefined}
+          footRight={
+            <button
+              type="button"
+              className="send"
+              aria-label="send"
+              data-tip={`${t('Send', '发送')} · Enter`}
+              disabled={busy || text.trim() === ''}
+              onClick={send}
+            >
+              {busy ? <Loader2 size={16} strokeWidth={2} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />}
+            </button>
+          }
         />
-        <div className="sx-sidechat-draft-foot">
-          {err !== '' && <span className="sx-sidechat-draft-err">{err}</span>}
-          <button type="button" className="sx-sidechat-draft-send" disabled={busy || text.trim() === ''} onClick={send}>
-            {busy ? t('Forking…', '分叉中…') : t('Send', '发送')}
-          </button>
-        </div>
       </div>
     </div>
   );
