@@ -835,7 +835,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
  * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
-.ref-chip-preview { position: fixed; z-index: 80; width: min(300px, calc(100vw - 24px)); max-height: 300px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); border: 1px solid var(--border-strong); box-shadow: var(--elev-composer); pointer-events: auto; }
+.ref-chip-preview { position: fixed; z-index: 80; width: min(300px, calc(100vw - 24px)); max-height: 300px; overflow: auto; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); box-shadow: var(--elev-prominent); pointer-events: auto; }
 .ref-chip-preview pre { margin: 0; font: 11px var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
  * 左侧是裁剪边界,图标落到 @ 字符位并以 chip 底色填充 */.sx-composer-highlight .hn-file { position: relative; }.sx-composer-highlight .hn-file .hn-file-at { color: transparent; }
