@@ -25,24 +25,30 @@ export interface TodoBatch {
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
 }
 
-/** 工具折叠行动词中文展示单点(en=现有字面,zh=本地化;未登记工具(MCP 引入等)回退原名)。
- *  G14.216 命名口径(用户裁定,替代 G14.213「两字优先」):自然两字且项目既定的保留不动——
- *  读取/写入/执行/查阅/查找/搜索/抓取/停止/取消/分派/提问(工作树为项目自然词);
- *  凑两字而失读性的展开为目标域词,与运行态标签(RUNNING_LABELS)同口径——加载技能、保存记忆、
- *  更新待办、等待任务、检索知识库、创建任务、设置依赖、分派子智能体 */
-const TOOL_VERB_ZH: Record<string, string> = {
-  read: '读取', write: '写入', edit: '编辑', exec: '执行', grep: '查阅', glob: '查找',
-  skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
-  todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
-  agent: '加载子智能体', // agents-teams P0 章程卡工具(2026-11-05 用户裁定:agent 属子智能体域,不受智能体团队控制)
-  kb_search: '检索知识库', ask_question: '提问', exit_plan: '提交计划',
-  team: '加载智能体团队', // 智能体团队域(与八件套同族)
-  create_agent_team_task: '创建团队任务', set_dependency: '设置依赖', assign: '分派',
-  create_agent_team: '创建智能体团队',
-  create_agent_teammate: '创建团队成员',
-  update_agent_team_task: '更新团队任务', get_agent_team_board: '查看团队看板', probe: '探测',
-  send_agent_team_message: '发送团队消息', get_task: '读取任务',
-  agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
+/** 工具折叠行动词双语展示单点(2026-11-05 用户裁定:EN 不再露原始工具名——两语都见名知意,
+ *  EN 首字母大写;未登记工具(MCP 引入等)回退原名)。G14.216 zh 命名口径不变——读取/写入/执行/
+ *  查阅/查找/搜索/抓取/停止/取消/分派/提问 + 加载技能、保存记忆、更新待办、等待任务、
+ *  检索知识库、创建任务、设置依赖、分派子智能体、加载智能体团队、加载子智能体 */
+const TOOL_VERBS: Record<string, { en: string; zh: string }> = {
+  read: { en: 'Read', zh: '读取' }, write: { en: 'Write', zh: '写入' }, edit: { en: 'Edit', zh: '编辑' },
+  exec: { en: 'Exec', zh: '执行' }, grep: { en: 'Grep', zh: '查阅' }, glob: { en: 'Glob', zh: '查找' },
+  skill: { en: 'Load skill', zh: '加载技能' }, webfetch: { en: 'Fetch', zh: '抓取' }, websearch: { en: 'Search', zh: '搜索' },
+  memory_write: { en: 'Save memory', zh: '保存记忆' },
+  todo_write: { en: 'Update todos', zh: '更新待办' }, worktree: { en: 'Worktree', zh: '工作树' },
+  spawn: { en: 'Spawn subagent', zh: '分派子智能体' }, task_stop: { en: 'Stop', zh: '停止' },
+  load_subagent: { en: 'Load subagent', zh: '加载子智能体' }, // agents-teams P0 章程卡工具(2026-11-05 更名自 agent;子智能体域,不受智能体团队控制)
+  kb_search: { en: 'Search knowledge base', zh: '检索知识库' }, ask_question: { en: 'Ask', zh: '提问' },
+  exit_plan: { en: 'Submit plan', zh: '提交计划' },
+  load_agent_teams: { en: 'Load agent teams', zh: '加载智能体团队' }, // 智能体团队域(与八件套同族;2026-11-05 更名自 team)
+  create_agent_team_task: { en: 'Create team task', zh: '创建团队任务' }, set_dependency: { en: 'Set dependency', zh: '设置依赖' },
+  assign: { en: 'Assign', zh: '分派' },
+  create_agent_team: { en: 'Create agent team', zh: '创建智能体团队' },
+  create_agent_teammate: { en: 'Create team member', zh: '创建团队成员' },
+  update_agent_team_task: { en: 'Update team task', zh: '更新团队任务' },
+  get_agent_team_board: { en: 'View team board', zh: '查看团队看板' }, probe: { en: 'Probe', zh: '探测' },
+  send_agent_team_message: { en: 'Send team message', zh: '发送团队消息' }, get_task: { en: 'Read task', zh: '读取任务' },
+  agent_team_task_stop: { en: 'Stop team task', zh: '停止团队任务' },
+  task_wait: { en: 'Wait for task', zh: '等待任务' }, agent_team_task_wait: { en: 'Wait for team task', zh: '等待团队任务' },
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -101,8 +107,8 @@ export function zhToolName(name: string): string {
     const pair = MCP_TOOL_LABELS[mcp.tool];
     return pair !== undefined ? t(pair.en, pair.zh) : mcp.tool;
   }
-  const zh = TOOL_VERB_ZH[name];
-  return zh === undefined ? name : t(name, zh);
+  const pair = TOOL_VERBS[name];
+  return pair === undefined ? name : t(pair.en, pair.zh);
 }
 
 /** 折叠行目标字段(工具展示元数据同口径):各内置工具取其主字段;换行拍平,超长中段省略。

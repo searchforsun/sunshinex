@@ -224,7 +224,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(writeCall('src/a.ts', '新文件体'), 1);
       sinkRef.current!.on(ev('tool-result', 'written +1 -0', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    const row = toolRow('write a.ts src/ +1 -0')!;
+    const row = toolRow('Write a.ts src/ +1 -0')!;
     expect(row).toBeDefined(); // 折叠一行:文件名 强调 + 相对路径 弱色 + stat
     // G11 §2 折叠壳常挂载:diff 行块恒在 DOM,折叠由 CSS 收起(.tool-body 无 open 类 + aria-hidden)
     expect(document.querySelector('.tool-body')?.classList.contains('open')).toBe(false);
@@ -246,7 +246,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(writeCall('src/a.ts', '调用入参内容'), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c1', status: 'completed' }), 2);
     });
-    fireEvent.click(toolRow('write a.ts src/')!);
+    fireEvent.click(toolRow('Write a.ts src/')!);
     await waitFor(() => expect(fetchDiff).toHaveBeenCalledWith('s1', 'c1', 'src/a.ts')); // G14.4:path 随参
     await waitFor(() => {
       expect(document.querySelector('.diff-line.del')?.textContent).toContain('写前旧文'); // pre-image 行
@@ -266,7 +266,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
     fireEvent.click(screen.getByText('b.ts', { selector: '.tool-file-link' })!);
     expect(onOpenFile).toHaveBeenCalledWith('src/b.ts');
     expect(document.querySelector('.entry-tool.open')).toBeNull();
-    fireEvent.click(toolRow('write b.ts src/')!);
+    fireEvent.click(toolRow('Write b.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
     expect(onOpenFile).toHaveBeenCalledWith('src/b.ts');
     unmount();
@@ -279,7 +279,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(ev('tool-call', 'read', { input: { path: 'src/c.ts' }, callId: 'c2', status: 'pending' }), 1);
       sinkRef.current!.on(ev('tool-result', 'file content here', { tool: 'read', callId: 'c2', status: 'completed' }), 2);
     });
-    fireEvent.click(toolRow('read c.ts src/')!);
+    fireEvent.click(toolRow('Read c.ts src/')!);
     expect(onOpenFile).toHaveBeenCalledWith('src/c.ts'); // 整行点击 = 侧栏文件预览
     expect(document.querySelector('.diff-panel')).toBeNull(); // read 无 diff 面
     unmount();
@@ -321,7 +321,7 @@ describe('Chat 工具条:write 展开 DiffPanel(G7 接 fetchDiff) + path 按钮;
       sinkRef.current!.on(ev('tool-call', 'write', { input: { path: 'src/x.ts', content: '旧代内容' }, callId: 'c9', status: 'pending' }), 1);
       sinkRef.current!.on(ev('tool-result', 'written', { tool: 'write', callId: 'c9', status: 'completed' }), 2);
     });
-    expect(toolRow('write x.ts src/')).toBeDefined();
+    expect(toolRow('Write x.ts src/')).toBeDefined();
     act(() => {
       sinkRef.current!.reset(); // reseed(第二快照 lastSeq 2):投影清
     });
@@ -345,7 +345,7 @@ it('折叠行=提交计划+计划名蓝色链接(回放合成行带 path),点击
     sinkRef.current!.on(ev('tool-call', 'exit_plan', { input: { name: '重构认证模块', path: 'D:/data/sessions/j1.plan.md' }, callId: 'c9', status: 'pending' }), 1);
     sinkRef.current!.on(ev('tool-result', 'decision: implement via workspace edits', { tool: 'exit_plan', callId: 'c9', status: 'completed' }), 2);
   });
-  const row = toolRow('提交计划 重构认证模块') ?? toolRow('exit_plan 重构认证模块');
+  const row = toolRow('Submit plan 重构认证模块') ?? toolRow('exit_plan 重构认证模块');
   expect(row).toBeDefined();
   const link = document.querySelector('.tool-agent-link');
   expect(link?.textContent).toContain('重构认证模块');

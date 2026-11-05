@@ -507,7 +507,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     mountChat([seed]);
     await flushed();
     const row = document.querySelector('.tool-summary')?.textContent ?? '';
-    expect(row).toContain('read'); // 折叠行动词(en 测试位;zh=读取)
+    expect(row).toContain('Read'); // 折叠行动词(en=规范化标签,2026-11-05)
     expect(row).toContain('Arch-Plan.md'); // 目标路径(P11 字段单源:entry.input 直映,md 记号不回归)
   });
 
@@ -527,7 +527,7 @@ describe('composer pills 与排队 chips(G10-C4)', () => {
     await flushed();
     const row = document.querySelector('.tool-summary')?.textContent ?? '';
     expect(row).not.toContain('Reading file'); // 不再恒执行中
-    expect(row).toContain('read'); // 动词(entry.name 直映)
+    expect(row).toContain('Read'); // 动词(entry.name 直映)
     expect(row).toContain('Arch-Plan.md'); // 路径(entry.input 直映)
   });
 });
@@ -781,7 +781,7 @@ describe('exec 执行中/完成双态(G14.13)', () => {
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'cx', input: { command: 'npm test' } } });
     fire({ type: 'tool-result', text: '3 tests passed', ts: Date.now(), payload: { callId: 'cx' } });
     const row = document.querySelector('.tool-summary')!;
-    expect(row.textContent).toContain('exec');
+    expect(row.textContent).toContain('Exec');
     expect(row.textContent).toContain('npm test');
     expect(row.querySelector('.exec-ripple-icon')).toBeNull(); // 波纹退场
   });
@@ -886,12 +886,12 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     const link = rows[0]!.querySelector('.tool-agent-link');
     expect(link).not.toBeNull();
     expect(link!.textContent).toContain('分析-内核架构');
-    expect(rows[0]!.textContent).toMatch(/创建团队成员|Creating member|create_agent_teammate/);
+    expect(rows[0]!.textContent).toMatch(/创建团队成员|Create team member/);
     fireEvent.click(link!);
     expect(onOpenAgent).toHaveBeenCalledWith('分析-内核架构', '分析-内核架构', 'x');
-    expect(rows[1]!.textContent).toMatch(/创建团队成员|Creating member|create_agent_teammate/); // 无名:只出动词
+    expect(rows[1]!.textContent).toMatch(/创建团队成员|Create team member/); // 无名:只出动词
     expect(rows[2]!.textContent).toContain('调研组');
-    expect(rows[2]!.textContent).toMatch(/创建智能体团队|Creating team|create_agent_team/);
+    expect(rows[2]!.textContent).toMatch(/创建智能体团队|Create agent team/);
   });
 
   it('task_wait 后台 spawn:展示名取 spawn 行 label(CJK label 的 id 业务段会塌成 spawn 碎片)', async () => {
@@ -950,7 +950,8 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-result', text: 'task exec-20261017T101010Z-ab12 stopped (架构分析)', ts: Date.now(), payload: { callId: 'st1' } });
     fire({ type: 'tool-call', text: 'set_dependency', ts: Date.now(), payload: { callId: 'd1', input: { taskId: 't2', dependsOn: 't1' } } });
     fire({ type: 'tool-result', text: 'dependency added', ts: Date.now(), payload: { callId: 'd1' } });
-    const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => /update_agent_team_task|task_stop|set_dependency/.test(x.textContent ?? ''));
+    // 行过滤用规范化 en 标签(2026-11-05)+task_stop 行以回执内 exec id 锚定(折叠壳不显,textContent 全量含)
+    const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => /Update team task|Set dependency|exec-20261017T101010Z/.test(x.textContent ?? ''));
     expect(rows).toHaveLength(3);
     // 断言钉折叠壳(.tool-summary)——entry 全量 textContent 含隐藏展开体(原始结果行自带 id,不属折叠行展示面)
     const sum = (i: number): string => rows[i]!.querySelector('.tool-summary')?.textContent ?? '';
@@ -1407,13 +1408,13 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(document.querySelectorAll('.tool-group-head')).toHaveLength(1); // 全段仅一组
   });
 
-  it('G14.168 create_agent_team_task 折叠行带任务名;zh 态动词本地化(en 态原字面;未登记工具回退原名)', async () => {
+  it('G14.168 create_agent_team_task 折叠行带任务名;zh 态动词本地化(en 态规范化标签;未登记工具回退原名)', async () => {
     mountChat([]);
     await flushed();
     fire({ type: 'tool-call', text: 'create_agent_team_task', ts: Date.now(), payload: { callId: 'ct1', input: { teamId: 'team-a', title: '架构分析', spec: 'x', dependsOn: null, assignee: null, executor: null, retryOf: null } } });
     fire({ type: 'tool-result', text: 'created', ts: Date.now(), payload: { callId: 'ct1' } });
     let row = [...document.querySelectorAll('.entry-tool')].at(-1)!;
-    expect(row.textContent).toContain('create_agent_team_task'); // en 态原字面
+    expect(row.textContent).toContain('Create team task'); // en 态规范化标签(2026-11-05 裁定)
     expect(row.textContent).toContain('架构分析'); // 任务名跟行
     // zh 态:已渲染行不回溯,新入行即中文化
     setLanguage('zh');

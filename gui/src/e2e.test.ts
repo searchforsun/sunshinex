@@ -964,7 +964,7 @@ describe('G7 write 执行 + fetchDiff 双列:full-access 域内写(预置旧文�
       expect(container.querySelector('.status-idle')).toBeDefined();
 
       // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffLines 行级 old/new 双行 ——
-      fireEvent.click(toolRowRe(`write ${REL} `)!);
+      fireEvent.click(toolRowRe(`Write ${REL} `)!);
       await waitFor(
         () => expect(container.querySelector('.diff-line.del')?.textContent).toContain(OLD),
         { timeout: 5_000 },
@@ -1193,7 +1193,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
 
       // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → **Diff 标签**开且活动(title=path)——
       //    (G8d T2 语义变更:callId 在场主通道 onOpenDiff;旧断言面 Files/.files-view 随接线退役)
-      fireEvent.click(toolRowRe(`write ${REL} `)!);
+      fireEvent.click(toolRowRe(`Write ${REL} `)!);
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.getAttribute('aria-label')).toBe(REL);
       // 双语容忍正解(2026-10-27 技术债轮 K2:openDiffTitle t() 化,测试环境缺省 en)

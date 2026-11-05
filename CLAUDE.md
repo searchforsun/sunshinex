@@ -111,7 +111,7 @@ src/
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/team/agent/memory_write/ask_question/worktree/todo_write）
+    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write）
     browser-host.ts   # 浏览器宿主装配单点（browser-use 插件连接改写为每进程宿主 HTTP 连接：会话浏览器键/座位/数据目录/facade 端点入 URL，宿主起不来只损失浏览器工具）
     tools/task-stop.ts # task_stop（仅 exec/spawn 台账）与 agent_team_task_stop（板任务/成员打断；agentTeams 开时注册）
     tools/task-wait.ts # task_wait（仅 exec/spawn 台账）与 agent_team_task_wait（板任务等待；agentTeams 开时注册）

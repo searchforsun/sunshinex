@@ -716,7 +716,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // P11:内核 user md 裸文,直渲染
-    expect(document.querySelector('.tool-summary')?.textContent).toContain('read'); // 图标化行(●/⎿ 记号退役,G10-C3)
+    expect(document.querySelector('.tool-summary')?.textContent).toContain('Read'); // 图标化行(●/⎿ 记号退役,G10-C3;en=规范化标签)
     expect(document.querySelector('.tool-summary')?.textContent).not.toContain('⎿'); // 结果行记号不回归
     expect(document.querySelector('.run-live-line')?.textContent).toContain('0 steps'); // G14.52:运行状态行常驻流区末行(原工具行尾参)
     expect(screen.getByText('✻ dev started')).toBeDefined();
@@ -1394,7 +1394,7 @@ describe('G8d 任务板页签:子智能体事件分流 + 委派行点开只读�
     await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull());
     expect(document.querySelector('.sx-tab[data-title="searcher"]')?.classList.contains('active')).toBe(true);
     const thread = document.querySelector('.sx-agent-thread');
-    expect(thread?.textContent).toContain('write'); // en 态动词原字面(配对后非执行中标签)
+    expect(thread?.textContent).toContain('Write'); // en 态规范化标签(2026-11-05;配对后非执行中标签)
     expect(thread?.textContent).toContain('a.ts');
     expect(thread?.textContent).toContain('分析中');
     expect(document.querySelector('.sx-agent-page textarea')).toBeNull(); // 只读:无输入面

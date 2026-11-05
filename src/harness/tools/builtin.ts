@@ -806,7 +806,7 @@ function execOut(stdout: string): ExecResult {
   return { exitCode: 0, stdout, stderr: '', timedOut: false };
 }
 
-/** team 工具（spec 2026-11-04 §3.3，镜像 skill 工具）：清单内 id 才可用、teams 是 live 的；
+/** load_agent_teams 工具（spec 2026-11-04 §3.3，镜像 skill 工具，2026-11-05 用户裁定更名自 team——命名准确不省略）：清单内 id 才可用、teams 是 live 的；
  *  观察原文=章程卡整读不截断（fullObservation） */
 export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: import('../../types').TeamManifest } | { ok: false; error: { code: string; message: string } } }, agents?: { get(id: string): { id: string; name: string; description: string; framing: string } | undefined }) {
   return {
@@ -816,7 +816,7 @@ export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: im
       required: ['id'],
       properties: { id: { type: 'string', description: 'Team id from the available agent teams list' } },
     },
-    name: 'team',
+    name: 'load_agent_teams',
     description:
       "Load a team's charter card by id when the user references a team like \"#team-id\" or the task matches an entry in the available agent teams list; use only ids from the list — never invent one; the charter is returned verbatim and never truncated. Teams are live: one you create (or one announced by a later [teams] notice) is usable by its id immediately. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
     category: 'read' as const,
@@ -844,7 +844,7 @@ export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: im
   };
 }
 
-/** agent 工具（spec §3.3）：清单内 id 出卡（角色框定原文随卡）、不在册 NOT_IN_CATALOG */
+/** load_subagent 工具（spec §3.3，2026-11-05 用户裁定更名自 agent——命名准确不省略）：清单内 id 出卡（角色框定原文随卡）、不在册 NOT_IN_CATALOG */
 export function makeAgentTool(agents: { get(id: string): { id: string; name: string; description: string; framing: string } | undefined }) {
   return {
     parameters: {
@@ -853,7 +853,7 @@ export function makeAgentTool(agents: { get(id: string): { id: string; name: str
       required: ['id'],
       properties: { id: { type: 'string', description: 'Agent id from the available agents list' } },
     },
-    name: 'agent',
+    name: 'load_subagent',
     description:
       "Load an agent's card (role framing) by id when the user references an agent like \"$agent-id\" or the task matches an entry in the available agents list; use only ids from the list — never invent one. Then delegate the task via spawn with that agent_id — do not absorb the role yourself. The agents list is a session snapshot: an agent added later is announced by an [agents] notice and becomes usable in a new session (the registry is frozen for the current session)",
     category: 'read' as const,

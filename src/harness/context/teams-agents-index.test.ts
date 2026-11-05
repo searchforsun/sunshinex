@@ -77,7 +77,7 @@ test('会中注册 agent → detect 产 [agents] added 行（描述截 128 随�
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'agent.md'), '---\nname: Late\ndescription: 迟到的智能体\n---\n框定');
   const notices = ctx.checkConstantsDrift();
-  assert.match(notices.find((n) => n.startsWith('[agents] added:'))!, /^\[agents\] added: late \(迟到的智能体\) — load the agent card with the agent tool \(usable in a new session\)$/);
+  assert.match(notices.find((n) => n.startsWith('[agents] added:'))!, /^\[agents\] added: late \(迟到的智能体\) — load the agent card with the load_subagent tool \(usable in a new session\)$/);
   assert.deepEqual(ctx.checkConstantsDrift(), []); // 基线前进：同一变更只告知一次
 });
 

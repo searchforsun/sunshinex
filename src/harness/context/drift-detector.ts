@@ -74,12 +74,12 @@ export class DriftDetector {
     }
     const agents = agentSig(this.deps.root);
     if (agents !== this.agentsBaseline) {
-      out.push(...sigDiffNotices('[agents]', this.agentsBaseline, agents, 'load the agent card with the agent tool (usable in a new session)'));
+      out.push(...sigDiffNotices('[agents]', this.agentsBaseline, agents, 'load the agent card with the load_subagent tool (usable in a new session)'));
       this.agentsBaseline = agents;
     }
     const teams = teamSig(this.deps.root);
     if (teams !== this.teamsBaseline) {
-      out.push(...sigDiffNotices('[teams]', this.teamsBaseline, teams, 'load the charter card with the team tool'));
+      out.push(...sigDiffNotices('[teams]', this.teamsBaseline, teams, 'load the charter card with the load_agent_teams tool'));
       this.teamsBaseline = teams;
     }
     const mem = this.deps.readMemoryIndex();
