@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { t } from '../../i18n';
 import { zoomScale } from '../../ui-zoom';
-import { mintSnippetToken, refContentRegistry } from './mention';
+import { mintSnippetToken, refContentRegister } from './mention';
 
 /**
  * 正文圈选悬浮动作条(2026-11-04 用户裁定「主对话正文与子智能体正文圈选后显示 添加到主对话/
@@ -78,9 +78,10 @@ export function SelActionsOverlay(props: {
         type="button"
         onClick={() => {
           // 正文圈选芯片化(2026-11-05):token 走 {text} 通道落 composer 即折芯片,注册表
-          // 记账后 hover/展开全链兜底(账本通道 ref 是终端选取专用,这里无需)
+          // 记账(refContentRegister=写穿 sessionStorage,重载表单恢复 token 后仍可展开)
+          // 后 hover/展开全链兜底(账本通道 ref 是终端选取专用,这里无需)
           const token = mintSnippetToken('body');
-          refContentRegistry.set(token, sel.text);
+          refContentRegister(token, sel.text);
           onInsert(token);
           setSel(null);
         }}

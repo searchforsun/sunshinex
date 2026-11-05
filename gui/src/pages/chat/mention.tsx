@@ -438,6 +438,39 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
 
 /** ref 全文注册表(会话级,insert-ref 落账同步写):气泡/队列等无账本 prop 的渲染面 hover 取数源 */
 export const refContentRegistry = new Map<string, string>();
+const REG_STORE_KEY = 'sunshinex:ref-registry';
+// 重载自愈(2026-11-05 用户实测「字面量 token 发出」根因):Chromium reload 以表单恢复把
+// composer 里的 ⟦token⟧ 文本带回来,而注册表是模块内存——JS 上下文重建即空,发送期
+// expandRefContents 查不到内容=字面 token 直达 agent(浏览器实测复现:刷新后输入框 token
+// 仍在、注册表已空)。注册表写穿 sessionStorage(同 webview 会话存活),装载时回灌。
+try {
+  const saved = sessionStorage.getItem(REG_STORE_KEY);
+  if (saved !== null) {
+    for (const [k, v] of JSON.parse(saved) as Array<[string, string]>) refContentRegistry.set(k, v);
+  }
+} catch {
+  // 档损坏即弃:只丢 hover/展开兜底,主链路不受影响
+}
+let regPersistQueued = false;
+function persistRegistry(): void {
+  if (regPersistQueued) return;
+  regPersistQueued = true;
+  setTimeout(() => {
+    regPersistQueued = false;
+    try {
+      // 上限 40 条(选取全文 ≤2000 字/条,防 5MB 配额击穿);Map 插入序=铸造序,弃最老
+      const entries = [...refContentRegistry].slice(-40);
+      sessionStorage.setItem(REG_STORE_KEY, JSON.stringify(entries));
+    } catch {
+      // 配额/隐私模式写失败即弃:内存注册表仍支撑本会话全链
+    }
+  }, 0);
+}
+/** 注册表落账单点(set+写穿):insert-ref 面与编辑回填面共用 */
+export function refContentRegister(token: string, content: string): void {
+  refContentRegistry.set(token, content);
+  persistRegistry();
+}
 
 /** 正文/终端片段 token 铸造(2026-11-05 用户裁定「正文圈选也要 chip」):按类会话级计数,
  *  同类二铸即 ·N——账本/注册表以 token 全文为键,固定 token 二次圈选会把先选内容互覆 */
@@ -493,7 +526,7 @@ export function rebuildPickTokens(md: string, ledger: Map<string, string> = refC
     }
     const content = seg.kind === 'browser-element' ? `\`\`\`browser-element\n${seg.fence}\`\`\`` : seg.fence;
     ledger.set(seg.token, content);
-    refContentRegistry.set(seg.token, content);
+    refContentRegister(seg.token, content);
     out.push(seg.token);
   }
   return out.join('');

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { pathBasename } from '../../ui-util';
-import { refContentRegistry, splitMentionTokens, tokenSpanAt } from './mention';
+import { refContentRegister, splitMentionTokens, tokenSpanAt } from './mention';
 
 /** composer 侧挂面(D32 第六批批F-7b 自 Chat.tsx 平移,行为零变化):文件标签「添加到会话」
  *  插入事件(G14.139,短写 token 记账+光标钉尾)/输入区点击 @token 开文件标签(G14.135,解析同
@@ -25,7 +25,7 @@ useEffect(() => {
     // 同步写全局注册表(refContentRegistry)——气泡/队列等无账本 prop 的渲染面 hover 取数源
     if (detail !== undefined && detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {
       refContents.current.set(detail.token, detail.content);
-      refContentRegistry.set(detail.token, detail.content);
+      refContentRegister(detail.token, detail.content);
       setInput((prev) => (prev.trim() === '' ? `${detail.token} ` : `${prev.replace(/\s+$/, '')} ${detail.token} `));
       inputRef.current?.focus();
       requestAnimationFrame(() => {
