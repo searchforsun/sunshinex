@@ -1726,7 +1726,7 @@ describe('命令面板(/ 面板,2026-11-05 技能引用行回归——用户裁�
   it('技能行 Enter 有参=普通发送落软引用(kind=skill 不回命令通道,零 runCommand)', async () => {
     setLanguage('zh');
     const runCommand = vi.fn(() => Promise.resolve());
-    const sessionSubmit = vi.fn(() => Promise.resolve());
+    const sessionSubmit = vi.fn((_id: string, _text: string) => Promise.resolve());
     const conn = connOf([]);
     (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() =>
       Promise.resolve({ groups: [{ source: 'user', skills: [{ id: 'pdf', description: 'pdf 工具' }] }] }),
