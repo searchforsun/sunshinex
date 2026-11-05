@@ -821,7 +821,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
  * 10% 蒙版不显),内容字形位/advance 双不动,光标零漂移;顺带归一 /#$ 原无补偿的 1px padding
  * 与文件芯片的隐形 2px(同为漂移源) */
-.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 0 1px; margin: 0 -1px; }
+.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 1px 6px; margin: -1px -6px; }
 .sx-composer-highlight .hn-file { padding: 0; margin: 0; }
 /* 2026-11-05 用户裁定「# \$ 气泡和队列没有 chip 高亮」:/$# 芯片此前只有 composer 作用域
  * 样式,气泡/队列裸文——按 .hn-ref 基础 pattern(inline-flex+tint+radius+padding 1px 6px)
