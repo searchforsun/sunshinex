@@ -379,9 +379,9 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
  *  芯片 @ 保字宽手法),图标绝对定位挂芯片尾缘(2026-11-05 实测 ⟦ 字形advance仅 5.4px,13px
  *  图标压进「正」字 7.6px=「图标挤在一起」根因;尾部是插入即带的尾随空格,无常驻墨迹可栖);
  *  气泡/队列无约束,图标内联+定界符不渲染 */
-/** 预览面板几何(2026-11-05 用户裁定「固定宽度,有最大高度,纵向滚动」):宽度恒 420(CSS 侧
- *  小视口钳 100vw),满高 300;水平钳回主对话区以此宽推算右界 */
-const PANEL_W = 420;
+/** 预览面板几何(2026-11-05 用户裁定「宽度降到 300px」):宽度恒 300(CSS 侧小视口钳 100vw),
+ *  满高 300;水平钳回主对话区以此宽推算右界 */
+const PANEL_W = 300;
 
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number; below: boolean } | null>(null);
@@ -405,7 +405,8 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     const spaceBelow = window.innerHeight - r.bottom - 12;
     const below = spaceAbove < 300 && spaceBelow > spaceAbove;
     const h = below ? Math.min(300, spaceBelow) : Math.min(300, Math.max(spaceAbove, 140));
-    setTip({ x, y: below ? r.bottom + 6 : r.top - 6, h, below });
+    // 贴边(2026-11-05 用户裁定「贴着 chip 的上下边缘」):间隙 2px
+    setTip({ x, y: below ? r.bottom + 2 : r.top - 2, h, below });
   };
   // 面板挂 body 层:避开 .chat-dock 等 transform 祖先的包含块劫持(fixed 才是真视口定位)
   const panel =
