@@ -804,7 +804,11 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 2026-11-04 续:高亮层 z-index 提到 textarea 之上(层级在下=textarea 挡尽指针事件,ref 悬停
  * 永不触发;none 区穿透打字不受影响)+ref 芯片显形宽度=原文宽度(⟦⟧ 透明保字宽同 file @ 手法,
  * 图标绝对定位落 ⟦ 字符位——内联图标多占宽+定界符缺位=光标脱开 chip 的根因) */.sx-composer-highlight { z-index: 1; }
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; padding: 0 0 0 4px; margin-left: -4px; }
+/* 2026-11-05 四改(用户实测「光标位置越来越靠后」):基础 .hn-ref 是 inline-flex+gap:4px,
+ * composer 芯片继承后每枚比原始字形宽 8px(定界符 span 与 label 文本两个 flex item 之间各
+ * 垫 4px),逐枚累积=光标漂移;display:inline 回字形逐字排(气泡正确正因它是普通 inline),
+ * 图标已 absolute 不依赖 flex;gap:0 显式钉死 */
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; gap: 0; padding: 0 0 0 4px; margin-left: -4px; font: inherit; }
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
 /* 2026-11-05 三改(用户实测「图标左侧没有边距,有点丑」):pill 左延伸 4px(margin-left -4px
  * 补 padding-left 4px——内容字形位不动、advance 不变,布局零影响)给图标留边距;图标挂
