@@ -808,17 +808,29 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * composer 芯片继承后每枚比原始字形宽 8px(定界符 span 与 label 文本两个 flex item 之间各
  * 垫 4px),逐枚累积=光标漂移;display:inline 回字形逐字排(气泡正确正因它是普通 inline),
  * 图标已 absolute 不依赖 flex;gap:0 显式钉死 */
-.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; gap: 0; padding: 0 6px; margin: 0 -6px; font: inherit; }
+.sx-composer-highlight .hn-ref { pointer-events: auto; position: relative; display: inline; gap: 0; padding: 0 6px 0 2px; margin: 0 -6px 0 -2px; font: inherit; }
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
 /* 图标挂 left:2px(定位基准=pill 盒,已含左延伸 6px)→距 pill 左缘 2px,右缘距「正」字不压 */
 .sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 8px; height: 8px; display: inline-flex; align-items: center; justify-content: center; }
 .sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
+/* 2026-11-05 四改(用户实测行首图标顶到文字列界=「左侧超出」):左延伸 6px→2px(恰等 textarea
+ * 内边距,行首零出界),图标 left:2px 相对 pill 盒(-2px)落 ⟦ 字形位=距 pill 左缘 2px、
+ * 右缘入「正」字 2.6px(与文件芯片 @ 的 2px 重叠同级);右延伸 6px 不变留标签右侧呼吸 */
 /* 2026-11-05 用户裁定「有背景的 chip 左右都要有合理边距(同用户气泡),/ # $ 正文 终端 网页;
  * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
  * 10% 蒙版不显),内容字形位/advance 双不动,光标零漂移;顺带归一 /#$ 原无补偿的 1px padding
  * 与文件芯片的隐形 2px(同为漂移源) */
 .sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill, .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { padding: 0 6px; margin: 0 -6px; }
 .sx-composer-highlight .hn-file { padding: 0; margin: 0; }
+/* 2026-11-05 用户裁定「# \$ 气泡和队列没有 chip 高亮」:/$# 芯片此前只有 composer 作用域
+ * 样式,气泡/队列裸文——按 .hn-ref 基础 pattern(inline-flex+tint+radius+padding 1px 6px)
+ * 补非 composer 面(气泡 user-md-plain/队列 steer-row-text),配色随 composer 同变量 */
+.user-md-plain .hn-cmd, .steer-row-text .hn-cmd { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.user-md-plain .hn-skill, .steer-row-text .hn-skill { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-style: italic; }
+.user-md-plain .hn-agent, .steer-row-text .hn-agent { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.user-md-plain .hn-team, .steer-row-text .hn-team { color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.user-md-plain .hn-cmd, .user-md-plain .hn-skill, .user-md-plain .hn-agent, .user-md-plain .hn-team,
+.steer-row-text .hn-cmd, .steer-row-text .hn-skill, .steer-row-text .hn-agent, .steer-row-text .hn-team { display: inline-flex; align-items: center; border-radius: var(--radius-xs); padding: 1px 6px; font-size: 12px; }
 .ref-chip { cursor: default; }
 /* 2026-11-05 用户裁定:宽度降 300(小视口钳回屏内)+最大高度纵向滚动(滚动已有 overflow:auto);
  * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
