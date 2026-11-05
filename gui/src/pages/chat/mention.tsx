@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom';
 import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
-import { FileText, Globe, SquareTerminal } from 'lucide-react';
 import { isAbsPath } from '../../ui-util';
 import type { RefItem } from './ref-palette';
 
@@ -170,13 +169,16 @@ export interface MentionToken {
 
 export function splitMentionTokens(text: string): MentionToken[] {
   // G14.121 @ 分支扩 `:\\`:绝对路径 token(D:/ws/a.ts、D:\ws\a.ts)整体着色
+  // 2026-11-05 ref token 定界符终案(用户裁定「把图标当作真正的文本来渲染」):token 原文以
+  // emoji 前缀字符开头(📄文本/💻终端/🌐网页)——emoji=图标本体(彩色字形不受 textarea 透明色
+  // 影响,原生渲染天然占宽对齐)+受限前缀自终止(无需闭定界符,光标贴标签尾);旧 ⟦⟧ 兼容
   // 2026-11-04 ref 分支:⟦…⟧ 元素/终端片段引用(选取面插入,发送期 expandRefContents 展开全量)
   // 2026-11-04 §3.1 加 $/# 软引用支:词边界组+小写首字符(小写限定即测试语义——
   // #L30 行锚/#Title/词中 $var 均不误伤)。原 /gi 的 i 对 @、/ 两支只有 [a-z] 一处生效,
   // 改显式 [a-zA-Z] 后两支逐字节不变;保 i 则 #Title 反而命中,故全局旗降为 /g
   // 2026-11-04 md 链接支(首支,无捕获组不位移):发送期展开落档的文件引用形态
   // `[名 L19-L22](路径#L19-L22)` 整体成原子 token——编辑回填/气泡/队列按文件芯片渲染
-  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
+  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|📄(?:正文片段|文本片段|终端片段)(?:·\d+)?|🌐网页#[^\s]+|(^|\s)(\/[a-zA-Z][\w-]*)|(^|\s)([$#][a-z][a-z0-9-]*)/g;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
@@ -185,7 +187,7 @@ export function splitMentionTokens(text: string): MentionToken[] {
     if (idx > last) out.push({ text: text.slice(last, idx), kind: 'plain' });
     if (matched.startsWith('[')) out.push({ text: matched, kind: 'mdlink' });
     else if (matched.startsWith('@')) out.push({ text: matched, kind: 'file' });
-    else if (matched.startsWith('⟦')) out.push({ text: matched, kind: 'ref' });
+    else if (matched.startsWith('⟦') || matched.startsWith('📄') || matched.startsWith('🌐')) out.push({ text: matched, kind: 'ref' });
     else if (matched.startsWith('/') || m[2] !== undefined) {
       const lead = m[1] ?? '';
       if (lead !== '') out.push({ text: lead, kind: 'plain' });
@@ -373,7 +375,11 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       );
     }
     if (tk.kind === 'ref') {
-      let inner = tk.text.slice(1, -1);
+      // 2026-11-05 emoji 前缀形态:图标=原生文字字符(📄/💻/🌐,彩色字形不受 textarea 透明色
+      // 影响,原生占宽对齐=「把图标当作真正的文本来渲染」);label 剥 emoji/旧定界符前缀
+      const emojiM = /^(📄|💻|🌐|⟦)/.exec(tk.text);
+      const emoji = emojiM?.[1] ?? '';
+      let inner = tk.text.slice(emoji.length).replace(/⟧$/, '');
       // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变
       if (composer === true) {
         const baseM = /^(文本片段|正文片段|终端片段|网页#[^·]*)(?:·\d+)?$/.exec(inner);
@@ -383,7 +389,6 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
           inner = n === 1 ? baseM[1] : `${baseM[1]}·${n}`;
         }
       }
-      const isTerm = inner.startsWith('终端');
       // 显示标签 i18n(§15 外观双语):键保持 zh 规范形,显示随界面语言
       inner = inner.startsWith('文本片段') ? t('Text snippet', '文本片段') + inner.slice(4)
         : inner.startsWith('正文片段') ? t('Body snippet', '正文片段') + inner.slice(4)
@@ -392,7 +397,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
         : inner === '网页元素' ? t('Web element', '网页元素')
         : inner;
       const content = refContents?.get(tk.text) ?? refContentRegistry.get(tk.text) ?? '';
-      return <RefTokenChip key={i} inner={inner} isTerm={isTerm} content={content} composer={composer === true} />;
+      return <RefTokenChip key={i} emoji={emoji} inner={inner} content={content} composer={composer === true} />;
     }
     return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
   });
@@ -417,7 +422,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
 const PANEL_W = 300;
 const PANEL_H = 300;
 
-export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
+export function RefTokenChip({ emoji, inner, content, composer }: { emoji?: string; inner: string; isTerm?: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number; w: number; below: boolean } | null>(null);
   // 2026-11-05 用户裁定「hover 提示可悬停」:指针从 chip 移入面板不关(面板 pointer-events:auto
   // 可滚动查看),移出面板/chip 才关——chip mouseleave 延迟 160ms 关,面板 mouseenter 取消
@@ -427,14 +432,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
     hideTimer.current = window.setTimeout(() => setTip(null), 160);
   };
   const keepOpen = (): void => window.clearTimeout(hideTimer.current);
-  // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球
-  const ico = isTerm ? (
-    <SquareTerminal size={11} strokeWidth={1.75} />
-  ) : inner.startsWith('文本') || inner.startsWith('正文') || inner.startsWith('Body') || inner.startsWith('Text') ? (
-    <FileText size={11} strokeWidth={1.75} />
-  ) : (
-    <Globe size={11} strokeWidth={1.75} />
-  );
+
   const onEnter = (e: ReactMouseEvent<HTMLSpanElement>): void => {
     keepOpen();
     const r = e.currentTarget.getBoundingClientRect();
@@ -465,7 +463,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
         onMouseLeave={() => setTip(null)}
         style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h, width: tip.w } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h, width: tip.w }}
       >
-        <span className="ref-chip-preview-head">{ico}<span>{inner}</span></span>
+        <span className="ref-chip-preview-head">{emoji}<span>{inner}</span></span>
         <pre>{content}</pre>
       </span>,
       document.body,
@@ -479,10 +477,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
           onMouseEnter={onEnter}
           onMouseLeave={closeLater}
         >
-          <span className="hn-ref-at" aria-hidden="true">⟦</span>
-          {inner}
-          <span className="hn-ref-at" aria-hidden="true">⟧</span>
-          <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
+          {emoji}{inner}
         </span>
         {panel}
       </>
@@ -491,8 +486,7 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
   return (
     <>
       <span className="hn hn-ref ref-chip" onMouseEnter={onEnter} onMouseLeave={closeLater}>
-        <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
-        {inner}
+        {emoji}{inner}
       </span>
       {panel}
     </>
@@ -541,9 +535,11 @@ export function refContentRegister(token: string, content: string): void {
  */
 const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
+  const emoji = kind === 'body' ? '📄' : '💻';
   const base = kind === 'body' ? '文本片段' : '终端片段';
   snippetSeq[kind] += 1;
-  return snippetSeq[kind] === 1 ? `⟦${base}⟧` : `⟦${base}·${snippetSeq[kind]}⟧`;
+  // 2026-11-05 emoji 前缀=图标本体(原生文字,占宽对齐零几何问题),无闭定界符(受限前缀自终止)
+  return snippetSeq[kind] === 1 ? `${emoji}${base}` : `${emoji}${base}·${snippetSeq[kind]}`;
 }
 
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
@@ -563,15 +559,15 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
     const body = m[2] ?? '';
     if (kind === 'text-selection') {
       termSeq += 1;
-      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦终端片段⟧' : `⟦终端片段·${termSeq}⟧` });
+      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '💻终端片段' : `💻终端片段·${termSeq}` });
     } else if (kind === 'body-snippet') {
       bodySeq += 1;
-      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦文本片段⟧' : `⟦文本片段·${bodySeq}⟧` });
+      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '📄文本片段' : `📄文本片段·${bodySeq}` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
       const label = pid !== '' ? `${t('Web', '网页')}#${pid}${loc !== '' ? ` · ${loc}` : ''}` : t('Web element', '网页元素');
-      out.push({ fence: body, kind, label, token: `⟦${label}⟧` });
+      out.push({ fence: body, kind, label, token: `🌐${label}` });
     }
     last = idx + m[0].length;
   }
@@ -639,18 +635,18 @@ export function expandFileRefs(
 /** 2026-11-04 元素/终端片段引用发送期展开(用户裁定「实际内容 agent 知道即可,composer 只显简标识」):
  *  ⟦…⟧ token → 账本(refContents)中的全量内容(围栏包裹);无账本命中原样保留 */
 export function expandRefContents(text: string, contents: ReadonlyMap<string, string>): string {
-  return text.replace(/⟦([^⟧]{1,120})⟧/g, (raw, _inner: string) => {
+  return text.replace(/📄(?:正文片段|文本片段|终端片段)(?:·\d+)?|🌐网页#[^\s]+|⟦[^⟧]{1,120}⟧/g, (raw: string) => {
     // 注册表兜底(2026-11-04):编辑回填重 token 化只写注册表即可全链生效(气泡 hover/重发展开)
     const c = contents.get(raw) ?? refContentRegistry.get(raw);
     if (c === undefined) return raw;
     // 落档围栏化:raw 选区→围栏——气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。
     // 尾随换行归一(重展开逐字节回原)。围栏 kind 即显示侧标签判据:终端→text-selection、
     // 正文(2026-11-05 用户裁定「正文也要 chip」)→body-snippet
-    if ((raw.startsWith('⟦文本') || raw.startsWith('⟦正文')) && !c.startsWith('```')) {
+    if ((raw.startsWith('📄文本') || raw.startsWith('📄正文') || raw.startsWith('⟦文本') || raw.startsWith('⟦正文')) && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`body-snippet\n${body}\n\`\`\``;
     }
-    if (raw.startsWith('⟦终端') && !c.startsWith('```')) {
+    if ((raw.startsWith('💻终端') || raw.startsWith('⟦终端')) && !c.startsWith('```')) {
       const body = c.endsWith('\n') ? c.slice(0, -1) : c;
       return `\`\`\`text-selection\n${body}\n\`\`\``;
     }
