@@ -1906,4 +1906,62 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     const agentsView = (conn as unknown as Record<string, unknown>).agentsView as ReturnType<typeof vi.fn>;
     expect(agentsView).not.toHaveBeenCalled(); // 不为此发网络请求
   });
+
+  it('内置四角色进候选池(2026-11-05 用户实测):零注册目录 $ 仍列出内置;同 id 注册行不重复列(builtin-first)', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    const c = conn as unknown as Record<string, unknown>;
+    c.agentsView = vi.fn(() =>
+      Promise.resolve({
+        builtins: [
+          { role: 'planner', name: 'Planner' },
+          { role: 'developer', name: 'Dev' },
+          { role: 'tester', name: 'Tester' },
+        ],
+        view: { entries: [{ id: 'planner', name: 'Planner', bodyPreview: '', shadowed: false, source: 'project' }], warnings: [] },
+      }),
+    );
+    c.teamsView = vi.fn(() => Promise.resolve({ view: { entries: [], warnings: [] } }));
+    render(<Chat conn={conn} sessionId="s-ref-8" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' });
+    expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual([
+      'planner',
+      'developer',
+      'tester',
+    ]); // 内置在前;同 id 注册行去重(keep-first=内置优先,registry builtin-first 同口径)
+  });
+
+  it('零目录空态引导(2026-11-05 用户实测):面板不再静默隐藏——$ 弹空态指路行,Esc 照关', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [], []);
+    render(<Chat conn={conn} sessionId="s-ref-9" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '$' } });
+    await screen.findByRole('listbox', { name: '智能体与团队' }); // 面板开(空态不再自隐)
+    expect(document.querySelector('.ref-palette-empty')?.textContent).toContain('尚无在册'); // 指路设置面
+    fireEvent.keyDown(ta, { key: 'Escape' });
+    expect(document.querySelector('.ref-palette')).toBeNull(); // Esc 照关
+    expect(ta.value).toBe('$'); // 原文不动
+  });
+
+  it('+ 面板引用触发行(2026-11-05 用户实测):点击「$ 引用智能体」插入裸符号并就地开面板(程序化插入不触发 onChange 的就地重演)', async () => {
+    setLanguage('zh');
+    const conn = connOf([]);
+    withCatalog(conn, [{ id: 'devx', name: 'Dev X' }], []);
+    (conn as unknown as Record<string, unknown>).skillsGroups = vi.fn(() => Promise.resolve({ groups: [] })); // + 面板技能区桩
+    (conn as unknown as Record<string, unknown>).tree = vi.fn(() => Promise.resolve({ entries: [] })); // 文件区桩(sessionId 在场即拉)
+    render(<Chat conn={conn} sessionId="s-ref-10" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.click(screen.getByLabelText('add attachment')); // + pill → 附加面板
+    const row = [...document.querySelectorAll('.sx-plus-row')].find((el) => el.textContent === '$引用智能体');
+    expect(row).toBeDefined(); // 引用区在座
+    fireEvent.click(row!);
+    expect(ta.value).toBe('$'); // 裸符号落输入框(空文本从零起手)
+    expect(screen.queryByText('引用智能体')).toBeNull(); // + 面板已收
+    await screen.findByRole('listbox', { name: '智能体与团队' }); // 引用面板就地开
+    expect(document.querySelector('.ref-palette-id')?.textContent).toBe('devx'); // 候选池在位
+  });
 });

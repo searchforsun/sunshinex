@@ -7,9 +7,11 @@ import { FileIcon } from '../file-icon';
 
 /**
  * 「+」附加面板(G12 统一 composer):浮在输入卡上方、与卡同宽(absolute left/right 0,锚
- * `.sx-composer`,经 ComposerCard overlays 槽渲染)。四区列表:
+ * `.sx-composer`,经 ComposerCard overlays 槽渲染)。五区列表:
  * - 附件(2026-10-26 图片功能,置首):图片选择——系统文件资源管理器(input type=file
  *   accept=image/*),多选;调用面 onAttachImages 承接装载与 ≤8 张钳制。欢迎页不传不渲染;
+ * - 引用(2026-11-05 用户实测补,agents-teams P1):插入裸 `$`/`#` 并就地开引用面板——调用面
+ *   onInsert 对两符号特判(程序化插入不触发 onChange,检测就地重演);
  * - 命令:GET /commands,点击插入 `/cmd `(回车执行——会话内走 / 命令通道);
  * - 技能:GET /settings/skills 三源(project/user/learned)按 id 去重合并,点击插入 `/<id>`
  *   (G14.213 skills 纯文本语义:不再走 /skill <id> 命令形态——daemon 已 400);
@@ -190,6 +192,28 @@ export function ComposerPlusPanel({
           />
         </>
       )}
+      {/* 引用触发区(2026-11-05 用户实测补):插入裸符号并就地开 $/# 引用面板(调用面 onInsert 特判) */}
+      <div className="sx-plus-sec">{t('References', '引用')}</div>
+      <button
+        type="button"
+        role="menuitem"
+        className="sx-plus-row"
+        data-tip={t('Type an agent id after $', '符号后接智能体 id')}
+        onClick={() => onInsert('$')}
+      >
+        <span className="sx-plus-name">$</span>
+        <span className="sx-plus-desc">{t('Reference an agent', '引用智能体')}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="sx-plus-row"
+        data-tip={t('Type a team id after #', '符号后接团队 id')}
+        onClick={() => onInsert('#')}
+      >
+        <span className="sx-plus-name">#</span>
+        <span className="sx-plus-desc">{t('Reference a team', '引用团队')}</span>
+      </button>
       <div className="sx-plus-sec">{t('Commands', '命令')}</div>
       {cmds === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {cmds !== null && cmds.length === 0 && <div className="sx-plus-empty">{t('No commands', '暂无命令')}</div>}
@@ -259,10 +283,12 @@ export function ComposerPlusPanel({
         </>
       )}
       </div>
-      {/* 快捷键提示脚行(2026-11-03 用户裁定):钉底恒显——@ 添加文件 / 选择命令或技能 / Ctrl+V 粘贴图片 */}
+      {/* 快捷键提示脚行(2026-11-03 用户裁定):钉底恒显——@ 添加文件 / 选择命令或技能 / $ # 引用 / Ctrl+V 粘贴图片 */}
       <div className="sx-plus-foot">
         <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file', '添加文件')}</span>
         <span className="sx-plus-hint"><kbd>/</kbd>{t('Pick command or skill', '选择命令或技能')}</span>
+        <span className="sx-plus-hint"><kbd>$</kbd>{t('Agents', '智能体')}</span>
+        <span className="sx-plus-hint"><kbd>#</kbd>{t('Teams', '团队')}</span>
         <span className="sx-plus-hint"><kbd>Ctrl+V</kbd>{t('Paste image', '粘贴图片')}</span>
       </div>
     </div>
