@@ -311,7 +311,7 @@ export const ToolEntryView = memo(function ToolEntryView({
       <span className="exec-running-text">{runningLabel}</span>
     </span>
   ) : toolName === 'ask_question' ? (
-    <span className="tool-verb">{t('ask', '提问')}</span>
+    <span className="tool-verb">{zhToolName(toolName)}</span>
   ) : toolName === 'todo_write' ? (
     <span
       className="tool-verb"
@@ -326,12 +326,12 @@ export const ToolEntryView = memo(function ToolEntryView({
         onOpenTodos(arr.map((o) => ({ text: String((o ?? {}).text ?? ''), status: String((o ?? {}).status ?? 'pending') })));
       }}
     >
-      {t('todo', '待办')}
+      {zhToolName(toolName)}
     </span>
-  ) : toolName === 'spawn' ? (
-    <span className="tool-verb">{t('spawn', '分派子智能体')}</span>
-  ) : toolName === 'task_wait' ? (
-    <span className="tool-verb">{t('task_wait', '等待任务')}</span>
+  ) : toolName === 'spawn' || toolName === 'task_wait' ? (
+    // 2026-11-05 用户裁定「动词在前,命名准确」:专用动词分支收敛 zhToolName 单点(EN 规范化标签,
+    // 不再露原始名——ask/todo 两支保留自定义交互面,文字同源 zhToolName)
+    <span className="tool-verb">{zhToolName(toolName)}</span>
   ) : (
     <span className="tool-verb">{zhToolName(toolName)}</span>
   );

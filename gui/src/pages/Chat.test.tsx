@@ -908,7 +908,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     await flushed();
     fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['spawn-20261102T084100Z-ab12'], timeoutSeconds: null } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w1' } });
-    const row = [...document.querySelectorAll('.entry-tool')].find((x) => /等待|task_wait/.test(x.textContent ?? ''));
+    const row = [...document.querySelectorAll('.entry-tool')].find((x) => /Wait for task|等待|task_wait/.test(x.textContent ?? ''));
     expect(row?.textContent).toContain('后台spawn测试');
     expect(row?.querySelector('.tool-summary')?.textContent).not.toMatch(/\bspawn\b(?!测试)/);
   });
@@ -929,7 +929,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-result', text: 'done', ts: Date.now(), payload: { callId: 'w3' } });
     const rows = [...document.querySelectorAll('.entry-tool')].filter((x) => {
       const t = x.textContent ?? '';
-      return t.includes('等待') || t.includes('task_wait');
+      return t.includes('Wait for task') || t.includes('等待') || t.includes('task_wait');
     });
     expect(rows[0]!.textContent).toContain('分析：TUI 交互面, 分析：GUI 交互面'); // 板 id 直查映射
     expect(rows[1]!.textContent).toContain('分析：TUI 交互面'); // 台账长 id 剥尾+剥 task- 前缀命中
