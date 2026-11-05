@@ -316,7 +316,14 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       const name = range !== '' ? full.slice(0, full.length - range.length - 1) : full;
       const open = href !== '' && onOpenFile !== undefined ? () => onOpenFile(href.replace(/#[^#]*$/, '')) : undefined;
       return (
-        <span key={i} className="hn hn-file hn-mdlink" onClick={open} title={full} style={open !== undefined ? { cursor: 'pointer' } : undefined}>
+        <span
+          key={i}
+          className="hn hn-file hn-mdlink"
+          onClick={open}
+          onMouseDown={(e) => e.preventDefault()}
+          title={full}
+          style={open !== undefined ? { cursor: 'pointer' } : undefined}
+        >
           <span className="hn-file-ico" aria-hidden="true">
             <FileIcon path={name} />
           </span>

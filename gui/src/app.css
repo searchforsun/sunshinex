@@ -675,6 +675,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-11-04 用户裁定「用户气泡/队列同主对话 chip 格式」:文件 token 的 @ 字符在非 composer
  * 面不显(无显形宽度不变约束,直接不占位;composer 高亮层走透明保字宽既有规则) */
 .entry-user .user-md-plain .hn-file .hn-file-at, .steer-row-text .hn-file .hn-file-at { display: none; }
+/* 2026-11-04 用户裁定「气泡文件芯片与输入框一样蓝」:composer 文件芯片 accent 色是
+ * .sx-composer-highlight 作用域私有,气泡/队列同款补色 */
+.entry-user .user-md-plain .hn-file, .steer-row-text .hn-file { color: var(--accent); }
+/* 编辑卡高亮层:mdlink 文件芯片放行指针事件(点击开文件;芯片 mousedown preventDefault 保
+ * 编辑焦点)——高亮层整体 none,与 hn-ref 同手法 */
+.sx-composer-highlight .hn-mdlink { pointer-events: auto; }
 /* 复制钮 hover 浮现:绝对定位挂气泡下沿——不占布局高度(原 flex 占位即用户消息"下边距大"的根因) */.entry-user .user-actions {
   position: absolute;
   /* 2026-10-26 七轮:回到气泡下方(用户裁定「应该显示在气泡下面」;六轮收进盒内压住了气泡文字);

@@ -420,12 +420,13 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
               透明 textarea+mention spans 覆盖层(@ 透明/行段弱色/mdlink 文件芯片),IME 守卫同款 */}
           <div className={`sx-composer-inputwrap${editComposing ? ' is-composing' : ''}`}>
             <div className="sx-composer-highlight" aria-hidden="true">
-              {renderMentionSpans(draft)}
+              {renderMentionSpans(draft, undefined, undefined, onOpenFile)}
             </div>
             <textarea
               aria-label="edit message"
               className="user-edit-input sx-composer-input transparent-text"
               autoFocus
+              spellCheck={false}
               value={draft}
               rows={Math.min(6, Math.max(1, (draft.match(/\n/g) ?? []).length + 1))}
               onChange={(e) => setDraft(e.target.value)}
