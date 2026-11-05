@@ -367,18 +367,22 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
   });
 
 /** 2026-11-04 ref 芯片 hover 预览(用户裁定「输入框/用户气泡/队列/编辑都保持 chip 状态,hover
- *  时显示具体内容」):固定定位面板随 chip 悬停显隐,内容=账本/注册表全文;指针穿透不抢悬停,
- *  贴视口钳位,近底上翻 */
+ *  时显示具体内容」):固定定位面板随 chip 悬停显隐,内容=账本/注册表全文;指针穿透不抢悬停。
+ *  2026-11-04 裁定续:恒上侧(面板底缘贴 chip 顶缘),水平钳回主对话区(.sx-main,缺席回退视口),
+ *  可用高度钳 max-height 超出纵向滚动 */
 export function RefTokenChip({ inner, isTerm, content }: { text?: string; inner: string; isTerm: boolean; content: string }): JSX.Element {
-  const [tip, setTip] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  const [tip, setTip] = useState<{ x: number; y: number; h: number } | null>(null);
   return (
     <span
       className="hn hn-ref ref-chip"
       onMouseDown={(e) => e.preventDefault()}
       onMouseEnter={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
-        const below = r.bottom + 240 <= window.innerHeight;
-        setTip({ x: Math.min(Math.max(r.left, 8), Math.max(window.innerWidth - 540, 8)), y: below ? r.bottom + 6 : r.top - 6, below });
+        const main = e.currentTarget.closest('.sx-main')?.getBoundingClientRect();
+        const mL = (main?.left ?? 0) + 8;
+        const mR = (main?.right ?? window.innerWidth) - 8;
+        const x = Math.min(Math.max(r.left, mL), Math.max(mR - 520, mL));
+        setTip({ x, y: r.top - 6, h: Math.min(300, Math.max(r.top - 16, 140)) });
       }}
       onMouseLeave={() => setTip(null)}
     >
@@ -387,7 +391,7 @@ export function RefTokenChip({ inner, isTerm, content }: { text?: string; inner:
       </span>
       {inner}
       {tip !== null && content !== '' && (
-        <span className="ref-chip-preview" style={tip.below ? { left: tip.x, top: tip.y } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)' }}>
+        <span className="ref-chip-preview" style={{ left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h }}>
           <pre>{content}</pre>
         </span>
       )}
