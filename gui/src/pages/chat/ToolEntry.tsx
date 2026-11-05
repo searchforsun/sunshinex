@@ -20,6 +20,7 @@ import { ToolImageThumb, ReadImageBody } from './tool-entry-media';
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
   skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
+  team: UsersRound, agent: Bot, // agents-teams P0 章程卡工具(team 与建队同件,agent 与分派子智能体同件)
   worktree: GitBranch, spawn: Bot, task_stop: Square, agent_team_task_stop: Square, task_wait: Hourglass, agent_team_task_wait: Hourglass, kb_search: BookOpen,
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
   exit_plan: NotebookPen, // 交稿行(2026-11-03 交稿协议):计划图标同 plan pill(2026-11-03 换 NotebookPen,与待办 ListTodo 区分)

@@ -33,6 +33,7 @@ export interface TodoBatch {
 const TOOL_VERB_ZH: Record<string, string> = {
   read: '读取', write: '写入', edit: '编辑', exec: '执行', grep: '查阅', glob: '查找',
   skill: '加载技能', webfetch: '抓取', websearch: '搜索', memory_write: '保存记忆',
+  team: '加载智能体团队', agent: '加载子智能体', // agents-teams P0 章程卡工具(2026-11-05 用户裁定补登记)
   todo_write: '更新待办', worktree: '工作树', spawn: '分派子智能体', task_stop: '停止',
   agent_team_task_stop: '停止团队任务', task_wait: '等待任务', agent_team_task_wait: '等待团队任务',
   kb_search: '检索知识库', ask_question: '提问', exit_plan: '提交计划',
