@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { t } from './i18n';
 
 /**
@@ -90,8 +90,6 @@ export interface CommandPaletteProps {
   readonly active: number;
   readonly onHover: (index: number) => void;
   readonly onPick: (item: CmdItem) => void;
-  /** 首行域标(2026-11-05 用户裁定:弹层第一行示「/ 命令 技能」——命令/技能上下分组说明) */
-  readonly header?: string;
 }
 
 export function CommandPalette(props: CommandPaletteProps): JSX.Element {
@@ -101,30 +99,36 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element {
   useEffect(() => {
     activeRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [active, items]);
+  // 2026-11-05 用户裁定:与 + 弹窗对齐——命令/技能上下分组各自带分组头(无符号首行);组内行序
+  // = items 原序(cmds 在前 skills 在后),键盘 active 仍指 items 下标
+  const firstCmd = items.findIndex((i) => i.kind === 'cmd');
+  const firstSkill = items.findIndex((i) => i.kind === 'skill');
   return (
     <div className="cmd-palette" role="listbox" aria-label={t('command palette', '命令面板')}>
-      {props.header !== undefined && <div className="sx-plus-sec">{props.header}</div>}
       {items.length === 0 && <div className="cmd-empty">{t('No matching command', '没有匹配的命令')}</div>}
       {items.map((item, i) => {
         const desc = cmdDescOf(item.name, item.desc); // 渲染期本地化(内置命令 zh 表;技能项回落原文)
         return (
-          <button
-            key={item.cmd}
-            ref={i === active ? activeRef : undefined}
-            type="button"
-            role="option"
-            aria-selected={i === active}
-            className={`cmd-item${i === active ? ' active' : ''}${item.ok ? '' : ' disabled'}`}
-            data-tip={item.ok ? desc : t('Not available in this GUI', '此处不可用(GUI 原生面/TUI 专属/未移植)')}
-            onMouseEnter={() => onHover(i)}
-            onClick={() => {
-              if (!item.ok) return; // 置灰项不可跑(TUI 专属/GUI 原生/未移植)——禁假入口
-              onPick(item);
-            }}
-          >
-            <span className="cmd-name">{item.cmd}</span>
-            <span className="cmd-desc">{desc}</span>
-          </button>
+          <Fragment key={item.cmd}>
+            {i === firstCmd && <div className="sx-plus-sec">{t('Commands', '命令')}</div>}
+            {i === firstSkill && <div className="sx-plus-sec">{t('Skills', '技能')}</div>}
+            <button
+              ref={i === active ? activeRef : undefined}
+              type="button"
+              role="option"
+              aria-selected={i === active}
+              className={`cmd-item${i === active ? ' active' : ''}${item.ok ? '' : ' disabled'}`}
+              data-tip={item.ok ? desc : t('Not available in this GUI', '此处不可用(GUI 原生面/TUI 专属/未移植)')}
+              onMouseEnter={() => onHover(i)}
+              onClick={() => {
+                if (!item.ok) return; // 置灰项不可跑(TUI 专属/GUI 原生/未移植)——禁假入口
+                onPick(item);
+              }}
+            >
+              <span className="cmd-name">{item.cmd}</span>
+              <span className="cmd-desc">{desc}</span>
+            </button>
+          </Fragment>
         );
       })}
     </div>

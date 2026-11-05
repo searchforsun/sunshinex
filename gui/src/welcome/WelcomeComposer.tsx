@@ -819,8 +819,7 @@ export function WelcomeComposer({
                     : t('No matching entry', '无匹配条目');
                 return (
                   <RefPalette
-                    header={refPal.sym === '$' ? t('$ Sub-agents', '$ 子智能体') : t('# Agent teams', '# 智能体团队')}
-                    items={items}
+                          items={items}
                     emptyHint={emptyHint}
                     active={Math.max(0, Math.min(refActive, items.length - 1))}
                     onHover={setRefActive}
@@ -844,8 +843,7 @@ export function WelcomeComposer({
             // G14.211 锚点校验:@ 被删后面板残留在此拦下(同 Chat 渲染面)
             filePal !== null && picked !== '' && goal[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
               <FilePalette
-                header={t('@ Files', '@ 文件')}
-                items={rankFileHits(filePalFiles, filePal.query)}
+                  items={rankFileHits(filePalFiles, filePal.query)}
                 active={Math.min(filePalActive, 11)}
                 onHover={setFilePalActive}
                 onPick={(p) => {
@@ -881,7 +879,7 @@ export function WelcomeComposer({
                   setWelcomeCmdActive(0);
                   goalRef.current?.focus();
                 };
-                return <CommandPalette header={t('/ Commands & skills', '/ 命令 技能')} items={items} active={active} onHover={setWelcomeCmdActive} onPick={pick} />;
+                return <CommandPalette items={items} active={active} onHover={setWelcomeCmdActive} onPick={pick} />;
               })()
             ) : plusOpen ? (
               <ComposerPlusPanel

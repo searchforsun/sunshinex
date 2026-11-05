@@ -887,7 +887,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           // 尾随空格即终态,无记账;光标钉插入 token 后沿——G14.211 同款)
           refPal !== null && refPanelItems !== null ? (
             <RefPalette
-              header={refPal.sym === '$' ? t('$ Sub-agents', '$ 子智能体') : t('# Agent teams', '# 智能体团队')}
               items={refPanelItems}
               emptyHint={
                 refEntries.agents.length === 0 && refEntries.teams.length === 0
@@ -917,7 +916,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染
             filePal !== null && input[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
             <FilePalette
-              header={t('@ Files', '@ 文件')}
               items={rankFileHits(filePalFiles, filePal.query)}
               active={Math.min(filePalActive, 11)}
               onHover={setFilePalActive}
@@ -965,7 +963,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
                 const caret = inputRef.current?.selectionStart ?? input.length;
                 setInput(input.slice(0, from) + item.cmd + ' ' + input.slice(caret));
               };
-              return <CommandPalette header={t('/ Commands & skills', '/ 命令 技能')} items={items} active={active} onHover={setCmdActive} onPick={pick} />;
+              return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
             })()
           ) : null
         }
