@@ -9,10 +9,10 @@ import { expandRefContents, mintSnippetToken, rebuildPickTokens, refContentRegis
  *  composer 图标悬于占位区,层对齐仍由原文文本驱动;旧无占位 token 双形兼容。 */
 describe('mintSnippetToken 铸造', () => {
   it('同类二铸即 ·N,正文/终端独立计数(头部占位区两空格)', () => {
-    expect(mintSnippetToken('body')).toBe('⟦  文本片段⟧');
-    expect(mintSnippetToken('body')).toBe('⟦  文本片段·2⟧');
-    expect(mintSnippetToken('term')).toBe('⟦  终端片段⟧');
-    expect(mintSnippetToken('term')).toBe('⟦  终端片段·2⟧');
+    expect(mintSnippetToken('body')).toBe('⟦   文本片段⟧');
+    expect(mintSnippetToken('body')).toBe('⟦   文本片段·2⟧');
+    expect(mintSnippetToken('term')).toBe('⟦   终端片段⟧');
+    expect(mintSnippetToken('term')).toBe('⟦   终端片段·2⟧');
   });
 });
 
@@ -23,8 +23,8 @@ describe('expandRefContents 围栏化落档', () => {
   });
 
   it('正文 token 展开 body-snippet 围栏', () => {
-    refContentRegistry.set('⟦  文本片段⟧', 'L5 声明 6 用例全部通过');
-    expect(expandRefContents('前 ⟦  文本片段⟧ 后', new Map())).toBe('前 ```body-snippet\nL5 声明 6 用例全部通过\n``` 后');
+    refContentRegistry.set('⟦   文本片段⟧', 'L5 声明 6 用例全部通过');
+    expect(expandRefContents('前 ⟦   文本片段⟧ 后', new Map())).toBe('前 ```body-snippet\nL5 声明 6 用例全部通过\n``` 后');
   });
 
   it('旧无占位 token 双形兼容(判型剥占位后按内文)', () => {
@@ -33,13 +33,13 @@ describe('expandRefContents 围栏化落档', () => {
   });
 
   it('终端 token 展开 text-selection 围栏(口径不变)', () => {
-    refContentRegistry.set('⟦  终端片段⟧', 'npm test\n');
-    expect(expandRefContents('⟦  终端片段⟧', new Map())).toBe('```text-selection\nnpm test\n```');
+    refContentRegistry.set('⟦   终端片段⟧', 'npm test\n');
+    expect(expandRefContents('⟦   终端片段⟧', new Map())).toBe('```text-selection\nnpm test\n```');
   });
 
   it('内容自带围栏(browser 回填形态)不重复套', () => {
-    refContentRegistry.set('⟦  网页#t-1⟧', '```browser-element\n页签 #t-1\n```');
-    expect(expandRefContents('⟦  网页#t-1⟧', new Map())).toBe('```browser-element\n页签 #t-1\n```');
+    refContentRegistry.set('⟦   网页#t-1⟧', '```browser-element\n页签 #t-1\n```');
+    expect(expandRefContents('⟦   网页#t-1⟧', new Map())).toBe('```browser-element\n页签 #t-1\n```');
   });
 
   it('注册表无记录原样保留(非芯片 ⟦…⟧ 文本不受扰)', () => {
@@ -49,13 +49,13 @@ describe('expandRefContents 围栏化落档', () => {
 
 describe('splitMentionTokens 解析', () => {
   it('⟦…⟧ 解析为 ref token(带头部占位区)', () => {
-    expect(splitMentionTokens('x ⟦  文本片段·4⟧ y').find((k) => k.text === '⟦  文本片段·4⟧')?.kind).toBe('ref');
+    expect(splitMentionTokens('x ⟦   文本片段·4⟧ y').find((k) => k.text === '⟦   文本片段·4⟧')?.kind).toBe('ref');
   });
 
   it('/cmd 贴芯片尾沿也成 skill 芯片(⟧ 边界;带前导空格双形)', () => {
-    expect(splitMentionTokens('⟦  文本片段⟧/deploy').some((k) => k.kind === 'skill' && k.text === '/deploy')).toBe(true);
-    expect(splitMentionTokens('⟦  文本片段⟧ /deploy').some((k) => k.kind === 'skill' && k.text === '/deploy')).toBe(true);
-    expect(splitMentionTokens('⟦  文本片段⟧$qa').some((k) => k.kind === 'agent' && k.text === '$qa')).toBe(true);
+    expect(splitMentionTokens('⟦   文本片段⟧/deploy').some((k) => k.kind === 'skill' && k.text === '/deploy')).toBe(true);
+    expect(splitMentionTokens('⟦   文本片段⟧ /deploy').some((k) => k.kind === 'skill' && k.text === '/deploy')).toBe(true);
+    expect(splitMentionTokens('⟦   文本片段⟧$qa').some((k) => k.kind === 'agent' && k.text === '$qa')).toBe(true);
   });
 });
 
@@ -65,7 +65,7 @@ describe('splitBrowserFences 显示侧折叠(标签 i18n+顺序编号)', () => {
   it('body-snippet 围栏折回正文片段芯片段(原文段保留)', () => {
     expect(splitBrowserFences('甲```body-snippet\n引文\n```乙')).toEqual([
       { text: '甲' },
-      { fence: '引文\n', kind: 'body-snippet', label: '文本片段', token: '⟦  文本片段⟧' },
+      { fence: '引文\n', kind: 'body-snippet', label: '文本片段', token: '⟦   文本片段⟧' },
       { text: '乙' },
     ]);
   });
@@ -98,7 +98,7 @@ describe('rebuildPickTokens 编辑回填回环', () => {
   it('body-snippet 档文折回 token;展开∘回填逐字节回原', () => {
     const md = '说明 ```body-snippet\n第一行\n第二行\n``` 结尾';
     const back = rebuildPickTokens(md);
-    expect(back).toBe('说明 ⟦  文本片段⟧ 结尾');
+    expect(back).toBe('说明 ⟦   文本片段⟧ 结尾');
     expect(expandRefContents(back, new Map())).toBe(md);
   });
 

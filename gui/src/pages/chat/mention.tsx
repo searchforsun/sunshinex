@@ -380,7 +380,7 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       // token 原文头部铸两个空格=composer 图标预算(⟦ 字形 advance 仅 5.4px 放不下 11px 图标,
       // 全角【】迁移两败:尾宽光标飞/前宽随字体浮——占位走原文空格则层对齐仍由文本驱动,零测量);
       // 显示/判型一律剥除,composer 高亮层原样回显(占位宽度是层对齐硬约束,不能剥)
-      const padM = /^ {1,2}/.exec(inner);
+      const padM = /^ +/.exec(inner);
       const pad = padM !== null ? padM[0] : '';
       inner = inner.slice(pad.length);
       // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变
@@ -438,13 +438,13 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
   const keepOpen = (): void => window.clearTimeout(hideTimer.current);
   // 图标按 token 语义分型:终端片段=终端、正文片段(2026-11-05 圈选芯片化)=文本、其余(网页元素)=地球;
   // 头部图标占位区(原文两空格)判型/气泡显示/面板头剥除,composer 分支原样回显(inner 含 pad=层对齐)
-  const bare = inner.replace(/^ {1,2}/, '');
+  const bare = inner.replace(/^ +/, '');
   const ico = isTerm ? (
-    <SquareTerminal size={11} strokeWidth={1.75} />
+    <SquareTerminal size={14} strokeWidth={1.75} />
   ) : bare.startsWith('文本') || bare.startsWith('正文') || bare.startsWith('Body') || bare.startsWith('Text') ? (
-    <FileText size={11} strokeWidth={1.75} />
+    <FileText size={14} strokeWidth={1.75} />
   ) : (
-    <Globe size={11} strokeWidth={1.75} />
+    <Globe size={14} strokeWidth={1.75} />
   );
   const onEnter = (e: ReactMouseEvent<HTMLSpanElement>): void => {
     keepOpen();
@@ -554,7 +554,7 @@ const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
   const base = kind === 'body' ? '文本片段' : '终端片段';
   snippetSeq[kind] += 1;
-  return snippetSeq[kind] === 1 ? `⟦  ${base}⟧` : `⟦  ${base}·${snippetSeq[kind]}⟧`;
+  return snippetSeq[kind] === 1 ? `⟦   ${base}⟧` : `⟦   ${base}·${snippetSeq[kind]}⟧`;
 }
 
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
@@ -574,15 +574,15 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
     const body = m[2] ?? '';
     if (kind === 'text-selection') {
       termSeq += 1;
-      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦  终端片段⟧' : `⟦  终端片段·${termSeq}⟧` });
+      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦   终端片段⟧' : `⟦   终端片段·${termSeq}⟧` });
     } else if (kind === 'body-snippet') {
       bodySeq += 1;
-      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦  文本片段⟧' : `⟦  文本片段·${bodySeq}⟧` });
+      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦   文本片段⟧' : `⟦   文本片段·${bodySeq}⟧` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';
       const label = pid !== '' ? `${t('Web', '网页')}#${pid}${loc !== '' ? ` · ${loc}` : ''}` : t('Web element', '网页元素');
-      out.push({ fence: body, kind, label, token: `⟦  ${label}⟧` });
+      out.push({ fence: body, kind, label, token: `⟦   ${label}⟧` });
     }
     last = idx + m[0].length;
   }
@@ -655,7 +655,7 @@ export function expandRefContents(text: string, contents: ReadonlyMap<string, st
     const c = contents.get(raw) ?? refContentRegistry.get(raw);
     if (c === undefined) return raw;
     // 判型用剥除头部占位区的内文(2026-11-05 头部图标占位区;旧无占位 token 双形兼容)
-    const label = rawInner.replace(/^ {1,2}/, '');
+    const label = rawInner.replace(/^ +/, '');
     // 落档围栏化:raw 选区→围栏——气泡/编辑回填可折叠回芯片;browser-element 内容自带围栏不套。
     // 尾随换行归一(重展开逐字节回原)。围栏 kind 即显示侧标签判据:终端→text-selection、
     // 正文(2026-11-05 用户裁定「正文也要 chip」)→body-snippet

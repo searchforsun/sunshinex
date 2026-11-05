@@ -103,6 +103,16 @@ export function ComposerCard({
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
   }, [value, rows, highlight]);
+  // 滚动同步兜底(2026-11-05 用户实测「复制正常,上下滚动后光标对不齐」):onScroll 同步之外,
+  // 渲染后再钉一次——React 提交若瞬态缩短高亮内容,浏览器把 hl.scrollTop 钳到 0 且内容长回
+  // 不恢复=层间错位(onScroll 只在滚动事件期救,不救渲染期钳制)
+  useLayoutEffect(() => {
+    const ta = taRef.current;
+    const hl = hlRef.current;
+    if (ta === null || hl === null) return;
+    hl.scrollTop = ta.scrollTop;
+    hl.scrollLeft = ta.scrollLeft;
+  }, [value, rows, highlight]);
   /** IME 组字起点(组字段范围上抛用;null=无组字) */
   const compStartRef = useRef<number | null>(null);
   /** 粘贴分流:剪贴板带图片文件即接管(图片不进文本,token 守卫无意义);纯文本粘贴走守卫 */

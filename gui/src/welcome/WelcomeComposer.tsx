@@ -529,7 +529,10 @@ export function WelcomeComposer({
             </div>
           </div>
         )}
-        {/* 输入卡 = 会话中同一份 ComposerCard(唯一差异:欢迎页在卡外多项目选择条) */}
+        {/* 输入卡 = 会话中同一份 ComposerCard(唯一差异:欢迎页在卡外多项目选择条)。
+            highlight 第5参 composer=true(2026-11-06 用户实测「光标越来越多偏」根修):漏传=
+            高亮层走气泡分支(无定界符/占位区,芯片 56px)而 textarea 原文=全 token(79.8px),
+            每枚恒差 23.8px——层与原文位置的隔阂即「光标越来越飞,越多偏越多」 */}
         <ComposerCard
           label="welcome goal"
           inputRef={goalRef}
@@ -537,7 +540,7 @@ export function WelcomeComposer({
           onRemoveImage={(i) => setImages((cur) => cur.filter((_, idx) => idx !== i))}
           onImageOpen={setLightboxSrc}
           onPasteFiles={attachImages}
-          highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n))}
+          highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true)}
           onDropFile={(rel) => {
             // 与会话内同构:拖入 → @文件名短写+账本记绝对/相对路径(目录保尾斜杠)
             const bare = rel.replace(/[\\/]+$/, '');

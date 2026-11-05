@@ -14,6 +14,9 @@ import { buildMdComponents, keepUrl, RefTokenChip, rebuildPickTokens, renderMent
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { MdImage, useDirOpener } from './md-render';
+import { useTokenGuards } from './use-token-guards';
+import { TurnConfirmDialog } from './rewind-confirm';
+import type { RewindOps } from './chat-types';
 import { MD_IMAGE_SRC_RE } from './md-image-syntax';
 import { hasUnclosedFence, streamMdCut } from './stream-md';
 
@@ -213,8 +216,8 @@ function RewindMenu({ onAnchors, onPick }: { onAnchors: () => Promise<Array<{ tu
 
 /** 用户条目(Codex 形,G9 spec §3.1):右对齐胶囊(前景 5%/8% 底)+ 下方 hover 浮现复制钮;
  *  G11 §7 增编辑卡:hover 浮现 Edit 钮,点击气泡原位变 composer 同款浮卡(textarea 预填原文——user md 裸文,P11
- *  原文+取消/发送),发送经 onSend(=Chat 的 submitText,与 composer 同一提交路径)发新消息,
- *  成功才关卡(失败保卡保草稿,spec §9),Esc 取消回气泡。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
+ *  原文+取消/发送)。发送(2026-11-05):配了 rewindOps=二次确认弹窗后回退到此条并重发;未配(辅助对话/
+ *  测试桩)经 onSend 追加发送。成功才关卡(失败保卡保草稿,spec §9),Esc 取消回气泡。md 的 `> ` 引用形态在胶囊内平铺(CSS 收平)。
  *  复制失败(权限等)钮 1.5s 示「未复制」tertiary 态,不弹错。memo 同 ChatEntryView——流式帧
  *  只重渲染流式条(未包 memo 时每帧带动 user 条 md 重渲染,计数回归被击穿);onSend 由调用面
  *  传 useCallback 稳定引用,memo 语义保持。 */
@@ -228,6 +231,8 @@ interface UserEntryOpts {
    *  spec §9 提交失败草稿不丢):未配不渲染 Edit 钮(测试桩免配);images=随行图片附件
    *  (2026-10-26 图片功能:编辑卡预填原条图片,重发随行) */
   onSend?: (text: string, images?: string[]) => Promise<void>;
+  /** 回退操作面(主对话配;在场时编辑发送与回到此轮都走二次确认弹窗) */
+  rewindOps?: RewindOps;
   /** 气泡缩略图点击开查看浮层(2026-10-26 图片功能;未配=缩略图不可点) */
   onOpenImage?: (src: string) => void;
 }
@@ -337,9 +342,32 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, onOpenImage, onOpenFile, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchAnchors, onRewind, onSend, rewindOps, onOpenImage, onOpenFile, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   const [rewindOpen, setRewindOpen] = useState(false);
+  const [confirm, setConfirm] = useState<{ kind: 'edit'; text: string; images?: string[] } | { kind: 'turn'; turn: number } | null>(null);
+  const [editHint, setEditHint] = useState('');
+  const anchorsOf = rewindOps?.anchors ?? fetchAnchors;
+  const canRewind = anchorsOf !== undefined && (rewindOps !== undefined || onRewind !== undefined);
+  const confirmDialog = confirm !== null && rewindOps !== undefined && (
+    <TurnConfirmDialog
+      resend={confirm.kind === 'edit'}
+      loadPlan={() => (confirm.kind === 'edit' ? rewindOps.planForEntry(entry) : rewindOps.planForTurn(confirm.turn))}
+      onCancel={() => setConfirm(null)}
+      onConfirm={(restoreFiles) => {
+        const run = confirm.kind === 'edit'
+          ? rewindOps.resendFrom(entry, confirm.text, confirm.images, restoreFiles)
+          : rewindOps.rewindTurn(confirm.turn, restoreFiles);
+        return run.then(
+          () => {
+            setConfirm(null);
+            setEditing(false);
+          },
+          () => setConfirm(null), // 错误提示归宿主;编辑卡与草稿保留
+        );
+      }}
+    />
+  );
   const copy = (): void => {
     copyText(entry.md); // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
   };
@@ -358,6 +386,13 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
   /** IME 组字期守卫(2026-11-04):编辑卡芯片高亮层复用 composer 口径——组字期隐高亮层,
    *  透明 textarea 显组字串(否则中文组字不可见) */
   const [editComposing, setEditComposing] = useState(false);
+  // token 原子性守卫(2026-11-05 用户裁定「编辑页没有把这些当做一个整体」):芯片=原子——
+  // 不可中间落字/←→ 跨整个/退格整删/beforeinput+paste+组字+选区归位,与 composer 同口径
+  // (此前编辑卡零守卫:退格逐字剥定界符露出 ⟦ 原文=「能直接删除掉 chip」根因)
+  const editGuards = useTokenGuards({ value: draft, setValue: setDraft, taRef: editTaRef });
+  // 滚动同步(2026-11-05 用户实测「复制正常,滚动后光标对不齐」):编辑卡高亮层此前无同步——
+  // textarea 自增高封顶 240px 后内部滚动,高亮层滞留原位=层间错位
+  const editHlRef = useRef<HTMLDivElement | null>(null);
   const openEdit = (): void => {
     // 编辑回填重 token 化(2026-11-04 用户裁定「编辑页也保持 chip」):载入的展开档文按围栏折回
     // token+注册表记账——composer 恢复芯片态,重发经 expandRefContents(注册表兜底)展开回原形态
@@ -369,6 +404,15 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
     const text = draft.trim();
     if (text === '' && draftImages.length === 0) {
       setEditing(false); // 空文本且无图:关卡不发(现状保持;纯图允许——图片即消息)
+      return;
+    }
+    if (rewindOps !== undefined) {
+      if (rewindOps.busy()) {
+        setEditHint(t('The session is running. Stop it before editing and resending.', '会话运行中,请先停止再编辑重发'));
+        return;
+      }
+      setEditHint('');
+      setConfirm({ kind: 'edit', text, ...(draftImages.length > 0 ? { images: draftImages } : {}) });
       return;
     }
     const result = onSend?.(text, draftImages.length > 0 ? draftImages : undefined);
@@ -428,7 +472,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
               透明 textarea+mention spans 覆盖层(@ 透明/行段弱色/mdlink 文件芯片),IME 守卫同款;
               第5参 composer=true(2026-11-05):ref 芯片走显形宽度=原文形态,内联图标会破坏逐字对齐 */}
           <div className={`sx-composer-inputwrap${editComposing ? ' is-composing' : ''}`}>
-            <div className="sx-composer-highlight" aria-hidden="true">
+            <div className="sx-composer-highlight" aria-hidden="true" ref={editHlRef}>
               {renderMentionSpans(draft, undefined, undefined, onOpenFile, true)}
             </div>
             <textarea
@@ -440,9 +484,27 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
               value={draft}
               rows={Math.min(6, Math.max(1, (draft.match(/\n/g) ?? []).length + 1))}
               onChange={(e) => setDraft(e.target.value)}
-              onCompositionStart={() => setEditComposing(true)}
-              onCompositionEnd={() => setEditComposing(false)}
+              onScroll={(e) => {
+                const hl = editHlRef.current;
+                if (hl !== null) {
+                  hl.scrollTop = e.currentTarget.scrollTop;
+                  hl.scrollLeft = e.currentTarget.scrollLeft;
+                }
+              }}
+              onBeforeInput={editGuards.onBeforeInput}
+              onPaste={editGuards.onPasteGuard}
+              onCompositionStart={(e) => {
+                setEditComposing(true);
+                editGuards.onCompositionGuard(e);
+              }}
+              onCompositionEnd={() => {
+                setEditComposing(false);
+                editGuards.onCompositionEndGuard();
+              }}
+              onSelect={editGuards.onSelectGuard}
               onKeyDown={(e) => {
+                editGuards.onKeyDown(e);
+                if (e.defaultPrevented) return;
                 if (e.key === 'Escape') {
                   e.preventDefault();
                   setEditing(false);
@@ -454,6 +516,8 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
               }}
             />
           </div>
+          {editHint !== '' && <div className="user-edit-hint" role="alert">{editHint}</div>}
+          {confirmDialog}
           <div className="user-edit-foot">
             <TipButton tip={t('Cancel', '取消')} label="cancel edit" icon={<X size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setEditing(false)} />
             <button type="button" className="user-edit-send" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendEdit}>
@@ -499,7 +563,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
         {onSend !== undefined && (
           <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={openEdit} />
         )}
-        {fetchAnchors !== undefined && onRewind !== undefined && (
+        {canRewind && (
           <TipButton
             className="user-action"
             tip={t('Rewind to this turn', '回到此轮')}
@@ -509,15 +573,17 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, fetchA
           />
         )}
       </div>
-      {rewindOpen && fetchAnchors !== undefined && onRewind !== undefined && (
+      {rewindOpen && canRewind && (
         <RewindMenu
-          onAnchors={fetchAnchors}
+          onAnchors={anchorsOf}
           onPick={(turn) => {
             setRewindOpen(false);
-            onRewind(turn);
+            if (rewindOps !== undefined) setConfirm({ kind: 'turn', turn });
+            else onRewind?.(turn);
           }}
         />
       )}
+      {confirmDialog}
     </div>
   );
 });

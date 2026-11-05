@@ -818,11 +818,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 几何死结(⟦ 预算 5.4px 放不下 icon+边距/负边距互吞邻芯片/行首出界/垂直膨胀遮挡)自此消形——
  * 无背景无边框,pill 观感退役;配色 accent(#team 走 .hn-team warn 既有分色)。
  * 2026-11-05 六改(用户裁定「把图标当作真正的文本来渲染」思想落地,emoji 定案禁用):token 原文
- * 头部铸两空格=图标占位区(⟦5.4px+2sp≈7.8px≈13.2px 预算),图标 absolute 悬于占位区 [1,12]
- * (11px 与气泡同大),文字即字形逐字排零漂移、层对齐仍由原文驱动零测量;旧无占位 token
- * (表单恢复/在途队列,瞬态)图标压 ⟦+首字形可容忍 */
+ * 头部铸占位空格=图标占位区,图标 absolute 悬于占位区,文字即字形逐字排零漂移、层对齐仍由原文
+ * 驱动零测量;旧无占位 token(表单恢复/在途队列,瞬态)图标压 ⟦+首字形可容忍。
+ * 2026-11-06 七改(用户实测「图标调大一些不然不协调」):图标 11→14px 与正文同大,占位区
+ * 2→3 空格(⟦6.3+3sp≈11.4≈17.7px 预算,图标 [1.5,15.5] 容得下且零压字);断行保持 display:inline
+ * 与 textarea CJK 逐字断行同构(inline-block 整体挪行=行数分歧=更大利差,已试即弃) */
 .sx-composer-highlight .hn-ref .hn-ref-at { color: transparent; }
-.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 1px; top: 50%; transform: translateY(-50%); width: 11px; height: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.sx-composer-highlight .hn-ref .hn-ref-ico { position: absolute; left: 1.5px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; }
 .sx-composer-highlight .hn-ref .hn-ref-ico svg { width: 100%; height: 100%; }
 /* 2026-11-05 用户裁定「有背景的 chip 左右都要有合理边距(同用户气泡),/ # $ 正文 终端 网页;
  * 文件无背景除外」:对称 padding 6px+负 margin 抵消——pill 左右各延 6px(常见落点=空格/行缘,
@@ -845,7 +847,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .ref-chip-preview { position: fixed; z-index: 80; width: min(300px, calc(100vw - 24px)); max-height: 300px; display: flex; flex-direction: column; overflow: hidden; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); box-shadow: var(--elev-prominent); pointer-events: auto; }
 /* 2026-11-05 用户裁定「第一行显示 chip 的 图标+名称」:头部固定不随内容滚动,内容区自滚 */
 .ref-chip-preview-head { display: inline-flex; align-items: center; gap: 5px; flex: none; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border); color: var(--fg-secondary); font-size: 12px; }
-.ref-chip-preview-head svg { width: 12px; height: 12px; }
+.ref-chip-preview-head svg { width: 14px; height: 14px; }
 .ref-chip-preview pre { margin: 0; flex: 1; min-height: 0; overflow: auto; font: 11px var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
  * 左侧是裁剪边界,图标落到 @ 字符位并以 chip 底色填充 */.sx-composer-highlight .hn-file { position: relative; }.sx-composer-highlight .hn-file .hn-file-at { color: transparent; }
@@ -1459,9 +1461,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter);
 }.entry:hover .run-stats, .entry:focus-within .run-stats { opacity: 1; }
 /* G14.11:流式中最后工具行尾部的 圆圈+步数+tokens(常驻) */
-/* 用户编辑卡(§7):2026-11-05 用户裁定「去掉包装,不是一个整体」——撤浮卡面(elevated 面底/
- * 海拔阴影/内边距全撤),编辑态即消息流内的裸输入区,与气泡本体齐宽无缝;§13.1-1 浮卡面规则的
- * 用户明示局部豁免。占满流区宽 */.user-edit-card { display: flex; flex-direction: column; gap: 6px; width: 100%; background: transparent; box-shadow: none; padding: 0; animation: sx-fade-in var(--dur-basic) var(--ease-enter); }.user-edit-input { width: 100%; min-height: 44px; background: transparent; border: none; outline: none; color: var(--fg); font: inherit; resize: none; }.user-edit-input::placeholder { color: var(--fg-tertiary); opacity: 0.6; }.user-edit-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }.user-edit-send { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px; background: var(--fg); color: var(--fg-on-solid); transition: background var(--dur-basic) var(--ease-enter); }.user-edit-send:hover { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
+/* 用户编辑卡(§7):composer 同款浮卡(elevated+radius-composer+海拔),占满流区宽。
+ * 2026-11-05 反悔回滚:上轮把「去掉包装」误读为撤卡面——用户所指实为「芯片不被当整体」
+ * (「编辑框怎么没了」即此),卡面恢复;真正的包装问题=芯片原子性,已由 use-token-guards 落 */.user-edit-card { display: flex; flex-direction: column; gap: 6px; width: 100%; background: var(--surface-elevated); border-radius: var(--radius-composer); box-shadow: var(--elev-composer); padding: 12px 14px 10px; animation: sx-fade-in var(--dur-basic) var(--ease-enter); }.user-edit-input { width: 100%; min-height: 44px; background: transparent; border: none; outline: none; color: var(--fg); font: inherit; resize: none; }.user-edit-input::placeholder { color: var(--fg-tertiary); opacity: 0.6; }.user-edit-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }.user-edit-send { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px; background: var(--fg); color: var(--fg-on-solid); transition: background var(--dur-basic) var(--ease-enter); }.user-edit-send:hover { background: color-mix(in srgb, var(--fg) 88%, var(--surface)); }
 
 /* 新条目入场(§8):淡入+4px 上移,每条目挂载一次(key 稳定,流式更新不重触发) */
 @keyframes sx-entry-in { from { opacity: 0; transform: translateY(4px); } }.chat .entry { animation: sx-entry-in 0.2s var(--ease-enter); }
@@ -3305,3 +3307,17 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-sidechat-draft .chat-slot { flex: 1; min-height: 0; }
 .sx-sidechat-draft-hint { flex: none; text-align: center; color: var(--fg-tertiary); font-size: 12px; padding: 18px 16px 0; }
 .sx-sidechat-draft-composer { display: flex; flex-direction: column; flex: none; margin: 0 auto 12px; }
+
+/* 回退二次确认弹窗(2026-11-05):遮罩/外壳沿用 sx-editor-modal,此处只收窄与排版 */
+.sx-turn-confirm { width: min(90vw, 460px); }
+.sx-turn-confirm-body { display: flex; flex-direction: column; gap: 10px; padding: 12px; font-size: 13px; color: var(--fg); min-height: 0; }
+.sx-turn-confirm-body p { margin: 0; line-height: 1.5; }
+.sx-turn-confirm-note { font-size: 12px; color: var(--fg-secondary); }
+.sx-turn-confirm-files { list-style: none; margin: 0; padding: 6px 8px; max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); font: 12px var(--font-mono); }
+.sx-turn-confirm-files li { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; overflow-wrap: anywhere; }
+.sx-turn-confirm-tag { flex: none; color: var(--fg-secondary); font-family: inherit; }
+.sx-turn-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+.sx-turn-confirm-actions button { padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
+.sx-turn-confirm-actions button:hover:not(:disabled) { border-color: var(--border-strong); }
+.sx-turn-confirm-actions button:disabled { opacity: 0.5; cursor: default; }
+.user-edit-hint { font-size: 12px; color: var(--warn); padding: 2px 4px; }
