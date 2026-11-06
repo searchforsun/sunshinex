@@ -22,8 +22,8 @@ import type { Connection } from '../../connection';
  * (useComposerKeys 参数化注入,面板态归本组件私有);差异只有三件:无权限档/上下文圆环/模型
  * pills,footer 左侧只留「+」,右侧=取消 X(32px 与发送钮同规格)+发送。@短写记账(pickRelRef)
  * 由 Chat 共享注入——编辑卡选中的文件在发送期(宿主 resendFrom)照样展开。
- * 弹出层视口适配:面板锚卡根向上开(bottom:100%),编辑卡不在视口底时上溢——每次渲染量测可见
- * 面板矩形,越界即把最近的滚动祖先滚回界内(用户裁定「自动将编辑框向下滚动」)。
+ * 弹出层视口适配:面板锚卡根向上开(bottom:100%),编辑卡贴转录顶部时上溢——每次渲染量测可见
+ * 面板矩形,上方不够即整卡临时下移(关面板回原位),下方越界滚最近的滚动祖先带回。
  */
 export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChange, images, onRemoveImage, onImageOpen, onAddImageFiles, onSend, onCancel, onOpenFile }: {
   conn: Connection;
@@ -226,25 +226,54 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
     [refPal, refPanelItems, refActive, filePal, filePalFiles, filePalActive, pillOpen, slashPanelItems, cmdActive, value],
   );
 
-  /** 弹出层视口适配:面板矩形越界即滚最近滚动祖先,把面板带回视口(向下越界滚 down,向上越界滚 up) */
+  /** 弹出层视口适配。上方空间不足(2026-11-07 用户裁定「上面不够时整体向下移动一下,弹窗关掉后
+   *  再回到原来位置」):面板向上开,编辑卡贴转录顶部时被滚动容器上沿(会话顶栏下缘)裁掉,且滚动位
+   *  已到顶、滚无可滚——整张卡(连面板)translateY 下移到面板完整可见,面板关闭即清位移回原位
+   *  (transform 不占布局,滚动位零副作用)。下方越界照旧滚最近滚动祖先带回 */
+  const shiftRef = useRef(0);
   useLayoutEffect(() => {
     const zone = zoneRef.current;
-    if (zone === null) return;
+    const wrap = cardRef.current;
+    if (zone === null || wrap === null) return;
+    const setShift = (px: number): void => {
+      shiftRef.current = px;
+      wrap.style.transform = px > 0 ? `translateY(${px}px)` : '';
+      // 下移后的卡压在后续条目上:抬层防被定位条目盖住(低于 dock 的 5)
+      wrap.style.zIndex = px > 0 ? '4' : '';
+    };
     const pal = zone.querySelector<HTMLElement>('.file-palette,.ref-palette,.cmd-palette,.sx-plus-panel');
-    if (pal === null) return;
-    const rect = pal.getBoundingClientRect();
-    const PAD = 12;
-    let dy = 0;
-    if (rect.bottom > window.innerHeight - PAD) dy = rect.bottom - (window.innerHeight - PAD);
-    else if (rect.top < PAD) dy = rect.top - PAD;
-    if (dy === 0) return;
-    for (let el: HTMLElement | null = cardRef.current; el !== null; el = el.parentElement) {
+    if (pal === null) {
+      if (shiftRef.current !== 0) setShift(0);
+      return;
+    }
+    let scroller: HTMLElement | null = null;
+    for (let el: HTMLElement | null = wrap.parentElement; el !== null; el = el.parentElement) {
       const oy = getComputedStyle(el).overflowY;
       if (oy === 'auto' || oy === 'scroll') {
-        el.scrollTop += dy;
-        return;
+        scroller = el;
+        break;
       }
     }
+    const PAD = 12;
+    const fit = (): void => {
+      // 自然位量测:先撤位移再量——带位移量测会把「已下移」误判为够了而回弹
+      wrap.style.transform = '';
+      const rect = pal.getBoundingClientRect();
+      const topBound = Math.max(0, scroller?.getBoundingClientRect().top ?? 0) + PAD;
+      const dockTop = wrap.closest('.sx-main')?.querySelector('.chat-dock')?.getBoundingClientRect().top;
+      const room = Math.min(window.innerHeight, dockTop ?? window.innerHeight) - PAD - wrap.getBoundingClientRect().bottom;
+      const need = Math.round(Math.min(topBound - rect.top, Math.max(0, room)));
+      // 面板开着期间位移只增不减(候选项随输入增减,卡位不跟着上下跳);关面板归零回原位
+      const shift = Math.max(shiftRef.current, need, 0);
+      setShift(shift);
+      if (shift > 0) return;
+      if (rect.bottom > window.innerHeight - PAD && scroller !== null) scroller.scrollTop += rect.bottom - (window.innerHeight - PAD);
+    };
+    fit();
+    // 面板自身异步长高(+ 面板的命令/技能清单后到)不经本组件重渲染——盯面板尺寸重算
+    const ro = new ResizeObserver(fit);
+    ro.observe(pal);
+    return () => ro.disconnect();
   });
 
   /** 宽度对齐底部输入框(2026-11-06 用户实测「宽度没有对齐,太窄」):编辑卡在转录内容盒内,
