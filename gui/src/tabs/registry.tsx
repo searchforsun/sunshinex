@@ -412,7 +412,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
       ) : (
         // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
-          <p>{t('A side branch of the main chat: discuss, analyze and run small tasks around it, without touching the main context.', '主会话的并行分支：围绕主会话内容辅助讨论、圈选提问与执行小任务，不影响主会话上下文。')}</p>
+          <p>{t('A parallel branch of the main chat for auxiliary discussion.', '主会话的并行分支，用于辅助讨论，不影响主会话。')}</p>
         </div>
       ),
     },
@@ -443,7 +443,7 @@ function SideChatDraft({ uid, insert, onUpgrade, conn, root }: { uid: string; in
     <div className="sx-sidechat sx-sidechat-draft">
       <div className="sx-sidechat-draft-head">
         <h2>{t('Side chat', '辅助会话')}</h2>
-        <p role="status">{t('A side branch of the main chat: discuss, analyze and run small tasks around it, without touching the main context.', '主会话的并行分支：围绕主会话内容辅助讨论、圈选提问与执行小任务，不影响主会话上下文。')}</p>
+        <p role="status">{t('A parallel branch of the main chat for auxiliary discussion.', '主会话的并行分支，用于辅助讨论，不影响主会话。')}</p>
       </div>
       <div className="composer sx-sidechat-draft-composer">
         <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} />

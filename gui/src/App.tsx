@@ -318,7 +318,7 @@ function AppShell(): JSX.Element {
     // 本会话是辅助会话(用于辅助主会话相关内容,不影响主会话)。模型此前只能从复制内容自行推断
     const mainTitle = await conn.getSessionTitle(openSessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : openSessionId)).catch(() => openSessionId);
     if (text.trim() !== '') {
-      const note = `[辅助会话] 以上上下文分叉自主会话「${mainTitle}」；本会话是主会话的辅助会话，用于围绕主会话内容做辅助讨论、分析与小任务，不影响主会话。以下为本次请求：
+      const note = `[Side chat] The context above is forked from main chat session "${mainTitle}". This is a side conversation for auxiliary discussion and small tasks around the main chat's content; it does not affect the main session. The request below follows:
 
 `;
       setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: note + text }));
