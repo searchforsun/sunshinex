@@ -102,8 +102,6 @@ export interface TeamManifest {
   enabled: boolean;
   source: 'project' | 'user';
   sourceDir: string;
-  /** 被更高优先级同 id 遮蔽时 = 胜者来源名 */
-  shadowedBy?: 'project' | 'user';
   /** members 中未解析到的 id（仅调用方提供 agentIds 时填充） */
   missing: string[];
 }
@@ -484,7 +482,7 @@ export type LimitReason = Extract<StopReason, 'max-steps' | 'deadline' | 'budget
  *  消费面（messages.ts buildMessages）按动作分流——note/notice 同义分裂由此可检 */
 export type ChainAction =
   | 'task' /* 指令行：任务/plan 步/goal（reactor/subagent/tui/context/graph） */
-  | 'plan' /* 计划书全文（planFlow 批准后注入,一次;messages 按 task 同形态透出） */
+  | 'plan' /* 计划书全文（历史档回放兼容词位:现行计划书经 exit_plan 协议以 note 行入链;messages 按 task 同形态透出） */
   | 'reply' /* 收束正文（reactor） */
   | 'note' /* 运行备注（reactor/subagent/tui/graph） */
   | 'notice' /* 用户可见提示（reactor/loop/harness/context/tui） */

@@ -129,7 +129,7 @@ export class BuiltinFacade {
     }
     this.log(`real CDP endpoint: 127.0.0.1:${this.realPort}/${this.realBrowserPath}`);
     this.httpSrv = http.createServer((req, res) => {
-      // HTTP 面:GUI 代理(handleCdpTargets)消费 /json/list——透传真实列表并按白名单过滤
+      // HTTP 面:CDP 客户端端点发现(connectOverCDP 先取 /json/version 再 /json/list)——透传真实列表并按白名单过滤
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
       if (url.pathname === '/json/list' || url.pathname === '/json' || url.pathname === '/json/version') {
         void (async () => {

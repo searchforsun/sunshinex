@@ -107,6 +107,54 @@ function mergedChildEnv(cfg: McpServerConfig): Record<string, string> {
   return { ...merged, ...(cfg.env ?? {}) };
 }
 
+/** 宿主面 stdio 附加：stderr 落日志面(见 attachStderrLog;SDK 缺省丢弃 stderr)；cwd 仅插件贡献 server
+ *  携带（合成期已解析为绝对路径），SDK 1.30 StdioServerParameters 原生支持，缺省不落键保持既有 spawn 语义 */
+const hostStdioExtra = (cfg: McpServerConfig): { stderr: 'pipe'; cwd?: string } => ({
+  stderr: 'pipe',
+  ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
+});
+
+/** 传输装配单点：stdio/http/sse 三分支，宿主连接面与 serve probe 探测面共用（此前照抄双源，装配面改
+ *  签名或加传输类型必漂移）。形态字段缺失或 url 非法均装配期 fail-fast，失败抛 plain Error 且 message=
+ *  `MCP server connection failed (name): 原因`（宿主面 catch 包 CodedToolError 同码同文案，探测面直接用）。
+ *  2026-10-26：cfg.headers 随 http/sse 请求透传（requestInit.headers——Bearer 鉴权面，gitnexus
+ *  风格 `{url, headers}` 主流形态）；SDK 对 SSE 的 GET 流同样吃 requestInit 头 */
+export function buildMcpTransport(
+  cfg: McpServerConfig,
+  opts: {
+    /** stdio 子进程环境（宿主 mergedChildEnv 整份继承 / probe 探测面隔离最小环境） */
+    env: (cfg: McpServerConfig) => Record<string, string>;
+    /** 宿主面 stdio 附加（stderr 日志面/cwd）；probe 临时传输不携带 */
+    stdioExtra?: (cfg: McpServerConfig) => { stderr?: 'pipe'; cwd?: string };
+  },
+): Transport {
+  const fail = (msg: string): Error => new Error(`MCP server connection failed (${cfg.name}): ${msg}`);
+  switch (cfg.transport ?? 'stdio') {
+    case 'http':
+    case 'sse': {
+      if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
+      try {
+        const url = new URL(cfg.url);
+        const reqInit = cfg.headers !== undefined ? { requestInit: { headers: cfg.headers } } : undefined;
+        return cfg.transport === 'sse'
+          ? new SSEClientTransport(url, reqInit)
+          : new StreamableHTTPClientTransport(url, reqInit);
+      } catch (e) {
+        throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    case 'stdio':
+    default:
+      if (!cfg.command) throw fail('stdio transport requires a command');
+      return new StdioClientTransport({
+        command: cfg.command,
+        args: cfg.args ?? [],
+        env: opts.env(cfg),
+        ...(opts.stdioExtra?.(cfg) ?? {}),
+      });
+  }
+}
+
 /**
  * 终结 stdio 子进程树（Task 28 bug 修复）。机理：MCP SDK 的 client.close() 在 Windows 上只 kill 直接
  * 子进程（Node kill() = TerminateProcess 单进程语义），而插件 server 常再拉孙进程（computer-use 的
@@ -240,37 +288,13 @@ export class McpHost {
     }
   }
 
-  /** 传输工厂：stdio/http/sse 三分支收敛一处；形态字段缺失或 url 非法均装配期 fail-fast（与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输）。
-   *  2026-10-26：cfg.headers 随 http/sse 请求透传（requestInit.headers——Bearer 鉴权面，gitnexus
-   *  风格 `{url, headers}` 主流形态）；SDK 对 SSE 的 GET 流同样吃 requestInit 头 */
+  /** 传输工厂（宿主面）：buildMcpTransport 单点 + 失败收束 CodedToolError（形态字段缺失或 url 非法均装配期
+   *  fail-fast，与连接失败同码 MCP_CONNECT_FAILED，失败语义不分传输）。stdio 附加 stderr 落日志面与插件贡献 cwd */
   private makeTransport(cfg: McpServerConfig): Transport {
-    const fail = (msg: string): CodedToolError =>
-      new CodedToolError('MCP_CONNECT_FAILED', `MCP server connection failed (${cfg.name}): ${msg}`);
-    switch (cfg.transport ?? 'stdio') {
-      case 'http':
-      case 'sse': {
-        if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
-        try {
-          const url = new URL(cfg.url);
-          const reqInit = cfg.headers !== undefined ? { requestInit: { headers: cfg.headers } } : undefined;
-          return cfg.transport === 'sse'
-            ? new SSEClientTransport(url, reqInit)
-            : new StreamableHTTPClientTransport(url, reqInit);
-        } catch (e) {
-          throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      case 'stdio':
-      default:
-        if (!cfg.command) throw fail('stdio transport requires a command');
-        // cwd 仅插件贡献 server 携带（合成期已解析为绝对路径）；SDK 1.30 StdioServerParameters 原生支持，缺省不落键保持既有 spawn 语义
-        return new StdioClientTransport({
-          command: cfg.command,
-          args: cfg.args ?? [],
-          env: mergedChildEnv(cfg),
-          stderr: 'pipe', // 落日志面(见 attachStderrLog;SDK 缺省丢弃 stderr)
-          ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
-        });
+    try {
+      return buildMcpTransport(cfg, { env: mergedChildEnv, stdioExtra: hostStdioExtra });
+    } catch (e) {
+      throw new CodedToolError('MCP_CONNECT_FAILED', e instanceof Error ? e.message : String(e));
     }
   }
 

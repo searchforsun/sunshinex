@@ -78,6 +78,7 @@ function startHost(name: string, pluginDir: string): Promise<{ port: number; tok
       else hosts.delete(name);
     });
     child.unref();
+    // stdio 流运行时有 unref(Node 计数面)但 @types/node 的流类型未声明——窄断言+可选调用,daemon 不被插件管道钉活
     (child.stdout as unknown as { unref?: () => void }).unref?.();
     (child.stdin as unknown as { unref?: () => void }).unref?.();
   });

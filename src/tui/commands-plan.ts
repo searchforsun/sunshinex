@@ -74,8 +74,7 @@ export async function planAwaitDecisionOn(ctrl: SessionController, name: string,
 /** 计划卡裁决回填（2026-11-03 无感化）：摘卡清反馈态 → 裁决回填（executor 恢复）。
  *  空反馈=放弃本轮:中断 run 回输入态——decide 回填与信号双通道汇于 executor 收尾 */
 export async function confirmPlanOn(ctrl: SessionController, yes: boolean, feedback?: string, mode?: PlanLandMode): Promise<void> {
-  const pending = ctrl.pendingPlan;
-  if (!pending) return;
+  if (!ctrl.pendingPlan) return;
   ctrl.pendingPlan = undefined;
   ctrl.planFeedbackMode = undefined;
   const decide = ctrl.planDecide;
@@ -90,9 +89,7 @@ export async function confirmPlanOn(ctrl: SessionController, yes: boolean, feedb
     interrupt(ctrl);
     ctrl.state = { ...ctrl.state, status: 'idle', pauseConfirm: undefined };
     ctrl.pushMsg('system', t('Plan discarded, back to input', '已放弃执行计划，回到输入态'));
-    return;
   }
-  void pending;
 }
 
 /** 批准落所选档（2026-11-03 批准卡三选;2026-11-04 泛化:可写域=维持当前档,同值幂等直落）：

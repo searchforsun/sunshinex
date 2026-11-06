@@ -7,7 +7,7 @@
 | 能力 | Linux | macOS | Windows |
 |------|-------|-------|---------|
 | 安装 / 构建 / 自检 | 支持 | 支持 | 支持 |
-| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings / tui） | 支持 | 支持 | 支持（单行命令） |
+| CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings；TUI 由裸命令或路径形态进入） | 支持 | 支持 | 支持（单行命令） |
 | 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测；无 Git 时 PowerShell，末位 cmd 兜底） |
 | GUI 浏览器模式（`serve` daemon + web 前端） | 支持 | 支持 | 支持 |
 | GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS 单安装包） |

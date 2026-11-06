@@ -404,6 +404,8 @@ export const ToolEntryView = memo(function ToolEntryView({
             onClick={(e) => {
               e.stopPropagation();
               if (typeof conn.sessionPlans !== 'function') return;
+              // 拉取失败（会话已回收/档读失）降级无操作——本组件无 op-error 通道（fetchDiff 404 退单列同款口径）；
+              // 名未命中退开最新一份兜底（修订覆盖写=同会话单份）
               void conn.sessionPlans(sessionId).then((r) => {
                 const hit = r.plans.find((pl) => pl.name === planName) ?? r.plans[0];
                 if (hit !== undefined && onOpenFile !== undefined) onOpenFile(hit.path);

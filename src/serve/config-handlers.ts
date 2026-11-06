@@ -1333,23 +1333,21 @@ export function handleMemoryStatsGet(io: ConfigHandlerIo, req: http.IncomingMess
 
 /** POST /memory/rm {root, slugs}(G10-C1d):记忆删除(记忆面板多选;root 寻址与 TUI /memory-rm 同形) */
 export async function handleMemoryRm(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  {
-    const parsed = await io.readJson(req);
-    if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
-    const body = parsed.body as { root?: unknown; slugs?: unknown };
-    if (typeof body.root !== 'string' || body.root.length === 0 || !Array.isArray(body.slugs) || body.slugs.some((x) => typeof x !== 'string')) {
-      return io.send(res, 400, { error: 'root and slugs required' });
-    }
-    const store = new MemoryStore(body.root);
-    const removed: string[] = [];
-    const failed: Array<{ slug: string; error: string }> = [];
-    for (const slug of body.slugs as string[]) {
-      const r = store.remove(slug);
-      if (r.ok) removed.push(slug);
-      else failed.push({ slug, error: r.error.message });
-    }
-    io.send(res, 200, { removed, failed });
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const body = parsed.body as { root?: unknown; slugs?: unknown };
+  if (typeof body.root !== 'string' || body.root.length === 0 || !Array.isArray(body.slugs) || body.slugs.some((x) => typeof x !== 'string')) {
+    return io.send(res, 400, { error: 'root and slugs required' });
   }
+  const store = new MemoryStore(body.root);
+  const removed: string[] = [];
+  const failed: Array<{ slug: string; error: string }> = [];
+  for (const slug of body.slugs as string[]) {
+    const r = store.remove(slug);
+    if (r.ok) removed.push(slug);
+    else failed.push({ slug, error: r.error.message });
+  }
+  io.send(res, 200, { removed, failed });
 }
 
 /** GET /memory?root=(G10-C6 记忆面板):清单(slug/type/created/modified/description) */

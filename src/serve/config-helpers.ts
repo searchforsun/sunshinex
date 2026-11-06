@@ -1,10 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { buildMcpTransport } from '../harness/mcp/client';
 import { flattenSettings, loadGlobalSettings, parseSettingsFile } from '../config/settings';
 import { parseProvidersSpec } from '../config/providers';
 import type { ModelChoice } from '../config/providers';
@@ -148,29 +146,10 @@ function probeChildEnv(cfg: McpServerConfig): Record<string, string> {
   return { ...merged, ...(cfg.env ?? {}) };
 }
 
-/** probe 临时传输装配：照 McpHost.makeTransport 三分支抄（探测面无 ToolRegistry/CodedToolError 收束，
- *  plain Error 同文案形；形态字段缺失或 url 非法与连接失败同语义）；cfg.headers 随 http/sse 透传（同装配面） */
+/** probe 临时传输装配：buildMcpTransport 单点（McpHost 正式装配同源，三分支零双写；探测面无
+ *  CodedToolError 收束——plain Error 直用，文案与正式装配一字不差）；cfg.headers 随 http/sse 透传（同装配面） */
 function makeProbeTransport(cfg: McpServerConfig): Transport {
-  const fail = (msg: string): Error => new Error(`MCP server connection failed (${cfg.name}): ${msg}`);
-  switch (cfg.transport ?? 'stdio') {
-    case 'http':
-    case 'sse': {
-      if (!cfg.url) throw fail(`${cfg.transport} transport requires a url`);
-      try {
-        const url = new URL(cfg.url);
-        const reqInit = cfg.headers !== undefined ? { requestInit: { headers: cfg.headers } } : undefined;
-        return cfg.transport === 'sse'
-          ? new SSEClientTransport(url, reqInit)
-          : new StreamableHTTPClientTransport(url, reqInit);
-      } catch (e) {
-        throw fail(`Invalid url: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    case 'stdio':
-    default:
-      if (!cfg.command) throw fail('stdio transport requires a command');
-      return new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [], env: probeChildEnv(cfg) });
-  }
+  return buildMcpTransport(cfg, { env: probeChildEnv });
 }
 
 export const PROBE_CONNECT_TIMEOUT_MS = 10_000;
@@ -220,6 +199,15 @@ export async function probeMcpServer(
 
 // ---------- G8c T5：/settings/agents 面模块级助手（agent.md 输入校验；生成器与 AGENT_ID_RE 已迁 catalog/agents） ----------
 
+/** frontmatter 单行词法守卫（agents/teams 两输入面共用单点）：undefined 直过、非串与含换行（会注入伪键，
+ *  多行内容属 body 面）即 throw→400 形 */
+const frontmatterOneLine = (label: string, v: unknown): string | undefined => {
+  if (v === undefined) return undefined;
+  if (typeof v !== 'string') throw new Error(`${label} must be a string`);
+  if (/\r|\n/.test(v)) throw new Error(`${label} must be single-line (multi-line content belongs in body)`);
+  return v;
+};
+
 /** upsert frontmatter 输入校验+归一（G8c T5，validateMcpRawContent 同款 throw→400 形态）：name 必填
  *  非空白单行；可选键按需——description/isolation/executor 须单行字符串（frontmatter 是单行 KV 词法，
  *  含换行的值会注入伪键，多行内容属 body 面）；memory 须布尔。name 先行 trim 归一（parseFrontmatterKV
@@ -232,12 +220,7 @@ export function parseAgentFrontmatterInput(raw: unknown): AgentFrontmatterInput 
   if (typeof f.name !== 'string' || f.name.trim().length === 0 || /\r|\n/.test(f.name)) {
     throw new Error('frontmatter.name required (non-empty single-line string)');
   }
-  const oneLine = (label: string, v: unknown): string | undefined => {
-    if (v === undefined) return undefined;
-    if (typeof v !== 'string') throw new Error(`${label} must be a string`);
-    if (/\r|\n/.test(v)) throw new Error(`${label} must be single-line (multi-line content belongs in body)`);
-    return v;
-  };
+  const oneLine = frontmatterOneLine;
   const description = oneLine('frontmatter.description', f.description);
   const isolation = oneLine('frontmatter.isolation', f.isolation);
   const executor = oneLine('frontmatter.executor', f.executor);
@@ -278,12 +261,7 @@ export function parseTeamFrontmatterInput(raw: unknown): TeamFrontmatterInput {
   if (typeof f.name !== 'string' || f.name.trim().length === 0 || /\r|\n/.test(f.name)) {
     throw new Error('frontmatter.name required (non-empty single-line string)');
   }
-  const oneLine = (label: string, v: unknown): string | undefined => {
-    if (v === undefined) return undefined;
-    if (typeof v !== 'string') throw new Error(`${label} must be a string`);
-    if (/\r|\n/.test(v)) throw new Error(`${label} must be single-line (multi-line content belongs in body)`);
-    return v;
-  };
+  const oneLine = frontmatterOneLine;
   const description = oneLine('frontmatter.description', f.description);
   const version = oneLine('frontmatter.version', f.version);
   const lead = oneLine('frontmatter.lead', f.lead);

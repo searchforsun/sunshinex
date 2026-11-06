@@ -131,7 +131,6 @@ export function builtinTools(
   const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard, plan, teams, agents } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
-  const execOut = (stdout: string, stderr = ''): ExecResult => ({ exitCode: 0, stdout, stderr, timedOut: false });
   const backend = safety.backend;
 
   /** 写族落盘共用尾段（D41 留座清偿：write/edit 两执行器同构序列收敛）：记忆闸门 → 影子快照
@@ -799,11 +798,9 @@ export function builtinTools(
   return tools;
 }
 
-/** 模块级 execOut（team/agent 两工厂回执单点，形状=skill 工具同款 in-scope 助手）：工厂在模块层、
- *  builtinTools 内的同名 execOut 闭包不可达——同形状落此；builtinTools 内局部 const 遮蔽本函数（合法、
- *  语义各自一致），工厂体保持 brief 逐字 */
-function execOut(stdout: string): ExecResult {
-  return { exitCode: 0, stdout, stderr: '', timedOut: false };
+/** 回执单点（全工具共用：builtinTools 体与 team/agent 两工厂同参同形——此前同名双份，收敛为一条代码路径） */
+function execOut(stdout: string, stderr = ''): ExecResult {
+  return { exitCode: 0, stdout, stderr, timedOut: false };
 }
 
 /** load_agent_teams 工具（spec 2026-11-04 §3.3，镜像 skill 工具，2026-11-05 用户裁定更名自 team——命名准确不省略）：清单内 id 才可用、teams 是 live 的；
