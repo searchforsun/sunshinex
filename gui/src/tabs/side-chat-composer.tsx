@@ -14,6 +14,8 @@ import { useChatComposerSide } from '../pages/chat/use-chat-composer-side';
 import { flatRefItems, refTokenAt, type RefEntries, type RefPal } from '../pages/chat/ref-palette';
 import { pathBasename } from '../ui-util';
 import { useWorkspaceFiles } from '../pages/chat/use-workspace-files';
+import { PlusAddIcon } from '../sidebar/project-menu-util';
+import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 
 /**
  * 辅助会话草稿 composer(2026-11-06 用户裁定「完全复制主对话输入框的能力」):fork 前的草稿态
@@ -81,6 +83,7 @@ export function SideChatComposer(props: {
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [selModel, setSelModel] = useState<string | undefined>(undefined);
   const [selEffort, setSelEffort] = useState<string | undefined>(undefined);
+  const [plusOpen, setPlusOpen] = useState(false);
   useEffect(() => {
     conn.settings().then(
       (view) => {
@@ -101,6 +104,17 @@ export function SideChatComposer(props: {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [modelOpen, modeOpen]);
+  // + 附加面板外点收(欢迎页同款;面板内点与 + 钮自持)
+  useEffect(() => {
+    if (!plusOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element && e.target.closest('.sx-plus-panel') === null && e.target.closest('.composer-plus-btn') === null) {
+        setPlusOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [plusOpen]);
   const modeLabel = mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'read-only' ? t('Read-only', '只读模式') : mode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
   const modeRows: Array<{ separator: true } | { m: 'plan' | 'read-only' | 'acceptEdits' | 'full-access'; label: string; desc: string; icon: JSX.Element; disabled?: boolean }> = [
     { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
@@ -262,6 +276,16 @@ ${insert}`));
           };
           return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
         })()
+      ) : plusOpen ? (
+        /* + 附加面板(欢迎页同款:命令/技能插入;文件区需会话——草稿未 fork 不渲染) */
+        <ComposerPlusPanel
+          conn={conn}
+          root={root}
+          onInsert={(t2) => {
+            setText((v) => (v.trim() === '' ? t2 : `${v.replace(/\s+$/, '')} ${t2}`));
+            setPlusOpen(false);
+          }}
+        />
       ) : null}
     </>
   );
@@ -284,7 +308,18 @@ ${insert}`));
       overlays={overlays}
       highlight={renderMentionSpans(text, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true)}
       footLeft={
-        <div className="pill-anchor">
+        <>
+          <button
+            type="button"
+            className="composer-pill composer-plus-btn"
+            aria-label="add attachment"
+            aria-expanded={plusOpen}
+            data-tip={t('Add context', '添加上下文')}
+            onClick={() => setPlusOpen((v) => !v)}
+          >
+            <PlusAddIcon size={16} />
+          </button>
+          <div className="pill-anchor">
           <button
             type="button"
             className="composer-pill"
@@ -327,6 +362,7 @@ ${insert}`));
             </div>
           )}
         </div>
+        </>
       }
       footRight={
         <>
