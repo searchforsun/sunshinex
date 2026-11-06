@@ -243,14 +243,22 @@ export function useComposerKeys(deps: {
         return;
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-        // 2026-11-06 用户裁定「不要自动发出去;不要限制输入;识别到正确命令就执行,不能就当作
-        // 普通文本」:撤整行直跑分支——此前面开+有参 Enter 即 runCommand(整行),非真命令也被
-        // 命令通道吞且 .catch(()=>{}) 静默零回执。Enter 一律落 send(),真伪判定单点在 submitText
-        // (supported 清单内→命令通道,其余→普通文本);面板仅余无参补全
+        // 2026-11-06 用户裁定「撤整行直跑:不要自动发出去,真伪判定单点在 submitText」续:
+        // 面板在场(光标处于 /query 且有匹配项)时 Enter=插入高亮项(替换 query+尾随空格,光标钉
+        // 插入尾沿)——第二个 / 的选同样正常添加,绝不落发送;无匹配(面板自动关)才落 send()=
+        // 普通文本,命令真伪判定仍单点在 submitText
         const item: CmdItem | undefined = slashItems[Math.min(cmdActive, slashItems.length - 1)];
-        if (item !== undefined && !input.includes(' ')) {
+        if (slashToken !== null && item !== undefined) {
           e.preventDefault();
-          setInput((prev) => prev.slice(0, slashToken.from) + item.cmd + ' ' + prev.slice(caret)); // 补全,面板续开收参数
+          const from = slashToken.from;
+          setInput((prev) => prev.slice(0, from) + item.cmd + ' ' + prev.slice(Math.max(caret, from)));
+          requestAnimationFrame(() => {
+            const ta = inputRef.current;
+            if (ta !== null) {
+              const to = Math.min(from + item.cmd.length + 1, ta.value.length);
+              ta.setSelectionRange(to, to);
+            }
+          });
           return;
         }
       }
