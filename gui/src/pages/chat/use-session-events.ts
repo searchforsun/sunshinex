@@ -242,7 +242,9 @@ export function useSessionEvents(deps: {
   useEffect(() => {
     // G14.154 辅助对话首问:挂载即把携带的选区引用落输入框(仅一次)
     if (initialInsert !== undefined && initialInsert !== '') {
-      setInput((prev) => (prev.trim() === '' ? `${initialInsert} ` : `${prev.replace(/\s+$/, '')} ${initialInsert} `));
+      // 整替式落框(2026-11-06 用户裁定「圈选不应累积之前的」):挂载注入=新问题,草稿恢复的
+      // 旧选择不堆叠(initialInsert 仅辅助对话挂载路径携带)
+      setInput(`${initialInsert} `);
     }
     const sink: ChatSink = {
       on: (e, seq) => {
