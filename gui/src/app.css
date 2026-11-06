@@ -805,8 +805,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-composer-inputwrap .sx-composer-input { display: block; vertical-align: top; }
 /* IME 组字期:隐高亮层,textarea 实色显组字串(否则 transparent-text 把候选确认前字迹藏掉) */
 .sx-composer-inputwrap.is-composing .sx-composer-highlight { visibility: hidden; }
-.sx-composer-highlight .hn { padding: 0; }.sx-composer-highlight .hn-cmd { color: var(--accent); }
-/* G14.132 file token 无蒙版(与气泡 file-link 同视觉:icon+accent 文件名) */.sx-composer-highlight .hn-file { color: var(--accent); background: transparent; }.sx-composer-highlight .hn-skill { color: var(--accent); font-style: italic; }
+.sx-composer-highlight .hn { padding: 0; }.sx-composer-highlight .hn-cmd, .sx-composer-highlight .hn-skill { color: var(--accent); }
+/* G14.132 file token 无蒙版(与气泡 file-link 同视觉:icon+accent 文件名) */.sx-composer-highlight .hn-file { color: var(--accent); background: transparent; }
 /* 2026-11-04 §3.1 $智能体/#团队 软引用 token 分色:agent=accent 系(同 cmd)、team=warn 系
  * (12% 蒙版同 badge-warn 既有 pattern)——语义变量随主题暗/亮两套,不新增硬编码色 */.sx-composer-highlight .hn-agent { color: var(--accent); }.sx-composer-highlight .hn-team { color: var(--warn); }
 /* 2026-11-04 ref 芯片 hover 预览(用户裁定「正文/终端/网页元素等 chip hover 显示全文;文件/命令
@@ -841,8 +841,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-11-05 用户裁定「# \$ 气泡和队列没有 chip 高亮」:/$# 芯片此前只有 composer 作用域
  * 样式,气泡/队列裸文——按 .hn-ref 基础 pattern(inline-flex+tint+radius+padding 1px 6px)
  * 补非 composer 面(气泡 user-md-plain/队列 steer-row-text),配色随 composer 同变量 */
-.user-md-plain .hn-cmd, .steer-row-text .hn-cmd { color: var(--accent); }
-.user-md-plain .hn-skill, .steer-row-text .hn-skill { color: var(--accent); font-style: italic; }
+.user-md-plain .hn-cmd, .steer-row-text .hn-cmd, .user-md-plain .hn-skill, .steer-row-text .hn-skill { color: var(--accent); }
 .user-md-plain .hn-agent, .steer-row-text .hn-agent { color: var(--accent); }
 .user-md-plain .hn-team, .steer-row-text .hn-team { color: var(--warn); }
 .user-md-plain .hn-cmd, .user-md-plain .hn-skill, .user-md-plain .hn-agent, .user-md-plain .hn-team,
