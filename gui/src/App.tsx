@@ -314,7 +314,15 @@ function AppShell(): JSX.Element {
     sideSinksRef.current.set(r.sessionId, { current: null });
     // 持久化编号题(daemon fork 落 meta「辅助对话 N」;2026-10-31 用户裁定页签显编号)
     const title = await conn.getSessionTitle(r.sessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : undefined)).catch(() => undefined);
-    if (text.trim() !== '') setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: text }));
+    // 2026-11-06 用户裁定「fork 时要给模型加说明」:首条播种注入 fork 说明——以上是主会话上下文、
+    // 本会话是辅助会话(用于辅助主会话相关内容,不影响主会话)。模型此前只能从复制内容自行推断
+    const mainTitle = await conn.getSessionTitle(openSessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : openSessionId)).catch(() => openSessionId);
+    if (text.trim() !== '') {
+      const note = `[辅助会话] 以上上下文分叉自主会话「${mainTitle}」；本会话是主会话的辅助会话，用于围绕主会话内容做辅助讨论、分析与小任务，不影响主会话。以下为本次请求：
+
+`;
+      setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: note + text }));
+    }
     const patch = { sideId: r.sessionId, ...(title !== undefined ? { title } : {}) };
     setTabStates((s) => patchTabMeta(patchTabMeta(s, openSessionId, uid, patch), WELCOME_TAB_SEAT, uid, patch));
   };
@@ -1185,6 +1193,8 @@ function AppShell(): JSX.Element {
                       openFilePath: openFileTab, // 目录回抛走左树定位/配置打开方式外开(2026-10-30)
                       closeTab: closeTabInSession,
                       startSideChat,
+                      openMemory: openMemoryTab,
+                      openLearned: openLearnedTab,
                       upgradeSideChat,
                       sideGoal: sideGoals.get(t.uid),
                       onSideGoalDone: (uid2: string) => setSideGoals((m) => { const n = new Map(m); n.delete(uid2); return n; }),

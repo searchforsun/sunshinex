@@ -99,6 +99,10 @@ export interface TabRenderProps {
   /** G14.154 辅助对话带问启动(文件选区「在辅助对话中提问」通道)——开/聚焦草稿页,首条发送
    *  才 fork(2026-11-04 用户裁定,见 upgradeSideChat) */
   readonly startSideChat?: (insert?: string) => void;
+  /** 记忆/学习技能页签+定位(2026-11-06 用户裁定「辅助会话里点击技能、记忆、文件等与主对话一致」):
+   *  App openMemoryTab/openLearnedTab——辅助对话 Chat 回显行点击走主对话同一开签+定位口径 */
+  readonly openMemory?: (focus?: string) => void;
+  readonly openLearned?: (focus?: string) => void;
   /** 2026-11-04 草稿升级(首条发送才 fork):App 注入——fork 主会话(运行中亦放行)、取编号题、
    *  params 落 sideId 并登记首条目标(sideGoal);拒绝(无会话/连接断)以 rejection 上抛 */
   readonly upgradeSideChat?: (uid: string, text: string) => Promise<void>;
@@ -392,6 +396,13 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             fixedTitle=""
             sideChat
             initialInsert={p.params.insert}
+            // 跳转面与主对话同构(2026-11-06 用户裁定):文件/审查/浏览器/记忆/学习技能均为工作区
+            // 维度,复用同一开签口径;子智能体转录/任务板/待办属主会话投影,辅助对话不接(点开=错会话数据)
+            onOpenFile={fileTabOf(p)}
+            onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
+            onOpenWeb={(url) => p.openTab('web', { url })}
+            onOpenMemory={p.openMemory}
+            onOpenLearned={p.openLearned}
             pendingGoal={p.sideGoal}
             onPendingGoalDone={() => p.onSideGoalDone?.(p.uid)}
           />
@@ -401,7 +412,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
       ) : (
         // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
-          <p>{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</p>
+          <p>{t('A side branch of the main chat: discuss, analyze and run small tasks around it, without touching the main context.', '主会话的并行分支：围绕主会话内容辅助讨论、圈选提问与执行小任务，不影响主会话上下文。')}</p>
         </div>
       ),
     },
@@ -432,7 +443,7 @@ function SideChatDraft({ uid, insert, onUpgrade, conn, root }: { uid: string; in
     <div className="sx-sidechat sx-sidechat-draft">
       <div className="sx-sidechat-draft-head">
         <h2>{t('Side chat', '辅助会话')}</h2>
-        <p role="status">{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</p>
+        <p role="status">{t('A side branch of the main chat: discuss, analyze and run small tasks around it, without touching the main context.', '主会话的并行分支：围绕主会话内容辅助讨论、圈选提问与执行小任务，不影响主会话上下文。')}</p>
       </div>
       <div className="composer sx-sidechat-draft-composer">
         <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} />
