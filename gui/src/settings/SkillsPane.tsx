@@ -93,16 +93,19 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
   const [envLocked, setEnvLocked] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  /** settings 视图 → 停用集合+env 锁态(初态拉取与切换落定回读两面共用单点) */
+  const applyDisabledView = (view: SettingsView): void => {
+    const row = view.keys.find((k) => k.key === 'disabledSkills');
+    const raw = typeof row?.value === 'string' ? row.value : '';
+    setDisabledDirs(new Set(raw.split(',').map((p) => p.trim()).filter((p) => p !== '')));
+    setEnvLocked(row?.envOverride === true);
+  };
   /** 设置值拉取(开关初态):settings keys 行 disabledSkills;失败静默(全开缺省,开关仍可写) */
   useEffect(() => {
     let alive = true;
     conn.settings().then(
       (view) => {
-        if (!alive) return;
-        const row = view.keys.find((k) => k.key === 'disabledSkills');
-        const raw = typeof row?.value === 'string' ? row.value : '';
-        setDisabledDirs(new Set(raw.split(',').map((p) => p.trim()).filter((p) => p !== '')));
-        setEnvLocked(row?.envOverride === true);
+        if (alive) applyDisabledView(view);
       },
       () => undefined,
     );
@@ -127,12 +130,7 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
       .putSettings('global', undefined, { disabledSkills: csv === '' ? null : csv })
       .catch(() => undefined)
       .then(() => conn.settings())
-      .then((view) => {
-        const kv = view.keys.find((k) => k.key === 'disabledSkills');
-        const raw = typeof kv?.value === 'string' ? kv.value : '';
-        setDisabledDirs(new Set(raw.split(',').map((p) => p.trim()).filter((p) => p !== '')));
-        setEnvLocked(kv?.envOverride === true);
-      })
+      .then(applyDisabledView)
       .catch(() => undefined)
       .finally(() => setBusyId(null));
   };
