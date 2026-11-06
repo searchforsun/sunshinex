@@ -976,7 +976,7 @@ export function WelcomeComposer({
               >
                 {/* 2026-10-29 用户裁定:默认兜底显示当前(首个)provider 的第一个 model——不再笼统「默认模型」 */}
                 {baseModelName(selModel ?? defaultModel ?? modelChoices[0]?.id)}
-                {selEffort !== undefined && <EffortChip effort={selEffort} />}
+                <EffortChip effort={selEffort ?? 'medium'} />
                 <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {modelOpen && (
