@@ -8,8 +8,7 @@
 
 import { lazy } from 'react';
 import { useState } from 'react';
-import { ArrowUp, Loader2 } from 'lucide-react';
-import { ComposerCard } from '../composer/ComposerCard';
+import { SideChatComposer } from './side-chat-composer';
 import { t } from '../i18n';
 import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
@@ -30,6 +29,7 @@ const LearnedSkillsTab = lazy(() => import('./InsightTabs').then((m) => ({ defau
 const WebTab = lazy(() => import('./WebTab').then((m) => ({ default: m.WebTab })));
 
 import type { MutableRefObject } from 'react';
+import type { Connection } from '../connection';
 
 /** G14.114 标签条/标题行文件名化:取路径末段(win/posix 双分隔,滤空段防尾分隔符) */
 const baseName = (p: string): string =>
@@ -397,7 +397,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
           />
         </div>
       ) : p.upgradeSideChat !== undefined ? (
-        <SideChatDraft uid={p.uid} insert={p.params.insert} onUpgrade={p.upgradeSideChat} />
+        <SideChatDraft uid={p.uid} insert={p.params.insert} onUpgrade={p.upgradeSideChat} conn={p.conn} root={p.root} />
       ) : (
         // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
@@ -410,13 +410,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
 /** 辅助对话草稿页(2026-11-04 首条发送才 fork):表层=主对话同款 ComposerCard+原提示语,
    底层=发送时才升级(fork 主对话整档→挂真 Chat→首条自动提交)。busy 防重入;失败落
    composer 行内错误条保草稿 */
-function SideChatDraft({ uid, insert, onUpgrade }: { uid: string; insert?: string; onUpgrade: (uid: string, text: string) => Promise<void> }): JSX.Element {
-  const [text, setText] = useState(insert ?? '');
+function SideChatDraft({ uid, insert, onUpgrade, conn, root }: { uid: string; insert?: string; onUpgrade: (uid: string, text: string) => Promise<void>; conn: Connection; root?: string }): JSX.Element {
+  // 2026-11-06 用户裁定「辅助会话完全复制主对话输入框的能力」:交互面移交 SideChatComposer
+  // (芯片高亮/五面守卫/@ / 命令、$# 三面板/insert-ref 片段通道;文本展开在组件内完成后回调);
+  // 空态居中「辅助会话」标题+说明行。pills 需会话绑定(草稿未 fork),升级后真 Chat 自带全量
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const send = (): void => {
-    const v = text.trim();
-    if (v === '' || busy) return;
+  const send = (v: string): void => {
+    if (busy || v.trim() === '') return;
     setBusy(true);
     setErr('');
     void onUpgrade(uid, v).then(
@@ -429,37 +430,13 @@ function SideChatDraft({ uid, insert, onUpgrade }: { uid: string; insert?: strin
   };
   return (
     <div className="sx-sidechat sx-sidechat-draft">
-      <div className="chat-slot" aria-hidden="true" />
-      <div className="sx-sidechat-draft-hint" role="status">{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</div>
+      <div className="sx-sidechat-draft-head">
+        <h2>{t('Side chat', '辅助会话')}</h2>
+        <p role="status">{t('Side chats start from the chat topbar.', '辅助对话从会话顶栏的入口开始。')}</p>
+      </div>
       <div className="composer sx-sidechat-draft-composer">
-        <ComposerCard
-          label="side chat draft"
-          value={text}
-          rows={Math.min(6, Math.max(1, (text.match(/\n/g) ?? []).length + 1))}
-          placeholder={t('Ask something…', '问点什么…')}
-          disabled={busy}
-          onChange={setText}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') e.currentTarget.blur();
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          belowInput={err !== '' ? <div className="sx-img-hint" role="status">{err}</div> : undefined}
-          footRight={
-            <button
-              type="button"
-              className="send"
-              aria-label="send"
-              data-tip={`${t('Send', '发送')} · Enter`}
-              disabled={busy || text.trim() === ''}
-              onClick={send}
-            >
-              {busy ? <Loader2 size={16} strokeWidth={2} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />}
-            </button>
-          }
-        />
+        <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} />
+        {err !== '' && <div className="sx-img-hint" role="status">{err}</div>}
       </div>
     </div>
   );

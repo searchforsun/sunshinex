@@ -3312,6 +3312,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    原提示语+主对话同款 ComposerCard——布局走 .sx-sidechat chat/composer 同构,卡面零新样式 */
 .sx-sidechat-draft .chat-slot { flex: 1; min-height: 0; }
 .sx-sidechat-draft-hint { flex: none; text-align: center; color: var(--fg-tertiary); font-size: 12px; padding: 18px 16px 0; }
+/* 2026-11-06 用户裁定「辅助会话完全复制主对话输入框的能力」空态:居中「辅助会话」标题+说明行 */
+.sx-sidechat-draft-head { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 16px; }
+.sx-sidechat-draft-head h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--fg-secondary); }
+.sx-sidechat-draft-head p { margin: 0; color: var(--fg-tertiary); font-size: 12px; }
 .sx-sidechat-draft-composer { display: flex; flex-direction: column; flex: none; margin: 0 auto 12px; }
 
 /* 回退二次确认弹窗(2026-11-05):遮罩/外壳沿用 sx-editor-modal,此处只收窄与排版 */
