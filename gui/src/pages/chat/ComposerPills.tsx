@@ -46,7 +46,7 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
               className="composer-pill composer-plus-btn"
               aria-label="add attachment"
               aria-expanded={pillOpen === 'plus'}
-              data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
+              data-tip={t('Add context', '添加上下文')}
               onClick={() => setPillOpen((v) => (v === 'plus' ? null : 'plus'))}
             >
               <PlusAddIcon size={16} />

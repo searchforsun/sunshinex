@@ -315,7 +315,7 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
               className="composer-pill composer-plus-btn"
               aria-label="add"
               aria-expanded={pillOpen === 'plus'}
-              data-tip={t('Add', '添加')}
+              data-tip={t('Add context', '添加上下文')}
               onClick={() => setPillOpen((v) => (v === 'plus' ? null : 'plus'))}
             >
               <PlusAddIcon size={16} />

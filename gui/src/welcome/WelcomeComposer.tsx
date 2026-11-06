@@ -905,7 +905,7 @@ export function WelcomeComposer({
                 className="composer-pill composer-plus-btn"
                 aria-label="add attachment"
                 aria-expanded={plusOpen}
-                data-tip={t('Add skills, commands or files', '添加技能、命令或文件')}
+                data-tip={t('Add context', '添加上下文')}
                 onClick={() => setPlusOpen((v) => !v)}
               >
                 <PlusAddIcon size={16} />
