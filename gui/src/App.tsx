@@ -323,6 +323,9 @@ function AppShell(): JSX.Element {
    *  清单恢复 辅助对话 N 页签(在座 side 会话才恢复——daemon 重启后缺席;用户关过的页签经
    *  dismissedRef 记忆不复活) */
   const sideTabDismissedRef = useRef(new Map<string, Set<string>>());
+  /** 辅助会话恢复账本(journalId→canonical sessionId,2026-11-06):daemon 重启后 runtime 按
+   *  新壳 id 重挂,恢复须 newSession 壳+attach 收养取 canonical;journal 级去重防重复页签 */
+  const sideRestoredSides = useRef(new Map<string, Map<string, string>>());
   useEffect(() => {
     const conn = connInstance;
     if (conn === null || page !== 'chat' || openSessionId === '') return;
@@ -332,19 +335,27 @@ function AppShell(): JSX.Element {
         for (const sd of sides) {
           if (sd.sessionId === undefined) continue;
           if (dismissed?.has(sd.sessionId) === true) continue;
-          // 2026-11-06 用户实测「重启后辅助会话 snapshot 404」:恢复页签前先 attach 挂座——
-          // 此前只开页签不挂座,daemon 重启后侧会话 runtime 缺席=内存表查无=404;挂座失败
+          // 2026-11-06 用户实测「重启后辅助会话 snapshot 404」根修:daemon 重启后 runtime 表按
+          // 新壳 id 重挂,裸 journal/旧 id snapshot 必 404(fork 横幅 onOpenSession 同款实测注释)
+          // ——恢复走 newSession 壳+attach 收养,以返回 canonical id 开页;journal 级去重(重复跑
+          // 不新开,复用已恢复 canonical);canonical 失效(deamon 再重启)自动弃旧重挂;挂座失败
           // (journal 已删)跳过恢复,不再出 404 空页签
-          void conn.attach(sd.sessionId, sd.journalId).then(
-            () => {
-              setTabStates((st) => {
-                const cur = st[openSessionId];
-                if (cur !== undefined && cur.tabs.some((x) => x.params.sideId === sd.sessionId)) return st;
-                return openTab(ensureSession(st, openSessionId, PROBE), openSessionId, 'sidechat', { sideId: sd.sessionId, title: sd.title }, PROBE);
-              });
-            },
-            () => undefined,
-          );
+          const recorded = sideRestoredSides.current.get(openSessionId)?.get(sd.journalId);
+          const attachFlow = (recorded !== undefined
+            ? conn.attach(recorded, sd.journalId).then((r) => r.sessionId).catch(() => {
+                sideRestoredSides.current.get(openSessionId)?.delete(sd.journalId);
+                return conn.newSession(openRoot).then(({ sessionId: shellId }) => conn.attach(shellId, sd.journalId).then((r2) => r2.sessionId));
+              })
+            : conn.newSession(openRoot).then(({ sessionId: shellId }) => conn.attach(shellId, sd.journalId).then((r2) => r2.sessionId)));
+          void attachFlow.then((canonical) => {
+            if (sideRestoredSides.current.has(openSessionId) === false) sideRestoredSides.current.set(openSessionId, new Map());
+            sideRestoredSides.current.get(openSessionId)!.set(sd.journalId, canonical);
+            setTabStates((st) => {
+              const cur = st[openSessionId];
+              if (cur !== undefined && cur.tabs.some((x) => x.params.sideId === canonical)) return st;
+              return openTab(ensureSession(st, openSessionId, PROBE), openSessionId, 'sidechat', { sideId: canonical, title: sd.title }, PROBE);
+            });
+          }).catch(() => undefined);
         }
       },
       () => undefined,
