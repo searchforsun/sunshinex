@@ -914,7 +914,7 @@ export function WelcomeComposer({
               <div className="pill-anchor">
                 <button
                   type="button"
-                  className="composer-pill"
+                  className={'composer-pill' + (mode === 'full-access' ? ' mode-pill-warn' : '')}
                   aria-label="approval mode"
                   aria-expanded={modeOpen}
                   // D51 G-4:窄栏塌缩(sx-main-narrow)时 tooltip 承载当前模式名——与会话内 pill 同构

@@ -3,7 +3,7 @@ import { removeLearnedSkill } from '../harness/skills';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
 import { resolveDataDir } from '../config/data-dir';
-import { markSessionArchived, purgeSession, readSessionMeta } from '../tui/session-journal';
+import { markSessionArchived, purgeSession, purgeSideJournals, readSessionMeta } from '../tui/session-journal';
 import type { SessionRuntime } from './session';
 
 /** command 直跑通道(G10 spec §6):TUI handleSlash 分支的 daemon 移植层。
@@ -197,6 +197,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     notice('Session deleted');
     await s.teardown();
     purgeSession(dataDir, jid);
+    purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
     return 'ok';
   }
 

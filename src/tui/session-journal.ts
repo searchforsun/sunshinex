@@ -244,6 +244,29 @@ export function purgeSession(dataDir: string, id: string): void {
   }
 }
 
+/** 辅助会话连带清理(2026-11-06 用户裁定「只有删除主会话后,才一同删除辅助会话内容」):
+ *  side 档 meta.sideOf 回指主 journal id——主删则 side 全家逐个 purgeSession(档+gui/tui 页签态);
+ *  无 side 或目录不可读=空转幂等。调用方(删除面)另行处理浏览器状态/pty 锚杀 */
+export function purgeSideJournals(dataDir: string, id: string): void {
+  const dir = sessionsDir(dataDir);
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const f of names) {
+    if (!f.endsWith('.meta.json')) continue;
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as { side?: unknown; sideOf?: unknown };
+      if (meta.side !== true || meta.sideOf !== id) continue;
+      purgeSession(dataDir, f.slice(0, -'.meta.json'.length));
+    } catch {
+      /* 坏 meta 行跳过 */
+    }
+  }
+}
+
 interface ParsedJournal {
   events: JournalEvent[];
   /** 与 events 一一对应的原始行（branchFrom 逐字节复制用） */
