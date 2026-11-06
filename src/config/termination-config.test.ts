@@ -11,6 +11,11 @@ import {
   resolveRunWindow,
   modelTimeoutMsEnv,
   maxTeammatesEnv,
+  compactionThreshold,
+  compactionReserveFromThreshold,
+  COMPACTION_THRESHOLD_DEFAULT,
+  COMPACTION_THRESHOLD_MIN,
+  COMPACTION_THRESHOLD_MAX,
 } from './termination-config';
 
 test('未设/空串回 undefined，消费点取内置缺省', () => {
@@ -87,4 +92,19 @@ test('maxTeammatesEnv：正整数生效；未设/空 = 缺省 8；零/负/非法
   assert.equal(maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: '12' }), 12);
   assert.throws(() => maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: '0' }), /SUNSHINEX_MAX_TEAMMATES/);
   assert.throws(() => maxTeammatesEnv({ SUNSHINEX_MAX_TEAMMATES: 'abc' }), /SUNSHINEX_MAX_TEAMMATES/);
+});
+
+// ── 上下文压缩阈值（原硬编码 window/5 的同义变量化，用户口径「一个数超过就压」）：表值钉权威源在此 ──
+test('compactionThreshold：未设/空串回缺省 80；[10,95] 整数生效；越界/非整数 fail-fast 带槽名', () => {
+  assert.equal(compactionThreshold({}), COMPACTION_THRESHOLD_DEFAULT);
+  assert.equal(compactionThreshold({ SUNSHINEX_COMPACTION_THRESHOLD: '' }), COMPACTION_THRESHOLD_DEFAULT);
+  assert.equal(compactionThreshold({ SUNSHINEX_COMPACTION_THRESHOLD: '  ' }), COMPACTION_THRESHOLD_DEFAULT);
+  assert.equal(compactionThreshold({ SUNSHINEX_COMPACTION_THRESHOLD: '60' }), 60);
+  assert.equal(compactionThreshold({ SUNSHINEX_COMPACTION_THRESHOLD: '10' }), COMPACTION_THRESHOLD_MIN, '下边界生效');
+  assert.equal(compactionThreshold({ SUNSHINEX_COMPACTION_THRESHOLD: '95' }), COMPACTION_THRESHOLD_MAX, '上边界生效');
+  for (const bad of ['9', '96', '80.5', 'abc', '-20']) {
+    assert.throws(() => compactionThreshold({ SUNSHINEX_COMPACTION_THRESHOLD: bad }), /SUNSHINEX_COMPACTION_THRESHOLD/);
+  }
+  assert.equal(compactionReserveFromThreshold(80), 0.2, '阈值 80 → reserve 占比 0.2（缺省与历史硬编码等价）');
+  assert.equal(compactionReserveFromThreshold(50), 0.5);
 });

@@ -21,6 +21,7 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   reasoningEffort: 'SUNSHINEX_REASONING_EFFORT',
   language: 'SUNSHINEX_LANGUAGE',
   contextWindow: 'SUNSHINEX_CONTEXT_WINDOW',
+  compactionThreshold: 'SUNSHINEX_COMPACTION_THRESHOLD',
   autoMemory: 'SUNSHINEX_AUTO_MEMORY',
   agentTeams: 'SUNSHINEX_AGENT_TEAMS',
   learnedSkills: 'SUNSHINEX_LEARNED_SKILLS',

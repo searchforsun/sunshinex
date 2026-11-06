@@ -5,6 +5,7 @@ import { Reactor } from '../harness/reactor';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
 import { FORK_EXCLUDED_TOOLS } from '../harness/tools/taskboard-tools';
 import { LoopDeps, LoopEngineNode } from './engine';
+import { compactionThreshold, compactionReserveFromThreshold } from '../config/termination-config';
 
 /** 独立小调用 chat 桩形态（T5 共用）：判据/压缩/记忆/提炼四个一次性调用共用的窄接口 */
 interface ChatCaller {
@@ -12,10 +13,10 @@ interface ChatCaller {
 }
 
 
-/** 剩余预算 → Reactor 预算（纯函数）：total 保底 1，reserve 为 total 的 1/5 */
+/** 剩余预算 → Reactor 预算（纯函数）：total 保底 1，reserve 由压缩阈值倒推（缺省 80%→reserve 20%，与 reactor 缺省预算同源） */
 export function toReactorBudget(remaining: number): { total: number; reserve: number } {
   const total = Math.max(remaining, 1);
-  return { total, reserve: Math.floor(total / 5) };
+  return { total, reserve: Math.floor(total * compactionReserveFromThreshold(compactionThreshold())) };
 }
 
 /** /goal 内嵌验收段解析：`验收标准：c1=描述1; c2=描述2`（容忍中英文分号与空白）；无段返回 null */

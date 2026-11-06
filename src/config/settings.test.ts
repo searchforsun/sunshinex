@@ -284,9 +284,9 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：31 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：32 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 31, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判）');
+  assert.equal(entries.length, 32, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
@@ -303,6 +303,7 @@ test('SEMANTIC_KEYS 全表钉子：31 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['maxLoopIterations'], 'SUNSHINEX_MAX_LOOP_ITERATIONS', '长任务终止：Loop 修正环轮数上限');
   assert.equal(SEMANTIC_KEYS['maxGraphNodes'], 'SUNSHINEX_MAX_GRAPH_NODES', '长任务终止：Graph 节点步上限');
   assert.equal(SEMANTIC_KEYS['maxTokens'], 'SUNSHINEX_MAX_TOKENS', '长任务终止：主链 token 硬顶（缺省不设，预算是兜底不是限制）');
+  assert.equal(SEMANTIC_KEYS['compactionThreshold'], 'SUNSHINEX_COMPACTION_THRESHOLD', '长任务终止：上下文压缩阈值（% 占用，缺省 80，[10,95] 硬限）');
   assert.equal(SEMANTIC_KEYS['subagentTokenCap'], 'SUNSHINEX_SUBAGENT_TOKEN_CAP', '长任务终止：子智能体 token 硬顶（独享值，不继承主链剩余）');
   assert.equal(SEMANTIC_KEYS['teamTokenCap'], 'SUNSHINEX_TEAM_TOKEN_CAP', '长任务终止：团队 token 硬顶（G8c 终审 C——曾 env-only 致 GET /settings 不报行、面板静默省略，收编进语义键面）');
   assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');

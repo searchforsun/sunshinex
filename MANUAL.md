@@ -142,6 +142,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   // "maxTokens": 2000000,                          // 主链单次提交 token 硬顶（累计用量量纲）；缺省不设——预算是兜底不是限制，护栏交给步数与墙钟
   // "subagentTokenCap": 1000000,                   // 子智能体 token 硬顶（独享值，不继承主链剩余）；缺省不设
   // "teamTokenCap": 1000000,                       // 团队 token 硬顶（主代理团队侧限额，用满后新任务排队，见 5.6）；缺省不设
+  // "compactionThreshold": 80,                    // 上下文压缩阈值（10–95 整数百分比，缺省 80 = 占用达 80% 即自动压缩）
   "agentTeams": "on",                                // 智能体团队能力 on|off（关=不注入 agent_team_* 工具；GUI 隐藏「智能体团队」页签）；缺省 on
 
   // ── 界面 ──────────────────────────────────────────────

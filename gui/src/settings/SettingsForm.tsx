@@ -41,6 +41,10 @@ export interface SettingsFieldDef {
     | readonly SettingsOption[]
     | ((ctx: { models: readonly string[] }) => readonly SettingsOption[]);
   readonly placeholder?: string;
+  /** number 控件的硬限（输入面与 HTML min/max 属性同源；服务端仍有同款校验兜底） */
+  readonly min?: number;
+  readonly max?: number;
+  readonly step?: number;
 }
 
 /** 分组卡(设置重构轮):一卡一语义盒——标题+可选描述+字段行;themeRow/zoomRow=组首渲染
@@ -88,6 +92,11 @@ const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: 
   reasoningEffort: { label: { en: 'Reasoning effort', zh: '思考强度' }, en: 'Reasoning effort for requests', zh: '请求思考强度' },
   baseUrl: { label: { en: 'API base URL', zh: 'API 地址' }, en: 'OpenAI-compatible API base URL', zh: 'OpenAI 兼容 API 地址' },
   contextWindow: { label: { en: 'Context window', zh: '上下文窗口' }, en: 'Model context window (tokens)', zh: '模型上下文窗口(tokens)' },
+  compactionThreshold: {
+    label: { en: 'Compaction threshold', zh: '上下文压缩阈值' },
+    en: 'Auto-compact when context usage reaches this percent (10–95, default 80%)',
+    zh: '上下文占用达到该百分比即自动压缩（10–95，默认 80%）',
+  },
   maxTokens: { label: { en: 'Max tokens', zh: '单请求上限' }, en: 'Hard cap on tokens per request', zh: '单请求 token 硬顶' },
   subagentTokenCap: { label: { en: 'Subagent cap', zh: '子智能体上限' }, en: 'Token cap for subagents', zh: '子智能体 token 上限' },
   teamTokenCap: { label: { en: 'Team cap', zh: '团队上限' }, en: 'Token cap for the team registry', zh: '团队注册表 token 上限' },
@@ -140,7 +149,11 @@ const modelsOf = (view: SettingsView): string[] => [...new Set(view.providers.ch
 
 /** select 未设置项(置顶;清值=存 null 删键,与 text 行空串同语义) */
 const text = (key: string, placeholder?: string): SettingsFieldDef => ({ key, control: 'text', ...(placeholder !== undefined ? { placeholder } : {}) });
-const num = (key: string): SettingsFieldDef => ({ key, control: 'number' });
+const num = (key: string, limits?: { min?: number; max?: number; step?: number; placeholder?: string }): SettingsFieldDef => ({
+  key,
+  control: 'number',
+  ...(limits ?? {}),
+});
 /** 闭集选项(lz=中文标签,渲染期 t 求值——选项标签曾于模块加载期 t() 冻结,切中文后仍显英文) */
 export type SettingsOption = SelectOption & { readonly lz?: string };
 const sel = (key: string, options: readonly SettingsOption[]): SettingsFieldDef => ({ key, control: 'select', options });
@@ -182,7 +195,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: 'limits',
     title: { en: 'Context & limits', zh: '上下文与限额' },
     groups: [
-      { title: { en: 'Context window', zh: '上下文窗口' }, fields: [num('contextWindow'), num('maxTokens')] },
+      { title: { en: 'Context window', zh: '上下文窗口' }, fields: [num('contextWindow'), num('maxTokens'), num('compactionThreshold', { min: 10, max: 95, step: 5, placeholder: '80' })] },
       { title: { en: 'Subagents & team', zh: '子智能体与团队' }, fields: [num('subagentTokenCap'), num('teamTokenCap'), sel('agentTeams', ON_OFF)] },
       { title: { en: 'Steps & loops', zh: '步数与循环' }, fields: [num('maxSteps'), num('maxLoopIterations'), num('maxGraphNodes')] },
       {
@@ -549,6 +562,9 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
         aria-label={fd.key}
         value={value}
         placeholder={fd.placeholder}
+        min={fd.min}
+        max={fd.max}
+        step={fd.step}
         disabled={disabled}
         data-tip={title}
         onChange={(e) => setValues((vals) => ({ ...vals, [fd.key]: e.target.value }))}

@@ -12,7 +12,7 @@ import { chainToHistoryItems, ContextManager, runCompaction } from './context';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { DEFAULT_IMAGE_HISTORY_LIMIT } from '../config/image-history';
-import { reactorMaxStepsEnv, reciteEveryEnv, resolveRunWindow, subagentTokenCapEnv } from '../config/termination-config';
+import { reactorMaxStepsEnv, reciteEveryEnv, resolveRunWindow, subagentTokenCapEnv, compactionThreshold, compactionReserveFromThreshold } from '../config/termination-config';
 
 /** 任务输入：goal 为观测标签（ledger/settle 留痕），不进提示词——真实任务文本走链尾「当前指令行」 */
 export interface Task { goal: string; }
@@ -149,9 +149,11 @@ export class Reactor {
     // 压缩占比共用此基准）；非法值 fail-fast（contextWindowEnv，对齐 MAX_STEPS/MAX_LOOP_ITERATIONS 同款口径
     // ——旧形态静默回退 200k 即「配置没生效的排查泥潭」）
     const window = resolveRunWindow(adapter);
+    // 压缩阈值（% 占用，settings 语义键 compactionThreshold / env 槽，缺省 80=占用到 80% 压缩，
+    // [10,95] 硬限 fail-fast——用户口径「一个数超过就压」，reserve 由阈值倒推，见 termination-config）
     const budget = opts?.budget ?? {
       total: window,
-      reserve: Math.floor(window / 5),
+      reserve: Math.floor(window * compactionReserveFromThreshold(compactionThreshold())),
     };
     const tokenCap = opts?.tokenCap;
     const deadlineAt = opts?.deadlineAt;

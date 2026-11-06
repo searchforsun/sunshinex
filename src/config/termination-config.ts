@@ -29,6 +29,33 @@ export function graphNodesEnv(env: NodeJS.ProcessEnv = process.env): number | un
   return positiveIntOrUndefined(env, 'SUNSHINEX_MAX_GRAPH_NODES');
 }
 
+/** 上下文压缩阈值（%）：占用达到该百分比即触发自动压缩。缺省 80（历史硬编码 window/5=reserve 20% 的
+ *  同义变量化——用户口径「一个数，超过就压」，不做占比倒算负担）。settings 语义键 compactionThreshold /
+ *  env 槽 SUNSHINEX_COMPACTION_THRESHOLD。硬限 [10, 95]：下限防压缩过早（有效窗口不足，任务几乎无法
+ *  推进）；上限防 reserve 过小→压缩摘要+重读本身放不下（摘要/重读预算各为 reserve 之半）。
+ *  非法值 fail-fast（对齐 contextWindowEnv 口径——配置错误显式暴露，不静默回默认值的排查泥潭）。 */
+export const COMPACTION_THRESHOLD_MIN = 10;
+export const COMPACTION_THRESHOLD_MAX = 95;
+export const COMPACTION_THRESHOLD_DEFAULT = 80;
+
+/** 阈值（%）→ 预留占比（0-1 开区间）：消费点 reserve = floor(window × (1 − threshold/100))。
+ *  先做整数差再除（(100−th)/100），不用 1−th/100——浮点下 1−0.8=0.1999…，floor 后 200k 窗口少 1 token */
+export function compactionReserveFromThreshold(threshold: number): number {
+  return (100 - threshold) / 100;
+}
+
+export function compactionThreshold(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.SUNSHINEX_COMPACTION_THRESHOLD;
+  if (raw === undefined || raw.trim() === '') return COMPACTION_THRESHOLD_DEFAULT;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < COMPACTION_THRESHOLD_MIN || n > COMPACTION_THRESHOLD_MAX) {
+    throw new Error(
+      `Invalid SUNSHINEX_COMPACTION_THRESHOLD: ${raw} (expect integer percent in [${COMPACTION_THRESHOLD_MIN}, ${COMPACTION_THRESHOLD_MAX}])`,
+    );
+  }
+  return n;
+}
+
 /** 上下文窗口缺省 tokens（200k，对标长上下文安全水位）；预算基线与观测面（状态栏分母、/context）共用单点 */
 export const CONTEXT_WINDOW_DEFAULT = 200_000;
 
