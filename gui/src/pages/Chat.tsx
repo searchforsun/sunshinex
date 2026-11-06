@@ -59,7 +59,8 @@ import { useComposerKeys } from './chat/use-composer-keys';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
 export type { ChatSink, ChatProps } from './chat/chat-types';
-import type { ChatProps } from './chat/chat-types';
+import type { ChatProps, RewindOps, RewindRequest } from './chat/chat-types';
+import type { ComposerEnv } from './chat/edit-composer';
 
 
 
@@ -82,7 +83,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, freshView, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -226,6 +227,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string, images?: string[]) => Promise<void>>(() => Promise.resolve());
+  const expandRefsRef = useRef<(text: string) => string>((text) => text);
   /** 会话事件 hook(D32 批C):播种门/种子窗缓冲/挂起卡/事件分流 sink 装配 + G5 idle 清卡——
    *  投影态与队列/pill 设定器注入(G6 工具 input 旁路暂存 P11 T7 退役);行为零变化(Chat.test 为锚) */
   const { cards, seeding, sendApproval, sendAsk, sendPlanApproval } = useSessionEvents({
@@ -282,6 +284,34 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       }
     }
   }, []);
+
+  /** 编辑卡输入环境:@短写记账表共享——编辑卡选中的文件在发送期(resendFrom)照样展开 */
+  const composerEnv = useMemo<ComposerEnv>(() => ({ sessionId, pickRelRef }), [sessionId]);
+  /** 气泡回退操作面:用户消息按倒序寻址(转录可能只播种了尾窗,且轮内插入让 run 序≠锚点序) */
+  const onRewindRef = useRef(onRewind);
+  onRewindRef.current = onRewind;
+  const hasRewind = onRewind !== undefined;
+  const rewindOps = useMemo<RewindOps | undefined>(() => {
+    if (!hasRewind) return undefined;
+    const fromEnd = (entry: ChatEntry): { userFromEnd: number } => {
+      const users = chatEntriesRef.current.filter((e) => e.kind === 'user');
+      return { userFromEnd: users.length - 1 - users.findIndex((e) => e.key === entry.key) };
+    };
+    const rewind = (req: RewindRequest): Promise<void> => onRewindRef.current?.(req) ?? Promise.resolve();
+    return {
+      busy: () => {
+        const st = chatRef.current;
+        return st.status === 'running' || st.entries.some((en) => en.kind === 'tool' && typeof en.name === 'string' && en.name.startsWith('/') && en.result === undefined);
+      },
+      planForEntry: (entry) => conn.restorePlan(sessionId, fromEnd(entry)),
+      // 文本在此展开:引用账本属当前 Chat,回退换座后新 Chat 查不到本卡新加的 @文件/片段
+      resendFrom: (entry, text, images, restoreFiles) => rewind({
+        target: fromEnd(entry),
+        restoreFiles,
+        resend: { text: expandRefsRef.current(text), ...(images !== undefined ? { images } : {}) },
+      }),
+    };
+  }, [hasRewind, conn, sessionId]);
 
   // 滚动四 effects + 轮次折叠簇(批F-5):refs 宿主持有,行为零变化
   const { dockRef } = useChatScroll({
@@ -523,6 +553,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
+  expandRefsRef.current = (text) => expandRefContents(expandFileRefs(text, root, resolveFileRef), refContentsRef.current);
   /** 2026-10-26 用户裁定:发送即跳底——视口停在上文时发新消息,立即置回贴底跟随
    *  (stick 先置 true:发送回显帧与本轮流式内容随后由既有贴底 effect 接管不脱手) */
   const jumpToBottom = useCallback((): void => {
@@ -765,6 +796,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         collapsedRuns={collapsedRuns}
         toggleRun={toggleRun}
         submitText={submitText}
+        rewindOps={rewindOps}
+        composerEnv={composerEnv}
         runFooterByEntry={runFooterByEntry}
         onEntryOpenDiff={onEntryOpenDiff}
         onEntryRestore={onEntryRestore}

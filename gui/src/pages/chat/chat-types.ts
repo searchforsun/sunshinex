@@ -1,5 +1,6 @@
 import type { MutableRefObject } from 'react';
-import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, GuiPlanApprovalReq, SnapshotResponse } from '../../connection';
+import type { Connection, ConnectionState, GuiApprovalReq, GuiAskReq, GuiPlanApprovalReq, RestorePlan, RewindTarget, SnapshotResponse } from '../../connection';
+import type { ChatEntry } from '../../chat-reducer';
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { TaskBoardState } from '../../projection';
 import type { TodoBatch } from './ToolEntry';
@@ -23,6 +24,21 @@ export interface ChatSink {
   onPlanApproval(pid: string, req: GuiPlanApprovalReq): void;
   /** G4 会话 reset 通知帧(本会话):清卡(daemon 已 deny/dismissed 回填) + 清投影重播种 */
   resetSession(): void;
+}
+
+export interface RewindRequest {
+  target: RewindTarget;
+  restoreFiles: boolean;
+  resend: { text: string; images?: string[] };
+}
+
+/** 编辑重发操作面(Chat 组装、MessageList 透传、UserEntryView 消费;引用恒稳不破行组件 memo)。
+ *  「回到此轮」独立按钮已退役(2026-11-06 用户裁定:想回退复制原文走编辑重发即可),回退只此一条入口 */
+export interface RewindOps {
+  /** 运行中(含命令运行态):底层拒绝回退,编辑卡据此提示先停止 */
+  busy(): boolean;
+  planForEntry(entry: ChatEntry): Promise<RestorePlan>;
+  resendFrom(entry: ChatEntry, text: string, images: string[] | undefined, restoreFiles: boolean): Promise<void>;
 }
 
 export interface ChatProps {
@@ -76,10 +92,11 @@ export interface ChatProps {
   onSideAsk?: (text: string) => void;
   /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡(App 开页签+落定位信号) */
   onTodoLocate?: (todos: Array<{ text: string; status: string }>) => void;
-  /** 2026-11-04 fork 横幅导航:「分叉于会话」点击回父会话(App openSession;root 同源) */
+    /** 2026-11-04 fork 横幅导航:「分叉于会话」点击回父会话(App openSession;root 同源) */
   onOpenSession?: (sessionId: string) => void;
-  /** G10-C4 回到此轮(/rewind 底层):turn=anchors 1-based;App 接 rewindSession+重开;可选 */
-  onRewind?: (turn: number) => void;
+  /** 回退(2026-11-05 编辑重发):App 接 rewindSession+页签迁座+换座,编辑重发唯一通道;
+   *  未配=编辑卡退回追加发送(辅助对话页签/测试桩)。resend=回退落定后重发的编辑文本 */
+  onRewind?: (req: RewindRequest) => Promise<void>;
   /** 会话级操作错误上抛(2026-10-21 归档 F4):App showOpError 通道(与 fork/rewind 同一 sx-toast
    *  错误条)——顶栏归档失败不再静默回摆,错误文案透传上屏;可选防测试桩免配 */
   onOpError?: (err: unknown) => void;

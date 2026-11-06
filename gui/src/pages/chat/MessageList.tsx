@@ -1,3 +1,5 @@
+import type { RewindOps } from './chat-types';
+import type { ComposerEnv } from './edit-composer';
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
@@ -47,6 +49,8 @@ export interface MessageListProps {
   readonly collapsedRuns: ReadonlySet<string>;
   readonly toggleRun: (key: string) => void;
   readonly submitText: (text: string, images?: string[]) => Promise<void>;
+  readonly rewindOps?: RewindOps;
+  readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
@@ -90,6 +94,9 @@ interface DayGroupProps {
   readonly teams?: readonly { teamId: string; name: string }[];
   readonly toggleRun: (key: string) => void;
   readonly submitText: (text: string) => Promise<void>;
+  readonly rewindOps?: RewindOps;
+
+ readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
@@ -105,7 +112,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -133,6 +140,8 @@ const DayGroupBlock = memo(
             entry={e2}
             insert
             onSend={submitText}
+            rewindOps={rewindOps}
+            composerEnv={composerEnv}
             onOpenFile={onOpenFile}
             onOpenImage={onOpenImage}
             conn={conn}
@@ -149,7 +158,7 @@ const DayGroupBlock = memo(
           onOpenFile={onOpenFile}
         />
       );
-    }, [submitText, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenAgent]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenAgent]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(
@@ -213,6 +222,8 @@ const DayGroupBlock = memo(
             entry={entry}
             insert={insert}
             onSend={submitText}
+            rewindOps={rewindOps}
+            composerEnv={composerEnv}
             onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
             onOpenImage={onOpenImage}
             conn={conn}
@@ -257,6 +268,8 @@ const DayGroupBlock = memo(
     && prev.teams === next.teams
     && prev.toggleRun === next.toggleRun
     && prev.submitText === next.submitText
+    && prev.rewindOps === next.rewindOps
+    && prev.composerEnv === next.composerEnv
     && prev.onEntryOpenDiff === next.onEntryOpenDiff
     && prev.onEntryRestore === next.onEntryRestore
     && prev.onFork === next.onFork
@@ -396,6 +409,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
             teams={props.teams}
             toggleRun={toggleRunStable}
             submitText={submitTextStable}
+            rewindOps={props.rewindOps}
+            composerEnv={props.composerEnv}
             runFooterByEntry={runFooterByEntry}
             onEntryOpenDiff={onEntryOpenDiffStable}
             onEntryRestore={onEntryRestoreStable}

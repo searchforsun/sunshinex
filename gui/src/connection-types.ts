@@ -179,6 +179,25 @@ export interface DirPickerResp {
   dirs: string[];
 }
 
+/** rewind 寻址：userFromEnd=用户消息倒序序号（编辑重发，0=最后一条），turn=任务轮锚点（回到此轮菜单） */
+export type RewindTarget = { turn: number } | { userFromEnd: number };
+
+/** POST /session/:id/rewind 载荷（2026-11-05）：回退落在新会话对象+新 journal 上（换座同 fork）；
+ *  text=被回退的用户原文，atTs=首个被丢弃行时刻（侧栏页签回退基准），restore=文件回退实际结果 */
+export interface RewindResult {
+  ok: true;
+  sessionId: string;
+  journalId: string;
+  text: string;
+  atTs?: number;
+  restore?: { restored: string[]; removed: string[]; skipped: string[] };
+}
+
+/** GET /session/:id/restore-plan 载荷：该回退点之后记录到的文件改动（deleted=该文件由被丢弃段新建，回退即删） */
+export interface RestorePlan {
+  files: Array<{ path: string; deleted: boolean }>;
+}
+
 /** GET /session/:id/file?path= 载荷（G6 预览面）：path=daemon 侧 resolve 归一后的绝对路径；
  *  truncated=true 表示原文超 512KB、content 为首 512KB 截断（预览语义非全文） */
 export interface FileResp {

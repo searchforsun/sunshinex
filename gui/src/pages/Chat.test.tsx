@@ -1991,3 +1991,96 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     expect(document.querySelector('.ref-palette')).toBeNull(); // 完整 token 不触发引用面板
   });
 });
+
+describe('编辑发送=二次确认后回退(2026-11-05)', () => {
+  beforeEach(() => setLanguage('en'));
+
+  const seeds: Seed[] = [
+    { seq: 1, ts: DAY1, kind: 'user', md: '问一' },
+    { seq: 2, ts: DAY1, kind: 'assistant', md: '答一' },
+    { seq: 3, ts: DAY1, kind: 'user', md: '问二' },
+    { seq: 4, ts: DAY1, kind: 'assistant', md: '答二' },
+  ];
+
+  async function openDialog(status: 'idle' | 'running', files: Array<{ path: string; deleted: boolean }>): Promise<{ onRewind: ReturnType<typeof vi.fn>; submit: ReturnType<typeof vi.fn>; restorePlan: ReturnType<typeof vi.fn> }> {
+    const onRewind = vi.fn(() => Promise.resolve());
+    const submit = vi.fn(() => Promise.resolve());
+    const restorePlan = vi.fn(() => Promise.resolve({ files }));
+    const conn = { ...connOf(seeds, status), sessionSubmit: submit, restorePlan, sessionAnchors: () => Promise.resolve([]) } as unknown as Connection;
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onRewind={onRewind} />);
+    await flushed();
+    // 编辑第一条用户消息(其后还有一条)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    fireEvent.change(screen.getByRole('textbox', { name: 'edit message' }), { target: { value: '改后的问一' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+    await flushed();
+    return { onRewind, submit, restorePlan };
+  }
+
+  it('点发送只开弹窗不提交;倒序寻址并列出受影响文件', async () => {
+    const { onRewind, submit, restorePlan } = await openDialog('idle', [{ path: 'a.txt', deleted: false }, { path: 'b.txt', deleted: true }]);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(submit).not.toHaveBeenCalled();
+    expect(onRewind).not.toHaveBeenCalled();
+    expect(restorePlan).toHaveBeenCalledWith('s1', { userFromEnd: 1 });
+    expect(screen.getByText('a.txt')).toBeTruthy();
+    expect(screen.getByText('will be deleted')).toBeTruthy();
+  });
+
+  it('取消:关弹窗,编辑卡与草稿保留,零回退', async () => {
+    const { onRewind } = await openDialog('idle', []);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((screen.getByRole('textbox', { name: 'edit message' }) as HTMLTextAreaElement).value).toBe('改后的问一');
+    expect(onRewind).not.toHaveBeenCalled();
+  });
+
+  it('回退会话 / 回退会话和文件:参数正确且带编辑文本', async () => {
+    const { onRewind } = await openDialog('idle', [{ path: 'a.txt', deleted: false }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Rewind session and files' }));
+    await flushed();
+    expect(onRewind).toHaveBeenCalledWith({ target: { userFromEnd: 1 }, restoreFiles: true, resend: { text: '改后的问一' } });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('回退会话:restoreFiles=false', async () => {
+    const { onRewind } = await openDialog('idle', []);
+    fireEvent.click(screen.getByRole('button', { name: 'Rewind session' }));
+    await flushed();
+    expect(onRewind).toHaveBeenCalledWith({ target: { userFromEnd: 1 }, restoreFiles: false, resend: { text: '改后的问一' } });
+  });
+
+  it('无文件改动记录:「回退会话和文件」置灰', async () => {
+    await openDialog('idle', []);
+    expect((screen.getByRole('button', { name: 'Rewind session and files' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Rewind session' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('运行中:不开弹窗,提示先停止,草稿保留', async () => {
+    const { onRewind } = await openDialog('running', []);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('Stop it');
+    expect((screen.getByRole('textbox', { name: 'edit message' }) as HTMLTextAreaElement).value).toBe('改后的问一');
+    expect(onRewind).not.toHaveBeenCalled();
+  });
+
+  it('回退失败:关弹窗,编辑卡草稿保留', async () => {
+    const { onRewind } = await openDialog('idle', []);
+    onRewind.mockImplementationOnce(() => Promise.reject(new Error('boom')));
+    fireEvent.click(screen.getByRole('button', { name: 'Rewind session' }));
+    await flushed();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((screen.getByRole('textbox', { name: 'edit message' }) as HTMLTextAreaElement).value).toBe('改后的问一');
+  });
+
+  it('未配 onRewind(辅助对话):退回追加发送,不开弹窗', async () => {
+    const submit = vi.fn(() => Promise.resolve());
+    render(<Chat conn={{ ...connOf(seeds), sessionSubmit: submit } as unknown as Connection} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await flushed();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+    await flushed();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(submit).toHaveBeenCalled();
+  });
+});

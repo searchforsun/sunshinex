@@ -10,6 +10,8 @@ import type { SnapshotEntry } from '../../tui/session-journal';
  */
 export class WriteSnapshotCollector {
   private pending: SnapshotEntry[] = [];
+  /** pending 中已落 journal 的条数(takeUnsealed 游标;pending 本身留给 nthFor 按调用序查 diff) */
+  private sealed = 0;
 
   constructor(private readonly blobsDir: string) {}
 
@@ -30,6 +32,14 @@ export class WriteSnapshotCollector {
   drain(): SnapshotEntry[] {
     const out = this.pending;
     this.pending = [];
+    this.sealed = 0;
+    return out;
+  }
+
+  /** 取上次以来的新增捕获并推进游标,不清 pending(daemon 逐轮落档:回退文件要按轮定位改动) */
+  takeUnsealed(): SnapshotEntry[] {
+    const out = this.pending.slice(this.sealed);
+    this.sealed = this.pending.length;
     return out;
   }
 
@@ -63,6 +73,7 @@ export class WriteSnapshotCollector {
 export interface WriteSnapshotSink {
   capture(p: string): void;
   drain(): SnapshotEntry[];
+  takeUnsealed(): SnapshotEntry[];
   /** 按调用序查该路径第 ordinal 次（1 基）pre-image 捕获（p 同 capture 口径：相对 root 或绝对） */
   nthFor(p: string, ordinal: number): SnapshotEntry | undefined;
   /** blob 内容读取（hash 寻址 <dataDir>/sessions/_blobs/<sha256>）；缺场 null */
@@ -86,6 +97,7 @@ export function makeWriteSnapshotSink(dataDir: string, root: string): WriteSnaps
       collector.captureRooted(abs, rel);
     },
     drain: () => collector.drain(),
+    takeUnsealed: () => collector.takeUnsealed(),
     nthFor: (p, ordinal) => {
       const rel = relOf(path.isAbsolute(p) ? p : path.resolve(root, p));
       return rel === undefined ? undefined : collector.nthFor(rel, ordinal);

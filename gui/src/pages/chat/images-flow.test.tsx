@@ -150,9 +150,9 @@ describe('Chat 图片流', () => {
     await flushed();
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     // 编辑卡预填原条图片缩略图;移除后发送不带 images
-    expect(document.querySelectorAll('.user-edit-card .sx-img-thumb').length).toBe(1);
-    fireEvent.click(document.querySelector('.user-edit-card .sx-img-remove')!);
-    expect(document.querySelectorAll('.user-edit-card .sx-img-thumb').length).toBe(0);
+    expect(document.querySelectorAll('.user-edit-composer .sx-img-thumb').length).toBe(1);
+    fireEvent.click(document.querySelector('.user-edit-composer .sx-img-remove')!);
+    expect(document.querySelectorAll('.user-edit-composer .sx-img-thumb').length).toBe(0);
     const ta = screen.getByLabelText('edit message') as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: '改后文本' } });
     fireEvent.click(screen.getByRole('button', { name: 'send edit' }));

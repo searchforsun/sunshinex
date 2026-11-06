@@ -936,6 +936,8 @@ export class SessionRuntime {
         // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
         const endedTs = Date.now();
         const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
+        // 本轮写改动逐轮落档:只在 dispose 封存则整段会话的改动挤在档尾,回退文件无从按轮定位
+        this.journal?.seal(this.runtimeImpl.harness.writeSnapshot.takeUnsealed());
         this.journal?.log({
           t: 'runmeta',
           // G14.210 停止态入档:中断/失败收口(非 done)→GUI 回放运行条显「已停止」
@@ -1329,7 +1331,7 @@ export class SessionRuntime {
    *  形态；空清单零事件——drain 后续 seal 幂等）。daemon close 的网络面先行序在此相与 abort 相之间切入 */
   async dispose(): Promise<void> {
     await this.disposeRuntime(this.runtimeImpl);
-    this.journal?.seal(this.runtimeImpl.harness.writeSnapshot.drain());
+    this.journal?.seal(this.runtimeImpl.harness.writeSnapshot.takeUnsealed());
   }
 
   /** 内脏收口单点（reset 的旧运行时换新后同序收口） */

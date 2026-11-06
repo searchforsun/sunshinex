@@ -3,7 +3,7 @@ import { t } from './i18n';
 import { t as tLabel } from './i18n';
 import { GitCompare, Globe, MessageCircle, Copy, Minus, PanelRight, Square, SquareTerminal, X, type LucideIcon } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
-import type { Connection, ConnectionState } from './connection';
+import type { Connection, ConnectionState, RewindResult } from './connection';
 import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
@@ -11,6 +11,7 @@ import { Chat } from './pages/Chat';
 import { DirOpenerContext } from './pages/chat/md-render';
 import { ChatScrollbar } from './pages/chat/ChatScrollbar';
 import type { ChatSink } from './pages/Chat';
+import type { RewindRequest } from './pages/chat/chat-types';
 import { ProjectMenu } from './sidebar/ProjectMenu';
 import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
@@ -23,7 +24,7 @@ import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
 import { REFRESHABLE_TAB_TYPES } from './tabs/sidebar-refresh';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, stripTabType, WELCOME_TAB_SEAT } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, rewindSeat, stripTabType, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -642,6 +643,28 @@ function AppShell(): JSX.Element {
       .catch(showOpError);
   };
   const onForkStable = useCallback((turn: number): void => { forkLatestRef.current(turn); }, []);
+  /** 回退(2026-11-05 编辑重发/回到此轮):daemon 挂新会话对象+截短档,此处换座——正文与动态侧栏
+   *  (板/待办/子智能体/后台任务)由 openSession+快照播种按新档重建,静态页签按回退点迁座;
+   *  编辑文本走 pendingGoal 接力(播种落定才提交,回显不被整替冲掉),纯回退则原文回填新座草稿 */
+  const rewindLatestRef = useRef((_req: RewindRequest): Promise<void> => Promise.resolve());
+  rewindLatestRef.current = async ({ target, restoreFiles, resend }): Promise<void> => {
+    if (connInstance === null) return;
+    const from = openSessionId;
+    let r: RewindResult;
+    try {
+      r = await connInstance.rewindSession(from, target, restoreFiles);
+    } catch (err) {
+      showOpError(err);
+      throw err;
+    }
+    setTabStates((s) => rewindSeat(s, from, r.sessionId, r.atTs));
+    const dismissed = sideTabDismissedRef.current.get(from);
+    if (dismissed !== undefined) sideTabDismissedRef.current.set(r.sessionId, dismissed);
+    setWelcomeGoal({ root: openRoot, goal: resend.text, ...(resend.images !== undefined ? { images: resend.images } : {}) });
+    setRecentVersion((v) => v + 1);
+    openSession(r.sessionId, openRoot, r.journalId);
+  };
+  const onRewindStable = useCallback((req: RewindRequest): Promise<void> => rewindLatestRef.current(req), []);
 
   /** pty 记账(use-pty-registry 单点,2026-10-27 技术债轮 D53 批F 外提):terminal 标签 uid→ptyId */
   const { handlePtyAllocated, ptyIdFor, takePtyId } = usePtyRegistry(openSessionId, setTabStates);
@@ -1033,19 +1056,7 @@ function AppShell(): JSX.Element {
                     .catch(showOpError);
                 }}
                 onOpError={showOpError}
-                onRewind={(turn) => {
-                  void connInstance
-                    .rewindSession(openSessionId, turn)
-                    .then(() => {
-                      // 回退=换 journal 重新播种(Chat 内 reseed 由 key 不变触发不了——手动重挂:切走再切回同会话)
-                      const rid = openSessionId;
-                      const rr = openRoot;
-                      const rj = openJournalId;
-                      setPage('welcome');
-                      requestAnimationFrame(() => openSession(rid, rr, rj));
-                    })
-                    .catch(showOpError);
-                }}
+                onRewind={onRewindStable}
               />
             ) : connInstance !== null ? (
               <>

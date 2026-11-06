@@ -1,0 +1,119 @@
+import { describe, it, expect, vi } from 'vitest';
+vi.mock('monaco-editor', () => ({
+  editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
+}));
+vi.mock('@monaco-editor/react', () => ({
+  loader: { config: vi.fn() },
+  Editor: () => null,
+  DiffEditor: () => null,
+}));
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { WebSocket as NodeWebSocket } from 'ws';
+import { createElement } from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+// @ts-expect-error dist 发布形态(tsc 不发声明,同 e2e.test.ts)
+import { GuiDaemon } from '../../dist/serve/daemon';
+// @ts-expect-error dist 发布形态(tsc 不发声明,同 e2e.test.ts)
+import { ScriptedAdapter } from '../../dist/model/adapter';
+import { App } from './App';
+
+const write = (p: string, content: string): string => JSON.stringify({ tool: 'write', input: { path: p, content } });
+const done = (reply: string): string => JSON.stringify({ done: true, reply });
+
+function userTexts(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('.entry-user .user-md-plain')].map((n) => n.textContent ?? '');
+}
+
+/** 模型响应留出真实间隔:提交回执须先于 run 收束到达(Chat 的等待待态只认 run-open 之后的条目) */
+class PacedAdapter {
+  readonly provider = 'paced-e2e';
+  private readonly inner: { chat(req: unknown): Promise<unknown> };
+  constructor(replies: string[]) {
+    this.inner = new ScriptedAdapter(replies);
+  }
+  async chat(req: unknown): Promise<unknown> {
+    await new Promise((r) => setTimeout(r, 150));
+    return this.inner.chat(req);
+  }
+}
+
+describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
+  it('二次确认 → 回退会话和文件 → 正文/文件/页签回到该点 → 编辑文本重发,列表只留一条会话', async () => {
+    vi.stubGlobal('WebSocket', NodeWebSocket);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-e2e-rewind-'));
+    const root = path.join(tmp, 'root');
+    fs.mkdirSync(root);
+    const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+    const prevLanguage = process.env.SUNSHINEX_LANGUAGE;
+    process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+    process.env.SUNSHINEX_LANGUAGE = 'en';
+    const daemon = new GuiDaemon({ model: new PacedAdapter([write('a.txt', 'v1'), done('答一'), write('a.txt', 'v2'), write('b.txt', 'new'), done('答二'), done('答三')]) });
+    const s = await daemon.start({ port: 0 });
+    try {
+      vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${s.port}`);
+      const { container } = render(createElement(App));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 });
+      Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });
+      fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
+      await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+      const goal = screen.getByLabelText('welcome goal');
+      fireEvent.change(goal, { target: { value: '问一' } });
+      fireEvent.keyDown(goal, { key: 'Enter' });
+      await waitFor(() => expect(container.textContent).toContain('答一'), { timeout: 15_000 });
+      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 5_000 });
+      await waitFor(() => expect(container.querySelector('button[aria-label="send"]')).not.toBeNull(), { timeout: 5_000 });
+
+      const input = screen.getByLabelText('message input');
+      fireEvent.change(input, { target: { value: '问二' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await waitFor(() => { if (!container.textContent!.includes('答二')) throw new Error('未到答二: ' + container.querySelector('.sx-main')?.textContent?.slice(0, 400) + ' input=' + (input as HTMLTextAreaElement).value); }, { timeout: 15_000 });
+      expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
+      expect(fs.existsSync(path.join(root, 'b.txt'))).toBe(true);
+      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 5_000 });
+
+      // 被丢弃轮打开的 Diff 页签:回退后应随时间线消失
+      const writeRow = [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => (b.textContent ?? '').includes('b.txt'));
+      fireEvent.click(writeRow!);
+      await waitFor(() => expect(container.querySelector('.tool-path[aria-label="b.txt"]')).not.toBeNull(), { timeout: 5_000 });
+      fireEvent.click(container.querySelector('.tool-path[aria-label="b.txt"]')!);
+      await waitFor(() => expect([...container.querySelectorAll('.sx-tab')].some((t) => (t.textContent ?? '').includes('b.txt'))).toBe(true), { timeout: 5_000 });
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit' }).at(-1)!);
+      fireEvent.change(screen.getByRole('textbox', { name: 'edit message' }), { target: { value: '改后的问二' } });
+      fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
+
+      // 确认前什么都没发生
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(dialog.textContent).toContain('b.txt'));
+      expect(dialog.textContent).toContain('a.txt');
+      expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Rewind session and files' }));
+      await waitFor(() => expect(container.textContent).toContain('答三'), { timeout: 15_000 });
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(userTexts(container)).toEqual(['问一', '改后的问二']);
+      expect(container.textContent).not.toContain('答二');
+      expect(container.textContent).toContain('Files rewound');
+      expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v1');
+      expect(fs.existsSync(path.join(root, 'b.txt'))).toBe(false);
+
+      expect([...container.querySelectorAll('.sx-tab')].some((t) => (t.textContent ?? '').includes('b.txt'))).toBe(false);
+
+      const res = await fetch(`http://127.0.0.1:${s.port}/sessions?root=${encodeURIComponent(root)}`);
+      const rows = (await res.json()) as Array<{ id: string; title?: string; firstUser?: string }>;
+      expect(rows).toHaveLength(1);
+    } finally {
+      await s.close();
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+      else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+      if (prevLanguage === undefined) delete process.env.SUNSHINEX_LANGUAGE;
+      else process.env.SUNSHINEX_LANGUAGE = prevLanguage;
+      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  }, 90_000);
+});

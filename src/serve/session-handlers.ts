@@ -13,7 +13,10 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, copySessionStores, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { branchFrom, copySessionStores, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, rewindCutOfTurn, rewindCutOfUser, rewindSessionStores, sessionsDir, writeSessionMeta, type RewindCut } from '../tui/session-journal';
+import { repointPin } from './app-state-handlers';
+import { t } from '../i18n';
+import { applyRestorePlan, collectRestorePlan } from '../tui/session-snapshots';
 import { runCommand } from './session-commands';
 import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -294,6 +297,47 @@ export function handleAnchors(io: SessionHandlerIo, res: http.ServerResponse, id
   const parsed = parseJournalFile(path.join(sessionsDir(resolveDataDir(session.root)), srcId + '.jsonl'));
   const anchors = listAnchors(parsed).map((x, i) => ({ turn: i + 1, text: x.text.length > 96 ? x.text.slice(0, 96) + '…' : x.text }));
   io.send(res, 200, { anchors });
+}
+
+/** 回退点后仍在运行的执行体停掉(2026-11-06 严格回退):其记录已被裁出新档,留着即不可见的
+ *  孤儿进程。后台任务(exec/直发 spawn)走 abortLedger;板任务走 stopBoardTask(pending 取消/
+ *  running 中止台账);活成员走 team.stop(成员台账行已随 createdAt 裁出)。执行体停止事件落在
+ *  旧会话对象投影上(旧档不在列表),新会话零污染 */
+function stopAfterCutoff(session: SessionRuntime, cutoff: number | undefined): void {
+  if (cutoff === undefined) return;
+  const h = session.runtime.harness;
+  for (const t of h.tasks.list()) {
+    if (t.status !== 'running' || t.startedAt < cutoff || t.boardDispatch === true) continue;
+    abortLedger(h.tasks, t);
+  }
+  const board = h.taskboard;
+  for (const task of Object.values(board.snapshot().tasks)) {
+    if (task.createdAt < cutoff || (task.status !== 'pending' && task.status !== 'running')) continue;
+    const stopped = stopBoardTask(board, h.tasks, task.id);
+    if (stopped !== undefined && !stopped.ok) console.warn(`[serve] rewind stop board task ${task.id}: ${stopped.error.message}`);
+  }
+  for (const name of h.team.aliveNames()) h.team.stop(name); // 名册行已随 createdAt 裁出,成员只停进程
+}
+
+/** rewind 寻址两形:userFromEnd=用户消息倒序序号(编辑重发),turn=任务轮锚点(回到此轮菜单) */
+export type RewindTarget = { turn: number } | { userFromEnd: number };
+
+function resolveRewindCut(jrnl: ReturnType<typeof parseJournalFile>, target: RewindTarget): RewindCut | undefined {
+  return 'turn' in target ? rewindCutOfTurn(jrnl, target.turn) : rewindCutOfUser(jrnl, target.userFromEnd);
+}
+
+/** GET /session/:id/restore-plan?turn=N|userFromEnd=N(二次确认弹窗):该点之后的文件回退清单,只读;
+ *  实际回退在 rewind 携 restoreFiles 时应用 */
+export function handleRestorePlan(io: SessionHandlerIo, res: http.ServerResponse, id: string, target: RewindTarget): void {
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  const srcId = session.attachedJournalId;
+  if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
+  const srcFile = path.join(sessionsDir(resolveDataDir(session.root)), srcId + '.jsonl');
+  const cut = resolveRewindCut(parseJournalFile(srcFile), target);
+  if (cut === undefined) return io.send(res, 400, { error: 'no such turn' });
+  const files = collectRestorePlan(srcFile, cut.cut + 1).map((f) => ({ path: f.path, deleted: f.deleted === true }));
+  io.send(res, 200, { files });
 }
 
 
@@ -629,9 +673,13 @@ export async function handleSessionBtw(io: SessionHandlerIo, req: http.IncomingM
 export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'rewind' | 'fork'): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
-  const turn = (parsed.body as { turn?: unknown }).turn;
-  if (typeof turn !== 'number' || !Number.isInteger(turn) || turn < 1) return io.send(res, 400, { error: 'invalid turn' });
-  const side = (parsed.body as { side?: unknown }).side === true; // G14.29:辅助会话标记(列表滤除)
+  const body = parsed.body as { turn?: unknown; userFromEnd?: unknown; side?: unknown; restoreFiles?: unknown };
+  const turn = body.turn;
+  const userFromEnd = kind === 'rewind' && typeof body.userFromEnd === 'number' && Number.isInteger(body.userFromEnd) && body.userFromEnd >= 0 ? body.userFromEnd : undefined;
+  if (userFromEnd === undefined && (typeof turn !== 'number' || !Number.isInteger(turn) || turn < 1)) return io.send(res, 400, { error: 'invalid turn' });
+  const side = body.side === true; // G14.29:辅助会话标记(列表滤除)
+  // 同时回退文件(被丢弃段的写改动按 snapshots 行 pre-image 回退);fork 是平行新会话,不动工作区
+  const restoreFiles = body.restoreFiles === true && kind === 'rewind';
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   // 2026-11-04 用户裁定「辅助会话=观察主对话当前状态,运行中也能 fork」:side fork 放行——
@@ -640,27 +688,34 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
   const srcId = session.attachedJournalId;
   if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
   const dataDir = resolveDataDir(session.root);
+  const srcFile = path.join(sessionsDir(dataDir), srcId + '.jsonl');
+  const jrnl = parseJournalFile(srcFile);
   let cutLine: number;
+  let rewind: RewindCut | undefined;
   if (side) {
     // G14.29 辅助 fork:整档继承(上下文完整),turn 不参与寻址
-    cutLine = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl')).lines.length;
+    cutLine = jrnl.lines.length;
+  } else if (kind === 'rewind') {
+    rewind = resolveRewindCut(jrnl, userFromEnd !== undefined ? { userFromEnd } : { turn: turn as number });
+    if (rewind === undefined) return io.send(res, 400, { error: 'no such turn' });
+    cutLine = rewind.cut;
   } else {
-    const jrnl = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl'));
     const anchors = listAnchors(jrnl);
-    const anchor = anchors[turn - 1];
-    if (anchor === undefined) return io.send(res, 400, { error: 'no such turn' });
+    if (anchors[(turn as number) - 1] === undefined) return io.send(res, 400, { error: 'no such turn' });
     // fork=含点击轮整轮(2026-11-04 用户裁定「点哪轮 fork 其上全部」实测修订:旧切点在点击轮
-    // 锚点前=点击轮内容不进子档+下轮 user 段行悬挂);rewind 仍锚点行不进新档(规格 §5.2)
-    cutLine = kind === 'fork' ? forkIncludeCut(jrnl, anchors, turn) : anchor.line - 1;
+    // 锚点前=点击轮内容不进子档+下轮 user 段行悬挂)
+    cutLine = forkIncludeCut(jrnl, anchors, turn as number);
   }
+  // 文件回退计划以分支前源档收集(规格 §6.2 同 TUI;切点之后=被丢弃段的写改动)
+  const restorePlan = restoreFiles ? collectRestorePlan(srcFile, cutLine + 1) : undefined;
   let newId: string;
   try {
-    newId = branchFrom(dataDir, srcId, cutLine, kind);
+    newId = branchFrom(dataDir, srcId, cutLine, kind, kind === 'rewind' ? { inheritLineage: true } : undefined);
   } catch (err) {
     return io.send(res, 500, { error: 'branch failed: ' + String((err as Error).message) });
   }
-  if (kind === 'fork') copySessionStores(dataDir, srcId, newId); // 会话级静态存储随 fork 克隆(账本/团队面/辅助档;attach 收养前落位)
   if (kind === 'fork') {
+    copySessionStores(dataDir, srcId, newId); // 会话级静态存储随 fork 克隆(账本/团队面/辅助档;attach 收养前落位)
     if (side) {
       // 2026-10-31 用户裁定「辅助对话持久化可见+编号」:父档 sideCount 独立计数持久化,
       // 辅助档题=辅助对话 N、sideOf 回指父档(重进主会话可列其辅助对话)
@@ -675,13 +730,40 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
       // 输入摘要/源 root 名兜底),落 meta 后 /sessions 列表与标题面即显
       writeSessionMeta(dataDir, newId, { title: `Fork of ${journalDisplayTitle(dataDir, srcId, path.basename(session.root))}` });
     }
-    const created = io.createSession(session.root);
-    if (!created.ok) return io.send(res, 500, { error: created.error.message });
-    const ar = io.attach(created.value.sessionId, newId);
-    if (!ar.ok) return io.send(res, 500, { error: ar.error.message });
-    return io.send(res, 200, { ok: true, sessionId: created.value.sessionId, turn });
+  } else {
+    rewindSessionStores(dataDir, srcId, newId, rewind?.ts); // 静态存储随档迁移+严格裁到回退点(attach 收养前落位)
+    // 未题名会话的列表名取自首条输入,回退后沿用;回退到首条之前则无可沿用,留待新输入
+    const keptUser = jrnl.events.slice(0, cutLine).some((e) => e.t === 'seg' && e.kind === 'user');
+    if (keptUser && readSessionMeta(dataDir, newId).title === undefined) {
+      writeSessionMeta(dataDir, newId, { title: journalDisplayTitle(dataDir, srcId, path.basename(session.root)) });
+    }
   }
-  const rr = io.attach(id, newId);
-  if (!rr.ok) return io.send(res, 500, { error: rr.error.message });
-  io.send(res, 200, { ok: true, sessionId: id, turn });
+  // rewind 同样挂新会话对象而非原地换档:attach 只支持 idle 新会话(双挂守卫拒绝已有实质档的会话),
+  // 板/委派/待办等内存投影按增量折叠,同对象重挂会叠旧态;GUI 按返回的 sessionId 换座,等同 fork
+  const created = io.createSession(session.root);
+  if (!created.ok) return io.send(res, 500, { error: created.error.message });
+  const ar = io.attach(created.value.sessionId, newId);
+  if (!ar.ok) return io.send(res, 500, { error: ar.error.message });
+  if (rewind === undefined) return io.send(res, 200, { ok: true, sessionId: created.value.sessionId, turn });
+  stopAfterCutoff(session, rewind.ts); // 回退点后启动的运行中进程属旧会话对象(裁掉记录即不可见),一并停掉
+  writeSessionMeta(dataDir, srcId, { rewoundTo: newId });
+  repointPin(srcId, newId);
+  let restore: { restored: string[]; removed: string[]; skipped: string[] } | undefined;
+  if (restorePlan !== undefined) {
+    restore = applyRestorePlan(session.root, restorePlan, path.join(sessionsDir(dataDir), '_blobs'));
+    const { restored, removed, skipped } = restore;
+    io.sessions.get(created.value.sessionId)?.pump({
+      type: 'notice',
+      text: t(`Files rewound (${restored.length} restored, ${removed.length} removed, ${skipped.length} skipped)`, `文件已回退(恢复 ${restored.length}、删除 ${removed.length}、跳过 ${skipped.length})`),
+      ts: Date.now(),
+    });
+  }
+  io.send(res, 200, {
+    ok: true,
+    sessionId: created.value.sessionId,
+    journalId: newId,
+    text: rewind.text,
+    ...(rewind.ts !== undefined ? { atTs: rewind.ts } : {}),
+    ...(restore !== undefined ? { restore } : {}),
+  });
 }

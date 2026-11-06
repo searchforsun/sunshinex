@@ -165,7 +165,8 @@ export function useSessionEvents(deps: {
           // G14.213 走 submitText 单点(命令门控随行):欢迎页 /命令 目标建会话后按 supported
           // 清单走命令通道,skills/普通文本照文本提交——此前裸 sessionSubmit,/命令全成纯文本
           // 外层吞错属良性:submitText 内部已倒 error 条(失败可见),此处仅吸收 rejection 形态
-          submitTextRef.current(pg.goal, pg.images).catch(() => undefined);
+          // 编辑重发时源气泡已随回退消失,提交失败把文本落回输入框(错误条已由 submitText 落)
+          submitTextRef.current(pg.goal, pg.images).catch(() => setInput((cur) => (cur.trim() === '' ? pg.goal : cur)));
         }
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
         // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清);

@@ -490,6 +490,7 @@ export class GuiDaemon {
     { method: 'POST', path: '/session/:id/steer/front', auth: true, run: async (req, res, p) => this.handleSteerFront(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer/edit', auth: true, run: async (req, res, p) => this.handleSteerEdit(req, res, p.id) },
     { method: 'GET', path: '/session/:id/anchors', auth: true, run: async (_req, res, p) => this.handleAnchors(res, p.id) },
+    { method: 'GET', path: '/session/:id/restore-plan', auth: true, run: async (req, res, p) => this.handleRestorePlan(req, res, p.id) },
     { method: 'POST', path: '/session/:id/rewind', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'rewind') },
     { method: 'POST', path: '/session/:id/fork', auth: true, run: async (req, res, p) => this.handleBranch(req, res, p.id, 'fork') },
     // G14.29 辅助问答：fork 整档旁路 + 隔离一轮，主会话零污染（TUI /btw 同机制）
@@ -1312,6 +1313,15 @@ export class GuiDaemon {
 
   private handleAnchors(res: http.ServerResponse, id: string): void {
     sessionHandlers.handleAnchors(this.sessionIo, res, id);
+  }
+
+  private handleRestorePlan(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    const q = urlOf(req).searchParams;
+    const turn = Number(q.get('turn') ?? NaN);
+    const userFromEnd = Number(q.get('userFromEnd') ?? NaN);
+    if (Number.isInteger(userFromEnd) && userFromEnd >= 0) return sessionHandlers.handleRestorePlan(this.sessionIo, res, id, { userFromEnd });
+    if (Number.isInteger(turn) && turn >= 1) return sessionHandlers.handleRestorePlan(this.sessionIo, res, id, { turn });
+    this.send(res, 400, { error: 'turn or userFromEnd query param required' });
   }
 
   private handleSnapshot(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): void {

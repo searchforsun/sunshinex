@@ -130,15 +130,18 @@ export interface SessionSidecarMeta {
   archived?: boolean;
   /** 归档时刻 epoch ms(归档页排序;撤销即删键) */
   archivedAt?: number;
+  /** GUI 编辑重发/回到此轮的旧时间线标记(2026-11-05):值=接替它的新档 id。档保留在盘,
+   *  listSessions 滤除——否则每回退一次列表多一条同名会话 */
+  rewoundTo?: string;
 }
 
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
-  'archived', 'archivedAt', 'sideCount', 'sideOf',
+  'archived', 'archivedAt', 'sideCount', 'sideOf', 'rewoundTo',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流） */
-const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf']);
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo']);
 /** 布尔值键（G14.29 side 辅助会话标记 / archived 归档标记） */
 const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side', 'archived']);
 
@@ -493,6 +496,7 @@ export function listSessions(dataDir: string): SessionMeta[] {
       : firstUser;
     const sid = name.slice(0, -'.jsonl'.length);
     const side = readSessionMeta(dataDir, sid);
+    if (side.rewoundTo !== undefined) continue;
     if (side.side === true) continue; // G14.29:辅助会话不进列表(RECENTS//resume//sessions)——2026-10-31 用户实时反馈「不要进主菜单」,持久化入口=主会话页签恢复(/session/:id/sides)
     metas.push({
       id: sid,
@@ -543,7 +547,14 @@ export function listAnchors(parsed: ParsedJournal): JournalAnchor[] {
 export function forkIncludeCut(parsed: ParsedJournal, anchors: JournalAnchor[], turn: number): number {
   const next = anchors[turn]; // 1-based turn → 下一轮锚点 = anchors[turn]
   if (next === undefined) return parsed.lines.length;
-  let cut = next.line - 1;
+  return retractDanglingUser(parsed, next.line - 1);
+}
+
+/** 自 cut 行起回撤紧贴切点的悬挂 user 行——GUI 档 SEG user 行先于其 task 链行落档（实测父档
+ *  29=user 段/30=task 链行），TUI 档 user 事件行同形。rewind「锚点行不进新档」（规格 §5.2）在
+ *  GUI 锚点面（chain 行）下须把该轮 user 段行一并排除：编辑重发/回到此轮语义=被编辑消息本体
+ *  不进新档（否则原文+编辑文双显）；TUI 档锚点=user 行自身，cut 落在其前一行，本回撤对其零动。 */
+export function retractDanglingUser(parsed: ParsedJournal, cut: number): number {
   while (cut > 1) {
     const ev = parsed.events[cut - 1];
     const danglingUser = ev !== undefined && (ev.t === 'user' || (ev.t === 'seg' && (ev as { kind?: string }).kind === 'user'));
@@ -551,6 +562,209 @@ export function forkIncludeCut(parsed: ParsedJournal, anchors: JournalAnchor[], 
     cut -= 1;
   }
   return cut;
+}
+
+/** rewind 切点:cut=新档保留行数(1-based 末行),text=被回退的用户原文,ts=首个被丢弃行的时刻 */
+export interface RewindCut {
+  cut: number;
+  text: string;
+  ts?: number;
+}
+
+function rewindCutAt(parsed: ParsedJournal, cut: number, text: string): RewindCut {
+  for (let i = cut; i < parsed.events.length; i += 1) {
+    const ts = (parsed.events[i] as { ts?: unknown }).ts;
+    if (typeof ts === 'number') return { cut, text, ts };
+  }
+  return { cut, text };
+}
+
+/** 按任务轮锚点定切点(回到此轮菜单):锚点行不进新档,紧贴的该轮 user 段行一并回撤 */
+export function rewindCutOfTurn(parsed: ParsedJournal, turn: number): RewindCut | undefined {
+  const anchor = listAnchors(parsed)[turn - 1];
+  if (anchor === undefined) return undefined;
+  return rewindCutAt(parsed, retractDanglingUser(parsed, anchor.line - 1), anchor.text);
+}
+
+/** 按用户消息倒序序号定切点(编辑重发):0=最后一条。不用任务轮寻址——轮内插入消息也落 task 链行,
+ *  run 序与锚点序会错位;倒序不受转录尾窗分页影响 */
+export function rewindCutOfUser(parsed: ParsedJournal, fromEnd: number): RewindCut | undefined {
+  const rows: number[] = [];
+  parsed.events.forEach((e, i) => {
+    if (e.t === 'seg' && e.kind === 'user') rows.push(i);
+  });
+  const idx = rows[rows.length - 1 - fromEnd];
+  if (idx === undefined || idx < 1) return undefined;
+  return rewindCutAt(parsed, idx, (parsed.events[idx] as { md?: string }).md ?? '');
+}
+
+/** 账本+团队物理面整件克隆（copySessionStores/rewindSessionStores 共用件）——静态记录全量复制
+ *  （fork 先例「之上静态内容记录完整复制」同口径；运行中任务/成员进程归会话进程=动态不复制） */
+function copyLedgerAndTeams(dataDir: string, srcId: string, newId: string, cutoff?: number): void {
+  const ledgerSrc = path.join(dataDir, 'tasks', `ledger-${srcId}.jsonl`);
+  try {
+    if (fs.existsSync(ledgerSrc)) {
+      fs.mkdirSync(path.join(dataDir, 'tasks'), { recursive: true });
+      if (cutoff === undefined) fs.copyFileSync(ledgerSrc, path.join(dataDir, 'tasks', `ledger-${newId}.jsonl`));
+      else fs.writeFileSync(path.join(dataDir, 'tasks', `ledger-${newId}.jsonl`), filterLedger(ledgerSrc, cutoff), 'utf8');
+    }
+  } catch {
+    /* 账本复制失败不阻断 */
+  }
+  try {
+    const teamsSrc = path.join(dataDir, 'teams', srcId);
+    if (fs.existsSync(teamsSrc)) {
+      fs.cpSync(teamsSrc, path.join(dataDir, 'teams', newId), { recursive: true });
+      if (cutoff !== undefined) filterTeamFace(path.join(dataDir, 'teams', newId), cutoff);
+    }
+  } catch {
+    /* 团队面复制失败不阻断 */
+  }
+}
+
+/** 账本按起点裁剪:丢弃起点及之后提交的任务(submit 行 startedAt 判)及其 finish 行——起点前
+ *  已有任务保留完整生命周期(实际结局是事实);startedAt 缺失的旧行按未知保留(不裁) */
+function filterLedger(ledgerSrc: string, cutoff: number): string {
+  const out: string[] = [];
+  const dropped = new Set<string>();
+  for (const line of fs.readFileSync(ledgerSrc, 'utf8').split('\n')) {
+    if (line.length === 0) continue;
+    try {
+      const row = JSON.parse(line) as { op?: string; task?: { id?: string; startedAt?: number }; id?: string };
+      if (row.op === 'submit') {
+        const startedAt = row.task?.startedAt;
+        if (typeof startedAt === 'number' && startedAt >= cutoff && row.task?.id !== undefined) {
+          dropped.add(row.task.id);
+          continue;
+        }
+      } else if (row.op === 'finish' && row.id !== undefined && dropped.has(row.id)) {
+        continue;
+      }
+    } catch {
+      /* 坏行原样保留(重放侧跳过) */
+    }
+    out.push(line);
+  }
+  return out.length > 0 ? out.join('\n') + '\n' : '';
+}
+
+/** 团队物理面按起点裁剪(克隆件上就地裁):注册表/成员名册按 createdAt,板事件源按 ts(被丢弃
+ *  团队的板任务事件整链裁掉,dependency-added 对端被裁也裁);board.json 快照缓存删除(载入走
+ *  全量重放);inbox 消息与消费位点按 ts 裁(位点钳回被保留的最大 ts)。单件失败静默跳过 */
+function filterTeamFace(teamDir: string, cutoff: number): void {
+  filterJsonArrayByCreatedAt(path.join(teamDir, 'registry.json'), cutoff);
+  filterJsonArrayByCreatedAt(path.join(teamDir, 'teammates.json'), cutoff);
+  filterBoardEvents(path.join(teamDir, 'main', 'events.jsonl'), cutoff);
+  filterInboxDir(path.join(teamDir, 'main', 'inbox'), cutoff);
+  try {
+    fs.rmSync(path.join(teamDir, 'main', 'board.json'), { force: true });
+  } catch {
+    /* 快照缓存清理失败不阻断(载入按事件重放) */
+  }
+}
+
+function filterJsonArrayByCreatedAt(file: string, cutoff: number): void {
+  try {
+    const rows = JSON.parse(fs.readFileSync(file, 'utf8')) as Array<{ createdAt?: number }>;
+    if (!Array.isArray(rows)) return;
+    const kept = rows.filter((r) => !(typeof r.createdAt === 'number' && r.createdAt >= cutoff));
+    if (kept.length === rows.length) return;
+    const tmp = `${file}.rewind-tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(kept), 'utf8');
+    fs.renameSync(tmp, file);
+  } catch {
+    /* 缺档/坏档:不裁不阻断 */
+  }
+}
+
+function filterBoardEvents(eventsFile: string, cutoff: number): void {
+  let lines: string[];
+  try {
+    lines = fs.readFileSync(eventsFile, 'utf8').split('\n');
+  } catch {
+    return; // 无板事件:零裁剪面
+  }
+  const dropped = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    if (line.length === 0) continue;
+    try {
+      const ev = JSON.parse(line) as { t?: string; taskId?: string; dependsOn?: string; ts?: number };
+      if (ev.t === 'task-created' && ev.taskId !== undefined) {
+        if (typeof ev.ts === 'number' && ev.ts >= cutoff) {
+          dropped.add(ev.taskId);
+          continue;
+        }
+        out.push(line);
+        continue;
+      }
+      if (ev.t === 'dependency-added' && ((ev.taskId !== undefined && dropped.has(ev.taskId)) || (ev.dependsOn !== undefined && dropped.has(ev.dependsOn)))) continue;
+      if (ev.taskId !== undefined && dropped.has(ev.taskId)) continue;
+      out.push(line);
+    } catch {
+      out.push(line); // 坏行原样保留(载入侧跳过)
+    }
+  }
+  try {
+    fs.writeFileSync(eventsFile, out.length > 0 ? out.join('\n') + '\n' : '', 'utf8');
+  } catch {
+    /* 重写失败不阻断 */
+  }
+}
+
+function filterInboxDir(inboxDir: string, cutoff: number): void {
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(inboxDir).filter((n) => n.endsWith('.jsonl'));
+  } catch {
+    filterInboxCursors(path.join(inboxDir, '..', '..', 'inbox-cursors.json'), cutoff, new Map<string, number>());
+    return; // 无 inbox:零消息面,位点归零
+  }
+  const maxTsByAgent = new Map<string, number>();
+  for (const name of names) {
+    const file = path.join(inboxDir, name);
+    try {
+      const kept: string[] = [];
+      let maxTs = 0;
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        if (line.length === 0) continue;
+        try {
+          const m = JSON.parse(line) as { ts?: number };
+          if (typeof m.ts === 'number' && m.ts >= cutoff) continue;
+          kept.push(line);
+          if (typeof m.ts === 'number') maxTs = Math.max(maxTs, m.ts);
+        } catch {
+          kept.push(line); // 坏行原样保留(读侧跳过)
+        }
+      }
+      fs.writeFileSync(file, kept.length > 0 ? kept.join('\n') + '\n' : '', 'utf8');
+      maxTsByAgent.set(name.slice(0, -'.jsonl'.length), maxTs);
+    } catch {
+      /* 单文件失败不阻断 */
+    }
+  }
+  filterInboxCursors(path.join(inboxDir, '..', '..', 'inbox-cursors.json'), cutoff, maxTsByAgent);
+}
+
+/** 位点钳回被保留的最大 ts;收件箱清空的 agent 位点删除(重放从头,至少一次投递语义不受损) */
+function filterInboxCursors(cursorsFile: string, cutoff: number, maxTsByAgent: Map<string, number>): void {
+  try {
+    const cursors = JSON.parse(fs.readFileSync(cursorsFile, 'utf8')) as Record<string, number>;
+    if (typeof cursors !== 'object' || cursors === null) return;
+    for (const [agent, cursor] of Object.entries(cursors)) {
+      if (cursor < cutoff) continue;
+      // 钳回被保留的最大 ts(收件箱时钟自被保留消息重置,不钳则新消息 ts 低于旧位点=永不可见);
+      // 无被保留消息则删除(位点归零,重放从头——至少一次投递语义不受损)
+      const keptTs = maxTsByAgent.get(agent) ?? 0;
+      if (keptTs > 0) cursors[agent] = Math.min(cursor, keptTs);
+      else delete cursors[agent];
+    }
+    const tmp = `${cursorsFile}.rewind-tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(cursors), 'utf8');
+    fs.renameSync(tmp, cursorsFile);
+  } catch {
+    /* 缺档/坏档:不裁不阻断 */
+  }
 }
 
 /**
@@ -563,21 +777,7 @@ export function forkIncludeCut(parsed: ParsedJournal, anchors: JournalAnchor[], 
  * 单件失败不阻断 fork（尽力复制,查无文件静默跳过）。
  */
 export function copySessionStores(dataDir: string, srcId: string, newId: string): void {
-  const ledgerSrc = path.join(dataDir, 'tasks', `ledger-${srcId}.jsonl`);
-  try {
-    if (fs.existsSync(ledgerSrc)) {
-      fs.mkdirSync(path.join(dataDir, 'tasks'), { recursive: true });
-      fs.copyFileSync(ledgerSrc, path.join(dataDir, 'tasks', `ledger-${newId}.jsonl`));
-    }
-  } catch {
-    /* 账本复制失败不阻断 */
-  }
-  try {
-    const teamsSrc = path.join(dataDir, 'teams', srcId);
-    if (fs.existsSync(teamsSrc)) fs.cpSync(teamsSrc, path.join(dataDir, 'teams', newId), { recursive: true });
-  } catch {
-    /* 团队面复制失败不阻断 */
-  }
+  copyLedgerAndTeams(dataDir, srcId, newId);
   const dir = sessionsDir(dataDir);
   if (!fs.existsSync(dir)) return;
   for (const name of fs.readdirSync(dir)) {
@@ -596,6 +796,42 @@ export function copySessionStores(dataDir: string, srcId: string, newId: string)
 }
 
 /**
+ * 会话级静态存储随 rewind 换档迁移（2026-11-05 编辑重发/回到此轮裁定「侧栏内容回退到当前点」）：
+ * rewind 同 visible id 换挂新 journal，attach 收养面按新 id 扫描——不迁移即账本/团队面收养空壳、
+ * 辅助对话 sideOf 回指旧档 sides 清单变空。①账本 ②团队物理面：整件克隆（fork 先例同口径；
+ * 旧档自带原件零改动，/resume 回原时间线仍可读）；③辅助对话档：同会话续档**不克隆**，sideOf
+ * 原地改指新 journal id（writeSessionMeta 读改写合并，side/title 随档保留）；④旁车 meta（题/模型/
+ * 权限档/辅助编号，attach 回放依赖）与 ⑤GUI 页签档（journalId 键控）随迁；账本/团队面按 cutoff
+ * 严格裁到回退点（起点后提交的任务/创建的团队/成员/板任务/收件箱消息整链丢弃；起点前已有实体
+ * 保留完整生命周期——实际结局是事实）。cutoff 缺省=全量复制（fork 同口径兜底）。
+ * 单件失败尽力而为不阻断 rewind。
+ */
+export function rewindSessionStores(dataDir: string, srcId: string, newId: string, cutoff?: number): void {
+  copyLedgerAndTeams(dataDir, srcId, newId, cutoff);
+  writeSessionMeta(dataDir, newId, readSessionMeta(dataDir, srcId));
+  try {
+    const guiDir = path.join(path.dirname(dataDir), 'gui', 'sessions');
+    const guiSrc = path.join(guiDir, `${srcId}.json`);
+    if (fs.existsSync(guiSrc)) fs.copyFileSync(guiSrc, path.join(guiDir, `${newId}.json`));
+  } catch {
+    /* 页签档复制失败不阻断 */
+  }
+  const dir = sessionsDir(dataDir);
+  if (!fs.existsSync(dir)) return;
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith('.jsonl')) continue;
+    const sideJid = name.slice(0, -'.jsonl'.length);
+    try {
+      const meta = readSessionMeta(dataDir, sideJid);
+      if (meta.side !== true || meta.sideOf !== srcId) continue;
+      writeSessionMeta(dataDir, sideJid, { sideOf: newId });
+    } catch {
+      /* 单个辅助档改指失败不阻断 */
+    }
+  }
+}
+
+/**
  * 分档原语（规格 2026-09-20 rewind+fork §5.2）：复制源档第 1..upToLine 行到新档（第 2..upToLine 行逐字节相等），
  * header 重写（新 id / 新 createdAt / forkedFrom 血缘），写新档；源档零改动。
  * 任一前缀行非合法 JSON、upToLine 越界、源档缺失即 throw Error('INVALID_ARG: ...')，零副作用。
@@ -605,7 +841,7 @@ export function branchFrom(
   sourceId: string,
   upToLine: number,
   kind: 'rewind' | 'fork',
-  opts?: { now?: Date },
+  opts?: { now?: Date; inheritLineage?: boolean },
 ): string {
   const srcFile = path.join(sessionsDir(dataDir), sourceId + '.jsonl');
   const all = fs.readFileSync(srcFile, 'utf8').split('\n');
@@ -626,7 +862,13 @@ export function branchFrom(
   const newId = newSessionId(opts?.now);
   const now = (opts?.now ?? new Date()).toISOString();
   // spread 保持原字段序，id/createdAt 原位覆盖，forkedFrom 尾追
-  const newHeader: JournalHeader = { ...header, id: newId, createdAt: now, forkedFrom: { sourceSessionId: sourceId, upToLine, kind } };
+  // inheritLineage(GUI 回退):新档是同一会话的延续,不记 rewind 血缘(列表摘要不出「↳ rewind from」);
+  // 源档自身的 fork 血缘在切点内才承继(分叉横幅靠 upToLine 定位),否则随被丢弃段失效
+  const { forkedFrom: inherited, ...headerRest } = header;
+  const lineage = opts?.inheritLineage === true
+    ? (inherited !== undefined && inherited.upToLine <= upToLine ? { forkedFrom: inherited } : {})
+    : { forkedFrom: { sourceSessionId: sourceId, upToLine, kind } };
+  const newHeader: JournalHeader = { ...headerRest, id: newId, createdAt: now, ...lineage };
   fs.mkdirSync(sessionsDir(dataDir), { recursive: true });
   fs.writeFileSync(path.join(sessionsDir(dataDir), newId + '.jsonl'), [JSON.stringify(newHeader), ...kept.slice(1)].join('\n') + '\n', 'utf8');
   return newId;

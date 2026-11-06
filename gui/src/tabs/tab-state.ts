@@ -381,3 +381,26 @@ export function parseTabSession(raw: unknown): TabSessionState | null {
   const width = typeof o.width === 'number' && o.width >= MIN_TAB_WIDTH ? o.width : DEFAULT_TAB_WIDTH;
   return { tabs, activeUid, collapsed: o.collapsed === true, width, recentClosed };
 }
+
+/** 回退时随时间线丢弃的内容型页签:指向被丢弃轮次的产物;工具面板/终端/辅助对话不属于时间线 */
+const REWIND_DROPPED_TYPES: ReadonlySet<TabTypeId> = new Set<TabTypeId>(['file', 'diff', 'web', 'agent']);
+
+/** 回退换座(2026-11-05,fork 页签克隆同款关键点):旧座页签迁到新会话座——atTs 之后开的内容型页签
+ *  丢弃(createdAt=0 的旧档无时间面,保留);终端剥 ptyId(pty 归旧会话对象,点开即新开)。atTs 缺省不筛 */
+export function rewindSeat(states: TabStates, fromId: string, toId: string, atTs?: number): TabStates {
+  const { [fromId]: seat, ...rest } = states;
+  if (seat === undefined) return states;
+  const later = (type: TabTypeId, createdAt: number): boolean => atTs !== undefined && createdAt > atTs && REWIND_DROPPED_TYPES.has(type);
+  const tabs = seat.tabs
+    .filter((t) => !later(t.type, t.createdAt))
+    .map((t) => (t.params.ptyId !== undefined ? { ...t, params: { ...t.params, ptyId: undefined } } : t));
+  return {
+    ...rest,
+    [toId]: {
+      ...seat,
+      tabs,
+      activeUid: tabs.some((t) => t.uid === seat.activeUid) ? seat.activeUid : (tabs[tabs.length - 1]?.uid ?? null),
+      recentClosed: seat.recentClosed.filter((c) => !later(c.type, c.createdAt)),
+    },
+  };
+}

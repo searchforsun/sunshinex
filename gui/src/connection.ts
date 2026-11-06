@@ -35,6 +35,7 @@ import type {
   TreeSearchResp,
   WorkspaceRow,
 } from './connection-types';
+import type { RestorePlan, RewindResult, RewindTarget } from './connection-types';
 import type { SessionEvent } from '../../src/types';
 
 
@@ -76,11 +77,14 @@ export interface Connection {
   frontSteer(id: string, seq: number): Promise<void>;
   /** POST /session/:id/steer/edit:队列条目内联改写(P5 spec §12.2) */
   editSteer(id: string, seq: number, text: string): Promise<void>;
-  /** POST /session/:id/rewind|fork(G10-C1d):turn=anchors 1-based */
-  rewindSession(id: string, turn: number): Promise<void>;
+  /** POST /session/:id/rewind(2026-11-05 编辑重发/回到此轮):restoreFiles=同时回退文件;
+   *  成功后会话换到返回的 sessionId/journalId(换座同 fork) */
+  rewindSession(id: string, target: RewindTarget, restoreFiles?: boolean): Promise<RewindResult>;
   forkSession(id: string, turn: number, side?: boolean): Promise<{ sessionId: string }>;
   /** GET /session/:id/anchors:任务轮锚点(rewind/fork 寻址) */
   sessionAnchors(id: string): Promise<Array<{ turn: number; text: string }>>;
+  /** GET /session/:id/restore-plan(2026-11-05 二次确认弹窗):回退点之后的文件改动清单(只读) */
+  restorePlan(id: string, target: RewindTarget): Promise<RestorePlan>;
   /** POST /memory/rm:记忆删除(G10-C1d) */
   removeMemory(root: string, slugs: string[]): Promise<{ removed: string[]; failed: Array<{ slug: string; error: string }> }>;
   /** POST /session/:id/command:斜杠命令直跑(G10-C1c) */
@@ -475,8 +479,21 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async editSteer(id: string, seq: number, text: string): Promise<void> {
       await post('/session/' + encodeURIComponent(id) + '/steer/edit', { seq, text });
     },
-    async rewindSession(id: string, turn: number): Promise<void> {
-      await post('/session/' + encodeURIComponent(id) + '/rewind', { turn });
+    async rewindSession(id: string, target: RewindTarget, restoreFiles?: boolean): Promise<RewindResult> {
+      const res = await fetch(`${base}/session/${encodeURIComponent(id)}/rewind`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify({ ...target, ...(restoreFiles === true ? { restoreFiles: true } : {}) }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `/session/${id}/rewind -> ${res.status}`);
+      }
+      return (await res.json()) as RewindResult;
+    },
+    restorePlan(id: string, target: RewindTarget): Promise<RestorePlan> {
+      const q = 'turn' in target ? `turn=${target.turn}` : `userFromEnd=${target.userFromEnd}`;
+      return getJson(`/session/${encodeURIComponent(id)}/restore-plan?${q}`);
     },
     async forkSession(id: string, turn: number, side?: boolean): Promise<{ sessionId: string }> {
       const res = await fetch(`${base}/session/${encodeURIComponent(id)}/fork`, {
@@ -487,8 +504,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
       if (!res.ok) throw new Error(`/session/${id}/fork -> ${res.status}`);
       return (await res.json()) as { sessionId: string };
     },
-    sessionAnchors(id: string) {
-      return getJson('/session/' + encodeURIComponent(id) + '/anchors');
+    async sessionAnchors(id: string) {
+      const r = await getJson<{ anchors: Array<{ turn: number; text: string }> }>('/session/' + encodeURIComponent(id) + '/anchors');
+      return r.anchors;
     },
     async removeMemory(root: string, slugs: string[]) {
       const res = await fetch(`${base}/memory/rm`, {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   emptyTabSession, ensureSession, openTab, closeTab, cycleTab,
-  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, stripTabType, type SingletonProbe,
+  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, rewindSeat, stripTabType, type SingletonProbe,
 } from './tab-state';
 
 /** 判重/单例探针(T3 registry 提供真实现;此处 stub 同口径:file 按 path,tasks 单例) */
@@ -165,3 +165,30 @@ describe('tab-state 纯逻辑(spec §1 标签模型)', () => {
     expect(c.c.recentClosed[0]!.params.path).toBe('f11.ts'); // 新者在前
   });
 });
+
+describe('rewindSeat(回退换座)', () => {
+  const tab = (uid: string, type: 'file' | 'diff' | 'web' | 'agent' | 'terminal' | 'tasks', createdAt: number, params = {}) => ({ uid, type, params, createdAt });
+  const seat = {
+    ...emptyTabSession(),
+    tabs: [tab('old', 'file', 100), tab('legacy', 'web', 0), tab('late', 'diff', 300), tab('agent', 'agent', 300), tab('term', 'terminal', 300, { ptyId: 'p1' }), tab('board', 'tasks', 300)],
+    activeUid: 'late',
+    recentClosed: [{ type: 'file' as const, params: {}, closedAt: 400, createdAt: 300 }, { type: 'file' as const, params: {}, closedAt: 150, createdAt: 50 }],
+  };
+
+  it('丢回退点之后的内容型页签,旧档/工具面板/终端保留,终端剥 ptyId,旧座摘除', () => {
+    const out = rewindSeat({ a: seat }, 'a', 'b', 200);
+    expect(out.a).toBeUndefined();
+    expect(out.b.tabs.map((t) => t.uid)).toEqual(['old', 'legacy', 'term', 'board']);
+    expect(out.b.tabs.find((t) => t.uid === 'term')!.params.ptyId).toBeUndefined();
+    expect(out.b.recentClosed).toHaveLength(1);
+    expect(out.b.activeUid).toBe('board');
+  });
+
+  it('atTs 缺省不筛;活动页签幸存则不变;旧座缺席原样返回', () => {
+    expect(rewindSeat({ a: seat }, 'a', 'b').b.tabs).toHaveLength(6);
+    expect(rewindSeat({ a: { ...seat, activeUid: 'old' } }, 'a', 'b', 200).b.activeUid).toBe('old');
+    const none = {};
+    expect(rewindSeat(none, 'a', 'b', 1)).toBe(none);
+  });
+});
+

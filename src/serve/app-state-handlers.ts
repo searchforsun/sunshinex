@@ -47,6 +47,21 @@ export function removePinsByRoot(root: string): boolean {
   return true;
 }
 
+/** 回退换档联动:钉住的会话跟随到新 journal(钉键=journalId,旧档已从列表滤除,不改指即钉回旧时间线) */
+export function repointPin(oldId: string, newId: string): void {
+  try {
+    const raw = JSON.parse(fs.readFileSync(appPinsFile(), 'utf8')) as unknown;
+    if (!Array.isArray(raw)) return;
+    const pins = raw as Array<Record<string, unknown>>;
+    if (!pins.some((p) => p?.id === oldId)) return;
+    const tmp = `${appPinsFile()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(pins.map((p) => (p?.id === oldId ? { ...p, id: newId } : p))), 'utf8');
+    fs.renameSync(tmp, appPinsFile());
+  } catch {
+    /* 缺档/坏档:无可改指 */
+  }
+}
+
 /** 已读档(2026-10-23,GUI 已读/未读态落底层——用户裁定「刷新不再全员未读」):userConfigDir/
  *  gui/seen.json——机器级 id → 最近已读 updatedAt(行新于已读时刻即未读);与 pins 同目录
  *  同分层口径,浏览器/壳跨端共用。GET 缺档/坏档回 {seen:{}} */
