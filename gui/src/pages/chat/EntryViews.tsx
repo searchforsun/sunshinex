@@ -17,6 +17,7 @@ import { useDirOpener } from './md-render';
 import { ComposerCard } from '../../composer/ComposerCard';
 import { MAX_IMAGES, appendImages, loadImages } from '../../images';
 import { EditComposer } from './edit-composer';
+import { stripSideNote } from './side-note';
 import type { ComposerEnv } from './edit-composer';
 import { TurnConfirmDialog } from './rewind-confirm';
 import type { RewindOps } from './chat-types';
@@ -316,6 +317,9 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
 
 export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, conn, root, sideChat }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
+  /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
+   *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
+  const displayMd = sideChat === true ? stripSideNote(entry.md) : entry.md;
   const [confirm, setConfirm] = useState<{ text: string; images?: string[] } | null>(null);
   const [editHint, setEditHint] = useState('');
   const confirmDialog = confirm !== null && rewindOps !== undefined && (
@@ -336,7 +340,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
     />
   );
   const copy = (): void => {
-    copyText(entry.md); // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
+    copyText(displayMd); // P11:user md 裸文(内核渲染中立)——正文合法以 > 开头者不再误剥
   };
   const [editing, setEditing] = useState(false);
   const [editLightbox, setEditLightbox] = useState<string | undefined>(undefined);
@@ -449,9 +453,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
       {entry.images !== undefined && entry.images.length > 0 && (
         <UserImageStrip conn={conn} root={root} images={entry.images} onOpen={onOpenImage} />
       )}
-      {entry.md.trim() !== '' && (
+      {displayMd.trim() !== '' && (
         <CollapsibleBubble
-          text={entry.md}
+          text={displayMd}
           render={(md) => (
             /* 2026-11-04 用户裁定:用户气泡不做任何 md 格式化渲染(标题/加粗/代码块/表格/链接
                一律原文)——仅 @文件 /命令 ⟦引用⟧ 特殊 token 走 chip 高亮(renderMentionSpans,
@@ -694,7 +698,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
         </div>
       </div>
       {/* 2026-11-06 用户裁定 P2:辅助会话正文不渲染 fork/回退行 */}
-      {sideChat !== true && footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={onFork} />}
+      {/* 辅助会话仅裁 fork 入口(2026-11-06 用户裁定「只让去掉 fork 入口」):复制/步数/tokens/时间照常 */}
+      {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={sideChat === true ? undefined : onFork} />}
       {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}

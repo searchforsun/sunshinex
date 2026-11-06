@@ -31,6 +31,7 @@ import { WelcomeComposer } from './welcome/WelcomeComposer';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { CHAT_MAX_EVENT, chatMaxFor } from './thread-width';
 import { useAppearanceSync } from './use-appearance-sync';
+import { buildSideNote } from './pages/chat/side-note';
 import { useOpError } from './use-op-error';
 import { useShellLayout } from './use-shell-layout';
 import { useTabPersistence } from './use-tab-persistence';
@@ -312,16 +313,14 @@ function AppShell(): JSX.Element {
     if (conn === null || openSessionId === '') return;
     const r = await conn.forkSession(openSessionId, 1, true);
     sideSinksRef.current.set(r.sessionId, { current: null });
+    releaseSide(r.sessionId);
     // 持久化编号题(daemon fork 落 meta「辅助对话 N」;2026-10-31 用户裁定页签显编号)
     const title = await conn.getSessionTitle(r.sessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : undefined)).catch(() => undefined);
     // 2026-11-06 用户裁定「fork 时要给模型加说明」:首条播种注入 fork 说明——以上是主会话上下文、
     // 本会话是辅助会话(用于辅助主会话相关内容,不影响主会话)。模型此前只能从复制内容自行推断
     const mainTitle = await conn.getSessionTitle(openSessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : openSessionId)).catch(() => openSessionId);
     if (text.trim() !== '') {
-      const note = `[Side chat] The context above is forked from main chat session "${mainTitle}". This is a side conversation for auxiliary discussion and small tasks around the main chat's content; it does not affect the main session. The request below follows:
-
-`;
-      setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: note + text }));
+      setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: buildSideNote(mainTitle) + text }));
     }
     const patch = { sideId: r.sessionId, ...(title !== undefined ? { title } : {}) };
     setTabStates((s) => patchTabMeta(patchTabMeta(s, openSessionId, uid, patch), WELCOME_TAB_SEAT, uid, patch));
@@ -331,44 +330,76 @@ function AppShell(): JSX.Element {
    *  清单恢复 辅助对话 N 页签(在座 side 会话才恢复——daemon 重启后缺席;用户关过的页签经
    *  dismissedRef 记忆不复活) */
   const sideTabDismissedRef = useRef(new Map<string, Set<string>>());
-  /** 辅助会话恢复账本(journalId→canonical sessionId,2026-11-06):daemon 重启后 runtime 按
-   *  新壳 id 重挂,恢复须 newSession 壳+attach 收养取 canonical;journal 级去重防重复页签 */
-  const sideRestoredSides = useRef(new Map<string, Map<string, string>>());
+  /** 辅助会话恢复(2026-11-06 用户实测「持久化和加载还是 404,模型显示默认模型」根修):持久化页签的
+   *  sideId 是上个 daemon 生命周期的会话 id,重启后必失效;旧恢复链跳过不在座的 side 档(重启后全部
+   *  不在座)=恢复链从未执行,旧 id 页签直挂 snapshot 404,快照缺席模型面落「默认模型」。
+   *  改为对账:/sides 清单(journal 级)× 本座 sidechat 页签(sideJournal 优先,旧档按持久化编号题
+   *  匹配)——在座即改指 live id,不在座 newSession 壳+attach 收养取 canonical 改指;对账落定前
+   *  页签不挂真 Chat(sideReleased 闸门,免先落 404 错误条);挂座失败(journal 已删)放闸如实暴露 */
+  const [sideListing, setSideListing] = useState<{ main: string; sides: Array<{ journalId: string; sessionId?: string; title: string }> } | null>(null);
+  const [sideReleased, setSideReleased] = useState<ReadonlySet<string>>(() => new Set());
+  const releaseSide = useCallback((id: string): void => {
+    setSideReleased((s) => (s.has(id) ? s : new Set(s).add(id)));
+  }, []);
+  /** journal → 在途/已落 canonical(同 daemon 生命周期去重:对账 effect 随页签态重跑不重复挂座) */
+  const sideAttachRef = useRef(new Map<string, Promise<string>>());
   useEffect(() => {
     const conn = connInstance;
     if (conn === null || page !== 'chat' || openSessionId === '') return;
-    void conn.sessionSides(openSessionId).then(
-      (sides) => {
-        const dismissed = sideTabDismissedRef.current.get(openSessionId);
-        for (const sd of sides) {
-          if (sd.sessionId === undefined) continue;
-          if (dismissed?.has(sd.sessionId) === true) continue;
-          // 2026-11-06 用户实测「重启后辅助会话 snapshot 404」根修:daemon 重启后 runtime 表按
-          // 新壳 id 重挂,裸 journal/旧 id snapshot 必 404(fork 横幅 onOpenSession 同款实测注释)
-          // ——恢复走 newSession 壳+attach 收养,以返回 canonical id 开页;journal 级去重(重复跑
-          // 不新开,复用已恢复 canonical);canonical 失效(deamon 再重启)自动弃旧重挂;挂座失败
-          // (journal 已删)跳过恢复,不再出 404 空页签
-          const recorded = sideRestoredSides.current.get(openSessionId)?.get(sd.journalId);
-          const attachFlow = (recorded !== undefined
-            ? conn.attach(recorded, sd.journalId).then((r) => r.sessionId).catch(() => {
-                sideRestoredSides.current.get(openSessionId)?.delete(sd.journalId);
-                return conn.newSession(openRoot).then(({ sessionId: shellId }) => conn.attach(shellId, sd.journalId).then((r2) => r2.sessionId));
-              })
-            : conn.newSession(openRoot).then(({ sessionId: shellId }) => conn.attach(shellId, sd.journalId).then((r2) => r2.sessionId)));
-          void attachFlow.then((canonical) => {
-            if (sideRestoredSides.current.has(openSessionId) === false) sideRestoredSides.current.set(openSessionId, new Map());
-            sideRestoredSides.current.get(openSessionId)!.set(sd.journalId, canonical);
-            setTabStates((st) => {
-              const cur = st[openSessionId];
-              if (cur !== undefined && cur.tabs.some((x) => x.params.sideId === canonical)) return st;
-              return openTab(ensureSession(st, openSessionId, PROBE), openSessionId, 'sidechat', { sideId: canonical, title: sd.title }, PROBE);
-            });
-          }).catch(() => undefined);
-        }
-      },
-      () => undefined,
+    const mainId = openSessionId;
+    let dead = false;
+    void conn.sessionSides(mainId).then(
+      (sides) => { if (!dead) setSideListing({ main: mainId, sides }); },
+      () => { if (!dead) setSideListing({ main: mainId, sides: [] }); },
     );
+    return () => { dead = true; };
   }, [connInstance, openSessionId, page]);
+  const seatTabsForSides = tabStates[openSessionId]?.tabs;
+  useEffect(() => {
+    const conn = connInstance;
+    if (conn === null || sideListing === null || sideListing.main !== openSessionId) return;
+    const mainId = openSessionId;
+    const tabs = (seatTabsForSides ?? []).filter((x) => x.type === 'sidechat' && x.params.sideId !== undefined);
+    const dismissed = sideTabDismissedRef.current.get(mainId);
+    const matched = new Set<string>();
+    for (const sd of sideListing.sides) {
+      const hit = tabs.find((x) =>
+        x.params.sideJournal === sd.journalId
+        || (sd.sessionId !== undefined && x.params.sideId === sd.sessionId)
+        || x.params.sideId === sd.journalId
+        || (x.params.sideJournal === undefined && x.params.title === sd.title));
+      if (hit === undefined) {
+        // 在座但无页签(同 daemon 生命周期重进主会话):照旧恢复页签,用户关过的不复活
+        if (sd.sessionId === undefined || dismissed?.has(sd.sessionId) === true) continue;
+        const id = sd.sessionId;
+        releaseSide(id);
+        setTabStates((st) => openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: id, sideJournal: sd.journalId, title: sd.title }, PROBE));
+        continue;
+      }
+      matched.add(hit.uid);
+      if (sd.sessionId !== undefined && hit.params.sideId === sd.sessionId) {
+        releaseSide(sd.sessionId);
+        if (hit.params.sideJournal === undefined) setTabStates((st) => patchTabMeta(st, mainId, hit.uid, { sideJournal: sd.journalId }));
+        continue;
+      }
+      const stale = hit.params.sideId!;
+      let flow = sd.sessionId !== undefined ? Promise.resolve(sd.sessionId) : sideAttachRef.current.get(sd.journalId);
+      if (flow === undefined) {
+        flow = conn.newSession(openRoot).then(({ sessionId: shellId }) => conn.attach(shellId, sd.journalId)).then((r) => r.sessionId);
+        sideAttachRef.current.set(sd.journalId, flow);
+        flow.catch(() => sideAttachRef.current.delete(sd.journalId));
+      }
+      void flow.then(
+        (id) => {
+          releaseSide(id);
+          setTabStates((st) => patchTabMeta(st, mainId, hit.uid, { sideId: id, sideJournal: sd.journalId }));
+        },
+        () => releaseSide(stale),
+      );
+    }
+    // 清单无对应档的页签(journal 已删等):放闸如实暴露
+    for (const x of tabs) if (!matched.has(x.uid)) releaseSide(x.params.sideId!);
+  }, [connInstance, sideListing, seatTabsForSides, openSessionId, openRoot, releaseSide]);
 
   const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false): void => {
     // 临时会话思想(2026-10-29 用户设计定版):欢迎页=临时会话,发出去(欢迎页输入建席)时临时座
@@ -1201,6 +1232,7 @@ function AppShell(): JSX.Element {
                       ptyIdFor,
                       onPtyAllocated: handlePtyAllocated,
                       chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId) : undefined,
+                      sideReady: (id: string) => sideReleased.has(id),
                       memoryFocus,
                       learnedFocus,
                       bgFocus,

@@ -125,6 +125,9 @@ export interface TabRenderProps {
   readonly catalogTick?: { memory: number; learned: number };
   /** G14.29 辅助对话(App 按 sideId 注入旁路聊天 sink——App onEvent 同键路由帧;他型忽略) */
   readonly chatSinkRef?: MutableRefObject<import('../pages/Chat').ChatSink | null>;
+  /** 辅助对话挂载闸门(2026-11-06):sideId 经 App 恢复对账核验/改指后才挂真 Chat——持久化旧 id
+   *  (上个 daemon 生命周期)直挂必 snapshot 404。缺省=放行(旧装配/测试桩) */
+  readonly sideReady?: (sideId: string) => boolean;
 }
 
 /** G14.2xx 类型图标(标签条/标签搜索弹窗共用;G8b-d 增类在此补图标) */
@@ -382,10 +385,15 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: (params) => params.sideId ?? '',
     singleton: false,
     render: (p) =>
-      p.chatSinkRef !== undefined && p.params.sideId !== undefined ? (
+      p.params.sideId !== undefined && p.sideReady?.(p.params.sideId) === false ? (
+        <div className="sx-sidechat sx-sidechat-empty" aria-busy="true">
+          <p>{t('Restoring side chat…', '正在恢复辅助对话…')}</p>
+        </div>
+      ) : p.chatSinkRef !== undefined && p.params.sideId !== undefined ? (
         // G14.30 贴地壳:窄面板内 flex 列(头部/流区滚动/composer 钉底)
         <div className="sx-sidechat">
           <Chat
+            key={p.params.sideId}
             conn={p.conn}
             sessionId={p.params.sideId}
             connState="open"
@@ -412,7 +420,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
       ) : (
         // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
-          <p>{t('A parallel branch of the main chat for auxiliary discussion.', '主会话的并行分支，用于辅助讨论，不影响主会话。')}</p>
+          <p>{t('A side discussion around the main chat.', '围绕主会话的辅助讨论。')}</p>
         </div>
       ),
     },
@@ -443,7 +451,7 @@ function SideChatDraft({ uid, insert, onUpgrade, conn, root }: { uid: string; in
     <div className="sx-sidechat sx-sidechat-draft">
       <div className="sx-sidechat-draft-head">
         <h2>{t('Side chat', '辅助会话')}</h2>
-        <p role="status">{t('A parallel branch of the main chat for auxiliary discussion.', '主会话的并行分支，用于辅助讨论，不影响主会话。')}</p>
+        <p role="status">{t('A side discussion around the main chat.', '围绕主会话的辅助讨论。')}</p>
       </div>
       <div className="composer sx-sidechat-draft-composer">
         <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} />
