@@ -278,12 +278,17 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
 
   /** 面板点外自动收(2026-11-06 用户实测「+ 显示后,点击其他地方要自动关闭」):pointerdown 落
    *  编辑卡外即收全部浮层(+面板/@文件/$#/引用);面板行锚卡内,选中点击不受影响(Chat 点外即收同款) */
+  // 2026-11-06 用户裁定续「点击编辑框内部也要关掉 + 弹出层」:卡内点击(面板本体与 + 钮自持除外)
+  // 亦收 + 面板;@/$# 面板随光标前 token 自开合,卡内点击不动
   useEffect(() => {
     const onDocPointerDown = (e: PointerEvent): void => {
-      if (e.target instanceof Element && !e.target.closest('.user-edit-composer')) {
+      if (!(e.target instanceof Element)) return;
+      if (!e.target.closest('.user-edit-composer')) {
         setPillOpen(null);
         setFilePal(null);
         setRefPal(null);
+      } else if (!e.target.closest('.user-edit-overlay-zone') && !e.target.closest('.composer-plus-btn')) {
+        setPillOpen(null);
       }
     };
     document.addEventListener('pointerdown', onDocPointerDown);

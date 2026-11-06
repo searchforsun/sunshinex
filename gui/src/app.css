@@ -1463,7 +1463,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 用户编辑卡(§7):composer 同款浮卡(elevated+radius-composer+海拔),占满流区宽。
  * 2026-11-05 反悔回滚:上轮把「去掉包装」误读为撤卡面——用户所指实为「芯片不被当整体」
  * (「编辑框怎么没了」即此),卡面恢复;真正的包装问题=芯片原子性,已由 use-token-guards 落 */.user-edit-composer { width: calc(100% + 6px); max-width: none; margin: 0 auto; align-self: flex-start; }
-.user-edit-cancel { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 999px; background: var(--surface-soft); color: var(--fg-secondary); transition: background var(--dur-basic) var(--ease-enter); }
+.user-edit-cancel { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 999px; background: transparent; color: var(--fg-secondary); transition: background var(--dur-basic) var(--ease-enter); }
 .user-edit-cancel:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
 
 /* 新条目入场(§8):淡入+4px 上移,每条目挂载一次(key 稳定,流式更新不重触发) */
@@ -1744,7 +1744,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    主对话 dock 同式(与流列同 token 对齐 +2px),面板宽时随阶梯限宽居中 */.sx-sidechat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }.sx-sidechat .chat { flex: 1; min-height: 0; }.sx-sidechat .composer { width: min(calc(100% - 28px), calc(var(--chat-max) + 2px)); max-width: none; margin: 0 auto var(--thread-gutter); }.sx-sidechat .composer-pills { flex-wrap: nowrap; min-width: 0; } /* 2026-10-24 用户裁定:辅助对话 composer 对齐主对话——foot 禁折行(旧「两行折放」退役),溢出走全局 pills-tight 塌缩,模型名右缘渐隐同主对话 */.sx-sidechat .composer-pill { white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
 /* 2026-11-06 用户截图裁定(改向):辅助对话模型 pill 与主对话同显思考强度徽标——
    隐藏规则(.sx-sidechat .model-effort-chip display:none)退役 */
-.sx-sidechat .composer-pill:not(.model-pill) .pill-label,.sx-sidechat .composer-pill .model-effort-chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 模型名除外:2026-10-24 裁定动态宽+溢出渐隐,永不出省略号(wrap 态自然宽换行) */
+.sx-sidechat .composer-pill:not(.model-pill) .pill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 强度徽标不入此规则(2026-11-06 用户实测「中右边被覆盖」):斜体字形右倾出 advance 盒,自身 overflow:hidden 即裁掉右缘;徽标单字 flex:none 无需省略 */ /* 模型名除外:2026-10-24 裁定动态宽+溢出渐隐,永不出省略号(wrap 态自然宽换行) */
 
 /* G14.31 轮折叠:sealed Worked 行即开关(hover 显 chevron:> 折叠/⌄ 展开;键盘可达) */.entry-run.sealed[role='button'] { cursor: pointer; }.entry-run .run-chev { display: inline-flex; opacity: 0; color: var(--fg-tertiary); transition: opacity var(--dur-basic) var(--ease-enter); }.entry-run.sealed:hover .run-chev, .entry-run.sealed:focus-visible .run-chev { opacity: 1; }
 
@@ -3317,7 +3317,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-sidechat-draft-head { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 0 16px; }
 .sx-sidechat-draft-head h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--fg-secondary); }
 .sx-sidechat-draft-head p { margin: 0; color: var(--fg-tertiary); font-size: 12px; }
-.sx-sidechat-draft-composer { display: flex; flex-direction: column; flex: none; margin: 0 auto 12px; }
+.sx-sidechat .sx-sidechat-draft-composer { display: flex; flex-direction: column; flex: none; margin: 0 auto 10px; } /* 距底=会话中 .chat-dock bottom:10px(2026-11-06 用户裁定「草稿页与会话中距底一致」,实测会话中 10px/草稿 16px):升级挂真 Chat 不跳位;双类选择器压过 .sx-sidechat .composer 的 thread-gutter 底距 */
 
 /* 回退二次确认弹窗(2026-11-05):遮罩/外壳沿用 sx-editor-modal,此处只收窄与排版 */
 .sx-turn-confirm { width: min(90vw, 460px); }
