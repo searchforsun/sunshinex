@@ -21,18 +21,36 @@ type SkillsRow = SkillsGroup['skills'][number];
 /** 行构造器:daemon GET /settings/skills 应答行的合法缺省,逐例覆写差面 */
 const row = (id: string, over: Partial<SkillsRow> = {}): SkillsRow => ({ id, ...over });
 
-/** conn 桩:skillsGroups 调用记录([root 归一 '', all]);首答 initial,重拉答 next */
-const connOf = (initial: SkillsGroup[], opts: { next?: SkillsGroup[] } = {}): { conn: SkillsPaneConn; calls: Array<[string, boolean]> } => {
+/** conn 桩:skillsGroups 调用记录([root 归一 '', all]);首答 initial,重拉答 next;settings 桩
+ *  (disabledSkills 键值可配)+ putSettings 调用记录(2026-11-07 加载开关面) */
+const connOf = (
+  initial: SkillsGroup[],
+  opts: { next?: SkillsGroup[]; disabledSkills?: string; envOverride?: boolean } = {},
+): { conn: SkillsPaneConn; calls: Array<[string, boolean]>; puts: Array<Record<string, string | number | null>> } => {
   const calls: Array<[string, boolean]> = [];
+  const puts: Array<Record<string, string | number | null>> = [];
   let n = 0;
+  let cur = opts.disabledSkills;
   return {
     conn: {
       skillsGroups(root?: string, all?: boolean) {
         calls.push([root ?? '', all === true]);
         return Promise.resolve({ groups: n++ === 0 || opts.next === undefined ? initial : opts.next });
       },
-    },
+      settings() {
+        return Promise.resolve({
+          keys: [{ key: 'disabledSkills', value: cur ?? null, source: 'global', envOverride: opts.envOverride === true }],
+        } as unknown as import('../../connection').SettingsView);
+      },
+      putSettings(_scope: 'project' | 'global', _root: string | undefined, updates: Record<string, string | number | null>) {
+        puts.push(updates);
+        const v = updates['disabledSkills'];
+        cur = typeof v === 'string' ? v : undefined;
+        return Promise.resolve();
+      },
+    } as SkillsPaneConn,
     calls,
+    puts,
   };
 };
 
@@ -48,20 +66,21 @@ describe('SkillsPane(遮蔽标注)', () => {
       { source: 'project', project: 'proj', skills: [row('alpha', { name: 'Alpha Native' }), row('solo', { name: 'Solo' })] },
     ]);
     const { container } = render(<SkillsPane conn={conn} root="/w/proj" title="Skills" />);
-    expect(await screen.findByText('alpha')).toBeDefined();
+    expect((await screen.findAllByText('alpha'))[0]).toBeDefined();
     expect(calls[0]).toEqual(['', true]); // 缺省 target='all' → scope=all 跨项目视图(壳层不下发 root)
-    // 跨组同 id 去重:仅 user 行一张卡(先者胜),且它携带遮蔽标注
-    expect(screen.getAllByText('alpha')).toHaveLength(1);
+    // 2026-11-07 用户裁定「项目名无法区分,需要绝对路径」:跨组不再按 id 去重——user alpha 与
+    // project alpha 各一张卡(遮蔽标注仍随富化行表达优先级),solo 第三张
+    expect(screen.getAllByText('alpha')).toHaveLength(2);
     const shadowed = container.querySelectorAll('.sx-skill-card.shadowed');
     expect(shadowed).toHaveLength(1);
     expect(shadowed[0].textContent).toContain('alpha');
     expect(screen.getByText('Shadowed by project skill')).toBeDefined(); // 角标(字段在场才渲染)
     // gating:无 shadowedBy 字段的卡零角标零灰显
     expect(screen.queryByText('Shadowed by user skill')).toBeNull();
-    const soloCard = container.querySelectorAll('.sx-skill-card')[1];
+    const soloCard = container.querySelectorAll('.sx-skill-card')[2];
     expect(soloCard.className).not.toContain('shadowed');
-    // sourceDir 悬停 tip 随富化行透出;无字段行无 tip
-    expect(screen.getByText('alpha').getAttribute('data-tip')).toBe('/u/.sunshinex/skills/alpha');
+    // sourceDir 悬停 tip 随富化行透出(双卡取富化卡=首张);无字段行无 tip
+    expect(screen.getAllByText('alpha')[0].getAttribute('data-tip')).toBe('/u/.sunshinex/skills/alpha');
     expect(screen.getByText('solo').getAttribute('data-tip')).toBeNull();
   });
 
@@ -135,5 +154,48 @@ describe('SkillsPane(遮蔽标注)', () => {
     expect(raised).toEqual(['']); // 'all' 不上抛(壳层不感知)
     await waitFor(() => expect(calls).toEqual([['', true], ['', false], ['', true]])); // 回 scope=all 路径
     expect(projectTrigger().textContent).toContain('All projects');
+  });
+
+  it('加载开关(2026-11-07 用户裁定「项目标签换开关,默认开启」):卡片带 role=switch 默认开;关态随 disabled 标注;切换 PUT 全局档 disabledSkills(路径 CSV 落点);来源标签退役,路径行承担区分', async () => {
+    const dirA = '/w/proj/.sunshinex/skills/test-skill';
+    const dirB = '/other/.sunshinex/skills/test-skill';
+    const { conn, puts } = connOf(
+      [
+        { source: 'project', project: 'proj', skills: [row('test-skill', { description: '演示', sourceDir: dirA })] },
+        { source: 'project', project: 'other', skills: [row('test-skill', { description: '他项目同名', sourceDir: dirB, disabled: true })] },
+      ],
+      { disabledSkills: dirB },
+    );
+    const { container } = render(<SkillsPane conn={conn} root="/w/proj" title="Skills" />);
+    // 同名两卡并存(路径身份),各带开关;默认开,disabled 行关
+    await screen.findAllByText('test-skill');
+    expect(screen.getAllByText('test-skill')).toHaveLength(2);
+    const switches = screen.getAllByRole('switch', { name: 'Load skill test-skill' });
+    expect(switches).toHaveLength(2);
+    expect(switches[0].getAttribute('aria-checked')).toBe('true');
+    expect(switches[1].getAttribute('aria-checked')).toBe('false');
+    // 项目名标签退役;路径行在场(区分同名技能的唯一显示)
+    expect(container.querySelectorAll('.sx-skill-src')).toHaveLength(0);
+    expect(container.querySelectorAll('.sx-skill-dir')).toHaveLength(2);
+    // 拨第一卡(开→关):PUT 全局档,updates=两路径 CSV(集合序不保证,按序无关比较)
+    const csvOf = (v: unknown): string => String(v).split(',').map((x) => x.trim()).sort().join(',');
+    fireEvent.click(switches[0]);
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(csvOf(puts[0]['disabledSkills'])).toBe(csvOf(`${dirA},${dirB}`));
+    // 落定后开关翻面(以 disabledDirs 权威源渲染,乐观即翻;回读对账同值)
+    await waitFor(() => expect(switches[0].getAttribute('aria-checked')).toBe('false'));
+    // 再拨回(关→开):CSV 只剩 dirB
+    fireEvent.click(screen.getAllByRole('switch', { name: 'Load skill test-skill' })[0]);
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(puts[1]['disabledSkills']).toBe(dirB);
+  });
+
+  it('开关默认开(无 disabledSkills 配置)且 env 覆盖行禁编', async () => {
+    const { conn } = connOf([{ source: 'user', skills: [row('alpha', { sourceDir: '/u/skills/alpha' })] }], { envOverride: true });
+    const { container } = render(<SkillsPane conn={conn} root="/w/proj" title="Skills" />);
+    const sw = await screen.findByRole('switch', { name: 'Load skill alpha' });
+    expect(sw.getAttribute('aria-checked')).toBe('true'); // 缺省=开启
+    expect((sw as HTMLButtonElement).disabled).toBe(true); // env 覆盖=只读
+    expect(container.querySelectorAll('.sx-skill-src')).toHaveLength(0);
   });
 });

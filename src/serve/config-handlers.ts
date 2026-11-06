@@ -61,7 +61,7 @@ import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { userConfigDir } from '../config/env';
 import { loadEffectivePlugins } from '../config/plugins';
 import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
-import { learnedSkillsDir, loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, skillFileIn, SkillsGroup } from '../harness/skills';
+import { isSkillDisabled, learnedSkillsDir, loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, skillFileIn, SkillsGroup } from '../harness/skills';
 
 /** 配置面 HTTP 处理器（D31 分域拆分自 daemon.ts 类）：settings 结构化/raw、mcp 清单/探测/写、
  *  agents 清单/增删/正文、skills 清单、memory-stats——daemon 类状态的全部触点收敛于 io 三面
@@ -1213,7 +1213,7 @@ export function handleTeamsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessag
  *  sourceDir=条目落盘目录（catalog listSkills 链上 SkillEntry 直映）、shadowedBy=同 id 被更高
  *  优先来源遮蔽时的胜者来源名（catalog 链上裁决——harness SkillsGroup 投影不带遮蔽关系，本面
  *  在响应侧富化供 GUI 灰显+角标；正选条目/无法锚定链的行省字段） */
-type SkillsGetRow = SkillsGroup['skills'][number] & { sourceDir?: string; shadowedBy?: string };
+type SkillsGetRow = SkillsGroup['skills'][number] & { sourceDir?: string; shadowedBy?: string; disabled?: boolean };
 
 /** 技能行富化（Task 25，消费 catalog/skills listSkills 单点）：listSkills(anchor) 链上条目按
  *  (source,id) 建表，既有 SkillsGroup 行查表命中即补 sourceDir/shadowedBy（未命中保持原行——
@@ -1224,6 +1224,13 @@ type SkillsGetRow = SkillsGroup['skills'][number] & { sourceDir?: string; shadow
  *    撞键——查错表即配错 sourceDir），故仅 user 组锚当前 root 链：userSkillsDir root 无关恒
  *    查表命中，shadowedBy=当前项目同名 project 技能在场即标（GUI 先见 user 行，标注随行透出；
  *    无 root=无项目上下文=无从遮蔽，整组省字段） */
+/** 行停用标注(2026-11-07 技能加载开关,用户裁定「项目标签换开关,默认开启」):settings `disabledSkills`
+ *  (逗号分隔绝对路径,SEMANTIC_KEYS 标量槽体系容纳数组语义的形态)命中即 disabled=true——GUI 卡片
+ *  开关呈现关态;视图**不滤行**(开关要能拨回来)。落点键=sourceDir 绝对路径(id 跨项目/跨来源撞名) */
+function markDisabledSkills(groups: SkillsGroup[]): SkillsGroup[] {
+  return groups.map((g) => ({ ...g, skills: g.skills.map((s) => (isSkillDisabled(s.sourceDir) ? { ...s, disabled: true } : s)) }));
+}
+
 function enrichSkillsGroups(groups: SkillsGroup[], anchor: string | undefined, sources: ReadonlyArray<SkillsGroup['source']>): SkillsGroup[] {
   if (anchor === undefined) return groups;
   const byKey = new Map(listSkills(anchor).entries.map((e) => [`${e.source}\n${e.id}`, e] as const));
@@ -1255,7 +1262,7 @@ export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
   // 组逐域归属项目名;root 入场仅作当前项目组置首锚——设置页 root 可能为空,枚举不依赖它)
   if (url.searchParams.get('scope') === 'all') {
     const groups: SkillsGroup[] = [loadUserSkillsGroup(), ...loadCrossProjectSkillGroups(root)];
-    io.send(res, 200, { groups: enrichSkillsGroups(groups, root, ['user']) });
+    io.send(res, 200, { groups: markDisabledSkills(enrichSkillsGroups(groups, root, ['user'])) });
     return;
   }
   const groups = enrichSkillsGroups(root !== undefined ? loadSkillsGrouped(root) : [loadUserSkillsGroup()], root, ['project', 'user', 'learned']);
@@ -1271,7 +1278,7 @@ export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
       } catch { /* 缺档/读失败:不落键 */ }
     }
   }
-  io.send(res, 200, { groups });
+  io.send(res, 200, { groups: markDisabledSkills(groups) });
 }
 
 /** POST /settings/skills/rm {root, id}（2026-10-31 学习技能删除面,GUI 学习技能页签/TUI /skills-rm

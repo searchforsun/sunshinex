@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
-import type { SkillsGroup } from '../connection';
+import type { SkillsGroup, SettingsView } from '../connection';
 import { Select } from './controls';
 import { SearchBar, defaultScopeOptions } from './components';
 import type { ScopeOption } from './components';
@@ -27,6 +27,10 @@ import type { ScopeOption } from './components';
  */
 export interface SkillsPaneConn {
   skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }>;
+  /** 停用清单读写(2026-11-07 加载开关):settings keys 行取 disabledSkills 生效值(逗号分隔绝对
+   *  路径);toggle 经 PUT scope='global' 写回(开关=全局语义,技能装载面跨项目统一) */
+  settings(root?: string): Promise<SettingsView>;
+  putSettings(scope: 'project' | 'global', root: string | undefined, updates: Record<string, string | number | null>): Promise<void>;
 }
 
 /** 项目下拉 target:'all'=跨项目视图(原 scope=all 数据面);''=全局;其余=项目 root */
@@ -53,8 +57,10 @@ interface SkillRow {
   readonly project?: string;
   /** T25 遮蔽标注(daemon 富化):同 id 被更高优先来源遮蔽的胜者来源名——字段在场才灰显+角标 */
   readonly shadowedBy?: string;
-  /** T25 富化:条目落盘目录(id 悬停 tip;字段在场才带) */
+  /** 条目落盘目录绝对路径(2026-11-07 起逐行携带):加载开关落点键+卡片路径行(id 跨源撞名,路径唯一) */
   readonly sourceDir?: string;
+  /** 停用标注(disabledSkills 绝对路径命中;true=开关关=不装载) */
+  readonly disabled?: boolean;
 }
 
 export interface SkillsPaneProps {
@@ -82,6 +88,54 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
   /** 项目下拉 target(本面自持;'all'=缺省跨项目视图,即原 scope=all 数据面。壳 targetRoot
    *  不感知 'all'——切到 全局/项目 才上抛同步壳状态) */
   const [target, setTarget] = useState<SkillsTarget>('all');
+  /** 停用清单(2026-11-07 加载开关):绝对路径集;envLock=键来自真导出环境变量(GUI 禁编惯例,开关禁点) */
+  const [disabledDirs, setDisabledDirs] = useState<ReadonlySet<string>>(new Set());
+  const [envLocked, setEnvLocked] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  /** 设置值拉取(开关初态):settings keys 行 disabledSkills;失败静默(全开缺省,开关仍可写) */
+  useEffect(() => {
+    let alive = true;
+    conn.settings().then(
+      (view) => {
+        if (!alive) return;
+        const row = view.keys.find((k) => k.key === 'disabledSkills');
+        const raw = typeof row?.value === 'string' ? row.value : '';
+        setDisabledDirs(new Set(raw.split(',').map((p) => p.trim()).filter((p) => p !== '')));
+        setEnvLocked(row?.envOverride === true);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [conn, refreshTick]);
+
+  /** 开关切换:乐观翻面+PUT 全局档写回(值=全清单 CSV,空=删键),落定后回读 settings 对账;
+   *  失败回读兜底恢复真值。写回值用路径原文(后台归一 win32 大小写) */
+  const toggleSkill = (row: SkillRow): void => {
+    if (row.sourceDir === undefined || busyId !== null || envLocked) return;
+    // 方向以 disabledDirs 权威源判定(行 disabled 标注只在拉取时落一次,拨完不回流——双向都看集合)
+    const isOff = disabledDirs.has(row.sourceDir);
+    const next = new Set(disabledDirs);
+    if (isOff) next.delete(row.sourceDir);
+    else next.add(row.sourceDir);
+    setDisabledDirs(next);
+    setBusyId(row.id);
+    const csv = [...next].join(',');
+    void conn
+      .putSettings('global', undefined, { disabledSkills: csv === '' ? null : csv })
+      .catch(() => undefined)
+      .then(() => conn.settings())
+      .then((view) => {
+        const kv = view.keys.find((k) => k.key === 'disabledSkills');
+        const raw = typeof kv?.value === 'string' ? kv.value : '';
+        setDisabledDirs(new Set(raw.split(',').map((p) => p.trim()).filter((p) => p !== '')));
+        setEnvLocked(kv?.envOverride === true);
+      })
+      .catch(() => undefined)
+      .finally(() => setBusyId(null));
+  };
 
   useEffect(() => {
     let alive = true;
@@ -91,12 +145,16 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
     conn.skillsGroups(fetchRoot, target === 'all' ? true : undefined).then(
       (v) => {
         if (!alive) return;
-        const seen = new Set<string>(); // 跨源/跨项目同 id 去重(先者=装载序生效源)
+        // 2026-11-07 用户裁定「项目名无法区分,需要绝对路径」:跨组不再按 id 去重——同名技能跨
+        // 项目/跨来源各是各的卡(各带路径行+独立加载开关),遮蔽关系由 shadowedBy 角标表达;
+        // 组内去重仍由 daemon 装载序承担(先者胜)
+        const seen = new Set<string>();
         const rows: SkillRow[] = [];
         for (const g of v.groups) {
           for (const s of g.skills) {
-            if (seen.has(s.id)) continue;
-            seen.add(s.id);
+            const key = `${g.source}|${g.project ?? ''}|${s.sourceDir ?? s.id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
             rows.push({
               id: s.id,
               desc: s.description ?? s.name ?? '',
@@ -176,18 +234,39 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
       {filtered !== null && filtered.length > 0 && (
         <div className="sx-skill-grid">
           {filtered.map((s) => (
+            // 开关态以 disabledDirs 集合为权威源(乐观翻面+落定回读都落在这里;行 disabled 标注仅
+            // 无路径行的静态兜底)
+            (() => {
+              const off = s.sourceDir !== undefined ? disabledDirs.has(s.sourceDir) : s.disabled === true;
+              return (
             <div key={s.id} className={`sx-card sx-skill-card${s.shadowedBy !== undefined ? ' shadowed' : ''}`}>
               <div className="sx-skill-head">
                 <span className="sx-skill-id" data-tip={s.sourceDir}>{s.id}</span>
                 {s.shadowedBy !== undefined && (
                   <span className="sx-shadow-tag">{t(`Shadowed by ${s.shadowedBy} skill`, `被 ${s.shadowedBy} 同名技能遮蔽`)}</span>
                 )}
-                <span className={`sx-skill-src sx-skill-src-${s.source}`} data-tip={s.project !== undefined ? t(`Belongs to project: ${s.project}`, `归属项目:${s.project}`) : t('Global skill', '全局技能')}>
-                  {s.project !== undefined ? s.project : t('Global', '全局')}
-                </span>
+                {/* 加载开关(2026-11-07 用户裁定「项目标签位置换开关,控制是否加载,默认开启」):
+                    落点=sourceDir 绝对路径;env 覆盖行禁编(设置页惯例);写回=全局档 disabledSkills */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!off}
+                  aria-label={`${t('Load skill', '加载技能')} ${s.id}`}
+                  data-tip={envLocked ? t('Set via exported SUNSHINEX_DISABLED_SKILLS env (read-only here)', '该键被导出环境变量覆盖,此处只读') : off ? t('Disabled — not loaded', '已停用——不装载') : t('Loaded', '已装载')}
+                  className={`sx-mcp-switch${off ? '' : ' on'}`}
+                  disabled={envLocked || busyId === s.id || s.sourceDir === undefined}
+                  onClick={() => toggleSkill(s)}
+                >
+                  <span className="knob" aria-hidden="true" />
+                </button>
               </div>
               {s.desc !== '' && <span className="sx-skill-desc">{s.desc}</span>}
+              {s.sourceDir !== undefined && (
+                <span className="sx-skill-dir" data-tip={s.sourceDir}>{s.sourceDir}</span>
+              )}
             </div>
+              );
+            })()
           ))}
         </div>
       )}

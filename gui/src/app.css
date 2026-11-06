@@ -2421,12 +2421,15 @@ input.sx-setting-input { width: 100%; }
 /* G14.213 最近行圆点与项目组行圆点同列(组行点 x=24;最近行行缘 x=10 → left 14 补齐;
    G14.197 的 4px 是旧几何,文字列已随 G14.152 右移)。运行态同规 */
 
-/* ---- 技能工具行:搜索+来源筛选;卡片头(id+来源 chip 单色) ---- */
+/* ---- 技能工具行:搜索+来源筛选;卡片头(id+加载开关,2026-11-07 用户裁定「项目标签换开关」) ---- */
 .sx-skills-toolbar { display: flex; align-items: center; gap: 10px; }
 .sx-skills-toolbar .sx-skills-search { flex: 1; max-width: 320px; }
 .sx-skills-filter { flex: none; width: 150px; }
 .sx-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.sx-skill-src { flex: none; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px; font-size: 10.5px; line-height: 1.5; color: var(--fg-tertiary); white-space: nowrap; }
+/* 来源 chip 退役(项目名无法区分来源,绝对路径行承担;项目名仍留 hover)——sx-skill-src 样式随行退役 */
+.sx-skill-card .sx-mcp-switch { flex: none; }
+/* 落盘目录绝对路径行(2026-11-07 用户裁定「项目名无法区分,需要绝对路径」):单行 ellipsis,悬停显全路径 */
+.sx-skill-dir { font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* G14.198 工具行展开内容降灰(用户裁定:避免与正文冲突)——输出/输入面文字次级灰,正文保持全亮 */
 .tool-io { color: var(--fg-secondary); }

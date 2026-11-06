@@ -152,6 +152,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.5.
   "autoMemory": "on",                                // 持久记忆总开关 on|off
   "learnedSkills": "on",                             // 技能沉淀开关 on|off
   "learnedSkillLimit": 50,                           // 沉淀技能条数上限（1..1000）
+  "disabledSkills": "",                              // 停用技能：逗号分隔的技能目录绝对路径（设置·技能页卡片开关读写；缺省全部加载）
   "memoryIdleKickMs": 300000,                        // 后台沉淀的空闲兜底节拍（毫秒）
   "stepDigestMaxSteps": 20,                          // 后台提取的材料预算，一般无需修改
   "stepDigestItemChars": 120,

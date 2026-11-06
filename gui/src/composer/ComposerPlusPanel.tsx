@@ -23,7 +23,7 @@ import { FileIcon } from '../file-icon';
 export interface PlusPanelConn {
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
   skillsGroups(root?: string): Promise<{
-    groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string }> }>;
+    groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string; disabled?: boolean }> }>;
   }>;
   /** 智能体/团队区数据源(2026-11-05;可选——桩面未挂即区块不渲染) */
   agentsView?(root?: string): Promise<{ builtins: Array<{ role: string; name: string }>; view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }>;
@@ -97,6 +97,7 @@ export function ComposerPlusPanel({
         const rows: Array<{ id: string; desc: string }> = [];
         for (const g of r.groups) {
           for (const s of g.skills) {
+            if (s.disabled === true) continue; // 停用技能(2026-11-07 加载开关)不进 + 面板技能区
             if (seen.has(s.id)) continue;
             seen.add(s.id);
             rows.push({ id: s.id, desc: s.description ?? s.name ?? '' });

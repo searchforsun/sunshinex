@@ -99,6 +99,32 @@ function pluginSkillDirs(root: string): string[] {
     .flatMap((p) => (p.manifest.skills ?? []).map((rel) => path.join(p.dir, rel)));
 }
 
+/** 停用技能目录判定(2026-11-07 用户裁定「技能卡片项目标签换加载开关,默认开启」+「项目名无法
+ *  区分,需要绝对路径」):settings `disabledSkills` 语义键 → SUNSHINEX_DISABLED_SKILLS 槽,值为逗号
+ *  分隔的技能目录**绝对路径**(id 跨项目/跨来源撞名,路径才是唯一落点;Windows 路径含空格合法,
+ *  故只按逗号切分)。每次装载现读 env——PUT /settings 链重载改槽,惰性装载立即可见 */
+export function disabledSkillDirs(): ReadonlySet<string> {
+  const raw = process.env.SUNSHINEX_DISABLED_SKILLS ?? '';
+  const out = new Set<string>();
+  for (const tok of raw.split(',')) {
+    const p = tok.trim();
+    if (p !== '') out.add(normSkillDir(p));
+  }
+  return out;
+}
+
+/** 停用判定的路径归一:resolve 收敛相对/别名;win32 小写(NTFS 大小写不敏感,settings 手写路径与
+ *  daemon 解析路径大小写常不一致) */
+function normSkillDir(p: string): string {
+  const r = path.resolve(p);
+  return process.platform === 'win32' ? r.toLowerCase() : r;
+}
+
+/** 单条技能目录是否被停用(装载过滤/视图标注共用判定单点;undefined=无路径行=不停用) */
+export function isSkillDisabled(sourceDir: string | undefined): boolean {
+  return sourceDir !== undefined && disabledSkillDirs().has(normSkillDir(sourceDir));
+}
+
 /** 装载/解析优先级链（降序）：项目根（.sunshinex）→ 全局根 → 学习根
  *  → 插件 skills 根（最低优先级，启用且平台可用的插件贡献，装载入口经 pluginSkillDirs 注入）。
  *  pluginSkillDirs 为可选尾参保持纯函数可测（测试钉目录免真写插件根）；不传时与既有链逐位一致 */
@@ -125,7 +151,9 @@ function loadSkillsChain(dirs: string[]): SkillManifest[] {
 /** 技能清单（规格 v2）：按优先级链降序装载，id 撞名就近遮蔽（被遮蔽者静默让位不抛）；
  *  链尾并入插件 skills 根（最低优先级，启用且平台可用才并入） */
 export function loadSkills(root: string): SkillManifest[] {
-  return loadSkillsChain(priorityChain(root, pluginSkillDirs(root)));
+  // 停用过滤(2026-11-07 加载开关):被停用目录的技能不进装配面(工具清单/上下文技能索引/漂移检测
+  // 全走本单点);视图面 loadSkillsGrouped/listSkills 不滤——设置页开关要能看见关态拨回来
+  return loadSkillsChain(priorityChain(root, pluginSkillDirs(root))).filter((m) => !isSkillDisabled(m.sourceRoot));
 }
 
 /** 技能三源分组（G8c T6 /settings/skills 数据源）：source 三段对齐装载优先级链的三个语义级——
@@ -136,13 +164,15 @@ export interface SkillsGroup {
   /** 项目归属显示名(设置·技能页项目筛选面;scope=all 跨项目枚举时携带——project 组=当前项目,
    *  learned 组=沉淀时项目;user 组无归属不载) */
   project?: string;
-  skills: Array<{ id: string; name?: string; description?: string; createdMs?: number; /** 原样正文(2026-11-01 learned 组专附:SKILL.md/skill.md 原文件全文,GUI 展开行直读) */ body?: string }>;
+  skills: Array<{ id: string; name?: string; description?: string; createdMs?: number; /** 原样正文(2026-11-01 learned 组专附:SKILL.md/skill.md 原文件全文,GUI 展开行直读) */ body?: string; /** 落盘目录绝对路径(2026-11-07 加载开关落点键:id 跨源撞名,路径唯一) */ sourceDir?: string }>;
 }
 
 /** 分组行投影：id 恒在，name/description 空串不透出（无 frontmatter 的技能行只含 id） */
-function skillRow(m: SkillManifest): { id: string; name?: string; description?: string } {
+function skillRow(m: SkillManifest): { id: string; name?: string; description?: string; sourceDir?: string } {
   return {
     id: m.id,
+    // 落盘目录绝对路径(2026-11-07 加载开关落点键:GUI 卡片开关据此读写);清单缺路径行(理论不达)不落键
+    ...(m.sourceRoot !== undefined ? { sourceDir: m.sourceRoot } : {}),
     ...(m.name.length > 0 ? { name: m.name } : {}),
     ...(m.description.length > 0 ? { description: m.description } : {}),
   };
@@ -282,13 +312,21 @@ export function createSkillsFacade(root: string): SkillsFacade {
     list: () => loadSkills(root),
     get: (id) => loadSkills(root).find((s) => s.id === id),
     resolve: (id, params) => {
-      // 沿优先级链逐级解析：命中或缺参即止（SKILL_PARAM_MISSING 就近不回退），仅未注册（SKILL_NOT_FOUND）才下探下一根
+      // 沿优先级链逐级解析：命中或缺参即止（SKILL_PARAM_MISSING 就近不回退），仅未注册（SKILL_NOT_FOUND）才下探下一根；
+      // 停用目录(2026-11-07 加载开关)按未注册处理——开关关掉的技能不可出牌,照常下探下一根
+      const disabled = disabledSkillDirs();
       let result: Result<ResolvedSkill> | null = null;
       for (const dir of chain) {
+        if (disabled.has(normSkillDir(path.join(dir, id)))) continue;
         result = resolveSkill(dir, id, params);
         if (result.ok || result.error.code !== 'SKILL_NOT_FOUND') break;
       }
-      return result ?? resolveSkill(learnedDir, id, params);
+      if (result === null) {
+        // 链尾学习根兜底同受开关约束(链已含学习根,此路仅在链全 NOT_FOUND 时触达)
+        if (disabled.has(normSkillDir(path.join(learnedDir, id)))) return fail('SKILL_NOT_FOUND', `SKILL_NOT_FOUND: skill not registered: ${id}`);
+        return resolveSkill(learnedDir, id, params);
+      }
+      return result;
     },
     learnedCount: () => loadSkillsFrom(learnedDir).length,
   };

@@ -25,6 +25,9 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   autoMemory: 'SUNSHINEX_AUTO_MEMORY',
   agentTeams: 'SUNSHINEX_AGENT_TEAMS',
   learnedSkills: 'SUNSHINEX_LEARNED_SKILLS',
+  // 停用技能清单(2026-11-07 技能加载开关):值为逗号分隔的技能目录绝对路径——id 跨项目/跨来源
+  // 撞名,项目名/来源名亦不足以定位唯一技能,绝对路径才是唯一落点(settings 设置·技能页卡片开关读写)
+  disabledSkills: 'SUNSHINEX_DISABLED_SKILLS',
   learnedSkillLimit: 'SUNSHINEX_LEARNED_SKILL_LIMIT',
   memoryIdleKickMs: 'SUNSHINEX_MEMORY_IDLE_KICK_MS',
   stepDigestMaxSteps: 'SUNSHINEX_MEMORY_STEP_DIGEST_MAX_STEPS',

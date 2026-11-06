@@ -52,6 +52,7 @@ export function useCommandPalette(
         const rows: SkillRow[] = [];
         for (const g of r.groups) {
           for (const s of g.skills) {
+            if (s.disabled === true) continue; // 停用技能(2026-11-07 加载开关)不进出牌候选
             if (seen.has(s.id)) continue;
             seen.add(s.id);
             rows.push({ id: s.id, desc: s.description ?? s.name ?? '' });

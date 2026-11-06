@@ -529,7 +529,7 @@ export type TeamsOpInput =
 export interface SkillsGroup {
   source: 'project' | 'user' | 'learned';
   project?: string;
-  skills: Array<{ id: string; name?: string; description?: string; shadowedBy?: string; sourceDir?: string; createdMs?: number; /** 原样正文(2026-11-01 learned 组专附:技能原文件全文,展开行直读) */ body?: string }>;
+  skills: Array<{ id: string; name?: string; description?: string; shadowedBy?: string; sourceDir?: string; /** 停用标注(2026-11-07 加载开关;disabledSkills 绝对路径命中) */ disabled?: boolean; createdMs?: number; /** 原样正文(2026-11-01 learned 组专附:技能原文件全文,展开行直读) */ body?: string }>;
 }
 
 /** PUT /settings/permissions/op 请求体（Task 16 单条目操作端点，Task 25 PermissionsPane 消费）：
