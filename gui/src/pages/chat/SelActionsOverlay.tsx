@@ -92,7 +92,11 @@ export function SelActionsOverlay(props: {
         <button
           type="button"
           onClick={() => {
-            onSideAsk(sel.text);
+            // 2026-11-06 用户裁定「添加到辅助会话也要 chip 包裹」:与添加到主对话同构——铸 token
+            // +注册表记账,onSideAsk 收 token 文本(落辅助草稿/侧 composer 即折芯片)
+            const token = mintSnippetToken('body');
+            refContentRegister(token, sel.text);
+            onSideAsk(token);
             setSel(null);
           }}
         >

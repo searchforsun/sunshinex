@@ -771,7 +771,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       >
       <SelActionsOverlay
         containerRef={chatScrollRef}
-        onInsert={(text) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text, target: sideChat === true ? 'side' : 'main' } }))}
+        onInsert={(text) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text, target: 'main' } }))}
         onSideAsk={(text) => {
           // 2026-11-06 用户裁定 P5:辅助会话内圈选「辅助会话提问」=插入当前侧 composer(不另开新辅助);
           // 主对话语境=走 onSideAsk 开辅助草稿(App 路由)
