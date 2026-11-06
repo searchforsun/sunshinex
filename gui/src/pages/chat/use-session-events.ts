@@ -235,7 +235,10 @@ export function useSessionEvents(deps: {
           .then((snap) => {
             if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
           })
-          .catch(() => {});
+          .catch(() => {
+            // 快照轻拉失败（会话已回收/WS 间歇）退静默——pill 模式漂移兜底为既有慢通道（下次快照
+            // 全量同步自然跟上），无会话面可呈错误（回调无 toast/op-error 通道），非吞错失明面
+          });
       }
     },
     [conn, settle, sessionId, setSessMode],
