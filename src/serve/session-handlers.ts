@@ -670,6 +670,25 @@ export async function handleSessionBtw(io: SessionHandlerIo, req: http.IncomingM
   }
 }
 
+/** 辅助对话下一编号:扫父档名下 side 档题取最大 N+1。2026-11-06 根修——原为父档 meta sideCount
+ *  计数,该键随父会话换档(rewind/fork 产新 journal)丢失=序号重置重名(实测「辅助对话 4/5」与盘上
+ *  「辅助对话 1」并存);盘面派生对换档与计数丢失免疫(sideCount 停写,存量档不再读) */
+export function nextSideSeq(dataDir: string, srcId: string): number {
+  let seq = 0;
+  try {
+    for (const name of fs.readdirSync(sessionsDir(dataDir))) {
+      if (!name.endsWith('.meta.json')) continue;
+      const m = readSessionMeta(dataDir, name.slice(0, -'.meta.json'.length));
+      if (m.side !== true || m.sideOf !== srcId) continue;
+      const hit = /^(?:辅助对话|Side chat)\s+(\d+)$/.exec(m.title ?? '');
+      if (hit !== null) seq = Math.max(seq, Number(hit[1]));
+    }
+  } catch {
+    /* 目录缺席=首个辅助对话 */
+  }
+  return seq + 1;
+}
+
 export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'rewind' | 'fork'): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
@@ -717,11 +736,9 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
   if (kind === 'fork') {
     copySessionStores(dataDir, srcId, newId); // 会话级静态存储随 fork 克隆(账本/团队面/辅助档;attach 收养前落位)
     if (side) {
-      // 2026-10-31 用户裁定「辅助对话持久化可见+编号」:父档 sideCount 独立计数持久化,
-      // 辅助档题=辅助对话 N、sideOf 回指父档(重进主会话可列其辅助对话)
-      const parentMeta = readSessionMeta(dataDir, srcId);
-      const seq = (parentMeta.sideCount ?? 0) + 1;
-      writeSessionMeta(dataDir, srcId, { sideCount: seq });
+      // 2026-10-31 用户裁定「辅助对话持久化可见+编号」:辅助档题=辅助对话 N、sideOf 回指父档
+      // (重进主会话可列其辅助对话)
+      const seq = nextSideSeq(dataDir, srcId);
       writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: srcId });
       pruneSideForkArchive(dataDir, newId);
     } else {

@@ -10,9 +10,10 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { branchFrom, listSessions, pruneSideForkArchive, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
+import { nextSideSeq } from './session-handlers';
 
 /** 辅助对话持久化可见（2026-10-31 用户裁定「独立会话档+每主会话独立编号」）：side fork 整档继承
- *  （当前最新上下文）→ 编号标题（辅助对话 N,父档 sideCount 持久化）→ 列表可见可点回。
+ *  （当前最新上下文）→ 编号标题（辅助对话 N,盘面派生续号）→ 列表可见可点回。
  *  handleBranch side 分支=3 行薄壳（branchFrom+两次 writeSessionMeta）,数据面钉在此层;
  *  io 装配照抄 daemon.ctx-snap.test.ts（daemon 六面直驱） */
 
@@ -48,7 +49,7 @@ async function withIsoEnv(fn: (tmp: string) => Promise<void>): Promise<void> {
   }
 }
 
-test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,父档 sideCount=2,列表可见可点回', async () => {
+test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,编号盘面派生续号,列表可见可点回', async () => {
   await withIsoEnv(async (tmp) => {
     const root = path.join(tmp, 'proj');
     fs.mkdirSync(root, { recursive: true });
@@ -62,20 +63,20 @@ test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,父
       await new Promise((r) => setTimeout(r, 20));
     }
     const jid = s.attachedJournalId!;
-    // side fork ×2(与 handleBranch side 分支同构:branchFrom 整档继承+编号标题+父档计数)
+    // side fork ×2(与 handleBranch side 分支同构:branchFrom 整档继承+编号标题,编号经 nextSideSeq 盘面派生)
     const dataDir = resolveDataDir(root);
     for (let n = 1; n <= 2; n++) {
       const lines = fs.readFileSync(path.join(sessionsDir(dataDir), `${jid}.jsonl`), 'utf8').split('\n').filter((l) => l !== '').length;
       const newId = branchFrom(dataDir, jid, lines, 'fork');
-      const parentMeta = readSessionMeta(dataDir, jid);
-      const seq = (parentMeta.sideCount ?? 0) + 1;
-      writeSessionMeta(dataDir, jid, { sideCount: seq });
+      const seq = nextSideSeq(dataDir, jid);
       writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: jid });
       pruneSideForkArchive(dataDir, newId);
     }
-    // 编号与计数持久化(2026-10-31 用户实时反馈「不要进主菜单」:side 档列表隐藏,持久化入口=
-    // 主会话页签恢复 /session/:id/sides,按 sideOf 派生)
-    assert.equal(readSessionMeta(dataDir, jid).sideCount, 2);
+    // 编号盘面派生(2026-11-06 根修):父档不再记计数,续号=已有最大编号+1——旧 sideCount 随父档
+    // 换档(rewind/fork)丢失=序号重置重名。side 档列表隐藏,持久化入口=/session/:id/sides(按 sideOf 派生)
+    assert.equal(readSessionMeta(dataDir, jid).sideCount, undefined, 'sideCount 停写');
+    assert.equal(nextSideSeq(dataDir, jid), 3, '续号=已有最大编号+1');
+    assert.equal(nextSideSeq(dataDir, 'other-parent'), 1, '他档名下无辅助=1');
     const rows = listSessions(dataDir);
     assert.ok(!rows.some((r) => r.side === true), 'side 档不入列表(用户裁定不进主菜单)');
     // fork 整档继承+编号标题持久化:经 meta 清单扫 sideOf(与 daemon /sides 端点同口径)
@@ -94,5 +95,6 @@ test('辅助对话编号+持久化可见:side fork 两次→辅助对话 1/2,父
       forkChecked += 1;
     }
     assert.equal(forkChecked, 2, '两份辅助档都在(独立会话档)');
+    await s.teardown(); // 会话不拆=句柄残留,测试进程挂到超时
   });
 });
