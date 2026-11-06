@@ -314,7 +314,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, conn, root }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, conn, root, sideChat }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   const [confirm, setConfirm] = useState<{ text: string; images?: string[] } | null>(null);
   const [editHint, setEditHint] = useState('');
@@ -475,7 +475,8 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           icon={copied === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
           onClick={copy}
         />
-        {onSend !== undefined && (
+        {/* 2026-11-06 用户裁定 P2:辅助会话正文不再支持编辑用户气泡——入口裁剪 */}
+        {onSend !== undefined && sideChat !== true && (
           <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={openEdit} />
         )}
       </div>
@@ -578,7 +579,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession, sideChat }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean }): JSX.Element {
   const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
@@ -636,6 +637,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
       </div>
     );
   }
+  // 2026-11-06 用户裁定 P3:辅助会话与主会话绑定,不渲染「以上内容分叉自会话」fork 注记
+  if (sideChat === true && entry.kind === 'notice' && entry.md.startsWith('[fork-origin]')) return <></>;
   if (entry.kind === 'notice' && entry.md.startsWith('[fork-origin]')) {
     // fork 分割点(合成 notice 段行,daemon attach 按 upToLine 边界装载):文案即分割语义——
     // 本行**以上**=fork 前来自父会话的内容,**以下**=子会话新内容;父会话名可点回源。
@@ -690,7 +693,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
           )}
         </div>
       </div>
-      {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={onFork} />}
+      {/* 2026-11-06 用户裁定 P2:辅助会话正文不渲染 fork/回退行 */}
+      {sideChat !== true && footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={onFork} />}
       {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}

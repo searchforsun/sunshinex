@@ -589,6 +589,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     input,
     resolveFileRef,
     onOpenFile,
+  target: sideChat === true ? 'side' : 'main',
   });
 
   // composer 输入面键分发与守卫（token 原子性三面/@ 面板//面板/Enter 分流）——分支本体收编
@@ -770,8 +771,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       >
       <SelActionsOverlay
         containerRef={chatScrollRef}
-        onInsert={(text) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text } }))}
-        onSideAsk={(text) => onSideAsk?.(text)}
+        onInsert={(text) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text, target: sideChat === true ? 'side' : 'main' } }))}
+        onSideAsk={(text) => {
+          // 2026-11-06 用户裁定 P5:辅助会话内圈选「辅助会话提问」=插入当前侧 composer(不另开新辅助);
+          // 主对话语境=走 onSideAsk 开辅助草稿(App 路由)
+          if (sideChat === true) {
+            window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text, target: 'side' } }));
+            return;
+          }
+          onSideAsk?.(text);
+        }}
       />
       <MessageList
         entries={chat.entries}

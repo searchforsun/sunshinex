@@ -15,12 +15,17 @@ export function useChatComposerSide(deps: {
   readonly input: string;
   readonly resolveFileRef: (name: string) => string | undefined;
   readonly onOpenFile?: (p: string) => void;
+  /** 2026-11-06 用户裁定 P4/P5 插入通道作用域化:全局广播只被目标面消费('main'=主对话,'side'=辅助
+   *  会话[草稿+真会话])——此前无目标全局广播,主/侧两 composer 同时挂载=「添加到主对话两边都加」 */
+  readonly target?: 'main' | 'side';
 }): { onInputClick: () => void } {
-  const { pickRelRef, refContents, inputRef, setInput, input, resolveFileRef, onOpenFile } = deps;
+  const { pickRelRef, refContents, inputRef, setInput, input, resolveFileRef, onOpenFile, target = 'main' } = deps;
 /** G14.139 文件标签选区「添加到会话」:接收插入事件(文件图标+文件名(L30-L35) token 落输入框) */
 useEffect(() => {
   const onInsert = (ev: Event): void => {
-    const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string }>).detail;
+    const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string; target?: 'main' | 'side' }>).detail;
+    // 作用域过滤(2026-11-06 P4/P5):事件目标≠本面即忽略(undefined=历史派发默认主对话)
+    if ((detail?.target ?? 'main') !== target) return;
     // 2026-11-04 元素/终端片段引用:token 落输入框(⟦…⟧ 高亮芯片),全量内容入账本发送期展开;
     // 同步写全局注册表(refContentRegistry)——气泡/队列等无账本 prop 的渲染面 hover 取数源
     if (detail !== undefined && detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {

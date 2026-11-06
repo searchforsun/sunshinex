@@ -131,7 +131,7 @@ const DayGroupBlock = memo(
       />
     ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenAgent={onOpenAgent} />, [onEntryOpenDiff, onOpenAgent]);
+    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenAgent={onOpenAgent} sideChat={sideChat} />, [onEntryOpenDiff, onOpenAgent, sideChat]);
     const renderFoldEntry = useCallback((e2: ChatEntry) => {
       if (e2.kind === 'user') {
         return (
@@ -146,6 +146,7 @@ const DayGroupBlock = memo(
             onOpenImage={onOpenImage}
             conn={conn}
             root={root}
+            sideChat={sideChat}
           />
         );
       }
@@ -156,9 +157,10 @@ const DayGroupBlock = memo(
           onOpenDiff={onEntryOpenDiff}
           onOpenAgent={onOpenAgent}
           onOpenFile={onOpenFile}
+          sideChat={sideChat}
         />
       );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenAgent]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenAgent, sideChat]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(
@@ -228,6 +230,7 @@ const DayGroupBlock = memo(
             onOpenImage={onOpenImage}
             conn={conn}
             root={root}
+            sideChat={sideChat}
           />,
         );
       } else {
@@ -242,6 +245,7 @@ const DayGroupBlock = memo(
             onOpenFile={onOpenFile}
             onOpenAgent={onOpenAgent}
             onOpenSession={onOpenSession}
+            sideChat={sideChat}
           />,
         );
       }
