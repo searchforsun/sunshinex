@@ -369,11 +369,34 @@ function AppShell(): JSX.Element {
         || x.params.sideId === sd.journalId
         || (x.params.sideJournal === undefined && x.params.title === sd.title));
       if (hit === undefined) {
-        // 在座但无页签(同 daemon 生命周期重进主会话):照旧恢复页签,用户关过的不复活
-        if (sd.sessionId === undefined || dismissed?.has(sd.sessionId) === true) continue;
-        const id = sd.sessionId;
-        releaseSide(id);
-        setTabStates((st) => openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: id, sideJournal: sd.journalId, title: sd.title }, PROBE));
+        // 在座但无页签(同 daemon 生命周期重进主会话):照旧恢复页签,用户关过的不复活。
+        // 不在座(daemon 重启后 sessionId 缺席;盘档加载剥 sidechat 页签=此处恒走收养)同样
+        // 重建:newSession 壳+attach 收养取 canonical 再开页(2026-11-06 用户实测「重启后页签
+        // 全消失」根修——此前 sessionId 缺席即 continue,页签永不复活)
+        if (dismissed?.has(sd.sessionId ?? sd.journalId) === true) continue;
+        if (sd.sessionId !== undefined) {
+          releaseSide(sd.sessionId);
+          setTabStates((st) => openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: sd.sessionId!, sideJournal: sd.journalId, title: sd.title }, PROBE));
+          continue;
+        }
+        let flow = sideAttachRef.current.get(sd.journalId);
+        if (flow === undefined) {
+          flow = conn.newSession(openRoot).then(({ sessionId: shellId }) => conn.attach(shellId, sd.journalId)).then((r) => r.sessionId);
+          sideAttachRef.current.set(sd.journalId, flow);
+          flow.catch(() => sideAttachRef.current.delete(sd.journalId));
+        }
+        void flow.then(
+          (id) => {
+            releaseSide(id);
+            setTabStates((st) => {
+              // attach 去重竞态:同 journal 已有页签(并发收养落定)只改指不重开
+              const cur = (tabStates[mainId]?.tabs ?? []).find((x) => x.type === 'sidechat' && (x.params.sideJournal === sd.journalId || x.params.sideId === id));
+              if (cur !== undefined) return patchTabMeta(st, mainId, cur.uid, { sideId: id, sideJournal: sd.journalId });
+              return openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: id, sideJournal: sd.journalId, title: sd.title }, PROBE);
+            });
+          },
+          () => { /* journal 已删:跳过恢复 */ },
+        );
         continue;
       }
       matched.add(hit.uid);
@@ -736,6 +759,9 @@ function AppShell(): JSX.Element {
     if (tab !== undefined && tab.type === 'sidechat' && tab.params.sideId !== undefined) {
       const set = sideTabDismissedRef.current.get(seat) ?? new Set<string>();
       set.add(tab.params.sideId);
+      // journal 键随记(2026-11-06):daemon 重启后 live id 失效,恢复对账按 journal 判「关过不复活」
+      const sj = tab.params.sideJournal;
+      if (typeof sj === 'string') set.add(sj);
       sideTabDismissedRef.current.set(seat, set);
     }
     const t = tabState.tabs.find((x) => x.uid === uid);
