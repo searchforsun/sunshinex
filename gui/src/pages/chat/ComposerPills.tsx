@@ -134,17 +134,21 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
   const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading } = props;
   return (
           <div className="composer-pills composer-pills-right">
-            {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存 */}
+            {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存。
+                2026-11-06 用户裁定「辅助草稿去掉上下文圈」:ctxInfo=null(无会话无共享 ctx)不渲染
+                圆环——会话中 ctxInfo 恒非空不受影响 */}
+            {ctxInfo !== null && (
             <ContextRing
-              used={ctxInfo?.total ?? 0}
-              window={ctxInfo?.window ?? 0}
-              parts={ctxInfo?.parts ?? []}
+              used={ctxInfo.total}
+              window={ctxInfo.window}
+              parts={ctxInfo.parts}
               runs={runCount}
               steps={steps}
               tokens={tokens}
               cacheTokens={cacheTokens}
               onOpen={refreshCtx}
             />
+            )}
             {/* 模型 pill:显示实际模型名(剥 provider 前缀);菜单=模型列表+思考强度,锚按钮正上方,
                 选中不收口(一连选模型+强度,外点/再点收) */}
             <div className="pill-anchor">

@@ -77,11 +77,12 @@ export function SideChatComposer(props: {
   const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
   const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; supportsImages?: boolean }> } | null>(null);
-  const [sessEffort, setSelEffort] = useState<string | undefined>(undefined);
+  const [sessEffort, setSelEffort] = useState<string | undefined>('medium');
   useEffect(() => {
     conn.settings().then(
       (view) => {
-        const def = view.keys.find((k) => k.key === 'model')?.value ?? undefined;
+        // 2026-11-06 用户裁定「去掉默认模型,用第一个 provider 的第一个 model」
+        const def = view.providers.choices[0]?.id;
         setModelInfo({
           current: def,
           choices: view.providers.choices.map((c) => ({ id: c.id, model: c.id, baseUrl: '' })),
@@ -90,6 +91,19 @@ export function SideChatComposer(props: {
       () => undefined,
     );
   }, [conn]);
+  // pills/+ 面板外点收(Chat.tsx 495 同款:面板内点与 + 钮自持,弹层内点不收——模型连选+强度不闪收)
+  useEffect(() => {
+    if (pillOpen === null) return;
+    const onDown = (e: MouseEvent): void => {
+      if (e.target instanceof Element) {
+        if (e.target.closest('.sx-plus-panel') !== null || e.target.closest('.composer-plus-btn') !== null) return;
+        if (pillOpen !== 'plus' && e.target.closest('.composer-pills') !== null) return;
+        setPillOpen(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [pillOpen]);
   // 2026-11-06 P4:insert 变更回流——草稿已挂载时再次收到「添加到辅助会话」不再失效
   useEffect(() => {
     if (insert === undefined || insert === '') return;
