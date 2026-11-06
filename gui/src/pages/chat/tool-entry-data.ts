@@ -232,3 +232,34 @@ export function parseWebSearchOutput(text: string): Array<{ n: number; title: st
   }
   return out;
 }
+
+/** G14.82 ask_question 结构化问答体输入面：问题+选项（label/description 归一）；非 ask 行或缺问题回 null */
+export function parseAskInput(toolName: string, input: Record<string, unknown>): { question: string; options: Array<{ label: string; description?: string }> } | null {
+  if (toolName !== 'ask_question' || typeof input.question !== 'string') return null;
+  return {
+    question: input.question,
+    options: Array.isArray(input.options)
+      ? input.options.map((o) => {
+          const ob = (o ?? {}) as { label?: unknown; description?: unknown };
+          const label = String(ob.label ?? '').trim();
+          const description = typeof ob.description === 'string' && ob.description.trim() !== '' ? ob.description.trim() : undefined;
+          return description !== undefined ? { label, description } : { label };
+        })
+      : [],
+  };
+}
+
+/** ask_question 回执文本 → 回答态（daemon 回执前缀协议：answers:/answer:/custom:；空或 `…`=等待；其余=跳过） */
+export function parseAskAnswer(result: string):
+  | { kind: 'pending' }
+  | { kind: 'answers'; labels: string[] }
+  | { kind: 'answer'; labels: string[] }
+  | { kind: 'custom'; text: string }
+  | { kind: 'dismissed' } {
+  const r = result.trim();
+  if (r === '' || r === '…') return { kind: 'pending' };
+  if (r.startsWith('answers: ')) return { kind: 'answers', labels: r.slice(9).split('; ').map((x) => x.trim()) };
+  if (r.startsWith('answer: ')) return { kind: 'answer', labels: [r.slice(8).trim()] };
+  if (r.startsWith('custom: ')) return { kind: 'custom', text: r.slice(8).trim() };
+  return { kind: 'dismissed' };
+}
