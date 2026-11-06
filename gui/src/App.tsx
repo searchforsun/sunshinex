@@ -332,11 +332,19 @@ function AppShell(): JSX.Element {
         for (const sd of sides) {
           if (sd.sessionId === undefined) continue;
           if (dismissed?.has(sd.sessionId) === true) continue;
-          setTabStates((st) => {
-            const cur = st[openSessionId];
-            if (cur !== undefined && cur.tabs.some((x) => x.params.sideId === sd.sessionId)) return st;
-            return openTab(ensureSession(st, openSessionId, PROBE), openSessionId, 'sidechat', { sideId: sd.sessionId, title: sd.title }, PROBE);
-          });
+          // 2026-11-06 用户实测「重启后辅助会话 snapshot 404」:恢复页签前先 attach 挂座——
+          // 此前只开页签不挂座,daemon 重启后侧会话 runtime 缺席=内存表查无=404;挂座失败
+          // (journal 已删)跳过恢复,不再出 404 空页签
+          void conn.attach(sd.sessionId, sd.journalId).then(
+            () => {
+              setTabStates((st) => {
+                const cur = st[openSessionId];
+                if (cur !== undefined && cur.tabs.some((x) => x.params.sideId === sd.sessionId)) return st;
+                return openTab(ensureSession(st, openSessionId, PROBE), openSessionId, 'sidechat', { sideId: sd.sessionId, title: sd.title }, PROBE);
+              });
+            },
+            () => undefined,
+          );
         }
       },
       () => undefined,
