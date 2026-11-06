@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
+import { dispatchTag } from '../taskboard/board';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest } from '../types';
@@ -194,12 +195,15 @@ test('POST /session/:id/board/stop：pending→cancelled；running→cancelled �
     const afterA = await snapOf(ctx, ctx.sid);
     assert.equal(afterA.board.tasks[idA]?.status, 'cancelled');
 
+    // 台账断言直读 TaskRegistry(2026-11-03 用户裁定「板任务派发登记不进后台任务面」——
+    // /tasks 面滤 boardDispatch 行,派发行 label=dispatchTag(板 id)):停板同时台账 stopped
+    const dispatchRow = harness.tasks.list().find((t) => t.label === dispatchTag(idA));
+    assert.ok(dispatchRow, 'running 板任务有台账派发行');
+    assert.equal(dispatchRow.status, 'stopped', 'running 停板同时台账 stopped');
     const tasksRes = await fetch(`${ctx.http}/session/${ctx.sid}/tasks`, { headers: ctx.H });
     assert.equal(tasksRes.status, 200);
-    const rows = (await tasksRes.json()) as Array<{ label: string; status: string }>;
-    const ledger = rows.find((t) => t.label === idA);
-    assert.ok(ledger, 'running 板任务有台账');
-    assert.equal(ledger.status, 'stopped', 'running 停板同时台账 stopped');
+    const rows = (await tasksRes.json()) as Array<{ label: string }>;
+    assert.ok(!rows.some((t) => t.label === dispatchTag(idA)), '板派发行不进后台任务面');
 
     const again = await fetch(`${ctx.http}/session/${ctx.sid}/board/stop`, {
       method: 'POST', headers: ctx.H, body: JSON.stringify({ taskId: idA }),

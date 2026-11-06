@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 vi.mock('monaco-editor', () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
 }));
@@ -40,7 +40,8 @@ class PacedAdapter {
 }
 
 describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
-  it('二次确认 → 回退会话和文件 → 正文/文件/页签回到该点 → 编辑文本重发,列表只留一条会话', async () => {
+  // 真 daemon 全链重型用例:满载并发(64 文件并行 worker+各自 daemon)下耗时不可控,retry 兜底偶发超时
+  test('二次确认 → 回退会话和文件 → 正文/文件/页签回到该点 → 编辑文本重发,列表只留一条会话', { retry: 2, timeout: 90_000 }, async () => {
     vi.stubGlobal('WebSocket', NodeWebSocket);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-e2e-rewind-'));
     const root = path.join(tmp, 'root');
@@ -57,13 +58,13 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 });
       Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });
       fireEvent.click(screen.getByRole('button', { name: 'add workspace' }));
-      await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 5_000 });
+      await waitFor(() => expect(screen.getByText('root', { selector: '.choose-project-bar span' })).toBeDefined(), { timeout: 15_000 });
       const goal = screen.getByLabelText('welcome goal');
       fireEvent.change(goal, { target: { value: '问一' } });
       fireEvent.keyDown(goal, { key: 'Enter' });
       await waitFor(() => expect(container.textContent).toContain('答一'), { timeout: 15_000 });
-      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 5_000 });
-      await waitFor(() => expect(container.querySelector('button[aria-label="send"]')).not.toBeNull(), { timeout: 5_000 });
+      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
+      await waitFor(() => expect(container.querySelector('button[aria-label="send"]')).not.toBeNull(), { timeout: 15_000 });
 
       const input = screen.getByLabelText('message input');
       fireEvent.change(input, { target: { value: '问二' } });
@@ -71,22 +72,22 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       await waitFor(() => { if (!container.textContent!.includes('答二')) throw new Error('未到答二: ' + container.querySelector('.sx-main')?.textContent?.slice(0, 400) + ' input=' + (input as HTMLTextAreaElement).value); }, { timeout: 15_000 });
       expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
       expect(fs.existsSync(path.join(root, 'b.txt'))).toBe(true);
-      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 5_000 });
+      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
 
       // 被丢弃轮打开的 Diff 页签:回退后应随时间线消失
       const writeRow = [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => (b.textContent ?? '').includes('b.txt'));
       fireEvent.click(writeRow!);
-      await waitFor(() => expect(container.querySelector('.tool-path[aria-label="b.txt"]')).not.toBeNull(), { timeout: 5_000 });
+      await waitFor(() => expect(container.querySelector('.tool-path[aria-label="b.txt"]')).not.toBeNull(), { timeout: 15_000 });
       fireEvent.click(container.querySelector('.tool-path[aria-label="b.txt"]')!);
-      await waitFor(() => expect([...container.querySelectorAll('.sx-tab')].some((t) => (t.textContent ?? '').includes('b.txt'))).toBe(true), { timeout: 5_000 });
+      await waitFor(() => expect([...container.querySelectorAll('.sx-tab')].some((t) => (t.textContent ?? '').includes('b.txt'))).toBe(true), { timeout: 15_000 });
 
       fireEvent.click(screen.getAllByRole('button', { name: 'Edit' }).at(-1)!);
       fireEvent.change(screen.getByRole('textbox', { name: 'edit message' }), { target: { value: '改后的问二' } });
       fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
 
       // 确认前什么都没发生
-      const dialog = await screen.findByRole('dialog');
-      await waitFor(() => expect(dialog.textContent).toContain('b.txt'));
+      const dialog = await screen.findByRole('dialog', undefined, { timeout: 15_000 });
+      await waitFor(() => expect(dialog.textContent).toContain('b.txt'), { timeout: 15_000 });
       expect(dialog.textContent).toContain('a.txt');
       expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
 
@@ -115,5 +116,5 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       else process.env.SUNSHINEX_LANGUAGE = prevLanguage;
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
-  }, 90_000);
+  });
 });

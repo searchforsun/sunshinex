@@ -92,9 +92,10 @@ test('agentTeams off：teams/agents 清单照注、team/agent 工具照注册、
     assert.ok(parts.teams[0]!.content.includes('全栈交付小队'), 'preset team listed in teams segment');
     assert.ok(parts.teams[0]!.content.includes('#team-id'), 'team segment lead line declares soft reference');
     assert.equal(parts.agents.length, 1, 'agents index segment stays present (builtins keep it constant)');
-    // 断言2: team/agent 工具照注册（接缝在场即注册，与开关无关）
-    assert.ok(h.tools.get('team'), 'team tool stays registered');
-    assert.ok(h.tools.get('agent'), 'agent tool stays registered');
+    // 断言2: team/agent 工具照注册（接缝在场即注册，与开关无关；2026-11-05 用户裁定更名
+    // team→load_agent_teams（命名准确不省略）、agent→load_subagent）
+    assert.ok(h.tools.get('load_agent_teams'), 'load_agent_teams stays registered');
+    assert.ok(h.tools.get('load_subagent'), 'load_subagent stays registered');
     // 断言3: 八件套（含 create_agent_team / create_agent_teammate）不注入
     for (const name of TEAM_TOOLS) {
       assert.equal(h.tools.get(name), undefined, `${name} must be absent when SUNSHINEX_AGENT_TEAMS=off`);

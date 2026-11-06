@@ -91,7 +91,8 @@ describe('layoutTaskDag(纯函数)', () => {
     const { nodes, edges } = layoutTaskDag(tasks, () => '');
     const dep = edges.find((e) => e.source === 't1' && e.target === 't2');
     expect(dep?.className).toBe('tb-dag-dep');
-    expect(dep?.animated).toBe(false);
+    // 2026-11-03 用户裁定:依赖线=数据流动效果(RF 内建 animated 流动虚线)——实线静止断言随裁定退役
+    expect(dep?.animated).toBe(true);
     expect((dep?.style as { strokeDasharray?: string } | undefined)?.strokeDasharray).toBeUndefined();
     const retry = edges.find((e) => e.className === 'tb-dag-retry');
     expect(retry).toMatchObject({ source: 't1', target: 't3', label: t('Retry', '重试') });

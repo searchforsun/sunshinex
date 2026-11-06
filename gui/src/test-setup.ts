@@ -21,6 +21,12 @@ class ResizeObserverStub {
 }
 const g = globalThis as Record<string, unknown>;
 if (typeof g.ResizeObserver === 'undefined') g.ResizeObserver = ResizeObserverStub;
+
+// scrollIntoView 缺失(与 CSS.escape/matchMedia 同族):任务定位/面板滚动跟随面直调即抛
+// TypeError→React 卸整树(agent 转录页挂载定位气泡实测整 App 卸载),stub 空实现
+if (typeof g.Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+}
 if (typeof g.DOMMatrixReadOnly === 'undefined') {
   g.DOMMatrixReadOnly = class {
     m22: number;

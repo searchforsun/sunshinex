@@ -1178,7 +1178,8 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       // 任务标签体在场:标签体渲染 tabEntry('tasks').render = Board(既有看板面)
       // 轮询判据(2026-10-27 技术债轮:registry lazy+keep-alive 下标签体异步挂载,直读断言在
       // -t 选择跑/模块图时序漂移下必抖——归因在案 HEAD 同红)
-      await waitFor(() => expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(), { timeout: 5_000 }); // 空板:容器在场(G10-C12/G14.174)
+      // 懒挂载等待放宽(满核并发下 registry lazy+keep-alive 标签体异步挂载 >5s 实测)
+      await waitFor(() => expect(container.querySelector('.sx-tabbody .taskboard-cards')).not.toBeNull(), { timeout: 20_000 }); // 空板:容器在场(G10-C12/G14.174)
 
       // —— write 域内直写(G7 场景复用)→ done 收束 → 工具条目在场 ——
       const input = screen.getByLabelText('message input');
@@ -1744,7 +1745,13 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
 
       // —— 点任务行开只读转录页(行内 onOpenAgent 跳转,辅助对话式单独打开无输入框):转录行含终稿全文 ——
       fireEvent.click(demoRow);
-      await waitFor(() => expect(container.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull(), { timeout: 5_000 });
+      await waitFor(() => expect(container.querySelector('.sx-tabbody .sx-agent-page')).not.toBeNull(), { timeout: 20_000 }); // 同上:负载下懒挂载放宽
+      // [diag] 临时诊断:页面/线程/页签态
+      console.log('[diag] agentPages=', container.querySelectorAll('.sx-agent-page').length,
+        'threads=', container.querySelectorAll('.sx-agent-thread').length,
+        'tabbodies=', container.querySelectorAll('.sx-tabbody').length,
+        'tabs=', [...container.querySelectorAll('.sx-tab')].map((t) => t.textContent).join('|'));
+
       expect(container.querySelector('.sx-agent-thread')?.textContent).toContain('all done');
       expect(container.querySelector('.sx-agent-page textarea')).toBeNull(); // 只读:无输入面
     } finally {

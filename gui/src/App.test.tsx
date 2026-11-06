@@ -1086,7 +1086,7 @@ describe('exit_plan 交稿卡(2026-11-03 交稿协议):经 App 装配面 opts �
     expect(conn.snapshotCalls.length).toBe(seedsBefore);
     fireResetSession(conn, 's1'); // 本会话:清投影 + 清卡(daemon 已 deny 回填) + reseed
     await waitFor(() => expect(conn.snapshotCalls.length).toBe(seedsBefore + 1));
-    await waitFor(() => expect(screen.getAllByText('重播种基线')[0]).toBeDefined());
+    await waitFor(() => expect(screen.getAllByText(/重播种基线/)[0]).toBeDefined()); // 用户气泡原文平铺(2026-11-04 裁定),`> ` 前缀保留→正则匹配
     expect(screen.queryByText('reset 前内容')).toBeNull();
     expect(screen.queryByText(apTitle)).toBeNull();
     unmount();
