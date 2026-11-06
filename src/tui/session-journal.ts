@@ -126,6 +126,9 @@ export interface SessionSidecarMeta {
   sideCount?: number;
   /** 辅助会话回指父档 journalId(重进主会话列其辅助对话) */
   sideOf?: string;
+  /** 辅助会话自身序号(fork 建档时落档,标题仅展示不承载语义——nextSideSeq 推导单源;存量档无此键
+   *  回退标题正则) */
+  sideSeq?: number;
   /** 归档标记(2026-10-21):纯标记态——主列表/RECENTS/TUI /resume 滤除,会话本体零行为差异 */
   archived?: boolean;
   /** 归档时刻 epoch ms(归档页排序;撤销即删键) */
@@ -138,7 +141,7 @@ export interface SessionSidecarMeta {
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
-  'archived', 'archivedAt', 'sideCount', 'sideOf', 'rewoundTo',
+  'archived', 'archivedAt', 'sideCount', 'sideOf', 'sideSeq', 'rewoundTo',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流） */
 const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo']);

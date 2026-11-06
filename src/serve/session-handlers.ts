@@ -670,9 +670,11 @@ export async function handleSessionBtw(io: SessionHandlerIo, req: http.IncomingM
   }
 }
 
-/** 辅助对话下一编号:扫父档名下 side 档题取最大 N+1。2026-11-06 根修——原为父档 meta sideCount
+/** 辅助对话下一编号:扫父档名下 side 档取最大 N+1。2026-11-06 根修——原为父档 meta sideCount
  *  计数,该键随父会话换档(rewind/fork 产新 journal)丢失=序号重置重名(实测「辅助对话 4/5」与盘上
- *  「辅助对话 1」并存);盘面派生对换档与计数丢失免疫(sideCount 停写,存量档不再读) */
+ *  「辅助对话 1」并存);盘面派生对换档与计数丢失免疫(sideCount 停写,存量档不再读)。
+ *  2026-11-07:序号落辅助档自身 meta 的显式 sideSeq 数字键(建档时随批写)——标题改文案/多语言不再
+ *  静默重号(标题仅展示);存量档无此键回退标题正则(兼容面,随存量自然消亡) */
 export function nextSideSeq(dataDir: string, srcId: string): number {
   let seq = 0;
   try {
@@ -680,6 +682,10 @@ export function nextSideSeq(dataDir: string, srcId: string): number {
       if (!name.endsWith('.meta.json')) continue;
       const m = readSessionMeta(dataDir, name.slice(0, -'.meta.json'.length));
       if (m.side !== true || m.sideOf !== srcId) continue;
+      if (typeof m.sideSeq === 'number' && Number.isInteger(m.sideSeq)) {
+        seq = Math.max(seq, m.sideSeq);
+        continue;
+      }
       const hit = /^(?:辅助对话|Side chat)\s+(\d+)$/.exec(m.title ?? '');
       if (hit !== null) seq = Math.max(seq, Number(hit[1]));
     }
@@ -739,7 +745,7 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
       // 2026-10-31 用户裁定「辅助对话持久化可见+编号」:辅助档题=辅助对话 N、sideOf 回指父档
       // (重进主会话可列其辅助对话)
       const seq = nextSideSeq(dataDir, srcId);
-      writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideOf: srcId });
+      writeSessionMeta(dataDir, newId, { side: true, title: `辅助对话 ${seq}`, sideSeq: seq, sideOf: srcId });
       pruneSideForkArchive(dataDir, newId);
     } else {
       // fork 子档题=`Fork of 父显示题`(2026-11-04 用户裁定:前缀显性化,递归 fork 自然链名——

@@ -19,7 +19,6 @@ import {
   parseTeamFrontmatterInput,
   probeMcpServer,
   validateMcpRawContent,
-  type TeamFrontmatterInput,
 } from './config-helpers';
 // Task 6 起 renderAgentMd（生成器）居 catalog/agents——serve 层不再直用（upsert 经 catalog
 // upsertAgent 内部生成）；Task 15 起 agents 写面（upsert/remove/setEnabled）与 AGENT_ID_RE
@@ -30,7 +29,6 @@ import {
   removeAgent,
   setAgentEnabled,
   upsertAgent,
-  type AgentFrontmatterInput,
   type AgentUpsertSpec,
 } from '../catalog/agents';
 // agents-teams P1 Task 2：teams 读写面收口 catalog 单点（id 词法 isValidTeamId 严格 kebab harness
@@ -911,7 +909,24 @@ export function handleAgentsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
  *  就地吞作幂等 200，见分支注）。
  *  COMMENTS 不可达（agent.md 无注释形态——真如此沿兜底抛错走 dispatch 500）。IO 失败不经本地捕获
  *  ——沿 dispatch 500 收口 */
-export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+/** catalog op 写面骨架（agents/teams 同构收敛，D64——此前四端点整段镜像双源，新增一种 catalog 资源
+ *  须再抄一遍）：公共序=readJson → op 词表守卫 → id 词法守卫 → scope/root 守卫 → 四 op 分流
+ *  （delete 幂等吞 INVALID/enable·disable 回显校验/upsert 编排）。资源差异三点经 facet 注入：id 词法
+ *  与文案、写面调用（remove/setEnabled）、spec 构造+落盘。错误回执沿 sendCatalogWriteError 单点
+ *  （INVALID → 409 无 hint，COMMENTS 引流 raw）；delete 缺失 INVALID 就地吞作幂等 200（契约零变）；
+ *  upsert 解析面首错 400 零部分写、落盘 IO 失败不经本地捕获沿 dispatch 500 收口（两分流不混） */
+type CatalogOpFacet = {
+  idOk(id: string): boolean;
+  idErr: string;
+  remove(root: string | null, scope: 'project' | 'global', id: string): void;
+  setEnabled(root: string | null, scope: 'project' | 'global', id: string, enabled: boolean): void;
+  /** spec 构造（frontmatter 解析校验单点，plain Error → 400 message；与落盘分流防 IO 错误降 400） */
+  buildSpec(frontmatter: unknown, bodyText: string): unknown;
+  /** catalog 落盘调用（CatalogWriteError → 409 映射单点；其余沿 dispatch 500） */
+  write(root: string | null, scope: 'project' | 'global', id: string, spec: unknown): void;
+};
+
+async function handleCatalogPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, f: CatalogOpFacet): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
     io.send(res, parsed.status, { error: parsed.error });
@@ -924,8 +939,8 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
     return;
   }
   const id = body?.id;
-  if (typeof id !== 'string' || !AGENT_ID_RE.test(id)) {
-    io.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
+  if (typeof id !== 'string' || !f.idOk(id)) {
+    io.send(res, 400, { error: f.idErr });
     return;
   }
   const scope = body?.scope;
@@ -939,14 +954,12 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
     return;
   }
   const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
-  // 写面拒写回执映射：sendCatalogWriteError 单点（终审修复波 2026-10-28 收编——此前本 handler 内联
-  // 同形闭包 mapWriteError 两码统一挂 hint，与单点 hint 分流口径漂移，随之删除）
   if (op === 'delete') {
     try {
-      removeAgent(root, scope, id); // catalog 收口：rm -rf 条目整目录（含同级私有文件）
+      f.remove(root, scope, id); // catalog 收口：rm -rf 条目整目录（含同级私有文件）
     } catch (err) {
       // 缺失 INVALID 就地吞（幂等契约：从未存在与已删同 ok）。非 catalog 面（IO 竞态等）→
-      // dispatch 500（removeAgent 的 invalid-id 分支已被上方 AGENT_ID_RE 守卫拦截，不可达）
+      // dispatch 500（invalid-id 分支已被上方 id 词法守卫拦截，不可达）
       if (!(err instanceof CatalogWriteError)) throw err;
     }
     io.send(res, 200, { ok: true });
@@ -961,45 +974,58 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
       return;
     }
     try {
-      setAgentEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（写面只认标准两级）
+      f.setEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（写面只认标准两级）
     } catch (err) {
       if (!sendCatalogWriteError(io, res, err)) throw err;
       return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
     }
-    io.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
+    io.send(res, 200, { ok: true }); // 不触发 settings reload——catalog 资源装配期语义（新会话生效）
     return;
   }
-  // upsert 校验面（首错 400，零部分写）：frontmatter 经 parseAgentFrontmatterInput 单点校验+归一
-  let fm: AgentFrontmatterInput;
-  try {
-    fm = parseAgentFrontmatterInput(body?.frontmatter);
-  } catch (err) {
-    io.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
-    return;
-  }
+  // upsert：body 缺省 ''（首错 400 零部分写）；解析校验与落盘两 try 分流（400/409/500 不混）
   const bodyText = body?.body;
   if (bodyText !== undefined && typeof bodyText !== 'string') {
     io.send(res, 400, { error: 'body must be a string' });
     return;
   }
-  // catalog upsertAgent：生成 + 写前 round-trip（验证口径=装载口径）+ 原子落盘 + notify 直发——
-  // serve 侧零文件操作。isolation/executor 为 string 归一前形态，断言窄化后枚举守卫在 catalog
-  // 运行时面（越型 INVALID → 409 无 hint，较旧 tmp 回读 500 语义升级）
-  const spec: AgentUpsertSpec = {
-    name: fm.name,
-    ...(fm.description !== undefined ? { description: fm.description } : {}),
-    ...(fm.memory === true ? { memory: true } : {}),
-    ...(fm.isolation !== undefined ? { isolation: fm.isolation as 'worktree' } : {}),
-    ...(fm.executor !== undefined ? { executor: fm.executor as 'internal-team' | 'external-cli' } : {}),
-    body: bodyText ?? '',
-  };
+  let spec: unknown;
   try {
-    upsertAgent(root, scope, id, spec);
+    spec = f.buildSpec(body?.frontmatter, bodyText ?? '');
+  } catch (err) {
+    io.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  try {
+    f.write(root, scope, id, spec);
   } catch (err) {
     if (!sendCatalogWriteError(io, res, err)) throw err;
     return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
   }
-  io.send(res, 200, { ok: true }); // 不触发 settings reload——agents 装配期语义（新会话生效）
+  io.send(res, 200, { ok: true }); // 不触发 settings reload——catalog 资源装配期语义（新会话生效）
+}
+
+export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  return handleCatalogPut(io, req, res, {
+    idOk: (id) => AGENT_ID_RE.test(id),
+    idErr: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)',
+    remove: (root, scope, id) => removeAgent(root, scope, id), // catalog 收口：rm -rf 条目整目录（含同级私有文件）
+    setEnabled: (root, scope, id, enabled) => setAgentEnabled(root, scope, id, enabled),
+    buildSpec: (frontmatter, bodyText) => {
+      // 校验面：frontmatter 经 parseAgentFrontmatterInput 单点校验+归一（plain Error → 400 message）
+      const fm = parseAgentFrontmatterInput(frontmatter);
+      // isolation/executor 为 string 归一前形态，断言窄化后枚举守卫在 catalog 运行时面（越型
+      // INVALID → 409 无 hint，较旧 tmp 回读 500 语义升级）
+      return {
+        name: fm.name,
+        ...(fm.description !== undefined ? { description: fm.description } : {}),
+        ...(fm.memory === true ? { memory: true } : {}),
+        ...(fm.isolation !== undefined ? { isolation: fm.isolation as 'worktree' } : {}),
+        ...(fm.executor !== undefined ? { executor: fm.executor as 'internal-team' | 'external-cli' } : {}),
+        body: bodyText,
+      } satisfies AgentUpsertSpec;
+    },
+    write: (root, scope, id, spec) => upsertAgent(root, scope, id, spec as AgentUpsertSpec),
+  });
 }
 
 /** GET /settings/agents/body?scope=project|global&id=&root=（G8d T3，AgentsPane 编辑全文装载）：
@@ -1011,6 +1037,29 @@ export async function handleAgentsPut(io: ConfigHandlerIo, req: http.IncomingMes
  *  畸形 frontmatter → 400 带 parser 原文 message（清单面入 warnings 不抛死，本端点单文件直达——
  *  编辑装载是精确寻址，报错优于静默）。scope=global 恒忽略 root（定位面，PUT 同裁定） */
 export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  return handleCatalogBodyGet(io, req, res, {
+    idOk: (id) => AGENT_ID_RE.test(id),
+    idErr: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)',
+    dir: agentsDir,
+    fileBase: 'agent.md',
+    scopeSlug: 'agents',
+    extractBody: (md) => parseAgentFrontmatter(md).body, // 验证口径=装载口径=bodyPreview 口径，三面同源；畸形 plain Error → 400 message
+  });
+}
+
+/** catalog body 读面骨架（agents/teams 同构收敛，D64）：scope/id/root 三守卫 → 落位读 md → 抽正文。
+ *  资源差异经 facet 注入：id 词法与文案/落位目录单点/文件名与清单 slug/正文抽取（畸形 plain Error
+ *  → 400 message）。文件缺 → 404 回显 `${scope}/<slug>/<id>` 相对定位（不泄 daemon 主机绝对路径，
+ *  GUI 可原样呈现）；scope=global 恒忽略 root（定位面，PUT 同裁定）；existsSync 后读失败（竞态移除
+ *  等）沿 dispatch 500 收口。全文装载=精确寻址，bodyPreview 的 200 帽在此不适用 */
+function handleCatalogBodyGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, f: {
+  idOk(id: string): boolean;
+  idErr: string;
+  dir(scope: 'project' | 'global', scopeRoot: string | null): string;
+  fileBase: string;
+  scopeSlug: string;
+  extractBody(md: string): string;
+}): void {
   const url = urlOf(req);
   const scope = url.searchParams.get('scope');
   if (scope !== 'project' && scope !== 'global') {
@@ -1018,8 +1067,8 @@ export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessa
     return;
   }
   const id = url.searchParams.get('id');
-  if (id === null || !AGENT_ID_RE.test(id)) {
-    io.send(res, 400, { error: 'id must match /^[A-Za-z0-9][A-Za-z0-9_-]*$/ (used as a directory name)' });
+  if (id === null || !f.idOk(id)) {
+    io.send(res, 400, { error: f.idErr });
     return;
   }
   const rootParam = url.searchParams.get('root');
@@ -1027,17 +1076,15 @@ export function handleAgentsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessa
     io.send(res, 400, { error: 'root required for scope=project' });
     return;
   }
-  // 落位解析（Task 15 收口 catalog agentsDir 单点）：project=<root>/.sunshinex/agents、
-  // global=<userConfigDir>/agents（标准两级；旧位回退随去兼容清理退役——清单/装载入口已一次性迁移）
   const scopeRoot = scope === 'project' ? path.resolve(rootParam as string) : null;
-  const file = path.join(agentsDir(scope, scopeRoot), id, 'agent.md');
+  const file = path.join(f.dir(scope, scopeRoot), id, f.fileBase);
   if (!fs.existsSync(file)) {
-    io.send(res, 404, { error: `agent.md not found: ${scope}/agents/${id}` });
+    io.send(res, 404, { error: `${f.fileBase} not found: ${scope}/${f.scopeSlug}/${id}` });
     return;
   }
   const md = fs.readFileSync(file, 'utf8'); // existsSync 后读失败（竞态移除等）沿 dispatch 500 收口
   try {
-    io.send(res, 200, { body: parseAgentFrontmatter(md).body });
+    io.send(res, 200, { body: f.extractBody(md) });
   } catch (err) {
     io.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
   }
@@ -1092,94 +1139,28 @@ export function handleTeamsGet(io: ConfigHandlerIo, req: http.IncomingMessage, r
  *  CatalogWriteError 映射沿 sendCatalogWriteError 单点（INVALID → 409 {error} 无 hint；COMMENTS
  *  不可达——team.md 无注释形态）。IO 失败不经本地捕获——沿 dispatch 500 收口 */
 export async function handleTeamsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const parsed = await io.readJson(req);
-  if (!parsed.ok) {
-    io.send(res, parsed.status, { error: parsed.error });
-    return;
-  }
-  const body = parsed.body as { root?: unknown; scope?: unknown; op?: unknown; id?: unknown; frontmatter?: unknown; body?: unknown; enabled?: unknown } | null;
-  const op = body?.op;
-  if (op !== 'upsert' && op !== 'delete' && op !== 'enable' && op !== 'disable') {
-    io.send(res, 400, { error: 'op must be "upsert" | "delete" | "enable" | "disable"' });
-    return;
-  }
-  const id = body?.id;
-  // AMENDMENT（ledger 2026-11-04）：id 词法 = 严格 kebab isValidTeamId（harness 单点，与 catalog
-  // teamWriteTarget P0 同口径）——id 直接拼目录路径，路径分隔/穿越/大写/点开头/下划线一律 400
-  if (typeof id !== 'string' || !isValidTeamId(id)) {
-    io.send(res, 400, { error: 'id must match /^[a-z0-9]+(-[a-z0-9]+)*$/ (used as a directory name)' });
-    return;
-  }
-  const scope = body?.scope;
-  if (scope !== 'project' && scope !== 'global') {
-    io.send(res, 400, { error: 'scope must be "project" or "global"' });
-    return;
-  }
-  const rootRaw = body?.root;
-  if (scope === 'project' && (typeof rootRaw !== 'string' || rootRaw.length === 0)) {
-    io.send(res, 400, { error: 'root required for scope=project' });
-    return;
-  }
-  const root = scope === 'project' ? path.resolve(rootRaw as string) : null; // global 恒忽略 root（定位面）
-  if (op === 'delete') {
-    try {
-      removeTeam(root, scope, id); // catalog 收口：rm -rf 条目整目录（含同级私有文件）
-    } catch (err) {
-      // 缺失 INVALID 就地吞（幂等契约：从未存在与已删同 ok）。非 catalog 面（IO 竞态等）→
-      // dispatch 500（removeTeam 的 invalid-id 分支已被上方 isValidTeamId 守卫拦截，不可达）
-      if (!(err instanceof CatalogWriteError)) throw err;
-    }
-    io.send(res, 200, { ok: true });
-    return;
-  }
-  if (op === 'enable' || op === 'disable') {
-    const enabled = op === 'enable';
-    // enabled 可选回显面：在场须布尔且与 op 同义（op 是权威——防 {op:'enable', enabled:false} 一类
-    // 自相矛盾请求静默择一）
-    if (body?.enabled !== undefined && (typeof body.enabled !== 'boolean' || body.enabled !== enabled)) {
-      io.send(res, 400, { error: `enabled must be ${enabled} for op="${op}" (or omit it)` });
-      return;
-    }
-    try {
-      setTeamEnabled(root, scope, id, enabled); // 缺失 → INVALID→409（写面只认标准两级）
-    } catch (err) {
-      if (!sendCatalogWriteError(io, res, err)) throw err;
-      return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
-    }
-    io.send(res, 200, { ok: true }); // 不触发 settings reload——teams 装配期语义（新会话生效）
-    return;
-  }
-  // upsert 校验面（首错 400，零部分写）：frontmatter 经 parseTeamFrontmatterInput 单点校验+归一
-  let fm: TeamFrontmatterInput;
-  try {
-    fm = parseTeamFrontmatterInput(body?.frontmatter);
-  } catch (err) {
-    io.send(res, 400, { error: err instanceof Error ? err.message : String(err) });
-    return;
-  }
-  const bodyText = body?.body;
-  if (bodyText !== undefined && typeof bodyText !== 'string') {
-    io.send(res, 400, { error: 'body must be a string' });
-    return;
-  }
-  // catalog upsertTeam：生成 + 写前 round-trip（验证口径=装载口径）+ 原子落盘 + notify 直发——
-  // serve 侧零文件操作
-  const spec: TeamUpsertSpec = {
-    name: fm.name,
-    members: fm.members,
-    ...(fm.description !== undefined ? { description: fm.description } : {}),
-    ...(fm.version !== undefined ? { version: fm.version } : {}),
-    ...(fm.lead !== undefined ? { lead: fm.lead } : {}),
-    ...(fm.enabled !== undefined ? { enabled: fm.enabled } : {}),
-    body: bodyText ?? '',
-  };
-  try {
-    upsertTeam(root, scope, id, spec);
-  } catch (err) {
-    if (!sendCatalogWriteError(io, res, err)) throw err;
-    return; // 已回 409（sendCatalogWriteError 单点：INVALID 无 hint，COMMENTS 才引流 raw）
-  }
-  io.send(res, 200, { ok: true }); // 不触发 settings reload——teams 装配期语义（新会话生效）
+  return handleCatalogPut(io, req, res, {
+    idOk: (id) => isValidTeamId(id),
+    // AMENDMENT（ledger 2026-11-04）：id 词法 = 严格 kebab isValidTeamId（harness 单点，与 catalog
+    // teamWriteTarget P0 同口径）——id 直接拼目录路径，路径分隔/穿越/大写/点开头/下划线一律 400
+    idErr: 'id must match /^[a-z0-9]+(-[a-z0-9]+)*$/ (used as a directory name)',
+    remove: (root, scope, id) => removeTeam(root, scope, id), // catalog 收口：rm -rf 条目整目录（含同级私有文件）
+    setEnabled: (root, scope, id, enabled) => setTeamEnabled(root, scope, id, enabled),
+    buildSpec: (frontmatter, bodyText) => {
+      // 校验面：frontmatter 经 parseTeamFrontmatterInput 单点校验+归一（plain Error → 400 message）
+      const fm = parseTeamFrontmatterInput(frontmatter);
+      return {
+        name: fm.name,
+        members: fm.members,
+        ...(fm.description !== undefined ? { description: fm.description } : {}),
+        ...(fm.version !== undefined ? { version: fm.version } : {}),
+        ...(fm.lead !== undefined ? { lead: fm.lead } : {}),
+        ...(fm.enabled !== undefined ? { enabled: fm.enabled } : {}),
+        body: bodyText,
+      } satisfies TeamUpsertSpec;
+    },
+    write: (root, scope, id, spec) => upsertTeam(root, scope, id, spec as TeamUpsertSpec),
+  });
 }
 
 /** GET /settings/teams/body?scope=project|global&id=&root=（agents-teams P1 Task 2，TeamsPane 编辑

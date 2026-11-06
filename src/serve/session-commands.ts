@@ -240,10 +240,9 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       return 'ok';
     }
     if (s.hasPlanPending()) {
-      // 挂卡期:新目标=放弃当前卡（拒绝回填+run 中断收尾）,按新目标重新提交
-      await s.interrupt();
-      const deadline = Date.now() + 2000;
-      while (s.status() === 'running' && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+      // 挂卡期:新目标=放弃当前卡（拒绝回填+run 中断收尾）——abortAndSettle 单点承担「中断+deny 回填+
+      // 有界 settle 等待」（teardown 同款锚点）,旧 run 收口后按新目标重新提交
+      await s.abortAndSettle();
     }
     if (s.status() === 'running') {
       s.steer(arg);
