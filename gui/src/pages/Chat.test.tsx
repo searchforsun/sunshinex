@@ -1466,7 +1466,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(onOpenAgent).toHaveBeenCalledWith('评审', '评审', longPrompt); // 尾段在场=未被 slice(0,2000) 截断
   });
 
-  it('freshView:种子历史不落屏(辅助对话全新视图)', async () => {
+  it('freshView:辅助对话自身记录随种子落屏(重开/重启恢复不清空)', async () => {
     render(
       <Chat
         conn={connOf([
@@ -1481,7 +1481,9 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       />,
     );
     await flushed();
-    expect(document.querySelectorAll('.chat .entry')).toHaveLength(0);
+    // side fork 档零继承转录行,种子=辅助对话自身往来,必须可见
+    expect(document.body.textContent).toContain('旧问题');
+    expect(document.body.textContent).toContain('旧回答');
   });
 });
 

@@ -28,7 +28,6 @@ export function useSessionEvents(deps: {
   chat: ChatState;
   setChat: Dispatch<SetStateAction<ChatState>>;
   /** G14.31 辅助对话全新视图:种子历史不落屏 */
-  freshView?: boolean;
   /** G10 欢迎页接力:播种完成后提交的 welcome 目标(提交即回调清位) */
   pendingGoal?: { root: string; goal: string; images?: string[] };
   onPendingGoalDone?: () => void;
@@ -65,7 +64,6 @@ export function useSessionEvents(deps: {
     sessionId,
     sinkRef,
     chat,
-    freshView,
     pendingGoal,
     onPendingGoalDone,
     onSeeded,
@@ -140,10 +138,10 @@ export function useSessionEvents(deps: {
           openRun: snap.openRun ?? -1,
           openSeg: snap.openSeg ?? -1,
         });
-        if (freshView === true) {
-          // G14.31 辅助对话:全新视图——种子历史清零不落屏(上下文只在模型侧,新帧照常续推)
-          next = { ...next, entries: [], tokens: 0, steps: 0, cacheTokens: 0, history: undefined };
-        } else if (snap.hasMore !== undefined) {
+        // 辅助对话(freshView)种子照常落屏(2026-11-06 用户实测「辅助会话持久化和加载还是有问题」):
+        // side fork 档零转录行(主对话上下文只在模型侧,daemon pruneSideForkArchive 裁剪),种子里只有
+        // 辅助对话自身的往来——旧「种子清零」在重启/重开恢复时把自身记录也清空=加载后空白
+        if (snap.hasMore !== undefined) {
           // 2026-10-26 三期历史链:尾窗播种(服务端缺省 200)元数据入态——后台加载链(下方 effect)消费
           next = { ...next, history: { total: snap.total ?? snap.messages.length, oldestSeq: snap.oldestSeq ?? 0, hasMore: snap.hasMore === true, complete: snap.hasMore !== true } };
         }
@@ -314,11 +312,12 @@ export function useSessionEvents(deps: {
   }, [sinkRef, reseed, addCard]);
 
   /** 2026-10-26 三期历史链(先上车再补票):尾窗播种落定即自动分段补更老——一页一 effect 轮
-   *  (页成 history 换新重触发),失败退避三试置 failed(指示器可点重试重启);freshView 不补
-   *  (全新视图历史不落屏);Chat 按 sessionId 重挂=切走即暂停,切回断点续跑 */
+   *  (页成 history 换新重触发),失败退避三试置 failed(指示器可点重试重启);Chat 按 sessionId
+   *  重挂=切走即暂停,切回断点续跑。(freshView 曾跳过补页——2026-11-06 退役,辅助对话自身记录
+   *  照常落屏/照常补页) */
   useEffect(() => {
     const h = deps.chat.history;
-    if (h === undefined || h.complete || h.failed === true || deps.freshView === true) return;
+    if (h === undefined || h.complete || h.failed === true) return;
     let alive = true;
     const step = async (): Promise<void> => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -335,7 +334,7 @@ export function useSessionEvents(deps: {
     };
     void step();
     return () => { alive = false; };
-  }, [deps.chat.history, conn, sessionId, deps.freshView]);
+  }, [deps.chat.history, conn, sessionId]);
 
   /** G5 idle 清卡:status 经 running→idle 转换(run 收束——daemon 已对本 run 挂起 deny 回填)
    *  时清 approval/ask 卡;**plan-approval 卡保留**（2026-11-03 交稿协议）：planFlow 恰是「停在卡上、
