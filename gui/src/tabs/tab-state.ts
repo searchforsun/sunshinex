@@ -356,6 +356,10 @@ export function parseTabSession(raw: unknown): TabSessionState | null {
       const e = t as Record<string, unknown>;
       if (typeof e.uid !== 'string' || e.uid === '') continue;
       if (typeof e.type !== 'string' || !TAB_TYPES.has(e.type)) continue;
+      // 2026-11-06 用户实测「重启后辅助会话 snapshot 404」:盘档 sidechat 页签剥离——sideId 是
+      // 临时别名(daemon 重启后 runtime 按新壳 id 重挂,旧 id 必 404),侧聊页签由 /sides 恢复链路
+      // newSession 壳+attach 以 canonical id 重建(盘档消毒滤除先例:directory 退役同款)
+      if (e.type === 'sidechat') continue;
       const params = (typeof e.params === 'object' && e.params !== null && !Array.isArray(e.params) ? e.params : {}) as TabParams;
       tabs.push({ uid: e.uid, type: e.type as TabTypeId, params, createdAt: typeof e.createdAt === 'number' ? e.createdAt : 0 });
     }
@@ -366,6 +370,7 @@ export function parseTabSession(raw: unknown): TabSessionState | null {
       if (c === null || typeof c !== 'object') continue;
       const e = c as Record<string, unknown>;
       if (typeof e.type !== 'string' || !TAB_TYPES.has(e.type)) continue;
+      if (e.type === 'sidechat') continue; // 同上:recentClosed 亦剥离(防重开旁路直插旧 dead id)
       const params = (typeof e.params === 'object' && e.params !== null && !Array.isArray(e.params) ? e.params : {}) as TabParams;
       recentClosed.push({
         type: e.type as TabTypeId,
