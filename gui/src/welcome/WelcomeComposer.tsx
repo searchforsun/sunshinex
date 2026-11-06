@@ -998,7 +998,7 @@ export function WelcomeComposer({
                       {baseModelName(c.id)}
                     </button>
                   ))}
-                  <div className="pill-group-head">{t('Reasoning effort', '思考强度')}</div>
+                  {/* 2026-11-06 用户裁定「思考强度文字全局去掉」:仅留滑块,标题行退役(会话内 pills 同款) */}
                   <EffortSlider value={selEffort ?? 'medium'} onChange={setSelEffort} />
                 </div>
               )}

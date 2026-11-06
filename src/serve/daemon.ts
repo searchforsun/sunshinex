@@ -1252,12 +1252,25 @@ export class GuiDaemon {
     await sessionHandlers.handleSessionBtw(this.sessionIo, req, res, id);
   }
 
-  /** 辅助对话清单：主会话 journal 的 side 档（sideOf 回指）按 mtime 正序——GUI 重进主会话恢复页签 */
+  /** 辅助对话清单：主会话 journal 的 side 档（sideOf 回指）按 mtime 正序——GUI 重进主会话恢复页签。
+   *  双寻址(2026-11-06 竞态根修):在座按 attachedJournalId 认领;不在座(重启后 GUI 收养完成前,
+   *  GUI 手握 journal id 查询)退磁盘定位 findJournalOwner——清单本就纯盘面推导,不依赖在座;
+   *  此前不在座恒 200 [] 假空,GUI 对账按「无 side」放闸 stale 页签=重启后辅助页签空转录 */
   private handleSessionSides(res: http.ServerResponse, id: string): void {
-    const session = this.sessions.get(id);
-    const srcId = session?.attachedJournalId;
-    if (session === undefined || srcId === undefined) return this.send(res, 200, []);
-    const dir = sessionsDir(resolveDataDir(session.root));
+    const session =
+      this.sessions.get(id) ??
+      [...this.sessions.values()].find((s) => s.attachedJournalId === id);
+    let srcId: string | undefined = session?.attachedJournalId;
+    let dataDir: string | undefined = session !== undefined ? resolveDataDir(session.root) : undefined;
+    if (session === undefined) {
+      if (!validSessionId(id)) return this.send(res, 200, []);
+      const owner = findJournalOwner(projectsRoot(), id);
+      if (owner === undefined) return this.send(res, 200, []);
+      srcId = id;
+      dataDir = owner.dataDir;
+    }
+    if (srcId === undefined || dataDir === undefined) return this.send(res, 200, []);
+    const dir = sessionsDir(dataDir);
     let names: string[] = [];
     try {
       names = fs.readdirSync(dir);

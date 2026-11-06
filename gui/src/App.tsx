@@ -360,9 +360,29 @@ function AppShell(): JSX.Element {
     const mainId = openSessionId;
     const tabs = (seatTabsForSides ?? []).filter((x) => x.type === 'sidechat' && x.params.sideId !== undefined);
     const dismissed = tabStates[mainId]?.sideDismissed;
+    // 去重收敛(2026-11-06 用户实测「每重启一次多一份重复页签」):历次「side 清单先于盘档水合
+    // 到达」的竞态残留了同 journal 多签——按 journal(缺省回退持久化编号题/现 sideId)只留首个,
+    // 其余静默移除(同 journal 内容同一份,移除零损失);放闸死 id 签的 404 面随之消失
+    const seenKeys = new Set<string>();
+    const dupUids = new Set<string>();
+    for (const x of tabs) {
+      const key = x.params.sideJournal ?? (x.params.title !== undefined ? `t:${x.params.title}` : `s:${x.params.sideId}`);
+      if (key === undefined) continue;
+      if (seenKeys.has(key)) dupUids.add(x.uid);
+      else seenKeys.add(key);
+    }
+    if (dupUids.size > 0) {
+      setTabStates((st) => {
+        const cur = st[mainId];
+        if (cur === undefined) return st;
+        const tabs2 = cur.tabs.filter((t) => !dupUids.has(t.uid));
+        return { ...st, [mainId]: { ...cur, tabs: tabs2, activeUid: cur.activeUid !== null && dupUids.has(cur.activeUid) ? (tabs2.find((t) => t.uid === cur.activeUid)?.uid ?? tabs2[tabs2.length - 1]?.uid ?? null) : cur.activeUid } };
+      });
+    }
+    const liveTabs = tabs.filter((x) => !dupUids.has(x.uid));
     const matched = new Set<string>();
     for (const sd of sideListing.sides) {
-      const hit = tabs.find((x) =>
+      const hit = liveTabs.find((x) =>
         x.params.sideJournal === sd.journalId
         || (sd.sessionId !== undefined && x.params.sideId === sd.sessionId)
         || x.params.sideId === sd.journalId
@@ -388,8 +408,9 @@ function AppShell(): JSX.Element {
           (id) => {
             releaseSide(id);
             setTabStates((st) => {
-              // attach 去重竞态:同 journal 已有页签(并发收养落定)只改指不重开
-              const cur = (tabStates[mainId]?.tabs ?? []).find((x) => x.type === 'sidechat' && (x.params.sideJournal === sd.journalId || x.params.sideId === id));
+              // attach 去重竞态:同 journal 已有页签(盘档水合在收养期间落位等)只改指不重开——
+              // 查重必须用 updater 实参 st(渲染闭包 tabStates 是旧快照,水合晚到即漏判=重复开签根因)
+              const cur = (st[mainId]?.tabs ?? []).find((x) => x.type === 'sidechat' && (x.params.sideJournal === sd.journalId || x.params.sideId === id));
               if (cur !== undefined) return patchTabMeta(st, mainId, cur.uid, { sideId: id, sideJournal: sd.journalId });
               return openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: id, sideJournal: sd.journalId, title: sd.title }, PROBE);
             });
@@ -420,7 +441,7 @@ function AppShell(): JSX.Element {
       );
     }
     // 清单无对应档的页签(journal 已删等):放闸如实暴露
-    for (const x of tabs) if (!matched.has(x.uid)) releaseSide(x.params.sideId!);
+    for (const x of liveTabs) if (!matched.has(x.uid)) releaseSide(x.params.sideId!);
   }, [connInstance, sideListing, seatTabsForSides, tabStates, openSessionId, openRoot, releaseSide]);
 
   const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false): void => {
