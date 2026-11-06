@@ -109,6 +109,9 @@ export interface TabRenderProps {
   /** 首条目标(升级后挂真 Chat 时经 pendingGoal 播种落定自动提交;App 态位,done 即清) */
   readonly sideGoal?: { root: string; goal: string };
   readonly onSideGoalDone?: (uid: string) => void;
+  /** 草稿文本持久化(2026-11-06 用户裁定「欢迎页输入框内容持久化,页签打开状态下」):回档初值
+   *  与变更上报——App 落 params.draftText 随 gui-state 落盘 */
+  readonly onDraftText?: (uid: string, text: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
   readonly root: string;
   /** 记忆定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」:saved 回显行点击下发 slug,
@@ -416,7 +419,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
           />
         </div>
       ) : p.upgradeSideChat !== undefined ? (
-        <SideChatDraft uid={p.uid} insert={p.params.insert} onUpgrade={p.upgradeSideChat} conn={p.conn} root={p.root} />
+        <SideChatDraft uid={p.uid} insert={p.params.insert} draftText={p.params.draftText} onDraftText={p.onDraftText} onUpgrade={p.upgradeSideChat} conn={p.conn} root={p.root} />
       ) : (
         // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
@@ -429,7 +432,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
 /** 辅助对话草稿页(2026-11-04 首条发送才 fork):表层=主对话同款 ComposerCard+原提示语,
    底层=发送时才升级(fork 主对话整档→挂真 Chat→首条自动提交)。busy 防重入;失败落
    composer 行内错误条保草稿 */
-function SideChatDraft({ uid, insert, onUpgrade, conn, root }: { uid: string; insert?: string; onUpgrade: (uid: string, text: string) => Promise<void>; conn: Connection; root?: string }): JSX.Element {
+function SideChatDraft({ uid, insert, draftText, onDraftText, onUpgrade, conn, root }: { uid: string; insert?: string; draftText?: string; onDraftText?: (uid: string, text: string) => void; onUpgrade: (uid: string, text: string) => Promise<void>; conn: Connection; root?: string }): JSX.Element {
   // 2026-11-06 用户裁定「辅助会话完全复制主对话输入框的能力」:交互面移交 SideChatComposer
   // (芯片高亮/五面守卫/@ / 命令、$# 三面板/insert-ref 片段通道;文本展开在组件内完成后回调);
   // 空态居中「辅助会话」标题+说明行。pills 需会话绑定(草稿未 fork),升级后真 Chat 自带全量
@@ -454,7 +457,7 @@ function SideChatDraft({ uid, insert, onUpgrade, conn, root }: { uid: string; in
         <p role="status">{t('A side discussion around the main chat.', '围绕主会话的辅助讨论。')}</p>
       </div>
       <div className="composer sx-sidechat-draft-composer">
-        <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} />
+        <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} initialText={draftText} onTextChange={onDraftText !== undefined ? (v) => onDraftText(uid, v) : undefined} />
         {err !== '' && <div className="sx-img-hint" role="status">{err}</div>}
       </div>
     </div>

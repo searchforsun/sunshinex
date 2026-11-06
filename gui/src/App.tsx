@@ -24,7 +24,7 @@ import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
 import { REFRESHABLE_TAB_TYPES } from './tabs/sidebar-refresh';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, rewindSeat, stripTabType, WELCOME_TAB_SEAT } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, rewindSeat, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -327,9 +327,8 @@ function AppShell(): JSX.Element {
   };
 
   /** 辅助对话页签恢复(2026-10-31 用户裁定「辅助对话持久化+编号页签」):重进主会话即按 /sides
-   *  清单恢复 辅助对话 N 页签(在座 side 会话才恢复——daemon 重启后缺席;用户关过的页签经
-   *  dismissedRef 记忆不复活) */
-  const sideTabDismissedRef = useRef(new Map<string, Set<string>>());
+   *  清单恢复 辅助对话 N 页签;用户关过的页签经座档 sideDismissed 落盘记忆不复活(2026-11-06
+   *  用户实测「已关页签重启后还显示」——ref 内存记忆重启即忘,移入 TabSessionState 随档持久化) */
   /** 辅助会话恢复(2026-11-06 用户实测「持久化和加载还是 404,模型显示默认模型」根修):持久化页签的
    *  sideId 是上个 daemon 生命周期的会话 id,重启后必失效;旧恢复链跳过不在座的 side 档(重启后全部
    *  不在座)=恢复链从未执行,旧 id 页签直挂 snapshot 404,快照缺席模型面落「默认模型」。
@@ -360,7 +359,7 @@ function AppShell(): JSX.Element {
     if (conn === null || sideListing === null || sideListing.main !== openSessionId) return;
     const mainId = openSessionId;
     const tabs = (seatTabsForSides ?? []).filter((x) => x.type === 'sidechat' && x.params.sideId !== undefined);
-    const dismissed = sideTabDismissedRef.current.get(mainId);
+    const dismissed = tabStates[mainId]?.sideDismissed;
     const matched = new Set<string>();
     for (const sd of sideListing.sides) {
       const hit = tabs.find((x) =>
@@ -373,7 +372,7 @@ function AppShell(): JSX.Element {
         // 不在座(daemon 重启后 sessionId 缺席;盘档加载剥 sidechat 页签=此处恒走收养)同样
         // 重建:newSession 壳+attach 收养取 canonical 再开页(2026-11-06 用户实测「重启后页签
         // 全消失」根修——此前 sessionId 缺席即 continue,页签永不复活)
-        if (dismissed?.has(sd.sessionId ?? sd.journalId) === true) continue;
+        if (dismissed?.includes(sd.sessionId ?? sd.journalId) === true) continue;
         if (sd.sessionId !== undefined) {
           releaseSide(sd.sessionId);
           setTabStates((st) => openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: sd.sessionId!, sideJournal: sd.journalId, title: sd.title }, PROBE));
@@ -422,7 +421,7 @@ function AppShell(): JSX.Element {
     }
     // 清单无对应档的页签(journal 已删等):放闸如实暴露
     for (const x of tabs) if (!matched.has(x.uid)) releaseSide(x.params.sideId!);
-  }, [connInstance, sideListing, seatTabsForSides, openSessionId, openRoot, releaseSide]);
+  }, [connInstance, sideListing, seatTabsForSides, tabStates, openSessionId, openRoot, releaseSide]);
 
   const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false): void => {
     // 临时会话思想(2026-10-29 用户设计定版):欢迎页=临时会话,发出去(欢迎页输入建席)时临时座
@@ -738,9 +737,7 @@ function AppShell(): JSX.Element {
       showOpError(err);
       throw err;
     }
-    setTabStates((s) => rewindSeat(s, from, r.sessionId, r.atTs));
-    const dismissed = sideTabDismissedRef.current.get(from);
-    if (dismissed !== undefined) sideTabDismissedRef.current.set(r.sessionId, dismissed);
+    setTabStates((s) => rewindSeat(s, from, r.sessionId, r.atTs)); // 座档随 spread 带走 sideDismissed(关闭记忆随座迁移)
     setWelcomeGoal({ root: openRoot, goal: resend.text, ...(resend.images !== undefined ? { images: resend.images } : {}) });
     setRecentVersion((v) => v + 1);
     openSession(r.sessionId, openRoot, r.journalId);
@@ -757,12 +754,10 @@ function AppShell(): JSX.Element {
     const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
     const tab = tabStates[seat]?.tabs.find((x) => x.uid === uid);
     if (tab !== undefined && tab.type === 'sidechat' && tab.params.sideId !== undefined) {
-      const set = sideTabDismissedRef.current.get(seat) ?? new Set<string>();
-      set.add(tab.params.sideId);
-      // journal 键随记(2026-11-06):daemon 重启后 live id 失效,恢复对账按 journal 判「关过不复活」
+      // 关闭记忆入座档落盘(2026-11-06 移入 TabSessionState):sideId+sideJournal 双键——
+      // daemon 重启后 live id 失效,恢复对账按 journal 判「关过不复活」
       const sj = tab.params.sideJournal;
-      if (typeof sj === 'string') set.add(sj);
-      sideTabDismissedRef.current.set(seat, set);
+      setTabStates((s) => addSideDismissed(s, seat, typeof sj === 'string' ? [tab.params.sideId!, sj] : [tab.params.sideId!]));
     }
     const t = tabState.tabs.find((x) => x.uid === uid);
     if (t?.type === 'terminal') {
@@ -1255,6 +1250,7 @@ function AppShell(): JSX.Element {
                       upgradeSideChat,
                       sideGoal: sideGoals.get(t.uid),
                       onSideGoalDone: (uid2: string) => setSideGoals((m) => { const n = new Map(m); n.delete(uid2); return n; }),
+                      onDraftText: (uid2: string, v: string) => setTabStates((s) => patchTabMeta(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid2, { draftText: v })),
                       ptyIdFor,
                       onPtyAllocated: handlePtyAllocated,
                       chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId) : undefined,

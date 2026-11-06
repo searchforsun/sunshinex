@@ -32,10 +32,16 @@ export interface TabParams {
   readonly nonce?: string;
   /** G14.29 辅助对话:fork 旁路会话 id(sidechat 标签寻址;同一辅助会话重开=聚焦) */
   readonly sideId?: string;
+  /** 辅助对话 journal 定址(2026-11-06):sideId 是 daemon 生命周期内的会话 id,重启即失效——
+   *  恢复对账按 journal 认领页签并改指 canonical(旧档缺省时按持久化编号题匹配) */
+  readonly sideJournal?: string;
   /** 辅助对话持久化编号题(辅助对话 N;daemon fork meta,开签注入) */
   readonly title?: string;
   /** G14.154 辅助对话首问(文件选区「在辅助对话中提问」携带,挂载即落输入框) */
   readonly insert?: string;
+  /** 辅助对话草稿文本(2026-11-06 用户裁定「欢迎页输入框内容持久化,页签打开状态下」):
+   *  fork 前草稿 composer 输入随 gui-state 落盘,重启回档回填;fork 后由真 Chat 接管不再消费 */
+  readonly draftText?: string;
   /** G14.164 子智能体只读标签:payload.subagent 标签(委派行/工具行点开;同 agent 重开=聚焦) */
   readonly label?: string;
   /** G14.164 开档时定格的 agent 显示名(开档面解析齐备即带——任务板 assignee/title 命中或原始 label;标签条标题用) */
@@ -81,6 +87,9 @@ export interface TabSessionState {
   readonly collapsed: boolean;
   readonly width: number;
   readonly recentClosed: readonly ClosedTab[];
+  /** 辅助对话页签关闭记忆(2026-11-06 用户裁定「重启后已关页签不复活」):记 sideId 与
+   *  sideJournal 双键(live id 重启失效,journal 键跨生命周期判重),随 gui-state 落盘 */
+  readonly sideDismissed?: readonly string[];
 }
 
 /** 多会话标签态总表:key = sessionId;会话间互不可见(切会话各持各的) */
@@ -261,7 +270,7 @@ export function patchTabMeta(
   states: TabStates,
   sessionId: string,
   uid: string,
-  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; sideId?: string; title?: string; insert?: string },
+  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; sideId?: string; sideJournal?: string; title?: string; insert?: string; draftText?: string },
 ): TabStates {
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
@@ -273,8 +282,10 @@ export function patchTabMeta(
     && target.params.pageIcon === params.pageIcon
     && target.params.ptyId === params.ptyId
     && target.params.sideId === params.sideId
+    && target.params.sideJournal === params.sideJournal
     && target.params.title === params.title
     && target.params.insert === params.insert
+    && target.params.draftText === params.draftText
   ) return states;
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
@@ -356,10 +367,10 @@ export function parseTabSession(raw: unknown): TabSessionState | null {
       const e = t as Record<string, unknown>;
       if (typeof e.uid !== 'string' || e.uid === '') continue;
       if (typeof e.type !== 'string' || !TAB_TYPES.has(e.type)) continue;
-      // 2026-11-06 用户实测「重启后辅助会话 snapshot 404」:盘档 sidechat 页签剥离——sideId 是
-      // 临时别名(daemon 重启后 runtime 按新壳 id 重挂,旧 id 必 404),侧聊页签由 /sides 恢复链路
-      // newSession 壳+attach 以 canonical id 重建(盘档消毒滤除先例:directory 退役同款)
-      if (e.type === 'sidechat') continue;
+      // sidechat 页签随档保留(2026-11-06 用户裁定「页签状态要记录」;此前为修重启 404 剥离——
+      // 该根因已由恢复对账 newSession 壳+attach 收养根修:stale sideId 按 sideJournal 认领改指
+      // canonical,挂座前 sideReleased 闸门压住不挂真 Chat,不再裸 404):草稿页签(sideId 缺席)
+      // 带 draftText 回档,已 fork 页签由对账收养
       const params = (typeof e.params === 'object' && e.params !== null && !Array.isArray(e.params) ? e.params : {}) as TabParams;
       tabs.push({ uid: e.uid, type: e.type as TabTypeId, params, createdAt: typeof e.createdAt === 'number' ? e.createdAt : 0 });
     }
@@ -370,7 +381,6 @@ export function parseTabSession(raw: unknown): TabSessionState | null {
       if (c === null || typeof c !== 'object') continue;
       const e = c as Record<string, unknown>;
       if (typeof e.type !== 'string' || !TAB_TYPES.has(e.type)) continue;
-      if (e.type === 'sidechat') continue; // 同上:recentClosed 亦剥离(防重开旁路直插旧 dead id)
       const params = (typeof e.params === 'object' && e.params !== null && !Array.isArray(e.params) ? e.params : {}) as TabParams;
       recentClosed.push({
         type: e.type as TabTypeId,
@@ -384,7 +394,21 @@ export function parseTabSession(raw: unknown): TabSessionState | null {
     ? o.activeUid
     : tabs[0]?.uid ?? null;
   const width = typeof o.width === 'number' && o.width >= MIN_TAB_WIDTH ? o.width : DEFAULT_TAB_WIDTH;
-  return { tabs, activeUid, collapsed: o.collapsed === true, width, recentClosed };
+  // 关闭记忆回档:仅收非空串,坏型整弃(缺省=无记忆,恢复对账按「未关过」处理)
+  const sideDismissed = Array.isArray(o.sideDismissed)
+    ? o.sideDismissed.filter((x): x is string => typeof x === 'string' && x !== '')
+    : undefined;
+  return { tabs, activeUid, collapsed: o.collapsed === true, width, recentClosed, ...(sideDismissed !== undefined && sideDismissed.length > 0 ? { sideDismissed } : {}) };
+}
+
+/** 辅助对话关闭记忆登记(2026-11-06):sideId+sideJournal 双键入座档 sideDismissed(随 gui-state
+ *  落盘,重启后恢复对账按 journal 键判「关过不复活」);座档缺席即铸 */
+export function addSideDismissed(states: TabStates, seat: string, keys: readonly string[]): TabStates {
+  const cur = states[seat];
+  if (cur === undefined || keys.length === 0) return states;
+  const set = new Set(cur.sideDismissed ?? []);
+  for (const k of keys) set.add(k);
+  return { ...states, [seat]: { ...cur, sideDismissed: [...set] } };
 }
 
 /** 回退时随时间线丢弃的内容型页签:指向被丢弃轮次的产物;工具面板/终端/辅助对话不属于时间线 */

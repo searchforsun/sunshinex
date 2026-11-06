@@ -26,9 +26,13 @@ export function SideChatComposer(props: {
   readonly insert?: string;
   readonly busy: boolean;
   readonly onSend: (text: string) => void;
+  /** 草稿文本回档初值(gui/sessions 盘档 params.draftText,重启恢复输入框内容) */
+  readonly initialText?: string;
+  /** 草稿文本变更上报(组件内 400ms 防抖→App patchTabMeta params.draftText→gui-state 写透) */
+  readonly onTextChange?: (text: string) => void;
 }): JSX.Element {
-  const { conn, root, insert, busy, onSend } = props;
-  const [text, setText] = useState(insert ?? '');
+  const { conn, root, insert, busy, onSend, initialText, onTextChange } = props;
+  const [text, setText] = useState(initialText !== undefined && initialText !== '' ? initialText : (insert ?? ''));
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
   const pickRelRef = useRef(new Map<string, string>());
@@ -107,9 +111,26 @@ export function SideChatComposer(props: {
   // 2026-11-06 P4:insert 变更回流——草稿已挂载时再次收到「添加到辅助会话」不再失效
   useEffect(() => {
     if (insert === undefined || insert === '') return;
-    setText((prev) => (prev.trim() === '' ? insert : `${prev}
-${insert}`));
+    // 横向空格接续(2026-11-06 用户实测「文本片段怎么是纵向的」):换行拼接=每枚芯片独占一行,
+    // 与主对话追加口径(去尾空白+单空格)对齐
+    setText((prev) => (prev.trim() === '' ? `${insert} ` : `${prev.replace(/\s+$/, '')} ${insert} `));
   }, [insert]);
+  // 草稿文本落盘上报(400ms 防抖→App 落 params.draftText→gui-state 500ms 写透;重启回档回填。
+  // 窗口关闭前最后 <400ms 的击键不落盘,可接受——落盘语义为「输完即存」,非逐键同步)
+  const textSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTextChangeRef = useRef(onTextChange);
+  onTextChangeRef.current = onTextChange;
+  useEffect(() => {
+    if (onTextChangeRef.current === undefined) return;
+    if (textSaveRef.current !== null) clearTimeout(textSaveRef.current);
+    textSaveRef.current = setTimeout(() => onTextChangeRef.current?.(text), 400);
+    return () => {
+      if (textSaveRef.current !== null) {
+        clearTimeout(textSaveRef.current);
+        textSaveRef.current = null;
+      }
+    };
+  }, [text]);
   const send = (): void => {
     if (busy) return;
     const trimmed = expandRefContents(expandFileRefs(text, root, resolveFileRef), refContentsRef.current).trim();
