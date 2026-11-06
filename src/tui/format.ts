@@ -27,8 +27,8 @@ function partLabel(id: BreakdownPartId): string {
     case 'stable': return t('system prompt (stable)', '系统提示词（稳定段）');
     case 'instructions': return t('instructions (SUNSHINE.md)', '指令（SUNSHINE.md 两层）');
     case 'skills': return t('skills index', '技能清单');
-    case 'agents': return t('agents index', '智能体清单');
-    case 'teams': return t('teams index', '团队清单');
+    case 'agents': return t('sub-agents index', '子智能体清单');
+    case 'teams': return t('agent teams index', '智能体团队清单');
     case 'memory': return t('memory index', '记忆索引');
     case 'compacted': return t('compacted summary', '压缩摘要');
     case 'chain': return t('session chain', '会话链');

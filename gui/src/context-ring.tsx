@@ -39,6 +39,10 @@ function partName(id: string): string {
       return t('Instructions', '指令快照');
     case 'skills':
       return t('Skills', '技能快照');
+    case 'agents':
+      return t('Sub-agents', '子智能体');
+    case 'teams':
+      return t('Agent teams', '智能体团队');
     case 'memory':
       return t('Memory', '记忆');
     case 'compacted':
