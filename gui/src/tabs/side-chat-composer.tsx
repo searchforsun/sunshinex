@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, SetStateAction } from 'react';
-import { ArrowUp, ChevronDown, Eye, ListTodo, Loader2, ShieldCheck, Unlock } from 'lucide-react';
 import { t } from '../i18n';
 import type { Connection } from '../connection';
 import { ComposerCard } from '../composer/ComposerCard';
+import { ComposerPillsLeft, ComposerPillsRight } from '../pages/chat/ComposerPills';
 import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, renderMentionSpans, slashTokenAt } from '../pages/chat/mention';
-import { baseModelName, ModeIcon } from '../pages/Chat';
-import { EffortSlider } from '../effort-slider';
 import { CommandPalette, type CmdItem } from '../CommandPalette';
 import { slashItemsFor, useCommandPalette } from '../pages/chat/use-command-palette';
 import { useComposerKeys } from '../pages/chat/use-composer-keys';
@@ -14,7 +12,6 @@ import { useChatComposerSide } from '../pages/chat/use-chat-composer-side';
 import { flatRefItems, refTokenAt, type RefEntries, type RefPal } from '../pages/chat/ref-palette';
 import { pathBasename } from '../ui-util';
 import { useWorkspaceFiles } from '../pages/chat/use-workspace-files';
-import { PlusAddIcon } from '../sidebar/project-menu-util';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 
 /**
@@ -74,55 +71,25 @@ export function SideChatComposer(props: {
     resolveFileRef,
     target: 'side',
   });
-  // pills 本地态(2026-11-06 P1 用户裁定「欢迎页也有+完全访问等,和主对话一样」):结构/交互
-  // 镜像欢迎页 pills(mode/model/强度本地可选);fork 继承主会话配置;无上下文圆圈(未 fork 无 ctx)
-  const [mode, setMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
-  const [modeOpen, setModeOpen] = useState(false);
-  const [modelOpen, setModelOpen] = useState(false);
-  const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
-  const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
-  const [selModel, setSelModel] = useState<string | undefined>(undefined);
-  const [selEffort, setSelEffort] = useState<string | undefined>(undefined);
-  const [plusOpen, setPlusOpen] = useState(false);
+  // pills=真组件复用(2026-11-06 用户裁定「和会话中的输入框一样,只去掉上下文圈;不要手搓」):
+  // ComposerPillsLeft/Right 原件,本地态+空会话 ID(持久化调用静默失败=纯样式复用零逻辑改动);
+  // ctxInfo 恒 null=无上下文圆环(未 fork 无共享 ctx);modelInfo 本地构造(conn.settings 缺省模型)
+  const [pillOpen, setPillOpen] = useState<'mode' | 'model' | 'plus' | null>(null);
+  const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
+  const [modelInfo, setModelInfo] = useState<{ current?: string; choices: Array<{ id: string; model: string; baseUrl: string; effort?: string; supportsImages?: boolean }> } | null>(null);
+  const [sessEffort, setSelEffort] = useState<string | undefined>(undefined);
   useEffect(() => {
     conn.settings().then(
       (view) => {
-        setDefaultModel(view.keys.find((k) => k.key === 'model')?.value ?? undefined);
-        setModelChoices(view.providers.choices);
+        const def = view.keys.find((k) => k.key === 'model')?.value ?? undefined;
+        setModelInfo({
+          current: def,
+          choices: view.providers.choices.map((c) => ({ id: c.id, model: c.id, baseUrl: '' })),
+        });
       },
       () => undefined,
     );
   }, [conn]);
-  useEffect(() => {
-    if (!modelOpen && !modeOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.sx-menu-pop') === null && e.target.closest('[aria-label="model"]') === null && e.target.closest('[aria-label="approval mode"]') === null) {
-        setModelOpen(false);
-        setModeOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [modelOpen, modeOpen]);
-  // + 附加面板外点收(欢迎页同款;面板内点与 + 钮自持)
-  useEffect(() => {
-    if (!plusOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.sx-plus-panel') === null && e.target.closest('.composer-plus-btn') === null) {
-        setPlusOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [plusOpen]);
-  const modeLabel = mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'read-only' ? t('Read-only', '只读模式') : mode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
-  const modeRows: Array<{ separator: true } | { m: 'plan' | 'read-only' | 'acceptEdits' | 'full-access'; label: string; desc: string; icon: JSX.Element; disabled?: boolean }> = [
-    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { separator: true },
-    { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read-only analysis, no changes', '只读分析，不改文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Direct edits in-workspace, asks outside', '工作区内直接改，域外需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { m: 'full-access' as const, label: t('Full access', '完全访问'), desc: t('Fully automatic, blocks destructive commands', '全自动执行，仅拦破坏性命令'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
-  ];
   // 2026-11-06 P4:insert 变更回流——草稿已挂载时再次收到「添加到辅助会话」不再失效
   useEffect(() => {
     if (insert === undefined || insert === '') return;
@@ -276,14 +243,14 @@ ${insert}`));
           };
           return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
         })()
-      ) : plusOpen ? (
-        /* + 附加面板(欢迎页同款:命令/技能插入;文件区需会话——草稿未 fork 不渲染) */
+      ) : pillOpen === 'plus' ? (
+        /* + 附加面板(会话内同款:命令/技能插入;文件区需会话——草稿未 fork 不渲染) */
         <ComposerPlusPanel
           conn={conn}
           root={root}
           onInsert={(t2) => {
             setText((v) => (v.trim() === '' ? t2 : `${v.replace(/\s+$/, '')} ${t2}`));
-            setPlusOpen(false);
+            setPillOpen(null);
           }}
         />
       ) : null}
@@ -308,109 +275,38 @@ ${insert}`));
       overlays={overlays}
       highlight={renderMentionSpans(text, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true)}
       footLeft={
-        <>
-          <button
-            type="button"
-            className="composer-pill composer-plus-btn"
-            aria-label="add attachment"
-            aria-expanded={plusOpen}
-            data-tip={t('Add context', '添加上下文')}
-            onClick={() => setPlusOpen((v) => !v)}
-          >
-            <PlusAddIcon size={16} />
-          </button>
-          <div className="pill-anchor">
-          <button
-            type="button"
-            className="composer-pill"
-            aria-label="approval mode"
-            aria-expanded={modeOpen}
-            data-tip={modeLabel}
-            onClick={() => setModeOpen((v) => !v)}
-          >
-            <ModeIcon mode={mode} />
-            <span className="pill-label">{modeLabel}</span>
-            <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-          {modeOpen && (
-            <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="approval mode menu">
-              {modeRows.map((row, idx) => (
-                <div key={'separator' in row ? `sep-${idx}` : row.m} className="mode-pop-group">
-                  {'separator' in row ? (
-                    <div className="mode-pop-sep" aria-hidden="true" />
-                  ) : (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className={`mode-item${!row.disabled && mode === row.m ? ' active' : ''}`}
-                      aria-disabled={row.disabled === true ? true : undefined}
-                      onClick={() => {
-                        if (row.disabled === true) return;
-                        setMode(row.m);
-                        setModeOpen(false);
-                      }}
-                    >
-                      <span className="mode-item-icon">{row.icon}</span>
-                      <span className="mode-item-body">
-                        <span className="mode-item-name">{row.label}</span>
-                        <span className="mode-item-desc">{row.desc}</span>
-                      </span>
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </>
+        <ComposerPillsLeft
+          pillOpen={pillOpen}
+          setPillOpen={setPillOpen}
+          sessMode={sessMode}
+          setSessMode={setSessMode}
+          conn={conn}
+          sessionId=""
+        />
       }
       footRight={
-        <>
-          <div className="pill-anchor">
-            <button
-              type="button"
-              className="composer-pill model-pill"
-              aria-label="model"
-              aria-expanded={modelOpen}
-              data-tip={selModel ?? defaultModel ?? modelChoices[0]?.id ?? undefined}
-              onClick={() => setModelOpen((v) => !v)}
-            >
-              {baseModelName(selModel ?? defaultModel ?? modelChoices[0]?.id ?? '')}
-              <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-            {modelOpen && (
-              <div className="sx-menu-pop pill-pop model-pop" role="menu" aria-label="model menu">
-                {modelChoices.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="menuitem"
-                    className={`sx-menuitem${(selModel ?? defaultModel) !== undefined && baseModelName(c.id) === baseModelName(selModel ?? defaultModel) ? ' current' : ''}`}
-                    data-tip={c.id}
-                    onClick={() => {
-                      setSelModel(c.id);
-                      if (c.effort !== undefined) setSelEffort(c.effort);
-                    }}
-                  >
-                    {baseModelName(c.id)}
-                  </button>
-                ))}
-                <div className="pill-group-head">{t('Reasoning effort', '思考强度')}</div>
-                <EffortSlider value={selEffort ?? 'medium'} onChange={setSelEffort} />
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            className="send"
-            aria-label="send"
-            data-tip={`${t('Send', '发送')} · Enter`}
-            disabled={busy || text.trim() === ''}
-            onClick={send}
-          >
-            {busy ? <Loader2 size={16} strokeWidth={2} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />}
-          </button>
-        </>
+        <ComposerPillsRight
+          pillOpen={pillOpen}
+          setPillOpen={setPillOpen}
+          conn={conn}
+          sessionId=""
+          ctxInfo={null}
+          refreshCtx={() => undefined}
+          runCount={0}
+          steps={0}
+          tokens={0}
+          cacheTokens={0}
+          modelInfo={modelInfo}
+          setModelInfo={setModelInfo}
+          sessEffort={sessEffort}
+          setSessEffort={setSelEffort}
+          running={busy}
+          input={text}
+          send={send}
+          interrupt={() => undefined}
+          connState="open"
+          seeding={false}
+        />
       }
       belowInput={undefined}
     />
