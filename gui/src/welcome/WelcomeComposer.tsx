@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Eye, Folder, GitBranch, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
-import { pathBasename, pickWorkspaceFolder } from '../ui-util';
+import { pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
 import { RefPalette } from '../pages/chat/mention';
@@ -16,6 +16,10 @@ import { EffortChip, EffortSlider } from '../effort-slider';
 import { FolderAddIcon } from '../sidebar/ProjectMenu';
 import { PlusAddIcon } from '../sidebar/project-menu-util';
 import type { WelcomeComposerConn } from './welcome-conn';
+import { useWelcomeWorkspaces } from './use-welcome-workspaces';
+import { useWelcomeSlash } from './use-welcome-slash';
+import { useWelcomeBranch } from './use-welcome-branch';
+import { WelcomeLogo } from './welcome-logo';
 
 /** 欢迎页 composer 独立模块（D32 中口径件批App-1 自 App.tsx 平移,行为零变化;
  *  模块私有件转公开导出——消费方仅 App.tsx 一处）。 */
@@ -42,7 +46,6 @@ export function WelcomeComposer({
   presetRoot?: string;
   onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
 }): JSX.Element {
-  const [rows, setRows] = useState<Array<{ slug: string; root?: string; sessionCount: number }>>([]);
   const [picked, setPicked] = useState('');
   // 草稿持久化(2026-11-07 用户裁定「应用重启后,所有输入框内容不丢失」):goal+@引用账本
   // 落 localStorage(欢迎页全局单档;发送清档,openSession 接力不受影响)
@@ -150,39 +153,6 @@ export function WelcomeComposer({
   }, [goal]);
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const goalComposingRef = useRef(false);
-  /** G14.213 欢迎页 / 命令面板(与会话内同构):命令清单+技能(skillsGroups,无会话依赖) */
-  const [welcomeCmdData, setWelcomeCmdData] = useState<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>(null);
-  const [welcomeSkills, setWelcomeSkills] = useState<Array<{ id: string; desc: string }>>([]);
-  const [welcomeCmdActive, setWelcomeCmdActive] = useState(0);
-  const [welcomeSlashDismissed, setWelcomeSlashDismissed] = useState<string | null>(null);
-  useEffect(() => {
-    conn.commands().then(setWelcomeCmdData, () => setWelcomeCmdData(null));
-  }, [conn]);
-  /** G14.213 技能清单惰性拉取:敲 `/`/点开 + 面板起手拉(挂载即拉会污染 G8c skillsGroupsCalls 计数)。
-   *  2026-10-31 用户裁定:主动触发即可拉最新清单,5s 节流防抖(时间戳闸替代单次布尔闸——
-   *  首拉恒过,窗口内重复触发静默跳过) */
-  const WELCOME_SKILLS_THROTTLE_MS = 5000;
-  const welcomeSkillsAtRef = useRef(0);
-  const fetchWelcomeSkills = (force = false): void => {
-    if (!force && Date.now() - welcomeSkillsAtRef.current < WELCOME_SKILLS_THROTTLE_MS) return;
-    welcomeSkillsAtRef.current = Date.now();
-    conn.skillsGroups?.(picked).then(
-      (r) => {
-        const out: Array<{ id: string; desc: string }> = [];
-        for (const g of r.groups) for (const s of g.skills) if (!out.some((x) => x.id === s.id)) out.push({ id: s.id, desc: s.description ?? '' });
-        setWelcomeSkills(out);
-      },
-      () => undefined,
-    );
-  };
-  // 项目切换/新建登记后静默重拉（2026-10-30 用户裁定「创建项目后该加载都要静默加载」）：已拉过清单时
-  // 切到新项目（选中/新建/登记）即强制重拉该 root 的 skills（绕过 5s 节流——项目语义变更非防抖对象）；
-  // 未拉过（还没敲 `/`）不拉，惰性口径与 G8c 计数污染防护不变（同 workspaceFiles 的 [picked] effect 对照口径）
-  useEffect(() => {
-    if (welcomeSkillsAtRef.current === 0) return;
-    fetchWelcomeSkills(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picked]);
 
   useEffect(() => {
     conn.settings().then(
@@ -226,66 +196,6 @@ export function WelcomeComposer({
       .workspaceFiles?.(picked)
       ?.then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => undefined);
   }, [picked, conn]);
-
-  /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换)。
-   *  同拍回源项目列表:侧栏「添加工作区」只经本 preset 通知欢迎页(组件已挂载不重拉,
-   *  下拉还是挂载时快照——新建项目不入列,切页才显) */
-  useEffect(() => {
-    if (presetRoot !== undefined && presetRoot !== '') {
-      setPicked(presetRoot);
-      refreshRows();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetRoot]);
-  /** 他面创建回源(2026-10-30 用户实测「侧栏建项目后欢迎页下拉不显,切页才出」的跨面收口):
-   *  config-changed 任一帧即静默重拉 /workspaces(daemon afterCreate 建项目必广播;skills
-   *  等高频帧顺带重拉只是幂等 GET)。300ms 合帧防抖;conn 缺 onConfigChanged(旧桩)不订阅 */
-  useEffect(() => {
-    if (typeof conn.onConfigChanged !== 'function') return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const off = conn.onConfigChanged(() => {
-      if (timer !== null) return;
-      timer = setTimeout(() => {
-        timer = null;
-        refreshRows();
-      }, 300);
-    });
-    return () => {
-      off();
-      if (timer !== null) clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn]);
-  /** 项目列表回源（挂载 + 创建/登记成功后静默重拉——本地 append 只保即时可见,mtime 排序/会话计数/
-   *  侧栏对齐都要以 /workspaces 为准;2026-10-30 创建提速后加载缺口收口） */
-  const refreshRows = (): void => {
-    conn.workspaces().then(
-      (list) => {
-        const usable = list.filter((r) => r.root !== undefined && r.root !== '');
-        // default 工作区(用户裁定):置顶缺省——非文件类任务与对话的落点
-        // G14.10 B 方案:default 锚定专用临时目录(daemon 侧 <tmp>/sunshinex-default),按 basename
-        // 识别('sunshinex-default' 为新锚,'default' 兼容旧仓库内工作区);无注册行时回落字面
-        // 'default'(daemon createSession 同规则解析)。default 行置顶。basename 取 pathBasename 单点。
-        // G14.34 去重:default 与 sunshinex-default*(含旧临时锚点的带尾哈希变体)同义——
-        // 全部坍缩为唯一「默认工作区」项(root 取现存锚点行;全无则回落字面 'default')
-        const isDefaultNm = (nm: string): boolean => nm === 'default' || nm.startsWith('sunshinex-default');
-        const anchorRow =
-          usable.find((r) => r.root !== undefined && pathBasename(r.root) === 'sunshinex-default') ??
-          usable.find((r) => isDefaultNm(pathBasename(r.root ?? r.slug)));
-        const deduped = usable.filter((r) => !isDefaultNm(pathBasename(r.root ?? r.slug)));
-        const withDefault = anchorRow !== undefined
-          ? [anchorRow, ...deduped]
-          : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...deduped];
-        setRows(withDefault);
-        setPicked((p) => (p === '' ? (anchorRow?.root ?? 'default') : p));
-      },
-      () => setRows([]),
-    );
-  };
-  useEffect(() => {
-    refreshRows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn]);
   useEffect(() => {
     if (!projOpen) return;
     const onDown = (e: MouseEvent): void => {
@@ -355,104 +265,9 @@ export function WelcomeComposer({
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
-  /** G14.213 欢迎页 / 面板项(渲染期,光标位置):行首 /token → 命令+技能;行中 → 仅技能池
-   *  (2026-11-05 用户二次裁定与会话内同构);空=面板不开 */
-  const welcomeSlashItems = (() => {
-    const caret = goalRef.current?.selectionStart ?? goal.length;
-    const tok = slashTokenAt(goal, caret);
-    if (tok === null || welcomeCmdData === null || `/${tok.query}` === (welcomeSlashDismissed ?? '\u0000')) return null;
-    const q = tok.query.toLowerCase();
-    const skills = welcomeSkills
-      .filter((s) => q === '' || s.id.toLowerCase().startsWith(q) || s.id.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((s) => {
-        const idx = s.id.toLowerCase().indexOf(q);
-        return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
-      });
-    const cmds = tok.atStart && welcomeCmdData !== null ? filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, tok.query, welcomeCmdData.supported) : [];
-    const all = [...cmds, ...skills];
-    return all.length > 0 ? all : null;
-  })();
-  /** G14.113 欢迎页分支选择(picked 为 git 目录时显):分支清单/当前分支/切换 */
-  const [gitBr, setGitBr] = useState<{ current: string; branches: string[] } | null>(null);
-  const [branchOpen, setBranchOpen] = useState(false);
-  const branchRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (picked === '' || isDefaultPicked) { setGitBr(null); setBranchOpen(false); return; }
-    let alive = true;
-    conn.gitBranches(picked).then(
-      (r) => { if (alive) setGitBr(r.branches.length > 0 ? r : null); },
-      () => { if (alive) setGitBr(null); },
-    );
-    return () => { alive = false; };
-  }, [picked, conn, isDefaultPicked]);
-  useEffect(() => {
-    if (!branchOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      if (branchRef.current !== null && e.target instanceof Node && !branchRef.current.contains(e.target)) setBranchOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [branchOpen]);
-  const checkoutBranch = (branch: string): void => {
-    void conn
-      .gitCheckout(picked, branch)
-      .then(() => conn.gitBranches(picked))
-      .then((r) => setGitBr(r.branches.length > 0 ? r : null))
-      .catch((err: unknown) => setHint(`${t('Branch switch failed', '切换分支失败')}: ${err instanceof Error ? err.message : String(err)}`));
-  };
-  /** 浏览新文件夹(G10 用户裁定 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
-   *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
-   *  目录(旧 showDirectoryPicker 拿不到路径按 name 建目录的行为废除)。已登记幂等(daemon
-   *  workspace.json 同 root 直返 ok)。 */
-  /** 登记成功收口单点(三入口共用:桌面壳对话框/浏览器态对话框/DirPicker 确认):
-   *  幂等追加(slug 判重)+选中+收项目菜单+静默回源(skills 闸随 picked 重置+列表与侧栏/mtime 对齐) */
-  const adoptWorkspace = (res: { slug: string; root: string }): void => {
-    setRows((prev) => {
-      const list = prev ?? [];
-      return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
-    });
-    setPicked(res.root);
-    setProjOpen(false);
-    void refreshRows();
-  };
-  const browseFolder = async (): Promise<void> => {
-    setHint('');
-    const shell = window.sunshinex;
-    if (typeof shell?.pickFolder === 'function') {
-      const p = await shell.pickFolder();
-      if (p === null) return;
-      try {
-        adoptWorkspace(await conn.createWorkspace({ path: p }));
-      } catch (err) {
-        setHint(err instanceof Error ? err.message : String(err));
-      }
-      return;
-    }
-    // G14.194 浏览器态也走 Win 原生对话框(showDirectoryPicker+标记定位,同侧栏添加工作区);
-    // 取消静默;不支持/权限被拒/定位超时 → 回退自建 DirPicker
-    const picked = await pickWorkspaceFolder((q) => conn.locateWorkspace(q));
-    if (picked === null) return;
-    if (picked !== 'unsupported' && picked !== 'denied' && picked !== 'timeout') {
-      try {
-        adoptWorkspace(await conn.createWorkspace({ path: picked.path }));
-      } catch (err) {
-        setHint(err instanceof Error ? err.message : String(err));
-      }
-      return;
-    }
-    if (picked === 'denied') setHint(t('Folder permission denied', '文件夹写权限被拒'));
-    if (picked === 'timeout') setHint(t('Could not locate the picked folder', '未能定位所选文件夹'));
-    setDirOpen(true);
-  };
-  /** DirPicker 确认:登记所选既有目录为工作区并选中(同桌面壳后段) */
-  const registerFolder = (p: string): void => {
-    setDirOpen(false);
-    conn
-      .createWorkspace({ path: p })
-      .then(adoptWorkspace)
-      .catch((err: unknown) => setHint(err instanceof Error ? err.message : String(err)));
-  };
+  const { welcomeCmdData, welcomeSkills, welcomeCmdActive, setWelcomeCmdActive, welcomeSlashDismissed, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems } = useWelcomeSlash(conn, picked, goal, goalRef);
+  const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
+  const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, { setPicked, setProjOpen, setHint, setDirOpen });
   // pill 回显文案四态(data-tip 与 pill-label 同源;窄视口 CSS 塌缩面 sx-main-narrow 不变)
   const modeLabel = mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'read-only' ? t('Read-only', '只读模式') : mode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
   /** 权限菜单行形(spec §3.4 四项两段):separator 行渲染 mode-pop-sep 分组线;disabled 行置灰不可选 */
@@ -468,19 +283,7 @@ export function WelcomeComposer({
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
-        {/* mark 几何手工镜像 scripts/gen-shell-icon.mjs（ORBIT_RX/RY、STROKE、CORE_R、TILT）——
-            改形两侧同步,生成面只认脚本单源(窗口图标/托盘/ico 由此回填) */}
-        <svg className="welcome-logo" width="100" height="100" viewBox="0 0 72 72" fill="none" aria-hidden="true">
-          <g transform="rotate(-15 36 36)">
-            <g stroke="currentColor" strokeWidth="2.5">
-              <path d="M52.11 30.17A19 11 0 0 1 52.11 41.83" />
-              <path d="M46.07 45.33A19 11 0 0 1 25.93 45.33" />
-              <path d="M19.89 41.83A19 11 0 0 1 19.89 30.17" />
-              <path d="M25.93 26.67A19 11 0 0 1 46.07 26.67" />
-            </g>
-            <circle cx="36" cy="36" r="4.5" fill="currentColor" />
-          </g>
-        </svg>
+        <WelcomeLogo />
         <h1 className="welcome-tagline">{t('What should we do today?', '今天要做些什么？')}</h1>
       </div>
       <div className="welcome-dock">
