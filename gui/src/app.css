@@ -783,7 +783,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   resize: none;
 }.sx-composer-input:focus { border: none; outline: none; }
 /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
-   padding/font/行高逐项复制——天然零错位(原挂卡根 inset 0 少卡 padding 位移,文字偏左上) */.sx-composer-inputwrap { position: relative; }.sx-composer-highlight {
+   padding/font/行高逐项复制——天然零错位(原挂卡根 inset 0 少卡 padding 位移,文字偏左上) */.sx-composer-inputwrap { position: relative; }
+/* textarea 改 block+顶对齐(2026-11-06 用户实测「复制后对齐,上下滚动就不齐」桌面端根修):
+ * textarea UA 默认 inline-block 级坐在 wrapper 基线上,行盒把 wrapper 撑高数 px——zoom≠1
+ * (桌面 ui-zoom)下撑高放大,absolute inset:0 的高亮层跟.wrapper 同高≠textarea 视口高:
+ * 两个滚动视口不等高,滚到顶/底 clamp 差数 px=光标与文字上下错位+高亮层多窗溢画出「鬼影半行」;
+ * block 化后 wrapper 高=textarea 高,两侧视口恒等 */.sx-composer-highlight {
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -797,6 +802,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   overflow-wrap: anywhere;
   pointer-events: none;
 }.sx-composer-input.transparent-text { color: transparent; caret-color: var(--fg); }
+.sx-composer-inputwrap .sx-composer-input { display: block; vertical-align: top; }
 /* IME 组字期:隐高亮层,textarea 实色显组字串(否则 transparent-text 把候选确认前字迹藏掉) */
 .sx-composer-inputwrap.is-composing .sx-composer-highlight { visibility: hidden; }
 .sx-composer-highlight .hn { padding: 0; }.sx-composer-highlight .hn-cmd { color: var(--accent); }
@@ -1060,12 +1066,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 4px 10px; border-radius: var(--radius-sm); color: var(--fg);
 }.cmd-item.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }.cmd-item.disabled { color: var(--fg-tertiary); cursor: default; }.cmd-item.disabled .cmd-name { text-decoration: line-through; }.cmd-name { font-family: var(--font-mono); font-size: 12px; flex: none; }.cmd-desc { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* (G12:composer 的 position:relative 收进 .sx-composer 单源) */
-
-/* ===== G10-C4 rewind 菜单/pill 分组 ===== */.rewind-menu {
-  align-self: flex-end; margin-top: 4px; min-width: 240px; max-width: 80%;
-  background: var(--surface-elevated); border-radius: var(--radius-lg);
-  box-shadow: var(--elev-prominent); padding: 4px; max-height: 240px; overflow-y: auto;
-}.rewind-item { display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left; }.rewind-turn { font-family: var(--font-mono); font-size: 11px; color: var(--fg-tertiary); flex: none; }.rewind-text { font-size: 12px; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.rewind-empty { padding: 4px 10px; font-size: 12px; color: var(--fg-tertiary); }.pill-pop-tall { max-height: 320px; overflow-y: auto; }.pill-group-head { padding: 6px 10px 2px; font-size: 11px; color: var(--fg-tertiary); }
 
 /* ===== G10-C5 设置页 Codex 同构(居中窄列/行式=标题+描述+右控件/分组 nav) ===== */.sx-settings-body { max-width: 720px; margin: 0 auto; width: 100%; }.sx-settings-group { padding: 10px 12px 2px; font-size: 11px; color: var(--fg-tertiary); }.sx-settings-group-items { list-style: none; margin: 0; padding: 0; }.sx-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; }.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border-subtle); }.sx-setting-main { min-width: 0; }.sx-setting-title { display: flex; align-items: center; gap: 6px; }.sx-setting-desc { margin: 2px 0 0; font-size: 12px; color: var(--fg-tertiary); }.sx-setting-input { width: 240px; flex: none; }select.sx-setting-select { width: 240px; }
 
@@ -1906,6 +1906,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-dag-node:hover .tb-stop,
 .tb-dag-node:focus-within .tb-stop { opacity: 1; pointer-events: auto; }
 .tb-stop:hover { color: var(--err); }
+/* 停止二段确认武装态(2026-11-06 用户裁定):实心红对齐侧栏 .sx-archive-confirm,且武装期间恒显不随行 hover 隐没 */
+.tb-stop.arm { background: var(--err); border-color: var(--err); color: #fff; opacity: 1; pointer-events: auto; }
+.tb-stop.arm:hover { background: color-mix(in srgb, var(--err) 85%, #000); border-color: var(--err); color: #fff; }
 .tb-task-main { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; border: none; background: transparent; padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; color: var(--fg); font-size: 12.5px; }
 .tb-task-main:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
 /* 任务五态点:pending 灰(基类)、running 转圈、success 蓝、failed 红、cancelled 黄。
@@ -2049,9 +2052,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 8px 10px; color: var(--fg);
 }
 .mem-icon { flex: none; color: var(--fg-tertiary); }
-/* 删除二段确认武装态(2026-10-31 记忆页签):红显+tip「再次点击确认」 */
-.sx-changes-act.arm { color: var(--err); }
-.sx-changes-act.arm:hover { color: var(--err); }
+/* 删除二段确认武装态(2026-10-31 记忆页签):2026-11-06 用户裁定改实心红(对齐侧栏 .sx-archive-confirm),
+   不再只是红字;tip「再次点击确认」 */
+.sx-changes-act.arm { background: var(--err); border-color: var(--err); color: #fff; }
+.sx-changes-act.arm:hover { background: color-mix(in srgb, var(--err) 85%, #000); border-color: var(--err); color: #fff; }
 /* 学习技能详情 md 渲染面(段落节奏;容器深底固定高沿 .mem-detail .mem-body-text) */
 .mem-body-md p { margin: 0 0 6px; }
 .mem-body-md h1, .mem-body-md h2, .mem-body-md h3 { font-size: 12.5px; margin: 8px 0 4px; }
@@ -3191,17 +3195,18 @@ input.sx-setting-input { width: 100%; }
   border-top: 1px solid var(--border);
   justify-content: flex-end; /* 右下主行动作(dirpicker-foot 2026-10-24 同例) */
 }
-/* ② 二段式删除确认钮(ConfirmDeleteButton 武装段):原钮原地变红——红字红边淡红底,
-   悬停实心红白字;未武装段走 .sx-card-actions 既有钮面零新样式 */
+/* ② 二段式删除确认钮(ConfirmDeleteButton 武装段):原钮原地变实心红——2026-11-06 用户裁定
+   「一定要显示完全的红色,不是线条」,对齐侧栏 .sx-archive-confirm(实心 --err+#fff);
+   未武装段走 .sx-card-actions 既有钮面零新样式 */
 .sx-card-actions .sx-del-confirm,
 .sx-provider-model-actions .sx-del-confirm {
   border-color: var(--err);
-  color: var(--err);
-  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: #fff;
+  background: var(--err);
 }
 .sx-card-actions .sx-del-confirm:hover:not(:disabled),
 .sx-provider-model-actions .sx-del-confirm:hover:not(:disabled) {
-  background: var(--err);
+  background: color-mix(in srgb, var(--err) 85%, #000);
   color: #fff;
   border-color: var(--err);
 }
@@ -3320,4 +3325,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-turn-confirm-actions button { padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
 .sx-turn-confirm-actions button:hover:not(:disabled) { border-color: var(--border-strong); }
 .sx-turn-confirm-actions button:disabled { opacity: 0.5; cursor: default; }
+/* 2026-11-06 用户裁定:弹窗按钮统一规范——取消=取消当前副作用,同色系(ghost 现状不动);
+   确认/继续=继续当前副作用,反色实心(暗色=白/亮色=黑,即 var(--fg)+--fg-on-solid),
+   与 pending-card/dirpicker/rename 的 .primary 同一口径;两族弹窗(回退确认/设置 EditorModal)通用 */
+.sx-turn-confirm-actions button.primary,
+.sx-editor-modal-actions button.primary { background: var(--fg); color: var(--fg-on-solid); border-color: transparent; }
+.sx-turn-confirm-actions button.primary:hover:not(:disabled),
+.sx-editor-modal-actions button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); border-color: transparent; }
 .user-edit-hint { font-size: 12px; color: var(--warn); padding: 2px 4px; }
