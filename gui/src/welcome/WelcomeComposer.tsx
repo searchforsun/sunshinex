@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
-import { ArrowUp, ChevronDown, Eye, Folder, GitBranch, ListTodo, ShieldCheck, Unlock } from 'lucide-react';
+import { ArrowUp, ChevronDown, Folder, GitBranch } from 'lucide-react';
 import { pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
@@ -9,17 +9,21 @@ import { CommandPalette, filterCommands } from '../CommandPalette';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerCard } from '../composer/ComposerCard';
+import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { ImageLightbox } from '../ImageLightbox';
-import { EffortChip, EffortSlider } from '../effort-slider';
+import { EffortChip } from '../effort-slider';
 import { FolderAddIcon } from '../sidebar/ProjectMenu';
 import { PlusAddIcon } from '../sidebar/project-menu-util';
 import type { WelcomeComposerConn } from './welcome-conn';
+import { usePopOutsideClose } from '../use-pop-outside-close';
 import { useWelcomeWorkspaces } from './use-welcome-workspaces';
 import { useWelcomeSlash } from './use-welcome-slash';
 import { useWelcomeBranch } from './use-welcome-branch';
 import { WelcomeLogo } from './welcome-logo';
+import { WelcomeModelMenu } from './welcome-model-menu';
+import { WelcomeBranchMenu } from './welcome-branch-menu';
 
 /** 欢迎页 composer 独立模块（D32 中口径件批App-1 自 App.tsx 平移,行为零变化;
  *  模块私有件转公开导出——消费方仅 App.tsx 一处）。 */
@@ -164,29 +168,9 @@ export function WelcomeComposer({
     );
   }, [conn]);
 
-  // 弹层外点收(模型/强度弹层)
-  useEffect(() => {
-    if (!modelOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.sx-menu-pop') === null && e.target.closest('[aria-label="model"]') === null) {
-        setModelOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [modelOpen]);
-
-  // G14.133 审批模式弹层外点收(与 modelOpen 同款;菜单内点与锚钮自持)
-  useEffect(() => {
-    if (!modeOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.sx-menu-pop') === null && e.target.closest('[aria-label="approval mode"]') === null) {
-        setModeOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [modeOpen]);
+  // 弹层外点收(模型/审批模式两弹层;usePopOutsideClose 单点,面板内点与锚钮自持)
+  usePopOutsideClose(modelOpen, '.sx-menu-pop', '[aria-label="model"]', () => setModelOpen(false));
+  usePopOutsideClose(modeOpen, '.sx-menu-pop', '[aria-label="approval mode"]', () => setModeOpen(false));
 
   // G14.127 索引预热:选中工作区即拉清单(手打 @根目录文件 的发送期解析不依赖面板开过);
   // 目录清单(尾斜杠)排前——@面板可滤出文件夹
@@ -196,27 +180,12 @@ export function WelcomeComposer({
       .workspaceFiles?.(picked)
       ?.then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => undefined);
   }, [picked, conn]);
-  useEffect(() => {
-    if (!projOpen) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.proj-pop') === null && e.target.closest('.choose-project-bar') === null) {
-        setProjOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [projOpen]);
-  /** + 面板外点收(面板内点与 + 钮自持) */
+  usePopOutsideClose(projOpen, '.proj-pop', '.choose-project-bar', () => setProjOpen(false));
+  // + 面板外点收(面板内点与 + 钮自持);2026-10-31 用户裁定:主动点开 + 即拉最新技能清单(5s 节流在 fetch 侧)
+  usePopOutsideClose(plusOpen, '.sx-plus-panel', '.composer-plus-btn', () => setPlusOpen(false));
   useEffect(() => {
     if (!plusOpen) return;
-    fetchWelcomeSkills(); // 2026-10-31 用户裁定:主动点开 + 即拉最新技能清单(5s 节流防抖在 fetch 侧)
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element && e.target.closest('.sx-plus-panel') === null && e.target.closest('.composer-plus-btn') === null) {
-        setPlusOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    fetchWelcomeSkills();
   }, [plusOpen]);
   const send = (): void => {
     // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
@@ -268,18 +237,6 @@ export function WelcomeComposer({
   const { welcomeCmdData, welcomeSkills, welcomeCmdActive, setWelcomeCmdActive, welcomeSlashDismissed, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems } = useWelcomeSlash(conn, picked, goal, goalRef);
   const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, { setPicked, setProjOpen, setHint, setDirOpen });
-  // pill 回显文案四态(data-tip 与 pill-label 同源;窄视口 CSS 塌缩面 sx-main-narrow 不变)
-  const modeLabel = mode === 'plan' ? t('Plan mode', '计划模式') : mode === 'read-only' ? t('Read-only', '只读模式') : mode === 'acceptEdits' ? t('Workspace edits', '工作区编辑') : t('Full access', '完全访问');
-  /** 权限菜单行形(spec §3.4 四项两段):separator 行渲染 mode-pop-sep 分组线;disabled 行置灰不可选 */
-  type ModeMenuRow = { separator: true } | { m: 'plan' | 'read-only' | 'acceptEdits' | 'full-access'; label: string; desc: string; icon: JSX.Element; disabled?: boolean };
-  // 菜单四项两段(spec §3.4):与会话内 mode-pop 同构——plan 置顶(阶段三 plan-arm 接通正式开放)+分组线+三权限档
-  const modeRows: ModeMenuRow[] = [
-    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <ListTodo size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { separator: true },
-    { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read-only analysis, no changes', '只读分析，不改文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Direct edits in-workspace, asks outside', '工作区内直接改，域外需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { m: 'full-access' as const, label: t('Full access', '完全访问'), desc: t('Fully automatic, blocks destructive commands', '全自动执行，仅拦破坏性命令'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },
-  ];
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
@@ -313,23 +270,13 @@ export function WelcomeComposer({
                 <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {branchOpen && (
-                <div className="sx-menu-pop pill-pop branch-pop" role="menu" aria-label={t('Branch', '分支')}>
-                  {gitBr.branches.map((b) => (
-                    <button
-                      key={b}
-                      type="button"
-                      data-tip={b}
-                      role="menuitem"
-                      className={`sx-menuitem${b === gitBr.current ? ' active' : ''}`}
-                      onClick={() => {
-                        setBranchOpen(false);
-                        checkoutBranch(b);
-                      }}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
+                <WelcomeBranchMenu
+                  gitBr={gitBr}
+                  onPick={(b) => {
+                    setBranchOpen(false);
+                    checkoutBranch(b);
+                  }}
+                />
               )}
             </div>
           )}
@@ -755,46 +702,25 @@ export function WelcomeComposer({
                   aria-label="approval mode"
                   aria-expanded={modeOpen}
                   // D51 G-4:窄栏塌缩(sx-main-narrow)时 tooltip 承载当前模式名——与会话内 pill 同构
-                  data-tip={modeLabel}
+                  data-tip={sessionModeLabel(mode)}
                   onClick={() => setModeOpen((v) => !v)}
                 >
                   {/* G14.133 分档图标与菜单同源(ModeIcon)——静态 Hand 两套渲染退役;
                       标签/箭头走 pill-label/pill-chevron 类:pills-tight 实测塌缩按类收,
                       裸文本无类收不到(600 窗欢迎页「完全访问」不塌的根因),文案由 data-tip 承载 */}
                   <ModeIcon mode={mode} />
-                  <span className="pill-label">{modeLabel}</span>
+                  <span className="pill-label">{sessionModeLabel(mode)}</span>
                   <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 {modeOpen && (
-                  <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label="approval mode menu">
-                    {/* G14.113 与会话内 mode-pop 同构:四项两段——Plan 首位(置灰)+横线+三权限档;图标+双行(名称+解释) */}
-                    {modeRows.map((row, idx) => (
-                      <div key={'separator' in row ? `sep-${idx}` : row.m} className="mode-pop-group">
-                        {'separator' in row ? (
-                          <div className="mode-pop-sep" aria-hidden="true" />
-                        ) : (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            className={`mode-item${!row.disabled && mode === row.m ? ' active' : ''}`}
-                            aria-disabled={row.disabled === true ? true : undefined}
-                            data-tip={row.disabled === true ? t('Coming soon', '即将可用') : undefined}
-                            onClick={() => {
-                              if (row.disabled === true) return; // 阶段一 plan 置灰:不可选(阶段三 plan-arm 接通)
-                              setMode(row.m);
-                              setModeOpen(false);
-                            }}
-                          >
-                            <span className="mode-item-icon">{row.icon}</span>
-                            <span className="mode-item-body">
-                              <span className="mode-item-name">{row.label}</span>
-                              <span className="mode-item-desc">{row.desc}</span>
-                            </span>
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <ModeMenu
+                    mode={mode}
+                    ariaLabel="approval mode menu"
+                    onPick={(m) => {
+                      setMode(m);
+                      setModeOpen(false);
+                    }}
+                  />
                 )}
               </div>
             </>
@@ -817,27 +743,16 @@ export function WelcomeComposer({
                 <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {modelOpen && (
-                <div className="sx-menu-pop pill-pop pill-pop-right" role="menu" aria-label="model menu">
-                  {modelChoices.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      role="menuitem"
-                      // 当前项 ✓+强调色(current 类,样式单点 app.css);显示名比对——defaultModel
-                      // 带前缀/变体尾串而 choice id 裸名,精确 id 比对恒 false(会话内同款修法)
-                      className={`sx-menuitem${(selModel ?? defaultModel) !== undefined && baseModelName(c.id) === baseModelName(selModel ?? defaultModel) ? ' current' : ''}`}
-                      data-tip={c.id}
-                      onClick={() => {
-                        setSelModel(c.id);
-                        if (c.effort !== undefined) setSelEffort(c.effort);
-                      }}
-                    >
-                      {baseModelName(c.id)}
-                    </button>
-                  ))}
-                  {/* 2026-11-06 用户裁定「思考强度文字全局去掉」:仅留滑块,标题行退役(会话内 pills 同款) */}
-                  <EffortSlider value={selEffort ?? 'medium'} onChange={setSelEffort} />
-                </div>
+                <WelcomeModelMenu
+                  choices={modelChoices}
+                  current={selModel ?? defaultModel}
+                  effort={selEffort ?? 'medium'}
+                  onPick={(id, e) => {
+                    setSelModel(id);
+                    if (e !== undefined) setSelEffort(e);
+                  }}
+                  onEffort={setSelEffort}
+                />
               )}
               </div>
               <button
