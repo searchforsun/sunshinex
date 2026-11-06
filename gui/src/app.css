@@ -1463,7 +1463,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.11:流式中最后工具行尾部的 圆圈+步数+tokens(常驻) */
 /* 用户编辑卡(§7):composer 同款浮卡(elevated+radius-composer+海拔),占满流区宽。
  * 2026-11-05 反悔回滚:上轮把「去掉包装」误读为撤卡面——用户所指实为「芯片不被当整体」
- * (「编辑框怎么没了」即此),卡面恢复;真正的包装问题=芯片原子性,已由 use-token-guards 落 */.user-edit-composer { width: calc(100% - 32px); max-width: calc(var(--chat-max) + 32px); margin: 0 auto; }
+ * (「编辑框怎么没了」即此),卡面恢复;真正的包装问题=芯片原子性,已由 use-token-guards 落 */.user-edit-composer { width: calc(100% + 6px); max-width: none; margin: 0 auto; align-self: flex-start; }
 .user-edit-cancel { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; padding: 0; border: none; border-radius: 999px; background: var(--surface-soft); color: var(--fg-secondary); transition: background var(--dur-basic) var(--ease-enter); }
 .user-edit-cancel:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
 

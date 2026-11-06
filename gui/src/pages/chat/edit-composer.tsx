@@ -247,6 +247,31 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
     }
   });
 
+  /** 宽度对齐底部输入框(2026-11-06 用户实测「宽度没有对齐,太窄」):编辑卡在转录内容盒内,
+   *  盒宽与盒位都和 .chat-dock(composer 容器)不同源,纯公式/margin-auto 算不齐(实测同宽仍右偏
+   *  11px)——直接量测同主区 composer 实宽钉宽 + composer 左缘相对条目盒的偏移钉 margin-left,
+   *  ResizeObserver 跟随窗宽/右栏宽变化;找不到 composer(旁路面)回落 CSS 缺省宽 */
+  useLayoutEffect(() => {
+    const wrap = cardRef.current;
+    if (wrap === null) return;
+    const main = wrap.closest('.sx-main');
+    const composer = (main ?? document).querySelector('.chat-dock .chat-composer');
+    if (composer === null) return;
+    const apply = (): void => {
+      const cr = composer.getBoundingClientRect();
+      wrap.style.width = `${cr.width}px`;
+      // 左缘自校正(2026-11-06):父盒(.entry-user,flex 尾对齐+内边距)的合位规则绕不准——
+      // 置零 margin 量出自然左缘相对 composer 左缘的偏差,再反向补偿,对任意父盒规则成立
+      wrap.style.marginLeft = '0px';
+      const wr = wrap.getBoundingClientRect();
+      wrap.style.marginLeft = `${cr.left - wr.left}px`;
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(composer);
+    return () => ro.disconnect();
+  }, []);
+
   useLayoutEffect(() => {
     taRef.current?.focus();
   }, []);
