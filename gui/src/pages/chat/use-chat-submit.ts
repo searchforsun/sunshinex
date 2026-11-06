@@ -65,7 +65,12 @@ const submitText = useCallback(
     // 模式底层命令,恒走命令通道(底层承载);其余 / 词仍依赖 cmdData(skills/未知名回落纯文本)
     const cmdName = /^\/([a-z][\w-]*)/i.exec(trimmed)?.[1]?.toLowerCase() ?? '';
     const isBuiltinPlan = cmdName === 'plan';
-    const isCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed)
+    // 2026-11-06 用户裁定「要识别成纯命令;非法命令当普通文本发布,不截取前面的正常部分当作
+    // 正常命令」:首词之后行内再出现 / 词(第二枚命令令牌)即整行非法→普通文本——此前首词命中
+    // supported 就整行进命令通道(`/delete /skill-id` 曾截取 /delete 派发,余段被吞)
+    const restAfterCmd = trimmed.replace(/^\/[a-z][\w-]*/i, '');
+    const hasSecondCmdToken = /(^|\s)\/[a-zA-Z][\w-]/.test(restAfterCmd);
+    const isCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed) && !hasSecondCmdToken
       ? isBuiltinPlan || (cmdData?.supported.some((c) => c.toLowerCase() === `/${cmdName}`) ?? false)
       : false;
     const dispatch = (): Promise<void> => {
