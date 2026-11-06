@@ -57,7 +57,13 @@ export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; 
       setOverflowing(false);
       return;
     }
-    const sync = (): void => setOverflowing(el.scrollHeight > el.clientHeight + 2);
+    const sync = (): void => {
+      const over = el.scrollHeight > el.clientHeight + 2;
+      setOverflowing(over);
+      // 2026-11-07 用户裁定「ask 要显示完最后一个输入框」:溢出即滚到卡尾——自由输入卡
+      // (选项序列最后一项)恒可见,不藏在折叠面之下;聚焦输入时同规则再钉一次
+      if (over) el.scrollTop = el.scrollHeight;
+    };
     sync();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null;
     ro?.observe(el);
@@ -111,6 +117,9 @@ export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; 
               setCustomFocused(true);
               // 单选互斥(2026-10-30 用户裁定):点自由输入=选中输入卡,上方单选去选中
               if (!multiple && selected.length > 0) onPick({ labels: [] });
+              // 聚焦即滚到卡尾(2026-11-07 用户裁定「显示完最后一个输入框」)
+              const el = optionsRef.current;
+              if (el !== null) el.scrollTop = el.scrollHeight;
             }}
             onBlur={() => setCustomFocused(false)}
             onChange={(e) => onPick({ custom: e.target.value })}

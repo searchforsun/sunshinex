@@ -55,27 +55,36 @@ export interface TerminalTabProps {
   readonly onSideAsk?: (text: string) => void;
 }
 
-/** xterm 主题:取 app.css 设计令牌字面值(G8a spec §3;G8d U-D21 青色重定——CSS 变量无法跨
- *  canvas 令牌面直引,sx- 伴生类与变量桥归 G8b-e)——bg=--bg-0 #0d1117 / fg=--fg-0 #e6edf3 /
- *  cursor=--accent #22d3ee / selection=--accent 25% 半透 rgba(34,211,238,0.25) */
+/** xterm 主题:对齐 app.css 设计令牌(2026-11-07 用户裁定「终端背景色符合项目风格」——原
+ *  #0d1117 蓝黑是 Codex 遗留,与本项目灰阶令牌面不符):bg=--surface-code #101010 /
+ *  fg=--fg #dfdfdf / cursor=--accent #339cff / selection=--accent 25% 半透 */
 const XTERM_THEME = {
-  background: '#0d1117',
-  foreground: '#e6edf3',
-  cursor: '#22d3ee',
-  selectionBackground: 'rgba(34, 211, 238, 0.25)',
-} as const;
-/** 亮色档(2026-11-04 用户裁定「亮色模式终端显亮色」):bg=--surface-code #fcfcfc /
- *  fg=--fg #1a1c1f / cursor=--accent #339cff;ANSI 16 色缺省——PowerShell 前景按 256/truecolor
- *  发色,深底专用色罕见,亮底缺省谱可读 */
-const XTERM_THEME_LIGHT = {
-  background: '#fcfcfc',
-  foreground: '#1a1c1f',
+  background: '#101010',
+  foreground: '#dfdfdf',
   cursor: '#339cff',
   selectionBackground: 'rgba(51, 156, 255, 0.25)',
 } as const;
+/** 亮色 ANSI 16 色谱(2026-11-07 用户实测「白字/黄字看不见」根修):xterm 缺省谱是暗底专用的
+ *  (白/亮白/亮黄在浅底近不可读;PowerShell 正文恰用 white/亮白,数字表用黄)。亮底改官方亮色系
+ *  口径——body 文字(white/brightWhite)映射中灰/深灰,黄系压深,彩系取 VS Code Light 档 */
+const XTERM_ANSI_LIGHT = {
+  black: '#000000', red: '#cd3131', green: '#009900', yellow: '#96640a',
+  blue: '#0b5cbd', magenta: '#a126b4', cyan: '#0f8a8a', white: '#585858',
+  brightBlack: '#666666', brightRed: '#e05555', brightGreen: '#0a8f0a', brightYellow: '#a98600',
+  brightBlue: '#3b8eea', brightMagenta: '#c586c0', brightCyan: '#29b8db', brightWhite: '#3f3f3f',
+} as const;
+/** 亮色档(2026-11-04 用户裁定「亮色模式终端显亮色」):bg=--surface-code #eeeeee(2026-11-07
+ *  随亮色阶梯重定,原 #fcfcfc 近白不可辨) / fg=--fg #1a1c1f / cursor=--accent #339cff */
+const XTERM_THEME_LIGHT = {
+  background: '#eeeeee',
+  foreground: '#1a1c1f',
+  cursor: '#339cff',
+  selectionBackground: 'rgba(51, 156, 255, 0.25)',
+  ansi: XTERM_ANSI_LIGHT,
+} as const;
 /** 当前生效主题对应的 xterm 主题(mount 取一次;切换经 watchThemeChange 热更 options.theme) */
-const xtermThemeFor = (th: 'dark' | 'light'): { background: string; foreground: string; cursor: string; selectionBackground: string } =>
-  th === 'light' ? XTERM_THEME_LIGHT : XTERM_THEME;
+const xtermThemeFor = (th: 'dark' | 'light'): { background: string; foreground: string; cursor: string; selectionBackground: string; ansi?: typeof XTERM_ANSI_LIGHT } =>
+  th === 'light' ? { ...XTERM_THEME_LIGHT, ansi: XTERM_ANSI_LIGHT } : XTERM_THEME;
 
 export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,11 +145,44 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             onPtyAllocated(uid, ptyId);
             reused = false;
           }
-          // ② jsdom 守卫:降级面(App.test 断言面;真浏览器 clientWidth>0 走 xterm)
+          // ② jsdom 守卫:降级面(App.test 断言面;真浏览器 clientWidth>0 走 xterm)。
+          //  2026-11-07 用户实测「重启后终端不见了」根修:恢复的非活动页签隐藏挂载=容器 0 尺寸,
+          //  原地立刻永久降级——切回该页签也不再装配。改为等布局出现(RO 观测,15s 超时护栏)
+          //  再装配;jsdom 无 RO/超时仍降级(测试断言面保留)
           const container = containerRef.current;
-          if (container === null || container.clientWidth === 0 || container.clientHeight === 0) {
+          if (container === null) {
             setFallback(true);
             return;
+          }
+          if (container.clientWidth === 0 || container.clientHeight === 0) {
+            const laid = await new Promise<boolean>((resolve) => {
+              if (cancelled) return resolve(false);
+              if (container.clientWidth > 0 && container.clientHeight > 0) return resolve(true);
+              if (typeof ResizeObserver === 'undefined') return resolve(false);
+              const ro = new ResizeObserver(() => {
+                if (container.clientWidth > 0 && container.clientHeight > 0) {
+                  ro.disconnect();
+                  resolve(true);
+                }
+              });
+              ro.observe(container);
+              const timer = setTimeout(() => {
+                ro.disconnect();
+                resolve(false);
+              }, 15000);
+              const watch = setInterval(() => {
+                if (cancelled) {
+                  clearInterval(timer);
+                  clearInterval(watch);
+                  ro.disconnect();
+                  resolve(false);
+                }
+              }, 250);
+            });
+            if (cancelled || !laid) {
+              setFallback(true);
+              return;
+            }
           }
           // ③ xterm + FitAddon + pty WS 装配
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值

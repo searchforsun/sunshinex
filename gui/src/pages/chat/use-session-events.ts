@@ -37,6 +37,9 @@ export function useSessionEvents(deps: {
   onTodos?: (todos: TodoItem[]) => void;
   /** G14.154 辅助对话首问:挂载即把携带的选区引用落输入框(仅一次) */
   initialInsert?: string;
+  /** 注入消费回调(2026-11-07 用户实测「重启后每个辅助会话都多一枚片段」根修):insert 参数
+   *  持久化于页签档,消费后即清页签档(置空串),否则每次挂载/重启重放=删了又现 */
+  onInsertConsumed?: () => void;
   setInput: Dispatch<SetStateAction<string>>;
   /** 队列面(reseed 回显 snapshot.queued;P5 起 queue 帧实时推) */
   setQueued: Dispatch<SetStateAction<Array<{ seq: number; text: string }>>>;
@@ -69,6 +72,7 @@ export function useSessionEvents(deps: {
     onSeeded,
     onTodos,
     initialInsert,
+    onInsertConsumed,
     setInput,
     setChat,
     setQueued,
@@ -238,11 +242,11 @@ export function useSessionEvents(deps: {
   );
 
   useEffect(() => {
-    // G14.154 辅助对话首问:挂载即把携带的选区引用落输入框(仅一次)
+    // G14.154 辅助对话首问:挂载注入即落输入框(仅一次;2026-11-07 用户裁定「肯定是追加」——
+    // 运行中会话再收圈选也应接续既有输入,改追加接续,整替撤)
     if (initialInsert !== undefined && initialInsert !== '') {
-      // 整替式落框(2026-11-06 用户裁定「圈选不应累积之前的」):挂载注入=新问题,草稿恢复的
-      // 旧选择不堆叠(initialInsert 仅辅助对话挂载路径携带)
-      setInput(`${initialInsert} `);
+      setInput((prev) => (prev.trim() === '' ? `${initialInsert} ` : `${prev.replace(/\s+$/, '')} ${initialInsert} `));
+      onInsertConsumed?.(); // 消费即清页签档 insert 参数(重挂载/重启不再重放)
     }
     const sink: ChatSink = {
       on: (e, seq) => {

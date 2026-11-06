@@ -171,7 +171,6 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
   const [wvUrl, setWvUrl] = useState('');
   const [wvCanBack, setWvCanBack] = useState(false);
   const [wvCanFwd, setWvCanFwd] = useState(false);
-  const [wvZoom, setWvZoom] = useState(1);
   const [nav, setNav] = useState<WebHistory>(() => {
     const raw = (params.url ?? '').trim();
     return raw === '' ? { urls: [], index: -1 } : { urls: [normalizeWebUrl(raw)], index: 0 };
@@ -477,11 +476,6 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     if (builtin) { wvRef.current?.reload(); return; }
     setNonce((v) => v + 1);
   };
-  /** webview 缩放(setZoomFactor,浏览器原生缩放语义) */
-  const setZoom = (f: number): void => {
-    setWvZoom(f);
-    wvRef.current?.setZoomFactor(f);
-  };
   // 2026-10-25 用户报障:window.open 在 Electron 里只开自家子窗,不是系统默认浏览器——
   // openExternalUrl 单点(桌面壳走 preload 桥 shell.openExternal,OS 默认浏览器承接;浏览器态回落 window.open)
   const openExternal = (): void => {
@@ -527,6 +521,56 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     if (Number.isFinite(n) && n >= 16) apply(Math.round(n));
   };
 
+  /** 视口边角拖拽调尺寸(2026-11-06 用户裁定:上下左右+四角手柄,最小 320):
+   *  拖动位移 ÷ 当前倍率 = 设备 px 增量,直接写 devW/H——顶行宽高输入框(显 deviceW/H)与
+   *  视口盒实时同步。适应窗口态开拖先定格当前倍率(fit 恒占满面板会吞掉尺寸变化),
+   *  之后同固定倍率档;zoom 契约:pointer 坐标 /zoomScale 归一后再算增量 */
+  const MIN_DIM = 320;
+  /** 拖拽在途方向(渲染全屏遮罩):webview 的 guest 页面会吞掉其上方指针事件,宿主 window
+   *  监听收不到 move=拖到网页内即断触(2026-11-07 实测);遮罩挡在 webview 前承接整段拖拽 */
+  const [resizeDir, setResizeDir] = useState<'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | null>(null);
+  const dragViewport = (e: React.PointerEvent<HTMLDivElement>, dir: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'): void => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const scaler = scalerRef.current;
+    if (scaler === null) return;
+    const rect = scaler.getBoundingClientRect();
+    const scale = rect.width / deviceW;
+    if (!(scale > 0)) return;
+    const z = zoomScale();
+    if (devFit) {
+      setDevFit(false);
+      setDevZoom(scale);
+    }
+    const startX = e.clientX / z;
+    const startY = e.clientY / z;
+    const startW = deviceW;
+    const startH = deviceH;
+    setResizeDir(dir);
+    const move = (ev: PointerEvent): void => {
+      const dx = ev.clientX / z - startX;
+      const dy = ev.clientY / z - startY;
+      let w = startW;
+      let h = startH;
+      if (dir.includes('e')) w = Math.round(startW + dx / scale);
+      if (dir.includes('w')) w = Math.round(startW - dx / scale);
+      if (dir.includes('s')) h = Math.round(startH + dy / scale);
+      if (dir.includes('n')) h = Math.round(startH - dy / scale);
+      setDevW(Math.max(MIN_DIM, Math.min(12000, w)));
+      setDevH(Math.max(MIN_DIM, Math.min(12000, h)));
+    };
+    const up = (): void => {
+      setResizeDir(null);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
   return (
     <div className="sx-web-tab" aria-label="web tab">
       <div className="sx-web-bar">
@@ -560,13 +604,8 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
         >
           <RotateCw size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
-        {builtin && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flex: 'none' }}>
-            <button type="button" className="sx-web-nav" aria-label={t('Zoom out', '缩小')} data-tip={t('Zoom out', '缩小')} onClick={() => setZoom(Math.max(0.25, wvZoom - 0.1))}>{'−'}</button>
-            <button type="button" className="sx-web-nav" aria-label={t('Reset zoom', '重置缩放')} data-tip={t('Reset zoom', '重置缩放')} style={{ fontSize: 10, minWidth: 34 }} onClick={() => setZoom(1)}>{Math.round(wvZoom * 100)}%</button>
-            <button type="button" className="sx-web-nav" aria-label={t('Zoom in', '放大')} data-tip={t('Zoom in', '放大')} onClick={() => setZoom(Math.min(3, wvZoom + 0.1))}>{'+'}</button>
-          </span>
-        )}
+        {/* 2026-11-07 用户裁定:−/%/+ webview 内容缩放钮撤下——非自由尺寸=侧栏真实尺寸无缩放;
+            缩放语义单点收敛到自由尺寸行的「倍率」下拉(视口显示倍率,不改页内 ppi) */}
         <div className="sx-web-url-box">
           <Lock size={11} strokeWidth={1.75} aria-hidden="true" />
           <input
@@ -803,12 +842,23 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
               />
             )}
           </div>
+          {/* 视口边角拖拽手柄(2026-11-06 用户裁定:四边+四角 8 向;拖动实时改视口 px,顶行尺寸同步) */}
+          {(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map((dir) => (
+            <div key={dir} className={`sx-web-rz sx-web-rz-${dir}`} onPointerDown={(e) => dragViewport(e, dir)} aria-hidden="true" />
+          ))}
         </div>
       </div>
       {pickState === 'failed' && (
         <div className="sx-web-pickhint err" role="alert">
           {t('Element picking unavailable on this page', '当前页面无法选取元素')}
         </div>
+      )}
+      {/* 拖拽遮罩:挡住 webview 吞事件(拖到网页内断触根因),光标随拖拽方向轴 */}
+      {resizeDir !== null && (
+        <div
+          className="sx-web-rz-overlay"
+          style={{ cursor: resizeDir === 'n' || resizeDir === 's' ? 'ns-resize' : resizeDir === 'e' || resizeDir === 'w' ? 'ew-resize' : resizeDir === 'ne' || resizeDir === 'sw' ? 'nesw-resize' : 'nwse-resize' }}
+        />
       )}
     </div>
   );

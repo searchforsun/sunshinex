@@ -44,7 +44,15 @@ export function WelcomeComposer({
 }): JSX.Element {
   const [rows, setRows] = useState<Array<{ slug: string; root?: string; sessionCount: number }>>([]);
   const [picked, setPicked] = useState('');
-  const [goal, setGoal] = useState('');
+  // 草稿持久化(2026-11-07 用户裁定「应用重启后,所有输入框内容不丢失」):goal+@引用账本
+  // 落 localStorage(欢迎页全局单档;发送清档,openSession 接力不受影响)
+  const [goal, setGoal] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sx-draft:welcome') ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [projOpen, setProjOpen] = useState(false);
@@ -120,6 +128,26 @@ export function WelcomeComposer({
   const goalRef = useRef<HTMLTextAreaElement | null>(null);
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析) */
   const pickRelRef = useRef(new Map<string, string>());
+  // @引用账本回灌(芯片/短写展开依赖;随草稿落盘,重启恢复)
+  try {
+    const rawPicks = localStorage.getItem('sx-draft:welcome:refs');
+    if (rawPicks !== null) {
+      for (const [k, v] of JSON.parse(rawPicks) as Array<[string, string]>) pickRelRef.current.set(k, v);
+    }
+  } catch {
+    // 档损坏即弃
+  }
+
+  // 草稿持久化(2026-11-07 用户裁定「重启后所有输入框内容不丢失」):goal 变更即落;
+  // @引用账本随渲染全量序列化(set 分散在事件/面板各处,量小代价可忽略)
+  useEffect(() => {
+    try {
+      localStorage.setItem('sx-draft:welcome', goal);
+      localStorage.setItem('sx-draft:welcome:refs', JSON.stringify([...pickRelRef.current]));
+    } catch {
+      // 隐私模式写失败静默
+    }
+  }, [goal]);
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const goalComposingRef = useRef(false);
   /** G14.213 欢迎页 / 命令面板(与会话内同构):命令清单+技能(skillsGroups,无会话依赖) */
@@ -307,6 +335,12 @@ export function WelcomeComposer({
         if (mode === 'read-only') void conn.setSessionMode(sessionId, 'read-only').catch(() => undefined);
         if (mode === 'plan') void conn.setSessionMode(sessionId, 'plan').catch(() => undefined);
         setImages([]); // 图片随首条消息接力发出（pendingGoal 携图）,草稿即清
+        try {
+          localStorage.removeItem('sx-draft:welcome');
+          localStorage.removeItem('sx-draft:welcome:refs');
+        } catch {
+          // 隐私模式写失败静默
+        }
         onOpened(sessionId, target, g, imgs);
       })
       .catch((err: unknown) => {

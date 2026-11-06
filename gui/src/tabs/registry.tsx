@@ -53,6 +53,8 @@ export interface TabServices {
   readonly todos: import('../../../src/types').TodoItem[];
   /** G14.174 待办批次(每批 todo_write 一卡;Chat 从转录重建上抛)——「待办」页签数据面 */
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
+  /** 待办批次上抛(2026-11-07「辅助投影挂主对话下」:side 会话待办同收主待办页签) */
+  readonly onTodoBatches?: (batches: import('../pages/Chat').TodoBatch[]) => void;
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
   readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   /** 2026-11-04 待办行点击定位信号:待办页签滚到同签名卡并闪光 */
@@ -63,7 +65,7 @@ export interface TabServices {
    *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
   /** G14.2xx web 标签元数据回写(页内导航 url/页名/站标 → 标签 params;App 落 patchTabMeta) */
-  readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }) => void;
+  readonly onTabMeta: (sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string; insert?: string; insertContent?: string }) => void;
   /** 切到该页签(内置浏览器:agent 驱动哪个页签,侧栏就显示哪个——用户所见即 agent 所操作) */
   readonly onActivateTab?: (sessionId: string, uid: string) => void;
   /** 智能体团队顶部刷新(2026-10-31):App 注入——sessionSnapshot 拉 journal 权威 board 整替投影。
@@ -112,6 +114,8 @@ export interface TabRenderProps {
   /** 草稿文本持久化(2026-11-06 用户裁定「欢迎页输入框内容持久化,页签打开状态下」):回档初值
    *  与变更上报——App 落 params.draftText 随 gui-state 落盘 */
   readonly onDraftText?: (uid: string, text: string) => void;
+  /** 草稿芯片账本快照上抛(2026-11-07 落地即清配套:随 gui-state 落盘,重启回灌) */
+  readonly onDraftRefContents?: (uid: string, json: string) => void;
   /** G10-C6 记忆面板寻址(App 注入 openRoot;file/tasks 忽略) */
   readonly root: string;
   /** 记忆定位(2026-10-31 用户裁定「点击打开侧栏对应记忆行」:saved 回显行点击下发 slug,
@@ -399,6 +403,10 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             key={p.params.sideId}
             conn={p.conn}
             sessionId={p.params.sideId}
+            // journalId=sideJournal(2026-11-07 用户实测「升级后的辅助会话草稿不持久」根修):
+            // archiveKey 落 sideId=daemon 生命周期内 id,重启必换=旧键草稿永不命中。sideJournal
+            // 是持久化 journal 身份(页签定址同款),草稿/滚动存档按它跨重启稳定
+            journalId={p.params.sideJournal}
             connState="open"
             onBack={() => {}}
             sinkRef={p.chatSinkRef}
@@ -407,19 +415,30 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             fixedTitle=""
             sideChat
             initialInsert={p.params.insert}
-            // 跳转面与主对话同构(2026-11-06 用户裁定):文件/审查/浏览器/记忆/学习技能均为工作区
-            // 维度,复用同一开签口径;子智能体转录/任务板/待办属主会话投影,辅助对话不接(点开=错会话数据)
+            initialInsertContent={p.params.insertContent}
+            onInsertConsumed={() => p.services.onTabMeta(p.sessionId, p.uid, { insert: '', insertContent: '' })}
+            // 跳转面与主对话完全同构(2026-11-07 用户裁定「辅助会话有主会话所有能力,子智能体/
+            // 团队/待办/后台任务/计划等所有链接都可点,挂到主对话下」):sidechat 页签属主会话
+            // 页签条,p.services/openTab 即主会话投影——子智能体转录/团队板/待办定位/后台任务/
+            // 计划全部按主会话口径开签(2026-11-06「辅助不接」裁定撤)
             onOpenFile={fileTabOf(p)}
             onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
             onOpenWeb={(url) => p.openTab('web', { url })}
             onOpenMemory={p.openMemory}
             onOpenLearned={p.openLearned}
+            onOpenAgent={(label, agentTitle, task) => p.openTab('agent', { label, agentTitle, task })}
+            onOpenTask={p.services.onOpenTask}
+            onOpenTab={(type) => p.openTab(type)}
+            board={p.services.board}
+            teams={p.services.teams}
+            onTodoLocate={() => p.openTab('tasks')}
+            onTodoBatches={p.services.onTodoBatches}
             pendingGoal={p.sideGoal}
             onPendingGoalDone={() => p.onSideGoalDone?.(p.uid)}
           />
         </div>
       ) : p.upgradeSideChat !== undefined ? (
-        <SideChatDraft uid={p.uid} insert={p.params.insert} draftText={p.params.draftText} onDraftText={p.onDraftText} onUpgrade={p.upgradeSideChat} conn={p.conn} root={p.root} />
+        <SideChatDraft uid={p.uid} insert={p.params.insert} insertContent={p.params.insertContent} draftText={p.params.draftText} draftRefContents={p.params.draftRefContents} onDraftRefContents={p.onDraftRefContents} onDraftText={p.onDraftText} onUpgrade={p.upgradeSideChat} conn={p.conn} root={p.root} />
       ) : (
         // 防御面:无 upgrade 通道的旧装配/测试桩
         <div className="sx-sidechat sx-sidechat-empty">
@@ -432,7 +451,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
 /** 辅助对话草稿页(2026-11-04 首条发送才 fork):表层=主对话同款 ComposerCard+原提示语,
    底层=发送时才升级(fork 主对话整档→挂真 Chat→首条自动提交)。busy 防重入;失败落
    composer 行内错误条保草稿 */
-function SideChatDraft({ uid, insert, draftText, onDraftText, onUpgrade, conn, root }: { uid: string; insert?: string; draftText?: string; onDraftText?: (uid: string, text: string) => void; onUpgrade: (uid: string, text: string) => Promise<void>; conn: Connection; root?: string }): JSX.Element {
+function SideChatDraft({ uid, insert, insertContent, draftText, draftRefContents, onDraftText, onDraftRefContents, onUpgrade, conn, root }: { uid: string; insert?: string; insertContent?: string; draftText?: string; draftRefContents?: string; onDraftText?: (uid: string, text: string) => void; onDraftRefContents?: (uid: string, json: string) => void; onUpgrade: (uid: string, text: string) => Promise<void>; conn: Connection; root?: string }): JSX.Element {
   // 2026-11-06 用户裁定「辅助会话完全复制主对话输入框的能力」:交互面移交 SideChatComposer
   // (芯片高亮/五面守卫/@ / 命令、$# 三面板/insert-ref 片段通道;文本展开在组件内完成后回调);
   // 空态居中「辅助会话」标题+说明行。pills 需会话绑定(草稿未 fork),升级后真 Chat 自带全量
@@ -457,7 +476,7 @@ function SideChatDraft({ uid, insert, draftText, onDraftText, onUpgrade, conn, r
         <p role="status">{t('A side discussion around the main chat.', '围绕主会话的辅助讨论。')}</p>
       </div>
       <div className="composer sx-sidechat-draft-composer">
-        <SideChatComposer conn={conn} root={root} insert={insert} busy={busy} onSend={send} initialText={draftText} onTextChange={onDraftText !== undefined ? (v) => onDraftText(uid, v) : undefined} />
+        <SideChatComposer conn={conn} root={root} insert={insert} insertContent={insertContent} busy={busy} onSend={send} initialText={draftText} draftRefContents={draftRefContents} onTextChange={onDraftText !== undefined ? (v) => onDraftText(uid, v) : undefined} onRefContentsChange={onDraftRefContents !== undefined ? (json) => onDraftRefContents(uid, json) : undefined} />
         {err !== '' && <div className="sx-img-hint" role="status">{err}</div>}
       </div>
     </div>

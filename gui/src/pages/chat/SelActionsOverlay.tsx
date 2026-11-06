@@ -17,8 +17,8 @@ import { mintSnippetToken, refContentRegister } from './mention';
 export function SelActionsOverlay(props: {
   readonly containerRef: MutableRefObject<HTMLElement | null>;
   readonly enabled?: boolean;
-  readonly onInsert: (text: string) => void;
-  readonly onSideAsk?: (text: string) => void;
+  readonly onInsert: (text: string, content?: string) => void;
+  readonly onSideAsk?: (text: string, content?: string) => void;
 }): JSX.Element | null {
   const { containerRef, enabled = true, onInsert, onSideAsk } = props;
   const [sel, setSel] = useState<{ top: number; left: number; text: string } | null>(null);
@@ -82,7 +82,8 @@ export function SelActionsOverlay(props: {
           // 后 hover/展开全链兜底(账本通道 ref 是终端选取专用,这里无需)
           const token = mintSnippetToken('body');
           refContentRegister(token, sel.text);
-          onInsert(token);
+          // 2026-11-07 串扰根修:全文随 token 同路(主对话私有账本收),不再单靠全局注册表兜底
+          onInsert(token, sel.text);
           setSel(null);
         }}
       >
@@ -96,7 +97,9 @@ export function SelActionsOverlay(props: {
             // +注册表记账,onSideAsk 收 token 文本(落辅助草稿/侧 composer 即折芯片)
             const token = mintSnippetToken('body');
             refContentRegister(token, sel.text);
-            onSideAsk(token);
+            // 2026-11-07 串扰根修:内容随 token 同路(onSideAsk 二参)——辅助面私有账本收,
+            // 不再单靠全局注册表兜底(键跨会话共享会取到别会话同键内容)
+            onSideAsk(token, sel.text);
             setSel(null);
           }}
         >

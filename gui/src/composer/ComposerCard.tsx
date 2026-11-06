@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ClipboardEvent, CompositionEvent, FormEvent, KeyboardEvent, MutableRefObject, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
+import { canonicalizeRefTokens, tokenSpanAt } from '../pages/chat/mention';
 
 /**
  * 统一 composer 卡(G12 用户裁定「不要两个版本」):欢迎页与会话中共用同一份输入卡实现——
@@ -49,6 +50,9 @@ export interface ComposerCardProps {
   footRight?: ReactNode;
   /** textarea 引用(插入面板收口后焦点回输入框) */
   inputRef?: MutableRefObject<HTMLTextAreaElement | null>;
+  /** 会话私有 ref 内容账本(2026-11-07):规范化重写 token 原文时账本键随迁(真搬)。缺席=只走
+   *  全局注册表补缺(不覆盖)——账本缺席面(编辑卡/欢迎页)token 键迁移仅注册表兜底 */
+  refLedger?: MutableRefObject<Map<string, string> | null>;
   /** G14.95 token 高亮层(与 textarea 同排版;缺省无层,textarea 正常显字) */
   highlight?: ReactNode;
   /** G14.135 输入区点击(坐标落点已换算 caret):@文件 token 点击开侧栏标签 */
@@ -90,6 +94,7 @@ export function ComposerCard({
   footLeft,
   footRight,
   inputRef,
+  refLedger,
   highlight,
 }: ComposerCardProps): JSX.Element {
   const hlRef = useRef<HTMLDivElement | null>(null);
@@ -113,6 +118,38 @@ export function ComposerCard({
     hl.scrollTop = ta.scrollTop;
     hl.scrollLeft = ta.scrollLeft;
   }, [value, rows, highlight]);
+  // 草稿 ref token 规范形(2026-11-07 用户实测「清理后再圈选,芯片飞/图标压字」根修):显示层
+  // 重编号不改原文→·2 被显示成第 1 枚(短 2 字)=镜像层宽≠原文宽自此错位。此处把草稿原文
+  // 规范化为草稿序(注册表键随迁),原文恒等显示;光标越过首个差异位时按长度差平移,落 token
+  // 中间则钉尾(tokenSpanAt 同守卫口径)
+  useEffect(() => {
+    const next = canonicalizeRefTokens(value);
+    if (next === null) return;
+    // 会话私有账本真搬(rename 清单;全局注册表已在 canonicalize 内只补缺不覆盖)
+    const ledger = refLedger?.current;
+    if (ledger !== undefined && ledger !== null) {
+      for (const { from, to } of next.renames) {
+        const c = ledger.get(from);
+        if (c !== undefined) {
+          ledger.set(to, c);
+          ledger.delete(from);
+        }
+      }
+    }
+    const ta = inputRef?.current ?? taRef.current;
+    const caret = ta?.selectionStart ?? null;
+    const selEnd = ta?.selectionEnd ?? null;
+    onChange(next.text);
+    if (ta !== null && ta !== undefined && caret !== null && caret > next.at) {
+      const nc = Math.max(next.at, caret + next.delta);
+      const span = tokenSpanAt(next.text, nc);
+      const pin = span !== null ? span[1] : nc;
+      requestAnimationFrame(() => {
+        const el = inputRef?.current ?? taRef.current;
+        if (el !== null && el !== undefined) el.setSelectionRange(pin, selEnd !== null && selEnd > caret ? Math.max(pin, selEnd + next.delta) : pin);
+      });
+    }
+  });
   /** IME 组字起点(组字段范围上抛用;null=无组字) */
   const compStartRef = useRef<number | null>(null);
   /** 粘贴分流:剪贴板带图片文件即接管(图片不进文本,token 守卫无意义);纯文本粘贴走守卫 */

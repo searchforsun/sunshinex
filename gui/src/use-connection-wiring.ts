@@ -28,6 +28,8 @@ export interface ConnectionWiringDeps {
   sessionRef: MutableRefObject<string>;
   chatSinkRef: MutableRefObject<ChatSink | null>;
   sideSinksRef: MutableRefObject<Map<string, MutableRefObject<ChatSink | null>>>;
+  /** side 父会话表(sideId→主会话;2026-11-07「辅助投影挂主对话下」):板/委派 live 帧按此并入主投影 */
+  sideParentRef: MutableRefObject<Map<string, string>>;
   boardPendingRef: MutableRefObject<Array<{ e: SessionEvent; seq: number }>>;
   boardSeedingRef: MutableRefObject<boolean>;
   /** 近期板帧环(面板刷新快照整替后 seq 门重放源;缺省=不记) */
@@ -76,7 +78,8 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           for (const it of items) {
             // 终审 Important 修:切换后窗尾 drain 的陈会话事件弃用——切会话不清队,无标签则 A 的事件
             // 套进 B 的板(D34 串态收口破口);按 flush 时当前会话过滤,陈帧丢弃(权威态重播种自愈)
-            if (it.sessionId !== deps.sessionRef.current) continue;
+            // 2026-11-07「辅助投影挂主对话下」:本会话帧+本主会话的 side 会话帧都并入投影
+            if (it.sessionId !== deps.sessionRef.current && deps.sideParentRef.current.get(it.sessionId) !== deps.sessionRef.current) continue;
             const e = it.e;
             if (e.type === 'team-created') {
               teams = applyTeamNameEvent(teams, e);
@@ -114,14 +117,22 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
     const conn = createConnection({
       baseUrl: import.meta.env.VITE_SERVE_URL ?? location.origin,
       onEvent: (sessionId, e: SessionEvent, seq: number) => {
+        let sidePassthrough = false;
         if (e.type === 'model-start' || e.type === 'done') setRecentVersion((v) => v + 1); // G14.52:run 起跑/收束都刷侧栏(运行圆点亮起与熄灭跟手)
         // G14.2xx 运行态按会话记:任一会话起跑点亮其行;收束只熄自己(跨会话切换/恢复不误熄不卡转圈)
         if (e.type === 'model-start') setRunningIds((s) => (s.has(sessionId) ? s : new Set([...s, sessionId])));
         else if (e.type === 'done' || e.type === 'error') setRunningIds((s) => (s.has(sessionId) ? new Set([...s].filter((x) => x !== sessionId)) : s));
         if (sessionId !== sessionRef.current) {
-          // G14.29 辅助会话帧:只投旁路聊天流(板/委派/子智能体投影不涉旁路,丢弃)
+          // G14.29 辅助会话帧:只投旁路聊天流。
+          // 2026-11-07 用户裁定「辅助投影挂主对话下」:本主会话名下 side 会话的板/委派/子智能体
+          // 帧不再在此截返——继续走主投影管线(下方队列按 sideParentRef 过滤并入);仅
+          // 非本主会话名下的他会话帧在此丢弃
           if (typeof e.payload?.subagent !== 'string') sideSinksRef.current.get(sessionId)?.current?.on(e, seq);
-          return;
+          if (deps.sideParentRef.current.get(sessionId) !== sessionRef.current) return;
+          // 2026-11-07 严重泄漏修:side 穿透帧只允许进板/委派/子智能体投影管线(下方 team-/task-/
+          // delegation-/agent-message/subagent 分支),绝不落主聊天 sink(此前漏判=辅助会话的
+          // 运行/消息渲染进主会话流)。投影分支消化完的帧经末尾此旗截停
+          sidePassthrough = true;
         }
         if (e.type === 'bg-task') {
           setBgTasks((rows) => applyBgTaskEvent(rows, e));
@@ -172,6 +183,9 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
           return;
         }
+        // side 穿透帧到此必已被投影分支消化(team-/task-/delegation-/agent-message/subagent
+        // 之外无板语义),不投主聊天 sink——辅助会话消息/运行不得渲染进主会话流
+        if (sidePassthrough) return;
         chatSinkRef.current?.on(e, seq);
       },
       onReset: () => {

@@ -6,6 +6,7 @@ import type { CSSProperties, MutableRefObject } from 'react';
 import type { Connection, ConnectionState, RewindResult } from './connection';
 import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
+import { upsertBoardTeam } from './projection';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import { Chat } from './pages/Chat';
 import { DirOpenerContext } from './pages/chat/md-render';
@@ -41,7 +42,7 @@ import { useNavHistory } from './use-nav-history';
 import { useRestoreLast } from './use-restore-last';
 import { usePtyRegistry } from './use-pty-registry';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
-import { cleanPathInput, isAbsPath, joinWsPath, OPEN_DEFAULT_KEY, pathBasename, workspaceOfAbs } from './ui-util';
+import { cleanPathInput, isAbsPath, joinWsPath, OPEN_DEFAULT_KEY, pathBasename, prefetchEditorIcons, workspaceOfAbs } from './ui-util';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -165,14 +166,20 @@ function AppShell(): JSX.Element {
   const chatSinkRef = useRef<ChatSink | null>(null);
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
+  /** side 父会话表(sideId → 主会话 id;2026-11-07 用户裁定「辅助投影挂到主对话下」):板/委派
+   *  live 帧与子智能体桶按此并入主会话投影,待办批次同收 */
+  const sideParentRef = useRef<Map<string, string>>(new Map());
   /** sink 取得/补注册(2026-11-04 用户实测:重启后恢复的辅助对话页签空壳——startSideChat 才注册
    *  sink,恢复路径缺表被 registry 判无 sink 落提示面;页签还原时惰性补位,帧路由即刻可用) */
-  const sideSinkFor = (sideId: string): MutableRefObject<ChatSink | null> => {
+  const sideSinkFor = (sideId: string, parent?: string): MutableRefObject<ChatSink | null> => {
     let sink = sideSinksRef.current.get(sideId);
     if (sink === undefined) {
       sink = { current: null };
       sideSinksRef.current.set(sideId, sink);
     }
+    // 父会话登记(2026-11-07「辅助投影挂主对话下」):fork 与页签恢复两路都在此落表——
+    // 板/委派 live 帧并入与 side 快照合并都按此表寻主
+    if (parent !== undefined && parent !== '') sideParentRef.current.set(sideId, parent);
     return sink;
   };
   /** 板播种窗(use-board-seed 单点,2026-10-27 技术债轮 D53 批F 外提):G6 seq 门缓冲/重开/
@@ -210,11 +217,16 @@ function AppShell(): JSX.Element {
    *  钩子,依赖注入面见 ConnectionWiringDeps——装配一次([]),闭包取首渲染值,会话切换经
    *  sessionRef 与各 ref 免陈旧(原口径) */
   const connInstance = useConnectionWiring({
-    sessionRef, chatSinkRef, sideSinksRef, boardPendingRef, boardSeedingRef, boardRecentRef,
+    sessionRef, chatSinkRef, sideSinksRef, sideParentRef, boardPendingRef, boardSeedingRef, boardRecentRef,
     shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, dropPendingActsRef, connRef,
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
     setTodoBatches, setConnState, setBgTasks, setCatalogTick,
   });
+  // 编辑器图标启动预取(2026-11-07 用户裁定「应用启动时就加载」):模块级缓存暖上,
+  // 会话首帧顶栏主钮直显真图标,不再 1/4 字形→真图标跳变
+  useEffect(() => {
+    if (connInstance !== null) prefetchEditorIcons(connInstance);
+  }, [connInstance]);
   // 开会话播种后台任务账本(GET 一次带 outputTail;之后靠 bg-task 直播,撤 5s 轮询)
   useEffect(() => {
     if (connInstance === null || openSessionId === '') {
@@ -300,9 +312,10 @@ function AppShell(): JSX.Element {
    *  2026-11-04 用户裁定「发送第一条才 fork」:点开只开草稿页签(不 fork;sidechat 判重键
    *  sideId 缺='' 互判重聚焦既有——类似欢迎页临时会话,每次打开复用同一草稿页),首条发送时
    *  才 fork 主对话整档(见 upgradeSideChat) */
-  const startSideChat = (insert?: string): void => {
+  const startSideChat = (insert?: string, insertContent?: string): void => {
     if (openSessionId === '') return;
-    openTabInSession('sidechat', insert !== undefined && insert !== '' ? { insert } : {});
+    // 2026-11-07 串扰根修:token 内容随 insert 同路入参(辅助面私有账本收),全局注册表仅兜底
+    openTabInSession('sidechat', insert !== undefined && insert !== '' ? { insert, insertContent } : {});
   };
   /** 草稿升级(2026-11-04 首条发送才 fork):fork 主会话(side 标记;daemon 运行中亦放行——
    *  只读复制与源会话互不干扰)→ 取持久化编号题 → 首条文本登记 App 态位(挂真 Chat 后经
@@ -313,6 +326,7 @@ function AppShell(): JSX.Element {
     if (conn === null || openSessionId === '') return;
     const r = await conn.forkSession(openSessionId, 1, true);
     sideSinksRef.current.set(r.sessionId, { current: null });
+    sideParentRef.current.set(r.sessionId, openSessionId);
     releaseSide(r.sessionId);
     // 持久化编号题(daemon fork 落 meta「辅助对话 N」;2026-10-31 用户裁定页签显编号)
     const title = await conn.getSessionTitle(r.sessionId).then((x) => (typeof x.title === 'string' && x.title !== '' ? x.title : undefined)).catch(() => undefined);
@@ -322,7 +336,10 @@ function AppShell(): JSX.Element {
     if (text.trim() !== '') {
       setSideGoals((m) => new Map(m).set(uid, { root: openRoot, goal: buildSideNote(mainTitle) + text }));
     }
-    const patch = { sideId: r.sessionId, ...(title !== undefined ? { title } : {}) };
+    // 2026-11-07 用户实测「发送后升级会话中,输入框多一枚文本片段」根修:params.insert 是草稿期
+    //  圈选注入通道,草稿已消费(appended);不清则升级后的真 Chat 经 initialInsert 再注入一遍=残留。
+    //  insert/insertContent 置空串(消费侧 !=='' 判空即跳过)
+    const patch = { sideId: r.sessionId, insert: '', insertContent: '', ...(title !== undefined ? { title } : {}) };
     setTabStates((s) => patchTabMeta(patchTabMeta(s, openSessionId, uid, patch), WELCOME_TAB_SEAT, uid, patch));
   };
 
@@ -392,7 +409,9 @@ function AppShell(): JSX.Element {
         // 不在座(daemon 重启后 sessionId 缺席;盘档加载剥 sidechat 页签=此处恒走收养)同样
         // 重建:newSession 壳+attach 收养取 canonical 再开页(2026-11-06 用户实测「重启后页签
         // 全消失」根修——此前 sessionId 缺席即 continue,页签永不复活)
-        if (dismissed?.includes(sd.sessionId ?? sd.journalId) === true) continue;
+        // 2026-11-07 双键 OR 匹配:关闭记忆入座档时 sideId+sideJournal 双键同记,此处任一命中即不复活
+        // (单键查曾漏 journal 命中面=关闭后对账重开页签的循环风险)
+        if (dismissed?.includes(sd.sessionId ?? '') === true || dismissed?.includes(sd.journalId) === true) continue;
         if (sd.sessionId !== undefined) {
           releaseSide(sd.sessionId);
           setTabStates((st) => openTab(ensureSession(st, mainId, PROBE), mainId, 'sidechat', { sideId: sd.sessionId!, sideJournal: sd.journalId, title: sd.title }, PROBE));
@@ -819,7 +838,7 @@ function AppShell(): JSX.Element {
       return seat === undefined ? s : setActive(setCollapsed(s, seat, false), seat, uid);
     });
   }, []);
-  const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string }): void => {
+  const onTabMeta = useCallback((sessionId: string, uid: string, patch: { url?: string; pageTitle?: string; pageIcon?: string; insert?: string; insertContent?: string }): void => {
     // 欢迎页页签落 '@welcome' 草稿座,而渲染传入的 sessionId 是 openSessionId(欢迎页不清,指向上个
     // 会话)——只按 sessionId 回写会落空,欢迎页浏览器页签名/站标永不更新;uid 全局唯一,双座都试
     setTabStates((s) => patchTabMeta(patchTabMeta(s, sessionId, uid, patch), WELCOME_TAB_SEAT, uid, patch));
@@ -849,9 +868,54 @@ function AppShell(): JSX.Element {
       if (sessionId === sessionRef.current) refreshFromSnapshot(snap);
     });
   }, []);
+  /** side 快照并入主投影(2026-11-07「辅助投影挂主对话下」持久化面):重启后 live 帧不会回放,
+   *  开会话/辅助页签对账落定即对本主会话名下每个 side 快照做并集合并——任务/委派按 id、
+   *  teams 按 teamId、成员按名去重,团队板/待办跨重启仍在 */
+  const mergeSideSnapshot = useCallback((snap: import('./connection').SnapshotResponse): void => {
+    setProjection((p) => {
+      const board = { ...p.board, tasks: { ...p.board.tasks, ...(snap.board?.tasks ?? {}) }, seq: Math.max(p.board.seq, snap.board?.seq ?? 0) };
+      const delSeen = new Set(p.delegations.map((d) => d.id));
+      const delegations = [...p.delegations, ...(snap.delegations ?? []).filter((d) => !delSeen.has(d.id))];
+      let teams = p.teams;
+      for (const t of snap.teams ?? []) teams = upsertBoardTeam(teams, t);
+      const memSeen = new Set(p.team.map((m) => m.name));
+      const team = [...p.team, ...(snap.team ?? []).filter((m) => !memSeen.has(m.name))];
+      return { ...p, board, delegations, teams, team };
+    });
+  }, []);
+  // 拉取时机:开会话变化/辅助对账落定(sideListing 更新)——side 父表两路(fork/恢复)填充后再拉
+  const sideSeedDoneRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (openSessionId === '' || connRef.current === null) return;
+    const sides = [...sideParentRef.current.entries()].filter(([, parent]) => parent === openSessionId).map(([sid]) => sid).filter((sid) => !sideSeedDoneRef.current.has(sid));
+    if (sides.length === 0) return;
+    for (const sid of sides) sideSeedDoneRef.current.add(sid);
+    let alive = true;
+    const conn = connRef.current;
+    void Promise.all(sides.map((sid) => conn.sessionSnapshot(sid).catch(() => null))).then((snaps) => {
+      if (!alive) return;
+      for (const snap of snaps) if (snap !== null) mergeSideSnapshot(snap);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [openSessionId, sideListing, mergeSideSnapshot]);
   const services = useMemo<TabServices>(
     () => ({
-      board: projection.board, delegations: [...projection.delegations], team: [...projection.team], teams: projection.teams, onStopTask: stopTask, onTabMeta, onActivateTab, agentActivities: agentActivitiesBySession[openSessionId] ?? {}, todos: [...projection.sessionTodos],
+      board: projection.board, delegations: [...projection.delegations], team: [...projection.team], teams: projection.teams, onStopTask: stopTask, onTabMeta, onActivateTab,
+      // 子智能体桶并入 side 会话(2026-11-07「辅助投影挂主对话下」):side 会话跑的子智能体转录
+      // 在主会话开签也有数据;onTodoBatches 下发=辅助待办批次同收主待办页签
+      agentActivities: (() => {
+        const merged = { ...(agentActivitiesBySession[openSessionId] ?? {}) };
+        for (const [sid, parent] of sideParentRef.current) {
+          if (parent !== openSessionId) continue;
+          for (const [label, acts] of Object.entries(agentActivitiesBySession[sid] ?? {})) {
+            const prev = merged[label];
+            merged[label] = prev === undefined ? acts : { ...prev, ...acts };
+          }
+        }
+        return merged;
+      })(), todos: [...projection.sessionTodos], onTodoBatches: setTodoBatches,
       // todo 批次合并(权威播种+转录派生):同签名派生优先(条目随回填/live 更新 ts 更新),ts 正序
       todoBatches: (() => {
         const bySig = new Map<string, import('./pages/Chat').TodoBatch>();
@@ -867,7 +931,7 @@ function AppShell(): JSX.Element {
           ? Promise.resolve()
           : connRef.current.sessionTasks(openSessionId).then((rows) => setBgTasks(rows)),
     }),
-    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, todoLocateSig, refreshBoard, bgTasks],
+    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, todoLocateSig, refreshBoard, bgTasks, sideParentRef.current.size],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -1272,9 +1336,10 @@ function AppShell(): JSX.Element {
                       sideGoal: sideGoals.get(t.uid),
                       onSideGoalDone: (uid2: string) => setSideGoals((m) => { const n = new Map(m); n.delete(uid2); return n; }),
                       onDraftText: (uid2: string, v: string) => setTabStates((s) => patchTabMeta(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid2, { draftText: v })),
+                      onDraftRefContents: (uid2: string, json: string) => setTabStates((s) => patchTabMeta(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid2, { draftRefContents: json })),
                       ptyIdFor,
                       onPtyAllocated: handlePtyAllocated,
-                      chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId) : undefined,
+                      chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId, openSessionId) : undefined,
                       sideReady: (id: string) => sideReleased.has(id),
                       memoryFocus,
                       learnedFocus,

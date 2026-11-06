@@ -4,6 +4,33 @@
  */
 
 import { t } from './i18n';
+import type { Connection } from './connection';
+
+/** 编辑器原生图标模块级缓存(2026-11-07 用户裁定「应用启动时就加载」避免会话展开抖动):
+ *  此前缓存是 ChatTopbar 组件态——每会话重挂即清,首帧回落小字形、图标到达跳 18px。
+ *  模块级单例跨会话/跨重挂存续,App 启动即 prefetch,会话首帧直读命中零跳变 */
+const editorIconCache = new Map<string, string>();
+export const editorIconCached = (id: string): string | undefined => editorIconCache.get(id);
+export const editorIconPut = (id: string, url: string): void => {
+  editorIconCache.set(id, url);
+};
+/** App 启动预取:编辑器清单+逐个原生图标(缺法/失败静默——回落集内字形兜底) */
+export const prefetchEditorIcons = (conn: Connection): void => {
+  if (typeof conn.editorsList !== 'function') return;
+  void conn.editorsList().then(
+    (r) => {
+      for (const e of r.editors) {
+        if (editorIconCache.has(e.id)) continue;
+        if (typeof conn.editorIcon !== 'function') continue;
+        void conn.editorIcon(e.id).then(
+          (ic) => editorIconPut(e.id, `data:${ic.mime};base64,${ic.data}`),
+          () => undefined,
+        );
+      }
+    },
+    () => undefined,
+  );
+};
 
 /** 相对时间(简易,纯刻度不带后缀):<60s 刚刚;<60m N分钟;<24h N小时;否则 N天(G14.118 中文单位) */
 export function relTime(ts: number): string {

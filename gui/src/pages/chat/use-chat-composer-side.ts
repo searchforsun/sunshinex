@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { pathBasename } from '../../ui-util';
-import { refContentRegister, splitMentionTokens, tokenSpanAt } from './mention';
+import { refContentConsume, refContentRegister, splitMentionTokens, tokenSpanAt } from './mention';
 
 /** composer 侧挂面(D32 第六批批F-7b 自 Chat.tsx 平移,行为零变化):文件标签「添加到会话」
  *  插入事件(G14.139,短写 token 记账+光标钉尾)/输入区点击 @token 开文件标签(G14.135,解析同
@@ -18,26 +18,32 @@ export function useChatComposerSide(deps: {
   /** 2026-11-06 用户裁定 P4/P5 插入通道作用域化:全局广播只被目标面消费('main'=主对话,'side'=辅助
    *  会话[草稿+真会话])——此前无目标全局广播,主/侧两 composer 同时挂载=「添加到主对话两边都加」 */
   readonly target?: 'main' | 'side';
+  /** 本面会话 id(2026-11-07 用户实测「A 会话截取,B 会话也多一枚」):side 广播带 sideId,
+   *  不匹配即忽略——side 页签同屏共存,无作用域则每次圈选全体追加 */
+  readonly ownSessionId?: string;
 }): { onInputClick: () => void } {
-  const { pickRelRef, refContents, inputRef, setInput, input, resolveFileRef, onOpenFile, target = 'main' } = deps;
+  const { pickRelRef, refContents, inputRef, setInput, input, resolveFileRef, onOpenFile, target = 'main', ownSessionId } = deps;
 /** G14.139 文件标签选区「添加到会话」:接收插入事件(文件图标+文件名(L30-L35) token 落输入框) */
 useEffect(() => {
   const onInsert = (ev: Event): void => {
-    const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string; target?: 'main' | 'side' }>).detail;
+    const detail = (ev as CustomEvent<{ text?: string; rel?: string; kind?: string; token?: string; content?: string; target?: 'main' | 'side'; sideId?: string }>).detail;
     // 作用域过滤(2026-11-06 P4/P5):事件目标≠本面即忽略(undefined=历史派发默认主对话)
     if ((detail?.target ?? 'main') !== target) return;
+    // side 广播作用域过滤(detail.sideId 缺=旧派发,不过滤)
+    if (target === 'side' && detail?.sideId !== undefined && detail.sideId !== ownSessionId) return;
     // 2026-11-04 元素/终端片段引用:token 落输入框(⟦…⟧ 高亮芯片),全量内容入账本发送期展开;
     // 同步写全局注册表(refContentRegistry)——气泡/队列等无账本 prop 的渲染面 hover 取数源
     if (detail !== undefined && detail.kind === 'ref' && typeof detail.token === 'string' && detail.token !== '' && typeof detail.content === 'string') {
       const token: string = detail.token;
       refContents.current.set(token, detail.content);
       refContentRegister(token, detail.content);
+      refContentConsume(token); // 落地即清共享层(2026-11-07 用户裁定:内容只存目的地账本)
       // 2026-11-05 用户裁定「光标贴 chip」:ref token 不再补尾随空格——光标钉在 token 末即贴芯片
       // (用户自己决定是否敲空格续写)。分隔符退回半角空格(原全角　是旧尾悬图标吃空格的补偿,
       // 图标已收进头部占位区,半角即可;全角在气泡 markdown 管线被吞=芯片粘连、且间距过大)
-      // 2026-11-06 用户裁定「圈选进辅助会话不应累积之前的」:side 目标=整替(新圈选即新问题,
-      // 此前 append 多次圈选全堆叠);main(文件标签「添加到会话」)保持追加
-      setInput(target === 'side' ? token : (prev) => (prev.trim() === '' ? token : `${prev.replace(/\s+$/, '')} ${token}`));
+      // 2026-11-07 用户裁定:辅助会话圈选=追加(此前整替是误改,第二个片段加不进去):side/main
+      // 同为追加——去尾空白+单空格接续;草稿内编号/私有账本由规范化随改随迁,多枚各归其位
+      setInput((prev) => (prev.trim() === '' ? token : `${prev.replace(/\s+$/, '')} ${token}`));
       inputRef.current?.focus();
       requestAnimationFrame(() => {
         const ta = inputRef.current;
@@ -52,8 +58,9 @@ useEffect(() => {
       const base = detail.rel.split(/[\\/]/).pop() ?? detail.rel;
       pickRelRef.current.set(base, detail.rel);
     }
-    // 整条即 ref token(正文圈选 {text} 通道)同款不补尾随空格,光标贴芯片;分隔符半角空格(同上)
-    setInput(target === 'side' ? text : (prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')} ${text}`));
+    // 整条即 ref token(正文圈选 {text} 通道)同款不补尾随空格,光标贴芯片;分隔符半角空格(同上);
+    // 2026-11-07 用户裁定:辅助会话圈选=追加(此前整替是误改,第二个片段加不进去);side/main 同构
+    setInput((prev) => (prev.trim() === '' ? text : `${prev.replace(/\s+$/, '')} ${text}`));
     inputRef.current?.focus();
     // G14.211 光标钉尾:focus 恢复的是 textarea 旧光标位(此前离开输入框时留在原处),
     // 渲染提交后一帧再设到末尾——否则光标落回旧位=token 中间(「不挨着文件」)

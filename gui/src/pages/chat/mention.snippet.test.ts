@@ -8,11 +8,11 @@ import { expandRefContents, mintSnippetToken, rebuildPickTokens, refContentRegis
  *  「图标当真文本渲染」定案,emoji 禁用;⟦ 5.4px 放不下 11px 图标,全角【】两败废弃):
  *  composer 图标悬于占位区,层对齐仍由原文文本驱动;旧无占位 token 双形兼容。 */
 describe('mintSnippetToken 铸造', () => {
-  it('同类二铸即 ·N,正文/终端独立计数(头部占位区两空格)', () => {
-    expect(mintSnippetToken('body')).toBe('⟦   文本片段⟧');
-    expect(mintSnippetToken('body')).toBe('⟦   文本片段·2⟧');
-    expect(mintSnippetToken('term')).toBe('⟦   终端片段⟧');
-    expect(mintSnippetToken('term')).toBe('⟦   终端片段·2⟧');
+  it('恒带数字后缀,首铸即 文本片段1(2026-11-07),正文/终端独立计数(头部占位区两空格)', () => {
+    expect(mintSnippetToken('body')).toBe('⟦   文本片段1⟧');
+    expect(mintSnippetToken('body')).toBe('⟦   文本片段2⟧');
+    expect(mintSnippetToken('term')).toBe('⟦   终端片段1⟧');
+    expect(mintSnippetToken('term')).toBe('⟦   终端片段2⟧');
   });
 });
 
@@ -65,15 +65,15 @@ describe('splitBrowserFences 显示侧折叠(标签 i18n+顺序编号)', () => {
   it('body-snippet 围栏折回正文片段芯片段(原文段保留)', () => {
     expect(splitBrowserFences('甲```body-snippet\n引文\n```乙')).toEqual([
       { text: '甲' },
-      { fence: '引文\n', kind: 'body-snippet', label: '文本片段', token: '⟦   文本片段⟧' },
+      { fence: '引文\n', kind: 'body-snippet', label: '文本片段1', token: '⟦   文本片段1⟧' },
       { text: '乙' },
     ]);
   });
 
-  it('终端/正文两类并存:各类独立顺序编号,标签带 ·N', () => {
+  it('终端/正文两类并存:各类独立顺序编号(2026-11-07 标签去 ·,N 直拼)', () => {
     const md = '```text-selection\nA\n``````body-snippet\nB\n``````text-selection\nC\n``````body-snippet\nD\n```';
     const segs = splitBrowserFences(md);
-    expect(segs.map((s) => ('label' in s ? s.label : ''))).toEqual(['终端片段', '文本片段', '终端片段·2', '文本片段·2']);
+    expect(segs.map((s) => ('label' in s ? s.label : ''))).toEqual(['终端片段1', '文本片段1', '终端片段2', '文本片段2']);
   });
 
   it('browser-element 分支不受扩类影响(页签/定位 label 提取)', () => {
@@ -84,7 +84,7 @@ describe('splitBrowserFences 显示侧折叠(标签 i18n+顺序编号)', () => {
   it('en 语言显示英文标签', () => {
     setLanguage('en');
     const segs = splitBrowserFences('```body-snippet\n引文\n```');
-    expect(segs[0]).toMatchObject({ label: 'Text snippet' });
+    expect(segs[0]).toMatchObject({ label: 'Text snippet1' });
     setLanguage('zh');
   });
 });
@@ -98,7 +98,7 @@ describe('rebuildPickTokens 编辑回填回环', () => {
   it('body-snippet 档文折回 token;展开∘回填逐字节回原', () => {
     const md = '说明 ```body-snippet\n第一行\n第二行\n``` 结尾';
     const back = rebuildPickTokens(md);
-    expect(back).toBe('说明 ⟦   文本片段⟧ 结尾');
+    expect(back).toBe('说明 ⟦   文本片段1⟧ 结尾');
     expect(expandRefContents(back, new Map())).toBe(md);
   });
 

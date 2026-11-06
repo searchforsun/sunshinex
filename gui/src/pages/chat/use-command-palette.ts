@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { filterCommands } from '../../CommandPalette';
 import type { CmdItem } from '../../CommandPalette';
 import type { Connection } from '../../connection';
@@ -29,6 +29,9 @@ export function useCommandPalette(
   cmdActive: number;
   setCmdActive: React.Dispatch<React.SetStateAction<number>>;
   skills: SkillRow[];
+  /** 技能行现拉(2026-11-07 用户实测「+ 能实时加出来,/ 不实时」根修):装载原挂载只跑一次,
+   *  运行中新装技能不上 / 面板——消费侧在 / 面板弹出时调用(与 + 面板每次现拉同口径) */
+  reloadSkills: () => void;
 } {
   /** 「/」命令面板(G10-C4):数据源 GET /commands;输入以 / 起手即开,焦点恒留 textarea */
   const [cmdData, setCmdData] = useState<CmdData | null>(null);
@@ -40,13 +43,11 @@ export function useCommandPalette(
   }, [conn]);
   /** 技能行(2026-11-05):GET /settings/skills 三源去重合并(与 + 面板技能区同款投影);
    *  失败静默空列(面板仅少技能组,不拖垮命令清单) */
-  useEffect(() => {
+  const reloadSkills = useCallback((): void => {
     if (typeof conn.skillsGroups !== 'function') return; // 桩面缺法即空技能行(+面板同款守卫)
     const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
-    let alive = true;
     conn.skillsGroups(refRoot).then(
       (r) => {
-        if (!alive) return;
         const seen = new Set<string>();
         const rows: SkillRow[] = [];
         for (const g of r.groups) {
@@ -58,15 +59,11 @@ export function useCommandPalette(
         }
         setSkills(rows);
       },
-      () => {
-        if (alive) setSkills([]);
-      },
+      () => setSkills([]),
     );
-    return () => {
-      alive = false;
-    };
   }, [conn, root]);
-  return { cmdData, setCmdData, cmdActive, setCmdActive, skills };
+  useEffect(reloadSkills, [reloadSkills]);
+  return { cmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills };
 }
 
 /** slash 面板令牌清单(2026-11-05 用户二次裁定:行中 / 也要弹——仅技能池,行首=命令+技能;

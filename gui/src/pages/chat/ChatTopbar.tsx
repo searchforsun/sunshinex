@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Code2, MoreHorizontal, PanelLeft } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
-import { OPEN_DEFAULT_KEY } from '../../ui-util';
+import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
@@ -136,7 +136,11 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     if (typeof conn.editorIcon !== 'function') return; // 测试桩/旧 daemon:优雅跳过(图标回落集内字形)
     void conn
       .editorIcon(id)
-      .then((ic) => setNativeIcons((m) => ({ ...m, [id]: `data:${ic.mime};base64,${ic.data}` })), () => undefined);
+      .then((ic) => {
+        const url = `data:${ic.mime};base64,${ic.data}`;
+        editorIconPut(id, url); // 模块级缓存(跨会话/重挂存续,2026-11-07 抖动根修)
+        setNativeIcons((m) => ({ ...m, [id]: url }));
+      }, () => undefined);
   };
   /** 预取前置(2026-10-28 用户反馈:菜单首开才拉,窗口期渲染 1/4 加载态):进入会话即拉
     应用列表+逐个原生图标——菜单打开时全部热数据 */
@@ -182,15 +186,18 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     }
   }, [editorMenu, editors, nativeIcons]);
   const editorIcon = (id: string, size = 18): JSX.Element => {
-    const native = nativeIcons[id];
+    // 模块级缓存优先(2026-11-07 抖动根修):App 启动预取后,会话首帧即命中真图标零跳变
+    const native = nativeIcons[id] ?? editorIconCached(id);
     // 拉到原生图标直显;失败/未拉到回落品牌字形(D57②:失败不再落 '' 恒跳 Code2——下次菜单开重试)
     if (native !== undefined) return <img src={native} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
     const key = id === 'explorer' ? 'default-folder' : id === 'vscode' ? 'file-type-vscode' : id === 'cursor' ? 'folder-type-cursor' : '';
     const body = key === '' ? undefined : (vscodeIcons.icons as Record<string, { body: string } | undefined>)[key]?.body;
     if (body === undefined) return <Code2 size={size - 2} strokeWidth={1.75} />;
     return (
+      // 回落字形盒面与真图标同尺寸(2026-11-07 用户裁定「1/4 放大转正常大小」的跳变也源于此:
+      // 字形 14/真图标 18 两档)——缓存未命中的首帧也不跳
       <span
-        style={{ width: 14, height: 14, display: 'inline-flex', flex: 'none' }}
+        style={{ width: size, height: size, display: 'inline-flex', flex: 'none' }}
         dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="${size}" height="${size}">${body}</svg>` }}
       />
     );

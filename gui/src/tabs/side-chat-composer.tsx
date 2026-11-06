@@ -4,7 +4,7 @@ import { t } from '../i18n';
 import type { Connection } from '../connection';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPillsLeft, ComposerPillsRight } from '../pages/chat/ComposerPills';
-import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, renderMentionSpans, slashTokenAt } from '../pages/chat/mention';
+import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, refContentConsume, renderMentionSpans, slashTokenAt } from '../pages/chat/mention';
 import { CommandPalette, type CmdItem } from '../CommandPalette';
 import { slashItemsFor, useCommandPalette } from '../pages/chat/use-command-palette';
 import { useComposerKeys } from '../pages/chat/use-composer-keys';
@@ -28,10 +28,17 @@ export function SideChatComposer(props: {
   readonly onSend: (text: string) => void;
   /** 草稿文本回档初值(gui/sessions 盘档 params.draftText,重启恢复输入框内容) */
   readonly initialText?: string;
+  /** insert token 的选取全文(2026-11-07 串扰根修:与 insert 同路入私有账本,hover/展开不落全局兜底) */
+  readonly insertContent?: string;
+  /** 账本快照回档初值(JSON [token,content][];2026-11-07 落地即清配套——账本内存态重启即空,
+   *  恢复的草稿芯片无内容=空壳紊乱;随页签档持久化,挂载回灌) */
+  readonly draftRefContents?: string;
+  /** 账本快照变更上报(与 onTextChange 同走 gui-state 落盘) */
+  readonly onRefContentsChange?: (json: string) => void;
   /** 草稿文本变更上报(组件内 400ms 防抖→App patchTabMeta params.draftText→gui-state 写透) */
   readonly onTextChange?: (text: string) => void;
 }): JSX.Element {
-  const { conn, root, insert, busy, onSend, initialText, onTextChange } = props;
+  const { conn, root, insert, insertContent, busy, onSend, initialText, draftRefContents, onTextChange, onRefContentsChange } = props;
   const [text, setText] = useState(initialText !== undefined && initialText !== '' ? initialText : (insert ?? ''));
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composingRef = useRef(false);
@@ -44,7 +51,11 @@ export function SideChatComposer(props: {
   const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
   const [refActive, setRefActive] = useState(0);
   const refEntriesLoadedRef = useRef(false);
-  const { cmdData, setCmdData, cmdActive, setCmdActive, skills } = useCommandPalette(conn, root);
+  const { cmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn, root);
+  // 2026-11-07 用户实测「+ 能实时加出来,/ 不实时」:/ 面板在场即现拉技能清单(主对话同款)
+  useEffect(() => {
+    if (slashTokenAt(text, inputRef.current?.selectionStart ?? text.length) !== null) reloadSkills();
+  }, [text, reloadSkills]);
   /** 工作区文件索引(@ 面板数据部;草稿无会话,缓存键传空串=独立缓存,装载口径同主对话) */
   const { resolveFileRef, loadWorkspaceFiles } = useWorkspaceFiles(conn, '', root, pickRelRef);
   /** agents/teams 引用目录懒加载(Chat.tsx 同款投影:内置并入+shadowed 剔除+去重,失败静默空列) */
@@ -108,11 +119,30 @@ export function SideChatComposer(props: {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pillOpen]);
-  // 2026-11-06 P4:insert 变更回流——草稿已挂载时再次收到「添加到辅助会话」不再失效
+  // 2026-11-07 用户裁定:辅助会话圈选=追加(此前整替是误改,第二个片段加不进去),改回追加:insert 变更回流=追加接续(去尾空白
+  // +单空格);防重入保留——挂载首拍跳过(初值已含 insert,不防则 append 致双份)
+  // insertContent 渲染期入账(2026-11-07 用户实测「草稿第 1 枚内容是主会话的」根修):子组件
+  // ComposerCard 的规范化 effect 先于本组件 effect 执行——种子若在 effect 里写,改名已带空账本
+  // 跑完,种子键对不上=hover/展开回落全局注册表取到别会话同键内容。渲染期直写幂等
+  // 挂载回灌账本快照(一次性;2026-11-07 落地即清配套)
+  const restoredRef = useRef(false);
+  if (restoredRef.current === false) {
+    restoredRef.current = true;
+    if (draftRefContents !== undefined && draftRefContents !== '') {
+      try {
+        for (const [tk, c] of JSON.parse(draftRefContents) as Array<[string, string]>) refContentsRef.current.set(tk, c);
+      } catch { /* 档损坏即弃 */ }
+    }
+  }
+  if (insert !== undefined && insert !== '' && insertContent !== undefined && insertContent !== '') {
+    refContentsRef.current.set(insert, insertContent);
+    refContentConsume(insert); // 落地即清共享层
+  }
+  const lastInsertRef = useRef(insert);
   useEffect(() => {
     if (insert === undefined || insert === '') return;
-    // 横向空格接续(2026-11-06 用户实测「文本片段怎么是纵向的」):换行拼接=每枚芯片独占一行,
-    // 与主对话追加口径(去尾空白+单空格)对齐
+    if (insert === lastInsertRef.current) return;
+    lastInsertRef.current = insert;
     setText((prev) => (prev.trim() === '' ? `${insert} ` : `${prev.replace(/\s+$/, '')} ${insert} `));
   }, [insert]);
   // 草稿文本落盘上报(400ms 防抖→App 落 params.draftText→gui-state 500ms 写透;重启回档回填。
@@ -120,10 +150,16 @@ export function SideChatComposer(props: {
   const textSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onTextChangeRef = useRef(onTextChange);
   onTextChangeRef.current = onTextChange;
+  const onRefContentsChangeRef = useRef(onRefContentsChange);
+  onRefContentsChangeRef.current = onRefContentsChange;
   useEffect(() => {
     if (onTextChangeRef.current === undefined) return;
     if (textSaveRef.current !== null) clearTimeout(textSaveRef.current);
-    textSaveRef.current = setTimeout(() => onTextChangeRef.current?.(text), 400);
+    textSaveRef.current = setTimeout(() => {
+      onTextChangeRef.current?.(text);
+      // 账本快照随文本落盘节奏同步上抛(芯片增删都伴随文本变更;JSON 序列化 Map 插入序)
+      onRefContentsChangeRef.current?.(JSON.stringify([...refContentsRef.current]));
+    }, 400);
     return () => {
       if (textSaveRef.current !== null) {
         clearTimeout(textSaveRef.current);
@@ -295,6 +331,7 @@ export function SideChatComposer(props: {
     <ComposerCard
       label="side chat draft"
       inputRef={inputRef}
+      refLedger={refContentsRef}
       value={text}
       rows={Math.min(6, Math.max(1, (text.match(/\n/g) ?? []).length + 1))}
       placeholder={t('Ask something…', '问点什么…')}
@@ -308,7 +345,11 @@ export function SideChatComposer(props: {
       onSelectGuard={composerKeys.onSelectGuard}
       onInputClick={onInputClick}
       overlays={overlays}
-      highlight={renderMentionSpans(text, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true)}
+      highlight={
+        /* refContents=会话私有账本优先(2026-11-07 串扰根修):全局注册表键跨会话共享,同键异内容
+           时 hover 取到别的会话的片段——私有账本命中即不落全局 */
+        renderMentionSpans(text, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), refContentsRef.current, undefined, true)
+      }
       footLeft={
         <ComposerPillsLeft
           pillOpen={pillOpen}

@@ -383,13 +383,18 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
       const padM = /^ +/.exec(inner);
       const pad = padM !== null ? padM[0] : '';
       inner = inner.slice(pad.length);
-      // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变
+      // composer/编辑卡:按草稿顺序重编号(编号一致性,见 refSeq 注);键(tk.text)不变。
+      // 2026-11-07 用户裁定「去掉·」:片段计数后缀直接拼数字(文本片段/文本片段2/文本片段3);
+      // 网页# 形态含数字 id,仍以 · 分隔计数,正则分型拆开防回溯误吞(网页#t-12 被拆 base+t+2)
       if (composer === true) {
-        const baseM = /^(文本片段|正文片段|终端片段|网页#[^·]*)(?:·\d+)?$/.exec(inner);
-        if (baseM !== null) {
-          const n = (refSeq.get(baseM[1]) ?? 0) + 1;
-          refSeq.set(baseM[1], n);
-          inner = n === 1 ? baseM[1] : `${baseM[1]}·${n}`;
+        const snipM = /^(文本片段|正文片段|终端片段)(\d+)?$/.exec(inner);
+        const webM = snipM === null ? /^(网页#[^·]*)(?:·(\d+))?$/.exec(inner) : null;
+        const base = snipM !== null ? snipM[1] : webM !== null ? webM[1] : null;
+        if (base !== null) {
+          const n = (refSeq.get(base) ?? 0) + 1;
+          refSeq.set(base, n);
+          // 片段恒带数字(文本片段1/2/3,2026-11-07);网页# 保留首枚裸名+·N
+          inner = snipM !== null ? `${base}${n}` : n === 1 ? base : `${base}·${n}`;
         }
       }
       const isTerm = inner.startsWith('终端');
@@ -482,6 +487,12 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
       document.body,
     );
   if (composer === true) {
+    // 2026-11-07 定案(用户裁定「不要之前的方案」):图标彻底退出 DOM——以 mask 背景绘制在
+    // 占位区空格 glyph 上(纯绘制层:随字形渲染,零布局参与,无元素可飞/不参与断行,
+    // 镜像对齐零影响)。pad 拆成 hn-ref-pad span,data-ico 分型选 mask
+    const padM = /^ +/.exec(inner);
+    const pad = padM !== null ? padM[0] : '';
+    const icoKind = isTerm ? 'term' : bare.startsWith('文本') || bare.startsWith('正文') || bare.startsWith('Body') || bare.startsWith('Text') ? 'file' : 'web';
     return (
       <>
         <span
@@ -490,10 +501,14 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
           onMouseEnter={onEnter}
           onMouseLeave={closeLater}
         >
-          <span className="hn-ref-at" aria-hidden="true">⟦</span>
-          {inner}
+          {/* 绘制区=⟦+占位区(与原图标预算同源:⟦≈6.3px+3 空格≈17.7px 容 14px 图标 [1.5,15.5]);
+              只铺占位区则从 ⟦ 后起算、可用仅≈11px=图标压字 */}
+          <span className={`hn-ref-pad ico-${icoKind}`} aria-hidden="true">
+            <span className="hn-ref-at">⟦</span>
+            {pad}
+          </span>
+          {inner.slice(pad.length)}
           <span className="hn-ref-at" aria-hidden="true">⟧</span>
-          <span className="hn-ref-ico" aria-hidden="true">{ico}</span>
         </span>
         {panel}
       </>
@@ -547,6 +562,71 @@ export function refContentRegister(token: string, content: string): void {
   persistRegistry();
 }
 
+/** 注册表落地消费(2026-11-07 用户裁定「以目的地隔离,落地即删缓存」):token 投递到目的地
+ *  私有账本后,全局注册表(跨面共享+localStorage 持久化)里的在途条目即删——内容自此只活在
+ *  目的地账本,共享层不再保留=键冲突/重启重编互相覆盖的根源拔掉。全局层只剩投递前在途
+ *  (重启恢复窗口),落地即清 */
+export function refContentConsume(token: string): void {
+  if (refContentRegistry.delete(token)) persistRegistry();
+}
+
+/**
+ * 草稿 ref token 规范形(2026-11-07 用户实测「清理后第二次截取,芯片飞/光标错位/图标压字」根修):
+ * composer/编辑卡显示层按草稿序重编号,但原文不随之改——「清理后再圈选」铸造的带计数后缀 token 在
+ * 单枚草稿里被显示成 文本片段(短 2 字),镜像高亮层宽≠textarea 原文宽=自此芯片起全层错位。
+ * 规范化=把草稿内 ref token **原文**重写为草稿序 1..n(无后缀/·n),注册表键随迁(账本键在
+ * expandRefContents 有注册表兜底,迁移注册表即可全链生效)——原文恒等显示,镜像恒对齐,
+ * 编号一致性(草稿序)在原文层成立。幂等:已规范即原样返回 null。
+ * 返回 { text, at, delta, renames }:at=首个差异位,delta=该位起长度变化(调用方据此平移光标);
+ * renames=键迁移清单(会话私有账本由调用方真搬;全局注册表仅目标键空缺时补——键空间跨会话共享,
+ * 无条件搬移会把其他会话同键内容覆盖/孤立=「辅助会话/欢迎页 chip 相互串扰」根因,2026-11-07)。
+ */
+export function canonicalizeRefTokens(value: string): { text: string; at: number; delta: number; renames: Array<{ from: string; to: string }> } | null {
+  const seq = new Map<string, number>();
+  let pos = 0;
+  let at = -1;
+  let delta = 0;
+  const renames: Array<{ from: string; to: string }> = [];
+  const out: string[] = [];
+  for (const tk of splitMentionTokens(value)) {
+    if (tk.kind !== 'ref') {
+      out.push(tk.text);
+      pos += tk.text.length;
+      continue;
+    }
+    const inner = tk.text.slice(1, -1);
+    const padM = /^ +/.exec(inner);
+    const pad = padM !== null ? padM[0] : '';
+    const core = inner.slice(pad.length);
+    // 分型正则同显示层重编号(2026-11-07「去掉·」):片段=数字直拼(旧 ·N 形不兼容,不识别),网页# 保留 · 分隔
+    const snipM = /^(文本片段|正文片段|终端片段)(\d+)?$/.exec(core);
+    const webM = snipM === null ? /^(网页#[^·]*)(?:·(\d+))?$/.exec(core) : null;
+    const base = snipM !== null ? snipM[1] : webM !== null ? webM[1] : null;
+    if (base === null) {
+      out.push(tk.text);
+      pos += tk.text.length;
+      continue;
+    }
+    const n = (seq.get(base) ?? 0) + 1;
+    seq.set(base, n);
+    const next = snipM !== null ? `${base}${n}` : n === 1 ? base : `${base}·${n}`;
+    const nt = `⟦${pad}${next}⟧`;
+    if (nt !== tk.text && at === -1) {
+      at = pos;
+      delta = nt.length - tk.text.length;
+    }
+    if (nt !== tk.text) {
+      renames.push({ from: tk.text, to: nt });
+      // 2026-11-07 用户裁定「每个会话的 chip 分开处理」:全局注册表跨键拷贝撤——改名只在
+      // 调用方私有账本迁移;全局注册表仅截取时刻按铸造唯一键写入,不随任何草稿改名流动
+    }
+    out.push(nt);
+    pos += nt.length;
+  }
+  if (at === -1) return null;
+  return { text: out.join(''), at, delta, renames };
+}
+
 /** 正文/终端片段 token 铸造(2026-11-05 用户裁定「正文圈选也要 chip」):按类会话级计数,
  *  同类二铸即 ·N——账本/注册表以 token 全文为键,固定 token 二次圈选会把先选内容互覆。
  */
@@ -554,7 +634,9 @@ const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
   const base = kind === 'body' ? '文本片段' : '终端片段';
   snippetSeq[kind] += 1;
-  return snippetSeq[kind] === 1 ? `⟦   ${base}⟧` : `⟦   ${base}·${snippetSeq[kind]}⟧`;
+  // 2026-11-07 用户裁定「直接用 文本片段1」:恒带数字后缀,消灭无后缀特殊形(裸名键跨会话
+  // 全局注册表回退歧义的最后一扇门)
+  return `⟦   ${base}${snippetSeq[kind]}⟧`;
 }
 
 /** browser-element 围栏拆分(2026-11-04 用户裁定「用户气泡保持 chip 状态」):发送期展开落档的
@@ -574,10 +656,10 @@ export function splitBrowserFences(md: string): Array<{ text: string } | { fence
     const body = m[2] ?? '';
     if (kind === 'text-selection') {
       termSeq += 1;
-      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + (termSeq === 1 ? '' : `·${termSeq}`), token: termSeq === 1 ? '⟦   终端片段⟧' : `⟦   终端片段·${termSeq}⟧` });
+      out.push({ fence: body, kind, label: t('Terminal snippet', '终端片段') + `${termSeq}`, token: `⟦   终端片段${termSeq}⟧` });
     } else if (kind === 'body-snippet') {
       bodySeq += 1;
-      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + (bodySeq === 1 ? '' : `·${bodySeq}`), token: bodySeq === 1 ? '⟦   文本片段⟧' : `⟦   文本片段·${bodySeq}⟧` });
+      out.push({ fence: body, kind, label: t('Text snippet', '文本片段') + `${bodySeq}`, token: `⟦   文本片段${bodySeq}⟧` });
     } else {
       const pid = /页签 #(t-[0-9a-z]+)/.exec(body)?.[1] ?? /页签 #(\S+)/.exec(body)?.[1] ?? '';
       const loc = /定位: (\S+)/.exec(body)?.[1] ?? '';

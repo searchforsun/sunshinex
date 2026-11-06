@@ -79,7 +79,7 @@ export function ShortcutsPane(): JSX.Element {
       {/* 与 SettingsForm 各面板同款 <h2> 标题(导航项文字一致),对齐设置页版式 */}
       <h2>{t('Shortcuts', '快捷键')}</h2>
       <div className="sx-shortcuts-page">
-        <p className="sx-shortcuts-intro">{t('Keyboard shortcuts available across the desktop app.', '桌面端全应用可用的键盘快捷键。')}</p>
+        {/* 2026-11-06 用户裁定:页首说明文字撤下(其他设置页无此形态);分组改深色背景块卡 */}
         {SHORTCUT_GROUPS.map((g) => (
           <div key={g.title.en} className="sx-shortcuts-group">
             <h3 className="sx-shortcuts-title">{t(g.title.en, g.title.zh)}</h3>

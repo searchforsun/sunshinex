@@ -42,7 +42,7 @@ import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
 import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
-import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, refContentConsume, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
 import { SelActionsOverlay } from './chat/SelActionsOverlay';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
@@ -83,7 +83,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -109,6 +109,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   useEffect(() => {
     try {
       localStorage.setItem(`sx-draft:${archiveKey}`, input);
+      // 芯片内容账本随草稿同键持久化(2026-11-07 用户裁定「重启后草稿片段也要加载出来」):
+      // 文本恢复了、账本(内存态)不恢复=芯片空壳 hover/发送皆失。键变更(切会话)即换档
+      localStorage.setItem(`sx-draft-refs:${archiveKey}`, JSON.stringify([...refContentsRef.current]));
     } catch {
       // 隐私模式等写失败静默:草稿是尽力而为的会话便利,不入错误面
     }
@@ -175,6 +178,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const pickRelRef = useRef(new Map<string, string>());
   /** 元素/终端片段引用账本(2026-11-04):⟦token⟧→全量内容,发送/排队期 expandRefContents 展开 */
   const refContentsRef = useRef(new Map<string, string>());
+  // 芯片账本回灌(2026-11-07 落地即清配套:草稿文本有 sx-draft 持久化,账本不持久则恢复的芯片
+  // 全空壳)。只补缺不清现有——insertContent 渲染期种子/事件入账不受影响
+  try {
+    const rawRefs = localStorage.getItem(`sx-draft-refs:${archiveKey}`);
+    if (rawRefs !== null) {
+      for (const [tk, c] of JSON.parse(rawRefs) as Array<[string, string]>) refContentsRef.current.set(tk, c);
+    }
+  } catch {
+    // 档损坏即弃:芯片失去内容是尽力而为面的失败,不入错误面
+  }
+  // 首问 token 内容入私有账本——渲染期直写(2026-11-07 实测时序根修:子组件 ComposerCard 的
+  // 规范化 effect 先于本组件 effect 执行,种子晚于改名=键对不上=回落全局注册表取到别会话内容)
+  if (initialInsert !== undefined && initialInsert !== '' && initialInsertContent !== undefined && initialInsertContent !== '') {
+    refContentsRef.current.set(initialInsert, initialInsertContent);
+    refContentConsume(initialInsert); // 落地即清共享层
+  }
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
@@ -223,7 +242,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     (text, r, resolve) => expandRefContents(expandFileRefs(text, r, resolve), refContentsRef.current),
     setChat,
   );
-  const { cmdData, setCmdData, cmdActive, setCmdActive, skills } = useCommandPalette(conn, root);
+  const { cmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn, root);
+  // 2026-11-07 用户实测「+ 能实时加出来,/ 不实时」:/ 面板在场即现拉技能清单(运行中新装技能实时可弹)
+  useEffect(() => {
+    if (slashTokenAt(input, inputRef.current?.selectionStart ?? input.length) !== null) reloadSkills();
+  }, [input, reloadSkills]);
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
   const submitTextRef = useRef<(text: string, images?: string[]) => Promise<void>>(() => Promise.resolve());
@@ -240,6 +263,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     onSeeded,
     onTodos,
     initialInsert,
+    onInsertConsumed,
     setInput,
     setChat,
     setQueued,
@@ -589,6 +613,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     resolveFileRef,
     onOpenFile,
   target: sideChat === true ? 'side' : 'main',
+  // side 广播作用域:本面会话 id(非本会话的 side composer 忽略)
+  ownSessionId: sideChat === true ? sessionId : undefined,
   });
 
   // composer 输入面键分发与守卫（token 原子性三面/@ 面板//面板/Enter 分流）——分支本体收编
@@ -770,15 +796,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       >
       <SelActionsOverlay
         containerRef={chatScrollRef}
-        onInsert={(text) => window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text, target: 'main' } }))}
-        onSideAsk={(text) => {
+        onInsert={(text, content) =>
+          // 2026-11-07 串扰根修:kind:'ref' 通道(token+content 同投)——主对话私有账本收,
+          // 规范化改名后 hover/展开不落全局注册表兜底(键跨会话共享会取到别会话同键内容)
+          window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token: text, content, target: 'main' } }))
+        }
+        onSideAsk={(text, content) => {
           // 2026-11-06 用户裁定 P5:辅助会话内圈选「辅助会话提问」=插入当前侧 composer(不另开新辅助);
-          // 主对话语境=走 onSideAsk 开辅助草稿(App 路由)
+          // 主对话语境=走 onSideAsk 开辅助草稿(App 路由)。
+          // 2026-11-07 串扰根修:辅助语境广播改 kind:'ref' 通道(token+content 同投,接收面写私有
+          // 账本);纯 text 广播只落文字不落账=规范化改名后 hover 落全局兜底取到别会话同键内容
           if (sideChat === true) {
-            window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { text, target: 'side' } }));
+            // sideId 作用域(2026-11-07 用户实测「A 会话截取,B 会话也多一枚」):广播只投本会话
+            window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token: text, content, target: 'side', sideId: sessionId } }));
             return;
           }
-          onSideAsk?.(text);
+          onSideAsk?.(text, content);
         }}
       />
       <MessageList
@@ -882,6 +915,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         <ComposerCard
           className="chat-composer"
           label="message input"
+          refLedger={refContentsRef}
         images={pendingImages}
         onRemoveImage={(i) => setPendingImages((cur) => cur.filter((_, idx) => idx !== i))}
         onImageOpen={setLightboxSrc}

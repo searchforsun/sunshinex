@@ -39,9 +39,16 @@ export interface TabParams {
   readonly title?: string;
   /** G14.154 辅助对话首问(文件选区「在辅助对话中提问」携带,挂载即落输入框) */
   readonly insert?: string;
+  /** 首问 token 的选取全文(2026-11-07 串扰根修:内容随 insert 同路进辅助面私有账本,
+   *  不再依赖全局注册表——键跨会话共享,规范化改名后全局兜底会取到别的会话同键内容) */
+  readonly insertContent?: string;
   /** 辅助对话草稿文本(2026-11-06 用户裁定「欢迎页输入框内容持久化,页签打开状态下」):
    *  fork 前草稿 composer 输入随 gui-state 落盘,重启回档回填;fork 后由真 Chat 接管不再消费 */
   readonly draftText?: string;
+  /** 草稿芯片内容账本快照(2026-11-07 用户裁定「落地即清共享缓存」配套:账本是内存态,
+   *  重启即空=恢复的草稿芯片全空壳。JSON 序列化 [token,content][] 随 gui-state 落盘,
+   *  挂载回灌——目的地隔离的持久化 */
+  readonly draftRefContents?: string;
   /** G14.164 子智能体只读标签:payload.subagent 标签(委派行/工具行点开;同 agent 重开=聚焦) */
   readonly label?: string;
   /** G14.164 开档时定格的 agent 显示名(开档面解析齐备即带——任务板 assignee/title 命中或原始 label;标签条标题用) */
@@ -270,7 +277,7 @@ export function patchTabMeta(
   states: TabStates,
   sessionId: string,
   uid: string,
-  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; sideId?: string; sideJournal?: string; title?: string; insert?: string; draftText?: string },
+  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; sideId?: string; sideJournal?: string; title?: string; insert?: string; insertContent?: string; draftText?: string; draftRefContents?: string },
 ): TabStates {
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
@@ -286,6 +293,8 @@ export function patchTabMeta(
     && target.params.title === params.title
     && target.params.insert === params.insert
     && target.params.draftText === params.draftText
+    && target.params.insertContent === params.insertContent
+    && target.params.draftRefContents === params.draftRefContents
   ) return states;
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }

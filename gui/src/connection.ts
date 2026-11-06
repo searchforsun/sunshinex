@@ -205,7 +205,7 @@ export interface Connection {
    *  'pty not found'（注销即失效，无宽限窗） */
   killPty(sessionId: string, ptyId: string): Promise<void>;
   /** POST /app/pty（2026-10-27 欢迎页全局草稿）:无会话 pty 分配（root 直供 cwd,owner '@app'） */
-  openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }>;
+  openPtyAt(root: string, cols?: number, rows?: number, prevPtyId?: string): Promise<{ ptyId: string }>;
   /** DELETE /app/pty/:ptyId:App 级 pty 回收 */
   killPtyAt(ptyId: string): Promise<void>;
   /** Task 21 config-changed 帧订阅注册点（设置面双向实时同步——useConfigChanged 消费）：

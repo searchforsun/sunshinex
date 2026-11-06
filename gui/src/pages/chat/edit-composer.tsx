@@ -8,7 +8,7 @@ import type { CmdItem } from '../../CommandPalette';
 import { pathBasename } from '../../ui-util';
 import { t } from '../../i18n';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
-import { FilePalette, RefPalette, fileHit, rankFileHits, renderMentionSpans, slashTokenAt } from './mention';
+import { FilePalette, RefPalette, fileHit, rankFileHits, refContentRegistry, renderMentionSpans, slashTokenAt, splitMentionTokens } from './mention';
 import { flatRefItems, refTokenAt } from './ref-palette';
 import type { RefEntries, RefItem, RefPal } from './ref-palette';
 import { slashItemsFor, useCommandPalette } from './use-command-palette';
@@ -324,10 +324,20 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, []);
 
+  // 编辑卡私有账本(2026-11-07):规范化改名须迁账本才有内容可搬——渲染期从全局注册表补种
+  // 当前值内全部 ref token(幂等;子 ComposerCard effect 先于本组件 effect,种子必须在渲染期)
+  const editLedger = useRef(new Map<string, string>());
+  for (const tk of splitMentionTokens(value)) {
+    if (tk.kind === 'ref' && !editLedger.current.has(tk.text)) {
+      const c = refContentRegistry.get(tk.text);
+      if (c !== undefined) editLedger.current.set(tk.text, c);
+    }
+  }
   return (
     <div className="user-edit-composer" ref={cardRef}>
       <ComposerCard
         label="edit message"
+        refLedger={editLedger}
         value={value}
         placeholder={t('Edit message', '编辑消息')}
         rows={Math.min(6, Math.max(1, (value.match(/\n/g) ?? []).length + 1))}

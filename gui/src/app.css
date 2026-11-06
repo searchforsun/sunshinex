@@ -76,11 +76,14 @@
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', menlo, consolas, 'Liberation Mono', 'Microsoft YaHei', monospace;
 }[data-theme='light'] {
   color-scheme: light;
-  --surface: #fff;
-  --surface-under: #f9f9f9;
+  /* 2026-11-06 用户裁定:亮色面底阶梯拉开(原 surface=elevated=#fff 全同色,卡片/表格块/代码井
+     与页面零区分)。定版:页面 f6f6f6 浅灰,卡面纯白(浮起),输入/soft ec,代码井 ee——
+     页 < 卡一档、卡 < 井两档,撤框方案(面底分层)在亮色下才成立 */
+  --surface: #f6f6f6;
+  --surface-under: #efefef;
   --surface-elevated: #fff;
-  --surface-soft: #f3f3f3;
-  --surface-code: #fcfcfc;
+  --surface-soft: #ececec;
+  --surface-code: #eeeeee;
   --fg: #1a1c1f;
   --fg-on-solid: #fff;
   --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
@@ -1015,7 +1018,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }
 /* 空态引导行(2026-11-05 用户实测:零目录时静默隐藏=弹了等于没弹——池空指路设置面,非交互行) */
 .ref-palette-empty { padding: 8px 10px; font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); }
-}.ref-palette-head { padding: 5px 8px 3px; font-size: 11px; color: var(--fg-tertiary); }.ref-palette-row {
+.ref-palette-head { padding: 5px 8px 3px; font-size: 11px; color: var(--fg-tertiary); }.ref-palette-row {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 8px; border-radius: var(--radius-sm);
   border: none; background: transparent; color: var(--fg);
@@ -3339,3 +3342,128 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-turn-confirm-actions button.primary:hover:not(:disabled),
 .sx-editor-modal-actions button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); border-color: transparent; }
 .user-edit-hint { font-size: 12px; color: var(--warn); padding: 2px 4px; }
+
+/* 2026-11-06 用户裁定「弹窗不要有高亮边框,容易产生毛边;还有按钮」(CLAUDE.md §ui 5-②:浮层撤环撤边框,
+   投影统一 --elev-prominent):弹窗外壳+弹窗内按钮一律无边框——ghost 钮靠 surface-soft 面底区分,
+   hover 改面底提亮;外壳内分隔线(head/actions 的 border-top/bottom)非外缘不随形,保留 */
+.sx-editor-modal, .modal-body { border: none; box-shadow: var(--elev-prominent); }
+.sx-turn-confirm-actions button,
+.sx-editor-modal-actions button,
+.dirpicker-foot button { border: none; }
+.sx-turn-confirm-actions button:not(.primary):hover:not(:disabled),
+.sx-editor-modal-actions button:not(.primary):hover:not(:disabled),
+.dirpicker-foot button:not(.primary):hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 12%, var(--surface-soft)); }
+
+/* 2026-11-06 用户裁定:反色实心钮(暗=白底/亮=黑底)hover 字色漏改——通用 ghost 钮 hover 写 color: var(--fg),
+   压到实心钮上成白字白底。此处收口所有实心反色钮:hover/focus 字色恒 --fg-on-solid,底色只轻压(fg 88%) */
+:is(.pending-card, .dirpicker-foot, .sx-editor-modal-actions, .sx-turn-confirm-actions, .sx-changes-commit-foot, .ask-dock .ask-actions, .chat-dock .plan-card .card-actions) button.primary:is(:hover, :focus-visible):not(:disabled),
+.sx-settings-save:is(:hover, :focus-visible):not(:disabled),
+.token-gate button[type='submit']:is(:hover, :focus-visible):not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 88%, var(--surface)); color: var(--fg-on-solid); border-color: transparent;
+}
+
+/* 2026-11-06 用户裁定「设置页高亮边框去掉,避免毛刺感」(CLAUDE.md §ui 5-② 同口径延及设置页控件):
+   输入/下拉触发器撤 1px 边框(hover/focus 同撤——focus 反馈由面底加深承接),小按钮撤边框,
+   权限 chip 撤边框;卡片面(--border-subtle 极淡非高亮)与 --elev-prominent 浮层(dd-pop 已无框)不动 */
+.sx-setting-input,
+.sx-dd-trigger { border: none; }
+.sx-setting-input:hover:not(:disabled),
+.sx-dd-trigger:hover:not(:disabled),
+.sx-setting-input:focus,
+.sx-dd-trigger:focus-visible { border: none; outline: none; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.sx-card-actions button, .sx-add-button, .sx-provider-model-actions button, .sx-card-form button { border: none; }
+.sx-card-actions button:hover:not(:disabled), .sx-add-button:hover:not(:disabled),
+.sx-provider-model-actions button:hover:not(:disabled) { border: none; background: color-mix(in srgb, var(--fg) 12%, var(--surface-soft)); }
+.sx-chip { border: none; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-card-form input, .sx-card-form select, .sx-card-form textarea { border: none; }
+
+/* 2026-11-06 用户裁定续:①快捷键页对齐其他设置页——分组=深色背景块(surface-elevated 无框圆卡),
+   撤 1px 线条框与逐行分隔线;②残余高亮毛边区块:MCP/智能体卡(--border)、卡内编辑表单
+   (--border-strong 最亮)、kbd 键帽描边一律撤框,靠面底区分 */
+.sx-shortcuts-group { border: none; background: var(--surface-elevated); border-radius: var(--radius-lg); }
+.sx-shortcut-row { border-bottom: none; }
+.sx-shortcut-row + .sx-shortcut-row { margin-top: 2px; }
+.sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-card-form { border: none; }
+.sx-kbd { border: none; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+
+/* 2026-11-06 用户裁定续(设置页高亮边框清零,风格一致——全部靠面底/海拔区分,不靠线条):
+   ①设置分组大卡撤 --border-subtle 描边(仅设置域,主对话 .sx-card 不动);②字体预设卡撤框,
+   hover/选中改面底承接(hover 面底提亮,active=soft 底);③提供商卡撤框;④预设卡内代码井描边撤 */
+.sx-settings-card { border: none; }
+.sx-font-preset-card { border: none; }
+.sx-font-preset-card:hover:not(.active) { background: color-mix(in srgb, var(--fg) 4%, var(--surface-elevated)); }
+.sx-font-preset-card.active { background: var(--surface-soft); }
+.sx-font-pv-code { border: none; }
+.sx-provider-card { border: none; }
+
+/* 2026-11-06 用户裁定(全设置项清点续):①技能/记忆/原始配置/全局规则卡同属 .sx-card,设置域内
+   一并撤框(撤框前提=面底区分,见②);②字体预设卡父卡同底导致隐身——改三档面底阶梯:
+   静置 fg4% / hover fg7% / 选中 fg10%,撤框后仍逐档可辨;③raw 控制钮、team JSON 井、
+   mcp JSON 井残余描边撤(warn/错误横幅语义边框保留) */
+.sx-settings-form .sx-card, .sx-settings-body .sx-card { border: none; }
+.sx-font-preset-card { background: color-mix(in srgb, var(--fg) 4%, var(--surface-elevated)); }
+.sx-font-preset-card:hover:not(.active) { background: color-mix(in srgb, var(--fg) 7%, var(--surface-elevated)); }
+.sx-font-preset-card.active { background: color-mix(in srgb, var(--fg) 11%, var(--surface-elevated)); }
+.sx-raw-card .sx-raw-controls button { border: none; }
+.sx-raw-card .sx-raw-controls button:hover { border: none; background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.sx-team-body pre { border: none; }
+.sx-mcp-json, .sx-mcp-json:focus { border: none; }
+
+/* 2026-11-06 用户裁定:正文/文件 md 表格线提清晰一档——外框与行线从 --border-subtle 升 --border
+   (底色仍按既有裁定不上色,只留线条) */
+.table-wrap { border-color: var(--border); }
+.table-wrap th, .table-wrap td { border-bottom-color: var(--border); }
+
+/* 2026-11-06 用户裁定:web 页签视口边角拖拽手柄(设备模拟形)——四边+四角 8 向,命中区 7px
+   (角 12px),悬停 accent 提示;scaler 需 relative 作定位上下文 */
+.sx-web-scaler.device { position: relative; }
+.sx-web-rz { position: absolute; z-index: 10; }
+.sx-web-rz:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.sx-web-rz-n { top: -3px; left: 8px; right: 8px; height: 7px; cursor: ns-resize; }
+.sx-web-rz-s { bottom: -3px; left: 8px; right: 8px; height: 7px; cursor: ns-resize; }
+.sx-web-rz-e { right: -3px; top: 8px; bottom: 8px; width: 7px; cursor: ew-resize; }
+.sx-web-rz-w { left: -3px; top: 8px; bottom: 8px; width: 7px; cursor: ew-resize; }
+.sx-web-rz-ne, .sx-web-rz-nw, .sx-web-rz-se, .sx-web-rz-sw { width: 12px; height: 12px; }
+.sx-web-rz-ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.sx-web-rz-nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.sx-web-rz-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.sx-web-rz-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+
+/* 2026-11-07 用户裁定「四个面板还有亮色边框」续清:ResourceCard(插件/团队).sx-rc、权限列
+   .sx-perm-col 撤框;提供商卡提优先级复写(前轮 border:none 疑被压);权限档位标签/
+   插件类型 chip/插件 JSON 井撤框换面底——与全局 chip 口径一致 */
+.sx-rc, .sx-perm-col, .sx-provider-card { border: none; }
+.sx-perm-level { border: none; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-perm-level-merged, .sx-perm-level-project { border: none; }
+.sx-plugin-type { border: none; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-plugin-json { border: none; }
+
+/* 2026-11-07 用户实测「拖到网页内断触」根修:webview guest 吞其上方指针事件——拖拽期间
+   全屏透明遮罩挡在 webview 前,move/up 全程落宿主;光标随方向轴(内联 style) */
+.sx-web-rz-overlay { position: fixed; inset: 0; z-index: 400; background: transparent; }
+
+
+/* 2026-11-07 定案(用户裁定「不要之前的方案」):图标=占位区 glyph 的 mask 背景绘制——
+   纯绘制层:随占位区字形渲染(不可能飞)、零布局参与(镜像对齐零影响)、无 DOM 元素无锚点。
+   mask 用背景色着色(currentColor 不可入 data URI,取芯片同款 accent);Lucide 三型 data URI */
+.sx-composer-highlight .hn-ref-pad {
+  --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E");
+  background-color: var(--accent);
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  background-position: left 1.5px center;
+  -webkit-mask-image: var(--ico);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 14px 14px;
+  -webkit-mask-position: left 1.5px center;
+  mask-image: var(--ico);
+  mask-repeat: no-repeat;
+  mask-size: 14px 14px;
+  mask-position: left 1.5px center;
+}
+.sx-composer-highlight .hn-ref-pad.ico-term {
+  --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Cpath d='m8 9 3 3-3 3'/%3E%3Cpath d='M14 9h4'/%3E%3C/svg%3E");
+}
+.sx-composer-highlight .hn-ref-pad.ico-web {
+  --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20'/%3E%3Cpath d='M2 12h20'/%3E%3C/svg%3E");
+}

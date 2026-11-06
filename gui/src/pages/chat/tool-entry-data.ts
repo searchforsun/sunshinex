@@ -137,7 +137,7 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
           ? 'query'
           : name === 'webfetch'
             ? 'url'
-            : name === 'skill'
+            : name === 'skill' || name === 'load_agent_teams' || name === 'load_subagent'
               ? 'id'
               : 'path';
   const v = input[key];

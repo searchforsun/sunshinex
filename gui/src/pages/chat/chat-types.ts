@@ -61,6 +61,11 @@ export interface ChatProps {
   onTodos?: (todos: TodoItem[]) => void;
   /** G14.154 挂载即落的初始引用(文件选区「在辅助对话中提问」经 fork 参数携带) */
   initialInsert?: string;
+  /** 首问 token 的选取全文(2026-11-07 串扰根修,与 insert 同路;挂载即入私有账本) */
+  readonly initialInsertContent?: string;
+  /** 首问注入消费回调(2026-11-07 用户实测「重启后每个辅助会话都多一枚片段」根修):insert
+   *  参数持久化于页签档,消费后即清(页签档置空串),否则每次挂载/重启重放=删了又现 */
+  onInsertConsumed?: () => void;
   /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
    *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
   onOpenDiff?: (callId: string, path: string) => void;
@@ -89,7 +94,7 @@ export interface ChatProps {
   /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡 */
   todoFocus?: { key: string; nonce: number } | null;
   /** 2026-11-04 正文圈选·辅助会话提问通道(添加到主对话=insert-ref 事件,组件内置) */
-  onSideAsk?: (text: string) => void;
+  onSideAsk?: (text: string, content?: string) => void;
   /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡(App 开页签+落定位信号) */
   onTodoLocate?: (todos: Array<{ text: string; status: string }>) => void;
     /** 2026-11-04 fork 横幅导航:「分叉于会话」点击回父会话(App openSession;root 同源) */
