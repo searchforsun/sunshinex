@@ -248,7 +248,10 @@ export function useComposerKeys(deps: {
         // 插入尾沿)——第二个 / 的选同样正常添加,绝不落发送;无匹配(面板自动关)才落 send()=
         // 普通文本,命令真伪判定仍单点在 submitText
         const item: CmdItem | undefined = slashItems[Math.min(cmdActive, slashItems.length - 1)];
-        if (slashToken !== null && item !== undefined) {
+        // 敲完整的命令名(query 与高亮项逐字相等)不补全:Enter 直接落 send()=纯命令一次 Enter 执行
+        // (/status 型;补全只服务未敲完的查询)
+        const queryFull = slashToken !== null ? input.slice(slashToken.from + 1, caret) : '';
+        if (slashToken !== null && item !== undefined && item.cmd !== `/${queryFull}`) {
           e.preventDefault();
           const from = slashToken.from;
           setInput((prev) => prev.slice(0, from) + item.cmd + ' ' + prev.slice(Math.max(caret, from)));

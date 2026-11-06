@@ -1744,6 +1744,37 @@ describe('命令面板(/ 面板,2026-11-05 技能引用行回归——用户裁�
     expect(sessionSubmit.mock.calls[0]?.[1]).toBe('/pdf 处理报告'); // 纯文本软引用照发
   });
 
+  it('无参命令带参数=非法→普通文本(/status 1234 不进命令通道,2026-11-06 用户裁定终版)', async () => {
+    setLanguage('zh');
+    const runCommand = vi.fn(() => Promise.resolve());
+    const sessionSubmit = vi.fn((_id: string, _text: string) => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).runCommand = runCommand;
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    (conn as unknown as Record<string, unknown>).commands = vi.fn(() => Promise.resolve({ commands: ['/status'], descriptions: {}, supported: ['/status'] }));
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '/status 1234' } }); // 无参命令带参数=整行非法
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    await flushed();
+    expect(runCommand).not.toHaveBeenCalled(); // 不截取 /status 派发
+    expect(sessionSubmit.mock.calls[0]?.[1]).toBe('/status 1234'); // 普通文本发布
+  });
+
+  it('无参命令裸用=命令通道(/status 零参数,口径不变)', async () => {
+    setLanguage('zh');
+    const runCommand = vi.fn(() => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).runCommand = runCommand;
+    (conn as unknown as Record<string, unknown>).commands = vi.fn(() => Promise.resolve({ commands: ['/status'], descriptions: {}, supported: ['/status'] }));
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '/status' } });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    await flushed();
+    expect(runCommand).toHaveBeenCalled(); // 纯命令照常执行
+  });
+
   it('行中 `/` 也要弹——仅技能池(2026-11-05 用户二次裁定:命令面板只在行首);无匹配=自动关', async () => {
     setLanguage('zh');
     const conn = connOf([]);

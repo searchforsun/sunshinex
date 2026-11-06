@@ -65,15 +65,17 @@ const submitText = useCallback(
     // 模式底层命令,恒走命令通道(底层承载);其余 / 词仍依赖 cmdData(skills/未知名回落纯文本)
     const cmdName = /^\/([a-z][\w-]*)/i.exec(trimmed)?.[1]?.toLowerCase() ?? '';
     const isBuiltinPlan = cmdName === 'plan';
-    // 2026-11-06 用户裁定「要识别成纯命令;非法命令当普通文本发布,不截取前面的正常部分」续
-    // 「命令之后跟文本要考虑全」:参数合法性按命令分——/plan(目标文本)/compact(聚焦文本)/
-    // skills-rm(id)=自由文本参数命令,文本含 / 词照常派发(不截取不误伤);其余命令(status/
-    // context/memory-*/archive/unarchive/delete,daemon 均不消费参数)行内再出现 / 词=整行非法
-    // →普通文本
-    const restAfterCmd = trimmed.replace(/^\/[a-z][\w-]*/i, '');
-    const hasSecondCmdToken = /(^|\s)\/[a-zA-Z][\w-]/.test(restAfterCmd);
-    const freeTextCmd = cmdName === 'plan' || cmdName === 'compact' || cmdName === 'skills-rm';
-    const strictIllegal = !freeTextCmd && hasSecondCmdToken;
+    // 2026-11-06 用户裁定「要识别成纯命令;非法命令当普通文本发布」终版:参数合法性按命令分
+    // (对照源 src/serve/session-commands.ts runCommandBody 参数消费逐命令核对)——
+    // 自由文本命令(/plan 目标文本、/compact 聚焦文本、/skills-rm id):任意参数合法,含 / 词照常派发;
+    // 无参命令(/status /context /memory-on /memory-off /archive /unarchive /delete,daemon 均不
+    // 消费参数):带任何参数(普通文本或第二枚 / 词)即整行非法→普通文本——`/status 1234` 不再
+    // 截取 /status 派发;未分类的后续新命令默认允许参数(宽泛派发,不误伤)
+    const argsAfter = trimmed.replace(/^\/[a-z][\w-]*/i, '').trim();
+    const hasSecondCmdToken = /(^|\s)\/[a-zA-Z][\w-]/.test(argsAfter);
+    const ARGLESS = new Set(['status', 'context', 'memory-on', 'memory-off', 'archive', 'unarchive', 'delete']);
+    const FREE_TEXT = new Set(['plan', 'compact', 'skills-rm']);
+    const strictIllegal = (ARGLESS.has(cmdName) && argsAfter !== '') || (!ARGLESS.has(cmdName) && !FREE_TEXT.has(cmdName) && hasSecondCmdToken);
     const isCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed) && !strictIllegal
       ? isBuiltinPlan || (cmdData?.supported.some((c) => c.toLowerCase() === `/${cmdName}`) ?? false)
       : false;
