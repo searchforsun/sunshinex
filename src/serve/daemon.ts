@@ -7,7 +7,7 @@ import { ModelAdapter, parseEffort } from '../model/adapter';
 import type { Result } from '../result';
 import type { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { purgeSession, purgeSideJournals, readSessionMeta, sessionsDir } from "../tui/session-journal";
+import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
@@ -978,9 +978,26 @@ export class GuiDaemon {
       if (session.attachedJournalId !== undefined && session.attachedJournalId !== key) this.ptyManager.killAllFor(session.attachedJournalId);
       if (this.active === key) this.active = undefined;
     }
+    // 辅助会话连带删除(2026-11-06 用户裁定「删除主会话才连 side 一起清」):side 档清前先拆在座
+    // side 运行时(顺序即正确性——teardown seal 落最后一笔后才 purge,否则 seal 复活已清档),pty 按
+    // side journal 锚杀;浏览器状态键=journalId,side 逐个连清
+    const sideIds = sideJournalsOf(dataDir, jid);
+    for (const sid of sideIds) {
+      const rt = [...this.sessions.values()].find((r2) => r2.attachedJournalId === sid);
+      if (rt !== undefined) {
+        const rk = rt.id;
+        this.denyPendingFor(rk);
+        await rt.teardown();
+        this.sessions.delete(rk);
+        this.unwatchProjectRoot(rt.root);
+        this.ptyManager.killAllFor(rk);
+      }
+      this.ptyManager.killAllFor(sid);
+    }
     purgeSession(dataDir, jid);
     purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
     purgeBrowserState(dataDir, jid); // 浏览器键=journalId:状态文件/输出目录/侧栏分区随会话删除
+    for (const sid of sideIds) purgeBrowserState(dataDir, sid);
 
     this.send(res, 200, { ok: true });
   }

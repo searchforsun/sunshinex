@@ -242,29 +242,53 @@ export function purgeSession(dataDir: string, id: string): void {
       /* 幂等 */
     }
   }
+  // 会话绑定旁档(2026-11-06 用户裁定「会话删除后一并删除」):任务板账本+会话级团队目录
+  // (`<dataDir>/tasks/ledger-<id>.jsonl`、`<dataDir>/teams/<id>/`——均以 journalId 键,缺文件静默幂等)
+  try {
+    fs.rmSync(path.join(dataDir, 'tasks', `ledger-${id}.jsonl`), { force: true });
+  } catch {
+    /* 幂等 */
+  }
+  try {
+    fs.rmSync(path.join(dataDir, 'teams', id), { force: true, recursive: true });
+  } catch {
+    /* 幂等 */
+  }
 }
 
-/** 辅助会话连带清理(2026-11-06 用户裁定「只有删除主会话后,才一同删除辅助会话内容」):
- *  side 档 meta.sideOf 回指主 journal id——主删则 side 全家逐个 purgeSession(档+gui/tui 页签态);
- *  无 side 或目录不可读=空转幂等。调用方(删除面)另行处理浏览器状态/pty 锚杀 */
-export function purgeSideJournals(dataDir: string, id: string): void {
+/** 主 journal 的辅助会话 journal id 清单(meta.sideOf 回指扫描;目录不可读=空列) */
+export function sideJournalsOf(dataDir: string, id: string): string[] {
   const dir = sessionsDir(dataDir);
   let names: string[] = [];
   try {
     names = fs.readdirSync(dir);
   } catch {
-    return;
+    return [];
   }
+  const out: string[] = [];
   for (const f of names) {
     if (!f.endsWith('.meta.json')) continue;
     try {
       const meta = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as { side?: unknown; sideOf?: unknown };
       if (meta.side !== true || meta.sideOf !== id) continue;
-      purgeSession(dataDir, f.slice(0, -'.meta.json'.length));
+      out.push(f.slice(0, -'.meta.json'.length));
     } catch {
       /* 坏 meta 行跳过 */
     }
   }
+  return out;
+}
+
+/** 辅助会话连带清理(2026-11-06 用户裁定「只有删除主会话后,才一同删除辅助会话内容」):
+ *  side 全家逐个 purgeSession(档+gui/tui 页签态+任务板账本+团队目录),返回被清 journal id
+ *  供调用方(删除面)接力清浏览器状态/pty 锚杀 */
+export function purgeSideJournals(dataDir: string, id: string): string[] {
+  const out: string[] = [];
+  for (const jid of sideJournalsOf(dataDir, id)) {
+    purgeSession(dataDir, jid);
+    out.push(jid);
+  }
+  return out;
 }
 
 interface ParsedJournal {
