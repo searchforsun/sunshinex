@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, MutableRefObject, SetStateAction } from 'react';
 import { ArrowUp, X } from 'lucide-react';
 import { ComposerCard } from '../../composer/ComposerCard';
@@ -274,6 +274,20 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
 
   useLayoutEffect(() => {
     taRef.current?.focus();
+  }, []);
+
+  /** 面板点外自动收(2026-11-06 用户实测「+ 显示后,点击其他地方要自动关闭」):pointerdown 落
+   *  编辑卡外即收全部浮层(+面板/@文件/$#/引用);面板行锚卡内,选中点击不受影响(Chat 点外即收同款) */
+  useEffect(() => {
+    const onDocPointerDown = (e: PointerEvent): void => {
+      if (e.target instanceof Element && !e.target.closest('.user-edit-composer')) {
+        setPillOpen(null);
+        setFilePal(null);
+        setRefPal(null);
+      }
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, []);
 
   return (
