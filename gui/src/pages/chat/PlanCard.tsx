@@ -106,7 +106,7 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' 
               <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
               <span className="btn-label">{t('Implement', '实施')}</span>
             </button>
-            <button type="button" aria-label={t('Implement under full access', '在完全访问下实施')} data-tip={t('Implement under full access', '在完全访问下实施')} onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
+            <button type="button" className="primary" aria-label={t('Implement under full access', '在完全访问下实施')} data-tip={t('Implement under full access', '在完全访问下实施')} onClick={() => onDecide({ approved: true, mode: 'full-access' })}>
               {/* 完全访问=黄图标警示(2026-11-04 用户裁定「图标显示黄色就可以」——整钮黄退役) */}
               <Unlock size={14} strokeWidth={2} aria-hidden="true" className="ico-warn" />
               <span className="btn-label">{t('Implement', '实施')}</span>

@@ -321,7 +321,7 @@ export function EditorModal({ open, title, onClose, onSubmit, children }: Editor
         >
           <div className="sx-editor-modal-fields">{children}</div>
           <div className="sx-card-actions sx-editor-modal-actions">
-            <button type="submit">{t('Save', '保存')}</button>
+            <button type="submit" className="primary">{t('Save', '保存')}</button>
             <button type="button" onClick={onClose}>
               {t('Cancel', '取消')}
             </button>

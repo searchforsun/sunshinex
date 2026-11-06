@@ -274,6 +274,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                   label: t('Copy absolute path', '复制绝对路径'),
                   icon: <Copy size={13} strokeWidth={1.75} />,
                   tail: pathCopied === 'abs' ? <Check size={12} strokeWidth={2.25} /> : undefined,
+                  keepOpen: true,
                   onSelect: () => copyPath(load.file!.path, 'abs'),
                 },
                 {
@@ -281,6 +282,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                   label: t('Copy relative path', '复制相对路径'),
                   icon: <Copy size={13} strokeWidth={1.75} />,
                   tail: pathCopied === 'rel' ? <Check size={12} strokeWidth={2.25} /> : undefined,
+                  keepOpen: true,
                   onSelect: () => copyPath(relOf(), 'rel'),
                 },
               ]}
@@ -356,7 +358,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                   data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
                   onClick={copyContent}
                 >
-                  <Copy size={13} strokeWidth={1.75} />
+                  {/* 2026-11-06 用户裁定:复制回显与正文代码块同款——点击后图标换 ✓(1.5s 自回),不只 tooltip 变字 */}
+                  {copied === 'ok' ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
                 </button>
               )}
             </div>

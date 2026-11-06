@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { COPY_RESET_MS } from '../use-copy-feedback';
 import { zoomScale } from '../ui-zoom';
 
 /** 会话行快捷菜单(⋯ 弹出,2026-10-22 用户裁定:行尾 ⋯ 收敛直连动作钮):fixed 定位随锚点
@@ -20,6 +21,9 @@ export interface SessionRowMenuItem {
   disabled?: boolean;
   /** 分隔线项( label/图标忽略,渲染为分隔线) */
   divider?: boolean;
+  /** 2026-11-06 用户裁定:复制回显项——选中后不即关,留菜单 COPY_RESET_MS 显 ✓ 尾标再自动关
+   *  (即关则 tail ✓ 从未可见;外部/Esc/滚动仍即关不受影响) */
+  keepOpen?: boolean;
   onSelect: () => void;
 }
 
@@ -71,7 +75,8 @@ export function SessionRowMenu({ x, y, items, onClose }: {
             disabled={it.disabled}
             onClick={() => {
               it.onSelect();
-              onClose();
+              if (it.keepOpen === true) window.setTimeout(onClose, COPY_RESET_MS);
+              else onClose();
             }}
           >
             {it.icon}

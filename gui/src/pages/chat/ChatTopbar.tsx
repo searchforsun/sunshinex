@@ -8,6 +8,7 @@ import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
 import { loadSeenMap, persistSeenMap, stampSeen } from '../../sidebar/project-menu-util';
+import { COPY_RESET_MS } from '../../use-copy-feedback';
 
 /** 会话顶栏(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):标题(空/改/显三态,点击重命名)
  *  + 动态计数钮(待办/任务板)+ 侧栏展开钮。标题编辑态与草稿留宿主。
@@ -238,8 +239,14 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       () => undefined,
     );
   };
-  const copyText = (text: string): void => {
-    void navigator.clipboard?.writeText(text).then(() => undefined, () => undefined);
+  /* 2026-11-06 用户裁定:复制回显全局统一——点击后菜单项尾显 ✓(COPY_RESET_MS 自回),
+     与正文代码块(图标换 ✓)/Files 路径菜单(tail ✓)同款,不再静默复制 */
+  const [copiedTag, setCopiedTag] = useState('');
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyText = (text: string, tag: string): void => {
+    void navigator.clipboard?.writeText(text).then(() => setCopiedTag(tag), () => setCopiedTag(''));
+    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopiedTag(''), COPY_RESET_MS);
   };
   const markUnread = (): void => {
     if (journalId === undefined) return;
@@ -293,12 +300,16 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'copy-id',
       label: t('Copy session ID', '复制会话 ID'),
-      onSelect: () => copyText(sessionId),
+      tail: copiedTag === 'id' ? <Check size={12} strokeWidth={2.25} aria-hidden="true" /> : undefined,
+      keepOpen: true,
+      onSelect: () => copyText(sessionId, 'id'),
     },
     {
       id: 'copy-path',
       label: t('Copy path', '复制路径'),
-      onSelect: () => copyText(root ?? ''),
+      tail: copiedTag === 'path' ? <Check size={12} strokeWidth={2.25} aria-hidden="true" /> : undefined,
+      keepOpen: true,
+      onSelect: () => copyText(root ?? '', 'path'),
     },
   ];
   return (

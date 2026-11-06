@@ -605,9 +605,10 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               </div>
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
-                {g.zoomRow && q === '' && <ZoomRow />}
-                {g.fontRow && q === '' && <FontRow />}
-                {visible.map((fd) => {
+                {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['zoom' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                  if (fd === 'zoom') return <ZoomRow key="zoom" />;
+                  if (fd === 'font') return <FontRow key="font" />;
                   const row = rows[fd.key]!;
                   const desc = KEY_DESCRIPTIONS[fd.key];
                   return (
