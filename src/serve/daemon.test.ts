@@ -2353,7 +2353,7 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(user.skills, [{ id: 'solo', name: 'Solo', sourceDir: path.join(home, '.sunshinex', 'skills', 'solo') }], 'user 行带 sourceDir;project 无同名 → 零 shadowedBy');
       const projGroup = body.groups.find((g) => g.source === 'project')!;
       assert.equal(projGroup.project, 'proj', 'project 组归属=当前项目显示名(basename(root))');
-      assert.deepEqual(projGroup.skills, [{ id: 'alpha', name: 'Alpha', description: 'd' }]);
+      assert.deepEqual(projGroup.skills, [{ id: 'alpha', name: 'Alpha', description: 'd', sourceDir: path.join(proj, '.sunshinex', 'skills', 'alpha') }]);
       // 跨项目学习沉淀逐项目分组:归属=workspace.json 根 basename(缺档回退 slug);
       // learned 行带 createdMs(2026-10-31);scope=all 不附 body(仅常规视图 root 锚定组附)
       const learnedAll = body.groups.filter((g) => g.source === 'learned');
@@ -2377,7 +2377,7 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       const r = await fetch(`${base}/settings/skills`, { headers: AUTH });
       assert.equal(r.status, 200);
       const body = (await r.json()) as SkillsBody;
-      assert.deepEqual(body.groups, [{ source: 'user', skills: [{ id: 'solo', name: 'Solo' }] }], '无 root 只出 user 组;project/learned 目录纵在亦不出');
+      assert.deepEqual(body.groups, [{ source: 'user', skills: [{ id: 'solo', name: 'Solo', sourceDir: path.join(home, '.sunshinex', 'skills', 'solo') }] }], '无 root 只出 user 组;project/learned 目录纵在亦不出(行带 sourceDir,2026-11-07 加载开关落点键)');
     });
   });
 
