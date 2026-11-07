@@ -5,6 +5,7 @@ import { zoomScale } from '../../ui-zoom';
 import type { Connection } from '../../connection';
 import { applyChatEvent } from '../../chat-reducer';
 import type { ChatEntry, ChatState } from '../../chat-reducer';
+import { notifyGitChanged } from './use-live-changes';
 
 /** 轮次折叠簇(D32 第六批批F-5 自 Chat.tsx 平移,行为零变化):collapsedRuns/G14.136 段内中间
  *  正文折叠 hiddenKeys/G14.48 展开折叠防闪动校正/entry 面回调稳定化(G14.211)。 */
@@ -178,7 +179,7 @@ const onEntryToggleClick = useCallback((e: ReactMouseEvent<HTMLDivElement>): voi
  *  全量 entry 重渲染——点一次文件=整列表闪帧(正文抖动源之一) */
 const onEntryOpenDiff = useCallback((p: string): void => { onOpenDiff?.('', p); }, [onOpenDiff]);
 const onEntryRestore = useCallback((p: string): void => {
-  conn.restoreChange(sessionId, p).catch(() => {
+  conn.restoreChange(sessionId, p).then(notifyGitChanged, () => {
     setChat((c) => applyChatEvent(c, { type: 'error', text: t('Revert failed', '撤销失败'), ts: Date.now() }));
   });
 }, [conn, sessionId]);

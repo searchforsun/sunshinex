@@ -6,6 +6,8 @@ import { FileIcon } from '../file-icon';
 import { t } from '../i18n';
 import type { Connection } from '../connection';
 import type { TabParams } from './tab-state';
+import { ChangeStat, changeCounts } from '../change-stat';
+import { GIT_CHANGED_EVENT, notifyGitChanged } from '../pages/chat/use-live-changes';
 
 /**
  * G14.99 Diff 标签终态:工作区未提交变动目录(未暂存视图)——
@@ -30,6 +32,8 @@ interface ChangeFile {
   status: string;
   added: number | null;
   deleted: number | null;
+  /** 新建(untracked)文件内容行数:numstat 不覆盖,作增加行数 */
+  newLines?: number;
 }
 
 /** 目录后缀拆分(名称+所在目录,与文件面板同构) */
@@ -78,6 +82,11 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
   useEffect(() => {
     refresh();
   }, [refresh]);
+  // 轮尾条撤销等 git 变动广播 → 审查面同步重拉(两面同源对齐)
+  useEffect(() => {
+    window.addEventListener(GIT_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(GIT_CHANGED_EVENT, refresh);
+  }, [refresh]);
 
   const fetchContent = useCallback((p: string): void => {
     if (loadingPath !== null || contents[p] !== undefined) return;
@@ -119,7 +128,7 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
           setCommitMsg('');
           setCommitOpen(false);
         }
-        refresh(); // 成功后刷新审查面(commit 清变动列表;push 同步远端态)
+        notifyGitChanged(); // 成功后广播:审查面(本面监听)与各轮尾条同步重拉(commit 清变动列表;push 同步远端态)
       },
       (err: unknown) => {
         setBusy(null);
@@ -221,14 +230,7 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
                 </button>
                 <span className="sx-change-dir">{dir}</span>
                 <span className="sx-change-stat">
-                  {f.added === null ? (
-                    <span className="sx-change-new">{t('new', '新建')}</span>
-                  ) : (
-                    <>
-                      <span className="sx-change-add">{`+${f.added}`}</span>
-                      <span className="sx-change-del">{`-${f.deleted}`}</span>
-                    </>
-                  )}
+                  <ChangeStat {...changeCounts(f)} />
                 </span>
                 <span className="sx-change-toggle" aria-hidden="true">
                   {open ? <ChevronUp size={13} strokeWidth={1.75} /> : <ChevronDown size={13} strokeWidth={1.75} />}

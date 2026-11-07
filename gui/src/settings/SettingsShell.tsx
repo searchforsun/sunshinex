@@ -125,10 +125,15 @@ export interface SettingsShellProps {
   readonly root: string;
   /** 「← 返回」/Esc:回会话态(App 侧关设置态) */
   readonly onBack: () => void;
+  /** 指定落点面板(托盘「快捷键」直达):对象身份变化即切换,缺省=「通用」 */
+  readonly requestedPane?: { readonly id: string };
 }
 
-export function SettingsShell({ conn, root, onBack }: SettingsShellProps): JSX.Element {
-  const [activePane, setActivePane] = useState(SETTINGS_NAV[0]!.id); // 默认「通用」
+export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShellProps): JSX.Element {
+  const [activePane, setActivePane] = useState(requestedPane?.id ?? SETTINGS_NAV[0]!.id); // 默认「通用」
+  useEffect(() => {
+    if (requestedPane !== undefined) setActivePane(requestedPane.id);
+  }, [requestedPane]);
   /** G14.213 语言切换 tick:SettingsForm 语言键保存 → onLanguageChanged → 本壳重渲染
    *  (t 非响应式——导航/分组/壳头等本组件的 t() 面不 tick 不翻面) */
   const [, setLangTick] = useState(0);

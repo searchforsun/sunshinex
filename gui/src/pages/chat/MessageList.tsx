@@ -382,7 +382,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         <ChatRail entries={visible} chatScrollRef={chatScrollRef} sideChat={sideChat} />
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
-            <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : t('Give sunshinex a task', '给 sunshinex 一个任务')}</div>
+            <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : t('Give Sunshinex a task', '给 Sunshinex 一个任务')}</div>
             <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}

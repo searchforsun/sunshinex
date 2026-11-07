@@ -6,7 +6,8 @@ import { resolveDaemonPaths } from './lib/paths';
 import { clampSize, lockedDragBounds } from './lib/window-drag';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
-import { resolveUiLang, resolveUiLangFromSetting, shouldHideOnClose, trayMenu, type UiLang } from './lib/lifecycle';
+import { pickTrayRecents, resolveUiLang, resolveUiLangFromSetting, SHOW_ACCELERATOR, shouldHideOnClose, trayMenu, untitledSession } from './lib/lifecycle';
+import type { TrayAction, TrayRecent, UiLang } from './lib/lifecycle';
 import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
 import { PRODUCT_LOGO_DATA_URL } from './lib/product-logo';
 import { startDaemon } from './daemon';
@@ -87,6 +88,41 @@ const runQuit = (): void => {
 };
 
 /** 破窗守卫版唤起（H1 已知跟进清偿；T3 快捷键复用同函数）：窗不在/已毁 → 日志一行返回；否则 show+focus */
+/** 托盘最近会话:/workspaces 枚举工作区 → 各 /sessions?root= 并发拉取,跨工作区按活跃度取前 5
+ *  (/sessions/recent 只含默认工作区,托盘要全部项目)。回环直连 daemon,1.5s 有界——拉取失败/超时
+ *  整组省略,菜单其余两组照常弹出 */
+async function fetchTrayRecents(lang: UiLang): Promise<TrayRecent[]> {
+  if (daemon === undefined) return [];
+  const base = `http://${LOOPBACK}:${daemon.port}`;
+  const headers = { authorization: `Bearer ${daemon.token}` };
+  const signal = AbortSignal.timeout(1500);
+  const get = async <T>(p: string): Promise<T> => {
+    const r = await fetch(base + p, { headers, signal });
+    if (!r.ok) throw new Error(`${p} ${r.status}`);
+    return (await r.json()) as T;
+  };
+  try {
+    const workspaces = await get<Array<{ root?: string }>>('/workspaces');
+    const roots = workspaces.flatMap((w) => (typeof w.root === 'string' && w.root !== '' ? [w.root] : []));
+    const lists = await Promise.allSettled(
+      roots.map(async (root) => {
+        const rows = await get<Array<{ id: string; updatedAt: number; title?: string; firstUser?: string }>>(`/sessions?root=${encodeURIComponent(root)}`);
+        return rows.map((r): TrayRecent => ({ journalId: r.id, root, updatedAt: r.updatedAt, label: r.title ?? r.firstUser ?? untitledSession(lang) }));
+      }),
+    );
+    return pickTrayRecents(lists.flatMap((x) => (x.status === 'fulfilled' ? x.value : [])));
+  } catch (err) {
+    console.error('[shell] tray recents fetch failed:', err);
+    return [];
+  }
+}
+
+/** 托盘动作下发渲染层(先唤主窗,再由 GUI 导航:开会话/新对话/设置/快捷键) */
+function sendTrayAction(action: TrayAction): void {
+  focusMainWindow();
+  if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('tray:action', action);
+}
+
 function focusMainWindow(): void {
   if (mainWindow === undefined || mainWindow.isDestroyed()) {
     console.error('[shell] main window unavailable — cannot focus');
@@ -459,7 +495,7 @@ if (!app.requestSingleInstanceLock()) {
 
     // 全局快捷键（H2-T3）：Alt+Shift+S 唤主窗——与 second-instance/托盘共用破窗守卫版
     // focusMainWindow；注册失败（快捷键被占/权限拒）仅记一行日志不炸，缺席不阻启动主流程。
-    if (!globalShortcut.register('Alt+Shift+S', focusMainWindow)) {
+    if (!globalShortcut.register(SHOW_ACCELERATOR, focusMainWindow)) {
       console.error('[shell] global shortcut Alt+Shift+S registration failed');
     }
 
@@ -471,14 +507,24 @@ if (!app.requestSingleInstanceLock()) {
     appTray.setToolTip('Sunshinex');
     appTray.on('click', () => focusMainWindow());
     // 右键即取当前语言重建菜单(设置页改语言 reloadSettingsChain 刷 SUNSHINEX_LANGUAGE 槽,无需重启)
+    // 最近会话每次右键现拉(活跃度随时在变);在途时再右键不叠拉
+    let trayPending = false;
     appTray.on('right-click', () => {
-      const popup = Menu.buildFromTemplate(
-        trayMenu(trayLang()).map((item) => ({
-          label: item.label,
-          click: item.id === 'show' ? focusMainWindow : runQuit,
-        })),
-      );
-      appTray.popUpContextMenu(popup);
+      if (trayPending) return;
+      trayPending = true;
+      const lang = trayLang();
+      void fetchTrayRecents(lang).then((recents) => {
+        trayPending = false;
+        const popup = Menu.buildFromTemplate(
+          trayMenu(lang, recents).map((item): Electron.MenuItemConstructorOptions => {
+            if (item.type === 'separator') return { type: 'separator' };
+            if (item.type === 'show') return { label: item.label, accelerator: item.accelerator, registerAccelerator: false, click: focusMainWindow };
+            if (item.type === 'quit') return { label: item.label, click: runQuit };
+            return { label: item.label, click: () => sendTrayAction(item.action) };
+          }),
+        );
+        appTray.popUpContextMenu(popup);
+      });
     });
 
     // smoke 分支（T4 冒烟门禁）：就绪信号 = did-finish-load（页面加载完成——渲染器起+静态资源服务通，

@@ -15,6 +15,7 @@ import { FileIcon } from '../../file-icon';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import { TipButton } from './RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
+import { PENDING_IMAGE_SRC } from './stream-md';
 
 /** md 渲染插件单点(2026-10-25 用户报障「数学公式没有渲染」+「特殊显示未渲染」):
  *  remark:gfm+math;rehype:raw(行内 HTML 如 <u>)+mark(==高亮==,自写文本切分;~下标~^上标^与 GFM 单波浪删除线语法冲突,不收录)+
@@ -138,19 +139,23 @@ export const MdImageContext = createContext<((p: string) => Promise<{ type?: str
 
 /** 解析结果按 loader 身份分桶缓存(WeakMap):同一会话同路径只读一次,conn/session 切换自然换桶 */
 const mdImageCache = new WeakMap<object, Map<string, Promise<string | null>>>();
+/** 已落定结果同步镜像:流式尾块晋升头块会重挂 MdImage,首帧即取落定 dataURL——不闪占位 */
+const mdImageResolved = new WeakMap<object, Map<string, string | null>>();
 
 /** 正文 md 图片件:合理尺寸上限(md-image)+点击开灯箱预览;解析失败回落文件 chip 形态 */
 export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; onOpenFile?: (p: string) => void }): JSX.Element {
   const loader = useContext(MdImageContext);
-  const [durl, setDurl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [lightbox, setLightbox] = useState<string | undefined>(undefined);
+  const pending = src === PENDING_IMAGE_SRC;
   const isDirect = /^(https?:|\/\/|data:)/i.test(src);
   // 工作区路径与 Files 页同一归一口径(ui-util.normRel 单点):/docs/a.png·./docs/a.png 不再 404 落 chip;
   // 百分号编码同段还原(中文图片名 md 图链同样被 CommonMark 编码)
   const path = normRel(safeDecodeHref(src.replace(/^file:\/\//i, '')));
+  const settled = loader !== null ? mdImageResolved.get(loader)?.get(path) : undefined;
+  const [durl, setDurl] = useState<string | null>(settled ?? null);
+  const [failed, setFailed] = useState(settled === null);
+  const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (isDirect || loader === null) return;
+    if (pending || isDirect || loader === null) return;
     let cache = mdImageCache.get(loader);
     if (cache === undefined) {
       cache = new Map();
@@ -158,10 +163,17 @@ export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; on
     }
     let hit = cache.get(path);
     if (hit === undefined) {
-      hit = loader(path).then(
-        (f) => (f.type === 'image' && f.mime !== undefined && f.data !== undefined ? `data:${f.mime};base64,${f.data}` : null),
-        () => null,
-      );
+      const resolved = mdImageResolved.get(loader) ?? new Map<string, string | null>();
+      mdImageResolved.set(loader, resolved);
+      hit = loader(path)
+        .then(
+          (f) => (f.type === 'image' && f.mime !== undefined && f.data !== undefined ? `data:${f.mime};base64,${f.data}` : null),
+          () => null,
+        )
+        .then((d) => {
+          resolved.set(path, d);
+          return d;
+        });
       cache.set(path, hit);
     }
     let alive = true;
@@ -173,7 +185,8 @@ export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; on
     return () => {
       alive = false;
     };
-  }, [path, loader, isDirect]);
+  }, [path, loader, isDirect, pending]);
+  if (pending) return <span className="md-image-loading" aria-label={alt} />;
   if (isDirect) {
     return (
       <img

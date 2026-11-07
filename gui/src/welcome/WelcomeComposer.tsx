@@ -344,7 +344,7 @@ export function WelcomeComposer({
           }}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
-          placeholder={t('Describe the goal and press Enter. Use @ to add context, / for commands or skills', '描述目标回车开始，使用 @ 添加上下文，使用 / 选择命令或技能')}
+          placeholder={t('Ask Sunshinex. Use @ to add context, / for commands or skills', '向 Sunshinex 提问，使用 @ 添加上下文，使用 / 选择命令或技能')}
           onChange={(v) => {
             setGoal(v);
             setWelcomeSlashDismissed(null); // G14.213 Esc 收起后任何编辑即重新放行 / 面板

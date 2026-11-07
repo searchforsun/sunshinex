@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { TrayAction } from './lib/lifecycle';
 
 /** 窗控桥(2026-10-23 用户裁定:−□× 自绘为应用按钮样式,撤原生 WCO 方块)——
  *  渲染层经 window.sunshinexWindow 调主进程窗控;maximized 态变化推送给渲染层换 □/restore 字形。
@@ -53,6 +54,12 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     const handler = (_: unknown, id: number): void => cb(id);
     ipcRenderer.on('builtin:activate-webcontents', handler);
     return () => void ipcRenderer.removeListener('builtin:activate-webcontents', handler);
+  },
+  /** 托盘菜单动作(2026-11-07 用户裁定三组菜单):开最近会话/新对话/设置/快捷键,主进程已唤窗 */
+  onTrayAction: (cb: (action: TrayAction) => void): (() => void) => {
+    const handler = (_: unknown, action: TrayAction): void => cb(action);
+    ipcRenderer.on('tray:action', handler);
+    return () => void ipcRenderer.removeListener('tray:action', handler);
   },
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);

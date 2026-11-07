@@ -214,6 +214,8 @@ function AppShell(): JSX.Element {
    *  上下文(开设置时快照 openRoot,无则 ''=仅全局;无顶部切换面——项目区分下沉到配置项徽标,
    *  项目级行以此为写回锚) */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 设置落点面板请求(托盘「快捷键」直达;关设置即清,侧栏再开仍落「通用」) */
+  const [settingsPane, setSettingsPane] = useState<{ readonly id: string } | undefined>(undefined);
   const [settingsRoot, setSettingsRoot] = useState('');
   /** 三栏壳根(拖宽期挂 .sx-dragging:iframe 指针事件让位——web 标签内容会吞 window mousemove,
    *  光标进入 iframe 即拖拽冻结) */
@@ -637,6 +639,7 @@ function AppShell(): JSX.Element {
    *  重播种),welcome 则回欢迎空态;关壳即 bump settingsEpoch 重读 agentTeams(表单 autosave 已落) */
   const closeSettings = useCallback((): void => {
     setSettingsOpen(false);
+    setSettingsPane(undefined);
     setSettingsEpoch((v) => v + 1);
   }, []);
 
@@ -711,6 +714,34 @@ function AppShell(): JSX.Element {
       setTabStates((s) => openTab(ensureSession(s, seat, PROBE), seat, 'web', { url }, PROBE));
     });
   }, []);
+  /** 托盘菜单动作(壳 tray:action,2026-11-07 用户裁定三组菜单):主进程已唤窗,此处只导航——
+   *  最近会话走 attach 两步(同侧栏:newSession 装壳 → attach 播种 → openSession)/新对话/设置/
+   *  设置·快捷键面。监听挂一次,经 ref 取最新闭包 */
+  const trayActionRef = useRef<(a: SxTrayAction) => void>(() => undefined);
+  trayActionRef.current = (a) => {
+    closeMenuDrawer();
+    if (a.kind === 'settings' || a.kind === 'shortcuts') {
+      if (a.kind === 'shortcuts') setSettingsPane({ id: 'shortcuts' });
+      if (!settingsOpen) openSettings();
+      return;
+    }
+    if (settingsOpen) closeSettings();
+    if (a.kind === 'new-chat') {
+      setComposePresetRoot(null);
+      setPage('welcome');
+      recordNav({ k: 'welcome' });
+      return;
+    }
+    if (connInstance === null) return;
+    connInstance
+      .newSession(a.root)
+      .then(({ sessionId }) => connInstance.attach(sessionId, a.journalId))
+      .then(
+        (r) => openSession(r.sessionId, a.root, a.journalId),
+        (err: unknown) => console.error('[tray] open session failed:', err),
+      );
+  };
+  useEffect(() => window.sunshinexWindow?.onTrayAction?.((a) => trayActionRef.current(a)), []);
   /** agents 页签 id=智能体团队页签(卡片流;tab 持久化档兼容保留旧 id);agentTeams 关闭时不挂载 */
   const openBoardTab = useCallback((): void => {
     if (!agentTeamsOn) return;
@@ -1190,7 +1221,7 @@ function AppShell(): JSX.Element {
       {settingsOpen && connInstance !== null ? (
         /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
            Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
-        <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} />
+        <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} requestedPane={settingsPane} />
       ) : (
         <>
           {/* 左栏:项目分组(Home 职能内化;装配中占位)。关闭态不渲染(顶栏 logo 呼出);

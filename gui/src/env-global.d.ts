@@ -5,6 +5,13 @@ declare module '*?worker' {
 }
 
 /** 桌面壳桥（D33 单点声明：shell main 经 contextBridge 注入；浏览器态缺席） */
+/** 托盘动作(形状与 shell/src/lib/lifecycle.ts TrayAction 逐字对齐) */
+type SxTrayAction =
+  | { kind: 'open-session'; root: string; journalId: string }
+  | { kind: 'new-chat' }
+  | { kind: 'settings' }
+  | { kind: 'shortcuts' };
+
 interface Window {
   sunshinex?: {
     pickFolder?: () => Promise<string | null>;
@@ -41,6 +48,8 @@ interface Window {
     onCloseWebContents?: (cb: (id: number) => void) => () => void;
     onCloseWebContents?: (cb: (webContentsId: number) => void) => () => void;
     onMaximizedChange: (cb: (maximized: boolean) => void) => () => void;
+    /** 托盘菜单动作(2026-11-07 三组菜单;主进程已唤窗,GUI 负责导航);旧壳缺席 ?. 跳过 */
+    onTrayAction?: (cb: (action: SxTrayAction) => void) => () => void;
   };
   /** 开机画面收尾（index.html 内联控制脚本定义；reload 跳过演时已 remove——可选调用静默无副作用） */
   __sxBootDone?: () => void;

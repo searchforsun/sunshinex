@@ -79,6 +79,11 @@ export function workDirLine(root: string): string {
 export const FILE_PATH_LINE =
   'When referencing a file in your reply, always output a Markdown link with the file name as the link text: for files inside the project workspace use a target relative to the project root with a leading ./ (for example [file.tsx](./src/file.tsx)); for files outside the workspace use the absolute path as the target (for example [notes.txt](D:/data/notes.txt)). The UI renders such links as clickable file references.';
 
+/** 图片位置行（2026-11-07 用户裁定「正文图片放最后」，软约束）：正文内嵌图片统一置于回复末尾、文字之后——
+ *  行文不被图片打断；GUI 正文图片按半宽渲染（md-render），路径口径同文件链接行 */
+export const IMAGE_PLACEMENT_LINE =
+  'When showing images in your reply with Markdown image syntax (![alt](path)), place them together at the end of the reply, after all the text, using the same path rules as file links; do not insert images between paragraphs.';
+
 /** 稳定段拼装纯函数（P7 统一入口：观测面出执行器命名空间）：身份/输出约定/工具政策/工作目录——
  *  逐字节冻结（唯一例外：workDirLine 随活动根，会话级环境事实、仅 worktree 进出时翻转——进出即合法
  *  前缀重写点，其余相邻帧「逐字节前缀稳定」不变量维持）。Reactor.stableSegment 与 Harness.stableSegment
@@ -106,5 +111,6 @@ export function stableSegmentOf(opts: {
     TEAMS_INSTALL_LINE,
     workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
     FILE_PATH_LINE,
+    IMAGE_PLACEMENT_LINE,
   ].join('\n');
 }

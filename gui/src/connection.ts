@@ -95,7 +95,7 @@ export interface Connection {
    *  sessionId=在座会话 id(daemon 重启后缺席,页签恢复仅限同 daemon 生命周期) */
   sessionSides(id: string): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>>;
   /** G14.99 工作区未提交变动面（Diff 标签数据源） */
-  sessionChanges(id: string): Promise<{ branch: string; files: Array<{ path: string; status: string; added: number | null; deleted: number | null }> }>;
+  sessionChanges(id: string): Promise<{ branch: string; files: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }> }>;
   /** G14.112 目录树 git 状态映射(含 ignored 目录折叠):path → modified/untracked/deleted/renamed/ignored */
   gitStatus(id: string): Promise<{ branch: string; map: Record<string, string> }>;
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */

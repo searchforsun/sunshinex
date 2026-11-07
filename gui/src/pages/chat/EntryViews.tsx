@@ -21,7 +21,7 @@ import { stripSideNote } from './side-note';
 import type { ComposerEnv } from './edit-composer';
 import { TurnConfirmDialog } from './rewind-confirm';
 import type { RewindOps } from './chat-types';
-import { hasUnclosedFence, streamMdCut } from './stream-md';
+import { hasUnclosedFence, sealPartialImage, streamMdCut } from './stream-md';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
  *  回退菜单/折叠气泡)/系统行(含旁白着色)与单条渲染单元。memo 语义与 DOM 逐字节不变;md 渲染
@@ -601,7 +601,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   if (streaming && accent === null) {
     const cut = streamMdCut(entry.md);
     headMd = cut.head;
-    tailMd = cut.tail;
+    tailMd = sealPartialImage(cut.tail); // 半截图片语法 → 占位图,不外露 md 原文
   }
   const mermaidDraft = streaming && hasUnclosedFence(tailMd);
   const mdcTail = useMemo(

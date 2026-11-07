@@ -41,3 +41,25 @@ export function streamMdCut(md: string): { head: string; tail: string } {
   }
   return { head: '', tail: md };
 }
+
+/** 在途图片占位 src(MdImage 识别为「语法未写完」→ 占位框,不触发读文件) */
+export const PENDING_IMAGE_SRC = 'sx-pending-image:';
+
+/** 尾部未写完的图片语法(`![alt`/`![alt](路径` 截至文末,不跨行) */
+const PARTIAL_IMAGE_TAIL = /!\[([^\]\n]*)(\](\([^)\n]*)?)?$/;
+
+/** 流式尾块图片语法收口(2026-11-07 用户报障「正文图片中间出现 md 链接原文」):`![alt](路径` 未闭合
+ *  期间 CommonMark 不认图片,原文逐字外露——替换为占位图(alt 已写完则保留);末字符单个 `!` 可能
+ *  是图片起笔,先藏一帧。未闭合围栏内/行内反引号内的文本是代码,原样保留 */
+export function sealPartialImage(tail: string): string {
+  if (hasUnclosedFence(tail)) return tail;
+  const lineStart = tail.lastIndexOf('\n') + 1;
+  const inInlineCode = (at: number): boolean => ((tail.slice(lineStart, at).match(/`/g) ?? []).length % 2) === 1;
+  const m = PARTIAL_IMAGE_TAIL.exec(tail);
+  if (m !== null && !inInlineCode(m.index)) {
+    const alt = m[2] !== undefined ? m[1]! : '';
+    return `${tail.slice(0, m.index)}![${alt}](${PENDING_IMAGE_SRC})`;
+  }
+  if (tail.endsWith('!') && !inInlineCode(tail.length - 1)) return tail.slice(0, -1);
+  return tail;
+}

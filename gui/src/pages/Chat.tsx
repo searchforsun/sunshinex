@@ -57,6 +57,7 @@ import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
 import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
+import { LiveChangesContext, useLiveGitChanges } from './chat/use-live-changes';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
 export type { ChatSink, ChatProps } from './chat/chat-types';
@@ -400,6 +401,15 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const running = chat.status === 'running' || commandRunning;
   /** run-live 行/顶部运行态只认真实 run(2026-10-31 用户裁定「步数 tokens 行是普通对话用的,命令期不显」)——命令期 composer 侧运行态走 commandRunning */
   const runLive = chat.status === 'running';
+  /** 轮尾改动条动态渲染(2026-11-07):本会话当前 git 变动(审查页同源),各轮条取交集显示;
+   *  有轮改动记录才拉,run 收尾/回焦/广播/10s 可见轮询刷新(use-live-changes) */
+  const hasRunChanges = chat.entries.some((en) => en.changes !== undefined && en.changes.length > 0);
+  const liveChanges = useLiveGitChanges(
+    typeof conn.sessionChanges === 'function' ? () => conn.sessionChanges(sessionId) : undefined,
+    sessionId,
+    running,
+    hasRunChanges,
+  );
   /** 浏览器导航跟随(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
    *  工具条落条即上抛目标 url 开 web 页签;lastNavRef 免对同一条目逐帧重开 */
   const lastNavRef = useRef('');
@@ -774,6 +784,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   return (
     <DirResolverContext.Provider value={isDirRef}>
       <MdImageContext.Provider value={mdImageLoader}>
+      <LiveChangesContext.Provider value={liveChanges}>
 
       <ChatTopbar
         fixedTitle={fixedTitle}
@@ -984,7 +995,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         }
         value={input}
         rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
-        placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : sideChat === true ? t('Ask something…', '问点什么…') : t('Give sunshinex a task…', '给 sunshinex 一个任务…')}
+        placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : sideChat === true ? t('Ask something…', '问点什么…') : t('Give Sunshinex a task…', '给 Sunshinex 一个任务…')}
         disabled={connState !== 'open' || seeding}
         onChange={(v) => {
           setInput(v);
@@ -1174,6 +1185,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         }
       </div>
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
+      </LiveChangesContext.Provider>
     </MdImageContext.Provider>
     </DirResolverContext.Provider>
   );

@@ -19,6 +19,7 @@ import { Chat } from '../Chat';
 import { ImageLightbox } from '../../ImageLightbox';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { ToolEntryView } from './ToolEntry';
+import { ChatEntryView } from './EntryViews';
 import type { ChatEntry } from '../../chat-reducer';
 import type { ChatSink } from './chat-types';
 import type { Connection } from '../../connection';
@@ -274,5 +275,19 @@ describe('工具行结果图片(2026-10-26 插件体系图片通道:条目 image
     delete e.images;
     render(<ToolEntryView entry={e} conn={{} as unknown as Connection} sessionId="s1" />);
     expect(document.querySelector('.tool-images')).toBeNull();
+  });
+});
+
+describe('正文图片流式(2026-11-07 用户报障「中间出现 md 链接原文」)', () => {
+  it('在途半截 ![alt](路径 → 占位框,不外露原文;闭合后成图', async () => {
+    const entry: ChatEntry = { key: 'a1', kind: 'assistant', md: '截图如下:\n\n![桌面截图](C:\Users\a\sh', streaming: true };
+    const r = render(<ChatEntryView entry={entry} />);
+    const body = document.querySelector('.entry-assistant')!;
+    expect(body.textContent).not.toContain('![');
+    expect(body.textContent).not.toContain('C:\Users');
+    expect(body.querySelector('.md-image-loading')).not.toBeNull();
+    r.rerender(<ChatEntryView entry={{ ...entry, md: '截图如下:\n\n![桌面截图](https://example.com/x.png)', streaming: false }} />);
+    await waitFor(() => expect(document.querySelector('.entry-assistant .md-image')?.getAttribute('src')).toBe('https://example.com/x.png'));
+    expect(document.querySelector('.entry-assistant .md-image-loading')).toBeNull();
   });
 });

@@ -7,6 +7,8 @@ import { messageTimeMs } from '../../ui-util';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { FileIcon } from '../../file-icon';
+import { ChangeStat, changeCounts } from '../../change-stat';
+import { useLiveChanges, visibleRunChanges } from './use-live-changes';
 
 /** run 尾部操作条与变更汇总（D32 批C-1 拆分自 Chat.tsx）：Worked for 时长/复制/分叉钮与
  *  本轮改动文件变更条——纯渲染件，props 注入。行为零变化（Chat.test 为锚）。
@@ -40,6 +42,7 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
 }
 
 /** G14.100 轮尾变动汇总条(对标 Codex):「N 个文件已更改 +X -Y」折叠条+右侧撤销(整轮);
+ *  2026-11-07 动态渲染:只列本轮记录且当前 git 仍有变动的文件,行数取当前 git 值(use-live-changes);
  *  展开逐文件(图标+名称+目录+±+行尾撤销);点击文件名 → 侧栏 diff 标签自动展开对应项;
  *  撤销 = restore 回 HEAD(本轮新建 → 删除),已撤销项本地隐藏 */
 export function RunChangesBar({
@@ -50,16 +53,19 @@ export function RunChangesBar({
   changes: ReadonlyArray<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
   onOpenDiff?: (path: string) => void;
   onRestore?: (path: string) => void;
-}): JSX.Element {
+}): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
-  const visible = changes.filter((c) => !restored.has(c.path));
-  const add = visible.reduce((n, c) => n + (c.added ?? (c as { newLines?: number }).newLines ?? 0), 0);
-  const del = visible.reduce((n, c) => n + (c.deleted ?? 0), 0);
+  // 动态渲染:本轮记录 ∩ 当前 git 变动(行数=当前 git 值,与审查页一致);已提交/已撤销的退场
+  const live = useLiveChanges();
+  const visible = visibleRunChanges(changes, live).filter((c) => !restored.has(c.path));
+  const add = visible.reduce((n, c) => n + changeCounts(c).add, 0);
+  const del = visible.reduce((n, c) => n + changeCounts(c).del, 0);
   const restore = (path: string): void => {
     onRestore?.(path);
     setRestored((s) => new Set(s).add(path));
   };
+  if (visible.length === 0) return null;
   return (
     <div className="run-changes" aria-label={t('run changes', '本轮改动')}>
       <div className="run-changes-head">
@@ -69,8 +75,7 @@ export function RunChangesBar({
             {t(`${visible.length} files changed`, `${visible.length} 个文件已更改`)}
           </span>
           <span className="run-changes-stat">
-            {add > 0 && <span className="sx-change-add">{`+${add}`}</span>}
-            {del > 0 && <span className="sx-change-del">{`-${del}`}</span>}
+            <ChangeStat add={add} del={del} />
           </span>
         </button>
         <button
@@ -96,9 +101,7 @@ export function RunChangesBar({
                 </button>
                 <span className="run-changes-dir">{dir}</span>
                 <span className="run-changes-stat">
-                  {c.added !== null && c.added > 0 && <span className="sx-change-add">{`+${c.added}`}</span>}
-                  {c.deleted !== null && c.deleted > 0 && <span className="sx-change-del">{`-${c.deleted}`}</span>}
-                  {c.added === null && c.newLines !== undefined && c.newLines > 0 && <span className="sx-change-add">{`+${c.newLines}`}</span>}
+                  <ChangeStat {...changeCounts(c)} />
                 </span>
                 <button type="button" className="run-changes-undo-row" data-tip={t('Revert this file', '撤销此文件')} onClick={() => restore(c.path)}>
                   {t('Undo', '撤销')}
