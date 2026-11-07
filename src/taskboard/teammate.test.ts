@@ -573,7 +573,7 @@ test('任务闭合行(2026-11-02):取消/完成收口后 own chain 追终态说�
     assert.ok(okB, `B 照常完成; A=${rig.board.snapshot().tasks[idA]?.status} B=${rig.board.snapshot().tasks[idB]?.status} chats=${model.chats.length} events=${rig.events.filter((e) => e.type === 'task-status-changed' || e.type.startsWith('delegation')).map((e) => `${e.type}:${JSON.stringify(e.payload)}`).join(' | ')}`);
     assert.ok(model.chats.length >= 2, 'B 发起过 chat');
     const seedB = model.chats[1]!;
-    assert.ok(seedB.includes(`Task ${idA} was cancelled (stopped by user/lead) — it is closed; do not perform, resume or report it`), `B 的种子含 A 的取消闭合行:${seedB}`);
+    assert.ok(seedB.includes(`Task ${idA} was cancelled (stopped by user/leader) — it is closed; do not perform, resume or report it`), `B 的种子含 A 的取消闭合行:${seedB}`);
     assert.match(seedB, new RegExp(`Task ${idB}: Readme`));
     // 闭合行位于 A 指令行之后、B 指令行之前(链序=时间序)
     assert.ok(seedB.indexOf(`Task ${idA}: Spec doc`) < seedB.indexOf(`Task ${idA} was cancelled`), '闭合行在 A 指令之后');
