@@ -2854,8 +2854,11 @@ input.sx-setting-input { width: 100%; }
    撤框靠面底区分(2026-11-07 用户裁定「边框高亮有毛刺,特殊背景色区分」同 3426 撤框轮三档
    阶梯 fg4%/hover7%/选中11%);剪影色值走卡内 --pv-* 局部变量(SettingsForm 由配色表直落),
    不受当前生效配色影响——每张即该配色的真实缩影 */
-.sx-palette-row.sx-setting-row { flex-direction: column; gap: 8px; }
+.sx-palette-row.sx-setting-row { flex-direction: column; gap: 8px; container-type: inline-size; } /* 容器查询锚:卡列数随行宽(设置面/窄侧栏)自适应 */
 .sx-palette-ctl { width: 100%; max-width: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+/* 2026-11-07 用户裁定「过窄改两行两列(无单列档),参考字体预设换行时机」:≥555 一行四张
+   (设置面容器最大~584,每张≥139);<554 两行两列(窄侧栏实测 402→2×2,剪影不压扁) */
+@container (max-width: 554px) { .sx-palette-ctl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sx-palette-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 6px 6px 9px; text-align: left; border: none; border-radius: var(--radius-md); cursor: pointer; background: color-mix(in srgb, var(--fg) 4%, var(--surface-elevated)); }
 .sx-palette-card:hover:not(.active) { background: color-mix(in srgb, var(--fg) 7%, var(--surface-elevated)); }
 .sx-palette-card.active { background: color-mix(in srgb, var(--fg) 11%, var(--surface-elevated)); }
@@ -3606,6 +3609,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-setting-path-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); cursor: pointer; }
 .sx-setting-path-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-setting-path-btn:disabled { opacity: 0.4; cursor: default; }
+/* 运行中折叠开关(2026-11-07 用户裁定):Working 行同 Worked 行——可点、hover 显 chevron */
+.entry-run.live[role='button'] { cursor: pointer; }
+.entry-run.live:hover .run-chev, .entry-run.live:focus-visible .run-chev, .entry-run.live[aria-expanded='false'] .run-chev { opacity: 1; }
 
 /* 折叠态工具行幻影高度根修(2026-11-07 用户实测「工具行距比思考行大」):展开体 0fr 只压内容不压内边距,
    .tool-body-inner 顶距 10px 在收起态仍占位——每条工具行凭空高 10px。顶距只在展开态生效,随高度同步过渡 */
