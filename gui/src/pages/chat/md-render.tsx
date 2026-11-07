@@ -301,7 +301,7 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
 }
 
 export type MdComponentsOpts = {
-  /** 围栏未闭合:mermaid 流式 live 试渲(节流成图随流生长,半截语法保留上一帧/软源码) */
+  /** 围栏未闭合:mermaid 流式 live 试渲(节流成图随流生长,失败保留上一帧成图/无帧中性占位) */
   mermaidDraft?: boolean;
   /** 目录打开面(2026-10-30):目录芯片(isDir/尾斜杠)点它 → 左侧树定位展开/区外按打开方式外开 */
   onOpenDirectory?: (p: string) => void;

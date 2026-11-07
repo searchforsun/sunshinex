@@ -85,7 +85,7 @@ export function mermaidCacheClear(): void {
 
 /** live 成图帧暂存(2026-10-30 用户报障「输出完时闪现源码再显示 svg」):围栏闭合时块由尾块迁头块
  *  重挂载,state 随旧实例丢;单槽缓存只在「最后一次 live 恰渲全文」时命中,末 token 与闭合落在同一
- *  节流窗内(常态)则未渲全文→新实例初始态落回软源码,正式渲落定才换图=闪。帧表 src→svg(FIFO 上限
+ *  节流窗内(常态)则未渲全文→新实例初始态落回中性占位,正式渲落定才换图=零闪。帧表 src→svg(FIFO 上限
  *  16),新实例按「已渲 src 是 chart 前缀且不短于其半」取最长帧作占位,正式渲落定即替换——过渡期恒有图 */
 const liveFrames = new Map<string, string>();
 const LIVE_FRAMES_MAX = 16;
@@ -140,7 +140,7 @@ export function Mermaid({
 }: {
   chart: string;
   onStatus?: (ok: boolean, errorMsg?: string) => void;
-  /** 围栏未闭合:流式 live 试渲(节流),失败静默回落软源码 */
+  /** 围栏未闭合:流式 live 试渲(节流),失败保留上一帧成图(无帧则中性占位) */
   draft?: boolean;
 }): JSX.Element {
   const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentPalette().id, chart)) ?? liveFrameFor(chart)));
@@ -218,8 +218,8 @@ export function Mermaid({
   }, [chart, themeTick, draft]);
 
   /** 流式 live 试渲(draft 期):半截源码节流 mermaid.render——成功成图随流生长,失败保留上一成图
-   *  帧(无则软源码),零错误面。候选两级:全文优先(末行恰完整=零滞后),失败退掉末行再试(token 多停
-   *  行中,半截末行是最常见失败因;滞后 ≤1 行)。同源去重免重渲;不报 onStatus(草稿期动作钮本就
+   *  帧(无则中性占位),零错误面。候选逐行回退:全文优先(末行恰完整=零滞后),失败退掉末行再试,至
+   *  多退 LIVE_RETREAT_MAX_LINES 行(token 多行中,半截末行是最常见失败因)。同源去重免重渲;不报 onStatus(草稿期动作钮本就
    *  不挂)。全文成图单槽写缓存(旧槽即删,零污染):闭合时块由尾块迁头块重挂载,初始态命中缓存
    *  即零闪替换。
    *  状态机与 token 解耦(2026-10-30 用户报障「每次只渲染一段、不往下长」根修):首版以 chart 为

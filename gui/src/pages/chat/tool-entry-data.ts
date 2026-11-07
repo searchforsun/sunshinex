@@ -133,7 +133,7 @@ export function zhToolName(name: string): string {
  *  MCP 工具无固定主字段——入参整体压单行 JSON 摘要(与 exec 命令行同级的目标信息) */
 export function toolTargetOf(name: string, input: Record<string, unknown>): string | undefined {
   if (mcpToolParts(name) !== null) {
-    const shown = withoutPurpose(name, input);
+    const shown = withoutPurpose(input);
     const keys = Object.keys(shown);
     if (keys.length === 0) return undefined;
     const flat = JSON.stringify(shown);
