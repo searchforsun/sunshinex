@@ -6,6 +6,10 @@ import { t } from '../../i18n';
 
 /** 会话标题内存缓存(键=会话 id):重挂载首帧即显已知名,不等回读往返 */
 const titleCache = new Map<string, string>();
+/** 测试面：跨用例缓存复位（App.test 每例全新夹具，模块级缓存会跨例泄漏——见过的名按会话缓存语义只属真实连续挂载） */
+export function resetTitleCacheForTests(): void {
+  titleCache.clear();
+}
 
 /** 会话标题子系统(D32 第六批批F-6 自 Chat.tsx 平移,行为零变化):daemon 旁车 meta 单源
  *  (挂载 GET 回读/模型总结一次/rename 乐观落盘)。编辑态与草稿返还宿主(顶栏消费)。 */

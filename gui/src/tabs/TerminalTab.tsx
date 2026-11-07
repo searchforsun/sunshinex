@@ -179,7 +179,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
               const timer = setTimeout(() => {
                 ro.disconnect();
                 resolve(false);
-              }, 15000);
+                // 护栏 15s=真隐藏页签等切回布局;测试环境收短——jsdom 判据「无 RO」已失效(test-setup
+                // 为 React Flow 装了 observe 即回调 0 尺寸的桩),桩在场时只能靠护栏兜底,15s 等于把
+                // 降级面断言拖过 waitFor 超时
+              }, (import.meta as { env?: { MODE?: string } }).env?.MODE === 'test' ? 300 : 15_000);
               const watch = setInterval(() => {
                 if (cancelled) {
                   clearInterval(timer);

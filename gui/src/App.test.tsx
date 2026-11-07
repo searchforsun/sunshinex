@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { resetTitleCacheForTests } from './pages/chat/use-chat-title';
 // monaco 真渲染需要浏览器布局——jsdom 挂 stub(内容经 DiffPanel 根 data-* 断言)
 vi.mock('monaco-editor', () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
@@ -542,6 +543,7 @@ const pressEnter = (): void => {
 beforeEach(() => {
   localStorage.clear();
   h.created.length = 0;
+  resetTitleCacheForTests(); // 标题按会话缓存是模块级(2026-11-07 缓存面)——跨例复位防前例题名压住本例断言
 });
 
 describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
@@ -1825,6 +1827,35 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     unmount();
+  });
+
+  it('托盘动作(壳 onTrayAction,2026-11-07):快捷键 → 设置态直落快捷键面;新对话 → 关设置回欢迎页', async () => {
+    let fire: ((a: SxTrayAction) => void) | undefined;
+    const prev = window.sunshinexWindow;
+    window.sunshinexWindow = {
+      minimize: () => undefined,
+      toggleMaximize: () => undefined,
+      close: () => undefined,
+      onMaximizedChange: () => () => undefined,
+      onTrayAction: (cb) => {
+        fire = cb;
+        return () => (fire = undefined);
+      },
+    };
+    try {
+      const { unmount } = await enterChat();
+      act(() => fire!({ kind: 'shortcuts' }));
+      expect(await screen.findByLabelText('settings pane shortcuts')).toBeDefined();
+      act(() => fire!({ kind: 'new-chat' }));
+      await waitFor(() => expect(screen.getByLabelText('welcome')).toBeDefined());
+      expect(screen.queryByLabelText('settings pane shortcuts')).toBeNull();
+      // 关设置即清落点:侧栏再开设置仍落「通用」
+      openSettings();
+      expect(screen.queryByLabelText('settings pane shortcuts')).toBeNull();
+      unmount();
+    } finally {
+      window.sunshinexWindow = prev;
+    }
   });
 
   it('通用面板:分组卡行渲染+来源徽标类名+envOverride 禁编;自动保存(select 换项/text 失焦逐字段写回来源文件)+ toast + 重拉', async () => {

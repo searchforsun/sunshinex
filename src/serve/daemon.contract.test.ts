@@ -163,7 +163,10 @@ test('① 全链跨会话：s1 轮 run 事件流至 done → 新建 s2 二轮续
       const secondDone = s2Frames.findIndex((f) => f.e.type === 'done');
       assert.ok(secondDone > 0, 's2 轮含 done 终态');
       assert.ok(s2Frames.slice(0, secondDone + 1).every((f) => f.kind === 'event'), 's2 轮全帧恒 kind:"event"');
-      assert.equal(s2Frames[0].e.type, 'route', 's2 轮首帧 type 为 route（会话维事件面完整起步）');
+      // journal-minted 帧先于 route（2026-11-07 用户裁定「主动推送是基本能力」：会话创建即广播
+      // journalId 旁路帧——s2 在 WS 连接之后新建,铸造帧在连接在场窗口到达;s1 帧铸造早于连接故首帧仍 route）
+      assert.equal(s2Frames[0].e.type, 'journal-minted', 's2 轮首帧=创建即推的 journal-minted（主动推送面）');
+      assert.equal(s2Frames[1].e.type, 'route', 'journal-minted 后随 route（会话维事件面完整起步）');
       assert.ok(s2Frames[0].seq > s1MaxSeq, 's2 帧 seq 跨会话全局续接（daemon 级单调不回拨）');
       assert.equal(s2Frames[secondDone].e.text, 'two');
       await waitFor(() => ctx.daemon.get(s2)!.status() === 'idle', 3000);
