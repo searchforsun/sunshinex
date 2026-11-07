@@ -3620,3 +3620,29 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .tool-body-inner { transition: padding-top var(--dur-relaxed) var(--ease-enter); }
 /* 相邻思考行同工具行紧凑行距(段内 gap 16 → 6;原规则族漏了思考+思考,隐藏旁白不再切段后两行思考相邻即露出) */
 .chat .entry-thinking + .entry-thinking { margin-top: -10px; }
+
+/* ===== md 垂直节奏统一(2026-11-07 用户裁定三轮「真实空行=恒定一行,不得忽大忽小;只有标题
+   上边距追加;列表/表格内部自留呼吸」)===== */
+/* 正文:节奏单位=空一行 20px。所有块只设下外距——相邻外距合并(取大者)后任意块间恒为 20,
+   不再出现「段→列表 20 / 列表→段 14」式不均;标题上 38 为唯一追加位 */
+.entry p { margin: 0 0 var(--f-para-gap, 20px); }
+.entry ul, .entry ol { margin: 0 0 20px; }
+.entry .table-wrap { margin: 0 0 20px; }
+.entry .table-wrap table { margin: 0; } /* 裸表旧规则不进容器(容器内零外距,外距由容器承担) */
+.entry .code-block { margin: 0 0 20px; }
+.entry pre { margin: 0 0 20px; }
+.entry blockquote { margin: 0 0 20px; }
+.entry hr { margin: 0 0 20px; }
+.entry h1, .entry h2, .entry h3, .entry h4, .entry h5, .entry h6 { margin: 38px 0 20px; }
+.entry-md-body > h1:first-child, .entry-md-body > h2:first-child, .entry-md-body > h3:first-child,
+.entry-md-body > h4:first-child, .entry-md-body > h5:first-child, .entry-md-body > h6:first-child { margin-top: 0; }
+/* 文件预览:节奏单位=空一行 24px,恒比正文宽一档;标题上 54 追加 */
+.files-md p { margin: 0 0 24px; }
+.files-md ul, .files-md ol { margin: 0 0 24px; }
+.files-md .table-wrap { margin: 0 0 24px; }
+.files-md .code-block, .files-md pre { margin: 0 0 24px; }
+.files-md blockquote { margin: 0 0 24px; }
+.files-md hr { margin: 0 0 24px; }
+.files-md h1, .files-md h2, .files-md h3, .files-md h4, .files-md h5, .files-md h6 { margin: 54px 0 24px; }
+.files-md > h1:first-child, .files-md > h2:first-child, .files-md > h3:first-child,
+.files-md > h4:first-child, .files-md > h5:first-child, .files-md > h6:first-child { margin-top: 0; }
