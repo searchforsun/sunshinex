@@ -2910,7 +2910,7 @@ input.sx-setting-input { width: 100%; }
 .files-md hr { border: none; border-top: 1px solid var(--border-subtle); margin: 16px 0; }
 .files-md img { max-width: 100%; border-radius: var(--radius-md); }
 .files-md table { margin: 0; }
-.files-md .code-block pre code { line-height: var(--f-code-lh, 1.9); }
+/* files 专属代码行距(1.9)撤(2026-11-07 用户裁定「md 文件预览的代码块没改,同统一标准」):回落 .code-block 通用 --f-code/1.7 */
 
 /* 字体预设遗漏补齐(2026-10-31 用户裁定「除浏览器外网页外全跟随,尤其代码块与文件内容」):
    等宽井/自绘 diff/命令行/设置 raw/文件 md 预览统一走 --f-* 令牌;default 清空时回落括号缺省 */
@@ -3662,3 +3662,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .files-md pre { font: var(--f-code, 12px)/1.6 var(--font-mono); padding: 0.6em 1em; }
 .files-md :not(pre) > code { font-size: 0.9em; } /* 与 .entry 行内码同口径(原绑代码字号) */
 .mermaid-fallback { padding: 0.6em 1em; }
+
+/* 阶段正文上下对称(2026-11-07 用户裁定「阶段正文上下边距要和工具/思考行一致」):穿插在思考/工具行之间的
+   正文自带 4px 下内边距(上为 0),文字到下一行内容 14 vs 上一行 10——后随工具/思考/折叠段时撤下内边距,
+   上下内容间距同为 10(与思考↔工具行同档) */
+.chat .entry-assistant:has(+ .entry-tool, + .entry-thinking, + .tool-group, + .seg-collapse) { padding-bottom: 0; }
