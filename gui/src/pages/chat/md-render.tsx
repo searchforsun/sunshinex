@@ -290,7 +290,7 @@ export function buildUserMdComponents(onOpenFile: ((p: string) => void) | undefi
       const child = Array.isArray(props.children) ? props.children[0] : props.children;
       const el = child as { props?: { children?: unknown } } | null;
       const raw = el?.props?.children;
-      const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
+      const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r\n?/g, '\n').replace(/\n$/, '');
       return <pre className="user-bubble-fence">{code}</pre>;
     },
     // G14.124/125 用户气泡同款 md 链接文件化(onOpenFile 在场才可点)——渲染单件 MdLinkA
@@ -324,7 +324,7 @@ export function buildMdComponents(
       const cls = el?.props?.className ?? '';
       const raw = el?.props?.children;
       // react-markdown 保留围栏末行换行(value 尾随 \n)——剥掉一个尾换行,复制面/高亮面拿净代码
-      const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r?\n$/, '');
+      const code = (typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join('') : String(raw ?? '')).replace(/\r\n?/g, '\n').replace(/\n$/, '');
       if (cls.includes('language-mermaid')) return <MermaidBlock chart={code} draft={opts?.mermaidDraft === true} />;
       const m = /language-([\w-]+)/.exec(cls);
       return <CodeBlock code={code} lang={m?.[1]} />;
