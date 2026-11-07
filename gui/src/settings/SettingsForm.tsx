@@ -15,6 +15,7 @@ import type { UiZoom } from '../ui-zoom';
 import { applyFontPreset, FONT_PRESET_CHOICES, presetVars, readFontPreset } from '../font-preset';
 import type { FontPreset } from '../font-preset';
 import { palettesFor, readPalettePref, setPalettePref } from '../palette';
+import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, CODE_FONT_DEFAULT, readCodeFontSize, readUiFontSize, UI_FONT_CHOICES, UI_FONT_DEFAULT } from '../font-size';
 import type { Palette } from '../palette';
 
 /**
@@ -309,7 +310,7 @@ function FontRow(): JSX.Element {
               <span
                 className="sx-font-pv-code"
                 style={{
-                  fontSize: v['--f-code'] ?? '11px',
+                  fontSize: 'var(--f-code)',
                   lineHeight: v['--f-code-lh'] ?? 'normal',
                   padding: v['--f-code-pad'] ?? '6px 8px',
                   fontFamily: v['--font-mono'],
@@ -473,6 +474,66 @@ function ZoomRow(): JSX.Element {
     </div>
   );
 }
+
+/** 字号行(2026-11-07 用户裁定外观两项,对标 Codex):界面字号只缩文字(图标/布局不动)、代码字号管
+ *  代码块/文件预览/差异视图;GUI 本地偏好,非 settings 键(font-size.ts 落根) */
+function FontSizeRow({ label, desc, aria, choices, dflt, read, apply }: {
+  label: string;
+  desc: string;
+  aria: string;
+  choices: readonly number[];
+  dflt: number;
+  read: () => number;
+  apply: (n: number) => void;
+}): JSX.Element {
+  const [v, setV] = useState<number>(read);
+  return (
+    <div className="sx-setting-row">
+      <div className="sx-setting-main">
+        <div className="sx-setting-title">
+          <span className="sx-setting-label">{label}</span>
+        </div>
+        <p className="sx-setting-desc">{desc}</p>
+      </div>
+      <div className="sx-setting-ctl">
+        <Select
+          ariaLabel={aria}
+          value={String(v)}
+          options={choices.map((n) => ({ v: String(n), l: n === dflt ? `${n}px ${t('(default)', '(默认)')}` : `${n}px` }))}
+          onChange={(s) => {
+            const n = Number(s);
+            setV(n);
+            apply(n);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const UiFontRow = (): JSX.Element => (
+  <FontSizeRow
+    label={t('UI font size', '界面字号')}
+    desc={t('Adjust the text size of the app interface; icons and layout are not affected.', '调整应用界面的文字大小，图标和布局尺寸不受影响。')}
+    aria="ui font size"
+    choices={UI_FONT_CHOICES}
+    dflt={UI_FONT_DEFAULT}
+    read={readUiFontSize}
+    apply={applyUiFontSize}
+  />
+);
+
+const CodeFontRow = (): JSX.Element => (
+  <FontSizeRow
+    label={t('Code font size', '代码字号')}
+    desc={t('Adjust the default size of code blocks, file previews, and diff views.', '调整代码块、文件预览和差异视图的默认字号。')}
+    aria="code font size"
+    choices={CODE_FONT_CHOICES}
+    dflt={CODE_FONT_DEFAULT}
+    read={readCodeFontSize}
+    apply={applyCodeFontSize}
+  />
+);
 
 /** 相对时间与错误文案归一:G8e-T2 抽共享 ui-util(三处本地复制收敛) */
 
@@ -702,8 +763,10 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['zoom' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
+                  if (fd === 'uifont') return <UiFontRow key="uifont" />;
+                  if (fd === 'codefont') return <CodeFontRow key="codefont" />;
                   if (fd === 'palette') return <PaletteRow key="palette" />;
                   if (fd === 'font') return <FontRow key="font" />;
                   const row = rows[fd.key]!;

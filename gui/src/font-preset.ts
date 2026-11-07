@@ -1,9 +1,10 @@
 /**
  * 字体预设(2026-10-26 用户裁定·全局管线版):四预设风格发散——default 紧凑(系统黑体,出厂)/
- * serif 衬线阅读(宋体·Georgia)/mono 终端等宽(Cascadia 全局)/roomy 宽松(黑体+现代等宽+大字)。
+ * serif 衬线阅读(宋体·Georgia)/mono 终端等宽(Cascadia 全局)/roomy 宽松(黑体+现代等宽+大行距)。
  *
- * 全局管线:预设落根内联的四个全局令牌——--font-ui(界面字族,全 GUI 无衬线位消费)/
- * --font-mono(等宽字族)/--f-base-size·--f-base-lh(body 基础排版,全 UI 字号行高从它派生);
+ * 全局管线:预设落根内联字族与排版令牌——--font-ui(界面字族,全 GUI 无衬线位消费)/
+ * --font-mono(等宽字族)/--f-base-lh(body 基础行高);字号不归预设(2026-11-07 用户裁定:
+ * 界面字号/代码字号为外观独立两项,font-size.ts 独占 --f-base-size/--fz/--f-code);
  * 聊天正文的段距/工具/代码尺寸等既有 --f-* 细部令牌随预设同落。default 清空全部内联,
  * 样式表缺省值接管=零漂移。
  *
@@ -34,13 +35,11 @@ const PRESETS: Record<FontPreset, Record<string, string>> = {
   serif: {
     '--font-ui': SERIF,
     '--font-mono': SYSTEM_MONO,
-    '--f-base-size': '15px',
     '--f-base-lh': '1.75',
     '--f-para-gap': '10px',
     '--f-body-lh': '1.8',
     '--f-tool': '12px',
     '--f-tool-lh': '1.55',
-    '--f-code': '12px',
     '--f-code-lh': '1.6',
     '--f-code-pad': '8px 12px',
     '--f-think-lh': '1.7',
@@ -48,13 +47,11 @@ const PRESETS: Record<FontPreset, Record<string, string>> = {
   mono: {
     '--font-ui': MODERN_MONO,
     '--font-mono': MODERN_MONO,
-    '--f-base-size': '13px',
     '--f-base-lh': '1.6',
     '--f-para-gap': '8px',
     '--f-body-lh': '1.65',
     '--f-tool': '12px',
     '--f-tool-lh': '1.5',
-    '--f-code': '12px',
     '--f-code-lh': '1.55',
     '--f-code-pad': '8px 12px',
     '--f-think-lh': '1.6',
@@ -62,13 +59,11 @@ const PRESETS: Record<FontPreset, Record<string, string>> = {
   roomy: {
     '--font-ui': SANS,
     '--font-mono': MODERN_MONO,
-    '--f-base-size': '14.5px',
     '--f-base-lh': '1.75',
     '--f-para-gap': '10px',
     '--f-body-lh': '1.75',
     '--f-tool': '12px',
     '--f-tool-lh': '1.55',
-    '--f-code': '12.5px',
     '--f-code-lh': '1.65',
     '--f-code-pad': '10px 14px',
     '--f-think-lh': '1.7',
@@ -135,12 +130,12 @@ export function terminalFontSpec(): { family: string; size: number } {
 }
 
 /** 代码字号 px(2026-10-29 字体预设一致性面):Monaco 等非 CSS 数字消费方读取
- *  --f-code 当前生效值(default 预设回落样式表缺省 12.5)。 */
+ *  --f-code 当前生效值(代码字号设置,缺省 12)。 */
 export function codeFontSize(): number {
   try {
-    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--f-code')) || 12.5;
+    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--f-code')) || 12;
   } catch {
-    return 12.5;
+    return 12;
   }
 }
 

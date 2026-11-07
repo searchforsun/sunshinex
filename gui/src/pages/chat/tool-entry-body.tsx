@@ -94,7 +94,7 @@ export function ToolEntryBody({
     if (entry.result?.ok === false && !executing) {
       body = (
         <div className="tool-detail" role="alert">
-          <div style={{ color: 'var(--err)', fontSize: 12, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>✗ {resultText}</div>
+          <div style={{ color: 'var(--err)', fontSize: 'calc(12px * var(--fz))', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>✗ {resultText}</div>
         </div>
       );
     } else {
@@ -251,11 +251,11 @@ export function ToolEntryBody({
       hits.length > 0 ? (
         <div
           className="tool-io-pre"
-          style={{ maxHeight: 280, overflow: 'auto', fontSize: 12.5, lineHeight: 1.6 }}
+          style={{ maxHeight: 280, overflow: 'auto', fontSize: 'calc(12.5px * var(--fz))', lineHeight: 1.6 }}
         >
             {hits.map((h) => (
               <div key={h.n} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 13 }}>
+                <div style={{ fontSize: 'calc(13px * var(--fz))' }}>
                   {h.n}.{' '}
                   <a
                     href={h.url}
@@ -268,7 +268,7 @@ export function ToolEntryBody({
                     {h.title}
                   </a>
                 </div>
-                <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', paddingLeft: 14 }}>{h.snippet}</div>
+                <div style={{ fontSize: 'calc(12px * var(--fz))', opacity: 0.75, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', paddingLeft: 14 }}>{h.snippet}</div>
               </div>
             ))}
         </div>

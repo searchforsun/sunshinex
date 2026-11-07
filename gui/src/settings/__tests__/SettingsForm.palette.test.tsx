@@ -35,11 +35,14 @@ describe('SettingsForm 配色主题行', () => {
     applyTheme('light');
   });
 
-  it('行序:界面放缩 → 配色主题 → 字体预设;亮色下列亮色四套,默认选中', async () => {
+  it('行序:界面放缩 → 界面字号 → 代码字号 → 配色主题 → 字体预设;亮色下列亮色四套,默认选中', async () => {
     render(<SettingsForm conn={conn} root="" pane={SETTINGS_PANES[0]} />);
     const label = await screen.findByText('Color theme');
     const labels = [...document.querySelectorAll('.sx-setting-label')].map((n) => n.textContent);
-    expect(labels.indexOf('Color theme')).toBe(labels.indexOf('UI zoom') + 1);
+    // 字号两项(2026-11-07)紧随界面放缩,配色主题随后
+    expect(labels.indexOf('UI font size')).toBe(labels.indexOf('UI zoom') + 1);
+    expect(labels.indexOf('Code font size')).toBe(labels.indexOf('UI font size') + 1);
+    expect(labels.indexOf('Color theme')).toBe(labels.indexOf('Code font size') + 1);
     expect(labels.indexOf('Font preset')).toBe(labels.indexOf('Color theme') + 1);
     expect(label).toBeDefined();
     expect(cardNames()).toEqual(['Default', 'Mist', 'Sage', 'Solarized']);

@@ -4,6 +4,7 @@ import { App } from './App';
 import { applyZoom, readZoomPref, zoomScale } from './ui-zoom';
 import { applyFontPreset, readFontPreset } from './font-preset';
 import { syncPalette } from './palette';
+import { applyCodeFontSize, applyUiFontSize, readCodeFontSize, readUiFontSize } from './font-size';
 import './app.css';
 import './tool-io.css'; // 工具展开体 I/O 井统一单点(免触 app.css 用户在途编辑面)
 import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+rehype-katex):字体与排版样式全局一份
@@ -16,6 +17,8 @@ import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+
 applyZoom(readZoomPref());
 applyFontPreset(readFontPreset());
 syncPalette(); // 配色先于挂载落根(data-theme 已由 index.html 引导落定)
+applyUiFontSize(readUiFontSize());
+applyCodeFontSize(readCodeFontSize());
 const root = document.getElementById('root');
 if (root === null) throw new Error('gui: #root not found');
 createRoot(root).render(
