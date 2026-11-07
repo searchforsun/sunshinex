@@ -196,6 +196,19 @@ export function fmtDurMs(ms: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/** 毫秒时刻 → 消息时间(用户气泡/正文尾部,2026-11-07 用户裁定):当天「HH:mm」、昨天「昨天 HH:mm」、
+ *  更早「M月D日 HH:mm」(en: Yesterday HH:mm / M/D HH:mm)。now 注入供测试钉日界;非法日期回退 '--:--' */
+export function messageTimeMs(ms: number, now: number = Date.now()): string {
+  const d = new Date(ms);
+  if (!(ms > 0) || Number.isNaN(d.getTime())) return '--:--';
+  const hm = `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  const dayStart = (x: Date): number => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((dayStart(new Date(now)) - dayStart(d)) / 86_400_000);
+  if (days <= 0) return hm;
+  if (days === 1) return t(`Yesterday ${hm}`, `昨天 ${hm}`);
+  return t(`${d.getMonth() + 1}/${d.getDate()} ${hm}`, `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`);
+}
+
 /** 毫秒时刻 → 本地短时刻(HH:mm;run 尾部完成时间):非法日期回退 '--:--' */
 export function shortClockMs(ms: number): string {
   const d = new Date(ms);

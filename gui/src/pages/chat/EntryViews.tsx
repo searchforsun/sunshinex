@@ -5,7 +5,7 @@ import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Che
 import { t } from '../../i18n';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
-import { pathBasename } from '../../ui-util';
+import { messageTimeMs, pathBasename } from '../../ui-util';
 import { useResolvedImages } from '../../images-cache';
 import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
@@ -472,6 +472,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
         />
       )}
       <div className="user-actions">
+        {entry.ts !== undefined && <span className="user-time">{messageTimeMs(entry.ts)}</span>}
         <TipButton
           className="user-action"
           tip={copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
@@ -630,6 +631,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
           <CollapsibleBubble text={msg.text} render={(md) => <div className="agent-msg-text">{md}</div>} />
         )}
         <div className="user-actions">
+          {entry.ts !== undefined && <span className="user-time">{messageTimeMs(entry.ts)}</span>}
           <TipButton
             className="user-action"
             tip={copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, GitFork } from 'lucide-react';
 import { t } from '../../i18n';
 import { fmtTokens, pathBasename } from '../../ui-util';
-import { shortClockMs } from '../../ui-util';
+import { messageTimeMs } from '../../ui-util';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { FileIcon } from '../../file-icon';
@@ -18,7 +18,7 @@ import { FileIcon } from '../../file-icon';
  *  在转录中的序位换算轮次,分档切在该轮之前——点哪轮,fork 上面的所有记录 */
 export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undefined; onFork?: (runKey: string) => void }): JSX.Element {
   const { status, copy } = useCopyFeedback();
-  const time = run?.endedTs !== undefined ? shortClockMs(run.endedTs) : undefined;
+  const time = run?.endedTs !== undefined ? messageTimeMs(run.endedTs) : undefined;
   return (
     <div className="run-footer">
       <TipButton

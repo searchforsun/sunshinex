@@ -1456,7 +1456,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   opacity: 0;
   transition: opacity 0.12s ease;
 }.run-changes-row:hover .run-changes-undo-row { opacity: 1; }.run-changes-undo-row:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
-.run-footer { display: flex; align-items: center; gap: 2px; margin-top: 4px; margin-left: -5px; }.run-footer .sx-tip { color: var(--fg-tertiary); }.run-stats {
+.run-footer { display: flex; align-items: center; gap: 2px; margin-top: 10px; margin-left: -5px; } /* 2026-11-07 用户裁定:操作行离正文稍远(4→10) */.run-footer .sx-tip { color: var(--fg-tertiary); }.run-stats {
   display: inline-flex; gap: 10px; margin-left: 10px;
   font-size: 11px; color: var(--fg-tertiary);
   font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -3566,3 +3566,6 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 [data-theme='light'] .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider:hover,
 [data-theme='light'] .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider.active { background: color-mix(in srgb, var(--fg) 20%, transparent) !important; }
 .xterm .xterm-scrollable-element > .shadow { display: none !important; }
+/* 气泡发送时间(2026-11-07 用户裁定「所有类型气泡左侧显示发送时间」):动作行最左,与正文尾部统计同字号色阶,随行 hover 浮现 */
+.user-actions { align-items: center; }
+.user-time { font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; margin-right: 4px; }

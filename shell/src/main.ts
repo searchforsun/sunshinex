@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray, webContents } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray, webContents } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { clampSize, lockedDragBounds } from './lib/window-drag';
 import { appUrl, LOOPBACK } from './lib/app-url';
@@ -149,9 +149,9 @@ if (!app.requestSingleInstanceLock()) {
     const win = new BrowserWindow({
       width: 1200,
       height: 800,
-      // 首绘前底色=暗色 surface-under(index.html #boot 同值)——窗口现形到 HTML 首绘之间
-      // 不再白闪,与开机画面无缝衔接(亮色用户此处一帧暗底,可接受)
-      backgroundColor: '#131313',
+      // 首绘前底色=开机画面同值(index.html #boot 暗 #131313/亮 #f9f9f9)——窗口现形到 HTML 首绘之间
+      // 不闪。按系统亮暗取色:外观缺省「跟随系统」(2026-11-07 用户裁定全新应用即跟随系统)
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#131313' : '#f9f9f9',
       minWidth: minWinWidth, // 物理px 下限=PHYSICAL_MIN_W(手调入口见上);极窄时主面 min-width 有视口守卫钳制不越界
       minHeight: 600,
       icon: nativeImage.createFromDataURL(PRODUCT_LOGO_DATA_URL),

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { chaseScrollBottom, cleanPathInput, isAbsPath, joinWsPath, normRel, rAFConverge, workspaceOfAbs } from './ui-util';
+import { chaseScrollBottom, cleanPathInput, isAbsPath, joinWsPath, messageTimeMs, normRel, rAFConverge, workspaceOfAbs } from './ui-util';
+import { setLanguage } from './i18n';
 
 /** rAFConverge/chaseScrollBottom 特征化钉(2026-10-27 技术债轮 D54② 抽取前先锚):
  *  rAF 用手工队列桩驱动(帧推进显式可控,不依赖 jsdom 的 rAF 实现与机热时序——判据来自
@@ -171,5 +172,20 @@ describe('isAbsPath / joinWsPath / normRel(跨项目绝对路径)', () => {
     expect(workspaceOfAbs('D:/ws/demo/nested/a.ts', roots)).toEqual({ root: 'D:\\ws\\demo\\nested', rel: 'a.ts' });
     expect(workspaceOfAbs('D:\\ws\\demo', roots)).toEqual({ root: 'D:/ws/demo', rel: '' });
     expect(workspaceOfAbs('D:\\other\\x', roots)).toBeNull();
+  });
+});
+
+describe('messageTimeMs(气泡/正文尾部消息时间)', () => {
+  const now = new Date(2026, 10, 7, 9, 30).getTime();
+  it('当天只显时分;昨天=昨天 时分(跨午夜按日历日);更早=月日 时分;非法回退', () => {
+    setLanguage('zh');
+    expect(messageTimeMs(new Date(2026, 10, 7, 0, 5).getTime(), now)).toBe('00:05');
+    expect(messageTimeMs(new Date(2026, 10, 6, 23, 59).getTime(), now)).toBe('昨天 23:59');
+    expect(messageTimeMs(new Date(2026, 10, 5, 14, 0).getTime(), now)).toBe('11月5日 14:00');
+    expect(messageTimeMs(new Date(2025, 11, 31, 8, 3).getTime(), now)).toBe('12月31日 08:03');
+    expect(messageTimeMs(0, now)).toBe('--:--');
+    setLanguage('en');
+    expect(messageTimeMs(new Date(2026, 10, 6, 14, 0).getTime(), now)).toBe('Yesterday 14:00');
+    expect(messageTimeMs(new Date(2026, 10, 5, 14, 0).getTime(), now)).toBe('11/5 14:00');
   });
 });
