@@ -340,8 +340,8 @@ test('回合边界注入(真 FileInbox):空闲期两条消息在首个任务轮�
     const model = new CountingAdapter();
     const w1 = rig.addTeammate('w1', model, rig.inbox);
     // kick 前注入:消息先落收件箱,再建任务(派发路由自动踢点,worker 首轮 execute 前 drain)
-    await rig.inbox.send('w1', { from: 'lead', text: 'hi' });
-    await rig.inbox.send('w1', { from: 'lead', text: 'second note' });
+    await rig.inbox.send('w1', { from: 'leader', text: 'hi' });
+    await rig.inbox.send('w1', { from: 'leader', text: 'second note' });
     const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A' });
     assert.ok(ra.ok);
     const idA = ra.value.taskId;
@@ -357,14 +357,14 @@ test('回合边界注入(真 FileInbox):空闲期两条消息在首个任务轮�
     assert.ok(model.chats.length >= 2, '两任务各至少一轮 chat');
     // 至少一次:首轮消息面即含两条消息行(own chain → Reactor seed → 模型)
     const first = model.chats[0]!;
-    assert.ok(first.includes('msg:m1 [message from lead] hi'), `首轮应含 m1 行,实际:${first}`);
-    assert.ok(first.includes('msg:m2 [message from lead] second note'), '首轮应含 m2 行');
+    assert.ok(first.includes('msg:m1 [message from leader] hi'), `首轮应含 m1 行,实际:${first}`);
+    assert.ok(first.includes('msg:m2 [message from leader] second note'), '首轮应含 m2 行');
     // 回合边界语义:消息行在本任务 task 行之前(drain 先于 execute)
     assert.ok(first.indexOf('msg:m1') < first.indexOf(`Task ${idA}:`), '消息行应先于 task 行');
     // 幂等(cursor 位点):第二轮起链上消息行恰各一条,不因重 poll 双注入(计数恰 2)
     for (const c of model.chats) {
-      assert.equal(countOccurrences(c, 'msg:m1 [message from lead] hi'), 1, 'm1 行恰一条');
-      assert.equal(countOccurrences(c, 'msg:m2 [message from lead] second note'), 1, 'm2 行恰一条');
+      assert.equal(countOccurrences(c, 'msg:m1 [message from leader] hi'), 1, 'm1 行恰一条');
+      assert.equal(countOccurrences(c, 'msg:m2 [message from leader] second note'), 1, 'm2 行恰一条');
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -380,7 +380,7 @@ test('msg-id 链前缀去重:poll 重复回放同消息(cursor 归零面)不双�
       send: async () => {
         throw new Error('not used in this test');
       },
-      poll: () => [{ id: 'm1', from: 'lead', to: 'w1', text: 'hi', ts: 42 }],
+      poll: () => [{ id: 'm1', from: 'leader', to: 'w1', text: 'hi', ts: 42 }],
     };
     const model = new CountingAdapter();
     rig.addTeammate('w1', model, repeating);
@@ -397,7 +397,7 @@ test('msg-id 链前缀去重:poll 重复回放同消息(cursor 归零面)不双�
     assert.ok(done, '两任务消化至 success');
     assert.ok(model.chats.length >= 2, '两轮 chat 在场');
     for (const c of model.chats) {
-      assert.equal(countOccurrences(c, 'msg:m1 [message from lead] hi'), 1, `每轮 m1 行恰一条(链前缀去重),实际:${c.slice(0, 200)}`);
+      assert.equal(countOccurrences(c, 'msg:m1 [message from leader] hi'), 1, `每轮 m1 行恰一条(链前缀去重),实际:${c.slice(0, 200)}`);
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -432,13 +432,13 @@ test('inbox 位点持久化:新实例不把已消费消息再灌进链,位点之
     const rig = makeRig(tmp, true);
     const model1 = new CountingAdapter();
     rig.addTeammate('w1', model1, rig.inbox);
-    await rig.inbox.send('w1', { from: 'lead', text: 'once' });
+    await rig.inbox.send('w1', { from: 'leader', text: 'once' });
     const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A', assignee: 'w1' });
     assert.ok(ra.ok);
     const idA = ra.value.taskId;
     const done = await until(() => rig.board.snapshot().tasks[idA]?.status === 'success');
     assert.ok(done, '首任务消化');
-    assert.ok(model1.chats[0]?.includes('msg:m1 [message from lead] once'), '首轮应灌入 m1');
+    assert.ok(model1.chats[0]?.includes('msg:m1 [message from leader] once'), '首轮应灌入 m1');
     const cursorFile = path.join(tmp, 'teams', 'inbox-cursors.json');
     assert.ok(fs.existsSync(cursorFile), '位点应写入 inbox-cursors.json');
     const saved = JSON.parse(fs.readFileSync(cursorFile, 'utf8')) as Record<string, number>;
@@ -450,7 +450,7 @@ test('inbox 位点持久化:新实例不把已消费消息再灌进链,位点之
     const restarted = rig.makeTeammate('w1', model2, rig.inbox, cursors2);
     const reg = rig.team.register(restarted);
     assert.ok(reg.ok);
-    await rig.inbox.send('w1', { from: 'lead', text: 'after restart' });
+    await rig.inbox.send('w1', { from: 'leader', text: 'after restart' });
     const rb = rig.board.create({ teamId: rig.teamId, title: 'B', spec: 'do B', assignee: 'w1' });
     assert.ok(rb.ok);
     const idB = rb.value.taskId;
@@ -459,8 +459,8 @@ test('inbox 位点持久化:新实例不把已消费消息再灌进链,位点之
     assert.ok(model2.chats.length >= 1, '新实例应有一轮 chat');
     const second = model2.chats[0]!;
     assert.ok(second.includes(`Task ${idB}:`), '新实例应执行任务 B');
-    assert.equal(countOccurrences(second, 'msg:m1 [message from lead] once'), 0, '已消费消息不得再次进链');
-    assert.ok(second.includes('msg:m2 [message from lead] after restart'), '位点之后的新消息应进链');
+    assert.equal(countOccurrences(second, 'msg:m1 [message from leader] once'), 0, '已消费消息不得再次进链');
+    assert.ok(second.includes('msg:m2 [message from leader] after restart'), '位点之后的新消息应进链');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -485,15 +485,15 @@ test('未配 inbox 的 teammate 零变化:任务照常消化,消息面零 msg �
   }
 });
 
-test("'lead' 名注册拒:L2 收件身份唯一性(主会话专属收件名)", () => {
+test("'leader' 名注册拒:L2 收件身份唯一性(主会话专属收件名)", () => {
   const tmp = tmpdir('sunshinex-tm-lead-');
   try {
     const rig = makeRig(tmp, true);
-    const r = rig.team.register(rig.makeTeammate('lead'));
-    assert.ok(!r.ok, "'lead' 注册应拒");
+    const r = rig.team.register(rig.makeTeammate('leader'));
+    assert.ok(!r.ok, "'leader' 注册应拒");
     assert.equal(r.error.code, 'INVALID_ARG');
-    assert.equal(r.error.message, `'lead' is reserved for the main session`);
-    assert.equal(rig.team.get('lead'), undefined, '拒后不入注册表');
+    assert.equal(r.error.message, `'leader' is reserved for the main session`);
+    assert.equal(rig.team.get('leader'), undefined, '拒后不入注册表');
     assert.deepEqual(rig.team.aliveNames(), [], '活名清单不含 lead');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

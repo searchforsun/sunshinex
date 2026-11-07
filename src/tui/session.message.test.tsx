@@ -18,13 +18,13 @@ test('agent-message 事件:投递 lead 上屏;队友互发/lead 外发不上主�
     const ctrl = new SessionController({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) });
     const boardBefore = ctrl.getState().board;
     const delegBefore = ctrl.getState().delegations;
-    ctrl.onEventForTest({ type: 'agent-message', ts: 100, payload: { messageId: 'm1', from: 'w1', to: 'lead', text: 'hi' } });
-    ctrl.onEventForTest({ type: 'agent-message', ts: 101, payload: { messageId: 'm2', from: 'lead', to: 'w2', text: 'go' } });
+    ctrl.onEventForTest({ type: 'agent-message', ts: 100, payload: { messageId: 'm1', from: 'w1', to: 'leader', text: 'hi' } });
+    ctrl.onEventForTest({ type: 'agent-message', ts: 101, payload: { messageId: 'm2', from: 'leader', to: 'w2', text: 'go' } });
     ctrl.onEventForTest({ type: 'agent-message', ts: 102, payload: { messageId: 'm3', from: 'w1', to: 'w2', text: 'peer' } });
     const st = ctrl.getState();
     const systemLines = st.messages.filter((m) => m.role === 'system').map((m) => m.text);
     const msgLines = systemLines.filter((l) => /\[.* → .*\]/.test(l));
-    assert.deepEqual(msgLines, ['[w1 → lead] hi'], '仅投递 lead 的 agent-message 入主会话');
+    assert.deepEqual(msgLines, ['[w1 → leader] hi'], '仅投递 lead 的 agent-message 入主会话');
     // 纯呈现事件:板/委派投影零变化(引用同一对象——分流未触达投影)
     assert.equal(st.board, boardBefore, 'agent-message 不影响板投影');
     assert.equal(st.delegations, delegBefore, 'agent-message 不影响委派投影');

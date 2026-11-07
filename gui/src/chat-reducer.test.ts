@@ -148,14 +148,14 @@ describe('五 kind 与 notice 系映射', () => {
         ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }),
         ev('delegation-ended', undefined, { label: 'dev', status: 'done' }),
         ev('agent-message', undefined, { from: 'boss', to: 'dev', text: '队友互发不上屏' }),
-        ev('agent-message', undefined, { from: 'boss', to: 'lead', text: 'hi' }),
+        ev('agent-message', undefined, { from: 'boss', to: 'leader', text: 'hi' }),
       ],
       appendUserMessage(initialChatState(), 'go'),
     );
     expect(s.entries.map((e) => `${e.kind}|${e.md}`)).toEqual([
       'user|go',
       'notice|hello',
-      'notice|[boss → lead] hi',
+      'notice|[boss → leader] hi',
     ]);
   });
 

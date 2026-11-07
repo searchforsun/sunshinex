@@ -206,7 +206,7 @@ export const PURPOSE_PARAM = 'purpose';
 const PURPOSE_SCHEMA: JsonSchema = {
   type: 'string',
   description:
-    "One short phrase stating what this call is for, written in the language the user is currently using in this conversation (e.g. 'Open the login page', '截取屏幕确认弹窗是否关闭'). Shown to the user as the title of this step — describe the intent, do not repeat raw parameters.",
+    "One short phrase stating what this call is for, written in the language the user is currently using in this conversation (e.g. 'Open the login page', 'screenshot the dialog to confirm it closed'). Shown to the user as the title of this step — describe the intent, do not repeat raw parameters.",
 };
 
 /** 内置宿主插件工具的参数表注入 purpose:置于属性首位(模型先写意图,流式行最早可显)、并入 required。

@@ -3,7 +3,7 @@
  * 钉位 tmp;会话团队根 teamsSessionId=test → inbox 在 <tmp>/teams/test/main/inbox。team 帽摘除防宿主耦合。
  * ① lead→teammate 回合边界:spawn w1 → 主链真工具面 send_agent_team_message(回执 delivered + 落档)
  *   → create 任务 → w1 消化至 success → 首轮 chat 消息面含 msg 行且先于 Task 行。
- * ② teammate→lead:deriveTeammateRegistry 同构 → execute send_agent_team_message{to:'lead'} → lead.jsonl 落档
+ * ② teammate→lead:deriveTeammateRegistry 同构 → execute send_agent_team_message{to:'leader'} → lead.jsonl 落档
  *   + agent-message 事件(lead 投递轨 = 事件 + 落档)。
  */
 import { test } from 'node:test';
@@ -100,10 +100,10 @@ test('e2e lead→teammate:主链真工具面 send_agent_team_message → 回执 
     // 回合边界注入可见(T3 语义 e2e 复证):w1 首轮 chat 消息面含 m1 消息行,且先于本任务 Task 行
     assert.ok(model.chats.length >= 1, 'w1 至少一轮 chat');
     const first = model.chats[0]!;
-    assert.ok(first.includes('msg:m1 [message from lead] prioritize tests'), `首轮消息面应含 m1 消息行,实际:${first.slice(0, 300)}`);
+    assert.ok(first.includes('msg:m1 [message from leader] prioritize tests'), `首轮消息面应含 m1 消息行,实际:${first.slice(0, 300)}`);
     assert.ok(first.includes(`Task ${taskId}:`), `首轮消息面应含 Task ${taskId} 行(seed 经缺省 chainView 取 own chain)`);
     assert.ok(
-      first.indexOf('msg:m1 [message from lead] prioritize tests') < first.indexOf(`Task ${taskId}:`),
+      first.indexOf('msg:m1 [message from leader] prioritize tests') < first.indexOf(`Task ${taskId}:`),
       '消息行应先于 Task 行(drain 先于 execute)',
     );
   } finally {
@@ -123,25 +123,25 @@ test('e2e teammate→lead:派生面直测 send_agent_team_message → lead.jsonl
     const sp = await h.tools.execute('create_agent_teammate', { teamId: team.value.teamId, name: 'w1', prompt: 'worker w1' }, h.safety);
     assert.ok(sp.ok && sp.value.exitCode === 0, `spawn w1 应成功:${JSON.stringify(sp)}`);
     // 裁定(T4 计划):teammate 面工具执行不经 fake model 驱动,直测工具——deriveTeammateRegistry 同
-    // harness/index.ts registryFactory 装配点同构(仅 w1 活名时排己白名单恰 ['lead']);onEvent 透传
+    // harness/index.ts registryFactory 装配点同构(仅 w1 活名时排己白名单恰 ['leader']);onEvent 透传
     // 同一收集器(装配点同款)
     const face = deriveTeammateRegistry(
       h.tools,
       h.taskboard,
-      makeSendMessageTool({ inbox: h.inbox, onEvent: (e) => events.push(e), knownRecipients: () => ['lead'], from: () => 'w1' }),
+      makeSendMessageTool({ inbox: h.inbox, onEvent: (e) => events.push(e), knownRecipients: () => ['leader'], from: () => 'w1' }),
     );
     assert.ok(face.get('send_agent_team_message') !== undefined, '派生面应含 send_agent_team_message');
-    const sm = await face.execute('send_agent_team_message', { to: 'lead', text: 'done with prep' }, h.safety);
+    const sm = await face.execute('send_agent_team_message', { to: 'leader', text: 'done with prep' }, h.safety);
     assert.ok(sm.ok && sm.value.exitCode === 0, `send_agent_team_message(to lead) 应成功:${JSON.stringify(sm)}`);
-    assert.match(sm.value.stdout, /^message m1 delivered to lead$/, '回执 delivered to lead');
-    const leadFile = inboxFile(tmp, 'lead');
+    assert.match(sm.value.stdout, /^message m1 delivered to leader$/, '回执 delivered to lead');
+    const leadFile = inboxFile(tmp, 'leader');
     assert.ok(fs.existsSync(leadFile), 'lead 收件档应落盘');
     const rec = JSON.parse(fs.readFileSync(leadFile, 'utf8').trim()) as { id: string; from: string; to: string; text: string; ts: number };
-    assert.deepEqual([rec.from, rec.to, rec.text], ['w1', 'lead', 'done with prep'], '落档 from/to/text(from = 注入器 teammate 名)');
+    assert.deepEqual([rec.from, rec.to, rec.text], ['w1', 'leader', 'done with prep'], '落档 from/to/text(from = 注入器 teammate 名)');
     // 事件:harness onEvent 收集器收到 agent-message {from w1, to lead, text}(与落档同源,Ruling 3 双轨)
     const ev = events.find((e) => e.type === 'agent-message');
     assert.ok(ev, 'agent-message 事件应入收集器');
-    assert.deepEqual(ev!.payload, { messageId: rec.id, from: 'w1', to: 'lead', text: 'done with prep' });
+    assert.deepEqual(ev!.payload, { messageId: rec.id, from: 'w1', to: 'leader', text: 'done with prep' });
     assert.equal(ev!.ts, rec.ts, '事件 ts 与落档消息 ts 同源');
     // fork 子面无 send_agent_team_message(L2 身份专属):已由 teammate-spawn.test.ts 钉住(L2 T3 评审附带 1),引注不重复
   } finally {

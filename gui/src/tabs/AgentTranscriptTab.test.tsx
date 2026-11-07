@@ -140,15 +140,15 @@ describe('AgentTranscriptTab 对标主对话', () => {
   });
 
   it('inbox drain 的 messageLine 步单独成气泡，来源名可点', () => {
-    const s = applyAgentEvent({}, sub('step', 'w2', '', { messageLine: 'lead: 去跑测试', from: 'lead', to: 'w2', text: '去跑测试', messageId: 'm9', teamId: 'team-a' }));
+    const s = applyAgentEvent({}, sub('step', 'w2', '', { messageLine: 'lead: 去跑测试', from: 'leader', to: 'w2', text: '去跑测试', messageId: 'm9', teamId: 'team-a' }));
     const onOpenAgent = vi.fn();
     const { container } = render(
       <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.w2} board={boardStub} onOpenAgent={onOpenAgent} />,
     );
     const from = container.querySelector('.agent-msg-from');
-    expect(from?.textContent).toBe('lead');
+    expect(from?.textContent).toBe('leader');
     fireEvent.click(from!);
-    expect(onOpenAgent).toHaveBeenCalledWith('lead', 'lead');
+    expect(onOpenAgent).toHaveBeenCalledWith('leader', 'leader');
   });
 
   it('轮折叠:sealed run 自动折叠(2026-10-24 裁定)——初始即收合,点击展开,再点收回', () => {

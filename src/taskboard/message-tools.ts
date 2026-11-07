@@ -13,9 +13,9 @@ export interface SendMessageToolDeps {
   inbox: Inbox;
   /** agent-message 事件出口(透传装配层 onEvent;缺省零副作用) */
   onEvent?: (e: SessionEvent) => void;
-  /** 同队存活成员(不含 'lead'——'lead' 恒可达由工具内判;teammate 面注入时排己) */
+  /** 同队存活成员(不含 'leader'——'leader' 恒可达由工具内判;teammate 面注入时排己) */
   knownRecipients: () => string[];
-  /** 发件人身份注入(主链面 'lead';teammate 面为 teammate 名) */
+  /** 发件人身份注入(主链面 'leader';teammate 面为 teammate 名) */
   from: () => string;
   /** 发件人 teamId。lead 面省略:lead 可投给任一存活成员 */
   teamId?: () => string;
@@ -23,7 +23,7 @@ export interface SendMessageToolDeps {
   recipientTeamId?: (name: string) => string | undefined;
 }
 
-/** send_agent_team_message 工具(to/text 两参,category 'task'):to ∈ {'lead'} ∪ knownRecipients()
+/** send_agent_team_message 工具(to/text 两参,category 'task'):to ∈ {'leader'} ∪ knownRecipients()
  *  (同队存活)、text 非空且 ≤4000。跨队活成员 → cannot send_agent_team_message across teams;
  *  其余不在白名单 → cannot send_agent_team_message to <to>: not a live member of team <teamId>。
  *  合法 → 落档 + 事件 + 回执 message <id> delivered to <to> */
@@ -34,19 +34,19 @@ export function makeSendMessageTool(deps: SendMessageToolDeps): RegisteredTool {
       additionalProperties: false,
       required: ['to', 'text'],
       properties: {
-        to: { type: ['string', 'null'], description: 'Living same-team teammate name, or "lead" for the main session.' },
+        to: { type: ['string', 'null'], description: 'Living same-team teammate name, or "leader" for the main session.' },
         text: { type: ['string', 'null'], description: 'Message body (max 4000 chars).' },
       },
     },
     name: 'send_agent_team_message',
     description:
-      'Send a message to a living teammate on the same team, or to lead (to="lead"). Cross-team rejected. Persists to the shared inbox; lead sees it immediately, teammates at their next task boundary.',
+      'Send a message to a living teammate on the same team, or to the leader (to="leader"). Cross-team rejected. Persists to the shared inbox; the leader sees it immediately, teammates at their next task boundary.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
       const raw = input as { to?: string | null; text?: string | null };
       const to = String(raw.to ?? '');
-      if (to !== 'lead' && !deps.knownRecipients().includes(to)) {
+      if (to !== 'leader' && !deps.knownRecipients().includes(to)) {
         const mine = deps.teamId?.();
         const theirs = to !== '' ? deps.recipientTeamId?.(to) : undefined;
         if (mine !== undefined && theirs !== undefined && theirs !== mine) {

@@ -607,7 +607,7 @@ export class Harness {
         inbox: this.inbox,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
         knownRecipients: () => this.team.aliveNames(),
-        from: () => 'lead',
+        from: () => 'leader',
         recipientTeamId: (name) => this.team.teamIdOf(name),
       }));
     }

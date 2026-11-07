@@ -176,6 +176,10 @@ export const ToolEntryView = memo(function ToolEntryView({
     toolName === 'send_agent_team_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
   const messageText =
     toolName === 'send_agent_team_message' && typeof input.text === 'string' ? input.text : '';
+  /** 收件人=主会话 leader:点击开智能体团队定位该队(2026-11-07 用户裁定「发送团队消息两模式都可点」——
+   *  成员收件人开其转录页) */
+  const messageToLeader = messageTo === 'leader';
+  const messageToLabel = messageTo;
   /** G14.172 等待行任务名(taskNameOf 单点解析)——用户裁决「等待任务显示任务名称,不要用 id」;保留 id 供链接定位。
    *  task_wait=后台账本;agent_team_task_wait=板任务——点击路由前缀分立 */
   const waitTasks = toolName === 'task_wait' || toolName === 'agent_team_task_wait'
@@ -233,7 +237,7 @@ export const ToolEntryView = memo(function ToolEntryView({
     if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
     if (toolName === 'create_agent_teammate' && teammateName !== '') return t(`Creating member ${teammateName}`, `正在创建团队成员 ${teammateName}`);
     if (toolName === 'create_agent_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
-    if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending team message to ${messageTo}`, `正在发送团队消息给 ${messageTo}`);
+    if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending team message to ${messageToLabel}`, `正在发送团队消息给 ${messageToLabel}`);
     // create_agent_team_task 运行态带任务标题——「正在创建团队任务 …」,id 不进折叠行
     if (toolName === 'create_agent_team_task' && typeof input.title === 'string' && input.title !== '') {
       return t(`Creating team task ${input.title}`, `正在创建团队任务 ${input.title}`);
@@ -334,9 +338,12 @@ export const ToolEntryView = memo(function ToolEntryView({
     <span className="tool-verb">{zhToolName(toolName)}</span>
   );
   /** 办公模式非跳转行:动词头即全部(命令/目标原文不进折叠行) */
-  const officeBare = office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) && officeAgentWaits.length === 0;
+  const officeBare = office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) && officeAgentWaits.length === 0
+    && toolName !== 'load_agent_teams' && toolName !== 'load_subagent' && toolName !== 'skill'; // 加载团队/子智能体/技能:保留名称(2026-11-07 用户裁定)
   // 只显说明:插件工具恒是;exec 仅办公模式(编程模式=说明头+命令明细,沿用下方命令分支)
-  const purposeOnly = purpose !== undefined && (toolName !== 'exec' || office);
+  // 只显说明:插件/MCP 类恒是;exec 仅办公模式(编程=说明头+命令明细)。跳转保留集(spawn/团队/文件/
+  // 计划/待办/问询/等待团队任务)不吞——行内链接是入口(2026-11-07 用户裁定「发送团队消息两模式都可点」)
+  const purposeOnly = purpose !== undefined && !isOfficeStandaloneTool(toolName) && (toolName !== 'exec' || office);
   const collapsed = purposeOnly ? purposeHead : officeBare ? verbSpan : (
     <>
       {verbSpan}
@@ -523,8 +530,21 @@ export const ToolEntryView = memo(function ToolEntryView({
           <span className="tool-file-base tool-cmd">{teammateName !== '' ? ` ${teammateName}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && toolName === 'send_agent_team_message' ? (
-        /* 折叠行带收件人名(lead 纯文本;成员名可点开转录);正文进展开体 */
-        messageTo !== '' && messageTo !== 'lead' && onOpenAgent !== undefined ? (
+        /* 折叠行带收件人名:成员名点开其转录页;leader 点开智能体团队定位该队(单队会话直达队卡);正文进展开体 */
+        messageToLeader && onOpenTask !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            data-tip={t('Open agent team', '在智能体团队中查看')}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenTask(`team:${teams !== undefined && teams.length === 1 ? teams[0]!.teamId : ''}`);
+            }}
+          >
+            {' '}{messageToLabel}
+          </span>
+        ) : messageTo !== '' && !messageToLeader && onOpenAgent !== undefined ? (
           <span
             role="button"
             tabIndex={-1}
@@ -538,7 +558,7 @@ export const ToolEntryView = memo(function ToolEntryView({
             {' '}{messageTo}
           </span>
         ) : (
-          <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageTo}` : ''}</span>
+          <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageToLabel}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && officeAgentWaits.length > 0 ? (
         <span className="tool-link-list">

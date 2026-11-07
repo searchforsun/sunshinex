@@ -75,6 +75,40 @@ describe('办公模式', () => {
     expect(files).toEqual(['shot.png']);
   });
 
+  it('发送给 leader 两模式都显 leader 链接,点开智能体团队定位单队', () => {
+    for (const mode of ['code', 'office'] as const) {
+      act(() => applyUiMode(mode));
+      const opened: string[] = [];
+      const r = render(
+        <>
+          <ToolEntryView entry={tool('m1', 'send_agent_team_message', { to: 'leader', text: 'done' })} conn={conn} sessionId="s" onOpenTask={(x) => opened.push(x)} teams={[{ teamId: 'team-1', name: 'squad' }]} />
+          <ToolEntryView entry={tool('m2', 'send_agent_team_message', { to: 'leader', text: 'done' })} conn={conn} sessionId="s" onOpenTask={(x) => opened.push(x)} teams={[{ teamId: 'team-1', name: 'squad' }]} />
+        </>,
+      );
+      const links = r.container.querySelectorAll('.tool-agent-link');
+      expect([...links].map((l) => l.textContent!.trim())).toEqual(['leader', 'leader']);
+      fireEvent.click(links[0]!);
+      expect(opened).toEqual(['team:team-1']);
+      r.unmount();
+    }
+  });
+
+  it('加载智能体团队/子智能体/技能:办公模式显示名称', () => {
+    act(() => applyUiMode('office'));
+    const r = render(
+      <>
+        <ToolEntryView entry={tool('l1', 'load_agent_teams', { id: 'fullstack' })} conn={conn} sessionId="s" />
+        <ToolEntryView entry={tool('l2', 'load_subagent', { id: 'reviewer' })} conn={conn} sessionId="s" />
+        <ToolEntryView entry={tool('l3', 'skill', { id: 'web-testing' })} conn={conn} sessionId="s" />
+      </>,
+    );
+    const rows = r.container.querySelectorAll('.entry-tool');
+    expect(rows[0]!.textContent).toContain('fullstack');
+    expect(rows[1]!.textContent).toContain('reviewer');
+    expect(rows[2]!.textContent).toContain('web-testing');
+    expect(r.container.querySelector('.tool-chev')).toBeNull();
+  });
+
   it('聚合组照常可展开,成员行数不变且成员行不可展开', () => {
     act(() => applyUiMode('office'));
     const seg = [tool('a', 'read', { path: 'a.ts' }), tool('b', 'grep', { pattern: 'x' }), tool('c', 'glob', { pattern: '*' })];

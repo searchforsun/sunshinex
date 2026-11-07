@@ -810,7 +810,7 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     const { conn } = await enterChat();
     openConn(conn);
     fire(conn, ev('delegation-started', undefined, { label: 'dev', delegationId: 'd1' }));
-    fire(conn, ev('agent-message', undefined, { from: 'a', to: 'lead', text: 'ping' }));
+    fire(conn, ev('agent-message', undefined, { from: 'a', to: 'leader', text: 'ping' }));
     expect(screen.queryByText('✻ dev started')).toBeNull();
     expect(document.querySelector('.agent-msg-from')?.textContent).toBe('a');
     expect(document.querySelector('.agent-msg-text')?.textContent).toBe('ping');

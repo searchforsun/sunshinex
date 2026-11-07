@@ -177,7 +177,7 @@ test('⑥ kind 扩:error→error(缺 text 回落);notice→notice;delegation-sta
     ev('delegation-ended', undefined, { delegationId: 'd1', kind: 'subagent', label: 'build', status: 'done' }),
     ev('delegation-ended', undefined, { delegationId: 'd2', kind: 'graph-node', label: 'deploy', status: 'failed' }),
     ev('agent-message', undefined, { messageId: 'm0', from: 'w1', to: 'w2', text: '队友互发不上屏' }),
-    ev('agent-message', undefined, { messageId: 'm1', from: 'w1', to: 'lead', text: '先跑测试' }),
+    ev('agent-message', undefined, { messageId: 'm1', from: 'w1', to: 'leader', text: '先跑测试' }),
   );
   const es = k.replay();
   assert.deepEqual(
@@ -187,7 +187,7 @@ test('⑥ kind 扩:error→error(缺 text 回落);notice→notice;delegation-sta
   );
   assert.deepEqual(
     es.map((e) => e.md),
-    ['boom', 'error', '技能已安装', '[w1 → lead] 先跑测试'],
+    ['boom', 'error', '技能已安装', '[w1 → leader] 先跑测试'],
   );
   for (let i = 1; i < es.length; i++) assert.ok(es[i]!.seq > es[i - 1]!.seq, 'kind 扩条目共用同一 seq 单调序列');
 });

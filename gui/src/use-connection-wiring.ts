@@ -167,7 +167,7 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           }
         }
         if (e.type === 'agent-message') {
-          // 收件人转录气泡与主会话 notice 同源事件:to=lead 的卡由 reducer 原样跳过
+          // 收件人转录气泡与主会话 notice 同源事件:to=leader 的卡由 reducer 原样跳过
           throttles.acts.push({ sessionId, fold: (a) => applyAgentEvent(a, e) });
         }
         if (typeof e.payload?.subagent === 'string') {

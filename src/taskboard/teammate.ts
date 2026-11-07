@@ -54,9 +54,9 @@ export class TeamRegistry {
 
   /** 注册(帽可配):同名重注册 = 替换语义,旧实例先停(防双 claim 循环) */
   register(t: Teammate): Result<void> {
-    // L2 收件身份唯一性:'lead' 是主会话专属收件名(inbox 的 lead 侧),teammate 占名会让
+    // L2 收件身份唯一性:'leader' 是主会话专属收件名(inbox 的 lead 侧),teammate 占名会让
     // lead↔teammate 消息身份歧义——注册即拒(评审附带 2,2026-10-06)
-    if (t.name === 'lead') return fail('INVALID_ARG', `'lead' is reserved for the main session`);
+    if (t.name === 'leader') return fail('INVALID_ARG', `'leader' is reserved for the main session`);
     if (this.teammates.size >= this.cap && this.teammates.get(t.name) === undefined) {
       return fail('INVALID_ARG', `teammate limit reached (${this.cap})`);
     }

@@ -35,7 +35,7 @@ test('合法投递:落盘 jsonl(from/to/text)+ 事件载荷 deepEqual + 回执�
       knownRecipients: () => ['w1', 'w2'],
       from: () => {
         fromCalls += 1;
-        return 'lead';
+        return 'leader';
       },
     });
     assert.equal(tool.name, 'send_agent_team_message');
@@ -47,12 +47,12 @@ test('合法投递:落盘 jsonl(from/to/text)+ 事件载荷 deepEqual + 回执�
     assert.equal(events.length, 1);
     const ev = events[0]!;
     assert.equal(ev.type, 'agent-message');
-    assert.deepEqual(ev.payload, { messageId: 'm1', from: 'lead', to: 'w1', text: 'hi' });
+    assert.deepEqual(ev.payload, { messageId: 'm1', from: 'leader', to: 'w1', text: 'hi' });
     // 文件落盘:读 jsonl 断言 from/to/text,ts 与事件一致
     const raw = fs.readFileSync(path.join(tmp, 'inbox', 'w1.jsonl'), 'utf8').trim().split('\n');
     assert.equal(raw.length, 1);
     const rec = JSON.parse(raw[0]!) as { id: string; from: string; to: string; text: string; ts: number };
-    assert.deepEqual([rec.id, rec.from, rec.to, rec.text], ['m1', 'lead', 'w1', 'hi']);
+    assert.deepEqual([rec.id, rec.from, rec.to, rec.text], ['m1', 'leader', 'w1', 'hi']);
     assert.equal(ev.ts, rec.ts, '事件 ts 与落档消息 ts 同源');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -68,7 +68,7 @@ test('to 校验:未知名拒(INVALID_ARG, not a live member);lead 恒可达', as
       inbox,
       onEvent: (e) => events.push(e),
       knownRecipients: () => ['w1', 'w2'],
-      from: () => 'lead',
+      from: () => 'leader',
       teamId: () => 'team-main',
     });
     await assert.rejects(
@@ -76,11 +76,11 @@ test('to 校验:未知名拒(INVALID_ARG, not a live member);lead 恒可达', as
       (e: unknown) => isInvalidArg(e) && e.message === 'cannot send_agent_team_message to ghost: not a live member of team team-main',
       '未知 to 应 INVALID_ARG 且文案为 not a live member',
     );
-    // lead 直达(knownRecipients 不含 lead 也合法——'lead' 恒可达)
-    const out = (await tool.executor({ to: 'lead', text: 'to main' })) as { stdout: string };
-    assert.match(out.stdout, /delivered to lead/);
+    // lead 直达(knownRecipients 不含 lead 也合法——'leader' 恒可达)
+    const out = (await tool.executor({ to: 'leader', text: 'to main' })) as { stdout: string };
+    assert.match(out.stdout, /delivered to leader/);
     assert.equal(events.length, 1, '被拒调用不产生事件');
-    assert.equal(events[0]?.payload?.from, 'lead');
+    assert.equal(events[0]?.payload?.from, 'leader');
     assert.equal(events[0]?.payload?.teamId, 'team-main', '发送方 teamId 进入 agent-message 投影');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -91,7 +91,7 @@ test('text 校验:空文本拒、4001 超长拒(≤4000 合法)', async () => {
   const tmp = tmpdir('sunshinex-tb-msgtool-3-');
   try {
     const inbox = new FileInbox(path.join(tmp, 'inbox'));
-    const tool = makeSendMessageTool({ inbox, knownRecipients: () => ['w1'], from: () => 'lead' });
+    const tool = makeSendMessageTool({ inbox, knownRecipients: () => ['w1'], from: () => 'leader' });
     await assert.rejects(tool.executor({ to: 'w1', text: '' }), isInvalidArg, '空 text 拒');
     await assert.rejects(tool.executor({ to: 'w1', text: 'x'.repeat(4001) }), isInvalidArg, '4001 字符超长拒');
     const out = (await tool.executor({ to: 'w1', text: 'y'.repeat(4000) })) as { stdout: string };
@@ -149,9 +149,9 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_agent_team
       'teammate 面不得给自己发消息',
     );
     // teammate 面发给 lead/他队友合法,from 注入为 teammate 名
-    const out = (await msgTool.executor({ to: 'lead', text: 'report' })) as { stdout: string };
-    assert.match(out.stdout, /delivered to lead/);
-    const rec = JSON.parse(fs.readFileSync(path.join(tmp, 'inbox', 'lead.jsonl'), 'utf8').trim()) as { from: string };
+    const out = (await msgTool.executor({ to: 'leader', text: 'report' })) as { stdout: string };
+    assert.match(out.stdout, /delivered to leader/);
+    const rec = JSON.parse(fs.readFileSync(path.join(tmp, 'inbox', 'leader.jsonl'), 'utf8').trim()) as { from: string };
     assert.equal(rec.from, 'w2', '落档 from 来自注入器(teammate 名)');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -181,8 +181,8 @@ test('跨队 to 拒绝 cannot send_agent_team_message across teams;同队与 lea
     );
     const same = (await tool.executor({ to: 'w2', text: 'same team' })) as { stdout: string };
     assert.match(same.stdout, /^message m1 delivered to w2$/);
-    const lead = (await tool.executor({ to: 'lead', text: 'report' })) as { stdout: string };
-    assert.match(lead.stdout, /delivered to lead/);
+    const lead = (await tool.executor({ to: 'leader', text: 'report' })) as { stdout: string };
+    assert.match(lead.stdout, /delivered to leader/);
     const rec = JSON.parse(fs.readFileSync(path.join(tmp, 'inbox', 'w2.jsonl'), 'utf8').trim()) as { from: string; text: string };
     assert.deepEqual([rec.from, rec.text], ['w1', 'same team']);
   } finally {
@@ -199,11 +199,11 @@ test('lead 无自身 teamId 时事件投影用收件人 teamId', async () => {
       inbox,
       onEvent: (e) => events.push(e),
       knownRecipients: () => ['w1'],
-      from: () => 'lead',
+      from: () => 'leader',
       recipientTeamId: (name) => (name === 'w1' ? 'team-alpha' : undefined),
     });
     await tool.executor({ to: 'w1', text: 'hi' });
-    assert.equal(events[0]?.payload?.from, 'lead');
+    assert.equal(events[0]?.payload?.from, 'leader');
     assert.equal(events[0]?.payload?.teamId, 'team-alpha');
     assert.equal(events[0]?.payload?.to, 'w1');
   } finally {

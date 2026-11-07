@@ -176,7 +176,7 @@ export function builtinTools(
           purpose: {
             type: ['string', 'null'],
             description:
-              "Short phrase stating what this command is for, written in the language the user is currently using (e.g. 'Find commits touching session switching', '启动开发服务器'). Shown to the user as the title of this step and as the background task name. REQUIRED when background is true; otherwise pass null for self-explanatory commands (ls, git status) and write one for long, piped or non-obvious commands.",
+              "Short phrase stating what this command is for, written in the language the user is currently using (e.g. 'Find commits touching session switching', 'start the dev server'). Shown to the user as the title of this step and as the background task name. REQUIRED when background is true; otherwise pass null for self-explanatory commands (ls, git status) and write one for long, piped or non-obvious commands.",
           },
           command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
           background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path' },

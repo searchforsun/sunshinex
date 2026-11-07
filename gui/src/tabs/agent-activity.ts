@@ -109,7 +109,7 @@ export function applyAgentEvent(s: AgentActivities, e: SessionEvent): AgentActiv
   if (e.type === 'agent-message') {
     const to = typeof p?.to === 'string' ? p.to : '';
     // lead 的气泡在主会话;队友转录只收发给自己的
-    if (to === '' || to === 'lead') return s;
+    if (to === '' || to === 'leader') return s;
     return projectInbound(s, to, e);
   }
   const label = p?.subagent;

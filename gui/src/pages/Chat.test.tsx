@@ -715,7 +715,7 @@ describe('系统行图标(G11 §4)', () => {
     expect(document.querySelectorAll('.entry-notice').length).toBe(1); // 委派状态行不入主流
     fire({ type: 'agent-message', payload: { from: 'boss', to: 'dev', text: 'hi' }, ts: Date.now() });
     expect(document.querySelector('.agent-msg')).toBeNull(); // 队友互发不进 lead
-    fire({ type: 'agent-message', payload: { from: 'boss', to: 'lead', text: 'hi lead' }, ts: Date.now() });
+    fire({ type: 'agent-message', payload: { from: 'boss', to: 'leader', text: 'hi lead' }, ts: Date.now() });
     expect(document.querySelector('.agent-msg-from')?.textContent).toBe('boss');
     expect(document.querySelector('.agent-msg-text')?.textContent).toBe('hi lead');
     fire({ type: 'error', text: 'boom', ts: Date.now() });
@@ -726,7 +726,7 @@ describe('系统行图标(G11 §4)', () => {
     const onOpenAgent = vi.fn();
     render(<Chat conn={connOf([])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenAgent={onOpenAgent} />);
     await flushed();
-    fire({ type: 'agent-message', payload: { from: 'w1', to: 'lead', text: '做完了', messageId: 'm1' }, ts: Date.now() });
+    fire({ type: 'agent-message', payload: { from: 'w1', to: 'leader', text: '做完了', messageId: 'm1' }, ts: Date.now() });
     expect(document.querySelector('.agent-msg-from')?.textContent).toBe('w1');
     expect(document.querySelector('.agent-msg-text')?.textContent).toBe('做完了');
     fireEvent.click(document.querySelector('.agent-msg-from')!);
@@ -1632,7 +1632,7 @@ describe('G14.181 用户气泡限高折叠', () => {
     try {
       mountChat([]);
       await flushed();
-      fire({ type: 'agent-message', payload: { from: '需求分析师', to: 'lead', text: longText }, ts: Date.now() });
+      fire({ type: 'agent-message', payload: { from: '需求分析师', to: 'leader', text: longText }, ts: Date.now() });
       expect(document.querySelector('.agent-msg .user-bubble-clamped')).not.toBeNull();
       expect(document.querySelector('.agent-msg .user-bubble-toggle-row')).not.toBeNull();
       fireEvent.click(screen.getByLabelText('Expand'));
