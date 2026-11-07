@@ -8,6 +8,7 @@ import { DirectoryTab } from '../tabs/DirectoryTab';
 import { NavButtons } from '../NavButtons';
 import type { NavControls } from '../nav-history';
 import {
+  autoSeenSuppressed,
   loadSeenMap,
   persistSeenMap,
   RECENT_VISIBLE_DEFAULT,
@@ -18,9 +19,9 @@ import type { SeenMap } from './project-menu-util';
 import { ProjectSearch } from './project-menu-search';
 import { ProjectsSection } from './project-menu-projects';
 import { RecentsSection } from './project-menu-recents';
-import { ArchiveSection } from './archive-group';
+import { ArchiveSection, type ArchivedRow } from './archive-group';
 import { PinnedSection } from './pinned-section';
-import { normalizePins, pinFromRow, type PinEntry } from './pin-store';
+import { pinFromRow, type PinEntry } from './pin-store';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
 export { FolderAddIcon } from './project-menu-util';
@@ -66,7 +67,7 @@ export interface ProjectMenuConn {
   appSeen(): Promise<{ seen: Record<string, number> }>;
   saveAppSeen(seen: Record<string, number>): Promise<void>;
   /** 归档区数据面(跨工作区聚合行;GET /sessions/archived)+ 受控删除(已归档态) */
-  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>>;
+  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean }>>;
   deleteSession(id: string): Promise<void>;
 }
 
@@ -77,6 +78,9 @@ export interface ProjectMenuProps {
   readonly activeRoot: string; // '' = 无(其所属组自动展开)
   /** G14.16 标题统一流联动:rename 落盘后 App bump——变化即重拉 recentSessions(侧栏即时同名) */
   readonly recentVersion?: number;
+  /** 置顶档单源(2026-11-07 置顶卡顿根修:状态上提 App,顶栏/侧栏共享乐观态,点击零往返) */
+  readonly pins?: PinEntry[];
+  readonly persistPins?: (next: PinEntry[]) => void;
   /** G14.52 活动会话运行态(App 本地权威,model-start 置位/done·error 复位):圆点亮熄以此为准 */
   readonly runningIds?: ReadonlySet<string>;
   readonly onOpenSession: (sessionId: string, root: string, journalId?: string) => void;
@@ -106,11 +110,18 @@ export interface ProjectMenuProps {
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree } = props;
   const recentVersion = props.recentVersion ?? 0;
+  const pins = props.pins ?? [];
+  const persistPins = props.persistPins ?? ((): void => undefined);
   const runningIds = props.runningIds ?? new Set<string>();
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   /** 2026-10-24 用户裁定:会话行 hover tooltip 附分支信息(如 dev1)——按工作区 root 拉 gitBranches
    *  current 缓存(失败落 '' 防重试风暴);ProjectsSection 消费 */
   const [branchByRoot, setBranchByRoot] = useState<Record<string, string>>({});
+  /** 分支缓存镜像 ref(2026-11-07 用户实测「置顶/归档卡+Failed to fetch」根修):state 值原在
+   *  loadWorkspaces 闭包与 effect deps 双现——每个分支应答都重跑全部加载请求=请求风暴,daemon
+   *  忙时(会话运行中)同源 fetch 被重置=「Failed to fetch」+动作假卡。ref 直读即只拉一次 */
+  const branchByRootRef = useRef(branchByRoot);
+  branchByRootRef.current = branchByRoot;
   /** Recents 扁平最近会话(G10-C2;跨工作区,daemon 聚合) */
   const [recents, setRecents] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   const [recentsOpen, setRecentsOpen] = useState(true);
@@ -201,7 +212,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     const sr = sessions.find(
       (s) => s.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === s.id,
     );
-    if (sr !== undefined && isUnseen(sr.id, sr.updatedAt)) markSeen(sr.id, sr.updatedAt);
+    // 显式标记未读抑制(2026-11-07 用户实测「标记未读左栏不亮蓝点」):顶栏 markUnread 落抑制
+    // 旗,本 effect 不再补戳——蓝点亮到用户再次进入该会话(openSession 清旗)为止
+    if (sr !== undefined && !autoSeenSuppressed(sr.id) && isUnseen(sr.id, sr.updatedAt)) markSeen(sr.id, sr.updatedAt);
   }, [sessions, activeSessionId, journalOfSession, isUnseen, markSeen]);
 
   const markJournal = (sessionId: string, journalId: string): void =>
@@ -220,7 +233,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         // 分支缓存补拉:每个未缓存的 root 一次(缓存守卫防风暴;失败落空串标记已试)
         for (const w of list) {
           const rt = w.root;
-          if (!rt || branchByRoot[rt] !== undefined) continue;
+          if (!rt || branchByRootRef.current[rt] !== undefined) continue;
           conn.gitBranches(rt).then(
             (r) => { if (r.current) setBranchByRoot((m) => (m[rt] === undefined ? { ...m, [rt]: r.current } : m)); },
             () => setBranchByRoot((m) => ({ ...m, [rt]: '' })),
@@ -236,21 +249,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  (GET /sessions/archived),分区头折叠同 RECENTS;行动作失败经 actionError 通道。
    *  2026-10-22 声明上移至 loadPins 旁:recentVersion effect 同拍重拉(置顶组归档冻结需要归档集) */
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const [archivedRows, setArchivedRows] = useState<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }> | null>(null);
+  const [archivedRows, setArchivedRows] = useState<ArchivedRow[] | null>(null);
   const loadArchived = useCallback((): void => {
     conn.archivedSessions().then(setArchivedRows, () => setArchivedRows([]));
   }, [conn]);
 
-  const loadPins = useCallback((): void => {
-    conn.appPins().then((r) => setPins(normalizePins(r.pins)), () => setPins([]));
-  }, [conn]);
+
 
   useEffect(() => {
     loadWorkspaces();
-    loadPins();
     loadArchived(); // 2026-10-23 置顶组滤除已归档钉:归档集与钉档同拍重拉
     loadSeen(); // 2026-10-23 已读/未读态落底层:与钉档同拍重拉(顶栏标记为未读经 recentVersion bump 驱动)
-  }, [loadWorkspaces, loadPins, loadArchived, loadSeen, recentVersion, branchByRoot]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手)
+  }, [loadWorkspaces, loadArchived, loadSeen, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手);branchByRoot 走 ref(风暴根修)
 
   /** 移除工作区(2026-10-23):conn.hideWorkspace 落库后刷新清单;展开组若是它即收起。
    *  数据保留——重新「添加工作区」即原地加回 */
@@ -422,14 +432,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  桌面壳与浏览器同 daemon 同享;TUI 无此概念不进共享会话档)。钉组跨工作区聚合于「项目」上方,
    *  不支持折叠;无钉不渲染。归档联动(2026-10-21 用户裁定「点击归档不覆盖置顶分组」):置顶组
    *  显示所有钉,不因归档离组;归档层真删时随删防悬挂 */
-  const [pins, setPins] = useState<PinEntry[]>([]);
-  useEffect(() => {
-    loadPins(); // 挂载拉钉档(userConfigDir/gui/pins.json;2026-10-21 用户裁定「也要持久化」)
-  }, [loadPins]);
-  const persistPins = useCallback((next: PinEntry[]): void => {
-    setPins(next);
-    void conn.saveAppPins(next).then(() => undefined, (err: unknown) => setActionError(errText(err)));
-  }, [conn]);
+  // pins 态上提 App 单源(2026-11-07 用户实测「置顶卡一下」根修):顶栏与侧栏共享同一份
+  // 乐观态——点击零往返即时生效,PUT 异步落库;App 持 pending 旗挡在途 GET 旧档闪屏
+  /** PUT 在途旗(2026-11-07 用户实测「置顶延迟+闪屏,归档没有」根修):置顶 PUT 在途时任何
+   *  此前组件内自有 state+GET 重拉=PUT 在途读到旧档闪屏;2026-11-07 状态上提 App 单源后零往返 */
+
   const pinRow = useCallback((row: PinEntry): void => {
     if (pins.some((p) => p.id === row.id)) return;
     persistPins([row, ...pins]); // 新钉居前
@@ -461,6 +468,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     [conn, loadArchived, loadWorkspaces, persistPins, pins],
   );
   const pinnedIds = useMemo(() => new Set(pins.map((p) => p.id)), [pins]);
+  /** journal → daemon 运行标注(置顶组非当前会话的运行/待确认态数据源;最近会话为运行中会话的超集) */
+  const liveJournals = useMemo(() => {
+    const m = new Map<string, { liveSessionId: string; awaiting: boolean }>();
+    for (const r of recents ?? []) if (r.liveSessionId !== undefined) m.set(r.id, { liveSessionId: r.liveSessionId, awaiting: r.awaiting === true });
+    return m;
+  }, [recents]);
 
   /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
@@ -607,6 +620,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onUnpin={unpinRow}
           onArchiveRow={archiveRow}
           archivedIds={new Set((archivedRows ?? []).map((r) => r.id))}
+          liveJournals={liveJournals}
         />
         <ProjectsSection
           projectsOpen={projectsOpen}
@@ -654,6 +668,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             onOpenSession={attachJournal}
             onUnarchive={unarchiveArchivedRow}
             onDelete={deleteArchivedRow}
+            activeSessionId={activeSessionId}
+            runningIds={runningIds}
+            journalOfSession={journalOfSession}
           />
         ) : (
           <>

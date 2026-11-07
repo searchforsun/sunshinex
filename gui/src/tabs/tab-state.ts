@@ -442,3 +442,20 @@ export function rewindSeat(states: TabStates, fromId: string, toId: string, atTs
     },
   };
 }
+
+/** 同档换座收口(2026-11-07 切会话卡顿根修):同一 journal 的运行时 id 换号(daemon 重启/旧版重开
+ *  铸新运行时)后旧座位成孤儿——页签与常驻 webview 随重开次数累积。打开 toId 时把指向同档的旧座位
+ *  并入:toId 尚无页签则整座迁入(pty 与页签留在原 uid 上,终端凭 journal 锚重连),否则旧座直接弃。
+ *  无旧座位 → 原引用返回 */
+export function adoptStaleSeats(states: TabStates, staleIds: readonly string[], toId: string): TabStates {
+  const stale = staleIds.filter((id) => id !== toId && states[id] !== undefined);
+  if (stale.length === 0) return states;
+  const next = { ...states };
+  for (const id of stale) {
+    const seat = next[id]!;
+    delete next[id];
+    const cur = next[toId];
+    if ((cur === undefined || cur.tabs.length === 0) && seat.tabs.length > 0) next[toId] = { ...seat, collapsed: cur?.collapsed ?? seat.collapsed };
+  }
+  return next;
+}

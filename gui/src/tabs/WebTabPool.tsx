@@ -102,11 +102,15 @@ export function WebTabPool({
     return () => cancelAnimationFrame(raf);
   }, [visibleUid, anchorRef]);
 
+  /** 页签上次落定的分区:换座(同档运行时换号并座)后新座分区在途期间沿用——分区串不变则 WebTab
+   *  key 不变,webview 不卸载不重载 */
+  const partByUid = useRef(new Map<string, string>());
   return (
     <div className="sx-webpool">
       {items.map((it) => {
         const vis = it.uid === visibleUid;
-        const part = partitions[it.seat];
+        const part = partitions[it.seat] ?? partByUid.current.get(it.uid);
+        if (part !== undefined) partByUid.current.set(it.uid, part);
         return (
           <div
             key={it.uid}

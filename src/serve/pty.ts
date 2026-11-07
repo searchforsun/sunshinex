@@ -14,7 +14,7 @@ export interface PtySpawnOptions {
   readonly cwd: string; readonly cols: number; readonly rows: number;
   readonly owner: string;                      // 会话 id(daemon 传入)——killAllFor 锚
   readonly env?: Readonly<Record<string, string>>;
-  readonly seed?: string;                      // 初始环形内容(2026-11-07 回放落盘回种——滚动区跨 daemon 视觉连续)
+  readonly seed?: string;                      // 回种历史(2026-11-07 回放落盘——滚动区跨 daemon 视觉连续)
 }
 
 /** 会话句柄（T3 消费面；onExit 触发后条目自动注销——has→false，句柄自身仍可安全调用） */
@@ -23,7 +23,7 @@ export interface PtySession {
   write(data: string): void;                   // UTF-8 直写(输入链)
   resize(cols: number, rows: number): void;
   kill(): void;
-  replay(): string;                            // 环形缓冲尾部(UTF-8 文本,≤ RING_LIMIT chars)
+  replay(): string;                            // 回种历史 + 环形缓冲尾部(UTF-8 文本,各 ≤ RING_LIMIT chars)
   onData(cb: (data: string) => void): void;
   onExit(cb: (code: number) => void): void;    // 触发后自动注销条目(has→false)
 }
@@ -46,6 +46,12 @@ class PtySessionImpl implements PtySession {
   private readonly proc: IPty;
   private readonly unregister: () => void;
   private ring = '';
+  /** 回种历史与实时环分存:新壳输出(ConPTY 每次 resize 整屏重绘)只挤实时环,不挤掉历史 */
+  private readonly history: string;
+  /** 光标位置查询(DSR 6)已被终端应答:此后回放剥掉 ESC[6n——否则每次重连 xterm 都再答一次,
+   *  应答串作为输入落进 shell 提示行(乱码 ^[[5;1R) */
+  private cprAnswered = false;
+  private cprFallback: ReturnType<typeof setTimeout> | undefined;
   private readonly dataCbs: Array<(data: string) => void> = [];
   private readonly exitCbs: Array<(code: number) => void> = [];
   private exited = false;
@@ -55,7 +61,14 @@ class PtySessionImpl implements PtySession {
     this.id = id;
     this.proc = proc;
     this.unregister = unregister;
-    this.ring = seed;
+    this.history = seed === '' ? '' : `${seed.slice(-RING_LIMIT)}\r\n`;
+    if (this.history !== '') {
+      // 续屏 shell 以 inherit cursor 启动(见 spawn):首帧 ESC[6n 等终端报光标位置才开始输出。
+      // 终端迟迟不连/不答则 shell 永挂——兜底按「光标在末行」代答
+      this.cprFallback = setTimeout(() => {
+        if (!this.cprAnswered && !this.exited) this.write(`\x1b[${proc.rows};1R`);
+      }, 5000);
+    }
     proc.onData((data) => {
       this.ring += data;
       if (this.ring.length > RING_LIMIT) this.ring = this.ring.slice(-RING_LIMIT);
@@ -66,11 +79,16 @@ class PtySessionImpl implements PtySession {
 
   write(data: string): void {
     if (this.exited) return;                   // 死会话静默：写已毁 socket 会炸出流错误
+    if (!this.cprAnswered && /\x1b\[\d+;\d+R/.test(data)) {
+      this.cprAnswered = true;
+      if (this.cprFallback !== undefined) clearTimeout(this.cprFallback);
+    }
     this.proc.write(data);
   }
 
   resize(cols: number, rows: number): void {
     if (this.exited) return;                   // conpty 已 exit 后 resize 会 throw(agent 守卫)
+    if (cols === this.proc.cols && rows === this.proc.rows) return; // 同尺寸不转发:ConPTY 每次 resize 整屏重绘
     this.proc.resize(cols, rows);
   }
 
@@ -82,7 +100,8 @@ class PtySessionImpl implements PtySession {
   }
 
   replay(): string {
-    return this.ring;
+    const text = this.history + this.ring;
+    return this.cprAnswered ? text.replaceAll('\x1b[6n', '') : text;
   }
 
   onData(cb: (data: string) => void): void {
@@ -96,6 +115,7 @@ class PtySessionImpl implements PtySession {
   private handleExit(exitCode: number): void {
     if (this.exited) return;                   // conpty 双发兜底(exit 事件仅一次,防御性)
     this.exited = true;
+    if (this.cprFallback !== undefined) clearTimeout(this.cprFallback);
     this.unregister();                         // 注销先行：onExit 回调内 has 已→false
     for (const cb of this.exitCbs) cb(exitCode);
     this.closeConptyIfNeeded();
@@ -139,6 +159,9 @@ export class PtyManager {
       rows: opts.rows,
       name: 'xterm-256color',                  // xterm.js 前端对齐(T7);win32 仅装饰,unix 注入 TERM
       env: opts.env ? { ...opts.env } : undefined,
+      // 续屏(有回种历史):ConPTY 缺省启动即清屏(ESC[2J)占满视口,历史被整屏推走=重启后「像没恢复」;
+      // inherit cursor 改为先问终端光标位置,从历史末尾接着输出(VS Code 恢复终端同法)
+      ...(opts.seed !== undefined && opts.seed !== '' ? { conptyInheritCursor: true } : {}),
     });
     const session = new PtySessionImpl(id, proc, () => { this.sessions.delete(id); }, opts.seed);
     this.sessions.set(id, { owner: opts.owner, session });
@@ -163,6 +186,13 @@ export class PtyManager {
   replaysFor(owner: string): Array<{ id: string; text: string }> {
     const out: Array<{ id: string; text: string }> = [];
     for (const [id, e] of this.sessions) if (e.owner === owner) out.push({ id, text: e.session.replay() });
+    return out;
+  }
+
+  /** 全部条目的回放文本(不分 owner):周期落盘与 teardown 首步全量收存——含 App 级(@app)草稿终端 */
+  allReplays(): Array<{ id: string; text: string }> {
+    const out: Array<{ id: string; text: string }> = [];
+    for (const [id, e] of this.sessions) out.push({ id, text: e.session.replay() });
     return out;
   }
 

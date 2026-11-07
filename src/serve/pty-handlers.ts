@@ -36,10 +36,10 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
   // 新 pty 初始环=滚动区跨 daemon 视觉连续(shell 不能跨 daemon 存活,与 VSCode 同边界)
   const prev = typeof body?.prevPtyId === 'string' && body.prevPtyId !== '' ? body.prevPtyId : undefined;
   const seed = prev !== undefined ? loadReplay(prev) : undefined;
-  const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
+  const file = shellFile();
   io.ptyManager.spawn(ptyId, {
     file,
-    args: [],
+    args: shellArgs(),
     cwd: session.root,
     cols,
     rows,
@@ -86,10 +86,10 @@ export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMess
   const ptyId = io.nextPtyId();
   const prev = typeof body?.prevPtyId === 'string' && body.prevPtyId !== '' ? body.prevPtyId : undefined;
   const seed = prev !== undefined ? loadReplay(prev) : undefined;
-  const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
+  const file = shellFile();
   io.ptyManager.spawn(ptyId, {
     file,
-    args: [],
+    args: shellArgs(),
     cwd: root,
     cols,
     rows,
@@ -107,4 +107,13 @@ export function handleAppPtyKill(io: PtyHandlerIo, res: http.ServerResponse, pty
   if (alive !== undefined) saveReplay(ptyId, alive.replay());
   io.ptyManager.kill(ptyId);
   io.send(res, 200, { ok: true });
+}
+
+/** 终端 shell(win32 PowerShell,其余 $SHELL ?? bash)。-NoLogo:不打印启动版权横幅——续屏把历史
+ *  接在新壳上方,每次重启的横幅会在滚动区层层堆积(2026-11-07 用户实测) */
+function shellFile(): string {
+  return process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
+}
+function shellArgs(): string[] {
+  return process.platform === 'win32' ? ['-NoLogo'] : [];
 }

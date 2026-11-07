@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bug, ChevronDown, ExternalLink, Globe, Lock, MonitorSmartphone, MoreHorizontal, MousePointerClick, RotateCw } from 'lucide-react';
 import type { TabParams } from './tab-state';
 import { t } from '../i18n';
@@ -111,7 +111,15 @@ interface WebHistory {
   index: number;
 }
 
-export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, partition }: WebTabProps): JSX.Element {
+/** 常驻池在应用根,App 每次渲染都会带着新闭包回调重渲全部 web 页签——回调一律经 ref 读最新值,
+ *  比较时只看数据 props,数据未变即跳过整棵子树 */
+function sameWebTabData(a: WebTabProps, b: WebTabProps): boolean {
+  return a.conn === b.conn && a.params === b.params && a.uid === b.uid && a.root === b.root && a.partition === b.partition;
+}
+
+export const WebTab = memo(WebTabImpl, sameWebTabData);
+
+function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, partition }: WebTabProps): JSX.Element {
   // 内置浏览器融合(M1,2026-11-01 用户裁定「自由使用浏览器,插件打开的也是普通页签」):
   // root 在场(会话绑定档)=Electron webview **真实嵌入页面**——点击/输入/滚轮原生,截屏映射
   // 画布退役;root 缺省(欢迎页裸开)=纯 iframe 形态不变。自动化(M2)经壳内 CDP facade 附加
@@ -255,11 +263,25 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
    *  (effect 形态会在 webview src 自动加载后才挂,did-navigate/页名首拍必丢,实测
    *  「只有第一个页签有名字,其余页签无名」即此);did-navigate 族 → URL/后退前进态/
    *  地址栏回显/标签页名回写;page-title-updated → 真页名 */
-  const attachWv = (el: HTMLElement | null): void => {
+  const uidRef = useRef(uid);
+  uidRef.current = uid;
+  const onMetaRef = useRef(onMeta);
+  onMetaRef.current = onMeta;
+  const connRef = useRef(conn);
+  connRef.current = conn;
+  /** 已挂事件的拆除面(元素卸载/换挂时执行) */
+  const detachWvRef = useRef<(() => void) | null>(null);
+  // 身份恒定(useCallback 零依赖,入参经 ref 读):回调 ref 每渲染换新=React 每次提交先 null 后元素
+  // 重调一遍——getURL/canGoBack/canGoForward/getTitle 皆 Electron 同步 IPC(实测单次至 ~30ms,常驻池
+  // 多 webview 叠加每渲染上百 ms),且事件监听只增不拆无限累积
+  const attachWv = useCallback((el: HTMLElement | null): void => {
+    detachWvRef.current?.();
+    detachWvRef.current = null;
     wvRef.current = el as WvElement | null;
     if (el === null) return;
     const wv = el as WvElement & {
       addEventListener(type: string, fn: (ev: Event & { title?: string; favicons?: string[] }) => void): void;
+      removeEventListener(type: string, fn: (ev: Event & { title?: string; favicons?: string[] }) => void): void;
       getTitle?: () => string;
     };
     // 页名/站标以 webview 自身事件为准:dom-ready 晚于 page-title-updated,回写时取 getTitle()
@@ -276,15 +298,15 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       if (u !== '' && u !== 'about:blank') {
         setInput(u);
         const t = typeof wv.getTitle === 'function' ? wv.getTitle().trim() : '';
-        onMeta(uid, { url: u, pageTitle: t !== '' && t !== u ? t : webPageName(u) });
+        onMetaRef.current(uidRef.current, { url: u, pageTitle: t !== '' && t !== u ? t : webPageName(u) });
         const host = webPageName(u);
         if (host !== navHost) {
           navHost = host;
           faviconSeen = false;
-          conn
+          connRef.current
             .fetchWebMeta(u)
             .then((meta) => {
-              if (!faviconSeen && navHost === host && meta.icon !== '') onMeta(uid, { pageIcon: meta.icon });
+              if (!faviconSeen && navHost === host && meta.icon !== '') onMetaRef.current(uidRef.current, { pageIcon: meta.icon });
             })
             .catch(() => undefined);
         }
@@ -292,13 +314,13 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     };
     const onTitle = (ev: Event & { title?: string }): void => {
       const title = ev.title;
-      if (typeof title === 'string' && title !== '') onMeta(uid, { pageTitle: title });
+      if (typeof title === 'string' && title !== '') onMetaRef.current(uidRef.current, { pageTitle: title });
     };
     const onFavicon = (ev: Event & { favicons?: string[] }): void => {
       const icon = ev.favicons?.[0];
       if (typeof icon === 'string' && icon !== '') {
         faviconSeen = true;
-        onMeta(uid, { pageIcon: icon });
+        onMetaRef.current(uidRef.current, { pageIcon: icon });
       }
     };
     wv.addEventListener('did-navigate', onNav);
@@ -306,10 +328,17 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     wv.addEventListener('dom-ready', onNav);
     wv.addEventListener('page-title-updated', onTitle);
     wv.addEventListener('page-favicon-updated', onFavicon);
+    detachWvRef.current = () => {
+      wv.removeEventListener('did-navigate', onNav);
+      wv.removeEventListener('did-navigate-in-page', onNav);
+      wv.removeEventListener('dom-ready', onNav);
+      wv.removeEventListener('page-title-updated', onTitle);
+      wv.removeEventListener('page-favicon-updated', onFavicon);
+    };
     try {
       if (typeof wv.getURL === 'function') onNav(); // 挂上即补读(事件早于挂接的首拍在此补偿);jsdom 无方法跳过
     } catch { /* 尽力 */ }
-  };
+  }, []);
 
   // 缩放档弹层点外即收(面板内点按任意处;菜单行在 anchor 内不触发)
   useEffect(() => {
@@ -452,7 +481,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       setInput(url);
       setWvUrl(url); // 即时回显(did-navigate 事件后由 getURL 权威覆盖;外开钮即刻可用)
       if (wvTarget !== null) wvRef.current?.loadURL(url);
-      onMeta(uid, { url, pageTitle: webPageName(url) });
+      onMetaRef.current(uid, { url, pageTitle: webPageName(url) });
       return;
     }
     setNav((n) => {
@@ -461,7 +490,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     });
     setNonce((v) => v + 1); // 同址重输也重载
     setInput(url);
-    onMeta(uid, { url, pageTitle: webPageName(url) }); // 标签条标题/判重键随导航演进(页名 onLoad 再精化)
+    onMetaRef.current(uid, { url, pageTitle: webPageName(url) }); // 标签条标题/判重键随导航演进(页名 onLoad 再精化)
   };
 
   const back = (): void => {
@@ -491,7 +520,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
       .fetchWebMeta(url)
       .then((meta) => {
         if (activeRef.current !== url) return; // 已导航/刷新:过期应答弃
-        onMeta(uid, {
+        onMetaRef.current(uid, {
           ...(meta.title !== '' ? { pageTitle: meta.title } : {}),
           ...(meta.icon !== '' ? { pageIcon: meta.icon } : {}),
         });
@@ -511,7 +540,7 @@ export function WebTab({ conn, params, uid, onMeta, root, onClose, onActivate, p
     } catch {
       title = ''; // 跨域:contentDocument 拒访
     }
-    if (title !== '') onMeta(uid, { pageTitle: title });
+    if (title !== '') onMetaRef.current(uid, { pageTitle: title });
   };
 
   /** 宽高草稿提交:非法/过小丢弃;≥16 取整生效 */

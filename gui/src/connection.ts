@@ -1,4 +1,4 @@
-import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT } from './session-events';
+import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT, SESSION_ARCHIVE_CHANGED_EVENT } from './session-events';
 import { createConnectionTransport, DEFAULT_BACKOFF_BASE_MS } from './connection-transport';
 
 export { toWsUrl } from './connection-transport';
@@ -194,13 +194,14 @@ export interface Connection {
   fetchDiff(sessionId: string, callId: string, path?: string): Promise<DiffResp>;
   /** POST /session/:id/delete(2026-10-21 受控删除):须先归档(未归档 409);真清会话档全家 */
   deleteSession(id: string): Promise<void>;
-  /** POST /session/:id/archive {archived}:归档/撤销;running 409 */
+  /** POST /session/:id/archive {archived}:归档/撤销(运行中照常受理,不停运行) */
   archiveSession(id: string, archived: boolean): Promise<void>;
   /** GET /sessions/archived:跨工作区归档列表(归档页数据源) */
-  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>>;
-  /** POST /session/:id/pty {cols?,rows?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
-   *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId */
-  openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }>;
+  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean }>>;
+  /** POST /session/:id/pty {cols?,rows?,prevPtyId?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
+   *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId。
+   *  prevPtyId=页签盘档里已死的旧 pty(daemon 重启):daemon 以其落盘回放回种新壳滚动区 */
+  openPty(sessionId: string, cols?: number, rows?: number, prevPtyId?: string): Promise<{ ptyId: string }>;
   /** DELETE /session/:id/pty/:ptyId（G8b T3）：同步注销——kill 后新 WS 连入收 error
    *  'pty not found'（注销即失效，无宽限窗） */
   killPty(sessionId: string, ptyId: string): Promise<void>;
@@ -680,18 +681,21 @@ export function createConnection(opts: ConnectionOpts): Connection {
     archiveSession(id: string, archived: boolean): Promise<void> {
       // 归档成功广播(仅真归档;撤销不发):App 据此把正开着的该会话主对话送回欢迎页
       return postJson(`/session/${encodeURIComponent(id)}/archive`, { archived }).then(() => {
-        if (archived && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_ARCHIVED_EVENT, { detail: id }));
+        if (typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent(SESSION_ARCHIVE_CHANGED_EVENT, { detail: { id, archived } }));
+        if (archived) window.dispatchEvent(new CustomEvent(SESSION_ARCHIVED_EVENT, { detail: id }));
       });
     },
     archivedSessions() {
       return getJson('/sessions/archived');
     },
-    async openPty(sessionId: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
+    async openPty(sessionId: string, cols?: number, rows?: number, prevPtyId?: string): Promise<{ ptyId: string }> {
       const path = `/session/${encodeURIComponent(sessionId)}/pty`;
       // 缺省尺寸省字段(newSession mode 同款——旧 daemon 兼容;daemon 缺省 80×24)
-      const body: { cols?: number; rows?: number } = {};
+      const body: { cols?: number; rows?: number; prevPtyId?: string } = {};
       if (cols !== undefined) body.cols = cols;
       if (rows !== undefined) body.rows = rows;
+      if (prevPtyId !== undefined) body.prevPtyId = prevPtyId;
       const res = await fetch(`${base}${path}`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -704,10 +708,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson<FileResp>(`/app/file?root=${encodeURIComponent(root)}&path=${encodeURIComponent(filePath)}${scope === 'data' ? '&scope=data' : ''}`);
     },
 
-    async openPtyAt(root: string, cols?: number, rows?: number): Promise<{ ptyId: string }> {
-      const body: { root: string; cols?: number; rows?: number } = { root };
+    async openPtyAt(root: string, cols?: number, rows?: number, prevPtyId?: string): Promise<{ ptyId: string }> {
+      const body: { root: string; cols?: number; rows?: number; prevPtyId?: string } = { root };
       if (cols !== undefined) body.cols = cols;
       if (rows !== undefined) body.rows = rows;
+      if (prevPtyId !== undefined) body.prevPtyId = prevPtyId;
       // post 助手无应答体面(newSession 同款 fetch+json)——ptyId 在 200 应答体内
       const res = await fetch(`${base}/app/pty`, {
         method: 'POST',

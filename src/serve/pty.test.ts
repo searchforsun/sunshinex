@@ -62,6 +62,26 @@ test('环形缓冲:超限输出仅保尾部 RING_LIMIT;未超限全量', async (
   assert.ok(s2.replay().includes('tiny'));      // 未超限全量(含可能的环境回显,故 includes)
 });
 
+test('回种历史与实时环分存:新壳输出超限也挤不掉历史,replay 恒以历史开头', async () => {
+  const m = new PtyManager();
+  const s = m.spawn('p5', { ...ECHO_BIG(RING_LIMIT + 4096), cwd: cwd(), cols: 80, rows: 24, owner: 's1', seed: 'OLD-SCREEN' });
+  await exitWithin(new Promise<void>((r) => s.onExit(() => r())));
+  assert.ok(s.replay().startsWith('OLD-SCREEN\r\n'), '历史在前且与新壳输出断行');
+  assert.ok(s.replay().endsWith('x'), '实时环保尾');
+  assert.equal(s.replay().length, 'OLD-SCREEN\r\n'.length + RING_LIMIT);
+});
+
+test('续屏 shell 光标查询(ESC[6n)应答后:输出接续流出,回放剥除查询(重连不再触发重复应答)', async () => {
+  const m = new PtyManager();
+  const s = m.spawn('p6', { ...ECHO('after-restore'), cwd: cwd(), cols: 80, rows: 24, owner: 's1', seed: 'OLD' });
+  s.onData((d) => {
+    if (d.includes('\x1b[6n')) s.write('\x1b[2;1R');
+  });
+  await exitWithin(new Promise<void>((r) => s.onExit(() => r())));
+  assert.ok(s.replay().includes('after-restore'), '应答后新壳输出照常');
+  assert.equal(s.replay().includes('\x1b[6n'), false, '已应答的查询不留在回放');
+});
+
 test('killAllFor 按 owner 批量清杀;size 归零', async () => {
   const m = new PtyManager();
   const mk = (id: string, owner: string) => m.spawn(id, { file: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'], cwd: cwd(), cols: 80, rows: 24, owner });

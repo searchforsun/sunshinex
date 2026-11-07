@@ -110,7 +110,9 @@ test('出生会话落 ctx-snap 行；attach 回种旧快照不重读磁盘；离
     fs.appendFileSync(path.join(root, 'SUNSHINE.md'), 'v2 line\n', 'utf8');
     seedWorkspace(root, '', 'new-skill', 'brand new skill');
 
-    // 3) newSession + attach 旧 id → snapshotExport 与落档行逐位相等（不重读磁盘）
+    // 3) newSession + attach 旧 id → snapshotExport 与落档行逐位相等（不重读磁盘）。原运行时先出注册表
+    //    (=daemon 重启后形态):同档 idle 在座会被收编复用,不走磁盘重放
+    io.sessions.delete(c1.value.sessionId);
     const c2 = createSessionIn(io, root);
     assert.ok(c2.ok, '第二会话受理');
     const sid2 = c2.value.sessionId;
@@ -246,7 +248,9 @@ test('meta.mode 回放换铸窗口：attach 后快照回种落在最终运行时
     fs.appendFileSync(path.join(root, 'SUNSHINE.md'), 'v2 line\n', 'utf8');
     writeSessionMeta(resolveDataDir(root), jid, { mode: 'acceptEdits' });
 
-    // attach：mode 回放触发 setMode 换铸——回种必须落在换铸后的最终运行时（否则磁盘 v2 烘进快照）
+    // attach：mode 回放触发 setMode 换铸——回种必须落在换铸后的最终运行时（否则磁盘 v2 烘进快照）。
+    // 原运行时先出注册表(=daemon 重启后形态):同档 idle 在座会被收编复用,不走磁盘重放
+    io.sessions.delete(c1.value.sessionId);
     const c2 = createSessionIn(io, root);
     assert.ok(c2.ok, '第二会话受理');
     const att = attachSessionIn(io, c2.value.sessionId, jid);

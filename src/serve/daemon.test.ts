@@ -482,6 +482,48 @@ function ptyDecode(f: PtyFrame): string {
   return Buffer.from(f.b ?? '', 'base64').toString('utf8');
 }
 
+test('⑩c 终端跨 daemon 重启续屏:A 写标记→A 关闭(teardown 首步落盘)→B 凭 prevPtyId 分配,首帧 replay 含标记;ptyId 跨进程不撞号', { timeout: 90_000 }, async () => {
+  let prevPtyId = '';
+  // 终端 cwd 落独立目录:teardown 杀壳后 Windows 进程退出滞后仍占 cwd 句柄,落 withDaemon 自身 tmp 会让其收尾 rm EPERM
+  const ptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-pty-restart-'));
+  try {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const sid = await ctx.newSession(ptyRoot);
+    const alloc = await fetch(`${ctx.base}/session/${sid}/pty`, { method: 'POST', headers: AUTH, body: '{}' });
+    prevPtyId = ((await alloc.json()) as { ptyId: string }).ptyId;
+    const a = await openPty(`${ctx.base.replace(/^http/, 'ws')}/session/${sid}/pty/${prevPtyId}`);
+    try {
+      await waitFor(() => a.frames.length > 0, 10_000);
+      a.ws.send(JSON.stringify({ t: 'in', b: Buffer.from(`node -e "process.stdout.write('restart-mark')"\r`, 'utf8').toString('base64') }));
+      await waitFor(() => ptyDataText(a.frames).includes('restart-mark'), 30_000);
+    } finally {
+      a.ws.close();
+    }
+  });
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const sid = await ctx.newSession(ptyRoot);
+    const alloc = await fetch(`${ctx.base}/session/${sid}/pty`, { method: 'POST', headers: AUTH, body: JSON.stringify({ prevPtyId }) });
+    assert.equal(alloc.status, 200);
+    const { ptyId } = (await alloc.json()) as { ptyId: string };
+    assert.notEqual(ptyId, prevPtyId, '新进程 ptyId 不与旧档撞号(启动段区分)');
+    const b = await openPty(`${ctx.base.replace(/^http/, 'ws')}/session/${sid}/pty/${ptyId}`);
+    try {
+      await waitFor(() => b.frames.length > 0, 10_000);
+      assert.equal(b.frames[0].t, 'replay');
+      assert.ok(ptyDecode(b.frames[0]).includes('restart-mark'), '回种:新壳首帧 replay 含旧 daemon 的屏幕内容');
+    } finally {
+      b.ws.close();
+    }
+  });
+  } finally {
+    try {
+      fs.rmSync(ptyRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch {
+      /* 壳退出滞后占句柄:临时目录残留无害 */
+    }
+  }
+});
+
 test('⑩ pty 全链：分配→WS 回环→断线重连重放→DELETE kill(幂等)→会话 delete 全杀', { timeout: 90_000 }, async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const { base, daemon } = ctx;
@@ -492,7 +534,7 @@ test('⑩ pty 全链：分配→WS 回环→断线重连重放→DELETE kill(幂
     const alloc = await fetch(`${base}/session/${sid}/pty`, { method: 'POST', headers: AUTH, body: JSON.stringify({ cols: 80, rows: 24 }) });
     assert.equal(alloc.status, 200, 'POST /session/:id/pty 应 200');
     const { ptyId } = (await alloc.json()) as { ptyId: string };
-    assert.match(ptyId, /^pty-\d+$/, 'ptyId 方言 pty-<n>');
+    assert.match(ptyId, /^pty-[0-9a-f]{6}-\d+$/, 'ptyId 方言 pty-<启动段>-<n>(跨重启唯一)');
     const nf = await fetch(`${base}/session/sX/pty`, { method: 'POST', headers: AUTH, body: '{}' });
     assert.equal(nf.status, 404, '未知会话分配 → 404');
 

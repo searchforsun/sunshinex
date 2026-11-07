@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Archive, PinOff } from 'lucide-react';
+import { Archive, CircleHelp, PinOff } from 'lucide-react';
 import { t } from '../i18n';
 import { relTime } from '../ui-util';
-import { useConfirmOutsideCancel } from './project-menu-util';
+import { rowRunning, useConfirmOutsideCancel } from './project-menu-util';
 import type { PinEntry } from './pin-store';
 
 /** 置顶会话分组(2026-10-21 用户裁定):「项目」上方常驻层,不支持折叠;无置顶会话不渲染
@@ -26,10 +26,12 @@ export interface PinnedSectionProps {
   /** 已归档钉 id 集(2026-10-23 用户裁定:已归档会话不显于置顶分组——整行滤除;
    *  解冻唯一出口=归档层/顶栏菜单) */
   readonly archivedIds?: ReadonlySet<string>;
+  /** journal → daemon 运行标注(最近会话行 liveSessionId/awaiting 汇总):非当前会话的钉也显运行/待确认 */
+  readonly liveJournals?: ReadonlyMap<string, { liveSessionId: string; awaiting: boolean }>;
 }
 
 export function PinnedSection(props: PinnedSectionProps): JSX.Element {
-  const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow, archivedIds } = props;
+  const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow, archivedIds, liveJournals } = props;
   /** 行内归档确认 morph:存确认中的行 id('' = 无) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId(''));
@@ -44,7 +46,9 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
       <ul className="sx-pin-list" aria-label="pinned sessions">
         {visiblePins.map((p) => {
           const active = activeSessionId !== '' && journalOfSession.get(activeSessionId) === p.id;
-          const running = active && runningIds.has(activeSessionId);
+          const live = liveJournals?.get(p.id);
+          const running = rowRunning(active, activeSessionId, runningIds, live?.liveSessionId);
+          const awaiting = live?.awaiting === true;
           return (
             <li
               key={p.id}
@@ -67,7 +71,11 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
               >
                 <PinOff size={16} strokeWidth={1.75} />
               </button>
-              {running ? (
+              {awaiting ? (
+                <span className="sx-session-dot asking">
+                  <CircleHelp size={16} strokeWidth={1.75} />
+                </span>
+              ) : running ? (
                 <span className="sx-session-dot running" />
               ) : isUnseen(p.id, p.updatedAt) && !active ? (
                 // 当前打开会话恒已读(2026-10-31 用户裁定;与 SessionRow 蓝点守卫同口径)

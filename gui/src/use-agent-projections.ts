@@ -122,12 +122,15 @@ export function useChatMemory(isRunning: (key: string) => boolean = () => false)
     }
     chatMemLRURef.current = lru;
   }, []);
-  // TTL 周期清理(60s):60min 未触且非运行中 → 剔(重进=尾窗快照权威路径)
+  // TTL 周期清理(60s):60min 未触且非运行中 → 剔(重进=尾窗快照权威路径)。判据经 ref 读取:
+  // 宿主传内联箭头,入依赖=每次宿主渲染重置定时器,60s 周期在高频渲染下永不触发(TTL 形同虚设)
+  const isRunningRef = useRef(isRunning);
+  isRunningRef.current = isRunning;
   useEffect(() => {
     const timer = window.setInterval(() => {
       const now = Date.now();
       for (const [key, touch] of chatMemTouchRef.current) {
-        if (now - touch > CHAT_MEM_TTL_MS && !isRunning(key)) {
+        if (now - touch > CHAT_MEM_TTL_MS && !isRunningRef.current(key)) {
           chatMemRef.current.delete(key);
           chatMemTouchRef.current.delete(key);
           chatMemLRURef.current = chatMemLRURef.current.filter((k) => k !== key);
@@ -135,7 +138,7 @@ export function useChatMemory(isRunning: (key: string) => boolean = () => false)
       }
     }, 60_000);
     return () => window.clearInterval(timer);
-  }, [isRunning]);
+  }, []);
   return { chatMemGet, chatMemPut };
 }
 

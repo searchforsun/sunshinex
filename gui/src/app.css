@@ -2564,7 +2564,6 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-name[data-cut], .sx-session-row .session-summary[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); }
 
 /* 2026-10-21 归档面:徽标/确认钮/侧栏归档区(两行式行+hover 动作) */
-.sx-archived-badge { flex: none; font-size: 11px; color: var(--fg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 0 6px; }
 .sx-archive-confirm { flex: none; border: none; border-radius: var(--radius-sm); background: var(--err); color: #fff; font-size: 12px; padding: 2px 10px; cursor: pointer; }
 .sx-iconbtn.sx-danger:hover { color: var(--err); }
 .session-row-actions { flex: none; display: none; align-items: center; }
@@ -3547,3 +3546,23 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-rc .sx-card-actions .sx-team-body > summary { margin-left: auto; }
 .sx-rc .sx-card-actions .sx-team-detail { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: 11.5px; }
+
+/* 状态点只做显示不接点击(2026-11-07 用户实测「运行中左侧点不了置顶」根修):悬停时点仅 opacity:0,
+   仍叠在同槽置顶钮之上吞点击——运行/未读行点置顶落成「打开会话」 */
+.sx-session-dot { pointer-events: none; }
+/* 归档层运行态(2026-11-07 用户裁定「归档也要在左侧显示运行状态」):状态点落左槽,对齐首行标题
+   (行上内距 4 + 标题行半高 ≈ 15) */
+.sx-archive-item { position: relative; }
+.sx-archive-item > .sx-session-dot { top: 15px; }
+
+/* 终端(xterm 6 自绘 VS Code 款滚动条:缺省 14px 宽、浅灰实心块、顶部内阴影)统一成应用滚动条
+   (2026-11-07 用户裁定):5px 圆角透明轨,滑块色阶与 .sx-vbar-thumb 同档;淡入淡出沿用 xterm 自身 */
+.xterm .xterm-scrollable-element > .scrollbar { background: transparent !important; }
+.xterm .xterm-scrollable-element > .scrollbar.vertical { width: 5px !important; }
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider { left: 0 !important; width: 5px !important; border-radius: 2.5px; background: color-mix(in srgb, var(--fg) 16%, transparent) !important; }
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider:hover,
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider.active { background: color-mix(in srgb, var(--fg) 30%, transparent) !important; }
+[data-theme='light'] .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider { background: color-mix(in srgb, var(--fg) 10%, transparent) !important; }
+[data-theme='light'] .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider:hover,
+[data-theme='light'] .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider.active { background: color-mix(in srgb, var(--fg) 20%, transparent) !important; }
+.xterm .xterm-scrollable-element > .shadow { display: none !important; }

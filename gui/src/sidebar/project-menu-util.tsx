@@ -79,6 +79,39 @@ export function persistSeenMap(m: SeenMap): void {
 /** 已读戳单点(2026-10-23 落底层):localStorage 即时 + /app/seen 服务端双写(断链/旧 daemon 静默)。
  *  返回落库 promise——联动上抛须待其落定,否则侧栏重拉读到旧档(竞态同 pin)。
  *  conn 取结构性子集(测试桩/旧连接缺 saveAppSeen 即跳过远端,探活口径同 sessionTasks) */
+/** 显式标记未读抑制旗(2026-11-07 用户实测「标记未读蓝点不亮」):顶栏 markUnread 落旗,
+ *  压已读三面(打开面 stamp effects/侧栏自动已读)见旗即跳——蓝点亮到用户再次进入该会话
+ *  (openSession 清旗)为止;localStorage 直写保证跨组件同拍可见 */
+const AUTO_SEEN_SUPPRESS_KEY = 'sunshinex.autoseen-suppress';
+function suppressMap(): Record<string, true> {
+  try {
+    return JSON.parse(localStorage.getItem(AUTO_SEEN_SUPPRESS_KEY) ?? '{}') as Record<string, true>;
+  } catch {
+    return {};
+  }
+}
+export function suppressAutoSeen(journalId: string): void {
+  const m = suppressMap();
+  m[journalId] = true;
+  try {
+    localStorage.setItem(AUTO_SEEN_SUPPRESS_KEY, JSON.stringify(m));
+  } catch {
+    /* 隐私模式静默:蓝点可能被自动压回,尽力而为 */
+  }
+}
+export function autoSeenSuppressed(journalId: string): boolean {
+  return suppressMap()[journalId] === true;
+}
+export function clearAutoSeenSuppressed(journalId: string): void {
+  const m = suppressMap();
+  delete m[journalId];
+  try {
+    localStorage.setItem(AUTO_SEEN_SUPPRESS_KEY, JSON.stringify(m));
+  } catch {
+    /* 静默 */
+  }
+}
+
 export function stampSeen(
   conn: { saveAppSeen?: (m: Record<string, number>) => Promise<void> },
   journalId: string,
@@ -336,4 +369,10 @@ export function useConfirmOutsideCancel(confirmId: string, cancel: () => void): 
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [confirmId, cancel]);
+}
+
+/** 会话行运行态单点(最近/项目组/置顶/归档四处同口径):本会话以 GUI 本地运行集为准(帧驱动即时),
+ *  他会话看 daemon 行标注 liveSessionId(仅 running 运行时才带) */
+export function rowRunning(active: boolean, activeSessionId: string, runningIds: ReadonlySet<string>, liveSessionId: string | undefined): boolean {
+  return active ? runningIds.has(activeSessionId) : liveSessionId !== undefined && liveSessionId !== activeSessionId;
 }

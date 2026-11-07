@@ -139,15 +139,14 @@ export function findJournalOwner(root: string, jid: string): { dataDir: string; 
 }
 
 /** POST /session/:id/archive {archived?}(2026-10-21 归档):双寻址——:id 命中 daemon 会话表走运行时
- *  路径(缺 journal 404),否则视作 journalId 走磁盘路径;running 一律 409(先停再归档,与 delete 同门禁) */
+ *  路径(缺 journal 404),否则视作 journalId 走磁盘路径。运行中照常归档(2026-11-07 用户裁定:归档=
+ *  切换显示位置,不停运行;删除仍要求先归档,其运行门禁在 delete 侧) */
 export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerResponse, id: string, body: { archived?: unknown }): void {
   const archived = body.archived !== false;
-  const liveByJournal = liveSessionByJournal(io.sessions);
   let dataDir: string;
   let jid: string;
   const session = io.sessions.get(id);
   if (session !== undefined) {
-    if (session.status() === 'running') return io.send(res, 409, { error: 'cannot archive while a run is in progress' });
     const attached = session.attachedJournalId;
     if (attached === undefined) return io.send(res, 404, { error: 'session has no journal' });
     jid = attached;
@@ -159,7 +158,6 @@ export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerRespo
     jid = id;
     dataDir = owner.dataDir;
   }
-  if (liveByJournal.get(jid) !== undefined) return io.send(res, 409, { error: 'cannot archive while a run is in progress' });
   markSessionArchived(dataDir, jid, archived);
   io.send(res, 200, { ok: true, archived });
 }
@@ -167,8 +165,10 @@ export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerRespo
 /** GET /sessions/archived(归档页数据源):跨工作区扫描各 slug 的 archived 档,archivedAt 降序;
  *  行带 slug+root(来源项目标注)——不设 isDefaultWs 过滤(项目会话同样可归档) */
 export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerResponse): void {
-  type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number };
+  type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: true };
   const out: ArchivedRow[] = [];
+  const liveByJournal = liveSessionByJournal(io.sessions); // 运行中可归档:行附运行/待确认标注(与 recent 同源)
+  const awaitingSet = awaitingByJournal(io.sessions);
   let entries: fs.Dirent[] = [];
   try {
     entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
@@ -188,7 +188,12 @@ export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerRes
     }
     for (const r of listSessions(dataDir)) {
       if (r.archived !== true || r.archivedAt === undefined) continue;
-      out.push({ id: r.id, slug: ent.name, root, ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.archivedAt });
+      const live = liveByJournal.get(r.id);
+      out.push({
+        id: r.id, slug: ent.name, root, ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.archivedAt,
+        ...(live !== undefined ? { liveSessionId: live } : {}),
+        ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
+      });
     }
   }
   out.sort((a, b) => b.archivedAt - a.archivedAt);

@@ -7,6 +7,7 @@ import type { Connection, ConnectionState, RewindResult } from './connection';
 import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
 import { upsertBoardTeam } from './projection';
+import { normalizePins, type PinEntry } from './sidebar/pin-store';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import { Chat } from './pages/Chat';
 import { DirOpenerContext } from './pages/chat/md-render';
@@ -25,7 +26,7 @@ import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
 import { REFRESHABLE_TAB_TYPES } from './tabs/sidebar-refresh';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, rewindSeat, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, rewindSeat, adoptStaleSeats, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -43,6 +44,7 @@ import { useRestoreLast } from './use-restore-last';
 import { usePtyRegistry } from './use-pty-registry';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
 import { cleanPathInput, isAbsPath, joinWsPath, OPEN_DEFAULT_KEY, pathBasename, prefetchEditorIcons, workspaceOfAbs } from './ui-util';
+import { clearAutoSeenSuppressed } from './sidebar/project-menu-util';
 
 /**
  * G8a 三栏壳(G3.5 路由壳重组,spec §1):左栏 ProjectMenu(Home 全页退役,职能内化——工作区
@@ -136,6 +138,11 @@ function AppShell(): JSX.Element {
   const { agentActivitiesBySession, bumpActs, dropPendingFolds, flushActsNow } = useAgentBuckets();
   /** G14.2xx b 转录内存缓存(use-agent-projections 单点):Chat 卸载写回/重挂缓存直渲 */
   const { chatMemGet, chatMemPut } = useChatMemory((key) => runningIds.has(key)); // TTL 豁免:运行中会话不剔(60min,2026-10-26)
+  /** Chat 消费面身份恒定:Chat 卸载写回 effect 以它为依赖,每渲染新对象=每帧 cleanup 写回一次 */
+  const chatMem = useMemo(() => ({ get: chatMemGet, put: chatMemPut }), [chatMemGet, chatMemPut]);
+  /** 侧栏联动 bump(rename/归档/已读等落库后上抛):身份恒定——下游 effect 若以它为依赖,
+   *  变身份即「bump→重渲染→再触发」自激循环 */
+  const bumpRecent = useCallback((): void => setRecentVersion((v) => v + 1), []);
   /** G14.174 待办批次/关联轮次输入(Chat 从转录重建上抛)——待办/任务板页签数据面 */
   const [todoBatches, setTodoBatches] = useState<import('./pages/Chat').TodoBatch[]>([]);
   /** 快照权威投影(2026-10-31 用户裁定「任务历史持久化可见」):daemon journal 全量派生,经 onSeeded
@@ -162,6 +169,11 @@ function AppShell(): JSX.Element {
   /** journalId 镜像(删除/归档事件双寻址比对:事件 detail 可能是运行时 id 或 journalId) */
   const openJournalIdRef = useRef<string>('');
   openJournalIdRef.current = openJournalId;
+  /** 座位(运行时 id)→ journal 账:同档换号时据此收口旧座位(adoptStaleSeats) */
+  const seatJournalRef = useRef(new Map<string, string>());
+  useEffect(() => {
+    if (openSessionId !== '' && openJournalId !== '' && openJournalId !== openSessionId) seatJournalRef.current.set(openSessionId, openJournalId);
+  }, [openSessionId, openJournalId]);
   /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
   const chatSinkRef = useRef<ChatSink | null>(null);
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
@@ -216,6 +228,36 @@ function AppShell(): JSX.Element {
   /** 单连接装配(use-connection-wiring 单点):onEvent 路由/onReset 重建/挂起转投/生命周期迁
    *  钩子,依赖注入面见 ConnectionWiringDeps——装配一次([]),闭包取首渲染值,会话切换经
    *  sessionRef 与各 ref 免陈旧(原口径) */
+  /** 置顶档单源(2026-11-07 用户实测「置顶卡一下」根修轮):乐观态直更零往返;持久化双写——
+   *  本地镜像(瞬时)+gui/pins.json(服务端,重启不丢)。此前慢/Failed to fetch 真凶=daemon
+   *  keepAliveTimeout 5s 关空闲连接,浏览器池中旧 socket 上 PUT 不重试直接炸(服务端已加长 65s);
+   *  网络失败走本地镜像兜底,置顶标记永不因网络丢失 */
+  const [pins, setPins] = useState<PinEntry[]>(() => normalizePins((() => {
+    try {
+      return JSON.parse(localStorage.getItem('sunshinex.pins') ?? '[]');
+    } catch {
+      return [];
+    }
+  })()));
+  const pendingPinsRef = useRef<PinEntry[] | null>(null);
+  const persistPins = useCallback((next: PinEntry[]): void => {
+    setPins(next);
+    try {
+      localStorage.setItem('sunshinex.pins', JSON.stringify(next));
+    } catch {
+      /* 隐私模式静默 */
+    }
+    void connRef.current?.saveAppPins(next).then(
+      () => {
+        try {
+          localStorage.removeItem('sunshinex.pins'); // 服务端落库成功:本地镜像使命完成
+        } catch {
+          /* 静默 */
+        }
+      },
+      () => undefined, // 网络失败:本地镜像已在,重启读档兜底
+    );
+  }, []);
   // journal 铸造即回填(主动推送;recents 对账为断线兜底 belt):openJournalId 暂=sessionId(升级链
   // 临时身份)时,本会话铸造帧即刻换真身份——已读压读/草稿键零窗口
   const onJournalMinted = useCallback((sessionId: string, journalId: string): void => {
@@ -231,6 +273,18 @@ function AppShell(): JSX.Element {
   // 会话首帧顶栏主钮直显真图标,不再 1/4 字形→真图标跳变
   useEffect(() => {
     if (connInstance !== null) prefetchEditorIcons(connInstance);
+  }, [connInstance]);
+  // 置顶读档:服务端 gui/pins.json 权威(重启不丢),失败/缺档回落本地镜像;PUT 在途跳过防闪屏。
+  // 连接就位读一次——置顶态单源在 App,此后只经 persistPins 乐观直更,切会话不重拉
+  useEffect(() => {
+    if (connInstance === null || pendingPinsRef.current !== null || typeof connInstance.appPins !== 'function') return;
+    void connInstance.appPins().then(
+      (r) => {
+        const serverPins = normalizePins(r.pins);
+        if (serverPins.length > 0 || pendingPinsRef.current === null) setPins(serverPins);
+      },
+      () => undefined, // 网络失败:本地镜像已在初值
+    );
   }, [connInstance]);
   // 开会话播种后台任务账本(GET 一次带 outputTail;之后靠 bg-task 直播,撤 5s 轮询)
   useEffect(() => {
@@ -484,10 +538,19 @@ function AppShell(): JSX.Element {
     }
     sessionRef.current = sessionId;
     const jid = journalId !== undefined && journalId !== '' ? journalId : sessionId;
+    // 显式标记未读压制旗清理(2026-11-07):用户再次进入该会话=openSession,蓝点生命周期到此为止
+    clearAutoSeenSuppressed(jid);
     setOpenSessionId(sessionId);
     setOpenJournalId(jid);
     setOpenRoot(root);
-    setTabStates((s) => ensureSession(s, sessionId, PROBE));
+    // 同档旧座位并入当前座(运行时 id 换号后的孤儿座:页签/常驻 webview 不随重开累积)
+    const staleSeats: string[] = [];
+    if (jid !== sessionId) {
+      for (const [seat, j] of seatJournalRef.current) if (j === jid && seat !== sessionId) staleSeats.push(seat);
+      for (const seat of staleSeats) seatJournalRef.current.delete(seat);
+      seatJournalRef.current.set(sessionId, jid);
+    }
+    setTabStates((s) => ensureSession(adoptStaleSeats(s, staleSeats, sessionId), sessionId, PROBE));
     reopenBoardSeedWindow();
     setProjection(EMPTY_PROJECTION()); // D34 串态收口:sessionTodos 漏清三处之二/三随收口补齐(纪律落实)
         setTodoBatches([]);
@@ -1140,6 +1203,8 @@ function AppShell(): JSX.Element {
               activeSessionId={openSessionId}
               activeRoot={openRoot}
               recentVersion={recentVersion}
+              pins={pins}
+              persistPins={persistPins}
               runningIds={runningIds}
               nav={(() => {
                 // 菜单头钮对(全局史):浮窗抽屉态导航即收抽屉(会话/设置同类「选中即收」口径)
@@ -1199,7 +1264,7 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 sessionId={openSessionId}
                 journalId={openJournalId}
-                chatMem={{ get: chatMemGet, put: chatMemPut }}
+                chatMem={chatMem}
                 connState={connState}
                 onBack={backHome}
                 sinkRef={chatSinkRef}
@@ -1229,8 +1294,10 @@ function AppShell(): JSX.Element {
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}
                 onTodos={setSessionTodos}
-                onRenamed={() => setRecentVersion((v) => v + 1)}
-                onSessionsMutated={() => setRecentVersion((v) => v + 1)}
+                onRenamed={bumpRecent}
+                onSessionsMutated={bumpRecent}
+                pins={pins}
+                persistPins={persistPins}
                 onSideChat={startSideChat}
                 onOpenMemory={openMemoryTab}
                 onOpenLearned={openLearnedTab}

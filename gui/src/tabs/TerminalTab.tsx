@@ -77,6 +77,7 @@ const xtermThemeFor = (p: Palette): ITheme => ({
   selectionBackground: `${p.tokens.accent}40`,
   ...(p.mode === 'light' ? XTERM_ANSI_LIGHT : {}),
 });
+
 export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   /** jsdom 守卫落定面:无布局 → 降级(降级时 pty 已分配记账,关标签链照常 kill) */
@@ -109,6 +110,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     let unwatchTheme: (() => void) | null = null;
 
     /** fit 后同步 pty 尺寸(装配尾一次 + ResizeObserver 每回调) */
+    /** pty 尺寸下发:行列真变才发、150ms 尾沿合并——ConPTY 每次 resize 整屏重绘,布局动画期逐帧
+     *  下发会刷出几十份重绘,把回放环里的真实历史挤掉(重启续屏失效的根因之一) */
+    let sentSize = '';
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const syncSize = (): void => {
       if (term === null || socket === null || fit === null) return;
       try {
@@ -116,7 +121,15 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
       } catch {
         return; // 容器 0 尺寸/未布局时 xterm fit 抛错——跳过本次,观察器下回调再试
       }
-      socket.resize(term.cols, term.rows);
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        if (term === null || socket === null) return;
+        const size = `${term.cols}x${term.rows}`;
+        if (size === sentSize) return;
+        sentSize = size;
+        socket.resize(term.cols, term.rows);
+      }, 150);
     };
 
     void (async (): Promise<void> => {
@@ -127,10 +140,16 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
         //    盘档 ptyId 已死(daemon 重启/超时收尸)→ error 帧+close 且零数据帧 → 一次性回退新开
         let ptyId = ptyIdFor(uid) ?? params.ptyId;
         let reused = ptyId !== undefined; // 盘档/记账直连面:死档需回退
+        /** 死档 ptyId:回退新开时随分配请求上送,daemon 以其落盘回放回种新壳——重启后屏幕连续 */
+        let prevPtyId: string | undefined;
+        /** 分配尺寸:回退新开时取旧终端已 fit 的行列——续屏 shell 按终端报的光标位置接续,pty 与视口
+         *  行数不一致则其绝对定位与前端错位 */
+        let allocCols = 80;
+        let allocRows = 24;
         for (;;) {
           if (cancelled) return;
           if (ptyId === undefined) {
-            const allocated = draft ? await conn.openPtyAt(draftRoot, 80, 24) : await conn.openPty(sessionId, 80, 24);
+            const allocated = draft ? await conn.openPtyAt(draftRoot, allocCols, allocRows, prevPtyId) : await conn.openPty(sessionId, allocCols, allocRows, prevPtyId);
             if (cancelled) return;
             ptyId = allocated.ptyId;
             onPtyAllocated(uid, ptyId);
@@ -177,7 +196,9 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           }
           // ③ xterm + FitAddon + pty WS 装配
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
-          term = new Terminal({ theme: xtermThemeFor(currentPalette()), fontFamily: fontSpec.family, fontSize: fontSpec.size });
+          // scrollOnEraseInDisplay:清屏(ED2)把屏上内容推进滚动区而非抹除——新壳启动即发清屏,不开则
+          // 回种的历史屏一出现就被抹掉(Windows Terminal/PuTTY 同款 cls 语义)
+          term = new Terminal({ theme: xtermThemeFor(currentPalette()), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
           // 主题热随(2026-11-04 亮色终端裁定):html[data-theme] 变更即换 theme,存活的 pty 不重连
           const unwatch = watchThemeChange(() => {
             if (term !== null) term.options.theme = xtermThemeFor(currentPalette());
@@ -255,12 +276,18 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           });
           if (cancelled || !dead || sawFrame || exited) return;
           setSocketError(null); // 回退新开=旧档报错已兑现(「pty not found」),新会话不应再背旧错条
+          if (term !== null) {
+            allocCols = term.cols;
+            allocRows = term.rows;
+          }
           observer?.disconnect();
           socket?.dispose();
           term?.dispose();
           socket = null;
           term = null;
           observer = null;
+          sentSize = '';
+          prevPtyId = ptyId;
           ptyId = undefined;
           // loop 继续:ptyId undefined → 走首挂分配(上轮) + onPtyAllocated 记账
         }
@@ -287,6 +314,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
       cleanupExtra.current?.();
       cleanupExtra.current = null;
       observer?.disconnect();
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
       socket?.dispose();
       term?.dispose(); // 不 killPty——kill 归 App 关标签链(pty 生命周期属标签不属渲染)
     };

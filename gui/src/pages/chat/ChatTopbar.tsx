@@ -7,7 +7,8 @@ import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
-import { loadSeenMap, persistSeenMap, stampSeen } from '../../sidebar/project-menu-util';
+import { loadSeenMap, persistSeenMap, stampSeen, suppressAutoSeen } from '../../sidebar/project-menu-util';
+import type { PinEntry } from '../../sidebar/pin-store';
 import { COPY_RESET_MS } from '../../use-copy-feedback';
 
 /** 会话顶栏(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):标题(空/改/显三态,点击重命名)
@@ -103,6 +104,9 @@ export interface ChatTopbarProps {
   readonly root?: string;
   /** 会话数据变更上抛(置顶/归档/标记未读后,宿主 bump 侧栏联动刷新) */
   readonly onSessionsMutated?: () => void;
+  /** 置顶档单源(2026-11-07 置顶卡顿根修):App 乐观态直读,点击零往返(原 GET→取反→PUT 双往返=卡一下) */
+  readonly pins?: PinEntry[];
+  readonly persistPins?: (next: PinEntry[]) => void;
   /** 2026-10-24 用户裁定:[|] 切换钮=菜单关闭态显示在会话名左(呼出);菜单开着时收起钮在菜单头右上(不双显) */
   readonly menuClosed?: boolean;
   readonly onToggleMenu?: () => void;
@@ -113,7 +117,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, bgRunning = 0, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, menuClosed, onToggleMenu, nav } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, bgRunning = 0, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -227,24 +231,17 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     journalId === undefined ? Promise.resolve() : stampSeen(conn, journalId, at);
   const togglePin = (): void => {
     if (journalId === undefined) return;
-    conn.appPins().then(
-      (r) => {
-        // 以服务端现态为准取反(组件态可能过期——过期态定向翻转即「反了」)
-        const isPinned = r.pins.some((p) => p.id === journalId);
-        const now = Date.now();
-        const rest = r.pins.filter((p) => p.id !== journalId);
-        const next = isPinned ? rest : [...rest, { id: journalId, root: root ?? '', title: displayTitle, updatedAt: now }];
-        setPinned(!isPinned);
-        const settle = (): void => {
-          // 置顶即正在看:已读戳压到与钉档同一时刻——钉组按钉档时刻判未读,不同刻恒亮蓝点(用户实测病);
-          // 双写都落库后再联动,联动 GET 读到的才是新档
-          const chain = isPinned ? Promise.resolve() : touchSeen(now);
-          void chain.then(onSessionsMutated, onSessionsMutated);
-        };
-        void conn.saveAppPins(next).then(settle, settle);
-      },
-      () => undefined,
-    );
+    const pins = pinsList ?? [];
+    const isPinned = pins.some((p) => p.id === journalId) || pinned;
+    const now = Date.now();
+    const rest = pins.filter((p) => p.id !== journalId);
+    // 新钉居前(与侧栏 pinRow 同口径);乐观直更(App 单源 setPins 即侧栏即时生效,零往返)
+    const next = isPinned ? rest : [{ id: journalId, root: root ?? '', title: displayTitle !== '' ? displayTitle : t('New session', '新会话'), updatedAt: now }, ...rest];
+    setPinned(!isPinned);
+    persistPins?.(next);
+    // 置顶即正在看:已读戳压到钉档同一时刻(钉组判未读不同刻恒亮蓝点);落库后联动侧栏
+    const chain = isPinned ? Promise.resolve() : touchSeen(now);
+    void chain.then(onSessionsMutated, onSessionsMutated);
   };
   /* 2026-11-06 用户裁定:复制回显全局统一——点击后菜单项尾显 ✓(COPY_RESET_MS 自回),
      与正文代码块(图标换 ✓)/Files 路径菜单(tail ✓)同款,不再静默复制 */
@@ -257,6 +254,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   };
   const markUnread = (): void => {
     if (journalId === undefined) return;
+    suppressAutoSeen(journalId); // 蓝点压制旗(2026-11-07):打开面压读 effects/侧栏自动已读见旗即跳
     const seen = loadSeenMap();
     delete seen[journalId];
     persistSeenMap(seen); // 本地标记已即时生效——联动成败都上抛(旧 daemon PUT 404 不吞联动)
@@ -270,8 +268,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'pin',
       label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
-      // 已归档冻结置顶态(2026-10-22 用户裁定):取消归档后才可调节
-      disabled: running || archived,
+      // 已归档冻结置顶态(2026-10-22 用户裁定);2026-11-07 撤运行中禁用(用户裁定「运行中也能
+      // 置顶,只是切换显示位置」)
+      disabled: archived,
       onSelect: () => {
         // 只调 togglePin——它按服务端现态取反且落库后才上抛联动;此处再 loadPinned()
         // 会 GET 到 PUT 落库前的旧档,把刚置的状态打回去(「第一次无效、后续反向」元凶)
@@ -281,7 +280,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'archive',
       label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
-      disabled: running,
+      // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行
+      disabled: false,
       onSelect: () => {
         if (archived) onArchive(false);
         else setAskArchive(menu); // 二次确认弹窗(坐标沿用菜单锚点;菜单项回调里 menu 必非空)
@@ -427,7 +427,6 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             {t('Sunshinex is controlling your computer', 'Sunshinex 正在控制你的电脑')}
           </span>
         )}
-        {archived && <span className="sx-archived-badge">{t('Archived', '已归档')}</span>}
         {/* 2026-10-24 拖拽重构:顶栏窗拖拽单点落本空白带(顶栏左聚布局,钮全在带左,带吸右侧余量)——
             旧「容器 drag+按钮挖孔」在 CSS zoom 下拖拽位图挖孔坐标错位,抽屉态窗控簇([|]−□×)真实
             按下被吞(用户实测「抽屉态 [|] 点不动」根因);空白带与一切按钮几何互斥,无孔可挖 */}

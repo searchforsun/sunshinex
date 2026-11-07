@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ArchiveRestore, Folder, Trash2 } from 'lucide-react';
+import { ArchiveRestore, CircleHelp, Folder, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { pathBasename, relTime } from '../ui-util';
-import { RECENT_VISIBLE_DEFAULT, RECENT_VISIBLE_STEP, useConfirmOutsideCancel } from './project-menu-util';
+import { RECENT_VISIBLE_DEFAULT, RECENT_VISIBLE_STEP, rowRunning, useConfirmOutsideCancel } from './project-menu-util';
 
 /** 归档会话层(2026-10-21 用户裁定:点项目组头归档钮后,侧栏下侧整层替换为归档列表——
  *  覆盖项目组与最近会话,无独立分组头;组头 X 退出。跨工作区聚合行(GET /sessions/archived):
@@ -16,6 +16,9 @@ export interface ArchivedRow {
   title?: string;
   updatedAt: number;
   archivedAt: number;
+  /** daemon 运行标注(运行中可归档,2026-11-07):仅 running 运行时才带 */
+  liveSessionId?: string;
+  awaiting?: boolean;
 }
 
 export interface ArchiveSectionProps {
@@ -26,12 +29,16 @@ export interface ArchiveSectionProps {
   readonly onUnarchive: (id: string) => void;
   /** 受控删除(已归档态才可删;宿主 deleteSession 真清+重拉) */
   readonly onDelete: (id: string) => void;
+  /** 运行态判定上下文(与最近会话行同口径:本会话看 GUI 运行集,他会话看行标注);缺省不显运行态 */
+  readonly activeSessionId?: string;
+  readonly runningIds?: ReadonlySet<string>;
+  readonly journalOfSession?: ReadonlyMap<string, string>;
 }
 
 /** 来源项目目录名(用户裁定「项目使用文件名」):pathBasename 单点(D34 口径),slug 折叠名太长不可读 */
 
 export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
-  const { rows, busy, onOpenSession, onUnarchive, onDelete } = props;
+  const { rows, busy, onOpenSession, onUnarchive, onDelete, activeSessionId = '', runningIds, journalOfSession } = props;
   /** 行内删除确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消删除确认(用户裁定)
@@ -43,7 +50,10 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
     <ul className="recent-list sx-archive-list" aria-label="archived sessions">
       {rows === null && <li className="no-sessions">{t('Loading…', '加载中…')}</li>}
       {rows !== null && rows.length === 0 && <li className="no-sessions">{t('No archived sessions', '暂无归档会话')}</li>}
-      {visible.map((r) => (
+      {visible.map((r) => {
+        const active = activeSessionId !== '' && (r.liveSessionId === activeSessionId || journalOfSession?.get(activeSessionId) === r.id);
+        const running = rowRunning(active, activeSessionId, runningIds ?? new Set(), r.liveSessionId);
+        return (
         <li
           key={r.id}
           data-row-id={r.id}
@@ -52,6 +62,13 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
             if (!busy) onOpenSession(r.root, r.id, r.updatedAt);
           }}
         >
+          {r.awaiting === true ? (
+            <span className="sx-session-dot asking">
+              <CircleHelp size={16} strokeWidth={1.75} />
+            </span>
+          ) : running ? (
+            <span className="sx-session-dot running" />
+          ) : null}
           <span className="sx-archive-item-main">
             <span className="sx-archive-title-row">
               <span className="sx-archive-title">{r.title ?? r.id}</span>
@@ -108,7 +125,8 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
             </span>
           </span>
         </li>
-      ))}
+        );
+      })}
       {hidden > 0 && (
         <li
           className="session-more"

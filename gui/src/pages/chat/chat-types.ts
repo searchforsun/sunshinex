@@ -5,6 +5,7 @@ import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { TaskBoardState } from '../../projection';
 import type { TodoBatch } from './ToolEntry';
 import type { NavControls } from '../../nav-history';
+import type { PinEntry } from '../../sidebar/pin-store';
 
 /** Chat 公开类型面(D32 第六批批F-7c 自 Chat.tsx 平移):ChatSink/ChatProps——
  *  Chat.tsx 原路径再导出(App/测试消费零迁移),宿主 type-import 回引。
@@ -118,6 +119,9 @@ export interface ChatProps {
   onRenamed?: () => void;
   /** 会话数据变更上抛(2026-10-22:顶栏 ⋯ 菜单置顶/归档/标记未读后,App bump recentVersion → 侧栏联动刷新) */
   onSessionsMutated?: () => void;
+  /** 置顶档单源(2026-11-07 置顶卡顿根修):App 乐观态直通顶栏,置顶/取消零往返 */
+  readonly pins?: PinEntry[];
+  readonly persistPins?: (next: PinEntry[]) => void;
   /** 2026-10-24 用户裁定:[|] 切换钮=菜单关闭态显示在会话名左(呼出);菜单开着时收起钮在菜单头右上(不双显) */
   menuClosed?: boolean;
   onToggleMenu?: () => void;

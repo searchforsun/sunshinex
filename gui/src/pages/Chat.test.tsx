@@ -45,6 +45,7 @@ import * as highlightMock from '../highlight';
 import { Chat, expandFileRefs, rankFileHits, renderMentionSpans, tokenDeleteRange } from './Chat';
 import type { ReactElement, ReactNode } from 'react';
 import { mermaidCacheClear } from '../Mermaid';
+import { SESSION_ARCHIVE_CHANGED_EVENT } from '../session-events';
 import { DirOpenerContext } from './chat/md-render';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
@@ -1627,18 +1628,25 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     fireEvent.click(screen.getByText('Archive session'));
     fireEvent.click(screen.getByText('Confirm archive')); // 二次弹窗确认(2026-10-23 用户裁定)
     expect(archiveSession).toHaveBeenCalledWith('s1', true);
-    expect(await screen.findByText('Archived')).toBeTruthy(); // 本地 archived 同步 → 徽标即刻换面
+    // 本地 archived 同步 → 菜单项即刻换面(顶栏「已归档」徽标 2026-11-07 用户裁定退役)
+    fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    expect(await screen.findByText('Unarchive session')).toBeTruthy();
+    expect(document.querySelector('.sx-archived-badge')).toBeNull();
     first.unmount();
-    // —— 已归档(快照 archived:true):徽标在;菜单项变「Unarchive session」→ archiveSession(id,false) ——
+    // —— 已归档(快照 archived:true):菜单项为「Unarchive session」→ archiveSession(id,false) ——
     const conn2 = connOf([]);
     (conn2 as unknown as Record<string, unknown>).archiveSession = archiveSession;
     (conn2 as unknown as Record<string, unknown>).sessionSnapshot = () => Promise.resolve(snapOf(true));
     (conn2 as unknown as Record<string, unknown>).appPins = appPins;
     (conn2 as unknown as Record<string, unknown>).saveAppPins = saveAppPins;
     render(<Chat conn={conn2} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
-    expect(await screen.findByText('Archived')).toBeTruthy();
-    expect(document.querySelector('.sx-archived-badge')).not.toBeNull();
+    await flushed();
     fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
+    // 侧栏/归档层撤销归档 → 归档态变更事件同步顶栏(菜单项随之换回「Archive session」)
+    act(() => { window.dispatchEvent(new CustomEvent(SESSION_ARCHIVE_CHANGED_EVENT, { detail: { id: 's1', archived: false } })); });
+    expect(await screen.findByText('Archive session')).toBeTruthy();
+    act(() => { window.dispatchEvent(new CustomEvent(SESSION_ARCHIVE_CHANGED_EVENT, { detail: { id: 's1', archived: true } })); });
+    expect(await screen.findByText('Unarchive session')).toBeTruthy();
     // 已归档冻结置顶态(2026-10-22 用户裁定):Pin session 项禁用,取消归档后才可调节
     expect((screen.getByRole('menuitem', { name: 'Pin session' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByText('Unarchive session'));

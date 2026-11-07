@@ -23,7 +23,7 @@ class HangingAdapter implements ModelAdapter {
   }
 }
 
-/** 2026-10-21 归档面钉测:/session/:id/archive 双寻址(daemon 会话 id / journalId)——running 409、
+/** 2026-10-21 归档面钉测:/session/:id/archive 双寻址(daemon 会话 id / journalId)——运行中照常归档、
  *  未知 404、archived:false 撤销;/sessions 与 /sessions/recent 滤除 archived===true;
  *  GET /sessions/archived 跨工作区聚合(slug 来源标注)。样板(AUTH/withDaemon/HangingAdapter)
  *  逐字自 daemon.gui-state.test.ts;状态轮询同其惯用法(GET snapshot status===want,HTTP 面)。 */
@@ -83,7 +83,7 @@ test('archive:daemon 会话 id 与 journalId 双寻址均可打标;撤销回 fal
   });
 });
 
-test('archive:running 会话 409(先停再归档,与 delete 同门禁);journalId 寻址同拒', async () => {
+test('archive:运行中照常归档(2026-11-07 用户裁定:归档=切换显示位置,不停运行);归档列表带运行标注', async () => {
   await withDaemon(new HangingAdapter(), async ({ base, tmp }) => {
     const root = path.join(tmp, 'root');
     fs.mkdirSync(root, { recursive: true });
@@ -93,10 +93,13 @@ test('archive:running 会话 409(先停再归档,与 delete 同门禁);journalId
     await waitStatus(base, sessionId, 'running');
 
     const r1 = await fetch(`${base}/session/${sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
-    assert.equal(r1.status, 409, 'running 会话 id 归档拒');
+    assert.equal(r1.status, 200, 'running 会话 id 归档受理');
     const jid = fs.readdirSync(path.join(resolveDataDir(root), 'sessions')).filter((f) => f.endsWith('.jsonl'))[0]!.replace(/\.jsonl$/, '');
-    const r2 = await fetch(`${base}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
-    assert.equal(r2.status, 409, 'running journalId 归档拒');
+    const rows = (await (await fetch(`${base}/sessions/archived`, { headers: AUTH })).json()) as Array<{ id: string; liveSessionId?: string }>;
+    assert.equal(rows.find((r) => r.id === jid)?.liveSessionId, sessionId, '归档行带运行标注(左槽转圈数据源)');
+    const r2 = await fetch(`${base}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: JSON.stringify({ archived: false }) });
+    assert.equal(r2.status, 200, 'running journalId 撤销归档受理');
+    await waitStatus(base, sessionId, 'running'); // 归档/撤销不打断运行
   });
 });
 

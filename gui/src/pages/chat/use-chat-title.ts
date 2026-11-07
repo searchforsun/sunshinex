@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { ChatEntry } from '../../chat-reducer';
+import { t } from '../../i18n';
+
+/** 会话标题内存缓存(键=会话 id):重挂载首帧即显已知名,不等回读往返 */
+const titleCache = new Map<string, string>();
 
 /** 会话标题子系统(D32 第六批批F-6 自 Chat.tsx 平移,行为零变化):daemon 旁车 meta 单源
  *  (挂载 GET 回读/模型总结一次/rename 乐观落盘)。编辑态与草稿返还宿主(顶栏消费)。 */
@@ -22,14 +26,18 @@ export function useChatTitle(deps: {
   const { conn, sessionId, fixedTitle, entries, onRenamed } = deps;
 /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
  *  顶栏/侧栏/TUI 一名三处;零历史兼容(旧 localStorage 键不读不迁,旧会话删档重测)。
- *  缺省回落首条用户消息摘要,再落会话 id。点击标题即改 */
-const [title, setTitle] = useState<string | null>(null);
-const [titleLoaded, setTitleLoaded] = useState(false);
+ *  缺省回落首条用户消息摘要,再落「新会话」——不回落会话 id(2026-11-07 用户裁定:顶栏不显 id 过渡态)。
+ *  回读落定前显空(不先闪摘要再换名);见过的名按会话缓存,切回即直显。点击标题即改 */
+const [title, setTitle] = useState<string | null>(() => titleCache.get(sessionId) ?? null);
+const [titleLoaded, setTitleLoaded] = useState(() => titleCache.has(sessionId));
+useEffect(() => {
+  if (title !== null) titleCache.set(sessionId, title);
+}, [sessionId, title]);
 const [titleEditing, setTitleEditing] = useState(false);
 const [titleDraft, setTitleDraft] = useState('');
 // P11 T7:内核 user md 恒裸文(v3 直透)——剥 `> ` 前缀的防御分支退役(摘要即原文)
 const firstUserText = entries.find((e) => e.kind === 'user')?.md ?? '';
-const displayTitle = fixedTitle ?? title ?? (firstUserText !== '' ? firstUserText : sessionId);
+const displayTitle = fixedTitle ?? title ?? (!titleLoaded ? '' : firstUserText !== '' ? firstUserText : t('New session', '新会话'));
 /** onRenamed 同步镜像(applyTitle 闭包经 ref 读,免依赖数组抖动) */
 const onRenamedRef = useRef(onRenamed);
 onRenamedRef.current = onRenamed;

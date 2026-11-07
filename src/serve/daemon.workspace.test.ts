@@ -317,10 +317,14 @@ test('⑤ createSession 出生 journal（T2+spec §2 出生写）：出生即铸
     const s2 = await ctx.newSession(root);
     assert.notEqual(s2, s1, '第二会话 id 不同');
 
-    // attach 重开：s2 挂 s1 的档 → 转录 seg 面重放（v3 装载——首轮的 user/run-open/终答段行在档）
+    // attach 重开：s2 挂 s1 的档——s1 idle 在座即收编复用(返回 s1、丢弃空壳 s2):重开不铸新运行时,
+    // 同档身份稳定(GUI 座位/常驻页签不随重开累积);转录与在座运行时同源
     const att = await fetch(`${base}/session/${s2}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
     assert.equal(att.status, 200, 'attach 重开 200（s2 占座壳零档=零幻影）');
-    const snap = (await (await fetch(`${base}/session/${s2}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
+    const adopted = ((await att.json()) as { sessionId: string }).sessionId;
+    assert.equal(adopted, s1, 'idle 在座同档收编:返回原会话 id');
+    assert.equal(daemon.get(s2), undefined, '空壳已丢弃');
+    const snap = (await (await fetch(`${base}/session/${adopted}/snapshot`, { headers: AUTH })).json()) as { messages: Array<{ kind: string; md: string }> };
     const mds = snap.messages.map((m) => m.md);
     assert.ok(mds.includes('跑一轮'), 'seg 重放 user 条（裸文直读）');
     assert.ok(mds.includes('首轮完成'), 'seg 重放 assistant 条（终答闭合段）');

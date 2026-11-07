@@ -78,4 +78,19 @@ describe('PinnedSection 置顶分组(GUI 专属)', () => {
     const second = renderSection({ archivedIds: new Set(['j1', 'j2']) });
     expect(second.container.querySelector('.sx-pin-list')).toBeNull(); // 全滤除 → 整组不渲染
   });
+
+  it('非当前会话的钉也显运行/待确认态(daemon 行标注);状态点不截置顶钮点击', () => {
+    const onUnpin = vi.fn();
+    const onOpenSession = vi.fn();
+    const { container } = renderSection({
+      onUnpin,
+      onOpenSession,
+      liveJournals: new Map([['j1', { liveSessionId: 'sun-x', awaiting: false }], ['j2', { liveSessionId: 'sun-y', awaiting: true }]]),
+    });
+    expect(container.querySelector('[data-row-id="j1"] .sx-session-dot.running')).not.toBeNull();
+    expect(container.querySelector('[data-row-id="j2"] .sx-session-dot.asking')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '取消置顶 j1' }));
+    expect(onUnpin).toHaveBeenCalledWith('j1');
+    expect(onOpenSession).not.toHaveBeenCalled();
+  });
 });

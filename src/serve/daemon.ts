@@ -1,5 +1,6 @@
 // 警告过滤必须首个 import（node:sqlite 实验横幅在 import 链内即发射）
 import '../warning-filter';
+import * as crypto from 'node:crypto';
 import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -165,10 +166,16 @@ export class GuiDaemon {
    *  guard 的 ap-N 是会话内序会撞,全局唯一由本单点保证） */
   private pendingSeq = 0;
   /** pty 面（G8b T3）：daemon 持 manager（serve 分层——session.ts 不引 pty，会话回收由 daemon
-   *  在 delete/teardown 两处 killAllFor 插杀）；ptyId 铸造 `pty-<n>` 进程内单调、永不复用（防
-   *  同 id 新会话撞旧缓冲/双连的竞态——T2 缓议裁定） */
+   *  在 delete/teardown 两处 killAllFor 插杀）；ptyId 铸造 `pty-<启动段>-<n>` 永不复用（防同 id 新会话
+   *  撞旧缓冲/双连的竞态——T2 缓议裁定）。启动段=每次 daemon 启动随机:GUI 盘档持有旧 ptyId 跨重启,
+   *  纯进程内序号重启归零即撞上新进程的活 pty(连错壳)、落盘回放档也被同号覆盖 */
   private readonly ptyManager = new PtyManager();
   private ptySeq = 0;
+  private readonly ptyBoot = crypto.randomBytes(3).toString('hex');
+  /** 回放周期落盘(5s,只写有变化的条目):落盘原只在 teardown 尾段——壳关闭有界等待 5s 常截断,
+   *  强杀/崩溃则全丢,重启后终端回不到原屏。lastSaved 记每条上次落盘文本,未变不写 */
+  private ptyPersistTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly ptyLastSaved = new Map<string, string>();
   /** WS 传输域 hub（daemon-ws 单点，2026-10-27 技术债轮 D31 骨架域续批外提）：连接生命周期/
    *  batch 合帧窗/保活心跳/pty 专用连接/泵广播面,传输状态归 hub 私有;teardown 步 1 经 hub.close */
   private readonly wsHub = new WsHub({
@@ -323,12 +330,19 @@ export class GuiDaemon {
       /* 清扫失败不阻塞启动(下次 boot 再扫) */
     }
     const server = http.createServer((req, res) => this.dispatch(req, res, token));
+    // keep-alive 加长(2026-11-07 用户实测「置顶 Failed to fetch/卡」根修):Node 缺省 5s 关空闲
+    // 连接,浏览器连接池旧 socket 上 PUT 不重试直接炸(GET 会自动重试故鲜感)。65s>浏览器池
+    // 复用窗;headersTimeout 同步抬高防 65s 内长连接被 requestTimeout 误杀
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(opts?.port ?? 0, LOOPBACK_HOST, () => resolve());
     });
     this.server = server;
     this.wsHub.attach(server, token);
+    this.ptyPersistTimer = setInterval(() => this.persistPtyReplays(), 5000);
+    this.ptyPersistTimer.unref();
     // M2 融合面过滤闸需要 daemon 自身 origin(GUI 渲染层 target 按 http://127.0.0.1:<port> 过滤)
     process.env.SUNSHINEX_DAEMON_PORT = String((server.address() as { port: number }).port);
     // 任务14 配置监听装配：全局目录（userConfigDir——HOME/部署重定向口，测试钉 tmp HOME 即 hermetic）
@@ -390,6 +404,10 @@ export class GuiDaemon {
     //     孤儿 Chrome 锁死数据目录(用户面「应用关了文件夹删不掉」);收割独立于其它收口步骤且为
     //     同步 spawnSync,置顶后即使后续被有界等待截断也已杀净)
     this.reapBuiltinBrowsers();
+    // -1b) 终端回放全量落盘(同步、与收割同理置顶):后段收口被有界等待截断也不丢屏
+    if (this.ptyPersistTimer !== undefined) clearInterval(this.ptyPersistTimer);
+    this.ptyPersistTimer = undefined;
+    this.persistPtyReplays();
     // 0-) 配置监听面先收（任务14）：摘写通知钩子（还原缺省 no-op——收口途中 catalog 写不再产帧）+
     //     watcher.close 全组拆句柄清回调（防收口途中残留 fs 事件再产广播）；project 组随 close 全拆，
     //     无需逐会话 unwatch
@@ -430,6 +448,18 @@ export class GuiDaemon {
   }
 
   /** 内置浏览器收割（宿主侧单点 serve/builtin-browser，D61 外提）：本座工作区 roots 注入 */
+  /** 终端回放落盘(周期/teardown 共用):有变化才写;已注销条目出账(其终态由关页签/删除路径落盘) */
+  private persistPtyReplays(): void {
+    const live = new Set<string>();
+    for (const r of this.ptyManager.allReplays()) {
+      live.add(r.id);
+      if (this.ptyLastSaved.get(r.id) === r.text) continue;
+      saveReplay(r.id, r.text);
+      this.ptyLastSaved.set(r.id, r.text);
+    }
+    for (const id of [...this.ptyLastSaved.keys()]) if (!live.has(id)) this.ptyLastSaved.delete(id);
+  }
+
   private reapBuiltinBrowsers(): void {
     reapBuiltinBrowsersHost([...this.sessions.values()].map((rt) => rt.root));
   }
@@ -1205,7 +1235,7 @@ export class GuiDaemon {
       readJson: (req, cap) => this.readJson(req, cap),
       sessionFor: (res, id) => this.sessionFor(res, id),
       ptyManager: this.ptyManager,
-      nextPtyId: () => `pty-${(this.ptySeq += 1)}`,
+      nextPtyId: () => `pty-${this.ptyBoot}-${(this.ptySeq += 1)}`,
     };
   }
   private async handleWorkspaceLocate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

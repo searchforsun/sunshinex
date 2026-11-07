@@ -241,6 +241,10 @@ const h = vi.hoisted(() => {
       this.snapshotCalls.push(id);
       return this.snapshotGate.then(() => this.snapshotResp);
     }
+    /** 标题回读:以会话 id 为名(顶栏不再回落 id,断言凭标题识别挂载的是哪个会话) */
+    getSessionTitle(id: string): Promise<{ title?: string }> {
+      return Promise.resolve({ title: id });
+    }
     /** 辅助对话页签恢复面:缺省空(测不关心 side 恢复时零页签) */
     sessionSides(_id: string): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>> {
       return Promise.resolve([]);
@@ -710,9 +714,10 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
         { seq: 4, ts: 4, kind: 'error', md: 'boom' },
       ],
     });
+    conn.getSessionTitle = () => Promise.resolve({}); // 服务端无名:回落首条消息摘要(不回落会话 id)
     fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
     await clickSessionRow();
-    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
+    await waitFor(() => expect(screen.getByText('build the widget', { selector: '.chat-title-text' })).toBeDefined());
     openConn(conn);
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
     expect(screen.getAllByText('build the widget')[0]).toBeDefined(); // P11:内核 user md 裸文,直渲染

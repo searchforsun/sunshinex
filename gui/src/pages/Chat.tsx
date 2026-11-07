@@ -10,7 +10,7 @@ import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
 import { chaseScrollBottom, pathBasename, rAFConverge } from '../ui-util';
-import { stampSeen } from '../sidebar/project-menu-util';
+import { autoSeenSuppressed, stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
 
@@ -40,6 +40,7 @@ import { MessageList } from './chat/MessageList';
 import { ChatScrollbar } from './chat/ChatScrollbar';
 import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
+import { SESSION_ARCHIVE_CHANGED_EVENT, type SessionArchiveChange } from '../session-events';
 import { ApprovalCard } from './chat/PendingCards';
 import { PlanCard } from './chat/PlanCard';
 import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, refContentConsume, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
@@ -83,7 +84,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -202,14 +203,19 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** 元素/终端片段引用账本(2026-11-04):⟦token⟧→全量内容,发送/排队期 expandRefContents 展开 */
   const refContentsRef = useRef(new Map<string, string>());
   // 芯片账本回灌(2026-11-07 落地即清配套:草稿文本有 sx-draft 持久化,账本不持久则恢复的芯片
-  // 全空壳)。只补缺不清现有——insertContent 渲染期种子/事件入账不受影响
-  try {
-    const rawRefs = localStorage.getItem(`sx-draft-refs:${archiveKey}`);
-    if (rawRefs !== null) {
-      for (const [tk, c] of JSON.parse(rawRefs) as Array<[string, string]>) refContentsRef.current.set(tk, c);
+  // 全空壳)。只补缺不清现有——insertContent 渲染期种子/事件入账不受影响。每档键只回灌一次:
+  // 渲染期同步读盘+JSON 解析,逐渲染执行=流式每帧付一次 localStorage 往返
+  const refsHydratedKeyRef = useRef<string | null>(null);
+  if (refsHydratedKeyRef.current !== archiveKey) {
+    refsHydratedKeyRef.current = archiveKey;
+    try {
+      const rawRefs = localStorage.getItem(`sx-draft-refs:${archiveKey}`);
+      if (rawRefs !== null) {
+        for (const [tk, c] of JSON.parse(rawRefs) as Array<[string, string]>) refContentsRef.current.set(tk, c);
+      }
+    } catch {
+      // 档损坏即弃:芯片失去内容是尽力而为面的失败,不入错误面
     }
-  } catch {
-    // 档损坏即弃:芯片失去内容是尽力而为面的失败,不入错误面
   }
   // 首问 token 内容入私有账本——渲染期直写(2026-11-07 实测时序根修:子组件 ComposerCard 的
   // 规范化 effect 先于本组件 effect 执行,种子晚于改名=键对不上=回落全局注册表取到别会话内容)
@@ -565,23 +571,40 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       },
     );
   }, [conn, sessionId, onOpError, onSessionsMutated]);
+  // 他处入口(侧栏行/归档层撤销钮等)改归档态:顶栏徽标随事件同步。寻址 id 可能是运行时 id 或 journalId
+  useEffect(() => {
+    const onChanged = (e: Event): void => {
+      const { id, archived: v } = (e as CustomEvent<SessionArchiveChange>).detail;
+      if (id === sessionId || (journalId !== undefined && journalId !== '' && id === journalId)) setArchived(v);
+    };
+    window.addEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onChanged);
+  }, [sessionId, journalId]);
 
   /** 运行收束即压已读(2026-10-23 用户裁定):打开中的会话跑完,流式内容已尽收眼底,不再重亮未读;
    *  后台会话完成仍按 journal 更新时刻亮真未读(语义保留)。落库后再联动,侧栏重拉读到的才是新档 */
+  // 回调经 ref 读取、不入 effect 依赖:压读成功即上抛 → 宿主 bump → 重渲染,宿主回调身份若随渲染
+  // 变化,入依赖即「压读→重渲染→再压读」死循环(2026-11-07 实测 8.6 次/秒,主线程与连接池双占满)
+  const onSessionsMutatedRef = useRef(onSessionsMutated);
+  onSessionsMutatedRef.current = onSessionsMutated;
   const prevRunningRef = useRef(running);
   useEffect(() => {
     const was = prevRunningRef.current;
     prevRunningRef.current = running;
     if (!was || running || journalId === undefined || journalId === '') return;
-    void stampSeen(conn, journalId, Date.now()).then(onSessionsMutated, onSessionsMutated);
-  }, [running, journalId, conn, onSessionsMutated]);
+    if (autoSeenSuppressed(journalId)) return; // 显式标记未读压制旗:蓝点亮到再次进入为止
+    const done = (): void => onSessionsMutatedRef.current?.();
+    void stampSeen(conn, journalId, Date.now()).then(done, done);
+  }, [running, journalId, conn]);
   // journalId 到位即压已读(2026-11-07 用户实测「欢迎页升级首条完成仍亮未读」根修):升级链
   // journalId 晚到(晚于首轮收束)——上一 effect 因 journalId 空恒跳过。本会话在座(本组件即打开面),
-  // journal 一旦寻得即刻压已读,与运行收束压读同语义
+  // journal 一旦寻得即刻压已读,与运行收束压读同语义。每个 journalId 只压一次
   useEffect(() => {
     if (journalId === undefined || journalId === '') return;
-    void stampSeen(conn, journalId, Date.now()).then(onSessionsMutated, onSessionsMutated);
-  }, [journalId, conn, onSessionsMutated]);
+    if (autoSeenSuppressed(journalId)) return; // 显式标记未读压制旗:蓝点亮到再次进入为止
+    const done = (): void => onSessionsMutatedRef.current?.();
+    void stampSeen(conn, journalId, Date.now()).then(done, done);
+  }, [journalId, conn]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send: sendRaw, interrupt } = useChatSubmit({
@@ -776,6 +799,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         journalId={journalId}
         root={root}
         onSessionsMutated={onSessionsMutated}
+        pins={pins}
+        persistPins={persistPins}
         menuClosed={menuClosed}
         onToggleMenu={onToggleMenu}
         nav={nav}

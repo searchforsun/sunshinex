@@ -83,4 +83,23 @@ describe('ArchiveSection 归档会话层(侧栏整替面)', () => {
     rerender(<ArchiveSection rows={[]} busy={false} onOpenSession={() => {}} onUnarchive={() => {}} onDelete={() => {}} />);
     expect(screen.getByText('暂无归档会话')).toBeDefined();
   });
+
+  it('运行中归档行左槽显运行态(他会话看 liveSessionId,本会话看 GUI 运行集);闲置行无点', () => {
+    renderSection({
+      rows: [
+        { ...rows[0]!, liveSessionId: 'sun-other' },
+        { ...rows[1]! },
+      ],
+      activeSessionId: 'sun-me',
+      runningIds: new Set(['sun-me']),
+      journalOfSession: new Map([['sun-me', 'a2']]),
+    });
+    expect(document.querySelector('[data-row-id="a1"] .sx-session-dot.running')).not.toBeNull();
+    expect(document.querySelector('[data-row-id="a2"] .sx-session-dot.running')).not.toBeNull();
+  });
+
+  it('闲置行无状态点', () => {
+    renderSection();
+    expect(document.querySelectorAll('.sx-archive-item .sx-session-dot').length).toBe(0);
+  });
 });

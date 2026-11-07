@@ -1449,7 +1449,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       });
       expect(alloc.status).toBe(200);
       const { ptyId } = (await alloc.json()) as { ptyId: string };
-      expect(/^pty-\d+$/.test(ptyId)).toBe(true);
+      expect(/^pty-[0-9a-f]{6}-\d+$/.test(ptyId)).toBe(true);
 
       // —— 2) 连入:首帧恒 replay(新分配可空)→ in 帧下发标记命令(win32 powershell 可执行形态)
       //    → data 帧流 base64 解码含标记(shell 回环真链路)——

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   emptyTabSession, ensureSession, openTab, closeTab, cycleTab,
-  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, rewindSeat, stripTabType, type SingletonProbe,
+  setCollapsed, setWidth, DEFAULT_TAB_WIDTH, disambiguateTabTitles, reopenClosed, rewindSeat, adoptStaleSeats, stripTabType, type SingletonProbe,
 } from './tab-state';
 
 /** 判重/单例探针(T3 registry 提供真实现;此处 stub 同口径:file 按 path,tasks 单例) */
@@ -192,3 +192,20 @@ describe('rewindSeat(回退换座)', () => {
   });
 });
 
+
+describe('adoptStaleSeats(同档换座收口)', () => {
+  const tab = (uid: string) => ({ uid, type: 'web' as const, params: { url: `https://${uid}` }, createdAt: 1 });
+  const seatWith = (...uids: string[]) => ({ ...emptyTabSession(), tabs: uids.map(tab), activeUid: uids[0] ?? null });
+
+  it('新座空:旧座整座迁入并摘除;多个旧座只迁第一个有页签的,其余弃(常驻 webview 不再累积)', () => {
+    const out = adoptStaleSeats({ r1: seatWith('a'), r2: seatWith('b'), r3: emptyTabSession() }, ['r1', 'r2'], 'r3');
+    expect(Object.keys(out).sort()).toEqual(['r3']);
+    expect(out.r3.tabs.map((t) => t.uid)).toEqual(['a']);
+  });
+
+  it('新座已有页签以新座为准;旧座缺席/仅自身 → 原引用返回', () => {
+    const s = { r1: seatWith('a'), r2: seatWith('b') };
+    expect(adoptStaleSeats(s, ['r1'], 'r2')).toEqual({ r2: s.r2 });
+    expect(adoptStaleSeats(s, ['zz', 'r2'], 'r2')).toBe(s);
+  });
+});

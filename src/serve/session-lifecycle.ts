@@ -122,12 +122,14 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
  * 续落同档,teardown seal)→ 置激活。双挂/运行中挂 INVALID_STATE(播种会击穿在飞 run 的链)。
  */
 export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: string): Result<{ sessionId: string }> {
-  // G14.2xx 运行中刷新恢复:同 journal 已在座且**运行中**(内核循环与在飞 run 都在旧对象身上)→
-  // **收编复用**并丢弃 newSession 造的空壳——空壳挂同档=会话 id 换号,直播帧按会话过滤全丢,
-  // GUI 种子态冻结成假「已停止」而侧栏仍在跑(实测病根)。idle 在座不收编:走经典重播种
-  // (确定性等价,排队经 steer 行回放;双挂 409 面由下方既有守卫承继)
+  // G14.2xx 运行中刷新恢复:同 journal 已在座 → **收编复用**并丢弃 newSession 造的空壳——空壳挂同档
+  // =会话 id 换号,直播帧按会话过滤全丢,GUI 种子态冻结成假「已停止」而侧栏仍在跑(实测病根)。
+  // 2026-11-07 扩至 idle 在座(用户实测「切会话非常慢」根修):原 idle 走重播种=每次重开铸一个新运行时,
+  // 旧运行时永不释放(daemon 内存只增、同档多运行时并挂),GUI 侧按运行时 id 分座=座位/常驻 webview
+  // 随重开次数累积。在座运行时即该档的唯一写者,其内存态与档等价,收编免重放且身份稳定。
+  // 自挂(sid===id)仅运行中放行,idle 自挂仍落下方双挂 409 守卫
   for (const [sid, s] of io.sessions) {
-    if (s.attachedJournalId === journalId && s.status() === 'running') {
+    if (s.attachedJournalId === journalId && (sid !== id || s.status() === 'running')) {
       // 任务14:被收编丢弃的空壳会话出生时挂的项目监听随壳拆除(unwatchProject 守护——同 root
       // 仍被在座会话持有则不拆);壳 root 与被收编会话 root 可不同,不拆则监听句柄泄漏到 daemon 收口
       const shell = io.sessions.get(id);
