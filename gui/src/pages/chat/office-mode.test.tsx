@@ -1,0 +1,84 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { act, fireEvent, render } from '@testing-library/react';
+import { ToolEntryView } from './ToolEntry';
+import { ToolSegBlock } from './ToolGroups';
+import { RunChangesBar } from './RunFooter';
+import { ChatEntryView } from './EntryViews';
+import { LiveChangesContext } from './use-live-changes';
+import { applyUiMode } from '../../ui-mode';
+import type { ChatEntry } from '../../chat-reducer';
+import type { Connection } from '../../connection';
+
+/** 办公模式(2026-11-07 用户裁定):工具行数量与编程模式一致、聚合组照常可展开;单个工具行不可展开细节、
+ *  非跳转行只显动词头,文件行去 +/-;等待后台任务行不显跳转(团队任务保留);记忆/技能旁白与代码变动条隐藏 */
+
+const conn = {} as Connection;
+const tool = (key: string, name: string, input: Record<string, unknown>, text = 'ok'): ChatEntry =>
+  ({ key, kind: 'tool', md: '', name, input, result: { ok: true, text } }) as unknown as ChatEntry;
+const none = (): null => null;
+
+afterEach(() => act(() => applyUiMode('code')));
+
+describe('办公模式', () => {
+  it('exec 行只显动词头、无展开体与 chevron;写入行保留文件名去 +/-', () => {
+    act(() => applyUiMode('office'));
+    const r = render(
+      <>
+        <ToolEntryView entry={tool('x', 'exec', { command: 'pnpm test --filter gui' })} conn={conn} sessionId="s" />
+        <ToolEntryView entry={tool('w', 'write', { path: 'src/app.ts' }, 'wrote src/app.ts (+12 -3)')} conn={conn} sessionId="s" />
+      </>,
+    );
+    const rows = r.container.querySelectorAll('.entry-tool');
+    expect(rows[0]!.textContent).toBe('Ran a command');
+    expect(rows[0]!.querySelector('.tool-chev')).toBeNull();
+    expect(rows[0]!.querySelector('.tool-body')).toBeNull();
+    expect(rows[1]!.textContent).toContain('app.ts');
+    expect(rows[1]!.querySelector('.tool-stat')).toBeNull();
+  });
+
+  it('等待后台任务行无跳转;等待团队任务行保留链接', () => {
+    act(() => applyUiMode('office'));
+    const onOpenTask = (): void => undefined;
+    const r = render(
+      <>
+        <ToolEntryView entry={tool('a', 'task_wait', { taskIds: ['bg1'] })} conn={conn} sessionId="s" onOpenTask={onOpenTask} taskNameOf={() => 'build'} />
+        <ToolEntryView entry={tool('b', 'agent_team_task_wait', { taskIds: ['t1'] })} conn={conn} sessionId="s" onOpenTask={onOpenTask} taskNameOf={() => 'review'} />
+      </>,
+    );
+    const rows = r.container.querySelectorAll('.entry-tool');
+    expect(rows[0]!.querySelector('.tool-agent-link')).toBeNull();
+    expect(rows[0]!.textContent).not.toContain('build');
+    expect(rows[1]!.querySelector('.tool-agent-link')!.textContent).toContain('review');
+  });
+
+  it('聚合组照常可展开,成员行数不变且成员行不可展开', () => {
+    act(() => applyUiMode('office'));
+    const seg = [tool('a', 'read', { path: 'a.ts' }), tool('b', 'grep', { pattern: 'x' }), tool('c', 'glob', { pattern: '*' })];
+    const renderTool = (e: ChatEntry) => <ToolEntryView key={e.key} entry={e} conn={conn} sessionId="s" />;
+    const r = render(<ToolSegBlock seg={seg} closed={false} renderTool={renderTool} renderThinking={none} renderAssistant={none} />);
+    const head = r.container.querySelector('button.tool-group-head')!;
+    fireEvent.click(head);
+    expect(head.getAttribute('aria-expanded')).toBe('true');
+    expect(r.container.querySelectorAll('.entry-tool')).toHaveLength(3);
+    expect(r.container.querySelector('.entry-tool .tool-chev')).toBeNull();
+  });
+
+  it('编程模式不变:命令原文+可展开', () => {
+    const r = render(<ToolEntryView entry={tool('x', 'exec', { command: 'pnpm test' })} conn={conn} sessionId="s" />);
+    expect(r.container.textContent).toContain('pnpm test');
+    expect(r.container.querySelector('.tool-chev')).not.toBeNull();
+  });
+
+  it('记忆/技能旁白与代码变动条隐藏', () => {
+    act(() => applyUiMode('office'));
+    const note = render(<ChatEntryView entry={{ key: 'n', kind: 'notice', md: '[skills] learned: deploy' }} />);
+    expect(note.container.textContent).toBe('');
+    const f = { path: 'a.ts', status: 'modified', added: 1, deleted: 0 };
+    const bar = render(
+      <LiveChangesContext.Provider value={[f]}>
+        <RunChangesBar changes={[f]} />
+      </LiveChangesContext.Provider>,
+    );
+    expect(bar.container.querySelector('.run-changes')).toBeNull();
+  });
+});

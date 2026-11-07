@@ -3596,12 +3596,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg { width: 12px; height: 12px; flex: none; }
 .run-footer { margin-top: 14px; } /* 2026-11-07 用户裁定续:正文与操作行间距再拉开(10→14) */
 
-/* 办公模式(ui-mode.ts):不可展开的工具行/融合摘要头去可点暗示——静置色、默认光标、hover 不提亮
+/* 办公模式(ui-mode.ts):不可展开的工具行去可点暗示——默认光标、hover 不提亮
    (行内跳转链接自带可点样式不受影响) */
 .entry-tool .tool-summary.tool-summary-static { cursor: default; }
 .entry-tool .tool-summary.tool-summary-static:hover { color: var(--fg-secondary); }
-.tool-group-office .tool-group-head { cursor: default; }
-.tool-group-office .tool-group-head:hover { color: var(--fg-secondary); }
 /* 设置页路径行(2026-11-07 用户裁定):输入框右侧内嵌选择钮——右内距让出钮位,钮在框内贴右竖直居中 */
 .sx-setting-path { position: relative; width: 100%; }
 .sx-setting-path .sx-setting-input { padding-right: 36px; }

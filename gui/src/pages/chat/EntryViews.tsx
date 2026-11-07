@@ -22,6 +22,7 @@ import type { ComposerEnv } from './edit-composer';
 import { TurnConfirmDialog } from './rewind-confirm';
 import type { RewindOps } from './chat-types';
 import { hasUnclosedFence, sealPartialImage, streamMdCut } from './stream-md';
+import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
  *  回退菜单/折叠气泡)/系统行(含旁白着色)与单条渲染单元。memo 语义与 DOM 逐字节不变;md 渲染
@@ -585,6 +586,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
 });
 
 export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession, sideChat }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean }): JSX.Element {
+  const office = useUiMode() === 'office';
   const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
@@ -608,6 +610,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
     () => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { mermaidDraft, onOpenDirectory: openDir ?? undefined }),
     [onOpenFile, isDir, mermaidDraft, openDir],
   );
+  // 办公模式(ui-mode.ts):记忆/技能更新旁白不显示
+  if (office && isOfficeHiddenNotice(entry.kind, entry.md)) return <></>;
   if (msg !== null) {
     // 与插入档用户胶囊同形(+发送人名可点;无编辑):限高折叠 + 下沿复制
     return (

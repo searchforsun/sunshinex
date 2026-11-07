@@ -5,6 +5,7 @@ import { applyFontPreset, type FontPreset } from './font-preset';
 import { applyTheme, type ThemePref } from './theme';
 import { syncPalette } from './palette';
 import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, UI_FONT_CHOICES } from './font-size';
+import { applyUiMode } from './ui-mode';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
 
@@ -45,6 +46,9 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       },
       codeFontSize: (v) => {
         if (CODE_FONT_CHOICES.includes(Number(v))) applyCodeFontSize(Number(v));
+      },
+      uiMode: (v) => {
+        if (v === 'code' || v === 'office') applyUiMode(v);
       },
     });
   }, [connInstance]);

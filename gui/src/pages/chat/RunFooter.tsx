@@ -9,6 +9,7 @@ import type { ChatEntry } from '../../chat-reducer';
 import { FileIcon } from '../../file-icon';
 import { ChangeStat, changeCounts } from '../../change-stat';
 import { useLiveChanges, visibleRunChanges } from './use-live-changes';
+import { useUiMode } from '../../ui-mode';
 
 /** run 尾部操作条与变更汇总（D32 批C-1 拆分自 Chat.tsx）：Worked for 时长/复制/分叉钮与
  *  本轮改动文件变更条——纯渲染件，props 注入。行为零变化（Chat.test 为锚）。
@@ -58,6 +59,7 @@ export function RunChangesBar({
   const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
   // 动态渲染:本轮记录 ∩ 当前 git 变动(行数=当前 git 值,与审查页一致);已提交/已撤销的退场
   const live = useLiveChanges();
+  const office = useUiMode() === 'office';
   const visible = visibleRunChanges(changes, live).filter((c) => !restored.has(c.path));
   const add = visible.reduce((n, c) => n + changeCounts(c).add, 0);
   const del = visible.reduce((n, c) => n + changeCounts(c).del, 0);
@@ -65,7 +67,7 @@ export function RunChangesBar({
     onRestore?.(path);
     setRestored((s) => new Set(s).add(path));
   };
-  if (visible.length === 0) return null;
+  if (office || visible.length === 0) return null; // 办公模式不显示代码变动(ui-mode.ts)
   return (
     <div className="run-changes" aria-label={t('run changes', '本轮改动')}>
       <div className="run-changes-head">

@@ -18,6 +18,7 @@ const LOCAL_KEYS = {
   paletteDark: 'sunshinex.palette-dark',
   uiFontSize: 'sunshinex.ui-font-size',
   codeFontSize: 'sunshinex.code-font-size',
+  uiMode: 'sunshinex.ui-mode',
 } as const;
 
 let conn: UiPrefConn | null = null;
@@ -30,7 +31,7 @@ let applyingRemote = false;
 let appliers: UiPrefAppliers | null = null;
 
 /** palette:配色偏好已由 flush 写入本地层,回调只需按当前模式重落根 */
-type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void };
+type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void };
 
 /** 连接就绪后调用一次:拉公共档覆盖本地,并回填本地缺键 */
 export function initUiPrefSync(c: UiPrefConn, apply: UiPrefAppliers): void {
@@ -76,6 +77,7 @@ async function flush(): Promise<void> {
           if (short === 'paletteLight' || short === 'paletteDark') appliers?.palette();
           if (short === 'uiFontSize') appliers?.uiFontSize(server);
           if (short === 'codeFontSize') appliers?.codeFontSize(server);
+          if (short === 'uiMode') appliers?.uiMode(server);
         }
       } else if (local !== null && local !== '') {
         blob[short] = local; // 服务端缺键:本地回填上收(旧档/首联)

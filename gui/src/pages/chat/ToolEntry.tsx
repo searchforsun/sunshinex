@@ -10,6 +10,8 @@ import type { DiffResp } from '../../connection';
 import { mcpToolParts, MCP_TOOL_LABELS, zhToolName, toolTargetOf, RUNNING_LABELS, TASK_OP_TOOLS, TASK_OP_RUNNING, fileLabelOf, writeStatOf } from './tool-entry-data';
 import { ReadImageBody } from './tool-entry-media';
 import { ToolEntryBody } from './tool-entry-body';
+import { isOfficeStandaloneTool, useUiMode } from '../../ui-mode';
+import { officeSingleLabel } from './office-summary';
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);智能体团队工具专属图标(去扳手默认) */
 const TOOL_ICONS: Record<string, LucideIcon> = {
@@ -100,6 +102,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   teams?: readonly { teamId: string; name: string }[];
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  /** 办公模式(ui-mode.ts):行不可展开(read 行整行开文件=跳转保留);文件行去 +/- 统计;非跳转行只显
+   *  类动词头(「执行了命令」),命令/目标原文不显 */
+  const office = useUiMode() === 'office';
   /** 2026-10-26 三期 §4.5:快照分页剥 result.full——展开且缺 full 时按 seq 单条拉观测端点;
    *  ''=已拉且无 full(回落 text),undefined=未拉。live 帧自带 full 不触发 */
   const [fetchedFull, setFetchedFull] = useState<string | undefined>(undefined);
@@ -300,10 +305,14 @@ export const ToolEntryView = memo(function ToolEntryView({
     // 2026-11-05 用户裁定「动词在前,命名准确」:专用动词分支收敛 zhToolName 单点(EN 规范化标签,
     // 不再露原始名——ask/todo 两支保留自定义交互面,文字同源 zhToolName)
     <span className="tool-verb">{zhToolName(toolName)}</span>
+  ) : office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) ? (
+    <span className="tool-verb">{officeSingleLabel(toolName)}</span>
   ) : (
     <span className="tool-verb">{zhToolName(toolName)}</span>
   );
-  const collapsed = (
+  /** 办公模式非跳转行:动词头即全部(命令/目标原文不进折叠行) */
+  const officeBare = office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined);
+  const collapsed = officeBare ? verbSpan : (
     <>
       {verbSpan}
       {path !== undefined && (isWrite || toolName === 'read') ? (
@@ -332,8 +341,8 @@ export const ToolEntryView = memo(function ToolEntryView({
               {fileLabel!.dir !== '' && <span className="tool-file-rel">{' '}{fileLabel!.dir}</span>}
             </>
           )}
-          {isWrite && stat.added !== undefined && <span className="tool-stat tool-stat-add">{' '}{stat.added}</span>}
-          {isWrite && stat.removed !== undefined && <span className="tool-stat tool-stat-del">{' '}{stat.removed}</span>}
+          {isWrite && !office && stat.added !== undefined && <span className="tool-stat tool-stat-add">{' '}{stat.added}</span>}
+          {isWrite && !office && stat.removed !== undefined && <span className="tool-stat tool-stat-del">{' '}{stat.removed}</span>}
         </>
       ) : !hideTargetWhileRunning && toolName === 'ask_question' ? (
         /* G14.82:折叠行直接示问题文本(问询即内容,非动词+目标) */
@@ -641,16 +650,19 @@ export const ToolEntryView = memo(function ToolEntryView({
       ) : null}
     </>
   );
+  /** 办公模式不可展开:read 文件行整行跳转保留,其余点击无动作 */
+  const expandable = !office && (!isRead || isReadImage);
 
 
   return (
-    <div className={`entry entry-tool${expanded ? ' open' : ''}`}>
+    <div className={`entry entry-tool${expanded && !office ? ' open' : ''}`}>
       <button
         type="button"
-        className="tool-summary"
-        aria-expanded={isReadImage ? expanded : isRead ? undefined : expanded}
+        className={`tool-summary${office && !(isRead && !isReadImage) ? ' tool-summary-static' : ''}`}
+        aria-expanded={expandable ? expanded : undefined}
         onClick={() => {
           if (isRead && !isReadImage) onOpenFile?.(path!);
+          else if (office) return;
           else {
             setExpanded((v) => !v);
             window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
@@ -659,10 +671,12 @@ export const ToolEntryView = memo(function ToolEntryView({
       >
         <ToolIcon verb={toolName} />
         {collapsed}
-        {(!isRead || isReadImage) && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
+        {expandable && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
       </button>
       {/* 折叠壳外常驻图片缩略行退役(2026-10-31 用户裁定「去掉常驻显示的图片,保留内部的就可以」):
           截图只在展开体回显(ec9159c 面),折叠行不占版面;点击行展开即看 */}
+      {/* 办公模式无展开体(命令/输出/diff 不入 DOM) */}
+      {!office && (
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
         <div className="tool-body-inner">
           {isReadImage && path !== undefined ? (
@@ -689,6 +703,7 @@ export const ToolEntryView = memo(function ToolEntryView({
           )}
         </div>
       </div>
+      )}
       {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
     </div>
   );

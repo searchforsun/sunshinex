@@ -16,6 +16,8 @@ import { applyFontPreset, FONT_PRESET_CHOICES, presetVars, readFontPreset } from
 import type { FontPreset } from '../font-preset';
 import { palettesFor, readPalettePref, setPalettePref } from '../palette';
 import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, readCodeFontSize, readUiFontSize, UI_FONT_CHOICES } from '../font-size';
+import { applyUiMode, useUiMode } from '../ui-mode';
+import type { UiMode } from '../ui-mode';
 import type { Palette } from '../palette';
 
 /**
@@ -510,6 +512,34 @@ function FontSizeRow({ label, desc, aria, choices, read, apply }: {
   );
 }
 
+/** 界面模式行(2026-11-07 用户裁定;ui-mode.ts):编程(缺省)/办公 */
+function UiModeRow(): JSX.Element {
+  const mode = useUiMode();
+  return (
+    <div className="sx-setting-row">
+      <div className="sx-setting-main">
+        <div className="sx-setting-title">
+          <span className="sx-setting-label">{t('Interface mode', '界面模式')}</span>
+        </div>
+        <p className="sx-setting-desc">
+          {t('Office mode focuses on action summaries and results; coding mode shows commands, output, and code change details.', '办公模式侧重操作摘要与结果；编程模式显示命令、输出和代码变更详情。')}
+        </p>
+      </div>
+      <div className="sx-setting-ctl">
+        <Select
+          ariaLabel="interface mode"
+          value={mode}
+          options={[
+            { v: 'code', l: t('Coding', '编程模式') },
+            { v: 'office', l: t('Office', '办公模式') },
+          ]}
+          onChange={(v) => applyUiMode(v as UiMode)}
+        />
+      </div>
+    </div>
+  );
+}
+
 const UiFontRow = (): JSX.Element => (
   <FontSizeRow
     label={t('UI font size', '界面字号')}
@@ -760,8 +790,9 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
+                  if (fd === 'uimode') return <UiModeRow key="uimode" />;
                   if (fd === 'uifont') return <UiFontRow key="uifont" />;
                   if (fd === 'codefont') return <CodeFontRow key="codefont" />;
                   if (fd === 'palette') return <PaletteRow key="palette" />;
