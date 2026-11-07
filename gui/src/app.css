@@ -2856,9 +2856,10 @@ input.sx-setting-input { width: 100%; }
    不受当前生效配色影响——每张即该配色的真实缩影 */
 .sx-palette-row.sx-setting-row { flex-direction: column; gap: 8px; container-type: inline-size; } /* 容器查询锚:卡列数随行宽(设置面/窄侧栏)自适应 */
 .sx-palette-ctl { width: 100%; max-width: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-/* 2026-11-07 用户裁定「过窄改两行两列(无单列档),参考字体预设换行时机」:≥555 一行四张
-   (设置面容器最大~584,每张≥139);<554 两行两列(窄侧栏实测 402→2×2,剪影不压扁) */
-@container (max-width: 554px) { .sx-palette-ctl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 2026-11-07 用户裁定「过窄改两行两列(无单列档),时机与字体预设变一列一致」:字体卡 auto-fit
+   minmax(230px,1fr) 在容器 <468(2×230+8)时变一列——配色卡四列→两列卡同一断点:≥468 一行四张
+   (设置面容器最大~584),<468 恒两行两列 */
+@container (max-width: 467px) { .sx-palette-ctl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sx-palette-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 6px 6px 9px; text-align: left; border: none; border-radius: var(--radius-md); cursor: pointer; background: color-mix(in srgb, var(--fg) 4%, var(--surface-elevated)); }
 .sx-palette-card:hover:not(.active) { background: color-mix(in srgb, var(--fg) 7%, var(--surface-elevated)); }
 .sx-palette-card.active { background: color-mix(in srgb, var(--fg) 11%, var(--surface-elevated)); }
