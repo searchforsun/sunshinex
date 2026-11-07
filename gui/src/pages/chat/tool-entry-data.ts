@@ -101,26 +101,22 @@ export const MCP_TOOL_LABELS: Record<string, { en: string; zh: string }> = {
 };
 
 export function zhToolName(name: string): string {
-  // MCP 工具显本地化名(t(en, zh) 渲染期求值随语言切换;未收录回退短名;server 面在展开体/工具清单承载)
+  // MCP 工具显本地化名(t(en, zh) 渲染期求值随语言切换;server 面在展开体/工具清单承载)。未收录(接入的
+  // 第三方 MCP)=「执行了 工具名」(2026-11-07 用户裁定:只显工具名不显参数)
   const mcp = mcpToolParts(name);
   if (mcp !== null) {
     const pair = MCP_TOOL_LABELS[mcp.tool];
-    return pair !== undefined ? t(pair.en, pair.zh) : mcp.tool;
+    return pair !== undefined ? t(pair.en, pair.zh) : t(`Ran ${mcp.tool}`, `执行了 ${mcp.tool}`);
   }
   const pair = TOOL_VERBS[name];
   return pair === undefined ? name : t(pair.en, pair.zh);
 }
 
 /** 折叠行目标字段(工具展示元数据同口径):各内置工具取其主字段;换行拍平,超长中段省略。
- *  MCP 工具无固定主字段——入参整体压单行 JSON 摘要(与 exec 命令行同级的目标信息) */
+ *  MCP 工具(内置电脑/浏览器插件与接入的第三方)折叠行只显工具名、不显参数(2026-11-07 用户裁定:
+ *  原入参 JSON 摘要如 {"display":null,"region":null} 对读者无意义);参数在展开体完整呈现 */
 export function toolTargetOf(name: string, input: Record<string, unknown>): string | undefined {
-  if (mcpToolParts(name) !== null) {
-    const keys = Object.keys(input);
-    if (keys.length === 0) return undefined;
-    const flat = JSON.stringify(input);
-    if (flat.length <= 72) return flat;
-    return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
-  }
+  if (mcpToolParts(name) !== null) return undefined;
   if (name === 'exit_plan') {
     const v = input.name;
     if (typeof v !== 'string' || v === '') return undefined;
