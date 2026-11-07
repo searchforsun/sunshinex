@@ -16,7 +16,17 @@ export interface PtyHandlerIo {
   nextPtyId(): string;
 }
 
-export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+/** alloc 公共尾段（D67 收敛，2026-11-07——此前会话/App 两 alloc 校验与 spawn 编排逐行双写，
+ *  b5a40544 shellArgs 改动被迫双改）：cols/rows 缺省 80/24（非正整数 400）→ prevPtyId 回放回种
+ *  （死档环=新 pty 初始环，滚动区跨 daemon 视觉连续）→ spawn（env 整份继承）→ 回种源清档（已
+ *  迁入新环）→ 200 {ptyId}。cwd/owner 两面差异经参注入。 */
+async function allocPty(
+  io: PtyHandlerIo,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  /** 校验后调用（错误优先级保序：400 形状错先于 404 定位错）；undefined=已回 404 */
+  resolve: () => { cwd: string; owner: string } | undefined,
+): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
     io.send(res, parsed.status, { error: parsed.error });
@@ -29,8 +39,8 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
     io.send(res, 400, { error: 'cols and rows must be positive integers' });
     return;
   }
-  const session = io.sessionFor(res, id);
-  if (session === undefined) return;
+  const located = resolve();
+  if (located === undefined) return;
   const ptyId = io.nextPtyId();
   // 回放回种(2026-11-07 用户裁定「要看连续」):GUI 持有的死档 ptyId(prev)→ 落盘环形缓冲回种为
   // 新 pty 初始环=滚动区跨 daemon 视觉连续(shell 不能跨 daemon 存活,与 VSCode 同边界)
@@ -40,17 +50,25 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
   io.ptyManager.spawn(ptyId, {
     file,
     args: shellArgs(),
-    cwd: session.root,
+    cwd: located.cwd,
     cols,
     rows,
-    // owner=journalId(2026-10-31 用户实测切换会话「pty not found for session」根因修):运行时 id
-    // 每次打开重铸( ephemeral),journalId 才是稳定锚——切会话/收编换壳后终端凭 ptyId 重连不失效
-    owner: session.attachedJournalId ?? session.id,
+    owner: located.owner,
     env: process.env as Record<string, string>,
     seed,
   });
   if (prev !== undefined) clearReplay(prev);
   io.send(res, 200, { ptyId });
+}
+
+export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+  return allocPty(io, req, res, () => {
+    const session = io.sessionFor(res, id);
+    if (session === undefined) return undefined;
+    // owner=journalId(2026-10-31 用户实测切换会话「pty not found for session」根因修):运行时 id
+    // 每次打开重铸( ephemeral),journalId 才是稳定锚——切会话/收编换壳后终端凭 ptyId 重连不失效
+    return { cwd: session.root, owner: session.attachedJournalId ?? session.id };
+  });
 }
 
 export function handlePtyKill(io: PtyHandlerIo, res: http.ServerResponse, id: string, ptyId: string): void {
@@ -75,30 +93,9 @@ export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMess
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = parsed.body as { root?: unknown; cols?: unknown; rows?: unknown; prevPtyId?: unknown } | null;
-  const cols = body?.cols ?? 80;
-  const rows = body?.rows ?? 24;
-  if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
-    io.send(res, 400, { error: 'cols and rows must be positive integers' });
-    return;
-  }
+  const body = parsed.body as { root?: unknown } | null;
   const root = typeof body?.root === 'string' && body.root !== '' ? body.root : os.tmpdir();
-  const ptyId = io.nextPtyId();
-  const prev = typeof body?.prevPtyId === 'string' && body.prevPtyId !== '' ? body.prevPtyId : undefined;
-  const seed = prev !== undefined ? loadReplay(prev) : undefined;
-  const file = shellFile();
-  io.ptyManager.spawn(ptyId, {
-    file,
-    args: shellArgs(),
-    cwd: root,
-    cols,
-    rows,
-    owner: '@app',
-    env: process.env as Record<string, string>,
-    seed,
-  });
-  if (prev !== undefined) clearReplay(prev);
-  io.send(res, 200, { ptyId });
+  return allocPty(io, req, res, () => ({ cwd: root, owner: '@app' }));
 }
 
 /** App 级 pty 回收:不校验 owner（'@app' 域无会话寻址）——ptyId 直杀,幂等 */

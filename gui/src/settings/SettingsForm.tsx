@@ -760,9 +760,12 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
       };
       const pick = (): void => {
         if (nativePick !== undefined) {
-          void nativePick(value !== '' ? value : undefined).then((p) => {
-            if (p !== null) commit(p);
-          });
+          void nativePick(value !== '' ? value : undefined).then(
+            (p) => {
+              if (p !== null) commit(p);
+            },
+            () => undefined, // 主进程 invoke 异常(旧壳缺 IPC/窗口销毁)降级无动作:取消=null 已在上支处理,字段仍可手填
+          );
           return;
         }
         setDirPickFor(fd);

@@ -33,6 +33,19 @@ let appliers: UiPrefAppliers | null = null;
 /** palette:配色偏好已由 flush 写入本地层,回调只需按当前模式重落根 */
 type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void };
 
+/** 远程值落地分发单点(2026-11-07 收敛——此前 flush 内逐键 if 链,每加一项偏好须同改
+ *  LOCAL_KEYS/UiPrefAppliers/if 链三处):Record<键,…> 使 LOCAL_KEYS 加键而本表漏配即 tsc 咬住 */
+const APPLY_REMOTE: Record<keyof typeof LOCAL_KEYS, (a: UiPrefAppliers, v: string) => void> = {
+  uiZoom: (a, v) => a.zoom(v),
+  theme: (a, v) => a.theme(v),
+  fontPreset: (a, v) => a.fontPreset(v),
+  paletteLight: (a) => a.palette(), // 配色偏好已由 flush 写入本地层,回调只按当前模式重落根
+  paletteDark: (a) => a.palette(),
+  uiFontSize: (a, v) => a.uiFontSize(v),
+  codeFontSize: (a, v) => a.codeFontSize(v),
+  uiMode: (a, v) => a.uiMode(v),
+};
+
 /** 连接就绪后调用一次:拉公共档覆盖本地,并回填本地缺键 */
 export function initUiPrefSync(c: UiPrefConn, apply: UiPrefAppliers): void {
   conn = c;
@@ -71,13 +84,7 @@ async function flush(): Promise<void> {
       if (typeof server === 'string' && server !== '') {
         if (local !== server) {
           localStorage.setItem(LOCAL_KEYS[short], server);
-          if (short === 'uiZoom') appliers?.zoom(server);
-          if (short === 'theme') appliers?.theme(server);
-          if (short === 'fontPreset') appliers?.fontPreset(server);
-          if (short === 'paletteLight' || short === 'paletteDark') appliers?.palette();
-          if (short === 'uiFontSize') appliers?.uiFontSize(server);
-          if (short === 'codeFontSize') appliers?.codeFontSize(server);
-          if (short === 'uiMode') appliers?.uiMode(server);
+          if (appliers !== null) APPLY_REMOTE[short](appliers, server);
         }
       } else if (local !== null && local !== '') {
         blob[short] = local; // 服务端缺键:本地回填上收(旧档/首联)
