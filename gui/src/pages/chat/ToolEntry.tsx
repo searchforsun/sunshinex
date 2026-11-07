@@ -295,7 +295,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   );
   /** 操作说明(模型自拟,对话语言):插件工具=整行标题替换工具名+参数;exec=描述头(编程模式附命令,
    *  办公模式只显描述);无说明回落既有分型 */
-  const purpose = toolPurposeOf(toolName, input);
+  const purpose = toolPurposeOf(input);
   const purposeHead = purpose !== undefined ? (
     executing ? (
       <span className="tool-verb exec-running">

@@ -31,6 +31,7 @@ import { TeamRegistry, Teammate, teammateSendTargets } from '../taskboard/teamma
 import { InboxCursorStore } from '../taskboard/inbox-cursors';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 import { makeSendMessageTool } from '../taskboard/message-tools';
+import { LEADER_RECIPIENT } from '../taskboard/teammate';
 import { FileInbox } from '../taskboard/file-inbox';
 import { ExternalCliExecutor } from '../taskboard/executors/external-cli';
 import { fail, ok, Result } from '../result';
@@ -452,14 +453,14 @@ export class Harness {
           // 板任务台账：execute 内 submit(dispatchTag)——agent_team_task_wait/stop 可等可停；成员实体本身不进账本
           tasks: this.tasks,
           // 回合边界注入(T3 agent-message):worker 每轮 execute 前 drainInbox——与 send_agent_team_message
-          // 两面共用同一 FileInbox 实例,lead↔teammate 消息闭环单点
+          // 两面共用同一 FileInbox 实例,leader↔teammate 消息闭环单点
           inbox: this.inbox,
           inboxCursors: this.inboxCursors,
           ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
           registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
             b,
             this.taskboard,
-            // teammate 面 send_agent_team_message:同队存活(排己);lead 由工具恒放行。from = teammate 名
+            // teammate 面 send_agent_team_message:同队存活(排己);leader 由工具恒放行。from = teammate 名
             makeSendMessageTool({
               inbox: this.inbox,
               ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
@@ -501,7 +502,7 @@ export class Harness {
     // 呈现数据（模型面 schema 只取 name/description/parameters，零影响）。工厂文件（subagent.ts 等）
     // 不在 J1 改动清单，故在注册点附加
     this.tools.register({ ...makeSpawnTool(this.runner), display: { verb: 'SPAWN' } });
-    // TaskBoard:会话内单物理板;init 只恢复不 kick;lead 工具面;team 预算帽缺省不设;
+    // TaskBoard:会话内单物理板;init 只恢复不 kick;leader 工具面;team 预算帽缺省不设;
     // external-cli 执行体路由(无环:executors 零 board 反向引用)
     this.agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore());
     this.taskboard = new TaskBoard({
@@ -600,14 +601,14 @@ export class Harness {
         display: { verb: 'TEAM' },
       });
       for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent)) this.tools.register(t);
-      // send_agent_team_message 主链面注册（T2 双面之一,随 taskboard 工具后）:lead→teammate 定向;不入
-      // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,lead-only 剔除表不适用——两面各注册各的注入器）;
-      // lead 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）
+      // send_agent_team_message 主链面注册（T2 双面之一,随 taskboard 工具后）:leader→teammate 定向;不入
+      // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,leader-only 剔除表不适用——两面各注册各的注入器）;
+      // leader 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）
       this.tools.register(makeSendMessageTool({
         inbox: this.inbox,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
         knownRecipients: () => this.team.aliveNames(),
-        from: () => 'leader',
+        from: () => LEADER_RECIPIENT,
         recipientTeamId: (name) => this.team.teamIdOf(name),
       }));
     }

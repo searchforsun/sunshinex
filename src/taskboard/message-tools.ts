@@ -1,9 +1,10 @@
-// send_agent_team_message 双面工具——主链面(lead→任一存活 teammate)与 teammate 派生面(同队队友或 lead,排己)
+// send_agent_team_message 双面工具——主链面(leader→任一存活 teammate)与 teammate 派生面(同队队友或 leader,排己)
 // 共用同一构造器;白名单与发件人身份由装配点闭包注入(harness/index.ts 双注册点)。投递语义:inbox.send
-// 落档(append-only jsonl)→ agent-message 事件(lead 投递轨 = 事件即时呈现 + 落档;teammate 面消息在其
+// 落档(append-only jsonl)→ agent-message 事件(leader 投递轨 = 事件即时呈现 + 落档;teammate 面消息在其
 // 回合边界注入消费)。文案恒英文单语(工具 description/回执直接进模型面)。
 import { CodedToolError, RegisteredTool } from '../harness/tools';
 import type { Inbox } from './inbox';
+import { LEADER_RECIPIENT } from './teammate';
 import type { SessionEvent } from '../types';
 
 /** text 上限(spec §5.5 消息体约束):超长违拒,不截断——发件方自查自改 */
@@ -17,7 +18,7 @@ export interface SendMessageToolDeps {
   knownRecipients: () => string[];
   /** 发件人身份注入(主链面 'leader';teammate 面为 teammate 名) */
   from: () => string;
-  /** 发件人 teamId。lead 面省略:lead 可投给任一存活成员 */
+  /** 发件人 teamId。leader 面省略:leader 可投给任一存活成员 */
   teamId?: () => string;
   /** 存活收件人的 teamId;未注册或已停返回 undefined,用于区分跨队与未知名 */
   recipientTeamId?: (name: string) => string | undefined;
@@ -46,7 +47,7 @@ export function makeSendMessageTool(deps: SendMessageToolDeps): RegisteredTool {
     executor: async (input) => {
       const raw = input as { to?: string | null; text?: string | null };
       const to = String(raw.to ?? '');
-      if (to !== 'leader' && !deps.knownRecipients().includes(to)) {
+      if (to !== LEADER_RECIPIENT && !deps.knownRecipients().includes(to)) {
         const mine = deps.teamId?.();
         const theirs = to !== '' ? deps.recipientTeamId?.(to) : undefined;
         if (mine !== undefined && theirs !== undefined && theirs !== mine) {

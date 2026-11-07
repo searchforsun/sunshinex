@@ -216,7 +216,7 @@ export function ToolEntryBody({
     // 2026-10-26 MCP 工具展开面(用户裁定「参数和返回值显示和其他工具一样」):server·tool 标识行 +
     // params JSON(入参全量,空参显 {})+ 返回值,终端块同形态($ 行/输出 的 MCP 对位)
     const mcp = mcpToolParts(toolName)!;
-    const shown = withoutPurpose(toolName, input); // purpose 已作行标题,展开体只列插件真实收到的参数
+    const shown = withoutPurpose(input); // purpose 已作行标题,展开体只列插件真实收到的参数
     const params = Object.keys(shown).length > 0 ? JSON.stringify(shown, null, 2) : '{}';
     body = (
       <div className="tool-exec">

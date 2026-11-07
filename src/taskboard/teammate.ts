@@ -6,6 +6,10 @@
 import type { SessionEvent } from '../types';
 import { maxTeammatesEnv, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
+
+/** 主会话专属收件名哨兵（ce2b96d8 lead→leader 改名单点）：send_agent_team_message 白名单、
+ *  主链 from 注入、entry 投影过滤、teammate 保留名校验全走此常量——再改名只动此处 */
+export const LEADER_RECIPIENT = 'leader';
 import { Reactor, RunResult } from '../harness/reactor';
 import { ContextManager } from '../harness/context';
 import type { SafetyChain } from '../harness/security/chain';
@@ -54,9 +58,9 @@ export class TeamRegistry {
 
   /** 注册(帽可配):同名重注册 = 替换语义,旧实例先停(防双 claim 循环) */
   register(t: Teammate): Result<void> {
-    // L2 收件身份唯一性:'leader' 是主会话专属收件名(inbox 的 lead 侧),teammate 占名会让
-    // lead↔teammate 消息身份歧义——注册即拒(评审附带 2,2026-10-06)
-    if (t.name === 'leader') return fail('INVALID_ARG', `'leader' is reserved for the main session`);
+    // L2 收件身份唯一性:leader 是主会话专属收件名(inbox 的 leader 侧),teammate 占名会让
+    // leader↔teammate 消息身份歧义——注册即拒(评审附带 2,2026-10-06)
+    if (t.name === LEADER_RECIPIENT) return fail('INVALID_ARG', `'leader' is reserved for the main session`);
     if (this.teammates.size >= this.cap && this.teammates.get(t.name) === undefined) {
       return fail('INVALID_ARG', `teammate limit reached (${this.cap})`);
     }
@@ -370,7 +374,7 @@ ${task.spec}` },
       if (status === 'success') {
         line = `Task ${task.id} finished (success)${reply !== undefined && reply !== '' ? ` — conclusion: ${clip(reply, 300)}` : ''}`;
       } else if (status === 'cancelled') {
-        line = `Task ${task.id} was cancelled (stopped by user/lead) — it is closed; do not perform, resume or report it unless it reappears as a new task`;
+        line = `Task ${task.id} was cancelled (stopped by user/leader) — it is closed; do not perform, resume or report it unless it reappears as a new task`;
       } else {
         line = `Task ${task.id} failed${error !== undefined && error !== '' ? ` (${clip(error, 300)})` : ''} — closed; do not retry on your own, wait for a recreated task`;
       }
