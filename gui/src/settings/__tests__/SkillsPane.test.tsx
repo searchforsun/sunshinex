@@ -77,10 +77,12 @@ describe('SkillsPane(遮蔽标注)', () => {
     expect(screen.getByText('Shadowed by project skill')).toBeDefined(); // 角标(字段在场才渲染)
     // gating:无 shadowedBy 字段的卡零角标零灰显
     expect(screen.queryByText('Shadowed by user skill')).toBeNull();
-    const soloCard = container.querySelectorAll('.sx-skill-card')[2];
-    expect(soloCard.className).not.toContain('shadowed');
-    // sourceDir 悬停 tip 随富化行透出(双卡取富化卡=首张);无字段行无 tip
-    expect(screen.getAllByText('alpha')[0].getAttribute('data-tip')).toBe('/u/.sunshinex/skills/alpha');
+    // 分节排序(项目节先于全局节)下卡片序不再固定——按类计数:非遮蔽卡 2 张(alpha 原生+solo)
+    const plainCards = container.querySelectorAll('.sx-skill-card:not(.shadowed)');
+    expect(plainCards).toHaveLength(2);
+    // sourceDir 悬停 tip 随富化行透出(分节排序后卡序不定——tip 含该路径的卡恰一张);无字段行无 tip
+    const tips = screen.getAllByText('alpha').map((el) => el.getAttribute('data-tip'));
+    expect(tips.filter(Boolean)).toEqual(['/u/.sunshinex/skills/alpha']);
     expect(screen.getByText('solo').getAttribute('data-tip')).toBeNull();
   });
 
