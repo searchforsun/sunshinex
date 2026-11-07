@@ -1,7 +1,7 @@
 import '@xterm/xterm/css/xterm.css';
 import { terminalFontSpec } from '../font-preset';
 import { useEffect, useRef, useState } from 'react';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { PtySocket } from './PtySocket';
 import { b64ToUtf8 } from './pty-codec';
@@ -10,7 +10,9 @@ import { toWsUrl } from '../connection';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
 import { mintSnippetToken } from '../pages/chat/mention';
-import { currentTheme, watchThemeChange } from '../theme';
+import { watchThemeChange } from '../theme';
+import { currentPalette } from '../palette';
+import type { Palette } from '../palette';
 import { zoomScale } from '../ui-zoom';
 import type { TabParams } from './tab-state';
 
@@ -55,15 +57,6 @@ export interface TerminalTabProps {
   readonly onSideAsk?: (text: string) => void;
 }
 
-/** xterm 主题:对齐 app.css 设计令牌(2026-11-07 用户裁定「终端背景色符合项目风格」——原
- *  #0d1117 蓝黑是 Codex 遗留,与本项目灰阶令牌面不符):bg=--surface-code #101010 /
- *  fg=--fg #dfdfdf / cursor=--accent #339cff / selection=--accent 25% 半透 */
-const XTERM_THEME = {
-  background: '#101010',
-  foreground: '#dfdfdf',
-  cursor: '#339cff',
-  selectionBackground: 'rgba(51, 156, 255, 0.25)',
-} as const;
 /** 亮色 ANSI 16 色谱(2026-11-07 用户实测「白字/黄字看不见」根修):xterm 缺省谱是暗底专用的
  *  (白/亮白/亮黄在浅底近不可读;PowerShell 正文恰用 white/亮白,数字表用黄)。亮底改官方亮色系
  *  口径——body 文字(white/brightWhite)映射中灰/深灰,黄系压深,彩系取 VS Code Light 档 */
@@ -73,19 +66,17 @@ const XTERM_ANSI_LIGHT = {
   brightBlack: '#666666', brightRed: '#e05555', brightGreen: '#0a8f0a', brightYellow: '#a98600',
   brightBlue: '#3b8eea', brightMagenta: '#c586c0', brightCyan: '#29b8db', brightWhite: '#3f3f3f',
 } as const;
-/** 亮色档(2026-11-04 用户裁定「亮色模式终端显亮色」):bg=--surface-code #eeeeee(2026-11-07
- *  随亮色阶梯重定,原 #fcfcfc 近白不可辨) / fg=--fg #1a1c1f / cursor=--accent #339cff */
-const XTERM_THEME_LIGHT = {
-  background: '#eeeeee',
-  foreground: '#1a1c1f',
-  cursor: '#339cff',
-  selectionBackground: 'rgba(51, 156, 255, 0.25)',
-  ansi: XTERM_ANSI_LIGHT,
-} as const;
-/** 当前生效主题对应的 xterm 主题(mount 取一次;切换经 watchThemeChange 热更 options.theme) */
-const xtermThemeFor = (th: 'dark' | 'light'): { background: string; foreground: string; cursor: string; selectionBackground: string; ansi?: typeof XTERM_ANSI_LIGHT } =>
-  th === 'light' ? { ...XTERM_THEME_LIGHT, ansi: XTERM_ANSI_LIGHT } : XTERM_THEME;
-
+/** 当前生效配色对应的 xterm 主题(mount 取一次;亮暗/配色切换经 watchThemeChange 热更 options.theme)。
+ *  取值单源 palette.ts:bg=--surface-code / fg=--fg / cursor=--accent / selection=accent 25% 半透;
+ *  亮色档 16 色平铺进主题顶层——xterm ITheme 无 ansi 嵌套字段,嵌套即整组被忽略回落暗底缺省谱
+ *  (实测亮色下 PowerShell 命令名亮黄近不可读) */
+const xtermThemeFor = (p: Palette): ITheme => ({
+  background: p.tokens.surfaceCode,
+  foreground: p.tokens.fg,
+  cursor: p.tokens.accent,
+  selectionBackground: `${p.tokens.accent}40`,
+  ...(p.mode === 'light' ? XTERM_ANSI_LIGHT : {}),
+});
 export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   /** jsdom 守卫落定面:无布局 → 降级(降级时 pty 已分配记账,关标签链照常 kill) */
@@ -186,10 +177,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           }
           // ③ xterm + FitAddon + pty WS 装配
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
-          term = new Terminal({ theme: xtermThemeFor(currentTheme()), fontFamily: fontSpec.family, fontSize: fontSpec.size });
+          term = new Terminal({ theme: xtermThemeFor(currentPalette()), fontFamily: fontSpec.family, fontSize: fontSpec.size });
           // 主题热随(2026-11-04 亮色终端裁定):html[data-theme] 变更即换 theme,存活的 pty 不重连
           const unwatch = watchThemeChange(() => {
-            if (term !== null) term.options.theme = xtermThemeFor(currentTheme());
+            if (term !== null) term.options.theme = xtermThemeFor(currentPalette());
           });
           unwatchTheme = unwatch;
           fit = new FitAddon();

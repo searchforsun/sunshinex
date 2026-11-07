@@ -2831,7 +2831,7 @@ input.sx-setting-input { width: 100%; }
 .sx-font-preset-card { display: flex; flex-direction: column; gap: 9px; text-align: left; padding: 14px 16px; min-height: 158px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
 .sx-font-preset-card:hover:not(.active) { border-color: var(--border-strong); }
 .sx-font-preset-card.active { border-color: var(--border-strong); background: var(--surface-soft); }
-.sx-font-preset-name { font-size: 12px; font-weight: 600; color: var(--fg); }
+.sx-font-preset-name { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; font-size: 12px; font-weight: 500; color: var(--fg); } /* 名行与配色卡同形:名左、选中勾最右 */
 .sx-font-pv { font-size: 12.5px; color: var(--fg-secondary); padding: 2px 0; }
 .sx-font-pv-tool { font-family: var(--font-mono); font-size: 11px; color: var(--fg-secondary); background: var(--surface-soft); border-radius: var(--radius-xs); padding: 3px 8px; align-self: flex-start; }
 .sx-font-pv-code { font-family: var(--font-mono); color: var(--fg-secondary); background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 5px 8px; align-self: stretch; }
@@ -2841,6 +2841,35 @@ input.sx-setting-input { width: 100%; }
 .sx-font-preset-card { min-width: 0; }
 .sx-font-pv, .sx-font-pv-tool, .sx-font-pv-code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sx-font-pv-tool { max-width: 100%; min-width: 0; } /* fit-content 最小宽=整句 nowrap 文本,盒子撑出卡片致省略号不可见——钳回容器宽 */
+/* 配色主题行(2026-11-07 用户裁定「亮暗各四套,剪影一行四张」):卡片语言与字体预设卡同族——
+   撤框靠面底区分(2026-11-07 用户裁定「边框高亮有毛刺,特殊背景色区分」同 3426 撤框轮三档
+   阶梯 fg4%/hover7%/选中11%);剪影色值走卡内 --pv-* 局部变量(SettingsForm 由配色表直落),
+   不受当前生效配色影响——每张即该配色的真实缩影 */
+.sx-palette-row.sx-setting-row { flex-direction: column; gap: 8px; }
+.sx-palette-ctl { width: 100%; max-width: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.sx-palette-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 6px 6px 9px; text-align: left; border: none; border-radius: var(--radius-md); cursor: pointer; background: color-mix(in srgb, var(--fg) 4%, var(--surface-elevated)); }
+.sx-palette-card:hover:not(.active) { background: color-mix(in srgb, var(--fg) 7%, var(--surface-elevated)); }
+.sx-palette-card.active { background: color-mix(in srgb, var(--fg) 11%, var(--surface-elevated)); }
+.sx-palette-name { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sx-card-check { font-size: 12px; line-height: 1; } /* 卡片选中勾:色/符号随 .sx-dd-opt-check(下拉同款 accent ✓),仅字号随卡名 */
+/* 剪影:同心圆角(卡 22 − 内距 6 = 16);左 26% 侧栏(under)+右主面(surface 左上圆角,同应用壳) */
+.sx-pal-sil { position: relative; display: flex; aspect-ratio: 16 / 10; border-radius: 16px; overflow: hidden; background: var(--pv-under); } /* 描边环撤(毛刺同源,剪影内左栏/主面/输入框自身明度差已可辨) */
+.sx-pal-side { flex: none; width: 26%; display: flex; flex-direction: column; gap: 6%; padding: 22% 6% 0 9%; }
+.sx-pal-side i { display: block; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--pv-fg) 16%, transparent); }
+.sx-pal-side i:nth-child(3) { width: 72%; }
+.sx-pal-side i:nth-child(4) { width: 84%; }
+.sx-pal-side i.on { height: 7px; margin: 0 -4px; border-radius: 4px; background: color-mix(in srgb, var(--pv-fg) 10%, transparent); }
+.sx-pal-main { position: relative; flex: 1; min-width: 0; margin-top: 7%; display: flex; flex-direction: column; gap: 6%; padding: 9% 11% 0; background: var(--pv-surface); border-top-left-radius: 10px; box-shadow: -1px 0 0 color-mix(in srgb, var(--pv-fg) 6%, transparent); }
+.sx-pal-bubble { flex: none; align-self: flex-end; width: 40%; height: 9px; border-radius: 5px; background: color-mix(in srgb, var(--pv-fg) 9%, transparent); }
+.sx-pal-line { flex: none; display: block; width: 88%; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--pv-fg) 34%, transparent); }
+.sx-pal-line-link { display: flex; gap: 4%; width: 74%; background: none; }
+.sx-pal-line-link i { flex: 1; border-radius: 2px; background: color-mix(in srgb, var(--pv-fg) 34%, transparent); }
+.sx-pal-line-link b { width: 36%; border-radius: 2px; background: var(--pv-accent); }
+.sx-pal-code { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 3px; height: 17%; padding: 0 7%; border-radius: 5px; background: var(--pv-code); }
+.sx-pal-code i { display: block; height: 2px; width: 58%; border-radius: 1px; background: color-mix(in srgb, var(--pv-fg) 26%, transparent); }
+.sx-pal-code i + i { width: 40%; background: color-mix(in srgb, var(--pv-accent) 70%, transparent); }
+.sx-pal-composer { position: absolute; left: 9%; right: 9%; bottom: 9%; height: 15%; display: flex; align-items: center; justify-content: flex-end; padding: 0 3px; border-radius: 999px; background: var(--pv-elev); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pv-fg) 10%, transparent); }
+.sx-pal-composer b { height: 66%; aspect-ratio: 1; border-radius: 50%; background: var(--pv-accent); }
 
 /* Files 页 md 预览排版镜像(2026-10-27 用户反馈「右侧 md 文件还是很挤」→二轮「行距再大一些」):
    正文呼吸感档整组镜像到 .files-md 并再抬一档(行高 1.9/段距 14/标题 28-12/li+li 8px)——此前只

@@ -3,6 +3,7 @@ import type { Connection } from './connection';
 import { parseLanguage, setLanguage } from './i18n';
 import { applyFontPreset, type FontPreset } from './font-preset';
 import { applyTheme, type ThemePref } from './theme';
+import { syncPalette } from './palette';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
 
@@ -37,6 +38,7 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       zoom: (v) => applyZoom(v as UiZoom),
       theme: (v) => applyTheme(v as ThemePref),
       fontPreset: (v) => applyFontPreset(v as FontPreset),
+      palette: syncPalette,
     });
   }, [connInstance]);
 }

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { applyZoom, readZoomPref, zoomScale } from './ui-zoom';
 import { applyFontPreset, readFontPreset } from './font-preset';
+import { syncPalette } from './palette';
 import './app.css';
 import './tool-io.css'; // 工具展开体 I/O 井统一单点(免触 app.css 用户在途编辑面)
 import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+rehype-katex):字体与排版样式全局一份
@@ -14,6 +15,7 @@ import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+
 // 界面放缩先于挂载落根节点(通用·界面与外观;根 zoom 全域等比,见 ui-zoom.ts)
 applyZoom(readZoomPref());
 applyFontPreset(readFontPreset());
+syncPalette(); // 配色先于挂载落根(data-theme 已由 index.html 引导落定)
 const root = document.getElementById('root');
 if (root === null) throw new Error('gui: #root not found');
 createRoot(root).render(

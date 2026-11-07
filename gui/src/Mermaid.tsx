@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { currentTheme, watchThemeChange } from './theme';
+import { watchThemeChange } from './theme';
+import { currentPalette, mixHex } from './palette';
+import type { Palette } from './palette';
 import { codeFontSize, codeFontFamily } from './font-preset';
 
 /**
@@ -18,44 +20,33 @@ import { codeFontSize, codeFontFamily } from './font-preset';
  * 价值),闭合后正式渲一次入缓存;渲染 id 每次自增,防与正式渲同 id 并发冲突。
  */
 
-/** 两套主题色(与 app.css :root / [data-theme='light'] 手工同值;mermaid 无法读 CSS 色变量)。
+/** 配色 → mermaid 主题色(mermaid 读不了 CSS 色变量,取值单源 palette.ts):画布=editor 底,
+ *  节点/簇/连线按 fg 向画布混色分档(系数取自原暗/亮两套手调值,default 配色下近同值)。
  *  字族/字号运行时拼入——跟随字体预设(除浏览器外网页外全跟随)。 */
-const MERMAID_COLORS = {
-  dark: {
-    darkMode: true,
-    background: '#101010',
-    primaryColor: '#212121',
-    primaryTextColor: '#dfdfdf',
-    primaryBorderColor: '#3f3f3f',
-    secondaryColor: '#212121',
-    secondaryTextColor: '#dfdfdf',
-    tertiaryColor: '#181818',
-    lineColor: '#8f8f8f',
-    textColor: '#dfdfdf',
-    mainBkg: '#212121',
-    nodeBorder: '#3f3f3f',
-    clusterBkg: '#181818',
-    clusterBorder: '#2c2c2c',
-    edgeLabelBackground: '#101010',
-  },
-  light: {
-    darkMode: false,
-    background: '#fcfcfc',
-    primaryColor: '#f3f3f3',
-    primaryTextColor: '#1a1c1f',
-    primaryBorderColor: '#d5d5d5',
-    secondaryColor: '#f3f3f3',
-    secondaryTextColor: '#1a1c1f',
-    tertiaryColor: '#f9f9f9',
-    lineColor: '#6b6b6b',
-    textColor: '#1a1c1f',
-    mainBkg: '#f3f3f3',
-    nodeBorder: '#d5d5d5',
-    clusterBkg: '#f9f9f9',
-    clusterBorder: '#e5e5e5',
-    edgeLabelBackground: '#fcfcfc',
-  },
-} as const;
+function mermaidColors(p: Palette): Record<string, string | boolean> {
+  const { fg, editor } = p.tokens;
+  const dark = p.mode === 'dark';
+  const m = (t: number): string => mixHex(fg, editor, t);
+  const node = m(dark ? 0.08 : 0.04);
+  const border = m(dark ? 0.23 : 0.17);
+  return {
+    darkMode: dark,
+    background: editor,
+    primaryColor: node,
+    primaryTextColor: fg,
+    primaryBorderColor: border,
+    secondaryColor: node,
+    secondaryTextColor: fg,
+    tertiaryColor: m(dark ? 0.04 : 0.013),
+    lineColor: m(dark ? 0.61 : 0.64),
+    textColor: fg,
+    mainBkg: node,
+    nodeBorder: border,
+    clusterBkg: m(dark ? 0.04 : 0.013),
+    clusterBorder: m(dark ? 0.135 : 0.1),
+    edgeLabelBackground: editor,
+  };
+}
 
 function mermaidThemeVars(): Record<string, string | boolean> {
   let uiFamily = '';
@@ -65,7 +56,7 @@ function mermaidThemeVars(): Record<string, string | boolean> {
     /* 非浏览器守卫 */
   }
   return {
-    ...MERMAID_COLORS[currentTheme()],
+    ...mermaidColors(currentPalette()),
     fontFamily: uiFamily || codeFontFamily(),
     fontSize: `${codeFontSize()}px`,
   };
@@ -145,7 +136,7 @@ export function Mermaid({
   /** 围栏未闭合:流式 live 试渲(节流),失败静默回落软源码 */
   draft?: boolean;
 }): JSX.Element {
-  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentTheme(), chart)) ?? liveFrameFor(chart)));
+  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentPalette().id, chart)) ?? liveFrameFor(chart)));
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
   const liveLastRef = useRef(0);
@@ -177,7 +168,7 @@ export function Mermaid({
     if (draft) return; // 流式草稿面由下方 live 试渲 effect 接管
 
     let alive = true;
-    const key = cacheKey(currentTheme(), chart);
+    const key = cacheKey(currentPalette().id, chart);
     const cached = svgCache.get(key);
     if (cached !== undefined) {
       setSvg(cached);
@@ -266,7 +257,7 @@ export function Mermaid({
           liveDoneRef.current = src;
           liveFrameSet(src, r.svg);
           if (src === chartNow) {
-            const key = cacheKey(currentTheme(), src);
+            const key = cacheKey(currentPalette().id, src);
             if (liveCachedKeyRef.current !== null) svgCache.delete(liveCachedKeyRef.current);
             if (svgCache.size >= 200) svgCache.clear();
             svgCache.set(key, r.svg);

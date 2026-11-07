@@ -4,6 +4,7 @@
 export type ThemePref = 'system' | 'light' | 'dark';
 
 import { notifyUiPref } from './ui-pref-sync';
+import { syncPalette } from './palette';
 
 const KEY = 'sunshinex.theme';
 
@@ -26,6 +27,7 @@ export function applyTheme(pref: ThemePref): void {
   notifyUiPref('theme', pref);
   const dark = pref === 'dark' || (pref === 'system' && systemDark());
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  syncPalette(); // 配色随模式换套(亮/暗各记一份偏好,见 palette.ts)
   try {
     localStorage.setItem(KEY, pref);
   } catch {
@@ -50,9 +52,9 @@ export function currentTheme(): 'dark' | 'light' {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 }
 
-/** data-theme 变更订阅单点(Mermaid 重渲/monaco defineTheme 对齐共此一观察口径):返回退订函数 */
+/** 主题/配色变更订阅单点(Mermaid 重渲/monaco/xterm 共此一观察口径;data-palette 换套亦触发):返回退订函数 */
 export function watchThemeChange(onChange: () => void): () => void {
   const obs = new MutationObserver(onChange);
-  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette'] });
   return () => obs.disconnect();
 }

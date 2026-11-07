@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
@@ -7,12 +8,14 @@ import { EmptyState, SearchBar } from './components';
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
-import { applyTheme, readThemePref, watchSystemTheme } from '../theme';
+import { applyTheme, currentTheme, readThemePref, watchSystemTheme, watchThemeChange } from '../theme';
 import type { ThemePref } from '../theme';
 import { applyZoom, readZoomPref } from '../ui-zoom';
 import type { UiZoom } from '../ui-zoom';
 import { applyFontPreset, FONT_PRESET_CHOICES, presetVars, readFontPreset } from '../font-preset';
 import type { FontPreset } from '../font-preset';
+import { palettesFor, readPalettePref, setPalettePref } from '../palette';
+import type { Palette } from '../palette';
 
 /**
  * G8c T8 通用键值表单引擎(设置自动保存轮):mount/effect 拉 conn.settings(root)→按 pane 分组
@@ -57,6 +60,7 @@ export interface SettingsGroupDef {
   readonly themeRow?: boolean;
   readonly zoomRow?: boolean;
   readonly fontRow?: boolean;
+  readonly paletteRow?: boolean;
 }
 
 /** 面板配置:id(导航/重挂键)+title(导航项与面板标题双语对)+groups(分组卡列)+记忆概览行开关 */
@@ -180,7 +184,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: 'general',
     title: { en: 'General', zh: '通用' },
     groups: [
-      { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, fontRow: true, fields: [sel('language', [
+      { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, paletteRow: true, fontRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
       ])] },
@@ -257,6 +261,9 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
   },
 ];
 
+/** 卡片选中勾(配色/字体预设卡名行最右):与下拉选项勾同一符号与 accent 色(.sx-dd-opt-check),全项目选中态一致 */
+const SELECTED_CHECK = <span className="sx-dd-opt-check sx-card-check" aria-hidden="true">✓</span>;
+
 /** 字体预设行(2026-10-26 用户裁定):四预设卡片,每卡内嵌迷你实时预览(正文行/工具行/代码行
  *  按该预设的字号行高内联渲染),点击即全局生效并持久化(theme/ui-zoom 同通路)。GUI 本地偏好,
  *  非 settings 键。名单单源在 font-preset.ts FONT_PRESET_CHOICES(D55② 收敛,加预设只改彼处) */
@@ -286,7 +293,10 @@ function FontRow(): JSX.Element {
                 applyFontPreset(p.v);
               }}
             >
-              <span className="sx-font-preset-name">{t(p.l.en, p.l.zh)}</span>
+              <span className="sx-font-preset-name">
+                {t(p.l.en, p.l.zh)}
+                {pref === p.v && SELECTED_CHECK}
+              </span>
               <span
                 className="sx-font-pv"
                 style={{ lineHeight: v['--f-body-lh'] ?? '1.6', fontSize: v['--f-base-size'], fontFamily: v['--font-ui'] }}
@@ -306,6 +316,92 @@ function FontRow(): JSX.Element {
                 }}
               >
                 {'const x = 1;'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 配色剪影:迷你应用界面(侧栏/对话主面/用户气泡/正文与链接/代码井/输入框+强调色按钮),
+ *  色值直取配色表令牌——与生效界面同源,剪影即所见 */
+function PaletteSilhouette({ p }: { p: Palette }): JSX.Element {
+  const c = p.tokens;
+  const vars = {
+    '--pv-under': c.surfaceUnder,
+    '--pv-surface': c.surface,
+    '--pv-elev': c.surfaceElevated,
+    '--pv-code': c.surfaceCode,
+    '--pv-fg': c.fg,
+    '--pv-accent': c.accent,
+  } as CSSProperties;
+  return (
+    <span className="sx-pal-sil" style={vars} aria-hidden="true">
+      <span className="sx-pal-side">
+        <i className="on" />
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="sx-pal-main">
+        <span className="sx-pal-bubble" />
+        <span className="sx-pal-line" />
+        <span className="sx-pal-line sx-pal-line-link">
+          <i />
+          <b />
+        </span>
+        <span className="sx-pal-code">
+          <i />
+          <i />
+        </span>
+        <span className="sx-pal-composer">
+          <b />
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** 配色主题行(2026-11-07 用户裁定):亮/暗各四套,只列当前生效模式那一组(外观切换即换组,
+ *  system 跟随系统同经 data-theme 观察);点击即生效,亮暗偏好分记。GUI 本地偏好,非 settings 键 */
+function PaletteRow(): JSX.Element {
+  const [, setTick] = useState(0);
+  useEffect(() => watchThemeChange(() => setTick((n) => n + 1)), []);
+  const mode = currentTheme();
+  const active = readPalettePref(mode);
+  return (
+    <div className="sx-setting-row sx-palette-row">
+      <div className="sx-setting-main">
+        <div className="sx-setting-title">
+          <span className="sx-setting-label">{t('Color theme', '配色主题')}</span>
+        </div>
+        <p className="sx-setting-desc">
+          {mode === 'light'
+            ? t('Colors for light mode — click a theme to apply', '亮色模式下的界面配色——点击即生效')
+            : t('Colors for dark mode — click a theme to apply', '暗色模式下的界面配色——点击即生效')}
+        </p>
+      </div>
+      <div className="sx-setting-ctl sx-palette-ctl" role="radiogroup" aria-label={t('Color theme', '配色主题')}>
+        {palettesFor(mode).map((p) => {
+          const on = p.id === active;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              className={`sx-palette-card${on ? ' active' : ''}`}
+              onClick={() => {
+                setPalettePref(mode, p.id);
+                setTick((n) => n + 1);
+              }}
+            >
+              <PaletteSilhouette p={p} />
+              <span className="sx-palette-name">
+                {t(p.name.en, p.name.zh)}
+                {on && SELECTED_CHECK}
               </span>
             </button>
           );
@@ -597,7 +693,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
       {rows !== null &&
         pane.groups.map((g) => {
           const visible = g.fields.filter((fd) => rows[fd.key] !== undefined && rowMatches(fd, q));
-          if (visible.length === 0 && !(q === '' && (g.themeRow || g.zoomRow || g.fontRow))) return null; // 无可见行组卡省略(过滤命中零行同;特例行仅空查询保留)
+          if (visible.length === 0 && !(q === '' && (g.themeRow || g.zoomRow || g.paletteRow || g.fontRow))) return null; // 无可见行组卡省略(过滤命中零行同;特例行仅空查询保留)
           return (
             <div key={g.title.en} className="sx-card sx-settings-card">
               <div className="sx-card-head">
@@ -606,8 +702,9 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['zoom' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['zoom' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
+                  if (fd === 'palette') return <PaletteRow key="palette" />;
                   if (fd === 'font') return <FontRow key="font" />;
                   const row = rows[fd.key]!;
                   const desc = KEY_DESCRIPTIONS[fd.key];
