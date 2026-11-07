@@ -449,7 +449,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
           <ModalField label={t('Extra members (space-separated)', '额外成员(空格分隔)')} hint={t('Agent ids not listed above', '上方未列出的 agent id')}>
             <input className="sx-setting-input" aria-label="team extra members" value={form.extraMembers} onChange={(e) => setForm({ ...form, extraMembers: e.target.value })} spellCheck={false} />
           </ModalField>
-          <ModalField label="lead">
+          <ModalField label={t('Team leader', '团队领导者')}>
             <Select
               ariaLabel="team lead"
               value={form.lead}

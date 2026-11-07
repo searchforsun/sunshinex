@@ -55,6 +55,8 @@ export interface TabServices {
   readonly todoBatches: readonly import('../pages/Chat').TodoBatch[];
   /** 待办批次上抛(2026-11-07「辅助投影挂主对话下」:side 会话待办同收主待办页签) */
   readonly onTodoBatches?: (batches: import('../pages/Chat').TodoBatch[]) => void;
+  /** 成员转录 leader 链接点击(App 注入):主对话定位对应消息位置(2026-11-08;nonce 变更即滚动高亮) */
+  readonly onOpenLeader?: (m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }) => void;
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
   readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   /** 2026-11-04 待办行点击定位信号:待办页签滚到同签名卡并闪光 */
@@ -282,6 +284,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onOpenFile={fileTabOf(p)}
         onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
         onOpenAgent={(label2, agentTitle, task2) => p.openTab('agent', { label: label2, agentTitle, task: task2 })}
+        onOpenLeader={p.services.onOpenLeader}
         onOpenTask={p.services.onOpenTask}
       />
     ),

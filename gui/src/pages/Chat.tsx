@@ -86,7 +86,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -176,6 +176,34 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       el.scrollTop += delta / zoomScale();
     }, 2);
   }, [todoFocus, chatScrollRef, chatStickRef]);
+  /** 成员转录 leader 链接定位(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
+   *  toLeader=成员发给 leader 的消息 → 主对话里该成员的消息气泡(data-from=成员,正文含定位文本);
+   *  fromLeader=leader 发来的消息 → 主对话里发送团队消息工具行(收件人=成员)。命中滚到并闪光 */
+  useEffect(() => {
+    if (leaderFocus === null || leaderFocus === undefined) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const norm = (x: string): string => x.replace(/\s+/g, ' ').trim();
+    const needle = norm(leaderFocus.text).slice(0, 60);
+    let hit: HTMLElement | undefined;
+    if (leaderFocus.dir === 'toLeader') {
+      const bubbles = [...el.querySelectorAll<HTMLElement>('.agent-msg')].filter((n) => n.dataset.from === leaderFocus.member);
+      hit = (needle !== '' ? bubbles.find((n) => norm(n.querySelector('.agent-msg-text')?.textContent ?? '').includes(needle)) : undefined) ?? bubbles.at(-1);
+    } else {
+      const rows = [...el.querySelectorAll<HTMLElement>('.entry-tool[data-tool="send_agent_team_message"]')];
+      hit = rows.filter((n) => norm(n.querySelector('.tool-summary')?.textContent ?? '').includes(leaderFocus.member)).at(-1) ?? rows.at(-1);
+    }
+    if (hit === undefined) return;
+    const target = hit;
+    chatStickRef.current = false;
+    el.scrollTop += (target.getBoundingClientRect().top - el.getBoundingClientRect().top) / zoomScale();
+    rAFConverge(el, () => target.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => {
+      el.scrollTop += d / zoomScale();
+    }, 2);
+    target.classList.add('entry-locate');
+    const t = setTimeout(() => target.classList.remove('entry-locate'), 1800);
+    return () => clearTimeout(t);
+  }, [leaderFocus, chatScrollRef, chatStickRef]);
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);

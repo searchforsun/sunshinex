@@ -52,6 +52,10 @@ export interface AgentTranscriptTabProps {
   readonly onSideAsk?: (text: string) => void;
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
+  /** leader 链接点击→主对话定位(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
+   *  toLeader=本成员发给 leader 的消息(主对话里该成员的消息气泡);fromLeader=leader 发来的消息
+   *  (主对话里 leader 发出它的发送团队消息工具行) */
+  readonly onOpenLeader?: (m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }) => void;
   readonly onOpenTask?: (ref: string) => void;
   readonly teams?: readonly import('../projection').BoardTeamRef[];
 }
@@ -60,7 +64,10 @@ export interface AgentTranscriptTabProps {
  *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
-export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onInsertMain, onSideAsk }: AgentTranscriptTabProps): JSX.Element {
+export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenLeader, onOpenTask, onInsertMain, onSideAsk }: AgentTranscriptTabProps): JSX.Element {
+  const member = activities?.label ?? '';
+  const leaderTo = onOpenLeader !== undefined ? (m: { text: string }): void => onOpenLeader({ member, text: m.text, dir: 'toLeader' }) : undefined;
+  const leaderFrom = onOpenLeader !== undefined ? (m: { from: string; text: string }): void => onOpenLeader({ member, text: m.text, dir: 'fromLeader' }) : undefined;
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.2xx 回到底部钮:非贴底即显(同主对话 G14.74 口径;80px 阈值同贴底判定) */
   const [atBottom, setAtBottom] = useState(true);
@@ -161,6 +168,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
             onOpenFile={onOpenFile}
             onOpenDiff={onOpenDiff}
             onOpenAgent={onOpenAgent}
+            onOpenLeader={leaderTo}
             onOpenTask={onOpenTask}
             taskNameOf={taskNameOf}
             teamNameOf={teamNameOf}
@@ -168,7 +176,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
           />
         )}
         renderThinking={(e2) => <ThinkingEntryView key={e2.key} entry={e2} />}
-        renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
+        renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
         renderEntry={(e2) => {
           if (e2.kind === 'user') {
             return (
@@ -186,7 +194,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
               </div>
             );
           }
-          return <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />;
+          return <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />;
         }}
       />,
     );
@@ -232,7 +240,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
       );
       continue;
     }
-    nodes.push(<ChatEntryView key={e.key} entry={e} footerRun={runFooterByEntry.get(e.key)} onOpenFile={onOpenFile} onOpenAgent={onOpenAgent} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />);
+    nodes.push(<ChatEntryView key={e.key} entry={e} footerRun={runFooterByEntry.get(e.key)} onOpenFile={onOpenFile} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />);
   }
   flushSeg();
 

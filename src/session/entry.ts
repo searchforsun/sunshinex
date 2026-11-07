@@ -1,5 +1,5 @@
 import type { ChangeFile, SessionEvent } from '../types';
-import { LEADER_RECIPIENT } from '../taskboard/teammate';
+import { LEADER_RECIPIENT } from '../taskboard/leader';
 
 /**
  * SessionKernel 条目模型与纯 reducer(spec 2026-10-17-session-kernel §3.3)。三份投影的并集语义

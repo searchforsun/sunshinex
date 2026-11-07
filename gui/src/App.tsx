@@ -19,7 +19,7 @@ import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
 import { TabStrip } from './tabs/TabStrip';
 import { Suspense } from 'react';
-import { WebTabPool, seatOfWebContents, seatsOfBrowserKey } from './tabs/WebTabPool';
+import { WebTabPool, poolKey, seatOfWebContents, seatsOfBrowserKey } from './tabs/WebTabPool';
 import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT } from './session-events';
 import type { WebPoolItem } from './tabs/WebTabPool';
 import { tabEntry, registryProbe } from './tabs/registry';
@@ -665,6 +665,10 @@ function AppShell(): JSX.Element {
   }, [openSessionId, isWelcome]);
   const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
+  /** 成员转录 leader 链接点击(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
+   *  记 {member,text,dir,nonce} 下发 Chat——主对话滚到对应消息气泡/发送工具行并闪光 */
+  const [leaderFocus, setLeaderFocus] = useState<{ member: string; text: string; dir: 'toLeader' | 'fromLeader'; nonce: number } | null>(null);
+  const openLeaderBubble = useCallback((m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }): void => { setLeaderFocus({ ...m, nonce: Date.now() }); }, []);
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走
    *  browser_navigate 时 Chat 上抛 url,此处开 web 页签跟随(判重由 openTabInSession 承担) */
   const openWebTab = useCallback((url: string): void => { openTabInSession('web', { url }); }, [openTabInSession]);
@@ -907,7 +911,7 @@ function AppShell(): JSX.Element {
   const onRewindStable = useCallback((req: RewindRequest): Promise<void> => rewindLatestRef.current(req), []);
 
   /** pty 记账(use-pty-registry 单点,2026-10-27 技术债轮 D53 批F 外提):terminal 标签 uid→ptyId */
-  const { handlePtyAllocated, ptyIdFor, takePtyId } = usePtyRegistry(openSessionId, setTabStates);
+  const { handlePtyAllocated, ptyIdFor, takePtyId } = usePtyRegistry(isWelcome ? WELCOME_TAB_SEAT : openSessionId, setTabStates);
 
   /** G8b 关标签链(TabStrip onClose/onCloseActive 共用):被关标签为 terminal 且 pty 已记账 →
    *  fire-and-forget killPty(拒约吞——关标签不等 HTTP;已关会话侧幂等)再关标签态 */
@@ -1046,6 +1050,7 @@ function AppShell(): JSX.Element {
         return [...bySig.values()].sort((a, b) => a.ts - b.ts);
       })(),
       taskFocus, onOpenTask: openTaskFocus, todoLocateSig, onLocateTodo,
+      onOpenLeader: openLeaderBubble,
       refreshBoard,
       bgTasks,
       onRefreshBgTasks: (): Promise<void> =>
@@ -1053,7 +1058,7 @@ function AppShell(): JSX.Element {
           ? Promise.resolve()
           : connRef.current.sessionTasks(openSessionId).then((rows) => setBgTasks(rows)),
     }),
-    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, todoLocateSig, refreshBoard, bgTasks, sideParentRef.current.size],
+    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, todoLocateSig, refreshBoard, bgTasks, sideParentRef.current.size, openLeaderBubble],
   );
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
@@ -1316,6 +1321,7 @@ function AppShell(): JSX.Element {
                 teams={projection.teams}
                 onTodoBatches={setTodoBatches}
                 todoFocus={todoFocus}
+                leaderFocus={leaderFocus}
                 onSideAsk={startSideChat}
                 onTodoLocate={(todos) => {
                   openTabType('tasks');
@@ -1526,7 +1532,7 @@ function AppShell(): JSX.Element {
         <WebTabPool
           conn={connInstance}
           items={webPoolItems}
-          visibleUid={(page === 'chat' || page === 'welcome') && !settingsOpen && !tabState.collapsed && activeTab?.type === 'web' ? activeTab.uid : null}
+          visibleKey={(page === 'chat' || page === 'welcome') && !settingsOpen && !tabState.collapsed && activeTab?.type === 'web' ? poolKey(curSeatRef.current, activeTab.uid) : null}
           anchorRef={tabBodyRef}
           root={openRoot}
           draftSeat={WELCOME_TAB_SEAT}

@@ -94,6 +94,9 @@ export interface ChatProps {
   onTodoBatches?: (batches: TodoBatch[]) => void;
   /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡 */
   todoFocus?: { key: string; nonce: number } | null;
+  /** 成员转录 leader 链接定位信号(2026-11-08;nonce 变更即滚动高亮):toLeader=该成员发来的消息气泡,
+   *  fromLeader=leader 发出该消息的发送团队消息工具行 */
+  leaderFocus?: { member: string; text: string; dir: 'toLeader' | 'fromLeader'; nonce: number } | null;
   /** 2026-11-04 正文圈选·辅助会话提问通道(添加到主对话=insert-ref 事件,组件内置) */
   onSideAsk?: (text: string, content?: string) => void;
   /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡(App 开页签+落定位信号) */

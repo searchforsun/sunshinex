@@ -3670,3 +3670,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    正文自带 4px 下内边距(上为 0),文字到下一行内容 14 vs 上一行 10——后随工具/思考/折叠段时撤下内边距,
    上下内容间距同为 10(与思考↔工具行同档) */
 .chat .entry-assistant:has(+ .entry-tool, + .entry-thinking, + .tool-group, + .seg-collapse) { padding-bottom: 0; }
+
+/* leader 链接定位闪光(2026-11-08):成员转录页点 leader → 主对话对应消息气泡/发送工具行短暂提亮描边 */
+.entry-locate { animation: entry-locate 1.8s var(--ease-enter); }
+@keyframes entry-locate { 0%, 60% { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 2px 0 0 var(--accent); } 100% { background: transparent; box-shadow: none; } }

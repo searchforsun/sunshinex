@@ -7,9 +7,10 @@ import type { SessionEvent } from '../types';
 import { maxTeammatesEnv, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
 
-/** 主会话专属收件名哨兵（ce2b96d8 lead→leader 改名单点）：send_agent_team_message 白名单、
- *  主链 from 注入、entry 投影过滤、teammate 保留名校验全走此常量——再改名只动此处 */
-export const LEADER_RECIPIENT = 'leader';
+/** 主会话专属收件名哨兵（ce2b96d8 lead→leader 改名单点）：定义在零依赖叶模块 ./leader(GUI 经
+ *  session/entry 引用,不得拖入本文件的 Node 依赖),此处再导出保持既有导入面 */
+import { LEADER_RECIPIENT } from './leader';
+export { LEADER_RECIPIENT };
 import { Reactor, RunResult } from '../harness/reactor';
 import { ContextManager } from '../harness/context';
 import type { SafetyChain } from '../harness/security/chain';

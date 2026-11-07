@@ -608,7 +608,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession, sideChat }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void }): JSX.Element {
   const office = useUiMode() === 'office';
   const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
@@ -636,22 +636,34 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
   // 办公模式(ui-mode.ts):记忆/技能更新旁白不显示
   if (office && isOfficeHiddenNotice(entry.kind, entry.md)) return <></>;
   if (msg !== null) {
-    // 与插入档用户胶囊同形(+发送人名可点;无编辑):限高折叠 + 下沿复制
+    // 与插入档用户胶囊同形(+发送人名可点;无编辑):限高折叠 + 下沿复制。
+    // from=leader(旧档 'lead' 显示归一,2026-11-08 用户裁定「清理残留 lead」):点击=定位主对话对应发送气泡
+    const fromLeader = msg.from === 'leader' || msg.from === 'lead';
+    const fromLabel = fromLeader ? 'leader' : msg.from;
     return (
-      <div className="entry entry-user entry-user-insert agent-msg" data-from={msg.from}>
+      <div className="entry entry-user entry-user-insert agent-msg" data-from={fromLabel}>
         <div className="agent-msg-head">
           <MessageSquare size={12} strokeWidth={1.75} aria-hidden="true" />
-          {onOpenAgent !== undefined ? (
+          {fromLeader && onOpenLeader !== undefined ? (
+            <button
+              type="button"
+              className="agent-msg-from"
+              data-tip={t('Locate in main conversation', '定位到主对话')}
+              onClick={() => onOpenLeader({ from: 'leader', text: msg.text })}
+            >
+              {fromLabel}
+            </button>
+          ) : !fromLeader && onOpenAgent !== undefined ? (
             <button
               type="button"
               className="agent-msg-from"
               data-tip={t('View member', '查看成员')}
               onClick={() => onOpenAgent(msg.from, msg.from)}
             >
-              {msg.from}
+              {fromLabel}
             </button>
           ) : (
-            <span className="agent-msg-from">{msg.from}</span>
+            <span className="agent-msg-from">{fromLabel}</span>
           )}
         </div>
         {msg.text !== '' && (

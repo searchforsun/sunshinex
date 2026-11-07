@@ -139,16 +139,22 @@ describe('AgentTranscriptTab 对标主对话', () => {
     expect(onOpenAgent).toHaveBeenCalledWith('w1', 'w1');
   });
 
-  it('inbox drain 的 messageLine 步单独成气泡，来源名可点', () => {
+  it('inbox drain 的 messageLine 步单独成气泡;leader 来源名点击=定位主对话(不打开页签),旧档 lead 显示归一', () => {
     const s = applyAgentEvent({}, sub('step', 'w2', '', { messageLine: 'lead: 去跑测试', from: 'leader', to: 'w2', text: '去跑测试', messageId: 'm9', teamId: 'team-a' }));
+    const sLegacy = applyAgentEvent({}, sub('step', 'w2', '', { messageLine: 'lead: 旧档消息', from: 'lead', to: 'w2', text: '旧档消息', messageId: 'm8', teamId: 'team-a' }));
     const onOpenAgent = vi.fn();
+    const onOpenLeader = vi.fn();
     const { container } = render(
-      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.w2} board={boardStub} onOpenAgent={onOpenAgent} />,
+      <>
+        <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.w2} board={boardStub} onOpenAgent={onOpenAgent} onOpenLeader={onOpenLeader} />
+        <AgentTranscriptTab conn={connStub} sessionId="s1" activities={sLegacy.w2} board={boardStub} onOpenAgent={onOpenAgent} onOpenLeader={onOpenLeader} />
+      </>,
     );
-    const from = container.querySelector('.agent-msg-from');
-    expect(from?.textContent).toBe('leader');
-    fireEvent.click(from!);
-    expect(onOpenAgent).toHaveBeenCalledWith('leader', 'leader');
+    const froms = [...container.querySelectorAll('.agent-msg-from')];
+    expect(froms.map((f) => f.textContent)).toEqual(['leader', 'leader']); // 旧档 lead 显示归一
+    fireEvent.click(froms[0]!);
+    expect(onOpenLeader).toHaveBeenCalledWith({ member: 'w2', text: '去跑测试', dir: 'fromLeader' }); // member=转录页主名(activities.label)
+    expect(onOpenAgent).not.toHaveBeenCalled();
   });
 
   it('轮折叠:sealed run 自动折叠(2026-10-24 裁定)——初始即收合,点击展开,再点收回', () => {
