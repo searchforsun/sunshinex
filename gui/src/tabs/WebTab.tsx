@@ -82,8 +82,7 @@ export interface WebTabProps {
 }
 
 // normalizeWebUrl/webPageName 拆至 tab-meta.ts(2026-10-26 二期分包:registry 同步层消费纯函数,
-// WebTab 体 lazy 化)——此处再导出保既有消费面零迁移
-export { normalizeWebUrl, webPageName } from './tab-meta';
+// WebTab 体 lazy 化)
 import { normalizeWebUrl, webPageName } from './tab-meta';
 
 /** Electron webview 标签方法面(M1 内置浏览器融合:真实嵌入页面——点击/输入/滚轮原生,截屏

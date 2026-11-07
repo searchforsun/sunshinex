@@ -32,8 +32,8 @@ import type { TabParams } from './tab-state';
  * 标签链单点 kill);重挂经 ptyIdFor 复用同一 pty。
  * pty WS 的 ws url 以 location.origin 换前缀构造——connection.ts 的 wsUrl 是 /events 专用
  * 模块私 helper 不通用;vite dev 的 VITE_SERVE_URL 异源直连场景归 G8b-e 记档承接。
- * token 取 localStorage 'sunshinex.token'(App 门面全路径持久化——URL/门面/既有,故
- * AppShell 在场必在;键字面与 App.TOKEN_STORAGE_KEY 同源,G8b-e 收口为共享常量)。
+ * token 恒空串(G10 token 门面退役——本地 serve 免鉴权档,连接不携带凭证;PtySocket 子协议
+ * bearer. 空串与主事件 WS 同形态)。
  */
 
 export interface TerminalTabProps {
@@ -109,7 +109,6 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
     /** 主题热随退订(xterm 装配期挂;effect 卸载解) */
     let unwatchTheme: (() => void) | null = null;
 
-    /** fit 后同步 pty 尺寸(装配尾一次 + ResizeObserver 每回调) */
     /** pty 尺寸下发:行列真变才发、150ms 尾沿合并——ConPTY 每次 resize 整屏重绘,布局动画期逐帧
      *  下发会刷出几十份重绘,把回放环里的真实历史挤掉(重启续屏失效的根因之一) */
     let sentSize = '';
@@ -206,6 +205,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           const unwatch = watchThemeChange(() => {
             if (term !== null) term.options.theme = xtermThemeFor(currentPalette());
           });
+          unwatchTheme?.(); // 回退重装配覆写前先退订上一轮(观察器滞留面)
           unwatchTheme = unwatch;
           fit = new FitAddon();
           term.loadAddon(fit);
@@ -214,7 +214,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           let dead = false; // error 帧+closed = 档键已死(回退触发)
           socket = new PtySocket({
             url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(draft ? '@welcome' : sessionId)}/pty/${encodeURIComponent(ptyId)}`,
-            token: localStorage.getItem('sunshinex.token') ?? '',
+            token: '', // G10 退役:免鉴权档恒空(bearer. 空子协议,主 WS 同形态)
             onFrame: (f: PtyFrame): void => {
               if (f.t === 'replay' || f.t === 'data') {
                 sawFrame = true;

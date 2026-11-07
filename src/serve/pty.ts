@@ -184,15 +184,18 @@ export class PtyManager {
 
   /** owner 名下全部条目的回放文本(2026-11-07 回放落盘):daemon teardown 前逐条收存 */
   replaysFor(owner: string): Array<{ id: string; text: string }> {
-    const out: Array<{ id: string; text: string }> = [];
-    for (const [id, e] of this.sessions) if (e.owner === owner) out.push({ id, text: e.session.replay() });
-    return out;
+    return this.collectReplays((e) => e.owner === owner);
   }
 
   /** 全部条目的回放文本(不分 owner):周期落盘与 teardown 首步全量收存——含 App 级(@app)草稿终端 */
   allReplays(): Array<{ id: string; text: string }> {
+    return this.collectReplays();
+  }
+
+  /** 回放收集单点(2026-11-07 收敛——replaysFor/allReplays 同一遍历两份手写,只差 owner 过滤谓词) */
+  private collectReplays(filter?: (e: { owner: string }) => boolean): Array<{ id: string; text: string }> {
     const out: Array<{ id: string; text: string }> = [];
-    for (const [id, e] of this.sessions) out.push({ id, text: e.session.replay() });
+    for (const [id, e] of this.sessions) if (filter === undefined || filter(e)) out.push({ id, text: e.session.replay() });
     return out;
   }
 

@@ -329,19 +329,23 @@ export class GuiDaemon {
     } catch {
       /* 清扫失败不阻塞启动(下次 boot 再扫) */
     }
+/** keep-alive 加长窗（2026-11-07 用户实测「置顶 Failed to fetch/卡」根修）：Node 缺省 5s 关空闲连接，
+ *  浏览器连接池旧 socket 上 PUT 不重试直接炸（GET 会自动重试故鲜感）；65s>浏览器池复用窗 */
+const KEEP_ALIVE_TIMEOUT_MS = 65_000;
+/** keep-alive +1s：防 requestTimeout 误杀 65s 内长连接（headersTimeout 须 ≥ keepAliveTimeout） */
+const HEADERS_TIMEOUT_MS = 66_000;
+/** 终端回放周期落盘间隔（与 pty.ts CPR 兜底 5000 同值不同义——上新删旧勿连改） */
+const PTY_PERSIST_INTERVAL_MS = 5_000;
     const server = http.createServer((req, res) => this.dispatch(req, res, token));
-    // keep-alive 加长(2026-11-07 用户实测「置顶 Failed to fetch/卡」根修):Node 缺省 5s 关空闲
-    // 连接,浏览器连接池旧 socket 上 PUT 不重试直接炸(GET 会自动重试故鲜感)。65s>浏览器池
-    // 复用窗;headersTimeout 同步抬高防 65s 内长连接被 requestTimeout 误杀
-    server.keepAliveTimeout = 65000;
-    server.headersTimeout = 66000;
+    server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+    server.headersTimeout = HEADERS_TIMEOUT_MS;
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(opts?.port ?? 0, LOOPBACK_HOST, () => resolve());
     });
     this.server = server;
     this.wsHub.attach(server, token);
-    this.ptyPersistTimer = setInterval(() => this.persistPtyReplays(), 5000);
+    this.ptyPersistTimer = setInterval(() => this.persistPtyReplays(), PTY_PERSIST_INTERVAL_MS);
     this.ptyPersistTimer.unref();
     // M2 融合面过滤闸需要 daemon 自身 origin(GUI 渲染层 target 按 http://127.0.0.1:<port> 过滤)
     process.env.SUNSHINEX_DAEMON_PORT = String((server.address() as { port: number }).port);
@@ -423,12 +427,7 @@ export class GuiDaemon {
     //     会话 id——daemon 持 manager、session.ts 不引 pty 的 serve 分层面）。kill 同步注销，exit 帧
     //     异步送达在线 pty WS（尽力投递，网络面下一拍收口）；防孤儿 conpty 拖住 daemon close
     for (const [id, rt] of [...this.sessions.entries()]) {
-      for (const r of this.ptyManager.replaysFor(id)) saveReplay(r.id, r.text);
-      this.ptyManager.killAllFor(id);
-      if (rt.attachedJournalId !== undefined && rt.attachedJournalId !== id) {
-        for (const r of this.ptyManager.replaysFor(rt.attachedJournalId)) saveReplay(r.id, r.text);
-        this.ptyManager.killAllFor(rt.attachedJournalId);
-      }
+      this.sealAndKillPtyFor(id, rt.attachedJournalId);
     }
     // 1) WS 面先收（daemon-ws hub.close：停 ping 计时器，逐连接 1001 Going Away 后 wss.close，
     //    pty 专用 WS 同拍退场）——先于 HTTP server close，升级连接与请求连接同序退场，server close
@@ -447,7 +446,6 @@ export class GuiDaemon {
     await Promise.all([...this.sessions.values()].map((s) => s.dispose()));
   }
 
-  /** 内置浏览器收割（宿主侧单点 serve/builtin-browser，D61 外提）：本座工作区 roots 注入 */
   /** 终端回放落盘(周期/teardown 共用):有变化才写;已注销条目出账(其终态由关页签/删除路径落盘) */
   private persistPtyReplays(): void {
     const live = new Set<string>();
@@ -460,8 +458,20 @@ export class GuiDaemon {
     for (const id of [...this.ptyLastSaved.keys()]) if (!live.has(id)) this.ptyLastSaved.delete(id);
   }
 
+  /** 内置浏览器收割（宿主侧单点 serve/builtin-browser，D61 外提）：本座工作区 roots 注入 */
   private reapBuiltinBrowsers(): void {
     reapBuiltinBrowsersHost([...this.sessions.values()].map((rt) => rt.root));
+  }
+
+  /** pty 双锚清杀单点（2026-11-07 收敛——此前 teardown/单会话 delete/side 连带三面四处展开）：
+   *  每锚先落回放最后一笔（seal 先于 kill，防复活后丢尾段）再 killAllFor（幂等）；owners 传
+   *  runtime id 与 attachedJournalId 双锚（2026-11-01 漏杀根修：建档前 owner=runtime id 不回填，
+   *  只锚 journalId 会漏），同值去重杀一遍 */
+  private sealAndKillPtyFor(...owners: Array<string | undefined>): void {
+    for (const owner of new Set(owners.filter((o): o is string => o !== undefined))) {
+      for (const r of this.ptyManager.replaysFor(owner)) saveReplay(r.id, r.text);
+      this.ptyManager.killAllFor(owner);
+    }
   }
 
 
@@ -1009,12 +1019,7 @@ export class GuiDaemon {
       // 双锚清杀(2026-11-01 漏杀根修)：journal 惰性建档前分配的 pty owner=runtime id(44a4b0a 起
       // owner 取 attachedJournalId ?? session.id 的当场值),建档后不回填——只按 journalId 锚杀会漏掉
       // 这批条目(delete 后终端进程永活),runtime id 与 journalId 两锚都杀(幂等,重复无害)
-      for (const r of this.ptyManager.replaysFor(key)) saveReplay(r.id, r.text);
-      this.ptyManager.killAllFor(key);
-      if (session.attachedJournalId !== undefined && session.attachedJournalId !== key) {
-        for (const r of this.ptyManager.replaysFor(session.attachedJournalId)) saveReplay(r.id, r.text);
-        this.ptyManager.killAllFor(session.attachedJournalId);
-      }
+      this.sealAndKillPtyFor(key, session.attachedJournalId);
       if (this.active === key) this.active = undefined;
     }
     // 辅助会话连带删除(2026-11-06 用户裁定「删除主会话才连 side 一起清」):side 档清前先拆在座
@@ -1029,11 +1034,9 @@ export class GuiDaemon {
         await rt.teardown();
         this.sessions.delete(rk);
         this.unwatchProjectRoot(rt.root);
-        for (const r of this.ptyManager.replaysFor(rk)) saveReplay(r.id, r.text);
-        this.ptyManager.killAllFor(rk);
+        this.sealAndKillPtyFor(rk);
       }
-      for (const r of this.ptyManager.replaysFor(sid)) saveReplay(r.id, r.text);
-      this.ptyManager.killAllFor(sid);
+      this.sealAndKillPtyFor(sid);
     }
     purgeSession(dataDir, jid);
     purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
@@ -1046,7 +1049,7 @@ export class GuiDaemon {
   /** POST /session/:id/pty {cols?,rows?}（G8b T3 分配面）：cols/rows 缺省 80/24，在场须正整数
    *  （400）→ 会话解析（未知 :id 404，sessionFor 单点）→ shell 探测 daemon 内定（win32
    *  powershell.exe / 其余 process.env.SHELL ?? /bin/bash）→ PtyManager.spawn（cwd=session.root、
-   *  owner=:id、env 继承 process.env）→ 200 {ptyId}（`pty-<n>` 单调永不复用）。T5/T6 拿 ptyId 连
+   *  owner=:id、env 继承 process.env）→ 200 {ptyId}（`pty-<启动段>-<n>` 单调永不复用）。T5/T6 拿 ptyId 连
    *  `/session/:id/pty/:ptyId` 专用 WS 升级路径（本文件 attachWs 分支） */
 
   /** DELETE /session/:id/pty/:ptyId（G8b T3 kill 面）：PtyManager.kill 幂等（无此 id 静默）——重复

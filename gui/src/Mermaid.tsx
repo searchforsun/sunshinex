@@ -290,12 +290,12 @@ export function Mermaid({
         st.timer = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- themeTick/chart 为重渲信号,依赖面刻意收窄
   }, [draft, themeTick]);
   // token 到达:只排程(在途/已排程则合并),不打断在途渲染
   useEffect(() => {
     if (draft) liveSchedule();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chart 变更=重排程信号,liveSchedule 闭包自足
   }, [chart]);
 
   if (failed !== null) {
