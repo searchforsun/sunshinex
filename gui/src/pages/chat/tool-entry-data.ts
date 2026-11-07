@@ -16,20 +16,29 @@ export function mcpToolParts(name: string): { server: string; tool: string } | n
   return { server: rest.slice(0, i), tool: rest.slice(i + 2) };
 }
 
+/** 内置宿主插件 server 名单(镜像 src/harness/plugin-host HOSTED 键——purpose=宿主注入的模型自拟
+ *  操作说明参数;第三方 MCP 工具自带的 purpose 字段不当标题,mcp-row.test 钉住该契约)。名单漂移由
+ *  tool-entry-mirror.test 对拍钉咬住(读宿主源码比对此集合,新增宿主插件两侧必同步) */
+export const PURPOSE_SERVERS: ReadonlySet<string> = new Set(['browser-use', 'computer-use']);
+
+function isPurposeTool(name: string): boolean {
+  const mcp = mcpToolParts(name);
+  return mcp !== null && PURPOSE_SERVERS.has(mcp.server);
+}
+
 /** 工具行操作说明(2026-11-07 用户裁定):宿主插件工具与 exec 入参 purpose——模型按对话语言自拟的
- *  本次目的;工具行以它为标题(插件=整行替换;exec=描述+命令明细)。null/缺省/空串 → undefined。
- *  判别=schema 知识单点回归宿主下发(mcp/client withPurposeParam 注入+exec 自带 purpose 参数;
- *  2026-11-07 收敛:此前 GUI 硬编码宿主 server 名单,新增宿主插件须跨包改两处) */
-export function toolPurposeOf(input: Record<string, unknown>): string | undefined {
+ *  本次目的;工具行以它为标题(插件=整行替换;exec=描述+命令明细)。null/缺省/空串 → undefined */
+export function toolPurposeOf(name: string, input: Record<string, unknown>): string | undefined {
   const v = input.purpose;
+  if (!isPurposeTool(name) && name !== 'exec') return undefined;
   if (typeof v !== 'string') return undefined;
   const flat = v.replace(/\s+/g, ' ').trim();
   return flat === '' ? undefined : flat;
 }
 
 /** 展开体/目标摘要用入参:剥掉 purpose(它已是行标题,展开内容保持插件真实收到的参数) */
-export function withoutPurpose(input: Record<string, unknown>): Record<string, unknown> {
-  if (!Object.prototype.hasOwnProperty.call(input, 'purpose')) return input;
+export function withoutPurpose(name: string, input: Record<string, unknown>): Record<string, unknown> {
+  if (!isPurposeTool(name) || !Object.prototype.hasOwnProperty.call(input, 'purpose')) return input;
   const { purpose: _purpose, ...rest } = input;
   return rest;
 }
@@ -133,7 +142,7 @@ export function zhToolName(name: string): string {
  *  MCP 工具无固定主字段——入参整体压单行 JSON 摘要(与 exec 命令行同级的目标信息) */
 export function toolTargetOf(name: string, input: Record<string, unknown>): string | undefined {
   if (mcpToolParts(name) !== null) {
-    const shown = withoutPurpose(input);
+    const shown = withoutPurpose(name, input);
     const keys = Object.keys(shown);
     if (keys.length === 0) return undefined;
     const flat = JSON.stringify(shown);
