@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { act, render } from '@testing-library/react';
-import { WebTabPool, type WebPoolItem } from './WebTabPool';
+import { WebTabPool, poolKey, type WebPoolItem } from './WebTabPool';
 import type { Connection } from '../connection';
 
 /**
@@ -46,7 +46,7 @@ describe('WebTabPool 对位 zoom 归一', () => {
       <WebTabPool
         conn={stubConn()}
         items={ITEMS}
-        visibleUid="u1"
+        visibleKey={poolKey('s1', 'u1')}
         anchorRef={{ current: anchor }}
         root="/r"
         draftSeat="s1"
@@ -70,7 +70,7 @@ describe('WebTabPool 对位 zoom 归一', () => {
       <WebTabPool
         conn={stubConn()}
         items={ITEMS}
-        visibleUid="u1"
+        visibleKey={poolKey('s1', 'u1')}
         anchorRef={{ current: anchor }}
         root="/r"
         draftSeat="s1"
@@ -91,7 +91,7 @@ describe('WebTabPool 对位 zoom 归一', () => {
       <WebTabPool
         conn={stubConn()}
         items={ITEMS}
-        visibleUid="u1"
+        visibleKey={poolKey('s1', 'u1')}
         anchorRef={{ current: anchor }}
         root="/r"
         draftSeat="s1"
@@ -106,7 +106,7 @@ describe('WebTabPool 对位 zoom 归一', () => {
       <WebTabPool
         conn={stubConn()}
         items={ITEMS}
-        visibleUid="u1"
+        visibleKey={poolKey('s1', 'u1')}
         anchorRef={{ current: anchor }}
         root="/r"
         draftSeat="s1"
@@ -118,5 +118,21 @@ describe('WebTabPool 对位 zoom 归一', () => {
     const item = container.querySelector('.sx-webpool-item') as HTMLElement;
     expect(item.style.left).toBe('322px');
     expect(item.style.width).toBe('978px');
+  });
+});
+
+describe('WebTabPool 会话隔离(2026-11-08 用户报障「切会话还能看到上一个会话的浏览器页签」)', () => {
+  it('两会话各有同 uid 页签(插件新开页恒 web:about:blank):各成一项,只显当前会话那项', () => {
+    const items: readonly WebPoolItem[] = [
+      { seat: 'sA', uid: 'web:about:blank', params: { url: 'about:blank' } },
+      { seat: 'sB', uid: 'web:about:blank', params: { url: 'about:blank' } },
+    ];
+    const { container } = render(
+      <WebTabPool conn={stubConn()} items={items} visibleKey={poolKey('sB', 'web:about:blank')} anchorRef={{ current: null }} root="/r" draftSeat="@welcome" onMeta={() => {}} onClose={() => {}} onActivate={() => {}} />,
+    );
+    const els = [...container.querySelectorAll<HTMLElement>('.sx-webpool-item')];
+    expect(els.map((e) => e.dataset.seat)).toEqual(['sA', 'sB']);
+    expect(els.map((e) => e.hasAttribute('inert'))).toEqual([true, false]); // A 离屏惰性,只 B 可见
+    expect(els[0]!.style.left).toBe('-100000px');
   });
 });

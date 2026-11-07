@@ -19,13 +19,20 @@ export interface WebPoolItem {
 
 export const DRAFT_PARTITION = 'sx-draft';
 
+/** 池项身份=座位+uid:页签 uid 只在座位内唯一(按类型+地址铸造,插件新开页恒 web:about:blank),
+ *  跨会话同 uid 必撞——单按 uid 寻址即 React key 碰撞、他会话页签同被判可见(2026-11-08 用户报障
+ *  「切会话还能看到上一个会话的浏览器页签」) */
+export function poolKey(seat: string, uid: string): string {
+  return `${seat}|${uid}`;
+}
+
 /** 离屏位置(远离视口但保持真实尺寸,guest 照常布局/出帧) */
 const OFFSCREEN_X = -100_000;
 
 export function WebTabPool({
   conn,
   items,
-  visibleUid,
+  visibleKey,
   anchorRef,
   root,
   draftSeat,
@@ -35,8 +42,8 @@ export function WebTabPool({
 }: {
   conn: Connection;
   items: readonly WebPoolItem[];
-  /** 当前应显示的页签 uid(null=全部离屏) */
-  visibleUid: string | null;
+  /** 当前应显示的页签 poolKey(座位+uid;null=全部离屏) */
+  visibleKey: string | null;
   /** 侧栏活动页签体(占位框)——可见项按其视口矩形对位 */
   anchorRef: MutableRefObject<HTMLDivElement | null>;
   root: string;
@@ -63,11 +70,11 @@ export function WebTabPool({
     }
   }, [items, conn, draftSeat]);
 
-  /** 池项元素表(直写寻址;回调 ref 挂卸维护) */
+  /** 池项元素表(直写寻址;回调 ref 挂卸维护;键=poolKey) */
   const itemEls = useRef(new Map<string, HTMLDivElement>());
-  const setItemRef = (uid: string) => (el: HTMLDivElement | null): void => {
-    if (el === null) itemEls.current.delete(uid);
-    else itemEls.current.set(uid, el);
+  const setItemRef = (key: string) => (el: HTMLDivElement | null): void => {
+    if (el === null) itemEls.current.delete(key);
+    else itemEls.current.set(key, el);
   };
   /** 对位单帧:占位框 gBCR(视觉 px)→ 可见池项样式(本地 px=视觉/zoom,ui-zoom 跨空间契约;
    *  zoom1.25 不除即整体右移 25% 左侧空白+宽度放大 25% 右侧越视口)。**直写 DOM 不经 React
@@ -75,7 +82,7 @@ export function WebTabPool({
    *  更重),实测左缘拖影、框溢出侧栏边界;直写与测量同帧落笔,paint 前即锚定占位框 */
   const applyRect = (): void => {
     const anchor = anchorRef.current;
-    const item = visibleUid === null ? undefined : itemEls.current.get(visibleUid);
+    const item = visibleKey === null ? undefined : itemEls.current.get(visibleKey);
     if (anchor === null || item === undefined) return;
     const r = anchor.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return;
@@ -89,10 +96,10 @@ export function WebTabPool({
   // 可见项切换(挂载/换签)同步写位:layout effect 在 paint 前生效,无「首帧落旧位」闪面
   useLayoutEffect(() => {
     applyRect();
-  }, [visibleUid, anchorRef]);
+  }, [visibleKey, anchorRef]);
   // 逐帧跟随(拖栏/收展开/窗口缩放)
   useEffect(() => {
-    if (visibleUid === null) return;
+    if (visibleKey === null) return;
     let raf = 0;
     const tick = (): void => {
       applyRect();
@@ -100,21 +107,18 @@ export function WebTabPool({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [visibleUid, anchorRef]);
+  }, [visibleKey, anchorRef]);
 
-  /** 页签上次落定的分区:换座(同档运行时换号并座)后新座分区在途期间沿用——分区串不变则 WebTab
-   *  key 不变,webview 不卸载不重载 */
-  const partByUid = useRef(new Map<string, string>());
   return (
     <div className="sx-webpool">
       {items.map((it) => {
-        const vis = it.uid === visibleUid;
-        const part = partitions[it.seat] ?? partByUid.current.get(it.uid);
-        if (part !== undefined) partByUid.current.set(it.uid, part);
+        const key = poolKey(it.seat, it.uid);
+        const vis = key === visibleKey;
+        const part = partitions[it.seat];
         return (
           <div
-            key={it.uid}
-            ref={setItemRef(it.uid)}
+            key={key}
+            ref={setItemRef(key)}
             className="sx-webpool-item"
             data-seat={it.seat}
             data-uid={it.uid}
