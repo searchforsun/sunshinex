@@ -30,6 +30,8 @@ export interface ConnectionWiringDeps {
   sideSinksRef: MutableRefObject<Map<string, MutableRefObject<ChatSink | null>>>;
   /** side 父会话表(sideId→主会话;2026-11-07「辅助投影挂主对话下」):板/委派 live 帧按此并入主投影 */
   sideParentRef: MutableRefObject<Map<string, string>>;
+  /** journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):升级链稳定身份即刻回填 */
+  onJournalMinted: (sessionId: string, journalId: string) => void;
   boardPendingRef: MutableRefObject<Array<{ e: SessionEvent; seq: number }>>;
   boardSeedingRef: MutableRefObject<boolean>;
   /** 近期板帧环(面板刷新快照整替后 seq 门重放源;缺省=不记) */

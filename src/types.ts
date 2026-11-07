@@ -306,7 +306,10 @@ type SessionEventType =
   // 后台任务账本直播(TaskRegistry submit/finish;GUI 后台任务页签/顶栏计数)
   | 'bg-task'
   // 记忆/学习技能清单变点(memory_write·沉淀管线落盘;GUI 对应页签主动重拉)
-  | 'catalog-changed';
+  | 'catalog-changed'
+  // journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):首条实质事件建档即广播
+  // journalId(payload.journalId)——欢迎页升级链 GUI 即刻回填稳定身份,免对账轮询窗口
+  | 'journal-minted';
 
 export interface SessionEvent {
   type: SessionEventType;

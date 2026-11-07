@@ -216,8 +216,13 @@ function AppShell(): JSX.Element {
   /** 单连接装配(use-connection-wiring 单点):onEvent 路由/onReset 重建/挂起转投/生命周期迁
    *  钩子,依赖注入面见 ConnectionWiringDeps——装配一次([]),闭包取首渲染值,会话切换经
    *  sessionRef 与各 ref 免陈旧(原口径) */
+  // journal 铸造即回填(主动推送;recents 对账为断线兜底 belt):openJournalId 暂=sessionId(升级链
+  // 临时身份)时,本会话铸造帧即刻换真身份——已读压读/草稿键零窗口
+  const onJournalMinted = useCallback((sessionId: string, journalId: string): void => {
+    if (sessionId === openSessionId && journalId !== '' && openJournalId === sessionId) setOpenJournalId(journalId);
+  }, [openSessionId, openJournalId]);
   const connInstance = useConnectionWiring({
-    sessionRef, chatSinkRef, sideSinksRef, sideParentRef, boardPendingRef, boardSeedingRef, boardRecentRef,
+    sessionRef, chatSinkRef, sideSinksRef, sideParentRef, onJournalMinted, boardPendingRef, boardSeedingRef, boardRecentRef,
     shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef, dropPendingActsRef, connRef,
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
     setTodoBatches, setConnState, setBgTasks, setCatalogTick,
@@ -501,6 +506,29 @@ function AppShell(): JSX.Element {
       .catch(() => undefined);
   };
 
+  // 升级链 journalId 回填(2026-11-07 用户实测「欢迎页升级首条完成仍亮未读/点行清草稿」根修):
+  // 欢迎发送=临时 id 开席(openJournalId 暂=sessionId),journal 首个事件才建档,id 此后才有。
+  // recents 行带 liveSessionId(journal↔活跃会话反查)——本会话收束/侧栏 bump 后对账一回填
+  // openJournalId,Chat 的已读压读与草稿键切换随之落到稳定 journal 键。openJournalId≠sessionId
+  // (=已回填/正常打开链)即跳过
+  useEffect(() => {
+    const conn = connRef.current;
+    if (conn === null || openSessionId === '' || page !== 'chat') return;
+    if (openJournalId !== openSessionId) return;
+    if (typeof conn.recentSessions !== 'function') return;
+    let alive = true;
+    void conn.recentSessions().then(
+      (rows) => {
+        if (!alive) return;
+        const hit = rows.find((r) => r.liveSessionId === openSessionId);
+        if (hit !== undefined) setOpenJournalId(hit.id);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [recentVersion, openSessionId, openJournalId, page, runningIds.size]);
   /** 恢复现场(use-restore-last 单点,2026-10-27 技术债轮 D53 批F 外提):指针档重放打开链,
    *  单次闸防 StrictMode 双跑(与既有 effect 序一致——原位即在此回调域) */
   useRestoreLast({ connInstance, connState, openSession });

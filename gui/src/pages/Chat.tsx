@@ -116,6 +116,29 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       // 隐私模式等写失败静默:草稿是尽力而为的会话便利,不入错误面
     }
   }, [input, archiveKey]);
+  // 草稿键迁移(2026-11-07 用户实测「欢迎页升级后点会话行,草稿被清」根修):升级链 journalId
+  // 晚到,archiveKey 由临时 sessionId 切到 journalId——新档键下草稿为空,恢复面读到空串=清稿。
+  // 键切换时把旧键草稿/芯片账本整体迁到新键(新键已有非空草稿=真换会话,不迁)
+  const draftKeyRef = useRef(archiveKey);
+  useEffect(() => {
+    if (draftKeyRef.current === archiveKey) return;
+    const oldKey = draftKeyRef.current;
+    draftKeyRef.current = archiveKey;
+    try {
+      const carried = localStorage.getItem(`sx-draft:${oldKey}`);
+      if (carried !== null && carried !== '' && (localStorage.getItem(`sx-draft:${archiveKey}`) ?? '') === '') {
+        localStorage.setItem(`sx-draft:${archiveKey}`, carried);
+        localStorage.setItem(`sx-draft-refs:${archiveKey}`, localStorage.getItem(`sx-draft-refs:${oldKey}`) ?? '[]');
+        localStorage.removeItem(`sx-draft:${oldKey}`);
+        localStorage.removeItem(`sx-draft-refs:${oldKey}`);
+        setInput(carried);
+        const refs = JSON.parse(localStorage.getItem(`sx-draft-refs:${archiveKey}`) ?? '[]') as Array<[string, string]>;
+        for (const [k, v] of refs) refContentsRef.current.set(k, v);
+      }
+    } catch {
+      // 档损坏静默:草稿尽力而为
+    }
+  }, [archiveKey]);
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新);缺省 full-access(serve 缺省档) */
   const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
@@ -552,6 +575,13 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     if (!was || running || journalId === undefined || journalId === '') return;
     void stampSeen(conn, journalId, Date.now()).then(onSessionsMutated, onSessionsMutated);
   }, [running, journalId, conn, onSessionsMutated]);
+  // journalId 到位即压已读(2026-11-07 用户实测「欢迎页升级首条完成仍亮未读」根修):升级链
+  // journalId 晚到(晚于首轮收束)——上一 effect 因 journalId 空恒跳过。本会话在座(本组件即打开面),
+  // journal 一旦寻得即刻压已读,与运行收束压读同语义
+  useEffect(() => {
+    if (journalId === undefined || journalId === '') return;
+    void stampSeen(conn, journalId, Date.now()).then(onSessionsMutated, onSessionsMutated);
+  }, [journalId, conn, onSessionsMutated]);
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send: sendRaw, interrupt } = useChatSubmit({

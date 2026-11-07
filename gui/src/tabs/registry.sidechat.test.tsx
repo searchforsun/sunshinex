@@ -25,7 +25,7 @@ describe('辅助对话跳转面与主对话同构', () => {
       sessionId: 'main',
       root: '/w',
       params: { sideId: 'side-1' },
-      services: {},
+      services: { onOpenTask: () => undefined, board: undefined, teams: [] },
       uid: 'u1',
       ptyIdFor: () => undefined,
       onPtyAllocated: () => undefined,
@@ -49,8 +49,9 @@ describe('辅助对话跳转面与主对话同构', () => {
     expect(openMemory).toHaveBeenCalledWith('slug-a');
     props.onOpenLearned?.('skill-b');
     expect(openLearned).toHaveBeenCalledWith('skill-b');
-    // 主会话投影面(子智能体转录/任务板/待办)不接:点开会落到错会话的数据
-    expect(props.onOpenAgent).toBeUndefined();
-    expect(props.onOpenTask).toBeUndefined();
+    // 2026-11-07 用户裁定撤 11-06「辅助不接」:辅助会话有主会话所有能力,子智能体/任务板开签
+    // 挂主会话页签条(services 即主会话投影)——回调在场均可点
+    expect(props.onOpenAgent).toBeTypeOf('function');
+    expect(props.onOpenTask).toBeTypeOf('function');
   });
 });

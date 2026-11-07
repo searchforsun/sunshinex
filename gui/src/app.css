@@ -3470,3 +3470,46 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-composer-highlight .hn-ref-pad.ico-web {
   --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20'/%3E%3Cpath d='M2 12h20'/%3E%3C/svg%3E");
 }
+
+/* 2026-11-07 用户裁定「原生三角原始,换现代交互」:设置卡折叠条(详情/章程/探针等 details
+   summary)统一胶囊开关——去原生三角,chevron 随开合旋转,面底语言同 ghost 钮(hover 提亮,
+   展开态字色提亮),22px 弧度同全局 */
+.sx-rc-details > summary,
+.sx-team-body > summary {
+  list-style: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 10px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--fg-secondary); font-size: 12px; cursor: pointer; user-select: none;
+}
+.sx-rc-details > summary::-webkit-details-marker,
+.sx-team-body > summary::-webkit-details-marker { display: none; }
+.sx-rc-details > summary:hover,
+.sx-team-body > summary:hover { background: color-mix(in srgb, var(--fg) 11%, transparent); color: var(--fg); }
+.sx-rc-details[open] > summary,
+.sx-team-body[open] > summary { color: var(--fg); }
+.sx-disc-chev { transition: transform var(--dur-basic) var(--ease-enter); }
+.sx-rc-details[open] .sx-disc-chev,
+.sx-team-body[open] .sx-disc-chev { transform: rotate(180deg); }
+
+/* 2026-11-07 用户裁定「布局太挤,整体不协调」:团队卡撤「详情」折叠层(描述+章程收 body 直显,
+   只留章程一层展开)后,展开面呼吸感——章程井与卡缘脱开、加大内距,行距放宽 */
+.sx-rc .sx-team-body { margin-top: 2px; }
+.sx-rc .sx-team-body pre { margin-top: 8px; padding: 10px 12px; font-size: 11.5px; }
+.sx-rc .sx-agent-desc { margin: 0; }
+
+/* 2026-11-07 用户裁定「详情入操作行最右;点击展开描述+章程」:details display:contents 入行
+   (closed 投影仅 summary=胶囊;open 后展开面整行折下),summary 推行最右 */
+.sx-rc .sx-card-actions { flex-wrap: wrap; }
+.sx-rc .sx-card-actions .sx-team-body { display: contents; }
+.sx-rc .sx-card-actions .sx-team-body > summary { margin-left: auto; }
+.sx-rc .sx-card-actions .sx-team-detail { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: 11.5px; }
+
+/* 2026-11-07 用户裁定「详情入操作行最右;点击展开描述+章程」:details display:contents 入行
+   (closed 投影仅 summary=胶囊;open 后展开面整行折下),summary 推行最右 */
+.sx-rc .sx-card-actions { flex-wrap: wrap; }
+.sx-rc .sx-card-actions .sx-team-body { display: contents; }
+.sx-rc .sx-card-actions .sx-team-body > summary { margin-left: auto; }
+.sx-rc .sx-card-actions .sx-team-detail { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: 11.5px; }

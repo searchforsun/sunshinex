@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import * as os from 'node:os';
+import { clearReplay, loadReplay, saveReplay } from './pty-replay-store';
 import type { SessionRuntime } from './session';
 import type { PtyManager } from './pty';
 
@@ -21,7 +22,7 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = parsed.body as { cols?: unknown; rows?: unknown } | null;
+  const body = parsed.body as { cols?: unknown; rows?: unknown; prevPtyId?: unknown } | null;
   const cols = body?.cols ?? 80;
   const rows = body?.rows ?? 24;
   if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
@@ -31,6 +32,10 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
   const ptyId = io.nextPtyId();
+  // 回放回种(2026-11-07 用户裁定「要看连续」):GUI 持有的死档 ptyId(prev)→ 落盘环形缓冲回种为
+  // 新 pty 初始环=滚动区跨 daemon 视觉连续(shell 不能跨 daemon 存活,与 VSCode 同边界)
+  const prev = typeof body?.prevPtyId === 'string' && body.prevPtyId !== '' ? body.prevPtyId : undefined;
+  const seed = prev !== undefined ? loadReplay(prev) : undefined;
   const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
   io.ptyManager.spawn(ptyId, {
     file,
@@ -42,13 +47,17 @@ export async function handlePtyAlloc(io: PtyHandlerIo, req: http.IncomingMessage
     // 每次打开重铸( ephemeral),journalId 才是稳定锚——切会话/收编换壳后终端凭 ptyId 重连不失效
     owner: session.attachedJournalId ?? session.id,
     env: process.env as Record<string, string>,
+    seed,
   });
+  if (prev !== undefined) clearReplay(prev);
   io.send(res, 200, { ptyId });
 }
 
 export function handlePtyKill(io: PtyHandlerIo, res: http.ServerResponse, id: string, ptyId: string): void {
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
+  const alive = io.ptyManager.get(ptyId);
+  if (alive !== undefined) saveReplay(ptyId, alive.replay()); // 关页签即落盘(重开凭 prev 回种,屏幕连续)
   const owner = io.ptyManager.ownerOf(ptyId);
   if (owner !== undefined && owner !== session.id && owner !== session.attachedJournalId) {
     io.send(res, 404, { error: 'pty not found for session' });
@@ -66,7 +75,7 @@ export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMess
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = parsed.body as { root?: unknown; cols?: unknown; rows?: unknown } | null;
+  const body = parsed.body as { root?: unknown; cols?: unknown; rows?: unknown; prevPtyId?: unknown } | null;
   const cols = body?.cols ?? 80;
   const rows = body?.rows ?? 24;
   if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
@@ -75,6 +84,8 @@ export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMess
   }
   const root = typeof body?.root === 'string' && body.root !== '' ? body.root : os.tmpdir();
   const ptyId = io.nextPtyId();
+  const prev = typeof body?.prevPtyId === 'string' && body.prevPtyId !== '' ? body.prevPtyId : undefined;
+  const seed = prev !== undefined ? loadReplay(prev) : undefined;
   const file = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL ?? '/bin/bash');
   io.ptyManager.spawn(ptyId, {
     file,
@@ -84,12 +95,16 @@ export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMess
     rows,
     owner: '@app',
     env: process.env as Record<string, string>,
+    seed,
   });
+  if (prev !== undefined) clearReplay(prev);
   io.send(res, 200, { ptyId });
 }
 
 /** App 级 pty 回收:不校验 owner（'@app' 域无会话寻址）——ptyId 直杀,幂等 */
 export function handleAppPtyKill(io: PtyHandlerIo, res: http.ServerResponse, ptyId: string): void {
+  const alive = io.ptyManager.get(ptyId);
+  if (alive !== undefined) saveReplay(ptyId, alive.replay());
   io.ptyManager.kill(ptyId);
   io.send(res, 200, { ok: true });
 }

@@ -778,6 +778,20 @@ export class SessionRuntime {
     j.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
     this.syncSessionStores(); // journalId 此刻才有——团队/账本按会话根收养，须在首笔工具前完成
     this.persistSnapshotRow();
+    this.emitJournalMinted();
+  }
+
+  /** journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):旁路帧(不经 pump 主链,
+   *  emitQueueFrame 同形)——GUI 即刻回填升级链稳定身份,免 recents 对账窗口 */
+  private emitJournalMinted(): void {
+    const journalId = this.journal?.currentId;
+    if (journalId === undefined) return;
+    const seq = this.opts.nextSeq();
+    this.lastSeqNum = seq;
+    const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e: { type: 'journal-minted', payload: { journalId }, ts: Date.now() } };
+    this.frames.push(frame);
+    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
+    this.opts.broadcast(frame);
   }
 
   persistSnapshotRow(): void {
@@ -785,6 +799,7 @@ export class SessionRuntime {
     if (this.journal.currentId === undefined) {
       this.journal.start(3);
       this.syncSessionStores();
+      this.emitJournalMinted();
     }
     this.journal.log({ t: 'ctx-snap', ...this.runtimeImpl.harness.context.snapshotExport() } as unknown as Parameters<SessionJournal['log']>[0]);
   }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { SourceBadge } from './SourceBadge';
@@ -228,7 +229,11 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
       {actions !== undefined && <div className="sx-card-actions">{actions}</div>}
       {children !== undefined && (
         <details className="sx-rc-details">
-          <summary>{t('Details', '详情')}</summary>
+          {/* 2026-11-07 用户裁定:原生三角退役→胶囊开关(chevron 随开合旋转,面底语言同 ghost 钮) */}
+          <summary>
+            {t('Details', '详情')}
+            <ChevronDown size={12} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
+          </summary>
           {children}
         </details>
       )}

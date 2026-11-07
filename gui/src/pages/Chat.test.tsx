@@ -1659,7 +1659,8 @@ describe('顶栏 ⋯ 会话操作菜单(2026-10-22)', () => {
     await flushed(); // 置顶链多代微任务(pins PUT → seen PUT)
     const seen = JSON.parse(window.localStorage.getItem('sunshinex.seen-sessions') ?? '{}') as Record<string, number>;
     expect(typeof seen.j1).toBe('number'); // 已读戳已压到钉档时刻
-    expect(saveAppSeen).toHaveBeenCalledTimes(1); // 落底层双写
+    // 2 次=挂载 journalId 到位压读(2026-11-07 升级链未读根修)+置顶压读——双写落底层
+    expect(saveAppSeen).toHaveBeenCalledTimes(2);
   });
 });
 

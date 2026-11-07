@@ -14,6 +14,7 @@ export interface PtySpawnOptions {
   readonly cwd: string; readonly cols: number; readonly rows: number;
   readonly owner: string;                      // 会话 id(daemon 传入)——killAllFor 锚
   readonly env?: Readonly<Record<string, string>>;
+  readonly seed?: string;                      // 初始环形内容(2026-11-07 回放落盘回种——滚动区跨 daemon 视觉连续)
 }
 
 /** 会话句柄（T3 消费面；onExit 触发后条目自动注销——has→false，句柄自身仍可安全调用） */
@@ -50,10 +51,11 @@ class PtySessionImpl implements PtySession {
   private exited = false;
   private killedByUs = false;
 
-  constructor(id: string, proc: IPty, unregister: () => void) {
+  constructor(id: string, proc: IPty, unregister: () => void, seed = '') {
     this.id = id;
     this.proc = proc;
     this.unregister = unregister;
+    this.ring = seed;
     proc.onData((data) => {
       this.ring += data;
       if (this.ring.length > RING_LIMIT) this.ring = this.ring.slice(-RING_LIMIT);
@@ -138,7 +140,7 @@ export class PtyManager {
       name: 'xterm-256color',                  // xterm.js 前端对齐(T7);win32 仅装饰,unix 注入 TERM
       env: opts.env ? { ...opts.env } : undefined,
     });
-    const session = new PtySessionImpl(id, proc, () => { this.sessions.delete(id); });
+    const session = new PtySessionImpl(id, proc, () => { this.sessions.delete(id); }, opts.seed);
     this.sessions.set(id, { owner: opts.owner, session });
     return session;
   }
@@ -155,6 +157,13 @@ export class PtyManager {
 
   has(id: string): boolean {
     return this.sessions.has(id);
+  }
+
+  /** owner 名下全部条目的回放文本(2026-11-07 回放落盘):daemon teardown 前逐条收存 */
+  replaysFor(owner: string): Array<{ id: string; text: string }> {
+    const out: Array<{ id: string; text: string }> = [];
+    for (const [id, e] of this.sessions) if (e.owner === owner) out.push({ id, text: e.session.replay() });
+    return out;
   }
 
   kill(id: string): void {

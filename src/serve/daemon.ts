@@ -22,6 +22,7 @@ import {
   resetSelfFilledSlots,
 } from '../config/settings';
 import { PtyManager } from './pty';
+import { saveReplay } from './pty-replay-store';
 import { ConfigWatcher } from '../catalog/watch';
 import { setOnCatalogWrite } from '../catalog/io';
 import { userConfigDir } from '../config/env';
@@ -404,8 +405,12 @@ export class GuiDaemon {
     //     会话 id——daemon 持 manager、session.ts 不引 pty 的 serve 分层面）。kill 同步注销，exit 帧
     //     异步送达在线 pty WS（尽力投递，网络面下一拍收口）；防孤儿 conpty 拖住 daemon close
     for (const [id, rt] of [...this.sessions.entries()]) {
+      for (const r of this.ptyManager.replaysFor(id)) saveReplay(r.id, r.text);
       this.ptyManager.killAllFor(id);
-      if (rt.attachedJournalId !== undefined && rt.attachedJournalId !== id) this.ptyManager.killAllFor(rt.attachedJournalId);
+      if (rt.attachedJournalId !== undefined && rt.attachedJournalId !== id) {
+        for (const r of this.ptyManager.replaysFor(rt.attachedJournalId)) saveReplay(r.id, r.text);
+        this.ptyManager.killAllFor(rt.attachedJournalId);
+      }
     }
     // 1) WS 面先收（daemon-ws hub.close：停 ping 计时器，逐连接 1001 Going Away 后 wss.close，
     //    pty 专用 WS 同拍退场）——先于 HTTP server close，升级连接与请求连接同序退场，server close
@@ -974,8 +979,12 @@ export class GuiDaemon {
       // 双锚清杀(2026-11-01 漏杀根修)：journal 惰性建档前分配的 pty owner=runtime id(44a4b0a 起
       // owner 取 attachedJournalId ?? session.id 的当场值),建档后不回填——只按 journalId 锚杀会漏掉
       // 这批条目(delete 后终端进程永活),runtime id 与 journalId 两锚都杀(幂等,重复无害)
+      for (const r of this.ptyManager.replaysFor(key)) saveReplay(r.id, r.text);
       this.ptyManager.killAllFor(key);
-      if (session.attachedJournalId !== undefined && session.attachedJournalId !== key) this.ptyManager.killAllFor(session.attachedJournalId);
+      if (session.attachedJournalId !== undefined && session.attachedJournalId !== key) {
+        for (const r of this.ptyManager.replaysFor(session.attachedJournalId)) saveReplay(r.id, r.text);
+        this.ptyManager.killAllFor(session.attachedJournalId);
+      }
       if (this.active === key) this.active = undefined;
     }
     // 辅助会话连带删除(2026-11-06 用户裁定「删除主会话才连 side 一起清」):side 档清前先拆在座
@@ -990,8 +999,10 @@ export class GuiDaemon {
         await rt.teardown();
         this.sessions.delete(rk);
         this.unwatchProjectRoot(rt.root);
+        for (const r of this.ptyManager.replaysFor(rk)) saveReplay(r.id, r.text);
         this.ptyManager.killAllFor(rk);
       }
+      for (const r of this.ptyManager.replaysFor(sid)) saveReplay(r.id, r.text);
       this.ptyManager.killAllFor(sid);
     }
     purgeSession(dataDir, jid);
