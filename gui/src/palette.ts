@@ -77,19 +77,19 @@ export const PALETTES: readonly Palette[] = [
     id: 'dark-nord',
     mode: 'dark',
     name: { en: 'Nord', zh: '北境' },
-    tokens: { surface: '#2e3440', surfaceUnder: '#282d38', surfaceElevated: '#3b4252', surfaceSoft: '#434c5e', surfaceCode: '#262b35', editor: '#262b35', fg: '#e5e9f0', fgOnSolid: '#2e3440', accent: '#88c0d0' },
+    tokens: { surface: '#181d27', surfaceUnder: '#12161e', surfaceElevated: '#212836', surfaceSoft: '#2d3644', surfaceCode: '#10141b', editor: '#10141b', fg: '#dfe6f1', fgOnSolid: '#181d27', accent: '#88c0d0' },
   },
   {
     id: 'dark-mocha',
     mode: 'dark',
     name: { en: 'Mocha', zh: '摩卡' },
-    tokens: { surface: '#1e1e2e', surfaceUnder: '#181825', surfaceElevated: '#262637', surfaceSoft: '#313244', surfaceCode: '#11111b', editor: '#11111b', fg: '#cdd6f4', fgOnSolid: '#1e1e2e', accent: '#cba6f7' },
+    tokens: { surface: '#181826', surfaceUnder: '#12121e', surfaceElevated: '#232336', surfaceSoft: '#2e2e44', surfaceCode: '#11111b', editor: '#11111b', fg: '#cdd6f4', fgOnSolid: '#181826', accent: '#cba6f7' },
   },
   {
     id: 'dark-gruvbox',
     mode: 'dark',
     name: { en: 'Gruvbox', zh: '暖棕' },
-    tokens: { surface: '#282828', surfaceUnder: '#1d2021', surfaceElevated: '#32302f', surfaceSoft: '#3c3836', surfaceCode: '#1d2021', editor: '#1d2021', fg: '#ebdbb2', fgOnSolid: '#282828', accent: '#fabd2f' },
+    tokens: { surface: '#201e1b', surfaceUnder: '#191714', surfaceElevated: '#2a2724', surfaceSoft: '#36322e', surfaceCode: '#14120f', editor: '#14120f', fg: '#e4dcc0', fgOnSolid: '#201e1b', accent: '#fabd2f' },
   },
 ];
 

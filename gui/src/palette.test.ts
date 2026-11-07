@@ -31,7 +31,7 @@ describe('palette 配色主题', () => {
     expect(root.style.getPropertyValue('--accent')).toBe('#2b6be0');
     applyTheme('dark');
     expect(currentPalette().id).toBe('dark-nord');
-    expect(root.style.getPropertyValue('--surface')).toBe('#2e3440');
+    expect(root.style.getPropertyValue('--surface')).toBe('#181d27');
     setPalettePref('dark', 'dark-default');
     expect(root.style.getPropertyValue('--surface')).toBe('');
     expect(root.dataset.palette).toBe('dark-default');
