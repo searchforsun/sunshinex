@@ -3574,12 +3574,13 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 操作行统一(2026-11-07 用户裁定「气泡与正文下的复制行都 hover 时显示;图标加大+提亮(暗更白/亮
    更黑);时间/步数/tokens 不调」):主对话/辅助会话/子智能体转录同组件同类名,一处收口。
    ①正文尾操作钮随条目 hover/聚焦浮现(占位保留,浮现不推版面;统计行原本即 hover 浮现)
-   ②图标 10/12→14px,静置色 tertiary(50%)→secondary(70%),hover 全前景色 */
-.run-footer .sx-tip { color: var(--fg-secondary); opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+   ②图标 10→12px(14 过大回调),静置色 tertiary(50%)→前景 85%(二轮再提亮),hover 全前景色 */
+.run-footer .sx-tip { color: color-mix(in srgb, var(--fg) 85%, transparent); opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
 .entry:hover .run-footer .sx-tip, .entry:focus-within .run-footer .sx-tip { opacity: 1; }
 .run-footer .sx-tip:hover { color: var(--fg); }
-.entry-user .user-action { color: var(--fg-secondary); }
+.entry-user .user-action { color: color-mix(in srgb, var(--fg) 85%, transparent); }
 .entry-user .user-action:hover { color: var(--fg); }
-.child-copy { color: var(--fg-secondary); }
+.child-copy { color: color-mix(in srgb, var(--fg) 85%, transparent); }
 .run-footer .sx-tip { padding: 0; } /* UA 按钮内距(左右 ~6px)把 22px 钮内容区压到 10px,flex 收缩图标——实测 14px 被压回 10 的根因 */
-.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg { width: 14px; height: 14px; flex: none; }
+.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg { width: 12px; height: 12px; flex: none; }
+.run-footer { margin-top: 14px; } /* 2026-11-07 用户裁定续:正文与操作行间距再拉开(10→14) */
