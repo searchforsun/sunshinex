@@ -46,11 +46,26 @@ fs.cpSync(ptyRealDir, destDir, {
   },
 });
 
-// 装配完整性探针：当前平台 prebuild 的 pty.node 必须在场——缺即红（宁可打包期红不静默坏包）
-const nativeProbe = path.join(destDir, 'prebuilds', `${process.platform}-${process.arch}`, 'pty.node');
-if (!fs.existsSync(nativeProbe)) {
+// 装配完整性探针：当前平台 prebuild 目录必须含原生 .node——缺即红（宁可打包期红不静默坏包）。
+// 1.1.0 布局=win32-x64/pty.node 平铺;1.2.0-beta 起平台目录下为 conpty/ 子目录+平铺 .node 混合
+// （pty.node 在 win32 不再平铺,运行加载走 conpty/ 族）——探针放宽为「目录递归含任一 .node」,
+// 缺目录或全空仍红。运行面正确性由 shell-dist-smoke（装→启→pty 就绪）兜底。
+const platDir = path.join(destDir, 'prebuilds', `${process.platform}-${process.arch}`);
+const hasNative = (() => {
+  if (!fs.existsSync(platDir)) return false;
+  const stack = [platDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (f.isFile() && f.name.endsWith('.node')) return true;
+      if (f.isDirectory()) stack.push(path.join(dir, f.name));
+    }
+  }
+  return false;
+})();
+if (!hasNative) {
   console.error(
-    `[prepare-pty] ${path.relative(repoRoot, nativeProbe)} 不在场——node-pty 装配不完整（实目录 ${path.relative(repoRoot, ptyRealDir)}），exit 1`,
+    `[prepare-pty] ${path.relative(repoRoot, platDir)} 下无原生 .node——node-pty 装配不完整（实目录 ${path.relative(repoRoot, ptyRealDir)}），exit 1`,
   );
   process.exit(1);
 }
