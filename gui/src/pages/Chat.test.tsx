@@ -1235,7 +1235,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(renderMock.mock.calls.length).toBe(calls); // 闭合不重渲
   });
 
-  it('mermaid 流式 live 试渲失败:半截语法静默回落软源码(零错误面/无 SVG);闭合后正式渲仍败才落错误态', async () => {
+  it('mermaid 流式 live 试渲失败:半截语法落中性占位(源码零外露/零错误面/无 SVG);闭合后正式渲仍败才落错误态', async () => {
     const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
     const original = renderMock.getMockImplementation();
     renderMock.mockImplementation(() => Promise.reject(new Error('Parse error on line 2')));
@@ -1245,15 +1245,42 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       fire({ type: 'model-start', ts: Date.now() });
       const base = renderMock.mock.calls.length;
       fire({ type: 'token', text: ['图：', '', '```mermaid', 'stateDiagram-v2', '[*] --> pen'].join('\n'), ts: Date.now() });
-      await waitFor(() => expect(renderMock.mock.calls.length).toBeGreaterThanOrEqual(base + 2), { timeout: 5_000 }); // 全文+退末行两候选均试过
+      await waitFor(() => expect(renderMock.mock.calls.length).toBeGreaterThanOrEqual(base + 2), { timeout: 5_000 }); // 全文+逐行回退候选均试过
       await flushed();
       const draft = document.querySelector('.entry-assistant .mermaid-draft');
       expect(draft).not.toBeNull();
-      expect(draft!.textContent).toContain('stateDiagram-v2');
+      expect(draft!.querySelector('.mermaid-pending-spin')).not.toBeNull(); // 转圈占位(2026-11-07 撤软源码,无文案)
+      expect(draft!.textContent).not.toContain('stateDiagram-v2'); // 源码不外露
       expect(document.querySelector('.entry-assistant .mermaid-error')).toBeNull();
       expect(document.querySelector('.entry-assistant .mermaid-svg')).toBeNull();
       fire({ type: 'token', text: '\n```\n\n后文', ts: Date.now() });
       expect(await screen.findByTestId('mermaid-error', {}, { timeout: 5_000 })).toBeTruthy();
+    } finally {
+      renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
+    }
+  });
+
+  it('mermaid 块作用域语法(erDiagram)解析荒漠期:候选逐行回退到最近可解析边界成图,图按块生长(2026-11-07 用户报障「输出时露源码」)', async () => {
+    const renderMock = (await import('mermaid')).default.render as ReturnType<typeof vi.fn>;
+    const original = renderMock.getMockImplementation();
+    // 模拟 mermaid 语法块作用域:实体块 `{` 未闭合期间任何前缀解析失败,闭合即成功
+    renderMock.mockImplementation((_id: string, src: string) =>
+      src.includes('{') && !src.includes('}') ? Promise.reject(new Error('Parse error')) : Promise.resolve({ svg: '<svg/>' }),
+    );
+    try {
+      mountChat([]);
+      await flushed();
+      fire({ type: 'model-start', ts: Date.now() });
+      const boundary = 'erDiagram\n    ORDER ||--o{ ORDER_ITEM : "包含"'; // 块前边界(可解析)
+      const desert = boundary + '\n    ORDER {\n        bigint id PK'; // 荒漠(块打开)
+      fire({ type: 'token', text: ['图：', '', '```mermaid', desert].join('\n'), ts: Date.now() });
+      // 全文在荒漠内失败→回退候选命中块前边界并成图(图随块边界生长,不再露源码)
+      await waitFor(() => expect(renderMock.mock.calls.some((c) => c[1] === boundary)).toBeTruthy(), { timeout: 5_000 });
+      await waitFor(() => expect(document.querySelector('.entry-assistant [data-testid="mermaid-svg"]')).not.toBeNull(), { timeout: 5_000 });
+      expect(document.querySelector('.entry-assistant .mermaid-draft')).toBeNull();
+      // 块闭合:下一窗全文成功,生长为整图
+      fire({ type: 'token', text: '\n    }', ts: Date.now() });
+      await waitFor(() => expect(renderMock.mock.calls.at(-1)?.[1]).toBe(desert + '\n    }'), { timeout: 5_000 });
     } finally {
       renderMock.mockImplementation(original ?? (() => Promise.resolve({ svg: '<svg/>' })));
     }

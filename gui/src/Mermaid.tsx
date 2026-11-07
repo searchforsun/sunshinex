@@ -72,6 +72,11 @@ const cacheKey = (theme: string, chart: string): string => `${theme}\u0000${char
 const RENDER_TIMEOUT_MS = 5_000;
 /** 流式 live 试渲节流间隔:半截图随流成形的最大延迟上界(首帧不受限) */
 const LIVE_RENDER_INTERVAL_MS = 600;
+/** live 候选逐行回退上限(2026-11-07 用户报障「erDiagram 输出时露源码」):块作用域语法(erDiagram/
+ *  classDiagram/stateDiagram 的 `{...}` 属性块、mindmap 缩进块)在块打开期间任何前缀都解析失败,
+ *  只退一行=荒漠期图不生长。逐行回退到最近可解析边界(通常即上个块闭合点),图按「整块」生长,
+ *  图型零清单;单窗至多 24 次失败试渲,失败=语法早退(毫秒级),节流兜 CPU */
+const LIVE_RETREAT_MAX_LINES = 24;
 
 export function mermaidCacheClear(): void {
   svgCache.clear();
@@ -93,7 +98,9 @@ function liveFrameFor(chart: string): string | null {
   let best: string | null = null;
   let bestLen = -1;
   for (const [src, svg] of liveFrames) {
-    if (src.length > bestLen && src.length * 2 >= chart.length && chart.startsWith(src)) {
+    // 前缀命中即取最长(2026-11-07 撤半长条件):占位帧只与「露源码/中性占位」二选一,旧帧再陈旧也优;
+    // 逐行回退后成功帧密集,陈旧窗本就大幅收窄
+    if (src.length > bestLen && chart.startsWith(src)) {
       best = svg;
       bestLen = src.length;
     }
@@ -244,8 +251,12 @@ export function Mermaid({
       if (mod === undefined || !st.active) return;
       const mermaid = mod.default;
       mermaid.initialize(mermaidInitConfig());
-      const nl = chartNow.lastIndexOf('\n');
-      const candidates = nl > 0 ? [chartNow, chartNow.slice(0, nl)] : [chartNow];
+      // 候选=全文 + 逐行回退(至多 LIVE_RETREAT_MAX_LINES):荒漠期(块作用域语法打开)一直退到最近
+      // 可解析边界——通常即上个块闭合点,图按块生长;命中已渲帧(liveDoneRef)即止(所显已是该帧,更短无益)
+      const rows = chartNow.split('\n');
+      const candidates: string[] = [chartNow];
+      const retreat = Math.min(LIVE_RETREAT_MAX_LINES, rows.length - 1);
+      for (let k = 1; k <= retreat; k += 1) candidates.push(rows.slice(0, rows.length - k).join('\n'));
       for (const src of candidates) {
         if (src === liveDoneRef.current) return;
         liveSeqRef.current += 1;
@@ -307,11 +318,16 @@ export function Mermaid({
     );
   }
   if (svg === null) {
-    // 流式草稿(live 未成/半截语法)/ 正式成图在途:软源码(无代码卡底)——成图即替换
+    // 流式草稿(live 未成/半截语法)/ 正式成图在途:中性占位(2026-11-07 用户裁定撤软源码——源码任何
+    // 窗口不再外露;成图即替换,失败态另有错误卡带源码供修复)
     return (
-      <pre className="mermaid-pending mermaid-draft" data-testid="mermaid-pending" aria-busy="true">
-        {chart}
-      </pre>
+      <div className="mermaid-pending mermaid-draft" data-testid="mermaid-pending" aria-busy="true">
+        {/* SVG 圆环(2026-11-07 实测:border 环在界面放缩栅格化下 24px 圆角方走样,SVG 路径不受累) */}
+        <svg className="mermaid-pending-spin" viewBox="0 0 24 24" aria-hidden="true">
+          <circle className="mermaid-pending-spin-track" cx="12" cy="12" r="10" />
+          <circle className="mermaid-pending-spin-arc" cx="12" cy="12" r="10" />
+        </svg>
+      </div>
     );
   }
   return <div className="mermaid-svg" data-testid="mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
