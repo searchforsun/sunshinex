@@ -93,6 +93,15 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
   return s;
 }
 
+/** 在途轮 run 行 key(末个 run 条目且 streaming;无=''):自尾向前扫到首个 run 即止 */
+export function liveRunKeyOf(entries: readonly ChatEntry[]): string {
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const e = entries[i]!;
+    if (e.kind === 'run') return e.streaming === true ? e.key : '';
+  }
+  return '';
+}
+
 interface LiveKeep {
   /** 最后一条工具/思考行 key */
   readonly work?: string;
@@ -176,7 +185,10 @@ const toggleRun = useCallback((key: string): void => {
     return next;
   });
 }, []);
-const hiddenKeys = useMemo(() => collapsedHiddenKeys(chat.entries, collapsedRuns), [chat.structureVersion, chat.seedGen, collapsedRuns]);
+// liveRun 入依赖:封段只翻 run 的 streaming 位(条目数不变,structureVersion 不动),运行中已手动折叠的轮
+// 在自动折叠时又已在集合内(no-op)——不入依赖则封段后仍按在途口径留末条工具/思考行
+const liveRun = liveRunKeyOf(chat.entries);
+const hiddenKeys = useMemo(() => collapsedHiddenKeys(chat.entries, collapsedRuns), [chat.structureVersion, chat.seedGen, collapsedRuns, liveRun]);
 
 /** G14.48 展开/折叠不闪动:贴地(阅读位在底)→ 钉底,内容整体上移;未贴地 → 锚定被点行,
  *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;

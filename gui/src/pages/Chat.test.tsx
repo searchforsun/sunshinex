@@ -570,6 +570,25 @@ describe('run 状态行(G11 §1)', () => {
     expect(document.querySelectorAll('.seg-collapse:not(.open)').length).toBe(0);
   });
 
+  it('运行中折叠后封段:回到常规折叠——末条工具也收起,只留终答(2026-11-07 用户报障「完成后没自动折叠」)', async () => {
+    mountChat([]);
+    await flushed();
+    const t0 = Date.now();
+    fire({ type: 'model-start', ts: t0 });
+    fire({ type: 'tool-call', text: 'read', ts: t0 + 1, payload: { callId: 'c1', input: { path: 'a.ts' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: t0 + 2, payload: { callId: 'c1' } });
+    fire({ type: 'tool-call', text: 'write', ts: t0 + 3, payload: { callId: 'c2', input: { path: 'b.ts' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: t0 + 4, payload: { callId: 'c2' } });
+    fire({ type: 'token', text: '全部完成', ts: t0 + 5 });
+    act(() => document.querySelector<HTMLElement>('.entry-run.live')!.click());
+    expect([...document.querySelectorAll('.seg-collapse.open')].map((n) => n.textContent ?? '').join('|')).toContain('b.ts'); // 在途:末条留外
+    fire({ type: 'done', text: '全部完成', ts: t0 + 6 });
+    expect(document.querySelector('.entry-run.sealed')).not.toBeNull();
+    expect(document.querySelectorAll('.seg-collapse.open').length).toBe(0); // 封段:无留外段
+    expect([...document.querySelectorAll('.seg-collapse:not(.open)')].map((n) => n.textContent ?? '').join('|')).toContain('b.ts');
+    expect(document.body.textContent).toContain('全部完成'); // 终答可见
+  });
+
   it('live 行只示时长(G14.11:tokens 迁工具行尾)', async () => {
     mountChat([]);
     await flushed();
