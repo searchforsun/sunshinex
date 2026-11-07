@@ -6,6 +6,7 @@ import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { CommandPalette } from '../../CommandPalette';
 import type { CmdItem } from '../../CommandPalette';
 import { pathBasename } from '../../ui-util';
+import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
 import { FilePalette, RefPalette, fileHit, rankFileHits, refContentRegistry, renderMentionSpans, slashTokenAt, splitMentionTokens } from './mention';
@@ -235,9 +236,10 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
     const zone = zoneRef.current;
     const wrap = cardRef.current;
     if (zone === null || wrap === null) return;
+    // 位移按视觉 px 记账(与 gBCR 量测同空间),落样式归一本地 px(界面放缩下 /zoom,ui-zoom.ts 契约)
     const setShift = (px: number): void => {
       shiftRef.current = px;
-      wrap.style.transform = px > 0 ? `translateY(${px}px)` : '';
+      wrap.style.transform = px > 0 ? `translateY(${px / zoomScale()}px)` : '';
       // 下移后的卡压在后续条目上:抬层防被定位条目盖住(低于 dock 的 5)
       wrap.style.zIndex = px > 0 ? '4' : '';
     };
@@ -267,7 +269,7 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
       const shift = Math.max(shiftRef.current, need, 0);
       setShift(shift);
       if (shift > 0) return;
-      if (rect.bottom > window.innerHeight - PAD && scroller !== null) scroller.scrollTop += rect.bottom - (window.innerHeight - PAD);
+      if (rect.bottom > window.innerHeight - PAD && scroller !== null) scroller.scrollTop += (rect.bottom - (window.innerHeight - PAD)) / zoomScale();
     };
     fit();
     // 面板自身异步长高(+ 面板的命令/技能清单后到)不经本组件重渲染——盯面板尺寸重算
@@ -286,19 +288,27 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
     const main = wrap.closest('.sx-main');
     const composer = (main ?? document).querySelector('.chat-dock .chat-composer');
     if (composer === null) return;
+    // 量测为视觉 px、样式为本地 px:界面放缩(根 zoom≠1)下须 /zoom 归一——不除则卡宽×zoom
+    // 越出视口压到右栏下(2026-11-07 用户实测 110% 编辑卡超出视口),左缘补偿同理
     const apply = (): void => {
+      const z = zoomScale();
       const cr = composer.getBoundingClientRect();
-      wrap.style.width = `${cr.width}px`;
+      wrap.style.width = `${cr.width / z}px`;
       // 左缘自校正(2026-11-06):父盒(.entry-user,flex 尾对齐+内边距)的合位规则绕不准——
       // 置零 margin 量出自然左缘相对 composer 左缘的偏差,再反向补偿,对任意父盒规则成立
       wrap.style.marginLeft = '0px';
       const wr = wrap.getBoundingClientRect();
-      wrap.style.marginLeft = `${cr.left - wr.left}px`;
+      wrap.style.marginLeft = `${(cr.left - wr.left) / z}px`;
     };
     apply();
     const ro = new ResizeObserver(apply);
     ro.observe(composer);
-    return () => ro.disconnect();
+    // 放缩切换时 composer 本地尺寸可不变(RO 不触发),applyZoom 派发的 resize 兜底重算
+    window.addEventListener('resize', apply);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', apply);
+    };
   }, []);
 
   useLayoutEffect(() => {

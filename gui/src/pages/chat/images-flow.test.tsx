@@ -145,6 +145,27 @@ describe('Chat 图片流', () => {
     expect((conn.sessionSubmit as ReturnType<typeof vi.fn>).mock.calls[0]![2]).toBeUndefined();
   });
 
+  it('编辑卡宽度对齐 composer 随界面放缩归一(2026-11-07 用户实测 110% 编辑卡超出视口):视觉量测 /zoom 落本地 px', async () => {
+    document.documentElement.style.zoom = '1.25';
+    const rect = (left: number, width: number): DOMRect => ({ left, width, right: left + width, top: 0, bottom: 40, height: 40, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.classList.contains('chat-composer')) return rect(100, 500);
+      if (this.classList.contains('user-edit-composer')) return rect(60, 0);
+      return rect(0, 0);
+    });
+    try {
+      render(<Chat conn={connOf()} sessionId="se-zoom" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+      await flushed();
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+      const card = document.querySelector('.user-edit-composer') as HTMLElement;
+      expect(card.style.width).toBe('400px'); // 500 视觉 / 1.25
+      expect(card.style.marginLeft).toBe('32px'); // (100-60) 视觉 / 1.25
+    } finally {
+      spy.mockRestore();
+      document.documentElement.style.zoom = '';
+    }
+  });
+
   it('编辑卡:预填原条图片(可移除)+重发随行 images;纯图空文亦可发送', async () => {
     const conn = connOf();
     const r1 = render(<Chat conn={conn} sessionId="se1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);

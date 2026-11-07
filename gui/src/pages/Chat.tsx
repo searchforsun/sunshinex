@@ -58,6 +58,7 @@ import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { LiveChangesContext, useLiveGitChanges } from './chat/use-live-changes';
+import { zoomScale } from '../ui-zoom';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
 export type { ChatSink, ChatProps } from './chat/chat-types';
@@ -169,9 +170,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     const node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(todoFocus.key)}"]`);
     if (node === null) return;
     chatStickRef.current = false;
-    el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    // gBCR 视觉差 → scrollTop 本地空间(界面放缩 /zoom 归一,ui-zoom.ts 契约)
+    el.scrollTop += (node.getBoundingClientRect().top - el.getBoundingClientRect().top) / zoomScale();
     rAFConverge(el, () => node.getBoundingClientRect().top - el.getBoundingClientRect().top, (delta) => {
-      el.scrollTop += delta;
+      el.scrollTop += delta / zoomScale();
     }, 2);
   }, [todoFocus, chatScrollRef, chatStickRef]);
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
