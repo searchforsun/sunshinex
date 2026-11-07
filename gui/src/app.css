@@ -952,7 +952,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   white-space: pre-wrap; overflow-wrap: anywhere;
 }.entry-tool .tool-summary { display: flex; align-items: center; gap: 6px; }.entry-tool .tool-summary svg { color: var(--fg); } /* 2026-11-07 用户裁定:图标提亮(正文行继承 fg-secondary,svg 恒全前景) */.entry-tool .tool-verb { color: var(--fg-secondary); }.entry-tool .tool-result-inline { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); font-weight: 500; color: var(--fg); cursor: default; }.chat-more { margin-left: auto; }.chat-more-pop { top: 40px; right: 8px; }
 
-/* ===== G10-C3c mermaid 围栏渲染 ===== */.mermaid-svg { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); overflow-x: auto; text-align: center; }.mermaid-svg svg { display: inline-block; margin: 0 auto; } /* G14.106 默认居中 */.mermaid-svg svg { max-width: 100%; }/* 流式草稿:软源码(无代码卡底/无头栏),闭合后换成 SVG */.mermaid-pending.mermaid-draft { margin: 4px 0; padding: 0; background: transparent; border: none; border-radius: 0; font: calc(12px * var(--fz))/1.6 var(--font-mono); color: var(--fg-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }.mermaid-fallback { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border: none; border-radius: var(--radius-md); font: calc(12px * var(--fz))/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* ===== G10-C3c mermaid 围栏渲染 ===== */.mermaid-svg { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); overflow-x: auto; text-align: center; }.mermaid-svg svg { display: inline-block; margin: 0 auto; } /* G14.106 默认居中 */.mermaid-svg svg { max-width: 100%; }/* 流式草稿:软源码(无代码卡底/无头栏),闭合后换成 SVG */.mermaid-pending.mermaid-draft { margin: 4px 0; padding: 28px 10px; background: var(--surface-code); border: 1px dashed var(--border); border-radius: var(--radius-md); text-align: center; } /* 流式草稿/成图在途:中性占位(2026-11-07 用户裁定撤软源码)——容器与成图卡同形,替换零跳变 */.mermaid-pending-label { color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); animation: sx-mermaid-pending 1.6s ease-in-out infinite; }@keyframes sx-mermaid-pending { 50% { opacity: 0.45; } }.mermaid-fallback { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border: none; border-radius: var(--radius-md); font: calc(12px * var(--fz))/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* G14.94 渲染失败:红色错误消息 + 源代码同框(修复有据) */.mermaid-error { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); }.mermaid-error-msg { margin-bottom: 8px; padding-bottom: 8px; color: var(--err); font-size: calc(12px * var(--fz)); overflow-wrap: anywhere; } /* G14.106 只红文字,框默认 */.mermaid-error .mermaid-fallback { margin: 0; padding: 0; background: transparent; border: none; border-radius: 0; }.mermaid-error .mermaid-fallback { margin: 0; padding: 0; background: transparent; }
 
 /* ===== G10-C4 composer pills 与排队 chips ===== */.composer-pills { display: flex; align-items: center; gap: 4px; position: relative; }.composer-pill {
@@ -3656,10 +3656,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    行距/内距只跟代码字号动态变化,内距不是固定的」)===== */
 /* 字号=--f-code(代码字号设置);行距=无单位比例(随字号自动缩放;.entry pre 原 fallback normal
    ≈1.15 是发紧根因);内距=em(随字号等比,替代固定 --f-code-pad);行内码随正文(界面字号) */
-.entry pre { font: var(--f-code, 12px)/normal var(--font-mono); padding: 0.6em 1em; line-height: normal; } /* 2026-11-07 用户裁定「保持 md 源码中的行距」:字体原生单倍(不加任何倍数) */
+.entry pre { font: var(--f-code, 12px)/1.5 var(--font-mono); padding: 0.6em 1em; } /* 2026-11-07 用户裁定「正文代码块太窄,和原始 md 对不上」:对齐源码编辑器行距比 1.5(normal≈1.2 过紧/1.7 过松) */
 .code-block pre { padding: 0.6em 1em; }
-.code-block pre code { font: var(--f-code, 12px)/normal var(--font-mono); line-height: normal; } /* 同上:原生单倍 */
-.files-md pre { font: var(--f-code, 12px)/normal var(--font-mono); padding: 0.6em 1em; line-height: normal; }
+.code-block pre code { font: var(--f-code, 12px)/1.5 var(--font-mono); }
+.files-md pre { font: var(--f-code, 12px)/1.5 var(--font-mono); padding: 0.6em 1em; }
 .files-md :not(pre) > code { font-size: 0.9em; } /* 与 .entry 行内码同口径(原绑代码字号) */
 .mermaid-fallback { padding: 0.6em 1em; }
 
