@@ -406,6 +406,23 @@ export class SessionController {
     const m = this.state.metrics;
     this.taskStats = { startedAt: Date.now(), startSteps: m.sessionSteps, startTokens: m.sessionTotalTokens - m.sessionChildTokens, startChildTokens: m.sessionChildTokens };
     this.taskStatsSuppressed = false;
+    // 任务流收口锚点（D65 TUI 同族根修，2026-11-07）：任务起点建、closeTask/error 出口落定——
+    // /plan 挂卡重提等旧 run 收口由句柄承担（有界 2s），替代固定 30ms 睡眠窗的补丁式等待
+    let resolve: () => void = () => undefined;
+    const promise = new Promise<void>((r) => { resolve = r; });
+    this.flowSettle = { promise, resolve };
+  }
+
+  private flowSettle?: { promise: Promise<void>; resolve: () => void };
+
+  /** 在跑任务流有界收口等待（teardown settle 同款 race 形）：done 先落定即清残留 timer；拒绝随
+   *  runTaskFlow catch 倒 error 态已可见化——等待语义是「等其落定」不随其失败 */
+  private async settleFlow(boundedMs = 2_000): Promise<void> {
+    const f = this.flowSettle;
+    if (f === undefined) return;
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([f.promise, new Promise<void>((r) => { timer = setTimeout(r, boundedMs); })]);
+    clearTimeout(timer);
   }
 
   /** AskQuestion 挂起态：问询管线挂起点与裁决回填口（AskQuestion 线 D5）；公开 = 拆分件 approval 消费 */
@@ -779,6 +796,7 @@ export class SessionController {
 
   closeTask(): void { // 公开 = 拆分件 commands-plan 消费（D52）
     if (this.state.status !== 'running' && this.state.status !== 'awaiting-plan') return;
+    this.flowSettle?.resolve();
     this.flushPendingCalls();
     this.taskAbort = undefined;
     // 任务收尾统计行（规格 2026-09-26-stats-enhancement §3.2）：done 正常完成路径产出（基线差值，含子智能体合并口径）；中断经抑制位跳过；error 态不走 closeTask
@@ -877,6 +895,7 @@ export class SessionController {
       this.closeTask();
     } catch (e) {
       this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
+      this.flowSettle?.resolve();
       this.state = { ...this.state, status: 'error', pauseConfirm: undefined }; // 同 closeTask 状态出口清卡
       this.notify();
       return; // error 态保留计时现场（sticky），下次提交进 running 时重置
@@ -930,6 +949,7 @@ export class SessionController {
       this.closeTask();
     } catch (e) {
       this.pushMsg('system', t(`Error: ${e instanceof Error ? e.message : String(e)}`, `发生错误：${e instanceof Error ? e.message : String(e)}`), { level: 'error' });
+      this.flowSettle?.resolve();
       this.state = { ...this.state, status: 'error', pauseConfirm: undefined }; // 同 closeTask 状态出口清卡
       this.notify();
       return;
@@ -1293,7 +1313,7 @@ export class SessionController {
       // 挂卡期:新目标=放弃当前卡,中断后按新目标重新规划
       if (this.pendingPlan !== undefined) {
         this.interrupt();
-        await new Promise((r) => setTimeout(r, 30)); // executor 恢复+run interrupted 收尾窗
+        await this.settleFlow(); // 旧 run 收口（有界）——句柄承担等待,替代固定 30ms 睡眠窗
       }
       if (this.state.status !== 'idle') {
         // 运行中(普通任务/调研轮):不中断在途工作,目标入队——收口经 armed 拦截转规划

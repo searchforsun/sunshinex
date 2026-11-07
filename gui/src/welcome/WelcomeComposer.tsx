@@ -5,7 +5,7 @@ import { pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
 import { RefPalette } from '../pages/chat/mention';
-import { CommandPalette, filterCommands } from '../CommandPalette';
+import { CommandPalette } from '../CommandPalette';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerCard } from '../composer/ComposerCard';
@@ -234,7 +234,7 @@ export function WelcomeComposer({
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
-  const { welcomeCmdData, welcomeSkills, welcomeCmdActive, setWelcomeCmdActive, welcomeSlashDismissed, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems } = useWelcomeSlash(conn, picked, goal, goalRef);
+  const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
   const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, { setPicked, setProjOpen, setHint, setDirOpen });
   return (
@@ -504,19 +504,7 @@ export function WelcomeComposer({
             // 技能池(2026-11-05 用户二次裁定);↑↓ 选择、Enter/Tab 补全 `/cmd `(执行发生在会话
             // 建立后:pendingGoal 经 submitText 命令门控),Esc 本次收起;无匹配=面板不开
             const slashTok = slashTokenAt(goal, caret);
-            const slashItems =
-              slashTok !== null && welcomeCmdData !== null && `/${slashTok.query}` !== (welcomeSlashDismissed ?? '\u0000')
-                ? [
-                  ...(slashTok.atStart ? filterCommands(welcomeCmdData.commands, welcomeCmdData.descriptions, slashTok.query, welcomeCmdData.supported) : []),
-                  ...welcomeSkills
-                    .filter((s) => slashTok.query === '' || s.id.toLowerCase().startsWith(slashTok.query.toLowerCase()) || s.id.toLowerCase().includes(slashTok.query.toLowerCase()))
-                    .slice(0, 8)
-                    .map((s) => {
-                      const idx = s.id.toLowerCase().indexOf(slashTok.query.toLowerCase());
-                      return { cmd: `/${s.id}`, name: s.id, desc: s.desc, idx: idx < 0 ? s.id.length : idx, ok: true, kind: 'skill' as const };
-                    }),
-                ]
-                : [];
+            const slashItems = slashItemsAt(goal, caret); // 与渲染期 welcomeSlashItems 同派生单点
             if (slashTok !== null && slashItems.length > 0) {
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
