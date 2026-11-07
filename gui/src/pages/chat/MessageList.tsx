@@ -46,7 +46,7 @@ export interface MessageListProps {
   readonly onOpenTask?: (ref: string) => void;
   readonly taskNameOf: (id: string) => string;
   /** 后台任务 id → 子智能体(办公模式等待行链接转录页;use-chat-derived taskAgentResolverOf) */
-  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string } | undefined;
+  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
   readonly teamNameOf?: (ref: string) => string;
   readonly teams?: readonly { teamId: string; name: string }[];
   readonly collapsedRuns: ReadonlySet<string>;
@@ -94,7 +94,7 @@ interface DayGroupProps {
   readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
   readonly taskNameOf: (id: string) => string;
   /** 后台任务 id → 子智能体(办公模式等待行链接转录页;use-chat-derived taskAgentResolverOf) */
-  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string } | undefined;
+  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
   readonly teamNameOf?: (ref: string) => string;
   readonly teams?: readonly { teamId: string; name: string }[];
   readonly toggleRun: (key: string) => void;
@@ -212,6 +212,8 @@ const DayGroupBlock = memo(
         || entry.kind === 'thinking'
         || ((entry.kind === 'assistant' || entry.kind === 'user' || entry.kind === 'notice') && hiddenKeys.has(entry.key))
       ) {
+        // 折叠态相异即分段:运行中折叠留出的末条工具/思考行与其前的折叠区不同段(段开合按首条判)
+        if (seg.length > 0 && hiddenKeys.has(seg[0]!.key) !== hiddenKeys.has(entry.key)) flushSeg();
         seg.push(entry);
         continue;
       }
@@ -222,7 +224,7 @@ const DayGroupBlock = memo(
             key={entry.key}
             entry={entry}
             collapsed={collapsedRuns.has(entry.key)}
-            onToggle={entry.streaming === true ? undefined : toggleRun}
+            onToggle={toggleRun} // 运行中也可折叠(2026-11-07 用户裁定)
           />,
         );
       } else if (entry.kind === 'user') {

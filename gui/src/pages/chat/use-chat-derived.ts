@@ -31,7 +31,8 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
   }
   for (const e of entries) {
     if (e.kind !== 'tool' || e.name !== 'exec') continue;
-    const command = typeof e.input?.command === 'string' ? e.input.command.trim().replace(/\s+/g, ' ') : '';
+    // 任务名优先 purpose(2026-11-07 用户裁定「等待行显任务名称而非命令原文」),无则完整命令
+    const command = execPurposeOf(e) ?? (typeof e.input?.command === 'string' ? e.input.command.trim().replace(/\s+/g, ' ') : '');
     if (command === '') continue;
     const receipt = e.result?.text ?? e.result?.full ?? '';
     const started = /task (\S+) started/.exec(receipt);
@@ -78,8 +79,27 @@ export function taskNameResolverOf(entries: readonly ChatEntry[], board: TaskBoa
 
 /** 后台任务 id → 子智能体(2026-11-07 办公模式等待行链接转录页):后台 spawn 回执 `task <id> started`
  *  → {名=label ?? agent_id, prompt};id 探测口径同 taskNameResolverOf(剥台账时间戳尾/task- 前缀) */
-export function taskAgentResolverOf(entries: readonly ChatEntry[]): (id: string) => { name: string; prompt?: string } | undefined {
-  const m = new Map<string, { name: string; prompt?: string }>();
+/** exec 条目的 purpose(任务名;空白折叠,null/空 → undefined) */
+function execPurposeOf(e: ChatEntry): string | undefined {
+  const v = e.input?.purpose;
+  if (typeof v !== 'string') return undefined;
+  const flat = v.trim().replace(/\s+/g, ' ');
+  return flat === '' ? undefined : flat;
+}
+
+/** 等待行可显名的后台任务:子智能体(后台 spawn,可链接转录页)与具名 exec(purpose,纯文本——2026-11-07
+ *  后台命令必须命名,办公模式等待行因此可显任务名;无名 exec 仍不显,以免露命令原文) */
+export type WaitTaskRef = { name: string; prompt?: string; kind?: 'exec' };
+
+export function taskAgentResolverOf(entries: readonly ChatEntry[]): (id: string) => WaitTaskRef | undefined {
+  const m = new Map<string, WaitTaskRef>();
+  for (const e of entries) {
+    if (e.kind !== 'tool' || e.name !== 'exec') continue;
+    const name = execPurposeOf(e);
+    const receipt = e.result?.text ?? e.result?.full ?? '';
+    const started = /task (\S+) started/.exec(receipt) ?? /command moved to background after timeout: task (\S+)/.exec(receipt);
+    if (name !== undefined && started !== null) m.set(started[1]!, { name, kind: 'exec' });
+  }
   for (const e of entries) {
     if (e.kind !== 'tool' || e.name !== 'spawn') continue;
     const input = e.input ?? {};
@@ -137,7 +157,7 @@ export { isComputerUseControlTool };
 
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;
-  taskAgentOf: (id: string) => { name: string; prompt?: string } | undefined;
+  taskAgentOf: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
   teamNameOf: (ref: string) => string;
   todoBatches: TodoBatch[];
   todoActive: number;

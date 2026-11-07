@@ -699,7 +699,7 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     const registry = new ToolRegistry();
     const tasks = new TaskRegistry(path.join(root, 'data'));
     for (const t of builtinTools(safety, root, { tasks })) registry.register(t);
-    const input = { command: 'echo step-1 && echo step-2', background: true };
+    const input = { purpose: 'two steps', command: 'echo step-1 && echo step-2', background: true };
     const p = registry.execute('exec', input, safety);
     // 等登记：execute 为异步提交（安全链审批→executor.submit），轮询账本出现记录后再断言字段。
     // 上限 10s 为安全网（win32 Git Bash 冷启动首字 ~1–1.4s，release 门禁全量负载下更慢；
@@ -708,6 +708,7 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     for (let i = 0; i < 200 && tasks.list().length === 0; i++) await new Promise((r2) => setTimeout(r2, 50));
     const task = tasks.list().at(-1)!;
     assert.equal(task.kind, 'exec');
+    assert.equal(task.title, 'two steps', 'purpose 落任务名(后台任务页签/等待行显它)');
     assert.ok(task.outputFilePath.includes(path.join('data', 'tasks')), '日志落 <dataDir>/tasks/');
     for (let i = 0; i < 200 && tasks.get(task.id)?.status === 'running'; i++) await new Promise((r2) => setTimeout(r2, 50));
     const obs = await p.then((r) => (r.ok ? r.value.stdout : `EXEC_FAILED: ${r.error.message}`));
@@ -717,6 +718,27 @@ test('exec background:true 提交即返回，观察行含任务 ID 与输出路�
     assert.ok(body.includes('step-1') && body.includes('step-2'), '输出流式落日志');
     assert.ok(body.endsWith('[exit 0]\n'), '终态行落文件尾');
     assert.equal(tasks.get(task.id)?.status, 'done');
+  } finally {
+    await rmExecCwdTree(root);
+  }
+});
+
+test('exec background:true 缺 purpose(null/空白)即拒 INVALID_ARG,不登记任务(2026-11-07 用户裁定后台命令必须命名)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-bgexec-np-'));
+  try {
+    const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
+    const registry = new ToolRegistry();
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    for (const t of builtinTools(safety, root, { tasks })) registry.register(t);
+    for (const purpose of [null, '   ']) {
+      const r = await registry.execute('exec', { purpose, command: 'echo x', background: true }, safety);
+      assert.equal(r.ok, false);
+      if (!r.ok) {
+        assert.equal(r.error.code, 'INVALID_ARG');
+        assert.match(r.error.message, /purpose/);
+      }
+    }
+    assert.equal(tasks.list().length, 0, '未登记任务');
   } finally {
     await rmExecCwdTree(root);
   }

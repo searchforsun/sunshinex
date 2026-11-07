@@ -299,7 +299,8 @@ export function BgTasksTab({
                     <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
                     {durOf(r)}
                   </span>
-                  <span className="todo-card-goal bg-cmd" data-tip={r.label}>{r.label}</span>
+                  {/* 任务名优先(exec 的 purpose,2026-11-07 用户裁定「显示任务名称而不是命令原文」);命令原文留展开明细 */}
+                  <span className={`todo-card-goal${r.title !== undefined ? '' : ' bg-cmd'}`} data-tip={r.title ?? r.label}>{r.title ?? r.label}</span>
                   {/* 停止:空心方块图标与智能体团队同形;running 行 hover 显现;
                       二段确认——首击武装(红边框),3s 内再击执行,超时解除 */}
                   {r.status === 'running' && typeof conn.taskStop === 'function' && (

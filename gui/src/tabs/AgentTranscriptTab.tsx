@@ -200,6 +200,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
       || e.kind === 'thinking'
       || ((e.kind === 'assistant' || e.kind === 'user' || e.kind === 'notice') && hiddenKeys.has(e.key))
     ) {
+      if (seg.length > 0 && hiddenKeys.has(seg[0]!.key) !== hiddenKeys.has(e.key)) flushSeg(); // 运行中折叠留出的末条另起段
       seg.push(e);
       continue;
     }
@@ -227,7 +228,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     // 自带 border-bottom 分割线);sealed 行=轮折叠开关(collapsed/onToggle 主对话同款)
     if (e.kind === 'run') {
       nodes.push(
-        <RunEntryView key={e.key} entry={e} collapsed={collapsedRuns.has(e.key)} onToggle={e.streaming === true ? undefined : toggleRun} />,
+        <RunEntryView key={e.key} entry={e} collapsed={collapsedRuns.has(e.key)} onToggle={toggleRun} />,
       );
       continue;
     }

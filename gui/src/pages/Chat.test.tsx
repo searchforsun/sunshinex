@@ -544,6 +544,32 @@ describe('run 状态行(G11 §1)', () => {
     expect(document.querySelector('.entry-run.sealed')?.textContent).toContain('Worked for 34s');
   });
 
+  it('运行中可折叠(2026-11-07):点 Working 行收起先前工具,末条工具行与在途正文留在外面;再点展开', async () => {
+    mountChat([]);
+    await flushed();
+    const t0 = Date.now();
+    fire({ type: 'model-start', ts: t0 });
+    fire({ type: 'tool-call', text: 'read', ts: t0 + 1, payload: { callId: 'c1', input: { path: 'a.ts' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: t0 + 2, payload: { callId: 'c1' } });
+    fire({ type: 'tool-call', text: 'write', ts: t0 + 3, payload: { callId: 'c2', input: { path: 'b.ts' } } });
+    fire({ type: 'tool-result', text: 'ok', ts: t0 + 4, payload: { callId: 'c2' } });
+    fire({ type: 'token', text: '正在收尾', ts: t0 + 5 });
+    const liveRow = document.querySelector<HTMLElement>('.entry-run.live')!;
+    expect(liveRow.getAttribute('role')).toBe('button');
+    expect(liveRow.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelectorAll('.seg-collapse:not(.open)').length).toBe(0);
+    act(() => liveRow.click());
+    expect(document.querySelector('.entry-run.live')!.getAttribute('aria-expanded')).toBe('false');
+    const closed = [...document.querySelectorAll('.seg-collapse:not(.open)')];
+    const open = [...document.querySelectorAll('.seg-collapse.open')];
+    expect(closed.map((n) => n.textContent ?? '').join('|')).toContain('a.ts'); // 先前工具收起
+    expect(closed.map((n) => n.textContent ?? '').join('|')).not.toContain('b.ts');
+    expect(open.map((n) => n.textContent ?? '').join('|')).toContain('b.ts'); // 末条工具行留外
+    expect(document.body.textContent).toContain('正在收尾'); // 在途正文可见
+    act(() => document.querySelector<HTMLElement>('.entry-run.live')!.click());
+    expect(document.querySelectorAll('.seg-collapse:not(.open)').length).toBe(0);
+  });
+
   it('live 行只示时长(G14.11:tokens 迁工具行尾)', async () => {
     mountChat([]);
     await flushed();

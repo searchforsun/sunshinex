@@ -73,3 +73,37 @@ describe('collapsedHiddenKeys 折叠区间边界', () => {
     expect(hidden.has('a2')).toBe(false); // 末条终答保留
   });
 });
+
+describe('collapsedHiddenKeys 运行中折叠(2026-11-07 用户裁定)', () => {
+  const live = (key: string): ChatEntry => ({ ...e(key, 'run'), streaming: true } as ChatEntry);
+  const streamingText = (key: string): ChatEntry => ({ ...e(key, 'assistant'), streaming: true } as ChatEntry);
+
+  it('在途轮折叠:只留最后一条工具/思考行与最后一段正文(含流式终答),其余工具/思考/中间正文隐藏', () => {
+    const entries = [live('r1'), e('th1', 'thinking'), e('a1', 'assistant'), e('t1', 'tool'), e('t2', 'tool'), e('th2', 'thinking'), e('a2', 'assistant'), e('t3', 'tool'), streamingText('a3')];
+    const hidden = collapsedHiddenKeys(entries, new Set(['r1']));
+    expect([...hidden].sort()).toEqual(['a1', 'a2', 't1', 't2', 'th1', 'th2']);
+    expect(hidden.has('t3')).toBe(false); // 最后一条工具行
+    expect(hidden.has('a3')).toBe(false); // 最后一段正文(流式中的终答)
+  });
+
+  it('在途轮尚无正文:只留最后一条工具/思考行;思考行也可作末条;未折叠零隐藏', () => {
+    const entries = [live('r1'), e('t1', 'tool'), e('th1', 'thinking')];
+    expect([...collapsedHiddenKeys(entries, new Set(['r1']))]).toEqual(['t1']);
+    expect(collapsedHiddenKeys(entries, new Set()).size).toBe(0);
+  });
+
+  it('封段后回到常规折叠:工具/思考全收,只留终答', () => {
+    const entries = [e('r1', 'run'), e('a1', 'assistant'), e('t1', 'tool'), e('a2', 'assistant')];
+    expect([...collapsedHiddenKeys(entries, new Set(['r1']))].sort()).toEqual(['a1', 't1']);
+  });
+
+  it('轮内插入不截断在途轮的末条判定;斜杠命令行不算末条工具', () => {
+    const cmd = { ...e('cmd', 'tool'), name: '/compact' } as ChatEntry;
+    const entries = [live('r1'), e('t1', 'tool'), e('u-ins', 'user'), e('t2', 'tool'), cmd];
+    const hidden = collapsedHiddenKeys(entries, new Set(['r1']));
+    expect(hidden.has('t1')).toBe(true);
+    expect(hidden.has('t2')).toBe(false);
+    expect(hidden.has('u-ins')).toBe(false);
+    expect(hidden.has('cmd')).toBe(false);
+  });
+});

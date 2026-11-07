@@ -7,7 +7,7 @@ import { FileIcon } from '../../file-icon';
 import { ImageLightbox } from '../../ImageLightbox';
 import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import type { DiffResp } from '../../connection';
-import { mcpToolParts, MCP_TOOL_LABELS, zhToolName, toolTargetOf, RUNNING_LABELS, TASK_OP_TOOLS, TASK_OP_RUNNING, fileLabelOf, writeStatOf } from './tool-entry-data';
+import { mcpToolParts, MCP_TOOL_LABELS, zhToolName, toolTargetOf, toolPurposeOf, RUNNING_LABELS, TASK_OP_TOOLS, TASK_OP_RUNNING, fileLabelOf, writeStatOf } from './tool-entry-data';
 import { ReadImageBody } from './tool-entry-media';
 import { ToolEntryBody } from './tool-entry-body';
 import { isOfficeStandaloneTool, useUiMode } from '../../ui-mode';
@@ -102,7 +102,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 会话团队清单(get_agent_team_board 单队回落队名) */
   teams?: readonly { teamId: string; name: string }[];
   /** 后台任务 id → 子智能体(后台 spawn 回执映射;非子智能体任务=undefined)——办公模式等待行链接转录页 */
-  taskAgentOf?: (id: string) => { name: string; prompt?: string } | undefined;
+  taskAgentOf?: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** 办公模式(ui-mode.ts):行不可展开(read 行整行开文件=跳转保留);文件行去 +/- 统计;非跳转行只显
@@ -183,12 +183,12 @@ export const ToolEntryView = memo(function ToolEntryView({
         .filter((x): x is string => typeof x === 'string' && x !== '')
         .map((id) => ({ id, name: taskNameOf !== undefined ? taskNameOf(id) : id }))
     : [];
-  /** 办公模式 task_wait(2026-11-07 用户裁定):普通后台任务不显跳转,只显「等待了任务」;含子智能体则
-   *  「等待任务」后跟子智能体名链接,点开其转录页签 */
+  /** 办公模式 task_wait(2026-11-07 用户裁定):只显具名后台命令(exec purpose,链接开后台任务页签)与子智能体
+   *  (链接开转录页),均在「等待任务」后列出;命令原文任务不显——全为无名时只显「等待了任务」 */
   const officeAgentWaits = office && toolName === 'task_wait' && taskAgentOf !== undefined
     ? waitTasks.flatMap((w) => {
         const a = taskAgentOf(w.id);
-        return a !== undefined ? [a] : [];
+        return a !== undefined ? [{ ...a, id: w.id }] : [];
       })
     : [];
   /** get_agent_team_board 折叠行队名:回执 team=… 去重 → 队名解析;无 team 行且会话仅一队时回落该队 */
@@ -289,7 +289,19 @@ export const ToolEntryView = memo(function ToolEntryView({
     || (toolName === 'create_agent_team_task' && createTaskTitle !== '')
     || toolName === 'skill' || taskOpName !== undefined
   );
-  const verbSpan = executing ? (
+  /** 操作说明(模型自拟,对话语言):插件工具=整行标题替换工具名+参数;exec=描述头(编程模式附命令,
+   *  办公模式只显描述);无说明回落既有分型 */
+  const purpose = toolPurposeOf(toolName, input);
+  const purposeHead = purpose !== undefined ? (
+    executing ? (
+      <span className="tool-verb exec-running">
+        <span className="exec-running-text">{purpose}</span>
+      </span>
+    ) : (
+      <span className="tool-verb tool-purpose">{purpose}</span>
+    )
+  ) : null;
+  const verbSpan = purposeHead !== null ? purposeHead : executing ? (
     // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
     <span className="tool-verb exec-running">
       <span className="exec-running-text">{runningLabel}</span>
@@ -323,7 +335,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   );
   /** 办公模式非跳转行:动词头即全部(命令/目标原文不进折叠行) */
   const officeBare = office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) && officeAgentWaits.length === 0;
-  const collapsed = officeBare ? verbSpan : (
+  // 只显说明:插件工具恒是;exec 仅办公模式(编程模式=说明头+命令明细,沿用下方命令分支)
+  const purposeOnly = purpose !== undefined && (toolName !== 'exec' || office);
+  const collapsed = purposeOnly ? purposeHead : officeBare ? verbSpan : (
     <>
       {verbSpan}
       {path !== undefined && (isWrite || toolName === 'read') ? (
@@ -526,11 +540,28 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : (
           <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageTo}` : ''}</span>
         )
-      ) : !hideTargetWhileRunning && officeAgentWaits.length > 0 && onOpenAgent !== undefined ? (
+      ) : !hideTargetWhileRunning && officeAgentWaits.length > 0 ? (
         <span className="tool-link-list">
           {officeAgentWaits.map((a, i) => (
             <Fragment key={`${a.name}:${i}`}>
               {i > 0 ? <span className="tool-link-sep" aria-hidden="true">, </span> : null}
+              {/* 具名后台命令(exec purpose)=链接开后台任务页签定位(编程模式同款);子智能体=链接开转录页 */}
+              {a.kind === 'exec' && onOpenTask !== undefined ? (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  className="tool-file-base tool-agent-link tool-link-chip"
+                  data-tip={t('Locate in background tasks', '在后台任务中定位')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenTask(`bg:${a.id}`);
+                  }}
+                >
+                  {a.name}
+                </span>
+              ) : a.kind === 'exec' || onOpenAgent === undefined ? (
+                <span className="tool-file-base tool-cmd">{a.name}</span>
+              ) : (
               <span
                 role="button"
                 tabIndex={-1}
@@ -543,6 +574,7 @@ export const ToolEntryView = memo(function ToolEntryView({
               >
                 {a.name}
               </span>
+              )}
             </Fragment>
           ))}
         </span>

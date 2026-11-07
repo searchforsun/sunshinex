@@ -148,3 +148,11 @@ describe('gui 板投影（boardEventFrom + applyBoardEvent 同源直跑）', () 
     ).toEqual(rows);
   });
 });
+
+describe('bg-task 任务名(exec purpose,2026-11-07)', () => {
+  it('事件带 title 即落行;缺省不落(显示回落 label)', () => {
+    const rows = applyBgTaskEvent([], { type: 'bg-task', ts: 1, payload: { id: 'b', kind: 'exec', label: 'npm run dev', title: '启动开发服务器', status: 'running', startedAt: 1 } });
+    expect(rows[0]!.title).toBe('启动开发服务器');
+    expect(applyBgTaskEvent([], { type: 'bg-task', ts: 1, payload: { id: 'c', kind: 'exec', label: 'ls', status: 'running', startedAt: 1 } })[0]!.title).toBeUndefined();
+  });
+});

@@ -230,6 +230,7 @@ export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerRespons
     id: t2.id,
     kind: t2.kind,
     label: t2.label,
+    ...(t2.title !== undefined ? { title: t2.title } : {}),
     status: t2.status,
     startedAt: t2.startedAt,
     ...(t2.endedAt !== undefined ? { endedAt: t2.endedAt } : {}),

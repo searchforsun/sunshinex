@@ -8,6 +8,7 @@ import { LiveChangesContext } from './use-live-changes';
 import { applyUiMode } from '../../ui-mode';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
+import { taskNameResolverOf } from './use-chat-derived';
 
 /** 办公模式(2026-11-07 用户裁定):工具行数量与编程模式一致、聚合组照常可展开;单个工具行不可展开细节、
  *  非跳转行只显动词头,文件行去 +/-;等待后台任务行普通任务无跳转、含子智能体链接转录页(团队任务保留);
@@ -103,5 +104,45 @@ describe('办公模式', () => {
       </LiveChangesContext.Provider>,
     );
     expect(bar.container.querySelector('.run-changes')).toBeNull();
+  });
+});
+
+describe('具名后台命令(exec purpose,2026-11-07 用户裁定)', () => {
+  it('办公模式等待行:只列具名后台命令与子智能体,都可点(前者定位后台任务页签,后者开转录页);命令原文任务隐去;全无名只显「等待了任务」', () => {
+    act(() => applyUiMode('office'));
+    const ref = (id: string): { name: string; prompt?: string; kind?: 'exec' } | undefined =>
+      id === 'bg-dev' ? { name: '启动开发服务器', kind: 'exec' } : id === 'bg-agent' ? { name: 'Researcher', prompt: 'dig' } : undefined;
+    const tasks: string[] = [];
+    const agents: string[] = [];
+    const r = render(
+      <>
+        <ToolEntryView entry={tool('a', 'task_wait', { taskIds: ['bg-dev', 'bg-anon', 'bg-agent'] })} conn={conn} sessionId="s" onOpenTask={(id) => tasks.push(id)} onOpenAgent={(l) => agents.push(l)} taskNameOf={(id) => id} taskAgentOf={ref} />
+        <ToolEntryView entry={tool('c', 'task_wait', { taskIds: ['bg-anon'] })} conn={conn} sessionId="s" onOpenTask={(id) => tasks.push(id)} taskNameOf={(id) => id} taskAgentOf={ref} />
+      </>,
+    );
+    const rows = r.container.querySelectorAll('.entry-tool');
+    expect(rows[0]!.textContent).toBe('Wait for task启动开发服务器, Researcher'); // bg-anon(命令原文)隐去
+    const links = rows[0]!.querySelectorAll<HTMLElement>('.tool-agent-link');
+    expect(links.length).toBe(2);
+    fireEvent.click(links[0]!);
+    fireEvent.click(links[1]!);
+    expect(tasks).toEqual(['bg:bg-dev']);
+    expect(agents).toEqual(['Researcher']);
+    expect(rows[1]!.textContent).toBe('Waited for tasks');
+  });
+});
+
+describe('编程模式等待行显 exec 任务名(2026-11-07)', () => {
+  it('后台命令有描述即显描述(不显命令原文),点击定位后台任务页签', () => {
+    const entries = [
+      { key: 'k1', kind: 'tool', md: '', name: 'exec', input: { purpose: '启动开发服务器', command: 'npm run dev', background: true }, result: { ok: true, text: 'task dev-1 started (output: x)' } },
+    ] as unknown as ChatEntry[];
+    const tasks: string[] = [];
+    const r = render(<ToolEntryView entry={tool('w', 'task_wait', { taskIds: ['dev-1'] })} conn={conn} sessionId="s" onOpenTask={(id) => tasks.push(id)} taskNameOf={taskNameResolverOf(entries, undefined)} />);
+    const link = r.container.querySelector<HTMLElement>('.tool-agent-link')!;
+    expect(link.textContent).toBe('启动开发服务器');
+    expect(r.container.textContent).not.toContain('npm run dev');
+    fireEvent.click(link);
+    expect(tasks).toEqual(['bg:dev-1']);
   });
 });

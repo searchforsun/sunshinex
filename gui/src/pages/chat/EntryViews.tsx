@@ -102,10 +102,33 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   }
   const elapsed = entry.ts !== undefined ? Math.max(0, Math.round((Date.now() - entry.ts) / 1000)) : 0;
   // G14.11:状态行只示时长(圆圈/tokens 迁工具行尾)——tokens 参数保留由调用面透传(历史签名)
+  // 运行中也可折叠(2026-11-07 用户裁定):折叠留最后一条工具/思考行与最后一段正文,封段后常规折叠
   return (
-    <div className="entry entry-run live" role="status" aria-label="run status">
+    <div
+      className="entry entry-run live"
+      role={onToggle !== undefined ? 'button' : 'status'}
+      aria-label="run status"
+      tabIndex={onToggle !== undefined ? 0 : undefined}
+      aria-expanded={onToggle !== undefined ? !collapsed : undefined}
+      onClick={onToggle !== undefined ? () => onToggle(entry.key) : undefined}
+      onKeyDown={
+        onToggle !== undefined
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggle(entry.key);
+              }
+            }
+          : undefined
+      }
+    >
       <span>{t('Working', '运行中')}</span>
       <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
+      {onToggle !== undefined && (
+        <span className="run-chev" aria-hidden="true">
+          {collapsed ? <ChevronRight size={12} strokeWidth={1.75} /> : <ChevronDown size={12} strokeWidth={1.75} />}
+        </span>
+      )}
     </div>
   );
 });

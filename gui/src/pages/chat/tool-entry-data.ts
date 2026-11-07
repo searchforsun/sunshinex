@@ -16,6 +16,31 @@ export function mcpToolParts(name: string): { server: string; tool: string } | n
   return { server: rest.slice(0, i), tool: rest.slice(i + 2) };
 }
 
+/** 内置插件 server(浏览器/电脑控制):其工具调用带模型自拟的操作说明 purpose(宿主注入参数) */
+const PURPOSE_SERVERS = new Set(['browser-use', 'computer-use']);
+
+/** 工具行操作说明(2026-11-07 用户裁定):内置插件工具与 exec 入参 purpose——模型按对话语言自拟的
+ *  本次目的;工具行以它为标题(插件=整行替换;exec=描述+命令明细)。null/缺省/空串 → undefined */
+export function toolPurposeOf(name: string, input: Record<string, unknown>): string | undefined {
+  const v = input.purpose;
+  if (!isPurposeTool(name) && name !== 'exec') return undefined;
+  if (typeof v !== 'string') return undefined;
+  const flat = v.replace(/\s+/g, ' ').trim();
+  return flat === '' ? undefined : flat;
+}
+
+function isPurposeTool(name: string): boolean {
+  const mcp = mcpToolParts(name);
+  return mcp !== null && PURPOSE_SERVERS.has(mcp.server);
+}
+
+/** 展开体/目标摘要用入参:剥掉 purpose(它已是行标题,展开内容保持插件真实收到的参数) */
+export function withoutPurpose(name: string, input: Record<string, unknown>): Record<string, unknown> {
+  if (!isPurposeTool(name) || !Object.prototype.hasOwnProperty.call(input, 'purpose')) return input;
+  const { purpose: _purpose, ...rest } = input;
+  return rest;
+}
+
 export interface TodoBatch {
   key: string;
   ts: number;
@@ -115,9 +140,10 @@ export function zhToolName(name: string): string {
  *  MCP 工具无固定主字段——入参整体压单行 JSON 摘要(与 exec 命令行同级的目标信息) */
 export function toolTargetOf(name: string, input: Record<string, unknown>): string | undefined {
   if (mcpToolParts(name) !== null) {
-    const keys = Object.keys(input);
+    const shown = withoutPurpose(name, input);
+    const keys = Object.keys(shown);
     if (keys.length === 0) return undefined;
-    const flat = JSON.stringify(input);
+    const flat = JSON.stringify(shown);
     if (flat.length <= 72) return flat;
     return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
   }

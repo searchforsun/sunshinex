@@ -169,8 +169,15 @@ export function builtinTools(
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['command', 'background'],
+        required: ['purpose', 'command', 'background'],
         properties: {
+          // 操作说明(2026-11-07 用户裁定):GUI 工具行以它为标题(编程模式附命令明细,办公模式只显说明);
+          // 选填——一眼可读的命令传 null 省 token,长命令/管道串写一句
+          purpose: {
+            type: ['string', 'null'],
+            description:
+              "Short phrase stating what this command is for, written in the language the user is currently using (e.g. 'Find commits touching session switching', '启动开发服务器'). Shown to the user as the title of this step and as the background task name. REQUIRED when background is true; otherwise pass null for self-explanatory commands (ls, git status) and write one for long, piped or non-obvious commands.",
+          },
           command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
           background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path' },
         },
@@ -181,16 +188,20 @@ export function builtinTools(
       display: { verb: 'EXEC', targetFields: ['command'] },
       executor: async (input: ToolInput, runtimeSafety) => {
         const cmd = String(input.command ?? '');
+        /** 任务名(purpose):后台任务页签/等待行显它而非命令原文 */
+        const title = typeof input.purpose === 'string' ? input.purpose.replace(/\s+/g, ' ').trim() : '';
         // 执行期安全缝（规格 D6）：cwd 锚定与命令判界取运行期链视图（fork 子链 withRoot 换根克隆注入即生效；
         // 缺省回落装配链），前台/后台共用同一闸门——后台分支直调 backend，闸门须在分流前
         const gateView = runtimeSafety ?? safety;
         const gate = gateView.execCommandAllowed(cmd);
         if (!gate.allowed) return { exitCode: 127, stdout: '', stderr: gate.reason, timedOut: false };
         if (input.background === true) {
+          // 后台命令必须命名(2026-11-07 用户裁定):后台任务页签与等待行以 purpose 为任务名
+          if (title === '') throw new CodedToolError('INVALID_ARG', 'background exec requires a non-empty purpose (it names the background task shown to the user); retry with purpose set');
           if (tasks === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background execution requires a task registry (not wired in this assembly)');
           if (backend.execBackground === undefined) throw new CodedToolError('NOT_SUPPORTED', 'background exec requires a backend with execBackground');
           const wrap = gateView.execWrap !== undefined ? await gateView.execWrap(cmd) : null;
-          const task = tasks.submit({ kind: 'exec', label: execLabel(cmd), ownerRun: tasks.currentOwner() });
+          const task = tasks.submit({ kind: 'exec', label: execLabel(cmd), title, ownerRun: tasks.currentOwner() });
           const started = await backend.execBackground(cmd, {
             cwd: gateView.execCwd(),
             ...(wrap !== null ? { wrap } : {}),
@@ -213,7 +224,7 @@ export function builtinTools(
         if (r.ok && r.value.timedOut && r.value.child) {
           const child = r.value.child;
           const ledger = tasks!;
-          const task = ledger.submit({ kind: 'exec', label: execLabel(cmd), ownerRun: ledger.currentOwner() });
+          const task = ledger.submit({ kind: 'exec', label: execLabel(cmd), ...(title !== '' ? { title } : {}), ownerRun: ledger.currentOwner() });
           if (r.value.stdout !== '') ledger.append(task.id, r.value.stdout);
           if (r.value.stderr !== '') ledger.append(task.id, r.value.stderr);
           child.stdout?.on('data', (c: Buffer) => ledger.append(task.id, c.toString('utf8')));

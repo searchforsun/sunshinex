@@ -259,6 +259,8 @@ export interface SessionTaskRow {
   id: string;
   kind: string;
   label: string;
+  /** 任务名(exec 的 purpose,2026-11-07);缺省=无名任务,显示回落 label(命令原文) */
+  title?: string;
   status: string;
   startedAt: number;
   endedAt?: number;

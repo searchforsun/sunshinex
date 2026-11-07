@@ -11,6 +11,8 @@ export interface BackgroundTask {
   id: string;
   kind: 'exec' | 'subagent';
   label: string;
+  /** 任务名(2026-11-07 用户裁定):exec 的 purpose——后台任务页签/等待行显它而非命令原文;缺省回落 label */
+  title?: string;
   status: 'running' | 'done' | 'failed' | 'stopped';
   outputFilePath: string;
   startedAt: number;
@@ -148,7 +150,7 @@ export class TaskRegistry {
     return ownerStorage.getStore() ?? 'main';
   }
 
-  submit(input: { kind: 'exec' | 'subagent'; label: string; ownerRun?: string; boardDispatch?: boolean }): BackgroundTask {
+  submit(input: { kind: 'exec' | 'subagent'; label: string; title?: string; ownerRun?: string; boardDispatch?: boolean }): BackgroundTask {
     const gen = (): string =>
       `${slugify(input.label, { max: 16, fallback: input.kind })}-${utcCompactStamp()}-${Math.random().toString(36).slice(2, 6)}`;
     let id = gen();
@@ -165,6 +167,7 @@ export class TaskRegistry {
       id,
       kind: input.kind,
       label: input.label,
+      ...(input.title !== undefined && input.title !== '' ? { title: input.title } : {}),
       status: 'running',
       outputFilePath,
       startedAt: Date.now(),

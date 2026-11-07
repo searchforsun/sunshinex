@@ -77,7 +77,9 @@ function handle(line) {
         }
         if (DIE_ON_CALL === 'all') process.exit(1);
         const text = String((params && params.arguments && params.arguments.text) ?? '');
-        if (FAIL_CALL) reply(id, { content: [{ type: 'text', text: 'boom' }], isError: true });
+        // 宿主侧注入参数(purpose)不得透传到插件——收到即判错,供剥除断言
+        if (params && params.arguments && Object.prototype.hasOwnProperty.call(params.arguments, 'purpose')) reply(id, { content: [{ type: 'text', text: 'unexpected purpose' }], isError: true });
+        else if (FAIL_CALL) reply(id, { content: [{ type: 'text', text: 'boom' }], isError: true });
         else reply(id, { content: [{ type: 'text', text: `echo: ${text}` }] });
         break;
       }

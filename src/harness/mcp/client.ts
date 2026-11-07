@@ -9,6 +9,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { ToolRegistry, CodedToolError, RegisteredTool } from '../tools';
 import { ExecResult, JsonSchema, McpServerConfig, ToolCategory, ToolInput } from '../../types';
 import { MAX_IMAGES } from '../../images';
+import { isHostedServer } from '../plugin-host';
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
 /** 装配期单台 MCP 连接预算:插件/服务启动慢或挂住时不拖住发送(实测浏览器插件故障时每轮卡 10s+);
@@ -196,6 +197,36 @@ function pidOf(transport: Transport): number | null {
 function toToolSpecParameters(input: unknown): JsonSchema | undefined {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return undefined;
   return input as JsonSchema;
+}
+
+/** 操作说明参数名(2026-11-07 用户裁定「内置插件工具调用加一个说明本次目的的参数,工具行显示它」):
+ *  模型按当前对话语言自拟,GUI 工具行以它替换「工具名+参数」;不下发给插件 */
+export const PURPOSE_PARAM = 'purpose';
+
+const PURPOSE_SCHEMA: JsonSchema = {
+  type: 'string',
+  description:
+    "One short phrase stating what this call is for, written in the language the user is currently using in this conversation (e.g. 'Open the login page', '截取屏幕确认弹窗是否关闭'). Shown to the user as the title of this step — describe the intent, do not repeat raw parameters.",
+};
+
+/** 内置宿主插件工具的参数表注入 purpose:置于属性首位(模型先写意图,流式行最早可显)、并入 required。
+ *  原 schema 非对象形(无 properties)时以空对象起步——零参工具同样带说明 */
+export function withPurposeParam(params: JsonSchema | undefined): JsonSchema {
+  const base = params ?? { type: 'object' };
+  const required = (base.required ?? []).filter((k) => k !== PURPOSE_PARAM);
+  return {
+    ...base,
+    type: 'object',
+    properties: { [PURPOSE_PARAM]: PURPOSE_SCHEMA, ...(base.properties ?? {}) },
+    required: [PURPOSE_PARAM, ...required],
+  };
+}
+
+/** 转发插件前剥除 purpose(插件 schema 不认识它;computer-use 为 additionalProperties:false 会拒) */
+export function stripPurposeArg(args: ToolInput): ToolInput {
+  if (!Object.prototype.hasOwnProperty.call(args, PURPOSE_PARAM)) return args;
+  const { [PURPOSE_PARAM]: _purpose, ...rest } = args as Record<string, unknown>;
+  return rest as ToolInput;
 }
 
 export class McpHost {
@@ -433,14 +464,16 @@ export class McpHost {
   private makeTool(server: string, toolName: string, tool?: { description?: string; inputSchema?: unknown }): RegisteredTool {
     const fqName = `mcp__${server}__${toolName}`;
     const timeoutMs = this.opts.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
-    const parameters = toToolSpecParameters(tool?.inputSchema);
+    const hosted = isHostedServer(server);
+    const listed = toToolSpecParameters(tool?.inputSchema);
+    const parameters = hosted ? withPurposeParam(listed) : listed;
     return {
       name: fqName,
       description: tool?.description ?? `MCP tool ${toolName} (server ${server})`,
       ...(parameters !== undefined ? { parameters } : {}),
       category: 'external' as ToolCategory,
       executor: async (input: ToolInput): Promise<ExecResult> => {
-        const args = input ?? {};
+        const args = hosted ? stripPurposeArg(input ?? {}) : (input ?? {});
         if (Buffer.byteLength(JSON.stringify(args), 'utf8') > MAX_ARGS_BYTES) {
           throw new CodedToolError('MCP_ARGS_TOO_LARGE', `MCP args too large (>${MAX_ARGS_BYTES} bytes): ${fqName}`);
         }

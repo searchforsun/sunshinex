@@ -97,7 +97,7 @@ test('buildDeps→teardownCliRun：真后台任务经命令收尾停机并落进
   fs.writeFileSync(script, "console.log('warm'); setTimeout(() => {}, 30000);\n");
   const deps = buildDeps(tmp, {});
   try {
-    const r = await deps.registry.execute('exec', { command: `node "${script.replace(/\\/g, '/')}"`, background: true }, deps.safety);
+    const r = await deps.registry.execute('exec', { purpose: 'run script', command: `node "${script.replace(/\\/g, '/')}"`, background: true }, deps.safety);
     assert.ok(r.ok, `后台 exec 应成功，实际 ${r.ok ? '' : r.error.code}`);
     const logPath = r.value.stdout.match(/output: (.+?)\)/)![1]!;
     // warm 进日志后再收口：证明任务真在跑（不是起即死），且 warm 行先于终态行

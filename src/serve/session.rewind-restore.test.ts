@@ -203,7 +203,7 @@ test('编辑首条消息:全部清空,旧题不沿用', async () => {
 
 test('严格回退:回退点后提交的后台任务被停掉且不进新账本,起点前任务保留', async () => {
     const rig0: Rig | undefined = undefined;
-    await withRig([DONE('一'), '{"tool":"exec","input":{"command":"ping -n 30 127.0.0.1","background":true}}', DONE('二')], async (rig) => {
+    await withRig([DONE('一'), '{"tool":"exec","input":{"purpose":"long ping","command":"ping -n 30 127.0.0.1","background":true}}', DONE('二')], async (rig) => {
       await rig.submit('问一');
       await rig.submit('问二');
       void rig0;

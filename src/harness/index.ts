@@ -231,6 +231,7 @@ export class Harness {
             id: task.id,
             kind: task.kind,
             label: task.label,
+            ...(task.title !== undefined ? { title: task.title } : {}),
             status: task.status,
             startedAt: task.startedAt,
             ...(task.endedAt !== undefined ? { endedAt: task.endedAt } : {}),

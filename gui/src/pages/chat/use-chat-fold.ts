@@ -46,6 +46,9 @@ export function isMidRunInsert(entries: readonly ChatEntry[], from: number): boo
 export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns: ReadonlySet<string>): ReadonlySet<string> {
   const s = new Set<string>();
   let hide = false;
+  /** 运行中折叠(2026-11-07 用户裁定):在途轮被手动折叠时留在外面的两条——最后一条工具/思考行、
+   *  最后一段正文(含流式中的终答;无则不留)。封段后回到常规折叠(只留终答) */
+  let liveKeep: LiveKeep | null = null;
   /** 段内 sealed assistant 收集:段收口(run 再启/流尽/新开场)时除末条外入 hidden */
   let segAssistants: string[] = [];
   const closeSeg = (): void => {
@@ -57,9 +60,14 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
     if (e.kind === 'run') {
       closeSeg();
       hide = collapsedRuns.has(e.key);
+      liveKeep = hide && e.streaming === true ? liveKeepOf(entries, i) : null;
       continue;
     }
     if (e.kind === 'assistant') {
+      if (liveKeep !== null) {
+        if (e.key !== liveKeep.assistant) s.add(e.key);
+        continue;
+      }
       if (e.streaming !== true) {
         segAssistants.push(e.key); // 流式条即当前段末条(实况),不折
       }
@@ -73,14 +81,39 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
       closeSeg();
       // 新开场用户条:其后工具不属于上一轮折叠区(2026-10-31「/compact 三态行不显示」钉)
       hide = false;
+      liveKeep = null;
       continue;
     }
     // 斜杠命令三态行=系统提示行,不受折叠影响(2026-10-31 裁定)
     if (hide && e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/')) continue;
+    if (hide && liveKeep !== null && e.key === liveKeep.work) continue;
     if (hide && (e.kind === 'tool' || e.kind === 'thinking' || isFoldNotice(e))) s.add(e.key);
   }
   closeSeg();
   return s;
+}
+
+interface LiveKeep {
+  /** 最后一条工具/思考行 key */
+  readonly work?: string;
+  /** 最后一段正文 key */
+  readonly assistant?: string;
+}
+
+/** 在途轮(entries[runAt] 为其 run 行)内最后一条工具/思考行与最后一段正文:扫到下一 run 或新开场用户条止
+ *  (轮内插入不截断;斜杠命令三态行不计——它本就不随折叠) */
+function liveKeepOf(entries: readonly ChatEntry[], runAt: number): LiveKeep {
+  let work: string | undefined;
+  let assistant: string | undefined;
+  for (let j = runAt + 1; j < entries.length; j += 1) {
+    const n = entries[j]!;
+    if (n.kind === 'run') break;
+    if (n.kind === 'user' && !isMidRunInsert(entries, j)) break;
+    if (n.kind === 'tool' && typeof n.name === 'string' && n.name.startsWith('/')) continue;
+    if (n.kind === 'tool' || n.kind === 'thinking') work = n.key;
+    else if (n.kind === 'assistant') assistant = n.key;
+  }
+  return { ...(work !== undefined ? { work } : {}), ...(assistant !== undefined ? { assistant } : {}) };
 }
 
 /** 2026-10-24 用户裁定「完成后自动折叠工具/思考行」:sealed(封段,streaming 非 true)run key 集
@@ -149,7 +182,7 @@ const hiddenKeys = useMemo(() => collapsedHiddenKeys(chat.entries, collapsedRuns
  *  内容整体下移——两侧永不同时动。capture 先于行内 toggle 记 preTop,动画收尾后再校正一次;
  *  原生 scroll-anchor 关闭(overflow-anchor:none)防与本校正互搏 */
 const onEntryToggleClick = useCallback((e: ReactMouseEvent<HTMLDivElement>): void => {
-  const target = e.target instanceof Element ? e.target.closest('.thinking-summary, .tool-summary, .entry-run.sealed') : null;
+  const target = e.target instanceof Element ? e.target.closest('.thinking-summary, .tool-summary, .entry-run.sealed, .entry-run.live') : null;
   const row = target !== null ? target.closest('.entry') : null;
   const el = chatScrollRef.current;
   if (target === null || row === null || el === null) return;

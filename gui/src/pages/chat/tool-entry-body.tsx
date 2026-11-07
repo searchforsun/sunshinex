@@ -8,7 +8,7 @@ import type { ChatEntry } from '../../chat-reducer';
 import type { DiffResp } from '../../connection';
 import { DiffLines } from '../../diff-lines';
 import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
-import { mcpToolParts, parseAskAnswer, parseAskInput, parseWebSearchOutput } from './tool-entry-data';
+import { mcpToolParts, parseAskAnswer, parseAskInput, parseWebSearchOutput, withoutPurpose } from './tool-entry-data';
 import { ToolImageThumb } from './tool-entry-media';
 
 /** 工具行展开体（D62 批B，2026-11-07 自 ToolEntry.tsx 外提——宿主留折叠行+壳+拉取态）：按 toolName
@@ -216,7 +216,8 @@ export function ToolEntryBody({
     // 2026-10-26 MCP 工具展开面(用户裁定「参数和返回值显示和其他工具一样」):server·tool 标识行 +
     // params JSON(入参全量,空参显 {})+ 返回值,终端块同形态($ 行/输出 的 MCP 对位)
     const mcp = mcpToolParts(toolName)!;
-    const params = Object.keys(input).length > 0 ? JSON.stringify(input, null, 2) : '{}';
+    const shown = withoutPurpose(toolName, input); // purpose 已作行标题,展开体只列插件真实收到的参数
+    const params = Object.keys(shown).length > 0 ? JSON.stringify(shown, null, 2) : '{}';
     body = (
       <div className="tool-exec">
         <pre className="tool-io-pre">
