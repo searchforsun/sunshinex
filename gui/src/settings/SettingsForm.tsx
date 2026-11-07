@@ -15,7 +15,7 @@ import type { UiZoom } from '../ui-zoom';
 import { applyFontPreset, FONT_PRESET_CHOICES, presetVars, readFontPreset } from '../font-preset';
 import type { FontPreset } from '../font-preset';
 import { palettesFor, readPalettePref, setPalettePref } from '../palette';
-import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, CODE_FONT_DEFAULT, readCodeFontSize, readUiFontSize, UI_FONT_CHOICES, UI_FONT_DEFAULT } from '../font-size';
+import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, readCodeFontSize, readUiFontSize, UI_FONT_CHOICES } from '../font-size';
 import type { Palette } from '../palette';
 
 /**
@@ -477,12 +477,11 @@ function ZoomRow(): JSX.Element {
 
 /** 字号行(2026-11-07 用户裁定外观两项,对标 Codex):界面字号只缩文字(图标/布局不动)、代码字号管
  *  代码块/文件预览/差异视图;GUI 本地偏好,非 settings 键(font-size.ts 落根) */
-function FontSizeRow({ label, desc, aria, choices, dflt, read, apply }: {
+function FontSizeRow({ label, desc, aria, choices, read, apply }: {
   label: string;
   desc: string;
   aria: string;
   choices: readonly number[];
-  dflt: number;
   read: () => number;
   apply: (n: number) => void;
 }): JSX.Element {
@@ -499,7 +498,7 @@ function FontSizeRow({ label, desc, aria, choices, dflt, read, apply }: {
         <Select
           ariaLabel={aria}
           value={String(v)}
-          options={choices.map((n) => ({ v: String(n), l: n === dflt ? `${n}px ${t('(default)', '(默认)')}` : `${n}px` }))}
+          options={choices.map((n) => ({ v: String(n), l: `${n}px` }))}
           onChange={(s) => {
             const n = Number(s);
             setV(n);
@@ -517,7 +516,6 @@ const UiFontRow = (): JSX.Element => (
     desc={t('Adjust the text size of the app interface; icons and layout are not affected.', '调整应用界面的文字大小，图标和布局尺寸不受影响。')}
     aria="ui font size"
     choices={UI_FONT_CHOICES}
-    dflt={UI_FONT_DEFAULT}
     read={readUiFontSize}
     apply={applyUiFontSize}
   />
@@ -529,7 +527,6 @@ const CodeFontRow = (): JSX.Element => (
     desc={t('Adjust the default size of code blocks, file previews, and diff views.', '调整代码块、文件预览和差异视图的默认字号。')}
     aria="code font size"
     choices={CODE_FONT_CHOICES}
-    dflt={CODE_FONT_DEFAULT}
     read={readCodeFontSize}
     apply={applyCodeFontSize}
   />
