@@ -28,12 +28,14 @@ const MIN_USERS = 2;
 
 /** 滚动口实测锚(单点):show=余量门控;left/top=贴滚动口左缘+中线(视觉坐标 /zoomScale 归一,D50 契约)。
  *  2026-10-28 用户实测「导航条宽/短/跑到顶部」:容器 display:none(keep-alive 隐藏席/换页瞬间)
- *  时 rect 全 0——锚 (HUG_LEFT,0) 把刻度串钉死窗顶;零尺寸一律 show=false 收起,复显由 RO 重测 */
+ *  时 rect 全 0——旧零尺寸守卫仍产出 (HUG_LEFT,0) 坐标并被 measure 写入 inner,把刻度钉死窗顶;
+ *  RO 交付停滞期无改写机会即滞留(2026-11-07 用户报障「刚生成时出现在左上角」)。现零尺寸返回
+ *  null=坐标不写、显隐保持上一态(容器 display:none 时 fixed 子树本就不可见,恢复由 RO 非零重测) */
 function railAnchor(el: HTMLElement): { show: boolean; left: number; top: number } | null {
   const pad = Number.parseFloat(getComputedStyle(el).paddingLeft);
   if (!Number.isFinite(pad)) return null;
   const rect = el.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) return { show: false, left: HUG_LEFT, top: 0 };
+  if (rect.width === 0 || rect.height === 0) return null;
   const z = zoomScale() || 1;
   return {
     show: pad - 18 >= SHOW_MIN_MARGIN,
@@ -98,7 +100,7 @@ export function ChatRail(props: {
     // 测量单点(多通道汇入):读值全部现取(padding/rect 强制同步布局),锚点直写,show 同值守卫
     const measure = (): void => {
       const a = railAnchor(el);
-      if (a === null) return;
+      if (a === null) return; // 零尺寸/异常:坐标与显隐都保持上一态,绝不写 (6,0) 毒化坐标
       const inner = innerRef.current;
       if (inner !== null) {
         inner.style.left = `${a.left}px`;
