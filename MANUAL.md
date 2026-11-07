@@ -170,7 +170,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.6.
   // ── 目录覆盖（留空即用缺省，见第三节）────────────────
   "projectsDir": "",                                 // 项目数据根（各工作区分目录的父级）；留空 = ~/.sunshinex/projects，可指向任意盘
   "userSkillsDir": "",                               // 全局技能目录
-  "globalSunshine": "",                              // 全局约定文件
+  "globalSunshine": "",                              // 全局约定 SUNSHINE.md 所在目录
   "shell": "",                                       // 命令执行 shell（POSIX 兼容）；Windows 留空自动探测 Git Bash，无则 PowerShell，末位 cmd 兜底
 
   // ── 权限规则与信任目录（deny/allow 语法见「六、权限模式与审批」）──

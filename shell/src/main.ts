@@ -473,12 +473,19 @@ if (!app.requestSingleInstanceLock()) {
     // →系统对话框选完即回绝对路径——GUI 两处创建入口（欢迎页/侧栏 pickAndAdd）探测到此桥即不再走
     // 浏览器态标记定位兜底（全盘 BFS 同步 readdir 阻塞 daemon 主线程，实测 3.7s+/深目录更劣）。
     // 破窗守卫：主窗缺席时退无窗形态（对话框仍可用，模态性放弃）。
-    ipcMain.handle('shell:pick-folder', async (): Promise<string | null> => {
-      const opts = { properties: ['openDirectory'] as Array<'openDirectory'> };
+    // defaultPath(2026-11-07 设置页路径行选择钮):现值所在位置起选,缺省系统默认位置
+    const pickPath = async (kind: 'openDirectory' | 'openFile', defaultPath: unknown): Promise<string | null> => {
+      const opts: Electron.OpenDialogOptions = {
+        properties: [kind],
+        ...(typeof defaultPath === 'string' && defaultPath !== '' ? { defaultPath } : {}),
+      };
       const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
       const r = win !== undefined ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
       return r.canceled ? null : (r.filePaths[0] ?? null);
-    });
+    };
+    ipcMain.handle('shell:pick-folder', (_e, defaultPath?: unknown) => pickPath('openDirectory', defaultPath));
+    // 文件选择(设置页 Shell 可执行文件行)
+    ipcMain.handle('shell:pick-file', (_e, defaultPath?: unknown) => pickPath('openFile', defaultPath));
 
     // 驻留序（H-D2）：非退出流程中关窗=preventDefault+hide（会话/PTY 不中断），退出流程放行真关闭
     win.on('close', (event) => {

@@ -19,6 +19,8 @@ import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, readCodeFontSize
 import { applyUiMode, useUiMode } from '../ui-mode';
 import type { UiMode } from '../ui-mode';
 import type { Palette } from '../palette';
+import { FolderOpen } from 'lucide-react';
+import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
 
 /**
  * G8c T8 通用键值表单引擎(设置自动保存轮):mount/effect 拉 conn.settings(root)→按 pane 分组
@@ -40,8 +42,10 @@ import type { Palette } from '../palette';
 
 export interface SettingsFieldDef {
   readonly key: string;
-  /** text/number=自由输入;select=闭集弹层;combo=自由文本+动态建议 */
-  readonly control: 'text' | 'number' | 'select' | 'combo';
+  /** text/number=自由输入;select=闭集弹层;combo=自由文本+动态建议;path=文本+右侧选择钮(pick 定目录/文件) */
+  readonly control: 'text' | 'number' | 'select' | 'combo' | 'path';
+  /** path 控件选择对象:dir=目录(桌面壳原生对话框,浏览器态回落应用内目录浏览)/file=文件(仅桌面壳) */
+  readonly pick?: 'dir' | 'file';
   /** select 选项集;combo 建议集。函数形 = 动态源(入参 models=providers 现配模型去重集) */
   readonly options?:
     | readonly SettingsOption[]
@@ -80,6 +84,8 @@ export interface SettingsFormConn {
   settings(root?: string): Promise<SettingsView>;
   putSettings(scope: 'project' | 'global', root: string | undefined, updates: Record<string, string | number | null>): Promise<void>;
   memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
+  /** 浏览器态目录选择回落(应用内目录浏览);缺省=浏览器态不出目录钮 */
+  dirpicker?: DirPickerConn['dirpicker'];
 }
 
 /** 键描述(2026-10-26 i18n 补全,用户裁定):label=行标题短标签双语对(desc 分离)——行标题不再
@@ -90,7 +96,7 @@ const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: 
   shell: { label: { en: 'Shell', zh: 'Shell' }, en: 'Shell used for command execution', zh: '命令执行所用 shell' },
   projectsDir: { label: { en: 'Projects directory', zh: '项目目录' }, en: 'Root directory of workspace registry', zh: '工作区注册表根目录' },
   userSkillsDir: { label: { en: 'User skills directory', zh: '用户技能目录' }, en: 'Global user skills directory', zh: '全局用户技能目录' },
-  globalSunshine: { label: { en: 'Global SUNSHINE.md', zh: '全局 SUNSHINE.md' }, en: 'Global SUNSHINE.md path', zh: '全局 SUNSHINE.md 路径' },
+  globalSunshine: { label: { en: 'Global SUNSHINE.md', zh: '全局 SUNSHINE.md' }, en: 'Directory holding the global SUNSHINE.md', zh: '全局 SUNSHINE.md 所在目录' },
   model: { label: { en: 'Default model', zh: '默认模型' }, en: 'Default model id', zh: '缺省模型 id' },
   modelSmall: { label: { en: 'Small-tier model', zh: 'small 档模型' }, en: 'Model bound to small tier', zh: 'small 档绑定模型' },
   modelMedium: { label: { en: 'Medium-tier model', zh: 'medium 档模型' }, en: 'Model bound to medium tier', zh: 'medium 档绑定模型' },
@@ -156,6 +162,9 @@ const modelsOf = (view: SettingsView): string[] => [...new Set(view.providers.ch
 
 /** select 未设置项(置顶;清值=存 null 删键,与 text 行空串同语义) */
 const text = (key: string, placeholder?: string): SettingsFieldDef => ({ key, control: 'text', ...(placeholder !== undefined ? { placeholder } : {}) });
+/** 路径行(2026-11-07 用户裁定:目录/文件地址行右侧放选择钮,点开系统资源管理器选取) */
+const dirPath = (key: string): SettingsFieldDef => ({ key, control: 'path', pick: 'dir' });
+const filePath = (key: string): SettingsFieldDef => ({ key, control: 'path', pick: 'file' });
 const num = (key: string, limits?: { min?: number; max?: number; step?: number; placeholder?: string }): SettingsFieldDef => ({
   key,
   control: 'number',
@@ -193,9 +202,9 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
       ])] },
       {
         title: { en: 'Paths', zh: '路径' },
-        fields: [text('projectsDir'), text('userSkillsDir'), text('globalSunshine')],
+        fields: [dirPath('projectsDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')],
       },
-      { title: { en: 'Command execution', zh: '命令执行' }, fields: [text('shell')] },
+      { title: { en: 'Command execution', zh: '命令执行' }, fields: [filePath('shell')] },
     ],
   },
   {
@@ -245,7 +254,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
             { v: 'local-json', l: 'local-json', lz: '本地 JSON' },
             { v: 'sqlite-vec', l: 'SQLite-vec' },
           ]),
-          text('kbDataDir'),
+          dirPath('kbDataDir'),
         ],
       },
       { title: { en: 'Embedding', zh: 'Embedding' }, fields: [text('embeddingBaseUrl'), modelCombo('embeddingModel')] },
@@ -585,6 +594,8 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
   const [rows, setRows] = useState<Record<string, SettingsKeyRow> | null>(null);
   /** 行过滤词(Task 25 顶部 SearchBar,防抖沿组件契约;trim 小写后匹配) */
   const [filter, setFilter] = useState('');
+  /** 浏览器态目录浏览弹层的目标字段(null=未开) */
+  const [dirPickFor, setDirPickFor] = useState<SettingsFieldDef | null>(null);
   /** 输入当前值(键→字符串面;number 输入亦暂存字符串,保存时化型) */
   const [values, setValues] = useState<Record<string, string>>({});
   /** providers 现配模型去重集(combo 动态建议源;视图应答即定格) */
@@ -739,6 +750,54 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
         />
       );
     }
+    if (fd.control === 'path') {
+      const shellBridge = window.sunshinex;
+      const nativePick = fd.pick === 'file' ? shellBridge?.pickFile : shellBridge?.pickFolder;
+      const canPick = nativePick !== undefined || (fd.pick === 'dir' && conn.dirpicker !== undefined);
+      const commit = (v: string): void => {
+        setValues((vals) => ({ ...vals, [fd.key]: v }));
+        persistField(fd, v);
+      };
+      const pick = (): void => {
+        if (nativePick !== undefined) {
+          void nativePick(value !== '' ? value : undefined).then((p) => {
+            if (p !== null) commit(p);
+          });
+          return;
+        }
+        setDirPickFor(fd);
+      };
+      return (
+        <div className="sx-setting-path">
+          <input
+            type="text"
+            className="sx-setting-input"
+            aria-label={fd.key}
+            value={value}
+            placeholder={fd.placeholder}
+            disabled={disabled}
+            data-tip={title}
+            onChange={(e) => setValues((vals) => ({ ...vals, [fd.key]: e.target.value }))}
+            onBlur={(e) => persistField(fd, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+          />
+          {canPick && (
+            <button
+              type="button"
+              className="sx-setting-path-btn"
+              aria-label={`${t('Browse', '浏览')} ${fd.key}`}
+              data-tip={fd.pick === 'file' ? t('Choose file', '选择文件') : t('Choose folder', '选择文件夹')}
+              disabled={disabled}
+              onClick={pick}
+            >
+              <FolderOpen size={14} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      );
+    }
     return (
       <input
         type={fd.control === 'number' ? 'number' : 'text'}
@@ -825,6 +884,23 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
       {toast !== '' && (
         <div className="sx-toast" role="status">
           {toast}
+        </div>
+      )}
+      {dirPickFor !== null && conn.dirpicker !== undefined && (
+        <div className="modal-overlay" onClick={() => setDirPickFor(null)}>
+          <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+            <DirPicker
+              conn={{ dirpicker: conn.dirpicker.bind(conn) }}
+              showManual={false}
+              onCancel={() => setDirPickFor(null)}
+              onConfirm={(p) => {
+                const fd = dirPickFor;
+                setDirPickFor(null);
+                setValues((vals) => ({ ...vals, [fd.key]: p }));
+                persistField(fd, p);
+              }}
+            />
+          </div>
         </div>
       )}
     </section>

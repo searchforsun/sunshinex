@@ -1333,7 +1333,7 @@ export function handleMemoryList(io: ConfigHandlerIo, req: http.IncomingMessage,
 }
 
 /* ---------- 全局规范(2026-11-05 设置页「全局规范」面板):全局 SUNSHINE.md 读写 ----------
- *  跨工作区个人标准文件(~/.sunshinex/SUNSHINE.md,SUNSHINEX_GLOBAL_SUNSHINE 可覆盖),
+ *  跨工作区个人标准文件(~/.sunshinex/SUNSHINE.md,SUNSHINEX_GLOBAL_SUNSHINE 可覆盖所在目录),
  *  路径/读/写单点在 harness/context/loader.ts;此处只做 HTTP 面:GET 原文+路径+存在性,
  *  PUT 原子写回+回声抑制/直发帧由 daemon 包装层注入 notify(写发生在 daemon 进程内) */
 

@@ -46,7 +46,7 @@ function cliEnv(f: Fixture, extraEnv: Record<string, string> = {}): NodeJS.Proce
     HOME: f.home,
     SUNSHINEX_DATA_DIR: path.join(f.home, 'data'),
     SUNSHINEX_USER_SKILLS_DIR: path.join(f.home, 'user-skills'),
-    SUNSHINEX_GLOBAL_SUNSHINE: path.join(f.home, 'SUNSHINE.md'),
+    SUNSHINEX_GLOBAL_SUNSHINE: f.home,
     SUNSHINEX_LANGUAGE: 'en', // 钉 en：上屏文案断言（usage/error）不随宿主 settings/env 语言漂移
     // 密钥槽显式清场（空串 = resolveProviderApiKey 视为未配置）：宿主环境若泄漏同名槽会让
     // apiKeyPresent 断言漂移；extraEnv 在其后展开，按用例覆盖回真值

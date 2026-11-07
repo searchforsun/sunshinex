@@ -14,7 +14,9 @@ type SxTrayAction =
 
 interface Window {
   sunshinex?: {
-    pickFolder?: () => Promise<string | null>;
+    pickFolder?: (defaultPath?: string) => Promise<string | null>;
+    /** 原生文件选择(设置页可执行文件路径行) */
+    pickFile?: (defaultPath?: string) => Promise<string | null>;
   };
 }
 

@@ -62,7 +62,7 @@ function runSelfcheck(f: Fixture, preload: string, extraEnv: Record<string, stri
       HOME: f.home,
       SUNSHINEX_DATA_DIR: path.join(f.home, 'data'),
       SUNSHINEX_USER_SKILLS_DIR: path.join(f.home, 'user-skills'),
-      SUNSHINEX_GLOBAL_SUNSHINE: path.join(f.home, 'SUNSHINE.md'),
+      SUNSHINEX_GLOBAL_SUNSHINE: f.home,
       ...extraEnv,
     },
   });

@@ -73,5 +73,6 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
  *  （showDirectoryPicker 句柄无路径 → 标记文件 + 全盘 BFS 定位，同步 readdir 阻塞 daemon 主线程，
  *  实测深目录 3.7s+，整段创建「卡住」即此）。原生对话框直接回绝对路径，零扫描。 */
 contextBridge.exposeInMainWorld('sunshinex', {
-  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('shell:pick-folder'),
+  pickFolder: (defaultPath?: string): Promise<string | null> => ipcRenderer.invoke('shell:pick-folder', defaultPath),
+  pickFile: (defaultPath?: string): Promise<string | null> => ipcRenderer.invoke('shell:pick-file', defaultPath),
 });

@@ -43,7 +43,7 @@ function runCli(f: Fixture, args: string[], overrides: Record<string, string | u
     HOME: f.home,
     SUNSHINEX_DATA_DIR: path.join(f.home, 'data'),
     SUNSHINEX_USER_SKILLS_DIR: path.join(f.home, 'user-skills'),
-    SUNSHINEX_GLOBAL_SUNSHINE: path.join(f.home, 'SUNSHINE.md'),
+    SUNSHINEX_GLOBAL_SUNSHINE: f.home,
     SUNSHINEX_LANGUAGE: 'en', // 钉 en：上屏文案断言不随宿主 settings/env 语言漂移
     ...overrides,
   };

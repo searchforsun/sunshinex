@@ -29,7 +29,7 @@ const home = path.join(dir, 'home');
 fs.mkdirSync(home, { recursive: true });
 process.env.SUNSHINEX_DATA_DIR = dir;
 process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(dir, 'user-skills');
-process.env.SUNSHINEX_GLOBAL_SUNSHINE = path.join(dir, 'global-SUNSHINE.md');
+process.env.SUNSHINEX_GLOBAL_SUNSHINE = path.join(dir, 'global-sunshine');
 process.env.HOME = home;
 // HOME 同钉（单点纪律同上）：env.ts homeDir() 显式优先读 HOME——不钉则 userConfigDir() 落真实
 // ~/.sunshinex，全局 settings.json（本机 plugins.browser-use/computer-use enabled=true 等）经

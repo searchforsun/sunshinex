@@ -4,11 +4,12 @@ import { ContextItem } from '../../types';
 import { userConfigDir } from '../../config/env';
 import { writeJsonAtomic } from '../../catalog/io';
 
-/** 全局约定文件路径：SUNSHINEX_GLOBAL_SUNSHINE 覆盖（测试钉扎/多配置并存），缺省 ~/.sunshinex/SUNSHINE.md（对标 ~/.claude/CLAUDE.md，跨工作区个人标准）。
+/** 全局约定文件路径：<目录>/SUNSHINE.md——目录缺省 ~/.sunshinex，SUNSHINEX_GLOBAL_SUNSHINE（语义键 globalSunshine）
+ *  覆盖目录（2026-11-07 用户裁定改目录口径，与其它路径设置同形、文件名恒定；对标 ~/.claude/CLAUDE.md）。
  *  导出供 serve 面（设置页「全局规范」GET/PUT）单点取径——路径口径全库只此一处 */
 export function globalSunshinePath(): string {
   const override = (process.env.SUNSHINEX_GLOBAL_SUNSHINE ?? '').trim();
-  return override.length > 0 ? override : path.join(userConfigDir(), 'SUNSHINE.md');
+  return path.join(override.length > 0 ? override : userConfigDir(), 'SUNSHINE.md');
 }
 
 /** 全局层原文（独立函数面：serve GET 复用，与 ContextLoader 实例解耦；不存在/不可读 → null） */

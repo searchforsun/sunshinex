@@ -7,7 +7,7 @@ import { ContextManager } from './index';
 import { FileStore } from '../../storage/adapter';
 import { resolveDataDir } from '../../config/data-dir';
 
-/** 全局约定层（~/.sunshinex/SUNSHINE.md，SUNSHINEX_GLOBAL_SUNSHINE 覆盖；对标 ~/.claude/CLAUDE.md）：
+/** 全局约定层（~/.sunshinex/SUNSHINE.md，SUNSHINEX_GLOBAL_SUNSHINE 覆盖所在目录；对标 ~/.claude/CLAUDE.md）：
  *  装载序（全局在前、项目在后）、漂移尾追（Global SUNSHINE.md changed）、基线前进只告知一次、
  *  消失态、双层同变有序、刷新点对齐、前置段字节冻结（前缀零击穿）。写链文案恒英文单语（CLAUDE.md §15）。 */
 
@@ -15,8 +15,10 @@ function withGlobal(fn: (root: string, globalFile: string) => void): void {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-global-'));
   const prevGlobal = process.env.SUNSHINEX_GLOBAL_SUNSHINE;
   const prevData = process.env.SUNSHINEX_DATA_DIR;
-  const globalFile = path.join(tmp, 'global-SUNSHINE.md');
-  process.env.SUNSHINEX_GLOBAL_SUNSHINE = globalFile;
+  const globalDir = path.join(tmp, 'global');
+  fs.mkdirSync(globalDir, { recursive: true });
+  const globalFile = path.join(globalDir, 'SUNSHINE.md'); // 覆盖口径=目录,文件名恒定
+  process.env.SUNSHINEX_GLOBAL_SUNSHINE = globalDir;
   process.env.SUNSHINEX_DATA_DIR = tmp;
   try {
     const root = path.join(tmp, 'root');

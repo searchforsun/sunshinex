@@ -36,7 +36,7 @@ async function withFixture(fn: (f: Fixture) => Promise<void>): Promise<void> {
   process.env.HOME = home;
   process.env.SUNSHINEX_DATA_DIR = path.join(home, 'data');
   process.env.SUNSHINEX_USER_SKILLS_DIR = path.join(home, 'user-skills');
-  process.env.SUNSHINEX_GLOBAL_SUNSHINE = path.join(home, 'SUNSHINE.md');
+  process.env.SUNSHINEX_GLOBAL_SUNSHINE = home;
   let ctrl: SessionController | undefined;
   try {
     ctrl = new SessionController({ root, model: new ScriptedAdapter([]) });

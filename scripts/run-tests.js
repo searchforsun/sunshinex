@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 全量测试启动器：把测试进程的运行时数据目录（SUNSHINEX_DATA_DIR）、全局技能根（SUNSHINEX_USER_SKILLS_DIR）与全局约定文件（SUNSHINEX_GLOBAL_SUNSHINE）钉到仓内 .data-test，
+ * 全量测试启动器：把测试进程的运行时数据目录（SUNSHINEX_DATA_DIR）、全局技能根（SUNSHINEX_USER_SKILLS_DIR）与全局约定目录（SUNSHINEX_GLOBAL_SUNSHINE）钉到仓内 .data-test，
  * 跑完自清——测试对用户全局区（~/.sunshinex/projects）与各测试工作区零写入。
  * 隔离粒度由 `--require` 预载的 scripts/test-env.cjs 按「当前测试文件」派生私有子目录（见该文件注释：
  * 全批共用一个数据目录会让写侧的超限淘汰与读侧的枚举互相踩，用户本机 session.test 的 /init 崩溃即此形态）。
@@ -46,7 +46,7 @@ const ptyFiles = files.filter(isPty);
 const restFiles = files.filter((f) => !isPty(f));
 const baseArgs = ['--require', path.join(__dirname, 'test-env.cjs'), ...FORCE_EXIT, '--test'];
 const batchArgs = (list) => (conc !== undefined && conc !== '' ? [...baseArgs, `--test-concurrency=${conc}`, ...list] : [...baseArgs, ...list]);
-const testEnv = { ...process.env, SUNSHINEX_DATA_DIR: dataDir, SUNSHINEX_USER_SKILLS_DIR: path.join(dataDir, 'user-skills'), SUNSHINEX_GLOBAL_SUNSHINE: path.join(dataDir, 'global-SUNSHINE.md') };
+const testEnv = { ...process.env, SUNSHINEX_DATA_DIR: dataDir, SUNSHINEX_USER_SKILLS_DIR: path.join(dataDir, 'user-skills'), SUNSHINEX_GLOBAL_SUNSHINE: path.join(dataDir, 'global-sunshine') };
 const r = spawnSync(process.execPath, batchArgs(restFiles), { stdio: 'inherit', env: testEnv });
 let status = r.status ?? 1;
 if (ptyFiles.length > 0) {
