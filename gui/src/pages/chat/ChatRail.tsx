@@ -231,8 +231,26 @@ export function ChatRail(props: {
 
   return (
     <div className="sx-rail" aria-hidden="true">
-      {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y 直写 style(测量同帧落位;translateY(-50%) 落中线) */}
-      <div ref={innerRef} className="sx-rail-inner" role="navigation" aria-label={t('Session outline rail', '会话刻度导航')}>
+      {/* 贴滚动口左缘+中线:fixed 锚实测 x/中线 y 直写 style(测量同帧落位;translateY(-50%) 落中线)。
+          挂载即锚(ref 回调):show 已亮期间 users<2→≥2 跨渲染门阈值时 inner 首次挂载,而 [show]
+          布局效应不重跑——此前坐标从未写入,fixed 落静态位置=内容左缘顶部(2026-11-07 用户报障
+          「运行中生成第二用户气泡产生刻度时出现在左上角」) */}
+      <div
+        ref={(el) => {
+          innerRef.current = el;
+          const sc = chatScrollRef.current;
+          if (el !== null && sc !== null) {
+            const a = railAnchor(sc);
+            if (a !== null) {
+              el.style.left = `${a.left}px`;
+              el.style.top = `${a.top}px`;
+            }
+          }
+        }}
+        className="sx-rail-inner"
+        role="navigation"
+        aria-label={t('Session outline rail', '会话刻度导航')}
+      >
         <div className="sx-rail-list">
           {users.map((u, i) => (
             <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)} onClick={() => jump(i)}>
