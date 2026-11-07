@@ -2428,6 +2428,11 @@ input.sx-setting-input { width: 100%; }
 .sx-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* 来源 chip 退役(项目名无法区分来源,绝对路径行承担;项目名仍留 hover)——sx-skill-src 样式随行退役 */
 .sx-skill-card .sx-mcp-switch { flex: none; }
+/* 分节展示(2026-11-07 用户裁定「用不同的开头分组分开展示」):项目/全局/学习沉淀各成节,节头=标签+条数 */
+.sx-skill-section { margin-top: 14px; }
+.sx-skill-section:first-of-type { margin-top: 0; }
+.sx-skill-section-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--fg-secondary); }
+.sx-skill-section-count { font-size: 11px; font-weight: 400; color: var(--fg-tertiary); }
 /* 落盘目录绝对路径行(2026-11-07 用户裁定「项目名无法区分,需要绝对路径」):单行 ellipsis,悬停显全路径 */
 .sx-skill-dir { font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

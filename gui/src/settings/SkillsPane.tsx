@@ -192,6 +192,27 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
     );
   }, [skills, query, sourceFilter]);
 
+  /** 分节展示(2026-11-07 用户裁定「用不同的开头分组分开展示」):按来源(+项目)分组各成节——
+   *  项目(逐项目)/全局/学习沉淀,节头=来源标签+项目名+条数;节序 project→user→learned(与
+   *  装载优先级链一致;'all' 视图 payload 为 user 先行,此处统一归序);空节(搜索/来源过滤后
+   *  无匹配)不渲染 */
+  const sections = useMemo(() => {
+    if (filtered === null) return null;
+    const rank: Record<SkillsGroup['source'], number> = { project: 0, user: 1, learned: 2 };
+    const map = new Map<string, { rank: number; label: string; rows: SkillRow[] }>();
+    for (const s of filtered) {
+      const key = `${s.source}|${s.project ?? ''}`;
+      let sec = map.get(key);
+      if (sec === undefined) {
+        const srcLabel = s.source === 'project' ? t('Project', '项目') : s.source === 'user' ? t('Global', '全局') : t('Learned', '学习沉淀');
+        sec = { rank: rank[s.source], label: s.project !== undefined ? `${srcLabel} · ${s.project}` : srcLabel, rows: [] };
+        map.set(key, sec);
+      }
+      sec.rows.push(s);
+    }
+    return [...map.values()].sort((a, b) => a.rank - b.rank);
+  }, [filtered]);
+
   /** 项目下拉选择:'all' 只落本面(壳层不下发 root);其余上抛同步壳 targetRoot */
   const pickTarget = (v: string): void => {
     setTarget(v);
@@ -229,15 +250,20 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
           {query.trim() === '' && sourceFilter === 'all' ? t('No skills loaded.', '无已装载技能。') : t('No matching skills.', '无匹配技能。')}
         </p>
       )}
-      {filtered !== null && filtered.length > 0 && (
-        <div className="sx-skill-grid">
-          {filtered.map((s) => (
-            // 开关态以 disabledDirs 集合为权威源(乐观翻面+落定回读都落在这里;行 disabled 标注仅
-            // 无路径行的静态兜底)
-            (() => {
-              const off = s.sourceDir !== undefined ? disabledDirs.has(s.sourceDir) : s.disabled === true;
-              return (
-            <div key={s.id} className={`sx-card sx-skill-card${s.shadowedBy !== undefined ? ' shadowed' : ''}`}>
+      {sections !== null && sections.length > 0 && sections.map((sec) => (
+        <section key={`${sec.rank}:${sec.label}`} className="sx-skill-section" aria-label={sec.label}>
+          <h3 className="sx-skill-section-head">
+            {sec.label}
+            <span className="sx-skill-section-count">{t(`${sec.rows.length} skills`, `${sec.rows.length} 个技能`)}</span>
+          </h3>
+          <div className="sx-skill-grid">
+            {sec.rows.map((s) => (
+              // 开关态以 disabledDirs 集合为权威源(乐观翻面+落定回读都落在这里;行 disabled 标注仅
+              // 无路径行的静态兜底)
+              (() => {
+                const off = s.sourceDir !== undefined ? disabledDirs.has(s.sourceDir) : s.disabled === true;
+                return (
+              <div key={s.id} className={`sx-card sx-skill-card${s.shadowedBy !== undefined ? ' shadowed' : ''}`}>
               <div className="sx-skill-head">
                 <span className="sx-skill-id" data-tip={s.sourceDir}>{s.id}</span>
                 {s.shadowedBy !== undefined && (
@@ -265,9 +291,10 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
             </div>
               );
             })()
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        </section>
+      ))}
     </section>
   );
 }
