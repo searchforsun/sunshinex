@@ -76,6 +76,26 @@ export function taskNameResolverOf(entries: readonly ChatEntry[], board: TaskBoa
   };
 }
 
+/** 后台任务 id → 子智能体(2026-11-07 办公模式等待行链接转录页):后台 spawn 回执 `task <id> started`
+ *  → {名=label ?? agent_id, prompt};id 探测口径同 taskNameResolverOf(剥台账时间戳尾/task- 前缀) */
+export function taskAgentResolverOf(entries: readonly ChatEntry[]): (id: string) => { name: string; prompt?: string } | undefined {
+  const m = new Map<string, { name: string; prompt?: string }>();
+  for (const e of entries) {
+    if (e.kind !== 'tool' || e.name !== 'spawn') continue;
+    const input = e.input ?? {};
+    const name =
+      (typeof input.label === 'string' && input.label.trim() !== '' ? input.label.trim() : '')
+      || (typeof input.agent_id === 'string' && input.agent_id.trim() !== '' ? input.agent_id.trim() : '');
+    const started = /task (\S+) started/.exec(e.result?.text ?? e.result?.full ?? '');
+    if (name === '' || started === null) continue;
+    m.set(started[1]!, { name, ...(typeof input.prompt === 'string' ? { prompt: input.prompt } : {}) });
+  }
+  return (id: string) => {
+    const short = id.replace(/-\d{8}T\d{6}Z-[0-9a-z]+$/i, '');
+    return m.get(id) ?? m.get(short) ?? m.get(short.replace(/^task-/, ''));
+  };
+}
+
 /** 队名解析:投影 teams 直查 → 转录 create_agent_team 回执映射 → 原 ref 兜底 */
 export function teamNameResolverOf(
   entries: readonly ChatEntry[],
@@ -117,6 +137,7 @@ export { isComputerUseControlTool };
 
 export function useChatDerived(deps: ChatDerivedDeps): {
   taskNameOf: (id: string) => string;
+  taskAgentOf: (id: string) => { name: string; prompt?: string } | undefined;
   teamNameOf: (ref: string) => string;
   todoBatches: TodoBatch[];
   todoActive: number;
@@ -129,6 +150,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
    *  (token/thinking delta)引用恒定,成员/种子变更才重算(下方 todoBatches 同口径) */
   const taskNameOf = useMemo(() => taskNameResolverOf(chat.entries, board), [chat.structureVersion, chat.seedGen, board]);
   const teamNameOf = useMemo(() => teamNameResolverOf(chat.entries, teams), [chat.structureVersion, chat.seedGen, teams]);
+  const taskAgentOf = useMemo(() => taskAgentResolverOf(chat.entries), [chat.structureVersion, chat.seedGen]);
   /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
    *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
    *  P11 T7 字段单源:清单直读 entry.input.todos(内核条目 name/input 全量随档,旁路/md
@@ -189,7 +211,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     onTodoBatches?.(todoBatches);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSig]);
-  return { taskNameOf, teamNameOf, todoBatches, todoActive, taskActive, computerUseActive };
+  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoActive, taskActive, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer

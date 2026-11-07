@@ -50,10 +50,11 @@ export function useUiMode(): UiMode {
 }
 
 /** 办公模式下保留完整折叠行的工具(行内有跳转链接:文件/子智能体/团队/任务/计划/待办)或用户交互行(问询);
- *  其余工具行只显动词头。task_wait(后台任务)不在列——办公模式不显后台任务跳转(2026-11-07 用户裁定) */
+ *  其余工具行只显动词头。task_wait(后台任务)不在列——普通任务只显「等待了任务」,含子智能体时由行内另行
+ *  链接其转录页(2026-11-07 用户裁定) */
 const OFFICE_STANDALONE = new Set([
   'write', 'edit',
-  'spawn', 'create_agent_teammate', 'create_agent_team', 'create_agent_team_task',
+  'spawn', 'create_agent_teammate', 'create_agent_team', 'create_agent_team_task', 'send_agent_team_message',
   'get_agent_team_board', 'agent_team_task_wait',
   'task_stop', 'agent_team_task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task',
   'exit_plan', 'todo_write', 'ask_question',

@@ -81,6 +81,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   taskNameOf,
   teamNameOf,
   teams,
+  taskAgentOf,
 }: {
   entry: ChatEntry;
   conn: Connection;
@@ -100,6 +101,8 @@ export const ToolEntryView = memo(function ToolEntryView({
   teamNameOf?: (ref: string) => string;
   /** 会话团队清单(get_agent_team_board 单队回落队名) */
   teams?: readonly { teamId: string; name: string }[];
+  /** 后台任务 id → 子智能体(后台 spawn 回执映射;非子智能体任务=undefined)——办公模式等待行链接转录页 */
+  taskAgentOf?: (id: string) => { name: string; prompt?: string } | undefined;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** 办公模式(ui-mode.ts):行不可展开(read 行整行开文件=跳转保留);文件行去 +/- 统计;非跳转行只显
@@ -179,6 +182,14 @@ export const ToolEntryView = memo(function ToolEntryView({
     ? (Array.isArray(input.taskIds) ? (input.taskIds as unknown[]) : [])
         .filter((x): x is string => typeof x === 'string' && x !== '')
         .map((id) => ({ id, name: taskNameOf !== undefined ? taskNameOf(id) : id }))
+    : [];
+  /** 办公模式 task_wait(2026-11-07 用户裁定):普通后台任务不显跳转,只显「等待了任务」;含子智能体则
+   *  「等待任务」后跟子智能体名链接,点开其转录页签 */
+  const officeAgentWaits = office && toolName === 'task_wait' && taskAgentOf !== undefined
+    ? waitTasks.flatMap((w) => {
+        const a = taskAgentOf(w.id);
+        return a !== undefined ? [a] : [];
+      })
     : [];
   /** get_agent_team_board 折叠行队名:回执 team=… 去重 → 队名解析;无 team 行且会话仅一队时回落该队 */
   const boardTeamRefs = (() => {
@@ -301,17 +312,17 @@ export const ToolEntryView = memo(function ToolEntryView({
     >
       {zhToolName(toolName)}
     </span>
-  ) : toolName === 'spawn' || toolName === 'task_wait' ? (
+  ) : toolName === 'spawn' || (toolName === 'task_wait' && !office) ? (
     // 2026-11-05 用户裁定「动词在前,命名准确」:专用动词分支收敛 zhToolName 单点(EN 规范化标签,
     // 不再露原始名——ask/todo 两支保留自定义交互面,文字同源 zhToolName)
     <span className="tool-verb">{zhToolName(toolName)}</span>
-  ) : office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) ? (
+  ) : office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) && officeAgentWaits.length === 0 ? (
     <span className="tool-verb">{officeSingleLabel(toolName)}</span>
   ) : (
     <span className="tool-verb">{zhToolName(toolName)}</span>
   );
   /** 办公模式非跳转行:动词头即全部(命令/目标原文不进折叠行) */
-  const officeBare = office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined);
+  const officeBare = office && !isOfficeStandaloneTool(toolName) && !(toolName === 'read' && path !== undefined) && officeAgentWaits.length === 0;
   const collapsed = officeBare ? verbSpan : (
     <>
       {verbSpan}
@@ -515,6 +526,26 @@ export const ToolEntryView = memo(function ToolEntryView({
         ) : (
           <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageTo}` : ''}</span>
         )
+      ) : !hideTargetWhileRunning && officeAgentWaits.length > 0 && onOpenAgent !== undefined ? (
+        <span className="tool-link-list">
+          {officeAgentWaits.map((a, i) => (
+            <Fragment key={`${a.name}:${i}`}>
+              {i > 0 ? <span className="tool-link-sep" aria-hidden="true">, </span> : null}
+              <span
+                role="button"
+                tabIndex={-1}
+                className="tool-file-base tool-agent-link tool-link-chip"
+                data-tip={t('View subagent', '查看子智能体')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenAgent(a.name, a.name, a.prompt);
+                }}
+              >
+                {a.name}
+              </span>
+            </Fragment>
+          ))}
+        </span>
       ) : !hideTargetWhileRunning && toolName === 'task_wait' ? (
         /* G14.167 折叠行带等待任务名(链接开后台任务页签定位行;null=等全部在跑);多链接均分省略 */
         waitTasks.length > 0 && onOpenTask !== undefined ? (
@@ -658,10 +689,10 @@ export const ToolEntryView = memo(function ToolEntryView({
     <div className={`entry entry-tool${expanded && !office ? ' open' : ''}`}>
       <button
         type="button"
-        className={`tool-summary${office && !(isRead && !isReadImage) ? ' tool-summary-static' : ''}`}
+        className={`tool-summary${office && !isRead ? ' tool-summary-static' : ''}`}
         aria-expanded={expandable ? expanded : undefined}
         onClick={() => {
-          if (isRead && !isReadImage) onOpenFile?.(path!);
+          if (isRead && (!isReadImage || office)) onOpenFile?.(path!); // 办公模式读图行不可展开,整行开文件看图
           else if (office) return;
           else {
             setExpanded((v) => !v);

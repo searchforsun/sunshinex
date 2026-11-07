@@ -308,7 +308,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived
    *  (P11 T7 起字段单源:工具 input 暂存注入随旁路退役) */
-  const { taskNameOf, teamNameOf, todoActive, taskActive, computerUseActive } = useChatDerived({
+  const { taskNameOf, taskAgentOf, teamNameOf, todoActive, taskActive, computerUseActive } = useChatDerived({
     chat,
     board,
     teams,
@@ -900,6 +900,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
           onTodoLocate?.(todos);
         }}
         taskNameOf={taskNameOf}
+        taskAgentOf={taskAgentOf}
         teamNameOf={teamNameOf}
         teams={teams}
         collapsedRuns={collapsedRuns}

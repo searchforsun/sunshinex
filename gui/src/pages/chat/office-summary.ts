@@ -13,6 +13,7 @@ const CATEGORY_LABEL: Record<string, () => string> = {
   exec: () => t('Ran a command', '执行了命令'),
   websearch: () => t('Searched the web', '搜索了网页'),
   webfetch: () => t('Fetched a web page', '抓取了网页'),
+  task_wait: () => t('Waited for tasks', '等待了任务'),
 };
 
 export function officeSingleLabel(name: string): string {

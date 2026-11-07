@@ -45,6 +45,8 @@ export interface MessageListProps {
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   readonly onOpenTask?: (ref: string) => void;
   readonly taskNameOf: (id: string) => string;
+  /** 后台任务 id → 子智能体(办公模式等待行链接转录页;use-chat-derived taskAgentResolverOf) */
+  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string } | undefined;
   readonly teamNameOf?: (ref: string) => string;
   readonly teams?: readonly { teamId: string; name: string }[];
   readonly collapsedRuns: ReadonlySet<string>;
@@ -91,6 +93,8 @@ interface DayGroupProps {
   /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡 */
   readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
   readonly taskNameOf: (id: string) => string;
+  /** 后台任务 id → 子智能体(办公模式等待行链接转录页;use-chat-derived taskAgentResolverOf) */
+  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string } | undefined;
   readonly teamNameOf?: (ref: string) => string;
   readonly teams?: readonly { teamId: string; name: string }[];
   readonly toggleRun: (key: string) => void;
@@ -113,7 +117,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const office = useUiMode() === 'office';
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
@@ -128,10 +132,11 @@ const DayGroupBlock = memo(
         onOpenTask={onOpenTask}
         onOpenTodos={onOpenTodos}
         taskNameOf={taskNameOf}
+        taskAgentOf={taskAgentOf}
         teamNameOf={teamNameOf}
         teams={teams}
       />
-    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams]);
+    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
     const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenAgent={onOpenAgent} sideChat={sideChat} />, [onEntryOpenDiff, onOpenAgent, sideChat]);
     const renderFoldEntry = useCallback((e2: ChatEntry) => {
@@ -272,6 +277,7 @@ const DayGroupBlock = memo(
     && prev.onOpenAgent === next.onOpenAgent
     && prev.onOpenTask === next.onOpenTask
     && prev.taskNameOf === next.taskNameOf
+    && prev.taskAgentOf === next.taskAgentOf
     && prev.teamNameOf === next.teamNameOf
     && prev.teams === next.teams
     && prev.toggleRun === next.toggleRun
@@ -323,6 +329,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const onOpenSessionStable = useCallback((sid: string) => propsRef.current.onOpenSession?.(sid), []);
   const onOpenSessionOpt = useCallback(() => opt(onOpenSessionStable, propsRef.current.onOpenSession), [onOpenSessionStable]);
   const taskNameOfStable = useCallback((id: string) => propsRef.current.taskNameOf(id), []);
+  const taskAgentOfStable = useCallback((id: string) => propsRef.current.taskAgentOf?.(id), []);
   const teamNameOfStable = useCallback((ref: string) => propsRef.current.teamNameOf?.(ref) ?? ref, []);
   const teamNameOfOpt = useCallback(() => opt(teamNameOfStable, propsRef.current.teamNameOf), [teamNameOfStable]);
   const callIdOfStable = useCallback((e: ChatEntry) => propsRef.current.callIdOf(e), []);
@@ -413,6 +420,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
             onOpenAgent={onOpenAgentOpt()}
             onOpenTask={onOpenTaskOpt()}
             taskNameOf={taskNameOfStable}
+            taskAgentOf={taskAgentOfStable}
             teamNameOf={teamNameOfOpt()}
             teams={props.teams}
             toggleRun={toggleRunStable}
