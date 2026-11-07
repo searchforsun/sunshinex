@@ -3606,3 +3606,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-setting-path-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); cursor: pointer; }
 .sx-setting-path-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-setting-path-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* 折叠态工具行幻影高度根修(2026-11-07 用户实测「工具行距比思考行大」):展开体 0fr 只压内容不压内边距,
+   .tool-body-inner 顶距 10px 在收起态仍占位——每条工具行凭空高 10px。顶距只在展开态生效,随高度同步过渡 */
+.entry-tool:not(.open) .tool-body-inner { padding-top: 0; }
+.tool-body-inner { transition: padding-top var(--dur-relaxed) var(--ease-enter); }
+/* 相邻思考行同工具行紧凑行距(段内 gap 16 → 6;原规则族漏了思考+思考,隐藏旁白不再切段后两行思考相邻即露出) */
+.chat .entry-thinking + .entry-thinking { margin-top: -10px; }

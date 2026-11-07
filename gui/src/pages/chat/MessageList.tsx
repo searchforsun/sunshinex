@@ -7,6 +7,7 @@ import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
 import { groupEntriesByDay } from '../../chat-groups';
 import type { ChatEntry } from '../../chat-reducer';
+import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
 }
@@ -113,6 +114,7 @@ interface DayGroupProps {
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
     const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const office = useUiMode() === 'office';
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
         key={e2.key}
@@ -191,6 +193,8 @@ const DayGroupBlock = memo(
     };
     for (let i = 0; i < entries.length; i += 1) {
       const entry = entries[i]!;
+      // 办公模式隐藏旁白整条跳过(不切断折叠段——留着会把前后思考/工具行拆成两段,中间多出空隙)
+      if (office && isOfficeHiddenNotice(entry.kind, entry.md)) continue;
       // G14.136 折叠态的中间正文/成员消息随工具进 seg-collapse;轮内插入用户条不上折叠行
       if (isCommandEntry(entry)) {
         // 斜杠命令三态=系统提示行(2026-10-31 裁定):不进工具段聚合
