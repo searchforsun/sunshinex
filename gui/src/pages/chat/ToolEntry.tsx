@@ -78,6 +78,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenAgent,
   onOpenTodos,
   onOpenTask,
+  onOpenLeader,
   taskNameOf,
   teamNameOf,
   teams,
@@ -93,6 +94,8 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** 任务名/队名链接:`bg:` 前缀=后台任务账本行;`team:` 前缀开指定队卡;其余开板高亮(App openTaskFocus) */
   onOpenTask?: (taskRef: string) => void;
+  /** 成员转录面:发给 leader 的消息行点击 leader → 主对话定位该消息气泡(2026-11-08;缺省=开队卡) */
+  onOpenLeader?: (m: { text: string }) => void;
   /** 2026-11-04 用户裁定:点「待办」字样打开侧栏待办页签并定位对应卡 */
   onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
@@ -178,8 +181,8 @@ export const ToolEntryView = memo(function ToolEntryView({
     toolName === 'send_agent_team_message' && typeof input.text === 'string' ? input.text : '';
   /** 收件人=主会话 leader:点击开智能体团队定位该队(2026-11-07 用户裁定「发送团队消息两模式都可点」——
    *  成员收件人开其转录页) */
-  const messageToLeader = messageTo === 'leader';
-  const messageToLabel = messageTo;
+  const messageToLeader = messageTo === 'leader' || messageTo === 'lead'; // 旧档 to='lead' 显示归一 leader(2026-11-08 清残留)
+  const messageToLabel = messageToLeader ? 'leader' : messageTo;
   /** G14.172 等待行任务名(taskNameOf 单点解析)——用户裁决「等待任务显示任务名称,不要用 id」;保留 id 供链接定位。
    *  task_wait=后台账本;agent_team_task_wait=板任务——点击路由前缀分立 */
   const waitTasks = toolName === 'task_wait' || toolName === 'agent_team_task_wait'
@@ -531,15 +534,16 @@ export const ToolEntryView = memo(function ToolEntryView({
         )
       ) : !hideTargetWhileRunning && toolName === 'send_agent_team_message' ? (
         /* 折叠行带收件人名:成员名点开其转录页;leader 点开智能体团队定位该队(单队会话直达队卡);正文进展开体 */
-        messageToLeader && onOpenTask !== undefined ? (
+        messageToLeader && (onOpenLeader !== undefined || onOpenTask !== undefined) ? (
           <span
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Open agent team', '在智能体团队中查看')}
+            data-tip={onOpenLeader !== undefined ? t('Locate in main conversation', '在主对话中定位') : t('Open agent team', '在智能体团队中查看')}
             onClick={(e) => {
               e.stopPropagation();
-              onOpenTask(`team:${teams !== undefined && teams.length === 1 ? teams[0]!.teamId : ''}`);
+              if (onOpenLeader !== undefined) onOpenLeader({ text: messageText });
+              else onOpenTask?.(`team:${teams !== undefined && teams.length === 1 ? teams[0]!.teamId : ''}`);
             }}
           >
             {' '}{messageToLabel}
@@ -738,7 +742,7 @@ export const ToolEntryView = memo(function ToolEntryView({
 
 
   return (
-    <div className={`entry entry-tool${expanded && !office ? ' open' : ''}`}>
+    <div className={`entry entry-tool${expanded && !office ? ' open' : ''}`} data-tool={toolName || undefined} data-msg-to={messageToLeader ? 'leader' : messageTo !== '' ? messageTo : undefined} data-msg-text={messageText !== '' ? messageText : undefined}>
       <button
         type="button"
         className={`tool-summary${office && !isRead ? ' tool-summary-static' : ''}`}
