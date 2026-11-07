@@ -1173,40 +1173,22 @@ export async function handleTeamsPut(io: ConfigHandlerIo, req: http.IncomingMess
  *  定位——不泄 daemon 主机绝对路径，GUI 可原样呈现）；畸形 frontmatter → 400。scope=global 恒忽略
  *  root（定位面，PUT 同裁定） */
 export function handleTeamsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
-  const url = urlOf(req);
-  const scope = url.searchParams.get('scope');
-  if (scope !== 'project' && scope !== 'global') {
-    io.send(res, 400, { error: 'scope must be "project" or "global"' });
-    return;
-  }
-  const id = url.searchParams.get('id');
-  if (id === null || !isValidTeamId(id)) {
-    io.send(res, 400, { error: 'id must match /^[a-z0-9]+(-[a-z0-9]+)*$/ (used as a directory name)' });
-    return;
-  }
-  const rootParam = url.searchParams.get('root');
-  if (scope === 'project' && (rootParam === null || rootParam.length === 0)) {
-    io.send(res, 400, { error: 'root required for scope=project' });
-    return;
-  }
-  // 落位解析（catalog teamsDir 单点）：project=<root>/.sunshinex/teams、global=<userConfigDir>/teams
-  const scopeRoot = scope === 'project' ? path.resolve(rootParam as string) : null;
-  const file = path.join(teamsDir(scope, scopeRoot), id, 'team.md');
-  if (!fs.existsSync(file)) {
-    io.send(res, 404, { error: `team.md not found: ${scope}/teams/${id}` });
-    return;
-  }
-  const md = fs.readFileSync(file, 'utf8'); // existsSync 后读失败（竞态移除等）沿 dispatch 500 收口
-  const m = /^---\s*\n([\s\S]*?)\n---/.exec(md); // FRONTMATTER 词法（skills/subagent 同款单行块）
-  if (!m) {
-    io.send(res, 400, { error: 'team.md missing frontmatter' });
-    return;
-  }
-  if (!parseTeamFrontmatter(md).name) {
-    io.send(res, 400, { error: 'team.md frontmatter missing name' });
-    return;
-  }
-  io.send(res, 200, { body: md.slice(m[0].length).trim() }); // 正文全文（frontmatter 闭合后 trim，清单面 200 帽不适用）
+  return handleCatalogBodyGet(io, req, res, {
+    idOk: (id) => isValidTeamId(id),
+    // id 词法严格 kebab 同 PUT 守卫（AMENDMENT，ledger 2026-11-04）
+    idErr: 'id must match /^[a-z0-9]+(-[a-z0-9]+)*$/ (used as a directory name)',
+    dir: teamsDir,
+    fileBase: 'team.md',
+    scopeSlug: 'teams',
+    extractBody: (md) => {
+      // frontmatter 校验在本面显式收口——parseTeamFrontmatter 词法宽容不抛（缺块回空 KV），畸形以
+      // 显式 400 收口（缺块/缺 name 两断，消息风格镜像 agents body 端点 parser 原文）
+      const m = /^---\s*\n([\s\S]*?)\n---/.exec(md); // FRONTMATTER 词法（skills/subagent 同款单行块）
+      if (!m) throw new Error('team.md missing frontmatter');
+      if (!parseTeamFrontmatter(md).name) throw new Error('team.md frontmatter missing name');
+      return md.slice(m[0].length).trim(); // 正文全文（frontmatter 闭合后 trim，清单面 200 帽不适用）
+    },
+  });
 }
 
 /** GET /settings/skills 应答行富化形（T6 基形 + Task 25 附加字段，行基形零变化纯附加）：

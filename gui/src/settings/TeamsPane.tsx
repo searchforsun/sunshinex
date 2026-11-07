@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
@@ -370,28 +371,33 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                         dataTip={writable ? undefined : globalTip}
                         onConfirm={() => runOp(opFor(e, 'delete'))}
                       />
+                      {/* 2026-11-07 用户裁定「详情按钮放删除同行最右侧;点击展开描述+章程」:
+                          details 经 display:contents 入操作行,summary 推到行最右,展开面整行折下;
+                          章程懒加载同前(320px 纵滚,失败回退预览) */}
+                      <details
+                        className="sx-team-body"
+                        onToggle={(ev) => {
+                          if (!(ev.target as HTMLDetailsElement).open) return;
+                          const key = `${e.source}:${e.id}`;
+                          if (bodyMap[key] !== undefined) return;
+                          conn.teamBody(e.source, e.id, root === '' ? undefined : root).then(
+                            (r) => setBodyMap((m) => ({ ...m, [key]: r.body })),
+                            () => setBodyMap((m) => ({ ...m, [key]: e.bodyPreview })),
+                          );
+                        }}
+                      >
+                        <summary>
+                          {t('Details', '详情')}
+                          <ChevronDown size={12} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
+                        </summary>
+                        <div className="sx-team-detail">
+                          {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
+                          <pre>{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</pre>
+                        </div>
+                      </details>
                     </>
                   }
-                >
-                  {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
-                  {/* 章程详情(2026-11-05 用户裁定):点击展开=320px 固定高纵滚,展开首拍拉全文
-                      (失败回退 200 字预览);与编辑器章程区同高 */}
-                  <details
-                    className="sx-team-body"
-                    onToggle={(ev) => {
-                      if (!(ev.target as HTMLDetailsElement).open) return;
-                      const key = `${e.source}:${e.id}`;
-                      if (bodyMap[key] !== undefined) return;
-                      conn.teamBody(e.source, e.id, root === '' ? undefined : root).then(
-                        (r) => setBodyMap((m) => ({ ...m, [key]: r.body })),
-                        () => setBodyMap((m) => ({ ...m, [key]: e.bodyPreview })),
-                      );
-                    }}
-                  >
-                    <summary>{t('Charter', '章程')}</summary>
-                    <pre>{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</pre>
-                  </details>
-                </ResourceCard>
+                />
               );
             })}
           </ul>

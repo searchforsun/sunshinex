@@ -275,7 +275,7 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     const h = connOf([row({ bodyPreview: 'Team charter.' })], { fullBody: 'FULL CHARTER BODY — many lines.' });
     render(<TeamsPane conn={h.conn} root="/w/proj" />);
     await screen.findByText('core');
-    fireEvent.click(screen.getByText('Charter')); // 展开 → onToggle 拉 teamBody 全文
+    fireEvent.click(screen.getByText('Details')); // 展开 → onToggle 拉 teamBody 全文
     await screen.findByText('FULL CHARTER BODY — many lines.'); // 全文替换 200 字预览
     expect(h.bodyCalls).toContainEqual(['project', 'core', '/w/proj']);
   });
@@ -284,10 +284,10 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     const h = connOf([row({ bodyPreview: 'Team charter.' })]); // fullBody 缺省拒
     render(<TeamsPane conn={h.conn} root="/w/proj" />);
     await screen.findByText('core');
-    fireEvent.click(screen.getByText('Charter'));
+    fireEvent.click(screen.getByText('Details'));
     await screen.findByText('Team charter.'); // 预览回退仍在
-    fireEvent.click(screen.getByText('Charter')); // 收起
-    fireEvent.click(screen.getByText('Charter')); // 再展开
+    fireEvent.click(screen.getByText('Details')); // 收起
+    fireEvent.click(screen.getByText('Details')); // 再展开
     expect(h.bodyCalls).toHaveLength(1); // 缓存(=预览)已落,零重拉
   });
 });
