@@ -212,8 +212,61 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
     parallel[i] = view;
     out.push(view);
   }
-  mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped: out, lang });
-  return out;
+  const mapped = mergeSplitThinking(out);
+  mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped, lang });
+  return mapped;
+}
+
+/** 合并视图缓存:首段思考条 → {各段引用, 合并视图}——段引用逐位不变即复用(memo 不破) */
+const mergedThinkingCache = new WeakMap<ChatEntry, { parts: readonly ChatEntry[]; view: ChatEntry }>();
+
+/** 被旁白截断的思考流复原(2026-11-07 用户报障「思考实际一个,被系统记忆提示行截断」):记忆/技能管线
+ *  异步落 notice,恰逢思考流式中即被内核封段,续流另起一段——视图上一段思考被拦腰切成两行。思考段之间
+ *  只隔旁白(无工具/正文)必属同一思考流(新思考段只在工具调用之后出现),故合并为一行(正文直接拼接——
+ *  截断点在句中;秒数相加;键取首段保持稳定),被夹的旁白顺移到合并行之后。无合并时原数组原样返回 */
+export function mergeSplitThinking(list: ChatEntry[]): ChatEntry[] {
+  let out: ChatEntry[] | null = null;
+  for (let i = 0; i < list.length; i += 1) {
+    const head = list[i]!;
+    if (head.kind !== 'thinking') {
+      out?.push(head);
+      continue;
+    }
+    const parts = [head];
+    const notices: ChatEntry[] = [];
+    let j = i + 1;
+    for (;;) {
+      let k = j;
+      while (k < list.length && list[k]!.kind === 'notice') k += 1;
+      if (k >= list.length || list[k]!.kind !== 'thinking' || k === j) break;
+      for (let n = j; n < k; n += 1) notices.push(list[n]!);
+      parts.push(list[k]!);
+      j = k + 1;
+    }
+    if (parts.length === 1) {
+      out?.push(head);
+      continue;
+    }
+    out ??= list.slice(0, i);
+    const hit = mergedThinkingCache.get(head);
+    let view: ChatEntry;
+    if (hit !== undefined && hit.parts.length === parts.length && hit.parts.every((x, n) => x === parts[n])) {
+      view = hit.view;
+    } else {
+      const last = parts[parts.length - 1]!;
+      const secs = parts.reduce((n, x) => n + (x.seconds ?? 0), 0);
+      view = {
+        ...head,
+        md: parts.map((x) => x.md).join(''),
+        streaming: last.streaming,
+        ...(parts.some((x) => x.seconds !== undefined) ? { seconds: secs } : {}),
+      };
+      mergedThinkingCache.set(head, { parts, view });
+    }
+    out.push(view, ...notices);
+    i = j - 1;
+  }
+  return out ?? list;
 }
 
 /** 用户提交的本地回显条（合成 user 事件入核——HTTP 提交路径 daemon 不产 user 帧,G14.89 同口径;
