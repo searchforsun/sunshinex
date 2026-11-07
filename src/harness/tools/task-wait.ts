@@ -1,6 +1,6 @@
 // task_wait：仅等台账 exec / spawn(subagent) 后台任务到终态并内联回执（对标 CC TaskOutput）。
 // agent_team_task_wait：仅等板任务（可含板派发台账 id）；事件等待——任一板任务状态偏离入口快照即回
-// （2026-11-02 用户裁定：不是等全部，lead 每次变更都要能即时反应），全部终态 success/failed/cancelled 仍收口。
+// （2026-11-02 用户裁定：不是等全部，leader 每次变更都要能即时反应），全部终态 success/failed/cancelled 仍收口。
 // 分域拒识：task_wait 遇板 id → INVALID_ARG 点名 agent_team_task_wait；对称拒识 exec/spawn 纯后台 id。
 // taskIds=null：task_wait 等当前 running 台账；agent_team_task_wait 等板上非终态任务。
 // timeoutSeconds=0 非阻塞 peek；子面 kinds=['exec'] 防板派发台账自等。

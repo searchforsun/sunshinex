@@ -339,7 +339,7 @@ export class SubagentRunner {
    * 缺省 = 父全量 − 这些件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
    * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
    * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子智能体不得改动主会话工作环境；
-   * taskboard 四件套 lead-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 leader，子智能体不碰板；
+   * taskboard 四件套 leader-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 leader，子智能体不碰板；
    * send_agent_team_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 leader+具名 teammate,fork 子面不发；
    * send_agent_team_message+create_agent_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
    * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁) */
@@ -545,7 +545,7 @@ export class SubagentRunner {
           return fail('INCOMPLETE', `[${finalLabel}] isolation failed (${created.error.code})`);
         }
       }
-      // bare=板任务干净会话:主链不进 seed(防执行体看见 lead 的 create_agent_team_task/task_wait 编排而「自等」);
+      // bare=板任务干净会话:主链不进 seed(防执行体看见 leader 的 create_agent_team_task/task_wait 编排而「自等」);
       // 普通 spawn 仍 fork=主链快照+尾追(前缀缓存第一要义)
       const base = opts?.bare === true ? [] : this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;

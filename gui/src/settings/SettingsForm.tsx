@@ -322,8 +322,10 @@ function FontRow(): JSX.Element {
                 className="sx-font-pv-code"
                 style={{
                   fontSize: 'var(--f-code)',
-                  lineHeight: v['--f-code-lh'] ?? 'normal',
-                  padding: v['--f-code-pad'] ?? '6px 8px',
+                  // 预览=md 代码块真实口径(2026-11-08 对齐:行距 1.5/内距 0.6em 1em 为用户裁定钉值,
+                  // 不随预设 --f-code-lh/pad 变——那两键现只服务 diff 面与 raw 编辑器)
+                  lineHeight: 1.5,
+                  padding: '0.6em 1em',
                   fontFamily: v['--font-mono'],
                 }}
               >
