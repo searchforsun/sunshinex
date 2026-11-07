@@ -3656,10 +3656,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    行距/内距只跟代码字号动态变化,内距不是固定的」)===== */
 /* 字号=--f-code(代码字号设置);行距=无单位比例(随字号自动缩放;.entry pre 原 fallback normal
    ≈1.15 是发紧根因);内距=em(随字号等比,替代固定 --f-code-pad);行内码随正文(界面字号) */
-.entry pre { font: var(--f-code, 12px)/1.5 var(--font-mono); padding: 0.6em 1em; } /* 2026-11-07 用户裁定「不要给代码块添加行距,太奇怪」:收紧到编辑器档 1.5 */
+.entry pre { font: var(--f-code, 12px)/normal var(--font-mono); padding: 0.6em 1em; line-height: normal; } /* 2026-11-07 用户裁定「保持 md 源码中的行距」:字体原生单倍(不加任何倍数) */
 .code-block pre { padding: 0.6em 1em; }
-.code-block pre code { font: var(--f-code, 12px)/1.5 var(--font-mono); } /* 同上 1.7→1.5 */
-.files-md pre { font: var(--f-code, 12px)/1.5 var(--font-mono); padding: 0.6em 1em; }
+.code-block pre code { font: var(--f-code, 12px)/normal var(--font-mono); line-height: normal; } /* 同上:原生单倍 */
+.files-md pre { font: var(--f-code, 12px)/normal var(--font-mono); padding: 0.6em 1em; line-height: normal; }
 .files-md :not(pre) > code { font-size: 0.9em; } /* 与 .entry 行内码同口径(原绑代码字号) */
 .mermaid-fallback { padding: 0.6em 1em; }
 
