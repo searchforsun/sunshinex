@@ -3646,3 +3646,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .files-md h1, .files-md h2, .files-md h3, .files-md h4, .files-md h5, .files-md h6 { margin: 54px 0 24px; }
 .files-md > h1:first-child, .files-md > h2:first-child, .files-md > h3:first-child,
 .files-md > h4:first-child, .files-md > h5:first-child, .files-md > h6:first-child { margin-top: 0; }
+/* ===== md 节奏统一补全(2026-11-07 用户裁定四轮「mermaid/---/公式/图片等所有 md 格式同一单一标准」):
+   特殊块(mermaid 全家/kaTeX 展示式/md 图片)并入同一单一下外距制——正文 20 / 文件预览 24 */
+.entry .mermaid-svg, .entry .mermaid-pending.mermaid-draft, .entry .mermaid-fallback, .entry .mermaid-error,
+.entry .katex-display, .entry .md-image { margin: 0 0 20px; } /* 原 4px/1em/16px 并轨节奏;hr 已在前段节奏块 */
+.files-md .mermaid-svg, .files-md .mermaid-pending.mermaid-draft, .files-md .mermaid-fallback, .files-md .mermaid-error,
+.files-md .katex-display, .files-md .md-image { margin: 0 0 24px; }
