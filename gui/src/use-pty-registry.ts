@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { patchTabMeta, type TabStates } from './tabs/tab-state';
+import { patchTabMeta, seatKey, type TabStates } from './tabs/tab-state';
 
 /**
  * pty 记账 hook(2026-10-27 技术债轮 D53 批F 自 App.tsx 外提,行为零变化):
@@ -22,7 +22,7 @@ export function usePtyRegistry(
    *  (仅 ref)保稳定:TerminalTab 装配 effect 以此为依赖,inline 箭头会令其随 App 重渲染重跑 */
   /** 记账键=座位+uid(2026-11-08 浏览器页签隔离同族):页签 uid 只在座位内唯一(类型+地址铸造,
    *  终端同址多开仅 ~序号),跨座位裸 uid 会互串——allocate 记到当前座、A 的 uid 覆盖 B 的账 */
-  const seatOf = (uid: string): string => `${curSeat}|${uid}`;
+  const seatOf = (uid: string): string => seatKey(curSeat, uid);
   const handlePtyAllocated = useCallback((uid: string, ptyId: string): void => {
     ptyIdsRef.current.set(seatOf(uid), ptyId);
     // G14.2xx ptyId 落标签参数(gui-state 落盘):刷新后凭档直连旧 pty(replay 重建屏幕),

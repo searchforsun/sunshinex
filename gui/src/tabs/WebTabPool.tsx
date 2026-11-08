@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Connection } from '../connection';
 import { zoomScale } from '../ui-zoom';
-import type { TabParams } from './tab-state';
+import { seatKey, type TabParams } from './tab-state';
 import { WebTab } from './WebTab';
 
 /** 浏览器页签常驻池(2026-11-03 浏览器状态按会话隔离):全部会话座位的 web 页签统一挂在应用根下,
@@ -19,12 +19,8 @@ export interface WebPoolItem {
 
 export const DRAFT_PARTITION = 'sx-draft';
 
-/** 池项身份=座位+uid:页签 uid 只在座位内唯一(按类型+地址铸造,插件新开页恒 web:about:blank),
- *  跨会话同 uid 必撞——单按 uid 寻址即 React key 碰撞、他会话页签同被判可见(2026-11-08 用户报障
- *  「切会话还能看到上一个会话的浏览器页签」) */
-export function poolKey(seat: string, uid: string): string {
-  return `${seat}|${uid}`;
-}
+/** 池项身份=座位+uid(tab-state seatKey 单点;2026-11-08 用户报障「切会话还能看到上一个会话的浏览器页签」) */
+export const poolKey = seatKey;
 
 /** 离屏位置(远离视口但保持真实尺寸,guest 照常布局/出帧) */
 const OFFSCREEN_X = -100_000;

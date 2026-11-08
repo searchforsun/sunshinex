@@ -459,3 +459,10 @@ export function adoptStaleSeats(states: TabStates, staleIds: readonly string[], 
   }
   return next;
 }
+
+/** 座位复合键单点(浏览器常驻池 poolKey + 终端 pty 记账同口径,D69 收敛):页签 uid 只在座位内唯一
+ *  (按类型+地址铸造,插件新开页恒 web:about:blank、终端同址多开仅 ~序号),跨会话同 uid 必撞——
+ *  单按 uid 寻址即 React key 碰撞、他会话页签被判可见/A 的 pty 账覆盖 B(2026-11-08 用户报障族) */
+export function seatKey(seat: string, uid: string): string {
+  return `${seat}|${uid}`;
+}
