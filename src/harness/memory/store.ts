@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
 
@@ -61,6 +62,27 @@ export const INDEX_NAME = 'MEMORY.md';
 
 /** 索引名的 slug 排他口径（大小写不敏感比较用：`MEMORY.md` 去扩展名即 `memory`） */
 const INDEX_SLUG = 'memory';
+
+/** 变更历史文件名（OKF log 件）：追加只增的事件账本，五写原语单点收口追加；list() 的 .md 口径天然排除，
+ *  backup/restore 须显式保护（备份对象是记录文件集，log 自身追加只增无需快照、也不可被还原清退） */
+export const LOG_NAME = 'log.jsonl';
+
+/** 变更事件来源面：标注该条事件由哪个调用面触发（appendLog 收口的调用方透传，缺省 system） */
+export type MemoryLogSource = 'tool' | 'extractor' | 'consolidate' | 'system';
+
+/** 变更事件（摘要指纹粒度）：正文只记 sha256 前 12 位指纹，全文恢复走 .bak 快照 */
+export interface MemoryLogEvent {
+  ts: string;
+  op: 'add' | 'put' | 'remove' | 'backup' | 'restore';
+  slug?: string;
+  prevDigest?: string;
+  newDigest?: string;
+  source: MemoryLogSource;
+}
+
+function bodyDigest(body: string): string {
+  return crypto.createHash('sha256').update(body, 'utf8').digest('hex').slice(0, 12);
+}
 
 /** 整理回滚快照目录名前缀（backup 原语单点，D26/J10）：.bak-<epoch-ms> 子目录——.bak 命名与清退/清空范围等
  *  目录级 fs 知识全部收敛进 store，调用方（consolidate）只持句柄不做目录手术 */
@@ -142,12 +164,24 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
  */
 export class MemoryStore {
   private readonly dirPath: string;
+  private readonly source: MemoryLogSource;
 
-  constructor(root: string, opts?: { subdir?: string }) {
+  constructor(root: string, opts?: { subdir?: string; source?: MemoryLogSource }) {
     const base = memoryDir(root);
     // 子目录形态（规格 §5）：子智能体自有记忆 memory/agents/<id>，与主目录互不干扰
     this.dirPath = opts?.subdir === undefined ? base : path.join(base, opts.subdir);
+    this.source = opts?.source ?? 'system';
     fs.mkdirSync(this.dirPath, { recursive: true });
+  }
+
+  /** 变更历史追加（OKF log 件收口）：追加只增、失败旁路降级不阻断主写路径（记忆模块旁路纪律同款） */
+  private appendLog(op: MemoryLogEvent['op'], extra?: { slug?: string; prevDigest?: string; newDigest?: string }): void {
+    const event: MemoryLogEvent = { ts: new Date().toISOString(), op, source: this.source, ...extra };
+    try {
+      fs.appendFileSync(path.join(this.dirPath, LOG_NAME), `${JSON.stringify(event)}\n`);
+    } catch (e) {
+      console.error(`[memory] log append failed (op=${op}):`, e);
+    }
   }
 
   dir(): string {
@@ -208,6 +242,7 @@ export class MemoryStore {
     const modified = new Date().toISOString();
     fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
     this.rebuildIndex();
+    this.appendLog('add', { slug, newDigest: bodyDigest(body) });
 
     const record: MemoryRecord = { slug, type: input.type, created, modified, description, body };
     const over = this.overLimit();
@@ -239,6 +274,7 @@ export class MemoryStore {
     const modified = input.modified ?? new Date().toISOString();
     fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
     this.rebuildIndex();
+    this.appendLog('put', { slug, prevDigest: existing ? bodyDigest(existing.body) : undefined, newDigest: bodyDigest(body) });
 
     const record: MemoryRecord = { slug, type: input.type, created, modified, description, body };
     const over = this.overLimit();
@@ -251,8 +287,10 @@ export class MemoryStore {
     if (!isSafeSlug(slug)) return failSlugInvalid<void>();
     const file = path.join(this.dirPath, `${slug}.md`);
     if (!fs.existsSync(file)) return fail('MEMORY_NOT_FOUND', `no such memory: ${slug}`);
+    const existing = this.list().find((r) => r.slug === slug);
     fs.rmSync(file);
     this.rebuildIndex();
+    this.appendLog('remove', { slug, prevDigest: existing ? bodyDigest(existing.body) : undefined });
     return ok(undefined);
   }
 
@@ -269,10 +307,11 @@ export class MemoryStore {
     const bak = path.join(this.dirPath, `${BAK_PREFIX}${Date.now()}`);
     fs.mkdirSync(bak, { recursive: true });
     for (const f of fs.readdirSync(this.dirPath)) {
-      if (f.startsWith(BAK_PREFIX)) continue;
+      if (f.startsWith(BAK_PREFIX) || f === LOG_NAME) continue;
       const p = path.join(this.dirPath, f);
       if (fs.statSync(p).isFile()) fs.copyFileSync(p, path.join(bak, f));
     }
+    this.appendLog('backup', { slug: path.basename(bak) });
     return bak;
   }
 
@@ -283,11 +322,15 @@ export class MemoryStore {
    */
   restore(bak: string): void {
     for (const f of fs.readdirSync(this.dirPath)) {
-      if (f.startsWith(BAK_PREFIX)) continue;
+      if (f.startsWith(BAK_PREFIX) || f === LOG_NAME) continue;
       fs.rmSync(path.join(this.dirPath, f), { recursive: true, force: true });
     }
-    for (const f of fs.readdirSync(bak)) fs.copyFileSync(path.join(bak, f), path.join(this.dirPath, f));
+    for (const f of fs.readdirSync(bak)) {
+      if (f === LOG_NAME) continue;
+      fs.copyFileSync(path.join(bak, f), path.join(this.dirPath, f));
+    }
     fs.rmSync(bak, { recursive: true, force: true });
+    this.appendLog('restore', { slug: path.basename(bak) });
   }
 
   /** 成功路径清理（写入全部落定后由调用方调用）：删备份目录，不留残渣；不动当前目录内容 */

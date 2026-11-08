@@ -72,7 +72,7 @@ export async function settleMemory(opts: {
     if (!call) return saved;
     const candidates = parseItemsPayload(call.argsJson);
     if (!candidates) return saved;
-    const store = new MemoryStore(opts.root);
+    const store = new MemoryStore(opts.root, { source: 'extractor' });
     const sunshine = sunshineText(opts.root);
     const updated: string[] = [];
     const retracted: string[] = [];
@@ -249,7 +249,10 @@ export function writeMemoryFact(opts: {
   if (!resolveMemoryConfig().autoMemory) return fail('MEMORY_DISABLED', 'memory write denied: auto memory is off');
   const subdir = memorySubdir(opts.scope);
   if (!subdir.ok) return subdir;
-  const store = subdir.value === undefined ? new MemoryStore(opts.root) : new MemoryStore(opts.root, { subdir: subdir.value });
+  const store =
+    subdir.value === undefined
+      ? new MemoryStore(opts.root, { source: 'tool' })
+      : new MemoryStore(opts.root, { subdir: subdir.value, source: 'tool' });
 
   if (opts.action === 'delete') {
     if (!opts.slug || !isSafeSlug(opts.slug)) return fail('MEMORY_SLUG_INVALID', 'delete requires the slug of an existing record');

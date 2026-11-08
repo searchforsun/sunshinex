@@ -96,7 +96,7 @@ src/
   config.ts           # SUNSHINE.md 解析器
   catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、plugins、mcp、skills、approvals、permissions 读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts（agentTeams 启用解析单点）/ permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir / plugins（插件两级装载+启用态合并+MCP 名单合成）/ image-history（imageHistoryLimit 语义键解析，0-50 渲染半径）
-  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
+  tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行；listSessions 派生 sessions/INDEX.md 索引 + log() 旁路 <id>.transcript.md 可读镜像——账本对模型可读面，jsonl 仍为逐字节权威）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
   harness/
     index.ts          # Harness 门面（单发执行缝 reactor 仅测试驱动用——生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
@@ -109,7 +109,7 @@ src/
     skills.ts         # 技能装载与调度（项目单根+全局+学习级+插件链尾、resolve 回退链、清单注入）
     teams.ts          # 团队目录装载与调度（两级遮蔽、索引注入、resolve 三态、章程卡）
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
-    memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线）
+    memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线；store 内收口 log.jsonl 追加只增变更历史——OKF log 件，五写原语单点落账、摘要指纹粒度、失败旁路）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write）
     plugin-host.ts    # 插件宿主装配单点（browser-use 插件连接改写为每进程宿主 HTTP 连接：会话浏览器键/座位/数据目录/facade 端点入 URL，宿主起不来只损失浏览器工具）
@@ -303,7 +303,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
 - **持久化分层（TUI/GUI 双面口径，2026-10-19 用户裁定）**：两会话面**共有**的持久化数据一律同一底层实现、同一落盘位置，由共享模块单点读写（收敛在 `src/session/`、`src/tui/session-journal.ts`、`src/taskboard/` 等共享层）——TUI 与 GUI 只是同一份数据的不同投影，任一面写入、另一面 attach/重开即见；**禁止各面自建私有副本或平行的写面**。落位分三档：
-  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放；智能体团队/板/队内 inbox 落 `data/teams/<journalId>/`（与 journal 同键，新会话空板，不跨会话；成员认领与 `send_agent_team_message` 仅同 `teamId`）。
+  - **会话级共享**：`<projects 根>/<工作区 slug>/data/sessions/<会话id>.jsonl(+.meta.json)`——**一会话一档**，转录/段档/影子行/等待队列全在会话档内，attach/重开按会话 id 精确回放；同目录另有 `<会话id>.transcript.md` 可读镜像（journal.log 旁路投影，只收 user/终态行，供模型浏览——逐字节权威仍为 jsonl）与派生 `INDEX.md`（listSessions 收尾全量重建，账本可读面定位单点）；purgeSession 的 `<id>.` 前缀清理天然覆盖旁车；智能体团队/板/队内 inbox 落 `data/teams/<journalId>/`（与 journal 同键，新会话空板，不跨会话；成员认领与 `send_agent_team_message` 仅同 `teamId`）。
   - **工作区级共享**（记忆/学习技能/KB/workspace.json）：`data/` 其余子目录，跨会话共用（语义即共享，非缺陷）。
   - **面私有 UI 态**（GUI 标签页开闭/激活/宽度/折叠与最近关闭、面板偏好；TUI 渲染态等）：落**同一 slug 目录下与 `data/` 平级的面私有子目录** `gui/`、`tui/`，粒度镜像共享层——按会话键的（GUI 标签态=Record<sessionId,…>，盘为真相源、变更防抖写透）落 `gui/sessions/<journalId>.json`，**档键=journal id**（跨 daemon 重启稳定的会话身份；会话 id `s<n>` 每次重启重新发号，按会话 id 存档刷新后必空），与 `data/sessions/<journalId>.jsonl` 同键同粒度；工作区级 UI 偏好落 `gui/ui-state.json`；应用级指针档（lastRoot/lastJournalId 恢复现场入口）是**机器级**状态，落 `userConfigDir()/gui/ui-state.json`（`~/.sunshinex/gui/`，projects 根保持纯 slug 工作区位）；TUI 同构 `tui/`。`data/` 整树保持纯会话共享域，删/迁任一面 UI 态不触及会话档；**不得写入共享会话档、不得污染共享数据结构**。
   - **判断口径**：换一个交互面打开同一会话，数据仍在=共享面（进 `data/`）；消失=面私有面（进 `gui/`、`tui/`）。

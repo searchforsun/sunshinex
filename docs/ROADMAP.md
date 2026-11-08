@@ -47,7 +47,7 @@ flowchart TB
 - [x] 统一上下文管理（单一基座 + fork 会话链模型，快照冻结 + 压缩 + 尾追；设计规格 2026-09-14-context-fork-design）
 - [x] 统一工具框架与内置工具集（read/write/grep/glob/exec/webfetch/websearch/kb_search/skill/memory_write/ask_question，参数 JSON Schema 声明化）
 - [x] 项目深度感知引擎：目录扫描、依赖解析、SUNSHINE.md 配置、Git 读取
-- [x] 记忆双轨体系：程序性（learned 技能沉淀）+ 陈述性（auto memory，MEMORY.md 索引 + 记录文件）
+- [x] 记忆双轨体系：程序性（learned 技能沉淀）+ 陈述性（auto memory，MEMORY.md 索引 + 记录文件 + log.jsonl 变更历史——OKF 四件套齐备）
 - [x] 分级沙箱与权限管控（ProcessSandbox 单点、权限三态、SafetyChain、路径判界 isWithin 单点）
 - [x] 模型适配层与三档算力路由（tier 为用户级会话参数，请求级字段不进提示词）
 - [x] 全局配置 settings.json 两级装载 + 全局约定层 ~/.sunshinex/SUNSHINE.md
@@ -106,7 +106,7 @@ flowchart TB
 - [x] plan-mode：先出执行计划、用户确认后再动代码
 - [x] 待办清单展示：任务拆解与状态实时同步（Tab 两态两全）
 - [x] 权限与审批终端化：deny/ask/allow 审批卡 + OptionSelector 统一选择器（对标 CC 交互）
-- [x] 会话持久化 + resume（journal 逐事件落盘、崩溃丢失窗口收敛至在飞一个工具步；/resume、--continue、/rewind 代码回退、/fork 不可变分档）
+- [x] 会话持久化 + resume（journal 逐事件落盘、崩溃丢失窗口收敛至在飞一个工具步；/resume、--continue、/rewind 代码回退、/fork 不可变分档；账本可读面 sessions/INDEX.md + transcript 镜像）
 - [x] 运行控制：中断停止（Esc/Ctrl+C）、steering 穿插提示词（↑ 撤回重排）、ask_question 工具
 - [x] 思考强度 effort 七档（/model-effort 会话内切换、端点能力阶梯降级探测）
 - [x] 斜杠命令选择题化 + 命令面扁平化 + CLI 入口判界统一（设计规格 2026-09-21-cli-tui-interaction-redesign；fe12d6a / 17f7712 落地）

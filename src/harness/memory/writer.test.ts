@@ -90,12 +90,14 @@ test('正常写入：落盘规范化四键 frontmatter（含 modified）+ 索引
     assert.match(r.value.observation, /prefers-pnpm/, '回执含 slug');
     assert.match(r.value.observation, /index lines/, '回执含索引行数/上限');
 
-    // 落盘结果（原「经 write 回调落盘」断言的口径变更）：记忆目录只含本面一份记录 + 派生索引，内容即规范化后的记录文本
+    // 落盘结果（原「经 write 回调落盘」断言的口径变更）：记忆目录只含本面一份记录 + 派生索引 + 变更历史 log（OKF log 件），内容即规范化后的记录文本
     assert.deepEqual(
       fs.readdirSync(path.join(dataDir, 'memory')).sort(),
-      ['MEMORY.md', 'prefers-pnpm.md'],
+      ['MEMORY.md', 'log.jsonl', 'prefers-pnpm.md'],
       '落盘恰好一份记录（不产 -2 副本、不落散落文件）',
     );
+    const logEvents = fs.readFileSync(path.join(dataDir, 'memory', 'log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { op: string; slug: string; source: string });
+    assert.deepEqual(logEvents.map((e) => [e.op, e.slug, e.source]), [['put', 'prefers-pnpm', 'tool']], 'write 工具面落账 source=tool');
     assert.equal(fs.readFileSync(recPath(dataDir), 'utf8'), raw, '记录文件内容即规范化后的记录文本');
     // 索引重建：MEMORY.md 为派生物，行格式 - [description](<slug>.md)：正文（Markdown 链接，2026-10-02 用户裁决）
     assert.equal(fs.readFileSync(path.join(dataDir, 'memory', 'MEMORY.md'), 'utf8'), '# Memory Index\n\n- [repo uses pnpm](prefers-pnpm.md)：use pnpm only\n');

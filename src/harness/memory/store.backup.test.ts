@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { MemoryStore } from './store';
+import { MemoryStore, LOG_NAME } from './store';
 
 /** MemoryStore backup/restore/clearBackup 原语往返钉（D26/J10，收编自 consolidate 的 .bak 裸 fs 手术）：
  *  备份→破坏性写入→restore 逐字节恢复；成功路径清理；旧快照清退 */
@@ -21,11 +21,12 @@ function withStore(fn: (store: MemoryStore) => void): void {
   }
 }
 
-/** 目录全景快照（文件名 → 逐字节内容），往返等价断言用；.bak-* 是瞬态原语产物，不入全景 */
+/** 目录全景快照（文件名 → 逐字节内容），往返等价断言用；.bak-* 是瞬态原语产物不入全景，log.jsonl 是
+ *  追加只增账本（restore 保留不回卷属正确行为），同样排除出口径 */
 function dirSnapshot(dir: string): Record<string, string> {
   const snap: Record<string, string> = {};
   for (const f of fs.readdirSync(dir).sort()) {
-    if (f.startsWith('.bak-')) continue;
+    if (f.startsWith('.bak-') || f === LOG_NAME) continue;
     snap[f] = fs.readFileSync(path.join(dir, f), 'utf8');
   }
   return snap;

@@ -329,6 +329,29 @@ export function sessionsDir(dataDir: string): string {
   return path.join(dataDir, 'sessions');
 }
 
+/** 会话索引文件名（派生物，语义对齐 memory/MEMORY.md）：listSessions 每次全量重建 */
+export const SESSIONS_INDEX_NAME = 'INDEX.md';
+
+/** 会话索引重建（OKF index 件，模型可读面的定位单点）：listSessions 收尾时由元数据全量重写——
+ *  行形态 `- <id> | <updatedAt ISO> | <标题/摘要截断 80 字> | <标记>`（updatedAt 降序 = 列表同序）。
+ *  写失败旁路降级不击穿列表（索引是派生物，丢行了下次 listSessions 重建即可）。 */
+function writeSessionsIndex(dataDir: string, metas: SessionMeta[]): void {
+  const lines = metas.map((m) => {
+    const summary = (m.title ?? m.firstUser ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const marks: string[] = [];
+    if (m.archived === true) marks.push('archived');
+    if (m.sideOf !== undefined) marks.push(`side-of-${m.sideOf}`);
+    const stamp = new Date(m.updatedAt).toISOString();
+    return `- ${m.id} | ${stamp} | ${summary} | ${marks.join(',')}`;
+  });
+  const text = `# Session Index\n\n> <id>.transcript.md = readable projection; <id>.jsonl = byte-exact source of record.\n\n${lines.join('\n')}\n`;
+  try {
+    fs.writeFileSync(path.join(sessionsDir(dataDir), SESSIONS_INDEX_NAME), text, 'utf8');
+  } catch {
+    /* 旁路：索引是派生物，失败不阻断列表消费 */
+  }
+}
+
 /** 计划书落盘单点（2026-11-03 交稿协议）：`<dataDir>/sessions/<journalId>.plan.md` 覆盖写，
  *  返回绝对路径（GUI 经既有 /session/:id/file 端点打开——数据目录已放行,零新端点）。
  *  命名沿用 `<id>.` 旁车前缀先例（<id>.jsonl/<id>.meta.json 同族）：purgeSession 的前缀全家清理
@@ -558,7 +581,9 @@ export function listSessions(dataDir: string): SessionMeta[] {
       ...(forked ? { forkedFrom: forked } : {}),
     });
   }
-  return metas.sort((a, b) => b.updatedAt - a.updatedAt);
+  const sorted = metas.sort((a, b) => b.updatedAt - a.updatedAt);
+  writeSessionsIndex(dataDir, sorted);
+  return sorted;
 }
 
 interface JournalAnchor {
@@ -954,10 +979,31 @@ export class SessionJournal {
     this.id = id;
   }
 
-  /** 事件级落盘（规格 D1）：逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；未建档丢弃 */
+  /** 事件级落盘（规格 D1）：逐事件 append，运行中即写，崩溃丢失窗口=在飞一步；未建档丢弃。
+   *  旁车镜像（账本可读面）：user/终态 seg 事件同步追加人类可读行到 <id>.transcript.md——
+   *  jsonl 是权威事实源（含 base64 快照/增量行，不适合模型直读），transcript 是供模型浏览的投影；
+   *  镜像失败旁路降级不阻断主档落盘 */
   log(event: JournalEvent): void {
     if (!this.id) return;
     fs.appendFileSync(path.join(this.dir, this.id + '.jsonl'), JSON.stringify(event) + '\n', 'utf8');
+    this.mirror(event);
+  }
+
+  /** transcript 镜像追加（user 事件与终态 seg 行；msg-update 增量/snapshots/seg-update/board 等机械行一概不入镜） */
+  private mirror(event: JournalEvent): void {
+    let line: string | undefined;
+    if (event.t === 'user' && event.text.length > 0) {
+      line = `[user] ${event.text}`;
+    } else if (event.t === 'seg' && (event.kind === 'user' || event.kind === 'assistant' || event.kind === 'notice' || event.kind === 'error') && event.md.length > 0) {
+      line = `[${event.kind}] ${event.md}`;
+    }
+    if (line === undefined) return;
+    line = `${line.replace(/\s+/g, ' ').trim().slice(0, 500)}\n`;
+    try {
+      fs.appendFileSync(path.join(this.dir, this.id + '.transcript.md'), line, 'utf8');
+    } catch {
+      /* 旁路：镜像是投影，失败不阻断主档 */
+    }
   }
 
   /** 任务收口快照清单补拍（规格 D2）：本任务 write 的影子快照清单以 snapshots 事件尾追；空清单零事件 */
