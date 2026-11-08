@@ -385,7 +385,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
     if (focus === undefined || focus === null || focus.ref === '') return;
     // 定位共体（team/task 两分型仅选择器与判别面不同,滚动单点承载;2026-11-08 用户裁定撤闪光）
     const flashAndScroll = (hit: Element): (() => void) => {
-      hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      hit.scrollIntoView({ block: 'center' }); // 2026-11-08 用户裁定「去掉滑动」:瞬跳到位
       return () => undefined;
     };
     if (focus.kind === 'team') {
