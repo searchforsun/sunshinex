@@ -9,7 +9,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { chaseScrollBottom, pathBasename, rAFConverge } from '../ui-util';
+import { chaseScrollBottom, pathBasename } from '../ui-util';
 import { autoSeenSuppressed, stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
@@ -58,7 +58,7 @@ import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { LiveChangesContext, useLiveGitChanges } from './chat/use-live-changes';
-import { zoomScale } from '../ui-zoom';
+import { useChatLocate } from './chat/use-chat-locate';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
 export type { ChatSink, ChatProps } from './chat/chat-types';
@@ -161,46 +161,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** 跟随闩位移指纹:上次 scroll 事件时的 scrollTop——本次事件里它没变=纯内容生长
    *  (钉底位被新内容顶成距底>0),不得据此释放 stick(二修根因见 handleChatScroll 注) */
   const chatLastTopRef = useRef(0);
-  /** 待办卡主名字定位(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡——锚定+迭代校正
-   *  (ChatRail jump 同款,content-visibility 离屏估算高一次到位必偏),定位即撤贴底跟随 */
-  useEffect(() => {
-    if (todoFocus === null || todoFocus === undefined) return;
-    const el = chatScrollRef.current;
-    if (el === null) return;
-    const node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(todoFocus.key)}"]`);
-    if (node === null) return;
-    chatStickRef.current = false;
-    // gBCR 视觉差 → scrollTop 本地空间(界面放缩 /zoom 归一,ui-zoom.ts 契约)
-    el.scrollTop += (node.getBoundingClientRect().top - el.getBoundingClientRect().top) / zoomScale();
-    rAFConverge(el, () => node.getBoundingClientRect().top - el.getBoundingClientRect().top, (delta) => {
-      el.scrollTop += delta / zoomScale();
-    }, 2);
-  }, [todoFocus, chatScrollRef, chatStickRef]);
-  /** 成员转录 leader 链接定位(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
-   *  toLeader=成员发给 leader 的消息 → 主对话里该成员的消息气泡(data-from=成员,正文含定位文本);
-   *  fromLeader=leader 发来的消息 → 主对话里发送团队消息工具行(收件人=成员)。命中滚到并闪光 */
-  useEffect(() => {
-    if (leaderFocus === null || leaderFocus === undefined) return;
-    const el = chatScrollRef.current;
-    if (el === null) return;
-    const norm = (x: string): string => x.replace(/\s+/g, ' ').trim();
-    const needle = norm(leaderFocus.text).slice(0, 60);
-    let hit: HTMLElement | undefined;
-    if (leaderFocus.dir === 'toLeader') {
-      const bubbles = [...el.querySelectorAll<HTMLElement>('.agent-msg')].filter((n) => n.dataset.from === leaderFocus.member);
-      hit = (needle !== '' ? bubbles.find((n) => norm(n.querySelector('.agent-msg-text')?.textContent ?? '').includes(needle)) : undefined) ?? bubbles.at(-1);
-    } else {
-      const rows = [...el.querySelectorAll<HTMLElement>('.entry-tool[data-tool="send_agent_team_message"]')];
-      hit = rows.filter((n) => norm(n.querySelector('.tool-summary')?.textContent ?? '').includes(leaderFocus.member)).at(-1) ?? rows.at(-1);
-    }
-    if (hit === undefined) return;
-    const target = hit;
-    chatStickRef.current = false;
-    el.scrollTop += (target.getBoundingClientRect().top - el.getBoundingClientRect().top) / zoomScale();
-    rAFConverge(el, () => target.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => {
-      el.scrollTop += d / zoomScale();
-    }, 2);
-  }, [leaderFocus, chatScrollRef, chatStickRef]);
+  useChatLocate({ todoFocus, leaderFocus, chatScrollRef, chatStickRef });
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
