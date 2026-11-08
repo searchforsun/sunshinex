@@ -346,7 +346,11 @@ function writeSessionsIndex(dataDir: string, metas: SessionMeta[]): void {
   });
   const text = `# Session Index\n\n> <id>.transcript.md = readable projection; <id>.jsonl = byte-exact source of record.\n\n${lines.join('\n')}\n`;
   try {
-    fs.writeFileSync(path.join(sessionsDir(dataDir), SESSIONS_INDEX_NAME), text, 'utf8');
+    // 写前比对（2026-11-08 审计补：listSessions 是 /workspaces 计数面与侧栏刷新的公共路径——
+    // 无变更照写=每次 GET 都动盘；派生物逐字节相同即跳过，churn 归零且新鲜度语义不变）
+    const file = path.join(sessionsDir(dataDir), SESSIONS_INDEX_NAME);
+    if (fs.existsSync(file) && fs.readFileSync(file, 'utf8') === text) return;
+    fs.writeFileSync(file, text, 'utf8');
   } catch {
     /* 旁路：索引是派生物，失败不阻断列表消费 */
   }
