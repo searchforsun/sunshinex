@@ -148,7 +148,8 @@ export function codeFontFamily(): string {
   }
 }
 
-/** 代码行高 px(Monaco lineHeight):--f-code × --f-code-lh(缺省 1.55),与 CSS 代码井同口径。 */
+/** 代码行高 px(Monaco lineHeight):--f-code × --f-code-lh(缺省 1.55)——与 diff 面/raw 编辑器同口径;
+ *  md 代码块不随预设(行距钉 1.5,2026-11-07 用户裁定五轮)。 */
 export function codeLineHeightPx(): number {
   let lh = 1.55;
   try {

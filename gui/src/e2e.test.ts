@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { resetTitleCacheForTests } from './pages/chat/use-chat-title';
 // monaco 真渲染需要浏览器布局——jsdom 挂 stub(内容经 DiffPanel 根 data-* 断言)
 vi.mock('monaco-editor', () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
@@ -31,6 +32,18 @@ import { GuiDaemon } from '../../dist/serve/daemon';
 
 /** G14.66:悬浮提示统一 data-tip(原生 title 退役)——组头/会话行经 data 属性定位。
  *  会话行限「展开中的组」:两份组列表共享数据源,收起副本不可点(copy 到隐藏行会挂错 root) */
+/** 跨例前端态复位(2026-11-08:与 App.test 同口径补齐)——daemon 数据目录每例 mkdtemp 已隔离,但 jsdom
+ *  localStorage 与模块级标题缓存在同文件用例间共享:前例收起侧栏/组展开态/界面模式经持久化防抖时序漏到
+ *  后例,地标按钮缺席与组起始态不定随跑次漂移(全量 4 跑 3 败实测) */
+beforeEach(() => {
+  localStorage.clear();
+  resetTitleCacheForTests();
+});
+
+/** 组头同步查询(waitFor 回调内用;不在场=undefined) */
+function groupHeadOf(root: string): HTMLElement | undefined {
+  return [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.root === root) as HTMLElement | undefined;
+}
 async function findGroupByRoot(root: string): Promise<HTMLElement> {
   await waitFor(() => {
     const btn = [...document.querySelectorAll('.sx-group-head')].find((b) => (b as HTMLElement).dataset.root === root);
@@ -462,10 +475,15 @@ describe('T4δ 会话切换独立:两 Chat 先后打开投影隔离 + 经 UI 返
       // (T2 起新建会话即挂 journal——列表 s1/s2 两档各一行;G13 起摘要自链首 task 步回源,
       //  行定位仍以 journal id 定:session-meta 含 id 文本,不依赖摘要文案)
       await backHome();
-      // 组重展开收放(收起再展开触发 sessionsOf 重拉,s1/s2 档齐)
-      fireEvent.click(await findGroupByRoot(env.root));
-      await new Promise((r) => setTimeout(r, 150)); // 收起态落定再展开(jsdom 同拍双击会命中旧闭包 handler)
-      fireEvent.click(await findGroupByRoot(env.root));
+      // 组展开即可收齐 s1/s2:展开组的会话行由 recentVersion bump(run 起止)自动重拉——不再以「收起再
+      // 展开」强制重拉:ProjectMenu 的 activeRoot 组自动展开 effect 依赖 rows,清单刷新会把测试刚收起的
+      // 组重新展开,两下点击与之赛跑可停在收起态(0 行,2026-11-08 实测确定性复现)。仅收起态时点开
+      await waitFor(() => {
+        const head = groupHeadOf(env.root);
+        expect(head).toBeDefined();
+        if (head!.getAttribute('aria-expanded') !== 'true') fireEvent.click(head!);
+        expect(head!.getAttribute('aria-expanded')).toBe('true');
+      }, { timeout: 5_000, interval: 300 });
       // P1 Task 7:活查询轮询(冻结快照数组观察不到 sessionsOf 重拉——30ms 合帧扰动暴露的
       // 测试固有竞态;断言语义不变:列表最终收齐 s1 播种档 + s2 新建档)
       await waitFor(
