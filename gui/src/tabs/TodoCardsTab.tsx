@@ -57,17 +57,13 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
     }
   }, [lastKey, autoKey]);
   /** 待办行点击定位(2026-11-04 用户裁定「点待办字样打开侧栏对应待办」):按清单签名匹配卡,
-   *  自动展开+滚动居中+accent 闪光 1.8s;无匹配签名(旧批次/被合并)静默 */
-  const [flashKey, setFlashKey] = useState<string | null>(null);
+   *  自动展开+滚动居中(2026-11-08 用户裁定「定位即够,撤全局湛蓝闪光」);无匹配签名静默 */
   useEffect(() => {
     if (locateSig === undefined || locateSig === null) return;
     const hit = view.find((b) => b.items.map((x) => x.text).join('\n') === locateSig.sig);
     if (hit === undefined) return;
     setExpanded((s) => new Set([...s, hit.key]));
-    setFlashKey(hit.key);
-    const el = document.querySelector(`[data-batch-key="${CSS.escape(hit.key)}"]`);
-    el?.scrollIntoView({ block: 'center' });
-    window.setTimeout(() => setFlashKey(null), 1800);
+    document.querySelector(`[data-batch-key="${CSS.escape(hit.key)}"]`)?.scrollIntoView({ block: 'center' });
   }, [locateSig, view]);
   const toggle = (key: string): void => {
     setExpanded((s) => {
@@ -102,7 +98,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
           const done = b.items.filter((x) => x.status === 'completed').length;
           const open = expanded.has(b.key);
           return (
-            <section key={b.key} data-batch-key={b.key} className={'todo-card' + (flashKey === b.key ? ' focus-flash' : '')}>
+            <section key={b.key} data-batch-key={b.key} className={'todo-card'}>
               <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(b.key)}>
                 {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
                 <span className="todo-card-count">{`${done}/${b.items.length}`}</span>

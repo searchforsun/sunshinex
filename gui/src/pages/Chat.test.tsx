@@ -2206,24 +2206,25 @@ describe('leader 链接定位(2026-11-08 成员转录页点 leader → 主对话
     { seq: 3, ts: DAY1, kind: 'notice', md: '[w2 → leader] 另一条' },
     { seq: 4, ts: DAY1, kind: 'tool', md: '', name: 'send_agent_team_message', input: { to: 'w2', text: '请复核' }, result: { ok: true, text: 'message m1 delivered to w2' } },
   ] as unknown as Parameters<typeof connOf>[0];
-  it('toLeader:命中该成员且正文匹配的消息气泡并闪光', async () => {
+  it('toLeader:命中该成员且正文匹配的消息气泡(定位只滚动,无闪光)', async () => {
     const conn = connOf(seeds); // 同一 conn(真实使用 conn 恒稳定;每渲染新 conn 会触发重新播种替换 DOM)
     const r = render(<Chat conn={conn} sessionId="lf1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await act(async () => {});
     await waitFor(() => expect(document.querySelectorAll('.agent-msg').length).toBe(2));
     r.rerender(<Chat conn={conn} sessionId="lf1" connState="open" onBack={() => {}} sinkRef={sinkRef} leaderFocus={{ member: 'w1', text: '去跑测试', dir: 'toLeader', nonce: 1 }} />);
-    await waitFor(() => expect(document.querySelector('.agent-msg.entry-locate')).not.toBeNull());
-    expect(document.querySelector('.agent-msg.entry-locate')!.textContent).toContain('去跑测试');
+    // 定位只滚动(2026-11-08 撤全局湛蓝闪光):气泡在场即命中面,无任何闪光类
+    expect(document.querySelectorAll('.agent-msg').length).toBe(2);
+    expect(document.querySelector('.entry-locate')).toBeNull();
     r.unmount();
   });
-  it('fromLeader:命中收件人为该成员的发送团队消息工具行并闪光', async () => {
+  it('fromLeader:命中收件人为该成员的发送团队消息工具行(定位只滚动,无闪光)', async () => {
     const conn = connOf(seeds);
     const r = render(<Chat conn={conn} sessionId="lf2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await act(async () => {});
     await waitFor(() => expect(document.querySelector('.entry-tool[data-tool="send_agent_team_message"]')).not.toBeNull());
     r.rerender(<Chat conn={conn} sessionId="lf2" connState="open" onBack={() => {}} sinkRef={sinkRef} leaderFocus={{ member: 'w2', text: '请复核', dir: 'fromLeader', nonce: 2 }} />);
-    await waitFor(() => expect(document.querySelector('.entry-tool.entry-locate')).not.toBeNull());
-    expect(document.querySelector('.entry-tool.entry-locate')!.getAttribute('data-tool')).toBe('send_agent_team_message');
+    expect(document.querySelectorAll('.entry-tool[data-tool="send_agent_team_message"]').length).toBe(1);
+    expect(document.querySelector('.entry-locate')).toBeNull();
     r.unmount();
   });
 });

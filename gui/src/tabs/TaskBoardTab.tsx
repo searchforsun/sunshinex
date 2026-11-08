@@ -383,12 +383,10 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   );
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
-    // 定位共体（team/task 两分型仅选择器与判别面不同，滚动+flash+清理由此单点承载）
+    // 定位共体（team/task 两分型仅选择器与判别面不同,滚动单点承载;2026-11-08 用户裁定撤闪光）
     const flashAndScroll = (hit: Element): (() => void) => {
       hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      hit.classList.add('flash');
-      const timer = setTimeout(() => hit.classList.remove('flash'), 1800);
-      return () => clearTimeout(timer);
+      return () => undefined;
     };
     if (focus.kind === 'team') {
       const cards = [...(rootRef.current?.querySelectorAll('.tb-card') ?? [])];

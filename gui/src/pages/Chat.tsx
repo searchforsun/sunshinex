@@ -200,9 +200,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     rAFConverge(el, () => target.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => {
       el.scrollTop += d / zoomScale();
     }, 2);
-    target.classList.add('entry-locate');
-    const t = setTimeout(() => target.classList.remove('entry-locate'), 1800);
-    return () => clearTimeout(t);
   }, [leaderFocus, chatScrollRef, chatStickRef]);
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);

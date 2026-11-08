@@ -1898,7 +1898,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
 /* 2026-11-04 待办行点击定位闪光:accent 描边 1.8s 自灭(Chat 端 ToolEntry「待办」字样触发) */
-.todo-card.focus-flash { box-shadow: inset 0 0 0 1px var(--accent); }
 /* 2026-11-03 待办卡主名字=定位钮:点击滚到对应正文输入气泡(有 userKey 的批次才可点);
    点击面=文字内联 span(外层 goal 仍 flex:1 撑位,非文字区点击落头部折叠);2026-11-03 用户裁定:无 hover 高亮 */
 .todo-card-goal-link { cursor: pointer; }
@@ -2177,9 +2176,6 @@ button.agent-msg-from:hover { text-decoration: underline; }
 .sx-agent-thread .child-thinking { font: calc(12px * var(--fz))/1.6 var(--font-ui); color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); padding: 4px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* G14.176 任务板定位高亮(create_agent_team_task 行点开:滚动居中+flash 退场；DAG 节点同款；队名/看板链接触发队卡) */
-.tb-task-main.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px var(--accent); border-radius: var(--radius-sm); }
-.tb-dag-node.flash { background: color-mix(in srgb, var(--accent) 16%, var(--surface-soft)); box-shadow: inset 0 0 0 1px var(--accent); }
-.tb-card.flash { box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-elevated)); }
 
 /* ===== G14.177 顶栏动态计数按钮(待办/任务/后台任务):靠右聚拢,不挤压标题与展开钮 ===== */
 /* G14.213 幽灵钮化:无底色无边框,顶栏 hover 浮现;待办钮转圈绿色;侧栏展开不再隐藏(组件面) */
@@ -3672,5 +3668,3 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .chat .entry-assistant:has(+ .entry-tool, + .entry-thinking, + .tool-group, + .seg-collapse) { padding-bottom: 0; }
 
 /* leader 链接定位闪光(2026-11-08):成员转录页点 leader → 主对话对应消息气泡/发送工具行短暂提亮描边 */
-.entry-locate { animation: entry-locate 1.8s var(--ease-enter); }
-@keyframes entry-locate { 0%, 60% { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 2px 0 0 var(--accent); } 100% { background: transparent; box-shadow: none; } }
