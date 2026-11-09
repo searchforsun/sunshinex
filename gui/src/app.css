@@ -3739,3 +3739,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 正文「更新待办」行点击开右栏待办页签:与普通工具行同色同形,不显链接下划线/强调色 */
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span),
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span):hover { text-decoration: none; color: inherit; }
+
+/* 审查页左右边距对齐其他页签(2026-11-10 用户裁定):行盒边距页签边 12px、行内文字 22px——与团队/任务卡
+   (.insight-tab 12 + 卡内 10)同线;区头/顶栏文字同落 22px */
+.sx-diff-tab .sx-changes-list { padding: 4px 2px 16px; }
+.sx-diff-tab .sx-change-row { padding: 6px 10px; }
+.sx-diff-tab .sx-changes-commit, .sx-diff-tab .sx-changes-result { margin-left: 2px; margin-right: 2px; }
