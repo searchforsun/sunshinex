@@ -3589,7 +3589,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .entry-user .user-action:hover { color: var(--fg); }
 .child-copy { color: color-mix(in srgb, var(--fg) 85%, transparent); }
 .run-footer .sx-tip { padding: 0; } /* UA 按钮内距(左右 ~6px)把 22px 钮内容区压到 10px,flex 收缩图标——实测 14px 被压回 10 的根因 */
-.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg { width: 12px; height: 12px; flex: none; }
+.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg,
+.code-head .sx-tip svg, .mermaid-actions .sx-tip svg { width: 12px; height: 12px; flex: none; }
+/* 代码块/mermaid 头部动作钮与正文回复复制行同档亮度(2026-11-09 用户裁定:原 fg-tertiary 偏浅显小) */
+.code-head .sx-tip, .mermaid-actions .sx-tip { color: color-mix(in srgb, var(--fg) 85%, transparent); }
+.code-head .sx-tip:hover, .mermaid-actions .sx-tip:hover { color: var(--fg); }
 .run-footer { margin-top: 14px; } /* 2026-11-07 用户裁定续:正文与操作行间距再拉开(10→14) */
 
 /* 办公模式(ui-mode.ts):不可展开的工具行去可点暗示——默认光标、hover 不提亮

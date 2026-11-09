@@ -43,11 +43,14 @@ export interface WelcomeGoal {
 export function WelcomeComposer({
   conn,
   presetRoot,
+  presetSeq,
   onOpened,
 }: {
   conn: WelcomeComposerConn;
   /** 预选工作区(G10-C16):项目行「+」带来的 preset */
   presetRoot?: string;
+  /** 预选意图序号:递增即按 presetRoot 重选(缺 presetRoot=回默认工作区) */
+  presetSeq?: number;
   onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
 }): JSX.Element {
   const [picked, setPicked] = useState('');
@@ -236,7 +239,7 @@ export function WelcomeComposer({
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
   const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
   const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
-  const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, { setPicked, setProjOpen, setHint, setDirOpen });
+  const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen, setHint, setDirOpen });
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">

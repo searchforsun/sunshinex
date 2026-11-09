@@ -737,19 +737,22 @@ export const ToolEntryView = memo(function ToolEntryView({
       ) : null}
     </>
   );
-  /** 办公模式不可展开:read 文件行整行跳转保留,其余点击无动作 */
-  const expandable = !office && (!isRead || isReadImage);
+  /** 办公模式不可展开:read 文件行整行跳转保留,其余点击无动作;ask_question 例外——展开体是
+   *  问题/选项/回答(用户内容,无命令输出与 diff),办公模式同样需要回看(2026-11-09 用户裁定) */
+  const officeExpandable = toolName === 'ask_question';
+  const expandable = (!office || officeExpandable) && (!isRead || isReadImage);
+  const bodyMounted = !office || officeExpandable;
 
 
   return (
-    <div className={`entry entry-tool${expanded && !office ? ' open' : ''}`} data-tool={toolName || undefined} data-msg-to={messageToLeader ? 'leader' : messageTo !== '' ? messageTo : undefined} data-msg-text={messageText !== '' ? messageText : undefined}>
+    <div className={`entry entry-tool${expanded && bodyMounted ? ' open' : ''}`} data-tool={toolName || undefined} data-msg-to={messageToLeader ? 'leader' : messageTo !== '' ? messageTo : undefined} data-msg-text={messageText !== '' ? messageText : undefined}>
       <button
         type="button"
-        className={`tool-summary${office && !isRead ? ' tool-summary-static' : ''}`}
+        className={`tool-summary${!expandable && !isRead ? ' tool-summary-static' : ''}`}
         aria-expanded={expandable ? expanded : undefined}
         onClick={() => {
           if (isRead && (!isReadImage || office)) onOpenFile?.(path!); // 办公模式读图行不可展开,整行开文件看图
-          else if (office) return;
+          else if (!expandable) return;
           else {
             setExpanded((v) => !v);
             window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
@@ -762,8 +765,8 @@ export const ToolEntryView = memo(function ToolEntryView({
       </button>
       {/* 折叠壳外常驻图片缩略行退役(2026-10-31 用户裁定「去掉常驻显示的图片,保留内部的就可以」):
           截图只在展开体回显(ec9159c 面),折叠行不占版面;点击行展开即看 */}
-      {/* 办公模式无展开体(命令/输出/diff 不入 DOM) */}
-      {!office && (
+      {/* 办公模式无展开体(命令/输出/diff 不入 DOM);ask 问答体例外 */}
+      {bodyMounted && (
       <div className={`tool-body${expanded ? ' open' : ''}`} aria-hidden={!expanded}>
         <div className="tool-body-inner">
           {isReadImage && path !== undefined ? (

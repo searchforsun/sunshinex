@@ -108,7 +108,10 @@ function AppShell(): JSX.Element {
   /** 2026-10-27 欢迎页全局草稿:座判定按页面不按 openSessionId——进欢迎页(新对话)不清会话,残留侧栏即此根因 */
   const isWelcome = page === 'welcome';
   /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
-  const [composePresetRoot, setComposePresetRoot] = useState<string | null>(null);
+  /** 欢迎页预选意图:root=项目行「+」带来的项目,null=新对话(回默认工作区);seq 每次入口递增——
+   *  同值重复点击(欢迎页已挂载、用户在条上改选后再点新对话)也要重新生效 */
+  const [composePreset, setComposePreset] = useState<{ root: string | null; seq: number }>({ root: null, seq: 0 });
+  const presetCompose = useCallback((root: string | null): void => setComposePreset((p) => ({ root, seq: p.seq + 1 })), []);
   const [openSessionId, setOpenSessionId] = useState<string>('');
   /** G14.213 会话 journal 档案 id(滚动位存档等跨重挂持久面的稳定键):sessionId 是活动会话
    *  别名(每次重开 newSession+attach 重新发号),journal id 跨重挂/daemon 重启不变;缺省=sessionId */
@@ -590,7 +593,7 @@ function AppShell(): JSX.Element {
     }
     if (settingsOpen) closeSettings();
     if (a.kind === 'new-chat') {
-      setComposePresetRoot(null);
+      presetCompose(null);
       setPage('welcome');
       recordNav({ k: 'welcome' });
       return;
@@ -1070,13 +1073,13 @@ function AppShell(): JSX.Element {
               onOpenSettings={() => { closeMenuDrawer(); openSettings(); }}
               onNewChat={() => {
                 closeMenuDrawer();
-                setComposePresetRoot(null);
+                presetCompose(null);
                 setPage('welcome');
                 recordNav({ k: 'welcome' });
               }}
               onComposeIn={(root) => {
                 closeMenuDrawer();
-                setComposePresetRoot(root);
+                presetCompose(root);
                 setPage('welcome');
                 recordNav({ k: 'welcome' });
               }}
@@ -1189,7 +1192,8 @@ function AppShell(): JSX.Element {
               )}
               <WelcomeComposer
                 conn={connInstance}
-                presetRoot={composePresetRoot ?? undefined}
+                presetRoot={composePreset.root ?? undefined}
+                presetSeq={composePreset.seq}
                 onOpened={(sessionId, root, goal, images) => {
                   setWelcomeGoal({ root, goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });
                   // 发出去=临时会话转正:唯一放行草稿继承的入口(第 4 参,见 openSession 迁移门)

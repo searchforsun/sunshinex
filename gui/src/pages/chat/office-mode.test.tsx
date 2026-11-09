@@ -38,6 +38,26 @@ describe('办公模式', () => {
     expect(rows[1]!.querySelector('.tool-stat')).toBeNull();
   });
 
+  it('提问行例外:办公模式可展开问答体(问题/选项/回答),点击切换 open', () => {
+    act(() => applyUiMode('office'));
+    const r = render(
+      <ToolEntryView
+        entry={tool('q', 'ask_question', { question: 'Pick one?', options: [{ label: 'Alpha' }, { label: 'Beta' }] }, 'answer: Alpha')}
+        conn={conn}
+        sessionId="s"
+      />,
+    );
+    const row = r.container.querySelector('.entry-tool')!;
+    expect(row.querySelector('.tool-chev')).not.toBeNull();
+    expect(row.querySelector('.tool-body')).not.toBeNull();
+    const head = row.querySelector('.tool-summary')!;
+    expect(head.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(head);
+    expect(head.getAttribute('aria-expanded')).toBe('true');
+    expect(row.classList.contains('open')).toBe(true);
+    expect(row.querySelector('.tool-body')!.textContent).toContain('Alpha');
+  });
+
   it('等待后台任务:普通任务只显「Waited for tasks」无链接;含子智能体则链接其转录页;团队任务等待保留链接', () => {
     act(() => applyUiMode('office'));
     const onOpenTask = (): void => undefined;

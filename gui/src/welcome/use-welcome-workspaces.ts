@@ -9,6 +9,7 @@ import type { WelcomeComposerConn } from './welcome-conn';
 export function useWelcomeWorkspaces(
   conn: WelcomeComposerConn,
   presetRoot: string | undefined,
+  presetSeq: number | undefined,
   io: {
     setPicked: Dispatch<SetStateAction<string>>;
     setProjOpen: (v: boolean) => void;
@@ -48,16 +49,20 @@ export function useWelcomeWorkspaces(
     refreshRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn]);
-  /** 预选工作区(G10-C16):项目行「+」带来的 preset——变化即选中(用户仍可在条上切换)。
-   *  同拍回源项目列表:侧栏「添加工作区」只经本 preset 通知欢迎页(组件已挂载不重拉,
-   *  下拉还是挂载时快照——新建项目不入列,切页才显) */
+  /** 预选工作区(G10-C16):项目行「+」带来的 preset——每次入口(seq 递增)即选中(用户仍可在条上切换);
+   *  新对话入口(无 preset)回默认工作区——清空选择,回源时按 default 锚点补选(2026-11-09 用户实测
+   *  「最近会话旁新对话,欢迎页停在上一个项目」)。同拍回源项目列表:侧栏「添加工作区」只经本 preset
+   *  通知欢迎页(组件已挂载不重拉,下拉还是挂载时快照——新建项目不入列,切页才显) */
   useEffect(() => {
     if (presetRoot !== undefined && presetRoot !== '') {
       setPicked(presetRoot);
       refreshRows();
+    } else if (presetSeq !== undefined && presetSeq > 0) {
+      setPicked('');
+      refreshRows();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetRoot]);
+  }, [presetRoot, presetSeq]);
   /** 他面创建回源(2026-10-30 用户实测「侧栏建项目后欢迎页下拉不显,切页才出」的跨面收口):
    *  config-changed 任一帧即静默重拉 /workspaces(daemon afterCreate 建项目必广播;skills
    *  等高频帧顺带重拉只是幂等 GET)。300ms 合帧防抖;conn 缺 onConfigChanged(旧桩)不订阅 */
