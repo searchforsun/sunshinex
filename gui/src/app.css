@@ -992,7 +992,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* TeamsPane 章程详情/编辑同高(2026-11-05 用户裁定:320px 固定高+纵向滚动,展示与编辑一致) */
 .sx-team-body summary { color: var(--fg-secondary); font-size: calc(12px * var(--fz)); cursor: pointer; }
-.sx-team-body pre { height: 320px; overflow-y: auto; margin: 4px 0 0; padding: 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); font: calc(11px * var(--fz))/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.sx-team-body pre { margin: 4px 0 0; padding: 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); font: calc(11px * var(--fz))/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .sx-team-body-editor { height: 320px; overflow-y: auto; resize: vertical; }
 /* composer「+」=圆角方钮(2026-11-03 用户裁定:与「回到底部」钮同款 999px+全局超椭圆);等宽高居中,不随 10px 横 padding 拉成长条 */.composer-pill.composer-plus-btn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; }
 /* 2026-10-24 用户裁定:pill 文本永不折行(「完全访/问」「glm-5.3-/flash」断字难看),窄端右组
@@ -2065,11 +2065,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin: 0; font: calc(12px * var(--fz))/1.7 var(--font-ui); color: var(--fg-secondary);
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-/* 记忆/学习技能详情(2026-10-31 用户裁定):内容井底+固定高(240px)过高纵向滚动;行图标
+/* 记忆/学习技能详情(2026-10-31 用户裁定):内容井底;高度交 ClampBlock(240 限高+V 展开全文,2026-11-09 无内滚);行图标
    Database/Sparkles 与正文回显同件。2026-11-04 亮色修:原「32% 黑混入 surface」是暗色口径——
    亮色下白底混黑成中灰大卡(用户实测);改走 --surface-code 井 token(暗=深井不变,亮=浅井) */
 .mem-detail .mem-body-text {
-  height: 240px; overflow-y: auto;
   background: var(--surface-code);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
   padding: 8px 10px; color: var(--fg);
@@ -2229,7 +2228,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 .bg-dur { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--fg-secondary); font: calc(11px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }
 .bg-dur svg { flex: none; }
 .bg-output {
-  margin: 0; width: 100%; max-height: 240px; overflow-y: auto; padding: 6px 8px;
+  margin: 0; width: 100%; padding: 6px 8px;
   background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-sm);
   font: calc(11px * var(--fz)) var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg-secondary);
 }
@@ -3675,3 +3674,13 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .chat .entry-assistant:has(+ .entry-tool, + .entry-thinking, + .tool-group, + .seg-collapse) { padding-bottom: 0; }
 
 /* leader 链接定位闪光(2026-11-08):成员转录页点 leader → 主对话对应消息气泡/发送工具行短暂提亮描边 */
+
+/* 详情限高块 ClampBlock(clamp-block.tsx;2026-11-09 用户裁定「展开详情不再内部纵向滚动」):超限折叠+底部渐隐+
+   纯 V 钮(用户气泡同款 18px 无框),展开=完整高度,^ 在底部。渐隐色取宿主井底 --surface-code */
+.sx-clamp { position: relative; }
+.sx-clamp.clamped { overflow: hidden; padding-bottom: 26px; }
+.sx-clamp.clamped::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(180deg, transparent, var(--clamp-fade, var(--surface-code)) 80%); border-radius: inherit; pointer-events: none; }
+.sx-clamp-toggle-row { display: flex; justify-content: center; margin-top: 6px; white-space: normal; }
+.sx-clamp-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 4px; margin: 0; z-index: 1; pointer-events: none; }
+.sx-clamp-toggle { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; border: none; background: none; color: var(--fg-secondary); cursor: pointer; }
+.sx-clamp-toggle:hover { color: var(--fg); }

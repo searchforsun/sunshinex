@@ -7,6 +7,7 @@ import type { AgentsView, BuiltinRole, TeamEntryView, TeamFrontmatterInput, Team
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
+import { ClampBlock } from '../clamp-block';
 
 /**
  * agents-teams P1 Task 3 TeamsPane（Settings 页「智能体团队」面，AgentsPane 逐件对应镜像）：
@@ -388,11 +389,11 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                       >
                         <summary>
                           {t('Details', '详情')}
-                          <ChevronDown size={14} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
+                          <ChevronDown size={16} strokeWidth={2} className="sx-disc-chev" aria-hidden="true" />
                         </summary>
                         <div className="sx-team-detail">
                           {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
-                          <pre>{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</pre>
+                          <ClampBlock as="pre" maxHeight={320}>{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</ClampBlock>
                         </div>
                       </details>
                     </>

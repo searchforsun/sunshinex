@@ -9,6 +9,7 @@ import type { BgTaskRow } from '../projection';
 import { t } from '../i18n';
 import type { TabParams, TabTypeId } from './tab-state';
 import { shortStampMs, withMinSpin } from '../ui-util';
+import { ClampBlock } from '../clamp-block';
 
 /**
  * G10-C6 右栏三面板(spec §7 映射:/context /tasks /memory 的 GUI 承载):
@@ -345,10 +346,10 @@ export function BgTasksTab({
                       </span>
                     </div>
                     {r.outputTail !== undefined && r.outputTail !== '' && (
-                      <pre className="bg-output">
+                      <ClampBlock as="pre" className="bg-output">
                         {r.outputTail}
                         {r.outputTruncated === true && `\n…${t('output truncated (showing last 4KB)', '输出已截断(仅示末 4KB)')}`}
-                      </pre>
+                      </ClampBlock>
                     )}
                   </div>
                 )}
@@ -487,8 +488,8 @@ export function MemoryTab({
               </div>
               {expandedSlug === m.slug && (
                 <div className="mem-detail">
-                  {/* 2026-10-31 用户裁定:「project · 创建」元信息行退役;内容深色底+固定高滚动 */}
-                  <pre className="mem-body-text">{m.body}</pre>
+                  {/* 2026-10-31 用户裁定:「project · 创建」元信息行退役;内容深色底(限高 V 展开全文,无内滚) */}
+                  <ClampBlock as="pre" className="mem-body-text">{m.body}</ClampBlock>
                 </div>
               )}
             </li>
@@ -629,13 +630,13 @@ export function LearnedSkillsTab({
                       以 pre 裸文本直出(落盘即所见);旧 daemon/读失败无 body 退回 2026-10-31 的 description
                       md 渲染面(不白屏) */}
                   {typeof s.body === 'string' && s.body !== '' ? (
-                    <pre className="mem-body-text" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{s.body}</pre>
+                    <ClampBlock as="pre" className="mem-body-text" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{s.body}</ClampBlock>
                   ) : (
-                    <div className="mem-body-text mem-body-md">
+                    <ClampBlock className="mem-body-text mem-body-md">
                       <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl}>
                         {s.description ?? t('(no description)', '(无描述)')}
                       </ReactMarkdown>
-                    </div>
+                    </ClampBlock>
                   )}
                 </div>
               )}
