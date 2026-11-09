@@ -2,8 +2,8 @@
  * sunshinex skills install <来源> [--force]
  * 技能一键安装到全局技能根（userSkillsDir，缺省 ~/.sunshinex/skills）：
  * - 来源形态：git URL（https://… 或 git@… ）、owner/repo 简写（缺省按 GitHub 展开为 https URL）、本地目录路径
- * - 仓库内技能目录定位序：skills/ → 项目标准技能根（.sunshinex/skills，取装载根清单单点
- *   PROJECT_SKILL_ROOTS_ASC）→ 仓库根自身
+ * - 仓库内技能目录定位序：skills/ → 项目标准技能根（.sunshinex/.agents/.claude/.codex 下的 skills/，
+ *   取装载根清单单点 PROJECT_SKILL_ROOTS_ASC）→ 仓库根自身
  *   直接含 {id}/SKILL.md 时整仓即技能集（对标 superpowers 这类「整仓就是一包技能」的组织）
  * - 落盘形态与装载器同口径：{目标}/skills/{id}/SKILL.md（SKILL.md 优先、skill.md 兜底）；同名已存在缺省跳过，
  *   --force 覆盖；id 仅认 [A-Za-z0-9._-]，拒绝来源仓内的任意路径片段
@@ -19,8 +19,7 @@ import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
 /** 仓库内候选技能目录（先命先止；skills/ 置顶对齐 superpowers 主形态；标准技能根取装载根清单单点
- *  PROJECT_SKILL_ROOTS_ASC 的逆序=装载优先级降序，与装载面遮蔽序同源——2026-10-29 去兼容清理后
- *  单根 .sunshinex，既往 .claude/.cursor 等兼容根不再认） */
+ *  PROJECT_SKILL_ROOTS_ASC 的逆序=装载优先级降序（.sunshinex 最优先），与装载面遮蔽序同源） */
 const REPO_SKILL_DIR_CANDIDATES: readonly string[] = [
   'skills',
   ...PROJECT_SKILL_ROOTS_ASC.map((dot) => path.join(dot, 'skills')).reverse(),
@@ -128,8 +127,8 @@ export async function runSkillsInstall(args: CliArgs): Promise<void> {
     const { dirs, layout } = locateSkillDirs(sourceRoot);
     if (dirs.length === 0) {
       console.error(t(
-        'No skills found: expected skills/, .sunshinex/skills/, or {id}/SKILL.md at repo root.',
-        '未发现技能：期望 skills/、.sunshinex/skills/ 或仓库根下直接含 {id}/SKILL.md',
+        'No skills found: expected skills/, a project skills root (.sunshinex/.agents/.claude/.codex), or {id}/SKILL.md at repo root.',
+        '未发现技能：期望 skills/、项目技能根（.sunshinex/.agents/.claude/.codex）或仓库根下直接含 {id}/SKILL.md',
       ));
       process.exitCode = 1;
       return;

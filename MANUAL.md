@@ -274,17 +274,16 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── .sunshinex/
 │   ├── settings.json           # 项目级配置（覆盖全局；已在 .gitignore）
 │   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；首次装载过批准阀；可提交入库共享）
-│   ├── skills/<id>/SKILL.md    # 项目技能（唯一项目技能根）
+│   ├── skills/<id>/SKILL.md    # 项目技能（原生项目技能根；.agents/.claude/.codex 同形兼容根也装载）
 │   └── agents/<id>/agent.md    # 项目子智能体（唯一项目落位；见 5.3）
-└── （历史旧位置 <项目>/agents/ 与 .claude/.cursor 等兼容技能根不再读取：子智能体旧位置条目在首次
-    装载/列举时一次性自动迁入 .sunshinex/agents/，兼容技能根请手工挪入 .sunshinex/skills/）
+└── （历史旧位置 <项目>/agents/ 的子智能体条目在首次装载/列举时一次性自动迁入 .sunshinex/agents/）
 ```
 
 - 技能标准形态统一为 `{根}/skills/{id}/SKILL.md`，正文前 frontmatter 写 `name` 与 `description`。
 - 技能生效顺序：项目级 > 全局级 > 学习级（沉淀产物垫底）。
 - 文件读取缺省全盘开放；写入信任项目根与已登记信任目录，越界写走审批或拒绝（详见第六节）。
 
-**配置实时同步（serve/GUI）**：`sunshinex serve` 运行期间监听全局 `~/.sunshinex/`（settings.json / mcp.json / agents / plugins）与各活跃项目的 `.sunshinex/`（settings / mcp / skills / agents）；文件改动（手编、CLI 写、另一窗口 GUI 写）经 300ms 防抖合并后以 WS `config-changed` 帧广播，打开中的设置页自动刷新（≤1s）；daemon 自身的结构化写做回环抑制，不产生多余刷新。CLI 与 TUI 是一次性进程不做监听——它们写盘后由 GUI 跟上，GUI 写后 CLI / TUI 下次读盘即见。监听不可用（网络盘 / 权限）时降级为打开页面即读，功能不阻塞。
+**配置实时同步（serve/GUI）**：`sunshinex serve` 运行期间监听全局 `~/.sunshinex/`（settings.json / mcp.json / agents / plugins）与各活跃项目的 `.sunshinex/`（settings / mcp / skills / agents）及 `.agents/.claude/.codex` 兼容技能根的 skills/；文件改动（手编、CLI 写、另一窗口 GUI 写）经 300ms 防抖合并后以 WS `config-changed` 帧广播，打开中的设置页自动刷新（≤1s）；daemon 自身的结构化写做回环抑制，不产生多余刷新。CLI 与 TUI 是一次性进程不做监听——它们写盘后由 GUI 跟上，GUI 写后 CLI / TUI 下次读盘即见。监听不可用（网络盘 / 权限）时降级为打开页面即读，功能不阻塞。
 
 ## 四、基本用法
 

@@ -2325,17 +2325,18 @@ interface SkillsBody {
 }
 
 describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
-  test('㊳ skills 三源分组:project 单根(.sunshinex)+user 全局+learned 项目锚定(兼容根零列示);跨组同名不去重;无 token 401', async () => {
+  test('㊳ skills 三源分组:project 四根(.sunshinex>.agents>.claude>.codex)+user 全局+learned 项目锚定(同 id 就近遮蔽);跨组同名不去重;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
       const writeSkill = (dir: string, id: string, md: string): void => {
         fs.mkdirSync(path.join(dir, id), { recursive: true });
         fs.writeFileSync(path.join(dir, id, 'SKILL.md'), md, 'utf8');
       };
-      // project 组:.sunshinex 原生 alpha(生效)+bare(无 frontmatter→行只含 id);.claude 兼容根
-      // (2026-10-29 去兼容清理后零装载)同名 alpha 不列示
+      // project 组:.sunshinex 原生 alpha(就近遮蔽 .claude 同名 compat 版)+bare(无 frontmatter→行只含 id);
+      // .claude 独占 id 'compat-only' 照常入 project 组
       writeSkill(path.join(proj, '.sunshinex', 'skills'), 'alpha', '---\nname: Alpha Native\ndescription: native one\n---\nbody\n');
       writeSkill(path.join(proj, '.claude', 'skills'), 'alpha', '---\nname: Alpha Compat\n---\ncompat body\n');
+      writeSkill(path.join(proj, '.claude', 'skills'), 'compat-only', '---\nname: Compat Only\n---\ncompat body\n');
       writeSkill(path.join(proj, '.sunshinex', 'skills'), 'bare', 'no frontmatter\n');
       // user 组(userSkillsDir=<home>/.sunshinex/skills):alpha 与 project 组同名——跨组不去重,两组各在
       writeSkill(path.join(home, '.sunshinex', 'skills'), 'alpha', '---\nname: Alpha User\ndescription: user one\n---\nubody\n');
@@ -2351,12 +2352,13 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(body.groups.map((g) => g.source), ['project', 'user', 'learned'], '三组固定序:project→user→learned');
       const group = (s: string): { skills: SkillsRow[] } => body.groups.find((g) => g.source === s)!;
 
-      // project 组=.sunshinex 单根直扫;.claude 兼容根零装载不列示——恰一行且为原生版;
-      // Task 25 富化:行带 sourceDir(落盘目录)
+      // project 组=四根合并装载(.sunshinex>.agents>.claude>.codex,同 id 就近遮蔽)——alpha 恰一行且为原生版;
+      // .claude 独占条目照常入列;Task 25 富化:行带 sourceDir(落盘目录)
       assert.deepEqual(group('project').skills.filter((s) => s.id === 'alpha'), [
         { id: 'alpha', name: 'Alpha Native', description: 'native one', sourceDir: path.join(proj, '.sunshinex', 'skills', 'alpha') },
-      ], '.sunshinex alpha 生效(恰一行)');
-      assert.ok(!group('project').skills.some((s) => s.name === 'Alpha Compat'), '.claude 兼容根版本不入 project 组(零装载)');
+      ], '.sunshinex alpha 就近遮蔽 .claude 同名(恰一行且为原生版)');
+      assert.ok(!group('project').skills.some((s) => s.name === 'Alpha Compat'), '.claude 同名 compat 版被遮蔽不列');
+      assert.deepEqual(group('project').skills.find((s) => s.id === 'compat-only'), { id: 'compat-only', name: 'Compat Only', sourceDir: path.join(proj, '.claude', 'skills', 'compat-only') }, '.claude 兼容根独占条目入 project 组');
       assert.deepEqual(group('project').skills.find((s) => s.id === 'bare'), { id: 'bare', sourceDir: path.join(proj, '.sunshinex', 'skills', 'bare') }, '无 frontmatter:name/description 空串不透出(行只含 id+sourceDir)');
       // Task 25 富化:user 行锚当前 root 链——同 id project 技能在场 → shadowedBy=project(跨源遮蔽标注)
       assert.deepEqual(group('user').skills, [

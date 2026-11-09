@@ -54,6 +54,24 @@ test('写 project/.sunshinex/skills/a/SKILL.md → 收 skills/project/root', asy
   } finally { w.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+test('写 project/.claude/skills/a/SKILL.md（兼容技能根）→ 收 skills/project/root', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cw-compat-'));
+  const w = new ConfigWatcher();
+  const got: ConfigChange[] = [];
+  w.onChange(c => got.push(c));
+  mkdirSync(join(root, '.claude', 'skills'), { recursive: true }); // 兼容根结构先于监听存在（缺失目录会降级跳过）
+  w.watchProject(root);
+  try {
+    await waitMs(250);
+    const skillDir = join(root, '.claude', 'skills', 'a');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), '# t');
+    await waitFor(() => got.some(c => c.resource === 'skills' && c.scope === 'project' && c.root === root));
+    await waitMs(800);
+    assert.equal(got.filter(c => c.resource === 'skills').length, 1);
+  } finally { w.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 test("suppress('mcp','global',null) 后写 mcp.json → 窗口期内不回调（写回环抑制）", async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cw-suppress-'));
   const w = new ConfigWatcher();

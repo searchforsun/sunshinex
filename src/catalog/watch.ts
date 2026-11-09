@@ -2,7 +2,9 @@
  * catalog/watch（任务13）：配置变更监听原语——目录级 fs.watch + 300ms 防抖 + 写回环抑制 + 失败降级。
  * 供任务14 daemon 接线，构成配置双向实时同步的「外部变更感知」半边；零新依赖，只用 node:fs.watch。
  * 设计口径（win32 实测口径）：
- * - fs.watch 按目录监听：globalDir 本层 + agents/plugins/teams 子目录；项目侧监听 <root>/.sunshinex 本层 + skills/agents/teams 子目录。
+ * - fs.watch 按目录监听：globalDir 本层 + agents/plugins/teams 子目录；项目侧监听 <root>/.sunshinex 本层
+ *   + skills/agents/teams 子目录，另挂 .agents/.claude/.codex 兼容技能根的 skills/ 子目录
+ *   （目录清单派生自 PROJECT_SKILL_ROOTS_ASC 单点；缺失目录逐个降级跳过）。
  * - Windows 上编辑器原子替换/重命名的事件常落在目录上、filename 可能只是子目录名——一律以
  *   「哪个被监听目录响了」定 scope/root 与固定 resource，本层文件再按 filename 前缀映射，不依赖单一 filename 的精确性。
  * - 同 (resource,scope,root) 300ms 防抖合并为一次回调；suppress() 在窗口期丢弃对应事件并撤销已挂起的防抖
@@ -12,6 +14,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { PROJECT_SKILL_ROOTS_ASC } from '../harness/skills';
 import type { ResourceKind, Scope } from './types';
 
 /** 一次配置变更（已归并到资源粒度）：订阅方据此刷新对应 catalog */
@@ -73,14 +76,20 @@ export class ConfigWatcher {
     ]);
   }
 
-  /** 监听项目根：<root>/.sunshinex 整目录（本层文件 + skills/ agents/ teams/ 子目录）；重复监听同一 root 幂等跳过 */
+  /** 监听项目根：<root>/.sunshinex 整目录（本层文件 + skills/ agents/ teams/ 子目录），另挂
+   *  .agents/.claude/.codex 兼容技能根的 skills/ 子目录（清单派生自 PROJECT_SKILL_ROOTS_ASC 单点，
+   *  .sunshinex 已含其中，不重复挂）；重复监听同一 root 幂等跳过 */
   watchProject(root: string): void {
     const base = path.join(root, '.sunshinex');
+    const compatSkillSpecs = PROJECT_SKILL_ROOTS_ASC
+      .filter((dot) => dot !== '.sunshinex')
+      .map((dot) => ({ dir: path.join(root, dot, 'skills'), resource: 'skills' as const, scope: 'project' as const, root }));
     this.watchGroup(`project:${path.resolve(root)}`, [
       { dir: base, resource: null, scope: 'project', root },
       { dir: path.join(base, 'skills'), resource: 'skills', scope: 'project', root },
       { dir: path.join(base, 'agents'), resource: 'agents', scope: 'project', root },
       { dir: path.join(base, 'teams'), resource: 'teams', scope: 'project', root },
+      ...compatSkillSpecs,
     ]);
   }
 
