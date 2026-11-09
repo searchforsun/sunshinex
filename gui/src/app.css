@@ -870,7 +870,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-11-05 用户裁定「第一行显示 chip 的 图标+名称」:头部固定不随内容滚动,内容区自滚 */
 .ref-chip-preview-head { display: inline-flex; align-items: center; gap: 5px; flex: none; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 .ref-chip-preview-head svg { width: 14px; height: 14px; }
-.ref-chip-preview pre { margin: 0; flex: 1; min-height: 0; overflow: auto; font: calc(11px * var(--fz)) var(--font-mono); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
+.ref-chip-preview pre { margin: 0; flex: 1; min-height: 0; overflow: auto; font: calc(14px * var(--fz))/1.6 var(--font-ui); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
  * 左侧是裁剪边界,图标落到 @ 字符位并以 chip 底色填充 */.sx-composer-highlight .hn-file { position: relative; }.sx-composer-highlight .hn-file .hn-file-at { color: transparent; }
 /* G14.132 图标统一落 @ 字符位(透明 @ 保字宽;无蒙版,不依赖行首分型) */.sx-composer-highlight .hn-file .hn-file-ico {

@@ -495,6 +495,9 @@ export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: str
     if (svg === null || base === null) return;
     svg.style.maxWidth = 'none';
     svg.style.maxHeight = 'none';
+    // 宿主 .mermaid-svg 是 flex 容器:svg 作 flex 子项缺省可收缩,宽度超面板即被压回面板宽,放大到 ~120% 后
+    // 图不再变大(只剩高度增长与横移)——禁收缩让写入的宽高原样生效
+    svg.style.flexShrink = '0';
     svg.style.width = `${Math.round(base.w * view.s * 100) / 100}px`;
     svg.style.height = `${Math.round(base.h * view.s * 100) / 100}px`;
   }, [view.s, zoom, renderOk]);
