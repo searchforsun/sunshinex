@@ -4,7 +4,7 @@ import { t } from '../i18n';
 
 /** 欢迎页分支弹层(2026-11-09 用户裁定改版):固定宽高(清单区内滚)、当前分支右侧对号、顶部筛选行——
  *  输入即过滤,输入名不与既有分支同名时右侧「+」可新建并切换(Enter 同义:精确命中即切换,否则新建);
- *  窄框适配:宽度随可用区缩短、整体左移贴回区内,窗口缩放即重算。选中/新建派发经 onPick/onCreate(弹层关闭归调用方) */
+ *  窄框适配:宽度随可用区缩短(main.tsx 全局钳位器负责平移回区内)。选中/新建派发经 onPick/onCreate(弹层关闭归调用方) */
 export function WelcomeBranchMenu({
   gitBr,
   onPick,
@@ -23,7 +23,6 @@ export function WelcomeBranchMenu({
     const el = ref.current;
     if (el === null) return;
     const fit = (): void => {
-      el.style.transform = '';
       el.style.width = '';
       let left = 8;
       let right = window.innerWidth - 8;
@@ -34,12 +33,7 @@ export function WelcomeBranchMenu({
         left = Math.max(left, r.left + 8);
         right = Math.min(right, r.right - 8);
       }
-      el.style.width = `${Math.round(Math.min(280, Math.max(160, right - left)))}px`;
-      const r = el.getBoundingClientRect();
-      let dx = 0;
-      if (r.right > right) dx = right - r.right;
-      if (r.left + dx < left) dx = left - r.left;
-      if (dx !== 0) el.style.transform = `translateX(${Math.round(dx)}px)`;
+      el.style.width = `${Math.round(Math.min(280, Math.max(160, right - left)))}px`; // 平移回区内归全局钳位器(main.tsx)
     };
     fit();
     window.addEventListener('resize', fit);

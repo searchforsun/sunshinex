@@ -120,14 +120,26 @@ requestAnimationFrame(() => {
 // 弹层(.sx-menu-pop/.pill-pop/.proj-pop)若越出视口缘,水平 translate 平移回视口内(动态左右
 // 移动,不改锚定语义);关开/缩窗经 MO+resize 重扫,复位不残留。
 (() => {
+  // 2026-11-09 用户实测「分支弹窗还是被侧栏挤走」根修:右栏是兄弟层压在主对话区上(非裁剪祖先),
+  // 只钳视口=弹窗可越过主区右缘被侧栏盖住——可用区改=视口∩最近 .sx-main(缺席回退视口);
+  // 主区宽度变化(开合侧栏/拖宽)经 RO 即重扫(此前只听 DOM 插入与 window resize,侧栏开合两不沾)。
+  // 量测前清上次 translate(与组件自身 transform 独立属性,残留即污染量测)
   const clampPop = (el: Element): void => {
     const h = el as HTMLElement;
+    h.style.translate = '';
     const b = h.getBoundingClientRect();
     if (b.width === 0) return;
+    const main = h.closest('.sx-main')?.getBoundingClientRect();
+    let left = 4;
+    let right = window.innerWidth - 4;
+    if (main !== undefined) {
+      left = Math.max(left, main.left + 4);
+      right = Math.min(right, main.right - 4);
+    }
     let dx = 0;
-    if (b.right > window.innerWidth - 4) dx = window.innerWidth - 4 - b.right;
-    if (b.left + dx < 4) dx = 4 - b.left;
-    h.style.translate = dx !== 0 ? `${dx}px 0` : '';
+    if (b.right > right) dx = right - b.right;
+    if (b.left + dx < left) dx = left - b.left;
+    h.style.translate = dx !== 0 ? `${Math.round(dx)}px 0` : '';
   };
   const scan = (): void => {
     document.querySelectorAll('.sx-menu-pop, .pill-pop, .proj-pop').forEach(clampPop);
@@ -135,6 +147,12 @@ requestAnimationFrame(() => {
   const mo = new MutationObserver(() => scan());
   mo.observe(document.body, { childList: true, subtree: true });
   window.addEventListener('resize', scan);
+  const ro = new ResizeObserver(scan);
+  ro.observe(document.documentElement);
+  const observeMains = (): void => { document.querySelectorAll('.sx-main').forEach((m) => ro.observe(m)); };
+  observeMains();
+  const mo2 = new MutationObserver(observeMains);
+  mo2.observe(document.body, { childList: true, subtree: true });
   scan();
 })();
 
