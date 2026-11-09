@@ -191,11 +191,11 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* G8d-T1 补(裁定①):竖 accent 条标恢复(G8a 先例回归)——悬停=bg-2 无条,活动=bg-2+条,可辨 */.sx-session-row.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* G8e-T1 三面②会话行状态点:运行中会话(行 id===activeSessionId)=accent 实心,其余灰空心 */
 /* 2026-10-24 圆点统一(用户裁定:全前端指示点 6px 纯圆):border-radius:50% 在根 zoom+flex 交叉轴
- *  小数取整下会被拉椭(tb-status-dot 同款教训)——实心点/空芯环全改 radial-gradient(circle Rpx)
- *  几何圆构造,半径两轴同值,盒取整不变形 */
-.sx-session-dot { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; clip-path: circle(50% at 50% 50%); flex: none; display: inline-flex; align-items: center; justify-content: center; background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--fg-secondary) 2px 2.7px, transparent 3.1px); } /* 2026-10-31 用户裁定「转圈/蓝点偏右,最近会话置顶图标也要对齐」:状态槽=置顶钮配方逐字同几何(left 6/24px 盒/flex 居中),点/环/?/置顶 morph 四者同槽同心;分区 left 覆写全退役 */ /* 2026-10-31 用户裁定「上下左右对齐」:状态槽统一 12px 盒 flex 居中——点/环/? 同心同轴,radial 于盒心自居中 */.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
+ *  小数取整下两轴可差 1px,径向渐变构造同样受亚像素位置影响(实测拉椭率相当),且 100% 下
+ *  只剩 4px 阶梯块——统一用 6px 盒 border-radius 圆盘/1px border 空心环,几何抗锯齿 */
+.sx-session-dot { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; clip-path: circle(50% at 50% 50%); flex: none; display: inline-flex; align-items: center; justify-content: center; } /* 2026-10-31 用户裁定「转圈/蓝点偏右,最近会话置顶图标也要对齐」:状态槽=置顶钮配方逐字同几何(left 6/24px 盒/flex 居中),点/环/?/置顶 morph 四者同槽同心;分区 left 覆写全退役 */ /* 2026-10-31 用户裁定「上下左右对齐」:状态槽统一 12px 盒 flex 居中——点/环/? 同心同轴,radial 于盒心自居中 */.sx-menu-foot { border-top: 1px solid var(--border); padding: 8px 12px; margin-top: auto; display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); } /* 2026-10-24 用户实测:内容短时齿轮上浮,auto 钉底 */.sx-menu-foot .sx-iconbtn { margin-left: auto; }/* G8e-T1 补:底栏连接态点(conn-{state};state∈connecting/open/reconnecting/closed)
    open=accent 实心/connecting·reconnecting=warn 描边空芯/closed(离线)=灰 */
-.conn-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--fg-secondary); }.conn-dot.conn-open { background: var(--accent); }.conn-dot.conn-connecting, .conn-dot.conn-reconnecting { background: radial-gradient(circle 3px at 50% 50%, transparent 1.5px, var(--warn) 2px 2.7px, transparent 3.1px); }
+.conn-dot { width: 6px; height: 6px; box-sizing: border-box; border-radius: 50%; flex: none; background: var(--fg-secondary); }.conn-dot.conn-open { background: var(--accent); }.conn-dot.conn-connecting, .conn-dot.conn-reconnecting { background: none; border: 1px solid var(--warn); }
 /* G8e-T1 补:左栏「+ 添加工作区」区(G8a 挂名) */.sx-menu-add { border-top: 1px solid var(--border); padding: 8px 12px; }.sx-add-workspace { display: block; width: 100%; padding: 4px 8px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--fg-secondary); }.sx-add-workspace:hover:not(:disabled) { color: var(--fg); border-color: var(--border-strong); }.sx-welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--fg-secondary); }
 
 /* ---- G8c T8 设置态(特批白名单:设置样式并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */.sx-settings-head { display: flex; align-items: center; gap: 8px; }.sx-settings-back { color: var(--fg-secondary); padding: 2px 6px; border-radius: var(--radius-md); }.sx-settings-back:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-settings-project { padding: 8px 12px; border-bottom: 1px solid var(--border); }.sx-settings-project select { width: 100%; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 6px; font: inherit; }.sx-settings-nav { flex: 0 1 auto; min-width: min-content; overflow-y: auto; overflow-x: hidden; padding: 6px 0; list-style: none; margin: 0; }/* 2026-10-25 用户裁定:设置态菜单列随窗收窄(flex 可缩,覆写 .sx-menu 的 flex:none 与
@@ -890,7 +890,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 等待模型待态(2026-10-27 用户裁定:loading 挂发送钮,正文等待文字退役)——2026-10-29 用户裁定
    「loading 用真转圈,箭头自转滑稽」:loading 渲染 run-spinner 环(组件侧替换 svg,箭头旋转规则退役),
    环色用 fg-on-solid(发送钮为实心前景底,--fg 系配色在底上不可见),尺寸 14px 中心对齐 */
-.sx-composer .send .run-spinner { width: 14px; height: 14px; background: none; border-color: transparent; border-top-color: var(--fg-on-solid); border-right-color: var(--fg-on-solid); border-bottom-color: var(--fg-on-solid); border-width: 2.6px; }
+.sx-composer .send .run-spinner { width: 14px; height: 14px; background: none; border-color: transparent; border-top-color: var(--fg-on-solid); border-right-color: var(--fg-on-solid); border-bottom-color: var(--fg-on-solid); border-width: 3px; }
 /* 会话语境(G9-B4 平移):限宽居中+贴底;.composer 由 ComposerCard 卡根复用,不再持卡面样式 */.composer {
   flex: none;
   width: calc(100% - 32px);
@@ -2505,6 +2505,9 @@ input.sx-setting-input { width: 100%; }
 .effort-slider input[type="range"]::-webkit-slider-thumb { corner-shape: initial; }
 /* 后台/任务板状态点:盖过全局 * 超椭圆(同特异性时后写胜;再加 clip-path 双保险) */
 .tb-status-dot { corner-shape: initial; clip-path: circle(50% at 50% 50%); }
+/* 发送钮(主输入框/欢迎页/编辑卡/辅助对话同类 .send)走原生圆角:32px 小钮上超椭圆近直边在 100%
+   缩放下只占几像素=阶梯毛刺(SVG 理想矢量同形状同样阶梯,形状本身所致),2026-11-09 用户裁定修复 */
+.sx-composer .send { corner-shape: initial; }
 
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
 .user-bubble-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 8px; margin-top: 0; pointer-events: none; }
@@ -2699,14 +2702,14 @@ input.sx-setting-input { width: 100%; }
   height: 8px; padding: 0; border: none; background: transparent; cursor: pointer; flex: none;
 }
 .sx-rail-bar {
-  display: block; width: 12px; height: 1.5px; border-radius: 1px;
+  display: block; width: 12px; height: 2px; border-radius: 1px;
   background: color-mix(in srgb, var(--fg) 32%, transparent); flex: none; /* 亮色减档见文末 light 覆写 */
   transition: width var(--dur-basic) var(--ease-enter), height var(--dur-basic) var(--ease-enter), background var(--dur-basic) var(--ease-enter);
 }
 /* 当前滚动位置正对的刻度:加重显色(实色+2px)但不加长——长度变化只在 hover(九轮裁定) */
 .sx-rail-tick.active .sx-rail-bar { background: var(--fg); height: 2px; }
 /* hover 弧形:本条变长为默认两倍(24px),上下相邻 1.5 倍(18px)成弧形过渡 */
-.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { width: 24px; height: 2.5px; background: var(--fg); }
+.sx-rail-tick:hover .sx-rail-bar, .sx-rail-tick:focus-visible .sx-rail-bar { width: 24px; height: 2px; background: var(--fg); }
 .sx-rail-tick:hover + .sx-rail-tick .sx-rail-bar,
 .sx-rail-tick:has(+ .sx-rail-tick:hover) .sx-rail-bar { width: 18px; height: 2px; }
 /* 右侧固定宽预览卡:视觉对齐全局 data-tip 卡(elev-prominent 阴影/lg 圆角/无边框/次级字色) */
@@ -2785,13 +2788,13 @@ input.sx-setting-input { width: 100%; }
 /* 正文 md 图片(2026-10-26 正文支持显示图片):合理尺寸上限+项目弧度/边框;点击开灯箱 */.md-image{display:block;width:50%;height:auto;max-width:100%;object-fit:contain;border-radius:var(--radius-sm);border:1px solid var(--border);margin:16px 0;cursor:zoom-in} /* 2026-11-07 用户裁定「上下边距加大」8→16,与图注文字拉开 */ /* 2026-11-07 用户裁定「宽度始终是正文宽度的一半」:定宽 50%,高随比例(撤 420 高帽——限高会让竖图窄于半宽) */.md-image-loading{display:block;width:50%;aspect-ratio:16/10;margin:16px 0;border-radius:var(--radius-sm);background:color-mix(in srgb,var(--fg) 5%,transparent)} /* 加载/语法在途占位:与成图同宽同位,落定替换不跳版 */
 
 /* ===== 2026-10-26 MCP 面四轮改版:状态圆点(绿=连接正常/红=连接失败/灰=探测中/灰环=停用,
-   几何圆构造同 sx-api-dot——zoom 取整拉椭免疫;radial-gradient 画在盒内 corner-shape 裁不到) +
+   6px 圆盒:实心=底色、空心=1px border 环,原生圆角任意缩放平滑) +
    整机/逐工具开关(pill+knob)+ 工具清单 + JSON 编辑窗 ===== */
-.sx-mcp-dot{width:6px;height:6px;border-radius:50%;flex:none}
+.sx-mcp-dot{width:6px;height:6px;box-sizing:border-box;border-radius:50%;flex:none}
 .sx-mcp-dot.ok{background:var(--ok)}
 .sx-mcp-dot.err{background:var(--err)}
-.sx-mcp-dot.probe{background:radial-gradient(circle 3px at 50% 50%,transparent 1.5px,var(--fg-tertiary) 2px 2.7px,transparent 3.1px)}
-.sx-mcp-dot.off{background:radial-gradient(circle 3px at 50% 50%,transparent 1.2px,color-mix(in srgb,var(--fg) 34%,transparent) 1.7px 2.4px,transparent 2.8px)}
+.sx-mcp-dot.probe{border:1px solid var(--fg-tertiary)}
+.sx-mcp-dot.off{border:1px solid color-mix(in srgb,var(--fg) 34%,transparent)}
 .sx-mcp-card.disabled{opacity:0.62}
 .sx-mcp-switch{width:26px;height:15px;border-radius:8px;border:none;padding:0;cursor:pointer;flex:none;position:relative;background:color-mix(in srgb,var(--fg) 20%,transparent);transition:background var(--dur-basic) var(--ease-enter);margin-left:auto}
 .sx-mcp-switch .knob{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--surface-elevated);transition:left var(--dur-basic) var(--ease-enter)}
