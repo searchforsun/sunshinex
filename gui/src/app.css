@@ -3676,6 +3676,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 详情限高块 ClampBlock + 用户气泡(clamp-block.tsx;2026-11-09 用户裁定):内容超限高(详情 DETAIL_MAX_HEIGHT 320/气泡 BUBBLE_MAX_HEIGHT 168)
    时限高+纵向滚动条,下方居中纯 V(18px 无框);展开=完整高度、滚动条消失,^ 收回。hover 底走项目统一弧度 */
 .sx-clamp.clamped, .user-bubble-scroll.user-bubble-clamped { overflow-y: auto; }
-.sx-clamp-toggle-row, .user-bubble-toggle-row { display: flex; justify-content: center; margin-top: 4px; }
-.sx-clamp-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 22px; padding: 0; border: none; border-radius: var(--radius-sm); background: none; color: var(--fg-secondary); cursor: pointer; }
+.sx-clamp-toggle-row, .user-bubble-toggle-row { display: flex; justify-content: center; margin-top: 2px; } /* 2026-11-09 用户裁定「占用高度太高」:钮行收紧(钮高 18,气泡内再吃 6px 底内边距) */
+.user-bubble-wrap .user-bubble > .user-bubble-toggle-row { margin-top: 0; margin-bottom: -6px; }
+.sx-clamp-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 18px; padding: 0; border: none; border-radius: var(--radius-sm); background: none; color: var(--fg-secondary); cursor: pointer; }
 .sx-clamp-toggle:hover:not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
