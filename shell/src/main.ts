@@ -1,11 +1,11 @@
 import * as fs from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray, webContents } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { clampSize, lockedDragBounds } from './lib/window-drag';
 import { appUrl, LOOPBACK } from './lib/app-url';
 import { parseSmokeArgv } from './lib/smoke';
+import { readDebugPort, verifyDebugPort } from './lib/debug-port';
 import { pickTrayRecents, resolveUiLang, resolveUiLangFromSetting, SHOW_ACCELERATOR, shouldHideOnClose, trayMenu, untitledSession } from './lib/lifecycle';
 import type { TrayAction, TrayRecent, UiLang } from './lib/lifecycle';
 import { TRAY_ICON_DATA_URL } from './lib/tray-icon';
@@ -15,18 +15,12 @@ import type { ShellDaemon } from './daemon';
 
 // M2 内置浏览器融合:真实 CDP 调试口(Chromium 写 userData/DevToolsActivePort,daemon 内 facade
 // 过滤代理只向插件暴露侧栏 <webview> target——应用自身 UI 永不可见)。ready 前装配。
-// 不能用 port 0(实测写了 DevToolsActivePort 却不监听);固定口在重启竞态下会被旧实例占着,
-// 调试服务器静默绑定失败,旧 DevToolsActivePort 残留指向死端口→插件每轮等满超时(实测发消息卡 10s+)。
-// 故:ready 前同步探一个确实空闲的口(优先 57679),并删掉残留 DevToolsActivePort
-const DEBUG_PORT_PREFERRED = 57679;
-function pickDebugPort(): number {
-  const script = `const n=require('net');const t=(p)=>new Promise((r)=>{const s=n.createServer();s.once('error',()=>r(-1));s.listen(p,'127.0.0.1',()=>{const a=s.address().port;s.close(()=>r(a));});});(async()=>{let p=await t(${DEBUG_PORT_PREFERRED});if(p<0)p=await t(0);process.stdout.write(String(p));})();`;
-  const r = spawnSync(process.execPath, ['-e', script], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8', timeout: 3000, windowsHide: true });
-  const port = Number(r.stdout);
-  return Number.isInteger(port) && port > 0 ? port : DEBUG_PORT_PREFERRED;
-}
+// 不能用 port 0(实测写了 DevToolsActivePort 却不监听);固定口被占时调试服务器静默绑定失败,
+// 残留 DevToolsActivePort 指向死端口会让插件每轮等满超时——故先删残留档,口取偏好档(lib/debug-port,
+// ready 前只读小文件不阻塞主线程),绑定成败 ready 后异步核验并自愈到下次启动
 try { fs.rmSync(path.join(app.getPath('userData'), 'DevToolsActivePort'), { force: true }); } catch { /* 尽力 */ }
-app.commandLine.appendSwitch('remote-debugging-port', String(pickDebugPort()));
+const debugPort = readDebugPort(app.getPath('userData'));
+app.commandLine.appendSwitch('remote-debugging-port', String(debugPort));
 // 侧栏 webview 遮挡/切后台后停画(DOM 存活、画面冻结/残留脏区):Windows 原生遮挡计算会把被盖住的
 // 窗口判为不可见并停合成——关掉;配合 backgroundThrottling:false 保持后台/被遮挡时照常绘制
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -139,6 +133,9 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   void app.whenReady().then(async () => {
+    void verifyDebugPort(app.getPath('userData'), debugPort).then((r) => {
+      if (!r.ok) console.error(`[shell] remote-debugging-port ${debugPort} 未绑定,下次启动改用 ${r.next}`);
+    });
     // 窗口最小宽按系统 DPI 缩放折算 DIP(minWidth 是 DIP,150% 显示缩放下数值×1.5 才是物理px)。
     // 手调入口(2026-10-24 用户裁定):改 PHYSICAL_MIN_W 一个数即改物理px 下限,当前 500
     const PHYSICAL_MIN_W = 500;
