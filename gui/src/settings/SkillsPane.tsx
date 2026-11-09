@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { Check, Copy } from 'lucide-react';
+import { useCopyFeedback } from '../use-copy-feedback';
+import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl, mdComponentsPlain } from '../pages/chat/md-render';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { SkillsGroup, SettingsView } from '../connection';
@@ -31,6 +35,8 @@ export interface SkillsPaneConn {
    *  路径);toggle 经 PUT scope='global' 写回(开关=全局语义,技能装载面跨项目统一) */
   settings(root?: string): Promise<SettingsView>;
   putSettings(scope: 'project' | 'global', root: string | undefined, updates: Record<string, string | number | null>): Promise<void>;
+  /** SKILL.md 原文(2026-11-09 点击描述弹窗);缺失时卡片描述不可点 */
+  skillBody?(dir: string, root?: string): Promise<{ body: string }>;
 }
 
 /** 项目下拉 target:'all'=跨项目视图(原 scope=all 数据面);''=全局;其余=项目 root */
@@ -92,6 +98,16 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
   const [disabledDirs, setDisabledDirs] = useState<ReadonlySet<string>>(new Set());
   const [envLocked, setEnvLocked] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** SKILL.md 弹窗:id+正文(null=加载中);Esc/遮罩/× 关闭 */
+  const [preview, setPreview] = useState<{ id: string; body: string | null } | null>(null);
+  const openPreview = (id: string, dir: string): void => {
+    if (conn.skillBody === undefined) return;
+    setPreview({ id, body: null });
+    conn.skillBody(dir, target === 'all' || target === '' ? undefined : target).then(
+      (r) => setPreview((p) => (p !== null && p.id === id ? { id, body: r.body.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '') } : p)),
+      (err: unknown) => setPreview((p) => (p !== null && p.id === id ? { id, body: `> ${errText(err)}` } : p)),
+    );
+  };
 
   /** settings 视图 → 停用集合+env 锁态(初态拉取与切换落定回读两面共用单点) */
   const applyDisabledView = (view: SettingsView): void => {
@@ -284,7 +300,13 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
                   <span className="knob" aria-hidden="true" />
                 </button>
               </div>
-              {s.desc !== '' && <span className="sx-skill-desc">{s.desc}</span>}
+              {s.desc !== '' && (conn.skillBody !== undefined && s.sourceDir !== undefined ? (
+                <button type="button" className="sx-skill-desc sx-skill-desc-btn" data-tip={s.desc} onClick={() => openPreview(s.id, s.sourceDir!)}>
+                  {s.desc}
+                </button>
+              ) : (
+                <span className="sx-skill-desc">{s.desc}</span>
+              ))}
               {s.sourceDir !== undefined && (
                 <span className="sx-skill-dir" data-tip={s.sourceDir}>{s.sourceDir}</span>
               )}
@@ -295,6 +317,51 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
           </div>
         </section>
       ))}
+      {preview !== null && <SkillPreviewModal id={preview.id} body={preview.body} onClose={() => setPreview(null)} />}
     </section>
+  );
+}
+
+/** SKILL.md 预览弹窗(只读):宽 min(92vw,760px)、高 ≤80vh,正文区纵向滚动;frontmatter 已剥。
+ *  正文与侧栏 md 预览同源(files-md 排版+md-render 代码块/mermaid/表格),头部复制钮同侧栏 files-act 款 */
+function SkillPreviewModal({ id, body, onClose }: { id: string; body: string | null; onClose: () => void }): JSX.Element {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const { status: copied, copy } = useCopyFeedback();
+  useEffect(() => {
+    ref.current?.focus();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+  return (
+    <div className="sx-editor-modal-backdrop" onClick={onClose}>
+      <div ref={ref} className="sx-editor-modal sx-skill-preview" role="dialog" aria-modal="true" aria-label={id} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+        <header className="sx-editor-modal-head">
+          <h3>{id}</h3>
+          <span className="sx-skill-preview-acts">
+            {body !== null && (
+              <button type="button" className="files-act" aria-label={copied === 'ok' ? 'copied' : 'copy content'} data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={() => copy(body)}>
+                {copied === 'ok' ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
+              </button>
+            )}
+            <button type="button" className="sx-editor-modal-close" aria-label={t('Close', '关闭')} onClick={onClose}>×</button>
+          </span>
+        </header>
+        <div className="sx-skill-preview-body files-md">
+          {body === null ? (
+            <p className="home-loading">{t('Loading…', '加载中…')}</p>
+          ) : (
+            <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>
+              {body}
+            </ReactMarkdown>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

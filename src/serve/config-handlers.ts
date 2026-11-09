@@ -1261,6 +1261,35 @@ export function handleSkillsGet(io: ConfigHandlerIo, req: http.IncomingMessage, 
   io.send(res, 200, { groups: markDisabledSkills(groups) });
 }
 
+/** GET /settings/skills/body?dir=&root=(2026-11-09 用户裁定「点击技能描述弹窗显示 SKILL.md」):dir=清单行
+ *  sourceDir;只放行本次枚举(全局+注册项目域+root 链)中出现过的技能目录——不作任意路径读取面 */
+export function handleSkillsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const dir = url.searchParams.get('dir');
+  if (dir === null || dir.length === 0) {
+    io.send(res, 400, { error: 'dir required' });
+    return;
+  }
+  const rootParam = url.searchParams.get('root');
+  const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
+  const groups = [
+    ...enrichSkillsGroups([loadUserSkillsGroup(), ...loadCrossProjectSkillGroups(root)], root, ['user']),
+    ...(root !== undefined ? enrichSkillsGroups(loadSkillsGrouped(root), root, ['project', 'user', 'learned']) : []),
+  ];
+  const want = path.resolve(dir);
+  const known = groups.some((g) => g.skills.some((s) => (s as SkillsGetRow).sourceDir !== undefined && path.resolve((s as SkillsGetRow).sourceDir!) === want));
+  if (!known) {
+    io.send(res, 404, { error: 'unknown skill dir' });
+    return;
+  }
+  const file = skillFileIn(path.dirname(want), path.basename(want));
+  if (file === undefined) {
+    io.send(res, 404, { error: 'SKILL.md not found' });
+    return;
+  }
+  io.send(res, 200, { body: fs.readFileSync(file, 'utf8') });
+}
+
 /** POST /settings/skills/rm {root, id}（2026-10-31 学习技能删除面,GUI 学习技能页签/TUI /skills-rm
  *  共用单点）：root 必传(学习根=learnedSkillsDir(root) 工作区锚定);删除原语 removeLearnedSkill
  *  只作用于学习根(id 规范校验防路径逃逸,project/user 用户资产物理不可达)。404=学习根无此 id

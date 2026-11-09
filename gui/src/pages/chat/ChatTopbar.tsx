@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Code2, MoreHorizontal, PanelLeft } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, MailOpen, MoreHorizontal, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
@@ -268,6 +268,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'pin',
       label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
+      icon: pinned ? <PinOff size={14} strokeWidth={1.75} aria-hidden="true" /> : <Pin size={14} strokeWidth={1.75} aria-hidden="true" />,
       // 已归档冻结置顶态(2026-10-22 用户裁定);2026-11-07 撤运行中禁用(用户裁定「运行中也能
       // 置顶,只是切换显示位置」)
       disabled: archived,
@@ -280,6 +281,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'archive',
       label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
+      icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
       // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行
       disabled: false,
       onSelect: () => {
@@ -291,6 +293,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'rename',
       label: t('Rename session', '重命名会话'),
+      icon: <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />,
       onSelect: () => {
         setTitleDraft(displayTitle);
         setTitleEditing(true);
@@ -299,6 +302,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'mark-unread',
       label: t('Mark as unread', '标记为未读'),
+      icon: <MailOpen size={14} strokeWidth={1.75} aria-hidden="true" />,
       onSelect: () => {
         markUnread(); // 联动已内含(落库后上抛)
       },
@@ -307,14 +311,14 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'copy-id',
       label: t('Copy session ID', '复制会话 ID'),
-      tail: copiedTag === 'id' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : undefined,
+      icon: copiedTag === 'id' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />,
       keepOpen: true,
       onSelect: () => copyText(sessionId, 'id'),
     },
     {
       id: 'copy-path',
       label: t('Copy path', '复制路径'),
-      tail: copiedTag === 'path' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : undefined,
+      icon: copiedTag === 'path' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />,
       keepOpen: true,
       onSelect: () => copyText(root ?? '', 'path'),
     },

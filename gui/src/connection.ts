@@ -297,6 +297,8 @@ export interface Connection {
   /** POST /settings/skills/rm {root, id}（2026-10-31 学习技能删除面）：只作用于学习根
    *  （learnedSkillsDir(root)——学习沉淀=机器产物可删）；404=学习根无此 id */
   skillsRemove(root: string, id: string): Promise<void>;
+  /** GET /settings/skills/body:SKILL.md 原文(dir=清单行 sourceDir,服务端只放行已枚举技能目录) */
+  skillBody(dir: string, root?: string): Promise<{ body: string }>;
   /** GET /settings/memory-stats?root=（T6）：主域记忆概览（root 缺省 = 零值非 400） */
   memoryStats(root?: string): Promise<{ entries: number; lastWriteAt: number | null }>;
   /** GET /settings/plugins?root=（2026-10-26 插件面）：loadEffectivePlugins 两级清单 + 装载聚合警告
@@ -829,6 +831,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }> {
       const parts = [root === undefined ? '' : `root=${encodeURIComponent(root)}`, ...(all === true ? ['scope=all'] : [])].filter(Boolean);
       return getJson<{ groups: SkillsGroup[] }>(parts.length === 0 ? '/settings/skills' : `/settings/skills?${parts.join('&')}`);
+    },
+    skillBody(dir: string, root?: string): Promise<{ body: string }> {
+      return getJson<{ body: string }>(`/settings/skills/body?dir=${encodeURIComponent(dir)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`);
     },
     async skillsRemove(root: string, id: string): Promise<void> {
       await post('/settings/skills/rm', { root, id });

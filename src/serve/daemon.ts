@@ -730,6 +730,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 组内沿装载序去重、跨组不去重——展示面重复 id 保留）+ 主域记忆概览（条数+最近写入，只读零副作用）
     { method: 'GET', path: '/settings/skills', auth: true, run: async (req, res) => this.handleSkillsGet(req, res) },
     // 学习技能删除面(2026-10-31 GUI 学习技能页签/TUI /skills-rm 共用)
+    { method: 'GET', path: '/settings/skills/body', auth: true, run: async (req, res) => configHandlers.handleSkillsBodyGet(this.configIo, req, res) },
     { method: 'POST', path: '/settings/skills/rm', auth: true, run: async (req, res) => configHandlers.handleSkillsRemove(this.configIo, req, res) },
     { method: 'GET', path: '/settings/memory-stats', auth: true, run: async (req, res) => this.handleMemoryStatsGet(req, res) },
     // 2026-10-26 插件面：两级装载清单视图（loadEffectivePlugins 可视化，manifest/启用态/平台/装配

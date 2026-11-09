@@ -272,16 +272,16 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                 {
                   id: 'copy-abs',
                   label: t('Copy absolute path', '复制绝对路径'),
-                  icon: <Copy size={14} strokeWidth={1.75} />,
-                  tail: pathCopied === 'abs' ? <Check size={14} strokeWidth={2.25} /> : undefined,
+                  // 复制反馈=前置复制图标换 ✓(2026-11-09 用户裁定,全局同款)
+                  icon: pathCopied === 'abs' ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />,
                   keepOpen: true,
                   onSelect: () => copyPath(load.file!.path, 'abs'),
                 },
                 {
                   id: 'copy-rel',
                   label: t('Copy relative path', '复制相对路径'),
-                  icon: <Copy size={14} strokeWidth={1.75} />,
-                  tail: pathCopied === 'rel' ? <Check size={14} strokeWidth={2.25} /> : undefined,
+                  // 复制反馈=前置复制图标换 ✓(2026-11-09 用户裁定,全局同款)
+                  icon: pathCopied === 'rel' ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />,
                   keepOpen: true,
                   onSelect: () => copyPath(relOf(), 'rel'),
                 },

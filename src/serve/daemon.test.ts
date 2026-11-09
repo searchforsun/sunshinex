@@ -2325,6 +2325,26 @@ interface SkillsBody {
 }
 
 describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
+  test('skills/body:已枚举技能目录返 SKILL.md 原文;非清单目录 404(不作任意路径读取);缺 dir 400;无 token 401', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const proj = path.join(tmp, 'proj');
+      const dir = path.join(proj, '.sunshinex', 'skills', 'alpha');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'SKILL.md'), '---\nname: Alpha\n---\n# Alpha body\n', 'utf8');
+      const secret = path.join(tmp, 'secret');
+      fs.mkdirSync(secret, { recursive: true });
+      fs.writeFileSync(path.join(secret, 'SKILL.md'), 'leak', 'utf8');
+      const q = (d: string): string => `${base}/settings/skills/body?dir=${encodeURIComponent(d)}&root=${encodeURIComponent(proj)}`;
+      assert.equal((await fetch(q(dir))).status, 401);
+      const ok = await fetch(q(dir), { headers: AUTH });
+      assert.equal(ok.status, 200);
+      assert.equal(((await ok.json()) as { body: string }).body, '---\nname: Alpha\n---\n# Alpha body\n');
+      assert.equal((await fetch(q(secret), { headers: AUTH })).status, 404, '非清单目录拒读');
+      assert.equal((await fetch(q(path.join(dir, '..', '..', '..', '..', 'secret')), { headers: AUTH })).status, 404, '穿越归一后仍非清单目录');
+      assert.equal((await fetch(`${base}/settings/skills/body`, { headers: AUTH })).status, 400);
+    });
+  });
+
   test('㊳ skills 三源分组:project 五根(.sunshinex>.agents>.claude>.codex>.cursor)+user 全局+learned 项目锚定(同 id 就近遮蔽);跨组同名不去重;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
