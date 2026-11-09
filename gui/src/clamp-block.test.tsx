@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { ClampBlock } from './clamp-block';
+import { ClampBlock, DETAIL_MAX_HEIGHT } from './clamp-block';
 
-/** 详情限高块钉(2026-11-09 用户裁定「展开详情不再内部纵向滚动」):超限出 V、展开无 maxHeight(完整高度
- *  不内滚)、^ 收起回限高;外层行折叠(卸载)再展开回折叠态=外部折叠自动带走内部 ^。
+/** 详情限高块钉(2026-11-09 用户裁定):超统一高度=限高+纵向滚动(clamped 类=overflow-y auto)+V;展开去
+ *  maxHeight(完整高度、滚动条消失)、^ 收起回限高;外层行折叠(卸载)再展开回折叠态=外部折叠自动带走内部 ^。
  *  ResizeObserver 在 jsdom 缺席:组件有 typeof 守卫,本测注入短路径桩走 measure 一次口径 */
 class RoStub {
   static instances: RoStub[] = [];
@@ -52,11 +52,11 @@ describe('ClampBlock 详情限高块', () => {
     act(() => RoStub.instances.forEach((r) => r.trigger()));
     const v = screen.getByRole('button', { name: 'Expand' });
     expect(first.className).toContain('clamped');
-    expect(first.style.maxHeight).toBe('240px');
+    expect(first.style.maxHeight).toBe(`${DETAIL_MAX_HEIGHT}px`); // 限高(CSS clamped=overflow-y auto 出滚动条)
     fireEvent.click(v);
     const openEl = document.querySelector('.sx-clamp') as HTMLElement;
     expect(openEl.className).not.toContain('clamped');
-    expect(openEl.style.maxHeight).toBe(''); // 展开态:不限高=无内部纵向滚动
+    expect(openEl.style.maxHeight).toBe(''); // 展开态:不限高=滚动条消失
     expect(screen.getByRole('button', { name: 'Collapse' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
     expect((document.querySelector('.sx-clamp') as HTMLElement).className).toContain('clamped');

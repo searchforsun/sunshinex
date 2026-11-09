@@ -1,8 +1,9 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
-import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, ChevronUp, Copy, Database, GitFork, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
+import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, GitFork, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
 import { t } from '../../i18n';
+import { ClampToggle, DETAIL_MAX_HEIGHT } from '../../clamp-block';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
 import { messageTimeMs, pathBasename } from '../../ui-util';
@@ -280,11 +281,10 @@ function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | nu
     </div>
   );
 }
-/** G14.181/G14.202 用户气泡限高折叠:默认 168px;折叠态最后一行渐变隐现(加强);
- *  展开钮在气泡下侧居中(独占一行不占内容);展开钮=气泡下侧居中独钮;复制归各页自有动作行。
+/** 用户气泡限高(2026-11-09 用户裁定):内容超 DETAIL_MAX_HEIGHT(与记忆/学习技能等详情同一高度)时
+ *  气泡内正文限高+纵向滚动条,气泡底部居中 V;展开=完整高度、滚动条消失,底部 ^ 收回;复制归各页自有动作行。
  *  量测走 useLayoutEffect+ResizeObserver:队友消息/子智能体任务带首帧常在 flex 未定宽时
  *  scrollHeight 偏小(一次 useEffect 钉死不折),布局收敛后须再量 */
-const USER_BUBBLE_CLAMP = 168;
 export function CollapsibleBubble({ text, render }: { text: string; render: (md: string) => ReactNode }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [clamped, setClamped] = useState(false);
@@ -294,47 +294,30 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
     if (el === null) return;
     // scrollHeight=内容全高(与 max-height/overflow 无关)——超过阈值才出浮钮
     const measure = (): void => {
-      setClamped(el.scrollHeight > USER_BUBBLE_CLAMP + 8);
+      setClamped(el.scrollHeight > DETAIL_MAX_HEIGHT + 8);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, [text]);
-  const shown = open || !clamped;
+  const limited = clamped && !open;
   return (
     <div className="user-bubble-wrap">
-      <div ref={innerRef} className={`user-bubble${shown ? '' : ' user-bubble-clamped'}${open ? ' user-bubble-open' : ''}`}>
-        {render(text)}
-        {/* G14.208 展开态:钮行在气泡内部独占一行(不遮正文不跑外面) */}
-        {open && (
+      <div className={`user-bubble${open ? ' user-bubble-open' : ''}`}>
+        <div
+          ref={innerRef}
+          className={`user-bubble-scroll${limited ? ' user-bubble-clamped' : ''}`}
+          style={limited ? { maxHeight: DETAIL_MAX_HEIGHT } : undefined}
+        >
+          {render(text)}
+        </div>
+        {clamped && (
           <div className="user-bubble-toggle-row">
-            <button
-              type="button"
-              className="user-bubble-toggle"
-              aria-expanded={open}
-              aria-label={t('Collapse', '收起')}
-              onClick={() => setOpen(false)}
-            >
-              <ChevronUp size={18} strokeWidth={2} aria-hidden="true" />
-            </button>
+            <ClampToggle open={open} onToggle={() => setOpen((v) => !v)} />
           </div>
         )}
       </div>
-      {/* 折叠态:钮悬浮在气泡内底部渐隐区(不遮可见内容) */}
-      {clamped && !open && (
-        <div className="user-bubble-toggle-row floating">
-          <button
-            type="button"
-            className="user-bubble-toggle"
-            aria-expanded={open}
-            aria-label={t('Expand', '展开')}
-            onClick={() => setOpen(true)}
-          >
-            <ChevronDown size={18} strokeWidth={2} aria-hidden="true" />
-          </button>
-        </div>
-      )}
     </div>
   );
 }

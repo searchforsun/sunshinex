@@ -393,7 +393,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                         </summary>
                         <div className="sx-team-detail">
                           {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
-                          <ClampBlock as="pre" maxHeight={320}>{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</ClampBlock>
+                          <ClampBlock as="pre">{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</ClampBlock>
                         </div>
                       </details>
                     </>

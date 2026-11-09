@@ -1650,7 +1650,7 @@ describe('G14.181 用户气泡限高折叠', () => {
     render(<Chat conn={connOf([{ seq: 1, kind: 'user', md: '继续' } as never])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     await flushed();
     expect(document.querySelector('.user-bubble-clamped')).toBeNull();
-    expect(document.querySelector('.user-bubble-toggle')).toBeNull();
+    expect(document.querySelector('.sx-clamp-toggle')).toBeNull();
   });
 
   it('队友消息长气泡同款限高折叠', async () => {

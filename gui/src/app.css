@@ -2239,17 +2239,10 @@ button.agent-msg-from:hover { text-decoration: underline; }
 /* ===== G14.181 用户气泡限高折叠(主对话/子智能体页共用):默认 168px,底部居中悬浮展开钮 ===== */
 .user-bubble-wrap { position: relative; max-width: 85%; margin-left: auto; min-width: 0; }
 .user-bubble-wrap .user-bubble { max-width: none; }
-.user-bubble-clamped { max-height: 168px; overflow: hidden; padding-bottom: 22px; }
 /* G14.191 浮钮组在气泡外侧右下(主对话复制钮同位语义),不遮内容;折叠态最后一行渐变隐现暗示更多 */
-.user-bubble-toggle-row { display: flex; justify-content: center; margin-top: 3px; } /* G14.202b 气泡下侧居中独钮(用户裁定:下侧非外部下侧) */
 .child-copy { position: absolute; right: 6px; top: 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; padding: 0 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); } /* G14.202b 气泡外右下,hover 行显 */
 .child-user-entry { position: relative; width: 100%; }
 .child-user-entry:hover .child-copy { opacity: 1; color: var(--fg); }
-.user-bubble-clamped { position: relative; }
-.user-bubble-clamped::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: linear-gradient(180deg, transparent, var(--bubble-user) 92%); border-radius: 0 0 var(--radius-composer) var(--radius-composer); pointer-events: none; }
-.user-bubble-toggle { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; border: none; background: none; color: var(--fg-secondary); cursor: pointer; } /* 2026-11-09 用户裁定:纯 V/^ 图标不带框(胶囊框在渐隐带上突兀),18px 大箭头自身即 affordance;悬停转 fg */
-.user-bubble-toggle:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.user-bubble-toggle:hover { color: var(--fg); border-color: var(--fg-secondary); }
 .child-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ===== G14.186 侧栏菜单行 hover 统一(用户裁定):同高 28/同侧内缩 4px/同 hover 色 8%/弧度对齐主输入框(composer) ===== */
@@ -2494,9 +2487,6 @@ input.sx-setting-input { width: 100%; }
 
 /* G14.206b 展开钮位置(用户裁定「内侧」):折叠态=气泡内底部悬浮(踩渐隐区,不遮可见内容);
    展开态=落气泡下方(不遮最后一行) */
-.user-bubble-toggle-row { display: flex; justify-content: center; margin-top: 6px; }
-.user-bubble-toggle-row .user-bubble-toggle { pointer-events: auto; }
-.user-bubble-toggle-row.open { position: static; margin-top: 4px; } /* G14.206f 展开态:按钮独占一行(气泡下方居中),不遮正文 */
 
 /* G14.206c 全局超椭园(四轮定版补全):与 .sx-composer 同款 corner-shape——22px 弧度在支持该
    特性的浏览器上同步拉直观感,真正做到「弧度对齐主输入框」;不支持的浏览器忽略此行 */
@@ -2519,8 +2509,6 @@ input.sx-setting-input { width: 100%; }
 .sx-composer .send::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--send-bg); filter: blur(0.45px); transition: background var(--dur-basic) var(--ease-enter); }
 
 /* G14.208b 折叠态浮钮:绝对定位贴气泡内底部渐隐区(此前规则被后段覆盖丢失导致跑外侧) */
-.user-bubble-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 8px; margin-top: 0; pointer-events: none; }
-.user-bubble-toggle-row.floating .user-bubble-toggle { pointer-events: auto; }
 
 /* G14.215 工具聚合行:同类相邻已完成工具行 >1 折为聚合头(图标+计数文案+chevron),
    展开成员平级铺开(透明网格容器仅作高度动画,零视觉嵌套);ghost=归并渐收行 */
@@ -3675,12 +3663,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 
 /* leader 链接定位闪光(2026-11-08):成员转录页点 leader → 主对话对应消息气泡/发送工具行短暂提亮描边 */
 
-/* 详情限高块 ClampBlock(clamp-block.tsx;2026-11-09 用户裁定「展开详情不再内部纵向滚动」):超限折叠+底部渐隐+
-   纯 V 钮(用户气泡同款 18px 无框),展开=完整高度,^ 在底部。渐隐色取宿主井底 --surface-code */
-.sx-clamp { position: relative; }
-.sx-clamp.clamped { overflow: hidden; padding-bottom: 26px; }
-.sx-clamp.clamped::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: linear-gradient(180deg, transparent, var(--clamp-fade, var(--surface-code)) 80%); border-radius: inherit; pointer-events: none; }
-.sx-clamp-toggle-row { display: flex; justify-content: center; margin-top: 6px; white-space: normal; }
-.sx-clamp-toggle-row.floating { position: absolute; left: 0; right: 0; bottom: 4px; margin: 0; z-index: 1; pointer-events: none; }
-.sx-clamp-toggle { pointer-events: auto; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; border: none; background: none; color: var(--fg-secondary); cursor: pointer; }
-.sx-clamp-toggle:hover { color: var(--fg); }
+/* 详情限高块 ClampBlock + 用户气泡(clamp-block.tsx;2026-11-09 用户裁定):内容超统一高度 DETAIL_MAX_HEIGHT(240)
+   时限高+纵向滚动条,下方居中纯 V(18px 无框);展开=完整高度、滚动条消失,^ 收回。hover 底走项目统一弧度 */
+.sx-clamp.clamped, .user-bubble-scroll.user-bubble-clamped { overflow-y: auto; }
+.sx-clamp-toggle-row, .user-bubble-toggle-row { display: flex; justify-content: center; margin-top: 4px; }
+.sx-clamp-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 22px; padding: 0; border: none; border-radius: var(--radius-sm); background: none; color: var(--fg-secondary); cursor: pointer; }
+.sx-clamp-toggle:hover:not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
