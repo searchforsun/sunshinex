@@ -19,6 +19,7 @@ import { PlusAddIcon } from '../sidebar/project-menu-util';
 import type { WelcomeComposerConn } from './welcome-conn';
 import { usePopOutsideClose } from '../use-pop-outside-close';
 import { useWelcomeWorkspaces } from './use-welcome-workspaces';
+import { useWelcomeFiles } from './use-welcome-files';
 import { useWelcomeSlash } from './use-welcome-slash';
 import { useWelcomeBranch } from './use-welcome-branch';
 import { WelcomeLogo } from './welcome-logo';
@@ -97,7 +98,7 @@ export function WelcomeComposer({
   const projRef = useRef<HTMLDivElement | null>(null);
   /** G14.121 @ 文件面板:光标前 @token 触发;数据= picked 工作区索引(mtime 倒序);选中插 @相对路径 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
-  const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
+  const { files: filePalFiles, refresh: refreshFilePalFiles } = useWelcomeFiles(conn, picked);
   const [filePalActive, setFilePalActive] = useState(0);
   /** $/# 引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——检测/懒加载/键盘/overlays 四件套
    *  全按 Chat 页同款;数据源缺法(conn 桩未挂)=面板永不触发 */
@@ -175,14 +176,6 @@ export function WelcomeComposer({
   usePopOutsideClose(modelOpen, '.sx-menu-pop', '[aria-label="model"]', () => setModelOpen(false));
   usePopOutsideClose(modeOpen, '.sx-menu-pop', '[aria-label="approval mode"]', () => setModeOpen(false));
 
-  // G14.127 索引预热:选中工作区即拉清单(手打 @根目录文件 的发送期解析不依赖面板开过);
-  // 目录清单(尾斜杠)排前——@面板可滤出文件夹
-  useEffect(() => {
-    if (picked === '') return;
-    void conn
-      .workspaceFiles?.(picked)
-      ?.then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => undefined);
-  }, [picked, conn]);
   usePopOutsideClose(projOpen, '.proj-pop', '.choose-project-bar', () => setProjOpen(false));
   // + 面板外点收(面板内点与 + 钮自持);2026-10-31 用户裁定:主动点开 + 即拉最新技能清单(5s 节流在 fetch 侧)
   usePopOutsideClose(plusOpen, '.sx-plus-panel', '.composer-plus-btn', () => setPlusOpen(false));
@@ -360,11 +353,7 @@ export function WelcomeComposer({
               setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
               setFilePalActive(0); // G14.2xx 查询变更即重置 active(残留箭头位回车选中邻项)
               setRefPal(null); // 面板互斥(与 Chat 同款)
-              if (picked !== '') {
-                void conn
-                  .workspaceFiles(picked)
-                  .then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => setFilePalFiles([]));
-              }
+              refreshFilePalFiles();
             } else if (rt !== null) {
               // $/# 引用面板触发(2026-11-05 用户裁定:欢迎页与会话页同构)——锚符号+空 query 起手
               setRefPal(rt);
@@ -430,11 +419,7 @@ export function WelcomeComposer({
             if (atMatch !== null) {
               setFilePal({ query: atMatch[1] ?? '', from: caret - (atMatch[1]?.length ?? 0) - 1 });
               setRefPal(null); // 面板互斥
-              if (picked !== '') {
-                void conn
-                  .workspaceFiles(picked)
-                  .then((r) => setFilePalFiles([...(r.dirs ?? []), ...r.files.map((f) => f.path)]), () => setFilePalFiles([]));
-              }
+              refreshFilePalFiles();
             } else if (filePal !== null) {
               setFilePal(null);
             }
