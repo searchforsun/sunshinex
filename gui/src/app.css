@@ -639,11 +639,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   height: 12px;
   box-sizing: border-box;
   border-radius: 50%;
-  border: 1.9px solid var(--fg-tertiary);
+  border: 2px solid var(--fg-tertiary);
   border-top-color: var(--fg);
   clip-path: circle(50% at 50% 50%);
   animation: sx-spin 1s linear infinite;
 }
+/* 转圈环宽取整 2px:Chromium 把非整数 border 宽向下取整到物理像素,1.9px 在 100% 缩放下只剩 1px 断续环 */
 @keyframes sx-spin { to { transform: rotate(360deg); } }
 /* 底栏:普通 ghost 行(去卡片化,Codex Settings 行同形) */.sx-menu-foot {
   margin: 0;
@@ -1377,7 +1378,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 智能定向(mouseover 委托打点,main.tsx):顶部空间不足翻下方;贴左右缘/容器缘对齐防出窗 */[data-tip].tip-below:not([data-tip=""]):hover::after { bottom: auto; top: calc(100% + 5px); }[data-tip].tip-left:not([data-tip=""]):hover::after { left: 0; transform: none; }[data-tip].tip-right:not([data-tip=""]):hover::after { left: auto; right: 0; transform: none; }.sx-tip-right::after { left: auto; right: 0; transform: none; }
 
-/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: calc(12px * var(--fz)); color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变)。2026-11-04 修:clip-path circle 退役——桌面 webview 光栅化随机丢 clip-path=12px 方框原样露出(实测交稿行等待环成空方块),去 clip-path 仅存 border 圆环构造(border-radius 50% 自身成圆,轨道 tertiary+亮弧 fg 同原设计)(顶栏 9px 覆写随退)。2026-10-31 菱形二案根修:conic+mask 光栅化随机丢层(见 sx-session-dot.running 注),改 border 圆环构造 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: none; border: 1.9px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
+/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: calc(12px * var(--fz)); color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变)。2026-11-04 修:clip-path circle 退役——桌面 webview 光栅化随机丢 clip-path=12px 方框原样露出(实测交稿行等待环成空方块),去 clip-path 仅存 border 圆环构造(border-radius 50% 自身成圆,轨道 tertiary+亮弧 fg 同原设计)(顶栏 9px 覆写随退)。2026-10-31 菱形二案根修:conic+mask 光栅化随机丢层(见 sx-session-dot.running 注),改 border 圆环构造 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: none; border: 2px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
 
 /* 条目左对齐统一(§2):正文/工具/思考同一 x 起点 */.entry { padding: 4px 8px; }.entry-tool { padding: 2px 8px; }
 /* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8);visibility 折叠尾切(T4 评审可达性补丁:
@@ -1943,7 +1944,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }
 .tb-status-dot.task-status-running {
   background: none;
-  border: 1.9px solid var(--fg-tertiary);
+  border: 2px solid var(--fg-tertiary);
   border-top-color: var(--fg);
   width: 12px;
   height: 12px;
@@ -2195,7 +2196,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 /* 后台任务四态对齐智能体团队:运行=灰转圈,完成=蓝(success),失败=红,停止/暂停=黄(cancelled) */
 .tb-status-dot.bg-running {
   background: none;
-  border: 1.9px solid var(--fg-tertiary);
+  border: 2px solid var(--fg-tertiary);
   border-top-color: var(--fg);
   border-radius: 50%;
   clip-path: circle(50% at 50% 50%);
