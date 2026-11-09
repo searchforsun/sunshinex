@@ -10,6 +10,7 @@ import { t } from '../i18n';
 import type { TabParams, TabTypeId } from './tab-state';
 import { shortStampMs, withMinSpin } from '../ui-util';
 import { ClampBlock } from '../clamp-block';
+import { highlightCommand, stripAnsi } from '../highlight';
 
 /**
  * G10-C6 右栏三面板(spec §7 映射:/context /tasks /memory 的 GUI 承载):
@@ -331,26 +332,39 @@ export function BgTasksTab({
                 </div>
                 {open && (
                   <div className="bg-detail">
-                    {/* 2026-10-31 用户裁定:摘「命令/结果」自解释标题;复制钮与正文同款(TipButton+
-                        Check 交换,点击显 √);span 承接 stopPropagation(防触发头行展开) */}
-                    <div className="bg-cmd-row">
-                      <span className="bg-cmd-text">{r.label}</span>
-                      <span className="bg-copy" onClick={(e) => e.stopPropagation()}>
+                    {/* 2026-11-09 用户裁定:命令并入输出块(对标工具行 exec 展开:$ 命令高亮+输出合一),
+                        右上角 hover 复制命令(点击换 √);span 承接 stopPropagation(防触发头行展开) */}
+                    <div className="bg-exec">
+                      <ClampBlock as="pre" className="tool-io-pre bg-output">
+                        {r.kind === 'exec' ? (
+                          <>
+                            <span className="exec-prompt" aria-hidden="true">$ </span>
+                            <code dangerouslySetInnerHTML={{ __html: highlightCommand(r.label) }} />
+                          </>
+                        ) : (
+                          <code>{r.label}</code>
+                        )}
+                        {r.outputTail !== undefined && r.outputTail !== '' && (
+                          <>
+                            {'\n'}
+                            <span className="exec-output">
+                              {stripAnsi(r.outputTail)}
+                              {r.outputTruncated === true && `
+…${t('output truncated (showing last 4KB)', '输出已截断(仅示末 4KB)')}`}
+                            </span>
+                          </>
+                        )}
+                      </ClampBlock>
+                      <span className="bg-exec-copy" onClick={(e) => e.stopPropagation()}>
                         <TipButton
                           className="sx-changes-act"
                           label={`copy command ${r.id}`}
                           tip={copied(r.id) ? t('Copied', '已复制') : t('Copy command', '复制命令')}
-                          icon={copied(r.id) ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+                          icon={copied(r.id) ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
                           onClick={() => copyCmd(r.id, r.label)}
                         />
                       </span>
                     </div>
-                    {r.outputTail !== undefined && r.outputTail !== '' && (
-                      <ClampBlock as="pre" className="bg-output">
-                        {r.outputTail}
-                        {r.outputTruncated === true && `\n…${t('output truncated (showing last 4KB)', '输出已截断(仅示末 4KB)')}`}
-                      </ClampBlock>
-                    )}
                   </div>
                 )}
               </section>

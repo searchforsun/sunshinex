@@ -1,4 +1,6 @@
-import { Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Copy } from 'lucide-react';
+import { TipButton } from './RunFooter';
+import { useCopyFeedback } from '../../use-copy-feedback';
 import ReactMarkdown from 'react-markdown';
 import { t } from '../../i18n';
 import { localizeNotice } from '../../i18n-notice';
@@ -204,6 +206,7 @@ export function ToolEntryBody({
       // G14.50:命令与输出合一区(终端形态:$ 行命令着色 + 输出同块次级灰——2026-10-25 用户裁定
       // 「结果再偏灰一点,方便区分命令行和结果」;输出剥 ANSI 转义(终端色码渲染即乱码))
       <div className="tool-exec">
+        <ExecCopy text={command} />
         <pre className="tool-io-pre">
           <span className="exec-prompt" aria-hidden="true">$ </span>
           <code dangerouslySetInnerHTML={{ __html: highlightCommand(command) }} />
@@ -280,4 +283,20 @@ export function ToolEntryBody({
     body = <pre className="tool-io-pre">{fullResult !== '' ? stripAnsi(fullResult) : t('(no result)', '(无结果)')}</pre>;
   }
   return body;
+}
+
+/** exec 展开块右上角复制命令(2026-11-09 用户裁定,后台任务页签同款):hover 显示,点击图标换 ✓ */
+function ExecCopy({ text }: { text: string }): JSX.Element {
+  const { status, copy } = useCopyFeedback();
+  return (
+    <span className="bg-exec-copy" onClick={(e) => e.stopPropagation()}>
+      <TipButton
+        className="sx-changes-act"
+        label="copy command"
+        tip={status === 'ok' ? t('Copied', '已复制') : t('Copy command', '复制命令')}
+        icon={status === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+        onClick={() => copy(text)}
+      />
+    </span>
+  );
 }

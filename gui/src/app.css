@@ -3713,12 +3713,13 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-dirty-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* ===== 侧栏页签去高亮边框(2026-11-09 用户裁定,参照侧栏文件预览 files-act 款) =====
-   动作钮(刷新/停止/删除/复制):无边框、24px 盒、14px 图标、--fg-icon,hover 底色提亮;
+   动作钮(刷新/停止/删除/复制):图标本体 14px 裸显(同行首数据库等图标),无边框无常驻底色,
+   hover 才出底色区分;删除/停止二次确认 arm 态红底不变;
    卡片(待办/团队/后台任务/记忆/技能)与输出区去 1px 描边,只留面色层次 */
-.sx-changes-act { width: 24px; height: 24px; border: none; background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-icon); }
-.sx-changes-act:hover { border: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.sx-changes-act, .files-act { width: 24px; height: 24px; border: none; background: transparent; color: var(--fg-icon); }
+.sx-changes-act:hover, .files-act:hover { border: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .sx-changes-act.arm, .sx-changes-act.arm:hover { border: none; }
-.tb-stop { width: 24px; height: 24px; background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.tb-stop { width: 24px; height: 24px; background: transparent; }
 .tb-stop:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .tb-stop.arm, .tb-stop.arm:hover { border: none; }
 .todo-card, .tb-card { border: none; }
@@ -3731,3 +3732,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .bg-exec:hover > .bg-exec-copy, .bg-exec:focus-within > .bg-exec-copy,
 .tool-exec:hover > .bg-exec-copy, .tool-exec:focus-within > .bg-exec-copy { opacity: 1; }
 .tool-exec { position: relative; }
+
+/* 正文「更新待办」行点击开右栏待办页签:与普通工具行同色同形,不显链接下划线/强调色 */
+.entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span),
+.entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span):hover { text-decoration: none; color: inherit; }
