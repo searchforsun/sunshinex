@@ -2248,7 +2248,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 .child-user-entry:hover .child-copy { opacity: 1; color: var(--fg); }
 .user-bubble-clamped { position: relative; }
 .user-bubble-clamped::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: linear-gradient(180deg, transparent, var(--bubble-user) 92%); border-radius: 0 0 var(--radius-composer) var(--radius-composer); pointer-events: none; }
-.user-bubble-toggle { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 18px; border: 1px solid var(--border-strong, var(--border)); background: var(--surface-elevated); color: var(--fg); cursor: pointer; border-radius: 9999px; box-shadow: 0 2px 6px color-mix(in srgb, black 40%, transparent); } /* G14.206d 清晰可见(此前无边框灰字几乎不可见) */
+.user-bubble-toggle { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; padding: 0; border: none; background: none; color: var(--fg-secondary); cursor: pointer; } /* 2026-11-09 用户裁定:纯 V/^ 图标不带框(胶囊框在渐隐带上突兀),18px 大箭头自身即 affordance;悬停转 fg */
 .user-bubble-toggle:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .user-bubble-toggle:hover { color: var(--fg); border-color: var(--fg-secondary); }
 .child-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }

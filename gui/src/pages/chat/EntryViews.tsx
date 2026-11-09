@@ -316,7 +316,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
               aria-label={t('Collapse', '收起')}
               onClick={() => setOpen(false)}
             >
-              <ChevronUp size={14} strokeWidth={2} aria-hidden="true" />
+              <ChevronUp size={18} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -331,7 +331,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
             aria-label={t('Expand', '展开')}
             onClick={() => setOpen(true)}
           >
-            <ChevronDown size={14} strokeWidth={2} aria-hidden="true" />
+            <ChevronDown size={18} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
       )}
