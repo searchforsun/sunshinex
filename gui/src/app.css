@@ -3692,4 +3692,42 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-dd-fixed { width: 180px; }
 .sx-res-toolbar .sx-skills-filter { flex: 0 0 128px; width: 128px; }
 .sx-skill-preview-acts { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+/* 弹窗头动作钮(files-act)常透明,hover 才上浅底(2026-11-09 用户裁定) */
+.sx-skill-preview .files-act { background: transparent; }
 .sx-skill-preview .sx-editor-modal-head { gap: 8px; }
+
+/* 审查页两区(2026-11-09 用户裁定):区头=标题+计数+区操作钮;分支下拉钮;脏树确认框 */
+.sx-changes-section { margin-top: 6px; }
+.sx-changes-section-head { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; }
+.sx-changes-section-title { flex: 1; min-width: 0; font-size: calc(14px * var(--fz)); font-weight: 600; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sx-changes-count { margin-left: 4px; font-weight: 500; color: var(--fg-tertiary); }
+.sx-changes-branch-btn { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 8px; margin-left: -8px; border: none; border-radius: var(--radius-sm); background: none; color: var(--fg); cursor: pointer; }
+.sx-changes-branch-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-changes-branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-changes-branch-anchor { flex: 1; min-width: 0; }
+.sx-changes-branch-anchor .branch-pop { top: calc(100% + 4px); bottom: auto; }
+.sx-change-row .sx-changes-act { flex: none; }
+.sx-dirty-dialog { width: min(420px, calc(100vw - 32px)); }
+.sx-dirty-text { margin: 0 0 8px; font-size: calc(14px * var(--fz)); color: var(--fg); }
+.sx-dirty-target { margin: 0 0 16px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
+.sx-dirty-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ===== 侧栏页签去高亮边框(2026-11-09 用户裁定,参照侧栏文件预览 files-act 款) =====
+   动作钮(刷新/停止/删除/复制):无边框、24px 盒、14px 图标、--fg-icon,hover 底色提亮;
+   卡片(待办/团队/后台任务/记忆/技能)与输出区去 1px 描边,只留面色层次 */
+.sx-changes-act { width: 24px; height: 24px; border: none; background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-icon); }
+.sx-changes-act:hover { border: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.sx-changes-act.arm, .sx-changes-act.arm:hover { border: none; }
+.tb-stop { width: 24px; height: 24px; background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.tb-stop:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.tb-stop.arm, .tb-stop.arm:hover { border: none; }
+.todo-card, .tb-card { border: none; }
+.tb-dag-node, [data-theme='light'] .tb-dag-node { border: none; }
+.tb-dag-node.clickable:hover { border: none; background: color-mix(in srgb, var(--fg) 12%, var(--surface-soft)); }
+/* 后台任务展开体=工具行 exec 展开同形:$ 命令高亮 + 输出合一深色块,右上角 hover 复制 */
+.bg-exec { position: relative; }
+.bg-output { border: none; background: var(--surface-code); border-radius: var(--radius-sm); padding: 8px 36px 8px 10px; }
+.bg-exec > .bg-exec-copy, .tool-exec > .bg-exec-copy { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.bg-exec:hover > .bg-exec-copy, .bg-exec:focus-within > .bg-exec-copy,
+.tool-exec:hover > .bg-exec-copy, .tool-exec:focus-within > .bg-exec-copy { opacity: 1; }
+.tool-exec { position: relative; }
