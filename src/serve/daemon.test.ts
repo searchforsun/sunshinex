@@ -2325,7 +2325,7 @@ interface SkillsBody {
 }
 
 describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
-  test('㊳ skills 三源分组:project 四根(.sunshinex>.agents>.claude>.codex)+user 全局+learned 项目锚定(同 id 就近遮蔽);跨组同名不去重;无 token 401', async () => {
+  test('㊳ skills 三源分组:project 五根(.sunshinex>.agents>.claude>.codex>.cursor)+user 全局+learned 项目锚定(同 id 就近遮蔽);跨组同名不去重;无 token 401', async () => {
     await withSettingsDaemon(async ({ base, tmp, home }) => {
       const proj = path.join(tmp, 'proj');
       const writeSkill = (dir: string, id: string, md: string): void => {
@@ -2352,7 +2352,7 @@ describe('G8c T6 /settings/skills + /settings/memory-stats 端点', () => {
       assert.deepEqual(body.groups.map((g) => g.source), ['project', 'user', 'learned'], '三组固定序:project→user→learned');
       const group = (s: string): { skills: SkillsRow[] } => body.groups.find((g) => g.source === s)!;
 
-      // project 组=四根合并装载(.sunshinex>.agents>.claude>.codex,同 id 就近遮蔽)——alpha 恰一行且为原生版;
+      // project 组=五根合并装载(.sunshinex>.agents>.claude>.codex>.cursor,同 id 就近遮蔽)——alpha 恰一行且为原生版;
       // .claude 独占条目照常入列;Task 25 富化:行带 sourceDir(落盘目录)
       assert.deepEqual(group('project').skills.filter((s) => s.id === 'alpha'), [
         { id: 'alpha', name: 'Alpha Native', description: 'native one', sourceDir: path.join(proj, '.sunshinex', 'skills', 'alpha') },

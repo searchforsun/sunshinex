@@ -122,7 +122,7 @@ function withCompatEnv<T>(root: string, fn: () => T): T {
   }
 }
 
-test('四项目根装载：.agents/.claude/.codex 兼容根照常装载，.cursor 零装载；.sunshinex 同 id 遮蔽兼容根，优先序 .sunshinex > .agents > .claude > .codex', () => {
+test('五项目根装载：.agents/.claude/.codex/.cursor 兼容根照常装载；.sunshinex 同 id 遮蔽兼容根，优先序 .sunshinex > .agents > .claude > .codex > .cursor', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skills-compat-'));
   withCompatEnv(root, () => {
     writeCompatSkill(root, '.cursor', 'cursor-skill', 'CursorSkill');
@@ -130,6 +130,9 @@ test('四项目根装载：.agents/.claude/.codex 兼容根照常装载，.curso
     writeCompatSkill(root, '.claude', 'claude-skill', 'ClaudeSkill');
     writeCompatSkill(root, '.agents', 'agents-skill', 'AgentsSkill');
     writeCompatSkill(root, '.sunshinex', 'native-skill', 'SunshineSkill');
+    // .cursor 最低优先:同 id 'low' 与 .codex 同放,.codex 胜出
+    writeCompatSkill(root, '.cursor', 'low', 'CursorLow');
+    writeCompatSkill(root, '.codex', 'low', 'CodexLow');
     // 同 id 'shadow' 三根同放：.sunshinex 原生最优先，就近遮蔽兼容根（被遮蔽者静默让位，恰一条且为原生版）
     writeCompatSkill(root, '.codex', 'shadow', 'CodexShadow');
     writeCompatSkill(root, '.claude', 'shadow', 'ClaudeShadow');
@@ -144,10 +147,11 @@ test('四项目根装载：.agents/.claude/.codex 兼容根照常装载，.curso
         ['agents-skill', 'AgentsSkill'],
         ['claude-skill', 'ClaudeSkill'],
         ['codex-skill', 'CodexSkill'],
+        ['low', 'CodexLow'], // .codex 遮蔽 .cursor 同名
+        ['cursor-skill', 'CursorSkill'],
       ],
-      '兼容根照常装载（.cursor 除外）；链序 .sunshinex > .agents > .claude > .codex，同 id 就近遮蔽',
+      '兼容根照常装载；链序 .sunshinex > .agents > .claude > .codex > .cursor，同 id 就近遮蔽',
     );
-    assert.ok(!got.some((s) => s.id === 'cursor-skill'), '.cursor 不在装载根清单，零装载');
     assert.equal(got.find((s) => s.id === 'shadow')?.sourceRoot, path.join(root, '.sunshinex', 'skills', 'shadow'), '遮蔽胜者=原生根条目');
     const facade = createSkillsFacade(root);
     const r = facade.resolve('claude-skill');
@@ -156,7 +160,9 @@ test('四项目根装载：.agents/.claude/.codex 兼容根照常装载，.curso
     const ok = facade.resolve('shadow');
     assert.ok(ok.ok, '同 id 遮蔽后 resolve 命中原生根');
     if (ok.ok) assert.equal(ok.value.manifest.sourceRoot, path.join(root, '.sunshinex', 'skills', 'shadow'));
-    assert.equal(facade.resolve('cursor-skill').ok, false, '.cursor 不入 resolve 链');
+    const c = facade.resolve('cursor-skill');
+    assert.ok(c.ok, '.cursor 入 resolve 链');
+    if (c.ok) assert.equal(c.value.manifest.sourceRoot, path.join(root, '.cursor', 'skills', 'cursor-skill'));
   });
 });
 

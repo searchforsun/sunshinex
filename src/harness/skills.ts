@@ -39,10 +39,10 @@ export function learnedSkillsDir(root: string): string {
 }
 
 /** 项目技能根清单（升序=优先级升序，右遮左；.sunshinex 原生恒最高）：项目技能装载
- *  {root}/<根>/skills/{id}/SKILL.md（标准形态）——.codex/.claude/.agents 三兼容根 + .sunshinex
+ *  {root}/<根>/skills/{id}/SKILL.md（标准形态）——.cursor/.codex/.claude/.agents 四兼容根 + .sunshinex
  *  原生根；同 id 跨根就近遮蔽（.sunshinex 胜出，被遮蔽者静默让位）。装载/解析/清单/watch 四面
  *  一律经本单点派生目录，防根清单漂移 */
-export const PROJECT_SKILL_ROOTS_ASC = ['.codex', '.claude', '.agents', '.sunshinex'] as const;
+export const PROJECT_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents', '.sunshinex'] as const;
 
 /** 项目技能目录（升序） */
 function projectSkillDirs(root: string): string[] {
@@ -127,7 +127,7 @@ export function isSkillDisabled(sourceDir: string | undefined): boolean {
   return sourceDir !== undefined && disabledSkillDirs().has(normSkillDir(sourceDir));
 }
 
-/** 装载/解析优先级链（降序）：项目四根（.sunshinex > .agents > .claude > .codex）→ 全局根 → 学习根
+/** 装载/解析优先级链（降序）：项目五根（.sunshinex > .agents > .claude > .codex > .cursor）→ 全局根 → 学习根
  *  → 插件 skills 根（最低优先级，启用且平台可用的插件贡献，装载入口经 pluginSkillDirs 注入）。
  *  pluginSkillDirs 为可选尾参保持纯函数可测（测试钉目录免真写插件根）；不传时与既有链逐位一致 */
 export function priorityChain(root: string, pluginSkillDirs: string[] = []): string[] {
@@ -164,7 +164,7 @@ export function disabledSkillIds(root: string): ReadonlySet<string> {
 }
 
 /** 技能三源分组（G8c T6 /settings/skills 数据源）：source 三段对齐装载优先级链的三个语义级——
- *  project（项目四根 .sunshinex/.agents/.claude/.codex 合并一组）/ user（全局用户根）/ learned（工作区学习根）。组内去重沿装载序
+ *  project（项目五根 .sunshinex/.agents/.claude/.codex/.cursor 合并一组）/ user（全局用户根）/ learned（工作区学习根）。组内去重沿装载序
  *  （同 loadSkills 语义）；跨组**不去重**——分组是展示面，多源同名 id 两组各在（GUI 可标注遮蔽关系） */
 export interface SkillsGroup {
   source: 'project' | 'user' | 'learned';
@@ -212,7 +212,7 @@ export function removeLearnedSkill(root: string, id: string): 'ok' | 'unknown' {
   return fs.existsSync(dir) ? 'unknown' : 'ok';
 }
 
-/** 三源分组装载（G8c T6）：project 段=projectSkillDirs(root) 逆转序（.sunshinex > .agents > .claude > .codex）合并一组；
+/** 三源分组装载（G8c T6）：project 段=projectSkillDirs(root) 逆转序（.sunshinex > .agents > .claude > .codex > .cursor）合并一组；
  *  user 段=userSkillsDir()（全局，root 无关）；learned 段=learnedSkillsDir(root)（工作区锚定）+
  *  createdMs（学习技能页创建时间列,2026-10-31） */
 export function loadSkillsGrouped(root: string): SkillsGroup[] {
@@ -227,7 +227,7 @@ export function loadSkillsGrouped(root: string): SkillsGroup[] {
 }
 
 /** 跨项目技能全量分组（设置·技能页「项目筛选」数据面）：枚举 projectsRoot 下全部注册项目域，
- *  逐域产出 project 组（该域根的四根合并，归属=basename(workspace.json.root)）与 learned 组
+ *  逐域产出 project 组（该域根的五根合并，归属=basename(workspace.json.root)）与 learned 组
  *  （域内 data/skills，归属同上；历史档缺根 → 仅 learned、归属回退 slug）。root 入参 = 当前
  *  项目锚：其 project 组置首（归属=basename(root)，未注册项目亦覆盖），域枚举跳过其 project 组
  *  防重复；装载走同款 loadSkillsChain，空组滤除。设置页 root 可能为空（欢迎页入口）——本枚举

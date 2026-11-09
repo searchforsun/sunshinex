@@ -106,7 +106,7 @@ src/
     plan-flow.ts      # 计划流程编排单点（planning→awaiting-approval→approved/revising 状态机；TUI/serve 薄壳消费，纯流程零 IO）
     guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
-    skills.ts         # 技能装载与调度（项目四根+全局+学习级+插件链尾、resolve 回退链、清单注入）
+    skills.ts         # 技能装载与调度（项目五根+全局+学习级+插件链尾、resolve 回退链、清单注入）
     teams.ts          # 团队目录装载与调度（两级遮蔽、索引注入、resolve 三态、章程卡）
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线；store 内收口 log.jsonl 追加只增变更历史——OKF log 件，五写原语单点落账、摘要指纹粒度、失败旁路）
@@ -135,7 +135,7 @@ src/
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/无边框自绘窗控/NSIS 单安装包打包；daemon 进程内动态 import 装配，壳与主仓零编译期耦合）
 plugins/             # 插件工作区根（内置插件 plugin.json + 校验 artifact plugins/schema/；用户级根 ~/.sunshinex/plugins/；开发指南 docs/PLUGIN-DEV.md）
-.sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；.agents/.claude/.codex 同形兼容根见 §6）
+.sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；.agents/.claude/.codex/.cursor 同形兼容根见 §6）
 .sunshinex/teams/     # 项目级智能体团队目录（标准形态 {id}/team.md，正文=章程；两级遮蔽与软引用见 §6）
 agents/               # 用户子智能体目录（约定根，可缺省——不存在=空注册；{id}/agent.md，装配期一次性加载 fail-fast）
 SUNSHINE.md          # 项目业务配置
@@ -191,7 +191,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 - 装载优先级（右侧遮蔽左侧，id 撞名就近遮蔽；resolve 仅 SKILL_NOT_FOUND 逐级回退、SKILL_PARAM_MISSING 就近不回退）：
 
 ```text
-.sunshinex > .agents > .claude > .codex（项目级四根，升序装载右遮左、.sunshinex 原生恒最优先；均只认 {root}/<根>/skills/{id}/SKILL.md 标准形态，同 id 就近遮蔽）
+.sunshinex > .agents > .claude > .codex > .cursor（项目级五根，升序装载右遮左、.sunshinex 原生恒最优先；均只认 {root}/<根>/skills/{id}/SKILL.md 标准形态，同 id 就近遮蔽）
   > ~/.sunshinex/skills/（全局用户级，SUNSHINEX_USER_SKILLS_DIR 覆盖）
   > ~/.sunshinex/projects/<工作区>/data/skills/（学习级，LearnedSkillStore 自动沉淀，FIFO 上限）
   > plugins/<id>/skills/（内置插件技能根，最低优先级；启用且平台可用的插件才并入链尾）

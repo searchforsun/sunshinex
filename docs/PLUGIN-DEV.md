@@ -118,7 +118,7 @@ server 名即工具前缀段（`mcp__<server名>__<工具名>`）。撞名裁定
 ### 4.2 skills
 
 - `skills` = 相对插件根的**目录数组**；每个目录按技能装载链根消费，内含 `{id}/SKILL.md`（frontmatter 与正文同主仓技能规范，见 CLAUDE.md §6）。
-- 优先级整链最低：项目级四根（`.sunshinex` > `.agents` > `.claude` > `.codex`）> 全局级 > 学习级 > 插件；id 撞名就近遮蔽，被遮蔽者静默让位。
+- 优先级整链最低：项目级五根（`.sunshinex` > `.agents` > `.claude` > `.codex` > `.cursor`）> 全局级 > 学习级 > 插件；id 撞名就近遮蔽，被遮蔽者静默让位。
 - 仅 enabled 且平台可用的插件并入；目录缺失/为空静默跳过。
 
 ## 5. config 与 configSchema

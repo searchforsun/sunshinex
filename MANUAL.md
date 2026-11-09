@@ -274,7 +274,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── .sunshinex/
 │   ├── settings.json           # 项目级配置（覆盖全局；已在 .gitignore）
 │   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；首次装载过批准阀；可提交入库共享）
-│   ├── skills/<id>/SKILL.md    # 项目技能（原生项目技能根；.agents/.claude/.codex 同形兼容根也装载）
+│   ├── skills/<id>/SKILL.md    # 项目技能（原生项目技能根；.agents/.claude/.codex/.cursor 同形兼容根也装载）
 │   └── agents/<id>/agent.md    # 项目子智能体（唯一项目落位；见 5.3）
 └── （历史旧位置 <项目>/agents/ 的子智能体条目在首次装载/列举时一次性自动迁入 .sunshinex/agents/）
 ```
