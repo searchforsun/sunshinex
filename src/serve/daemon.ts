@@ -634,8 +634,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
         const root = (parsed.body as { root?: unknown }).root;
         const branch = (parsed.body as { branch?: unknown }).branch;
+        const create = (parsed.body as { create?: unknown }).create === true;
         if (typeof root !== 'string' || typeof branch !== 'string') return this.send(res, 400, { error: 'root and branch required' });
-        const r = await checkoutBranch(path.resolve(root), branch);
+        const r = await checkoutBranch(path.resolve(root), branch, create);
         if (!r.ok) return this.send(res, 400, { error: r.error });
         this.send(res, 200, { ok: true });
       } },

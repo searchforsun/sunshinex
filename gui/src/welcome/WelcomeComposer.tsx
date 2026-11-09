@@ -285,6 +285,10 @@ export function WelcomeComposer({
                     setBranchOpen(false);
                     checkoutBranch(b);
                   }}
+                  onCreate={(b) => {
+                    setBranchOpen(false);
+                    checkoutBranch(b, true);
+                  }}
                 />
               )}
             </div>

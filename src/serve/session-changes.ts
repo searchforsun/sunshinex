@@ -168,9 +168,10 @@ export async function gitBranches(root: string): Promise<{ current: string; bran
 }
 
 /** G14.113 切换分支(工作区有未提交变动时 git 自身拒绝,错误透传) */
-export async function checkoutBranch(root: string, branch: string): Promise<Result<{ out: string }>> {
+export async function checkoutBranch(root: string, branch: string, create = false): Promise<Result<{ out: string }>> {
   if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
-  const r = await git(root, ['checkout', branch]);
+  // create=新建并切换(欢迎页分支弹窗筛选行「+」,2026-11-09 用户裁定);已存在同名由 git 拒(错误回显)
+  const r = await git(root, create ? ['checkout', '-b', branch] : ['checkout', branch]);
   if (!r.ok) return fail('CHECKOUT_FAIL', r.err);
   return ok({ out: r.out });
 }

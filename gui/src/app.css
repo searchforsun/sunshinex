@@ -1731,8 +1731,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   text-transform: uppercase; color: var(--fg-tertiary);
 }.ctx-pop-row.sub { padding: 2px 12px; font-size: calc(14px * var(--fz)); line-height: calc(20px * var(--fz)); }.ctx-pop-row.sub .k { color: var(--fg-tertiary); }
 /* G14.113 欢迎页分支 pill(目录右侧,git 目录才显):分支名+弹层切换 *//* 分支弹层(2026-10-27 用户裁定):加宽防长名折行,最大高度+纵滚承接长列表,超长名单行省略(title 全名) */
-.branch-pop { min-width: 280px; max-width: 420px; max-height: 320px; overflow-y: auto; }
-.branch-pop .sx-menuitem { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 分支弹层(2026-11-09 用户裁定):固定宽高,顶部筛选行(输入+新建钮)不滚,清单区内滚;当前分支右侧对号 */
+.branch-pop { width: 280px; height: 320px; display: flex; flex-direction: column; overflow: hidden; }
+.branch-pop-filter { flex: none; display: flex; align-items: center; gap: 4px; padding: 2px 2px 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.branch-pop-filter input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); font: calc(14px * var(--fz)) var(--font-ui); outline: none; }
+.branch-pop-add { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm); background: none; color: var(--fg-icon); cursor: pointer; }
+.branch-pop-add:hover:not(:disabled) { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.branch-pop-add:disabled { opacity: 0.35; cursor: default; }
+.branch-pop-list { flex: 1; min-height: 0; overflow-y: auto; }
+.branch-pop .sx-menuitem { display: flex; align-items: center; gap: 8px; width: 100%; }
+.branch-pop-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.branch-pop-check { flex: none; color: var(--fg); }
+.branch-pop-empty { padding: 8px 10px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
 .branch-pill { max-width: 180px; }.branch-pill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* G14.98 权限菜单:Plan mode 首位+横线+两执行档;图标+双行(名称+解释);当前档高亮 */.mode-pop { min-width: 240px; padding: 6px; }.mode-pop-group { display: block; }.mode-pop-sep { border-top: 1px solid var(--border-subtle); margin: 6px 4px; }.mode-item {

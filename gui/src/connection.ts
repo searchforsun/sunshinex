@@ -100,7 +100,7 @@ export interface Connection {
   gitStatus(id: string): Promise<{ branch: string; map: Record<string, string> }>;
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
-  gitCheckout(root: string, branch: string): Promise<void>;
+  gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
   /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先;
    *  dirs=尾斜杠目录清单(@面板滤出文件夹/目录引用面;旧 daemon 无此字段 → undefined) */
   workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
@@ -542,8 +542,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
     fetchWebMeta(url: string) {
       return getJson<{ title: string; icon: string }>(`/web/meta?url=${encodeURIComponent(url)}`);
     },
-    async gitCheckout(root: string, branch: string) {
-      await post('/git/checkout', { root, branch });
+    async gitCheckout(root: string, branch: string, create?: boolean) {
+      await post('/git/checkout', { root, branch, ...(create === true ? { create: true } : {}) });
     },
     guiState(id: string) {
       return getJson<{ state: unknown }>(`/session/${encodeURIComponent(id)}/gui-state`);

@@ -26,9 +26,9 @@ export function useWelcomeBranch(conn: WelcomeComposerConn, picked: string, isDe
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [branchOpen]);
-  const checkoutBranch = (branch: string): void => {
+  const checkoutBranch = (branch: string, create = false): void => {
     void conn
-      .gitCheckout(picked, branch)
+      .gitCheckout(picked, branch, create)
       .then(() => conn.gitBranches(picked))
       .then((r) => setGitBr(r.branches.length > 0 ? r : null))
       .catch((err: unknown) => setHint(`${t('Branch switch failed', '切换分支失败')}: ${err instanceof Error ? err.message : String(err)}`));
