@@ -3733,6 +3733,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .tool-exec:hover > .bg-exec-copy, .tool-exec:focus-within > .bg-exec-copy { opacity: 1; }
 .tool-exec { position: relative; }
 
+/* 菜单抽屉打开时主区让出抽屉宽(2026-11-09 用户实测「输入框被挤到左侧出视口」):抽屉不再整块盖住主区内容,
+   欢迎页输入框/弹窗在抽屉右侧完整可见;停靠右栏由 App 后开者胜规则让位 */
+.sx-shell.sx-menu-float > .sx-main { margin-left: var(--menu-w); }
 /* 正文「更新待办」行点击开右栏待办页签:与普通工具行同色同形,不显链接下划线/强调色 */
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span),
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span):hover { text-decoration: none; color: inherit; }
