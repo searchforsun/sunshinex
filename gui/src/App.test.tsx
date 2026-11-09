@@ -1817,6 +1817,11 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // G14.38:缺省折叠——条不在场,返回面以输入门与 Chat 在场断言
 
     await screen.findByRole('button', GROUP_HEAD); // ProjectMenu 重挂,组列表经 workspaces() 重拉
+    // 2026-11-09 用户裁定:左栏右下角齿轮=开关同位——设置态内再点即关,与返回钮同路径
+    openSettings();
+    expect(screen.getByRole('button', { name: 'General' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'close settings' }));
+    await waitFor(() => expect(screen.getByLabelText('message input')).toBeDefined());
     unmount();
   });
 

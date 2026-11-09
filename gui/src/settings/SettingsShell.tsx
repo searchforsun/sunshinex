@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Settings } from 'lucide-react';
 import { t } from '../i18n';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
@@ -251,7 +251,7 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
             <ArrowLeft size={16} strokeWidth={1.75} aria-hidden="true" />
             <span>{t('Back', '返回')}</span>
           </button>
-          <span>{t('Settings', '设置')}</span>
+          {/* 2026-11-09 用户裁定:头行「设置」字样退役(左栏身份由导航列表自明) */}
           {/* 2026-10-29 用户裁定:壳顶作用域分段控件撤除——切换面下沉五资源页工具栏 ScopeSelect
               (scope 状态仍本壳持有,经 scope+onScopeChange 下发,见 renderPane) */}
         </header>
@@ -276,6 +276,12 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
             </li>
           ))}
         </ul>
+        {/* 左栏右下角齿轮=会话态进入设置的同一钮同位(sx-menu-foot),再点即关设置——开关同位 */}
+        <footer className="sx-menu-foot">
+          <button type="button" aria-label="close settings" className="sx-iconbtn" data-tip={`${t('Close settings', '关闭设置')} · Esc`} onClick={onBack}>
+            <Settings size={18} strokeWidth={1.75} />
+          </button>
+        </footer>
       </nav>
       <main className="sx-main sx-settings-main">
         {/* 顶部遮盖条(2026-10-29 用户裁定「右侧设置正文顶部一行作为遮盖区,和主对话一样」):
