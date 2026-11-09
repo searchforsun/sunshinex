@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { loadSkills } from '../skills';
+import { disabledSkillIds, loadSkills } from '../skills';
 import { loadTeams } from '../teams';
 import { listAgentDefs } from '../subagent';
 import { SUNSHINE_EXCERPT_MAX_CHARS } from '../memory/extractor';
@@ -69,7 +69,7 @@ export class DriftDetector {
     }
     const ids = skillSig(this.deps.root);
     if (ids !== this.skillsBaseline) {
-      out.push(...sigDiffNotices('[skills]', this.skillsBaseline, ids, 'load with the skill tool'));
+      out.push(...sigDiffNotices('[skills]', this.skillsBaseline, ids, 'load with the skill tool', disabledSkillIds(this.deps.root)));
       this.skillsBaseline = ids;
     }
     const agents = agentSig(this.deps.root);
@@ -140,8 +140,10 @@ export class DriftDetector {
 }
 
 /** 签名 diff → 三态 notice 行（skills/agents/teams 共用单点，防三处口径漂移）：
- *  added/updated 带描述截 128，removed 仅 id；文案形态与既有 [skills] 行逐字节同构 */
-function sigDiffNotices(tag: string, beforeSig: string, afterSig: string, loadHint: string): string[] {
+ *  added/updated 带描述截 128，removed 仅 id；文案形态与既有 [skills] 行逐字节同构。
+ *  disabledNow=现被设置开关停用的 id（文件仍在）：从 removed 分出单列 disabled 行——模型须知是用户
+ *  关闭而非文件消失，此前清单/快照里的该项作废、不得再加载（2026-11-09 用户裁定） */
+function sigDiffNotices(tag: string, beforeSig: string, afterSig: string, loadHint: string, disabledNow?: ReadonlySet<string>): string[] {
   const parse = (block: string): Map<string, [string, string]> =>
     new Map(block.split('\n').filter((l) => l.length > 0).map((l) => { const [id, name, desc] = JSON.parse(l) as [string, string, string]; return [id, [name, desc]] as [string, [string, string]]; }));
   const before = parse(beforeSig);
@@ -154,10 +156,12 @@ function sigDiffNotices(tag: string, beforeSig: string, afterSig: string, loadHi
     if (prev === undefined) added.push(meta[0].length > 0 || meta[1].length > 0 ? `${id} (${(meta[1] || meta[0]).slice(0, 128)})` : id);
     else if (prev[0] !== meta[0] || prev[1] !== meta[1]) updated.push(meta[1].length > 0 ? `${id} — ${meta[1].slice(0, 128)}` : id);
   }
-  for (const id of before.keys()) if (!after.has(id)) removed.push(id);
+  const disabled: string[] = [];
+  for (const id of before.keys()) if (!after.has(id)) (disabledNow?.has(id) === true ? disabled : removed).push(id);
   const out: string[] = [];
   if (added.length > 0) out.push(`${tag} added: ${added.join(', ')} — ${loadHint}`);
   if (removed.length > 0) out.push(`${tag} removed: ${removed.join(', ')} (no longer available)`);
+  if (disabled.length > 0) out.push(`${tag} disabled: ${disabled.join(', ')} (turned off by the user in settings; the earlier listing is stale — do not load or use it)`);
   if (updated.length > 0) out.push(`${tag} updated: ${updated.join(', ')}`);
   return out;
 }

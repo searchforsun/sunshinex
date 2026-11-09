@@ -158,6 +158,11 @@ export function loadSkills(root: string): SkillManifest[] {
   return loadSkillsChain(priorityChain(root, pluginSkillDirs(root))).filter((m) => !isSkillDisabled(m.sourceRoot));
 }
 
+/** 装载链上被停用的技能 id(漂移检测区分「停用」与「移除」:停用技能文件仍在,只是开关关闭) */
+export function disabledSkillIds(root: string): ReadonlySet<string> {
+  return new Set(loadSkillsChain(priorityChain(root, pluginSkillDirs(root))).filter((m) => isSkillDisabled(m.sourceRoot)).map((m) => m.id));
+}
+
 /** 技能三源分组（G8c T6 /settings/skills 数据源）：source 三段对齐装载优先级链的三个语义级——
  *  project（项目四根 .sunshinex/.agents/.claude/.codex 合并一组）/ user（全局用户根）/ learned（工作区学习根）。组内去重沿装载序
  *  （同 loadSkills 语义）；跨组**不去重**——分组是展示面，多源同名 id 两组各在（GUI 可标注遮蔽关系） */

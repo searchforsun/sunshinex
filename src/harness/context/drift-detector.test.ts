@@ -76,3 +76,37 @@ test('消失态与空记忆索引态：is gone / (the memory index is now empty)
     assert.match(mem[0], /\(the memory index is now empty\)/, '空态显式标注（不产空正文）');
   });
 });
+
+test('[skills] 设置开关停用与文件移除分列:停用→disabled 行(不报 removed);删目录→removed;再启用→added', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-drift-disabled-'));
+  const prevEnv = process.env.SUNSHINEX_DISABLED_SKILLS;
+  const mk = (id: string): string => {
+    const dir = path.join(tmp, '.sunshinex', 'skills', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${id}\ndescription: TEST_ ${id}\n---\nbody\n`);
+    return dir;
+  };
+  try {
+    delete process.env.SUNSHINEX_DISABLED_SKILLS;
+    const fooDir = mk('foo');
+    const barDir = mk('bar');
+    const det = new DriftDetector({ root: tmp, readGlobalSunshine: () => null, readSunshinex: () => null, globalPath: '/g', readMemoryIndex: () => '' });
+    assert.deepEqual(det.detect(), []);
+    process.env.SUNSHINEX_DISABLED_SKILLS = fooDir;
+    const off = det.detect();
+    assert.equal(off.length, 1, '停用只出一行');
+    assert.match(off[0], /^\[skills\] disabled: foo \(turned off by the user in settings/);
+    assert.ok(!off.some((l) => l.includes('removed')), '停用不得报成 removed');
+    assert.deepEqual(det.detect(), [], '基线前进:同一停用只告知一次');
+    fs.rmSync(barDir, { recursive: true, force: true });
+    assert.deepEqual(det.detect(), ['[skills] removed: bar (no longer available)'], '文件消失仍报 removed');
+    delete process.env.SUNSHINEX_DISABLED_SKILLS;
+    const on = det.detect();
+    assert.equal(on.length, 1);
+    assert.match(on[0], /^\[skills\] added: foo/, '再启用=重新可用,报 added');
+  } finally {
+    if (prevEnv === undefined) delete process.env.SUNSHINEX_DISABLED_SKILLS;
+    else process.env.SUNSHINEX_DISABLED_SKILLS = prevEnv;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
