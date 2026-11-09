@@ -4,7 +4,7 @@ import { t } from '../i18n';
 
 /** 欢迎页分支弹层(2026-11-09 用户裁定改版):固定宽高(清单区内滚)、当前分支右侧对号、顶部筛选行——
  *  输入即过滤,输入名不与既有分支同名时右侧「+」可新建并切换(Enter 同义:精确命中即切换,否则新建);
- *  弹层右缘越出主对话区/视口(窄框、开侧栏)时整体左移贴回区内。选中/新建派发经 onPick/onCreate(弹层关闭归调用方) */
+ *  窄框适配:宽度随可用区缩短、整体左移贴回区内,窗口缩放即重算。选中/新建派发经 onPick/onCreate(弹层关闭归调用方) */
 export function WelcomeBranchMenu({
   gitBr,
   onPick,
@@ -15,18 +15,42 @@ export function WelcomeBranchMenu({
   onCreate: (branch: string) => void;
 }): JSX.Element {
   const [query, setQuery] = useState('');
-  const [shift, setShift] = useState(0);
   const ref = useRef<HTMLDivElement | null>(null);
+  // 视口适配(2026-11-09 用户实测「没有自动左移、没有动态缩短」):可用区=视口、主对话区与全部裁剪祖先(overflow 非
+  // visible)的交集;宽度取 min(280, 可用宽)(下限 160),再整体左/右移贴回可用区。窗口缩放/布局变化即重算——
+  // 命令式写样式(先清旧值再量,免状态回环)
   useLayoutEffect(() => {
     const el = ref.current;
     if (el === null) return;
-    // 右界=所在主对话区(.sx-main 开侧栏后变窄且裁剪溢出)与视口取小;左移不越过主区左缘
-    const r = el.getBoundingClientRect();
-    const main = el.closest('.sx-main')?.getBoundingClientRect();
-    const right = Math.min(window.innerWidth, main?.right ?? window.innerWidth) - 8;
-    const left = (main?.left ?? 0) + 8;
-    const over = r.right - right;
-    if (over > 0) setShift(-Math.ceil(Math.min(over, Math.max(0, r.left - left))));
+    const fit = (): void => {
+      el.style.transform = '';
+      el.style.width = '';
+      let left = 8;
+      let right = window.innerWidth - 8;
+      for (let a = el.parentElement; a !== null; a = a.parentElement) {
+        // 主对话区恒为边界:右侧栏是兄弟层压在其上(非裁剪祖先),越过主区右缘即被侧栏盖住
+        if (!a.classList.contains('sx-main') && getComputedStyle(a).overflowX === 'visible') continue;
+        const r = a.getBoundingClientRect();
+        left = Math.max(left, r.left + 8);
+        right = Math.min(right, r.right - 8);
+      }
+      el.style.width = `${Math.round(Math.min(280, Math.max(160, right - left)))}px`;
+      const r = el.getBoundingClientRect();
+      let dx = 0;
+      if (r.right > right) dx = right - r.right;
+      if (r.left + dx < left) dx = left - r.left;
+      if (dx !== 0) el.style.transform = `translateX(${Math.round(dx)}px)`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    ro?.observe(document.documentElement);
+    const main = el.closest('.sx-main');
+    if (main !== null) ro?.observe(main);
+    return () => {
+      window.removeEventListener('resize', fit);
+      ro?.disconnect();
+    };
   }, []);
   const q = query.trim();
   const shown = q === '' ? gitBr.branches : gitBr.branches.filter((b) => b.toLowerCase().includes(q.toLowerCase()));
@@ -38,7 +62,6 @@ export function WelcomeBranchMenu({
       className="sx-menu-pop pill-pop branch-pop"
       role="menu"
       aria-label={t('Branch', '分支')}
-      style={shift !== 0 ? { transform: `translateX(${shift}px)` } : undefined}
     >
       <div className="branch-pop-filter">
         <input
