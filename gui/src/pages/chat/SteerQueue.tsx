@@ -59,7 +59,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
             <span>
               {t('Queued', '排队')} · {queued.length}
             </span>
-            <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" className={queueFolded ? 'steer-fold-chev up' : 'steer-fold-chev'} />
+            <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" className={queueFolded ? 'steer-fold-chev up' : 'steer-fold-chev'} />
           </button>
           {!queueFolded && (
         <div
@@ -119,7 +119,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     ),
                   )
                 ) : (
-                  <span className="steer-img-only"><ImageIcon size={12} strokeWidth={1.75} aria-hidden="true" />{t('(image)', '(图片)')}</span>
+                  <span className="steer-img-only"><ImageIcon size={14} strokeWidth={1.75} aria-hidden="true" />{t('(image)', '(图片)')}</span>
                 )}
               </span>
               <span className="steer-row-actions">
@@ -138,7 +138,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     void pauseAndSend(q);
                   }}
                 >
-                  <ArrowUpToLine size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <ArrowUpToLine size={14} strokeWidth={1.75} aria-hidden="true" />
                   {t('Now', '立即')}
                 </button>
                 <button
@@ -151,7 +151,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     conn.frontSteer(sessionId, q.seq).then(refreshQueued, () => {});
                   }}
                 >
-                  <CornerDownRight size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <CornerDownRight size={14} strokeWidth={1.75} aria-hidden="true" />
                   {t('Insert', '插入')}
                 </button>
                 <button
@@ -171,7 +171,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     setImages(q.images ?? []);
                   }}
                 >
-                  <PenLine size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
@@ -185,7 +185,7 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                     conn.cancelSteer(sessionId, q.seq).catch(() => {});
                   }}
                 >
-                  <Trash2 size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                   </>
                 )}

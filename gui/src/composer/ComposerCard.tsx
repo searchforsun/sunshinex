@@ -179,7 +179,7 @@ export function ComposerCard({
                   data-tip={t('Remove', '移除')}
                   onClick={() => onRemoveImage(i)}
                 >
-                  <X size={11} strokeWidth={2} aria-hidden="true" />
+                  <X size={14} strokeWidth={2} aria-hidden="true" />
                 </button>
               )}
             </div>

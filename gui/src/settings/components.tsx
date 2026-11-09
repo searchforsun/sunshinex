@@ -232,7 +232,7 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
           {/* 2026-11-07 用户裁定:原生三角退役→胶囊开关(chevron 随开合旋转,面底语言同 ghost 钮) */}
           <summary>
             {t('Details', '详情')}
-            <ChevronDown size={12} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
+            <ChevronDown size={14} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
           </summary>
           {children}
         </details>

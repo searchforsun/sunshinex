@@ -130,7 +130,7 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
             setOffset({ x: 0, y: 0 });
           }}
         >
-          <RotateCcw size={13} strokeWidth={2} aria-hidden="true" />
+          <RotateCcw size={14} strokeWidth={2} aria-hidden="true" />
         </button>
         <span className="sx-lightbox-sep" aria-hidden="true" />
         <button
@@ -140,10 +140,10 @@ export function ImageLightbox({ src, name, onClose }: { src: string; name?: stri
           data-tip={copyState === 'ok' ? t('Copied', '已复制') : copyState === 'fail' ? t('Not copied', '未复制') : t('Copy image', '复制图片')}
           onClick={copyImage}
         >
-          {copyState === 'ok' ? <Check size={13} strokeWidth={2} aria-hidden="true" /> : <Copy size={13} strokeWidth={2} aria-hidden="true" />}
+          {copyState === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={2} aria-hidden="true" />}
         </button>
         <a className="sx-lightbox-act" href={src} download={name ?? 'image.png'} aria-label={t('Download', '下载')} data-tip={t('Download', '下载')} role="button" onClick={(e) => e.stopPropagation()}>
-          <Download size={13} strokeWidth={2} aria-hidden="true" />
+          <Download size={14} strokeWidth={2} aria-hidden="true" />
         </a>
         <span className="sx-lightbox-sep" aria-hidden="true" />
         <button type="button" className="sx-lightbox-act" aria-label={t('Close', '关闭')} data-tip={`${t('Close', '关闭')} · Esc`} onClick={onClose}>

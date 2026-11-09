@@ -62,7 +62,7 @@ export function PlansTab({
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -78,7 +78,7 @@ export function PlansTab({
             <li key={pl.path} className="mem-row">
               <div className="mem-rowline">
                 {/* 行图标与计划卡卡头/计划模式 pill 同件(NotebookPen)——「计划」视觉同族 */}
-                <NotebookPen size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
+                <NotebookPen size={14} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
                 <span
                   className="mem-body"
                   role="button"
@@ -91,7 +91,7 @@ export function PlansTab({
                 >
                   {pl.name === '' ? t('Untitled plan', '未命名计划') : pl.name}
                 </span>
-                <span className="mem-date"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{shortStampMs(pl.mtime)}</span>
+                <span className="mem-date"><Clock size={14} strokeWidth={1.75} aria-hidden="true" />{shortStampMs(pl.mtime)}</span>
               </div>
             </li>
           ))}

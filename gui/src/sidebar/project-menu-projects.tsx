@@ -122,8 +122,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
           }}
         >
           <span>{t('Projects', '项目')}</span>
-          <ChevronRight
-            size={12}
+          <ChevronRight size={14}
             strokeWidth={2}
             aria-hidden="true"
             className={`sx-side-chev${projectsOpen ? ' open' : ''}`}
@@ -139,7 +138,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                   {(['created', 'updated', 'natural'] as const).map((m) => (
                     <button key={m} type="button" role="menuitemradio" aria-checked={wsSort === m} className={`sx-menuitem${wsSort === m ? ' sx-ws-sort-active' : ''}`} onClick={() => pickSort(m)}>
                       <span className="sx-ws-sort-name">{t(WS_SORT_LABELS[m].en, WS_SORT_LABELS[m].zh)}</span>
-                      {wsSort === m && <Check size={13} strokeWidth={2} aria-hidden="true" />}
+                      {wsSort === m && <Check size={14} strokeWidth={2} aria-hidden="true" />}
                     </button>
                   ))}
                 </div>

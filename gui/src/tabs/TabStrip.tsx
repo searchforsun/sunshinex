@@ -249,7 +249,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
                 onClose(t.uid);
               }}
             >
-              <X size={12} strokeWidth={1.75} />
+              <X size={14} strokeWidth={1.75} />
             </span>
           </button>
         );

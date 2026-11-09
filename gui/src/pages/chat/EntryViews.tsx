@@ -94,7 +94,7 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
         </span>
         {onToggle !== undefined && (
           <span className="run-chev" aria-hidden="true">
-            {collapsed ? <ChevronRight size={12} strokeWidth={1.75} /> : <ChevronDown size={12} strokeWidth={1.75} />}
+            {collapsed ? <ChevronRight size={14} strokeWidth={1.75} /> : <ChevronDown size={14} strokeWidth={1.75} />}
           </span>
         )}
       </div>
@@ -126,7 +126,7 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
       <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
       {onToggle !== undefined && (
         <span className="run-chev" aria-hidden="true">
-          {collapsed ? <ChevronRight size={12} strokeWidth={1.75} /> : <ChevronDown size={12} strokeWidth={1.75} />}
+          {collapsed ? <ChevronRight size={14} strokeWidth={1.75} /> : <ChevronDown size={14} strokeWidth={1.75} />}
         </span>
       )}
     </div>
@@ -172,7 +172,7 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
           window.dispatchEvent(new Event('sx-row-toggle')); // 贴地时展开/收起→滚动跟随(use-chat-scroll)
         }}
       >
-        <Brain size={12} strokeWidth={1.75} aria-hidden="true" />
+        <Brain size={14} strokeWidth={1.75} aria-hidden="true" />
         <span className="thinking-label">
           {streaming ? (
             /* 流光文字(2026-10-22 用户裁定:思考行与执行行同语言);秒数向上取整最少 1s(2026-10-29
@@ -189,7 +189,7 @@ export const ThinkingEntryView = memo(function ThinkingEntryView({ entry }: { en
             {flow}
           </span>
         )}
-        <ChevronRight className="think-chev" size={12} strokeWidth={1.75} aria-hidden="true" />
+        <ChevronRight className="think-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <div className="think-body">
         <div className="think-body-inner">
@@ -316,7 +316,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
               aria-label={t('Collapse', '收起')}
               onClick={() => setOpen(false)}
             >
-              <ChevronUp size={12} strokeWidth={2} aria-hidden="true" />
+              <ChevronUp size={14} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -331,7 +331,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
             aria-label={t('Expand', '展开')}
             onClick={() => setOpen(true)}
           >
-            <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />
+            <ChevronDown size={14} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
       )}
@@ -501,12 +501,12 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           className="user-action"
           tip={copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
           label="Copy"
-          icon={copied === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+          icon={copied === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
           onClick={copy}
         />
         {/* 2026-11-06 用户裁定 P2:辅助会话正文不再支持编辑用户气泡——入口裁剪 */}
         {onSend !== undefined && sideChat !== true && (
-          <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={openEdit} />
+          <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={14} strokeWidth={1.75} aria-hidden="true" />} onClick={openEdit} />
         )}
       </div>
       {confirmDialog}
@@ -517,11 +517,11 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
 /** 系统行图标(G11 §4):error=AlertCircle;notice 按 md 形态分流(委派 ✻=Bot/agent 消息 [a → b]
  *  =MessageSquare/通用=Info)。md 原文不动,纯前置装饰 */
 function systemIconOf(entry: ChatEntry): ReactNode {
-  if (entry.kind === 'error') return <AlertCircle size={12} strokeWidth={1.75} aria-hidden="true" />;
+  if (entry.kind === 'error') return <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />;
   if (entry.kind !== 'notice') return null;
-  if (entry.md.startsWith('✻')) return <Bot size={12} strokeWidth={1.75} aria-hidden="true" />;
-  if (/^\[[^\]]+ → [^\]]+\]/.test(entry.md)) return <MessageSquare size={12} strokeWidth={1.75} aria-hidden="true" />;
-  return <Info size={12} strokeWidth={1.75} aria-hidden="true" />;
+  if (entry.md.startsWith('✻')) return <Bot size={14} strokeWidth={1.75} aria-hidden="true" />;
+  if (/^\[[^\]]+ → [^\]]+\]/.test(entry.md)) return <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />;
+  return <Info size={14} strokeWidth={1.75} aria-hidden="true" />;
 }
 
 /** agent-message / inbox drain 通知：`[from → to] text`。气泡只展示来源名与正文。 */
@@ -543,9 +543,9 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string; tag?: 
     const m = /^(learned|updated):\s*(\S+)/.exec(rest);
     if (m !== null) {
       const zh = m[1] === 'learned' ? t('Skill added', '添加技能') : t('Skill updated', '更新技能');
-      return { icon: <Sparkles size={12} strokeWidth={1.75} aria-hidden="true" />, md: `${zh}: ${m[2]}`, tag: 'skills', ref: m[2] };
+      return { icon: <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />, md: `${zh}: ${m[2]}`, tag: 'skills', ref: m[2] };
     }
-    return { icon: <Sparkles size={12} strokeWidth={1.75} aria-hidden="true" />, md: rest };
+    return { icon: <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />, md: rest };
   }
   if (entry.md.startsWith('[memory]')) {
     const rest = entry.md.slice('[memory]'.length).trimStart();
@@ -553,9 +553,9 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string; tag?: 
     if (m !== null) {
       const zh = m[1] === 'saved' ? t('Memory saved', '添加记忆') : t('Memory updated', '更新记忆');
       const first = m[2].split(',')[0]?.trim() ?? '';
-      return { icon: <Database size={12} strokeWidth={1.75} aria-hidden="true" />, md: `${zh}: ${m[2]}`, tag: 'memory', ref: first };
+      return { icon: <Database size={14} strokeWidth={1.75} aria-hidden="true" />, md: `${zh}: ${m[2]}`, tag: 'memory', ref: first };
     }
-    return { icon: <Database size={12} strokeWidth={1.75} aria-hidden="true" />, md: rest };
+    return { icon: <Database size={14} strokeWidth={1.75} aria-hidden="true" />, md: rest };
   }
   return null;
 }
@@ -600,7 +600,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
     <div className={`entry ${failed ? 'entry-error' : 'entry-notice'} cmd-entry`} role="status" data-cmd={name} data-state={!done ? 'running' : failed ? 'failed' : 'done'}>
       <div className="entry-md has-icon">
         <span className="entry-icon">
-          {failed ? <AlertCircle size={12} strokeWidth={1.75} aria-hidden="true" /> : <Info size={12} strokeWidth={1.75} aria-hidden="true" />}
+          {failed ? <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" /> : <Info size={14} strokeWidth={1.75} aria-hidden="true" />}
         </span>
         <div className={`entry-md-body${!done ? ' exec-running-text' : ''}`}>{text !== '' ? text : name}</div>
       </div>
@@ -643,7 +643,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
     return (
       <div className="entry entry-user entry-user-insert agent-msg" data-from={fromLabel}>
         <div className="agent-msg-head">
-          <MessageSquare size={12} strokeWidth={1.75} aria-hidden="true" />
+          <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
           {fromLeader && onOpenLeader !== undefined ? (
             <button
               type="button"
@@ -675,7 +675,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
             className="user-action"
             tip={copied === 'ok' ? t('Copied', '已复制') : copied === 'fail' ? t('Not copied', '未复制') : t('Copy', '复制')}
             label="Copy"
-            icon={copied === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            icon={copied === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
             onClick={() => copyText(msg.text)}
           />
         </div>
@@ -699,7 +699,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
       return (
         <div className="entry entry-notice fork-origin" role="status">
           <span className="entry-icon">
-            <GitFork size={12} strokeWidth={1.75} aria-hidden="true" />
+            <GitFork size={14} strokeWidth={1.75} aria-hidden="true" />
           </span>
           <div className="entry-md">
             {t('Content above forked from session', '以上内容分叉自会话')}：

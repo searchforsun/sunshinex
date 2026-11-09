@@ -62,7 +62,7 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
   return (
     <div className="sx-tabsearch" role="dialog" aria-label={t('Search tabs', '搜索标签页')}>
       <div className="sx-tabsearch-head">
-        <Search size={13} strokeWidth={1.75} aria-hidden="true" />
+        <Search size={14} strokeWidth={1.75} aria-hidden="true" />
         <input
           ref={inputRef}
           value={q}
@@ -114,7 +114,7 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
                 }
               }}
             >
-              <X size={12} strokeWidth={1.75} />
+              <X size={14} strokeWidth={1.75} />
             </span>
           </div>
         ))}

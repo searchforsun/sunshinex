@@ -261,9 +261,9 @@ export function WelcomeComposer({
                 data-tip={`${t('Current branch', '当前分支')}: ${gitBr.current}`}
                 onClick={() => setBranchOpen((v) => !v)}
               >
-                <GitBranch size={13} strokeWidth={1.75} aria-hidden="true" />
+                <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" />
                 <span className="branch-pill-name">{gitBr.current}</span>
-                <ChevronDown size={12} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {branchOpen && (
                 <WelcomeBranchMenu
@@ -686,7 +686,7 @@ export function WelcomeComposer({
                       裸文本无类收不到(600 窗欢迎页「完全访问」不塌的根因),文案由 data-tip 承载 */}
                   <ModeIcon mode={mode} />
                   <span className="pill-label">{sessionModeLabel(mode)}</span>
-                  <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
                 </button>
                 {modeOpen && (
                   <ModeMenu
@@ -716,7 +716,7 @@ export function WelcomeComposer({
                 {/* 2026-10-29 用户裁定:默认兜底显示当前(首个)provider 的第一个 model——不再笼统「默认模型」 */}
                 {baseModelName(selModel ?? defaultModel ?? modelChoices[0]?.id)}
                 <EffortChip effort={selEffort ?? 'medium'} />
-                <ChevronDown className="pill-chevron" size={12} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {modelOpen && (
                 <WelcomeModelMenu

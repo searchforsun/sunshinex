@@ -172,7 +172,7 @@ export function DiffLines({
       className="diff-fold"
       onClick={() => setExpanded((s) => new Set(s).add(segKey))}
     >
-      <MoreHorizontal size={12} strokeWidth={1.75} aria-hidden="true" />
+      <MoreHorizontal size={14} strokeWidth={1.75} aria-hidden="true" />
       <span>{t(`${count} unchanged lines`, `展开 ${count} 行未变更`)}</span>
     </button>
   );
@@ -186,7 +186,7 @@ export function DiffLines({
         return n;
       })}
     >
-      <ChevronUp size={12} strokeWidth={1.75} aria-hidden="true" />
+      <ChevronUp size={14} strokeWidth={1.75} aria-hidden="true" />
       <span>{t('collapse', '收起')}</span>
     </button>
   );

@@ -188,12 +188,12 @@ export const ToolSegBlock = memo(function ToolSegBlock({
                 aria-expanded={isOpen}
                 onClick={(e) => toggleGroup(n.gkey, e.currentTarget)}
               >
-                <Icon size={12} strokeWidth={1.75} aria-hidden="true" />
+                <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
                 {/* key=计数：计数增长即重挂重播 pop 动画（语言切换不换 key 不重播）;运行中=流光文字 */}
                 <span className="tool-group-label" key={n.entries.length}>
                   <span className={executing ? 'exec-running-text' : undefined}>{t(en, zh)}</span>
                 </span>
-                <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />
+                <ChevronRight className="tool-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {/* 成员平级铺开：透明网格容器仅作 0fr→1fr 高度动画（与 tool-body 同配方），零视觉嵌套 */}
               <div className={`tool-group-members${isOpen ? ' open' : ''}`} aria-hidden={!isOpen}>

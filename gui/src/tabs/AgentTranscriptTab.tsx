@@ -189,7 +189,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
                   data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
                   onClick={() => copyText(e2.md)}
                 >
-                  {copied === 'ok' ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+                  {copied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
             );
@@ -226,7 +226,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
             data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
             onClick={() => copyText(e.md)}
           >
-            {copied === 'ok' ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            {copied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
           </button>
         </div>,
       );
@@ -254,7 +254,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
             <CollapsibleBubble text={userText} render={(md) => <div className="child-user-text">{md}</div>} />
             {/* G14.202b 复制钮:气泡外右下,hover 行时显示(主对话 user-actions 同款方位) */}
             <button type="button" className="child-copy" aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={() => copyText(userText)}>
-              {copied === 'ok' ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+              {copied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
             </button>
           </div>
         )}

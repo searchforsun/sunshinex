@@ -307,14 +307,14 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     {
       id: 'copy-id',
       label: t('Copy session ID', '复制会话 ID'),
-      tail: copiedTag === 'id' ? <Check size={12} strokeWidth={2.25} aria-hidden="true" /> : undefined,
+      tail: copiedTag === 'id' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : undefined,
       keepOpen: true,
       onSelect: () => copyText(sessionId, 'id'),
     },
     {
       id: 'copy-path',
       label: t('Copy path', '复制路径'),
-      tail: copiedTag === 'path' ? <Check size={12} strokeWidth={2.25} aria-hidden="true" /> : undefined,
+      tail: copiedTag === 'path' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : undefined,
       keepOpen: true,
       onSelect: () => copyText(root ?? '', 'path'),
     },
@@ -361,7 +361,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => toggleEditorMenu(e.currentTarget)}
           >
-            <ChevronDown size={13} strokeWidth={2} />
+            <ChevronDown size={14} strokeWidth={2} />
           </button>
         </span>
         ))}
@@ -442,7 +442,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             items={editors.map((e) => ({
               id: e.id,
               label: e.name,
-              tail: e.id === defaultEditor ? <Check size={13} strokeWidth={2.25} /> : undefined,
+              tail: e.id === defaultEditor ? <Check size={14} strokeWidth={2.25} /> : undefined,
               active: e.id === defaultEditor,
               // 默认应用图标位挂 ✓(参考图口径:勾标在选中项上);点选只设默认不启动(误触根因,2d80c7e)
               icon: editorIcon(e.id, 14),

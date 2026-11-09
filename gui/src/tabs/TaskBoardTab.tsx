@@ -217,7 +217,7 @@ function TaskCard({
         <span className="tb-team-name">{group.name}</span>
         {headStamp > 0 && (
           <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
-            <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+            <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
             {shortStampMs(headStamp)}
           </span>
         )}
@@ -242,12 +242,12 @@ function TaskCard({
                   <span className={`tb-status-dot${m.busy ? ' task-status-running' : ' task-status-pending'}`} aria-hidden="true" />
                   <span className="tb-task-title">{m.name}</span>
                   <span className="tb-task-agent">
-                    <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
+                    <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
                     {m.busy ? t('busy', '忙碌') : t('idle', '空闲')}
                   </span>
                   {typeof m.createdAt === 'number' && m.createdAt > 0 && (
                     <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
-                      <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                      <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
                       {shortStampMs(m.createdAt)}
                     </span>
                   )}
@@ -276,19 +276,19 @@ function TaskCard({
                   <span className={`tb-task-title${task.status === 'cancelled' ? ' tb-struck' : ''}`}>{title}</span>
                   {agentName !== '' && (
                     <span className="tb-task-agent">
-                      <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
+                      <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
                       {agentName}
                     </span>
                   )}
                   {dur !== undefined && (
                     <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
-                      <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
+                      <AlarmClock size={14} strokeWidth={1.75} aria-hidden="true" />
                       {fmtDurMs(dur)}
                     </span>
                   )}
                   {task.createdAt > 0 && (
                     <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
-                      <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                      <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
                       {shortStampMs(task.createdAt)}
                     </span>
                   )}
@@ -309,7 +309,7 @@ function TaskCard({
                       }
                     }}
                   >
-                    <Square size={11} strokeWidth={1.75} aria-hidden="true" />
+                    <Square size={14} strokeWidth={1.75} aria-hidden="true" />
                   </button>
                 )}
               </li>
@@ -376,7 +376,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   const bar = onRefresh !== undefined && (
     <div className="insight-bar tb-board-bar">
       <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={refreshing ? t('Refreshing…', '刷新中…') : t('Refresh', '刷新')} disabled={refreshing} onClick={refresh}>
-        <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
+        <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
       </button>
       {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
     </div>

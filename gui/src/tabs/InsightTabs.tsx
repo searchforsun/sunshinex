@@ -104,7 +104,7 @@ export function ContextTab({
     <div className="insight-tab">
       <div className="insight-bar">
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -247,7 +247,7 @@ export function BgTasksTab({
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -296,7 +296,7 @@ export function BgTasksTab({
                   <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
                   {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
                   <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
-                    <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
+                    <AlarmClock size={14} strokeWidth={1.75} aria-hidden="true" />
                     {durOf(r)}
                   </span>
                   {/* 任务名优先(exec 的 purpose,2026-11-07 用户裁定「显示任务名称而不是命令原文」);命令原文留展开明细 */}
@@ -320,11 +320,11 @@ export function BgTasksTab({
                         }
                       }}
                     >
-                      <Square size={11} strokeWidth={1.75} aria-hidden="true" />
+                      <Square size={14} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   )}
                   <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
-                    <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                    <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
                     {shortStampMs(r.startedAt)}
                   </span>
                 </div>
@@ -339,7 +339,7 @@ export function BgTasksTab({
                           className="sx-changes-act"
                           label={`copy command ${r.id}`}
                           tip={copied(r.id) ? t('Copied', '已复制') : t('Copy command', '复制命令')}
-                          icon={copied(r.id) ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+                          icon={copied(r.id) ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
                           onClick={() => copyCmd(r.id, r.label)}
                         />
                       </span>
@@ -422,7 +422,7 @@ export function MemoryTab({
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -452,7 +452,7 @@ export function MemoryTab({
               <div className="mem-rowline">
                 {/* 行图标与正文 [memory] 回显同件(Database,2026-10-31 用户裁定「记忆的图标和
                     正文中的数据库图标一致」) */}
-                <Database size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
+                <Database size={14} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
                 <span
                   className="mem-body"
                   role="button"
@@ -465,7 +465,7 @@ export function MemoryTab({
                 >
                   {m.description}
                 </span>
-                <span className="mem-date"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{m.modified.slice(0, 10)}</span>
+                <span className="mem-date"><Clock size={14} strokeWidth={1.75} aria-hidden="true" />{m.modified.slice(0, 10)}</span>
                 <button
                   type="button"
                   className={`sx-changes-act mem-del${armSlug === m.slug ? ' arm' : ''}`}
@@ -482,7 +482,7 @@ export function MemoryTab({
                     }
                   }}
                 >
-                  <Trash2 size={13} strokeWidth={1.75} />
+                  <Trash2 size={14} strokeWidth={1.75} />
                 </button>
               </div>
               {expandedSlug === m.slug && (
@@ -567,7 +567,7 @@ export function LearnedSkillsTab({
     <div className="insight-tab">
       <div className="insight-bar">
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={13} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -589,7 +589,7 @@ export function LearnedSkillsTab({
           {learned.map((s) => (
             <li key={s.id} data-skill-id={s.id} className={`mem-row${expandedId === s.id ? ' open' : ''}`}>
               <div className="mem-rowline">
-                <Sparkles size={13} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
+                <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" className="mem-icon" />
                 <span
                   className="mem-body"
                   role="button"
@@ -603,7 +603,7 @@ export function LearnedSkillsTab({
                   {s.id}
                 </span>
                 {/* 创建时间(2026-10-31 用户裁定「显示创建时间等」):birthtime 回退 mtime,缺省不列 */}
-                {s.createdMs !== undefined && <span className="mem-date"><Clock size={11} strokeWidth={1.75} aria-hidden="true" />{new Date(s.createdMs).toISOString().slice(0, 10)}</span>}
+                {s.createdMs !== undefined && <span className="mem-date"><Clock size={14} strokeWidth={1.75} aria-hidden="true" />{new Date(s.createdMs).toISOString().slice(0, 10)}</span>}
                 <button
                   type="button"
                   className={`sx-changes-act mem-del${armId === s.id ? ' arm' : ''}`}
@@ -620,7 +620,7 @@ export function LearnedSkillsTab({
                     }
                   }}
                 >
-                  <Trash2 size={13} strokeWidth={1.75} />
+                  <Trash2 size={14} strokeWidth={1.75} />
                 </button>
               </div>
               {expandedId === s.id && (

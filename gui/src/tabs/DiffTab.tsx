@@ -146,19 +146,19 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
         </span>
         <span className="sx-changes-bar-actions">
           <button type="button" className="sx-changes-act" aria-label={t('Commit', '提交')} data-tip={t('Commit', '提交')} onClick={() => setCommitOpen((v) => !v)}>
-            <GitCommitVertical size={13} strokeWidth={1.75} aria-hidden="true" />
+            <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />
           </button>
           <button type="button" className="sx-changes-act" aria-label={t('Push', '推送')} data-tip={t('Push', '推送')} disabled={busy !== null} onClick={() => runGit('push')}>
             {busy === 'push' ? (
-              <Loader2 size={13} strokeWidth={1.75} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" />
+              <Loader2 size={14} strokeWidth={1.75} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" />
             ) : flash === 'push' ? (
-              <Check size={13} strokeWidth={2.25} aria-hidden="true" />
+              <Check size={14} strokeWidth={2.25} aria-hidden="true" />
             ) : (
-              <Upload size={13} strokeWidth={1.75} aria-hidden="true" />
+              <Upload size={14} strokeWidth={1.75} aria-hidden="true" />
             )}
           </button>
           <button type="button" className="sx-changes-act" aria-label={t('Refresh', '刷新')} data-tip={t('Refresh', '刷新')} onClick={refresh}>
-            <RefreshCw size={13} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />
+            <RefreshCw size={14} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />
           </button>
         </span>
       </div>
@@ -178,9 +178,9 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
             </button>
             <button type="button" className="primary" disabled={busy !== null || commitMsg.trim() === ''} onClick={() => runGit('commit')}>
               {busy === 'commit' ? (
-                <><Loader2 size={13} strokeWidth={1.75} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" /> {t('Committing…', '提交中…')}</>
+                <><Loader2 size={14} strokeWidth={1.75} style={{ animation: 'sx-spin 1s linear infinite' }} aria-hidden="true" /> {t('Committing…', '提交中…')}</>
               ) : flash === 'commit' ? (
-                <><Check size={13} strokeWidth={2.25} aria-hidden="true" /> {t('Committed', '已提交')}</>
+                <><Check size={14} strokeWidth={2.25} aria-hidden="true" /> {t('Committed', '已提交')}</>
               ) : (
                 t('Commit', '提交')
               )}
@@ -233,7 +233,7 @@ export function DiffTab({ conn, sessionId, params, onOpenFile }: DiffTabProps): 
                   <ChangeStat {...changeCounts(f)} />
                 </span>
                 <span className="sx-change-toggle" aria-hidden="true">
-                  {open ? <ChevronUp size={13} strokeWidth={1.75} /> : <ChevronDown size={13} strokeWidth={1.75} />}
+                  {open ? <ChevronUp size={14} strokeWidth={1.75} /> : <ChevronDown size={14} strokeWidth={1.75} />}
                 </span>
               </div>
               {open && (

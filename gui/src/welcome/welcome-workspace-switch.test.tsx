@@ -51,3 +51,16 @@ describe('欢迎页工作区切换:/ 与 + 技能清单随目录更换', () => {
     await waitFor(() => expect(result.current.welcomeSkills.map((s) => s.id)).toEqual(['beta']));
   });
 });
+
+describe('欢迎页 / 技能清单停用过滤', () => {
+  it('disabled 行不进 / 与 + 候选(与会话内同口径)', async () => {
+    const conn = {
+      commands: async () => ({ commands: [], descriptions: {}, supported: [] }),
+      skillsGroups: async () => ({ groups: [{ source: 'project', skills: [{ id: 'on-skill', description: 'live' }, { id: 'off-skill', description: 'off', disabled: true }] }] }),
+    } as unknown as WelcomeComposerConn;
+    const ref = createRef<HTMLTextAreaElement>();
+    const { result } = renderHook(() => useWelcomeSlash(conn, '/a', '', ref));
+    act(() => result.current.fetchWelcomeSkills(true));
+    await waitFor(() => expect(result.current.welcomeSkills.map((s) => s.id)).toEqual(['on-skill']));
+  });
+});

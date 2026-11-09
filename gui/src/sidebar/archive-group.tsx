@@ -75,7 +75,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
               <span className="sx-archive-time">{relTime(r.updatedAt)}</span>
             </span>
             <span className="sx-archive-slug-row">
-              <Folder size={11} strokeWidth={1.75} aria-hidden="true" />
+              <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
               <span className="sx-archive-slug">{pathBasename(r.root)}</span>
               {/* 动作钮常驻第二行右缘(2026-10-21 用户裁定:非 hover 显隐) */}
               <span className="session-row-actions">
@@ -105,7 +105,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
                         onUnarchive(r.id);
                       }}
                     >
-                      <ArchiveRestore size={12} strokeWidth={1.75} />
+                      <ArchiveRestore size={14} strokeWidth={1.75} />
                     </button>
                     <button
                       type="button"
@@ -117,7 +117,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
                         setConfirmId(r.id);
                       }}
                     >
-                      <Trash2 size={12} strokeWidth={1.75} />
+                      <Trash2 size={14} strokeWidth={1.75} />
                     </button>
                   </>
                 )}

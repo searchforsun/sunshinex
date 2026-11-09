@@ -630,12 +630,12 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
           disabled={builtin ? wvTarget === null : active === null}
           onClick={reload}
         >
-          <RotateCw size={13} strokeWidth={1.75} aria-hidden="true" />
+          <RotateCw size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
         {/* 2026-11-07 用户裁定:−/%/+ webview 内容缩放钮撤下——非自由尺寸=侧栏真实尺寸无缩放;
             缩放语义单点收敛到自由尺寸行的「倍率」下拉(视口显示倍率,不改页内 ppi) */}
         <div className="sx-web-url-box">
-          <Lock size={11} strokeWidth={1.75} aria-hidden="true" />
+          <Lock size={14} strokeWidth={1.75} aria-hidden="true" />
           <input
             className="sx-web-url"
             aria-label="web url input"
@@ -676,7 +676,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
                     setMoreOpen(false);
                   }}
                 >
-                  <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
+                  <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />
                   {t('Open in system browser', '在默认浏览器中打开')}
                 </button>
                 {devtoolsBridge !== undefined && (
@@ -691,7 +691,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
                       setMoreOpen(false);
                     }}
                   >
-                    <Bug size={12} strokeWidth={1.75} aria-hidden="true" />
+                    <Bug size={14} strokeWidth={1.75} aria-hidden="true" />
                     {t('Open DevTools', '打开调试工具')}
                   </button>
                 )}
@@ -710,7 +710,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
             data-tip={t('Pick element', '选取元素')}
             onClick={() => void pickElement()}
           >
-            <MousePointerClick size={13} strokeWidth={1.75} aria-hidden="true" />
+            <MousePointerClick size={14} strokeWidth={1.75} aria-hidden="true" />
           </button>
         )}
         {/* G14.2xx 自由尺寸开关(设备模拟形):开=缺省 16:9 标准档 1280×720 定格为视口 px(此后
@@ -729,7 +729,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
             setDeviceMode(!deviceMode);
           }}
         >
-          <MonitorSmartphone size={13} strokeWidth={1.75} aria-hidden="true" />
+          <MonitorSmartphone size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
       {deviceMode && (
@@ -778,7 +778,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
               onClick={() => setScaleOpen((v) => !v)}
             >
               {devFit ? t('Fit window', '适应窗口') : `${Math.round(devZoom * 100)}%`}
-              <ChevronDown size={11} strokeWidth={1.75} aria-hidden="true" />
+              <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
             </button>
             {scaleOpen && (
               <div className="sx-web-dev-menu" role="menu" aria-label={t('Scale', '缩放')}>

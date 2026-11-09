@@ -186,7 +186,7 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
               onStopTask?.(data.id);
             }}
           >
-            <Square size={11} strokeWidth={1.75} aria-hidden="true" />
+            <Square size={14} strokeWidth={1.75} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -194,13 +194,13 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
         <div className="tb-dag-node-meta">
           {data.agent !== '' && (
             <span className="tb-dag-node-agent">
-              <Bot size={11} strokeWidth={1.75} aria-hidden="true" />
+              <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
               {data.agent}
             </span>
           )}
           {data.durationMs !== undefined && (
             <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
-              <AlarmClock size={11} strokeWidth={1.75} aria-hidden="true" />
+              <AlarmClock size={14} strokeWidth={1.75} aria-hidden="true" />
               {fmtDurMs(data.durationMs)}
             </span>
           )}

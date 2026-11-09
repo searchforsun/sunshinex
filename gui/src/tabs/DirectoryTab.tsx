@@ -417,17 +417,17 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
           <span className="sx-tree-head-name" data-tip={root}>{wsName}</span>
           <span className="sx-tree-head-actions">
             <button type="button" className="sx-iconbtn" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={refresh}>
-              <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
+              <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
             </button>
             <button type="button" className="sx-iconbtn" aria-label="collapse all" data-tip={t('Collapse All', '全部折叠')} onClick={collapseAll}>
-              <ChevronsDownUp size={13} strokeWidth={1.75} />
+              <ChevronsDownUp size={14} strokeWidth={1.75} />
             </button>
           </span>
         </div>
       )}
       {/* 文件过滤(VSCode「搜索文件」同位;G14.2xx 起非空即全层级服务端搜索) */}
       <div className="sx-tree-filter">
-        <Search size={13} strokeWidth={1.75} aria-hidden="true" />
+        <Search size={14} strokeWidth={1.75} aria-hidden="true" />
         <input
           aria-label="filter files"
           value={filter}
@@ -436,7 +436,7 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
         />
         {filter !== '' && (
           <button type="button" aria-label="clear filter" onClick={() => setFilter('')}>
-            <X size={13} strokeWidth={1.75} />
+            <X size={14} strokeWidth={1.75} />
           </button>
         )}
       </div>

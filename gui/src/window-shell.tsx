@@ -36,7 +36,7 @@ export function WindowControls({ showSideToggle, onToggleRightSidebar }: { showS
             <Minus size={14} strokeWidth={1.75} />
           </button>
           <button type="button" className="sx-winbtn" aria-label={maximized ? 'restore window' : 'maximize window'} onClick={() => bridge.toggleMaximize()}>
-            {maximized ? <Copy size={12} strokeWidth={1.75} /> : <Square size={12} strokeWidth={1.75} />}
+            {maximized ? <Copy size={14} strokeWidth={1.75} /> : <Square size={14} strokeWidth={1.75} />}
           </button>
           <button type="button" className="sx-winbtn" aria-label="close window" onClick={() => bridge.close()}>
             <X size={14} strokeWidth={1.75} />

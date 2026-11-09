@@ -84,7 +84,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
           disabled={refreshing}
           onClick={refresh}
         >
-          <RefreshCw size={13} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
         </button>
       </div>
       <div className="todo-cards" aria-label="todo cards">
@@ -100,7 +100,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
           return (
             <section key={b.key} data-batch-key={b.key} className={'todo-card'}>
               <button type="button" className="todo-card-head" aria-expanded={open} onClick={() => toggle(b.key)}>
-                {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
+                {open ? <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />}
                 <span className="todo-card-count">{`${done}/${b.items.length}`}</span>
                 <span className="todo-card-goal">
                   <span
@@ -118,7 +118,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
                   </span>
                 </span>
                 <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
-                  <Clock size={11} strokeWidth={1.75} aria-hidden="true" />
+                  <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
                   {shortStampMs(b.ts)}
                 </span>
               </button>

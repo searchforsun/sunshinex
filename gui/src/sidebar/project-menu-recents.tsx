@@ -52,8 +52,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
           }}
         >
           <span>{t('Recents', '最近会话')}</span>
-          <ChevronRight
-            size={12}
+          <ChevronRight size={14}
             strokeWidth={2}
             aria-hidden="true"
             className={`sx-side-chev${recentsOpen ? ' open' : ''}`}

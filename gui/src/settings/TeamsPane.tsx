@@ -388,7 +388,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                       >
                         <summary>
                           {t('Details', '详情')}
-                          <ChevronDown size={12} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
+                          <ChevronDown size={14} strokeWidth={1.75} className="sx-disc-chev" aria-hidden="true" />
                         </summary>
                         <div className="sx-team-detail">
                           {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}

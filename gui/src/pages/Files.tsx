@@ -227,7 +227,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
             <div className="files-breadcrumb" aria-label="file path">
               {segments.map((seg, i) => (
                 <span key={`${seg}:${i}`} className="files-crumb">
-                  {i > 0 && <ChevronRight size={12} strokeWidth={1.75} className="files-crumb-sep" aria-hidden="true" />}
+                  {i > 0 && <ChevronRight size={14} strokeWidth={1.75} className="files-crumb-sep" aria-hidden="true" />}
                   {/* 2026-11-04 用户裁定:末段文件名前补回文件图标(面包屑曾一度丢失) */}
                   {i === segments.length - 1 && i > 0 && load.file !== null && (
                     <span className="files-crumb-ico" aria-hidden="true">
@@ -272,16 +272,16 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                 {
                   id: 'copy-abs',
                   label: t('Copy absolute path', '复制绝对路径'),
-                  icon: <Copy size={13} strokeWidth={1.75} />,
-                  tail: pathCopied === 'abs' ? <Check size={12} strokeWidth={2.25} /> : undefined,
+                  icon: <Copy size={14} strokeWidth={1.75} />,
+                  tail: pathCopied === 'abs' ? <Check size={14} strokeWidth={2.25} /> : undefined,
                   keepOpen: true,
                   onSelect: () => copyPath(load.file!.path, 'abs'),
                 },
                 {
                   id: 'copy-rel',
                   label: t('Copy relative path', '复制相对路径'),
-                  icon: <Copy size={13} strokeWidth={1.75} />,
-                  tail: pathCopied === 'rel' ? <Check size={12} strokeWidth={2.25} /> : undefined,
+                  icon: <Copy size={14} strokeWidth={1.75} />,
+                  tail: pathCopied === 'rel' ? <Check size={14} strokeWidth={2.25} /> : undefined,
                   keepOpen: true,
                   onSelect: () => copyPath(relOf(), 'rel'),
                 },
@@ -335,7 +335,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                   data-tip={preview ? t('Source', '源码') : t('Preview', '预览')}
                   onClick={() => setPreview((v) => !v)}
                 >
-                  {preview ? <CodeXml size={13} strokeWidth={1.75} /> : <Eye size={13} strokeWidth={1.75} />}
+                  {preview ? <CodeXml size={14} strokeWidth={1.75} /> : <Eye size={14} strokeWidth={1.75} />}
                 </button>
               )}
               {!isMd && !isImage && (
@@ -347,7 +347,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                   data-tip={wrap ? t('Overflow scroll', '横向滚动') : t('Wrap long lines', '自动换行')}
                   onClick={() => setWrap((v) => !v)}
                 >
-                  <WrapText size={13} strokeWidth={1.75} className={wrap ? 'code-wrap-on' : undefined} />
+                  <WrapText size={14} strokeWidth={1.75} className={wrap ? 'code-wrap-on' : undefined} />
                 </button>
               )}
               {!isImage && (
@@ -359,7 +359,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                   onClick={copyContent}
                 >
                   {/* 2026-11-06 用户裁定:复制回显与正文代码块同款——点击后图标换 ✓(1.5s 自回),不只 tooltip 变字 */}
-                  {copied === 'ok' ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={1.75} />}
+                  {copied === 'ok' ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
                 </button>
               )}
             </div>

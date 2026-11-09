@@ -180,7 +180,7 @@ export function ArchiveConfirmButton(props: {
         props.onArm();
       }}
     >
-      <Archive size={13} strokeWidth={1.75} />
+      <Archive size={14} strokeWidth={1.75} />
     </button>
   );
 }
@@ -228,19 +228,19 @@ function SessionHoverCard(props: {
       )}
       {branch !== undefined && branch !== '' && (
         <div className="sx-sess-card-row">
-          <GitBranch size={12} strokeWidth={1.75} />
+          <GitBranch size={14} strokeWidth={1.75} />
           <span>{branch}</span>
         </div>
       )}
       {stats.length > 0 && (
         <div className="sx-sess-card-row">
-          <Layers size={12} strokeWidth={1.75} />
+          <Layers size={14} strokeWidth={1.75} />
           <span>{stats.join(' · ')}</span>
         </div>
       )}
       {createdAt !== undefined && (
         <div className="sx-sess-card-row">
-          <Clock size={12} strokeWidth={1.75} />
+          <Clock size={14} strokeWidth={1.75} />
           <span>{t(`created ${shortLocalTime(createdAt)}`, `创建于 ${shortLocalTime(createdAt)}`)}</span>
         </div>
       )}

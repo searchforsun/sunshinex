@@ -365,14 +365,14 @@ const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string; lang?:
             className="sx-tip-right"
             tip={wrap ? t('Overflow scroll', '横向滚动') : t('Wrap long lines', '自动换行')}
             label="toggle code wrap"
-            icon={<WrapText size={12} strokeWidth={1.75} aria-hidden="true" className={wrap ? 'code-wrap-on' : undefined} />}
+            icon={<WrapText size={14} strokeWidth={1.75} aria-hidden="true" className={wrap ? 'code-wrap-on' : undefined} />}
             onClick={() => setWrap((v) => !v)}
           />
           <TipButton
             className="sx-tip-right"
             tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
             label="copy code"
-            icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            icon={status === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
             onClick={() => copy(code)}
           />
         </span>
@@ -559,13 +559,13 @@ export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: str
       {renderOk !== null && !draft && (
         <div className="mermaid-actions">
           {renderOk && (
-            <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
+            <TipButton className="sx-tip-right" tip={t('Zoom', '放大')} label="zoom mermaid" icon={<Maximize2 size={14} strokeWidth={1.75} aria-hidden="true" />} onClick={() => setZoom(true)} />
           )}
           <TipButton
             className="sx-tip-right"
             tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
             label="copy mermaid"
-            icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+            icon={status === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
             onClick={() => copyChart(errorMsg !== null ? `${errorMsg}\n\n${chart}` : chart)}
           />
         </div>
@@ -594,7 +594,7 @@ export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: str
               <span className="mermaid-lb-zoom">{Math.round(view.s * 100)}%</span>
               <button type="button" aria-label={t('Zoom in', '放大')} onClick={() => zoomAt(1.2)}>+</button>
               <button type="button" aria-label={t('Reset view', '复位')} onClick={() => setView({ x: 0, y: 0, s: 1 })}>
-                <Square size={12} strokeWidth={1.75} aria-hidden="true" />
+                <Square size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               <button type="button" aria-label={t('Close', '关闭')} onClick={() => setZoom(false)}>✕</button>
             </div>

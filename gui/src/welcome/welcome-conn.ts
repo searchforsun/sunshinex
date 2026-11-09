@@ -17,7 +17,7 @@ export interface WelcomeComposerConn {
   /** + 附加面板数据源(G12 三轮;文件区需会话——欢迎页不传 sessionId 不渲染) */
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
   skillsGroups(root?: string): Promise<{
-    groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string }> }>;
+    groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string; disabled?: boolean }> }>;
   }>;
   /** $/# 引用面板数据源(2026-11-05;可选——旧测试桩/降级面缺名即面板不渲染,守卫口径同 onConfigChanged?) */
   agentsView?(root?: string): Promise<{ builtins: Array<{ role: string; name: string }>; view: { entries: Array<{ id: string; name: string; shadowed?: boolean }>; warnings: string[] } }>;

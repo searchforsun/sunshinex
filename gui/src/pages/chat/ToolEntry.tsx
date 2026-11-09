@@ -42,19 +42,19 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 function ToolIcon({ verb }: { verb: string }): JSX.Element {
   // computer-use 全族=鼠标点击件(2026-10-27 二次裁定:无专属色,className 留语义/查询锚)
   if (verb.startsWith(COMPUTER_USE_PREFIX)) {
-    return <MousePointerClick size={12} strokeWidth={1.75} className="tool-icon-controlling" aria-hidden="true" />;
+    return <MousePointerClick size={14} strokeWidth={1.75} className="tool-icon-controlling" aria-hidden="true" />;
   }
   // 浏览器操作全族(browser-use 插件,工具名 browser_*)=浏览器窗件(2026-10-31 用户裁定:
   // 「换成浏览器相关的」——该插件即浏览器专用,通用拼图件不达意;AppWindow 与 webfetch 的
   // Globe 区分:一个是浏览器窗,一个是网页抓取)
   const mcp = mcpToolParts(verb);
   if (mcp !== null && mcp.tool.startsWith('browser_')) {
-    return <AppWindow size={12} strokeWidth={1.75} className="tool-icon-browser" aria-hidden="true" />;
+    return <AppWindow size={14} strokeWidth={1.75} className="tool-icon-browser" aria-hidden="true" />;
   }
   // MCP 工具=Puzzle 拼图件(业界 MCP 集成的通用视觉母题,区别于内置工具的扳手兜底)
-  if (mcp !== null) return <Puzzle size={12} strokeWidth={1.75} aria-hidden="true" />;
+  if (mcp !== null) return <Puzzle size={14} strokeWidth={1.75} aria-hidden="true" />;
   const Icon = TOOL_ICONS[verb] ?? Wrench;
-  return <Icon size={12} strokeWidth={1.75} aria-hidden="true" />;
+  return <Icon size={14} strokeWidth={1.75} aria-hidden="true" />;
 }
 
 /** G6 工具条目(折叠态一行/点击展开):write/edit 两件(call 名判定——事件 text 即
@@ -761,7 +761,7 @@ export const ToolEntryView = memo(function ToolEntryView({
       >
         <ToolIcon verb={toolName} />
         {collapsed}
-        {expandable && <ChevronRight className="tool-chev" size={12} strokeWidth={1.75} aria-hidden="true" />}
+        {expandable && <ChevronRight className="tool-chev" size={14} strokeWidth={1.75} aria-hidden="true" />}
       </button>
       {/* 折叠壳外常驻图片缩略行退役(2026-10-31 用户裁定「去掉常驻显示的图片,保留内部的就可以」):
           截图只在展开体回显(ec9159c 面),折叠行不占版面;点击行展开即看 */}

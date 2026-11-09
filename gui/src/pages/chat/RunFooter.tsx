@@ -27,10 +27,10 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
       <TipButton
         tip={status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
         label="copy reply"
-        icon={status === 'ok' ? <Check size={12} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={12} strokeWidth={1.75} aria-hidden="true" />}
+        icon={status === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
         onClick={() => copy(text)}
       />
-      {onFork !== undefined && run !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={12} strokeWidth={1.75} aria-hidden="true" />} onClick={() => onFork(run.key)} />}
+      {onFork !== undefined && run !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={14} strokeWidth={1.75} aria-hidden="true" />} onClick={() => onFork(run.key)} />}
       {(run?.steps !== undefined || run?.tokens !== undefined) && (
         <span className="run-stats">
           {run?.steps !== undefined && <span>{t(`${run.steps} steps`, `${run.steps} 步`)}</span>}
@@ -72,7 +72,7 @@ export function RunChangesBar({
     <div className="run-changes" aria-label={t('run changes', '本轮改动')}>
       <div className="run-changes-head">
         <button type="button" className="run-changes-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-          {open ? <ChevronDown size={13} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={13} strokeWidth={1.75} aria-hidden="true" />}
+          {open ? <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />}
           <span>
             {t(`${visible.length} files changed`, `${visible.length} 个文件已更改`)}
           </span>
