@@ -11,7 +11,7 @@
  * 参数:
  *   --dir <path>     桌面端安装目录(默认 D:\MyWorkSoftware\Sunshinex;须与首次安装路径一致,
  *                    NSIS /D 大小写不敏感但路径必须真实存在父目录)
- *   --setup <path>   安装包路径(reinstall 用,默认 shell/release/sunshinex-<ver>-setup.exe 取最新)
+ *   --setup <path>   安装包路径(reinstall 用,默认取 shell/release 下本机系统/架构的最新安装包,如 sunshinex-<ver>-win-x64-setup.exe)
  *   --tests          verify 附带全量 vitest(既有基线红面见 CLAUDE.md,以基线对照为准)
  *   --no-build       deploy/reinstall 跳过构建,直接用现有产物
  *   --pristine       净装:清用户态历史——%APPDATA%\sunshinex-shell(Electron 缓存/Local Storage/
@@ -33,6 +33,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { nativeSetup, nativeTarget } from './release-artifacts.mjs';
 import process from 'node:process';
 
 const REPO = path.resolve(new URL('..', import.meta.url).pathname.replace(/^\/(\w):/, '$1:'));
@@ -142,19 +143,16 @@ const wipeAppState = () => {
 const latestSetup = () => {
   if (opt('--setup')) return opt('--setup');
   const releaseDir = path.join(SHELL_DIR, 'release');
-  // 按修改时间取最新:readdir 字典序会误选(0.10 < 0.9 字典序倒挂),历史包就这么混进安装链
-  const setups = existsSync(releaseDir)
-    ? readdirSync(releaseDir)
-        .filter((f) => f.startsWith('sunshinex-') && f.endsWith('-setup.exe'))
-        .map((f) => ({ f, m: statSync(path.join(releaseDir, f)).mtimeMs }))
-        .sort((a, b) => b.m - a.m)
-    : [];
-  if (setups.length === 0) {
-    console.error('✗ shell/release 下无安装包;先跑 reinstall 的构建或手动提供 --setup');
+  // 命名单点解析(2026-11-09 多系统/架构命名):只认本机系统/架构的安装包——部署装错架构的包
+  // 必然起不来;同版本/多版本并存按 mtime 最新(字典序会误选 0.10 < 0.9,历史教训)
+  const setup = existsSync(releaseDir) ? nativeSetup(releaseDir) : undefined;
+  if (setup === undefined) {
+    const t = nativeTarget();
+    console.error(`✗ shell/release 下无 ${t.os}-${t.arch} 安装包;先跑 reinstall 的构建或手动提供 --setup`);
     process.exit(1);
   }
-  console.log(`· 选用安装包(按 mtime 最新): ${setups[0].f} (${new Date(setups[0].m).toLocaleString()})`);
-  return path.join(releaseDir, setups[0].f);
+  console.log(`· 选用安装包(本机 ${nativeTarget().os}-${nativeTarget().arch},按 mtime 最新): ${setup.name} (${new Date(statSync(setup.file).mtimeMs).toLocaleString()})`);
+  return setup.file;
 };
 
 const verify = () => {

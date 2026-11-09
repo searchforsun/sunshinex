@@ -5,7 +5,7 @@
 appId: dev.sunshinex.app
 productName: Sunshinex
 directories:
-  # 打包产物落 shell/release/（根 .gitignore 已忽略；NSIS 单安装包 sunshinex-<ver>-setup.exe）
+  # 打包产物落 shell/release/（根 .gitignore 已忽略；安装包 sunshinex-<ver>-<os>-<arch>-setup.exe）
   output: release
 # asar 默认开：入包仅壳主进程束 out/main.cjs + package.json（main 指向）。
 # shell 无生产依赖（devDeps 不入包），daemon 三资源全走 extraResources 平铺 resources/——
@@ -37,10 +37,16 @@ extraResources:
       - '!**/test/**'
       - '!**/*.test.ts'
       - '!**/*.test.js'
+# 产物命名单点（2026-11-09 对齐 electron-builder 标准写法 名称-版本-系统-架构，Mattermost 等同款）：
+# ${os}=win/mac/linux、${arch}=x64/arm64（deb/rpm 等自动换发行版惯用名）。显式模板下默认架构
+# 不被省略——每个产物都带系统+架构，多架构同版本并存不撞名
+artifactName: sunshinex-${version}-${os}-${arch}.${ext}
 win:
   icon: assets/icon.ico
   target:
-    - nsis
+    - target: nsis
+      arch:
+        - x64
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -48,8 +54,8 @@ nsis:
   # 两处均未勾且无兜底;显式声明防再犯)
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  # 业界惯例命名（kebab-case 无空格，URL/CLI 友好）：sunshinex-<ver>-setup.${ext}
-  artifactName: sunshinex-${version}-setup.${ext}
+  # 安装程序加 -setup 后缀（与将来的便携版区分）；其余同顶层模板
+  artifactName: sunshinex-${version}-${os}-${arch}-setup.${ext}
 # node-pty 1.1.0 为 N-API（node-addon-api）构建，ABI 跨 Electron/Node 版本稳定；
 # H1/H2 壳冒烟（dev 态 Electron 主进程 in-process 加载同一二进制）已实证免重建——
 # 关闭 electron-builder 重编译（npmRebuild 走 node-gyp 全量重建，win 下慢且引入工具链依赖）

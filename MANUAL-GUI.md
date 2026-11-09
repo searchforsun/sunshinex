@@ -4,7 +4,7 @@
 
 ## 安装
 
-下载 `sunshinex-<版本>-setup.exe`（GitHub Releases），双击安装（可选安装目录，无需管理员），开始菜单启动（安装后应用显示名为 Sunshinex）。
+下载对应系统与处理器的安装包（GitHub Releases，如 Windows x64 选 `sunshinex-<版本>-win-x64-setup.exe`），双击安装（可选安装目录，无需管理员），开始菜单启动（安装后应用显示名为 Sunshinex）。
 
 升级：下载新版 setup 直接安装，覆盖旧版。
 

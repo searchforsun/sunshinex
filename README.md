@@ -131,7 +131,7 @@ scripts/release.mjs --dry-run                  # 只验证 + 打包预览，不�
 scripts/release.mjs --version 0.6.0 --clobber  # 同版本重发（覆盖附件，须显式授权）
 scripts/release.mjs --no-gui                   # 只发 TUI tgz（跳过 GUI 安装包构建上传）
 
-一次发版 = 同一 Release 同一 tag 上传两类安装包：TUI tgz（sunshinex-agent-<ver>.tgz）+ GUI 单安装包（sunshinex-<ver>-setup.exe，NSIS，业界 kebab 命名；版本随根 package.json 单源同步；验证链含 GUI/e2e/壳冒烟与安装包静默装冒烟；本机网络受限带双镜像 env，见 MANUAL-GUI 开发者节）
+一次发版 = 同一 Release 同一 tag 上传两类安装包：TUI tgz（sunshinex-agent-<ver>.tgz）+ GUI 安装包（按系统/架构各一个，如 sunshinex-<ver>-win-x64-setup.exe；命名=名称-版本-系统-架构，单点 scripts/release-artifacts.mjs；版本随根 package.json 单源同步；验证链含 GUI/e2e/壳冒烟与安装包静默装冒烟；本机网络受限带双镜像 env，见 MANUAL-GUI 开发者节）
 ```
 
 - 版本语义：默认不覆盖、不递增，每个版本一个新 tag + 新安装链接，旧链接永久可回溯。

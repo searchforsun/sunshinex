@@ -47,7 +47,7 @@ export function choiceAdapterConfig(
 }
 
 export class ModelSwitcher implements ModelAdapter {
-  private readonly defs: ModelSwitcherOpts;
+  private defs: ModelSwitcherOpts;
   private readonly def: ModelAdapter;
   private readonly choiceAdapters = new Map<string, ModelAdapter>();
   private selectedId?: string;
@@ -108,6 +108,16 @@ export class ModelSwitcher implements ModelAdapter {
     if (!this.choiceAdapters.has(id)) return false;
     this.selectedId = id;
     return true;
+  }
+
+  /** 配置热重载（原地换内芯，持有者引用不变）：按新清单重建全部源内芯——密钥/窗口/旋钮在重载时刻解析，
+   *  启动后才写入的配置即刻生效。选择口径与装配期一致：现选择仍在场保留，否则切新清单首项，清单空回缺省主适配器 */
+  reload(choices: readonly ModelChoice[]): void {
+    this.defs = { ...this.defs, choices };
+    this.choiceAdapters.clear();
+    for (const c of choices) this.choiceAdapters.set(c.id, this.buildAdapter(c));
+    if (this.selectedId !== undefined && this.choiceAdapters.has(this.selectedId)) return;
+    this.selectedId = choices[0]?.id;
   }
 
   async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {

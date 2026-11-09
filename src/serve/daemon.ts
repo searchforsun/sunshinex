@@ -69,6 +69,8 @@ export type { ApprovalFrame, AskFrame, ResetFrame, ConfigChangedFrame, DaemonFra
 export interface GuiDaemonOpts {
   model: ModelAdapter;
   staticRoot?: string;
+  /** providers 装载根（与 assembleGuiModel 装配期同一根；配置热重载按它重读清单）——缺省 process.cwd() */
+  providerRoot?: string;
 }
 
 /** start 入参：port 缺省 0（临时端口，返回实际监听值）；token 缺省随机 24 字节 hex（规格 §4.3） */
@@ -192,10 +194,12 @@ export class GuiDaemon {
   /** M2 内置浏览器融合面(壳内 CDP facade,只暴露侧栏 webview):electron 在场才启,纯 node 降级 */
   private builtinFacade: { facade: import('./cdp-facade').BuiltinFacade; ws: string } | undefined;
   private builtinMetaTimer: ReturnType<typeof setInterval> | undefined;
+  private readonly providerRoot: string;
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
     this.model = opts.model;
+    this.providerRoot = opts.providerRoot ?? process.cwd();
   }
 
   /**
@@ -363,7 +367,12 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       this.watcher.suppress(resource, scope, root); // 抑制 watcher 事件源（防自触回声双发）
       this.broadcastFrame({ kind: 'config-changed', resource, scope, root }); // 帧下行由直发承担
     });
-    this.watcher.onChange((c) => this.broadcastFrame({ kind: 'config-changed', ...c }));
+    this.watcher.onChange((c) => {
+      // 外部编辑（编辑器直改 settings.json）：先重装 env 链+刷新模型层，再下行帧——前端据帧重拉时读到的已是新态。
+      // 全局面变更锚 daemon 自身装载根（与启动期 loadSettingsChain 同组成，不丢启动时装入的项目槽、不凭空换项目链）
+      if (c.resource === 'settings') this.reloadSettingsChain(c.root ?? this.providerRoot);
+      this.broadcastFrame({ kind: 'config-changed', ...c });
+    });
     // M2 融合面启动(尽力而为:electron 缺场/端口失败静默降级——插件 builtin 档回落旧桥路径);
     // 在场即向注册工作区落融合 meta 并周期重写(新工作区/重启端口漂移自愈)
     const startFacadeOnce = (): void => {
@@ -1097,6 +1106,21 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       } catch (err) {
         console.error(`[serve] settings reload failed (${filePath}):`, err instanceof Error ? err.message : String(err));
       }
+    }
+    this.refreshModelLayer(root);
+  }
+
+  /** 模型层随配置热重载：切换器在启动时按当时 settings 冻结 choices 与各源密钥——env 重装后须原地重建内芯，
+   *  否则欢迎页（实时读盘）看得到的 providers，会话发送时却回落缺省内芯报「API key 未配置」。
+   *  非切换器装配（单模型形态）无清单可刷，跳过；providers 解析失败旁路不击穿写回执 */
+  private refreshModelLayer(root: string | undefined): void {
+    if (!(this.model instanceof ModelSwitcher)) return;
+    try {
+      const providers = loadProviders(root ?? this.providerRoot);
+      for (const w of providers.warnings) console.error(`[serve] ${w}`);
+      this.model.reload(providers.choices);
+    } catch (err) {
+      console.error('[serve] model reload failed:', err instanceof Error ? err.message : String(err));
     }
   }
 

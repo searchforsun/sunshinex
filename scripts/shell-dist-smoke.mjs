@@ -11,6 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { nativeSetup, nativeTarget } from './release-artifacts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELEASE = path.join(ROOT, 'shell', 'release');
@@ -24,16 +25,13 @@ const die = (msg) => {
   process.exit(1);
 };
 
-// 1) 定位最新 setup.exe（release/ 下 sunshinex-<ver>-setup.exe，多版本取 mtime 最新）
+// 1) 定位本机系统/架构的最新安装包（命名单点 release-artifacts；冒烟只能测本机能跑的包——
+//    跨架构产物由各自平台的冒烟承担。同版本/多版本并存取 mtime 最新）
 if (!fs.existsSync(RELEASE)) die(`release/ 不存在（${RELEASE}）——先构建：${MIRRORS_HINT}`);
-const setups = fs
-  .readdirSync(RELEASE)
-  .filter((f) => /^sunshinex-[\d.]+-setup\.exe$/i.test(f))
-  .map((f) => ({ f, mtime: fs.statSync(path.join(RELEASE, f)).mtimeMs }))
-  .sort((a, b) => b.mtime - a.mtime);
-if (setups.length === 0) die(`release/ 未找到 sunshinex-<ver>-setup.exe——先构建：${MIRRORS_HINT}`);
-const SETUP = path.join(RELEASE, setups[0].f);
-console.log(`dist-smoke: 安装包 ${setups[0].f}（${Math.round(fs.statSync(SETUP).size / 1024 / 1024)}MB）`);
+const setup = nativeSetup(RELEASE);
+if (setup === undefined) die(`release/ 未找到本机（${nativeTarget().os}-${nativeTarget().arch}）安装包——先构建：${MIRRORS_HINT}`);
+const SETUP = setup.file;
+console.log(`dist-smoke: 安装包 ${setup.name}（${Math.round(fs.statSync(SETUP).size / 1024 / 1024)}MB）`);
 
 // 2) 静默装到临时目录（/D 路径必须无空格不引号——含空格即 fail-fast 提示，不静默错装）
 const TARGET = path.join(RELEASE, '.smoke-install');

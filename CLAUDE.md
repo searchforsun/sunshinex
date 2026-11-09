@@ -68,7 +68,7 @@ node scripts/deploy-gui.mjs reinstall --pristine    # 净装：连用户态历�
 
 ```bash
 NODE_OPTIONS=--use-system-ca pnpm shell:dist          # 全链单命令：版本同步→主仓 build→gui build→壳 esbuild→electron-builder 出 NSIS 包
-./shell/release/sunshinex-<version>-setup.exe /S      # 静默重装（沿用上次安装目录，装毕自启新实例）
+./shell/release/sunshinex-<version>-win-x64-setup.exe /S   # 静默重装（沿用上次安装目录，装毕自启新实例）
 ```
 
 - **必须带 `NODE_OPTIONS=--use-system-ca`**：electron-builder 打包期要下载打包组件，走 Node TLS；缺它证书校验失败 `ELIFECYCLE exit 1`（本机代理环境实测）。

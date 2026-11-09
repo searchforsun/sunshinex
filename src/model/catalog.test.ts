@@ -109,6 +109,61 @@ test('切换后调用走新内芯（持有者引用不变即生效——外壳�
   assert.equal((await holderRef.chat({ messages: [] })).content, 'via-default', '复位回缺省内芯');
 });
 
+// ── 配置热重载（2026-11-09 用户实测：欢迎页读到 providers、发送后「SUNSHINEX_API_KEY is not configured」——
+//    切换器在 daemon 启动时冻结 choices 与各源密钥，之后的配置变更只刷 env/前端，模型层不跟）──
+test('reload：空清单启动后补配置 → choices 刷新、未选态切首项（与装配期 choices[0] 口径一致），持有者引用不变', async () => {
+  class FakeSwitcher extends ModelSwitcher {
+    protected buildAdapter(choice: ModelChoice): ModelAdapter {
+      return new ScriptedAdapter([`{"done":true,"reply":"via-${choice.id}"}`]);
+    }
+  }
+  const sw = new FakeSwitcher({ choices: [], default: new ScriptedAdapter(['{"done":true,"reply":"via-default"}']) });
+  assert.equal(sw.currentId(), undefined, '启动期无 providers：回落缺省内芯');
+  sw.reload(CHOICES);
+  assert.deepEqual(sw.choices(), CHOICES, 'choices 随重载刷新');
+  assert.equal(sw.currentId(), 'deepseek/deepseek-chat', '未选态切新清单首项');
+  assert.equal((await sw.chat({ messages: [] })).content, 'via-deepseek/deepseek-chat', '同一引用即走新内芯');
+});
+
+test('reload：现选择仍在清单 → 保留；被移除 → 回首项；清单清空 → 回缺省内芯', () => {
+  const sw = new ModelSwitcher({ choices: CHOICES, default: new StubAdapter() });
+  sw.switchTo('bigmodel/glm-4.7');
+  sw.reload(CHOICES);
+  assert.equal(sw.currentId(), 'bigmodel/glm-4.7', '选择仍在场即保留');
+  sw.reload([CHOICES[0]!]);
+  assert.equal(sw.currentId(), 'deepseek/deepseek-chat', '选择被移除回新清单首项');
+  sw.reload([]);
+  assert.equal(sw.currentId(), undefined, '清单清空回缺省内芯');
+  assert.equal(sw.provider, 'stub');
+});
+
+test('reload：各源密钥按重载时刻解析（启动后才写入的密钥生效，不沿用构造期空值）', () => {
+  const slot = 'SUNSHINEX_API_KEY_DEEPSEEK';
+  const prev = process.env[slot];
+  const prevMain = process.env.SUNSHINEX_API_KEY;
+  delete process.env[slot];
+  delete process.env.SUNSHINEX_API_KEY;
+  const seen: string[] = [];
+  class SpySwitcher extends ModelSwitcher {
+    protected buildAdapter(choice: ModelChoice): ModelAdapter {
+      seen.push(choiceAdapterConfig(choice, {}).apiKey ?? '');
+      return new StubAdapter();
+    }
+  }
+  try {
+    const sw = new SpySwitcher({ choices: [CHOICES[0]!], default: new StubAdapter() });
+    assert.deepEqual(seen, [''], '构造期密钥未就绪');
+    process.env[slot] = 'k-after-start';
+    sw.reload([CHOICES[0]!]);
+    assert.deepEqual(seen, ['', 'k-after-start'], '重载重建内芯即读到新密钥');
+  } finally {
+    if (prev === undefined) delete process.env[slot];
+    else process.env[slot] = prev;
+    if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;
+    else process.env.SUNSHINEX_API_KEY = prevMain;
+  }
+});
+
 test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 装配级全局缺省）+ 窗口/密钥槽同源', () => {
   // 密钥槽隔离：specific 未设回退主槽 SUNSHINEX_API_KEY——开发者 shell 常年带着真实主槽,断言即被污染
   const prevMain = process.env.SUNSHINEX_API_KEY;

@@ -73,7 +73,7 @@ export async function runServe(args: CliArgs): Promise<void> {
   const providerRoot = preselect ?? process.cwd();
   const assembled = assembleGuiModel(buildModel(args.flags), providerRoot, args.flags);
   for (const w of assembled.warnings) console.error(t(`settings warning: ${w}`, `settings 警告：${w}`));
-  const daemon = new GuiDaemon({ model: assembled.model, staticRoot });
+  const daemon = new GuiDaemon({ model: assembled.model, staticRoot, providerRoot });
   const s = await daemon.start({ port, ...(tokenFlag !== undefined ? { token: tokenFlag } : {}) });
 
   // token 带外通道（§4.3）：写 <dataDir>/serve-token（dataDir 首启可能不存在，recursive 建）——工作区级

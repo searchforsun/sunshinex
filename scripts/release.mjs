@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { artifactLabel, listDesktopArtifacts } from './release-artifacts.mjs';
 
 // Windows 下 npm/pnpm 实体是 .cmd 脚本：Node ≥ 18.20（CVE-2024-27980）禁止 spawn 直接执行
 // .cmd/.bat（一律 EINVAL），必须经 shell 调用；git/gh/node 为原生可执行，免 shell 免引号语义
@@ -29,7 +30,7 @@ const usage = () => {
 
 发版产物（同一 Release、同一版本 tag、不同安装包）：
   TUI：sunshinex-agent-<ver>.tgz（npm 直装链接）
-  GUI：sunshinex-<ver>-setup.exe（win 单安装包，NSIS；业界 kebab 命名，版本随根 package.json 单源同步）
+  GUI：sunshinex-<ver>-<os>-<arch>-setup.exe 等（每个系统/架构一个包；命名单点 scripts/release-artifacts.mjs）
 
 版本语义（链接随版本走，一次发布一个永久可回溯的地址）:
   每次发版必须对应新版本号 → 新 tag + 新链接，旧版本 Release 永不覆盖
@@ -382,7 +383,6 @@ say(`包体：${humanSize} ${TGZ}`);
 
 // ---------- 附件清单（同 Release 多安装包）----------
 // 与 TUI 同一 Release 同一 tag：版本随根单源（shell:dist 链首自动 sync-versions），产物名即版本凭证。
-const SETUP_NAME = `sunshinex-${VERSION}-setup.exe`;
 const ASSETS = [{ file: TGZ, name: TGZ_NAME, label: 'TUI tgz' }];
 const assetSize = (f) => {
   const b = fs.statSync(f).size;
@@ -391,14 +391,15 @@ const assetSize = (f) => {
 const assetUrl = (name) => `https://github.com/${REPO}/releases/download/${TAG}/${encodeURIComponent(name)}`;
 const DOWNLOAD_URL = assetUrl(TGZ_NAME);
 const NOTES_HEAD = `SunshineX ${TAG}. TUI: npm install -g ${DOWNLOAD_URL}`;
-const NOTES = NO_GUI ? `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}` : `${NOTES_HEAD} · GUI desktop: ${assetUrl(SETUP_NAME)}`;
+// GUI 段在安装包收集后补（多系统/架构逐个列出）
+let NOTES = NO_GUI ? `SunshineX TUI ${TAG}. Install: npm install -g ${DOWNLOAD_URL}` : NOTES_HEAD;
 const HEAD = run('git', ['rev-parse', 'HEAD']).stdout.trim();
 
 if (DRY_RUN) {
   // dry-run 保持轻量（沿「只验证 + 打包」口径）：GUI 安装包不构建，只预览将产出的附件名与链接。
   say(`--dry-run 结束：未构建 GUI 安装包（正式发布将经 shell:dist 产出并冒烟）、未创建 Release、未上传附件。上传通道：${CHANNEL ? CHANNEL.label : '（当前无可用通道，需先补通道）'}`);
   console.log(`  附件：${TGZ_NAME}`);
-  if (!NO_GUI) console.log(`  附件（构建后加入）：${SETUP_NAME}`);
+  if (!NO_GUI) console.log(`  附件（构建后加入）：sunshinex-${VERSION}-<os>-<arch>-setup.exe 等（以 shell/release 实际产物为准）`);
   console.log(`  安装链接：npm install -g ${DOWNLOAD_URL}`);
   process.exit(0);
 }
@@ -407,13 +408,14 @@ if (DRY_RUN) {
 if (!NO_GUI) {
   say('构建 GUI 安装包（shell:dist 全链：版本同步→引擎→GUI→壳→NSIS 单安装包）');
   run(PNPM, ['run', 'shell:dist'], { stdio: 'inherit' });
-  const SETUP = path.join(ROOT, 'shell', 'release', SETUP_NAME);
-  if (!fs.existsSync(SETUP)) die(`GUI 安装包缺失：${SETUP}（electron-builder 产物名不符或构建失败）`);
-  // 产物级冒烟门禁（setup 静默装→安装产物启动→就绪→有序退；与提交门禁同判据）
+  const desktop = listDesktopArtifacts(path.join(ROOT, 'shell', 'release'), VERSION);
+  if (desktop.length === 0) die(`GUI 安装包缺失：shell/release 下无 sunshinex-${VERSION}-<os>-<arch> 产物（electron-builder 产物名不符或构建失败）`);
+  // 产物级冒烟门禁（本机系统/架构的安装包：静默装→启动→就绪→有序退；跨架构包无法本机冒烟）
   say('GUI 安装包冒烟（shell-dist-smoke）');
   run(process.execPath, ['scripts/shell-dist-smoke.mjs'], { stdio: 'inherit' });
-  ASSETS.push({ file: SETUP, name: SETUP_NAME, label: 'GUI Setup' });
-  say(`GUI 安装包就绪：${SETUP_NAME}`);
+  for (const a of desktop) ASSETS.push({ file: a.file, name: a.name, label: artifactLabel(a) });
+  NOTES = `${NOTES_HEAD} · GUI desktop: ${desktop.map((a) => `${artifactLabel(a)} ${assetUrl(a.name)}`).join(' · ')}`;
+  say(`GUI 安装包就绪：${desktop.map((a) => a.name).join(' / ')}`);
 }
 
 // ---------- 上传（同 Release 多附件）----------
@@ -471,4 +473,4 @@ if (CHANNEL.kind === 'gh') {
 say('发布完成');
 console.log(`  Release 页：https://github.com/${REPO}/releases/tag/${TAG}`);
 console.log(`  TUI 安装命令：npm install -g ${DOWNLOAD_URL}`);
-if (!NO_GUI) console.log(`  GUI 安装包：${assetUrl(SETUP_NAME)}`);
+for (const a of ASSETS.filter((x) => x.name !== TGZ_NAME)) console.log(`  GUI 安装包（${a.label}）：${assetUrl(a.name)}`);

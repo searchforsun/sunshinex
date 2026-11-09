@@ -10,7 +10,7 @@
 | CLI（selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings；TUI 由裸命令或路径形态进入） | 支持 | 支持 | 支持（单行命令） |
 | 工具 exec 命令执行面 | 支持 | 支持 | 支持（Git Bash 自动探测；无 Git 时 PowerShell，末位 cmd 兜底） |
 | GUI 浏览器模式（`serve` daemon + web 前端） | 支持 | 支持 | 支持 |
-| GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS 单安装包） |
+| GUI 桌面端（Electron 壳 + 安装包） | 待验证 | 待验证 | 支持（NSIS 安装包，x64；命名含系统/架构以便扩 arm64/macOS） |
 | 内置插件 | browser-use 可用；computer-use 不支持（manifest 平台声明置灰） | 同 Linux | browser-use / computer-use 均可用（两束均单文件内联〔browser-use 含宿主束 host.js〕，目标机零补装；浏览器形态按环境定：桌面=内置侧栏页签 / serve=系统默认浏览器 / TUI·CLI=无头〔系统已装 Chrome〕） |
 
 部署条件（三平台通用）：

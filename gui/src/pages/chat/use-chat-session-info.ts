@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { ChatState } from '../../chat-reducer';
+import { useConfigChanged } from '../../settings/use-config-changed';
 
 /** 模型 pill 数据形态单源：sessionModel 返回类型直推（choices 内含 supportsImages 图片能力位），防三处内联漂移 */
 type SessionModelInfo = Awaited<ReturnType<Connection['sessionModel']>>;
@@ -21,13 +22,15 @@ export function useChatSessionInfo(deps: {
 } {
   const { conn, sessionId, chat } = deps;
   const [modelInfo, setModelInfo] = useState<SessionModelInfo | null>(null);
-/** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏) */
+  const cfgTicks = useConfigChanged(conn);
+/** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏);settings/providers 变更帧到来重拉——
+ *  daemon 收帧前已热重载模型层,不重拉则药丸停在旧态(2026-11-09「欢迎页有模型、会话页默认模型」) */
 useEffect(() => {
   conn.sessionModel(sessionId).then(
     (info) => setModelInfo(info),
     () => setModelInfo({ current: undefined, choices: [] }),
   );
-}, [conn, sessionId]);
+}, [conn, sessionId, cfgTicks.settings, cfgTicks.providers]);
 
 /** G14.18 上下文圆环数据:sessionContext 拉取单点——挂载/run 收尾(status 回 idle)/运行中
  *  4s 轮询/悬停展开(圆环 onOpen)四路触发;失败静默保旧值(圆环退化为 0 占用不扰流区)。
