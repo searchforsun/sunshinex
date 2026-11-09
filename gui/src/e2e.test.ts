@@ -260,6 +260,15 @@ async function startDaemon(
   // language 键经 daemon settings 下发 App 会翻转渲染语言,断言面机器相关——显式钉 en 去机器相关
   const prevLanguage = process.env.SUNSHINEX_LANGUAGE;
   process.env.SUNSHINEX_LANGUAGE = 'en';
+  // 机器级指针档隔离(2026-11-09 用户实测缺陷:lastRoot 指向 e2e 临时目录,真机恢复现场落空)——
+  // app-state 面活读 HOME(appGuiStateFile=userConfigDir/gui/ui-state.json),不隔离则开/关会话
+  // 把指针写进真实家目录;与 daemon.test withSettingsDaemon 同口径双钉 HOME/USERPROFILE
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const home = path.join(tmp, 'home');
+  fs.mkdirSync(home, { recursive: true });
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
   const m = typeof model === 'function' ? model(out) : model;
   const daemon = new GuiDaemon({ model: m, ...(staticRoot !== undefined ? { staticRoot } : {}) });
   const s = await daemon.start({ port: 0 });
@@ -275,6 +284,10 @@ async function startDaemon(
       else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
       if (prevLanguage === undefined) delete process.env.SUNSHINEX_LANGUAGE;
       else process.env.SUNSHINEX_LANGUAGE = prevLanguage;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = prevUserProfile;
       // Windows cwd 锁迟滞兜底(G8b pty 场景引入,daemon.test rmTmp 同款):pty shell 以 tmp 为
       // cwd,teardown killAllFor 后句柄释放可迟于本拍(EPERM)——maxRetries/retryDelay 走 fs 内建重试
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
@@ -1562,6 +1575,13 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
     let d1: { port: number; stop(): Promise<void> } | undefined;
     let d2: { port: number; stop(): Promise<void> } | undefined;
     let unmount: (() => void) | undefined;
+    // 机器级指针档隔离(同 startDaemon 注):本场景开/关会话写 lastRoot,不隔离则落真实家目录
+    const prevHome = process.env.HOME;
+    const prevUserProfile = process.env.USERPROFILE;
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
     try {
       d1 = await boot();
       // 语言槽让位:startDaemon 钉 en(防机器泄漏)与设置重构轮的 envOverride 禁编相克——env 覆盖行
@@ -1618,6 +1638,10 @@ describe('G8c 场景①:设置改键全链——通用面板改 language 保存 
       await d2?.stop();
       if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
       else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = prevUserProfile;
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
@@ -1882,6 +1906,13 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
       fs.mkdirSync(fx.root, { recursive: true }); // fx.stop 清了 tmp1:root 目录重建(同路径=同 slug,journal 可寻址)
       const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
       process.env.SUNSHINEX_PROJECTS_DIR = projects2;
+      // fx.stop 已还原 HOME——第二 daemon 窗口重新隔离(fx 同款 tmp/home),attach 写指针不落真实家目录
+      const prevHome2 = process.env.HOME;
+      const prevUserProfile2 = process.env.USERPROFILE;
+      const home2 = path.join(carried, 'home');
+      fs.mkdirSync(home2, { recursive: true });
+      process.env.HOME = home2;
+      process.env.USERPROFILE = home2;
       const daemon2 = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"attach 后答复"}']) });
       const s2 = await daemon2.start({ port: 0 });
       try {
@@ -1899,6 +1930,10 @@ describe('G14.2xx daemon 重启+attach → 板面/委派影子回种', () => {
         await s2.close();
         if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
         else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+        if (prevHome2 === undefined) delete process.env.HOME;
+        else process.env.HOME = prevHome2;
+        if (prevUserProfile2 === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = prevUserProfile2;
         fs.rmSync(carried, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
       }
     } finally {

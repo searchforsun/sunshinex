@@ -369,8 +369,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     });
     this.watcher.onChange((c) => {
       // 外部编辑（编辑器直改 settings.json）：先重装 env 链+刷新模型层，再下行帧——前端据帧重拉时读到的已是新态。
-      // 全局面变更锚 daemon 自身装载根（与启动期 loadSettingsChain 同组成，不丢启动时装入的项目槽、不凭空换项目链）
-      if (c.resource === 'settings') this.reloadSettingsChain(c.root ?? this.providerRoot);
+      // 全局面变更（root=null）由 reloadSettingsChain 锚 providerRoot 重装两层，全局变更即时生效不丢项目槽
+      if (c.resource === 'settings') this.reloadSettingsChain(c.root);
       this.broadcastFrame({ kind: 'config-changed', ...c });
     });
     // M2 融合面启动(尽力而为:electron 缺场/端口失败静默降级——插件 builtin 档回落旧桥路径);
@@ -1096,18 +1096,22 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
    *  PUT 回 500（写成功却报失败误导；且坏文件会结构性死锁一切后续结构化改写）。该级跳过、错误经
    *  stderr 透出（与 warnings 同通道）；畸形文件的 fail-fast 属装载链入口（CLI）职责，不在此处。
    *  窄缝：进程内链可能来自其他 root 的项目文件——本重载以 PUT 目标 root 为准重装，跨 root 场景
-   *  以最近编辑为准；root 缺省（scope=global 结构化写）只重装全局面 */
-  private reloadSettingsChain(root: string | undefined): void {
+   *  以最近编辑为准。root 缺省（scope=global 写）**不再只装全局面**（2026-11-09 用户裁定「全局更改
+   *  时后台重载新的全局和项目配置」）：锚本 daemon 的装载根（providerRoot=serve 预选根/壳 cwd，与
+   *  启动期 loadSettingsChain 的项目层同组成）重装两层——既保全局变更即时生效，又不丢启动装入的
+   *  项目槽（只装全局=清掉项目槽的半截链，曾因此不敢在 raw 全局写路径触发 reload）。 */
+  private reloadSettingsChain(root: string | null | undefined): void {
+    const anchor = root ?? this.providerRoot;
     for (const slot of getSelfFilledSlots()) delete process.env[slot];
     resetSelfFilledSlots();
-    for (const filePath of [...(root !== undefined ? [loadProjectSettings(root)] : []), loadGlobalSettings()]) {
+    for (const filePath of [loadProjectSettings(anchor), loadGlobalSettings()]) {
       try {
         for (const w of applySettings(filePath).warnings) console.error(`[serve] ${w}`);
       } catch (err) {
         console.error(`[serve] settings reload failed (${filePath}):`, err instanceof Error ? err.message : String(err));
       }
     }
-    this.refreshModelLayer(root);
+    this.refreshModelLayer(anchor);
   }
 
   /** 模型层随配置热重载：切换器在启动时按当时 settings 冻结 choices 与各源密钥——env 重装后须原地重建内芯，

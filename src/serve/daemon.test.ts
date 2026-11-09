@@ -1495,14 +1495,16 @@ describe('G8c T3 /settings/raw 双文件端点', () => {
     });
   });
 
-  test('㉗ PUT raw settings reload:project→自填槽即新值;global 带 root→链重载入槽;global 无 root→只写盘槽不动;mcp 不触发', async () => {
-    await withSettingsDaemon(async ({ base, tmp }) => {
+  test('㉗ PUT raw settings reload:project→自填槽即新值;global 带 root→链重载入槽;global 无 root→锚根两层重装(全局值入槽+项目槽不丢);mcp 不触发', async () => {
+    await withSettingsDaemon(async ({ base, tmp, daemon }) => {
       const proj = path.join(tmp, 'proj');
       fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
       fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({ contextWindow: 111111 }), 'utf8');
       applySettings(loadProjectSettings(proj));
       applySettings(loadGlobalSettings()); // 无全局文件——no-op
       assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '111111', '链装载自填旧值');
+      // 锚根注入（生产=serve 透传预选根/壳 cwd；测试钉 proj——global 无 root 时按它重装两层）
+      (daemon as unknown as { providerRoot: string }).providerRoot = proj;
 
       const put = async (body: unknown): Promise<Response> =>
         fetch(`${base}/settings/raw`, { method: 'PUT', headers: AUTH, body: JSON.stringify(body) });
@@ -1517,10 +1519,11 @@ describe('G8c T3 /settings/raw 双文件端点', () => {
       assert.equal(r2.status, 200);
       assert.equal(process.env.SUNSHINEX_LANGUAGE, 'gl-lang', 'global 写带 root→链重载跑,全局值入槽');
 
-      // global 无 root:只写盘不 reload(裁定:恒不凭空触发项目链 reload)——槽不动
+      // global 无 root(2026-11-09 用户裁定):锚 providerRoot 两层重装——全局值入槽,项目槽不丢(旧「只写盘不动」退役)
       const r3 = await put({ scope: 'global', file: 'settings', content: '{"language": "gl-two"}\n' });
       assert.equal(r3.status, 200);
-      assert.equal(process.env.SUNSHINEX_LANGUAGE, 'gl-lang', 'global 无 root 只写盘:env 槽不动');
+      assert.equal(process.env.SUNSHINEX_LANGUAGE, 'gl-two', 'global 无 root:锚根重装,全局值入槽');
+      assert.equal(process.env.SUNSHINEX_CONTEXT_WINDOW, '333333', 'global 无 root:项目层随锚根重装,项目槽不丢');
 
       // mcp 面:PUT 不触发 settings 链 reload(mcp 不在链内)——写盘即回
       const r4 = await put({ scope: 'global', file: 'mcp', content: '{"mcpServers":{}}\n' });

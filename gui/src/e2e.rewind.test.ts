@@ -50,6 +50,13 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
     const prevLanguage = process.env.SUNSHINEX_LANGUAGE;
     process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
     process.env.SUNSHINEX_LANGUAGE = 'en';
+    // 机器级指针档隔离(2026-11-09:app-state 面活读 HOME,不隔离则 lastRoot 写进真实家目录——e2e.test 同修)
+    const prevHome = process.env.HOME;
+    const prevUserProfile = process.env.USERPROFILE;
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(home);
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
     const daemon = new GuiDaemon({ model: new PacedAdapter([write('a.txt', 'v1'), done('答一'), write('a.txt', 'v2'), write('b.txt', 'new'), done('答二'), done('答三')]) });
     const s = await daemon.start({ port: 0 });
     try {
@@ -114,6 +121,10 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
       if (prevLanguage === undefined) delete process.env.SUNSHINEX_LANGUAGE;
       else process.env.SUNSHINEX_LANGUAGE = prevLanguage;
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = prevUserProfile;
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });

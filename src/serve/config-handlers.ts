@@ -234,8 +234,9 @@ export function handleSettingsRawGet(io: ConfigHandlerIo, req: http.IncomingMess
  *  - 原子写：同目录 tmp + rename（T2 结构化写同款）——非法内容永不到达目标路径（拒存），
  *    验证失败清 tmp。
  *  - scope=project 必带 root（缺 400）；scope=global 忽略 root 定位、但 root 在 body 时作为
- *    reload 锚（file=settings 成功后 reloadSettingsChain(root)——global 链随跑；root 缺省只写盘
- *    不 reload，stderr 提示——链重载需项目锚，无锚硬 reload 等于拿假 root 跑项目级）。
+ *    reload 锚（file=settings 成功后 reloadSettingsChain(root)——global 链随跑；root 缺省由 daemon
+ *    锚其装载根重装两层（项目+全局），2026-11-09 用户裁定「全局更改后台重载全局和项目配置」——
+ *    旧「无 root 只写盘不 reload」随锚根语义退役）。
  *  - file=mcp 恒不触发 reload（mcp 不在 settings 链）。IO 失败（写/换名）不经本地捕获——沿
  *    dispatch 500 收口（T2 同惯例）。 */
 export async function handleSettingsRawPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -298,10 +299,7 @@ export async function handleSettingsRawPut(io: ConfigHandlerIo, req: http.Incomi
     }
     throw err; // IO 面 → dispatch 500 收口
   }
-  if (file === 'settings') {
-    if (root !== undefined) io.reloadSettingsChain(root);
-    else console.error('[serve] raw global settings written without reload — pass root in the request body to reload the settings chain');
-  }
+  if (file === 'settings') io.reloadSettingsChain(root); // root 缺省（scope=global）由 daemon 锚装载根重装两层（项目+全局）
   io.send(res, 200, { ok: true });
 }
 
