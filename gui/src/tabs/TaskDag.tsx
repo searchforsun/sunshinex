@@ -19,11 +19,11 @@ import '@xyflow/react/dist/style.css';
 
 /** 任务节点盒尺寸(dagre 布局步进 + React Flow 免实测尺寸的既定值;CSS 同值配套) */
 export const TASK_NODE_W = 224;
-export const TASK_NODE_H = 58;
-export const TASK_NODE_H_COMPACT = 38;
+export const TASK_NODE_H = 66; // 2026-11-09 节点字号统一 14px:两行(标题+执行者/耗时)+内边距
+export const TASK_NODE_H_COMPACT = 42;
 /** 起止虚拟节点尺寸 */
-const TERMINAL_W = 84;
-const TERMINAL_H = 28;
+const TERMINAL_W = 92;
+const TERMINAL_H = 32;
 const START_ID = '__start';
 const END_ID = '__end';
 
