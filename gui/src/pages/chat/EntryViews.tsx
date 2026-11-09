@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, GitFork, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
 import { t } from '../../i18n';
-import { ClampToggle, DETAIL_MAX_HEIGHT } from '../../clamp-block';
+import { BUBBLE_MAX_HEIGHT, ClampToggle } from '../../clamp-block';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
 import { messageTimeMs, pathBasename } from '../../ui-util';
@@ -281,7 +281,7 @@ function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | nu
     </div>
   );
 }
-/** 用户气泡限高(2026-11-09 用户裁定):内容超 DETAIL_MAX_HEIGHT(与记忆/学习技能等详情同一高度)时
+/** 用户气泡限高(2026-11-09 用户裁定):内容超 BUBBLE_MAX_HEIGHT(168;详情块另用 DETAIL_MAX_HEIGHT 320)时
  *  气泡内正文限高+纵向滚动条,气泡底部居中 V;展开=完整高度、滚动条消失,底部 ^ 收回;复制归各页自有动作行。
  *  量测走 useLayoutEffect+ResizeObserver:队友消息/子智能体任务带首帧常在 flex 未定宽时
  *  scrollHeight 偏小(一次 useEffect 钉死不折),布局收敛后须再量 */
@@ -294,7 +294,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
     if (el === null) return;
     // scrollHeight=内容全高(与 max-height/overflow 无关)——超过阈值才出浮钮
     const measure = (): void => {
-      setClamped(el.scrollHeight > DETAIL_MAX_HEIGHT + 8);
+      setClamped(el.scrollHeight > BUBBLE_MAX_HEIGHT + 8);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -308,7 +308,7 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
         <div
           ref={innerRef}
           className={`user-bubble-scroll${limited ? ' user-bubble-clamped' : ''}`}
-          style={limited ? { maxHeight: DETAIL_MAX_HEIGHT } : undefined}
+          style={limited ? { maxHeight: BUBBLE_MAX_HEIGHT } : undefined}
         >
           {render(text)}
         </div>

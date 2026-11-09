@@ -3663,7 +3663,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 
 /* leader 链接定位闪光(2026-11-08):成员转录页点 leader → 主对话对应消息气泡/发送工具行短暂提亮描边 */
 
-/* 详情限高块 ClampBlock + 用户气泡(clamp-block.tsx;2026-11-09 用户裁定):内容超统一高度 DETAIL_MAX_HEIGHT(240)
+/* 详情限高块 ClampBlock + 用户气泡(clamp-block.tsx;2026-11-09 用户裁定):内容超限高(详情 DETAIL_MAX_HEIGHT 320/气泡 BUBBLE_MAX_HEIGHT 168)
    时限高+纵向滚动条,下方居中纯 V(18px 无框);展开=完整高度、滚动条消失,^ 收回。hover 底走项目统一弧度 */
 .sx-clamp.clamped, .user-bubble-scroll.user-bubble-clamped { overflow-y: auto; }
 .sx-clamp-toggle-row, .user-bubble-toggle-row { display: flex; justify-content: center; margin-top: 4px; }

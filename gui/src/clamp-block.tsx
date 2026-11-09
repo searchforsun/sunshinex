@@ -2,8 +2,10 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type ElementType
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { t } from './i18n';
 
-/** 详情限高统一高度(用户气泡/记忆/学习技能/后台任务输出/团队章程同一值,2026-11-09 用户裁定「这几个地方的固定高度都一致」) */
-export const DETAIL_MAX_HEIGHT = 240;
+/** 详情限高(记忆/学习技能/后台任务输出/团队章程同一值,2026-11-09 用户裁定 320) */
+export const DETAIL_MAX_HEIGHT = 320;
+/** 用户气泡限高(2026-11-09 用户裁定保持 168) */
+export const BUBBLE_MAX_HEIGHT = 168;
 
 /** 展开/收起钮(纯 V/^ 18px 无框,hover 底走项目统一弧度):详情块与用户气泡共用 */
 export function ClampToggle({ open, onToggle }: { open: boolean; onToggle: () => void }): JSX.Element {
