@@ -92,8 +92,21 @@ export function WelcomeComposer({
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
-  const [selModel, setSelModel] = useState<string | undefined>(undefined);
-  const [selEffort, setSelEffort] = useState<string>('medium');
+  // 模型/思考强度持久(2026-11-09 用户裁定「欢迎页记录上次选的模型和强度,切换会话后还是当时选择的」):
+  // localStorage 即时层,挂载读回;跨端漫游不上收(ui-pref-sync 口径外,设备本地即可)
+  const [selModel, setSelModel] = useState<string | undefined>(() => localStorage.getItem('sx-welcome:model') ?? undefined);
+  const [selEffort, setSelEffort] = useState<string>(() => localStorage.getItem('sx-welcome:effort') ?? 'medium');
+  useEffect(() => {
+    if (selModel !== undefined) localStorage.setItem('sx-welcome:model', selModel);
+    else localStorage.removeItem('sx-welcome:model');
+  }, [selModel]);
+  useEffect(() => {
+    localStorage.setItem('sx-welcome:effort', selEffort);
+  }, [selEffort]);
+  // 记忆的模型已不在清单(providers 变更删除)→ 回落缺省,不把失效 id 带进新会话
+  useEffect(() => {
+    if (selModel !== undefined && modelChoices.length > 0 && !modelChoices.some((c) => c.id === selModel)) setSelModel(undefined);
+  }, [modelChoices, selModel]);
   const [modelOpen, setModelOpen] = useState(false);
   const projRef = useRef<HTMLDivElement | null>(null);
   /** G14.121 @ 文件面板:光标前 @token 触发;数据= picked 工作区索引(mtime 倒序);选中插 @相对路径 */

@@ -132,14 +132,16 @@ function sealedRunKeys(entries: readonly ChatEntry[]): string[] {
   return entries.filter((e) => e.kind === 'run' && e.streaming !== true).map((e) => e.key);
 }
 
-/** 自动折叠共用 hook:sealed run 首见并入 collapsedRuns(ref 去重防手动展开被回折) */
+/** 自动折叠共用 hook:sealed run 首见并入 collapsedRuns(ref 去重防手动展开被回折);
+ *  keepOpen=用户手动展开过的轮(跨会话切换持久),首见也不折 */
 export function useAutoCollapseRuns(
   entries: readonly ChatEntry[],
   setCollapsedRuns: Dispatch<SetStateAction<ReadonlySet<string>>>,
+  keepOpen?: ReadonlySet<string>,
 ): void {
   const autoFoldedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const sealed = sealedRunKeys(entries).filter((k) => !autoFoldedRef.current.has(k));
+    const sealed = sealedRunKeys(entries).filter((k) => !autoFoldedRef.current.has(k) && keepOpen?.has(k) !== true);
     if (sealed.length === 0) return;
     for (const k of sealed) autoFoldedRef.current.add(k);
     setCollapsedRuns((prev) => {
@@ -153,7 +155,32 @@ export function useAutoCollapseRuns(
       }
       return changed ? next : prev;
     });
-  }, [entries, setCollapsedRuns]);
+  }, [entries, setCollapsedRuns, keepOpen]);
+}
+
+/** 轮次折叠手动态跨会话切换持久(2026-11-09 用户裁定「记录运行中展开和折叠状态,切换会话不要自动展开」):
+ *  按会话记用户手动折叠(c)/展开(o)过的 run key(`k<seq>` 来自 journal,重开稳定);每档上限 200 键 */
+const FOLD_KEY = (sessionId: string): string => `sunshinex.run-fold.${sessionId}`;
+const FOLD_CAP = 200;
+type FoldMemo = { c: string[]; o: string[] };
+export function readFoldMemo(sessionId: string): FoldMemo {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FOLD_KEY(sessionId)) ?? 'null') as Partial<FoldMemo> | null;
+    return { c: Array.isArray(raw?.c) ? raw.c : [], o: Array.isArray(raw?.o) ? raw.o : [] };
+  } catch {
+    return { c: [], o: [] };
+  }
+}
+function writeFoldMemo(sessionId: string, key: string, collapsed: boolean): void {
+  const m = readFoldMemo(sessionId);
+  const c = m.c.filter((k) => k !== key);
+  const o = m.o.filter((k) => k !== key);
+  (collapsed ? c : o).push(key);
+  try {
+    localStorage.setItem(FOLD_KEY(sessionId), JSON.stringify({ c: c.slice(-FOLD_CAP), o: o.slice(-FOLD_CAP) }));
+  } catch {
+    // 存储满/禁用:本次会话内仍生效,只是不跨切换
+  }
 }
 
 export function useChatFold(deps: {
@@ -174,17 +201,21 @@ export function useChatFold(deps: {
 } {
   const { chat, setChat, conn, sessionId, onOpenDiff, chatScrollRef, chatStickRef } = deps;
 /** G14.31 轮次折叠:见 collapsedHiddenKeys(工具/思考/成员消息/记忆·技能旁白随折;用户条含轮内插入可见;终答与新开场保留) */
-const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(new Set());
-// 2026-10-24 用户裁定:轮次完成(sealed)自动折叠工具/思考行——手动展开不回折
-useAutoCollapseRuns(chat.entries, setCollapsedRuns);
+const [memo] = useState(() => readFoldMemo(sessionId));
+const [collapsedRuns, setCollapsedRuns] = useState<ReadonlySet<string>>(() => new Set(memo.c));
+const keepOpen = useMemo(() => new Set(memo.o), [memo]);
+// 2026-10-24 用户裁定:轮次完成(sealed)自动折叠工具/思考行——手动展开不回折(含切换会话后)
+useAutoCollapseRuns(chat.entries, setCollapsedRuns, keepOpen);
 const toggleRun = useCallback((key: string): void => {
   setCollapsedRuns((prev) => {
     const next = new Set(prev);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    const collapse = !next.has(key);
+    if (collapse) next.add(key);
+    else next.delete(key);
+    writeFoldMemo(sessionId, key, collapse);
     return next;
   });
-}, []);
+}, [sessionId]);
 // liveRun 入依赖:封段只翻 run 的 streaming 位(条目数不变,structureVersion 不动),运行中已手动折叠的轮
 // 在自动折叠时又已在集合内(no-op)——不入依赖则封段后仍按在途口径留末条工具/思考行
 const liveRun = liveRunKeyOf(chat.entries);

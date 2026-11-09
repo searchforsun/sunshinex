@@ -556,6 +556,17 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     expect(screen.queryByText('s1', { selector: '.chat-title-text' })).toBeNull();
   });
 
+  it('欢迎页模型/思考强度记忆(2026-11-09 用户裁定):上次选择挂载即读回——切会话再回欢迎页仍是当时选择', async () => {
+    localStorage.setItem('sx-welcome:model', 'kimi-k2');
+    localStorage.setItem('sx-welcome:effort', 'high');
+    const { unmount } = mount();
+    await screen.findByLabelText('welcome');
+    const pill = screen.getByRole('button', { name: 'model' });
+    expect(pill.textContent).toContain('kimi-k2');
+    expect(localStorage.getItem('sx-welcome:effort')).toBe('high');
+    unmount();
+  });
+
   it('欢迎页 $ 触发引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——内置四角色在列,Enter 插入 $planner', async () => {
     const { conn } = mount();
     conn.agentsViewResp = {
