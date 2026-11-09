@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, GitFork, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
 import { t } from '../../i18n';
-import { BUBBLE_MAX_HEIGHT, ClampToggle } from '../../clamp-block';
+import { BUBBLE_MAX_HEIGHT, ClampToggle, useClampMotion } from '../../clamp-block';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
 import { messageTimeMs, pathBasename } from '../../ui-util';
@@ -302,13 +302,13 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
     return () => ro.disconnect();
   }, [text]);
   const limited = clamped && !open;
+  useClampMotion(innerRef, open, BUBBLE_MAX_HEIGHT, 'maxHeight', clamped);
   return (
     <div className="user-bubble-wrap">
       <div className={`user-bubble${open ? ' user-bubble-open' : ''}`}>
         <div
           ref={innerRef}
           className={`user-bubble-scroll${limited ? ' user-bubble-clamped' : ''}`}
-          style={limited ? { maxHeight: BUBBLE_MAX_HEIGHT } : undefined}
         >
           {render(text)}
         </div>

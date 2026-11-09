@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ElementType, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ElementType, type ReactNode, type RefObject } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { t } from './i18n';
 
@@ -23,6 +23,52 @@ export function ClampToggle({ open, onToggle }: { open: boolean; onToggle: () =>
       {open ? <ChevronUp size={18} strokeWidth={2} aria-hidden="true" /> : <ChevronDown size={18} strokeWidth={2} aria-hidden="true" />}
     </button>
   );
+}
+
+/** 限高⇄完整高度平滑过渡(2026-11-09 用户裁定「展开关闭要有平滑效果」):命令式驱动 height/max-height——
+ *  起点钉当前像素值、强制回流、过渡到终点(scrollHeight 或限高),结束后展开态撤内联值回自然高度(内容后续增减
+ *  照常伸缩)。过渡期 overflow hidden 防滚动条闪现;时长取 --dur-relaxed(reduced-motion 下为 0 即刻落定)。
+ *  只在 open 切换时过渡;首挂与 active 变化(气泡量测出超限)即刻落定,不在加载时播收缩。active=false 不施加限高 */
+export function useClampMotion(ref: RefObject<HTMLElement | null>, open: boolean, limit: number, prop: 'height' | 'maxHeight', active = true): void {
+  const prevOpen = useRef<boolean | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const cssName = prop === 'height' ? 'height' : 'max-height';
+    const limited = active && !open;
+    const toggled = prevOpen.current !== null && prevOpen.current !== open;
+    prevOpen.current = open;
+    if (!toggled || !active) {
+      el.style.transition = '';
+      el.style.overflowY = '';
+      el.style[prop] = limited ? `${limit}px` : '';
+      return;
+    }
+    const full = el.scrollHeight;
+    el.style.overflowY = 'hidden';
+    el.style.transition = 'none';
+    el.style[prop] = `${open ? Math.min(limit, full) : full}px`;
+    void el.offsetHeight;
+    el.style.transition = `${cssName} var(--dur-relaxed) var(--ease-enter)`;
+    el.style[prop] = `${open ? full : limit}px`;
+    const settle = (): void => {
+      el.style.transition = '';
+      el.style.overflowY = '';
+      if (open) el.style[prop] = '';
+    };
+    const dur = parseFloat(getComputedStyle(el).transitionDuration);
+    if (!(dur > 0)) {
+      settle();
+      return;
+    }
+    const onEnd = (e: TransitionEvent): void => {
+      if (e.target !== el) return;
+      el.removeEventListener('transitionend', onEnd);
+      settle();
+    };
+    el.addEventListener('transitionend', onEnd);
+    return () => el.removeEventListener('transitionend', onEnd);
+  }, [open, active, limit, prop, ref]);
 }
 
 /** 详情固定高块(2026-11-09 用户裁定「固定高度」):收起态恒为 DETAIL_MAX_HEIGHT 固定高(内容短也不缩),
@@ -53,12 +99,13 @@ export function ClampBlock({
     return () => ro.disconnect();
   }, []);
   const clamped = !open;
+  useClampMotion(ref, open, DETAIL_MAX_HEIGHT, 'height');
   return (
     <div className="sx-clamp-wrap">
       <Tag
         ref={ref}
         className={`${className ?? ''} sx-clamp${clamped ? ' clamped' : ''}`}
-        style={clamped ? { ...style, height: DETAIL_MAX_HEIGHT, boxSizing: 'border-box' } : style}
+        style={{ ...style, boxSizing: 'border-box' }}
       >
         {children}
       </Tag>
