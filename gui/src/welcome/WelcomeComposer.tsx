@@ -244,7 +244,7 @@ export function WelcomeComposer({
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
   const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
-  const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
+  const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch, branchDialog } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen, setHint, setDirOpen });
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
@@ -291,6 +291,7 @@ export function WelcomeComposer({
                   }}
                 />
               )}
+              {branchDialog}
             </div>
           )}
         </div>

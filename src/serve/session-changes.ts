@@ -26,7 +26,7 @@ function git(root: string, args: string[]): Promise<{ ok: true; out: string } | 
 }
 
 /** 未提交变动清单：working tree + index 合并视图（git status --porcelain 单源，numstat 补行数） */
-export async function listChanges(root: string): Promise<Result<{ branch: string; files: ChangeFile[] }>> {
+export async function listChanges(root: string): Promise<Result<{ branch: string; files: ChangeFile[]; staged?: ChangeFile[]; unstaged?: ChangeFile[] }>> {
   if (!fs.existsSync(path.join(root, '.git'))) return ok({ branch: '', files: [] });
   const st = await git(root, ['status', '--porcelain=v1', '-b']);
   if (!st.ok) return fail('CHANGES_STATUS', st.err);
@@ -76,24 +76,83 @@ export async function listChanges(root: string): Promise<Result<{ branch: string
       ...(untracked ? { newLines } : {}),
     });
   }
-  return ok({ branch, files });
+  const areas = await listChangeAreas(root, lines.slice(1));
+  return ok({ branch, files, ...areas });
 }
 
-/** 单文件 diff 内容面：untracked → old 缺场（新文件全行增）；tracked → HEAD 版为 old、磁盘为 new */
+/** porcelain XY 拆两区(2026-11-09 审查页分「已暂存/未暂存」):X=暂存区相对 HEAD、Y=工作区相对暂存区;
+ *  同一文件可同时在两区(MM)。行数各取 diff --cached / diff 的 numstat;untracked 只在未暂存区 */
+async function listChangeAreas(root: string, statusLines: string[]): Promise<{ staged: ChangeFile[]; unstaged: ChangeFile[] }> {
+  const numOf = async (args: string[]): Promise<Map<string, { added: number; deleted: number }>> => {
+    const m = new Map<string, { added: number; deleted: number }>();
+    const r = await git(root, args);
+    if (!r.ok) return m;
+    for (const line of r.out.split('\n')) {
+      const mm = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line.trim());
+      if (mm === null) continue;
+      const p2 = mm[3].includes('=>') ? (mm[3].split('=>').pop() ?? mm[3]).replace(/[{}]/g, '').trim() : mm[3];
+      m.set(p2.replaceAll('\\', '/'), { added: mm[1] === '-' ? 0 : Number(mm[1]), deleted: mm[2] === '-' ? 0 : Number(mm[2]) });
+    }
+    return m;
+  };
+  const stagedNum = await numOf(['diff', '--cached', '--numstat']);
+  const unstagedNum = await numOf(['diff', '--numstat']);
+  const kind = (c: string): ChangeFile['status'] => (c === 'D' ? 'deleted' : c === 'A' ? 'added' : c === 'R' ? 'renamed' : 'modified');
+  const staged: ChangeFile[] = [];
+  const unstaged: ChangeFile[] = [];
+  for (const line of statusLines) {
+    const x = line[0] ?? ' ';
+    const y = line[1] ?? ' ';
+    const raw = line.slice(3).trim().replace(/^"|"$/g, '').replaceAll('\\', '/');
+    if (raw === '') continue;
+    const rel = x === 'R' || y === 'R' ? (raw.split('->').pop() ?? raw).trim() : raw;
+    if (x === '?' && y === '?') {
+      let newLines = 0;
+      try {
+        newLines = fs.readFileSync(path.join(root, rel), 'utf8').split('\n').filter((l, i2, a) => i2 < a.length - 1 || l.trim() !== '').length;
+      } catch {
+        newLines = 0;
+      }
+      unstaged.push({ path: rel, status: 'untracked', added: null, deleted: null, newLines });
+      continue;
+    }
+    if (x !== ' ' && x !== '?' && x !== '!') {
+      const n = stagedNum.get(rel) ?? { added: 0, deleted: 0 };
+      staged.push({ path: rel, status: kind(x), added: n.added, deleted: n.deleted });
+    }
+    if (y !== ' ' && y !== '?' && y !== '!') {
+      const n = unstagedNum.get(rel) ?? { added: 0, deleted: 0 };
+      unstaged.push({ path: rel, status: kind(y), added: n.added, deleted: n.deleted });
+    }
+  }
+  return { staged, unstaged };
+}
+
+/** 单文件 diff 内容面:area 缺省=HEAD 对磁盘(合并视图);'staged'=HEAD 对暂存区;'unstaged'=暂存区对磁盘
+ *  (暂存区无此文件回落 HEAD)。untracked → old 缺场(新文件全行增) */
 export async function changeContent(
   root: string,
   relPath: string,
+  area?: 'staged' | 'unstaged',
 ): Promise<Result<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>> {
   const abs = path.resolve(root, relPath);
   if (!abs.startsWith(path.resolve(root))) return fail('CHANGES_PATH', 'path outside workspace');
-  const head = await git(root, ['show', `HEAD:${relPath.replaceAll(path.sep, '/')}`]);
-  const oldContent = head.ok ? head.out : undefined;
+  const rel = relPath.replaceAll(path.sep, '/');
+  const head = await git(root, ['show', `HEAD:${rel}`]);
+  const index = area !== undefined ? await git(root, ['show', `:${rel}`]) : undefined;
+  const oldSrc = area === 'unstaged' && index !== undefined && index.ok ? index : head;
+  const oldContent = oldSrc.ok ? oldSrc.out : undefined;
   let newContent = '';
   let deleted = false;
-  try {
-    newContent = fs.readFileSync(abs, 'utf8');
-  } catch {
-    deleted = true; // 磁盘已删（working tree 删除态）——old 全行删
+  if (area === 'staged') {
+    if (index !== undefined && index.ok) newContent = index.out;
+    else deleted = true; // 暂存区已删
+  } else {
+    try {
+      newContent = fs.readFileSync(abs, 'utf8');
+    } catch {
+      deleted = true; // 磁盘已删（working tree 删除态）——old 全行删
+    }
   }
   const truncated = newContent.length > MAX_DIFF_BYTES;
   if (truncated) newContent = newContent.slice(0, MAX_DIFF_BYTES);
@@ -131,14 +190,79 @@ export async function gitStatusMap(root: string): Promise<Result<{ branch: strin
   return ok({ branch, map });
 }
 
-/** 提交：add -A + commit -m（message 必填；空提交无变动报错透传） */
-export async function commitChanges(root: string, message: string): Promise<Result<{ out: string }>> {
+/** 提交：缺省 add -A + commit -m(全部变动);stagedOnly=只提交暂存区(审查页「已暂存」区提交,2026-11-09)。
+ *  message 必填;空提交无变动报错透传 */
+export async function commitChanges(root: string, message: string, stagedOnly = false): Promise<Result<{ out: string }>> {
   if (message.trim() === '') return fail('COMMIT_MSG', 'commit message required');
-  const add = await git(root, ['add', '-A']);
-  if (!add.ok) return fail('CHANGES_ADD', add.err);
+  if (!stagedOnly) {
+    const add = await git(root, ['add', '-A']);
+    if (!add.ok) return fail('CHANGES_ADD', add.err);
+  }
   const c = await git(root, ['commit', '-m', message]);
   if (!c.ok) return fail('COMMIT_FAIL', c.err);
   return ok({ out: c.out });
+}
+
+/** 路径入参收口:仓库相对、不越根(暂存/取消暂存/丢弃三面共用) */
+function safeRels(root: string, paths: readonly string[]): Result<string[]> {
+  const base = path.resolve(root);
+  const out: string[] = [];
+  for (const p of paths) {
+    const abs = path.resolve(root, p);
+    if (abs !== base && !abs.startsWith(base + path.sep)) return fail('CHANGES_PATH', `path outside workspace: ${p}`);
+    out.push(path.relative(base, abs).replaceAll(path.sep, '/'));
+  }
+  return ok(out);
+}
+
+/** 暂存:paths 缺省=全部未暂存变动(含 untracked) */
+export async function stageChanges(root: string, paths?: readonly string[]): Promise<Result<{ out: string }>> {
+  const rels = safeRels(root, paths ?? []);
+  if (!rels.ok) return rels;
+  const r = await git(root, paths === undefined ? ['add', '-A'] : ['add', '-A', '--', ...rels.value]);
+  if (!r.ok) return fail('STAGE_FAIL', r.err);
+  return ok({ out: r.out });
+}
+
+/** 取消暂存(审查页「已暂存」区撤销):暂存区回 HEAD,工作区改动保留(移回未暂存区,不丢内容);
+ *  paths 缺省=全部。无提交的新仓库(HEAD 缺)回落 rm --cached */
+export async function unstageChanges(root: string, paths?: readonly string[]): Promise<Result<{ out: string }>> {
+  const rels = safeRels(root, paths ?? []);
+  if (!rels.ok) return rels;
+  const spec = paths === undefined ? ['.'] : rels.value;
+  const r = await git(root, ['restore', '--staged', '--', ...spec]);
+  if (r.ok) return ok({ out: r.out });
+  const r2 = await git(root, ['rm', '--cached', '-r', '-q', '--', ...spec]);
+  if (!r2.ok) return fail('UNSTAGE_FAIL', r.err);
+  return ok({ out: r2.out });
+}
+
+/** 丢弃未暂存改动(审查页「未暂存」区撤销,不可恢复——前端二次确认):已跟踪文件工作区回暂存区版本;
+ *  untracked 文件删除。paths 缺省=全部未暂存变动 */
+export async function discardUnstaged(root: string, paths?: readonly string[]): Promise<Result<{ out: string }>> {
+  const listed = await listChanges(root);
+  if (!listed.ok) return listed;
+  const unstaged = listed.value.unstaged ?? [];
+  let targets = unstaged;
+  if (paths !== undefined) {
+    const rels = safeRels(root, paths);
+    if (!rels.ok) return rels;
+    const want = new Set(rels.value);
+    targets = unstaged.filter((f) => want.has(f.path));
+  }
+  const tracked = targets.filter((f) => f.status !== 'untracked').map((f) => f.path);
+  if (tracked.length > 0) {
+    const r = await git(root, ['restore', '--worktree', '--', ...tracked]);
+    if (!r.ok) return fail('DISCARD_FAIL', r.err);
+  }
+  for (const f of targets.filter((x) => x.status === 'untracked')) {
+    try {
+      fs.rmSync(path.join(root, f.path), { force: true, recursive: true });
+    } catch (e) {
+      return fail('DISCARD_FAIL', e instanceof Error ? e.message : String(e));
+    }
+  }
+  return ok({ out: `discarded ${targets.length}` });
 }
 
 /** 推送：push;无上游(首推/新分支常态)且 remote 在场时 -u origin HEAD 自动补上游重试
@@ -167,13 +291,28 @@ export async function gitBranches(root: string): Promise<{ current: string; bran
   return { current: cur.ok ? cur.out.trim() : branches[0] ?? '', branches };
 }
 
-/** G14.113 切换分支(工作区有未提交变动时 git 自身拒绝,错误透传) */
+/** G14.113 切换分支:工作区未提交改动与目标分支冲突时 git 拒绝——识别为 DIRTY_TREE(前端弹「提交并切换」确认) */
 export async function checkoutBranch(root: string, branch: string, create = false): Promise<Result<{ out: string }>> {
   if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
   // create=新建并切换(欢迎页分支弹窗筛选行「+」,2026-11-09 用户裁定);已存在同名由 git 拒(错误回显)
   const r = await git(root, create ? ['checkout', '-b', branch] : ['checkout', branch]);
-  if (!r.ok) return fail('CHECKOUT_FAIL', r.err);
+  if (!r.ok) return fail(isDirtyTreeError(r.err) ? 'DIRTY_TREE' : 'CHECKOUT_FAIL', r.err);
   return ok({ out: r.out });
+}
+
+/** git 切换被未提交改动阻断的报错特征(本地改动会被覆盖/请先提交或贮藏) */
+export function isDirtyTreeError(err: string): boolean {
+  return /would be overwritten|commit your changes or stash|Please move or remove them/i.test(err);
+}
+
+/** 提交全部未提交改动后切换(2026-11-09 用户裁定「提交并切换」):add -A + commit(无改动可提交时跳过)→ checkout */
+export async function commitAndCheckout(root: string, branch: string, create: boolean, message: string): Promise<Result<{ out: string }>> {
+  const st = await git(root, ['status', '--porcelain']);
+  if (st.ok && st.out.trim() !== '') {
+    const c = await commitChanges(root, message);
+    if (!c.ok) return c;
+  }
+  return checkoutBranch(root, branch, create);
 }
 
 /** G14.100 撤销变动：restore 回 HEAD（tracked）；本轮新建（HEAD 无此文件）→ 删除。

@@ -95,12 +95,15 @@ export interface Connection {
    *  sessionId=在座会话 id(daemon 重启后缺席,页签恢复仅限同 daemon 生命周期) */
   sessionSides(id: string): Promise<Array<{ journalId: string; sessionId?: string; title: string; updatedAt: number }>>;
   /** G14.99 工作区未提交变动面（Diff 标签数据源） */
-  sessionChanges(id: string): Promise<{ branch: string; files: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }> }>;
+  sessionChanges(id: string): Promise<{ branch: string; files: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>; staged?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>; unstaged?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }> }>;
   /** G14.112 目录树 git 状态映射(含 ignored 目录折叠):path → modified/untracked/deleted/renamed/ignored */
   gitStatus(id: string): Promise<{ branch: string; map: Record<string, string> }>;
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+  /** 切换/新建分支;未提交改动阻断时抛 code='DIRTY_TREE' 的 Error(前端弹「提交并切换」确认) */
   gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
+  /** 提交全部未提交改动后切换(脏树确认框「提交并切换」) */
+  gitCommitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
   /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先;
    *  dirs=尾斜杠目录清单(@面板滤出文件夹/目录引用面;旧 daemon 无此字段 → undefined) */
   workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
@@ -125,8 +128,12 @@ export interface Connection {
   editorIcon(id: string): Promise<{ mime: string; data: string }>;
   /** 以指定应用打开路径(POST /app/open;spawn detached,id 须在已装名单内) */
   openInEditor(path: string, id: string): Promise<void>;
-  sessionChangeContent(id: string, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
-  commitChanges(id: string, message: string): Promise<void>;
+  sessionChangeContent(id: string, path: string, area?: 'staged' | 'unstaged'): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
+  commitChanges(id: string, message: string, stagedOnly?: boolean): Promise<void>;
+  /** 审查页两区操作(paths 缺省=该区全部):暂存/取消暂存(改动退回工作区)/丢弃未暂存(不可恢复) */
+  stageChanges(id: string, paths?: string[]): Promise<void>;
+  unstageChanges(id: string, paths?: string[]): Promise<void>;
+  discardUnstaged(id: string, paths?: string[]): Promise<void>;
   pushChanges(id: string): Promise<void>;
   /** G14.100 撤销单个变动文件(restore 回 HEAD/删除本轮新建) */
   restoreChange(id: string, path: string): Promise<void>;
@@ -370,6 +377,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
   /** 非 2xx → Error（2026-10-29 用户裁定:op 族失败透出服务端 {error,hint}——GUI 行内错误条
    *  呈服务端真因,不再裸显 `<path> -> <status>` 连接层格式;hint 在场拼随原文引流）。体缺/
    *  非 JSON/无 error 字段 → 回落 `<path> -> <status>` 旧格式（非 op 形状应答容错面） */
+  /** 审查页两区操作单点(stage/unstage/discard):失败读应答体 error 透出 */
+  async function changesOp(id: string, op: 'stage' | 'unstage' | 'discard', paths?: string[]): Promise<void> {
+    const p = `/session/${encodeURIComponent(id)}/changes/${op}`;
+    const res = await fetch(`${base}${p}`, {
+      method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify(paths !== undefined ? { paths } : {}),
+    });
+    if (!res.ok) throw await opError(p, res);
+  }
+
   async function opError(path: string, res: Response): Promise<Error> {
     let doc: unknown;
     try {
@@ -545,7 +561,18 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson<{ title: string; icon: string }>(`/web/meta?url=${encodeURIComponent(url)}`);
     },
     async gitCheckout(root: string, branch: string, create?: boolean) {
-      await post('/git/checkout', { root, branch, ...(create === true ? { create: true } : {}) });
+      const res = await fetch(`${base}/git/checkout`, {
+        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ root, branch, ...(create === true ? { create: true } : {}) }),
+      });
+      if (res.ok) return;
+      const err = await opError('/git/checkout', res);
+      throw res.status === 409 ? Object.assign(err, { code: 'DIRTY_TREE' }) : err;
+    },
+    async gitCommitCheckout(root: string, branch: string, create?: boolean) {
+      const res = await fetch(`${base}/git/commit-checkout`, {
+        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ root, branch, ...(create === true ? { create: true } : {}) }),
+      });
+      if (!res.ok) throw await opError('/git/commit-checkout', res);
     },
     guiState(id: string) {
       return getJson<{ state: unknown }>(`/session/${encodeURIComponent(id)}/gui-state`);
@@ -581,13 +608,22 @@ export function createConnection(opts: ConnectionOpts): Connection {
     async openInEditor(path: string, id: string) {
       await post('/app/open', { path, id });
     },
-    sessionChangeContent(id: string, path: string) {
-      return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}`);
+    sessionChangeContent(id: string, path: string, area?: 'staged' | 'unstaged') {
+      return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}${area !== undefined ? `&area=${area}` : ''}`);
     },
-    async commitChanges(id: string, message: string) {
+    async stageChanges(id: string, paths?: string[]) {
+      await changesOp(id, 'stage', paths);
+    },
+    async unstageChanges(id: string, paths?: string[]) {
+      await changesOp(id, 'unstage', paths);
+    },
+    async discardUnstaged(id: string, paths?: string[]) {
+      await changesOp(id, 'discard', paths);
+    },
+    async commitChanges(id: string, message: string, stagedOnly?: boolean) {
       // 失败读应答体 error 透出(2026-10-31 用户实测 push 400 裸显——服务端 git 真因直达审查页)
       const res = await fetch(`${base}/session/${encodeURIComponent(id)}/changes/commit`, {
-        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ message }),
+        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ message, ...(stagedOnly === true ? { staged: true } : {}) }),
       });
       if (!res.ok) throw await opError(`/session/${encodeURIComponent(id)}/changes/commit`, res);
     },

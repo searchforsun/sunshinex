@@ -208,7 +208,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     // by callId 多实例:同 write 调用重开=聚焦,异 callId 并存
     resolveKey: (params) => params.callId ?? '',
     singleton: false,
-    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={fileTabOf(p)} />,
+    render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} root={p.root} onOpenFile={fileTabOf(p)} />,
   },
   {
     id: 'tasks',

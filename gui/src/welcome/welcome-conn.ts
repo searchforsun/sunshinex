@@ -14,6 +14,7 @@ export interface WelcomeComposerConn {
   /** G14.113 分支清单/切换(欢迎页分支选择;实现体见 createConnection) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
+  gitCommitCheckout?(root: string, branch: string, create?: boolean): Promise<void>;
   /** + 附加面板数据源(G12 三轮;文件区需会话——欢迎页不传 sessionId 不渲染) */
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
   skillsGroups(root?: string): Promise<{

@@ -11,7 +11,7 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
-import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, workspaceFiles } from './session-changes';
+import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
 import { projectsRoot, resolveDataDir } from '../config/data-dir';
@@ -637,7 +637,18 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         const create = (parsed.body as { create?: unknown }).create === true;
         if (typeof root !== 'string' || typeof branch !== 'string') return this.send(res, 400, { error: 'root and branch required' });
         const r = await checkoutBranch(path.resolve(root), branch, create);
-        if (!r.ok) return this.send(res, 400, { error: r.error });
+        // DIRTY_TREE=未提交改动阻断切换:409 带 code,前端弹「提交并切换」确认(2026-11-09 用户裁定)
+        if (!r.ok) return this.send(res, r.error.code === 'DIRTY_TREE' ? 409 : 400, { error: r.error.message, code: r.error.code });
+        this.send(res, 200, { ok: true });
+      } },
+    { method: 'POST', path: '/git/commit-checkout', auth: true, run: async (req, res) => {
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const b = parsed.body as { root?: unknown; branch?: unknown; create?: unknown; message?: unknown };
+        if (typeof b.root !== 'string' || typeof b.branch !== 'string') return this.send(res, 400, { error: 'root and branch required' });
+        const message = typeof b.message === 'string' && b.message.trim() !== '' ? b.message : `chore: commit pending changes before switching to ${b.branch}`;
+        const r = await commitAndCheckout(path.resolve(b.root), b.branch, b.create === true, message);
+        if (!r.ok) return this.send(res, 400, { error: r.error.message, code: r.error.code });
         this.send(res, 200, { ok: true });
       } },
     { method: 'GET', path: '/session/:id/git-status', auth: true, run: async (_req, res, p) => {
@@ -658,8 +669,10 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'GET', path: '/session/:id/changes/content', auth: true, run: async (req, res, p) => {
         const session = this.sessionFor(res, p.id);
         if (session === undefined) return;
-        const rel = urlOf(req).searchParams.get('path') ?? '';
-        const r = await changeContent(session.root, rel);
+        const q = urlOf(req).searchParams;
+        const rel = q.get('path') ?? '';
+        const areaQ = q.get('area');
+        const r = await changeContent(session.root, rel, areaQ === 'staged' || areaQ === 'unstaged' ? areaQ : undefined);
         if (!r.ok) return this.send(res, 400, { error: r.error });
         this.send(res, 200, r.value);
       } },
@@ -670,10 +683,28 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
         const message = (parsed.body as { message?: unknown }).message;
         if (typeof message !== 'string') return this.send(res, 400, { error: 'message required' });
-        const r = await commitChanges(session.root, message);
+        const r = await commitChanges(session.root, message, (parsed.body as { staged?: unknown }).staged === true);
         if (!r.ok) return this.send(res, 400, { error: r.error });
         this.send(res, 200, { ok: true, out: r.value.out });
       } },
+    // 2026-11-09 审查页两区:暂存/取消暂存(撤销已暂存,改动退回工作区)/丢弃未暂存;paths 缺省=该区全部
+    ...(['stage', 'unstage', 'discard'] as const).map((op) => ({
+      method: 'POST' as const,
+      path: `/session/:id/changes/${op}`,
+      auth: true,
+      run: async (req: http.IncomingMessage, res: http.ServerResponse, p: Record<string, string>) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const raw = (parsed.body as { paths?: unknown }).paths;
+        const paths = Array.isArray(raw) && raw.every((x) => typeof x === 'string') ? (raw as string[]) : undefined;
+        const fn = op === 'stage' ? stageChanges : op === 'unstage' ? unstageChanges : discardUnstaged;
+        const r = await fn(session.root, paths);
+        if (!r.ok) return this.send(res, 400, { error: r.error.message, code: r.error.code });
+        this.send(res, 200, { ok: true });
+      },
+    })),
     { method: 'POST', path: '/session/:id/changes/push', auth: true, run: async (_req, res, p) => {
         const session = this.sessionFor(res, p.id);
         if (session === undefined) return;
