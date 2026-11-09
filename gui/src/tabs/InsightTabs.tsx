@@ -143,7 +143,7 @@ function spawnPromptOf(tail: string | undefined): string | undefined {
  *  单行=状态图标+运行时长+命令(一行省略)+创建时间。2026-10-31 用户裁定三改:①运行时长前移到
  *  状态图标后(与右缘创建时间在视觉轴上分开) ②展开详情摘「命令/结果」自解释标题,命令行右缘
  *  复制钮 ③展开详情摘自解释标题。exec 点击展开命令详情与结果;subagent 整行直开转录
- *  (不展开)。运行中时长 1s 实时跳。focus=task_wait 行点击定位(滚至+flash;exec 顺带展开) */
+ *  (不展开)。运行中时长 1s 实时跳。focus=task_wait 行点击定位(瞬跳到行;exec 顺带展开) */
 export function BgTasksTab({
   conn,
   sessionId,

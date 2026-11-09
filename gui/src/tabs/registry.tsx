@@ -126,7 +126,7 @@ export interface TabRenderProps {
   /** 学习技能定位(2026-11-01 用户裁定「点击正文 学习|更新技能 → 侧栏展开指定技能」:learned 回显行
    *  点击下发 slug,LearnedSkillsTab 展开滚至对应行并原样展示正文;他型忽略) */
   readonly learnedFocus?: { slug: string; nonce: number };
-  /** 后台任务定位(task_wait 行点击:开 bgtasks 页签并 flash 指定账本行;他型忽略) */
+  /** 后台任务定位(task_wait 行点击:开 bgtasks 页签并瞬跳到指定账本行;他型忽略) */
   readonly bgFocus?: { id: string; nonce: number };
   /** 可刷新侧栏打开信号(App openTabInSession 递增;带刷新钮页签据此主动拉一次) */
   readonly panelRefreshNonce?: number;
