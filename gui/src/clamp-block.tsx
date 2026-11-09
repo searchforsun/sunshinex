@@ -25,8 +25,8 @@ export function ClampToggle({ open, onToggle }: { open: boolean; onToggle: () =>
   );
 }
 
-/** 详情限高块(2026-11-09 用户裁定):内容超 DETAIL_MAX_HEIGHT 时限高+纵向滚动条,块下方 V;点开=完整高度、
- *  滚动条消失,块下方 ^ 收回。展开态块内私有——外层行折叠即卸载,再展开回限高态(外部折叠自动带走内部 ^)。
+/** 详情固定高块(2026-11-09 用户裁定「固定高度」):收起态恒为 DETAIL_MAX_HEIGHT 固定高(内容短也不缩),
+ *  内容超出即纵向滚动条+块下方 V;点开=完整高度、滚动条消失,块下方 ^ 收回。展开态块内私有——外层行折叠即卸载,再展开回限高态(外部折叠自动带走内部 ^)。
  *  as 透传宿主标签(pre 裸文本/div md 面),className 承载宿主原有底色/边框样式 */
 export function ClampBlock({
   as: Tag = 'div',
@@ -52,13 +52,13 @@ export function ClampBlock({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const clamped = over && !open;
+  const clamped = !open;
   return (
     <div className="sx-clamp-wrap">
       <Tag
         ref={ref}
         className={`${className ?? ''} sx-clamp${clamped ? ' clamped' : ''}`}
-        style={clamped ? { ...style, maxHeight: DETAIL_MAX_HEIGHT } : style}
+        style={clamped ? { ...style, height: DETAIL_MAX_HEIGHT, boxSizing: 'border-box' } : style}
       >
         {children}
       </Tag>

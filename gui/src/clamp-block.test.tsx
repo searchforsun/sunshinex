@@ -42,6 +42,7 @@ describe('ClampBlock 详情限高块', () => {
     globalThis.ResizeObserver = RoStub;
     const { rerender } = render(<Row text={short} />);
     expect(screen.queryByRole('button')).toBeNull(); // 未超限:无钮
+    expect((document.querySelector('.sx-clamp') as HTMLElement).style.height).toBe(`${DETAIL_MAX_HEIGHT}px`); // 短内容也固定高
     rerender(<Row text={tall} />);
     expect(RoStub.instances.length).toBeGreaterThan(0);
     // 内容高由 jsdom 布局决定=0,直接经 scrollHeight 桩驱动「超限」判定:手动设 prototype 不便,
@@ -52,11 +53,11 @@ describe('ClampBlock 详情限高块', () => {
     act(() => RoStub.instances.forEach((r) => r.trigger()));
     const v = screen.getByRole('button', { name: 'Expand' });
     expect(first.className).toContain('clamped');
-    expect(first.style.maxHeight).toBe(`${DETAIL_MAX_HEIGHT}px`); // 限高(CSS clamped=overflow-y auto 出滚动条)
+    expect(first.style.height).toBe(`${DETAIL_MAX_HEIGHT}px`); // 固定高(CSS clamped=overflow-y auto 出滚动条)
     fireEvent.click(v);
     const openEl = document.querySelector('.sx-clamp') as HTMLElement;
     expect(openEl.className).not.toContain('clamped');
-    expect(openEl.style.maxHeight).toBe(''); // 展开态:不限高=滚动条消失
+    expect(openEl.style.height).toBe(''); // 展开态:完整高度=滚动条消失
     expect(screen.getByRole('button', { name: 'Collapse' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
     expect((document.querySelector('.sx-clamp') as HTMLElement).className).toContain('clamped');
