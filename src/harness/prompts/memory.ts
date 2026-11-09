@@ -69,7 +69,8 @@ const CONSOLIDATION_PROMPT_TEMPLATE = [
   'Merge duplicates, drop stale or superseded entries (a newer observation replaces the old), keep one entry per fact, keep details inside the entry body.',
   'Rewrite entries to be self-contained: resolve any remaining deictic references ("this", "that") into concrete entity names and use absolute dates only.',
   'You must NOT output more entries than the {{COUNT}} given. Keep the original language of each entry.',
-  'Call submit_memory_items once with the consolidated entries ({"items":[{"type":"project","description":"one line","body":"the fact"}]}).',
+  'Also organize the store as a wiki: give every entry a short unique "id"; set "links" to the ids of closely related entries; group entries about the same subject into "topics" (name, one-line description, a short summary, member ids). Prefer dropping a superseded entry; use "superseded_by" (the replacing id) only when the old entry is worth keeping for history.',
+  'Call submit_memory_items once ({"items":[{"id":"a","type":"project","description":"one line","body":"the fact","links":["b"]}],"topics":[{"name":"subject","description":"one line","summary":"overview","ids":["a","b"]}]}).',
   'Current records:',
   '{{RECORDS}}',
 ].join('\n');
@@ -117,13 +118,15 @@ export const MEMORY_TOOLS = [
   },
 ];
 
-/** 整理 tools 面：submit_memory_items 复用提取出牌面（items 条目形态一致，body 语义） */
+/** 整理 tools 面：submit_memory_items 复用提取出牌面（items 条目形态一致，body 语义）。
+ *  Wiki 扩展（2026-11-09）：条目可选 id（载荷内句柄）/links（相关 id）/superseded_by（取代者 id）；
+ *  顶层可选 topics（主题综述页，ids 归属）——模型不知真实 slug，引用一律走 id，落盘后由整理面映射 */
 export const CONSOLIDATE_TOOLS = [
   {
     type: 'function' as const,
     function: {
       name: 'submit_memory_items',
-      description: 'Submit the consolidated memory entries (merged, deduplicated, self-contained)',
+      description: 'Submit the consolidated memory entries (merged, deduplicated, self-contained) and their wiki organization (links and topics)',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -136,9 +139,26 @@ export const CONSOLIDATE_TOOLS = [
               additionalProperties: false,
               required: ['type', 'description', 'body'],
               properties: {
+                id: { type: 'string', description: 'short handle unique within this submission, referenced by links/topics' },
                 type: { type: 'string', enum: ['user', 'feedback', 'project', 'reference'] },
                 description: { type: 'string' },
                 body: { type: 'string' },
+                links: { type: 'array', items: { type: 'string' }, description: 'ids of closely related entries' },
+                superseded_by: { type: 'string', description: 'id of the entry replacing this one (kept for history, hidden from the index)' },
+              },
+            },
+          },
+          topics: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'description', 'ids'],
+              properties: {
+                name: { type: 'string' },
+                description: { type: 'string', description: 'one line shown in the memory index' },
+                summary: { type: 'string', description: 'short overview of the subject' },
+                ids: { type: 'array', items: { type: 'string' } },
               },
             },
           },

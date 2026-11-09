@@ -204,3 +204,59 @@ test('整理未应用（模型不出牌）→ notify 浮出一行说明（不再
     assert.equal(mem.count(), MEMORY_CONSOLIDATE_THRESHOLD, '原状保留');
   });
 });
+
+// ── Wiki 层整理（2026-11-09）：id 句柄映射 slug、links/superseded_by 落盘、topics 主题页重建 ──
+
+test('Wiki 整理：links/superseded_by 按 id 映射为 slug 落盘，悬空 id 滤除；主题页重建+索引两段化', async () => {
+  await withMem(async (mem) => {
+    seed(mem, MEMORY_CONSOLIDATE_THRESHOLD);
+    const model: ModelAdapter = {
+      provider: 'openai',
+      capabilities: { chat: true },
+      chat: async () => ({
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{
+          id: 'call_0',
+          name: 'submit_memory_items',
+          argsJson: JSON.stringify({
+            items: [
+              { id: 'a', type: 'project', description: 'alarm config pages', body: 'config url', links: ['b', 'ghost'] },
+              { id: 'b', type: 'reference', description: 'alarm payload shape', body: 'payload fields', superseded_by: 'a' },
+              { id: 'c', type: 'user', description: 'prefers pnpm', body: 'use pnpm' },
+            ],
+            topics: [{ name: 'Aries alarm', description: 'config and payload', summary: 'Overview.', ids: ['a', 'b', 'ghost'] }],
+          }),
+        }],
+      }),
+    };
+    await consolidateMemory({ model, root: mem.dir() });
+    const a = mem.list().find((r) => r.slug === 'alarm-config-pages')!;
+    const b = mem.list().find((r) => r.slug === 'alarm-payload-shape')!;
+    assert.deepEqual(a.links, ['alarm-payload-shape'], 'id→slug 映射，悬空 ghost 滤除');
+    assert.equal(b.supersededBy, 'alarm-config-pages');
+    assert.ok(!mem.indexText().includes('alarm-payload-shape.md'), '被取代记录不进索引');
+    assert.ok(mem.indexText().includes('## Topics'), '索引两段化');
+    const page = fs.readFileSync(path.join(mem.dir(), 'topics', 'Aries-alarm.md'), 'utf8');
+    assert.match(page, /slugs: alarm-config-pages, alarm-payload-shape\n/, '主题归属悬空滤除');
+    assert.equal(mem.count(), 3, '主题页不计入记录数（只减不增闸门口径不变）');
+  });
+});
+
+test('topics 缺省=保持既有主题页不动；载荷畸形 topics 数组被忽略', async () => {
+  await withMem(async (mem) => {
+    seed(mem, 2);
+    mem.writeTopics([{ name: 'Keep me', description: 'd', summary: 's', slugs: [mem.list()[0]!.slug] }]);
+    const model: ModelAdapter = {
+      provider: 'openai',
+      capabilities: { chat: true },
+      chat: async () => ({
+        finish: 'tool_calls',
+        content: '',
+        toolCalls: [{ id: 'call_0', name: 'submit_memory_items', argsJson: JSON.stringify({ items: [{ type: 'project', description: 'memo topic 1', body: 'rewritten' }] }) }],
+      }),
+    };
+    await consolidateMemory({ model, root: mem.dir() });
+    assert.ok(fs.existsSync(path.join(mem.dir(), 'topics', 'Keep-me.md')), '未出牌不清空主题页');
+  });
+});

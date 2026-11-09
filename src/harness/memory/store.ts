@@ -38,23 +38,47 @@ export interface MemoryRecord {
   modified: string;
   description: string;
   body: string;
+  /** 相关记录 slug 列表（Wiki 互联，整理面写入；缺省=无链接——存量记录零变化） */
+  links?: string[];
+  /** 被哪条记录取代（整理 supersede 语义的显式承载；被标记记录不进索引） */
+  supersededBy?: string;
 }
 
 /** 近满阈值（规格 §6）：上限的 80%，行数与字节数任一先到即提醒 */
 const NEAR_LIMIT_RATIO = 0.8;
 
-/** frontmatter 序列化（四键单一来源：add 与 put 共用，防两处格式漂移） */
-function serialize(rec: { type: MemoryType; created: string; modified: string; description: string; body: string }): string {
-  return [
+/** frontmatter 序列化（键集单一来源：add 与 put 共用，防两处格式漂移）。links/superseded_by 为可选键：
+ *  空则不写——存量记录（四键形态）逐字节不变 */
+function serialize(rec: { type: MemoryType; created: string; modified: string; description: string; body: string; links?: string[]; supersededBy?: string }): string {
+  const lines = [
     '---',
     `type: ${rec.type}`,
     `created: ${rec.created}`,
     `modified: ${rec.modified}`,
     `description: ${rec.description}`,
-    '---',
-    rec.body,
-    '',
-  ].join('\n');
+  ];
+  if (rec.links !== undefined && rec.links.length > 0) lines.push(`links: ${rec.links.join(', ')}`);
+  if (rec.supersededBy !== undefined && rec.supersededBy.length > 0) lines.push(`superseded_by: ${rec.supersededBy}`);
+  lines.push('---', rec.body, '');
+  return lines.join('\n');
+}
+
+/** Wiki 字段归一（add/put 共用）：links 去重滤非法 slug，空数组/空串视为无——返回可直接展开进记录与 serialize 的形态 */
+function wikiFields(links: string[] | undefined, supersededBy: string | undefined): { links?: string[]; supersededBy?: string } {
+  const ls = [...new Set((links ?? []).map((s) => s.trim()).filter((s) => isSafeSlug(s)))];
+  const sb = supersededBy !== undefined && isSafeSlug(supersededBy.trim()) ? supersededBy.trim() : undefined;
+  return { ...(ls.length > 0 ? { links: ls } : {}), ...(sb !== undefined ? { supersededBy: sb } : {}) };
+}
+
+/** 主题页子目录名（Wiki 层，派生物）：<memory>/topics/<topic>.md——子目录天然不进 list() 记录扫描与 .bak 快照 */
+export const TOPICS_DIR = 'topics';
+
+/** 主题页输入（整理面产出）：name=主题名、description=一句话（进索引）、summary=综述正文、slugs=归属记录 */
+export interface MemoryTopic {
+  name: string;
+  description: string;
+  summary: string;
+  slugs: string[];
 }
 
 /** 派生索引文件名（R7 单点）：store 重建/读盘、writer 接缝索引排他、pipeline 说明行指针共用 */
@@ -73,7 +97,7 @@ export type MemoryLogSource = 'tool' | 'extractor' | 'consolidate' | 'system';
 /** 变更事件（摘要指纹粒度）：正文只记 sha256 前 12 位指纹，全文恢复走 .bak 快照 */
 export interface MemoryLogEvent {
   ts: string;
-  op: 'add' | 'put' | 'remove' | 'backup' | 'restore';
+  op: 'add' | 'put' | 'remove' | 'backup' | 'restore' | 'topics';
   slug?: string;
   prevDigest?: string;
   newDigest?: string;
@@ -147,6 +171,12 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
   if (parsed === null) return null;
   const meta = parsed.meta;
   const type = MEMORY_TYPES.includes(meta.type as MemoryType) ? (meta.type as MemoryType) : 'project';
+  // Wiki 字段（frontmatter `links: a, b` 逗号单行 / `superseded_by: slug`）：非法 slug 逐项滤除，缺键=无
+  const links = (meta.links ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => isSafeSlug(s));
+  const supersededBy = meta.superseded_by !== undefined && isSafeSlug(meta.superseded_by) ? meta.superseded_by : undefined;
   return {
     slug,
     type,
@@ -154,6 +184,8 @@ function parseRecord(file: string, slug: string): MemoryRecord | null {
     modified: meta.modified ?? meta.created ?? '',
     description: meta.description ?? '',
     body: parsed.body.replace(/\n$/, ''),
+    ...(links.length > 0 ? { links } : {}),
+    ...(supersededBy !== undefined ? { supersededBy } : {}),
   };
 }
 
@@ -221,7 +253,7 @@ export class MemoryStore {
    * 写入一条记录：归一化三级去重（slug / description / body 任一归一相同即拒）→ 撞名追加 -2/-3… →
    * 写记录文件 → 全量重建索引 → 超限判定（已写盘但返回 MEMORY_INDEX_OVER_LIMIT，CC 语义）。
    */
-  add(input: { type: MemoryType; description: string; body: string; created?: string }): Result<MemoryRecord> {
+  add(input: { type: MemoryType; description: string; body: string; created?: string; links?: string[]; supersededBy?: string }): Result<MemoryRecord> {
     const description = input.description.trim();
     const body = input.body.trim();
     if (!description || !body) return fail('MEMORY_EMPTY', 'Memory description and body must not be empty');
@@ -240,11 +272,12 @@ export class MemoryStore {
     for (let n = 2; this.has(slug); n += 1) slug = `${base}-${n}`;
     const created = input.created ?? new Date().toISOString().slice(0, 10);
     const modified = new Date().toISOString();
-    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
+    const wiki = wikiFields(input.links, input.supersededBy);
+    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body, ...wiki }));
     this.rebuildIndex();
     this.appendLog('add', { slug, newDigest: bodyDigest(body) });
 
-    const record: MemoryRecord = { slug, type: input.type, created, modified, description, body };
+    const record: MemoryRecord = { slug, type: input.type, created, modified, description, body, ...wiki };
     const over = this.overLimit();
     if (over !== null) return fail('MEMORY_INDEX_OVER_LIMIT', over);
     return ok(record);
@@ -253,8 +286,9 @@ export class MemoryStore {
   /**
    * 按既有 slug 写入（会中自写路径，规格 §5）：同 slug 视为**更新**（去重自排除、保留 created、刷新 modified），
    * 不存在则创建。存在的价值：模型改写一条记忆不产生 -2 副本。超限语义与 add 一致（写成功 + 报错勒令精简）。
+   * Wiki 字段（links/supersededBy）未传=保留既有值（update/整理路径不抹链接）；显式传空数组/空串=清除。
    */
-  put(input: { slug: string; type: MemoryType; description: string; body: string; created?: string; modified?: string }): Result<MemoryRecord> {
+  put(input: { slug: string; type: MemoryType; description: string; body: string; created?: string; modified?: string; links?: string[]; supersededBy?: string }): Result<MemoryRecord> {
     const slug = input.slug.trim();
     const description = input.description.trim();
     const body = input.body.trim();
@@ -272,11 +306,12 @@ export class MemoryStore {
 
     const created = input.created ?? existing?.created ?? new Date().toISOString().slice(0, 10);
     const modified = input.modified ?? new Date().toISOString();
-    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body }));
+    const wiki = wikiFields(input.links ?? existing?.links, input.supersededBy ?? existing?.supersededBy);
+    fs.writeFileSync(path.join(this.dirPath, `${slug}.md`), serialize({ type: input.type, created, modified, description, body, ...wiki }));
     this.rebuildIndex();
     this.appendLog('put', { slug, prevDigest: existing ? bodyDigest(existing.body) : undefined, newDigest: bodyDigest(body) });
 
-    const record: MemoryRecord = { slug, type: input.type, created, modified, description, body };
+    const record: MemoryRecord = { slug, type: input.type, created, modified, description, body, ...wiki };
     const over = this.overLimit();
     if (over !== null) return fail('MEMORY_INDEX_OVER_LIMIT', over);
     return ok(record);
@@ -322,7 +357,8 @@ export class MemoryStore {
    */
   restore(bak: string): void {
     for (const f of fs.readdirSync(this.dirPath)) {
-      if (f.startsWith(BAK_PREFIX) || f === LOG_NAME) continue;
+      // topics/ 是派生物不入快照——还原不清退它，否则还原后的 MEMORY.md 主题段指向已删页（整理先回滚再写主题页，二者不交叉）
+      if (f.startsWith(BAK_PREFIX) || f === LOG_NAME || f === TOPICS_DIR) continue;
       fs.rmSync(path.join(this.dirPath, f), { recursive: true, force: true });
     }
     for (const f of fs.readdirSync(bak)) {
@@ -341,14 +377,93 @@ export class MemoryStore {
   /** 索引全量重建（派生物语义：空集写空文件，保持文件存在形态统一）。
    *  行形态为 Markdown 链接（2026-10-02 用户裁决「做成这样的 md 链接」）：`- [description](<slug>.md)：正文单行化说明`
    *  ——编辑器浏览时链接可点击直达记录文件；正文空白折叠防多行 body 破坏一行一条纪律（容量两级按非空行计数口径不变，
-   *  头部 `# Memory Index` 计 1 行即有效容量 199，量级无感）；type 不进索引行（记录 frontmatter 为单一事实源）。 */
+   *  头部 `# Memory Index` 计 1 行即有效容量 199，量级无感）；type 不进索引行（记录 frontmatter 为单一事实源）。
+   *  Wiki 两段（2026-11-09）：topics/ 有页时分「## Topics」主题段（一句话，不内联正文）+「## Records」散条段
+   *  （仅未归入任何主题的记录，沿用上述行形态）——归入主题的记录经主题页按需读取，注入体积随主题化收敛；
+   *  无主题页时输出与旧形态逐字节一致。supersededBy 非空的记录恒不进索引（已被取代，文件仍在供追溯）。 */
   rebuildIndex(): void {
-    const lines = this.list().map((r) => {
+    const topics = this.listTopics();
+    const filed = new Set(topics.flatMap((t) => t.slugs));
+    const recordLine = (r: MemoryRecord): string => {
       const note = r.body.replace(/\s+/g, ' ').trim();
       return note.length > 0 ? `- [${r.description}](${r.slug}.md)：${note}` : `- [${r.description}](${r.slug}.md)`;
-    });
-    const text = lines.length > 0 ? `# Memory Index\n\n${lines.join('\n')}\n` : '';
+    };
+    const live = this.list().filter((r) => r.supersededBy === undefined);
+    let text: string;
+    if (topics.length === 0) {
+      const lines = live.map(recordLine);
+      text = lines.length > 0 ? `# Memory Index\n\n${lines.join('\n')}\n` : '';
+    } else {
+      const topicLines = topics.map((t) => `- [${t.name}](${TOPICS_DIR}/${t.file})：${t.description}`);
+      const scatter = live.filter((r) => !filed.has(r.slug)).map(recordLine);
+      text = `# Memory Index\n\n## Topics\n${topicLines.join('\n')}\n` + (scatter.length > 0 ? `\n## Records\n${scatter.join('\n')}\n` : '');
+    }
     fs.writeFileSync(path.join(this.dirPath, INDEX_NAME), text);
+  }
+
+  /** 主题页清单（读 topics/ 下各页 frontmatter：name/description/slugs）；目录缺失/坏页跳过——派生物读失败不击穿索引 */
+  listTopics(): Array<{ file: string; name: string; description: string; slugs: string[] }> {
+    const dir = path.join(this.dirPath, TOPICS_DIR);
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir).filter((n) => n.endsWith('.md')).sort();
+    } catch {
+      return [];
+    }
+    const out: Array<{ file: string; name: string; description: string; slugs: string[] }> = [];
+    for (const file of names) {
+      let raw: string;
+      try {
+        raw = fs.readFileSync(path.join(dir, file), 'utf8');
+      } catch {
+        continue;
+      }
+      const parsed = parseMemoryFrontmatter(raw, { lenient: false });
+      if (parsed === null) continue;
+      const slugs = (parsed.meta.slugs ?? '').split(',').map((s) => s.trim()).filter((s) => isSafeSlug(s));
+      out.push({ file, name: parsed.meta.name ?? file.slice(0, -3), description: parsed.meta.description ?? '', slugs });
+    }
+    return out;
+  }
+
+  /**
+   * 主题页整目录重建（Wiki 层写原语，整理面消费）：清空 topics/ → 逐页写 `<slugify(name)>.md`
+   * （frontmatter name/description/slugs + 综述正文 + 归属记录链接行）→ 重建索引 → log 记 topics 事件。
+   * 归属 slug 只保留真实存在的记录（悬空滤除），归属为空的主题整页不写；同名折叠撞名追加 -2。
+   * 主题页是派生物：失败抛出由调用方旁路降级，记录文件零触碰。
+   */
+  writeTopics(topics: readonly MemoryTopic[]): void {
+    const dir = path.join(this.dirPath, TOPICS_DIR);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const records = new Map(this.list().map((r) => [r.slug, r]));
+    const used = new Set<string>();
+    let written = 0;
+    for (const t of topics) {
+      const name = t.name.replace(/\s+/g, ' ').trim();
+      const slugs = [...new Set(t.slugs)].filter((s) => records.has(s));
+      if (name.length === 0 || slugs.length === 0) continue;
+      const base = slugifyMemory(name);
+      let file = base;
+      for (let n = 2; used.has(file); n += 1) file = `${base}-${n}`;
+      used.add(file);
+      const links = slugs.map((s) => `- [${records.get(s)!.description}](../${s}.md)`);
+      const page = [
+        '---',
+        `name: ${name}`,
+        `description: ${t.description.replace(/\s+/g, ' ').trim()}`,
+        `slugs: ${slugs.join(', ')}`,
+        '---',
+        t.summary.trim(),
+        '',
+        ...links,
+        '',
+      ].join('\n');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `${file}.md`), page);
+      written += 1;
+    }
+    this.rebuildIndex();
+    this.appendLog('topics', { slug: String(written) });
   }
 
   /** 近满提醒（规格 §6 两级容量：近满=提醒、超限=错误）：行数或字节数任一 ≥80% 返回提醒文本，否则 null */

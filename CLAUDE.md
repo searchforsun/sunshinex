@@ -109,7 +109,7 @@ src/
     skills.ts         # 技能装载与调度（项目五根+全局+学习级+插件链尾、resolve 回退链、清单注入）
     teams.ts          # 团队目录装载与调度（两级遮蔽、索引注入、resolve 三态、章程卡）
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
-    memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线；store 内收口 log.jsonl 追加只增变更历史——OKF log 件，五写原语单点落账、摘要指纹粒度、失败旁路）
+    memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线；store 内收口 log.jsonl 追加只增变更历史——OKF log 件，五写原语单点落账、摘要指纹粒度、失败旁路；Wiki 层：记录可选 links/superseded_by 字段、整理面产出 topics/<topic>.md 主题综述页（派生物，删目录即回退）、MEMORY.md 两段化=主题段+散条段）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
     tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write）
     plugin-host.ts    # 插件宿主装配单点（browser-use 插件连接改写为每进程宿主 HTTP 连接：会话浏览器键/座位/数据目录/facade 端点入 URL，宿主起不来只损失浏览器工具）
