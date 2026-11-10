@@ -61,3 +61,5 @@ plugins/computer-use/server/**/*.js
 plugins/browser-use/server/**/*.js
 plugins/browser-use/browsers.json
 plugins/browser-use/.playwright-mcp/
+shell/r*/
+shell/rel*/
