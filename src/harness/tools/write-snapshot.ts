@@ -65,6 +65,16 @@ export class WriteSnapshotCollector {
       return null;
     }
   }
+
+  /** blob 写入面（2026-11-10 轮次 checkpoint：轮末后像落库与 capture 同库同径——内容寻址去重，
+   *  撤销/轮 diff 读侧复用 readBlob 单点）。返回 sha256 hash */
+  store(content: Buffer): string {
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    fs.mkdirSync(this.blobsDir, { recursive: true });
+    const blob = path.join(this.blobsDir, hash);
+    if (!fs.existsSync(blob)) fs.writeFileSync(blob, content);
+    return hash;
+  }
 }
 
 /** 装配接缝：capture 接受工具原始入参（相对项目根或绝对，安全链 safePath 两种形态都收敛在此），root 外路径跳过（防御性兜底）；
@@ -78,6 +88,8 @@ export interface WriteSnapshotSink {
   nthFor(p: string, ordinal: number): SnapshotEntry | undefined;
   /** blob 内容读取（hash 寻址 <dataDir>/sessions/_blobs/<sha256>）；缺场 null */
   readBlob(hash: string): Buffer | null;
+  /** blob 写入（内容寻址同库；返回 sha256）——轮末后像落库（turn checkpoint）消费 */
+  store(content: Buffer): string;
 }
 
 export function makeWriteSnapshotSink(dataDir: string, root: string): WriteSnapshotSink {
@@ -103,5 +115,6 @@ export function makeWriteSnapshotSink(dataDir: string, root: string): WriteSnaps
       return rel === undefined ? undefined : collector.nthFor(rel, ordinal);
     },
     readBlob: (hash) => collector.readBlob(hash),
+    store: (content) => collector.store(content),
   };
 }

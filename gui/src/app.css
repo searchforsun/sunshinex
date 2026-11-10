@@ -1475,6 +1475,16 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   opacity: 0;
   transition: opacity 0.12s ease;
 }.run-changes-row:hover .run-changes-undo-row { opacity: 1; }.run-changes-undo-row:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
+/* 轮次 checkpoint 撤销(2026-11-10):二次确认武装态(审查页 sx-changes-act.arm 同款语义)+过期置灰 */
+.run-changes-undo.arm, .run-changes-undo-row.arm { background: var(--err); color: #fff; }
+.run-changes-undo.arm:hover, .run-changes-undo-row.arm:hover { background: color-mix(in srgb, var(--err) 85%, #000); color: #fff; }
+.run-changes-undo-row:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+/* 本轮改动单文件页签(2026-11-10):头=文件图标+名+目录+撤销钮+「本轮」徽标;体=冻结 diff(行号叠加单列) */
+.sx-turn-diff-head { gap: 8px; align-items: center; }
+.sx-turn-diff-head .sx-change-name { flex: none; }
+.sx-turn-diff-head .sx-change-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
+.sx-turn-diff-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); padding: 2px 8px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.sx-turn-diff-body { padding: 8px 12px 16px; overflow: auto; }
 .run-footer { display: flex; align-items: center; gap: 2px; margin-top: 10px; margin-left: -5px; } /* 2026-11-07 用户裁定:操作行离正文稍远(4→10) */.run-footer .sx-tip { color: var(--fg-icon); }.run-stats {
   display: inline-flex; gap: 10px; margin-left: 10px;
   font-size: calc(14px * var(--fz)); color: var(--fg-tertiary);

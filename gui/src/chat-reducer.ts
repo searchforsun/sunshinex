@@ -1,4 +1,4 @@
-import type { SessionEvent } from '../../src/types';
+import type { SessionEvent, TurnFileChange } from '../../src/types';
 import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
 import { localizeNotice } from './i18n-notice';
 import { getLanguage, t } from './i18n';
@@ -55,6 +55,10 @@ export interface ChatEntry {
   stopped?: boolean;
   /** G14.100 run 专用:本轮 git 变动增量(轮尾汇总条;撤销面按 path 寻址) */
   changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
+  /** 轮次 checkpoint(2026-11-10):run-open 条目 seq(端点寻址键,与 key `k<seq>` 同源)与
+   *  路径级前像/后像——本轮 diff 页签(冻结内容)与 checkpoint 撤销(staleness 闸门)数据面 */
+  runSeq?: number;
+  turn?: TurnFileChange[];
 }
 
 /** chat 投影状态：内核态 + 物化视图条目 + 状态栏三指标 */
@@ -110,6 +114,7 @@ export interface SnapshotTranscriptEntry {
     endedTs?: number;
     stopped?: boolean;
     changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
+    turn?: TurnFileChange[];
   };
 }
 
@@ -165,6 +170,7 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
       ...(e.status !== undefined ? { status: e.status } : {}),
     };
     if (e.kind === 'run') {
+      view.runSeq = e.seq; // checkpoint 寻址键(端点 run 参数)
       const m = e.meta;
       if (m !== undefined) {
         view.steps = m.runSteps ?? m.steps; // G14.56:「本轮」口径优先,旧档回退累计
@@ -173,6 +179,7 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
         if (m.stopped === true) view.stopped = true;
         if (m.endedTs !== undefined && m.endedTs > 0) view.endedTs = m.endedTs;
         if (m.changes !== undefined && m.changes.length > 0) view.changes = m.changes;
+        if (m.turn !== undefined && m.turn.length > 0) view.turn = m.turn;
       }
       if (base !== undefined) {
         view.stepsBase = base.steps;

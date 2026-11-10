@@ -57,6 +57,9 @@ export interface MessageListProps {
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
+  /** 轮次 checkpoint 通道(2026-11-10):改动条文件名开本轮 diff 页签 / 前像回写撤销 */
+  readonly onOpenTurn?: (run: number, path: string) => void;
+  readonly onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>;
   readonly onFork?: (runKey: string) => void;
   /** fork 分界横幅回父会话(横幅=合成 notice 条目由 ChatEntryView 专支渲染) */
   readonly onOpenSession?: (sessionId: string) => void;
@@ -105,6 +108,8 @@ interface DayGroupProps {
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
+  readonly onOpenTurn?: (run: number, path: string) => void;
+  readonly onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>;
   readonly onFork?: (runKey: string) => void;
   /** fork 分界横幅回父会话(合成条目渲染面) */
   readonly onOpenSession?: (sessionId: string) => void;
@@ -117,7 +122,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const office = useUiMode() === 'office';
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
@@ -138,7 +143,7 @@ const DayGroupBlock = memo(
       />
     ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenAgent={onOpenAgent} sideChat={sideChat} />, [onEntryOpenDiff, onOpenAgent, sideChat]);
+    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenTurn={onOpenTurn} onTurnRestore={onTurnRestore} onOpenAgent={onOpenAgent} sideChat={sideChat} />, [onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat]);
     const renderFoldEntry = useCallback((e2: ChatEntry) => {
       if (e2.kind === 'user') {
         return (
@@ -288,6 +293,8 @@ const DayGroupBlock = memo(
     && prev.composerEnv === next.composerEnv
     && prev.onEntryOpenDiff === next.onEntryOpenDiff
     && prev.onEntryRestore === next.onEntryRestore
+    && prev.onOpenTurn === next.onOpenTurn
+    && prev.onTurnRestore === next.onTurnRestore
     && prev.onFork === next.onFork
     && prev.onOpenImage === next.onOpenImage
     && prev.root === next.root
@@ -339,6 +346,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const submitTextStable = useCallback((text: string, images?: string[]) => propsRef.current.submitText(text, images), []);
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
+  const onOpenTurnStable = useCallback((run: number, path: string) => propsRef.current.onOpenTurn?.(run, path), []);
+  const onTurnRestoreStable = useCallback((run: number, paths: string[]) => propsRef.current.onTurnRestore?.(run, paths) ?? Promise.resolve([]), []);
+  const onOpenTurnOpt = useCallback(() => opt(onOpenTurnStable, propsRef.current.onOpenTurn), [onOpenTurnStable]);
+  const onTurnRestoreOpt = useCallback(() => opt(onTurnRestoreStable, propsRef.current.onTurnRestore), [onTurnRestoreStable]);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
    *  折叠组随头完整保留 */
   let cut = entries.length - visibleCount;
@@ -432,6 +443,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
             runFooterByEntry={runFooterByEntry}
             onEntryOpenDiff={onEntryOpenDiffStable}
             onEntryRestore={onEntryRestoreStable}
+            onOpenTurn={onOpenTurnOpt()}
+            onTurnRestore={onTurnRestoreOpt()}
             onFork={onForkOpt()}
             onOpenSession={onOpenSessionOpt()}
             onOpenImage={onOpenImage}

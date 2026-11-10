@@ -351,6 +351,22 @@ export interface ChangeFile {
   newLines?: number;
 }
 
+/** 轮次 checkpoint 文件行（2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」）：hash 寻址
+ *  <dataDir>/sessions/_blobs/<sha256>（write-snapshot 同库）；before=本轮首个 write/edit 前像
+ *  （缺场=非快照族改动如 bash——不支持本轮撤销）；after=轮末磁盘后像（撤销 staleness 闸门比对基准） */
+export interface TurnFileChange {
+  /** 项目根相对路径（/ 分隔） */
+  path: string;
+  /** 本轮改动前内容 blob hash（缺场=无前像，不可本轮撤销） */
+  before?: string;
+  /** 前像为「文件不存在」（本轮新建）——撤销=删文件 */
+  beforeDeleted?: boolean;
+  /** 轮末内容 blob hash */
+  after: string;
+  /** 轮末文件已不存在（本轮删除） */
+  afterDeleted?: boolean;
+}
+
 /** 审批卡种类（spec 5.2）：'read' 为读围栏（D1）新增通道 */
 type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
 

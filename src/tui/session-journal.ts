@@ -54,7 +54,7 @@ export type JournalEvent =
   | { t: 'view'; expandAll: boolean; latestFull: boolean }
   /** G14.15 run 收尾元数据(GUI Worked 行/统计回放):daemon run 结束时落——秒数/步数/tokens/结束时刻。
    *  G14.100 changes=本轮 git 变动增量(路径/状态/±行数)——GUI 轮尾汇总条(展开逐文件/撤销) */
-  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number; stopped?: boolean; changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }> }
+  | { t: 'runmeta'; seconds?: number; steps?: number; runSteps?: number; tokens?: number; cacheTokens?: number; endedTs?: number; stopped?: boolean; changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null }>; turn?: import('../types').TurnFileChange[] }
   // ===== v3 段级行(session-kernel spec §3.2,journal v3 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
   /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖)。
    *  v3 写面单形态(P11-T2 渲染中立):user md=裸文、tool md 恒 ''(字段单源,读侧零归一) */

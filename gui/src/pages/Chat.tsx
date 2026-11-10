@@ -4,7 +4,7 @@ import { ArrowDown, Eye, NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
 import { ImageLightbox } from '../ImageLightbox';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
 import { loadDraftImages, saveDraftImages } from '../draft-images';
-import { initialChatState } from '../chat-reducer';
+import { applyChatEvent, initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
@@ -57,7 +57,7 @@ import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
 import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
-import { LiveChangesContext, useLiveGitChanges } from './chat/use-live-changes';
+import { LiveChangesContext, useLiveGitChanges, notifyGitChanged } from './chat/use-live-changes';
 import { useChatLocate } from './chat/use-chat-locate';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
@@ -86,7 +86,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -371,6 +371,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     chatScrollRef,
     chatStickRef,
   });
+  /** 轮次 checkpoint 通道(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):
+   *  文件名点击 → turndiff 页签(run+path 寻址,冻结轮 diff);撤销 → turn-restore(前像回写,
+   *  staleness 逐路径回传;成功广播 git 变点同步审查页)。App 未接通道/旧档缺 runSeq 时
+   *  RunChangesBar 内部自回退审查页/git restore 语义 */
+  const onTurnOpen = useCallback((run: number, path: string) => { onOpenTurnDiff?.(run, path); }, [onOpenTurnDiff]);
+  const onTurnRestore = useCallback((run: number, paths: string[]) =>
+    conn.turnRestore(sessionId, run, paths).then(
+      (r) => {
+        if (r.results.some((x) => x.ok)) notifyGitChanged();
+        return r.results;
+      },
+      (err: unknown) => {
+        setChat((c) => applyChatEvent(c, { type: 'error', text: `${t('Revert failed', '撤销失败')}: ${err instanceof Error ? err.message : String(err)}`, ts: Date.now() }));
+        return [];
+      },
+    ), [conn, sessionId]);
 
   // 标题子系统 + 模型/圆环数据面(批F-6)
   const { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle } = useChatTitle({
@@ -897,6 +913,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         runFooterByEntry={runFooterByEntry}
         onEntryOpenDiff={onEntryOpenDiff}
         onEntryRestore={onEntryRestore}
+        onOpenTurn={onTurnOpen}
+        onTurnRestore={onTurnRestore}
         onFork={onForkRun}
         onOpenSession={onOpenSession}
         onEntryToggleClick={onEntryToggleClick}

@@ -22,13 +22,14 @@ import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '
 import { kernelEventRows } from '../session/seglog';
 import type { SegRowLike } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
+import { sanitizeTurn } from '../session/entry';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile, journalDisplayTitle } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/plan-flow';
 import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
-import type { ChangeFile } from '../types';
+import type { ChangeFile, TurnFileChange } from '../types';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
@@ -727,6 +728,47 @@ export class SessionRuntime {
     return { abs, entry: last };
   }
 
+  /** 轮次 checkpoint 内存索引(2026-11-10):runSeq → 本轮路径级前像/后像——轮收尾时填充;
+   *  daemon 重启即空,读面 turnChangeFor 落 journal 扫描回退(重放会话同可用) */
+  private readonly turnChanges = new Map<number, TurnFileChange[]>();
+
+  /** 轮次 checkpoint 查询面(turn-diff/turn-restore 端点消费):先内存索引(在座会话零 IO),
+   *  未命中扫 journal runmeta 行——对位口径与 reduceSegRows 同构(行绑「末个 run-open seq」),
+   *  面字段不予信任(sanitizeTurn 净化)。缺场 undefined */
+  turnChangeFor(run: number, relPath: string): TurnFileChange | undefined {
+    const relPosix = relPath.replaceAll('\\', '/');
+    const inMemory = this.turnChanges.get(run)?.find((t) => t.path === relPosix);
+    if (inMemory !== undefined) return inMemory;
+    const id = this.journal?.currentId;
+    if (id === undefined) return undefined;
+    const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+    let openSeq = -1;
+    let hit: TurnFileChange | undefined;
+    try {
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        if (!line.includes('"run-open"') && !line.includes('"runmeta"')) continue;
+        try {
+          const e = JSON.parse(line) as { t?: string; seq?: unknown; turn?: unknown };
+          if (e.t === 'run-open') {
+            openSeq = typeof e.seq === 'number' ? e.seq : openSeq;
+            continue;
+          }
+          if (e.t !== 'runmeta' || e.seq !== undefined || openSeq !== run) continue;
+          const turn = sanitizeTurn(e.turn);
+          if (turn !== undefined) {
+            const found = turn.find((t) => t.path === relPosix);
+            if (found !== undefined) hit = found;
+          }
+        } catch {
+          // 坏行跳过（撕裂不阻断扫描）
+        }
+      }
+    } catch {
+      return undefined;
+    }
+    return hit;
+  }
+
   attachJournal(journal: SessionJournal): void {
     this.journal = journal;
     this.syncSessionStores();
@@ -927,6 +969,9 @@ export class SessionRuntime {
       this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: PLAN_MODE_NOTE }]);
     }
     this.kernel.submit(goal, images);
+    // 轮次 checkpoint 寻址键(2026-11-10):run-open 条目 seq——GUI run 条 key(`k<seq>`)同源,
+    // 跨重启稳定(journal seq 原样随档),turn-diff/turn-restore 端点按 run+path 寻址
+    const runSeq = this.kernel.openRun();
     this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
     const p: Promise<void> = this.runtimeImpl
@@ -952,7 +997,43 @@ export class SessionRuntime {
         const endedTs = Date.now();
         const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
         // 本轮写改动逐轮落档:只在 dispose 封存则整段会话的改动挤在档尾,回退文件无从按轮定位
-        this.journal?.seal(this.runtimeImpl.harness.writeSnapshot.takeUnsealed());
+        const turnSealed = this.runtimeImpl.harness.writeSnapshot.takeUnsealed();
+        this.journal?.seal(turnSealed);
+        // 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):runChanges 逐路径
+        // 落前像/后像 blob hash——前像取本轮该路径首个快照捕获(write/edit 快照族才有;bash 改动无前像
+        // =不可本轮撤销),后像取轮末磁盘内容(store 内容寻址落库,读侧 readBlob 单点)。后像 hash 同时是
+        // 撤销 staleness 闸门基准:当前磁盘 hash ≠ after 即后续轮次又改过,拒绝回写防吞改动
+        let turn: TurnFileChange[] = [];
+        if (runChanges.length > 0) {
+          const sink = this.runtimeImpl.harness.writeSnapshot;
+          const firstPre = new Map<string, SnapshotEntry>();
+          for (const e of turnSealed) {
+            const key = e.path.replaceAll('\\', '/');
+            if (!firstPre.has(key)) firstPre.set(key, e);
+          }
+          for (const c of runChanges) {
+            const relPosix = c.path.replaceAll('\\', '/');
+            const abs = path.resolve(this.root, c.path);
+            let after = '';
+            let afterDeleted: true | undefined;
+            try {
+              after = sink.store(fs.readFileSync(abs));
+            } catch {
+              afterDeleted = true;
+              after = '';
+            }
+            const pre = firstPre.get(relPosix);
+            const entry: TurnFileChange = {
+              path: relPosix,
+              ...(pre !== undefined && pre.deleted !== true && pre.hash.length > 0 ? { before: pre.hash } : {}),
+              ...(pre !== undefined && pre.deleted === true ? { beforeDeleted: true as const } : {}),
+              after,
+              ...(afterDeleted !== undefined ? { afterDeleted } : {}),
+            };
+            turn.push(entry);
+          }
+          if (runSeq >= 0) this.turnChanges.set(runSeq, turn);
+        }
         this.journal?.log({
           t: 'runmeta',
           // G14.210 停止态入档:中断/失败收口(非 done)→GUI 回放运行条显「已停止」
@@ -966,6 +1047,7 @@ export class SessionRuntime {
           ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
           endedTs,
           ...(runChanges.length > 0 ? { changes: runChanges } : {}),
+          ...(turn.length > 0 ? { turn } : {}),
         });
         // G14.100 runmeta 帧(实时轮汇总条数据源):journal 落档后广播,journal 不广播 GUI 无从感知
         this.pump({
@@ -979,6 +1061,7 @@ export class SessionRuntime {
             ...(this.runUsage !== undefined ? { cacheTokens: this.runUsage.cache } : {}),
             endedTs,
             ...(runChanges.length > 0 ? { changes: runChanges } : {}),
+            ...(turn.length > 0 ? { turn } : {}),
           },
         });
         // G14.17 会话级旁车 meta 累积：runs/steps/tokens/秒数/缓存与 prompt 累计/末次上文占用/

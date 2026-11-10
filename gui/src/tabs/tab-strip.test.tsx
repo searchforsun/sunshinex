@@ -10,12 +10,13 @@ const base = {
 };
 
 describe('TAB_REGISTRY(G8a 两类 + G8b terminal + G8d diff/agents/web)', () => {
-  it('注册 file/diff/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、terminal 按 nonce 判重多实例,tasks/agents 单例,web 按 url 判重多实例', () => {
+  it('注册 file/diff/turndiff/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、turndiff 按 run:path|callId、terminal 按 nonce 判重多实例,tasks/agents 单例,web 按 url 判重多实例', () => {
     expect(TAB_REGISTRY.map((e) => e.id)).toEqual([
-      'file', 'diff', 'tasks', 'plans', 'agents', 'agent', 'bgtasks', 'memory', 'learned', 'terminal', 'web', 'sidechat',
+      'file', 'diff', 'turndiff', 'tasks', 'plans', 'agents', 'agent', 'bgtasks', 'memory', 'learned', 'terminal', 'web', 'sidechat',
     ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子智能体只读页,菜单不列);
     // 2026-11-04:+ plans(计划页签,tasks 后邻位——同待办/计划域)
     // 2026-10-31:+ learned(学习技能,memory 后邻位);directory 页签退役(2026-10-27 目录树挪入左菜单 dirview,注册表除名)
+    // 2026-11-10:+ turndiff(本轮单文件 diff,紧邻 diff 审查页——同改动域)
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');
@@ -28,15 +29,20 @@ describe('TAB_REGISTRY(G8a 两类 + G8b terminal + G8d diff/agents/web)', () => 
     expect(diff.title({ path: 'src/a.ts', callId: 'c1' })).toBe('a.ts'); // path 可读优先,只显文件名
     expect(diff.title({ callId: 'c1' })).toBe('c1');
     expect(diff.title({})).toBe('Review'); // G14.180 Diff 改审查(title t() 化;测试环境钉 en,zh 面=「审查」)
-    const tasks = TAB_REGISTRY[2]!;
+    const turndiff = TAB_REGISTRY[2]!;
+    expect(turndiff.singleton).toBe(false);
+    expect(turndiff.resolveKey({ run: 7, path: 'src/a.ts' })).toBe('7:src/a.ts'); // 轮次寻址(run+path)
+    expect(turndiff.resolveKey({ callId: 'c1', path: 'src/a.ts' })).toBe('c1'); // callId 寻址优先(write 工具行复用)
+    expect(turndiff.title({ path: 'src/a.ts', run: 7 })).toBe('a.ts');
+    const tasks = TAB_REGISTRY[3]!;
     expect(tasks.singleton).toBe(true);
     expect(tasks.title({})).toBe('Todos'); // G14.174 重定位:任务页签 → 待办
-    const plans = TAB_REGISTRY[3]!;
+    const plans = TAB_REGISTRY[4]!;
     expect(plans.singleton).toBe(true); // 计划页签(2026-11-04:tasks 后邻位,会话域单例)
     expect(plans.group).toBe('session');
     expect(plans.title({})).toBe('Plans');
     expect(plans.resolveKey({})).toBe('');
-    const agents = TAB_REGISTRY[4]!;
+    const agents = TAB_REGISTRY[5]!;
     expect(agents.singleton).toBe(true);
     expect(agents.group).toBe('session');
     expect(agents.title({})).toBe('Agent teams'); // 智能体团队页签

@@ -1236,15 +1236,14 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).not.toContain('active'); // 任务失活
       expect(container.querySelectorAll('.sx-tab').length).toBe(2); // 任务 + Diff
 
-      // —— Diff 标签体:G14.109 统一 ChangesView(工作区未提交变动列表;真 daemon /changes 端点)
-      //    列表行含 REL(本轮 write 的变动文件)——OLD/NEW 双列随 Monaco 退役 ——
+      // —— turndiff 标签体(2026-11-10 用户裁定:write 跳转复用本轮单文件 diff 页签,不再落审查页;
+      //    callId 寻址 /diff 端点 → DiffLines 行级)——
       await waitFor(
-        () => expect(container.querySelector('.sx-tabbody .sx-changes')).not.toBeNull(),
+        () => expect(container.querySelector('.sx-tabbody .sx-turn-diff')).not.toBeNull(),
         { timeout: 5_000 },
       );
-      expect(container.querySelector('.sx-tabbody .sx-changes-branch')?.textContent).not.toBe('');
-      expect([...container.querySelectorAll('.sx-tabbody .sx-change')].some((x) => x.textContent).valueOf() || true).toBe(true); // 列表渲染
-      expect(container.querySelector('.sx-tabbody .files-view')).toBeNull(); // 标签体是 Diff 面,非 Files 面
+      expect(container.querySelector('.sx-tabbody .sx-turn-diff-badge')?.textContent).not.toBe('');
+      expect(container.querySelector('.sx-tabbody .files-view')).toBeNull(); // 标签体是 diff 面,非 Files 面
 
       // —— 判重聚焦:再点同 path 钮(同 callId 重开)→ Diff 标签数恰 1(聚焦既有,不重复)——
       fireEvent.click(container.querySelector<HTMLButtonElement>('.tool-path')!);

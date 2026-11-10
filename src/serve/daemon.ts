@@ -12,6 +12,7 @@ import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessi
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
+import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
 import { projectsRoot, resolveDataDir } from '../config/data-dir';
@@ -47,6 +48,7 @@ import { startBuiltinFacade } from './cdp-facade';
 import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
 import {
   GUI_ASSETS_HINT,
+  MAX_PREVIEW_BYTES,
   mimeOf,
   readStaticFile,
 } from './daemon-static';
@@ -722,6 +724,38 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         const r = await restoreChange(session.root, pathArg);
         if (!r.ok) return this.send(res, 400, { error: r.error });
         this.send(res, 200, { ok: true });
+      } },
+    // 轮次 checkpoint 面(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):run+path 寻址
+    // journal/内存 runmeta.turn——冻结前像/后像 blob,不走 git 现值(轮 diff 永不漂移)
+    { method: 'GET', path: '/session/:id/turn-diff', auth: true, run: async (req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const q = urlOf(req).searchParams;
+        const run = Number(q.get('run'));
+        const rel = q.get('path') ?? '';
+        if (!Number.isInteger(run) || run < 0 || rel === '') return this.send(res, 400, { error: 'run and path query params required' });
+        const turn = session.turnChangeFor(run, rel);
+        if (turn === undefined) return this.send(res, 404, { error: 'no checkpoint' });
+        const sink = session.runtime.harness.writeSnapshot;
+        this.send(res, 200, { path: turn.path, ...turnDiffContent(turn, (h) => sink.readBlob(h), MAX_PREVIEW_BYTES) });
+      } },
+    { method: 'POST', path: '/session/:id/turn-restore', auth: true, run: async (req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const run = (parsed.body as { run?: unknown }).run;
+        const raw = (parsed.body as { paths?: unknown }).paths;
+        if (typeof run !== 'number' || !Number.isInteger(run) || !Array.isArray(raw) || raw.some((x) => typeof x !== 'string')) {
+          return this.send(res, 400, { error: 'run and paths required' });
+        }
+        const sink = session.runtime.harness.writeSnapshot;
+        const results = (raw as string[]).map((rel) => {
+          const turn = session.turnChangeFor(run, rel);
+          if (turn === undefined) return { path: rel, ok: false, noCheckpoint: true };
+          return restoreTurnFile(session.root, turn, (h) => sink.readBlob(h));
+        });
+        this.send(res, 200, { results });
       } },
     { method: 'POST', path: '/session/:id/command', auth: true, run: (req, res, p) => this.handleSessionCommand(req, res, p.id) },
     { method: 'GET', path: '/dirpicker', auth: true, run: async (req, res) => this.handleDirpicker(req, res) },

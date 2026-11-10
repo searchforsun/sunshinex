@@ -10,7 +10,7 @@ import { lazy } from 'react';
 import { useState } from 'react';
 import { SideChatComposer } from './side-chat-composer';
 import { t } from '../i18n';
-import { FileText, GitCompare, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
+import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -19,6 +19,7 @@ import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 const Files = lazy(() => import('../pages/Files').then((m) => ({ default: m.Files })));
 const TerminalTab = lazy(() => import('./TerminalTab').then((m) => ({ default: m.TerminalTab })));
 const DiffTab = lazy(() => import('./DiffTab').then((m) => ({ default: m.DiffTab })));
+const TurnDiffTab = lazy(() => import('./TurnDiffTab').then((m) => ({ default: m.TurnDiffTab })));
 const AgentTranscriptTab = lazy(() => import('./AgentTranscriptTab').then((m) => ({ default: m.AgentTranscriptTab })));
 const TodoCardsTab = lazy(() => import('./TodoCardsTab').then((m) => ({ default: m.TodoCardsTab })));
 const PlansTab = lazy(() => import('./PlansTab').then((m) => ({ default: m.PlansTab })));
@@ -144,6 +145,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   sidechat: MessageCircle,
   file: FileText,
   diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
+  turndiff: FileDiff, // 本轮改动单文件页签(2026-11-10)
   tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
   agents: Bot, // G8d 子智能体活动聚合卡
   agent: Bot, // G14.175 子智能体只读转录页(机器人图标,用户裁决)
@@ -209,6 +211,17 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: (params) => params.callId ?? '',
     singleton: false,
     render: (p) => <DiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} root={p.root} onOpenFile={fileTabOf(p)} />,
+  },
+  {
+    id: 'turndiff',
+    group: 'content',
+    // 本轮改动单文件页签(2026-11-10 用户裁定「每轮精确看到自己的改动」):run+path=冻结轮 diff
+    // (runmeta.turn 前像/后像 blob,后续轮次不漂移);callId+path=write/edit 工具行跳转同页签复用
+    // (/diff 端点)。被动入口(轮尾改动条/工具行,菜单不列)
+    title: (params) => (params.path !== undefined ? baseName(params.path) : t('This turn', '本轮')),
+    resolveKey: (params) => (params.callId !== undefined && params.callId !== '' ? params.callId : `${params.run ?? ''}:${(params.path ?? '').replace(/\\/g, '/')}`),
+    singleton: false,
+    render: (p) => <TurnDiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={fileTabOf(p)} />,
   },
   {
     id: 'tasks',

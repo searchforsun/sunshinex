@@ -525,7 +525,10 @@ function AppShell(): JSX.Element {
     // 不重建,闭包滞留聊天页 isWelcome=false,落座写成会话座;渲染层读 '@welcome' 恒空,开会话
     // 才见标签(草稿座迁移链忠实搬运了写错座的档)。fe55c46 修同族三处判定时此处依赖遗漏
   }, [openSessionId, isWelcome]);
-  const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('diff', { callId, path }); }, [openTabInSession]);
+  // 2026-11-10 用户裁定「写入/编辑跳转复用本轮 diff 页签,不再跳审查页」:write/edit 工具行跳转
+  // (callId 寻址)与轮尾改动条(run+path 寻址)统一开 turndiff 单文件页签;'diff' 型保留=审查页
+  const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('turndiff', { callId, path }); }, [openTabInSession]);
+  const openTurndiffTab = useCallback((run: number, path: string): void => { openTabInSession('turndiff', { run, path }); }, [openTabInSession]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
   /** 成员转录 leader 链接点击(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
    *  记 {member,text,dir,nonce} 下发 Chat——主对话滚到对应消息气泡/发送工具行并闪光 */
@@ -1128,6 +1131,7 @@ function AppShell(): JSX.Element {
                 }}
                 onOpenFile={openFileTab}
                 onOpenDiff={openDiffTab}
+                onOpenTurnDiff={openTurndiffTab}
                 onOpenAgent={openAgentTab}
                 onOpenWeb={openWebTab}
                 onOpenTask={openTaskFocus}

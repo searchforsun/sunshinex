@@ -18,12 +18,15 @@ import { pathBasename, pathSegments } from '../ui-util';
 export const WELCOME_TAB_SEAT = '@welcome';
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
-export type TabTypeId = 'file' | 'diff' | 'tasks' | 'agents' | 'agent' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'learned' | 'sidechat' | 'plans'; /* learned=学习技能(2026-10-31,[skills] 回显点击打开);directory 退役(2026-10-29 用户裁定「不要兼容」):盘档消毒 TAB_TYPES 同步滤除,旧盘 directory 页签开席即弃 */
+export type TabTypeId = 'file' | 'diff' | 'turndiff' | 'tasks' | 'agents' | 'agent' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'learned' | 'sidechat' | 'plans'; /* learned=学习技能(2026-10-31,[skills] 回显点击打开);directory 退役(2026-10-29 用户裁定「不要兼容」):盘档消毒 TAB_TYPES 同步滤除,旧盘 directory 页签开席即弃;turndiff=本轮改动单文件 diff(2026-11-10,冻结前/后像) */
 
 /** 开标签目标参数(按类型取用:file=diff=目录用 path、diff 备选 callId、web=url、终端 cols/rows) */
 export interface TabParams {
   readonly path?: string;
   readonly callId?: string;
+  /** turndiff 轮次寻址(2026-11-10):run-open 条目 seq(runmeta.turn 对位键;与 callId 二选一——
+   *  run+path=冻结轮 diff,callId+path=write 单调用前像 vs 现盘) */
+  readonly run?: number;
   readonly url?: string;
   readonly cols?: number;
   readonly rows?: number;
@@ -360,7 +363,7 @@ export function reopenClosed(states: TabStates, sessionId: string, index: number
 }
 
 const TAB_TYPES: ReadonlySet<string> = new Set<string>([
-  'file', 'diff', 'tasks', 'agents', 'agent', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'learned', 'sidechat', 'plans',
+  'file', 'diff', 'turndiff', 'tasks', 'agents', 'agent', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'learned', 'sidechat', 'plans',
 ]);
 
 /** G14.2xx 盘档消毒(gui/sessions/<会话id>.json → TabSessionState):盘为真相源,但坏键/越型
@@ -421,7 +424,7 @@ export function addSideDismissed(states: TabStates, seat: string, keys: readonly
 }
 
 /** 回退时随时间线丢弃的内容型页签:指向被丢弃轮次的产物;工具面板/终端/辅助对话不属于时间线 */
-const REWIND_DROPPED_TYPES: ReadonlySet<TabTypeId> = new Set<TabTypeId>(['file', 'diff', 'web', 'agent']);
+const REWIND_DROPPED_TYPES: ReadonlySet<TabTypeId> = new Set<TabTypeId>(['file', 'diff', 'turndiff', 'web', 'agent']);
 
 /** 回退换座(2026-11-05,fork 页签克隆同款关键点):旧座页签迁到新会话座——atTs 之后开的内容型页签
  *  丢弃(createdAt=0 的旧档无时间面,保留);终端剥 ptyId(pty 归旧会话对象,点开即新开)。atTs 缺省不筛 */

@@ -1,4 +1,4 @@
-import type { ChangeFile, SessionEvent } from '../types';
+import type { ChangeFile, SessionEvent, TurnFileChange } from '../types';
 import { LEADER_RECIPIENT } from '../taskboard/leader';
 
 /**
@@ -28,6 +28,9 @@ export interface RunMeta {
   stopped?: boolean;
   /** 本轮 git 变动增量(轮尾汇总条) */
   changes?: ChangeFile[];
+  /** 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):路径级前像/后像
+   *  blob hash——GUI 本轮 diff 页签(冻结前后像)与 checkpoint 撤销(staleness 闸门)数据面 */
+  turn?: TurnFileChange[];
 }
 
 /** 内核转录条目(§3.3):段级、payload 完整随档——渲染端零推导 */
@@ -202,6 +205,29 @@ export function sanitizeChanges(raw: unknown): ChangeFile[] | undefined {
       added: typeof o.added === 'number' ? o.added : null,
       deleted: typeof o.deleted === 'number' ? o.deleted : null,
       ...(typeof o.newLines === 'number' ? { newLines: o.newLines } : {}),
+    });
+  }
+  return out;
+}
+
+/** 轮次 checkpoint 行净化(行面/事件面字段不予信任,同 sanitizeChanges 口径):path/after 必带,
+ *  before/hash 面严判串、deleted 面严判 true——坏行整条弃(缺前像只是不可撤销,不影响 diff 面) */
+export function sanitizeTurn(raw: unknown): TurnFileChange[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: TurnFileChange[] = [];
+  for (const c of raw) {
+    const o = (c ?? {}) as Partial<Record<keyof TurnFileChange, unknown>>;
+    if (typeof o.path !== 'string' || o.path === '' || typeof o.after !== 'string' || o.after === '') continue;
+    const before = typeof o.before === 'string' && o.before !== '' ? o.before : undefined;
+    const beforeDeleted = o.beforeDeleted === true;
+    // 非法组合弃置:既无前像 hash 又非「新建」前像 → before 面不落(降级为不可撤销,diff 后像面保留)
+    if (before === undefined && !beforeDeleted && o.beforeDeleted !== undefined) continue;
+    out.push({
+      path: o.path,
+      ...(before !== undefined ? { before } : {}),
+      ...(beforeDeleted ? { beforeDeleted: true } : {}),
+      after: o.after,
+      ...(o.afterDeleted === true ? { afterDeleted: true } : {}),
     });
   }
   return out;
@@ -502,6 +528,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       if (idx < 0) return state;
       const cur = state.entries[idx]!;
       const changes = sanitizeChanges(p.changes);
+      const turn = sanitizeTurn(p.turn);
       const meta: RunMeta = {
         ...(cur.meta ?? {}),
         ...(typeof p.seconds === 'number' ? { seconds: p.seconds } : {}),
@@ -512,6 +539,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
         ...(typeof p.endedTs === 'number' ? { endedTs: p.endedTs } : {}),
         ...(p.stopped === true ? { stopped: true } : {}),
         ...(changes !== undefined && changes.length > 0 ? { changes } : {}),
+        ...(turn !== undefined && turn.length > 0 ? { turn } : {}),
       };
       return { ...state, entries: replaceAt(state.entries, idx, { ...cur, meta }) };
     }

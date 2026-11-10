@@ -137,6 +137,9 @@ export interface Connection {
   pushChanges(id: string): Promise<void>;
   /** G14.100 撤销单个变动文件(restore 回 HEAD/删除本轮新建) */
   restoreChange(id: string, path: string): Promise<void>;
+  /** 轮次 checkpoint(2026-11-10):冻结前像/后像 diff 内容 + staleness 闸门撤销 */
+  turnDiff(id: string, run: number, path: string): Promise<{ path: string; oldContent?: string; newContent: string; truncated?: boolean; deleted?: boolean }>;
+  turnRestore(id: string, run: number, paths: string[]): Promise<{ results: Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }> }>;
   /** GET /session/:id/context:上下文分段构成(G10-C6 面板) */
   sessionContext(id: string): Promise<{ parts: Array<{ id: string; tokens: number; count: number }>; chainByAction: Array<{ action: string; tokens: number }>; total: number; window: number; free: number }>;
   /** GET /session/:id/shadow-events:journal 影子事件全量(board/delegation/subagent)+ cut 水位
@@ -635,6 +638,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async restoreChange(id: string, path: string) {
       await post('/session/' + encodeURIComponent(id) + '/changes/restore', { path });
+    },
+    turnDiff(id: string, run: number, path: string) {
+      return getJson(`/session/${encodeURIComponent(id)}/turn-diff?run=${run}&path=${encodeURIComponent(path)}`);
+    },
+    async turnRestore(id: string, run: number, paths: string[]) {
+      return postJson(`/session/${encodeURIComponent(id)}/turn-restore`, { run, paths });
     },
     sessionContext(id: string) {
       return getJson('/session/' + encodeURIComponent(id) + '/context');

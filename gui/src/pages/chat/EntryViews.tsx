@@ -591,7 +591,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void }): JSX.Element {
   const office = useUiMode() === 'office';
   const msg = agentMessageOf(entry);
   const accent = noticeAccentOf(entry);
@@ -727,8 +727,11 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
       {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}
+          run={footerRun}
           onOpenDiff={onOpenDiff}
           onRestore={onRestore}
+          onOpenTurn={onOpenTurn}
+          onTurnRestore={onTurnRestore}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, GitFork } from 'lucide-react';
 import { t } from '../../i18n';
@@ -6,6 +6,7 @@ import { fmtTokens, pathBasename } from '../../ui-util';
 import { messageTimeMs } from '../../ui-util';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
+import type { TurnFileChange } from '../../../../src/types';
 import { FileIcon } from '../../file-icon';
 import { ChangeStat, changeCounts } from '../../change-stat';
 import { useLiveChanges, visibleRunChanges } from './use-live-changes';
@@ -44,28 +45,98 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
 
 /** G14.100 轮尾变动汇总条(对标 Codex):「N 个文件已更改 +X -Y」折叠条+右侧撤销(整轮);
  *  2026-11-07 动态渲染:只列本轮记录且当前 git 仍有变动的文件,行数取当前 git 值(use-live-changes);
- *  展开逐文件(图标+名称+目录+±+行尾撤销);点击文件名 → 侧栏 diff 标签自动展开对应项;
- *  撤销 = restore 回 HEAD(本轮新建 → 删除),已撤销项本地隐藏 */
+ *  展开逐文件(图标+名称+目录+±+行尾撤销)。
+ *  2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」:文件名点击 → turndiff 页签(冻结轮 diff,
+ *  run+path 寻址;旧档无 runSeq 回退审查页);撤销改走 checkpoint 回写(turn-restore,前像 blob 落盘,
+ *  staleness 闸门在服务端——后续轮次又改过的文件拒绝回写防吞改动,行置灰标「已过期」);
+ *  旧档无 checkpoint 数据回退 git restore(HEAD 口径)。撤销二次确认(首击武装 3s) */
 export function RunChangesBar({
   changes,
+  run,
   onOpenDiff,
   onRestore,
+  onOpenTurn,
+  onTurnRestore,
 }: {
   changes: ReadonlyArray<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
+  /** 所属 run 条(本轮 diff 寻址/撤销寻址;缺省=旧装配回退 git 语义) */
+  run?: Pick<ChatEntry, 'runSeq' | 'turn'>;
   onOpenDiff?: (path: string) => void;
   onRestore?: (path: string) => void;
+  /** checkpoint 通道(2026-11-10):开本轮单文件 diff 页签 / 前像回写撤销(staleness 结果逐路径回传) */
+  onOpenTurn?: (run: number, path: string) => void;
+  onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>;
 }): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
+  const [stale, setStale] = useState<ReadonlySet<string>>(new Set());
+  const [armed, setArmed] = useState<string | null>(null);
+  const armTimer = useRef<number | undefined>(undefined);
   // 动态渲染:本轮记录 ∩ 当前 git 变动(行数=当前 git 值,与审查页一致);已提交/已撤销的退场
   const live = useLiveChanges();
   const office = useUiMode() === 'office';
   const visible = visibleRunChanges(changes, live).filter((c) => !restored.has(c.path));
   const add = visible.reduce((n, c) => n + changeCounts(c).add, 0);
   const del = visible.reduce((n, c) => n + changeCounts(c).del, 0);
+  const runSeq = run?.runSeq;
+  const turnOf = (path: string): TurnFileChange | undefined => run?.turn?.find((x) => x.path.replaceAll('\\', '/') === path.replaceAll('\\', '/'));
+  const undoable = (path: string): boolean => {
+    const c = turnOf(path);
+    return runSeq !== undefined && c !== undefined && (c.before !== undefined || c.beforeDeleted === true);
+  };
+  /** 二次确认武装键:首击武装,3s 内再击执行(审查页 useArm 同款口径) */
+  const arm = (key: string, action: () => void): void => {
+    window.clearTimeout(armTimer.current);
+    if (armed === key) {
+      setArmed(null);
+      action();
+      return;
+    }
+    setArmed(key);
+    armTimer.current = window.setTimeout(() => setArmed(null), 3000);
+  };
   const restore = (path: string): void => {
-    onRestore?.(path);
+    if (runSeq !== undefined && undoable(path) && onTurnRestore !== undefined) {
+      void onTurnRestore(runSeq, [path]).then((results) => {
+        const row = results.find((x) => x.path.replaceAll('\\', '/') === path.replaceAll('\\', '/'));
+        if (row !== undefined && row.stale === true) setStale((s) => new Set(s).add(path));
+        else if (row === undefined || row.ok) setRestored((s) => new Set(s).add(path));
+      });
+      return;
+    }
+    onRestore?.(path); // 旧档回退:git restore(HEAD 口径)
     setRestored((s) => new Set(s).add(path));
+  };
+  const restoreAll = (key: string): void => {
+    arm(key, () => {
+      if (runSeq !== undefined && onTurnRestore !== undefined) {
+        const checkpointPaths = visible.filter((c) => undoable(c.path)).map((c) => c.path);
+        const legacyPaths = visible.filter((c) => !undoable(c.path)).map((c) => c.path);
+        if (checkpointPaths.length > 0) {
+          void onTurnRestore(runSeq, checkpointPaths).then((results) => {
+            const okSet = new Set<string>();
+            const staleSet = new Set<string>();
+            for (const r of results) {
+              const norm = r.path.replaceAll('\\', '/');
+              if (r.stale === true) staleSet.add(norm);
+              else if (r.ok) okSet.add(norm);
+            }
+            setStale((s) => new Set([...s, ...staleSet]));
+            setRestored((s) => new Set([...s, ...okSet]));
+          });
+        }
+        for (const p of legacyPaths) {
+          onRestore?.(p);
+          setRestored((s) => new Set(s).add(p));
+        }
+        return;
+      }
+      visible.forEach((c) => restore(c.path));
+    });
+  };
+  const openDiff = (path: string): void => {
+    if (runSeq !== undefined && onOpenTurn !== undefined) onOpenTurn(runSeq, path);
+    else onOpenDiff?.(path); // 旧装配/旧档回退审查页
   };
   if (office || visible.length === 0) return null; // 办公模式不显示代码变动(ui-mode.ts)
   return (
@@ -82,9 +153,9 @@ export function RunChangesBar({
         </button>
         <button
           type="button"
-          className="run-changes-undo"
-          data-tip={t('Revert all changes in this turn', '撤销本轮全部变动')}
-          onClick={() => visible.forEach((c) => restore(c.path))}
+          className={`run-changes-undo${armed === 'all' ? ' arm' : ''}`}
+          data-tip={armed === 'all' ? t('Click again to confirm', '再次点击确认') : t('Revert all changes in this turn', '撤销本轮全部变动')}
+          onClick={() => restoreAll('all')}
         >
           {t('Undo', '撤销')}
         </button>
@@ -95,17 +166,32 @@ export function RunChangesBar({
             const norm = c.path.replaceAll('\\', '/');
             const base = pathBasename(norm);
             const dir = norm.slice(0, norm.length - base.length);
+            const isStale = stale.has(c.path);
+            const armKey = `row:${c.path}`;
+            const isArmed = armed === armKey;
             return (
               <div key={c.path} className="run-changes-row">
                 <FileIcon path={c.path} />
-                <button type="button" className="run-changes-name" onClick={() => onOpenDiff?.(c.path)}>
+                <button type="button" className="run-changes-name" onClick={() => openDiff(c.path)}>
                   {base}
                 </button>
                 <span className="run-changes-dir">{dir}</span>
                 <span className="run-changes-stat">
                   <ChangeStat {...changeCounts(c)} />
                 </span>
-                <button type="button" className="run-changes-undo-row" data-tip={t('Revert this file', '撤销此文件')} onClick={() => restore(c.path)}>
+                <button
+                  type="button"
+                  className={`run-changes-undo-row${isArmed ? ' arm' : ''}`}
+                  disabled={isStale}
+                  data-tip={
+                    isStale
+                      ? t('Changed by a later turn — revert disabled', '后续轮次已再次修改，撤销已停用')
+                      : isArmed
+                        ? t('Click again to confirm', '再次点击确认')
+                        : t('Revert this file', '撤销此文件')
+                  }
+                  onClick={() => arm(armKey, () => restore(c.path))}
+                >
                   {t('Undo', '撤销')}
                 </button>
               </div>

@@ -1322,7 +1322,7 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     fire(conn, ev('tool-result', 'written', { tool: 'write', callId, status: 'completed' }));
   };
 
-  it('write 条目 path 钮 → diff 标签开且活动(title=文件名);渲染统一 ChangesView(空态)', async () => {
+  it('write 条目 path 钮 → turndiff 页签开且活动(title=文件名);渲染本轮单文件 diff(2026-11-10 用户裁定:工具行跳转复用 turndiff,不再落审查页)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     conn.diffResp = { path: 'src/a.ts', oldContent: 'const x = 1;\n', newContent: 'const y = 2;\n' };
@@ -1330,11 +1330,11 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     fireEvent.click(toolRow('a.ts src/')!); // 展开 write 条目
     fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' })); // tool-path 钮 → onOpenDiff 主通道
     expect(document.querySelector('.sx-tab[data-title=\'a.ts\']')?.classList.contains('active')).toBe(true);
-    // G14.109:DiffTab 统一 ChangesView(mock 无 sessionChanges → 可选链空变动集,空态文案)
-    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-changes')).not.toBeNull());
-    expect(document.querySelector('.sx-tabbody .board-empty-title')).not.toBeNull();
-    // Chat 展开面仍走 fetchDiff(G7 既有,DiffLines 行级)
-    await waitFor(() => expect(conn.diffCalls).toEqual([['s1', 'c1']]));
+    // turndiff(callId 寻址):fetchDiff 前像 vs 现盘,DiffLines 行级渲染
+    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-turn-diff')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-turn-diff-body')).not.toBeNull());
+    // Chat 展开面仍走 fetchDiff(G7 既有);turndiff 页签体亦走同端点(callId 寻址)
+    await waitFor(() => expect(conn.diffCalls.some((c) => c[1] === 'c1')).toBe(true));
     unmount();
   });
 
@@ -1345,10 +1345,10 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     fireWrite(conn, 'c1', 'src/a.ts', 'new a\n');
     fireEvent.click(toolRow('a.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/a.ts' }));
-    await waitFor(() => expect(conn.diffCalls).toHaveLength(1)); // Chat 展开面一笔
+    await waitFor(() => expect(conn.diffCalls.some((c) => c[1] === 'c1')).toBe(true)); // Chat 展开面 + 页签体共端点
     fireEvent.click(document.querySelector<HTMLButtonElement>('.tool-path')!);
     expect(document.querySelectorAll('.sx-tab[data-title=\'a.ts\']')).toHaveLength(1);
-    // 异 callId:多实例并存(by callId 判键——ChangesView 渲染统一,标签粒度保留);
+    // 异 callId:多实例并存(by callId 判键——turndiff 渲染统一,标签粒度保留);
     // 2026-10-22 用户裁定:编辑/写入行不聚合——c2 为独立行,diff 钮直达(无聚合头展开步)
     conn.diffResp = { path: 'src/b.ts', newContent: 'new b\n' };
     fireWrite(conn, 'c2', 'src/b.ts', 'new b\n');
@@ -1356,30 +1356,29 @@ describe('G8d Diff 标签:write 条目接线(G14.109 统一 ChangesView;callId �
     fireEvent.click(screen.getByRole('button', { name: 'src/b.ts' }));
     expect(document.querySelectorAll('.sx-tab[data-title=\'a.ts\']')).toHaveLength(1);
     expect(document.querySelector('.sx-tab[data-title=\'b.ts\']')?.classList.contains('active')).toBe(true);
-    await waitFor(() => expect(conn.diffCalls).toHaveLength(2));
+    await waitFor(() => expect(conn.diffCalls.some((c) => c[1] === 'c2')).toBe(true));
     unmount();
   });
 
-  it('404 快照语义退役:ChangesView 统一渲染,无「无快照」降级面', async () => {
+  it('404 快照语义退役:turndiff 统一渲染,无「无快照」降级面', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     fireWrite(conn, 'c3', 'src/gone.ts', 'fallback content\n');
     fireEvent.click(toolRow('gone.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/gone.ts' }));
-    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-changes')).not.toBeNull());
-    expect(screen.queryByText(/无快照/)).toBeNull(); // G14.109 无 404 降级面
+    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-turn-diff')).not.toBeNull());
+    expect(screen.queryByText(/无快照/)).toBeNull(); // 无 404 降级面(错误条文案由 fetch 层透出)
     unmount();
   });
 
-  it('单列/新建标/截断横幅随 Monaco 退役:ChangesView 空态兜底', async () => {
+  it('单列/新建标/截断:turndiff 行级渲染兜底', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);
     conn.diffResp = { path: 'src/new.ts', newContent: 'fresh\n', truncated: true };
     fireWrite(conn, 'c4', 'src/new.ts', 'fresh\n');
     fireEvent.click(toolRow('new.ts src/')!);
     fireEvent.click(screen.getByRole('button', { name: 'src/new.ts' }));
-    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-changes')).not.toBeNull());
-    expect(document.querySelector('.sx-tabbody .board-empty-title')).not.toBeNull(); // 空变动集兜底
+    await waitFor(() => expect(document.querySelector('.sx-tabbody .sx-turn-diff-body')).not.toBeNull());
     unmount();
   });
 });

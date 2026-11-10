@@ -70,6 +70,9 @@ export interface ChatProps {
   /** G8d write 条目 path 钮主通道:开 diff 标签(callId 寻址,App 接 openTabInSession('diff',
    *  {callId,path}));可选防测试桩免配——缺场时全部回落 onOpenFile */
   onOpenDiff?: (callId: string, path: string) => void;
+  /** 轮次 checkpoint 通道(2026-11-10 用户裁定「每轮精确看到自己的改动」):改动条文件名点击 →
+   *  本轮单文件 diff 页签(run+path 寻址;App 接 openTabInSession('turndiff',{run,path})) */
+  onOpenTurnDiff?: (run: number, path: string) => void;
   /** G14.171 spawn 行子智能体名=蓝色链接:点开对应 agent 只读标签页(App 接 openTabInSession('agent',{label,agentTitle})) */
   onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
