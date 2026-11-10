@@ -244,6 +244,12 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
                 {base}
               </button>
               <span className="sx-change-dir">{dir}</span>
+              {/* 2026-11-10 用户裁定:展开箭头退役右侧常驻,改 hover 显于路径后(展开态常显 ^);
+                  过窄时路径先省略保箭头/撤销/±可见 */}
+              <span className="sx-change-chevron" aria-hidden="true">
+                {open ? <ChevronUp size={14} strokeWidth={1.75} /> : <ChevronDown size={14} strokeWidth={1.75} />}
+              </span>
+              <span className="sx-change-spacer" />
               <span className="sx-change-stat">
                 <ChangeStat {...changeCounts(f)} />
               </span>
@@ -254,9 +260,6 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
                 onClick: () =>
                   run(`row:${key}`, () => (area === 'staged' ? conn.unstageChanges(sessionId, [f.path]) : conn.discardUnstaged(sessionId, [f.path]))),
               })}
-              <span className="sx-change-toggle" aria-hidden="true">
-                {open ? <ChevronUp size={14} strokeWidth={1.75} /> : <ChevronDown size={14} strokeWidth={1.75} />}
-              </span>
             </div>
             {open && (
               <div className="sx-change-body">
@@ -393,15 +396,10 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
       )}
       {loadErr !== null && <div className="sx-changes-result err">{loadErr}</div>}
 
-      {/* 非 git 目录(branch 空)不出改动区——无暂存/提交语义,只留空态 */}
+      {/* 非 git 目录(branch 空)不出改动区——无暂存/提交语义,只留空态。
+          区头行退役(2026-11-10 用户裁定「语义重复」):区名/计数已由顶栏下拉承载,commit 框直接贴列表 */}
       {branch !== '' && (
         <div className="sx-changes-section">
-          <div className="sx-changes-section-head">
-            <span className="sx-changes-section-title">
-              {areaFilter === 'staged' ? t('Staged changes', '已暂存的更改') : t('Changes', '未暂存的更改')}{' '}
-              <span className="sx-changes-count">{(areaFilter === 'staged' ? staged : unstaged).length}</span>
-            </span>
-          </div>
           {commitOpen && areaFilter === 'staged' && staged.length > 0 && (
             <div className="sx-changes-commit">
               <textarea
