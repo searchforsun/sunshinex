@@ -261,7 +261,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 /* G14.131 sticky 条盖住滚动泄露:容器(padding 8/10)的 sticky 约束矩形缩进 padding 带,
- * 条贴不到顶→内容从条上方漏出;负 margin 让条上探盖满 padding 带,贴住标签条下缘 */.sx-diff-tab .sx-changes-bar { margin: 0 -10px; padding: 8px 22px; }.sx-changes-branch { font-size: calc(14px * var(--fz)); font-weight: 600; color: var(--fg); }.sx-changes-bar-actions { display: inline-flex; gap: 4px; }.sx-changes-act {
+ * 条贴不到顶→内容从条上方漏出;负 margin 让条上探盖满 padding 带,贴住标签条下缘 */.sx-diff-tab .sx-changes-bar { margin: 0 -4px; padding: 8px 8px; }.sx-changes-branch { font-size: calc(14px * var(--fz)); font-weight: 600; color: var(--fg); }.sx-changes-bar-actions { display: inline-flex; gap: 4px; }.sx-changes-act {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface-soft); color: var(--fg-icon);
@@ -283,7 +283,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
   font-size: calc(14px * var(--fz)); font-weight: 500; cursor: pointer;
   padding: 0; white-space: nowrap;
 }.sx-change-name:hover { color: var(--fg); text-decoration: underline; }.sx-change-dir { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }.sx-change-stat { flex: none; display: inline-flex; gap: 6px; font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }.sx-change-add { color: var(--ok); }.sx-change-del { color: var(--err); }.sx-change-body { padding: 0; }.sx-change-loading { padding: 10px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
-.sx-diff-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 0 10px 10px; overflow: auto; } /* G14.133 无 padding-top:sticky 约束矩形顶格,分支条贴住标签条下缘不漏内容 */.sx-diff-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }.sx-diff-path { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); color: var(--fg); overflow-wrap: anywhere; }.sx-diff-badge { font-size: calc(14px * var(--fz)); color: var(--ok); border: 1px solid var(--ok); border-radius: var(--radius-sm); padding: 0 6px; }.sx-diff-truncated { font-size: calc(14px * var(--fz)); color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 0 6px; }.sx-diff-status { color: var(--fg-secondary); }.sx-diff-error { color: var(--err); border: 1px solid var(--err); border-radius: var(--radius-md); padding: 6px 8px; }.sx-diff-tab .diff-titles { display: flex; gap: 8px; }.sx-diff-tab .diff-title-old, .sx-diff-tab .diff-title-new { font: calc(14px * var(--fz)) var(--font-mono); }.sx-diff-tab .diff-title-old { color: var(--err); }.sx-diff-tab .diff-title-new { color: var(--ok); }.sx-diff-tab .diff-cols { display: flex; gap: 8px; align-items: stretch; min-height: 0; }.sx-diff-tab .diff-col { flex: 1; min-width: 0; margin: 0; padding: 6px 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); /* G14.184 代码列=md */ font: calc(11px * var(--fz)) var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
+.sx-diff-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 4px; overflow: auto; } /* 2026-11-10 用户裁定:审查页与各页签同口径(左右 4px) */ /* G14.133 无 padding-top:sticky 约束矩形顶格,分支条贴住标签条下缘不漏内容 */.sx-diff-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }.sx-diff-path { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); color: var(--fg); overflow-wrap: anywhere; }.sx-diff-badge { font-size: calc(14px * var(--fz)); color: var(--ok); border: 1px solid var(--ok); border-radius: var(--radius-sm); padding: 0 6px; }.sx-diff-truncated { font-size: calc(14px * var(--fz)); color: var(--warn); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 0 6px; }.sx-diff-status { color: var(--fg-secondary); }.sx-diff-error { color: var(--err); border: 1px solid var(--err); border-radius: var(--radius-md); padding: 6px 8px; }.sx-diff-tab .diff-titles { display: flex; gap: 8px; }.sx-diff-tab .diff-title-old, .sx-diff-tab .diff-title-new { font: calc(14px * var(--fz)) var(--font-mono); }.sx-diff-tab .diff-title-old { color: var(--err); }.sx-diff-tab .diff-title-new { color: var(--ok); }.sx-diff-tab .diff-cols { display: flex; gap: 8px; align-items: stretch; min-height: 0; }.sx-diff-tab .diff-col { flex: 1; min-width: 0; margin: 0; padding: 6px 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); /* G14.184 代码列=md */ font: calc(11px * var(--fz)) var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
 
 /* Web 标签体(G8d T4 挂名;G14.6 对齐 VSCode Simple Browser):导航工具行+锁形 URL 框+居中空态;
    G14.2xx overflow hidden 定高自守——iframe 缩放/内容高度不出本页,滚动只属内层 wrap(纵向
@@ -1933,7 +1933,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-goal-link { cursor: pointer; }
 
 .todo-card-goal { flex: 1; min-width: 0; font-size: calc(14px * var(--fz)); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg-tertiary); }
+/* 团队卡时间=记忆行同字体格式(2026-11-11 用户裁定:dateStampMs 2026-11-09 非等宽);
+   后台任务/待办行的 时:分 短戳仍走 mono(.time-mono) */
+.todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
+.time-mono { font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }
 .todo-card-time svg { flex: none; }
 .todo-card-list { padding: 4px 0 0 6px; }
 .tb-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 6px; /* 右内距同 .tb-task-main 水平 6px:队名行时标与下方任务行时标右沿对齐 */ }
@@ -3374,7 +3377,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .files-head { height: var(--toolbar-h); }
 .files-breadcrumb { padding: 0 12px; height: 100%; }
 .sx-changes-bar { height: var(--toolbar-h); padding: 0 12px; }
-.sx-diff-tab .sx-changes-bar { padding: 0 22px; }
+.sx-diff-tab .sx-changes-bar { padding: 0 8px; }
 .sx-web-bar { height: var(--toolbar-h); padding: 0 6px; }
 
 /* 2026-11-04 辅助对话草稿页(2026-11-05 用户裁定「表层复用主对话,改底层不改表层」):
@@ -3752,9 +3755,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span):hover { text-decoration: none; color: inherit; }
 
 /* 审查页左右边距对齐其他页签(2026-11-10 用户裁定):行盒边距页签边 12px、行内文字 22px——与团队/任务卡
-   (.insight-tab 12 + 卡内 10)同线;区头/顶栏文字同落 22px */
+   2026-11-10 二轮:页签标准收窄到 4px 后审查同口径(行盒 4px、行内 8px) */
 .sx-diff-tab .sx-changes-list { padding: 4px 2px 16px; }
-.sx-diff-tab .sx-change-row { padding: 6px 10px; }
+.sx-diff-tab .sx-change-row { padding: 6px 8px; }
 .sx-diff-tab .sx-changes-commit, .sx-diff-tab .sx-changes-result { margin-left: 2px; margin-right: 2px; }
 .sx-change
 .sx-changes-area-anchor { flex: none; margin-left: 2px; }

@@ -325,7 +325,7 @@ export function BgTasksTab({
                       <Pause size={16} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                     </button>
                   )}
-                  <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
+                  <span className="todo-card-time time-mono" data-tip={t('Created', '创建时间')}>
                     <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
                     {shortStampMs(r.startedAt)}
                   </span>

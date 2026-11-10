@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AlarmClock, Bot, Clock, Pause, RefreshCw } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
-import { fmtDurMs, shortStampMs, withMinSpin } from '../ui-util';
+import { dateStampMs, fmtDurMs, withMinSpin } from '../ui-util';
 /** DAG 视图懒载面(React Flow + dagre)。节点与列表行共用五态点色与停钮。 */
 const TaskDag = lazy(() => import('./TaskDag'));
 
@@ -218,7 +218,7 @@ function TaskCard({
         {headStamp > 0 && (
           <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
             <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
-            {shortStampMs(headStamp)}
+            {dateStampMs(headStamp)}
           </span>
         )}
       </div>
@@ -248,7 +248,7 @@ function TaskCard({
                   {typeof m.createdAt === 'number' && m.createdAt > 0 && (
                     <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
                       <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
-                      {shortStampMs(m.createdAt)}
+                      {dateStampMs(m.createdAt)}
                     </span>
                   )}
                 </button>
@@ -289,7 +289,7 @@ function TaskCard({
                   {task.createdAt > 0 && (
                     <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
                       <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
-                      {shortStampMs(task.createdAt)}
+                      {dateStampMs(task.createdAt)}
                     </span>
                   )}
                 </button>

@@ -187,6 +187,14 @@ export function shortStampMs(ms: number): string {
   return `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
+/** 日期戳(2026-11-11 用户裁定:团队页时间与记忆行同格式同字体):`2026-11-09` */
+export function dateStampMs(ms: number): string {
+  if (!(ms > 0)) return '----';
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '----';
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
+
 /** 时长(m→m:ss,h 进位 h:mm:ss;秒位定宽——tabular-nums 在 CSS 面)。Insight/智能体团队共用。 */
 export function fmtDurMs(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
