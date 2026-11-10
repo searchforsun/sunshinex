@@ -129,12 +129,14 @@ requestAnimationFrame(() => {
     h.style.translate = '';
     const b = h.getBoundingClientRect();
     if (b.width === 0) return;
-    const main = h.closest('.sx-main')?.getBoundingClientRect();
+    // 宿主面板边界(2026-11-09 用户实测审查页分支下拉仍挤走):主对话区或右侧栏——审查页分支下拉
+    // 锚在右栏内,closest('.sx-main') 为空=只钳视口,既不缩宽也不左移
+    const panel = h.closest('.sx-main, .sx-sidebar')?.getBoundingClientRect();
     let left = 4;
     let right = window.innerWidth - 4;
-    if (main !== undefined) {
-      left = Math.max(left, main.left + 4);
-      right = Math.min(right, main.right - 4);
+    if (panel !== undefined) {
+      left = Math.max(left, panel.left + 4);
+      right = Math.min(right, panel.right - 4);
     }
     let dx = 0;
     if (b.right > right) dx = right - b.right;
@@ -149,7 +151,9 @@ requestAnimationFrame(() => {
   window.addEventListener('resize', scan);
   const ro = new ResizeObserver(scan);
   ro.observe(document.documentElement);
-  const observeMains = (): void => { document.querySelectorAll('.sx-main').forEach((m) => ro.observe(m)); };
+  const observeMains = (): void => {
+    document.querySelectorAll('.sx-main, .sx-sidebar').forEach((m) => ro.observe(m));
+  };
   observeMains();
   const mo2 = new MutationObserver(observeMains);
   mo2.observe(document.body, { childList: true, subtree: true });

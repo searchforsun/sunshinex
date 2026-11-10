@@ -24,11 +24,17 @@ export function WelcomeBranchMenu({
     if (el === null) return;
     const fit = (): void => {
       el.style.width = '';
+      // 宿主面板边界(2026-11-09 用户实测审查页分支下拉仍挤走):弹窗锚在哪个面板(主对话区/右侧栏)就以它为界——
+      // 审查页在右栏内,closest('.sx-main') 为空,旧口径只剩视口=既不缩宽也不左移;窄面板下缩宽+左移双管齐下
+      const host = el.closest('.sx-main, .sx-sidebar')?.getBoundingClientRect();
       let left = 8;
       let right = window.innerWidth - 8;
+      if (host !== undefined) {
+        left = Math.max(left, host.left + 8);
+        right = Math.min(right, host.right - 8);
+      }
       for (let a = el.parentElement; a !== null; a = a.parentElement) {
-        // 主对话区恒为边界:右侧栏是兄弟层压在其上(非裁剪祖先),越过主区右缘即被侧栏盖住
-        if (!a.classList.contains('sx-main') && getComputedStyle(a).overflowX === 'visible') continue;
+        if (a.classList.contains('sx-main') || a.classList.contains('sx-sidebar') || getComputedStyle(a).overflowX === 'visible') continue;
         const r = a.getBoundingClientRect();
         left = Math.max(left, r.left + 8);
         right = Math.min(right, r.right - 8);
