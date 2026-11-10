@@ -84,12 +84,12 @@ describe('DiffTab 区域下拉', () => {
 
   it('行级撤销随区:未暂存行=丢弃该文件、已暂存行=取消暂存该文件,均二次确认', async () => {
     const { calls } = await mount();
-    const discardRow = screen.getAllByRole('button', { name: 'Discard changes to this file' })[0]!;
+    const discardRow = screen.getAllByRole('button', { name: 'Discard' })[0]!;
     fireEvent.click(discardRow);
     fireEvent.click(discardRow);
     await waitFor(() => expect(calls).toContain('discard:src/b.ts'));
     await pick('Staged');
-    const unstageRow = screen.getByRole('button', { name: 'Unstage this file' });
+    const unstageRow = screen.getByRole('button', { name: 'Unstage' });
     fireEvent.click(unstageRow);
     fireEvent.click(unstageRow);
     await waitFor(() => expect(calls).toContain('unstage:src/a.ts'));

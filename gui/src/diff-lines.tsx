@@ -25,6 +25,48 @@ const CONTEXT = 4;
 /** LCS DP 单元上限:超过则回退整块 del+add(旧算法)——千行级文件 DP 也在毫秒程,防御性闸 */
 const LCS_CELL_CAP = 4_000_000;
 
+/** 改动组下移对齐(2026-11-11 用户报障「+10 −1 与渲染不一致」根修,git xdl_change_compact 简化款):
+ *  LCS 在重复行场景(如成片的 `x = null;` 清理行)会把新增行配到别处旧行——渲染 ± 少于 numstat。
+ *  后处理:每个连续改动组,若组后首行 same 与组内该侧首行同文,则交换(组整体下移一行),循环至
+ *  不动——改动 hunk 归位到真实发生处,渲染 ± 与 git numstat 对齐 */
+function compactShift(rows: DiffRow[]): DiffRow[] {
+  const arr = [...rows];
+  let moved = true;
+  while (moved) {
+    moved = false;
+    let i = 0;
+    while (i < arr.length) {
+      if (arr[i]!.kind === 'same') {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j < arr.length && arr[j]!.kind !== 'same') j += 1;
+      if (j < arr.length) {
+        const nxt = arr[j]!;
+        const idx = arr.findIndex(
+          (r, k) =>
+            k >= i && k < j && r.kind !== 'same' && r.text === nxt.text &&
+            ((r.kind === 'del' && nxt.numOld !== undefined) || (r.kind === 'add' && nxt.numNew !== undefined)),
+        );
+        if (idx >= 0) {
+          const chg = arr[idx]!;
+          if (chg.kind === 'del') {
+            arr[j] = { kind: 'del', text: nxt.text, numOld: nxt.numOld! };
+            arr[idx] = { kind: 'same', text: chg.text, numOld: chg.numOld!, numNew: nxt.numNew! };
+          } else {
+            arr[j] = { kind: 'add', text: nxt.text, numNew: nxt.numNew! };
+            arr[idx] = { kind: 'same', text: chg.text, numOld: nxt.numOld!, numNew: chg.numNew! };
+          }
+          moved = true;
+        }
+      }
+      i = j;
+    }
+  }
+  return arr;
+}
+
 export function diffRows(oldText: string, newText: string): { rows: DiffRow[]; truncated: boolean } {
   const a = oldText.split('\n');
   const b = newText.split('\n');
@@ -81,8 +123,9 @@ export function diffRows(oldText: string, newText: string): { rows: DiffRow[]; t
   for (let k = 0; endA + k < a.length; k += 1) {
     rows.push({ kind: 'same', text: a[endA + k] ?? '', numOld: endA + k + 1, numNew: endB + k + 1 });
   }
-  const truncated = rows.length > MAX_ROWS;
-  return { rows: truncated ? rows.slice(0, MAX_ROWS) : rows, truncated };
+  const compacted = compactShift(rows);
+  const truncated = compacted.length > MAX_ROWS;
+  return { rows: truncated ? compacted.slice(0, MAX_ROWS) : compacted, truncated };
 }
 
 interface Segment {

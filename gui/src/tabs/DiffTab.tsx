@@ -205,7 +205,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
         type="button"
         className={`sx-changes-act${isArmed ? ' arm' : ''}`}
         aria-label={o.label}
-        data-tip={isArmed ? t('Click again to confirm', '再次点击确认') : o.label}
+        data-tip={isArmed ? `${t('Confirm', '确认')}${o.label}` : o.label}
         disabled={o.disabled === true || busy !== null}
         onClick={(e) => {
           e.stopPropagation();
@@ -227,7 +227,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
         const key = `${area}:${f.path}`;
         const open = openKey === key;
         const c = contents[key];
-        const revertLabel = area === 'staged' ? t('Unstage this file', '撤销此文件的暂存') : t('Discard changes to this file', '撤销此文件的改动');
+        const revertLabel = area === 'staged' ? t('Unstage', '撤销暂存') : t('Discard', '撤销改动');
         return (
           <div key={key} className={`sx-change${open ? ' open' : ''}`}>
             <div className="sx-change-row" role="button" tabIndex={-1} aria-expanded={open} onClick={() => toggle(area, f.path)}>
@@ -235,7 +235,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
               <button
                 type="button"
                 className="sx-change-name"
-                data-tip={t('Open file tab', '打开文件标签')}
+                data-tip={t('Open file', '打开文件')}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenFile?.(f.path);
@@ -251,7 +251,8 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
               </span>
               <span className="sx-change-spacer" />
               <span className="sx-change-stat">
-                <ChangeStat {...changeCounts(f)} />
+                {/* ±0 −0 不示(git 对二进制/无文本变更无 numstat,示数是噪声) */}
+                {changeCounts(f).add !== 0 || changeCounts(f).del !== 0 ? <ChangeStat {...changeCounts(f)} /> : undefined}
               </span>
               {actBtn({
                 label: revertLabel,
@@ -341,6 +342,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
                     setFilterOpen(false);
                   }}
                 >
+                  {a === 'staged' ? <CircleDot size={14} strokeWidth={1.75} aria-hidden="true" /> : <Circle size={14} strokeWidth={1.75} aria-hidden="true" />}
                   <span className="branch-pop-name">{a === 'staged' ? t('Staged', '已暂存') : t('Unstaged', '未暂存')}</span>
                   {areaFilter === a && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
                 </button>
