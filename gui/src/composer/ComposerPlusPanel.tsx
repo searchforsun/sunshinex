@@ -201,10 +201,10 @@ export function ComposerPlusPanel({
     if (el === null) return;
     const r = el.getBoundingClientRect();
     if (r.top < 8) {
-      // 不止挂 cover:按缺口下移(缺口=顶部越界量),相对锚式 calc 减缺口——覆盖整个 composer 也在所不惜
+      // 不止挂 cover:面板底边钉到 composer 卡底——完全覆盖,卡体任何部分不得从面板下露出
+      // (2026-11-10 用户裁定「要完全覆盖,还不够就再往下露出」:foot 行漏出即红)
       setCover(true);
-      const shift = Math.round(8 - r.top);
-      el.style.bottom = `calc(100% + 8px - ${shift}px)`;
+      el.style.bottom = '0px';
     } else setCover(false);
   }, []);
   return (

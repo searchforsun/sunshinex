@@ -262,7 +262,9 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
             setRenaming(null);
             onHide();
           }}
-        />
+        >
+          <X size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </div>
       <div className="terminal-dock-body">
         {activeTab !== undefined && (

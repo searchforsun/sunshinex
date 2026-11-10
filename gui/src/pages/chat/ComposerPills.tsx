@@ -78,7 +78,7 @@ export function ComposerPillsLeft(props: PillsLeftProps & { terminalDockEnabled?
                 data-tip={t('Terminal', '终端')}
                 onClick={() => props.onToggleDock?.()}
               >
-                <SquareTerminal size={16} strokeWidth={2} aria-hidden="true" /> /* 笔形对齐 PlusAddIcon(stroke 2) */
+                <SquareTerminal size={16} strokeWidth={2} aria-hidden="true" />
               </button>
             )}
           </div>
