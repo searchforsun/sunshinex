@@ -3790,3 +3790,25 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 20px; height: 20px; }
 /* 标签体:xterm 容器占余高(TerminalTab 自带满贴布局) */
 .terminal-dock-body { flex: 1; min-height: 0; position: relative; }
+
+/* ===== 2026-11-10 用户裁定:全局弹窗统一(布局参照改名弹窗,「不要小气」) =====
+   ①按钮语义两分:取消等无副作用=同色普通钮(面色底),确认等有副作用=反色实心(前景底);
+   ②弹窗合理加大:dialog 类 480px 档,foot 钮加大(6/20 padding,14px 字),右下对齐;
+   ③输入框通栏加高 */
+.modal-body { padding: 20px 22px; min-width: min(400px, calc((100vw - 32px) / var(--ui-zoom, 1))); }
+.sx-dirty-dialog { width: min(480px, calc((100vw - 32px) / var(--ui-zoom, 1))); }
+.sx-iso-dialog { width: min(480px, calc((100vw - 32px) / var(--ui-zoom, 1))); max-width: none; }
+.rename-dialog { min-width: min(480px, calc((100vw - 32px) / var(--ui-zoom, 1))); }
+.rename-dialog .chat-title-input { height: 34px; padding: 0 12px; font-size: calc(14px * var(--fz)); }
+.modal-body :is(.dirpicker-foot, .sx-dirty-actions) button {
+  padding: 6px 20px; border: none; border-radius: var(--radius-md);
+  background: var(--surface-soft); color: var(--fg);
+  font-size: calc(14px * var(--fz)); cursor: pointer;
+}
+.modal-body :is(.dirpicker-foot, .sx-dirty-actions) button:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 10%, var(--surface-soft)); }
+.modal-body :is(.dirpicker-foot, .sx-dirty-actions) button.primary,
+.modal-body :is(.dirpicker-foot, .sx-dirty-actions) button.primary:hover:not(:disabled) {
+  background: var(--fg); color: var(--fg-on-solid);
+}
+.modal-body :is(.dirpicker-foot, .sx-dirty-actions) button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
+.modal-body :is(.dirpicker-foot, .sx-dirty-actions) button:disabled { opacity: 0.5; cursor: default; }
