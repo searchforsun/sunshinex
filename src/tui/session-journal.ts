@@ -96,6 +96,8 @@ export interface SessionSidecarMeta {
   title?: string;
   /** 末次活动 epoch ms（run 收尾/closeTask；列表排序仍以 journal mtime 为准） */
   updatedAt?: number;
+  /** 会话工作区根(2026-11-10 worktree 会话=树真实路径;悬浮卡显真实地址/复制钮消费) */
+  root?: string;
   /** 累计 run 数（TUI 侧取台账 summary().runs，serve 侧逐 run +1） */
   runs?: number;
   /** 累计链步数 */
@@ -139,7 +141,7 @@ export interface SessionSidecarMeta {
 }
 
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
-  'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds',
+  'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds', 'root',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
   'archived', 'archivedAt', 'sideCount', 'sideOf', 'sideSeq', 'rewoundTo',
 ];

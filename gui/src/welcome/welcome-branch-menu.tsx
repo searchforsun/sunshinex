@@ -107,8 +107,8 @@ export function WelcomeBranchMenu({
             >
               <span className="branch-pop-name">{b}</span>
               {held && <span className="branch-pop-held">{t('Checked out', '已签出')}</span>}
-              {b === gitBr.current && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
-              {isSelected && !held && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
+              {b === gitBr.current && <span className="branch-pop-current">{t('Current', '当前')}</span>}
+              {isSelected && !held && b !== gitBr.current && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
             </button>
           );
         })}

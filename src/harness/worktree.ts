@@ -200,7 +200,10 @@ export function createWorktree(
   if (!isRepo(root)) {
     return fail('WORKTREE_NOT_A_REPO', `not a git repository: ${root}`);
   }
-  const tree = path.join(worktreesRoot(dataDir), name);
+  // 树落位(2026-11-10 用户裁定):项目内 .git/sunshinex/worktrees/<name>——跟项目走、感知扫描
+  // 天然跳过 .git、不污染 sunshinex 数据目录(旧 dataDir/worktrees 形态退役;.git/worktrees/<name>
+  // 是 git 自身管理目录,marker 重定向标记仍落那里)
+  const tree = path.join(root, '.git', 'sunshinex', 'worktrees', name);
   if (fs.existsSync(tree)) {
     return fail('WORKTREE_EXISTS', `worktree already exists: ${tree}`);
   }

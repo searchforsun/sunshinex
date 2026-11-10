@@ -152,6 +152,8 @@ export interface SessionRow {
   file: string;
   updatedAt: number;
   firstUser?: string;
+  /** 会话工作区根(2026-11-10 worktree 会话=树真实路径;悬浮卡路径/复制钮消费) */
+  root?: string;
   title?: string;
   createdAt?: string;
   runs?: number;

@@ -10,7 +10,7 @@ import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
 import { SessionJournal, journalDisplayTitle, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../tui/session-journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
-import { projectsRoot, projectSlug, resolveDataDir } from '../config/data-dir';
+import { projectsRoot, projectSlug, resolveDataDir, worktreeMainRootOf } from '../config/data-dir';
 
 /**
  * 会话生命周期域(2026-10-27 技术债轮 自 daemon.ts 外提,D31 骨架域续批,行为零变化):
@@ -78,11 +78,16 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
   }
   if (!st.isDirectory()) return fail('INVALID_ARG', `root is not a directory: ${abs}`);
   const dataDir = resolveDataDir(abs);
-  try {
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root: abs }) + '\n', 'utf8');
-  } catch {
-    // 落档尽力:写失败只让 /workspaces 降级 slug-only,不影响会话装配
+  if (worktreeMainRootOf(abs) === undefined) {
+    // 树会话不注册工作区(2026-11-10 用户报障「树会话自立伪项目 wt-*」根修):写入会**覆写主项目
+    // workspace.json**(resolveDataDir 已重定向同目录)——/workspaces 反解出树路径,侧栏多出伪项目
+    // 且主项目行根错乱。树会话归主项目分组,注册面跳过
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root: abs }) + '\n', 'utf8');
+    } catch {
+      // 落档尽力:写失败只让 /workspaces 降级 slug-only,不影响会话装配
+    }
   }
   // 会话 id(2026-10-23 用户裁定):sun-{项目摘要12}-{随机8}——退役 s<n> 单调草档(重启即重号、
   // 跨项目不可归因);项目段=工作区 slug 摘要尾(确定性,会话 id 即可见归属),随机段单进程防撞

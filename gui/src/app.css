@@ -1487,7 +1487,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-turn-diff-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); padding: 2px 8px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .sx-turn-diff-body { padding: 8px 12px 16px; overflow: auto; }
 /* 工作区隔离 pill(2026-11-10):武装态高亮(accent 微底);说明框复用 sx-dirty-dialog 弹层形 */
-.composer-pill.isolate-pill.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.composer-pill.isolate-pill.on { color: var(--accent); } /* 2026-11-11 用户裁定:武装态只变字色,不加背景(与左侧分支 pill 同素形) */
 .sx-iso-dialog { max-width: 420px; }
 .run-footer { display: flex; align-items: center; gap: 2px; margin-top: 10px; margin-left: -5px; } /* 2026-11-07 用户裁定:操作行离正文稍远(4→10) */.run-footer .sx-tip { color: var(--fg-icon); }.run-stats {
   display: inline-flex; gap: 10px; margin-left: 10px;
@@ -3857,3 +3857,12 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-menuitem.held:hover { background: none; }
 .branch-pop-held { margin-left: auto; flex: none; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
 .composer-pill.branch-pill.picked { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* 分支菜单「当前」标记(2026-11-11 用户裁定「双对号用户不知道哪个是当前分支」):当前分支=文字标签,
+   发送时选中(≠当前)=对号——两种标记语义分离 */
+.branch-pop-current { margin-left: auto; flex: none; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
+/* 会话悬浮卡行内复制钮:14px 图标+24px 命中盒,行右端,hover 提亮 */
+.sx-sess-card-copy { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: 6px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-icon); cursor: pointer; vertical-align: middle; }
+.sx-sess-card-copy:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.sx-sess-card-name, .sx-sess-card-path { display: flex; align-items: flex-start; gap: 4px; }
+.sx-sess-card-path > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }

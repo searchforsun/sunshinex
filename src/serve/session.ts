@@ -1094,6 +1094,7 @@ export class SessionRuntime {
           const model = this.runtimeImpl.harness.model;
           writeSessionMeta(resolveDataDir(this.root), journalId, {
             updatedAt: endedTs,
+            root: this.root,
             runs: (prev.runs ?? 0) + 1,
             ...(this.kernel.stats().sessionSteps > 0 ? { steps: this.kernel.stats().sessionSteps } : {}), // 累计口径覆盖写(stats 权威)
             tokens: (prev.tokens ?? 0) + (outcome.tokensUsed ?? 0),

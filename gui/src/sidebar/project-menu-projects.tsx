@@ -319,7 +319,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                                 runs: sr.runs,
                                 steps: sr.steps,
                                 createdAt: sr.createdAt,
-                                rootPath: root,
+                                rootPath: sr.root !== undefined && sr.root !== '' ? sr.root : root,
                               }}
                               updatedAt={sr.updatedAt}
                               active={active}

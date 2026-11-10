@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
 import { zoomScale } from '../ui-zoom';
-import { Archive, CircleHelp, Clock, GitBranch, Layers, Pin } from 'lucide-react';
+import { Archive, Check, CircleHelp, Clock, Copy, GitBranch, Layers, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -219,18 +219,26 @@ function SessionHoverCard(props: {
       className="sx-sess-card"
       style={{ left: (props.anchor.menuRight + 4) / z, top: (props.anchor.top + props.anchor.height / 2) / z, width }}
     >
-      <div className="sx-sess-card-name">{props.label}</div>
-      {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底) */}
+      <div className="sx-sess-card-name">
+        {props.label}
+        <CardCopy text={props.label} label={t('Copy session name', '复制会话名')} />
+      </div>
+      {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底);
+          2026-11-10 用户裁定:路径/分支行右端复制钮(复制会话名/项目地址/分支名) */}
       {rootPath !== undefined && rootPath !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
-          <div className="sx-sess-card-path">{rootPath}</div>
+          <div className="sx-sess-card-path">
+            {rootPath}
+            <CardCopy text={rootPath} label={t('Copy project path', '复制项目地址')} />
+          </div>
         </>
       )}
       {branch !== undefined && branch !== '' && (
         <div className="sx-sess-card-row">
           <GitBranch size={14} strokeWidth={1.75} />
           <span>{branch}</span>
+          <CardCopy text={branch} label={t('Copy branch name', '复制分支名')} />
         </div>
       )}
       {stats.length > 0 && (
@@ -376,4 +384,35 @@ export function useConfirmOutsideCancel(confirmId: string, cancel: () => void): 
  *  他会话看 daemon 行标注 liveSessionId(仅 running 运行时才带) */
 export function rowRunning(active: boolean, activeSessionId: string, runningIds: ReadonlySet<string>, liveSessionId: string | undefined): boolean {
   return active ? runningIds.has(activeSessionId) : liveSessionId !== undefined && liveSessionId !== activeSessionId;
+}
+
+/** 悬浮卡行内复制钮(2026-11-10 用户裁定「右侧三个复制按钮」):14px 图标+24px 命中盒,
+ *  点击写剪贴板原地翻 ✓(2s);失败静默(剪贴板权限被拒时钮无副作用) */
+function CardCopy(props: { text: string; label: string }): JSX.Element {
+  const [ok, setOk] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  const copy = (): void => {
+    void navigator.clipboard
+      ?.writeText(props.text)
+      .then(() => {
+        setOk(true);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setOk(false), 2000);
+      })
+      .catch(() => undefined);
+  };
+  return (
+    <button
+      type="button"
+      className="sx-sess-card-copy"
+      aria-label={props.label}
+      data-tip={props.label}
+      onClick={(e) => {
+        e.stopPropagation();
+        copy();
+      }}
+    >
+      {ok ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+    </button>
+  );
 }
