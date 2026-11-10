@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { pathBasename } from '../ui-util';
@@ -313,31 +314,35 @@ export function WelcomeComposer({
             </button>
           )}
         </div>
-        {isoOpen && (
-          <div className="modal-overlay" onClick={() => setIsoOpen(false)}>
-            <div className="modal-body sx-iso-dialog" role="dialog" aria-label={t('Isolated workspace', '隔离工作区')} onClick={(e) => e.stopPropagation()}>
-              <p className="sx-dirty-target">{t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}</p>
-              <p className="sx-dirty-text">
-                {t('Works in a dedicated branch copy; the main workspace stays clean. Untracked files (deps etc.) need re-preparing.', '在独立分支的副本中工作，主工作区不受影响；依赖等未跟踪文件需自行准备')}
-              </p>
-              <div className="sx-dirty-actions">
-                <button type="button" onClick={() => setIsoOpen(false)}>
-                  {t('Cancel', '取消')}
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => {
-                    setIsolate(true);
-                    setIsoOpen(false);
-                  }}
-                >
-                  {t('Turn on isolation', '开启隔离')}
-                </button>
+        {/* 全局弹窗(2026-11-10 用户裁定「弹窗是全局的」):portal 到 body——composer 祖先带定位上下文,
+            内联 modal-overlay 的 fixed 会被困住落底部 */}
+        {isoOpen &&
+          createPortal(
+            <div className="modal-overlay" onClick={() => setIsoOpen(false)}>
+              <div className="modal-body sx-iso-dialog" role="dialog" aria-label={t('Isolated workspace', '隔离工作区')} onClick={(e) => e.stopPropagation()}>
+                <p className="sx-dirty-target">{t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}</p>
+                <p className="sx-dirty-text">
+                  {t('Works in a dedicated branch copy; the main workspace stays clean. Untracked files (deps etc.) need re-preparing.', '在独立分支的副本中工作，主工作区不受影响；依赖等未跟踪文件需自行准备')}
+                </p>
+                <div className="sx-dirty-actions">
+                  <button type="button" onClick={() => setIsoOpen(false)}>
+                    {t('Cancel', '取消')}
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => {
+                      setIsolate(true);
+                      setIsoOpen(false);
+                    }}
+                  >
+                    {t('Turn on isolation', '开启隔离')}
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            </div>,
+            document.body,
+          )}
         {projOpen && (
           <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
             {rows.map((r) => (
