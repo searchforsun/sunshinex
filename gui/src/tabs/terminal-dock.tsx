@@ -126,7 +126,14 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
 
   useEffect(() => saveSession(sessionId, { open: true, tabs, active }), [sessionId, tabs, active]);
   useEffect(() => lsWrite(LS_HEIGHT, height), [height]);
-  useEffect(() => onHeightChange(height), [height, onHeightChange]);
+  /** 高度上报双通道:onHeightChange 回宿主(ChatScrollbar bottom 让位);根 CSS 变量供
+   *  .sx-main:has(>.terminal-dock) .chat-dock 把 composer 底边抬到下栏之上(composer 是
+   *  .sx-main 底部绝对定位,不抬即与下栏重叠——2026-11-10 用户实测「输入框没有跟随上去」) */
+  useEffect(() => {
+    onHeightChange(height);
+    document.documentElement.style.setProperty('--terminal-dock-h', `${height}px`);
+    return () => { document.documentElement.style.removeProperty('--terminal-dock-h'); };
+  }, [height, onHeightChange]);
   /** 窗口 resize 重钳:上限随窗口收,主对话 ≥~320px 保底不破 */
   useEffect(() => {
     const reclamp = (): void => setHeight((h) => clampHeight(h));

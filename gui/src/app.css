@@ -3779,9 +3779,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 2026-11-10 改版(用户实测六条):下栏=主对话对等区(.sx-main 直子,分割线+侧栏分割条同款横置拖带),
    不在 chat-dock 滚条区内;页签=侧栏页签同形条形 pill(.sx-tab 同款几何);面板 × 右缘常显(margin-left auto) */
 .terminal-dock { display: flex; flex-direction: column; flex: none; background: var(--surface); border-top: 1px solid var(--border); overflow: hidden; }
-.terminal-dock-handle { height: 8px; flex: none; cursor: row-resize; touch-action: none; position: relative; background: var(--surface-under); }
-.terminal-dock-handle::before { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 2px; background: transparent; }
-.terminal-dock-handle:hover::before, .terminal-dock-handle:active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); }
+.terminal-dock-handle { height: 9px; flex: none; cursor: row-resize; touch-action: none; position: relative; }
+.terminal-dock-handle::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--border); }
+.terminal-dock-handle:hover::before, .terminal-dock-handle:active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); } /* 分割线=1px 对齐主区/侧栏边界(2026-11-10 用户裁定「要一样窄」);9px 带仅作拖拽热区不显色 */
 .terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow-x: auto; scrollbar-width: none; }
 .terminal-dock-strip::-webkit-scrollbar { width: 0; height: 0; }
 .terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; max-width: 200px; }
@@ -3792,6 +3792,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 20px; height: 20px; padding: 0; }
 .terminal-dock-close { margin-left: auto; }
 .terminal-dock-body { flex: 1; min-height: 0; position: relative; }
+/* 下栏开着时 composer(绝对定位钉 .sx-main 底)抬到下栏之上,高度=下栏高(根变量由 dock 写入) */
+.sx-main:has(> .terminal-dock) .chat-dock { bottom: calc(var(--terminal-dock-h, 0px) + 12px); }
 
 /* ===== 2026-11-10 用户裁定:全局弹窗统一(布局参照改名弹窗,「不要小气」) =====
    ①按钮语义两分:取消等无副作用=同色普通钮(面色底),确认等有副作用=反色实心(前景底);
