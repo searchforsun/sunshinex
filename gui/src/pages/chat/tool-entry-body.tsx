@@ -255,7 +255,7 @@ export function ToolEntryBody({
       hits.length > 0 ? (
         <div
           className="tool-io-pre"
-          style={{ maxHeight: 280, overflow: 'auto', fontSize: 'calc(14px * var(--fz))', lineHeight: 1.6 }}
+          style={{ maxHeight: 280, overflow: 'auto', fontSize: 'calc(14px * var(--fz))', lineHeight: 1.6, fontFamily: 'var(--font-ui)' }}
         >
             {hits.map((h) => (
               <div key={h.n} style={{ marginBottom: 10 }}>

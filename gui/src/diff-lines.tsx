@@ -140,31 +140,24 @@ export function DiffLines({
   maxHeight?: number;
   /** G14.109 hunk 折叠开启(changes 侧栏消费;主对话 write 小 diff 恒平铺) */
   collapsible?: boolean;
-  /** G14.120 flat(changes 侧栏):透明平铺无内滚+双列行号;inline(工具行)维持单列紧凑 */
+  /** G14.120 flat(changes 侧栏):透明平铺无内滚;inline(工具行) maxHeight 封顶内滚——行结构两版同构 */
   variant?: 'inline' | 'flat';
 }): JSX.Element {
   const { rows, truncated } = useMemo(() => diffRows(oldStr ?? '', newStr), [oldStr, newStr]);
   const segs = useMemo(() => (collapsible ? hunkSegments(rows) : null), [rows, collapsible]);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const flat = variant === 'flat';
-  const line = (r: DiffRow, i: number): JSX.Element =>
-    flat ? (
-      <div key={i} className={`diff-line ${r.kind}`}>
-        <span className="diff-ln old" aria-hidden="true">{r.numOld ?? ''}</span>
-        <span className="diff-ln new" aria-hidden="true">{r.numNew ?? ''}</span>
-        <span className="diff-code">
-          <code dangerouslySetInnerHTML={{ __html: highlightCode(r.text, path) }} />
-        </span>
-      </div>
-    ) : (
-      <div key={i} className={`diff-line ${r.kind}`}>
-        <span className="diff-mark" aria-hidden="true" />
-        <span className="diff-ln" aria-hidden="true">{r.kind === 'del' ? r.numOld : r.numNew}</span>
-        <span className="diff-code">
-          <code dangerouslySetInnerHTML={{ __html: highlightCode(r.text, path) }} />
-        </span>
-      </div>
-    );
+  // 行渲染单点(2026-11-10 用户裁定「审查 diff 与工具行统一叠加单列序号」):flat/inline 同构——色条+单序号
+  // (删除行显旧号、其余显新号),差异只剩 flat 无内滚透明平铺
+  const line = (r: DiffRow, i: number): JSX.Element => (
+    <div key={i} className={`diff-line ${r.kind}`}>
+      <span className="diff-mark" aria-hidden="true" />
+      <span className="diff-ln" aria-hidden="true">{r.kind === 'del' ? r.numOld : r.numNew}</span>
+      <span className="diff-code">
+        <code dangerouslySetInnerHTML={{ __html: highlightCode(r.text, path) }} />
+      </span>
+    </div>
+  );
   /** G14.154 折叠条整行 sticky 悬浮(横向滚动钉住可视宽),文字照常保留 */
   const foldBar = (segKey: number, count: number): JSX.Element => (
     <button
