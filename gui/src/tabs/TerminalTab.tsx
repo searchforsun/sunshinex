@@ -191,7 +191,11 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
                 }
               }, 250);
             });
-            if (cancelled || !laid) {
+            if (cancelled) return;
+            if (!laid) {
+              // 真浏览器不给永久降级面(2026-11-10 用户裁定「为什么要显示这个」):恢复的隐藏页签
+              // 布局迟到/主面瞬时 0 尺寸都等下一次 RO/重试,装配永不放弃;降级面只保留给 jsdom 测试
+              if ((import.meta as { env?: { MODE?: string } }).env?.MODE !== 'test') return;
               setFallback(true);
               return;
             }

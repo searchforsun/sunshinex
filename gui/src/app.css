@@ -8,6 +8,7 @@
   --surface-elevated: #212121;
   --surface-soft: #303030;
   --surface-code: #101010;
+  --terminal-dock-bg: #0d0d0d; /* 终端下栏井色(2026-11-10 用户裁定「与左菜单有区分性」):比 surface 深一档 */
   /* 字 */
   --fg: #dfdfdf;
   --fg-secondary: color-mix(in srgb, var(--fg) 70%, transparent);
@@ -93,6 +94,7 @@
   --surface-elevated: #fff;
   --surface-soft: #ececec;
   --surface-code: #eeeeee;
+  --terminal-dock-bg: #e2e2e2; /* 终端下栏井色:比菜单 efefef/主面 f6f6f6 深一档,可辨 */
   --fg: #1a1c1f;
   --fg-on-solid: #fff;
   --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
@@ -1086,7 +1088,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G10-C5 设置页 Codex 同构(居中窄列/行式=标题+描述+右控件/分组 nav) ===== */.sx-settings-body { max-width: 720px; margin: 0 auto; width: 100%; }.sx-settings-group { padding: 10px 12px 2px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-settings-group-items { list-style: none; margin: 0; padding: 0; }.sx-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; }.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border-subtle); }.sx-setting-main { min-width: 0; }.sx-setting-title { display: flex; align-items: center; gap: 6px; }.sx-setting-desc { margin: 2px 0 0; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-setting-input { width: 240px; flex: none; }select.sx-setting-select { width: 240px; }
 
-/* ===== G10-C6 右栏三面板(上下文/后台任务/记忆) ===== */.insight-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 12px; overflow: auto; } /* 2026-10-31 用户裁定「边距拓展」:水平 10→12px 与 todo-cards 原边距同宽 */.insight-tab > .todo-cards { padding: 0; height: auto; flex: 1 1 auto; min-height: 0; gap: 8px; } /* 消双层边距(insight-tab 内卡片流让 insight-tab 统一供 12px,滚动也归 tab) */.insight-tab > .taskboard-cards { padding: 0; height: auto; flex: 1 1 auto; min-height: 0; } /* 任务板刷新钮轮(2026-10-31):同 todo-cards 消双层边距 */.tb-board-bar { margin-bottom: -2px; }.insight-bar { display: flex; gap: 6px; flex: none; } /* 刷新点击反馈(2026-10-31 用户裁定「点击后转一下圈」):拉取在途图标自转,落定即停 */.sx-changes-act .sx-fetching { animation: sx-spin 0.9s linear infinite; }.insight-summary { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.ctx-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.ctx-part { display: flex; align-items: center; gap: 8px; font-size: calc(14px * var(--fz)); }.ctx-part-id { width: 90px; flex: none; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ctx-part-bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); overflow: hidden; }.ctx-part-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }.ctx-part-num { width: 64px; flex: none; text-align: right; color: var(--fg-tertiary); font-family: var(--font-mono); font-size: calc(14px * var(--fz)); }.bgtask-list, .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.bgtask-row, .mem-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.bgtask-row:hover, .mem-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.bgtask-label, .mem-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.bgtask-status { flex: none; }.bgtask-running .bgtask-status { color: var(--fg); }.bgtask-done .bgtask-status { color: var(--ok); }.bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }.mem-date { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); } /* 2026-11-04 时标图标按 todo-card-time 配方(gap4 垂直居中) */
+/* ===== G10-C6 右栏三面板(上下文/后台任务/记忆) ===== */.insight-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 4px; overflow: auto; } /* 2026-11-10 用户裁定:左右 12→4 增大使用面积,左对齐页签条图标、右对称(终端/浏览器/文件/辅助对话不入此容器) */ /* 2026-10-31 用户裁定「边距拓展」:水平 10→12px 与 todo-cards 原边距同宽 */.insight-tab > .todo-cards { padding: 0; height: auto; flex: 1 1 auto; min-height: 0; gap: 8px; } /* 消双层边距(insight-tab 内卡片流让 insight-tab 统一供 12px,滚动也归 tab) */.insight-tab > .taskboard-cards { padding: 0; height: auto; flex: 1 1 auto; min-height: 0; } /* 任务板刷新钮轮(2026-10-31):同 todo-cards 消双层边距 */.tb-board-bar { margin-bottom: -2px; }.insight-bar { display: flex; gap: 6px; flex: none; } /* 刷新点击反馈(2026-10-31 用户裁定「点击后转一下圈」):拉取在途图标自转,落定即停 */.sx-changes-act .sx-fetching { animation: sx-spin 0.9s linear infinite; }.insight-summary { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.ctx-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.ctx-part { display: flex; align-items: center; gap: 8px; font-size: calc(14px * var(--fz)); }.ctx-part-id { width: 90px; flex: none; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ctx-part-bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); overflow: hidden; }.ctx-part-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }.ctx-part-num { width: 64px; flex: none; text-align: right; color: var(--fg-tertiary); font-family: var(--font-mono); font-size: calc(14px * var(--fz)); }.bgtask-list, .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.bgtask-row, .mem-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.bgtask-row:hover, .mem-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.bgtask-label, .mem-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.bgtask-status { flex: none; }.bgtask-running .bgtask-status { color: var(--fg); }.bgtask-done .bgtask-status { color: var(--ok); }.bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }.mem-date { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); } /* 2026-11-04 时标图标按 todo-card-time 配方(gap4 垂直居中) */
 
 /* ===== G10 欢迎页项目 pill(select 叠透明层,Codex 下拉形) ===== */.welcome-project { position: relative; cursor: pointer; }.welcome-project-select {
   position: absolute; inset: 0; width: 100%; height: 100%;
@@ -3788,19 +3790,19 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-handle { height: 9px; flex: none; cursor: row-resize; touch-action: none; position: relative; }
 .terminal-dock-handle::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--border); }
 .terminal-dock-handle:hover::before, .terminal-dock-handle:active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); } /* 分割线=1px 对齐主区/侧栏边界(2026-11-10 用户裁定「要一样窄」);9px 带仅作拖拽热区不显色 */
-.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow-x: auto; scrollbar-width: none; background: var(--surface-code); }
+.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow-x: auto; scrollbar-width: none; background: var(--terminal-dock-bg); }
 /* 下栏配色区分主对话(2026-11-10 用户裁定「终端背景色调开,各模块有区分性」):栏体/页签条=代码井色
    (暗=深井 101010,亮=浅井 eeeeee),页签 pill 换井上可辨的 hover/active 混色 */
 .terminal-dock-strip::-webkit-scrollbar { width: 0; height: 0; }
 .terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; max-width: 200px; }
-.terminal-dock-tab { color: color-mix(in srgb, var(--fg) 72%, transparent); }
-.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
-.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); }
+.terminal-dock-tab { color: var(--fg-secondary); }
+.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); } /* 颜色口径=侧栏页签 .sx-tab 同款(2026-11-10 用户裁定) */
 .terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .terminal-dock-rename { width: 110px; min-width: 0; font-size: calc(14px * var(--fz)); background: none; color: var(--fg); border: none; padding: 0; height: 20px; outline: none; } /* 2026-11-10 用户裁定:改名不高亮框,原地平编辑 */
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 24px; height: 24px; padding: 0; } /* 14px 图标 24px hover 盒(icon-min 标准,2026-11-10 用户裁定 +/X 同规) */
 .terminal-dock-close { margin-left: auto; }
-.terminal-dock-body { flex: 1; min-height: 0; position: relative; background: var(--surface-code); }
+.terminal-dock-body { flex: 1; min-height: 0; position: relative; background: var(--terminal-dock-bg); }
 /* 下栏开着时 composer(绝对定位钉 .sx-main 底)抬到下栏之上,高度=下栏高(根变量由 dock 写入) */
 .sx-main:has(> .terminal-dock) .chat-dock { bottom: calc(var(--terminal-dock-h, 0px) + 10px); } /* 呼吸缝 10px(2026-11-10 用户裁定「太贴地」);默认 fade 下探 -10px 恰好盖满缝到下栏顶,分割线归下栏 */
 
