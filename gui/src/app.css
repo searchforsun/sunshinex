@@ -3757,11 +3757,12 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 2026-11-10 用户裁定:区下拉贴分支左侧(顶栏 flex-start,动作钮 margin-left:auto 靠右);
    下拉宽=字面即止(已暂存/未暂存 恒全显不缩不省略) */
 .sx-diff-tab .sx-changes-bar { justify-content: flex-start; }
-.sx-diff-tab .sx-changes-branch-anchor { flex: none; min-width: 0; }
+.sx-diff-tab .sx-changes-branch-anchor { flex: 0 1 auto; min-width: 0; } /* 分支=唯一可缩项:空间够必完整,溢出才省略(其余钮 flex:none 不缩) */
+.sx-diff-tab .sx-changes-branch-name { max-width: 200px; } /* 最大长度展示上限(欢迎页 branch-pill 180px 同族) */
 .sx-diff-tab .sx-changes-bar-actions { margin-left: auto; flex: none; }
 .sx-changes-area-anchor .sx-changes-branch-btn { padding-right: 8px; }
 .sx-changes-area-anchor .sx-changes-branch-name { flex: none; min-width: 0; overflow: visible; }
-.sx-changes-area-anchor .sx-area-pop { top: calc(100% + 4px); bottom: auto; left: 0; min-width: 160px; height: auto; max-height: 160px; }
+.sx-changes-area-anchor .sx-area-pop { top: calc(100% + 4px); bottom: auto; left: 0; min-width: 0; width: max-content; height: auto; max-height: 160px; } /* 2026-11-10 用户裁定:弹层宽=字面即止(全局 sx-menu-pop 的 140px 下限不适用两行短项) */
 /* 行内展开箭头:常驻位在路径后,hover 才显(展开态恒显 ^);过窄时 dir 先省略保箭头/撤销/± */
 .sx-change-chevron { flex: none; display: inline-flex; align-items: center; color: var(--fg-icon); opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
 .sx-change-row:hover .sx-change-chevron, .sx-change.open .sx-change-chevron { opacity: 1; }
@@ -3832,3 +3833,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .chat-changes-total svg { flex: none; }
 .chat-changes-total .sx-change-add { color: color-mix(in srgb, var(--ok) 75%, var(--fg-icon)); }
 .chat-changes-total .sx-change-del { color: color-mix(in srgb, var(--err) 75%, var(--fg-icon)); }
+
+/* 切换分支脏树确认:提交信息输入框(2026-11-10 用户裁定)——通栏单行,±数量在文案里 */
+.sx-dirty-dialog .sx-dirty-msg {
+  width: 100%; box-sizing: border-box; height: 32px; padding: 0 12px; margin: 0 0 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface-soft); color: var(--fg); font-size: calc(14px * var(--fz));
+}
+.sx-dirty-dialog .sx-dirty-msg:focus { outline: none; border-color: var(--accent); }

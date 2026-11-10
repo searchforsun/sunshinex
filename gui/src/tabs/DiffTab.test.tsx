@@ -25,7 +25,7 @@ function mkConn(over: Partial<Record<string, unknown>> = {}) {
     pushChanges: vi.fn(async () => void calls.push('push')),
     gitBranches: vi.fn(async () => ({ current: 'dev1', branches: ['dev1', 'main'] })),
     branchDiffStat: vi.fn(async (_r: string, b: string) =>
-      b === 'main' ? { files: 12, added: 100, deleted: 3, dirty: 0, missing: false } : { files: 0, added: 0, deleted: 0, dirty: 2, missing: false }),
+      b === 'main' ? { files: 12, added: 100, deleted: 3, dirty: 0, dirtyAdded: 0, dirtyDeleted: 0, missing: false } : { files: 0, added: 0, deleted: 0, dirty: 2, dirtyAdded: 5, dirtyDeleted: 1, missing: false }),
     gitCheckout: vi.fn(async (_r: string, b: string) => void calls.push(`checkout:${b}`)),
     gitCommitCheckout: vi.fn(async (_r: string, b: string) => void calls.push(`commit-checkout:${b}`)),
     ...over,
@@ -113,7 +113,7 @@ describe('DiffTab 区域下拉', () => {
 
   it('未提交改动在场:确认框只给「提交并切换」(git 将阻断,直接切不可选)', async () => {
     const c = mkConn({
-      branchDiffStat: vi.fn(async () => ({ files: 12, added: 100, deleted: 3, dirty: 2, missing: false })),
+      branchDiffStat: vi.fn(async () => ({ files: 12, added: 100, deleted: 3, dirty: 2, dirtyAdded: 5, dirtyDeleted: 1, missing: false })),
     });
     render(<DiffTab conn={c.conn} sessionId="s1" params={{}} root="/repo" />);
     await screen.findByText('b.ts');
@@ -123,8 +123,10 @@ describe('DiffTab 区域下拉', () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'main' }));
     });
     await screen.findByRole('dialog', { name: 'Switch branch' });
+    await screen.findByText(/\+5 −1/); // 脏面 ±数量
+    fireEvent.change(screen.getByLabelText(/Commit message|提交信息/), { target: { value: 'WIP_ msg' } });
     fireEvent.click(screen.getByRole('button', { name: 'Commit and switch' }));
-    await waitFor(() => expect(c.calls).toContain('commit-checkout:main'));
+    await waitFor(() => expect(c.conn.gitCommitCheckout).toHaveBeenCalledWith('/repo', 'main', false, 'WIP_ msg'));
   });
 
   it('代价面拉取失败仍确认(不示数文案,不静默切换)', async () => {

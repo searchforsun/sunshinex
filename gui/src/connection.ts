@@ -101,11 +101,11 @@ export interface Connection {
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
-  branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; missing: boolean }>;
+  branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>;
   /** 切换/新建分支;未提交改动阻断时抛 code='DIRTY_TREE' 的 Error(前端弹「提交并切换」确认) */
   gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
   /** 提交全部未提交改动后切换(脏树确认框「提交并切换」) */
-  gitCommitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
+  gitCommitCheckout(root: string, branch: string, create?: boolean, message?: string): Promise<void>;
   /** G14.121 工作区文件索引(@ 面板数据源):posix 相对路径+mtime,倒序=最近改动优先;
    *  dirs=尾斜杠目录清单(@面板滤出文件夹/目录引用面;旧 daemon 无此字段 → undefined) */
   workspaceFiles(root: string): Promise<{ files: Array<{ path: string; mtime: number }>; dirs?: string[] }>;
@@ -560,7 +560,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return getJson(`/git/branches?root=${encodeURIComponent(root)}`);
     },
     /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
-    branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; missing: boolean }> {
+    branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }> {
       return getJson(`/git/branch-diff?root=${encodeURIComponent(root)}&branch=${encodeURIComponent(branch)}`);
     },
     workspaceFiles(root: string) {
@@ -577,9 +577,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
       const err = await opError('/git/checkout', res);
       throw res.status === 409 ? Object.assign(err, { code: 'DIRTY_TREE' }) : err;
     },
-    async gitCommitCheckout(root: string, branch: string, create?: boolean) {
+    async gitCommitCheckout(root: string, branch: string, create?: boolean, message?: string) {
       const res = await fetch(`${base}/git/commit-checkout`, {
-        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ root, branch, ...(create === true ? { create: true } : {}) }),
+        method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ root, branch, ...(create === true ? { create: true } : {}), ...(typeof message === 'string' && message.trim() !== '' ? { message: message.trim() } : {}) }),
       });
       if (!res.ok) throw await opError('/git/commit-checkout', res);
     },

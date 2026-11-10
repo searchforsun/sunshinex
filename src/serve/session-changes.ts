@@ -303,16 +303,27 @@ export async function checkoutBranch(root: string, branch: string, create = fals
 /** 切换代价面(2026-11-10 用户裁定「切换分支弹确认,说明代价」):当前 tip → 目标 tip 的
  *  numstat 汇总(切换=工作区将被更新的文件量)+ 未提交改动数(dirty)。missing=true=目标分支
  *  不存在(新建分支确认不示数);非 git 目录 NOT_GIT(GUI 据此隐藏数字面) */
-export async function branchDiffStat(root: string, branch: string): Promise<Result<{ files: number; added: number; deleted: number; dirty: number; missing: boolean }>> {
+export async function branchDiffStat(root: string, branch: string): Promise<Result<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>> {
   if (!fs.existsSync(path.join(root, '.git'))) return fail('NOT_GIT', 'not a git repository');
   if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
   const cur = await git(root, ['branch', '--show-current']);
   const current = cur.ok ? cur.out.trim() : '';
-  const dirtyList = await git(root, ['status', '--porcelain']);
-  const dirty = dirtyList.ok ? dirtyList.out.split('\n').filter((l) => l.trim().length > 0).length : 0;
-  if (branch === current) return ok({ files: 0, added: 0, deleted: 0, dirty, missing: false });
+  // 脏面代价(2026-11-10 用户裁定「提交并切换弹窗示 ±数量」):未提交改动文件数与 ±行数
+  // (listChanges 口径——untracked 计 newLines,与审查页/轮改动卡一致)
+  const dirtyLive = await listChanges(root);
+  let dirty = 0;
+  let dirtyAdded = 0;
+  let dirtyDeleted = 0;
+  if (dirtyLive.ok) {
+    dirty = dirtyLive.value.files.length;
+    for (const f of dirtyLive.value.files) {
+      dirtyAdded += f.added ?? f.newLines ?? 0;
+      dirtyDeleted += f.deleted ?? 0;
+    }
+  }
+  if (branch === current) return ok({ files: 0, added: 0, deleted: 0, dirty, dirtyAdded, dirtyDeleted, missing: false });
   const stat = await git(root, ['diff', '--numstat', 'HEAD', branch]);
-  if (!stat.ok) return ok({ files: 0, added: 0, deleted: 0, dirty, missing: true }); // 分支不存在(新建面):确认不示数
+  if (!stat.ok) return ok({ files: 0, added: 0, deleted: 0, dirty, dirtyAdded, dirtyDeleted, missing: true }); // 分支不存在(新建面):确认不示数
   let files = 0;
   let added = 0;
   let deleted = 0;
@@ -323,7 +334,7 @@ export async function branchDiffStat(root: string, branch: string): Promise<Resu
     if (m[1] !== '-') added += Number(m[1]);
     if (m[2] !== '-') deleted += Number(m[2]);
   }
-  return ok({ files, added, deleted, dirty, missing: false });
+  return ok({ files, added, deleted, dirty, dirtyAdded, dirtyDeleted, missing: false });
 }
 
 /** git 切换被未提交改动阻断的报错特征(本地改动会被覆盖/请先提交或贮藏) */
