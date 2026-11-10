@@ -3755,12 +3755,12 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-change
 .sx-changes-area-anchor { flex: none; margin-left: 2px; }
 /* 2026-11-10 用户裁定:区下拉贴分支左侧(顶栏 flex-start,动作钮 margin-left:auto 靠右);
-   下拉宽=字面+2ch 冗余,宽侧栏不省略,过窄才缩 */
+   下拉宽=字面即止(已暂存/未暂存 恒全显不缩不省略) */
 .sx-diff-tab .sx-changes-bar { justify-content: flex-start; }
 .sx-diff-tab .sx-changes-branch-anchor { flex: none; min-width: 0; }
 .sx-diff-tab .sx-changes-bar-actions { margin-left: auto; flex: none; }
-.sx-changes-area-anchor .sx-changes-branch-btn { padding-right: calc(2ch + 8px); }
-.sx-changes-area-anchor .sx-changes-branch-name { flex: 0 1 auto; }
+.sx-changes-area-anchor .sx-changes-branch-btn { padding-right: 8px; }
+.sx-changes-area-anchor .sx-changes-branch-name { flex: none; min-width: 0; overflow: visible; }
 .sx-changes-area-anchor .sx-area-pop { top: calc(100% + 4px); bottom: auto; left: 0; min-width: 160px; height: auto; max-height: 160px; }
 /* 行内展开箭头:常驻位在路径后,hover 才显(展开态恒显 ^);过窄时 dir 先省略保箭头/撤销/± */
 .sx-change-chevron { flex: none; display: inline-flex; align-items: center; color: var(--fg-icon); opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }

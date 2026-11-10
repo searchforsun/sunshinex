@@ -311,10 +311,11 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
             )}
             {branchDialog}
           </div>
-        ) : (
-          <span className="sx-changes-branch">{branch !== '' ? branch : t('Changes', '变动')}</span>
-        )}
-        <div className="pill-anchor sx-changes-area-anchor" ref={filterRef}>
+        ) : null}
+        {/* 区下拉仅在 git 目录在场(2026-11-10 用户裁定「无分支信息不显 变动/暂存下拉」);
+            非 git 目录无暂存/提交语义,顶栏只留动作钮 */}
+        {branch !== '' && (
+          <div className="pill-anchor sx-changes-area-anchor" ref={filterRef}>
           <button
             type="button"
             className="sx-changes-branch-btn sx-changes-area-btn"
@@ -346,7 +347,8 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
               ))}
             </div>
           )}
-        </div>
+          </div>
+        )}
         <span className="sx-changes-bar-actions">
           {areaFilter === 'staged' ? (
             <>
