@@ -318,10 +318,7 @@ export function WelcomeComposer({
             <div className="modal-body sx-iso-dialog" role="dialog" aria-label={t('Isolated workspace', '隔离工作区')} onClick={(e) => e.stopPropagation()}>
               <p className="sx-dirty-target">{t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}</p>
               <p className="sx-dirty-text">
-                {t('Main workspace stays clean; edits and commits go to a dedicated branch, safe to run in parallel.', '主工作区保持干净，改动提交都在独立分支，可并行开会话')}
-              </p>
-              <p className="sx-dirty-text">
-                {t('Untracked files (dependencies, local config) are not carried over — prepare them in the new tree. Auto-cleaned when the session is deleted.', '未跟踪文件（依赖、本地配置等）不带入，需在新工作区自行准备；删除会话时自动清理')}
+                {t('Works in a dedicated branch copy; the main workspace stays clean. Untracked files (deps etc.) need re-preparing.', '在独立分支的副本中工作，主工作区不受影响；依赖等未跟踪文件需自行准备')}
               </p>
               <div className="sx-dirty-actions">
                 <button type="button" onClick={() => setIsoOpen(false)}>
