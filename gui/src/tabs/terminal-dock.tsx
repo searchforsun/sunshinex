@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { Connection } from '../connection';
@@ -125,6 +125,12 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+  /** 下栏井色实际值(--terminal-dock-bg 解析)→ xterm 画布底色覆写,栏体/正文同色一体 */
+  const [dockBg, setDockBg] = useState<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--terminal-dock-bg').trim();
+    if (v !== '') setDockBg(v);
+  }, []);
 
   useEffect(() => saveSession(sessionId, { open: true, tabs, active }), [sessionId, tabs, active]);
   useEffect(() => lsWrite(LS_HEIGHT, height), [height]);
@@ -273,6 +279,7 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
             conn={conn}
             sessionId={sessionId}
             uid={activeTab.uid}
+            background={dockBg}
             params={{}}
             ptyIdFor={ptyIdFor}
             onPtyAllocated={onPtyAllocated}

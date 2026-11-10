@@ -53,6 +53,8 @@ export interface TerminalTabProps {
    *  WS 寻址会话段用 '@welcome' 占位(serve 帧中继只按 ptyId 寻址,段不校验) */
   readonly draft?: boolean;
   readonly draftRoot?: string;
+  /** xterm 画布底色覆写(终端下栏=--terminal-dock-bg,与右栏井色区分) */
+  readonly background?: string;
   /** 选区工具条·辅助会话(2026-11-03 用户裁定「终端选中后也能添加到会话/辅助会话」):缺省不渲染该动作 */
   readonly onSideAsk?: (text: string) => void;
 }
@@ -70,15 +72,17 @@ const XTERM_ANSI_LIGHT = {
  *  取值单源 palette.ts:bg=--surface-code / fg=--fg / cursor=--accent / selection=accent 25% 半透;
  *  亮色档 16 色平铺进主题顶层——xterm ITheme 无 ansi 嵌套字段,嵌套即整组被忽略回落暗底缺省谱
  *  (实测亮色下 PowerShell 命令名亮黄近不可读) */
-const xtermThemeFor = (p: Palette): ITheme => ({
-  background: p.tokens.surfaceCode,
+const xtermThemeFor = (p: Palette, background?: string): ITheme => ({
+  // background 可由宿主覆写(终端下栏井色 --terminal-dock-bg:亮 e2e2e2 与菜单 efefef 区分,
+  // 2026-11-10 用户裁定「终端正文区背景要与左侧菜单可辨」);右栏页签维持井色 surfaceCode
+  background: background ?? p.tokens.surfaceCode,
   foreground: p.tokens.fg,
   cursor: p.tokens.accent,
   selectionBackground: `${p.tokens.accent}40`,
   ...(p.mode === 'light' ? XTERM_ANSI_LIGHT : {}),
 });
 
-export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk }: TerminalTabProps): JSX.Element {
+export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAllocated, draft = false, draftRoot = '', onSideAsk, background }: TerminalTabProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   /** jsdom 守卫落定面:无布局 → 降级(降级时 pty 已分配记账,关标签链照常 kill) */
   const [fallback, setFallback] = useState(false);
@@ -204,10 +208,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
           // scrollOnEraseInDisplay:清屏(ED2)把屏上内容推进滚动区而非抹除——新壳启动即发清屏,不开则
           // 回种的历史屏一出现就被抹掉(Windows Terminal/PuTTY 同款 cls 语义)
-          term = new Terminal({ theme: xtermThemeFor(currentPalette()), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
+          term = new Terminal({ theme: xtermThemeFor(currentPalette(), background), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
           // 主题热随(2026-11-04 亮色终端裁定):html[data-theme] 变更即换 theme,存活的 pty 不重连
           const unwatch = watchThemeChange(() => {
-            if (term !== null) term.options.theme = xtermThemeFor(currentPalette());
+            if (term !== null) term.options.theme = xtermThemeFor(currentPalette(), background);
           });
           unwatchTheme?.(); // 回退重装配覆写前先退订上一轮(观察器滞留面)
           unwatchTheme = unwatch;
