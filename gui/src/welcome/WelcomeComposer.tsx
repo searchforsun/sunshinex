@@ -321,7 +321,7 @@ export function WelcomeComposer({
                 {t('Main workspace stays clean; edits and commits go to a dedicated branch, safe to run in parallel.', '主工作区保持干净，改动提交都在独立分支，可并行开会话')}
               </p>
               <p className="sx-dirty-text">
-                {t('node_modules etc. are not carried over — reinstall deps. Auto-cleaned when the session is deleted.', 'node_modules 等未跟踪文件不带入，需重装依赖；删除会话时自动清理')}
+                {t('Untracked files (dependencies, local config) are not carried over — prepare them in the new tree. Auto-cleaned when the session is deleted.', '未跟踪文件（依赖、本地配置等）不带入，需在新工作区自行准备；删除会话时自动清理')}
               </p>
               <div className="sx-dirty-actions">
                 <button type="button" onClick={() => setIsoOpen(false)}>
