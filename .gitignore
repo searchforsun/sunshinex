@@ -35,8 +35,9 @@ gui-dist/
 shell/out/
 # H3-T3 打包面：esbuild daemon 束与 node-pty 实目录装配（dist script 前置生成，均构建产物）
 shell/build/
-# electron-builder 双产物（NSIS Setup + portable exe）
+# electron-builder 双产物（NSIS Setup + portable exe）及临时输出目录变体（锁盘绕行 fresh/u<N>/v<N> 等）
 shell/release/
+shell/release-*/
 
 # G10:default 工作区(非文件类任务缺省落点,运行时数据)
 default/

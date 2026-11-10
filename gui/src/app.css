@@ -1797,7 +1797,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* G14.67:回归 2px 纯菜单底色包边(加深色违和,用户裁定);主对话四角统一 radius-lg
    (原本仅左上大圆角、其余直角,包边随异形圆角走显得歪);侧栏左缘免重。2026-10-24 用户裁定:
-   主面四角=窗缘角,与客户端圆角对齐(--radius-win) */.sx-main { position: relative; border: 2px solid var(--surface-under); border-radius: var(--radius-win); }
+   主面四角=窗缘角,与客户端圆角对齐(--radius-win) */.sx-main { position: relative; border: 2px solid var(--surface-under); border-right-color: var(--border); /* 右缘=主对话/侧栏边界 2px 可辨(2026-11-10 用户裁定) */ border-radius: var(--radius-win); }
 /* G14.72/74:主对话滚动条延伸到面板底——composer 悬浮于流区之上(chat 通高);
    dock=实心底(盖掉输入框下侧透出的内容)+上沿渐隐(标识下面还有内容)+回到底部钮 */.sx-main > .chat { padding-bottom: calc(var(--thread-gutter) + 132px); border-radius: var(--radius-md); }
 /* G14.74b:composer 居中限宽(与内容列对齐,不再全宽);渐隐层只盖内容列(不遮右缘滚动条);
