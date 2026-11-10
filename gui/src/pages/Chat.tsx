@@ -25,7 +25,7 @@ import { t } from '../i18n';
  *  App 侧经 ref 转投免闭包陈旧 */
 import { useCommandPalette } from './chat/use-command-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
-import { TerminalDock } from '../tabs/terminal-dock';
+import { TerminalDock, loadDockSession } from '../tabs/terminal-dock';
 import { useConfigChanged } from '../settings/use-config-changed';
 import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
@@ -114,7 +114,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** 2026-11-10 终端下栏:显能读 settings·terminalDock(on/off,缺省 on;use-chat-session-info
    *  同款挂载拉取+config-changed 重拉),面板显隐本地态(入口钮切;设置翻 off 即卸载 dock) */
-  const [dockOpen, setDockOpen] = useState(false);
+  /** 终端下栏开态与会话绑定(localStorage 会话键,重启/切会话各回各档);高度全局档经 dock 上报 */
+  const [dockOpen, setDockOpen] = useState(() => loadDockSession(sessionId).open);
+  const [dockHeight, setDockHeight] = useState(260);
+  useEffect(() => { setDockOpen(loadDockSession(sessionId).open); }, [sessionId]);
   const [dockEnabled, setDockEnabled] = useState(true);
   const dockCfgTicks = useConfigChanged(conn);
   useEffect(() => {
@@ -951,7 +954,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       </div>
       {/* 2026-10-27 固定长纵向滚动条(用户裁定「长度应该固定,不像现在抖动分段」):仅主对话挂载
        *  (overlay 定位于 .sx-main);侧栏 dock/其余滚动面保原生条 */}
-      {sideChat !== true && <ChatScrollbar containerRef={chatScrollRef} />}
+      {sideChat !== true && <ChatScrollbar containerRef={chatScrollRef} bottomOffset={dockOpen ? dockHeight : undefined} />}
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
        *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
@@ -1213,19 +1216,22 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         />
         )
         }
-        {/* 2026-11-10 终端下栏:composer 同列兄弟(显能 on 且面板开才挂);标签 × 走 App 既有
-         *  kill 链,面板 × 只收显不 kill——重开经 ptyIdFor 同 uid 重连 replay 还原 */}
-        {terminalDockEnabled && dockOpen && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined && (
-          <TerminalDock
-            conn={conn}
-            sessionId={sessionId}
-            ptyIdFor={ptyIdFor}
-            onPtyAllocated={onPtyAllocated}
-            onCloseTab={onCloseDockTab}
-            onHide={() => setDockOpen(false)}
-          />
-        )}
       </div>
+      {/* 2026-11-10 终端下栏改版(用户六条):主对话对等区(.sx-main 直子,非 chat-dock 内——主对话滚条
+         bottom 让位不再盖进下栏)——分割线+拖动条(侧栏分割条同款横置)+页签条(侧栏页签同形条形)。
+         标签 × 走 App 既有 kill 链,面板 × 只收显不 kill——重开经 ptyIdFor 同 uid 重连 replay 还原 */}
+      {terminalDockEnabled && dockOpen && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined && (
+        <TerminalDock
+          conn={conn}
+          sessionId={sessionId}
+          root={root}
+          ptyIdFor={ptyIdFor}
+          onPtyAllocated={onPtyAllocated}
+          onCloseTab={onCloseDockTab}
+          onHide={() => setDockOpen(false)}
+          onHeightChange={setDockHeight}
+        />
+      )}
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
       </LiveChangesContext.Provider>
     </MdImageContext.Provider>

@@ -21,8 +21,10 @@ vi.mock('./TerminalTab', () => ({
 
 const CONN = {} as unknown as Connection;
 
-const LS_TABS = 'sunshinex.terminal-dock-tabs';
-const LS_ACTIVE = 'sunshinex.terminal-dock-active';
+const LS_SESSIONS = 'sunshinex.terminal-dock.sessions';
+const seed = (sessionId: string, tabs: Array<{ uid: string; name: string }>, active = ''): void => {
+  localStorage.setItem(LS_SESSIONS, JSON.stringify({ [sessionId]: { open: true, tabs, active: active !== '' ? active : tabs[0]!.uid } }));
+};
 
 beforeEach(() => {
   localStorage.clear();
@@ -31,29 +33,40 @@ beforeEach(() => {
 
 describe('TerminalDock(终端下栏)', () => {
   it('标签档从 localStorage 恢复:渲染全部签名,激活档落 TerminalTab(uid 不变)', () => {
-    localStorage.setItem(LS_TABS, JSON.stringify([{ uid: 'dock-term-1', name: '终端1' }, { uid: 'dock-term-2', name: '终端2' }]));
-    localStorage.setItem(LS_ACTIVE, JSON.stringify('dock-term-2'));
-    render(<TerminalDock conn={CONN} sessionId="s1" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} />);
+    seed('s1', [{ uid: 'dock-term-1', name: '终端1' }, { uid: 'dock-term-2', name: '终端2' }], 'dock-term-2');
+    render(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} onHeightChange={() => {}} />);
     expect(screen.getByText('终端1')).toBeTruthy();
     expect(screen.getByText('终端2')).toBeTruthy();
     expect(termStub.uids).toEqual(['dock-term-2']);
   });
 
-  it('+ 追加新签并激活(uid 续号 dock-term-n)', () => {
-    localStorage.setItem(LS_TABS, JSON.stringify([{ uid: 'dock-term-1', name: '终端1' }]));
+  it('+ 追加新签并激活:uid 续号 dock-term-n,缺省名=项目名+序号(项目名/项目名2)', () => {
+    seed('s1', [{ uid: 'dock-term-1', name: 'demo' }]);
     const onPtyAllocated = vi.fn();
-    render(<TerminalDock conn={CONN} sessionId="s1" ptyIdFor={() => undefined} onPtyAllocated={onPtyAllocated} onCloseTab={() => {}} onHide={() => {}} />);
+    render(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={onPtyAllocated} onCloseTab={() => {}} onHide={() => {}} onHeightChange={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'add terminal' }));
-    expect(screen.getByText('Terminal 2')).toBeTruthy();
+    expect(screen.getByText('demo2')).toBeTruthy();
     expect(termStub.uids[termStub.uids.length - 1]).toBe('dock-term-2');
-    const saved = JSON.parse(localStorage.getItem(LS_TABS) ?? '[]') as Array<{ uid: string }>;
-    expect(saved.some((x) => x.uid === 'dock-term-2')).toBe(true);
+    const saved = JSON.parse(localStorage.getItem(LS_SESSIONS) ?? '{}') as Record<string, { tabs: Array<{ uid: string }> }>;
+    expect(saved.s1.tabs.some((x) => x.uid === 'dock-term-2')).toBe(true);
+  });
+
+  it('点击页签切换激活(uid 落 TerminalTab;切会话各回各档)', () => {
+    seed('s1', [{ uid: 'dock-term-1', name: 'demo' }, { uid: 'dock-term-2', name: 'demo2' }], 'dock-term-1');
+    const { rerender } = render(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} onHeightChange={() => {}} />);
+    expect(termStub.uids).toEqual(['dock-term-1']);
+    fireEvent.click(screen.getByText('demo2'));
+    expect(termStub.uids[termStub.uids.length - 1]).toBe('dock-term-2');
+    rerender(<TerminalDock conn={CONN} sessionId="s2" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} onHeightChange={() => {}} />);
+    expect(screen.getByText('demo')).toBeTruthy(); // s2 无档→缺省签(项目名,无编号)
+    rerender(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} onHeightChange={() => {}} />);
+    expect(screen.getByText('demo2')).toBeTruthy(); // 回 s1:档恢复(demo2 在列)
   });
 
   it('标签 × 调 onCloseTab(uid) 并移除该签(App kill 链入口;末签删除补新签)', () => {
-    localStorage.setItem(LS_TABS, JSON.stringify([{ uid: 'dock-term-1', name: '终端1' }, { uid: 'dock-term-2', name: '终端2' }]));
+    seed('s1', [{ uid: 'dock-term-1', name: '终端1' }, { uid: 'dock-term-2', name: '终端2' }]);
     const onCloseTab = vi.fn();
-    render(<TerminalDock conn={CONN} sessionId="s1" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={onCloseTab} onHide={() => {}} />);
+    render(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={onCloseTab} onHide={() => {}} onHeightChange={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'close terminal 终端1' }));
     expect(onCloseTab).toHaveBeenCalledWith('dock-term-1');
     expect(screen.queryByText('终端1')).toBeNull();
@@ -61,27 +74,27 @@ describe('TerminalDock(终端下栏)', () => {
   });
 
   it('面板 × 调 onHide 且不动标签档(pty/档全保——误杀即红)', () => {
-    localStorage.setItem(LS_TABS, JSON.stringify([{ uid: 'dock-term-1', name: '终端1' }]));
+    seed('s1', [{ uid: 'dock-term-1', name: '终端1' }]);
     const onHide = vi.fn();
     const onCloseTab = vi.fn();
-    render(<TerminalDock conn={CONN} sessionId="s1" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={onCloseTab} onHide={onHide} />);
+    render(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={onCloseTab} onHide={onHide} onHeightChange={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'close terminal dock' }));
     expect(onHide).toHaveBeenCalledTimes(1);
     expect(onCloseTab).not.toHaveBeenCalled();
-    const saved = JSON.parse(localStorage.getItem(LS_TABS) ?? '[]') as Array<{ uid: string }>;
-    expect(saved.map((x) => x.uid)).toEqual(['dock-term-1']);
+    const saved = JSON.parse(localStorage.getItem(LS_SESSIONS) ?? '{}') as Record<string, { tabs: Array<{ uid: string }> }>;
+    expect(saved.s1.tabs.map((x) => x.uid)).toEqual(['dock-term-1']);
   });
 
-  it('双击改名:Enter 提交(40 字截断/空回退缺省),落 localStorage', () => {
-    localStorage.setItem(LS_TABS, JSON.stringify([{ uid: 'dock-term-1', name: '终端1' }]));
-    render(<TerminalDock conn={CONN} sessionId="s1" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} />);
+  it('双击改名:Enter 提交(40 字截断/空回退缺省),落会话档', () => {
+    seed('s1', [{ uid: 'dock-term-1', name: '终端1' }]);
+    render(<TerminalDock conn={CONN} sessionId="s1" root="/w/demo" ptyIdFor={() => undefined} onPtyAllocated={() => {}} onCloseTab={() => {}} onHide={() => {}} onHeightChange={() => {}} />);
     fireEvent.doubleClick(screen.getByText('终端1'));
     const input = screen.getByRole('textbox', { name: 'Rename terminal tab' }) as HTMLInputElement;
     fireEvent.change(input, { target: { value: '构建壳' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(screen.getByText('构建壳')).toBeTruthy();
-    const saved = JSON.parse(localStorage.getItem(LS_TABS) ?? '[]') as Array<{ uid: string; name: string }>;
-    expect(saved).toEqual([{ uid: 'dock-term-1', name: '构建壳' }]);
+    const saved = JSON.parse(localStorage.getItem(LS_SESSIONS) ?? '{}') as Record<string, { tabs: Array<{ uid: string; name: string }> }>;
+    expect(saved.s1.tabs).toEqual([{ uid: 'dock-term-1', name: '构建壳' }]);
   });
 });
 

@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
+import { pathBasename } from '../ui-util';
 import { TerminalTab } from './TerminalTab';
 
 /**
@@ -11,12 +12,37 @@ import { TerminalTab } from './TerminalTab';
  * uid 即寻址键,`dock-term-<n>` 与右栏页签 uid 空间不相交)。
  * 生命周期口径:面板关(×)只卸载不 kill(TerminalTab dispose 不 kill,重开经 ptyIdFor 重连 replay
  * 还原屏面);标签 × 走 App onCloseTab(既有 takePtyId→killPty 链)。标签清单/激活/高度/计数
- * 全落 localStorage,面板重开原样恢复。
+ * 全落 localStorage 按会话键绑定(切会话/重启各回各档),面板重开原样恢复。
+ * 2026-11-10 改版(用户实测六条):①面板=主对话对等区(.sx-main 直子,滚条 bottom 让位)非 chat-dock 内;
+ * ②页签条形样式对齐侧栏页签(.sx-tab 同形),缺省名=项目名+序号;③面板 × 右缘常显;④页签点击切换;
+ * ⑤档按会话绑定;⑥入口图标 16px 对齐窗控钮。
  */
 
-const LS_TABS = 'sunshinex.terminal-dock-tabs';
-const LS_ACTIVE = 'sunshinex.terminal-dock-active';
+const LS_SESSIONS = 'sunshinex.terminal-dock.sessions';
 const LS_HEIGHT = 'sunshinex.terminal-dock-h';
+
+/** 会话绑定档(2026-11-10 用户裁定「页签样式持久化和会话绑定,重启/切会话保持原状」):
+ *  {sessionId: {open, tabs, active}} 一档映射;高度全局一档(窗口形状相关不分会话) */
+export interface DockSessionState {
+  open: boolean;
+  tabs: DockTab[];
+  active: string;
+}
+const loadSession = (sessionId: string): DockSessionState => {
+  const all = lsRead<Record<string, DockSessionState>>(LS_SESSIONS, {});
+  const hit = all[sessionId];
+  if (hit !== undefined && Array.isArray(hit.tabs)) return hit;
+  return { open: false, tabs: [], active: '' };
+};
+/** 会话档读取(Chat 挂载前取开态用) */
+export function loadDockSession(sessionId: string): DockSessionState {
+  return loadSession(sessionId);
+}
+const saveSession = (sessionId: string, state: DockSessionState): void => {
+  const all = lsRead<Record<string, DockSessionState>>(LS_SESSIONS, {});
+  all[sessionId] = state;
+  lsWrite(LS_SESSIONS, all);
+};
 
 /** 单标签:uid=pty 记账/恢复寻址键(稳定不随改名变),name=用户可见名(可双击改名) */
 export interface DockTab {
@@ -45,10 +71,10 @@ const lsWrite = (key: string, value: unknown): void => {
   }
 };
 
-/** 首档:无档给一个默认标签(空数组=上次删空,同给新签——终端 dock 至少一签) */
-const loadTabs = (): DockTab[] => {
-  const saved = lsRead<DockTab[]>(LS_TABS, []);
-  return saved.length > 0 ? saved.filter((x) => typeof x.uid === 'string' && typeof x.name === 'string') : [{ uid: 'dock-term-1', name: t('Terminal 1', '终端1') }];
+/** 会话首开缺省:一签,名=项目名(无编号);二签起=项目名+序号(用户裁定「不是 终端123,是项目名123」) */
+const defaultTab = (root: string, n: number): DockTab => {
+  const base = pathBasename(root || '') || t('Terminal', '终端');
+  return { uid: `dock-term-${n}`, name: n === 1 ? base : `${base}${n}` };
 };
 
 /** 下一编号=既有 uid 序号最大值 +1(删中段不重号;持久化计数器省一条档,口径等价) */
@@ -74,15 +100,23 @@ export interface TerminalDockProps {
   readonly onPtyAllocated: (uid: string, ptyId: string) => void;
   /** 标签 ×:App 侧既有 kill 链(takePtyId→killPty)——面板 × 不走此(保 pty 活) */
   readonly onCloseTab: (uid: string) => void;
+  /** 项目根(缺省页签名=项目名,2026-11-10 用户裁定「不是 终端123,是项目名123」) */
+  readonly root?: string;
+  /** 高度上报(Chat 滚动条让位 bottomOffset 用) */
+  readonly onHeightChange: (h: number) => void;
   /** 面板 ×:宿主(Chat)收面板态——只卸载不 kill,标签档/pty 全保 */
   readonly onHide: () => void;
 }
 
-export function TerminalDock({ conn, sessionId, ptyIdFor, onPtyAllocated, onCloseTab, onHide }: TerminalDockProps): JSX.Element {
-  const [tabs, setTabs] = useState<DockTab[]>(loadTabs);
+export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, onCloseTab, onHide, onHeightChange }: TerminalDockProps): JSX.Element {
+  /** 会话绑定档:挂载/切会话即从会话键恢复(重启=localStorage 持久,切会话=各回各档);空档给缺省签 */
+  const [tabs, setTabs] = useState<DockTab[]>(() => {
+    const saved = loadSession(sessionId).tabs.filter((x) => typeof x.uid === 'string' && typeof x.name === 'string');
+    return saved.length > 0 ? saved : [defaultTab(root ?? '', 1)];
+  });
   const [active, setActive] = useState<string>(() => {
-    const saved = lsRead<string>(LS_ACTIVE, '');
-    return saved !== '' && loadTabs().some((x) => x.uid === saved) ? saved : loadTabs()[0]?.uid ?? 'dock-term-1';
+    const saved = loadSession(sessionId);
+    return saved.active !== '' && saved.tabs.some((x) => x.uid === saved.active) ? saved.active : (saved.tabs[0]?.uid ?? '');
   });
   const [height, setHeight] = useState<number>(() => clampHeight(lsRead<number>(LS_HEIGHT, HEIGHT_DEFAULT)));
   /** 双击改名进行中:renaming=编辑目标 uid,renameDraft=输入框值(Esc 回退) */
@@ -90,9 +124,9 @@ export function TerminalDock({ conn, sessionId, ptyIdFor, onPtyAllocated, onClos
   const [renameDraft, setRenameDraft] = useState('');
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
-  useEffect(() => lsWrite(LS_TABS, tabs), [tabs]);
-  useEffect(() => lsWrite(LS_ACTIVE, active), [active]);
+  useEffect(() => saveSession(sessionId, { open: true, tabs, active }), [sessionId, tabs, active]);
   useEffect(() => lsWrite(LS_HEIGHT, height), [height]);
+  useEffect(() => onHeightChange(height), [height, onHeightChange]);
   /** 窗口 resize 重钳:上限随窗口收,主对话 ≥~320px 保底不破 */
   useEffect(() => {
     const reclamp = (): void => setHeight((h) => clampHeight(h));
@@ -105,9 +139,9 @@ export function TerminalDock({ conn, sessionId, ptyIdFor, onPtyAllocated, onClos
   /** + 追加新签并激活(uid 序号续号,名字 t() 随语言) */
   const addTab = useCallback((): void => {
     const { uid, n } = nextUidOf(tabs);
-    setTabs((cur) => [...cur, { uid, name: t(`Terminal ${n}`, `终端${n}`) }]);
+    setTabs((cur) => [...cur, defaultTab(root ?? '', n)]);
     setActive(uid);
-  }, [tabs]);
+  }, [tabs, root]);
 
   /** 标签 ×:App kill 链保 pty 不泄漏;最后一条删掉即补新签(终端 dock 恒 ≥1) */
   const removeTab = useCallback((uid: string): void => {
@@ -115,13 +149,13 @@ export function TerminalDock({ conn, sessionId, ptyIdFor, onPtyAllocated, onClos
     const rest = tabs.filter((x) => x.uid !== uid);
     if (rest.length === 0) {
       const { uid: uid2, n } = nextUidOf(tabs);
-      setTabs([{ uid: uid2, name: t(`Terminal ${n}`, `终端${n}`) }]);
+      setTabs([defaultTab(root ?? '', n)]);
       setActive(uid2);
       return;
     }
     setTabs(rest);
     if (uid === active) setActive(rest[0]!.uid);
-  }, [tabs, active, onCloseTab]);
+  }, [tabs, active, onCloseTab, root]);
 
   const commitRename = useCallback((): void => {
     if (renaming === null) return;
@@ -147,7 +181,7 @@ export function TerminalDock({ conn, sessionId, ptyIdFor, onPtyAllocated, onClos
   };
 
   return (
-    <div className="terminal-dock" style={{ height }}>
+    <div className="terminal-dock" style={{ height, boxSizing: 'border-box' }}>
       {/* 拖高把手:6px 带,row-resize;主对话最小高度钳在 clampHeight(含 resize 重钳) */}
       <div
         className="terminal-dock-handle"
@@ -161,7 +195,13 @@ export function TerminalDock({ conn, sessionId, ptyIdFor, onPtyAllocated, onClos
       />
       <div className="terminal-dock-strip">
         {tabs.map((x) => (
-          <div key={x.uid} className={'terminal-dock-tab' + (x.uid === activeTab?.uid ? ' active' : '')}>
+          <div
+            key={x.uid}
+            className={'terminal-dock-tab' + (x.uid === activeTab?.uid ? ' active' : '')}
+            role="tab"
+            aria-selected={x.uid === activeTab?.uid}
+            onClick={() => setActive(x.uid)}
+          >
             {renaming === x.uid ? (
               <input
                 className="terminal-dock-rename"

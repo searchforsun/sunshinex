@@ -117,7 +117,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                 data-tip={t('Open terminal dock', '终端')}
                 onClick={() => onToggleDock?.()}
               >
-                <SquareTerminal size={14} strokeWidth={1.75} aria-hidden="true" />
+                <SquareTerminal size={16} strokeWidth={1.75} aria-hidden="true" /> /* 亮度同 sx-iconbtn(fg-icon)=窗控钮同 token;2026-11-10 用户裁定加大 */
               </button>
             )}
             {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存。

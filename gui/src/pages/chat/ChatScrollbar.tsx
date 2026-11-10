@@ -18,7 +18,7 @@ function thumbHeight(trackH: number, clientH: number, scrollH: number): number {
   return Math.max(THUMB_MIN, Math.round((clientH / scrollH) * trackH));
 }
 
-export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElement | null> }): JSX.Element {
+export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElement | null>; /** bottom 让位(px,终端下栏开时=栏高):overlay 定位锚=.sx-main 全高,不避让即条带盖进下栏区 */ bottomOffset?: number }): JSX.Element {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const thumbRef = useRef<HTMLDivElement | null>(null);
 
@@ -187,7 +187,7 @@ export function ChatScrollbar(props: { containerRef: MutableRefObject<HTMLElemen
   }, [props.containerRef]);
 
   return (
-    <div className="sx-vbar" ref={trackRef} aria-hidden="true">
+    <div className="sx-vbar" ref={trackRef} aria-hidden="true" style={props.bottomOffset !== undefined ? { bottom: props.bottomOffset } : undefined}>
       <div className="sx-vbar-thumb" ref={thumbRef} />
     </div>
   );
