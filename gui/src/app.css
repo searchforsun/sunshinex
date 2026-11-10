@@ -3742,3 +3742,6 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-diff-tab .sx-changes-list { padding: 4px 2px 16px; }
 .sx-diff-tab .sx-change-row { padding: 6px 10px; }
 .sx-diff-tab .sx-changes-commit, .sx-diff-tab .sx-changes-result { margin-left: 2px; margin-right: 2px; }
+.sx-change
+.sx-changes-area-anchor { flex: none; margin-left: 2px; }
+.sx-changes-area-anchor .sx-area-pop { top: calc(100% + 4px); bottom: auto; left: 0; min-width: 160px; height: auto; max-height: 160px; }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Circle, CircleDot } from 'lucide-react';
 import { pathBasename, withMinSpin } from '../ui-util';
 import { Check, ChevronDown, ChevronUp, GitBranch, GitCommitVertical, Loader2, Plus, RefreshCw, Undo2, Upload } from 'lucide-react';
 import { DiffLines } from '../diff-lines';
@@ -83,6 +84,18 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [autoDone, setAutoDone] = useState(false);
   const [branches, setBranches] = useState<{ current: string; branches: string[] } | null>(null);
+  /** 区域筛选(2026-11-10 用户裁定:顶栏下拉选 已暂存/未暂存,下方只列所选区) */
+  const [areaFilter, setAreaFilter] = useState<Area>('unstaged');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      if (filterRef.current !== null && e.target instanceof Node && !filterRef.current.contains(e.target)) setFilterOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [filterOpen]);
   const [branchOpen, setBranchOpen] = useState(false);
   const branchRef = useRef<HTMLDivElement | null>(null);
   const { armed, arm } = useArm();
@@ -298,7 +311,78 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
         ) : (
           <span className="sx-changes-branch">{branch !== '' ? branch : t('Changes', '变动')}</span>
         )}
+        <div className="pill-anchor sx-changes-area-anchor" ref={filterRef}>
+          <button
+            type="button"
+            className="sx-changes-branch-btn sx-changes-area-btn"
+            aria-label="changes area"
+            aria-expanded={filterOpen}
+            onClick={() => setFilterOpen((v) => !v)}
+          >
+            {areaFilter === 'staged' ? <CircleDot size={14} strokeWidth={1.75} aria-hidden="true" /> : <Circle size={14} strokeWidth={1.75} aria-hidden="true" />}
+            <span className="sx-changes-branch-name">{areaFilter === 'staged' ? t('Staged', '已暂存') : t('Unstaged', '未暂存')}</span>
+            <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          {filterOpen && (
+            <div className="sx-menu-pop branch-pop sx-area-pop" role="menu" aria-label={t('Changes area', '改动区')}>
+              {(['staged', 'unstaged'] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={areaFilter === a}
+                  className={`sx-menuitem${areaFilter === a ? ' active' : ''}`}
+                  onClick={() => {
+                    setAreaFilter(a);
+                    setFilterOpen(false);
+                  }}
+                >
+                  <span className="branch-pop-name">{a === 'staged' ? t('Staged', '已暂存') : t('Unstaged', '未暂存')}</span>
+                  {areaFilter === a && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <span className="sx-changes-bar-actions">
+          {areaFilter === 'staged' ? (
+            <>
+              {actBtn({
+                label: t('Commit staged', '提交已暂存'),
+                icon: flash === 'commit' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />,
+                disabled: staged.length === 0,
+                onClick: () => setCommitOpen((v) => !v),
+              })}
+              {actBtn({
+                label: t('Push', '推送'),
+                icon: flash === 'push' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : spinOr('push', <Upload size={14} strokeWidth={1.75} aria-hidden="true" />),
+                onClick: () => run('push', () => conn.pushChanges(sessionId), t('Pushed', '已推送'), () => flashOk('push')),
+              })}
+              {actBtn({
+                label: t('Unstage all', '撤销全部暂存'),
+                icon: spinOr('unstage-all', <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />),
+                disabled: staged.length === 0,
+                armKey: 'unstage-all',
+                onClick: () => run('unstage-all', () => conn.unstageChanges(sessionId)),
+              })}
+            </>
+          ) : (
+            <>
+              {actBtn({
+                label: t('Stage all', '暂存全部'),
+                icon: spinOr('stage-all', <Plus size={14} strokeWidth={1.75} aria-hidden="true" />),
+                disabled: unstaged.length === 0,
+                onClick: () => run('stage-all', () => conn.stageChanges(sessionId)),
+              })}
+              {actBtn({
+                label: t('Discard all changes', '撤回全部未暂存'),
+                icon: spinOr('discard-all', <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />),
+                disabled: unstaged.length === 0,
+                armKey: 'discard-all',
+                onClick: () => run('discard-all', () => conn.discardUnstaged(sessionId)),
+              })}
+            </>
+          )}
           {actBtn({ label: t('Refresh', '刷新'), icon: <RefreshCw size={14} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />, onClick: refresh })}
         </span>
       </div>
@@ -309,92 +393,49 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
       )}
       {loadErr !== null && <div className="sx-changes-result err">{loadErr}</div>}
 
-      {/* 非 git 目录(branch 空)不出两区——无暂存/提交语义,只留空态 */}
-      {branch !== '' && (<>
-      <div className="sx-changes-section">
-        <div className="sx-changes-section-head">
-          <span className="sx-changes-section-title">
-            {t('Staged changes', '已暂存的更改')} <span className="sx-changes-count">{staged.length}</span>
-          </span>
-          <span className="sx-changes-bar-actions">
-            {actBtn({
-              label: t('Commit staged', '提交已暂存'),
-              icon: flash === 'commit' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />,
-              disabled: staged.length === 0,
-              onClick: () => setCommitOpen((v) => !v),
-            })}
-            {actBtn({
-              label: t('Push', '推送'),
-              icon: flash === 'push' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : spinOr('push', <Upload size={14} strokeWidth={1.75} aria-hidden="true" />),
-              onClick: () => run('push', () => conn.pushChanges(sessionId), t('Pushed', '已推送'), () => flashOk('push')),
-            })}
-            {actBtn({
-              label: t('Unstage all', '撤销全部暂存'),
-              icon: spinOr('unstage-all', <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />),
-              disabled: staged.length === 0,
-              armKey: 'unstage-all',
-              onClick: () => run('unstage-all', () => conn.unstageChanges(sessionId)),
-            })}
-          </span>
-        </div>
-        {commitOpen && staged.length > 0 && (
-          <div className="sx-changes-commit">
-            <textarea
-              aria-label="commit message"
-              className="sx-changes-commit-msg"
-              rows={3}
-              placeholder={t('Commit message…', '提交信息…')}
-              value={commitMsg}
-              onChange={(e) => setCommitMsg(e.target.value)}
-            />
-            <div className="sx-changes-commit-foot">
-              <button type="button" disabled={busy !== null} onClick={() => { setCommitOpen(false); setResult(null); }}>
-                {t('Cancel', '取消')}
-              </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={busy !== null || commitMsg.trim() === ''}
-                onClick={() =>
-                  run('commit', () => conn.commitChanges(sessionId, commitMsg, true), t('Committed', '已提交'), () => {
-                    setCommitMsg('');
-                    setCommitOpen(false);
-                    flashOk('commit');
-                  })
-                }
-              >
-                {busy === 'commit' ? t('Committing…', '提交中…') : t('Commit', '提交')}
-              </button>
-            </div>
+      {/* 非 git 目录(branch 空)不出改动区——无暂存/提交语义,只留空态 */}
+      {branch !== '' && (
+        <div className="sx-changes-section">
+          <div className="sx-changes-section-head">
+            <span className="sx-changes-section-title">
+              {areaFilter === 'staged' ? t('Staged changes', '已暂存的更改') : t('Changes', '未暂存的更改')}{' '}
+              <span className="sx-changes-count">{(areaFilter === 'staged' ? staged : unstaged).length}</span>
+            </span>
           </div>
-        )}
-        {renderRows('staged', staged)}
-      </div>
-
-      <div className="sx-changes-section">
-        <div className="sx-changes-section-head">
-          <span className="sx-changes-section-title">
-            {t('Changes', '未暂存的更改')} <span className="sx-changes-count">{unstaged.length}</span>
-          </span>
-          <span className="sx-changes-bar-actions">
-            {actBtn({
-              label: t('Stage all', '暂存全部'),
-              icon: spinOr('stage-all', <Plus size={14} strokeWidth={1.75} aria-hidden="true" />),
-              disabled: unstaged.length === 0,
-              onClick: () => run('stage-all', () => conn.stageChanges(sessionId)),
-            })}
-            {actBtn({
-              label: t('Discard all changes', '撤回全部未暂存'),
-              icon: spinOr('discard-all', <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />),
-              disabled: unstaged.length === 0,
-              armKey: 'discard-all',
-              onClick: () => run('discard-all', () => conn.discardUnstaged(sessionId)),
-            })}
-          </span>
+          {commitOpen && areaFilter === 'staged' && staged.length > 0 && (
+            <div className="sx-changes-commit">
+              <textarea
+                aria-label="commit message"
+                className="sx-changes-commit-msg"
+                rows={3}
+                placeholder={t('Commit message…', '提交信息…')}
+                value={commitMsg}
+                onChange={(e) => setCommitMsg(e.target.value)}
+              />
+              <div className="sx-changes-commit-foot">
+                <button type="button" disabled={busy !== null} onClick={() => { setCommitOpen(false); setResult(null); }}>
+                  {t('Cancel', '取消')}
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={busy !== null || commitMsg.trim() === ''}
+                  onClick={() =>
+                    run('commit', () => conn.commitChanges(sessionId, commitMsg, true), t('Committed', '已提交'), () => {
+                      setCommitMsg('');
+                      setCommitOpen(false);
+                      flashOk('commit');
+                    })
+                  }
+                >
+                  {busy === 'commit' ? t('Committing…', '提交中…') : t('Commit', '提交')}
+                </button>
+              </div>
+            </div>
+          )}
+          {renderRows(areaFilter, areaFilter === 'staged' ? staged : unstaged)}
         </div>
-        {renderRows('unstaged', unstaged)}
-      </div>
-      </>)}
+      )}
 
       {staged.length === 0 && unstaged.length === 0 && loadErr === null && (
         <div className="board-empty-state" role="status">
