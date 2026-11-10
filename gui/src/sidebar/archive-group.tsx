@@ -80,9 +80,10 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
               {/* 动作钮常驻第二行右缘(2026-10-21 用户裁定:非 hover 显隐) */}
               <span className="session-row-actions">
                 {confirmId === r.id ? (
+                  // 二次确认统一形态(2026-11-09 用户裁定):删除图标原地红底 18px 盒(白 14px 图形)
                   <button
                     type="button"
-                    className="sx-archive-confirm"
+                    className="sx-arm"
                     aria-label={`${t('Confirm delete', '确认删除')} ${r.id}`}
                     data-tip={t('Confirm delete', '确认删除')}
                     onClick={(e) => {
@@ -91,7 +92,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
                       onDelete(r.id);
                     }}
                   >
-                    {t('Confirm', '确认')}
+                    <Trash2 size={14} strokeWidth={2} />
                   </button>
                 ) : (
                   <>

@@ -83,9 +83,10 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
               ) : null}
               <span className="sx-pin-title">{p.title}</span>
               {confirmId === p.id ? (
+                // 二次确认统一形态(2026-11-09 用户裁定):归档图标原地红底 18px 盒(白 14px 图形)
                 <button
                   type="button"
-                  className="sx-archive-confirm"
+                  className="sx-arm"
                   aria-label={`${t('Confirm archive', '确认归档')} ${p.id}`}
                   data-tip={t('Confirm archive', '确认归档')}
                   onClick={(e) => {
@@ -94,7 +95,7 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
                     onArchiveRow(p.id, true);
                   }}
                 >
-                  {t('Confirm', '确认')}
+                  <Archive size={14} strokeWidth={2} />
                 </button>
               ) : (
                 <>

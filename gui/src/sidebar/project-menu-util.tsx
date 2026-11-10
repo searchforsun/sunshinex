@@ -156,10 +156,11 @@ export function ArchiveConfirmButton(props: {
   readonly onArm: () => void;
   readonly onConfirm: () => void;
 }): JSX.Element {
+  // 二次确认统一形态(2026-11-09 用户裁定):同图标原地红底 18px 盒(白 14px 图形),hover tip=确认归档
   return props.active ? (
     <button
       type="button"
-      className="sx-archive-confirm"
+      className="sx-arm"
       aria-label={`${t('Confirm archive', '确认归档')} ${props.rowId}`}
       data-tip={t('Confirm archive', '确认归档')}
       onClick={(e) => {
@@ -167,7 +168,7 @@ export function ArchiveConfirmButton(props: {
         props.onConfirm();
       }}
     >
-      {t('Confirm', '确认')}
+      <Archive size={14} strokeWidth={2} />
     </button>
   ) : (
     <button

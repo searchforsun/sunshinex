@@ -1485,6 +1485,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-turn-diff-head .sx-change-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
 .sx-turn-diff-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); padding: 2px 8px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .sx-turn-diff-body { padding: 8px 12px 16px; overflow: auto; }
+/* 工作区隔离 pill(2026-11-10):武装态高亮(accent 微底);说明框复用 sx-dirty-dialog 弹层形 */
+.composer-pill.isolate-pill.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.sx-iso-dialog { max-width: 420px; }
 .run-footer { display: flex; align-items: center; gap: 2px; margin-top: 10px; margin-left: -5px; } /* 2026-11-07 用户裁定:操作行离正文稍远(4→10) */.run-footer .sx-tip { color: var(--fg-icon); }.run-stats {
   display: inline-flex; gap: 10px; margin-left: 10px;
   font-size: calc(14px * var(--fz)); color: var(--fg-tertiary);
@@ -2593,7 +2596,7 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-name[data-cut], .sx-session-row .session-summary[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 12px), transparent); }
 
 /* 2026-10-21 归档面:徽标/确认钮/侧栏归档区(两行式行+hover 动作) */
-.sx-archive-confirm { flex: none; border: none; border-radius: var(--radius-sm); background: var(--err); color: #fff; font-size: calc(14px * var(--fz)); padding: 2px 10px; cursor: pointer; }
+
 .sx-iconbtn.sx-danger:hover { color: var(--err); }
 .session-row-actions { flex: none; display: none; align-items: center; }
 .sx-session-row .session-row-actions { margin-right: -8px; } /* -8:归档钮中心线对齐上方新会话(编辑)钮(2026-10-22) */
@@ -3755,3 +3758,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-change
 .sx-changes-area-anchor { flex: none; margin-left: 2px; }
 .sx-changes-area-anchor .sx-area-pop { top: calc(100% + 4px); bottom: auto; left: 0; min-width: 160px; height: auto; max-height: 160px; }
+
+/* 二次确认统一形态(2026-11-09 用户裁定):不换文字药丸、不撑行高——同一图标原地变 arm 态:
+   红底 18px 盒 + 白色 14px 图形,hover tip=「确认删除/确认归档」;再点执行,点外/Esc 取消 */
+.sx-arm { width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--err); color: #fff; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: none; cursor: pointer; }
+.sx-arm:hover { background: color-mix(in srgb, var(--err) 85%, #000); color: #fff; }
+.sx-arm svg { width: 14px; height: 14px; }
+.sx-changes-act.arm, .tb-stop.arm { width: 18px; height: 18px; }
+.sx-changes-act.arm svg, .tb-stop.arm svg { width: 14px; height: 14px; }
