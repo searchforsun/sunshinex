@@ -978,22 +978,6 @@ function AppShell(): JSX.Element {
   useWindowDrag();
 
   /** keep-alive LRU(use-heavy-tab-lru 单点,2026-10-27 技术债轮 D53 批F 外提):重标签上限 4 */
-  /** 抽屉态三栏让位(2026-11-09 用户实测「欢迎页输入框被挤到左侧出视口」):菜单抽屉区间(menuFloating)
-   *  装不下 菜单+主区+停靠右栏 三栏——此前互斥只在右栏也浮窗时生效,停靠右栏把主区压到下限,抽屉再
-   *  整块盖住主区(输入框/弹窗被遮)。后开者胜:抽屉打开即收停靠右栏,右栏打开即收抽屉;抽屉开着时
-   *  主区让出抽屉宽(见 CSS sx-menu-float .sx-main),内容在抽屉右侧完整可见 */
-  const prevMenuClosedRef = useRef(menuClosed);
-  const prevTabCollapsedRef = useRef(tabState.collapsed);
-  useEffect(() => {
-    const menuOpened = prevMenuClosedRef.current && !menuClosed;
-    const sideOpened = prevTabCollapsedRef.current && !tabState.collapsed;
-    prevMenuClosedRef.current = menuClosed;
-    prevTabCollapsedRef.current = tabState.collapsed;
-    if (!menuFloating || menuClosed || tabState.collapsed) return;
-    if (menuOpened) setTabStates((st) => setCollapsed(st, isWelcome ? WELCOME_TAB_SEAT : openSessionId, true));
-    else if (sideOpened) setMenuClosed(true);
-  }, [menuClosed, tabState.collapsed, menuFloating, isWelcome, openSessionId, setTabStates, setMenuClosed]);
-
   useHeavyTabLru({
     tabs: tabState.tabs,
     activeUid: activeTab?.uid ?? null,
