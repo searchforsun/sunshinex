@@ -3761,11 +3761,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 
 /* 二次确认统一形态(2026-11-09 用户裁定):不换文字药丸、不撑行高——同一图标原地变 arm 态:
    红底 18px 盒 + 白色 14px 图形,hover tip=「确认删除/确认归档」;再点执行,点外/Esc 取消 */
-.sx-arm { width: 18px; height: 18px; border-radius: var(--radius-sm); background: var(--err); color: #fff; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: none; cursor: pointer; }
+.sx-arm { width: 24px; height: 24px; border-radius: var(--radius-sm); background: var(--err); background-clip: content-box; padding: 3px; color: #fff; flex: none; display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer; } /* 盒 24 与被替换的原钮同占位(右侧不塌陷),红底经 content-box 裁出居中 18px */
 .sx-arm:hover { background: color-mix(in srgb, var(--err) 85%, #000); color: #fff; }
 .sx-arm svg { width: 14px; height: 14px; }
-.sx-changes-act.arm, .tb-stop.arm { width: 18px; height: 18px; }
-.sx-changes-act.arm svg, .tb-stop.arm svg { width: 14px; height: 14px; }
+.sx-changes-act.arm, .tb-stop.arm, .sx-changes-act.arm:hover, .tb-stop.arm:hover { padding: 3px; background: var(--err); background-clip: content-box; } /* 原盒尺寸不变(右侧不塌陷),红底裁出居中 18px;图形仍是 14px 白线 */
 
 /* ===== 2026-11-10 终端下栏(terminal dock):主对话 composer 下方内嵌终端面板 ===== */
 /* 面板:surface 面色+顶描边与 composer 同列;高度内联 style(拖高把手驱动),min 保 120 钳 */
