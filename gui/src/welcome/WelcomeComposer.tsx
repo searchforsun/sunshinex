@@ -94,6 +94,14 @@ export function WelcomeComposer({
    *  首次开启弹说明框(益处/代价),armed 后再点即解除。仅 git 项目可开(gitBr 在场判定) */
   const [isolate, setIsolate] = useState(false);
   const [isoOpen, setIsoOpen] = useState(false);
+  /** 发送前切换确认(2026-11-10 用户裁定「选择不切换,发送时统一落地」):非隔离+选了异于当前
+   *  的分支 → 弹「切换并发送」(branchDiffStat 代价面;脏树带提交信息框) */
+  const [switchPending, setSwitchPending] = useState<{ branch: string; stat: { files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean } | null } | null>(null);
+  const [switchMsg, setSwitchMsg] = useState('');
+  /** 隔离分支被占 409 BRANCH_HELD(2026-11-10 用户裁定「提示已被签出,输入框空=随机分支,
+   *  『创建分支并隔离』」):重选/改名两通道 */
+  const [heldBranch, setHeldBranch] = useState<string | null>(null);
+  const [heldNew, setHeldNew] = useState('');
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
@@ -201,6 +209,7 @@ export function WelcomeComposer({
     if (!plusOpen) return;
     fetchWelcomeSkills();
   }, [plusOpen]);
+  const sendRef = useRef<() => void>(() => undefined);
   const send = (): void => {
     // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
     const target = picked !== '' ? picked : (presetRoot ?? '');
@@ -211,12 +220,36 @@ export function WelcomeComposer({
       return filePalFiles.find((f) => (pathBasename(f)) === name);
     }).trim();
     if ((g === '' && images.length === 0) || target === '' || busy) return;
+    // 分支选择落地(2026-11-10 用户裁定「选择不切换,发送时统一落地」):非隔离且选了异于当前的
+    // 分支 → 先弹「切换并发送」确认(脏树带提交信息框,branchDiffStat 示代价);隔离 → worktree
+    // 签出选中分支(被占 409 BRANCH_HELD → 弹「已被签出」重选/改名框)
+    if (!isolate && gitBr !== null && selectedBranch !== '' && selectedBranch !== gitBr.current) {
+      setSwitchMsg('');
+      setSwitchPending({ branch: selectedBranch, stat: null });
+      conn.branchDiffStat?.(target, selectedBranch).then(
+        (stat) => setSwitchPending((p) => (p !== null && p.branch === selectedBranch ? { ...p, stat } : p)),
+        () => setSwitchPending((p) => (p !== null ? { ...p, stat: { files: 0, added: 0, deleted: 0, dirty: 0, dirtyAdded: 0, dirtyDeleted: 0, missing: true } } : p)),
+      );
+      return;
+    }
+    void doSend(target, undefined, undefined);
+  };
+  /** 真实发送(switchBranch 在场=先提交并切换再建会话) */
+  const doSend = (target: string, switchBranch: string | undefined, switchMessage: string | undefined): void => {
+    // G14.124 @短写发送期展开为 md 绝对链接(与会话内 submitText 同口径)
+    const g = expandFileRefs(goal, target, (name) => {
+      const picked = pickRelRef.current.get(name);
+      if (picked !== undefined) return picked;
+      return filePalFiles.find((f) => (pathBasename(f)) === name);
+    }).trim();
+    if ((g === '' && images.length === 0) || target === '' || busy) return;
     const imgs = images.length > 0 ? images : undefined;
-    setBusy(true);
-    setError('');
-    conn
-      .newSession(target, mode === 'acceptEdits' ? 'acceptEdits' : undefined, isolate === true && gitBr !== null && gitBr.current !== '')
-      .then(({ sessionId }) => {
+    const isolateOn = isolate === true && gitBr !== null && gitBr.current !== '';
+    const treeBranch = isolateOn && selectedBranch !== '' ? selectedBranch : undefined;
+    const proceed = (): void => {
+      conn
+        .newSession(target, mode === 'acceptEdits' ? 'acceptEdits' : undefined, isolateOn, treeBranch)
+        .then(({ sessionId, worktree }) => {
         // G14.10:欢迎页选定的模型/思考强度随会话创建下发(会话未建前无 /session/:id 面)
         // 随建下发失败降级为缺省模型/强度继续开session(会话已建,回滚无意义);选择面下次可再切——
         // 降级可见面=模型 pill 实际档位,非静默丢失(轻口径,D30 收口口径)
@@ -234,13 +267,38 @@ export function WelcomeComposer({
         } catch {
           // 隐私模式写失败静默
         }
-        onOpened(sessionId, target, g, imgs);
+        onOpened(sessionId, worktree !== undefined ? worktree.path : target, g, imgs);
       })
       .catch((err: unknown) => {
         setBusy(false);
+        if ((err as { code?: unknown } | null)?.code === 'BRANCH_HELD') {
+          setHeldBranch(treeBranch ?? '');
+          setError('');
+          return;
+        }
         setError(err instanceof Error ? err.message : String(err));
       });
+    };
+    if (switchBranch !== undefined) {
+      setBusy(true);
+      setError('');
+      (typeof conn.gitCommitCheckout === 'function'
+        ? conn.gitCommitCheckout(target, switchBranch, false, switchMessage)
+        : Promise.reject(new Error(t('Not supported', '不支持'))))
+        .then(() => {
+          setBusy(false);
+          setSwitchPending(null);
+          proceed();
+        })
+        .catch((err: unknown) => {
+          setBusy(false);
+          setError(err instanceof Error ? err.message : String(err));
+        });
+      return;
+    }
+    proceed();
   };
+  sendRef.current = send;
   const baseName = pathBasename;
   /** G14.34:默认锚点统一显示「默认工作区」(default/sunshinex-default*带尾哈希变体同义) */
   const isDefaultPicked = picked !== '' && (() => {
@@ -249,7 +307,7 @@ export function WelcomeComposer({
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
   const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
-  const { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch, branchDialog } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
+  const { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, pick: pickBranch, createBranchOnly, setSelectedBranch: setSelBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen, setHint, setDirOpen });
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
@@ -273,30 +331,24 @@ export function WelcomeComposer({
             <div className="pill-anchor" ref={branchRef}>
               <button
                 type="button"
-                className="composer-pill branch-pill"
+                className={`composer-pill branch-pill${selectedBranch !== '' ? ' picked' : ''}`}
                 aria-label="git branch"
                 aria-expanded={branchOpen}
-                data-tip={`${t('Current branch', '当前分支')}: ${gitBr.current}`}
+                data-tip={selectedBranch !== '' ? `${t('Will switch to at send', '发送时将切换到')}: ${selectedBranch}` : `${t('Current branch', '当前分支')}: ${gitBr.current}`}
                 onClick={() => setBranchOpen((v) => !v)}
               >
                 <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" />
-                <span className="branch-pill-name">{gitBr.current}</span>
+                <span className="branch-pill-name">{selectedBranch !== '' ? selectedBranch : gitBr.current}</span>
                 <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {branchOpen && (
                 <WelcomeBranchMenu
                   gitBr={gitBr}
-                  onPick={(b) => {
-                    setBranchOpen(false);
-                    checkoutBranch(b);
-                  }}
-                  onCreate={(b) => {
-                    setBranchOpen(false);
-                    checkoutBranch(b, true);
-                  }}
+                  onPick={pickBranch}
+                  onCreate={createBranchOnly}
+                  selected={selectedBranch}
                 />
               )}
-              {branchDialog}
             </div>
           )}
           {/* 工作区隔离 pill(2026-11-10,git 项目才显):武装态高亮;首开弹益处/代价说明框 */}
@@ -314,6 +366,105 @@ export function WelcomeComposer({
             </button>
           )}
         </div>
+        {/* 发送前切换确认(全局 portal):branchDiffStat 代价面;脏树=提交信息框+±数量 */}
+        {switchPending !== null &&
+          createPortal(
+            <div className="modal-overlay" onClick={() => setSwitchPending(null)}>
+              <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Switch and send', '切换并发送')} onClick={(e) => e.stopPropagation()}>
+                <p className="sx-dirty-target">
+                  {t('Send after switching to', '发送后切换到')} <b>{switchPending.branch}</b>
+                </p>
+                <p className="sx-dirty-text">
+                  {switchPending.stat === null || switchPending.stat.missing
+                    ? t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交改动可能阻断切换；已提交历史不受影响')
+                    : switchPending.stat.dirty > 0
+                      ? t(`Uncommitted changes (+${switchPending.stat.dirtyAdded} −${switchPending.stat.dirtyDeleted}) will be committed first; type a message or leave empty for the default.`, `有未提交改动（+${switchPending.stat.dirtyAdded} −${switchPending.stat.dirtyDeleted}），将先提交；可输入提交信息，留空用缺省`)
+                      : switchPending.stat.files === 0
+                        ? t('No file differences between the branches.', '目标分支与当前无文件差异')
+                        : t(`The workspace will update ${switchPending.stat.files} files (+${switchPending.stat.added} −${switchPending.stat.deleted}).`, `工作区 ${switchPending.stat.files} 个文件将被更新（+${switchPending.stat.added} −${switchPending.stat.deleted}）`)}
+                </p>
+                {switchPending.stat !== null && !switchPending.stat.missing && switchPending.stat.dirty > 0 && (
+                  <input
+                    className="sx-dirty-msg"
+                    aria-label={t('Commit message', '提交信息')}
+                    placeholder={t('Commit message (optional)', '提交信息（可留空）')}
+                    value={switchMsg}
+                    maxLength={200}
+                    autoFocus
+                    onChange={(e) => setSwitchMsg(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') send();
+                      if (e.key === 'Escape') setSwitchPending(null);
+                    }}
+                  />
+                )}
+                <div className="sx-dirty-actions">
+                  <button type="button" disabled={busy} onClick={() => setSwitchPending(null)}>
+                    {t('Cancel', '取消')}
+                  </button>
+                  <button type="button" className="primary" disabled={busy} onClick={send}>
+                    {t('Switch and send', '切换并发送')}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
+        {/* 隔离分支被占(全局 portal):输入框空=随机新分支;重选分支=重开分支菜单 */}
+        {heldBranch !== null &&
+          createPortal(
+            <div className="modal-overlay" onClick={() => setHeldBranch(null)}>
+              <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Branch already checked out', '分支已被签出')} onClick={(e) => e.stopPropagation()}>
+                <p className="sx-dirty-target">
+                  {t('Branch already checked out', '分支已被签出')} <b>{heldBranch === '' ? '' : heldBranch}</b>
+                </p>
+                <p className="sx-dirty-text">
+                  {t('This branch is checked out by another worktree. Pick another, or create a new one for this isolated workspace.', '该分支已被其他工作区签出。请选择其他分支，或为本次隔离工作区新建一个（输入框留空则自动命名）')}
+                </p>
+                <input
+                  className="sx-dirty-msg"
+                  aria-label={t('New branch name', '新分支名')}
+                  placeholder={t('New branch name (empty = auto)', '新分支名（留空自动命名）')}
+                  value={heldNew}
+                  maxLength={80}
+                  autoFocus
+                  onChange={(e) => setHeldNew(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setHeldBranch(null);
+                  }}
+                />
+                <div className="sx-dirty-actions">
+                  <button type="button" disabled={busy} onClick={() => setHeldBranch(null)}>
+                    {t('Cancel', '取消')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setHeldBranch(null);
+                      setBranchOpen(true);
+                    }}
+                  >
+                    {t('Pick another branch', '重选分支')}
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy}
+              onClick={() => {
+                      const b = heldNew.trim();
+                      setHeldBranch(null);
+                      setSelBranch(b);
+                      setTimeout(() => sendRef.current(), 0);
+                    }}
+                  >
+                    {t('Create branch and isolate', '创建分支并隔离')}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
         {/* 全局弹窗(2026-11-10 用户裁定「弹窗是全局的」):portal 到 body——composer 祖先带定位上下文,
             内联 modal-overlay 的 fixed 会被困住落底部 */}
         {isoOpen &&

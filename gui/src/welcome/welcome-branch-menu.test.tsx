@@ -25,7 +25,7 @@ describe('WelcomeBranchMenu', () => {
     const onCreate = vi.fn();
     render(<WelcomeBranchMenu gitBr={gitBr} onPick={onPick} onCreate={onCreate} />);
     const input = screen.getByLabelText('Filter or create branch');
-    const add = screen.getByRole('button', { name: 'Create and switch branch' }) as HTMLButtonElement;
+    const add = screen.getByRole('button', { name: 'Create branch' }) as HTMLButtonElement;
     expect(add.disabled).toBe(true);
     fireEvent.change(input, { target: { value: 'main' } });
     expect(add.disabled).toBe(true);

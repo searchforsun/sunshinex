@@ -563,11 +563,20 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     io.send(res, 400, { error: 'worktree must be true or a name' });
     return;
   }
+  // 隔离会话签出分支(2026-11-10 用户裁定):branch=既有分支直签/不存在按名新建;被其他 worktree
+  // 签出 → 409 BRANCH_HELD(GUI 弹「已被签出」引导重选/改名)
+  const wtBranchRaw = (parsed.body as { branch?: unknown } | null)?.branch;
+  if (wtBranchRaw !== undefined && typeof wtBranchRaw !== 'string') {
+    io.send(res, 400, { error: 'branch must be a string' });
+    return;
+  }
   let wtInfo: { name: string; path: string; branch: string } | undefined;
   if (wtRaw !== undefined) {
-    const wt = createWorktree(root, resolveDataDir(root), wtRaw === true ? randomWorktreeName() : (wtRaw as string));
+    const wt = createWorktree(root, resolveDataDir(root), wtRaw === true ? randomWorktreeName() : (wtRaw as string), {
+      ...(typeof wtBranchRaw === 'string' && wtBranchRaw.trim() !== '' ? { branch: wtBranchRaw.trim() } : {}),
+    });
     if (!wt.ok) {
-      io.send(res, 400, { error: wt.error.message, code: wt.error.code });
+      io.send(res, wt.error.code === 'BRANCH_HELD' ? 409 : 400, { error: wt.error.message, code: wt.error.code });
       return;
     }
     root = wt.value.path;

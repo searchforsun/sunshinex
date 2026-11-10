@@ -23,7 +23,7 @@ function mkConn(over: Partial<Record<string, unknown>> = {}) {
     discardUnstaged: vi.fn(async (_id: string, paths?: string[]) => void calls.push(`discard:${paths?.join(',') ?? '*'}`)),
     commitChanges: vi.fn(async (_id: string, msg: string, stagedOnly?: boolean) => void calls.push(`commit:${msg}:${String(stagedOnly)}`)),
     pushChanges: vi.fn(async () => void calls.push('push')),
-    gitBranches: vi.fn(async () => ({ current: 'dev1', branches: ['dev1', 'main'] })),
+    gitBranches: vi.fn(async () => ({ current: 'dev1', branches: ['dev1', 'main', 'held-by-wt'], occupied: { 'held-by-wt': 'D:/wt/other' } })),
     branchDiffStat: vi.fn(async (_r: string, b: string) =>
       b === 'main' ? { files: 12, added: 100, deleted: 3, dirty: 0, dirtyAdded: 0, dirtyDeleted: 0, missing: false } : { files: 0, added: 0, deleted: 0, dirty: 2, dirtyAdded: 5, dirtyDeleted: 1, missing: false }),
     gitCheckout: vi.fn(async (_r: string, b: string) => void calls.push(`checkout:${b}`)),
@@ -101,6 +101,11 @@ describe('DiffTab 区域下拉', () => {
     expect(screen.getByRole('button', { name: 'review branch' }).compareDocumentPosition(areaBtn()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'review branch' }));
     await screen.findByRole('menuitem', { name: 'main' });
+    // 被其他 worktree 签出的分支:菜单禁用+「已签出」标记(2026-11-10 用户裁定)
+    const held = await screen.findByRole('menuitem', { name: /held-by-wt/ });
+    expect(held.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(held); // 禁用项点击不派发
+    expect(screen.queryByRole('dialog')).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'main' }));
     });

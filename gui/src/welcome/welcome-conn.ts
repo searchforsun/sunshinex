@@ -6,15 +6,18 @@
 export interface WelcomeComposerConn {
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   workspaces(): Promise<Array<{ slug: string; root?: string; sessionCount: number }>>;
-  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   /** G14.194 原生选择标记定位(daemon 全盘找标记回绝对路径) */
   locateWorkspace(body: { token: string; roots?: string[] }): Promise<{ path: string | null }>;
   /** G14.113 分支清单/切换(欢迎页分支选择;实现体见 createConnection) */
-  gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+  gitBranches(root: string): Promise<{ current: string; branches: string[]; occupied?: Record<string, string> }>;
   gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
   gitCommitCheckout?(root: string, branch: string, create?: boolean, message?: string): Promise<void>;
+  gitBranchCreate(root: string, branch: string): Promise<void>;
+  /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数与 ±行数;missing=目标分支不存在 */
+  branchDiffStat?(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>;
   /** + 附加面板数据源(G12 三轮;文件区需会话——欢迎页不传 sessionId 不渲染) */
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
   skillsGroups(root?: string): Promise<{

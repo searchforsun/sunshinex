@@ -281,14 +281,30 @@ export async function pushChanges(root: string): Promise<Result<{ out: string }>
   return fail('PUSH_FAIL', p.err);
 }
 
-/** G14.113 分支清单+当前分支(欢迎页分支选择弹窗;非 git 目录 → branches 空数组) */
-export async function gitBranches(root: string): Promise<{ current: string; branches: string[] }> {
+/** G14.113 分支清单+当前分支(欢迎页分支选择弹窗;非 git 目录 → branches 空数组)。
+ *  occupied=worktree 占用清单(2026-11-10 用户裁定「已签出禁用+标记」;porcelain 实测,含主工作区) */
+export async function gitBranches(root: string): Promise<{ current: string; branches: string[]; occupied?: Record<string, string> }> {
   if (!fs.existsSync(path.join(root, '.git'))) return { current: '', branches: [] };
   const r = await git(root, ['branch', '--format=%(refname:short)']);
   if (!r.ok) return { current: '', branches: [] };
   const branches = r.out.split('\n').map((l) => l.replace(/^\*\s*/, '').trim()).filter((l) => l.length > 0);
   const cur = await git(root, ['branch', '--show-current']);
-  return { current: cur.ok ? cur.out.trim() : branches[0] ?? '', branches };
+  let occupied: Record<string, string> | undefined;
+  try {
+    const { listWorktreeBranches } = await import('../harness/worktree');
+    occupied = listWorktreeBranches(root).occupied;
+  } catch {
+    // 清单失败=不标记(菜单全可选,发送/切换时 daemon 仍兜底实测)
+  }
+  return { current: cur.ok ? cur.out.trim() : branches[0] ?? '', branches, ...(occupied !== undefined ? { occupied } : {}) };
+}
+
+/** 新建分支不切换(2026-11-10 用户裁定「欢迎页创建分支只创建」):git branch <name>——已存在由 git 拒 */
+export async function createBranch(root: string, branch: string): Promise<Result<{ out: string }>> {
+  if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
+  const r = await git(root, ['branch', branch]);
+  if (!r.ok) return fail('BRANCH_CREATE_FAIL', r.err);
+  return ok({ out: r.out });
 }
 
 /** G14.113 切换分支:工作区未提交改动与目标分支冲突时 git 拒绝——识别为 DIRTY_TREE(前端弹「提交并切换」确认) */

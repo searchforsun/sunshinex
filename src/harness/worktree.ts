@@ -37,6 +37,10 @@ interface WorktreeEntry {
 interface CreateWorktreeOptions {
   sessionId?: string;
   fromBranch?: string;
+  /** 签出既有分支(2026-11-10 用户裁定「隔离会话可指定分支」):给定点 `worktree add <树> <分支>`
+   *  直签;分支不存在回退 `-b` 创建同名;分支已被其他 worktree 签出 → BRANCH_HELD(用户裁定
+   *  「提示已被签出,引导重选」,错误原文含 already used by/already checked out) */
+  branch?: string;
 }
 
 type CreateWorktreeResult = Result<{
@@ -114,6 +118,31 @@ export function isRepo(root: string): boolean {
   return execGit(root, ['rev-parse', '--git-common-dir']).ok;
 }
 
+/** 分支占用清单(2026-11-10 用户裁定「已签出分支禁用+标记」):git worktree list --porcelain 单点——
+ *  occupied[分支]=签出它的 worktree 路径(含主工作区);GUI 菜单据此禁用+「已签出」标记,
+ *  发送/切换时以 daemon 实测兜底(菜单清单可能过期) */
+export function listWorktreeBranches(root: string): { occupied: Record<string, string>; mainBranch: string } {
+  const r = execGit(root, ['worktree', 'list', '--porcelain']);
+  const empty = { occupied: {} as Record<string, string>, mainBranch: '' };
+  if (!r.ok) return empty;
+  let currentPath = '';
+  const occupied: Record<string, string> = {};
+  let mainBranch = '';
+  for (const line of r.value.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      currentPath = line.slice('worktree '.length).trim();
+      continue;
+    }
+    if (line.startsWith('branch ')) {
+      const full = line.slice('branch '.length).trim();
+      const short = full.startsWith('refs/heads/') ? full.slice('refs/heads/'.length) : full;
+      occupied[short] = currentPath;
+      if (mainBranch === '') mainBranch = short; // porcelain 输出首条=主工作区
+    }
+  }
+  return { occupied, mainBranch };
+}
+
 function registryFilePath(dataDir: string): string {
   return path.join(worktreesRoot(dataDir), 'registry.json');
 }
@@ -145,6 +174,7 @@ export function isDirty(root: string): boolean {
     .some((l) => {
       const raw = l.slice(3); // porcelain v1：XY + 空格 + 路径
       const p = raw.includes(' -> ') ? raw.split(' -> ')[1]! : raw;
+      if (p === '.sunshinex-worktree') return false; // 数据目录重定向标记(建树自带,非脏面)
       return !p.startsWith(COPY_IGNORED_PREFIX);
     });
 }
@@ -187,20 +217,50 @@ export function createWorktree(
   } catch (e) {
     return fail('WORKTREE_GIT_FAIL', `cannot create worktrees root: ${e instanceof Error ? e.message : String(e)}`);
   }
-  const added = execGit(root, ['worktree', 'add', '--no-track', '-b', branch, tree, base.value]);
-  if (!added.ok) return fail(added.error.code, added.error.message);
+  // branch 指定:直签既有分支(缺场=自动 worktree-<name> 专属分支,既有行为);分支缺失回退 -b 同名创建
+  // (2026-11-10 用户裁定「输入框不填则创建随机/指定新分支」——一个参数同时覆盖 签出既有/创建新分支);
+  // 分支已被其他 worktree 签出 → BRANCH_HELD(用户裁定「提示已被签出,引导重选」)
+  let branchOut = opts.branch !== undefined && opts.branch !== '' ? opts.branch : branch;
+  // 单次 add(先建树再签出会撞树已存在):branch 指定=直签既有(--no-track 仅 -b 形合法,裸签不带)/
+  // 失败按名新建;缺场=自动专属分支。占用→ BRANCH_HELD(实测文案 'X' is already used by worktree)
+  let added =
+    opts.branch !== undefined && opts.branch !== ''
+      ? execGit(root, ['worktree', 'add', tree, opts.branch])
+      : execGit(root, ['worktree', 'add', '--no-track', '-b', branch, tree, base.value]);
+  if (!added.ok && opts.branch !== undefined && opts.branch !== '' && /invalid reference|not found|bad revision/i.test(added.error.message)) {
+    branchOut = opts.branch;
+    added = execGit(root, ['worktree', 'add', '--no-track', '-b', opts.branch, tree, base.value]); // 不存在=按名新建
+  }
+  if (!added.ok) {
+    if (/already used by|already checked out|already registered/i.test(added.error.message)) return fail('BRANCH_HELD', added.error.message);
+    return fail(added.error.code, added.error.message);
+  }
+  // 数据目录重定向标记(2026-11-10 用户报障「worktree 会话不归主项目/tooltip 显假路径」根修):
+  // 写在主仓 .git/worktrees/<name>/sunshinex-mainroot(工作树外——树内文件会让 worktree remove/
+  // isDirty 误判脏)——resolveDataDir(树) 经树根 .git 文件(gitdir: 指针)定位此标记即改指主项目
+  // 数据目录:会话档/记忆/学习技能全归主项目,侧栏分组与最近会话自动收敛
+  try {
+    const dotGit = fs.readFileSync(path.join(tree, '.git'), 'utf8');
+    const m = /^gitdir:\s*(.+)$/m.exec(dotGit);
+    if (m !== null) {
+      fs.mkdirSync(m[1]!.trim(), { recursive: true });
+      fs.writeFileSync(path.join(m[1]!.trim(), 'sunshinex-mainroot'), root, 'utf8');
+    }
+  } catch {
+    // 标记写失败不挡建树(降级=旧形态各自 slug 目录,分组缺失但不损坏)
+  }
   const copied = copySettings(root, tree);
   const entry: WorktreeEntry = {
     name,
     path: tree,
-    branch,
+    branch: branchOut,
     ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
     createdAt: new Date().toISOString(), // 数据面 registry 文件（规格 §12：不进提示词面）
   };
   const registry = readRegistry(dataDir).filter((e) => e.name !== name); // 同名竞态防御（正常已由 EXISTS 拒）
   registry.push(entry);
   persistRegistry(dataDir, registry);
-  return ok({ name, path: tree, branch, copiedSettings: copied });
+  return ok({ name, path: tree, branch: branchOut, copiedSettings: copied });
 }
 
 export function removeWorktree(root: string, dataDir: string, name: string): RemoveWorktreeResult {

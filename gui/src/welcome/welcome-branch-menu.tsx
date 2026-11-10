@@ -9,10 +9,13 @@ export function WelcomeBranchMenu({
   gitBr,
   onPick,
   onCreate,
+  selected,
 }: {
-  gitBr: { current: string; branches: string[] };
+  gitBr: { current: string; branches: string[]; occupied?: Record<string, string> };
   onPick: (branch: string) => void;
   onCreate: (branch: string) => void;
+  /** 发送时目标分支(2026-11-10 用户裁定「选择不切换」):≠当前分支即选中态标记 */
+  selected?: string;
 }): JSX.Element {
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement | null>(null);
@@ -80,8 +83,8 @@ export function WelcomeBranchMenu({
         <button
           type="button"
           className="branch-pop-add"
-          aria-label={t('Create and switch branch', '新建并切换分支')}
-          data-tip={t('Create and switch', '新建并切换')}
+          aria-label={t('Create branch', '创建分支')}
+          data-tip={t('Create branch only (no switch)', '仅创建分支，不切换')}
           disabled={!canCreate}
           onClick={() => onCreate(q)}
         >
@@ -89,19 +92,26 @@ export function WelcomeBranchMenu({
         </button>
       </div>
       <div className="branch-pop-list">
-        {shown.map((b) => (
-          <button
-            key={b}
-            type="button"
-            data-tip={b}
-            role="menuitem"
-            className={`sx-menuitem${b === gitBr.current ? ' active' : ''}`}
-            onClick={() => onPick(b)}
-          >
-            <span className="branch-pop-name">{b}</span>
-            {b === gitBr.current && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
-          </button>
-        ))}
+        {shown.map((b) => {
+          const held = b !== gitBr.current && gitBr.occupied !== undefined && gitBr.occupied[b] !== undefined;
+          const isSelected = selected !== undefined && selected === b && b !== gitBr.current;
+          return (
+            <button
+              key={b}
+              type="button"
+              data-tip={held ? `${b} — ${t('checked out by another worktree', '已被其他工作区签出')}` : b}
+              role="menuitem"
+              aria-disabled={held || undefined}
+              className={`sx-menuitem${b === gitBr.current ? ' active' : ''}${held ? ' held' : ''}${isSelected ? ' picked' : ''}`}
+              onClick={() => !held && onPick(b)}
+            >
+              <span className="branch-pop-name">{b}</span>
+              {held && <span className="branch-pop-held">{t('Checked out', '已签出')}</span>}
+              {b === gitBr.current && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
+              {isSelected && !held && <Check size={16} strokeWidth={2} className="branch-pop-check" aria-hidden="true" />}
+            </button>
+          );
+        })}
         {shown.length === 0 && <div className="branch-pop-empty">{t('No matching branch', '无匹配分支')}</div>}
       </div>
     </div>

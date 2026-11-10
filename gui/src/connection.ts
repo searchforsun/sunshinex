@@ -99,7 +99,9 @@ export interface Connection {
   /** G14.112 目录树 git 状态映射(含 ignored 目录折叠):path → modified/untracked/deleted/renamed/ignored */
   gitStatus(id: string): Promise<{ branch: string; map: Record<string, string> }>;
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
-  gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+  gitBranches(root: string): Promise<{ current: string; branches: string[]; occupied?: Record<string, string> }>;
+  /** 新建分支不切换(2026-11-10 用户裁定「欢迎页创建分支只创建」) */
+  gitBranchCreate(root: string, branch: string): Promise<void>;
   /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
   branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>;
   /** 切换/新建分支;未提交改动阻断时抛 code='DIRTY_TREE' 的 Error(前端弹「提交并切换」确认) */
@@ -559,6 +561,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     gitBranches(root: string) {
       return getJson(`/git/branches?root=${encodeURIComponent(root)}`);
     },
+    async gitBranchCreate(root: string, branch: string) {
+      await post('/git/branch-create', { root, branch });
+    },
     /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
     branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }> {
       return getJson(`/git/branch-diff?root=${encodeURIComponent(root)}&branch=${encodeURIComponent(branch)}`);
@@ -675,13 +680,16 @@ export function createConnection(opts: ConnectionOpts): Connection {
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
+    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify({ root, ...(mode !== undefined ? { mode } : {}), ...(worktree === true ? { worktree: true } : {}) }),
+        body: JSON.stringify({ root, ...(mode !== undefined ? { mode } : {}), ...(worktree === true ? { worktree: true } : {}), ...(typeof branch === 'string' && branch.trim() !== '' ? { branch: branch.trim() } : {}) }),
       });
-      if (!res.ok) throw new Error(`/session/new -> ${res.status}`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+        throw Object.assign(new Error(body?.error ?? `/session/new -> ${res.status}`), body?.code !== undefined ? { code: body.code } : {});
+      }
       return (await res.json()) as { sessionId: string; worktree?: { name: string; path: string; branch: string } };
     },
     async attach(sessionId: string, journalId: string): Promise<{ sessionId: string }> {

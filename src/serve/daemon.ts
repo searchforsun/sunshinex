@@ -11,7 +11,7 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
-import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
+import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
 import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
@@ -617,6 +617,16 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         const root = urlOf(req).searchParams.get('root') ?? '';
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
         this.send(res, 200, await gitBranches(path.resolve(root)));
+      } },
+    // 新建分支不切换(2026-11-10 用户裁定「欢迎页创建分支只创建」)
+    { method: 'POST', path: '/git/branch-create', auth: true, run: async (req, res) => {
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const b = parsed.body as { root?: unknown; branch?: unknown };
+        if (typeof b.root !== 'string' || typeof b.branch !== 'string') return this.send(res, 400, { error: 'root and branch required' });
+        const r = await createBranch(path.resolve(b.root), b.branch);
+        if (!r.ok) return this.send(res, r.error.code === 'BRANCH_NAME' ? 400 : 409, { error: r.error.message, code: r.error.code });
+        this.send(res, 200, { ok: true });
       } },
     // 切换代价面(2026-11-10 用户裁定「切换分支弹确认」):numstat 汇总+未提交改动数,确认框展示
     { method: 'GET', path: '/git/branch-diff', auth: true, run: async (req, res) => {

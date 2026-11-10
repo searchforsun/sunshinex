@@ -43,6 +43,22 @@ export function sessionTeamsRoot(dataDir: string, journalId: string): string {
 
 /** 解析当前工作区数据目录：直指覆盖 > projects 根覆盖 > 缺省全局（HOME 可建）> 项目内回退；子目录由各写入面自行 mkdir */
 export function resolveDataDir(root: string): string {
+  // worktree 重定向(2026-11-10 用户报障「worktree 会话不归主项目」根修):树根 .git 是**文件**
+  // (gitdir: 指针,主仓 .git/worktrees/<name>/)且旁边有 sunshinex-mainroot 标记(建树时写入)→
+  // 数据目录改指主项目——会话档/记忆/技能全归主项目,侧栏分组/最近会话自动收敛。主仓 .git 是
+  // 目录 readFileSync 即抛=常规解析;SUNSHINEX_DATA_DIR 显式覆盖优先,不重定向
+  if (!process.env.SUNSHINEX_DATA_DIR) {
+    try {
+      const dotGit = fs.readFileSync(path.join(root, '.git'), 'utf8');
+      const m = /^gitdir:\s*(.+)$/m.exec(dotGit);
+      if (m !== null) {
+        const mainRoot = fs.readFileSync(path.join(m[1]!.trim(), 'sunshinex-mainroot'), 'utf8').trim();
+        if (mainRoot !== '' && path.resolve(mainRoot) !== path.resolve(root)) return resolveDataDir(mainRoot);
+      }
+    } catch {
+      // 非树工作区(主仓 .git 是目录/无标记)=走常规解析;读失败同义
+    }
+  }
   const override = process.env.SUNSHINEX_DATA_DIR;
   if (override !== undefined && override.length > 0) return path.resolve(override);
   const base = projectsRoot();

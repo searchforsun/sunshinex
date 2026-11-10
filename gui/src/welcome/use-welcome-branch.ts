@@ -1,23 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
-import { useBranchSwitch } from '../branch-switch';
 import type { WelcomeComposerConn } from './welcome-conn';
 
-/** 欢迎页分支选择簇（D62 批C，2026-11-07 自 WelcomeComposer 外提）：picked 为 git 目录时拉分支清单、弹层外点收、
- *  切换/新建分支回源；未提交改动阻断经 useBranchSwitch 弹「提交并切换」确认(dialog 由宿主渲染)，其他失败经宿主 hint 面可见化。 */
+/** 欢迎页分支选择簇(2026-11-10 用户裁定改宗「选择不切换」):git 目录拉分支清单+占用清单;
+ *  菜单点选/新建只改**选中态**(发送时统一落地——非隔离=确认后主工作区切换,隔离=worktree 签出),
+ *  新建分支=仅 `git branch` 不切换;被其他 worktree 签出的分支禁用+「已签出」标记。
+ *  实际切换/签出的冲突校验在发送时 daemon 实测兜底(菜单清单可能过期)。 */
 export function useWelcomeBranch(conn: WelcomeComposerConn, picked: string, isDefaultPicked: boolean, setHint: (msg: string) => void) {
-  /** G14.113 欢迎页分支选择(picked 为 git 目录时显):分支清单/当前分支/切换 */
-  const [gitBr, setGitBr] = useState<{ current: string; branches: string[] } | null>(null);
+  const [gitBr, setGitBr] = useState<{ current: string; branches: string[]; occupied?: Record<string, string> } | null>(null);
   const [branchOpen, setBranchOpen] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState('');
+  const [creating, setCreating] = useState(false);
   const branchRef = useRef<HTMLDivElement | null>(null);
+  const refresh = (root: string): void => {
+    void conn.gitBranches(root).then((r) => setGitBr(r.branches.length > 0 ? r : null), () => setGitBr(null));
+  };
   useEffect(() => {
-    if (picked === '' || isDefaultPicked) { setGitBr(null); setBranchOpen(false); return; }
-    let alive = true;
-    conn.gitBranches(picked).then(
-      (r) => { if (alive) setGitBr(r.branches.length > 0 ? r : null); },
-      () => { if (alive) setGitBr(null); },
-    );
-    return () => { alive = false; };
+    if (picked === '' || isDefaultPicked) {
+      setGitBr(null);
+      setSelectedBranch('');
+      setBranchOpen(false);
+      return;
+    }
+    refresh(picked);
+    return () => undefined;
   }, [picked, conn, isDefaultPicked]);
   useEffect(() => {
     if (!branchOpen) return;
@@ -27,13 +33,24 @@ export function useWelcomeBranch(conn: WelcomeComposerConn, picked: string, isDe
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [branchOpen]);
-  const { switchTo, dialog: branchDialog } = useBranchSwitch({
-    conn,
-    root: picked,
-    onSwitched: () => {
-      void conn.gitBranches(picked).then((r) => setGitBr(r.branches.length > 0 ? r : null), () => undefined);
-    },
-    onError: (msg) => setHint(`${t('Branch switch failed', '切换分支失败')}: ${msg}`),
-  });
-  return { gitBr, branchOpen, setBranchOpen, branchRef, checkoutBranch: switchTo, branchDialog };
+  /** 菜单点选=只改选中态(占用项由菜单禁用,不会到达) */
+  const pick = (b: string): void => {
+    setSelectedBranch(b === gitBr?.current ? '' : b);
+    setBranchOpen(false);
+  };
+  /** 新建分支(仅创建不切换):git branch + 回源清单 + 选中新建项;已存在/非法名 hint 可见化 */
+  const createBranchOnly = (b: string): void => {
+    if (picked === '' || creating) return;
+    setCreating(true);
+    conn
+      .gitBranchCreate(picked, b)
+      .then(() => {
+        setSelectedBranch(b);
+        refresh(picked);
+        setBranchOpen(false);
+      })
+      .catch((err: unknown) => setHint(`${t('Create branch failed', '创建分支失败')}: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => setCreating(false));
+  };
+  return { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, setSelectedBranch, pick, createBranchOnly, refresh };
 }
