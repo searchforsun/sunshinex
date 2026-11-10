@@ -138,7 +138,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                   {(['created', 'updated', 'natural'] as const).map((m) => (
                     <button key={m} type="button" role="menuitemradio" aria-checked={wsSort === m} className={`sx-menuitem${wsSort === m ? ' sx-ws-sort-active' : ''}`} onClick={() => pickSort(m)}>
                       <span className="sx-ws-sort-name">{t(WS_SORT_LABELS[m].en, WS_SORT_LABELS[m].zh)}</span>
-                      {wsSort === m && <Check size={18} strokeWidth={2} aria-hidden="true" />}
+                      {wsSort === m && <Check size={14} strokeWidth={2} aria-hidden="true" />}
                     </button>
                   ))}
                 </div>
@@ -160,7 +160,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
               <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
                 aria-label="archived sessions"
                 onClick={(e) => { e.stopPropagation(); onOpenArchived(); }}>
-                <Archive size={18} strokeWidth={1.75} />
+                <Archive size={14} strokeWidth={1.75} />
               </button>
             )}
             <button

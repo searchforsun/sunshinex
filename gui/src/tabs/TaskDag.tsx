@@ -186,7 +186,7 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
               onStopTask?.(data.id);
             }}
           >
-            <Pause size={24} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
+            <Pause size={16} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
           </button>
         )}
       </div>

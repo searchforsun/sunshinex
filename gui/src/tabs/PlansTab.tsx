@@ -62,7 +62,7 @@ export function PlansTab({
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={18} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}

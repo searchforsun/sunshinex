@@ -106,7 +106,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
                         onUnarchive(r.id);
                       }}
                     >
-                      <ArchiveRestore size={18} strokeWidth={1.75} />
+                      <ArchiveRestore size={14} strokeWidth={1.75} />
                     </button>
                     <button
                       type="button"
@@ -118,7 +118,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
                         setConfirmId(r.id);
                       }}
                     >
-                      <Trash2 size={18} strokeWidth={1.75} />
+                      <Trash2 size={14} strokeWidth={1.75} />
                     </button>
                   </>
                 )}

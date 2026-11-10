@@ -309,7 +309,7 @@ function TaskCard({
                       }
                     }}
                   >
-                    <Pause size={24} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
+                    <Pause size={16} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                   </button>
                 )}
               </li>
@@ -376,7 +376,7 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   const bar = onRefresh !== undefined && (
     <div className="insight-bar tb-board-bar">
       <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={refreshing ? t('Refreshing…', '刷新中…') : t('Refresh', '刷新')} disabled={refreshing} onClick={refresh}>
-        <RefreshCw size={18} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
+        <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
       </button>
       {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
     </div>

@@ -84,7 +84,7 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
           disabled={refreshing}
           onClick={refresh}
         >
-          <RefreshCw size={18} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={refreshing ? 'sx-fetching' : undefined} />
         </button>
       </div>
       <div className="todo-cards" aria-label="todo cards">

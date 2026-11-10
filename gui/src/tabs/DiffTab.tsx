@@ -349,13 +349,13 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
             <>
               {actBtn({
                 label: t('Commit staged', '提交已暂存'),
-                icon: flash === 'commit' ? <Check size={18} strokeWidth={2.25} aria-hidden="true" /> : <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />,
+                icon: flash === 'commit' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />,
                 disabled: staged.length === 0,
                 onClick: () => setCommitOpen((v) => !v),
               })}
               {actBtn({
                 label: t('Push', '推送'),
-                icon: flash === 'push' ? <Check size={18} strokeWidth={2.25} aria-hidden="true" /> : spinOr('push', <Upload size={14} strokeWidth={1.75} aria-hidden="true" />),
+                icon: flash === 'push' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : spinOr('push', <Upload size={14} strokeWidth={1.75} aria-hidden="true" />),
                 onClick: () => run('push', () => conn.pushChanges(sessionId), t('Pushed', '已推送'), () => flashOk('push')),
               })}
               {actBtn({
@@ -383,7 +383,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
               })}
             </>
           )}
-          {actBtn({ label: t('Refresh', '刷新'), icon: <RefreshCw size={18} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />, onClick: refresh })}
+          {actBtn({ label: t('Refresh', '刷新'), icon: <RefreshCw size={14} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />, onClick: refresh })}
         </span>
       </div>
       {result !== null && (

@@ -106,7 +106,7 @@ export function ContextTab({
     <div className="insight-tab">
       <div className="insight-bar">
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={18} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -249,7 +249,7 @@ export function BgTasksTab({
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={18} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -322,7 +322,7 @@ export function BgTasksTab({
                         }
                       }}
                     >
-                      <Pause size={24} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
+                      <Pause size={16} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                     </button>
                   )}
                   <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
@@ -360,7 +360,7 @@ export function BgTasksTab({
                           className="sx-changes-act"
                           label={`copy command ${r.id}`}
                           tip={copied(r.id) ? t('Copied', '已复制') : t('Copy command', '复制命令')}
-                          icon={copied(r.id) ? <Check size={18} strokeWidth={2} aria-hidden="true" /> : <Copy size={18} strokeWidth={1.75} aria-hidden="true" />}
+                          icon={copied(r.id) ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
                           onClick={() => copyCmd(r.id, r.label)}
                         />
                       </span>
@@ -437,7 +437,7 @@ export function MemoryTab({
           data-tip={t('Refresh', '刷新')}
           onClick={reload}
         >
-          <RefreshCw size={18} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -497,7 +497,7 @@ export function MemoryTab({
                     }
                   }}
                 >
-                  <Trash2 size={18} strokeWidth={1.75} />
+                  <Trash2 size={14} strokeWidth={1.75} />
                 </button>
               </div>
               {expandedSlug === m.slug && (
@@ -582,7 +582,7 @@ export function LearnedSkillsTab({
     <div className="insight-tab">
       <div className="insight-bar">
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={18} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
+          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
         </button>
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
@@ -635,7 +635,7 @@ export function LearnedSkillsTab({
                     }
                   }}
                 >
-                  <Trash2 size={18} strokeWidth={1.75} />
+                  <Trash2 size={14} strokeWidth={1.75} />
                 </button>
               </div>
               {expandedId === s.id && (
