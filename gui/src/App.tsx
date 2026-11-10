@@ -527,8 +527,9 @@ function AppShell(): JSX.Element {
   }, [openSessionId, isWelcome]);
   // 2026-11-10 用户裁定「写入/编辑跳转复用本轮 diff 页签,不再跳审查页」:write/edit 工具行跳转
   // (callId 寻址)与轮尾改动条(run+path 寻址)统一开 turndiff 单文件页签;'diff' 型保留=审查页
-  const openDiffTab = useCallback((callId: string, path: string): void => { openTabInSession('turndiff', { callId, path }); }, [openTabInSession]);
-  const openTurndiffTab = useCallback((run: number, path: string): void => { openTabInSession('turndiff', { run, path }); }, [openTabInSession]);
+  // 空入参守卫(2026-11-10 用户裁定「去掉本轮空页签入口」):无 callId 且无 path 的裸开=「没有可展示的内容」死页签,不开
+  const openDiffTab = useCallback((callId: string, path: string): void => { if (callId === '' && path === '') return; openTabInSession('turndiff', { callId, path }); }, [openTabInSession]);
+  const openTurndiffTab = useCallback((run: number, path: string): void => { if (path === '') return; openTabInSession('turndiff', { run, path }); }, [openTabInSession]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
   /** 成员转录 leader 链接点击(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
    *  记 {member,text,dir,nonce} 下发 Chat——主对话滚到对应消息气泡/发送工具行并闪光 */

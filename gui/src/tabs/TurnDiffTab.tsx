@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileDiff, Undo2 } from 'lucide-react';
+import { Undo2 } from 'lucide-react';
 import { pathBasename, withMinSpin } from '../ui-util';
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
@@ -113,6 +113,7 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
           {base}
         </button>
         <span className="sx-change-dir">{dir}</span>
+        {/* 撤销=二次确认(2026-11-10 用户裁定);badge「本轮/写入」退役——页签名=文件名,内容=diff 本体 */}
         {run !== undefined && (
           <span className="sx-changes-bar-actions">
             <button
@@ -135,10 +136,6 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
             </button>
           </span>
         )}
-        <span className="sx-turn-diff-badge">
-          <FileDiff size={14} strokeWidth={1.75} aria-hidden="true" />
-          {run !== undefined ? t('This turn', '本轮') : t('Write', '写入')}
-        </span>
       </div>
       {loadErr !== null && <div className="sx-changes-result err">{loadErr}</div>}
       {restored && <div className="sx-changes-result ok" role="status">{t('Reverted to the state before this turn.', '已恢复到本轮之前的状态。')}</div>}

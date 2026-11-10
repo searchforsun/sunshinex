@@ -426,15 +426,6 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </button>
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} bgRunning={bgRunning} running={running} onOpenTab={onOpenTab} />
-        {/* 工作区总改动(2026-11-10 用户裁定「实时展示 +A −D,点击开审查页」):ghost 钮不突兀——
-            图标+±行数同审查页口径,零变动/非 git 不渲染 */}
-        {changesTotal !== undefined && changesTotal !== null && (
-          <button type="button" className="chat-changes-total" data-tip={t('Open review', '打开审查')} aria-label="open review" onClick={() => onOpenTab?.('diff')}>
-            <GitCompare size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span className="sx-change-add">+{changesTotal.add}</span>
-            <span className="sx-change-del">−{changesTotal.del}</span>
-          </button>
-        )}
         {/* 2026-10-27 用户裁定:电脑控制期间会话名行右亮「正在控制」边框徽标(控制类 computer-use
             工具在跑,use-chat-derived 派生,轮收束即隐) */}
         {computerUseActive === true && (
@@ -446,6 +437,15 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             旧「容器 drag+按钮挖孔」在 CSS zoom 下拖拽位图挖孔坐标错位,抽屉态窗控簇([|]−□×)真实
             按下被吞(用户实测「抽屉态 [|] 点不动」根因);空白带与一切按钮几何互斥,无孔可挖 */}
         <div className="sx-topbar-drag" data-drag-band aria-hidden="true" />
+        {/* 工作区总改动(2026-11-10 用户裁定「放右侧更和谐;实时 +A −D,点击开审查页」):ghost 钮贴窗控簇左,
+            图标+±行数同审查页口径,零变动/非 git 不渲染 */}
+        {changesTotal !== undefined && changesTotal !== null && (
+          <button type="button" className="chat-changes-total" data-tip={t('Open review', '打开审查')} aria-label="open review" onClick={() => onOpenTab?.('diff')}>
+            <GitCompare size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span className="sx-change-add">+{changesTotal.add}</span>
+            <span className="sx-change-del">−{changesTotal.del}</span>
+          </button>
+        )}
         {menu !== null && fixedTitle !== '' && (
           <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={menuItems} />
         )}
