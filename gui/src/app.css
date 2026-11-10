@@ -3729,7 +3729,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    动作钮(刷新/停止/删除/复制):图标本体 14px 裸显(同行首数据库等图标),无边框无常驻底色,
    hover 才出底色区分;删除/停止二次确认 arm 态红底不变;
    卡片(待办/团队/后台任务/记忆/技能)与输出区去 1px 描边,只留面色层次 */
-.sx-changes-act, .files-act { width: 24px; height: 24px; border: none; background: transparent; color: var(--fg-icon); }
+.sx-changes-act, .files-act { width: 24px; height: 24px; padding: 0; border: none; background: transparent; color: var(--fg-icon); }
 .sx-changes-act:hover, .files-act:hover { border: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .sx-changes-act.arm, .sx-changes-act.arm:hover { border: none; }
 .tb-stop { width: 24px; height: 24px; background: transparent; }
@@ -3766,3 +3766,20 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-arm svg { width: 14px; height: 14px; }
 .sx-changes-act.arm, .tb-stop.arm { width: 18px; height: 18px; }
 .sx-changes-act.arm svg, .tb-stop.arm svg { width: 14px; height: 14px; }
+
+/* ===== 2026-11-10 终端下栏(terminal dock):主对话 composer 下方内嵌终端面板 ===== */
+/* 面板:surface 面色+顶描边与 composer 同列;高度内联 style(拖高把手驱动),min 保 120 钳 */
+.terminal-dock { display: flex; flex-direction: column; min-height: 120px; margin-top: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; flex: none; }
+/* 拖高把手:6px 带,row-resize;hover 显高亮线示可拖 */
+.terminal-dock-handle { height: 6px; flex: none; cursor: row-resize; touch-action: none; }
+.terminal-dock-handle:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* 标签条:28px 小签(UI 文本 ≥ calc(14px*var(--fz)));签=名+per-tab ×,+ 追签,右端面板收 × */
+.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 0 8px; height: 28px; flex: none; border-bottom: 1px solid var(--border); }
+.terminal-dock-tab { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 4px 0 10px; border-radius: var(--radius-sm) var(--radius-sm) 0 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); max-width: 180px; }
+.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.terminal-dock-rename { width: 110px; min-width: 0; font-size: calc(14px * var(--fz)); background: var(--surface-elevated); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; height: 20px; }
+.terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 20px; height: 20px; }
+/* 标签体:xterm 容器占余高(TerminalTab 自带满贴布局) */
+.terminal-dock-body { flex: 1; min-height: 0; position: relative; }
