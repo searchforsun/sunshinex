@@ -84,7 +84,7 @@ export function WelcomeBranchMenu({
           type="button"
           className="branch-pop-add"
           aria-label={t('Create branch', '创建分支')}
-          data-tip={t('Create branch only (no switch)', '仅创建分支，不切换')}
+          data-tip={t('Create branch', '创建分支')}
           disabled={!canCreate}
           onClick={() => onCreate(q)}
         >
@@ -99,7 +99,7 @@ export function WelcomeBranchMenu({
             <button
               key={b}
               type="button"
-              data-tip={held ? `${b} — ${t('checked out by another worktree', '已被其他工作区签出')}` : b}
+              data-tip={held ? t('Checked out by another workspace', '已被其他工作区签出') : b}
               role="menuitem"
               aria-disabled={held || undefined}
               className={`sx-menuitem${b === gitBr.current ? ' active' : ''}${held ? ' held' : ''}${isSelected ? ' picked' : ''}`}

@@ -419,7 +419,7 @@ export function WelcomeComposer({
                   {t('Branch already checked out', '分支已被签出')} <b>{heldBranch === '' ? '' : heldBranch}</b>
                 </p>
                 <p className="sx-dirty-text">
-                  {t('This branch is checked out by another worktree. Pick another, or create a new one for this isolated workspace.', '该分支已被其他工作区签出。请选择其他分支，或为本次隔离工作区新建一个（输入框留空则自动命名）')}
+                  {t('Pick another branch, or create a new one (empty = auto name).', '请选择其他分支，或新建一个（留空自动命名）')}
                 </p>
                 <input
                   className="sx-dirty-msg"
