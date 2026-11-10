@@ -126,6 +126,7 @@ const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: 
   isolation: { label: { en: 'Isolation', zh: '隔离后端' }, en: 'Isolation backend', zh: '隔离后端' },
   autoMemory: { label: { en: 'Memory pipeline', zh: '记忆管线' }, en: 'Persistent memory pipeline', zh: '持久记忆管线' },
   learnedSkills: { label: { en: 'Learned skills', zh: '技能沉淀' }, en: 'Learned skills pipeline', zh: '学习技能沉淀管线' },
+  terminalDock: { label: { en: 'Terminal dock', zh: '终端下栏' }, en: 'Terminal dock under the chat composer', zh: '主对话输入框下方的内嵌终端下栏' },
   learnedSkillLimit: { label: { en: 'Skill capacity', zh: '技能容量' }, en: 'Learned skill capacity', zh: '学习技能容量上限' },
   memoryIdleKickMs: { label: { en: 'Memory idle kick', zh: '记忆空闲触发' }, en: 'Idle kick for memory pipeline (ms)', zh: '记忆管线空闲触发(ms)' },
   stepDigestMaxSteps: { label: { en: 'Digest max steps', zh: '摘要归纳步数' }, en: 'Digest: max steps summarized', zh: '摘要:最大归纳步数' },
@@ -185,6 +186,7 @@ const SELECT_DEFAULT_VALUES: Record<string, string> = {
   autoMemory: 'on',
   learnedSkills: 'on',
   agentTeams: 'on',
+  terminalDock: 'on',
   websearchProvider: 'bing-html',
 };
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
@@ -199,7 +201,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
       { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, paletteRow: true, fontRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
-      ])] },
+      ]), sel('terminalDock', ON_OFF)] },
       {
         title: { en: 'Paths', zh: '路径' },
         fields: [dirPath('projectsDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')],

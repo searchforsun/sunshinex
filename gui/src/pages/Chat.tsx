@@ -25,6 +25,8 @@ import { t } from '../i18n';
  *  App 侧经 ref 转投免闭包陈旧 */
 import { useCommandPalette } from './chat/use-command-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
+import { TerminalDock } from '../tabs/terminal-dock';
+import { useConfigChanged } from '../settings/use-config-changed';
 import { SteerQueue } from './chat/SteerQueue';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
@@ -86,7 +88,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -109,6 +111,21 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       return '';
     }
   });
+
+  /** 2026-11-10 终端下栏:显能读 settings·terminalDock(on/off,缺省 on;use-chat-session-info
+   *  同款挂载拉取+config-changed 重拉),面板显隐本地态(入口钮切;设置翻 off 即卸载 dock) */
+  const [dockOpen, setDockOpen] = useState(false);
+  const [dockEnabled, setDockEnabled] = useState(true);
+  const dockCfgTicks = useConfigChanged(conn);
+  useEffect(() => {
+    if (typeof conn.settings !== 'function') return; // 测试桩/旁路面:无设置面即保缺省开
+    conn.settings(root).then(
+      (view) => setDockEnabled(view.keys.find((k) => k.key === 'terminalDock')?.value !== 'off'),
+      () => undefined,
+    );
+  }, [conn, root, dockCfgTicks.settings]);
+  const terminalDockEnabled = dockEnabled && sideChat !== true;
+
   useEffect(() => {
     try {
       localStorage.setItem(`sx-draft:${archiveKey}`, input);
@@ -1189,11 +1206,25 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             connState={connState}
             seeding={seeding}
             sendLoading={awaitModelSince !== null}
+            terminalDockEnabled={terminalDockEnabled}
+            onToggleDock={() => setDockOpen((v) => !v)}
           />
         }
         />
         )
         }
+        {/* 2026-11-10 终端下栏:composer 同列兄弟(显能 on 且面板开才挂);标签 × 走 App 既有
+         *  kill 链,面板 × 只收显不 kill——重开经 ptyIdFor 同 uid 重连 replay 还原 */}
+        {terminalDockEnabled && dockOpen && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined && (
+          <TerminalDock
+            conn={conn}
+            sessionId={sessionId}
+            ptyIdFor={ptyIdFor}
+            onPtyAllocated={onPtyAllocated}
+            onCloseTab={onCloseDockTab}
+            onHide={() => setDockOpen(false)}
+          />
+        )}
       </div>
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
       </LiveChangesContext.Provider>

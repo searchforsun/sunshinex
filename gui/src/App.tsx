@@ -805,6 +805,18 @@ function AppShell(): JSX.Element {
     setTabStates((s) => closeTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid));
   };
 
+  /** 2026-11-10 终端下栏标签关闭:同一 kill 链单点复用(takePtyId 出账→killPty 尽力而为)——
+   *  dock 标签 uid(dock-term-<n>)与右栏页签 uid 在同一座位记账表内不相交 */
+  const closeDockTab = useCallback(
+    (uid: string): void => {
+      const ptyId = takePtyId(uid);
+      if (ptyId === undefined) return;
+      const conn = connRef.current;
+      if (conn !== null) void conn.killPty(openSessionId, ptyId).catch(() => {});
+    },
+    [takePtyId, openSessionId],
+  );
+
   /** 任务板停钮：pending|running → boardStop。失败倒 Chat error 条。 */
   const stopTask = useCallback((taskId: string): void => {
     const conn = connRef.current;
@@ -1120,6 +1132,9 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 sessionId={openSessionId}
                 journalId={openJournalId}
+                ptyIdFor={ptyIdFor}
+                onPtyAllocated={handlePtyAllocated}
+                onCloseDockTab={closeDockTab}
                 chatMem={chatMem}
                 connState={connState}
                 onBack={backHome}

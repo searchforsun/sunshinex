@@ -25,6 +25,9 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   autoMemory: 'SUNSHINEX_AUTO_MEMORY',
   agentTeams: 'SUNSHINEX_AGENT_TEAMS',
   learnedSkills: 'SUNSHINEX_LEARNED_SKILLS',
+  // 终端下栏(2026-11-10 终端 dock):on/off——主对话 composer 下方内嵌终端面板的显能开关
+  // (off=入口按钮不渲染;GUI 设置·通用面 ON_OFF select 读写)
+  terminalDock: 'SUNSHINEX_TERMINAL_DOCK',
   // 停用技能清单(2026-11-07 技能加载开关):值为逗号分隔的技能目录绝对路径——id 跨项目/跨来源
   // 撞名,项目名/来源名亦不足以定位唯一技能,绝对路径才是唯一落点(settings 设置·技能页卡片开关读写)
   disabledSkills: 'SUNSHINEX_DISABLED_SKILLS',

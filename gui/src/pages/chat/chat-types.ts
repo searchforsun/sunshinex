@@ -153,4 +153,9 @@ export interface ChatProps {
   /** G14.2xx b 转录内存缓存(App LRU 面):挂载命中即以缓存态直渲(快照播种落定无缝整替),
    *  卸载写回最新投影——切会话回来不再白屏等快照往返。缺省(测试桩/旁路面)不缓存 */
   chatMem?: { get(key: string): import('../../chat-reducer').ChatState | undefined; put(key: string, state: import('../../chat-reducer').ChatState): void };
+  /** 2026-11-10 终端下栏:App pty 记账单点透传(dock 标签体 TerminalTab 与右栏同款装配/重连) */
+  ptyIdFor?: (uid: string) => string | undefined;
+  onPtyAllocated?: (uid: string, ptyId: string) => void;
+  /** dock 标签 ×:App 既有关标签 kill 链(takePtyId→killPty)——dock 复用同一单点 */
+  onCloseDockTab?: (uid: string) => void;
 }

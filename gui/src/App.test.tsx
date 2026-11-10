@@ -1878,8 +1878,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([...generalRows, { key: 'contextWindow', value: '100000', source: 'project', envOverride: false }]);
     openSettings();
     // 面板拉取:settings(root=openRoot)
-    // 前缀=App 语言同步 + agentTeams 解析(全局/项目) + 面板拉取
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a']));
+    // 前缀=App 语言同步 + agentTeams 解析(全局/项目) + 面板拉取 + Chat 终端下栏显能拉取(2026-11-10 terminalDock)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
     // 行渲染:select 触发钮显当值标签(en→English);text 行值 = 行 value ?? 缺省空(default 行空串)
     expect(screen.getByLabelText('language').textContent).toContain('English');
     expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
@@ -1900,7 +1900,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     // toast 出现(sx-toast,3s 自隐——测试窗内恒在场)
     expect(screen.getByText(/Applied — takes effect|已生效：新建会话起/)).toBeDefined();
     // 保存成功后重拉 settings
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a', '/w/root-a']));
     // select 换项自动保存(project 桶:language source=project)
     fireEvent.click(screen.getByLabelText('language'));
     fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
@@ -1940,12 +1940,12 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'slow-a', source: 'global', envOverride: false }]);
     conn.holdSettings(); // A(通用面板)首笔应答悬挂(单发门:后续直通)
     openSettings();
-    // 前缀=语言同步+agentTeams;末项=通用面板拉取(被 hold)
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a']));
+    // 前缀=语言同步+agentTeams+Chat 终端下栏显能拉取;末项=通用面板拉取(被 hold)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
     // 快切「记忆」:B 应答直通落定(通用卸载,language 行不在场)
     conn.settingsView = settingsViewOf([{ key: 'autoMemory', value: 'on', source: 'default', envOverride: false }]);
     fireEvent.click(screen.getByRole('button', { name: 'Memory' }));
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a', '/w/root-a']));
     // 切回「通用」:C 应答直通落定(fast-b)
     conn.settingsView = settingsViewOf([{ key: 'language', value: 'fast-b', source: 'global', envOverride: false }]);
     fireEvent.click(screen.getByRole('button', { name: 'General' }));

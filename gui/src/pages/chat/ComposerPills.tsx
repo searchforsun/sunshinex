@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, Square } from 'lucide-react';
+import { ArrowUp, ChevronDown, Square, SquareTerminal } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { t } from '../../i18n';
 import { ContextRing } from '../../context-ring';
@@ -97,12 +97,29 @@ interface PillsRightProps {
   /** 等待模型待态(2026-10-27 用户裁定:提交被接受→run-open 间 loading 效果挂在发送钮上,
    *  正文等待文字退役)——true 时发送钮转圈 */
   readonly sendLoading?: boolean;
+  /** 2026-11-10 终端下栏:显能开关(settings·terminalDock)与开关回调——true 才渲染入口钮
+   *  (欢迎页/辅助对话等旁路面不传=恒隐);点击切 dock 显隐 */
+  readonly terminalDockEnabled?: boolean;
+  readonly onToggleDock?: () => void;
 }
 
 export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
-  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading } = props;
+  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading, terminalDockEnabled, onToggleDock } = props;
   return (
           <div className="composer-pills composer-pills-right">
+            {/* 2026-11-10 终端下栏入口(G14.18 圆环左邻):settings·terminalDock=on 才渲染(旁路面
+                不传该 prop=恒隐);点击切 composer 下方 dock 显隐——面板关不 kill pty */}
+            {terminalDockEnabled === true && (
+              <button
+                type="button"
+                className="sx-iconbtn terminal-dock-entry tip-right"
+                aria-label="toggle terminal dock"
+                data-tip={t('Open terminal dock', '终端')}
+                onClick={() => onToggleDock?.()}
+              >
+                <SquareTerminal size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
             {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存。
                 2026-11-06 用户裁定「辅助草稿去掉上下文圈」:ctxInfo=null(无会话无共享 ctx)不渲染
                 圆环——会话中 ctxInfo 恒非空不受影响 */}
