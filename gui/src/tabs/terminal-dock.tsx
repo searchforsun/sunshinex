@@ -263,7 +263,7 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
           type="button"
           className="sx-iconbtn terminal-dock-close"
           aria-label="close terminal dock"
-          data-tip={t('Hide terminal dock', '收起终端下栏')}
+          data-tip={t('Hide terminal', '收起终端')}
           onClick={() => {
             setRenaming(null);
             onHide();
