@@ -294,6 +294,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           observer?.disconnect();
           socket?.dispose();
           term?.dispose();
+          termRef.current = null;
           socket = null;
           term = null;
           observer = null;
