@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import type { Edge, Node, NodeProps } from '@xyflow/react';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
@@ -241,6 +241,27 @@ function TaskDagInner({ tasks, agentOf, durationOf, onTaskOpen, onStopTask, focu
     const timer = setTimeout(() => void fitView(FIT_VIEW_OPTIONS), 30);
     return () => clearTimeout(timer);
   }, [fitView, layout.nodes.length]);
+  // 侧栏拖宽即回正(2026-11-10 用户裁定「调整侧栏宽度时始终显示在最佳大小」):容器宽度变化
+  // (拖宽/收窄/窗口缩放)即 fitView 回装载态;高度变化不触发(拖高不改适配)。手动缩放被回正覆盖
+  // =裁定口径的既定代价(下次手动调,再拖宽又回正)
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (el === null || typeof ResizeObserver === 'undefined') return;
+    let last = el.clientWidth;
+    let timer: number | undefined;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === last) return;
+      last = el.clientWidth;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void fitView(FIT_VIEW_OPTIONS), 80);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [fitView]);
   // 正文点任务：居中 + 短暂选中 flash
   useEffect(() => {
     if (focusId === undefined || focusId === '') return;
@@ -273,6 +294,7 @@ function TaskDagInner({ tasks, agentOf, durationOf, onTaskOpen, onStopTask, focu
   );
   return (
     <DagStopContext.Provider value={onStopTask}>
+    <div ref={wrapRef} className="tb-dag-wrap" style={{ width: '100%', height: '100%' }}>
     <ReactFlow
       className="tb-dag-reactflow"
       nodes={nodes}
@@ -293,6 +315,7 @@ function TaskDagInner({ tasks, agentOf, durationOf, onTaskOpen, onStopTask, focu
       {/* 控制钮(+/−/复位)钉右下角(G14.2xx 用户裁定,左下角退役) */}
       <Controls position="bottom-right" showInteractive={false} fitViewOptions={FIT_VIEW_OPTIONS} />
     </ReactFlow>
+    </div>
     </DagStopContext.Provider>
   );
 }

@@ -63,7 +63,9 @@ export function useBranchSwitch(opts: {
                 {hasStat
                   ? dirty
                     ? t(`Uncommitted changes (+${pending.stat!.dirtyAdded} −${pending.stat!.dirtyDeleted}) will be committed first; type a message or leave empty for the default.`, `有未提交改动（+${pending.stat!.dirtyAdded} −${pending.stat!.dirtyDeleted}），将先提交；可输入提交信息，留空用缺省`)
-                    : t(`The workspace will update ${pending.stat!.files} files (+${pending.stat!.added} −${pending.stat!.deleted}).`, `工作区 ${pending.stat!.files} 个文件将被更新（+${pending.stat!.added} −${pending.stat!.deleted}）`)
+                    : pending.stat!.files === 0
+                      ? t('No file differences between the branches.', '目标分支与当前无文件差异')
+                      : t(`The workspace will update ${pending.stat!.files} files (+${pending.stat!.added} −${pending.stat!.deleted}).`, `工作区 ${pending.stat!.files} 个文件将被更新（+${pending.stat!.added} −${pending.stat!.deleted}）`)
                   : t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交改动可能阻断切换；已提交历史不受影响')}
               </p>
               {dirty && (
