@@ -3763,7 +3763,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-changes-area-anchor .sx-changes-branch-name { flex: 0 1 auto; }
 .sx-changes-area-anchor .sx-area-pop { top: calc(100% + 4px); bottom: auto; left: 0; min-width: 160px; height: auto; max-height: 160px; }
 /* 行内展开箭头:常驻位在路径后,hover 才显(展开态恒显 ^);过窄时 dir 先省略保箭头/撤销/± */
-.sx-change-chevron { flex: none; display: inline-flex; align-items: center; color: var(--fg-tertiary); opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.sx-change-chevron { flex: none; display: inline-flex; align-items: center; color: var(--fg-icon); opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
 .sx-change-row:hover .sx-change-chevron, .sx-change.open .sx-change-chevron { opacity: 1; }
 .sx-change-spacer { flex: 1 1 0; min-width: 0; }
 
