@@ -54,9 +54,9 @@ export function useBranchSwitch(opts: {
               <p className="sx-dirty-text">
                 {hasStat
                   ? dirty
-                    ? t('You have uncommitted changes. Commit them first or cancel and handle them yourself.', '有未提交的改动：切换会提交它们或被阻断。可先提交，或取消后自行处理')
+                    ? t('Uncommitted changes will be committed before switching.', '有未提交改动，将先提交再切换')
                     : t(`The workspace will update ${pending.stat!.files} files (+${pending.stat!.added} −${pending.stat!.deleted}).`, `工作区 ${pending.stat!.files} 个文件将被更新（+${pending.stat!.added} −${pending.stat!.deleted}）`)
-                  : t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交的改动可能阻断切换；已提交历史不受影响')}
+                  : t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交改动可能阻断切换；已提交历史不受影响')}
               </p>
               <div className="sx-dirty-actions">
                 <button type="button" disabled={busy} onClick={() => setPending(null)}>

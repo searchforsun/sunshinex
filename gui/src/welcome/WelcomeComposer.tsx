@@ -318,10 +318,10 @@ export function WelcomeComposer({
             <div className="modal-body sx-iso-dialog" role="dialog" aria-label={t('Isolated workspace', '隔离工作区')} onClick={(e) => e.stopPropagation()}>
               <p className="sx-dirty-target">{t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}</p>
               <p className="sx-dirty-text">
-                {t('Keeps the main workspace clean; edits and commits land on a dedicated branch, safe to run sessions in parallel.', '主工作区保持干净；改动与提交都落在独立分支上，可与其它会话并行互不干扰')}
+                {t('Main workspace stays clean; edits and commits go to a dedicated branch, safe to run in parallel.', '主工作区保持干净，改动提交都在独立分支，可并行开会话')}
               </p>
               <p className="sx-dirty-text">
-                {t('Untracked files (node_modules, .env) are not carried over — reinstall deps in the terminal. Extra checkout on disk; auto-cleaned when the session is deleted.', '未跟踪文件（node_modules、.env 等）不会带入，需在终端重新安装依赖；磁盘多一份检出；删除会话时自动清理')}
+                {t('node_modules etc. are not carried over — reinstall deps. Auto-cleaned when the session is deleted.', 'node_modules 等未跟踪文件不带入，需重装依赖；删除会话时自动清理')}
               </p>
               <div className="sx-dirty-actions">
                 <button type="button" onClick={() => setIsoOpen(false)}>
