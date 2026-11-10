@@ -438,6 +438,27 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     running,
     hasRunChanges,
   );
+  // 顶栏总改动(2026-11-10 用户裁定「主会话顶部实时展示 +A −D,点击开审查页」):独立于改动卡的
+  // enabled 门(有 run 改动记录才拉)——主会话恒拉(辅助会话不拉,零 git 开销);live 缺场=null 不渲染
+  const topbarLive = useLiveGitChanges(
+    sideChat !== true && typeof conn.sessionChanges === 'function'
+      ? () => conn.sessionChanges(sessionId).then((r) => (r.branch === '' ? null : { files: r.files }))
+      : undefined,
+    sessionId,
+    running,
+    sideChat !== true,
+  );
+  const changesTotal = useMemo(() => {
+    const files = topbarLive;
+    if (files === undefined || files === null || files.length === 0) return null;
+    let add = 0;
+    let del = 0;
+    for (const f of files) {
+      add += f.added ?? f.newLines ?? 0;
+      del += f.deleted ?? 0;
+    }
+    return add + del > 0 ? { add, del } : null;
+  }, [topbarLive]);
   /** 浏览器导航跟随(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
    *  工具条落条即上抛目标 url 开 web 页签;lastNavRef 免对同一条目逐帧重开 */
   const lastNavRef = useRef('');
@@ -830,6 +851,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         taskActive={agentTeamsOn ? taskActive : 0}
         bgRunning={bgRunning}
         computerUseActive={computerUseActive}
+        changesTotal={changesTotal}
         conn={conn}
         onOpenTab={onOpenTab}
         onOpError={onOpError}

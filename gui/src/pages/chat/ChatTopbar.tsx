@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, MailOpen, MoreHorizontal, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, GitCompare, MailOpen, MoreHorizontal, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
@@ -91,7 +91,9 @@ export interface ChatTopbarProps {
   /** 后台 running 数(App bg-task 直播) */
   readonly bgRunning?: number;
   readonly conn: Connection;
-  readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks') => void);
+  readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks' | 'diff') => void);
+  /** 工作区未提交改动总量(2026-11-10 用户裁定「主会话顶部实时展示总改动,点击开审查页」);null=无变动/非 git */
+  readonly changesTotal?: { add: number; del: number } | null;
   /** 「打开」分体钮失败可见化面(D57④:App showOpError 经 Chat 透传,探测/打开失败 sx-toast) */
   readonly onOpError?: (err: unknown) => void;
   /** 归档态(2026-10-21):快照播种对齐——true 显徽标+撤销钮,false 显归档钮(确认 morph) */
@@ -117,7 +119,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, bgRunning = 0, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, bgRunning = 0, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -424,6 +426,15 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           </button>
         )}
         <ChatDynButtons todoActive={todoActive} taskActive={taskActive} bgRunning={bgRunning} running={running} onOpenTab={onOpenTab} />
+        {/* 工作区总改动(2026-11-10 用户裁定「实时展示 +A −D,点击开审查页」):ghost 钮不突兀——
+            图标+±行数同审查页口径,零变动/非 git 不渲染 */}
+        {changesTotal !== undefined && changesTotal !== null && (
+          <button type="button" className="chat-changes-total" data-tip={t('Open review', '打开审查')} aria-label="open review" onClick={() => onOpenTab?.('diff')}>
+            <GitCompare size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span className="sx-change-add">+{changesTotal.add}</span>
+            <span className="sx-change-del">−{changesTotal.del}</span>
+          </button>
+        )}
         {/* 2026-10-27 用户裁定:电脑控制期间会话名行右亮「正在控制」边框徽标(控制类 computer-use
             工具在跑,use-chat-derived 派生,轮收束即隐) */}
         {computerUseActive === true && (

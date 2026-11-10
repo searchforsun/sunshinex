@@ -127,10 +127,10 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
    窗控簇,左缘圆角+投影示悬浮层级);宽度仍走 inline(渲染期钳制)。注:本规则上方曾有孤儿
    注释尾巴(开头 /* 在往返编辑中丢失),裸文本致浏览器错误恢复吞掉本条——浮窗整模式静默
    半残(抽屉恒占布局宽,dock 补偿却按悬浮让位),2026-10-24 用户实测截图定位 */
-.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; /* z 96→80:窗控簇(z90)常驻其上, [|] −□× 可见可点(用户裁定) */ border-left: 1px solid var(--border); border-radius: var(--radius-win) 0 0 var(--radius-win); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24 用户裁定:抽屉圆角对齐客户端 */
+.sx-shell.sx-sidebar-float .sx-sidebar { position: fixed; right: 0; top: 0; bottom: 0; z-index: 80; max-width: none; /* z 96→80:窗控簇(z90)常驻其上, [|] −□× 可见可点(用户裁定) */ border-left: 2px solid var(--border); border-radius: var(--radius-win) 0 0 var(--radius-win); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24 用户裁定:抽屉圆角对齐客户端 */
 /* 2026-10-24 三轮裁定:左菜单抽屉(<856 手动重开态)——fixed 左满高悬浮,宽走 --menu-w(渲染
    钳制值),右缘圆角+投影示层级;拖宽手柄抽屉态无意义隐藏。选中会话/设置/新会话即自动收(App 侧) */
-.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 80; width: var(--menu-w); padding-top: 0; /* 2026-10-24 用户裁定:抽屉头与窗控簇同高对齐(旧 G10-C13 padding-top:8 下移 8.8 视觉) */ max-width: min(86vw, calc(100vw - 40px)); border-right: 1px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */ /* 2026-10-30 z 96→80:与右抽屉同规(用户裁定先例 z 96→80「窗控簇 z90 常驻其上」)——--menu-w 用户可拖宽上限 100vw-40px,抽屉够宽时 z96 盖住 fixed 右上窗控簇=[|]−□× 不可点 */
+.sx-shell.sx-menu-float .sx-menu { position: fixed; left: 0; top: 0; bottom: 0; z-index: 80; width: var(--menu-w); padding-top: 0; /* 2026-10-24 用户裁定:抽屉头与窗控簇同高对齐(旧 G10-C13 padding-top:8 下移 8.8 视觉) */ max-width: min(86vw, calc(100vw - 40px)); border-right: 2px solid var(--border); border-radius: 0 var(--radius-win) var(--radius-win) 0; box-shadow: 16px 0 40px rgba(0, 0, 0, 0.5); } /* 2026-10-24:width 显式落 --menu-w(占位宽拆分后抽屉宽不受 --menu-occ 影响);圆角对齐客户端 */ /* 2026-10-30 z 96→80:与右抽屉同规(用户裁定先例 z 96→80「窗控簇 z90 常驻其上」)——--menu-w 用户可拖宽上限 100vw-40px,抽屉够宽时 z96 盖住 fixed 右上窗控簇=[|]−□× 不可点 */
 .sx-shell.sx-menu-float .sx-menu-resizer { display: none; }
 /* 2026-10-24 用户裁定:欢迎页菜单关闭态左上角呼出钮(欢迎页无顶栏)。2026-10-25 前进/后退:
    呼出钮入浮出簇(导航钮对+呼出同排),定位由簇容器承载;z50 盖 welcome 页 dragrail */
@@ -3778,20 +3778,23 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 面板:surface 面色+顶描边与 composer 同列;高度内联 style(拖高把手驱动),min 保 120 钳 */
 /* 2026-11-10 改版(用户实测六条):下栏=主对话对等区(.sx-main 直子,分割线+侧栏分割条同款横置拖带),
    不在 chat-dock 滚条区内;页签=侧栏页签同形条形 pill(.sx-tab 同款几何);面板 × 右缘常显(margin-left auto) */
-.terminal-dock { display: flex; flex-direction: column; flex: none; background: var(--surface); border-top: 1px solid var(--border); overflow: hidden; }
+.terminal-dock { display: flex; flex-direction: column; flex: none; overflow: hidden; }
 .terminal-dock-handle { height: 9px; flex: none; cursor: row-resize; touch-action: none; position: relative; }
 .terminal-dock-handle::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--border); }
 .terminal-dock-handle:hover::before, .terminal-dock-handle:active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); } /* 分割线=1px 对齐主区/侧栏边界(2026-11-10 用户裁定「要一样窄」);9px 带仅作拖拽热区不显色 */
-.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow-x: auto; scrollbar-width: none; }
+.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow-x: auto; scrollbar-width: none; background: var(--surface-code); }
+/* 下栏配色区分主对话(2026-11-10 用户裁定「终端背景色调开,各模块有区分性」):栏体/页签条=代码井色
+   (暗=深井 101010,亮=浅井 eeeeee),页签 pill 换井上可辨的 hover/active 混色 */
 .terminal-dock-strip::-webkit-scrollbar { width: 0; height: 0; }
 .terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; max-width: 200px; }
-.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.terminal-dock-tab { color: color-mix(in srgb, var(--fg) 72%, transparent); }
+.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); }
 .terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .terminal-dock-rename { width: 110px; min-width: 0; font-size: calc(14px * var(--fz)); background: var(--surface-elevated); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; height: 20px; }
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 20px; height: 20px; padding: 0; }
 .terminal-dock-close { margin-left: auto; }
-.terminal-dock-body { flex: 1; min-height: 0; position: relative; }
+.terminal-dock-body { flex: 1; min-height: 0; position: relative; background: var(--surface-code); }
 /* 下栏开着时 composer(绝对定位钉 .sx-main 底)抬到下栏之上,高度=下栏高(根变量由 dock 写入) */
 .sx-main:has(> .terminal-dock) .chat-dock { bottom: calc(var(--terminal-dock-h, 0px) + 12px); }
 
@@ -3816,3 +3819,16 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 }
 .modal-body :is(.dirpicker-foot, .sx-dirty-actions) button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
 .modal-body :is(.dirpicker-foot, .sx-dirty-actions) button:disabled { opacity: 0.5; cursor: default; }
+
+/* 主会话顶栏总改动 pill(2026-11-10 用户裁定「实时展示 +A −D,点击开审查页」):ghost 钮贴
+   动态计数组右,图标+±行数(审查页同配色);无边框无底色不突兀,hover 才出淡底提亮 */
+.chat-changes-total {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 8px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg-icon); cursor: pointer;
+  font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.chat-changes-total:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.chat-changes-total svg { flex: none; }
+.chat-changes-total .sx-change-add { color: color-mix(in srgb, var(--ok) 75%, var(--fg-icon)); }
+.chat-changes-total .sx-change-del { color: color-mix(in srgb, var(--err) 75%, var(--fg-icon)); }
