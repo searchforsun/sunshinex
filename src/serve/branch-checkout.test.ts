@@ -107,3 +107,41 @@ test('切分支被未提交改动阻断=DIRTY_TREE;commitAndCheckout 先提交�
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('branchDiffStat 切换代价面(2026-11-10 用户裁定「切换弹确认」):numstat 汇总+dirty 数;missing=分支不存在;非 git NOT_GIT', async () => {
+  const { branchDiffStat } = await import('./session-changes');
+  const root = mkRepo();
+  const g = (...a: string[]): void => {
+    execFileSync('git', ['-C', root, ...a], { stdio: 'ignore', windowsHide: true });
+  };
+  try {
+    g('checkout', '-q', '-b', 'other');
+    fs.writeFileSync(path.join(root, 'a.txt'), 'one\ntwo\nthree\n');
+    fs.writeFileSync(path.join(root, 'b.txt'), 'brand new\n');
+    g('add', '.');
+    g('commit', '-q', '-m', 'other work');
+    g('checkout', '-q', 'main');
+    const clean = await branchDiffStat(root, 'other');
+    assert.ok(clean.ok);
+    if (!clean.ok) return;
+    assert.equal(clean.value.files, 2);
+    assert.equal(clean.value.added, 4);
+    assert.equal(clean.value.deleted, 1);
+    assert.equal(clean.value.dirty, 0);
+    assert.equal(clean.value.missing, false);
+    fs.writeFileSync(path.join(root, 'a.txt'), 'dirty\n'); // 未提交改动在场
+    const dirty = await branchDiffStat(root, 'other');
+    assert.ok(dirty.ok);
+    if (!dirty.ok) return;
+    assert.equal(dirty.value.dirty, 1);
+    const missing = await branchDiffStat(root, 'nope-not-here');
+    assert.ok(missing.ok && missing.value.missing, '目标分支不存在:missing=true(新建确认不示数)');
+    const self = await branchDiffStat(root, 'main');
+    assert.ok(self.ok && self.value.files === 0, '同分支切换零代价');
+    const nonGit = await branchDiffStat(path.join(root, 'unrelated'), 'main');
+    assert.equal(nonGit.ok, false);
+    if (!nonGit.ok) assert.equal(nonGit.error.code, 'NOT_GIT');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

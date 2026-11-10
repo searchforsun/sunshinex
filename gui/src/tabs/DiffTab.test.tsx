@@ -24,9 +24,9 @@ function mkConn(over: Partial<Record<string, unknown>> = {}) {
     commitChanges: vi.fn(async (_id: string, msg: string, stagedOnly?: boolean) => void calls.push(`commit:${msg}:${String(stagedOnly)}`)),
     pushChanges: vi.fn(async () => void calls.push('push')),
     gitBranches: vi.fn(async () => ({ current: 'dev1', branches: ['dev1', 'main'] })),
-    gitCheckout: vi.fn(async () => {
-      throw Object.assign(new Error('would be overwritten'), { code: 'DIRTY_TREE' });
-    }),
+    branchDiffStat: vi.fn(async (_r: string, b: string) =>
+      b === 'main' ? { files: 12, added: 100, deleted: 3, dirty: 0, missing: false } : { files: 0, added: 0, deleted: 0, dirty: 2, missing: false }),
+    gitCheckout: vi.fn(async (_r: string, b: string) => void calls.push(`checkout:${b}`)),
     gitCommitCheckout: vi.fn(async (_r: string, b: string) => void calls.push(`commit-checkout:${b}`)),
     ...over,
   } as unknown as Connection;
@@ -95,7 +95,7 @@ describe('DiffTab 区域下拉', () => {
     await waitFor(() => expect(calls).toContain('unstage:src/a.ts'));
   });
 
-  it('分支下拉在区域下拉左侧:切换被未提交改动阻断 → 「提交并切换」确认框', async () => {
+  it('分支下拉在区域下拉左侧:切换先弹代价确认(干净树=切换,示 numstat 汇总)', async () => {
     const { calls } = await mount();
     // jsdom 无布局:以 DOM 先后断言分支钮在区域钮之前(顶栏左区先分支后区域)
     expect(screen.getByRole('button', { name: 'review branch' }).compareDocumentPosition(areaBtn()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -104,9 +104,44 @@ describe('DiffTab 区域下拉', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'main' }));
     });
-    await screen.findByRole('dialog', { name: 'Uncommitted changes' });
-    fireEvent.click(screen.getByRole('button', { name: 'Commit and switch' }));
-    await waitFor(() => expect(calls).toContain('commit-checkout:main'));
+    await screen.findByRole('dialog', { name: 'Switch branch' });
+    await screen.findByText(/12 files|12 个文件/); // 代价面:numstat 汇总
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+    await waitFor(() => expect(calls).toContain('checkout:main'));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('未提交改动在场:确认框只给「提交并切换」(git 将阻断,直接切不可选)', async () => {
+    const c = mkConn({
+      branchDiffStat: vi.fn(async () => ({ files: 12, added: 100, deleted: 3, dirty: 2, missing: false })),
+    });
+    render(<DiffTab conn={c.conn} sessionId="s1" params={{}} root="/repo" />);
+    await screen.findByText('b.ts');
+    fireEvent.click(screen.getByRole('button', { name: 'review branch' }));
+    await screen.findByRole('menuitem', { name: 'main' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'main' }));
+    });
+    await screen.findByRole('dialog', { name: 'Switch branch' });
+    fireEvent.click(screen.getByRole('button', { name: 'Commit and switch' }));
+    await waitFor(() => expect(c.calls).toContain('commit-checkout:main'));
+  });
+
+  it('代价面拉取失败仍确认(不示数文案,不静默切换)', async () => {
+    const c = mkConn();
+    (c.conn as unknown as { branchDiffStat: unknown }).branchDiffStat = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    render(<DiffTab conn={c.conn} sessionId="s1" params={{}} root="/repo" />);
+    await screen.findByText('b.ts');
+    fireEvent.click(screen.getByRole('button', { name: 'review branch' }));
+    await screen.findByRole('menuitem', { name: 'main' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'main' }));
+    });
+    await screen.findByRole('dialog', { name: 'Switch branch' });
+    expect(screen.queryByText(/12 files|12 个文件/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch' }));
+    await waitFor(() => expect(c.calls).toContain('checkout:main'));
   });
 });

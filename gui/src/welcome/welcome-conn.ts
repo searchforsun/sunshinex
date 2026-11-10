@@ -6,7 +6,7 @@
 export interface WelcomeComposerConn {
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   workspaces(): Promise<Array<{ slug: string; root?: string; sessionCount: number }>>;
-  newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }>;
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   /** G14.194 原生选择标记定位(daemon 全盘找标记回绝对路径) */

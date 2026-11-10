@@ -409,7 +409,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  有轮改动记录才拉,run 收尾/回焦/广播/10s 可见轮询刷新(use-live-changes) */
   const hasRunChanges = chat.entries.some((en) => en.changes !== undefined && en.changes.length > 0);
   const liveChanges = useLiveGitChanges(
-    typeof conn.sessionChanges === 'function' ? () => conn.sessionChanges(sessionId) : undefined,
+    typeof conn.sessionChanges === 'function'
+      ? // 非 git 目录(branch='' )→ null:live 缺场回落轮记录原样——轮次 checkpoint 面 git 无关,
+        // 改动卡在非 git 目录同样可用(数据=轮末快照封存条目)
+        () => conn.sessionChanges(sessionId).then((r) => (r.branch === '' ? null : { files: r.files }))
+      : undefined,
     sessionId,
     running,
     hasRunChanges,

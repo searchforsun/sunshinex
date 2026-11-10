@@ -300,6 +300,32 @@ export async function checkoutBranch(root: string, branch: string, create = fals
   return ok({ out: r.out });
 }
 
+/** 切换代价面(2026-11-10 用户裁定「切换分支弹确认,说明代价」):当前 tip → 目标 tip 的
+ *  numstat 汇总(切换=工作区将被更新的文件量)+ 未提交改动数(dirty)。missing=true=目标分支
+ *  不存在(新建分支确认不示数);非 git 目录 NOT_GIT(GUI 据此隐藏数字面) */
+export async function branchDiffStat(root: string, branch: string): Promise<Result<{ files: number; added: number; deleted: number; dirty: number; missing: boolean }>> {
+  if (!fs.existsSync(path.join(root, '.git'))) return fail('NOT_GIT', 'not a git repository');
+  if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
+  const cur = await git(root, ['branch', '--show-current']);
+  const current = cur.ok ? cur.out.trim() : '';
+  const dirtyList = await git(root, ['status', '--porcelain']);
+  const dirty = dirtyList.ok ? dirtyList.out.split('\n').filter((l) => l.trim().length > 0).length : 0;
+  if (branch === current) return ok({ files: 0, added: 0, deleted: 0, dirty, missing: false });
+  const stat = await git(root, ['diff', '--numstat', 'HEAD', branch]);
+  if (!stat.ok) return ok({ files: 0, added: 0, deleted: 0, dirty, missing: true }); // 分支不存在(新建面):确认不示数
+  let files = 0;
+  let added = 0;
+  let deleted = 0;
+  for (const line of stat.out.split('\n')) {
+    const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line.trim());
+    if (m === null) continue;
+    files += 1;
+    if (m[1] !== '-') added += Number(m[1]);
+    if (m[2] !== '-') deleted += Number(m[2]);
+  }
+  return ok({ files, added, deleted, dirty, missing: false });
+}
+
 /** git 切换被未提交改动阻断的报错特征(本地改动会被覆盖/请先提交或贮藏) */
 export function isDirtyTreeError(err: string): boolean {
   return /would be overwritten|commit your changes or stash|Please move or remove them/i.test(err);

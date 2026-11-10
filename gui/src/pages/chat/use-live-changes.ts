@@ -32,7 +32,9 @@ export function notifyGitChanged(): void {
 const POLL_MS = 10_000;
 
 export function useLiveGitChanges(
-  fetcher: (() => Promise<{ files: LiveChangeFile[] }>) | undefined,
+  /** 返回 null=非 git 目录(2026-11-10:checkpoint 面 git 无关,改动卡回落轮记录原样)或拉取失败——
+   *  live 缺场时 visibleRunChanges 回落轮记录,轮次数据仍可见 */
+  fetcher: (() => Promise<{ files: LiveChangeFile[] } | null>) | undefined,
   sessionId: string,
   running: boolean,
   /** 会话内有轮改动记录才拉(无汇总条的会话/辅助对话零 git 开销) */
@@ -53,7 +55,7 @@ export function useLiveGitChanges(
     const gen = ++genRef.current;
     f().then(
       (r) => {
-        if (gen === genRef.current) setFiles(r.files);
+        if (gen === genRef.current) setFiles(r === null ? null : r.files);
       },
       () => {
         if (gen === genRef.current) setFiles((prev) => (prev === undefined ? null : prev));

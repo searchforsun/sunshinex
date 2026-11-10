@@ -100,6 +100,8 @@ export interface Connection {
   gitStatus(id: string): Promise<{ branch: string; map: Record<string, string> }>;
   /** G14.113 分支清单+切换(欢迎页分支选择弹窗;非 git 目录 branches 空) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
+  /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
+  branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; missing: boolean }>;
   /** 切换/新建分支;未提交改动阻断时抛 code='DIRTY_TREE' 的 Error(前端弹「提交并切换」确认) */
   gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
   /** 提交全部未提交改动后切换(脏树确认框「提交并切换」) */
@@ -557,6 +559,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     gitBranches(root: string) {
       return getJson(`/git/branches?root=${encodeURIComponent(root)}`);
     },
+    /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
+    branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; missing: boolean }> {
+      return getJson(`/git/branch-diff?root=${encodeURIComponent(root)}&branch=${encodeURIComponent(branch)}`);
+    },
     workspaceFiles(root: string) {
       return getJson(`/workspace/files?root=${encodeURIComponent(root)}`);
     },
@@ -669,14 +675,14 @@ export function createConnection(opts: ConnectionOpts): Connection {
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    async newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }> {
+    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify(mode === undefined ? { root } : { root, mode }),
+        body: JSON.stringify({ root, ...(mode !== undefined ? { mode } : {}), ...(worktree === true ? { worktree: true } : {}) }),
       });
       if (!res.ok) throw new Error(`/session/new -> ${res.status}`);
-      return (await res.json()) as { sessionId: string };
+      return (await res.json()) as { sessionId: string; worktree?: { name: string; path: string; branch: string } };
     },
     async attach(sessionId: string, journalId: string): Promise<{ sessionId: string }> {
       return postJson<{ sessionId: string }>(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });

@@ -29,6 +29,7 @@ import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/p
 import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
+import { lineDiffCounts } from '../harness/tools/write-diffstat';
 import type { ChangeFile, TurnFileChange } from '../types';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
@@ -985,7 +986,38 @@ export class SessionRuntime {
       })
       .then(async (outcome) => {
         runOutcome = outcome ?? undefined;
-        // G14.100 本轮改动差集(基线→现状):文件级增量进 runmeta(GUI 轮尾汇总条)
+        // 本轮写改动逐轮落档:只在 dispose 封存则整段会话的改动挤在档尾,回退文件无从按轮定位
+        const turnSealed = this.runtimeImpl.harness.writeSnapshot.takeUnsealed();
+        this.journal?.seal(turnSealed);
+        // G14.100 本轮改动差集(基线→现状):文件级增量进 runmeta(GUI 轮尾汇总条)。
+        // 快照面(2026-11-10):turnSealed 首捕获/路径 + 前后像 blob 行数统计——git 无关的
+        // 改动卡数据源;git 基线在场时作 turn 面(免二次读盘),缺席(非 git 目录)升为 runChanges
+        const sink = this.runtimeImpl.harness.writeSnapshot;
+        const firstPre = new Map<string, SnapshotEntry>();
+        for (const e of turnSealed) {
+          const key = e.path.replaceAll('\\', '/');
+          if (!firstPre.has(key)) firstPre.set(key, e);
+        }
+        const snapRows: Array<{ path: string; status: ChangeFile['status']; added: number | null; deleted: number | null; turn: TurnFileChange }> = [];
+        for (const [relPosix, pre] of firstPre) {
+          const before = pre.deleted !== true && pre.hash.length > 0 ? sink.readBlob(pre.hash) : null;
+          let afterBuf: Buffer | null = null;
+          try {
+            afterBuf = fs.readFileSync(path.resolve(this.root, relPosix));
+          } catch {
+            afterBuf = null; // 轮末已删(本轮删除面)
+          }
+          const turn: TurnFileChange = {
+            path: relPosix,
+            ...(pre.deleted !== true && pre.hash.length > 0 ? { before: pre.hash } : {}),
+            ...(pre.deleted === true ? { beforeDeleted: true as const } : {}),
+            after: afterBuf !== null ? sink.store(afterBuf) : '',
+            ...(afterBuf === null ? { afterDeleted: true as const } : {}),
+          };
+          // 行数统计(LCS 护栏 16M 格,超限 null=不示数):before 缺场=新建(+全行),after 缺场=删除(-全行)
+          const counts = lineDiffCounts(before?.toString('utf8'), afterBuf !== null ? afterBuf.toString('utf8') : undefined);
+          snapRows.push({ path: relPosix, status: pre.deleted === true ? 'untracked' : 'modified', added: counts?.added ?? null, deleted: counts?.deleted ?? null, turn });
+        }
         let runChanges: ChangeFile[] = [];
         try {
           const now = await listChanges(this.root);
@@ -993,47 +1025,36 @@ export class SessionRuntime {
         } catch {
           // 差集失败不挡收尾(汇总条缺本轮数据可接受)
         }
-        // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
-        const endedTs = Date.now();
-        const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
-        // 本轮写改动逐轮落档:只在 dispose 封存则整段会话的改动挤在档尾,回退文件无从按轮定位
-        const turnSealed = this.runtimeImpl.harness.writeSnapshot.takeUnsealed();
-        this.journal?.seal(turnSealed);
-        // 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):runChanges 逐路径
-        // 落前像/后像 blob hash——前像取本轮该路径首个快照捕获(write/edit 快照族才有;bash 改动无前像
-        // =不可本轮撤销),后像取轮末磁盘内容(store 内容寻址落库,读侧 readBlob 单点)。后像 hash 同时是
-        // 撤销 staleness 闸门基准:当前磁盘 hash ≠ after 即后续轮次又改过,拒绝回写防吞改动
+        // 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):前像=blob hash
+        // (快照族才有,bash 改动无前像=不可本轮撤销),后像=轮末磁盘内容 hash(staleness 闸门基准)
         let turn: TurnFileChange[] = [];
         if (runChanges.length > 0) {
-          const sink = this.runtimeImpl.harness.writeSnapshot;
-          const firstPre = new Map<string, SnapshotEntry>();
-          for (const e of turnSealed) {
-            const key = e.path.replaceAll('\\', '/');
-            if (!firstPre.has(key)) firstPre.set(key, e);
-          }
           for (const c of runChanges) {
             const relPosix = c.path.replaceAll('\\', '/');
-            const abs = path.resolve(this.root, c.path);
+            const hit = snapRows.find((r) => r.path === relPosix);
+            if (hit !== undefined) {
+              turn.push(hit.turn);
+              continue;
+            }
+            // git 面(如 bash 改动)不在快照族:仅后像落库(不可撤销,diff 面后像仍可用)
             let after = '';
             let afterDeleted: true | undefined;
             try {
-              after = sink.store(fs.readFileSync(abs));
+              after = sink.store(fs.readFileSync(path.resolve(this.root, c.path)));
             } catch {
               afterDeleted = true;
-              after = '';
             }
-            const pre = firstPre.get(relPosix);
-            const entry: TurnFileChange = {
-              path: relPosix,
-              ...(pre !== undefined && pre.deleted !== true && pre.hash.length > 0 ? { before: pre.hash } : {}),
-              ...(pre !== undefined && pre.deleted === true ? { beforeDeleted: true as const } : {}),
-              after,
-              ...(afterDeleted !== undefined ? { afterDeleted } : {}),
-            };
-            turn.push(entry);
+            turn.push({ path: relPosix, after, ...(afterDeleted !== undefined ? { afterDeleted } : {}) });
           }
-          if (runSeq >= 0) this.turnChanges.set(runSeq, turn);
+        } else if (snapRows.length > 0) {
+          // 非 git 目录/基线缺席:快照面升为改动卡数据源(checkpoint 全量可用)
+          runChanges = snapRows.map(({ turn: _t, ...rest }) => rest);
+          turn = snapRows.map((r) => r.turn);
         }
+        if (runSeq >= 0 && turn.length > 0) this.turnChanges.set(runSeq, turn);
+        // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
+        const endedTs = Date.now();
+        const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
         this.journal?.log({
           t: 'runmeta',
           // G14.210 停止态入档:中断/失败收口(非 done)→GUI 回放运行条显「已停止」

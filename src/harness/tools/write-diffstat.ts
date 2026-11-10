@@ -13,8 +13,16 @@ function splitLines(text: string): string[] {
 }
 
 export function writeDiffStat(oldText: string | undefined, newText: string): string | undefined {
-  const newLines = splitLines(newText);
-  if (oldText === undefined) return `+${newLines.length} -0`;
+  const counts = lineDiffCounts(oldText, newText);
+  if (counts === undefined) return undefined;
+  return `+${counts.added} -${counts.deleted}`;
+}
+
+/** 行级增删数值面(2026-11-10 轮次 checkpoint 消费):writeDiffStat 的数值形态单点——
+ *  oldText 缺场=新建(+全行 -0),newText 缺场=删除(+0 -全行);超护栏(16M 格)回 undefined(宁缺 stat 不拖执行) */
+export function lineDiffCounts(oldText: string | undefined, newText?: string): { added: number; deleted: number } | undefined {
+  const newLines = splitLines(newText ?? '');
+  if (oldText === undefined) return { added: newLines.length, deleted: 0 };
   const oldLines = splitLines(oldText);
   if (oldLines.length * newLines.length > 16_000_000) return undefined;
   // LCS 长度表（滚动两行省内存）：Int32Array 两行各 n+1
@@ -29,5 +37,5 @@ export function writeDiffStat(oldText: string | undefined, newText: string): str
     cur = t;
   }
   const lcs = prev[newLines.length]!;
-  return `+${newLines.length - lcs} -${oldLines.length - lcs}`;
+  return { added: newLines.length - lcs, deleted: oldLines.length - lcs };
 }

@@ -21,6 +21,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fail, ok, Result } from '../result';
+import { resolveDataDir } from '../config/data-dir';
 import { slugify } from '../slug';
 
 /** worktree 登记条目（registry.json 数组元素；createdAt 属数据面文件，允许时间戳） */
@@ -88,6 +89,25 @@ function execGit(cwd: string, args: string[], timeoutMs = 30_000): Result<string
 
 function branchOf(name: string): string {
   return `worktree-${name}`;
+}
+
+/** 会话删档连带清树(2026-11-10 用户裁定 worktree 会话随 /session/:id DELETE 退役):
+ *  入参=树路径(会话 root)。定位链:git -C <树> rev-parse --git-common-dir → 主仓 .git →
+ *  主仓 dataDir 的 registry 按 path 反查条目 → 既有 removeWorktree(脏树 kept-dirty 保护照旧)。
+ *  返回 removed / kept-dirty / not-worktree(普通会话或缺登记,调用方静默跳过) */
+export function removeWorktreeForSession(
+  treeRoot: string,
+): { kind: 'removed' | 'kept-dirty' | 'not-worktree' } | { kind: 'error'; message: string } {
+  const common = execGit(treeRoot, ['rev-parse', '--git-common-dir']);
+  if (!common.ok) return { kind: 'not-worktree' };
+  const commonDir = path.resolve(treeRoot, common.value.trim());
+  const mainRoot = path.dirname(commonDir); // commonDir=主仓 .git 目录
+  const dataDir = resolveDataDir(mainRoot);
+  const entry = readRegistry(dataDir).find((e) => path.resolve(e.path) === path.resolve(treeRoot));
+  if (entry === undefined) return { kind: 'not-worktree' };
+  const r = removeWorktree(mainRoot, dataDir, entry.name);
+  if (!r.ok) return { kind: 'error', message: r.error.message };
+  return { kind: r.value };
 }
 
 export function isRepo(root: string): boolean {

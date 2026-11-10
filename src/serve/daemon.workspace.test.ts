@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -433,6 +434,56 @@ test('⑧ /session/new mode 白名单：白名单外值 400 {error:"invalid mode
       });
       assert.equal(r.status, 200, `mode=${String(mode)} 白名单内应 200`);
     }
+  });
+});
+
+test('⑧b /session/new worktree 隔离(2026-11-10 用户裁定「新会话可选 git worktree 隔离」):git 根建树成功(root=树路径,worktree 信息回带);非 git 根 400;归档删除连带清树', { timeout: 30_000 }, async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const { base, tmp, daemon } = ctx;
+    const root = path.join(tmp, 'root-wt');
+    fs.mkdirSync(root, { recursive: true });
+    const g = (...a: string[]): void => {
+      execFileSync('git', ['-C', root, ...a], { stdio: 'ignore', windowsHide: true });
+    };
+    g('init', '-q', '-b', 'main');
+    g('config', 'user.email', 'test@example.invalid');
+    g('config', 'user.name', 'TEST_user');
+    g('config', 'core.autocrlf', 'false');
+    fs.writeFileSync(path.join(root, 'a.txt'), 'x\n');
+    g('add', '.');
+    g('commit', '-q', '-m', 'init');
+
+    // 非 git 目录建树 400
+    const plain = path.join(tmp, 'root-plain');
+    fs.mkdirSync(plain, { recursive: true });
+    const bad = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: plain, worktree: true }) });
+    assert.equal(bad.status, 400, '非 git 根 worktree 建会应 400');
+
+    // git 根:200 + worktree 信息 + 会话 root=树路径(树在主仓 dataDir/worktrees/ 下)
+    const r = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, worktree: true }) });
+    assert.equal(r.status, 200);
+    const body = (await r.json()) as { sessionId: string; worktree?: { name: string; path: string; branch: string } };
+    assert.ok(body.worktree, '回带 worktree 信息');
+    assert.ok(body.worktree!.branch.startsWith('worktree-'), '隔离分支前缀');
+    const rt = daemon.get(body.sessionId)!;
+    assert.ok(rt !== undefined, '会话已建');
+    assert.equal(rt.root, body.worktree!.path, '会话 root=树路径');
+    assert.ok(fs.existsSync(body.worktree!.path), '树目录已建');
+    assert.ok(fs.existsSync(path.join(body.worktree!.path, 'a.txt')), '已提交内容进树');
+
+    // 出生写退役回惰性建档(占座壳零档):先跑一轮使 journal 建档,delete 门禁才有可删面
+    const sub = await fetch(`${base}/session/${body.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: 'hi' }) });
+    assert.equal(sub.status, 202);
+    await waitFor(() => rt.status() === 'idle', 8000);
+    // 归档删除→树连带清除(removeWorktreeForSession)
+    const jid = rt.attachedJournalId;
+    assert.ok(jid, '首轮后 journal 已建档');
+    const arch = await fetch(`${base}/session/${body.sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    assert.equal(arch.status, 200);
+    const del = await fetch(`${base}/session/${body.sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(del.status, 200);
+    assert.equal(fs.existsSync(body.worktree!.path), false, '删档连带清树');
+    assert.equal(fs.existsSync(path.join(sessionsDir(resolveDataDir(body.worktree!.path)), `${jid}.jsonl`)), false, '树内会话档真清');
   });
 });
 

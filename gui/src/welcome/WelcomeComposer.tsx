@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
-import { ArrowUp, ChevronDown, Folder, GitBranch } from 'lucide-react';
+import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
@@ -89,6 +89,10 @@ export function WelcomeComposer({
   const [mode, setMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [modeOpen, setModeOpen] = useState(false);
   const [hint, setHint] = useState('');
+  /** 工作区隔离(2026-11-10 用户裁定「新会话可选 git worktree 隔离」):pill 武装态随提交下发;
+   *  首次开启弹说明框(益处/代价),armed 后再点即解除。仅 git 项目可开(gitBr 在场判定) */
+  const [isolate, setIsolate] = useState(false);
+  const [isoOpen, setIsoOpen] = useState(false);
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
@@ -210,7 +214,7 @@ export function WelcomeComposer({
     setBusy(true);
     setError('');
     conn
-      .newSession(target, mode === 'acceptEdits' ? 'acceptEdits' : undefined)
+      .newSession(target, mode === 'acceptEdits' ? 'acceptEdits' : undefined, isolate === true && gitBr !== null && gitBr.current !== '')
       .then(({ sessionId }) => {
         // G14.10:欢迎页选定的模型/思考强度随会话创建下发(会话未建前无 /session/:id 面)
         // 随建下发失败降级为缺省模型/强度继续开session(会话已建,回滚无意义);选择面下次可再切——
@@ -294,7 +298,49 @@ export function WelcomeComposer({
               {branchDialog}
             </div>
           )}
+          {/* 工作区隔离 pill(2026-11-10,git 项目才显):武装态高亮;首开弹益处/代价说明框 */}
+          {gitBr !== null && gitBr.current !== '' && (
+            <button
+              type="button"
+              className={`composer-pill isolate-pill${isolate ? ' on' : ''}`}
+              aria-label="isolate workspace"
+              aria-pressed={isolate}
+              data-tip={isolate ? t('Isolated workspace on — click to turn off', '隔离工作区已开启，点击关闭') : t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}
+              onClick={() => (isolate ? setIsolate(false) : setIsoOpen(true))}
+            >
+              <FolderGit2 size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{t('Isolate', '隔离')}</span>
+            </button>
+          )}
         </div>
+        {isoOpen && (
+          <div className="modal-overlay" onClick={() => setIsoOpen(false)}>
+            <div className="modal-body sx-iso-dialog" role="dialog" aria-label={t('Isolated workspace', '隔离工作区')} onClick={(e) => e.stopPropagation()}>
+              <p className="sx-dirty-target">{t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}</p>
+              <p className="sx-dirty-text">
+                {t('Keeps the main workspace clean; edits and commits land on a dedicated branch, safe to run sessions in parallel.', '主工作区保持干净；改动与提交都落在独立分支上，可与其它会话并行互不干扰')}
+              </p>
+              <p className="sx-dirty-text">
+                {t('Untracked files (node_modules, .env) are not carried over — reinstall deps in the terminal. Extra checkout on disk; auto-cleaned when the session is deleted.', '未跟踪文件（node_modules、.env 等）不会带入，需在终端重新安装依赖；磁盘多一份检出；删除会话时自动清理')}
+              </p>
+              <div className="sx-dirty-actions">
+                <button type="button" onClick={() => setIsoOpen(false)}>
+                  {t('Cancel', '取消')}
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => {
+                    setIsolate(true);
+                    setIsoOpen(false);
+                  }}
+                >
+                  {t('Turn on isolation', '开启隔离')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {projOpen && (
           <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
             {rows.map((r) => (

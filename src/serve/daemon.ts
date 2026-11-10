@@ -11,8 +11,9 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
-import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
+import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
 import { restoreTurnFile, turnDiffContent } from './turn-changes';
+import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
 import { projectsRoot, resolveDataDir } from '../config/data-dir';
@@ -617,6 +618,16 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         if (root === '') return this.send(res, 400, { error: 'root query param required' });
         this.send(res, 200, await gitBranches(path.resolve(root)));
       } },
+    // 切换代价面(2026-11-10 用户裁定「切换分支弹确认」):numstat 汇总+未提交改动数,确认框展示
+    { method: 'GET', path: '/git/branch-diff', auth: true, run: async (req, res) => {
+        const q = urlOf(req).searchParams;
+        const root = q.get('root') ?? '';
+        const branch = q.get('branch') ?? '';
+        if (root === '' || branch === '') return this.send(res, 400, { error: 'root and branch query params required' });
+        const r = await branchDiffStat(path.resolve(root), branch);
+        if (!r.ok) return this.send(res, r.error.code === 'NOT_GIT' ? 404 : 400, { error: r.error.message, code: r.error.code });
+        this.send(res, 200, r.value);
+      } },
     // G14.121 工作区文件索引(@ 文件面板;root 必传,文件按 mtime 倒序=最近改动优先;dirs=尾斜杠目录清单,@面板滤目录用)
     { method: 'GET', path: '/workspace/files', auth: true, run: async (req, res) => {
         const root = urlOf(req).searchParams.get('root') ?? '';
@@ -1118,6 +1129,13 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
     purgeBrowserState(dataDir, jid); // 浏览器键=journalId:状态文件/输出目录/侧栏分区随会话删除
     for (const sid of sideIds) purgeBrowserState(dataDir, sid);
+    // worktree 隔离会话连带清树(2026-11-10 用户裁定):registry 按 path 反查,脏树 kept-dirty 保护照旧;
+    // 普通会话/未登记=not-worktree 静默跳过
+    if (session !== undefined) {
+      const wt = removeWorktreeForSession(session.root);
+      if (wt.kind === 'kept-dirty') console.log('[serve] worktree kept (dirty):', session.root);
+      else if (wt.kind === 'error') console.error('[serve] worktree remove failed:', wt.message);
+    }
 
     this.send(res, 200, { ok: true });
   }

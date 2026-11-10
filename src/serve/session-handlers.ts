@@ -54,6 +54,7 @@ export interface SessionHandlerIo {
 
 /** 图片附件常量/校验单源在 src/images.ts（serve HTTP 面与 TUI 剪贴板面共用；本件只作消费方） */
 import { parseImagesParam } from '../images';
+import { createWorktree, randomWorktreeName } from '../harness/worktree';
 
 /** submit/steer 携图请求的 body 上限：8 张 × 单张上限 × JSON 转义余量 */
 export const MAX_IMAGE_BODY_BYTES = 32 * 1024 * 1024;
@@ -554,12 +555,30 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     io.send(res, 400, { error: 'invalid mode' });
     return;
   }
+  // 工作区隔离(2026-11-10 用户裁定「新会话可选 git worktree 隔离」):worktree=true(自动名 wt-xxxx)
+  // 或名字串——建树后以树路径为 root 走既有装配链(CLI --worktree 同一条路径);非 git 目录 400。
+  // 树根 <dataDir>/worktrees/<name>,分支 wt-<name>,登记 registry.json(删档连带清理,见 DELETE)
+  const wtRaw = (parsed.body as { worktree?: unknown } | null)?.worktree;
+  if (wtRaw !== undefined && wtRaw !== true && typeof wtRaw !== 'string') {
+    io.send(res, 400, { error: 'worktree must be true or a name' });
+    return;
+  }
+  let wtInfo: { name: string; path: string; branch: string } | undefined;
+  if (wtRaw !== undefined) {
+    const wt = createWorktree(root, resolveDataDir(root), wtRaw === true ? randomWorktreeName() : (wtRaw as string));
+    if (!wt.ok) {
+      io.send(res, 400, { error: wt.error.message, code: wt.error.code });
+      return;
+    }
+    root = wt.value.path;
+    wtInfo = { name: wt.value.name, path: wt.value.path, branch: wt.value.branch };
+  }
   const r = io.createSession(root, mode === 'acceptEdits' ? { mode: 'acceptEdits' } : undefined);
   if (!r.ok) {
     io.send(res, 400, { error: r.error.message });
     return;
   }
-  io.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+  io.send(res, 200, { ok: true, sessionId: r.value.sessionId, ...(wtInfo !== undefined ? { worktree: wtInfo } : {}) });
 }
 
 export async function handleApprovalReply(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {
