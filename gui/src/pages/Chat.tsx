@@ -1206,6 +1206,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             setSessMode={setSessMode}
             conn={conn}
             sessionId={sessionId}
+            terminalDockEnabled={terminalDockEnabled}
+            dockOpen={dockOpen}
+            onToggleDock={() => setDockOpen((v) => !v)}
           />
         }
         footRight={
@@ -1232,7 +1235,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             seeding={seeding}
             sendLoading={awaitModelSince !== null}
             terminalDockEnabled={terminalDockEnabled}
-            onToggleDock={() => setDockOpen((v) => !v)}
           />
         }
         />

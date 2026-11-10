@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
+import { zoomScale } from '../ui-zoom';
 import { pathBasename } from '../ui-util';
 import { TerminalTab } from './TerminalTab';
 
@@ -51,8 +52,6 @@ export interface DockTab {
 }
 
 const HEIGHT_MIN = 120;
-/** 主对话保底:dock 顶不得把 composer 区压到 <~320px(窗口 resize 时重钳) */
-const CHAT_MIN = 320;
 const HEIGHT_DEFAULT = 260;
 
 const lsRead = <T,>(key: string, fallback: T): T => {
@@ -88,7 +87,10 @@ const nextUidOf = (tabs: DockTab[]): { uid: string; n: number } => {
 };
 
 const clampHeight = (h: number): number => {
-  const ceiling = Math.max(HEIGHT_MIN, (typeof window === 'undefined' ? 720 : window.innerHeight) - CHAT_MIN);
+  // 上限=主对话高度一半(2026-11-10 用户裁定「任何放大缩小下,下栏只占主对话一半高度」):
+  // 视口视觉高 /zoom 归一成布局 px 再取半;窗口 resize 由调用方重钳
+  const vh = typeof window === 'undefined' ? 720 : window.innerHeight / zoomScale();
+  const ceiling = Math.max(HEIGHT_MIN, Math.floor(vh / 2));
   return Math.min(ceiling, Math.max(HEIGHT_MIN, h));
 };
 

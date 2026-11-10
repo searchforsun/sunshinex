@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ImagePlus } from 'lucide-react';
 import { t } from '../i18n';
 import { cmdDescOf } from '../CommandPalette';
@@ -192,8 +192,23 @@ export function ComposerPlusPanel({
     };
   }, [conn, root]);
 
+  /** 高度不足量测(2026-11-10 用户裁定「不足以展示全部弹窗高度就把输入框整体覆盖」):锚上方空间
+   *  < 满高 360 即挂 cover 类——面板整体下移覆盖 composer,不再向上裁切 */
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [cover, setCover] = useState(false);
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (el === null) return;
+    const r = el.getBoundingClientRect();
+    if (r.top < 8) {
+      // 不止挂 cover:按缺口下移(缺口=顶部越界量),相对锚式 calc 减缺口——覆盖整个 composer 也在所不惜
+      setCover(true);
+      const shift = Math.round(8 - r.top);
+      el.style.bottom = `calc(100% + 8px - ${shift}px)`;
+    } else setCover(false);
+  }, []);
   return (
-    <div className="sx-plus-panel" role="menu" aria-label={t('Add context', '添加附件')}>
+    <div ref={panelRef} className={'sx-plus-panel' + (cover ? ' cover' : '')} role="menu" aria-label={t('Add context', '添加附件')}>
       <div className="sx-plus-scroll">
       {/* 附件区(2026-10-26 置首):图片选择开系统文件资源管理器;隐藏 input 承接 onChange */}
       {onAttachImages !== undefined && (

@@ -24,7 +24,7 @@ interface PillsLeftProps {
   readonly sessionId: string;
 }
 
-export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
+export function ComposerPillsLeft(props: PillsLeftProps & { terminalDockEnabled?: boolean; dockOpen?: boolean; onToggleDock?: () => void }): JSX.Element {
   const { pillOpen, setPillOpen, sessMode, setSessMode, conn, sessionId } = props;
   const modeLabel = sessionModeLabel(sessMode);
   return (
@@ -68,6 +68,19 @@ export function ComposerPillsLeft(props: PillsLeftProps): JSX.Element {
                 />
               )}
             </div>
+            {/* 终端下栏入口(2026-11-10 用户裁定:移到完全访问右侧与 + 对齐,亮度降 fg60) */}
+            {props.terminalDockEnabled === true && (
+              <button
+                type="button"
+                className="composer-pill composer-plus-btn terminal-dock-entry"
+                aria-label="toggle terminal dock"
+                aria-expanded={props.dockOpen === true}
+                data-tip={t('Terminal', '终端')}
+                onClick={() => props.onToggleDock?.()}
+              >
+                <SquareTerminal size={16} strokeWidth={2} aria-hidden="true" /> /* 笔形对齐 PlusAddIcon(stroke 2) */
+              </button>
+            )}
           </div>
   );
 }
@@ -104,22 +117,12 @@ interface PillsRightProps {
 }
 
 export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
-  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading, terminalDockEnabled, onToggleDock } = props;
+  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading } = props;
   return (
           <div className="composer-pills composer-pills-right">
             {/* 2026-11-10 终端下栏入口(G14.18 圆环左邻):settings·terminalDock=on 才渲染(旁路面
                 不传该 prop=恒隐);点击切 composer 下方 dock 显隐——面板关不 kill pty */}
-            {terminalDockEnabled === true && (
-              <button
-                type="button"
-                className="sx-iconbtn terminal-dock-entry tip-right"
-                aria-label="toggle terminal dock"
-                data-tip={t('Open terminal dock', '终端')}
-                onClick={() => onToggleDock?.()}
-              >
-                <SquareTerminal size={16} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-            )}
+
             {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存。
                 2026-11-06 用户裁定「辅助草稿去掉上下文圈」:ctxInfo=null(无会话无共享 ctx)不渲染
                 圆环——会话中 ctxInfo 恒非空不受影响 */}

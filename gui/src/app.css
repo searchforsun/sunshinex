@@ -910,7 +910,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }
 /* 2026-11-03 用户裁定:滚动收敛到内容层,脚行钉底恒显 */
 .sx-plus-scroll { overflow-y: auto; min-height: 0; }
-.sx-plus-panel .sx-plus-foot { flex: none; }.sx-plus-sec { padding: 6px 10px 2px; font-size: calc(14px * var(--fz)); font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary); }.sx-plus-row { display: flex; align-items: center; gap: 8px; /* 2026-10-26 baseline→center:图标与文字垂直居中对齐(用户截图「选择图片」图标显高) */ width: 100%; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); color: var(--fg); }.sx-plus-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-plus-name { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); flex: none; }.sx-plus-desc { font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-plus-empty { padding: 4px 10px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
+.sx-plus-panel .sx-plus-foot { flex: none; }
+/* 高度不足(上方空间 < 满高):整体下移覆盖输入框,不再向上裁切(2026-11-10 用户裁定) */
+.sx-plus-panel.cover { bottom: 40px; }.sx-plus-sec { padding: 6px 10px 2px; font-size: calc(14px * var(--fz)); font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg-tertiary); }.sx-plus-row { display: flex; align-items: center; gap: 8px; /* 2026-10-26 baseline→center:图标与文字垂直居中对齐(用户截图「选择图片」图标显高) */ width: 100%; text-align: left; padding: 5px 10px; border-radius: var(--radius-sm); color: var(--fg); }.sx-plus-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-plus-name { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); flex: none; }.sx-plus-desc { font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.sx-plus-empty { padding: 4px 10px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
 
 /* ===== G9-B5 打磨收尾(spec §5):弹层浮面制/动效统一/reduced-motion ===== */.sx-menu-pop {
   border: none;
@@ -3726,10 +3728,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    动作钮(刷新/停止/删除/复制):图标本体 14px 裸显(同行首数据库等图标),无边框无常驻底色,
    hover 才出底色区分;删除/停止二次确认 arm 态红底不变;
    卡片(待办/团队/后台任务/记忆/技能)与输出区去 1px 描边,只留面色层次 */
-.sx-changes-act, .files-act { width: 18px; height: 18px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-icon); }
+.sx-changes-act, .files-act { width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-icon); } /* 2026-11-10 用户裁定:24px hover 盒为全局规则(见 CLAUDE.md §13.7 补则),18px 太挤 */
 .sx-changes-act:hover, .files-act:hover { border: none; color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .sx-changes-act.arm, .sx-changes-act.arm:hover { border: none; }
-.tb-stop { width: 18px; height: 18px; background: transparent; }
+.tb-stop { width: 24px; height: 24px; background: transparent; }
 .tb-stop:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .tb-stop.arm, .tb-stop.arm:hover { border: none; }
 .todo-card, .tb-card { border: none; }
@@ -3759,6 +3761,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-diff-tab .sx-changes-bar { justify-content: flex-start; }
 .sx-diff-tab .sx-changes-branch-anchor { flex: 0 1 auto; min-width: 0; } /* 分支=唯一可缩项:空间够必完整,溢出才省略(其余钮 flex:none 不缩) */
 .sx-diff-tab .sx-changes-branch-name { max-width: 200px; } /* 最大长度展示上限(欢迎页 branch-pill 180px 同族) */
+/* 2026-11-10 用户实测根修(CDP 测量):btn 的 max-width:100% 在锚宽自洽计算中被 Chrome 解析为
+   中间值,整钮内容被压到 0.86 倍(分支名恒「m...」)——审查页两钮解除该上限(欢迎页 pill 不受影响) */
+.sx-diff-tab .sx-changes-branch-btn { max-width: none; }
 .sx-diff-tab .sx-changes-bar-actions { margin-left: auto; flex: none; }
 .sx-changes-area-anchor .sx-changes-branch-btn { padding-right: 8px; }
 .sx-changes-area-anchor .sx-changes-branch-name { flex: none; min-width: 0; overflow: visible; }
@@ -3797,7 +3802,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-close { margin-left: auto; }
 .terminal-dock-body { flex: 1; min-height: 0; position: relative; background: var(--surface-code); }
 /* 下栏开着时 composer(绝对定位钉 .sx-main 底)抬到下栏之上,高度=下栏高(根变量由 dock 写入) */
-.sx-main:has(> .terminal-dock) .chat-dock { bottom: calc(var(--terminal-dock-h, 0px) + 12px); }
+.sx-main:has(> .terminal-dock) .chat-dock { bottom: calc(var(--terminal-dock-h, 0px) + 2px); }
+.sx-main:has(> .terminal-dock) .chat-dock-fade { bottom: -14px; } /* 下探盖住 composer 与下栏间的正文露出缝 */
 
 /* ===== 2026-11-10 用户裁定:全局弹窗统一(布局参照改名弹窗,「不要小气」) =====
    ①按钮语义两分:取消等无副作用=同色普通钮(面色底),确认等有副作用=反色实心(前景底);

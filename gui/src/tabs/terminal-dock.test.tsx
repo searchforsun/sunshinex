@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { Connection } from '../connection';
-import { ComposerPillsRight } from '../pages/chat/ComposerPills';
+import { ComposerPillsLeft } from '../pages/chat/ComposerPills';
 import { TerminalDock } from './terminal-dock';
 
 /**
@@ -98,31 +98,18 @@ describe('TerminalDock(终端下栏)', () => {
   });
 });
 
-describe('ComposerPillsRight 终端入口钮(terminalDockEnabled 显隐)', () => {
+describe('ComposerPillsLeft 终端入口钮(2026-11-10 移左簇完全访问右侧;terminalDockEnabled 显隐)', () => {
   function mount(enabled: boolean | undefined, onToggleDock?: () => void): void {
     render(
-      <ComposerPillsRight
+      <ComposerPillsLeft
         pillOpen={null}
         setPillOpen={() => {}}
+        sessMode="read-only"
+        setSessMode={() => {}}
         conn={CONN}
         sessionId="s1"
-        ctxInfo={null}
-        refreshCtx={() => {}}
-        runCount={0}
-        steps={0}
-        tokens={0}
-        cacheTokens={0}
-        modelInfo={null}
-        setModelInfo={() => {}}
-        sessEffort={undefined}
-        setSessEffort={() => {}}
-        running={false}
-        input=""
-        send={() => {}}
-        interrupt={() => {}}
-        connState="open"
-        seeding={false}
         terminalDockEnabled={enabled}
+        dockOpen={false}
         onToggleDock={onToggleDock}
       />,
     );
