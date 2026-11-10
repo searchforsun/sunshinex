@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import type { Edge, Node, NodeProps } from '@xyflow/react';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { AlarmClock, Bot, Square } from 'lucide-react';
+import { AlarmClock, Bot, Pause } from 'lucide-react';
 import type { BoardTask } from '../projection';
 import { t } from '../i18n';
 import { fmtDurMs } from '../ui-util';
@@ -186,7 +186,7 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
               onStopTask?.(data.id);
             }}
           >
-            <Square size={14} strokeWidth={1.75} aria-hidden="true" />
+            <Pause size={24} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
           </button>
         )}
       </div>

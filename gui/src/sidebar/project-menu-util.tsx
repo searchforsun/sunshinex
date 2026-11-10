@@ -180,7 +180,7 @@ export function ArchiveConfirmButton(props: {
         props.onArm();
       }}
     >
-      <Archive size={14} strokeWidth={1.75} />
+      <Archive size={18} strokeWidth={1.75} />
     </button>
   );
 }
