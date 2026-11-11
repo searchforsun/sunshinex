@@ -3915,12 +3915,13 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* ===== 暗色气泡/暗色代码(2026-11-12 用户裁定,设置·界面与外观两项) =====
    亮色模式下两组面改用暗色主题色;html[data-bubble-dark]/[data-code-dark] 由 dark-surfaces.ts
    落根,暗色主题下选择器不命中=开关无感。
-   【二轮根修 2026-11-12 用户实测「波及思考行/审查页/单 diff 页签字体看不到」】--surface-code
-   全局变量覆写退役——该令牌消费面远超裁定范围(思考展开体 .thinking-scroll/审查页 .diff-col/
-   单文件 diff 体全吃它),染了底没跟字=暗底暗字。改宗逐面显式着色,只动裁定面:用户代码块
-   (.code-block)/文件 md 预览(.files-md pre)/工具行展开体含 diff 预览(.entry-tool .tool-detail);
-   Monaco 文件视图由 palette.effectivePalette 单点翻暗色偏好配色。语法 --syntax-* 仍走变量覆写
-   (hljs/tok 令牌只出现在代码井内,不外溢) */
+   【二轮根修】--surface-code 全局变量覆写退役——消费面远超裁定范围(思考展开体/审查页 diff 列/
+   单文件 diff 体全吃它),染底不跟字=暗底暗字;改宗逐面显式着色。
+   【三轮根修 2026-11-12 用户实测「代码块右上角按钮(复制/换行/打开改动页签)看不清」】暗面容器
+   统一 :is() 一条规则,内部整体覆写前景令牌族(--fg/--fg-icon/--fg-secondary/--fg-tertiary/
+   --fg-muted)——容器内所有钮/图标/次级文字自动随暗色主题值,免逐钮点补;行号/diff 行号走
+   --fg-tertiary 自动跟上。Monaco 文件视图由 palette.effectivePalette 单点翻暗色偏好配色;
+   语法 --syntax-* 变量覆写保留(hljs/tok 令牌只在代码井内,不外溢) */
 html[data-theme='light'][data-bubble-dark='1'] { --bubble-user: #272729; }
 html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble { color: #dfdfdf; }
 html[data-theme='light'][data-code-dark='1'] {
@@ -3932,26 +3933,19 @@ html[data-theme='light'][data-code-dark='1'] {
   --syntax-attr: #f9dc78;
   --syntax-name: #63a8f8;
 }
-/* 用户代码块:井底+字+语言标签同翻(块内 hljs 令牌走 --syntax-* 暗面) */
-html[data-theme='light'][data-code-dark='1'] .code-block { background: #101010; border-color: rgba(255, 255, 255, 0.08); }
-html[data-theme='light'][data-code-dark='1'] .code-block pre code,
-html[data-theme='light'][data-code-dark='1'] .code-block .code-lang { color: #dfdfdf; }
-/* 文件 md 预览围栏 */
-html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
-/* 工具行展开体(含 write/edit diff 预览):井底+正文换暗面;行号/截断行 tertiary 走暗档
-   (暗色主题 --fg-secondary/tertiary 值的字面镜像,不引全局变量防亮色值渗入) */
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail { background: #101010; color: #dfdfdf; }
+/* 暗面容器统一规则:井底+暗色主题前景令牌族(用户代码块/文件源码视图容器/工具行
+   展开体含 diff 预览/审查页双列/单文件 diff 体)。md 预览面(.files-md)不算代码块——
+   整面不翻,只翻其内 pre 围栏(2026-11-12 用户裁定「只有涉及代码块的」) */
+html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body) {
+  background: #101010;
+  color: #dfdfdf;
+  --fg: #dfdfdf;
+  --fg-secondary: rgba(223, 223, 223, 0.7);
+  --fg-tertiary: rgba(223, 223, 223, 0.5);
+  --fg-muted: rgba(223, 223, 223, 0.52);
+  --fg-icon: rgba(223, 223, 223, 0.85);
+}
+html[data-theme='light'][data-code-dark='1'] .code-block { border-color: rgba(255, 255, 255, 0.08); }
 html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-ln,
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-line.trunc { color: rgba(223, 223, 223, 0.5); }
-/* 审查页/单文件 diff 页签(2026-11-12 用户裁定「也是代码块,应受暗色控制」):双列/单文件体
-   同翻暗面——井底+字+行号暗档;diff 增删行底色为固定 hex 混色(亮暗两档通吃)不动 */
-html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col,
-html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col .diff-lines,
-html[data-theme='light'][data-code-dark='1'] .sx-change-body,
-html[data-theme='light'][data-code-dark='1'] .sx-turn-diff-body { background: #101010; color: #dfdfdf; }
-html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col .diff-lines .diff-ln,
-html[data-theme='light'][data-code-dark='1'] .sx-change-body .diff-ln,
-html[data-theme='light'][data-code-dark='1'] .sx-turn-diff-body .diff-ln,
-html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col .diff-lines .diff-line.trunc { color: rgba(223, 223, 223, 0.5); }
+html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
 
