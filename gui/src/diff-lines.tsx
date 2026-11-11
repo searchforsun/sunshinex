@@ -192,7 +192,15 @@ export function DiffLines({
   hunksOnly?: boolean;
 }): JSX.Element {
   const { rows, truncated } = useMemo(() => diffRows(oldStr ?? '', newStr), [oldStr, newStr]);
-  const segs = useMemo(() => (collapsible || hunksOnly ? hunkSegments(rows) : null), [rows, collapsible, hunksOnly]);
+  const segs = useMemo(() => {
+    if (!collapsible && !hunksOnly) return null;
+    const all = hunkSegments(rows);
+    if (!hunksOnly) return all;
+    // 截断面去尾部省略(2026-11-11 用户裁定「去掉最后的 792 省略和三个点」):尾部 fold 段整段
+    // 不渲染——尾部上下文行照显,只有尾部 fold 条与末尾 … 截断点退场(审查页可展开折叠条不受影响)
+    const last = all[all.length - 1];
+    return last !== undefined && last.kind === 'folded' ? all.slice(0, -1) : all;
+  }, [rows, collapsible, hunksOnly]);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const flat = variant === 'flat';
   // 行渲染单点(2026-11-10 用户裁定「审查 diff 与工具行统一叠加单列序号」):flat/inline 同构——色条+单序号
@@ -268,7 +276,7 @@ export function DiffLines({
       aria-label="diff lines"
     >
       {segs === null ? rows.map((r, i) => line(r, i)) : renderSegs()}
-      {truncated && <div className="diff-line trunc">…</div>}
+      {truncated && !hunksOnly && <div className="diff-line trunc">…</div>}
     </div>
   );
 }
