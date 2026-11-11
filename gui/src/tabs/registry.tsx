@@ -221,7 +221,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     title: (params) => (params.path !== undefined ? baseName(params.path) : t('This turn', '本轮')),
     resolveKey: (params) => (params.callId !== undefined && params.callId !== '' ? params.callId : `${params.run ?? ''}:${(params.path ?? '').replace(/\\/g, '/')}`),
     singleton: false,
-    render: (p) => <TurnDiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} onOpenFile={fileTabOf(p)} />,
+    render: (p) => <TurnDiffTab conn={p.conn} sessionId={p.sessionId} params={p.params} root={p.root} onOpenFile={fileTabOf(p)} />,
   },
   {
     id: 'tasks',

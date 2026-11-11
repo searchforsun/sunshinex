@@ -26,11 +26,13 @@ export interface TurnDiffTabProps {
   readonly conn: Connection;
   readonly sessionId: string;
   readonly params: TabParams;
+  /** 会话根(2026-11-11 面包屑头:根名 > 相对路径,与源文件页签同语言) */
+  readonly root?: string;
   /** 点击文件名 → 打开 file 标签预览(App 注入 openTabInSession('file')) */
   readonly onOpenFile?: (path: string) => void;
 }
 
-export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTabProps): JSX.Element {
+export function TurnDiffTab({ conn, sessionId, params, root, onOpenFile }: TurnDiffTabProps): JSX.Element {
   const { run, callId, path } = params;
   const [content, setContent] = useState<DiffContent | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -108,7 +110,8 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
         <FileIcon path={norm} />
         {/* 2026-11-11 用户裁定:文件路径正常展示(与文件页签同语言,相对路径自然序 dir+base),
             路径后跟「回到源文件」钮——点击只开源文件页签;diff 细节落在本页签体内,不再有公共「本轮」页签面 */}
-        <span className="sx-change-name">{dir !== '' ? `${dir}${base}` : base}</span>
+        {/* 面包屑头(2026-11-11 用户裁定「和源文件一样」):根名 > 相对路径,hover 无下划线 */}
+        <span className="sx-change-name">{root !== undefined && root !== '' ? `${pathBasename(root)} > ` : ''}{dir !== '' ? `${dir}${base}` : base}</span>
         <span className="sx-changes-bar-actions">
           <button
             type="button"
