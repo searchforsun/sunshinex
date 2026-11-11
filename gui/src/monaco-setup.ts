@@ -2,7 +2,7 @@ import { loader } from '@monaco-editor/react';
 import { useEffect, useState } from 'react';
 import * as monaco from 'monaco-editor';
 import { watchThemeChange } from './theme';
-import { currentPalette, mixHex, PALETTES } from './palette';
+import { effectivePalette, mixHex, PALETTES } from './palette';
 import type { Palette } from './palette';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
 
@@ -52,13 +52,14 @@ export function ensureMonaco(): void {
   themesDefined = true;
 }
 
-/** 主题跟随 hook：mount 即定义主题并对齐生效配色；亮暗/配色切换经 watchThemeChange 单点实时重渲 */
+/** 主题跟随 hook：mount 即定义主题并对齐生效配色；亮暗/配色切换经 watchThemeChange 单点实时重渲。
+ *  取值走 effectivePalette 单点——亮色主题+「暗色代码」开时文件源码视图随暗色偏好配色 */
 export function useSxTheme(): string {
-  const [theme, setTheme] = useState<string>(() => `sx-${currentPalette().id}`);
+  const [theme, setTheme] = useState<string>(() => `sx-${effectivePalette().id}`);
   useEffect(() => {
     ensureMonaco();
     const apply = (): void => {
-      const next = `sx-${currentPalette().id}`;
+      const next = `sx-${effectivePalette().id}`;
       setTheme(next);
       monaco.editor.setTheme(next);
     };

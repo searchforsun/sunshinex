@@ -136,6 +136,15 @@ export function currentPalette(): Palette {
   return byId(mode, readPalettePref(mode));
 }
 
+/** Monaco 生效配色(2026-11-12「暗色代码」面):亮色主题 + data-code-dark 在座 → 用暗色偏好配色
+ *  (画布读不了 CSS 变量面;CSS 变量面由 app.css data-code-dark 覆写块承担)。dark-surfaces 只
+ *  读 dataset 不回 import 本模块,无环 */
+export function effectivePalette(): Palette {
+  return document.documentElement.dataset.codeDark === '1' && modeNow() === 'light'
+    ? byId('dark', readPalettePref('dark'))
+    : currentPalette();
+}
+
 /** 按当前 data-theme 落生效配色(applyTheme 每次切换模式后调用;default 清空内联回落样式表) */
 export function syncPalette(): void {
   const p = currentPalette();

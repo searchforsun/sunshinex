@@ -1464,12 +1464,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: color-mix(in srgb, var(--fg) 4%, transparent);
   overflow: hidden;
 }
-[data-theme='dark'] .run-changes { background: var(--bubble-user); } /* 暗色底=用户气泡色(2026-11-11 用户裁定) */.run-changes-head { display: flex; align-items: center; gap: 4px; padding: 4px 10px; }.run-changes-toggle {
+[data-theme='dark'] .run-changes { background: var(--bubble-user); } /* 暗色底=用户气泡色(2026-11-11 用户裁定) */.run-changes-head { display: flex; align-items: center; gap: 4px; padding: 4px 10px; }
+.run-changes-head:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); } /* hover=整行提亮(不是椭圆高亮区,用户裁定) */.run-changes-toggle {
   display: inline-flex; align-items: center; gap: 8px;
   border: none; background: transparent; color: var(--fg);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 4px 6px;
   border-radius: var(--radius-sm); flex: 1; min-width: 0;
-}.run-changes-toggle:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }.run-changes-stat { display: inline-flex; gap: 6px; font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }.run-changes-undo {
+}.run-changes-toggle:hover { background: transparent; }.run-changes-stat { display: inline-flex; gap: 6px; font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }.run-changes-undo {
   border: none; background: transparent; color: var(--fg-tertiary);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm);
   flex: none;
@@ -3906,3 +3907,31 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* ⑥文件名可缩省略:窄侧栏先省文件名/目录,不越视口 */.sx-change-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ②区下拉弹层条目带前缀图标(同触发钮 Circle/CircleDot) */.sx-area-pop .sx-menuitem svg { flex: none; }
 /* 区弹层紧凑宽 */.sx-changes-area-anchor .sx-area-pop .branch-pop-name { flex: 1; min-width: 0; }
+
+/* ===== 暗色气泡/暗色代码(2026-11-12 用户裁定,设置·界面与外观两项) =====
+   亮色模式下两组面改用暗色主题色;html[data-bubble-dark]/[data-code-dark] 由 dark-surfaces.ts
+   落根,暗色主题下选择器不命中=开关无感。--surface-code 用 !important:非缺省配色经 palette
+   syncPalette 内联注入根 style,选择器敌不过 inline——覆写语义(开关>配色)须显式声明 */
+html[data-theme='light'][data-bubble-dark='1'] { --bubble-user: #272729; }
+html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble { color: #dfdfdf; }
+html[data-theme='light'][data-code-dark='1'] {
+  --surface-code: #101010 !important;
+  --syntax-comment: #b9b9b9;
+  --syntax-keyword: #f8a6c8;
+  --syntax-literal: #f1a275;
+  --syntax-string: #83d197;
+  --syntax-variable: #b897f4;
+  --syntax-attr: #f9dc78;
+  --syntax-name: #63a8f8;
+}
+/* 面文字色:代码井/文件 md 预览/工具行 diff 预览(井底暗→正文换暗色主题前景;行号/diff 行号
+   同步暗色 tertiary 档)。hljs/tok 令牌走 --syntax-* 已随上块翻面 */
+html[data-theme='light'][data-code-dark='1'] .code-block,
+html[data-theme='light'][data-code-dark='1'] .code-block .code-lang,
+html[data-theme='light'][data-code-dark='1'] .files-md pre,
+html[data-theme='light'][data-code-dark='1'] .tool-md pre,
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail,
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines,
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-ln,
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-line.trunc { color: #dfdfdf; }
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-ln { color: color-mix(in srgb, #dfdfdf 50%, transparent); }

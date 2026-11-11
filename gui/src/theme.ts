@@ -52,9 +52,10 @@ export function currentTheme(): 'dark' | 'light' {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 }
 
-/** 主题/配色变更订阅单点(Mermaid 重渲/monaco/xterm 共此一观察口径;data-palette 换套亦触发):返回退订函数 */
+/** 主题/配色变更订阅单点(Mermaid 重渲/monaco/xterm 共此一观察口径;data-palette 换套亦触发;
+ *  data-code-dark=「暗色代码」开关在座/摘除,monaco 文件视图随之换暗色偏好配色):返回退订函数 */
 export function watchThemeChange(onChange: () => void): () => void {
   const obs = new MutationObserver(onChange);
-  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette'] });
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-palette', 'data-code-dark'] });
   return () => obs.disconnect();
 }

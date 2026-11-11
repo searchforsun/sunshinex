@@ -6,6 +6,7 @@ import { applyTheme, type ThemePref } from './theme';
 import { syncPalette } from './palette';
 import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, UI_FONT_CHOICES } from './font-size';
 import { applyUiMode } from './ui-mode';
+import { applyDarkBubbles, applyDarkCode } from './dark-surfaces';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
 
@@ -50,6 +51,8 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       uiMode: (v) => {
         if (v === 'code' || v === 'office') applyUiMode(v);
       },
+      darkBubbles: (v) => applyDarkBubbles(v === '1'),
+      darkCode: (v) => applyDarkCode(v === '1'),
     });
   }, [connInstance]);
 }

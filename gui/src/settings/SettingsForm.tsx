@@ -18,6 +18,7 @@ import { palettesFor, readPalettePref, setPalettePref } from '../palette';
 import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, readCodeFontSize, readUiFontSize, UI_FONT_CHOICES } from '../font-size';
 import { applyUiMode, useUiMode } from '../ui-mode';
 import type { UiMode } from '../ui-mode';
+import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from '../dark-surfaces';
 import type { Palette } from '../palette';
 import { FolderOpen } from 'lucide-react';
 import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
@@ -525,9 +526,61 @@ function FontSizeRow({ label, desc, aria, choices, read, apply }: {
   );
 }
 
+/** 暗色面开关行(2026-11-12 用户裁定「暗色气泡/暗色代码」):亮色模式下对应面改用暗色主题色;
+ *  开/关 select 同外观行口径(dark-surfaces.ts 落根 data 属性,UI 偏好双写通路) */
+function DarkSurfaceRow({ label, desc, aria, read, apply }: {
+  label: string;
+  desc: string;
+  aria: string;
+  read: () => boolean;
+  apply: (on: boolean) => void;
+}): JSX.Element {
+  const [on, setOn] = useState<boolean>(read);
+  return (
+    <div className="sx-setting-row">
+      <div className="sx-setting-main">
+        <div className="sx-setting-title">
+          <span className="sx-setting-label">{label}</span>
+        </div>
+        <p className="sx-setting-desc">{desc}</p>
+      </div>
+      <div className="sx-setting-ctl">
+        <Select
+          ariaLabel={aria}
+          value={on ? 'on' : 'off'}
+          options={ON_OFF}
+          onChange={(v) => {
+            setOn(v === 'on');
+            apply(v === 'on');
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const DarkBubblesRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Dark bubbles', '暗色气泡')}
+    desc={t('In light theme, user bubbles use dark-theme colors.', '亮色模式下，用户气泡使用暗色主题的颜色。')}
+    aria="dark bubbles"
+    read={readDarkBubbles}
+    apply={applyDarkBubbles}
+  />
+);
+
+const DarkCodeRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Dark code', '暗色代码')}
+    desc={t('In light theme, code blocks, file previews, and tool-row diff previews use dark-theme colors.', '亮色模式下，代码块、文件预览和工具行 diff 预览使用暗色主题的颜色。')}
+    aria="dark code"
+    read={readDarkCode}
+    apply={applyDarkCode}
+  />
+);
+
 /** 界面模式行(2026-11-07 用户裁定;ui-mode.ts):编程(缺省)/办公 */
-function UiModeRow(): JSX.Element {
-  const mode = useUiMode();
+function UiModeRow(): JSX.Element {  const mode = useUiMode();
   return (
     <div className="sx-setting-row">
       <div className="sx-setting-main">
@@ -856,9 +909,11 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
                   if (fd === 'uimode') return <UiModeRow key="uimode" />;
+                  if (fd === 'darkbubbles') return <DarkBubblesRow key="darkbubbles" />;
+                  if (fd === 'darkcode') return <DarkCodeRow key="darkcode" />;
                   if (fd === 'uifont') return <UiFontRow key="uifont" />;
                   if (fd === 'codefont') return <CodeFontRow key="codefont" />;
                   if (fd === 'palette') return <PaletteRow key="palette" />;
