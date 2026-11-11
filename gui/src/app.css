@@ -1456,12 +1456,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    负 margin 抵消使图标字形对齐 .entry 正文左缘;统计灰度与钮一致,且仅该轮次 hover/焦点在时显现 */
 /* G14.100 轮尾变动汇总条(对标 Codex):折叠头(N 个文件已更改 +X -Y + 撤销)/展开逐文件
    (图标+名称+目录+±+行尾撤销);文件名点击 → diff 标签自动展开对应项 */.run-changes {
-  margin: 8px 0 2px;
-  border: 1px solid var(--border);
+  /* 2026-11-11 用户裁定三条:与正文行距加高/去高亮边框防毛刺/暗色底调暗/左右加长 */
+  margin: 14px -6px 4px;
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--surface-soft);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
   overflow: hidden;
-}.run-changes-head { display: flex; align-items: center; gap: 4px; padding: 3px 6px; }.run-changes-toggle {
+}
+[data-theme='dark'] .run-changes { background: color-mix(in srgb, var(--fg) 3%, transparent); } /* 暗色再暗一档,不与正文抢眼 */.run-changes-head { display: flex; align-items: center; gap: 4px; padding: 7px 10px; }.run-changes-toggle {
   display: inline-flex; align-items: center; gap: 8px;
   border: none; background: transparent; color: var(--fg);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 4px 6px;
@@ -3812,19 +3814,23 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-handle { height: 9px; flex: none; cursor: row-resize; touch-action: none; position: relative; }
 .terminal-dock-handle::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--border); }
 .terminal-dock-handle:hover::before, .terminal-dock-handle:active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); } /* 分割线=1px 对齐主区/侧栏边界(2026-11-10 用户裁定「要一样窄」);9px 带仅作拖拽热区不显色 */
-.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow-x: auto; scrollbar-width: none; background: var(--terminal-dock-bg); }
+.terminal-dock-strip { display: flex; align-items: center; gap: 2px; padding: 4px 6px; flex: none; overflow: hidden; background: var(--terminal-dock-bg); } /* overflow hidden(2026-11-11 用户裁定「不要超出视口」):页签定长收缩,横向滚动退役 */
 /* 下栏配色区分主对话(2026-11-10 用户裁定「终端背景色调开,各模块有区分性」):栏体/页签条=代码井色
    (暗=深井 101010,亮=浅井 eeeeee),页签 pill 换井上可辨的 hover/active 混色 */
 .terminal-dock-strip::-webkit-scrollbar { width: 0; height: 0; }
 /* 终端区域标识图标(2026-11-11 用户裁定「页签行最左侧」):纯标识不交互,亮度=页签文字同档(fg-secondary) */
 .terminal-dock-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; color: var(--fg-secondary); }
-.terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; max-width: 200px; }
+/* 页签定长(2026-11-11 用户裁定「和侧栏页签一样,固定长度显示,过长隐藏,随整体宽度变窄」):
+   flex 1 1 0 均分 + min 56px/max 200px 逐字同 .sx-tabstrip .sx-tab 口径;X 钮 flex:none 不被挤 */
+.terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; flex: 1 1 0; min-width: 56px; max-width: 200px; overflow: hidden; }
 .terminal-dock-tab { color: var(--fg-secondary); }
 .terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); } /* 颜色口径=侧栏页签逐字同式(透明 8% 混色):条底=var(--surface) 与侧栏同,合成后两处 pill 同色(2026-11-11 用户实测仍有色差,基座回退透明混) */
-.terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; flex: 0 1 auto; min-width: 0; }
 .terminal-dock-rename { width: 110px; min-width: 0; font-size: calc(14px * var(--fz)); background: var(--terminal-dock-bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; height: 20px; outline: none; } /* 2026-11-11 用户裁定:编辑区内部背景=下栏井色,以 1px 描边区分编辑框 */ /* 2026-11-10 用户裁定二轮:编辑区要有颜色区分可编辑,但不要描边框 */
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 24px; height: 24px; padding: 0; } /* 14px 图标 24px hover 盒(icon-min 标准,2026-11-10 用户裁定 +/X 同规) */
+.terminal-dock-tab-close { flex: none; }
+.terminal-dock-add { flex: none; } /* + 与面板 X 恒在座(2026-11-11 用户裁定「+ 不够宽时也不要隐藏到下面」):条 overflow hidden 下页签收缩让位,尾钮不缩不换行 */
 .terminal-dock-close { margin-left: auto; }
 .terminal-dock-body { flex: 1; min-height: 0; position: relative; background: var(--terminal-dock-bg); }
 /* 下栏开着时 composer(绝对定位钉 .sx-main 底)抬到下栏之上,高度=下栏高(根变量由 dock 写入) */
