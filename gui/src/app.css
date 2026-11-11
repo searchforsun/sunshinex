@@ -1489,9 +1489,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .sx-turn-diff-head { gap: 8px; align-items: center; }
 .sx-turn-diff-head .sx-change-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 面包屑相对路径,过长省略(2026-11-11 用户裁定) */
 .sx-turn-diff-head .sx-change-name:hover { text-decoration: none; } /* 文件名非链接,hover 无下划线(用户裁定) */
+.sx-turn-diff-head .sx-change-name svg { vertical-align: -2px; margin: 0 2px; } /* 图标贴文件名(2026-11-11 用户裁定「图标放到文件前」) */
+
 .sx-turn-diff-head .sx-change-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
 .sx-turn-diff-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); padding: 2px 8px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.sx-turn-diff-body { padding: 8px 12px 16px; overflow: auto; background: var(--surface-code); border-radius: 0; font: calc(12px * var(--fz))/calc(19px * var(--fz)) var(--font-mono); } /* 2026-11-11 用户裁定:黑底同编辑展开行,但直上直下无弧度(和源文件一样) */
+.sx-diff-tab.sx-turn-diff { gap: 0; } /* 路径行与 diff 体无缝(2026-11-11 用户裁定「不要加边距」) */
+.sx-turn-diff-body { padding: 0 12px 16px; overflow: auto; background: var(--surface-code); border-radius: 0; font: calc(12px * var(--fz))/calc(19px * var(--fz)) var(--font-mono); } /* 黑底直上直下(和源文件一样);顶距 0=路径行正下方起内容 */
 /* 工作区隔离 pill(2026-11-10):武装态高亮(accent 微底);说明框复用 sx-dirty-dialog 弹层形 */
 .composer-pill.isolate-pill.on { color: var(--accent); } /* 2026-11-11 用户裁定:武装态只变字色,不加背景(与左侧分支 pill 同素形) */
 .sx-iso-dialog { max-width: 420px; }

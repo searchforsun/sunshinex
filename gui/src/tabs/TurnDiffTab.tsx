@@ -107,11 +107,14 @@ export function TurnDiffTab({ conn, sessionId, params, root, onOpenFile }: TurnD
   return (
     <div className="sx-diff-tab sx-turn-diff" aria-label="turn diff tab">
       <div className="sx-changes-bar sx-turn-diff-head">
-        <FileIcon path={norm} />
-        {/* 2026-11-11 用户裁定:文件路径正常展示(与文件页签同语言,相对路径自然序 dir+base),
-            路径后跟「回到源文件」钮——点击只开源文件页签;diff 细节落在本页签体内,不再有公共「本轮」页签面 */}
-        {/* 面包屑头(2026-11-11 用户裁定「和源文件一样」):根名 > 相对路径,hover 无下划线 */}
-        <span className="sx-change-name">{root !== undefined && root !== '' ? `${pathBasename(root)} > ` : ''}{dir !== '' ? `${dir}${base}` : base}</span>
+        {/* 面包屑头(2026-11-11 用户裁定「和源文件一样」):根名 > 相对路径,hover 无下划线;
+            2026-11-11 二轮:图标贴文件名(不站行首) */}
+        <span className="sx-change-name">
+          {root !== undefined && root !== '' ? `${pathBasename(root)} > ` : ''}
+          {dir !== '' ? dir : ''}
+          <FileIcon path={norm} />
+          {base}
+        </span>
         <span className="sx-changes-bar-actions">
           <button
             type="button"
