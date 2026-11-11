@@ -131,6 +131,24 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
     const v = getComputedStyle(document.documentElement).getPropertyValue('--terminal-dock-bg').trim();
     if (v !== '') setDockBg(v);
   }, []);
+  /** 页签名截断隐现(2026-11-11 用户裁定「不是省略,是隐现,同侧栏」):同 TabStrip G14.2xx 口径——
+   *  逐名量溢出打 data-cut,右缘 14px 渐隐标识被截;无省略号。ResizeObserver 盯页签条(拖宽/增删签) */
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const nameRefs = useRef(new Map<string, HTMLSpanElement>());
+  useLayoutEffect(() => {
+    const mark = (): void => {
+      for (const [, el] of nameRefs.current) {
+        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
+        else el.removeAttribute('data-cut');
+      }
+    };
+    mark();
+    const el = stripRef.current;
+    if (el === null) return;
+    const ro = new ResizeObserver(mark);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tabs, renaming, renameDraft]);
 
   useEffect(() => saveSession(sessionId, { open: true, tabs, active }), [sessionId, tabs, active]);
   useEffect(() => lsWrite(LS_HEIGHT, height), [height]);
@@ -208,7 +226,7 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
         onPointerUp={onHandlePointerUp}
         onPointerCancel={onHandlePointerUp}
       />
-      <div className="terminal-dock-strip">
+      <div className="terminal-dock-strip" ref={stripRef}>
         {/* 区域标识(2026-11-11 用户裁定「页签行最左侧加终端图标」):下栏=终端专属区域,
             图标只标区不交互(与会话页签列图标同亮度口径) */}
         <span className="terminal-dock-mark" aria-hidden="true">
@@ -241,6 +259,11 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
             ) : (
               <span
                 className="terminal-dock-tab-name"
+                data-tip={x.name}
+                ref={(el) => {
+                  if (el !== null) nameRefs.current.set(x.uid, el);
+                  else nameRefs.current.delete(x.uid);
+                }}
                 onDoubleClick={() => {
                   setRenaming(x.uid);
                   setRenameDraft(x.name);

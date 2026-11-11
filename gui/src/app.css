@@ -3826,10 +3826,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-tab { color: var(--fg-secondary); }
 .terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); } /* 颜色口径=侧栏页签逐字同式(透明 8% 混色):条底=var(--surface) 与侧栏同,合成后两处 pill 同色(2026-11-11 用户实测仍有色差,基座回退透明混) */
-.terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; flex: 0 1 auto; min-width: 0; }
+.terminal-dock-tab-name { overflow: hidden; text-overflow: clip; white-space: nowrap; cursor: pointer; flex: 0 1 auto; min-width: 0; } /* 隐现同侧栏(2026-11-11 用户裁定「不是省略,是隐现,同侧栏」):无省略号,溢出右缘渐隐 */
+.terminal-dock-tab-name[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); } /* 逐字同 .sx-tab-title[data-cut] */
 .terminal-dock-rename { width: 110px; min-width: 0; font-size: calc(14px * var(--fz)); background: var(--terminal-dock-bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; height: 20px; outline: none; } /* 2026-11-11 用户裁定:编辑区内部背景=下栏井色,以 1px 描边区分编辑框 */ /* 2026-11-10 用户裁定二轮:编辑区要有颜色区分可编辑,但不要描边框 */
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 24px; height: 24px; padding: 0; } /* 14px 图标 24px hover 盒(icon-min 标准,2026-11-10 用户裁定 +/X 同规) */
-.terminal-dock-tab-close { flex: none; }
+.terminal-dock-tab-close { flex: none; margin-left: auto; } /* X 钉每签右缘(2026-11-11 用户裁定「x 放在最右侧」,同 .sx-tab-close margin-left auto) */
 .terminal-dock-add { flex: none; } /* + 与面板 X 恒在座(2026-11-11 用户裁定「+ 不够宽时也不要隐藏到下面」):条 overflow hidden 下页签收缩让位,尾钮不缩不换行 */
 .terminal-dock-close { margin-left: auto; }
 .terminal-dock-body { flex: 1; min-height: 0; position: relative; background: var(--terminal-dock-bg); }
