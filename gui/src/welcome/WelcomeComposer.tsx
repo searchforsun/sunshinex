@@ -68,6 +68,8 @@ export function WelcomeComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [projOpen, setProjOpen] = useState(false);
+  /** 项目弹层筛选(2026-11-11 用户裁定:与分支筛选同款,仅筛不建);开弹层时清空 */
+  const [projQuery, setProjQuery] = useState('');
   /** G14.51 浏览器态服务端目录选择弹层(Browse folders 无桌面壳时) */
   const [dirOpen, setDirOpen] = useState(false);
   /** + 附加面板(G12 三轮):命令/技能列表浮层(卡顶同宽);文件区需会话,欢迎页不渲染 */
@@ -321,7 +323,10 @@ export function WelcomeComposer({
             type="button"
             className="choose-project-bar"
             aria-label={t('Choose project', '选择项目')}
-            onClick={() => setProjOpen((v) => !v)}
+            onClick={() => {
+              setProjQuery('');
+              setProjOpen((v) => !v);
+            }}
           >
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
             <span>{projName}</span>
@@ -494,9 +499,39 @@ export function WelcomeComposer({
             </div>,
             document.body,
           )}
-        {projOpen && (
+        {projOpen && (() => {
+          const q = projQuery.trim().toLowerCase();
+          const projRows =
+            q === ''
+              ? rows
+              : rows.filter((r) => {
+                  const nm = baseName(r.root ?? r.slug);
+                  const label = nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
+                  return label.toLowerCase().includes(q) || (r.root ?? '').toLowerCase().includes(q);
+                });
+          return (
           <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
-            {rows.map((r) => (
+            {/* 筛选行(2026-11-11 用户裁定:与分支弹层同款,仅筛不建);按项目名/路径包含匹配 */}
+            <div className="branch-pop-filter">
+              <input
+                autoFocus
+                value={projQuery}
+                aria-label={t('Filter projects', '筛选项目')}
+                placeholder={t('Filter projects…', '筛选项目…')}
+                onChange={(e) => setProjQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter=唯一命中即选,多命中选首个,空列表不动作
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  const first = projRows[0];
+                  if (first !== undefined) {
+                    setPicked(first.root ?? '');
+                    setProjOpen(false);
+                  }
+                }}
+              />
+            </div>
+            {projRows.map((r) => (
               <button
                 key={r.slug}
                 type="button"
@@ -514,12 +549,15 @@ export function WelcomeComposer({
                   return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
                 })()}
               </button>
-            ))}            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
+            ))}
+            {projRows.length === 0 && <div className="proj-hint">{t('No matching project', '无匹配项目')}</div>}
+            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
               <FolderAddIcon size={14} /> {t('Browse folders…', '浏览文件夹…')}
             </button>
             {hint !== '' && <div className="proj-hint">{hint}</div>}
           </div>
-        )}
+          );
+        })()}
         {dirOpen && (
           <div className="modal-overlay" onClick={() => setDirOpen(false)}>
             <div className="modal-body" onClick={(e) => e.stopPropagation()}>
