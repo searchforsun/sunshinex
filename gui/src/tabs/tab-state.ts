@@ -302,6 +302,22 @@ export function patchTabMeta(
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
 
+/** turndiff 页签就地换寻址(2026-11-11 用户裁定「当作一个区域处理」):同文件刀级页签(callId)
+ *  与轮聚合页签(run+path)复用同一签,点轮尾行=切 run+path 并激活;uid 不存在原样返回 */
+export function patchTurndiffAddressing(
+  states: TabStates,
+  sessionId: string,
+  uid: string,
+  addressing: { run: number; path: string },
+): TabStates {
+  const cur = states[sessionId];
+  const target = cur?.tabs.find((t) => t.uid === uid);
+  if (cur === undefined || target === undefined || target.type !== 'turndiff') return states;
+  const params: TabParams = { callId: undefined, ...addressing };
+  if (target.params.run === params.run && (target.params.path ?? '').replaceAll('\\', '/') === addressing.path.replaceAll('\\', '/')) return states;
+  return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
+}
+
 /** 调宽:只钳最小 MIN_TAB_WIDTH(无最大宽——G14.2xx 用户裁定);钳后未变 → 原引用返回;
  *  座缺席同 setCollapsed 以空态落座(欢迎页草稿座拖宽终值不落即弹回,同日实测) */
 export function setWidth(states: TabStates, sessionId: string, width: number): TabStates {

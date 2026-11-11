@@ -26,7 +26,7 @@ import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import type { TabServices } from './tabs/registry';
 import { REFRESHABLE_TAB_TYPES } from './tabs/sidebar-refresh';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, emptyTabSession, reopenClosed, rewindSeat, adoptStaleSeats, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, patchTurndiffAddressing, emptyTabSession, reopenClosed, rewindSeat, adoptStaleSeats, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -529,7 +529,19 @@ function AppShell(): JSX.Element {
   // (callId 寻址)与轮尾改动条(run+path 寻址)统一开 turndiff 单文件页签;'diff' 型保留=审查页
   // 空入参守卫(2026-11-10 用户裁定「去掉本轮空页签入口」):无 callId 且无 path 的裸开=「没有可展示的内容」死页签,不开
   const openDiffTab = useCallback((callId: string, path: string): void => { if (callId === '' && path === '') return; openTabInSession('turndiff', { callId, path }); }, [openTabInSession]);
-  const openTurndiffTab = useCallback((run: number, path: string): void => { if (path === '') return; openTabInSession('turndiff', { run, path }); }, [openTabInSession]);
+  // 轮尾行点击(2026-11-11 用户裁定「当作一个区域处理」):同文件已有 turndiff 页签(刀级 callId
+  // 寻址)就地处切 run+path 聚合寻址并激活——同文件恒一签,点轮尾=看聚合、点工具行=看那一刀
+  const openTurndiffTab = useCallback((run: number, path: string): void => {
+    if (path === '') return;
+    const norm = path.replaceAll('\\', '/');
+    const seat = tabStates[openSessionId];
+    const existing = seat?.tabs.find((tb) => tb.type === 'turndiff' && (tb.params.path ?? '').replaceAll('\\', '/') === norm);
+    if (seat !== undefined && existing !== undefined) {
+      setTabStates((s) => setActive(patchTurndiffAddressing(s, openSessionId, existing.uid, { run, path: norm }), openSessionId, existing.uid));
+      return;
+    }
+    openTabInSession('turndiff', { run, path: norm });
+  }, [openTabInSession, tabStates, openSessionId]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
   /** 成员转录 leader 链接点击(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
    *  记 {member,text,dir,nonce} 下发 Chat——主对话滚到对应消息气泡/发送工具行并闪光 */

@@ -1479,6 +1479,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 4px 10px; border-radius: 0; /* hover=整行提亮,无椭圆内缩(2026-11-11 用户裁定) */
 }.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .run-changes-row.clickable { cursor: pointer; }
+.run-changes-list:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); } /* 列表区整体 hover(单行时=整个下侧区,用户裁定) */
 .run-changes-name {
   border: none; background: transparent; color: var(--fg);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 0; white-space: nowrap;
