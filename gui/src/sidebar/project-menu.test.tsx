@@ -36,7 +36,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       root: body.path ?? `D:/MyWorkStation/sunshinex/${body.name ?? 'project'}`,
       slug: `p-${body.name ?? 'ext'}`,
     })),
-    attach: async (sessionId: string) => ({ sessionId }), // 无收编形态:原样回 id(收编面在 daemon 钉测)
+    attach: async (sessionId: string) => ({ sessionId, root: 'D:/w/p1' }), // 无收编形态:原样回 id+根(收编面在 daemon 钉测)
     archiveSession: vi.fn(async () => undefined), // T6 行内归档落库面(重拉断言消费 workspaces spy)
     appPins: vi.fn(async () => ({ pins: [] })), // 置顶档(归档区/置顶组测试消费)
     saveAppPins: vi.fn(async () => undefined),

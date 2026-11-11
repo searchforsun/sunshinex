@@ -26,7 +26,7 @@ export function useRestoreLast(deps: {
         const lastJournalId: string = o.lastJournalId;
         return connInstance
           .newSession(lastRoot)
-          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then((r) => ({ sessionId: r.sessionId, root: lastRoot, journalId: lastJournalId }))) // 收编以返回 id 为准
+          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then((r) => ({ sessionId: r.sessionId, root: r.root || lastRoot, journalId: lastJournalId }))) // 收编以返回 id 为准;root=attach 归位真根(树会话重启回工作树)
           .then(({ sessionId, root, journalId }) => openSession(sessionId, root, journalId));
       })
       .catch(() => undefined);

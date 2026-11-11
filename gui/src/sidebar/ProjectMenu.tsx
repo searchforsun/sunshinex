@@ -57,7 +57,7 @@ export interface ProjectMenuConn {
   /** 2026-10-24 用户裁定:会话行 hover tooltip 分支信息(source=gitBranches.current) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId */
-  attach(sessionId: string, journalId: string): Promise<{ sessionId: string }>;
+  attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string }>;
   /** T6 归档/撤销(Connection 结构化子集):侧栏行归档钮落库面(归档行由服务端列表滤除) */
   archiveSession(id: string, archived: boolean): Promise<void>;
   /** 置顶档(2026-10-21 GUI 专属,GET/PUT /app/pins;userConfigDir/gui/pins.json) */
@@ -285,6 +285,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         (list) => {
           if (openSlugRef.current !== slug) return;
           setSessions(list);
+          // 树会话行分支缓存补拉(2026-11-11):隔离会话 sr.root=工作树路径,悬浮卡分支按真根取
+          for (const r of list) {
+            const rt = r.root;
+            if (rt === undefined || rt === '' || branchByRootRef.current[rt] !== undefined) continue;
+            conn.gitBranches(rt).then(
+              (b) => { if (b.current) setBranchByRoot((m) => (m[rt] === undefined ? { ...m, [rt]: b.current } : m)); },
+              () => setBranchByRoot((m) => ({ ...m, [rt]: '' })),
+            );
+          }
         },
         (err: unknown) => {
           if (openSlugRef.current !== slug) return;
@@ -385,13 +394,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     setActionError('');
     conn
       .newSession(root)
-      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => r.sessionId)) // G14.2xx daemon 可能收编在座会话,以返回 id 为准
+      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => ({ sid: r.sessionId, root: r.root }))) // G14.2xx daemon 可能收编在座会话,以返回 id 为准;root 同取真根(树会话重挂)
       .then(
-        (sessionId) => {
+        ({ sid: sessionId, root: realRoot }) => {
           setBusy(false);
           markSeen(journalId, journalUpdatedAt ?? Date.now());
           markJournal(sessionId, journalId);
-          onOpenSession(sessionId, root, journalId); // G14.213 journalId 随行下发(滚动位存档稳定键)
+          onOpenSession(sessionId, realRoot, journalId); // G14.213 journalId 随行下发(滚动位存档稳定键);root=attach 归位真根(树会话)
           loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
         },
         (err: unknown) => {

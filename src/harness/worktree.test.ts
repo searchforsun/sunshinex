@@ -39,7 +39,7 @@ test('createWorktree：合法名建树 + 分支分叉 + registry 登记', () => 
   const r = createWorktree(root, dataDir, 'demo', { sessionId: 'sess-1' });
   assert.ok(r.ok, `create failed: ${r.ok ? '' : r.error.message}`);
   if (!r.ok) return;
-  const tree = path.join(worktreesRoot(dataDir), 'demo');
+  const tree = path.join(root, '.git', 'sunshinex', 'worktrees', 'demo');
   assert.equal(r.value.path, tree);
   assert.equal(r.value.branch, 'worktree-demo');
   assert.ok(fs.existsSync(path.join(tree, 'README.md')), 'worktree 检出主仓文件');
@@ -80,7 +80,7 @@ test('removeWorktree：干净即删（含分支 + registry 移除）；脏即保
   const root = makeRepo();
   const dataDir = mktmp('sunshinex-wt-data5-');
   assert.ok(createWorktree(root, dataDir, 'clean').ok);
-  const tree = path.join(worktreesRoot(dataDir), 'clean');
+  const tree = path.join(root, '.git', 'sunshinex', 'worktrees', 'clean');
   const r = removeWorktree(root, dataDir, 'clean');
   assert.ok(r.ok && r.value === 'removed', `expected removed, got ${r.ok ? r.value : r.error.code}`);
   assert.ok(!fs.existsSync(tree), '树已删');
@@ -89,7 +89,7 @@ test('removeWorktree：干净即删（含分支 + registry 移除）；脏即保
   assert.deepEqual(readRegistry(dataDir).map((e) => e.name), [], 'registry 条目移除');
   // 脏树：untracked 文件即 porcelain 非空
   assert.ok(createWorktree(root, dataDir, 'dirty').ok);
-  const tree2 = path.join(worktreesRoot(dataDir), 'dirty');
+  const tree2 = path.join(root, '.git', 'sunshinex', 'worktrees', 'dirty');
   fs.writeFileSync(path.join(tree2, 'edit.txt'), 'wip\n');
   const r2 = removeWorktree(root, dataDir, 'dirty');
   assert.ok(r2.ok && r2.value === 'kept-dirty');
@@ -127,7 +127,7 @@ test('createWorktree：.sunshinex/settings.json 存在才拷（字节一致）�
   assert.ok(r.ok, `create failed: ${r.ok ? '' : r.error.message}`);
   if (!r.ok) return;
   assert.equal(r.value.copiedSettings, true, '拷贝事实如实上报');
-  const tree = path.join(worktreesRoot(dataDir), 'cfg');
+  const tree = path.join(root, '.git', 'sunshinex', 'worktrees', 'cfg');
   assert.equal(
     fs.readFileSync(path.join(tree, '.sunshinex', 'settings.json'), 'utf8'),
     '{"mode":"manual"}\n',

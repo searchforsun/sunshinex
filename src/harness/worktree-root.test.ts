@@ -9,7 +9,7 @@ import { SafetyChain } from './security/chain';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
 import { ProcessSandbox } from './security/sandbox';
-import { createWorktree, worktreesRoot } from './worktree';
+import { createWorktree } from './worktree';
 import { Harness } from './index';
 import { ScriptedAdapter } from '../model/adapter';
 import { dataDirReal } from '../config/data-dir';
@@ -67,16 +67,16 @@ function withChain(fn: (chain: SafetyChain, root: string, tmp: string) => void):
 }
 
 /** 模拟 worktree 目录（链级判界只需目录存在；树的 git 生命周期归 T1 用例覆盖） */
-function fakeTree(tmp: string): string {
-  const tree = path.join(worktreesRoot(tmp), 'demo');
+function fakeTree(repo: string): string {
+  const tree = path.join(repo, '.git', 'sunshinex', 'worktrees', 'demo');
   fs.mkdirSync(tree, { recursive: true });
   fs.writeFileSync(path.join(tree, 'tracked.txt'), 'tree\n');
   return tree;
 }
 
 test('T2-1 enterWorktree：活动根写放行且 safePath 锚活动根；主根写拒（回执提及 worktree）；exit 恢复', () => {
-  withChain((chain, root, tmp) => {
-    const tree = fakeTree(tmp);
+  withChain((chain, root) => {
+    const tree = fakeTree(root);
     chain.enterWorktree(tree);
 
     const inTree = chain.evaluate('Write', { path: path.join(tree, 'new.txt') });
@@ -94,15 +94,17 @@ test('T2-1 enterWorktree：活动根写放行且 safePath 锚活动根；主根�
     const backMain = chain.evaluate('Write', { path: path.join(root, 'app', 'main.txt') });
     assert.equal(backMain.allowed, true, 'exit 后恢复既有语义（root 内写放行）');
     const backTree = chain.evaluate('Write', { path: path.join(tree, 'new.txt') });
-    assert.equal(backTree.allowed, false, 'exit 后 worktree 内写恢复越界拒');
+    // 树落位(2026-11-10)在主根 .git/sunshinex/worktrees 内:exit 后树域即回到 root 信任域内,写放行
+    // (旧 dataDir 落位时树在 root 外=越界拒,该语义随布局退役)
+    assert.equal(backTree.allowed, true, 'exit 后树域回归 root 信任域,写放行');
   });
 });
 
 test('T2-2 读面恒开放：活动根在场主根与活动根均可读；缺省态与既有语义逐字节一致', () => {
   withChain((chain, root, tmp) => {
-    const tree = fakeTree(tmp);
+    const tree = fakeTree(root);
     // 缺省基线：读分支 D1（spec 5.1）——fence 关闭时读域外全放，拒绝文案不再存在（D1 行为变更②）
-    const external = path.join(path.dirname(tmp), 'unrelated-outside.txt');
+    const external = path.join(tmp, 'unrelated-outside.txt');
     const baseRead = chain.evaluate('Read', { path: external });
     assert.equal(baseRead.allowed, true, '缺省基线：fence 关闭时外部路径读放行');
     assert.equal(chain.evaluate('Read', { path: path.join(root, 'app', 'main.txt') }).allowed, true, '缺省基线：主根读放行');
@@ -120,8 +122,8 @@ test('T2-2 读面恒开放：活动根在场主根与活动根均可读；缺省
 });
 
 test('T2-3 记忆写窄口先于活动根判定：activeRoot 在场记忆路径定性不变；dataDir 非记忆子树写仍拒', () => {
-  withChain((chain, root, tmp) => {
-    const tree = fakeTree(tmp);
+  withChain((chain, root) => {
+    const tree = fakeTree(root);
     chain.enterWorktree(tree);
 
     // 记忆窄口（2026-09-18 审查裁决序）先于活动根判定：命中 memory/** 即按记忆语义定论

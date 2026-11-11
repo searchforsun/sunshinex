@@ -193,7 +193,9 @@ export type SessionTier = ModelTier;
 
 export class SessionRuntime {
   readonly id: string;
-  readonly root: string;
+  /** 会话工作区根(树会话=工作树路径;可变仅经 rehomeRoot——attach 按档归位,2026-11-11 树会话
+   *  重启回主分支根修:GUI 恢复链只有组根,journal 旁车 meta.root 才是真根) */
+  root: string;
   private readonly opts: SessionRuntimeOpts;
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
@@ -290,6 +292,12 @@ export class SessionRuntime {
     this.currentMode = opts.mode ?? 'full-access';
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.runtimeImpl = this.assemble();
+  }
+
+  /** attach 重挂根(2026-11-11):档记 meta.root 在盘且异于壳根时由 attachSessionIn 调——
+   *  装配链此后全以新根行走(listChanges/spillImages/writeSessionMeta resolveDataDir 均读 this.root) */
+  rehomeRoot(root: string): void {
+    this.root = root;
   }
 
   /** v3 落档单点(P2 起,spec §3.2):内核段级事件 → journal 行(kernelEventRows 共享映射,P3 起

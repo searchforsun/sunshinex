@@ -47,8 +47,8 @@ test('handleBranch fork 写「Fork of 父显示题」子档题——meta 题优�
       readJson: async () => ({ ok: true, status: 200, body: { turn: 1 } }),
       send: (_res: unknown, status: number, _payload: object) => { assert.equal(status, 200); },
       sessions: new Map([['s1', { attachedJournalId: srcId, status: () => 'idle', root } as never]]),
-      createSession: (_root: string) => ({ ok: true as const, value: { sessionId: 'child1' } }),
-      attach: (_sid: string, jid: string) => { newJid = jid; return { ok: true as const, value: { sessionId: 'child1' } }; },
+      createSession: (_root: string) => ({ ok: true as const, value: { sessionId: 'child1', root: '' } }),
+      attach: (_sid: string, jid: string) => { newJid = jid; return { ok: true as const, value: { sessionId: 'child1', root: '' } }; },
     } as never;
     await handleBranch(io, {} as never, {} as never, 's1', 'fork');
     assert.equal(newJid !== '', true, 'attach 收到子档 id');
@@ -71,8 +71,8 @@ test('handleBranch fork 子档题兜底:父未题名取首条 user 摘要(与列
       readJson: async () => ({ ok: true, status: 200, body: { turn: 1 } }),
       send: (_res: unknown, status: number, _payload: object) => { assert.equal(status, 200); },
       sessions: new Map([['s1', { attachedJournalId: srcId, status: () => 'idle', root } as never]]),
-      createSession: (_root: string) => ({ ok: true as const, value: { sessionId: 'child2' } }),
-      attach: (_sid: string, jid: string) => { newJid = jid; return { ok: true as const, value: { sessionId: 'child2' } }; },
+      createSession: (_root: string) => ({ ok: true as const, value: { sessionId: 'child2', root: '' } }),
+      attach: (_sid: string, jid: string) => { newJid = jid; return { ok: true as const, value: { sessionId: 'child2', root: '' } }; },
     } as never;
     await handleBranch(io, {} as never, {} as never, 's1', 'fork');
     assert.equal(readSessionMeta(dataDir, newJid).title, 'Fork of 调研认证模块的重构方案', '首条 user 兜底+截 60 字');

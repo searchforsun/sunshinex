@@ -126,7 +126,7 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
  * SessionJournal attach 续挂 + SessionRuntime.attachJournal 挂订阅(后续 run 的 chain 行与段级行
  * 续落同档,teardown seal)→ 置激活。双挂/运行中挂 INVALID_STATE(播种会击穿在飞 run 的链)。
  */
-export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: string): Result<{ sessionId: string }> {
+export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: string): Result<{ sessionId: string; root: string }> {
   // G14.2xx 运行中刷新恢复:同 journal 已在座 → **收编复用**并丢弃 newSession 造的空壳——空壳挂同档
   // =会话 id 换号,直播帧按会话过滤全丢,GUI 种子态冻结成假「已停止」而侧栏仍在跑(实测病根)。
   // 2026-11-07 扩至 idle 在座(用户实测「切会话非常慢」根修):原 idle 走重播种=每次重开铸一个新运行时,
@@ -156,7 +156,7 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
         }
       }
       io.setActive(sid);
-      return ok({ sessionId: sid });
+      return ok({ sessionId: sid, root: s.root });
     }
   }
   const session = io.sessions.get(id);
@@ -169,6 +169,17 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
     return fail('INVALID_STATE', 'session already has an attached journal');
   }
   if (session.status() === 'running') return fail('INVALID_STATE', 'cannot attach while a run is in progress');
+  // 树会话重启回主分支根修(2026-11-11 用户实测「重启后会话自动回到主分支」):GUI 恢复链只持
+  // 组根(指针档 lastRoot/组行 onAttach 都传主项目根),journal 旁车 meta.root 才是会话真根(隔离
+  // 会话=工作树路径;树数据经 resolveDataDir 重定向落在主档,同 journalId 同文件,壳根也能找到档
+  // =跑在错误工作区无人察觉)。档记根在盘即重挂壳根(unwatch 旧根 refcount 守护,watch 新根幂等),
+  // 装配/转录/改动面从此以真根行走;根目录已删(树被手清)则维持壳根不阻断恢复
+  const metaRoot = readSessionMeta(resolveDataDir(session.root), journalId).root;
+  if (metaRoot !== undefined && metaRoot !== session.root && fs.existsSync(metaRoot)) {
+    io.unwatchProject(session.root);
+    session.rehomeRoot(metaRoot);
+    io.watchProject(metaRoot);
+  }
   const dataDir = resolveDataDir(session.root);
   const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
   if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
@@ -251,7 +262,7 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
     }
   }
   io.setActive(id);
-  return ok({ sessionId: id });
+  return ok({ sessionId: id, root: session.root });
 }
 
 /** birth-only 档判定（出生写语义的守卫面,2026-10-31 spec §2）：档仅含 header/ctx-snap 行（零实质

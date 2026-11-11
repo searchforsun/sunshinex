@@ -229,7 +229,7 @@ test('④ POST /session/:id/attach：seg 面重放入核 + 链 restoreSession；
 
       const att = await fetch(`${base}/session/${sid}/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jid }) });
       assert.equal(att.status, 200);
-      assert.deepEqual(await att.json(), { ok: true, sessionId: sid });
+      assert.deepEqual(await att.json(), { ok: true, sessionId: sid, root }); // root 随行(2026-11-11 attach 归位真根)
       assert.equal(daemon.activeId(), sid, 'attach 置激活');
 
       // 双挂 → 409

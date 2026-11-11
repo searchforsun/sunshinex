@@ -315,7 +315,8 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               rowId={sr.id}
                               label={label}
                               info={{
-                                branch: root !== undefined ? props.branchByRoot?.[root] : undefined,
+                                // 行根优先(2026-11-11 树会话):隔离会话 sr.root=工作树路径,分支/地址都按真根取
+                                branch: root !== undefined ? props.branchByRoot?.[sr.root ?? root] ?? props.branchByRoot?.[root] : undefined,
                                 runs: sr.runs,
                                 steps: sr.steps,
                                 createdAt: sr.createdAt,
@@ -329,7 +330,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               busy={busy}
                               onOpen={() => {
                                 if (root === undefined) return;
-                                onAttach(root, sr.id, sr.updatedAt);
+                                onAttach(sr.root !== undefined && sr.root !== '' ? sr.root : root, sr.id, sr.updatedAt);
                               }}
                               pin={root !== undefined ? {
                                 onPin: () => onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt }),

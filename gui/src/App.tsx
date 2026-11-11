@@ -607,7 +607,7 @@ function AppShell(): JSX.Element {
       .newSession(a.root)
       .then(({ sessionId }) => connInstance.attach(sessionId, a.journalId))
       .then(
-        (r) => openSession(r.sessionId, a.root, a.journalId),
+        (r) => openSession(r.sessionId, r.root || a.root, a.journalId),
         (err: unknown) => console.error('[tray] open session failed:', err),
       );
   };
@@ -715,12 +715,12 @@ function AppShell(): JSX.Element {
       .then(() => connInstance.sessionsOf(root))
       .then((rows) => {
         const first = rows[0];
-        if (first === undefined) return connInstance.newSession(root).then((r) => ({ sessionId: r.sessionId, journalId: undefined as string | undefined }));
+        if (first === undefined) return connInstance.newSession(root).then((r) => ({ sessionId: r.sessionId, journalId: undefined as string | undefined, root }));
         return connInstance
-          .newSession(root)
-          .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId, journalId: first.id })));
+          .newSession(first.root ?? root)
+          .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId, journalId: first.id, root: r.root || first.root || root })));
       })
-      .then(({ sessionId, journalId }) => openSession(sessionId, root, journalId))
+      .then(({ sessionId, journalId, root: realRoot }) => openSession(sessionId, realRoot, journalId))
       .catch((err: unknown) => {
         // 建席链败:排队旗回收——残留会在用户下次打开任意会话时补开出陈旧路径的幽灵文件标签
         pendingFileTabRef.current = null;
@@ -1184,8 +1184,8 @@ function AppShell(): JSX.Element {
                   if (conn === null) return;
                   void conn
                     .newSession(openRoot)
-                    .then(({ sessionId }) => conn.attach(sessionId, sid).then((r) => r.sessionId))
-                    .then((canonical) => openSession(canonical, openRoot, sid))
+                    .then(({ sessionId }) => conn.attach(sessionId, sid).then((r) => ({ sid: r.sessionId, root: r.root || openRoot })))
+                    .then(({ sid: canonical, root }) => openSession(canonical, root, sid))
                     .catch(showOpError);
                 }}
                 onOpError={showOpError}

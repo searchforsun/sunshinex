@@ -550,7 +550,7 @@ export function WelcomeComposer({
                 })()}
               </button>
             ))}
-            {projRows.length === 0 && <div className="proj-hint">{t('No matching project', '无匹配项目')}</div>}
+            {projRows.length === 0 && <div className="proj-empty">{t('No matching project', '无匹配项目')}</div>}
             <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
               <FolderAddIcon size={14} /> {t('Browse folders…', '浏览文件夹…')}
             </button>

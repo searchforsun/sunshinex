@@ -42,7 +42,7 @@ export interface SessionHandlerIo {
   denyPendingFor(sessionId: string): void;
   broadcastFrame(frame: DaemonFrame): void;
   model: ModelAdapter;
-  attach(id: string, journalId: string): Result<{ sessionId: string }>;
+  attach(id: string, journalId: string): Result<{ sessionId: string; root: string }>;
   createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }>;
   defaultScratchRoot(): string;
   /** 挂起回执路由（P6 §4：表在会话）——daemon 迭代会话表寻址,命中 false 即 404 */
@@ -523,7 +523,7 @@ export async function handleAttach(io: SessionHandlerIo, req: http.IncomingMessa
     io.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
     return;
   }
-  io.send(res, 200, { ok: true, sessionId: r.value.sessionId });
+  io.send(res, 200, { ok: true, sessionId: r.value.sessionId, root: r.value.root });
 }
 
 export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

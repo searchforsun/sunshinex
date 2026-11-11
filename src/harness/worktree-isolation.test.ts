@@ -7,7 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Harness } from './index';
 import { AgentRegistry, SubagentRunner } from './subagent';
-import { readRegistry, worktreesRoot } from './worktree';
+import { readRegistry } from './worktree';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { SafetyChain } from './security/chain';
@@ -99,7 +99,7 @@ test('T5-1 frontmatter 声明 → 建树执行、干净树自动删且零 note �
       assert.equal(prompts.length, 3, `帧数应为 父/子/父=3：${prompts.length}`);
       const childCwd = cwdOf(prompts[1]!);
       assert.notEqual(childCwd, repo, '子 Reactor 工作目录不得是主根');
-      assert.ok(childCwd.startsWith(worktreesRoot(tmp) + path.sep), `应落在数据目录 worktrees 下：${childCwd}`);
+      assert.ok(childCwd.startsWith(path.join(repo, '.git', 'sunshinex', 'worktrees') + path.sep), `应落在项目内 .git/sunshinex/worktrees 下：${childCwd}`);
       assert.match(path.basename(childCwd), /^subagent-iso-[a-z0-9]{4}$/, `专属树名形态：${path.basename(childCwd)}`);
       assert.equal(fs.existsSync(childCwd), false, '干净收口应自动删树');
       assert.equal(readRegistry(tmp).length, 0, '干净收口登记应移除');

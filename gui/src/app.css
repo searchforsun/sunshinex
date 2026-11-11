@@ -1147,6 +1147,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* (G12:welcome-input-card/foot 退役——输入卡样式单源在 .sx-composer 段) */
 
 /* ===== G10 欢迎页项目弹层(basename 条目/系统对话框提示) ===== */.proj-hint { padding: 6px 10px; font-size: calc(14px * var(--fz)); color: var(--warn); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+/* 筛选无命中(2026-11-11 用户裁定「应该是暗色的」):非告警,暗色弱化文本 */.proj-empty { padding: 6px 10px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
 
 /* G10 欢迎页 proj-pop 内 menuitem 竖排 */.proj-pop { display: flex; flex-direction: column; }.proj-pop .sx-menuitem {
   display: flex; align-items: center; gap: 8px; width: 100%;
@@ -1277,12 +1278,15 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    zoom>1 视觉膨胀由 JS 落位时 /zoomScale 与视口钳制归一,余量不足缩到 min 160);
    ①会话名可换行 ②分支 ③轮次·步数 ④建档时刻——②③④单行尾部省略 */
 .sx-sess-card {
-  position: fixed; z-index: 150; pointer-events: none; transform: translateY(-50%);
+  position: fixed; z-index: 150; transform: translateY(-50%);
   display: flex; flex-direction: column; gap: 4px;
   padding: 8px 10px; border-radius: var(--radius-lg);
   background: var(--surface-elevated); box-shadow: var(--elev-prominent);
   font-size: calc(14px * var(--fz)); line-height: 1.45; color: var(--fg-secondary);
 }
+/* 复制钮默认隐藏,行 hover 才显(2026-11-11 用户裁定「只有 hover 上某行时才在后面显示」) */
+.sx-sess-card-copy { opacity: 0; transition: opacity 120ms ease; }
+.sx-sess-card-name:hover .sx-sess-card-copy, .sx-sess-card-path:hover .sx-sess-card-copy, .sx-sess-card-row:hover .sx-sess-card-copy { opacity: 1; }
 .sx-sess-card-name { color: var(--fg); font-size: calc(14px * var(--fz)); overflow-wrap: anywhere; }
 /* 2026-10-27 用户裁定:名下细分割线+项目根路径(换行不省略,宽度由组件按视口余量钳制) */
 .sx-sess-card-divider { height: 1px; background: var(--border); margin: 4px 0 3px; }

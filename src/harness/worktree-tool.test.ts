@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Harness } from './index';
-import { createWorktree, worktreesRoot, readRegistry } from './worktree';
+import { createWorktree, readRegistry } from './worktree';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 
@@ -77,7 +77,7 @@ test('T4-2 create 端到端：观察含路径与分支；glob 锚树/write 相�
       fs.writeFileSync(path.join(repo, 'main-only.txt'), 'x\n');
       return h.reactor.run({ goal: 'g' }, { maxSteps: 6 }).then((r) => {
         assert.equal(r.done, true, `run 应完成：${JSON.stringify(r.stopReason ?? '')}`);
-        const tree = path.join(worktreesRoot(tmp), 'sess');
+        const tree = path.join(repo, '.git', 'sunshinex', 'worktrees', 'sess');
         const call = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('worktree-sess'));
         assert.ok(call, `create 观察应含路径与分支名，实际步骤：${JSON.stringify(r.steps.map((s) => s.observation.slice(0, 60)))}`);
         const globRow = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('README.md'));
@@ -105,7 +105,7 @@ test('T4-4 list：观察行输出登记表摘要（name/branch/dirty）', () =>
       const c = createWorktree(repo, tmp, 'listing', {});
       assert.ok(c.ok, `seed create 失败：${c.ok ? '' : c.error.message}`);
       // 脏化 seed 树：list 摘要的 dirty 字段需真实脏态可辨（干净树标 clean）
-      fs.writeFileSync(path.join(worktreesRoot(tmp), 'listing', 'extra.txt'), 'x\n');
+      fs.writeFileSync(path.join(repo, '.git', 'sunshinex', 'worktrees', 'listing', 'extra.txt'), 'x\n');
       return h.reactor.run({ goal: 'g' }, { maxSteps: 4 }).then((r) => {
         const row = r.steps.find((s) => s.action === 'tool-result' && s.observation.includes('listing'));
         assert.ok(row, `list 观察应含登记条目 name：${JSON.stringify(r.steps.map((s) => s.observation.slice(0, 60)))}`);

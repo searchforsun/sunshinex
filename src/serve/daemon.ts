@@ -265,7 +265,7 @@ export class GuiDaemon {
     return lifecycle.createSessionIn(this.lifecycleIo, root, opts);
   }
 
-  attach(id: string, journalId: string): Result<{ sessionId: string }> {
+  attach(id: string, journalId: string): Result<{ sessionId: string; root: string }> {
     return lifecycle.attachSessionIn(this.lifecycleIo, id, journalId);
   }
 
@@ -1033,16 +1033,19 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
    *  截断 truncated:true）→ 200 {path, content, truncated?}。仅 GET（路由表 method 精确匹配） */
 
   /** GET /session/:id/diff?callId=（G7 收口交接，Chat write/edit 展开/Files 消费）：快照族（write/edit）
-   *  调用的 pre-image ↔ 磁盘现文件双内容。查询面现场核结论——daemon 会话的影子快照 drain 仅在
-   *  dispose/reset（清单随 seal 落 journal），会话存续期内 sink 内存清单常驻：**run 中与 run 后
-   *  均查内存实时可得**（blob 落盘 <dataDir>/sessions/_blobs/<sha256> 即时可见）。callId → 调用
-   *  对位：帧缓冲（512 环）内按序扫 tool-call 帧——首枚命中 callId 的帧即目标（text=注册名须在
-   *  快照族 write/edit，payload.input.path 解析绝对路径）；同路径此前快照族调用的位次=该次
-   *  pre-image 在 sink 清单的序（nthFor 按调用序对位，同路径多次写各自取写前态）。响应
-   *  200 {path, oldContent?, newContent, truncated?}：oldContent=sink pre-image blob（512KB 截断；
-   *  新建写无 blob 缺场）；newContent=磁盘现文件（readFileBounded——判界/截断/二进制同 /file）；
-   *  truncated=任一侧截断。404 面：未知会话 / callId 无帧（含缓冲环已裁）/ 非快照族 / 无快照
-   *  （root 外写不入清单）→ {error:'no snapshot'}；400：缺 callId。帧环裁剪的退化：目标帧若已被
+   *  调用的冻结前像 ↔ 冻结后像双内容（2026-11-11 用户裁定「不兼容旧会话，就是读快照」——写族落盘时
+   *  capture 已捕 pre-image、captureAfter 已把新内容落库挂 afterHash，查询面只读 blob 不读现盘：
+   *  同文件多刀写各自 before→after 互不漂移；无 afterHash 条目=无快照 404 不回退）。查询面现场核
+   *  结论——daemon 会话的影子快照 drain 仅在 dispose/reset（清单随 seal 落 journal），会话存续期内
+   *  sink 内存清单常驻：**run 中与 run 后均查内存实时可得**（blob 落盘 <dataDir>/sessions/_blobs/
+   *  <sha256> 即时可见）。callId → 调用对位：帧缓冲（512 环）内按序扫 tool-call 帧——首枚命中
+   *  callId 的帧即目标（text=注册名须在快照族 write/edit，payload.input.path 解析绝对路径）；
+   *  同路径此前快照族调用的位次=该次 pre-image 在 sink 清单的序（nthFor 按调用序对位，同路径
+   *  多次写各自取写前态）。响应 200 {path, oldContent?, newContent, truncated?}：oldContent=sink
+   *  pre-image blob（512KB 截断；新建写无 blob 缺场）；newContent=afterHash 后像 blob（utf8 截断
+   *  同水位）；truncated=任一侧截断。404 面：未知会话 / callId 无帧（含缓冲环已裁）/ 非快照族 /
+   *  无快照（root 外写不入清单 / 无 afterHash）/ 后像 blob 缺场 → {error:'no snapshot'}；400：
+   *  缺 callId。帧环裁剪的退化：目标帧若已被
    *  环裁（>512 事件）即 404——GUI 退单列现内容（write 回执 input.content / edit 回执 old→new 串），
    *  记档报告 */
 

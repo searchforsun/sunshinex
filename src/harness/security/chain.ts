@@ -18,9 +18,22 @@ import { landlockWrap } from './landlock';
 /** 需要路径边界校验的工具（安全链规范名；单一权威在 modes.ts，与 guard 共用防漂移） */
 const PATH_TOOLS = PATH_TOOL_NAMES;
 
-/** .git 内部路径判据（spec D6）：路径任一段为 .git 即命中（仓库 .git 目录与 worktree 指针文件同护） */
+/** .git 内部路径判据（spec D6）：路径任一段为 .git 即命中（仓库 .git 目录与 worktree 指针文件同护）。
+ *  豁免：.git/sunshinex/worktrees/** = 会话隔离工作树落位(2026-11-10 用户裁定迁入项目内)——
+ *  树内文件是会话的工作产物,写保护只护 git 自管状态,不拦自家工作树 */
 function isGitInternalPath(real: string): boolean {
-  return real.split(path.sep).includes('.git');
+  const segs = real.split(path.sep);
+  const i = segs.indexOf('.git');
+  if (i === -1) return false;
+  if (segs[i + 1] === 'sunshinex' && segs[i + 2] === 'worktrees') return false;
+  return true;
+}
+
+/** 隔离工作树区判据：<仓>/.git/sunshinex/worktrees/** 子树（与 isGitInternalPath 豁免段同源） */
+function isIsolatedTreePath(real: string): boolean {
+  const segs = real.split(path.sep);
+  const i = segs.indexOf('.git');
+  return i !== -1 && segs[i + 1] === 'sunshinex' && segs[i + 2] === 'worktrees';
 }
 
 /** 内置凭据模式集：命中替换为 ***（零依赖；spec 2.3 逐字清单） */
@@ -162,7 +175,8 @@ export class SafetyChain {
       if (WRITE_TOOL_NAMES.has(tool) && this.isProtectedSettingsPath(real)) {
         return { allowed: false, reason: `COMMAND_DENIED: settings.json is protected (edit it manually): ${real}` };
       }
-      // ② .git/** 写保护（D6）
+      // ② .git/** 写保护（D6）。sunshinex worktrees 子树豁免——树落位(2026-11-10)在主根
+      // .git/sunshinex/worktrees 内,那是隔离会话的工作产物区,不是 git 自管状态
       if (WRITE_TOOL_NAMES.has(tool) && isGitInternalPath(real)) {
         return { allowed: false, reason: `COMMAND_DENIED: .git is protected (git state changes go through exec git): ${real}` };
       }
@@ -181,8 +195,9 @@ export class SafetyChain {
           ? { allowed: true, safePath: real }
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
       }
-      // ⑤ worktree 主根拒写（既有硬底线；主根读类恒开放）
-      if (this.activeRootReal !== null && WRITE_TOOL_NAMES.has(tool) && (real === this.rootReal || isWithin(this.rootReal, real))) {
+      // ⑤ worktree 主根拒写（既有硬底线；主根读类恒开放）。树落位(2026-11-10)在主根
+      // .git/sunshinex/worktrees 内——字面落在主根域,但那是隔离会话的工作树(活动根域),不按主根拒
+      if (this.activeRootReal !== null && WRITE_TOOL_NAMES.has(tool) && !isIsolatedTreePath(real) && (real === this.rootReal || isWithin(this.rootReal, real))) {
         return { allowed: false, reason: `COMMAND_DENIED: path escapes active worktree root (write outside worktree session): ${real}` };
       }
 
