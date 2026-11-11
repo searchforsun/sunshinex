@@ -3673,8 +3673,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    上边距追加;列表/表格内部自留呼吸」)===== */
 /* 正文:节奏单位=空一行 20px。所有块只设下外距——相邻外距合并(取大者)后任意块间恒为 20,
    不再出现「段→列表 20 / 列表→段 14」式不均;标题上 38 为唯一追加位 */
-.entry p { margin: 0 0 var(--f-para-gap, 12px); }
-.entry ul, .entry ol { margin: 0 0 var(--f-para-gap, 12px); }
+.entry p { margin: 0 0 var(--f-para-gap, 16px); }
+.entry ul, .entry ol { margin: 0 0 var(--f-para-gap, 16px); }
 .entry .table-wrap { margin: 0 0 20px; }
 .entry .table-wrap table { margin: 0; } /* 裸表旧规则不进容器(容器内零外距,外距由容器承担) */
 .entry .code-block { margin: 0 0 20px; }
