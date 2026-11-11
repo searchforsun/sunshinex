@@ -1606,23 +1606,25 @@ describe('G14.177 顶栏动态计数按钮', () => {
     const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     const btn = document.querySelector('.chat-dyn-btn');
-    expect(btn?.textContent).toContain('2');
+    expect(btn?.textContent).toContain('3'); // 数量=完整数量(总数,不随完成收缩)
     expect(btn?.textContent).toContain('待办');
     fireEvent.click(btn!);
     expect(onOpenTab).toHaveBeenCalledWith('tasks');
-    // 全完成:末批 0 未完成 → 按钮隐(不占位)
+    // 全完成:末批 1 项 → 数量 1 仍显示(完整数量口径)
     first.unmount();
     const done = [
       { seq: 1, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: '已完成项', status: 'completed' }] }, result: { text: 'ok', ok: true } },
     ] as never;
-    render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
+    const second = render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
-    expect(document.querySelector('.chat-dyn-btn')).toBeNull();
-    // 2026-11-11 用户裁定改版:轮次收束(idle)不再即隐——空会话(sessionId='')无收尾捕获面,历史空=仍隐
+    expect(document.querySelector('.chat-dyn-btn')?.textContent).toContain('1'); // 2026-11-11 用户裁定改版:数量=完整数量,完成也显示
     first.unmount();
-    render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
+    second.unmount();
+    const third = render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
-    expect(document.querySelector('.chat-dyn-btn')).toBeNull();
+    // 2026-11-11 改版:idle 会话显示转录末批待办总量(「最后生效块」语义——历史会话打开也能看到)
+    expect(third.container.querySelector('.chat-dyn-btn')?.textContent).toContain('3');
+    expect(third.container.querySelector('.chat-dyn-btn')?.className).toContain('dyn-done');
   });
 
   it('2026-11-11 改版:轮收尾快照持久(idle 显「完成 2 待办」,点击开待办页签);中断轮标「中断」;0 不显示', async () => {
@@ -1651,7 +1653,7 @@ describe('G14.177 顶栏动态计数按钮', () => {
     await flushed();
     second.rerender(<Chat conn={connOf(stopped, 'idle')} sessionId="s2" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
-    expect(document.querySelector('.chat-dyn-btn')?.className).toContain('dyn-interrupted');
+    expect(document.querySelector('.chat-dyn-btn')?.className).toContain('dyn-done'); // 中断不再单独示态(2026-11-11 简化)
     second.unmount();
   });
 });

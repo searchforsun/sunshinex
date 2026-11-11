@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Ban, Bot, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
+import { Archive, ArchiveRestore, Bot, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
@@ -24,8 +24,8 @@ export type DynBlockKind = 'todo' | 'plan' | 'task' | 'bg';
 export interface DynBlock {
   kind: DynBlockKind;
   count: number;
-  /** 块状态(2026-11-11 用户裁定「最近两轮中最后生效块」):running=转圈/done=完成/interrupted=中断·跳过 */
-  state: 'running' | 'done' | 'interrupted';
+  /** 块状态(2026-11-11 用户裁定简化):running=转圈替换前置图标;非运行=前置图标原样(不区分完成/中断) */
+  state: 'running' | 'done';
 }
 
 const DYN_META: Record<DynBlockKind, { label: string; icon: typeof ListTodo; tab: 'tasks' | 'agents' | 'bgtasks' | 'plans' }> = {
@@ -66,17 +66,15 @@ export function ChatDynButtons({ blocks, onOpenTab }: {
             key={b.kind}
             type="button"
             className={`chat-dyn-btn dyn-${b.state}`}
-            data-tip={`${meta.label}: ${b.state === 'running' ? t('Running', '运行中') : b.state === 'done' ? t('Done', '完成') : t('Interrupted', '中断')}`}
+            data-tip={b.state === 'running' ? `${meta.label}: ${t('Running', '运行中')}` : meta.label}
             onClick={() => onOpenTab?.(meta.tab)}
           >
+            {/* 运行中=转圈替换前置图标(2026-11-11 用户裁定「不然太啰嗦」);非运行=前置图标原样 */}
             {b.state === 'running' ? (
               <span className="run-spinner" aria-hidden="true" />
-            ) : b.state === 'done' ? (
-              <Check size={14} strokeWidth={2.25} aria-hidden="true" />
             ) : (
-              <Ban size={14} strokeWidth={1.75} aria-hidden="true" />
+              <Prefix size={14} strokeWidth={1.75} aria-hidden="true" />
             )}
-            <Prefix size={14} strokeWidth={1.75} aria-hidden="true" />
             {b.count}
             <span>{meta.label}</span>
           </button>
