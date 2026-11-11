@@ -96,6 +96,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
   /** xterm 实例引用(background 到场补涂用——下栏井色 dock 挂载后才解析,装配期尚未定) */
   const termRef = useRef<Terminal | null>(null);
 
+  /** background 最新值 ref:装配是异步链(openPty.then 里建 Terminal),闭包捕获的是挂载期旧值——
+   *  下栏井色 dockBg 挂载后才解析,建实例时须读最新(2026-11-10 用户实测画布仍 #eee 的根因) */
+  const backgroundRef = useRef(background);
+  backgroundRef.current = background;
   /** background 到场补涂:下栏井色 dock 挂载后才解析(dockBg 经 prop 到此),装配期 Terminal 已按
    *  缺省井色建——prop 到达即重涂 options.theme */
   useEffect(() => {
@@ -217,7 +221,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
           // scrollOnEraseInDisplay:清屏(ED2)把屏上内容推进滚动区而非抹除——新壳启动即发清屏,不开则
           // 回种的历史屏一出现就被抹掉(Windows Terminal/PuTTY 同款 cls 语义)
-          termRef.current = term = new Terminal({ theme: xtermThemeFor(currentPalette(), background), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
+          termRef.current = term = new Terminal({ theme: xtermThemeFor(currentPalette(), backgroundRef.current), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
           // 主题热随(2026-11-04 亮色终端裁定):html[data-theme] 变更即换 theme,存活的 pty 不重连
           const unwatch = watchThemeChange(() => {
             if (term !== null) term.options.theme = xtermThemeFor(currentPalette(), background);
