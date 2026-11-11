@@ -1340,7 +1340,6 @@ function AppShell(): JSX.Element {
                   {(isWelcome
                     ? [
                         ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
-                        ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
                       ] as [string, LucideIcon, string, () => void][]
                     : [
                         ['side', MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],
