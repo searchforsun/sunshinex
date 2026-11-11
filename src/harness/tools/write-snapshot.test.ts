@@ -99,3 +99,54 @@ test('builtin write 执行后 sink 收到 pre-image（full-access 免审批直�
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+/** 每次改动的后像快照（2026-11-11 用户裁定「不兼容旧会话，就是读快照」）：write/edit 落盘后
+ *  captureAfter 把新内容落库挂 afterHash——/diff 查询面读冻结前后像，不再读现盘 */
+test('captureAfter: 同路径末尾条目挂 afterHash + blob 落库;多次写各挂各刀', () => {
+  const root = tmp();
+  try {
+    fs.writeFileSync(path.join(root, 'a.txt'), 'v1');
+    const blobs = path.join(root, 'blobs');
+    const c = new WriteSnapshotCollector(blobs);
+    c.captureRooted(path.join(root, 'a.txt'), 'a.txt');
+    c.attachAfterRooted('a.txt', 'v2');
+    c.captureRooted(path.join(root, 'a.txt'), 'a.txt');
+    c.attachAfterRooted('a.txt', 'v3');
+    const entries = c.drain();
+    assert.equal(entries.length, 2);
+    assert.equal(fs.readFileSync(path.join(blobs, entries[0].hash)).toString(), 'v1');
+    assert.equal(entries[0].afterHash !== undefined && fs.readFileSync(path.join(blobs, entries[0].afterHash)).toString(), 'v2');
+    assert.equal(entries[1].afterHash !== undefined && fs.readFileSync(path.join(blobs, entries[1].afterHash)).toString(), 'v3');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('captureAfter: 无匹配条目（root 外 capture 被跳过）静默不挂', () => {
+  const root = tmp();
+  try {
+    const blobs = path.join(root, 'blobs');
+    const c = new WriteSnapshotCollector(blobs);
+    c.attachAfterRooted('ghost.txt', 'x');
+    assert.deepEqual(c.drain(), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('builtin write 执行后 captureAfter 落后像（sink 端到端:hash=old/afterHash=new）', async () => {
+  const root = tmp();
+  try {
+    const sink = makeWriteSnapshotSink(path.join(root, 'data'), root);
+    const { registry: reg, safety } = registry(root, sink);
+    fs.writeFileSync(path.join(root, 'b.txt'), 'old');
+    await reg.execute('write', { path: 'b.txt', content: 'new' }, safety);
+    const entries = sink.drain();
+    const blobs = path.join(root, 'data', 'sessions', '_blobs');
+    assert.equal(fs.readFileSync(path.join(blobs, entries[0].hash)).toString(), 'old');
+    assert.ok(entries[0].afterHash !== undefined && entries[0].afterHash.length > 0, 'afterHash 在场');
+    assert.equal(fs.readFileSync(path.join(blobs, entries[0].afterHash!)).toString(), 'new');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

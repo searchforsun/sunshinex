@@ -29,6 +29,18 @@ export class WriteSnapshotCollector {
     }
   }
 
+  /** 每次改动的后像落库（2026-11-11 用户裁定「不兼容旧会话，就是读快照」）：紧跟同路径 capture 之后
+   *  调用——找到 pending 末尾该路径条目挂 afterHash（内容寻址同库去重）。capture 被跳过（root 外）
+   *  或无匹配条目时静默不挂——diff 查询面按无快照 404（不回退现盘，防累计漂移假差） */
+  attachAfterRooted(relPosix: string, content: string): void {
+    for (let i = this.pending.length - 1; i >= 0; i -= 1) {
+      if (this.pending[i].path === relPosix) {
+        this.pending[i].afterHash = this.store(Buffer.from(content, 'utf8'));
+        return;
+      }
+    }
+  }
+
   drain(): SnapshotEntry[] {
     const out = this.pending;
     this.pending = [];
@@ -82,6 +94,9 @@ export class WriteSnapshotCollector {
  *  drain 仅在 dispose/reset（快照清单随 seal 落 journal），会话存续期内清单常驻内存） */
 export interface WriteSnapshotSink {
   capture(p: string): void;
+  /** 落盘后的后像快照（2026-11-11）：紧跟 capture(p) 同路径调用，content=写入的新内容——
+   *  挂到末尾该路径条目的 afterHash；无匹配条目（root 外 capture 被跳过）静默不挂 */
+  captureAfter(p: string, content: string): void;
   drain(): SnapshotEntry[];
   takeUnsealed(): SnapshotEntry[];
   /** 按调用序查该路径第 ordinal 次（1 基）pre-image 捕获（p 同 capture 口径：相对 root 或绝对） */
@@ -107,6 +122,11 @@ export function makeWriteSnapshotSink(dataDir: string, root: string): WriteSnaps
       const rel = relOf(abs);
       if (rel === undefined) return;
       collector.captureRooted(abs, rel);
+    },
+    captureAfter: (p, content) => {
+      const rel = relOf(path.isAbsolute(p) ? p : path.resolve(root, p));
+      if (rel === undefined) return;
+      collector.attachAfterRooted(rel, content);
     },
     drain: () => collector.drain(),
     takeUnsealed: () => collector.takeUnsealed(),

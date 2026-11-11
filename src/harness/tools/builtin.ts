@@ -109,7 +109,7 @@ export function builtinTools(
     memory?: MemoryWriteSeam;
     memoryWrite?: MemoryWriteTool;
     ask?: AskUserSeam;
-    writeSnapshot?: { capture(p: string): void; drain(): SnapshotEntry[] };
+    writeSnapshot?: { capture(p: string): void; captureAfter(p: string, content: string): void; drain(): SnapshotEntry[] };
     activeRoot?: () => string | null;
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
@@ -157,6 +157,10 @@ export function builtinTools(
       }
     }
     backend.writeFile(target, finalContent);
+    // 每次改动的后像快照（2026-11-11 用户裁定「不兼容旧会话，就是读快照」）：紧跟 capture 落库
+    // 写入的新内容——/diff 查询面读冻结前后像 blob（before→after），不再读现盘（多刀写同文件
+    // 时逐刀快照互不漂移）
+    writeSnapshot?.captureAfter(target, finalContent);
     // diff stat（G14 工具行改版）：统计随结果串同源下发——GUI 折叠行与 TUI ⎿ 行同一 `+A -D`，无 second fetch
     const stat = writeDiffStat(pre, finalContent);
     const receipt = stat !== undefined ? `${verb} ${stat}` : verb;

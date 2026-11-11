@@ -122,7 +122,7 @@ async function diffOf(http: string, H: Record<string, string>, sid: string, call
   return fetch(`${http}/session/${encodeURIComponent(sid)}/diff?callId=${encodeURIComponent(callId)}`, { headers: H });
 }
 
-test('① diff 双内容:预置文件 write 后 200 oldContent=pre-image/newContent=磁盘现文件;新文件 oldContent 缺场;写后即可查(run 中实时)', { timeout: 30_000 }, async () => {
+test('① diff 双内容:预置文件 write 后 200 oldContent=pre-image/newContent=冻结后像快照;新文件 oldContent 缺场;写后即可查(run 中实时)', { timeout: 30_000 }, async () => {
   await withDiffDaemon(
     () => new ScriptedAdapter([writeCard('src/a.ts', 'new body'), writeCard('src/fresh.ts', 'fresh body'), DONE]),
     async (ctx) => {
@@ -151,12 +151,12 @@ test('① diff 双内容:预置文件 write 后 200 oldContent=pre-image/newCont
         );
         // 第一写完成即查(不待 done——sink 内存清单 run 中实时;写落盘先于 result 帧,取证即确定态)
         await waitFor(() => resultArrived('src/a.ts'), 10_000);
-        // 既有文件:oldContent=pre-image blob,newContent=磁盘现文件(write 落盘结果)
+        // 既有文件:oldContent=pre-image blob,newContent=该次冻结后像 blob(captureAfter 落库)
         const r1 = await diffOf(ctx.http, ctx.H, sid, callOf('src/a.ts'));
         assert.equal(r1.status, 200, '既有文件 write 的 diff 应 200');
         const b1 = (await r1.json()) as DiffBody;
         assert.equal(b1.oldContent, 'old body', 'oldContent=写前 pre-image blob');
-        assert.equal(b1.newContent, 'new body', 'newContent=磁盘现文件');
+        assert.equal(b1.newContent, 'new body', 'newContent=该次冻结后像快照');
         assert.equal(b1.path, path.resolve(ctx.root, 'src', 'a.ts'), 'path=resolve 归一绝对路径');
         assert.equal(b1.truncated, undefined, '双侧小文件不带 truncated');
         // 收尾(run 落定)后再验第二写(新建文件)
@@ -209,7 +209,7 @@ test('② 404/400 面:非 write 调用/未知 callId → 404 no snapshot;未知�
   );
 });
 
-test('③ 截断:pre-image 与磁盘现文件各 512KB 截断 + truncated:true', { timeout: 30_000 }, async () => {
+test('③ 截断:pre-image 与冻结后像各 512KB 截断 + truncated:true', { timeout: 30_000 }, async () => {
   await withDiffDaemon(
     () => new ScriptedAdapter([writeCard('big.txt', 'x'.repeat(MAX + 10)), DONE]),
     async (ctx) => {
@@ -228,7 +228,7 @@ test('③ 截断:pre-image 与磁盘现文件各 512KB 截断 + truncated:true',
         assert.equal(b.oldContent!.length, MAX, 'oldContent 截首 512KB');
         assert.ok(b.oldContent!.split('').every((c) => c === 'y'), 'oldContent 为 pre-image 首段');
         assert.equal(b.newContent.length, MAX, 'newContent 截首 512KB');
-        assert.ok(b.newContent.split('').every((c) => c === 'x'), 'newContent 为现文件首段');
+        assert.ok(b.newContent.split('').every((c) => c === 'x'), 'newContent 为冻结后像首段');
       } finally {
         ws.close();
       }
@@ -259,13 +259,14 @@ test('④ 同路径多次写按调用序:第二次 write 的 oldContent=第一�
           ),
         ];
         assert.equal(calls.length, 2, '两次 write 调用帧在场');
-        // 第一写:pre-image=原文件 v1;newContent=磁盘现文件(已被第二写覆盖为 v3——现文件语义)
+        // 第一写:pre-image=原文件 v1;newContent=该次冻结后像 v2(2026-11-11 用户裁定「不兼容旧
+        // 会话,就是读快照」——后像读 captureAfter blob,后续写不再污染前刀视图)
         const r1 = await diffOf(ctx.http, ctx.H, sid, calls[0]!);
         assert.equal(r1.status, 200);
         const b1 = (await r1.json()) as DiffBody;
         assert.equal(b1.oldContent, 'v1', '第一写 oldContent=最初 pre-image(按调用序,非最新清单项)');
-        assert.equal(b1.newContent, 'v3', 'newContent=磁盘现文件(后续写已覆盖)');
-        // 第二写:pre-image=第一写落盘的 v2
+        assert.equal(b1.newContent, 'v2', 'newContent=该次冻结后像快照(后续写不漂移)');
+        // 第二写:pre-image=第一写落盘的 v2;后像=v3
         const r2 = await diffOf(ctx.http, ctx.H, sid, calls[1]!);
         assert.equal(r2.status, 200);
         const b2 = (await r2.json()) as DiffBody;

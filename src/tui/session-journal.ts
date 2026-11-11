@@ -21,11 +21,14 @@ interface ForkedFrom {
   kind: 'rewind' | 'fork';
 }
 
-/** write 影子快照条目：path=相对项目根 POSIX；deleted=true 表示写入时文件不存在（hash 置空串） */
+/** write 影子快照条目：path=相对项目根 POSIX；deleted=true 表示写入时文件不存在（hash 置空串）；
+ *  afterHash=本次落盘后的后像 blob hash（2026-11-11 用户裁定「不兼容旧会话，就是读快照」——
+ *  每次改动一张冻结快照 before→after，diff 查询不再读现盘） */
 export interface SnapshotEntry {
   path: string;
   hash: string;
   deleted?: true;
+  afterHash?: string;
 }
 
 interface JournalHeader {

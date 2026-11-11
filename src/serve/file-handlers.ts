@@ -468,21 +468,24 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
       oldContent = blob.subarray(0, MAX_PREVIEW_BYTES).toString('utf8');
     }
   }
-  // newContent：磁盘现文件（判界/截断/二进制同 /file——readFileBounded 单点）
-  const read = readFileBounded(targetAbs);
-  if (read === 'missing') {
-    io.send(res, 404, { error: 'not found' });
+  // newContent：每次改动的冻结后像 blob（2026-11-11 用户裁定「不兼容旧会话，就是读快照」）——
+  // 写族落盘时 captureAfter 已把新内容落库（entry.afterHash），查询只读快照不读现盘：同文件
+  // 多刀写各自前后像互不漂移；无 afterHash 条目（非本会话写入的快照/回退清单）=无快照 404。
+  // blob 为写族落盘的 utf8 文本（写/edit 工具只写文本），截断口径与前像同水位
+  if (entry.afterHash === undefined || entry.afterHash.length === 0) {
+    io.send(res, 404, { error: 'no snapshot' });
     return;
   }
-  if (read === 'binary') {
-    io.send(res, 415, { error: 'binary file' });
+  const after = session.runtime.harness.writeSnapshot.readBlob(entry.afterHash);
+  if (after === null) {
+    io.send(res, 404, { error: 'no snapshot' });
     return;
   }
-  truncated = truncated || read.truncated;
+  truncated = truncated || after.length > MAX_PREVIEW_BYTES;
   io.send(res, 200, {
     path: targetAbs,
     ...(oldContent !== undefined ? { oldContent } : {}),
-    newContent: read.content,
+    newContent: after.subarray(0, MAX_PREVIEW_BYTES).toString('utf8'),
     ...(truncated ? { truncated: true } : {}),
   });
 }
