@@ -394,7 +394,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     setActionError('');
     conn
       .newSession(root)
-      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => ({ sid: r.sessionId, root: r.root }))) // G14.2xx daemon 可能收编在座会话,以返回 id 为准;root 同取真根(树会话重挂)
+      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => ({ sid: r.sessionId, root: r.root || root }))) // G14.2xx daemon 可能收编在座会话,以返回 id 为准;root 同取真根(树会话重挂),缺省回退行根(旧 daemon/应答缺 root 不落 undefined=渲染崩)
       .then(
         ({ sid: sessionId, root: realRoot }) => {
           setBusy(false);
