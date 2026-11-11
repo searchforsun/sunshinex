@@ -8,7 +8,7 @@
   --surface-elevated: #212121;
   --surface-soft: #303030;
   --surface-code: #101010;
-  --terminal-dock-bg: #0d0d0d; /* 终端下栏井色(2026-11-10 用户裁定「与左菜单有区分性」):比 surface 深一档 */
+  --terminal-dock-bg: var(--surface); /* 终端下栏井色=主对话背景(2026-11-11 用户裁定「下栏和侧栏色改成和主对话背景一样」) */
   /* 字 */
   --fg: #dfdfdf;
   --fg-secondary: color-mix(in srgb, var(--fg) 70%, transparent);
@@ -94,7 +94,7 @@
   --surface-elevated: #fff;
   --surface-soft: #ececec;
   --surface-code: #eeeeee;
-  --terminal-dock-bg: #e2e2e2; /* 终端下栏井色:比菜单 efefef/主面 f6f6f6 深一档,可辨 */
+  --terminal-dock-bg: var(--surface); /* 终端下栏井色=主对话背景(2026-11-11 用户裁定) */
   --fg: #1a1c1f;
   --fg-on-solid: #fff;
   --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
