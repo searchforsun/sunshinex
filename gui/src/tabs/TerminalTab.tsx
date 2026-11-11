@@ -73,9 +73,9 @@ const XTERM_ANSI_LIGHT = {
  *  亮色档 16 色平铺进主题顶层——xterm ITheme 无 ansi 嵌套字段,嵌套即整组被忽略回落暗底缺省谱
  *  (实测亮色下 PowerShell 命令名亮黄近不可读) */
 const xtermThemeFor = (p: Palette, background?: string): ITheme => ({
-  // background 可由宿主覆写(终端下栏井色 --terminal-dock-bg:亮 e2e2e2 与菜单 efefef 区分,
-  // 2026-11-10 用户裁定「终端正文区背景要与左侧菜单可辨」);右栏页签维持井色 surfaceCode
-  background: background ?? p.tokens.surfaceCode,
+  // 画布底色=主对话背景 surface(2026-11-11 用户裁定「侧栏终端正文也改主对话背景色」):
+  // 下栏经 --terminal-dock-bg(=var(--surface) 解析值)覆写,右栏直用 tokens.surface,双面同色
+  background: background ?? p.tokens.surface,
   foreground: p.tokens.fg,
   cursor: p.tokens.accent,
   selectionBackground: `${p.tokens.accent}40`,
