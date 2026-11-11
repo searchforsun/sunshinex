@@ -121,7 +121,7 @@ export function ToolEntryBody({
             }
           : undefined;
     const openDiffTitle =
-      onOpenDiff !== undefined && callId !== undefined ? t('Open diff tab', '打开 diff 标签') : t('Preview in file tab', '在文件标签预览');
+      onOpenDiff !== undefined && callId !== undefined ? t('Open changes tab', '打开改动标签') : t('Preview in file tab', '在文件标签预览');
     body = (
       <div className="tool-detail">
         {/* G14.51:自绘行级 diff;⇄ 开 diff 标签钮迁入(原 DiffPanel 角标钮,可及名=路径) */}
