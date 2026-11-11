@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useContext, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, ChevronDown, ChevronRight, Copy, GitFork, Undo2 } from 'lucide-react';
 import { t } from '../../i18n';
 import { fmtTokens, pathBasename } from '../../ui-util';
 import { messageTimeMs } from '../../ui-util';
+import { loadTurnUndone, undonePaths, TurnUndoContext } from './turn-undone-context';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import type { TurnFileChange } from '../../../../src/types';
@@ -68,11 +69,18 @@ export function RunChangesBar({
   onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>;
 }): JSX.Element | null {
   const [open, setOpen] = useState(false);
-  const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
+  const undoApi = useContext(TurnUndoContext);
+  const journalId = undoApi.journalId;
+  const [restored, setRestored] = useState<ReadonlySet<string>>(() =>
+    // 撤销持久化(2026-11-12 用户裁定「撤销后聚合行不应再出现」):重挂/切会话回来过滤已撤销行
+    new Set(journalId !== '' && run?.runSeq !== undefined ? undonePaths(loadTurnUndone(), journalId, run.runSeq) : []),
+  );
   const [stale, setStale] = useState<ReadonlySet<string>>(new Set());
   const [armed, setArmed] = useState<string | null>(null);
   const armTimer = useRef<number | undefined>(undefined);
   const office = useUiMode() === 'office';
+  // 整轮已撤销(持久化)→ 整条不渲染(切会话/重启回来也不复现,用户裁定)
+  if (journalId !== '' && run?.runSeq !== undefined && undoApi.isRunUndone(journalId, run.runSeq)) return null;
   const visible = changes.filter((c) => !restored.has(c.path));
   const add = visible.reduce((n, c) => n + changeCounts(c).add, 0);
   const del = visible.reduce((n, c) => n + changeCounts(c).del, 0);
@@ -103,7 +111,10 @@ export function RunChangesBar({
       void onTurnRestore(runSeq, [path]).then((results) => {
         const row = results.find((x) => x.path.replaceAll('\\', '/') === path.replaceAll('\\', '/'));
         if (row !== undefined && row.stale === true) setStale((s) => new Set(s).add(path));
-        else if (row === undefined || row.ok) setRestored((s) => new Set(s).add(path));
+        else if (row === undefined || row.ok) {
+          setRestored((s) => new Set(s).add(path));
+          if (journalId !== '') undoApi.markPath(journalId, runSeq, path.replaceAll('\\', '/')); // 持久化(重挂不复现)
+        }
       });
       return;
     }
@@ -126,8 +137,12 @@ export function RunChangesBar({
             }
             setStale((s) => new Set([...s, ...staleSet]));
             setRestored((s) => new Set([...s, ...okSet]));
+            // 全部行落定后整条标记撤销(持久化,重挂/切会话不再复现,用户裁定)
+            if (journalId !== '' && okSet.size + staleSet.size === results.length && staleSet.size === 0) undoApi.markRun(journalId, runSeq);
           });
         }
+        // 旧档行全撤也标整条(无 checkpoint 面,成功即成)
+        if (checkpointPaths.length === 0 && legacyPaths.length > 0 && journalId !== '') undoApi.markRun(journalId, runSeq);
         for (const p of legacyPaths) {
           onRestore?.(p);
           setRestored((s) => new Set(s).add(p));

@@ -60,6 +60,7 @@ import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { LiveChangesContext, TurnLatestContext, useLiveGitChanges, notifyGitChanged } from './chat/use-live-changes';
+import { TurnUndoContext, makeTurnUndoApi } from './chat/turn-undone-context';
 import { useChatLocate } from './chat/use-chat-locate';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
@@ -914,11 +915,14 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     return m;
   }, [chat.entries]);
 
+  const turnUndoApi = useMemo(() => makeTurnUndoApi(journalId ?? ''), [journalId ?? '']);
+
   return (
     <DirResolverContext.Provider value={isDirRef}>
       <MdImageContext.Provider value={mdImageLoader}>
       <LiveChangesContext.Provider value={liveChanges}>
       <TurnLatestContext.Provider value={turnLatestByPath}>
+      <TurnUndoContext.Provider value={turnUndoApi}>
 
       <ChatTopbar
         fixedTitle={fixedTitle}
@@ -1341,6 +1345,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         />
       )}
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
+      </TurnUndoContext.Provider>
       </TurnLatestContext.Provider>
       </LiveChangesContext.Provider>
     </MdImageContext.Provider>
