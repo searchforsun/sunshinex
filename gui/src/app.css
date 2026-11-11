@@ -3797,8 +3797,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .terminal-dock-strip::-webkit-scrollbar { width: 0; height: 0; }
 .terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; max-width: 200px; }
 .terminal-dock-tab { color: var(--fg-secondary); }
-.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, var(--surface)); }
-.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, var(--surface)); color: var(--fg); } /* pill 亮度=侧栏页签同值:混色基座用 surface(侧栏 pill=fg8% over surface),透明混在井色上会偏暗(2026-11-10 用户实测) */
+.terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.terminal-dock-tab.active { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); } /* 颜色口径=侧栏页签逐字同式(透明 8% 混色):条底=var(--surface) 与侧栏同,合成后两处 pill 同色(2026-11-11 用户实测仍有色差,基座回退透明混) */
 .terminal-dock-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .terminal-dock-rename { width: 110px; min-width: 0; font-size: calc(14px * var(--fz)); background: var(--terminal-dock-bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 4px; height: 20px; outline: none; } /* 2026-11-11 用户裁定:编辑区内部背景=下栏井色,以 1px 描边区分编辑框 */ /* 2026-11-10 用户裁定二轮:编辑区要有颜色区分可编辑,但不要描边框 */
 .terminal-dock-tab-close, .terminal-dock-add, .terminal-dock-close { width: 24px; height: 24px; padding: 0; } /* 14px 图标 24px hover 盒(icon-min 标准,2026-11-10 用户裁定 +/X 同规) */
