@@ -264,9 +264,8 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
             </div>
             {open && (
               <div className="sx-change-body">
-                {loadingKey === key || c === undefined ? (
-                  <div className="sx-change-loading" role="status">{t('loading diff…', 'diff 加载中…')}</div>
-                ) : (
+                {/* 加载文案退役(2026-11-11 用户裁定「不要显示 diff加载中」):载入期渲染空体,毫秒级 gap 无感 */}
+                {loadingKey !== key && c !== undefined && (
                   <DiffLines oldStr={c.oldContent} newStr={c.newContent} path={f.path} collapsible variant="flat" />
                 )}
               </div>
