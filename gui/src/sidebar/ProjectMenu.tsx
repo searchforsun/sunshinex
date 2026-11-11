@@ -66,6 +66,10 @@ export interface ProjectMenuConn {
   /** 已读档(2026-10-23,GET/PUT /app/seen;userConfigDir/gui/seen.json,已读/未读态落底层) */
   appSeen(): Promise<{ seen: Record<string, number> }>;
   saveAppSeen(seen: Record<string, number>): Promise<void>;
+  /** config-changed 帧订阅(2026-11-11 用户实测「输入框添加项目,左侧菜单不同步」根修):
+   *  daemon /workspace/create afterCreate 必广播(幂等登记同拍)——侧栏订阅即回源,欢迎页/
+   *  他窗建的项目免切页即显。可选(旧测试桩缺名不订阅,守卫同 use-config-changed 先例) */
+  onConfigChanged?(cb: (f: { resource: string }) => void): () => void;
   /** 归档区数据面(跨工作区聚合行;GET /sessions/archived)+ 受控删除(已归档态) */
   archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean }>>;
   deleteSession(id: string): Promise<void>;
@@ -261,6 +265,25 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     loadArchived(); // 2026-10-23 置顶组滤除已归档钉:归档集与钉档同拍重拉
     loadSeen(); // 2026-10-23 已读/未读态落底层:与钉档同拍重拉(顶栏标记为未读经 recentVersion bump 驱动)
   }, [loadWorkspaces, loadArchived, loadSeen, recentVersion]); // G14.52:run 起跑经 App recentVersion bump 驱动刷新(liveSessionId 圆点跟手);branchByRoot 走 ref(风暴根修)
+
+  /** config-changed 回源(2026-11-11):他面(欢迎页输入框「浏览文件夹…」/他窗)创建/登记工作区后
+   *  daemon afterCreate 广播帧——300ms 合帧防抖(skills 等高频帧幂等 GET)静默重拉组列表,新项目
+   *  免切页即显。conn 缺 onConfigChanged(旧测试桩)不订阅 */
+  useEffect(() => {
+    if (typeof conn.onConfigChanged !== 'function') return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = conn.onConfigChanged(() => {
+      if (timer !== null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        loadWorkspaces();
+      }, 300);
+    });
+    return () => {
+      off();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [conn, loadWorkspaces]);
 
   /** 移除工作区(2026-10-23):conn.hideWorkspace 落库后刷新清单;展开组若是它即收起。
    *  数据保留——重新「添加工作区」即原地加回 */
