@@ -88,7 +88,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, bgTotal = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
+export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -314,7 +314,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived
    *  (P11 T7 起字段单源:工具 input 暂存注入随旁路退役) */
-  const { taskNameOf, taskAgentOf, teamNameOf, todoTotal, taskTotal, taskRunning, computerUseActive } = useChatDerived({
+  const { taskNameOf, taskAgentOf, teamNameOf, todoTotal, taskRunning, computerUseActive } = useChatDerived({
     chat,
     board,
     teams,
@@ -524,6 +524,20 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [runBlocksHistory, setRunBlocksHistory] = useState<Array<{ state: 'done' | 'interrupted'; blocks: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number }> }>>([]);
   const sawPlanInRun = sawPlanRef.current ? true : false;
   if (planCards.length > 0) sawPlanRef.current = true;
+  // 团队任务「最近一个版」计数(2026-11-11 用户裁定):最近两轮的 run 窗口内按 createdAt 归位,
+  // 取最近一个有创建的窗口的任务数(一个版=一次编排创建的一批);捕获面与显示面共用
+  const taskCount = useMemo(() => {
+    const boardTasks = board !== undefined ? Object.values(board.tasks) : [];
+    const runTsList = chat.entries.filter((e) => e.kind === 'run' && (e.ts ?? 0) > 0).map((e) => e.ts!);
+    const lastTwo = runTsList.slice(-2);
+    for (let i = lastTwo.length - 1; i >= 0; i -= 1) {
+      const from = lastTwo[i]!;
+      const to = i + 1 < lastTwo.length ? lastTwo[i + 1]! : Number.MAX_SAFE_INTEGER;
+      const c = boardTasks.filter((t) => (t.createdAt ?? 0) >= from && (t.createdAt ?? 0) < to).length;
+      if (c > 0) return c;
+    }
+    return 0;
+  }, [board, chat.entries]);
   const wasRunningRef = useRef(false);
   const pendingCaptureRef = useRef(false);
   useEffect(() => {
@@ -547,22 +561,23 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     const blocks: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number }> = [];
     if (todoTotal > 0) blocks.push({ kind: 'todo', count: todoTotal });
     if (sawPlanRef.current) blocks.push({ kind: 'plan', count: 1 });
-    if (agentTeamsOn && taskTotal > 0) blocks.push({ kind: 'task', count: taskTotal });
-    if (bgTotal > 0) blocks.push({ kind: 'bg', count: bgTotal });
+    if (agentTeamsOn && taskCount > 0) blocks.push({ kind: 'task', count: taskCount });
     if (blocks.length === 0) return;
     setRunBlocksHistory((h) => [{ state, blocks }, ...h].slice(0, 2)); // 最近两轮
-  }, [running, chat.entries, todoTotal, taskTotal, bgTotal, sawPlanInRun, agentTeamsOn, sessionId]);
+  }, [running, chat.entries, todoTotal, taskCount, sawPlanInRun, agentTeamsOn, sessionId]);
   // 顶栏动态信息块(2026-11-11 用户裁定「最近两轮中最后生效块」,中断轮额外回溯一轮):
   // 运行中=活值(转圈);收尾时把当前四类计数快照进历史(cap 2,最新在前,中断/跳过轮标记 interrupted);
   // 每类取「最近的非零值」——运行中优先,否则最近快照;0 不显示
   const dynBlocks = useMemo(() => {
     // 数量=完整数量(2026-11-11 用户裁定「4 个待办就一直显示 4 个」:总数不随完成收缩);
-    // 状态=该类任一实例运行中 → 转圈替换前置图标,否则前置图标原样(不区分完成/中断,不啰嗦)
+    // 待办/团队任务=「最近两轮的最近一个版」:团队任务按 createdAt 落进最近两轮的 run 窗口,
+    // 取最近一个有创建的窗口计数(2026-11-11 用户裁定「一个版包裹,比较好区分」);
+    // 后台任务特殊(用户裁定「只有运行中才显示,不管两轮」):有在跑的后台任务才显示,数量=在跑数
     const live: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number; running: boolean }> = [];
     if (todoTotal > 0) live.push({ kind: 'todo', count: todoTotal, running });
     if (sawPlanInRun) live.push({ kind: 'plan', count: 1, running: planCards.length > 0 });
-    if (agentTeamsOn && taskTotal > 0) live.push({ kind: 'task', count: taskTotal, running: taskRunning });
-    if (bgTotal > 0) live.push({ kind: 'bg', count: bgTotal, running: bgRunning > 0 });
+    if (agentTeamsOn && taskCount > 0) live.push({ kind: 'task', count: taskCount, running: taskRunning });
+    if (bgRunning > 0) live.push({ kind: 'bg', count: bgRunning, running: true });
     const byKind = new Map<string, { kind: 'todo' | 'plan' | 'task' | 'bg'; count: number; state: 'running' | 'done' }>();
     for (const b of live) {
       const prev = byKind.get(b.kind);
@@ -570,7 +585,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       byKind.set(b.kind, { kind: b.kind, count: b.count, state: b.running ? 'running' : 'done' });
     }
     return [...byKind.values()];
-  }, [running, todoTotal, sawPlanInRun, planCards.length, taskTotal, taskRunning, bgTotal, bgRunning, agentTeamsOn, runBlocksHistory]);
+  }, [running, todoTotal, sawPlanInRun, planCards.length, chat.entries, board, taskRunning, bgRunning, agentTeamsOn, runBlocksHistory]);
   const lastLiveRun = running
     ? [...chat.entries].reverse().find((e) => e.kind === 'run' && e.streaming === true)
     : undefined;

@@ -89,8 +89,6 @@ export interface ChatProps {
   agentTeamsOn?: boolean;
   /** 后台任务 running 数(App 经 bg-task 直播;顶栏动态计数) */
   bgRunning?: number;
-  /** 后台任务总数(2026-11-11 顶栏数量=完整数量口径) */
-  bgTotal?: number;
   /** G14.172 task_wait 行任务名解析材料(任务板投影;App 注入会话板) */
   board?: TaskBoardState;
   /** 队名解析材料(get_agent_team_board/create_agent_team 链接;App 注入投影 teams) */
