@@ -24,6 +24,8 @@ export type DynBlockKind = 'todo' | 'plan' | 'task' | 'bg';
 export interface DynBlock {
   kind: DynBlockKind;
   count: number;
+  /** 已完成数(2026-11-11 用户裁定「1/4 待办」口径;计划/后台恒 0 不示) */
+  done: number;
   /** 块状态(2026-11-11 用户裁定简化):running=转圈替换前置图标;非运行=前置图标原样(不区分完成/中断) */
   state: 'running' | 'done';
 }
@@ -75,7 +77,7 @@ export function ChatDynButtons({ blocks, onOpenTab }: {
             ) : (
               <Prefix size={14} strokeWidth={1.75} aria-hidden="true" />
             )}
-            {b.count}
+            {b.done > 0 ? `${b.done}/${b.count}` : b.count}
             <span>{meta.label}</span>
           </button>
         );

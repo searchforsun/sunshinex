@@ -1606,7 +1606,7 @@ describe('G14.177 顶栏动态计数按钮', () => {
     const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     const btn = document.querySelector('.chat-dyn-btn');
-    expect(btn?.textContent).toContain('3'); // 数量=完整数量(总数,不随完成收缩)
+    expect(btn?.textContent).toContain('1/3'); // 已完成 1/3
     expect(btn?.textContent).toContain('待办');
     fireEvent.click(btn!);
     expect(onOpenTab).toHaveBeenCalledWith('tasks');
@@ -1617,13 +1617,13 @@ describe('G14.177 顶栏动态计数按钮', () => {
     ] as never;
     const second = render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
-    expect(document.querySelector('.chat-dyn-btn')?.textContent).toContain('1'); // 2026-11-11 用户裁定改版:数量=完整数量,完成也显示
+    expect(document.querySelector('.chat-dyn-btn')?.textContent).toContain('1/1'); // 2026-11-11 用户裁定:完成/总数
     first.unmount();
     second.unmount();
     const third = render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     // 2026-11-11 改版:idle 会话显示转录末批待办总量(「最后生效块」语义——历史会话打开也能看到)
-    expect(third.container.querySelector('.chat-dyn-btn')?.textContent).toContain('3');
+    expect(third.container.querySelector('.chat-dyn-btn')?.textContent).toContain('1/3');
     expect(third.container.querySelector('.chat-dyn-btn')?.className).toContain('dyn-done');
   });
 

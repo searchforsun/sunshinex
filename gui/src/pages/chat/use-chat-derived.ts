@@ -166,6 +166,8 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskActive: number;
   /** 团队任务总数(同上口径) */
   taskTotal: number;
+  /** 团队任务已完成数(顶栏 1/4 口径) */
+  taskDone: number;
   /** 任一团队任务运行中 */
   taskRunning: boolean;
   /** 电脑控制徽标:控制类 computer-use 工具条在跑(顶栏「正在控制」判定) */
@@ -220,6 +222,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   const taskActive = boardTasks.filter((x) => x.status === 'pending' || x.status === 'running').length;
   const taskTotal = boardTasks.length;
   const taskRunning = boardTasks.some((x) => x.status === 'running');
+  const taskDone = boardTasks.filter((x) => x.status === 'success').length;
 
   /** 电脑控制徽标(2026-10-27):运行轮内存在未收口的控制类 computer-use 工具条(pending/running)
    *  ——running 门使轮收束即隐(异常中断遗留的未决条不长久驻留);冻结键沿派生面同口径
@@ -241,7 +244,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     onTodoBatches?.(todoBatches);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSig]);
-  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoActive, todoTotal, taskActive, taskTotal, taskRunning, computerUseActive };
+  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoActive, todoTotal, taskActive, taskTotal, taskDone, taskRunning, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer
