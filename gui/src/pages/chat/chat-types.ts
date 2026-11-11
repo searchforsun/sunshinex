@@ -84,7 +84,7 @@ export interface ChatProps {
   /** 工具行任务名/队名链接:任务 ref 开任务板高亮卡;`team:` 前缀开指定队卡(App 接 openTaskFocus) */
   onOpenTask?: (taskRef: string) => void;
   /** G14.177 顶栏动态计数按钮:打开对应页签(待办=tasks/智能体团队=agents/后台任务=bgtasks) */
-  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks' | 'diff') => void;
+  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks' | 'diff' | 'plans') => void;
   /** agentTeams 开关(缺省 true):关则顶栏不显团队任务计数钮 */
   agentTeamsOn?: boolean;
   /** 后台任务 running 数(App 经 bg-task 直播;顶栏动态计数) */

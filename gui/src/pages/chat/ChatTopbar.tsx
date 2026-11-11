@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, GitCompare, MailOpen, MoreHorizontal, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
+import { Archive, ArchiveRestore, Ban, Bot, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
@@ -20,26 +20,31 @@ import { COPY_RESET_MS } from '../../use-copy-feedback';
  *  (挂载点去掉 collapsed 门);③幽灵钮化——无底色。
  *  G14.2xx 用户裁定:常显(旧「顶栏 hover 浮现」退役);三钮图标统一灰色转圈(待办钮的绿对号
  *  退役——对号读作「已完成数」与计数语义相反;todoActive 本就是 in_progress+pending 之和) */
-export function ChatDynButtons({ todoActive, taskActive, bgRunning, running, onOpenTab }: {
-  todoActive: number;
-  taskActive: number;
-  /** 后台 running 数(App 经 bg-task 直播维护,撤 5s GET 轮询) */
-  bgRunning: number;
-  running: boolean;
-  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks') => void;
+export type DynBlockKind = 'todo' | 'plan' | 'task' | 'bg';
+export interface DynBlock {
+  kind: DynBlockKind;
+  count: number;
+  /** 块状态(2026-11-11 用户裁定「最近两轮中最后生效块」):running=转圈/done=完成/interrupted=中断·跳过 */
+  state: 'running' | 'done' | 'interrupted';
+}
+
+const DYN_META: Record<DynBlockKind, { label: string; icon: typeof ListTodo; tab: 'tasks' | 'agents' | 'bgtasks' | 'plans' }> = {
+  todo: { label: '待办', icon: ListTodo, tab: 'tasks' },
+  plan: { label: '计划', icon: NotebookPen, tab: 'plans' },
+  task: { label: '团队任务', icon: Bot, tab: 'agents' },
+  bg: { label: '后台任务', icon: Hourglass, tab: 'bgtasks' },
+};
+
+/** 顶栏动态信息块(2026-11-11 用户裁定改版):最近两轮(中断轮额外回溯)每类「最后生效块」的终态——
+ *  图标=对应页签前缀图标,状态=运行中(转圈)/完成(✓)/中断·跳过(⊘);0 不显示;点击开对应页签。
+ *  旧「运行中才显、收束即隐」行为退役 */
+export function ChatDynButtons({ blocks, onOpenTab }: {
+  blocks: readonly DynBlock[];
+  onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks' | 'plans') => void;
 }): JSX.Element | null {
-  // G14.213 轮次收束即隐:running 熄灭按钮组整体不显(待办/任务是否完结无关)
-  // 过多隐现(2026-10-29 用户裁定「只有真的显示才占会话名位置;过多隐现」):容器被压缩时挂
-  // tight 右缘渐隐 mask(与标题 clipped 同款 RO 判定);压缩优先级由 flex 收缩权重承担
-  // (.chat-dyn-buttons shrink 999——空间不足几乎全由本组吸收,标题不因让位被裁到看不全)
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [tight, setTight] = useState(false);
-  // 待办/团队任务随轮次收束即隐;后台任务不受轮次门控——进程独立于轮次存活(含应用重启后仍在跑
-  // 的任务,会话此时空闲),只要还有 running 就显示
-  const todoShown = running && todoActive > 0;
-  const taskShown = running && taskActive > 0;
-  const bgShown = bgRunning > 0;
-  const shown = todoShown || taskShown || bgShown;
+  const shown = blocks.length > 0;
   useEffect(() => {
     const el = wrapRef.current;
     if (!shown || el === null) return;
@@ -48,32 +53,39 @@ export function ChatDynButtons({ todoActive, taskActive, bgRunning, running, onO
     const ro = new ResizeObserver(judge);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [shown, todoActive, taskActive, bgRunning]);
+  }, [shown, blocks]);
   if (!shown) return null;
 
   return (
     <div className={`chat-dyn-buttons${tight ? ' tight' : ''}`} ref={wrapRef} role="group" aria-label="live counters">
-      {todoShown && (
-        <button type="button" className="chat-dyn-btn todo" data-tip={t('Open todos', '打开待办')} onClick={() => onOpenTab?.('tasks')}>
-          <span className="run-spinner" aria-hidden="true" />
-          {t(`${todoActive} todos`, `${todoActive} 待办`)}
-        </button>
-      )}
-      {taskShown && (
-        <button type="button" className="chat-dyn-btn" data-tip={t('Open agent teams', '打开智能体团队')} onClick={() => onOpenTab?.('agents')}>
-          <span className="run-spinner" aria-hidden="true" />
-          {t(`${taskActive} team tasks`, `${taskActive} 团队任务`)}
-        </button>
-      )}
-      {bgShown && (
-        <button type="button" className="chat-dyn-btn" data-tip={t('Open background tasks', '打开后台任务')} onClick={() => onOpenTab?.('bgtasks')}>
-          <span className="run-spinner" aria-hidden="true" />
-          {t(`${bgRunning} background`, `${bgRunning} 后台任务`)}
-        </button>
-      )}
+      {blocks.map((b) => {
+        const meta = DYN_META[b.kind];
+        const Prefix = meta.icon;
+        return (
+          <button
+            key={b.kind}
+            type="button"
+            className={`chat-dyn-btn dyn-${b.state}`}
+            data-tip={`${meta.label}: ${b.state === 'running' ? t('Running', '运行中') : b.state === 'done' ? t('Done', '完成') : t('Interrupted', '中断')}`}
+            onClick={() => onOpenTab?.(meta.tab)}
+          >
+            {b.state === 'running' ? (
+              <span className="run-spinner" aria-hidden="true" />
+            ) : b.state === 'done' ? (
+              <Check size={14} strokeWidth={2.25} aria-hidden="true" />
+            ) : (
+              <Ban size={14} strokeWidth={1.75} aria-hidden="true" />
+            )}
+            <Prefix size={14} strokeWidth={1.75} aria-hidden="true" />
+            {b.count}
+            <span>{meta.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
+
 export interface ChatTopbarProps {
   readonly fixedTitle: string | undefined;
   readonly titleEditing: boolean;
@@ -86,12 +98,11 @@ export interface ChatTopbarProps {
   readonly tokens: number;
   readonly steps: number;
   readonly running: boolean;
-  readonly todoActive: number;
-  readonly taskActive: number;
-  /** 后台 running 数(App bg-task 直播) */
-  readonly bgRunning?: number;
+  /** 顶栏动态信息块(2026-11-11 用户裁定「最近两轮最后生效块」) */
+  readonly blocks?: readonly import('./ChatTopbar').DynBlock[];
+
   readonly conn: Connection;
-  readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks' | 'diff') => void);
+  readonly onOpenTab?: ((type: 'tasks' | 'agents' | 'bgtasks' | 'diff' | 'plans') => void);
   /** 工作区未提交改动总量(2026-11-10 用户裁定「主会话顶部实时展示总改动,点击开审查页」);null=无变动/非 git */
   readonly changesTotal?: { add: number; del: number } | null;
   /** 「打开」分体钮失败可见化面(D57④:App showOpError 经 Chat 透传,探测/打开失败 sx-toast) */
@@ -119,7 +130,7 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, running, todoActive, taskActive, bgRunning = 0, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -425,7 +436,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             <MoreHorizontal size={16} strokeWidth={1.75} />
           </button>
         )}
-        <ChatDynButtons todoActive={todoActive} taskActive={taskActive} bgRunning={bgRunning} running={running} onOpenTab={onOpenTab} />
+        <ChatDynButtons blocks={blocks ?? []} onOpenTab={onOpenTab} />
         {/* 2026-10-27 用户裁定:电脑控制期间会话名行右亮「正在控制」边框徽标(控制类 computer-use
             工具在跑,use-chat-derived 派生,轮收束即隐) */}
         {computerUseActive === true && (

@@ -518,6 +518,60 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  按钮集随 sessMode 自适应:只读域三键选落档/可写域两键维持当前档),dock 挂载与 approval 同形;
    *  回执经 sendPlanApproval(批准落所选档自动解除,重新计划保持) */
   const planCards = cards.filter((c) => c.kind === 'plan-approval');
+
+  // 计划块在轮出现标记(plan-approval 卡在场即置,轮开始清)+ 最近两轮快照(运行→收尾时捕获)
+  const sawPlanRef = useRef(false);
+  const [runBlocksHistory, setRunBlocksHistory] = useState<Array<{ state: 'done' | 'interrupted'; blocks: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number }> }>>([]);
+  const sawPlanInRun = sawPlanRef.current ? true : false;
+  if (planCards.length > 0) sawPlanRef.current = true;
+  const wasRunningRef = useRef(false);
+  const pendingCaptureRef = useRef(false);
+  useEffect(() => {
+    if (running) {
+      if (!wasRunningRef.current) sawPlanRef.current = false; // 新轮开始清计划标记
+      wasRunningRef.current = true;
+      pendingCaptureRef.current = false;
+      return;
+    }
+    if (wasRunningRef.current) {
+      wasRunningRef.current = false;
+      // 收尾即挂起捕获:转录空壳(conn 重建快照未回)时等转录到齐的 entries effect 再落
+      pendingCaptureRef.current = true;
+    }
+  }, [running]);
+  useEffect(() => {
+    if (!pendingCaptureRef.current || running || chat.entries.length === 0 || sessionId === '') return;
+    pendingCaptureRef.current = false;
+    const lastRun = [...chat.entries].reverse().find((e) => e.kind === 'run');
+    const state: 'done' | 'interrupted' = lastRun?.stopped === true ? 'interrupted' : 'done';
+    const blocks: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number }> = [];
+    if (todoActive > 0) blocks.push({ kind: 'todo', count: todoActive });
+    if (sawPlanRef.current) blocks.push({ kind: 'plan', count: 1 });
+    if (agentTeamsOn && taskActive > 0) blocks.push({ kind: 'task', count: taskActive });
+    if (bgRunning > 0) blocks.push({ kind: 'bg', count: bgRunning });
+    if (blocks.length === 0) return;
+    setRunBlocksHistory((h) => [{ state, blocks }, ...h].slice(0, 2)); // 最近两轮
+  }, [running, chat.entries, todoActive, taskActive, bgRunning, sawPlanInRun, agentTeamsOn, sessionId]);
+  // 顶栏动态信息块(2026-11-11 用户裁定「最近两轮中最后生效块」,中断轮额外回溯一轮):
+  // 运行中=活值(转圈);收尾时把当前四类计数快照进历史(cap 2,最新在前,中断/跳过轮标记 interrupted);
+  // 每类取「最近的非零值」——运行中优先,否则最近快照;0 不显示
+  const dynBlocks = useMemo(() => {
+    const live: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number }> = [];
+    if (running) {
+      if (todoActive > 0) live.push({ kind: 'todo', count: todoActive });
+      if (sawPlanInRun) live.push({ kind: 'plan', count: 1 });
+      if (agentTeamsOn && taskActive > 0) live.push({ kind: 'task', count: taskActive });
+      if (bgRunning > 0) live.push({ kind: 'bg', count: bgRunning });
+    }
+    const byKind = new Map<string, { kind: 'todo' | 'plan' | 'task' | 'bg'; count: number; state: 'running' | 'done' | 'interrupted' }>();
+    for (const b of live) byKind.set(b.kind, { ...b, state: 'running' as const });
+    if (!running) {
+      for (const snap of runBlocksHistory) {
+        for (const b of snap.blocks) if (!byKind.has(b.kind)) byKind.set(b.kind, { ...b, state: snap.state });
+      }
+    }
+    return [...byKind.values()];
+  }, [running, todoActive, sawPlanInRun, taskActive, bgRunning, agentTeamsOn, runBlocksHistory]);
   const lastLiveRun = running
     ? [...chat.entries].reverse().find((e) => e.kind === 'run' && e.streaming === true)
     : undefined;
@@ -847,11 +901,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         tokens={chat.tokens}
         steps={chat.steps}
         running={running}
-        todoActive={todoActive}
-        taskActive={agentTeamsOn ? taskActive : 0}
-        bgRunning={bgRunning}
+
         computerUseActive={computerUseActive}
         changesTotal={changesTotal}
+        blocks={dynBlocks}
         conn={conn}
         onOpenTab={onOpenTab}
         onOpError={onOpError}

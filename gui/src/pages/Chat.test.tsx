@@ -1606,7 +1606,8 @@ describe('G14.177 顶栏动态计数按钮', () => {
     const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     const btn = document.querySelector('.chat-dyn-btn');
-    expect(btn?.textContent).toMatch(/2 (todos|待办)/); // 测试语言态双语 // 未完成=in_progress+pending
+    expect(btn?.textContent).toContain('2');
+    expect(btn?.textContent).toContain('待办');
     fireEvent.click(btn!);
     expect(onOpenTab).toHaveBeenCalledWith('tasks');
     // 全完成:末批 0 未完成 → 按钮隐(不占位)
@@ -1617,11 +1618,41 @@ describe('G14.177 顶栏动态计数按钮', () => {
     render(<Chat conn={connOf(done, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     expect(document.querySelector('.chat-dyn-btn')).toBeNull();
-    // G14.213 轮次收束(idle)即隐:待办未完结也隐
+    // 2026-11-11 用户裁定改版:轮次收束(idle)不再即隐——空会话(sessionId='')无收尾捕获面,历史空=仍隐
     first.unmount();
     render(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
     await flushed();
     expect(document.querySelector('.chat-dyn-btn')).toBeNull();
+  });
+
+  it('2026-11-11 改版:轮收尾快照持久(idle 显「完成 2 待办」,点击开待办页签);中断轮标「中断」;0 不显示', async () => {
+    const onOpenTab = vi.fn();
+    const seeds = [
+      { seq: 1, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: 'a', status: 'in_progress' }, { text: 'b', status: 'pending' }] }, result: { text: 'ok', ok: true } },
+    ] as never;
+    // 先运行再收束:收尾快照捕获待办计数 → idle 持久显示「完成」态
+    const first = render(<Chat conn={connOf(seeds, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
+    await flushed();
+    first.rerender(<Chat conn={connOf(seeds, 'idle')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
+    await flushed();
+    const btn = document.querySelector('.chat-dyn-btn');
+    expect(btn?.textContent).toContain('2');
+    expect(btn?.textContent).toContain('待办');
+    expect(btn?.className).toContain('dyn-done');
+    fireEvent.click(btn!);
+    expect(onOpenTab).toHaveBeenCalledWith('tasks');
+    first.unmount();
+    // 中断轮:stopped run → 快照态=中断
+    const stopped = [
+      { seq: 1, kind: 'run', md: '', meta: { stopped: true } },
+      { seq: 2, kind: 'tool', md: '', name: 'todo_write', input: { todos: [{ text: 'a', status: 'in_progress' }] }, result: { text: 'ok', ok: true } },
+    ] as never;
+    const second = render(<Chat conn={connOf(stopped, 'running')} sessionId="s2" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
+    await flushed();
+    second.rerender(<Chat conn={connOf(stopped, 'idle')} sessionId="s2" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
+    await flushed();
+    expect(document.querySelector('.chat-dyn-btn')?.className).toContain('dyn-interrupted');
+    second.unmount();
   });
 });
 
