@@ -23,6 +23,11 @@ export type LiveChanges = readonly LiveChangeFile[] | null | undefined;
 export const LiveChangesContext = createContext<LiveChanges>(null);
 export const useLiveChanges = (): LiveChanges => useContext(LiveChangesContext);
 
+/** 路径 → 最后一个改它的轮(runSeq)(2026-11-11 冻结快照面配套):全 entries 汇总单点,轮尾条据此
+ *  判「本轮是否仍是该文件最新一轮」——后续轮次覆盖=只能看不能撤(用户裁定),服务端 staleness 兜底 */
+export const TurnLatestContext = createContext<ReadonlyMap<string, number>>(new Map());
+export const useTurnLatest = (): ReadonlyMap<string, number> => useContext(TurnLatestContext);
+
 /** git 变动广播:撤销/提交/审查页刷新后发,各会话 Chat 重拉 */
 export const GIT_CHANGED_EVENT = 'sunshinex:git-changed';
 export function notifyGitChanged(): void {
@@ -94,15 +99,4 @@ export function useLiveGitChanges(
   }, [load, enabled]);
 
   return files;
-}
-
-/** 轮记录 ∩ 当前 git 变动:行数取当前值(与审查页一致);live=null(拉取失败)回落轮记录原样 */
-export function visibleRunChanges<T extends LiveChangeFile>(recorded: readonly T[], live: LiveChanges): readonly LiveChangeFile[] {
-  if (live === undefined) return [];
-  if (live === null) return recorded;
-  const now = new Map(live.map((f) => [f.path, f]));
-  return recorded.flatMap((r) => {
-    const cur = now.get(r.path);
-    return cur !== undefined ? [cur] : [];
-  });
 }

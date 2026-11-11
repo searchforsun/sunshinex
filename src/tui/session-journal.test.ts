@@ -119,9 +119,10 @@ test('listSessions 旁车 meta（G14.17）：title/统计透出、坏值容错�
   assert.equal(rows[0]!.firstUser, '首条输入');
   assert.equal(rows[0]!.title, undefined);
   // 写 meta(标题+累计统计):listSessions 全量透出;createdAt 取 header(旁车不另存创建时刻)
-  writeSessionMeta(dataDir, id, { title: '自定义名', runs: 1, tokens: 1200, cacheTokens: 800, ctxUsed: 42_000, ctxWindow: 200_000, model: 'glm-5.3-flash', effort: 'medium' });
+  writeSessionMeta(dataDir, id, { title: '自定义名', runs: 1, tokens: 1200, cacheTokens: 800, ctxUsed: 42_000, ctxWindow: 200_000, model: 'glm-5.3-flash', effort: 'medium', root: 'D:\\proj\\.git\\sunshinex\\worktrees\\wt-x' });
   rows = listSessions(dataDir);
   const row = rows[0]!;
+  assert.equal(row.root, 'D:\\proj\\.git\\sunshinex\\worktrees\\wt-x', 'root 字符串键透出(读侧漏列=树会话重启回主分支真根因)');
   assert.equal(row.title, '自定义名');
   assert.equal(row.firstUser, '首条输入', '摘要原样保留');
   assert.equal(row.runs, 1);

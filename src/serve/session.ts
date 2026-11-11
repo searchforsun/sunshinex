@@ -196,7 +196,7 @@ export class SessionRuntime {
   /** 会话工作区根(树会话=工作树路径;可变仅经 rehomeRoot——attach 按档归位,2026-11-11 树会话
    *  重启回主分支根修:GUI 恢复链只有组根,journal 旁车 meta.root 才是真根) */
   root: string;
-  private readonly opts: SessionRuntimeOpts;
+  private opts: SessionRuntimeOpts;
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
   private current?: CurrentRun;
@@ -294,10 +294,19 @@ export class SessionRuntime {
     this.runtimeImpl = this.assemble();
   }
 
-  /** attach 重挂根(2026-11-11):档记 meta.root 在盘且异于壳根时由 attachSessionIn 调——
-   *  装配链此后全以新根行走(listChanges/spillImages/writeSessionMeta resolveDataDir 均读 this.root) */
+  /** attach 重挂根(2026-11-11):档记 meta.root 在盘且异于壳根时由 attachSessionIn 调——**整链换根**
+   *  不止字段:装配面(沙箱 cwd/安全链信任根/快照 sink root/感知)都按 opts.root 铸造,须换新运行时
+   *  (reset/setMode 同路径)。attach 时壳为出生态(无实质事件),换铸零损;旧运行时后台收割 */
   rehomeRoot(root: string): void {
+    const old = this.runtimeImpl;
+    this.opts = { ...this.opts, root };
     this.root = root;
+    this.runtimeImpl = this.assemble();
+    if (this.journal !== undefined) {
+      this.syncSessionStores();
+      this.hookJournalSink();
+    }
+    void this.disposeRuntime(old).catch(() => undefined);
   }
 
   /** v3 落档单点(P2 起,spec §3.2):内核段级事件 → journal 行(kernelEventRows 共享映射,P3 起
@@ -737,9 +746,40 @@ export class SessionRuntime {
     return { abs, entry: last };
   }
 
+  /** 按 callId 直取捕获（2026-11-11 每刀独立快照,/diff 面消费）：先内存清单（在座会话零 IO）,
+   *  未命中扫 journal snapshots 行（重启后清单空=唯一可达面;落盘条目自带 callId 回标字段）。
+   *  每刀快照互不覆盖——同路径第 N 刀取回的就是第 N 刀自己的前后像 */
+  snapshotByCall(callId: string): { abs: string; entry: SnapshotEntry } | undefined {
+    const inMemory = this.runtimeImpl.harness.writeSnapshot.byCall(callId);
+    if (inMemory !== undefined) return { abs: path.resolve(this.root, inMemory.path), entry: inMemory };
+    const id = this.journal?.currentId;
+    if (id === undefined) return undefined;
+    const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+    let hit: SnapshotEntry | undefined;
+    try {
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        if (!line.includes('"snapshots"') || !line.includes(JSON.stringify(callId))) continue;
+        try {
+          const e = JSON.parse(line) as { t?: string; files?: SnapshotEntry[] };
+          if (e.t !== 'snapshots' || !Array.isArray(e.files)) continue;
+          for (const f of e.files) if (f.callId === callId) hit = f;
+        } catch {
+          // 坏行跳过（快照行撕裂不阻断扫描）
+        }
+      }
+    } catch {
+      return undefined;
+    }
+    if (hit === undefined) return undefined;
+    return { abs: path.resolve(this.root, hit.path), entry: hit };
+  }
+
   /** 轮次 checkpoint 内存索引(2026-11-10):runSeq → 本轮路径级前像/后像——轮收尾时填充;
    *  daemon 重启即空,读面 turnChangeFor 落 journal 扫描回退(重放会话同可用) */
   private readonly turnChanges = new Map<number, TurnFileChange[]>();
+  /** 快照回标用 callId→路径暂存（2026-11-11 每刀独立快照）：write/edit tool-call 记入,tool-result
+   *  回执消费即删（泵内单点,见 pump 注释） */
+  private readonly callPaths = new Map<string, string>();
 
   /** 轮次 checkpoint 查询面(turn-diff/turn-restore 端点消费):先内存索引(在座会话零 IO),
    *  未命中扫 journal runmeta 行——对位口径与 reduceSegRows 同构(行绑「末个 run-open seq」),
@@ -911,6 +951,26 @@ export class SessionRuntime {
     if (e.type === 'tool-result' && Array.isArray(e.payload?.images) && (e.payload!.images as unknown[]).length > 0) {
       e = { ...e, payload: { ...e.payload, images: spillImages(this.root, e.payload!.images as string[]) } };
     }
+    // 每刀独立快照回标（2026-11-11）：write/edit 的 tool-call 先记 callId→路径，同 callId 的
+    // tool-result 成功回执时把 sink 里该路径末尾未标条目挂上 callId——/diff 面按 callId 直取,
+    // 退役「数同路径调用位次」寻址（失败调用不计捕获=位次错位,前后像对不上号的真根因）
+    if (e.type === 'tool-call' || e.type === 'tool-result') {
+      const p = e.payload as { callId?: unknown; tool?: unknown; input?: unknown; ok?: unknown } | undefined;
+      const callId = typeof p?.callId === 'string' ? p.callId : '';
+      if (callId !== '') {
+        if (e.type === 'tool-call') {
+          // 仅快照族(write/edit)入表:read 等带 path 的调用不得回标他人捕获
+          const inPath = p?.input !== null && typeof p?.input === 'object' ? (p.input as { path?: unknown }).path : undefined;
+          if ((e.text === 'write' || e.text === 'edit') && typeof inPath === 'string' && inPath.length > 0) this.callPaths.set(callId, inPath);
+        } else {
+          const rel = this.callPaths.get(callId);
+          this.callPaths.delete(callId);
+          if (rel !== undefined && p?.ok === true) {
+            this.runtimeImpl.harness.writeSnapshot.tagCall(rel, callId);
+          }
+        }
+      }
+    }
     const seq = this.opts.nextSeq();
     this.lastSeqNum = seq;
     const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e };
@@ -963,12 +1023,16 @@ export class SessionRuntime {
     // G14.2xx 立即停止:run 信号装入沙箱——interrupt 时在途 exec 子进程即刻收割(不再等步边界)
     this.runtimeImpl.harness.sandbox.setRunSignal(abort.signal);
     const startedAt = Date.now();
-    // G14.100 本轮改动基线(run 前 git 变动集):收尾差集=本轮增量(runmeta.changes 供 GUI 汇总条)
+    // G14.100 本轮改动基线(run 前 git 变动集):收尾差集=本轮 bash 面增量(runmeta.changes 供 GUI 汇总
+    // 条;2026-11-11 快照族路径已改冻结快照面,git 面只补 bash 改动)。基线 promise 收尾 await——
+    // 旧 void 竞态:轮很短时基线可能在轮末才落,差集吞掉本轮改动
     let runBaseChanges: ChangeFile[] = [];
-    let runBaseKnown = false; // 基线不可得时收尾不报改动面——空基线差集会把存量文件全算本轮增量(误报)
-    void listChanges(this.root).then((r) => {
-      if (r.ok) { runBaseChanges = r.value.files; runBaseKnown = true; }
-    }).catch(() => {}); // 旁路:基线探测失败不阻断 run 启动,收尾按 runBaseKnown 收窄
+    let runBaseKnown = false; // 基线不可得时收尾不报 bash 面——空基线差集会把存量文件全算本轮增量(误报)
+    const basePromise = listChanges(this.root)
+      .then((r) => {
+        if (r.ok) { runBaseChanges = r.value.files; runBaseKnown = true; }
+      })
+      .catch(() => {}); // 旁路:基线探测失败不阻断 run 启动,收尾按 runBaseKnown 收窄
     this.runUsage = undefined;
     this.runCtxUsed = undefined;
     const hasImages = images !== undefined && images.length > 0;
@@ -997,9 +1061,10 @@ export class SessionRuntime {
         // 本轮写改动逐轮落档:只在 dispose 封存则整段会话的改动挤在档尾,回退文件无从按轮定位
         const turnSealed = this.runtimeImpl.harness.writeSnapshot.takeUnsealed();
         this.journal?.seal(turnSealed);
-        // G14.100 本轮改动差集(基线→现状):文件级增量进 runmeta(GUI 轮尾汇总条)。
-        // 快照面(2026-11-10):turnSealed 首捕获/路径 + 前后像 blob 行数统计——git 无关的
-        // 改动卡数据源;git 基线在场时作 turn 面(免二次读盘),缺席(非 git 目录)升为 runChanges
+        // 本轮改动面(2026-11-11 用户裁定「每轮修改产生快照写死,轮与轮互不影响」):快照族(write/edit)
+        // 路径的行数=本轮首刀前像 vs 轮末后像的 blob 差(冻结落档)——与 git 状态完全解耦:轮内提交
+        // 不吞行数、后续轮次再改不回头改写本轮数字。git 差集只补充快照族之外的路径(bash 改动等,
+        // 无前像=不可本轮撤销)。净零改动(前后像同 hash)不入改动卡
         const sink = this.runtimeImpl.harness.writeSnapshot;
         const firstPre = new Map<string, SnapshotEntry>();
         for (const e of turnSealed) {
@@ -1015,49 +1080,48 @@ export class SessionRuntime {
           } catch {
             afterBuf = null; // 轮末已删(本轮删除面)
           }
+          const afterHash = afterBuf !== null ? sink.store(afterBuf) : '';
+          // 净零:本轮改了又改回(前后像逐字节相等)/新建又删——不入卡(每刀快照仍可经工具行查看)
+          if (pre.deleted === true ? afterBuf === null : afterBuf !== null && pre.hash === afterHash) continue;
           const turn: TurnFileChange = {
             path: relPosix,
             ...(pre.deleted !== true && pre.hash.length > 0 ? { before: pre.hash } : {}),
             ...(pre.deleted === true ? { beforeDeleted: true as const } : {}),
-            after: afterBuf !== null ? sink.store(afterBuf) : '',
+            after: afterHash,
             ...(afterBuf === null ? { afterDeleted: true as const } : {}),
           };
           // 行数统计(LCS 护栏 16M 格,超限 null=不示数):before 缺场=新建(+全行),after 缺场=删除(-全行)
           const counts = lineDiffCounts(before?.toString('utf8'), afterBuf !== null ? afterBuf.toString('utf8') : undefined);
-          snapRows.push({ path: relPosix, status: pre.deleted === true ? 'untracked' : 'modified', added: counts?.added ?? null, deleted: counts?.deleted ?? null, turn });
+          const status: ChangeFile['status'] = afterBuf === null ? 'deleted' : pre.deleted === true ? 'untracked' : 'modified';
+          snapRows.push({ path: relPosix, status, added: counts?.added ?? null, deleted: counts?.deleted ?? null, turn });
         }
-        let runChanges: ChangeFile[] = [];
+        // git 补充面:基线差集里快照族之外的路径(bash 改动);快照族路径一律以上方冻结行为准
+        const snapPaths = new Set(firstPre.keys());
+        let gitExtra: ChangeFile[] = [];
         try {
-          const now = await listChanges(this.root);
-          if (now.ok && runBaseKnown) runChanges = diffChangeSets(runBaseChanges, now.value.files);
+          await basePromise;
+          if (runBaseKnown) {
+            const now = await listChanges(this.root);
+            if (now.ok) gitExtra = diffChangeSets(runBaseChanges, now.value.files).filter((c) => !snapPaths.has(c.path.replaceAll('\\', '/')));
+          }
         } catch {
-          // 差集失败不挡收尾(汇总条缺本轮数据可接受)
+          // 差集失败不挡收尾(汇总条缺 bash 面数据可接受)
         }
         // 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):前像=blob hash
         // (快照族才有,bash 改动无前像=不可本轮撤销),后像=轮末磁盘内容 hash(staleness 闸门基准)
-        let turn: TurnFileChange[] = [];
-        if (runChanges.length > 0) {
-          for (const c of runChanges) {
-            const relPosix = c.path.replaceAll('\\', '/');
-            const hit = snapRows.find((r) => r.path === relPosix);
-            if (hit !== undefined) {
-              turn.push(hit.turn);
-              continue;
-            }
-            // git 面(如 bash 改动)不在快照族:仅后像落库(不可撤销,diff 面后像仍可用)
-            let after = '';
-            let afterDeleted: true | undefined;
-            try {
-              after = sink.store(fs.readFileSync(path.resolve(this.root, c.path)));
-            } catch {
-              afterDeleted = true;
-            }
-            turn.push({ path: relPosix, after, ...(afterDeleted !== undefined ? { afterDeleted } : {}) });
+        const runChanges: ChangeFile[] = snapRows.map(({ turn: _t, ...rest }) => rest);
+        const turn: TurnFileChange[] = snapRows.map((r) => r.turn);
+        for (const c of gitExtra) {
+          const relPosix = c.path.replaceAll('\\', '/');
+          let after = '';
+          let afterDeleted: true | undefined;
+          try {
+            after = sink.store(fs.readFileSync(path.resolve(this.root, c.path)));
+          } catch {
+            afterDeleted = true;
           }
-        } else if (snapRows.length > 0) {
-          // 非 git 目录/基线缺席:快照面升为改动卡数据源(checkpoint 全量可用)
-          runChanges = snapRows.map(({ turn: _t, ...rest }) => rest);
-          turn = snapRows.map((r) => r.turn);
+          runChanges.push(c);
+          turn.push({ path: relPosix, after, ...(afterDeleted !== undefined ? { afterDeleted } : {}) });
         }
         if (runSeq >= 0 && turn.length > 0) this.turnChanges.set(runSeq, turn);
         // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计

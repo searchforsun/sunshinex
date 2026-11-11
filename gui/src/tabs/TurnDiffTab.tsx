@@ -144,7 +144,8 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
       {restored && <div className="sx-changes-result ok" role="status">{t('Reverted to the state before this turn.', '已恢复到本轮之前的状态。')}</div>}
       {content !== null && (
         <div className="sx-change-body sx-turn-diff-body">
-          <DiffLines oldStr={content.oldContent ?? ''} newStr={content.newContent} path={norm} collapsible variant="flat" />
+          {/* 每刀截断面(2026-11-11「不可展开,直接截断,和审查区分开」):折叠可展开退役 */}
+          <DiffLines oldStr={content.oldContent ?? ''} newStr={content.newContent} path={norm} variant="flat" hunksOnly />
         </div>
       )}
     </div>

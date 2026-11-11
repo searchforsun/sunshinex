@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RunChangesBar } from './RunFooter';
-import { LiveChangesContext } from './use-live-changes';
+import { TurnLatestContext } from './use-live-changes';
 
-/** 轮次 checkpoint 汇总条(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):
+/** 轮次 checkpoint 汇总条(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」;2026-11-11 冻结面):
  *  文件名点击开本轮 diff 页签(run+path);撤销二次确认走 turn-restore,stale 行置灰;
+ *  被后续轮次覆盖=只能看不能撤;行数=冻结记录(live git 不参与——提交不吞数字/跨轮不互染);
  *  旧档(无 runSeq)回退审查页/git restore 语义 */
 
 const changes = [
@@ -19,9 +20,10 @@ function renderBar(over: {
   onRestore?: (p: string) => void;
   onOpenTurn?: (run: number, path: string) => void;
   onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>;
+  latest?: ReadonlyMap<string, number>;
 }): void {
   render(
-    <LiveChangesContext.Provider value={changes}>
+    <TurnLatestContext.Provider value={over.latest ?? new Map()}>
       <RunChangesBar
         changes={changes}
         run={over.runSeq !== undefined ? { runSeq: over.runSeq, ...(over.turn !== undefined ? { turn: over.turn } : {}) } : undefined}
@@ -30,7 +32,7 @@ function renderBar(over: {
         onOpenTurn={over.onOpenTurn}
         onTurnRestore={over.onTurnRestore}
       />
-    </LiveChangesContext.Provider>,
+    </TurnLatestContext.Provider>,
   );
   fireEvent.click(screen.getByRole('button', { name: /files changed|个文件已更改/ })); // 展开行区
 }
@@ -87,6 +89,22 @@ describe('RunChangesBar checkpoint 语义', () => {
     fireEvent.click(btn);
     fireEvent.click(btn); // 二次确认
     expect(onRestore).toHaveBeenCalledWith('src/a.ts');
+    expect(onTurnRestore).not.toHaveBeenCalled();
+  });
+
+  test('冻结面(2026-11-11):被后续轮覆盖的 checkpoint 行只读(撤销禁用),数字仍显冻结值', () => {
+    const onTurnRestore = vi.fn().mockResolvedValue([]);
+    renderBar({
+      runSeq: 7,
+      turn: [{ path: 'src/a.ts', before: 'h1', after: 'h2' }],
+      onTurnRestore,
+      latest: new Map([['src/a.ts', 9]]), // run 9 已再次改过 src/a.ts
+    });
+    const row = screen.getAllByText('a.ts').slice(-1)[0]!.closest('.run-changes-row')!;
+    const btn = row.querySelector('.run-changes-undo-row') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(screen.getByText('+3')).toBeDefined(); // 冻结数字照显(不被 live 改写)
+    fireEvent.click(btn);
     expect(onTurnRestore).not.toHaveBeenCalled();
   });
 });

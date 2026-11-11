@@ -176,6 +176,7 @@ export function DiffLines({
   maxHeight = 280,
   collapsible = false,
   variant = 'inline',
+  hunksOnly = false,
 }: {
   oldStr?: string;
   newStr: string;
@@ -185,9 +186,13 @@ export function DiffLines({
   collapsible?: boolean;
   /** G14.120 flat(changes 侧栏):透明平铺无内滚;inline(工具行) maxHeight 封顶内滚——行结构两版同构 */
   variant?: 'inline' | 'flat';
+  /** 每刀截断面(2026-11-11 用户裁定「只展示变化前后4行正文,不可展开,直接截断省略」):工具行/
+   *  单文件 diff 页签消费——只渲染改动 hunk ±CONTEXT 行,其余段以不可点省略条收尾;完整原文仍在
+   *  冻结快照 blob 里(撤销读快照不受展示截断影响),与审查页(可展开折叠)分开 */
+  hunksOnly?: boolean;
 }): JSX.Element {
   const { rows, truncated } = useMemo(() => diffRows(oldStr ?? '', newStr), [oldStr, newStr]);
-  const segs = useMemo(() => (collapsible ? hunkSegments(rows) : null), [rows, collapsible]);
+  const segs = useMemo(() => (collapsible || hunksOnly ? hunkSegments(rows) : null), [rows, collapsible, hunksOnly]);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
   const flat = variant === 'flat';
   // 行渲染单点(2026-11-10 用户裁定「审查 diff 与工具行统一叠加单列序号」):flat/inline 同构——色条+单序号
@@ -238,6 +243,15 @@ export function DiffLines({
         }
         const segKey = key;
         key += 1;
+        if (hunksOnly) {
+          // 截断面:省略条不可点(「不可展开,直接截断」)——仅示条数
+          return (
+            <div key={`f${segKey}`} className="diff-fold static">
+              <MoreHorizontal size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{t(`${seg.rows.length} unchanged lines`, `${seg.rows.length} 行未变更`)}</span>
+            </div>
+          );
+        }
         return expanded.has(segKey) ? (
           <div key={`f${segKey}`}>
             {seg.rows.map((r, i) => line(r, segKey * 10000 + i))}

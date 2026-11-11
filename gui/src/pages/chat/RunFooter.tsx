@@ -9,7 +9,7 @@ import type { ChatEntry } from '../../chat-reducer';
 import type { TurnFileChange } from '../../../../src/types';
 import { FileIcon } from '../../file-icon';
 import { ChangeStat, changeCounts } from '../../change-stat';
-import { useLiveChanges, visibleRunChanges } from './use-live-changes';
+import { useTurnLatest } from './use-live-changes';
 import { useUiMode } from '../../ui-mode';
 
 /** run 尾部操作条与变更汇总（D32 批C-1 拆分自 Chat.tsx）：Worked for 时长/复制/分叉钮与
@@ -44,11 +44,11 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
 }
 
 /** G14.100 轮尾变动汇总条(对标 Codex):「N 个文件已更改 +X -Y」折叠条+右侧撤销(整轮);
- *  2026-11-07 动态渲染:只列本轮记录且当前 git 仍有变动的文件,行数取当前 git 值(use-live-changes);
  *  展开逐文件(图标+名称+目录+±+行尾撤销)。
- *  2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」:文件名点击 → turndiff 页签(冻结轮 diff,
- *  run+path 寻址;旧档无 runSeq 回退审查页);撤销改走 checkpoint 回写(turn-restore,前像 blob 落盘,
- *  staleness 闸门在服务端——后续轮次又改过的文件拒绝回写防吞改动,行置灰标「已过期」);
+ *  2026-11-11 用户裁定「每轮修改产生快照写死,快照互不影响,只是当时的快照」冻结渲染:
+ *  行=本轮落档记录、行数=冻结 blob 统计(轮内提交不吞、后续轮次不改写)——2026-11-07 的
+ *  「∩ 当前 git 变动」动态渲染退役(提交吞数字/跨轮互染两个 bug 的根因);「已撤销」本地退场。
+ *  可撤销=有前像且本轮是该文件最后一个改它的轮(后续覆盖=只能看不能撤,服务端 staleness 兜底);
  *  旧档无 checkpoint 数据回退 git restore(HEAD 口径)。撤销二次确认(首击武装 3s) */
 export function RunChangesBar({
   changes,
@@ -72,17 +72,20 @@ export function RunChangesBar({
   const [stale, setStale] = useState<ReadonlySet<string>>(new Set());
   const [armed, setArmed] = useState<string | null>(null);
   const armTimer = useRef<number | undefined>(undefined);
-  // 动态渲染:本轮记录 ∩ 当前 git 变动(行数=当前 git 值,与审查页一致);已提交/已撤销的退场
-  const live = useLiveChanges();
   const office = useUiMode() === 'office';
-  const visible = visibleRunChanges(changes, live).filter((c) => !restored.has(c.path));
+  const visible = changes.filter((c) => !restored.has(c.path));
   const add = visible.reduce((n, c) => n + changeCounts(c).add, 0);
   const del = visible.reduce((n, c) => n + changeCounts(c).del, 0);
   const runSeq = run?.runSeq;
   const turnOf = (path: string): TurnFileChange | undefined => run?.turn?.find((x) => x.path.replaceAll('\\', '/') === path.replaceAll('\\', '/'));
+  // 可撤销=有前像 且 本轮是该文件最后一个改它的轮(后续轮次覆盖=只能看不能撤;TurnLatestContext
+  // 由全 entries 汇总,服务端 staleness 闸门兜底)
+  const latestByPath = useTurnLatest();
   const undoable = (path: string): boolean => {
-    const c = turnOf(path);
-    return runSeq !== undefined && c !== undefined && (c.before !== undefined || c.beforeDeleted === true);
+    const norm = path.replaceAll('\\', '/');
+    const c = turnOf(norm);
+    const latest = latestByPath.get(norm);
+    return runSeq !== undefined && c !== undefined && (c.before !== undefined || c.beforeDeleted === true) && (latest === undefined || latest === runSeq);
   };
   /** 二次确认武装键:首击武装,3s 内再击执行(审查页 useArm 同款口径) */
   const arm = (key: string, action: () => void): void => {
@@ -167,6 +170,12 @@ export function RunChangesBar({
             const base = pathBasename(norm);
             const dir = norm.slice(0, norm.length - base.length);
             const isStale = stale.has(c.path);
+            // 被后续轮次覆盖=只能看不能撤(2026-11-11 用户裁定):仅限有前像的 checkpoint 行——
+            // 无前像旧档行(bash 改动)不受影响,照走 git restore 回退
+            const superseded = (() => {
+              const c = turnOf(norm);
+              return c !== undefined && (c.before !== undefined || c.beforeDeleted === true) && !undoable(norm);
+            })();
             const armKey = `row:${c.path}`;
             const isArmed = armed === armKey;
             return (
@@ -182,10 +191,10 @@ export function RunChangesBar({
                 <button
                   type="button"
                   className={`run-changes-undo-row${isArmed ? ' arm' : ''}`}
-                  disabled={isStale}
+                  disabled={isStale || superseded}
                   data-tip={
-                    isStale
-                      ? t('Changed by a later turn — revert disabled', '后续轮次已再次修改，撤销已停用')
+                    isStale || superseded
+                      ? t('Overwritten by a later turn — view only', '后续轮次已覆盖，只能查看')
                       : isArmed
                         ? t('Click again to confirm', '再次点击确认')
                         : t('Revert this file', '撤销此文件')

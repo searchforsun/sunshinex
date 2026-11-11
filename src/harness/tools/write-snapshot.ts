@@ -41,6 +41,27 @@ export class WriteSnapshotCollector {
     }
   }
 
+  /** 捕获按调用回标（2026-11-11 每刀独立快照）：session 泵在 tool-result 回执时调——把该路径
+   *  末尾未回标的条目挂上 callId（同路径写批次面链队串行,末尾未标=本次调用产物）。无未标条目
+   *  （失败调用未捕获/已全标）静默——回执位次寻址的整条路径退役 */
+  tagCallRooted(relPosix: string, callId: string): void {
+    for (let i = this.pending.length - 1; i >= 0; i -= 1) {
+      const e = this.pending[i];
+      if (e.path !== relPosix) continue;
+      if (e.callId !== undefined) return; // 末尾该路径条目已标=本调用没产生捕获(如 edit 未命中失败)
+      e.callId = callId;
+      return;
+    }
+  }
+
+  /** 按 callId 直取捕获（内存清单内）：重启后清单空走 journal snapshots 行回查（session 面） */
+  byCallRooted(callId: string): SnapshotEntry | undefined {
+    for (let i = this.pending.length - 1; i >= 0; i -= 1) {
+      if (this.pending[i].callId === callId) return this.pending[i];
+    }
+    return undefined;
+  }
+
   drain(): SnapshotEntry[] {
     const out = this.pending;
     this.pending = [];
@@ -97,6 +118,10 @@ export interface WriteSnapshotSink {
   /** 落盘后的后像快照（2026-11-11）：紧跟 capture(p) 同路径调用，content=写入的新内容——
    *  挂到末尾该路径条目的 afterHash；无匹配条目（root 外 capture 被跳过）静默不挂 */
   captureAfter(p: string, content: string): void;
+  /** 捕获按调用回标（2026-11-11 每刀独立快照）：tool-result 回执时把该路径末尾未标条目挂 callId */
+  tagCall(p: string, callId: string): void;
+  /** 按 callId 直取捕获（2026-11-11）：内存清单内查（重启后走 journal snapshots 行回查） */
+  byCall(callId: string): SnapshotEntry | undefined;
   drain(): SnapshotEntry[];
   takeUnsealed(): SnapshotEntry[];
   /** 按调用序查该路径第 ordinal 次（1 基）pre-image 捕获（p 同 capture 口径：相对 root 或绝对） */
@@ -128,6 +153,12 @@ export function makeWriteSnapshotSink(dataDir: string, root: string): WriteSnaps
       if (rel === undefined) return;
       collector.attachAfterRooted(rel, content);
     },
+    tagCall: (p, callId) => {
+      const rel = relOf(path.isAbsolute(p) ? p : path.resolve(root, p));
+      if (rel === undefined) return;
+      collector.tagCallRooted(rel, callId);
+    },
+    byCall: (callId) => collector.byCallRooted(callId),
     drain: () => collector.drain(),
     takeUnsealed: () => collector.takeUnsealed(),
     nthFor: (p, ordinal) => {

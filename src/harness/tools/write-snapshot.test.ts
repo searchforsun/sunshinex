@@ -150,3 +150,35 @@ test('builtin write 执行后 captureAfter 落后像（sink 端到端:hash=old/a
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('tagCall/byCall: 每刀快照按 callId 回标直取(2026-11-11);失败调用不夺标', () => {
+  const root = tmp();
+  try {
+    const sink = makeWriteSnapshotSink(path.join(root, 'data'), root);
+    fs.writeFileSync(path.join(root, 'c.txt'), 'v0');
+    // 第一刀(生产序:捕获→回执回标后才可能有同路径第二刀——批次面同路径链队串行)
+    sink.capture('c.txt');
+    sink.captureAfter('c.txt', 'v1');
+    sink.tagCall('c.txt', 'step:1-idx:0');
+    // 第二刀(同文件再改;先模拟第一刀落盘——captureAfter 只落 blob 不写盘)
+    fs.writeFileSync(path.join(root, 'c.txt'), 'v1');
+    sink.capture('c.txt');
+    sink.captureAfter('c.txt', 'v2');
+    assert.equal(sink.byCall('step:1-idx:0')?.afterHash !== undefined, true);
+    const first = sink.byCall('step:1-idx:0')!;
+    assert.equal(sink.readBlob(first.hash)?.toString(), 'v0', '第一刀前像=v0');
+    assert.equal(sink.readBlob(first.afterHash!)?.toString(), 'v1', '第一刀后像=v1(互不漂移)');
+    // 第二刀成功回标
+    sink.tagCall('c.txt', 'step:2-idx:0');
+    const second = sink.byCall('step:2-idx:0')!;
+    assert.notEqual(second.hash, first.hash, '两刀前像互异');
+    assert.equal(sink.readBlob(second.hash)?.toString(), 'v1', '第二刀前像=第一刀后像');
+    assert.equal(sink.readBlob(second.afterHash!)?.toString(), 'v2');
+    // 失败调用(edit 未命中,无捕获)不夺标:末尾条目已标即返回
+    sink.tagCall('c.txt', 'step:3-idx:0');
+    assert.equal(sink.byCall('step:3-idx:0'), undefined);
+    assert.equal(sink.byCall('step:2-idx:0')?.callId, 'step:2-idx:0', '已标条目不被复标');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -1924,6 +1924,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.4;
   cursor: pointer; user-select: none;
 }.diff-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--surface-elevated) 86%, var(--fg) 14%); }
+/* 截断面省略条(2026-11-11 每刀快照「不可展开,直接截断」):静态无 hover 无手型 */
+.diff-fold.static { cursor: default; }
+.diff-fold.static:hover { color: var(--fg-tertiary); background: color-mix(in srgb, var(--surface-elevated) 94%, var(--fg) 6%); }
 
 /* G14.51:⇄ 开标签钮钉自绘 diff 面板右上角 */.tool-diffwrap { position: relative; }.tool-diffwrap > .tool-path { position: absolute; top: 6px; right: 8px; z-index: 2; }
 

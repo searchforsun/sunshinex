@@ -394,12 +394,16 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
+  // 每刀独立快照直取（2026-11-11 用户裁定「每次修改快照不相互影响,只是当时的快照」）：callId
+  // 回标面先查——命中即本次调用自己的冻结前后像（内存清单→journal snapshots 行）,重启/多轮/
+  // 失败重试均不漂移；未回标的旧条目（升级前捕获）才落下方位次寻址兜底
+  const tagged = session.snapshotByCall(callId);
   // 帧 copy 一致性：扫描与位次计数同一快照（bufferedFrames 每调用新数组，两遍扫同一引用）
-  const frames = session.bufferedFrames();
+  const frames = tagged !== undefined ? [] : session.bufferedFrames();
   /** 目标帧定位：首枚 callId 命中的 tool-call（text=注册名，payload.input 形态现场核 batch-runner：
    *  emit('tool-call', name, {input, callId, status})） */
   let targetSeq = -1;
-  let targetAbs: string | undefined;
+  let targetAbs: string | undefined = tagged?.abs;
   for (const f of frames) {
     const e = f.e;
     if (e.type !== 'tool-call') continue;
@@ -420,7 +424,9 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     break;
   }
   let entry: ReturnType<typeof session.runtime.harness.writeSnapshot.nthFor>;
-  if (targetAbs !== undefined && targetSeq >= 0) {
+  if (tagged !== undefined) {
+    entry = tagged.entry;
+  } else if (targetAbs !== undefined && targetSeq >= 0) {
     /** 调用序位次：同路径（resolve 归一后等值）且先于目标的快照族调用数 + 1（sink 清单内的序——
      *  write/edit 同一 sink 清单，混合序列按调用序统一对位）；
      *  P11 三帧:running 帧是同 callId 的二次 tool-call（幂等回填,非新调用）——位次按调用不按帧,跳过防双计 */
@@ -452,8 +458,9 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
     io.send(res, 404, { error: 'no snapshot' }); // root 外写不入清单/序越界——同恒定文案
     return;
   }
+  const target = targetAbs as string; // 到此必已定位(tagged 直取/位次寻址/path 回退三路都落值)
   // 判界同 /file：pre-image 在场 ⇒ 写时路径在 root 内，此处防符号链接逃逸（现文件读侧）
-  const real = realPathOf(targetAbs) ?? targetAbs;
+  const real = realPathOf(target) ?? target;
   if (false && (!insideTrustedRoots(session!.runtime.harness.safety, real))) { /* 2026-10-29 用户裁定「任何目录都能打开,只是访问而已」:读取面信任域门退役——本地单用户、全端点只读;写入安全网(harness 写路径判定)不受影响 */
     io.send(res, 403, { error: 'path outside trusted roots' });
     return;
@@ -483,7 +490,7 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   }
   truncated = truncated || after.length > MAX_PREVIEW_BYTES;
   io.send(res, 200, {
-    path: targetAbs,
+    path: target,
     ...(oldContent !== undefined ? { oldContent } : {}),
     newContent: after.subarray(0, MAX_PREVIEW_BYTES).toString('utf8'),
     ...(truncated ? { truncated: true } : {}),

@@ -126,7 +126,8 @@ export function ToolEntryBody({
       <div className="tool-detail">
         {/* G14.51:自绘行级 diff;⇄ 开 diff 标签钮迁入(原 DiffPanel 角标钮,可及名=路径) */}
         <div className="tool-diffwrap">
-          <DiffLines oldStr={diff?.oldContent ?? fallbackOld} newStr={diff !== null && diff !== undefined ? diff.newContent : fallbackNew} path={path} maxHeight={280} />
+          {/* 每刀截断面(2026-11-11「只展示变化前后4行正文,不可展开」):完整前后像在冻结快照,开标签看单文件页 */}
+          <DiffLines oldStr={diff?.oldContent ?? fallbackOld} newStr={diff !== null && diff !== undefined ? diff.newContent : fallbackNew} path={path} maxHeight={280} hunksOnly />
           {openDiff !== undefined && (
             <button
               type="button"

@@ -59,7 +59,7 @@ import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
 import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
-import { LiveChangesContext, useLiveGitChanges, notifyGitChanged } from './chat/use-live-changes';
+import { LiveChangesContext, TurnLatestContext, useLiveGitChanges, notifyGitChanged } from './chat/use-live-changes';
 import { useChatLocate } from './chat/use-chat-locate';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
@@ -899,10 +899,26 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     [conn, sessionId],
   );
 
+  /** 路径→最后改它的轮(2026-11-11 冻结快照面配套):全 entries 汇总,轮尾条据此判最新性——
+   *  后续轮次覆盖过的文件,前面轮次只能看不能撤(用户裁定) */
+  const turnLatestByPath = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const en of chat.entries) {
+      if (en.runSeq === undefined || en.turn === undefined) continue;
+      for (const tc of en.turn) {
+        const k = tc.path.replaceAll('\\', '/');
+        const prev = m.get(k);
+        if (prev === undefined || en.runSeq > prev) m.set(k, en.runSeq);
+      }
+    }
+    return m;
+  }, [chat.entries]);
+
   return (
     <DirResolverContext.Provider value={isDirRef}>
       <MdImageContext.Provider value={mdImageLoader}>
       <LiveChangesContext.Provider value={liveChanges}>
+      <TurnLatestContext.Provider value={turnLatestByPath}>
 
       <ChatTopbar
         fixedTitle={fixedTitle}
@@ -1325,6 +1341,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         />
       )}
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
+      </TurnLatestContext.Provider>
       </LiveChangesContext.Provider>
     </MdImageContext.Provider>
     </DirResolverContext.Provider>
