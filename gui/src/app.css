@@ -1487,10 +1487,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .run-changes-undo-row:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 /* 本轮改动单文件页签(2026-11-10):头=文件图标+名+目录+撤销钮+「本轮」徽标;体=冻结 diff(行号叠加单列) */
 .sx-turn-diff-head { gap: 8px; align-items: center; }
-.sx-turn-diff-head .sx-change-name { flex: none; }
+.sx-turn-diff-head .sx-change-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 相对路径自然序,过长省略(2026-11-11 用户裁定) */
 .sx-turn-diff-head .sx-change-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
 .sx-turn-diff-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); padding: 2px 8px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.sx-turn-diff-body { padding: 8px 12px 16px; overflow: auto; background: var(--surface-code); border-radius: var(--radius-md); font: calc(12px * var(--fz))/calc(19px * var(--fz)) var(--font-mono); } /* 2026-11-11 用户裁定:与编辑展开行同底同字体(系统缩放受控) */
+.sx-turn-diff-body { padding: 8px 12px 16px; overflow: auto; background: var(--surface-code); border-radius: 0; font: calc(12px * var(--fz))/calc(19px * var(--fz)) var(--font-mono); } /* 2026-11-11 用户裁定:黑底同编辑展开行,但直上直下无弧度(和源文件一样) */
 /* 工作区隔离 pill(2026-11-10):武装态高亮(accent 微底);说明框复用 sx-dirty-dialog 弹层形 */
 .composer-pill.isolate-pill.on { color: var(--accent); } /* 2026-11-11 用户裁定:武装态只变字色,不加背景(与左侧分支 pill 同素形) */
 .sx-iso-dialog { max-width: 420px; }
