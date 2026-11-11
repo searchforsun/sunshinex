@@ -1474,9 +1474,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none; background: transparent; color: var(--fg-tertiary);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm);
   flex: none;
-}.run-changes-undo:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }.run-changes-list { padding: 2px 6px 6px; border-top: 1px solid var(--border-subtle); }.run-changes-row {
+}.run-changes-undo:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }.run-changes-list { padding: 2px 0 6px; border-top: 1px solid var(--border-subtle); }.run-changes-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 4px 6px; border-radius: var(--radius-sm);
+  padding: 4px 10px; border-radius: 0; /* hover=整行提亮,无椭圆内缩(2026-11-11 用户裁定) */
 }.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .run-changes-row.clickable { cursor: pointer; }
 .run-changes-name {
@@ -1927,6 +1927,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.120 flat 双列行号(旧|新):配对如实——del 只示旧号,add 只示新号 */.diff-lines.flat .diff-ln { width: 30px; }.diff-lines.flat .diff-code { padding-right: 16px; }
 /* G14.57:行号随行型着色(add 绿/del 红),与左缘色条对应 */.diff-line.add > .diff-ln { color: #3fb950; }.diff-line.del > .diff-ln { color: #f85149; }.diff-code { flex: 1; white-space: pre; } /* G14.61:不强制换行,横向滚动条接管长行 */
 /* G14.57:剥掉全局行内 code 的灰底/圆角/内边距——diff 行内代码直接平铺,不再包一层 */.diff-code > code { background: transparent; border-radius: 0; padding: 0; font: inherit; }
+/* 行内码胶囊豁免(2026-11-11 用户实测「像选中的背景色只有工具行有」真因):.entry :not(pre) > code
+   的 6% 底+内距(0,1,2)压过上方透明规则(0,1,1)——工具行在 .entry 内命中、页签不在=块状底只有
+   工具行有;(0,2,1) 反压回透明 */.entry .diff-code > code { background: transparent; padding: 0; border-radius: 0; }
 .diff-code span { background: transparent; } /* 高亮 span 6% 灰洗兜底清除(像选中一样的背景色,用户裁定去掉) */ /* font:inherit(2026-11-11 去 .entry 圈):裸 <code> 落 UA 默认 monospace=Consolas——工具行对/页签逃逸的真因,审查页/单文件 diff 随本规则一并归位 */
 /* G14.57:⇄ 开 diff 标签钮与复制钮同灰(原 accent 色过艳) */.tool-diffwrap > .tool-path { color: var(--fg-tertiary); }.tool-diffwrap > .tool-path:hover { color: var(--fg-secondary); }.diff-line.trunc { color: var(--fg-tertiary); padding-left: 43px; }
 /* G14.154 折叠控件=整行 sticky 悬浮(用户裁定):left:0+width:100% 钉住可视宽——横向滚动时
@@ -3911,12 +3914,16 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 
 /* ===== 暗色气泡/暗色代码(2026-11-12 用户裁定,设置·界面与外观两项) =====
    亮色模式下两组面改用暗色主题色;html[data-bubble-dark]/[data-code-dark] 由 dark-surfaces.ts
-   落根,暗色主题下选择器不命中=开关无感。--surface-code 用 !important:非缺省配色经 palette
-   syncPalette 内联注入根 style,选择器敌不过 inline——覆写语义(开关>配色)须显式声明 */
+   落根,暗色主题下选择器不命中=开关无感。
+   【二轮根修 2026-11-12 用户实测「波及思考行/审查页/单 diff 页签字体看不到」】--surface-code
+   全局变量覆写退役——该令牌消费面远超裁定范围(思考展开体 .thinking-scroll/审查页 .diff-col/
+   单文件 diff 体全吃它),染了底没跟字=暗底暗字。改宗逐面显式着色,只动裁定面:用户代码块
+   (.code-block)/文件 md 预览(.files-md pre)/工具行展开体含 diff 预览(.entry-tool .tool-detail);
+   Monaco 文件视图由 palette.effectivePalette 单点翻暗色偏好配色。语法 --syntax-* 仍走变量覆写
+   (hljs/tok 令牌只出现在代码井内,不外溢) */
 html[data-theme='light'][data-bubble-dark='1'] { --bubble-user: #272729; }
 html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble { color: #dfdfdf; }
 html[data-theme='light'][data-code-dark='1'] {
-  --surface-code: #101010 !important;
   --syntax-comment: #b9b9b9;
   --syntax-keyword: #f8a6c8;
   --syntax-literal: #f1a275;
@@ -3925,14 +3932,15 @@ html[data-theme='light'][data-code-dark='1'] {
   --syntax-attr: #f9dc78;
   --syntax-name: #63a8f8;
 }
-/* 面文字色:代码井/文件 md 预览/工具行 diff 预览(井底暗→正文换暗色主题前景;行号/diff 行号
-   同步暗色 tertiary 档)。hljs/tok 令牌走 --syntax-* 已随上块翻面 */
-html[data-theme='light'][data-code-dark='1'] .code-block,
-html[data-theme='light'][data-code-dark='1'] .code-block .code-lang,
-html[data-theme='light'][data-code-dark='1'] .files-md pre,
-html[data-theme='light'][data-code-dark='1'] .tool-md pre,
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail,
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines,
+/* 用户代码块:井底+字+语言标签同翻(块内 hljs 令牌走 --syntax-* 暗面) */
+html[data-theme='light'][data-code-dark='1'] .code-block { background: #101010; border-color: rgba(255, 255, 255, 0.08); }
+html[data-theme='light'][data-code-dark='1'] .code-block pre code,
+html[data-theme='light'][data-code-dark='1'] .code-block .code-lang { color: #dfdfdf; }
+/* 文件 md 预览围栏 */
+html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
+/* 工具行展开体(含 write/edit diff 预览):井底+正文换暗面;行号/截断行 tertiary 走暗档
+   (暗色主题 --fg-secondary/tertiary 值的字面镜像,不引全局变量防亮色值渗入) */
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail { background: #101010; color: #dfdfdf; }
+html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
 html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-ln,
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-line.trunc { color: #dfdfdf; }
-html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-ln { color: color-mix(in srgb, #dfdfdf 50%, transparent); }
+html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-line.trunc { color: rgba(223, 223, 223, 0.5); }
