@@ -60,7 +60,7 @@ const PRESETS: Record<FontPreset, Record<string, string>> = {
     '--font-ui': SANS,
     '--font-mono': MODERN_MONO,
     '--f-base-lh': '1.75',
-    '--f-para-gap': '18px',
+    '--f-para-gap': '16px',
     '--f-body-lh': '1.75',
     '--f-tool': '14px',
     '--f-tool-lh': '1.55',
