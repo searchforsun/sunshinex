@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, SquareTerminal, X } from 'lucide-react';
 import type { Connection } from '../connection';
 import { t } from '../i18n';
 import { zoomScale } from '../ui-zoom';
@@ -209,6 +209,11 @@ export function TerminalDock({ conn, sessionId, root, ptyIdFor, onPtyAllocated, 
         onPointerCancel={onHandlePointerUp}
       />
       <div className="terminal-dock-strip">
+        {/* 区域标识(2026-11-11 用户裁定「页签行最左侧加终端图标」):下栏=终端专属区域,
+            图标只标区不交互(与会话页签列图标同亮度口径) */}
+        <span className="terminal-dock-mark" aria-hidden="true">
+          <SquareTerminal size={14} strokeWidth={1.75} />
+        </span>
         {tabs.map((x) => (
           <div
             key={x.uid}

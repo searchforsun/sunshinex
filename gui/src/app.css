@@ -3797,6 +3797,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 下栏配色区分主对话(2026-11-10 用户裁定「终端背景色调开,各模块有区分性」):栏体/页签条=代码井色
    (暗=深井 101010,亮=浅井 eeeeee),页签 pill 换井上可辨的 hover/active 混色 */
 .terminal-dock-strip::-webkit-scrollbar { width: 0; height: 0; }
+/* 终端区域标识图标(2026-11-11 用户裁定「页签行最左侧」):纯标识不交互,亮度=页签文字同档(fg-secondary) */
+.terminal-dock-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; color: var(--fg-secondary); }
 .terminal-dock-tab { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border: none; border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-ui); color: var(--fg-secondary); white-space: nowrap; cursor: pointer; max-width: 200px; }
 .terminal-dock-tab { color: var(--fg-secondary); }
 .terminal-dock-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
@@ -3872,7 +3874,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 
 /* 审查页对齐/省略修(2026-11-11 用户裁定六条) */
 /* ③分支钮图标与上方页签列图标对齐(负 margin 退役) */.sx-diff-tab .sx-changes-bar { margin-left: 0; }.sx-diff-tab .sx-changes-branch-btn { margin-left: 0; }
-/* ④行内撤销钮右缘与刷新钮一致(22px) */.sx-diff-tab .sx-change-row { padding-right: 22px; }
+/* ④行内撤销钮右缘与刷新钮右缘精确对齐(2026-11-11 用户裁定「+/−/回撤整体右移对齐刷新图标,不超 hover 行」):
+   行右缘=面板−6(list 2px+tab 4px),顶栏钮右缘=面板−8(bar -4px margin 外探+8px padding)→ 行右 padding 2px 即两者右缘同线 */.sx-diff-tab .sx-change-row { padding-right: 2px; }
 /* ⑥文件名可缩省略:窄侧栏先省文件名/目录,不越视口 */.sx-change-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ②区下拉弹层条目带前缀图标(同触发钮 Circle/CircleDot) */.sx-area-pop .sx-menuitem svg { flex: none; }
 /* 区弹层紧凑宽 */.sx-changes-area-anchor .sx-area-pop .branch-pop-name { flex: 1; min-width: 0; }
