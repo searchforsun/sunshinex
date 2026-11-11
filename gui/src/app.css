@@ -1655,7 +1655,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   opacity: 0;
   transition: opacity var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter);
 }.diff-panel:hover .diff-open-tab, .diff-open-tab:focus-visible { opacity: 1; }.diff-open-tab:hover { color: var(--accent); }
-/* 展开容器归零(G14.3 直角根因:旧 tool-detail 自持左贴边圆角/底色/左边条) */.entry-tool .tool-detail { margin: 4px 0 0; padding: 0; background: transparent; border: none; border-radius: 0; }.entry-tool .tool-path:hover { color: var(--accent); }
+/* 展开容器=黑面板(2026-11-11 用户裁定「编辑展开要黑色,与思考展开行一致」;G14.3 归零裁定退役——
+   其时 diff 面自带底色,今 diff-lines 透明继承容器,容器必须自带 surface-code) */.entry-tool .tool-detail { margin: 4px 0 0; padding: 8px 10px; background: var(--surface-code); border: none; border-radius: var(--radius-md); }.entry-tool .tool-path:hover { color: var(--accent); }
 /* ⑤ 目录树图标行高对齐(FileIcon 14px svg 与 chevron 同栅) */.sx-tree-row .iconify { flex: none; }
 
 /* ===== G14.2 折叠行指示(用户第三轮):hover 无底色,行尾浮现阶段 chevron(> 闭合/v 展开) ===== */
@@ -2943,7 +2944,7 @@ input.sx-setting-input { width: 100%; }
 /* 字体预设遗漏补齐(2026-10-31 用户裁定「除浏览器外网页外全跟随,尤其代码块与文件内容」):
    等宽井/自绘 diff/命令行/设置 raw/文件 md 预览统一走 --f-* 令牌;default 清空时回落括号缺省 */
 .files-md { font: var(--f-base-size, 14px)/var(--f-body-lh, 1.9) var(--font-ui); }
-.diff-lines { font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); }
+.diff-lines { font: calc(var(--f-code, 12px) * var(--fz))/calc(var(--f-code, 12px) * var(--fz) * var(--f-code-lh, 1.55)) var(--font-mono); } /* 2026-11-11:乘 --fz 吃系统缩放(纯定值=「右侧 diff 字体脱离系统控制」根因,工具行同规则同修复) */
 .tool-exec-cmd { font: var(--f-code, 12px)/var(--f-code-lh, 1.6) var(--font-mono); }
 .tool-md pre { font: var(--f-code, 11px)/var(--f-code-lh, 1.6) var(--font-mono); padding: var(--f-code-pad, 6px 8px); }
 .sx-raw-editor { font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); }
