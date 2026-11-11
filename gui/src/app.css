@@ -3944,3 +3944,14 @@ html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail { backgrou
 html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
 html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-ln,
 html[data-theme='light'][data-code-dark='1'] .entry-tool .tool-detail .diff-lines .diff-line.trunc { color: rgba(223, 223, 223, 0.5); }
+/* 审查页/单文件 diff 页签(2026-11-12 用户裁定「也是代码块,应受暗色控制」):双列/单文件体
+   同翻暗面——井底+字+行号暗档;diff 增删行底色为固定 hex 混色(亮暗两档通吃)不动 */
+html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col,
+html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col .diff-lines,
+html[data-theme='light'][data-code-dark='1'] .sx-change-body,
+html[data-theme='light'][data-code-dark='1'] .sx-turn-diff-body { background: #101010; color: #dfdfdf; }
+html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col .diff-lines .diff-ln,
+html[data-theme='light'][data-code-dark='1'] .sx-change-body .diff-ln,
+html[data-theme='light'][data-code-dark='1'] .sx-turn-diff-body .diff-ln,
+html[data-theme='light'][data-code-dark='1'] .sx-diff-tab .diff-col .diff-lines .diff-line.trunc { color: rgba(223, 223, 223, 0.5); }
+
