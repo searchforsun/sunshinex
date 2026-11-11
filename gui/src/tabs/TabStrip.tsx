@@ -29,7 +29,7 @@ export interface TabStripProps {
   readonly tabs: readonly import('./tab-state').TabInstance[];
   readonly activeUid: string | null;
   readonly disabled?: boolean; // 无会话:整条灰
-  /** 2026-10-27 欢迎页全局草稿:true = 「+」菜单只示浏览器/终端(草稿座可用面) */
+  /** 2026-10-27 欢迎页全局草稿:true = 「+」菜单只示浏览器(2026-11-11 用户裁定:终端与会话根目录绑定,欢迎页无根目录不示) */
   readonly welcomeOnly?: boolean;
   readonly onSelect: (uid: string) => void;
   readonly onClose: (uid: string) => void;
