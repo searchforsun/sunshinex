@@ -1415,7 +1415,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    h1 1.5em / h2 1.3em / h3 1.18em / h4 1.08em / h5·h6 1em——顶部收敛逐级缓变,适配 agent 流式正文,em 随界面字号联动 */
 .entry h1 { font-size: 1.5em; }.entry h2 { font-size: 1.3em; }.entry h3 { font-size: 1.18em; }.entry h4 { font-size: 1.08em; }
 .entry h5 { font-size: 1em; }
-.entry h6 { font-size: 1em; color: var(--fg-secondary); }.entry h1, .entry h2, .entry h3, .entry h4, .entry h5, .entry h6 { line-height: 1.25; font-weight: 600; margin: 26px 0 10px; }.entry :not(pre) > code { font-size: 0.9em; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }.entry li { margin: 3px 0; }.entry li::marker { color: var(--fg-secondary); }.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }.entry img { max-width: 100%; border-radius: var(--radius-md); }
+.entry h6 { font-size: 1em; color: var(--fg-secondary); }.entry h1, .entry h2, .entry h3, .entry h4, .entry h5, .entry h6 { line-height: 1.25; font-weight: 600; margin: 26px 0 10px; }.entry :not(pre) > code { font-size: 0.9em; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }.entry li { margin: 2px 0; }.entry li::marker { color: var(--fg-secondary); }.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }.entry img { max-width: 100%; border-radius: var(--radius-md); }
 /* 表格(§5.3):横滚圆角容器+表头底+只留横线+斑马纹;外距 16 上下(2026-10-24 区域行距加大;2026-11-04 底距同代码块统一 16,块底不贴后续内容) */.table-wrap { margin: 16px 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); /* G14.103 */ } .table-wrap .file-link { vertical-align: middle; }.table-wrap table { margin: 0; width: max-content; min-width: 50%; border-collapse: collapse; font-size: calc(14px * var(--fz)); }.table-wrap th { font-weight: 600; text-align: left; } /* 2026-11-04 用户裁定:表格去底色只留线条(空背景,与周围同色) */.table-wrap th, .table-wrap td { padding: 9px 12px; border: none; border-bottom: 1px solid var(--border-subtle); } /* 2026-11-07 二轮「表格内部不挤」6→9(正文/文件预览表格同容器) */.table-wrap tr:last-child td { border-bottom: none; }
 /* mermaid 容器(§5.4):hover 浮现钮;lightbox 淡入+轻缩放,contain 居中 */.mermaid-block { position: relative; }.mermaid-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.mermaid-block:hover .mermaid-actions, .mermaid-actions:focus-within { opacity: 1; }
 /* G14.122 lightbox 收缩:顶部让出标签条带(padding-top),动作钮随体——不再与标签条钮重叠 */.mermaid-lightbox {
@@ -3673,8 +3673,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
    上边距追加;列表/表格内部自留呼吸」)===== */
 /* 正文:节奏单位=空一行 20px。所有块只设下外距——相邻外距合并(取大者)后任意块间恒为 20,
    不再出现「段→列表 20 / 列表→段 14」式不均;标题上 38 为唯一追加位 */
-.entry p { margin: 0 0 var(--f-para-gap, 20px); }
-.entry ul, .entry ol { margin: 0 0 20px; }
+.entry p { margin: 0 0 var(--f-para-gap, 12px); }
+.entry ul, .entry ol { margin: 0 0 var(--f-para-gap, 12px); }
 .entry .table-wrap { margin: 0 0 20px; }
 .entry .table-wrap table { margin: 0; } /* 裸表旧规则不进容器(容器内零外距,外距由容器承担) */
 .entry .code-block { margin: 0 0 20px; }
