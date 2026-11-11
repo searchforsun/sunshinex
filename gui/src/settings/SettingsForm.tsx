@@ -548,7 +548,10 @@ function DarkSurfaceRow({ label, desc, aria, read, apply }: {
         <Select
           ariaLabel={aria}
           value={on ? 'on' : 'off'}
-          options={ON_OFF}
+          options={[
+            { v: 'on', l: t('On', '开') },
+            { v: 'off', l: t('Off', '关') },
+          ]}
           onChange={(v) => {
             setOn(v === 'on');
             apply(v === 'on');
