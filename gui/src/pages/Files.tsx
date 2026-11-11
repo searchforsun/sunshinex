@@ -486,6 +486,8 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,
                     lineNumbersMinChars: 3,
+                    // 歧义字符横幅退役(2026-11-11 用户裁定「去掉源文件上面的提示」):中文注释即触发,纯噪音
+                    unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false, nonBasicASCII: false },
                     ...monacoCodeFontOptions(), // 字体预设:字号/字族/行高随 --f-code(热更见上)
                     wordWrap: wrap ? 'on' : 'off', // G14.2xx 自动换行:开启即纵向排布,横向滚动条消失
                     automaticLayout: false, // 2026-10-29 改 RO 回调内同步手动 layout(onMount 内,零相位差见彼注);内建 automaticLayout 时序等同故无需开启

@@ -45,14 +45,16 @@ describe('RunChangesBar checkpoint 语义', () => {
     expect(onOpenTurn).toHaveBeenCalledWith(42, 'src/a.ts');
   });
 
-  test('旧档(无 runSeq):文件名回退 onOpenDiff,行撤销回退 onRestore(单击)', () => {
+  test('旧档(无 runSeq):整行点击回退 onOpenDiff,行撤销回退 onRestore(单击)', () => {
     const onOpenDiff = vi.fn();
     const onRestore = vi.fn();
     renderBar({ onOpenDiff, onRestore });
-    fireEvent.click(screen.getByText('a.ts'));
+    fireEvent.click(screen.getByText('a.ts')); // 整行可点(2026-11-11 用户裁定)
     expect(onOpenDiff).toHaveBeenCalledWith('src/a.ts');
-    fireEvent.click(screen.getAllByRole('button', { name: /Undo|撤销/ })[1]!); // 行内撤销(首个=整轮)
-    fireEvent.click(screen.getAllByRole('button', { name: /Undo|撤销/ })[1]!); // 二次确认
+    const row = screen.getAllByText('a.ts').slice(-1)[0]!.closest('.run-changes-row')!;
+    const btn = row.querySelector('.run-changes-undo-row') as HTMLButtonElement;
+    fireEvent.click(btn); // 行内撤销(stopPropagation 不触整行)
+    fireEvent.click(btn); // 二次确认
     expect(onRestore).toHaveBeenCalledWith('src/a.ts');
   });
 

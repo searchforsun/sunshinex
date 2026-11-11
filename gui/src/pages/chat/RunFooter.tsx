@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Check, ChevronDown, ChevronRight, Copy, GitFork } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Copy, GitFork, Undo2 } from 'lucide-react';
 import { t } from '../../i18n';
 import { fmtTokens, pathBasename } from '../../ui-util';
 import { messageTimeMs } from '../../ui-util';
@@ -148,7 +148,7 @@ export function RunChangesBar({
         <button type="button" className="run-changes-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
           {open ? <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />}
           <span>
-            {t(`${visible.length} files changed`, `${visible.length} 个文件已更改`)}
+            {t(`${visible.length} files changed`, `${visible.length} 个文件已改动`)}
           </span>
           <span className="run-changes-stat">
             <ChangeStat add={add} del={del} />
@@ -157,9 +157,10 @@ export function RunChangesBar({
         <button
           type="button"
           className={`run-changes-undo${armed === 'all' ? ' arm' : ''}`}
-          data-tip={armed === 'all' ? t('Click again to confirm', '再次点击确认') : t('Revert all changes in this turn', '撤销本轮全部变动')}
+          data-tip={armed === 'all' ? t('Click again to confirm', '再次点击确认') : t('Revert all changes in this turn', '撤销本轮全部改动')}
           onClick={() => restoreAll('all')}
         >
+          <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />
           {t('Undo', '撤销')}
         </button>
       </div>
@@ -179,15 +180,20 @@ export function RunChangesBar({
             const armKey = `row:${c.path}`;
             const isArmed = armed === armKey;
             return (
-              <div key={c.path} className="run-changes-row">
+              <div
+                key={c.path}
+                className="run-changes-row clickable"
+                role="button"
+                tabIndex={0}
+                onClick={() => openDiff(c.path)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDiff(c.path); } }}
+              >
                 <FileIcon path={c.path} />
-                <button type="button" className="run-changes-name" onClick={() => openDiff(c.path)}>
-                  {base}
-                </button>
-                <span className="run-changes-dir">{dir}</span>
+                <span className="run-changes-name">{base}</span>
                 <span className="run-changes-stat">
                   <ChangeStat {...changeCounts(c)} />
                 </span>
+                <span className="run-changes-dir">{dir}</span>
                 <button
                   type="button"
                   className={`run-changes-undo-row${isArmed ? ' arm' : ''}`}
@@ -199,8 +205,9 @@ export function RunChangesBar({
                         ? t('Click again to confirm', '再次点击确认')
                         : t('Revert this file', '撤销此文件')
                   }
-                  onClick={() => arm(armKey, () => restore(c.path))}
+                  onClick={(e) => { e.stopPropagation(); arm(armKey, () => restore(c.path)); }}
                 >
+                  <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />
                   {t('Undo', '撤销')}
                 </button>
               </div>

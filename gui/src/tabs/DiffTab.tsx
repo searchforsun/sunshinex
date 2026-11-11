@@ -393,6 +393,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
           {actBtn({ label: t('Refresh', '刷新'), icon: <RefreshCw size={14} strokeWidth={1.75} aria-hidden="true" className={refreshing ? 'sx-fetching' : undefined} />, onClick: refresh })}
         </span>
       </div>
+      <div className="sx-changes-scroll">
       {result !== null && (
         <div className={`sx-changes-result ${result.ok ? 'ok' : 'err'}`} role="status">
           {result.text}
@@ -441,10 +442,11 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
 
       {staged.length === 0 && unstaged.length === 0 && loadErr === null && (
         <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No uncommitted changes', '没有未提交的变动')}</p>
+          <p className="board-empty-title">{t('No uncommitted changes', '没有未提交的改动')}</p>
           <p className="board-empty-hint">{t('Working tree changes will appear here.', '工作区改动会显示在这里。')}</p>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -723,7 +723,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
       </div>
       {/* 2026-11-06 用户裁定 P2:辅助会话正文不渲染 fork/回退行 */}
       {/* 辅助会话仅裁 fork 入口(2026-11-06 用户裁定「只让去掉 fork 入口」):复制/步数/tokens/时间照常 */}
-      {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={sideChat === true ? undefined : onFork} />}
+      {/* 改动条在正文与复制行之间(2026-11-11 用户裁定「正文后审查行放到复制按钮行上面,正文下面」) */}
       {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}
@@ -734,6 +734,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
           onTurnRestore={onTurnRestore}
         />
       )}
+      {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={sideChat === true ? undefined : onFork} />}
     </div>
   );
 });
