@@ -1918,15 +1918,15 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   position: sticky; left: 0;
   display: flex; align-items: center; gap: 6px;
   width: 100%; box-sizing: border-box;
-  margin: 3px 0; padding: 3px 12px;
-  border: 1px solid var(--border); border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-elevated) 94%, var(--fg) 6%);
-  color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.4;
-  cursor: pointer; user-select: none;
-}.diff-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--surface-elevated) 86%, var(--fg) 14%); }
-/* 截断面省略条(2026-11-11 每刀快照「不可展开,直接截断」):静态无 hover 无手型 */
-.diff-fold.static { cursor: default; }
-.diff-fold.static:hover { color: var(--fg-tertiary); background: color-mix(in srgb, var(--surface-elevated) 94%, var(--fg) 6%); }
+  margin: 0; padding: 2px 12px 2px 43px;
+  border: none; border-radius: 0;
+  background: transparent; /* 与 diff 体同底(2026-11-11 用户裁定「黑色背景,和其他工具行展开一致,不是灰色」) */
+  color: var(--fg-tertiary); font: calc(12px * var(--fz))/calc(19px * var(--fz)) var(--font-mono); /* 字体同步 diff 体(--f-code 同源) */
+  user-select: none;
+}
+.diff-fold:not(.static) { cursor: pointer; }
+/* 审查页可展开折叠条保留交互(2026-11-11「保留省略行样式」);样式与截断面同款暗色 */
+.diff-fold:not(.static):hover { color: var(--fg-secondary); background: color-mix(in srgb, var(--fg) 5%, transparent); }
 
 /* G14.51:⇄ 开标签钮钉自绘 diff 面板右上角 */.tool-diffwrap { position: relative; }.tool-diffwrap > .tool-path { position: absolute; top: 6px; right: 8px; z-index: 2; }
 
@@ -2503,10 +2503,10 @@ input.sx-setting-input { width: 100%; }
 .sx-skills-filter { flex: 1 1 220px; min-width: 0; }
 .sx-skills-filter:has(+ .sx-skills-filter) { flex: 0 0 170px; } /* 来源列固定宽;搜索/项目按基量分余量,一行铺满 */
 
-/* ===== G14.200 审查页(diff)弧度对齐主对话(用户裁定):变更卡/折叠条/提交条 = composer;内行保持 md ===== */
+/* ===== G14.200 审查页(diff)弧度对齐主对话(用户裁定):变更卡/提交条 = composer;内行保持 md。
+   折叠条圆角随 2026-11-11 暗色重样式退役(通栏无弧) ===== */
 .sx-change { border-radius: var(--radius-composer); }
 .sx-changes-commit { border-radius: var(--radius-composer); }
-.diff-fold { border-radius: var(--radius-composer); }
 
 /* G14.205 分区头(项目/最近会话)hover 灰底去除(用户裁定)——行内 chevron/+ 钮 hover 显隐照旧 */
 .sx-side-head-row:hover { background: transparent; }

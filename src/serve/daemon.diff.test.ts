@@ -198,10 +198,12 @@ test('② 404/400 面:非 write 调用/未知 callId → 404 no snapshot;未知�
         const r3 = await diffOf(ctx.http, ctx.H, 's99', 'whatever');
         assert.equal(r3.status, 404);
         assert.deepEqual(await r3.json(), { error: 'unknown session' });
-        // 缺 callId
+        // 缺 callId 且缺 path → 400(2026-11-11 path-only 兜底放行:空 callId+path 走 journal 末次前像)
         const r4 = await fetch(`${ctx.http}/session/${sid}/diff`, { headers: ctx.H });
         assert.equal(r4.status, 400);
-        assert.deepEqual(await r4.json(), { error: 'callId query param required' });
+        assert.deepEqual(await r4.json(), { error: 'callId or path query param required' });
+        const r4b = await fetch(`${ctx.http}/session/${sid}/diff?path=src/keep.ts`, { headers: ctx.H });
+        assert.equal(r4b.status, 404, 'path-only 但该路径无快照族捕获 → no snapshot');
       } finally {
         ws.close();
       }

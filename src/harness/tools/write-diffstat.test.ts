@@ -19,7 +19,20 @@ test('尾随换行不产空行', () => {
   assert.equal(writeDiffStat('a', 'a\n'), '+0 -0');
 });
 
-test('超护栏（4001×4001）回 undefined', () => {
-  const big = 'x\n'.repeat(4001);
-  assert.equal(writeDiffStat(big, big), undefined);
+test('超护栏(中段 4001×4001)回 undefined;同文大文件裁剪后 +0 -0(2026-11-11 公共前后缀裁剪)', () => {
+  // 同文:前后缀裁剪吃掉全部行 → 中段空 → 零差(不再误触护栏)
+  const same = 'x\n'.repeat(4001);
+  assert.equal(writeDiffStat(same, same), '+0 -0');
+  // 全行相异:无公共前后缀,中段 4001×4001 > 16M 格 → 宁缺勿拖
+  const old = 'x\n'.repeat(4001);
+  const neu = 'y\n'.repeat(4001);
+  assert.equal(writeDiffStat(old, neu), undefined);
+});
+
+test('大文件小改动:公共前后缀裁剪后正常出数(2026-11-11 根修——几千行文件改 2 行不再 +0-0/无 ±)', () => {
+  const head = 'l\n'.repeat(3000);
+  const tail = 't\n'.repeat(3000);
+  const oldText = `${head}old line\n${tail}`;
+  const newText = `${head}new a\nnew b\n${tail}`;
+  assert.equal(writeDiffStat(oldText, newText), '+2 -1');
 });

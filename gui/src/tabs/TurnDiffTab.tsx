@@ -44,10 +44,12 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
 
   const rel = path ?? '';
   const load = useCallback((): void => {
-    if (rel === '' || (run === undefined && (callId === undefined || callId === ''))) {
+    if (rel === '') {
       setLoadErr(t('Nothing to show', '没有可展示的内容'));
       return;
     }
+    // run 缺场+callId 空=path-only 兜底(2026-11-11):旧装配回退/参数残缺页签不再死面——服务端
+    // /diff 放行空 callId+path 走 journal 末次前像
     withMinSpin(
       run !== undefined
         ? conn.turnDiff(sessionId, run, rel)
@@ -104,10 +106,9 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
     <div className="sx-diff-tab sx-turn-diff" aria-label="turn diff tab">
       <div className="sx-changes-bar sx-turn-diff-head">
         <FileIcon path={norm} />
-        {/* 2026-11-11 用户裁定:文件路径正常展示(与文件页签同语言),路径后跟「回到源文件」钮——
-            点击只开源文件页签;diff 细节落在本页签体内,不再有公共「本轮」页签面 */}
-        <span className="sx-change-name">{base}</span>
-        <span className="sx-change-dir">{dir}</span>
+        {/* 2026-11-11 用户裁定:文件路径正常展示(与文件页签同语言,相对路径自然序 dir+base),
+            路径后跟「回到源文件」钮——点击只开源文件页签;diff 细节落在本页签体内,不再有公共「本轮」页签面 */}
+        <span className="sx-change-name">{dir !== '' ? `${dir}${base}` : base}</span>
         <span className="sx-changes-bar-actions">
           <button
             type="button"

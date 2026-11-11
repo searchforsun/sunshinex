@@ -388,8 +388,10 @@ export function handlePlans(io: FileHandlerIo, _req: http.IncomingMessage, res: 
 export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
   const url = urlOf(req);
   const callId = url.searchParams.get('callId');
-  if (callId === null || callId.length === 0) {
-    io.send(res, 400, { error: 'callId query param required' });
+  const relParam = url.searchParams.get('path');
+  // callId 缺场放行 path-only(2026-11-11):轮尾条旧装配回退/死参数页签兜底走 journal 末次前像
+  if ((callId === null || callId.length === 0) && (relParam === null || relParam.length === 0)) {
+    io.send(res, 400, { error: 'callId or path query param required' });
     return;
   }
   const session = io.sessionFor(res, id);
@@ -397,9 +399,10 @@ export function handleDiff(io: FileHandlerIo, req: http.IncomingMessage, res: ht
   // 每刀独立快照直取（2026-11-11 用户裁定「每次修改快照不相互影响,只是当时的快照」）：callId
   // 回标面先查——命中即本次调用自己的冻结前后像（内存清单→journal snapshots 行）,重启/多轮/
   // 失败重试均不漂移；未回标的旧条目（升级前捕获）才落下方位次寻址兜底
-  const tagged = session.snapshotByCall(callId);
+  const hasCallId = callId !== null && callId !== '';
+  const tagged = hasCallId ? session.snapshotByCall(callId) : undefined;
   // 帧 copy 一致性：扫描与位次计数同一快照（bufferedFrames 每调用新数组，两遍扫同一引用）
-  const frames = tagged !== undefined ? [] : session.bufferedFrames();
+  const frames = tagged !== undefined || !hasCallId ? [] : session.bufferedFrames();
   /** 目标帧定位：首枚 callId 命中的 tool-call（text=注册名，payload.input 形态现场核 batch-runner：
    *  emit('tool-call', name, {input, callId, status})） */
   let targetSeq = -1;
