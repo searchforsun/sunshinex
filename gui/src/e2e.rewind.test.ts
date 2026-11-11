@@ -1,4 +1,9 @@
 import { describe, test, expect, vi } from 'vitest';
+// 语言钉 en(2026-11-11):本文件起**真 daemon**,App 挂载即拉 GET /settings——language 槽读
+// process.env(SUNSHINEX_LANGUAGE),缺省未设时 GUI 模块缺省 zh(G14.104 产品缺省)与断言面
+// 的英文文案('Files rewound' 等)互相踩;且 daemon 读真实用户全局 settings.json(非密闭),
+// 用户设置页切过语言即漂。env 先于 daemon 装配钉死 en,断言面稳定
+process.env.SUNSHINEX_LANGUAGE = 'en';
 vi.mock('monaco-editor', () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
 }));

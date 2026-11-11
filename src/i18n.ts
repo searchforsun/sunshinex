@@ -1,6 +1,6 @@
 /**
  * 界面语言（i18n）基座：
- * - Language = 'en' | 'zh'；进程级缺省 zh（en 经 CLI --language=en 或测试 setLanguage 显式切换）
+ * - Language = 'en' | 'zh'；进程级缺省 en（zh 经 CLI --language=zh/daemon settings 链或测试 setLanguage 显式切换）
  * - t(en, zh)：语言键 → 当前语言文案；调用点内联双语字面量，零词典文件、改文案即改调用点
  * - 仅用于**界面外观**（chrome/帮助/回执/系统消息）。提示词与写链文案恒英文单语，不走 t()（CLAUDE.md §15）
  * - 硬约束：所有 t() 必须调用时求值，禁止模块加载期常量冻结（语言在 CLI main 里先于任何装配设置；
@@ -10,9 +10,9 @@
  */
 type Language = 'en' | 'zh';
 
-let current: Language = 'zh'; // 缺省 zh(2026-11-11 用户实测「+ / 弹窗混排 COMMANDS×中文描述」根修:此前
-// 残留 G14.104 rollback-probe 的 en 初值,GUI language 键未显式设置时 t 走 en=骨架英文×数据中文混排;
-// parseLanguage「未设置→zh」同口径。后端 CLI main 先于装配显式 setLanguage,测试经 SUNSHINEX_LANGUAGE=en 钉 en)
+let current: Language = 'en'; // 进程缺省 en(CLI main 先于装配显式 setLanguage——parseLanguage 未设置→zh;
+// GUI settings language 键显式设置时经 use-appearance-sync 覆写。勿留探针初值:2026-11-11 实测改 zh
+// 会翻转 dist 侧 daemon 的 t() 缺省,e2e.rewind 服务端 toast 断言随之翻车)
 
 export function getLanguage(): Language {
   return current;

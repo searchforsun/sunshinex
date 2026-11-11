@@ -24,10 +24,11 @@ describe('filterCommands 命令过滤(G10-C4)', () => {
 describe('CommandPalette 渲染(G10-C4)', () => {
   const items = filterCommands(CMDS, DESC, '', SUPPORTED);
 
-  it('命令+描述渲染;G14.160 无 disabled 类(不可用命令已不列)', () => {
+  it('命令+描述渲染;G14.160 无 disabled 类(不可用命令已不列);已知命令描述走双语表(2026-11-11 GUI 语言权威,daemon 文本仅 unknown 回落)', () => {
     render(<CommandPalette items={items} active={0} onHover={() => {}} onPick={() => {}} />);
     expect(screen.getByText('/status')).toBeDefined();
-    expect(screen.getByText('session summary')).toBeDefined();
+    // 测试钉 en → status 命中 CMD_DESC 双语表 en 面(daemon desc 'session summary' 不再穿透)
+    expect(screen.getByText('Session and ledger summary')).toBeDefined();
     expect(document.querySelectorAll('.cmd-item.disabled').length).toBe(0);
   });
 
