@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Undo2 } from 'lucide-react';
+import { Undo2, FileText } from 'lucide-react';
 import { pathBasename, withMinSpin } from '../ui-util';
 import { DiffLines } from '../diff-lines';
 import { FileIcon } from '../file-icon';
@@ -104,18 +104,21 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
     <div className="sx-diff-tab sx-turn-diff" aria-label="turn diff tab">
       <div className="sx-changes-bar sx-turn-diff-head">
         <FileIcon path={norm} />
-        <button
-          type="button"
-          className="sx-change-name"
-          data-tip={t('Open file tab', '打开文件标签')}
-          onClick={() => onOpenFile?.(norm)}
-        >
-          {base}
-        </button>
+        {/* 2026-11-11 用户裁定:文件路径正常展示(与文件页签同语言),路径后跟「回到源文件」钮——
+            点击只开源文件页签;diff 细节落在本页签体内,不再有公共「本轮」页签面 */}
+        <span className="sx-change-name">{base}</span>
         <span className="sx-change-dir">{dir}</span>
-        {/* 撤销=二次确认(2026-11-10 用户裁定);badge「本轮/写入」退役——页签名=文件名,内容=diff 本体 */}
-        {run !== undefined && (
-          <span className="sx-changes-bar-actions">
+        <span className="sx-changes-bar-actions">
+          <button
+            type="button"
+            className="sx-changes-act"
+            aria-label={t('Back to source file', '回到源文件')}
+            data-tip={t('Back to source file', '回到源文件')}
+            onClick={() => onOpenFile?.(norm)}
+          >
+            <FileText size={14} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          {run !== undefined && (
             <button
               type="button"
               className={`sx-changes-act${armed ? ' arm' : ''}`}
@@ -134,8 +137,8 @@ export function TurnDiffTab({ conn, sessionId, params, onOpenFile }: TurnDiffTab
             >
               <Undo2 size={14} strokeWidth={1.75} aria-hidden="true" />
             </button>
-          </span>
-        )}
+          )}
+        </span>
       </div>
       {loadErr !== null && <div className="sx-changes-result err">{loadErr}</div>}
       {restored && <div className="sx-changes-result ok" role="status">{t('Reverted to the state before this turn.', '已恢复到本轮之前的状态。')}</div>}

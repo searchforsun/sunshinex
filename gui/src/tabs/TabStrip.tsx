@@ -50,7 +50,7 @@ export interface TabStripProps {
 /** 「+」菜单分节序:content → session → tools */
 const GROUP_ORDER: readonly ('content' | 'session' | 'tools')[] = ['content', 'session', 'tools'];
 /** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */
-const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断
+const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory', 'turndiff']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断;turndiff 被动入口只留轮尾改动条/工具行(2026-11-11 用户裁定「去掉本轮入口」:单文件 diff 落具体页签,无公共裸开面)
 
 export function TabStrip(props: TabStripProps): JSX.Element {
   const {
