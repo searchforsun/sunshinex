@@ -89,7 +89,10 @@
   /* 2026-11-06 用户裁定:亮色面底阶梯拉开(原 surface=elevated=#fff 全同色,卡片/表格块/代码井
      与页面零区分)。定版:页面 f6f6f6 浅灰,卡面纯白(浮起),输入/soft ec,代码井 ee——
      页 < 卡一档、卡 < 井两档,撤框方案(面底分层)在亮色下才成立 */
-  --surface: #f6f6f6;
+  /* 2026-11-12 用户裁定「主对话纯净柔和白,和输入框有区分」:页面提纯白 fdfdfd(原 f6f6f6
+     发虚偏蓝观感),composer 换浅灰底(见文件尾 [data-theme='light'] .sx-composer 覆写)——
+     白页面×灰输入的反向阶梯,卡/浮层仍白靠边框分层 */
+  --surface: #fdfdfd;
   --surface-under: #efefef;
   --surface-elevated: #fff;
   --surface-soft: #ececec;
@@ -1479,7 +1482,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 4px 10px; border-radius: 0; /* hover=整行提亮,无椭圆内缩(2026-11-11 用户裁定) */
 }.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .run-changes-row.clickable { cursor: pointer; }
-.run-changes-list:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); } /* 列表区整体 hover(单行时=整个下侧区,用户裁定) */
 .run-changes-name {
   border: none; background: transparent; color: var(--fg);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 0; white-space: nowrap;
@@ -3946,7 +3948,25 @@ html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .entr
   --fg-muted: rgba(223, 223, 223, 0.52);
   --fg-icon: rgba(223, 223, 223, 0.85);
 }
-html[data-theme='light'][data-code-dark='1'] .code-block { border-color: rgba(255, 255, 255, 0.08); }
+/* 亮主题暗代码卡羽化边(2026-11-12 用户裁定「椭圆边框毛刺感根治,形状与配色均不动」):
+   暗面 #101010 对白底对比拉满,超椭圆弧线的光栅阶梯即显形;1px 边框环不随 corner-shape
+   渲染=铁律 5② 登记毛刺源,一并撤。修法按发送钮羽化边同口径(铁律 5③):底色移 ::before
+   (全局级联下与卡同款 superellipse(1.5) 几何,border-radius inherit)0.45px 模糊加宽边缘
+   过渡,宿主撤底撤框托底;overflow 放行保羽化外溢不被裁(pre 自带横滚裁剪、卡内边距
+   12/14px 大于弧线侵入角部的 ~6.5px,圆角区无内容可越;code-head 气泡锚 .sx-tip 自身
+   relative,宿主定位化不改锚)。配色零改动:填充恒 #101010 */
+html[data-theme='light'][data-code-dark='1'] .code-block {
+  position: relative; z-index: 0; background: none; border: none; overflow: visible;
+}
+html[data-theme='light'][data-code-dark='1'] .code-block::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: #101010; filter: blur(0.45px);
+}
 html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
 html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
 
+
+/* 亮色主对话纯净白二段(2026-11-12 用户裁定「纯净柔和的白,但要和输入框有区分」):页面
+   --surface 提纯白后 composer(原 surface-elevated 白)与页面同色不可辨——composer 换浅灰底
+   (surface-under 档),白页×灰输入反向阶梯;阴影描边环既有 elev-composer 不动 */
+[data-theme='light'] .sx-composer { background: var(--surface-under); }
