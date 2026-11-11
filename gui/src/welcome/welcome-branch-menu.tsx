@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, GitBranch, Plus } from 'lucide-react';
 import { t } from '../i18n';
 
 /** 欢迎页分支弹层(2026-11-09 用户裁定改版):固定宽高(清单区内滚)、当前分支右侧对号、顶部筛选行——
@@ -105,6 +105,8 @@ export function WelcomeBranchMenu({
               className={`sx-menuitem${b === gitBr.current ? ' active' : ''}${held ? ' held' : ''}${isSelected ? ' picked' : ''}`}
               onClick={() => !held && onPick(b)}
             >
+              {/* 分支项前缀分支图标(2026-11-11 用户裁定,与项目项文件夹图标同语言) */}
+              <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" />
               <span className="branch-pop-name">{b}</span>
               {held && <span className="branch-pop-held">{t('Checked out', '已签出')}</span>}
               {b === gitBr.current && <span className="branch-pop-current">{t('Current', '当前')}</span>}

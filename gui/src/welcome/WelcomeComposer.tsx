@@ -507,13 +507,14 @@ export function WelcomeComposer({
                   setProjOpen(false);
                 }}
               >
+                {/* 项目下拉条目前缀文件夹图标(2026-11-11 用户裁定,与分支项分支图标同语言) */}
+                <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
                 {(() => {
                   const nm = baseName(r.root ?? r.slug);
                   return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
                 })()}
               </button>
-            ))}
-            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
+            ))}            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
               <FolderAddIcon size={14} /> {t('Browse folders…', '浏览文件夹…')}
             </button>
             {hint !== '' && <div className="proj-hint">{hint}</div>}

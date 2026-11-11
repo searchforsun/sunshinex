@@ -1153,6 +1153,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 5px 10px; border-radius: var(--radius-sm);
   color: var(--fg); text-align: left;
 }.proj-pop .sx-menuitem:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }.proj-pop .sx-menuitem.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* 项目项前缀文件夹图标(2026-11-11):不参与伸缩,文字吃满余量 */.proj-pop .sx-menuitem > svg { flex: none; color: var(--fg-tertiary); }
 
 /* ===== G10-C5 侧栏精修(Codex 对标:分区头大写小字距/无多余线条/同一 12px 栅格) ===== */.sx-side-head-row { display: flex; align-items: center; justify-content: space-between; }.sx-side-head {
   padding: 14px 12px 6px;
@@ -1754,6 +1755,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .branch-pop-add:disabled { opacity: 0.35; cursor: default; }
 .branch-pop-list { flex: 1; min-height: 0; overflow-y: auto; }
 .branch-pop .sx-menuitem { display: flex; align-items: center; gap: 8px; width: 100%; }
+.branch-pop .sx-menuitem > svg { flex: none; color: var(--fg-tertiary); }
 .branch-pop-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .branch-pop-check { flex: none; color: var(--fg); }
 .branch-pop-empty { padding: 8px 10px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
@@ -3865,7 +3867,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-sess-card-copy { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: 6px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-icon); cursor: pointer; vertical-align: middle; }
 .sx-sess-card-copy:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
 .sx-sess-card-name, .sx-sess-card-path { display: flex; align-items: flex-start; gap: 4px; }
-.sx-sess-card-path > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sx-sess-card-path svg { flex: none; margin-top: 3px; color: var(--fg-tertiary); }
+.sx-sess-card-path > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 /* 审查页对齐/省略修(2026-11-11 用户裁定六条) */
 /* ③分支钮图标与上方页签列图标对齐(负 margin 退役) */.sx-diff-tab .sx-changes-bar { margin-left: 0; }.sx-diff-tab .sx-changes-branch-btn { margin-left: 0; }

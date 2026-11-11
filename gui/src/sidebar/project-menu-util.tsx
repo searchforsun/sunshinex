@@ -3,7 +3,7 @@ import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
 import { zoomScale } from '../ui-zoom';
-import { Archive, Check, CircleHelp, Clock, Copy, GitBranch, Layers, Pin } from 'lucide-react';
+import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -205,6 +205,10 @@ function SessionHoverCard(props: {
   readonly info: SessionRowInfo;
   /** 锚点视觉坐标(summary 中心)与侧栏右缘(视觉 px) */
   readonly anchor: { top: number; height: number; menuRight: number };
+  /** 卡上悬停桥(2026-11-11 用户实测「鼠标无法停留」):行 span leave 只延时收卡,卡内 enter
+   *  取消收卡、卡 leave 即收——行与卡之间 4px 缝隙不再打断悬停 */
+  readonly onCardEnter: () => void;
+  readonly onCardLeave: () => void;
 }): JSX.Element {
   const z = zoomScale();
   // 低应用宽度不越视口:余量不足时收缩,下限 120(2026-10-27 用户裁定「不要超出视口」)
@@ -218,18 +222,22 @@ function SessionHoverCard(props: {
     <div
       className="sx-sess-card"
       style={{ left: (props.anchor.menuRight + 4) / z, top: (props.anchor.top + props.anchor.height / 2) / z, width }}
+      onMouseEnter={props.onCardEnter}
+      onMouseLeave={props.onCardLeave}
     >
       <div className="sx-sess-card-name">
         {props.label}
         <CardCopy text={props.label} label={t('Copy session name', '复制会话名')} />
       </div>
       {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底);
-          2026-11-10 用户裁定:路径/分支行右端复制钮(复制会话名/项目地址/分支名) */}
+          2026-11-10 用户裁定:路径/分支行右端复制钮(复制会话名/项目地址/分支名);
+          2026-11-11 用户裁定:路径行补文件夹图标(与分支/轮次行同语言) */}
       {rootPath !== undefined && rootPath !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
           <div className="sx-sess-card-path">
-            {rootPath}
+            <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{rootPath}</span>
             <CardCopy text={rootPath} label={t('Copy project path', '复制项目地址')} />
           </div>
         </>
@@ -292,14 +300,22 @@ export function SessionRow(props: {
       // 蓝点——后台 markSeen effect 异步补戳,渲染层此守卫兜即时态(新活动帧落到补戳间隙不闪点)
       <span className="sx-session-dot unseen" />
     ) : null;
-  // 悬浮卡显隐(2026-10-26 四段卡替代文本 tip):enter 锚 summary 量位,leave/行点击即收
+  // 悬浮卡显隐(2026-10-26 四段卡替代文本 tip):enter 锚 summary 量位,leave/行点击即收;
+  // 2026-11-11 用户实测「鼠标无法停留」:行 leave 改 140ms 延时收,卡 enter 取消、卡 leave 即收
   const [hover, setHover] = useState<{ top: number; height: number; menuRight: number } | null>(null);
+  const hoverTimer = useRef<number | undefined>(undefined);
+  const hoverDelayClose = (): void => {
+    window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => setHover(null), 140);
+  };
+  const hoverCancelClose = (): void => window.clearTimeout(hoverTimer.current);
   return (
     <li
       data-row-id={props.rowId}
       className={`session-row sx-session-row${props.active ? ' active' : ''}`}
       data-session-row="1"
       onClick={() => {
+        hoverCancelClose();
         setHover(null);
         if (props.busy) return;
         props.onOpen();
@@ -323,11 +339,19 @@ export function SessionRow(props: {
           const menu = e.currentTarget.closest('.sx-menu');
           setHover({ top: r.top, height: r.height, menuRight: menu !== null ? menu.getBoundingClientRect().right : r.right });
         }}
-        onMouseLeave={() => setHover(null)}
+        onMouseLeave={hoverDelayClose}
       >
         {props.label}
       </span>
-      {hover !== null && <SessionHoverCard label={props.label} info={props.info} anchor={hover} />}
+      {hover !== null && (
+        <SessionHoverCard
+          label={props.label}
+          info={props.info}
+          anchor={hover}
+          onCardEnter={hoverCancelClose}
+          onCardLeave={hoverDelayClose}
+        />
+      )}
       <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
         <ArchiveConfirmButton
