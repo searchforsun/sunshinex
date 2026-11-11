@@ -36,3 +36,10 @@ test('大文件小改动:公共前后缀裁剪后正常出数(2026-11-11 根修�
   const newText = `${head}new a\nnew b\n${tail}`;
   assert.equal(writeDiffStat(oldText, newText), '+2 -1');
 });
+
+test('CRLF→LF 归一不产幻影 ±(2026-11-12 用户裁定「+3 -1 应为 +2 -0」根根因)', () => {
+  // edit 重写文件把 CRLF 行归一成 LF:语义上未动的行不再计 -1+1
+  const oldText = '<!-- header -->\r\n<html>\r\n';
+  const newText = '<!-- header -->\n<!-- 编辑测试1 -->\n<html>\n';
+  assert.equal(writeDiffStat(oldText, newText), '+1 -0');
+});

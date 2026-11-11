@@ -5,11 +5,12 @@
  * `written`，宁可缺 stat 不拖工具执行。
  */
 
-/** 行切分：尾随换行不产空行（'a\nb\n' → ['a','b']） */
+/** 行切分：尾随换行不产空行（'a\nb\n' → ['a','b']）；行尾 \r 剥离(2026-11-12 用户裁定「+3 -1 应为
+ *  +2 -0」根因:edit 重写文件 CRLF→LF 归一,未动行成幻影 -1+1)——与 git autocrlf 同口径 */
 function splitLines(text: string): string[] {
   const lines = text.split('\n');
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
-  return lines;
+  return lines.map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
 }
 
 export function writeDiffStat(oldText: string | undefined, newText: string): string | undefined {

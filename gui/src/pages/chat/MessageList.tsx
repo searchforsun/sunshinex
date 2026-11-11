@@ -167,12 +167,14 @@ const DayGroupBlock = memo(
           key={e2.key}
           entry={e2}
           onOpenDiff={onEntryOpenDiff}
+          onOpenTurn={onOpenTurn}
+          onTurnRestore={onTurnRestore}
           onOpenAgent={onOpenAgent}
           onOpenFile={onOpenFile}
           sideChat={sideChat}
         />
       );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenAgent, sideChat]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(

@@ -68,8 +68,10 @@ function compactShift(rows: DiffRow[]): DiffRow[] {
 }
 
 export function diffRows(oldText: string, newText: string): { rows: DiffRow[]; truncated: boolean } {
-  const a = oldText.split('\n');
-  const b = newText.split('\n');
+  // 行尾 \r 剥离(2026-11-12 用户裁定「+2 -0 显示 +3 -1」渲染侧同源根因):edit 重写文件 CRLF→LF
+  // 归一,未动行成幻影删+加对——与 git autocrlf/统计面(splitLines)同口径
+  const a = oldText.replace(/\r\n?/g, '\n').split('\n');
+  const b = newText.replace(/\r\n?/g, '\n').split('\n');
   let endA = a.length;
   let endB = b.length;
   while (endA > 0 && endB > 0 && a[endA - 1] === b[endB - 1]) {

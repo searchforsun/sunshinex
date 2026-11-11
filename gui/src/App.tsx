@@ -528,14 +528,16 @@ function AppShell(): JSX.Element {
   // 2026-11-10 用户裁定「写入/编辑跳转复用本轮 diff 页签,不再跳审查页」:write/edit 工具行跳转
   // (callId 寻址)与轮尾改动条(run+path 寻址)统一开 turndiff 单文件页签;'diff' 型保留=审查页
   // 空入参守卫(2026-11-10 用户裁定「去掉本轮空页签入口」):无 callId 且无 path 的裸开=「没有可展示的内容」死页签,不开
-  const openDiffTab = useCallback((callId: string, path: string): void => { if (callId === '' && path === '') return; openTabInSession('turndiff', { callId, path }); }, [openTabInSession]);
+  const openDiffTab = useCallback((callId: string, path: string): void => { if (callId === '' && path === '') return; openTabInSession('turndiff', { callId, path: path.replaceAll('\\', '/').replace(/^(\.\/)+/, '') }); }, [openTabInSession]);
   // 轮尾行点击(2026-11-11 用户裁定「当作一个区域处理」):同文件已有 turndiff 页签(刀级 callId
   // 寻址)就地处切 run+path 聚合寻址并激活——同文件恒一签,点轮尾=看聚合、点工具行=看那一刀
   const openTurndiffTab = useCallback((run: number, path: string): void => {
     if (path === '') return;
-    const norm = path.replaceAll('\\', '/');
+    // 路径归一(2026-11-12):反斜杠统一+剥 ./ 前缀——'./edit-test.md' 与 'edit-test.md' 是同一文件,
+    // 不归一则复用匹配打穿(实测三页签并存)
+    const norm = path.replaceAll('\\', '/').replace(/^(\.\/)+/, '');
     const seat = tabStates[openSessionId];
-    const existing = seat?.tabs.find((tb) => tb.type === 'turndiff' && (tb.params.path ?? '').replaceAll('\\', '/') === norm);
+    const existing = seat?.tabs.find((tb) => tb.type === 'turndiff' && (tb.params.path ?? '').replaceAll('\\', '/').replace(/^(\.\/)+/, '') === norm);
     if (seat !== undefined && existing !== undefined) {
       setTabStates((s) => setActive(patchTurndiffAddressing(s, openSessionId, existing.uid, { run, path: norm }), openSessionId, existing.uid));
       return;
