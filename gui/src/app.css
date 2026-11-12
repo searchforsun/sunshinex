@@ -3985,7 +3985,11 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    surface-under #f9f9f9 单一灰阶:次级钮(新增/编辑/删除/详情 pill/raw 控制行钮)、标签徽章
    (chip/来源标/权限档位标)、卡内代码块(agent-body/team-body pre/raw 编辑器/mcp-json),
    输入/搜索/筛选井此前已同灰——设置页灰=菜单灰,一个灰阶说完 */
-[data-theme='light'] .sx-settings-main :is(.sx-add-button, .sx-card-actions button, .sx-raw-controls button, .sx-chip, .sx-skills-src, .sx-perm-level, .sx-team-body > summary, .sx-rc-details > summary, .sx-agent-body pre, .sx-team-body pre, .sx-raw-editor, .sx-editor-modal-fields textarea.sx-mcp-json) { background: var(--surface-under); }
+[data-theme='light'] .sx-settings-main :is(.sx-add-button, .sx-card-actions button:not(.primary), .sx-raw-controls button, .sx-chip, .sx-skills-src, .sx-perm-level, .sx-team-body > summary, .sx-rc-details > summary, .sx-agent-body pre, .sx-team-body pre, .sx-raw-editor, .sx-editor-modal-fields textarea.sx-mcp-json) { background: var(--surface-under); }
+/* 弹窗保存钮=反色实心(七轮灰面统一误伤:.sx-card-actions button 白化/灰化波及 .primary,
+   保存钮几乎隐形;2026-11-12 用户裁定「保存副作用钮=反相色,取消无副作用钮=主菜单灰以区分」):
+   保存=前景实心白字,取消=菜单灰(上规则 :not(.primary) 让位) */
+[data-theme='light'] .sx-settings-main .sx-editor-modal-actions button.primary { background: var(--fg); color: var(--fg-on-solid); }
 [data-theme='light'] .sx-settings-main :is(.sx-mcp-meta dt, .sx-agent-desc, .sx-chip, .sx-card-form label) { color: var(--fg); }
 
 /* 设置七轮补遗(2026-11-12 用户实测三件):①下拉触发器也归菜单灰(六轮只白了卡内,通用页
