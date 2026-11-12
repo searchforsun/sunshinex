@@ -92,7 +92,7 @@
   /* 2026-11-12 用户裁定「主对话纯净柔和白」:页面提纯白 fdfdfd(原 f6f6f6 发虚偏蓝观感);
      composer 白底靠描边环区分(见文件尾 elev-composer 亮色覆写,Codex 式白底+明确轮廓) */
   --surface: #fdfdfd;
-  --surface-under: #efefef;
+  --surface-under: #f9f9f9; /* 2026-11-12 用户裁定「菜单太灰」:回 Codex gray-50 值(原 #efefef 深一档);主对话/侧栏 2px 边框随令牌变浅=更贴 Codex 弱界 */
   --surface-elevated: #fff;
   --surface-soft: #ececec;
   --surface-code: #eeeeee;
@@ -3981,3 +3981,7 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 .sx-settings-main .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
 .sx-editor-modal .sx-dd-trigger,
 .modal-body .sx-dd-trigger { background: var(--surface-soft); }
+
+/* 设置卡亮色专用档(2026-11-12「菜单太灰」随裁:全局 surface-under 提到 Codex gray-50 #f9f9f9
+   后,纯白页上 #f9f9f9 卡又近同色——设置卡取 Codex gray-75 #f3f3f3,区块可辨且比旧 #efefef 柔) */
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: #f3f3f3; }
