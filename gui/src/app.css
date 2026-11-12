@@ -3987,3 +3987,12 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    输入/搜索/筛选井此前已同灰——设置页灰=菜单灰,一个灰阶说完 */
 [data-theme='light'] .sx-settings-main :is(.sx-add-button, .sx-card-actions button, .sx-raw-controls button, .sx-chip, .sx-skills-src, .sx-perm-level, .sx-team-body > summary, .sx-rc-details > summary, .sx-agent-body pre, .sx-team-body pre, .sx-raw-editor, .sx-editor-modal-fields textarea.sx-mcp-json) { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main :is(.sx-mcp-meta dt, .sx-agent-desc, .sx-chip, .sx-card-form label) { color: var(--fg); }
+
+/* 设置七轮补遗(2026-11-12 用户实测三件):①下拉触发器也归菜单灰(六轮只白了卡内,通用页
+   「终端」等下拉仍白=红框所指;全设置主面 dd-trigger 统一 surface-under,弹层边线已在) 
+   ②快捷键 kbd 降灰(原前景 9% 混色偏重)→菜单灰 surface-under+边线 var(--border) 
+   ③设置卡加贴合软阴影(elev-composer 同式)——白页×白卡靠边线分割偏弱,阴影把区块托出来 */
+[data-theme='light'] .sx-settings-main .sx-dd-trigger { background: var(--surface-under); }
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) .sx-dd-trigger { background: var(--surface-under); }
+[data-theme='light'] .sx-settings-main .sx-kbd { background: var(--surface-under); border-color: var(--border); }
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { box-shadow: var(--elev-composer); }
