@@ -104,7 +104,7 @@
   --warn: #e25507;
   --err: #e02e2a;
   --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
-  --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.08); /* 2026-11-03:白对白分层靠投影,较 Codex 原值略加深一档(无环无远晕,铁律 5 口径) */
+  --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.08); /* 2026-11-12 用户复裁定「不加边线,只要软阴影」(环线在超椭角下不随形=角部毛刺,除非根治不加):白对白分层靠投影,撤 11-12 提议的 1px 环 */
   --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   --syntax-comment: #4f4f4f;
   --syntax-keyword: #ab4f7a;
@@ -3970,8 +3970,8 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 
 
 /* 亮色主对话纯净白二段(2026-11-12 用户裁定):页面 --surface 提纯白后与 composer(白)同色——
-   区分走 Codex 式「白底+明确描边」而非灰底(2026-11-12 用户复裁定「灰底不符合 Codex 风格」):
-   elev-composer 环加深一档(0.04→0.10)+阴影略实,输入框从白页上以清晰轮廓浮出 */
+   区分走纯软阴影(2026-11-12 用户复裁定「不加边线,只要软阴影」:环线在超椭角下不随形=角部
+   毛刺,未根治前一律无线):两层贴合软影,近层小影描形、远层大晕浮出,无任何环线 */
 [data-theme='light'] {
-  --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+  --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
 }
