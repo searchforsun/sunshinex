@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
@@ -310,32 +310,6 @@ export function WelcomeComposer({
   const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
   const { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, pick: pickBranch, createBranchOnly, setSelectedBranch: setSelBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen, setHint, setDirOpen });
-  /** 选项条窄宽三态(2026-11-12 用户裁定「过窄隐现,再窄保留图标,不换行不超视口」):
-   *  ①名字 span 过溢打 data-cut=右缘 14px 渐隐(同页签隐现口径) ②条仍溢出(scrollWidth>clientWidth)
-   *  打 data-icon-only=整条进仅图标模式(label 全隐,图标恒在) ③ResizeObserver 盯条随宽重算 */
-  const optsBarRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const mark = (): void => {
-      const bar = optsBarRef.current;
-      if (bar === null) return;
-      for (const el of bar.querySelectorAll<HTMLElement>('.wc-pill-label')) {
-        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
-        else el.removeAttribute('data-cut');
-      }
-      // 溢出判定只量直接子元素右缘:scrollWidth 会把 pill-anchor 内绝对定位的分支弹层宽计进来,
-      // 菜单开着即误判溢出→假性仅图标模式
-      const kidsRight = Math.max(...[...bar.children].map((c) => c.getBoundingClientRect().right), 0);
-      const barRight = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
-      if (kidsRight > barRight + 1) bar.setAttribute('data-icon-only', '');
-      else bar.removeAttribute('data-icon-only');
-    };
-    mark();
-    const bar = optsBarRef.current;
-    if (bar === null) return;
-    const ro = new ResizeObserver(mark);
-    ro.observe(bar);
-    return () => ro.disconnect();
-  }, [projName, gitBr, picked, selectedBranch]);
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
@@ -343,7 +317,7 @@ export function WelcomeComposer({
         <h1 className="welcome-tagline">{t('What should we do today?', '今天要做些什么？')}</h1>
       </div>
       <div className="welcome-dock">
-        <div className="welcome-options-bar" ref={optsBarRef}>
+        <div className="welcome-options-bar">
           <button
             type="button"
             className="choose-project-bar"
@@ -354,7 +328,7 @@ export function WelcomeComposer({
             }}
           >
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span className="wc-pill-label">{projName}</span>
+            <span>{projName}</span>
           </button>
           {/* G14.113 分支选择 pill(git 目录才显):当前分支+弹层切换 */}
           {gitBr !== null && gitBr.current !== '' && (
@@ -368,7 +342,7 @@ export function WelcomeComposer({
                 onClick={() => setBranchOpen((v) => !v)}
               >
                 <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" />
-                <span className="branch-pill-name wc-pill-label">{selectedBranch !== '' ? selectedBranch : gitBr.current}</span>
+                <span className="branch-pill-name">{selectedBranch !== '' ? selectedBranch : gitBr.current}</span>
                 <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {branchOpen && (
@@ -392,7 +366,7 @@ export function WelcomeComposer({
               onClick={() => (isolate ? setIsolate(false) : setIsoOpen(true))}
             >
               <FolderGit2 size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span className="wc-pill-label">{t('Isolate', '隔离')}</span>
+              <span>{t('Isolate', '隔离')}</span>
             </button>
           )}
         </div>
