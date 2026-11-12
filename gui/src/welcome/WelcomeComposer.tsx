@@ -322,7 +322,11 @@ export function WelcomeComposer({
         if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
         else el.removeAttribute('data-cut');
       }
-      if (bar.scrollWidth > bar.clientWidth + 1) bar.setAttribute('data-icon-only', '');
+      // 溢出判定只量直接子元素右缘:scrollWidth 会把 pill-anchor 内绝对定位的分支弹层宽计进来,
+      // 菜单开着即误判溢出→假性仅图标模式
+      const kidsRight = Math.max(...[...bar.children].map((c) => c.getBoundingClientRect().right), 0);
+      const barRight = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
+      if (kidsRight > barRight + 1) bar.setAttribute('data-icon-only', '');
       else bar.removeAttribute('data-icon-only');
     };
     mark();
