@@ -47,7 +47,7 @@ export const PALETTES: readonly Palette[] = [
     id: 'light-default',
     mode: 'light',
     name: { en: 'Default', zh: '默认' },
-    tokens: { surface: '#fdfdfd', surfaceUnder: '#f9f9f9', surfaceElevated: '#ffffff', surfaceSoft: '#ececec', surfaceCode: '#eeeeee', editor: '#fcfcfc', fg: '#1a1c1f', fgOnSolid: '#ffffff', accent: '#339cff' }, /* surface/under 同步纯白页与 Codex gray-50(2026-11-12 用户裁定):xterm 画布/取值侧读不了 CSS 变量,令牌面与 app.css 同进退 */
+    tokens: { surface: '#fdfdfd', surfaceUnder: '#f9f9f9', surfaceElevated: '#ffffff', surfaceSoft: '#ececec', surfaceCode: '#fcfcfc', editor: '#fcfcfc', fg: '#1a1c1f', fgOnSolid: '#ffffff', accent: '#339cff' }, /* surface/under/code 同步纯白页与 Codex gray-50/gray-25(2026-11-12 用户裁定):xterm 画布/取值侧读不了 CSS 变量,令牌面与 app.css 同进退 */
   },
   {
     id: 'light-mist',

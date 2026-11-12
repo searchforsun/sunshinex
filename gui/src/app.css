@@ -95,7 +95,7 @@
   --surface-under: #f9f9f9; /* 2026-11-12 用户裁定「菜单太灰」:回 Codex gray-50 值(原 #efefef 深一档);主对话/侧栏 2px 边框随令牌变浅=更贴 Codex 弱界 */
   --surface-elevated: #fff;
   --surface-soft: #ececec;
-  --surface-code: #eeeeee;
+  --surface-code: #fcfcfc; /* 2026-11-12 用户问「思考/工具 diff 井太灰是 Codex 风格吗」→不是:回 Codex gray-25 亮色值(原 #eeeeee 深三档,系 11-06 自设阶梯非 Codex);思考井/工具 diff 预览/代码块全部随令牌回近白 */
   --terminal-dock-bg: var(--surface); /* 终端下栏井色=主对话背景(2026-11-11 用户裁定) */
   --fg: #1a1c1f;
   --fg-on-solid: #fff;
