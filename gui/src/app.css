@@ -3999,4 +3999,4 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 [data-theme='light'] .sx-settings-main .sx-dd-trigger { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) .sx-dd-trigger { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main .sx-kbd { background: var(--surface-under); border-color: var(--border); }
-[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { box-shadow: var(--elev-composer); }
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 3px 10px rgba(0, 0, 0, 0.05); } /* 2026-11-12 用户复裁定「阴影减一点」:专用轻影不再复用 elev-composer(composer 档偏重);弹窗阴影(elev-prominent)未动 */
