@@ -40,6 +40,8 @@ export interface TabParams {
   readonly sideJournal?: string;
   /** 辅助对话持久化编号题(辅助对话 N;daemon fork meta,开签注入) */
   readonly title?: string;
+  /** turndiff 重取信号(2026-11-12):轮尾行复用同文件页签就地换寻址时携带,run/path 同值也强制重拉 */
+  readonly turnNonce?: number;
   /** G14.154 辅助对话首问(文件选区「在辅助对话中提问」携带,挂载即落输入框) */
   readonly insert?: string;
   /** 首问 token 的选取全文(2026-11-07 串扰根修:内容随 insert 同路进辅助面私有账本,
@@ -313,8 +315,7 @@ export function patchTurndiffAddressing(
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
   if (cur === undefined || target === undefined || target.type !== 'turndiff') return states;
-  const params: TabParams = { callId: undefined, ...addressing };
-  if (target.params.run === params.run && (target.params.path ?? '').replaceAll('\\', '/') === addressing.path.replaceAll('\\', '/')) return states;
+  const params: TabParams = { callId: undefined, ...addressing, turnNonce: Date.now() };
   return { ...states, [sessionId]: { ...cur, tabs: cur.tabs.map((t) => (t.uid === uid ? { ...t, params } : t)) } };
 }
 

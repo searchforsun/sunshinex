@@ -33,7 +33,7 @@ export interface TurnDiffTabProps {
 }
 
 export function TurnDiffTab({ conn, sessionId, params, root, onOpenFile }: TurnDiffTabProps): JSX.Element {
-  const { run, callId, path } = params;
+  const { run, callId, path, turnNonce } = params;
   const [content, setContent] = useState<DiffContent | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,7 +67,7 @@ export function TurnDiffTab({ conn, sessionId, params, root, onOpenFile }: TurnD
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn, sessionId, run, callId, rel]);
+  }, [conn, sessionId, run, callId, rel, turnNonce]);
 
   useEffect(() => {
     load();
