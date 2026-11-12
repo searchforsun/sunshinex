@@ -3979,3 +3979,9 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 /* 下拉可见性二段(2026-11-12):弹层加 1px 边线(此前只余软阴影,白页上白弹层无界;暗色同式
    白 8% 发丝线与既有菜单弹层同语言)。触发器归属五轮定版规则管理 */
 .sx-dd-pop { border: 1px solid var(--border); }
+
+/* 设置次级钮/标签提亮(2026-11-12 用户裁定「MCP/模型/智能体团队等新增按钮等比较灰,一同调亮」):
+   亮色设置主面内次级钮(surface-soft #ececec 灰底)回白+边线——新增/编辑/删除/启停钮与白卡
+   同语言;卡上灰色说明标签(mcp-meta dt/agent-desc/chip)由 fg-secondary 升 fg 档提亮一阶 */
+[data-theme='light'] .sx-settings-main :is(.sx-add-button, .sx-card-actions button, .sx-raw-controls button) { background: var(--surface-elevated); }
+[data-theme='light'] .sx-settings-main :is(.sx-mcp-meta dt, .sx-agent-desc, .sx-chip, .sx-card-form label) { color: var(--fg); }
