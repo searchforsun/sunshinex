@@ -3960,19 +3960,22 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
   --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
 }
 
-/* ===== 设置页亮色样式(2026-11-12 用户裁定四轮定版「还是偏灰吗」→改宗 Codex 画法,全部
-   [data-theme='light'] 作用域,暗色零触碰=暗色保持原生令牌梯:页 #181818/卡 #212121/输入 #303030) =====
-   Codex 亮色设置语言=白卡+细边线(与代码块 gray-25+边线同构,不靠灰底分区块):卡回白
-   (surface-elevated)+边线升 var(--border);全部输入/下拉/表单井统一白底+既有 1px 边
-   (卡内/白页直挂/弹窗同一口——井的区分靠边线不靠灰底,彻底消灭灰白混搭);卡内行分隔线
-   同 var(--border) 档 */
+/* ===== 设置页亮色样式(2026-11-12 用户裁定五轮定版,全部 [data-theme='light'] 作用域,
+   暗色零触碰=暗色保持原生令牌梯:页 #181818/卡 #212121/输入 #303030) =====
+   五轮口径(用户裁定「下拉回白,输入框保持灰,顶部筛选条=菜单灰」):
+   ①卡=白+细边线(Codex 画法,与代码块 gray-25+边线同构) ②下拉触发器=白(原样,弹层有边线)
+   ③文本输入框(.sx-setting-input/表单)=菜单灰 surface-under——输入与下拉异色区分,灰用菜单
+   同色不另立档 ④顶部筛选条(.sx-res-toolbar:项目/来源下拉+搜索框)整条=菜单灰(后置规则压
+   下拉白) ⑤卡内行分隔线 var(--border) 档;弹窗维持灰井既有裁定 */
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: var(--surface-elevated); border-color: var(--border); }
-[data-theme='light'] .sx-settings-main :is(.sx-setting-input, .sx-dd-trigger, .sx-raw-controls select, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea) { background: var(--surface-elevated); }
+[data-theme='light'] .sx-settings-main .sx-dd-trigger,
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) .sx-dd-trigger,
+[data-theme='light'] .sx-settings-main .sx-raw-controls select,
+[data-theme='light'] .sx-settings-main select { background: var(--surface-elevated); }
+[data-theme='light'] .sx-settings-main :is(.sx-setting-input, .sx-card-form input, .sx-card-form textarea) { background: var(--surface-under); }
+[data-theme='light'] .sx-settings-main .sx-res-toolbar :is(.sx-dd-trigger, .sx-setting-input) { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main .sx-card .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
 
-/* 下拉可见性二段(2026-11-12 用户裁定「看不清下拉选项」):①弹层加 1px 边线(此前只余软阴影,
-   白页上白弹层无界;暗色同式白 8% 发丝线与既有菜单弹层同语言) ②亮色设置主面内触发器回浅灰
-   (菜单同色 surface-under #f9f9f9,白卡/白页上都可辨;暗色不动维持原生梯) */
+/* 下拉可见性二段(2026-11-12):弹层加 1px 边线(此前只余软阴影,白页上白弹层无界;暗色同式
+   白 8% 发丝线与既有菜单弹层同语言)。触发器归属五轮定版规则管理 */
 .sx-dd-pop { border: 1px solid var(--border); }
-[data-theme='light'] .sx-settings-main .sx-dd-trigger,
-[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) .sx-dd-trigger { background: var(--surface-under); } /* 卡内白井规则同特异性,本条后置取胜:触发器=菜单灰 */
