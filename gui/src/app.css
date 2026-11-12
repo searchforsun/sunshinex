@@ -53,6 +53,10 @@
   /* 2026-11-03 毛刺根除(用户实测:输入框/编辑卡角部光斑缺角,气泡无阴影即无):80px 大晕层与
      inset 高光在 corner-shape 下不随角形渲染=角部亮/暗残块;收敛为两层贴合阴影 */
   --elev-composer: 0 0 0 1px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
+  /* 物件卡专属轻影档(2026-11-12 用户裁定预置,暂无消费面):制品卡/网页预览卡/未来报表卡等
+     「可拿起看的物件」挂此档——阴影=物件语义,内嵌 diff/代码走 surface-code 扁平井不吃影
+     (扁平为骨+轻拟物为眼的分界:浮层/物件用影,内嵌内容用灰底);亮暗各档见 light 块 */
+  --elev-object: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.35);
   /* 动效 */
   --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
   --ease-exit: cubic-bezier(0.8, 0, 0.4, 1);
@@ -3958,6 +3962,7 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    毛刺,未根治前一律无线):两层贴合软影,近层小影描形、远层大晕浮出,无任何环线 */
 [data-theme='light'] {
   --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
+  --elev-object: 0 1px 2px rgba(0, 0, 0, 0.03), 0 3px 10px rgba(0, 0, 0, 0.05); /* 物件卡轻影亮色档(与设置卡专用轻影同式,2026-11-12 预置无消费面) */
 }
 
 /* ===== 设置页亮色样式(2026-11-12 用户裁定五轮定版,全部 [data-theme='light'] 作用域,
