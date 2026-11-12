@@ -3960,28 +3960,14 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
   --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
 }
 
-/* 设置页区块区分(2026-11-12 用户裁定「都是相同白色,无法区分区块」「仔细看各个设置项」):
-   纯白页上所有白卡零轮廓——设置主面(.sx-settings-main)内全部卡片统一浅灰底(surface-under 档),
-   覆盖分组卡/Raw 卡/技能卡/记忆卡/MCP 卡/智能体卡/提供方卡全家;卡内输入/下拉/表单/操作钮
-   回白底保控件对比(surface-soft #ececec 在灰卡 #efefef 上近同色不可辨) */
-.sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: var(--surface-under); }
-.sx-settings-main :is(.sx-setting-input, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-card-actions button, .sx-add-button) { background: var(--surface-elevated); }
-/* 弹窗内输入回灰底(2026-11-12 用户裁定「弹窗输入框分不清」):编辑模态/通用模态=白面,而弹窗
-   DOM 落在设置主面作用域内被上面的白化规则转白=白上白;弹窗作用域反白化回灰井
-   (.sx-dd-trigger 本就 5% 前景混色可辨不动) */
-.sx-editor-modal :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea),
-.modal-body :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, input, select) { background: var(--surface-soft); }
-
-/* 设置输入/选择井统一(2026-11-12 用户裁定「有些灰有些白,统一」):亮色设置主面内一律
-   白井+1px 边(灰卡×白井×边线三件套),自绘下拉 trigger 原为 5% 前景混色(灰卡上灰、白弹层
-   上白,两态不一致)收口白底;raw 控制行原生 select 同批。弹窗作用域维持灰井(反白化既有
-   裁定)。行分隔线 border-subtle(前景 5%)在灰卡上近不可见,卡内升 var(--border) 档 */
-.sx-settings-main .sx-dd-trigger,
-.sx-settings-main .sx-raw-controls select { background: var(--surface-elevated); }
-.sx-settings-main .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
-.sx-editor-modal .sx-dd-trigger,
-.modal-body .sx-dd-trigger { background: var(--surface-soft); }
-
-/* 设置卡亮色专用档(2026-11-12「菜单太灰」随裁:全局 surface-under 提到 Codex gray-50 #f9f9f9
-   后,纯白页上 #f9f9f9 卡又近同色——设置卡取 Codex gray-75 #f3f3f3,区块可辨且比旧 #efefef 柔) */
+/* ===== 设置页亮色区块阶梯(2026-11-12 用户裁定三轮定版,全部 [data-theme='light'] 作用域,
+   暗色零触碰=暗色保持原生令牌梯:页 #181818/卡 #212121/输入 #303030) =====
+   亮色:纯白页 #fdfdfd 上——卡=gray-75 #f3f3f3(Codex gray-75;区分区块),卡内控件=白井+1px 边
+   (灰卡×白井三件套,自绘下拉 trigger/raw 控制行 select/表单/操作钮同批);白页直挂控件(技能页
+   顶部筛选条:项目/来源下拉+搜索框)=灰井(surface-soft/trigger 5% 混色原样);弹窗=白模态+
+   灰井(模态 DOM 落设置主面作用域,须显式回灰防白上白);卡内行分隔线升 var(--border) 档 */
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: #f3f3f3; }
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) :is(.sx-dd-trigger, .sx-raw-controls select, .sx-setting-input, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-card-actions button, .sx-add-button) { background: var(--surface-elevated); }
+[data-theme='light'] .sx-settings-main .sx-card .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
+[data-theme='light'] .sx-editor-modal :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-dd-trigger),
+[data-theme='light'] .modal-body :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-dd-trigger, input, select) { background: var(--surface-soft); }
