@@ -3960,14 +3960,12 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
   --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
 }
 
-/* ===== 设置页亮色区块阶梯(2026-11-12 用户裁定三轮定版,全部 [data-theme='light'] 作用域,
-   暗色零触碰=暗色保持原生令牌梯:页 #181818/卡 #212121/输入 #303030) =====
-   亮色:纯白页 #fdfdfd 上——卡=gray-75 #f3f3f3(Codex gray-75;区分区块),卡内控件=白井+1px 边
-   (灰卡×白井三件套,自绘下拉 trigger/raw 控制行 select/表单/操作钮同批);白页直挂控件(技能页
-   顶部筛选条:项目/来源下拉+搜索框)=灰井(surface-soft/trigger 5% 混色原样);弹窗=白模态+
-   灰井(模态 DOM 落设置主面作用域,须显式回灰防白上白);卡内行分隔线升 var(--border) 档 */
-[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: #f3f3f3; }
-[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) :is(.sx-dd-trigger, .sx-raw-controls select, .sx-setting-input, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-card-actions button, .sx-add-button) { background: var(--surface-elevated); }
+/* ===== 设置页亮色样式(2026-11-12 用户裁定四轮定版「还是偏灰吗」→改宗 Codex 画法,全部
+   [data-theme='light'] 作用域,暗色零触碰=暗色保持原生令牌梯:页 #181818/卡 #212121/输入 #303030) =====
+   Codex 亮色设置语言=白卡+细边线(与代码块 gray-25+边线同构,不靠灰底分区块):卡回白
+   (surface-elevated)+边线升 var(--border);全部输入/下拉/表单井统一白底+既有 1px 边
+   (卡内/白页直挂/弹窗同一口——井的区分靠边线不靠灰底,彻底消灭灰白混搭);卡内行分隔线
+   同 var(--border) 档 */
+[data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: var(--surface-elevated); border-color: var(--border); }
+[data-theme='light'] .sx-settings-main :is(.sx-setting-input, .sx-dd-trigger, .sx-raw-controls select, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea) { background: var(--surface-elevated); }
 [data-theme='light'] .sx-settings-main .sx-card .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
-[data-theme='light'] .sx-editor-modal :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-dd-trigger),
-[data-theme='light'] .modal-body :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-dd-trigger, input, select) { background: var(--surface-soft); }
