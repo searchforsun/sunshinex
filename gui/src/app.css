@@ -2874,7 +2874,7 @@ input.sx-setting-input { width: 100%; }
    与列表项行距各 +一档,列表项与普通换行拉开区分;行高 1.65→1.7。只动 .entry 正文域 ===== */
 .entry h1, .entry h2, .entry h3, .entry h4 { margin: 38px 0 16px; } /* 2026-11-07 二轮「大标题追加上边距」30→38(下 16 不变) */
 .entry ul, .entry ol { margin: 14px 0; } /* 2026-11-07 间隙优化轮 */
-.entry li + li { margin-top: 10px; } /* 2026-11-07 二轮「列表内部不挤」(源码列表项无空行,渲染自留呼吸) */ /* 列表项之间 6px(旧 3px)——与普通换行可区分 */
+.entry li + li { margin-top: 4px; } /* 列表项行距(2026-11-12 用户裁定「再缩窄」:10→4) */
 .entry li > ul, .entry li > ol { margin: 4px 0; } /* 嵌套列表贴主项,不吃满档 */
 .entry pre { margin: 14px 0; }
 .entry table { margin: 16px 0; } /* 2026-11-07 二轮 */
