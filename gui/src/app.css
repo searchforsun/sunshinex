@@ -381,7 +381,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* === token-gate(无连接门面:居中卡+暗色输入+hint;#root 无定位祖——absolute 对视口居中) === */.token-gate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 48px)); display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); }.token-gate label { display: flex; flex-direction: column; gap: 4px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }.token-gate input { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; font: calc(14px * var(--fz)) var(--font-mono); }.token-gate button[type='submit'] { align-self: flex-start; padding: 5px 18px; background: var(--fg); border: 1px solid transparent; border-radius: var(--radius-md); color: var(--fg-on-solid); }.token-gate button[type='submit']:hover { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }.token-gate .hint { margin: 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 
 /* === 残余挂名顺手 === */
-/* 终端标签(terminal):fallback 行/错误·退出条/term 满高链(sx-tabbody 定高→flex 列,term flex:1 补席) */.sx-pty { display: flex; flex-direction: column; height: 100%; background: var(--surface-code); }.sx-pty-term { flex: 1; min-height: 0; }.sx-pty-error, .sx-pty-exited { flex: none; margin: 4px; padding: 4px 8px; font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); border-radius: var(--radius-sm); }.sx-pty-error { color: var(--err); border: 1px solid var(--err); }.sx-pty-exited { color: var(--fg-secondary); border: 1px solid var(--border); }.sx-pty-fallback { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--fg-secondary); }
+/* 终端标签(terminal):fallback 行/错误·退出条/term 满高链(sx-tabbody 定高→flex 列,term flex:1 补席) */
+.sx-pty { display: flex; flex-direction: column; height: 100%; background: var(--surface); } /* 页签井色=主对话背景(2026-11-12 用户裁定「侧栏终端和下栏一致」:原 surface-code 亮色 #eee 与下栏纯白割裂;xterm 画布色另经 TerminalTab xtermTheme 同步) */.sx-pty-term { flex: 1; min-height: 0; }.sx-pty-error, .sx-pty-exited { flex: none; margin: 4px; padding: 4px 8px; font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); border-radius: var(--radius-sm); }.sx-pty-error { color: var(--err); border: 1px solid var(--err); }.sx-pty-exited { color: var(--fg-secondary); border: 1px solid var(--border); }.sx-pty-fallback { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--fg-secondary); }
 /* 目录标签(directory):行 hover/chevron 旋态/名截断标/加载·错误·截断行(缩进=行内 paddingLeft) */.sx-tree { height: 100%; overflow-y: auto; padding: 0 0 8px; }
 /* G14.7 explorer 头行:工作区名 + 刷新/全部折叠动作(hover 浮现) */.sx-tree-head {
   display: flex; align-items: center; gap: 4px;
@@ -3975,3 +3976,8 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 [data-theme='light'] {
   --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
 }
+
+/* 设置页区块区分(2026-11-12 用户裁定「都是相同白色,无法区分区块」):纯白页上白卡零轮廓——
+   分组卡换浅灰底(surface-under 档,与输入框白底反向分层),卡内输入/下拉回白保控件对比 */
+.sx-settings-card { background: var(--surface-under); border: none; }
+.sx-settings-card .sx-setting-input, .sx-settings-card select { background: var(--surface-elevated); }

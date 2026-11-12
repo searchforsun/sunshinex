@@ -1228,8 +1228,8 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
       fireEvent.click(toolRowRe(`Write ${REL} `)!);
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.getAttribute('aria-label')).toBe(REL);
-      // 双语容忍正解(2026-10-27 技术债轮 K2:openDiffTitle t() 化,测试环境缺省 en)
-      expect(pathBtn?.getAttribute('data-tip')).toMatch(/^打开 diff 标签$|^Open diff tab$/); // 主通道标识(缺场回落面才示「在文件标签预览」)
+      // 双语容忍正解(2026-10-27 技术债轮 K2:openDiffTitle t() 化,测试环境缺省 en);diff→改动 文案统一(2026-11-11)
+      expect(pathBtn?.getAttribute('data-tip')).toMatch(/^打开改动标签$|^Open changes tab$/); // 主通道标识(缺场回落面才示「在文件标签预览」)
       fireEvent.click(pathBtn!);
       await waitFor(() => expect(tabsByTitle(container, REL).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, REL)[0]!.className).toContain('active'); // Diff 标签活动

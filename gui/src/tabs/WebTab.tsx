@@ -848,7 +848,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
                   /* 缺 allowpopups 时 Electron 在 setWindowOpenHandler 之前就吞掉弹窗(_blank/window.open
                    * 全静默);放开后主进程 handler 恒 deny 原生窗,只转发 http(s) 开新侧栏页签 */
                   allowpopups="true"
-                  style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface-code)' }}
+                  style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface)' }}
                 />
               )
             ) : active === null ? (
@@ -866,7 +866,7 @@ function WebTabImpl({ conn, params, uid, onMeta, root, onClose, onActivate, part
                 src={active}
                 sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
                 onLoad={syncPageTitle}
-                style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface-code)' }}
+                style={{ width: '100%', height: '100%', border: 'none', background: 'var(--surface)' }}
               />
             )}
           </div>
