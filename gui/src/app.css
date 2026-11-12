@@ -3949,22 +3949,22 @@ html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .entr
   --fg-icon: rgba(223, 223, 223, 0.85);
 }
 /* 亮主题暗代码卡矢量圆角(2026-11-12 用户裁定「椭圆边框毛刺感根治,形状与配色均不动」):
-   亮底近黑卡的 22px 超椭圆弧线走 border-radius 光栅链,弧线像素在缩放下二次采样=楼梯毛刺
-   (2026-11-07 mermaid 转圈同根因先例:SVG 链任何缩放下恒平滑);0.45px 羽化按铁律 5③ 实测
-   只能把硬台阶 24→15,1x 缩放下不收敛(用户实测仍毛刺),弃。根治=弧线搬矢量链:84×84 SVG
-   圆角方经 border-image 九宫格绘制整卡底色(slice=22=半径:四角切片 1:1 原样绘制按设备分辨率
-   矢量栅格化,直边切片拉伸)。形状逐像素对齐全局 corner-shape:superellipse(1.5)——规范
-   公式指数 n=2K=3,每角两段三次贝塞尔(对角点 4.54,4.54 处分割)数值拟合,最大偏差 0.028px;
-   路径绑定 radius-md=22px(铁律 1 冻结值)。1px 边框环为铁律 5② 登记的不随形毛刺源,一并撤
-   (原 8% 白本近不可见)。配色零改动:填充恒 #101010。卡内 pre 自带横滚裁剪、内边距 12/14px
-   大于弧线角部侵入 ~6.4px,子内容不越角区;sx-tip 气泡锚自身 relative,宿主定位化不改锚 */
+   亮底近黑卡的 22px 超椭圆弧线走 border-radius 光栅链,分数 DPI(Windows 2K@110%,dpr=1.1)
+   下弧线像素二次采样=楼梯毛刺;羽化遮(铁律 5③ 口径)实测只削弱不收敛,SVG-as-image 九宫格
+   仍隔图片解码缓存链实测仍毛刺,均弃。根治=弧线搬 inline SVG 元素链(2026-11-07 mermaid
+   同款,任何缩放下恒平滑):卡底单 svg 由 CodeSurface 组件随尺寸重算 superellipse(1.5) 拟合
+   路径(形状逐像素对齐全局 corner-shape,最大偏差 0.028px,见 code-surface.tsx 头注)。1px
+   边框环为铁律 5② 登记的不随形毛刺源,一并撤(原 8% 白本近不可见)。配色零改动:填充恒
+   #101010(组件 path fill)。门控显隐:非亮主题暗码模式宿主原样(var(--surface-code)+边框
+   +圆角)。卡内 pre 自带横滚裁剪、内边距 12/14px 大于弧线角部侵入 ~6.4px,子内容不越角区;
+   sx-tip 气泡锚自身 relative,宿主定位化不改锚 */
+.sx-code-surface { display: none; }
 html[data-theme='light'][data-code-dark='1'] .code-block {
   position: relative; z-index: 0; background: none; border: none; overflow: visible;
 }
-html[data-theme='light'][data-code-dark='1'] .code-block::before {
-  content: ''; position: absolute; inset: 0; z-index: -1;
-  border: 22px solid transparent;
-  border-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='84'%20height='84'%3E%3Cpath%20fill='%23101010'%20d='M22,0C13.949,0,8.539,0.539,4.539,4.539C0.539,8.539,0,13.949,0,22L0,62C0,70.051,0.539,75.461,4.539,79.461C8.539,83.461,13.949,84,22,84L62,84C70.051,84,75.461,83.461,79.461,79.461C83.461,75.461,84,70.051,84,62L84,22C84,13.949,83.461,8.539,79.461,4.539C75.461,0.539,70.051,0,62,0Z'/%3E%3C/svg%3E") 22 fill;
+html[data-theme='light'][data-code-dark='1'] .code-block .sx-code-surface {
+  display: block; position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: -1; pointer-events: none;
 }
 html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
 html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
@@ -3977,7 +3977,9 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
   --elev-composer: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 14px rgba(0, 0, 0, 0.09);
 }
 
-/* 设置页区块区分(2026-11-12 用户裁定「都是相同白色,无法区分区块」):纯白页上白卡零轮廓——
-   分组卡换浅灰底(surface-under 档,与输入框白底反向分层),卡内输入/下拉回白保控件对比 */
-.sx-settings-card { background: var(--surface-under); border: none; }
-.sx-settings-card .sx-setting-input, .sx-settings-card select { background: var(--surface-elevated); }
+/* 设置页区块区分(2026-11-12 用户裁定「都是相同白色,无法区分区块」「仔细看各个设置项」):
+   纯白页上所有白卡零轮廓——设置主面(.sx-settings-main)内全部卡片统一浅灰底(surface-under 档),
+   覆盖分组卡/Raw 卡/技能卡/记忆卡/MCP 卡/智能体卡/提供方卡全家;卡内输入/下拉/表单/操作钮
+   回白底保控件对比(surface-soft #ececec 在灰卡 #efefef 上近同色不可辨) */
+.sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc) { background: var(--surface-under); }
+.sx-settings-main :is(.sx-setting-input, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-card-actions button, .sx-add-button) { background: var(--surface-elevated); }
