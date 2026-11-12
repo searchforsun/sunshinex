@@ -3980,8 +3980,10 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    白 8% 发丝线与既有菜单弹层同语言)。触发器归属五轮定版规则管理 */
 .sx-dd-pop { border: 1px solid var(--border); }
 
-/* 设置次级钮/标签提亮(2026-11-12 用户裁定「MCP/模型/智能体团队等新增按钮等比较灰,一同调亮」):
-   亮色设置主面内次级钮(surface-soft #ececec 灰底)回白+边线——新增/编辑/删除/启停钮与白卡
-   同语言;卡上灰色说明标签(mcp-meta dt/agent-desc/chip)由 fg-secondary 升 fg 档提亮一阶 */
-[data-theme='light'] .sx-settings-main :is(.sx-add-button, .sx-card-actions button, .sx-raw-controls button) { background: var(--surface-elevated); }
+/* 设置页灰面统一=菜单灰(2026-11-12 用户裁定六轮定版「不是白色,统一到菜单色:标签/按钮/
+   代码块等所有有灰色阴影的地方」,五轮白钮实验作废)——亮色设置主面内一切灰底元件收敛到
+   surface-under #f9f9f9 单一灰阶:次级钮(新增/编辑/删除/详情 pill/raw 控制行钮)、标签徽章
+   (chip/来源标/权限档位标)、卡内代码块(agent-body/team-body pre/raw 编辑器/mcp-json),
+   输入/搜索/筛选井此前已同灰——设置页灰=菜单灰,一个灰阶说完 */
+[data-theme='light'] .sx-settings-main :is(.sx-add-button, .sx-card-actions button, .sx-raw-controls button, .sx-chip, .sx-skills-src, .sx-perm-level, .sx-team-body > summary, .sx-rc-details > summary, .sx-agent-body pre, .sx-team-body pre, .sx-raw-editor, .sx-editor-modal-fields textarea.sx-mcp-json) { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main :is(.sx-mcp-meta dt, .sx-agent-desc, .sx-chip, .sx-card-form label) { color: var(--fg); }
