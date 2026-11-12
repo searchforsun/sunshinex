@@ -153,7 +153,7 @@ flowchart TB
 - [x] 设置存储规范化 catalog（providers/agents/plugins/mcp/skills/permissions 结构化读写单点 + 目录监听实时同步 + CLI 结构化管理命令族 + GUI 设置六面板共享 kit）
 - [x] 内置浏览器融合（GUI Web 标签 webview 真实页面 + 壳 CDP facade 过滤代理；M1/M2/M3 三批）+ 浏览器状态按会话隔离（页签常驻池按会话分区 persist:sx-<浏览器键>、每进程浏览器宿主 host.mjs——内置插件只有开关、TUI/serve 会话浏览器键、删会话清理页签与浏览器状态、页签焦点同步）
 
-当前基线（2026-11-03 实测）：tsc strict 零报错、全量 2300+ 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 全量 590+ 例全绿（含真 daemon e2e）。实施记录见各 plan 执行回写与 reports/。
+基线快照（2026-11-03 实测，后随特性线持续增长至 ~2399/793 例）：tsc strict 零报错、全量 2300+ 例 0 败（另 2 例 win32 符号链接语义平台跳过）、selfcheck OK、gui 全量 590+ 例全绿（含真 daemon e2e）。实施记录见各 plan 执行回写与 reports/。
 
 下一步（目标形态排期，见 docs/GOAL.md）：长任务基准集建设 → 扩展生态深化（MCP 三传输生产化收尾 → 技能/子智能体生态沉淀分享）。
 

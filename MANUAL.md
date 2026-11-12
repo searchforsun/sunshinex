@@ -104,7 +104,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.6.
 
 模型配置唯一事实源 = `providers` 列表：缺省模型恒为**第一个 provider 的第一个 model**（清单序即优先级）。语义键表以本节模板为准——拼写错误或表外键（含 `model` / `dataDir` 等形近历史键）一律按未知键同判（启动打一条通用未知键告警、不生效），模型配置一律写 `providers` 列表；没配 `providers` 时直接 `export SUNSHINEX_MODEL=…` / `SUNSHINEX_BASE_URL=…` 的单模型环境变量形态仍可用。
 
-修改配置后新开会话生效（运行中会话不热切换；GUI 设置页的实时刷新只影响面板显示，见第三节「配置实时同步」）。
+CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI 下 daemon 监听 settings.json 变更即时**热重载模型层**（providers 清单原地换芯——密钥/模型/思考强度在新任务装配时刻解析，进行中的任务不受影响，新任务即按新配置装配；修复「欢迎页读得到提供方、发送才报密钥未配置」一类时差）；其余配置仍对新会话生效。GUI 设置页的实时刷新另见第三节「配置实时同步」。
 
 下面是**全部可配置项**（供查改；`//` 与 `/* */` 注释可原样保留——settings.json 容忍 JSONC 注释；尾随逗号不在此列、仍按严格 JSON 报错；不需要的项整行删除即用缺省）：
 
@@ -247,12 +247,13 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ├── mcp.json                    # 全局 MCP 服务器登记（被项目级 .sunshinex/mcp.json 同名遮蔽；不过批准阀）
 ├── plugins/<id>/               # 用户级插件（plugin.json + 资源；同 id 遮蔽内置，见 6.4）
 ├── agents/<id>/agent.md        # 全局子智能体（frontmatter 可选 enabled，缺省开；见 5.3）
+├── teams/<id>/team.md          # 全局预定义团队（frontmatter name/description/members/lead/enabled，正文=章程；项目级同名遮蔽，见 5.6）
 ├── SUNSHINE.md                 # 个人全局约定，跨所有项目生效（对标 ~/.claude/CLAUDE.md）
 ├── skills/<id>/SKILL.md        # 全局技能，跨项目共享
 └── projects/<工作区>/data/     # 各项目的运行时数据（按启动目录自动隔离）
     ├── sessions/               # 会话日志（/resume、--resume、--continue 据此恢复）
     ├── teams/<journalId>/      # 会话级智能体团队/板/inbox（与 journal 同键；新会话空板）
-    ├── memory/                 # 持久记忆：MEMORY.md 索引 + <slug>.md 记录
+    ├── memory/                 # 持久记忆：MEMORY.md 索引 + <slug>.md 记录 + topics/<主题>.md 综述页（整理派生物，删目录即回退）
     ├── skills/                 # 自动沉淀的学习技能
     ├── worktrees/              # worktree 隔离工作树（见 5.5）与登记表 registry.json
     ├── runs/                   # 任务账本（/status 与状态栏统计）
@@ -275,7 +276,8 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 │   ├── settings.json           # 项目级配置（覆盖全局；已在 .gitignore）
 │   ├── mcp.json                # 项目级 MCP 服务器登记（同名遮蔽全局；首次装载过批准阀；可提交入库共享）
 │   ├── skills/<id>/SKILL.md    # 项目技能（原生项目技能根；.agents/.claude/.codex/.cursor 同形兼容根也装载）
-│   └── agents/<id>/agent.md    # 项目子智能体（唯一项目落位；见 5.3）
+│   ├── agents/<id>/agent.md    # 项目子智能体（唯一项目落位；见 5.3）
+│   └── teams/<id>/team.md      # 项目预定义团队（frontmatter name/description/members/lead/enabled，正文=章程；同名遮蔽全局，见 5.6）
 └── （历史旧位置 <项目>/agents/ 的子智能体条目在首次装载/列举时一次性自动迁入 .sunshinex/agents/）
 ```
 
@@ -283,7 +285,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 - 技能生效顺序：项目级 > 全局级 > 学习级（沉淀产物垫底）。
 - 文件读取缺省全盘开放；写入信任项目根与已登记信任目录，越界写走审批或拒绝（详见第六节）。
 
-**配置实时同步（serve/GUI）**：`sunshinex serve` 运行期间监听全局 `~/.sunshinex/`（settings.json / mcp.json / agents / plugins）与各活跃项目的 `.sunshinex/`（settings / mcp / skills / agents）及 `.agents/.claude/.codex` 兼容技能根的 skills/；文件改动（手编、CLI 写、另一窗口 GUI 写）经 300ms 防抖合并后以 WS `config-changed` 帧广播，打开中的设置页自动刷新（≤1s）；daemon 自身的结构化写做回环抑制，不产生多余刷新。CLI 与 TUI 是一次性进程不做监听——它们写盘后由 GUI 跟上，GUI 写后 CLI / TUI 下次读盘即见。监听不可用（网络盘 / 权限）时降级为打开页面即读，功能不阻塞。
+**配置实时同步（serve/GUI）**：`sunshinex serve` 运行期间监听全局 `~/.sunshinex/`（settings.json / mcp.json / agents / plugins）与各活跃项目的 `.sunshinex/`（settings / mcp / skills / agents）及 `.agents/.claude/.codex` 兼容技能根的 skills/；文件改动（手编、CLI 写、另一窗口 GUI 写）经 300ms 防抖合并后以 WS `config-changed` 帧广播，打开中的设置页自动刷新（≤1s）；daemon 自身的结构化写做回环抑制，不产生多余刷新。CLI 与 TUI 是一次性进程不做监听——它们写盘后由 GUI 跟上，GUI 写后 CLI / TUI 下次读盘即见。settings.json 变更额外触发模型层热重载（providers 清单原地换芯，新任务即刻按新配置装配）。监听不可用（网络盘 / 权限）时降级为打开页面即读，功能不阻塞。
 
 ## 四、基本用法
 
@@ -328,7 +330,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 | `/memory` | 列出持久记忆 |
 | `/memory-add <内容>` | 添加记忆（与自动提取同一写时闸门） |
 | `/memory-rm` | 删除记忆：多选卡 Space 勾选、Enter 批删、Esc 取消；>8 条支持输入筛选（`Esc` 先清词再取消） |
-| `/memory-gc` | 立即整理记忆 |
+| `/memory-gc` | 立即整理记忆：为条目建 `links` 互联、按主题归组生成 `topics/` 综述页、被取代条目标 `superseded_by` 隐于索引（Wiki 化组织，索引分「主题/散条」两段） |
 | `/memory-on` / `/memory-off` | 本会话开启/关闭持久记忆（`/new` 后恢复缺省） |
 | `/rewind` | 回退当前会话到任意历史任务轮，见 5.4 |
 | `/fork` | 从任意历史轮复制出平行会话，见 5.4 |
@@ -400,6 +402,8 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ### 5.6 智能体团队与任务协作
 
 任务清单：可设依赖（失败/取消自动拦住下游）与 `retryOf` 重试链；按会话 `journalId` 落盘（`data/teams/<journalId>/`），同会话重启恢复，`/new` 新会话空板。总开关 `agentTeams`（settings / `SUNSHINEX_AGENT_TEAMS`，缺省开）：关则不注册下列团队工具。
+
+**预定义团队**：项目级 `.sunshinex/teams/<id>/team.md` 或全局级 `~/.sunshinex/teams/<id>/team.md`（frontmatter `name`/`description`/`members`/`lead`/`enabled`，正文写章程；成员按 id 引用子智能体注册表，含内建四角色）。`/teams` 面板两级清单只读；增删改与启停走 GUI 设置·智能体团队。清单进会话冻结快照，`#<team-id>` 软引用经 `load_agent_teams` 加载章程实例化。
 
 **模型工具**（`agentTeams` 开时注入）：`create_agent_team` → `create_agent_teammate` → `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message`；等待与停止板任务用 `agent_team_task_wait` / `agent_team_task_stop`（与通用 `task_wait` / `task_stop` 分域——后者只服务 exec/spawn 台账）。
 

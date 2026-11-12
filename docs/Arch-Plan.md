@@ -41,7 +41,7 @@ Sunshinex 是个人开发者本机运行的通用 AI Agent：云端大模型负�
 - **安全管控**（security/）：权限三态（deny/ask/allow）、SafetyChain、ProcessSandbox 子进程单点（exec shell 由 `resolveShell()` 跨平台解析）、凭据脱敏
 - **记忆双轨**（memory/ + skills/）：程序性记忆 LearnedSkillStore（任务收口沉淀可复用技能，FIFO 上限）+ 陈述性记忆 auto memory（MEMORY.md 索引 + 记录文件 + log.jsonl 追加只增变更历史——OKF 四件套齐备；store 五写原语单点落账、摘要指纹粒度、失败旁路，提取挂 settle 单点、后台管线空闲消化、/memory 命令族管理；Wiki 层：记录可选 links/superseded_by、整理面随整理生成 topics/ 主题综述页（派生物），索引两段化=主题段+散条段，关联全部由后台整理承载、主链零负担）
 - **技能体系**（skills.ts）：三级根装载（项目级 `.sunshinex` > 全局级 `~/.sunshinex` > 学习级 `data/skills`），标准形态 `{id}/SKILL.md`，清单冻结注入 + skill 工具按需加载正文
-- **子智能体**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算源挂载/并发护栏；spawn 工具 + `agents/{id}/agent.md` 目录注册制；同层并发上限 8（`SUBAGENT_CONCURRENCY_LIMIT`）
+- **子智能体**（subagent.ts）：SubagentRunner 单点承载 fork 组装/结论回写/预算源挂载/并发护栏；spawn 工具 + agent.md 目录注册制（两级=项目级 `.sunshinex/agents/` 就近遮蔽全局 `~/.sunshinex/agents/`，旧位 `<root>/agents/` 首次装载一次性自动迁入；enabled:false 装配期剔除）；同层并发上限 8（`SUBAGENT_CONCURRENCY_LIMIT`）
 - **会话持久化**（tui/session-journal.ts）：journal 逐事件落盘，崩溃丢失窗口收敛至在飞一个工具步；/resume、CLI `--continue` 恢复、/rewind 代码回退（write 影子快照）、/fork 不可变分档；账本可读面=listSessions 派生 sessions/INDEX.md + `<id>.transcript.md` 镜像（模型经 read 直读，jsonl 为逐字节权威）
 - **MCP 客户端**（mcp/）：官方 SDK 接缝，stdio/http/sse 三传输，装配期 fail-fast 注册
 - **知识库**（knowledge/）：本地向量知识库，local-json 与 sqlite-vec 可插拔双后端——与记忆/账本分工：kb_search=语义检索，账本镜像=原文核对（context 协议行登记）
@@ -56,7 +56,7 @@ DAG 拓扑引擎（环检测携带环路径）+ loop/agent/gate/ci 四类节点 
 
 ### 2.6 模型适配层（src/model/）
 
-OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路），核心契约走模型原生 function calling；三档算力路由（small/medium/large）为用户级会话参数（`--tier`、`/model-tier`），请求级字段不进提示词；`/model` 为多源模型切换（settings `providers` 清单，`源/模型` 即选即切）；reasoning_effort 七档思考强度（`--effort`、`/model-effort`）按端点能力阶梯降级探测；per-run 成本账本（ledger.ts）承载 usage 与缓存命中口径。
+OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路），核心契约走模型原生 function calling；三档算力路由（small/medium/large）为用户级会话参数（`--tier`、`/model-tier`），请求级字段不进提示词；`/model` 为多源模型切换（settings `providers` 清单，`源/模型` 即选即切；providers 配置变更经 `ModelSwitcher.reload()` 原地换芯热生效）；reasoning_effort 七档思考强度（`--effort`、`/model-effort`）按端点能力阶梯降级探测；per-run 成本账本（ledger.ts）承载 usage 与缓存命中口径。
 
 ### 2.7 交互面
 

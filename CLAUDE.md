@@ -94,7 +94,7 @@ src/
   images.ts           # 图片附件共享面（MAX_IMAGES ≤8/parseImagesParam 校验/appendImages 钳制/imageMarkers 占位标记；serve HTTP + TUI + GUI 单源，dataURL 形态全链零转码）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
-  catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、plugins、mcp、skills、approvals、permissions 读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
+  catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、teams、plugins、mcp、skills、approvals、permissions 读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
   config/             # env.ts（配置目录与 KB 环境解析）、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts（agentTeams 启用解析单点）/ permissions / providers（多源多模型清单，/model 数据面）/ termination-config / memory-config / data-dir / plugins（插件两级装载+启用态合并+MCP 名单合成）/ image-history（imageHistoryLimit 语义键解析，0-50 渲染半径）
   tui/                # 交互式终端（ink + React）：session 会话控制器（chat-model 纯模型层、md-stream 流式通道、commands-*/child-panel/approval 命令与挂起协调拆分件）、tui-loop/tail-rewrite 渲染循环、components/ 组件、markdown/md-ansi/highlight 呈现、md-theme 渲染双链共享常量单点、session-journal（v3 段级行；listSessions 派生 sessions/INDEX.md 索引 + log() 旁路 <id>.transcript.md 可读镜像——账本对模型可读面，jsonl 仍为逐字节权威）/session-snapshots 会话持久化、ui-state-disk 面私有 UI 态落盘（§13 分层）、clipboard-image 剪贴板图片读取（Ctrl+V 贴图，win/darwin/linux 回退）
   harness/
@@ -103,7 +103,7 @@ src/
     sunshine-init.ts  # /init 目标构造器（纯函数产出 goal 文本，模型驱动生成/完善 SUNSHINE.md）
     reactor.ts        # 最小闭环引擎（observe→think→act）
     batch-runner.ts   # 批次执行器（签名去重/串并行政策/执行扇出/批后记账，reactor 消费）
-    plan-flow.ts      # 计划流程编排单点（planning→awaiting-approval→approved/revising 状态机；TUI/serve 薄壳消费，纯流程零 IO）
+    plan-flow.ts      # 计划模式共用纯件单点（PLAN_MODE_NOTE 提示行/计划名派生 derivePlanName/Steps 解析；计划模式=read-only 覆盖+exit_plan 挂起工具，宿主接缝在 tui/serve）
     guardrail.ts      # 护栏停判纯函数（超时→预算→步数序；终态与文案单点，loop/graph 双引擎共用）
     ledger.ts         # per-run 成本账本（selfcheck usage 行数据源）
     skills.ts         # 技能装载与调度（项目五根+全局+学习级+插件链尾、resolve 回退链、清单注入）
@@ -111,7 +111,7 @@ src/
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts（语义提炼 lessons-not-logs）
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点 + 后台沉淀管线；store 内收口 log.jsonl 追加只增变更历史——OKF log 件，五写原语单点落账、摘要指纹粒度、失败旁路；Wiki 层：记录可选 links/superseded_by 字段、整理面产出 topics/<topic>.md 主题综述页（派生物，删目录即回退）、MEMORY.md 两段化=主题段+散条段）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write）
+    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write/exit_plan）
     plugin-host.ts    # 插件宿主装配单点（browser-use 插件连接改写为每进程宿主 HTTP 连接：会话浏览器键/座位/数据目录/facade 端点入 URL，宿主起不来只损失浏览器工具）
     tools/task-stop.ts # task_stop（仅 exec/spawn 台账）与 agent_team_task_stop（板任务/成员打断；agentTeams 开时注册）
     tools/task-wait.ts # task_wait（仅 exec/spawn 台账）与 agent_team_task_wait（板任务等待；agentTeams 开时注册）
@@ -125,19 +125,19 @@ src/
     context/          # loader（全局+项目 SUNSHINE.md 两层）/messages（buildMessages 派生单点）/breakdown（/context 数据面）/window/summarizer（压缩摘要）/drift-detector（会话常量漂移探测四基线）/chain-ledger（会话链 append-only 账本）/compaction（压缩协调 apply+runCompaction 归档）/index.ts 门面转发（快照装载/恢复/技能槽）
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts 模板
   graph/              # engine.ts DAG 拓扑（含环检测）、nodes.ts、agents.ts、templates.ts
-  model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面）；chat-stub.ts 文本协议测试桩
+  model/              # adapter.ts 适配器单点（契约类型/LLMConfig + OpenAIAdapter 传输编排/effort 探测/SSE 重组 + Stub/Scripted 桩，四件符号原路径再导出）；effort.ts 思考强度档位原语；usage.ts 用量三提取器；wire.ts wire 序列化与非流式解析；router.ts 三档算力路由；catalog.ts ModelSwitcher 转发外壳（/model 多源数据面；settings providers 变更经 `reload()` 原地换芯热生效——密钥/窗口/旋钮在重载时刻解析）；chat-stub.ts 文本协议测试桩
   eval/               # 长任务基准集（tasks 任务库+report 聚合；手动门 scripts/eval-run.mjs 的数据面）
   taskboard/          # 智能体团队域模型与协调器（model 纯 reducer/board 协调/store 按 journalId 落盘/translate 事件翻译/teammate 长驻成员/team-registry 成员跨重启登记/inbox 消息收件/executors 执行体）
   delegation/         # 委派投影（projection 纯 reducer：spawn/后台任务/graph 节点统一生命周期，TUI/GUI 同源消费点）
   session/            # 会话内核（session-kernel spec）：kernel.ts SessionKernel（applyEvent 纯 reducer=转录/等待队列唯一投影，steer/seg 段级事件与 shadow 透传）、entry.ts 条目模型、seglog.ts kernel 事件→journal v3 行映射（kernelEventRows）；runtime.ts KernelRuntime 装配单点（createKernelRuntime，TUI/GUI 共用）
-  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、settings/mcp/agents/skills 配置面；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v3 单档唯一写者链路 kernelEventRows）
+  serve/              # GUI daemon（GuiDaemon：HTTP+WS 服务、静态资源、PTY 中继、catalog 全量结构化配置面（settings/mcp/agents/teams/skills/plugins/providers/permissions/approvals，settings 变更锚根两层重装+模型层 reload() 热生效）；SessionRuntime 会话装配经 createKernelRuntime 单点，转录 v3 单档唯一写者链路 kernelEventRows）
   storage/            # 本地 JSON 存储底座；archive.ts（ArchiveStore 接口 + fs 实现，归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；构建产物 dist-gui/，经 daemon 静态服务或桌面壳装载；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘驻留/全局快捷键/无边框自绘窗控/NSIS 单安装包打包；daemon 进程内动态 import 装配，壳与主仓零编译期耦合）
 plugins/             # 插件工作区根（内置插件 plugin.json + 校验 artifact plugins/schema/；用户级根 ~/.sunshinex/plugins/；开发指南 docs/PLUGIN-DEV.md）
 .sunshinex/skills/    # 项目级技能目录（标准形态 {id}/SKILL.md；.agents/.claude/.codex/.cursor 同形兼容根见 §6）
 .sunshinex/teams/     # 项目级智能体团队目录（标准形态 {id}/team.md，正文=章程；两级遮蔽与软引用见 §6）
-agents/               # 用户子智能体目录（约定根，可缺省——不存在=空注册；{id}/agent.md，装配期一次性加载 fail-fast）
+.sunshinex/agents/    # 项目级子智能体目录（标准形态 {id}/agent.md；两级装载=全局 ~/.sunshinex/agents/ 垫底 → 项目级就近遮蔽，旧位 <root>/agents/ 首次装载一次性自动迁入新家且装载面不认旧位；enabled:false 装配期剔除；畸形文件整次装载 fail-fast）
 SUNSHINE.md          # 项目业务配置
 ```
 
@@ -158,7 +158,7 @@ SUNSHINE.md          # 项目业务配置
 - 写操作前评估影响面；改动后运行 `pnpm selfcheck` 自检
 - 新增共享类型需在 `src/types.ts` 登记
 - **主链工具面（装配期一次性登记，selfcheck `tools :` 行同源）**：
-  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `load_agent_teams` / `load_subagent` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree`
+  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `load_agent_teams` / `load_subagent` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree` / `exit_plan`（挂起型出牌工具——计划模式的审批面，plan 接缝在场时由 TUI/serve 恒注入注册，`session/runtime.ts` 装配）
   - 另册：`spawn`（`subagent.ts` 工厂，子智能体派生）/ `task_stop`（`tools/task-stop.ts`，仅停止 exec/超时转后台/后台 spawn 台账任务）/ `task_wait`（`tools/task-wait.ts`，仅等待上述台账到终态并内联回执 exec 日志尾部/子智能体结论；板 id 拒识点名 `agent_team_task_wait`）；用户面列任务走 `/tasks` 斜杠命令，不另增模型工具
   - 智能体团队（`taskboard-tools.ts` + `teammate-tools.ts` / `message-tools.ts` 工厂，`harness/index.ts` 按 `agentTeams` 条件装配，缺省开；语义键 `agentTeams` / 槽 `SUNSHINEX_AGENT_TEAMS`，解析单点 `config/agent-teams.ts`）：`create_agent_team`（建队并返回 teamId）/ `create_agent_teammate`（长驻成员创建，与 spawn 分立动词，必带 teamId）/ `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message` / `agent_team_task_wait`（仅板任务）/ `agent_team_task_stop`（板任务取消 + 按名打断成员）；板态为 `pending` / `running` / `success` / `failed` / `cancelled`；关开关则八件套不注入模型面且 GUI 隐藏「智能体团队」页签；成员面派生时剔板面写件、换注 `get_agent_team_board`/`get_task` 读取
   - 插件贡献工具不入内置清单：插件经 manifest 贡献 MCP server，工具以 `mcp__<server>__<tool>` 前缀进模型工具面（登记制与用户 mcp.json 同通道；插件 = 治理层——manifest/开关/审批，运行时是进程外 MCP server，开发规范 `docs/PLUGIN-DEV.md`）。guard 按 manifest `safety` 三类声明驱动问线：`act` 任何档位强制 ask（full-access 不豁免）、`confirm` 落穿通用 ask + 会话一次放行、`observe` 只读白名单直放；未声明走通用 MCP 审批。MCP 插件工具 schema 由 server 经 `tools/list` 下发，harness 不手写插件工具清单与 schema（上条声明化纪律只约束 harness 自有工具）
@@ -198,7 +198,8 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 ```
 
 - 技能发现与加载（对标 Claude Code 渐进披露）：name+description 清单由 `formatSkillsIndex` 注入会话冻结段（会话级常量、随快照刷新点重读），模型据清单经 `skill` 工具按 id 加载正文——正文以工具观察尾追进链（装配面前缀零击穿）。技能用户侧入口 = 消息内 `/skill-id` 软引用（模型经清单匹配后 `skill` 工具加载）与 `/skill` 选择卡（插入引用）；命令面仅内置命令（2026-11-04 spec §4）。
-- 智能体团队：`.sunshinex/teams/{id}/team.md`（frontmatter name/description/members/lead/enabled，正文=章程），成员按 id 引用 agents 注册表；清单进冻结快照，`#team-id` 软引用经 `load_agent_teams` 工具加载章程，实例化走八件套（受 `agentTeams` 门禁）；`$agent-id` 软引用经 `load_subagent` 工具出卡、spawn 委派。
+- 技能启停：settings 语义键 `disabledSkills`（槽 `SUNSHINEX_DISABLED_SKILLS`，逗号分隔技能目录绝对路径清单）按 id 停用装载——停用条目不进清单注入（GUI 技能面板开关的落点）。
+- 智能体团队：`.sunshinex/teams/{id}/team.md`（frontmatter name/description/members/lead/enabled，正文=章程），成员按 id 引用 agents 注册表；两级落位=项目级 `.sunshinex/teams/` 就近遮蔽全局 `~/.sunshinex/teams/`（catalog `teamsDir` 单点，写面 upsert/remove/setEnabled 收口 catalog）；清单进冻结快照，`#team-id` 软引用经 `load_agent_teams` 工具加载章程，实例化走八件套（受 `agentTeams` 门禁）；`$agent-id` 软引用经 `load_subagent` 工具出卡、spawn 委派。
 
 ## 7. 提交与验证
 
@@ -298,7 +299,7 @@ GUI 规划选型（未引入）唯一登记于 §13 组件选型登记表，不�
 | GUI 桌面壳 | Electron | 已引入 | 桌面容器（托盘驻留/全局快捷键/原生外开），收敛于 `shell/` 工作区包 |
 | GUI 壳工程化 | esbuild + electron-builder | 已引入 | 壳束构建与 NSIS 单安装包打包（`shell/esbuild.mjs` + `electron-builder.yml`；自动更新 electron-updater 按需引入） |
 | GUI 文件监听 | chokidar | 规划选型 | 文件树实时变更监听（现行 30s 轮询 + 会话切换刷新） |
-| GUI 内嵌浏览器 | Electron `<webview>`（内建零依赖） | 已引入 | Web 标签真实页面承载（地址栏/前进后退/缩放/页内链接开新页签）；页签常驻池按会话座位常挂、登录态按会话持久分区 `persist:sx-<浏览器键>`；browser-use 自动化经每会话 facade 连接驱动本会话分区页签，收敛于 `gui/src/tabs/WebTab.tsx`+`WebTabPool.tsx` + 壳 webview 纪律（`shell/src/main.ts`） |
+| GUI 内嵌浏览器 | Electron `<webview>`（内建零依赖） | 已引入 | Web 标签真实页面承载（地址栏/前进后退/缩放/页内链接开新页签）；页签常驻池按座位+会话复合键常挂（poolKey 单点，切会话不见他席页签）、登录态按会话持久分区 `persist:sx-<浏览器键>`；browser-use 自动化经每会话 facade 连接驱动本会话分区页签，收敛于 `gui/src/tabs/WebTab.tsx`+`WebTabPool.tsx` + 壳 webview 纪律（`shell/src/main.ts`） |
 | GUI 可选增强 | dockerode + tree-kill | 可选增强 | 容器化执行/进程管理，按需引入；电脑控制已由 computer-use 内置插件交付（桌面 PowerShell worker，win32-only，见 `docs/PLUGIN-DEV.md`） |
 
 - **架构边界**：交互面只做参数解析与呈现，共用 `src/runtime.ts` 装配根，只消费 SessionEvents 事件面与 asker 审批契约；渲染层不感知模型/工具实现，IR 与契约稳定时允许整体替换开源件。
