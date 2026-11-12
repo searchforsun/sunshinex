@@ -1838,9 +1838,12 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   /* G14.101 与正文列宽对齐(+2px 余量):原 +32px 每边多 16px,卡比正文宽一截 */
   width: min(calc(100% - 32px), calc(var(--chat-max) + 2px));
 }.chat-dock .chat-composer { width: 100%; max-width: none; margin: 0; }.chat-dock-fade {
-  position: absolute; left: 0; right: 0; top: -56px; bottom: -10px;
-  background: linear-gradient(to bottom, transparent, var(--surface) 72%);
+  position: absolute; left: 0; right: 0; top: -28px; bottom: -10px;
+  background: linear-gradient(to bottom, transparent, var(--surface) 40px);
   pointer-events: none;
+  /* 2026-11-12 用户裁定「输入框上侧阴影太多太亮」收敛:原 56px 带 + 72% 百分比锚(渐变按
+     整带高走,dock 越高白幕外推越多,多行输入时成片白幕吃进正文暗气泡)。改 28px 提示带 +
+     像素锚 40px(实心点恒落在 composer 不透明卡内,可见渐隐只余 28px 短提示) */
 }.jump-down {
   position: absolute; right: 12px; top: -46px; z-index: 2; /* 完全悬在输入框上侧,不重叠 */
   display: inline-flex; align-items: center; justify-content: center;
@@ -4005,3 +4008,15 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) .sx-dd-trigger { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main .sx-kbd { background: var(--surface-under); border-color: var(--border); }
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 3px 10px rgba(0, 0, 0, 0.05); } /* 2026-11-12 用户复裁定「阴影减一点」:专用轻影不再复用 elev-composer(composer 档偏重);弹窗阴影(elev-prominent)未动 */
+
+/* 欢迎页选项条窄宽三态(2026-11-12 用户裁定「过窄隐现,再窄保留图标,不换行不超视口」):
+   条 nowrap+overflow hidden(恒不越视口);名字 span 可收缩+溢出右缘 14px 渐隐(data-cut,
+   同页签隐现口径);条仍溢出=data-icon-only 整条仅图标(label 全隐,由 WelcomeComposer
+   量测打点,ResizeObserver 随宽重算) */
+.welcome-options-bar { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+.welcome-options-bar .wc-pill-label { overflow: hidden; text-overflow: clip; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.welcome-options-bar .wc-pill-label[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }
+.welcome-options-bar[data-icon-only] .wc-pill-label { display: none; }
+.welcome-dock .choose-project-bar { min-width: 0; }
+.welcome-dock .choose-project-bar .wc-pill-label { flex: 0 1 auto; }
+.welcome-options-bar .composer-pill { min-width: 0; }
