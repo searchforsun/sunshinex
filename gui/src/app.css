@@ -3948,29 +3948,7 @@ html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .entr
   --fg-muted: rgba(223, 223, 223, 0.52);
   --fg-icon: rgba(223, 223, 223, 0.85);
 }
-/* 亮主题暗代码卡矢量圆角(2026-11-12 用户裁定「椭圆边框毛刺感根治,形状与配色均不动」):
-   亮底近黑卡的 22px 超椭圆弧线走 border-radius 光栅链,分数 DPI(Windows 2K@110%,dpr=1.1)
-   下弧线像素二次采样=楼梯毛刺;羽化遮(铁律 5③ 口径)实测只削弱不收敛,SVG-as-image 九宫格
-   仍隔图片解码缓存链实测仍毛刺,均弃。根治=弧线搬 inline SVG 元素链(2026-11-07 mermaid
-   同款,任何缩放下恒平滑):卡底单 svg 由 CodeSurface 组件随尺寸重算 superellipse(1.5) 拟合
-   路径(形状逐像素对齐全局 corner-shape,最大偏差 0.028px,见 code-surface.tsx 头注)。1px
-   边框环为铁律 5② 登记的不随形毛刺源,一并撤(原 8% 白本近不可见)。配色零改动:填充恒
-   #101010(组件 path fill)。门控显隐:非亮主题暗码模式宿主原样(var(--surface-code)+边框
-   +圆角)。卡内 pre 自带横滚裁剪、内边距 12/14px 大于弧线角部侵入 ~6.4px,子内容不越角区;
-   sx-tip 气泡锚自身 relative,宿主定位化不改锚 */
-.sx-code-surface { display: none; }
-/* .code-block 重复类抬特异性:暗面分组规则(3942)的 :is() 特异性取参数中最高者
-   (.entry-tool .tool-detail)=整体 (0,4,1),压过 (0,3,1) 的覆写——底色重置从未生效
-   (前两版毛刺修法皆败于此)。重复类后 (0,4,1) 同级,后写胜 */
-html[data-theme='light'][data-code-dark='1'] .code-block.code-block {
-  position: relative; z-index: 0; border: none; overflow: visible;
-  background-color: transparent; /* 显式 longhand:shorthand `background:none` 会被构建压缩器
-     归一化为分量重置,压不掉分组规则(3942)的 background-color,矩形底把矢量面压在底下 */
-}
-html[data-theme='light'][data-code-dark='1'] .code-block .sx-code-surface {
-  display: block; position: absolute; inset: 0; width: 100%; height: 100%;
-  z-index: -1; pointer-events: none;
-}
+html[data-theme='light'][data-code-dark='1'] .code-block { border-color: rgba(255, 255, 255, 0.08); }
 html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
 html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
 
@@ -3993,3 +3971,13 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    (.sx-dd-trigger 本就 5% 前景混色可辨不动) */
 .sx-editor-modal :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea),
 .modal-body :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, input, select) { background: var(--surface-soft); }
+
+/* 设置输入/选择井统一(2026-11-12 用户裁定「有些灰有些白,统一」):亮色设置主面内一律
+   白井+1px 边(灰卡×白井×边线三件套),自绘下拉 trigger 原为 5% 前景混色(灰卡上灰、白弹层
+   上白,两态不一致)收口白底;raw 控制行原生 select 同批。弹窗作用域维持灰井(反白化既有
+   裁定)。行分隔线 border-subtle(前景 5%)在灰卡上近不可见,卡内升 var(--border) 档 */
+.sx-settings-main .sx-dd-trigger,
+.sx-settings-main .sx-raw-controls select { background: var(--surface-elevated); }
+.sx-settings-main .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
+.sx-editor-modal .sx-dd-trigger,
+.modal-body .sx-dd-trigger { background: var(--surface-soft); }
