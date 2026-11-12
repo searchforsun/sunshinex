@@ -1,21 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
+import { WelcomeHeldBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
+import { WelcomeProjectPop } from './welcome-project-pop';
 import { pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
-import { atomicRange, baseModelName, expandFileRefs, FilePalette, fileHit, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from '../pages/Chat';
-import { RefPalette } from '../pages/chat/mention';
-import { CommandPalette } from '../CommandPalette';
+import { atomicRange, baseModelName, expandFileRefs, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
 import { MAX_IMAGES, appendImages, loadImages } from '../images';
-import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { ImageLightbox } from '../ImageLightbox';
 import { EffortChip } from '../effort-slider';
-import { FolderAddIcon } from '../sidebar/ProjectMenu';
 import { PlusAddIcon } from '../sidebar/project-menu-util';
 import type { WelcomeComposerConn } from './welcome-conn';
 import { usePopOutsideClose } from '../use-pop-outside-close';
@@ -26,6 +23,8 @@ import { useWelcomeBranch } from './use-welcome-branch';
 import { WelcomeLogo } from './welcome-logo';
 import { WelcomeModelMenu } from './welcome-model-menu';
 import { WelcomeBranchMenu } from './welcome-branch-menu';
+import { WelcomeOverlays } from './welcome-overlays';
+import { useWelcomeTokenGuards } from './use-welcome-token-guards';
 
 /** 欢迎页 composer 独立模块（D32 中口径件批App-1 自 App.tsx 平移,行为零变化;
  *  模块私有件转公开导出——消费方仅 App.tsx 一处）。 */
@@ -165,6 +164,8 @@ export function WelcomeComposer({
     return () => document.removeEventListener('pointerdown', onDocPointerDown);
   }, []);
   const goalRef = useRef<HTMLTextAreaElement | null>(null);
+  const guards = useWelcomeTokenGuards(goal, goalRef, setGoal);
+
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析) */
   const pickRelRef = useRef(new Map<string, string>());
   // @引用账本回灌(芯片/短写展开依赖;随草稿落盘,重启恢复)
@@ -187,8 +188,6 @@ export function WelcomeComposer({
       // 隐私模式写失败静默
     }
   }, [goal]);
-  /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
-  const goalComposingRef = useRef(false);
 
   useEffect(() => {
     conn.settings().then(
@@ -372,192 +371,53 @@ export function WelcomeComposer({
           )}
         </div>
         {/* 发送前切换确认(全局 portal):branchDiffStat 代价面;脏树=提交信息框+±数量 */}
-        {switchPending !== null &&
-          createPortal(
-            <div className="modal-overlay" onClick={() => setSwitchPending(null)}>
-              <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Switch and send', '切换并发送')} onClick={(e) => e.stopPropagation()}>
-                <p className="sx-dirty-target">
-                  {t('Send after switching to', '发送后切换到')} <b>{switchPending.branch}</b>
-                </p>
-                <p className="sx-dirty-text">
-                  {switchPending.stat === null || switchPending.stat.missing
-                    ? t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交改动可能阻断切换；已提交历史不受影响')
-                    : switchPending.stat.dirty > 0
-                      ? t(`Uncommitted changes (+${switchPending.stat.dirtyAdded} −${switchPending.stat.dirtyDeleted}) will be committed first; type a message or leave empty for the default.`, `有未提交改动（+${switchPending.stat.dirtyAdded} −${switchPending.stat.dirtyDeleted}），将先提交；可输入提交信息，留空用缺省`)
-                      : switchPending.stat.files === 0
-                        ? t('No file differences between the branches.', '目标分支与当前无文件差异')
-                        : t(`The workspace will update ${switchPending.stat.files} files (+${switchPending.stat.added} −${switchPending.stat.deleted}).`, `工作区 ${switchPending.stat.files} 个文件将被更新（+${switchPending.stat.added} −${switchPending.stat.deleted}）`)}
-                </p>
-                {switchPending.stat !== null && !switchPending.stat.missing && switchPending.stat.dirty > 0 && (
-                  <input
-                    className="sx-dirty-msg"
-                    aria-label={t('Commit message', '提交信息')}
-                    placeholder={t('Commit message (optional)', '提交信息（可留空）')}
-                    value={switchMsg}
-                    maxLength={200}
-                    autoFocus
-                    onChange={(e) => setSwitchMsg(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') send();
-                      if (e.key === 'Escape') setSwitchPending(null);
-                    }}
-                  />
-                )}
-                <div className="sx-dirty-actions">
-                  <button type="button" disabled={busy} onClick={() => setSwitchPending(null)}>
-                    {t('Cancel', '取消')}
-                  </button>
-                  <button type="button" className="primary" disabled={busy} onClick={send}>
-                    {t('Switch and send', '切换并发送')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
+        {switchPending !== null && (
+          <WelcomeSwitchDialog
+            pending={switchPending}
+            msg={switchMsg}
+            onMsg={setSwitchMsg}
+            busy={busy}
+            onSend={send}
+            onClose={() => setSwitchPending(null)}
+          />
+        )}
         {/* 隔离分支被占(全局 portal):输入框空=随机新分支;重选分支=重开分支菜单 */}
-        {heldBranch !== null &&
-          createPortal(
-            <div className="modal-overlay" onClick={() => setHeldBranch(null)}>
-              <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Branch already checked out', '分支已被签出')} onClick={(e) => e.stopPropagation()}>
-                <p className="sx-dirty-target">
-                  {t('Branch already checked out', '分支已被签出')} <b>{heldBranch === '' ? '' : heldBranch}</b>
-                </p>
-                <p className="sx-dirty-text">
-                  {t('Pick another branch, or create a new one (empty = auto name).', '请选择其他分支，或新建一个（留空自动命名）')}
-                </p>
-                <input
-                  className="sx-dirty-msg"
-                  aria-label={t('New branch name', '新分支名')}
-                  placeholder={t('New branch name (empty = auto)', '新分支名（留空自动命名）')}
-                  value={heldNew}
-                  maxLength={80}
-                  autoFocus
-                  onChange={(e) => setHeldNew(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') setHeldBranch(null);
-                  }}
-                />
-                <div className="sx-dirty-actions">
-                  <button type="button" disabled={busy} onClick={() => setHeldBranch(null)}>
-                    {t('Cancel', '取消')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setHeldBranch(null);
-                      setBranchOpen(true);
-                    }}
-                  >
-                    {t('Pick another branch', '重选分支')}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={busy}
-              onClick={() => {
-                      const b = heldNew.trim();
-                      setHeldBranch(null);
-                      setSelBranch(b);
-                      setTimeout(() => sendRef.current(), 0);
-                    }}
-                  >
-                    {t('Create branch and isolate', '创建分支并隔离')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
+        {heldBranch !== null && (
+          <WelcomeHeldBranchDialog
+            branch={heldBranch}
+            newBranch={heldNew}
+            onNewBranch={setHeldNew}
+            busy={busy}
+            onClose={() => setHeldBranch(null)}
+            onPickAnother={() => {
+              setHeldBranch(null);
+              setBranchOpen(true);
+            }}
+            onCreate={(b) => {
+              setHeldBranch(null);
+              setSelBranch(b);
+              setTimeout(() => sendRef.current(), 0);
+            }}
+          />
+        )}
         {/* 全局弹窗(2026-11-10 用户裁定「弹窗是全局的」):portal 到 body——composer 祖先带定位上下文,
             内联 modal-overlay 的 fixed 会被困住落底部 */}
-        {isoOpen &&
-          createPortal(
-            <div className="modal-overlay" onClick={() => setIsoOpen(false)}>
-              <div className="modal-body sx-iso-dialog" role="dialog" aria-label={t('Isolated workspace', '隔离工作区')} onClick={(e) => e.stopPropagation()}>
-                <p className="sx-dirty-target">{t('Isolated workspace (git worktree)', '隔离工作区（git worktree）')}</p>
-                <p className="sx-dirty-text">
-                  {t('Works in a dedicated branch copy; the main workspace stays clean.', '在独立分支的副本中工作，主工作区不受影响')}
-                </p>
-                <div className="sx-dirty-actions">
-                  <button type="button" onClick={() => setIsoOpen(false)}>
-                    {t('Cancel', '取消')}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => {
-                      setIsolate(true);
-                      setIsoOpen(false);
-                    }}
-                  >
-                    {t('Turn on isolation', '开启隔离')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
-        {projOpen && (() => {
-          const q = projQuery.trim().toLowerCase();
-          const projRows =
-            q === ''
-              ? rows
-              : rows.filter((r) => {
-                  const nm = baseName(r.root ?? r.slug);
-                  const label = nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
-                  return label.toLowerCase().includes(q) || (r.root ?? '').toLowerCase().includes(q);
-                });
-          return (
-          <div className="proj-pop" role="menu" aria-label={t('Projects', '项目')} ref={projRef}>
-            {/* 筛选行(2026-11-11 用户裁定:与分支弹层同款,仅筛不建);按项目名/路径包含匹配 */}
-            <div className="branch-pop-filter">
-              <input
-                autoFocus
-                value={projQuery}
-                aria-label={t('Filter projects', '筛选项目')}
-                placeholder={t('Filter projects…', '筛选项目…')}
-                onChange={(e) => setProjQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  // Enter=唯一命中即选,多命中选首个,空列表不动作
-                  if (e.key !== 'Enter') return;
-                  e.preventDefault();
-                  const first = projRows[0];
-                  if (first !== undefined) {
-                    setPicked(first.root ?? '');
-                    setProjOpen(false);
-                  }
-                }}
-              />
-            </div>
-            {projRows.map((r) => (
-              <button
-                key={r.slug}
-                type="button"
-                role="menuitem"
-                className={`sx-menuitem${r.root === picked ? ' active' : ''}`}
-                onClick={() => {
-                  setPicked(r.root ?? '');
-                  setProjOpen(false);
-                }}
-              >
-                {/* 项目下拉条目前缀文件夹图标(2026-11-11 用户裁定,与分支项分支图标同语言) */}
-                <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-                {(() => {
-                  const nm = baseName(r.root ?? r.slug);
-                  return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
-                })()}
-              </button>
-            ))}
-            {projRows.length === 0 && <div className="proj-empty">{t('No matching project', '无匹配项目')}</div>}
-            <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={() => void browseFolder()}>
-              <FolderAddIcon size={14} /> {t('Browse folders…', '浏览文件夹…')}
-            </button>
-            {hint !== '' && <div className="proj-hint">{hint}</div>}
-          </div>
-          );
-        })()}
+        {isoOpen && <WelcomeIsoDialog onConfirm={() => { setIsolate(true); setIsoOpen(false); }} onClose={() => setIsoOpen(false)} />}
+        {projOpen && (
+          <WelcomeProjectPop
+            rows={rows}
+            picked={picked}
+            query={projQuery}
+            onQuery={setProjQuery}
+            onPick={(root) => {
+              setPicked(root);
+              setProjOpen(false);
+            }}
+            onBrowse={() => void browseFolder()}
+            hint={hint}
+            projRef={projRef}
+          />
+        )}
         {dirOpen && (
           <div className="modal-overlay" onClick={() => setDirOpen(false)}>
             <div className="modal-body" onClick={(e) => e.stopPropagation()}>
@@ -666,7 +526,7 @@ export function WelcomeComposer({
                 }
               }
             }
-            if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) goalComposingRef.current = false;
+            if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) guards.goalComposingRef.current = false;
             // G14.121 @ 文件面板(与会话内同构):任意位置 @token → 最近改动文件清单;
             // 选中插入 @相对路径(发送期统一展开为 md 绝对链接);面板开时 Enter/↑↓ 归面板
             const taEl = e.currentTarget as HTMLTextAreaElement;
@@ -776,141 +636,36 @@ export function WelcomeComposer({
                 send();
               }
             }}
-            onBeforeInput={(e) => {
-              // G14.212 token 原子性兜底面(与会话内同构)
-              const ev = e.nativeEvent as InputEvent;
-              const ta = e.currentTarget;
-              const s = ta.selectionStart ?? 0;
-              const en = ta.selectionEnd ?? 0;
-              const v = tokenGuardVerdict(goal, s, en, ev.inputType ?? '');
-              if (v.action === 'redirectEnd') {
-                e.preventDefault();
-                ta.setSelectionRange(v.to, v.to);
-              } else if (v.action === 'splice') {
-                e.preventDefault();
-                setGoal((prev) => prev.slice(0, v.s) + prev.slice(v.e));
-                requestAnimationFrame(() => ta.setSelectionRange(v.s, v.s));
-              }
-            }}
-            onPasteGuard={(e) => {
-              const ta = e.currentTarget;
-              const s = ta.selectionStart ?? 0;
-              const en = ta.selectionEnd ?? 0;
-              const [as, ae] = atomicRange(goal, s, en);
-              if (as !== s || ae !== en) {
-                e.preventDefault();
-                ta.setSelectionRange(ae, ae);
-              }
-            }}
-            onCompositionGuard={(e) => {
-              goalComposingRef.current = true; // G14.213 组合中:onSelect 归位跳过
-              const ta = e.currentTarget;
-              const s = ta.selectionStart ?? 0;
-              const en = ta.selectionEnd ?? 0;
-              const [as, ae] = atomicRange(goal, s, en);
-              if (as !== s || ae !== en) e.preventDefault();
-            }}
-            onCompositionEndGuard={() => {
-              goalComposingRef.current = false;
-            }}
-            onSelectGuard={() => {
-              // G14.213 光标不落 token 中间:↑↓/Home/End 等原生移动后的兜底归位(IME 组合中跳过)
-              if (goalComposingRef.current) return;
-              const ta = goalRef.current;
-              if (ta === null) return;
-              const s = ta.selectionStart ?? 0;
-              const en = ta.selectionEnd ?? 0;
-              if (s !== en) return;
-              const span = tokenSpanAt(ta.value, s);
-              if (span !== null) ta.setSelectionRange(span[1], span[1]);
-            }}
+            onBeforeInput={guards.onBeforeInput}
+            onPasteGuard={guards.onPasteGuard}
+            onCompositionGuard={guards.onCompositionGuard}
+            onCompositionEndGuard={guards.onCompositionEndGuard}
+            onSelectGuard={guards.onSelectGuard}
           overlays={
-            // $/# 引用面板链首(2026-11-05;与 Chat 同构互斥:在场时 @/+/命令面板一律不渲染)
-            refPal !== null && goal[refPal.from] === refPal.sym ? (
-              (() => {
-                const items = flatRefItems(refEntries, refPal.query, refPal.sym);
-                const emptyHint =
-                  refEntries.agents.length === 0 && refEntries.teams.length === 0
-                    ? t(
-                        'No registered sub-agents or teams yet — create them in Settings → Agents / Agent Teams, then reference here with $ or #',
-                        '尚无在册子智能体/团队 — 在 设置 → 智能体 / 智能体团队 创建后，即可在此 $ 引用 / # 拉队',
-                      )
-                    : t('No matching entry', '无匹配条目');
-                return (
-                  <RefPalette
-                          items={items}
-                    emptyHint={emptyHint}
-                    active={Math.max(0, Math.min(refActive, items.length - 1))}
-                    onHover={setRefActive}
-                    onPick={(item) => {
-                      const from = refPal.from;
-                      const end = from + 1 + refPal.query.length;
-                      setGoal((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
-                      setRefPal(null);
-                      goalRef.current?.focus();
-                      requestAnimationFrame(() => {
-                        const g = goalRef.current;
-                        if (g === null) return;
-                        const to = Math.min(from + item.id.length + 2, g.value.length);
-                        g.setSelectionRange(to, to);
-                      });
-                    }}
-                  />
-                );
-              })()
-            ) : // G14.121 @ 文件面板优先(命中才渲染;点击行=插入绝对路径,面板收起);
-            // G14.211 锚点校验:@ 被删后面板残留在此拦下(同 Chat 渲染面)
-            filePal !== null && picked !== '' && goal[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
-              <FilePalette
-                  items={rankFileHits(filePalFiles, filePal.query)}
-                active={Math.min(filePalActive, 11)}
-                onHover={setFilePalActive}
-                onPick={(p) => {
-                  // G14.126 选中只插短写 @文件名,相对路径记账供发送期展开
-                  const base = pathBasename(p);
-                  pickRelRef.current.set(base, p);
-                  const atFrom = filePal.from;
-                  const atEnd = atFrom + 1 + filePal.query.length;
-                  setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-                  setFilePal(null);
-                  // G14.211 焦点回输入框 + 光标钉在插入 token 之后(面板行点击带走焦点,
-                  // 不回焦则后续键入落空;旧光标位恢复=token 中间)
-                  goalRef.current?.focus();
-                  requestAnimationFrame(() => {
-                    const g = goalRef.current;
-                    if (g === null) return;
-                    const to = Math.min(atFrom + base.length + 2, g.value.length);
-                    g.setSelectionRange(to, to);
-                  });
-                }}
-              />
-            ) : welcomeSlashItems !== null ? (
-              (() => {
-                // G14.213 欢迎页 / 命令+技能面板:行点击补全 `/cmd `(执行在会话建立后)
-                const items = welcomeSlashItems;
-                const active = Math.min(welcomeCmdActive, Math.max(0, items.length - 1));
-                const pick = (item: { cmd: string; ok: boolean }): void => {
-                  if (!item.ok) return;
-                  const tok = slashTokenAt(goal, goalRef.current?.selectionStart ?? goal.length);
-                  const from = tok !== null ? tok.from : goal.length;
-                  const caret = goalRef.current?.selectionStart ?? goal.length;
-                  setGoal(goal.slice(0, from) + item.cmd + ' ' + goal.slice(caret));
-                  setWelcomeCmdActive(0);
-                  goalRef.current?.focus();
-                };
-                return <CommandPalette items={items} active={active} onHover={setWelcomeCmdActive} onPick={pick} />;
-              })()
-            ) : plusOpen ? (
-              <ComposerPlusPanel
-                conn={conn}
-                root={picked !== '' ? picked : undefined}
-                onAttachImages={attachImages}
-                onInsert={(text) => {
-                  setGoal((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
-                  setPlusOpen(false);
-                }}
-              />
-            ) : null
+            <WelcomeOverlays
+              conn={conn}
+              goal={goal}
+              setGoal={setGoal}
+              goalRef={goalRef}
+              picked={picked}
+              refPal={refPal}
+              setRefPal={setRefPal}
+              refEntries={refEntries}
+              refActive={refActive}
+              setRefActive={setRefActive}
+              filePal={filePal}
+              setFilePal={setFilePal}
+              filePalFiles={filePalFiles}
+              filePalActive={filePalActive}
+              setFilePalActive={setFilePalActive}
+              welcomeSlashItems={welcomeSlashItems}
+              welcomeCmdActive={welcomeCmdActive}
+              setWelcomeCmdActive={setWelcomeCmdActive}
+              plusOpen={plusOpen}
+              setPlusOpen={setPlusOpen}
+              attachImages={attachImages}
+              pickRelRef={pickRelRef}
+            />
           }
           belowInput={error !== '' ? <div className="proj-hint" role="alert">{error}</div> : undefined}
           footLeft={
