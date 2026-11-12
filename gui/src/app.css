@@ -3969,3 +3969,9 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: var(--surface-elevated); border-color: var(--border); }
 [data-theme='light'] .sx-settings-main :is(.sx-setting-input, .sx-dd-trigger, .sx-raw-controls select, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea) { background: var(--surface-elevated); }
 [data-theme='light'] .sx-settings-main .sx-card .sx-setting-row + .sx-setting-row { border-top-color: var(--border); }
+
+/* 下拉可见性二段(2026-11-12 用户裁定「看不清下拉选项」):①弹层加 1px 边线(此前只余软阴影,
+   白页上白弹层无界;暗色同式白 8% 发丝线与既有菜单弹层同语言) ②亮色设置主面内触发器回浅灰
+   (菜单同色 surface-under #f9f9f9,白卡/白页上都可辨;暗色不动维持原生梯) */
+.sx-dd-pop { border: 1px solid var(--border); }
+[data-theme='light'] .sx-settings-main .sx-dd-trigger { background: var(--surface-under); }
