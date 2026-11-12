@@ -3959,8 +3959,13 @@ html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .entr
    +圆角)。卡内 pre 自带横滚裁剪、内边距 12/14px 大于弧线角部侵入 ~6.4px,子内容不越角区;
    sx-tip 气泡锚自身 relative,宿主定位化不改锚 */
 .sx-code-surface { display: none; }
-html[data-theme='light'][data-code-dark='1'] .code-block {
-  position: relative; z-index: 0; background: none; border: none; overflow: visible;
+/* .code-block 重复类抬特异性:暗面分组规则(3942)的 :is() 特异性取参数中最高者
+   (.entry-tool .tool-detail)=整体 (0,4,1),压过 (0,3,1) 的覆写——底色重置从未生效
+   (前两版毛刺修法皆败于此)。重复类后 (0,4,1) 同级,后写胜 */
+html[data-theme='light'][data-code-dark='1'] .code-block.code-block {
+  position: relative; z-index: 0; border: none; overflow: visible;
+  background-color: transparent; /* 显式 longhand:shorthand `background:none` 会被构建压缩器
+     归一化为分量重置,压不掉分组规则(3942)的 background-color,矩形底把矢量面压在底下 */
 }
 html[data-theme='light'][data-code-dark='1'] .code-block .sx-code-surface {
   display: block; position: absolute; inset: 0; width: 100%; height: 100%;
@@ -3981,5 +3986,10 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    纯白页上所有白卡零轮廓——设置主面(.sx-settings-main)内全部卡片统一浅灰底(surface-under 档),
    覆盖分组卡/Raw 卡/技能卡/记忆卡/MCP 卡/智能体卡/提供方卡全家;卡内输入/下拉/表单/操作钮
    回白底保控件对比(surface-soft #ececec 在灰卡 #efefef 上近同色不可辨) */
-.sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc) { background: var(--surface-under); }
+.sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { background: var(--surface-under); }
 .sx-settings-main :is(.sx-setting-input, select, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, .sx-card-actions button, .sx-add-button) { background: var(--surface-elevated); }
+/* 弹窗内输入回灰底(2026-11-12 用户裁定「弹窗输入框分不清」):编辑模态/通用模态=白面,而弹窗
+   DOM 落在设置主面作用域内被上面的白化规则转白=白上白;弹窗作用域反白化回灰井
+   (.sx-dd-trigger 本就 5% 前景混色可辨不动) */
+.sx-editor-modal :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea),
+.modal-body :is(.sx-setting-input, .sx-card-form input, .sx-card-form select, .sx-card-form textarea, input, select) { background: var(--surface-soft); }
