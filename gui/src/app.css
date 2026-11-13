@@ -1985,18 +1985,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-stop {
   position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--surface-elevated); color: var(--fg-icon); cursor: pointer;
+  width: 22px; height: 22px; padding: 0; border: none; border-radius: var(--radius-xs);
+  background: transparent; color: var(--fg); cursor: pointer;
   opacity: 0; pointer-events: none;
+  transition: background-color var(--dur-basic) ease, color var(--dur-basic) ease;
 }
 .tb-task-row:hover .tb-stop,
 .tb-task-row:focus-within .tb-stop,
 .tb-dag-node:hover .tb-stop,
 .tb-dag-node:focus-within .tb-stop { opacity: 1; pointer-events: auto; }
-.tb-stop:hover { color: var(--err); }
-/* 停止二段确认武装态(2026-11-13 用户复裁定「反色线」:红线框红图标,不实心填充),武装期间恒显 */
-.tb-stop.arm { border-color: var(--err); color: var(--err); background: color-mix(in srgb, var(--err) 10%, var(--surface-elevated)); opacity: 1; pointer-events: auto; }
-.tb-stop.arm:hover { background: color-mix(in srgb, var(--err) 16%, var(--surface-elevated)); border-color: var(--err); color: var(--err); }
+.tb-stop:hover, .tb-stop.arm { background: var(--err); color: #fff; }
+/* 停止二段确认武装态:全红实底,武装期间恒显不随行 hover 隐没 */
+.tb-stop.arm { opacity: 1; pointer-events: auto; }
 .tb-task-main { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; border: none; background: transparent; padding: 3px 6px; border-radius: var(--radius-sm); cursor: pointer; text-align: left; color: var(--fg); font-size: calc(14px * var(--fz)); }
 .tb-task-main:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
 /* 任务五态点:pending 灰(基类)、running 转圈、success 蓝、failed 红、cancelled 黄。
@@ -2287,16 +2287,12 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .bg-cmd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg-secondary); }
 /* 复制钮=正文同款 TipButton(sx-tip 22px 方钮)+Check 交换(2026-10-31);span 只承接 stopPropagation */
 .bg-copy { display: inline-flex; flex: none; }
-/* 停止钮(2026-11-13 用户复裁定「这个暂停按钮还是不对」):描边方钮容器(1px 边+圆角)+描边方图标,
-   不再实心黑块裸浮;hover 现形,悬停转红=停止语义,二次确认态走 .arm 红底 */
-.tb-card .bg-act { flex: none; width: 26px; height: 24px; opacity: 0; transition: opacity 0.12s;
-  /* 2026-11-14 用户复裁定「不用调大小,调二次确认的颜色」:尺寸回原 26x24/radius-sm,仅 arm 配色改
-     反色线(红边框红图标+淡红底),不再实心红块 */
+/* 停止钮三态(2026-11-14 用户复裁定「hover 是全红,暂停线框是白色/黑色」):常态=方框图标随主题前景
+   (无按钮底无边框);hover/二次确认武装=全红实底白图标。尺寸不动(26x24) */
+.tb-card .bg-act { flex: none; width: 26px; height: 24px; opacity: 0; transition: opacity 0.12s, background-color var(--dur-basic) ease, color var(--dur-basic) ease;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--fg-icon); }
+  border: none; border-radius: var(--radius-xs); background: transparent; color: var(--fg); }
 .tb-card:hover .bg-act, .tb-card .bg-act:focus-visible { opacity: 1; }
-.tb-card .bg-act:hover { color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, var(--border)); background: color-mix(in srgb, var(--err) 6%, var(--surface-elevated)); }
-.tb-card .bg-act.arm { color: var(--err); border-color: var(--err); background: color-mix(in srgb, var(--err) 10%, var(--surface-elevated)); }
 /* 2026-10-24 后台任务行制改版(用户裁定):单行=状态点+运行时长+命令一行省略+创建时间(状态点
  * 复用 tb-status-dot 全项目同款);展开详情仅命令+结果(类型/状态/exit/id 退役——用户不关心);
  * 结果区最大高度内部滚动(有界滚动语义同 DAG 面板)。2026-10-31 运行时长前移到图标后
@@ -4101,3 +4097,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
   min-height: 40px;
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--border-strong); }
+
+/* 停止钮三态权威(2026-11-14 用户复裁定「不是 hover 全红,是二次确认时全红;常态线框白/黑」):
+   常态/hover=方框图标随前景白/黑;武装(首击待确认)=全红实底白图标恒显 */
+.tb-card .bg-act, .tb-stop { background: transparent; border: none; color: var(--fg); }
+.tb-card .bg-act.arm, .tb-stop.arm {
+  background: var(--err); color: #fff; border-radius: var(--radius-xs);
+}
+.tb-card .bg-act.arm, .tb-stop.arm { opacity: 1; pointer-events: auto; }
