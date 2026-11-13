@@ -86,7 +86,7 @@ test('内建工具全量声明 parameters 且对象节点显式闭合（裸装�
 test('逐工具 required/properties 与执行器真实入参一一对应', () => {
   withRegistries(({ full }) => {
     const expected: Record<string, string[]> = {
-      exec: ['purpose', 'command', 'background'], // purpose=任务名/工具行标题(前台 null 可省,后台必填)
+      exec: ['purpose', 'command', 'background', 'kind'], // purpose=任务名/工具行标题(前台 null 可省,后台必填);kind=查阅/执行声明(GUI 分组面,2026-11-13)
       read: ['path', 'range'],
       skill: ['id', 'params'],
       write: ['path', 'content'],

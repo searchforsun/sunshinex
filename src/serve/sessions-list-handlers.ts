@@ -92,9 +92,20 @@ export function handleSessions(io: SessionHandlerIo, req: http.IncomingMessage, 
   // 不再依赖 attach 时的本地映射(新建会话首条 append 前无 journal id,映射缺位圆点不亮)
   const liveByJournal = liveSessionByJournal(io.sessions);
   const awaitingSet = awaitingByJournal(io.sessions); // 2026-10-31:待确认标注(主菜单「?」图标)
+  // 行根现取(2026-11-13 用户实测「会话 hover 首显主工作区路径/分支,首轮结束才变树路径」根修):
+  // 旁车 root 要 run 收尾才落(<journalId>.meta.json),建档后首轮前 sr.root 缺场=行回落主工作区
+  // 根/分支。活会话 runtime 自建席起即持真根(树会话=worktree 路径),按 journalId 全量反查(不限
+  // running——刚建未跑的会话正是本案);在座行优先现取,离座行走旁车(daemon 重启后 run 收尾已落)
+  const runtimeByJournal = new Map<string, SessionRuntime>();
+  for (const s of io.sessions.values()) {
+    const jid = s.attachedJournalId;
+    if (jid !== undefined) runtimeByJournal.set(jid, s);
+  }
   const rows = listSessions(resolveDataDir(root)).filter((r) => r.archived !== true).map((r) => {
     const live = liveByJournal.get(r.id);
-    const row = live !== undefined ? { ...r, liveSessionId: live } : r;
+    const runtime = runtimeByJournal.get(r.id);
+    const liveRoot = runtime?.root;
+    const row = { ...r, ...(liveRoot !== undefined && liveRoot !== '' ? { root: liveRoot } : {}), ...(live !== undefined ? { liveSessionId: live } : {}) };
     return awaitingSet.has(r.id) ? { ...row, awaiting: true as const } : row;
   });
   io.send(res, 200, rows);

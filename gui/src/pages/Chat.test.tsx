@@ -787,6 +787,40 @@ describe('run 尾部操作条(G11 §6)', () => {
     fire({ type: 'token', text: '写一半', ts: Date.now() });
     expect(document.querySelector('.run-footer')).toBeNull();
   });
+
+  it('轮尾卡文件行点击 → onOpenTurnDiff(run, path) checkpoint 寻址(2026-11-12 用户实测:漏传回调恒走 callId 旧路)', async () => {
+    const onOpenTurnDiff = vi.fn();
+    const messages = [
+      { seq: 1, ts: DAY1, kind: 'user', md: '建个文件' },
+      {
+        seq: 2,
+        ts: DAY1,
+        kind: 'run',
+        md: '',
+        meta: {
+          runSteps: 1,
+          endedTs: DAY1,
+          changes: [{ path: 'a.md', status: 'untracked', added: 3, deleted: 0 }],
+          turn: [{ path: 'a.md', beforeDeleted: true, after: 'h-after' }],
+        },
+      },
+      { seq: 3, ts: DAY1, kind: 'assistant', md: '答' },
+    ];
+    render(<Chat conn={connOf(messages as never)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTurnDiff={onOpenTurnDiff} />);
+    await screen.findAllByText('答');
+    // 展开轮尾卡 → 点文件行;断言走 run+path 寻址(run=数字)而非 callId 旧路(旧路不触发该回调)。
+    // 文案双语(i18n 测试态=英文),按 DOM 结构取钮不按名
+    const head = document.querySelector('.run-changes-head .run-changes-toggle') as HTMLButtonElement;
+    expect(head).not.toBeNull();
+    fireEvent.click(head);
+    const row = document.querySelector('.run-changes-row') as HTMLButtonElement;
+    expect(row?.textContent ?? '').toContain('a.md');
+    fireEvent.click(row);
+    expect(onOpenTurnDiff).toHaveBeenCalledTimes(1);
+    const [run, path] = onOpenTurnDiff.mock.calls[0] as unknown as [number, string];
+    expect(typeof run).toBe('number');
+    expect(path).toBe('a.md');
+  });
 });
 
 describe('用户气泡编辑卡(G11 §7)', () => {
@@ -869,13 +903,16 @@ describe('会话流尾部窗口(D48)', () => {
     const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
     mountChat(many as unknown as Seed[]);
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(600); // 窗口内全量(D48;2026-10-26 三期尾窗同步 600)
+    // 2026-11-13 用户裁定「切会话先进视口,更早内容空闲补齐」:入口窗口 80 条(原 600 整表同步渲染),
+    // 余量由空闲分批回放;测试环境无 requestIdleCallback 走 64ms setTimeout 兜底,此处显式点按钮走手动步进
+    const initial = document.querySelectorAll('.entry-user').length;
+    expect(initial).toBeGreaterThan(0);
+    expect(initial).toBeLessThan(620);
     const earlier = document.querySelector('.chat-earlier')!;
-    expect(earlier.textContent).toContain('20'); // 窗口外 20 条
-    fireEvent.click(earlier); // 渐进回放:步进 +300 ≥ 20 → 全部回放
+    expect(earlier.textContent).toContain(String(620 - initial)); // 窗口外=N-初始窗
+    fireEvent.click(earlier); // 手动步进 +300(显式动作取大批)
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(620);
-    expect(document.querySelector('.chat-earlier')).toBeNull(); // 全部回放后头消失
+    expect(document.querySelectorAll('.entry-user').length).toBeGreaterThan(initial);
   });
 });
 
@@ -1049,7 +1086,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-call', text: 'read', ts: Date.now(), payload: { callId: 'r2', input: { path: 'b.ts' } } });
     fire({ type: 'tool-result', text: 'bbb', ts: Date.now(), payload: { callId: 'r2' } });
     const head = document.querySelector('.tool-group-head')!;
-    expect(head.textContent).toMatch(/Queried files ×2|查询了 2 次文件/); // 聚合头计数文案
+    expect(head.textContent).toMatch(/Inspected ×2|查阅了 2 次/); // 聚合头计数文案(2026-11-13 taxonomy:查阅组)
     const members = document.querySelector('.tool-group-members')!;
     expect(members.classList.contains('open')).toBe(false); // 缺省收起
     expect(members.querySelectorAll('.entry-tool')).toHaveLength(2); // 成员挂载但 CSS 收起
@@ -1080,22 +1117,24 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
   it('G14.215 运行中直进组(计数实时增+头流光;2026-10-22 裁定取消「执行行→归并」动作);ghost 只承载完成单行归并', async () => {
     mountChat([]);
     await flushed();
-    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e1', input: { command: 'ls' } } });
+    // 2026-11-13:exec 分组读模型声明 kind——只读步骤显式声明 'inspect' 即并入查阅组
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e1', input: { command: 'ls', kind: 'inspect' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e1' } });
-    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e2', input: { command: 'pwd' } } });
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e2', input: { command: 'pwd', kind: 'inspect' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e2' } });
-    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×2|执行了 2 次命令/);
+    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Inspected ×2|查阅了 2 次/);
     expect(document.querySelector('.tool-ghost')).toBeNull(); // 成组原地显示,无渐收过程(2026-10-27 裁定)
-    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e3', input: { command: 'echo hi' } } });
+    fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e3', input: { command: 'cat app.log', kind: 'inspect' } } });
     // 运行中直进组:计数 ×3 实时增+头流光,无独立行无 ghost(成员行流光标签+命令同行)
-    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×3|执行了 3 次命令/);
+    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Inspected ×3|查阅了 3 次/);
     expect(document.querySelector('.tool-group-head')!.querySelector('.exec-running-text')).not.toBeNull();
     expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(3);
     expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0);
     expect(document.querySelector('.tool-ghost')).toBeNull(); // 直进组不经归并动画
     fire({ type: 'tool-result', text: 'hi', ts: Date.now(), payload: { callId: 'e3' } });
-    // 完成:计数 ×3 恒定,流光退场
-    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Ran commands ×3|执行了 3 次命令/);
+    // 完成:计数 ×3 恒定,流光退场;taxonomy 后 3 条只读 exec 仍归查阅组(2026-11-13 裁定),
+    // 组名不因收束回到旧的「执行了 N 次命令」——上一条运行中断言同款
+    expect(document.querySelector('.tool-group-head')!.textContent).toMatch(/Inspected ×3|查阅了 3 次/);
     expect(document.querySelector('.tool-group-head')!.querySelector('.exec-running-text')).toBeNull();
     expect(document.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(3);
     expect(document.querySelectorAll('.seg-inner > .entry-tool')).toHaveLength(0);
@@ -1104,11 +1143,11 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `auto${i + 1}` }));
     mountChat(many as unknown as Seed[]);
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(600);
-    fireEvent.scroll(document.querySelector('.chat')!); // 硬顶 scrollTop=0 触发
+    const initial = document.querySelectorAll('.entry-user').length;
+    expect(initial).toBeLessThan(620); // 入口窗口=视口级(2026-11-13),非全量
+    fireEvent.scroll(document.querySelector('.chat')!); // 硬顶 scrollTop=0 触发步进
     await flushed();
-    expect(document.querySelectorAll('.entry-user')).toHaveLength(620);
-    expect(document.querySelector('.chat-earlier')).toBeNull();
+    expect(document.querySelectorAll('.entry-user').length).toBeGreaterThan(initial);
   });
 
   it('G14.2xx 流式期间滚轮上翻立即脱离贴底跟随(wheel 意图直判)', async () => {
@@ -1469,6 +1508,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       fire({ type: 'tool-result', text: 'x', ts: Date.now(), payload: { callId: id } });
     };
     fireRead('r1', 'a.ts');
+    // exec 缺 kind(旧调用/模型未声明)=执行类,恒独立行不并入查阅组(2026-11-13)
     fire({ type: 'tool-call', text: 'exec', ts: Date.now(), payload: { callId: 'e1', input: { command: 'ls' } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'e1' } });
     fireRead('r2', 'b.ts');
@@ -1479,6 +1519,27 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(kids[2]!.classList.contains('tool-group')).toBe(true); // 相邻 read×2 成组
     expect(kids[2]!.querySelectorAll('.tool-group-members .entry-tool')).toHaveLength(2);
     expect(document.querySelectorAll('.tool-group-head')).toHaveLength(1); // 全段仅一组
+  });
+
+  it('2026-11-13 分组 taxonomy:声明 kind=inspect 的 exec 与 read/grep/glob 同类成组;webfetch/websearch 归「搜索了 N 次网页」', async () => {
+    mountChat([]);
+    await flushed();
+    const fireTool = (id: string, name: string, input: Record<string, unknown>): void => {
+      fire({ type: 'tool-call', text: name, ts: Date.now(), payload: { callId: id, input } });
+      fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: id } });
+    };
+    fireTool('r1', 'read', { path: 'a.ts' });
+    fireTool('e1', 'exec', { command: 'git status', kind: 'inspect' });
+    fireTool('g1', 'grep', { pattern: 'x' });
+    const head = document.querySelector('.tool-group-head')!;
+    expect(head.textContent).toMatch(/Inspected ×3|查阅了 3 次/); // 三种查阅面同类合一
+    expect(document.querySelectorAll('.tool-group-head')).toHaveLength(1);
+    // 搜索组:webfetch + websearch 相邻成组,与查阅组不同类(被非同类切断)
+    fireTool('w1', 'websearch', { query: 'codex' });
+    fireTool('w2', 'webfetch', { url: 'https://example.com' });
+    const heads = [...document.querySelectorAll('.tool-group-head')];
+    expect(heads).toHaveLength(2);
+    expect(heads[1]!.textContent).toMatch(/Searched the web ×2|搜索了 2 次网页/);
   });
 
   it('G14.168 create_agent_team_task 折叠行带任务名;zh 态动词本地化(en 态规范化标签;未登记工具回退原名)', async () => {

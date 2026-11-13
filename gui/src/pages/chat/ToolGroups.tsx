@@ -1,26 +1,32 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronRight, FolderSearch, Hourglass, SquareTerminal, type LucideIcon } from 'lucide-react';
+import { ChevronRight, FolderSearch, Globe, Hourglass, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 /** G14.215 工具聚合行（用户裁决；2026-10-25 再裁定「聚合计数不小于 2」——单条（含运行中）恒原生
  *  行,第二个同类工具行出牌才成组,组头流光/计数随出牌实时递增;「编辑/写入行不聚合」不变）：同类型
- *  相邻工具行折为一条聚合头（「查询了 N 次文件」形,N≥2）;点击展开=成员工具行平级铺开（成员即原生
+ *  相邻工具行折为一条聚合头（「查阅了 N 次」形,N≥2）;点击展开=成员工具行平级铺开（成员即原生
  *  工具行,非嵌套壳——展开容器仅作高度动画用,零视觉盒子）;禁止重排——分组只在相邻段内做、
  *  成员保持出牌顺序,非同类行/思考行天然切断分组;编辑/写入行携 diff 统计与文件身份,恒独立
- *  不聚合（2026-10-22 用户裁定） */
-export type ToolGroupKind = 'query' | 'exec' | 'wait';
+ *  不聚合（2026-10-22 用户裁定）。
+ *  2026-11-13 用户裁定分组 taxonomy(「查阅 还是 执行…影响大的不能折叠,有交互的不能折叠」):
+ *  - 查阅组 inspect=read/grep/glob/exec(kind='inspect' 显式声明)——「查阅了 N 次」
+ *  - 网页搜索组 websearch=webfetch/websearch——「搜索了 N 次网页」
+ *  - 等待组 wait=task_wait——「等待了 N 次任务」(不变)
+ *  - **执行类 exec(kind='execute'/缺声明)不折叠**:产生副作用的命令影响大,每条独立原生行;
+ *    类型由模型在调用时声明(schema kind 枚举),前端零文本猜测 */
+export type ToolGroupKind = 'inspect' | 'websearch' | 'wait';
 
-/** 聚合面工具清单（三类高频噪声行；spawn、task 系、ask 等语义行与编辑/写入行（携 diff 统计）
- *  保持独立不聚合） */
+/** 聚合面工具清单（查阅/网页搜索/等待三类高频噪声行；spawn、task 系、ask 等语义行与编辑/写入行
+ *  （携 diff 统计）与**执行类 exec** 保持独立不聚合） */
 const GROUP_KIND_OF: Record<string, ToolGroupKind> = {
-  read: 'query', grep: 'query', glob: 'query',
-  exec: 'exec',
+  read: 'inspect', grep: 'inspect', glob: 'inspect',
+  webfetch: 'websearch', websearch: 'websearch',
   task_wait: 'wait',
 };
 
 const GROUP_META: Record<ToolGroupKind, { icon: LucideIcon; label: (n: number) => [string, string] }> = {
-  query: { icon: FolderSearch, label: (n) => [`Queried files ×${n}`, `查询了 ${n} 次文件`] },
-  exec: { icon: SquareTerminal, label: (n) => [`Ran commands ×${n}`, `执行了 ${n} 次命令`] },
+  inspect: { icon: FolderSearch, label: (n) => [`Inspected ×${n}`, `查阅了 ${n} 次`] },
+  websearch: { icon: Globe, label: (n) => [`Searched the web ×${n}`, `搜索了 ${n} 次网页`] },
   wait: { icon: Hourglass, label: (n) => [`Waited on tasks ×${n}`, `等待了 ${n} 次任务`] },
 };
 
@@ -30,7 +36,14 @@ function executingOf(entry: ChatEntry): boolean {
 }
 
 function groupKindOf(entry: ChatEntry): ToolGroupKind | undefined {
-  return entry.name === undefined ? undefined : GROUP_KIND_OF[entry.name];
+  if (entry.name === undefined) return undefined;
+  if (entry.name === 'exec') {
+    // exec 分组读**模型显式声明**(2026-11-13 用户裁定「让模型自己调用 exec 时指定类型」):schema
+    // kind='inspect' 只读→并入查阅组;kind='execute' 或缺声明(旧档/旧调用)→不折叠(影响大者恒独立)
+    const declared = entry.input !== undefined ? (entry.input as Record<string, unknown>).kind : undefined;
+    return declared === 'inspect' ? 'inspect' : undefined;
+  }
+  return GROUP_KIND_OF[entry.name];
 }
 
 /** 段内相邻折叠节点：entry=思考/隐正文（切断相邻性），tool=单行（非聚合面/完成段计数 1），group=聚合 */

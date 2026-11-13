@@ -17,7 +17,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadEffectivePlugins } from '../config/plugins';
-import { PROJECT_SKILL_ROOTS_ASC, isValidSkillId, parseSkillFrontmatter, priorityChain } from '../harness/skills';
+import { PROJECT_SKILL_ROOTS_ASC, USER_SKILL_ROOTS_ASC, isValidSkillId, parseSkillFrontmatter, priorityChain } from '../harness/skills';
 import type { Listing } from './types';
 
 /** 技能来源段（对齐装载优先级链的语义级）：project = 项目五根 .sunshinex/.agents/.claude/.codex/.cursor 合并一组（loadSkillsGrouped 同款） */
@@ -78,11 +78,12 @@ export function listSkills(root: string, opts?: { pluginSkillDirs?: string[] }):
   // priorityChain 单点承载，本面只按语义段切片、不重复拼接与排序逻辑
   const chain = priorityChain(root, pluginDirs);
   const nProject = PROJECT_SKILL_ROOTS_ASC.length;
+  const nUser = 1 + USER_SKILL_ROOTS_ASC.length; // 用户段=原生根+HOME 四兼容根(2026-11-13 全局兼容裁定)
   const segments: ReadonlyArray<{ source: SkillSource; dirs: string[] }> = [
     { source: 'project', dirs: chain.slice(0, nProject) },
-    { source: 'user', dirs: chain.slice(nProject, nProject + 1) },
-    { source: 'learned', dirs: chain.slice(nProject + 1, nProject + 2) },
-    { source: 'plugin', dirs: chain.slice(nProject + 2) },
+    { source: 'user', dirs: chain.slice(nProject, nProject + nUser) },
+    { source: 'learned', dirs: chain.slice(nProject + nUser, nProject + nUser + 1) },
+    { source: 'plugin', dirs: chain.slice(nProject + nUser + 1) },
   ];
   const entries: SkillEntry[] = [];
   const winner = new Map<string, SkillSource>(); // id → 跨源胜者来源（链上首个成功装载的来源段）

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { watchThemeChange } from './theme';
-import { currentPalette, mixHex } from './palette';
+import { effectivePalette, mixHex } from './palette';
 import type { Palette } from './palette';
 import { codeFontSize, codeFontFamily } from './font-preset';
 
@@ -56,7 +56,7 @@ function mermaidThemeVars(): Record<string, string | boolean> {
     /* 非浏览器守卫 */
   }
   return {
-    ...mermaidColors(currentPalette()),
+    ...mermaidColors(effectivePalette()),
     fontFamily: uiFamily || codeFontFamily(),
     fontSize: `${codeFontSize()}px`,
   };
@@ -143,7 +143,7 @@ export function Mermaid({
   /** 围栏未闭合:流式 live 试渲(节流),失败保留上一帧成图(无帧则中性占位) */
   draft?: boolean;
 }): JSX.Element {
-  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(currentPalette().id, chart)) ?? liveFrameFor(chart)));
+  const [svg, setSvg] = useState<string | null>(() => (draft ? null : svgCache.get(cacheKey(effectivePalette().id, chart)) ?? liveFrameFor(chart)));
   const [failed, setFailed] = useState<string | null>(null);
   const idRef = useRef(`mmd-${Math.random().toString(36).slice(2)}`);
   const liveLastRef = useRef(0);
@@ -175,7 +175,7 @@ export function Mermaid({
     if (draft) return; // 流式草稿面由下方 live 试渲 effect 接管
 
     let alive = true;
-    const key = cacheKey(currentPalette().id, chart);
+    const key = cacheKey(effectivePalette().id, chart);
     const cached = svgCache.get(key);
     if (cached !== undefined) {
       setSvg(cached);
@@ -268,7 +268,7 @@ export function Mermaid({
           liveDoneRef.current = src;
           liveFrameSet(src, r.svg);
           if (src === chartNow) {
-            const key = cacheKey(currentPalette().id, src);
+            const key = cacheKey(effectivePalette().id, src);
             if (liveCachedKeyRef.current !== null) svgCache.delete(liveCachedKeyRef.current);
             if (svgCache.size >= 200) svgCache.clear();
             svgCache.set(key, r.svg);

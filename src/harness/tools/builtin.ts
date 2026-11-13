@@ -13,7 +13,7 @@ import { formatTeamCard, formatAgentCard, TeamsFacade } from '../teams';
 import { recordSkillUsage } from '../../catalog/skill-usage';
 import { ReadGuard } from './read-guard';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
-import { ToolOutputArchive } from './output-archive';
+import { ToolOutputArchive, PREVIEW_CHARS, TOOL_OUTPUT_CHAR_LIMIT } from './output-archive';
 import { TaskRegistry } from '../tasks';
 import { MemoryWriteSeam } from '../memory/writer';
 import { MemoryScope } from '../memory/paths';
@@ -131,6 +131,10 @@ export function builtinTools(
   const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard, plan, teams, agents } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
+  /** 出口预算说明后缀(2026-11-13 用户裁定「工具截断字符数要在描述里说明,避免 agent 多次试错」):
+   *  数字从 output-archive 常量派生(单点),描述面不再只写「oversized 会截断」而无量级——
+   *  agent 可据此首轮就规划「读大文件用行区间 / 长输出转 grep 收窄」 */
+  const budgetNote = `output limit ${TOOL_OUTPUT_CHAR_LIMIT} chars: beyond that the output is truncated to the first ${PREVIEW_CHARS} chars and the full text is saved to disk (path shown in the result)`;
   const backend = safety.backend;
 
   /** 写族落盘共用尾段（D41 留座清偿：write/edit 两执行器同构序列收敛）：记忆闸门 → 影子快照
@@ -173,7 +177,7 @@ export function builtinTools(
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['purpose', 'command', 'background'],
+        required: ['purpose', 'command', 'background', 'kind'],
         properties: {
           // 操作说明(2026-11-07 用户裁定):GUI 工具行以它为标题(编程模式附命令明细,办公模式只显说明);
           // 选填——一眼可读的命令传 null 省 token,长命令/管道串写一句
@@ -183,11 +187,17 @@ export function builtinTools(
               "Short phrase stating what this command is for, written in the language the user is currently using (e.g. 'Find commits touching session switching', 'start the dev server'). Shown to the user as the title of this step and as the background task name. REQUIRED when background is true; otherwise pass null for self-explanatory commands (ls, git status) and write one for long, piped or non-obvious commands.",
           },
           command: { type: 'string', description: 'Shell command to run (POSIX sh; runs from the project root)' },
+          kind: {
+            type: 'string',
+            enum: ['inspect', 'execute'],
+            description:
+              "Declare what this command does — the UI groups consecutive same-kind steps (2026-11-13). 'inspect' = read-only observation with no side effects (ls/cat/head/grep/find/git status/git log/which/echo into the transcript, listing dirs, reading logs): consecutive inspect steps collapse into one 'Inspected ×N' line. 'execute' = anything that writes, installs, builds, starts, stops, commits, pushes or otherwise changes state — such steps always stay individually visible because their effect matters. When unsure, use 'execute'.",
+          },
           background: { type: ['boolean', 'null'], description: 'Run in the background: returns immediately with a task id and an output file path' },
         },
       },
       name: 'exec',
-      description: 'Execute a shell command inside the project sandbox; long-running commands are automatically moved to the background when they time out; oversized output is truncated and saved to disk (full output path shown in the result)',
+      description: `Execute a shell command inside the project sandbox; always pass \`kind\` to declare whether the command only inspects (read-only, folded in the UI) or executes (side effects, always shown individually); long-running commands are automatically moved to the background when they time out; ${budgetNote} — pipe through head/tail/grep to keep large outputs focused`,
       category: 'bash',
       display: { verb: 'EXEC', targetFields: ['command'] },
       executor: async (input: ToolInput, runtimeSafety) => {
@@ -257,7 +267,7 @@ export function builtinTools(
       },
       name: 'read',
       description:
-        'Read file content (preferred over exec cat/head/tail for any file lookup); optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers; oversized output is truncated and saved to disk (full output path shown in the result). Image files (png/jpg/jpeg/webp/gif) are returned as attached images you can see directly — use this tool to visually inspect screenshots and pictures instead of claiming you cannot view images',
+        `Read file content (preferred over exec cat/head/tail for any file lookup); ${budgetNote} — for files that may be large, pass the line range on the first call instead of reading whole then re-reading. Optional range selects lines, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; output prefixed with line numbers. Image files (png/jpg/jpeg/webp/gif) are returned as attached images you can see directly — use this tool to visually inspect screenshots and pictures instead of claiming you cannot view images`,
       category: 'read',
       display: { verb: 'READ', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
@@ -357,7 +367,7 @@ export function builtinTools(
       },
       name: 'write',
       description:
-        "Write a file's full content — the file is replaced entirely, so pass the complete final content (not a diff or partial change); targeted modification of an existing file belongs to edit; read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)",
+        "Write a file's full content — creates the file when it does not exist and replaces it entirely when it does, so pass the complete final content (not a diff or partial change); targeted modification of an existing file belongs to edit; read the file first when preserving unchanged regions matters; relative paths are anchored at the project root; writes outside the trusted roots go through permission checks (approval or rejection)",
       category: 'write',
       display: { verb: 'WRITE', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
@@ -469,7 +479,7 @@ export function builtinTools(
         },
       },
       name: 'glob',
-      description: 'List files under the project root matching a glob pattern (preferred over exec ls/find for directory listing); returned paths are relative to the project root (feed them back with the project root prepended for absolute access); oversized listing is truncated and saved to disk (full output path shown in the result)',
+      description: `List files under the project root matching a glob pattern (preferred over exec ls/find for directory listing); returned paths are relative to the project root (feed them back with the project root prepended for absolute access); ${budgetNote} — narrow the pattern rather than listing a whole tree`,
       category: 'read',
       display: { verb: 'GLOB', targetFields: ['pattern'] },
       executor: async (input: ToolInput) => {
@@ -492,7 +502,7 @@ export function builtinTools(
       },
       name: 'webfetch',
       description:
-        'Fetch a URL and return the raw response body (HTML pages come back as raw HTML markup, not extracted text; use grep/read on the saved file to extract content when needed); input { url }, http/https only (protocol floor enforced by the security guard); request times out after 30s and the download is hard-capped at 2 MB; non-2xx responses fail with WEBFETCH_HTTP_<status>; oversized body is truncated and saved to disk (full output path shown in the result)',
+        `Fetch a URL and return the raw response body (HTML pages come back as raw HTML markup, not extracted text; use grep/read on the saved file to extract content when needed); input { url }, http/https only (protocol floor enforced by the security guard); request times out after 30s and the download is hard-capped at 2 MB; non-2xx responses fail with WEBFETCH_HTTP_<status>; ${budgetNote}`,
       category: 'network',
       display: { verb: 'FETCH', targetFields: ['url'] },
       executor: async (input: ToolInput) => {

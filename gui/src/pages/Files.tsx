@@ -190,6 +190,29 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
     fetchFile(initialPath);
   }, [initialPath, fetchFile]);
 
+  // 磁盘变更感知(2026-11-13 用户裁定「侧栏页签打开的文件,磁盘改了要刷新到」):3s 轮询现路径,
+  // 内容(dataURL/文本)与现显不同才落态——预览面只读零输入态可丢;过期应答守卫沿用 requestIdRef
+  // (readFileOf 单点口径,会话/欢迎页两态同享);轮询失败静默(文件暂不可读不顶掉现有内容)
+  const diskWatchPath = load.file?.path;
+  useEffect(() => {
+    if (diskWatchPath === undefined || diskWatchPath === '') return;
+    const timer = window.setInterval(() => {
+      // 应用不可见/页签非活动时不轮询(2026-11-13「多页签+多会话卡顿」):keep-alive 下 N 个
+      // 文件页签各 1 次/3s 请求会叠加;回窗即续,最多延迟一个周期
+      if (document.visibilityState !== 'visible') return;
+      const rid = ++requestIdRef.current; // 与用户切换同一守卫:在途轮询被新请求(切换/重载)作废
+      void readFileOf(diskWatchPath).then(
+        (f) => {
+          if (f.type === 'directory') return;
+          if (rid !== requestIdRef.current) return; // 过期应答:丢弃
+          setLoad((prev) => (prev.file !== null && prev.file.path === f.path && prev.file.content === f.content && prev.file.data === f.data ? prev : { file: f, error: null, loading: false }));
+        },
+        () => undefined,
+      );
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [diskWatchPath, readFileOf]);
+
   // G14.121 换文件即回源码形态(预览态不跨文件延续)
   useEffect(() => {
     setPreview(false);

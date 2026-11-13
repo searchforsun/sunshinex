@@ -43,17 +43,27 @@ function defineSxTheme(p: Palette): void {
 }
 
 /** sx-<配色 id> 主题定义（幂等）+ worker 环境（非浏览器环境跳过） */
+let appliedMonacoTheme = ''; // 全局重主题去重单点(2026-11-13 用户实测「切主题回正文卡」):setTheme 是
+// monaco 全局操作且不因同名短路——hook、@monaco-editor/react 的 theme prop 每编辑器实例各调一次
+// =N 次全编辑器重主题。ensureMonaco 在此包一层同值短路,全部调用方(含编辑器 prop 路径)一并收敛
 export function ensureMonaco(): void {
   if (typeof Worker !== 'undefined' && (self as { MonacoEnvironment?: unknown }).MonacoEnvironment === undefined) {
     (self as { MonacoEnvironment?: unknown }).MonacoEnvironment = { getWorker: () => new editorWorker() };
   }
   if (themesDefined) return;
   for (const p of PALETTES) defineSxTheme(p);
+  const rawSetTheme = monaco.editor.setTheme.bind(monaco.editor);
+  monaco.editor.setTheme = (name: string): void => {
+    if (appliedMonacoTheme === name) return;
+    appliedMonacoTheme = name;
+    rawSetTheme(name);
+  };
   themesDefined = true;
 }
 
 /** 主题跟随 hook：mount 即定义主题并对齐生效配色；亮暗/配色切换经 watchThemeChange 单点实时重渲。
- *  取值走 effectivePalette 单点——亮色主题+「暗色代码」开时文件源码视图随暗色偏好配色 */
+ *  取值走 effectivePalette 单点——亮色主题+「暗色代码」开时文件源码视图随暗色偏好配色。
+ *  setTheme 走 ensureMonaco 的同值短路补丁(见上),多编辑器实例不再重复全局重主题 */
 export function useSxTheme(): string {
   const [theme, setTheme] = useState<string>(() => `sx-${effectivePalette().id}`);
   useEffect(() => {

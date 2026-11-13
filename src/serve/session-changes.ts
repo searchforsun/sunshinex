@@ -307,6 +307,39 @@ export async function createBranch(root: string, branch: string): Promise<Result
   return ok({ out: r.out });
 }
 
+/** 拉取远程分支到本地(2026-11-13 用户裁定「分支弹窗支持 fetch 按钮,将远程分支拉到本地」):
+ *  git fetch --all --prune 刷新远程跟踪引用后,对仅存在于远程的分支逐个 git branch <name> <远程引用>
+ *  建本地跟踪分支(已存在跳过)——新建即出现在分支清单,选中/切换/隔离走既有语义零新增;
+ *  fetched=本次新建清单(GUI 提示「拉取 N 个」),无远程/无新分支=空数组 */
+export async function fetchRemoteBranches(root: string): Promise<Result<{ fetched: string[]; warning?: string }>> {
+  if (!fs.existsSync(path.join(root, '.git'))) return fail('NOT_GIT', 'not a git repository');
+  // 拉取失败不整单失败(2026-11-13 用户实测「拉取500」:远程不可达/凭据缺失时 git fetch 报
+  // RPC failed 直接 500 太生硬):记 warning 后仍按**本地已有远程引用**建余下分支——
+  // 用户上次 fetch 过的远程分支照样能拉到本地;无引用可建时 warning 原文回显
+  let warning: string | undefined;
+  const f = await git(root, ['fetch', '--all', '--prune']);
+  if (!f.ok) {
+    const firstLine = f.err.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? f.err.trim();
+    warning = firstLine.slice(0, 200);
+  }
+  const refs = await git(root, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes']);
+  if (!refs.ok) return fail('FETCH_FAIL', refs.err);
+  const remoteBranches = refs.out
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => /^[^/]+\/.+/.test(l) && !l.endsWith('/HEAD'));
+  const local = await git(root, ['branch', '--format=%(refname:short)']);
+  const localSet = new Set((local.ok ? local.out : '').split('\n').map((l) => l.replace(/^\*\s*/, '').trim()));
+  const created: string[] = [];
+  for (const ref of remoteBranches) {
+    const name = ref.slice(ref.indexOf('/') + 1);
+    if (name === '' || localSet.has(name)) continue;
+    const c = await git(root, ['branch', name, ref]);
+    if (c.ok) created.push(name);
+  }
+  return ok({ fetched: created, ...(warning !== undefined ? { warning } : {}) });
+}
+
 /** G14.113 切换分支:工作区未提交改动与目标分支冲突时 git 拒绝——识别为 DIRTY_TREE(前端弹「提交并切换」确认) */
 export async function checkoutBranch(root: string, branch: string, create = false): Promise<Result<{ out: string }>> {
   if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
@@ -393,6 +426,7 @@ export async function restoreChange(root: string, relPath: string): Promise<Resu
 export function diffChangeSets(base: ChangeFile[], now: ChangeFile[]): ChangeFile[] {
   const baseMap = new Map(base.map((f) => [f.path, f]));
   return now.filter((f) => {
+    if (f.path.endsWith('/')) return false; // 2026-11-13 用户裁定「文件夹的变更要计入 diff?不要吧」:untracked 目录项(porcelain '?? dir/')不入轮末增量
     const b = baseMap.get(f.path);
     if (b === undefined) return true;
     return b.added !== f.added || b.deleted !== f.deleted || b.status !== f.status || b.newLines !== f.newLines;

@@ -11,7 +11,7 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
-import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles } from './session-changes';
+import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles, fetchRemoteBranches } from './session-changes';
 import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
@@ -627,6 +627,18 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         const r = await createBranch(path.resolve(b.root), b.branch);
         if (!r.ok) return this.send(res, r.error.code === 'BRANCH_NAME' ? 400 : 409, { error: r.error.message, code: r.error.code });
         this.send(res, 200, { ok: true });
+      } },
+    // 拉取远程分支到本地(2026-11-13 用户裁定「分支弹窗支持 fetch 按钮」):fetch --all --prune
+    // + 仅远程分支逐个建本地跟踪分支;fetched=本次新建清单
+    { method: 'POST', path: '/git/fetch', auth: true, run: async (req, res) => {
+        const parsed = await this.readJson(req);
+        if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+        const b = parsed.body as { root?: unknown };
+        if (typeof b.root !== 'string' || b.root === '') return this.send(res, 400, { error: 'root required' });
+        const r = await fetchRemoteBranches(path.resolve(b.root));
+        // 非 git 根 400 语义错;其余(引用枚举失败)409 可读错——远程不可达只降级 warning 不整单失败
+        if (!r.ok) return this.send(res, r.error.code === 'NOT_GIT' ? 400 : 409, { error: r.error.message, code: r.error.code });
+        this.send(res, 200, { ok: true, fetched: r.value.fetched, ...(r.value.warning !== undefined ? { warning: r.value.warning } : {}) });
       } },
     // 切换代价面(2026-11-10 用户裁定「切换分支弹确认」):numstat 汇总+未提交改动数,确认框展示
     { method: 'GET', path: '/git/branch-diff', auth: true, run: async (req, res) => {

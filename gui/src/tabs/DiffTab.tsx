@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Circle, CircleDot } from 'lucide-react';
 import { pathBasename, withMinSpin } from '../ui-util';
 import { Check, ChevronDown, ChevronUp, GitBranch, GitCommitVertical, Loader2, Plus, RefreshCw, Undo2, Upload } from 'lucide-react';
@@ -176,6 +176,21 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
   };
 
   // 分支下拉:清单按需拉,切换/新建经 useBranchSwitch(脏树确认框)
+  /** 分支名截断隐现(2026-11-13 用户裁定「侧栏审查分支过长也隐现,和欢迎页一致」):分支名
+   *  溢出打 data-cut=右缘 14px 渐隐,无省略号;分支切换/栏宽变化随 RO 重算 */
+  const branchNameRef = useRef<HTMLSpanElement | null>(null);
+  useLayoutEffect(() => {
+    const el = branchNameRef.current;
+    if (el === null) return;
+    const mark = (): void => {
+      if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
+      else el.removeAttribute('data-cut');
+    };
+    mark();
+    const ro = new ResizeObserver(mark);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [branch]);
   const loadBranches = (): void => {
     if (root === undefined || root === '') return;
     void conn.gitBranches(root).then((r) => setBranches(r.branches.length > 0 ? r : null), () => setBranches(null));
@@ -293,7 +308,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
               }}
             >
               <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span className="sx-changes-branch-name">{branch}</span>
+              <span ref={branchNameRef} className="sx-changes-branch-name">{branch}</span>
               <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
             </button>
             {branchOpen && branches !== null && (
@@ -306,6 +321,12 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
                 onCreate={(b) => {
                   setBranchOpen(false);
                   switchTo(b, true);
+                }}
+                onFetch={async () => {
+                  // 2026-11-13 用户裁定「这个也支持拉取分支」:审查页弹层同款拉取(本地引用建支)
+                  const r = await conn.gitFetchRemote(root);
+                  loadBranches();
+                  return r;
                 }}
               />
             )}
@@ -355,14 +376,14 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
             <>
               {actBtn({
                 label: t('Commit staged', '提交已暂存'),
-                icon: flash === 'commit' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />,
+                icon: flash === 'commit' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : spinOr('commit', <GitCommitVertical size={14} strokeWidth={1.75} aria-hidden="true" />),
                 disabled: staged.length === 0,
                 onClick: () => setCommitOpen((v) => !v),
               })}
               {actBtn({
                 label: t('Push', '推送'),
                 icon: flash === 'push' ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : spinOr('push', <Upload size={14} strokeWidth={1.75} aria-hidden="true" />),
-                onClick: () => run('push', () => conn.pushChanges(sessionId), t('Pushed', '已推送'), () => flashOk('push')),
+                onClick: () => run('push', () => conn.pushChanges(sessionId), undefined, () => flashOk('push')), // 成功只走图标 √ 闪 2s(2026-11-13 用户裁定),不落大占位提示
               })}
               {actBtn({
                 label: t('Unstage all', '撤销全部暂存'),
@@ -423,7 +444,7 @@ export function DiffTab({ conn, sessionId, params, root, onOpenFile }: DiffTabPr
                   className="primary"
                   disabled={busy !== null || commitMsg.trim() === ''}
                   onClick={() =>
-                    run('commit', () => conn.commitChanges(sessionId, commitMsg, true), t('Committed', '已提交'), () => {
+                    run('commit', () => conn.commitChanges(sessionId, commitMsg, true), undefined, () => { // 成功只走图标 √ 闪 2s,不落大占位提示(同推送口径)
                       setCommitMsg('');
                       setCommitOpen(false);
                       flashOk('commit');

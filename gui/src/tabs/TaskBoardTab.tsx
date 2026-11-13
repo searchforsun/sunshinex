@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import { AlarmClock, Bot, Clock, Pause, RefreshCw } from 'lucide-react';
+import { AlarmClock, Bot, Clock, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
 import { dateStampMs, fmtDurMs, withMinSpin } from '../ui-util';
@@ -309,7 +309,7 @@ function TaskCard({
                       }
                     }}
                   >
-                    <Pause size={16} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
+                    <Square size={14} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                   </button>
                 )}
               </li>

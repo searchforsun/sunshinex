@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { AlarmClock, Check, Clock, Copy, Database, Pause, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { AlarmClock, Check, Clock, Copy, Database, RefreshCw, Sparkles, Square, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
@@ -322,7 +322,7 @@ export function BgTasksTab({
                         }
                       }}
                     >
-                      <Pause size={16} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
+                      <Square size={14} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                     </button>
                   )}
                   <span className="todo-card-time" data-tip={t('Created', '创建时间')}>

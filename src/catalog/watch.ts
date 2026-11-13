@@ -66,13 +66,21 @@ export class ConfigWatcher {
   private suppressedUntil = new Map<string, number>();
   private closed = false;
 
-  /** 监听全局目录：globalDir 本层文件（settings.json/mcp.json）+ agents/ plugins/ teams/ 子目录（缺失的子目录逐个降级，不影响其余） */
+  /** 监听全局目录：globalDir 本层文件（settings.json/mcp.json）+ agents/ plugins/ teams/ 子目录
+   *  （缺失的子目录逐个降级，不影响其余）；另挂 HOME 下 .cursor/.codex/.claude/.agents 兼容技能根
+   *  的 skills/ 子目录（2026-11-13 用户裁定「skills 加载兼容全局四根」,清单派生自
+   *  PROJECT_SKILL_ROOTS_ASC 单点,.sunshinex 即 globalDir 本体不重复挂） */
   watchGlobal(globalDir: string): void {
+    const home = path.dirname(path.resolve(globalDir));
+    const compatGlobalSkillSpecs = PROJECT_SKILL_ROOTS_ASC
+      .filter((dot) => dot !== '.sunshinex')
+      .map((dot) => ({ dir: path.join(home, dot, 'skills'), resource: 'skills' as const, scope: 'global' as const, root: null }));
     this.watchGroup('global', [
       { dir: globalDir, resource: null, scope: 'global', root: null },
       { dir: path.join(globalDir, 'agents'), resource: 'agents', scope: 'global', root: null },
       { dir: path.join(globalDir, 'plugins'), resource: 'plugins', scope: 'global', root: null },
       { dir: path.join(globalDir, 'teams'), resource: 'teams', scope: 'global', root: null },
+      ...compatGlobalSkillSpecs,
     ]);
   }
 

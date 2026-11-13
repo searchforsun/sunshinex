@@ -50,7 +50,9 @@ describe('palette 配色主题', () => {
     const css = readFileSync(join(__dirname, 'app.css'), 'utf8');
     const lightStart = css.indexOf("[data-theme='light'] {");
     const blocks = { dark: css.slice(0, lightStart), light: css.slice(lightStart, css.indexOf('}', lightStart)) };
-    const vars: Record<string, string> = { surface: '--surface', surfaceUnder: '--surface-under', surfaceElevated: '--surface-elevated', surfaceSoft: '--surface-soft', surfaceCode: '--surface-code', fg: '--fg' };
+    // surfaceCode 退役单源锚(2026-11-13 用户裁定「亮色暗码关代码井随菜单灰」):light=var(--surface-under)
+    // 别名不再持字面色值,单独断言;dark 仍随 palette 字面
+    const vars: Record<string, string> = { surface: '--surface', surfaceUnder: '--surface-under', surfaceElevated: '--surface-elevated', surfaceSoft: '--surface-soft', fg: '--fg' };
     for (const mode of ['light', 'dark'] as const) {
       const p = PALETTES.find((x) => x.id === `${mode}-default`)!;
       for (const [k, name] of Object.entries(vars)) {
@@ -60,6 +62,8 @@ describe('palette 配色主题', () => {
         expect(p.tokens[k as keyof typeof p.tokens], `${mode} ${name}`).toBe(norm);
       }
     }
+    expect(/--surface-code:\s*var\(--surface-under\)/.test(blocks.light)).toBe(true);
+    expect((/--surface-code:\s*(#[0-9a-f]{3,6})/i.exec(blocks.dark))![1]!.toLowerCase()).toBe(PALETTES.find((x) => x.id === 'dark-default')!.tokens.surfaceCode.toLowerCase());
   });
 
   it('mixHex 线性混色', () => {

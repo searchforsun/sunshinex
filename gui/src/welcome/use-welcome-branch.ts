@@ -52,5 +52,13 @@ export function useWelcomeBranch(conn: WelcomeComposerConn, picked: string, isDe
       .catch((err: unknown) => setHint(`${t('Create branch failed', '创建分支失败')}: ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => setCreating(false));
   };
-  return { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, setSelectedBranch, pick, createBranchOnly, refresh };
+  /** 拉取远程分支到本地(2026-11-13 用户裁定「分支弹窗支持 fetch 按钮」):daemon fetch --all --prune
+   *  + 仅远程分支建本地跟踪分支,清单回源;返回新建数(弹层提示「拉取 N 个」),失败抛错由弹层提示行回显 */
+  const fetchRemote = async (): Promise<{ fetched: string[]; warning?: string }> => {
+    if (picked === '' || isDefaultPicked) return { fetched: [] };
+    const r = await conn.gitFetchRemote(picked);
+    refresh(picked);
+    return r;
+  };
+  return { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, setSelectedBranch, pick, createBranchOnly, fetchRemote, refresh };
 }

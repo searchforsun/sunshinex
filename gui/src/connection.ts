@@ -1,4 +1,5 @@
 import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT, SESSION_ARCHIVE_CHANGED_EVENT } from './session-events';
+import { t } from './i18n';
 import { createConnectionTransport, DEFAULT_BACKOFF_BASE_MS } from './connection-transport';
 
 export { toWsUrl } from './connection-transport';
@@ -102,6 +103,8 @@ export interface Connection {
   gitBranches(root: string): Promise<{ current: string; branches: string[]; occupied?: Record<string, string> }>;
   /** 新建分支不切换(2026-11-10 用户裁定「欢迎页创建分支只创建」) */
   gitBranchCreate(root: string, branch: string): Promise<void>;
+  /** 拉取远程分支到本地(2026-11-13 分支弹窗 fetch 按钮):fetch --all --prune+仅远程分支建本地跟踪分支 */
+  gitFetchRemote(root: string): Promise<{ fetched: string[] }>;
   /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
   branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>;
   /** 切换/新建分支;未提交改动阻断时抛 code='DIRTY_TREE' 的 Error(前端弹「提交并切换」确认) */
@@ -563,6 +566,20 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async gitBranchCreate(root: string, branch: string) {
       await post('/git/branch-create', { root, branch });
+    },
+    async gitFetchRemote(root: string) {
+      // 错误面读响应体(2026-11-13 用户实测「拉取500」:通用 postJson 只抛 '->status',用户看不到
+      // 原因)——daemon 回 {error,code} 时透出可读消息,网络/凭据失败照常抛
+      const res = await fetch(`${base}/git/fetch`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'content-type': 'application/json' },
+        body: JSON.stringify({ root }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error !== undefined && body.error !== '' ? body.error : `${t('Fetch failed', '拉取失败')} (${res.status})`);
+      }
+      return (await res.json()) as { fetched: string[]; warning?: string };
     },
     /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数;missing=目标分支不存在(新建面) */
     branchDiffStat(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }> {

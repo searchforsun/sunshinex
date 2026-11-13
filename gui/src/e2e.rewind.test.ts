@@ -66,6 +66,10 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
     const s = await daemon.start({ port: 0 });
     try {
       vi.stubEnv('VITE_SERVE_URL', `http://127.0.0.1:${s.port}`);
+      // localStorage 开屏清档(2026-11-13):retry 复用同一 jsdom origin——欢迎页选择持久化
+      // (sx-welcome:project)跨 retry 存活,上一把的同 basename 项目('root')会让 line-73 的
+      // 「项目条显 root」就绪信号在 adoptWorkspace 落定前假真,提交落在已删的旧根上
+      localStorage.clear();
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 });
       Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });

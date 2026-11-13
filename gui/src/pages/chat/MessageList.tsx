@@ -1,7 +1,7 @@
 import type { RewindOps } from './chat-types';
 import type { ComposerEnv } from './edit-composer';
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -15,8 +15,11 @@ function fmtTokens(n: number): string {
 /** D48 尾部窗口:会话流只全量渲染尾部窗口条目,更早条目折叠为头部「显示更早」行渐进回放
  *  (对齐主仓 TUI tail-rewrite 上限口径;立项与切点回退设计见 docs/superpowers/plans/
  *  2026-10-23-messagelist-tail-window.md) */
-const RENDER_WINDOW_DEFAULT = 600; // 2026-10-26 三期:尾窗同步 600(用户裁定;content-visibility/组级 memo 兜渲染成本)
-const RENDER_WINDOW_STEP = 300;
+const RENDER_WINDOW_DEFAULT = 80; // 2026-11-13 用户裁定「切会话不要卡,先进视口再平滑补齐」:入口窗口缩到视口级
+// (原 600 条整表同步渲染=重会话进入即长帧),余量由下方空闲分批回放逐批补齐,上限不变
+const RENDER_WINDOW_STEP = 300; // 手动回放步进(「显示更早」钮/滚顶回放,用户显式动作取大批)
+const RENDER_WINDOW_IDLE_STEP = 60; // 空闲回放步进(2026-11-13:批小让主线程,交互可抢占;上限仍 600)
+const RENDER_WINDOW_MAX = 600; // 空闲回放天花板(沿旧入口窗口预算);超出部分仍走手动/滚顶回放
 import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
@@ -143,7 +146,7 @@ const DayGroupBlock = memo(
       />
     ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenTurn={onOpenTurn} onTurnRestore={onTurnRestore} onOpenAgent={onOpenAgent} sideChat={sideChat} />, [onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat]);
+    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenTurn={onOpenTurn} onTurnRestore={onTurnRestore} onOpenAgent={onOpenAgent} sideChat={sideChat} onSend={submitText} />, [onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, submitText]);
     const renderFoldEntry = useCallback((e2: ChatEntry) => {
       if (e2.kind === 'user') {
         return (
@@ -171,10 +174,11 @@ const DayGroupBlock = memo(
           onTurnRestore={onTurnRestore}
           onOpenAgent={onOpenAgent}
           onOpenFile={onOpenFile}
+          onSend={submitText}
           sideChat={sideChat}
         />
       );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(
@@ -263,6 +267,12 @@ const DayGroupBlock = memo(
             onOpenFile={onOpenFile}
             onOpenAgent={onOpenAgent}
             onOpenSession={onOpenSession}
+            // 2026-11-12 用户实测「轮尾卡点行开的是最后一刀 +1 -1,不是轮冻结面 +3 -0」:
+            // 此处是带 footerRun 的主渲染路径,漏传 checkpoint 两回调=轮尾卡恒走 callId 旧路
+            // (折叠段路径 renderFoldEntry 两回调齐全,可见路径唯独漏了);撤销同面补传
+            onOpenTurn={onOpenTurn}
+            onTurnRestore={onTurnRestore}
+            onSend={submitText}
             sideChat={sideChat}
           />,
         );
@@ -309,6 +319,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
+  /** 最近一次用户滚动时刻(空闲回放让路判据:滚动进行中不挂载更早条目) */
+  const lastScrollAtRef = useRef(0);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
   const expandAnchorRef = useRef<{ h: number } | null>(null);
   useLayoutEffect(() => {
@@ -372,6 +384,31 @@ export function MessageList(props: MessageListProps): JSX.Element {
     const el = chatScrollRef.current;
     if (el !== null && el.scrollTop <= 0) showEarlier();
   };
+  /** 空闲分批回放(2026-11-13 用户裁定「切会话先进视口,之前的内容再平滑补齐,不要卡」):
+   *  入口窗口外的更早条目在空闲时分批挂载(批间让出主线程,单帧不超一批),expandAnchor 回钉
+   *  保证每批挂载后用户视口纹丝不动;与手动「显示更早」/滚顶回放共用同一 visibleCount 计数器,
+   *  天花板 RENDER_WINDOW_MAX(超出仍走手动/滚顶)。文档不可见(后台页签)暂停;追平即自然停 */
+  useEffect(() => {
+    if (entries.length <= visibleCount) return;
+    const ceiling = Math.min(RENDER_WINDOW_MAX, entries.length);
+    if (visibleCount >= ceiling) return;
+    let alive = true;
+    const pump = (): void => {
+      if (!alive) return;
+      // 用户正在滚动的 400ms 窗口内不挂载(2026-11-13「滚动卡」):回放批虽小,穿插在滚动帧里
+      // 仍会抢主线程;滚动停顿后再续,视口内内容始终优先
+      const scrolledAt = lastScrollAtRef.current;
+      if (document.visibilityState !== 'visible' || (scrolledAt > 0 && performance.now() - scrolledAt < 400)) { schedule(); return; }
+      expandAnchorRef.current = { h: chatScrollRef.current?.scrollHeight ?? 0 };
+      setVisibleCount((v) => Math.min(v + RENDER_WINDOW_IDLE_STEP, ceiling));
+    };
+    const schedule = (): void => {
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { if (alive) pump(); }, { timeout: 500 });
+      else window.setTimeout(() => { if (alive) pump(); }, 64);
+    };
+    schedule();
+    return () => { alive = false; };
+  }, [entries.length, visibleCount, chatScrollRef]);
   /** P1 派生冻结:日分组骨架 memo(区间切分随骨架缓存),成员数组 dayGroups 逐渲染按区间
    *  slice 重绑最新条目引用(流式尾行实时)——语义与逐帧全量分组等价,省去逐帧 Intl 构造 */
   const daySkeleton = useMemo(() => {
@@ -400,6 +437,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       onClickCapture={onEntryToggleClick}
       onWheel={onWheel}
       onScroll={(e) => {
+        lastScrollAtRef.current = performance.now();
         onScroll(e);
         maybeReplayEarlier();
       }}

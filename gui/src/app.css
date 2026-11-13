@@ -99,7 +99,7 @@
   --surface-under: #f9f9f9; /* 2026-11-12 用户裁定「菜单太灰」:回 Codex gray-50 值(原 #efefef 深一档);主对话/侧栏 2px 边框随令牌变浅=更贴 Codex 弱界 */
   --surface-elevated: #fff;
   --surface-soft: #ececec;
-  --surface-code: #fcfcfc; /* 2026-11-12 用户问「思考/工具 diff 井太灰是 Codex 风格吗」→不是:回 Codex gray-25 亮色值(原 #eeeeee 深三档,系 11-06 自设阶梯非 Codex);思考井/工具 diff 预览/代码块全部随令牌回近白 */
+  --surface-code: var(--surface-under); /* 2026-11-13 用户裁定「亮色暗码关:思考/工具展开井、代码块、diff 审查页用左侧菜单背景色区分正文」——原 gray-25 近白 #fcfcfc 与正文白不可辨,改随菜单灰令牌;暗色与亮色暗码开(html[data-code-dark='1'] 显式暗面板)不受影响 */
   --terminal-dock-bg: var(--surface); /* 终端下栏井色=主对话背景(2026-11-11 用户裁定) */
   --fg: #1a1c1f;
   --fg-on-solid: #fff;
@@ -127,7 +127,7 @@
 select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer-events: none; }:focus-visible { outline: 2px solid color-mix(in srgb, var(--fg) 55%, transparent); outline-offset: 1px; }
 
 /* 三栏壳(T5 消费;G12 左栏宽度可调:--menu-w 由 App 拖拽落值,clamp/持久化在壳) */.sx-shell { display: flex; height: 100%; overflow: clip; } /* 2026-10-23 越视口防线:三栏行超宽也只裁剪不横移(fixed 簇/弹层非文档流不受剪),与渲染期钳制双保险 */.sx-menu { width: var(--menu-w, 260px); min-width: var(--menu-min-w); max-width: calc(100vw - var(--sidebar-w, 0px) - var(--main-min-w)); /* 视口护栏:结构性禁止越视口(余量=中栏最小宽 320;非固定档位上限,G14.2xx 用户裁定) */ flex: none; background: var(--surface-under); display: flex; flex-direction: column; }
-/* 主面 = 浮层(surface)压在 under 侧栏上:左上大圆角 + 零分割线(层次靠明度差,spec §2) */.sx-main { flex: 1; min-width: min(var(--main-min-w), calc(100vw - 4px)); /* 2026-10-24 用户裁定 440→320(模式 pill 窄端图标化联动,G14.196 同值面);zoom 子树 px=本地值,视觉下限 320 须 /--ui-zoom 归一(applyZoom 单点落值)——否则 600 窗 zoom1.1 时 240 菜单+352 视觉最小=616>600,主栏右溢 16px,输入卡居中偏右贴窗沿 */ display: flex; flex-direction: column; background: var(--surface); border-top-left-radius: var(--radius-lg); overflow: hidden; }
+/* 主面 = 浮层(surface)压在 under 侧栏上:左上大圆角 + 零分割线(层次靠明度差,spec §2) */.sx-main { flex: 1; min-width: min(var(--main-min-w), calc(100vw - 4px)); /* 2026-10-24 用户裁定 440→320(模式 pill 窄端图标化联动,G14.196 同值面);zoom 子树 px=本地值,视觉下限 320 须 /--ui-zoom 归一(applyZoom 单点落值)——否则 600 窗 zoom1.1 时 240 菜单+352 视觉最小=616>600,主栏右溢 16px,输入卡居中偏右贴窗沿 */ display: flex; flex-direction: column; background: var(--surface); border-top-left-radius: var(--radius-lg); /* 2026-11-12 用户实测「窄窗开分支弹层,输入卡被挤出视口左缘」:hidden 仍可被焦点滚动程序化横滚(scrollLeft 41px 实测),clip 才断掉滚容器身份、焦点 reveal 无从发生;内滚语义不变(正文滚在 .sx-tabbody 自持 overflow-y) */ overflow: clip; }
 /* G14.33:右栏与主面对话同底色(原 surface-under 明度差退役);中缝细条 = 左缘 1px 分割线,
    兼作拖宽把手落点(sx-resizer 仍在,hover 提亮);G14.2xx 用户裁定:无固定最大宽——视口护栏
    max-width = 视口−菜单−320 结构性禁止越视口(中栏触底即停;持久化超宽/窗口缩窄同被钳) */.sx-sidebar { flex: none; min-width: var(--sb-min-w); max-width: calc(100vw - var(--menu-occ, 0px) - var(--main-min-w)); /* min 296 视觉归一:zoom>1.1 不再被挤破最小宽 */ /* 2026-10-24:占位宽 --menu-occ(抽屉/关闭=0)——旧 --menu-w 在菜单抽屉浮出后仍挤侧栏破最小宽 */ background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; position: relative; }.sx-resizer { position: absolute; left: -4px; top: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 5; user-select: none; }.sx-resizer:hover, .sx-resizer.active { background: color-mix(in srgb, var(--fg) 20%, transparent); }
@@ -1373,7 +1373,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 计划确认卡体(2026-11-03 修订重排):计划书 md 滚动区(限高纵向滚——长计划书不再把 dock 撑到顶,
    修订轮换 pid remount 天然回顶;计划书井复用 .tool-md 面零新增)+常驻反馈输入(拒绝面不再藏二级态,
    输入款沿 card-custom 口径)。旧 .plan-card-items 只读清单随 items 不再独立渲染一并退役 */
-/* 计划名蓝色统一面(2026-11-03 用户裁定「计划名称显示蓝色,弹出层+工具层」):确认卡卡头/交稿工具行展开体共用 */.plan-name-link { color: var(--accent); font-weight: 600; cursor: pointer; } /* 2026-11-04 用户裁定:可点即手势(计划卡卡头链接) */.plan-card-doc { max-height: min(44vh, 460px); overflow-y: auto; padding-right: 4px; }.plan-card-feedback { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }.plan-card-feedback-input { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; font: inherit; font-size: calc(14px * var(--fz)); resize: vertical; }.plan-card-feedback-input::placeholder { color: var(--fg-tertiary); }
+/* 计划名蓝色统一面(2026-11-03 用户裁定「计划名称显示蓝色,弹出层+工具层」):确认卡卡头/交稿工具行展开体共用 */.plan-name-link { color: var(--accent); font-weight: 600; cursor: pointer; } /* 2026-11-04 用户裁定:可点即手势(计划卡卡头链接) */.plan-card-doc { max-height: min(44vh, 460px); overflow-y: auto; padding-right: 4px; }.plan-card-feedback { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }.plan-card-feedback-input { background: var(--surface-under); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; font: inherit; font-size: calc(14px * var(--fz)); resize: vertical; } /* 2026-11-13 用户裁定:亮色下太灰→surface-soft 换菜单灰(同设置输入井);hover 边框变化去掉 */.plan-card-feedback-input::placeholder { color: var(--fg-tertiary); }.plan-card-feedback-input:hover { border-color: var(--border); }
 
 /* fork 血缘横幅(2026-11-04 用户裁定「分叉于会话」分叉点系统提示,点击回父会话):图标在文字**前面**
    行内排(标准通知行的 .entry-icon 为前置列需 .entry-md.has-icon 包裹,横幅直接子级会纵排到文字上方
@@ -1484,7 +1484,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.run-changes-undo:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }.run-changes-list { padding: 2px 0 6px; border-top: 1px solid var(--border-subtle); }.run-changes-row {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 10px; border-radius: 0; /* hover=整行提亮,无椭圆内缩(2026-11-11 用户裁定) */
-}.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+}.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); } /* 2026-11-13 用户实测「hover 不显」:行 hover 原 5% 叠卡底 4% 仅差 1% 肉眼不可辨,提到菜单 hover 同族 9% */
 .run-changes-row.clickable { cursor: pointer; }
 .run-changes-name {
   border: none; background: transparent; color: var(--fg);
@@ -2031,7 +2031,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-11-03 用户裁定:重试线标签去白盒(RF 默认白底黑字突兀)——透底+次级灰字随主题;亮色节点边框加一档(白底 8% 描边不可见) */
 .tb-dag-retry .react-flow__edge-textbg { fill: var(--surface-elevated); rx: 4; } /* 2026-11-04 用户裁定:黄字骑线——底垫同浮层面断开虚线,黄(warn)示重试语义 */
 .tb-dag-retry .react-flow__edge-text { fill: var(--warn); font-size: calc(14px * var(--fz)); font-weight: 500; }
-[data-theme='light'] .tb-dag-node { border-color: color-mix(in srgb, var(--fg) 16%, transparent); }
+[data-theme='light'] .tb-dag-node { border-color: color-mix(in srgb, var(--fg) 16%, transparent); background: var(--surface-elevated); } /* 2026-11-13 用户裁定「节点和开始/结束同色」:terminal=surface-elevated 白,任务节点亮色下同白 */
 /* 任务节点卡:状态点+任务名+执行子代理行(与列表行 task-status-* 同钩子) */
 .tb-dag-node { position: relative; width: 100%; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 6px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
 .tb-dag-node.clickable { cursor: pointer; }
@@ -2204,6 +2204,11 @@ button.agent-msg-from:hover { text-decoration: underline; }
   font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .files-selbar button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* 2026-11-13 用户实测「亮色暗码,选中弹出的字体颜色不对,应该是黑色」根修:悬浮条浮在暗色
+   代码井上,继承容器内被覆写的 --fg:#dfdfdf=浅字浮在浅弹层上;弹层自身带亮面底,前景钉回
+   亮色主题黑值,不随暗面容器令牌走 */
+html[data-theme='light'] .files-selbar { color: #1a1c1f; }
+html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 /* 2026-11-04 元素/终端片段引用芯片(⟦…⟧ token):accent 浅底圆角小件,图标+定位说明 */
 .hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: var(--f-base-size, 14px); }
 .hn-ref .hn-ref-ico { display: inline-flex; align-items: center; flex: none; }
@@ -3775,7 +3780,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .tb-stop.arm, .tb-stop.arm:hover { border: none; }
 .todo-card, .tb-card { border: none; }
 .tb-dag-node, [data-theme='light'] .tb-dag-node { border: none; }
-.tb-dag-node.clickable:hover { border: none; background: color-mix(in srgb, var(--fg) 12%, var(--surface-soft)); }
+[data-theme='dark'] .tb-dag-node.clickable:hover { border: none; background: color-mix(in srgb, var(--fg) 12%, var(--surface-soft)); } /* 暗色沿用原档 */
+[data-theme='light'] .tb-dag-node.clickable:hover { background: color-mix(in srgb, var(--fg) 3%, var(--surface-elevated)); border: none; } /* 2026-11-13 用户再裁定「变一点就行」:亮色 3%(≈#f8),白卡上仅可感的轻提亮;重复 12% 规则删除,单一权威 */
 /* 后台任务展开体=工具行 exec 展开同形:$ 命令高亮 + 输出合一深色块,右上角 hover 复制 */
 .bg-exec { position: relative; }
 .bg-output { border: none; background: var(--surface-code); border-radius: var(--radius-sm); padding: 8px 36px 8px 10px; }
@@ -3802,7 +3808,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-diff-tab .sx-changes-branch-name { max-width: 200px; } /* 最大长度展示上限(欢迎页 branch-pill 180px 同族) */
 /* 2026-11-10 用户实测根修(CDP 测量):btn 的 max-width:100% 在锚宽自洽计算中被 Chrome 解析为
    中间值,整钮内容被压到 0.86 倍(分支名恒「m...」)——审查页两钮解除该上限(欢迎页 pill 不受影响) */
-.sx-diff-tab .sx-changes-branch-btn { max-width: none; }
+.sx-diff-tab .sx-changes-branch-btn { max-width: none; min-width: 0; overflow: hidden; } /* 2026-11-13 用户实测「侧栏分支名还是没有隐现」根修:钮 min-width:auto+overflow:visible=锚缩钮不缩,名字溢出叠到「已暂存」上;放行收缩并裁剪,名字 span 的 data-cut 渐隐才生效 */
+.sx-diff-tab .sx-changes-branch-btn { justify-content: flex-start; } /* 2026-11-13 用户裁定「左右图标不要隐现」:分支图标与下拉箭头常显——收缩链溢出时被 overflow:hidden 裁掉的是行尾箭头;左图标钉行首、箭头钉行尾中间省名字 */
+.sx-diff-tab .sx-changes-branch-btn > svg:last-of-type { margin-left: auto; flex: none; } /* 箭头钉尾,名字截断不影响图标 */
+.sx-diff-tab .sx-changes-branch-btn > svg:first-of-type { flex: none; } /* 分支图标钉首,永不裁 */
+.sx-diff-tab .sx-changes-branch-btn > svg { overflow: visible; } /* 钮裁剪边界不影响图标绘制区 */
 .sx-diff-tab .sx-changes-bar-actions { margin-left: auto; flex: none; }
 .sx-changes-area-anchor .sx-changes-branch-btn { padding-right: 8px; }
 .sx-changes-area-anchor .sx-changes-branch-name { flex: none; min-width: 0; overflow: visible; }
@@ -3943,7 +3953,7 @@ html[data-theme='light'][data-code-dark='1'] {
 /* 暗面容器统一规则:井底+暗色主题前景令牌族(用户代码块/文件源码视图容器/工具行
    展开体含 diff 预览/审查页双列/单文件 diff 体)。md 预览面(.files-md)不算代码块——
    整面不翻,只翻其内 pre 围栏(2026-11-12 用户裁定「只有涉及代码块的」) */
-html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body) {
+html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .files-md, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body) { /* 2026-11-13 用户裁定「暗色代码包括预览,按钮图标等」:md 预览整面入暗(其内 pre 已有独立暗面规则) */
   background: #101010;
   color: #dfdfdf;
   --fg: #dfdfdf;
@@ -4005,3 +4015,63 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) .sx-dd-trigger { background: var(--surface-under); }
 [data-theme='light'] .sx-settings-main .sx-kbd { background: var(--surface-under); border-color: var(--border); }
 [data-theme='light'] .sx-settings-main :is(.sx-card, .sx-mcp-card, .sx-agent-card, .sx-agent-builtin, .sx-provider-card, .sx-rc, .sx-perm-col, .sx-shortcuts-group) { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 3px 10px rgba(0, 0, 0, 0.05); } /* 2026-11-12 用户复裁定「阴影减一点」:专用轻影不再复用 elev-composer(composer 档偏重);弹窗阴影(elev-prominent)未动 */
+
+/* 欢迎页选项条窄宽隐现(2026-11-12 用户裁定「过窄自动隐现工作区/分支名,不换行不超视口」):
+   条不设 overflow——分支弹层向上伸出条外,条级裁剪会连弹层一起截(227abef6 首版「分支选项
+   被截断」的根因,已撤);收窄由名字 span 自担:min-width 0 可收缩+右缘 14px 渐隐(data-cut
+   同页签隐现口径,WelcomeComposer 量测打点),图标/箭头/隔离恒在。flex 默认 nowrap,不换行 */
+.welcome-options-bar .wc-pill-label { overflow: hidden; text-overflow: clip; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.welcome-options-bar .wc-pill-label[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }
+/* 收缩链补口:pill-anchor/项目条作为条内 flex 项放行收缩(名字 span overflow hidden 已自零最小宽) */
+.welcome-options-bar .pill-anchor, .welcome-dock .choose-project-bar { min-width: 0; }
+
+/* 分支弹层 fetch 钮转圈(2026-11-13 用户裁定「拉取远程分支」):在途图标自转,同审查页刷新钮口径 */
+.branch-pop-add .sx-fetching { animation: sx-spin 0.9s linear infinite; }
+
+/* 工具行展开内的编辑 diff 占满展开区(2026-11-13 用户裁定「为什么要加内边距,要占满这个展开区域」):
+   diff 井容器 padding/圆角/左缩进边线归零,diff 面直贴展开盒;:has 限定纯 diff 井,文本观察面不动 */
+.entry-tool .tool-detail:has(> .tool-diffwrap) { padding: 0; border-left: none; border-radius: var(--radius-md); overflow: hidden; } /* 2026-11-13 用户复裁定「diff 怎么变成直角了,不是一起的弧度吗」:radius 回归,overflow 裁 diff 行保持贴边不溢出圆角 */
+
+/* 审查页分支名截断隐现(2026-11-13 用户裁定「侧栏审查分支过长也隐现,和欢迎页一致」):
+   省略号退役,改 14px 右缘渐隐(同页签/欢迎页 data-cut 口径);去除 200px 硬上限,宽度随可用区 */
+.sx-diff-tab .sx-changes-branch-name { max-width: none; text-overflow: clip; }
+.sx-diff-tab .sx-changes-branch-name[data-cut] { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 14px), transparent); }
+.sx-changes-branch-anchor { flex: 0 1 auto; min-width: 0; }
+
+/* 右栏卡面(2026-11-13 用户复裁定「把悬浮改成菜单色吧,这个有点丑」——轻影方案作废):
+   卡底改菜单灰 surface-under(与左侧菜单同色),去阴影;亮色下灰白差即分层,暗色零触碰(该色暗档本就区分) */
+[data-theme='light'] .todo-card, [data-theme='light'] .tb-card { background: color-mix(in srgb, var(--fg) 4%, transparent); box-shadow: none; } /* 2026-11-13 用户复裁定「还是太深,看记忆页打开时的卡面」:直接对齐 .mem-row.open 的 fg4% 混白(≈#f5f5f5),比用户气泡 5% 再浅一档;卡内命令井=菜单灰 f9 反略深,层次仍存 */
+[data-theme='dark'] .todo-card, [data-theme='dark'] .tb-card { box-shadow: none; } /* 暗色:卡面维持 surface-elevated 亮一档(用户只报亮色不可辨,暗色不动) */
+/* 2026-11-13 用户裁定「卡面加深,卡里的命令井是菜单色」:命令/输出井 bg-output=菜单灰
+   (--surface-under,亮色 #f9f9f9),与加深的卡面(≈#efefef)深浅分层;展开壳透明让卡色透出;
+   命令/输出字体接代码字体管线(--f-code/--font-mono) */
+.tb-card .bg-output { background: var(--surface-under); }
+.tb-card .bg-output, .tb-card .bg-cmd, .tb-card .bg-output .exec-output, .tb-card .bg-cmd-text { font-family: var(--font-mono); font-size: var(--f-code, 12px); }
+
+/* 亮色设置页控件 hover 交互感(2026-11-13 用户实测「输入框/筛选框/按钮 hover 时要有选中效果,
+   像下拉项变灰一样」):井面/按钮未悬停前的灰阶之外,再叠一档前景混色——与菜单项 hover 同一
+   语汇(visible 灰),不再只靠 1px 边框变深;暗色不动(暗色已有明度差) */
+[data-theme='light'] :is(.sx-setting-input, .sx-dd-trigger):hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--surface-under)); }
+[data-theme='light'] :is(.sx-add-button, .sx-card-actions button, .sx-raw-controls button, .sx-iconbtn):hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 9%, var(--surface-under)); }
+[data-theme='light'] .sx-res-toolbar .sx-search-bar:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--surface-under)); }
+
+/* 亮色+暗色气泡内前景令牌族覆写(2026-11-13 用户实测「暗色气泡里的下拉展开钮图标看不清」):
+   气泡暗底但主题是亮色=--fg-* 仍是深色值,图标暗底暗色;整族翻成暗面亮色值(同暗面容器规则口径) */
+html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
+  --fg: #dfdfdf;
+  --fg-secondary: rgba(223, 223, 223, 0.7);
+  --fg-tertiary: rgba(223, 223, 223, 0.5);
+  --fg-muted: rgba(223, 223, 223, 0.52);
+  --fg-icon: rgba(223, 223, 223, 0.85);
+}
+
+/* 置高件自身高度归 ClampBlock 管(2026-11-13 用户实测「后台任务下拉展不开」根修):
+   宿主类 .tool-io-pre 自带 max-height:280 + overflow:auto,压在 ClampBlock 的 height 动效之上——
+   展开到完整高度仍被 cap 在 280,视觉零变化。同类同元素覆盖(特异度更高)解除该帽 */
+.tool-io-pre.sx-clamp { max-height: none; }
+
+/* 终端井内 code/prompt/output 一律继承井字族(2026-11-14 用户实测「后台任务的命令细节不受系统
+   代码块控制?还是原始字体?」根因):井容器 .tool-io-pre 已挂 --font-mono + --f-code,但内层
+   <code> 未覆写,落到 UA 缺省 font-family:monospace(通用等宽=Windows 回落字母间距不一的原始
+   脸),系统代码字体/字号怎么设都不跟。此处强制继承,工具行 exec 展开与后台任务命令井同时收口 */
+.tool-io-pre code, .tool-io-pre .exec-prompt, .tool-io-pre .exec-output, .tool-io-pre .hljs { font-family: inherit; font-size: inherit; }

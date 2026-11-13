@@ -81,7 +81,8 @@ export function RunChangesBar({
   const office = useUiMode() === 'office';
   // 整轮已撤销(持久化)→ 整条不渲染(切会话/重启回来也不复现,用户裁定)
   if (journalId !== '' && run?.runSeq !== undefined && undoApi.isRunUndone(journalId, run.runSeq)) return null;
-  const visible = changes.filter((c) => !restored.has(c.path));
+  // 旧档 runmeta 兼容:目录项(porcelain '?? dir/' 带尾斜杠)不渲染(2026-11-13 用户裁定「文件夹不计入」;daemon 侧 diffChangeSets 已滤,此处兜旧盘档)
+  const visible = changes.filter((c) => !c.path.endsWith('/') && !restored.has(c.path));
   const add = visible.reduce((n, c) => n + changeCounts(c).add, 0);
   const del = visible.reduce((n, c) => n + changeCounts(c).del, 0);
   const runSeq = run?.runSeq;

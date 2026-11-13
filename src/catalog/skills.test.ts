@@ -13,21 +13,28 @@ import * as os from 'os';
 import * as path from 'path';
 import { listSkills } from './skills';
 
-/** 钉环境桩跑用例：项目 tmp root + user 根 + 数据（learned）根全重定向，退出恢复（沿 harness 先例） */
-function withPinnedEnv<T>(fn: (root: string, userDir: string) => T): T {
+/** 钉环境桩跑用例：项目 tmp root + user 根 + 数据（learned）根全重定向，退出恢复（沿 harness 先例）；
+ *  HOME 一并钉 tmp（2026-11-13 全局兼容根裁定:~/.cursor|.codex|.claude|.agents/skills 入用户段,
+ *  不钉则吃真实用户全局技能污染分组断言）,兼容根用例经 fn 第三参 home 直写 */
+function withPinnedEnv<T>(fn: (root: string, userDir: string, home: string) => T): T {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-skills-'));
   const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-skills-user-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'catalog-skills-home-'));
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   const prevUser = process.env.SUNSHINEX_USER_SKILLS_DIR;
+  const prevHome = process.env.HOME;
   process.env.SUNSHINEX_DATA_DIR = path.join(root, '.data');
   process.env.SUNSHINEX_USER_SKILLS_DIR = userDir;
+  process.env.HOME = home;
   try {
-    return fn(root, userDir);
+    return fn(root, userDir, home);
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
     if (prevUser === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevUser;
+    if (prevHome === undefined) delete process.env.HOME;else process.env.HOME = prevHome;
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(userDir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
   }
 }
 
@@ -42,7 +49,7 @@ function writeSkill(base: string, id: string, name: string, version = '1.0.0', p
 }
 
 test('listSkills：项目与 user 同 id——项目正选、user 条目 shadowedBy 为来源名 project', () => {
-  withPinnedEnv((root, userDir) => {
+  withPinnedEnv((root, userDir, _home) => {
     const projXDir = writeSkill(path.join(root, '.sunshinex', 'skills'), 'x', 'ProjX', '2.0.0');
     const userXDir = writeSkill(userDir, 'x', 'UserX');
     writeSkill(path.join(root, '.sunshinex', 'skills'), 'proj-only', 'ProjOnly');
@@ -66,7 +73,7 @@ test('listSkills：项目与 user 同 id——项目正选、user 条目 shadowe
 });
 
 test('listSkills：三源同 id——user 与 learned 均标 shadowedBy:project（胜者恒链上最高优先者）', () => {
-  withPinnedEnv((root, userDir) => {
+  withPinnedEnv((root, userDir, _home) => {
     writeSkill(path.join(root, '.sunshinex', 'skills'), 'dup', 'ProjDup');
     writeSkill(userDir, 'dup', 'UserDup');
     writeSkill(path.join(root, '.data', 'skills'), 'dup', 'LearnedDup');
@@ -142,7 +149,7 @@ test('listSkills：组内同 id 就近去重（project 兼容根与 plugin 双�
 });
 
 test('listSkills：带 params 的技能在列（清单不套出牌面参数门）且跨源遮蔽正常', () => {
-  withPinnedEnv((root, userDir) => {
+  withPinnedEnv((root, userDir, _home) => {
     writeSkill(path.join(root, '.sunshinex', 'skills'), 'withp', 'WithParams', '1.0.0', 'topic tone');
     writeSkill(userDir, 'withp', 'UserWithParams');
     writeSkill(path.join(root, '.data', 'skills'), 'withp', 'LearnedWithParams');
@@ -165,5 +172,27 @@ test('listSkills：零技能工作区——空条目空告警（Listing 降级�
     const { entries, warnings } = listSkills(root, { pluginSkillDirs: [] });
     assert.deepEqual(entries, []);
     assert.deepEqual(warnings, []);
+  });
+});
+
+test('listSkills：HOME 全局兼容根入用户段（2026-11-13 用户裁定「skills 加载兼容 ~/.agents|.claude|.codex|.cursor/skills」）——段序 user 在 learned 前、兼容根间 .agents 遮 .claude、原生根遮全部', () => {
+  withPinnedEnv((root, userDir, home) => {
+    const proj = writeSkill(path.join(root, '.sunshinex', 'skills'), 'shared', 'ProjShared');
+    const nat = writeSkill(userDir, 'native', 'NativeOnly');
+    const agents = writeSkill(path.join(home, '.agents', 'skills'), 'shared', 'AgentsShared');
+    const claudeOnly = writeSkill(path.join(home, '.claude', 'skills'), 'claude-only', 'ClaudeOnly');
+    const learned = writeSkill(path.join(root, '.data', 'skills'), 'learned-one', 'LearnedOne'); // learned 根=resolveDataDir(root)/skills
+    const { entries } = listSkills(root, { pluginSkillDirs: [] });
+    const sources = [...new Set(entries.map((e) => e.source))];
+    assert.deepEqual(sources, ['project', 'user', 'learned'], '组序恒 project>user>learned,兼容根并入用户段不另立组');
+    assert.deepEqual(entries.filter((e) => e.source === 'learned').map((e) => e.id), ['learned-one'], 'learned 组切片不受兼容根扩段影响');
+    void learned;
+    const shared = entries.filter((e) => e.id === 'shared');
+    assert.equal(shared.length, 2, 'shared 跨 project/user 两段各列一条');
+    assert.equal(shared.find((e) => e.source === 'user')?.shadowedBy, 'project', '用户段 shared 被项目根遮蔽标注');
+    const userOnly = entries.filter((e) => e.source === 'user');
+    assert.deepEqual(userOnly.map((e) => e.id).sort(), ['claude-only', 'native', 'shared'], '用户段=原生根+兼容根全量');
+    assert.equal(userOnly.find((e) => e.id === 'claude-only')?.shadowedBy, undefined, 'claude 独有技能不标遮蔽');
+    void proj; void nat; void agents; void claudeOnly; void userOnly;
   });
 });

@@ -591,9 +591,14 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
   const office = useUiMode() === 'office';
   const msg = agentMessageOf(entry);
+  /** 成员报告气泡编辑(2026-11-13 用户裁定「插入的用户气泡不支持编辑」):编辑后作为新用户消息
+   *  追加发送——notice 非回退锚点(rewind 按 user 条目计数),不走 rewind 语义;onSend/sideChat
+   *  缺席(旁路面/测试桩)不渲染 Edit 钮 */
+  const [noticeEditing, setNoticeEditing] = useState(false);
+  const [noticeDraft, setNoticeDraft] = useState('');
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
   const { status: copied, copy: copyText } = useCopyFeedback();
@@ -661,7 +666,53 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
             icon={copied === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
             onClick={() => copyText(msg.text)}
           />
+          {onSend !== undefined && sideChat !== true && (
+            <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={14} strokeWidth={1.75} aria-hidden="true" />} onClick={() => { setNoticeDraft(msg.text); setNoticeEditing(true); }} />
+          )}
         </div>
+      </div>
+    );
+  }
+  if (noticeEditing) {
+    // 成员报告编辑卡(2026-11-13):ComposerCard 壳预填报告原文,发送=作为新用户消息追加
+    // (notice 非回退锚点,无 rewind 语义);conn/composerEnv 缺席(旁路面)退纯壳兜底
+    const sendNoticeEdit = (): void => {
+      const text = noticeDraft.trim();
+      if (text === '') return;
+      const result = onSend?.(text);
+      if (result === undefined || result === null) {
+        setNoticeEditing(false); // 未配 onSend 的测试桩:直接关卡
+        return;
+      }
+      void result.then(() => setNoticeEditing(false), () => undefined);
+    };
+    return (
+      <div className="entry entry-user entry-user-insert" data-entry-key={entry.key}>
+        <ComposerCard
+          label="edit message"
+          value={noticeDraft}
+          placeholder={t('Edit message', '编辑消息')}
+          onChange={setNoticeDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              setNoticeEditing(false);
+            } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              sendNoticeEdit();
+            }
+          }}
+          footRight={
+            <div className="composer-pills">
+              <button type="button" className="user-edit-cancel" aria-label="cancel edit" data-tip={t('Cancel', '取消')} onClick={() => setNoticeEditing(false)}>
+                <X size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+              <button type="button" className="send tip-right" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendNoticeEdit}>
+                <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+              </button>
+            </div>
+          }
+        />
       </div>
     );
   }

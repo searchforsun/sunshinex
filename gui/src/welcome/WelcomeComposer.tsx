@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
-import { WelcomeHeldBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
+import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
 import { WelcomeProjectPop } from './welcome-project-pop';
 import { pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
@@ -54,7 +54,15 @@ export function WelcomeComposer({
   presetSeq?: number;
   onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
 }): JSX.Element {
-  const [picked, setPicked] = useState('');
+  const [picked, setPicked] = useState<string>(() => {
+    // 2026-11-12 用户裁定「欢迎页项目/分支/隔离持久化,切会话不回默认」:挂载即恢复上次选择
+    // (键随 sx-welcome:model/effort 同族;失效根由 useWelcomeWorkspaces 回源校验回落默认)
+    try {
+      return localStorage.getItem('sx-welcome:project') ?? '';
+    } catch {
+      return '';
+    }
+  });
   // 草稿持久化(2026-11-07 用户裁定「应用重启后,所有输入框内容不丢失」):goal+@引用账本
   // 落 localStorage(欢迎页全局单档;发送清档,openSession 接力不受影响)
   const [goal, setGoal] = useState<string>(() => {
@@ -92,8 +100,15 @@ export function WelcomeComposer({
   const [modeOpen, setModeOpen] = useState(false);
   const [hint, setHint] = useState('');
   /** 工作区隔离(2026-11-10 用户裁定「新会话可选 git worktree 隔离」):pill 武装态随提交下发;
-   *  首次开启弹说明框(益处/代价),armed 后再点即解除。仅 git 项目可开(gitBr 在场判定) */
-  const [isolate, setIsolate] = useState(false);
+   *  首次开启弹说明框(益处/代价),armed 后再点即解除。仅 git 项目可开(gitBr 在场判定);
+   *  武装态持久(2026-11-12 用户裁定,同项目/分支一族) */
+  const [isolate, setIsolate] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sx-welcome:isolate') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [isoOpen, setIsoOpen] = useState(false);
   /** 发送前切换确认(2026-11-10 用户裁定「选择不切换,发送时统一落地」):非隔离+选了异于当前
    *  的分支 → 弹「切换并发送」(branchDiffStat 代价面;脏树带提交信息框) */
@@ -103,6 +118,13 @@ export function WelcomeComposer({
    *  『创建分支并隔离』」):重选/改名两通道 */
   const [heldBranch, setHeldBranch] = useState<string | null>(null);
   const [heldNew, setHeldNew] = useState('');
+  /** 隔离未选异于当前的分支(2026-11-13 用户裁定「发送后没有提示创建新的分支,直接自动创建了
+   *  任意分支?应该又弹窗提示啊?」):发送前弹「将创建新分支」确认——留空=显式同意随机命名,
+   *  填名=按名新建/签出;重选分支=重开分支菜单。isoRandomRef=弹窗内确认随机的一次性通行证
+   *  (免 send 二次拦截回环) */
+  const [isoBranchPending, setIsoBranchPending] = useState(false);
+  const [isoNewName, setIsoNewName] = useState('');
+  const isoRandomRef = useRef(false);
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
@@ -223,7 +245,8 @@ export function WelcomeComposer({
     if ((g === '' && images.length === 0) || target === '' || busy) return;
     // 分支选择落地(2026-11-10 用户裁定「选择不切换,发送时统一落地」):非隔离且选了异于当前的
     // 分支 → 先弹「切换并发送」确认(脏树带提交信息框,branchDiffStat 示代价);隔离 → worktree
-    // 签出选中分支(被占 409 BRANCH_HELD → 弹「已被签出」重选/改名框)
+    // 签出选中分支(被占 409 BRANCH_HELD → 弹「已被签出」重选/改名框);隔离但未选异于当前的
+    // 分支 → 先弹「将创建新分支」确认(2026-11-13 用户裁定,不再静默自动建随机分支)
     if (!isolate && gitBr !== null && selectedBranch !== '' && selectedBranch !== gitBr.current) {
       setSwitchMsg('');
       setSwitchPending({ branch: selectedBranch, stat: null });
@@ -233,6 +256,15 @@ export function WelcomeComposer({
       );
       return;
     }
+    // 隔离但未选异于当前的分支(pick 当前分支=清空选中,treeBranch 缺场即 daemon 静默随机建
+    // worktree-<随机名>)→ 先弹「将创建新分支」确认;留空确认=显式同意随机(一次性通行证)
+    const isolateArmed = isolate === true && gitBr !== null && gitBr.current !== '';
+    if (isolateArmed && selectedBranch === '' && !isoRandomRef.current) {
+      setIsoNewName('');
+      setIsoBranchPending(true);
+      return;
+    }
+    isoRandomRef.current = false;
     void doSend(target, undefined, undefined);
   };
   /** 真实发送(switchBranch 在场=先提交并切换再建会话) */
@@ -308,8 +340,57 @@ export function WelcomeComposer({
   })();
   const projName = picked === '' ? t('Choose project', '选择项目') : isDefaultPicked ? t('Default workspace', '默认工作区') : baseName(picked);
   const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
-  const { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, pick: pickBranch, createBranchOnly, setSelectedBranch: setSelBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
+  const { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, pick: pickBranch, createBranchOnly, fetchRemote, setSelectedBranch: setSelBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen, setHint, setDirOpen });
+  // 选择持久化(2026-11-12 用户裁定「项目/分支/隔离切会话不回默认」):三态变更即写 localStorage
+  // (sx-welcome:* 键族,与 model/effort 同口径);隐私模式写失败静默。分支清空(切项目/选回当前
+  // 分支)落空串=下次恢复即无预选
+  useEffect(() => {
+    try {
+      localStorage.setItem('sx-welcome:project', picked);
+    } catch { /* 隐私模式写失败静默 */ }
+  }, [picked]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('sx-welcome:branch', selectedBranch);
+    } catch { /* 隐私模式写失败静默 */ }
+  }, [selectedBranch]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('sx-welcome:isolate', isolate ? '1' : '0');
+    } catch { /* 隐私模式写失败静默 */ }
+  }, [isolate]);
+  // 分支恢复单次闸:gitBr 首次到位(picked 恢复的项目)且存档分支仍在清单且≠当前 → 恢复预选;
+  // 此后用户改选项目/分支不再回写(存档由上面的 selectedBranch effect 接管)
+  const branchRestoreRef = useRef(true);
+  useEffect(() => {
+    if (!branchRestoreRef.current || gitBr === null) return;
+    branchRestoreRef.current = false;
+    let saved = '';
+    try {
+      saved = localStorage.getItem('sx-welcome:branch') ?? '';
+    } catch { /* 读档失败=无预选 */ }
+    if (saved !== '' && saved !== gitBr.current && gitBr.branches.includes(saved)) setSelBranch(saved);
+  }, [gitBr, setSelBranch]);
+  /** 选项条窄宽隐现(2026-11-12 用户裁定「过窄自动隐现工作区/分支名,不换行不超视口」):
+   *  名字 span 溢出打 data-cut=右缘 14px 渐隐(同页签隐现口径);条级不打点不裁剪——分支弹层
+   *  向上伸出条外,条级 overflow 会连弹层一起截(227abef6 首版撤回根因)。ResizeObserver 盯条
+   *  随宽重算,选中/项目名变更随内容重算 */
+  const optsBarRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const bar = optsBarRef.current;
+    if (bar === null) return;
+    const mark = (): void => {
+      for (const el of bar.querySelectorAll<HTMLElement>('.wc-pill-label')) {
+        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
+        else el.removeAttribute('data-cut');
+      }
+    };
+    mark();
+    const ro = new ResizeObserver(mark);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [projName, gitBr, picked, selectedBranch]);
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
@@ -317,7 +398,7 @@ export function WelcomeComposer({
         <h1 className="welcome-tagline">{t('What should we do today?', '今天要做些什么？')}</h1>
       </div>
       <div className="welcome-dock">
-        <div className="welcome-options-bar">
+        <div className="welcome-options-bar" ref={optsBarRef}>
           <button
             type="button"
             className="choose-project-bar"
@@ -328,7 +409,7 @@ export function WelcomeComposer({
             }}
           >
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{projName}</span>
+            <span className="wc-pill-label">{projName}</span>
           </button>
           {/* G14.113 分支选择 pill(git 目录才显):当前分支+弹层切换 */}
           {gitBr !== null && gitBr.current !== '' && (
@@ -342,7 +423,7 @@ export function WelcomeComposer({
                 onClick={() => setBranchOpen((v) => !v)}
               >
                 <GitBranch size={14} strokeWidth={1.75} aria-hidden="true" />
-                <span className="branch-pill-name">{selectedBranch !== '' ? selectedBranch : gitBr.current}</span>
+                <span className="branch-pill-name wc-pill-label">{selectedBranch !== '' ? selectedBranch : gitBr.current}</span>
                 <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
               </button>
               {branchOpen && (
@@ -351,6 +432,7 @@ export function WelcomeComposer({
                   onPick={pickBranch}
                   onCreate={createBranchOnly}
                   selected={selectedBranch}
+                  onFetch={fetchRemote}
                 />
               )}
             </div>
@@ -379,6 +461,26 @@ export function WelcomeComposer({
             busy={busy}
             onSend={send}
             onClose={() => setSwitchPending(null)}
+          />
+        )}
+        {/* 隔离未选异于当前的分支(全局 portal):留空=显式同意随机命名;重选=重开分支菜单 */}
+        {isoBranchPending && gitBr !== null && (
+          <WelcomeIsoBranchDialog
+            current={gitBr.current}
+            newBranch={isoNewName}
+            onNewBranch={setIsoNewName}
+            busy={busy}
+            onClose={() => setIsoBranchPending(false)}
+            onPickAnother={() => {
+              setIsoBranchPending(false);
+              setBranchOpen(true);
+            }}
+            onCreate={(b) => {
+              setIsoBranchPending(false);
+              if (b !== '') setSelBranch(b);
+              else isoRandomRef.current = true; // 留空=显式同意随机,放行 send 拦截
+              setTimeout(() => sendRef.current(), 0);
+            }}
           />
         )}
         {/* 隔离分支被占(全局 portal):输入框空=随机新分支;重选分支=重开分支菜单 */}

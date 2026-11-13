@@ -13,14 +13,14 @@ const conn = {
 } as unknown as WelcomeComposerConn;
 const noop = (): void => undefined;
 
-function useHarness(presetRoot: string | undefined, presetSeq: number) {
-  const [picked, setPicked] = useState('');
+function useHarness(presetRoot: string | undefined, presetSeq: number, init = '') {
+  const [picked, setPicked] = useState(init);
   useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen: noop, setHint: noop, setDirOpen: noop });
   return picked;
 }
 
 describe('useWelcomeWorkspaces 预选意图', () => {
-  it('项目「+」预选该项目;随后新对话(无 preset、seq 递增)回默认工作区', async () => {
+  it('项目「+」预选该项目;新对话(无 preset、seq 递增)保留当前选择(2026-11-12 持久化裁定,接替回默认旧裁定)', async () => {
     const { result, rerender } = renderHook(({ root, seq }: { root: string | undefined; seq: number }) => useHarness(root, seq), {
       initialProps: { root: undefined as string | undefined, seq: 0 },
     });
@@ -28,17 +28,24 @@ describe('useWelcomeWorkspaces 预选意图', () => {
     rerender({ root: '/w/proj-a', seq: 1 });
     await waitFor(() => expect(result.current).toBe('/w/proj-a'));
     rerender({ root: undefined, seq: 2 });
-    await waitFor(() => expect(result.current).toBe(DEFAULT_ROOT));
+    await waitFor(() => expect(result.current).toBe('/w/proj-a'));
   });
 
-  it('同一项目重复「+」(seq 递增)在用户改选后重新生效', async () => {
+  it('同一项目重复「+」(seq 递增)幂等保持', async () => {
     const { result, rerender } = renderHook(({ root, seq }: { root: string | undefined; seq: number }) => useHarness(root, seq), {
       initialProps: { root: '/w/proj-a' as string | undefined, seq: 1 },
     });
     await waitFor(() => expect(result.current).toBe('/w/proj-a'));
     rerender({ root: undefined, seq: 2 });
-    await waitFor(() => expect(result.current).toBe(DEFAULT_ROOT));
+    await waitFor(() => expect(result.current).toBe('/w/proj-a'));
     await act(async () => rerender({ root: '/w/proj-a', seq: 3 }));
     await waitFor(() => expect(result.current).toBe('/w/proj-a'));
+  });
+
+  it('挂载恢复的持久化项目已注销 → 回默认(不留幽灵选择)', async () => {
+    const { result } = renderHook(({ root, seq, init }: { root: string | undefined; seq: number; init: string }) => useHarness(root, seq, init), {
+      initialProps: { root: undefined as string | undefined, seq: 0, init: '/w/gone' },
+    });
+    await waitFor(() => expect(result.current).toBe(DEFAULT_ROOT));
   });
 });

@@ -40,7 +40,13 @@ export function useWelcomeWorkspaces(
           ? [anchorRow, ...deduped]
           : [{ slug: 'default', root: 'default', sessionCount: 0 }, ...deduped];
         setRows(withDefault);
-        setPicked((p) => (p === '' ? (anchorRow?.root ?? 'default') : p));
+        setPicked((p) => {
+          if (p === '') return anchorRow?.root ?? 'default';
+          // 2026-11-12 用户裁定「欢迎页选择持久化」:持久化项目已注销(注册表无此根)→ 回默认,
+          // 不把失效路径留在选择条上(gitBranches 对失效根仍可答,项目下拉却选不中,成幽灵选择)
+          if (p !== 'default' && !usable.some((r) => r.root === p)) return anchorRow?.root ?? 'default';
+          return p;
+        });
       },
       () => setRows([]),
     );
@@ -50,15 +56,15 @@ export function useWelcomeWorkspaces(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn]);
   /** 预选工作区(G10-C16):项目行「+」带来的 preset——每次入口(seq 递增)即选中(用户仍可在条上切换);
-   *  新对话入口(无 preset)回默认工作区——清空选择,回源时按 default 锚点补选(2026-11-09 用户实测
-   *  「最近会话旁新对话,欢迎页停在上一个项目」)。同拍回源项目列表:侧栏「添加工作区」只经本 preset
-   *  通知欢迎页(组件已挂载不重拉,下拉还是挂载时快照——新建项目不入列,切页才显) */
+   *  「新对话」入口(无 preset)保留当前选择(2026-11-12 用户裁定「欢迎页项目/分支/隔离持久化」,
+   *  接替 2026-11-09「新对话回默认」旧裁定——挂载时已从 localStorage 恢复上次选择,不再清空);
+   *  同拍回源项目列表:侧栏「添加工作区」只经本 preset 通知欢迎页(组件已挂载不重拉,下拉还是
+   *  挂载时快照——新建项目不入列,切页才显) */
   useEffect(() => {
     if (presetRoot !== undefined && presetRoot !== '') {
       setPicked(presetRoot);
       refreshRows();
     } else if (presetSeq !== undefined && presetSeq > 0) {
-      setPicked('');
       refreshRows();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

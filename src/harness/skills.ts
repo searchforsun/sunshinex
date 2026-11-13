@@ -3,6 +3,7 @@ import * as path from 'path';
 import { SkillManifest } from '../types';
 import { Result, ok, fail } from '../result';
 import { projectsRoot, resolveDataDir, userSkillsDir } from '../config/data-dir';
+import { homeDir } from '../config/env';
 import { loadEffectivePlugins } from '../config/plugins';
 
 const FRONTMATTER = /^---\s*\n([\s\S]*?)\n---/;
@@ -43,6 +44,17 @@ export function learnedSkillsDir(root: string): string {
  *  原生根；同 id 跨根就近遮蔽（.sunshinex 胜出，被遮蔽者静默让位）。装载/解析/清单/watch 四面
  *  一律经本单点派生目录，防根清单漂移 */
 export const PROJECT_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents', '.sunshinex'] as const;
+
+/** 全局兼容技能根清单（升序=优先级升序，.agents 最高）：HOME 下四兼容根 ~/.cursor/.codex/.claude/
+ *  .agents 的 skills/（2026-11-13 用户裁定「skills 加载兼容 ~/.agents/skills ~/.claude/skills
+ *  ~/.codex/skills ~/.cursor/skills」）——与项目五根同形；原生 userSkillsDir()（~/.sunshinex/skills,
+ *  含 SUNSHINEX_USER_SKILLS_DIR 覆盖）恒在本段最高。装载/清单/watch 三面共此单点 */
+export const USER_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents'] as const;
+
+/** 用户段目录（优先级降序单点）：原生根恒首位 + HOME 兼容根逆序（.agents>.claude>.codex>.cursor） */
+export function userSkillDirs(): string[] {
+  return [userSkillsDir(), ...USER_SKILL_ROOTS_ASC.map((dot) => path.join(homeDir(), dot, 'skills')).reverse()];
+}
 
 /** 项目技能目录（升序） */
 function projectSkillDirs(root: string): string[] {
@@ -131,7 +143,7 @@ export function isSkillDisabled(sourceDir: string | undefined): boolean {
  *  → 插件 skills 根（最低优先级，启用且平台可用的插件贡献，装载入口经 pluginSkillDirs 注入）。
  *  pluginSkillDirs 为可选尾参保持纯函数可测（测试钉目录免真写插件根）；不传时与既有链逐位一致 */
 export function priorityChain(root: string, pluginSkillDirs: string[] = []): string[] {
-  return [...projectSkillDirs(root)].reverse().concat([userSkillsDir(), learnedSkillsDir(root)], pluginSkillDirs);
+  return [...projectSkillDirs(root)].reverse().concat(userSkillDirs(), [learnedSkillsDir(root)], pluginSkillDirs);
 }
 
 /** 多根链装载单点（R6 同族收敛）：按入参目录序（=优先级降序）装载，id 撞名就近遮蔽（先装者留、
@@ -218,7 +230,7 @@ export function removeLearnedSkill(root: string, id: string): 'ok' | 'unknown' {
 export function loadSkillsGrouped(root: string): SkillsGroup[] {
   return [
     { source: 'project', skills: loadSkillsChain(projectSkillDirs(root).reverse()).map(skillRow) },
-    { source: 'user', skills: loadSkillsChain([userSkillsDir()]).map(skillRow) },
+    { source: 'user', skills: loadSkillsChain(userSkillDirs()).map(skillRow) },
     {
       source: 'learned',
       skills: loadSkillsChain([learnedSkillsDir(root)]).map(skillRow).map((r) => ({ ...r, ...createdMsOf(learnedSkillsDir(root), r.id) })),

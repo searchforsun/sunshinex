@@ -4,7 +4,7 @@ import * as path from 'path';
 
 /** 出口预算常量（规格 §3，代码内钉住不加 env）：超限全文落盘、链上留预览+恢复路径 */
 export const TOOL_OUTPUT_CHAR_LIMIT = 30_000;
-export const PREVIEW_CHARS = 2_000;
+export const PREVIEW_CHARS = 6_000; // 2026-11-13 用户裁定「预览偏小,agent 要靠二次读判断取哪段」:2000→6000(英文 ~1.5k tokens,仍远小于 30k 上限)
 
 export interface ToolOutputArchive {
   /**
@@ -33,7 +33,11 @@ export function createToolOutputArchive(
       if (output.length <= TOOL_OUTPUT_CHAR_LIMIT) return output;
       seq += 1;
       const digest = createHash('sha1').update(output).digest('hex').slice(0, 8);
-      const preview = output.slice(0, PREVIEW_CHARS);
+      // 切点回行边界(2026-11-13):硬切会切在行中/代码块中=半句话;末尾 400 字符内有换行则吃到该行末
+      // (预览最多超 PREVIEW_CHARS 一行),否则硬切(纯长行输出无换行可依)
+      const lineEnd = output.indexOf('\n', PREVIEW_CHARS);
+      const cut = lineEnd !== -1 && lineEnd - PREVIEW_CHARS <= 400 ? lineEnd + 1 : PREVIEW_CHARS;
+      const preview = output.slice(0, cut);
       try {
         const file = path.join(resolveDir(), 'tool-outputs', `${seq}-${tool}-${digest}.txt`);
         writeFile(file, output);

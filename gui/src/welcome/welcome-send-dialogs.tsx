@@ -65,6 +65,64 @@ export function WelcomeSwitchDialog({
   );
 }
 
+/** 隔离未选异于当前的分支(2026-11-13 用户裁定「发送后没有提示创建新的分支,直接自动创建了任意分支?应该又弹窗提示」):
+ *  发送前确认建新分支——输入留空=自动随机命名(显式同意),填名=按名新建/签出;重选分支=重开分支菜单 */
+export function WelcomeIsoBranchDialog({
+  current,
+  newBranch,
+  onNewBranch,
+  busy,
+  onClose,
+  onPickAnother,
+  onCreate,
+}: {
+  current: string;
+  newBranch: string;
+  onNewBranch: (v: string) => void;
+  busy: boolean;
+  onClose: () => void;
+  onPickAnother: () => void;
+  onCreate: (name: string) => void;
+}): JSX.Element {
+  return createPortal(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Isolated workspace needs a new branch', '隔离工作区将创建新分支')} onClick={(e) => e.stopPropagation()}>
+        <p className="sx-dirty-target">
+          {t('The isolated workspace will create a new branch', '隔离工作区将创建新分支')}
+        </p>
+        <p className="sx-dirty-text">
+          {t(`The current branch ${current} is checked out by the main workspace, so isolation needs its own branch. Leave empty for an auto-generated name.`, `当前分支 ${current} 已被主工作区签出，隔离工作区需在新分支上工作；留空将自动随机命名`)}
+        </p>
+        <input
+          className="sx-dirty-msg"
+          aria-label={t('New branch name', '新分支名')}
+          placeholder={t('New branch name (empty = auto)', '新分支名（留空自动命名）')}
+          value={newBranch}
+          maxLength={80}
+          autoFocus
+          onChange={(e) => onNewBranch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onCreate(newBranch.trim());
+            if (e.key === 'Escape') onClose();
+          }}
+        />
+        <div className="sx-dirty-actions">
+          <button type="button" disabled={busy} onClick={onClose}>
+            {t('Cancel', '取消')}
+          </button>
+          <button type="button" disabled={busy} onClick={onPickAnother}>
+            {t('Pick another branch', '重选分支')}
+          </button>
+          <button type="button" className="primary" disabled={busy} onClick={() => onCreate(newBranch.trim())}>
+            {t('Create branch and isolate', '创建分支并隔离')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /** 隔离分支被占(全局 portal):输入框空=随机新分支;重选分支=重开分支菜单 */
 export function WelcomeHeldBranchDialog({
   branch,

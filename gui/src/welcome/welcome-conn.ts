@@ -16,6 +16,8 @@ export interface WelcomeComposerConn {
   gitCheckout(root: string, branch: string, create?: boolean): Promise<void>;
   gitCommitCheckout?(root: string, branch: string, create?: boolean, message?: string): Promise<void>;
   gitBranchCreate(root: string, branch: string): Promise<void>;
+  /** 拉取远程分支到本地(2026-11-13 分支弹窗 fetch 按钮) */
+  gitFetchRemote(root: string): Promise<{ fetched: string[] }>;
   /** 切换代价面(2026-11-10):numstat 汇总+未提交改动数与 ±行数;missing=目标分支不存在 */
   branchDiffStat?(root: string, branch: string): Promise<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>;
   /** + 附加面板数据源(G12 三轮;文件区需会话——欢迎页不传 sessionId 不渲染) */

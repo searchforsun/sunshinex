@@ -475,6 +475,11 @@ test('⑧b /session/new worktree 隔离(2026-11-10 用户裁定「新会话可�
     const sub = await fetch(`${base}/session/${body.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: 'hi' }) });
     assert.equal(sub.status, 202);
     await waitFor(() => rt.status() === 'idle', 8000);
+    // 列表行根现取(2026-11-13 用户实测「侧栏 hover 首显主工作区路径/分支,首轮结束才变树路径」
+    // 根修):journal 建档首轮收束后 /sessions 行即带树路径(run 收尾旁车之外的活 runtime 现取);
+    // 不再等 run 收尾写旁车。收束后 runtime 仍在座(idle),按 journalId 反查得真根
+    const listed = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(root)}`, { headers: AUTH })).json()) as Array<{ id: string; root?: string }>;
+    assert.equal(listed.find((x) => x.id === rt.attachedJournalId)?.root, body.worktree!.path, '/sessions 行根=树路径(活 runtime 现取)');
     // 归档删除→树连带清除(removeWorktreeForSession)
     const jid = rt.attachedJournalId;
     assert.ok(jid, '首轮后 journal 已建档');
