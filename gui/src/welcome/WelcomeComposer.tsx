@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
@@ -25,6 +25,7 @@ import { WelcomeModelMenu } from './welcome-model-menu';
 import { WelcomeBranchMenu } from './welcome-branch-menu';
 import { WelcomeOverlays } from './welcome-overlays';
 import { useWelcomeTokenGuards } from './use-welcome-token-guards';
+import { readPersistedIsolate, readPersistedProject, useOptsBarCut, useWelcomePersistedModel, useWelcomePersistedPicks } from './use-welcome-persisted';
 
 /** 欢迎页 composer 独立模块（D32 中口径件批App-1 自 App.tsx 平移,行为零变化;
  *  模块私有件转公开导出——消费方仅 App.tsx 一处）。 */
@@ -54,15 +55,8 @@ export function WelcomeComposer({
   presetSeq?: number;
   onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
 }): JSX.Element {
-  const [picked, setPicked] = useState<string>(() => {
-    // 2026-11-12 用户裁定「欢迎页项目/分支/隔离持久化,切会话不回默认」:挂载即恢复上次选择
-    // (键随 sx-welcome:model/effort 同族;失效根由 useWelcomeWorkspaces 回源校验回落默认)
-    try {
-      return localStorage.getItem('sx-welcome:project') ?? '';
-    } catch {
-      return '';
-    }
-  });
+  // 挂载即恢复上次选择(2026-11-12 用户裁定「项目/分支/隔离持久化,切会话不回默认」;失效根由 useWelcomeWorkspaces 回源校验回落默认)
+  const [picked, setPicked] = useState<string>(readPersistedProject);
   // 草稿持久化(2026-11-07 用户裁定「应用重启后,所有输入框内容不丢失」):goal+@引用账本
   // 落 localStorage(欢迎页全局单档;发送清档,openSession 接力不受影响)
   const [goal, setGoal] = useState<string>(() => {
@@ -102,13 +96,7 @@ export function WelcomeComposer({
   /** 工作区隔离(2026-11-10 用户裁定「新会话可选 git worktree 隔离」):pill 武装态随提交下发;
    *  首次开启弹说明框(益处/代价),armed 后再点即解除。仅 git 项目可开(gitBr 在场判定);
    *  武装态持久(2026-11-12 用户裁定,同项目/分支一族) */
-  const [isolate, setIsolate] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('sx-welcome:isolate') === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [isolate, setIsolate] = useState<boolean>(readPersistedIsolate);
   const [isoOpen, setIsoOpen] = useState(false);
   /** 发送前切换确认(2026-11-10 用户裁定「选择不切换,发送时统一落地」):非隔离+选了异于当前
    *  的分支 → 弹「切换并发送」(branchDiffStat 代价面;脏树带提交信息框) */
@@ -128,21 +116,8 @@ export function WelcomeComposer({
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
-  // 模型/思考强度持久(2026-11-09 用户裁定「欢迎页记录上次选的模型和强度,切换会话后还是当时选择的」):
-  // localStorage 即时层,挂载读回;跨端漫游不上收(ui-pref-sync 口径外,设备本地即可)
-  const [selModel, setSelModel] = useState<string | undefined>(() => localStorage.getItem('sx-welcome:model') ?? undefined);
-  const [selEffort, setSelEffort] = useState<string>(() => localStorage.getItem('sx-welcome:effort') ?? 'medium');
-  useEffect(() => {
-    if (selModel !== undefined) localStorage.setItem('sx-welcome:model', selModel);
-    else localStorage.removeItem('sx-welcome:model');
-  }, [selModel]);
-  useEffect(() => {
-    localStorage.setItem('sx-welcome:effort', selEffort);
-  }, [selEffort]);
-  // 记忆的模型已不在清单(providers 变更删除)→ 回落缺省,不把失效 id 带进新会话
-  useEffect(() => {
-    if (selModel !== undefined && modelChoices.length > 0 && !modelChoices.some((c) => c.id === selModel)) setSelModel(undefined);
-  }, [modelChoices, selModel]);
+  // 模型/思考强度持久(2026-11-09 用户裁定「欢迎页记录上次选的模型和强度」):localStorage 即时层挂载读回
+  const { selModel, setSelModel, selEffort, setSelEffort } = useWelcomePersistedModel(modelChoices);
   const [modelOpen, setModelOpen] = useState(false);
   const projRef = useRef<HTMLDivElement | null>(null);
   /** G14.121 @ 文件面板:光标前 @token 触发;数据= picked 工作区索引(mtime 倒序);选中插 @相对路径 */
@@ -342,55 +317,13 @@ export function WelcomeComposer({
   const { welcomeCmdActive, setWelcomeCmdActive, setWelcomeSlashDismissed, fetchWelcomeSkills, welcomeSlashItems, slashItemsAt } = useWelcomeSlash(conn, picked, goal, goalRef);
   const { gitBr, branchOpen, setBranchOpen, branchRef, selectedBranch, pick: pickBranch, createBranchOnly, fetchRemote, setSelectedBranch: setSelBranch } = useWelcomeBranch(conn, picked, isDefaultPicked, setHint);
   const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, presetRoot, presetSeq, { setPicked, setProjOpen, setHint, setDirOpen });
-  // 选择持久化(2026-11-12 用户裁定「项目/分支/隔离切会话不回默认」):三态变更即写 localStorage
-  // (sx-welcome:* 键族,与 model/effort 同口径);隐私模式写失败静默。分支清空(切项目/选回当前
-  // 分支)落空串=下次恢复即无预选
-  useEffect(() => {
-    try {
-      localStorage.setItem('sx-welcome:project', picked);
-    } catch { /* 隐私模式写失败静默 */ }
-  }, [picked]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('sx-welcome:branch', selectedBranch);
-    } catch { /* 隐私模式写失败静默 */ }
-  }, [selectedBranch]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('sx-welcome:isolate', isolate ? '1' : '0');
-    } catch { /* 隐私模式写失败静默 */ }
-  }, [isolate]);
-  // 分支恢复单次闸:gitBr 首次到位(picked 恢复的项目)且存档分支仍在清单且≠当前 → 恢复预选;
-  // 此后用户改选项目/分支不再回写(存档由上面的 selectedBranch effect 接管)
-  const branchRestoreRef = useRef(true);
-  useEffect(() => {
-    if (!branchRestoreRef.current || gitBr === null) return;
-    branchRestoreRef.current = false;
-    let saved = '';
-    try {
-      saved = localStorage.getItem('sx-welcome:branch') ?? '';
-    } catch { /* 读档失败=无预选 */ }
-    if (saved !== '' && saved !== gitBr.current && gitBr.branches.includes(saved)) setSelBranch(saved);
-  }, [gitBr, setSelBranch]);
+  // 选择持久化+分支恢复单次闸(2026-11-12/13 用户裁定,细节见 use-welcome-persisted)
+  useWelcomePersistedPicks({ picked, selectedBranch, isolate, gitBr, setSelBranch });
   /** 选项条窄宽隐现(2026-11-12 用户裁定「过窄自动隐现工作区/分支名,不换行不超视口」):
    *  名字 span 溢出打 data-cut=右缘 14px 渐隐(同页签隐现口径);条级不打点不裁剪——分支弹层
    *  向上伸出条外,条级 overflow 会连弹层一起截(227abef6 首版撤回根因)。ResizeObserver 盯条
    *  随宽重算,选中/项目名变更随内容重算 */
-  const optsBarRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const bar = optsBarRef.current;
-    if (bar === null) return;
-    const mark = (): void => {
-      for (const el of bar.querySelectorAll<HTMLElement>('.wc-pill-label')) {
-        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
-        else el.removeAttribute('data-cut');
-      }
-    };
-    mark();
-    const ro = new ResizeObserver(mark);
-    ro.observe(bar);
-    return () => ro.disconnect();
-  }, [projName, gitBr, picked, selectedBranch]);
+  const optsBarRef = useOptsBarCut([projName, gitBr, picked, selectedBranch]);
   return (
     <div className="sx-welcome sx-welcome-home" aria-label="welcome">
       <div className="welcome-hero">
