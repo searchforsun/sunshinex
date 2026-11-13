@@ -35,7 +35,7 @@ test('task_wait 已终态任务幂等即回：状态 + exitCode', async () => {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const t = tasks.submit({ kind: 'exec', label: 'done' });
     tasks.finish(t.id, 'done', { exitCode: 0 });
-    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: null }, stubSafety);
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: 60 }, stubSafety);
     assert.ok(r.ok);
     assert.match(r.value.stdout, new RegExp(`${t.id} \\(exec\\) done, exit 0`));
   } finally {
@@ -50,7 +50,7 @@ test('task_wait 等运行中任务到终态：回执 exitCode 与日志尾部', 
     const t = tasks.submit({ kind: 'exec', label: 'build-all' });
     tasks.append(t.id, 'line-one\nline-two\n');
     setTimeout(() => tasks.finish(t.id, 'done', { exitCode: 0 }), 50);
-    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: null }, stubSafety);
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: 60 }, stubSafety);
     assert.ok(r.ok);
     assert.match(r.value.stdout, /exit 0/);
     assert.match(r.value.stdout, /line-two/);
@@ -78,7 +78,7 @@ test('task_wait taskIds=null：等全部 running；无 running 立即空回执',
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const registry = makeRegistry(tasks);
-    const empty = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: null }, stubSafety);
+    const empty = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: 60 }, stubSafety);
     assert.ok(empty.ok);
     assert.match(empty.value.stdout, /no background tasks running/);
     const a = tasks.submit({ kind: 'exec', label: 'a' });
@@ -88,7 +88,7 @@ test('task_wait taskIds=null：等全部 running；无 running 立即空回执',
       tasks.finish(a.id, 'done', { exitCode: 2 });
       tasks.finish(b.id, 'stopped', { marker: '[stopped: test]' });
     }, 50);
-    const r = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: null }, stubSafety);
+    const r = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: 60 }, stubSafety);
     assert.ok(r.ok);
     assert.match(r.value.stdout, new RegExp(`${a.id} \\(exec\\) done, exit 2`));
     assert.match(r.value.stdout, new RegExp(`${b.id} \\(subagent\\) stopped`));
@@ -102,7 +102,7 @@ test('task_wait 未知 id：INVALID_ARG 附现存任务清单', async () => {
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
     const t = tasks.submit({ kind: 'exec', label: 'known' });
-    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: ['b999'], timeoutSeconds: null }, stubSafety);
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: ['b999'], timeoutSeconds: 60 }, stubSafety);
     assert.equal(r.ok, false);
     if (!r.ok) {
       assert.equal(r.error.code, 'INVALID_ARG');
@@ -118,7 +118,7 @@ test('task_wait 空数组：INVALID_ARG', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskwait-tool-'));
   try {
     const tasks = new TaskRegistry(path.join(root, 'data'));
-    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [], timeoutSeconds: null }, stubSafety);
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [], timeoutSeconds: 60 }, stubSafety);
     assert.equal(r.ok, false);
     if (!r.ok) assert.equal(r.error.code, 'INVALID_ARG');
   } finally {
@@ -171,7 +171,7 @@ test('task_wait 子智能体任务：回执 [conclusion] 结论全文', async ()
     const t = tasks.submit({ kind: 'subagent', label: 'research' });
     tasks.append(t.id, '[conclusion] first line\nsecond line\n');
     tasks.finish(t.id, 'done');
-    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: null }, stubSafety);
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: [t.id], timeoutSeconds: 60 }, stubSafety);
     assert.ok(r.ok);
     assert.match(r.value.stdout, /\[conclusion\] first line\nsecond line/);
   } finally {
@@ -190,7 +190,7 @@ test('task_wait 板任务原生 id 归一：tN/delegationId 形态命中派发�
     tasks.finish(a.id, 'done');
     tasks.append(b.id, '[conclusion] t6 done\n');
     tasks.finish(b.id, 'done');
-    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: ['t5', 'task-t6'], timeoutSeconds: null }, stubSafety);
+    const r = await makeRegistry(tasks).execute('task_wait', { taskIds: ['t5', 'task-t6'], timeoutSeconds: 60 }, stubSafety);
     assert.ok(r.ok, `板 id 归一命中，实际 ${r.ok ? '' : r.error?.message}`);
     if (r.ok) {
       assert.match(r.value.stdout, /task-t5-/, '回执含 t5 派发台账条目');
@@ -417,14 +417,14 @@ test('task_wait kinds=exec：可等 exec；拒 subagent/板派发台账；null �
     tasks.finish(ex.id, 'done', { exitCode: 0 });
     const registry = new ToolRegistry();
     registry.register(makeTaskWaitTool(tasks, undefined, undefined, { kinds: ['exec'] }));
-    const okExec = await registry.execute('task_wait', { taskIds: [ex.id], timeoutSeconds: null }, stubSafety);
+    const okExec = await registry.execute('task_wait', { taskIds: [ex.id], timeoutSeconds: 60 }, stubSafety);
     assert.ok(okExec.ok);
     if (okExec.ok) assert.match(okExec.value.stdout, new RegExp(`${ex.id} \\(exec\\) done`));
     const badSa = await registry.execute('task_wait', { taskIds: [sa.id], timeoutSeconds: 0 }, stubSafety);
     assert.ok(!badSa.ok);
     assert.match(badSa.error.message, /only accepts exec/);
     // null：running 的 subagent 不计；无 exec running → 空回执
-    const empty = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: null }, stubSafety);
+    const empty = await registry.execute('task_wait', { taskIds: null, timeoutSeconds: 60 }, stubSafety);
     assert.ok(empty.ok);
     if (empty.ok) assert.match(empty.value.stdout, /no background tasks running/);
   } finally {

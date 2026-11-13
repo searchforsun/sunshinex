@@ -989,7 +989,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       },
     ] as never);
     await flushed();
-    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['spawn-20261102T084100Z-ab12'], timeoutSeconds: null } } });
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['spawn-20261102T084100Z-ab12'], timeoutSeconds: 1800 } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w1' } });
     const row = [...document.querySelectorAll('.entry-tool')].find((x) => /Wait for task|等待|task_wait/.test(x.textContent ?? ''));
     expect(row?.textContent).toContain('后台spawn测试');
@@ -1004,9 +1004,9 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       { seq: 2, kind: 'tool', name: 'create_agent_team_task', input: { teamId: 'team-a', title: '分析：GUI 交互面', spec: 'y', dependsOn: null, assignee: null, executor: null, retryOf: null }, result: { text: 'task t3 created; dispatch is automatic', ok: true }, md: '' },
     ] as never);
     await flushed();
-    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['t2', 't3'], timeoutSeconds: null } } });
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w1', input: { taskIds: ['t2', 't3'], timeoutSeconds: 1800 } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w1' } });
-    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w2', input: { taskIds: ['task-t2-20261015T153105Z-da2n'], timeoutSeconds: null } } });
+    fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w2', input: { taskIds: ['task-t2-20261015T153105Z-da2n'], timeoutSeconds: 1800 } } });
     fire({ type: 'tool-result', text: 'ok', ts: Date.now(), payload: { callId: 'w2' } });
     fire({ type: 'tool-call', text: 'task_wait', ts: Date.now(), payload: { callId: 'w3', input: { taskIds: null, timeoutSeconds: 30 } } });
     fire({ type: 'tool-result', text: 'done', ts: Date.now(), payload: { callId: 'w3' } });

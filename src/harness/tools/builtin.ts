@@ -197,7 +197,7 @@ export function builtinTools(
         },
       },
       name: 'exec',
-      description: `Execute a shell command inside the project sandbox; always pass \`kind\` to declare whether the command only inspects (read-only, folded in the UI) or executes (side effects, always shown individually); long-running commands are automatically moved to the background when they time out; ${budgetNote} — pipe through head/tail/grep to keep large outputs focused`,
+      description: `Execute a shell command inside the project sandbox; always pass \`kind\` to declare whether the command only inspects (read-only, folded in the UI) or executes (side effects, always shown individually); commands running longer than 120 seconds are automatically moved to the background (the process keeps running; poll the output file or block with task_wait); ${budgetNote} — pipe through head/tail/grep to keep large outputs focused`,
       category: 'bash',
       display: { verb: 'EXEC', targetFields: ['command'] },
       executor: async (input: ToolInput, runtimeSafety) => {
@@ -233,6 +233,8 @@ export function builtinTools(
         // 前台执行走运行期链视图（D19-a）：run 内联判界+landlock 包装——fork 子链（withRoot 克隆）的写围栏
         // 随执行期链锚专属树；旧形态走闭包装配链（其可写根恒主根）架空隔离承诺。视图缺 run（直调桩）回落装配链，行为不变。
         // 两分支都是成员调用（this 绑定）——不可提取 gateView.run 函数引用（链实例成员解绑即 this 丢失）
+        // 前台窗口 120s(2026-11-13 用户裁定「exec 超过 120s 就转后台」,原 30 分钟):窗口值收敛进
+        // sandbox 缺省(测试 QuickTimeoutSandbox 靠 opts 缺省注入小窗,此处不得硬传 timeoutMs 顶掉)
         const fgOpts = { cwd: gateView.execCwd(), ...(wantsBg ? { timeoutToBackground: true } : {}) };
         const r = await (gateView.run !== undefined ? gateView.run(cmd, fgOpts) : safety.run(cmd, fgOpts));
         if (r.ok && r.value.timedOut && r.value.child) {

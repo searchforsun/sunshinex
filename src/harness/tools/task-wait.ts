@@ -11,7 +11,11 @@ import type { TaskBoard } from '../../taskboard/board';
 import { BOARD_TERMINAL, type TaskStatus } from '../../taskboard/model';
 import { dispatchTag } from '../../taskboard/board';
 
-const DEFAULT_TIMEOUT_SECONDS = 1800;
+/** 等待阻塞范围(2026-11-13 用户裁定「task_wait 给一个时间范围 1-30 分钟,模型按具体情况设置」):
+ *  模型声明的 timeoutSeconds 钳进 [60, 1800]——防 30 分钟死等不加节制,也防误传 1s 使等待形同虚设;
+ *  0 保留为非阻塞状态窥视(语义=不等待,不进范围) */
+const WAIT_CLAMP_MIN_SECONDS = 60;
+const WAIT_CLAMP_MAX_SECONDS = 1800;
 const RECEIPT_TAIL_LINES = 200;
 /** 板任务终态：success 完成、failed 执行错误、cancelled 主动停止或重启自愈 */
 
@@ -52,15 +56,34 @@ function boardKeyOf(boardTasks: Record<string, { id: string }>, rawId: string): 
   return m !== null && boardTasks[m[1]] !== undefined ? m[1] : undefined;
 }
 
-function parseTimeout(rawTimeout: number | null): number {
-  const timeoutSeconds = rawTimeout === null ? DEFAULT_TIMEOUT_SECONDS : rawTimeout;
+function parseTimeout(rawTimeout: number): number {
+  const timeoutSeconds = rawTimeout;
   if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
     throw new CodedToolError(
       'INVALID_ARG',
       `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`,
     );
   }
-  return timeoutSeconds;
+  if (timeoutSeconds === 0) return 0; // 窥视态不进范围
+  // 钳进 1–30 分钟窗口(2026-11-13 用户裁定):低于 1 分钟抬高到 1 分钟(短抖动等待无意义),
+  // 高于 30 分钟压回 30 分钟(防死等;模型可到期回执后再等一轮)
+  return Math.min(Math.max(timeoutSeconds, WAIT_CLAMP_MIN_SECONDS), WAIT_CLAMP_MAX_SECONDS);
+}
+
+/** 板任务等待钳制(2026-11-13 用户裁定「智能体的等待给 5-30 分钟窗口」):封顶 1800 秒,
+ *  下不限——该工具是**事件等待**(任一状态变更即回),短窗口正是核心设计且永不死等;
+ *  30 分钟上限防「无事件 blind block」。schema 描述里 5-30 分钟为模型推荐窗口 */
+function parseTeamTimeout(rawTimeout: number): number {
+  // 不复用 parseTimeout(其 60s 下限会破事件等待的短窗口);独立校验+仅封顶
+  const timeoutSeconds = rawTimeout;
+  if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
+    throw new CodedToolError(
+      'INVALID_ARG',
+      `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`,
+    );
+  }
+  if (timeoutSeconds === 0) return 0;
+  return Math.min(timeoutSeconds, 1800);
 }
 
 /** 板态变化（任一即醒）：from=本次调用入口快照，to=醒时板态 */
@@ -168,8 +191,8 @@ function sharedParams(taskIdsDesc: string) {
         description: taskIdsDesc,
       },
       timeoutSeconds: {
-        type: ['number', 'null'],
-        description: 'Block cap in seconds; JSON null = 1800; 0 = status peek without waiting.',
+        type: 'number',
+        description: 'Block cap in seconds (required, always pass an explicit value); capped at 1800. Recommended window — task_wait: 60-1800 (1-30 min); agent_team_task_wait: 300-1800 (5-30 min, shorter event windows allowed). Prefer shorter windows and re-wait in a loop on each receipt instead of one long blind block. 0 = status peek without waiting.',
       },
     },
   };
@@ -194,12 +217,12 @@ export function makeTaskWaitTool(
     name: 'task_wait',
     description: execOnly
       ? 'Wait for an auto-backgrounded exec command (receipt: id, status, exit, log tail). JSON null waits running exec only. Board task ids belong to agent_team_task_wait.'
-      : 'Wait until listed exec/spawn background ledger tasks reach a terminal state; return id, kind, status, exit, and exec log tail or conclusion. Board task ids belong to agent_team_task_wait. taskIds=null waits currently running ledger work only. Default timeout 1800s.',
+      : 'Wait until listed exec/spawn background ledger tasks reach a terminal state; return id, kind, status, exit, and exec log tail or conclusion. Board task ids belong to agent_team_task_wait. taskIds=null waits currently running ledger work only. Blocking window: timeoutSeconds clamped to 1-30 minutes — pick a short window (1-5 min) for quick checks and re-wait in a loop on the receipt instead of one long blind block.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { taskIds?: string[] | null; timeoutSeconds?: number | null };
-      const rawTimeout = raw.timeoutSeconds ?? null;
+      const raw = input as { taskIds?: string[] | null; timeoutSeconds: number };
+      const rawTimeout = raw.timeoutSeconds;
       let ids: string[];
       const kindOk = (t: BackgroundTask): boolean => allowedKinds.has(t.kind);
       if (raw.taskIds === null || raw.taskIds === undefined) {
@@ -278,12 +301,12 @@ export function makeAgentTeamTaskWaitTool(
     ),
     name: 'agent_team_task_wait',
     description:
-      'Wait on board tasks and return as soon as ANY listed task changes status (pending → running, running → success/failed/cancelled) or all are terminal — it is an event wait, not wait-for-all. The receipt names the change(s) and how many are still unfinished; react (assign, retry, message) and call again to keep waiting. Returns board status per task (and dispatch ledger receipt when present). Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_agent_team_task + retryOf). Exec/spawn-only background ids belong to task_wait. taskIds=null waits non-terminal board tasks. Default timeout 1800s.',
+      'Wait on board tasks and return as soon as ANY listed task changes status (pending → running, running → success/failed/cancelled) or all are terminal — it is an event wait, not wait-for-all. The receipt names the change(s) and how many are still unfinished; react (assign, retry, message) and call again to keep waiting. Returns board status per task (and dispatch ledger receipt when present). Board terminals: success / failed / cancelled (failed/cancelled are final — redo with create_agent_team_task + retryOf). Exec/spawn-only background ids belong to task_wait. taskIds=null waits non-terminal board tasks.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { taskIds?: string[] | null; timeoutSeconds?: number | null };
-      const rawTimeout = raw.timeoutSeconds ?? null;
+      const raw = input as { taskIds?: string[] | null; timeoutSeconds: number };
+      const rawTimeout = raw.timeoutSeconds;
       let ids: string[] = [];
       let boardWaitIds: string[] = [];
       const boardTasks = board.snapshot().tasks;
@@ -346,7 +369,7 @@ export function makeAgentTeamTaskWaitTool(
       }
 
       const signal = getRunSignal?.();
-      const timeoutSeconds = parseTimeout(rawTimeout);
+      const timeoutSeconds = parseTeamTimeout(rawTimeout); // 封顶 1800;短窗口(事件等待)不设下限
       // 去重板 id（派发台账归一可能与显式板 id 重复）
       boardWaitIds = [...new Set(boardWaitIds)];
       ids = [...new Set(ids)];

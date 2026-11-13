@@ -1309,17 +1309,20 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.93 隐现内部化:渐隐只作用于卡内选项列表(mask 在 .card-options),外层 pending-card
    边框恒完整;.ask-scroll 仅作多题兜底滚动(无 mask——外层渐隐会吃掉卡片边框) */.ask-dock .ask-scroll {
   display: flex; flex-direction: column; gap: 10px;
-  max-height: 420px; overflow-y: auto; overscroll-behavior: contain;
+  /* 单区滚动(2026-11-13):上限=min(420px, 视口高-220px)——动作区(跳过/提交)恒在视口内,
+     卡内容恒可滚到底(含最后一项自由输入) */
+  max-height: min(420px, calc(100vh - 220px)); overflow-y: auto; overscroll-behavior: contain;
 }.ask-dock .pending-card {
   width: 100%; margin: 0; background: var(--surface-elevated);
   border: 1px solid var(--border); border-radius: var(--radius-composer); padding: 12px 14px;
 }.ask-dock .card-head { display: flex; align-items: center; gap: 8px; font-size: calc(14px * var(--fz)); font-weight: 600; color: var(--fg); }.ask-dock .card-head-icon { display: inline-flex; color: var(--accent); flex: none; }.ask-dock .card-options {
+  /* 2026-11-13 用户裁定「不应该是固定最后一项,应该是调整可以滚动的地方」:选项区取消内滚
+     (原 max-height 260 + mask 渐隐=最后一项/自由输入被压在折叠面下且糊掉),整卡由外层
+     .ask-scroll 单区滚动,滚到底即完整最后一项 */
   display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0;
-  max-height: 260px; overflow-y: auto; overscroll-behavior: contain;
+  overflow: visible;
 }.ask-dock .card-options.overflowing {
-  /* 卡内隐现:选项超出卡内可视高时下缘渐隐(选项卡边框随之淡出=内容还有的提示),
-     外框(pending-card)不受影响 */
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  /* mask 渐隐退役(单区滚动后选项区无自身可视边界,遮罩只会糊内容) */
 }.ask-dock .card-option {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; border-radius: var(--radius-md);
@@ -1328,6 +1331,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   transition: background 0.16s ease, border-color 0.16s ease;
 }.ask-dock .card-option:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.ask-dock .card-option.checked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }.ask-dock .card-option input { position: absolute; opacity: 0; pointer-events: none; } /* 原生控件视觉退役,卡片即选中面 */.ask-dock .card-option-icon { display: inline-flex; flex: none; color: var(--fg-tertiary); }.ask-dock .card-option.checked .card-option-icon { color: var(--accent); }.ask-dock .card-option-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }.ask-dock .card-option-desc { color: var(--fg-tertiary); }
 /* Other=自由输入卡(合二为一):✎+输入框,聚焦/有字即 custom 选中态 */.ask-dock .card-custom-card {
+  flex: none;
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; border-radius: var(--radius-md);
   border: 1px solid var(--border); background: transparent;
@@ -1423,7 +1427,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .entry h1 { font-size: 1.5em; }.entry h2 { font-size: 1.3em; }.entry h3 { font-size: 1.18em; }.entry h4 { font-size: 1.08em; }
 .entry h5 { font-size: 1em; }
 .entry h6 { font-size: 1em; color: var(--fg-secondary); }.entry h1, .entry h2, .entry h3, .entry h4, .entry h5, .entry h6 { line-height: 1.25; font-weight: 600; margin: 26px 0 10px; }.entry :not(pre) > code { font-size: 0.9em; background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-xs); padding: 1px 5px; }.entry li { margin: 2px 0; }.entry li::marker { color: var(--fg-secondary); }.entry hr { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }.entry img { max-width: 100%; border-radius: var(--radius-md); }
-/* 表格(§5.3):横滚圆角容器+表头底+只留横线+斑马纹;外距 16 上下(2026-10-24 区域行距加大;2026-11-04 底距同代码块统一 16,块底不贴后续内容) */.table-wrap { margin: 16px 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); /* G14.103 */ } .table-wrap .file-link { vertical-align: middle; }.table-wrap table { margin: 0; width: max-content; min-width: 50%; border-collapse: collapse; font-size: calc(14px * var(--fz)); }.table-wrap th { font-weight: 600; text-align: left; } /* 2026-11-04 用户裁定:表格去底色只留线条(空背景,与周围同色) */.table-wrap th, .table-wrap td { padding: 9px 12px; border: none; border-bottom: 1px solid var(--border-subtle); } /* 2026-11-07 二轮「表格内部不挤」6→9(正文/文件预览表格同容器) */.table-wrap tr:last-child td { border-bottom: none; }
+/* 表格(§5.3):横滚圆角容器+表头底+只留横线+斑马纹;外距 16 上下(2026-10-24 区域行距加大;2026-11-04 底距同代码块统一 16,块底不贴后续内容) */.table-wrap { margin: 16px 0; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); /* G14.103 */ } .table-wrap .file-link { vertical-align: middle; }.table-wrap table { margin: 0; width: max-content; min-width: 50%; border-collapse: collapse; font-size: calc(14px * var(--fz)); }.table-wrap th { font-weight: 600; text-align: left; } /* 2026-11-04 用户裁定:表格去底色只留线条(空背景,与周围同色) */.table-wrap th, .table-wrap td { padding: 7px 12px; border: none; border-bottom: 1px solid var(--border-subtle); } /* 2026-11-07 二轮「表格内部不挤」6→9(正文/文件预览表格同容器);2026-11-13 用户裁定「表格行距稍微减少一点点」纵距 9→7 */.table-wrap tr:last-child td { border-bottom: none; }
 /* mermaid 容器(§5.4):hover 浮现钮;lightbox 淡入+轻缩放,contain 居中 */.mermaid-block { position: relative; }.mermaid-actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }.mermaid-block:hover .mermaid-actions, .mermaid-actions:focus-within { opacity: 1; }
 /* G14.122 lightbox 收缩:顶部让出标签条带(padding-top),动作钮随体——不再与标签条钮重叠 */.mermaid-lightbox {
   position: fixed; inset: 0; z-index: 50;
@@ -2283,9 +2287,15 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .bg-cmd-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg-secondary); }
 /* 复制钮=正文同款 TipButton(sx-tip 22px 方钮)+Check 交换(2026-10-31);span 只承接 stopPropagation */
 .bg-copy { display: inline-flex; flex: none; }
-/* 暂停/恢复钮(2026-10-31):hover 显现(语言同 mem-del),头部点击展开不误触(stopPropagation 在组件面) */
-.tb-card .bg-act { flex: none; width: 22px; height: 22px; opacity: 0; transition: opacity 0.12s; }
+/* 停止钮(2026-11-13 用户复裁定「这个暂停按钮还是不对」):描边方钮容器(1px 边+圆角)+描边方图标,
+   不再实心黑块裸浮;hover 现形,悬停转红=停止语义,二次确认态走 .arm 红底 */
+.tb-card .bg-act { flex: none; width: 26px; height: 24px; opacity: 0; transition: opacity 0.12s;
+  /* 自带按键面:侧栏页签「去高亮边框」规则(.sx-changes-act{border:none;background:transparent})会剥掉
+     容器面,此处以更高特异度补回描边圆角方钮(2026-11-13 用户裁定「停钮还是不对」) */
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-soft); color: var(--fg-icon); }
 .tb-card:hover .bg-act, .tb-card .bg-act:focus-visible { opacity: 1; }
+.tb-card .bg-act:hover { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--border)); background: color-mix(in srgb, var(--err) 8%, var(--surface-elevated)); }
+.tb-card .bg-act.arm { color: #fff; background: var(--err); border-color: var(--err); }
 /* 2026-10-24 后台任务行制改版(用户裁定):单行=状态点+运行时长+命令一行省略+创建时间(状态点
  * 复用 tb-status-dot 全项目同款);展开详情仅命令+结果(类型/状态/exit/id 退役——用户不关心);
  * 结果区最大高度内部滚动(有界滚动语义同 DAG 面板)。2026-10-31 运行时长前移到图标后
@@ -2883,7 +2893,7 @@ input.sx-setting-input { width: 100%; }
    与列表项行距各 +一档,列表项与普通换行拉开区分;行高 1.65→1.7。只动 .entry 正文域 ===== */
 .entry h1, .entry h2, .entry h3, .entry h4 { margin: 38px 0 16px; } /* 2026-11-07 二轮「大标题追加上边距」30→38(下 16 不变) */
 .entry ul, .entry ol { margin: 14px 0; } /* 2026-11-07 间隙优化轮 */
-.entry li + li { margin-top: 4px; } /* 列表项行距(2026-11-12 用户裁定「再缩窄」:10→4) */
+.entry li + li { margin-top: 7px; } /* 列表项行距(2026-11-12「再缩窄」10→4;2026-11-13 用户裁定「正文列表行距稍微增加一点点」4→7) */
 .entry li > ul, .entry li > ol { margin: 4px 0; } /* 嵌套列表贴主项,不吃满档 */
 .entry pre { margin: 14px 0; }
 .entry table { margin: 16px 0; } /* 2026-11-07 二轮 */
@@ -3953,7 +3963,7 @@ html[data-theme='light'][data-code-dark='1'] {
 /* 暗面容器统一规则:井底+暗色主题前景令牌族(用户代码块/文件源码视图容器/工具行
    展开体含 diff 预览/审查页双列/单文件 diff 体)。md 预览面(.files-md)不算代码块——
    整面不翻,只翻其内 pre 围栏(2026-11-12 用户裁定「只有涉及代码块的」) */
-html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .files-md, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body) { /* 2026-11-13 用户裁定「暗色代码包括预览,按钮图标等」:md 预览整面入暗(其内 pre 已有独立暗面规则) */
+html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .files-md, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body, .mermaid-svg, .mermaid-pending, .mermaid-fallback, .mermaid-error) { /* 2026-11-13 用户裁定「暗色代码=完全和暗色模式一样,包括 mermaid/预览」:mermaid 容器族(成图卡/流式占位/降级源码/错误卡)随暗码整面入暗;外层 .mermaid-block 不吃底(方角底会外溢内层圆角) */ /* 2026-11-13 用户裁定「暗色代码包括预览,按钮图标等」:md 预览整面入暗(其内 pre 已有独立暗面规则) */
   background: #101010;
   color: #dfdfdf;
   --fg: #dfdfdf;
@@ -3963,6 +3973,10 @@ html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .file
   --fg-icon: rgba(223, 223, 223, 0.85);
 }
 html[data-theme='light'][data-code-dark='1'] .code-block { border-color: rgba(255, 255, 255, 0.08); }
+html[data-theme='light'][data-code-dark='1'] .mermaid-block {
+  --fg: #dfdfdf; --fg-secondary: rgba(223, 223, 223, 0.7); --fg-tertiary: rgba(223, 223, 223, 0.5);
+  --fg-muted: rgba(223, 223, 223, 0.52); --fg-icon: rgba(223, 223, 223, 0.85);
+} /* mermaid 外层块不吃底,只翻前景令牌供放大/复制钮 */
 html[data-theme='light'][data-code-dark='1'] .tool-md pre { background: rgba(255, 255, 255, 0.06); color: inherit; }
 html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010; color: #dfdfdf; }
 
@@ -4075,3 +4089,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    <code> 未覆写,落到 UA 缺省 font-family:monospace(通用等宽=Windows 回落字母间距不一的原始
    脸),系统代码字体/字号怎么设都不跟。此处强制继承,工具行 exec 展开与后台任务命令井同时收口 */
 .tool-io-pre code, .tool-io-pre .exec-prompt, .tool-io-pre .exec-output, .tool-io-pre .hljs { font-family: inherit; font-size: inherit; }
+
+/* 滚动条默认宽度=hover 时的展开宽度(2026-11-13 用户复裁定「不用加粗,是保持 hover 时的宽度」):
+   宽度仍 5px 不变,只去掉拇指 1px 透明内缩边——默认即满宽实心(此前默认 3px 细线,hover 才显厚);
+   hover 仅提亮不换宽。正文 .chat 由自绘 overlay 条独占(width:0 灭迹,既有规则不动) */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--fg) 26%, transparent);
+  border: none; border-radius: 4px;
+  min-height: 40px;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--border-strong); }
