@@ -35,4 +35,4 @@
 .tb-card .bg-act:hover { background: var(--err, #e5484d); color: #fff; border-color: transparent; }
 
 /* 停止钮二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击红边框+红字,再击执行 */
-.tb-stop.arm, .tb-card .bg-act.arm { color: #fff; border-color: transparent; opacity: 1; }
+.tb-stop.arm, .tb-card .bg-act.arm { background: var(--err, #e5484d); color: #fff; border-color: transparent; border-radius: var(--radius-xs); opacity: 1; } /* 2026-11-14 用户裁定:二次确认=红底圆角方+白色方框线框图标(删除按钮同款容器) */
