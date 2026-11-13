@@ -2,7 +2,8 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
 import { t } from '../../i18n';
-import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
+import { keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './md-render';
+import { buildMdComponents } from '../Chat';
 
 /** 计划确认卡(2026-11-03 修订重排:滚动文档区+常驻反馈框;2026-11-04 泛化:按钮集随当前档自适应):
  *  计划书 markdown(沿 GUI 既有 markdown 通道,mdComponentsPlain 无链接版+keepUrl,ToolEntry 结果区
@@ -63,10 +64,14 @@ export function PlanCard({ doc, name, path, onOpenFile, onDecide, mode = 'plan' 
           )
         ) : null}
       </div>
-      <div className="plan-card-doc tool-md">
-        <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>
-          {doc}
-        </ReactMarkdown>
+      <div className="plan-card-doc">
+        {/* 2026-11-13 用户裁定「计划书渲染使用 md 文件的渲染方式,不是原生的」:改走 files-md
+            预览通道(buildMdComponents 全量组件+files-md 排版),替代原 tool-md/mdComponentsPlain */}
+        <div className="files-md">
+          <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={buildMdComponents((p) => { if (onOpenFile !== undefined) onOpenFile(p); })}>
+            {doc}
+          </ReactMarkdown>
+        </div>
       </div>
       <div className="plan-card-feedback">
         <textarea
