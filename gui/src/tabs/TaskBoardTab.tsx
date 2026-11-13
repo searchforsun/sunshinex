@@ -309,7 +309,7 @@ function TaskCard({
                       }
                     }}
                   >
-                    <Square size={14} strokeWidth={2} aria-hidden="true" />
+                    <Square size={14} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                   </button>
                 )}
               </li>

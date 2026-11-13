@@ -322,7 +322,7 @@ export function BgTasksTab({
                         }
                       }}
                     >
-                      <Square size={14} strokeWidth={2} aria-hidden="true" />
+                      <Square size={14} strokeWidth={2.25} fill="currentColor" aria-hidden="true" />
                     </button>
                   )}
                   <span className="todo-card-time" data-tip={t('Created', '创建时间')}>
