@@ -77,7 +77,14 @@ export async function listChanges(root: string): Promise<Result<{ branch: string
     });
   }
   const areas = await listChangeAreas(root, lines.slice(1));
-  return ok({ branch, files, ...areas });
+  // 目录项过滤(2026-11-13 用户裁定「文件夹不要显示到 diff 中」):git status 对未跟踪目录出
+  // 「?? dir/」(带尾斜杠)——审查页/轮末卡一律只列真实文件,目录行(无行数无内容可看)不出现;
+  // 唯一例外无——.sunshinex/ 工作树数据目录同样按目录滤除
+  const isDirRow = (path: string): boolean => path.endsWith('/');
+  const files2 = files.filter((f) => !isDirRow(f.path));
+  const staged2 = areas.staged.filter((f) => !isDirRow(f.path));
+  const unstaged2 = areas.unstaged.filter((f) => !isDirRow(f.path));
+  return ok({ branch, files: files2, staged: staged2.length > 0 ? staged2 : undefined, unstaged: unstaged2.length > 0 ? unstaged2 : undefined });
 }
 
 /** porcelain XY 拆两区(2026-11-09 审查页分「已暂存/未暂存」):X=暂存区相对 HEAD、Y=工作区相对暂存区;
