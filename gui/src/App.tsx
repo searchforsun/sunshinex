@@ -725,15 +725,12 @@ function AppShell(): JSX.Element {
     }
     if (connInstance === null) return;
     pendingFileTabRef.current = abs;
+    // 2026-11-14 用户裁定「打开项目不要自动打开之前运行的会话项」:原先无会话时点树内文件会
+    // attach 到该项目最近一次会话(rows[0],常是**运行中**的那个)并接管主视图——运行中会话被
+    // 乱动。改为一律开该根的新壳会话承载文件页签,旧会话原样不动
     void Promise.resolve()
-      .then(() => connInstance.sessionsOf(root))
-      .then((rows) => {
-        const first = rows[0];
-        if (first === undefined) return connInstance.newSession(root).then((r) => ({ sessionId: r.sessionId, journalId: undefined as string | undefined, root }));
-        return connInstance
-          .newSession(first.root ?? root)
-          .then(({ sessionId }) => connInstance.attach(sessionId, first.id).then((r) => ({ sessionId: r.sessionId, journalId: first.id, root: r.root || first.root || root })));
-      })
+      .then(() => connInstance.newSession(root))
+      .then((r) => ({ sessionId: r.sessionId, journalId: undefined as string | undefined, root }))
       .then(({ sessionId, journalId, root: realRoot }) => openSession(sessionId, realRoot, journalId))
       .catch((err: unknown) => {
         // 建席链败:排队旗回收——残留会在用户下次打开任意会话时补开出陈旧路径的幽灵文件标签
