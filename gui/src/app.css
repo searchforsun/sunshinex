@@ -1993,7 +1993,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .tb-task-row:focus-within .tb-stop,
 .tb-dag-node:hover .tb-stop,
 .tb-dag-node:focus-within .tb-stop { opacity: 1; pointer-events: auto; }
-.tb-stop:hover { color: var(--err); }
+.tb-stop:hover { background: var(--err); color: #fff; }
 /* 停止二段确认武装态(2026-11-06 用户裁定):实心红底+白色方块(2026-11-14 用户裁定「二次确认时显示白色的正方形」) */
 .tb-stop.arm { background: var(--err); border-color: var(--err); color: #fff; opacity: 1; pointer-events: auto; }
 .tb-stop.arm:hover { background: color-mix(in srgb, var(--err) 85%, #000); border-color: var(--err); color: #fff; }

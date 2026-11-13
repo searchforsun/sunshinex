@@ -32,7 +32,7 @@
 /* 后台任务暂停/恢复钮(2026-11-01 用户裁定「外椭圆内方图标,hover 显示红色线」):圆描边透明常态,
    hover 红描边红字;恢复钮(Play)同待遇 */
 .tb-card .bg-act { border: 1px solid transparent; border-radius: 50%; }
-.tb-card .bg-act:hover { color: var(--err, #e5484d); border-color: var(--err, #e5484d); }
+.tb-card .bg-act:hover { background: var(--err, #e5484d); color: #fff; border-color: transparent; }
 
 /* 停止钮二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击红边框+红字,再击执行 */
-.tb-stop.arm, .tb-card .bg-act.arm { color: var(--err, #e5484d); border-color: var(--err, #e5484d); opacity: 1; }
+.tb-stop.arm, .tb-card .bg-act.arm { color: #fff; border-color: transparent; opacity: 1; }
