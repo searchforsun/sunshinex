@@ -49,7 +49,8 @@ describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
     fireEvent.keyDown(name, { key: 'Enter' }); // 键盘同道:不冒泡触发折叠
     expect(onOpenTask).toHaveBeenLastCalledWith('bg:x1');
     expect(onToggle).not.toHaveBeenCalled();
-    expect(getByText(/Worked for/)).toBeTruthy(); // 既有 sealed 文案原样在场
+        expect(container.querySelector('.entry-run.wake-start')).not.toBeNull(); // 轮次开头 30px 上距(fork-origin 同款口径)
+expect(getByText(/Worked for/)).toBeTruthy(); // 既有 sealed 文案原样在场
   });
 
   it('板任务名点击走板路由', () => {
@@ -66,7 +67,8 @@ describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
     const { getByText, queryByRole, container } = render(<RunEntryView entry={{ ...base, seconds: 5 }} wake={[{ id: 'x2' }]} onOpenTask={onOpenTask} />);
     expect(getByText(/Woken by background task/)).toBeTruthy();
     expect(queryByRole('button', { name: 'Woken by background task' })).toBeNull();
-    expect(container.querySelector('.wake-name')).toBeNull(); // 无名=整行无点击元素
+        expect(container.querySelector('.entry-run.wake-start')).not.toBeNull(); // 无名也是唤醒轮开头
+expect(container.querySelector('.wake-name')).toBeNull(); // 无名=整行无点击元素
     fireEvent.click(getByText(/Woken by background task/));
     expect(onOpenTask).not.toHaveBeenCalled();
   });

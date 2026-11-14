@@ -103,7 +103,7 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
     // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
     return (
       <div
-        className="entry entry-run sealed"
+        className={`entry entry-run sealed${wake !== undefined ? ' wake-start' : ''}`}
         aria-label="run summary"
         role={onToggle !== undefined ? 'button' : undefined}
         tabIndex={onToggle !== undefined ? 0 : undefined}
@@ -142,7 +142,7 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   // 运行中也可折叠(2026-11-07 用户裁定):折叠留最后一条工具/思考行与最后一段正文,封段后常规折叠
   return (
     <div
-      className="entry entry-run live"
+      className={`entry entry-run live${wake !== undefined ? ' wake-start' : ''}`}
       role={onToggle !== undefined ? 'button' : 'status'}
       aria-label="run status"
       tabIndex={onToggle !== undefined ? 0 : undefined}
