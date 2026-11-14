@@ -32,7 +32,7 @@ export function extOf(relPath: string): string | undefined {
 
 export function isDeliverablePath(relPath: string): boolean {
   const ext = extOf(relPath);
-  return ext !== undefined && ext in KIND_LABELS;
+  return ext !== undefined && KIND_LABELS[ext] !== undefined; // 直查与 artifactKindLabel 同形——`in` 走原型链,toString 等基名会误判
 }
 
 /** 「类目 · 大写扩展名」标签；非产物 undefined */

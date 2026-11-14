@@ -13,6 +13,7 @@ describe('产物分类器与标签', () => {
   it('isDeliverablePath 与内核白名单同形', () => {
     expect(isDeliverablePath('docs/a.md')).toBe(true);
     expect(isDeliverablePath('src/index.ts')).toBe(false);
+    expect(isDeliverablePath('notes.toString')).toBe(false);
   });
   it('artifactKindLabel:「类目 · 大写扩展名」,非产物 undefined', () => {
     expect(artifactKindLabel('docs/TECH-DEBT-LOG.md')).toBe('文档 · MD');
