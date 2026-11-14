@@ -907,12 +907,13 @@ describe('会话流尾部窗口(D48)', () => {
     // 余量由空闲分批回放;测试环境无 requestIdleCallback 走 64ms setTimeout 兜底,此处显式点按钮走手动步进
     const initial = document.querySelectorAll('.entry-user').length;
     expect(initial).toBeGreaterThan(0);
-    expect(initial).toBeLessThan(620);
+    expect(initial).toBeLessThanOrEqual(100); // 入口窗口=80(裁定量),防窗口悄然放宽回全量
     const earlier = document.querySelector('.chat-earlier')!;
     expect(earlier.textContent).toContain(String(620 - initial)); // 窗口外=N-初始窗
     fireEvent.click(earlier); // 手动步进 +300(显式动作取大批)
     await flushed();
-    expect(document.querySelectorAll('.entry-user').length).toBeGreaterThan(initial);
+    expect(document.querySelectorAll('.entry-user').length).toBe(initial + 300); // 步进=300 钉死
+    expect(document.querySelector('.chat-earlier')).not.toBeNull(); // 620>80+300,头仍在
   });
 });
 
@@ -1144,10 +1145,10 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     mountChat(many as unknown as Seed[]);
     await flushed();
     const initial = document.querySelectorAll('.entry-user').length;
-    expect(initial).toBeLessThan(620); // 入口窗口=视口级(2026-11-13),非全量
+    expect(initial).toBeLessThanOrEqual(100); // 入口窗口=80(裁定量),非全量
     fireEvent.scroll(document.querySelector('.chat')!); // 硬顶 scrollTop=0 触发步进
     await flushed();
-    expect(document.querySelectorAll('.entry-user').length).toBeGreaterThan(initial);
+    expect(document.querySelectorAll('.entry-user').length).toBe(initial + 300); // 步进=300 钉死
   });
 
   it('G14.2xx 流式期间滚轮上翻立即脱离贴底跟随(wheel 意图直判)', async () => {

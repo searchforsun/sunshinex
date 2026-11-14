@@ -1,5 +1,6 @@
 import { artifactKey, type Artifact, type ChangeFile, type SessionEvent, type TurnFileChange } from '../types';
 import { LEADER_RECIPIENT } from '../taskboard/leader';
+import { WAKE_NOTICE_TAG } from './wake';
 
 /**
  * SessionKernel 条目模型与纯 reducer(spec 2026-10-17-session-kernel §3.3)。三份投影的并集语义
@@ -149,7 +150,7 @@ export function inboundMessageOf(payload: Record<string, unknown> | undefined): 
  *  内核忠实归档(journal 审计面保留),但 TUI/GUI 渲染面统一不显示。原 GUI 私有实现上收:
  *  两端同一裁定,防「同会话两端行数不同」分叉 */
 export function isQuietNotice(md: string): boolean {
-  return md.startsWith('<task-notification>') || /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
+  return md.startsWith(WAKE_NOTICE_TAG) || /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
 }
 
 /** 未配对 tool 旁挂记账(条目本体已在列,缺面由迟到者回填;同 collector PendingTool) */

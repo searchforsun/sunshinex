@@ -43,14 +43,18 @@ export function toWakeRefs(
   });
 }
 
+/** 唤醒通知标签单点：构建端（buildWakeNotification）与过滤端（entry.ts isQuietNotice）同源引用，改文案不静默失配 */
+export const WAKE_NOTICE_TAG = '<task-notification>';
+const WAKE_NOTICE_TAG_END = '</task-notification>';
+
 /** 模型面通知文（spec §5.2）：定性说明在正文内、回执由 receiptOf 注入（=task_wait receiptBody 同构）、系统提示零改动 */
 export function buildWakeNotification(refs: readonly WakeRef[], receiptOf: (id: string) => string): string {
   return [
-    '<task-notification>',
+    WAKE_NOTICE_TAG,
     'Automated notice, not a user message: background work you started earlier has finished.',
     ...refs.map((r) => receiptOf(r.id)),
     'Continue any work that was waiting on this result; if nothing remains, reply briefly.',
-    '</task-notification>',
+    WAKE_NOTICE_TAG_END,
   ].join('\n');
 }
 

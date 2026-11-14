@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArtifactCardView } from './chat/ArtifactsStrip';
-import { type ArtifactRow } from '../artifacts';
+import { artifactKey, type ArtifactRow } from '../artifacts';
 import { t } from '../i18n';
 import type { Connection } from '../connection';
 
@@ -31,6 +31,7 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
         setItems(r.items);
         setError('');
       }, (err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      // 错误已在 then 第二参落态;尾随 catch 仅防 setError/then 链本身抛错外溢
       .catch(() => {});
   }, [conn, sessionId]);
   useEffect(() => {
@@ -47,7 +48,7 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
         <div className="sx-artifacts-grid">
           {items.map((a) => (
             <ArtifactCardView
-              key={a.kind === 'file' ? `${a.path}:${a.runSeq}` : a.kind === 'url' ? `${a.url}:${a.runSeq}` : `${a.command}:${a.runSeq}`}
+              key={`${artifactKey(a)}:${a.runSeq}`}
               a={a}
               conn={conn}
               root={root}

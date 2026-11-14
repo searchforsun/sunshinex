@@ -57,34 +57,30 @@ function boardKeyOf(boardTasks: Record<string, { id: string }>, rawId: string): 
   return m !== null && boardTasks[m[1]] !== undefined ? m[1] : undefined;
 }
 
-function parseTimeout(rawTimeout: number): number {
-  const timeoutSeconds = rawTimeout;
-  if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
+/** 共享校验（两钳制策略同源）：非负有限数，0 保留为窥视态 */
+function validateTimeoutSeconds(rawTimeout: number): number {
+  if (typeof rawTimeout !== 'number' || !Number.isFinite(rawTimeout) || rawTimeout < 0) {
     throw new CodedToolError(
       'INVALID_ARG',
       `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`,
     );
   }
-  if (timeoutSeconds === 0) return 0; // 窥视态不进范围
+  return rawTimeout === 0 ? 0 : rawTimeout;
+}
+
+function parseTimeout(rawTimeout: number): number {
   // 钳进 1–30 分钟窗口(2026-11-13 用户裁定):低于 1 分钟抬高到 1 分钟(短抖动等待无意义),
-  // 高于 30 分钟压回 30 分钟(防死等;模型可到期回执后再等一轮)
-  return Math.min(Math.max(timeoutSeconds, WAIT_CLAMP_MIN_SECONDS), WAIT_CLAMP_MAX_SECONDS);
+  // 高于 30 分钟压回 30 分钟(防死等;模型可到期回执后再等一轮);0=窥视态不进范围
+  const v = validateTimeoutSeconds(rawTimeout);
+  return v === 0 ? 0 : Math.min(Math.max(v, WAIT_CLAMP_MIN_SECONDS), WAIT_CLAMP_MAX_SECONDS);
 }
 
 /** 板任务等待钳制(2026-11-13 用户裁定「智能体的等待给 5-30 分钟窗口」):封顶 1800 秒,
  *  下不限——该工具是**事件等待**(任一状态变更即回),短窗口正是核心设计且永不死等;
  *  30 分钟上限防「无事件 blind block」。schema 描述里 5-30 分钟为模型推荐窗口 */
 function parseTeamTimeout(rawTimeout: number): number {
-  // 不复用 parseTimeout(其 60s 下限会破事件等待的短窗口);独立校验+仅封顶
-  const timeoutSeconds = rawTimeout;
-  if (typeof timeoutSeconds !== 'number' || !Number.isFinite(timeoutSeconds) || timeoutSeconds < 0) {
-    throw new CodedToolError(
-      'INVALID_ARG',
-      `timeoutSeconds must be a non-negative number (0 = non-blocking status peek), got: ${String(rawTimeout)}`,
-    );
-  }
-  if (timeoutSeconds === 0) return 0;
-  return Math.min(timeoutSeconds, 1800);
+  // 不复用 parseTimeout(其 60s 下限会破事件等待的短窗口);同校验单点+仅封顶
+  return Math.min(validateTimeoutSeconds(rawTimeout), WAIT_CLAMP_MAX_SECONDS);
 }
 
 /** 板态变化（任一即醒）：from=本次调用入口快照，to=醒时板态 */

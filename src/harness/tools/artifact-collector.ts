@@ -65,7 +65,7 @@ export class ArtifactCollector {
 }
 
 /** 供类型引用的来源窄化（builtin executor 校验后构造声明条用） */
-export type DeclaredArtifactInput = {
+type DeclaredArtifactInput = {
   kind: 'file' | 'url' | 'command';
   path?: string;
   url?: string;
@@ -74,10 +74,12 @@ export type DeclaredArtifactInput = {
   desc?: string;
 };
 
-/** 声明条构造（executor 校验通过后调）：kind 判别装配 + source 钉 'tool' */
+/** 声明条构造（executor 校验通过后调）：kind 判别装配 + source 钉 'tool'；
+ *  title/desc 清洗（trim+非空过滤+长度帽 120/200）在此单点，调用方传原始值即可 */
 export function buildDeclaredArtifact(input: DeclaredArtifactInput): Artifact {
-  const { title, desc } = input;
-  const meta = { ...(title !== undefined && title !== '' ? { title } : {}), ...(desc !== undefined && desc !== '' ? { desc } : {}) };
+  const title = typeof input.title === 'string' && input.title.trim() !== '' ? input.title.trim().slice(0, 120) : undefined;
+  const desc = typeof input.desc === 'string' && input.desc.trim() !== '' ? input.desc.trim().slice(0, 200) : undefined;
+  const meta = { ...(title !== undefined ? { title } : {}), ...(desc !== undefined ? { desc } : {}) };
   if (input.kind === 'file') return { kind: 'file', path: input.path!, source: 'tool', ...meta };
   if (input.kind === 'url') return { kind: 'url', url: input.url!, source: 'tool', ...meta };
   return { kind: 'command', command: input.command!, source: 'tool', ...meta };

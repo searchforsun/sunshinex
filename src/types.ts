@@ -388,9 +388,6 @@ export function artifactKey(a: Artifact): string {
   return `c:${a.command.trim()}`;
 }
 
-/** 轮次产物行兼容别名（旧名;2026-11-14 kind 化后仅剩类型面引用,行数据一律 Artifact） */
-export type ArtifactFile = Extract<Artifact, { kind: 'file' }>;
-
 /** 交付物扩展名白名单（2026-11-12 spec §3.2 非代码口径，用户裁定）：内核声明钩与 bash 兜底
  *  共用单点；GUI 侧类目标签副本在 gui/src/artifacts.ts */
 const ARTIFACT_EXTS: ReadonlySet<string> = new Set([

@@ -24,18 +24,11 @@ async function loadEditors(conn: Connection): Promise<Array<{ id: string; name: 
   return editorsPromise;
 }
 
-function EditorGlyph({ id, icons, size = 14 }: { id: string; icons: Record<string, string>; size?: number }): JSX.Element {
-  const url = icons[id] ?? editorIconCached(id);
-  if (url !== undefined) return <img src={url} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
-  return <ExternalLink size={size - 2} strokeWidth={1.75} />;
-}
-void EditorGlyph;
-
 /** 「打开 ▾」统一动作钮(2026-11-14 用户裁定「所有的都是同一 打开 ▾」):主钮=该类产物的主动作
- *  (file=侧栏预览/url=右栏 Web 页签/command=复制),caret=选项菜单;菜单项点击=立即执行。
- *  useEditors=true(file 类)=菜单由 /app/editors 实装清单+系统默认装配(原生图标+反误触缺省);
- *  否则用调用方 items(url=系统浏览器/command=复制命令)。主钮文案统一「打开」,command 类复制
- *  后短暂回显「已复制」 */
+ *  (file=侧栏预览/url=右栏 Web 页签/command=开终端页签写入声明命令,无接线时兜底复制),caret=选项
+ *  菜单;菜单项点击=立即执行。useEditors=true(file 类)=菜单由 /app/editors 实装清单+系统默认装配
+ *  (原生图标+反误触缺省);否则用调用方 items(url=系统浏览器/command=复制命令)。主钮文案统一「打开」,
+ *  兜底复制路径短暂回显「已复制」 */
 export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDefault, onOpenWith, items = [], ariaLabel }: {
   conn?: Connection;
   onOpError?: (err: unknown) => void;
@@ -65,7 +58,8 @@ export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDe
               const url = `data:${r.mime};base64,${r.data}`;
               editorIconPut(e.id, url);
               setIcons((prev) => ({ ...prev, [e.id]: url }));
-            }, () => {})
+              // 图标拉取失败静默降级:清单可用,仅缺缩略图(非用户操作路径,不打扰 onOpError)
+            })
             .catch(() => {});
         }
       })

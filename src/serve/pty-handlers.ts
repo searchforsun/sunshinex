@@ -1,7 +1,7 @@
 import * as http from 'node:http';
 import * as os from 'node:os';
 import { clearReplay, loadReplay, saveReplay } from './pty-replay-store';
-import { defaultScratchRoot } from './session-lifecycle';
+import { defaultScratchRoot, DEFAULT_ROOT_LITERAL } from './session-lifecycle';
 import type { SessionRuntime } from './session';
 import type { PtyManager } from './pty';
 
@@ -39,11 +39,11 @@ async function allocPty(
   const body = parsed.body as { cols?: unknown; rows?: unknown; prevPtyId?: unknown; root?: unknown } | null;
   const cols = body?.cols ?? 80;
   const rows = body?.rows ?? 24;
-  const located = resolve(body);
   if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 1 || typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
     io.send(res, 400, { error: 'cols and rows must be positive integers' });
     return;
   }
+  const located = resolve(body);
   if (located === undefined) return;
   const ptyId = io.nextPtyId();
   // 回放回种(2026-11-07 用户裁定「要看连续」):GUI 持有的死档 ptyId(prev)→ 落盘环形缓冲回种为
@@ -97,7 +97,7 @@ export async function handleAppPtyAlloc(io: PtyHandlerIo, req: http.IncomingMess
     // root 字面 'default'(2026-11-14 欢迎页终端:GUI 上提的欢迎页选中工作区可能是缺省锚字面)——
     // 解析为 <tmp>/sunshinex-default(defaultScratchRoot 单点,与 createSession 同规则),不再 cwd='default' 相对目录
     const raw = typeof body?.root === 'string' && body.root !== '' ? body.root : undefined;
-    const root = raw === undefined ? os.tmpdir() : raw === 'default' ? defaultScratchRoot() : raw;
+    const root = raw === undefined ? os.tmpdir() : raw === DEFAULT_ROOT_LITERAL ? defaultScratchRoot() : raw;
     return { cwd: root, owner: '@app' };
   });
 }

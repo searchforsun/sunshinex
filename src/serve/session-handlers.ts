@@ -7,6 +7,7 @@ import { parseAskAnswer, type DaemonFrame } from './daemon-wire';
 import type { AskUserAnswer } from '../types';
 import type { ModelAdapter } from '../model/adapter';
 import { createKernelRuntime } from '../session/runtime';
+import { DEFAULT_ROOT_LITERAL } from './session-lifecycle';
 
 /** sidecar 问询墙钟上限（fork/ask 旁车一次性调用，与主链长任务预算解耦） */
 const FORK_ABORT_TIMEOUT_MS = 180_000;
@@ -541,7 +542,7 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
   // default 工作区语义(G10 用户裁定 + G14.10 B 方案):root='default' = 非文件类任务与对话的
   // 缺省落点——锚定专用临时目录 <tmp>/sunshinex-default(用户裁定:临时任务的文件不再落仓库);
   // 目录缺场即建,注册表扫描自然纳入
-  if (root === 'default') {
+  if (root === DEFAULT_ROOT_LITERAL) {
     root = io.defaultScratchRoot();
     const sunshine = path.join(root, 'SUNSHINE.md');
     if (!fs.existsSync(sunshine)) {

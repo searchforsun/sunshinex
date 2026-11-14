@@ -818,9 +818,8 @@ export function builtinTools(
       let n = 0;
       for (const item of raw) {
         const o = (item ?? {}) as Record<string, unknown>;
-        const title = typeof o.title === 'string' && o.title.trim() !== '' ? o.title.trim().slice(0, 120) : undefined;
-        const desc = typeof o.desc === 'string' && o.desc.trim() !== '' ? o.desc.trim().slice(0, 200) : undefined;
-        const meta = { ...(title !== undefined ? { title } : {}), ...(desc !== undefined ? { desc } : {}) };
+        const title = typeof o.title === 'string' ? o.title : undefined;
+        const desc = typeof o.desc === 'string' ? o.desc : undefined;
         if (o.kind === 'file') {
           const p = typeof o.path === 'string' ? o.path.trim() : '';
           if (p === '') throw new CodedToolError('INVALID_ARG', 'kind=file requires path');
@@ -830,7 +829,7 @@ export function builtinTools(
           } catch {
             throw new CodedToolError('INVALID_ARG', `declared file does not exist on disk: ${p} — create it first, then declare`);
           }
-          entries.push(buildDeclaredArtifact({ kind: 'file', path: path.relative(root, abs).replaceAll('\\', '/'), ...meta }));
+          entries.push(buildDeclaredArtifact({ kind: 'file', path: path.relative(root, abs).replaceAll('\\', '/'), title, desc }));
           n += 1;
           lines.push(`file ${p}`);
           continue;
@@ -838,7 +837,7 @@ export function builtinTools(
         if (o.kind === 'url') {
           const u = typeof o.url === 'string' ? o.url.trim() : '';
           if (!/^https?:\/\//i.test(u)) throw new CodedToolError('INVALID_ARG', `kind=url requires an http(s) URL, got: ${u === '' ? '(empty)' : u}`);
-          entries.push(buildDeclaredArtifact({ kind: 'url', url: u, ...meta }));
+          entries.push(buildDeclaredArtifact({ kind: 'url', url: u, title, desc }));
           n += 1;
           lines.push(`url ${u}`);
           continue;
@@ -846,7 +845,7 @@ export function builtinTools(
         if (o.kind === 'command') {
           const cmd = typeof o.command === 'string' ? o.command.trim() : '';
           if (cmd === '') throw new CodedToolError('INVALID_ARG', 'kind=command requires a non-empty command');
-          entries.push(buildDeclaredArtifact({ kind: 'command', command: cmd, ...meta }));
+          entries.push(buildDeclaredArtifact({ kind: 'command', command: cmd, title, desc }));
           n += 1;
           lines.push(`command ${cmd}`);
           continue;

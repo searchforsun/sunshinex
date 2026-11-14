@@ -17,7 +17,7 @@ import { MemoryStore } from './memory/store';
 import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
-import { TaskRegistry, WAKE_HINT } from './tasks';
+import { TaskRegistry, WAKE_HINT, wakeHintGate } from './tasks';
 import { FORK_EXCLUDED_TOOLS } from './tools/taskboard-tools';
 import { makeTaskWaitTool } from './tools/task-wait';
 import { makeAskQuestionTool } from './tools/builtin';
@@ -457,7 +457,7 @@ export class SubagentRunner {
         ledger.finish(task.id, 'failed');
       }
     })();
-    return { taskId: task.id, outputFilePath: task.outputFilePath, ...(ledger !== undefined && ledger.wakeHint === true && ledger.currentOwner() === 'main' ? { wakeHint: WAKE_HINT } : {}) };
+    return { taskId: task.id, outputFilePath: task.outputFilePath, ...(ledger !== undefined && wakeHintGate(ledger) ? { wakeHint: WAKE_HINT } : {}) };
   }
 
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */

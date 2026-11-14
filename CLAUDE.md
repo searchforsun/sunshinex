@@ -84,10 +84,11 @@ src/
     skills/           # learned.ts（FIFO 沉淀）、learned-extract.ts
     memory/           # store/guards/extractor/consolidate/pipeline（记忆单点+后台管线；log.jsonl 追加只增=OKF log 件；Wiki 层：links/superseded_by、topics/ 主题综述页派生物、MEMORY.md 两段化）
     tools.ts          # 工具注册表（统一执行面 + 安全链）
-    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write/exit_plan）
+    tools/builtin.ts  # 内置工具（read/write/edit/grep/glob/exec/webfetch/websearch/kb_search/skill/load_agent_teams/load_subagent/memory_write/ask_question/worktree/todo_write/exit_plan/report_artifacts）
     plugin-host.ts    # 插件宿主装配单点（browser-use 连接改写为每进程宿主 HTTP 连接）
     tools/task-stop.ts # task_stop 与 agent_team_task_stop（agentTeams 开时注册）
     tools/task-wait.ts # task_wait 与 agent_team_task_wait（同上）
+    tools/artifact-collector.ts # 产物收集/声明双写入口（report_artifacts 声明与 bash 新建交付物并网）
     tasks.ts          # 统一后台任务账本（exec/spawn ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输；入口探活+断链重连 ≤2 次）
     subagent.ts       # 子智能体执行单元（spawn 工具面 + fork 执行/回写/预算/并发护栏）
@@ -102,7 +103,7 @@ src/
   eval/               # 长任务基准集（eval-run.mjs 数据面）
   taskboard/          # 智能体团队域模型与协调器（model/board/store/translate/teammate/team-registry/inbox/executors）
   delegation/         # 委派投影（spawn/后台/graph 节点统一生命周期，TUI/GUI 同源）
-  session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）
+  session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）
   serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows）
   storage/            # 本地 JSON 存储底座；archive.ts（归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；直接 import 主仓 TS 源保类型同源）
@@ -126,7 +127,7 @@ SUNSHINE.md          # 项目业务配置
 
 - TypeScript strict，禁止无理由 any；一文件一职责；IO 集中在 adapter/store；测试与被测模块同目录（`*.test.ts`，统一 `pnpm test`）；新增共享类型登记 `src/types.ts`；改动后跑 `pnpm selfcheck`
 - **主链工具面**（装配期一次性登记，selfcheck `tools :` 行同源）：
-  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `load_agent_teams` / `load_subagent` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree` / `exit_plan`（挂起型出牌工具，plan 接缝在场时 TUI/serve 恒注入，`session/runtime.ts` 装配）
+  - builtin（`tools/builtin.ts`）：`exec` / `read` / `skill` / `load_agent_teams` / `load_subagent` / `write` / `edit` / `grep` / `glob` / `webfetch` / `websearch` / `kb_search` / `todo_write` / `memory_write` / `ask_question` / `worktree` / `exit_plan`（挂起型出牌工具，plan 接缝在场时 TUI/serve 恒注入，`session/runtime.ts` 装配）/ `report_artifacts`（kind 化产物声明，artifacts 接缝在场时注册）
   - 另册：`spawn`（subagent.ts 工厂）/ `task_stop` / `task_wait`（仅 exec/spawn 台账；板 id 拒识点名 `agent_team_task_wait/stop`）；用户面列任务走 `/tasks`，不另增模型工具
   - 智能体团队八件套（`agentTeams` 门禁，缺省开；语义键/槽解析单点 `config/agent-teams.ts`）：`create_agent_team` / `create_agent_teammate` / `create_agent_team_task` / `update_agent_team_task` / `get_agent_team_board` / `send_agent_team_message` / `agent_team_task_wait`（仅板任务）/ `agent_team_task_stop`；板态 `pending/running/success/failed/cancelled`；关开关则不注入且 GUI 隐页签；成员面剔板面写件、换注读取件
   - 插件贡献工具以 `mcp__<server>__<tool>` 前缀进模型面，不入内置清单；guard 按 manifest `safety` 三类驱动问线（`act` 任何档强制 ask、`confirm` 通用 ask+会话一次放行、`observe` 直放），未声明走通用 MCP 审批；工具 schema 由 server 经 `tools/list` 下发，harness 不手写

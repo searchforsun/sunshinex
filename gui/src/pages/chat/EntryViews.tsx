@@ -2,7 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, GitFork, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
-import { t } from '../../i18n';
+import { t, getLanguage } from '../../i18n';
 import { BUBBLE_MAX_HEIGHT, ClampToggle, useClampMotion } from '../../clamp-block';
 import { localizeNotice } from '../../i18n-notice';
 import { commandRunningLabel } from './ToolEntry';
@@ -95,7 +95,8 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
     <span className="wake-prefix">
       <span className="wake-lead">{first.name !== undefined ? t('Woken by background task ', '后台任务 ') : t('Woken by background task', '后台任务唤醒')}</span>
       {first.name !== undefined && nameEl}
-      {first.name !== undefined && <span className="wake-tail">{t('', ' 唤醒')}</span>}
+      {/* 尾段仅中文语法需要(「后台任务 X 唤醒」);en 语序尾段为空,空 key 不进 i18n 表 */}
+      {first.name !== undefined && getLanguage() === 'zh' && <span className="wake-tail">唤醒</span>}
     </span>
   ) : undefined;
   if (!streaming) {

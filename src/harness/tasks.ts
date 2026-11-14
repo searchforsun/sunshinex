@@ -347,7 +347,13 @@ export const WAKE_HINT =
 /** task_wait 回执再引工具名（宿主起轮处 receiptBody 调用复用，避免裸串漂移） */
 export const WAKE_HINT_RECEIPT_TOOL = 'task_wait';
 
+/** 回执提示挂载闸（闸① wakeHint 装配 × 闸② 主链归属；板任务分派点恒主链天然满足）：
+ *  spawn 回执条件挂载（subagent.ts）与 wakeHintSuffix 共用本单点 */
+export function wakeHintGate(tasks: TaskRegistry): boolean {
+  return tasks.wakeHint === true && tasks.currentOwner() === 'main';
+}
+
 /** 回执提示后缀（三道挂载闸合成点）：宿主闸① wakeHint 装配 × 闸② 主链归属；板任务分派点恒主链天然满足 */
 export function wakeHintSuffix(tasks: TaskRegistry): string {
-  return tasks.wakeHint === true && tasks.currentOwner() === 'main' ? WAKE_HINT : '';
+  return wakeHintGate(tasks) ? WAKE_HINT : '';
 }

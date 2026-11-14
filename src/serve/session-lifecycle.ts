@@ -35,6 +35,9 @@ export interface SessionLifecycleIo {
   readonly unwatchProject: (root: string) => void;
 }
 
+/** root 缺省锚字面量单点（GUI 欢迎页非项目会话的缺省锚，serve 侧解析面同源引用） */
+export const DEFAULT_ROOT_LITERAL = 'default';
+
 /** G14.10 B 方案:default 工作区锚定专用临时目录——root 字面 'default'(GUI 欢迎页非项目
  *  会话的缺省锚点)解析为 <tmp>/sunshinex-default(缺场 mkdir recursive):临时任务的文件
  *  落在系统临时目录,不再污染仓库/项目目录。非字面 root(显式项目路径)不经过此处。 */
@@ -69,7 +72,7 @@ export function mintSessionId(sessions: Map<string, SessionRuntime>, root: strin
  *  后续 /sessions 列档与 attach 重开(chain 派生转录)可消费。
  */
 export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
-  const abs = root === 'default' ? defaultScratchRoot() : path.resolve(root);
+  const abs = root === DEFAULT_ROOT_LITERAL ? defaultScratchRoot() : path.resolve(root);
   let st: fs.Stats;
   try {
     st = fs.statSync(abs);
