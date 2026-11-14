@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { COPY_RESET_MS } from '../use-copy-feedback';
 import { zoomScale } from '../ui-zoom';
 
@@ -34,6 +34,17 @@ export function SessionRowMenu({ x, y, items, onClose }: {
   onClose: () => void;
 }): JSX.Element {
   const ref = useRef<HTMLDivElement | null>(null);
+  // 纵向翻转(2026-11-14 用户裁定「下面不够显示就显示到上面」):贴窗口下缘的锚点,菜单下开
+  // 被视口裁切 → 改上开(锚上缘留 2px 缝)。挂载后 useLayoutEffect 量高翻转(绘制前生效,无闪跳)
+  const [above, setAbove] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const h = el.offsetHeight;
+    if (h === 0) return;
+    if (y + 2 + h > window.innerHeight && y > h) setAbove(true);
+  }, [y, items.length]);
+  const aboveTop = (y - 2) / zoomScale() - (ref.current?.offsetHeight ?? 0);
   useEffect(() => {
     const onDown = (e: MouseEvent): void => {
       if (ref.current !== null && e.target instanceof Element && ref.current.contains(e.target)) return;
@@ -59,7 +70,7 @@ export function SessionRowMenu({ x, y, items, onClose }: {
       ref={ref}
       className="sx-menu-pop sx-session-row-pop"
       role="menu"
-      style={{ position: 'fixed', left: x / zoomScale(), top: (y + 2) / zoomScale(), right: 'auto', transform: 'translateX(-100%)', zIndex: 200 }}
+      style={{ position: 'fixed', left: x / zoomScale(), top: above ? aboveTop : (y + 2) / zoomScale(), right: 'auto', transform: 'translateX(-100%)', zIndex: 200 }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((it) =>
