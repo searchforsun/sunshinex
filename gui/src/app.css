@@ -4112,3 +4112,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
   min-height: 40px;
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--border-strong); }
+
+/* ===== bg-wake 唤醒前缀(bg-wake spec §6):run 行内任务名可点段;定位瞬跳无闪光(CLAUDE.md §13.1 规则 6);
+   悬浮提示 data-tip(§13.1 规则 2,禁原生 title) ===== */
+.wake-name { color: var(--fg-secondary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; display: inline-block; vertical-align: bottom; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wake-name:hover { color: var(--accent); }

@@ -712,3 +712,53 @@ describe('固定头随语言渲染(2026-11-04 裁定细化:error 告警头/notic
     expect(s2.entries[1]).toMatchObject({ md: '错误: boom' });
   });
 });
+
+describe('run 行唤醒前缀配对(bg-wake 批F:唤醒 notice 不单独显示,wake 挂直接后继 run 条)', () => {
+  const WAKE = [{ id: 'x1', name: '构建前端' }];
+  const wakeNotice = (): SessionEvent => ev('notice', '<task-notification>后台任务 x1 已完成', { wake: WAKE });
+
+  it('[notice(wake), run]:唤醒 notice 不入显示列表,wake 挂后继 run 条', () => {
+    const s = fold([wakeNotice(), ev('model-start')]);
+    expect(s.entries.map((e) => e.kind)).toEqual(['run']); // notice 被 isQuietNotice 跳过,不单独显示
+    expect(s.entries[0]!.wake).toEqual(WAKE);
+  });
+
+  it('[notice(wake), assistant, run]:中间隔了未跳过条目 wake 作废(直接后继语义)', () => {
+    const s = fold([wakeNotice(), ev('token', '正文'), ev('model-start')]);
+    expect(s.entries.map((e) => e.kind)).toEqual(['assistant', 'run']);
+    expect(s.entries.at(-1)!.wake).toBeUndefined();
+  });
+
+  it('普通 [run]:无前驱唤醒 notice → wake 键不落', () => {
+    const s = fold([ev('model-start')]);
+    expect(s.entries).toHaveLength(1);
+    expect(s.entries[0]!.kind).toBe('run');
+    expect('wake' in s.entries[0]!).toBe(false);
+  });
+
+  it('同一内核态重复映射:run 条 ChatEntry 引用稳定且 wake 不丢(缓存复用三级路径)', () => {
+    const s1 = fold([wakeNotice(), ev('model-start')]);
+    const r1 = s1.entries[0]!;
+    expect(r1.wake).toEqual(WAKE);
+    // 纯统计帧(step):内核条目引用不变 → 重映射走逐位缓存,run 条视图引用必须稳定
+    const s2 = applyChatEvent(s1, ev('step', 'a'));
+    expect(s2.entries).not.toBe(s1.entries);
+    expect(s2.entries[0]).toBe(r1); // 缓存复用不换引用
+    expect(s2.entries[0]!.wake).toEqual(WAKE); // wake 不丢
+    const s3 = applyChatEvent(s2, ev('step', 'b'));
+    expect(s3.entries[0]).toBe(r1);
+  });
+
+  it('快照播种同样配对:seed 内核条目 notice(wake)+run → 显示列表无 notice,run 条带 wake', () => {
+    const s = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'notice', md: '<task-notification>后台任务 x1 已完成', wake: WAKE },
+        { seq: 2, ts: 2, kind: 'run', md: '', meta: { seconds: 6, steps: 2, tokens: 100 } },
+        { seq: 3, ts: 3, kind: 'assistant', md: '答复' },
+      ],
+      { openRun: -1, openSeg: -1 },
+    );
+    expect(s.entries.map((e) => e.kind)).toEqual(['run', 'assistant']); // notice 不显示
+    expect(s.entries[0]!.wake).toEqual(WAKE);
+  });
+});

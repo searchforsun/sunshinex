@@ -235,6 +235,8 @@ const DayGroupBlock = memo(
           <RunEntryView
             key={entry.key}
             entry={entry}
+            wake={entry.wake} // bg-wake 批F:直接前驱唤醒 notice 的引用(chat-reducer 映射期配对,条目不可变)
+            onOpenTask={onOpenTask} // 任务名点击路由:bg:<账本id>→后台任务页签 / 板 id→团队页签(App openTaskFocus 既有分流)
             collapsed={collapsedRuns.has(entry.key)}
             onToggle={toggleRun} // 运行中也可折叠(2026-11-07 用户裁定)
           />,
