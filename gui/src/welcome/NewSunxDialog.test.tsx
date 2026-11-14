@@ -139,6 +139,31 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull());
   });
 
+  it('busy 中三条关闭路径全部拒关(fix round 1:创建中不可取消——ESC/点外/✕ 均不动;resolve 后照常走 openSession+关)', async () => {
+    let release: ((v: { sessionId: string }) => void) | null = null;
+    const conn = makeConn(
+      () =>
+        new Promise<{ sessionId: string }>((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(<Harness conn={conn} />);
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '甲' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: bi('Creating…', '创建中…') }) as HTMLButtonElement).disabled).toBe(true),
+    );
+    // busy 中 ESC / 点外(遮罩) / ✕(disabled):一律拒关——弹窗停留
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+    expect((screen.getByRole('button', { name: 'close sunx dialog' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'close sunx dialog' }));
+    expect(screen.getByRole('dialog', { name: 'New Sunx' })).toBeDefined();
+    // resolve 后照常:关弹窗(成功链照旧,非 busy 关闭路径回归由上方 ESC/点外独立用例钉)
+    release!({ sessionId: 'sx-9' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull());
+  });
+
   it('失败:错误示出(role=alert),弹窗停留可改再提交', async () => {
     const conn = makeConn(() => Promise.reject(new Error('/session/new -> 400')));
     render(<Harness conn={conn} />);

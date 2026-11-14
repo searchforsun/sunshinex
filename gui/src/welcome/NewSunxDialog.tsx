@@ -54,11 +54,15 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setRoot(defaultRoot);
   }, [open, defaultRoot]);
 
-  /** 关闭三径之一:ESC。浏览面先回表单(不丢已填草稿),表单面才整弹窗关 */
+  /** 关闭三径之一:ESC。busy(提交在途)拒关——fix round 1(2026-11-15 审查 Important:提交中取消
+   *  仍会在 resolve 后经 .then 拽进刚取消的会话;语义=「创建中不可取消」,与取消/创建钮 disabled
+   *  同面;daemon 侧提交发出即必建,拒关避免「已建未开」孤儿)。浏览面先回表单(不丢已填草稿),
+   *  表单面才整弹窗关 */
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
+      if (busy) return;
       if (browse) {
         setBrowse(false);
         return;
@@ -67,7 +71,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, browse, onClose]);
+  }, [open, browse, busy, onClose]);
 
   if (!open) return null;
 
@@ -104,7 +108,9 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     <div
       className="modal-overlay"
       onClick={() => {
-        // 点外关:浏览面先回表单(与 ESC 同径,不丢草稿),表单面整弹窗关
+        // 点外关:busy 拒关(fix round 1 同 ESC——创建中不可取消);浏览面先回表单(与 ESC 同径,
+        // 不丢草稿),表单面整弹窗关
+        if (busy) return;
         if (browse) setBrowse(false);
         else onClose();
       }}
@@ -125,7 +131,8 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
           <>
             <header className="dirpicker-head">
               <span>{t('New Sunx', '新建 Sunx')}</span>
-              <button type="button" aria-label="close sunx dialog" onClick={onClose}>
+              {/* ✕ 同取消钮 disabled={busy}——第三关闭路径 busy 拒关(fix round 1) */}
+              <button type="button" aria-label="close sunx dialog" disabled={busy} onClick={onClose}>
                 ✕
               </button>
             </header>
