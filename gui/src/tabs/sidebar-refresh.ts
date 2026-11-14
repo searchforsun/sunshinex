@@ -7,4 +7,5 @@ export const REFRESHABLE_TAB_TYPES: ReadonlySet<TabTypeId> = new Set([
   'tasks',
   'memory',
   'learned',
+  'artifacts',
 ]);

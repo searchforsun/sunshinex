@@ -34,7 +34,8 @@ import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
 import { lineDiffCounts } from '../harness/tools/write-diffstat';
-import type { ChangeFile, TurnFileChange } from '../types';
+import type { ArtifactFile, ChangeFile, TurnFileChange } from '../types';
+import { mergeRunArtifacts, scanArtifactsJsonl, type AggregatedArtifact } from './artifacts-handlers';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
@@ -804,6 +805,7 @@ export class SessionRuntime {
   /** 轮次 checkpoint 内存索引(2026-11-10):runSeq → 本轮路径级前像/后像——轮收尾时填充;
    *  daemon 重启即空,读面 turnChangeFor 落 journal 扫描回退(重放会话同可用) */
   private readonly turnChanges = new Map<number, TurnFileChange[]>();
+  private readonly runArtifacts = new Map<number, ArtifactFile[]>(); // 轮次产物(2026-11-12 spec §6.2 端点当轮面)
   /** 快照回标用 callId→路径暂存（2026-11-11 每刀独立快照）：write/edit tool-call 记入,tool-result
    *  回执消费即删（泵内单点,见 pump 注释） */
   private readonly callPaths = new Map<string, string>();
@@ -843,6 +845,30 @@ export class SessionRuntime {
       return undefined;
     }
     return hit;
+  }
+
+  /** 产物库聚合（2026-11-12 spec §6.2）：内存当轮面 + journal 落档面合并，跨 run 按 path
+   *  去重保留最新 run（库语义），runSeq 倒序；含子 run（journal 全量扫） */
+  artifactsAggregated(): { items: AggregatedArtifact[] } {
+    const best = new Map<string, AggregatedArtifact>();
+    const consider = (row: AggregatedArtifact): void => {
+      const prev = best.get(row.path);
+      if (prev !== undefined && prev.runSeq >= row.runSeq) return;
+      best.set(row.path, row);
+    };
+    for (const [runSeq, list] of this.runArtifacts) {
+      for (const a of list) consider({ path: a.path, source: a.source, ...(a.callId !== undefined ? { callId: a.callId } : {}), runSeq });
+    }
+    const id = this.journal?.currentId;
+    if (id !== undefined) {
+      try {
+        const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+        for (const row of scanArtifactsJsonl(fs.readFileSync(file, 'utf8'))) consider(row);
+      } catch {
+        // 无档/读失败=仅内存面
+      }
+    }
+    return { items: [...best.values()].sort((x, y) => y.runSeq - x.runSeq) };
   }
 
   attachJournal(journal: SessionJournal): void {
@@ -994,6 +1020,7 @@ export class SessionRuntime {
           this.callPaths.delete(callId);
           if (rel !== undefined && p?.ok === true) {
             this.runtimeImpl.harness.writeSnapshot.tagCall(rel, callId);
+            this.runtimeImpl.harness.artifacts.tagCall(rel, callId); // 产物回标(2026-11-12 spec §3.3,同守卫同位)
           }
         }
       }
@@ -1166,6 +1193,10 @@ export class SessionRuntime {
           turn.push({ path: relPosix, after, ...(afterDeleted !== undefined ? { afterDeleted } : {}) });
         }
         if (runSeq >= 0 && turn.length > 0) this.turnChanges.set(runSeq, turn);
+        // 产物并入（2026-11-12 spec §3.4-3.5）：声明∪bash 兜底（mergeRunArtifacts 纯函数,单测在案）
+        const declared = this.runtimeImpl.harness.artifacts.drain();
+        const artifacts = mergeRunArtifacts(declared, gitExtra);
+        if (runSeq >= 0 && artifacts.length > 0) this.runArtifacts.set(runSeq, artifacts);
         // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
         const endedTs = Date.now();
         const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
@@ -1183,6 +1214,7 @@ export class SessionRuntime {
           endedTs,
           ...(runChanges.length > 0 ? { changes: runChanges } : {}),
           ...(turn.length > 0 ? { turn } : {}),
+          ...(artifacts.length > 0 ? { artifacts } : {}),
         });
         // G14.100 runmeta 帧(实时轮汇总条数据源):journal 落档后广播,journal 不广播 GUI 无从感知
         this.pump({
@@ -1197,6 +1229,7 @@ export class SessionRuntime {
             endedTs,
             ...(runChanges.length > 0 ? { changes: runChanges } : {}),
             ...(turn.length > 0 ? { turn } : {}),
+            ...(artifacts.length > 0 ? { artifacts } : {}),
           },
         });
         // G14.17 会话级旁车 meta 累积：runs/steps/tokens/秒数/缓存与 prompt 累计/末次上文占用/

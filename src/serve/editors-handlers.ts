@@ -26,6 +26,14 @@ export interface EditorApp {
   exe: string;
 }
 
+/** 系统默认关联打开命令面（2026-11-12 spec §5.3）：win32 用 `start`（首个引号参是窗口标题位，
+ *  故 '' 占位防路径被吞）；explorer.exe 对文件只定位不关联打开，故系统默认须独立一档 */
+export function defaultOpenCommand(platform: NodeJS.Platform, target: string): { cmd: string; args: string[] } {
+  if (platform === 'win32') return { cmd: 'cmd', args: ['/c', 'start', '', target] };
+  if (platform === 'darwin') return { cmd: 'open', args: [target] };
+  return { cmd: 'xdg-open', args: [target] };
+}
+
 /** 预设候选(静态安装位):explorer 恒在;VS Code/Cursor 各取用户级+系统级两档常见安装位,
  *  同 id 多命中取首个(用户级优先于系统级)。便携版不在标准位——由注册表/PATH shim 兜底 */
 export function editorCandidates(env: NodeJS.ProcessEnv = process.env): EditorApp[] {
@@ -250,9 +258,30 @@ export async function handleEditorsOpen(io: SessionHandlerIo, req: http.Incoming
     io.send(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = (parsed.body ?? {}) as { path?: unknown; id?: unknown };
+  const body = (parsed.body ?? {}) as { path?: unknown; id?: unknown; root?: unknown };
   if (typeof body.path !== 'string' || body.path === '' || typeof body.id !== 'string') {
     io.send(res, 400, { error: 'path and id required' });
+    return;
+  }
+  // 相对路径解析（2026-11-12 spec §5）：产物行存项目根相对；/app/open 系 spawn 需要 abs——
+  // GUI 带会话 root 时服务端解析（平台分隔符正确性归服务端；工作区打开传 abs 不受影响）
+  let target = body.path as string;
+  if (typeof body.root === 'string' && body.root !== '' && !path.isAbsolute(target)) {
+    target = path.resolve(body.root, target);
+  }
+  // 系统默认关联打开：独立一档，不在已装名单内也放行
+  if (body.id === 'default') {
+    const { cmd, args } = defaultOpenCommand(process.platform, target);
+    try {
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+      child.once('error', (err: Error) => {
+        console.error(`[app/open] spawn failed (default): ${err.message}`);
+      });
+      child.unref();
+      io.send(res, 200, { ok: true });
+    } catch {
+      io.send(res, 500, { error: 'spawn failed' });
+    }
     return;
   }
   const list = editorsCache ?? (await detectEditorsAsync((p) => fs.existsSync(p)));
@@ -262,7 +291,7 @@ export async function handleEditorsOpen(io: SessionHandlerIo, req: http.Incoming
     return;
   }
   try {
-    const child = spawn(editor.exe, [body.path], { detached: true, stdio: 'ignore' });
+    const child = spawn(editor.exe, [target], { detached: true, stdio: 'ignore' });
     // spawn 失败（应用探测后被卸载/移动）走异步 'error' 事件——try/catch 只接同步抛出，无监听即
     // uncaughtException 打死整个 daemon（全会话中断）。200 已先回（detached 打开本就无同步成败
     // 可确认），失败面落 daemon 控制台供诊断

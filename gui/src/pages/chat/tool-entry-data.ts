@@ -62,7 +62,7 @@ const TOOL_VERBS: Record<string, { en: string; zh: string }> = {
   skill: { en: 'Load skill', zh: '加载技能' }, webfetch: { en: 'Fetch', zh: '抓取' }, websearch: { en: 'Search', zh: '搜索' },
   memory_write: { en: 'Save memory', zh: '保存记忆' },
   todo_write: { en: 'Update todos', zh: '更新待办' }, worktree: { en: 'Worktree', zh: '工作树' },
-  spawn: { en: 'Spawn subagent', zh: '分派子智能体' }, task_stop: { en: 'Stop', zh: '停止' },
+  spawn: { en: 'Subagent', zh: '子智能体' }, // 2026-11-14 用户裁定「只显示子智能体,不再显示分派什么的」 task_stop: { en: 'Stop', zh: '停止' },
   load_subagent: { en: 'Load subagent', zh: '加载子智能体' }, // agents-teams P0 章程卡工具(2026-11-05 更名自 agent;子智能体域,不受智能体团队控制)
   kb_search: { en: 'Search knowledge base', zh: '检索知识库' }, ask_question: { en: 'Ask', zh: '提问' },
   exit_plan: { en: 'Submit plan', zh: '提交计划' },
@@ -204,7 +204,7 @@ export const RUNNING_LABELS: Record<string, [string, string]> = {
   webfetch: ['Fetching page', '正在抓取网页'],
   websearch: ['Searching the web', '正在搜索网页'],
   memory_write: ['Saving memory', '正在保存记忆'],
-  spawn: ['Dispatching subagent', '正在分派子智能体'],
+  spawn: ['Subagent', '子智能体'],
   create_agent_teammate: ['Creating member', '正在创建团队成员'],
   create_agent_team: ['Creating team', '正在创建智能体团队'],
   update_agent_team_task: ['Updating team task', '正在更新团队任务'], get_agent_team_board: ['Reading team board', '正在查看团队看板'], probe: ['Probing', '正在探测'],

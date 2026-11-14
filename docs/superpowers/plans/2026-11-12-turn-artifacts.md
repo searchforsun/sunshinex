@@ -349,7 +349,7 @@ git commit -m "feat(artifacts): ArtifactCollector 声明收集器(白名单过�
 
 - [ ] **Step 4: 编译+全量回归**（本任务无新测试面——行为由 Task 3 单测 + Task 5 集成面覆盖；此处验注入不破既有工具面）
 
-Run: `pnpm exec tsc -p tsconfig.json && node --test dist/harness/tools/ 2>&1 | tail -5`
+Run: `pnpm exec tsc -p tsconfig.json && node --test dist/harness/tools/*.test.js 2>&1 | tail -5`（Node v24 起 `node --test <目录>` 把目录当单条目空转——必须用 glob 显式列文件）
 Expected: PASS（编译零错；既有工具测试不红）
 
 - [ ] **Step 5: 提交**
@@ -791,17 +791,20 @@ export function extOf(relPath: string): string | undefined {
   return dot > 0 ? base.slice(dot + 1).toLowerCase() : undefined;
 }
 
+/** 原型链免疫直查(SDD T8 修复轮 2 裁定:属性读取同样走原型链,in 与 [ext]!==undefined 等价,
+ *  constructor/__proto__ 等全小写原型成员名会两侧误判——须 hasOwnProperty.call) */
+const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
+
 export function isDeliverablePath(relPath: string): boolean {
   const ext = extOf(relPath);
-  return ext !== undefined && ext in KIND_LABELS;
+  return ext !== undefined && hasOwn(KIND_LABELS, ext);
 }
 
-/** 「类目 · 大写扩展名」标签；非产物 undefined */
+/** 「类目 · 大写扩展名」标签；非产物 undefined(同 hasOwn 直查,原型成员名不认) */
 export function artifactKindLabel(relPath: string): string | undefined {
   const ext = extOf(relPath);
-  if (ext === undefined) return undefined;
-  const kind = KIND_LABELS[ext];
-  return kind === undefined ? undefined : `${kind} · ${ext.toUpperCase()}`;
+  if (ext === undefined || !hasOwn(KIND_LABELS, ext)) return undefined;
+  return `${KIND_LABELS[ext]} · ${ext.toUpperCase()}`;
 }
 ```
 
@@ -948,6 +951,10 @@ async function loadEditors(conn: Connection): Promise<Array<{ id: string; name: 
     .then((r) => {
       editorsCache = r.editors;
       return r.editors;
+    })
+    .catch((err: unknown) => {
+      editorsPromise = null; // 失败不毒化:下次 caret 打开重试(SDD T10 审查裁定)
+      throw err;
     });
   return editorsPromise;
 }

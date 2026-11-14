@@ -110,6 +110,8 @@ run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差�
 - `artifacts` 随 runmeta 落档重放（chat-reducer 既有 runmeta 摄入路径扩一字段），历史会话卡片照常渲染，零持久化新工作；
 - 轮末卡区只渲染**主链 run** 的 artifacts；子 run 的产物仅进产物库（§6.4）。
 
+> **2026-11-14 终审裁定**：fork 子代理与团队成员的写盘经共享 executor 闭包并入主轮 artifacts（其 run 不产 runmeta 行，独立归账后置）；主链卡区语义=「本轮（含委派）产出」——上条「子 run 的产物仅进产物库」的分流后置；产物库聚合面（§6.2 本就含子 run）不受影响。排除方案评估过否：fork 子面 `derive()` 浅克隆共享 executor 闭包，闭包既持装配期收集器也持装配期安全链（执行期链不入 write/edit 执行器），唯一内核既有执行上下文信号（`tasks.ts` ownerStorage 异步作用域）只包 spawn fork、不包团队成员与 loop/graph fork 面——补全需重构 fork 执行管线，超终审修复范围，故按本裁定改语义（spec 即真相）。
+
 ## 5. 打开交互（复用顶栏组件）
 
 ### 5.1 主钮「打开」
@@ -168,12 +170,15 @@ run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差�
 | `src/harness/tools/artifact-collector.ts`（新） | `ArtifactCollector` 类（仿 WriteSnapshotCollector 注入模式：内存清单/去重/drain） |
 | `src/harness/tools/builtin.ts` | `commitFileWrite` 声明钩（白名单过滤 + 调收集器） |
 | `src/session/seglog.ts` | `sanitizeArtifacts`（与 sanitizeTurn 同位同模式） |
+| `src/tui/session-journal.ts` | JournalEvent `runmeta` 成员扩 `artifacts`（落档面随行扩字段） |
 | `src/serve/session.ts` | 收集器接线、bash 兜底并入、runmeta 帧扩字段 |
 | `src/serve/artifacts-handlers.ts`（新） | `GET /session/:id/artifacts` 聚合端点 |
 | `src/serve/daemon.ts` | 路由挂载 |
 | `src/serve/editors-handlers.ts` | `/app/open` 新 id `default`（平台分支） |
 | `gui/src/artifacts.ts`（新） | 同形类型 + 分类器 + 类目标签映射 |
 | `gui/src/chat-reducer.ts` | runmeta artifacts 摄入 |
+| `gui/src/pages/chat/chat-types.ts` | `ChatProps.onOpenArtifacts`（产物库入口回调随链下泄） |
+| `gui/src/tabs/tab-strip.test.tsx` | registry 位置断言（artifacts 页签位次随注册表扩位） |
 | `gui/src/pages/chat/ArtifactsStrip.tsx`（新） + `EntryViews.tsx` | 轮末卡区 + render 序接线 |
 | `gui/src/pages/Artifacts.tsx`（新） + `gui/src/tabs/registry.tsx` | 产物库 tab + 注册 |
 | 分体钮共用件（新，gui/src/ 内聚位） | 「打开 ▾」主钮 + caret + SessionRowMenu 装配 |

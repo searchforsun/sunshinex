@@ -112,6 +112,9 @@ export interface ChatProps {
   /** 会话级操作错误上抛(2026-10-21 归档 F4):App showOpError 通道(与 fork/rewind 同一 sx-toast
    *  错误条)——顶栏归档失败不再静默回摆,错误文案透传上屏;可选防测试桩免配 */
   onOpError?: (err: unknown) => void;
+  /** 轮末产物卡「产物库」链接通道(2026-11-12 spec §4):Task 12 接 App openTabInSession('artifacts')——
+   *  本任务纯类型面透传,App 不传即全链 undefined(编译序:'artifacts' TabTypeId Task 12 才注册) */
+  readonly onOpenArtifacts?: () => void;
   /** G10-C4 分叉新会话(/fork 底层);App 接 forkSession+openSession;可选。
    *  2026-11-04 用户裁定「fork 显示点击点之上所有记录」:收轮次序位(turn=1-based,点击的
    *  run 在转录中的序),宿主按该轮锚点分档——新会话时间线=点击点之上全部记录 */

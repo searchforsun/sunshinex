@@ -2304,6 +2304,7 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
  * (用户裁定「运行时间显示在开头」),与右缘创建时间分轴:时长=运行中语义,提亮一档 */
 .bg-cmd { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); }
 .bg-dur { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--fg-secondary); font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }
+.bg-kind-icon { flex: none; color: var(--fg-icon); } /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
 .bg-output {
   margin: 0; width: 100%; padding: 6px 8px;
@@ -4117,3 +4118,35 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    悬浮提示 data-tip(§13.1 规则 2,禁原生 title) ===== */
 .wake-name { color: var(--fg-secondary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; display: inline-block; vertical-align: bottom; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wake-name:hover { color: var(--accent); }
+/* ===== 「打开 ▾」分体钮共用件(2026-11-12 spec §5.4):产物卡/产物库同用;外框归 wrapper 单边一体,内部按钮无边框无中缝(2026-11-14 用户裁定「打开右侧竖线不需要显示」) ===== */
+.sx-artifacts-open { display: inline-flex; align-items: stretch; flex: none; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.sx-artifacts-openbtn { border: none; background: transparent; color: var(--fg); font-size: calc(13px * var(--fz)); padding: 2px 10px; cursor: pointer; }
+.sx-artifacts-openbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-artifacts-caret { border: none; background: transparent; color: var(--fg-secondary); padding: 2px 6px; cursor: pointer; display: inline-flex; align-items: center; }
+.sx-artifacts-caret:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* ===== 轮末产物卡区(2026-11-12 spec §4;2026-11-14 用户裁定「对标 codex 简洁:去外框/去本轮产物头,全部产物留原位,卡色与 diff 对齐」):无容器框,卡片裸排,卡色=改动条同源(亮 fg4%/暗 bubble-user),横向 -6px=外缘与改动条对齐 ===== */
+.sx-artifacts { margin: 14px -6px 4px; }
+.sx-artifacts-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
+.sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); }
+.sx-artifacts-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 8px; } /* min(360px,100%)=窄容器卡宽跟随容器,不溢出(2026-11-14 用户裁定「长度没有跟随宽度」) */
+.sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); }
+[data-theme='dark'] .sx-artifacts-card { background: var(--bubble-user); } /* 卡色与改动条(.run-changes)同源 */
+.sx-artifacts-tile { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-soft); border-radius: 8px; }
+.sx-artifacts-thumb { width: 32px; height: 32px; flex: none; object-fit: cover; border-radius: 8px; }
+.sx-artifacts-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sx-artifacts-name { color: var(--fg); font-weight: 600; font-size: calc(14px * var(--fz)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-artifacts-kind { color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
+
+/* ===== 产物库页签(2026-11-12 spec §6):行式列表,Files 页同密度 ===== */
+.sx-artifacts-page { height: 100%; overflow-y: auto; padding: 12px 14px; }
+.sx-artifacts-empty { color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); padding: 24px 4px; }
+.sx-artifacts-link { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); margin-left: auto; } /* 灰字降存在感,hover 升主文字色(2026-11-14 用户裁定,去箭头/去 hover 底) */
+.sx-artifacts-link:hover { color: var(--fg); }
+.sx-artifacts-list { display: flex; flex-direction: column; gap: 2px; }
+.sx-artifacts-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-sm); }
+.sx-artifacts-row:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.sx-artifacts-rowname { color: var(--fg); font-size: calc(14px * var(--fz)); cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-artifacts-rowname:hover { text-decoration: underline; }
+.sx-artifacts-rowdir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
