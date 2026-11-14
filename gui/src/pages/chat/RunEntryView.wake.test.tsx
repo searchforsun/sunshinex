@@ -27,7 +27,7 @@ beforeEach(() => setLanguage('en'));
 const base = { seq: 3, ts: Date.now(), kind: 'run' as const, md: '', key: 'k3' };
 
 describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
-  it('有名：前缀「Woken by background task {构建前端}」（英文无尾部 wake 词）+ 既有 sealed 文案；点任务名发 bg 路由且不触发折叠（鼠标+键盘）', () => {
+  it('有名：前缀「Woken by background task 构建前端」（蓝色任务名、无 {} 包裹、英文无尾部 wake 词）+ 既有 sealed 文案；点任务名发 bg 路由且不触发折叠（鼠标+键盘）', () => {
     const onToggle = vi.fn();
     const onOpenTask = vi.fn();
     const { getByText, container } = render(
@@ -38,12 +38,13 @@ describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
         onOpenTask={onOpenTask}
       />,
     );
-    expect(container.textContent).toMatch(/Woken by background task \{构建前端\}/); // 英文有名形态=task {名}（spec §6.3）
+    expect(container.textContent).toMatch(/Woken by background task 构建前端/); // 英文有名形态=task {名}（spec §6.3）
     expect(container.textContent).not.toContain('wake'); // 尾部 wake 词是中文直译残留，英文列没有它
     expect(getByText(/Woken by background task/)).toBeTruthy(); // 「后台任务」段恒纯文本(正则匹配拼接行)
-    const name = getByText('{构建前端}');
+    const name = getByText('构建前端');
     fireEvent.click(name);
     expect(onOpenTask).toHaveBeenCalledWith('bg:x1'); // bg 路由
+    expect(container.textContent).not.toContain('{'); // 名字无 {} 包裹(2026-11-14 用户验收裁定)
     expect(onToggle).not.toHaveBeenCalled(); // stopPropagation 不触发折叠
     fireEvent.keyDown(name, { key: 'Enter' }); // 键盘同道:不冒泡触发折叠
     expect(onOpenTask).toHaveBeenLastCalledWith('bg:x1');
@@ -56,7 +57,7 @@ describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
     const { getByText } = render(
       <RunEntryView entry={{ ...base, seconds: 3 }} wake={[{ id: 'l1', name: '修复登录', board: true, boardRef: 'task-t3' }]} onOpenTask={onOpenTask} />,
     );
-    fireEvent.click(getByText('{修复登录}'));
+    fireEvent.click(getByText('修复登录'));
     expect(onOpenTask).toHaveBeenCalledWith('task-t3');
   });
 
@@ -73,7 +74,7 @@ describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
   it('live 态：前缀 + 既有「运行中」拼接', () => {
     const { getByText } = render(<RunEntryView entry={{ ...base, streaming: true }} wake={[{ id: 'x1', name: '构建前端' }]} />);
     expect(getByText(/Woken by background task/)).toBeTruthy();
-    expect(getByText('{构建前端}')).toBeTruthy();
+    expect(getByText('构建前端')).toBeTruthy();
     expect(getByText(/Working/)).toBeTruthy();
   });
 });

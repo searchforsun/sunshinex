@@ -34,7 +34,8 @@ import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
 import { lineDiffCounts } from '../harness/tools/write-diffstat';
-import type { ArtifactFile, ChangeFile, TurnFileChange } from '../types';
+import type { Artifact, ChangeFile, TurnFileChange } from '../types';
+import { artifactKey } from '../types';
 import { mergeRunArtifacts, scanArtifactsJsonl, scanDeliverableFiles, type AggregatedArtifact } from './artifacts-handlers';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
@@ -805,7 +806,7 @@ export class SessionRuntime {
   /** 轮次 checkpoint 内存索引(2026-11-10):runSeq → 本轮路径级前像/后像——轮收尾时填充;
    *  daemon 重启即空,读面 turnChangeFor 落 journal 扫描回退(重放会话同可用) */
   private readonly turnChanges = new Map<number, TurnFileChange[]>();
-  private readonly runArtifacts = new Map<number, ArtifactFile[]>(); // 轮次产物(2026-11-12 spec §6.2 端点当轮面)
+  private readonly runArtifacts = new Map<number, Artifact[]>(); // 轮次产物(2026-11-12 spec §6.2 端点当轮面)
   /** 快照回标用 callId→路径暂存（2026-11-11 每刀独立快照）：write/edit tool-call 记入,tool-result
    *  回执消费即删（泵内单点,见 pump 注释） */
   private readonly callPaths = new Map<string, string>();
@@ -847,17 +848,18 @@ export class SessionRuntime {
     return hit;
   }
 
-  /** 产物库聚合（2026-11-12 spec §6.2）：内存当轮面 + journal 落档面合并，跨 run 按 path
+  /** 产物库聚合（2026-11-12 spec §6.2;2026-11-14 kind 化:key=artifactKey）：内存当轮面 + journal 落档面合并，跨 run
    *  去重保留最新 run（库语义），runSeq 倒序；含子 run（journal 全量扫） */
   artifactsAggregated(): { items: AggregatedArtifact[] } {
     const best = new Map<string, AggregatedArtifact>();
     const consider = (row: AggregatedArtifact): void => {
-      const prev = best.get(row.path);
+      const key = artifactKey(row);
+      const prev = best.get(key);
       if (prev !== undefined && prev.runSeq >= row.runSeq) return;
-      best.set(row.path, row);
+      best.set(key, row);
     };
     for (const [runSeq, list] of this.runArtifacts) {
-      for (const a of list) consider({ path: a.path, source: a.source, ...(a.callId !== undefined ? { callId: a.callId } : {}), runSeq });
+      for (const a of list) consider({ ...a, runSeq });
     }
     const id = this.journal?.currentId;
     if (id !== undefined) {
@@ -1109,7 +1111,9 @@ export class SessionRuntime {
         const t = this.runtimeImpl.harness.tasks.get(id);
         return t !== undefined ? receiptBody(t, WAKE_HINT_RECEIPT_TOOL) : `${id} (ledger) finished`;
       });
-      this.kernel.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
+      // 唤醒 notice 走宿主泵(帧缓冲+WS 广播+kernel.pump 全链)——直调 kernel.pump 只落档不发帧,
+      // GUI live 收不到事件帧,前缀只在切会话(快照 seed)后出现(用户实测 2026-11-14)
+      this.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
       this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
     } else {
       this.kernel.submit(goal, images);

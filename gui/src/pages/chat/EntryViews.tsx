@@ -88,7 +88,7 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
         }
       }}
     >
-      {'{' + first.name + '}'}
+      {first.name}
     </span>
   ) : undefined;
   const wakePrefix = first !== undefined ? (
