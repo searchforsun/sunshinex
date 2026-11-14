@@ -92,12 +92,11 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
     </span>
   ) : undefined;
   const wakePrefix = first !== undefined ? (
-    <>
-      {first.name !== undefined ? t('Woken by background task', '后台任务') : t('Woken by background task', '后台任务唤醒')}
-      {first.name !== undefined ? ' ' : undefined}
-      {nameEl}
-      {first.name !== undefined ? t('', ' 唤醒') : undefined}
-    </>
+    <span className="wake-prefix">
+      <span className="wake-lead">{first.name !== undefined ? t('Woken by background task ', '后台任务 ') : t('Woken by background task', '后台任务唤醒')}</span>
+      {first.name !== undefined && nameEl}
+      {first.name !== undefined && <span className="wake-tail">{t('', ' 唤醒')}</span>}
+    </span>
   ) : undefined;
   if (!streaming) {
     // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
@@ -631,7 +630,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenWeb, onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenWeb?: (url: string) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
   /* conn/sessionId/root/onOpError=轮末产物卡区(ArtifactsStrip,2026-11-12 spec §4)数据与动作面;
    *  onOpenArtifacts=产物库页签入口(节头「全部产物 →」链接,App openArtifactsTab 下发;缺席不渲染链接) */
   const office = useUiMode() === 'office';
@@ -825,6 +824,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           sessionId={sessionId}
           root={root}
           onOpenFile={onOpenFile}
+          onOpenWeb={onOpenWeb}
           onOpError={onOpError}
           onOpenArtifacts={onOpenArtifacts}
         />
