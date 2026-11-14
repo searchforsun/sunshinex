@@ -135,6 +135,8 @@ export interface Connection {
   editorIcon(id: string): Promise<{ mime: string; data: string }>;
   /** 以指定应用打开路径(POST /app/open;spawn detached,id 在已装名单或 'default';root=相对路径解析根) */
   openInEditor(path: string, id: string, root?: string): Promise<void>;
+  /** GET /session/:id/artifacts(产物库聚合;跨 run 按 path 去重保最新,含子 run) */
+  artifacts(sessionId: string): Promise<{ items: import('./artifacts').ArtifactRow[] }>;
   sessionChangeContent(id: string, path: string, area?: 'staged' | 'unstaged'): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string, stagedOnly?: boolean): Promise<void>;
   /** 审查页两区操作(paths 缺省=该区全部):暂存/取消暂存(改动退回工作区)/丢弃未暂存(不可恢复) */
@@ -741,6 +743,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     readFile(sessionId: string, filePath: string): Promise<FileResp> {
       return getJson<FileResp>(`/session/${encodeURIComponent(sessionId)}/file?path=${encodeURIComponent(filePath)}`);
+    },
+    artifacts(sessionId: string) {
+      return getJson(`/session/${encodeURIComponent(sessionId)}/artifacts`);
     },
     sessionPlans(sessionId: string): Promise<{ plans: Array<{ name: string; path: string; mtime: number }> }> {
       return getJson(`/session/${encodeURIComponent(sessionId)}/plans`);

@@ -10,7 +10,7 @@ import { lazy } from 'react';
 import { useState } from 'react';
 import { SideChatComposer } from './side-chat-composer';
 import { t } from '../i18n';
-import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen } from 'lucide-react';
+import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen, Package } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -28,6 +28,7 @@ const BgTasksTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.
 const MemoryTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.MemoryTab })));
 const LearnedSkillsTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.LearnedSkillsTab })));
 const WebTab = lazy(() => import('./WebTab').then((m) => ({ default: m.WebTab })));
+const ArtifactsTab = lazy(() => import('../pages/Artifacts').then((m) => ({ default: m.ArtifactsTab })));
 
 import type { MutableRefObject } from 'react';
 import type { Connection } from '../connection';
@@ -153,6 +154,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   memory: Database, // G14.180 持久记忆(2026-10-31 用户裁定:与正文 [memory] 回显同件,Brain 退役)
   learned: Sparkles, // 学习技能(2026-10-31,[skills] 回显同族图标)
   plans: NotebookPen, // 计划页签(2026-11-04,与计划卡卡头/计划模式 pill 同件)
+  artifacts: Package, // 产物库(2026-11-12)
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
   web: Globe, // G8d 内嵌网页标签
 };
@@ -462,6 +464,18 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         </div>
       ),
     },
+  {
+    id: 'artifacts',
+    group: 'content',
+    // 产物库页签(2026-11-12 spec §6):会话级聚合,跨 run 按 path 去重保留最新(含子 run);
+    // 被动入口(轮末卡区节头链接)为主,「+」菜单不刻意推广
+    title: () => t('Artifacts', '产物'),
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => (
+      <ArtifactsTab conn={p.conn} sessionId={p.sessionId} root={p.root} refreshNonce={p.panelRefreshNonce} onOpenFile={fileTabOf(p)} />
+    ),
+  },
   ];
 
 /** 辅助对话草稿页(2026-11-04 首条发送才 fork):表层=主对话同款 ComposerCard+原提示语,

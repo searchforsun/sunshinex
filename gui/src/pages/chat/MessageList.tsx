@@ -184,9 +184,14 @@ const DayGroupBlock = memo(
           onOpenFile={onOpenFile}
           onSend={submitText}
           sideChat={sideChat}
+          conn={conn}
+          sessionId={sessionId}
+          root={root}
+          onOpError={onOpError}
+          onOpenArtifacts={onOpenArtifacts}
         />
       );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, root, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, sessionId, root, onOpError, onOpenArtifacts, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(

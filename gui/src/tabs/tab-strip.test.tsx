@@ -12,11 +12,12 @@ const base = {
 describe('TAB_REGISTRY(G8a 两类 + G8b terminal + G8d diff/agents/web)', () => {
   it('注册 file/diff/turndiff/tasks/agents/terminal/web + G10 context/bgtasks/memory;file 按 path、diff 按 callId、turndiff 按 run:path|callId、terminal 按 nonce 判重多实例,tasks/agents 单例,web 按 url 判重多实例', () => {
     expect(TAB_REGISTRY.map((e) => e.id)).toEqual([
-      'file', 'diff', 'turndiff', 'tasks', 'plans', 'agents', 'agent', 'bgtasks', 'memory', 'learned', 'terminal', 'web', 'sidechat',
+      'file', 'diff', 'turndiff', 'tasks', 'plans', 'agents', 'agent', 'bgtasks', 'memory', 'learned', 'terminal', 'web', 'sidechat', 'artifacts',
     ]); // G14.29:+ sidechat(尾插保位置型断言);G14.164:+ agent(子智能体只读页,菜单不列);
     // 2026-11-04:+ plans(计划页签,tasks 后邻位——同待办/计划域)
     // 2026-10-31:+ learned(学习技能,memory 后邻位);directory 页签退役(2026-10-27 目录树挪入左菜单 dirview,注册表除名)
     // 2026-11-10:+ turndiff(本轮单文件 diff,紧邻 diff 审查页——同改动域)
+    // 2026-11-12:+ artifacts(产物库,尾插单例——被动入口为主)
     const file = TAB_REGISTRY[0]!;
     expect(file.singleton).toBe(false);
     expect(file.resolveKey({ path: 'a.ts' })).toBe('a.ts');

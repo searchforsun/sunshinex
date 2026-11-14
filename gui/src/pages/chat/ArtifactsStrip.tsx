@@ -12,13 +12,14 @@ const THUMB_EXTS: ReadonlySet<string> = new Set(['png', 'jpg', 'jpeg', 'webp', '
 /** 轮末产物卡区(2026-11-12 spec §4):助手正文之后、改动条之前;数据=runmeta.artifacts 只读投影。
  *  网格 auto-fit minmax(360px,1fr)——单卡整行/多卡宽处两列/窄处单列(auto-fit 折叠空轨道);
  *  >8 张折叠为前两行+「展开全部」(复用改动条折叠交互模式) */
-export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, onOpError }: {
+export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, onOpError, onOpenArtifacts }: {
   artifacts: ReadonlyArray<ArtifactFile>;
   conn: Connection;
   sessionId: string;
   root?: string;
   onOpenFile?: (p: string) => void;
   onOpError?: (err: unknown) => void;
+  onOpenArtifacts?: () => void;
 }): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
@@ -51,6 +52,11 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
     <div className="sx-artifacts">
       <div className="sx-artifacts-head">
         <span>{t('Artifacts this turn', '本轮产物')} ({artifacts.length})</span>
+        {onOpenArtifacts !== undefined && (
+          <button type="button" className="sx-artifacts-link" onClick={onOpenArtifacts}>
+            {t('All artifacts →', '全部产物 →')}
+          </button>
+        )}
         {artifacts.length > FOLD_AT && (
           <button type="button" className="sx-artifacts-fold" onClick={() => setOpen((v) => !v)}>
             {open ? t('Collapse', '收起') : t('Show all', '展开全部')}

@@ -640,6 +640,9 @@ function AppShell(): JSX.Element {
     if (type === 'agents' && !agentTeamsOn) return;
     openTabInSession(type, {});
   }, [openTabInSession, agentTeamsOn]);
+  const openArtifactsTab = useCallback((): void => {
+    openTabInSession('artifacts', {});
+  }, [openTabInSession]);
   const hiddenMenuIds = useMemo(
     () => (agentTeamsOn ? undefined : new Set<string>(['agents'])),
     [agentTeamsOn],
@@ -1171,6 +1174,7 @@ function AppShell(): JSX.Element {
                 onOpenWeb={openWebTab}
                 onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
+                onOpenArtifacts={openArtifactsTab}
                 agentTeamsOn={agentTeamsOn}
                 bgRunning={bgTasks.filter((r) => r.status === 'running').length}
                 board={projection.board}

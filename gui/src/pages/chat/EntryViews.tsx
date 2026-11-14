@@ -592,9 +592,9 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenArtifacts: _onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
   /* conn/sessionId/root/onOpError=轮末产物卡区(ArtifactsStrip,2026-11-12 spec §4)数据与动作面;
-   *  _onOpenArtifacts=产物库链接通道留位(Task 12 接线——本任务未消费,noUnusedParameters 解构留位) */
+   *  onOpenArtifacts=产物库页签入口(节头「全部产物 →」链接,App openArtifactsTab 下发;缺席不渲染链接) */
   const office = useUiMode() === 'office';
   const msg = agentMessageOf(entry);
   /** 成员报告气泡编辑(2026-11-13 用户裁定「插入的用户气泡不支持编辑」):编辑后作为新用户消息
@@ -787,6 +787,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           root={root}
           onOpenFile={onOpenFile}
           onOpError={onOpError}
+          onOpenArtifacts={onOpenArtifacts}
         />
       )}
       {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
