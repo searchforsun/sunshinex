@@ -119,9 +119,9 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
             : undefined
         }
       >
-        <span>
-          {wakePrefix}
-          {wakePrefix !== undefined ? t(', ', '，') : null}
+        {wakePrefix}
+        {wakePrefix !== undefined && <span className="run-sep">{t(', ', '，')}</span>}
+        <span className="run-status">
           {entry.stopped === true
             ? t('Stopped', '已停止')
             : entry.seconds !== undefined
