@@ -296,13 +296,13 @@ export function BgTasksTab({
                 >
                   {/* 状态点对齐智能体团队:灰转圈=running,蓝=done,红=failed,黄=stopped */}
                   <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
-                  {/* kind 图标前缀(2026-11-14 用户裁定「子智能体显示机器人头像图标前缀,exec 显示终端图标前缀」) */}
-                  {isSub ? <Bot size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" /> : <SquareTerminal size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" />}
-                  {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
+                  {/* 运行时长前移(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
                   <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
                     <AlarmClock size={14} strokeWidth={1.75} aria-hidden="true" />
                     {durOf(r)}
                   </span>
+                  {/* kind 图标前缀(2026-11-14 用户复裁定「是耗时之后」:子智能体=Bot,exec=终端) */}
+                  {isSub ? <Bot size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" /> : <SquareTerminal size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" />}
                   {/* 任务名优先(exec 的 purpose,2026-11-07 用户裁定「显示任务名称而不是命令原文」);命令原文留展开明细 */}
                   <span className={`todo-card-goal${r.title !== undefined ? '' : ' bg-cmd'}`} data-tip={r.title ?? r.label}>{r.title ?? r.label}</span>
                   {/* 停止:空心方块图标与智能体团队同形;running 行 hover 显现;
