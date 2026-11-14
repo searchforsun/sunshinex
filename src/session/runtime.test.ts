@@ -352,3 +352,58 @@ test('createRuntime.runLoop：未知模板报错；判据未过回修一轮后 d
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ── sunx 装配透传（Task 2 fix round 1：assembly root + loop 主链两段接线，2026-11-15）──
+// 裁定（controller fix round 1）：createKernelRuntime 不透传 kind/charter 则 sunx 稳定段端到端不可达——
+// 本组两例沿用本文件 outputStyle 首例的 prompt 捕获法（textReplyAdapter 抓模型实际收到的消息面），
+// 路径=runTask → Loop 长任务模板 → agent 节点 new Reactor(childDeps) → chatRound stableSegment，
+// 任何一段接线缺失即红（观测面单独绿不能证明主链面）。
+
+test('createRuntime：kind/charter 装配透传——观测面与 loop 主链稳定段带 Sunx 章程，品性层入冻结快照', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-sunx-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
+  try {
+    const prompts: string[] = [];
+    const capture = textReplyAdapter('openai', (prompt) => {
+      prompts.push(prompt);
+      return '{"done":true,"reply":"ok"}';
+    });
+    const rt = createKernelRuntime({ root: tmp, model: capture, kind: 'sunx', charter: 'CHARTER-KERNEL-WIRING' });
+    // 观测面（harness.stableSegment 薄委托）：身份槽替换 + 章程行在场
+    const seg = rt.harness.stableSegment();
+    assert.ok(seg.includes('You are the Sunx orchestrator'), '观测面稳定段带 Sunx 身份行');
+    assert.ok(seg.includes('task-notification notices are system notices'), '观测面稳定段带唤醒语义章程行');
+    // 品性冻结层：随 ctx-snap 导出（sig.charter）
+    assert.equal(rt.harness.context.snapshotExport().sig.charter, 'CHARTER-KERNEL-WIRING', 'charter 经装配根入冻结层');
+    // loop 主链（agent 节点 childDeps → Reactor stableSegment → buildMessages）：模型实际收到的 system 面带双面
+    await rt.runTask('编排验收', { maxSteps: 2 });
+    assert.ok(prompts.some((p) => p.includes('You are the Sunx orchestrator')), 'loop 主链稳定段带 Sunx 身份行（childDeps 透传，缺接线即缺失）');
+    assert.ok(prompts.some((p) => p.includes('CHARTER-KERNEL-WIRING')), 'loop 主链消息面带品性层原文（charter 冻结层随快照渲染）');
+    assert.ok(prompts.every((p) => !p.includes('You are the SunshineX agent')), '身份槽为整行替换：SunshineX 身份行零残留');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('createRuntime：standard（缺省）主链零 Sunx 章程、品性层缺席（字节不变量）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-std-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
+  try {
+    const prompts: string[] = [];
+    const capture = textReplyAdapter('openai', (prompt) => {
+      prompts.push(prompt);
+      return '{"done":true,"reply":"ok"}';
+    });
+    const rt = createKernelRuntime({ root: tmp, model: capture });
+    await rt.runTask('普通验收', { maxSteps: 2 });
+    assert.ok(prompts.every((p) => !p.includes('Sunx orchestrator')), 'standard 主链零编排章程');
+    assert.ok(prompts.some((p) => p.includes('You are the SunshineX agent')), 'standard 主链身份行原样（golden 形态）');
+    assert.equal(rt.harness.context.snapshotExport().sig.charter ?? null, null, 'standard 品性层缺席');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

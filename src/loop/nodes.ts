@@ -181,6 +181,8 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
         scope === 'fork'
           ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...FORK_EXCLUDED_TOOLS] }) }
           : deps;
+      // 会话形态/输出样式随 childDeps 原样下传（LoopDeps.kind → ReactorDeps.kind 结构同形，2026-11-15 sunx
+      // 稳定段分支 fix round 1）：两作用域 spread/直传皆零丢字段——主链 Reactor 稳定段与装配面同源
       const reactor = new Reactor(childDeps);
       const r = await reactor.run(
         { goal },

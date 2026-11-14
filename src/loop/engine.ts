@@ -43,6 +43,9 @@ export interface LoopDeps {
   effort?: import('../types').ReasoningEffort;
   /** 输出样式分叉（交互面级 run 常量，进稳定段）：装配面注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定 */
   outputStyle?: import('../types').OutputStyle;
+  /** 会话形态随主链 Reactor 同源透传（2026-11-15 sunx 稳定段分支，fix round 1）：'sunx' = 身份槽替换 +
+   *  编排章程行（prompts/shared.ts 单点；agent 节点 childDeps 原样下传 new Reactor）；缺席=standard 字节不变 */
+  kind?: import('../types').SessionKind;
   /** 用户中断信号（Esc/Ctrl+C）：agent 节点下传 Reactor；判据模型调用同样尊重（见 nodes.ts modelJudge） */
   signal?: AbortSignal;
   /** 运行中穿插通道（对标 CC queued messages，用户→运行时方向）：下传循环内构造的 Reactor，session 主链步边界 drain 消费；fork 私有面不消费（reactor 侧 scope 闸门） */

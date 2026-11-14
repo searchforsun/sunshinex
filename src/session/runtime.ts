@@ -39,10 +39,11 @@ export interface KernelRuntimeOpts {
     awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
   };
   /** 会话形态（2026-11-14 sunx 设计）：与 HarnessOptions.kind 同名同域的装配接缝（TUI/daemon 装配单点入参面）。
-   *  本任务只声明数据面，createKernelRuntime 暂不透传——消费在后续任务（提示词面/工具面/serve 生命周期）；缺席=standard */
+   *  已透传（2026-11-15 提示词面 fix round 1）：buildHarness（→ 稳定段观测面 + 单发 Reactor）与 loopDeps
+   *  （→ loop 主链 agent 节点 childDeps → Reactor）同源携带；缺席=standard */
   kind?: SessionKind;
-  /** 实例品性原文（charter）：与 HarnessOptions.charter 同名同域。本任务只声明数据面，createKernelRuntime 暂不透传——
-   *  消费在后续任务（提示词面冻结层装配）；standard 会话恒缺席 */
+  /** 实例品性原文（charter）：与 HarnessOptions.charter 同名同域。已透传（2026-11-15 提示词面 fix round 1）：
+   *  buildHarness → ContextManager 会话冻结层（全局 → 项目 → 品性，随 ctx-snap 导出/回种）；缺席=无此层 */
   charter?: string;
 }
 
@@ -71,6 +72,10 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
     ...(opts.wake !== undefined ? { wake: opts.wake } : {}),
+    // sunx 提示词面透传（2026-11-15 fix round 1）：kind→稳定段分支（观测面 + 单发 Reactor 同源，
+    // prompts/shared.ts 单点）、charter→ContextManager 会话冻结层（全局 → 项目 → 品性）
+    ...(opts.kind !== undefined ? { kind: opts.kind } : {}),
+    ...(opts.charter !== undefined ? { charter: opts.charter } : {}),
   });
   // 审批注入不再限 acceptEdits(2026-11-01 用户裁定「完全访问也要弹特殊确认」):asker 只服务
   // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
@@ -103,6 +108,9 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     mcpWarnings: harness.mcpWarningsOnce, // 链面一次化（D59）：同文案只进链一次；TUI 展示面走全量
     // 输出样式分叉：TUI 文字面缺省恒 terminal——围栏带语言标签、图示走 ASCII（CLI 不注入、保持缺省通用约定）
     outputStyle: opts.outputStyle ?? 'terminal',
+    // 会话形态随主链 Reactor 同源透传（sunx 稳定段分支，2026-11-15 fix round 1）：loop 内构造的
+    // Reactor 与单发 Reactor 同源消费——agent 节点 childDeps 原样下传（LoopDeps.kind）
+    ...(opts.kind !== undefined ? { kind: opts.kind } : {}),
     pipeline: harness.pipeline,
   };
 
