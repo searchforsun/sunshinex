@@ -158,11 +158,9 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
           : undefined
       }
     >
-      <span>
-        {wakePrefix}
-        {wakePrefix !== undefined ? t(', ', '，') : null}
-        {t('Working', '运行中')}
-      </span>
+      {wakePrefix}
+      {wakePrefix !== undefined && <span className="run-sep">{t(', ', '，')}</span>}
+      <span className="run-status">{t('Working', '运行中')}</span>
       <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
       {onToggle !== undefined && (
         <span className="run-chev" aria-hidden="true">

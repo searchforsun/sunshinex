@@ -19,6 +19,7 @@
  *   --setup <path>   安装包路径(reinstall 用,默认取 shell/release 下本机系统/架构的最新安装包,如 sunshinex-<ver>-win-x64-setup.exe)
  *   --tests          verify 附带全量 vitest(既有基线红面见 CLAUDE.md,以基线对照为准)
  *   --no-build       deploy/reinstall 跳过构建,直接用现有产物
+ *   --allow-dirty    豁免构建前脏树预检(工作区有未提交改动时仍构建部署)
  *   --pristine       净装:清用户态历史——%APPDATA%\sunshinex-shell(Electron 缓存/Local Storage/
  *                    daemon-port 指针)与 ~/.sunshinex/gui(GUI 面私有 UI 态)。会话/转录等共享数据在
  *                    ~/.sunshinex/projects 不动;UI 偏好(缩放/标签布局/主题)回出厂。适用于
@@ -51,6 +52,26 @@ const EXE_NAME = `${APP_NAME}.exe`;
 const args = process.argv.slice(2);
 const command = args[0];
 const flag = (name) => args.includes(name);
+
+/** 构建前脏树预检(2026-11-15 用户裁定「可以检查」):构建会扫描工作树现态——并行会话/未完成的
+ *  在途改动会被一并打包推上桌面(实测白屏病根:在途 onOpenWeb 半成品随 deploy 上束)。非 --no-build
+ *  的 deploy/reinstall 一律预检;--allow-dirty 显式豁免(知道自己在装什么时用) */
+const guardCleanTree = () => {
+  if (flag('--no-build') || flag('--allow-dirty')) return;
+  const status = spawnSync('git', ['status', '--porcelain'], { cwd: path.join(import.meta.dirname, '..'), encoding: 'utf8', shell: process.platform === 'win32' });
+  const dirty = (status.stdout ?? '').split('\n').filter((l) => l.trim() !== '');
+  if (status.status !== 0) {
+    console.error('✗ 脏树预检失败(git status 非 0)——跳过预检继续(--allow-dirty 可显式控制)');
+    return;
+  }
+  if (dirty.length > 0) {
+    console.error('✗ 工作区有未提交改动,拒绝构建部署(防在途半成品上桌面;2026-11-15 白屏复盘裁定):');
+    dirty.slice(0, 20).forEach((l) => console.error('    ' + l));
+    if (dirty.length > 20) console.error(`    …共 ${dirty.length} 项`);
+    console.error('  提交后再部署,或 --allow-dirty 显式豁免(清楚自己在装什么)。');
+    process.exit(1);
+  }
+};
 const opt = (name) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
@@ -197,6 +218,7 @@ const pushDistGui = () => {
 };
 
 const deploy = () => {
+  guardCleanTree();
   if (!flag('--no-build')) {
     console.log('== deploy: 构建 gui ==');
     run('pnpm', ['--dir', 'gui', 'run', 'build']);
@@ -215,6 +237,7 @@ const deploy = () => {
 };
 
 const reinstall = () => {
+  guardCleanTree();
   if (!flag('--no-build')) {
     console.log('== reinstall: 全链构建(根 tsc → gui → 壳 esbuild)==');
     run('pnpm', ['run', 'build']);

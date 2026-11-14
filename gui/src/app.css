@@ -4124,8 +4124,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .entry-run.wake-start { margin-top: 60px; }
 /* 唤醒前缀整行不换行:引导词/唤醒词定宽,任务名唯一可收缩段——空间不足出省略号不折行(bg-wake 验收裁定 2026-11-15「不够不要换行,省略任务名字」) */
 .entry-run { white-space: nowrap; }
-.wake-prefix { display: inline-flex; align-items: center; min-width: 0; flex: 0 1 auto; overflow: hidden; gap: 4px; }
-.wake-lead, .wake-tail { flex: none; }
+.wake-prefix { display: inline-flex; align-items: center; min-width: 0; flex: 0 3 auto; overflow: hidden; gap: 4px; }
+.wake-lead, .wake-tail, .run-sep, .run-status, .run-meta, .run-chev { flex: none; }
 .wake-name { flex: 0 1 auto; min-width: 0; }
 .wake-name { color: var(--accent); cursor: pointer; display: inline-block; vertical-align: bottom; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wake-name:hover { text-decoration: underline; text-underline-offset: 2px; }
