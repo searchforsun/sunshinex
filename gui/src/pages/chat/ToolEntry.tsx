@@ -77,6 +77,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenDiff,
   onOpenAgent,
   onOpenTodos,
+  onOpenArtifacts,
   onOpenTask,
   onOpenLeader,
   taskNameOf,
@@ -98,6 +99,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenLeader?: (m: { text: string }) => void;
   /** 2026-11-04 用户裁定:点「待办」字样打开侧栏待办页签并定位对应卡 */
   onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
+  onOpenArtifacts?: () => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
   /** 队名解析(get_agent_team_board/create_agent_team;缺省显示原 ref) */
@@ -347,6 +349,22 @@ export const ToolEntryView = memo(function ToolEntryView({
         e.stopPropagation();
         const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
         onOpenTodos(arr.map((o) => ({ text: String((o ?? {}).text ?? ''), status: String((o ?? {}).status ?? 'pending') })));
+      }}
+    >
+      {zhToolName(toolName)}
+    </span>
+  ) : toolName === 'report_artifacts' ? (
+    // 2026-11-14 kind 化:登记产物行——点名字开侧栏产物页签(普通名+指针,stopPropagation 防折叠行误触;非蓝链)
+    <span
+      className="tool-verb"
+      role={onOpenArtifacts !== undefined ? 'button' : undefined}
+      tabIndex={onOpenArtifacts !== undefined ? -1 : undefined}
+      style={onOpenArtifacts !== undefined ? { cursor: 'pointer' } : undefined}
+      data-tip={onOpenArtifacts !== undefined ? t('Open artifacts tab', '打开产物页签') : undefined}
+      onClick={(e) => {
+        if (onOpenArtifacts === undefined) return;
+        e.stopPropagation();
+        onOpenArtifacts();
       }}
     >
       {zhToolName(toolName)}

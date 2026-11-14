@@ -66,6 +66,7 @@ const TOOL_VERBS: Record<string, { en: string; zh: string }> = {
   load_subagent: { en: 'Load subagent', zh: '加载子智能体' }, // agents-teams P0 章程卡工具(2026-11-05 更名自 agent;子智能体域,不受智能体团队控制)
   kb_search: { en: 'Search knowledge base', zh: '检索知识库' }, ask_question: { en: 'Ask', zh: '提问' },
   exit_plan: { en: 'Submit plan', zh: '提交计划' },
+  report_artifacts: { en: 'Register artifacts', zh: '登记产物' }, // 2026-11-14 kind 化:产物声明工具(点名字开产物页签)
   load_agent_teams: { en: 'Load agent teams', zh: '加载智能体团队' }, // 智能体团队域(与八件套同族;2026-11-05 更名自 team)
   create_agent_team_task: { en: 'Create team task', zh: '创建团队任务' }, set_dependency: { en: 'Set dependency', zh: '设置依赖' },
   assign: { en: 'Assign', zh: '分派' },

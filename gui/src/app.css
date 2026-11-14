@@ -4142,7 +4142,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); } /* 2026-11-14 用户裁定:居左+hover 与全部产物同语言(灰→主文字色,无底) */
 .sx-artifacts-fold:hover { color: var(--fg); }
 .sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px 8px; } /* 行距 16px(2026-11-14 用户裁定「纵向行距加大一些」,一轮 12px 用户未见效提档);min(360px,100%)=窄容器卡宽跟随容器 */
-.sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); }
+@keyframes sx-card-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); animation: sx-card-in 0.22s var(--ease-enter); } /* 展开全部时后入卡渐入(2026-11-14 用户裁定「展开产物支持平滑展开」) */
 [data-theme='dark'] .sx-artifacts-card { background: var(--bubble-user); } /* 卡色与改动条(.run-changes)同源 */
 .sx-artifacts-tile { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-soft); border-radius: 8px; }
 .sx-artifacts-thumb { width: 32px; height: 32px; flex: none; object-fit: cover; border-radius: 8px; }

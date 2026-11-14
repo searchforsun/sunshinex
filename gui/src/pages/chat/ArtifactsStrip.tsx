@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Copy, ExternalLink, Globe, Terminal } from 'lucide-react';
 import { FileIcon } from '../../file-icon';
 import { OpenSplit } from './OpenSplit';
-import { artifactKindLabel, artifactTitleOf, type Artifact } from '../../artifacts';
+import { artifactKey, artifactKindLabel, artifactTitleOf, type Artifact } from '../../artifacts';
 import { t } from '../../i18n';
 import { openExternalUrl } from '../../ui-util';
 import { useCopyFeedback } from '../../use-copy-feedback';
@@ -150,7 +150,7 @@ export function ArtifactsStrip({ artifacts, conn, onRunInTerminal, root, onOpenF
       <div className="sx-artifacts-grid">
         {visible.map((a) => (
           <ArtifactCardView
-            key={a.kind === 'file' ? a.path : a.kind === 'url' ? a.url : a.command}
+            key={artifactKey(a)}
             a={a}
             conn={conn}
             root={root}

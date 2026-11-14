@@ -152,12 +152,13 @@ const DayGroupBlock = memo(
         onOpenAgent={onOpenAgent}
         onOpenTask={onOpenTask}
         onOpenTodos={onOpenTodos}
+        onOpenArtifacts={onOpenArtifacts}
         taskNameOf={taskNameOf}
         taskAgentOf={taskAgentOf}
         teamNameOf={teamNameOf}
         teams={teams}
       />
-    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams]);
+    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, onOpenArtifacts, taskNameOf, taskAgentOf, teamNameOf, teams]);
     const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
     const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenTurn={onOpenTurn} onTurnRestore={onTurnRestore} onOpenAgent={onOpenAgent} sideChat={sideChat} onSend={submitText} />, [onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, submitText]);
     const renderFoldEntry = useCallback((e2: ChatEntry) => {
