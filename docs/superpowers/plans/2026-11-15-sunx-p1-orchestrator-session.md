@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `kind='sunx'` 的编排专职会话：装配期分叉出总章程提示词 + 分派工具白名单面；模型经 `dispatch_task` 后台派发 fork 子智能体、收轮后被既有 bg-wake 唤醒接续；GUI 可创建（姓名/工作目录/品格）与对话。普通会话零行为变化。
+**Goal:** `kind='sunx'` 的编排专职会话：装配期分叉出总章程提示词 + 分派工具白名单面；模型经 `dispatch_task` 后台派发 fork 子智能体、收轮后被既有 bg-wake 唤醒接续；GUI 可创建（姓名/工作目录/品性）与对话。普通会话零行为变化。
 
-**Architecture:** Sunx 不是新引擎——复用 SessionRuntime 全套器官（单 run 锁/journal/挂起表/steer/WakeController）。装配分叉三处：①`stableSegmentOf` 按 kind 分支出 Sunx 总章程（稳定段，跨实例字节一致）；②实例品格走会话级冻结层（SUNSHINE.md 同区，出生定版；修改=尾追替代行）；③工具面 = `derive({only})` 白名单（分派件在 Harness 装配期按 kind 注册，普通会话永不见）。派发通道 = 既有 `SubagentRunner.spawnBackground`（唤醒 hint/receipted/delegation 事件全自动）；监视 = `task_wait` 的窥视变体 `task_status`。
+**Architecture:** Sunx 不是新引擎——复用 SessionRuntime 全套器官（单 run 锁/journal/挂起表/steer/WakeController）。装配分叉三处：①`stableSegmentOf` 按 kind 分支出 Sunx 总章程（稳定段，跨实例字节一致）；②实例品性走会话级冻结层（SUNSHINE.md 同区，出生定版；修改=尾追替代行）；③工具面 = `derive({only})` 白名单（分派件在 Harness 装配期按 kind 注册，普通会话永不见）。派发通道 = 既有 `SubagentRunner.spawnBackground`（唤醒 hint/receipted/delegation 事件全自动）；监视 = `task_wait` 的窥视变体 `task_status`。
 
 **Tech Stack:** TypeScript（node:test 根包 + vitest GUI）、React 18（GUI）、JSONL 会话档（ctx-snap 快照/旁车 meta）。
 
@@ -16,8 +16,8 @@
 - **普通会话零变化（最高约束）**：主链工具清单逐字节不变（`builtin.schema.test.ts:77` bareNames 基线延伸守护）；`stableSegmentOf` 非 sunx 路径输出与现状逐字节相同；spawn/团队八件套/board 工具**描述一字不改**。
 - **新工具只进 sunx 面**：`dispatch_task`/`task_status` 仅在 `opts.kind==='sunx'` 时注册进 Harness 注册表；普通会话 face 与注册表都不含它们。fork 子面（`deriveChildRegistry`）必须剔除这两个编排件（防子生孙/自派发）。
 - **白名单面**：sunx face = `derive({only})`，后续新增内置工具默认不进 sunx 面。P1 面 = `dispatch_task / task_status / task_stop / ask_question / todo_write / skill / report_artifacts`（不含 `get_agent_team_board`——板通道 P2 才有消费者，届时随行进面；对 spec §6.2 的这一收窄在 Task 7 spec 收口时回写）。
-- **提示词恒英文**：总章程/工具描述/缺省模板等我方文案英文单语；实例品格是用户自撰物料**原样直存**（任意语言，目录注册制先例）。品格留空 = 仅系统总章程（不注入空层）。
-- **前缀纪律**：总章程进稳定段（跨实例共享）；品格进会话级冻结层并随 ctx-snap 快照导出/回种（恢复逐字节稳定）；品格修改 = 尾追替代行（后到者优先），前置段永不出现在场重写。
+- **提示词恒英文**：总章程/工具描述/缺省模板等我方文案英文单语；实例品性是用户自撰物料**原样直存**（任意语言，目录注册制先例）。品性留空 = 仅系统总章程（不注入空层）。
+- **前缀纪律**：总章程进稳定段（跨实例共享）；品性进会话级冻结层并随 ctx-snap 快照导出/回种（恢复逐字节稳定）；品性修改 = 尾追替代行（后到者优先），前置段永不出现在场重写。
 - **显示层与提示词层分离**：姓名落 `meta.title`（既有自定义会话名字段，侧栏/悬浮卡/`journalDisplayTitle` 全链既有显示面自动生效）；改名只写 meta，模型面出生名不重写。
 - 每批完成即提交（conventional commits，中文说明，风格随 `git log`）；全量门禁 = `pnpm test`（根包）+ `pnpm selfcheck` + `pnpm --dir gui test`，最后一批加 `pnpm --dir gui run test:e2e`。
 - 定向跑测命令（根包）：先 `pnpm exec tsc -p tsconfig.json`，再 `node --require scripts/test-env.cjs --test dist/<路径>.test.js`。
@@ -36,7 +36,7 @@
 
 **Interfaces:**
 - Produces: `type SessionKind = 'standard' | 'sunx'`（`src/types.ts` 登记口径；缺席 = standard，不落档）。
-- Produces: meta 旁车 `kind`（出生写一次，不改档）与 `charterRev`（品格替代时 +1）。
+- Produces: meta 旁车 `kind`（出生写一次，不改档）与 `charterRev`（品性替代时 +1）。
 
 - [ ] **Step 1: 失败测试（meta 往返）**
 
@@ -57,12 +57,12 @@ test('sidecar meta 携带 kind/charterRev 读写往返；缺省缺席不落键',
 
 ---
 
-### Task 2: 提示词面——总章程稳定段分支 + 实例品格冻结层（ctx-snap 往返）
+### Task 2: 提示词面——总章程稳定段分支 + 实例品性冻结层（ctx-snap 往返）
 
 **Files:**
 - Modify: `src/harness/prompts/shared.ts`（`SUNX_*` 常量单点 + `stableSegmentOf` opts 增 `kind?`）
 - Modify: `src/harness/index.ts`（kind 透传至稳定段装配）
-- Modify: `src/harness/context/`（loader 或 ContextManager：`charter` 第三层——全局 → 项目 → 品格；`SnapshotSig`/快照导出/`restoreSnapshot` 随行）
+- Modify: `src/harness/context/`（loader 或 ContextManager：`charter` 第三层——全局 → 项目 → 品性；`SnapshotSig`/快照导出/`restoreSnapshot` 随行）
 - Test: `src/harness/prompts/`、`src/harness/context/` 既有套件追加
 
 **Interfaces:**
@@ -90,7 +90,7 @@ test('charter 冻结层：构造注入 → 快照导出含 charter → restore �
 ```
 
 - [ ] **Step 2: 落地**——章程文案按 spec §17.1 分层（稳定段=系统总章程；charter=会话冻结层，SUNSHINE.md 之后）；kind 自 Harness 透传到稳定段装配点（`Harness.stableSegment` 与 loop 内 Reactor 同源消费，禁第二处拼装）。
-- [ ] **Step 3: 定向跑测 + 提交**（`feat(harness): sunx 提示词面——总章程稳定段分支+品格冻结层`）
+- [ ] **Step 3: 定向跑测 + 提交**（`feat(harness): sunx 提示词面——总章程稳定段分支+品性冻结层`）
 
 ---
 
@@ -171,7 +171,7 @@ test('setMode 换铸后 kind/charter 存活：换新运行时 face 仍为白名�
 
 **Files:**
 - Modify: `gui/src/sidebar/project-menu-recents.tsx`（头部既有「新对话」钮旁新增**同级**「新建 Sunx」钮——同款样式槽/data-tip `t('New Sunx','新建 Sunx')`；点击开弹窗）
-- New: `gui/src/welcome/NewSunxDialog.tsx`（+ 测试）——创建弹窗三元组：**姓名**（必填，空禁提交）/ **工作目录**（复用既有 dirpicker 面，缺省=当前默认工作区锚）/ **品格**（文本域，占位建议文案双语 `t()`，留空=仅总章程）；提交 `conn.newSession(target, undefined, undefined, undefined, { kind:'sunx', name, charter })` → 成功后走既有 openSession 链路打开该会话；关闭/ESC/点外关（`usePopOutsideClose` 先例）
+- New: `gui/src/welcome/NewSunxDialog.tsx`（+ 测试）——创建弹窗三元组：**姓名**（必填，空禁提交）/ **工作目录**（复用既有 dirpicker 面，缺省=当前默认工作区锚）/ **品性**（字段名 `t('Charter', '品性')`——术语裁定见 spec §17.1；文本域，占位建议文案双语 `t()`，留空=仅总章程）；提交 `conn.newSession(target, undefined, undefined, undefined, { kind:'sunx', name, charter })` → 成功后走既有 openSession 链路打开该会话；关闭/ESC/点外关（`usePopOutsideClose` 先例）
 - Modify: `gui/src/connection.ts`（`newSession` 增第 5 参 opts 透传）、`connection-types.ts`（`SessionRow.kind`）
 - Modify: 侧栏会话行（kind==='sunx' 标题旁小徽标——图标钮/字号铁律适用；SUNX 分组聚合**不在本任务**，P2）
 - Test: `gui/src/welcome/NewSunxDialog.test.tsx`、`gui/src/connection.test.ts` 追加；GUI typecheck
@@ -181,7 +181,7 @@ test('setMode 换铸后 kind/charter 存活：换新运行时 face 仍为白名�
 - P2 的 SUNX 组「+」与总览页入口卡复用同一弹窗组件（单点）。
 
 - [ ] **Step 1: 失败测试（组件）**：弹窗开合（钮点击/ESC/点外）；校验（空名禁提交、charter 可空）；提交载荷字段断言；成功后 openSession 调用断言；普通新对话路径回归（payload 无 kind）。
-- [ ] **Step 2: 落地 + typecheck + 定向跑测 + 提交**（`feat(gui): 新建 Sunx 同级入口+创建弹窗——姓名/目录/品格三元组`）
+- [ ] **Step 2: 落地 + typecheck + 定向跑测 + 提交**（`feat(gui): 新建 Sunx 同级入口+创建弹窗——姓名/目录/品性三元组`）
 
 ---
 
@@ -208,4 +208,4 @@ test('setMode 换铸后 kind/charter 存活：换新运行时 face 仍为白名�
 
 ## P2 预告（不在本计划）
 
-GUI SUNX 分组与总览页（meta.kind 过滤 + 单例 `sunx` 页签 + 徽标聚合）、板任务通道（target='team' + get_agent_team_board 进面 + 能力自举 R6）、schedule_wakeup/task（TimerRegistry + `wake-schedule` 行 + attach 重布防）、挂起持久化、恢复唤醒轮（R9）、charter 编辑 GUI 面（P1 已有端点）、人格模板目录 `.sunshinex/sunx/{id}/sunx.md`。
+GUI SUNX 分组与总览页（meta.kind 过滤 + 单例 `sunx` 页签 + 徽标聚合）、板任务通道（target='team' + get_agent_team_board 进面 + 能力自举 R6）、schedule_wakeup/task（TimerRegistry + `wake-schedule` 行 + attach 重布防）、挂起持久化、恢复唤醒轮（R9）、charter 编辑 GUI 面（P1 已有端点）、品性模板目录 `.sunshinex/sunx/{id}/sunx.md`。
