@@ -66,7 +66,6 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
       <div className="sx-artifacts-grid">
         {visible.map((a) => {
           const name = a.path.split('/').pop() ?? a.path;
-          const dir = a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '';
           const label = artifactKindLabel(a.path);
           const thumb = thumbs[a.path];
           return (
@@ -81,7 +80,6 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
               <span className="sx-artifacts-main">
                 <span className="sx-artifacts-name" title={a.path}>{name}</span>
                 {label !== undefined && <span className="sx-artifacts-kind">{label}</span>}
-                {dir !== '' && <span className="sx-artifacts-dir">{dir}</span>}
               </span>
               <OpenSplit
                 conn={conn}
