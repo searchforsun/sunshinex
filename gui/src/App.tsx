@@ -1172,6 +1172,7 @@ function AppShell(): JSX.Element {
                 onOpenTurnDiff={openTurndiffTab}
                 onOpenAgent={openAgentTab}
                 onOpenWeb={openWebTab}
+        onRunInTerminal={(command) => openTabInSession('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command })}
                 onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
                 onOpenArtifacts={openArtifactsTab}

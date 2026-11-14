@@ -8,13 +8,14 @@ import type { Connection } from '../connection';
  *  跨 run 按 artifactKey 去重保留最新,含子 run);行卡复用轮末 ArtifactCardView 三分支
  *  (file=侧栏预览+外部菜单/url=右栏 Web 页签+系统浏览器/command=复制);点行名=file 侧栏预览。
  *  onOpError=外部打开失败浮出——页签装配面(registry Package)暂无错误回传面,prop 可选缺省不接线 */
-export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, onOpenWeb, onOpError }: {
+export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, onOpenWeb, onRunInTerminal, onOpError }: {
   conn: Connection;
   sessionId: string;
   root?: string;
   refreshNonce?: number;
   onOpenFile?: (p: string) => void;
   onOpenWeb?: (url: string) => void;
+  onRunInTerminal?: (command: string) => void;
   onOpError?: (err: unknown) => void;
 }): JSX.Element {
   const [items, setItems] = useState<ArtifactRow[] | null>(null);
@@ -53,6 +54,7 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
               actions={{
                 onOpenFile,
                 onOpenWeb,
+                onRunInTerminal,
                 onOpError,
               }}
             />

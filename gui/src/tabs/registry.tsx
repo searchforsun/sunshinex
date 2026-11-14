@@ -442,6 +442,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
             onOpenFile={fileTabOf(p)}
             onOpenDiff={(callId, path) => p.openTab('diff', { callId, path })}
             onOpenWeb={(url) => p.openTab('web', { url })}
+        onRunInTerminal={(command) => p.openTab('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command })}
             onOpenMemory={p.openMemory}
             onOpenLearned={p.openLearned}
             onOpenAgent={(label, agentTitle, task) => p.openTab('agent', { label, agentTitle, task })}

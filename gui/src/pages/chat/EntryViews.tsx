@@ -628,7 +628,7 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenWeb, onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenWeb?: (url: string) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenWeb, onRunInTerminal, onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenWeb?: (url: string) => void; onRunInTerminal?: (command: string) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
   /* conn/sessionId/root/onOpError=轮末产物卡区(ArtifactsStrip,2026-11-12 spec §4)数据与动作面;
    *  onOpenArtifacts=产物库页签入口(节头「全部产物 →」链接,App openArtifactsTab 下发;缺席不渲染链接) */
   const office = useUiMode() === 'office';
@@ -823,6 +823,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           root={root}
           onOpenFile={onOpenFile}
           onOpenWeb={onOpenWeb}
+          onRunInTerminal={onRunInTerminal}
           onOpError={onOpError}
           onOpenArtifacts={onOpenArtifacts}
         />

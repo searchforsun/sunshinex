@@ -231,6 +231,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           fit = new FitAddon();
           term.loadAddon(fit);
           term.open(container);
+          let seedSent = false; // 产物命令种子只写一次(2026-11-14)
           let sawFrame = false; // replay/data 任一到达 = pty 活着(回退判据)
           let dead = false; // error 帧+closed = 档键已死(回退触发)
           socket = new PtySocket({
@@ -271,6 +272,14 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             },
           });
           term.onData((d) => socket?.sendInput(d));
+          // 产物 command 卡「打开」种子(2026-11-14):开档即把声明命令写入 pty 行缓冲(不带换行,
+          //  用户过目后自行回车执行);pty 行缓冲在 shell 读取前安全,一次性
+          if (seedSent) {
+            // noop
+          } else if (typeof params.seedCmd === 'string' && params.seedCmd !== '') {
+            seedSent = true;
+            socket.sendInput(params.seedCmd);
+          }
           // 选区工具条(2026-11-03):选区清空即隐;mouseup 落点定条位(容器相对坐标,钳制到容器内)
           const onMouseUp = (e: MouseEvent): void => {
             const sel = term?.getSelection() ?? '';

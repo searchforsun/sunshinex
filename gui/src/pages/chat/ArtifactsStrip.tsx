@@ -15,6 +15,8 @@ export interface ArtifactCardActions {
   onOpenFile?: (p: string) => void;
   /** url 类主钮:右栏 Web 页签内嵌打开 */
   onOpenWeb?: (url: string) => void;
+  /** command 类主钮:打开终端页签并写入声明命令(2026-11-14 用户裁定「打开终端复制到其中」) */
+  onRunInTerminal?: (command: string) => void;
   onOpError?: (err: unknown) => void;
 }
 
@@ -64,9 +66,12 @@ export function ArtifactCardView({ a, conn, root, actions }: {
     );
     actionRow = (
       <OpenSplit
-        ariaLabel={`${t('Copy command', '复制命令')} ${name}`}
+        ariaLabel={`${t('Open in terminal', '终端打开')} ${name}`}
         label={status === 'ok' ? t('Copied', '已复制') : t('Open', '打开')}
-        onOpenDefault={() => copy(a.command)}
+        onOpenDefault={() => {
+          if (actions.onRunInTerminal !== undefined) actions.onRunInTerminal(a.command);
+          else copy(a.command);
+        }}
         items={[
           {
             id: 'copy',
@@ -113,7 +118,7 @@ export function ArtifactCardView({ a, conn, root, actions }: {
  *  runmeta.artifacts 只读投影。无容器框(对标 codex 简洁),网格 auto-fit minmax(min(360px,1fr))
  *  行距 16px——单卡整行/多卡宽处两列/窄处单列;>8 张折叠,「展开全部」居左(hover 灰→主文字色,
  *  与「全部产物」同语言) */
-export function ArtifactsStrip({ artifacts, conn, root, onOpenFile, onOpenWeb, onOpError, onOpenArtifacts }: {
+export function ArtifactsStrip({ artifacts, conn, onRunInTerminal, root, onOpenFile, onOpenWeb, onOpError, onOpenArtifacts }: {
   artifacts: ReadonlyArray<Artifact>;
   conn: Connection;
   /** 会话席(缩略图链路撤除后暂无消费;保留类型位免 MessageList 串联churn) */
@@ -121,6 +126,7 @@ export function ArtifactsStrip({ artifacts, conn, root, onOpenFile, onOpenWeb, o
   root?: string;
   onOpenFile?: (p: string) => void;
   onOpenWeb?: (url: string) => void;
+  onRunInTerminal?: (command: string) => void;
   onOpError?: (err: unknown) => void;
   onOpenArtifacts?: () => void;
 }): JSX.Element | null {
@@ -148,7 +154,7 @@ export function ArtifactsStrip({ artifacts, conn, root, onOpenFile, onOpenWeb, o
             a={a}
             conn={conn}
             root={root}
-            actions={{ onOpenFile, onOpenWeb, onOpError }}
+            actions={{ onOpenFile, onOpenWeb, onRunInTerminal, onOpError }}
           />
         ))}
       </div>

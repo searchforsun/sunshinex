@@ -33,6 +33,8 @@ export interface TabParams {
   /** G8b 终端多实例铸键:「+」菜单每次开铸唯一 nonce(mintParams)→ resolveKey 各异 →
    *  同型并存(每标签独立 pty);无 nonce 开档互判重(聚焦既有) */
   readonly nonce?: string;
+  /** 产物 command 卡「打开」:开档即写入 pty 行缓冲的声明命令(不带回车,用户过目后回车;2026-11-14) */
+  readonly seedCmd?: string;
   /** G14.29 辅助对话:fork 旁路会话 id(sidechat 标签寻址;同一辅助会话重开=聚焦) */
   readonly sideId?: string;
   /** 辅助对话 journal 定址(2026-11-06):sideId 是 daemon 生命周期内的会话 id,重启即失效——

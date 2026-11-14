@@ -64,6 +64,7 @@ export interface MessageListProps {
   /** 轮末产物卡「产物库」链接通道(2026-11-12 spec §4;Task 12 接 App 入口——本任务纯类型面) */
   readonly onOpenArtifacts?: () => void;
   readonly onOpenWeb?: (url: string) => void;
+  readonly onRunInTerminal?: (command: string) => void;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
   /** 轮次 checkpoint 通道(2026-11-10):改动条文件名开本轮 diff 页签 / 前像回写撤销 */
@@ -92,6 +93,7 @@ export interface MessageListProps {
  *  (structureVersion 键),位置对位成立 */
 interface DayGroupProps {
   readonly onOpenWeb?: (url: string) => void;
+  readonly onRunInTerminal?: (command: string) => void;
 
   readonly label: string;
   readonly entries: readonly ChatEntry[];
@@ -136,7 +138,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpError, onOpenWeb, onOpenArtifacts, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpError, onOpenWeb, onRunInTerminal, onOpenArtifacts, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const office = useUiMode() === 'office';
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
@@ -191,10 +193,12 @@ const DayGroupBlock = memo(
           sessionId={sessionId}
           root={root}
           onOpError={onOpError}
+          onOpenWeb={onOpenWeb}
+          onRunInTerminal={onRunInTerminal}
           onOpenArtifacts={onOpenArtifacts}
         />
       );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, sessionId, root, onOpError, onOpenWeb, onOpenArtifacts, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, sessionId, root, onOpError, onOpenWeb, onRunInTerminal, onOpenArtifacts, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(
@@ -297,6 +301,7 @@ const DayGroupBlock = memo(
             root={root}
             onOpError={onOpError}
             onOpenWeb={onOpenWeb}
+            onRunInTerminal={onRunInTerminal}
             onOpenArtifacts={onOpenArtifacts}
             onSend={submitText}
             sideChat={sideChat}

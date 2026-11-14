@@ -78,6 +78,8 @@ export interface ChatProps {
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
    *  落条时上抛目标 url,App 开 web 页签跟随(判重/聚焦由 openTabInSession 承担);可选防桩免配 */
   onOpenWeb?: (url: string) => void;
+  /** 产物 command 卡「打开」:开终端页签并写入声明命令(App openTabInSession seedCmd) */
+  onRunInTerminal?: (command: string) => void;
   /** 轮次发起回执(2026-11-01「不自动打开浏览器,切会话才显示」根修配套):提交被接受即回执,
    *  App 据此重置内置浏览器自动开签守卫——每轮 run 都允许自动开签(同会话上一轮开过/被关不锁死) */
   onRunStart?: () => void;
