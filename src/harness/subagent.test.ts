@@ -461,10 +461,10 @@ test('Runner 工具面收窄：todo_write 恒不在子面（规格 D9）', () =>
     assert.ok(!deft.has('ask_question'), '子面无 ask_question：HITL 归主链，fork 内不向用户发问');
     assert.ok(!deft.has('worktree'), '子面无 worktree：活动根是父子共享状态，子智能体不得切换');
     assert.ok(!deft.has('spawn'), '缺省派生子面恒无 spawn');
-    const explicit = runner.deriveChildRegistry({ prompt: 'w', tools: ['todo_write', 'read', 'ask_question', 'worktree'] });
-    assert.ok(explicit.has('read'), '显式清单保留 read');
-    assert.ok(!explicit.has('todo_write'), '显式列名同样剔除');
-    assert.ok(!explicit.has('ask_question') && !explicit.has('worktree'), '显式列名同样剔除 ask_question/worktree');
+    // 2026-11-14 spawn tools 口封闭:显式清单分叉退役,单一口径恒剔(与缺省派生同面)
+    const single = runner.deriveChildRegistry();
+    assert.ok(single.has('read'), '单一口径保留普通工具 read');
+    assert.ok(!single.has('todo_write') && !single.has('ask_question') && !single.has('worktree'), '单一口径恒剔 todo_write/ask_question/worktree');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -566,10 +566,10 @@ test('Runner 工具面收窄：缺省子面 = 父全量 − spawn；tools 收窄
   try {
     const h = makeHarness(tmp);
     const runner = h.makeRunner(new ScriptedAdapter([JSON.stringify({ done: true, reply: 'ok' })]));
-    const narrowed = runner.deriveChildRegistry({ prompt: 'w', tools: ['read'] });
+    // 2026-11-14 tools 口封闭:无收窄分叉,缺省派生即唯一子面
+    const narrowed = runner.deriveChildRegistry();
     const names = narrowed.list().map((t) => t.name);
-    assert.ok(names.includes('read'), 'tools 收窄后子面保留 read');
-    assert.ok(!names.includes('webfetch') && !names.includes('exec'), 'tools 收窄排除未列名工具');
+    assert.ok(names.includes('read'), '子面保留 read');
     assert.ok(!names.includes('spawn'), '子面恒无 spawn');
     const deft = runner.deriveChildRegistry();
     assert.ok(deft.has('read') && deft.has('exec') && !deft.has('spawn'), '缺省派生 = 父全量 − spawn（深度 1 层缺省收窄）');

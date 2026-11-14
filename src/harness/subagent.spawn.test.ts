@@ -82,10 +82,9 @@ test('spawn 输入校验：双缺 INVALID_ARG / background 两段式开通（D6�
     // T2 起 background:true 走两段式（规格 D6）：不再 NOT_SUPPORTED，改为立即返回任务回执
     const bg = (await spawn!.executor({ prompt: 'x', background: true })) as { stdout: string };
     assert.match(bg.stdout, /^task \S+ started/, '两段式立即返回任务回执（动态 id：业务-时间-随机方言）');
-    await assert.rejects(
-      spawn!.executor({ prompt: 'x', tools: ['ghost'] }),
-      (e: unknown) => e instanceof CodedToolError && e.code === 'INVALID_ARG',
-    );
+    // 2026-11-14 spawn tools 口封闭:模型传 tools 亦被 normalize 剥除(不校验不生效)
+    const narrowed = (await spawn!.executor({ prompt: 'x', tools: ['ghost'] })) as { stdout: string };
+    assert.ok(narrowed.stdout.length > 0, 'tools 幽灵名不再 INVALID_ARG——参数已从模型面撤除,归一即剥');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

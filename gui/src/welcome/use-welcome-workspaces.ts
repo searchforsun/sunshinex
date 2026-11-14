@@ -56,15 +56,21 @@ export function useWelcomeWorkspaces(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn]);
   /** 预选工作区(G10-C16):项目行「+」带来的 preset——每次入口(seq 递增)即选中(用户仍可在条上切换);
-   *  「新对话」入口(无 preset)保留当前选择(2026-11-12 用户裁定「欢迎页项目/分支/隔离持久化」,
-   *  接替 2026-11-09「新对话回默认」旧裁定——挂载时已从 localStorage 恢复上次选择,不再清空);
-   *  同拍回源项目列表:侧栏「添加工作区」只经本 preset 通知欢迎页(组件已挂载不重拉,下拉还是
-   *  挂载时快照——新建项目不入列,切页才显) */
+   *  「新对话」入口(无 preset,seq 递增)回默认工作区(2026-11-14 用户裁定「最近会话点新增,会话回不到
+   *  默认工作区了？？」——翻案 2026-11-12「保留当前选择」档:持久化仍管切会话/重开,唯显式新对话
+   *  入口强制回默认,持久档同步清写);同拍回源项目列表:侧栏「添加工作区」只经本 preset 通知欢迎页
+   *  (组件已挂载不重拉,下拉还是挂载时快照——新建项目不入列,切页才显) */
   useEffect(() => {
     if (presetRoot !== undefined && presetRoot !== '') {
       setPicked(presetRoot);
       refreshRows();
     } else if (presetSeq !== undefined && presetSeq > 0) {
+      // 显式新对话:持久选择清档+选默认锚(行表已在场用现值,否则 refreshRows 回填后由守卫落锚)
+      try { localStorage.setItem('sx-welcome:project', ''); } catch { /* 隐私模式忽略 */ }
+      const isDefaultNm = (nm: string): boolean => nm === 'default' || nm.startsWith('sunshinex-default');
+      const anchor = rows.find((r) => r.root !== undefined && pathBasename(r.root) === 'sunshinex-default')
+        ?? rows.find((r) => isDefaultNm(pathBasename(r.root ?? r.slug)));
+      setPicked(anchor?.root ?? 'default');
       refreshRows();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

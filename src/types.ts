@@ -268,8 +268,6 @@ export interface SubagentSpawnInput {
   prompt?: string;
   /** 时间线卡片短标题（缺省 agent_id ?? 'subagent'） */
   label?: string;
-  /** 子智能体工具名子集（缺省 = 父全量 − spawn）；未知名由 spawn 输入面校验 fail-fast */
-  tools?: string[];
   /** 隔离声明（规格 2026-09-23-subagent-worktree-isolation D2）：'worktree' = fork 前程序建专属树并在树内执行，收口随树生命周期；
    * 入参优先于 agent.md frontmatter；工作区非 git 仓时静默降级为主工作区执行（D3） */
   isolation?: 'worktree';

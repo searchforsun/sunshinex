@@ -114,7 +114,7 @@ test('e2e:lead-only 不变量——主链面持有 TASKBOARD_TOOL_NAMES,Subagent
     assert.ok(TASKBOARD_TOOL_NAMES.every((n) => h.tools.get(n) !== undefined), '主链工具面应持有 taskboard 工具');
     const fullClone = h.tools.derive({ exclude: [] });
     assert.ok(TASKBOARD_TOOL_NAMES.every((n) => fullClone.get(n) !== undefined), '全量克隆面应含 taskboard 工具');
-    const child = h.runner.deriveChildRegistry({});
+    const child = h.runner.deriveChildRegistry();
     for (const n of TASKBOARD_TOOL_NAMES) {
       assert.ok(child.get(n) === undefined, `fork 子面不应见 ${n}`);
     }

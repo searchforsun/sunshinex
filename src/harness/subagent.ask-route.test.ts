@@ -32,7 +32,7 @@ describe('子智能体 ask 路由(subagent.ask-route)', () => {
       throw new Error('stop-here');
     };
     const { runner } = makeRunner(parent);
-    const child = runner.deriveChildRegistry(undefined, { label: 'Tester#2', taskId: 'task-1' });
+    const child = runner.deriveChildRegistry({ label: 'Tester#2', taskId: 'task-1' });
     const ask = child.get('ask_question');
     assert.ok(ask, '路由版 ask_question 应在册');
     await assert.rejects(
@@ -46,13 +46,13 @@ describe('子智能体 ask 路由(subagent.ask-route)', () => {
 
   test('deps.ask 缺省(headless 装配):派生子面无 ask_question=剔除旧制', () => {
     const { runner } = makeRunner(undefined);
-    const child = runner.deriveChildRegistry(undefined, { label: 'Tester' });
+    const child = runner.deriveChildRegistry({ label: 'Tester' });
     assert.equal(child.get('ask_question'), undefined);
   });
 
   test('deps.ask 在座但未传归因(主链直问面):派生子面同样剔除', () => {
     const { runner } = makeRunner(async () => ({ type: 'dismissed' }));
-    const child = runner.deriveChildRegistry(undefined);
+    const child = runner.deriveChildRegistry();
     assert.equal(child.get('ask_question'), undefined);
   });
 });

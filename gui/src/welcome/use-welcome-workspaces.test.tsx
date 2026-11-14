@@ -20,7 +20,7 @@ function useHarness(presetRoot: string | undefined, presetSeq: number, init = ''
 }
 
 describe('useWelcomeWorkspaces 预选意图', () => {
-  it('项目「+」预选该项目;新对话(无 preset、seq 递增)保留当前选择(2026-11-12 持久化裁定,接替回默认旧裁定)', async () => {
+  it('项目「+」预选该项目;新对话(无 preset、seq 递增)回默认工作区(2026-11-14 用户裁定「最近会话点新增,回不到默认工作区了」——翻案 11-12 保留档)', async () => {
     const { result, rerender } = renderHook(({ root, seq }: { root: string | undefined; seq: number }) => useHarness(root, seq), {
       initialProps: { root: undefined as string | undefined, seq: 0 },
     });
@@ -28,16 +28,16 @@ describe('useWelcomeWorkspaces 预选意图', () => {
     rerender({ root: '/w/proj-a', seq: 1 });
     await waitFor(() => expect(result.current).toBe('/w/proj-a'));
     rerender({ root: undefined, seq: 2 });
-    await waitFor(() => expect(result.current).toBe('/w/proj-a'));
+    await waitFor(() => expect(result.current).toBe(DEFAULT_ROOT));
   });
 
-  it('同一项目重复「+」(seq 递增)幂等保持', async () => {
+  it('同一项目重复「+」(seq 递增)幂等保持;新对话入口回默认', async () => {
     const { result, rerender } = renderHook(({ root, seq }: { root: string | undefined; seq: number }) => useHarness(root, seq), {
       initialProps: { root: '/w/proj-a' as string | undefined, seq: 1 },
     });
     await waitFor(() => expect(result.current).toBe('/w/proj-a'));
     rerender({ root: undefined, seq: 2 });
-    await waitFor(() => expect(result.current).toBe('/w/proj-a'));
+    await waitFor(() => expect(result.current).toBe(DEFAULT_ROOT));
     await act(async () => rerender({ root: '/w/proj-a', seq: 3 }));
     await waitFor(() => expect(result.current).toBe('/w/proj-a'));
   });

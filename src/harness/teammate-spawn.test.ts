@@ -70,12 +70,12 @@ test('create_agent_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w
     assert.equal(face.get('create_agent_teammate'), undefined, 'teammate 面不得再建成员(lead-only)');
     assert.notEqual(face.get('task_wait'), undefined, 'teammate 面保留 task_wait(等 exec 自动转后台)');
     // fork 子面剔除 send_agent_team_message / create_agent_teammate(消息身份与建成员属 lead);task_wait 保留为 exec-only
-    assert.equal(h.runner.deriveChildRegistry({}).get('send_agent_team_message'), undefined, 'fork 子面缺省派生不得含 send_agent_team_message');
-    assert.equal(h.runner.deriveChildRegistry({}).get('create_agent_teammate'), undefined, 'fork 子面不得含 create_agent_teammate');
-    assert.notEqual(h.runner.deriveChildRegistry({}).get('task_wait'), undefined, 'fork 子面保留 task_wait(exec-only)');
-    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_agent_team_message', 'create_agent_teammate', 'read'] }).get('send_agent_team_message'), undefined, '显式 allowlist 亦恒剔除 send_agent_team_message');
-    assert.equal(h.runner.deriveChildRegistry({ tools: ['send_agent_team_message', 'create_agent_teammate', 'read'] }).get('create_agent_teammate'), undefined, '显式 allowlist 亦恒剔除 create_agent_teammate');
-    assert.notEqual(h.runner.deriveChildRegistry({ tools: ['task_wait', 'read'] }).get('task_wait'), undefined, '显式 allowlist 内 task_wait 换装保留');
+    assert.equal(h.runner.deriveChildRegistry().get('send_agent_team_message'), undefined, 'fork 子面缺省派生不得含 send_agent_team_message');
+    assert.equal(h.runner.deriveChildRegistry().get('create_agent_teammate'), undefined, 'fork 子面不得含 create_agent_teammate');
+    assert.notEqual(h.runner.deriveChildRegistry().get('task_wait'), undefined, 'fork 子面保留 task_wait(exec-only)');
+    assert.equal(h.runner.deriveChildRegistry().get('send_agent_team_message'), undefined, '显式 allowlist 亦恒剔除 send_agent_team_message');
+    assert.equal(h.runner.deriveChildRegistry().get('create_agent_teammate'), undefined, '显式 allowlist 亦恒剔除 create_agent_teammate');
+    assert.notEqual(h.runner.deriveChildRegistry().get('task_wait'), undefined, '显式 allowlist 内 task_wait 换装保留');
     const created = h.taskboard.create({ teamId: TEAM_ID, title: 'A', spec: 'do A stuff' });
     assert.ok(created.ok);
     const aId = created.value.taskId;

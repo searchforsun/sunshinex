@@ -310,8 +310,28 @@ export const ToolEntryView = memo(function ToolEntryView({
   ) : null;
   const verbSpan = purposeHead !== null ? purposeHead : executing ? (
     // G14.88 纯流光文字(去工具图标+波纹框——双图标视感,用户裁定)
+    // spawn 运行态同样带子智能体蓝链(2026-11-14 用户裁定「同步分派也要显示分派的超链接,分派成功
+    // 即更新显示 分派子智能体 {}」)——名到场(分派已受理)即链,同步等待只是等待,流式照常
     <span className="tool-verb exec-running">
-      <span className="exec-running-text">{runningLabel}</span>
+      <span className="exec-running-text">
+        {executing && toolName === 'spawn' && spawnAgentName !== '' && onOpenAgent !== undefined ? (
+          <>
+            {t('Dispatching subagent', '正在分派子智能体')}
+            <span
+              role="button"
+              tabIndex={-1}
+              className="tool-file-base tool-agent-link"
+              data-tip={t('View subagent', '查看子智能体')}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
+              }}
+            >
+              {' '}{spawnAgentName}
+            </span>
+          </>
+        ) : runningLabel}
+      </span>
     </span>
   ) : toolName === 'ask_question' ? (
     <span className="tool-verb">{zhToolName(toolName)}</span>

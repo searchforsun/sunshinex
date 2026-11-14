@@ -219,7 +219,6 @@ export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInp
     ...input,
     agent_id: input.agent_id !== undefined && jsonAbsent(input.agent_id) ? undefined : input.agent_id,
     label: input.label !== undefined && jsonAbsent(input.label) ? undefined : input.label,
-    tools: Array.isArray(input.tools) ? input.tools.filter((t) => !jsonAbsent(t)) : input.tools,
     isolation: input.isolation !== undefined && jsonAbsent(input.isolation) ? undefined : input.isolation,
   };
 }
@@ -342,14 +341,14 @@ export class SubagentRunner {
   }
 
   /** 子智能体工具面派生（「spawn 只在主链工具面」不变量的单一实现点；收窄 spawn+todo_write+ask_question+worktree）：
-   * 缺省 = 父全量 − 这些件；显式 tools = 按名取交集再恒剔除。剔除依据：todo_write 归属主任务单一事实源（D9）；
+   * 恒定 = 父全量 − 这些件(2026-11-14 起 spawn 模型面 tools 参数封闭,不再有显式清单分叉)。剔除依据：todo_write 归属主任务单一事实源（D9）；
    * spawn 防子代再生子代（派生树受控）；ask_question 是面向用户的 HITL 通道，fork 执行不中途发问（结论回写即应答）；
    * worktree 切换的是父子共享的活动根（chain.ts activeRoot 单点），子智能体不得改动主会话工作环境；
    * taskboard 四件套 leader-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 leader，子智能体不碰板；
    * send_agent_team_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 leader+具名 teammate,fork 子面不发；
    * send_agent_team_message+create_agent_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
    * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁) */
-  deriveChildRegistry(input?: SubagentSpawnInput, askedBy?: { label: string; taskId?: string }): ToolRegistry {
+  deriveChildRegistry(askedBy?: { label: string; taskId?: string }): ToolRegistry {
     const bindExecWait = (face: ToolRegistry): ToolRegistry => {
       if (face.get('task_wait') === undefined) return face;
       face.unregister('task_wait');
@@ -367,16 +366,9 @@ export class SubagentRunner {
         child.register(makeAskQuestionTool((req) => parentAsk({ ...req, askedBy })));
       }
     };
-    if (input?.tools && input.tools.length > 0) {
-      const child = this.deps.registry.derive({ only: input.tools });
-      child.unregister(TODO_TOOL_NAME);
-      child.unregister(SPAWN_TOOL_NAME);
-      routeAsk(child, askedBy);
-      child.unregister('worktree');
-      child.unregister('exit_plan'); // 交稿协议（2026-11-03）：子面不可交稿（规划轮是宿主级 fork,与子智能体无关）
-      for (const n of FORK_EXCLUDED_TOOLS) child.unregister(n);
-      return bindExecWait(child);
-    }
+    // 子面=父全量 − 剔除族,恒定收窄(2026-11-14 用户裁定「主 agent 分派子智能体怎么能指定工具?
+    // 不是事先规定吗?这个口不应该漏」:spawn 模型面 tools 参数封闭,工具面事先规定不可指定——
+    // 旧「显式清单按名取交集」支路随 schema 撤参一并退役,子面口径单一不成分叉)
     const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...FORK_EXCLUDED_TOOLS] });
     routeAsk(child, askedBy);
     return bindExecWait(child);
@@ -392,11 +384,6 @@ export class SubagentRunner {
     }
     if (input.isolation !== undefined && input.isolation !== 'worktree') {
       throw new CodedToolError('INVALID_ARG', `Unknown isolation: ${String(input.isolation)} (only 'worktree')`);
-    }
-    for (const t of input.tools ?? []) {
-      if (!this.deps.registry.has(t)) {
-        throw new CodedToolError('INVALID_ARG', `Unknown tool: ${t}`);
-      }
     }
   }
 
@@ -578,7 +565,7 @@ export class SubagentRunner {
       const childSignal = opts?.signal ?? this.parentSignal;
       const child = new Reactor({
         safety: childSafety,
-        registry: this.deriveChildRegistry(input, { label: finalLabel, ...(opts && opts.taskId !== undefined ? { taskId: opts.taskId } : {}) }),
+        registry: this.deriveChildRegistry({ label: finalLabel, ...(opts && opts.taskId !== undefined ? { taskId: opts.taskId } : {}) }),
         context: this.deps.context,
         model: this.deps.model,
         // 主任务暂停级联（2026-10-02 用户裁决）：显式 opts.signal 优先（后台两段式已带任务 abort），

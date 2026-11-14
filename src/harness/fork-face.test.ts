@@ -99,11 +99,11 @@ test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支�
     for (const name of FORK_EXCLUDED_TOOLS) {
       assert.notEqual(h.tools.get(name), undefined, `lead 主面应有 ${name}(剔除应发生在派生点)`);
     }
-    const faceDefault = h.runner.deriveChildRegistry({});
+    const faceDefault = h.runner.deriveChildRegistry();
     for (const name of FAMILY) assert.equal(faceDefault.get(name), undefined, `缺省派生不得含 ${name}`);
-    const faceAllow = h.runner.deriveChildRegistry({ tools: ['send_agent_team_message', 'create_agent_team_task', 'read'] });
-    for (const name of FORK_EXCLUDED_TOOLS) assert.equal(faceAllow.get(name), undefined, `显式 allowlist 亦恒剔 ${name}`);
-    assert.notEqual(faceAllow.get('read'), undefined, 'allowlist 内普通工具应保留');
+    // 2026-11-14 用户裁定「spawn tools 口封闭」:显式 allowlist 支路退役,子面口径单一(此断言随闭口改钉)
+    const faceSingle = h.runner.deriveChildRegistry();
+    for (const name of FORK_EXCLUDED_TOOLS) assert.equal(faceSingle.get(name), undefined, `单一口径恒剔 ${name}`);
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();
