@@ -85,7 +85,7 @@ export class WakeController {
   private pending: WakeTaskInput[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private chain = 0;
-  /** 最近一次起轮受理态：合批 timer 先于轮收束受理时，onTurnEnded 空批复检仍报 true=唤醒轮在途 */
+  /** 在途唤醒闩：fire 受理置位；onTurnEnded 入口一次性读清（含 interrupted——中断即无跟进，不留陈旧 true） */
   private waking = false;
 
   constructor(private readonly opts: WakeControllerOpts) {}
@@ -107,25 +107,28 @@ export class WakeController {
   }
 
   /** 轮收束续跑口（宿主在 steer 优先分支之后调用）；interrupted 保留 pending（§10-1 缺省裁定）。
-   *  返回=本轮收束是否已有/将有唤醒轮跟进：true 含合批 timer 已受理的在途批（空批时回报受理态） */
+   *  返回=本轮收束是否已有/将有唤醒轮跟进。闩在入口一次性读清：timer 已受理的在途批只报告一次，
+   *  interrupted/消费后即回落 false，不向后续轮收束谎报跟进 */
   onTurnEnded(stopReason?: string): boolean {
+    const r = this.waking; // 一次性读清（先取后清：interrupted 分支同清，空批分支经 tryFire 回报 r）
+    this.waking = false;
     if (stopReason === 'interrupted') return false;
-    return this.tryFire();
+    return this.tryFire(r);
   }
 
   private scheduleFire(): void {
     if (this.timer !== undefined) return;
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      this.tryFire();
+      this.tryFire(false); // timer 直调：空批返回值弃置，闭读写归 onTurnEnded 专管
     }, this.opts.batchMs ?? 1500);
   }
 
-  private tryFire(): boolean {
+  private tryFire(prevWaking: boolean): boolean {
     if (this.opts.busy()) return false; // 计时器与用户提交竞态：busy 即本轮收束再取
     const batch = this.pending.filter((t) => !this.opts.receipted(t.id));
     this.pending = [];
-    if (batch.length === 0) return this.waking; // 空批（timer 已先受理/全部已 receipted）：回报在途唤醒态，不新起轮
+    if (batch.length === 0) return prevWaking; // 空批（timer 已先受理/全部已 receipted）：回报入口读得的在途态，不新起轮
     if (this.chain >= (this.opts.maxChain ?? 10)) {
       this.opts.onLimit?.();
       this.waking = false;
