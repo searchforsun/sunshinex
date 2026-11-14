@@ -117,6 +117,8 @@ export interface SnapshotTranscriptEntry {
     stopped?: boolean;
     changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
     turn?: TurnFileChange[];
+    /** 轮次产物(2026-11-12 spec §4;Task 9 遗留类型面收口——运行时经 cast 透传,声明补齐即类型不滞后) */
+    artifacts?: ArtifactFile[];
   };
 }
 

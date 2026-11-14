@@ -59,6 +59,10 @@ export interface MessageListProps {
   readonly rewindOps?: RewindOps;
   readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
+  /** 会话级操作错误上抛(轮末产物卡 OpenSplit/openInEditor 错误条同通道;可选防测试桩免配) */
+  readonly onOpError?: (err: unknown) => void;
+  /** 轮末产物卡「产物库」链接通道(2026-11-12 spec §4;Task 12 接 App 入口——本任务纯类型面) */
+  readonly onOpenArtifacts?: () => void;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
   /** 轮次 checkpoint 通道(2026-11-10):改动条文件名开本轮 diff 页签 / 前像回写撤销 */
@@ -110,6 +114,9 @@ interface DayGroupProps {
 
  readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
+  /** 轮末产物卡区透传(ChatEntryView→ArtifactsStrip;可选防测试桩免配) */
+  readonly onOpError?: (err: unknown) => void;
+  readonly onOpenArtifacts?: () => void;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
   readonly onOpenTurn?: (run: number, path: string) => void;
@@ -126,7 +133,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpError, onOpenArtifacts, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const office = useUiMode() === 'office';
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
@@ -273,6 +280,13 @@ const DayGroupBlock = memo(
             // (折叠段路径 renderFoldEntry 两回调齐全,可见路径唯独漏了);撤销同面补传
             onOpenTurn={onOpenTurn}
             onTurnRestore={onTurnRestore}
+            // 轮末产物卡区(2026-11-12 spec §4):conn/sessionId/root 数据面+错误通道;onOpenArtifacts
+            // 透传留 Task 12 消费(本任务未接线即 undefined)
+            conn={conn}
+            sessionId={sessionId}
+            root={root}
+            onOpError={onOpError}
+            onOpenArtifacts={onOpenArtifacts}
             onSend={submitText}
             sideChat={sideChat}
           />,
@@ -311,6 +325,8 @@ const DayGroupBlock = memo(
     && prev.onFork === next.onFork
     && prev.onOpenImage === next.onOpenImage
     && prev.root === next.root
+    && prev.onOpError === next.onOpError
+    && prev.onOpenArtifacts === next.onOpenArtifacts
     && prev.sideChat === next.sideChat,
 );
 
@@ -483,6 +499,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
             rewindOps={props.rewindOps}
             composerEnv={props.composerEnv}
             runFooterByEntry={runFooterByEntry}
+            onOpError={props.onOpError}
+            onOpenArtifacts={props.onOpenArtifacts}
             onEntryOpenDiff={onEntryOpenDiffStable}
             onEntryRestore={onEntryRestoreStable}
             onOpenTurn={onOpenTurnOpt()}

@@ -13,6 +13,7 @@ import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import { buildMdComponents, keepUrl, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
+import { ArtifactsStrip } from './ArtifactsStrip';
 import { ImageLightbox } from '../../ImageLightbox';
 import { useDirOpener } from './md-render';
 import { ComposerCard } from '../../composer/ComposerCard';
@@ -591,7 +592,9 @@ export const CommandEntryView = memo(function CommandEntryView({ entry }: { entr
   );
 });
 
-export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
+export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, conn, sessionId, root, onOpError, onOpenArtifacts: _onOpenArtifacts, onFork, onOpenFile, onOpenDiff, onRestore, onOpenTurn, onTurnRestore, onOpenAgent, onOpenSession, sideChat, onOpenLeader, onSend }: { entry: ChatEntry; footerRun?: ChatEntry; conn?: Connection; sessionId?: string; root?: string; onOpError?: (err: unknown) => void; onOpenArtifacts?: () => void; onFork?: (runKey: string) => void; onOpenFile?: (p: string) => void; onOpenDiff?: (path: string) => void; onRestore?: (path: string) => void; onOpenTurn?: (run: number, path: string) => void; onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void; onOpenSession?: (sessionId: string) => void; sideChat?: boolean; onOpenLeader?: (m: { from: string; text: string }) => void; onSend?: (text: string, images?: File[]) => Promise<void> | undefined }): JSX.Element {
+  /* conn/sessionId/root/onOpError=轮末产物卡区(ArtifactsStrip,2026-11-12 spec §4)数据与动作面;
+   *  _onOpenArtifacts=产物库链接通道留位(Task 12 接线——本任务未消费,noUnusedParameters 解构留位) */
   const office = useUiMode() === 'office';
   const msg = agentMessageOf(entry);
   /** 成员报告气泡编辑(2026-11-13 用户裁定「插入的用户气泡不支持编辑」):编辑后作为新用户消息
@@ -775,6 +778,17 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, onF
       {/* 2026-11-06 用户裁定 P2:辅助会话正文不渲染 fork/回退行 */}
       {/* 辅助会话仅裁 fork 入口(2026-11-06 用户裁定「只让去掉 fork 入口」):复制/步数/tokens/时间照常 */}
       {/* 改动条在正文与复制行之间(2026-11-11 用户裁定「正文后审查行放到复制按钮行上面,正文下面」) */}
+      {/* 轮末产物卡区(2026-11-12 spec §4):改动条之前;conn/sessionId 缺席面(子智能体转录/测试桩)不渲染 */}
+      {footerRun !== undefined && conn !== undefined && sessionId !== undefined && footerRun.artifacts !== undefined && footerRun.artifacts.length > 0 && (
+        <ArtifactsStrip
+          artifacts={footerRun.artifacts}
+          conn={conn}
+          sessionId={sessionId}
+          root={root}
+          onOpenFile={onOpenFile}
+          onOpError={onOpError}
+        />
+      )}
       {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}

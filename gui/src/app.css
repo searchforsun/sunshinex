@@ -4119,3 +4119,17 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-openbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-artifacts-caret { border: 1px solid var(--border); background: transparent; color: var(--fg-secondary); padding: 2px 4px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; cursor: pointer; display: inline-flex; align-items: center; }
 .sx-artifacts-caret:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* ===== 轮末产物卡区(2026-11-12 spec §4):单卡整行/多卡 auto-fit 两列(750 档),窄处单列 ===== */
+.sx-artifacts { margin: 14px -6px 4px; background: var(--bubble-user); border-radius: var(--radius-md); padding: 2px 10px 10px; }
+.sx-artifacts-head { display: flex; align-items: center; gap: 8px; padding: 6px 0 6px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
+.sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); }
+.sx-artifacts-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 8px; }
+.sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.sx-artifacts-tile { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-soft); border-radius: 8px; }
+.sx-artifacts-thumb { width: 32px; height: 32px; flex: none; object-fit: cover; border-radius: 8px; }
+.sx-artifacts-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.sx-artifacts-name { color: var(--fg); font-weight: 600; font-size: calc(14px * var(--fz)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-artifacts-kind { color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
+.sx-artifacts-dir { color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
