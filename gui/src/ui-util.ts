@@ -146,6 +146,22 @@ export function pathBasename(p: string): string {
   return pathSegments(p).pop() ?? p;
 }
 
+/** 外部拖拽落盘路径归一(2026-11-14 用户裁定「资源管理器拖文件/文件夹到输入框,自动解析成超链接」):
+ *  绝对路径→@短写账本三元组;根在场且路径在根下→相对化(发送期 @ 展开口径),根外保绝对(展开成
+ *  绝对路径 md 链接仍可打开);目录判定=末段无扩展名的启发(Explorer 拖拽不带类型标记,带扩展名
+ *  的无尾斜杠目录罕见,误判仅影响芯片斜杠标记不影响链接)。win 反斜杠统一正斜杠,尾斜杠剥除 */
+export function dropRefsOf(paths: string[], root?: string): Array<{ base: string; ledger: string }> {
+  const r = root !== undefined && root !== '' ? root.replaceAll('\\', '/').replace(/\/+$/, '') : undefined;
+  return paths.map((p) => {
+    const norm = p.replaceAll('\\', '/').replace(/([^/])\/+$/, '$1');
+    let ledger = norm;
+    if (r !== undefined && norm.toLowerCase().startsWith(r.toLowerCase() + '/')) ledger = norm.slice(r.length + 1);
+    const base = norm.split('/').filter(Boolean).pop() ?? norm;
+    const isDir = !/\.[^./]+$/.test(base);
+    return { base, ledger: isDir ? `${ledger}/` : ledger };
+  });
+}
+
 /** 封顶 JSON map localStorage 持久化单点（D46 收敛：Chat scrollMem/侧栏 seenMap 同构两份）：
  *  读=缺档/坏档/隐私模式回空对象；写=按 recencyOf 降序截 cap 条落盘，存储满/禁用静默 */
 export function loadStoredMap<T>(key: string): Record<string, T> {

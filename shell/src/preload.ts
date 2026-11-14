@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { TrayAction } from './lib/lifecycle';
 
 /** 窗控桥(2026-10-23 用户裁定:−□× 自绘为应用按钮样式,撤原生 WCO 方块)——
@@ -75,4 +75,8 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
 contextBridge.exposeInMainWorld('sunshinex', {
   pickFolder: (defaultPath?: string): Promise<string | null> => ipcRenderer.invoke('shell:pick-folder', defaultPath),
   pickFile: (defaultPath?: string): Promise<string | null> => ipcRenderer.invoke('shell:pick-file', defaultPath),
+  /** 外部拖拽落盘路径(2026-11-14 用户裁定「资源管理器拖文件/文件夹到输入框,自动解析成链接」):
+   *  Electron ≥32 File.path 退役,渲染层拿不到拖入项绝对路径——webUtils.getPathForFile 必须在
+   *  preload 侧调(官方推荐 contextBridge 暴露形;浏览器态缺席,消费面 ?. 容忍) */
+  dropPath: (file: File): string => webUtils.getPathForFile(file),
 });

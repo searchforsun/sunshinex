@@ -5,7 +5,7 @@ import { ComposerCard } from '../../composer/ComposerCard';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { CommandPalette } from '../../CommandPalette';
 import type { CmdItem } from '../../CommandPalette';
-import { pathBasename } from '../../ui-util';
+import { dropRefsOf, pathBasename } from '../../ui-util';
 import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
@@ -370,6 +370,16 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
           const base = bare.split(/[\\/]/).filter(Boolean).pop() ?? bare;
           pickRelRef.current.set(base, isDir ? `${bare}/` : bare);
           onChange((prev: string) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+          taRef.current?.focus();
+        }}
+        onDropPaths={(paths) => {
+          // 外部拖拽(2026-11-14 资源管理器拖文件/文件夹):绝对路径归一 @短写(根下相对化),同内部拖入语言
+          for (const { base, ledger } of dropRefsOf(paths, root)) {
+            const ta = taRef.current;
+            const pos = ta?.selectionStart ?? value.length;
+            pickRelRef.current.set(base, ledger);
+            onChange((prev: string) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+          }
           taRef.current?.focus();
         }}
         images={images}

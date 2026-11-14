@@ -9,7 +9,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { chaseScrollBottom, pathBasename } from '../ui-util';
+import { chaseScrollBottom, pathBasename , dropRefsOf } from '../ui-util';
 import { autoSeenSuppressed, stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
@@ -1285,6 +1285,17 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             const to = Math.min(pos + base.length + 2, ta2.value.length);
             ta2.setSelectionRange(to, to);
           });
+        }}
+        onDropPaths={(paths) => {
+          // 外部拖拽(2026-11-14 资源管理器拖文件/文件夹进输入框):绝对路径归一 @短写(根下相对化),
+          // 与内部树拖入同语言(高亮可点,发送期 @ 展开解析)
+          for (const { base, ledger } of dropRefsOf(paths, root)) {
+            const ta = inputRef.current;
+            const pos = ta?.selectionStart ?? input.length;
+            pickRelRef.current.set(base, ledger);
+            setInput((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+          }
+          inputRef.current?.focus();
         }}
         footLeft={
           <ComposerPillsLeft

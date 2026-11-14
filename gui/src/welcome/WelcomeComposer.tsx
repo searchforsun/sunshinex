@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
 import { WelcomeProjectPop } from './welcome-project-pop';
-import { pathBasename } from '../ui-util';
+import { dropRefsOf, pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
@@ -496,6 +496,16 @@ export function WelcomeComposer({
               const to = Math.min(pos + base.length + 2, g.value.length);
               g.setSelectionRange(to, to);
             });
+          }}
+          onDropPaths={(paths) => {
+            // 外部拖拽(2026-11-14 资源管理器拖文件/文件夹):绝对路径归一 @短写(picked 根下相对化),同内部拖入语言
+            for (const { base, ledger } of dropRefsOf(paths, picked)) {
+              const ta = goalRef.current;
+              const pos = ta?.selectionStart ?? goal.length;
+              pickRelRef.current.set(base, ledger);
+              setGoal((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+            }
+            goalRef.current?.focus();
           }}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}

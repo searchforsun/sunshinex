@@ -59,6 +59,9 @@ export interface ComposerCardProps {
   onInputClick?: () => void;
   /** G14.144 目录树文件拖入:rel 路径落输入框(自动 @文件) */
   onDropFile?: (rel: string) => void;
+  /** 外部拖拽(2026-11-14 资源管理器拖文件/文件夹进输入框):OS 落盘路径经壳桥解出,
+   *  宿主面归一为 @短写高亮链接(与会话内拖入同语言);浏览器态/无桥缺席不注册 */
+  onDropPaths?: (paths: string[]) => void;
   /** 图片附件(2026-10-26):待发 dataURL 列(缺省/空=无条);缩略图条在输入框上方 */
   images?: string[];
   onRemoveImage?: (index: number) => void;
@@ -84,6 +87,7 @@ export function ComposerCard({
   onCompositionEndGuard,
   onInputClick,
   onDropFile,
+  onDropPaths,
   images,
   onRemoveImage,
   onImageOpen,
@@ -223,9 +227,10 @@ export function ComposerCard({
             onSelect={onSelectGuard}
             onClick={() => onInputClick?.()}
             onDragOver={(e) => {
-              // 有 sunshinex-file 即放行放置(拦 text/plain 原生插入绝对路径——欢迎页未接
-              // onDropFile 时曾整段路径进框)
-              if ([...e.dataTransfer.types].includes('text/sunshinex-file')) e.preventDefault();
+              // sunshinex-file=内部树拖入;Files=外部 OS 拖拽(资源管理器文件/文件夹)——两类都放行
+              // 放置(拦 text/plain 原生插入绝对路径——欢迎页未接 onDropFile 时曾整段路径进框)
+              const types = [...e.dataTransfer.types];
+              if (types.includes('text/sunshinex-file') || types.includes('Files')) e.preventDefault();
             }}
             onDrop={(e) => {
               const rel = e.dataTransfer.getData('text/sunshinex-file');
@@ -233,6 +238,14 @@ export function ComposerCard({
                 e.preventDefault();
                 e.stopPropagation();
                 onDropFile?.(rel);
+                return;
+              }
+              // 外部拖拽:OS File 列表经壳桥解绝对路径,宿主面归一为 @短写链接(高亮可点)
+              if (onDropPaths !== undefined && e.dataTransfer.files.length > 0 && window.sunshinex?.dropPath !== undefined) {
+                e.preventDefault();
+                e.stopPropagation();
+                const paths = [...e.dataTransfer.files].map((f) => window.sunshinex!.dropPath!(f)).filter((p) => p !== '');
+                if (paths.length > 0) onDropPaths(paths);
               }
             }}
             onScroll={(e) => {

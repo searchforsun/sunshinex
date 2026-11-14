@@ -17,6 +17,9 @@ interface Window {
     pickFolder?: (defaultPath?: string) => Promise<string | null>;
     /** 原生文件选择(设置页可执行文件路径行) */
     pickFile?: (defaultPath?: string) => Promise<string | null>;
+    /** 外部拖拽落盘路径(2026-11-14 资源管理器拖文件/文件夹进输入框):webUtils.getPathForFile
+     *  preload 侧单点(渲染层 Electron ≥32 拿不到 File.path);浏览器态/旧壳缺席 */
+    dropPath?: (file: File) => string;
   };
 }
 
