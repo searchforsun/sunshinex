@@ -53,7 +53,7 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
       <div className="sx-artifacts-head">
         {onOpenArtifacts !== undefined && (
           <button type="button" className="sx-artifacts-link" onClick={onOpenArtifacts}>
-            {t('All artifacts →', '全部产物 →')}
+            {t('All artifacts', '全部产物')}
           </button>
         )}
         {artifacts.length > FOLD_AT && (
