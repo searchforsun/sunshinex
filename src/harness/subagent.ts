@@ -18,7 +18,7 @@ import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { TaskRegistry, WAKE_HINT, wakeHintGate } from './tasks';
-import { FORK_EXCLUDED_TOOLS } from './tools/taskboard-tools';
+import { FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS } from './tools/taskboard-tools';
 import { makeTaskWaitTool } from './tools/task-wait';
 import { makeAskQuestionTool } from './tools/builtin';
 import { parseFrontmatterKV } from './skills';
@@ -352,8 +352,9 @@ export class SubagentRunner {
    * send_agent_team_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 leader+具名 teammate,fork 子面不发；
    * send_agent_team_message+create_agent_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
    * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁);
-   * dispatch_task/task_status 剔(2026-11-15 sunx P1 Task 3)——分派权归 sunx 编排主链,子智能体不再
-   * 分派(防子生孙)亦不自查台账消费唤醒(自派发/自窥视闭环失控) */
+   * dispatch_task/task_status 剔(fix round 1 收口为 SUNX_ORCHESTRATION_TOOLS 单点,2026-11-15 sunx
+   * P1 Task 3)——分派权/台账窥视权归 sunx 编排主链,子智能体不再分派(防子生孙)亦不自查台账消费唤醒
+   * (自派发/自窥视闭环失控);loop/graph 两处 fork 派生点同源消费同一常量(单一收口,不留平行剔除面) */
   deriveChildRegistry(askedBy?: { label: string; taskId?: string }): ToolRegistry {
     const bindExecWait = (face: ToolRegistry): ToolRegistry => {
       if (face.get('task_wait') === undefined) return face;
@@ -375,7 +376,7 @@ export class SubagentRunner {
     // 子面=父全量 − 剔除族,恒定收窄(2026-11-14 用户裁定「主 agent 分派子智能体怎么能指定工具?
     // 不是事先规定吗?这个口不应该漏」:spawn 模型面 tools 参数封闭,工具面事先规定不可指定——
     // 旧「显式清单按名取交集」支路随 schema 撤参一并退役,子面口径单一不成分叉)
-    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', 'dispatch_task', 'task_status', ...FORK_EXCLUDED_TOOLS] });
+    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...SUNX_ORCHESTRATION_TOOLS, ...FORK_EXCLUDED_TOOLS] });
     routeAsk(child, askedBy);
     return bindExecWait(child);
   }

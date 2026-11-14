@@ -3,7 +3,7 @@ import { buildJudgePrompt, JUDGE_TOOLS } from '../harness/prompts/judge';
 import { ModelRouter } from '../model/adapter';
 import { Reactor } from '../harness/reactor';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
-import { FORK_EXCLUDED_TOOLS } from '../harness/tools/taskboard-tools';
+import { FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS } from '../harness/tools/taskboard-tools';
 import { LoopDeps, LoopEngineNode } from './engine';
 import { compactionThreshold, compactionReserveFromThreshold } from '../config/termination-config';
 
@@ -176,10 +176,12 @@ export function agentNode(deps: LoopDeps, opts?: { maxSteps?: number }): LoopEng
           : undefined;
       // 「spawn 只在主链工具面」全局不变量收口 + fork 面剔除族闭合(L2 终审 Important):fork 私有面派生
       // 剔 spawn 且不携 runner(无嵌套挂载),并同源剔 FORK_EXCLUDED_TOOLS(send_agent_team_message /
-      // create_agent_teammate / 板四件套——防 lead 冒充,与 subagent/graph 同一常量)
+      // create_agent_teammate / 板四件套——防 lead 冒充,与 subagent/graph 同一常量)与
+      // SUNX_ORCHESTRATION_TOOLS(dispatch_task/task_status——编排件不下放,防子生孙/自派发,
+      // 2026-11-15 sunx P1 Task 3 fix round 1,与 subagent/graph 同一常量)
       const childDeps: LoopDeps =
         scope === 'fork'
-          ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...FORK_EXCLUDED_TOOLS] }) }
+          ? { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...SUNX_ORCHESTRATION_TOOLS, ...FORK_EXCLUDED_TOOLS] }) }
           : deps;
       // 会话形态/输出样式随 childDeps 原样下传（LoopDeps.kind → ReactorDeps.kind 结构同形，2026-11-15 sunx
       // 稳定段分支 fix round 1）：两作用域 spread/直传皆零丢字段——主链 Reactor 稳定段与装配面同源

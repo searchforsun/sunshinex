@@ -20,6 +20,16 @@ export const FORK_EXCLUDED_TOOLS = [
   ...TASKBOARD_TOOL_NAMES,
 ] as const;
 
+/** sunx 编排件剔除族（2026-11-15 sunx P1 Task 3 fix round 1）：dispatch_task / task_status——分派权与
+ *  台账窥视权归 sunx 编排主链（SUNX_FACE_TOOLS 白名单成员，harness/index.ts），fork 子面一律剔
+ *  （防子生孙/自派发）。三处 fork-scope 派生点（subagent.deriveChildRegistry / loop agentNode /
+ *  graph makeLoopNode）与 FORK_EXCLUDED_TOOLS 同点同源消费。独立成族不入 FORK_EXCLUDED_TOOLS：
+ *  后者是板面剔除族（内容有常量契约钉测，语义=板操作件），编排件混入即破契约。
+ *  落位本叶模块（而非 index.ts 与 SUNX_FACE_TOOLS 同文件）：三派生点皆已引本模块；若落 index.ts
+ *  则 subagent.ts 须反向 import './index' 成环（harness index → subagent → index 的 CJS 循环）。
+ *  语义对偶：SUNX_FACE_TOOLS=主链准入面，本清单=子面必剔面 */
+export const SUNX_ORCHESTRATION_TOOLS = ['dispatch_task', 'task_status'] as const;
+
 function boardTail(board: TaskBoard): string {
   const lines = board.summaryLines();
   return lines.length === 0 ? '(task board empty)' : ['board:', ...lines].join('\n');

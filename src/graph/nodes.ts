@@ -1,7 +1,7 @@
 import { CriterionResult, GraphNodeOutput, LoopContext, LoopTermination } from '../types';
 import { GraphNode } from './engine';
 import { SPAWN_TOOL_NAME } from '../harness/subagent';
-import { FORK_EXCLUDED_TOOLS } from '../harness/tools/taskboard-tools';
+import { FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS } from '../harness/tools/taskboard-tools';
 import { codeRefactorTemplate, codeReviewTemplate, testLoopTemplate } from '../loop/templates';
 import { t } from '../i18n';
 
@@ -46,8 +46,9 @@ export function makeLoopNode(id: string, config: LoopNodeConfig): GraphNode {
       const tpl = factory(
         // fork 私有面收口(「spawn 只在主链工具面」全局不变量)+ fork 面剔除族闭合(L2 终审 Important):
         // 子面剔 spawn,并同源剔 FORK_EXCLUDED_TOOLS(send_agent_team_message / create_agent_teammate / 板四件套
-        // ——防 lead 冒充,与 subagent/loop 同一常量)
-        { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...FORK_EXCLUDED_TOOLS] }), scope: 'fork' as const },
+        // ——防 lead 冒充,与 subagent/loop 同一常量)与 SUNX_ORCHESTRATION_TOOLS(dispatch_task/task_status
+        // ——编排件不下放,防子生孙/自派发,2026-11-15 sunx P1 Task 3 fix round 1,与 subagent/loop 同一常量)
+        { ...deps, registry: deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, ...SUNX_ORCHESTRATION_TOOLS, ...FORK_EXCLUDED_TOOLS] }), scope: 'fork' as const },
         {
           ruleCheckers: config.ruleCheckers,
           termination: { maxTokens: remaining, ...(config.termination ?? {}) },

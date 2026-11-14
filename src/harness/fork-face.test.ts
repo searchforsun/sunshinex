@@ -8,10 +8,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Harness } from './index';
+import { Harness, SUNX_FACE_TOOLS } from './index';
 import { RegisteredTool, ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
-import { FORK_EXCLUDED_TOOLS, TASKBOARD_TOOL_NAMES } from './tools/taskboard-tools';
+import { FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS, TASKBOARD_TOOL_NAMES } from './tools/taskboard-tools';
 import { SPAWN_TOOL_NAME } from './subagent';
 import { agentNode } from '../loop/nodes';
 import { makeLoopNode } from '../graph/nodes';
@@ -149,6 +149,96 @@ test('sunx fork 子面路由 ask 保留:deps.ask 在场 + askedBy 派生 → ask
     h?.team.stopAll();
     h?.tasks.stopAll();
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('常量契约:SUNX_ORCHESTRATION_TOOLS = dispatch_task+task_status(fix round 1 单点;三派生点同源;对偶 SUNX_FACE_TOOLS、不入板面剔除族)', () => {
+  assert.deepEqual([...SUNX_ORCHESTRATION_TOOLS], ['dispatch_task', 'task_status'], '编排件剔除族单点内容');
+  for (const n of SUNX_ORCHESTRATION_TOOLS) {
+    assert.ok(SUNX_FACE_TOOLS.includes(n), `${n} 应在 SUNX_FACE_TOOLS 白名单（主链准入——白名单=主链有,本清单=子面必无,语义对偶）`);
+    assert.equal(FORK_EXCLUDED_TOOLS.includes(n as typeof FORK_EXCLUDED_TOOLS[number]), false, `${n} 不入 FORK_EXCLUDED_TOOLS（板面剔除族契约不混编排件）`);
+  }
+  // 三处消费点源码同源钉测（防再内联漂移;沿本文件 FORK_EXCLUDED_TOOLS 源扫描先例）
+  const ROOT = path.resolve(__dirname, '..', '..');
+  for (const rel of ['src/harness/subagent.ts', 'src/loop/nodes.ts', 'src/graph/nodes.ts']) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.ok(src.includes('SUNX_ORCHESTRATION_TOOLS'), `${rel} 应消费 SUNX_ORCHESTRATION_TOOLS（三处派生点同源）`);
+  }
+});
+
+test('sunx 装配 loop/graph fork 派生点:私有面剔 dispatch_task/task_status(编排件不下放,防子生孙/自派发),ask_question 保留(deps.ask 在场)', async () => {
+  // loop agentNode scope=fork:直测产品派生点输出面(derive 间谍,不经内部实现细节)
+  const tmpLoop = mktmp('sunshinex-forkface-loop-sunx-');
+  let hLoop: Harness | undefined;
+  try {
+    hLoop = new Harness({
+      root: tmpLoop,
+      mode: 'full-access',
+      kind: 'sunx',
+      model: new ScriptedAdapter([]),
+      learnSkills: false,
+      ask: async () => ({ type: 'dismissed' }),
+    });
+    assert.notEqual(hLoop.tools.get('dispatch_task'), undefined, 'sunx 基面应有 dispatch_task(剔除应发生在派生点)');
+    assert.notEqual(hLoop.tools.get('task_status'), undefined, 'sunx 基面应有 task_status');
+    const facesLoop: ToolRegistry[] = [];
+    const realLoopDerive = hLoop.tools.derive.bind(hLoop.tools);
+    hLoop.tools.derive = (opts?: { exclude?: string[]; only?: string[] }) => {
+      const child = realLoopDerive(opts);
+      facesLoop.push(child);
+      return child;
+    };
+    const loopDeps: LoopDeps = { safety: hLoop.safety, registry: hLoop.tools, context: hLoop.context, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) };
+    const out = await agentNode({ ...loopDeps, scope: 'fork' }, { maxSteps: 2 }).run(loopCtx(), null);
+    assert.equal(out.status, 'done', 'agent 节点应正常收束');
+    assert.equal(facesLoop.length, 1, 'fork 私有面应经基面 derive 恰一次');
+    const loopFace = facesLoop[0]!;
+    assert.equal(loopFace.get('dispatch_task'), undefined, 'loop fork 面不得含 dispatch_task(防子生孙)');
+    assert.equal(loopFace.get('task_status'), undefined, 'loop fork 面不得含 task_status(防自派发)');
+    assert.notEqual(loopFace.get('ask_question'), undefined, 'deps.ask 在场装配的 fork 面保留 ask_question(问询通道不因编排剔除而收走)');
+  } finally {
+    hLoop?.team.stopAll();
+    hLoop?.tasks.stopAll();
+    fs.rmSync(tmpLoop, { recursive: true, force: true });
+  }
+  // graph makeLoopNode fork 面同口径
+  const tmpGraph = mktmp('sunshinex-forkface-graph-sunx-');
+  let hGraph: Harness | undefined;
+  try {
+    hGraph = new Harness({
+      root: tmpGraph,
+      mode: 'full-access',
+      kind: 'sunx',
+      model: new ScriptedAdapter([]),
+      learnSkills: false,
+      ask: async () => ({ type: 'dismissed' }),
+    });
+    const facesGraph: ToolRegistry[] = [];
+    const realGraphDerive = hGraph.tools.derive.bind(hGraph.tools);
+    hGraph.tools.derive = (opts?: { exclude?: string[]; only?: string[] }) => {
+      const child = realGraphDerive(opts);
+      facesGraph.push(child);
+      return child;
+    };
+    const graphDeps: LoopDeps = { safety: hGraph.safety, registry: hGraph.tools, context: hGraph.context, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']) };
+    const node = makeLoopNode('n1', {
+      template: 'test-loop',
+      goal: '完成任务(验收标准:c1=完成)',
+      ruleCheckers: { c1: async () => true },
+    });
+    const term: GraphTermination = { maxNodes: 4, maxTokens: 100_000, timeoutMs: 60_000 };
+    const ctx: GraphContext = { state: {}, tokensUsed: 0, startedAt: Date.now(), results: {}, termination: term };
+    const o = await node.run(ctx, graphDeps, {});
+    assert.equal(o.status, 'pass', `loop 节点应收敛 pass:${JSON.stringify(o)}`);
+    assert.equal(facesGraph.length, 1, 'graph fork 面应经基面 derive 恰一次');
+    const graphFace = facesGraph[0]!;
+    assert.equal(graphFace.get('dispatch_task'), undefined, 'graph 节点 fork 面不得含 dispatch_task');
+    assert.equal(graphFace.get('task_status'), undefined, 'graph 节点 fork 面不得含 task_status');
+    assert.notEqual(graphFace.get('ask_question'), undefined, 'graph fork 面同样保留 ask_question');
+  } finally {
+    hGraph?.team.stopAll();
+    hGraph?.tasks.stopAll();
+    fs.rmSync(tmpGraph, { recursive: true, force: true });
   }
 });
 
