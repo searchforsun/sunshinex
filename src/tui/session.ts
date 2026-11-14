@@ -30,7 +30,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SessionJournal, newSessionId, markSessionArchived, purgeSession, readSessionMeta, writeSessionMeta } from './session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
-import { isQuietNotice, type KernelEntry } from '../session/entry';
+import { isQuietNotice, type KernelEntry, type WakeRef } from '../session/entry';
+import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification } from '../session/wake';
+import type { WakeTaskInput } from '../session/wake';
+import { receiptBody } from '../harness/tools/task-wait';
+import { WAKE_HINT_RECEIPT_TOOL } from '../harness/tasks';
 import { kernelEventRows } from '../session/seglog';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
@@ -394,6 +398,37 @@ export class SessionController {
    *  公开 = 拆分件 approval 中止消费（任务流起点建立仍在控制器） */
   taskAbort?: AbortController;
 
+  // ---- bg-wake（批E，spec §3/§5/§6）：与 daemon（serve/session.ts）同构的宿主接线——
+  // 登记接缝在 ctor（runtime wake.onFinished）、起轮复用 runTaskFlow 双态、续发挂 drainQueue 尾注 ----
+
+  /** run 在途判定（busy 接缝；approval/interrupt 既有四态口径）：running 之外挂起审批/问询/计划卡
+   *  都是 run 在途——与 daemon busy=run 锁（current!==undefined）同构；漏挂起态会在挂起窗并发起轮 */
+  private runInFlight(): boolean {
+    return (
+      this.state.status === 'running' ||
+      this.state.status === 'awaiting-approval' ||
+      this.state.status === 'awaiting-plan' ||
+      this.state.status === 'awaiting-question'
+    );
+  }
+
+  /** 唤醒控制器（bg-wake spec §3；与 daemon 同构——busy=运行态、fire=runWakeFlow、receipted=live 账本） */
+  private readonly wake = new WakeController({
+    busy: () => this.runInFlight(),
+    receipted: (id) => this.runtime.harness.tasks.isReceipted(id),
+    fire: (tasks) => {
+      if (this.runInFlight() || this.planArmed) return false;
+      void this.runWakeFlow(tasks);
+      return true;
+    },
+    onLimit: () => this.pushMsg('system', t('auto-wake limit reached (no user message in between)', '连续唤醒已达上限（期间无用户消息）')),
+  });
+  /** 唤醒轮标（Spinner 前缀，spec §6.5）：runWakeFlow 置位、closeTask 清空 */
+  private wakeLabel?: string;
+  /** 最近一次 runTask 终态（唤醒续发判停读数）：runTaskFlow 内 runTask 返回处记录、runWakeFlow 起点清零；
+   *  interrupted 保留 pending（§10-1）的判停在 WakeController.onTurnEnded（drainQueue 尾注消费） */
+  private lastStopReason?: string;
+
   /** 任务统计基线（规格 §3.2）：任务流起点建（与 turnTokens 归零同点）、closeTask done 路径算差值产出统计行 */
   private taskStats?: { startedAt: number; startSteps: number; startTokens: number; startChildTokens: number };
   /** 中断抑制位：pushInterruptedNotice 单点置位——中断路径不产出收尾统计行；公开 = 拆分件 approval 置位消费 */
@@ -444,6 +479,9 @@ export class SessionController {
       onEvent: (e) => this.onEvent(e),
       onAskUser: opts.onAskUser ?? ((req) => this.askUser(req)),
       onTodos: (items) => this.setTodos(items),
+      // bg-wake 接缝（spec §3.1，daemon assemble 同构）：终态分流汇（done/failed 登记进 WakeController,
+      // 过滤归控制器）；hint=true 装配分派回执唤醒提示（批C 宿主闸①）
+      wake: { onFinished: (t) => this.wake.onTaskFinished(t), hint: true },
       plan: {
         awaitDecision: (name, doc) => planAwaitDecisionOn(this, name, doc),
       },
@@ -560,6 +598,7 @@ export class SessionController {
         this.kernel.steerEnqueue(text, imgs);
         return;
       }
+      this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（bg-wake，daemon submit wake 缺省分支同构）
       this.kernel.submit(text, imgs);
       this.md.clear();
       this.runtime.harness.security.enterModeOverride('read-only');
@@ -577,6 +616,7 @@ export class SessionController {
     }
     this.pushMsg('user', text, imgs !== undefined ? { images: imgs } : undefined);
     // 内核转录(P3):自然语言轮=对话 user 条(新轮与 steer 补跑两支同源;slash 命令回显不入转录面)
+    this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（bg-wake，daemon submit wake 缺省分支同构）
     this.kernel.submit(text, imgs);
     this.md.clear();
     pushUnknownRefHint(this, text); // agents-teams P1 Task 5：派发前只读提示（原文照发，见 commands-teams）
@@ -809,6 +849,7 @@ export class SessionController {
       this.pushMsg('system', formatTaskStatsLine(Math.round((Date.now() - ts.startedAt) / 1000), m.sessionSteps - ts.startSteps, mainTokens + childTokens, childTokens));
     }
     this.taskStats = undefined;
+    this.wakeLabel = undefined; // 唤醒轮标随收口清（bg-wake §6.5）：前缀只属唤醒轮 running 窗，后续轮不残留
     this.writeSidecarMeta(closingStats);
     this.state = {
       ...this.state,
@@ -817,6 +858,8 @@ export class SessionController {
       // 暂停确认卡随状态出口清除（2026-10-02 状态卫生）：挂卡期任务自然收尾不清即残留——空闲态
       // Ctrl+C 被 App「第二次确认」分支吞掉成死键（interrupt() 非 active 不清卡即 return）
       pauseConfirm: undefined,
+      // 唤醒轮标投影随收口清（bg-wake §6.5，字段清空同点）
+      wakePrefix: undefined,
       // 生命周期清理（规格 §4.4）：已归档者本已离场；运行中子智能体（后台两段式）跨回合保留，done 归档收口
       children: this.state.children.filter((c) => !c.done),
     };
@@ -850,7 +893,7 @@ export class SessionController {
     if (note.length > 0) this.pushMsg('system', note, level ? { level } : undefined);
   }
 
-  private async runTaskFlow(goal: string, opts?: { forkInstruction?: string }, images?: string[]): Promise<void> {
+  private async runTaskFlow(goal: string, opts?: { forkInstruction?: string; wakeTasks?: WakeTaskInput[] }, images?: string[]): Promise<void> {
     this.state = {
       ...this.state,
       status: 'running',
@@ -884,12 +927,28 @@ export class SessionController {
       // 主链任务（§11 只增不改）：当前指令行尾追进链，reactor 会话作用域收束自动回写全量步骤与结论/补丁行；
       // 用户随行图片随指令行同载（2026-10-26 图片功能——buildMessages 透出 image_url 内容块）
       const imgs = images !== undefined && images.length > 0 ? images : undefined;
-      ctx.appendInstructionLine(`Current instruction: ${goal}`, imgs);
+      if (opts?.wakeTasks !== undefined) {
+        // 唤醒轮（bg-wake spec §5.3）：notice 条 + 链尾 note，无 user 行、无指令行（live 与恢复同构）——
+        // 与 daemon submit 双态同构；Spinner 轮标（§6.5）随轮置位（通知文不渲染=isQuietNotice 净化）
+        const refs = toWakeRefs(opts.wakeTasks, (ledgerId) => this.boardTaskTitle(ledgerId));
+        const md = buildWakeNotification(refs, (id) => {
+          const t2 = this.runtime.harness.tasks.get(id);
+          return t2 !== undefined ? receiptBody(t2, WAKE_HINT_RECEIPT_TOOL) : `${id} (ledger) finished`;
+        });
+        this.kernel.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
+        this.wakeLabel = this.wakePrefixOf(refs);
+        this.state = { ...this.state, wakePrefix: this.wakeLabel };
+        this.notify();
+        this.runtime.harness.context.appendChain([{ action: 'note', observation: md }]);
+      } else {
+        ctx.appendInstructionLine(`Current instruction: ${goal}`, imgs);
+      }
       const r = await this.runtime.runTask(goal, {
         ...(this.state.tier ? { tier: this.state.tier } : {}),
         ...(this.state.effort ? { effort: this.state.effort } : {}),
         ...(this.taskAbort ? { signal: this.taskAbort.signal } : {}),
       });
+      this.lastStopReason = r.stopReason; // 唤醒续发判停读数（drainQueue 尾注消费，daemon finally 同构）
       if (r.stopReason === 'interrupted') pushInterruptedNotice(this);
       this.reportIncomplete(r, 'warn');
       this.closeTask();
@@ -900,6 +959,34 @@ export class SessionController {
       this.notify();
       return; // error 态保留计时现场（sticky），下次提交进 running 时重置
     }
+  }
+
+  /** 唤醒轮入口（fire 接缝，bg-wake spec §5.3）：状态机 running 面复用 runTaskFlow 双态 wake 分支，
+   *  收束后 drainQueue 接力（steer 优先、下一批唤醒次之——连续上限在控制器）。daemon submitWake 同构 */
+  private async runWakeFlow(tasks: WakeTaskInput[]): Promise<void> {
+    this.lastStopReason = undefined;
+    await this.runTaskFlow(WAKE_GOAL, { wakeTasks: tasks });
+    this.wakeLabel = undefined;
+    // 轮标投影兜底清（closeTask 清空不在场=error 粘滞出口）——防下次用户轮 Spinner 残留唤醒前缀
+    this.state = { ...this.state, wakePrefix: undefined };
+    this.notify();
+    await this.drainQueue(); // 唤醒轮收束：排队消息/下一批唤醒接力（连续上限在控制器）
+  }
+
+  /** 唤醒轮 Spinner 前缀文案（spec §6.5）：有名任务名入前缀（WakeRef.name=purpose/title/板名）；
+   *  全无名=通用形态单串（t(en,zh) 既有口径） */
+  private wakePrefixOf(refs: readonly WakeRef[]): string {
+    const name = refs.find((r) => r.name !== undefined)?.name;
+    return name !== undefined
+      ? `${t('Woken by background task', '后台任务')} {${name}} ${t('wake', '唤醒')}`
+      : t('Woken by background task', '后台任务唤醒');
+  }
+
+  /** 板任务名解析（daemon 同构）：台账 label(dispatchTag) → 板 id → 板投影 title；缺省 undefined=无名 */
+  private boardTaskTitle(ledgerId: string): string | undefined {
+    const m = /^task-(t\d+)$/.exec(ledgerId);
+    const boardId = m !== null ? m[1]! : ledgerId;
+    return this.state.board.tasks[boardId]?.title;
   }
 
   /** /goal 完整修正环（规格 2026-09-15-tui-goal D2/D3 + 2026-09-16-goal-template D2/D5）：模板为内部装配机制，用户面零暴露；
@@ -974,6 +1061,7 @@ export class SessionController {
     for (const it of this.kernel.steerTakePending()) {
       const imgs = it.images;
       this.pushMsg('user', it.text, imgs !== undefined ? { images: imgs } : undefined);
+      this.wake.markUserActivity(); // 用户行真正发送=用户活动（连续唤醒计数归零，daemon steer 续发经 submit 同构）
       this.kernel.submit(it.text, imgs);
       pushUnknownRefHint(this, it.text); // agents-teams P1 Task 5：排队行真正发送时刻同检（提示跟随派发时刻）
       // armed 队列行=计划模式任务轮（2026-11-03 无感化）：override+note+普通会话作用域 run
@@ -987,6 +1075,10 @@ export class SessionController {
         await this.runTaskFlow(it.text, undefined, imgs);
       }
     }
+    // bg-wake 尾注（spec §6，daemon finally 续发同构）：steer 优先分支之后问唤醒——有终态登记且空闲即起
+    // 唤醒轮（合批窗内到点的在途批也在此收口）。返回值弃置：在途闩已由 onTurnEnded 入口一次性读清。
+    // 队列暂停态在上方 return 在先，不触发（待发条目与唤醒批次都留存待下次收束/恢复）
+    this.wake.onTurnEnded(this.lastStopReason);
   }
 
   /** 会话软重置单点（/new·/delete 共用）：旧会话收口归档 → 换新 sessionId（header 立即落盘、指针随即改指新会话）→ 软重置；旧档 /resume 可找回 */
@@ -998,6 +1090,7 @@ export class SessionController {
     this.memoryOverride = undefined;
     setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
     this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
+    this.wakeLabel = undefined; // 新会话起点：唤醒轮标一并清除（投影随下方 state 重建落位清除）
     this.state = { ...this.state, queuePaused: undefined }; // 新会话起点：队列暂停态一并清除(队列条目随内核换新已清)
     this.planArmed = false; // 新会话起点：计划模式武装随换新解除（/plan 三态,2026-11-03）
     this.md.clear();

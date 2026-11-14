@@ -592,8 +592,8 @@ export function App({
         <>
       {state.status === 'running' ? (
         // 恒显活动行（对标 CC）：整个任务运行期常驻计时·tokens 跳动行，reasoning 长静默期与正文流式期均有「活着」信号，
-        // 消除「疑似卡死」观感；responding 期与流式正文同屏共存
-        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens + state.metrics.turnChildTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} />
+        // 消除「疑似卡死」观感；responding 期与流式正文同屏共存。prefix=唤醒轮前缀（bg-wake §6.5，唤醒轮在途非空）
+        <Spinner startedAt={state.metrics.turnStartedAt} tokens={state.metrics.turnTokens + state.metrics.turnChildTokens} phase={state.task.phase} calls={state.task.activeCalls} columns={columns} prefix={state.wakePrefix} />
       ) : null}
       {browseMode && !boardMode ? (
         // 子智能体统一列表（2026-09-28 用户裁决）：历史与运行中全部由动态区承载——合并序列单点口径

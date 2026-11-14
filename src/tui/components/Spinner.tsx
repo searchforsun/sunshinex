@@ -24,7 +24,7 @@ export function useSpinFrame(): string {
   return FRAMES[frame % FRAMES.length];
 }
 
-export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80 }: {
+export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', calls = [], columns = 80, prefix }: {
   startedAt: number;
   tokens: number;
   label?: string;
@@ -36,6 +36,8 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   calls?: ActiveCall[];
   /** 终端列宽：活跃调用行动词按列宽自然省略（缺省 80，既有调用方零破坏） */
   columns?: number;
+  /** 唤醒轮前缀（bg-wake spec §6.5；可选，缺省不显示——既有调用方零破坏）：主行最前渲染 */
+  prefix?: string;
 }): JSX.Element {
   const [frame, setFrame] = React.useState(0);
   React.useEffect(() => {
@@ -76,6 +78,7 @@ export function Spinner({ startedAt, tokens, label, steps, phase = 'thinking', c
   }
   return (
     <Text color={theme.accent} dimColor>
+      {prefix !== undefined && <Text>{prefix} </Text>}
       {glyph} {label ? `[${label}] ` : ''}
       <Text dimColor>
         {verb}… ({formatDuration(secs)}
