@@ -35,6 +35,33 @@ export interface RunMeta {
   artifacts?: ArtifactFile[];
 }
 
+/** 唤醒引用（bg-wake spec §5.1）：id=账本寻址键；name=人读任务名（写入端解析一次，无业务含义缺省——
+ *  exec 无 purpose、subagent 回退段、板上无 title）；board=板任务（点击路由团队管理页签，boardRef=板 id） */
+export interface WakeRef {
+  id: string;
+  name?: string;
+  board?: true;
+  boardRef?: string;
+}
+
+/** 唤醒载荷净化（notice 事件 payload.wake → 条目字段）：非法形态整条剔除，全非法返回 undefined */
+export function parseWakeRefs(raw: unknown): WakeRef[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: WakeRef[] = [];
+  for (const it of raw) {
+    if (typeof it !== 'object' || it === null) continue;
+    const r = it as Record<string, unknown>;
+    if (typeof r.id !== 'string' || r.id === '') continue;
+    out.push({
+      id: r.id,
+      ...(typeof r.name === 'string' && r.name !== '' ? { name: r.name } : {}),
+      ...(r.board === true ? { board: true as const } : {}),
+      ...(typeof r.boardRef === 'string' && r.boardRef !== '' ? { boardRef: r.boardRef } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /** 内核转录条目(§3.3):段级、payload 完整随档——渲染端零推导 */
 export interface KernelEntry {
   /** 全局单调序号(kernel 分配;truncate 截断后不复用) */
@@ -51,6 +78,8 @@ export interface KernelEntry {
   input?: Record<string, unknown>;
   /** tool:结果回执(call/result 配对回填;text=观察行截断文本 + ok + full=全量观测——detail 展开与恢复面同源) */
   result?: { text: string; ok: boolean; full?: string };
+  /** notice:后台任务唤醒引用（bg-wake spec §5.1；仅唤醒通知条携带——显示归 run 行前缀，本条不显示） */
+  wake?: WakeRef[];
   /** thinking:段耗时秒(封段时首尾 ts 差取整) */
   seconds?: number;
   /** 三态生命周期(渲染中立 spec §7):pending=已发射未执行/running=执行或流式中;done 以缺省
@@ -116,11 +145,11 @@ export function inboundMessageOf(payload: Record<string, unknown> | undefined): 
   return { from, to, text };
 }
 
-/** 安静 notice 判定(P10 显示裁定单点):机制回执行(ask 回执/记忆索引漂移)对用户零信息量——
+/** 安静 notice 判定(P10 显示裁定单点):机制回执行(后台任务唤醒通知/ask 回执/记忆索引漂移)对用户零信息量——
  *  内核忠实归档(journal 审计面保留),但 TUI/GUI 渲染面统一不显示。原 GUI 私有实现上收:
  *  两端同一裁定,防「同会话两端行数不同」分叉 */
 export function isQuietNotice(md: string): boolean {
-  return /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
+  return md.startsWith('<task-notification>') || /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
 }
 
 /** 未配对 tool 旁挂记账(条目本体已在列,缺面由迟到者回填;同 collector PendingTool) */
@@ -421,7 +450,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     }
     case 'notice': {
       const sealed = sealSeg(state, e.ts);
-      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: e.text ?? '' });
+      const wake = parseWakeRefs(e.payload?.wake);
+      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: e.text ?? '', ...(wake !== undefined ? { wake } : {}) });
     }
     case 'error':
       // 不封段(G14.51):done 必发,收口让位——运行中旁路错误只入条,开启段留给 done 合并

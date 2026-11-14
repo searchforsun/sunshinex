@@ -214,6 +214,9 @@ export interface TuiState {
    *  暂停中不自动发送（收口补跑跳过），新提交空闲态直接发送/运行中继续排队；主动恢复（Ctrl+Q 面板 R）
    *  后继续按序自动发送 */
   queuePaused?: boolean;
+  /** 唤醒轮 Spinner 前缀（bg-wake spec §6.5；瞬态不进 journal）：唤醒轮 running 期非空（如「后台任务 {名} 唤醒」），
+   *  closeTask/runWakeFlow 收尾清空——用户与后续轮零残留；App 透传 Spinner prefix */
+  wakePrefix?: string;
 }
 
 export interface SessionOpts extends KernelRuntimeOpts {

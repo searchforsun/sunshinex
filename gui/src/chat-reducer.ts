@@ -1,5 +1,5 @@
 import type { SessionEvent, TurnFileChange, ArtifactFile } from '../../src/types';
-import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
+import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState, type WakeRef } from '../../src/session/entry';
 import { localizeNotice } from './i18n-notice';
 import { getLanguage, t } from './i18n';
 
@@ -53,6 +53,9 @@ export interface ChatEntry {
   endedTs?: number;
   /** G14.209 run 专用:停止态(中断/失败收口——运行条显「已停止」不显时长) */
   stopped?: boolean;
+  /** run 专用(bg-wake 批F spec §6):直接前驱唤醒 notice 的引用——映射期配对挂载
+   *  (notice 本身 isQuietNotice 跳过不显示,引用转挂后继 run 行前缀;中间隔未跳过条目即作废) */
+  wake?: WakeRef[];
   /** G14.100 run 专用:本轮 git 变动增量(轮尾汇总条;撤销面按 path 寻址) */
   changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
   /** 轮次 checkpoint(2026-11-10):run-open 条目 seq(端点寻址键,与 key `k<seq>` 同源)与
@@ -107,6 +110,9 @@ export interface SnapshotTranscriptEntry {
   /** tool 条配对结果(内核条目直序列化;文本全量——展开体与折叠 stat 数据源) */
   result?: { text: string; ok: boolean; full?: string };
   seconds?: number;
+  /** notice:后台任务唤醒引用(bg-wake 批F spec §5.1;内核条目原生随档——快照=内核条目直序列化,
+   *  显示归 run 行前缀,本条不显示) */
+  wake?: WakeRef[];
   meta?: {
     seconds?: number;
     steps?: number;
@@ -196,6 +202,11 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
   }
 }
 
+/** 唤醒前缀挂载缓存(bg-wake 批F spec §6):wake 挂载在映射期生成(run 视图={...view, wake} 换引用),
+ *  按内核 run 条目缓存(wake 数组引用+基视图引用双重校验)保持跨帧引用稳定——内核条目不可变 ⇒
+ *  键恒有效;基视图校验防 open/seal 态翻转换新视图后仍复用旧挂载面(陈旧 streaming 态复活) */
+const wakeViewCache = new WeakMap<KernelEntry, { wake: WakeRef[]; base: ChatEntry; view: ChatEntry }>();
+
 function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
   // 语言入缓存键域(2026-11-04 裁定「固定提示随 GUI 语言渲染」):切语言后 ①② 级复用失效全量
   // 重算翻面——未变位直取上次产物仅在语言不变时成立(否则旧语言视图跨切换复活)
@@ -205,24 +216,43 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
   const prev = hit !== undefined && hit.lang === lang ? hit : undefined;
   const out: ChatEntry[] = [];
   const parallel: Array<ChatEntry | null> = new Array(k.entries.length).fill(null);
+  // bg-wake 批F:被跳过唤醒 notice 的引用暂存——挂直接后继 run 条(直接后继语义:
+  // 任何未被跳过的条目处理完即清,中间隔条即作废);②级复用条已带上次配对的 wake(内核条目
+  // 不可变、相邻关系不变),复用时同样清暂存
+  let pendingWake: WakeRef[] | undefined;
   for (let i = 0; i < k.entries.length; i += 1) {
     const e = k.entries[i]!;
-    if (e.kind === 'notice' && isQuietNotice(e.md)) continue;
+    if (e.kind === 'notice' && isQuietNotice(e.md)) {
+      if (e.wake !== undefined) pendingWake = e.wake; // 唤醒引用暂存(本条照旧不显示)
+      continue;
+    }
     // ②部分变更帧:未变位(内核条目引用相等⇒派生标相等——不可变条目)直取上次产物
     if (prev !== undefined && prev.kernel[i] === e) {
       const reuse = prev.parallel[i];
       if (reuse !== null) {
         parallel[i] = reuse;
         out.push(reuse);
+        pendingWake = undefined;
         continue;
       }
     }
     // ③变更位/全量(增删/播种):单条映射
     const open = e.kind === 'run' ? k.openRun === e.seq : k.openSeg === e.seq;
     const base = runBases[e.seq];
-    const view = mapOne(e, open, base);
+    let view = mapOne(e, open, base);
+    if (e.kind === 'run' && pendingWake !== undefined) {
+      const cached = wakeViewCache.get(e);
+      if (cached === undefined || cached.wake !== pendingWake || cached.base !== view) {
+        const mounted = { ...view, wake: pendingWake };
+        wakeViewCache.set(e, { wake: pendingWake, base: view, view: mounted });
+        view = mounted;
+      } else {
+        view = cached.view; // 同 run+同 wake+同基视图:复用挂载面(引用稳定,memo 不破)
+      }
+    }
     parallel[i] = view;
     out.push(view);
+    pendingWake = undefined;
   }
   const mapped = mergeSplitThinking(out);
   mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped, lang });

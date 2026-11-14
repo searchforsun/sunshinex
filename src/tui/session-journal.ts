@@ -7,6 +7,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ContextItem, HistoryStep, ModelTier, ReasoningEffort, SessionEvent } from '../types';
+import type { WakeRef } from '../session/entry';
 import { utcCompactStamp } from '../idstamp';
 import type { ChatItem, TodoItem } from './session';
 // CtxSnapshot 类型定义在上下文域（src/harness/context/index.ts）——journal 是持久化层，type-only import 防反向依赖；
@@ -65,7 +66,7 @@ export type JournalEvent =
   // ===== v3 段级行(session-kernel spec §3.2,journal v3 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
   /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖)。
    *  v3 写面单形态(P11-T2 渲染中立):user md=裸文、tool md 恒 ''(字段单源,读侧零归一) */
-  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; images?: string[]; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number }
+  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; images?: string[]; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number; wake?: WakeRef[] }
   /** 工具条回填行(重放按 seq upsert:name/input/result 缺面回填——纯字段回填,无 md 重算) */
   | { t: 'seg-update'; seq: number; ts: number; name?: string; input?: Record<string, unknown>; result?: { text: string; ok: boolean } }
   /** run 条开启行(md='' 条目;收尾统计由 runmeta 行对位,悬空 run-open 重放标 stopped) */

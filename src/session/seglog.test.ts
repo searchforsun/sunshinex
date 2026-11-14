@@ -326,3 +326,18 @@ test('imagesOf 路径引用回读(2026-10-31 images-cache 裁定):seg 行本地�
   assert.deepEqual(entries[1]!.images, ['data:image/png;base64,AAAA'], '旧档 dataURL 兼容');
   assert.equal(entries[2]!.images, undefined, '非图片串仍弃(行面不予信任)');
 });
+
+// ---- bg-wake 批A:wake notice 落档/恢复往返(spec §5.1/§5.3;旧档无 wake 字段=普通 notice,恢复面零变化) ----
+
+test('wake notice 落档往返：kernelEventRows seg 行携带 wake，reduceSegRows 恢复逐字段恒等', () => {
+  const entry: KernelEntry = { seq: 7, ts: 5, kind: 'notice', md: '<task-notification>x</task-notification>', wake: [{ id: 'a', name: 'n' }, { id: 'b', board: true, boardRef: 't3' }] };
+  const rows = kernelEventRows({ t: 'seg-open', entry, open: false });
+  const segRow = rows.find((r) => r.t === 'seg') as { t: 'seg'; wake?: unknown };
+  assert.deepEqual(segRow.wake, entry.wake);
+  const back = reduceSegRows(rows); // 既有入参形态=平铺行列(brief 分组示意按本文件实形装配)
+  const got = back.find((e) => e.seq === 7);
+  assert.deepEqual(got?.wake, entry.wake);
+  // 旧档无 wake 字段 → 普通 notice
+  const legacy = reduceSegRows([{ t: 'seg', kind: 'notice', md: 'plain', ts: 1, seq: 8 }]);
+  assert.equal(legacy.find((e) => e.seq === 8)?.wake, undefined);
+});

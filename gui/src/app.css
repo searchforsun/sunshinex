@@ -4114,6 +4114,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--border-strong); }
 
+/* ===== bg-wake 唤醒前缀(bg-wake spec §6):run 行内任务名可点段;定位瞬跳无闪光(CLAUDE.md §13.1 规则 6);
+   悬浮提示 data-tip(§13.1 规则 2,禁原生 title) ===== */
+.wake-name { color: var(--fg-secondary); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; display: inline-block; vertical-align: bottom; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wake-name:hover { color: var(--accent); }
 /* ===== 「打开 ▾」分体钮共用件(2026-11-12 spec §5.4):产物卡/产物库同用;外框归 wrapper 单边一体,内部按钮无边框无中缝(2026-11-14 用户裁定「打开右侧竖线不需要显示」) ===== */
 .sx-artifacts-open { display: inline-flex; align-items: stretch; flex: none; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .sx-artifacts-openbtn { border: none; background: transparent; color: var(--fg); font-size: calc(13px * var(--fz)); padding: 2px 10px; cursor: pointer; }

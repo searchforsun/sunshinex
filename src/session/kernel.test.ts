@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionKernel } from './kernel';
-import { applyEvent, applySeed, initialKernelState } from './entry';
+import { applyEvent, applySeed, initialKernelState, isQuietNotice } from './entry';
 import type { KernelEntry } from './entry';
 import type { SessionEvent } from '../types';
 
@@ -618,4 +618,23 @@ test('⓲ 迟到 result 同 callId 原位配对(2026-10-25 重连/重启 healed)
   pump(k, ev('tool-result', 'done receipt', { callId: 'c8', ok: true }, 200));
   assert.equal(k.replay().length, 1);
   assert.equal(k.replay()[0]!.result?.text, 'done receipt');
+});
+
+// ---- bg-wake 批A:notice wake 载荷归约/安静判定(spec §5.1;条目字段随档,显示面过滤归消费方) ----
+
+test('notice 事件携带合法 wake 载荷 → 条目回填 wake；非法载荷丢字段退化为普通 notice', () => {
+  const k = new SessionKernel();
+  k.pump({ type: 'notice', text: 'boot', ts: 1, payload: { wake: [{ id: 't1', name: '构建前端' }, { board: true }] } });
+  const ok = k.replay().find((e) => e.kind === 'notice');
+  assert.deepEqual(ok?.wake, [{ id: 't1', name: '构建前端' }]); // 非法条目({board:true} 无 id)被剔除，合法条目保留
+
+  const k2 = new SessionKernel();
+  k2.pump({ type: 'notice', text: 'boot', ts: 1, payload: { wake: 'nope' } });
+  const bad = k2.replay().find((e) => e.kind === 'notice');
+  assert.equal(bad?.wake, undefined);
+});
+
+test('唤醒通知属安静 notice（<task-notification> 开头），journal 审计面保留、显示面过滤', () => {
+  assert.equal(isQuietNotice('<task-notification>\nAutomated notice'), true);
+  assert.equal(isQuietNotice('ask p1 answered'), true); // 既有规则不回归
 });

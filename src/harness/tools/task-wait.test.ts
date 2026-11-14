@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskRegistry } from '../tasks';
-import { TaskBoard } from '../../taskboard/board';
+import { TaskBoard, dispatchTag } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
 import { makeAgentTeamTaskWaitTool, makeTaskWaitTool } from './task-wait';
@@ -490,6 +490,93 @@ test('agent_team_task_wait exec id：INVALID_ARG 点名 task_wait', async () => 
       assert.equal(r.error.code, 'INVALID_ARG');
       assert.match(r.error.message, /task_wait/);
     }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// bg-wake 批C：终态回执即置 receipted（spec §3.1）——回执返回 ⇒ 对应台账行 isReceipted === true，未终态不置位
+test('task_wait 终态回执即置 receipted；仍在跑的不置位（peek 形态）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tw-'));
+  const tasks = new TaskRegistry(dir); // 纯内存形态（ledgerPath 缺省）
+  const tool = makeTaskWaitTool(tasks);
+  const done = tasks.submit({ kind: 'exec', label: 'c1', ownerRun: 'main' });
+  tasks.finish(done.id, 'done', { exitCode: 0 });
+  const running = tasks.submit({ kind: 'exec', label: 'c2', ownerRun: 'main' });
+  const r = await tool.executor({ taskIds: [done.id, running.id], timeoutSeconds: 0 } as never);
+  assert.match(r.stdout, new RegExp(done.id));
+  assert.equal(tasks.isReceipted(done.id), true);
+  assert.equal(tasks.isReceipted(running.id), false); // still running 不置位
+});
+
+test('agent_team_task_wait 板终态回执 → markBoardReceipted 命中 dispatchTag 台账行', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'twb-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const agentTeams = new AgentTeamRegistry(new MemoryAgentTeamStore(), () => 1);
+    const team = agentTeams.create('alpha');
+    assert.ok(team.ok);
+    const teamId = team.value.teamId;
+    let boardRef: TaskBoard | undefined;
+    let hangResolve: (() => void) | undefined;
+    const hang = new Promise<void>((res) => { hangResolve = res; });
+    const worker = {
+      name: 'worker',
+      teamId,
+      stopped: false,
+      kick(): void {
+        const task = boardRef!.claim('worker', teamId);
+        if (task !== undefined) void this.runTask(task);
+      },
+      async runTask(task: { id: string; title: string }): Promise<void> {
+        const board = boardRef!;
+        if (!board.markClaimed(task.id, 'worker')) return;
+        await hang;
+        board.finishExecution(task.id, { ok: true, by: 'worker', reply: 'r', tokens: 1 });
+      },
+      interruptCurrent: () => false,
+    };
+    const stubTeam = {
+      get: (name: string) => (name === 'worker' ? worker : undefined),
+      aliveNames: () => ['worker'],
+      hasAlive: () => true,
+    };
+    const board = new TaskBoard({
+      store: new TeamStore(path.join(root, 'teams', 'main')),
+      registry: { submit: () => ({ id: 'lx', stop: () => {} }), append: () => {}, finish: () => {}, list: () => [], get: () => undefined } as never,
+      agentTeams,
+      team: stubTeam as never,
+      onEvent: () => {},
+      now: (() => { let n = 1000; return () => ++n; })(),
+    });
+    boardRef = board;
+    board.init();
+    const created = board.create({ teamId, title: 'BoardDone', spec: 's' });
+    assert.ok(created.ok);
+    const boardId = created.value.taskId;
+    // teammate execute 登记口径：boardDispatch 台账行 label=dispatchTag(板 id)
+    const ledger = tasks.submit({ kind: 'subagent', label: dispatchTag(boardId), boardDispatch: true, ownerRun: 'fork:m1' });
+    await new Promise((r) => setImmediate(r));
+    const registry = new ToolRegistry();
+    registry.register(makeAgentTeamTaskWaitTool(tasks, board));
+    // peek：板任务仍 running（未终态）→ 回执不置 receipted
+    const peek = await registry.execute('agent_team_task_wait', { taskIds: [boardId], timeoutSeconds: 0 }, stubSafety);
+    assert.ok(peek.ok, `running 板任务应合法,实际 ${peek.ok ? '' : peek.error?.message}`);
+    if (peek.ok) assert.match(peek.value.stdout, new RegExp(`${boardId} \\(board\\) running`));
+    assert.equal(tasks.isReceipted(ledger.id), false); // 未终态不置位
+    hangResolve?.();
+    for (let i = 0; i < 20 && board.snapshot().tasks[boardId]?.status !== 'success'; i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+    assert.equal(board.snapshot().tasks[boardId]!.status, 'success');
+    // 板侧终态回执 → dispatchTag 标签匹配台账行置 receipted
+    const settled = await registry.execute('agent_team_task_wait', { taskIds: [boardId], timeoutSeconds: 1 }, stubSafety);
+    assert.ok(settled.ok);
+    if (settled.ok) {
+      assert.match(settled.value.stdout, new RegExp(`${boardId} \\(board\\) success`));
+      assert.match(settled.value.stdout, /all target tasks finished/);
+    }
+    assert.equal(tasks.isReceipted(ledger.id), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

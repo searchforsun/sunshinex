@@ -11,6 +11,7 @@ import { useResolvedImages } from '../../images-cache';
 import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
+import type { WakeRef } from '../../../../src/session/entry';
 import { buildMdComponents, keepUrl, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ArtifactsStrip } from './ArtifactsStrip';
@@ -58,7 +59,7 @@ export function baseModelName(id: string | undefined): string {
  *  保留。memo 包裹:sealed 行 entry/tokens 双稳定→不随 token 帧重渲;tick 是组件内部 state 自驱动,
  *  memo 不影响;tokens 变化(usage 帧)仍重渲(期望行为)。种子历史无 run 条,重连后自下一轮
  *  model-start 恢复(spec §0) */
-export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void }): JSX.Element {
+export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle, wake, onOpenTask }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void; wake?: WakeRef[]; onOpenTask?: (ref: string) => void }): JSX.Element {
   const [, setTick] = useState(0);
   const streaming = entry.streaming === true;
   useEffect(() => {
@@ -66,6 +67,38 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
     const h = setInterval(() => setTick((v) => v + 1), 1_000);
     return () => clearInterval(h);
   }, [streaming]);
+  // bg-wake 批F(spec §6):唤醒前缀——只有任务名可点(bg:<账本id>/板 id 路由,stopPropagation 鼠标+键盘
+  // 都不触发折叠);「后台任务」「唤醒」恒静态,无名整行纯文本无点击元素。悬浮提示 data-tip(§13.1 禁原生 title)
+  const first = wake?.[0];
+  const nameEl = first !== undefined && first.name !== undefined ? (
+    <span
+      className="wake-name"
+      data-tip={first.name}
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenTask?.(first.board === true ? (first.boardRef ?? first.id) : `bg:${first.id}`);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenTask?.(first.board === true ? (first.boardRef ?? first.id) : `bg:${first.id}`);
+        }
+      }}
+    >
+      {'{' + first.name + '}'}
+    </span>
+  ) : undefined;
+  const wakePrefix = first !== undefined ? (
+    <>
+      {first.name !== undefined ? t('Woken by background task', '后台任务') : t('Woken by background task', '后台任务唤醒')}
+      {first.name !== undefined ? ' ' : undefined}
+      {nameEl}
+      {first.name !== undefined ? t('', ' 唤醒') : undefined}
+    </>
+  ) : undefined;
   if (!streaming) {
     // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
     return (
@@ -88,6 +121,8 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
         }
       >
         <span>
+          {wakePrefix}
+          {wakePrefix !== undefined ? t(', ', '，') : null}
           {entry.stopped === true
             ? t('Stopped', '已停止')
             : entry.seconds !== undefined
@@ -124,7 +159,11 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
           : undefined
       }
     >
-      <span>{t('Working', '运行中')}</span>
+      <span>
+        {wakePrefix}
+        {wakePrefix !== undefined ? t(', ', '，') : null}
+        {t('Working', '运行中')}
+      </span>
       <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
       {onToggle !== undefined && (
         <span className="run-chev" aria-hidden="true">

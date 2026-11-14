@@ -14,7 +14,7 @@ import { recordSkillUsage } from '../../catalog/skill-usage';
 import { ReadGuard } from './read-guard';
 import { resolveWebSearchProvider, WebSearchProvider } from './websearch';
 import { ToolOutputArchive, PREVIEW_CHARS, TOOL_OUTPUT_CHAR_LIMIT } from './output-archive';
-import { TaskRegistry } from '../tasks';
+import { TaskRegistry, wakeHintSuffix } from '../tasks';
 import { MemoryWriteSeam } from '../memory/writer';
 import { MemoryScope } from '../memory/paths';
 
@@ -234,8 +234,9 @@ export function builtinTools(
           if (started.ok) {
             task.stop = () => backend.killBackground?.(started.value.pid);
           }
-          // 轮询法在回执点下发（触发才付费）：参数描述只留输入输出契约，后台工作法随两张启动回执走（本行与下方超时转后台行）
-          return execOut(`task ${task.id} started (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait`);
+          // 轮询法在回执点下发（触发才付费）：参数描述只留输入输出契约，后台工作法随两张启动回执走（本行与下方超时转后台行）；
+          // 尾段唤醒提示（bg-wake §4.2）：宿主闸①+harness 账本 × 闸②主链归属合成，缺省空串零变化
+          return execOut(`task ${task.id} started (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait${wakeHintSuffix(tasks)}`);
         }
         // 前台超时转后台（规格 D5，对标 CC）：账本在场且非 sleep 开头时带 timeoutToBackground，到点不杀进程、登记转后台
         const wantsBg = tasks !== undefined && !/^\s*sleep(?=\s|$)/.test(cmd.trim());
@@ -258,7 +259,7 @@ export function builtinTools(
           // 收割收敛 killBackground 单点（§14）：按进程树/进程组同步收割（win32 taskkill /T /F，POSIX kill(-pid)）
           task.stop = () => backend.killBackground?.(child.pid ?? 0);
           ledger.append(task.id, '[moved to background after timeout]\n');
-          return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath}) — the command keeps running (not killed); poll that file (it ends with [exit N] when done) or block with task_wait`);
+          return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath}) — the command keeps running (not killed); poll that file (it ends with [exit N] when done) or block with task_wait${wakeHintSuffix(ledger)}`);
         }
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
         // CodedToolError 保码过界（§4 错误分域）：EXEC_TIMEOUT/EXEC_FAILED 以原码交 registry——

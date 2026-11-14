@@ -23,6 +23,10 @@ import { kernelEventRows } from '../session/seglog';
 import type { SegRowLike } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { sanitizeTurn } from '../session/entry';
+import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification } from '../session/wake';
+import type { WakeTaskInput } from '../session/wake';
+import { WAKE_HINT_RECEIPT_TOOL } from '../harness/tasks';
+import { receiptBody } from '../harness/tools/task-wait';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile, journalDisplayTitle } from '../tui/session-journal';
 import { resolveRunWindow } from '../config/termination-config';
 import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/plan-flow';
@@ -201,6 +205,26 @@ export class SessionRuntime {
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
   private current?: CurrentRun;
+  /** 唤醒控制器（bg-wake spec §3）：登记/合批/续发单点；receipted 查 harness live 面（换铸后新实例同账本对象） */
+  private readonly wake = new WakeController({
+    busy: () => this.current !== undefined,
+    receipted: (id) => this.runtimeImpl.harness.tasks.isReceipted(id),
+    fire: (tasks) => this.submitWake(tasks),
+    onLimit: () => this.pump({ type: 'notice', text: 'auto-wake limit reached (no user message in between)', ts: Date.now() }),
+  });
+
+  /** 板任务名解析（daemon 侧板投影）：台账 label(dispatchTag) → 板 id → 板存储 title；缺省 undefined=无名 */
+  private boardTaskTitle(ledgerId: string): string | undefined {
+    const m = /^task-(t\d+)$/.exec(ledgerId);
+    const boardId = m !== null ? m[1]! : ledgerId;
+    return this.board.tasks[boardId]?.title;
+  }
+
+  /** 唤醒轮入口（fire 接缝）：plan 武装态不受理（批次回队）；真 submit 双态收口，快照/统计/续发全共用 */
+  private submitWake(tasks: WakeTaskInput[]): boolean {
+    if (this.planArmed()) return false;
+    return this.submit(WAKE_GOAL, undefined, { tasks }).ok;
+  }
   /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即逐会话补发；帧自带 seq+sessionId */
   private readonly frames: EventFrame[] = [];
   /** 本会话已泵最大 seq（snapshot.lastSeq 同源；全局计数器分配故单调） */
@@ -525,6 +549,9 @@ export class SessionRuntime {
       onTodos: (items) => {
         this.todos = items;
       },
+      // bg-wake 接缝（spec §3.1）：终态分流汇（done/failed 登记进 WakeController,过滤归控制器）
+      // + 分派回执唤醒提示宿主闸①（hint）——daemon 装配恒注入（CLI buildDeps 不注入＝无唤醒）
+      wake: { onFinished: (t) => this.wake.onTaskFinished(t), hint: true },
     });
     // 插入发送（front 置首条目）步边界消费口：取走即回显——user 帧（live 气泡）+ kernel user 条
     // （journal/快照,重连后不缺席）。此前 front 注入只落 steps 链,GUI 全程无气泡（2026-10-25 用户报障）
@@ -1032,19 +1059,23 @@ export class SessionRuntime {
   }
 
   /** 提交任务（每会话 run 串行，spec §7）：单 run 锁在先（409 拒二次提交），受理后 202 即回——run
-   * 异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败
-   * 倒面），finally 清锁。user 条入转录在锁检查之后——409 拒绝的提交不留痕。任务文本经链尾指令行
-   * 进模型上下文（appendInstructionLine——TUI /goal 同构，tui/session.ts 先例：goal 自身只是观测
-   * 标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源） */
-  submit(goal: string, images?: string[]): SessionSubmitResult {
+   *  异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败
+   *  倒面），finally 清锁。user 条入转录在锁检查之后——409 拒绝的提交不留痕。任务文本经链尾指令行
+   *  进模型上下文（appendInstructionLine——TUI /goal 同构，tui/session.ts 先例：goal 自身只是观测
+   *  标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源）。
+   *  双态（bg-wake spec §5.3）：wake 缺省=用户路径（markUserActivity+user 条+指令行）；wake 在场=
+   *  唤醒轮（无 markUserActivity、notice 通知条+链尾 note 替代——快照/统计/续发全共用） */
+  submit(goal: string, images?: string[], wake?: { tasks: WakeTaskInput[] }): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
+    if (wake === undefined) this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（唤醒路径不重置）
     // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进
     // 上下文/档/wire(见 images-cache.ts 头注);此入口覆盖普通提交与计划模式提交全部提交面
-    images = spillImages(this.root, images);
+    // （唤醒路径零图片:不 spill 不入面）
+    images = wake === undefined ? spillImages(this.root, images) : undefined;
     // 计划模式（2026-11-03 无感化,ask_question 同构）：armed 提交=read-only 覆盖在座+计划提示 note,
     // 走**普通会话作用域 run**——不再 fork/不再宿主编排;模型调研后 exit_plan 弹卡阻塞等裁决
-    // （run 不收口）,裁决落档后同 run 无感继续。计划名兜底派生源记录
-    const armed = this.planArmed();
+    // （run 不收口）,裁决落档后同 run 无感继续。计划名兜底派生源记录（唤醒轮非用户提交,不武装）
+    const armed = wake === undefined && this.planArmed();
     if (armed) this.activeGoal = goal;
     const abort = new AbortController();
     // G14.2xx 立即停止:run 信号装入沙箱——interrupt 时在途 exec 子进程即刻收割(不再等步边界)
@@ -1068,11 +1099,22 @@ export class SessionRuntime {
       this.runtimeImpl.harness.security.enterModeOverride('read-only');
       this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: PLAN_MODE_NOTE }]);
     }
-    this.kernel.submit(goal, images);
     // 轮次 checkpoint 寻址键(2026-11-10):run-open 条目 seq——GUI run 条 key(`k<seq>`)同源,
     // 跨重启稳定(journal seq 原样随档),turn-diff/turn-restore 端点按 run+path 寻址
     const runSeq = this.kernel.openRun();
-    this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
+    if (wake !== undefined) {
+      // 唤醒轮（spec §5.3）：通知 notice 条 + 链尾 note——无 user 条、无指令行；模型输入与恢复面同构
+      const refs = toWakeRefs(wake.tasks, (ledgerId) => this.boardTaskTitle(ledgerId));
+      const md = buildWakeNotification(refs, (id) => {
+        const t = this.runtimeImpl.harness.tasks.get(id);
+        return t !== undefined ? receiptBody(t, WAKE_HINT_RECEIPT_TOOL) : `${id} (ledger) finished`;
+      });
+      this.kernel.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
+      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+    } else {
+      this.kernel.submit(goal, images);
+      this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
+    }
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
     const p: Promise<void> = this.runtimeImpl
       .runTask(goal, {
@@ -1233,6 +1275,11 @@ export class SessionRuntime {
             // 泵路回显曾致转录双气泡+journal 双行(G14.2xx 实测)
             this.broadcastUserEcho(pending[0]!.text, pending[0]!.images);
             this.submit(pending[0]!.text, pending[0]!.images);
+          } else {
+            // bg-wake 续发（spec §6）：steer 空时问唤醒——有终态登记且空闲即起唤醒轮（合批窗内到点的
+            // 在途批也在此收口）；interrupted 不问（上方守卫，保留 pending §10-1）。返回值弃置：
+            // 在途闩已由 onTurnEnded 入口一次性读清，宿主无需跟进标记
+            this.wake.onTurnEnded(runOutcome?.stopReason);
           }
         }
       });
@@ -1565,6 +1612,7 @@ export class SessionRuntime {
   private async disposeRuntime(rt: KernelRuntime): Promise<void> {
     rt.harness.team?.stopAll();
     rt.harness.tasks.stopAll();
+    this.wake.reset(); // bg-wake 收口：清合批 timer/pending/链计数（防句柄泄漏,换铸/关闭后旧批次零残留）
     await rt.harness.pipeline.drain();
     await rt.harness.mcpClose();
   }

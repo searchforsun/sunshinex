@@ -27,6 +27,9 @@ export interface BackgroundTask {
    *  GUI 后台任务面（/tasks 端点 + bg-task 直播事件）按此标过滤，团队任务的呈现归任务板。
    *  落在 task 对象随 submit 行持久化，账本重放后仍携带 */
   boardDispatch?: boolean;
+  /** 已被 task_wait/agent_team_task_wait 终态回执消费（bg-wake spec §3.1）：只在内存 live 对象置位，
+   *  不入账本——重启后 running 行孤儿标 stopped 本就不唤醒 */
+  receipted?: boolean;
 }
 
 /** 本进程提交的活任务对象(进程级):同一 daemon 内会话 runtime 重建(换模式等)会新建 TaskRegistry
@@ -70,6 +73,29 @@ export class TaskRegistry {
   /** 装配期挂 live 旁路(须在 adoptLedger 之后——重放不经此口) */
   setOnChange(cb: ((task: BackgroundTask) => void) | undefined): void {
     this.onChange = cb;
+  }
+
+  /** 唤醒提示装配开关（bg-wake spec §4.2 宿主闸①）：daemon/TUI 注入 true，CLI 缺省 false */
+  wakeHint?: boolean;
+
+  /** 终态回执消费标记：置 live 对象 receipted（账本零写入） */
+  markReceipted(ids: readonly string[]): void {
+    for (const id of ids) {
+      const t = this.tasks.get(id);
+      if (t !== undefined) t.receipted = true;
+    }
+  }
+
+  /** 板任务终态回执标记：板 id → dispatchTag 标签匹配 boardDispatch 台账行（teammate execute 登记口径） */
+  markBoardReceipted(boardIds: readonly string[]): void {
+    const tags = new Set(boardIds.flatMap((id) => [id, /^t\d+$/.test(id) ? `task-${id}` : id]));
+    for (const t of this.tasks.values()) {
+      if (t.boardDispatch === true && tags.has(t.label)) t.receipted = true;
+    }
+  }
+
+  isReceipted(id: string): boolean {
+    return this.tasks.get(id)?.receipted === true;
   }
 
   /** 账本重放（构造装载与 adoptLedger 共用）：逐行 submit/finish;崩溃截断行/坏行跳过不炸（TeamStore
@@ -312,4 +338,16 @@ export class TaskRegistry {
       poll();
     });
   }
+}
+
+/** 分派回执唤醒提示（bg-wake spec §4.2，已裁定）：可选出路非指令——不否定 task_wait，只告知「提前收轮等唤醒」 */
+export const WAKE_HINT =
+  ' You need not wait for it within this turn: if nothing else depends on it right now, finish your current work, reply, and end the turn — you will be woken automatically when it completes.';
+
+/** task_wait 回执再引工具名（宿主起轮处 receiptBody 调用复用，避免裸串漂移） */
+export const WAKE_HINT_RECEIPT_TOOL = 'task_wait';
+
+/** 回执提示后缀（三道挂载闸合成点）：宿主闸① wakeHint 装配 × 闸② 主链归属；板任务分派点恒主链天然满足 */
+export function wakeHintSuffix(tasks: TaskRegistry): string {
+  return tasks.wakeHint === true && tasks.currentOwner() === 'main' ? WAKE_HINT : '';
 }

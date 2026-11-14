@@ -17,7 +17,7 @@ import { MemoryStore } from './memory/store';
 import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
-import { TaskRegistry } from './tasks';
+import { TaskRegistry, WAKE_HINT } from './tasks';
 import { FORK_EXCLUDED_TOOLS } from './tools/taskboard-tools';
 import { makeTaskWaitTool } from './tools/task-wait';
 import { makeAskQuestionTool } from './tools/builtin';
@@ -412,8 +412,10 @@ export class SubagentRunner {
   }
 
   /** spawn 两段式入口（规格 D6，对标 CC Task run_in_background）：立即登记 subagent 任务并同步返回回执，
-   * 子智能体转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消 */
-  spawnBackground(rawInput: SubagentSpawnInput): { taskId: string; outputFilePath: string } {
+   * 子智能体转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消。
+   * wakeHint（bg-wake spec §4.2）：后台分派回执唤醒提示——宿主闸①（wakeHint 装配）× 闸②（主链归属），
+   * spawnBackground 返回值承载、spawn 工具回执串尾追（fork 面缺省 undefined 零变化） */
+  spawnBackground(rawInput: SubagentSpawnInput): { taskId: string; outputFilePath: string; wakeHint?: string } {
     const input = normalizeSpawnInput(rawInput);
     const ledger = this.deps.tasks;
     if (ledger === undefined) {
@@ -455,7 +457,7 @@ export class SubagentRunner {
         ledger.finish(task.id, 'failed');
       }
     })();
-    return { taskId: task.id, outputFilePath: task.outputFilePath };
+    return { taskId: task.id, outputFilePath: task.outputFilePath, ...(ledger !== undefined && ledger.wakeHint === true && ledger.currentOwner() === 'main' ? { wakeHint: WAKE_HINT } : {}) };
   }
 
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
@@ -672,7 +674,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
       // 长驻 teammate 不在本工具面:create_agent_teammate 动词独立承载(两动词两契约,见工厂注释)
       if (spec.background === true) {
         const started = runner.spawnBackground(spec);
-        return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})`, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
       }
       const r = await runner.runSubagent(spec);
       if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };

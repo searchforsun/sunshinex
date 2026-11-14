@@ -1,4 +1,4 @@
-import { sanitizeArtifacts, sanitizeChanges, sanitizeTurn, type KernelEntry, type RunMeta } from './entry';
+import { sanitizeArtifacts, sanitizeChanges, sanitizeTurn, parseWakeRefs, type KernelEntry, type RunMeta } from './entry';
 import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from '../tui/session-journal';
 import type { ChainAction } from '../types';
@@ -53,6 +53,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
         ...(e.name !== undefined ? { name: e.name } : {}),
         ...(e.input !== undefined ? { input: e.input } : {}),
         ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+        ...(e.wake !== undefined ? { wake: e.wake } : {}),
       },
     ];
     if (e.kind === 'tool' && e.result !== undefined) rows.push({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result });
@@ -100,6 +101,8 @@ export interface SegRowLike {
   input?: unknown;
   seconds?: unknown;
   result?: unknown;
+  /** 行随唤醒引用(bg-wake spec §5.1;行面字段不予信任——parseWakeRefs 净化,旧档无此字段=普通 notice) */
+  wake?: unknown;
   upToSeq?: unknown;
   stopped?: unknown;
   endedTs?: unknown;
@@ -191,6 +194,8 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
       const seconds = num(row.seconds);
       // images 全 kind 通用(user 附件+tool 结果图;2026-10-31 截屏回显——读侧不再按 kind 设门)
       const images = imagesOf(row.images);
+      // wake 唤醒引用净化(bg-wake spec §5.1;行面字段不予信任,旧档无字段回落 undefined=普通 notice)
+      const wake = parseWakeRefs(row.wake);
       entries.push({
         seq,
         ts: num(row.ts) ?? 0,
@@ -200,6 +205,7 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
         ...(callId !== undefined ? { callId } : {}),
         ...(name !== undefined ? { name } : {}),
         ...(input !== undefined ? { input } : {}),
+        ...(wake !== undefined ? { wake } : {}),
         ...(kind === 'thinking' && seconds !== undefined ? { seconds } : {}),
       });
       continue;
