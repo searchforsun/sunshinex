@@ -1,4 +1,4 @@
-import type { SessionEvent, TurnFileChange } from '../../src/types';
+import type { SessionEvent, TurnFileChange, ArtifactFile } from '../../src/types';
 import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState } from '../../src/session/entry';
 import { localizeNotice } from './i18n-notice';
 import { getLanguage, t } from './i18n';
@@ -59,6 +59,8 @@ export interface ChatEntry {
    *  路径级前像/后像——本轮 diff 页签(冻结内容)与 checkpoint 撤销(staleness 闸门)数据面 */
   runSeq?: number;
   turn?: TurnFileChange[];
+  /** 轮次产物(2026-11-12 spec §4):非代码交付物,runmeta.artifacts 直映——轮尾产物卡数据面 */
+  artifacts?: ArtifactFile[];
 }
 
 /** chat 投影状态：内核态 + 物化视图条目 + 状态栏三指标 */
@@ -180,6 +182,7 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
         if (m.endedTs !== undefined && m.endedTs > 0) view.endedTs = m.endedTs;
         if (m.changes !== undefined && m.changes.length > 0) view.changes = m.changes;
         if (m.turn !== undefined && m.turn.length > 0) view.turn = m.turn;
+        if (m.artifacts !== undefined && m.artifacts.length > 0) view.artifacts = m.artifacts;
       }
       if (base !== undefined) {
         view.stepsBase = base.steps;
