@@ -473,7 +473,14 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     resolveKey: () => '',
     singleton: true,
     render: (p) => (
-      <ArtifactsTab conn={p.conn} sessionId={p.sessionId} root={p.root} refreshNonce={p.panelRefreshNonce} onOpenFile={fileTabOf(p)} />
+      <ArtifactsTab
+        conn={p.conn}
+        sessionId={p.sessionId}
+        root={p.root}
+        refreshNonce={p.panelRefreshNonce}
+        onOpenFile={fileTabOf(p)}
+        onOpenWeb={(url) => p.openTab('web', { url })}
+      />
     ),
   },
   ];

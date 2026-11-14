@@ -369,17 +369,27 @@ export interface TurnFileChange {
   afterDeleted?: boolean;
 }
 
-/** 轮次产物行（2026-11-12 spec §3.1；gui 侧另有同形局部声明不引——惯例同 ChangeFile）：
- *  内核写盘声明（write/edit 工具面）或 run 收尾 bash 差集兜底并入，随 RunMeta.artifacts
- *  落档重放；渲染端（轮末卡区/产物库）只读投影，零二次推导 */
-export interface ArtifactFile {
-  /** 项目根相对路径（/ 分隔） */
-  path: string;
-  /** 声明来源：write/edit=工具面写盘声明；bash=收尾差集兜底（callId 缺省） */
-  source: 'write' | 'edit' | 'bash';
-  /** 末次写入调用关联（未来 diff 寻址；bash 兜底无） */
-  callId?: string;
+/** 产物来源：write/edit=工具面写盘声明；bash=收尾差集/mtime 网兜底；tool=模型 report_artifacts 显式声明 */
+export type ArtifactSource = 'write' | 'edit' | 'bash' | 'tool';
+
+/** 产物 kind 三类判别联合（2026-11-14 kind 化改宗,用户裁定「文件锚定狭隘」——网址/启动命令/入口
+ *  类产物非文件可表达）：file=项目内文件(自动三网只产此类且限白名单;声明面不限白名单);
+ *  url=网址(在线服务/部署页);command=启动/复现命令。title/desc 仅声明面携带(模型给的
+ *  人话名与说明,卡面第一/二行优先展示) */
+export type Artifact =
+  | { kind: 'file'; path: string; source: ArtifactSource; callId?: string; title?: string; desc?: string }
+  | { kind: 'url'; url: string; source: 'tool'; title?: string; desc?: string }
+  | { kind: 'command'; command: string; source: 'tool'; title?: string; desc?: string };
+
+/** 产物身份键（合流/去重单点）：file=path(归一 /),url=原串,command=trim 原串 */
+export function artifactKey(a: Artifact): string {
+  if (a.kind === 'file') return `f:${a.path.replaceAll('\\', '/')}`;
+  if (a.kind === 'url') return `u:${a.url}`;
+  return `c:${a.command.trim()}`;
 }
+
+/** 轮次产物行兼容别名（旧名;2026-11-14 kind 化后仅剩类型面引用,行数据一律 Artifact） */
+export type ArtifactFile = Extract<Artifact, { kind: 'file' }>;
 
 /** 交付物扩展名白名单（2026-11-12 spec §3.2 非代码口径，用户裁定）：内核声明钩与 bash 兜底
  *  共用单点；GUI 侧类目标签副本在 gui/src/artifacts.ts */

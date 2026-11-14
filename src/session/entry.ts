@@ -1,4 +1,4 @@
-import type { ArtifactFile, ChangeFile, SessionEvent, TurnFileChange } from '../types';
+import { artifactKey, type Artifact, type ChangeFile, type SessionEvent, type TurnFileChange } from '../types';
 import { LEADER_RECIPIENT } from '../taskboard/leader';
 
 /**
@@ -31,8 +31,8 @@ export interface RunMeta {
   /** 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):路径级前像/后像
    *  blob hash——GUI 本轮 diff 页签(冻结前后像)与 checkpoint 撤销(staleness 闸门)数据面 */
   turn?: TurnFileChange[];
-  /** 轮次产物（2026-11-12 spec §3）：非代码交付物，声明+bash 兜底；落档重放同 turn */
-  artifacts?: ArtifactFile[];
+  /** 轮次产物（2026-11-12 spec §3;2026-11-14 kind 化）：file/url/command 判别联合,声明+兜底;落档重放同 turn */
+  artifacts?: Artifact[];
 }
 
 /** 唤醒引用（bg-wake spec §5.1）：id=账本寻址键；name=人读任务名（写入端解析一次，无业务含义缺省——
@@ -264,20 +264,48 @@ export function sanitizeTurn(raw: unknown): TurnFileChange[] | undefined {
   return out;
 }
 
-/** 轮次产物行净化（行面字段不予信任，同 sanitizeChanges 口径）：path 必带非空、source 枚举
- *  收敛、callId 严判非空串、path 去重保首现——坏行整条弃 */
-export function sanitizeArtifacts(raw: unknown): ArtifactFile[] | undefined {
+/** 轮次产物行净化（行面字段不予信任，同 sanitizeChanges 口径）：kind 判别联合逐类校验——
+ *  file=path 必带非空+source 枚举收敛+callId 严判；url=http(s) 形态；command=非空；title/desc
+ *  严判非空串截 120；旧档 {path,source} 行（kind 化前落档）一次性升级为 kind:'file'（读取侧
+ *  迁移,非双轨）；key 去重保首现——坏行整条弃 */
+export function sanitizeArtifacts(raw: unknown): Artifact[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  const out: ArtifactFile[] = [];
+  const out: Artifact[] = [];
   const seen = new Set<string>();
+  const str = (v: unknown, cap = 120): string | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const t = v.trim();
+    return t === '' ? undefined : t.slice(0, cap);
+  };
+  const push = (a: Artifact): void => {
+    const key = artifactKey(a);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(a);
+  };
   for (const a of raw) {
-    const o = (a ?? {}) as Partial<Record<keyof ArtifactFile, unknown>>;
-    if (typeof o.path !== 'string' || o.path === '' || typeof o.source !== 'string') continue;
-    if (o.source !== 'write' && o.source !== 'edit' && o.source !== 'bash') continue;
-    if (seen.has(o.path)) continue;
-    seen.add(o.path);
+    const o = (a ?? {}) as Partial<Record<string, unknown>>;
+    const kind = typeof o.kind === 'string' ? o.kind : 'file'; // 旧档无 kind:path 行升级为 file
+    const title = str(o.title);
+    const desc = str(o.desc);
+    const meta = { ...(title !== undefined ? { title } : {}), ...(desc !== undefined ? { desc } : {}) };
+    if (kind === 'url') {
+      const url = str(o.url, 2048);
+      if (url === undefined || !/^https?:\/\//i.test(url)) continue;
+      push({ kind: 'url', url, source: 'tool', ...meta });
+      continue;
+    }
+    if (kind === 'command') {
+      const command = str(o.command, 500);
+      if (command === undefined) continue;
+      push({ kind: 'command', command, source: 'tool', ...meta });
+      continue;
+    }
+    const path = typeof o.path === 'string' && o.path !== '' ? o.path : undefined;
+    if (path === undefined || typeof o.source !== 'string') continue;
+    if (o.source !== 'write' && o.source !== 'edit' && o.source !== 'bash' && o.source !== 'tool') continue;
     const callId = typeof o.callId === 'string' && o.callId !== '' ? o.callId : undefined;
-    out.push({ path: o.path, source: o.source, ...(callId !== undefined ? { callId } : {}) });
+    push({ kind: 'file', path, source: o.source, ...(callId !== undefined ? { callId } : {}), ...meta });
   }
   return out.length > 0 ? out : undefined;
 }

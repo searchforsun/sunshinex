@@ -1,25 +1,26 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ArtifactFile, ChangeFile } from '../types';
-import { isDeliverablePath } from '../types';
+import type { Artifact, ChangeFile } from '../types';
+import { artifactKey, isDeliverablePath } from '../types';
 import { sanitizeArtifacts } from '../session/entry';
 
 /** 轮次产物并入（2026-11-12 spec §3.4-3.5；2026-11-14 口径放宽,用户实测 copy.png 缺卡补）：
- *  声明面（write/edit，已保末次）∪ bash 兜底两网——①git 收尾差集中白名单**新建**（git 项目
- *  可见面）②mtime 轮窗有界扫描（非 git 项目/ignored/未跟踪修改对差集不可见,默认工作区即非
- *  git）;按 path 去重声明 > 差集 > 扫描,64 帽（声明集在先,溢出静默截断） */
+ *  声明面（report_artifacts,任意 kind）∪ bash 兜底两网（只产 file 类且限白名单）——①git 收尾
+ *  差集中白名单**新建**（git 项目可见面）②mtime 轮窗有界扫描（非 git 项目/ignored/未跟踪修改
+ *  对差集不可见,默认工作区即非 git）;按 artifactKey 去重声明 > 差集 > 扫描,64 帽（声明集在先,
+ *  溢出静默截断） */
 export const ARTIFACTS_CAP = 64;
 
-export function mergeRunArtifacts(declared: ArtifactFile[], gitExtra: ChangeFile[], scanBash: ChangeFile[] = []): ArtifactFile[] {
-  const seen = new Set(declared.map((a) => a.path));
-  const pick = (list: ChangeFile[]): ArtifactFile[] =>
+export function mergeRunArtifacts(declared: Artifact[], gitExtra: ChangeFile[], scanBash: ChangeFile[] = []): Artifact[] {
+  const seen = new Set(declared.map(artifactKey));
+  const pick = (list: ChangeFile[]): Artifact[] =>
     list
       .filter((c) => c.status === 'added' || c.status === 'untracked')
       .map((c) => c.path.replaceAll('\\', '/'))
-      .filter((p) => isDeliverablePath(p) && !seen.has(p))
+      .filter((p) => isDeliverablePath(p) && !seen.has(`f:${p}`))
       .map((p) => {
-        seen.add(p);
-        return { path: p, source: 'bash' as const };
+        seen.add(`f:${p}`);
+        return { kind: 'file' as const, path: p, source: 'bash' as const };
       });
   return [...declared, ...pick(gitExtra), ...pick(scanBash)].slice(0, ARTIFACTS_CAP);
 }
@@ -67,14 +68,9 @@ export function scanDeliverableFiles(rootAbs: string, startedAtMs: number, ended
   return out;
 }
 
-/** 产物库聚合行（2026-11-12 spec §6.2）：跨 run 按 path 去重保留最新 run（库语义），runSeq 倒序 */
-export interface AggregatedArtifact {
-  path: string;
-  source: 'write' | 'edit' | 'bash';
-  callId?: string;
-  runSeq: number;
-  endedTs?: number;
-}
+/** 产物库聚合行（2026-11-12 spec §6.2;2026-11-14 kind 化随 Artifact 判别联合）：跨 run 按
+ *  artifactKey 去重保留最新 run（库语义），runSeq 倒序 */
+export type AggregatedArtifact = Artifact & { runSeq: number; endedTs?: number };
 
 /** journal jsonl 行扫描 → 聚合（纯函数；内存当轮面由 session.artifactsAggregated 在其上合并）：
  *  run-open 行开轮记 seq，runmeta 行 artifacts 绑轮；坏行跳过（撕裂不阻断扫描） */
@@ -94,12 +90,11 @@ export function scanArtifactsJsonl(text: string): AggregatedArtifact[] {
       const endedTs = typeof e.endedTs === 'number' ? e.endedTs : undefined;
       if (artifacts === undefined) continue;
       for (const a of artifacts) {
-        const prev = best.get(a.path);
+        const key = artifactKey(a);
+        const prev = best.get(key);
         if (prev !== undefined && prev.runSeq >= openSeq) continue;
-        best.set(a.path, {
-          path: a.path,
-          source: a.source,
-          ...(a.callId !== undefined ? { callId: a.callId } : {}),
+        best.set(key, {
+          ...a,
           runSeq: openSeq,
           ...(endedTs !== undefined ? { endedTs } : {}),
         });

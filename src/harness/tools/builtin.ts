@@ -1,4 +1,5 @@
-import type { AskUserRequest, AskUserSeam } from '../../types';
+import type { AskUserRequest, AskUserSeam, Artifact } from '../../types';
+import { buildDeclaredArtifact } from './artifact-collector';
 import type { SnapshotEntry } from '../../tui/session-journal';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -110,8 +111,10 @@ export function builtinTools(
     memoryWrite?: MemoryWriteTool;
     ask?: AskUserSeam;
     writeSnapshot?: { capture(p: string): void; captureAfter(p: string, content: string): void; drain(): SnapshotEntry[] };
-    /** 产物声明接缝（2026-11-12 spec §3.3）：write/edit 落盘成功后白名单命中即记（commitFileWrite 单点调钩）；缺省不注入＝无产物、零工具面变化 */
-    artifacts?: { record(relPosix: string, source: 'write' | 'edit'): void };
+    /** 产物接缝（2026-11-12 spec §3.3;2026-11-14 kind 化）：record=write/edit 落盘自动声明（白名单门,
+     *  commitFileWrite 单点调钩）;declare=report_artifacts 模型显式声明（任意 kind 不限白名单）。
+     *  缺省不注入＝无产物、零工具面变化 */
+    artifacts?: { record(relPosix: string, source: 'write' | 'edit'): void; declare(entries: Artifact[]): void };
     activeRoot?: () => string | null;
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
@@ -770,6 +773,90 @@ export function builtinTools(
       },
     });
   }
+
+  // report_artifacts 模型显式声明产物（2026-11-14 kind 化改宗,用户裁定「文件锚定狭隘——网址/
+  // 启动命令/入口类产物非文件可表达」）：模型收尾前登记本轮主交付物,任意 kind 不限白名单;
+  // file 落盘存在性校验(防虚报),url http(s) 形态,command 非空;声明条遮蔽同键自动网条,
+  // title/desc 上卡。category 'read'=纯内存登记零 IO 副作用
+  tools.push({
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['artifacts'],
+      properties: {
+        artifacts: {
+          type: 'array',
+          description: '1-16 items; all fields required (null = not applicable for this kind)',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'path', 'url', 'command', 'title', 'desc'],
+            properties: {
+              kind: { type: 'string', enum: ['file', 'url', 'command'], description: 'Artifact kind' },
+              path: { type: ['string', 'null'], description: 'kind=file (required, others null): project-root-relative path; the file must already exist on disk' },
+              url: { type: ['string', 'null'], description: 'kind=url (required, others null): http(s) URL of the running service / deployed page' },
+              command: { type: ['string', 'null'], description: 'kind=command (required, others null): the command a user can run to launch / reproduce' },
+              title: { type: ['string', 'null'], description: "Human-facing artifact name shown on the card (user's language)" },
+              desc: { type: ['string', 'null'], description: 'One-line description of what it is / how to use it' },
+            },
+          },
+        },
+      },
+    },
+    name: 'report_artifacts',
+    description:
+      "Declare the artifacts (deliverables) of this turn so they surface as cards for the user. Call once near the end of the turn, after the deliverables exist. Register ANY kind — files (code included when it is the main deliverable, e.g. the module you built), running service URLs, launch commands / entry points. kind=file requires path (must already exist on disk); kind=url requires an http(s) URL that is actually live; kind=command requires the runnable command. Set title/desc in the user's language. Do NOT declare incidental files you merely read or touched; declare only each turn's own outputs.",
+    category: 'read',
+    display: { verb: 'ARTIFACT', targetFields: [] },
+    executor: async (input: ToolInput) => {
+      if (artifacts === undefined) throw new CodedToolError('artifacts_not_configured', 'Artifact registry not wired in this runtime');
+      const raw = Array.isArray(input.artifacts) ? input.artifacts : [];
+      if (raw.length === 0) throw new CodedToolError('INVALID_ARG', 'artifacts must be a non-empty array (1-16 items)');
+      if (raw.length > 16) throw new CodedToolError('INVALID_ARG', 'artifacts accepts at most 16 items');
+      const entries: Artifact[] = [];
+      const lines: string[] = [];
+      let n = 0;
+      for (const item of raw) {
+        const o = (item ?? {}) as Record<string, unknown>;
+        const title = typeof o.title === 'string' && o.title.trim() !== '' ? o.title.trim().slice(0, 120) : undefined;
+        const desc = typeof o.desc === 'string' && o.desc.trim() !== '' ? o.desc.trim().slice(0, 200) : undefined;
+        const meta = { ...(title !== undefined ? { title } : {}), ...(desc !== undefined ? { desc } : {}) };
+        if (o.kind === 'file') {
+          const p = typeof o.path === 'string' ? o.path.trim() : '';
+          if (p === '') throw new CodedToolError('INVALID_ARG', 'kind=file requires path');
+          const abs = resolveProjectPath(root, p);
+          try {
+            backend.readFile(abs);
+          } catch {
+            throw new CodedToolError('INVALID_ARG', `declared file does not exist on disk: ${p} — create it first, then declare`);
+          }
+          entries.push(buildDeclaredArtifact({ kind: 'file', path: path.relative(root, abs).replaceAll('\\', '/'), ...meta }));
+          n += 1;
+          lines.push(`file ${p}`);
+          continue;
+        }
+        if (o.kind === 'url') {
+          const u = typeof o.url === 'string' ? o.url.trim() : '';
+          if (!/^https?:\/\//i.test(u)) throw new CodedToolError('INVALID_ARG', `kind=url requires an http(s) URL, got: ${u === '' ? '(empty)' : u}`);
+          entries.push(buildDeclaredArtifact({ kind: 'url', url: u, ...meta }));
+          n += 1;
+          lines.push(`url ${u}`);
+          continue;
+        }
+        if (o.kind === 'command') {
+          const cmd = typeof o.command === 'string' ? o.command.trim() : '';
+          if (cmd === '') throw new CodedToolError('INVALID_ARG', 'kind=command requires a non-empty command');
+          entries.push(buildDeclaredArtifact({ kind: 'command', command: cmd, ...meta }));
+          n += 1;
+          lines.push(`command ${cmd}`);
+          continue;
+        }
+        throw new CodedToolError('INVALID_ARG', `artifacts[${n}].kind must be 'file' | 'url' | 'command'`);
+      }
+      artifacts.declare(entries);
+      return execOut(`registered ${n} artifact(s):\n${lines.join('\n')}`);
+    },
+  });
 
   return tools;
 }

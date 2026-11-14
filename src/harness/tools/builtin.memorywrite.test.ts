@@ -23,7 +23,7 @@ import { resolveDataDir } from '../../config/data-dir';
  * 范式：tmpdir 作 root + SUNSHINEX_DATA_DIR 重定向 + finally 还原清理；断言一律走 resolveDataDir(root)。
  */
 
-const BUILTIN_NAMES = ['exec', 'read', 'skill', 'write', 'edit', 'grep', 'glob', 'webfetch', 'websearch', 'kb_search', 'todo_write', 'worktree'];
+const BUILTIN_NAMES = ['exec', 'read', 'skill', 'write', 'edit', 'grep', 'glob', 'webfetch', 'websearch', 'kb_search', 'todo_write', 'worktree', 'report_artifacts']; // 尾追 report_artifacts(2026-11-14 kind 化:模型显式声明产物工具,注册序=声明序)
 
 const RAW = ['---', 'type: project', 'description: repo uses pnpm', '---', 'use pnpm only', ''].join('\n');
 

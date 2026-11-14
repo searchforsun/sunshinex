@@ -25,7 +25,7 @@ describe('runmeta.artifacts 摄入', () => {
       ev('runmeta', undefined, { seconds: 2, artifacts: [{ path: 'docs/report.md', source: 'write', callId: 'c1' }] }),
     ]);
     const run = s.entries.find((e) => e.kind === 'run');
-    expect(run?.artifacts).toEqual([{ path: 'docs/report.md', source: 'write', callId: 'c1' }]);
+    expect(run?.artifacts).toEqual([{ kind: 'file', path: 'docs/report.md', source: 'write', callId: 'c1' }]);
 
     const s2 = fold([ev('model-start'), ev('done', 'x'), ev('runmeta', undefined, { seconds: 1 })]);
     expect(s2.entries.find((e) => e.kind === 'run')?.artifacts).toBeUndefined();

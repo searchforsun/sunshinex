@@ -74,7 +74,7 @@ function walkStrict(node: JsonSchema, pathKey: string, loose: ReadonlySet<string
 test('内建工具全量声明 parameters 且对象节点显式闭合（裸装配与全接缝装配两态一致）', () => {
   withRegistries(({ bare, full }) => {
     const bareNames = bare.list().map((t) => t.name).sort();
-    assert.deepEqual(bareNames, ['edit', 'exec', 'glob', 'grep', 'kb_search', 'read', 'skill', 'todo_write', 'webfetch', 'websearch', 'worktree', 'write']);
+    assert.deepEqual(bareNames, ['edit', 'exec', 'glob', 'grep', 'kb_search', 'read', 'report_artifacts', 'skill', 'todo_write', 'webfetch', 'websearch', 'worktree', 'write']); // 尾追 report_artifacts(2026-11-14 kind 化)
     const fullNames = full.list().map((t) => t.name).sort();
     assert.deepEqual(fullNames, [...bareNames, 'ask_question', 'memory_write', SPAWN_TOOL_NAME].sort());
     for (const registry of [bare, full]) {
@@ -95,6 +95,7 @@ test('逐工具 required/properties 与执行器真实入参一一对应', () =>
       glob: ['pattern'],
       webfetch: ['url'],
       websearch: ['query', 'count'],
+      report_artifacts: ['artifacts'], // 2026-11-14 kind 化:模型显式声明产物
       worktree: ['action', 'name'],
       kb_search: ['query', 'topK'],
       memory_write: ['action', 'slug', 'type', 'content', 'description'],
@@ -241,7 +242,7 @@ test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐
     registry.register({ ...makeTaskWaitTool({} as unknown as TaskRegistry), display: { verb: 'TASK_WAIT' } });
 
     const meta = registry.displayMeta();
-    assert.equal(Object.keys(meta).length, 17, '14 内置（含条件注册的 memory_write/ask_question）+ spawn/task_stop/task_wait');
+    assert.equal(Object.keys(meta).length, 18, '15 内置（含条件注册的 memory_write/ask_question,尾追 report_artifacts）+ spawn/task_stop/task_wait（2026-11-14 kind 化）');
     // 旧 VERBS 表（tui/tool-verbs.ts 迁移前）逐一对应；skill/memory_write 无旧表条目，走名大写派生
     //（= 迁移前 TUI fallback 呈现 SKILL/MEMORY_WRITE，行为零变化）
     const verbs = Object.fromEntries(Object.entries(meta).map(([name, m]) => [name, m.verb]));
@@ -258,6 +259,7 @@ test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐
       kb_search: 'SEARCH',
       worktree: 'WORKTREE',
       todo_write: 'TODO',
+      report_artifacts: 'ARTIFACT',
       spawn: 'SPAWN',
       task_stop: 'TASK_STOP',
       task_wait: 'TASK_WAIT',
@@ -281,6 +283,7 @@ test('displayMeta 特征化钉（D26/J1）：旧 VERBS/TARGET_FIELD 双表值逐
       webfetch: ['url'],
       websearch: ['query'],
       kb_search: ['query'],
+      report_artifacts: [], // 2026-11-14 kind 化:无 target 字段(声明面无路径出牌)
       worktree: ['name'],
     });
   } finally {

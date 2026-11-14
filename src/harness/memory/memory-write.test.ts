@@ -34,7 +34,7 @@ import { ApprovalDecision, ApprovalRequest } from '../../types';
  */
 
 /** 内置工具声明序（memory_write 为第 8 可选参注入项，注入后追加末位；渲染面按名排序，与注册序无关） */
-const BUILTIN_NAMES = ['exec', 'read', 'skill', 'write', 'edit', 'grep', 'glob', 'webfetch', 'websearch', 'kb_search', 'todo_write', 'worktree'];
+const BUILTIN_NAMES = ['exec', 'read', 'skill', 'write', 'edit', 'grep', 'glob', 'webfetch', 'websearch', 'kb_search', 'todo_write', 'worktree', 'report_artifacts']; // 尾追 report_artifacts(2026-11-14 kind 化:模型显式声明产物工具,注册序=声明序)
 
 const FACT = { type: 'project', content: 'Repo uses pnpm with a repo-local store', description: 'pnpm store is repo-local' };
 const FACT_SLUG = 'pnpm-store-is-repo-local';
@@ -182,7 +182,7 @@ test('memory_write：工具注册与清单（category=write、英文单语 descr
   await withRoot(({ root }) => {
     const { registry } = registryFor({ root, mode: 'full-access' });
     const names = registry.list().map((t) => t.name);
-    assert.deepEqual(names, [...BUILTIN_NAMES.slice(0, -1), 'memory_write', 'worktree'], '声明序：第 8 参接缝项居基线九具与 worktree 尾具之间');
+    assert.deepEqual(names, [...BUILTIN_NAMES.slice(0, -2), 'memory_write', 'worktree', 'report_artifacts'], '声明序：第 8 参接缝项居基线九具与 worktree 尾具之间;report_artifacts 尾追(2026-11-14 kind 化)');
     assert.equal(registry.get('memory_write')?.category, 'write', '与 write 同族');
 
     const desc = registry.get('memory_write')?.description ?? '';

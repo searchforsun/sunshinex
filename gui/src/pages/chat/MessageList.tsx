@@ -63,6 +63,7 @@ export interface MessageListProps {
   readonly onOpError?: (err: unknown) => void;
   /** 轮末产物卡「产物库」链接通道(2026-11-12 spec §4;Task 12 接 App 入口——本任务纯类型面) */
   readonly onOpenArtifacts?: () => void;
+  readonly onOpenWeb?: (url: string) => void;
   readonly onEntryOpenDiff: (p: string) => void;
   readonly onEntryRestore: (p: string) => void;
   /** 轮次 checkpoint 通道(2026-11-10):改动条文件名开本轮 diff 页签 / 前像回写撤销 */
@@ -90,6 +91,8 @@ export interface MessageListProps {
  *  条目引用身份由 chat-reducer 映射缓存保证(未变行恒同引用);组边界由 daySkeleton 冻结
  *  (structureVersion 键),位置对位成立 */
 interface DayGroupProps {
+  readonly onOpenWeb?: (url: string) => void;
+
   readonly label: string;
   readonly entries: readonly ChatEntry[];
   readonly hiddenKeys: ReadonlySet<string>;
@@ -133,7 +136,7 @@ interface DayGroupProps {
 
 const DayGroupBlock = memo(
   function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpError, onOpenArtifacts, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
+    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpError, onOpenWeb, onOpenArtifacts, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
     const office = useUiMode() === 'office';
     const renderTool = useCallback((e2: ChatEntry) => (
       <ToolEntryView
@@ -191,7 +194,7 @@ const DayGroupBlock = memo(
           onOpenArtifacts={onOpenArtifacts}
         />
       );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, sessionId, root, onOpError, onOpenArtifacts, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
+    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, sessionId, root, onOpError, onOpenWeb, onOpenArtifacts, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
     const nodes: ReactNode[] = [];
     if (label !== '') {
       nodes.push(
@@ -293,6 +296,7 @@ const DayGroupBlock = memo(
             sessionId={sessionId}
             root={root}
             onOpError={onOpError}
+            onOpenWeb={onOpenWeb}
             onOpenArtifacts={onOpenArtifacts}
             onSend={submitText}
             sideChat={sideChat}
@@ -341,7 +345,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=运行状态行隐步数+tokens
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage, onOpenWeb } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 最近一次用户滚动时刻(空闲回放让路判据:滚动进行中不挂载更早条目) */
@@ -493,6 +497,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
             conn={conn}
             sessionId={sessionId}
             root={root}
+            onOpenWeb={onOpenWeb}
             onOpenFile={onOpenFileOpt()}
             onOpenDiff={onOpenDiffOpt()}
             onOpenAgent={onOpenAgentOpt()}

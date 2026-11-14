@@ -1,4 +1,4 @@
-import type { SessionEvent, TurnFileChange, ArtifactFile } from '../../src/types';
+import type { SessionEvent, TurnFileChange, Artifact } from '../../src/types';
 import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState, type WakeRef } from '../../src/session/entry';
 import { localizeNotice } from './i18n-notice';
 import { getLanguage, t } from './i18n';
@@ -63,7 +63,7 @@ export interface ChatEntry {
   runSeq?: number;
   turn?: TurnFileChange[];
   /** 轮次产物(2026-11-12 spec §4):非代码交付物,runmeta.artifacts 直映——轮尾产物卡数据面 */
-  artifacts?: ArtifactFile[];
+  artifacts?: Artifact[];
 }
 
 /** chat 投影状态：内核态 + 物化视图条目 + 状态栏三指标 */
@@ -124,7 +124,7 @@ export interface SnapshotTranscriptEntry {
     changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
     turn?: TurnFileChange[];
     /** 轮次产物(2026-11-12 spec §4;Task 9 遗留类型面收口——运行时经 cast 透传,声明补齐即类型不滞后) */
-    artifacts?: ArtifactFile[];
+    artifacts?: Artifact[];
   };
 }
 

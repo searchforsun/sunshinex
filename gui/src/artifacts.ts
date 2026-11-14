@@ -1,20 +1,22 @@
-/** 产物共享面（2026-11-12 spec §3.2；内核登记点 src/types.ts ArtifactFile——惯例同 ChangeFile
- *  「gui 侧另有同形局部声明不引」）：扩展名→类目词标签 + 白名单同形判定 */
+/** 产物共享面（2026-11-12 spec §3.2;2026-11-14 kind 化改宗——内核登记点 src/types.ts Artifact,
+ *  gui 侧同形局部声明不引,惯例同 ChangeFile）：file/url/command 三类判别 + 类目标签 */
 
-export interface ArtifactFile {
-  path: string;
-  source: 'write' | 'edit' | 'bash';
-  callId?: string;
+export type ArtifactSource = 'write' | 'edit' | 'bash' | 'tool';
+
+export type Artifact =
+  | { kind: 'file'; path: string; source: ArtifactSource; callId?: string; title?: string; desc?: string }
+  | { kind: 'url'; url: string; source: 'tool'; title?: string; desc?: string }
+  | { kind: 'command'; command: string; source: 'tool'; title?: string; desc?: string };
+
+/** 产物身份键（合流/去重单点,与内核 artifactKey 同形） */
+export function artifactKey(a: Artifact): string {
+  if (a.kind === 'file') return `f:${a.path.replaceAll('\\', '/')}`;
+  if (a.kind === 'url') return `u:${a.url}`;
+  return `c:${a.command.trim()}`;
 }
 
 /** 产物库聚合行（GET /session/:id/artifacts items 直映） */
-export interface ArtifactRow {
-  path: string;
-  source: 'write' | 'edit' | 'bash';
-  callId?: string;
-  runSeq: number;
-  endedTs?: number;
-}
+export type ArtifactRow = Artifact & { runSeq: number; endedTs?: number };
 
 const KIND_LABELS: Readonly<Record<string, string>> = {
   md: '文档', txt: '文档', pdf: '文档', rst: '文档', docx: '文档', doc: '文档',
@@ -39,9 +41,25 @@ export function isDeliverablePath(relPath: string): boolean {
   return ext !== undefined && hasOwn(KIND_LABELS, ext);
 }
 
-/** 「类目 · 大写扩展名」标签；非产物 undefined */
-export function artifactKindLabel(relPath: string): string | undefined {
-  const ext = extOf(relPath);
-  if (ext === undefined || !hasOwn(KIND_LABELS, ext)) return undefined;
+/** file 类「类目 · 大写扩展名」标签；url/command 走 kind 词。始终有值(三类各有标签) */
+export function artifactKindLabel(a: Artifact): string {
+  if (a.kind === 'url') return '网站';
+  if (a.kind === 'command') return '命令';
+  const ext = extOf(a.path)!;
   return `${KIND_LABELS[ext]} · ${ext.toUpperCase()}`;
+}
+
+/** 卡面第一行:声明 title 优先,缺省按 kind 推导(file=基名/url=主机+路径截尾/command=首段) */
+export function artifactTitleOf(a: Artifact): string {
+  if (a.title !== undefined && a.title !== '') return a.title;
+  if (a.kind === 'url') {
+    try {
+      const u = new URL(a.url);
+      return `${u.host}${u.pathname === '/' ? '' : u.pathname}`;
+    } catch {
+      return a.url;
+    }
+  }
+  if (a.kind === 'command') return a.command.split(/\s+/)[0] ?? a.command;
+  return a.path.replaceAll('\\', '/').split('/').pop() ?? a.path;
 }

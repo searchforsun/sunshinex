@@ -9,7 +9,7 @@ test('session/entry 只从零依赖叶模块取 LEADER_RECIPIENT;leader.ts 无 i
   const root = path.join(__dirname, '..', '..', 'src');
   const entry = fs.readFileSync(path.join(root, 'session', 'entry.ts'), 'utf8');
   const valueImports = [...entry.matchAll(/^import (?!type )[^;]*from '([^']+)'/gm)].map((m) => m[1]);
-  assert.deepEqual(valueImports, ['../taskboard/leader']);
+  assert.deepEqual(valueImports, ['../types', '../taskboard/leader']); // ../types 零依赖叶(artifactKey 值导入,2026-11-14 kind 化;浏览器包安全)
   const leader = fs.readFileSync(path.join(root, 'taskboard', 'leader.ts'), 'utf8');
   assert.ok(!/^import /m.test(leader), 'leader.ts 必须零导入');
 });

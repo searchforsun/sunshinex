@@ -1029,6 +1029,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         root={root}
         onOpError={onOpError}
         onOpenArtifacts={onOpenArtifacts}
+        onOpenWeb={onOpenWeb}
         onOpenFile={onOpenFile}
         onOpenDiff={onOpenDiff}
         onOpenAgent={onOpenAgent}
