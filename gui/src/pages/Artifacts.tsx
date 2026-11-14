@@ -6,16 +6,23 @@ import { t } from '../i18n';
 import type { Connection } from '../connection';
 
 /** 产物库页签(2026-11-12 spec §6):会话级聚合(GET /session/:id/artifacts,跨 run 按 path
- *  去重保留最新,含子 run);行=图标+名称+类目+来源轮+打开分体钮;点行=侧栏预览 */
-export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile }: {
+ *  去重保留最新,含子 run);行=图标+名称+类目+来源轮+打开分体钮;点行=侧栏预览。
+ *  onOpError=外部打开失败浮出(2026-11-14 终审:与轮末卡区 ArtifactsStrip 同通道,不再静默)——
+ *  页签装配面(registry Package)暂无错误回传面,prop 可选缺省不接线 */
+export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, onOpError }: {
   conn: Connection;
   sessionId: string;
   root?: string;
   refreshNonce?: number;
   onOpenFile?: (p: string) => void;
+  onOpError?: (err: unknown) => void;
 }): JSX.Element {
   const [items, setItems] = useState<ArtifactRow[] | null>(null);
   const [error, setError] = useState('');
+  // 外部打开失败浮出（与 ArtifactsStrip.openWith 同形——旧态 .catch(()=>{}) 静默吞错,终审 Minor 裁定）
+  const openWith = (p: string, id: string): void => {
+    void conn.openInEditor(p, id, root).catch((err: unknown) => onOpError?.(err));
+  };
   const load = useCallback((): void => {
     if (sessionId === '') {
       setItems([]);
@@ -68,11 +75,10 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile }
                 <span className="sx-artifacts-rowrun">#{a.runSeq}</span>
                 <OpenSplit
                   conn={conn}
+                  onOpError={onOpError}
                   ariaLabel={`${t('Open', '打开')} ${name}`}
                   onOpenDefault={() => onOpenFile?.(a.path)}
-                  onOpenWith={(id) => {
-                    void conn.openInEditor(a.path, id, root).catch(() => {});
-                  }}
+                  onOpenWith={(id) => openWith(a.path, id)}
                 />
               </div>
             );

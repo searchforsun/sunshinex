@@ -170,12 +170,15 @@ run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差�
 | `src/harness/tools/artifact-collector.ts`（新） | `ArtifactCollector` 类（仿 WriteSnapshotCollector 注入模式：内存清单/去重/drain） |
 | `src/harness/tools/builtin.ts` | `commitFileWrite` 声明钩（白名单过滤 + 调收集器） |
 | `src/session/seglog.ts` | `sanitizeArtifacts`（与 sanitizeTurn 同位同模式） |
+| `src/tui/session-journal.ts` | JournalEvent `runmeta` 成员扩 `artifacts`（落档面随行扩字段） |
 | `src/serve/session.ts` | 收集器接线、bash 兜底并入、runmeta 帧扩字段 |
 | `src/serve/artifacts-handlers.ts`（新） | `GET /session/:id/artifacts` 聚合端点 |
 | `src/serve/daemon.ts` | 路由挂载 |
 | `src/serve/editors-handlers.ts` | `/app/open` 新 id `default`（平台分支） |
 | `gui/src/artifacts.ts`（新） | 同形类型 + 分类器 + 类目标签映射 |
 | `gui/src/chat-reducer.ts` | runmeta artifacts 摄入 |
+| `gui/src/pages/chat/chat-types.ts` | `ChatProps.onOpenArtifacts`（产物库入口回调随链下泄） |
+| `gui/src/tabs/tab-strip.test.tsx` | registry 位置断言（artifacts 页签位次随注册表扩位） |
 | `gui/src/pages/chat/ArtifactsStrip.tsx`（新） + `EntryViews.tsx` | 轮末卡区 + render 序接线 |
 | `gui/src/pages/Artifacts.tsx`（新） + `gui/src/tabs/registry.tsx` | 产物库 tab + 注册 |
 | 分体钮共用件（新，gui/src/ 内聚位） | 「打开 ▾」主钮 + caret + SessionRowMenu 装配 |
