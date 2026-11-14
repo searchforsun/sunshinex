@@ -24,9 +24,9 @@ describe('产物分类器与标签', () => {
   });
   it('artifactTitleOf:title 优先,缺省 file=基名/url=主机+路径/command=首段', () => {
     expect(artifactTitleOf({ kind: 'file', path: 'docs/a.md', source: 'write' })).toBe('a.md');
-    expect(artifactTitleOf({ kind: 'file', path: 'docs/a.md', source: 'write', title: '主文档' })).toBe('主文档');
-    expect(artifactTitleOf({ kind: 'url', url: 'http://localhost:7788/play', source: 'tool' })).toBe('localhost:7788/play');
-    expect(artifactTitleOf({ kind: 'command', command: 'python main.py --dev', source: 'tool' })).toBe('python');
+    expect(artifactTitleOf({ kind: 'file', path: 'docs/a.md', source: 'write', title: '主文档' })).toBe('a.md'); // 2026-11-14 用户裁定:首行展示原始名称,title 不抢占
+    expect(artifactTitleOf({ kind: 'url', url: 'http://localhost:7788/play', source: 'tool' })).toBe('http://localhost:7788/play');
+    expect(artifactTitleOf({ kind: 'command', command: 'python main.py --dev', source: 'tool' })).toBe('python main.py --dev');
   });
   it('artifactKey:file=path 归一/url=原串/command=trim', () => {
     const a: Artifact = { kind: 'file', path: 'docs\\a.md', source: 'write' };

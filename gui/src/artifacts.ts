@@ -49,17 +49,10 @@ export function artifactKindLabel(a: Artifact): string {
   return `${KIND_LABELS[ext]} · ${ext.toUpperCase()}`;
 }
 
-/** 卡面第一行:声明 title 优先,缺省按 kind 推导(file=基名/url=主机+路径截尾/command=首段) */
+/** 卡面第一行:原始名称(2026-11-14 用户裁定「展示原本的名称」——网址=完整地址,命令=完整命令,
+ *  file=文件基名;声明 title 不再抢占首行) */
 export function artifactTitleOf(a: Artifact): string {
-  if (a.title !== undefined && a.title !== '') return a.title;
-  if (a.kind === 'url') {
-    try {
-      const u = new URL(a.url);
-      return `${u.host}${u.pathname === '/' ? '' : u.pathname}`;
-    } catch {
-      return a.url;
-    }
-  }
-  if (a.kind === 'command') return a.command.split(/\s+/)[0] ?? a.command;
+  if (a.kind === 'url') return a.url;
+  if (a.kind === 'command') return a.command;
   return a.path.replaceAll('\\', '/').split('/').pop() ?? a.path;
 }
