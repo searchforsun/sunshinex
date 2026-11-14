@@ -262,6 +262,13 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             //  重连(replay 恢复屏幕),提示语引导。jsdom 降级守卫互斥(xterm 路径无 jsdom 测试面),
             //  本分支归 e2e/人审盖
             onState: (s) => {
+              // 产物 command 卡「打开」种子(2026-11-14):WS open 即写入声明命令(行缓冲在 shell
+              // 读取前安全,不带换行,用户过目后回车执行);sendInput 非 open 态静默丢——必须在
+              // open 后写,连接前写会被丢(初版缺陷根因),一次性
+              if (s === 'open' && !seedSent && typeof params.seedCmd === 'string' && params.seedCmd !== '') {
+                seedSent = true;
+                socket?.sendInput(params.seedCmd);
+              }
               if (s !== 'closed' || cancelled || exited) {
                 if (reused && s === 'closed' && !cancelled) dead = true; // 复用面 close 即死档信号
                 return;
@@ -272,14 +279,6 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
             },
           });
           term.onData((d) => socket?.sendInput(d));
-          // 产物 command 卡「打开」种子(2026-11-14):开档即把声明命令写入 pty 行缓冲(不带换行,
-          //  用户过目后自行回车执行);pty 行缓冲在 shell 读取前安全,一次性
-          if (seedSent) {
-            // noop
-          } else if (typeof params.seedCmd === 'string' && params.seedCmd !== '') {
-            seedSent = true;
-            socket.sendInput(params.seedCmd);
-          }
           // 选区工具条(2026-11-03):选区清空即隐;mouseup 落点定条位(容器相对坐标,钳制到容器内)
           const onMouseUp = (e: MouseEvent): void => {
             const sel = term?.getSelection() ?? '';

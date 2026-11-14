@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useState } from 'react';
-import { FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon } from 'lucide-react';
+import { FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon , Package } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
@@ -21,6 +21,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   // load_subagent 章程卡工具同 Bot(2026-11-05 更名;子智能体域,不受智能体团队控制)
   ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
   exit_plan: NotebookPen, // 交稿行(2026-11-03 交稿协议):计划图标同 plan pill(2026-11-03 换 NotebookPen,与待办 ListTodo 区分)
+  report_artifacts: Package, // 产物声明(2026-11-14 kind 化):图标对齐产物页签(tab 侧 Package 同件)
   load_agent_teams: UsersRound, // 智能体团队域(与八件套同族;同建队件;2026-11-05 更名自 team)
   create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus,
   // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)

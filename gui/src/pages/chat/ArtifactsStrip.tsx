@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, ExternalLink, Globe, Terminal } from 'lucide-react';
+import { Check, Copy, ExternalLink, Globe, Terminal } from 'lucide-react';
 import { FileIcon } from '../../file-icon';
 import { OpenSplit } from './OpenSplit';
 import { artifactKey, artifactKindLabel, artifactTitleOf, type Artifact } from '../../artifacts';
@@ -29,7 +29,7 @@ export function ArtifactCardView({ a, conn, root, actions }: {
   root?: string;
   actions: ArtifactCardActions;
 }): JSX.Element {
-  const { copy } = useCopyFeedback();
+  const { status, copy } = useCopyFeedback();
   const name = artifactTitleOf(a);
   const label = a.desc !== undefined && a.desc !== '' ? a.desc : artifactKindLabel(a);
   const openExternal = (p: string, id: string): void => {
@@ -77,6 +77,9 @@ export function ArtifactCardView({ a, conn, root, actions }: {
             id: 'copy',
             label: t('Copy command', '复制命令'),
             icon: <Copy size={14} strokeWidth={1.75} />,
+            // 点复制:菜单留 COPY_RESET_MS 显 ✓ 尾标再自动关(SessionRowMenu keepOpen 既有语义)
+            keepOpen: true,
+            tail: status === 'ok' ? <Check size={14} strokeWidth={2.25} /> : undefined,
             onSelect: () => copy(a.command),
           },
         ]}

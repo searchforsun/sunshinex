@@ -101,7 +101,7 @@
 
 1. **唤醒未落地**——bg-wake 只有设计草案（docs 提交 41d955c6），无任何实现代码。这是唯一「无它则 Sunx 不成立」的缺口。
 2. **调度原语不存在**——全仓无 cron/timer 业务层（Explore 已穷举：现有定时器全部是基础设施）。P2 新增 daemon 级 timer registry。
-3. **HITL 仅主链**——fork/teammate 面剔除 ask_question（`subagent.ts:338-366`、`harness/index.ts:420`）。子任务中途问人 P2/P3 处理（§8.2）。
+3. **HITL 路由缺口收窄（2026-11-15 校准）**——fork 子面已支持**路由版 ask_question**（`subagent.ts:292/351-366`，2026-11-14 裁定：askedBy 归因直通主对话挂起卡，卡头显子智能体超链接；headless 装配维持剔除旧制）；teammate 面仍剔除。缺口仅剩挂起跨重启不保留（内存态，P2 持久化 §11）与板通道放开裁定（§8.2）。
 4. **挂起是内存态**——daemon 重启未决 ask/approval 蒸发。P2 持久化增量（§11）。
 5. **无自定义侧栏分组**——现状组=工作区/置顶/归档/RECENTS。SUNX 分组以 `meta.kind==='sunx'` 过滤视图实现（§10）。
 6. **Sunx 章程与工具面**——装配期按 session kind 分叉的 profile 机制（§6）。
@@ -249,12 +249,13 @@ parameters:
 
 `ask_question` 复用挂起表全链路（suspendAsk → AskFrame → GUI 卡 → /ask/:pid/reply → notice 行）。Sunx 是主链会话——任意权限档挂真实回答的既有裁定直接适用。run 被问询挂起期间：子任务照常在飞（它们是独立 Reactor），完成唤醒在控制器登记为 pending，回答后本轮收束、唤醒轮自然起——**HITL 不破坏异步性**，只是推迟 Sunx 的下一拍。
 
-### 8.2 子任务 HITL（P2/P3）
+### 8.2 子任务 HITL（2026-11-15 现状校准：fork 路由 ask 已支持）
 
-现状：fork/teammate 面剔除 ask_question 是既定裁定（「fork 执行不中途发问，结论回写即应答」）。演进路径（与「执行体=会话」P3 联动）：
+现状（2026-11-14 已落地）：父链 ask 接缝在场（daemon/TUI 交互装配）时，fork 子面注册**路由版 ask_question**——askedBy 归因（子标签+板任务 id）后直通主对话挂起卡，回答后子任务同 run 续跑；headless 装配维持剔除旧制；teammate 面（板通道）仍剔除。**Sunx 派发的 fork 子任务中途问人 P1 即可用，零新增**；挂起跨重启不保留是既有内存态缺口（P2 挂起持久化，§11）。
 
-- **P2（轻量上抛）**：子任务无问询能力不变。Sunx 章程要求简报里预置「默认决策」（acceptance 之外附 defaults 字段指引），子任务遇歧义按默认走并在结论里声明——业界「模糊委派」教训的对症手段。
-- **P3（会话型执行体）**：dispatch target='session' 派生真子会话（fork 血缘机制既有：journal header forkedFrom），子会话挂起卡经既有 per-session pending 帧直达 GUI（卡带来源 Sunx 与任务 id 的上下文标注），同时上抛一条 blocked 委派事件让 Sunx 知晓。是否允许子会话直接问用户 vs 一律上抛 Sunx 代问，届时裁定。
+- **章程指引（P1）**：简报仍预置「默认决策」（defaults）指引，歧义优先自答、ask 只用于真正需要用户裁决的分叉——抑制问询风暴（业界「模糊委派」教训的对症手段仍在）。
+- **板通道（P2 裁定点）**：teammate 面是否放开路由 ask（askedBy 类型已含板任务 id 字段，路由机制现成），随板通道一起裁定。
+- **P3（会话型执行体）**：target='session' 真子会话自带完整挂起表；「blocked 上抛 Sunx 知晓」为可选增强。
 
 ### 8.3 无人值守降级策略
 
@@ -284,7 +285,7 @@ parameters:
 
 - **实例标识**：会话旁车 meta 加 `kind?: 'sunx'`（`<id>.meta.json` 现有 root/title/archived/forkedFrom 同级字段，出生写落定），连同实例身份三元组 `kind + name + charterRev`；`/sessions` 列表行透出 `kind`。身份三元组的分层落位与修改语义见 §17.1。
 - **侧栏 SUNX 组**：新分组区块，聚合展示全部 `kind==='sunx'` 会话（按工作区再分组或平铺，R10 裁定）。每实例行：标题 + 状态点（running/idle）+ 任务徽标（在飞 n / 待裁决 n，数据=委派投影 + pending 计数，既有字段组装）。
-- **新建入口**：侧栏 SUNX 组「+」按钮与欢迎页模式选择（「直接对话」/「交给 Sunx 编排」两态，R11 裁定欢迎页形态）。
+- **新建入口（2026-11-15 用户改裁）**：与「新对话」同级——侧栏 RECENTS 头部「新对话」钮旁「新建 Sunx」钮，点击开**独立创建弹窗**（姓名/工作目录/品格三元组，§17.1）；欢迎页 composer 不参与 Sunx 创建。P2 的 SUNX 组「+」与总览页入口卡复用同一弹窗组件。
 - 跨重启寻址学 sidechat 双键对账先例（运行时 id × journalId）：SUNX 组行持久身份=journalId。
 
 ### 10.2 实例详情：页签复用为主，新增一个聚合页
@@ -338,7 +339,7 @@ parameters:
 | 用户给 Sunx 一句「重构 A 模块并补测试，跑通全量」 | 首轮：todo 计划批次（分解 3 步）→ 2~3 个 dispatch_task（实现/测试并行，简报自包含含验收）→ 收轮；子任务完成各唤醒一轮；末轮汇总交付，计划批次全勾 |
 | 子任务失败 | 唤醒回执含失败信息（bg-wake 裁定「失败也唤醒」）→ Sunx 读日志尾（task_status）→ 重派带修正简报 / ask_user 裁决 |
 | 子任务运行中用户插话「先别做 B 了」 | steer 队列用户轮优先 → Sunx task_stop B + todo 推进 → 收轮；A 完成照常唤醒 |
-| 子任务问出歧义 | P1：子任务按简报 defaults 决策+结论声明；P3：上抛卡直达 GUI + Sunx blocked 通知 |
+| 子任务问出歧义 | fork 子任务 ask 卡直达主对话（askedBy 归因，2026-11-14 已落地）→ 回答后子任务续跑；简报 defaults 纪律抑制问询频率；重启期间挂起丢失（P2 持久化） |
 | Sunx 需要用户裁决（方案二选一） | ask 卡挂起 → 子任务照跑 → 用户答后同轮续跑 → 收束后待处理唤醒自然起（HITL 不破坏异步） |
 | 用户关掉 GUI / 断网 | daemon 常驻：Sunx 与子任务照跑；重开收编恢复全部投影，唤醒轮照常 |
 | daemon 重启 | 打开态任务自愈 cancelled（既有）→ R9 恢复唤醒轮：Sunx 重读板态，重派或向用户报告 |
@@ -373,7 +374,7 @@ parameters:
 | R8 | pending TTL 超时自动 dismissed | 暂不做；先观察 ask 卡实际挂起时长 |
 | R9 | daemon 重启后 Sunx 恢复唤醒轮（自动重估） vs 静默待用户 | 自动恢复唤醒（Sunx 的自治定位） |
 | R10 | SUNX 组按工作区分组 vs 全局平铺 | 按工作区分组（与侧栏既有心智一致） |
-| R11 | 欢迎页「交给 Sunx」形态 | 欢迎页加模式选择，SUNX 组内也有「+」直达 |
+| R11 | 欢迎页「交给 Sunx」形态 | ~~欢迎页加模式选择~~ → **2026-11-15 改裁**：创建入口与「新对话」同级（侧栏头部钮），创建页=独立弹窗（姓名/目录/品格三元组）；P2 SUNX 组/总览页入口复用同弹窗 |
 | R12 | Sunx 会话权限档缺省 | acceptEdits（子任务默认护栏档；Sunx 自身无执行工具，档位只影响派发出去的子面） |
 | R13 | P1 是否顺带实现 `schedule_wakeup` 最小版 | 否——P1 保持零调度，聚焦唤醒闭环 |
 
