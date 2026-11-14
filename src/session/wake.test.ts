@@ -36,17 +36,48 @@ describe('resolveWakeName', () => {
 });
 
 describe('toWakeRefs', () => {
-  test('多任务全量转 refs；板任务带 board+boardRef(label=dispatchTag 形态)', () => {
+  test('多任务全量转 refs；板任务板名解析键=台账 label(dispatchTag 形态)而非账本 id——遗留 task-tN 形态', () => {
+    const keys: string[] = [];
     const refs = toWakeRefs(
       [
         { id: 'x1', kind: 'exec', label: 'pnpm build', title: '构建前端' },
-        { id: 'x2', kind: 'subagent', label: 'task-t3', boardDispatch: true },
+        // 板台账行账本 id=slug-时间戳-随机尾形态，宿主锚定正则只认 dispatchTag 形态——解析键必须走 label
+        { id: 'task-t3-20261114T091530Z-ab12', kind: 'subagent', label: 'task-t3', boardDispatch: true },
       ],
-      (id) => (id === 'x2' ? '修复登录' : undefined),
+      (key) => {
+        keys.push(key);
+        return key === 'task-t3' ? '修复登录' : undefined;
+      },
     );
+    assert.deepEqual(keys, ['task-t3']); // 接缝钉死：boardTitleOf 收 label(dispatchTag)，不是账本完整 id
     assert.deepEqual(refs, [
       { id: 'x1', name: '构建前端' },
-      { id: 'x2', board: true, boardRef: 'task-t3', name: '修复登录' },
+      { id: 'task-t3-20261114T091530Z-ab12', board: true, boardRef: 'task-t3', name: '修复登录' },
+    ]);
+  });
+
+  test('板任务：新方言板 id 原样透传（label=完整板 id，直接命中宿主 board.tasks 键）', () => {
+    const refs = toWakeRefs(
+      [{ id: 'task-loginfix-9k2f', kind: 'subagent', label: 'task-loginfix-9k2f', boardDispatch: true }],
+      (key) => (key === 'task-loginfix-9k2f' ? '修复登录' : undefined),
+    );
+    assert.deepEqual(refs, [
+      { id: 'task-loginfix-9k2f', board: true, boardRef: 'task-loginfix-9k2f', name: '修复登录' },
+    ]);
+  });
+
+  test('exec 与板任务同 id 串共存：exec 名走 title、板名走 label(dispatchTag)，两本账互不串扰', () => {
+    const same = 'task-t3-20261114T091530Z-ab12';
+    const refs = toWakeRefs(
+      [
+        { id: same, kind: 'exec', label: 'pnpm build', title: '构建前端' },
+        { id: same, kind: 'subagent', label: 'task-t3', boardDispatch: true },
+      ],
+      (key) => (key === 'task-t3' ? '修复登录' : undefined),
+    );
+    assert.deepEqual(refs, [
+      { id: same, name: '构建前端' },
+      { id: same, board: true, boardRef: 'task-t3', name: '修复登录' },
     ]);
   });
 });

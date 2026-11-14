@@ -93,8 +93,9 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   const wakePrefix = first !== undefined ? (
     <>
       {first.name !== undefined ? t('Woken by background task', '后台任务') : t('Woken by background task', '后台任务唤醒')}
+      {first.name !== undefined ? ' ' : undefined}
       {nameEl}
-      {first.name !== undefined ? <> {t('wake', '唤醒')}</> : null}
+      {first.name !== undefined ? t('', ' 唤醒') : undefined}
     </>
   ) : undefined;
   if (!streaming) {

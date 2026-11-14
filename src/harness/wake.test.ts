@@ -42,3 +42,11 @@ test('receipted：markReceipted/isReceipted/markBoardReceipted', () => {
   h.tasks.markReceipted([t2.id]);
   assert.equal(h.tasks.isReceipted(t2.id), true);
 });
+
+test('wakeHintSuffix 闸②负半边：fork 名下（currentOwner≠main）返回空串——子面回执保持原文', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bgwake2-'));
+  const h = buildHarness(root, { wake: { onFinished: () => {}, hint: true } });
+  assert.equal(h.tasks.wakeHint, true);
+  assert.equal(h.tasks.runInOwnerScope('fork:m1', () => wakeHintSuffix(h.tasks)), '');
+  assert.equal(wakeHintSuffix(h.tasks), WAKE_HINT); // 主链缺省 owner 归 main：正半边对照
+});

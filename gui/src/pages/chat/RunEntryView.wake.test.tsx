@@ -27,10 +27,10 @@ beforeEach(() => setLanguage('en'));
 const base = { seq: 3, ts: Date.now(), kind: 'run' as const, md: '', key: 'k3' };
 
 describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
-  it('有名：前缀「Woken by background task {构建前端} wake」+ 既有 sealed 文案；点任务名发 bg 路由且不触发折叠（鼠标+键盘）', () => {
+  it('有名：前缀「Woken by background task {构建前端}」（英文无尾部 wake 词）+ 既有 sealed 文案；点任务名发 bg 路由且不触发折叠（鼠标+键盘）', () => {
     const onToggle = vi.fn();
     const onOpenTask = vi.fn();
-    const { getByText } = render(
+    const { getByText, container } = render(
       <RunEntryView
         entry={{ ...base, seconds: 12 }}
         wake={[{ id: 'x1', name: '构建前端' }]}
@@ -38,6 +38,8 @@ describe('RunEntryView 唤醒前缀（bg-wake spec §6）', () => {
         onOpenTask={onOpenTask}
       />,
     );
+    expect(container.textContent).toMatch(/Woken by background task \{构建前端\}/); // 英文有名形态=task {名}（spec §6.3）
+    expect(container.textContent).not.toContain('wake'); // 尾部 wake 词是中文直译残留，英文列没有它
     expect(getByText(/Woken by background task/)).toBeTruthy(); // 「后台任务」段恒纯文本(正则匹配拼接行)
     const name = getByText('{构建前端}');
     fireEvent.click(name);

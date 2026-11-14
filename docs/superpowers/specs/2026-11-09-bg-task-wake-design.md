@@ -63,6 +63,8 @@ CLI 一次性 `run` 模式随进程退出，不挂唤醒。
   1. steer 队列非空 → 走既有 G14.89，用户消息优先，`pending` 留存；
   2. steer 队列为空 → 起唤醒轮。
 - **起轮前复检**：剔除期间已 `receipted` 的任务，全部被消费就不起轮。
+- **续发挂载点（口径）**：续发只挂在用户轮 submit 收尾、TUI `drainQueue` 尾注（steer 优先分支之后）、`queueResume` 路径三处；`/goal`、`/init`、斜杠回退等内部轮不查询唤醒控制器，斜杠回退路径也不调 `markUserActivity`——与 steer 续发「同一位置、同一形态」的裁定一致。
+- **收束口早退（口径）**：daemon 收尾把续发整段包在 `stopReason !== 'interrupted'` 分支内——interrupted 时连 `onTurnEnded` 都不进（控制器入口的 interrupted 读清闩分支自 daemon 不可达；宿主弃返回值，零功能影响）；TUI `drainQueue` 的 `queuePaused` 早退同理（批次与在途闩留存，待 `queueResume`/下次收束）。
 - **interrupted 收束**：与 G14.89「停止即停」一致，不起唤醒轮；`pending` 的去留见 §10-1。
 - **防循环**：中间没有用户消息的连续唤醒轮上限 10 轮，触顶后剩余待唤醒丢弃，并落一条普通 notice「auto-wake limit reached」。
 
@@ -130,7 +132,7 @@ interface WakeRef {
 
 - exec：`title`（purpose，2026-11-07 裁定的人读名称）；**无 title 则无名**——绝不回落 `label`，exec 的 `label` 是命令原文（`execLabel` 即 cmd 原样，`builtin.ts`）；
 - subagent：`title ?? label`；label 为回退段 `'subagent'`（spawn 未给 label）则无名；
-- 板任务（`boardDispatch` 行）：板任务 `title`（写入时从板存储按 `label` 即板 id 取；台账行自身无 title，label 是板 id 不是人读名）；板上无 title 则无名（点击仍按板 id 定位板行）。
+- 板任务（`boardDispatch` 行）：板名 `title`（写入时按台账 `label` 取——label=`dispatchTag(板 id)` 形态：遗留 `task-tN` 命中宿主锚定正则剥前缀归一命中板，新方言板 id 原样透传直接命中 `board.tasks` 键；台账行账本 id 是 slug-时间戳-随机尾，两形态都不是，恒 miss）；板上无板名则无名——有名点击传 `boardRef` 路由智能体团队页签，无名整行无点击（§6.4 统一口径）。
 
 多任务合批只取**批内第一个**（按终态到达顺序，即 `wake[0]`）做显示；其余 id 仍在列表里，模型通知回执逐个全列。
 
@@ -162,7 +164,7 @@ Continue any work that was waiting on this result; if nothing remains, reply bri
 唤醒 notice 属安静 notice（`isQuietNotice` 命中 `<task-notification>`，§5.3），不进 GUI 显示列表。配对依据是 §5.3 的固定写入顺序（`wake-notice → run`）：
 
 - **GUI（`chat-reducer` 映射期配对）**：映射时跳过唤醒 notice 并暂存其 `wake`，挂到其**直接后继** run 条的 `ChatEntry.wake`——中间隔任何显示条目即作废；`wakeViewCache`（按内核 run 条目键控，wake 数组 + 基视图引用双重校验）保挂载面跨帧引用稳定。MessageList 直读 `entry.wake` 传 `RunEntryView`。
-- **内核/TUI 面**：`wakeOfRun(entries, runIdx)` 保留为内核条目面的配对纯函数（`src/session/wake.ts`）——run 条目的直接前驱若为唤醒 notice 则返回其 `wake` 引用列表；TUI 前缀（§6.5）走此推导。
+- **内核面**：`wakeOfRun(entries, runIdx)` 是内核条目面的配对纯函数（`src/session/wake.ts`，测试与内核面消费）——run 条目的直接前驱若为唤醒 notice 则返回其 `wake` 引用列表。TUI 前缀不走此推导：fire 时刻经 `toWakeRefs`（板名解析随档写入 `WakeRef`）由 `wakePrefixOf` 命令式生成一次（§6.5）；GUI 配对在 chat-reducer 映射期（上条）。
 - **未配对（notice 后无 run）**：该 wake 不显示——GUI 暂存作废、TUI `wakeOfRun` 返回 undefined，不另起独立行。
 
 ### 6.2 版式
@@ -277,10 +279,9 @@ run 状态行同样拼唤醒前缀：「后台任务 {构建前端} 唤醒，运
 
 - `/new`→`/resume` 折返时屏蔽集残留会吞掉该任务一次唤醒（保守方向）。
 - fire 被宿主拒绝后空闲态无重试 timer，待下次任务终态或轮收束。
-- Spinner 唤醒前缀在 tool-pending 阶段不显示。
 - `.wake-name`（role=button）嵌在 run 折叠行（role=button）内，ARIA 嵌套交互元素。
 - `spawnBackground` 的提示闸表达式 inline 未走 `wakeHintSuffix` 单点。
-- 覆盖缺口：`parseWakeRefs` 全剔分支、提示闸②负半边（fork→空串）、宿主级 `boardTaskTitle`/`onLimit`/plan 武装回队无端到端用例。
+- 覆盖缺口：`parseWakeRefs` 全剔分支、宿主级 `boardTaskTitle`/`onLimit`/plan 武装回队无端到端用例。
 - TUI `session.wake` 用例 2 的时序余量约 1.4s（慢机可能合批致断言波动）。
 - GUI 全量并发跑时 e2e daemon 生成偶发 ECONNREFUSED（既有环境性，单跑通过）。
 

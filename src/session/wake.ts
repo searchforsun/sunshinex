@@ -26,14 +26,16 @@ export function resolveWakeName(
   return t.label !== 'subagent' ? t.label : undefined;
 }
 
-/** 登记任务 → 唤醒引用（boardRef=label 的 dispatchTag 形态，TaskBoardTab 定位 norm 面直接命中） */
+/** 登记任务 → 唤醒引用。板任务板名解析键=台账 label（=dispatchTag 形态）：遗留 task-tN 命中宿主
+ *  锚定正则剥前缀归一命中板，新方言板 id 原样透传直接命中 board.tasks 键——账本 id（slug-时间戳-
+ *  随机尾）两种形态都不是，恒 miss；boardRef 同用 label（TaskBoardTab 定位 resolveId 面直接命中） */
 export function toWakeRefs(
   tasks: ReadonlyArray<{ id: string; kind: 'exec' | 'subagent'; label: string; title?: string; boardDispatch?: boolean }>,
-  boardTitleOf: (ledgerId: string) => string | undefined,
+  boardTitleOf: (dispatchTag: string) => string | undefined,
 ): WakeRef[] {
   return tasks.map((t) => {
     if (t.boardDispatch === true) {
-      const name = resolveWakeName(t, true, boardTitleOf(t.id));
+      const name = resolveWakeName(t, true, boardTitleOf(t.label));
       return { id: t.id, board: true as const, boardRef: t.label, ...(name !== undefined ? { name } : {}) };
     }
     const name = resolveWakeName(t, false);

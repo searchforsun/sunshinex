@@ -978,7 +978,7 @@ export class SessionController {
   private wakePrefixOf(refs: readonly WakeRef[]): string {
     const name = refs.find((r) => r.name !== undefined)?.name;
     return name !== undefined
-      ? `${t('Woken by background task', '后台任务')} {${name}} ${t('wake', '唤醒')}`
+      ? t(`Woken by background task {${name}}`, `后台任务 {${name}} 唤醒`)
       : t('Woken by background task', '后台任务唤醒');
   }
 
