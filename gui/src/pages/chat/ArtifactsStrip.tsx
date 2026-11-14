@@ -29,7 +29,7 @@ export function ArtifactCardView({ a, conn, root, actions }: {
   root?: string;
   actions: ArtifactCardActions;
 }): JSX.Element {
-  const { status, copy } = useCopyFeedback();
+  const { copy } = useCopyFeedback();
   const name = artifactTitleOf(a);
   const label = a.desc !== undefined && a.desc !== '' ? a.desc : artifactKindLabel(a);
   const openExternal = (p: string, id: string): void => {
@@ -67,8 +67,8 @@ export function ArtifactCardView({ a, conn, root, actions }: {
     actionRow = (
       <OpenSplit
         ariaLabel={`${t('Open in terminal', '终端打开')} ${name}`}
-        label={status === 'ok' ? t('Copied', '已复制') : t('Open', '打开')}
         onOpenDefault={() => {
+          // 主钮=打开终端页签并自动写入声明命令(seedCmd 不带回车,用户过目后回车);未接线时回落复制
           if (actions.onRunInTerminal !== undefined) actions.onRunInTerminal(a.command);
           else copy(a.command);
         }}
