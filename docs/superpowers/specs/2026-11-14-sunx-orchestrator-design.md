@@ -194,12 +194,13 @@ Sunx 不引入独立的状态字段——它的「状态」就是会话 status�
 | `dispatch_task` | **新（P1 唯一新工具）** | 唯一派发动词：自包含简报 + agent_id/label/tier/isolation → fork 后台执行（spawnBackground 通道），立即回 taskId+日志路径；回执追加 WAKE_HINT（bg-wake §4.2 挂载闸同款） |
 | `task_status` | task_wait 变体注册（`makeTaskWaitTool` kinds/超时收窄先例） | 非阻塞窥视（0s 窥视档既有）：按 id 或「全部在飞」返回状态+日志尾；**阻塞形态不进 Sunx 面** |
 | `task_stop` | 既有 | 取消派发任务 |
-| `get_agent_team_board` | 既有 | 板态快照（P2 板通道的监视面；P1 若无团队亦无害） |
 | `ask_question` | 既有 | HITL：选项卡问询，任意档挂真实回答（G14.93 既有裁定） |
 | `todo_write` | 既有 | 计划账本（分解批次，GUI 计划卡复用） |
 | `skill` | 既有 | 编排 SOP 技能加载（只读知识件，可选，待裁定 R8） |
 
-**P2（管理面增强）**：`schedule_wakeup`（定时唤醒自己）、`schedule_task`（到点自动派发）、`send_agent_team_message`（板通道协调）、`create_agent_team/create_agent_teammate`（能力自举——若采纳「Sunx 自建团队」裁定 R6）、`update_agent_team_task`（板任务推进）。
+> **实施实况（2026-11-15 P1 收口回写）**：P1 face 实装为白名单常量 `SUNX_FACE_TOOLS`（`src/harness/index.ts` 单点）= `dispatch_task / task_status / task_stop / ask_question / todo_write / skill / report_artifacts`。对上表两处收窄/补正：①`get_agent_team_board` 移入 P2——P1 无消费者（板通道 P2 才有），随板通道一起进面（对 §6.2 原表的收窄，plan Global Constraints 已声明，此处回写）；②实装面含 `report_artifacts`（收轮产物申报，原表未列）。P1 新增工具两个：`dispatch_task`（`src/harness/subagent.ts` makeDispatchTool）与 `task_status`（`src/harness/tools/task-wait.ts` makeTaskStatusTool，恒窥视变体——阻塞形态不进面）；fork 子面剔除收口为 `SUNX_ORCHESTRATION_TOOLS`（`src/harness/tools/taskboard-tools.ts`，deriveChildRegistry / loop fork / graph 节点三派生点同源）。
+
+**P2（管理面增强）**：`schedule_wakeup`（定时唤醒自己）、`schedule_task`（到点自动派发）、`send_agent_team_message`（板通道协调）、`get_agent_team_board`（板态快照——板通道的监视面，随板通道一起进面）、`create_agent_team/create_agent_teammate`（能力自举——若采纳「Sunx 自建团队」裁定 R6）、`update_agent_team_task`（板任务推进）。
 
 **恒不进 Sunx 面**：exec / read / write / edit / grep / glob / webfetch / websearch / worktree / memory_write / exit_plan / 同步 spawn / 阻塞 task_wait / load_subagent / load_agent_teams（清单由白名单构造保证）。
 
@@ -324,7 +325,7 @@ parameters:
 | 期 | 内容 | 交付判据 |
 |---|---|---|
 | **P0** | 落地 bg-wake（草案 §10 五项先裁定）；普通会话与 Sunx 共同受益 | 草案 §9 验收全绿；两端唤醒轮端到端用例 |
-| **P1** | Sunx 会话原型：kind 装配分叉（章程提示词 + 白名单面）+ `dispatch_task` + 非阻塞 `task_status` 变体 + ask/todo 复用；GUI 可建可聊（无专属分组） | 场景走查 §13 全部主链场景通过；普通会话回归零变化（主链工具清单逐字节不变用例） |
+| **P1** | Sunx 会话原型：kind 装配分叉（章程提示词 + 白名单面）+ `dispatch_task` + 非阻塞 `task_status` 变体 + ask/todo 复用；GUI 可建可聊（无专属分组） | 场景走查 §13 全部主链场景通过；普通会话回归零变化（主链工具清单逐字节不变用例）；唤醒闭环 e2e 落 `src/serve/session.wake.test.ts`（派发/合批唤醒/窥视消费/面隔离/路由 ask 五场景） |
 | **P2** | GUI SUNX 分组（meta.kind + 侧栏组 + sunx 总览页 + 徽标聚合）；调度原语（schedule_wakeup/task + 持久化重布防）；板任务通道（target='team' + 能力自举 R6）；挂起持久化；恢复唤醒（R9） | 断网/关窗/重启三类生存用例；调度到点用例 |
 | **P3** | 独立子会话执行体（target='session'，HITL 直达+上抛）；外部 CLI 通道；子任务结论注入扫描（业界教训，P3 可选）；多 Sunx 协同评估 | 届时另立规格 |
 
@@ -399,7 +400,7 @@ parameters:
 | 面 | 提示词落位 | 修改语义 |
 |---|---|---|
 | 系统总章程（编排者职责/工具面纪律/收轮纪律/唤醒语义/上限告知） | 稳定段共享块（prompts/ 单点，kind='sunx' 分支），全部 Sunx 实例**字节一致** → 跨实例前缀共享最大化 | 装配期定版，随版本演进（与全部提示词同一纪律） |
-| 实例品性（charter，用户自撰物料**原样直存**——目录注册制先例，任意语言） | 会话级冻结层（SUNSHINE.md 同区装配，出生一次定版） | **改品性 = 尾追替代行**（v2 标记 + 「以本行为准」；后到者优先既有纪律）——前置段零改动、零前缀击穿；meta 记 charterRev。旧版留在冻结层继续吃缓存，读者按尾行取新版 |
+| 实例品性（charter，用户自撰物料**原样直存**——目录注册制先例，任意语言） | 会话级冻结层（SUNSHINE.md 同区装配，出生一次定版） | **改品性 = 尾追替代行**（v2 标记 + 「以本行为准」；后到者优先既有纪律）——前置段零改动、零前缀击穿；meta 记 charterRev。旧版留在冻结层继续吃缓存，读者按尾行取新版。编辑端点 `POST /session/:id/charter`（P1 已落地）：尾追替代行 + charterRev 递增；运行中可调 |
 | 姓名 | 身份行（会话级冻结层，出生定版一次）+ meta.name | **改名 = 纯显示同步**：GUI 侧栏/任务卡署名/问询卡署名全部取 meta.name（宿主侧组装，非模型输出），模型面保持出生名——零前缀影响。模型自述名字属边缘场景；如确需同步，尾追一行告知（备选，缺省不做） |
 | 工作目录 | 稳定段工作目录行（既有共享行；同工作区各会话字节一致） | **不支持更改**——创建时绑定，生命周期恒定。依据：rehomeRoot 是 attach 元数据纠偏的窄路径（出生壳零实质事件时整体换铸），运行中换根 = 全链换铸 + 数据目录迁移 + 前缀全断；换目录的正解 = 新建实例 |
 
