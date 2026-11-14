@@ -5,6 +5,7 @@ import { CodedToolError, ToolRegistry, jsonAbsent } from './tools';
 import { builtinTools } from './tools/builtin';
 import { createReadGuard, type ReadGuard } from './tools/read-guard';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
+import { ArtifactCollector } from './tools/artifact-collector';
 import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
 import { makeAgentTeamTaskStopTool, makeTaskStopTool } from './tools/task-stop';
@@ -114,6 +115,8 @@ export class Harness {
   readonly teams: TeamsFacade;
   /** write 影子快照单点（rewind/fork 规格 §6.1）：write 工具落盘前捕获 pre-image，任务收口随 user 事件落盘 */
   readonly writeSnapshot: ReturnType<typeof makeWriteSnapshotSink>;
+  /** 产物收集器单点（2026-11-12 spec §3.3）：write/edit 落盘声明进 pending，tool-result 回执回标 callId，轮末 drain 进产物卡 */
+  readonly artifacts: ArtifactCollector;
   /** 子智能体执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
   readonly runner: SubagentRunner;
   /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
@@ -215,6 +218,8 @@ export class Harness {
     agents.loadAgents(base, userConfigDir());
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
     this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
+    // 产物收集器单点（2026-11-12 spec §3.3）：write-snapshot 同模式——纯构造零副作用，随工具面注入声明接缝
+    this.artifacts = new ArtifactCollector();
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
     // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
     this.tasks = new TaskRegistry(resolveDataDir(base));
@@ -261,6 +266,7 @@ export class Harness {
       },
       ask: opts.ask ?? headlessAskStub,
       writeSnapshot: this.writeSnapshot,
+      artifacts: this.artifacts, // 产物声明接缝(2026-11-12 spec §3.3):commitFileWrite 单点调钩,serve 侧轮末 drain
       activeRoot: () => this.safety.activeRoot,
       todos: opts.todos ?? { set: () => {} },
       tasks: this.tasks,

@@ -110,6 +110,8 @@ export function builtinTools(
     memoryWrite?: MemoryWriteTool;
     ask?: AskUserSeam;
     writeSnapshot?: { capture(p: string): void; captureAfter(p: string, content: string): void; drain(): SnapshotEntry[] };
+    /** 产物声明接缝（2026-11-12 spec §3.3）：write/edit 落盘成功后白名单命中即记（commitFileWrite 单点调钩）；缺省不注入＝无产物、零工具面变化 */
+    artifacts?: { record(relPosix: string, source: 'write' | 'edit'): void };
     activeRoot?: () => string | null;
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
@@ -128,7 +130,7 @@ export function builtinTools(
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
-  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, activeRoot, todos, tasks, readGuard, plan, teams, agents } = opts;
+  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, artifacts, activeRoot, todos, tasks, readGuard, plan, teams, agents } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   /** 出口预算说明后缀(2026-11-13 用户裁定「工具截断字符数要在描述里说明,避免 agent 多次试错」):
@@ -165,6 +167,9 @@ export function builtinTools(
     // 写入的新内容——/diff 查询面读冻结前后像 blob（before→after），不再读现盘（多刀写同文件
     // 时逐刀快照互不漂移）
     writeSnapshot?.captureAfter(target, finalContent);
+    // 产物声明钩（2026-11-12 spec §3.3）：落盘成功后白名单命中即记；relPosix 归一（canonical，
+    // tagCall 侧同归一比对）；callId 由 serve 泵在 tool-result 回执时回标（ArtifactCollector.tagCall）
+    artifacts?.record(path.relative(root, target).replaceAll('\\', '/'), verb === 'written' ? 'write' : 'edit');
     // diff stat（G14 工具行改版）：统计随结果串同源下发——GUI 折叠行与 TUI ⎿ 行同一 `+A -D`，无 second fetch
     const stat = writeDiffStat(pre, finalContent);
     const receipt = stat !== undefined ? `${verb} ${stat}` : verb;
