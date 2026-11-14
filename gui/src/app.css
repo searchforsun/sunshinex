@@ -4130,10 +4130,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .wake-name { color: var(--accent); cursor: pointer; display: inline-block; vertical-align: bottom; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wake-name:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* ===== 「打开 ▾」分体钮共用件(2026-11-12 spec §5.4):产物卡/产物库同用;外框归 wrapper 单边一体,内部按钮无边框无中缝(2026-11-14 用户裁定「打开右侧竖线不需要显示」) ===== */
-.sx-artifacts-open { display: inline-flex; align-items: center; flex: none; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; } /* 2026-11-14 用户裁定:上下居中 */
-.sx-artifacts-openbtn { display: inline-flex; align-items: center; border: none; background: transparent; color: var(--fg); font-size: calc(13px * var(--fz)); padding: 4px 6px 4px 8px; cursor: pointer; } /* 右侧边距小一点(2026-11-14 用户裁定) */ /* 2026-11-14 用户裁定:两侧收窄+增高,弧度不变 */
+.sx-artifacts-open { display: inline-flex; align-items: stretch; flex: none; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; } /* stretch=子钮 hover 满高(2026-11-14 用户裁定「∨ hover 没有占满」) */
+.sx-artifacts-openbtn { display: inline-flex; align-items: center; align-self: stretch; border: none; background: transparent; color: var(--fg); font-size: calc(13px * var(--fz)); padding: 3px 6px 3px 8px; cursor: pointer; } /* 右侧边距小一点+整体高度降一档(2026-11-14 用户裁定) */ /* 2026-11-14 用户裁定:两侧收窄+增高,弧度不变 */
 .sx-artifacts-openbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.sx-artifacts-caret { border: none; background: transparent; color: var(--fg-secondary); padding: 4px 5px; cursor: pointer; display: inline-flex; align-items: center; }
+.sx-artifacts-caret { border: none; background: transparent; color: var(--fg-secondary); padding: 3px 5px; cursor: pointer; display: inline-flex; align-items: center; align-self: stretch; } /* hover 满高 */
 .sx-artifacts-caret:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
 /* ===== 轮末产物卡区(2026-11-12 spec §4;2026-11-14 用户裁定「对标 codex 简洁:去外框/去本轮产物头,全部产物留原位,卡色与 diff 对齐」):无容器框,卡片裸排,卡色=改动条同源(亮 fg4%/暗 bubble-user),横向 -6px=外缘与改动条对齐 ===== */
