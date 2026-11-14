@@ -4126,7 +4126,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); }
 .sx-artifacts-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 8px; } /* min(360px,100%)=窄容器卡宽跟随容器,不溢出(2026-11-14 用户裁定「长度没有跟随宽度」) */
+.sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 12px 8px; } /* 行距 12px(2026-11-14 用户裁定「纵向行距加大一些」);min(360px,100%)=窄容器卡宽跟随容器 */
 .sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); }
 [data-theme='dark'] .sx-artifacts-card { background: var(--bubble-user); } /* 卡色与改动条(.run-changes)同源 */
 .sx-artifacts-tile { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-soft); border-radius: 8px; }
