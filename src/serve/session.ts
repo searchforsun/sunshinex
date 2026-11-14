@@ -211,14 +211,15 @@ export class SessionRuntime {
   /** 会话工作区根(树会话=工作树路径;可变仅经 rehomeRoot——attach 按档归位,2026-11-11 树会话
    *  重启回主分支根修:GUI 恢复链只有组根,journal 旁车 meta.root 才是真根) */
   root: string;
-  /** 会话形态（2026-11-15 sunx P1 Task 4）：出生装配定死，存实例字段——reset/rehomeRoot 换铸经
-   *  同一 assemble() 每次透传不丢（setMode 真档直切不换铸更是零风险）；sunx 判定外窥供 charter
-   *  编辑端点 409 面消费 */
-  readonly sessionKind: SessionKind | undefined;
-  /** 自定义会话名（2026-11-15）：仅出生 meta.title 消费（显示链），不进提示词 */
-  private readonly sessionName: string | undefined;
-  /** 实例品性原文（2026-11-15 sunx §17.1）：assemble() 每次换铸透传 ContextManager 品性冻结层 */
-  private readonly sessionCharter: string | undefined;
+  /** 会话形态（2026-11-15 sunx P1 Task 4；2026-11-15 final review fix wave 起可变——唯一写点
+   *  reCast）：出生装配定死，存实例字段——reset/rehomeRoot/reCast 换铸经同一 assemble() 每次透传
+   *  不丢（setMode 真档直切不换铸更是零风险）；sunx 判定外窥供 charter 编辑端点 409 面消费 */
+  sessionKind: SessionKind | undefined;
+  /** 自定义会话名（2026-11-15）：仅出生 meta.title 消费（显示链），不进提示词；reCast 唯一写点 */
+  private sessionName: string | undefined;
+  /** 实例品性原文（2026-11-15 sunx §17.1）：assemble() 每次换铸透传 ContextManager 品性冻结层；
+   *  reCast 唯一写点 */
+  private sessionCharter: string | undefined;
   private opts: SessionRuntimeOpts;
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
@@ -347,6 +348,28 @@ export class SessionRuntime {
     const old = this.runtimeImpl;
     this.opts = { ...this.opts, root };
     this.root = root;
+    this.runtimeImpl = this.assemble();
+    if (this.journal !== undefined) {
+      this.syncSessionStores();
+      this.hookJournalSink();
+    }
+    void this.disposeRuntime(old).catch(() => undefined);
+  }
+
+  /**
+   * 会话形态重铸（2026-11-15 final review fix wave，spec §13 P1 场景「用户关掉 GUI 重开恢复」根修）：
+   * GUI 重开链 = 壳 newSession（无 kind=standard 出生态）→ attach 附 journal——旁车 meta.kind='sunx'
+   * 而在座壳非 sunx 时由 attachSessionIn 调本方法把壳重铸为 sunx 形态（kind/charter/name 三字段与
+   * 构造入参同面，assemble 单点透传不丢）。rehomeRoot 同路径先例：attach 时壳为出生态（零实质事件
+   * 未播种），换铸零损——调用序铁律：重铸必须先于 restoreSession/kernelSeed/seedShadow/快照回种
+   * （换铸清运行时态，先播种再换铸=全丢）。charter: null=无品性层（与 ContextManager 缺席门一致，
+   * undefined 键同形）；幂等由调用方守（在座已是 sunx 不再铸——收编复用路径天然不达本方法）。
+   */
+  reCast(opts: { kind: 'sunx'; name?: string; charter?: string | null }): void {
+    const old = this.runtimeImpl;
+    this.sessionKind = opts.kind;
+    this.sessionName = opts.name;
+    this.sessionCharter = opts.charter ?? undefined; // null=无品性层（装配 charter 键缺席同形）
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) {
       this.syncSessionStores();

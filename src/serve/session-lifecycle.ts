@@ -196,8 +196,11 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   // 组根(指针档 lastRoot/组行 onAttach 都传主项目根),journal 旁车 meta.root 才是会话真根(隔离
   // 会话=工作树路径;树数据经 resolveDataDir 重定向落在主档,同 journalId 同文件,壳根也能找到档
   // =跑在错误工作区无人察觉)。档记根在盘即重挂壳根(unwatch 旧根 refcount 守护,watch 新根幂等),
-  // 装配/转录/改动面从此以真根行走;根目录已删(树被手清)则维持壳根不阻断恢复
-  const metaRoot = readSessionMeta(resolveDataDir(session.root), journalId).root;
+  // 装配/转录/改动面从此以真根行走;根目录已删(树被手清)则维持壳根不阻断恢复。
+  // meta 一次性整读（2026-11-15 final review fix wave）：root 归位外兼读 kind/title——sunx 重铸
+  // 判据（kind）与重铸名源（title）同拍取用,零二次读盘
+  const meta = readSessionMeta(resolveDataDir(session.root), journalId);
+  const metaRoot = meta.root;
   if (metaRoot !== undefined && metaRoot !== session.root && fs.existsSync(metaRoot)) {
     io.unwatchProject(session.root);
     session.rehomeRoot(metaRoot);
@@ -224,6 +227,22 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   }
   const replay = reduceJournal(replayEvents);
   if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required — legacy sessions: node scripts/purge-legacy-sessions.mjs --delete)`);
+  // sunx 重铸（2026-11-15 final review fix wave，spec §13 P1 场景「用户关掉 GUI 重开恢复」根修）：
+  // 旁车 meta.kind='sunx' 而在座壳非 sunx（重开链 newSession 无 kind → standard 出生态）→ 壳重铸为
+  // sunx 形态。序铁律：必须落在 restoreSession/kernelSeed/seedTodoBatches/steerSeed/seedShadow/
+  // 快照回种**之前**——换铸清运行时态，先播种再换铸=全丢（rehomeRoot 注释明言 attach 时壳为
+  // 出生态零损，同路径先例）。品性原文取 replay.snapshot.sig.charter（string|null——null=无品性层，
+  // 与 ContextManager 缺席门一致；快照缺席档回落 null 同形，恢复永不阻断）。幂等：在座已是 sunx
+  // （收编复用路径在上方位提前返回；rewind 同源换档壳亦经此守）不二次换铸。name 取 meta.title
+  // （出生 meta 落档的 G14.16 显示链名源）。出生 meta 不重写——persistBirthMeta 只在 mint 时可达，
+  // charterRev 等旁车键原样保留。
+  if (meta.kind === 'sunx' && session.sessionKind !== 'sunx') {
+    session.reCast({
+      kind: 'sunx',
+      ...(meta.title !== undefined ? { name: meta.title } : {}),
+      charter: replay.snapshot?.sig.charter ?? null,
+    });
+  }
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
   // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
   session.kernelSeed(reduceSegRows(replayEvents));

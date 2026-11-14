@@ -191,7 +191,7 @@ Sunx 不引入独立的状态字段——它的「状态」就是会话 status�
 
 | 工具 | 来源 | Sunx 语义 |
 |---|---|---|
-| `dispatch_task` | **新（P1 唯一新工具）** | 唯一派发动词：自包含简报 + agent_id/label/tier/isolation → fork 后台执行（spawnBackground 通道），立即回 taskId+日志路径；回执追加 WAKE_HINT（bg-wake §4.2 挂载闸同款） |
+| `dispatch_task` | **新（P1 唯一新增派发动词——新工具）**；另配 `task_status` 非阻塞监视变体（见下行） | 唯一派发动词：自包含简报 + agent_id/label/tier/isolation → fork 后台执行（spawnBackground 通道），立即回 taskId+日志路径；回执追加 WAKE_HINT（bg-wake §4.2 挂载闸同款） |
 | `task_status` | task_wait 变体注册（`makeTaskWaitTool` kinds/超时收窄先例） | 非阻塞窥视（0s 窥视档既有）：按 id 或「全部在飞」返回状态+日志尾；**阻塞形态不进 Sunx 面** |
 | `task_stop` | 既有 | 取消派发任务 |
 | `ask_question` | 既有 | HITL：选项卡问询，任意档挂真实回答（G14.93 既有裁定） |
