@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from './i18n';
+import { useUsageStats } from './usage-stats';
 import { zoomScale } from './ui-zoom';
 
 /**
@@ -68,6 +69,9 @@ function level(pct: number): 0 | 1 | 2 {
 
 export function ContextRing(props: ContextRingProps): JSX.Element {
   const { used, window: win, parts, runs, steps, tokens, cacheTokens, onOpen } = props;
+  // 用量统计开关(2026-11-14 用户裁定「转圈里的具体数字只留百分比,除了第一行总的」):关=构成段
+  // 只留百分比(去括号去具体 tokens)、轮次/步数行整行隐、缓存命中率只留百分比
+  const usageOn = useUsageStats();
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const popRef = useRef<HTMLDivElement | null>(null);
@@ -162,23 +166,29 @@ export function ContextRing(props: ContextRingProps): JSX.Element {
                     <span className={`ctx-dot c${i % 6}`} aria-hidden="true" />
                     {partName(p.id)}
                   </span>
-                  <span className="v">{`${fmt(p.tokens)}(${pct1(partPct)})`}</span>
+                  <span className="v">{usageOn ? `${fmt(p.tokens)}(${pct1(partPct)})` : pct1(partPct)}</span>
                 </div>
               );
             })
           )}
-          <div className="ctx-pop-sep" />
-          <div className="ctx-pop-row">
-            <span className="k">{t('Turns / Steps', '轮次 / 步数')}</span>
-            <span className="v">{`${runs} / ${steps}`}</span>
-          </div>
+          {usageOn && <div className="ctx-pop-sep" />}
+          {usageOn && (
+            <div className="ctx-pop-row">
+              <span className="k">{t('Turns / Steps', '轮次 / 步数')}</span>
+              <span className="v">{`${runs} / ${steps}`}</span>
+            </div>
+          )}
+          {/* 缓存命中率上方分割线恒显(2026-11-14 用户复裁定「缓存命中不是有一行线分割吗」):
+              关态只隐轮次/步数行与其上分割线,缓存段保持独立分割形态 */}
           <div className="ctx-pop-sep" />
           <div className="ctx-pop-row">
             <span className="k">{t('Cache hit rate', '缓存命中率')}</span>
             <span className="v">
-              {tokens > 0
-                ? `${fmt(cacheTokens)}/${fmt(tokens)}(${pct1((cacheTokens / tokens) * 100)})`
-                : '0.0%'}
+              {!usageOn
+                ? tokens > 0 ? pct1((cacheTokens / tokens) * 100) : '0.0%'
+                : tokens > 0
+                  ? `${fmt(cacheTokens)}/${fmt(tokens)}(${pct1((cacheTokens / tokens) * 100)})`
+                  : '0.0%'}
             </span>
           </div>
         </div>

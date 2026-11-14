@@ -8,6 +8,7 @@ import { fmtTokens as fmtTokensShared } from '../../ui-util';
 import { groupEntriesByDay } from '../../chat-groups';
 import type { ChatEntry } from '../../chat-reducer';
 import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
+import { useUsageStats } from '../../usage-stats';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
 }
@@ -314,6 +315,7 @@ const DayGroupBlock = memo(
 );
 
 export function MessageList(props: MessageListProps): JSX.Element {
+  const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=运行状态行隐步数+tokens
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
   const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage } = props;
@@ -496,8 +498,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {running && (
           <div className="run-live-line" role="status" aria-label="run status">
             <span className="run-spinner" aria-hidden="true" />
-            <span>{t(`${liveSteps} steps`, `${liveSteps} 步`)}</span>
-            <span>{fmtTokens(liveTokens)}</span>
+            {usageOn && <span>{t(`${liveSteps} steps`, `${liveSteps} 步`)}</span>}
+            {usageOn && <span>{fmtTokens(liveTokens)}</span>}
           </div>
         )}
     </main>

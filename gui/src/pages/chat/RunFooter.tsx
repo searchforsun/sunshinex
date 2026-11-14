@@ -11,6 +11,7 @@ import type { TurnFileChange } from '../../../../src/types';
 import { FileIcon } from '../../file-icon';
 import { ChangeStat, changeCounts } from '../../change-stat';
 import { useTurnLatest } from './use-live-changes';
+import { useUsageStats } from '../../usage-stats';
 import { useUiMode } from '../../ui-mode';
 
 /** run 尾部操作条与变更汇总（D32 批C-1 拆分自 Chat.tsx）：Worked for 时长/复制/分叉钮与
@@ -23,6 +24,7 @@ import { useUiMode } from '../../ui-mode';
  *  在转录中的序位换算轮次,分档切在该轮之前——点哪轮,fork 上面的所有记录 */
 export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry | undefined; onFork?: (runKey: string) => void }): JSX.Element {
   const { status, copy } = useCopyFeedback();
+  const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=隐步数+tokens,时刻保留
   const time = run?.endedTs !== undefined ? messageTimeMs(run.endedTs) : undefined;
   return (
     <div className="run-footer">
@@ -35,8 +37,8 @@ export function RunFooter({ text, run, onFork }: { text: string; run: ChatEntry 
       {onFork !== undefined && run !== undefined && <TipButton tip={t('Fork', '分叉')} label="fork session" icon={<GitFork size={14} strokeWidth={1.75} aria-hidden="true" />} onClick={() => onFork(run.key)} />}
       {(run?.steps !== undefined || run?.tokens !== undefined) && (
         <span className="run-stats">
-          {run?.steps !== undefined && <span>{t(`${run.steps} steps`, `${run.steps} 步`)}</span>}
-          {run?.tokens !== undefined && <span>{fmtTokens(run.tokens)}</span>}
+          {usageOn && run?.steps !== undefined && <span>{t(`${run.steps} steps`, `${run.steps} 步`)}</span>}
+          {usageOn && run?.tokens !== undefined && <span>{fmtTokens(run.tokens)}</span>}
           {time !== undefined && <span>{time}</span>}
         </span>
       )}

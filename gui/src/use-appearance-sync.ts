@@ -7,6 +7,7 @@ import { syncPalette } from './palette';
 import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, UI_FONT_CHOICES } from './font-size';
 import { applyUiMode } from './ui-mode';
 import { applyDarkBubbles, applyDarkCode } from './dark-surfaces';
+import { applyUsageStats } from './usage-stats';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
 
@@ -53,6 +54,7 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       },
       darkBubbles: (v) => applyDarkBubbles(v === '1'),
       darkCode: (v) => applyDarkCode(v === '1'),
+      usageStats: (v) => applyUsageStats(v === '1'),
     });
   }, [connInstance]);
 }

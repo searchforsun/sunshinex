@@ -12,6 +12,7 @@ import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf, teamNameResolverOf } from '../pages/chat/use-chat-derived';
 import { collapsedHiddenKeys, isMidRunInsert, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
 import { SelActionsOverlay } from '../pages/chat/SelActionsOverlay';
+import { useUsageStats } from '../usage-stats';
 import type { ChatEntry } from '../chat-reducer';
 
 /**
@@ -65,6 +66,7 @@ export interface AgentTranscriptTabProps {
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
 export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenLeader, onOpenTask, onInsertMain, onSideAsk }: AgentTranscriptTabProps): JSX.Element {
+  const usageOn = useUsageStats(); // 用量统计开关(2026-11-14,子智能体面同口径):关=运行行隐步数+tokens
   const member = activities?.label ?? '';
   const leaderTo = onOpenLeader !== undefined ? (m: { text: string }): void => onOpenLeader({ member, text: m.text, dir: 'toLeader' }) : undefined;
   const leaderFrom = onOpenLeader !== undefined ? (m: { from: string; text: string }): void => onOpenLeader({ member, text: m.text, dir: 'fromLeader' }) : undefined;
@@ -272,8 +274,8 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
         {running && (
           <div className="run-live-line" role="status" aria-label="run status">
             <span className="run-spinner" aria-hidden="true" />
-            <span>{t(`${liveSteps} steps`, `${liveSteps} 步`)}</span>
-            <span>{fmtTokens(liveTokens)}</span>
+            {usageOn && <span>{t(`${liveSteps} steps`, `${liveSteps} 步`)}</span>}
+            {usageOn && <span>{fmtTokens(liveTokens)}</span>}
           </div>
         )}
       </div>

@@ -7,6 +7,7 @@ import { syncPalette } from './palette';
 import { applyCodeFontSize, applyUiFontSize, readCodeFontSize, readUiFontSize } from './font-size';
 import { applyUiMode, readUiMode } from './ui-mode';
 import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from './dark-surfaces';
+import { applyUsageStats, readUsageStats } from './usage-stats';
 import './app.css';
 import './tool-io.css'; // 工具展开体 I/O 井统一单点(免触 app.css 用户在途编辑面)
 import 'katex/dist/katex.min.css'; // 2026-10-25 数学公式管线(remark-math+rehype-katex):字体与排版样式全局一份
@@ -24,6 +25,7 @@ applyCodeFontSize(readCodeFontSize());
 applyUiMode(readUiMode());
 applyDarkBubbles(readDarkBubbles());
 applyDarkCode(readDarkCode());
+applyUsageStats(readUsageStats()); // 用量统计显隐(默认开;关=圆环弹层留百分比/轮尾与运行行隐步数 tokens/会话卡隐轮次步数)
 const root = document.getElementById('root');
 if (root === null) throw new Error('gui: #root not found');
 createRoot(root).render(

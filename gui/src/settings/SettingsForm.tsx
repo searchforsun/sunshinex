@@ -19,6 +19,7 @@ import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, readCodeFontSize
 import { applyUiMode, useUiMode } from '../ui-mode';
 import type { UiMode } from '../ui-mode';
 import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from '../dark-surfaces';
+import { applyUsageStats, readUsageStats } from '../usage-stats';
 import type { Palette } from '../palette';
 import { FolderOpen } from 'lucide-react';
 import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
@@ -582,6 +583,19 @@ const DarkCodeRow = (): JSX.Element => (
   />
 );
 
+/** 用量统计行(2026-11-14 用户裁定「设置页加开关,gui 控制显示步数轮次和 tokens」):
+ *  关=上下文弹层只留百分比(首行总量恒显,轮次/步数行隐)、轮尾与运行状态行隐步数+tokens
+ *  (时刻保留)、会话悬停卡/tooltip 隐轮次步数;主对话与子智能体面同口径 */
+const UsageStatsRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Usage stats', '用量统计')}
+    desc={t('Show steps, turns, and token counts in the context popover, run footers, and session cards.', '显示上下文弹层、轮尾与会话卡中的步数、轮次和 tokens 数量。')}
+    aria="usage stats"
+    read={readUsageStats}
+    apply={applyUsageStats}
+  />
+);
+
 /** 界面模式行(2026-11-07 用户裁定;ui-mode.ts):编程(缺省)/办公 */
 function UiModeRow(): JSX.Element {  const mode = useUiMode();
   return (
@@ -912,11 +926,12 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'usagestats' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
                   if (fd === 'uimode') return <UiModeRow key="uimode" />;
                   if (fd === 'darkbubbles') return <DarkBubblesRow key="darkbubbles" />;
                   if (fd === 'darkcode') return <DarkCodeRow key="darkcode" />;
+                  if (fd === 'usagestats') return <UsageStatsRow key="usagestats" />;
                   if (fd === 'uifont') return <UiFontRow key="uifont" />;
                   if (fd === 'codefont') return <CodeFontRow key="codefont" />;
                   if (fd === 'palette') return <PaletteRow key="palette" />;

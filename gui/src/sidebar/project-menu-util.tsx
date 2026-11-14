@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
+import { readUsageStats } from '../usage-stats';
 import { zoomScale } from '../ui-zoom';
 import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, Pin } from 'lucide-react';
 
@@ -141,8 +142,10 @@ export function sessionMetaLine(r: { runs?: number; steps?: number; createdAt?: 
   // tokens/缓存/上文/模型/孤立 id 等全家桶退役。2026-10-24 用户裁定:前插分支信息(如 dev1,有则显)
   const parts: string[] = [];
   if (branch) parts.push(branch);
-  if (r.runs !== undefined) parts.push(t(`${r.runs} run${r.runs === 1 ? '' : 's'}`, `${r.runs} 轮`));
-  if (r.steps !== undefined) parts.push(t(`${r.steps} step${r.steps === 1 ? '' : 's'}`, `${r.steps} 步`));
+  // 用量统计开关(2026-11-14):关=tooltip 不带轮次步数段(时刻保留)
+  const usageOn = readUsageStats();
+  if (usageOn && r.runs !== undefined) parts.push(t(`${r.runs} run${r.runs === 1 ? '' : 's'}`, `${r.runs} 轮`));
+  if (usageOn && r.steps !== undefined) parts.push(t(`${r.steps} step${r.steps === 1 ? '' : 's'}`, `${r.steps} 步`));
   if (r.createdAt !== undefined) parts.push(t(`created ${shortLocalTime(r.createdAt)}`, `创建于 ${shortLocalTime(r.createdAt)}`));
   return parts.join(' · ');
 }
@@ -215,9 +218,11 @@ function SessionHoverCard(props: {
   const avail = (window.innerWidth - props.anchor.menuRight - 12) / z;
   const width = Math.max(120, Math.min(280, avail));
   const { branch, runs, steps, createdAt, rootPath } = props.info;
+  // 用量统计开关(2026-11-14):关=悬停卡隐轮次步数行
+  const usageOn = readUsageStats();
   const stats: string[] = [];
-  if (runs !== undefined) stats.push(t(`${runs} run${runs === 1 ? '' : 's'}`, `${runs} 轮`));
-  if (steps !== undefined) stats.push(t(`${steps} step${steps === 1 ? '' : 's'}`, `${steps} 步`));
+  if (usageOn && runs !== undefined) stats.push(t(`${runs} run${runs === 1 ? '' : 's'}`, `${runs} 轮`));
+  if (usageOn && steps !== undefined) stats.push(t(`${steps} step${steps === 1 ? '' : 's'}`, `${steps} 步`));
   return (
     <div
       className="sx-sess-card"
