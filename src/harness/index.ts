@@ -1,4 +1,4 @@
-import type { AskUserSeam, OutputStyle, SteerLine, SubagentSpawnInput, TodoItem } from '../types';
+import type { AskUserSeam, OutputStyle, SessionKind, SteerLine, SubagentSpawnInput, TodoItem } from '../types';
 import * as path from 'path';
 import { PerceptionEngine } from './perception';
 import { CodedToolError, ToolRegistry, jsonAbsent } from './tools';
@@ -94,6 +94,12 @@ export interface HarnessOptions {
   /** 会话团队根键（journalId）。缺省未绑定时团队/板/inbox 驻内存；daemon/TUI 在 journal 铸造后
    *  经 adoptSessionTeams 收养。测试可直接传入以落盘。 */
   teamsSessionId?: string;
+  /** 会话形态（2026-11-14 sunx 设计：装配期按 kind 分叉 profile）。本任务只声明数据面接缝，构造器暂不消费——
+   *  消费在后续任务（提示词面/工具面/serve 生命周期）；缺席=standard */
+  kind?: SessionKind;
+  /** 实例品性原文（sunx 会话用户自撰物料原样直存；2026-11-15 术语裁定「用户面=品性、代码面=charter」）。
+   *  本任务只声明数据面接缝，构造器暂不消费——消费在后续任务（提示词面冻结层装配）；standard 会话恒缺席 */
+  charter?: string;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */

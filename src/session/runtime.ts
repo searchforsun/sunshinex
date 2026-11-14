@@ -7,7 +7,7 @@ import { LoopDeps, LoopRunResult } from '../loop/engine';
 import type { BackgroundTask } from '../harness/tasks';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
-import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, OutputStyle, ReasoningEffort, RunOutcome, SessionEvent, TodoItem } from '../types';
+import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, OutputStyle, ReasoningEffort, RunOutcome, SessionEvent, SessionKind, TodoItem } from '../types';
 
 export interface KernelRuntimeOpts {
   /** 问询接缝（ask_question 消费方）：SessionController 缺省接自身问询管线；外部注入用于 headless/脚本 */
@@ -38,6 +38,12 @@ export interface KernelRuntimeOpts {
   plan?: {
     awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
   };
+  /** 会话形态（2026-11-14 sunx 设计）：与 HarnessOptions.kind 同名同域的装配接缝（TUI/daemon 装配单点入参面）。
+   *  本任务只声明数据面，createKernelRuntime 暂不透传——消费在后续任务（提示词面/工具面/serve 生命周期）；缺席=standard */
+  kind?: SessionKind;
+  /** 实例品性原文（charter）：与 HarnessOptions.charter 同名同域。本任务只声明数据面，createKernelRuntime 暂不透传——
+   *  消费在后续任务（提示词面冻结层装配）；standard 会话恒缺席 */
+  charter?: string;
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */

@@ -223,6 +223,11 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | '
 /** 输出样式分叉（交互面级 run 常量，进稳定段）：terminal=TUI 文字面（围栏带语言标签、图示走 ASCII）；缺省=仅 Markdown 通用约定 */
 export type OutputStyle = 'terminal';
 
+/** 会话形态（2026-11-14 sunx 编排者设计：profile 化会话按 kind 装配分叉）——'sunx'=编排会话
+ *  （章程提示词 + 分派工具白名单面），'standard'=既有普通会话；缺席=standard（可选性即兼容故事，
+ *  普通会话恒不落键不落档）。消费在后续任务（提示词面/工具面/serve 生命周期），此处只登记数据面 */
+export type SessionKind = 'standard' | 'sunx';
+
 /** todo_write 条目状态（规格 D5）：三态——「同刻恰一个 in_progress」为使用纪律，由工具 description 承载 */
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 

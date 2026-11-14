@@ -159,6 +159,21 @@ test('listSessions 旁车 meta（G14.17）：title/统计透出、坏值容错�
   assert.equal(listSessions(dataDir).length, 1);
 });
 
+test('sidecar meta 携带 kind/charterRev 读写往返；缺省缺席不落键', () => {
+  const dataDir = tmp();
+  const jid = newSessionId();
+  const otherJid = newSessionId();
+  writeSessionMeta(dataDir, jid, { kind: 'sunx', charterRev: 2, title: '构建管家' });
+  const m = readSessionMeta(dataDir, jid);
+  assert.equal(m.kind, 'sunx');
+  assert.equal(m.charterRev, 2);
+  // 旧档/普通会话：无 kind 键（缺席=standard，不落档）
+  writeSessionMeta(dataDir, otherJid, { title: '普通会话' });
+  assert.equal(readSessionMeta(dataDir, otherJid).kind, undefined);
+  const raw = JSON.parse(fs.readFileSync(path.join(sessionsDir(dataDir), otherJid + '.meta.json'), 'utf8')) as Record<string, unknown>;
+  assert.equal('kind' in raw, false, '普通会话不落 kind 键');
+});
+
 test('逐事件追加零越界写：仅本档追加，旧档与其余文件零触碰（规格 D4）', () => {
   const dataDir = tmp();
   const j = new SessionJournal(dataDir);
