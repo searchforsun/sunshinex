@@ -1494,8 +1494,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   flex: none;
 }.run-changes-undo:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }.run-changes-list { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.24s ease; } /* 0fr→1fr 平滑展开(2026-11-14 用户裁定);border-box 下闭态 0 行轨全收 */
 .run-changes-list.open { grid-template-rows: 1fr; }
-.run-changes-list-clip { min-height: 0; overflow: hidden; border-top: 1px solid transparent; padding: 2px 0 6px; transition: border-top-color 0.2s ease; }
-.run-changes-list.open .run-changes-list-clip { border-top-color: var(--border-subtle); }.run-changes-row {
+.run-changes-list-clip { min-height: 0; overflow: hidden; } /* 收拢层零内衬——padding/border 在此层会漏 9px 撑高条(盒模型压不掉),已移入被裁剪的 pad 内衬层(2026-11-14 用户实测「diff 高度被加宽」) */
+.run-changes-list-pad { border-top: 1px solid transparent; padding: 2px 0 6px; transition: border-top-color 0.2s ease; }
+.run-changes-list.open .run-changes-list-pad { border-top-color: var(--border-subtle); }.run-changes-row {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 10px; border-radius: 0; /* hover=整行提亮,无椭圆内缩(2026-11-11 用户裁定) */
 }.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); } /* 2026-11-13 用户实测「hover 不显」:行 hover 原 5% 叠卡底 4% 仅差 1% 肉眼不可辨,提到菜单 hover 同族 9% */

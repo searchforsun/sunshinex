@@ -184,6 +184,7 @@ export function RunChangesBar({
       </div>
       <div className={`run-changes-list${open ? ' open' : ''}`}>
         <div className="run-changes-list-clip">
+          <div className="run-changes-list-pad">
           {visible.map((c) => {
             const norm = c.path.replaceAll('\\', '/');
             const base = pathBasename(norm);
@@ -231,6 +232,7 @@ export function RunChangesBar({
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </div>
