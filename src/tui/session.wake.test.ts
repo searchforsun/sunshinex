@@ -125,3 +125,27 @@ test('用户优先：唤醒 pending 在场时排队用户消息先跑', async ()
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('会话换新屏蔽：/new 后旧会话在跑后台任务终态不唤醒新会话', async () => {
+  const tmp = tmpdir('sunshinex-sess-wake3-');
+  try {
+    // 后台 exec 睡 2.5s 跨 /new 存活（任务账本跨软重置不换 Map）：泄漏形态=旧任务日后终态
+    // → onTaskFinished → 新会话起唤醒轮（通知讲的是新会话从未发起的任务）
+    const model = new ScriptedAdapter([
+      { content: '', toolCalls: [{ name: 'exec', args: { command: 'node -e "setTimeout(()=>process.exit(0),2500)"', kind: 'executes', background: true, purpose: 'stale' } }] },
+      { content: 'first done', toolCalls: [] },
+    ]);
+    const ctrl = new SessionController({ root: tmp, model });
+    await ctrl.submit('kick off bg work');
+    await waitFor(() => ctrl.state.status === 'idle'); // 第一轮收束（后台 exec 仍在跑）
+    await ctrl.submit('/new'); // 软重置（控制器既有 /new 入口）：换新内核 + 屏蔽在跑旧任务
+    await waitFor(() => ctrl.runtime.harness.tasks.list().every((x) => x.status !== 'running'), 10_000); // 旧任务终态
+    // 终态 + 合批窗（缺省 1.5s）余量后取样：泄漏形态的唤醒轮窗毫秒级、但 wake notice 条持久——取条断言
+    await new Promise((r) => setTimeout(r, 2200));
+    const entries = kernelEntries(ctrl); // 内核已随 /new 换新——读口即新会话转录
+    assert.equal(entries.filter((e) => e.kind === 'notice' && e.wake !== undefined).length, 0, '新会话内核无 wake notice 条（旧任务终态被屏蔽集挡下）');
+    assert.equal(ctrl.state.status, 'idle', 'status 保持 idle');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

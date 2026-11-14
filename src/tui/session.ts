@@ -1090,6 +1090,9 @@ export class SessionController {
     this.memoryOverride = undefined;
     setMemorySessionOverride(undefined); // /new = 新会话起点：会话内覆盖清除（快照重读随刷新点对齐磁盘与控制面）
     this.taskStats = undefined; // 新会话起点：任务统计基线一并清除
+    // 会话换新屏蔽（bg-wake §3 跨会话隔离）：任务账本跨 /new 存活（adoptLedger 只换档不清 Map）——
+    // 当时在跑的旧会话任务 id 进屏蔽集（timer/pending/合批批一并 reset），其日后终态不唤醒新会话
+    this.wake.reset(this.runtime.harness.tasks.list().filter((x) => x.status === 'running').map((x) => x.id));
     this.wakeLabel = undefined; // 新会话起点：唤醒轮标一并清除（投影随下方 state 重建落位清除）
     this.state = { ...this.state, queuePaused: undefined }; // 新会话起点：队列暂停态一并清除(队列条目随内核换新已清)
     this.planArmed = false; // 新会话起点：计划模式武装随换新解除（/plan 三态,2026-11-03）

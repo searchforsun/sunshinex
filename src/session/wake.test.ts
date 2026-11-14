@@ -133,4 +133,21 @@ describe('WakeController', () => {
     assert.equal(c.onTurnEnded('done'), true);
     assert.equal(limits, 1);
   });
+
+  test('reset(ignoreIds) 会话换新屏蔽集：被屏 id 不起轮，其余正常；无参 reset 清空屏蔽集', async () => {
+    const { c, fired } = mk();
+    c.reset(['a']); // 会话换新：旧会话在跑任务 id 进屏蔽集（timer/pending/chain/waking 一并清）
+    c.onTaskFinished(task({ id: 'a' })); // 旧会话任务日后终态 → 屏蔽，不登记不起轮
+    await sleep(30);
+    assert.equal(fired.length, 0);
+    c.onTaskFinished(task({ id: 'b' })); // 新会话任务正常登记起轮
+    await sleep(30);
+    assert.equal(fired.length, 1);
+    assert.deepEqual(fired[0]?.map((t) => t.id), ['b']);
+    c.reset(); // 无参=清空屏蔽集（daemon disposeRuntime 既有调用零变化）
+    c.onTaskFinished(task({ id: 'a' }));
+    await sleep(30);
+    assert.equal(fired.length, 2); // 'a' 重新可登记
+    assert.deepEqual(fired[1]?.map((t) => t.id), ['a']);
+  });
 });

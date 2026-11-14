@@ -87,6 +87,9 @@ export class WakeController {
   private chain = 0;
   /** 在途唤醒闩：fire 受理置位；onTurnEnded 入口一次性读清（含 interrupted——中断即无跟进，不留陈旧 true） */
   private waking = false;
+  /** 会话换新屏蔽集（宿主 reset(ids) 注入）：旧会话在跑任务的 id——其**日后**终态（finish 照样找到跨
+   *  /new 存活的台账对象）不得唤醒新会话；单清 pending 挡不住后续终态，故在登记入口最前拦截 */
+  private ignored = new Set<string>();
 
   constructor(private readonly opts: WakeControllerOpts) {}
 
@@ -95,8 +98,10 @@ export class WakeController {
     this.chain = 0;
   }
 
-  /** 任务终态入口（宿主接 harness opts.wake.onFinished）：非终态/非主链非板/重复登记一律忽略 */
+  /** 任务终态入口（宿主接 harness opts.wake.onFinished）：屏蔽集命中（会话换新前的旧任务）最前拦截；
+   *  非终态/非主链非板/重复登记一律忽略 */
   onTaskFinished(task: WakeTaskInput): void {
+    if (this.ignored.has(task.id)) return; // 会话换新屏蔽：旧会话任务不唤醒新会话（bg-wake §3 跨会话隔离）
     if (task.status !== 'done' && task.status !== 'failed') return; // stopped=主动收口不唤醒（§3.1）
     if (task.ownerRun !== 'main' && task.boardDispatch !== true) return; // fork 名下由子智能体自己等待
     // 去重按寻址命名空间限定（板/主链两本账：板任务 id 归板台账、exec id 归 harness 账本，
@@ -141,11 +146,15 @@ export class WakeController {
     return ok;
   }
 
-  reset(): void {
+  /** 收口（宿主 teardown）/会话换新（宿主软重置）双用：清 timer/pending/chain/waking；
+   *  ignoreIds 在场=会话换新屏蔽集（旧会话在跑任务 id，其日后终态不唤醒新会话）；无参=清空屏蔽集
+   *  （daemon disposeRuntime 既有无参调用零变化） */
+  reset(ignoreIds?: Iterable<string>): void {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
     this.pending = [];
     this.chain = 0;
     this.waking = false;
+    this.ignored = new Set(ignoreIds ?? []);
   }
 }
