@@ -1084,7 +1084,6 @@ git commit -m "feat(artifacts): OpenSplit 分体钮共用件(编辑器清单模�
 - Modify: `gui/src/pages/chat/EntryViews.tsx`（`ChatEntryView` 签名 ~line 594 加 props；footer 区 ~line 775-791 在 RunChangesBar 块之前插渲染）
 - Modify: `gui/src/pages/chat/MessageList.tsx`（`MessageListProps` ~line 34-70 加两 props；`ChatEntryView` 调用 ~line 264-281 传参）
 - Modify: `gui/src/pages/Chat.tsx`（Chat props 接口加 `onOpenArtifacts`/`onOpError` 已有则复用——`onOpError` Chat 已有（~line 92 destructure），只加 `onOpenArtifacts`；`<MessageList>` 调用 ~line 1021 传参）
-- Modify: `gui/src/App.tsx`（`openTabType` ~line 639 之后加 `openArtifactsTab` useCallback；渲染 Chat 处 ~line 1159-1173 传 `onOpenArtifacts`）
 - Modify: `gui/src/app.css`（卡区样式块追加）
 
 **Interfaces:**
@@ -1189,7 +1188,7 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
 }
 ```
 
-- [ ] **Step 2: EntryViews 接线**——`ChatEntryView` 签名（~line 594）的解构与类型加 `conn, sessionId, root, onOpError`（类型 `conn: Connection; sessionId: string; root?: string; onOpError?: (err: unknown) => void`，import `type { Connection }`）；footer 区（~line 775-791）在 `{footerRun !== undefined && footerRun.changes !== undefined && ...}` 块**之前**插：
+- [ ] **Step 2: EntryViews 接线**——`ChatEntryView` 签名（~line 594）的解构与类型加 `conn, sessionId, root, onOpError, onOpenArtifacts` 五个（类型 `conn: Connection; sessionId: string; root?: string; onOpError?: (err: unknown) => void; onOpenArtifacts?: () => void`，import `type { Connection }`）；footer 区（~line 775-791）在 `{footerRun !== undefined && footerRun.changes !== undefined && ...}` 块**之前**插：
 
 ```tsx
       {footerRun !== undefined && footerRun.artifacts !== undefined && footerRun.artifacts.length > 0 && (
@@ -1217,15 +1216,7 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
 
 - [ ] **Step 4: Chat 接线**——Chat props 接口加 `readonly onOpenArtifacts?: () => void;`；`<MessageList>` 调用（~line 1021，`root={root}` 之后）加 `onOpError={onOpError}` 与 `onOpenArtifacts={onOpenArtifacts}`。
 
-- [ ] **Step 5: App 接线**——`openTabType`（~line 639）之后加：
-
-```ts
-  const openArtifactsTab = useCallback((): void => {
-    openTabInSession('artifacts', {});
-  }, [openTabInSession]);
-```
-
-（Task 12 才注册 `'artifacts'` 类型——本 Task 该回调已稳定但入口未接；App 渲染 Chat 处 `onOpenTab={openTabType}` 邻位（~line 1165）加 `onOpenArtifacts={openArtifactsTab}`。注意：Task 11 提交后点开产物入口尚无 tab 类型——`openArtifactsTab` 在 Task 12 前不被任何 UI 引用（strip 节头链接 Task 12 才加），无运行时面，提交安全。）
+- [ ] **Step 5: App 不接线（编译序裁定）**——本任务**不动** `App.tsx`：`openTabInSession('artifacts', {})` 引用的 `'artifacts'` `TabTypeId` 到 Task 12 才注册，本任务引用即编译失败。`onOpenArtifacts` 全链为可选 prop，App 不传则纯类型面通过、无运行时面；App 回调定义与传参由 Task 12 Step 4b 补。
 
 - [ ] **Step 6: CSS**——`gui/src/app.css` 追加：
 
@@ -1251,8 +1242,8 @@ Run: `pnpm --dir gui run typecheck && pnpm --dir gui exec vitest run src/chat-re
 Expected: PASS
 
 ```bash
-git add gui/src/pages/chat/ArtifactsStrip.tsx gui/src/pages/chat/EntryViews.tsx gui/src/pages/chat/MessageList.tsx gui/src/pages/Chat.tsx gui/src/App.tsx gui/src/app.css
-git commit -m "feat(artifacts): 轮末产物卡区 ArtifactsStrip+全链 props 接线(auto-fit 网格/缩略图/折叠,2026-11-12 spec §4)"
+git add gui/src/pages/chat/ArtifactsStrip.tsx gui/src/pages/chat/EntryViews.tsx gui/src/pages/chat/MessageList.tsx gui/src/pages/Chat.tsx gui/src/app.css
+git commit -m "feat(artifacts): 轮末产物卡区 ArtifactsStrip+全链 props 接线(auto-fit 网格/缩略图/折叠,2026-11-12 spec §4;App 入口留 Task 12——编译序)"
 ```
 
 ---
@@ -1267,6 +1258,7 @@ git commit -m "feat(artifacts): 轮末产物卡区 ArtifactsStrip+全链 props �
 - Modify: `gui/src/connection.ts`（interface 加 `artifacts(sessionId)`；impl 加方法）
 - Modify: `gui/src/pages/chat/ArtifactsStrip.tsx`（节头加「全部产物 →」链接，props 加 `onOpenArtifacts`）
 - Modify: `gui/src/pages/chat/EntryViews.tsx`（strip 调用透传 `onOpenArtifacts`）
+- Modify: `gui/src/App.tsx`（`openTabType` ~line 639 之后加 `openArtifactsTab` useCallback；渲染 Chat 处 ~line 1165 传 `onOpenArtifacts`）
 - Modify: `gui/src/app.css`（产物库页样式追加）
 
 **Interfaces:**
@@ -1404,7 +1396,17 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile }
         )}
 ```
 
-`EntryViews.tsx` 的 ArtifactsStrip 调用（Task 11 Step 2 块）加一行 `onOpenArtifacts={onOpenArtifacts}`（该 prop Task 11 已入 ChatEntryView 签名；若未入，同步补进 ChatEntryView props 类型）。
+`EntryViews.tsx` 的 ArtifactsStrip 调用（Task 11 Step 2 块）加一行 `onOpenArtifacts={onOpenArtifacts}`（该 prop Task 11 已入 ChatEntryView 签名）。
+
+- [ ] **Step 4b: App 入口接线**——`openTabType`（~line 639）之后加：
+
+```ts
+  const openArtifactsTab = useCallback((): void => {
+    openTabInSession('artifacts', {});
+  }, [openTabInSession]);
+```
+
+App 渲染 Chat 处（`onOpenTab={openTabType}` 邻位，~line 1165）加 `onOpenArtifacts={openArtifactsTab}`。
 
 - [ ] **Step 5: CSS**——`gui/src/app.css` 追加：
 
@@ -1430,8 +1432,8 @@ Expected: PASS
 冒烟：`pnpm --dir gui dev` 起面板（daemon 按 MANUAL.md 启动），任一会话让助手写一个 md → 轮尾出卡 →「全部产物 →」开页签见行。
 
 ```bash
-git add gui/src/pages/Artifacts.tsx gui/src/tabs/tab-state.ts gui/src/tabs/sidebar-refresh.ts gui/src/tabs/registry.tsx gui/src/connection.ts gui/src/pages/chat/ArtifactsStrip.tsx gui/src/pages/chat/EntryViews.tsx gui/src/app.css
-git commit -m "feat(artifacts): 产物库页签+「全部产物 →」入口(singleton tab/刷新集/conn.artifacts,2026-11-12 spec §6)"
+git add gui/src/pages/Artifacts.tsx gui/src/tabs/tab-state.ts gui/src/tabs/sidebar-refresh.ts gui/src/tabs/registry.tsx gui/src/connection.ts gui/src/pages/chat/ArtifactsStrip.tsx gui/src/pages/chat/EntryViews.tsx gui/src/App.tsx gui/src/app.css
+git commit -m "feat(artifacts): 产物库页签+「全部产物 →」入口(singleton tab/刷新集/conn.artifacts/App 入口,2026-11-12 spec §6)"
 ```
 
 ---
