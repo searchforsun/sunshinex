@@ -2304,6 +2304,7 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
  * (用户裁定「运行时间显示在开头」),与右缘创建时间分轴:时长=运行中语义,提亮一档 */
 .bg-cmd { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); }
 .bg-dur { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--fg-secondary); font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; }
+.bg-kind-icon { flex: none; color: var(--fg-icon); } /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
 .bg-output {
   margin: 0; width: 100%; padding: 6px 8px;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { AlarmClock, Check, Clock, Copy, Database, RefreshCw, Sparkles, Square, Trash2 } from 'lucide-react';
+import { AlarmClock, Bot, Check, Clock, Copy, Database, RefreshCw, Sparkles, Square, SquareTerminal, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
@@ -296,6 +296,8 @@ export function BgTasksTab({
                 >
                   {/* 状态点对齐智能体团队:灰转圈=running,蓝=done,红=failed,黄=stopped */}
                   <span className={`tb-status-dot bg-${r.status}`} aria-hidden="true" />
+                  {/* kind 图标前缀(2026-11-14 用户裁定「子智能体显示机器人头像图标前缀,exec 显示终端图标前缀」) */}
+                  {isSub ? <Bot size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" /> : <SquareTerminal size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" />}
                   {/* 运行时长前移到图标后(2026-10-31 用户裁定「或者运行时间显示在开头」),与右缘创建时间分轴 */}
                   <span className="bg-dur" data-tip={t('Elapsed', '运行时长')}>
                     <AlarmClock size={14} strokeWidth={1.75} aria-hidden="true" />

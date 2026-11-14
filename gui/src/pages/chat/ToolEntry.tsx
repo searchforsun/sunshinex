@@ -236,8 +236,8 @@ export const ToolEntryView = memo(function ToolEntryView({
    *  (流光+「正在…」),done(缺省终态)=各型折叠行 */
   const executing = entry.status === 'pending' || entry.status === 'running';
   const runningLabel = (() => {
-    // G14.166 spawn 运行态带子智能体名(label ?? agent_id)——「正在分派 架构分析」替代泛文案
-    if (toolName === 'spawn' && spawnAgentName !== '') return t(`Dispatching ${spawnAgentName}`, `正在分派 ${spawnAgentName}`);
+    // G14.166 spawn 运行态带子智能体名(label ?? agent_id);2026-11-14 用户裁定「只显示子智能体 {}」(不再分派/正在字样)
+    if (toolName === 'spawn' && spawnAgentName !== '') return t(`Subagent ${spawnAgentName}`, `子智能体 ${spawnAgentName}`); // 2026-11-14 用户裁定「不再显示分派/正在,运行中流光显示 子智能体 {}」
     if (toolName === 'create_agent_teammate' && teammateName !== '') return t(`Creating member ${teammateName}`, `正在创建团队成员 ${teammateName}`);
     if (toolName === 'create_agent_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
     if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending team message to ${messageToLabel}`, `正在发送团队消息给 ${messageToLabel}`);
@@ -316,7 +316,7 @@ export const ToolEntryView = memo(function ToolEntryView({
       <span className="exec-running-text">
         {executing && toolName === 'spawn' && spawnAgentName !== '' && onOpenAgent !== undefined ? (
           <>
-            {t('Dispatching subagent', '正在分派子智能体')}
+            {t('Subagent', '子智能体')}
             <span
               role="button"
               tabIndex={-1}
