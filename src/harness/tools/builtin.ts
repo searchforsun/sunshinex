@@ -168,8 +168,12 @@ export function builtinTools(
     // 时逐刀快照互不漂移）
     writeSnapshot?.captureAfter(target, finalContent);
     // 产物声明钩（2026-11-12 spec §3.3）：落盘成功后白名单命中即记；relPosix 归一（canonical，
-    // tagCall 侧同归一比对）；callId 由 serve 泵在 tool-result 回执时回标（ArtifactCollector.tagCall）
-    artifacts?.record(path.relative(root, target).replaceAll('\\', '/'), verb === 'written' ? 'write' : 'edit');
+    // tagCall 侧同归一比对）；callId 由 serve 泵在 tool-result 回执时回标（ArtifactCollector.tagCall）。
+    // 根外写入（worktree 专属树/附加根）不记——非项目根产物（2026-11-14 终审 Important#2：rel 以
+    // '..' 开头或绝对 = 落点在装配根之外，卡区目录显示/侧栏预览/bash 差集去重均锚项目根相对语义）；
+    // 旁证：fork 隔离子链写盘 safePath 锚专属树，同样经此守卫跳过（不误记 '..' 前缀路径）
+    const relPosix = path.relative(root, target).replaceAll('\\', '/');
+    if (!relPosix.startsWith('..') && !path.isAbsolute(relPosix)) artifacts?.record(relPosix, verb === 'written' ? 'write' : 'edit');
     // diff stat（G14 工具行改版）：统计随结果串同源下发——GUI 折叠行与 TUI ⎿ 行同一 `+A -D`，无 second fetch
     const stat = writeDiffStat(pre, finalContent);
     const receipt = stat !== undefined ? `${verb} ${stat}` : verb;
