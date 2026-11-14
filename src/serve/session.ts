@@ -31,7 +31,7 @@ import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
 import { lineDiffCounts } from '../harness/tools/write-diffstat';
 import type { ArtifactFile, ChangeFile, TurnFileChange } from '../types';
-import { mergeRunArtifacts } from './artifacts-handlers';
+import { mergeRunArtifacts, scanArtifactsJsonl, type AggregatedArtifact } from './artifacts-handlers';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
@@ -818,6 +818,30 @@ export class SessionRuntime {
       return undefined;
     }
     return hit;
+  }
+
+  /** 产物库聚合（2026-11-12 spec §6.2）：内存当轮面 + journal 落档面合并，跨 run 按 path
+   *  去重保留最新 run（库语义），runSeq 倒序；含子 run（journal 全量扫） */
+  artifactsAggregated(): { items: AggregatedArtifact[] } {
+    const best = new Map<string, AggregatedArtifact>();
+    const consider = (row: AggregatedArtifact): void => {
+      const prev = best.get(row.path);
+      if (prev !== undefined && prev.runSeq >= row.runSeq) return;
+      best.set(row.path, row);
+    };
+    for (const [runSeq, list] of this.runArtifacts) {
+      for (const a of list) consider({ path: a.path, source: a.source, ...(a.callId !== undefined ? { callId: a.callId } : {}), runSeq });
+    }
+    const id = this.journal?.currentId;
+    if (id !== undefined) {
+      try {
+        const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+        for (const row of scanArtifactsJsonl(fs.readFileSync(file, 'utf8'))) consider(row);
+      } catch {
+        // 无档/读失败=仅内存面
+      }
+    }
+    return { items: [...best.values()].sort((x, y) => y.runSeq - x.runSeq) };
   }
 
   attachJournal(journal: SessionJournal): void {

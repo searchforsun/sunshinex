@@ -701,6 +701,12 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         if (!r.ok) return this.send(res, 500, { error: r.error });
         this.send(res, 200, r.value);
       } },
+    // 产物库聚合端点(2026-11-12 spec §6.2):内存当轮面 + journal 落档面合并,跨 run 去重保最新含子 run
+    { method: 'GET', path: '/session/:id/artifacts', auth: true, run: async (_req, res, p) => {
+        const session = this.sessionFor(res, p.id);
+        if (session === undefined) return;
+        this.send(res, 200, session.artifactsAggregated());
+      } },
     { method: 'GET', path: '/session/:id/changes/content', auth: true, run: async (req, res, p) => {
         const session = this.sessionFor(res, p.id);
         if (session === undefined) return;
