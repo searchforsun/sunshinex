@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeRunArtifacts, scanArtifactsJsonl } from './artifacts-handlers';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { mergeRunArtifacts, scanArtifactsJsonl, scanDeliverableFiles } from './artifacts-handlers';
 import type { ArtifactFile, ChangeFile } from '../types';
 
 /** 产物并入面(2026-11-12 spec §3.4-3.5):声明∪bash 兜底(差集中白名单新建),声明优先去重,64 帽 */
@@ -36,6 +39,51 @@ test('mergeRunArtifacts:声明面 65 条溢出→64 帽截断,全为声明条', 
   const merged = mergeRunArtifacts(flood, []);
   assert.equal(merged.length, 64); // 声明侧溢出同样截断至 64
   assert.ok(merged.every((a) => a.source === 'write' && a.path.startsWith('d')));
+});
+
+test('mergeRunArtifacts:三参扫描网——差集>扫描去重,非白名单/已声明不收', () => {
+  const declared: ArtifactFile[] = [{ path: 'declared.md', source: 'write' }];
+  const gitExtra: ChangeFile[] = [
+    { path: 'git-new.md', status: 'untracked', added: 1, deleted: null },
+    { path: 'scan-only.md', status: 'untracked', added: 1, deleted: null }, // 不在差集新增面(如 ignored),仅扫描网可见
+  ];
+  const scanBash: ChangeFile[] = [
+    { path: 'git-new.md', status: 'added', added: null, deleted: null }, // 与差集同路径 → 差集优先,不双记
+    { path: 'scan-only.md', status: 'added', added: null, deleted: null }, // 扫描网独有 → 收
+    { path: 'declared.md', status: 'added', added: null, deleted: null }, // 已声明 → 不收
+    { path: 'code.ts', status: 'added', added: null, deleted: null }, // 白名单外 → 不收
+  ];
+  assert.deepEqual(mergeRunArtifacts(declared, gitExtra, scanBash), [
+    { path: 'declared.md', source: 'write' },
+    { path: 'git-new.md', source: 'bash' },
+    { path: 'scan-only.md', source: 'bash' },
+  ]);
+});
+
+test('scanDeliverableFiles:轮窗 mtime 过滤+跳点目录/node_modules+白名单外不收', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-artscan-'));
+  fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
+  fs.mkdirSync(path.join(dir, '.hiddir'), { recursive: true });
+  const winStart = Date.now() - 30000;
+  const winEnd = Date.now();
+  const mk = (rel: string, mtimeMs: number): void => {
+    fs.writeFileSync(path.join(dir, rel), 'x');
+    fs.utimesSync(path.join(dir, rel), new Date(mtimeMs), new Date(mtimeMs));
+  };
+  mk('a.md', winEnd - 1000); // 窗内 → 收
+  mk('sub/b.pdf', winEnd - 2000); // 窗内子目录 → 收
+  mk('node_modules/x/c.md', winEnd - 1000); // node_modules 跳过 → 不收
+  mk('.hiddir/d.md', winEnd - 1000); // 点目录跳过 → 不收
+  mk('old.png', winStart - 10000); // 窗外 → 不收
+  mk('code.ts', winEnd - 1000); // 白名单外 → 不收
+  const out = scanDeliverableFiles(dir, winStart, winEnd);
+  assert.deepEqual(
+    out.map((e) => e.path).sort(),
+    ['a.md', 'sub/b.pdf'],
+  );
+  assert.ok(out.every((e) => e.status === 'added' && e.added === null && e.deleted === null));
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 /** 产物库聚合扫描(2026-11-12 spec §6.2):run-open 开轮记 seq,runmeta 绑轮,跨 run 去重保最新;

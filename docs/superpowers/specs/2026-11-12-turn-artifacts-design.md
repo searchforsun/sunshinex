@@ -81,9 +81,14 @@ export interface ArtifactFile {
 
 `commitFileWrite`（`builtin.ts:139`）落盘成功后：扩展名命中白名单 → 调注入的 `ArtifactCollector`（新 `src/harness/tools/artifact-collector.ts`，类仿 `WriteSnapshotCollector`：内存清单、drain 落盘、零工具面变化）记 `{path, source: 'write'|'edit'（按 verb）, callId}`。**同 run 同路径多次写保留末次**（末个 callId + 末个 source；先 write 后 edit 视同一条）。宿主 run 收口 `drain()` 并入 `RunMeta.artifacts`，经既有 runmeta 帧广播 + journal 落档——重放往返由既有机制承担，补一条往返测试（§8）。缺省不注入 = 无产物（CLI 一次性 run 等宿主零改动可选接入）。
 
-### 3.4 bash 兜底
+### 3.4 bash 兜底（2026-11-14 口径放宽：双网）
 
-run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差集中白名单命中的新建文件**并入 `source:'bash'`（callId 缺省）；与声明集按 path 去重，**声明优先**（同路径既有声明条不覆盖）。修改类交付物不经兜底进来（只声明面收），原因：差集无前后像语义，修改标注不可靠，且修改的代码文件 majority 落改动条——产物面只对「新产出的交付物」兜底。
+run 收尾聚合处：bash 候选来自**两网并集，按 path 去重（声明 > 差集 > 扫描）**，64 帽（声明集在先）：
+
+1. **git 差集网**：收尾差集中白名单命中的**新建**文件（`session.ts:1026` 面，git 项目可见面）；
+2. **mtime 轮窗扫描网**（2026-11-14 用户实测 copy.png 缺卡补，`scanDeliverableFiles`）：有界遍历项目根（跳 node_modules/点目录，深 6 层/2 万条目封顶），白名单扩展名 + mtime 落 `[run起点-2s, 收尾+2s]` 即候选。
+
+放宽理由：**默认工作区非 git**（实测 `Temp\sunshinex-default` 无 .git），差集网整面为空，bash 产件（skill 脚本产件主通道）全漏；扫描网同时覆盖 ignored 文件与未跟踪修改两类差集盲区。扫描网含修改（无前后像语义可判，凡轮窗内白名单文件即候选）；差集网自身仍只收新建。git 项目两网并集，同一文件不双记。
 
 ### 3.5 钳制与净化
 
@@ -151,7 +156,7 @@ run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差�
 ## 7. 非目标与边界
 
 - **不做**（YAGNI）：TUI 产物卡渲染（runmeta 帧 TUI 已收，渲染后置）；产物版本时间线；收藏/检索；缩略图磁盘缓存（lazy 现拉）；skill 显式登记 API（声明 + bash 兜底已覆盖）；改动条与产物卡合并（两语义分立：改动 = diff 统计，产物 = 产出物）。
-- **无 git 项目**：bash 兜底依赖的收尾差集来自 session-changes 既有面，git 缺席时随该面既有语义降级，不新增特殊分支。
+- **无 git 项目**：bash 兜底第二网（mtime 轮窗扫描,2026-11-14 补,见 §3.4）不依赖 git——非 git 项目 bash 产件照常入卡；git 差集第一网缺席即为空,两网并集语义不变。
 - **文案**：中文硬编码，与现 GUI 一致（不走 i18n 面）。
 - **权限**：零新权限面。
 
