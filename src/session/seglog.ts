@@ -1,4 +1,4 @@
-import { sanitizeChanges, sanitizeTurn, type KernelEntry, type RunMeta } from './entry';
+import { sanitizeArtifacts, sanitizeChanges, sanitizeTurn, type KernelEntry, type RunMeta } from './entry';
 import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from '../tui/session-journal';
 import type { ChainAction } from '../types';
@@ -33,7 +33,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
     // runMetaOf 净化面按缺省不覆盖(行面字段不予信任既有口径);对位=reduceSegRows 末个 run 条
     const m = ev.entry.meta;
     if (m === undefined) return [];
-    return [{ t: 'runmeta', ...(m.steps !== undefined ? { steps: m.steps } : {}), ...(m.runSteps !== undefined ? { runSteps: m.runSteps } : {}), ...(m.tokens !== undefined ? { tokens: m.tokens } : {}), ...(m.cacheTokens !== undefined ? { cacheTokens: m.cacheTokens } : {}), ...(m.turn !== undefined && m.turn.length > 0 ? { turn: m.turn } : {}) }];
+    return [{ t: 'runmeta', ...(m.steps !== undefined ? { steps: m.steps } : {}), ...(m.runSteps !== undefined ? { runSteps: m.runSteps } : {}), ...(m.tokens !== undefined ? { tokens: m.tokens } : {}), ...(m.cacheTokens !== undefined ? { cacheTokens: m.cacheTokens } : {}), ...(m.turn !== undefined && m.turn.length > 0 ? { turn: m.turn } : {}), ...(m.artifacts !== undefined && m.artifacts.length > 0 ? { artifacts: m.artifacts } : {}) }];
   }
   if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front, ...(x.images !== undefined ? { images: x.images } : {}) })) }];
   if (ev.t === 'stats') return []; // 统计面不落档(P9):非转录,装载自 run meta 重建
@@ -110,6 +110,8 @@ export interface SegRowLike {
   cacheTokens?: unknown;
   /** 轮次 checkpoint 行(runmeta.turn;行面字段不予信任,sanitizeTurn 净化) */
   turn?: unknown;
+  /** 轮次产物行(runmeta.artifacts;行面字段不予信任,sanitizeArtifacts 净化) */
+  artifacts?: unknown;
   /** v1 行透传面(header/chain)——转录读面忽略,类型上允许整行入列 */
   v?: unknown;
   id?: unknown;
@@ -138,6 +140,7 @@ function imagesOf(raw: unknown): string[] | undefined {
 function runMetaOf(row: SegRowLike, prev: RunMeta | undefined): RunMeta {
   const changes = sanitizeChanges(row.changes);
   const turn = sanitizeTurn(row.turn);
+  const artifacts = sanitizeArtifacts(row.artifacts);
   return {
     ...(prev ?? {}),
     ...(num(row.seconds) !== undefined ? { seconds: num(row.seconds) } : {}),
@@ -149,6 +152,7 @@ function runMetaOf(row: SegRowLike, prev: RunMeta | undefined): RunMeta {
     ...(row.stopped === true ? { stopped: true } : {}),
     ...(changes !== undefined && changes.length > 0 ? { changes } : {}),
     ...(turn !== undefined && turn.length > 0 ? { turn } : {}),
+    ...(artifacts !== undefined && artifacts.length > 0 ? { artifacts } : {}),
   };
 }
 

@@ -1,4 +1,4 @@
-import type { ChangeFile, SessionEvent, TurnFileChange } from '../types';
+import type { ArtifactFile, ChangeFile, SessionEvent, TurnFileChange } from '../types';
 import { LEADER_RECIPIENT } from '../taskboard/leader';
 
 /**
@@ -31,6 +31,8 @@ export interface RunMeta {
   /** 轮次 checkpoint(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):路径级前像/后像
    *  blob hash——GUI 本轮 diff 页签(冻结前后像)与 checkpoint 撤销(staleness 闸门)数据面 */
   turn?: TurnFileChange[];
+  /** 轮次产物（2026-11-12 spec §3）：非代码交付物，声明+bash 兜底；落档重放同 turn */
+  artifacts?: ArtifactFile[];
 }
 
 /** 内核转录条目(§3.3):段级、payload 完整随档——渲染端零推导 */
@@ -231,6 +233,24 @@ export function sanitizeTurn(raw: unknown): TurnFileChange[] | undefined {
     });
   }
   return out;
+}
+
+/** 轮次产物行净化（行面字段不予信任，同 sanitizeChanges 口径）：path 必带非空、source 枚举
+ *  收敛、callId 严判非空串、path 去重保首现——坏行整条弃 */
+export function sanitizeArtifacts(raw: unknown): ArtifactFile[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ArtifactFile[] = [];
+  const seen = new Set<string>();
+  for (const a of raw) {
+    const o = (a ?? {}) as Partial<Record<keyof ArtifactFile, unknown>>;
+    if (typeof o.path !== 'string' || o.path === '' || typeof o.source !== 'string') continue;
+    if (o.source !== 'write' && o.source !== 'edit' && o.source !== 'bash') continue;
+    if (seen.has(o.path)) continue;
+    seen.add(o.path);
+    const callId = typeof o.callId === 'string' && o.callId !== '' ? o.callId : undefined;
+    out.push({ path: o.path, source: o.source, ...(callId !== undefined ? { callId } : {}) });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /**
@@ -529,6 +549,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       const cur = state.entries[idx]!;
       const changes = sanitizeChanges(p.changes);
       const turn = sanitizeTurn(p.turn);
+      const artifacts = sanitizeArtifacts(p.artifacts);
       const meta: RunMeta = {
         ...(cur.meta ?? {}),
         ...(typeof p.seconds === 'number' ? { seconds: p.seconds } : {}),
@@ -540,6 +561,7 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
         ...(p.stopped === true ? { stopped: true } : {}),
         ...(changes !== undefined && changes.length > 0 ? { changes } : {}),
         ...(turn !== undefined && turn.length > 0 ? { turn } : {}),
+        ...(artifacts !== undefined && artifacts.length > 0 ? { artifacts } : {}),
       };
       return { ...state, entries: replaceAt(state.entries, idx, { ...cur, meta }) };
     }
