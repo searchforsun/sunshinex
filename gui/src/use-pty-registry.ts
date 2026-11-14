@@ -12,7 +12,7 @@ export function usePtyRegistry(
   curSeat: string,
   setTabStates: Dispatch<SetStateAction<TabStates>>,
 ): {
-  handlePtyAllocated: (uid: string, ptyId: string) => void;
+  handlePtyAllocated: (uid: string, ptyId: string, draft?: boolean) => void;
   ptyIdFor: (uid: string) => string | undefined;
   /** 关标签出账:取走即删(命中回 ptyId 供调用方 killPty;未记账回 undefined) */
   takePtyId: (uid: string) => string | undefined;
@@ -23,11 +23,12 @@ export function usePtyRegistry(
   /** 记账键=座位+uid(2026-11-08 浏览器页签隔离同族):页签 uid 只在座位内唯一(类型+地址铸造,
    *  终端同址多开仅 ~序号),跨座位裸 uid 会互串——allocate 记到当前座、A 的 uid 覆盖 B 的账 */
   const seatOf = (uid: string): string => seatKey(curSeat, uid);
-  const handlePtyAllocated = useCallback((uid: string, ptyId: string): void => {
+  const handlePtyAllocated = useCallback((uid: string, ptyId: string, draft?: boolean): void => {
     ptyIdsRef.current.set(seatOf(uid), ptyId);
     // G14.2xx ptyId 落标签参数(gui-state 落盘):刷新后凭档直连旧 pty(replay 重建屏幕),
-    // 不再换新壳丢历史
-    setTabStates((s) => patchTabMeta(s, curSeat, uid, { ptyId }));
+    // 不再换新壳丢历史;draft=true 兼落 draftPty 旗(2026-11-14 欢迎页终端:转移入会话后
+    // ws 寻址段/关闭链仍按 app 域 pty 处理)
+    setTabStates((s) => patchTabMeta(s, curSeat, uid, { ptyId, ...(draft === true ? { draftPty: true } : {}) }));
   }, [curSeat, setTabStates]);
 
   /** G8b pty 记账读取面(TerminalTab 重挂重连判据):命中 = 该标签 pty 存活未 kill——重挂

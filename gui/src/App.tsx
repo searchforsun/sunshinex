@@ -30,6 +30,7 @@ import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setC
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
+import { readPersistedProject } from './welcome/use-welcome-persisted';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { CHAT_MAX_EVENT, chatMaxFor } from './thread-width';
 import { useAppearanceSync } from './use-appearance-sync';
@@ -103,6 +104,10 @@ export function App(): JSX.Element {
 /** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
 function AppShell(): JSX.Element {
   /** 欢迎页 goal 接力(G10):welcome 提交建会话后,Chat 播种完成即提交该目标 */
+  /** 欢迎页选中工作区(2026-11-14 用户裁定「欢迎页终端实时用当前选的工作区目录」):WelcomeComposer
+   *  picked 上提镜像——右栏终端草稿页签 cwd 数据源;缺省回 openRoot(进会话页签语义不变) */
+  const [welcomePicked, setWelcomePicked] = useState<string>(() => readPersistedProject());
+
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
   /** 2026-10-27 欢迎页全局草稿:座判定按页面不按 openSessionId——进欢迎页(新对话)不清会话,残留侧栏即此根因 */
@@ -804,12 +809,15 @@ function AppShell(): JSX.Element {
     }
     const t = tabState.tabs.find((x) => x.uid === uid);
     if (t?.type === 'terminal') {
-      const ptyId = takePtyId(uid);
+      // 记账键=座位+uid:欢迎页转移入会话的终端账仍在 '@welcome' 座(注册表 curSeat 已切)——
+      // 出账 miss 回落盘档 params.ptyId(转移链整座搬运,档必在);app 域 pty(draftPty 旗)走
+      // killPtyAt 直杀(会话段 kill 归属校验不认 '@app')
+      const ptyId = takePtyId(uid) ?? (typeof t.params.ptyId === 'string' ? t.params.ptyId : undefined);
       if (ptyId !== undefined) {
         const conn = connRef.current;
         // killPty 尽力而为:标签已关,失败=daemon 侧 pty 随会话 teardown 兜底回收,无用户可见后果
         if (conn !== null) {
-          if (isWelcome) void conn.killPtyAt(ptyId).catch(() => {});
+          if (isWelcome || t.params.draftPty === true) void conn.killPtyAt(ptyId).catch(() => {});
           else void conn.killPty(openSessionId, ptyId).catch(() => {});
         }
       }
@@ -1225,6 +1233,7 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 presetRoot={composePreset.root ?? undefined}
                 presetSeq={composePreset.seq}
+                onPickedChange={setWelcomePicked}
                 onOpened={(sessionId, root, goal, images) => {
                   setWelcomeGoal({ root, goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });
                   // 发出去=临时会话转正:唯一放行草稿继承的入口(第 4 参,见 openSession 迁移门)
@@ -1302,8 +1311,10 @@ function AppShell(): JSX.Element {
                     ) : (
                     tabEntry(t.type).render({
                       conn: connInstance,
-                      sessionId: openSessionId,
-                      root: openRoot,
+                      // 欢迎页终端(2026-11-14 用户裁定):draft 通道(sessionId 空=openPtyAt(root) 直供
+                      // cwd=root=当前选工作区;app 域 pty 不绑会话,转移入会话凭盘档 ptyId 直连)
+                      sessionId: isWelcome && t.type === 'terminal' ? '' : openSessionId,
+                      root: isWelcome && t.type === 'terminal' ? (welcomePicked !== '' ? welcomePicked : openRoot) : openRoot,
                       params: t.params,
                       services,
                       uid: t.uid,
@@ -1351,6 +1362,9 @@ function AppShell(): JSX.Element {
                   {(isWelcome
                     ? [
                         ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
+                        // 2026-11-14 用户裁定「欢迎页能打开终端」:cwd=当前选工作区(draft 通道),
+                        // 持久化到草稿座,建席随整座继承转移
+                        ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
                       ] as [string, LucideIcon, string, () => void][]
                     : [
                         ['side', MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],

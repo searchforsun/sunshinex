@@ -283,7 +283,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
         >
           {GROUP_ORDER.map((g) => {
             // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
-            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && (!welcomeOnly || e.id === 'web') /* 2026-11-11 用户裁定:欢迎页「+」只留浏览器(终端与会话根目录绑定) */);
+            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && (!welcomeOnly || e.id === 'web' || e.id === 'terminal') /* 2026-11-14 用户裁定翻案「欢迎页能打开终端」:终端回欢迎页菜单——cwd=欢迎页当前选工作区(draft 通道),不再绑会话根目录;浏览器维持 2026-11-11 款 */);
             if (entries.length === 0) return null;
             return (
               <div key={g} role="group" aria-label={g}>

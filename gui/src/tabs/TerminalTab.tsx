@@ -234,7 +234,9 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           let sawFrame = false; // replay/data 任一到达 = pty 活着(回退判据)
           let dead = false; // error 帧+closed = 档键已死(回退触发)
           socket = new PtySocket({
-            url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(draft ? '@welcome' : sessionId)}/pty/${encodeURIComponent(ptyId)}`,
+            // draftPty 旗(2026-11-14 欢迎页终端):/app/pty 分配的 pty 转移入会话后仍走 '@welcome'
+            // 别名段(归属校验只认 @welcome↔@app 对,真会话段会 1008 拒)
+            url: `${toWsUrl(location.origin)}/session/${encodeURIComponent(draft || params.draftPty === true ? '@welcome' : sessionId)}/pty/${encodeURIComponent(ptyId)}`,
             token: '', // G10 退役:免鉴权档恒空(bearer. 空子协议,主 WS 同形态)
             onFrame: (f: PtyFrame): void => {
               if (f.t === 'replay' || f.t === 'data') {

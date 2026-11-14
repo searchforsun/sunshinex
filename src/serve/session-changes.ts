@@ -84,7 +84,9 @@ export async function listChanges(root: string): Promise<Result<{ branch: string
   const files2 = files.filter((f) => !isDirRow(f.path));
   const staged2 = areas.staged.filter((f) => !isDirRow(f.path));
   const unstaged2 = areas.unstaged.filter((f) => !isDirRow(f.path));
-  return ok({ branch, files: files2, staged: staged2.length > 0 ? staged2 : undefined, unstaged: unstaged2.length > 0 ? unstaged2 : undefined });
+  // 两区恒返数组(空=[]):审查页两区测试规格锚(branch-checkout.test「空区=空数组」)——
+  // 33a4439f 曾误折叠 length>0?:undefined,两区面判空语义由消费方自行承担
+  return ok({ branch, files: files2, staged: staged2, unstaged: unstaged2 });
 }
 
 /** porcelain XY 拆两区(2026-11-09 审查页分「已暂存/未暂存」):X=暂存区相对 HEAD、Y=工作区相对暂存区;

@@ -91,7 +91,7 @@ export interface TabRenderProps {
    *  openPty 直连同 ptyId(replay 恢复屏幕);App 侧读 ptyIdsRef.current */
   readonly ptyIdFor: (uid: string) => string | undefined;
   /** G8b pty 生命周期钩子:terminal 标签 openPty 落定回传(App 侧 ptyIdsRef 记账,关标签 kill) */
-  readonly onPtyAllocated: (uid: string, ptyId: string) => void;
+  readonly onPtyAllocated: (uid: string, ptyId: string, draft?: boolean) => void;
   /** G8b T7 会话内开标签面(标签体自治跳转——DirectoryTab 文件行 → openTab('file',{path});
    *  App 注入 openTabInSession,判重/单例经 tab-state 共口径;file/tasks 忽略) */
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
@@ -367,7 +367,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         params={p.params}
         uid={p.uid}
         ptyIdFor={p.ptyIdFor}
-        onPtyAllocated={p.onPtyAllocated}
+        onPtyAllocated={(uid, id) => p.onPtyAllocated(uid, id, p.sessionId === '')}
         draft={p.sessionId === ''}
         draftRoot={p.root}
         onSideAsk={(text: string) => p.startSideChat?.(text)}

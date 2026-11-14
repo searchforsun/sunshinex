@@ -70,6 +70,10 @@ export interface TabParams {
   /** G14.2xx 终端 pty 定址(分配即落参数,随 gui-state 落盘)——刷新后凭此直连旧 pty
    *  (replay 环缓冲重建屏幕);pty 已死(daemon 重启/超时)由 TerminalTab 一次性回退新开 */
   readonly ptyId?: string;
+  /** 欢迎页草稿终端(2026-11-14 用户裁定「欢迎页可开终端」):pty 经 /app/pty 分配(owner='@app'),
+   *  转移入会话后 ws 寻址段仍走 '@welcome' 别名对(归属校验只认 @welcome↔@app)——本旗=持久标记,
+   *  关闭链按 killPtyAt 直杀 */
+  readonly draftPty?: boolean;
 }
 
 /** 标签实例:uid 为全会话唯一键(params 快照开档时定格,判重靠 uid 而非深比较)。
@@ -282,7 +286,7 @@ export function patchTabMeta(
   states: TabStates,
   sessionId: string,
   uid: string,
-  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; sideId?: string; sideJournal?: string; title?: string; insert?: string; insertContent?: string; draftText?: string; draftRefContents?: string },
+  patch: { url?: string; pageTitle?: string; pageIcon?: string; ptyId?: string; draftPty?: boolean; sideId?: string; sideJournal?: string; title?: string; insert?: string; insertContent?: string; draftText?: string; draftRefContents?: string },
 ): TabStates {
   const cur = states[sessionId];
   const target = cur?.tabs.find((t) => t.uid === uid);
@@ -451,7 +455,7 @@ export function rewindSeat(states: TabStates, fromId: string, toId: string, atTs
   const later = (type: TabTypeId, createdAt: number): boolean => atTs !== undefined && createdAt > atTs && REWIND_DROPPED_TYPES.has(type);
   const tabs = seat.tabs
     .filter((t) => !later(t.type, t.createdAt))
-    .map((t) => (t.params.ptyId !== undefined ? { ...t, params: { ...t.params, ptyId: undefined } } : t));
+    .map((t) => (t.params.ptyId !== undefined || t.params.draftPty !== undefined ? { ...t, params: { ...t.params, ptyId: undefined, draftPty: undefined } } : t));
   return {
     ...rest,
     [toId]: {

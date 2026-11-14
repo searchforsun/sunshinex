@@ -47,6 +47,7 @@ export function WelcomeComposer({
   presetRoot,
   presetSeq,
   onOpened,
+  onPickedChange,
 }: {
   conn: WelcomeComposerConn;
   /** 预选工作区(G10-C16):项目行「+」带来的 preset */
@@ -54,6 +55,9 @@ export function WelcomeComposer({
   /** 预选意图序号:递增即按 presetRoot 重选(缺 presetRoot=回默认工作区) */
   presetSeq?: number;
   onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
+  /** 选中工作区上提(2026-11-14 用户裁定「欢迎页终端实时用当前选的工作区目录」):picked 每变
+   *  即回传 App 镜像,右栏终端草稿页签 cwd 数据源;缺省不传=零影响 */
+  readonly onPickedChange?: (root: string) => void;
 }): JSX.Element {
   // 挂载即恢复上次选择(2026-11-12 用户裁定「项目/分支/隔离持久化,切会话不回默认」;失效根由 useWelcomeWorkspaces 回源校验回落默认)
   const [picked, setPicked] = useState<string>(readPersistedProject);
@@ -207,6 +211,10 @@ export function WelcomeComposer({
     if (!plusOpen) return;
     fetchWelcomeSkills();
   }, [plusOpen]);
+  // picked 上提镜像(mount+每次切换;App 侧 welcomePicked 消费)
+  useEffect(() => {
+    onPickedChange?.(picked);
+  }, [picked, onPickedChange]);
   const sendRef = useRef<() => void>(() => undefined);
   const send = (): void => {
     // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
