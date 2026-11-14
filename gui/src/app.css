@@ -4157,3 +4157,19 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-link { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); margin-left: auto; } /* 灰字降存在感,hover 升主文字色(2026-11-14 用户裁定,去箭头/去 hover 底) */
 .sx-artifacts-link:hover { color: var(--fg); }
 .sx-artifacts-page .sx-artifacts-name { cursor: pointer; } /* 产物库名称可点开预览(卡面=正文同款,2026-11-14 用户裁定「和正文一模一样」) */
+
+/* ===== 新建 Sunx 创建弹窗 + 侧栏 kind 徽标(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」
+   同级、独立弹窗;欢迎页 composer 零改动) ===== */
+.sx-sunx-dialog { width: min(460px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.sx-sunx-field { display: flex; flex-direction: column; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
+.sx-sunx-field > span:first-child { font-size: calc(14px * var(--fz)); }
+.sx-sunx-field input, .sx-sunx-field textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
+.sx-sunx-field input:focus-visible, .sx-sunx-field textarea:focus-visible { border-color: var(--border-strong); outline: none; }
+.sx-sunx-field textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
+.sx-sunx-dir { display: flex; align-items: stretch; gap: 6px; }
+.sx-sunx-dir-path { flex: 1; min-width: 0; display: inline-flex; align-items: center; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg); overflow-wrap: anywhere; }
+.sx-sunx-dir button { flex: none; padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); font-size: calc(14px * var(--fz)); }
+.sx-sunx-dir button:hover { border-color: var(--border-strong); }
+/* 侧栏会话行 kind 徽标(标题旁小 chip):文字 14px(界面文字铁律),accent 描边降存在感;
+   flex:none 不挤标题省略/悬浮卡;行 hover 时段 meta 隐而徽标恒显(归属辨识常驻) */
+.sx-sunx-badge { flex: none; display: inline-flex; align-items: center; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--radius-sm); padding: 0 6px; white-space: nowrap; }

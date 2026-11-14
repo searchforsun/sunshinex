@@ -4,11 +4,13 @@ import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
 import { ArrowLeft, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { DirPicker } from '../pages/DirPicker';
+import { NewSunxDialog } from '../welcome/NewSunxDialog';
 import { DirectoryTab } from '../tabs/DirectoryTab';
 import { NavButtons } from '../NavButtons';
 import type { NavControls } from '../nav-history';
 import {
   autoSeenSuppressed,
+  defaultWorkspaceAnchor,
   loadSeenMap,
   persistSeenMap,
   RECENT_VISIBLE_DEFAULT,
@@ -47,7 +49,9 @@ export interface ProjectMenuConn {
   /** 跨工作区扁平最近会话(G10-C2 侧栏 Recents 区;daemon /sessions/recent 聚合) */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
-  newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }>;
+  /** 建会话单点(attach 装壳/组内新建;sunx P1 Task 6 增第 5 参 opts——kind/name/charter 透传,
+   *  缺席时 body 与旧形态逐字节相同):App 实传整只 Connection(运行时满足) */
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   /** 移除工作区(2026-10-23):仅摘出侧栏,数据保留;重新 create 即原地加回 */
@@ -134,6 +138,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [listError, setListError] = useState('');
   /** G14.51 浏览器态服务端目录选择弹层(添加工作区无桌面壳时) */
   const [dirOpen, setDirOpen] = useState(false);
+  /** 「新建 Sunx」弹窗(sunx P1 Task 6,2026-11-15 用户裁定:RECENTS 头与「新对话」同级钮开
+   *  独立弹窗;成功后不走欢迎页,直接 openSession 打开新会话) */
+  const [sunxOpen, setSunxOpen] = useState(false);
   /** 展开中的组 slug(G14.32 恢复组展开;null = 全收)+ sessionsOf 应答缓存/错误 */
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const openSlugRef = useRef<string | null>(null);
@@ -555,6 +562,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       .catch((err: unknown) => setActionError(errText(err)));
   };
 
+  /** 新建 Sunx 成功链(sunx P1 Task 6):清单重拉(组计数/Recents 即时归位)+ 既有 openSession
+   *  链路打开新会话(回调用经 App 装配——抽屉态自动收抽屉,同 attach 行为) */
+  const openCreatedSunx = (sessionId: string, root: string): void => {
+    loadWorkspaces();
+    onOpenSession(sessionId, root);
+  };
+
   return (
     <nav className="sx-menu" aria-label="projects">
       <header className="sx-menu-head" data-drag-band>
@@ -713,6 +727,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                 setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
               }}
               onNewChat={onNewChat}
+              onNewSunx={() => setSunxOpen(true)}
               recents={recents}
               recentLimit={recentLimit}
               onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}
@@ -735,6 +750,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               <DirPicker conn={conn} showManual={false} onCancel={() => setDirOpen(false)} onConfirm={registerFolder} />
             </div>
           </div>
+        )}
+        {/* 「新建 Sunx」创建弹窗(sunx P1 Task 6):组件全局 portal 到 body,挂载点随 dirOpen 弹层惯例 */}
+        {sunxOpen && (
+          <NewSunxDialog
+            open
+            onClose={() => setSunxOpen(false)}
+            conn={conn}
+            defaultRoot={defaultWorkspaceAnchor(rows)}
+            onOpenSession={openCreatedSunx}
+          />
         )}
       </div>
       </>

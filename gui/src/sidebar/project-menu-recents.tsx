@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
-import { ChevronRight, SquarePen } from 'lucide-react';
+import { ChevronRight, Network, SquarePen } from 'lucide-react';
 import { RECENT_VISIBLE_DEFAULT, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
@@ -12,6 +12,9 @@ export interface RecentsSectionProps {
   readonly onToggleRecents: () => void;
   /** 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧,点击开默认工作区欢迎页) */
   readonly onNewChat: () => void;
+  /** 头部「新建 Sunx」同级钮(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」同级、独立弹窗
+   *  ——宿主开 NewSunxDialog;欢迎页 composer 零改动) */
+  readonly onNewSunx: () => void;
   readonly recents: Array<SessionRow & { root: string; slug: string }> | null;
   readonly recentLimit: number;
   readonly onShowMore: () => void;
@@ -30,7 +33,7 @@ export interface RecentsSectionProps {
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, onNewChat, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
+  const { recentsOpen, onToggleRecents, onNewChat, onNewSunx, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -57,21 +60,39 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
             aria-hidden="true"
             className={`sx-side-chev${recentsOpen ? ' open' : ''}`}
           />
-          {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页)。
-              aria 用旧名「new default chat」——与左上 sx-new-chat 主钮区分(测试 /new chat/i 判重) */}
-          <button
-            type="button"
-            className="sx-iconbtn"
-            aria-label="new default chat"
-            data-tip={t('New chat', '新对话')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onNewChat();
-            }}
-          >
-            <SquarePen size={14} strokeWidth={1.75} />
-          </button>
+          {/* 头部动作簇(sunx P1 Task 6):「新建 Sunx」与「新对话」同级同槽(PROJECTS 组头
+              .sx-side-head-actions 右贴容器同款——space-between 会把裸子元素撑散,projects 行同证)。
+              aria 用「new sunx」——与「new default chat」判重(测试按名定位) */}
+          <span className="sx-side-head-actions">
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="new sunx"
+              data-tip={t('New Sunx', '新建 Sunx')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewSunx();
+              }}
+            >
+              <Network size={14} strokeWidth={1.75} />
+            </button>
+            {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页)。
+                aria 用旧名「new default chat」——与左上 sx-new-chat 主钮区分(测试 /new chat/i 判重) */}
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="new default chat"
+              data-tip={t('New chat', '新对话')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewChat();
+              }}
+            >
+              <SquarePen size={14} strokeWidth={1.75} />
+            </button>
+          </span>
         </div>
         <div className={`sx-collapse sx-collapse-recents${recentsOpen ? ' open' : ''}`}>
         <ul className="recent-list" aria-label="recent sessions">
@@ -90,6 +111,7 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 key={`${r.root}/${r.id}`}
                 rowId={r.id}
                 label={label}
+                kind={r.kind}
                 info={{ runs: r.runs, steps: r.steps, createdAt: r.createdAt, rootPath: r.root }}
                 updatedAt={r.updatedAt}
                 active={active}

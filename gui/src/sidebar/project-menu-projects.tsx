@@ -314,6 +314,7 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                               key={sr.id}
                               rowId={sr.id}
                               label={label}
+                              kind={sr.kind}
                               info={{
                                 // 行根优先(2026-11-11 树会话):隔离会话 sr.root=工作树路径,分支/地址都按真根取
                                 branch: root !== undefined ? props.branchByRoot?.[sr.root ?? root] ?? props.branchByRoot?.[root] : undefined,

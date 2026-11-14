@@ -277,6 +277,8 @@ function SessionHoverCard(props: {
 export function SessionRow(props: {
   readonly rowId: string;
   readonly label: string;
+  /** 会话形态(sunx P1 Task 6,meta 读面):'sunx'=编排会话(标题旁小徽标);缺席=standard 无徽标 */
+  readonly kind?: string;
   readonly info: SessionRowInfo;
   readonly updatedAt: number;
   readonly active: boolean;
@@ -357,6 +359,9 @@ export function SessionRow(props: {
           onCardLeave={hoverDelayClose}
         />
       )}
+      {/* kind 徽标(sunx P1 Task 6):标题旁小 chip——文字 14px(界面文字铁律),flex:none 不挤
+          标题省略;标题 span 与相对时间之间落位,行 hover 时段 meta 隐而徽标恒显 */}
+      {props.kind === 'sunx' && <span className="sx-sunx-badge">Sunx</span>}
       <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
         <ArchiveConfirmButton
@@ -390,6 +395,18 @@ export function wsName(row: { root?: string; slug: string }): string {
     if (base !== '') return base;
   }
   return legacyName(row.slug);
+}
+
+/** 默认工作区锚(welcome use-welcome-workspaces 同规则收敛单点):sunshinex-default 锚行 root
+ *  优先,default/sunshinex-default*(带尾哈希变体)同义坍缩次之,全无回落字面 'default'
+ *  (daemon createSession 同规则解析)。新建 Sunx 弹窗缺省工作目录锚消费(sunx P1 Task 6) */
+export function defaultWorkspaceAnchor(rows: WorkspaceRow[] | null): string {
+  const usable = (rows ?? []).filter((r) => r.root !== undefined && r.root !== '');
+  const isDefaultNm = (nm: string): boolean => nm === 'default' || nm.startsWith('sunshinex-default');
+  const anchor =
+    usable.find((r) => r.root !== undefined && pathBasename(r.root) === 'sunshinex-default') ??
+    usable.find((r) => isDefaultNm(pathBasename(r.root ?? r.slug)));
+  return anchor?.root ?? 'default';
 }
 
 /** 行内「确认」morph 点外部取消(2026-10-21 用户裁定:归档/删除二次确认,点击其他地方即取消):
