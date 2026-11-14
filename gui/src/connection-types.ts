@@ -68,6 +68,9 @@ export interface GuiAskReq {
   multiple?: boolean;
   customIndex?: number;
   filterable?: boolean;
+  /** 子智能体路由归因(2026-11-14 用户裁定「子智能体支持 ask_question,路由到主对话」):fork 子面
+   *  问询经父接缝直通主对话——卡头显发起方超链接(点击开该子智能体转录页签);主链直问无此字段 */
+  askedBy?: { label: string; taskId?: string };
 }
 
 /** 阶段三 plan-arm 计划审批挂起请求(对齐 serve PlanApprovalFrame.req 字面,spec §5.1;

@@ -666,73 +666,12 @@ export function builtinTools(
     });
   }
 
-  // ask_question 工具（AskQuestion 线 T2）：ask 接缝注入才注册（原第 9 可选参；两态不变式沿 memory/memoryWrite 接缝先例，旧直调零扰动）。
-  // 问询即用户交互通道本身（规格 D1：零 IO 副作用，manual/plan 免审批沿安全链 ask_question 分支）；
-  // 入参钳制与观察文案单点在此，挂起/渲染/CLI 回落全部在 seam 消费方（Harness 装配层）
-  if (ask !== undefined) {
-    const askSeam = ask;
-    tools.push({
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['question', 'options', 'multiple', 'allowCustom'],
-        properties: {
-          question: { type: 'string', description: 'Question for the user' },
-          options: {
-            type: 'array',
-            minItems: 2,
-            maxItems: 8,
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['label', 'description'],
-              properties: {
-                label: { type: 'string', description: 'Option label shown to the user' },
-                description: { type: ['string', 'null'], description: 'Optional longer explanation; null omits it' },
-              },
-            },
-          },
-          multiple: { type: ['boolean', 'null'], description: 'true enables multi-select; null = single-select' },
-          allowCustom: { type: ['boolean', 'null'], description: 'true adds a free-text "Other" option; null disables it' },
-        },
-      },
-      name: 'ask_question',
-      description:
-        'Ask the user a question with selectable options and wait for their answer. Use when you need the user to choose between alternatives, confirm an approach, or provide free-form input. Supports single-select (default), multi-select (multiple) and a free-text "Other" answer (allowCustom). Returns the user\'s selection, their custom answer, or a dismissal notice if they skipped the question.',
-      category: 'ask',
-      display: { verb: 'ASK', targetFields: ['question'] },
-      executor: async (input: ToolInput) => {
-        const question = String(input.question ?? '').trim();
-        const rawOptions = Array.isArray(input.options) ? input.options : [];
-        if (question === '') throw new CodedToolError('INVALID_ARG', 'question must not be empty');
-        if (rawOptions.length < 2 || rawOptions.length > 8) throw new CodedToolError('INVALID_ARG', `options must contain 2 to 8 items (got ${rawOptions.length})`);
-        const options = rawOptions.map((o) => {
-          const obj = (o ?? {}) as { label?: unknown; description?: unknown };
-          const label = String(obj.label ?? '').trim();
-          if (label === '') throw new CodedToolError('INVALID_ARG', 'every option needs a non-empty label');
-          const description = typeof obj.description === 'string' && obj.description.trim() !== '' ? obj.description.trim() : undefined;
-          return description !== undefined ? { label, description } : { label };
-        });
-        const multiple = input.multiple === true;
-        const allowCustom = input.allowCustom === true;
-        const req: AskUserRequest = {
-          question,
-          options: allowCustom ? [...options, { label: 'Other…' }] : options,
-          ...(multiple ? { multiple: true } : {}),
-          ...(allowCustom ? { customIndex: options.length } : {}),
-        };
-        const answer = await askSeam(req);
-        if (answer.type === 'custom') {
-          const text = answer.text.trim();
-          if (text === '') return execOut('user dismissed the question (no selection)');
-          return execOut(`custom: ${text}`);
-        }
-        if (answer.type === 'dismissed') return execOut('user dismissed the question (no selection)');
-        if (answer.labels.length === 0) return execOut('user dismissed the question (no selection)');
-        return execOut(answer.labels.length > 1 || multiple ? `answers: ${answer.labels.join('; ')}` : `answer: ${answer.labels[0]}`);
-      },
-    });
-  }
+  if (ask !== undefined) tools.push(makeAskQuestionTool(ask));
+
+/** ask_question 工具工厂(AskQuestion 线 T2;2026-11-14 子智能体路由抽出单点):问询即用户交互通道本身
+ *  (规格 D1:零 IO 副作用,manual/plan 免审批沿安全链 ask_question 分支);入参钳制与观察文案单点在此,
+ *  挂起/渲染/CLI 回落全部在 seam 消费方(Harness 装配层)。主链与 fork 子面(spawn 路由,见 subagent
+ *  deriveChildRegistry)共用此工厂——子面 seam 由 Runner 包装归因(askedBy)后直通父接缝 */
 
   // worktree 模型工具（规格 §8/D7）：create/exit/list 三动作；create=建树+Harness 活动根切换单点，
   // exit=回主工作区（未激活显式拒绝），list=登记表摘要（name/branch/dirty，数据面只读）。
@@ -828,6 +767,75 @@ export function builtinTools(
 /** 回执单点（全工具共用：builtinTools 体与 team/agent 两工厂同参同形——此前同名双份，收敛为一条代码路径） */
 function execOut(stdout: string, stderr = ''): ExecResult {
   return { exitCode: 0, stdout, stderr, timedOut: false };
+}
+
+/** ask_question 工具工厂(AskQuestion 线 T2;2026-11-14 子智能体路由抽出单点):问询即用户交互通道本身
+ *  (规格 D1:零 IO 副作用,manual/plan 免审批沿安全链 ask_question 分支);入参钳制与观察文案单点在此,
+ *  挂起/渲染/CLI 回落全部在 seam 消费方(Harness 装配层)。主链与 fork 子面(spawn 路由,见 subagent
+ *  deriveChildRegistry)共用此工厂——子面 seam 由 Runner 包装归因(askedBy)后直通父接缝 */
+export function makeAskQuestionTool(askSeam: AskUserSeam): RegisteredTool {
+  return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['question', 'options', 'multiple', 'allowCustom'],
+      properties: {
+        question: { type: 'string', description: 'Question for the user' },
+        options: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 8,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['label', 'description'],
+            properties: {
+              label: { type: 'string', description: 'Option label shown to the user' },
+              description: { type: ['string', 'null'], description: 'Optional longer explanation; null omits it' },
+            },
+          },
+        },
+        multiple: { type: ['boolean', 'null'], description: 'true enables multi-select; null = single-select' },
+        allowCustom: { type: ['boolean', 'null'], description: 'true adds a free-text "Other" option; null disables it' },
+      },
+    },
+    name: 'ask_question',
+    description:
+      'Ask the user a question with selectable options and wait for their answer. Use when you need the user to choose between alternatives, confirm an approach, or provide free-form input. Supports single-select (default), multi-select (multiple) and a free-text "Other" answer (allowCustom). Returns the user\'s selection, their custom answer, or a dismissal notice if they skipped the question.',
+    category: 'ask',
+    display: { verb: 'ASK', targetFields: ['question'] },
+    executor: async (input: ToolInput) => {
+      const question = String(input.question ?? '').trim();
+      const rawOptions = Array.isArray(input.options) ? input.options : [];
+      if (question === '') throw new CodedToolError('INVALID_ARG', 'question must not be empty');
+      if (rawOptions.length < 2 || rawOptions.length > 8) throw new CodedToolError('INVALID_ARG', `options must contain 2 to 8 items (got ${rawOptions.length})`);
+      const options = rawOptions.map((o) => {
+        const obj = (o ?? {}) as { label?: unknown; description?: unknown };
+        const label = String(obj.label ?? '').trim();
+        if (label === '') throw new CodedToolError('INVALID_ARG', 'every option needs a non-empty label');
+        const description = typeof obj.description === 'string' && obj.description.trim() !== '' ? obj.description.trim() : undefined;
+        return description !== undefined ? { label, description } : { label };
+      });
+      const multiple = input.multiple === true;
+      const allowCustom = input.allowCustom === true;
+      const req: AskUserRequest = {
+        question,
+        options: allowCustom ? [...options, { label: 'Other…' }] : options,
+        ...(multiple ? { multiple: true } : {}),
+        ...(allowCustom ? { customIndex: options.length } : {}),
+      };
+      const answer = await askSeam(req);
+      if (answer.type === 'custom') {
+        const text = answer.text.trim();
+        if (text === '') return execOut('user dismissed the question (no selection)');
+        return execOut(`custom: ${text}`);
+      }
+      if (answer.type === 'dismissed') return execOut('user dismissed the question (no selection)');
+      if (answer.labels.length === 0) return execOut('user dismissed the question (no selection)');
+      return execOut(answer.labels.length > 1 || multiple ? `answers: ${answer.labels.join('; ')}` : `answer: ${answer.labels[0]}`);
+    },
+
+  };
 }
 
 /** load_agent_teams 工具（spec 2026-11-04 §3.3，镜像 skill 工具，2026-11-05 用户裁定更名自 team——命名准确不省略）：清单内 id 才可用、teams 是 live 的；

@@ -1117,7 +1117,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
             ))}
           </div>
         ) : askCards.length > 0 ? (
-          <AskDock askCards={askCards} askPicks={askPicks} setAskPicks={setAskPicks} sendAsk={sendAsk} />
+          <AskDock askCards={askCards} askPicks={askPicks} setAskPicks={setAskPicks} sendAsk={sendAsk} onOpenAgent={onOpenAgent} />
         ) : (
         <ComposerCard
           className="chat-composer"

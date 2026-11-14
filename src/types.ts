@@ -246,6 +246,10 @@ export interface AskUserRequest {
   customIndex?: number;
   /** 筛选卡标记（规格 D6，仅 TUI 渲染面消费）：调用方按 items.length > 8 设置；CLI stdin 编号回落与 headless 桩忽略降级 */
   filterable?: boolean;
+  /** 子智能体路由归因（2026-11-14 用户裁定「子智能体支持 ask_question,路由到主对话」）：fork 子面
+   *  ask_question 经父 ask 接缝直通主对话挂起卡——askedBy=发起方标签(+板任务 id),GUI 卡头超链接
+   *  跳子智能体转录;主链直问无此字段 */
+  askedBy?: { label: string; taskId?: string };
 }
 
 /** AskQuestion 裁决三态：勾选 / 自定义文本 / 放弃（放弃属正常观察非错误，模型据此调整策略） */

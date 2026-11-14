@@ -400,6 +400,9 @@ export class Harness {
         ledger,
         ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
         ...(opts.outputStyle ? { outputStyle: opts.outputStyle } : {}),
+        // 子智能体 ask 路由(2026-11-14 用户裁定):父链真实接缝在座才透传——headless 装配
+        // (opts.ask 缺省=工具注册面落 headlessAskStub)不透传,fork 维持剔除旧制
+        ...(opts.ask ? { ask: opts.ask } : {}),
       },
       agents,
     );

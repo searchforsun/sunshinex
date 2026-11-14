@@ -20,8 +20,10 @@ import { RunLedger } from './ledger';
 import { TaskRegistry } from './tasks';
 import { FORK_EXCLUDED_TOOLS } from './tools/taskboard-tools';
 import { makeTaskWaitTool } from './tools/task-wait';
+import { makeAskQuestionTool } from './tools/builtin';
 import { parseFrontmatterKV } from './skills';
 import type { ModelAdapter, ModelRouter } from '../model/adapter';
+import type { AskUserSeam } from '../types';
 
 /** 四角色任务框定（多角色子智能体 预设：只做框定与档位建议，不新增模型通道）；label/framing 恒英文单语（角色行直接进 fork 提示词） */
 export const ROLE_PRESETS: Record<AgentRole, { label: string; framing: string }> = {
@@ -288,6 +290,10 @@ interface SubagentRunnerDeps {
   tasks?: TaskRegistry;
   /** 输出样式分叉（交互面级，进稳定段）：随装配透传 fork 子 Reactor，子智能体与主链同面 */
   outputStyle?: OutputStyle;
+  /** 父链 ask 接缝（2026-11-14 用户裁定「子智能体支持 ask_question,路由到主对话」）：在场时 fork 子面
+   *  注册路由版 ask_question(归因 askedBy 后直通主对话挂起卡)——缺省(	headless 装配)维持 fork 剔除旧制
+   *  (fork 执行不中途发问,结论回写即应答) */
+  ask?: AskUserSeam;
 }
 
 /** 子智能体生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
@@ -343,7 +349,7 @@ export class SubagentRunner {
    * send_agent_team_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 leader+具名 teammate,fork 子面不发；
    * send_agent_team_message+create_agent_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
    * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁) */
-  deriveChildRegistry(input?: SubagentSpawnInput): ToolRegistry {
+  deriveChildRegistry(input?: SubagentSpawnInput, askedBy?: { label: string; taskId?: string }): ToolRegistry {
     const bindExecWait = (face: ToolRegistry): ToolRegistry => {
       if (face.get('task_wait') === undefined) return face;
       face.unregister('task_wait');
@@ -352,19 +358,28 @@ export class SubagentRunner {
       }
       return face;
     };
+    // 路由版 ask(2026-11-14 用户裁定):askedBy 归因随请求透传,主对话挂起卡卡头显子智能体超链接;
+    // deps.ask 缺省(headless/无接缝装配)不注册=旧制(结论回写即应答)
+    const routeAsk = (child: ToolRegistry, askedBy?: { label: string; taskId?: string }): void => {
+      child.unregister('ask_question');
+      if (askedBy !== undefined && this.deps.ask !== undefined) {
+        const parentAsk = this.deps.ask;
+        child.register(makeAskQuestionTool((req) => parentAsk({ ...req, askedBy })));
+      }
+    };
     if (input?.tools && input.tools.length > 0) {
       const child = this.deps.registry.derive({ only: input.tools });
       child.unregister(TODO_TOOL_NAME);
       child.unregister(SPAWN_TOOL_NAME);
-      child.unregister('ask_question');
+      routeAsk(child, askedBy);
       child.unregister('worktree');
       child.unregister('exit_plan'); // 交稿协议（2026-11-03）：子面不可交稿（规划轮是宿主级 fork,与子智能体无关）
       for (const n of FORK_EXCLUDED_TOOLS) child.unregister(n);
       return bindExecWait(child);
     }
-    return bindExecWait(
-      this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...FORK_EXCLUDED_TOOLS] }),
-    );
+    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...FORK_EXCLUDED_TOOLS] });
+    routeAsk(child, askedBy);
+    return bindExecWait(child);
   }
 
   /** spawn 输入面校验（fail-fast，禁静默）：双缺 INVALID_ARG、tools 未知名 INVALID_ARG（T2 起两段式开通，background 分支放行）。
@@ -563,7 +578,7 @@ export class SubagentRunner {
       const childSignal = opts?.signal ?? this.parentSignal;
       const child = new Reactor({
         safety: childSafety,
-        registry: this.deriveChildRegistry(input),
+        registry: this.deriveChildRegistry(input, { label: finalLabel, ...(opts && opts.taskId !== undefined ? { taskId: opts.taskId } : {}) }),
         context: this.deps.context,
         model: this.deps.model,
         // 主任务暂停级联（2026-10-02 用户裁决）：显式 opts.signal 优先（后台两段式已带任务 abort），

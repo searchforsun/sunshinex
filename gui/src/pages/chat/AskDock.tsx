@@ -10,10 +10,12 @@ export interface AskDockProps {
   readonly askPicks: Record<string, AskPick>;
   readonly setAskPicks: Dispatch<SetStateAction<Record<string, AskPick>>>;
   readonly sendAsk: (pid: string, reply: { type: 'dismissed' } | { type: 'custom'; text: string } | { type: 'selected'; labels: string[] }) => void;
+  /** 子智能体转录跳转(2026-11-14 ask 路由):归因卡超链接回调,App 注入 openAgentTab */
+  readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
 }
 
 export function AskDock(props: AskDockProps): JSX.Element {
-  const { askCards, askPicks, setAskPicks, sendAsk } = props;
+  const { askCards, askPicks, setAskPicks, sendAsk, onOpenAgent } = props;
   const submittable = askCards.every((c) => pickAnswered(askPicks[c.pid]));
   const submit = (): void => {
     if (!submittable) return;
@@ -50,6 +52,7 @@ export function AskDock(props: AskDockProps): JSX.Element {
                       return { ...m, [c.pid]: { ...base, ...patch } };
                     })
                   }
+                  onOpenAgent={onOpenAgent}
                 />
               ))}
             </div>

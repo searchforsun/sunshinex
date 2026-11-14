@@ -45,7 +45,7 @@ export const pickAnswered = (p: AskPick | undefined): boolean => p !== undefined
 /** G4 问询卡(G14.91 受控化):选项卡片化(整卡可点,选中 accent 边+勾图标);Other=默认自由输入卡
  *  (✎+输入框合二为一,customIndex 占位项不再单列——底层 custom 答案恒可发);提交区在 dock 底部统一承载。
  *  G14.93 隐现内部化:溢出检测在卡内选项区——mask 只渐隐选项内容,外框恒完整 */
-export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; onPick: (patch: Partial<AskPick>) => void }): JSX.Element {
+export function AskCard({ req, pick, onPick, onOpenAgent }: { req: GuiAskReq; pick: AskPick; onPick: (patch: Partial<AskPick>) => void; onOpenAgent?: (label: string, agentTitle: string, task?: string) => void }): JSX.Element {
   const multiple = req.multiple === true;
   const selected = pick.labels;
   const [customFocused, setCustomFocused] = useState(false);
@@ -87,6 +87,21 @@ export function AskCard({ req, pick, onPick }: { req: GuiAskReq; pick: AskPick; 
         </span>
         <div className="card-title">{req.question}</div>
       </div>
+      {/* 子智能体路由归因(2026-11-14 用户裁定「选择题卡片上加上子智能体的超链接」):fork 问询经
+          父接缝路由到主对话——卡头下发起来源行,点击开该子智能体的转录页签(在飞聚焦) */}
+      {req.askedBy !== undefined && (
+        <div className="ask-card-source">
+          <span>{t('Asked by sub-agent', '来自子智能体')}</span>
+          <button
+            type="button"
+            className="ask-card-agent-link"
+            data-tip={t('Open sub-agent transcript', '打开子智能体转录')}
+            onClick={() => onOpenAgent?.(req.askedBy!.label, req.askedBy!.label)}
+          >
+            {req.askedBy.label}
+          </button>
+        </div>
+      )}
       <div className={`card-options${overflowing ? ' overflowing' : ''}`} ref={optionsRef}>
         {req.options.map((o, i) => {
           if (i === req.customIndex) return null; // G14.91 Other 占位项与输入卡合二为一
