@@ -16,6 +16,10 @@ async function loadEditors(conn: Connection): Promise<Array<{ id: string; name: 
     .then((r) => {
       editorsCache = r.editors;
       return r.editors;
+    })
+    .catch((err: unknown) => {
+      editorsPromise = null; // 失败不毒化:下次 caret 打开重试(SDD T10 审查裁定)
+      throw err;
     });
   return editorsPromise;
 }
