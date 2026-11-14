@@ -18,7 +18,7 @@ import { projectsRoot, resolveDataDir } from '../config/data-dir';
 export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerResponse): void {
   type RecentRow = {
     id: string; updatedAt: number; firstUser?: string; root: string; slug: string;
-  } & Partial<Pick<SessionSidecarMeta, 'title' | 'runs' | 'steps' | 'tokens' | 'seconds' | 'cacheTokens' | 'promptTokens' | 'childTokens' | 'ctxUsed' | 'ctxWindow' | 'model' | 'effort'>> & { createdAt?: string; liveSessionId?: string };
+  } & Partial<Pick<SessionSidecarMeta, 'title' | 'kind' | 'runs' | 'steps' | 'tokens' | 'seconds' | 'cacheTokens' | 'promptTokens' | 'childTokens' | 'ctxUsed' | 'ctxWindow' | 'model' | 'effort'>> & { createdAt?: string; liveSessionId?: string };
   const out: RecentRow[] = [];
   let entries: fs.Dirent[];
   try {
@@ -58,6 +58,7 @@ export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerRespo
         updatedAt: r.updatedAt,
         ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
         ...(r.title !== undefined ? { title: r.title } : {}),
+        ...(r.kind !== undefined ? { kind: r.kind } : {}), // sunx 形态透出（2026-11-15 P1 Task 4,meta 读面）
         ...(r.runs !== undefined ? { runs: r.runs } : {}),
         ...(r.steps !== undefined ? { steps: r.steps } : {}),
         ...(r.tokens !== undefined ? { tokens: r.tokens } : {}),

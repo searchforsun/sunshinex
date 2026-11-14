@@ -158,6 +158,8 @@ export interface SessionRow {
   /** 会话工作区根(2026-11-10 worktree 会话=树真实路径;悬浮卡路径/复制钮消费) */
   root?: string;
   title?: string;
+  /** 会话形态(2026-11-15 sunx P1 Task 4,meta 读面):'sunx'=编排会话;缺席=standard——GUI 弹窗/徽标消费(Task 6) */
+  kind?: string;
   createdAt?: string;
   runs?: number;
   steps?: number;

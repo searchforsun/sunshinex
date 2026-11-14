@@ -58,6 +58,19 @@ export function mintSessionId(sessions: Map<string, SessionRuntime>, root: strin
   }
 }
 
+/** 创建会话入参（2026-11-15 sunx P1 Task 4 扩面）：mode 既有三值外增 sunx 三键——kind 缺席=standard
+ *  路径零变化（既有调用全部不传,行为逐字节不变）;name/charter 仅 kind='sunx' 时生效（HTTP 面已按
+ *  此收窄,直调方自律） */
+export interface CreateSessionOpts {
+  mode?: 'full-access' | 'acceptEdits';
+  /** 会话形态：'sunx'=编排会话（稳定段章程/工具白名单/fork kind 继承,出生 meta 落 kind/title/charterRev:1） */
+  kind?: 'sunx';
+  /** 自定义会话名：出生 meta 落 title（G14.16 显示链） */
+  name?: string;
+  /** 实例品性原文：装配透传 ContextManager 品性冻结层 */
+  charter?: string;
+}
+
 /**
  * 创建会话(spec §7):root 存在性/目录校验(INVALID_ARG)→ 按 root 装配 SessionRuntime(同 root
  * 多会话允许——各自独立主链,Ruling 2)→ 入注册表 → 置激活。同时向
@@ -70,8 +83,11 @@ export function mintSessionId(sessions: Map<string, SessionRuntime>, root: strin
  * T2:出生即挂新 SessionJournal(`new SessionJournal(dataDir)` 惰性建档——首 run 首条 chain append
  *  才落盘建新档,档 id 同源 newSessionId();空会话零文件,TUI 惰性先例同构)——首 run 起链持久,
  *  后续 /sessions 列档与 attach 重开(chain 派生转录)可消费。
+ * sunx 装配（2026-11-15 P1 Task 4）：kind/name/charter 三键透传 SessionRuntime 实例字段（换铸不丢）；
+ *  出生 meta（kind/title/charterRev:1）由 SessionRuntime.ensureMintedWithBirth 跟既有 birth 链路
+ *  落档——本面零提前建档（幽灵会话语义不变式保持）。
  */
-export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
+export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: CreateSessionOpts): Result<{ sessionId: string }> {
   const abs = root === DEFAULT_ROOT_LITERAL ? defaultScratchRoot() : path.resolve(root);
   let st: fs.Stats;
   try {
@@ -105,6 +121,10 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: { m
     nextSeq: io.nextSeq,
     broadcast: io.broadcast,
     ...(opts?.mode !== undefined ? { mode: opts.mode } : {}),
+    // sunx 三键透传（2026-11-15 P1 Task 4）：构造入参落 SessionRuntime 实例字段,assemble()/出生 meta 消费
+    ...(opts?.kind !== undefined ? { kind: opts.kind } : {}),
+    ...(opts?.name !== undefined ? { name: opts.name } : {}),
+    ...(opts?.charter !== undefined ? { charter: opts.charter } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);

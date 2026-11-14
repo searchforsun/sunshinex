@@ -43,7 +43,7 @@ import * as ptyHandlers from './pty-handlers';
 import type { PtyHandlerIo } from './pty-handlers';
 import type { FileHandlerIo } from './file-handlers';
 import * as lifecycle from './session-lifecycle';
-import type { SessionLifecycleIo } from './session-lifecycle';
+import type { CreateSessionOpts, SessionLifecycleIo } from './session-lifecycle';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
 import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
@@ -261,7 +261,7 @@ export class GuiDaemon {
     this.watcher.unwatchProject(root);
   }
 
-  createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }> {
+  createSession(root: string, opts?: CreateSessionOpts): Result<{ sessionId: string }> {
     return lifecycle.createSessionIn(this.lifecycleIo, root, opts);
   }
 
@@ -513,6 +513,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'POST', path: '/session/:id/tier', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'tier') },
     { method: 'POST', path: '/session/:id/effort', auth: true, run: async (req, res, p) => this.handleSessionTierEffort(req, res, p.id, 'effort') },
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
+    // sunx 品性编辑（2026-11-15 sunx P1 Task 4）：尾追替代行进链+meta.charterRev 递增；非 sunx 409
+    { method: 'POST', path: '/session/:id/charter', auth: true, run: (req, res, p) => this.handleSessionCharter(req, res, p.id) },
     // G14.2xx GUI 面私有态存取(标签页等;CLAUDE.md §13 持久化分层——<slug>/gui/sessions/<id>.json)
     { method: 'GET', path: '/session/:id/gui-state', auth: true, run: async (_req, res, p) => sessionHandlers.handleGuiStateGet(this.sessionIo, res, p.id) },
     { method: 'PUT', path: '/session/:id/gui-state', auth: true, run: async (req, res, p) => sessionHandlers.handleGuiStatePut(this.sessionIo, req, res, p.id) },
@@ -1422,6 +1424,11 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   }
   private async handleSessionNew(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await sessionHandlers.handleSessionNew(this.sessionIo, req, res);
+  }
+
+  /** POST /session/:id/charter {text}（2026-11-15 sunx P1 Task 4）：品性编辑——薄委托 sessionHandlers */
+  private async handleSessionCharter(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    await sessionHandlers.handleSessionCharter(this.sessionIo, req, res, id);
   }
 
   private async handleApprovalReply(req: http.IncomingMessage, res: http.ServerResponse, pid: string): Promise<void> {

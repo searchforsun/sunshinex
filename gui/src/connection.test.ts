@@ -381,6 +381,26 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     await expect(conn.sessionSubmit('s1', 'g')).rejects.toThrow('/session/s1/submit -> 409');
   });
 
+  it('⑥b newSession sunx 三参(2026-11-15 sunx P1 Task 4):第 5 参 opts 透传 kind/name/charter 进 body;缺席时 body 与旧形态逐字节相同(向后兼容锚)', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    // sunx 形态：三键齐发
+    fetchQueue.push(ok({ ok: true, sessionId: 'sx1' }));
+    await conn.newSession('/w', 'acceptEdits', true, 'feat-x', { kind: 'sunx', name: '编排者甲', charter: 'Be terse. Ship small.' });
+    expect(fetchLog[0]?.init?.body).toBe(JSON.stringify({ root: '/w', mode: 'acceptEdits', worktree: true, branch: 'feat-x', kind: 'sunx', name: '编排者甲', charter: 'Be terse. Ship small.' }));
+    // 仅 kind（无名字/品性）：只发 kind 键
+    fetchQueue.push(ok({ ok: true, sessionId: 'sx2' }));
+    await conn.newSession('/w', undefined, undefined, undefined, { kind: 'sunx' });
+    expect(fetchLog[1]?.init?.body).toBe(JSON.stringify({ root: '/w', kind: 'sunx' }));
+    // opts 缺席：body 恒 {root}（既有锚测试 ⑥ 同断言,此处再钉一次向后兼容语义）
+    fetchQueue.push(ok({ ok: true, sessionId: 's1' }));
+    await conn.newSession('/w');
+    expect(fetchLog[2]?.init?.body).toBe(JSON.stringify({ root: '/w' }));
+    // 空白 name/charter 不发键（省发纪律与 branch 同口径）
+    fetchQueue.push(ok({ ok: true, sessionId: 's2' }));
+    await conn.newSession('/w', undefined, undefined, undefined, { kind: 'sunx', name: '   ', charter: '' });
+    expect(fetchLog[3]?.init?.body).toBe(JSON.stringify({ root: '/w', kind: 'sunx' }));
+  });
+
   it('⑦ 旧名退役:返回面无裸端点方法 submit/steer/interrupt/snapshot(G3.5 删旧名裁定——compile 层互补的运行时形状断言)', () => {
     conn = createConnection({ baseUrl: 'http://x', token: 't', onEvent: () => {}, onReset: () => {} });
     const face = conn as unknown as Record<string, unknown>;

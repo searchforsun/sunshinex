@@ -171,8 +171,11 @@ export interface Connection {
   /** GET /dirpicker?path=（缺省 home）：服务端目录浏览（T2） */
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** POST /session/new {root, mode?}:按 root 装配新会话（并置激活）→ {sessionId};mode 可选
-   *  ('acceptEdits' 工作区编辑 / 缺省 'full-access')——缺省不发 body 字段(旧 daemon 兼容) */
-  newSession(root: string, mode?: 'acceptEdits' | 'full-access'): Promise<{ sessionId: string }>;
+   *  ('acceptEdits' 工作区编辑 / 缺省 'full-access')——缺省不发 body 字段(旧 daemon 兼容)。
+   *  第 5 参 opts（2026-11-15 sunx P1 Task 4）：kind/name/charter 透传 body——缺席时 body 与今日
+   *  逐字节相同（向后兼容锚）;kind='sunx'=编排会话（出生 meta 落 kind/title/charterRev:1）,
+   *  name=自定义会话名（meta.title）,charter=品性原文。GUI 弹窗（Task 6）只消费本签名 */
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId(可能异于入参) */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string }>;
@@ -699,11 +702,21 @@ export function createConnection(opts: ConnectionOpts): Connection {
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
+    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
-        body: JSON.stringify({ root, ...(mode !== undefined ? { mode } : {}), ...(worktree === true ? { worktree: true } : {}), ...(typeof branch === 'string' && branch.trim() !== '' ? { branch: branch.trim() } : {}) }),
+        // 缺省字段省发（mode/worktree/branch 既有纪律延续）：opts 缺席时 body 与今日逐字节相同（向后兼容锚）；
+        // charter 原样透传不 trim（用户自撰物料逐字进冻结层）,name trim 后透传
+        body: JSON.stringify({
+          root,
+          ...(mode !== undefined ? { mode } : {}),
+          ...(worktree === true ? { worktree: true } : {}),
+          ...(typeof branch === 'string' && branch.trim() !== '' ? { branch: branch.trim() } : {}),
+          ...(opts?.kind !== undefined ? { kind: opts.kind } : {}),
+          ...(opts?.name !== undefined && opts.name.trim() !== '' ? { name: opts.name.trim() } : {}),
+          ...(opts?.charter !== undefined && opts.charter.trim() !== '' ? { charter: opts.charter } : {}),
+        }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;

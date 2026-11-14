@@ -7,7 +7,7 @@ import { parseAskAnswer, type DaemonFrame } from './daemon-wire';
 import type { AskUserAnswer } from '../types';
 import type { ModelAdapter } from '../model/adapter';
 import { createKernelRuntime } from '../session/runtime';
-import { DEFAULT_ROOT_LITERAL } from './session-lifecycle';
+import { DEFAULT_ROOT_LITERAL, type CreateSessionOpts } from './session-lifecycle';
 
 /** sidecar 问询墙钟上限（fork/ask 旁车一次性调用，与主链长任务预算解耦） */
 const FORK_ABORT_TIMEOUT_MS = 180_000;
@@ -44,7 +44,7 @@ export interface SessionHandlerIo {
   broadcastFrame(frame: DaemonFrame): void;
   model: ModelAdapter;
   attach(id: string, journalId: string): Result<{ sessionId: string; root: string }>;
-  createSession(root: string, opts?: { mode?: 'full-access' | 'acceptEdits' }): Result<{ sessionId: string }>;
+  createSession(root: string, opts?: CreateSessionOpts): Result<{ sessionId: string }>;
   defaultScratchRoot(): string;
   /** 挂起回执路由（P6 §4：表在会话）——daemon 迭代会话表寻址,命中 false 即 404 */
   resolveApproval(pid: string, decision: 'allow' | 'always' | 'deny'): boolean;
@@ -179,6 +179,35 @@ export function handleSessionTitleGet(io: SessionHandlerIo, res: http.ServerResp
   const journalId = session.attachedJournalId;
   if (journalId === undefined) return io.send(res, 200, {});
   io.send(res, 200, { title: readSessionMeta(resolveDataDir(session.root), journalId).title });
+}
+
+/** POST /session/:id/charter {text}（2026-11-15 sunx P1 Task 4）：品性（charter）编辑——
+ *  ①尾追替代行进链（appendChain note——append-only,运行中调用安全,pump 侧链行订阅自动落档+广播,
+ *  模型下一轮即见「以本行为准」）②meta.charterRev=旧值+1（?? 0 起步;出生品性=1,首次编辑即 v2）
+ *  ③200 {ok,charterRev}。非 sunx 会话 409（kind 判定读 sessionKind 实例字段）;text 空白 400;
+ *  未铸档先 ensureJournalMinted 落 birth（meta charterRev:1）再算序次——禁提前建档的幽灵会话
+ *  不变式不破（替代链行紧随 mint,零「只 meta 无实质行」窗）。姓名类语义不在此（rename 既有面） */
+export async function handleSessionCharter(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+  if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const text = (parsed.body as { text?: unknown } | null)?.text;
+  if (typeof text !== 'string' || text.trim() === '') return io.send(res, 400, { error: 'text must be a non-empty string' });
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  if (session.sessionKind !== 'sunx') return io.send(res, 409, { error: 'not a sunx session' });
+  const journalId = session.attachedJournalId;
+  if (journalId === undefined) {
+    session.ensureJournalMinted(); // 未铸档（出生后零实质事件）：mint 即落 birth meta（charterRev:1）
+  }
+  const jid = session.attachedJournalId;
+  if (jid === undefined) return io.send(res, 409, { error: 'no journaled session' });
+  const dataDir = resolveDataDir(session.root);
+  const rev = (readSessionMeta(dataDir, jid).charterRev ?? 0) + 1;
+  // 尾追替代行（裁定字面：英文单语,前缀行+空行+全文）——append-only 链行,运行中安全
+  session.runtime.harness.context.appendChain([{ action: 'note', observation: `[charter v${rev}] supersedes the earlier charter; from now on follow the charter below.\n\n${text}` }]);
+  writeSessionMeta(dataDir, jid, { charterRev: rev });
+  io.send(res, 200, { ok: true, charterRev: rev });
 }
 
 
@@ -571,6 +600,26 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     io.send(res, 400, { error: 'branch must be a string' });
     return;
   }
+  // sunx 会话三参（2026-11-15 sunx P1 Task 4）：kind 仅认 'sunx' 字面（其余值 400——不静默收留,
+  // mode 白名单同纪律）;name=自定义会话名（trim 非空,帽 80 与 rename 同口径）;charter=品性原文
+  // （原样直存,不 trim——用户自撰物料逐字进冻结层）。name/charter 仅 kind='sunx' 时透传——
+  // kind 缺席=standard 路径零变化（旧形态 body 行为逐字节不变,向后兼容锚）。
+  // 校验置于 worktree 创建之前（mode 白名单同位）——非法入参零副作用（不遗孤儿树）
+  const kindRaw = (parsed.body as { kind?: unknown } | null)?.kind;
+  if (kindRaw !== undefined && kindRaw !== 'sunx') {
+    io.send(res, 400, { error: 'invalid kind' });
+    return;
+  }
+  const nameRaw = (parsed.body as { name?: unknown } | null)?.name;
+  if (nameRaw !== undefined && (typeof nameRaw !== 'string' || nameRaw.trim() === '')) {
+    io.send(res, 400, { error: 'name must be a non-empty string' });
+    return;
+  }
+  const charterRaw = (parsed.body as { charter?: unknown } | null)?.charter;
+  if (charterRaw !== undefined && (typeof charterRaw !== 'string' || charterRaw.trim() === '')) {
+    io.send(res, 400, { error: 'charter must be a non-empty string' });
+    return;
+  }
   let wtInfo: { name: string; path: string; branch: string } | undefined;
   if (wtRaw !== undefined) {
     const wt = createWorktree(root, resolveDataDir(root), wtRaw === true ? randomWorktreeName() : (wtRaw as string), {
@@ -583,7 +632,15 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     root = wt.value.path;
     wtInfo = { name: wt.value.name, path: wt.value.path, branch: wt.value.branch };
   }
-  const r = io.createSession(root, mode === 'acceptEdits' ? { mode: 'acceptEdits' } : undefined);
+  const isSunx = kindRaw === 'sunx';
+  const createOpts: CreateSessionOpts = {
+    ...(mode === 'acceptEdits' ? { mode: 'acceptEdits' as const } : {}),
+    ...(isSunx ? { kind: 'sunx' as const } : {}),
+    ...(isSunx && typeof nameRaw === 'string' ? { name: nameRaw.trim().slice(0, 80) } : {}),
+    ...(isSunx && typeof charterRaw === 'string' ? { charter: charterRaw } : {}),
+  };
+  const hasOpts = Object.keys(createOpts).length > 0;
+  const r = io.createSession(root, hasOpts ? createOpts : undefined);
   if (!r.ok) {
     io.send(res, 400, { error: r.error.message });
     return;

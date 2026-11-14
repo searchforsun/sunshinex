@@ -10,6 +10,9 @@ import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 import { MemoryAgentTeamStore } from '../taskboard/team-registry';
 import type { AgentTeamRegistry } from '../taskboard/team-registry';
+import { parseJournalFile, readSessionMeta, sessionsDir } from '../tui/session-journal';
+import { resolveDataDir } from '../config/data-dir';
+import { SUNX_BRIEF_LINE, SUNX_IDENTITY_LINE } from '../harness/prompts/shared';
 
 /** G1 契约收口测试（T1 会话中心迁移）：全链（submit → WS 事件序 → done → 二轮续推——① 起两轮跨会话）
  *  + API 面收口（404 hint/401/409/400）。helper 形态照 daemon.ws.test.ts / daemon.test.ts 惯例，自包含 */
@@ -452,5 +455,140 @@ test('⓿ snapshot 分页(2026-10-26 三期):缺省尾窗 200+full 恒剥;tail/b
     assert.equal(obs.status, 200, '在列 seq 200(无观测字段为 undefined 值)');
     const obs404 = await fetch(`${ctx.http}/session/${ctx.sid}/entry/999999/observation`, { headers: { authorization: 'Bearer test-token' } });
     assert.equal(obs404.status, 404, '越界 seq 404');
+  });
+});
+
+// ---- sunx 会话装配（2026-11-15 sunx P1 Task 4）：kind 生命周期 + charter 编辑 + 换铸存活 ----
+
+/** sunx 合同测试装配样板：kind/name/charter 三参建会话（root 显式传——/sessions 行断言需已知根） */
+async function newSunxSession(http: string, opts: { root: string; name?: string; charter?: string }): Promise<string> {
+  const r = await fetch(`${http}/session/new`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+    body: JSON.stringify({ root: opts.root, kind: 'sunx', ...(opts.name !== undefined ? { name: opts.name } : {}), ...(opts.charter !== undefined ? { charter: opts.charter } : {}) }),
+  });
+  assert.equal(r.status, 200, 'session/new kind=sunx 应 200');
+  return ((await r.json()) as { sessionId: string }).sessionId;
+}
+
+test('⑧ sunx 出生：meta 落 kind/title(name)/charterRev=1；/sessions 行透出 kind；standard 不落任何新键', async () => {
+  const model = new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']);
+  await withDaemon(model, async (ctx) => {
+    const sunxRoot = tmpdir('sunshinex-serve-sunx-root-');
+    try {
+      const sid = await newSunxSession(ctx.http, { root: sunxRoot, name: '编排者甲', charter: 'CHARTER-BIRTH-1' });
+      // 惰性建档（出生写语义）：首实质事件（scripted 一轮）触发 mint——出生 meta 跟 birth 链路落档
+      await ctx.post('跑一轮', sid);
+      await waitFor(() => ctx.daemon.get(sid)!.status() === 'idle', 10000);
+      const jid = ctx.daemon.get(sid)!.attachedJournalId;
+      assert.ok(jid !== undefined, 'sunx 会话已铸档');
+      const meta = readSessionMeta(resolveDataDir(sunxRoot), jid!);
+      assert.equal(meta.kind, 'sunx', '出生 meta 落 kind');
+      assert.equal(meta.title, '编排者甲', 'name 只写 meta.title（G14.16 既有显示链）');
+      assert.equal(meta.charterRev, 1, '出生品性即初版 charterRev=1');
+      // 品性层：charter 经装配透传进 ContextManager 会话冻结层
+      assert.equal(ctx.daemon.get(sid)!.runtime.harness.context.snapshotExport().sig.charter, 'CHARTER-BIRTH-1', 'charter 入冻结层');
+      // /sessions 行透出 kind（meta 读面）
+      const rows = (await (await fetch(`${ctx.http}/sessions?root=${encodeURIComponent(sunxRoot)}`, { headers: { authorization: 'Bearer test-token' } })).json()) as Array<{ id: string; kind?: string; title?: string }>;
+      const row = rows.find((r) => r.id === jid);
+      assert.ok(row !== undefined, '/sessions 列出 sunx 会话');
+      assert.equal(row!.kind, 'sunx', '行透出 kind');
+      assert.equal(row!.title, '编排者甲', '行透出 title');
+
+      // 对照组：standard 会话（kind 缺席）——不落任何新键（零变化不变式；同 root 建——读面同 dataDir
+      // 才是真对照，跨根读缺档会把断言变空转通过）
+      const stdSid = await ctx.newSession(sunxRoot);
+      await ctx.post('标准一轮', stdSid);
+      await waitFor(() => ctx.daemon.get(stdSid)!.status() === 'idle', 10000);
+      const stdJid = ctx.daemon.get(stdSid)!.attachedJournalId;
+      assert.ok(stdJid !== undefined);
+      const stdMeta = readSessionMeta(resolveDataDir(sunxRoot), stdJid!);
+      assert.equal(stdMeta.kind, undefined, 'standard 不落 kind 键');
+      assert.equal(stdMeta.charterRev, undefined, 'standard 不落 charterRev 键');
+    } finally {
+      fs.rmSync(sunxRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+test('⑨ charter 编辑：尾追替代行入链+charterRev 递增；空白 400；非 sunx 409；运行中可调', async () => {
+  // 挂起适配器：编辑端点零模型调用（appendChain 纯链行）,挂起形态专验「运行中可调」
+  await withDaemon(new HangingAdapter(), async (ctx) => {
+    const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    const sunxRoot = tmpdir('sunshinex-serve-charter-root-');
+    try {
+      const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH CHARTER' });
+      // 首次编辑（未跑轮=未铸档）：编辑端点先落 birth（charterRev:1）再算序次——首次编辑即 v2
+      const r1 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'FIRST EDIT CHARTER' }) });
+      assert.equal(r1.status, 200);
+      assert.deepEqual(await r1.json(), { ok: true, charterRev: 2 }, '首次编辑=birth v1 之后的 v2');
+      const jid = ctx.daemon.get(sid)!.attachedJournalId;
+      assert.ok(jid !== undefined, '编辑触发惰性建档（append 前置 mint）');
+      // 链行（模型面）含替代前缀行+全文（journal chain 行）
+      const chain = parseJournalFile(path.join(sessionsDir(resolveDataDir(sunxRoot)), `${jid!}.jsonl`)).events.find((e) => e.t === 'chain') as { t: 'chain'; steps: Array<{ action: string; observation: string }> } | undefined;
+      assert.ok(chain !== undefined, 'chain 行已落档');
+      const obs = chain!.steps.map((s) => s.observation).join('\n');
+      assert.ok(obs.includes('[charter v2] supersedes the earlier charter; from now on follow the charter below.\n\nFIRST EDIT CHARTER'), '替代行前缀+空行+全文逐字在链');
+      // 第二次编辑：旧值+1
+      const r2 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'SECOND EDIT CHARTER' }) });
+      assert.equal(r2.status, 200);
+      assert.deepEqual(await r2.json(), { ok: true, charterRev: 3 }, '旧值+1 递增');
+      assert.equal(readSessionMeta(resolveDataDir(sunxRoot), jid!).charterRev, 3, 'meta.charterRev 落盘');
+
+      // 空白 text → 400
+      for (const text of ['', '   ']) {
+        const bad = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text }) });
+        assert.equal(bad.status, 400, `text=${JSON.stringify(text)} 空白 → 400`);
+      }
+
+      // 非 sunx 会话 → 409 not a sunx session
+      const stdSid = await ctx.newSession();
+      const r409 = await fetch(`${ctx.http}/session/${stdSid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'x' }) });
+      assert.equal(r409.status, 409, 'standard 会话拒绝');
+      assert.equal((await r409.json()).error, 'not a sunx session');
+
+      // 运行中可调（append-only 安全）：挂起 run 占锁中编辑仍 200
+      const runSid = await newSunxSession(ctx.http, { root: sunxRoot });
+      await fetch(`${ctx.http}/session/${runSid}/submit`, { method: 'POST', headers: H, body: JSON.stringify({ goal: '长任务' }) });
+      await waitFor(() => ctx.daemon.get(runSid)!.status() === 'running', 3000);
+      const rRun = await fetch(`${ctx.http}/session/${runSid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'RUNTIME EDIT' }) });
+      assert.equal(rRun.status, 200, '运行中 charter 编辑受理');
+      assert.deepEqual(await rRun.json(), { ok: true, charterRev: 2 });
+      const stop = await fetch(`${ctx.http}/session/${runSid}/interrupt`, { method: 'POST', headers: { authorization: 'Bearer test-token' } });
+      assert.equal(stop.status, 200);
+      await waitFor(() => ctx.daemon.get(runSid)!.status() === 'idle', 3000);
+    } finally {
+      fs.rmSync(sunxRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+test('⑩ 换铸存活：reset 换新运行时后 sunx face 仍白名单、稳定段仍含章程、品性层仍带 charter；setMode 直切亦存活', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const sunxRoot = tmpdir('sunshinex-serve-reset-root-');
+    const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    try {
+      const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'CHARTER-SURVIVE' });
+      const s = ctx.daemon.get(sid)!;
+      // 出生装配面基线（Tasks 1-3 就绪的 harness 面，凭 kind 透传激活）
+      assert.equal(s.sessionKind, 'sunx', 'sessionKind 外窥');
+      assert.ok(s.runtime.harness.tools.has('dispatch_task'), '出生 face 含 dispatch_task');
+      assert.ok(s.runtime.harness.stableSegment().includes(SUNX_IDENTITY_LINE), '出生稳定段含 sunx 身份行');
+      assert.ok(s.runtime.harness.stableSegment().includes(SUNX_BRIEF_LINE), '出生稳定段含编排章程行组');
+      assert.equal(s.runtime.harness.context.snapshotExport().sig.charter, 'CHARTER-SURVIVE', '出生品性层在场');
+      // setMode 直切（轻量不换铸）：面原样存活
+      const mr = await fetch(`${ctx.http}/session/${sid}/mode`, { method: 'POST', headers: H, body: JSON.stringify({ mode: 'acceptEdits' }) });
+      assert.equal(mr.status, 200);
+      assert.ok(s.runtime.harness.stableSegment().includes(SUNX_IDENTITY_LINE), 'setMode 后稳定段仍含身份行');
+      // reset 换铸（真换新运行时）：assemble() 单点透传 kind/charter——面与品性层全存活
+      const rr = await fetch(`${ctx.http}/session/${sid}/reset`, { method: 'POST', headers: { authorization: 'Bearer test-token' } });
+      assert.equal(rr.status, 200);
+      assert.ok(s.runtime.harness.tools.has('dispatch_task'), 'reset 换铸后 face 仍含 dispatch_task');
+      assert.ok(s.runtime.harness.stableSegment().includes(SUNX_IDENTITY_LINE), 'reset 换铸后稳定段仍含身份行');
+      assert.ok(s.runtime.harness.stableSegment().includes(SUNX_BRIEF_LINE), 'reset 换铸后稳定段仍含章程行组');
+      assert.equal(s.runtime.harness.context.snapshotExport().sig.charter, 'CHARTER-SURVIVE', 'reset 换铸后品性层仍带 charter');
+    } finally {
+      fs.rmSync(sunxRoot, { recursive: true, force: true });
+    }
   });
 });

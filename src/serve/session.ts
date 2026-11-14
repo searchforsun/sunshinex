@@ -4,7 +4,7 @@ import { createKernelRuntime } from '../session/runtime';
 import { resolveDataDir } from '../config/data-dir';
 import { parseTier } from '../runtime';
 import { parseEffort } from '../model/effort';
-import type { ModelTier, ReasoningEffort } from '../types';
+import type { ModelTier, ReasoningEffort, SessionKind } from '../types';
 import { ModelSwitcher } from '../model/catalog';
 import type { KernelRuntime } from '../session/runtime';
 import type { ModelAdapter } from '../model/adapter';
@@ -168,6 +168,15 @@ export interface SessionRuntimeOpts {
   mintPid: () => string;
   /** 模型切换器（G10-C1b）：daemon 装配为 ModelSwitcher 时注入（全会话共享同一实例——切换 daemon 级生效） */
   modelSwitcher?: ModelSwitcher;
+  /** 会话形态（2026-11-15 sunx P1 Task 4）：'sunx' 时 assemble() 透传 createKernelRuntime——稳定段身份槽/
+   *  编排章程、SUNX_FACE_TOOLS 白名单、fork 子代 kind 继承全链激活；缺席=standard 装配逐字节不变 */
+  kind?: SessionKind;
+  /** 自定义会话名（2026-11-15 sunx P1 Task 4）：出生 meta 落 title——只进 G14.16 既有显示链
+   *  （侧栏/悬浮卡/列表题），不进提示词（出生身份行不变） */
+  name?: string;
+  /** 实例品性原文（charter，2026-11-15 sunx §17.1 用户面=品性/代码面=charter）：assemble() 透传
+   *  ContextManager 会话冻结层（全局 → 项目 → 品性）；后续编辑走 /session/:id/charter 尾追替代行 */
+  charter?: string;
 }
 
 /** 挂起表条目（P6 §4 下沉,原 daemon-wire 资产）：kind 判别联合；resolve 即回执值（interrupt/reset
@@ -202,6 +211,14 @@ export class SessionRuntime {
   /** 会话工作区根(树会话=工作树路径;可变仅经 rehomeRoot——attach 按档归位,2026-11-11 树会话
    *  重启回主分支根修:GUI 恢复链只有组根,journal 旁车 meta.root 才是真根) */
   root: string;
+  /** 会话形态（2026-11-15 sunx P1 Task 4）：出生装配定死，存实例字段——reset/rehomeRoot 换铸经
+   *  同一 assemble() 每次透传不丢（setMode 真档直切不换铸更是零风险）；sunx 判定外窥供 charter
+   *  编辑端点 409 面消费 */
+  readonly sessionKind: SessionKind | undefined;
+  /** 自定义会话名（2026-11-15）：仅出生 meta.title 消费（显示链），不进提示词 */
+  private readonly sessionName: string | undefined;
+  /** 实例品性原文（2026-11-15 sunx §17.1）：assemble() 每次换铸透传 ContextManager 品性冻结层 */
+  private readonly sessionCharter: string | undefined;
   private opts: SessionRuntimeOpts;
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
@@ -315,6 +332,9 @@ export class SessionRuntime {
     this.opts = opts;
     this.id = opts.id;
     this.root = opts.root;
+    this.sessionKind = opts.kind; // 构造入参落实例字段（2026-11-15 sunx P1 Task 4）——换铸透传不丢
+    this.sessionName = opts.name;
+    this.sessionCharter = opts.charter;
     this.currentMode = opts.mode ?? 'full-access';
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.runtimeImpl = this.assemble();
@@ -538,6 +558,11 @@ export class SessionRuntime {
       model: this.opts.model,
       // plan-arm 态内核闲置于 acceptEdits——替换旧 plan→dontAsk 假映射,内核档位恒三档（spec §3.2）
       mode: this.currentMode === 'plan' ? 'acceptEdits' : this.currentMode,
+      // sunx 装配透传（2026-11-15 sunx P1 Task 4）：kind→稳定段身份槽/编排章程+工具白名单+fork kind
+      // 继承（buildHarness/loopDeps 两路）,charter→ContextManager 品性冻结层——reset/rehomeRoot 换铸
+      // 走本单点,实例字段恒透传不丢;缺席=standard 字节不变
+      ...(this.sessionKind !== undefined ? { kind: this.sessionKind } : {}),
+      ...(this.sessionCharter !== undefined ? { charter: this.sessionCharter } : {}),
       onEvent: (e) => this.pump(e),
       onApproval: (req) => this.suspendApproval(req),
       onAskUser: (req) => this.suspendAsk(req),
@@ -924,7 +949,29 @@ export class SessionRuntime {
     j.start(3); // v3 档:daemon 会话 header v=3(段级行词汇,P11-T2 零兼容)
     this.syncSessionStores(); // journalId 此刻才有——团队/账本按会话根收养，须在首笔工具前完成
     this.persistSnapshotRow();
+    this.persistBirthMeta(); // sunx 出生 meta（2026-11-15 P1 Task 4）：kind/title(name)/charterRev:1——跟 birth 链路走,禁提前建档
     this.emitJournalMinted();
+  }
+
+  /** sunx 出生 meta 落档单点（2026-11-15 sunx P1 Task 4）：只在 ensureMintedWithBirth 内可达
+   *  （journalId 此刻已铸,幽灵会话「空会话零文件」不变式保持——standard/未铸档零提前写面）。
+   *  kind==='sunx' 才落三键;standard 不落任何新键(既有路径字节不变)。title=自定义名(仅进 G14.16
+   *  既有显示链,不进提示词);charterRev:1=出生品性即初版——charter 编辑端点读旧值 ?? 0 后 +1 */
+  private persistBirthMeta(): void {
+    if (this.sessionKind !== 'sunx') return;
+    const journalId = this.journal?.currentId;
+    if (journalId === undefined) return;
+    writeSessionMeta(resolveDataDir(this.opts.root), journalId, {
+      kind: 'sunx',
+      ...(this.sessionName !== undefined ? { title: this.sessionName } : {}),
+      charterRev: 1,
+    });
+  }
+
+  /** 惰性建档外窥（2026-11-15 charter 编辑端点消费）：sunx 会话未铸档时先落 birth（含 meta
+   *  charterRev:1）再算替代序次——替代链行 append 紧随其后,零幽灵窗;已铸档幂等 no-op */
+  ensureJournalMinted(): void {
+    this.ensureMintedWithBirth();
   }
 
   /** journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):旁路帧(不经 pump 主链,
