@@ -6,6 +6,7 @@ import { fail } from '../../result';
 import type { SessionEvent } from '../../types';
 import type { TaskBoard } from '../../taskboard/board';
 import type { AgentTeamRegistry } from '../../taskboard/team-registry';
+import { wakeHintSuffix, type TaskRegistry } from '../tasks';
 
 export const TASKBOARD_TOOL_NAMES = ['create_agent_team', 'create_agent_team_task', 'update_agent_team_task', 'get_agent_team_board'] as const;
 
@@ -28,6 +29,9 @@ export function makeTaskBoardTools(
   board: TaskBoard,
   teams: AgentTeamRegistry,
   onEvent?: (e: SessionEvent) => void,
+  /** bg-wake 分派回执提示接缝（spec §4.2）：harness 账本——create_agent_team_task 回执按
+   *  宿主闸①（wakeHint 装配）× 闸②（主链归属，lead 分派恒满足）合成 WAKE_HINT 尾段；缺省无提示 */
+  tasks?: TaskRegistry,
 ): RegisteredTool[] {
   const createTeam: RegisteredTool = {
     parameters: {
@@ -131,7 +135,7 @@ export function makeTaskBoardTools(
       return {
         exitCode: 0,
         stdout: [
-          `task ${titleBit} created (id=${r.value.taskId}); wait with agent_team_task_wait taskIds=["${r.value.taskId}"] (or other board ids)`,
+          `task ${titleBit} created (id=${r.value.taskId}); wait with agent_team_task_wait taskIds=["${r.value.taskId}"] (or other board ids)${tasks !== undefined ? wakeHintSuffix(tasks) : ''}`,
           ...(queueHint !== undefined ? [queueHint] : []),
           boardTail(board),
         ].join('\n'),

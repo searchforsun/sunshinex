@@ -23,7 +23,7 @@ import { FileStore } from '../storage/adapter';
 import { ModelAdapter, StubAdapter } from '../model/adapter';
 import { SkillsFacade, createSkillsFacade } from './skills';
 import { TeamsFacade, createTeamsFacade } from './teams';
-import { TaskRegistry } from './tasks';
+import { TaskRegistry, type BackgroundTask } from './tasks';
 import { TaskBoard } from '../taskboard/board';
 import { AgentTeamRegistryStore, MemoryTeamStore, TeamStore, TeammateRosterStore, type TeammateRosterRecord } from '../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../taskboard/team-registry';
@@ -74,6 +74,9 @@ export interface HarnessOptions {
   mode?: PermissionMode;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;
+  /** bg-wake 接缝（spec §3.1）：后台任务终态分流（在 boardDispatch 显示过滤**之前**——板任务也纳入唤醒，
+   *  GUI bg-task 帧与后台任务页签的 11-03 显示裁定不受影响）；hint=true 时后台分派回执追加唤醒提示 */
+  wake?: { onFinished(t: BackgroundTask): void; hint?: boolean };
   /** 学习惯例沉淀开关（缺省=随控制面 SUNSHINEX_LEARNED_SKILLS）：成功任务沉淀学习技能至全局数据目录；测试/纯执行场景可关 */
   learnSkills?: boolean;
   /** 会话内持久记忆覆盖（/memory on|off 会话级开关；undefined=随控制面 SUNSHINEX_AUTO_MEMORY）：仅本会话生效、不改盘 */
@@ -218,14 +221,21 @@ export class Harness {
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
     // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
     this.tasks = new TaskRegistry(resolveDataDir(base));
+    // bg-wake 宿主闸①（spec §4.2）：hint=true 装配分派回执唤醒提示（daemon/TUI 注入；CLI 缺省无提示）
+    if (opts.wake?.hint === true) this.tasks.wakeHint = true;
     // 后台任务账本直播(GUI 侧栏/顶栏计数):submit/finish 旁路;adopt 重放不经 onChange。
     // 板任务派发登记(boardDispatch)不直播(2026-11-03 用户裁定「等待团队任务不进后台任务面」)——
-    // 团队任务呈现归任务板,/tasks 端点同口径过滤
-    if (opts.onEvent) {
+    // 团队任务呈现归任务板,/tasks 端点同口径过滤。
+    // bg-wake 终态分流汇（spec §3.1）：done/failed 先行分流 onFinished（板任务也纳入，过滤归
+    // WakeController），在 boardDispatch 显示过滤**之前**——GUI 显示裁定不受影响
+    if (opts.onEvent !== undefined || opts.wake !== undefined) {
       const emit = opts.onEvent;
       this.tasks.setOnChange((task) => {
-        if (task.boardDispatch === true) return;
-        emit({
+        if ((task.status === 'done' || task.status === 'failed') && opts.wake !== undefined) {
+          opts.wake.onFinished(task); // 唤醒汇：终态全量（含板任务），过滤归 WakeController（§3.1）
+        }
+        if (task.boardDispatch === true) return; // 既有 GUI 显示过滤（11-03 裁定）原样保留
+        emit?.({
           type: 'bg-task',
           ts: Date.now(),
           payload: {
@@ -603,7 +613,9 @@ export class Harness {
         },
         display: { verb: 'TEAM' },
       });
-      for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent)) this.tools.register(t);
+      // create_agent_team_task 回执唤醒提示接缝（bg-wake §4.2）：透传账本（宿主闸①+harness 账本；
+      // 闸②恒满足——lead 分派运行在主链）
+      for (const t of makeTaskBoardTools(this.taskboard, this.agentTeams, opts.onEvent, this.tasks)) this.tools.register(t);
       // send_agent_team_message 主链面注册（T2 双面之一,随 taskboard 工具后）:leader→teammate 定向;不入
       // TASKBOARD_TOOL_NAMES（裁定:teammate 派生面也要有,leader-only 剔除表不适用——两面各注册各的注入器）;
       // leader 投递轨 = 事件即时呈现 + FileInbox 落档（Ruling 3）

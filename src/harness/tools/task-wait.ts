@@ -36,7 +36,8 @@ function readTail(filePath: string, lines: number): string {
   }
 }
 
-function receiptBody(t: BackgroundTask, againTool: string): string {
+/** 终态回执体（bg-wake 批C 导出）：宿主起轮处唤醒通知文复用单点（receiptBody(t, WAKE_HINT_RECEIPT_TOOL)） */
+export function receiptBody(t: BackgroundTask, againTool: string): string {
   const code = t.exitCode !== undefined ? `, exit ${t.exitCode}` : '';
   const head = `${t.id} (${t.kind}) ${t.status}${code} — ${t.label}`;
   if (t.status === 'running') {
@@ -284,6 +285,9 @@ export function makeTaskWaitTool(
       const signal = getRunSignal?.();
       const timeoutSeconds = parseTimeout(rawTimeout);
       const result = await waitMixed(tasks, ids, undefined, [], timeoutSeconds, signal);
+      // bg-wake 终态回执消费标记（spec §3.1）：回执面出现的终态行即视为已消费，唤醒汇不再重复通知
+      const doneIds = result.tasks.filter((x) => x.status !== 'running').map((x) => x.id);
+      if (doneIds.length > 0) tasks.markReceipted(doneIds);
       return formatReceipt(result, undefined, [], timeoutSeconds, signal, 'task_wait');
     },
   };
@@ -374,6 +378,12 @@ export function makeAgentTeamTaskWaitTool(
       boardWaitIds = [...new Set(boardWaitIds)];
       ids = [...new Set(ids)];
       const result = await waitMixed(tasks, ids, board, boardWaitIds, timeoutSeconds, signal);
+      // bg-wake 终态回执消费标记（spec §3.1）：台账侧终态行置 receipted；板侧终态 id 经
+      // markBoardReceipted 按 dispatchTag 标签匹配 boardDispatch 台账行
+      const doneIds = result.tasks.filter((x) => x.status !== 'running').map((x) => x.id);
+      if (doneIds.length > 0) tasks.markReceipted(doneIds);
+      const terminalBoardIds = boardWaitIds.filter((id) => BOARD_TERMINAL.has(board.snapshot().tasks[id]?.status ?? 'pending'));
+      if (terminalBoardIds.length > 0) tasks.markBoardReceipted(terminalBoardIds);
       // 板回执权威；台账条目已在 result.tasks 时避免双计——formatReceipt 用 boardWaitIds 条数+台账条
       // 仅输出板行时不把「已关联台账」再算进 finished 总数之外的重复：若 ids 与 board 关联，仍保留台账回执行
       return formatReceipt(result, board, boardWaitIds, timeoutSeconds, signal, 'agent_team_task_wait');
