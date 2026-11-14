@@ -4121,13 +4121,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-caret { border: none; background: transparent; color: var(--fg-secondary); padding: 2px 6px; cursor: pointer; display: inline-flex; align-items: center; }
 .sx-artifacts-caret:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
-/* ===== 轮末产物卡区(2026-11-12 spec §4):单卡整行/多卡 auto-fit 两列(750 档),窄处单列 ===== */
-.sx-artifacts { margin: 14px -6px 4px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); padding: 2px 0 8px; } /* 底色前景淡混不用 bubble-user(暗色气泡开档 #272729 会染黑);横向 padding 0=卡片外缘与改动条外缘对齐(2026-11-14 用户实测两裁) */
+/* ===== 轮末产物卡区(2026-11-12 spec §4;2026-11-14 用户裁定「对标 codex 简洁:去外框/去本轮产物头,全部产物留原位,卡色与 diff 对齐」):无容器框,卡片裸排,卡色=改动条同源(亮 fg4%/暗 bubble-user),横向 -6px=外缘与改动条对齐 ===== */
+.sx-artifacts { margin: 14px -6px 4px; }
 .sx-artifacts-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); }
 .sx-artifacts-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 8px; }
-.sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); }
+[data-theme='dark'] .sx-artifacts-card { background: var(--bubble-user); } /* 卡色与改动条(.run-changes)同源 */
 .sx-artifacts-tile { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-soft); border-radius: 8px; }
 .sx-artifacts-thumb { width: 32px; height: 32px; flex: none; object-fit: cover; border-radius: 8px; }
 .sx-artifacts-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }

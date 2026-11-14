@@ -51,7 +51,6 @@ export function ArtifactsStrip({ artifacts, conn, sessionId, root, onOpenFile, o
   return (
     <div className="sx-artifacts">
       <div className="sx-artifacts-head">
-        <span>{t('Artifacts this turn', '本轮产物')} ({artifacts.length})</span>
         {onOpenArtifacts !== undefined && (
           <button type="button" className="sx-artifacts-link" onClick={onOpenArtifacts}>
             {t('All artifacts →', '全部产物 →')}
