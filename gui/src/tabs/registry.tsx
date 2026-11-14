@@ -481,6 +481,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         refreshNonce={p.panelRefreshNonce}
         onOpenFile={fileTabOf(p)}
         onOpenWeb={(url) => p.openTab('web', { url })}
+        onRunInTerminal={(command) => p.openTab('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command })}
       />
     ),
   },

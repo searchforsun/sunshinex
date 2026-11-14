@@ -27,24 +27,28 @@ export interface SessionRowMenuItem {
   onSelect: () => void;
 }
 
-export function SessionRowMenu({ x, y, items, onClose }: {
+export function SessionRowMenu({ x, y, items, onClose, placement = 'below' }: {
   x: number;
   y: number;
   items: SessionRowMenuItem[];
   onClose: () => void;
+  /** 纵向开向:below=下开(贴上缘锚点默认);above=恒上开(产物卡等下半区锚点,2026-11-14 用户裁定) */
+  placement?: 'below' | 'above';
 }): JSX.Element {
   const ref = useRef<HTMLDivElement | null>(null);
   // 纵向翻转(2026-11-14 用户裁定「下面不够显示就显示到上面」):贴窗口下缘的锚点,菜单下开
   // 被视口裁切 → 改上开(锚上缘留 2px 缝)。挂载后 useLayoutEffect 量高翻转(绘制前生效,无闪跳)
-  const [above, setAbove] = useState(false);
+  const [above, setAbove] = useState(placement === 'above');
   useLayoutEffect(() => {
+    if (placement === 'above') return; // 恒上开,不自动下探
     const el = ref.current;
     if (el === null) return;
     const h = el.offsetHeight;
     if (h === 0) return;
     if (y + 2 + h > window.innerHeight && y > h) setAbove(true);
-  }, [y, items.length]);
-  const aboveTop = (y - 2) / zoomScale() - (ref.current?.offsetHeight ?? 0);
+  }, [y, items.length, placement]);
+  // 上开定位用 translateY(-100%)(自身高度百分比,免读 offsetHeight——首渲染 ref 未挂载读到 0,
+  //  菜单误画在锚点下方,2026-11-15 产物卡实测「还是没有向上翻」根修)
   useEffect(() => {
     const onDown = (e: MouseEvent): void => {
       if (ref.current !== null && e.target instanceof Element && ref.current.contains(e.target)) return;
@@ -70,7 +74,7 @@ export function SessionRowMenu({ x, y, items, onClose }: {
       ref={ref}
       className="sx-menu-pop sx-session-row-pop"
       role="menu"
-      style={{ position: 'fixed', left: x / zoomScale(), top: above ? aboveTop : (y + 2) / zoomScale(), right: 'auto', transform: 'translateX(-100%)', zIndex: 200 }}
+      style={{ position: 'fixed', left: x / zoomScale(), top: (above ? y - 2 : y + 2) / zoomScale(), right: 'auto', transform: above ? 'translate(-100%, -100%)' : 'translateX(-100%)', zIndex: 200 }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((it) =>

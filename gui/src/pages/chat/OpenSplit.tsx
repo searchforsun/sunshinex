@@ -29,11 +29,14 @@ async function loadEditors(conn: Connection): Promise<Array<{ id: string; name: 
  *  菜单;菜单项点击=立即执行。useEditors=true(file 类)=菜单由 /app/editors 实装清单+系统默认装配
  *  (原生图标+反误触缺省);否则用调用方 items(url=系统浏览器/command=复制命令)。主钮文案统一「打开」,
  *  兜底复制路径短暂回显「已复制」 */
-export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDefault, onOpenWith, items = [], ariaLabel }: {
+export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDefault, onOpenWith, items = [], ariaLabel, placement = 'below' }: {
   conn?: Connection;
   onOpError?: (err: unknown) => void;
   /** useEditors=true(file 类)=菜单由 /app/editors 实装清单+系统默认装配,onOpenWith 承接选择 */
   useEditors?: boolean;
+  /** 纵向开向:默认 below+视口放不下自动翻上(SessionRowMenu 承接;2026-11-14 用户裁定
+   *  「默认下边,下边不能展示,翻到上边」,撤恒 above) */
+  placement?: 'below' | 'above';
   label?: string;
   onOpenDefault: () => void;
   /** useEditors 菜单内选中已装应用/系统默认后的执行面 */
@@ -120,7 +123,7 @@ export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDe
       >
         <ChevronDown size={14} strokeWidth={2} />
       </button>
-      {menu !== null && <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={resolvedItems} />}
+      {menu !== null && <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={resolvedItems} placement={placement} />}
     </span>
   );
 }

@@ -58,3 +58,37 @@ describe('SessionRowMenu(会话行快捷菜单)', () => {
     expect(onClose).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('SessionRowMenu 纵向几何(2026-11-14 用户裁定「默认下边,下边不能展示,翻到上边」)', () => {
+  const ITEM = [{ id: 'a', label: 'A', onSelect: vi.fn() }];
+
+  it('默认 below:锚点下缘+2px 开(transform 纯右对齐)', () => {
+    render(<SessionRowMenu x={100} y={80} items={ITEM} onClose={vi.fn()} />);
+    const menu = screen.getByRole('menu');
+    expect(menu.style.top).toBe('82px'); // (y+2)/zoomScale(),测试域 zoom=1
+    expect(menu.style.transform).toBe('translateX(-100%)');
+  });
+
+  it("placement='above':恒上开=top Y−2+translateY(-100%)(自身高百分比定位,免 offsetHeight 首渲染读 0 的竞态——2026-11-15 产物卡实测「还是没有向上翻」根修)", () => {
+    render(<SessionRowMenu x={100} y={80} placement="above" items={ITEM} onClose={vi.fn()} />);
+    const menu = screen.getByRole('menu');
+    expect(menu.style.top).toBe('78px'); // (y-2)/zoomScale()
+    expect(menu.style.transform).toBe('translate(-100%, -100%)');
+  });
+
+  it('below+视口下方放不下:量高后自动翻上(h=0 早退防误翻;rerender 换 y 重触发量高)', () => {
+    const orig = Object.getOwnPropertyDescriptor(window, 'innerHeight');
+    Object.defineProperty(window, 'innerHeight', { value: 200, configurable: true });
+    try {
+      const view = render(<SessionRowMenu x={100} y={180} items={ITEM} onClose={vi.fn()} />);
+      const menu = screen.getByRole('menu');
+      expect(menu.style.transform).toBe('translateX(-100%)'); // 挂载时 jsdom 无布局,h=0 早退不误翻
+      Object.defineProperty(menu, 'offsetHeight', { value: 120, configurable: true });
+      view.rerender(<SessionRowMenu x={100} y={181} items={ITEM} onClose={vi.fn()} />);
+      // y181+2+120 > 200 且 y181 > h120 → 翻上
+      expect(menu.style.transform).toBe('translate(-100%, -100%)');
+    } finally {
+      Object.defineProperty(window, 'innerHeight', orig ?? { value: 768, configurable: true, writable: true });
+    }
+  });
+});
