@@ -39,7 +39,7 @@
 |---|---|---|
 | 类型登记 | `ArtifactFile` 形、`RunMeta.artifacts` 字段、交付物白名单常量 | `src/types.ts`（共享登记点惯例） |
 | 内核工具面 | write/edit 落盘声明收集（白名单过滤 + 去重）：`ArtifactCollector` 类仿 `write-snapshot.ts` 的注入模式，装配期注入工具面 | 新增 `src/harness/tools/artifact-collector.ts`；`src/harness/tools/builtin.ts`（`commitFileWrite` 单点调钩） |
-| session（共享） | 收集器装配与 run 收口 drain、`sanitizeArtifacts`、runmeta 帧扩字段 | `src/serve/session.ts`、`src/session/seglog.ts` |
+| session（共享） | 收集器装配与 run 收口 drain、`sanitizeArtifacts`（与 `sanitizeTurn` 同位）、runmeta 帧扩字段 | `src/serve/session.ts`、`src/session/entry.ts`、`src/session/seglog.ts`（行映射/读侧合入） |
 | serve | bash 兜底并入收尾差集；`GET /session/:id/artifacts` 聚合端点 | `src/serve/session.ts`、新增 `src/serve/artifacts-handlers.ts`、`src/serve/daemon.ts` 路由 |
 | 壳/打开 | `/app/open` 新 id `default`（系统关联打开） | `src/serve/editors-handlers.ts` |
 | GUI 投影 | chat-reducer 摄入、轮末卡区、产物库 tab、分类器/标签同形副本、分体钮共用件 | `gui/src/chat-reducer.ts`、`gui/src/pages/chat/`、`gui/src/pages/Artifacts.tsx`（新）、`gui/src/tabs/registry.tsx`、`gui/src/artifacts.ts`（新） |
@@ -88,7 +88,7 @@ run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差�
 ### 3.5 钳制与净化
 
 - 单 run `artifacts` ≤ 64 条：声明集在先、兜底补足至帽，溢出静默截断（极端轮防炸）；
-- `sanitizeArtifacts`（`seglog.ts`，与 `sanitizeTurn` 同位同模式）：path 串校验 / source 枚举收敛 / 上帽，脏行丢弃；
+- `sanitizeArtifacts`（`entry.ts`，与 `sanitizeTurn` 同位同模式——seglog 行映射/`runMetaOf` 读侧合入）：path 串校验 / source 枚举收敛，脏行丢弃；
 - 缩略图沿既有图片面（`MAX_IMAGE_CHARS` 8MB）；无新权限面（写入走既有权限闸，打开走 `/app/open` 白名单）。
 
 ## 4. GUI 轮末卡区（ArtifactsStrip）
@@ -140,7 +140,7 @@ run 收尾聚合处（`session.ts:1026` 收尾差集 = bash 面增量）:**差�
 
 ### 6.3 刷新
 
-进 tab 拉取 + runmeta 帧到达时重拉（tab 开着才拉）；无新旁路帧（复用既有 runmeta WS 面）。
+进 tab 拉取（程序化开签即触发面板刷新 nonce，`REFRESHABLE_TAB_TYPES` 既有机制）+ 页签刷新钮重拉；无新旁路帧（复用既有 runmeta WS 面）。runmeta 帧到达时开着页签的自动重拉属后置（当前轮收尾后经刷新钮/重进页签取新——产品面足够，避免页签层订事件流的复杂度）。
 
 ### 6.4 空态
 
