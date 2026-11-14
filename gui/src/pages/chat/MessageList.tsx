@@ -504,6 +504,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
             sessionId={sessionId}
             root={root}
             onOpenWeb={onOpenWeb}
+            onRunInTerminal={props.onRunInTerminal}
             onOpenFile={onOpenFileOpt()}
             onOpenDiff={onOpenDiffOpt()}
             onOpenAgent={onOpenAgentOpt()}

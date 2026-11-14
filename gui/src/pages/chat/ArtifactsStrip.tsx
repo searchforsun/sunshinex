@@ -76,10 +76,9 @@ export function ArtifactCardView({ a, conn, root, actions }: {
           {
             id: 'copy',
             label: t('Copy command', '复制命令'),
-            icon: <Copy size={14} strokeWidth={1.75} />,
-            // 点复制:菜单留 COPY_RESET_MS 显 ✓ 尾标再自动关(SessionRowMenu keepOpen 既有语义)
+            // 复制回显=前面的复制图标原地变 √(2026-11-15 用户裁定;非行尾尾标),留 COPY_RESET_MS 再自动关
+            icon: status === 'ok' ? <Check size={14} strokeWidth={2.25} /> : <Copy size={14} strokeWidth={1.75} />,
             keepOpen: true,
-            tail: status === 'ok' ? <Check size={14} strokeWidth={2.25} /> : undefined,
             onSelect: () => copy(a.command),
           },
         ]}

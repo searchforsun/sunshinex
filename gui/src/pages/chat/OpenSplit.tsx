@@ -46,7 +46,7 @@ export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDe
 }): JSX.Element {
   const [editors, setEditors] = useState<Array<{ id: string; name: string }>>([]);
   const [icons, setIcons] = useState<Record<string, string>>({});
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; anchorTop?: number } | null>(null);
 
   const ensureEditors = (): void => {
     if (!useEditors || conn === undefined) return;
@@ -76,7 +76,9 @@ export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDe
     }
     ensureEditors();
     const b = anchor.getBoundingClientRect();
-    setMenu({ x: b.right, y: b.bottom + 2 });
+    // y=锚底(fixed 缝由 SessionRowMenu 渲染侧加);anchorTop=锚顶(above 渲染底缝基准——
+    // 2026-11-15 用户裁定「翻到打开上面,不是覆盖打开」:翻转后菜单底缘贴锚顶上方,不遮打开钮)
+    setMenu({ x: b.right, y: b.bottom, anchorTop: b.top });
   };
 
   const glyph = (id: string): JSX.Element => {
@@ -123,7 +125,7 @@ export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDe
       >
         <ChevronDown size={14} strokeWidth={2} />
       </button>
-      {menu !== null && <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={resolvedItems} placement={placement} />}
+      {menu !== null && <SessionRowMenu x={menu.x} y={menu.y} anchorTop={menu.anchorTop} onClose={() => setMenu(null)} items={resolvedItems} placement={placement} />}
     </span>
   );
 }

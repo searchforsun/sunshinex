@@ -76,6 +76,14 @@ describe('SessionRowMenu 纵向几何(2026-11-14 用户裁定「默认下边,下
     expect(menu.style.transform).toBe('translate(-100%, -100%)');
   });
 
+  it("above+anchorTop:菜单底缘贴锚顶上方 2px——不覆盖打开钮(2026-11-15 用户裁定「翻到打开上面,不是覆盖打开」)", () => {
+    // y=锚底 180,anchorTop=锚顶 140 → top=(140-2)=138px,菜单底=138+translateY(-100%) 回贴 138
+    render(<SessionRowMenu x={100} y={180} anchorTop={140} placement="above" items={ITEM} onClose={vi.fn()} />);
+    const menu = screen.getByRole('menu');
+    expect(menu.style.top).toBe('138px');
+    expect(menu.style.transform).toBe('translate(-100%, -100%)');
+  });
+
   it('below+视口下方放不下:量高后自动翻上(h=0 早退防误翻;rerender 换 y 重触发量高)', () => {
     const orig = Object.getOwnPropertyDescriptor(window, 'innerHeight');
     Object.defineProperty(window, 'innerHeight', { value: 200, configurable: true });

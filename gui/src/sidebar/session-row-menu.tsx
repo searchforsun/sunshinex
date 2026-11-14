@@ -27,9 +27,12 @@ export interface SessionRowMenuItem {
   onSelect: () => void;
 }
 
-export function SessionRowMenu({ x, y, items, onClose, placement = 'below' }: {
+export function SessionRowMenu({ x, y, anchorTop, items, onClose, placement = 'below' }: {
   x: number;
   y: number;
+  /** 锚钮顶缘(above 渲染底缝基准:菜单底=anchorTop−2,完全在打开钮上方不遮钮——
+   *  2026-11-15 用户裁定「翻到打开上面,不是覆盖打开」;缺席退化 y−2,旧调用方零波及) */
+  anchorTop?: number;
   items: SessionRowMenuItem[];
   onClose: () => void;
   /** 纵向开向:below=下开(贴上缘锚点默认);above=恒上开(产物卡等下半区锚点,2026-11-14 用户裁定) */
@@ -47,8 +50,8 @@ export function SessionRowMenu({ x, y, items, onClose, placement = 'below' }: {
     if (h === 0) return;
     if (y + 2 + h > window.innerHeight && y > h) setAbove(true);
   }, [y, items.length, placement]);
-  // 上开定位用 translateY(-100%)(自身高度百分比,免读 offsetHeight——首渲染 ref 未挂载读到 0,
-  //  菜单误画在锚点下方,2026-11-15 产物卡实测「还是没有向上翻」根修)
+  // 上开定位=菜单底缘贴锚顶上方 2px(translateY(-100%) 自身高百分比,免读 offsetHeight——
+  // 首渲染 ref 未挂载读到 0 会误画锚点下方,2026-11-15 产物卡实测根修);下开=top+2px 缝
   useEffect(() => {
     const onDown = (e: MouseEvent): void => {
       if (ref.current !== null && e.target instanceof Element && ref.current.contains(e.target)) return;
@@ -74,7 +77,7 @@ export function SessionRowMenu({ x, y, items, onClose, placement = 'below' }: {
       ref={ref}
       className="sx-menu-pop sx-session-row-pop"
       role="menu"
-      style={{ position: 'fixed', left: x / zoomScale(), top: (above ? y - 2 : y + 2) / zoomScale(), right: 'auto', transform: above ? 'translate(-100%, -100%)' : 'translateX(-100%)', zIndex: 200 }}
+      style={{ position: 'fixed', left: x / zoomScale(), top: (above ? (anchorTop ?? y) - 2 : y + 2) / zoomScale(), right: 'auto', transform: above ? 'translate(-100%, -100%)' : 'translateX(-100%)', zIndex: 200 }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((it) =>
