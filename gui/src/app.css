@@ -4112,3 +4112,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
   min-height: 40px;
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--border-strong); }
+
+/* ===== 「打开 ▾」分体钮共用件(2026-11-12 spec §5.4):产物卡/产物库同用;主钮文本钮+caret 贴边 ===== */
+.sx-artifacts-open { display: inline-flex; align-items: stretch; flex: none; }
+.sx-artifacts-openbtn { border: 1px solid var(--border); border-right: none; background: transparent; color: var(--fg); font-size: calc(13px * var(--fz)); padding: 2px 10px; border-radius: var(--radius-sm) 0 0 var(--radius-sm); cursor: pointer; }
+.sx-artifacts-openbtn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-artifacts-caret { border: 1px solid var(--border); background: transparent; color: var(--fg-secondary); padding: 2px 4px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; cursor: pointer; display: inline-flex; align-items: center; }
+.sx-artifacts-caret:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }

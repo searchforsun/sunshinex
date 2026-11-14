@@ -133,8 +133,8 @@ export interface Connection {
   editorsList(): Promise<{ editors: Array<{ id: string; name: string; exe: string }> }>;
   /** 应用原生图标(exe 资源段抽取,机器级缓存):{mime,data(base64)}——打开菜单品牌图标用 */
   editorIcon(id: string): Promise<{ mime: string; data: string }>;
-  /** 以指定应用打开路径(POST /app/open;spawn detached,id 须在已装名单内) */
-  openInEditor(path: string, id: string): Promise<void>;
+  /** 以指定应用打开路径(POST /app/open;spawn detached,id 在已装名单或 'default';root=相对路径解析根) */
+  openInEditor(path: string, id: string, root?: string): Promise<void>;
   sessionChangeContent(id: string, path: string, area?: 'staged' | 'unstaged'): Promise<{ path: string; oldContent?: string; newContent: string; truncated: boolean; deleted: boolean }>;
   commitChanges(id: string, message: string, stagedOnly?: boolean): Promise<void>;
   /** 审查页两区操作(paths 缺省=该区全部):暂存/取消暂存(改动退回工作区)/丢弃未暂存(不可恢复) */
@@ -636,8 +636,8 @@ export function createConnection(opts: ConnectionOpts): Connection {
     editorIcon(id: string) {
       return getJson(`/app/editors/icon/${encodeURIComponent(id)}`);
     },
-    async openInEditor(path: string, id: string) {
-      await post('/app/open', { path, id });
+    async openInEditor(path: string, id: string, root?: string) {
+      await post('/app/open', { path, id, ...(root !== undefined ? { root } : {}) });
     },
     sessionChangeContent(id: string, path: string, area?: 'staged' | 'unstaged') {
       return getJson(`/session/${encodeURIComponent(id)}/changes/content?path=${encodeURIComponent(path)}${area !== undefined ? `&area=${area}` : ''}`);
