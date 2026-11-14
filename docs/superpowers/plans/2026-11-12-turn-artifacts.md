@@ -349,7 +349,7 @@ git commit -m "feat(artifacts): ArtifactCollector 声明收集器(白名单过�
 
 - [ ] **Step 4: 编译+全量回归**（本任务无新测试面——行为由 Task 3 单测 + Task 5 集成面覆盖；此处验注入不破既有工具面）
 
-Run: `pnpm exec tsc -p tsconfig.json && node --test dist/harness/tools/ 2>&1 | tail -5`
+Run: `pnpm exec tsc -p tsconfig.json && node --test dist/harness/tools/*.test.js 2>&1 | tail -5`（Node v24 起 `node --test <目录>` 把目录当单条目空转——必须用 glob 显式列文件）
 Expected: PASS（编译零错；既有工具测试不红）
 
 - [ ] **Step 5: 提交**
