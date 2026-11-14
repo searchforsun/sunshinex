@@ -4,6 +4,7 @@ import { buildHarness } from '../runtime';
 import type { PermissionMode } from '../harness/security/modes';
 import { setToolDisplayMeta } from '../tui/tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
+import type { BackgroundTask } from '../harness/tasks';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
 import { ModelAdapter } from '../model/adapter';
 import { ApprovalDecision, ApprovalRequest, HistoryStep, ModelTier, OutputStyle, ReasoningEffort, RunOutcome, SessionEvent, TodoItem } from '../types';
@@ -28,6 +29,8 @@ export interface KernelRuntimeOpts {
   onApproval?: (req: ApprovalRequest) => Promise<ApprovalDecision>;
   /** todo_write 接缝（todo_write 规格 D6）：模型更新清单的会话回调（setTodos）；缺省不注入＝Harness no-op */
   onTodos?: (items: TodoItem[]) => void;
+  /** bg-wake 接缝透传（spec §3.1）：daemon/TUI 注入，CLI buildDeps 不注入＝无唤醒 */
+  wake?: { onFinished(t: BackgroundTask): void; hint?: boolean };
   /** 输出样式分叉（交互面级，进稳定段）：缺省恒 terminal（TUI 面专属约束）；留参数仅为显式覆盖语义 */
   outputStyle?: OutputStyle;
   /** exit_plan 出牌接缝（2026-11-03 无感化;2026-11-04 泛化）：awaitDecision 弹卡阻塞等裁决,
@@ -61,6 +64,7 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
     ...(opts.onTodos ? { todos: { set: opts.onTodos } } : {}),
     ...(opts.addDirs ? { addDirs: opts.addDirs } : {}),
+    ...(opts.wake !== undefined ? { wake: opts.wake } : {}),
   });
   // 审批注入不再限 acceptEdits(2026-11-01 用户裁定「完全访问也要弹特殊确认」):asker 只服务
   // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
