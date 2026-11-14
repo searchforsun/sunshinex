@@ -47,31 +47,33 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
       {error === '' && items === null && <div className="sx-artifacts-empty">{t('Loading…', '加载中…')}</div>}
       {empty && <div className="sx-artifacts-empty">{t('No artifacts yet — deliverables the assistant produces (docs, images, sheets) land here.', '暂无产物——助手产出的文档/图片/表格等交付物会出现在这里。')}</div>}
       {items !== null && items.length > 0 && (
-        <div className="sx-artifacts-list">
+        <div className="sx-artifacts-grid">
           {items.map((a) => {
             const name = a.path.split('/').pop() ?? a.path;
-            const dir = a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '';
             const label = artifactKindLabel(a.path);
             return (
-              <div key={`${a.path}:${a.runSeq}`} className="sx-artifacts-row">
-                <FileIcon path={a.path} size={16} />
-                <span
-                  className="sx-artifacts-rowname"
-                  title={a.path}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onOpenFile?.(a.path)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onOpenFile?.(a.path);
-                    }
-                  }}
-                >
-                  {name}
+              <div key={`${a.path}:${a.runSeq}`} className="sx-artifacts-card">
+                <span className="sx-artifacts-tile">
+                  <FileIcon path={a.path} size={20} />
                 </span>
-                {label !== undefined && <span className="sx-artifacts-kind">{label}</span>}
-                <span className="sx-artifacts-rowdir">{dir}</span>
+                <span className="sx-artifacts-main">
+                  <span
+                    className="sx-artifacts-name"
+                    title={a.path}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onOpenFile?.(a.path)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onOpenFile?.(a.path);
+                      }
+                    }}
+                  >
+                    {name}
+                  </span>
+                  {label !== undefined && <span className="sx-artifacts-kind">{label}</span>}
+                </span>
                 <OpenSplit
                   conn={conn}
                   onOpError={onOpError}
