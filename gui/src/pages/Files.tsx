@@ -530,27 +530,17 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
         <div className="files-empty">
           {load.loading && <div className="files-loading" role="status">{t('Loading…', '加载中…')}</div>}
           {load.error !== null && (() => {
-            /* 2026-10-27 用户裁定:错误面友好化——常见状态码人话标题,原始报文退居小字详情 */
-            const raw = load.error;
-            const m = /-> (\d{3})\s*$/.exec(raw);
+            /* 2026-11-14 用户裁定「无法预览的文件用普通黑色文字说明即可,不要暴露错误信息,不要红框」:
+             *  常见状态码人话一句(404 不存在/403 越界/415 过大),其余一律归「不支持预览」——
+             *  原始报文(HTTP 端点路径/状态码)不再露出 */
+            const m = /-> (\d{3})\s*$/.exec(load.error);
             const status = m?.[1];
-            const friendly =
-              status === '404' ? t('File not found — it may have been moved or deleted.', '文件不存在——可能已被移动或删除。')
-              : status === '403' ? t('Read denied — the path is outside trusted directories.', '读取被拒绝——该路径不在受信任的目录内。')
+            const notice =
+              status === '404' ? t('File not found — it may have been moved or deleted.', '文件不存在，可能已被移动或删除。')
+              : status === '403' ? t('This path cannot be previewed.', '该路径不支持预览。')
               : status === '415' ? t('File too large to preview.', '文件过大，无法预览。')
-              : null;
-            let detail = raw;
-            try {
-              detail = decodeURIComponent(raw);
-            } catch {
-              /* 编码异常按原文显 */
-            }
-            return (
-              <div className="files-error" role="alert">
-                <p className="files-error-title">{friendly ?? raw}</p>
-                {friendly !== null && <p className="files-error-detail">{detail}</p>}
-              </div>
-            );
+              : t('This file type does not support preview.', '该文件类型不支持预览。');
+            return <div className="files-notice">{notice}</div>;
           })()}
         </div>
       )}

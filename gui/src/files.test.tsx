@@ -152,10 +152,11 @@ describe('Files 页:输入加载/高亮/横幅/错误态/请求序守卫', () =>
     ]); // 区外:绝对段原样
   });
 
-  it('403 错误态:readFile 拒绝 → 错误消息示出(含 status)', async () => {
+  it('403 错误态:readFile 拒绝 → 普通黑字人话说明(2026-11-14 用户裁定「不要暴露错误信息,不要红框」)', async () => {
     const conn = connOf({ readFile: vi.fn(() => Promise.reject(new Error('/session/s1/file?path=../x -> 403'))) });
     render(<Files conn={conn} sessionId="s1" initialPath="x" />);
-    await waitFor(() => expect(screen.getByText('/session/s1/file?path=../x -> 403')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('This path cannot be previewed.')).toBeDefined());
+    expect(screen.queryByText('/session/s1/file?path=../x -> 403')).toBeNull(); // 原始报文不露出
     expect(document.querySelector('.files-view')).toBeNull(); // 无内容面
   });
 

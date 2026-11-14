@@ -1231,12 +1231,13 @@ describe('G6/G8a 文件标签:右栏标签面 + write 工具 path 按钮跳转',
     const { conn, unmount } = await enterChat();
     conn.fileReject = new Error('/session/s1/file?path=../x -> 403');
     expandSidebarIfCollapsed();
-    // G14.159 树路由开档(2026-10-27 树入左菜单):readFile 拒绝 403 → 行内错误消息示出
+    // G14.159 树路由开档;2026-11-14 用户裁定「不要暴露错误信息,不要红框」→ 普通黑字人话说明
     conn.fileReject = new Error('/session/s1/file?path=fileX.ts -> 403');
     conn.treeByPath = { '': { entries: [{ name: 'fileX.ts', kind: 'file' }] } };
     openSidebarTree();
     fireEvent.click(await screen.findByRole('button', { name: 'fileX.ts' }));
-    await waitFor(() => expect(screen.getByText('/session/s1/file?path=fileX.ts -> 403')).toBeDefined());
+    await waitFor(() => expect(screen.getByText('This path cannot be previewed.')).toBeDefined());
+    expect(screen.queryByText('/session/s1/file?path=fileX.ts -> 403')).toBeNull();
     unmount();
   });
 
