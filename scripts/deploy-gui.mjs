@@ -6,6 +6,11 @@
  *   node scripts/deploy-gui.mjs verify              # gui typecheck(快速门禁;--tests 加跑全量 vitest)
  *   node scripts/deploy-gui.mjs deploy  [--dir ...] # 构建 gui → 推装 dist-gui → 重启应用(壳不变,日常改动用)
  *   node scripts/deploy-gui.mjs reinstall [--dir ...] [--setup ...] [--pristine]
+ *
+ *   打包输出目录(2026-11-14 用户裁定「应该只放到 shell/release 一个里面」):恒 shell/release
+ *   (electron-builder.yml directories.output 单点,--setup 例外=外带现成包)。不同版本=目录内
+ *   不同文件名并存(latestSetup 按 mtime 取本机架构最新),同版本=同名覆盖;禁止每轮
+ *   -c.directories.output 换目录(fresh-NN 手动目录曾堆 29 份×560MB 残留,已清)
  *                                                   # 全链:gui+壳构建→重打包 setup→卸载→装→启动(壳变更用)
  *
  * 参数:
@@ -215,7 +220,10 @@ const reinstall = () => {
     run('pnpm', ['run', 'build']);
     run('pnpm', ['--dir', 'gui', 'run', 'build']);
     run('pnpm', ['--filter', 'sunshinex-shell', 'run', 'build']);
-    console.log('== reinstall: 重打包 setup(electron-builder,镜像 env 已设)==');
+    // 打包输出恒 shell/release(electron-builder.yml directories.output 单点):不同版本=目录内
+    // 不同 setup 文件名并存,同版本=同名覆盖——禁止每轮 -c.directories.output 换目录(2026-11-14
+    // 用户裁定「应该只放到这一个里面」:fresh-NN 手动目录曾堆 29 份×560MB 残留)
+    console.log('== reinstall: 重打包 setup(electron-builder,输出恒 shell/release,镜像 env 已设)==');
     run('pnpm', ['--filter', 'sunshinex-shell', 'run', 'dist'], {
       env: {
         ELECTRON_MIRROR: 'https://npmmirror.com/mirrors/electron/',

@@ -41,6 +41,8 @@ NODE_OPTIONS=--use-system-ca pnpm shell:dist   # 壳全链：版本同步→主�
 ./shell/release/sunshinex-<version>-win-x64-setup.exe /S   # 静默重装（沿用上次安装目录，装毕自启）
 ```
 
+打包输出**恒 `shell/release` 一个目录**（2026-11-14 用户裁定「应该只放到这一个里面」）：不同版本=目录内不同 setup 文件名并存（deploy-gui 按 mtime 取本机架构最新），同版本=同名覆盖；**禁止每轮 `-c.directories.output=release-freshNN` 换目录**（曾堆 29 份×560MB 残留）。
+
 - 纯 `gui/` 改动 deploy 即可（dist-gui 推装+重启，留 dist-gui.old 回滚点）；改 `shell/` 源码必须 reinstall（改动落 app.asar，renderer 推装覆盖不到）。装后装配校验自动化（核 app.asar 壳束标志+进程路径）。`--pristine` 连用户态历史一并清（`%APPDATA%\sunshinex-shell` 与 `~/.sunshinex/gui/`；会话数据 `~/.sunshinex/projects/` 不动）。
 - 壳链铁律：`NODE_OPTIONS=--use-system-ca` 必带（打包下载组件走 Node TLS）；整链必须走根 `shell:dist`（壳包自身 dist 无 esbuild，出旧束）；退出码勿经管道取；装新先杀旧；asar 无压缩可 `grep -a` 直查新束标志。
 
