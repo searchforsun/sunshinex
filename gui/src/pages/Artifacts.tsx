@@ -72,7 +72,6 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
                 </span>
                 {label !== undefined && <span className="sx-artifacts-kind">{label}</span>}
                 <span className="sx-artifacts-rowdir">{dir}</span>
-                <span className="sx-artifacts-rowrun">#{a.runSeq}</span>
                 <OpenSplit
                   conn={conn}
                   onOpError={onOpError}

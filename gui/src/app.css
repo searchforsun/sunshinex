@@ -4146,4 +4146,3 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-rowname { color: var(--fg); font-size: calc(14px * var(--fz)); cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-artifacts-rowname:hover { text-decoration: underline; }
 .sx-artifacts-rowdir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
-.sx-artifacts-rowrun { color: var(--fg-tertiary); font: calc(12px * var(--fz)) var(--font-mono); flex: none; }
