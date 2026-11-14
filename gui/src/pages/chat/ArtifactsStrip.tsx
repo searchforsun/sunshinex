@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Globe, Terminal } from 'lucide-react';
+import { Copy, ExternalLink, Globe, Terminal } from 'lucide-react';
 import { FileIcon } from '../../file-icon';
 import { OpenSplit } from './OpenSplit';
 import { artifactKindLabel, artifactTitleOf, type Artifact } from '../../artifacts';
@@ -43,25 +43,18 @@ export function ArtifactCardView({ a, conn, root, actions }: {
       </span>
     );
     actionRow = (
-      <span className="sx-artifacts-open">
-        <button
-          type="button"
-          className="sx-artifacts-openbtn"
-          aria-label={`${t('Open', '打开')} ${name}`}
-          onClick={() => actions.onOpenWeb?.(a.url)}
-        >
-          {t('Open', '打开')}
-        </button>
-        <button
-          type="button"
-          className="sx-artifacts-caret"
-          aria-label={t('Open in system browser', '系统浏览器打开')}
-          data-tip={t('Open in system browser', '系统浏览器打开')}
-          onClick={() => openExternalUrl(a.url)}
-        >
-          <ExternalLink size={14} strokeWidth={1.75} />
-        </button>
-      </span>
+      <OpenSplit
+        ariaLabel={`${t('Open', '打开')} ${name}`}
+        onOpenDefault={() => actions.onOpenWeb?.(a.url)}
+        items={[
+          {
+            id: 'browser',
+            label: t('System browser', '系统浏览器'),
+            icon: <ExternalLink size={14} strokeWidth={1.75} />,
+            onSelect: () => openExternalUrl(a.url),
+          },
+        ]}
+      />
     );
   } else if (a.kind === 'command') {
     tile = (
@@ -70,17 +63,19 @@ export function ArtifactCardView({ a, conn, root, actions }: {
       </span>
     );
     actionRow = (
-      <span className="sx-artifacts-open">
-        <button
-          type="button"
-          className="sx-artifacts-openbtn"
-          aria-label={`${t('Copy command', '复制命令')} ${name}`}
-          data-tip={status === 'ok' ? t('Copied', '已复制') : t('Copy command', '复制命令')}
-          onClick={() => copy(a.command)}
-        >
-          {status === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-        </button>
-      </span>
+      <OpenSplit
+        ariaLabel={`${t('Copy command', '复制命令')} ${name}`}
+        label={status === 'ok' ? t('Copied', '已复制') : t('Open', '打开')}
+        onOpenDefault={() => copy(a.command)}
+        items={[
+          {
+            id: 'copy',
+            label: t('Copy command', '复制命令'),
+            icon: <Copy size={14} strokeWidth={1.75} />,
+            onSelect: () => copy(a.command),
+          },
+        ]}
+      />
     );
   } else {
     tile = (
@@ -91,6 +86,7 @@ export function ArtifactCardView({ a, conn, root, actions }: {
     actionRow = (
       <OpenSplit
         conn={conn}
+        useEditors
         onOpError={actions.onOpError}
         ariaLabel={`${t('Open', '打开')} ${name}`}
         onOpenDefault={() => actions.onOpenFile?.(a.path)}

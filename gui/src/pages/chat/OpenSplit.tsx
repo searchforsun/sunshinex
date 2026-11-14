@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
-import { SessionRowMenu } from '../../sidebar/session-row-menu';
+import { SessionRowMenu, type SessionRowMenuItem } from '../../sidebar/session-row-menu';
 import { editorIconCached, editorIconPut } from '../../ui-util';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
@@ -24,16 +24,28 @@ async function loadEditors(conn: Connection): Promise<Array<{ id: string; name: 
   return editorsPromise;
 }
 
-const NATIVE_FALLBACK: Readonly<Record<string, string>> = { explorer: 'default-folder', vscode: 'file-type-vscode', cursor: 'folder-type-cursor' };
+function EditorGlyph({ id, icons, size = 14 }: { id: string; icons: Record<string, string>; size?: number }): JSX.Element {
+  const url = icons[id] ?? editorIconCached(id);
+  if (url !== undefined) return <img src={url} alt="" style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
+  return <ExternalLink size={size - 2} strokeWidth={1.75} />;
+}
+void EditorGlyph;
 
-/** 「打开 ▾」分体钮共用件(2026-11-12 spec §5.4):主钮=调用方默认动作(产物卡/产物库=侧栏预览),
- *  ∨=已装应用+「系统默认」菜单;菜单项点击=立即以该目标打开(与顶栏「选中仅设默认」的反误触
- *  语义刻意区分——卡片菜单是单文件动作,spec §5.2) */
-export function OpenSplit({ conn, onOpError, onOpenDefault, onOpenWith, ariaLabel }: {
-  conn: Connection;
+/** 「打开 ▾」统一动作钮(2026-11-14 用户裁定「所有的都是同一 打开 ▾」):主钮=该类产物的主动作
+ *  (file=侧栏预览/url=右栏 Web 页签/command=复制),caret=选项菜单;菜单项点击=立即执行。
+ *  useEditors=true(file 类)=菜单由 /app/editors 实装清单+系统默认装配(原生图标+反误触缺省);
+ *  否则用调用方 items(url=系统浏览器/command=复制命令)。主钮文案统一「打开」,command 类复制
+ *  后短暂回显「已复制」 */
+export function OpenSplit({ conn, onOpError, useEditors = false, label, onOpenDefault, onOpenWith, items = [], ariaLabel }: {
+  conn?: Connection;
   onOpError?: (err: unknown) => void;
+  /** useEditors=true(file 类)=菜单由 /app/editors 实装清单+系统默认装配,onOpenWith 承接选择 */
+  useEditors?: boolean;
+  label?: string;
   onOpenDefault: () => void;
-  onOpenWith: (id: string) => void;
+  /** useEditors 菜单内选中已装应用/系统默认后的执行面 */
+  onOpenWith?: (id: string) => void;
+  items?: SessionRowMenuItem[];
   ariaLabel: string;
 }): JSX.Element {
   const [editors, setEditors] = useState<Array<{ id: string; name: string }>>([]);
@@ -41,6 +53,7 @@ export function OpenSplit({ conn, onOpError, onOpenDefault, onOpenWith, ariaLabe
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const ensureEditors = (): void => {
+    if (!useEditors || conn === undefined) return;
     loadEditors(conn)
       .then((list) => {
         setEditors(list);
@@ -72,53 +85,48 @@ export function OpenSplit({ conn, onOpError, onOpenDefault, onOpenWith, ariaLabe
   const glyph = (id: string): JSX.Element => {
     const url = icons[id] ?? editorIconCached(id);
     if (url !== undefined) return <img src={url} alt="" style={{ width: 14, height: 14, display: 'block', objectFit: 'contain' }} />;
-    const key = NATIVE_FALLBACK[id];
-    if (key === undefined) return <ExternalLink size={14} strokeWidth={1.75} />;
     return <ExternalLink size={14} strokeWidth={1.75} />;
   };
+
+  const resolvedItems: SessionRowMenuItem[] = useEditors
+    ? [
+        ...editors.map((e) => ({
+          id: e.id,
+          label: e.name,
+          icon: glyph(e.id),
+          onSelect: () => {
+            setMenu(null);
+            onOpenWith?.(e.id);
+          },
+        })),
+        { id: 'sx-divider', label: '', divider: true, onSelect: () => {} },
+        {
+          id: 'default',
+          label: t('System default', '系统默认'),
+          icon: <ExternalLink size={14} strokeWidth={1.75} />,
+          onSelect: () => {
+            setMenu(null);
+            onOpenWith?.('default');
+          },
+        },
+      ]
+    : items;
 
   return (
     <span className="sx-artifacts-open">
       <button type="button" className="sx-artifacts-openbtn" aria-label={ariaLabel} onClick={onOpenDefault}>
-        {t('Open', '打开')}
+        {label ?? t('Open', '打开')}
       </button>
       <button
         type="button"
         className="sx-artifacts-caret"
-        aria-label="open with"
-        data-tip={t('Open with', '打开方式')}
+        aria-label="options"
+        data-tip={t('Options', '更多方式')}
         onClick={(e) => toggle(e.currentTarget)}
       >
         <ChevronDown size={14} strokeWidth={2} />
       </button>
-      {menu !== null && (
-        <SessionRowMenu
-          x={menu.x}
-          y={menu.y}
-          onClose={() => setMenu(null)}
-          items={[
-            ...editors.map((e) => ({
-              id: e.id,
-              label: e.name,
-              icon: glyph(e.id),
-              onSelect: () => {
-                setMenu(null);
-                onOpenWith(e.id);
-              },
-            })),
-            { id: 'sx-divider', label: '', divider: true, onSelect: () => {} },
-            {
-              id: 'default',
-              label: t('System default', '系统默认'),
-              icon: <ExternalLink size={14} strokeWidth={1.75} />,
-              onSelect: () => {
-                setMenu(null);
-                onOpenWith('default');
-              },
-            },
-          ]}
-        />
-      )}
+      {menu !== null && <SessionRowMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={resolvedItems} />}
     </span>
   );
 }
