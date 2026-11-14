@@ -1492,7 +1492,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none; background: transparent; color: var(--fg-tertiary);
   font-size: calc(14px * var(--fz)); cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm);
   flex: none;
-}.run-changes-undo:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }.run-changes-list { padding: 2px 0 6px; border-top: 1px solid var(--border-subtle); }.run-changes-row {
+}.run-changes-undo:hover { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }.run-changes-list { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.24s ease; } /* 0fr→1fr 平滑展开(2026-11-14 用户裁定);border-box 下闭态 0 行轨全收 */
+.run-changes-list.open { grid-template-rows: 1fr; }
+.run-changes-list-clip { min-height: 0; overflow: hidden; border-top: 1px solid transparent; padding: 2px 0 6px; transition: border-top-color 0.2s ease; }
+.run-changes-list.open .run-changes-list-clip { border-top-color: var(--border-subtle); }.run-changes-row {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 10px; border-radius: 0; /* hover=整行提亮,无椭圆内缩(2026-11-11 用户裁定) */
 }.run-changes-row:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); } /* 2026-11-13 用户实测「hover 不显」:行 hover 原 5% 叠卡底 4% 仅差 1% 肉眼不可辨,提到菜单 hover 同族 9% */
@@ -4126,7 +4129,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-caret:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
 /* ===== 轮末产物卡区(2026-11-12 spec §4;2026-11-14 用户裁定「对标 codex 简洁:去外框/去本轮产物头,全部产物留原位,卡色与 diff 对齐」):无容器框,卡片裸排,卡色=改动条同源(亮 fg4%/暗 bubble-user),横向 -6px=外缘与改动条对齐 ===== */
-.sx-artifacts { margin: 14px -6px 4px; }
+.sx-artifacts { margin: 14px -6px 20px; } /* 底距 20px=与下方 diff 条的间隔(2026-11-14 用户裁定「diff 上边距应该到 20px」) */
 .sx-artifacts-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); }
 .sx-artifacts-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }

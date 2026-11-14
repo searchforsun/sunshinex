@@ -182,8 +182,8 @@ export function RunChangesBar({
           {t('Undo', '撤销')}
         </button>
       </div>
-      {open && (
-        <div className="run-changes-list">
+      <div className={`run-changes-list${open ? ' open' : ''}`}>
+        <div className="run-changes-list-clip">
           {visible.map((c) => {
             const norm = c.path.replaceAll('\\', '/');
             const base = pathBasename(norm);
@@ -232,7 +232,7 @@ export function RunChangesBar({
             );
           })}
         </div>
-      )}
+      </div>
     </div>
   );
 }/** 统一图标钮(G11 §8):纯图标 + data-tip Tooltip(视觉层)+ aria-label(可达性/查询锚)。
