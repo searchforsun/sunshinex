@@ -369,6 +369,35 @@ export interface TurnFileChange {
   afterDeleted?: boolean;
 }
 
+/** 轮次产物行（2026-11-12 spec §3.1；gui 侧另有同形局部声明不引——惯例同 ChangeFile）：
+ *  内核写盘声明（write/edit 工具面）或 run 收尾 bash 差集兜底并入，随 RunMeta.artifacts
+ *  落档重放；渲染端（轮末卡区/产物库）只读投影，零二次推导 */
+export interface ArtifactFile {
+  /** 项目根相对路径（/ 分隔） */
+  path: string;
+  /** 声明来源：write/edit=工具面写盘声明；bash=收尾差集兜底（callId 缺省） */
+  source: 'write' | 'edit' | 'bash';
+  /** 末次写入调用关联（未来 diff 寻址；bash 兜底无） */
+  callId?: string;
+}
+
+/** 交付物扩展名白名单（2026-11-12 spec §3.2 非代码口径，用户裁定）：内核声明钩与 bash 兜底
+ *  共用单点；GUI 侧类目标签副本在 gui/src/artifacts.ts */
+const ARTIFACT_EXTS: ReadonlySet<string> = new Set([
+  'md', 'txt', 'pdf', 'rst',
+  'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg',
+  'xlsx', 'xls', 'csv', 'tsv',
+  'pptx', 'ppt', 'docx', 'doc',
+  'json', 'yaml', 'yml', 'toml', 'xml',
+]);
+
+/** 项目根相对路径是否交付物（基名扩展名判，大小写不敏感；点开头顶格不认） */
+export function isDeliverablePath(relPath: string): boolean {
+  const base = relPath.replaceAll('\\', '/').split('/').pop() ?? '';
+  const dot = base.lastIndexOf('.');
+  return dot > 0 && ARTIFACT_EXTS.has(base.slice(dot + 1).toLowerCase());
+}
+
 /** 审批卡种类（spec 5.2）：'read' 为读围栏（D1）新增通道 */
 type ApprovalKind = 'command' | 'mcp' | 'webfetch' | 'websearch' | 'write' | 'read';
 
