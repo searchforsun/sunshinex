@@ -4,7 +4,7 @@
  * （单遍替换，插入值不参与二次扫描）。本目录全部文案恒英文单语（CLAUDE.md §15 写链面），
  * 动态源（日期等）由消费点在调用时注入，模板本体零时变字段。
  */
-import type { OutputStyle } from '../../types';
+import type { OutputStyle, SessionKind } from '../../types';
 
 /** 模板占位符填充：{{KEY}} → vars.KEY；未声明键原样保留（畸形占位符显式可见，不静默吞） */
 export function render(template: string, vars: Record<string, string>): string {
@@ -84,10 +84,56 @@ export const FILE_PATH_LINE =
 export const IMAGE_PLACEMENT_LINE =
   'When showing images in your reply with Markdown image syntax (![alt](path)), place them together at the end of the reply, after all the text, using the same path rules as file links; do not insert images between paragraphs.';
 
+// —— Sunx 系统总章程（2026-11-14 设计 §6/§17.1「系统总章程」层 + 2026-11-15 控制裁定：常量收本模块单点、
+//    英文单语、全部 Sunx 实例字节一致——跨实例前缀共享最大化；kind='sunx' 分支消费，其余会话零接触） ——
+// 职责清单按裁定七项逐行落定（一行一意）：身份替换 / 派发纪律（简报自包含）/ 分解上限指引 / 收轮纪律 /
+// 唤醒语义 / 连续自动唤醒上限告知 / 问询（HITL）指引。
+
+/** Sunx 身份行（IDENTITY_LINE 同槽位单点替换，零双份）：编排者只分解与派发，自身无执行工具 */
+export const SUNX_IDENTITY_LINE =
+  'You are the Sunx orchestrator: decompose the user\'s goal and dispatch every unit of work via the dispatch_task tool — never do the work yourself; you have no execution tools.';
+
+/** 派发纪律：简报自包含契约（goal/事实/路径/约束/验收），worker 不可见主链对话（spec §「模糊委派」教训） */
+export const SUNX_BRIEF_LINE =
+  'Make every dispatch brief self-contained: state the goal, the relevant facts, file paths, constraints, and explicit ACCEPTANCE criteria — the worker cannot see this conversation.';
+
+/** 分解上限指引（防「简单任务过度分解」）：2-5 路并行为主，只沿真实依赖缝再拆 */
+export const SUNX_DECOMPOSITION_LINE =
+  'Prefer 2-5 parallel dispatches per goal; split further only along real dependency seams.';
+
+/** 收轮纪律：派发后即收轮，后台任务终态自动唤醒（事件驱动异步接续，不空转轮询） */
+export const SUNX_TURN_LINE =
+  'After dispatching, finish your reply and end the turn — you are woken automatically when background tasks finish.';
+
+/** 唤醒语义告知行：task-notification 是系统通知而非用户消息，等待该结果的活继续（防误判为新指令/新对话） */
+export const SUNX_WAKE_LINE =
+  'task-notification notices are system notices, not user messages; continue the work that was waiting on that result.';
+
+/** 连续自动唤醒上限告知（防打转，spec：触顶后用户消息是唯一再启动源）：无新信息收轮而非空转 */
+export const SUNX_LOOP_LINE =
+  'Chain at most ~10 auto-wakes without a user message; when nothing new is actionable, reply briefly and end the turn.';
+
+/** 问询（HITL）指引：ask_question 只用于改变任务线走向的决策，其余自行裁决（抑制问询风暴） */
+export const SUNX_ASK_LINE =
+  'Use ask_question only for decisions that change the direction of the task line; settle everything else yourself.';
+
+/** 编排章程行组（stableSegmentOf 尾随追加槽位；身份行不在组内——它走槽位替换） */
+export const SUNX_CHARTER_LINES: readonly string[] = [
+  SUNX_BRIEF_LINE,
+  SUNX_DECOMPOSITION_LINE,
+  SUNX_TURN_LINE,
+  SUNX_WAKE_LINE,
+  SUNX_LOOP_LINE,
+  SUNX_ASK_LINE,
+];
+
 /** 稳定段拼装纯函数（P7 统一入口：观测面出执行器命名空间）：身份/输出约定/工具政策/工作目录——
  *  逐字节冻结（唯一例外：workDirLine 随活动根，会话级环境事实、仅 worktree 进出时翻转——进出即合法
  *  前缀重写点，其余相邻帧「逐字节前缀稳定」不变量维持）。Reactor.stableSegment 与 Harness.stableSegment
- *  同一单点——禁第二处拼装（/context 构成观测消费） */
+ *  同一单点——禁第二处拼装（/context 构成观测消费）。
+ *  kind 分叉（2026-11-14 设计 §17.1 系统总章程层，2026-11-15 落地裁定）：'sunx' = 身份槽单点替换
+ *  （SUNX_IDENTITY_LINE）+ 编排章程行组尾随追加（SUNX_CHARTER_LINES，固定槽位）；其余形态恒走既有
+ *  数组原样——输出与分支引入前逐字节相同（回归锚：prompts/sunx-charter.test.ts golden 字面量）。 */
 export function stableSegmentOf(opts: {
   /** 输出样式分叉（交互面级 run 常量）：命中面 = 面专用行整行替代 MARKDOWN_LINE 槽位（零双份）；缺省 = 通用约定原文 */
   outputStyle?: OutputStyle;
@@ -97,9 +143,12 @@ export function stableSegmentOf(opts: {
   root?: string;
   /** 上下文根（末级回落——deps.context.root） */
   contextRoot: string;
+  /** 会话形态（缺省/其余值 = standard 原样）：仅 'sunx' 触发身份槽替换与章程行尾随 */
+  kind?: SessionKind;
 }): string {
+  const sunx = opts.kind === 'sunx';
   return [
-    IDENTITY_LINE,
+    sunx ? SUNX_IDENTITY_LINE : IDENTITY_LINE,
     outputStyleLine(opts.outputStyle),
     PHASE_SENTENCE_LINE,
     TOOL_POLICY_LINE,
@@ -112,5 +161,6 @@ export function stableSegmentOf(opts: {
     workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
     FILE_PATH_LINE,
     IMAGE_PLACEMENT_LINE,
+    ...(sunx ? SUNX_CHARTER_LINES : []),
   ].join('\n');
 }

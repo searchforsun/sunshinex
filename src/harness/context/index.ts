@@ -25,10 +25,17 @@ export type { RunCompactionResult } from './compaction';
 const RECENT_LIMIT = 5;
 
 /** 会话前缀快照落档形态（2026-10-31 spec：类型单一事实源在本域，journal 层 type-only import——持久化层不反向定义上下文域类型；
- *  2026-11-04 §2.1：part 扩 agents/teams 两清单段；sig 两新字段**可选**——旧档案无字段 → restore 缺省 ''，历史档零迁移） */
+ *  2026-11-04 §2.1：part 扩 agents/teams 两清单段；sig 两新字段**可选**——旧档案无字段 → restore 缺省 ''，历史档零迁移；
+ *  2026-11-15 sunx §17.1：sig 增 charter**可选**（string|null，缺席=null）——实例品性随档元数据，旧档案无字段原样通过） */
 export interface CtxSnapshot {
   items: Array<{ part: 'instructions' | 'skills' | 'agents' | 'teams' | 'memory'; kind: string; content: string }>;
-  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null; agents?: string; teams?: string };
+  sig: { skills: string; memory: string; sunshinex: string | null; globalSunshine: string | null; agents?: string; teams?: string; charter?: string | null };
+}
+
+/** ContextManager 装配接缝（可选第四参，缺省全缺席；2026-11-15 sunx §17.1）：charter=实例品性原文——
+ *  sunx 会话装配期（Harness 构造）注入的会话级常量，standard 会话恒缺席。非磁盘源、零漂移检测。 */
+export interface ContextManagerOpts {
+  charter?: string;
 }
 
 /** 会话链/压缩变更事件（会话日志订阅面，规格 2026-09-17-session-persistence-resume-design.md §5 单一事实源）：
@@ -58,9 +65,13 @@ export class ContextManager {
   private recent: string[] = [];
   /** SUNSHINE.md「Compact Instructions」区缓存（与装配快照同源；E 项）：压缩摘要生成时注入 prompt */
   private compactInstructions: string | null = null;
+  /** 实例品性层原文（2026-11-15 sunx §17.1：会话冻结第三层「品性」）：构造注入的会话级常量，原样直存零加工
+   *  （任意语言 verbatim——用户物料既有豁免不翻译，CLAUDE.md §15）；null=缺席（无层零条目，防空层）。
+   *  非磁盘源故不进漂移域（无检测基线）；快照刷新点（rebuildSnapshot）恒重挂、随快照导出/回种逐字节随行 */
+  private charterLayer: string | null = null;
   /** 装配快照（规格 G 项）：SUNSHINE.md 会话冻结——构造时读盘一次，assemble 只读快照 */
   private contextSnapshot: ContextItem[] = [];
-  /** 快照分段（构成观测面）：instructions（SUNSHINE.md 两层行）/ skills（技能清单）/ agents（智能体清单，内置四角色恒在）/
+  /** 快照分段（构成观测面）：instructions（SUNSHINE.md 两层行 + 品性层尾随，2026-11-15 sunx §17.1）/ skills（技能清单）/ agents（智能体清单，内置四角色恒在）/
    *  teams（团队清单，空零注入）/ memory（记忆索引）——与 contextSnapshot 同刷新点重建（分段保存：各段混入快照后
    *  kind 无法区分，/context 分段统计的事实源） */
   private snapshotParts: { instructions: ContextItem[]; skills: ContextItem[]; agents: ContextItem[]; teams: ContextItem[]; memory: ContextItem[] } = { instructions: [], skills: [], agents: [], teams: [], memory: [] };
@@ -75,10 +86,13 @@ export class ContextManager {
   // store 形参保留：装配面签名稳定（graph/tui 侧夹具同形构造）；持久化双轨已并轨至 journal 事件流（S5），context 不再直写存储
   // archive（D26/J10 注入面，第三可选参）：未注入则缺省 createFsArchiveStore(resolveDataDir(root))——
   // 缺省实现在门面构造选定（组合行为），IO 本体在 storage 层；测试可注入 spy 版钉「归档/重读经接缝」
-  constructor(private readonly rootPath: string, _store: StorageAdapter, archive?: ArchiveStore) {
+  // opts（2026-11-15 sunx 第四可选参）：charter 品性层构造注入（Harness 装配面透传；缺席=standard 无层）
+  constructor(private readonly rootPath: string, _store: StorageAdapter, archive?: ArchiveStore, opts?: ContextManagerOpts) {
     this.archive = archive ?? createFsArchiveStore(resolveDataDir(rootPath));
     this.loader = new ContextLoader(rootPath);
     this.window = new ContextWindow();
+    // 品性层先于快照装载定版（构造即冻结；空串归一缺席——空串无内容，留层即产空层）
+    this.charterLayer = opts?.charter !== undefined && opts.charter.length > 0 ? opts.charter : null;
     // Compact Instructions 区提取（E 项）：装配同源读一次；无文件/无区为 null
     this.refreshCompactInstructions();
     // 会话快照（G 项）：构造即冻结，assemble 不再每轮读盘（中途改盘不位移前缀）；记忆索引条目随快照装载（auto memory §3）
@@ -106,10 +120,18 @@ export class ContextManager {
   }
 
   /** 快照重建单点（构造与 reloadContext 共用，防两处装配漂移）：分段装载 + 展平快照一次成对落字段
-   *  （展平序 instructions → skills → agents → teams → memory，spec 2026-11-04 §2.1 段位定型） */
+   *  （展平序 instructions → skills → agents → teams → memory，spec 2026-11-04 §2.1 段位定型；
+   *  instructions 段内层序=全局 → 项目 → 品性（2026-11-15 sunx §17.1——品性层恒段尾、固定位置，前缀缓存纪律）） */
   private rebuildSnapshot(): void {
-    this.snapshotParts = { instructions: this.loader.load(), skills: this.skillsIndexItems(), agents: this.agentsIndexItems(), teams: this.teamsIndexItems(), memory: this.memoryIndexItems() };
+    this.snapshotParts = { instructions: [...this.loader.load(), ...this.charterItems()], skills: this.skillsIndexItems(), agents: this.agentsIndexItems(), teams: this.teamsIndexItems(), memory: this.memoryIndexItems() };
     this.contextSnapshot = [...this.snapshotParts.instructions, ...this.snapshotParts.skills, ...this.snapshotParts.agents, ...this.snapshotParts.teams, ...this.snapshotParts.memory];
+  }
+
+  /** 品性层条目单点（2026-11-15 sunx §17.1）：原文 verbatim 单条目（不做 SUNSHINE 逐行拆分——用户物料
+   *  整体直存，字节级往返由单条目 content 原样承载）；缺席零条目（无空层）。kind='instruction' 与
+   *  SUNSHINE 两层同族（restoreSnapshot 白名单原样收）。 */
+  private charterItems(): ContextItem[] {
+    return this.charterLayer === null ? [] : [{ kind: 'instruction', content: this.charterLayer }];
   }
 
   /** Compact Instructions 区提取单点（E 项，D25/H3 职责⑧归一门面）：构造与 reloadContext 两刷新点同构 try/catch
@@ -277,13 +299,14 @@ export class ContextManager {
   }
 
   /** 快照落档导出（ctx-snap 出生/翻新写的数据面）：五段条目 part 标注 + 漂移基线签名同出——
-   *  恢复面基线随快照走（spec §3），两半必须同源同拍 */
+   *  恢复面基线随快照走（spec §3），两半必须同源同拍；sig.charter（2026-11-15 sunx §17.1）随档记录
+   *  品性层原文（缺席=null）——restore 回种 charterLayer 的事实源，刷新点重建不掉层（attach 字节稳定） */
   snapshotExport(): CtxSnapshot {
     const items: CtxSnapshot['items'] = [];
     for (const [part, list] of Object.entries(this.snapshotParts) as Array<[keyof ContextManager['snapshotParts'], ContextItem[]]>) {
       for (const it of list) items.push({ part, kind: it.kind, content: it.content });
     }
-    return { items, sig: this.drift.exportSig() };
+    return { items, sig: { ...this.drift.exportSig(), charter: this.charterLayer } };
   }
 
   /** 快照回种（attach/resume/setMode 换铸面，spec §4）：落档快照直注入替代磁盘重读——前缀字节跨
@@ -299,6 +322,9 @@ export class ContextManager {
     this.snapshotParts = parts;
     this.contextSnapshot = [...parts.instructions, ...parts.skills, ...parts.agents, ...parts.teams, ...parts.memory];
     this.drift.restoreBaselines(s.sig);
+    // 品性层随签名回种（2026-11-15 sunx §17.1）：charterLayer 供后续刷新点 rebuild 重挂——
+    // 缺字段（旧档/journal 归约未带）→ null；条目面已含品性层原文，本次快照不受影响
+    this.charterLayer = s.sig.charter ?? null;
     return true;
   }
 

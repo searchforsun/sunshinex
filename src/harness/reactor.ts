@@ -1,4 +1,4 @@
-import { ChainAction, ContextItem, ModelTier, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, SteerLine, StopReason, ChatRequest, ChatResult } from '../types';
+import { ChainAction, ContextItem, ModelTier, OutputStyle, ReasoningEffort, RouteDecision, SessionEvent, SessionKind, SteerLine, StopReason, ChatRequest, ChatResult } from '../types';
 import { t } from '../i18n';
 import { guardrailStop } from './guardrail';
 import { ModelAdapter, ModelRouter, RouteHint, UsageHooks } from '../model/adapter';
@@ -81,6 +81,10 @@ export interface ReactorDeps {
   signal?: AbortSignal;
   /** 输出样式分叉（交互面级 run 常量，进稳定段）：装配面注入（TUI=terminal）；缺省回 MARKDOWN_LINE 通用约定、前缀基线字节不变 */
   outputStyle?: OutputStyle;
+  /** 会话形态（2026-11-14 sunx §17.1，进稳定段）：'sunx' = 身份槽替换 + 编排章程行尾随（stableSegmentOf 单点分叉）；
+   *  缺席/standard 前缀基线字节不变。与 HarnessOptions.kind 同名同域；loop 内 Reactor 的同源透传
+   *  在装配根（createKernelRuntime LoopDeps，后续任务接线） */
+  kind?: SessionKind;
   /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，config/image-history.ts 装配期解析注入）：
    *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
   imageHistoryLimit?: number;
@@ -490,10 +494,12 @@ export class Reactor {
   }
 
   /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；薄委托 stableSegmentOf
-   *  纯函数（P7 统一入口:观测面出执行器命名空间,Harness.stableSegment 同源零第二拼装） */
+   *  纯函数（P7 统一入口:观测面出执行器命名空间,Harness.stableSegment 同源零第二拼装）;
+   *  kind 随 deps 透传（sunx=身份槽替换+章程行尾随,2026-11-15） */
   stableSegment(): string {
     return stableSegmentOf({
       ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
+      ...(this.deps.kind ? { kind: this.deps.kind } : {}),
       activeRoot: this.deps.activeRoot,
       ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
       contextRoot: this.deps.context.root,

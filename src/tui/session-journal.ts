@@ -419,7 +419,9 @@ function normalizeTodoItems(raw: unknown[]): TodoItem[] {
 
 /** ctx-snap 行面净化单点（行面字段不予信任——journal 既有口径）：任一字段形态不合法即整行视同不存在。
  *  part 五值闭集（2026-11-04 §2.1 扩 agents/teams——旧档三值行原样通过，五段行不再被误判坏档）；
- *  sig 两新字段可选（在场须为 string，缺省即旧档形态——restore 侧 `?? ''` 容错，归约面不吞不补） */
+ *  sig 两新字段可选（在场须为 string，缺省即旧档形态——restore 侧 `?? ''` 容错，归约面不吞不补）；
+ *  sig.charter 同法随档（2026-11-15 sunx §17.1，string|null 两形在场皆合法，无字段即旧档形态——
+ *  不透传则 attach 回种后 charterLayer=null，后续刷新点 rebuild 掉品性层、破坏重建字节稳定） */
 function normalizeCtxSnap(items: unknown, sig: unknown): CtxSnapshot | undefined {
   if (!Array.isArray(items) || typeof sig !== 'object' || sig === null) return undefined;
   const out: CtxSnapshot['items'] = [];
@@ -431,6 +433,7 @@ function normalizeCtxSnap(items: unknown, sig: unknown): CtxSnapshot | undefined
   const s = sig as Record<string, unknown>;
   if (typeof s.skills !== 'string' || typeof s.memory !== 'string' || !(s.sunshinex === null || typeof s.sunshinex === 'string') || !(s.globalSunshine === null || typeof s.globalSunshine === 'string')) return undefined;
   if (!(s.agents === undefined || typeof s.agents === 'string') || !(s.teams === undefined || typeof s.teams === 'string')) return undefined;
+  if (!(s.charter === undefined || s.charter === null || typeof s.charter === 'string')) return undefined;
   return {
     items: out,
     sig: {
@@ -440,6 +443,7 @@ function normalizeCtxSnap(items: unknown, sig: unknown): CtxSnapshot | undefined
       globalSunshine: s.globalSunshine as string | null,
       ...(typeof s.agents === 'string' ? { agents: s.agents } : {}),
       ...(typeof s.teams === 'string' ? { teams: s.teams } : {}),
+      ...(s.charter !== undefined ? { charter: s.charter as string | null } : {}),
     },
   };
 }

@@ -392,6 +392,19 @@ test('reduceJournal: ctx-snap 载荷不合法视同不存在（坏档不炸归�
   assert.equal(r2.snapshot, undefined);
 });
 
+test('reduceJournal: ctx-snap sig.charter 随档透传（string/null）；旧档无字段原样通过', () => {
+  const hdr = { t: 'header', v: 3, id: 'x', createdAt: 'c' } as unknown as JournalEvent;
+  // string 形（sunx 会话品性层随档，2026-11-15）——归约面不吞不补
+  const withCharter = reduceJournal([hdr, { t: 'ctx-snap', items: [{ part: 'instructions', kind: 'instruction', content: 'C1' }], sig: { skills: 'a', memory: '', sunshinex: null, globalSunshine: null, charter: 'Charter v1' } } as unknown as JournalEvent]);
+  assert.equal(withCharter.snapshot?.sig.charter, 'Charter v1');
+  // null 形（standard 会话缺省态）原样通过
+  const nullCharter = reduceJournal([hdr, { t: 'ctx-snap', items: [], sig: { skills: 'a', memory: '', sunshinex: null, globalSunshine: null, charter: null } } as unknown as JournalEvent]);
+  assert.equal(nullCharter.snapshot?.sig.charter, null);
+  // 旧档无字段 → undefined（restore 侧 ?? null 容错，历史档零迁移）
+  const legacy = reduceJournal([hdr, snapRow('old')]);
+  assert.equal(legacy.snapshot?.sig.charter, undefined);
+});
+
 test('forkIncludeCut:含点击轮整轮+回撤下轮悬挂 user 段行(GUI 档形,实测 29/30 线)', () => {
   // 档形=实测 vph1:seg user 先于其 chain task 行;锚点=chain task 行(listAnchors 无 user 事件回退)
   const rows: JournalEvent[] = [

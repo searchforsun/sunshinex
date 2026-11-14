@@ -94,11 +94,13 @@ export interface HarnessOptions {
   /** 会话团队根键（journalId）。缺省未绑定时团队/板/inbox 驻内存；daemon/TUI 在 journal 铸造后
    *  经 adoptSessionTeams 收养。测试可直接传入以落盘。 */
   teamsSessionId?: string;
-  /** 会话形态（2026-11-14 sunx 设计：装配期按 kind 分叉 profile）。本任务只声明数据面接缝，构造器暂不消费——
-   *  消费在后续任务（提示词面/工具面/serve 生命周期）；缺席=standard */
+  /** 会话形态（2026-11-14 sunx 设计：装配期按 kind 分叉 profile）。提示词面已消费（2026-11-15）：
+   *  'sunx' = 稳定段身份槽替换 + 编排章程行（prompts/shared.ts 单点，stableSegment 观测面与单发
+   *  Reactor 同源）；缺席=standard 零变化。工具面/serve 生命周期分叉在后续任务 */
   kind?: SessionKind;
   /** 实例品性原文（sunx 会话用户自撰物料原样直存；2026-11-15 术语裁定「用户面=品性、代码面=charter」）。
-   *  本任务只声明数据面接缝，构造器暂不消费——消费在后续任务（提示词面冻结层装配）；standard 会话恒缺席 */
+   *  提示词面已消费（2026-11-15）：构造注入 ContextManager 会话冻结层（全局 → 项目 → 品性），随
+   *  ctx-snap 导出/回种逐字节随行；缺席=无此层。standard 会话恒缺席 */
   charter?: string;
 }
 
@@ -118,6 +120,8 @@ export class Harness {
   readonly reactor: Reactor;
   /** 稳定段 outputStyle 装配口径（P7,构造期缓存——run 级常量） */
   private readonly stableOutputStyle?: OutputStyle;
+  /** 稳定段 kind 装配口径（2026-11-15 sunx 提示词面,构造期缓存——run 级常量）：'sunx' = 身份槽替换 + 编排章程行 */
+  private readonly stableKind?: SessionKind;
   readonly skills: SkillsFacade;
   /** 团队门面（team 工具接缝；spec 2026-11-04 §3.3）：live 只读视图——每次 resolve 现读两级目录链，
    *  会中新建/停用即时可见（skills 同款惰性纪律，纯构造零副作用） */
@@ -293,7 +297,9 @@ export class Harness {
       // 内建/目录条目统一出卡面,装配面其余字段(memory/isolation/executor)不透模型
       agents: { get: (id: string) => { try { return agents.resolve(id); } catch { return undefined; } } },
     })) this.tools.register(t);
-    this.context = new ContextManager(base, store);
+    // 品性层构造注入（2026-11-15 sunx §17.1）：charter 随装配面入会话冻结层（全局 → 项目 → 品性）；
+    // 缺席=standard 无层。kind 透传 Reactor 与稳定段观测面（下方 stableKind）
+    this.context = new ContextManager(base, store, undefined, { charter: opts.charter });
     this.model = opts.model ?? new StubAdapter();
     // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），
     // 与 reactor announce 逐字同形；两个开关逐项消费时求值（/memory on|off 与 --learn 语义贯通）
@@ -640,8 +646,9 @@ export class Harness {
       }));
     }
     // P7:稳定段观测面装配口径缓存(outputStyle 是 run 级常量)——harness.stableSegment 与 reactor
-    // 构造行同源,不引入第二份 deps 面
+    // 构造行同源,不引入第二份 deps 面;kind 同口径缓存(sunx 提示词面,2026-11-15)
     this.stableOutputStyle = opts.outputStyle;
+    this.stableKind = opts.kind;
     // imageHistoryLimit（spec §3.2 settings 键接线）：装配期两级解析一次（0-50 整数，非法/缺省回 3），
     // 注入单发 Reactor 并经只读面暴露给 LoopDeps 装配点（loop 主链 Reactor 同源消费）；告警走 selfcheck 面
     const imageHistory = resolveImageHistoryLimit(base);
@@ -660,6 +667,9 @@ export class Harness {
       imageHistoryLimit: imageHistory.value,
       ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
       ...(opts.outputStyle ? { outputStyle: opts.outputStyle } : {}),
+      // 会话形态分叉（2026-11-15 sunx 提示词面）：单发 Reactor 稳定段带 kind；loop 内 Reactor 的
+      // 同源透传在装配根（createKernelRuntime LoopDeps，后续 serve 生命周期任务接线）——本点只接 harness 面
+      ...(opts.kind ? { kind: opts.kind } : {}),
       // 运行中穿插（对标 CC queued messages）：步边界 drain 单点；未消费行由会话层收口兜底补跑
       steer: () => this.steerSource(),
       // 沉淀双钩子零等待入队（规格 §3.1/§3.5 D2）：收口同步路径不再 await 模型调用；开关判门在管线内逐项求值
@@ -715,10 +725,12 @@ export class Harness {
   }
 
   /** 稳定段观测面（P7:出执行器命名空间）——/context 构成观测消费,与 Reactor chatRound 装配同一
-   *  stableSegmentOf 单点(零第二拼装);生产/测试观测统一走此薄委托,不再借道 harness.reactor */
+   *  stableSegmentOf 单点(零第二拼装);生产/测试观测统一走此薄委托,不再借道 harness.reactor;
+   *  kind 装配口径随行（sunx=身份槽替换+编排章程行尾随,2026-11-15） */
   stableSegment(): string {
     return stableSegmentOf({
       ...(this.stableOutputStyle ? { outputStyle: this.stableOutputStyle } : {}),
+      ...(this.stableKind ? { kind: this.stableKind } : {}),
       activeRoot: () => this.safety.activeRoot,
       contextRoot: this.context.root,
     });
