@@ -24,6 +24,10 @@ const KIND_LABELS: Readonly<Record<string, string>> = {
   json: '数据', yaml: '数据', yml: '数据', toml: '数据', xml: '数据',
 };
 
+/** 原型链免疫直查(SDD T8 修复轮 2 裁定:属性读取同样走原型链,in 与 [ext]!==undefined 等价,
+ *  constructor/__proto__ 等全小写原型成员名会两侧误判——须 hasOwnProperty.call) */
+const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
+
 export function extOf(relPath: string): string | undefined {
   const base = relPath.replaceAll('\\', '/').split('/').pop() ?? '';
   const dot = base.lastIndexOf('.');
@@ -32,13 +36,12 @@ export function extOf(relPath: string): string | undefined {
 
 export function isDeliverablePath(relPath: string): boolean {
   const ext = extOf(relPath);
-  return ext !== undefined && KIND_LABELS[ext] !== undefined; // 直查与 artifactKindLabel 同形——`in` 走原型链,toString 等基名会误判
+  return ext !== undefined && hasOwn(KIND_LABELS, ext);
 }
 
 /** 「类目 · 大写扩展名」标签；非产物 undefined */
 export function artifactKindLabel(relPath: string): string | undefined {
   const ext = extOf(relPath);
-  if (ext === undefined) return undefined;
-  const kind = KIND_LABELS[ext];
-  return kind === undefined ? undefined : `${kind} · ${ext.toUpperCase()}`;
+  if (ext === undefined || !hasOwn(KIND_LABELS, ext)) return undefined;
+  return `${KIND_LABELS[ext]} · ${ext.toUpperCase()}`;
 }

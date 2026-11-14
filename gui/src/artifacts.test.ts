@@ -14,6 +14,8 @@ describe('产物分类器与标签', () => {
     expect(isDeliverablePath('docs/a.md')).toBe(true);
     expect(isDeliverablePath('src/index.ts')).toBe(false);
     expect(isDeliverablePath('notes.toString')).toBe(false);
+    expect(isDeliverablePath('notes.constructor')).toBe(false);
+    expect(isDeliverablePath('notes.__proto__')).toBe(false);
   });
   it('artifactKindLabel:「类目 · 大写扩展名」,非产物 undefined', () => {
     expect(artifactKindLabel('docs/TECH-DEBT-LOG.md')).toBe('文档 · MD');
@@ -23,5 +25,6 @@ describe('产物分类器与标签', () => {
     expect(artifactKindLabel('out.json')).toBe('数据 · JSON');
     expect(artifactKindLabel('docx 盘.docx')).toBe('文档 · DOCX');
     expect(artifactKindLabel('src/index.ts')).toBeUndefined();
+    expect(artifactKindLabel('notes.constructor')).toBeUndefined();
   });
 });
