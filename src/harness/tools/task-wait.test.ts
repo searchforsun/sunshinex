@@ -11,7 +11,7 @@ import { TaskRegistry } from '../tasks';
 import { TaskBoard, dispatchTag } from '../../taskboard/board';
 import { TeamStore } from '../../taskboard/store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from '../../taskboard/team-registry';
-import { makeAgentTeamTaskWaitTool, makeTaskWaitTool } from './task-wait';
+import { makeAgentTeamTaskWaitTool, makeTaskStatusTool, makeTaskWaitTool } from './task-wait';
 import { ToolRegistry } from '../tools';
 
 const stubSafety = {
@@ -507,6 +507,83 @@ test('task_wait 终态回执即置 receipted；仍在跑的不置位（peek 形�
   assert.match(r.stdout, new RegExp(done.id));
   assert.equal(tasks.isReceipted(done.id), true);
   assert.equal(tasks.isReceipted(running.id), false); // still running 不置位
+});
+
+// ── sunx 工具面（2026-11-15 P1 Task 3）：task_status 恒窥视变体——timeoutSeconds 固定 0、
+// 窥视即消费（终态行置 receipted，唤醒不再重复）、kinds=exec+subagent 双档 ──
+
+function makeStatusRegistry(tasks: TaskRegistry): ToolRegistry {
+  const registry = new ToolRegistry();
+  registry.register(makeTaskStatusTool(tasks));
+  return registry;
+}
+
+test('task_status 终态窥视：回执含 conclusion 且置 receipted（后续唤醒不再通知）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstatus-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const t = tasks.submit({ kind: 'subagent', label: 'research' });
+    tasks.append(t.id, '[conclusion] all findings recorded\nsecond line\n');
+    tasks.finish(t.id, 'done');
+    const r = await makeStatusRegistry(tasks).execute('task_status', { taskIds: [t.id] }, stubSafety);
+    assert.ok(r.ok);
+    if (r.ok) {
+      assert.match(r.value.stdout, /\[conclusion\] all findings recorded\nsecond line/, '子智能体终态行承载结论全文');
+      assert.match(r.value.stdout, new RegExp(`${t.id} \\(subagent\\) done`));
+    }
+    assert.equal(tasks.isReceipted(t.id), true, '窥视即消费：终态行置 receipted（WakeController 唤醒汇按 isReceipted 跳过）');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_status running 行：status peek 非阻塞即时回执；不置 receipted', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstatus-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const t = tasks.submit({ kind: 'exec', label: 'long-build' });
+    const started = Date.now();
+    const r = await makeStatusRegistry(tasks).execute('task_status', { taskIds: [t.id] }, stubSafety);
+    assert.ok(Date.now() - started < 1000, '恒窥视：不因 running 任务阻塞');
+    assert.ok(r.ok);
+    if (r.ok) {
+      assert.match(r.value.stdout, /status peek/, '回执头=既有窥视措辞（formatReceipt 单点）');
+      assert.match(r.value.stdout, new RegExp(`${t.id} \\(exec\\) running`));
+    }
+    assert.equal(tasks.isReceipted(t.id), false, 'running 行不置 receipted（仍可唤醒）');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_status taskIds=null：全部 running 台账（exec+subagent 双 kind）；无 running 空回执；未知 id INVALID_ARG', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstatus-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const registry = makeStatusRegistry(tasks);
+    const empty = await registry.execute('task_status', { taskIds: null }, stubSafety);
+    assert.ok(empty.ok);
+    if (empty.ok) assert.match(empty.value.stdout, /no background tasks running/);
+    const a = tasks.submit({ kind: 'exec', label: 'build' });
+    const b = tasks.submit({ kind: 'subagent', label: 'dispatch-w' });
+    const done = tasks.submit({ kind: 'exec', label: 'already-done' });
+    tasks.finish(done.id, 'done', { exitCode: 0 });
+    const r = await registry.execute('task_status', { taskIds: null }, stubSafety);
+    assert.ok(r.ok);
+    if (r.ok) {
+      assert.match(r.value.stdout, new RegExp(`${a.id} \\(exec\\) running`), 'null=全部 running，双 kind 全列');
+      assert.match(r.value.stdout, new RegExp(`${b.id} \\(subagent\\) running`));
+      assert.doesNotMatch(r.value.stdout, new RegExp(done.id), '终态任务不入 null 窥视清单（非 running）');
+    }
+    const bad = await registry.execute('task_status', { taskIds: ['ghost-id'] }, stubSafety);
+    assert.equal(bad.ok, false);
+    if (!bad.ok) {
+      assert.equal(bad.error.code, 'INVALID_ARG');
+      assert.match(bad.error.message, /Unknown task id: ghost-id/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('agent_team_task_wait 板终态回执 → markBoardReceipted 命中 dispatchTag 台账行', async () => {

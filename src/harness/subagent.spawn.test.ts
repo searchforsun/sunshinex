@@ -8,6 +8,9 @@ import { Harness } from './index';
 import { CodedToolError } from './tools';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
+import { makeDispatchTool, normalizeSpawnInput, SubagentRunner } from './subagent';
+import { WAKE_HINT } from './tasks';
+import type { ModelTier, SubagentSpawnInput } from '../types';
 
 const SPAWN_ENVELOPE = JSON.stringify({ tool: 'spawn', input: { prompt: '子任务：产出报告', label: 'w' } });
 
@@ -129,4 +132,44 @@ test('同轮 8 个 spawn 并行：批上限与并发上限同量级对齐，8 �
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+// ── sunx 工具面（2026-11-15 P1 Task 3）：dispatch_task 分派即返回（spawn 家族同缝，恒后台两段式）──
+
+test('dispatch_task executor：spec→spawnBackground 带 tier 覆盖透传；回执含 taskId 与 wakeHint；双缺 INVALID_ARG；schema 无 tools 参数', async () => {
+  const calls: Array<{ input: SubagentSpawnInput; opts?: { tier?: ModelTier } }> = [];
+  const stub = {
+    validateSpawnInput: (raw: SubagentSpawnInput): void => {
+      const i = normalizeSpawnInput(raw);
+      if (!i.agent_id && !i.prompt) throw new CodedToolError('INVALID_ARG', 'agent_id and prompt are both missing');
+    },
+    spawnBackground: (input: SubagentSpawnInput, opts?: { tier?: ModelTier }) => {
+      calls.push({ input, ...(opts !== undefined ? { opts } : {}) });
+      return { taskId: 'task-x-ts01-ab12', outputFilePath: path.join('tmp', 'x.log'), wakeHint: WAKE_HINT };
+    },
+  } as unknown as SubagentRunner;
+  const tool = makeDispatchTool(stub);
+  assert.equal(tool.name, 'dispatch_task', '工具名单点：dispatch_task');
+  // spawn tools 口已封闭（2026-11-14 裁定）：分派工具不携带 tools 参数（模型面无工具清单分叉口）
+  const props = (tool.parameters?.properties ?? {}) as Record<string, unknown>;
+  assert.equal(
+    props.tools,
+    undefined,
+    'dispatch_task schema 不得有 tools 参数（spawn tools 口封闭）',
+  );
+  const r = await tool.executor({ spec: 'do the thing with acceptance', agent_id: null, label: 'w', tier: 'large', isolation: null });
+  assert.equal(calls.length, 1, '分派即返回：恰一次 spawnBackground');
+  assert.equal(calls[0]!.input.prompt, 'do the thing with acceptance', 'spec 承载自包含简报');
+  assert.equal(calls[0]!.input.agent_id, undefined, 'JSON null 归一为缺席（normalizeSpawnInput 同缝）');
+  assert.equal(calls[0]!.opts?.tier, 'large', 'tier 覆盖透传 spawnBackground');
+  assert.match(r.stdout, /^task task-x-ts01-ab12 started \(output: /, '回执与 spawn 后台分支同形：task <id> started (output: <path>)');
+  assert.ok(r.stdout.includes('You need not wait for it'), '回执尾追 wakeHint（收轮等唤醒）');
+  // tier 缺席（null/字面缺）→ 不覆盖（继承会话档）
+  await tool.executor({ spec: 'second', tier: null });
+  assert.equal(calls[1]!.opts?.tier, undefined, 'tier=null 归一缺席，零覆盖');
+  // 双缺（spec 与 agent_id 均缺）→ INVALID_ARG fail-fast
+  await assert.rejects(
+    tool.executor({ spec: null, agent_id: null }),
+    (e: unknown) => e instanceof CodedToolError && e.code === 'INVALID_ARG',
+  );
 });

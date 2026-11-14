@@ -4,6 +4,7 @@
 // 分域拒识：task_wait 遇板 id → INVALID_ARG 点名 agent_team_task_wait；对称拒识 exec/spawn 纯后台 id。
 // taskIds=null：task_wait 等当前 running 台账；agent_team_task_wait 等板上非终态任务。
 // timeoutSeconds=0 非阻塞 peek；子面 kinds=['exec'] 防板派发台账自等。
+// task_status（2026-11-15 sunx P1 Task 3）：task_wait 恒窥视变体（timeout 固定 0），仅 sunx 会话注册。
 import * as fs from 'fs';
 import { CodedToolError, RegisteredTool } from '../tools';
 import type { BackgroundTask, TaskRegistry } from '../tasks';
@@ -285,6 +286,64 @@ export function makeTaskWaitTool(
       const doneIds = result.tasks.filter((x) => x.status !== 'running').map((x) => x.id);
       if (doneIds.length > 0) tasks.markReceipted(doneIds);
       return formatReceipt(result, undefined, [], timeoutSeconds, signal, 'task_wait');
+    },
+  };
+}
+
+/** task_status 工具工厂（2026-11-15 sunx P1 Task 3）：task_wait 的恒窥视变体——timeoutSeconds 固定 0
+ *  （无阻塞档），sunx 编排主链在自身工作间隙快查台账。与 task_wait 同底座：waitMixed(timeout 0) 单点、
+ *  receiptBody/formatReceipt 单点（回执头=既有窥视措辞）、终态行即置 markReceipted（bg-wake spec §3.1
+ *  「窥视即消费」同口径——回执面出现过的终态行不再唤醒）。kinds=exec+subagent 双档（编排器名下两类
+ *  后台工作全可见）。仅 sunx 会话注册（harness/index.ts kind 分叉） */
+export function makeTaskStatusTool(tasks: TaskRegistry): RegisteredTool {
+  return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['taskIds'],
+      properties: {
+        taskIds: {
+          type: ['array', 'null'],
+          items: { type: 'string' },
+          description: 'Background exec/spawn ledger ids to inspect; JSON null = all currently running ledger tasks (both kinds)',
+        },
+      },
+    },
+    name: 'task_status',
+    description:
+      'Non-blocking status peek at background ledger tasks (exec and spawn): returns id, kind, status, exit code, and the exec log tail or the subagent conclusion — it never waits. Terminal rows in the receipt are consumed: you will not be woken again for them; running rows remain eligible for the background wake-up. Use it for a quick check between your own work; use task_wait when you want to block until terminal state.',
+    category: 'task',
+    fullObservation: true,
+    executor: async (input) => {
+      const raw = input as { taskIds?: string[] | null };
+      let ids: string[];
+      if (raw.taskIds === null || raw.taskIds === undefined) {
+        ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
+        if (ids.length === 0) {
+          return { exitCode: 0, stdout: 'no background tasks running', stderr: '', timedOut: false };
+        }
+      } else {
+        if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0) {
+          throw new CodedToolError('INVALID_ARG', 'taskIds must be a non-empty array of task ids, or null to inspect all running tasks');
+        }
+        const unknown: string[] = [];
+        ids = [];
+        for (const rawId of raw.taskIds.map(String)) {
+          const rid = tasks.resolveId(rawId);
+          if (tasks.get(rid) !== undefined) ids.push(rid);
+          else unknown.push(rawId);
+        }
+        if (unknown.length > 0) {
+          const known = tasks.list().map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`).join('; ');
+          throw new CodedToolError('INVALID_ARG', `Unknown task id: ${unknown.join(', ')}. Known tasks — ${known === '' ? '(none)' : known}`);
+        }
+      }
+      // 恒窥视：timeout 固定 0（waitMixed 0 档=非阻塞快照）；无板无信号（peek 无阻塞期可中断）
+      const result = await waitMixed(tasks, ids, undefined, [], 0, undefined);
+      // bg-wake 终态回执消费标记（spec §3.1，与 task_wait 窥视同口径）：回执面出现的终态行即视为已消费
+      const doneIds = result.tasks.filter((x) => x.status !== 'running').map((x) => x.id);
+      if (doneIds.length > 0) tasks.markReceipted(doneIds);
+      return formatReceipt(result, undefined, [], 0, undefined, 'task_status');
     },
   };
 }

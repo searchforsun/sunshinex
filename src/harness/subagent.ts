@@ -3,7 +3,7 @@
  * 前缀缓存纪律：定义装配期一次性加载 fail-fast、运行期零增删（同 skills/MCP 纪律）；文案恒英文单语（角色行/工具 description 直接进模型） */
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentRole, ModelTier, OutputStyle, SessionEvent, SubagentSpawnInput } from '../types';
+import { AgentRole, ModelTier, OutputStyle, SessionEvent, SessionKind, SubagentSpawnInput } from '../types';
 import { Result, ok, fail } from '../result';
 import { Reactor, StepRecord } from './reactor';
 import { CodedToolError, RegisteredTool, ToolRegistry, jsonAbsent } from './tools';
@@ -293,6 +293,10 @@ interface SubagentRunnerDeps {
    *  注册路由版 ask_question(归因 askedBy 后直通主对话挂起卡)——缺省(	headless 装配)维持 fork 剔除旧制
    *  (fork 执行不中途发问,结论回写即应答) */
   ask?: AskUserSeam;
+  /** 会话形态（2026-11-15 sunx P1 Task 3，spec §17.2 裁定）：随装配注入（Harness opts.kind 单点），
+   *  runSubagent 的 fork 子 Reactor 同源透传——sunx 派发的子智能体稳定段与父逐字节同面
+   *  （身份行/章程行随 Reactor kind；总章程+品性经共享父 ContextManager 自动随行）。缺席=standard */
+  kind?: SessionKind;
 }
 
 /** 子智能体生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
@@ -347,7 +351,9 @@ export class SubagentRunner {
    * taskboard 四件套 leader-only(2026-10-05 P1 建立、2026-10-20 收束)——板面操作权归主链 leader，子智能体不碰板；
    * send_agent_team_message 亦剔(L2 agent-message T3,评审附带 1)——消息身份属 leader+具名 teammate,fork 子面不发；
    * send_agent_team_message+create_agent_teammate+板四件套经 FORK_EXCLUDED_TOOLS 单点同源(loop/graph 两处 fork 派生点同引);
-   * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁) */
+   * task_wait 保留并换装 kinds=['exec']——子面可等自动转后台的 exec,不可等板任务(防自等死锁);
+   * dispatch_task/task_status 剔(2026-11-15 sunx P1 Task 3)——分派权归 sunx 编排主链,子智能体不再
+   * 分派(防子生孙)亦不自查台账消费唤醒(自派发/自窥视闭环失控) */
   deriveChildRegistry(askedBy?: { label: string; taskId?: string }): ToolRegistry {
     const bindExecWait = (face: ToolRegistry): ToolRegistry => {
       if (face.get('task_wait') === undefined) return face;
@@ -369,7 +375,7 @@ export class SubagentRunner {
     // 子面=父全量 − 剔除族,恒定收窄(2026-11-14 用户裁定「主 agent 分派子智能体怎么能指定工具?
     // 不是事先规定吗?这个口不应该漏」:spawn 模型面 tools 参数封闭,工具面事先规定不可指定——
     // 旧「显式清单按名取交集」支路随 schema 撤参一并退役,子面口径单一不成分叉)
-    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...FORK_EXCLUDED_TOOLS] });
+    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', 'dispatch_task', 'task_status', ...FORK_EXCLUDED_TOOLS] });
     routeAsk(child, askedBy);
     return bindExecWait(child);
   }
@@ -414,8 +420,10 @@ export class SubagentRunner {
   /** spawn 两段式入口（规格 D6，对标 CC Task run_in_background）：立即登记 subagent 任务并同步返回回执，
    * 子智能体转场外异步执行——结论行只落任务日志（模型以 read 查看终态行），主链零追加；stop 触发协作式取消。
    * wakeHint（bg-wake spec §4.2）：后台分派回执唤醒提示——宿主闸①（wakeHint 装配）× 闸②（主链归属），
-   * spawnBackground 返回值承载、spawn 工具回执串尾追（fork 面缺省 undefined 零变化） */
-  spawnBackground(rawInput: SubagentSpawnInput): { taskId: string; outputFilePath: string; wakeHint?: string } {
+   * spawnBackground 返回值承载、spawn 工具回执串尾追（fork 面缺省 undefined 零变化）。
+   * opts.tier（2026-11-15 sunx P1 Task 3，dispatch_task 消费）：覆盖合并进父预算（{...budget, tier}）——
+   * 单次分派档位覆盖，不影响父链其余分派；预算缺省（未 attachParent）原样透传（NOT_SUPPORTED 路径零变化） */
+  spawnBackground(rawInput: SubagentSpawnInput, opts?: { tier?: ModelTier }): { taskId: string; outputFilePath: string; wakeHint?: string } {
     const input = normalizeSpawnInput(rawInput);
     const ledger = this.deps.tasks;
     if (ledger === undefined) {
@@ -426,6 +434,7 @@ export class SubagentRunner {
     const label = input.label ?? input.agent_id ?? 'subagent';
     const task = ledger.submit({ kind: 'subagent', label, ownerRun: ledger.currentOwner() });
     const budget = this.getBudget?.();
+    const effectiveBudget = budget !== undefined && opts?.tier !== undefined ? { ...budget, tier: opts.tier } : budget;
     const abort = new AbortController();
     task.stop = () => abort.abort();
     // 主任务暂停级联（2026-10-02 用户裁决）：父中断信号 abort 即连带停本后台子智能体——主任务暂停/中断时
@@ -438,7 +447,7 @@ export class SubagentRunner {
       try {
         ledger.append(task.id, `[spawn background] ${input.agent_id ?? 'inline'}: ${input.prompt ?? ''}\n`);
         const r = await this.runSubagent(input, {
-          ...(budget !== undefined ? { budget } : {}),
+          ...(effectiveBudget !== undefined ? { budget: effectiveBudget } : {}),
           signal: abort.signal,
           taskId: task.id,
         });
@@ -577,6 +586,9 @@ export class SubagentRunner {
         ...(this.deps.router ? { router: this.deps.router } : {}),
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
         ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
+        // fork 子代 kind 继承（2026-11-15 sunx P1 Task 3，spec §17.2 裁定）：sunx 派发的子智能体
+        // 稳定段与父逐字节同面（Sunx 身份行/编排章程行随 Reactor kind）；缺席=standard 原样
+        ...(this.deps.kind ? { kind: this.deps.kind } : {}),
         ...(this.deps.onEvent
           ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel, ...(opts && opts.taskId !== undefined ? { subagentTaskId: opts.taskId } : {}) } }) }
           : {}),
@@ -679,6 +691,48 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
       const r = await runner.runSubagent(spec);
       if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
       return { exitCode: 0, stdout: r.value.reply, stderr: '', timedOut: false };
+    },
+  };
+}
+
+/** dispatch_task 工具工厂（2026-11-15 sunx P1 Task 3）：sunx 编排主链的分派动词——分派即返回（恒后台
+ * 两段式），子智能体结论落任务日志、终态经唤醒通知回流，编排器收轮等唤醒。与 makeSpawnTool 同缝同源
+ * （normalizeSpawnInput → validateSpawnInput → spawnBackground），差异仅在模型面契约：无 tools 参数
+ * （spawn tools 口已封闭）、无 background 开关（分派恒后台）、prompt 槽位更名 spec（自包含简报语义）
+ * 并增 tier 档位覆盖。仅 sunx 会话注册（harness/index.ts kind 分叉）；回执与 spawn 后台分支同形 */
+export function makeDispatchTool(runner: SubagentRunner): RegisteredTool {
+  return {
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['spec', 'agent_id', 'label', 'tier', 'isolation'],
+      properties: {
+        spec: { type: 'string', description: 'Self-contained task brief for the dispatched subagent: goal, key facts, paths, constraints, and ACCEPTANCE criteria (the subagent cannot see this conversation)' },
+        agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null dispatches an inline subagent' },
+        label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
+        tier: { type: ['string', 'null'], enum: ['small', 'medium', 'large', null], description: 'Optional model tier override for this dispatch only; null inherits the session tier' },
+        isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
+      },
+    },
+    name: 'dispatch_task',
+    description:
+      'Dispatch one work unit to a subagent and return immediately: the call registers a background task, the subagent runs out-of-band, and the receipt names the task id and its output log path — no report comes back in this tool result. The spec must be a self-contained brief (goal, key facts, paths, constraints, ACCEPTANCE criteria) because the subagent cannot see this conversation; agent_id references a registered agent or preset role (null = inline subagent); tier optionally overrides the model tier for this dispatch; isolation optionally requests a dedicated git worktree. After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait, or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
+    category: 'subagent',
+    fullObservation: true,
+    executor: async (input) => {
+      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown };
+      const specInput: SubagentSpawnInput = {
+        prompt: typeof raw.spec === 'string' && raw.spec.length > 0 ? raw.spec : undefined,
+        ...(typeof raw.agent_id === 'string' && raw.agent_id.length > 0 ? { agent_id: raw.agent_id } : {}),
+        ...(typeof raw.label === 'string' && raw.label.length > 0 ? { label: raw.label } : {}),
+        ...(raw.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
+      };
+      const spec = normalizeSpawnInput(specInput);
+      runner.validateSpawnInput(spec);
+      // tier 归一（schema enum 之外的防御性宽容）：非枚举/缺席/null 字面一律回缺席语义（继承会话档）
+      const tier = raw.tier === 'small' || raw.tier === 'medium' || raw.tier === 'large' ? raw.tier : undefined;
+      const started = runner.spawnBackground(spec, { tier });
+      return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
     },
   };
 }

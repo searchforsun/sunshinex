@@ -1,5 +1,5 @@
 import type { AskUserSeam } from '../types';
-import { Harness } from '../harness';
+import { Harness, SUNX_FACE_TOOLS } from '../harness';
 import { buildHarness } from '../runtime';
 import type { PermissionMode } from '../harness/security/modes';
 import { setToolDisplayMeta } from '../tui/tool-verbs';
@@ -77,18 +77,22 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.kind !== undefined ? { kind: opts.kind } : {}),
     ...(opts.charter !== undefined ? { charter: opts.charter } : {}),
   });
+  // 工具面选择（2026-11-15 sunx P1 Task 3）：sunx 会话主链 face=白名单派生单点（SUNX_FACE_TOOLS 常量，
+  // 与装配注册/测试同源）——loop 主链模型面（loopDeps.registry）与 TUI 呈现表（displayMeta）同源消费
+  // effective face；standard 恒 harness.tools 原样（主链 face 基线字节不变）
+  const face = opts.kind === 'sunx' ? harness.tools.derive({ only: [...SUNX_FACE_TOOLS] }) : harness.tools;
   // 审批注入不再限 acceptEdits(2026-11-01 用户裁定「完全访问也要弹特殊确认」):asker 只服务
   // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
   // full-access 的常规 ask 仍在 guard 层自动放行(不经 asker),注入无档位副作用
   if (opts.onApproval) harness.security.setAsker(opts.onApproval);
   // 工具呈现表接线（D26/J1）：注册表 display 元数据下泄 TUI 呈现层（工具动词/代表字段随注册走，
   // harness 增改工具零跟表）；display 为纯呈现数据，不进模型侧 tools schema（SessionController 构造前）
-  setToolDisplayMeta(harness.tools.displayMeta());
+  setToolDisplayMeta(face.displayMeta());
 
   // 主链唯一入口（D5）：提交经 Loop 长任务模板（内嵌 Reactor），不再直连 harness.reactor
   const loopDeps: LoopDeps = {
     safety: harness.safety,
-    registry: harness.tools,
+    registry: face,
     context: harness.context,
     model: harness.model,
     root: opts.root,

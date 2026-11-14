@@ -7,9 +7,9 @@ import { createReadGuard, type ReadGuard } from './tools/read-guard';
 import { makeWriteSnapshotSink } from './tools/write-snapshot';
 import { ArtifactCollector } from './tools/artifact-collector';
 import { createToolOutputArchive } from './tools/output-archive';
-import { AgentRegistry, SubagentRunner, makeSpawnTool } from './subagent';
+import { AgentRegistry, SubagentRunner, makeDispatchTool, makeSpawnTool } from './subagent';
 import { makeAgentTeamTaskStopTool, makeTaskStopTool } from './tools/task-stop';
-import { makeAgentTeamTaskWaitTool, makeTaskWaitTool } from './tools/task-wait';
+import { makeAgentTeamTaskWaitTool, makeTaskStatusTool, makeTaskWaitTool } from './tools/task-wait';
 import { makeTaskBoardTools } from './tools/taskboard-tools';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -58,6 +58,13 @@ import type { KnowledgeBase } from './knowledge';
 
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
 const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
+
+/** sunx 会话主链工具面白名单（2026-11-15 sunx P1 Task 3）：常量单点——装配注册（kind==='sunx' 分叉）、
+ *  内核运行时 face 派生（session/runtime createKernelRuntime 的 derive({only})）与测试三方同源。
+ *  编排器不做执行（身份行即「never do the work yourself」）：只持分派（dispatch_task）/台账窥视与停止
+ *  （task_status/task_stop）/问询（ask_question）/清单（todo_write）/技能（skill）/产物（report_artifacts）七件；
+ *  standard 会话零消费（主链 face 基线不变量） */
+export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts'];
 
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
@@ -431,6 +438,9 @@ export class Harness {
         // 子智能体 ask 路由(2026-11-14 用户裁定):父链真实接缝在座才透传——headless 装配
         // (opts.ask 缺省=工具注册面落 headlessAskStub)不透传,fork 维持剔除旧制
         ...(opts.ask ? { ask: opts.ask } : {}),
+        // fork 子代 kind 继承(2026-11-15 sunx P1 Task 3,spec §17.2):sunx 装配的 fork 子 Reactor
+        // 稳定段与父逐字节同面(身份行/章程行随 Reactor kind);缺席=standard
+        ...(opts.kind ? { kind: opts.kind } : {}),
       },
       agents,
     );
@@ -558,6 +568,14 @@ export class Harness {
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.taskboard), display: { verb: 'TASK_STOP' } });
     // task_wait：仅 exec/spawn 台账等待（板 id 拒识点名 agent_team_task_wait）；第三参 run 信号穿透阻塞期
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
+    // sunx 工具面（2026-11-15 sunx P1 Task 3）：分派/窥视两件仅在 sunx 会话注册——普通 face 基线零变化
+    // （不变量：非 sunx 装配注册表不含 dispatch_task/task_status）。dispatch_task=分派即返回的两段式 fork
+    // （spawn 家族同缝、恒后台）；task_status=恒窥视台账查询（窥视即消费）。白名单派生消费面在
+    // createKernelRuntime（SUNX_FACE_TOOLS 单点）
+    if (opts.kind === 'sunx') {
+      this.tools.register({ ...makeDispatchTool(this.runner), display: { verb: 'DISPATCH' } });
+      this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
+    }
     // 智能体团队八件套：agentTeams 关则不注入模型面（板协调器仍构造，盘数据不删）
     if (agentTeamsEnabled(base)) {
       this.tools.register({

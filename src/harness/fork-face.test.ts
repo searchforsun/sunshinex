@@ -109,6 +109,47 @@ test('subagent 派生点:deriveChildRegistry 缺省/显式 allowlist 两分支�
     h?.tasks.stopAll();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+  // sunx 工具面(2026-11-15 P1 Task 3):dispatch_task/task_status 入剔除族——sunx 装配基面持两件,
+  // 派生面必无(防子生孙/自派发;standard 基面本就无两件,断言须在 sunx 装配上才有效)
+  const tmpSunx = mktmp('sunshinex-forkface-sub-sunx-');
+  let hx: Harness | undefined;
+  try {
+    hx = new Harness({ root: tmpSunx, mode: 'full-access', kind: 'sunx', model: new ScriptedAdapter([]), learnSkills: false });
+    assert.notEqual(hx.tools.get('dispatch_task'), undefined, 'sunx 基面应有 dispatch_task(剔除应发生在派生点)');
+    assert.notEqual(hx.tools.get('task_status'), undefined, 'sunx 基面应有 task_status(剔除应发生在派生点)');
+    const faceSunx = hx.runner.deriveChildRegistry();
+    assert.equal(faceSunx.get('dispatch_task'), undefined, 'fork 面不得含 dispatch_task(防子生孙)');
+    assert.equal(faceSunx.get('task_status'), undefined, 'fork 面不得含 task_status(防自派发)');
+    assert.notEqual(faceSunx.get('task_wait'), undefined, 'task_wait 仍在子面(等 exec 不受影响)');
+  } finally {
+    hx?.team.stopAll();
+    hx?.tasks.stopAll();
+    fs.rmSync(tmpSunx, { recursive: true, force: true });
+  }
+});
+
+test('sunx fork 子面路由 ask 保留:deps.ask 在场 + askedBy 派生 → ask_question 在场(2026-11-14 既有裁定回归锚;Task 3 剔除族追加不得破坏该路径)', () => {
+  const tmp = mktmp('sunshinex-forkface-ask-');
+  let h: Harness | undefined;
+  try {
+    h = new Harness({
+      root: tmp,
+      mode: 'full-access',
+      kind: 'sunx',
+      model: new ScriptedAdapter([]),
+      learnSkills: false,
+      ask: async () => ({ type: 'dismissed' }),
+    });
+    const face = h.runner.deriveChildRegistry({ label: 'child-a' });
+    assert.notEqual(face.get('ask_question'), undefined, '路由版 ask_question 应在 fork 面(askedBy 归因直通主对话挂起卡)');
+    assert.equal(face.get('dispatch_task'), undefined, '路由 ask 与剔除族互不干扰:fork 面仍无 dispatch_task');
+    const plain = h.runner.deriveChildRegistry();
+    assert.equal(plain.get('ask_question'), undefined, '缺 askedBy 派生不注册 ask(旧制:结论回写即应答)');
+  } finally {
+    h?.team.stopAll();
+    h?.tasks.stopAll();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('loop 派生点:agentNode scope=fork 的私有面剔 send_agent_team_message+四件套(直测产品派生点输出面)', async () => {
