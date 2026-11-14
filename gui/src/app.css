@@ -3982,6 +3982,12 @@ html[data-theme='light'][data-code-dark='1'] .files-md pre { background: #101010
    .plan-card-doc 滚动容器——内层随内容滚动,圆角只在滚动端点生效;容器恒裁四角+内距留白,内层透明 */
 html[data-theme='light'][data-code-dark='1'] .plan-card-doc { background: #101010; color: #dfdfdf; --fg: #dfdfdf; --fg-secondary: rgba(223, 223, 223, 0.7); --fg-tertiary: rgba(223, 223, 223, 0.5); --fg-muted: rgba(223, 223, 223, 0.52); --fg-icon: rgba(223, 223, 223, 0.85); }
 html[data-theme='light'][data-code-dark='1'] .plan-card-doc .files-md { background: transparent; color: inherit; }
+/* 暗码面板滚动条提亮(2026-11-14 用户实测「亮色模式下黑色代码滚动条,暗色模式下要看清」):
+   亮色全局 thumb=fg 10% 在暗底上不可辨;暗面族内改亮 fg 35%(hover 45%),Monaco 滑块同口径 */
+html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .files-md, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body, .plan-card-doc)::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, #dfdfdf 35%, transparent); }
+html[data-theme='light'][data-code-dark='1'] :is(.code-block, .files-body, .files-md, .entry-tool .tool-detail, .sx-diff-tab .diff-col, .sx-change-body, .sx-turn-diff-body, .plan-card-doc)::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, #dfdfdf 45%, transparent); }
+html[data-theme='light'][data-code-dark='1'] :is(.files-body, .entry-tool .tool-detail) .monaco-scrollable-element > .scrollbar > .slider { background: color-mix(in srgb, #dfdfdf 35%, transparent) !important; }
+html[data-theme='light'][data-code-dark='1'] :is(.files-body, .entry-tool .tool-detail) .monaco-scrollable-element > .scrollbar > .slider:hover { background: color-mix(in srgb, #dfdfdf 45%, transparent) !important; }
 
 
 /* 亮色主对话纯净白二段(2026-11-12 用户裁定):页面 --surface 提纯白后与 composer(白)同色——
