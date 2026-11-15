@@ -485,7 +485,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
             <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : sunxName !== undefined ? t(`Give ${sunxName} a goal`, `给 ${sunxName} 一个目标`) : t('Give Sunshinex a task', '给 Sunshinex 一个任务')}</div>
-            <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : sunxName !== undefined ? t('Describe what you want done — it breaks the goal down, dispatches it to the right agents, and keeps you posted.', '描述你想完成的事——它会拆解目标、分派给合适的智能体执行，并随时同步进展。') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
+            <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : sunxName !== undefined ? t('Describe the goal — it takes care of the rest.', '描述目标即可，剩下的交给它。') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}
         {hiddenCount > 0 && (
