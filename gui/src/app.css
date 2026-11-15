@@ -751,8 +751,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 工具折叠行:裸行 + 胶囊 hover;展开区代码井 */.entry-tool { background: transparent; padding: 2px 8px; font-family: var(--font-ui); font-size: calc(14px * var(--fz)); }.entry-tool .tool-summary {
   display: block; width: 100%; text-align: left;
   padding: 2px 8px; border-radius: var(--radius-row);
-  color: var(--fg-secondary); font: calc(14px * var(--fz)) var(--font-ui);
-}.entry-tool .tool-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
+  color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui);
+}
+.entry-tool.open .tool-summary, .entry-tool .tool-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); } /* 2026-11-14 统一亮度尺度:折叠 tertiary,hover/展开 secondary */
 /* G14.89 工具/思考轻行串收紧:相邻轻行 16px 槽位 → 视觉 6px(执行序列不纵向膨胀) */
 .chat .entry-tool + .entry-tool,
 .chat .entry-tool + .entry-thinking,.chat .entry-thinking + .entry-tool { margin-top: -10px; }.entry-tool .tool-detail { margin: 4px 0 0; padding: 8px 10px; padding-left: 10px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--surface-code); }
@@ -966,7 +967,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   /* G14.211 背景/圆角上移至 .thinking-scroll(边框固定)——弧度挂滚动视口,内滚不再滚成直角 */
   font: calc(14px * var(--fz))/1.6 var(--font-ui); color: var(--fg-secondary); /* 字体预设管线:思考=正文系散文(写死等宽在衬线预设下露馅,用户截图);行高由 --f-think-lh 预设令牌接管 */
   white-space: pre-wrap; overflow-wrap: anywhere;
-}.entry-tool .tool-summary { display: flex; align-items: center; gap: 6px; }.entry-tool .tool-summary svg { color: var(--fg); } /* 2026-11-07 用户裁定:图标提亮(正文行继承 fg-secondary,svg 恒全前景) */.entry-tool .tool-verb { color: var(--fg-secondary); }.entry-tool .tool-result-inline { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); font-weight: 500; color: var(--fg); cursor: default; }.chat-more { margin-left: auto; }.chat-more-pop { top: 40px; right: 8px; }
+}.entry-tool .tool-summary { display: flex; align-items: center; gap: 6px; color: var(--fg-tertiary); } /* 2026-11-14 用户裁定「工具行图标与文字同亮度,折叠暗/hover·展开亮」:行色 tertiary,svg 去 fg 固定改继承 */.entry-tool .tool-summary svg { color: inherit; }.entry-tool .tool-verb { color: inherit; }.entry-tool .tool-result-inline { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.chat-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); font-weight: 500; color: var(--fg); cursor: default; }.chat-more { margin-left: auto; }.chat-more-pop { top: 40px; right: 8px; }
 
 /* ===== G10-C3c mermaid 围栏渲染 ===== */.mermaid-svg { margin: 4px 0; padding: 8px 10px; background: var(--surface-code); border-radius: var(--radius-md); overflow-x: auto; text-align: center; }.mermaid-svg svg { display: inline-block; margin: 0 auto; } /* G14.106 默认居中 */.mermaid-svg svg { max-width: 100%; }/* 流式草稿:软源码(无代码卡底/无头栏),闭合后换成 SVG */.mermaid-pending.mermaid-draft { margin: 4px 0; padding: 32px 10px; background: var(--surface-code); border: 1px dashed var(--border); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; } /* 流式草稿/成图在途:转圈占位(2026-11-07 用户裁定「改转圈,圈对图要够大,无文案」)——容器与成图卡同形,替换零跳变 */.mermaid-pending-spin { width: 24px; height: 24px; flex: none; animation: sx-spin 1s linear infinite; } /* SVG 圆环(2026-11-07 实测:界面放缩栅格化下 border 环 24px 走样成圆角方,12px 不触发——SVG 路径绘制与 border-radius 不同链,任何缩放下恒正圆) */
 .mermaid-pending-spin circle { fill: none; stroke-width: 2.5; }
@@ -2315,9 +2316,10 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 /* 2026-11-14 用户裁定「折叠行与思考行同灰度」:tertiary 档,hover→secondary */
 .concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 2px 8px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-fold:hover, .concise-fold:focus-visible { color: var(--fg-secondary); background: none; }
-.concise-fold-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.concise-fold .concise-chev { flex: none; color: var(--fg-icon); opacity: 1; transition: transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.concise-fold.open .concise-chev { transform: rotate(90deg); }
+.concise-fold-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.concise-fold .concise-chev { flex: none; color: inherit; opacity: 0; transition: opacity var(--dur-basic, 0.18s) var(--ease-enter, ease), transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+.concise-fold:hover .concise-chev, .concise-fold.open .concise-chev { opacity: 1; }
+.concise-fold.open .concise-chev { transform: rotate(90deg); } /* 2026-11-14 用户裁定:箭头 hover 才显,紧跟文字后 */
 /* 单子链 grid 0fr/1fr(2026-11-14 结构重修:折叠类挂 seg-inner 多子容器=空占位根因,改挂
    concise-body 单子链——header 在折叠体之外不受行高影响) */
 .concise-wrap { display: flex; flex-direction: column; }
@@ -2615,8 +2617,9 @@ input.sx-setting-input { width: 100%; }
 .tool-group { display: flex; flex-direction: column; } /* 2026-10-26 用户裁定:聚合行原地产生,去渐入动画(逐帧 translateY 撑动上方工具/思考行上下抖动) */
 .tool-group-head {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
-  padding: 2px 8px; border-radius: var(--radius-sm); color: var(--fg-secondary);
+  padding: 2px 8px; border-radius: var(--radius-sm); color: var(--fg-tertiary); /* 2026-11-14 统一亮度尺度:折叠 tertiary */
 }
+.tool-group-head:hover, .tool-group-head:focus-visible, .tool-group-head.open { color: var(--fg-secondary); }
 /* hover 无底色(对齐工具行现行规范:胶囊底色已退役,仅提亮文字+chevron 显现) */
 .tool-group-head:hover, .tool-group-head:focus-visible { color: var(--fg); }
 .tool-group-label { font-size: calc(14px * var(--fz)); animation: tool-count-pop var(--dur-basic) var(--ease-enter); transform-origin: left center; }
