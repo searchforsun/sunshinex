@@ -20,6 +20,7 @@ import { applyUiMode, useUiMode } from '../ui-mode';
 import type { UiMode } from '../ui-mode';
 import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from '../dark-surfaces';
 import { applyUsageStats, readUsageStats } from '../usage-stats';
+import { applyConciseMode, readConciseMode } from '../concise-mode';
 import type { Palette } from '../palette';
 import { FolderOpen } from 'lucide-react';
 import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
@@ -596,6 +597,19 @@ const UsageStatsRow = (): JSX.Element => (
   />
 );
 
+/** 简洁模式行(2026-11-14 用户裁定「设置页提供简洁模式」):两阶段正文之间的工具/思考段外面
+ *  再加一层段级折叠——折叠头=交织双方形图标+类别动词总结(查阅了文件 · 运行了命令…,不带数量);
+ *  运行中只显既有聚合行+当前运行行,跑完平滑并入;逃逸面=spawn/团队全家/ask/exit_plan/task_stop */
+const ConciseModeRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Concise mode', '简洁模式')}
+    desc={t('Fold tool and thinking rows between replies into one summary line; running rows stay visible until they finish.', '把回复之间的工具与思考行折叠成一条总结；运行中的行保持可见，跑完后并入折叠。')}
+    aria="concise mode"
+    read={readConciseMode}
+    apply={applyConciseMode}
+  />
+);
+
 /** 界面模式行(2026-11-07 用户裁定;ui-mode.ts):编程(缺省)/办公 */
 function UiModeRow(): JSX.Element {  const mode = useUiMode();
   return (
@@ -926,12 +940,13 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'usagestats' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'usagestats' as const, 'concisemode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
                   if (fd === 'uimode') return <UiModeRow key="uimode" />;
                   if (fd === 'darkbubbles') return <DarkBubblesRow key="darkbubbles" />;
                   if (fd === 'darkcode') return <DarkCodeRow key="darkcode" />;
                   if (fd === 'usagestats') return <UsageStatsRow key="usagestats" />;
+                  if (fd === 'concisemode') return <ConciseModeRow key="concisemode" />;
                   if (fd === 'uifont') return <UiFontRow key="uifont" />;
                   if (fd === 'codefont') return <CodeFontRow key="codefont" />;
                   if (fd === 'palette') return <PaletteRow key="palette" />;

@@ -2,6 +2,53 @@ import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronRight, FolderSearch, Globe, Hourglass, type LucideIcon } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
+import { useConciseMode } from '../../concise-mode';
+
+/** 简洁模式段级折叠分类(2026-11-14 用户裁定):逃逸面=spawn/团队全家/ask/exit_plan/task_stop
+ *  (恒独立行);worktree/task_wait 并入折叠层。并入面=其余全部工具+思考行 */
+const CONCISE_ESCAPE = new Set([
+  'spawn', 'task_stop', 'agent_team_task_stop',
+  'create_agent_team', 'create_agent_teammate', 'send_agent_team_message',
+  'create_agent_team_task', 'get_agent_team_board', 'agent_team_task_wait',
+  'ask_question', 'exit_plan',
+]);
+
+/** 并入面类别动词(总结头文案,2026-11-14 用户裁定「不写数量」——只列类别动词,按首次出现排序去重) */
+const CONCISE_VERB: Record<string, [string, string]> = {
+  exec: ['Ran commands', '运行了命令'],
+  read: ['Read files', '查阅了文件'], grep: ['Read files', '查阅了文件'], glob: ['Read files', '查阅了文件'],
+  webfetch: ['Searched the web', '搜索了网页'], websearch: ['Searched the web', '搜索了网页'],
+  write: ['Edited files', '修改了文件'], edit: ['Edited files', '修改了文件'],
+  skill: ['Loaded skills', '加载了技能'], kb_search: ['Searched knowledge base', '检索了知识库'],
+  memory_write: ['Saved memory', '保存了记忆'], todo_write: ['Updated todos', '更新了待办'],
+  task_wait: ['Waited on tasks', '等待了任务'], worktree: ['Switched worktree', '切换了工作树'],
+};
+
+/** 段级总结文案:并入面逐条映射类别动词,按首次出现排序去重;思考行=「思考」(在最后) */
+function conciseSummary(seg: ChatEntry[]): [string, string] {
+  const en: string[] = [];
+  const zh: string[] = [];
+  let thought = false;
+  for (const e of seg) {
+    if (e.kind === 'thinking') { thought = true; continue; }
+    if (e.kind !== 'tool' || e.name === undefined || CONCISE_ESCAPE.has(e.name)) continue;
+    const pair = CONCISE_VERB[e.name] ?? ['Used tools', '调用了工具'];
+    if (!en.includes(pair[0])) { en.push(pair[0]); zh.push(pair[1]); }
+  }
+  if (thought) { en.push('Thought'); zh.push('思考'); }
+  return [en.join(' · '), zh.join(' · ')];
+}
+
+/** 交织双方形图标(2026-11-14 用户裁定「折叠行前缀=两个正方形相互交织的形状」):前面方块吃
+ *  surface 底色盖住后方方块一角=交织观感,两枚均 currentColor 描边随字体色 */
+function ConciseIcon(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="concise-icon">
+      <rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="1.5" y="5.5" width="9" height="9" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
 /** G14.215 工具聚合行（用户裁决；2026-10-25 再裁定「聚合计数不小于 2」——单条（含运行中）恒原生
  *  行,第二个同类工具行出牌才成组,组头流光/计数随出牌实时递增;「编辑/写入行不聚合」不变）：同类型
  *  相邻工具行折为一条聚合头（「查阅了 N 次」形,N≥2）;点击展开=成员工具行平级铺开（成员即原生
@@ -84,6 +131,18 @@ export function buildSegNodes(seg: ChatEntry[]): SegNode[] {
   }
   flush();
   return nodes;
+}
+
+/** 简洁模式段级折叠头(2026-11-14):交织双方形图标+类别动词总结(不带数量);点击展开内层
+ *  既有聚合=第二层。grid 0fr/1fr 高度过渡=并入动画(成员行收起即「向上并入」观感) */
+function ConciseFold({ open, onToggle, summary }: { open: boolean; onToggle: () => void; summary: [string, string] }): JSX.Element {
+  return (
+    <button type="button" className={`concise-fold${open ? ' open' : ''}`} aria-expanded={open} onClick={onToggle}>
+      <ConciseIcon />
+      <span className="concise-fold-label">{t(summary[0], summary[1])}</span>
+      <ChevronRight className="tool-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
+    </button>
+  );
 }
 
 /** 聚合头锚定窗口（ms，覆盖 grid 0fr→1fr 高度过渡 --dur-relaxed=0.3s + 余量）：窗口内贴底跟随
@@ -177,9 +236,24 @@ export const ToolSegBlock = memo(function ToolSegBlock({
     }
   }, []);
 
+  const concise = useConciseMode();
+  /** 简洁模式段级折叠(2026-11-14 用户裁定):并入面条目≥1 才加折叠层;段内全为逃逸行不折叠。
+   *  运行中=现有渲染原样(既有聚合行流光+当前运行行),跑完→折叠头出现(slide-up 淡入),
+   *  展开=内层既有聚合行(第二层);concise-hidden 用 grid 高度 0fr 过渡做并入动画 */
+  const foldable = concise && seg.some((e) => e.kind === 'thinking' || (e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name))));
+  const anyRunning = foldable && seg.some((e) => executingOf(e));
+  /** 展开态跨渲染保持 */
+  const [segOpen, setSegOpen] = useState(false);
   return (
     <div className={`seg-collapse${closed ? '' : ' open'}`}>
-      <div className="seg-inner">
+      {foldable && !anyRunning && (
+        <ConciseFold
+          open={segOpen}
+          onToggle={() => setSegOpen((v) => !v)}
+          summary={conciseSummary(seg)}
+        />
+      )}
+      <div className={`seg-inner${foldable && !anyRunning && !segOpen ? ' concise-hidden' : ''}${foldable ? ' concise-body' : ''}`}>
         {nodes.map((n) => {
           if (n.type === 'entry') {
             if (n.entry.kind === 'thinking') return renderThinking(n.entry);
