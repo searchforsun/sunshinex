@@ -59,7 +59,7 @@ export interface Connection {
   btw(id: string, question: string): Promise<{ reply: string; sessionId: string }>;
   renameSession(id: string, title: string): Promise<{ ok: true; title: string }>;
   /** 自定义会话名回读(G14.16):GET /session/:id/title/get;title=undefined 即无自定义名 */
-  getSessionTitle(id: string): Promise<{ title?: string }>;
+  getSessionTitle(id: string): Promise<{ title?: string; kind?: string }>;
   /** GET /session/:id/charter(sunx P2 Task 7 读面):当前品性全文+rev——CharterDialog 预填数据源
    *  (append-only 替代行语义=全文替换,预填必须反映编辑后文本,非出生冻结层旧文)。409=非 sunx */
   sessionCharter(id: string): Promise<{ text: string | null; charterRev: number }>;

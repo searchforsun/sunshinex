@@ -6,6 +6,7 @@ import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
+import { CharterDialog } from '../../welcome/CharterDialog';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
 import { loadSeenMap, persistSeenMap, stampSeen, suppressAutoSeen } from '../../sidebar/project-menu-util';
 import type { PinEntry } from '../../sidebar/pin-store';
@@ -94,6 +95,8 @@ export interface ChatTopbarProps {
   readonly commitTitle: () => void;
   readonly setTitleEditing: (v: boolean) => void;
   readonly displayTitle: string;
+  /** 会话形态(sunx P2 2026-11-15:title GET 随响应透出)——'sunx' 行菜单编辑 Sunx/复制 Sunx ID 分支 */
+  readonly sessionKind?: string;
   readonly sessionId: string;
   readonly tokens: number;
   readonly steps: number;
@@ -130,7 +133,9 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  /** 「编辑 Sunx」→ 品性编辑弹窗(P2 Task 7 组件复用;portal 自挂,挂载点随 header 尾) */
+  const [charterOpen, setCharterOpen] = useState(false);
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   // 归档二次弹窗确认(2026-10-23 用户裁定):菜单点「归档会话」不直执行,先弹 确认归档|取消
@@ -305,9 +310,13 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
     {
       id: 'rename',
-      label: t('Rename session', '重命名会话'),
+      label: sessionKind === 'sunx' ? t('Edit Sunx', '编辑 Sunx') : t('Rename session', '重命名会话'),
       icon: <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />,
       onSelect: () => {
+        if (sessionKind === 'sunx') {
+          setCharterOpen(true); // sunx:重命名语义=编辑这个 Sunx(品性/定义;名称即身份走创建名)
+          return;
+        }
         setTitleDraft(displayTitle);
         setTitleEditing(true);
       },
@@ -323,7 +332,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     { id: 'divider-2', divider: true, label: '', onSelect: () => undefined },
     {
       id: 'copy-id',
-      label: t('Copy session ID', '复制会话 ID'),
+      label: sessionKind === 'sunx' ? t('Copy Sunx ID', '复制 Sunx ID') : t('Copy session ID', '复制会话 ID'),
       icon: copiedTag === 'id' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />,
       keepOpen: true,
       onSelect: () => copyText(sessionId, 'id'),
@@ -337,6 +346,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     },
   ];
   return (
+    <>
     <header className="chat-topbar" data-drag-band>
         {/* 2026-10-25 应用级导航(前进/后退):菜单关闭态才驻顶栏最左——菜单开着时由菜单头承载
             (2026-10-25 用户裁定「菜单存在显示在菜单里,收起才显示在当前位置」,单点不双显) */}
@@ -490,5 +500,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         )}
         {/* [|] 侧栏开关退役(2026-10-23 用户裁定):全局唯一切换钮=右上窗控簇(桌面)/固定右上钮(web) */}
     </header>
+    {charterOpen && <CharterDialog open onClose={() => setCharterOpen(false)} conn={conn} sessionId={sessionId} />}
+    </>
   );
 }

@@ -340,12 +340,13 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7):kind 聚合+按工作区分
     expect(list.textContent).toContain('编排一');
     expect(list.textContent).toContain('编排三');
     expect(list.textContent).not.toContain('普通会话'); // kind 过滤
-    // 空组不显:全 standard 会话侧栏零 SUNX 区块
+    // SUNX 分组常驻(2026-11-15 用户裁定):全 standard 会话 → 组头恒显+空态引导行,列表空
     first.unmount();
     const conn2 = makeConn(); // sessionsOf 全 standard
     const second = renderMenu(conn2);
     await second.findByText('demo goal');
-    expect(second.container.querySelector('.sx-sunx-list')).toBeNull();
+    expect(second.container.querySelector('.sx-sunx-empty')).not.toBeNull(); // 空态引导行
+    expect(second.container.querySelector('.sx-sunx-list')).toBeNull(); // 列表空
   });
 
   it('条目点击=既有 attach 链(attachJournal 两步→onOpenSession)', async () => {
@@ -358,7 +359,7 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7):kind 聚合+按工作区分
   it('组头看板钮:接线 onOpenSunxBoard 渲染+点击上抛;未接线不渲染(guard)', async () => {
     const onOpenSunxBoard = vi.fn();
     const first = renderMenu(makeSunxConn(), { onOpenSunxBoard });
-    const btn = await first.findByRole('button', { name: 'sunx board' });
+    const btn = (await first.findAllByRole('button', { name: 'sunx board' }))[0]; // 常驻后 RECENTS 头+组头双钮同名
     expect(btn.getAttribute('data-tip')).toBe('Sunx board'); // 测试环境钉 en(本文件不钉 zh)
     expect(btn.querySelector('title')).toBeNull(); // data-tip 禁原生 title(铁律)
     fireEvent.click(btn);

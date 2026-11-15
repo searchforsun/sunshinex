@@ -50,12 +50,13 @@ function renderSection(
 }
 
 describe('SunxSection(侧栏 SUNX 过滤组)', () => {
-  it('空组整块不显:rows 空列/装载中(null)都零渲染', () => {
+  it('SUNX 分组常驻(2026-11-15 用户裁定):rows 空列=组头+空态引导行;装载中(null)瞬态零渲染', () => {
     const empty = renderSection([]);
-    expect(empty.container.querySelector('.sx-side-head')).toBeNull();
+    expect(empty.container.querySelector('.sx-side-head')).not.toBeNull(); // 组头恒显
+    expect(empty.container.querySelector('.sx-sunx-empty')).not.toBeNull(); // 空态引导行
     empty.unmount();
     const loading = renderSection(null);
-    expect(loading.container.querySelector('.sx-side-head')).toBeNull();
+    expect(loading.container.querySelector('.sx-side-head')).not.toBeNull(); // 装载中瞬态不闪占位
   });
 
   it('组头「SUNX」+按工作区分节(R10):两工作区各一小节头(目录名);行徽标在场', () => {

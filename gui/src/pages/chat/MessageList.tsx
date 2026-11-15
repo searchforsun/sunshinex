@@ -81,6 +81,8 @@ export interface MessageListProps {
   readonly onWheel: (e: { deltaY: number }) => void;
   /** G14.2xx 辅助对话空态文案(sidechat 页签) */
   readonly sideChat?: boolean;
+  /** sunx 会话显示名(sunx P2 2026-11-15):在场=空态欢迎语走 Sunx 分支(编排者口径,无技术细节) */
+  readonly sunxName?: string;
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
@@ -352,7 +354,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=运行状态行隐步数+tokens
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, onOpenImage, onOpenWeb } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, sunxName, onOpenImage, onOpenWeb } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
   const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
   /** 最近一次用户滚动时刻(空闲回放让路判据:滚动进行中不挂载更早条目) */
@@ -482,8 +484,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
         <ChatRail entries={visible} chatScrollRef={chatScrollRef} sideChat={sideChat} />
         {entries.length === 0 && (
           <div className="chat-empty" aria-label="chat empty">
-            <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : t('Give Sunshinex a task', '给 Sunshinex 一个任务')}</div>
-            <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
+            <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : sunxName !== undefined ? t(`Give ${sunxName} a goal`, `给 ${sunxName} 一个目标`) : t('Give Sunshinex a task', '给 Sunshinex 一个任务')}</div>
+            <div className="chat-empty-hint">{sideChat === true ? t('Quick questions on the side; the main task stays untouched', '旁路快问,不打断主任务') : sunxName !== undefined ? t('Describe what you want done — it breaks the goal down, dispatches it to the right agents, and keeps you posted.', '描述你想完成的事——它会拆解目标、分派给合适的智能体执行，并随时同步进展。') : t('Describe the goal: streaming replies, live tool runs, writes need approval', '描述目标即可:模型流式作答,工具实时执行,写操作需审批')}</div>
           </div>
         )}
         {hiddenCount > 0 && (

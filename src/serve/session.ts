@@ -219,6 +219,11 @@ export class SessionRuntime {
   sessionKind: SessionKind | undefined;
   /** 自定义会话名（2026-11-15）：仅出生 meta.title 消费（显示链），不进提示词；reCast 唯一写点 */
   private sessionName: string | undefined;
+  /** 创建名外窥(sunx P2 2026-11-15 用户实测「打开就是新会话」修):title GET 未铸档窗口回显
+   *  创建名——打开即显姓名,窗口期到首条消息落 birth 为止;sessionKind 同款公开面 */
+  get sunxName(): string | undefined {
+    return this.sessionName;
+  }
   /** 实例品性原文（2026-11-15 sunx §17.1）：assemble() 每次换铸透传 ContextManager 品性冻结层；
    *  reCast 唯一写点 */
   private sessionCharter: string | undefined;

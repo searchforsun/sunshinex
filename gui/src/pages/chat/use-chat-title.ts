@@ -26,6 +26,8 @@ export function useChatTitle(deps: {
   setTitleDraft: Dispatch<SetStateAction<string>>;
   commitTitle: () => void;
   displayTitle: string;
+  /** 会话形态(P2 2026-11-15 title GET 随响应透出):'sunx' 菜单/欢迎语分支的数据通道 */
+  kind: string | undefined;
 } {
   const { conn, sessionId, fixedTitle, entries, onRenamed } = deps;
 /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
@@ -33,6 +35,8 @@ export function useChatTitle(deps: {
  *  缺省回落首条用户消息摘要,再落「新会话」——不回落会话 id(2026-11-07 用户裁定:顶栏不显 id 过渡态)。
  *  回读落定前显空(不先闪摘要再换名);见过的名按会话缓存,切回即直显。点击标题即改 */
 const [title, setTitle] = useState<string | null>(() => titleCache.get(sessionId) ?? null);
+/** 会话形态(title GET 随响应透出;sunx 菜单/欢迎语分支消费) */
+const [kind, setKind] = useState<string | undefined>();
 const [titleLoaded, setTitleLoaded] = useState(() => titleCache.has(sessionId));
 useEffect(() => {
   if (title !== null) titleCache.set(sessionId, title);
@@ -71,9 +75,10 @@ useEffect(() => {
   }
   let alive = true;
   conn.getSessionTitle(sessionId).then(
-    ({ title: srv }) => {
+    ({ title: srv, kind: srvKind }) => {
       if (!alive) return;
       if (srv !== undefined && srv.trim() !== '') setTitle(srv);
+      if (srvKind !== undefined) setKind(srvKind);
       setTitleLoaded(true);
     },
     () => {
@@ -103,5 +108,5 @@ useEffect(() => {
     alive = false;
   };
 }, [conn, sessionId, firstUserText, title, titleLoaded, applyTitle]);
-  return { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle };
+  return { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle, kind };
 }

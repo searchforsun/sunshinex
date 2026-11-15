@@ -176,9 +176,20 @@ export function handleSessionTitleGet(io: SessionHandlerIo, res: http.ServerResp
   if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  // 未铸档(出生后零实质事件):meta 缺——sunx 回创建名+kind(2026-11-15 用户实测「打开就是
+  // 新会话」:打开即显姓名,窗口期到首条消息落 birth 为止;零档案语义不变,不提前建档)。
+  // kind 随响应透出——GUI 菜单/欢迎语 Sunx 化分支的单点数据通道(useChatTitle 挂载回读)
+  const name = session.sunxName;
+  const kind = session.sessionKind;
   const journalId = session.attachedJournalId;
-  if (journalId === undefined) return io.send(res, 200, {});
-  io.send(res, 200, { title: readSessionMeta(resolveDataDir(session.root), journalId).title });
+  if (journalId === undefined) {
+    return io.send(res, 200, { ...(kind === 'sunx' && name !== undefined ? { title: name } : {}), kind });
+  }
+  const meta = readSessionMeta(resolveDataDir(session.root), journalId);
+  io.send(res, 200, {
+    ...(meta.title !== undefined ? { title: meta.title } : kind === 'sunx' && name !== undefined ? { title: name } : {}),
+    kind,
+  });
 }
 
 /** POST /session/:id/charter {text}（2026-11-15 sunx P1 Task 4）：品性（charter）编辑——

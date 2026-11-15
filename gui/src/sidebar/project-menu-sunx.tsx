@@ -50,8 +50,8 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
     for (const sec of bySlug.values()) sec.rows.sort((a, b) => b.updatedAt - a.updatedAt);
     return [...bySlug.entries()];
   }, [rows]);
-  // 空组整块不显(装载中 null 同口径——区块随数据在场,无占位行)
-  if (rows === null || rows.length === 0) return null;
+  // SUNX 分组常驻(2026-11-15 用户裁定「SUNX分组常驻」:空组不再整块隐——组头恒显+空态行
+  // 引导创建;装载中 null 同口径=区块随数据在场,不闪占位)
   return (
     <>
       <div
@@ -89,6 +89,9 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
         )}
       </div>
       <div className={`sx-collapse sx-collapse-sunx${open ? ' open' : ''}`}>
+        {sections.length === 0 ? (
+          <div className="sx-sunx-empty">{t('No Sunx yet — create one with New Sunx above.', '还没有 Sunx——点上方「新建 Sunx」创建。')}</div>
+        ) : (
         <ul className="sx-sunx-list" aria-label="sunx sessions">
           {sections.map(([slug, sec]) => (
             <li key={slug} className="sx-sunx-ws-item">
@@ -134,6 +137,7 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
             </li>
           ))}
         </ul>
+        )}
       </div>
     </>
   );
