@@ -18,7 +18,7 @@ import { pathBasename, pathSegments } from '../ui-util';
 export const WELCOME_TAB_SEAT = '@welcome';
 
 /** 标签类型 id(注册表键;G8a 注册 file/tasks,其余类型后续批次入表) */
-export type TabTypeId = 'file' | 'diff' | 'turndiff' | 'tasks' | 'agents' | 'agent' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'learned' | 'sidechat' | 'plans' | 'artifacts'; /* learned=学习技能(2026-10-31,[skills] 回显点击打开);directory 退役(2026-10-29 用户裁定「不要兼容」):盘档消毒 TAB_TYPES 同步滤除,旧盘 directory 页签开席即弃;turndiff=本轮改动单文件 diff(2026-11-10,冻结前/后像);artifacts=产物库(2026-11-12 spec §6,会话级单例) */
+export type TabTypeId = 'file' | 'diff' | 'turndiff' | 'tasks' | 'agents' | 'agent' | 'terminal' | 'web' | 'context' | 'bgtasks' | 'memory' | 'learned' | 'sidechat' | 'plans' | 'artifacts' | 'sunxboard'; /* learned=学习技能(2026-10-31,[skills] 回显点击打开);directory 退役(2026-10-29 用户裁定「不要兼容」):盘档消毒 TAB_TYPES 同步滤除,旧盘 directory 页签开席即弃;turndiff=本轮改动单文件 diff(2026-11-10,冻结前/后像);artifacts=产物库(2026-11-12 spec §6,会话级单例);sunxboard=SUNX 总览页(2026-11-15 sunx P2 Task 8 spec §17.3,应用级单例——id 不用 kind 值 'sunx' 防语义混淆) */
 
 /** 开标签目标参数(按类型取用:file=diff=目录用 path、diff 备选 callId、web=url、终端 cols/rows) */
 export interface TabParams {
@@ -386,7 +386,7 @@ export function reopenClosed(states: TabStates, sessionId: string, index: number
 }
 
 const TAB_TYPES: ReadonlySet<string> = new Set<string>([
-  'file', 'diff', 'turndiff', 'tasks', 'agents', 'agent', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'learned', 'sidechat', 'plans', 'artifacts',
+  'file', 'diff', 'turndiff', 'tasks', 'agents', 'agent', 'terminal', 'web', 'context', 'bgtasks', 'memory', 'learned', 'sidechat', 'plans', 'artifacts', 'sunxboard',
 ]);
 
 /** G14.2xx 盘档消毒(gui/sessions/<会话id>.json → TabSessionState):盘为真相源,但坏键/越型

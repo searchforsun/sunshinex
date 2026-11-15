@@ -10,7 +10,7 @@ import { lazy } from 'react';
 import { useState } from 'react';
 import { SideChatComposer } from './side-chat-composer';
 import { t } from '../i18n';
-import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, NotebookPen, Package } from 'lucide-react';
+import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, KanbanSquare, NotebookPen, Package } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -29,6 +29,7 @@ const MemoryTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.M
 const LearnedSkillsTab = lazy(() => import('./InsightTabs').then((m) => ({ default: m.LearnedSkillsTab })));
 const WebTab = lazy(() => import('./WebTab').then((m) => ({ default: m.WebTab })));
 const ArtifactsTab = lazy(() => import('../pages/Artifacts').then((m) => ({ default: m.ArtifactsTab })));
+const SunxBoardTab = lazy(() => import('./SunxBoardTab').then((m) => ({ default: m.SunxBoardTab })));
 
 import type { MutableRefObject } from 'react';
 import type { Connection } from '../connection';
@@ -139,6 +140,10 @@ export interface TabRenderProps {
   /** 辅助对话挂载闸门(2026-11-06):sideId 经 App 恢复对账核验/改指后才挂真 Chat——持久化旧 id
    *  (上个 daemon 生命周期)直挂必 snapshot 404。缺省=放行(旧装配/测试桩) */
   readonly sideReady?: (sideId: string) => boolean;
+  /** SUNX 总览页进实例(sunx P2 Task 8,App 注入;他型忽略):journalId=attach 两步(newSession 壳+
+   *  attach 收养→openSession canonical,Chat fork 横幅回父同链);sessionId=新建成功裸 openSession。
+   *  可选(旧装配/测试桩不接线,卡点击/建会话成功无动作) */
+  readonly onOpenSunxInstance?: (target: { journalId?: string; sessionId?: string; root: string }) => void;
 }
 
 /** G14.2xx 类型图标(标签条/标签搜索弹窗共用;G8b-d 增类在此补图标) */
@@ -155,6 +160,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   learned: Sparkles, // 学习技能(2026-10-31,[skills] 回显同族图标)
   plans: NotebookPen, // 计划页签(2026-11-04,与计划卡卡头/计划模式 pill 同件)
   artifacts: Package, // 产物库(2026-11-12)
+  sunxboard: KanbanSquare, // SUNX 总览页(2026-11-15 spec §17.3;与侧栏 SUNX 组头看板钮同件)
   terminal: SquareTerminal, // G8b 缓议清偿(G8d U-D21 同步)
   web: Globe, // G8d 内嵌网页标签
 };
@@ -482,6 +488,24 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         onOpenFile={fileTabOf(p)}
         onOpenWeb={(url) => p.openTab('web', { url })}
         onRunInTerminal={(command) => p.openTab('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command })}
+      />
+    ),
+  },
+  {
+    id: 'sunxboard',
+    // SUNX 总览页(2026-11-15 sunx P2 Task 8,spec §17.3):应用级单例(不绑会话——数据自拉
+    // 全量 sunx 实例,欢迎页座同渲染),group 归 tools(与终端/浏览器同族=非会话绑定面);
+    // 常量键判重+singleton 双保险(重开=聚焦既有)。入口:侧栏 SUNX 组头/RECENTS 头看板钮
+    // (Task 7 留的 onOpenSunxBoard 缝,App 接线即生效)+「+」菜单
+    group: 'tools',
+    title: () => t('Sunx board', 'Sunx 看板'),
+    resolveKey: () => '',
+    singleton: true,
+    render: (p) => (
+      <SunxBoardTab
+        conn={p.conn}
+        refreshNonce={p.panelRefreshNonce}
+        onOpenInstance={(target) => p.onOpenSunxInstance?.(target)}
       />
     ),
   },

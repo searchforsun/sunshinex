@@ -800,6 +800,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               }}
               onNewChat={onNewChat}
               onNewSunx={() => setSunxOpen(true)}
+              onOpenSunxBoard={props.onOpenSunxBoard} /* sunx P2 Task 8:RECENTS 头看板钮(SUNX 组空块不显时的常驻入口) */
               recents={recents}
               recentLimit={recentLimit}
               onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}

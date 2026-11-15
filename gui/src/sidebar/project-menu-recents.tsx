@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
-import { ChevronRight, Network, SquarePen } from 'lucide-react';
+import { ChevronRight, KanbanSquare, Network, SquarePen } from 'lucide-react';
 import { RECENT_VISIBLE_DEFAULT, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
@@ -15,6 +15,9 @@ export interface RecentsSectionProps {
   /** 头部「新建 Sunx」同级钮(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」同级、独立弹窗
    *  ——宿主开 NewSunxDialog;欢迎页 composer 零改动) */
   readonly onNewSunx: () => void;
+  /** 头部「Sunx 看板」钮(sunx P2 Task 8,spec §17.3):「新建 Sunx」旁开 SUNX 总览页签——
+   *  与 SUNX 组头看板钮同动作(可选 guard:未接线不渲染,不产死钮;SUNX 组空块不显时本钮=常驻入口) */
+  readonly onOpenSunxBoard?: () => void;
   readonly recents: Array<SessionRow & { root: string; slug: string }> | null;
   readonly recentLimit: number;
   readonly onShowMore: () => void;
@@ -37,7 +40,7 @@ export interface RecentsSectionProps {
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, onNewChat, onNewSunx, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow, onEditCharter } = props;
+  const { recentsOpen, onToggleRecents, onNewChat, onNewSunx, onOpenSunxBoard, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow, onEditCharter } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -66,8 +69,24 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
           />
           {/* 头部动作簇(sunx P1 Task 6):「新建 Sunx」与「新对话」同级同槽(PROJECTS 组头
               .sx-side-head-actions 右贴容器同款——space-between 会把裸子元素撑散,projects 行同证)。
-              aria 用「new sunx」——与「new default chat」判重(测试按名定位) */}
+              aria 用「new sunx」——与「new default chat」判重(测试按名定位)。
+              「Sunx 看板」钮居首(sunx P2 Task 8):可选 guard 未接线不渲染(SunxSection 组头同款) */}
           <span className="sx-side-head-actions">
+            {onOpenSunxBoard !== undefined && (
+              <button
+                type="button"
+                className="sx-iconbtn"
+                aria-label="sunx board"
+                data-tip={t('Sunx board', 'Sunx 看板')}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenSunxBoard();
+                }}
+              >
+                <KanbanSquare size={14} strokeWidth={1.75} />
+              </button>
+            )}
             <button
               type="button"
               className="sx-iconbtn"

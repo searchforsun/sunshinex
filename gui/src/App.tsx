@@ -643,6 +643,25 @@ function AppShell(): JSX.Element {
   const openArtifactsTab = useCallback((): void => {
     openTabInSession('artifacts', {});
   }, [openTabInSession]);
+  /** SUNX 总览页进实例(sunx P2 Task 8,spec §17.3「点卡片进实例」;App 注入 TabRenderProps.onOpenSunxInstance):
+   *  journalId=attach 两步(newSession 壳+attach 收养→openSession canonical——Chat fork 横幅回父同链,
+   *  daemon 重启后 runtime 表按新壳 id 重挂,裸 journal id 必 404);sessionId=新建成功裸 openSession
+   *  (newSession 即 canonical,NewSunxDialog 成功链同侧栏 openCreatedSunx 形态)。 */
+  const openSunxInstance = useCallback((t: { journalId?: string; sessionId?: string; root: string }): void => {
+    if (t.sessionId !== undefined && t.sessionId !== '') {
+      openSession(t.sessionId, t.root);
+      return;
+    }
+    const jid = t.journalId;
+    if (jid === undefined || jid === '') return;
+    const conn = connRef.current;
+    if (conn === null) return;
+    void conn
+      .newSession(t.root)
+      .then(({ sessionId }) => conn.attach(sessionId, jid).then((r) => ({ sid: r.sessionId, root: r.root || t.root })))
+      .then(({ sid, root }) => openSession(sid, root, jid))
+      .catch(showOpError);
+  }, [openSession, showOpError]);
   const hiddenMenuIds = useMemo(
     () => (agentTeamsOn ? undefined : new Set<string>(['agents'])),
     [agentTeamsOn],
@@ -1105,6 +1124,7 @@ function AppShell(): JSX.Element {
               })()}
               onOpenSession={(sessionId, root, journalId) => { closeMenuDrawer(); openSession(sessionId, root, journalId); }}
               onOpenDirectory={(root) => { openProjectDirectory(root); }}
+              onOpenSunxBoard={() => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }} // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
               dirView={menuDir}
               onCloseDirView={() => setMenuDir(null)}
               onOpenFileFromTree={openFileFromTree}
@@ -1301,11 +1321,13 @@ function AppShell(): JSX.Element {
                   >
                     {/* 二期分包:标签体 lazy——Suspense 骨架承接首开 chunk 加载 */}
                     <Suspense fallback={<TabSkeleton />}>
-                    {isWelcome && !['file', 'web', 'terminal'].includes(t.type) ? (
+                    {isWelcome && !['file', 'web', 'terminal', 'sunxboard'].includes(t.type) ? (
                       /* 2026-10-27 欢迎页全局草稿:会话绑定型页签(待办/审查/智能体/上下文等)在无会话
                           草稿座不渲染内容——首个输入建席迁移后自动可用。2026-10-29 用户实测修正:
                           判定按页面(isWelcome)不按 openSessionId 空——5232DCE 起进欢迎页不清
-                          openSessionId,开过会话再回欢迎页此条件恒假,浏览器/终端卡与 + 菜单全灭 */
+                          openSessionId,开过会话再回欢迎页此条件恒假,浏览器/终端卡与 + 菜单全灭。
+                          2026-11-15 sunx P2 Task 8:'sunxboard' 应用级(数据自拉全量 sunx 实例)不绑会话,
+                          欢迎页座同渲染(看板钮从侧栏/欢迎页都可进总览) */
                       <div className="sx-tab-empty">
                         <div className="sx-tab-empty-title">{tLabel('Available after a session starts', '会话开始后可用')}</div>
                         <div className="sx-tab-empty-sub">{tLabel('This panel is session-bound. Send a message to bind the draft sidebar to a session.', '此面板绑定会话。发送一条消息即可把当前草稿侧栏绑定到会话。')}</div>
@@ -1338,6 +1360,7 @@ function AppShell(): JSX.Element {
                       onPtyAllocated: handlePtyAllocated,
                       chatSinkRef: t.params.sideId !== undefined ? sideSinkFor(t.params.sideId, openSessionId) : undefined,
                       sideReady: (id: string) => sideReleased.has(id),
+                      onOpenSunxInstance: openSunxInstance, // sunx P2 Task 8:SUNX 总览页点卡片进实例
                       memoryFocus,
                       learnedFocus,
                       bgFocus,

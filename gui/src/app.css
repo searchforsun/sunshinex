@@ -4194,3 +4194,23 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-rows { list-style: none; margin: 0; padding: 0; }
 /* 品性编辑弹窗成功提示(行内小字):保存→提示新 rev→自动关;role=status 锚定 */
 .sx-charter-saved { margin: 0 0 4px; font-size: calc(14px * var(--fz)); color: var(--accent); }
+
+/* ===== sunx P2 Task 8:SUNX 总览页(spec §17.3 单例 sunxboard 页签) ===== */
+/* 聚合条数据簇:insight-bar 内左聚(flex:1 吃掉余量,刷新钮右贴);状态点几何圆(8px,绿=运行中,
+   灰=闲置——SessionRow 运行圆点同语义,颜色走 --ok 语义变量) */
+.sx-sunxboard-stats { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 14px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); overflow: hidden; }
+.sx-sunxboard-stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sx-sunxboard-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--fg-tertiary); }
+.sx-sunxboard-dot.live { background: var(--ok); }
+/* 卡片网格(按工作区分节 R10):节头=目录名(SunxSection 组头同族);auto-fill 网格随右栏宽自适应 */
+.sx-sunxboard-ws { padding: 6px 8px 2px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sx-sunxboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; padding: 2px 8px 4px; }
+.sx-sunxboard-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; cursor: pointer; font-size: calc(14px * var(--fz)); }
+.sx-sunxboard-card:hover { border-color: var(--border-strong); }
+.sx-sunxboard-cardline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sx-sunxboard-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-sunxboard-progress { color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-sunxboard-activity { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 「新建 Sunx」入口卡(spec §17.3):虚线边框=创建语义,与实例卡同宽栅格 */
+.sx-sunxboard-entry { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px 8px 4px; padding: 10px 12px; background: transparent; color: var(--fg-secondary); border: 1px dashed var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: calc(14px * var(--fz)); }
+.sx-sunxboard-entry:hover { color: var(--fg); border-color: var(--border-strong); }
