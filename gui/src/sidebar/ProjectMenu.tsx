@@ -50,6 +50,10 @@ export interface ProjectMenuConn {
   sessionsOf(root: string): Promise<SessionRow[]>;
   /** 跨工作区扁平最近会话(G10-C2 侧栏 Recents 区;daemon /sessions/recent 聚合) */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
+  /** GET /sunx/sessions(sunx P3 Task 3 数据源改向):sunx 域容器全域枚举——SUNX 过滤组数据源单点 */
+  sunxSessions(): Promise<SessionRow[]>;
+  /** POST /sunx/attach(sunx P3 Task 3):journalId 直寻址重开 sunx 实例——SUNX 组条目点击链 */
+  attachSunx(journalId: string): Promise<{ sessionId: string; root: string }>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   /** 建会话单点(attach 装壳/组内新建;sunx P1 Task 6 增第 5 参 opts——kind/name/charter 透传,
    *  缺席时 body 与旧形态逐字节相同):App 实传整只 Connection(运行时满足) */
@@ -405,29 +409,22 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     ).then((groups) => setAllSessions(groups.flat()));
   }, [searchOpen, rows, conn]);
 
-  /** SUNX 过滤组聚合(sunx P2 Task 7,spec §10+R10):视图过滤器按 /sessions 行 kind==='sunx'
-   *  跨工作区聚合——不含 visibleWorkspaces 滤除(默认锚点工作区的 sunx 会话同入组,RECENTS 同
-   *  口径),按工作区行序保序(分节 R10)。数据面同 G14.75 聚合搜索形态:每工作区一次 sessionsOf,
-   *  失败该根按空清单降级(下拍 30s/聚焦/组刷新自愈);rows 变化即重拉(30s tick/聚焦/
-   *  recentVersion bump/config-changed 全走 loadWorkspaces→rows 换引用,单一驱动点) */
+  /** SUNX 组数据源（sunx P3 Task 3 数据源改向，spec §10+R10 分节沿用）：GET /sunx/sessions 域
+   *  容器全域枚举单点——宿主 /sessions 逐工作区聚合（sessionsOf 每根一拉+kind 过滤）退役。行携
+   *  出生 meta root（域旁车）；slug 以 root 代（分节键=工作区根，wsName 显示走 root basename）。
+   *  拉取失败按空清单降级（侧栏计数面,非权威数据;rows 变化即重拉——30s tick/聚焦/config-changed
+   *  全走 loadWorkspaces→rows 换引用,单一驱动点,与既有刷新节奏同拍） */
   const [sunxRows, setSunxRows] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   useEffect(() => {
-    const targets = (rows ?? []).filter((r) => r.root !== undefined);
-    if (targets.length === 0) {
-      setSunxRows([]);
-      return;
-    }
     let alive = true;
-    void Promise.all(
-      targets.map((r) =>
-        conn
-          .sessionsOf(r.root as string)
-          .then((list) => list.map((x) => ({ ...x, root: r.root as string, slug: r.slug })))
-          .catch(() => []),
-      ),
-    ).then((groups) => {
-      if (alive) setSunxRows(groups.flat().filter((x) => x.kind === 'sunx'));
-    });
+    void conn
+      .sunxSessions()
+      .then((list) => {
+        if (alive) setSunxRows(list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' })));
+      })
+      .catch(() => {
+        if (alive) setSunxRows([]);
+      });
     return () => {
       alive = false;
     };
@@ -495,6 +492,26 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           setActionError(err instanceof Error ? err.message : String(err));
         },
       );
+  };
+  /** SUNX 条目点击链（sunx P3 Task 3 数据源改向）：attachSunx(journalId) 直寻址重开——域定位/
+   *  壳铸造/attach 全链在 daemon 单点（不再 newSession(root)+attach 两步）。busy 防双发/已读压戳/
+   *  journal 映射回填/onOpenSession 下发与 attachJournal 同拍；root 取应答真根（域旁车 meta.root） */
+  const attachSunxJournal = (journalId: string, journalUpdatedAt?: number): void => {
+    if (busy) return;
+    setBusy(true);
+    setActionError('');
+    conn
+      .attachSunx(journalId)
+      .then((r) => {
+        setBusy(false);
+        markSeen(journalId, journalUpdatedAt ?? Date.now());
+        markJournal(r.sessionId, journalId);
+        onOpenSession(r.sessionId, r.root, journalId); // journalId 随行下发(滚动位存档稳定键);root=域旁车真根
+        loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
+      }, (err: unknown) => {
+        setBusy(false);
+        setActionError(errText(err));
+      });
   };
   /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
    *  组列表计数 + Recents(loadWorkspaces)、归档层列表(loadArchived,置顶行归档时归档层若
@@ -733,7 +750,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           journalOfSession={journalOfSession}
           isUnseen={isUnseen}
           busy={busy}
-          onAttach={attachJournal}
+          onAttach={(_root, journalId, updatedAt) => attachSunxJournal(journalId, updatedAt)} // P3 Task 3:条目点击=attachSunx 链(root 参数退役——journalId 直寻址重开)
           onArchiveRow={archiveRow}
           onOpenBoard={props.onOpenSunxBoard}
           onEditCharter={openCharterEditor}

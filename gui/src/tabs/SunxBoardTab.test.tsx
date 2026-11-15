@@ -3,16 +3,18 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { setLanguage } from '../i18n';
 import { SunxBoardTab } from './SunxBoardTab';
 import type { Connection } from '../connection';
-import type { SessionRow, WorkspaceRow } from '../connection';
+import type { SessionRow } from '../connection';
 import type { Delegation } from '../projection';
 
 // i18n 语言钉:断言走中文文案(pinned-section.test 同款先例)
 setLanguage('zh');
 
 /**
- * SUNX 总览页直测(sunx P2 Task 8,spec §17.3):顶部聚合条(运行中实例/在飞任务/待裁决)+
- * 卡片网格(按工作区分节)+「新建 Sunx」入口卡开弹窗;卡片点击上抛开实例目标;刷新钮重拉;
- * 快照走 bumpSeq:false 只读通道;空态文案;快照失败行降级不炸。
+ * SUNX 总览页直测(sunx P2 Task 8,spec §17.3;P3 Task 3 数据源改向适配):顶部聚合条(运行中
+ * 实例/在飞任务/待裁决)+卡片网格(按工作区分节)+「新建 Sunx」入口卡开弹窗;卡片点击上抛开
+ * 实例目标;刷新钮重拉;快照走 bumpSeq:false 只读通道;空态文案;快照失败行降级不炸。
+ * P3 Task 3:数据源=GET /sunx/sessions(conn.sunxSessions 单点——不逐工作区 sessionsOf、不拉
+ * workspaces;kind 服务端恒 'sunx',sunxRowsOf 前端 kind/root 守卫留作降级防线)。
  */
 
 const del = (id: string, status: Delegation['status'], over: Partial<Delegation> = {}): Delegation => ({
@@ -42,33 +44,31 @@ const snapResp = (delegations: Delegation[], pending?: unknown[]) => ({
   ...(pending !== undefined ? { pending } : {}),
 });
 
-/** conn 桩:workspaces/sessionsOf/sessionSnapshot 三面 + NewSunxDialog 三方法(开弹窗才触) */
+/** conn 桩:sunxSessions/sessionSnapshot 两面 + NewSunxDialog 三方法(开弹窗才触)——
+ *  P3 Task 3 数据源改向:总览页不再走 workspaces/sessionsOf(桩即无此面,误用即炸=红检) */
 function stubConn(opts: {
-  workspaces?: WorkspaceRow[];
-  sessionsByRoot?: Record<string, SessionRow[]>;
+  sunxRows?: SessionRow[];
   snapshot?: (id: string) => Promise<unknown>;
   snapshotBoom?: boolean;
 }) {
   const calls = {
     snapshotArgs: [] as Array<{ id: string; opts: { bumpSeq?: boolean } | undefined }>,
-    sessionsCalls: [] as string[],
-    workspacesCalls: 0,
+    sunxCalls: 0,
   };
   const conn = {
-    workspaces: () => {
-      calls.workspacesCalls += 1;
-      return Promise.resolve(opts.workspaces ?? [{ slug: 'alpha', root: 'D:/w/alpha', mtime: 1, sessionCount: 1 }]);
-    },
-    sessionsOf: (root: string) => {
-      calls.sessionsCalls.push(root);
-      return Promise.resolve(opts.sessionsByRoot?.[root] ?? []);
+    sunxSessions: () => {
+      calls.sunxCalls += 1;
+      return Promise.resolve(opts.sunxRows ?? []);
     },
     sessionSnapshot: (id: string, _page: unknown, o: { bumpSeq?: boolean } | undefined) => {
       calls.snapshotArgs.push({ id, opts: o });
       if (opts.snapshotBoom) return Promise.reject(new Error('snapshot 404'));
       return Promise.resolve(opts.snapshot?.(id) ?? snapResp([]));
     },
-    // NewSunxDialog 面(入口卡开弹窗才触)
+    // NewSunxDialog 面(入口卡开弹窗才触;弹窗挂 use-welcome-workspaces 工作区下拉)
+    workspaces: () => Promise.resolve([{ slug: 'alpha', root: 'D:/w/alpha', mtime: 1, sessionCount: 1 }]),
+    createWorkspace: () => Promise.resolve({ ok: true as const, root: 'D:/w/alpha', slug: 'alpha' }),
+    locateWorkspace: () => Promise.resolve({ path: null }),
     sunxTemplates: () => Promise.resolve({ entries: [], warnings: [] }),
     dirpicker: () => Promise.resolve({ path: 'D:/', parent: 'D:', dirs: [] }),
     newSession: () => Promise.resolve({ sessionId: 'sx-new' }),
@@ -77,13 +77,11 @@ function stubConn(opts: {
 }
 
 const alphaJ1 = () => stubConn({
-  sessionsByRoot: {
-    'D:/w/alpha': [
-      sunxRow('j1', { liveSessionId: 'sx1', updatedAt: 900 }),
-      sunxRow('j3', { updatedAt: 800 }), // 未挂载(无 liveSessionId):零快照
-      { ...sunxRow('j4', { updatedAt: 700 }), kind: undefined }, // standard:kind 过滤滤除
-    ],
-  },
+  sunxRows: [
+    sunxRow('j1', { liveSessionId: 'sx1', updatedAt: 900 }),
+    sunxRow('j3', { updatedAt: 800 }), // 未挂载(无 liveSessionId):零快照
+    { ...sunxRow('j4', { updatedAt: 700 }), kind: undefined }, // 杂散行:sunxRowsOf 前端守卫滤除(服务端恒 sunx,降级防线)
+  ],
   snapshot: () =>
     Promise.resolve(
       snapResp(
@@ -93,8 +91,16 @@ const alphaJ1 = () => stubConn({
     ),
 });
 
-describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8)', () => {
-  it('卡片网格+聚合条:kind 过滤、按工作区分节(R10)、在飞/完成/待裁决计数;快照 bumpSeq:false 只读', async () => {
+describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)', () => {
+  it('数据源=GET /sunx/sessions:不拉 workspaces、不逐工作区 sessionsOf(sunxSessions 单点)', async () => {
+    const { conn, calls } = alphaJ1();
+    render(<SunxBoardTab conn={conn} />);
+    await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
+    expect(calls.sunxCalls).toBe(1);
+    expect(calls.snapshotArgs).toHaveLength(1); // 仅 live 行拉快照
+  });
+
+  it('卡片网格+聚合条:行过滤降级防线、按工作区分节(R10)、在飞/完成/待裁决计数;快照 bumpSeq:false 只读', async () => {
     const { conn, calls } = alphaJ1();
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
@@ -103,7 +109,7 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8)', () => {
     expect(stats).toContain('运行中 1');
     expect(stats).toContain('在飞任务 2');
     expect(stats).toContain('待裁决 2');
-    // 卡片进度行:在飞 2 · 完成 1;未挂载行计数归零;standard 行滤除(Sunx j4 不在)
+    // 卡片进度行:在飞 2 · 完成 1;未挂载行计数归零;杂散行滤除(Sunx j4 不在)
     expect(screen.getByText('Sunx j1').textContent).toBeDefined();
     expect(screen.getByText(/在飞 2 · 完成 1/)).toBeDefined();
     expect(screen.queryByText('Sunx j4')).toBeNull();
@@ -114,11 +120,11 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8)', () => {
     expect(calls.snapshotArgs[0]!.opts).toEqual({ bumpSeq: false });
     // 待裁决徽标在场(挂起 2)
     expect(screen.getAllByText(/待裁决/).length).toBeGreaterThanOrEqual(2); // 聚合条+卡片徽标
-    // 工作区小节头(R10)
+    // 工作区小节头(R10):wsName 走行 root basename
     expect(screen.getByText('alpha')).toBeDefined();
   });
 
-  it('点卡片上抛开实例目标(journalId+root,attach 两步由 App 承担)', async () => {
+  it('点卡片上抛开实例目标(journalId+root,attachSunx 链由 App 承担)', async () => {
     const { conn } = alphaJ1();
     const onOpenInstance = vi.fn();
     render(<SunxBoardTab conn={conn} onOpenInstance={onOpenInstance} />);
@@ -136,27 +142,26 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8)', () => {
     expect(screen.getByRole('dialog', { name: '新建 Sunx' })).toBeDefined();
   });
 
-  it('刷新钮重拉(workspaces/sessionsOf 再走一轮);加载在途转圈', async () => {
+  it('刷新钮重拉(sunxSessions 再走一轮);加载在途转圈', async () => {
     const { conn, calls } = alphaJ1();
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
-    expect(calls.workspacesCalls).toBe(1);
+    expect(calls.sunxCalls).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: 'refresh' }));
-    await waitFor(() => expect(calls.workspacesCalls).toBe(2), { timeout: 2000 });
-    await waitFor(() => expect(calls.sessionsCalls).toHaveLength(2), { timeout: 2000 });
+    await waitFor(() => expect(calls.sunxCalls).toBe(2), { timeout: 2000 });
+    await waitFor(() => expect(calls.snapshotArgs).toHaveLength(2), { timeout: 2000 });
   });
 
-  it('空态:无 sunx 会话=空态文案+入口卡仍在(零卡片零节)', async () => {
-    const { conn } = stubConn({ sessionsByRoot: { 'D:/w/alpha': [sunxRow('j9', { kind: undefined })] } });
+  it('空态:空列=空态文案+入口卡仍在(零卡片零节)', async () => {
+    const { conn } = stubConn({ sunxRows: [] });
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText(/还没有 Sunx 实例/)).toBeDefined(), { timeout: 2000 });
     expect(screen.getByRole('button', { name: 'new sunx' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: /Sunx j9/ })).toBeNull();
   });
 
   it('快照失败行降级:live 点仍在(行标注)、计数归零、无待裁决徽标,整页不炸', async () => {
     const { conn } = stubConn({
-      sessionsByRoot: { 'D:/w/alpha': [sunxRow('j1', { liveSessionId: 'sx1' })] },
+      sunxRows: [sunxRow('j1', { liveSessionId: 'sx1' })],
       snapshotBoom: true,
     });
     render(<SunxBoardTab conn={conn} />);
@@ -165,5 +170,15 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8)', () => {
     expect(screen.getByText(/在飞 0 · 完成 0/)).toBeDefined();
     // 聚合条待裁决=0(快照缺席不计);卡片无徽标——聚合条外无第二处「待裁决」
     expect(screen.getAllByText(/待裁决/)).toHaveLength(1);
+  });
+
+  it('sunxSessions 拉取失败:整页空卡网格降级不炸(空态文案在场)', async () => {
+    const conn = {
+      sunxSessions: () => Promise.reject(new Error('503')),
+      sessionSnapshot: () => Promise.reject(new Error('404')),
+    } as unknown as Connection;
+    render(<SunxBoardTab conn={conn} />);
+    await waitFor(() => expect(screen.getByText(/还没有 Sunx 实例/)).toBeDefined(), { timeout: 2000 });
+    expect(screen.getByRole('button', { name: 'new sunx' })).toBeDefined();
   });
 });

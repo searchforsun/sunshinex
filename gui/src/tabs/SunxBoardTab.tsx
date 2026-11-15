@@ -15,9 +15,10 @@ import { aggregateSunxCards, assembleSunxCards, sunxSectionsOf, sunxSnapOf, type
  * 待裁决徽标;点卡片 onOpenInstance 上抛(attach 两步/openSession 归 App——spec「点卡片进实例」);
  * 「新建 Sunx」入口卡复用 NewSunxDialog(P1 组件,侧栏接线同款 props 形态)。
  *
- * 数据语义(controller ruling 2,懒快照视图):打开/刷新各拉一次全量(每工作区 sessionsOf 过滤
- * kind==='sunx' + 逐 live 行 sessionSnapshot bumpSeq:false 只读通道——防抬基线,connection.ts
- * 先例),快照权威整替(agents 页签刷新先例);不订阅 WS 实时——「打开即所见,刷新即新」。
+ * 数据语义(controller ruling 2,懒快照视图):打开/刷新各拉一次全量(GET /sunx/sessions 域容器
+ * 全域枚举——sunx P3 Task 3 数据源改向,逐工作区 sessionsOf+kind 过滤+workspaces 三拉退役)+
+ * 逐 live 行 sessionSnapshot bumpSeq:false 只读通道——防抬基线,connection.ts 先例),快照权威
+ * 整替(agents 页签刷新先例);不订阅 WS 实时——「打开即所见,刷新即新」。
  * 未挂载行(无 liveSessionId 标注,daemon 只标注运行中)零快照降级:计数归零、待裁决退行级
  * awaiting 布尔;快照拉取失败同降级不炸(行仍在卡)。
  */
@@ -26,20 +27,14 @@ export interface SunxBoardTabProps {
   readonly conn: Connection;
   /** App panelRefreshNonce(打开即刷一次;REFRESHABLE_TAB_TYPES 同款) */
   readonly refreshNonce?: number;
-  /** 进实例/建会话成功上抛(journalId=attach 两步寻址;sessionId=新建裸 openSession;App 注入) */
+  /** 进实例/建会话成功上抛(journalId=attachSunx 直寻址重开;sessionId=新建裸 openSession;App 注入) */
   readonly onOpenInstance?: (target: { journalId?: string; sessionId?: string; root: string }) => void;
 }
 
-/** 全量拉取编排:工作区→逐根 sessionsOf→live 行快照(bumpSeq:false)→卡片;快照失败该行降级 */
+/** 全量拉取编排:GET /sunx/sessions 单点→live 行快照(bumpSeq:false)→卡片;快照失败该行降级 */
 async function loadBoard(conn: Connection): Promise<{ cards: SunxCard[] }> {
-  const wsRows = await conn.workspaces();
-  const rooted = wsRows.filter((w) => w.root !== undefined && w.root !== '');
-  const groups = await Promise.all(
-    rooted.map(async (w) => ({ ws: w, list: await conn.sessionsOf(w.root as string).catch(() => [] as SessionRow[]) })),
-  );
-  const rows = groups.flatMap((g) =>
-    g.list.map((x) => ({ ...x, root: x.root !== undefined && x.root !== '' ? x.root : (g.ws.root as string), slug: g.ws.slug })),
-  );
+  const list = await conn.sunxSessions().catch(() => [] as SessionRow[]); // 拉取失败按空清单降级(空态呈现,不炸整页)
+  const rows = list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' })); // 分节键=工作区根(wsName 显示走 root basename)
   const snaps = new Map<string, SunxSnapSlice>();
   await Promise.all(
     rows

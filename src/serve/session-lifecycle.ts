@@ -62,7 +62,11 @@ export function mintSessionId(sessions: Map<string, SessionRuntime>, root: strin
 
 /** 创建会话入参（2026-11-15 sunx P1 Task 4 扩面）：mode 既有三值外增 sunx 三键——kind 缺席=standard
  *  路径零变化（既有调用全部不传,行为逐字节不变）;name/charter 仅 kind='sunx' 时生效（HTTP 面已按
- *  此收窄,直调方自律） */
+ *  此收窄,直调方自律）。dataDir（2026-11-15 sunx P3 Task 3 换座缝）：域绑定覆写——分支/回退链
+ *  （handleBranch）对 sunx 源会话造换座壳时传入其既有域目录（journal 手术已落域,新壳直接绑定领养,
+ *  attach 才能在域内认档）；传入时跳过 workspace.json 注册（域不进 /workspaces,与 sunx 出生路径同
+ *  纪律）且不铸新档不落出生行（领养既有 journal）。HTTP /session/new 面不透传本键（wire 白名单面,
+ *  直调方自律） */
 export interface CreateSessionOpts {
   mode?: 'full-access' | 'acceptEdits';
   /** 会话形态：'sunx'=编排会话（稳定段章程/工具白名单/fork kind 继承,出生 meta 落 kind/title/charterRev:1） */
@@ -71,6 +75,8 @@ export interface CreateSessionOpts {
   name?: string;
   /** 实例品性原文：装配透传 ContextManager 品性冻结层 */
   charter?: string;
+  /** 域绑定覆写（换座缝,见接口注）：传入=领养既有域目录（不铸档不注册工作区） */
+  dataDir?: string;
 }
 
 /**
@@ -103,9 +109,12 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
   }
   if (!st.isDirectory()) return fail('INVALID_ARG', `root is not a directory: ${abs}`);
   const isSunx = opts?.kind === 'sunx';
-  // standard：workspace.json 注册（树会话跳过——既有裁定原样）；sunx：整块跳过（域不进 /workspaces）
+  const adoptDomain = opts?.dataDir; // 换座缝（P3 Task 3）：领养既有域（分支/回退链直调,HTTP 面不透传）
+  // standard：workspace.json 注册（树会话跳过——既有裁定原样）；sunx/换座领养：整块跳过（域不进 /workspaces）
   let dataDir: string | undefined;
-  if (!isSunx) {
+  if (adoptDomain !== undefined) {
+    dataDir = adoptDomain;
+  } else if (!isSunx) {
     dataDir = resolveDataDir(abs);
     if (worktreeMainRootOf(abs) === undefined) {
       // 树会话不注册工作区(2026-11-10 用户报障「树会话自立伪项目 wt-*」根修):写入会**覆写主项目
@@ -123,10 +132,13 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
   // 跨项目不可归因);项目段=工作区 slug 摘要尾(确定性,会话 id 即可见归属),随机段单进程防撞
   const id = mintSessionId(io.sessions, abs);
   // sunx 出生即铸档（P3 Task 2）：journalId 先铸（纯铸造零 IO）——域目录路径=sunxDomainDir(journalId)
-  // 依赖它；域目录先于档存在（journal header 随后落域内 sessions/）
+  // 依赖它；域目录先于档存在（journal header 随后落域内 sessions/）。换座领养（P3 Task 3）：域已存在
+  // （journal 手术已落域）——不铸 id 不 mkdir，直接绑定
   let domainDir: string | undefined;
   let journalId: string | undefined;
-  if (isSunx) {
+  if (adoptDomain !== undefined) {
+    domainDir = adoptDomain;
+  } else if (isSunx) {
     journalId = newSessionId();
     domainDir = sunxDomainDir(journalId);
     fs.mkdirSync(domainDir, { recursive: true });
@@ -160,7 +172,8 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     session.attachJournal(journal);
     session.ensureSunxBirth();
   } else {
-    session.attachJournal(new SessionJournal(dataDir!));
+    // 换座领养（P3 Task 3）=domainDir（既有域,journal 在场）；standard=dataDir（惰性建档既有推导）
+    session.attachJournal(new SessionJournal(domainDir ?? dataDir!));
   }
   // 任务14 双向同步:会话打开即挂项目配置监听(.sunshinex 缺失由 daemon 侧守护降级跳过——
   // 缺失目录不产告警;目录补建后下次会话打开重试即真实生效,watchXxx 幂等)

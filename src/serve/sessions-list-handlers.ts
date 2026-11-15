@@ -7,7 +7,7 @@ import { validSessionId } from './session-id';
 import type { SessionHandlerIo } from './session-handlers';
 import { urlOf } from './daemon-wire';
 import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../tui/session-journal';
-import { projectsRoot, resolveDataDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir, sunxContainerDir } from '../config/data-dir';
 
 /**
  * 会话列表面 + 归档族（D42 端点族拆分自 session-handlers.ts，行搬运零逻辑变化）：
@@ -120,6 +120,49 @@ export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map
     if (jid !== undefined) m.set(jid, s.id);
   }
   return m;
+}
+
+/** GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：扫 sunx 域容器
+ *  （sunxContainerDir 单点——`~/.sunshinex/sunx/<jid>/data` 逐域 listSessions 归并）出行
+ *  SessionRow 族（响应形与 /sessions 同族：id=journalId/title/updatedAt/firstUser 随档，
+ *  kind 恒 'sunx'——容器=纯 sunx 域，钉死不读 meta；root 随出生 meta 旁车透出）+ daemon
+ *  注册表匹配补 liveSessionId（running）/awaiting（挂起非空）/status（在座即标，idle/running）。
+ *  空容器（目录不存在/不可读）返回空列；归档行滤除（archived meta 标记——与 /sessions 同口径）；
+ *  行序 updatedAt 降序。GUI SUNX 组/总览页数据源单点——宿主 /sessions 聚合不再过路 sunx */
+export function handleSunxSessions(io: SessionHandlerIo, res: http.ServerResponse): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(sunxContainerDir(), { withFileTypes: true });
+  } catch {
+    io.send(res, 200, []);
+    return;
+  }
+  const liveByJournal = liveSessionByJournal(io.sessions);
+  const awaitingSet = awaitingByJournal(io.sessions);
+  const statusByJournal = new Map<string, string>();
+  for (const s of io.sessions.values()) {
+    const jid = s.attachedJournalId;
+    if (jid !== undefined) statusByJournal.set(jid, s.status());
+  }
+  const out: Array<Record<string, unknown>> = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dataDir = path.join(sunxContainerDir(), ent.name, 'data');
+    for (const r of listSessions(dataDir)) {
+      if (r.archived === true) continue; // 归档滤除（meta 标记落域——归档/删除语义与 /sessions 同族）
+      const live = liveByJournal.get(r.id);
+      const status = statusByJournal.get(r.id);
+      out.push({
+        ...r,
+        kind: 'sunx', // 域容器恒 sunx（裁定：容器=纯 sunx 域；不读 meta，杂散目录不误标）
+        ...(live !== undefined ? { liveSessionId: live } : {}),
+        ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
+        ...(status !== undefined ? { status } : {}),
+      });
+    }
+  }
+  out.sort((a, b) => (b.updatedAt as number) - (a.updatedAt as number));
+  io.send(res, 200, out);
 }
 
 /** 会话待确认标注(2026-10-31 主菜单「?」图标数据源):live 会话挂起表非空(approval/ask/

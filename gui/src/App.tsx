@@ -644,9 +644,10 @@ function AppShell(): JSX.Element {
     openTabInSession('artifacts', {});
   }, [openTabInSession]);
   /** SUNX 总览页进实例(sunx P2 Task 8,spec §17.3「点卡片进实例」;App 注入 TabRenderProps.onOpenSunxInstance):
-   *  journalId=attach 两步(newSession 壳+attach 收养→openSession canonical——Chat fork 横幅回父同链,
-   *  daemon 重启后 runtime 表按新壳 id 重挂,裸 journal id 必 404);sessionId=新建成功裸 openSession
-   *  (newSession 即 canonical,NewSunxDialog 成功链同侧栏 openCreatedSunx 形态)。 */
+   *  journalId=attachSunx 直寻址重开(P3 Task 3 数据源改向:域定位/壳铸造/attach 全链 daemon 单点——
+   *  不再 newSession(root)+attach 两步,root 参数仅作应答缺根兜底)→openSession canonical——Chat fork
+   *  横幅回父同链,daemon 重启后 runtime 表按新壳 id 重挂,裸 journal id 必 404;sessionId=新建成功裸
+   *  openSession(newSession 即 canonical,NewSunxDialog 成功链同侧栏 openCreatedSunx 形态)。 */
   const openSunxInstance = useCallback((t: { journalId?: string; sessionId?: string; root: string }): void => {
     if (t.sessionId !== undefined && t.sessionId !== '') {
       openSession(t.sessionId, t.root);
@@ -657,9 +658,8 @@ function AppShell(): JSX.Element {
     const conn = connRef.current;
     if (conn === null) return;
     void conn
-      .newSession(t.root)
-      .then(({ sessionId }) => conn.attach(sessionId, jid).then((r) => ({ sid: r.sessionId, root: r.root || t.root })))
-      .then(({ sid, root }) => openSession(sid, root, jid))
+      .attachSunx(jid)
+      .then((r) => openSession(r.sessionId, r.root || t.root, jid))
       .catch(showOpError);
   }, [openSession, showOpError]);
   const hiddenMenuIds = useMemo(

@@ -41,6 +41,13 @@ export function sessionTeamsRoot(dataDir: string, journalId: string): string {
   return path.join(dataDir, 'teams', journalId);
 }
 
+/** sunx 域容器根（2026-11-15 sunx P3 Task 3 枚举面单点）：`~/.sunshinex/sunx/`——GET /sunx/sessions
+ *  扫描面用（各 `<journalId>/data` 域逐个 listSessions 归并）。与 sunxDomainDir 同根推导（后者即
+ *  本单点下拼 journalId）；不 mkdir（空容器=扫描面 readdir 失败回空列，合法空态不建目录） */
+export function sunxContainerDir(): string {
+  return path.join(userConfigDir(), 'sunx');
+}
+
 /** sunx 持久化域目录（2026-11-15 sunx P3 Task 2 落位单点）：`~/.sunshinex/sunx/<journalId>/data`——
  *  一 Sunx 一持久化项目域（链/转录/品性/台账/板/记忆/调度/挂起审计全落域内）；容器 `~/.sunshinex/sunx/`
  *  独立于 projects/（workspaces 枚举/birth-only 清扫/归档边界天然不波及）。journalId 即域键（出生即铸档
@@ -48,7 +55,7 @@ export function sessionTeamsRoot(dataDir: string, journalId: string): string {
  *  （域容器锚用户配置根——测试经 HOME 重定向），不 mkdir（写入面各自 recursive 建目录）。GUI 不感知
  *  物理路径——端点寻址 journalId 即可 */
 export function sunxDomainDir(journalId: string): string {
-  return path.join(userConfigDir(), 'sunx', journalId, 'data');
+  return path.join(sunxContainerDir(), journalId, 'data');
 }
 
 /** worktree 树识别(2026-11-10):树根 .git 是**文件**(gitdir: 指针→主仓 .git/worktrees/<name>/)

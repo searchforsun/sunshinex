@@ -1346,12 +1346,15 @@ export async function handleSkillsRemove(io: ConfigHandlerIo, req: http.Incoming
 
 /** GET /settings/memory-stats?root=（G8c T6，Settings 页记忆概览）：root 在场 → memoryStats 主域
  *  只读统计（条数/最近写入，见模块级单点）；无 root = 零值（无项目上下文无记忆面——恒定形态，
- *  不 400：概览页无项目时的空态是合法呈现而非请求形态错） */
-export function handleMemoryStatsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+ *  不 400：概览页无项目时的空态是合法呈现而非请求形态错）。
+ *  sunxDataDir（2026-11-15 sunx P3 Task 3 接线，Task 2 移交清偿）：调用方（daemon 包装层）按
+ *  root 反查在座 sunx 会话传入其域目录——统计随域（memoryStats(root, dataDir) 域缝）；缺席=
+ *  既有单参推导（standard 字节不变） */
+export function handleMemoryStatsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, sunxDataDir?: string): void {
   const url = urlOf(req);
   const rootParam = url.searchParams.get('root');
   const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : undefined;
-  io.send(res, 200, root !== undefined ? memoryStats(root) : { entries: 0, lastWriteAt: null });
+  io.send(res, 200, root !== undefined ? memoryStats(root, sunxDataDir) : { entries: 0, lastWriteAt: null });
 }
 
 

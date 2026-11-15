@@ -177,6 +177,9 @@ export interface SessionRow {
   liveSessionId?: string;
   /** 会话待确认(2026-10-31 主菜单「?」图标):daemon 挂起表非空(approval/ask/plan-approval 任一未决) */
   awaiting?: boolean;
+  /** 在座运行时状态标注(2026-11-15 sunx P3 Task 3,GET /sunx/sessions 域枚举行):idle/running——
+   *  /sessions 族不带本键(缺席=未在座) */
+  status?: string;
 }
 
 /** GET /dirpicker?path= 载荷（T2 服务端目录选择）：path=绝对路径，parent=上级（盘根=自身），dirs=子目录名 */

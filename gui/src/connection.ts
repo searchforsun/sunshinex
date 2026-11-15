@@ -46,6 +46,9 @@ export interface Connection {
   workspaces(): Promise<WorkspaceRow[]>;
   /** GET /sessions?root=：工作区会话（journal）列表（T2） */
   sessionsOf(root: string): Promise<SessionRow[]>;
+  /** GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：sunx 域容器全域枚举——
+   *  SUNX 组/总览页数据源单点（kind 恒 'sunx'，行附 liveSessionId/awaiting/status 标注） */
+  sunxSessions(): Promise<SessionRow[]>;
   /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切)。
@@ -752,6 +755,9 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async attachSunx(journalId: string): Promise<{ sessionId: string; root: string }> {
       return postJson<{ sessionId: string; root: string }>(`/sunx/attach`, { journalId });
+    },
+    sunxSessions() {
+      return getJson<SessionRow[]>('/sunx/sessions');
     },
     sessionSubmit(id: string, goal: string, images?: string[]): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/submit`, { goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });

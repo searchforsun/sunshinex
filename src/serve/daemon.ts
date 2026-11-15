@@ -16,7 +16,7 @@ import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
-import { projectsRoot, resolveDataDir } from '../config/data-dir';
+import { projectsRoot } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -593,6 +593,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // （未知域/坏 id/根缺场）/INVALID_STATE→409（在座运行中竞争）；200 {ok,sessionId,root}（并置激活）。
     // GUI 侧 Task 3 切数据源——本端点为 connection.attachSunx 封装的就绪面
     { method: 'POST', path: '/sunx/attach', auth: true, run: (req, res) => this.handleSunxAttach(req, res) },
+    // GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：sunx 域容器全域枚举——GUI SUNX
+    // 组/总览页数据源单点（宿主 /sessions 聚合不再过路 sunx）
+    { method: 'GET', path: '/sunx/sessions', auth: true, run: async (_req, res) => this.handleSunxSessions(res) },
     // 2026-10-21 归档面:双寻址(daemon 会话 id 或 journalId)+ 跨工作区归档列表(归档页消费)
     { method: 'POST', path: '/session/:id/archive', auth: true, run: async (req, res, p) => {
         const parsed = await this.readJson(req);
@@ -1356,7 +1359,16 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   }
 
   private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
-    configHandlers.handleMemoryStatsGet(this.configIo, req, res);
+    // sunx 域接线（2026-11-15 sunx P3 Task 3，Task 2 移交清偿）：root 命中在座 sunx 会话 →
+    // 统计随域（memoryStats(root, dataDir) 域缝——sunx 记忆在 ~/.sunshinex/sunx/<jid>/data/memory）；
+    // 未命中/无 sunx 在座=undefined → 既有单参推导（standard 字节不变）
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const rootParam = url.searchParams.get('root');
+    const sunxDataDir =
+      rootParam !== null && rootParam.length > 0
+        ? [...this.sessions.values()].find((s) => s.sessionKind === 'sunx' && path.resolve(s.root) === path.resolve(rootParam))?.dataDir
+        : undefined;
+    configHandlers.handleMemoryStatsGet(this.configIo, req, res, sunxDataDir);
   }
 
   /** 全局规范写后通知(2026-11-05):watcher 抑制(写发生在本进程,防自触回声)+config-changed 直发——
@@ -1489,7 +1501,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       this.sessions.get(id) ??
       [...this.sessions.values()].find((s) => s.attachedJournalId === id);
     let srcId: string | undefined = session?.attachedJournalId;
-    let dataDir: string | undefined = session !== undefined ? resolveDataDir(session.root) : undefined;
+    let dataDir: string | undefined = session !== undefined ? session.dataDir : undefined; // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
     if (session === undefined) {
       if (!validSessionId(id)) return this.send(res, 200, []);
       const owner = findJournalOwner(projectsRoot(), id);
@@ -1537,6 +1549,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
 
   private handleSessions(req: http.IncomingMessage, res: http.ServerResponse): void {
     sessionHandlers.handleSessions(this.sessionIo, req, res);
+  }
+  private handleSunxSessions(res: http.ServerResponse): void {
+    sessionHandlers.handleSunxSessions(this.sessionIo, res);
   }
   private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
     await sessionHandlers.handleSubmit(this.sessionIo, req, res, id);

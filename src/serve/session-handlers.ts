@@ -168,7 +168,7 @@ export async function handleSessionRename(io: SessionHandlerIo, req: http.Incomi
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const journalId = session.attachedJournalId;
   if (journalId === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  writeSessionMeta(resolveDataDir(session.root), journalId, { title });
+  writeSessionMeta(session.dataDir, journalId, { title }); // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   io.send(res, 200, { ok: true, title });
 }
 
@@ -185,7 +185,7 @@ export function handleSessionTitleGet(io: SessionHandlerIo, res: http.ServerResp
   if (journalId === undefined) {
     return io.send(res, 200, { ...(kind === 'sunx' && name !== undefined ? { title: name } : {}), kind });
   }
-  const meta = readSessionMeta(resolveDataDir(session.root), journalId);
+  const meta = readSessionMeta(session.dataDir, journalId); // 域绑定寻址（P3 Task 3）：sunx 随域,standard 字节不变
   io.send(res, 200, {
     ...(meta.title !== undefined ? { title: meta.title } : kind === 'sunx' && name !== undefined ? { title: name } : {}),
     kind,
@@ -354,7 +354,7 @@ export function handleAnchors(io: SessionHandlerIo, res: http.ServerResponse, id
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const srcId = session.attachedJournalId;
   if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  const parsed = parseJournalFile(path.join(sessionsDir(resolveDataDir(session.root)), srcId + '.jsonl'));
+  const parsed = parseJournalFile(path.join(sessionsDir(session.dataDir), srcId + '.jsonl')); // 域绑定寻址（P3 Task 3）
   const anchors = listAnchors(parsed).map((x, i) => ({ turn: i + 1, text: x.text.length > 96 ? x.text.slice(0, 96) + '…' : x.text }));
   io.send(res, 200, { anchors });
 }
@@ -393,7 +393,7 @@ export function handleRestorePlan(io: SessionHandlerIo, res: http.ServerResponse
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const srcId = session.attachedJournalId;
   if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  const srcFile = path.join(sessionsDir(resolveDataDir(session.root)), srcId + '.jsonl');
+  const srcFile = path.join(sessionsDir(session.dataDir), srcId + '.jsonl'); // 域绑定寻址（P3 Task 3）
   const cut = resolveRewindCut(parseJournalFile(srcFile), target);
   if (cut === undefined) return io.send(res, 400, { error: 'no such turn' });
   const files = collectRestorePlan(srcFile, cut.cut + 1).map((f) => ({ path: f.path, deleted: f.deleted === true }));
@@ -478,8 +478,9 @@ export async function handleSessionTierEffort(io: SessionHandlerIo, req: http.In
 export { handleAppPinsGet, handleAppPinsPut, handleAppSeenGet, handleAppSeenPut, handleAppGuiStateGet, handleAppGuiStatePut, handleGuiStateGet, handleGuiStatePut } from './app-state-handlers';
 
 /** 会话列表面+归档族:D42 端点族拆分至 sessions-list-handlers.ts(行搬运零变化)——
- *  原路径再导出,daemon 路由与 daemon.gui-state.test 消费零迁移 */
-export { handleSessionsRecent, handleSessions, liveSessionByJournal, findJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
+ *  原路径再导出,daemon 路由与 daemon.gui-state.test 消费零迁移;
+ *  sunx 域枚举面（2026-11-15 sunx P3 Task 3 GET /sunx/sessions）同族随拆挂载 */
+export { handleSessionsRecent, handleSessions, handleSunxSessions, liveSessionByJournal, findJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
 export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
@@ -761,7 +762,7 @@ export async function handleSessionBtw(io: SessionHandlerIo, req: http.IncomingM
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const srcId = session.attachedJournalId;
   if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  const dataDir = resolveDataDir(session.root);
+  const dataDir = session.dataDir; // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   let forkId: string;
   try {
     const journal = parseJournalFile(path.join(sessionsDir(dataDir), srcId + '.jsonl'));
@@ -827,7 +828,7 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
   if (session.status() === 'running' && !side) return io.send(res, 409, { error: 'session is running' });
   const srcId = session.attachedJournalId;
   if (srcId === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  const dataDir = resolveDataDir(session.root);
+  const dataDir = session.dataDir; // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   const srcFile = path.join(sessionsDir(dataDir), srcId + '.jsonl');
   const jrnl = parseJournalFile(srcFile);
   let cutLine: number;
@@ -877,8 +878,19 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
     }
   }
   // rewind 同样挂新会话对象而非原地换档:attach 只支持 idle 新会话(双挂守卫拒绝已有实质档的会话),
-  // 板/委派/待办等内存投影按增量折叠,同对象重挂会叠旧态;GUI 按返回的 sessionId 换座,等同 fork
-  const created = io.createSession(session.root);
+  // 板/委派/待办等内存投影按增量折叠,同对象重挂会叠旧态;GUI 按返回的 sessionId 换座,等同 fork。
+  // 换座壳域领养（P3 Task 3）：sunx 源会话的分支手术已落域（上方 dataDir=session.dataDir 域外窥）——
+  // 新壳传 dataDir=域 领养（不铸新档不注册工作区）+kind='sunx'（fork kind 继承,创建期定形态,
+  // attach reCast 守卫对已 sunx 壳天然跳过）+品性原文随 meta.charterText（编辑文跨 fork 存续——
+  // 与 attachSunxIn 壳 charter 源同口径）。standard=undefined 既有路径字节不变
+  const adoptOpts =
+    session.sessionKind === 'sunx'
+      ? ((): CreateSessionOpts => {
+          const srcCharter = readSessionMeta(dataDir, srcId).charterText;
+          return { kind: 'sunx', dataDir, ...(srcCharter !== undefined ? { charter: srcCharter } : {}) };
+        })()
+      : undefined;
+  const created = io.createSession(session.root, adoptOpts);
   if (!created.ok) return io.send(res, 500, { error: created.error.message });
   const ar = io.attach(created.value.sessionId, newId);
   if (!ar.ok) return io.send(res, 500, { error: ar.error.message });

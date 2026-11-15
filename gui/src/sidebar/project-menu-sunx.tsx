@@ -21,6 +21,8 @@ export interface SunxSectionProps {
   readonly journalOfSession: ReadonlyMap<string, string>;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly busy: boolean;
+  /** 条目点击链(sunx P3 Task 3 数据源改向):宿主注入 attachSunx 包装——root 参数退役
+   *  (journalId 直寻址重开,不再 newSession(root)+attach 两步) */
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
   /** T6 行内归档(落库+宿主重拉;确认 morph 本组件行级 confirmId 承载) */
   readonly onArchiveRow: (id: string, archived: boolean) => void;

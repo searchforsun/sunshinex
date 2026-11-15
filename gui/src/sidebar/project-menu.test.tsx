@@ -55,6 +55,9 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     // sunx P2 Task 7:品性读写面桩(CharterDialog 弹窗链;ProjectMenuConn 新增面)
     sessionCharter: vi.fn(async () => ({ text: 'STUB CHARTER', charterRev: 1 })),
     editCharter: vi.fn(async () => ({ ok: true as const, charterRev: 2 })),
+    // sunx P3 Task 3:域枚举桩(空列=无 sunx 会话;SUNX 过滤组数据源单点)
+    sunxSessions: vi.fn(async () => [] as never),
+    attachSunx: vi.fn(async (journalId: string) => ({ sessionId: `sx-live-${journalId}`, root: 'D:/w/p1' })),
   };
   return conn;
 }
@@ -314,46 +317,46 @@ describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6;2026-11-15 提为顶部�
   });
 });
 
-describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7):kind 聚合+按工作区分节+看板钮+编辑品性弹窗链', () => {
-  /** sunx 会话桩 conn:两工作区各一 sunx 会话+一 standard 会话(RECENTS 空,聚焦过滤组) */
+describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向):域枚举聚合+按工作区分节+attachSunx 链+看板钮+编辑品性弹窗链', () => {
+  /** sunx 会话桩 conn:两工作区各一 sunx 行(GET /sunx/sessions 域枚举;行携出生 meta root)+空 RECENTS(聚焦过滤组) */
   function makeSunxConn(): ProjectMenuConn & { roots: string[] } {
     const conn = makeConn();
-    conn.workspaces = vi.fn(async () => [
-      { slug: 'p1', root: 'D:/w/p1', sessionCount: 2, mtime: Date.now() },
-      { slug: 'p2', root: 'D:/w/p2', sessionCount: 1, mtime: Date.now() },
-    ] as never);
-    conn.sessionsOf = async (root: string) =>
-      (root === 'D:/w/p1'
-        ? [
-            { id: 'sx-j1', firstUser: '编排一', updatedAt: 5, kind: 'sunx' },
-            { id: 'std-j2', firstUser: '普通会话', updatedAt: 4 },
-          ]
-        : [{ id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx' }]) as never;
+    conn.sunxSessions = vi.fn(async () =>
+      [
+        { id: 'sx-j1', firstUser: '编排一', updatedAt: 5, kind: 'sunx', root: 'D:/w/p1' },
+        { id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx', root: 'D:/w/p2' },
+      ] as never,
+    );
     conn.recentSessions = vi.fn(async () => [] as never);
     return conn as ProjectMenuConn & { roots: string[] };
   }
 
-  it('组聚合:两工作区各一 sunx 小节;standard 行不入组;空组整块不显', async () => {
-    const first = renderMenu(makeSunxConn());
+  it('组聚合:两工作区各一 sunx 小节(数据源=sunxSessions,不再逐根 sessionsOf);全空=常驻组头+空态行', async () => {
+    const conn = makeSunxConn();
+    const first = renderMenu(conn);
     expect(await screen.findByText('SUNX')).toBeDefined(); // 组头(双语同文)
     const list = first.container.querySelector('.sx-sunx-list')!;
     expect(list.textContent).toContain('编排一');
     expect(list.textContent).toContain('编排三');
-    expect(list.textContent).not.toContain('普通会话'); // kind 过滤
-    // SUNX 分组常驻(2026-11-15 用户裁定):全 standard 会话 → 组头恒显+空态引导行,列表空
+    // 数据源改向锚:挂载即拉域枚举(workspaces 回源 rows 换引用重拉同拍既有节奏),且不逐工作区
+    // sessionsOf(sessionsOf 只在组展开惰拉)
+    await waitFor(() => expect(conn.sunxSessions).toHaveBeenCalled());
+    expect(conn.roots.length).toBe(0); // 零 sessionsOf 调用(域枚举替位)
+    // SUNX 分组常驻(2026-11-15 用户裁定):全空列 → 组头恒显+空态引导行,列表空
     first.unmount();
-    const conn2 = makeConn(); // sessionsOf 全 standard
+    const conn2 = makeConn(); // sunxSessions 空列桩
     const second = renderMenu(conn2);
     await second.findByText('demo goal');
     expect(second.container.querySelector('.sx-sunx-empty')).not.toBeNull(); // 空态引导行
     expect(second.container.querySelector('.sx-sunx-list')).toBeNull(); // 列表空
   });
 
-  it('条目点击=既有 attach 链(attachJournal 两步→onOpenSession)', async () => {
+  it('条目点击=attachSunx 链(journalId 寻址重开,不再 newSession(root)+attach)→ onOpenSession', async () => {
     const conn = makeSunxConn();
     renderMenu(conn, { onOpenSession: open });
     fireEvent.click(await screen.findByText('编排一'));
-    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.any(String), 'D:/w/p1', 'sx-j1')); // journalId 随行
+    await waitFor(() => expect(conn.attachSunx).toHaveBeenCalledWith('sx-j1'));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('sx-live-sx-j1', 'D:/w/p1', 'sx-j1')); // journalId 随行
   });
 
   it('组头看板钮:接线 onOpenSunxBoard 渲染+点击上抛;未接线不渲染(guard)', async () => {
@@ -371,15 +374,14 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7):kind 聚合+按工作区分
   });
 
   it('行菜单「编辑品性」→CharterDialog:寻址行 liveSessionId 优先,预填走 conn.sessionCharter,保存走 conn.editCharter', async () => {
-    // 行带 liveSessionId(在座标注)=live 寻址;缺席行回落 journal id(sessionsOf 桩定制两形态)
+    // 行带 liveSessionId(在座标注)=live 寻址;缺席行回落 journal id(域枚举行桩定制两形态)
     const conn = makeSunxConn();
-    conn.sessionsOf = async (root: string) =>
-      (root === 'D:/w/p1'
-        ? [
-            { id: 'sx-j1', firstUser: '编排一', updatedAt: 5, kind: 'sunx', liveSessionId: 's-live-1' },
-            { id: 'std-j2', firstUser: '普通会话', updatedAt: 4 },
-          ]
-        : [{ id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx' }]) as never;
+    conn.sunxSessions = vi.fn(async () =>
+      [
+        { id: 'sx-j1', firstUser: '编排一', updatedAt: 5, kind: 'sunx', root: 'D:/w/p1', liveSessionId: 's-live-1' },
+        { id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx', root: 'D:/w/p2' },
+      ] as never,
+    );
     renderMenu(conn);
     await screen.findByText('SUNX');
     fireEvent.click(screen.getByRole('button', { name: 'session actions sx-j1' }));
