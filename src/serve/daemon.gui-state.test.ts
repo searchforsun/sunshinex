@@ -244,3 +244,53 @@ test('attach 回放选择面:运行中 setMode/setEffort 落 meta,新 daemon 重
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('gui-state 随域(终审 Minor):sunx 会话面私有态落域内 <sunx/<jid>/gui/sessions/<jid>.json(域删除连带清);projects 区零杂散;standard 锚不变', async () => {
+  // sunx 域容器随 HOME——自钉 HOME 隔离(真实家目录域不可触;withDaemon 不钉 HOME)
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-gs-sunx-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  let handle: { close: () => Promise<void>; port: number } | undefined;
+  try {
+    const home = path.join(tmp, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+    delete process.env.SUNSHINEX_DATA_DIR;
+    const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']), staticRoot: path.join(tmp, 'dist-gui-absent') });
+    handle = await daemon.start({ port: 0, token: 'test-token' });
+    const base = `http://127.0.0.1:${handle.port}`;
+    const root = path.join(tmp, 'ws');
+    fs.mkdirSync(root, { recursive: true });
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, kind: 'sunx', name: '态随域' }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    const jid = daemon.get(sessionId)!.attachedJournalId!;
+    const domainGuiFile = path.join(home, '.sunshinex', 'sunx', jid, 'gui', 'sessions', `${jid}.json`);
+    const projectsDir = process.env.SUNSHINEX_PROJECTS_DIR!;
+    const strayProjGui = fs.existsSync(projectsDir) && fs.readdirSync(projectsDir, { withFileTypes: true }).some((e) => e.isDirectory() && fs.existsSync(path.join(projectsDir, e.name, 'gui', 'sessions', `${jid}.json`)));
+    const put = await fetch(`${base}/session/${sessionId}/gui-state`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ state: { tabs: ['sunx'] } }) });
+    assert.equal(put.status, 200, 'PUT 受理');
+    assert.equal(fs.existsSync(domainGuiFile), true, `面私有态落域内（实际 ${domainGuiFile}）`);
+    assert.equal(strayProjGui, false, 'projects 区零杂散（旧实现落 resolveDataDir(root) 平级 gui/）');
+    const get = await fetch(`${base}/session/${sessionId}/gui-state`, { headers: AUTH });
+    assert.deepEqual(((await get.json()) as { state: { tabs: string[] } }).state, { tabs: ['sunx'] }, 'GET 回读');
+    // 域删除连带清的形态前提:态文件在域目录树内(dirname(域)=sunx/<jid>/——终审 Fix 1 整删面覆盖)
+    assert.ok(domainGuiFile.startsWith(path.join(home, '.sunshinex', 'sunx', jid) + path.sep), '态文件在域目录树内(域删除连带清)');
+    await daemon.get(sessionId)!.teardown();
+  } finally {
+    await handle?.close();
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+    else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});

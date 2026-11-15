@@ -16,7 +16,7 @@ import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
-import { projectsRoot, sunxContainerDir } from '../config/data-dir';
+import { projectsRoot, sunxContainerDir, sunxDomainDir } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -32,7 +32,7 @@ import { userConfigDir } from '../config/env';
 import { fetchWebMeta } from './web-meta';
 import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
-import { findJournalOwner, validSessionId } from './session-handlers';
+import { findJournalOwner, findSunxJournalOwner, validSessionId } from './session-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as editorsHandlers from './editors-handlers';
 import type { SessionHandlerIo } from './session-handlers';
@@ -1128,12 +1128,15 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         return;
       }
       const owner = findJournalOwner(projectsRoot(), id);
-      if (owner === undefined) {
+      // journalId 兜底双扫（终审 Fix 4）：projects 区缺席再扫 sunx 容器（归档 sunx 重启后删除
+      // 入口按 journalId 寻址必须可达=死态根修；与 handleSessionArchive 兜底同款）
+      const sunxDataDir = owner === undefined ? findSunxJournalOwner(id) : undefined;
+      if (owner === undefined && sunxDataDir === undefined) {
         this.send(res, 404, { error: 'unknown session' });
         return;
       }
       jid = id;
-      dataDir = owner.dataDir;
+      dataDir = owner !== undefined ? owner.dataDir : sunxDataDir!;
     }
     // 归档门禁(2026-10-21):未归档拒删——「下架但留档」职责已由归档态接管,删除即真清
     if (readSessionMeta(dataDir, jid).archived !== true) {
@@ -1186,11 +1189,16 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     for (const sid of sideIds) purgeBrowserState(dataDir, sid);
     // 持久化文件夹连带清理（2026-11-15 用户裁定「归档点击删除时同时删除项目持久化文件夹」
     // +「不用兼容,sunx 就是独占」；2026-11-15 P3 修复轮两会话裁定归一，以此为准）：
-    // sunx=独占域,无条件整删其域目录（dirname(dataDir)=~/.sunshinex/sunx/<jid>/——记忆/任务账本/
+    // sunx=独占域,整删其域目录（dirname(dataDir)=~/.sunshinex/sunx/<jid>/——记忆/任务账本/
     // 输出归档随域清；域容器物理独立于 projects/,standard 会话档天然零殃及；容器内守卫 paranoia）
     // ；standard=项目夹持久化随工作区存续（data/workspace.json 注册在=项目仍在,删会话不摘项目夹
-    // ——delete 门禁/F1 两既有测的既有契约:删档不删项目；仅当删后无其他 .jsonl 会话**且**工作区
+    // ——delete 门禁/F1 既有契约:删档不删项目；仅当删后无其他 .jsonl 会话**且**工作区
     // 已失登记（workspace.json 缺席=悬挂数据,登记面不再认领）才整删项目夹）。
+    // 域属收紧（2026-11-15 终审 Fix 1）：整删守卫按 journalId 推域属——仅当本档**独占**域
+    // （dataDir===sunxDomainDir(jid),自己是域的唯一会话）才整删 dirname；fork/rewind 换座壳经
+    // CreateSessionOpts.dataDir 领养父域（同域多 journal:父+子档共存,dataDir=父域 ≠
+    // sunxDomainDir(子jid)）时只走上方 per-session 清理（purgeSession/purgeSideJournals/
+    // purgeBrowserState）,域目录保留——否则删子档即灭父档/记忆/台账/兄弟档。
     // projectsRoot 直删守卫 paranoia;尽力而为,失败不阻断删除回执
     const isSunxSession = (session !== undefined ? session.sessionKind : readSessionMeta(dataDir, jid).kind) === 'sunx';
     const slugDir = path.dirname(dataDir);
@@ -1203,7 +1211,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       }
     };
     if (isSunxSession) {
-      if (slugDir.startsWith(sunxContainerDir() + path.sep)) purgeSlugDir(); // 域目录必在 sunx 容器内才动手术(盘面 legacy sunx-in-projects 不整删,沿 per-session 清理)
+      // 独占域判定单点（sunxDomainDir 同源推导直等）+容器内守卫（盘面 legacy sunx-in-projects 不整删,沿 per-session 清理）
+      if (dataDir === sunxDomainDir(jid) && slugDir.startsWith(sunxContainerDir() + path.sep)) purgeSlugDir();
     } else {
       let remainingSessions = 0;
       try {
@@ -1374,13 +1383,11 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   private handleMemoryStatsGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     // sunx 域接线（2026-11-15 sunx P3 Task 3，Task 2 移交清偿）：root 命中在座 sunx 会话 →
     // 统计随域（memoryStats(root, dataDir) 域缝——sunx 记忆在 ~/.sunshinex/sunx/<jid>/data/memory）；
-    // 未命中/无 sunx 在座=undefined → 既有单参推导（standard 字节不变）
+    // 未命中/无 sunx 在座=undefined → 既有单参推导（standard 字节不变）。反查单点= sunxDataDirOfRoot
+    // （终审 Fix 3 提取——memory list/rm 同法接线）
     const url = new URL(req.url ?? '/', 'http://localhost');
     const rootParam = url.searchParams.get('root');
-    const sunxDataDir =
-      rootParam !== null && rootParam.length > 0
-        ? [...this.sessions.values()].find((s) => s.sessionKind === 'sunx' && path.resolve(s.root) === path.resolve(rootParam))?.dataDir
-        : undefined;
+    const sunxDataDir = rootParam !== null && rootParam.length > 0 ? this.sunxDataDirOfRoot(rootParam) : undefined;
     configHandlers.handleMemoryStatsGet(this.configIo, req, res, sunxDataDir);
   }
 
@@ -1465,12 +1472,18 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     workspaceHandlers.handleDirpicker(this.workspaceIo, req, res);
   }
 
+  /** root 反查在座 sunx 会话域目录（终审 Fix 3 域缝单点，memory-stats 同款）：命中=其域目录
+   *  （memory list/rm 随域）；未命中/无 sunx 在座=undefined → 既有单参推导（standard 字节不变） */
+  private sunxDataDirOfRoot(rootParam: string): string | undefined {
+    return [...this.sessions.values()].find((s) => s.sessionKind === 'sunx' && path.resolve(s.root) === path.resolve(rootParam))?.dataDir;
+  }
+
   private async handleMemoryRm(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    await configHandlers.handleMemoryRm(this.configIo, req, res);
+    await configHandlers.handleMemoryRm(this.configIo, req, res, (root) => this.sunxDataDirOfRoot(root));
   }
 
   private handleMemoryList(req: http.IncomingMessage, res: http.ServerResponse): void {
-    configHandlers.handleMemoryList(this.configIo, req, res);
+    configHandlers.handleMemoryList(this.configIo, req, res, (root) => this.sunxDataDirOfRoot(root));
   }
 
   private async handlePtyAlloc(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {

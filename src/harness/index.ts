@@ -241,7 +241,9 @@ export class Harness {
     // safety 表注入（Task 9）：与 mcpServers 名单同一装配单点——插件贡献 server 的三类安全声明驱动 guard 问线
     // （act 强制 ask 绕档位/observe 白名单/confirm 走通用 ask+always）；未声明 server 不落键，guard 行为零变化
     this.security.setMcpSafety(pluginMcp.safety);
-    this.safety = new SafetyChain(this.security, this.sandbox, base);
+    // 域绑定注入缝（2026-11-15 终审 Fix 2）：链记忆判界随域（窄口+闸内复核同走 boundary 单点）——
+    // sunx 注入域后，旧 projects 推导区 memory/** 越界写在链侧即拦（纵深防御恢复）；缺席=既有推导字节不变
+    this.safety = new SafetyChain(this.security, this.sandbox, base, undefined, opts.dataDir);
     this.safety.setPermissions(perms.config);
     this.safety.setAdditionalDirs([...perms.config.additionalDirs, ...(opts.addDirs ?? [])]);
     this.permissionWarningList = perms.warnings;

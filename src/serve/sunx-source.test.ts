@@ -91,6 +91,7 @@ interface SunxRow {
   title?: string;
   kind: string;
   root?: string;
+  archived?: boolean;
   liveSessionId?: string;
   awaiting?: boolean;
   status?: string;
@@ -318,6 +319,178 @@ test('④ memory-stats 接线：root 命中在座 sunx 会话 → 统计随域�
     // 未命中：无 sunx 在座的 root → projects 区既有推导（零记忆=零值，字节不变面）
     const miss = await (await fetch(`${d.http}/settings/memory-stats?root=${encodeURIComponent(rootN)}`, { headers: AUTH })).json() as { entries: number; lastWriteAt: number | null };
     assert.deepEqual(miss, { entries: 0, lastWriteAt: null }, '未命中 root 走既有推导');
+    await d.daemon.get(sid)!.teardown();
+  } finally {
+    await close?.();
+    restore();
+    try {
+      fs.rmSync(base, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});
+
+// ═══════════════ ⑤收口补漏（2026-11-15 终审 Fix 3）：command 直跑通道/plans 读面/memory list+rm ═══════════════
+
+test('⑤ 收口补漏：/archive·/unarchive·/delete 命令直跑通道随域（projects 区零杂散 meta）；plans 读面随域（读/写对称）；memory list/rm 随域', async () => {
+  const base = tmpdir('sunshinex-serve-sunxsrc-e-');
+  const restore = pinSunxEnv(base);
+  let close: (() => Promise<void>) | undefined;
+  try {
+    const root = path.join(base, 'ws-e');
+    fs.mkdirSync(root, { recursive: true });
+    const d = await startDaemon(new ScriptedAdapter([DONE('r1')]), base);
+    close = d.close;
+    const { sessionId: sid } = await newSession(d.http, { root, kind: 'sunx', name: '收口补漏体' });
+    const ctl = d.daemon.get(sid)!;
+    const jid = ctl.attachedJournalId!;
+    const domain = sunxDomainDir(jid);
+    const projData = resolveDataDir(root);
+    await runRound(d.http, d.daemon, sid, '先跑一轮');
+    const command = async (line: string): Promise<number> => {
+      const r = await fetch(`${d.http}/session/${sid}/command`, { method: 'POST', headers: AUTH, body: JSON.stringify({ line }) });
+      return r.status;
+    };
+    // /archive：随域打标（旧实现落 resolveDataDir(root)=projects 区杂散 meta 违零污染；域 meta 不动=恒未归档）
+    assert.equal(await command('/archive'), 200, '/archive 受理');
+    assert.equal(readSessionMeta(domain, jid).archived, true, 'archive 标记落域 meta');
+    assert.equal(fs.existsSync(path.join(sessionsDir(projData), `${jid}.meta.json`)), false, 'projects 区零杂散 meta');
+    // /unarchive：随域撤销（旧实现读 projects 区 meta=恒 'not archived' 假回执）
+    assert.equal(await command('/unarchive'), 200, '/unarchive 受理');
+    assert.equal(readSessionMeta(domain, jid).archived, undefined, 'unarchive 撤域 meta 标记');
+    // /delete：归档后真清域内档（旧实现读 projects 区 meta=恒 'Archive first' 假成功、档残留）
+    await command('/archive');
+    assert.equal(await command('/delete'), 200, '/delete 受理');
+    assert.equal(fs.existsSync(path.join(sessionsDir(domain), `${jid}.jsonl`)), false, 'delete 真清域内档');
+    assert.equal(fs.existsSync(path.join(sessionsDir(projData), `${jid}.meta.json`)), false, 'projects 区零杂散 meta（delete 面）');
+    // plans 读面随域：计划书写入面已随域（writePlanDoc(this.dataDir,...)）——读面（handlePlans）须读同一域
+    // plans/memory 探针体独立 root（root 反查在座 sunx 会话=注册表序首匹配——探针与 /delete 残座
+    // 同 root 会互扰;多 sunx 同 root 本就共享一个反查结果,独立 root 使寻址无歧义）
+    const root2 = path.join(base, 'ws-e2');
+    fs.mkdirSync(root2, { recursive: true });
+    const { sessionId: sid2 } = await newSession(d.http, { root: root2, kind: 'sunx', name: '计划体' });
+    const jid2 = d.daemon.get(sid2)!.attachedJournalId!;
+    const domain2 = sunxDomainDir(jid2);
+    fs.mkdirSync(path.join(domain2, 'sessions'), { recursive: true });
+    fs.writeFileSync(path.join(domain2, 'sessions', `${jid2}.plan.md`), '# 域内计划\n1. 步骤');
+    const plans = (await (await fetch(`${d.http}/session/${sid2}/plans`, { headers: AUTH })).json()) as { plans: Array<{ name: string; path: string }> };
+    assert.equal(plans.plans.length, 1, `plans 读面随域（旧实现读 projects 区=sunx 计划页签恒空）：${JSON.stringify(plans.plans)}`);
+    assert.equal(plans.plans[0]!.name, '域内计划', '计划名读域内档');
+    assert.ok(plans.plans[0]!.path.startsWith(domain2), 'path 指向域内档');
+    // memory list/rm 随域：域内记录 list 出列（旧实现 MemoryStore 单参读 projects 区=全盲）；rm 删域内档
+    const memDir = path.join(domain2, 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    fs.writeFileSync(path.join(memDir, 'probe-slug.md'), '---\ntype: project\ndescription: probe desc\n---\nprobe body');
+    const list = (await (await fetch(`${d.http}/memory?root=${encodeURIComponent(root2)}`, { headers: AUTH })).json()) as Array<{ slug: string }>;
+    assert.ok(list.some((m) => m.slug === 'probe-slug'), `memory list 随域（实际 ${JSON.stringify(list)}）`);
+    const rmRes = await fetch(`${d.http}/memory/rm`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: root2, slugs: ['probe-slug'] }) });
+    assert.equal(rmRes.status, 200);
+    const rm = (await rmRes.json()) as { removed: string[]; failed: Array<{ slug: string }> };
+    assert.deepEqual(rm.removed, ['probe-slug'], `memory rm 随域（实际 ${JSON.stringify(rm)}）`);
+    assert.equal(fs.existsSync(path.join(memDir, 'probe-slug.md')), false, 'rm 真删域内记录');
+    // standard 锚：无 sunx 在座的 root → list 走 projects 区既有推导（字节不变——standard 记忆可见）
+    const rootStd = path.join(base, 'ws-std');
+    fs.mkdirSync(rootStd, { recursive: true });
+    const stdMem = path.join(resolveDataDir(rootStd), 'memory');
+    fs.mkdirSync(stdMem, { recursive: true });
+    fs.writeFileSync(path.join(stdMem, 'std-slug.md'), '---\ntype: project\ndescription: std desc\n---\nstd body');
+    const listStd = (await (await fetch(`${d.http}/memory?root=${encodeURIComponent(rootStd)}`, { headers: AUTH })).json()) as Array<{ slug: string }>;
+    assert.ok(listStd.some((m) => m.slug === 'std-slug'), `standard 锚：无 sunx 在座 root 走 projects 区既有推导（实际 ${JSON.stringify(listStd)}）`);
+    await d.daemon.get(sid2)!.teardown();
+  } finally {
+    await close?.();
+    restore();
+    try {
+      fs.rmSync(base, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});
+
+// ═══════════════ ⑥归档可达（2026-11-15 终审 Fix 4）：archived 行随列+journalId 兜底扫 sunx 容器 ═══════════════
+
+test('⑥ 归档可达：GET /sunx/sessions 携带 archived 行（archived:true 标记）；重启后 archive/unarchive/delete 按 journalId 寻址可达（兜底扫 sunx 容器）', async () => {
+  const base = tmpdir('sunshinex-serve-sunxsrc-f-');
+  const restore = pinSunxEnv(base);
+  let close1: (() => Promise<void>) | undefined;
+  let close2: (() => Promise<void>) | undefined;
+  try {
+    const root = path.join(base, 'ws-f');
+    fs.mkdirSync(root, { recursive: true });
+    const d1 = await startDaemon(new ScriptedAdapter([DONE('r1')]), base);
+    close1 = d1.close;
+    const { sessionId: sid } = await newSession(d1.http, { root, kind: 'sunx', name: '归档体' });
+    const jid = d1.daemon.get(sid)!.attachedJournalId!;
+    await runRound(d1.http, d1.daemon, sid, '先跑一轮');
+    await d1.daemon.get(sid)!.teardown();
+    await close1();
+    close1 = undefined;
+    // 重启（真重启——在座收编通道关闭,只剩 journalId 兜底寻址）
+    const d2 = await startDaemon(new ScriptedAdapter([DONE('r2')]), base);
+    close2 = d2.close;
+    // archived 行随列：archived meta 标记在 → 行携 archived:true（GUI 归档入口过滤数据源;旧实现滤除=死态）
+    await fetch(`${d2.http}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const rows = await sunxRows(d2.http);
+    const archRow = rows.find((r) => r.id === jid);
+    assert.ok(archRow !== undefined, `归档行随列（旧实现滤除=两列表都不在、无重开入口死态）：${JSON.stringify(rows.map((r) => r.id))}`);
+    assert.equal(archRow!.archived, true, '归档行携 archived:true 标记');
+    // unarchive 可达：archived:false 按 journalId → 域 meta 撤标（旧实现兜底只扫 projects 区=404 死态）
+    const un = await fetch(`${d2.http}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: JSON.stringify({ archived: false }) });
+    assert.equal(un.status, 200, `unarchive 按 journalId 可达：${un.status}`);
+    const { readSessionMeta: readMeta } = await import('../tui/session-journal');
+    assert.equal(readMeta(sunxDomainDir(jid), jid).archived, undefined, '域 meta 撤标（unarchive 真达）');
+    assert.equal((await sunxRows(d2.http)).find((r) => r.id === jid)!.archived, undefined, '撤销后行无 archived 标记');
+    // delete 可达：再归档 → journalId 删 → 域整删（独占域既有语义）
+    await fetch(`${d2.http}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const del = await fetch(`${d2.http}/session/${jid}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(del.status, 200, `delete 按 journalId 可达：${del.status}`);
+    assert.equal(fs.existsSync(path.dirname(sunxDomainDir(jid))), false, 'delete 真达=独占域整删');
+    // standard 锚:projects 区 journalId 兜底照旧（字节不变——既有 daemon.archive 双寻址族已锚,此处直证 sunx 不扰）
+    const rowsAfter = await sunxRows(d2.http);
+    assert.equal(rowsAfter.some((r) => r.id === jid), false, '删后行出列');
+    await import('../tui/session-journal');
+  } finally {
+    await close1?.();
+    await close2?.();
+    restore();
+    try {
+      fs.rmSync(base, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});
+
+// ═══════════════ ⑦行形收窄（2026-11-15 终审 Minor）：白名单字段,剔 charterText 全文 ═══════════════
+
+test('⑦ 行形收窄：/sunx/sessions 行=白名单字段族（id/title/firstUser/root/kind/updatedAt/archived/liveSessionId/awaiting/status/runs/steps/createdAt）；charterText 全文不入行', async () => {
+  const base = tmpdir('sunshinex-serve-sunxsrc-g-');
+  const restore = pinSunxEnv(base);
+  let close: (() => Promise<void>) | undefined;
+  try {
+    const root = path.join(base, 'ws-g');
+    fs.mkdirSync(root, { recursive: true });
+    const d = await startDaemon(new ScriptedAdapter([DONE('r1')]), base);
+    close = d.close;
+    const { sessionId: sid } = await newSession(d.http, { root, kind: 'sunx', name: '行形体', charter: 'BIRTH-CHARTER' });
+    const jid = d.daemon.get(sid)!.attachedJournalId!;
+    await runRound(d.http, d.daemon, sid, '先跑一轮');
+    // 品性编辑:meta.charterText 落全文（行收窄的红检标的——旧实现 ...r 全量摊开必带）
+    const e = await fetch(`${d.http}/session/${sid}/charter`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '编辑后的品性全文'.repeat(64) }) });
+    assert.equal(e.status, 200, '品性编辑落 meta.charterText');
+    const rows = await sunxRows(d.http);
+    const row = rows.find((r) => r.id === jid);
+    assert.ok(row !== undefined, '行在场');
+    const whitelist = new Set(['id', 'title', 'firstUser', 'root', 'kind', 'updatedAt', 'archived', 'liveSessionId', 'awaiting', 'status', 'runs', 'steps', 'createdAt']);
+    for (const k of Object.keys(row)) {
+      assert.ok(whitelist.has(k), `行字段白名单外：${k}（charterText 全文/旁车超集不入行）`);
+    }
+    assert.equal((row as unknown as { charterText?: string }).charterText, undefined, 'charterText 全文剔出负载');
+    assert.equal(readSessionMeta(sunxDomainDir(jid), jid).charterText?.length, 512, 'meta 面 charterText 原样（读面/重开链不受行收窄影响）');
+    assert.equal(row!.kind, 'sunx', 'kind 恒在');
+    assert.equal(row!.root, path.resolve(root), 'root 随出生 meta（GUI 分组键）');
     await d.daemon.get(sid)!.teardown();
   } finally {
     await close?.();

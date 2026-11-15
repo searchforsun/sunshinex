@@ -12,6 +12,7 @@ import { SessionJournal, journalDisplayTitle, newSessionId, parseJournalFile, pu
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import type { RestoredInterrupted } from '../session/wake';
 import { projectsRoot, projectSlug, resolveDataDir, sunxDomainDir, worktreeMainRootOf } from '../config/data-dir';
+import { findSunxJournalOwner } from './sessions-list-handlers';
 import { validSessionId } from './session-id';
 
 /**
@@ -395,9 +396,17 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
  */
 export function attachSunxIn(io: SessionLifecycleIo, journalId: string): Result<{ sessionId: string; root: string }> {
   if (!validSessionId(journalId)) return fail('INVALID_ARG', `invalid journalId: ${journalId}`);
-  const domain = sunxDomainDir(journalId);
+  // 域定位双查（2026-11-15 终审 Fix 5）：域键直查（sunxDomainDir(journalId)——独占域形态）缺席
+  // 扫容器各域（fork/rewind 子档落父域的领养形态——子 journalId ≠ 域键，档在父域 sessions/ 内；
+  // 旧实现域键直查即定论=子档重开恒 400 unknown 死态）
+  const ownDomain = sunxDomainDir(journalId);
+  const domain = fs.existsSync(path.join(sessionsDir(ownDomain), `${journalId}.jsonl`))
+    ? ownDomain
+    : findSunxJournalOwner(journalId);
+  if (domain === undefined || !fs.existsSync(path.join(sessionsDir(domain), `${journalId}.jsonl`))) {
+    return fail('INVALID_ARG', `unknown sunx session: ${journalId}`);
+  }
   const file = path.join(sessionsDir(domain), `${journalId}.jsonl`);
-  if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown sunx session: ${journalId}`);
   // 在座收编早退：同 journal 已在座（attachSessionIn 收编裁定同源——壳弃座免铸）直接置激活返回
   for (const [sid, s] of io.sessions) {
     if (s.attachedJournalId === journalId) {

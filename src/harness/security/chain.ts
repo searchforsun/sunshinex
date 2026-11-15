@@ -6,7 +6,7 @@ import { PATH_TOOL_NAMES, WRITE_TOOL_NAMES, READONLY_DENY } from './modes';
 import { matchAnyRule } from '../../config/permissions';
 import type { PermissionsConfig } from '../../config/permissions';
 import { ExecOpts, ExecResult, ToolBackend } from '../../types';
-import { dataDirReal, resolveDataDir } from '../../config/data-dir';
+import { dataDirReal, dirReal, resolveDataDir } from '../../config/data-dir';
 import { userConfigDir } from '../../config/env';
 import { loadGlobalSettings, loadProjectSettings } from '../../config/settings';
 import { resolveMemoryConfig } from '../../config/memory-config';
@@ -65,6 +65,9 @@ export class SafetyChain {
     private readonly root: string,
     /** 记忆写 scope（规格 §4.2）：undefined=主链可写 memory/** 整子树；子智能体 fork 传自身 agents/<id> 收窄 */
     readonly memoryScope?: MemoryScope,
+    /** 域绑定注入缝（2026-11-15 终审 Fix 2）：显式持久化域目录（sunx 域绑定）——记忆判界随域
+     *  （boundaryDataDir 单点）；缺席=resolveDataDir(root) 既有推导逐字节不变 */
+    private readonly dataDirOverride?: string,
   ) {
     // root 可能经符号链接传入；不存在时原样回退；归一遇异常（如权限类）同样防御性原样回退（spec 2.1 兜底条款同源，evaluate 判界层再统一兜底）
     try {
@@ -72,6 +75,19 @@ export class SafetyChain {
     } catch {
       this.rootReal = root;
     }
+  }
+
+  /** 记忆判界基准目录单点（2026-11-15 终审 Fix 2）：注入域优先（dirReal 同法归一——与
+   *  dataDirReal 归一段共用单点防漂移），缺席=resolveDataDir(root) 既有推导（字节不变）。
+   *  narrow gate（字面∪real 双查）与 memoryWriteAllowed（闸内复核）同走本单点——判界与闸
+   *  不再各持一份基准，注入域后两处同步随域（纵深防御恢复） */
+  private boundaryDataDirReal(): string {
+    return this.dataDirOverride !== undefined ? dirReal(this.dataDirOverride) : dataDirReal(this.root);
+  }
+
+  /** 记忆判界字面基准（realpath 前的字面目录）：注入域=域目录字面，缺席=resolveDataDir(root) */
+  private boundaryDataDirLiteral(): string {
+    return this.dataDirOverride ?? resolveDataDir(this.root);
   }
 
   /** 判定骨架单点（C5 收敛）：guard 决策透传（非放行即定论）→ 非路径工具直放 → 路径工具判界（resolveSafe）。
@@ -180,20 +196,33 @@ export class SafetyChain {
       if (WRITE_TOOL_NAMES.has(tool) && isGitInternalPath(real)) {
         return { allowed: false, reason: `COMMAND_DENIED: .git is protected (git state changes go through exec git): ${real}` };
       }
-      // ③ 记忆写窄口（既有；先于信任域放行，不绕记忆总开关与 scope）。
+      // ③ 记忆写窄口（既有；先于信任域放行，不绕记忆总开关与 scope）。判界随域（2026-11-15 终审
+      // Fix 2）：注入域在场判界=域（boundary 单点），缺席=resolveDataDir 既有推导。
       // 字面∪real 双查（对齐 realpath 判界不可逃逸语义）：仅查 real 时，dataDir 内 memory 下由模型植入的
       // 符号链接指向子树之外，realpath 后即不呈记忆形态，窄口失察、写面落到下方写分支档位放行（安全回归）；
       // 字面形态先查保证「链接形式上是记忆路径」一律进窄口定论，real 形态维持既有判定（链接目标真实落位）
-      const dataDirLiteral = resolveDataDir(this.root);
+      const dataDirLiteral = this.boundaryDataDirLiteral();
+      const boundaryReal = this.boundaryDataDirReal();
       if (
         WRITE_TOOL_NAMES.has(tool) &&
-        (isMemoryPath(dataDirReal(this.root), real) !== null || isMemoryPath(dataDirReal(this.root), abs) !== null ||
+        (isMemoryPath(boundaryReal, real) !== null || isMemoryPath(boundaryReal, abs) !== null ||
           isMemoryPath(dataDirLiteral, real) !== null || isMemoryPath(dataDirLiteral, abs) !== null)
       ) {
         const memory = this.memoryWriteAllowed(real);
         return memory.allowed
           ? { allowed: true, safePath: real }
           : { allowed: false, reason: `COMMAND_DENIED: ${memory.reason}: ${real}` };
+      }
+      // ③b 域绑定防漏（2026-11-15 终审 Fix 2）：注入域在场时，旧 projects 推导区（resolveDataDir
+      // (root)）memory/** 的写入恒拒——窄口判界已随域，旧区命中即「跨域写共享记忆区」通道
+      // （链窄口误放行 → 域缝 guardMemoryWrite 判不中 → 裸写绕过六闸），不落信任域/档位放行。
+      // 非 memory 形态的旧区路径不受本条管辖（既有信任域/档位分支照旧）
+      if (
+        WRITE_TOOL_NAMES.has(tool) && this.dataDirOverride !== undefined &&
+        (isMemoryPath(dataDirReal(this.root), real) !== null || isMemoryPath(dataDirReal(this.root), abs) !== null ||
+          isMemoryPath(resolveDataDir(this.root), real) !== null || isMemoryPath(resolveDataDir(this.root), abs) !== null)
+      ) {
+        return { allowed: false, reason: `COMMAND_DENIED: memory writes are domain-bound (write <dataDir>/memory/** in the session domain instead): ${real}` };
       }
       // ⑤ worktree 主根拒写（既有硬底线；主根读类恒开放）。树落位(2026-11-10)在主根
       // .git/sunshinex/worktrees 内——字面落在主根域,但那是隔离会话的工作树(活动根域),不按主根拒
@@ -257,13 +286,19 @@ export class SafetyChain {
 
   /** 派生带记忆 scope 的克隆（子智能体 fork 用）：其余依赖引用共享，仅 scope 收窄；原实例零突变 */
   withMemoryScope(scope: MemoryScope): SafetyChain {
-    return new SafetyChain(this.guard, this.backend, this.root, scope);
+    return new SafetyChain(this.guard, this.backend, this.root, scope, this.dataDirOverride);
+  }
+
+  /** 域绑定链式注入（2026-11-15 终审 Fix 2）：与构造第 5 参等价的换缝克隆——记忆判界随域；
+   *  其余依赖引用共享，原实例零突变 */
+  withDataDir(dataDir: string): SafetyChain {
+    return new SafetyChain(this.guard, this.backend, this.root, this.memoryScope, dataDir);
   }
 
   /** 派生换根克隆（隔离子智能体专用，规格 2026-09-23-subagent-worktree-isolation D6）：root 置换为专属树并携带
    * isolatedRoot 标记——exec 判界三查仅隔离子链生效；guard/backend/scope 引用共享，活动根态不继承（克隆从缺省态起步，子链 exec cwd 与路径判界天然锚树） */
   withRoot(root: string): SafetyChain {
-    const child = new SafetyChain(this.guard, this.backend, root, this.memoryScope);
+    const child = new SafetyChain(this.guard, this.backend, root, this.memoryScope, this.dataDirOverride);
     child.permissions = this.permissions;
     child.additionalDirs = this.additionalDirs;
     child.isolatedRootPath = root;
@@ -305,7 +340,7 @@ export class SafetyChain {
         reason: 'memory write denied: auto memory is off',
       };
     }
-    const dataDir = dataDirReal(this.root);
+    const dataDir = this.boundaryDataDirReal(); // 判界随域（2026-11-15 终审 Fix 2）：注入域优先，缺席=既有推导
     if (isMemoryPath(dataDir, real) === null) {
       return {
         allowed: false,

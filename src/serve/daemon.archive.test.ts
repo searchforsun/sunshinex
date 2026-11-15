@@ -232,6 +232,92 @@ test('delete 域语义(P3 修复轮归一裁定 2026-11-15):sunx 删=域目录�
 });
 
 
+test('delete 领养域守卫(终审 Fix 1):sunx 域内 fork 子档删=仅清子档,父档/记忆/台账/域目录全存活;独占域 sunx 删=域整删(既有语义)', async () => {
+  // fork/rewind 换座壳经 CreateSessionOpts.dataDir 领养父域(同域多 journal:父+fork 子档共存于
+  // ~/.sunshinex/sunx/<父jid>/data)——purge 守卫若按 dirname(dataDir) 整删即灭掉父档全家。
+  // 收紧后按 journalId 推域属:仅当 dataDir===sunxDomainDir(本档 jid)(自己是域的唯一会话)才整删
+  const baseA = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-arch-forkd-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  let closeA: (() => Promise<void>) | undefined;
+  try {
+    const home = path.join(baseA, 'home');
+    const projects = path.join(baseA, 'projects');
+    fs.mkdirSync(home, { recursive: true });
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.SUNSHINEX_PROJECTS_DIR = projects;
+    delete process.env.SUNSHINEX_DATA_DIR;
+    const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']), staticRoot: path.join(baseA, 'dist-gui-absent') });
+    const s = await daemon.start({ port: 0, token: 'test-token' });
+    closeA = s.close;
+    const base = `http://127.0.0.1:${s.port}`;
+    const AUTH = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    const root = path.join(baseA, 'ws-a');
+    fs.mkdirSync(root, { recursive: true });
+    const sunxNew = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, kind: 'sunx', name: '域主父' }) })).json() as { sessionId: string };
+    await fetch(`${base}/session/${sunxNew.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    const waitIdle = async (sid: string): Promise<void> => {
+      const deadline = Date.now() + 20_000;
+      for (;;) {
+        const r = await fetch(`${base}/session/${sid}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
+        if (((await r.json()) as { status: string }).status === 'idle') return;
+        if (Date.now() > deadline) throw new Error('waitFor 超时');
+        await new Promise((rr) => setTimeout(rr, 20));
+      }
+    };
+    await waitIdle(sunxNew.sessionId);
+    const jidP = daemon.get(sunxNew.sessionId)!.attachedJournalId!;
+    const domain = sunxDomainDir(jidP);
+    const domainDir = path.dirname(domain);
+    // 域级资产造场:记忆记录+台账(删除隔离断言非空转的存活标的)
+    fs.mkdirSync(path.join(domain, 'memory'), { recursive: true });
+    fs.writeFileSync(path.join(domain, 'memory', 'note.md'), '---\ntype: project\n---\nparent domain fact', 'utf8');
+    fs.mkdirSync(path.join(domain, 'tasks'), { recursive: true });
+    fs.writeFileSync(path.join(domain, 'tasks', `ledger-${jidP}.jsonl`), `${JSON.stringify({ op: 'submit', pid: 1, task: { id: 't1', kind: 'exec', label: 'l', title: 't', status: 'stopped', outputFilePath: 'x', startedAt: 1, ownerRun: 'main' } })}\n`, 'utf8');
+    // 域内 fork:子档落父域 sessions/<jidC>.jsonl(领养形态——子 journalId ≠ 域键)
+    const forkRes = await fetch(`${base}/session/${sunxNew.sessionId}/fork`, { method: 'POST', headers: AUTH, body: JSON.stringify({ turn: 1 }) });
+    const forkBody = (await forkRes.json()) as { ok: true; sessionId: string };
+    assert.equal(forkRes.status, 200, `fork 应 200:${JSON.stringify(forkBody)}`);
+    const jidC = daemon.get(forkBody.sessionId)!.attachedJournalId!;
+    assert.ok(jidC !== undefined && jidC !== jidP, 'fork 子档独立 journalId');
+    assert.equal(fs.existsSync(path.join(domain, 'sessions', `${jidC}.jsonl`)), true, '前置:fork 子档落父域(领养形态)');
+    // 子档归档+删除(在座 sessionId 寻址——GUI fork 页签删除实况)
+    await fetch(`${base}/session/${forkBody.sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const ok = await fetch(`${base}/session/${forkBody.sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(ok.status, 200);
+    // 子档清:子 journal 全家出域(领养域保留——per-session 清理口径)
+    assert.equal(fs.existsSync(path.join(domain, 'sessions', `${jidC}.jsonl`)), false, '子档 journal 清');
+    assert.equal(fs.existsSync(path.join(domain, 'sessions', `${jidC}.meta.json`)), false, '子档 meta 清');
+    // 父域存活:域目录/父档/父 meta/记忆/台账全在(整删守卫收紧——dirname 领养域不手术)
+    assert.equal(fs.existsSync(domainDir), true, '父域目录存活(领养域不整删)');
+    assert.equal(fs.existsSync(path.join(domain, 'sessions', `${jidP}.jsonl`)), true, '父档存活');
+    assert.equal(fs.existsSync(path.join(domain, 'sessions', `${jidP}.meta.json`)), true, '父 meta 存活');
+    assert.equal(fs.existsSync(path.join(domain, 'memory', 'note.md')), true, '域记忆存活');
+    assert.equal(fs.existsSync(path.join(domain, 'tasks', `ledger-${jidP}.jsonl`)), true, '域台账存活');
+    await daemon.get(sunxNew.sessionId)!.teardown();
+    // 对照:独占域 sunx 删=域整删(既有语义保持——自己是域的唯一会话才动手术)
+    await fetch(`${base}/session/${sunxNew.sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const okP = await fetch(`${base}/session/${sunxNew.sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(okP.status, 200);
+    assert.equal(fs.existsSync(domainDir), false, '独占域删=域整删(既有语义不变)');
+  } finally {
+    await closeA?.();
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+    else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    try {
+      fs.rmSync(baseA, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});
+
 test('delete journalId 寻址:在座 idle 会话升格运行时回收(终审 F1)——档真清+注册表移出,复活通道关闭', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
     // 现场=归档页删除实况:会话开着(idle 在座)→ 顶栏归档 → 归档页按 journalId 删

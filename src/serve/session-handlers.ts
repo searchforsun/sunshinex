@@ -480,7 +480,7 @@ export { handleAppPinsGet, handleAppPinsPut, handleAppSeenGet, handleAppSeenPut,
 /** 会话列表面+归档族:D42 端点族拆分至 sessions-list-handlers.ts(行搬运零变化)——
  *  原路径再导出,daemon 路由与 daemon.gui-state.test 消费零迁移;
  *  sunx 域枚举面（2026-11-15 sunx P3 Task 3 GET /sunx/sessions）同族随拆挂载 */
-export { handleSessionsRecent, handleSessions, handleSunxSessions, liveSessionByJournal, findJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
+export { handleSessionsRecent, handleSessions, handleSunxSessions, liveSessionByJournal, findJournalOwner, findSunxJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
 export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
@@ -887,6 +887,15 @@ export async function handleBranch(io: SessionHandlerIo, req: http.IncomingMessa
     session.sessionKind === 'sunx'
       ? ((): CreateSessionOpts => {
           const srcCharter = readSessionMeta(dataDir, srcId).charterText;
+          // 子档出生 meta 补全（2026-11-15 终审 Fix 5）：root/kind 随档落 meta——重启 attachSunxIn
+          // 重开链读 meta.root 铸壳根（缺席=400 'root missing' 死态）、/sunx/sessions 行 root 非空
+          // （GUI 分组键）；kind='sunx' 形态标注。charterText 源档有则随迁（编辑文跨 fork 存续——
+          // 与换座壳 charter 同源）。writeSessionMeta 合并语义:fork 题名/side 标记照旧叠加
+          writeSessionMeta(dataDir, newId, {
+            root: session.root,
+            kind: 'sunx',
+            ...(srcCharter !== undefined ? { charterText: srcCharter } : {}),
+          });
           return { kind: 'sunx', dataDir, ...(srcCharter !== undefined ? { charter: srcCharter } : {}) };
         })()
       : undefined;

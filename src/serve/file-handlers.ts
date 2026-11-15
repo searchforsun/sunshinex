@@ -353,7 +353,7 @@ export function handleAppFile(io: FileHandlerIo, req: http.IncomingMessage, res:
 export function handlePlans(io: FileHandlerIo, _req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
-  const dir = path.join(resolveDataDir(session.root), 'sessions');
+  const dir = path.join(session.dataDir, 'sessions'); // 域绑定寻址（2026-11-15 终审 Fix 3）：读面随域外窥——写面 writePlanDoc 已随域,读/写不对称=sunx 计划页签恒空;standard=resolveDataDir 既有推导字节不变
   let files: fs.Dirent[] = [];
   try {
     files = fs.readdirSync(dir, { withFileTypes: true });

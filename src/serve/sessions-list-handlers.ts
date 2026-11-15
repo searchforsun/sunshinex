@@ -7,7 +7,7 @@ import { validSessionId } from './session-id';
 import type { SessionHandlerIo } from './session-handlers';
 import { urlOf } from './daemon-wire';
 import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../tui/session-journal';
-import { projectsRoot, resolveDataDir, sunxContainerDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir, sunxContainerDir, sunxDomainDir } from '../config/data-dir';
 
 /**
  * 会话列表面 + 归档族（D42 端点族拆分自 session-handlers.ts，行搬运零逻辑变化）：
@@ -124,11 +124,15 @@ export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map
 
 /** GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：扫 sunx 域容器
  *  （sunxContainerDir 单点——`~/.sunshinex/sunx/<jid>/data` 逐域 listSessions 归并）出行
- *  SessionRow 族（响应形与 /sessions 同族：id=journalId/title/updatedAt/firstUser 随档，
- *  kind 恒 'sunx'——容器=纯 sunx 域，钉死不读 meta；root 随出生 meta 旁车透出）+ daemon
- *  注册表匹配补 liveSessionId（running）/awaiting（挂起非空）/status（在座即标，idle/running）。
- *  空容器（目录不存在/不可读）返回空列；归档行滤除（archived meta 标记——与 /sessions 同口径）；
- *  行序 updatedAt 降序。GUI SUNX 组/总览页数据源单点——宿主 /sessions 聚合不再过路 sunx */
+ *  SessionRow 族（id=journalId/kind 恒 'sunx'——容器=纯 sunx 域，钉死不读 meta；root/title/
+ *  firstUser 随档）+ daemon 注册表匹配补 liveSessionId（running）/awaiting（挂起非空）/status
+ *  （在座即标，idle/running）。空容器（目录不存在/不可读）返回空列；行序 updatedAt 降序。
+ *  行形收窄（2026-11-15 终审 Minor）：白名单字段族——剔 charterText 全文（负载膨胀+超集暴露）
+ *  与其余旁车超集（file/forkedFrom/side 族/rewoundTo/charterRev/model/effort/tokens 细目）；
+ *  保留 GUI 消费面（分组键 root/标签回退 firstUser/悬浮卡 runs·steps·createdAt）。
+ *  归档行随列（2026-11-15 终审 Fix 4 可达性）：archived meta 行不再滤除，携 `archived: true`
+ *  标记（GUI 归档入口过滤数据源=后续 GUI 迭代；unarchive/delete 端点对 sunx 域按 journalId
+ *  寻址可达=findSunxJournalOwner 兜底）——旧滤除形态下归档 sunx 重启后两列表都不在=死态 */
 export function handleSunxSessions(io: SessionHandlerIo, res: http.ServerResponse): void {
   let entries: fs.Dirent[];
   try {
@@ -149,12 +153,19 @@ export function handleSunxSessions(io: SessionHandlerIo, res: http.ServerRespons
     if (!ent.isDirectory()) continue;
     const dataDir = path.join(sunxContainerDir(), ent.name, 'data');
     for (const r of listSessions(dataDir)) {
-      if (r.archived === true) continue; // 归档滤除（meta 标记落域——归档/删除语义与 /sessions 同族）
       const live = liveByJournal.get(r.id);
       const status = statusByJournal.get(r.id);
       out.push({
-        ...r,
+        id: r.id,
+        ...(r.title !== undefined ? { title: r.title } : {}),
+        ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
+        ...(r.root !== undefined ? { root: r.root } : {}),
         kind: 'sunx', // 域容器恒 sunx（裁定：容器=纯 sunx 域；不读 meta，杂散目录不误标）
+        updatedAt: r.updatedAt,
+        ...(r.archived === true ? { archived: true as const } : {}), // 归档行随列（终审 Fix 4 可达性）
+        ...(r.runs !== undefined ? { runs: r.runs } : {}),
+        ...(r.steps !== undefined ? { steps: r.steps } : {}),
+        ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
         ...(live !== undefined ? { liveSessionId: live } : {}),
         ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
         ...(status !== undefined ? { status } : {}),
@@ -193,6 +204,27 @@ export function findJournalOwner(root: string, jid: string): { dataDir: string; 
   return undefined;
 }
 
+/** journalId → sunx 域 dataDir（2026-11-15 终审 Fix 4 可达性兜底）：先按域键直查
+ *  （sunxDomainDir(jid)——独占域形态），缺席扫容器各域（fork/rewind 子档落父域的领养形态——
+ *  子 journalId ≠ 域键）；找到即返回所在域。archive/unarchive/delete 的 journalId 磁盘寻址
+ *  与 projectsRoot 兜底串联（projects 区缺席才扫 sunx 容器——两区物理独立零歧义） */
+export function findSunxJournalOwner(jid: string): string | undefined {
+  const own = sunxDomainDir(jid);
+  if (fs.existsSync(path.join(sessionsDir(own), `${jid}.jsonl`))) return own;
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(sunxContainerDir(), { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dataDir = path.join(sunxContainerDir(), ent.name, 'data');
+    if (fs.existsSync(path.join(sessionsDir(dataDir), `${jid}.jsonl`))) return dataDir;
+  }
+  return undefined;
+}
+
 /** POST /session/:id/archive {archived?}(2026-10-21 归档):双寻址——:id 命中 daemon 会话表走运行时
  *  路径(缺 journal 404),否则视作 journalId 走磁盘路径。运行中照常归档(2026-11-07 用户裁定:归档=
  *  切换显示位置,不停运行;删除仍要求先归档,其运行门禁在 delete 侧) */
@@ -208,10 +240,13 @@ export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerRespo
     dataDir = session.dataDir; // 域绑定寻址（P3 Task 2）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   } else {
     if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
+    // journalId 兜底双扫（终审 Fix 4）：projects 区缺席再扫 sunx 容器（归档 sunx 重启后不在座=
+    // 两列表只剩 /sunx/sessions archived 行,unarchive/delete 按 journalId 必须可达=死态根修）
     const owner = findJournalOwner(projectsRoot(), id);
-    if (owner === undefined) return io.send(res, 404, { error: 'unknown session' });
+    const sunxDataDir = owner === undefined ? findSunxJournalOwner(id) : undefined;
+    if (owner === undefined && sunxDataDir === undefined) return io.send(res, 404, { error: 'unknown session' });
     jid = id;
-    dataDir = owner.dataDir;
+    dataDir = owner !== undefined ? owner.dataDir : sunxDataDir!;
   }
   markSessionArchived(dataDir, jid, archived);
   io.send(res, 200, { ok: true, archived });

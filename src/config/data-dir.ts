@@ -102,7 +102,12 @@ export function resolveDataDir(root: string): string {
  * 惰性求值（不缓存）：测试可运行期重定向 SUNSHINEX_DATA_DIR / HOME。
  */
 export function dataDirReal(root: string): string {
-  const dir = resolveDataDir(root);
+  return dirReal(resolveDataDir(root));
+}
+
+/** 目录真实路径归一（dataDirReal 归一段单点，2026-11-15 终审 Fix 2 提取）：安全链域绑定注入缝
+ *  对**显式域目录**（非 root 推导）同法归一——注入域与推导区两界判据同源，归一策略零漂移 */
+export function dirReal(dir: string): string {
   try {
     let anchor = dir;
     while (anchor.length > 1 && !fs.existsSync(anchor)) anchor = path.dirname(anchor);

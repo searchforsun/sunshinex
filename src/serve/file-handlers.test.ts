@@ -35,8 +35,9 @@ test('walkTreeBounded:目录上限触顶 truncated=true;未触顶路径 truncate
 });
 
 /** handlePlans 计划清单直测（2026-11-04 计划页签数据面）：mtime 降序、首行计划名剥 H1、
- *  非 plan.md 不入列、空档=未命名回退、无数据目录=空清单不报错。fake io 面仅 root 消费
- *  （handlePlans 对 session 只读 .root），sessionFor 直回根对象。 */
+ *  非 plan.md 不入列、空档=未命名回退、无数据目录=空清单不报错。fake io 面消费 root+dataDir
+ *  （终审 Fix 3 后 handlePlans 读面随域外窥 session.dataDir——缺席注入值=resolveDataDir(root)
+ *  既有推导，standard 字节不变），sessionFor 直回根对象。 */
 test('handlePlans:计划清单=mtime 降序+首行计划名(剥 H1);非 plan 文件/空目录静默', () => {
   // 夹具走 resolveDataDir(root)(test-env 预载 SUNSHINEX_DATA_DIR=隔离数据根,解析被它覆写——
   // ed32f93 同族错位根修):两段夹具共用同一解析目录,第二段(空目录)前显式清场
@@ -58,7 +59,7 @@ test('handlePlans:计划清单=mtime 降序+首行计划名(剥 H1);非 plan 文
   const fakeRes = {} as import('node:http').ServerResponse;
   const io = {
     send: (_res: import('node:http').ServerResponse, status: number, body: object) => sent.push({ status, body }),
-    sessionFor: () => ({ root }) as unknown as import('./session').SessionRuntime,
+    sessionFor: () => ({ root, dataDir: resolveDataDir(root) }) as unknown as import('./session').SessionRuntime,
   };
   handlePlans(io, {} as import('node:http').IncomingMessage, fakeRes, 's1');
   assert.equal(sent.length, 1);

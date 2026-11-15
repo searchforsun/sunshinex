@@ -426,3 +426,69 @@ test('⑤ 隔离验收：同 root 建 1 standard + 2 sunx——三域目录互�
     }
   }
 });
+
+// ═══════════════ ⑥分支子档出生 meta（终审 Fix 5）：fork 子档补 root/kind——重启重开链不断 ═══════════════
+
+test('⑥ 分支子档出生 meta：sunx 域内 fork 子档 meta 落 root/kind（charterText 随迁）；重启后 /sunx/attach 按子 journalId 重开不再 400；/sunx/sessions 行 root 非空', async () => {
+  const base = tmpdir('sunshinex-serve-sunxdom-f-');
+  const restore = pinSunxEnv(base);
+  let close1: (() => Promise<void>) | undefined;
+  let close2: (() => Promise<void>) | undefined;
+  try {
+    const root = path.join(base, 'ws-f');
+    fs.mkdirSync(root, { recursive: true });
+    // 进程 A：域主出生 → 一轮 → 品性编辑（charterText 随迁标的）→ 域内 fork（领养形态:子档落父域）
+    const d1 = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), base);
+    close1 = d1.close;
+    const { sessionId: sid } = await newSession(d1.http, { root, kind: 'sunx', name: '域主丁', charter: 'PARENT-CHARTER' });
+    await runRound(d1.http, d1.daemon, sid, '先跑一轮');
+    const jidP = d1.daemon.get(sid)!.attachedJournalId!;
+    await fetch(`${d1.http}/session/${sid}/charter`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: 'EDITED-CHARTER' }) });
+    const fk = await fetch(`${d1.http}/session/${sid}/fork`, { method: 'POST', headers: AUTH, body: JSON.stringify({ turn: 1 }) });
+    assert.equal(fk.status, 200, 'fork 受理');
+    const forkSid = ((await fk.json()) as { sessionId: string }).sessionId;
+    const jidC = d1.daemon.get(forkSid)!.attachedJournalId!;
+    assert.ok(jidC !== jidP, '子档独立 journalId');
+    // 子档出生 meta：root/kind 落档（旧实现只补 title——meta.root undefined=重启重开 400 死态）
+    const parentDomain = sunxDomainDir(jidP);
+    const childMeta = readSessionMeta(parentDomain, jidC);
+    assert.equal(childMeta.root, path.resolve(root), `子档 meta root 落档（实际 ${String(childMeta.root)}）`);
+    assert.equal(childMeta.kind, 'sunx', '子档 meta kind=sunx');
+    assert.equal(childMeta.title, `Fork of 域主丁`, '子档题照旧（Fork of 前缀）');
+    assert.equal(childMeta.charterText, 'EDITED-CHARTER', 'charterText 随迁（编辑文跨 fork 存续）');
+    await d1.daemon.get(forkSid)!.teardown();
+    await d1.daemon.get(sid)!.teardown();
+    await close1();
+    close1 = undefined;
+
+    // 进程 B（真重启）：按子 journalId 重开——域定位双查（子档在父域）+壳根源 meta.root（旧实现:域键
+    // 直查缺席=400 unknown / meta.root undefined=400 root missing——双死态）
+    const d2 = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), base);
+    close2 = d2.close;
+    const ar = await fetch(`${d2.http}/sunx/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: jidC }) });
+    const arText = await ar.text();
+    assert.equal(ar.status, 200, `子档重开应 200（不再 400）：${arText}`);
+    const adopted = JSON.parse(arText) as { sessionId: string; root: string };
+    assert.equal(adopted.root, path.resolve(root), '重开壳根=工作区根（meta.root 源）');
+    const child = d2.daemon.get(adopted.sessionId)!;
+    assert.equal(child.sessionKind, 'sunx', '重开壳出生即 sunx');
+    assert.equal(child.sunxName, 'Fork of 域主丁', '重开姓名=子档题');
+    assert.equal(child.dataDir, parentDomain, '子壳域绑定=父域（领养形态）');
+    assert.ok(child.transcriptCount() > 0, '链回放（父域内子档）');
+    // /sunx/sessions 行 root 非空（GUI 分组键——旧实现子档行 root 空）
+    const rows = (await (await fetch(`${d2.http}/sunx/sessions`, { headers: AUTH })).json()) as Array<{ id: string; root?: string }>;
+    const childRow = rows.find((r) => r.id === jidC);
+    assert.ok(childRow !== undefined, '子档行在列');
+    assert.equal(childRow!.root, path.resolve(root), '子档行 root 非空（出生 meta 源）');
+    await child.teardown();
+  } finally {
+    await close1?.();
+    await close2?.();
+    restore();
+    try {
+      fs.rmSync(base, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});

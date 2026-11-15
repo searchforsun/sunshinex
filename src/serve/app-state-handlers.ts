@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import type { SessionRuntime } from './session';
 import { validSessionId } from './session-id';
 import type { SessionHandlerIo } from './session-handlers';
-import { resolveDataDir } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 
 /**
@@ -202,9 +201,10 @@ export function clearAppGuiStatePointer(root: string): void {
 /** G14.2xx GUI 面私有态文件(<projects 根>/<工作区 slug>/gui/sessions/<journalId>.json——
  *  CLAUDE.md §13 持久化分层:与 data/ 共享域平级的面私有子目录。档键=attachedJournalId:
  *  跨 daemon 重启稳定的会话身份——会话 id 每次重启重新发号,按 id 存档刷新后必空(实测病根);
- *  journalId 形同会话面,防文件名逃逸) */
+ *  journalId 形同会话面,防文件名逃逸)。随域外窥（2026-11-15 终审 Minor）：sunx 的 GUI 私有态
+ *  落域内（dirname(域)/gui/sessions/——域删除连带清,projects 区零杂散）;standard=既有推导字节不变 */
 function guiStateFile(session: SessionRuntime): string {
-  const dataDir = resolveDataDir(session.root);
+  const dataDir = session.dataDir;
   const key = session.attachedJournalId;
   return path.join(path.dirname(dataDir), 'gui', 'sessions', `${key}.json`);
 }

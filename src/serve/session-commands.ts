@@ -2,7 +2,6 @@ import { chainToHistoryItems, runCompaction, contextBreakdown } from '../harness
 import { removeLearnedSkill } from '../harness/skills';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
-import { resolveDataDir } from '../config/data-dir';
 import { markSessionArchived, purgeSession, purgeSideJournals, readSessionMeta } from '../tui/session-journal';
 import type { SessionRuntime } from './session';
 
@@ -160,7 +159,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       notice('Nothing to archive yet');
       return 'ok';
     }
-    markSessionArchived(resolveDataDir(s.root), jid, true);
+    markSessionArchived(s.dataDir, jid, true); // 域绑定寻址（2026-11-15 终审 Fix 3）：随域外窥——旧 resolveDataDir(root) 对 sunx=projects 区杂散 meta 违零污染;standard 字节不变
     notice('Session archived');
     return 'ok';
   }
@@ -172,7 +171,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       notice('Nothing to unarchive yet');
       return 'ok';
     }
-    const dataDir = resolveDataDir(s.root);
+    const dataDir = s.dataDir; // 域绑定寻址（终审 Fix 3）：随域外窥——旧推导区对 sunx 恒 'not archived' 假回执
     if (readSessionMeta(dataDir, jid).archived !== true) {
       notice('Session is not archived');
       return 'ok';
@@ -187,7 +186,7 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
       notice('Nothing to delete yet');
       return 'ok';
     }
-    const dataDir = resolveDataDir(s.root);
+    const dataDir = s.dataDir; // 域绑定寻址（终审 Fix 3）：随域外窥——旧推导区对 sunx 恒 'Archive first' 假成功、域内档残留
     if (readSessionMeta(dataDir, jid).archived !== true) {
       notice('Archive first (/archive), then /delete');
       return 'ok';
@@ -196,8 +195,13 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     // teardown(seal 落最后一笔)→ purgeSession——旧序 purge 在前,异步 teardown 的 seal 复活已清档
     notice('Session deleted');
     await s.teardown();
-    purgeSession(dataDir, jid);
-    purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
+    // 真清让位完成回执泵（2026-11-15 终审 Fix 3 实测复活窗）：body 返回后 runCommand 同步泵
+    // completion tool-result 行（kernel.pump→journal append 不设防）——purge 先行必被该迟到写复活
+    // 出僵尸 stub（delete 假成功残留）。setTimeout(0) 让位泵后清档；standard 同通道同一纠正
+    setTimeout(() => {
+      purgeSession(dataDir, jid);
+      purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
+    }, 0);
     return 'ok';
   }
 
