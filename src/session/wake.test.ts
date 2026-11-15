@@ -1,7 +1,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { wakeOfRun, resolveWakeName, toWakeRefs, buildWakeNotification, WakeController, WAKE_GOAL } from './wake';
+import { wakeOfRun, resolveWakeName, toWakeRefs, buildWakeNotification, WakeController, WAKE_GOAL, buildScheduleWakeNotification, scheduledWakeOfRun, scheduledWakePrefix, SCHEDULE_WAKE_TAG } from './wake';
 import type { WakeControllerOpts, WakeTaskInput } from './wake';
+import { isQuietNotice } from './entry';
+import { setLanguage, getLanguage } from '../i18n';
 import type { KernelEntry } from './entry';
 
 const run = (seq: number): KernelEntry => ({ seq, ts: 1, kind: 'run', md: '' });
@@ -89,6 +91,89 @@ describe('buildWakeNotification', () => {
     assert.match(md, /receipt\(a\)\nreceipt\(b\)/);
     assert.match(md, /Continue any work that was waiting on this result; if nothing remains, reply briefly\.\n<\/task-notification>$/);
     assert.ok(WAKE_GOAL.length > 0);
+  });
+});
+
+describe('buildScheduleWakeNotification', () => {
+  test('通知文 = 标签定性 + note 正文 + 收尾指令（P2 Task 3 裁定模板逐字）', () => {
+    const md = buildScheduleWakeNotification('check the oven');
+    assert.ok(md.startsWith(SCHEDULE_WAKE_TAG));
+    assert.match(md, /^<schedule-wake>\nScheduled wake \(not a user message\): check the oven\n/);
+    assert.match(md, /Continue toward your outstanding goals; if nothing remains, reply briefly\.$/);
+    assert.equal(md.includes('fired late'), false, '准点（无 lateMs）不注明延迟');
+  });
+
+  test('错过注明延迟：lateMs 超过宽限即尾插迟到行；宽限内（准点抖动）不注', () => {
+    const late = buildScheduleWakeNotification('n', 5_000);
+    assert.match(late, /This wake fired late by 5s; handle accordingly\./);
+    const jitter = buildScheduleWakeNotification('n', 40);
+    assert.equal(jitter.includes('fired late'), false, '40ms 在宽限内=准点');
+  });
+
+  test('isQuietNotice 含 <schedule-wake> 前缀（安静清单扩展——机制通知对用户零信息量不显示）', () => {
+    assert.equal(isQuietNotice(buildScheduleWakeNotification('x')), true);
+    assert.equal(isQuietNotice('ask p1 answered'), true, '既有安静清单不受扰');
+    assert.equal(isQuietNotice('user visible notice'), false);
+  });
+});
+
+describe('scheduledWakeOfRun / scheduledWakePrefix', () => {
+  const notice = (seq: number, over: Partial<KernelEntry> = {}): KernelEntry => ({ seq, ts: 1, kind: 'notice', md: 'x', ...over });
+  const run = (seq: number): KernelEntry => ({ seq, ts: 1, kind: 'run', md: '' });
+
+  test('run 的直接前驱是携 schedule 标记的 notice → true；普通 notice / wake notice / 隔条 → false', () => {
+    assert.equal(scheduledWakeOfRun([notice(1, { schedule: true }), run(2)], 1), true);
+    assert.equal(scheduledWakeOfRun([notice(1), run(2)], 1), false, '普通 notice 不配对');
+    assert.equal(scheduledWakeOfRun([notice(1, { wake: [{ id: 'a' }] }), run(2)], 1), false, '任务唤醒 notice 不串（两词汇零交集）');
+    assert.equal(scheduledWakeOfRun([notice(1, { schedule: true }), run(2), run(3)], 2), false, '中间隔条作废');
+    assert.equal(scheduledWakeOfRun([run(1)], 0), false);
+  });
+
+  test('显示前缀 t() 双语（调用时求值）：en=Scheduled wake / zh=定时唤醒', () => {
+    const prev = getLanguage();
+    try {
+      setLanguage('en');
+      assert.equal(scheduledWakePrefix(), 'Scheduled wake');
+      setLanguage('zh');
+      assert.equal(scheduledWakePrefix(), '定时唤醒');
+    } finally {
+      setLanguage(prev);
+    }
+  });
+});
+
+describe('WakeController.consumeChain（定时唤醒计入连续上限，P2 Task 3）', () => {
+  const task = (over: Partial<WakeTaskInput> = {}): WakeTaskInput => ({
+    id: 't1', kind: 'exec', label: 'l', status: 'done', ownerRun: 'main', ...over,
+  });
+
+  test('计一并返 true；与任务唤醒同账本；触顶 false+onLimit；markUserActivity/reset 归零', async () => {
+    let limits = 0;
+    let fired = 0;
+    const c = new WakeController({
+      busy: () => false,
+      receipted: () => false,
+      fire: () => {
+        fired += 1;
+        return true;
+      },
+      batchMs: 5,
+      maxChain: 2,
+      onLimit: () => {
+        limits += 1;
+      },
+    });
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    assert.equal(c.consumeChain(), true, 'chain=1');
+    c.onTaskFinished(task({ id: 'a' }));
+    await sleep(20);
+    assert.equal(c.onTurnEnded('done'), true, '任务唤醒照常（chain=2）');
+    assert.equal(c.consumeChain(), false, '触顶：定时唤醒被上限拦下');
+    assert.equal(limits, 1);
+    c.markUserActivity();
+    assert.equal(c.consumeChain(), true, '用户消息归零后放行');
+    c.reset();
+    assert.equal(c.consumeChain(), true, 'reset 归零后放行');
   });
 });
 

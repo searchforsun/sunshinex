@@ -741,6 +741,25 @@ export function teamDependsOnError(state: TaskBoardState, dependsOn: readonly st
   return undefined;
 }
 
+/** fork 派发执行单点（2026-11-15 sunx P2 Task 3）：dispatch_task fork 分支与 schedule_task 到点派发
+ *  共用一条路径（normalizeSpawnInput → validateSpawnInput → spawnBackground，tier 归一随行）——
+ *  分派行为逐字节同源，不复制粘贴。调用方自组回执串（dispatch 工具面 `task <id> started`；
+ *  到点派发无工具回执——结论只经台账终态唤醒轮回流） */
+export function forkDispatch(
+  runner: SubagentRunner,
+  input: { spec?: string; agent_id?: string; label?: string; isolation?: 'worktree'; tier?: ModelTier },
+): { taskId: string; outputFilePath: string; wakeHint?: string } {
+  const specInput: SubagentSpawnInput = {
+    prompt: typeof input.spec === 'string' && input.spec.length > 0 ? input.spec : undefined,
+    ...(typeof input.agent_id === 'string' && input.agent_id.length > 0 ? { agent_id: input.agent_id } : {}),
+    ...(typeof input.label === 'string' && input.label.length > 0 ? { label: input.label } : {}),
+    ...(input.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
+  };
+  const spec = normalizeSpawnInput(specInput);
+  runner.validateSpawnInput(spec);
+  return runner.spawnBackground(spec, input.tier !== undefined ? { tier: input.tier } : undefined);
+}
+
 /** dispatch_task 工具工厂（2026-11-15 sunx P1 Task 3；P2 Task 2 增 target='team' 板通道）：sunx 编排
  *  主链的分派动词——分派即返回。双通道分流（schema 闭合枚举 target，缺省 'fork'）：
  *  - fork（缺省）：恒后台两段式 fork（spawn 家族同缝 normalizeSpawnInput → validateSpawnInput →
@@ -798,7 +817,14 @@ export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: Dispatc
         }
         // tier 归一（schema enum 之外的防御性宽容）：非枚举/缺席/null 字面一律回缺席语义（继承会话档）
         const tier = raw.tier === 'small' || raw.tier === 'medium' || raw.tier === 'large' ? raw.tier : undefined;
-        const started = runner.spawnBackground(spec, { tier });
+        // fork 派发单点（P2 Task 3 抽取）：schedule_task 到点派发同路径——normalize/validate/spawnBackground
+        const started = forkDispatch(runner, {
+          spec: typeof raw.spec === 'string' ? raw.spec : undefined,
+          ...(typeof raw.agent_id === 'string' && raw.agent_id.length > 0 ? { agent_id: raw.agent_id } : {}),
+          ...(typeof raw.label === 'string' && raw.label.length > 0 ? { label: raw.label } : {}),
+          ...(raw.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
+          ...(tier !== undefined ? { tier } : {}),
+        });
         return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
       }
       // ---- team 板通道（R6 自举；接缝仅 sunx 装配注入）----

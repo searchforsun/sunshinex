@@ -66,7 +66,7 @@ export type JournalEvent =
   // ===== v3 段级行(session-kernel spec §3.2,journal v3 档专用;reduceJournal 忽略——TUI 重放不受扰) =====
   /** 转录段行:即终态条目(user/notice/error/tool)与闭合段(assistant/thinking,seconds=思考秒);seq=live 序号原样随档(truncate 对位依赖)。
    *  v3 写面单形态(P11-T2 渲染中立):user md=裸文、tool md 恒 ''(字段单源,读侧零归一) */
-  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; images?: string[]; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number; wake?: WakeRef[] }
+  | { t: 'seg'; kind: 'user' | 'assistant' | 'tool' | 'thinking' | 'notice' | 'error'; md: string; ts: number; seq: number; images?: string[]; callId?: string; name?: string; input?: Record<string, unknown>; seconds?: number; wake?: WakeRef[]; schedule?: boolean }
   /** 工具条回填行(重放按 seq upsert:name/input/result 缺面回填——纯字段回填,无 md 重算) */
   | { t: 'seg-update'; seq: number; ts: number; name?: string; input?: Record<string, unknown>; result?: { text: string; ok: boolean } }
   /** run 条开启行(md='' 条目;收尾统计由 runmeta 行对位,悬空 run-open 重放标 stopped) */
@@ -83,6 +83,10 @@ export type JournalEvent =
   /** 子智能体流影子投影行(同上):payload.subagent 标签事件原件落档——attach 以帧重放给渲染层,
    *  子智能体活动面(agent 页签)跨重启/换渲染层可重建;reduceJournal 忽略 */
   | { t: 'subagent'; e: SessionEvent }
+  /** 定时调度机制行(2026-11-15 sunx P2 Task 3):arm 落未触发态行、到点触发/被替换落 firedAt 终态行——
+   *  attach 重布防回放(未触发 re-arm,R7 停机跨越=补发一次注明延迟;已触发跳过)。reduceSegRows 读面
+   *  (reduceWakeScheduleRows),reduceJournal 忽略(机制行非转录);旧档无此行=行为不变 */
+  | { t: 'wake-schedule'; id: string; fireAt: number; note: string; taskSpec?: string; firedAt?: number }
   /** 会话前缀快照落档行(2026-10-31 spec:会话档生命周期快照冻结):items=快照条目,
    *  sig=漂移基线签名;重放末条合法行为准,载荷不合法的行视同不存在(v3 零兼容,未知行双向可忽略) */
   | { t: 'ctx-snap'; items: unknown; sig: unknown };

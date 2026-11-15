@@ -39,6 +39,11 @@ export interface KernelRuntimeOpts {
   plan?: {
     awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
   };
+  /** 定时调度接缝（2026-11-15 sunx P2 Task 3）：schedule_wakeup/schedule_task 的 arm 出口——
+   *  透传 buildHarness schedule seam（宿主 TimerController 承载）；缺省不注入=执行期 NOT_SUPPORTED */
+  schedule?: {
+    arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string };
+  };
   /** 会话形态（2026-11-14 sunx 设计）：与 HarnessOptions.kind 同名同域的装配接缝（TUI/daemon 装配单点入参面）。
    *  已透传（2026-11-15 提示词面 fix round 1）：buildHarness（→ 稳定段观测面 + 单发 Reactor）与 loopDeps
    *  （→ loop 主链 agent 节点 childDeps → Reactor）同源携带；缺席=standard */
@@ -72,6 +77,7 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
   const harness = buildHarness(opts.root, {
     ...(opts.onAskUser ? { ask: opts.onAskUser } : {}),
     ...(opts.plan ? { plan: opts.plan } : {}),
+    ...(opts.schedule !== undefined ? { schedule: opts.schedule } : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.mode ? { mode: opts.mode } : {}),
     ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),

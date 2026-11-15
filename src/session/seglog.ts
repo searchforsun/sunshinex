@@ -41,21 +41,22 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
   if (ev.t === 'seg-open') {
     if (e.kind === 'run') return [{ t: 'run-open', ts: e.ts, seq: e.seq }];
     if (ev.open && (e.kind === 'assistant' || e.kind === 'thinking')) return []; // 开启段:等闭合落终态
-    const rows: JournalEvent[] = [
-      {
-        t: 'seg',
-        kind: e.kind,
-        md: e.md,
-        ts: e.ts,
-        seq: e.seq,
-        ...(e.images !== undefined ? { images: e.images } : {}),
-        ...(e.callId !== undefined ? { callId: e.callId } : {}),
-        ...(e.name !== undefined ? { name: e.name } : {}),
-        ...(e.input !== undefined ? { input: e.input } : {}),
-        ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
-        ...(e.wake !== undefined ? { wake: e.wake } : {}),
-      },
-    ];
+      const rows: JournalEvent[] = [
+        {
+          t: 'seg',
+          kind: e.kind,
+          md: e.md,
+          ts: e.ts,
+          seq: e.seq,
+          ...(e.images !== undefined ? { images: e.images } : {}),
+          ...(e.callId !== undefined ? { callId: e.callId } : {}),
+          ...(e.name !== undefined ? { name: e.name } : {}),
+          ...(e.input !== undefined ? { input: e.input } : {}),
+          ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
+          ...(e.wake !== undefined ? { wake: e.wake } : {}),
+          ...(e.schedule !== undefined ? { schedule: e.schedule } : {}),
+        },
+      ];
     if (e.kind === 'tool' && e.result !== undefined) rows.push({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result });
     return rows;
   }
@@ -103,6 +104,13 @@ export interface SegRowLike {
   result?: unknown;
   /** 行随唤醒引用(bg-wake spec §5.1;行面字段不予信任——parseWakeRefs 净化,旧档无此字段=普通 notice) */
   wake?: unknown;
+  /** 行随定时唤醒标记（2026-11-15 sunx P2 Task 3;行面字段不予信任——严判 true,旧档无此字段=普通 notice） */
+  schedule?: unknown;
+  /** wake-schedule 机制行载荷（同下 id/fireAt/note/taskSpec/firedAt——行面字段不予信任） */
+  fireAt?: unknown;
+  note?: unknown;
+  taskSpec?: unknown;
+  firedAt?: unknown;
   upToSeq?: unknown;
   stopped?: unknown;
   endedTs?: unknown;
@@ -206,6 +214,7 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
         ...(name !== undefined ? { name } : {}),
         ...(input !== undefined ? { input } : {}),
         ...(wake !== undefined ? { wake } : {}),
+        ...(row.schedule === true ? { schedule: true as const } : {}),
         ...(kind === 'thinking' && seconds !== undefined ? { seconds } : {}),
       });
       continue;
@@ -272,6 +281,48 @@ export function reduceSteerRows(rows: ReadonlyArray<SegRowLike>): SteerItem[] {
     items = next;
   }
   return items;
+}
+
+// ===== 定时调度（2026-11-15 sunx P2 Task 3）：wake-schedule 机制行读面（attach 重布防数据源） =====
+
+/** 定时调度记录（机制行词汇 {id, fireAt, note, taskSpec?, firedAt?} 的净化形态——TimerController
+ *  调度位/serve 落档/attach 重布防三方同一形态）。firedAt=终态时刻（到点触发**或**被新调度替换——
+ *  两者都终结调度位；回放面按在场即跳过，「已触发不重发」与「被替换不复活」同一闸门） */
+export interface WakeScheduleRecord {
+  id: string;
+  /** 触发时刻 epoch ms */
+  fireAt: number;
+  /** 模型面通知文正文（schedule_task=label ?? spec 首行——兼作到点 fork 派发的台账任务名） */
+  note: string;
+  /** schedule_task 到点自动派发的自包含简报；缺席=纯唤醒（schedule_wakeup） */
+  taskSpec?: string;
+  /** 终态时刻（触发/被替换；缺席=未触发态——attach 重布防 re-arm 对象） */
+  firedAt?: number;
+}
+
+/** wake-schedule 机制行读面（P2 Task 3）：按 id 取**末行**（append-only——arm 未触发态行在前、
+ *  firedAt 终态行在后，末行为准同 steer 行语义）；行面字段不予信任逐条严判（id/fireAt/note 任一
+ *  缺席或类型非法即整行弃——坏行不炸读面）。旧档无此行=空列（行为不变）。写面=serve/session.ts
+ *  logScheduleRow 直落 journal（runmeta 直写先例——arm 非内核转录事件，不经 kernelEventRows） */
+export function reduceWakeScheduleRows(rows: ReadonlyArray<SegRowLike>): WakeScheduleRecord[] {
+  const byId = new Map<string, WakeScheduleRecord>();
+  for (const row of rows) {
+    if (row.t !== 'wake-schedule') continue;
+    const id = str(row.id);
+    const fireAt = num(row.fireAt);
+    const note = str(row.note);
+    if (id === undefined || id === '' || fireAt === undefined || note === undefined || note === '') continue;
+    const firedAt = num(row.firedAt);
+    const taskSpec = str(row.taskSpec);
+    byId.set(id, {
+      id,
+      fireAt,
+      note,
+      ...(taskSpec !== undefined && taskSpec !== '' ? { taskSpec } : {}),
+      ...(firedAt !== undefined ? { firedAt } : {}),
+    });
+  }
+  return [...byId.values()];
 }
 
 // ===== 崩溃兜底回灌(2026-10-30 spec §2):seg 面有而链没有的在飞窗口 → 链行 =====

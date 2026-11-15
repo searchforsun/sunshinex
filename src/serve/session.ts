@@ -19,16 +19,18 @@ import type { SessionJournal, JournalEvent } from '../tui/session-journal';
 import * as fs from 'fs';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '../session/kernel';
-import { kernelEventRows } from '../session/seglog';
-import type { SegRowLike } from '../session/seglog';
+import { kernelEventRows, reduceWakeScheduleRows } from '../session/seglog';
+import type { SegRowLike, WakeScheduleRecord } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { sanitizeTurn } from '../session/entry';
-import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification } from '../session/wake';
+import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification, buildScheduleWakeNotification, SCHEDULE_WAKE_GOAL } from '../session/wake';
 import type { WakeTaskInput } from '../session/wake';
+import { TimerController } from '../session/timer';
 import { WAKE_HINT_RECEIPT_TOOL } from '../harness/tasks';
 import { receiptBody } from '../harness/tools/task-wait';
+import { forkDispatch } from '../harness/subagent';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile, journalDisplayTitle } from '../tui/session-journal';
-import { resolveRunWindow } from '../config/termination-config';
+import { resolveRunWindow, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { derivePlanName, parseNumberedSteps, PLAN_MODE_NOTE } from '../harness/plan-flow';
 import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
 import { writePlanDoc } from '../tui/session-journal';
@@ -231,6 +233,99 @@ export class SessionRuntime {
     fire: (tasks) => this.submitWake(tasks),
     onLimit: () => this.pump({ type: 'notice', text: 'auto-wake limit reached (no user message in between)', ts: Date.now() }),
   });
+
+  /** 定时调度控制器（2026-11-15 sunx P2 Task 3）：会话级单活跃调度位——到点=fireScheduled 宿主接缝
+   *  （组 notice+起轮/schedule_task 先派发，同一回调内完成）；busy 排队沿 WakeController 空闲判定模式。
+   *  reset/reCast 换铸随 disposeRuntime reset()（句柄收口，WakeController 同纪律） */
+  private readonly timer = new TimerController({
+    busy: () => this.current !== undefined,
+    fire: (rec, lateMs) => this.fireScheduled(rec, lateMs),
+  });
+  /** 定时调度 id 计数器（sched-<n>，会话内单调——机制行/回执寻址键；重启后 attach 重布防沿用档上 id 不重铸） */
+  private scheduleSeq = 0;
+
+  /** 工具 arm 接缝（harness opts.schedule 注入，仅 sunx 装配）：id 铸造+未触发态机制行落档+
+   *  被替换者终态行（回放面跳过的闸门——替换语义跨重启不复活旧调度） */
+  private armSchedule(input: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string } {
+    const id = `sched-${(this.scheduleSeq += 1)}`;
+    const prev = this.timer.scheduled;
+    this.armScheduleRecord({ ...input, id });
+    this.logScheduleRow({ ...input, id });
+    return { id, ...(prev !== undefined ? { replacedId: prev.id } : {}) };
+  }
+
+  /** 调度位装配单点（工具 arm 与 attach 重布防共用）：先落被替换者终态行再换位——顺序保证
+   *  journal 扫描（按 id 末行）永远看到替换者已终结 */
+  private armScheduleRecord(rec: WakeScheduleRecord): void {
+    const prev = this.timer.scheduled;
+    if (prev !== undefined && prev.id !== rec.id) this.logScheduleRow({ ...prev, firedAt: Date.now() });
+    this.timer.arm(rec);
+  }
+
+  /** wake-schedule 机制行落档单点（runmeta 直写先例——arm 非内核转录事件，不经 kernelEventRows）：
+   *  尽力落档，写失败不影响运行面 */
+  private logScheduleRow(rec: WakeScheduleRecord): void {
+    try {
+      this.journal?.log({
+        t: 'wake-schedule',
+        id: rec.id,
+        fireAt: rec.fireAt,
+        note: rec.note,
+        ...(rec.taskSpec !== undefined ? { taskSpec: rec.taskSpec } : {}),
+        ...(rec.firedAt !== undefined ? { firedAt: rec.firedAt } : {}),
+      });
+    } catch {
+      // 尽力落档：机制行写失败不阻断调度运行面
+    }
+  }
+
+  /** 到点回调（TimerController fire 接缝）：plan 武装态不受理（留位待下次轮收束——submitWake 同判定）
+   *  → 连续唤醒上限计入（触顶=调度终结[落终态行防重放重发]、放弃起轮——定时唤醒受同一防循环约束）
+   *  → schedule_task 先 fork 派发（dispatch fork 通道同款路径 forkDispatch 单点）→ 起定时唤醒轮
+   *  （submitWake 同管线：notice 携 schedule 标记+run 固定序）。受理才落终态行——回队/停机跨越
+   *  （R7）保持未触发态，重启重布防补发至多一次 */
+  private fireScheduled(rec: WakeScheduleRecord, lateMs: number): boolean {
+    if (this.planArmed()) return false;
+    if (!this.wake.consumeChain()) {
+      this.logScheduleRow({ ...rec, firedAt: Date.now() });
+      return true;
+    }
+    if (rec.taskSpec !== undefined) {
+      // schedule_task：先派发再起轮——同一回调内完成；派发失败不阻断唤醒轮（简报随 notice 正文可见）。
+      // 到点派发在 run 外（控制器空闲判定保证；防御式复读）：runner 预算源随 reactor run 起止挂/摘
+      // （reactor.ts attachParent），空闲期无源=INVALID_STATE——挂缺省预算（maxSteps 同 reactor 缺省
+      // 口径 reactorMaxStepsEnv ?? 400；tokenCap 同 SUNSHINEX_SUBAGENT_TOKEN_CAP 单点）后即摘：
+      // spawnBackground 同步捕获预算，子代随后自跑不依赖父源；在途 run 在场则不触碰其预算源
+      const runner = this.runtimeImpl.harness.runner;
+      const idle = this.current === undefined;
+      if (idle) {
+        const tokenCap = subagentTokenCapEnv();
+        runner.attachParent(() => ({ maxSteps: reactorMaxStepsEnv() ?? 400, ...(tokenCap !== undefined ? { tokenCap } : {}) }));
+      }
+      try {
+        forkDispatch(runner, { spec: rec.taskSpec, ...(rec.note !== '' ? { label: rec.note } : {}) });
+      } catch (e) {
+        console.error('[serve] scheduled dispatch failed:', e);
+      } finally {
+        if (idle) runner.detachParent();
+      }
+    }
+    const accepted = this.submit(SCHEDULE_WAKE_GOAL, undefined, { schedule: { note: rec.note, lateMs } }).ok;
+    if (accepted) this.logScheduleRow({ ...rec, firedAt: Date.now() });
+    return accepted;
+  }
+
+  /** attach 重布防（P2 Task 3，session-lifecycle.attachSessionIn 在 attachJournal 之后调用）：
+   *  journal wake-schedule 机制行回放——已触发（firedAt 终态行在场）跳过，未触发项 re-arm；
+   *  fireAt 已过（daemon 停机跨越）=R7 错过：到点即补发一次并在通知文注明延迟时长
+   *  （TimerController.arm 对过期 fireAt 延迟 0 异步即发，迟到时长现算）。多枚未触发档行按行序
+   *  逐枚入位（单活跃位替换语义，末行为准） */
+  rearmSchedules(rows: ReadonlyArray<SegRowLike>): void {
+    for (const rec of reduceWakeScheduleRows(rows)) {
+      if (rec.firedAt !== undefined) continue;
+      this.armScheduleRecord(rec);
+    }
+  }
 
   /** 板任务名解析（daemon 侧板投影）：台账 label(dispatchTag) → 板 id → 板存储 title；缺省 undefined=无名 */
   private boardTaskTitle(ledgerId: string): string | undefined {
@@ -594,6 +689,10 @@ export class SessionRuntime {
       plan: {
         awaitDecision: (name, doc) => this.planAwaitDecision(name, doc),
       },
+      // 定时调度接缝（2026-11-15 sunx P2 Task 3）：schedule_wakeup/schedule_task 的 arm 出口——
+      // 宿主 TimerController 承载（id 铸造+机制行落档+被替换终态行都在会话）；仅 sunx 装配注入
+      // （standard 字节不变——工具不注册+缝缺席双保险）
+      ...(this.sessionKind === 'sunx' ? { schedule: { arm: (rec: { fireAt: number; note: string; taskSpec?: string }) => this.armSchedule(rec) } } : {}),
       // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;
@@ -1136,8 +1235,10 @@ export class SessionRuntime {
    *  进模型上下文（appendInstructionLine——TUI /goal 同构，tui/session.ts 先例：goal 自身只是观测
    *  标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源）。
    *  双态（bg-wake spec §5.3）：wake 缺省=用户路径（markUserActivity+user 条+指令行）；wake 在场=
-   *  唤醒轮（无 markUserActivity、notice 通知条+链尾 note 替代——快照/统计/续发全共用） */
-  submit(goal: string, images?: string[], wake?: { tasks: WakeTaskInput[] }): SessionSubmitResult {
+   *  唤醒轮（无 markUserActivity、notice 通知条+链尾 note 替代——快照/统计/续发全共用）。唤醒轮两员
+   *  （P2 Task 3）：tasks 在场=任务终态唤醒（wake 引用配对）；schedule 在场=定时唤醒（notice 携
+   *  schedule 标记——scheduledWakeOfRun 独立配对，不混 WakeRef 词汇） */
+  submit(goal: string, images?: string[], wake?: { tasks?: WakeTaskInput[]; schedule?: { note: string; lateMs?: number } }): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     if (wake === undefined) this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（唤醒路径不重置）
     // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进
@@ -1174,8 +1275,8 @@ export class SessionRuntime {
     // 轮次 checkpoint 寻址键(2026-11-10):run-open 条目 seq——GUI run 条 key(`k<seq>`)同源,
     // 跨重启稳定(journal seq 原样随档),turn-diff/turn-restore 端点按 run+path 寻址
     const runSeq = this.kernel.openRun();
-    if (wake !== undefined) {
-      // 唤醒轮（spec §5.3）：通知 notice 条 + 链尾 note——无 user 条、无指令行；模型输入与恢复面同构
+    if (wake !== undefined && wake.tasks !== undefined) {
+      // 任务终态唤醒轮（spec §5.3）：通知 notice 条 + 链尾 note——无 user 条、无指令行；模型输入与恢复面同构
       const refs = toWakeRefs(wake.tasks, (ledgerId) => this.boardTaskTitle(ledgerId));
       const md = buildWakeNotification(refs, (id) => {
         const t = this.runtimeImpl.harness.tasks.get(id);
@@ -1184,6 +1285,12 @@ export class SessionRuntime {
       // 唤醒 notice 走宿主泵(帧缓冲+WS 广播+kernel.pump 全链)——直调 kernel.pump 只落档不发帧,
       // GUI live 收不到事件帧,前缀只在切会话(快照 seed)后出现(用户实测 2026-11-14)
       this.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
+      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+    } else if (wake !== undefined && wake.schedule !== undefined) {
+      // 定时唤醒轮（P2 Task 3）：submitWake 同管线双态第二员——notice 携 schedule 标记
+      // （scheduledWakeOfRun 独立配对，不混 WakeRef 词汇）+ 链尾 note；错过注明延迟（R7/busy 排队）
+      const md = buildScheduleWakeNotification(wake.schedule.note, wake.schedule.lateMs);
+      this.pump({ type: 'notice', text: md, payload: { schedule: true }, ts: Date.now() });
       this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
     } else {
       this.kernel.submit(goal, images);
@@ -1354,6 +1461,9 @@ export class SessionRuntime {
             // 在途批也在此收口）；interrupted 不问（上方守卫，保留 pending §10-1）。返回值弃置：
             // 在途闩已由 onTurnEnded 入口一次性读清，宿主无需跟进标记
             this.wake.onTurnEnded(runOutcome?.stopReason);
+            // 定时调度轮收束补跑（P2 Task 3）：busy 期间到点的调度（或受理失败留位）在 wake 之后再取
+            // ——wake 受理起轮即占锁，本口 busy 判定自然留位到下轮收束（空闲判定模式与 wake 同构）
+            this.timer.onTurnEnded();
           }
         }
       });
@@ -1687,6 +1797,8 @@ export class SessionRuntime {
     rt.harness.team?.stopAll();
     rt.harness.tasks.stopAll();
     this.wake.reset(); // bg-wake 收口：清合批 timer/pending/链计数（防句柄泄漏,换铸/关闭后旧批次零残留）
+    this.timer.reset(); // 定时调度收口（P2 Task 3）：清句柄/调度位（WakeController 同纪律；软重置后调度不复活
+    // ——档上未触发机制行仅在 daemon 重启 attach 重布防时重放）
     await rt.harness.pipeline.drain();
     await rt.harness.mcpClose();
   }

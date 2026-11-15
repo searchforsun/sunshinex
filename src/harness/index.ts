@@ -10,6 +10,8 @@ import { createToolOutputArchive } from './tools/output-archive';
 import { AgentRegistry, SubagentRunner, makeDispatchTool, makeSpawnTool } from './subagent';
 import { makeAgentTeamTaskStopTool, makeTaskStopTool } from './tools/task-stop';
 import { makeAgentTeamTaskWaitTool, makeTaskStatusTool, makeTaskWaitTool } from './tools/task-wait';
+import { makeScheduleWakeupTool, makeScheduleTaskTool } from './tools/schedule-tools';
+import type { ScheduleArmSeam } from './tools/schedule-tools';
 import { makeTaskBoardTools } from './tools/taskboard-tools';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -59,13 +61,14 @@ import type { KnowledgeBase } from './knowledge';
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
 const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
 
-/** sunx 会话主链工具面白名单（2026-11-15 sunx P1 Task 3；P2 Task 2 增板监视面）：常量单点——装配注册
- *  （kind==='sunx' 分叉）、内核运行时 face 派生（session/runtime createKernelRuntime 的 derive({only})）
- *  与测试三方同源。编排器不做执行（身份行即「never do the work yourself」）：只持分派（dispatch_task，
- *  双通道 target='fork'|'team'）/台账窥视与停止（task_status/task_stop）/问询（ask_question）/清单
- *  （todo_write）/技能（skill）/产物（report_artifacts）/板监视（get_agent_team_board——板通道的监视
- *  伴面，随板通道一起进面）八件；standard 会话零消费（主链 face 基线不变量） */
-export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts', 'get_agent_team_board'];
+/** sunx 会话主链工具面白名单（2026-11-15 sunx P1 Task 3；P2 Task 2 增板监视面；P2 Task 3 增定时调度两件）：
+ *  常量单点——装配注册（kind==='sunx' 分叉）、内核运行时 face 派生（session/runtime createKernelRuntime
+ *  的 derive({only})）与测试三方同源。编排器不做执行（身份行即「never do the work yourself」）：只持分派
+ *  （dispatch_task，双通道 target='fork'|'team'）/台账窥视与停止（task_status/task_stop）/问询（ask_question）/
+ *  清单（todo_write）/技能（skill）/产物（report_artifacts）/板监视（get_agent_team_board——板通道的监视
+ *  伴面，随板通道一起进面）/定时调度（schedule_wakeup·schedule_task——到点唤醒/派发，宿主 TimerController
+ *  承载）十件；standard 会话零消费（主链 face 基线不变量） */
+export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts', 'get_agent_team_board', 'schedule_wakeup', 'schedule_task'];
 
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
@@ -75,6 +78,12 @@ export interface HarnessOptions {
    *  接缝缺省不注册（ask 先例） */
   plan?: {
     awaitDecision(name: string, doc: string): Promise<{ approved: boolean; mode?: string; feedback?: string }>;
+  };
+  /** 定时调度接缝（2026-11-15 sunx P2 Task 3）：schedule_wakeup/schedule_task 的 arm 出口——
+   *  宿主（serve/session.ts）持 TimerController（单活跃调度位+id 铸造+journal 机制行落档），
+   *  harness 只透传。缺省不注册=工具执行期 NOT_SUPPORTED 确定降级（dispatch team 缝先例） */
+  schedule?: {
+    arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string };
   };
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
   root?: string;
@@ -618,6 +627,11 @@ export class Harness {
         display: { verb: 'DISPATCH' },
       });
       this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
+      // 定时调度两件（2026-11-15 sunx P2 Task 3）：宿主 TimerController arm 缝注入——接缝缺省
+      // （测试直构 Harness）执行期 NOT_SUPPORTED 确定降级；standard 装配零注册（face 基线不变）
+      const scheduleArm: ScheduleArmSeam | undefined = opts.schedule !== undefined ? { arm: opts.schedule.arm } : undefined;
+      this.tools.register({ ...makeScheduleWakeupTool(scheduleArm), display: { verb: 'SCHEDULE' } });
+      this.tools.register({ ...makeScheduleTaskTool(scheduleArm), display: { verb: 'SCHEDULE_TASK' } });
     }
     // 智能体团队八件套：agentTeams 关则不注入模型面（板协调器仍构造，盘数据不删）
     if (agentTeamsEnabled(base)) {

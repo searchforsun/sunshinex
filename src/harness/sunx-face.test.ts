@@ -48,11 +48,17 @@ test('sunx kind 装配：注册表含 dispatch/task_status；普通 kind 不含�
     assert.ok(sunx.tools.has('dispatch_task'), 'sunx 装配应注册 dispatch_task');
     assert.ok(sunx.tools.has('task_status'), 'sunx 装配应注册 task_status');
     assert.ok(sunx.tools.has('get_agent_team_board'), 'sunx 装配应持板监视面（P2 Task 2 随板通道进面）');
+    assert.ok(sunx.tools.has('schedule_wakeup'), 'sunx 装配应注册定时唤醒（P2 Task 3 随 sunx 分叉进面）');
+    assert.ok(sunx.tools.has('schedule_task'), 'sunx 装配应注册定时任务（P2 Task 3 随 sunx 分叉进面）');
     assert.equal(sunx.tools.get('dispatch_task')?.display?.verb, 'DISPATCH', '分派动词呈现元数据');
     assert.equal(sunx.tools.get('task_status')?.display?.verb, 'TASK_STATUS', '窥视动词呈现元数据');
+    assert.equal(sunx.tools.get('schedule_wakeup')?.display?.verb, 'SCHEDULE', '定时唤醒动词呈现元数据');
+    assert.equal(sunx.tools.get('schedule_task')?.display?.verb, 'SCHEDULE_TASK', '定时任务动词呈现元数据');
     const std = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
     assert.equal(std.tools.has('dispatch_task'), false, 'standard 装配不得含 dispatch_task（普通 face 基线守护）');
     assert.equal(std.tools.has('task_status'), false, 'standard 装配不得含 task_status（普通 face 基线守护）');
+    assert.equal(std.tools.has('schedule_wakeup'), false, 'standard 装配不得含 schedule_wakeup（普通 face 基线守护）');
+    assert.equal(std.tools.has('schedule_task'), false, 'standard 装配不得含 schedule_task（普通 face 基线守护）');
     std.team.stopAll();
     std.tasks.stopAll();
   } finally {

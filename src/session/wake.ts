@@ -1,6 +1,7 @@
 // bg-wake spec §5/§6：唤醒的纯函数面与控制器——判定=「终态×未 receipted×空闲」，零模型意图依赖。
 // 本模块零 IO（timer 除外），宿主（daemon/tui）经 opts 注入 busy/receipted/fire 三个接缝。
 import type { KernelEntry, WakeRef } from './entry';
+import { t } from '../i18n';
 // 回执单点不在本模块：宿主起轮处注入 receiptOf（=receiptBody(t, 'task_wait')，Task 3 导出）——
 // wake.ts 对 harness 零依赖（session 层纯件，通知文形态由 receiptOf 抽象隔离）
 
@@ -46,6 +47,48 @@ export function toWakeRefs(
 /** 唤醒通知标签单点：构建端（buildWakeNotification）与过滤端（entry.ts isQuietNotice）同源引用，改文案不静默失配 */
 export const WAKE_NOTICE_TAG = '<task-notification>';
 const WAKE_NOTICE_TAG_END = '</task-notification>';
+
+/** 定时唤醒通知标签（2026-11-15 sunx P2 Task 3）：与任务唤醒标签同族两员——构建端
+ *  （buildScheduleWakeNotification）与过滤端（entry.ts isQuietNotice 安静清单）同源引用 */
+export const SCHEDULE_WAKE_TAG = '<schedule-wake>';
+
+/** 定时唤醒轮 runTask 的 goal：与通知文收尾指令同义（WAKE_GOAL 同构——goal 只是观测标签不进提示词链） */
+export const SCHEDULE_WAKE_GOAL = 'Continue toward your outstanding goals; if nothing remains, reply briefly.';
+
+/** 迟到注明宽限（准点定时器抖动容差）：lateMs 超过它才在通知文注「fired late by」——
+ *  busy 排队/停机跨越的迟到远超此值，准点 fire 的毫秒级抖动不注 */
+export const SCHEDULE_LATE_GRACE_MS = 1_000;
+
+/** 迟到时长人读串（R7 通知文「fired late by X」数据源）：秒内=Xs、时内=Xm Ys、其余=Xh Ym */
+export function formatDelayMs(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** 定时唤醒通知文（P2 Task 3 裁定模板）：定性说明+note 正文+迟到注明（可选）+收尾指令。
+ *  无任务回执段（不混 WakeRef 词汇——schedule_task 的派发结论走其自身终态的既有任务唤醒轮） */
+export function buildScheduleWakeNotification(note: string, lateMs?: number): string {
+  const late = lateMs !== undefined && lateMs > SCHEDULE_LATE_GRACE_MS
+    ? `\nThis wake fired late by ${formatDelayMs(lateMs)}; handle accordingly.`
+    : '';
+  return `${SCHEDULE_WAKE_TAG}\nScheduled wake (not a user message): ${note}${late}\nContinue toward your outstanding goals; if nothing remains, reply briefly.`;
+}
+
+/** 定时唤醒轮判定（P2 Task 3）：run 条直接前驱为携 schedule 标记的 notice → true（写入顺序固定
+ *  notice→run 同 wakeOfRun，配对零歧义）。与 wakeOfRun 并立两函数——两词汇零交集，显示前缀
+ *  「定时唤醒」走本函数推导，**不混入 WakeRef** */
+export function scheduledWakeOfRun(entries: readonly KernelEntry[], runIdx: number): boolean {
+  const prev = entries[runIdx - 1];
+  return prev !== undefined && prev.kind === 'notice' && prev.schedule === true;
+}
+
+/** 定时唤醒显示前缀（t() 双语，调用时求值——i18n 硬约束禁模块级冻结）：显示层（TUI/GUI）单点文案 */
+export function scheduledWakePrefix(): string {
+  return t('Scheduled wake', '定时唤醒');
+}
 
 /** 模型面通知文（spec §5.2）：定性说明在正文内、回执由 receiptOf 注入（=task_wait receiptBody 同构）、系统提示零改动 */
 export function buildWakeNotification(refs: readonly WakeRef[], receiptOf: (id: string) => string): string {
@@ -102,6 +145,18 @@ export class WakeController {
   /** 用户消息提交点调用（宿主 submit 用户路径）：连续唤醒计数归零 */
   markUserActivity(): void {
     this.chain = 0;
+  }
+
+  /** 非任务唤醒（定时唤醒，P2 Task 3）计入连续上限的登记口：触顶=onLimit 已发+返回 false
+   *  （调用方放弃本次起轮——定时唤醒受同一防循环上限约束）；未触顶计一并返回 true。
+   *  与任务唤醒同账本（chain 单一）——用户消息 markUserActivity / reset 归零语义共用 */
+  consumeChain(): boolean {
+    if (this.chain >= (this.opts.maxChain ?? 10)) {
+      this.opts.onLimit?.();
+      return false;
+    }
+    this.chain += 1;
+    return true;
   }
 
   /** 任务终态入口（宿主接 harness opts.wake.onFinished）：屏蔽集命中（会话换新前的旧任务）最前拦截；

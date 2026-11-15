@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reduceSteerRows, reduceSegRows, kernelEventRows, crashWindowEntries, entriesToChainSteps } from './seglog';
+import { reduceSteerRows, reduceSegRows, kernelEventRows, crashWindowEntries, entriesToChainSteps, reduceWakeScheduleRows } from './seglog';
 import { SessionKernel } from './kernel';
 import type { KernelEvent } from './kernel';
 import type { KernelEntry } from './entry';
@@ -340,4 +340,51 @@ test('wake notice 落档往返：kernelEventRows seg 行携带 wake，reduceSegR
   // 旧档无 wake 字段 → 普通 notice
   const legacy = reduceSegRows([{ t: 'seg', kind: 'notice', md: 'plain', ts: 1, seq: 8 }]);
   assert.equal(legacy.find((e) => e.seq === 8)?.wake, undefined);
+});
+
+// ---- sunx 定时调度（2026-11-15 P2 Task 3）：wake-schedule 机制行落档/回放往返 + schedule 标记字段 ----
+
+test('schedule notice 标记往返：kernelEventRows seg 行携带 schedule，reduceSegRows 恢复逐字段恒等', () => {
+  const entry: KernelEntry = { seq: 9, ts: 6, kind: 'notice', md: '<schedule-wake>\nScheduled wake', schedule: true };
+  const rows = kernelEventRows({ t: 'seg-open', entry, open: false });
+  const segRow = rows.find((r) => r.t === 'seg') as { t: 'seg'; schedule?: unknown };
+  assert.equal(segRow.schedule, true, '写侧单点携带 schedule 标记');
+  const back = reduceSegRows(rows);
+  assert.equal(back.find((e) => e.seq === 9)?.schedule, true);
+  // 旧档无 schedule 字段 → 普通 notice（行为不变）
+  const legacy = reduceSegRows([{ t: 'seg', kind: 'notice', md: 'plain', ts: 1, seq: 10 }]);
+  assert.equal(legacy.find((e) => e.seq === 10)?.schedule, undefined);
+});
+
+test('wake-schedule 行往返：逐字段恒等 + 同 id 末行为准（firedAt 终态覆盖）+ 坏行跳过', () => {
+  // 写面形态（serve/session.logScheduleRow 直落——runmeta 既有直写先例，非内核转录事件）
+  const rows: SegRowLike[] = [
+    { t: 'wake-schedule', id: 'sched-1', fireAt: 1700000000000, note: 'check the oven' },
+    { t: 'wake-schedule', id: 'sched-2', fireAt: 1700000005000, note: 'refresh cache', taskSpec: 'TASK-SPEC', firedAt: 1700000006000 },
+    { t: 'wake-schedule', id: 'sched-1', fireAt: 1700000000000, note: 'check the oven', firedAt: 1700000002000 }, // 触发终态行
+  ];
+  const got = reduceWakeScheduleRows(rows);
+  assert.deepEqual(got, [
+    { id: 'sched-1', fireAt: 1700000000000, note: 'check the oven', firedAt: 1700000002000 },
+    { id: 'sched-2', fireAt: 1700000005000, note: 'refresh cache', taskSpec: 'TASK-SPEC', firedAt: 1700000006000 },
+  ]);
+  // 坏行逐条跳过（行面字段不予信任）：缺 id/fireAt/note 任一即弃，不炸读面
+  const bad = reduceWakeScheduleRows([
+    { t: 'wake-schedule', fireAt: 1, note: 'no id' },
+    { t: 'wake-schedule', id: 'a', note: 'no fireAt' },
+    { t: 'wake-schedule', id: 'b', fireAt: 1 },
+    { t: 'wake-schedule', id: 'c', fireAt: 'x', note: 'bad fireAt type' },
+  ] as SegRowLike[]);
+  assert.deepEqual(bad, []);
+});
+
+test('旧档无 wake-schedule 行=行为不变：reduceWakeScheduleRows 空列 + reduceSegRows 忽略机制行', () => {
+  assert.deepEqual(reduceWakeScheduleRows([]), []);
+  // 机制行不入转录投影（reduceSegRows 忽略未知行型——防重复入转录）
+  const entries = reduceSegRows([
+    { t: 'seg', kind: 'user', md: 'hello', ts: 1, seq: 1 },
+    { t: 'wake-schedule', id: 'sched-1', fireAt: 1, note: 'n' },
+  ] as SegRowLike[]);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]!.kind, 'user');
 });

@@ -8,8 +8,11 @@ import type { DaemonFrame } from './daemon-wire';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter, UsageHooks } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionKind } from '../types';
-import { wakeOfRun } from '../session/wake';
+import { wakeOfRun, scheduledWakeOfRun, SCHEDULE_WAKE_TAG } from '../session/wake';
+import { isQuietNotice } from '../session/entry';
 import { WAKE_HINT } from '../harness/tasks';
+import { SessionJournal, parseJournalFile } from '../tui/session-journal';
+import { resolveDataDir } from '../config/data-dir';
 
 /** 控制器级 bg-wake 端到端（bg-wake spec §9 宿主集成，批D）：不起 HTTP——直构 SessionRuntime
  *  （同 session.test.ts 直构形态：nextSeq/broadcast/mintPid 注入桩）。
@@ -590,5 +593,186 @@ test('sunx 面隔离：同一派发轨迹跑 standard 会话——dispatch_task 
     await new Promise((r) => setTimeout(r, 2_200)); // 负向断言有界等待（合批窗 1.5s+裕量）
     assert.equal(ctl.status(), 'idle');
     assert.equal(wakeNotices(entries()).length, 0, '轨迹失败于工具不存在——永不唤醒');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// sunx 定时调度（2026-11-15 sunx P2 Task 3）：schedule_wakeup/schedule_task 到点走 submitWake
+// 同管线——notice 携 schedule 标记（scheduledWakeOfRun 独立配对，不混 WakeRef 词汇）、安静清单、
+// 连续上限（chain）；schedule_task 到点先 fork 派发再起轮（同一回调内完成）→ 正常任务唤醒闭环；
+// attach 重布防：journal wake-schedule 行回放——未触发 re-arm（R7 停机跨越补发一次注明延迟）、
+// 已触发（firedAt 终态行）不重发。时序纪律：短延时（0.3s）+ waitFor 轮询——禁真实长 sleep。
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** schedule_wakeup 出牌参数（sunx 白名单件）：delay_seconds/at_iso 二选一，缺席侧 JSON null */
+const scheduleWakeup = (note: string, timing: { delaySeconds?: number; atIso?: string }): Record<string, unknown> => ({
+  note,
+  ...(timing.delaySeconds !== undefined ? { delay_seconds: timing.delaySeconds } : { delay_seconds: null }),
+  ...(timing.atIso !== undefined ? { at_iso: timing.atIso } : { at_iso: null }),
+});
+
+/** schedule_task 出牌参数：spec=自包含简报（fork 子代路由键），timing 同上 */
+const scheduleTask = (spec: string, label: string, timing: { delaySeconds?: number; atIso?: string }): Record<string, unknown> => ({
+  spec,
+  label,
+  agent_id: null,
+  ...(timing.delaySeconds !== undefined ? { delay_seconds: timing.delaySeconds } : { delay_seconds: null }),
+  ...(timing.atIso !== undefined ? { at_iso: timing.atIso } : { at_iso: null }),
+});
+
+/** 定时唤醒 notice 条（schedule 标记在场的机制条——与任务唤醒 wakeNotices 零交集） */
+function scheduleNotices(ents: ReturnType<SessionRuntime['sessionKernel']['replay']>) {
+  return ents.filter((e) => e.kind === 'notice' && e.schedule === true);
+}
+
+/** journal 行读口（挂档会话）：parseJournalFile → 原始行列（wake-schedule 机制行断言源） */
+function journalRows(session: SessionRuntime): Array<Record<string, unknown>> {
+  const jid = session.attachedJournalId;
+  if (jid === undefined) return [];
+  const file = path.join(resolveDataDir(session.root), 'sessions', `${jid}.jsonl`);
+  if (!fs.existsSync(file)) return [];
+  return parseJournalFile(file).events as unknown as Array<Record<string, unknown>>;
+}
+
+test('sunx 定时唤醒：schedule_wakeup 到点走 submitWake 同管线——schedule notice→run 配对+安静清单+单活跃位替换', async () => {
+  const model = new SunxRoutedAdapter(
+    { taskIds: () => [] },
+    [
+      // 一轮双出牌：第二个 arm 替换第一个（单活跃调度位 MVP 裁定）——只有 oven 的调度存活
+      callMany(
+        { name: 'schedule_wakeup', args: scheduleWakeup('check the CI', { delaySeconds: 3600 }) },
+        { name: 'schedule_wakeup', args: scheduleWakeup('check the oven', { delaySeconds: 0.3 }) },
+      ),
+      stop('armed, ending turn'), // 武装轮收束（timer 在跑）
+      stop('scheduled reply'), // 定时唤醒轮：终稿收束
+    ],
+    [],
+  );
+  await withSession(model, async (ctx) => {
+    const ctl = ctx.session;
+    const entries = () => ctl.sessionKernel.replay();
+    // 挂档：journal wake-schedule 机制行落档断言源（出生写惰性建档随首行触发）
+    ctl.attachJournal(new SessionJournal(resolveDataDir(ctx.tmp)));
+    assert.equal(ctl.submit('arm a timer').ok, true);
+    await waitFor(() => ctl.status() === 'idle', 15_000); // 武装轮收束
+    // 回执面：两笔 arm 各一，第二笔注明替换第一笔
+    const receipts = entries().filter((e) => e.kind === 'tool' && e.result !== undefined && (e.result.full ?? e.result.text).startsWith('scheduled wakeup'));
+    assert.equal(receipts.length, 2, '两笔 schedule_wakeup 回执在转录面');
+    assert.match(receipts[1]!.result!.full ?? receipts[1]!.result!.text, /replaced previous schedule sched-1/, '替换语义在回执面');
+    // 到点自动起轮：0.3s 后 schedule notice → run（单活跃位替换生效——CI 的 3600s 调度被替换永不触发）
+    await waitFor(() => scheduleNotices(entries()).length > 0, 10_000);
+    await waitFor(() => ctl.status() === 'idle', 15_000);
+    const ents = entries();
+    const notices = scheduleNotices(ents);
+    assert.equal(notices.length, 1, '替换后恰一条定时唤醒 notice');
+    const md = notices[0]!.md;
+    assert.ok(md.startsWith(SCHEDULE_WAKE_TAG), '模型面通知文前缀（isQuietNotice 安静清单同源标签）');
+    assert.match(md, /Scheduled wake \(not a user message\): check the oven/, '通知文携 note 正文（被替换的 CI 调度不触发）');
+    assert.equal(md.includes('fired late'), false, '准点不注明延迟');
+    assert.equal(isQuietNotice(md), true, '安静清单：<schedule-wake> 前缀对显示面零信息量');
+    assert.equal(notices[0]!.wake, undefined, '定时唤醒不混 WakeRef 词汇');
+    const idx = ents.indexOf(notices[0]!);
+    assert.equal(ents[idx + 1]?.kind, 'run', '转录序 notice→run（固定写入序）');
+    assert.equal(scheduledWakeOfRun(ents, idx + 1), true, 'scheduledWakeOfRun 独立配对成立');
+    assert.equal(wakeOfRun(ents, idx + 1), undefined, 'wakeOfRun 不为定时唤醒配对（两词汇零交集）');
+    assert.equal(
+      ents.some((e) => e.kind === 'user' && e.ts >= notices[0]!.ts && (ents[idx + 1]?.ts ?? 0) >= e.ts),
+      false,
+      '定时唤醒轮无 user 条',
+    );
+    assert.ok(ents.some((e) => e.kind === 'assistant' && e.md === 'scheduled reply'), '定时唤醒轮终稿收束');
+    // journal 机制行：arm 行两枚 + 被替换终态行（sched-1 firedAt）+ 触发终态行（sched-2 firedAt）
+    const schedRows = journalRows(ctl).filter((r) => r.t === 'wake-schedule');
+    const byId = new Map(schedRows.map((r) => [r.id as string, r]));
+    assert.equal(byId.size, 2, '两枚调度 id 均有落档');
+    assert.notEqual(byId.get('sched-1')?.firedAt, undefined, '被替换调度落终态行（回放面跳过）');
+    assert.notEqual(byId.get('sched-2')?.firedAt, undefined, '触发调度落终态行（重启重放不重发）');
+  }, { kind: 'sunx' });
+});
+
+test('sunx schedule_task 到点派发→完成→正常唤醒闭环：fork 通道同款路径+定时唤醒轮+台账终态任务唤醒', async () => {
+  const gate = gatedPair();
+  let sess: SessionRuntime | undefined;
+  const io: SunxTestIo = { taskIds: () => sess?.runtime.harness.tasks.list().map((t) => t.id) ?? [] };
+  const model = new SunxRoutedAdapter(
+    io,
+    [
+      callOne('schedule_task', scheduleTask('SCHED-TASK-SPEC', 'sched-worker', { delaySeconds: 0.3 })), // ①武装：定时任务
+      stop('armed task, ending turn'), // ②武装轮收束（timer 在跑）
+      stop('scheduled wake reply'), // ③定时唤醒轮：派发已发生，正文收束
+      stop('task woken reply'), // ④子任务终态唤醒轮：正常闭环
+    ],
+    [{ marker: 'SCHED-TASK-SPEC', steps: [async () => { await gate.wait; return stop('child done'); }] }],
+  );
+  try {
+    await withSession(model, async (ctx) => {
+      sess = ctx.session;
+      const ctl = ctx.session;
+      const entries = () => ctl.sessionKernel.replay();
+      assert.equal(ctl.submit('schedule a task').ok, true);
+      await waitFor(() => ctl.status() === 'idle', 15_000); // ②武装轮收束
+      const armReceipts = entries().filter((e) => e.kind === 'tool' && e.result !== undefined && (e.result.full ?? e.result.text).startsWith('scheduled task'));
+      assert.equal(armReceipts.length, 1, 'schedule_task 回执在转录面');
+      // ③定时唤醒轮：到点先 fork 派发（台账 task 落册）再起轮——同一回调内完成
+      await waitFor(() => scheduleNotices(entries()).length > 0, 10_000);
+      const led = () => ctl.runtime.harness.tasks.list();
+      await waitFor(() => led().length === 1, 10_000); // 派发先于起轮（同一回调内顺序完成）
+      assert.equal(led()[0]!.label, 'sched-worker', 'fork 派发 label=调度 note（恢复语义无损）');
+      assert.equal(led()[0]!.ownerRun, 'main', '到点派发恒主链归属（唤醒闸②）');
+      await waitFor(() => ctl.status() === 'idle', 15_000); // ③收束（子代挂闸在跑）
+      const sched = scheduleNotices(entries());
+      assert.equal(sched.length, 1, '恰一条定时唤醒轮');
+      assert.match(sched[0]!.md, /Scheduled wake \(not a user message\): sched-worker/, '通知文 note=label');
+      assert.equal(sched[0]!.wake, undefined, '定时唤醒零 WakeRef');
+      // ④子任务真跑到终态 → 正常任务唤醒轮（与定时唤醒管线同一 WakeController 合批）
+      gate.open();
+      await waitFor(() => led()[0]?.status === 'done', 15_000);
+      await waitFor(() => wakeNotices(entries()).length > 0, 10_000);
+      await waitFor(() => ctl.status() === 'idle', 15_000);
+      const ents = entries();
+      const notices = wakeNotices(ents);
+      assert.equal(notices.length, 1, '子任务终态起恰一条任务唤醒轮');
+      assert.deepEqual(notices[0]!.wake!.map((r) => r.id), [led()[0]!.id], '唤醒引用=派发台账 id');
+      const tidx = ents.indexOf(notices[0]!);
+      assert.equal(ents[tidx + 1]?.kind, 'run', '转录序 notice→run');
+      assert.ok(wakeOfRun(ents, tidx + 1) !== undefined, 'wakeOfRun 配对成立（任务唤醒词汇面）');
+      assert.match(notices[0]!.md, /child done/, '子任务结论经 receiptBody 进通知文');
+      assert.ok(ents.indexOf(sched[0]!) < ents.indexOf(notices[0]!), '定时唤醒轮先于任务唤醒轮');
+      assert.ok(ents.some((e) => e.kind === 'assistant' && e.md === 'task woken reply'), '任务唤醒轮终稿收束');
+    }, { kind: 'sunx' });
+  } finally {
+    gate.open(); // 兜底放闸：断言失败也不留悬挂子 Reactor
+  }
+});
+
+test('attach 重布防：未触发 re-arm（R7 停机跨越补发一次注明延迟/未来时刻准点）；已触发（firedAt 终态行）不重发', async () => {
+  const model = new ScriptedAdapter([{ content: 'scheduled reply', toolCalls: [] }]);
+  await withSession(model, async (ctx) => {
+    const ctl = ctx.session;
+    const entries = () => ctl.sessionKernel.replay();
+    ctl.attachJournal(new SessionJournal(resolveDataDir(ctx.tmp))); // 重启模拟：B 会话挂同档（firedAt 补行须经挂载 journal）
+    const now = Date.now();
+    // R7 停机跨越：fireAt 早于重启时刻 5s 且无 firedAt → re-arm 即补发一次，通知文注明延迟时长
+    ctl.rearmSchedules([{ t: 'wake-schedule', id: 'sched-9', fireAt: now - 5_000, note: 'restarted mid-sleep' }]);
+    await waitFor(() => scheduleNotices(entries()).length > 0, 10_000);
+    await waitFor(() => ctl.status() === 'idle', 15_000);
+    const late = scheduleNotices(entries())[0]!.md;
+    assert.match(late, /Scheduled wake \(not a user message\): restarted mid-sleep/);
+    assert.match(late, /This wake fired late by 5s; handle accordingly\./, 'R7：注明延迟时长');
+    assert.notEqual(
+      journalRows(ctl).find((r) => r.t === 'wake-schedule' && r.id === 'sched-9')?.firedAt,
+      undefined,
+      '补发即落终态行（下次重启不重发——「补发一次」语义）',
+    );
+    // 未来时刻：re-arm 后准点触发，无延迟注明
+    ctl.rearmSchedules([{ t: 'wake-schedule', id: 'sched-10', fireAt: Date.now() + 250, note: 'soon after restart' }]);
+    await waitFor(() => scheduleNotices(entries()).length === 2, 10_000);
+    await waitFor(() => ctl.status() === 'idle', 15_000);
+    assert.equal(scheduleNotices(entries())[1]!.md.includes('fired late'), false, '准点重布防不注明延迟');
+    // 已触发（firedAt 终态行在场）：重布防跳过——永不重发（负向断言只能有界等待）
+    ctl.rearmSchedules([{ t: 'wake-schedule', id: 'sched-8', fireAt: now - 9_000, note: 'already fired before restart', firedAt: now - 8_000 }]);
+    await new Promise((r) => setTimeout(r, 1_200));
+    assert.equal(scheduleNotices(entries()).length, 2, '已触发调度不重发');
+    assert.equal(ctl.status(), 'idle');
   });
 });
