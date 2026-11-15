@@ -289,7 +289,7 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
   });
 });
 
-describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6):RECENTS 头同级钮+创建弹窗链', () => {
+describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6;2026-11-15 提为顶部快捷区行):创建弹窗链', () => {
   /** 双语容忍正解(D37 家族):测试环境钉 en,单语 zh 钉必脆——双语 regex(元字符转义) */
   const bi = (en: string, zh: string): RegExp =>
     new RegExp(`^(?:${[en, zh].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`);
@@ -299,9 +299,9 @@ describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6):RECENTS 头同级钮+�
     conn.newSession = vi.fn(async () => ({ sessionId: 'sx-1' }));
     renderMenu(conn, { onOpenSession: open });
     await screen.findByText('demo goal');
-    // RECENTS 头同级钮在场(data-tip 悬浮提示;与「new default chat」判重)
+    // 顶部快捷区行在场(可见文字自说明,无 data-tip;与「new default chat」判重)
     const btn = screen.getByRole('button', { name: 'new sunx' });
-    expect(btn.getAttribute('data-tip')).toBe('New Sunx');
+    expect(btn.textContent).toContain('New Sunx');
     fireEvent.click(btn);
     expect(await screen.findByRole('dialog', { name: 'New Sunx' })).toBeDefined();
     // 缺省锚:工作区清单(p1/p2/harness-x)无 sunshinex-default 行 → 字面 'default'

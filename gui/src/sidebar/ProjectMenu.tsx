@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
-import { ArrowLeft, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
+import { ArrowLeft, Bot, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { DirPicker } from '../pages/DirPicker';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
 import { DirectoryTab } from '../tabs/DirectoryTab';
@@ -152,8 +152,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [listError, setListError] = useState('');
   /** G14.51 浏览器态服务端目录选择弹层(添加工作区无桌面壳时) */
   const [dirOpen, setDirOpen] = useState(false);
-  /** 「新建 Sunx」弹窗(sunx P1 Task 6,2026-11-15 用户裁定:RECENTS 头与「新对话」同级钮开
-   *  独立弹窗;成功后不走欢迎页,直接 openSession 打开新会话) */
+  /** 「新建 Sunx」弹窗(sunx P1 Task 6;2026-11-15 用户实测反馈「怎么没有对应入口」:入口提为
+   *  顶部快捷区行——与「新对话」主钮真同级(RECENTS 头簇的小钮用户看不见);成功后不走欢迎页,
+   *  直接 openSession 打开新会话) */
   const [sunxOpen, setSunxOpen] = useState(false);
   /** 展开中的组 slug(G14.32 恢复组展开;null = 全收)+ sessionsOf 应答缓存/错误 */
   const [openSlug, setOpenSlug] = useState<string | null>(null);
@@ -658,6 +659,17 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           <span>{t('New chat', '新对话')}</span>
         </button>
       )}
+      {/* 「新建 Sunx」入口与「新对话」真同级(2026-11-15 用户实测反馈;sunx P1 Task 6 的 RECENTS
+          头簇小钮撤除——入口只留这一处,RECENTS 头簇保留看板钮)。dirView 态随「新对话/搜索」同隐藏 */}
+      {dirView === undefined || dirView === null || onCloseDirView === undefined ? (<button
+        type="button"
+        className="sx-new-chat"
+        aria-label="new sunx"
+        onClick={() => setSunxOpen(true)}
+      >
+        <Bot size={16} strokeWidth={1.75} />
+        <span>{t('New Sunx', '新建 Sunx')}</span>
+      </button>) : null}
       {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
       {dirView === undefined || dirView === null || onCloseDirView === undefined ? (<button
         type="button"
@@ -799,7 +811,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
                 setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
               }}
               onNewChat={onNewChat}
-              onNewSunx={() => setSunxOpen(true)}
               onOpenSunxBoard={props.onOpenSunxBoard} /* sunx P2 Task 8:RECENTS 头看板钮(SUNX 组空块不显时的常驻入口) */
               recents={recents}
               recentLimit={recentLimit}

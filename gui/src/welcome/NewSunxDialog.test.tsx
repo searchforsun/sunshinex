@@ -268,13 +268,11 @@ describe('NewSunxDialog 模板挑选(sunx P2 Task 6:GET /settings/sunx-templates
 /** RecentsSection props 最小装配(本任务两交付面共用) */
 function recentsProps(
   recents: Array<SessionRow & { root: string; slug: string }>,
-  onNewSunx: () => void,
 ): Parameters<typeof RecentsSection>[0] {
   return {
     recentsOpen: true,
     onToggleRecents: () => undefined,
     onNewChat: () => undefined,
-    onNewSunx,
     recents,
     recentLimit: 10,
     onShowMore: () => undefined,
@@ -291,22 +289,17 @@ function recentsProps(
   };
 }
 
-describe('RECENTS 头「新建 Sunx」同级钮 + 会话行 kind 徽标(sunx P1 Task 6)', () => {
-  it('头部同级钮:点击上抛 onNewSunx(与「新对话」同款样式槽,悬浮提示 data-tip)', () => {
-    const onNewSunx = vi.fn();
-    render(<RecentsSection {...recentsProps([], onNewSunx)} />);
-    const btn = screen.getByRole('button', { name: 'new sunx' });
-    expect(btn.getAttribute('data-tip')).toBe('New Sunx'); // data-tip 禁原生 title(铁律)
-    expect(btn.querySelector('title')).toBeNull();
-    fireEvent.click(btn);
-    expect(onNewSunx).toHaveBeenCalledTimes(1);
+describe('RECENTS 头「新建 Sunx」钮退役 + 会话行 kind 徽标(sunx P1 Task 6;2026-11-15 入口提为顶部快捷区行)', () => {
+  it('RECENTS 头不再渲染「new sunx」钮(入口唯一化到顶部快捷区,防同名可达名重复)', () => {
+    render(<RecentsSection {...recentsProps([])} />);
+    expect(screen.queryByRole('button', { name: 'new sunx' })).toBeNull();
   });
 
   it('kind=sunx 行标题旁小徽标;standard 行(无 kind)无徽标', () => {
     const row = (id: string, kind?: string) =>
       ({ id, file: `${id}.jsonl`, updatedAt: 1, title: `会话 ${id}`, root: 'D:/w', slug: 'w', ...(kind !== undefined ? { kind } : {}) }) as SessionRow & { root: string; slug: string };
     const { container } = render(
-      <RecentsSection {...recentsProps([row('j1', 'sunx'), row('j2')], () => undefined)} />,
+      <RecentsSection {...recentsProps([row('j1', 'sunx'), row('j2')])} />,
     );
     const rows = container.querySelectorAll('.sx-session-row');
     expect(rows.length).toBe(2);

@@ -109,7 +109,6 @@ function recentsProps(
     recentsOpen: true,
     onToggleRecents: () => undefined,
     onNewChat: () => undefined,
-    onNewSunx: () => undefined,
     recents,
     recentLimit: 10,
     onShowMore: () => undefined,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
-import { ChevronRight, KanbanSquare, Network, SquarePen } from 'lucide-react';
+import { ChevronRight, KanbanSquare, SquarePen } from 'lucide-react';
 import { RECENT_VISIBLE_DEFAULT, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
@@ -12,9 +12,8 @@ export interface RecentsSectionProps {
   readonly onToggleRecents: () => void;
   /** 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧,点击开默认工作区欢迎页) */
   readonly onNewChat: () => void;
-  /** 头部「新建 Sunx」同级钮(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」同级、独立弹窗
+  /** (sunx P2 用户实测反馈:RECENTS 头簇小钮撤除——入口提为顶部快捷区行,与「新对话」主钮真同级;
    *  ——宿主开 NewSunxDialog;欢迎页 composer 零改动) */
-  readonly onNewSunx: () => void;
   /** 头部「Sunx 看板」钮(sunx P2 Task 8,spec §17.3):「新建 Sunx」旁开 SUNX 总览页签——
    *  与 SUNX 组头看板钮同动作(可选 guard:未接线不渲染,不产死钮;SUNX 组空块不显时本钮=常驻入口) */
   readonly onOpenSunxBoard?: () => void;
@@ -40,7 +39,7 @@ export interface RecentsSectionProps {
 }
 
 export function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, onNewChat, onNewSunx, onOpenSunxBoard, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow, onEditCharter } = props;
+  const { recentsOpen, onToggleRecents, onNewChat, onOpenSunxBoard, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow, onEditCharter } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -87,19 +86,6 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
                 <KanbanSquare size={14} strokeWidth={1.75} />
               </button>
             )}
-            <button
-              type="button"
-              className="sx-iconbtn"
-              aria-label="new sunx"
-              data-tip={t('New Sunx', '新建 Sunx')}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onNewSunx();
-              }}
-            >
-              <Network size={14} strokeWidth={1.75} />
-            </button>
             {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页)。
                 aria 用旧名「new default chat」——与左上 sx-new-chat 主钮区分(测试 /new chat/i 判重) */}
             <button
