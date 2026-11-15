@@ -3,7 +3,7 @@
  *  空则 claim,MemoryPipeline 闩形态)。板内任务只经 teammate 认领/指派执行;无活成员时任务留 pending。
  *  与 SubagentRunner 的分工:Runner 是主链按需 fork 的无状态单元;Teammate 是跨任务存续的有状态执行体,
  *  自有链(role 行 + 历次 task 行 + 每任务闭合行)即其记忆——每任务 Reactor 的 seed 经缺省 chainView() 取自 own chain。 */
-import type { SessionEvent } from '../types';
+import type { SessionEvent, SessionKind } from '../types';
 import { maxTeammatesEnv, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
 import { fail, ok, Result } from '../result';
 
@@ -42,13 +42,19 @@ export interface TeammateDeps {
   /** 单任务执行预算上限(ms),缺省 30 分钟(与 board 同口径) */
   taskTimeoutMs?: number;
   /** 工具面工厂(T3 注入真派生面):缺省 base.derive({ exclude: [] }) 全克隆——工具无状态、
-   *  执行期安全链注入,克隆面与 base 行为等价(T3 落地收窄面前保持全量) */
-  registryFactory?: (base: ToolRegistry) => ToolRegistry;
+   *  执行期安全链注入,克隆面与 base 行为等价(T3 落地收窄面前保持全量)。
+   *  第二参 askedBy(2026-11-15 sunx P2 Task 1 路由 ask 接缝,形态对齐 fork deriveChildRegistry):
+   *  execute 逐任务调用时带 {label: 成员名, taskId: 板任务 id}(taskId 参数位供 Task 2 板通道直接复用),
+   *  装配闭包转交 deriveTeammateRegistry——ask 接缝在场才注册路由版 ask_question,缺席维持剔除旧制 */
+  registryFactory?: (base: ToolRegistry, askedBy?: { label: string; taskId?: string }) => ToolRegistry;
   /** agent 间消息收件箱(T3 agent-message 回合边界注入):worker 每轮 execute 前 drainInbox——
    *  poll 本名新消息,按 msg-id 链前缀去重后以 note 行 append own chain;缺省无 inbox = 零行为变化 */
   inbox?: Inbox;
   /** 消费位点落盘(<teams>/inbox-cursors.json)。缺省只保持进程内位点 */
   inboxCursors?: InboxCursorStore;
+  /** 会话形态(2026-11-15 sunx P2 Task 1,spec §17.2):随装配注入(Harness opts.kind → mountTeammate 链),
+   *  逐任务 Reactor 稳定段与主链同面——sunx=身份槽替换+编排章程行(Sunx 身份行/章程);缺席=standard 字节不变 */
+  kind?: SessionKind;
 }
 
 /** teammate 注册表:帽可配(缺省 DEFAULT_MAX_TEAMMATES,SUNSHINEX_MAX_TEAMMATES 覆盖)+ 名字索引 + 存活聚合(派发路由的退化判据) */
@@ -310,14 +316,19 @@ ${task.spec}` },
     };
     // 逐任务 Reactor:fork 作用域(零主链回写);不传 runner——两 reactor 共享 runner 会互相覆盖
     // attachParent 挂载位(reactor.ts run 起止挂摘),teammate 自身不持 spawn 预算源(T3 派生面落地同点评估)
+    // 路由 ask 归因(P2 Task 1):label=成员名,taskId=板任务 id——registryFactory 闭包转交
+    // deriveTeammateRegistry;ask 接缝缺席的装配派生面自然维持剔除旧制。kind 随装配透传(sunx 稳定段同面)
+    const buildFace: NonNullable<TeammateDeps['registryFactory']> =
+      this.deps.registryFactory ?? ((base: ToolRegistry) => base.derive({ exclude: [] }));
     const reactor = new Reactor({
-      registry: (this.deps.registryFactory ?? ((base: ToolRegistry) => base.derive({ exclude: [] })))(this.deps.registry),
+      registry: buildFace(this.deps.registry, { label: this.name, taskId: task.id }),
       safety: this.deps.safety,
       context: this.ctx,
       model: this.deps.model,
       root: this.deps.root,
       onEvent: tagger,
       signal: taskAbort.signal,
+      ...(this.deps.kind ? { kind: this.deps.kind } : {}),
     });
     let r: RunResult;
     try {

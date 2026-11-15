@@ -8,9 +8,11 @@ import * as path from 'path';
 import { Harness } from './index';
 import { CodedToolError } from './tools';
 import { ScriptedAdapter } from '../model/adapter';
+import type { ModelAdapter } from '../model/adapter';
 import { deriveTeammateRegistry } from '../taskboard/teammate-tools';
 import { MemoryAgentTeamStore } from '../taskboard/team-registry';
 import type { AgentTeamRegistry } from '../taskboard/team-registry';
+import type { AskUserRequest, ChatRequest } from '../types';
 
 const TEAM_ID = 'team-alpha-test';
 
@@ -166,6 +168,58 @@ test('mode 缺席 + 无 frontmatter executor:普通 fork 路径原样(team 零�
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('mountTeammate 链注 ask/kind(P2 Task 1):sunx 装配成员面路由 ask(askedBy=成员名+板任务 id)且稳定段带 Sunx 身份行', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tm-spawn-askkind-'));
+  const restore = withDataDir(tmp);
+  let h: Harness | undefined;
+  try {
+    const prompts: string[] = [];
+    const seen: AskUserRequest[] = [];
+    const base = new ScriptedAdapter([
+      JSON.stringify({ tool: 'ask_question', input: { question: 'Proceed?', options: [{ label: 'A' }, { label: 'B' }] } }),
+      JSON.stringify({ done: true, reply: 'ok' }),
+    ]);
+    const model: ModelAdapter = {
+      provider: 'probe',
+      chat: async (req: ChatRequest) => {
+        prompts.push(req.messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n'));
+        return base.chat(req);
+      },
+    };
+    const parentAsk = async (req: AskUserRequest): Promise<{ type: 'dismissed' }> => {
+      seen.push(req);
+      return { type: 'dismissed' };
+    };
+    // sunx 装配 + 真实 ask 接缝:opts.kind/opts.ask 经 mountTeammate 链入 teammate(TeammateDeps.kind/registryFactory)
+    h = new Harness({ root: tmp, mode: 'full-access', kind: 'sunx', model, learnSkills: false, ask: parentAsk });
+    seedTeam(h.agentTeams);
+    const created = await h.tools.execute('create_agent_teammate', { teamId: TEAM_ID, name: 'w1', prompt: 'help board tasks', agent_id: 'null' }, h.safety);
+    assert.ok(created.ok && created.value.exitCode === 0, `create_agent_teammate 应成功:${JSON.stringify(created)}`);
+    assert.ok(h.team.aliveNames().includes('w1'), 'w1 应为活 teammate');
+    const t = h.taskboard.create({ teamId: TEAM_ID, title: 'A', spec: 'do A' });
+    assert.ok(t.ok);
+    const idA = t.value.taskId;
+    const okA = await (async (): Promise<boolean> => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (h!.taskboard.snapshot().tasks[idA]?.status === 'success') return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return h!.taskboard.snapshot().tasks[idA]?.status === 'success';
+    })();
+    assert.ok(okA, `成员应消化板任务(ask 裁决回填后收口):${JSON.stringify(h.taskboard.snapshot().tasks[idA])}`);
+    assert.equal(seen.length, 1, '路由 ask 恰一次到装配接缝');
+    assert.deepEqual(seen[0].askedBy, { label: 'w1', taskId: idA }, '归因=成员名+板任务 id(mountTeammate 闭包转交 deriveTeammateRegistry)');
+    assert.ok(prompts[0]?.includes('You are the Sunx orchestrator'), `sunx 装配的成员稳定段带 Sunx 身份行(kind 经 mountTeammate 透传):${prompts[0]?.slice(0, 200)}`);
+    assert.ok(prompts[0]?.includes('never do the work yourself'), '编排章程行随行(spec §17.2 同语义)');
+  } finally {
+    h?.team.stopAll();
+    h?.tasks.stopAll();
+    restore();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

@@ -4,13 +4,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { TaskBoard } from './board';
-import { TeamRegistry, Teammate, teammateSendTargets } from './teammate';
+import { TeamRegistry, Teammate, teammateSendTargets, type TeammateDeps } from './teammate';
+import { deriveTeammateRegistry } from './teammate-tools';
 import { InboxCursorStore } from './inbox-cursors';
 import { TeamStore } from './store';
 import { AgentTeamRegistry, MemoryAgentTeamStore } from './team-registry';
 import { FileInbox } from './file-inbox';
 import type { Inbox } from './inbox';
-import { ChatRequest, ChatResult, SessionEvent } from '../types';
+import { AskUserRequest, AskUserSeam, ChatRequest, ChatResult, SessionEvent } from '../types';
 import { ProcessSandbox } from '../harness/security/sandbox';
 import { SecurityGuard } from '../harness/security/guard';
 import { PolicyEngine } from '../harness/security/policy';
@@ -18,6 +19,7 @@ import { SafetyChain } from '../harness/security/chain';
 import { ToolRegistry } from '../harness/tools';
 import { FileStore } from '../storage/adapter';
 import type { TaskRegistry } from '../harness/tasks';
+import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 
 function tmpdir(prefix: string): string {
@@ -60,11 +62,12 @@ interface Rig {
   ledgerFinished: Array<[string, string]>;
   /** 真 FileInbox(与装配面同语义;测试按需注入 teammate deps) */
   inbox: FileInbox;
-  /** 构造 Teammate(不注册);模型可注入以共享计数断言顺序,inbox 可注入以开回合边界注入 */
-  makeTeammate(name: string, model?: CountingAdapter, inbox?: Inbox, cursors?: InboxCursorStore, teamIdOverride?: string): Teammate;
+  /** 构造 Teammate(不注册);模型可注入以共享计数断言顺序,inbox 可注入以开回合边界注入;
+   *  depsPatch 供 kind/registryFactory 等装配接缝逐例覆盖(P2 Task 1 路由 ask/kind 透传) */
+  makeTeammate(name: string, model?: CountingAdapter, inbox?: Inbox, cursors?: InboxCursorStore, teamIdOverride?: string, depsPatch?: Partial<TeammateDeps>): Teammate;
   cursors: InboxCursorStore;
   /** 构造并注册 */
-  addTeammate(name: string, model?: CountingAdapter, inbox?: Inbox): Teammate;
+  addTeammate(name: string, model?: CountingAdapter, inbox?: Inbox, depsPatch?: Partial<TeammateDeps>): Teammate;
 }
 
 /** 装配:真 TaskBoard + 可选 team + 真 Teammate(fake model)。
@@ -112,12 +115,12 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     inboxCursors: cursorStore,
     onEvent: (e: SessionEvent) => events.push(e),
   });
-  const makeTeammate = (name: string, model?: CountingAdapter, depInbox?: Inbox, cursorStore?: InboxCursorStore, teamIdOverride?: string): Teammate =>
+  const makeTeammate = (name: string, model?: CountingAdapter, depInbox?: Inbox, cursorStore?: InboxCursorStore, teamIdOverride?: string, depsPatch?: Partial<TeammateDeps>): Teammate =>
     new Teammate({
       name,
       framing: `framing of ${name}`,
       teamId: teamIdOverride ?? teamId,
-      deps: depsOf(name, model ?? new CountingAdapter(), depInbox, cursorStore),
+      deps: { ...depsOf(name, model ?? new CountingAdapter(), depInbox, cursorStore), ...(depsPatch ?? {}) },
     });
   return {
     board,
@@ -131,8 +134,8 @@ function makeRig(tmp: string, withTeam: boolean, cap?: number): Rig {
     inbox,
     cursors,
     makeTeammate,
-    addTeammate: (name: string, model?: CountingAdapter, depInbox?: Inbox) => {
-      const tm = makeTeammate(name, model, depInbox);
+    addTeammate: (name: string, model?: CountingAdapter, depInbox?: Inbox, depsPatch?: Partial<TeammateDeps>) => {
+      const tm = makeTeammate(name, model, depInbox, undefined, undefined, depsPatch);
       const r = team.register(tm);
       assert.ok(r.ok, `register ${name} 应成功`);
       return tm;
@@ -586,6 +589,83 @@ test('任务闭合行(2026-11-02):取消/完成收口后 own chain 追终态说�
     assert.ok(seedC.includes(`Task ${idB} finished (success) — conclusion: done 2`), `C 的种子含 B 的成功闭合行:${seedC}`);
     assert.match(seedC, new RegExp(`Task ${idA} was cancelled`), '历史闭合行保留');
   } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+/** 探针包装(记录每轮消息面全文)+脚本应答:路由 ask/稳定段断言的可达面 */
+function probeModel(base: ModelAdapter, prompts: string[]): ModelAdapter {
+  return {
+    provider: 'probe',
+    chat: async (req: ChatRequest) => {
+      prompts.push(req.messages.map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n'));
+      return base.chat(req);
+    },
+  };
+}
+
+test('teammate face 路由 ask(P2 Task 1):execute 经 registryFactory 带 askedBy(label=成员名,taskId=板任务 id)——ask_question 归因直通装配接缝', async () => {
+  const tmp = tmpdir('sunshinex-tm-askroute-');
+  try {
+    const rig = makeRig(tmp, true);
+    const seen: AskUserRequest[] = [];
+    const parentAsk: AskUserSeam = async (req) => {
+      seen.push(req);
+      return { type: 'dismissed' };
+    };
+    // mountTeammate 装配闭包同构:ask 接缝+逐任务归因转交 deriveTeammateRegistry(路由版注册单点)
+    const w1 = rig.addTeammate(
+      'w1',
+      probeModel(new ScriptedAdapter([
+        JSON.stringify({ tool: 'ask_question', input: { question: 'Proceed?', options: [{ label: 'A' }, { label: 'B' }] } }),
+        JSON.stringify({ done: true, reply: 'ok' }),
+      ]), []) as unknown as CountingAdapter,
+      undefined,
+      {
+        registryFactory: (b, askedBy) => deriveTeammateRegistry(b, rig.board, undefined, undefined, parentAsk, askedBy),
+      },
+    );
+    const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    await w1.runTask(rig.board.snapshot().tasks[idA]!);
+    const done = await until(() => rig.board.snapshot().tasks[idA]?.status === 'success');
+    assert.ok(done, `任务应正常收口(ask 裁决回填后继续):${rig.board.snapshot().tasks[idA]?.status}`);
+    assert.equal(seen.length, 1, '路由 ask 恰一次到父接缝');
+    assert.deepEqual(seen[0]?.askedBy, { label: 'w1', taskId: idA }, '归因=成员名+板任务 id(Task 2 板通道直接复用形态)');
+    assert.equal(seen[0]?.question, 'Proceed?', '问询本体原样透传');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('teammate Reactor 稳定段随 kind(P2 Task 1,spec §17.2):sunx 带 Sunx 身份行/章程;缺席=standard 字节不变', async () => {
+  const tmp = tmpdir('sunshinex-tm-kind-');
+  let rig: ReturnType<typeof makeRig> | undefined;
+  try {
+    rig = makeRig(tmp, true);
+    const sunxModel = new CountingAdapter();
+    const w1 = rig.addTeammate('w1', sunxModel, undefined, { kind: 'sunx' });
+    const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A' });
+    assert.ok(ra.ok);
+    const idA = ra.value.taskId;
+    await w1.runTask(rig.board.snapshot().tasks[idA]!);
+    assert.ok(await until(() => rig!.board.snapshot().tasks[idA]?.status === 'success'), 'sunx 成员任务收口');
+    assert.ok(sunxModel.chats.length >= 1, 'sunx 成员发起过 chat');
+    assert.ok(sunxModel.chats[0]!.includes('You are the Sunx orchestrator'), `sunx 成员稳定段带 Sunx 身份行(kind 透传,缺接线即回 SunshineX):${sunxModel.chats[0]!.slice(0, 200)}`);
+    assert.ok(sunxModel.chats[0]!.includes('never do the work yourself'), '编排章程行随行(身份槽替换+章程尾随)');
+    // standard 反向锚:缺席 kind 字节不变(零 Sunx 泄漏)
+    const stdModel = new CountingAdapter();
+    const w2 = rig.addTeammate('w2', stdModel);
+    const rb = rig.board.create({ teamId: rig.teamId, title: 'B', spec: 'do B' });
+    assert.ok(rb.ok);
+    const idB = rb.value.taskId;
+    await w2.runTask(rig.board.snapshot().tasks[idB]!);
+    assert.ok(await until(() => rig!.board.snapshot().tasks[idB]?.status === 'success'), 'standard 成员任务收口');
+    assert.ok(stdModel.chats[0]!.includes('You are the SunshineX agent'), 'standard 成员身份行原样');
+    assert.ok(!stdModel.chats[0]!.includes('Sunx orchestrator'), 'standard 成员零 Sunx 章程泄漏');
+  } finally {
+    rig?.team.stopAll();
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

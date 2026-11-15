@@ -66,6 +66,7 @@ test('Task5 /compact 带 focus：压缩照常且 focus 透传（摘要 prompt �
     const fake: KernelRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
+      toolDisplay: {},
       runLoop: async () => {
         throw new Error('runLoop not exercised');
       },
@@ -111,6 +112,7 @@ test('Task5 /compact 无参：压缩照常，摘要 prompt 不含关注点段', 
     const fake: KernelRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
+      toolDisplay: {},
       runLoop: async () => {
         throw new Error('runLoop not exercised');
       },

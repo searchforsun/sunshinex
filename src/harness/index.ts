@@ -458,7 +458,8 @@ export class Harness {
     this.teamsBoundJournalId = undefined;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
-    // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/ask_question/worktree/板面五件套 + 注 get_agent_team_board/get_task)。
+    // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/worktree/板面五件套 + 注
+    // get_agent_team_board/get_task;路由版 ask_question 按接缝在场条件注册——P2 Task 1 收口)。
     // 重名裁定(T2 register 为替换语义,spawn 通道在其上收紧):活名重复 spawn → INVALID_ARG fail-fast
     // (模型换名/先停后建;静默替换会停掉在跑 teammate 且台账悬空);已停同名 → 替换重建(register 原语义)。
     // 台账登记:kind 'subagent' + label = teammate 名,stop 句柄接 tm.stop——板派发中止/成员打断由 agent_team_task_stop,日志承载启动行
@@ -498,7 +499,10 @@ export class Harness {
           inbox: this.inbox,
           inboxCursors: this.inboxCursors,
           ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
-          registryFactory: (b: ToolRegistry) => deriveTeammateRegistry(
+          // 路由 ask(P2 Task 1,fork deriveChildRegistry 同语义):装配真实接缝在座才透传——headless 装配
+          // (opts.ask 缺省=工具注册面落 headlessAskStub)不透传,成员面维持剔除旧制;归因(label=成员名,
+          // taskId=板任务 id)由 teammate.execute 逐任务带上,经本闭包转交 deriveTeammateRegistry
+          registryFactory: (b: ToolRegistry, askedBy?: { label: string; taskId?: string }) => deriveTeammateRegistry(
             b,
             this.taskboard,
             // teammate 面 send_agent_team_message:同队存活(排己);leader 由工具恒放行。from = teammate 名
@@ -509,7 +513,12 @@ export class Harness {
               ...teammateSendTargets(this.team, teamId, name),
             }),
             this.tasks, // task_wait 换装 exec-only(自动转后台可等;板任务不可等)
+            opts.ask, // 路由 ask 接缝(缺席=undefined → 维持剔除旧制)
+            askedBy,
           ),
+          // kind 透传(P2 Task 1,spec §17.2):sunx 装配的成员逐任务 Reactor 稳定段与主链同面
+          // (Sunx 身份行/编排章程行);缺席=standard 字节不变
+          ...(opts.kind ? { kind: opts.kind } : {}),
         },
       });
       const registered = this.team.register(tm);

@@ -223,7 +223,7 @@ export class SessionController {
     }
     this.pendingCalls = [
       ...this.pendingCalls.filter((p) => p.callId === undefined || p.callId !== e.callId),
-      { callId: e.callId, text: toolCallLine(e.name ?? '…', e.input), input: e.input },
+      { callId: e.callId, text: toolCallLine(e.name ?? '…', e.input, this.runtime.toolDisplay), input: e.input },
     ];
     if (e.name === 'spawn') {
       const prompt = typeof e.input?.prompt === 'string' && e.input.prompt.length > 0 ? e.input.prompt : undefined;
@@ -240,7 +240,7 @@ export class SessionController {
     const pi = this.pendingCalls.findIndex((p) => (e.callId !== undefined ? p.callId === e.callId : p.callId === undefined));
     if (pi >= 0) this.pendingCalls.splice(pi, 1);
     const callItem: ChatItem = {
-      role: 'tool', text: toolCallLine(e.name ?? '…', e.input), ts: e.ts, seq: ++this.msgSeq,
+      role: 'tool', text: toolCallLine(e.name ?? '…', e.input, this.runtime.toolDisplay), ts: e.ts, seq: ++this.msgSeq,
       kind: 'call', pending: false, callId: e.callId,
     };
     const item: ChatItem = {
@@ -826,7 +826,7 @@ export class SessionController {
     const pend = this.kernel.pendingTools().filter((e) => !this.archivedToolSeqs.has(e.seq));
     if (pend.length === 0) return;
     const flushed: ChatItem[] = pend.map((e) => ({
-      role: 'tool', text: toolCallLine(e.name ?? '…', e.input), ts: Date.now(), seq: ++this.msgSeq,
+      role: 'tool', text: toolCallLine(e.name ?? '…', e.input, this.runtime.toolDisplay), ts: Date.now(), seq: ++this.msgSeq,
       kind: 'call', pending: false, callId: e.callId,
     }));
     for (const e of pend) this.archivedToolSeqs.add(e.seq);
@@ -1527,7 +1527,7 @@ export class SessionController {
       onChildEvent(this, e, sub);
       return;
     }
-    this.state = { ...this.state, task: applyTaskState(this.state.task, e) };
+    this.state = { ...this.state, task: applyTaskState(this.state.task, e, this.runtime.toolDisplay) };
     switch (e.type) {
       case 'token':
         // chat 主通道正文增量直连（token 承载纯正文，无协议骨架过滤层）：live 累积 + markdansi 行级喂入（片段即时入档）

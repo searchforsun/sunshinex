@@ -4,7 +4,9 @@ import type { ToolDisplayMeta } from '../harness/tools';
 /** 工具呈现层（D26/J1 收敛为消费者）：动词/代表字段不再本文件硬编码，随工具注册表 display 元数据
  *  经 setToolDisplayMeta 装配期注入（产线接线 session/runtime createKernelRuntime）——harness 增改工具时
  *  呈现零跟表。本文件保留：注入注入口、fallback（未登记工具大写原名 + 候选字段序）、extractTarget
- *  的平台工具特殊 target 分支（多字段格式无法以 targetFields 表达）。 */
+ *  的平台工具特殊 target 分支（多字段格式无法以 targetFields 表达）。
+ *  去单例（2026-11-15 sunx P2 Task 1）：进程级表退化为 TUI 单会话兼容兜底——持有运行时的消费点
+ *  经 toolCallLine 第三参显式注入 runtime.toolDisplay（KernelRuntime 返回面），混合 kind 装配互不覆盖。 */
 
 /** 装配期注入的呈现表（模块级单例）：缺省空表 = 纯 fallback（对齐现状中未登记工具的降级） */
 let injectedMeta: Record<string, ToolDisplayMeta> = {};
@@ -23,11 +25,14 @@ const toolVerbs: Set<string> = new Set<string>();
 export const TOOL_VERBS: ReadonlySet<string> = toolVerbs;
 
 /** 工具调用行文本：`VERB target`（无 target 时仅 VERB）；动词取注入表 ?? 大写原名，MCP 工具统一 MCP；
- *  exec 取命令首段，其余取代表字段——零截断，超宽由呈现层按列宽自然省略 */
-export function toolCallLine(tool: string, input: unknown): string {
-  const meta = injectedMeta[tool];
-  const verb = tool.startsWith('mcp__') ? 'MCP' : (meta?.verb ?? tool.toUpperCase());
-  const target = extractTarget(tool, input, meta);
+ *  exec 取命令首段，其余取代表字段——零截断，超宽由呈现层按列宽自然省略。
+ *  meta 显式注入（2026-11-15 sunx P2 Task 1 去单例）：持有运行时的消费点（SessionController/child-panel/
+ *  转录导出）传 runtime.toolDisplay——混合 kind 装配下正确性不再依赖进程级兜底表；缺省回落 injectedMeta
+ *  （TUI 单会话兼容兜底，createKernelRuntime 仍写） */
+export function toolCallLine(tool: string, input: unknown, meta?: Readonly<Record<string, ToolDisplayMeta>>): string {
+  const table = meta ?? injectedMeta;
+  const verb = tool.startsWith('mcp__') ? 'MCP' : (table[tool]?.verb ?? tool.toUpperCase());
+  const target = extractTarget(tool, input, table[tool]);
   return target ? `${verb} ${target}` : verb;
 }
 

@@ -118,9 +118,9 @@ export function onChildEvent(ctrl: SessionController, e: SessionEvent, label: st
       const duplicatedCall = callId !== '' && transcript.some((l) => l.kind === 'call' && l.callId === callId);
       transcript = duplicatedCall
         ? transcript
-        : [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input), ...(callId ? { callId } : {}) }];
+        : [...transcript, { kind: 'call', text: toolCallLine(e.text ?? '', e.payload?.input, ctrl.runtime.toolDisplay), ...(callId ? { callId } : {}) }];
       const calls = callId
-        ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, target: toolCallLine(e.text ?? '', e.payload?.input), startedAt: Date.now() }]
+        ? [...(child.calls ?? []).filter((c) => c.callId !== callId), { callId, target: toolCallLine(e.text ?? '', e.payload?.input, ctrl.runtime.toolDisplay), startedAt: Date.now() }]
         : child.calls;
       commitChild(ctrl, list, idx, { ...child, transcript, steps, tokens, calls, bufText: buf || undefined, bufThink, thinkStartedAt }, buf);
       return;

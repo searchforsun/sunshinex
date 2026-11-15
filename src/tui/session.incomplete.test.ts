@@ -25,6 +25,7 @@ function fakeRuntime(harness: Harness, outcome: RunOutcome): KernelRuntime {
   return {
     harness,
     runTask: async () => outcome,
+    toolDisplay: {},
     runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
   };
 }

@@ -2,6 +2,7 @@ import type { AskUserSeam } from '../types';
 import { Harness, SUNX_FACE_TOOLS } from '../harness';
 import { buildHarness } from '../runtime';
 import type { PermissionMode } from '../harness/security/modes';
+import type { ToolDisplayMeta } from '../harness/tools';
 import { setToolDisplayMeta } from '../tui/tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import type { BackgroundTask } from '../harness/tasks';
@@ -52,6 +53,11 @@ export type { RunOutcome };
 
 export interface KernelRuntime {
   harness: Harness;
+  /** 呈现表（2026-11-15 sunx P2 Task 1 去单例）：effective face 的 displayMeta 装配快照
+   *  （sunx=白名单面 / standard=主链全量）。TUI 持有运行时的消费点显式注入本表（toolCallLine 第三参 /
+   *  applyTaskState 透传）——混合 kind 两次 assemble 各自返回各自表互不覆盖；进程级 setToolDisplayMeta
+   *  保留为 TUI 单会话兼容兜底，daemon 路径不再依赖（serve/GUI 零消费进程级表） */
+  readonly toolDisplay: Readonly<Record<string, ToolDisplayMeta>>;
   /** scope 线程：session=主链（缺省）；fork=私有执行（零主链回写）——/init 与规划轮 fork 隔离用 */
   runTask(goal: string, opts?: { maxSteps?: number; seedHistory?: HistoryStep[]; tier?: ModelTier; effort?: ReasoningEffort; scope?: 'session' | 'fork'; signal?: AbortSignal }): Promise<RunOutcome>;
   /** /goal 完整修正环入口（规格 D2/D3）：resolveTemplate → engine.run，LoopRunResult 原样透传（零新类型）；不开放 scope/seedHistory——修正环恒主链 */
@@ -85,9 +91,11 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
   // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
   // full-access 的常规 ask 仍在 guard 层自动放行(不经 asker),注入无档位副作用
   if (opts.onApproval) harness.security.setAsker(opts.onApproval);
-  // 工具呈现表接线（D26/J1）：注册表 display 元数据下泄 TUI 呈现层（工具动词/代表字段随注册走，
-  // harness 增改工具零跟表）；display 为纯呈现数据，不进模型侧 tools schema（SessionController 构造前）
-  setToolDisplayMeta(face.displayMeta());
+  // 工具呈现表接线（D26/J1；2026-11-15 P2 Task 1 去单例）：表随 effective face 装配快照进返回值
+  // （toolDisplay）——TUI 持有运行时的消费点显式注入；进程级 set 保留为 TUI 单会话兼容兜底，
+  // daemon 路径不再依赖（混合 kind 两次 assemble 各自返回各自表，末装配者不再覆盖先装配者）
+  const toolDisplay = face.displayMeta();
+  setToolDisplayMeta(toolDisplay);
 
   // 主链唯一入口（D5）：提交经 Loop 长任务模板（内嵌 Reactor），不再直连 harness.reactor
   const loopDeps: LoopDeps = {
@@ -129,6 +137,7 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
 
   return {
     harness,
+    toolDisplay,
     runTask: async (goal, o) => {
       // 档位（run 级常量）：/model-tier 的会话级切换以逐次覆盖下传（缺省沿用装配点 tier）；scope 线程至 LoopDeps
       const runDeps = buildRunDeps(o);

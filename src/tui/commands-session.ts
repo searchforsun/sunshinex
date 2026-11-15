@@ -8,6 +8,7 @@ import { crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { renderMd } from './md-ansi';
 import { toolCallLine } from './tool-verbs';
+import type { ToolDisplayMeta } from '../harness/tools';
 import type { ChatItem } from './chat-model';
 import { reduceSteerRows, reduceSegRows } from '../session/seglog';
 import { isQuietNotice, type KernelEntry } from '../session/entry';
@@ -111,8 +112,9 @@ export function resumeLatest(ctrl: SessionController): void {
 /** 内核条目 → 静态区消息重建(P3,resume v3 装载面):形态与 live 入档对齐——user 裸文直用;
  *  assistant 终态 md 现渲 ANSI;thinking 折叠摘要行(closeLiveBlock 同形,detail 保全文);
  *  tool call+result 两件(toolCallLine(name,input)/结果全文,CC 配对同形);notice/error→system 行
- *  (error 带 `Error: ` 前缀与 live 同形;安静 notice 同 live 臂不渲染);run 跳过(状态栏承载)。seq 重建自 1。 */
-export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () => number): ChatItem[] {
+ *  (error 带 `Error: ` 前缀与 live 同形;安静 notice 同 live 臂不渲染);run 跳过(状态栏承载)。seq 重建自 1。
+ *  meta 显式注入(P2 Task 1 去单例):调用方传 ctrl.runtime.toolDisplay(缺省回落进程级兜底表) */
+export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () => number, meta?: Readonly<Record<string, ToolDisplayMeta>>): ChatItem[] {
   const items: ChatItem[] = [];
   for (const e of entries) {
     const seq = items.length + 1;
@@ -131,7 +133,7 @@ export function entriesToChatItems(entries: readonly KernelEntry[], mdWidth: () 
       continue;
     }
     if (e.kind === 'tool') {
-      items.push({ role: 'tool', kind: 'call', text: toolCallLine(e.name ?? '…', e.input), pending: false, callId: e.callId, ts: e.ts, seq });
+      items.push({ role: 'tool', kind: 'call', text: toolCallLine(e.name ?? '…', e.input, meta), pending: false, callId: e.callId, ts: e.ts, seq });
       items.push({
         role: 'tool', kind: 'result', text: e.result?.text ?? '…', ok: e.result?.ok ?? true, callId: e.callId, ts: e.ts, seq: items.length + 2,
         // 全量观测随档(P8 result.full):detail 展开与 live 同源——旧档无 full 字段自然缺省
@@ -166,7 +168,7 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   }
   // 转录面:seg 行重放 → 消息区重建 + 内核 seed(后续 live 条目 seq 续接,落档零双写)
   const entries = reduceSegRows(parsed.events);
-  const messages = entriesToChatItems(entries, () => ctrl.mdWidth());
+  const messages = entriesToChatItems(entries, () => ctrl.mdWidth(), ctrl.runtime.toolDisplay);
   // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
   ctrl.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
   // 快照回种（2026-10-31 spec §4）：落档快照直注入（不重读磁盘,离场变更留首条提交追尾）;旧档无行/坏包

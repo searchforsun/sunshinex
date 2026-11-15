@@ -1,5 +1,6 @@
 import { SessionEvent } from '../types';
 import { toolCallLine } from './tool-verbs';
+import type { ToolDisplayMeta } from '../harness/tools';
 
 /** 活任务阶段（瞬态不落 journal，规格 §4）：idle=无任务、thinking=等待首 token/动作、responding=正文流式中、tool-pending=有未决调用、tool-awaiting=审批挂起 */
 export type LiveTaskPhase = 'idle' | 'thinking' | 'responding' | 'tool-pending' | 'tool-awaiting';
@@ -21,8 +22,9 @@ export function initialTaskState(): LiveTaskState {
   return { phase: 'idle', activeCalls: [] };
 }
 
-/** 事件流→活任务状态（单点纯函数，规格 §4.2）：只消费三态相关事件，其余零扰动返回原引用 */
-export function applyTaskState(s: LiveTaskState, e: SessionEvent): LiveTaskState {
+/** 事件流→活任务状态（单点纯函数，规格 §4.2）：只消费三态相关事件，其余零扰动返回原引用。
+ *  meta 显式注入（P2 Task 1 去单例）：调用方传 runtime.toolDisplay（缺省回落进程级兜底表） */
+export function applyTaskState(s: LiveTaskState, e: SessionEvent, meta?: Readonly<Record<string, ToolDisplayMeta>>): LiveTaskState {
   switch (e.type) {
     case 'model-start':
       return { phase: 'thinking', activeCalls: [] };
@@ -35,7 +37,7 @@ export function applyTaskState(s: LiveTaskState, e: SessionEvent): LiveTaskState
       const call: ActiveCall = {
         callId,
         verb: e.text ?? '',
-        target: toolCallLine(e.text ?? '', e.payload?.input),
+        target: toolCallLine(e.text ?? '', e.payload?.input, meta),
         startedAt: Date.now(),
       };
       return { phase: 'tool-pending', activeCalls: [...s.activeCalls, call] };

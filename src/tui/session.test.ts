@@ -296,6 +296,7 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
         seen.push(o?.tier);
         return base;
       },
+      toolDisplay: {},
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
@@ -330,6 +331,7 @@ test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 
     const fake: KernelRuntime = {
       harness,
       runTask: async () => base,
+      toolDisplay: {},
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const sw = new ModelSwitcher({
@@ -395,6 +397,7 @@ test('会话控制器：/model-effort 八项单选即选即切，default 清除�
         seenEfforts.push(o?.effort);
         return base;
       },
+      toolDisplay: {},
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
@@ -438,6 +441,7 @@ test('会话控制器：装配级 tier 作为初始档位并下传任务', async
         seen.push(o?.tier);
         return { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
       },
+    toolDisplay: {},
     runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake, tier: 'medium' });
@@ -594,6 +598,7 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
     const fake: KernelRuntime = {
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
+      toolDisplay: {},
       runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
     };
     const ctrl = new SessionController({ root: tmp, runtime: fake });

@@ -190,3 +190,28 @@ test('fork 子代 kind 继承：sunx 装配 fork child 稳定段带 Sunx 身份�
     fs.rmSync(tmp2, { recursive: true, force: true });
   }
 });
+
+test('呈现表去单例（P2 Task 1）：混合 kind 两次 assemble 各自返回各自 toolDisplay——互不覆盖', () => {
+  const tmp = mktmp('sunshinex-sunxface-tooldisp-');
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
+  try {
+    const model = new ScriptedAdapter(['{"done":true,"reply":"ok"}']);
+    const rtSunx = createKernelRuntime({ root: tmp, kind: 'sunx', model });
+    assert.equal(rtSunx.toolDisplay['dispatch_task']?.verb, 'DISPATCH', 'sunx 表=白名单面装配快照');
+    assert.equal(rtSunx.toolDisplay['exec'], undefined, 'sunx 表零执行面');
+    // standard 后装配：返回值各自持表（旧病灶=进程级单表末装配者胜——sunx 会话呈现回退大写原名）
+    const rtStd = createKernelRuntime({ root: tmp, model });
+    assert.equal(rtStd.toolDisplay['dispatch_task'], undefined, 'standard 表零分派件');
+    assert.notEqual(rtStd.toolDisplay['exec'], undefined, 'standard 表含执行面');
+    assert.equal(rtSunx.toolDisplay['dispatch_task']?.verb, 'DISPATCH', '去单例核心钉：两次 assemble 后 sunx 表仍持自身面');
+    // 显式注入消费：toolCallLine 第三参按各自表出动词；进程级兜底已为末装配 standard 面（daemon 路径不再依赖全局）
+    assert.equal(toolCallLine('dispatch_task', {}, rtSunx.toolDisplay), 'DISPATCH', '显式注入按 sunx 表取分派动词');
+    assert.equal(toolCallLine('exec', { command: 'ls' }, rtStd.toolDisplay), 'EXEC ls', '显式注入按 standard 表取执行动词');
+    assert.equal(toolCallLine('dispatch_task', {}), 'DISPATCH_TASK', '全局兜底=末装配 standard 面（大写原名 fallback），混合 kind 下不再作正确性依赖');
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
