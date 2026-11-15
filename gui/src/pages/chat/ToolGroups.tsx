@@ -42,10 +42,11 @@ function conciseSummary(seg: ChatEntry[]): [string, string] {
 function ConciseIcon(): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="concise-icon">
-      {/* 后方方块(右上)+前方方块(左下,吃页面底色盖住交叠段=交织观感);描边/底色显式取令牌,
-          不走 currentColor 继承——2026-11-14 用户实测图标显红色线(currentColor 被上层色染)根修 */}
+      {/* 真织纹(2026-11-14 用户裁定「与复制按钮有所区别」):前块吃页面底色遮住后块底边(穿下),
+          再单独重描后块左边线的交叠段(穿上)——两向交替=互压互穿,非 Copy 的双框错位 */}
       <rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.4" />
       <rect x="1.5" y="5.5" width="9" height="9" rx="1.5" fill="var(--surface)" stroke="var(--fg-icon)" strokeWidth="1.4" />
+      <path d="M 5.5 6.5 L 5.5 9.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.4" />
     </svg>
   );
 }
@@ -246,52 +247,62 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   const anyRunning = foldable && seg.some((e) => executingOf(e));
   /** 展开态跨渲染保持 */
   const [segOpen, setSegOpen] = useState(false);
+  const segNodes = nodes.map((n) => {
+    if (n.type === 'entry') {
+      if (n.entry.kind === 'thinking') return renderThinking(n.entry);
+      if (n.entry.kind === 'assistant') return renderAssistant(n.entry);
+      return (renderEntry ?? renderAssistant)(n.entry);
+    }
+    if (n.type === 'tool') return renderTool(n.entry);
+    const isOpen = expanded.has(n.gkey);
+    const meta = GROUP_META[n.kind];
+    const Icon = meta.icon;
+    const [en, zh] = meta.label(n.entries.length);
+    // 任一成员在跑 = 组头流光（用户裁定:有一个文件显示运行中,折叠行即显流光状态）
+    const executing = n.entries.some((e) => executingOf(e));
+    return (
+      <div key={n.gkey} className={`tool-group${executing ? ' executing' : ''}`}>
+        <button
+          type="button"
+          className={`tool-group-head${isOpen ? ' open' : ''}`}
+          aria-expanded={isOpen}
+          onClick={(e) => toggleGroup(n.gkey, e.currentTarget)}
+        >
+          <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+          {/* key=计数：计数增长即重挂重播 pop 动画（语言切换不换 key 不重播）;运行中=流光文字 */}
+          <span className="tool-group-label" key={n.entries.length}>
+            <span className={executing ? 'exec-running-text' : undefined}>{t(en, zh)}</span>
+          </span>
+          <ChevronRight className="tool-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+        {/* 成员平级铺开：透明网格容器仅作 0fr→1fr 高度动画（与 tool-body 同配方），零视觉嵌套 */}
+        <div className={`tool-group-members${isOpen ? ' open' : ''}`} aria-hidden={!isOpen}>
+          <div className="tool-group-members-inner">{n.entries.map((e) => renderTool(e))}</div>
+        </div>
+      </div>
+    );
+  });
+  const inner = <div className="seg-inner">{segNodes}</div>;
   return (
     <div className={`seg-collapse${closed ? '' : ' open'}`}>
-      {foldable && !anyRunning && (
-        <ConciseFold
-          open={segOpen}
-          onToggle={() => setSegOpen((v) => !v)}
-          summary={conciseSummary(seg)}
-        />
+      {foldable ? (
+        // 2026-11-14 结构重修:concise 折叠=ConciseFold 头+concise-body(单子链 grid 0fr/1fr——
+        // 此前把折叠类挂 seg-inner 多子容器上,grid 行高只作用首行=空占位/相互覆盖根因)
+        <div className="concise-wrap">
+          {!anyRunning && (
+            <ConciseFold
+              open={segOpen}
+              onToggle={() => setSegOpen((v) => !v)}
+              summary={conciseSummary(seg)}
+            />
+          )}
+          <div className={`concise-body${segOpen && !anyRunning ? ' open' : ''}`}>
+            <div className="concise-body-inner">{inner}</div>
+          </div>
+        </div>
+      ) : (
+        inner
       )}
-      <div className={`seg-inner${foldable && !anyRunning && !segOpen ? ' concise-hidden' : ''}${foldable ? ' concise-body' : ''}`}>
-        {nodes.map((n) => {
-          if (n.type === 'entry') {
-            if (n.entry.kind === 'thinking') return renderThinking(n.entry);
-            if (n.entry.kind === 'assistant') return renderAssistant(n.entry);
-            return (renderEntry ?? renderAssistant)(n.entry);
-          }
-          if (n.type === 'tool') return renderTool(n.entry);
-          const isOpen = expanded.has(n.gkey);
-          const meta = GROUP_META[n.kind];
-          const Icon = meta.icon;
-          const [en, zh] = meta.label(n.entries.length);
-          // 任一成员在跑 = 组头流光（用户裁定:有一个文件显示运行中,折叠行即显流光状态）
-          const executing = n.entries.some((e) => executingOf(e));
-          return (
-            <div key={n.gkey} className={`tool-group${executing ? ' executing' : ''}`}>
-              <button
-                type="button"
-                className={`tool-group-head${isOpen ? ' open' : ''}`}
-                aria-expanded={isOpen}
-                onClick={(e) => toggleGroup(n.gkey, e.currentTarget)}
-              >
-                <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
-                {/* key=计数：计数增长即重挂重播 pop 动画（语言切换不换 key 不重播）;运行中=流光文字 */}
-                <span className="tool-group-label" key={n.entries.length}>
-                  <span className={executing ? 'exec-running-text' : undefined}>{t(en, zh)}</span>
-                </span>
-                <ChevronRight className="tool-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
-              </button>
-              {/* 成员平级铺开：透明网格容器仅作 0fr→1fr 高度动画（与 tool-body 同配方），零视觉嵌套 */}
-              <div className={`tool-group-members${isOpen ? ' open' : ''}`} aria-hidden={!isOpen}>
-                <div className="tool-group-members-inner">{n.entries.map((e) => renderTool(e))}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }, segPropsEqual);

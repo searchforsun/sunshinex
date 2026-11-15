@@ -2317,10 +2317,12 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-fold-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .concise-fold .tool-chev { transition: transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-fold.open .tool-chev { transform: rotate(90deg); }
-.seg-inner.concise-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.seg-inner.concise-body > * { min-height: 0; }
-.seg-inner.concise-hidden.concise-body { grid-template-rows: 0fr; }
-.seg-inner.concise-hidden { overflow: hidden; }
+/* 单子链 grid 0fr/1fr(2026-11-14 结构重修:折叠类挂 seg-inner 多子容器=空占位根因,改挂
+   concise-body 单子链——header 在折叠体之外不受行高影响) */
+.concise-wrap { display: flex; flex-direction: column; }
+.concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+.concise-body.open { grid-template-rows: 1fr; }
+.concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; color: var(--fg-icon); } /* 显式令牌兜底:图标色恒 fg-icon,不被上层 color 染红 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
