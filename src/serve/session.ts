@@ -319,9 +319,13 @@ export class SessionRuntime {
    *  journal wake-schedule 机制行回放——已触发（firedAt 终态行在场）跳过，未触发项 re-arm；
    *  fireAt 已过（daemon 停机跨越）=R7 错过：到点即补发一次并在通知文注明延迟时长
    *  （TimerController.arm 对过期 fireAt 延迟 0 异步即发，迟到时长现算）。多枚未触发档行按行序
-   *  逐枚入位（单活跃位替换语义，末行为准） */
+   *  逐枚入位（单活跃位替换语义，末行为准）。id 计数器随回放播种存档最大位（fix round 1）——
+   *  每实例 scheduleSeq 归零，不播种则重启后首铸 sched-1 必撞存档 id（by-id 末行映射遮蔽存档
+   *  审计史；撞存活调度时替换终态行守卫 prev.id!==rec.id 还会漏落终态行） */
   rearmSchedules(rows: ReadonlyArray<SegRowLike>): void {
     for (const rec of reduceWakeScheduleRows(rows)) {
+      const m = /^sched-(\d+)$/.exec(rec.id);
+      if (m !== null) this.scheduleSeq = Math.max(this.scheduleSeq, Number(m[1]));
       if (rec.firedAt !== undefined) continue;
       this.armScheduleRecord(rec);
     }

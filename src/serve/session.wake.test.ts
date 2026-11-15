@@ -10,6 +10,7 @@ import type { ModelAdapter, UsageHooks } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionKind } from '../types';
 import { wakeOfRun, scheduledWakeOfRun, SCHEDULE_WAKE_TAG } from '../session/wake';
 import { isQuietNotice } from '../session/entry';
+import { reduceWakeScheduleRows } from '../session/seglog';
 import { WAKE_HINT } from '../harness/tasks';
 import { SessionJournal, parseJournalFile } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
@@ -745,34 +746,74 @@ test('sunx schedule_task 到点派发→完成→正常唤醒闭环：fork 通�
   }
 });
 
-test('attach 重布防：未触发 re-arm（R7 停机跨越补发一次注明延迟/未来时刻准点）；已触发（firedAt 终态行）不重发', async () => {
-  const model = new ScriptedAdapter([{ content: 'scheduled reply', toolCalls: [] }]);
+test('attach 重布防：未触发 re-arm（R7 停机跨越补发一次注明延迟/未来时刻准点）；已触发（firedAt 终态行）不重发；重启后新铸 id 不与存档撞', async () => {
+  // 存档行钉低位 id（sched-1/2/3）——无播种时重启后首铸 sched-1 必撞：by-id 映射遮蔽存档终态史。
+  // fix round 1：rearmSchedules 播种计数器=存档最大位 → 新铸 sched-4，存档三史完整可辨
+  const model = new ScriptedAdapter([
+    { content: 'scheduled reply', toolCalls: [] }, // R7 补发轮（sched-1）
+    { content: 'soon reply', toolCalls: [] }, // 准点重布防轮（sched-2）
+    { content: '', toolCalls: [{ name: 'schedule_wakeup', args: { note: 'fresh after restart', delay_seconds: 3600, at_iso: null } }] }, // 重启后新铸（sched-3 已触发不重发——零轮消耗）
+    { content: 'armed after restart', toolCalls: [] },
+  ]);
   await withSession(model, async (ctx) => {
     const ctl = ctx.session;
     const entries = () => ctl.sessionKernel.replay();
     ctl.attachJournal(new SessionJournal(resolveDataDir(ctx.tmp))); // 重启模拟：B 会话挂同档（firedAt 补行须经挂载 journal）
+    ctl.ensureJournalMinted(); // 先铸档：存档行落盘须有档 id
     const now = Date.now();
+    // 存档行落盘（第二实例写同一档——重启前旧进程的既存行；sched-3 携 firedAt=已触发）
+    const seed = new SessionJournal(resolveDataDir(ctx.tmp));
+    seed.attach(ctl.attachedJournalId!);
+    seed.log({ t: 'wake-schedule', id: 'sched-1', fireAt: now - 5_000, note: 'restarted mid-sleep' });
+    seed.log({ t: 'wake-schedule', id: 'sched-2', fireAt: now + 250, note: 'soon after restart' });
+    seed.log({ t: 'wake-schedule', id: 'sched-3', fireAt: now - 9_000, note: 'already fired before restart', firedAt: now - 8_000 });
+    // 重布防输入=盘上行（真重启语义：daemon 读档重播，非测试手递行）。R7 先行单放（单活跃位下
+    // 多枚未触发行按序替换——逐枚等 fire 收束后再放下一枚，防后行替换前行）
+    ctl.rearmSchedules(journalRows(ctl).filter((r) => r.t === 'wake-schedule' && r.id === 'sched-1'));
     // R7 停机跨越：fireAt 早于重启时刻 5s 且无 firedAt → re-arm 即补发一次，通知文注明延迟时长
-    ctl.rearmSchedules([{ t: 'wake-schedule', id: 'sched-9', fireAt: now - 5_000, note: 'restarted mid-sleep' }]);
     await waitFor(() => scheduleNotices(entries()).length > 0, 10_000);
     await waitFor(() => ctl.status() === 'idle', 15_000);
     const late = scheduleNotices(entries())[0]!.md;
     assert.match(late, /Scheduled wake \(not a user message\): restarted mid-sleep/);
     assert.match(late, /This wake fired late by 5s; handle accordingly\./, 'R7：注明延迟时长');
+    const s1Now = reduceWakeScheduleRows(journalRows(ctl)).find((r) => r.id === 'sched-1'); // 按 id 末行=终态史
     assert.notEqual(
-      journalRows(ctl).find((r) => r.t === 'wake-schedule' && r.id === 'sched-9')?.firedAt,
+      s1Now?.firedAt,
       undefined,
       '补发即落终态行（下次重启不重发——「补发一次」语义）',
     );
-    // 未来时刻：re-arm 后准点触发，无延迟注明
-    ctl.rearmSchedules([{ t: 'wake-schedule', id: 'sched-10', fireAt: Date.now() + 250, note: 'soon after restart' }]);
+    // 全行重放（生产形态）：sched-1 已触发跳过、sched-2 re-arm 后准点触发（无延迟注明）、sched-3 已触发跳过
+    ctl.rearmSchedules(journalRows(ctl));
     await waitFor(() => scheduleNotices(entries()).length === 2, 10_000);
     await waitFor(() => ctl.status() === 'idle', 15_000);
     assert.equal(scheduleNotices(entries())[1]!.md.includes('fired late'), false, '准点重布防不注明延迟');
-    // 已触发（firedAt 终态行在场）：重布防跳过——永不重发（负向断言只能有界等待）
-    ctl.rearmSchedules([{ t: 'wake-schedule', id: 'sched-8', fireAt: now - 9_000, note: 'already fired before restart', firedAt: now - 8_000 }]);
+    // 已触发（firedAt 终态行在场）：全行重放跳过——永不重发（负向断言只能有界等待）
+    ctl.rearmSchedules(journalRows(ctl));
     await new Promise((r) => setTimeout(r, 1_200));
     assert.equal(scheduleNotices(entries()).length, 2, '已触发调度不重发');
     assert.equal(ctl.status(), 'idle');
-  });
+    // 重启后工具新铸：计数器已从存档最大位（sched-3）播种 → sched-4（无播种=撞 sched-1 遮蔽存档史）
+    assert.equal(ctl.submit('arm a fresh schedule').ok, true);
+    await waitFor(() => {
+      const rec = entries().find((e) => e.kind === 'tool' && e.result !== undefined && (e.result.full ?? e.result.text).startsWith('scheduled wakeup'));
+      return rec !== undefined;
+    }, 15_000);
+    await waitFor(() => ctl.status() === 'idle', 15_000);
+    const receipt = entries()
+      .filter((e) => e.kind === 'tool' && e.result !== undefined && (e.result.full ?? e.result.text).startsWith('scheduled wakeup'))
+      .map((e) => e.result!.full ?? e.result!.text)
+      .join('\n');
+    assert.match(receipt, /scheduled wakeup sched-4 at /, '新铸 id=存档最大位+1（fix round 1 播种）');
+    assert.equal(receipt.includes('sched-1'), false, '不得撞存档 sched-1');
+    // 存档三史完整可辨（by-id 末行不被新铸遮蔽）+ 新调度在册
+    const records = reduceWakeScheduleRows(journalRows(ctl));
+    assert.deepEqual(
+      records.map((r) => r.id).sort(),
+      ['sched-1', 'sched-2', 'sched-3', 'sched-4'],
+      '存档史不被新铸 id 遮蔽（四 id 各自独立）',
+    );
+    const s1 = records.find((r) => r.id === 'sched-1');
+    assert.notEqual(s1?.firedAt, undefined, '存档 sched-1 终态史保留（新铸不复活/不合并）');
+    assert.equal(records.find((r) => r.id === 'sched-4')?.firedAt, undefined, '新调度未触发态在册');
+  }, { kind: 'sunx' }); // sunx 装配：schedule_wakeup 在面（arm 经真实工具路径）
 });
