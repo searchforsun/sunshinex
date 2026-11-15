@@ -111,6 +111,11 @@ export interface SegRowLike {
   note?: unknown;
   taskSpec?: unknown;
   firedAt?: unknown;
+  /** pending 机制行载荷（2026-11-15 sunx P2 Task 4;同下 pid/req/outcome——行面字段不予信任,
+   *  kind 键与 seg 行共用 unknown 透传位,由 t 判别） */
+  pid?: unknown;
+  req?: unknown;
+  outcome?: unknown;
   upToSeq?: unknown;
   stopped?: unknown;
   endedTs?: unknown;
@@ -323,6 +328,103 @@ export function reduceWakeScheduleRows(rows: ReadonlyArray<SegRowLike>): WakeSch
     });
   }
   return [...byId.values()];
+}
+
+// ===== 挂起持久化（2026-11-15 sunx P2 Task 4）：pending-open/pending-resolve 机制行读面（attach 回放素材源） =====
+
+/** pending 机制行挂起种类（与 SnapshotPendingRow/挂起表三态同源——serve/session 挂起面判定单点） */
+export type PendingRowKind = 'ask' | 'approval' | 'plan-approval';
+
+/** 恢复轮素材（attach 回放面产出——Task 5 恢复轮 notice 消费;凡界面可见皆落库延伸的挂起形态）:
+ *  pid=存档铸造票据（审计寻址键,新 run 不复用）;title=人读面（ask=question 原文/approval=subject/
+ *  plan-approval=name ?? 计划书首行）;options/askedBy 仅 ask 携带（问题原文+选项+归因=裁定 ② 的
+ *  素材全量——恢复后的 Sunx 在新 run 重新处理,不复活原 promise） */
+export interface PendingMaterial {
+  pid: string;
+  kind: PendingRowKind;
+  title: string;
+  /** ask 选项 label 列（人读面;非 ask 或空列缺席） */
+  options?: string[];
+  /** ask 发起方归因（子智能体问线直通主对话,2026-11-14;主链直问/非 ask 缺席） */
+  askedBy?: { label: string; taskId?: string };
+}
+
+/** 已决挂起审计行（已答的行仅审计——裁定 ①;material 同构+outcome 结果摘要,入 resolved 列） */
+export type PendingResolved = PendingMaterial & { outcome: string };
+
+/** pending 机制行读面视图:open=未决（daemon 重启蒸发在内存表,档上 open 行无 resolve 对位=未决态）
+ *  ——attach 回放转恢复轮素材（不复活 promise,不重建挂起表,不重发挂起帧）;resolved=已决（仅审计） */
+export interface PendingRowsView {
+  open: PendingMaterial[];
+  resolved: PendingResolved[];
+}
+
+/** pending-open 行素材提取（行面字段不予信任,逐字段严判——坏行整行弃）:pid/kind 任一缺席或非法、
+ *  req 非对象、或人读面 title 提取不出（ask 缺 question/approval 缺 subject/plan 卡 doc 全空行）
+ *  即弃——素材本质缺席的行无审计/恢复价值,宁缺勿造 */
+function pendingMaterialOf(pid: unknown, kind: unknown, rawReq: unknown): PendingMaterial | undefined {
+  const id = str(pid);
+  if (id === undefined || id === '') return undefined;
+  if (kind !== 'ask' && kind !== 'approval' && kind !== 'plan-approval') return undefined;
+  if (rawReq === undefined || rawReq === null || typeof rawReq !== 'object') return undefined;
+  const req = rawReq as Record<string, unknown>;
+  if (kind === 'ask') {
+    const question = str(req.question);
+    if (question === undefined || question === '') return undefined;
+    const options = Array.isArray(req.options)
+      ? req.options.map((o) => (o !== null && typeof o === 'object' ? str((o as Record<string, unknown>).label) : undefined)).filter((x): x is string => x !== undefined)
+      : [];
+    const by = req.askedBy !== null && typeof req.askedBy === 'object' ? (req.askedBy as Record<string, unknown>) : undefined;
+    const label = by !== undefined ? str(by.label) : undefined;
+    const taskId = by !== undefined ? str(by.taskId) : undefined;
+    return {
+      pid: id,
+      kind,
+      title: question,
+      ...(options.length > 0 ? { options } : {}),
+      ...(label !== undefined && label !== '' ? { askedBy: { label, ...(taskId !== undefined && taskId !== '' ? { taskId } : {}) } } : {}),
+    };
+  }
+  if (kind === 'approval') {
+    const subject = str(req.subject);
+    if (subject === undefined || subject === '') return undefined;
+    return { pid: id, kind, title: subject };
+  }
+  // plan-approval：name 缺席回落计划书首个非空行（derivePlanName 同构的人读兜底——档面不再派生名）
+  const name = str(req.name);
+  const doc = str(req.doc) ?? '';
+  const firstLine = doc.split('\n').map((l) => l.trim()).find((l) => l !== '');
+  const title = name !== undefined && name !== '' ? name : firstLine;
+  if (title === undefined || title === '') return undefined;
+  return { pid: id, kind, title };
+}
+
+/** pending 机制行读面（P2 Task 4,与 reduceWakeScheduleRows 同构单点）：按 pid 配对——open 行登记
+ *  素材（同 pid 末行为准）,resolve 行即配对终结（移入 resolved 列,行序=审计序）。孤儿 resolve
+ *  （无 open 对位——open 行写失败/档撕裂）弃:kind/title 不可知,不伪造素材（行面字段不予信任）。
+ *  坏行逐条跳过不炸读面;旧档无此行=空视图（行为不变）。写面=serve/session logPendingRow 直落
+ *  journal（wake-schedule 同先例——挂起非内核转录事件,不经 kernelEventRows） */
+export function reducePendingRows(rows: ReadonlyArray<SegRowLike>): PendingRowsView {
+  const open = new Map<string, PendingMaterial>();
+  const resolved: PendingResolved[] = [];
+  for (const row of rows) {
+    if (row.t === 'pending-open') {
+      const m = pendingMaterialOf(row.pid, row.kind, row.req);
+      if (m === undefined) continue;
+      open.set(m.pid, m);
+      continue;
+    }
+    if (row.t === 'pending-resolve') {
+      const pid = str(row.pid);
+      const outcome = str(row.outcome);
+      if (pid === undefined || outcome === undefined || outcome === '') continue;
+      const m = open.get(pid);
+      if (m === undefined) continue; // 孤儿 resolve（无 open 对位）弃——不伪造素材
+      open.delete(pid);
+      resolved.push({ ...m, outcome });
+    }
+  }
+  return { open: [...open.values()], resolved };
 }
 
 // ===== 崩溃兜底回灌(2026-10-30 spec §2):seg 面有而链没有的在飞窗口 → 链行 =====

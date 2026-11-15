@@ -19,8 +19,8 @@ import type { SessionJournal, JournalEvent } from '../tui/session-journal';
 import * as fs from 'fs';
 import type { SnapshotEntry } from '../tui/session-journal';
 import { SessionKernel, isShadowEvent, type KernelEvent, type SteerItem } from '../session/kernel';
-import { kernelEventRows, reduceWakeScheduleRows } from '../session/seglog';
-import type { SegRowLike, WakeScheduleRecord } from '../session/seglog';
+import { kernelEventRows, reduceWakeScheduleRows, reducePendingRows } from '../session/seglog';
+import type { SegRowLike, WakeScheduleRecord, PendingMaterial } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { sanitizeTurn } from '../session/entry';
 import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification, buildScheduleWakeNotification, SCHEDULE_WAKE_GOAL } from '../session/wake';
@@ -279,6 +279,18 @@ export class SessionRuntime {
     }
   }
 
+  /** pending 机制行落档单点（2026-11-15 sunx P2 Task 4,wake-schedule 同先例——挂起非内核转录事件，
+   *  不经 kernelEventRows）：suspend 入口落 pending-open、resolve/deny 出口落 pending-resolve。
+   *  尽力而为落档纪律：写失败不影响挂起运行面（帧广播照常）。journal 未挂载（测试直构）即丢弃 */
+  private logPendingRow(row: { t: 'pending-open'; pid: string; kind: 'ask' | 'approval' | 'plan-approval'; req: unknown } | { t: 'pending-resolve'; pid: string; outcome: string }): void {
+    try {
+      this.ensureMintedWithBirth(); // 挂起行也是实质事件（审计①）——档未铸先铸（幂等,首行已铸则 no-op）
+      this.journal?.log(row);
+    } catch {
+      // 尽力落档：挂起行写失败不阻断挂起/回执运行面
+    }
+  }
+
   /** 到点回调（TimerController fire 接缝）：plan 武装态不受理（留位待下次轮收束——submitWake 同判定）
    *  → 连续唤醒上限计入（触顶=调度终结[落终态行防重放重发]、放弃起轮——定时唤醒受同一防循环约束）
    *  → schedule_task 先 fork 派发（dispatch fork 通道同款路径 forkDispatch 单点）→ 起定时唤醒轮
@@ -329,6 +341,32 @@ export class SessionRuntime {
       if (rec.firedAt !== undefined) continue;
       this.armScheduleRecord(rec);
     }
+  }
+
+  /** 恢复轮素材清单（2026-11-15 sunx P2 Task 4）：attach 回放产出——journal pending 机制行中**未决**
+   *  （open 无 resolve 对位=daemon 重启蒸发的挂起）转成素材（问题原文+选项+askedBy 归因），由恢复后
+   *  的 Sunx 在新 run 重新处理（Task 5 接线消费）。裁定 ②：**不复活 promise**——不重建挂起表、不重发
+   *  挂起帧（executor 已死,复活无消费者;GUI 卡不复活）,本字段是唯一产出物。裁定 ④：standard/sunx
+   *  同产（行面/回放面普适）,素材消费（恢复轮 notice）限 sunx（Task 5 范围）。生命周期（裁定 3）：
+   *  attach 时产出 → Task 5 恢复轮消费后 clearPendingMaterial 清空;幂等——素材由行推导非累加态,
+   *  下一次 attach 前再重启则重产（seedPendingMaterials 整列替换） */
+  private pendingMaterials: PendingMaterial[] = [];
+
+  /** 素材清单外窥（Task 5 恢复轮 notice 消费接口） */
+  pendingMaterial(): PendingMaterial[] {
+    return this.pendingMaterials;
+  }
+
+  /** 素材清单清空（Task 5 恢复轮消费后调用——素材单次消费语义） */
+  clearPendingMaterial(): void {
+    this.pendingMaterials = [];
+  }
+
+  /** attach 回放单点（session-lifecycle.attachSessionIn 在 rearmSchedules 之后调用,同区并列）：
+   *  journal 全量行 → reducePendingRows → 未决素材整列替换（旧档无行=空列,行为不变;已决行仅审计
+   *  不入素材）。纯内存赋值零副作用——不 pump 不广播不落档 */
+  seedPendingMaterials(rows: ReadonlyArray<SegRowLike>): void {
+    this.pendingMaterials = reducePendingRows(rows).open;
   }
 
   /** 板任务名解析（daemon 侧板投影）：台账 label(dispatchTag) → 板 id → 板存储 title；缺省 undefined=无名 */
@@ -749,6 +787,7 @@ export class SessionRuntime {
     return new Promise((resolve) => {
       const pid = this.opts.mintPid();
       this.pending.set(pid, { kind: 'approval', req, resolve });
+      this.logPendingRow({ t: 'pending-open', pid, kind: 'approval', req }); // 挂起持久化（Task 4）：落档先于广播（行集恒为全量真源）
       const frame: ApprovalFrame = { kind: 'approval', sessionId: this.id, pid, req };
       this.opts.broadcast(frame);
     });
@@ -761,6 +800,7 @@ export class SessionRuntime {
     return new Promise((resolve) => {
       const pid = this.opts.mintPid();
       this.pending.set(pid, { kind: 'ask', req, resolve });
+      this.logPendingRow({ t: 'pending-open', pid, kind: 'ask', req }); // 挂起持久化（Task 4）：question/options/askedBy 原件随行（恢复轮素材源）
       const frame: AskFrame = { kind: 'ask', sessionId: this.id, pid, req };
       this.opts.broadcast(frame);
     });
@@ -776,6 +816,7 @@ export class SessionRuntime {
     return new Promise((resolve) => {
       const pid = this.opts.mintPid();
       this.pending.set(pid, { kind: 'plan-approval', req: card, resolve });
+      this.logPendingRow({ t: 'pending-open', pid, kind: 'plan-approval', req: card }); // 挂起持久化（Task 4）：同 approval/ask 落档先于广播
       const frame: PlanApprovalFrame = { kind: 'plan-approval', sessionId: this.id, pid, req: card };
       this.opts.broadcast(frame);
     });
@@ -788,6 +829,9 @@ export class SessionRuntime {
     const entry = this.pending.get(pid);
     if (entry === undefined || entry.kind !== 'plan-approval') return false;
     this.pending.delete(pid);
+    // 挂起持久化（Task 4）：resolve 行落档先于回填——裁决审计行先于 executor 恢复产生的任何续跑行
+    const feedback = (decision.feedback ?? '').trim();
+    this.logPendingRow({ t: 'pending-resolve', pid, outcome: decision.approved ? 'approved' : feedback !== '' ? `rejected: ${feedback}` : 'dismissed' });
     // 落档钩（2026-11-03 无感化;2026-11-04 泛化）:**批准在 executor 恢复前落档**——exit override+
     // 真档 setBaseMode+arm 解除+todos 按 Steps 播种;此后 executor 恢复,模型以已放权的档位同 run
     // 无感继续实施。mode 缺省=当前档（可写域两键卡语义:批准=维持当前档实施;只读域缺省回落
@@ -821,6 +865,7 @@ export class SessionRuntime {
     for (const [pid, entry] of this.pending) {
       if (entry.kind !== 'plan-approval') continue;
       this.pending.delete(pid);
+      this.logPendingRow({ t: 'pending-resolve', pid, outcome: 'dismissed' }); // 挂起持久化（Task 4）：放弃回填同落审计行
       entry.resolve({ approved: false });
     }
   }
@@ -831,6 +876,7 @@ export class SessionRuntime {
     const entry = this.pending.get(pid);
     if (entry === undefined || entry.kind !== 'approval') return false;
     this.pending.delete(pid);
+    this.logPendingRow({ t: 'pending-resolve', pid, outcome: decision }); // 挂起持久化（Task 4）：裁决字面即结果摘要
     entry.resolve(decision);
     this.pump({ type: 'notice', text: `approval ${pid} resolved: ${decision}`, ts: Date.now() });
     return true;
@@ -841,6 +887,9 @@ export class SessionRuntime {
     const entry = this.pending.get(pid);
     if (entry === undefined || entry.kind !== 'ask') return false;
     this.pending.delete(pid);
+    // 挂起持久化（Task 4）：回答三态摘要（selected 列/custom 文本/dismissed）
+    const outcome = answer.type === 'selected' ? `selected: ${answer.labels.join(', ')}` : answer.type === 'custom' ? `custom: ${answer.text}` : 'dismissed';
+    this.logPendingRow({ t: 'pending-resolve', pid, outcome });
     entry.resolve(answer);
     this.pump({ type: 'notice', text: `ask ${pid} answered`, ts: Date.now() });
     return true;
@@ -848,12 +897,21 @@ export class SessionRuntime {
 
   /** 全部未决回填（G4 裁定 3：interrupt/reset=deny 回填——TUI approval.ts 先例）：approval→deny、
    *  ask→dismissed、plan-approval→放弃回填（流程凭中止信号走 aborted,产物不注入）并清表;
-   *  不发 notice（中止路径的观察行由 run 自身事件面承载） */
+   *  不发 notice（中止路径的观察行由 run 自身事件面承载）。挂起持久化（Task 4）：deny 回填同落
+   *  resolve 行（outcome=denied/dismissed——与用户显式回执 deny 区分,审计完整）;行先于回填落,
+   *  审计序在 executor 恢复产生的续跑行之前 */
   denyPending(): void {
-    for (const entry of this.pending.values()) {
-      if (entry.kind === 'approval') entry.resolve('deny');
-      else if (entry.kind === 'ask') entry.resolve({ type: 'dismissed' });
-      else entry.resolve({ approved: false });
+    for (const [pid, entry] of this.pending) {
+      if (entry.kind === 'approval') {
+        this.logPendingRow({ t: 'pending-resolve', pid, outcome: 'denied' });
+        entry.resolve('deny');
+      } else if (entry.kind === 'ask') {
+        this.logPendingRow({ t: 'pending-resolve', pid, outcome: 'dismissed' });
+        entry.resolve({ type: 'dismissed' });
+      } else {
+        this.logPendingRow({ t: 'pending-resolve', pid, outcome: 'dismissed' });
+        entry.resolve({ approved: false });
+      }
     }
     this.pending.clear();
   }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reduceSteerRows, reduceSegRows, kernelEventRows, crashWindowEntries, entriesToChainSteps, reduceWakeScheduleRows } from './seglog';
+import { reduceSteerRows, reduceSegRows, kernelEventRows, crashWindowEntries, entriesToChainSteps, reduceWakeScheduleRows, reducePendingRows } from './seglog';
 import { SessionKernel } from './kernel';
 import type { KernelEvent } from './kernel';
 import type { KernelEntry } from './entry';
@@ -384,6 +384,72 @@ test('旧档无 wake-schedule 行=行为不变：reduceWakeScheduleRows 空列 +
   const entries = reduceSegRows([
     { t: 'seg', kind: 'user', md: 'hello', ts: 1, seq: 1 },
     { t: 'wake-schedule', id: 'sched-1', fireAt: 1, note: 'n' },
+  ] as SegRowLike[]);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]!.kind, 'user');
+});
+
+// ---- sunx 挂起持久化（2026-11-15 P2 Task 4）：pending-open/pending-resolve 机制行往返 + 恢复轮素材读面 ----
+
+test('pending 行往返：open/resolved 按 pid 配对逐字段恒等（ask 素材含 options/askedBy）+ 未决留 open', () => {
+  // 写面形态（serve/session.logPendingRow 直落——wake-schedule 同先例，非内核转录事件）：
+  // suspend 入口落 open（req 原件随行）、resolve/deny 出口落 resolve（pid+结果摘要）
+  const rows: SegRowLike[] = [
+    {
+      t: 'pending-open',
+      pid: 'p1',
+      kind: 'ask',
+      req: {
+        question: '用哪个数据库？',
+        options: [{ label: 'postgres' }, { label: 'sqlite' }],
+        askedBy: { label: 'alpha', taskId: 't3' },
+      },
+    },
+    { t: 'pending-open', pid: 'p2', kind: 'approval', req: { id: 'ap-1', kind: 'write', subject: 'out/x.txt', reason: 'r' } },
+    { t: 'pending-open', pid: 'p3', kind: 'plan-approval', req: { name: '重构计划', doc: '# 重构计划\n1. 步骤', items: ['步骤'] } },
+    { t: 'pending-resolve', pid: 'p1', outcome: 'selected: postgres' },
+    { t: 'pending-resolve', pid: 'p2', outcome: 'allow' },
+  ];
+  const got = reducePendingRows(rows);
+  // 已决两枚：material 同构 + outcome 摘要，行序=审计序（resolved 列）
+  assert.deepEqual(got.resolved, [
+    { pid: 'p1', kind: 'ask', title: '用哪个数据库？', options: ['postgres', 'sqlite'], askedBy: { label: 'alpha', taskId: 't3' }, outcome: 'selected: postgres' },
+    { pid: 'p2', kind: 'approval', title: 'out/x.txt', outcome: 'allow' },
+  ]);
+  // 未决（open 无 resolve 对位=daemon 重启蒸发的挂起）留 open——恢复轮素材（Task 5 消费）
+  assert.deepEqual(got.open, [{ pid: 'p3', kind: 'plan-approval', title: '重构计划' }]);
+});
+
+test('pending 行人读面提取：ask 缺 name 的 plan 卡回落计划书首行;ask 无 options/askedBy 缺键', () => {
+  const got = reducePendingRows([
+    { t: 'pending-open', pid: 'p4', kind: 'plan-approval', req: { doc: '  # 兜底名  \n1. 步骤', items: [] } },
+    { t: 'pending-open', pid: 'p5', kind: 'ask', req: { question: '裸问题', options: [] } },
+  ]);
+  assert.deepEqual(got.open, [
+    { pid: 'p4', kind: 'plan-approval', title: '# 兜底名' },
+    { pid: 'p5', kind: 'ask', title: '裸问题' },
+  ]);
+});
+
+test('pending 坏行丢弃：缺 pid/kind 非法/req 非对象/素材本质缺席逐条弃;孤儿 resolve（无 open 对位）弃', () => {
+  const got = reducePendingRows([
+    { t: 'pending-open', kind: 'ask', req: { question: 'no pid' } },
+    { t: 'pending-open', pid: 'a', kind: 'bogus', req: { question: 'bad kind' } },
+    { t: 'pending-open', pid: 'b', kind: 'ask', req: 'not-an-object' },
+    { t: 'pending-open', pid: 'c', kind: 'ask', req: { options: [{ label: 'x' }] } }, // 缺 question=素材本质缺席
+    { t: 'pending-open', pid: 'd', kind: 'approval', req: { id: 'ap' } }, // 缺 subject
+    { t: 'pending-resolve', pid: 'ghost', outcome: 'allow' }, // 孤儿 resolve：kind/title 不可知,不伪造
+    { t: 'pending-resolve', pid: 'p1' }, // 缺 outcome
+  ] as SegRowLike[]);
+  assert.deepEqual(got, { open: [], resolved: [] });
+});
+
+test('旧档无 pending 行=行为不变：空视图 + reduceSegRows 忽略 pending 机制行（不入转录）', () => {
+  assert.deepEqual(reducePendingRows([]), { open: [], resolved: [] });
+  const entries = reduceSegRows([
+    { t: 'seg', kind: 'user', md: 'hello', ts: 1, seq: 1 },
+    { t: 'pending-open', pid: 'p1', kind: 'ask', req: { question: 'q' } },
+    { t: 'pending-resolve', pid: 'p1', outcome: 'dismissed' },
   ] as SegRowLike[]);
   assert.equal(entries.length, 1);
   assert.equal(entries[0]!.kind, 'user');

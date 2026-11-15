@@ -285,6 +285,13 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   // （firedAt 终态行）跳过、未触发项 re-arm（fireAt 已过=停机跨越,R7 补发一次注明延迟）。须在
   // attachJournal 之后：到点补发的 firedAt 终态行须经挂载 journal 落档（「补发一次」语义）
   session.rearmSchedules(replayEvents);
+  // 挂起持久化回放（2026-11-15 sunx P2 Task 4,与 rearmSchedules 同区并列）：journal pending-open/
+  // pending-resolve 机制行回放——未决（open 无 resolve 对位=daemon 重启蒸发的挂起）**不复活 promise**
+  // （executor 已死,复活无消费者）：不重建挂起表、不重发挂起帧（GUI 卡不复活）,转成恢复轮素材
+  // （问题原文+选项+askedBy 归因）由恢复后的 Sunx 在新 run 重新处理（Task 5 接线消费）;已决行仅审计。
+  // standard/sunx 同产素材（行面普适）,素材消费（恢复轮 notice）限 sunx（Task 5 范围）。幂等安全——
+  // 素材由行推导非累加态,重复 attach 整列替换
+  session.seedPendingMaterials(replayEvents);
   // 崩溃档兜底回灌（2026-10-30 spec §2）：与 TUI restoreFromSession 同构——seg 面有而链没有的在飞
   // 窗口归约成链行 appendChain（journal attach 之后执行,回灌行经订阅落 chain 行,恢复即持久化）。
   // 正常档窗口恒空、零开销;回灌失败不阻塞 attach——恢复永远可用,只是兜底少一条

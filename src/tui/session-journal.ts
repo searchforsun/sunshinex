@@ -87,6 +87,11 @@ export type JournalEvent =
    *  attach 重布防回放(未触发 re-arm,R7 停机跨越=补发一次注明延迟;已触发跳过)。reduceSegRows 读面
    *  (reduceWakeScheduleRows),reduceJournal 忽略(机制行非转录);旧档无此行=行为不变 */
   | { t: 'wake-schedule'; id: string; fireAt: number; note: string; taskSpec?: string; firedAt?: number }
+  /** 挂起持久化机制行（2026-11-15 sunx P2 Task 4）：suspend 入口落 pending-open（pid/kind/req 原件）、
+   *  resolve/deny 出口落 pending-resolve（pid+结果摘要）——审计①+attach 回放未决转恢复轮素材②
+   *  （reducePendingRows 读面,reduceJournal 忽略——机制行非转录;旧档无此行=行为不变） */
+  | { t: 'pending-open'; pid: string; kind: 'ask' | 'approval' | 'plan-approval'; req: unknown }
+  | { t: 'pending-resolve'; pid: string; outcome: string }
   /** 会话前缀快照落档行(2026-10-31 spec:会话档生命周期快照冻结):items=快照条目,
    *  sig=漂移基线签名;重放末条合法行为准,载荷不合法的行视同不存在(v3 零兼容,未知行双向可忽略) */
   | { t: 'ctx-snap'; items: unknown; sig: unknown };
