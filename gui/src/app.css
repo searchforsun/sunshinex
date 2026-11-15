@@ -1720,6 +1720,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .chat .entry-thinking + .entry-assistant,
 .chat .entry-tool + .entry-assistant,
 .chat .seg-collapse + .entry-assistant { margin-top: 0; }
+/* 2026-11-14 用户实测「正文上下行距不一致」:盒距差 8px 但视觉字距差仅 ~2px(折叠行自带内距
+   吸收了大部分)——正文后段补 2px margin 对齐视觉字距 */
+.chat .entry-assistant + .seg-collapse { margin-top: 2px; }
 /* G14.216b 段后正文首元素收口:标题 md 首行自带 12px 顶 margin 叠加段距,思考/工具行→正文
    视觉断裂(截图实测 ~24px)——首元素顶边距归零+段后 padding-top 收口,恢复 8px 行距意图;
    用户气泡后的正文保持呼吸不动 */
