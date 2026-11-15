@@ -11,6 +11,8 @@ import { INDEX_NAME, memoryDir } from '../memory/store';
 export interface DriftDetectorDeps {
   /** 项目根（说明行 read 指针路径与技能清单读盘基准） */
   root: string;
+  /** 持久化域目录（2026-11-15 sunx P3 注入缝）：记忆漂移说明的 MEMORY.md 指针路径随域；缺席=既有推导 */
+  dataDir?: string;
   /** 全局层 ~/.sunshinex/SUNSHINE.md 原文读盘（不存在或不可读为 null） */
   readGlobalSunshine(): string | null;
   /** 项目层 SUNSHINE.md 原文读盘（语义同上） */
@@ -84,7 +86,7 @@ export class DriftDetector {
     }
     const mem = this.deps.readMemoryIndex();
     if (mem !== this.memoryBaseline) {
-      out.push(this.memoryDriftText(mem, path.join(memoryDir(this.deps.root), INDEX_NAME)));
+      out.push(this.memoryDriftText(mem, path.join(memoryDir(this.deps.root, this.deps.dataDir), INDEX_NAME)));
       this.memoryBaseline = mem;
     }
     return out;

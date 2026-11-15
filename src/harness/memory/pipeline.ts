@@ -22,6 +22,8 @@ type PipelineNotice = (source: 'memory' | 'skills', line: string) => void;
 interface MemoryPipelineDeps {
   model: ModelAdapter;
   root: string;
+  /** 持久化域目录（2026-11-15 sunx P3 注入缝）：记忆提取/整理与容量提醒面随域；缺席=resolveDataDir(root) 既有推导 */
+  dataDir?: string;
   notify: PipelineNotice;
   /** 记忆开关判门（会话级 /memory on|off 覆盖优先于控制面）：逐项消费时求值，不在构造期冻结；缺省读控制面 */
   memoryEnabled?: () => boolean;
@@ -175,6 +177,7 @@ export class MemoryPipeline {
         digest: item.digest,
         model: this.deps.model,
         root: this.deps.root,
+        dataDir: this.deps.dataDir,
         notify: (line) => this.deps.notify('memory', line),
       });
       if (slugs.length > 0) this.deps.notify('memory', this.memoryLine(slugs));
@@ -189,7 +192,7 @@ export class MemoryPipeline {
    *  退役,逐条全名拼行(slugifyMemory 上限 40 字符,量级可控);模型面引用口径不变 */
   private memoryLine(slugs: string[]): string {
     const base = `[memory] saved: ${slugs.join(', ')}`;
-    const near = new MemoryStore(this.deps.root).capacityNotice();
+    const near = new MemoryStore(this.deps.root, { dataDir: this.deps.dataDir }).capacityNotice();
     return near ? `${base} — ${near}` : base;
   }
 }

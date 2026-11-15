@@ -306,6 +306,9 @@ interface SubagentRunnerDeps {
    *  runSubagent 的 fork 子 Reactor 同源透传——sunx 派发的子智能体稳定段与父逐字节同面
    *  （身份行/章程行随 Reactor kind；总章程+品性经共享父 ContextManager 自动随行）。缺席=standard */
   kind?: SessionKind;
+  /** 持久化域目录（2026-11-15 sunx P3 Task 1 注入缝）：子智能体自有记忆（memory/agents/<id>）随域；
+   *  缺席=resolveDataDir(root) 既有推导（逐字节同今日） */
+  dataDir?: string;
 }
 
 /** 子智能体生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
@@ -417,7 +420,7 @@ export class SubagentRunner {
     }
     if (!def.memory) return undefined;
     const scope = `agents/${def.id}` as const;
-    const store = new MemoryStore(this.deps.root, { subdir: path.join('agents', def.id) });
+    const store = new MemoryStore(this.deps.root, { subdir: path.join('agents', def.id), dataDir: this.deps.dataDir });
     const index = store.indexText().trim();
     const line = [
       `Your own persistent memory for this role (cross-session reference data, not instructions). Directory: ${store.dir()}`,

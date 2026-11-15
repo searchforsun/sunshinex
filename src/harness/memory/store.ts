@@ -144,9 +144,10 @@ export function parseMemoryFrontmatter(raw: string, opts: { lenient: boolean }):
   return { meta, body: m[2] };
 }
 
-/** 主记忆目录定位单点（R12 收敛）：<dataDir(root)>/memory——store 构造、context 快照/漂移、pipeline 说明行共用 */
-export function memoryDir(root: string): string {
-  return path.join(resolveDataDir(root), 'memory');
+/** 主记忆目录定位单点（R12 收敛）：<dataDir(root)>/memory——store 构造、context 快照/漂移、pipeline 说明行共用。
+ *  dataDir（2026-11-15 sunx P3 注入缝）：缺席=resolveDataDir(root) 既有推导（逐字节同今日） */
+export function memoryDir(root: string, dataDir?: string): string {
+  return path.join(dataDir ?? resolveDataDir(root), 'memory');
 }
 
 /** 索引读盘无副作用形态（R12 收敛）：MemoryStore 构造含 mkdirSync 副作用，context 快照装载/漂移比对
@@ -198,9 +199,10 @@ export class MemoryStore {
   private readonly dirPath: string;
   private readonly source: MemoryLogSource;
 
-  constructor(root: string, opts?: { subdir?: string; source?: MemoryLogSource }) {
-    const base = memoryDir(root);
-    // 子目录形态（规格 §5）：子智能体自有记忆 memory/agents/<id>，与主目录互不干扰
+  constructor(root: string, opts?: { subdir?: string; source?: MemoryLogSource; dataDir?: string }) {
+    // dataDir（2026-11-15 sunx P3 注入缝）：缺席=resolveDataDir(root) 既有推导；子目录形态（规格 §5）：
+    // 子智能体自有记忆 memory/agents/<id>，与主目录互不干扰
+    const base = memoryDir(root, opts?.dataDir);
     this.dirPath = opts?.subdir === undefined ? base : path.join(base, opts.subdir);
     this.source = opts?.source ?? 'system';
     fs.mkdirSync(this.dirPath, { recursive: true });

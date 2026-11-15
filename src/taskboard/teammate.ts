@@ -55,6 +55,9 @@ export interface TeammateDeps {
   /** 会话形态(2026-11-15 sunx P2 Task 1,spec §17.2):随装配注入(Harness opts.kind → mountTeammate 链),
    *  逐任务 Reactor 稳定段与主链同面——sunx=身份槽替换+编排章程行(Sunx 身份行/章程);缺席=standard 字节不变 */
   kind?: SessionKind;
+  /** 持久化域目录(2026-11-15 sunx P3 Task 1 注入缝):own ContextManager 记忆引导随域(实际写入面经
+   *  derive 共享闭包落 Harness 装配域);缺席=resolveDataDir(root) 既有推导(字节不变) */
+  dataDir?: string;
 }
 
 /** teammate 注册表:帽可配(缺省 DEFAULT_MAX_TEAMMATES,SUNSHINEX_MAX_TEAMMATES 覆盖)+ 名字索引 + 存活聚合(派发路由的退化判据) */
@@ -158,7 +161,8 @@ export class Teammate {
     this.createdAt = opts.createdAt !== undefined && opts.createdAt > 0 ? opts.createdAt : Date.now();
     this.framing = opts.framing;
     this.deps = opts.deps;
-    this.ctx = new ContextManager(opts.deps.root, opts.deps.store);
+    // dataDir 随持久化域(2026-11-15 sunx P3 注入缝):缺席=既有推导
+    this.ctx = new ContextManager(opts.deps.root, opts.deps.store, undefined, opts.deps.dataDir !== undefined ? { dataDir: opts.deps.dataDir } : undefined);
     this.taskTimeoutMs = opts.deps.taskTimeoutMs ?? 30 * 60 * 1000;
     this.inboxCursor = opts.deps.inboxCursors?.load(opts.name) ?? 0;
   }

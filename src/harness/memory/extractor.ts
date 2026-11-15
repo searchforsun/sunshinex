@@ -44,6 +44,8 @@ export async function settleMemory(opts: {
   digest?: string;
   model: ModelAdapter;
   root: string;
+  /** 持久化域目录（2026-11-15 sunx P3 注入缝）：缺席=resolveDataDir(root) 既有推导（逐字节同今日） */
+  dataDir?: string;
   notify?: (line: string) => void;
 }): Promise<string[]> {
   const saved: string[] = [];
@@ -62,7 +64,7 @@ export async function settleMemory(opts: {
             sunshineExcerpt(opts.root),
             (opts.digest ?? '').trim() || '(none)',
             // 既有记录节（2026-10-15 增删改）：模型持 slug 才能更新/退役既有条目，不再只会追加
-            new MemoryStore(opts.root).list().map((r) => ({ slug: r.slug, type: r.type, created: r.created, description: r.description })),
+            new MemoryStore(opts.root, { dataDir: opts.dataDir }).list().map((r) => ({ slug: r.slug, type: r.type, created: r.created, description: r.description })),
           ),
         },
       ],
@@ -72,7 +74,7 @@ export async function settleMemory(opts: {
     if (!call) return saved;
     const candidates = parseItemsPayload(call.argsJson);
     if (!candidates) return saved;
-    const store = new MemoryStore(opts.root, { source: 'extractor' });
+    const store = new MemoryStore(opts.root, { source: 'extractor', dataDir: opts.dataDir });
     const sunshine = sunshineText(opts.root);
     const updated: string[] = [];
     const retracted: string[] = [];
@@ -118,7 +120,7 @@ export async function settleMemory(opts: {
     if (retracted.length > 0) opts.notify?.(`[memory] retracted: ${retracted.join(', ')}`);
     // 整理触发（规格 §5）：同收口串行——先提取入库、后判定阈值整理；阈值未达零调用（consolidateMemory 内部门禁）
     if (store.count() >= MEMORY_CONSOLIDATE_THRESHOLD) {
-      await consolidateMemory({ model: opts.model, root: opts.root, notify: opts.notify });
+      await consolidateMemory({ model: opts.model, root: opts.root, dataDir: opts.dataDir, notify: opts.notify });
     }
   } catch {
     // 旁路纪律：提取任何失败静默降级（saved 保留已入库部分，调用方照常可见）
@@ -238,6 +240,8 @@ function findExistingDuplicate(store: MemoryStore, input: { description: string;
  */
 export function writeMemoryFact(opts: {
   root: string;
+  /** 持久化域目录（2026-11-15 sunx P3 注入缝）：缺席=resolveDataDir(root) 既有推导（逐字节同今日） */
+  dataDir?: string;
   type: string;
   content: string;
   description?: string;
@@ -251,8 +255,8 @@ export function writeMemoryFact(opts: {
   if (!subdir.ok) return subdir;
   const store =
     subdir.value === undefined
-      ? new MemoryStore(opts.root, { source: 'tool' })
-      : new MemoryStore(opts.root, { subdir: subdir.value, source: 'tool' });
+      ? new MemoryStore(opts.root, { source: 'tool', dataDir: opts.dataDir })
+      : new MemoryStore(opts.root, { subdir: subdir.value, source: 'tool', dataDir: opts.dataDir });
 
   if (opts.action === 'delete') {
     if (!opts.slug || !isSafeSlug(opts.slug)) return fail('MEMORY_SLUG_INVALID', 'delete requires the slug of an existing record');

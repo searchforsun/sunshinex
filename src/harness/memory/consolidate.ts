@@ -25,6 +25,8 @@ interface MergedCandidate {
 export async function consolidateMemory(opts: {
   model: ModelAdapter;
   root: string;
+  /** 持久化域目录（2026-11-15 sunx P3 注入缝）：缺席=resolveDataDir(root) 既有推导（逐字节同今日） */
+  dataDir?: string;
   force?: boolean;
   notify?: (line: string) => void;
 }): Promise<void> {
@@ -33,7 +35,7 @@ export async function consolidateMemory(opts: {
   };
   try {
     if (!isModelSummarizer(opts.model)) return; // 门禁同提取：Stub/Scripted 静默跳过
-    const store = new MemoryStore(opts.root, { source: 'consolidate' });
+    const store = new MemoryStore(opts.root, { source: 'consolidate', dataDir: opts.dataDir });
     const before = store.list();
     if (before.length === 0) return;
     if (!opts.force && before.length < MEMORY_CONSOLIDATE_THRESHOLD) return; // 阈值未达零调用零副作用（force=/memory gc 显式入口）

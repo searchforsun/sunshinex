@@ -119,6 +119,11 @@ export interface HarnessOptions {
    *  提示词面已消费（2026-11-15）：构造注入 ContextManager 会话冻结层（全局 → 项目 → 品性），随
    *  ctx-snap 导出/回种逐字节随行；缺席=无此层。standard 会话恒缺席 */
   charter?: string;
+  /** 持久化域目录（2026-11-15 sunx P3 Task 1：一 Sunx 一持久化项目域）：FileStore/write 快照/任务账本/
+   *  输出归档/插件宿主/MCP 日志/记忆装配链（含子智能体与成员记忆）全部落本目录；缺席=resolveDataDir(root)
+   *  既有推导（逐字节同今日）。**工作 root 语义不可漂移**——sandbox cwd/safePath 信任根/perception/
+   *  worktree 锚仍绑 base，只有持久化数据面走本接缝 */
+  dataDir?: string;
 }
 
 /** Harness 门面：聚合五大能力，上层只依赖此门面 */
@@ -209,7 +214,11 @@ export class Harness {
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
-    const store = new FileStore(resolveDataDir(base));
+    // 持久化域单点（2026-11-15 sunx P3 Task 1 装配单点化）：构造期一次推导，下方全部持久化数据面消费点
+    // 同源取本变量；缺席=resolveDataDir(base) 既有推导（零变化）。base 保持工作树共享面锚（sandbox/safePath/
+    // perception/worktree），不随注入漂移
+    const dataDir = opts.dataDir ?? resolveDataDir(base);
+    const store = new FileStore(dataDir);
     const ledger = new RunLedger(store);
     this.perception = new PerceptionEngine(base);
     this.tools = new ToolRegistry();
@@ -247,12 +256,12 @@ export class Harness {
     agents.registerBuiltins();
     agents.loadAgents(base, userConfigDir());
     // write 影子快照单点（rewind/fork 规格 §6.1）：blob 落数据目录，清单随任务收口进 user 事件
-    this.writeSnapshot = makeWriteSnapshotSink(resolveDataDir(base), base);
+    this.writeSnapshot = makeWriteSnapshotSink(dataDir, base);
     // 产物收集器单点（2026-11-12 spec §3.3）：write-snapshot 同模式——纯构造零副作用，随工具面注入声明接缝
     this.artifacts = new ArtifactCollector();
     // 统一后台任务账本（后台任务线规格 D1）：任务日志落 <dataDir>/tasks/;账本持久化走会话维
     // adoptLedger 收养（serve/session.ts syncTasksLedger,journalId 推导路径）——纯构造零注入面
-    this.tasks = new TaskRegistry(resolveDataDir(base));
+    this.tasks = new TaskRegistry(dataDir);
     // bg-wake 宿主闸①（spec §4.2）：hint=true 装配分派回执唤醒提示（daemon/TUI 注入；CLI 缺省无提示）
     if (opts.wake?.hint === true) this.tasks.wakeHint = true;
     // 后台任务账本直播(GUI 侧栏/顶栏计数):submit/finish 旁路;adopt 重放不经 onChange。
@@ -292,11 +301,13 @@ export class Harness {
     // 装配接缝具名注入（D25/H6）：原 13 位置参收敛为 opts 对象，接缝错位由编译期失配兜底（webSearch 生产不注入，缺键即省）
     for (const t of builtinTools(this.safety, base, {
       kb: opts.kb,
-      archive: createToolOutputArchive(() => resolveDataDir(base)),
+      archive: createToolOutputArchive(() => dataDir),
       skills: this.skills,
-      memory: guardMemoryWrite,
+      // 记忆写入接缝（write 工具写 <dataDir>/memory/** 的判界+落盘单点）：注入域时判界随域——
+      // 包一层透传 dataDir（缺席=原函数引用原样，逐字节同今日）
+      memory: opts.dataDir !== undefined ? (req) => guardMemoryWrite({ ...req, dataDir: opts.dataDir }) : guardMemoryWrite,
       memoryWrite: (input) => {
-        const r = writeMemoryFact({ root: base, ...input });
+        const r = writeMemoryFact({ root: base, dataDir: opts.dataDir, ...input });
         // 记忆清单变点直播(GUI 记忆页签主动重拉;与沉淀管线 catalog-changed 同形)
         if (r.ok) opts.onEvent?.({ type: 'catalog-changed', payload: { kind: 'memory' }, ts: Date.now() });
         return r;
@@ -316,13 +327,15 @@ export class Harness {
     })) this.tools.register(t);
     // 品性层构造注入（2026-11-15 sunx §17.1）：charter 随装配面入会话冻结层（全局 → 项目 → 品性）；
     // 缺席=standard 无层。kind 透传 Reactor 与稳定段观测面（下方 stableKind）
-    this.context = new ContextManager(base, store, undefined, { charter: opts.charter });
+    this.context = new ContextManager(base, store, undefined, { charter: opts.charter, ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}) });
     this.model = opts.model ?? new StubAdapter();
     // 后台沉淀管线（规格 §3.1/§3.5）：收口零等待入队 → 空闲/收尾消化；notify 双通道=链尾 notice 行（模型面）+ notice 事件（用户面），
     // 与 reactor announce 逐字同形；两个开关逐项消费时求值（/memory on|off 与 --learn 语义贯通）
     this.pipeline = new MemoryPipeline({
       model: this.model,
       root: base,
+      // 持久化域目录（2026-11-15 sunx P3）：记忆提取/整理与容量提醒面随域——缺席=既有推导
+      dataDir: opts.dataDir,
       notify: (source, text) => {
         this.context.appendChain([{ action: 'notice', observation: text }]);
         opts.onEvent?.({ type: 'notice', text, payload: { source, text }, ts: Date.now() });
@@ -355,7 +368,7 @@ export class Harness {
       const pluginServers = await Promise.all(freshPlugin.servers.map(async (s) => {
         if (!isHostedServer(s.name)) return s;
         try {
-          return await hostedPluginServer(s, this.browserSession?.() ?? { key: fallbackBrowserKey, seat: '' }, resolveDataDir(base));
+          return await hostedPluginServer(s, this.browserSession?.() ?? { key: fallbackBrowserKey, seat: '' }, dataDir);
         } catch (e) {
           hostWarnings.push(`${s.name} plugin unavailable: ${e instanceof Error ? e.message : String(e)}`);
           return undefined;
@@ -381,7 +394,7 @@ export class Harness {
         return drift;
       }
       // stderr 日志面(2026-11-01):<dataDir>/plugins/logs/<server>.log——插件崩退/有头启动失败诊断源
-      mcpHost = new McpHost(fresh, this.tools, { logDir: path.join(resolveDataDir(base), 'plugins', 'logs') });
+      mcpHost = new McpHost(fresh, this.tools, { logDir: path.join(dataDir, 'plugins', 'logs') });
       try {
         const report = await mcpHost.registerTools();
         mcpWarnings = [...freshPlugin.warnings, ...hostWarnings, ...report.warnings];
@@ -451,6 +464,9 @@ export class Harness {
         // fork 子代 kind 继承(2026-11-15 sunx P1 Task 3,spec §17.2):sunx 装配的 fork 子 Reactor
         // 稳定段与父逐字节同面(身份行/章程行随 Reactor kind);缺席=standard
         ...(opts.kind ? { kind: opts.kind } : {}),
+        // 持久化域目录(2026-11-15 sunx P3 Task 1):子智能体自有记忆(memory:true 的 agent.md)随域——
+        // 缺席=resolveDataDir(root) 既有推导
+        ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
       },
       agents,
     );
@@ -460,7 +476,9 @@ export class Harness {
     // 团队/板/inbox 按会话隔离：构造期驻内存（或显式 teamsSessionId 立即落盘）；daemon/TUI
     // 在 journal 铸造后 adoptSessionTeams(journalId)。成员名会话内唯一（inbox 按名落档）；
     // 认领与 send_agent_team_message 仅同 teamId——不跨队共享。
-    this.dataDir = resolveDataDir(base);
+    // 字段语义（2026-11-15 sunx P3）=「本会话持久化域目录」：注入时=域目录，缺席=resolveDataDir(base) 既有推导
+    // （与上方 7 处消费同源单点）
+    this.dataDir = dataDir;
     this.memoryBoardStore = new MemoryTeamStore();
     // 未绑 journal：零盘面占位；adoptSessionTeams 才切到会话根（不写 teams/.unbound）
     this.inbox = new FileInbox();
@@ -527,6 +545,9 @@ export class Harness {
           // kind 透传(P2 Task 1,spec §17.2):sunx 装配的成员逐任务 Reactor 稳定段与主链同面
           // (Sunx 身份行/编排章程行);缺席=standard 字节不变
           ...(opts.kind ? { kind: opts.kind } : {}),
+          // 持久化域目录(2026-11-15 sunx P3 Task 1):成员 own ContextManager 记忆引导随域(实际写入面
+          // 经 derive 共享闭包本就落域)——缺席=既有推导
+          ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
         },
       });
       const registered = this.team.register(tm);

@@ -18,6 +18,11 @@ import { isMemoryPath, MemoryScope } from './paths';
 
 export interface MemoryWriteRequest {
   root: string;
+  /**
+   * 持久化域目录（2026-11-15 sunx P3 注入缝）：判界（isMemoryPath）与落盘（MemoryStore）随域——
+   * 装配层（Harness memory 接缝包装）注入；缺席=dataDirReal(root) 既有推导（逐字节同今日）。
+   */
+  dataDir?: string;
   absPath: string;
   content: string;
   /**
@@ -37,7 +42,7 @@ interface MemoryWriteOutcome {
 export type MemoryWriteSeam = (req: MemoryWriteRequest) => Result<MemoryWriteOutcome | 'pass'>;
 
 export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOutcome | 'pass'> {
-  const dataDir = dataDirReal(req.root);
+  const dataDir = req.dataDir ?? dataDirReal(req.root);
   const kind = isMemoryPath(dataDir, req.absPath, req.scope);
   if (kind === null) return ok('pass'); // 非记忆路径：交回常规写入
 
@@ -89,7 +94,7 @@ export function guardMemoryWrite(req: MemoryWriteRequest): Result<MemoryWriteOut
   if (!body) return fail('MEMORY_WRITE_BODY', 'Record body is empty');
 
   const subdir = kind === 'main' ? undefined : kind;
-  const store = new MemoryStore(req.root, subdir === undefined ? { source: 'tool' } : { subdir, source: 'tool' });
+  const store = new MemoryStore(req.root, subdir === undefined ? { source: 'tool', dataDir: req.dataDir } : { subdir, source: 'tool', dataDir: req.dataDir });
   // 落盘唯一实现（2026-09-18 用户裁决「单一实现」）：记录面由 kind 定（主记忆目录或 agents/<id>/ 一层），`put` 只写本面
   // `<slug>.md`，故其下嵌套请求天然归拢回本面记录目录——「索引＝本面记录派生物」不变式与「同 slug 更新不产 -2 副本」
   // 在嵌套请求下同样成立；规范化四键 / 同 slug=更新（保留 created、刷新 modified）/ 三级去重 / 超限判定 / 索引重建全在 put 单点完成。

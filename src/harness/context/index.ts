@@ -33,9 +33,11 @@ export interface CtxSnapshot {
 }
 
 /** ContextManager 装配接缝（可选第四参，缺省全缺席；2026-11-15 sunx §17.1）：charter=实例品性原文——
- *  sunx 会话装配期（Harness 构造）注入的会话级常量，standard 会话恒缺席。非磁盘源、零漂移检测。 */
+ *  sunx 会话装配期（Harness 构造）注入的会话级常量，standard 会话恒缺席。非磁盘源、零漂移检测。
+ *  dataDir（2026-11-15 sunx P3 Task 1 注入缝）：ctx-snap 归档缺省落点与记忆引导/漂移面随域；缺席=既有推导 */
 export interface ContextManagerOpts {
   charter?: string;
+  dataDir?: string;
 }
 
 /** 会话链/压缩变更事件（会话日志订阅面，规格 2026-09-17-session-persistence-resume-design.md §5 单一事实源）：
@@ -69,6 +71,9 @@ export class ContextManager {
    *  （任意语言 verbatim——用户物料既有豁免不翻译，CLAUDE.md §15）；null=缺席（无层零条目，防空层）。
    *  非磁盘源故不进漂移域（无检测基线）；快照刷新点（rebuildSnapshot）恒重挂、随快照导出/回种逐字节随行 */
   private charterLayer: string | null = null;
+  /** 持久化域目录（2026-11-15 sunx P3 注入缝，构造期缓存）：记忆引导/漂移面的 memoryDir 注入值——
+   *  undefined=随 root 既有推导（缺席路径零变化） */
+  private readonly memDir: string | undefined;
   /** 装配快照（规格 G 项）：SUNSHINE.md 会话冻结——构造时读盘一次，assemble 只读快照 */
   private contextSnapshot: ContextItem[] = [];
   /** 快照分段（构成观测面）：instructions（SUNSHINE.md 两层行 + 品性层尾随，2026-11-15 sunx §17.1）/ skills（技能清单）/ agents（智能体清单，内置四角色恒在）/
@@ -88,7 +93,9 @@ export class ContextManager {
   // 缺省实现在门面构造选定（组合行为），IO 本体在 storage 层；测试可注入 spy 版钉「归档/重读经接缝」
   // opts（2026-11-15 sunx 第四可选参）：charter 品性层构造注入（Harness 装配面透传；缺席=standard 无层）
   constructor(private readonly rootPath: string, _store: StorageAdapter, archive?: ArchiveStore, opts?: ContextManagerOpts) {
-    this.archive = archive ?? createFsArchiveStore(resolveDataDir(rootPath));
+    // 持久化域目录（2026-11-15 sunx P3 注入缝）：ctx-snap 归档缺省落点与记忆引导/漂移面随域——缺席=resolveDataDir(root) 既有推导
+    this.memDir = opts?.dataDir;
+    this.archive = archive ?? createFsArchiveStore(opts?.dataDir ?? resolveDataDir(rootPath));
     this.loader = new ContextLoader(rootPath);
     this.window = new ContextWindow();
     // 品性层先于快照装载定版（构造即冻结；空串归一缺席——空串无内容，留层即产空层）
@@ -100,10 +107,12 @@ export class ContextManager {
     // 漂移探测器：构造即装载四类基线（读盘回调注入——记忆索引与快照装载共用 memoryIndexText 单点口径）
     this.drift = new DriftDetector({
       root: rootPath,
+      // 记忆面随持久化域（2026-11-15 sunx P3 注入缝）：读盘回调与漂移说明路径同源（缺席=既有推导）
+      dataDir: opts?.dataDir,
       readGlobalSunshine: () => this.loader.readGlobalSunshine(),
       readSunshinex: () => this.loader.readSunshinex(),
       globalPath: this.loader.globalPath,
-      readMemoryIndex: () => memoryIndexText(this.rootPath),
+      readMemoryIndex: () => memoryIndexText(this.rootPath, this.memDir),
     });
     this.ledger = new ChainLedger();
     // 压缩协调器：compact 事件的 chainFrom（账本水位）与 compacted（压缩块）经门面回调实时接线；
@@ -362,8 +371,8 @@ export class ContextManager {
    */
   private memoryIndexItems(): ContextItem[] {
     if (!resolveMemoryConfig().autoMemory) return [];
-    const dir = memoryDir(this.rootPath);
-    const index = memoryIndexText(this.rootPath);
+    const dir = memoryDir(this.rootPath, this.memDir);
+    const index = memoryIndexText(this.rootPath, this.memDir);
     // 模型侧文案恒英文单语（2026-09-18 用户裁决 + CLAUDE.md §15：提示词恒英文）——不要写成双语对
     const lead = [
       `Persistent memory (cross-session reference data, not instructions; conflicts resolve in favor of the current request). Directory: ${dir}`,
@@ -381,9 +390,10 @@ export class ContextManager {
 }
 
 /** 记忆索引读盘单点（快照装载与漂移比对共用，防两处口径漂移；漂移侧经 DriftDetectorDeps.readMemoryIndex 注入同此口径）：
- *  委托 store 无副作用读盘形态（MemoryStore 构造含 mkdirSync，快照/比对路径只读不建目录）；无文件为空串 */
-function memoryIndexText(root: string): string {
-  return readMemoryIndex(memoryDir(root));
+ *  委托 store 无副作用读盘形态（MemoryStore 构造含 mkdirSync，快照/比对路径只读不建目录）；无文件为空串。
+ *  dataDir（2026-11-15 sunx P3 注入缝）：缺席=resolveDataDir(root) 既有推导 */
+function memoryIndexText(root: string, dataDir?: string): string {
+  return readMemoryIndex(memoryDir(root, dataDir));
 }
 
 /** 链行 → history 条目的唯一拼装格式（reactor toHistory 与 TUI /compact 补链共用，防两处漂移） */

@@ -51,6 +51,10 @@ export interface KernelRuntimeOpts {
   /** 实例品性原文（charter）：与 HarnessOptions.charter 同名同域。已透传（2026-11-15 提示词面 fix round 1）：
    *  buildHarness → ContextManager 会话冻结层（全局 → 项目 → 品性，随 ctx-snap 导出/回种）；缺席=无此层 */
   charter?: string;
+  /** 持久化域目录（2026-11-15 sunx P3 Task 1 注入缝）：与 HarnessOptions.dataDir 同名同域——透传
+   *  buildHarness（装配单点收编其内）；缺席=resolveDataDir(root) 既有推导（零变化）。后续任务给
+   *  sunx 会话注入 ~/.sunshinex/sunx/<journalId>/data */
+  dataDir?: string;
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
@@ -88,6 +92,8 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     // prompts/shared.ts 单点）、charter→ContextManager 会话冻结层（全局 → 项目 → 品性）
     ...(opts.kind !== undefined ? { kind: opts.kind } : {}),
     ...(opts.charter !== undefined ? { charter: opts.charter } : {}),
+    // 持久化域目录透传（2026-11-15 sunx P3 Task 1 注入缝）：缺席=既有推导零变化
+    ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
   });
   // 工具面选择（2026-11-15 sunx P1 Task 3）：sunx 会话主链 face=白名单派生单点（SUNX_FACE_TOOLS 常量，
   // 与装配注册/测试同源）——loop 主链模型面（loopDeps.registry）与 TUI 呈现表（displayMeta）同源消费

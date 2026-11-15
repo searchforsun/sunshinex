@@ -407,3 +407,23 @@ test('createRuntime：standard（缺省）主链零 Sunx 章程、品性层缺�
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('createRuntime：dataDir 透传——Harness 持久化面落注入域（opts 优先于 env 推导；2026-11-15 sunx P3）', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-dd-'));
+  const domain = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-tuirt-dd-domain-'));
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, '.data');
+  let rt: ReturnType<typeof createKernelRuntime> | undefined;
+  try {
+    rt = createKernelRuntime({ root: tmp, model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']), dataDir: domain });
+    const t = rt.harness.tasks.submit({ kind: 'exec', label: 'probe' });
+    assert.equal(path.dirname(t.outputFilePath), path.join(domain, 'tasks'), '内核运行时注入透传——任务日志落注入域（opts.dataDir 优先于 env 推导）');
+    assert.ok(fs.existsSync(t.outputFilePath), '任务日志建档即存在');
+    assert.ok(!fs.existsSync(path.join(tmp, '.data')), 'env 推导区零落盘——注入即整域接管');
+  } finally {
+    rt?.harness.tasks.stopAll();
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(domain, { recursive: true, force: true });
+  }
+});
