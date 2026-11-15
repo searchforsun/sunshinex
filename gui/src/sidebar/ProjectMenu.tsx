@@ -10,7 +10,6 @@ import { NavButtons } from '../NavButtons';
 import type { NavControls } from '../nav-history';
 import {
   autoSeenSuppressed,
-  defaultWorkspaceAnchor,
   loadSeenMap,
   persistSeenMap,
   RECENT_VISIBLE_DEFAULT,
@@ -842,7 +841,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             open
             onClose={() => setSunxOpen(false)}
             conn={conn}
-            defaultRoot={defaultWorkspaceAnchor(rows)}
             onOpenSession={openCreatedSunx}
           />
         )}

@@ -2326,11 +2326,10 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-body.open { grid-template-rows: 1fr; }
 .concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
-/* 2026-11-14 用户裁定(撤回 4px 栅格方案,保留既有行距):头→首行与既有工具思考行间距同拍——
-   wrap 槽位=seg-inner 同款 16px,首行(链资格类型)复刻负边距链首拍 -10px;行→行链原样保留 */
-.concise-wrap { display: flex; flex-direction: column; gap: 16px; }
-.concise-wrap > .concise-body > .concise-body-inner > .seg-inner > .entry-tool:first-child,
-.concise-wrap > .concise-body > .concise-body-inner > .seg-inner > .entry-thinking:first-child { margin-top: -10px; }
+/* 2026-11-14 用户实测「正文/行被拦腰截断」根修:负边距上提首行+折叠体 overflow hidden=首行
+   顶边被裁。改正值槽位精确同拍——行→行既有视觉距=16px 槽位-10px 链=6px;头→首行用 wrap
+   gap 6px 直达同距(零负边距,无裁切面);首行为聚合组时保持 16px(与既有组上方距同拍) */
+.concise-wrap { display: flex; flex-direction: column; gap: 6px; }
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }

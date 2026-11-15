@@ -7,7 +7,9 @@ import type { WelcomeComposerConn } from './welcome-conn';
  *  （挂载/preset/config-changed 300ms 合帧）+ default 锚定去重投影 + 三入口登记收口（桌面壳对话框/
  *  浏览器态对话框/DirPicker 确认）。picked/projOpen/dirOpen/hint 态留宿主，setter 直传零语义变化。 */
 export function useWelcomeWorkspaces(
-  conn: WelcomeComposerConn,
+  /** 结构子集(P2 2026-11-15 NewSunxDialog 复用放宽):数据面只消费这四成员——原 WelcomeComposerConn
+   *  整面要求会把弹窗 conn 桩逼成全量;Pick 保留 onConfigChanged 的可选性 */
+  conn: Pick<WelcomeComposerConn, 'workspaces' | 'createWorkspace' | 'locateWorkspace' | 'onConfigChanged'>,
   presetRoot: string | undefined,
   presetSeq: number | undefined,
   io: {

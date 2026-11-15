@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Network, RefreshCw } from 'lucide-react';
 import { t } from '../i18n';
-import type { Connection, SessionRow, WorkspaceRow } from '../connection';
+import type { Connection, SessionRow } from '../connection';
 import { relTime, withMinSpin } from '../ui-util';
-import { defaultWorkspaceAnchor, wsName } from '../sidebar/project-menu-util';
+import { wsName } from '../sidebar/project-menu-util';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
 import { aggregateSunxCards, assembleSunxCards, sunxSectionsOf, sunxSnapOf, type SunxCard, type SunxSnapSlice } from './sunx-board';
 
@@ -30,7 +30,7 @@ export interface SunxBoardTabProps {
 }
 
 /** 全量拉取编排:工作区→逐根 sessionsOf→live 行快照(bumpSeq:false)→卡片;快照失败该行降级 */
-async function loadBoard(conn: Connection): Promise<{ wsRows: WorkspaceRow[]; cards: SunxCard[] }> {
+async function loadBoard(conn: Connection): Promise<{ cards: SunxCard[] }> {
   const wsRows = await conn.workspaces();
   const rooted = wsRows.filter((w) => w.root !== undefined && w.root !== '');
   const groups = await Promise.all(
@@ -50,11 +50,10 @@ async function loadBoard(conn: Connection): Promise<{ wsRows: WorkspaceRow[]; ca
         if (s !== null) snaps.set(x.liveSessionId as string, s);
       }),
   );
-  return { wsRows, cards: assembleSunxCards(rows, (liveId) => snaps.get(liveId) ?? null) };
+  return { cards: assembleSunxCards(rows, (liveId) => snaps.get(liveId) ?? null) };
 }
 
 export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTabProps): JSX.Element {
-  const [wsRows, setWsRows] = useState<WorkspaceRow[]>([]);
   const [cards, setCards] = useState<SunxCard[] | null>(null);
   const [error, setError] = useState('');
   const [fetching, setFetching] = useState(true);
@@ -67,7 +66,6 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
     withMinSpin(loadBoard(conn)).then(
       (r) => {
         if (alive) {
-          setWsRows(r.wsRows);
           setCards(r.cards);
           setError('');
           setFetching(false);
@@ -153,7 +151,6 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
           open
           onClose={() => setDialogOpen(false)}
           conn={conn}
-          defaultRoot={defaultWorkspaceAnchor(wsRows)}
           onOpenSession={(sessionId, root) => onOpenInstance?.({ sessionId, root })} // 新建=canonical,裸 openSession
         />
       )}

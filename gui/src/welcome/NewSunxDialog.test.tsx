@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { NewSunxDialog } from './NewSunxDialog';
@@ -7,17 +7,20 @@ import { RecentsSection } from '../sidebar/project-menu-recents';
 import type { SessionRow } from '../connection';
 
 /**
- * 新建 Sunx 创建弹窗(sunx P1 Task 6):姓名(必填,空禁提交)/工作目录(既有 DirPicker 面,缺省=
- * 当前默认工作区锚)/品性(Charter,文本域可空=仅总章程)。提交 conn.newSession(target,undefined,
- * undefined,undefined,{kind:'sunx',name,charter?}) → 成功走既有 openSession 链路打开并关弹窗。
- * 附 RECENTS 头「新建 Sunx」同级钮与侧栏 kind 徽标两件(入口/徽标皆本任务交付,测试同档归置)。
+ * 新建 Sunx 创建弹窗(sunx P1 Task 6;2026-11-15 工作目录改版=欢迎页 useWelcomeWorkspaces 单点
+ * 复用+WelcomeProjectPop 弹层):姓名(必填,空禁提交)/工作目录(下拉选已有工作区,浏览文件夹…
+ * 可添加新目录——壳 IPC pickFolder→createWorkspace 登记,默认锚置顶)/品性(Charter,文本域可空=
+ * 仅总章程)。提交 conn.newSession(target,undefined,undefined,undefined,{kind:'sunx',name,charter?})
+ * → 成功走既有 openSession 链路打开并关弹窗。附 RECENTS 头钮退役负断言与侧栏 kind 徽标两件
+ * (入口唯一化/徽标为已交付面,测试同档归置)。
  */
 
 /** 双语容忍正解(D37 家族,dirpicker.test 同款):产品面 t() 化后,测试环境钉 en,单语钉必脆 */
 const bi = (en: string, zh: string): RegExp =>
   new RegExp(`^(?:${[en, zh].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`);
 
-/** conn 桩:newSession 可 spy(载荷断言);dirpicker 可选逐次应答(DirPicker 面消费);
+/** conn 桩:newSession 可 spy(载荷断言);workspaces 默认返回 sunshinex-default 锚行
+ *  (hook 锚定后 picked=root,与既有载荷断言同值);createWorkspace 可 spy(添加新目录断言);
  *  sunxTemplates 缺省空清单(选择器隐藏态),可注入模板行(模板挑选面消费) */
 type NewSessionFn = NewSunxConn['newSession'];
 type NewSessionMock = ReturnType<typeof vi.fn<NewSessionFn>>;
@@ -25,7 +28,12 @@ type SunxTemplatesFn = NewSunxConn['sunxTemplates'];
 function makeConn(
   newSessionImpl?: NewSessionFn,
   sunxTemplatesImpl?: SunxTemplatesFn,
-): NewSunxConn & { newSession: NewSessionMock; sunxTemplates: ReturnType<typeof vi.fn<SunxTemplatesFn>> } {
+): NewSunxConn & {
+  newSession: NewSessionMock;
+  sunxTemplates: ReturnType<typeof vi.fn<SunxTemplatesFn>>;
+  workspaces: ReturnType<typeof vi.fn<() => Promise<Array<{ slug: string; root?: string; sessionCount: number }>>>>;
+  createWorkspace: ReturnType<typeof vi.fn<NewSunxConn['createWorkspace']>>;
+} {
   const fallback: NewSessionMock = vi.fn(
     async (..._: Parameters<NewSessionFn>): Promise<{ sessionId: string }> => ({ sessionId: 'sx-new-1' }),
   );
@@ -36,38 +44,41 @@ function makeConn(
     newSession: newSessionImpl !== undefined ? vi.fn(newSessionImpl) : fallback,
     dirpicker: vi.fn(async (path?: string) => ({ path: path ?? '/home', parent: '/home', dirs: ['proj'] })),
     sunxTemplates: sunxTemplatesImpl !== undefined ? vi.fn(sunxTemplatesImpl) : fallbackTemplates,
+    workspaces: vi.fn(async () => [{ slug: 'ws-sunshinex-default', root: 'D:/tmp/sunshinex-default', sessionCount: 1 }]),
+    createWorkspace: vi.fn(async (body: { path?: string }) => ({ ok: true as const, root: body.path ?? '', slug: body.path ?? '' })),
+    locateWorkspace: vi.fn(async () => ({ path: null })),
   };
 }
 
 /** 受控开合宿主:open 态内持,onClose 翻 false(母体裁定 open prop + onClose) */
-function Harness(props: {
-  conn: NewSunxConn;
-  defaultRoot?: string;
-  onOpenSession?: (sessionId: string, root: string) => void;
-}) {
+function Harness(props: { conn: NewSunxConn; onOpenSession?: (sessionId: string, root: string) => void }) {
   const [open, setOpen] = useState(true);
   return (
     <NewSunxDialog
       open={open}
       onClose={() => setOpen(false)}
       conn={props.conn}
-      defaultRoot={props.defaultRoot ?? 'D:/tmp/sunshinex-default'}
       onOpenSession={props.onOpenSession ?? ((): void => undefined)}
     />
   );
 }
 
+afterEach(() => {
+  // 壳 IPC 桩清理(添加新目录用例注入;漏清会漏到别的用例的浏览通道)
+  delete (window as unknown as { sunshinex?: unknown }).sunshinex;
+});
+
 describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)', () => {
-  it('受控开合:open=false 零渲染;open=true 弹窗在场且目录锚定缺省工作区', () => {
+  it('受控开合:open=false 零渲染;open=true 弹窗在场且工作目录条=默认工作区(锚回源)', async () => {
     const conn = makeConn();
     const closed = render(
-      <NewSunxDialog open={false} onClose={() => {}} conn={conn} defaultRoot="D:/tmp/sunshinex-default" onOpenSession={() => {}} />,
+      <NewSunxDialog open={false} onClose={() => {}} conn={conn} onOpenSession={() => {}} />,
     );
     expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull();
     closed.unmount();
     render(<Harness conn={conn} />);
     expect(screen.getByRole('dialog', { name: 'New Sunx' })).toBeDefined();
-    expect(screen.getByText('D:/tmp/sunshinex-default')).toBeDefined(); // 缺省=当前默认工作区锚
+    expect(await screen.findByText(bi('Default workspace', '默认工作区'))).toBeDefined(); // 锚回源后显示名
   });
 
   it('校验:姓名空禁提交(钮 disabled);填名即解禁;品性留空照常可提交(仅总章程)', () => {
@@ -83,6 +94,7 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     // 空品性:仅 kind+name(charter 键不落);成功即关弹窗,载荷断言用独立挂载
     const conn = makeConn();
     const first = render(<Harness conn={conn} />);
+    await screen.findByText(bi('Default workspace', '默认工作区')); // 锚异步落地后再出牌( picked 回源时序 )
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '  编排者甲  ' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() => expect(conn.newSession).toHaveBeenCalledTimes(1));
@@ -97,6 +109,7 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     // 带品性:原样透传(逐字进冻结层)
     const conn2 = makeConn();
     render(<Harness conn={conn2} />);
+    await screen.findByText(bi('Default workspace', '默认工作区'));
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '乙' } });
     fireEvent.change(screen.getByLabelText(bi('Charter', '品性')), { target: { value: 'Be terse. Ship small.' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
@@ -112,6 +125,7 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     const conn = makeConn();
     const onOpenSession = vi.fn();
     render(<Harness conn={conn} onOpenSession={onOpenSession} />);
+    await screen.findByText(bi('Default workspace', '默认工作区'));
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '甲' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() => expect(onOpenSession).toHaveBeenCalledWith('sx-new-1', 'D:/tmp/sunshinex-default'));
@@ -182,28 +196,63 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     expect(screen.getByRole('dialog', { name: 'New Sunx' })).toBeDefined(); // 停留
     expect((screen.getByRole('button', { name: bi('Create', '创建') }) as HTMLButtonElement).disabled).toBe(false);
   });
+});
 
-  it('工作目录:浏览面复用既有 DirPicker,选完回填并随提交', async () => {
+describe('NewSunxDialog 工作目录(sunx P2 2026-11-15 改版:欢迎页下拉选已有/添加新目录)', () => {
+  it('下拉选已有工作区:弹层列默认锚+其余行,选中非默认行 → 载荷 root 跟随', async () => {
     const conn = makeConn();
-    render(<Harness conn={conn} defaultRoot="default" />);
-    fireEvent.click(screen.getByRole('button', { name: bi('Browse…', '浏览…') }));
-    expect(await screen.findByRole('dialog', { name: 'choose directory' })).toBeDefined(); // 既有 DirPicker 面
-    fireEvent.click(screen.getByRole('button', { name: 'proj' })); // 逐级浏览
-    fireEvent.click(await screen.findByRole('button', { name: bi('Choose this directory', '选择此目录') }));
-    expect(screen.getByRole('dialog', { name: 'New Sunx' })).toBeDefined(); // 回表单
-    expect(screen.getByText('/home/proj')).toBeDefined(); // 回填所选目录
+    conn.workspaces = vi.fn(async () => [
+      { slug: 'ws-sunshinex-default', root: 'D:/tmp/sunshinex-default', sessionCount: 1 },
+      { slug: 'p2', root: 'D:/w/shared-p', sessionCount: 3 },
+    ]);
+    render(<Harness conn={conn} />);
+    expect(await screen.findByText(bi('Default workspace', '默认工作区'))).toBeDefined(); // 锚置顶显示名
+    fireEvent.click(screen.getByRole('button', { name: bi('Choose working directory', '选择工作目录') }));
+    const menu = await screen.findByRole('menu', { name: bi('Projects', '项目') });
+    expect(menu).toBeDefined();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'shared-p' })); // 选非默认行
+    expect(screen.queryByRole('menu')).toBeNull(); // 选中即收
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '丙' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
-    await waitFor(() => expect(conn.newSession).toHaveBeenCalledWith('/home/proj', undefined, undefined, undefined, { kind: 'sunx', name: '丙' }));
+    await waitFor(() =>
+      expect(conn.newSession).toHaveBeenCalledWith('D:/w/shared-p', undefined, undefined, undefined, { kind: 'sunx', name: '丙' }),
+    );
+  });
+
+  it('添加新工作目录:壳 IPC pickFolder → createWorkspace 登记+选中 → 载荷 root=新目录', async () => {
+    const conn = makeConn();
+    // 动态桩模拟 daemon 登记:createWorkspace 落库后 /workspaces 即含新行(hook 回源才不会把
+    // picked 洗回默认锚——真实 daemon createWorkspace 注册 workspace.json 同语义)
+    const registered: Array<{ slug: string; root: string; sessionCount: number }> = [
+      { slug: 'ws-sunshinex-default', root: 'D:/tmp/sunshinex-default', sessionCount: 1 },
+    ];
+    conn.workspaces = vi.fn(async () => [...registered]);
+    conn.createWorkspace = vi.fn(async (body: { path?: string }) => {
+      registered.push({ slug: body.path ?? '', root: body.path ?? '', sessionCount: 0 });
+      return { ok: true as const, root: body.path ?? '', slug: body.path ?? '' };
+    });
+    (window as unknown as { sunshinex: unknown }).sunshinex = {
+      pickFolder: vi.fn(async () => 'D:/new-dir'),
+    };
+    render(<Harness conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: bi('Choose working directory', '选择工作目录') }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: bi('Browse folders…', '浏览文件夹…') }));
+    await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ path: 'D:/new-dir' }));
+    expect(await screen.findByText('new-dir')).toBeDefined(); // 登记即选中(显示名=目录 basename)
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '丁' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() =>
+      expect(conn.newSession).toHaveBeenCalledWith('D:/new-dir', undefined, undefined, undefined, { kind: 'sunx', name: '丁' }),
+    );
   });
 });
 
 describe('NewSunxDialog 模板挑选(sunx P2 Task 6:GET /settings/sunx-templates 惰拉→选择回填 name/charter 可改)', () => {
-  it('惰拉时机:弹窗打开取一次,root=缺省工作区锚;无模板数据=选择器不显(表单照常可用)', async () => {
+  it('惰拉时机:打开/锚回源后取一次,root=锚定工作区;无模板数据=选择器不显(表单照常可用)', async () => {
     const conn = makeConn();
-    render(<Harness conn={conn} defaultRoot="D:/tmp/sunshinex-default" />);
-    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenCalledTimes(1));
-    expect(conn.sunxTemplates).toHaveBeenCalledWith('D:/tmp/sunshinex-default'); // 锚=缺省工作区
+    render(<Harness conn={conn} />);
+    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenCalled());
+    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenLastCalledWith('D:/tmp/sunshinex-default')); // 锚=默认工作区
     await new Promise((r) => setTimeout(r, 0)); // 空清单应答沉降
     expect(screen.queryByLabelText(bi('Template', '模板'))).toBeNull(); // 无模板=选择器隐藏
     // 表单不被选择器阻塞:填名照常可提交
@@ -214,7 +263,7 @@ describe('NewSunxDialog 模板挑选(sunx P2 Task 6:GET /settings/sunx-templates
   it('惰拉失败静默=无模板态:error 不示出(零 alert)、弹窗停留、创建主流程不受扰', async () => {
     const conn = makeConn(undefined, () => Promise.reject(new Error('/settings/sunx-templates -> 500')));
     render(<Harness conn={conn} />);
-    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenCalled());
     // 微任务沉降后仍零错误示出
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByRole('alert')).toBeNull();
