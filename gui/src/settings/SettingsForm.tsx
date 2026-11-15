@@ -603,7 +603,7 @@ const UsageStatsRow = (): JSX.Element => (
 const ConciseModeRow = (): JSX.Element => (
   <DarkSurfaceRow
     label={t('Concise mode', '简洁模式')}
-    desc={t('Fold tool and thinking rows between replies into one summary line; running rows stay visible until they finish.', '把回复之间的工具与思考行折叠成一条总结；运行中的行保持可见，跑完后并入折叠。')}
+    desc={t('Fold tool and thinking rows into one summary line.', '工具与思考行折叠为一条总结，跑完即并入。')}
     aria="concise mode"
     read={readConciseMode}
     apply={applyConciseMode}

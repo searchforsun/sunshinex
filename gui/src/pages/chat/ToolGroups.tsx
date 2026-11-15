@@ -42,8 +42,10 @@ function conciseSummary(seg: ChatEntry[]): [string, string] {
 function ConciseIcon(): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="concise-icon">
-      <rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="1.5" y="5.5" width="9" height="9" rx="1.5" fill="var(--surface)" stroke="currentColor" strokeWidth="1.4" />
+      {/* 后方方块(右上)+前方方块(左下,吃页面底色盖住交叠段=交织观感);描边/底色显式取令牌,
+          不走 currentColor 继承——2026-11-14 用户实测图标显红色线(currentColor 被上层色染)根修 */}
+      <rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.4" />
+      <rect x="1.5" y="5.5" width="9" height="9" rx="1.5" fill="var(--surface)" stroke="var(--fg-icon)" strokeWidth="1.4" />
     </svg>
   );
 }

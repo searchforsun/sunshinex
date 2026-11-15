@@ -2311,16 +2311,18 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .bg-kind-icon { flex: none; color: var(--fg-icon); }
 /* 简洁模式段级折叠(2026-11-14 用户裁定):折叠头=交织双方形+类别动词总结(黑字同工具组头档);
    展开内层既有聚合=第二层;concise-hidden=grid 0fr 高度过渡(并入动画,向上收起观感) */
-.concise-fold { flex: none; display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: var(--surface-soft); color: var(--fg); border-radius: var(--radius-sm); padding: 3px 8px; margin: 2px 0; font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; text-align: left; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.concise-fold:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, var(--surface-soft)); }
-.concise-fold-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-secondary); }
+/* 2026-11-14 用户复裁定「不要用背景颜色,和之前折叠行一致」:concise-fold 与 .tool-group-head 同款(无底色/同 padding/fg-secondary 字档) */
+.concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 2px 8px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-secondary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+.concise-fold:hover, .concise-fold:focus-visible { color: var(--fg); background: none; }
+.concise-fold-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .concise-fold .tool-chev { transition: transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-fold.open .tool-chev { transform: rotate(90deg); }
 .seg-inner.concise-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .seg-inner.concise-body > * { min-height: 0; }
 .seg-inner.concise-hidden.concise-body { grid-template-rows: 0fr; }
 .seg-inner.concise-hidden { overflow: hidden; }
-@keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } } /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
+@keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.concise-icon { flex: none; color: var(--fg-icon); } /* 显式令牌兜底:图标色恒 fg-icon,不被上层 color 染红 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
 .bg-output {
   margin: 0; width: 100%; padding: 6px 8px;
