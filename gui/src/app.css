@@ -1409,7 +1409,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* 智能定向(mouseover 委托打点,main.tsx):顶部空间不足翻下方;贴左右缘/容器缘对齐防出窗 */[data-tip].tip-below:not([data-tip=""]):hover::after { bottom: auto; top: calc(100% + 5px); }[data-tip].tip-left:not([data-tip=""]):hover::after { left: 0; transform: none; }[data-tip].tip-right:not([data-tip=""]):hover::after { left: auto; right: 0; transform: none; }.sx-tip-right::after { left: auto; right: 0; transform: none; }
 
-/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); } /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变)。2026-11-04 修:clip-path circle 退役——桌面 webview 光栅化随机丢 clip-path=12px 方框原样露出(实测交稿行等待环成空方块),去 clip-path 仅存 border 圆环构造(border-radius 50% 自身成圆,轨道 tertiary+亮弧 fg 同原设计)(顶栏 9px 覆写随退)。2026-10-31 菱形二案根修:conic+mask 光栅化随机丢层(见 sx-session-dot.running 注),改 border 圆环构造 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: none; border: 2px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
+/* run 状态行(§1):live=spinner+运行中+耗时+tokens;sealed=✓ Worked for(子树替换即淡入) */.entry-run { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); } /* 2026-11-14 用户裁定「已运行行调高亮度」tertiary→secondary */ /* G14.185b 左对齐(用户复核:应在左);分秒间隙见 runElapsed */.entry-run.live { color: var(--fg-secondary); }.entry-run .run-meta { color: inherit; font-variant-numeric: tabular-nums; }/* 2026-10-28 用户裁定:整体外扩 8→12px(直径加大,环带厚度不变)。2026-11-04 修:clip-path circle 退役——桌面 webview 光栅化随机丢 clip-path=12px 方框原样露出(实测交稿行等待环成空方块),去 clip-path 仅存 border 圆环构造(border-radius 50% 自身成圆,轨道 tertiary+亮弧 fg 同原设计)(顶栏 9px 覆写随退)。2026-10-31 菱形二案根修:conic+mask 光栅化随机丢层(见 sx-session-dot.running 注),改 border 圆环构造 */.run-spinner { width: 12px; height: 12px; flex: none; border-radius: 50%; background: none; border: 2px solid var(--fg-tertiary); border-top-color: var(--fg); animation: sx-spin 1s linear infinite; }@keyframes sx-fade-in { from { opacity: 0; } }.entry-run.sealed svg, .entry-run.sealed span { animation: sx-fade-in var(--dur-relaxed) var(--ease-enter); }
 
 /* 条目左对齐统一(§2):正文/工具/思考同一 x 起点 */.entry { padding: 4px 8px; }.entry-tool { padding: 2px 8px; }
 /* 工具行折叠壳:grid-rows 0fr→1fr 丝滑生长(§8);visibility 折叠尾切(T4 评审可达性补丁:
@@ -2312,11 +2312,12 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 /* 简洁模式段级折叠(2026-11-14 用户裁定):折叠头=交织双方形+类别动词总结(黑字同工具组头档);
    展开内层既有聚合=第二层;concise-hidden=grid 0fr 高度过渡(并入动画,向上收起观感) */
 /* 2026-11-14 用户复裁定「不要用背景颜色,和之前折叠行一致」:concise-fold 与 .tool-group-head 同款(无底色/同 padding/fg-secondary 字档) */
-.concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 2px 8px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-secondary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.concise-fold:hover, .concise-fold:focus-visible { color: var(--fg); background: none; }
+/* 2026-11-14 用户裁定「折叠行与思考行同灰度」:tertiary 档,hover→secondary */
+.concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 2px 8px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+.concise-fold:hover, .concise-fold:focus-visible { color: var(--fg-secondary); background: none; }
 .concise-fold-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.concise-fold .tool-chev { transition: transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.concise-fold.open .tool-chev { transform: rotate(90deg); }
+.concise-fold .concise-chev { flex: none; color: var(--fg-icon); opacity: 1; transition: transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+.concise-fold.open .concise-chev { transform: rotate(90deg); }
 /* 单子链 grid 0fr/1fr(2026-11-14 结构重修:折叠类挂 seg-inner 多子容器=空占位根因,改挂
    concise-body 单子链——header 在折叠体之外不受行高影响) */
 .concise-wrap { display: flex; flex-direction: column; }

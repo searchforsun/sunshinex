@@ -44,9 +44,9 @@ function ConciseIcon(): JSX.Element {
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" className="concise-icon">
       {/* 真织纹(2026-11-14 用户裁定「与复制按钮有所区别」):前块吃页面底色遮住后块底边(穿下),
           再单独重描后块左边线的交叠段(穿上)——两向交替=互压互穿,非 Copy 的双框错位 */}
-      <rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.4" />
-      <rect x="1.5" y="5.5" width="9" height="9" rx="1.5" fill="var(--surface)" stroke="var(--fg-icon)" strokeWidth="1.4" />
-      <path d="M 5.5 6.5 L 5.5 9.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.4" />
+      <rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.3" />
+      <rect x="1.5" y="5.5" width="9" height="9" rx="1.5" fill="var(--surface)" stroke="var(--fg-icon)" strokeWidth="1.3" />
+      <path d="M 5.5 5.5 L 5.5 10.5" fill="none" stroke="var(--fg-icon)" strokeWidth="1.3" />
     </svg>
   );
 }
@@ -141,7 +141,7 @@ function ConciseFold({ open, onToggle, summary }: { open: boolean; onToggle: () 
     <button type="button" className={`concise-fold${open ? ' open' : ''}`} aria-expanded={open} onClick={onToggle}>
       <ConciseIcon />
       <span className="concise-fold-label">{t(summary[0], summary[1])}</span>
-      <ChevronRight className="tool-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
+      <ChevronRight className="concise-chev" size={14} strokeWidth={1.75} aria-hidden="true" />
     </button>
   );
 }
