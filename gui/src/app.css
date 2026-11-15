@@ -2325,14 +2325,11 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-body.open { grid-template-rows: 1fr; }
 .concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
-/* 2026-11-14 用户裁定「所有工具思考行行距一致,含折叠头与折叠内第一行」:简洁段内消灭
-   -10px 负边距链(链只对相邻 entry-tool/thinking 生效=折叠头/首行漏网),统一 4px 栅格距 */
-.concise-wrap { display: flex; flex-direction: column; gap: 4px; }
-.concise-wrap .seg-inner { gap: 4px; padding-top: 0; }
-.concise-wrap .seg-inner .entry-tool + .entry-tool,
-.concise-wrap .seg-inner .entry-tool + .entry-thinking,
-.concise-wrap .seg-inner .entry-thinking + .entry-tool,
-.concise-wrap .seg-inner .entry-thinking + .entry-thinking { margin-top: 0; }
+/* 2026-11-14 用户裁定(撤回 4px 栅格方案,保留既有行距):头→首行与既有工具思考行间距同拍——
+   wrap 槽位=seg-inner 同款 16px,首行(链资格类型)复刻负边距链首拍 -10px;行→行链原样保留 */
+.concise-wrap { display: flex; flex-direction: column; gap: 16px; }
+.concise-wrap > .concise-body > .concise-body-inner > .seg-inner > .entry-tool:first-child,
+.concise-wrap > .concise-body > .concise-body-inner > .seg-inner > .entry-thinking:first-child { margin-top: -10px; }
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
