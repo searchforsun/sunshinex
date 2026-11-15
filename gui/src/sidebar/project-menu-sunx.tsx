@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
-import { Archive, Check, ChevronRight, KanbanSquare, ListFilter, Plus } from 'lucide-react';
+import { Archive, Check, ChevronRight, KanbanSquare, ListFilter } from 'lucide-react';
+import { SunxIcon } from '../sunx-icon';
 import { SessionRow as SessionRowView, useConfirmOutsideCancel, wsName } from './project-menu-util';
 
 /**
@@ -81,11 +82,14 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
         }}
       >
         <span>{t('SUNX', 'SUNX')}</span>
-        {/* 数量值(2026-11-15 用户裁定组头簇对齐「项目」):sunx 行数计数 chip */}
-        {rows !== null && <span className="sx-sunx-count">{rows.length}</span>}
         <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${open ? ' open' : ''}`} />
-        {/* 组头动作簇(2026-11-15 用户裁定:数量/排序/归档/看板/新建——对齐「项目」组头同款簇) */}
+        {/* 组头动作簇(2026-11-15 用户裁定:数量/排序/归档/看板/新建——对齐「项目」组头同款簇;
+            数量值在簇内、看板钮左侧——同日二轮裁定「数量跟随在看板图标左侧」) */}
         <span className="sx-side-head-actions">
+          {/* 数量值:sunx 行数计数 chip(装载中 null 不显) */}
+          {rows !== null && (
+            <span className="sx-sunx-count" aria-label="sunx count">{rows.length}</span>
+          )}
           {/* 看板钮(可选 guard):onOpenBoard 接线才渲染 */}
           {onOpenBoard !== undefined && (
             <button
@@ -158,7 +162,7 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
                 onNewSunx();
               }}
             >
-              <Plus size={14} strokeWidth={1.75} />
+              <SunxIcon size={14} strokeWidth={1.75} />
             </button>
           )}
         </span>
