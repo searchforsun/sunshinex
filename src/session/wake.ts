@@ -52,8 +52,16 @@ const WAKE_NOTICE_TAG_END = '</task-notification>';
  *  （buildScheduleWakeNotification）与过滤端（entry.ts isQuietNotice 安静清单）同源引用 */
 export const SCHEDULE_WAKE_TAG = '<schedule-wake>';
 
+/** 恢复唤醒轮通知标签（2026-11-15 sunx P2 Task 5,R9）：attach 收尾自动重估的通知定性前缀——
+ *  构建端（buildSessionRestoredNotification）与过滤端（entry.ts isQuietNotice 安静清单）同源引用。
+ *  三员同族：机制通知对显示面零信息量（notice 本体不上屏,恢复轮显示走普通 run 行） */
+export const SESSION_RESTORED_TAG = '<session-restored>';
+
 /** 定时唤醒轮 runTask 的 goal：与通知文收尾指令同义（WAKE_GOAL 同构——goal 只是观测标签不进提示词链） */
 export const SCHEDULE_WAKE_GOAL = 'Continue toward your outstanding goals; if nothing remains, reply briefly.';
+
+/** 恢复唤醒轮 runTask 的 goal（R9）：与通知文收尾重估指令同义（同上——观测标签不进提示词链） */
+export const RESTORED_WAKE_GOAL = 'Re-read the board and ledger, decide what to re-dispatch, and report to the user what was lost.';
 
 /** 迟到注明宽限（准点定时器抖动容差）：lateMs 超过它才在通知文注「fired late by」——
  *  busy 排队/停机跨越的迟到远超此值，准点 fire 的毫秒级抖动不注 */
@@ -88,6 +96,53 @@ export function scheduledWakeOfRun(entries: readonly KernelEntry[], runIdx: numb
 /** 定时唤醒显示前缀（t() 双语，调用时求值——i18n 硬约束禁模块级冻结）：显示层（TUI/GUI）单点文案 */
 export function scheduledWakePrefix(): string {
   return t('Scheduled wake', '定时唤醒');
+}
+
+// ===== 恢复唤醒轮通知文（2026-11-15 sunx P2 Task 5,R9 自动重估）=====
+
+/** 恢复轮打断任务行（attach 序推导的「自愈清单」条目——板上 recoverOnLoad 自愈 cancelled/台账
+ *  孤儿重放标 stopped 两源归一）：name=人读名（板 title/台账 title??label）、id=寻址键、status=自愈终态 */
+export interface RestoredInterrupted {
+  name: string;
+  id: string;
+  status: string;
+}
+
+/** 恢复轮素材行（PendingMaterial 的呈现投影——裁定 5 只取 title/askedBy：问题原文全文已在行里
+ *  可由模型按 pid 审计,素材行保持简短;结构化定义避免本模块反向依赖 seglog） */
+export interface RestoredMaterial {
+  title: string;
+  askedBy?: { label: string; taskId?: string };
+}
+
+/** 恢复唤醒通知文（R9 裁定模板）：定性说明+打断清单（title/id+自愈终态）+未决素材列（title+askedBy
+ *  归因）+重估指令。两清单节各自空则整节省略（触发条件保证至少一节在场——全无素材静默不起轮）。
+ *  无任务回执段（不混 WakeRef 词汇——清单行是人读投影,run 配对走 restored 标记） */
+export function buildSessionRestoredNotification(interrupted: ReadonlyArray<RestoredInterrupted>, materials: ReadonlyArray<RestoredMaterial>): string {
+  const lines: string[] = [
+    SESSION_RESTORED_TAG,
+    'Session restored after a daemon restart (not a user message).',
+  ];
+  if (interrupted.length > 0) {
+    lines.push('Dispatched tasks interrupted by the restart:');
+    for (const t of interrupted) lines.push(`- ${t.name} (${t.id}): ${t.status}`);
+  }
+  if (materials.length > 0) {
+    lines.push('Unanswered questions left pending:');
+    for (const m of materials) {
+      const by = m.askedBy !== undefined ? ` (asked by ${m.askedBy.label}${m.askedBy.taskId !== undefined ? `, task ${m.askedBy.taskId}` : ''})` : '';
+      lines.push(`- ${m.title}${by}`);
+    }
+  }
+  lines.push('Re-read the board and ledger, decide what to re-dispatch, and report to the user what was lost.');
+  return lines.join('\n');
+}
+
+/** 恢复唤醒轮判定（R9）：run 条直接前驱为携 restored 标记的 notice → true（写入顺序固定 notice→run
+ *  同 wakeOfRun/scheduledWakeOfRun,配对零歧义）。三配对函数并立——三词汇零交集,显示面互不串号 */
+export function sessionRestoredOfRun(entries: readonly KernelEntry[], runIdx: number): boolean {
+  const prev = entries[runIdx - 1];
+  return prev !== undefined && prev.kind === 'notice' && prev.restored === true;
 }
 
 /** 模型面通知文（spec §5.2）：定性说明在正文内、回执由 receiptOf 注入（=task_wait receiptBody 同构）、系统提示零改动 */

@@ -75,6 +75,11 @@ const DEFAULT_RETRY_DELAY_MS = 1000;
 export class TaskBoard {
   private state: TaskBoardState = emptyBoard();
   private draining = false;
+  /** 重启自愈 cancelled 任务 id 集（2026-11-15 sunx P2 Task 5,R9 恢复轮触发清单推导源）：init 装载
+   *  恢复时打开态（pending/running）被自愈 cancelled 的任务——板上「重启打断」的可观测产物。读面
+   *  推导缓存非生产状态：仅内存、每次 init 重置（换板/换档即换语境）、已终态任务下次 init 不再
+   *  自愈（集合自然收敛），零盘面写入 */
+  private readonly restartRecoveredIds = new Set<string>();
   /** 本轮 drain 有任务因并发护栏拒绝留在 pending:收兵改由退避定时器重派 */
   private capacityDeferred = false;
   /** 本轮 drain 有任务移交 teammate:收兵且不设定时器,由 finishExecution 尾 kick 重入 */
@@ -105,12 +110,14 @@ export class TaskBoard {
 
   /** 载入恢复:重放后 pending 与 running 自愈为 cancelled(事件落流,from 为装载前态),不 kick */
   init(): void {
+    this.restartRecoveredIds.clear(); // 每次装载重置：集合=本板本次 init 的自愈产物（换板/换档换语境）
     const loaded = this.deps.store.load();
     const prior = new Map(Object.values(loaded.tasks).map((t) => [t.id, t.status]));
     const { state, recovered } = recoverOnLoad(loaded);
     this.state = state;
     this.teamTokensUsed = Object.values(this.state.tasks).reduce((sum, t) => sum + (t.artifact?.tokens ?? 0), 0);
     for (const id of recovered) {
+      this.restartRecoveredIds.add(id); // R9 恢复轮推导源（2026-11-15 sunx P2 Task 5）：自愈产物可观测
       const from = prior.get(id);
       if (from !== 'pending' && from !== 'running') continue;
       const note = from === 'running' ? RESTART_RUNNING_NOTE : RESTART_PENDING_NOTE;
@@ -124,6 +131,18 @@ export class TaskBoard {
 
   snapshot(): TaskBoardState {
     return this.state;
+  }
+
+  /** 重启自愈 cancelled 任务读面（2026-11-15 sunx P2 Task 5,R9 恢复轮「打断任务清单」推导源之一）：
+   *  init 装载恢复时打开态被自愈 cancelled 的任务行（recoverOnLoad 产物——快照行无 note 字段,
+   *  「自愈 vs 用户取消」只能由本读面区分）。attach 序已有信息的读面投影,零新增生产状态 */
+  restartRecovered(): BoardTask[] {
+    const out: BoardTask[] = [];
+    for (const id of this.restartRecoveredIds) {
+      const t = this.state.tasks[id];
+      if (t !== undefined) out.push(t);
+    }
+    return out;
   }
 
   /** 轮询至无 pending 且无 running,或超时。钟走 Date.now(轮询节拍,不入事件流)。 */

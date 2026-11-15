@@ -254,7 +254,7 @@ test('plan 卡写面：exit_plan 挂起落 open 行（name/doc）→ 修订回�
   });
 });
 
-test('attach 回放（sunx 重启合同）：真挂起→弃壳不回填→fresh io attach（reCast 链）→未决转素材清单+不复活（表空/零挂起帧）', { timeout: 40_000 }, async () => {
+test('attach 回放（sunx 重启合同）：真挂起→弃壳不回填→fresh io attach（reCast 链）→未决转素材+恢复轮消费（R9）+不复活（表空/零挂起帧）', { timeout: 40_000 }, async () => {
   await withProjectsRoot(async (root) => {
     // 进程 A：真挂起面（kind:'sunx' 出生——meta.kind='sunx' 落档）
     const framesA: DaemonFrame[] = [];
@@ -267,7 +267,6 @@ test('attach 回放（sunx 重启合同）：真挂起→弃壳不回填→fresh
     const jid = a.attachedJournalId!;
     const openRows = journalRows(a).filter((r) => r.t === 'pending-open');
     assert.equal(openRows.length, 1, '挂起即行落档');
-    const pid = openRows[0]!.pid as string;
     // 弃壳不回填：A teardown（abort 收口——ask 挂起无 resolve 对位=daemon 重启蒸发原样）
     await a.teardown();
     // 进程 B（fresh io=真重启）：GUI 重开链形态——standard 出生态壳 + attach 重放（meta.kind='sunx' 触发 reCast）
@@ -279,12 +278,20 @@ test('attach 回放（sunx 重启合同）：真挂起→弃壳不回填→fresh
     assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
     const b = ioB.sessions.get(att.value.sessionId)!;
     assert.equal(b.sessionKind, 'sunx', 'reCast 链生效（壳重铸为 sunx）');
-    // 素材清单产出（接口形态逐字段）：问题原文+选项 label 列;主链直问 askedBy 缺席
-    assert.deepEqual(b.pendingMaterial(), [{ pid, kind: 'ask', title: '重启后怎么继续？', options: ['继续', '放弃'] }]);
+    // 素材清单产出（接口形态逐字段：问题原文+选项 label 列,主链直问 askedBy 缺席）→ **R9 恢复轮
+    // 自动起跑即消费**（2026-11-15 sunx P2 Task 5——sunx attach 收尾起恢复轮,起跑成功 clear 本实例;
+    // 素材内容面转入恢复轮 notice 正文,行推导幂等二次 attach 重产=预期）。素材产出形态的逐字段
+    // 钉在 standard 同产用例（本套件末例——standard 零触发不消费,断言可驻）
+    await waitFor(() => b.sessionKernel.replay().some((e) => e.kind === 'notice' && e.restored === true), 10_000);
+    await waitFor(() => b.status() === 'idle', 15_000);
+    const restoredMd = b.sessionKernel.replay().find((e) => e.kind === 'notice' && e.restored === true)!.md;
+    assert.ok(restoredMd.includes('重启后怎么继续？'), '素材 title 入恢复轮 notice（裁定 5：呈现只取 title/askedBy）');
+    assert.deepEqual(b.pendingMaterial(), [], '恢复轮起跑成功即消费（clear 本实例——裁定 3）');
     // 裁定②不复活：挂起表空（pendingSnapshot 无行）+ 零挂起帧重发（executor 已死,复活无消费者）
     assert.deepEqual(b.pendingSnapshot(), []);
     assert.equal(framesB.filter((f) => f.kind === 'approval' || f.kind === 'ask' || f.kind === 'plan-approval').length, 0);
-    // 旧挂起的 open 行也不入转录投影（机制行非转录——b 转录里无 pending 行派生条目）
+    // 旧挂起的 open 行也不入转录投影（机制行非转录——b 转录里无 pending 行派生条目;恢复轮 notice
+    // 的正文含 title 但整条 md 非恰等,不与本断言冲突）
     assert.equal(
       b.sessionKernel.replay().some((e) => e.md === '重启后怎么继续？'),
       false,

@@ -8,12 +8,14 @@ import type { DaemonFrame } from './daemon-wire';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter, UsageHooks } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionKind } from '../types';
-import { wakeOfRun, scheduledWakeOfRun, SCHEDULE_WAKE_TAG } from '../session/wake';
+import { wakeOfRun, scheduledWakeOfRun, sessionRestoredOfRun, SCHEDULE_WAKE_TAG, SESSION_RESTORED_TAG } from '../session/wake';
 import { isQuietNotice } from '../session/entry';
 import { reduceWakeScheduleRows } from '../session/seglog';
 import { WAKE_HINT } from '../harness/tasks';
 import { SessionJournal, parseJournalFile } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
+import { createSessionIn, attachSessionIn } from './session-lifecycle';
+import type { SessionLifecycleIo } from './session-lifecycle';
 
 /** 控制器级 bg-wake 端到端（bg-wake spec §9 宿主集成，批D）：不起 HTTP——直构 SessionRuntime
  *  （同 session.test.ts 直构形态：nextSeq/broadcast/mintPid 注入桩）。
@@ -816,4 +818,238 @@ test('attach 重布防：未触发 re-arm（R7 停机跨越补发一次注明延
     assert.notEqual(s1?.firedAt, undefined, '存档 sched-1 终态史保留（新铸不复活/不合并）');
     assert.equal(records.find((r) => r.id === 'sched-4')?.firedAt, undefined, '新调度未触发态在册');
   }, { kind: 'sunx' }); // sunx 装配：schedule_wakeup 在面（arm 经真实工具路径）
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 恢复唤醒轮 R9（2026-11-15 sunx P2 Task 5）：attach 收尾自动重估——daemon 重启后 GUI 重开
+// （attachSessionIn 全序收尾）且 kind==='sunx' 且（存在自愈 cancelled/stopped 打断任务 或 存在
+// 未决挂起素材）→ 专用 submitWake 变体自动起一轮：notice 文 <session-restored>（清单+素材列+
+// 重估指令）、无 wake 引用、安静清单不显示、计入连续唤醒上限；恢复轮起跑成功即消费素材
+// （clearPendingMaterial——本实例语义,行推导幂等二次 attach 重产=预期）;busy 竞争用户优先——
+// 409 丢弃+落 skip notice+素材保留。触发清单来源=attach 序已有信息推导（板 init 自愈读面+
+// 台账孤儿 stopped 读面——零新增生产状态）。e2e 走真 attachSessionIn 链（「第二实例写存档行」
+// 先例:板事件行/台账行/挂起行均手落盘——重启前旧进程既存行的确定性写法）。
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** 生命周期 io 装配（session.pending.test.ts 同形）：broadcast 收集帧 */
+function makeIo(model: ModelAdapter, frames: DaemonFrame[]): SessionLifecycleIo {
+  const sessions = new Map<string, SessionRuntime>();
+  let seq = 0;
+  let pid = 0;
+  return {
+    sessions,
+    model,
+    nextSeq: () => ++seq,
+    mintPid: () => `p${++pid}`,
+    broadcast: (f) => frames.push(f),
+    setActive: () => {},
+    watchProject: () => {},
+    unwatchProject: () => {},
+  };
+}
+
+/** 生命周期装配样板（session.pending.test.ts 同形）：SUNSHINEX_PROJECTS_DIR 钉 tmp、DATA_DIR 解除
+ *  ——真 createSessionIn/attachSessionIn 链（出生写/meta 旁车/birth-only 守卫全真） */
+async function withProjectsRoot(fn: (root: string) => Promise<void>): Promise<void> {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-restored-'));
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_PROJECTS_DIR = path.join(tmp, 'projects');
+  delete process.env.SUNSHINEX_DATA_DIR;
+  const root = path.join(tmp, 'proj');
+  fs.mkdirSync(root);
+  try {
+    await fn(root);
+  } finally {
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+    else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+}
+
+/** 恢复轮 notice 条（restored 标记在场的机制条——与任务唤醒/定时唤醒词汇零交集） */
+function restoredNotices(ents: ReturnType<SessionRuntime['sessionKernel']['replay']>) {
+  return ents.filter((e) => e.kind === 'notice' && e.restored === true);
+}
+
+/** 存档行落盘（「第二实例写存档行」先例——重启前旧进程既存行）三件：
+ *  板事件行（打开态板任务→下轮 init 自愈 cancelled）/ 台账行（异进程 running 孤儿→重放标 stopped）/
+ *  挂起行（子智能体问线 ask open 无 resolve 对位→attach 重产素材） */
+function seedRestartRows(root: string, jid: string): void {
+  const dataDir = resolveDataDir(root);
+  const teamsDir = path.join(dataDir, 'teams', jid, 'main');
+  fs.mkdirSync(teamsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(teamsDir, 'events.jsonl'),
+    `${JSON.stringify({ t: 'task-created', taskId: 'task-t1', title: 'Write the docs', spec: 'write the docs', dependsOn: [], teamId: 'team-1', ts: Date.now() })}\n`,
+    'utf8',
+  );
+  const tasksDir = path.join(dataDir, 'tasks');
+  fs.mkdirSync(tasksDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(tasksDir, `ledger-${jid}.jsonl`),
+    `${JSON.stringify({
+      op: 'submit',
+      pid: 999_999, // 异进程=崩溃遗留孤儿（本进程 pid 必不同——重放标 stopped）
+      task: { id: 'exec-old-0001', kind: 'exec', label: 'old-fork', title: 'old fork', status: 'running', outputFilePath: path.join(tasksDir, 'tasks', 'exec-old-0001.log'), startedAt: Date.now(), ownerRun: 'main' },
+    })}\n`,
+    'utf8',
+  );
+  const journal = new SessionJournal(dataDir);
+  journal.attach(jid);
+  journal.log({ t: 'pending-open', pid: 'p9', kind: 'ask', req: { question: 'Which port should the service bind to?', options: [{ label: '3000' }, { label: '8080' }], askedBy: { label: 'asker', taskId: 'exec-old-0001' } } });
+}
+
+test('R9 恢复唤醒轮：重启→attach→自动起轮（板自愈+台账孤儿+挂起素材同轮；run 配对+安静清单+消费口）', { timeout: 40_000 }, async () => {
+  await withProjectsRoot(async (root) => {
+    // 进程 A：sunx 会话铸档（meta.kind='sunx' 出生落档）→ 弃壳（无实质 run——存档行全部手落）
+    const ioA = makeIo(new ScriptedAdapter(['x']), []);
+    const cA = createSessionIn(ioA, root, { kind: 'sunx' });
+    assert.ok(cA.ok, `createSessionIn: ${cA.ok ? '' : cA.error.message}`);
+    const a = ioA.sessions.get(cA.value.sessionId)!;
+    a.ensureJournalMinted();
+    const jid = a.attachedJournalId!;
+    seedRestartRows(root, jid);
+    await a.teardown();
+    // 进程 B（fresh io=真重启）：standard 壳 → attach 全序（reCast/rearm/素材回种）→ 收尾自动起恢复轮
+    const framesB: DaemonFrame[] = [];
+    const ioB = makeIo(new ScriptedAdapter(['restored reply']), framesB);
+    const cB = createSessionIn(ioB, root);
+    assert.ok(cB.ok);
+    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
+    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const b = ioB.sessions.get(att.value.sessionId)!;
+    assert.equal(b.sessionKind, 'sunx', 'reCast 链生效');
+    // 恢复轮自动起跑：restored notice → run 固定序
+    await waitFor(() => restoredNotices(b.sessionKernel.replay()).length > 0, 10_000);
+    await waitFor(() => b.status() === 'idle', 15_000);
+    const ents = b.sessionKernel.replay();
+    const notices = restoredNotices(ents);
+    assert.equal(notices.length, 1, '恰一条恢复轮 notice');
+    const idx = ents.indexOf(notices[0]!);
+    assert.equal(ents[idx + 1]?.kind, 'run', '转录序 notice→run（固定写入序）');
+    assert.equal(sessionRestoredOfRun(ents, idx + 1), true, 'sessionRestoredOfRun 独立配对成立');
+    assert.equal(wakeOfRun(ents, idx + 1), undefined, '无 wake 引用（恢复轮不混任务唤醒词汇）');
+    const md = notices[0]!.md;
+    assert.ok(md.startsWith(SESSION_RESTORED_TAG), '模型面通知文前缀（isQuietNotice 安静清单同源标签）');
+    assert.match(md, /Session restored after a daemon restart \(not a user message\)\./, '定性说明行');
+    assert.match(md, /Dispatched tasks interrupted by the restart:\n- Write the docs \(task-t1\): cancelled/, '打断清单：板自愈任务（title/id+终态）');
+    assert.match(md, /- old fork \(exec-old-0001\): stopped/, '打断清单：台账孤儿 stopped 行');
+    assert.match(md, /Unanswered questions left pending:\n- Which port should the service bind to\? \(asked by asker, task exec-old-0001\)/, '素材列：title+askedBy 归因');
+    assert.match(md, /Re-read the board and ledger, decide what to re-dispatch, and report to the user what was lost\./, '重估指令收尾行');
+    assert.equal(isQuietNotice(md), true, '安静清单：<session-restored> 前缀对显示面零信息量');
+    assert.equal(
+      ents.some((e) => e.kind === 'user' && e.ts >= notices[0]!.ts && (ents[idx + 1]?.ts ?? 0) >= e.ts),
+      false,
+      '恢复轮无 user 条',
+    );
+    assert.ok(ents.some((e) => e.kind === 'assistant' && e.md === 'restored reply'), '恢复轮终稿收束');
+    // notice 标记随档：journal seg 行携 restored 标记（重启重放后配对仍成立）
+    const noticeRow = journalRows(b).find((r) => r.t === 'seg' && r.kind === 'notice' && String(r.md).startsWith(SESSION_RESTORED_TAG));
+    assert.notEqual(noticeRow, undefined, '恢复轮 notice 落档');
+    assert.equal(noticeRow!.restored, true, 'seg 行携 restored 标记');
+    // ⑥消费口：恢复轮起跑成功即 clear 本实例素材；盘上 open 行仍在（行推导幂等——二次 attach 重产=预期行为）
+    assert.deepEqual(b.pendingMaterial(), [], '恢复轮消费后素材清单清空（本实例语义）');
+    assert.equal(journalRows(b).some((r) => r.t === 'pending-open'), true, 'open 行仍在档（行推导幂等，不因消费而改写）');
+    await b.teardown();
+  });
+});
+
+test('R9 全无素材静默不起轮：sunx 干净档 attach 零恢复轮（避免每次重开空转）', { timeout: 30_000 }, async () => {
+  await withProjectsRoot(async (root) => {
+    const ioA = makeIo(new ScriptedAdapter(['x']), []);
+    const cA = createSessionIn(ioA, root, { kind: 'sunx' });
+    assert.ok(cA.ok);
+    const a = ioA.sessions.get(cA.value.sessionId)!;
+    a.ensureJournalMinted();
+    const jid = a.attachedJournalId!;
+    await a.teardown();
+    const ioB = makeIo(new ScriptedAdapter(['y']), []);
+    const cB = createSessionIn(ioB, root);
+    assert.ok(cB.ok);
+    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
+    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const b = ioB.sessions.get(att.value.sessionId)!;
+    assert.equal(b.sessionKind, 'sunx');
+    await new Promise((r) => setTimeout(r, 1_500)); // 负向断言有界等待
+    assert.equal(restoredNotices(b.sessionKernel.replay()).length, 0, '无自愈任务无素材——不起轮');
+    assert.equal(b.status(), 'idle');
+    assert.deepEqual(b.pendingMaterial(), []);
+    await b.teardown();
+  });
+});
+
+test('R9 standard 零触发：素材/打断在也零恢复轮（素材同产但本实例不消费）', { timeout: 30_000 }, async () => {
+  await withProjectsRoot(async (root) => {
+    const ioA = makeIo(new ScriptedAdapter(['x']), []);
+    const cA = createSessionIn(ioA, root); // 无 kind=standard 出生
+    assert.ok(cA.ok);
+    const a = ioA.sessions.get(cA.value.sessionId)!;
+    a.ensureJournalMinted();
+    const jid = a.attachedJournalId!;
+    seedRestartRows(root, jid); // 打断任务+素材都在——standard 仍零触发
+    await a.teardown();
+    const ioB = makeIo(new ScriptedAdapter(['y']), []);
+    const cB = createSessionIn(ioB, root);
+    assert.ok(cB.ok);
+    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
+    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const b = ioB.sessions.get(att.value.sessionId)!;
+    assert.equal(b.sessionKind, undefined, 'standard 壳不重铸');
+    await new Promise((r) => setTimeout(r, 1_500)); // 负向断言有界等待
+    assert.equal(restoredNotices(b.sessionKernel.replay()).length, 0, 'standard 零触发');
+    assert.equal(b.status(), 'idle');
+    assert.equal(b.pendingMaterial().length, 1, '素材同产不消费（Task 4 裁定④行面普适——消费面限 sunx）');
+    await b.teardown();
+  });
+});
+
+test('R9 busy 竞争用户优先：run 在途恢复轮 409 丢弃+skip notice+素材保留；空闲重试起轮并消费', { timeout: 30_000 }, async () => {
+  const gate = gatedPair();
+  const model = new SunxRoutedAdapter(
+    { taskIds: () => [] },
+    [
+      async () => {
+        await gate.wait; // 第一轮挂闸：制造 busy 窗
+        return stop('first done');
+      },
+      stop('restored reply'), // 空闲后的恢复轮
+    ],
+    [],
+  );
+  try {
+    await withSession(model, async (ctx) => {
+      const ctl = ctx.session;
+      const entries = () => ctl.sessionKernel.replay();
+      // 素材播种（Task 4 回放产出等价形态——本测试聚焦消费口/busy 分支,不起真 attach 链）
+      ctl.seedPendingMaterials([{ t: 'pending-open', pid: 'p1', kind: 'ask', req: { question: 'Busy-window ask?', options: [{ label: 'a' }] } }]);
+      assert.equal(ctl.submit('busy work').ok, true);
+      await waitFor(() => model.mainCalls === 1, 15_000); // 第一轮在挂闸中（busy 窗）
+      // busy 恢复轮：409 丢弃+skip notice+素材保留
+      const accepted = ctl.submitRestoredRound([{ name: 'Write the docs', id: 'task-t1', status: 'cancelled' }], ctl.pendingMaterial());
+      assert.equal(accepted, false, 'run 在途=409 丢弃');
+      assert.equal(restoredNotices(entries()).length, 0, '恢复轮未起');
+      assert.ok(entries().some((e) => e.kind === 'notice' && e.md === 'recovery round skipped: session busy'), 'skip notice 在转录面');
+      assert.equal(ctl.pendingMaterial().length, 1, '素材保留（下次 attach 重产/重试可消费——裁定③不清）');
+      gate.open(); // 放闸→第一轮收束（idle）
+      await waitFor(() => ctl.status() === 'idle', 15_000);
+      // 空闲重试：恢复轮起跑成功并消费素材
+      assert.equal(ctl.submitRestoredRound([{ name: 'Write the docs', id: 'task-t1', status: 'cancelled' }], ctl.pendingMaterial()), true, '空闲受理');
+      await waitFor(() => restoredNotices(entries()).length > 0, 10_000);
+      await waitFor(() => ctl.status() === 'idle', 15_000);
+      assert.deepEqual(ctl.pendingMaterial(), [], '起跑成功即消费（clear 本实例）');
+      const ents = entries();
+      const idx = ents.findIndex((e) => e.restored === true);
+      assert.equal(ents[idx + 1]?.kind, 'run', '恢复轮 notice→run 配对');
+      assert.ok(ents.some((e) => e.kind === 'assistant' && e.md === 'restored reply'), '恢复轮终稿收束');
+    }, { kind: 'sunx' });
+  } finally {
+    gate.open(); // 兜底放闸
+  }
 });

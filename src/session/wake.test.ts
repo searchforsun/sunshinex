@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { wakeOfRun, resolveWakeName, toWakeRefs, buildWakeNotification, WakeController, WAKE_GOAL, buildScheduleWakeNotification, scheduledWakeOfRun, scheduledWakePrefix, SCHEDULE_WAKE_TAG } from './wake';
+import { wakeOfRun, resolveWakeName, toWakeRefs, buildWakeNotification, WakeController, WAKE_GOAL, buildScheduleWakeNotification, scheduledWakeOfRun, scheduledWakePrefix, SCHEDULE_WAKE_TAG, buildSessionRestoredNotification, sessionRestoredOfRun, SESSION_RESTORED_TAG, RESTORED_WAKE_GOAL } from './wake';
 import type { WakeControllerOpts, WakeTaskInput } from './wake';
 import { isQuietNotice } from './entry';
 import { setLanguage, getLanguage } from '../i18n';
@@ -114,6 +114,46 @@ describe('buildScheduleWakeNotification', () => {
     assert.equal(isQuietNotice(buildScheduleWakeNotification('x')), true);
     assert.equal(isQuietNotice('ask p1 answered'), true, '既有安静清单不受扰');
     assert.equal(isQuietNotice('user visible notice'), false);
+  });
+});
+
+// ═══ 恢复唤醒轮（2026-11-15 sunx P2 Task 5,R9）：通知文模板/配对/安静清单——e2e 在 serve/session.wake ═══
+
+describe('buildSessionRestoredNotification / sessionRestoredOfRun（R9）', () => {
+  const notice = (seq: number, over: Partial<KernelEntry> = {}): KernelEntry => ({ seq, ts: 1, kind: 'notice', md: 'x', ...over });
+
+  test('通知文模板逐字：定性说明+打断清单（title/id+终态）+素材列（title+askedBy 归因）+重估指令', () => {
+    const md = buildSessionRestoredNotification(
+      [
+        { name: 'Write the docs', id: 'task-t1', status: 'cancelled' },
+        { name: 'old fork', id: 'exec-1', status: 'stopped' },
+      ],
+      [{ title: 'Which port?', askedBy: { label: 'asker', taskId: 'exec-1' } }, { title: '主链直问', askedBy: { label: 'user' } }],
+    );
+    assert.match(md, /^<session-restored>\nSession restored after a daemon restart \(not a user message\)\.\n/);
+    assert.ok(md.startsWith(SESSION_RESTORED_TAG), '构建端标签常量同源（与 isQuietNotice 过滤端单一引用）');
+    assert.match(md, /Dispatched tasks interrupted by the restart:\n- Write the docs \(task-t1\): cancelled\n- old fork \(exec-1\): stopped\n/);
+    assert.match(md, /Unanswered questions left pending:\n- Which port\? \(asked by asker, task exec-1\)\n- 主链直问 \(asked by user\)\n/);
+    assert.match(md, /Re-read the board and ledger, decide what to re-dispatch, and report to the user what was lost\.$/);
+    assert.equal(isQuietNotice(md), true, '安静清单：<session-restored> 前缀同源标签');
+  });
+
+  test('空节省略（触发条件保证至少一节在场）；askedBy.taskId 缺席不注 task 段', () => {
+    const onlyMaterials = buildSessionRestoredNotification([], [{ title: 'Q?' }]);
+    assert.equal(onlyMaterials.includes('Dispatched tasks interrupted'), false, '打断清单空=整节省略');
+    assert.match(onlyMaterials, /Unanswered questions left pending:\n- Q\?\nRe-read the board and ledger/, 'askedBy 缺席=裸 title（收尾指令紧随）');
+    const onlyInterrupted = buildSessionRestoredNotification([{ name: 'n', id: 'i', status: 'cancelled' }], []);
+    assert.equal(onlyInterrupted.includes('Unanswered questions'), false, '素材空=整节省略');
+    assert.equal(isQuietNotice(buildSessionRestoredNotification([], [])), true, '空列不破安静清单');
+  });
+
+  test('run 的直接前驱是携 restored 标记的 notice → true；schedule/wake/普通 notice 不串（三词汇零交集）', () => {
+    assert.equal(sessionRestoredOfRun([notice(1, { restored: true }), run(2)], 1), true);
+    assert.equal(sessionRestoredOfRun([notice(1, { schedule: true }), run(2)], 1), false, '定时唤醒不串');
+    assert.equal(sessionRestoredOfRun([notice(1, { wake: [{ id: 'a' }] }), run(2)], 1), false, '任务唤醒不串');
+    assert.equal(sessionRestoredOfRun([notice(1), run(2)], 1), false, '普通 notice 不配对');
+    assert.equal(sessionRestoredOfRun([notice(1, { restored: true }), run(2), run(3)], 2), false, '中间隔条作废');
+    assert.equal(RESTORED_WAKE_GOAL, 'Re-read the board and ledger, decide what to re-dispatch, and report to the user what was lost.', 'goal 与通知文收尾指令同义（观测标签）');
   });
 });
 

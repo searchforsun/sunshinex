@@ -10,6 +10,7 @@ import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
 import { SessionJournal, journalDisplayTitle, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../tui/session-journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
+import type { RestoredInterrupted } from '../session/wake';
 import { projectsRoot, projectSlug, resolveDataDir, worktreeMainRootOf } from '../config/data-dir';
 
 /**
@@ -312,6 +313,25 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
       purgeSession(dataDir, prevJournalId);
     } catch {
       /* 回收尽力而为:不阻断 attach */
+    }
+  }
+  // 恢复唤醒轮（2026-11-15 sunx P2 Task 5,R9 自动重估）：attach 全序收尾之后的一次性 fire-and-forget
+  // （reCast/播种/rearmSchedules/seedPendingMaterials 全部落定,本点即全序最末）。触发=kind==='sunx'
+  // 且（存在自愈 cancelled/stopped 打断任务 或 存在未决挂起素材）——打断清单从 attach 序已有信息推导
+  // （板 init 自愈读面 restartRecovered + 台账孤儿 stopped 读面 restartOrphans——零新增生产状态,行
+  // 推导幂等）;素材取 pendingMaterial()（Task 4 回放产出,呈现只取 title/askedBy）。全无素材静默
+  // 不起轮（避免每次重开空转一轮）;standard 零触发（submitRestoredRound 内 kind 守卫双保险）。
+  // busy 竞争用户优先:恢复轮走 submit 单 run 锁,409 即丢弃+skip notice——素材已入链可被下一轮
+  // 自然消费,不做复杂排队（裁定 2/3 在 SessionRuntime.submitRestoredRound 内收口）
+  if (session.sessionKind === 'sunx') {
+    const h = session.runtime.harness;
+    const materials = session.pendingMaterial();
+    if (materials.length > 0 || h.taskboard.restartRecovered().length > 0 || h.tasks.restartOrphans().length > 0) {
+      const interrupted: RestoredInterrupted[] = [
+        ...h.taskboard.restartRecovered().map((t) => ({ name: t.title, id: t.id, status: 'cancelled' })),
+        ...h.tasks.restartOrphans().map((t) => ({ name: t.title ?? t.label, id: t.id, status: 'stopped' })),
+      ];
+      session.submitRestoredRound(interrupted, materials);
     }
   }
   io.setActive(id);

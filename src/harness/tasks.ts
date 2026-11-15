@@ -58,6 +58,11 @@ type TaskLedgerRow =
  *  newSessionId（UTC 紧凑时间戳+4 位随机尾），跨会话唯一且一眼可读「何时启动了什么」，撞 id 再生成兜底 */
 export class TaskRegistry {
   private readonly tasks = new Map<string, BackgroundTask>();
+  /** 重启孤儿 stopped 行 id 集（2026-11-15 sunx P2 Task 5,R9 恢复轮触发清单推导源）：账本重放时
+   *  「异进程且仍 running」被标 stopped 的行——崩溃遗留的派发任务（优雅停机 stopAll 落 finish 行者
+   *  不在此列）。读面推导缓存非生产状态：仅内存、随实例生灭、重放逐次并集（已终态行零副作用），
+   *  零盘面写入 */
+  private readonly restartStoppedIds = new Set<string>();
   /** 运行态变更旁路(submit/finish 后触发;装载/adopt 重放零回调——避免开会话刷屏) */
   private onChange?: (task: BackgroundTask) => void;
 
@@ -144,6 +149,7 @@ export class TaskRegistry {
       if (t !== undefined && t.status === 'running') {
         t.status = 'stopped';
         t.endedAt = now;
+        this.restartStoppedIds.add(id); // R9 恢复轮推导源（2026-11-15 sunx P2 Task 5）：自愈产物可观测
       }
     }
   }
@@ -236,6 +242,13 @@ export class TaskRegistry {
 
   list(): BackgroundTask[] {
     return [...this.tasks.values()];
+  }
+
+  /** 重启孤儿 stopped 行读面（2026-11-15 sunx P2 Task 5,R9 恢复轮「打断任务清单」推导源之二）：
+   *  账本重放时标 stopped 的异进程 running 孤儿（P1 语义「重启后台任务不唤醒」的产物在此转为
+   *  恢复轮可观测清单——attach 序已有信息的读面投影,零新增生产状态） */
+  restartOrphans(): BackgroundTask[] {
+    return this.list().filter((t) => t.status === 'stopped' && this.restartStoppedIds.has(t.id));
   }
 
 

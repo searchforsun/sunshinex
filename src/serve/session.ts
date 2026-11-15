@@ -23,8 +23,8 @@ import { kernelEventRows, reduceWakeScheduleRows, reducePendingRows } from '../s
 import type { SegRowLike, WakeScheduleRecord, PendingMaterial } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { sanitizeTurn } from '../session/entry';
-import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification, buildScheduleWakeNotification, SCHEDULE_WAKE_GOAL } from '../session/wake';
-import type { WakeTaskInput } from '../session/wake';
+import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification, buildScheduleWakeNotification, buildSessionRestoredNotification, SCHEDULE_WAKE_GOAL, RESTORED_WAKE_GOAL } from '../session/wake';
+import type { WakeTaskInput, RestoredInterrupted, RestoredMaterial } from '../session/wake';
 import { TimerController } from '../session/timer';
 import { WAKE_HINT_RECEIPT_TOOL } from '../harness/tasks';
 import { receiptBody } from '../harness/tools/task-wait';
@@ -352,8 +352,9 @@ export class SessionRuntime {
    *  下一次 attach 前再重启则重产（seedPendingMaterials 整列替换） */
   private pendingMaterials: PendingMaterial[] = [];
 
-  /** 素材清单外窥（Task 5 恢复轮 notice 消费接口） */
-  pendingMaterial(): PendingMaterial[] {
+  /** 素材清单外窥（Task 5 恢复轮 notice 消费接口；Task 4 移交义务清偿——返回类型收口
+   *  ReadonlyArray,消费侧不可变） */
+  pendingMaterial(): ReadonlyArray<PendingMaterial> {
     return this.pendingMaterials;
   }
 
@@ -380,6 +381,28 @@ export class SessionRuntime {
   private submitWake(tasks: WakeTaskInput[]): boolean {
     if (this.planArmed()) return false;
     return this.submit(WAKE_GOAL, undefined, { tasks }).ok;
+  }
+
+  /**
+   * 恢复唤醒轮入口（R9,2026-11-15 sunx P2 Task 5）：session-lifecycle.attachSessionIn 全序收尾后
+   * 一次性 fire-and-forget 调用——专用 submitWake 变体第三员（notice→run 固定序同管线）。触发判定
+   * 在调用方（attach 序已有信息推导：板 init 自愈读面+台账孤儿 stopped 读面+挂起素材清单——零新增
+   * 生产状态）；本入口只管起轮纪律：
+   * - standard 会话零触发（裁定 4）——kind 守卫最前；
+   * - 计入连续唤醒上限（consumeChain——与任务/定时唤醒同账本,触顶 onLimit 由控制器发,本口静默弃）；
+   * - 消费口（裁定 3）：起跑成功即 clearPendingMaterial（素材单次消费——本实例语义;409 丢弃不清,
+   *   行推导幂等下次 attach 重产）;
+   * - busy 竞争用户优先（裁定 2）：恢复轮走 submit 单 run 锁,409（run 在途）即丢弃并落 skip notice
+   *   「recovery round skipped: session busy」——素材已入链可被下一轮自然消费,不做复杂排队。
+   */
+  submitRestoredRound(interrupted: ReadonlyArray<RestoredInterrupted>, materials: ReadonlyArray<PendingMaterial>): boolean {
+    if (this.sessionKind !== 'sunx') return false;
+    if (this.planArmed()) return false;
+    if (!this.wake.consumeChain()) return false;
+    const accepted = this.submit(RESTORED_WAKE_GOAL, undefined, { restored: { interrupted, materials } }).ok;
+    if (accepted) this.clearPendingMaterial();
+    else this.pump({ type: 'notice', text: 'recovery round skipped: session busy', ts: Date.now() });
+    return accepted;
   }
   /** 事件环形缓冲（补发窗口）：pump 单点写入，连接建立即逐会话补发；帧自带 seq+sessionId */
   private readonly frames: EventFrame[] = [];
@@ -1297,10 +1320,19 @@ export class SessionRuntime {
    *  进模型上下文（appendInstructionLine——TUI /goal 同构，tui/session.ts 先例：goal 自身只是观测
    *  标签，不进提示词）；该行同落出生 journal（chain 派生转录的 `> <goal>` user 条来源）。
    *  双态（bg-wake spec §5.3）：wake 缺省=用户路径（markUserActivity+user 条+指令行）；wake 在场=
-   *  唤醒轮（无 markUserActivity、notice 通知条+链尾 note 替代——快照/统计/续发全共用）。唤醒轮两员
-   *  （P2 Task 3）：tasks 在场=任务终态唤醒（wake 引用配对）；schedule 在场=定时唤醒（notice 携
-   *  schedule 标记——scheduledWakeOfRun 独立配对，不混 WakeRef 词汇） */
-  submit(goal: string, images?: string[], wake?: { tasks?: WakeTaskInput[]; schedule?: { note: string; lateMs?: number } }): SessionSubmitResult {
+   *  唤醒轮（无 markUserActivity、notice 通知条+链尾 note 替代——快照/统计/续发全共用）。唤醒轮三员
+   *  （P2 Task 3/5）：tasks 在场=任务终态唤醒（wake 引用配对）；schedule 在场=定时唤醒（notice 携
+   *  schedule 标记——scheduledWakeOfRun 独立配对，不混 WakeRef 词汇）；restored 在场=恢复唤醒轮
+   *  （R9——notice 携 restored 标记,sessionRestoredOfRun 独立配对,无 wake 引用） */
+  submit(
+    goal: string,
+    images?: string[],
+    wake?: {
+      tasks?: WakeTaskInput[];
+      schedule?: { note: string; lateMs?: number };
+      restored?: { interrupted: ReadonlyArray<RestoredInterrupted>; materials: ReadonlyArray<RestoredMaterial> };
+    },
+  ): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     if (wake === undefined) this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（唤醒路径不重置）
     // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进
@@ -1353,6 +1385,13 @@ export class SessionRuntime {
       // （scheduledWakeOfRun 独立配对，不混 WakeRef 词汇）+ 链尾 note；错过注明延迟（R7/busy 排队）
       const md = buildScheduleWakeNotification(wake.schedule.note, wake.schedule.lateMs);
       this.pump({ type: 'notice', text: md, payload: { schedule: true }, ts: Date.now() });
+      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+    } else if (wake !== undefined && wake.restored !== undefined) {
+      // 恢复唤醒轮（R9,P2 Task 5）：submitWake 同管线第三员——notice 携 restored 标记
+      // （sessionRestoredOfRun 独立配对,与 wake/schedule 词汇零交集）+ 链尾 note;无 wake 引用——
+      // 打断清单/素材列在通知文正文（人读投影）,显示走普通 run 行（<session-restored> 安静清单不显示）
+      const md = buildSessionRestoredNotification(wake.restored.interrupted, wake.restored.materials);
+      this.pump({ type: 'notice', text: md, payload: { restored: true }, ts: Date.now() });
       this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
     } else {
       this.kernel.submit(goal, images);

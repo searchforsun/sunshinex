@@ -55,6 +55,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
           ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
           ...(e.wake !== undefined ? { wake: e.wake } : {}),
           ...(e.schedule !== undefined ? { schedule: e.schedule } : {}),
+          ...(e.restored !== undefined ? { restored: e.restored } : {}),
         },
       ];
     if (e.kind === 'tool' && e.result !== undefined) rows.push({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result });
@@ -106,6 +107,8 @@ export interface SegRowLike {
   wake?: unknown;
   /** 行随定时唤醒标记（2026-11-15 sunx P2 Task 3;行面字段不予信任——严判 true,旧档无此字段=普通 notice） */
   schedule?: unknown;
+  /** 行随恢复唤醒轮标记（2026-11-15 sunx P2 Task 5,R9;行面字段不予信任——严判 true,旧档无此字段=普通 notice） */
+  restored?: unknown;
   /** wake-schedule 机制行载荷（同下 id/fireAt/note/taskSpec/firedAt——行面字段不予信任） */
   fireAt?: unknown;
   note?: unknown;
@@ -220,6 +223,7 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
         ...(input !== undefined ? { input } : {}),
         ...(wake !== undefined ? { wake } : {}),
         ...(row.schedule === true ? { schedule: true as const } : {}),
+        ...(row.restored === true ? { restored: true as const } : {}),
         ...(kind === 'thinking' && seconds !== undefined ? { seconds } : {}),
       });
       continue;

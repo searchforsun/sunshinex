@@ -1,6 +1,6 @@
 import { artifactKey, type Artifact, type ChangeFile, type SessionEvent, type TurnFileChange } from '../types';
 import { LEADER_RECIPIENT } from '../taskboard/leader';
-import { WAKE_NOTICE_TAG, SCHEDULE_WAKE_TAG } from './wake';
+import { WAKE_NOTICE_TAG, SCHEDULE_WAKE_TAG, SESSION_RESTORED_TAG } from './wake';
 
 /**
  * SessionKernel 条目模型与纯 reducer(spec 2026-10-17-session-kernel §3.3)。三份投影的并集语义
@@ -84,6 +84,9 @@ export interface KernelEntry {
   /** notice:定时唤醒标记（2026-11-15 sunx P2 Task 3；仅 schedule_wakeup/schedule_task 到点通知条携带——
    *  显示前缀「定时唤醒」走 scheduledWakeOfRun 独立配对推导，与 wake 引用词汇零交集） */
   schedule?: true;
+  /** notice:恢复唤醒轮标记（2026-11-15 sunx P2 Task 5,R9；仅 attach 收尾自动重估通知条携带——
+   *  显示走普通 run 行,sessionRestoredOfRun 独立配对推导,与 wake/schedule 词汇零交集） */
+  restored?: true;
   /** thinking:段耗时秒(封段时首尾 ts 差取整) */
   seconds?: number;
   /** 三态生命周期(渲染中立 spec §7):pending=已发射未执行/running=执行或流式中;done 以缺省
@@ -149,11 +152,11 @@ export function inboundMessageOf(payload: Record<string, unknown> | undefined): 
   return { from, to, text };
 }
 
-/** 安静 notice 判定(P10 显示裁定单点):机制回执行(后台任务唤醒通知/定时唤醒通知/ask 回执/记忆索引漂移)
- *  对用户零信息量——内核忠实归档(journal 审计面保留),但 TUI/GUI 渲染面统一不显示。原 GUI 私有实现上收:
- *  两端同一裁定,防「同会话两端行数不同」分叉 */
+/** 安静 notice 判定(P10 显示裁定单点):机制回执行(后台任务唤醒通知/定时唤醒通知/恢复唤醒通知/ask 回执/
+ *  记忆索引漂移)对用户零信息量——内核忠实归档(journal 审计面保留),但 TUI/GUI 渲染面统一不显示。
+ *  原 GUI 私有实现上收:两端同一裁定,防「同会话两端行数不同」分叉 */
 export function isQuietNotice(md: string): boolean {
-  return md.startsWith(WAKE_NOTICE_TAG) || md.startsWith(SCHEDULE_WAKE_TAG) || /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
+  return md.startsWith(WAKE_NOTICE_TAG) || md.startsWith(SCHEDULE_WAKE_TAG) || md.startsWith(SESSION_RESTORED_TAG) || /^ask p\S+ answered$/.test(md) || md.startsWith('[memory] index changed');
 }
 
 /** 未配对 tool 旁挂记账(条目本体已在列,缺面由迟到者回填;同 collector PendingTool) */
@@ -484,7 +487,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       const sealed = sealSeg(state, e.ts);
       const wake = parseWakeRefs(e.payload?.wake);
       const scheduled = e.payload?.schedule === true;
-      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: e.text ?? '', ...(wake !== undefined ? { wake } : {}), ...(scheduled ? { schedule: true as const } : {}) });
+      const restored = e.payload?.restored === true;
+      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: e.text ?? '', ...(wake !== undefined ? { wake } : {}), ...(scheduled ? { schedule: true as const } : {}), ...(restored ? { restored: true as const } : {}) });
     }
     case 'error':
       // 不封段(G14.51):done 必发,收口让位——运行中旁路错误只入条,开启段留给 done 合并
