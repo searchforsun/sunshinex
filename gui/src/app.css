@@ -2315,7 +2315,7 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 /* 2026-11-14 用户复裁定「不要用背景颜色,和之前折叠行一致」:concise-fold 与 .tool-group-head 同款(无底色/同 padding/fg-secondary 字档) */
 /* 2026-11-14 用户裁定「折叠行与思考行同灰度」:tertiary 档,hover→secondary */
 .concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 2px 8px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.concise-fold:hover, .concise-fold:focus-visible { color: var(--fg-secondary); background: none; }
+.concise-fold:hover, .concise-fold:focus-visible, .concise-fold.open { color: var(--fg-secondary); background: none; }
 .concise-fold-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .concise-fold .concise-chev { flex: none; color: inherit; opacity: 0; transition: opacity var(--dur-basic, 0.18s) var(--ease-enter, ease), transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-fold:hover .concise-chev, .concise-fold.open .concise-chev { opacity: 1; }
@@ -2326,7 +2326,7 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-body.open { grid-template-rows: 1fr; }
 .concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
-.concise-body-inner > .seg-inner { padding-top: 4px; } /* 2026-11-14 用户裁定「展开行第一行与其它行距一致」 */
+.concise-body-inner > .seg-inner { padding-top: 2px; } /* 2026-11-14 用户裁定「展开行第一行与其它行距一致」:4→2 */
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
