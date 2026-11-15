@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
-import { ChevronRight, KanbanSquare } from 'lucide-react';
+import { Archive, Check, ChevronRight, KanbanSquare, ListFilter, Plus } from 'lucide-react';
 import { SessionRow as SessionRowView, useConfirmOutsideCancel, wsName } from './project-menu-util';
 
 /**
@@ -27,10 +27,17 @@ export interface SunxSectionProps {
   readonly onOpenBoard?: () => void;
   /** 「编辑品性」行菜单(仅 sunx 行有本组;宿主解析寻址+开 CharterDialog) */
   readonly onEditCharter?: (row: SessionRow & { root: string }) => void;
+  /** 组头「新建 Sunx」(P2 2026-11-15 用户裁定组头动作簇对齐「项目」:数量/排序/归档/看板/新建) */
+  readonly onNewSunx?: () => void;
+  /** 组头「归档」入口(P2 2026-11-15):进归档层(宿主 archiveOpen 整替语义) */
+  readonly onOpenArchive?: () => void;
 }
 
 export function SunxSection(props: SunxSectionProps): JSX.Element | null {
-  const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenBoard, onEditCharter } = props;
+  const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenBoard, onEditCharter, onNewSunx, onOpenArchive } = props;
+  /** 行排序(P2 2026-11-15 用户裁定组头簇对齐「项目」):updated=更新时间新→旧(默认)/name=名称 */
+  const [sortMode, setSortMode] = useState<'updated' | 'name'>('updated');
+  const [sortOpen, setSortOpen] = useState(false);
   /** 分区折叠(本组件自持——宿主只管 Projects/Recents 折叠与归档层,过滤组内聚) */
   const [open, setOpen] = useState(true);
   /** T6 行内归档确认 morph:行级单份,他行点击即换位 */
@@ -38,8 +45,14 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
   useConfirmOutsideCancel(confirmId, () => setConfirmId(''));
   /** 按工作区分节(R10):slug 保序分组(宿主按工作区行序聚合,首现序=工作区行序),组内新→旧 */
   const sections = useMemo(() => {
+    const sorted = rows === null ? null : (() => {
+      const list = [...rows];
+      if (sortMode === 'name') list.sort((a, b) => (a.title ?? a.id).localeCompare(b.title ?? b.id));
+      else list.sort((a, b) => b.updatedAt - a.updatedAt);
+      return list;
+    })();
     const bySlug = new Map<string, { root: string; rows: Array<SessionRow & { root: string; slug: string }> }>();
-    for (const r of rows ?? []) {
+    for (const r of sorted ?? []) {
       let sec = bySlug.get(r.slug);
       if (sec === undefined) {
         sec = { root: r.root, rows: [] };
@@ -49,7 +62,7 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
     }
     for (const sec of bySlug.values()) sec.rows.sort((a, b) => b.updatedAt - a.updatedAt);
     return [...bySlug.entries()];
-  }, [rows]);
+  }, [rows, sortMode]);
   // SUNX 分组常驻(2026-11-15 用户裁定「SUNX分组常驻」:空组不再整块隐——组头恒显+空态行
   // 引导创建;装载中 null 同口径=区块随数据在场,不闪占位)
   return (
@@ -68,10 +81,13 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
         }}
       >
         <span>{t('SUNX', 'SUNX')}</span>
+        {/* 数量值(2026-11-15 用户裁定组头簇对齐「项目」):sunx 行数计数 chip */}
+        {rows !== null && <span className="sx-sunx-count">{rows.length}</span>}
         <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${open ? ' open' : ''}`} />
-        {/* 看板钮(可选 guard):onOpenBoard 接线才渲染(本任务留开合点,Task 8 注册页签后生效) */}
-        {onOpenBoard !== undefined && (
-          <span className="sx-side-head-actions">
+        {/* 组头动作簇(2026-11-15 用户裁定:数量/排序/归档/看板/新建——对齐「项目」组头同款簇) */}
+        <span className="sx-side-head-actions">
+          {/* 看板钮(可选 guard):onOpenBoard 接线才渲染 */}
+          {onOpenBoard !== undefined && (
             <button
               type="button"
               className="sx-iconbtn"
@@ -85,8 +101,67 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
             >
               <KanbanSquare size={14} strokeWidth={1.75} />
             </button>
-          </span>
-        )}
+          )}
+          {/* 排序钮+二选弹层(更新时间/名称;PROJECTS 三选同构) */}
+          {sortOpen && (
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 44, background: 'transparent' }} onClick={() => setSortOpen(false)} />
+              <div className="sx-menu-pop sx-ws-sort-pop" role="menu" aria-label={t('Sort Sunx', 'Sunx 排序')} style={{ zIndex: 45 }}>
+                {(['updated', 'name'] as const).map((m) => (
+                  <button key={m} type="button" role="menuitemradio" aria-checked={sortMode === m} className={`sx-menuitem${sortMode === m ? ' sx-ws-sort-active' : ''}`} onClick={() => { setSortMode(m); setSortOpen(false); }}>
+                    <span className="sx-ws-sort-name">{m === 'updated' ? t('By recent activity', '按最近活动') : t('By name', '按名称')}</span>
+                    {sortMode === m && <Check size={14} strokeWidth={2} aria-hidden="true" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            className="sx-iconbtn"
+            aria-label="sort sunx"
+            data-tip={t('Sort Sunx', 'Sunx 排序')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSortOpen((v) => !v);
+            }}
+          >
+            <ListFilter size={14} strokeWidth={1.75} />
+          </button>
+          {/* 归档入口(可选 guard):进归档层(宿主 archiveOpen 整替) */}
+          {onOpenArchive !== undefined && (
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="archive sunx"
+              data-tip={t('Archived sessions', '归档会话')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenArchive();
+              }}
+            >
+              <Archive size={14} strokeWidth={1.75} />
+            </button>
+          )}
+          {/* 新建钮(可选 guard):开创建弹窗(顶部快捷区行同款弹窗) */}
+          {onNewSunx !== undefined && (
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="new sunx header"
+              data-tip={t('New Sunx', '新建 Sunx')}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewSunx();
+              }}
+            >
+              <Plus size={14} strokeWidth={1.75} />
+            </button>
+          )}
+        </span>
       </div>
       <div className={`sx-collapse sx-collapse-sunx${open ? ' open' : ''}`}>
         {sections.length === 0 ? (

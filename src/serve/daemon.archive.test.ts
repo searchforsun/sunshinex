@@ -126,10 +126,40 @@ test('delete 门禁:未归档 409;归档态 200 且 journal/meta/gui 私有档�
     const sessionsDir = path.join(resolveDataDir(tmp), 'sessions');
     assert.equal(fs.readdirSync(sessionsDir).filter((f) => f.startsWith(`${jid}.`)).length, 0, '会话档全家清');
     assert.equal(fs.existsSync(guiSession), false, 'gui 私有档清');
-    const gone = await fetch(`${base}/session/${sessionId}/snapshot`, { headers: AUTH });
     assert.equal(gone.status, 404, 'daemon 会话出注册表');
   });
 });
+test('delete 连带持久化文件夹(2026-11-15 用户裁定「归档点击删除时同时删除项目持久化文件夹」):独占域整删;共享域保留', async () => {
+  // 独占域:slug 下仅一个会话 → 归档删除后 projectsRoot/<slug> 整目录移除(记忆/任务账本/登记随域清)
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    await waitStatus(base, sessionId, 'idle');
+    const slugDir = path.dirname(resolveDataDir(tmp));
+    assert.equal(fs.existsSync(slugDir), true, '前置:持久化文件夹在场');
+    await fetch(`${base}/session/${sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const ok = await fetch(`${base}/session/${sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(ok.status, 200);
+    assert.equal(fs.existsSync(slugDir), false, '独占域整删(文件夹连带)');
+  });
+  // 共享域:同 slug 两会话 → 删其一,域与另一会话档保留(不殃及)
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    const s1 = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) })).json() as { sessionId: string };
+    const s2 = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) })).json() as { sessionId: string };
+    await fetch(`${base}/session/${s1.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '一轮' }) });
+    await fetch(`${base}/session/${s2.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '两轮' }) });
+    await waitStatus(base, s1.sessionId, 'idle');
+    await waitStatus(base, s2.sessionId, 'idle');
+    await fetch(`${base}/session/${s1.sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const ok = await fetch(`${base}/session/${s1.sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(ok.status, 200);
+    assert.equal(fs.existsSync(path.join(resolveDataDir(tmp), 'sessions')), true, '共享域保留');
+    const jids = fs.readdirSync(path.join(resolveDataDir(tmp), 'sessions')).filter((f) => f.endsWith('.jsonl'));
+    assert.equal(jids.some((f) => f.startsWith(s2.sessionId)), true, '另一会话档未受殃及');
+  });
+});
+
 
 test('delete journalId 寻址:在座 idle 会话升格运行时回收(终审 F1)——档真清+注册表移出,复活通道关闭', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {

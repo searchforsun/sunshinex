@@ -1172,6 +1172,25 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
     purgeBrowserState(dataDir, jid); // 浏览器键=journalId:状态文件/输出目录/侧栏分区随会话删除
     for (const sid of sideIds) purgeBrowserState(dataDir, sid);
+    // 持久化文件夹连带删除(2026-11-15 用户裁定「归档点击删除时同时删除项目持久化文件夹」
+    // +「不用兼容,sunx 就是独占」):sunx=独占域,无条件整删(记忆/任务账本/输出归档/工作区登记
+    // 随域清);standard 共享 slug 域 → 删后无其他 .jsonl 会话才整删(共享域不殃及)。
+    // 路径==projectsRoot 守卫 paranoia;尽力而为,失败不阻断删除回执
+    const isSunxSession = (session !== undefined ? session.sessionKind : readSessionMeta(dataDir, jid).kind) === 'sunx';
+    const slugDir = path.dirname(dataDir);
+    let remainingSessions = 0;
+    try {
+      for (const f of fs.readdirSync(sessionsDir(dataDir))) if (f.endsWith('.jsonl')) remainingSessions += 1;
+    } catch {
+      remainingSessions = 0; // 目录已空/不存在:整域可移
+    }
+    if ((isSunxSession || remainingSessions === 0) && slugDir !== projectsRoot()) {
+      try {
+        fs.rmSync(slugDir, { force: true, recursive: true });
+      } catch {
+        /* 尽力而为 */
+      }
+    }
     // worktree 隔离会话连带清树(2026-11-10 用户裁定):registry 按 path 反查,脏树 kept-dirty 保护照旧;
     // 普通会话/未登记=not-worktree 静默跳过
     if (session !== undefined) {

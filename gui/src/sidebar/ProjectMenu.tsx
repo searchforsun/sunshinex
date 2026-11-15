@@ -737,6 +737,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onArchiveRow={archiveRow}
           onOpenBoard={props.onOpenSunxBoard}
           onEditCharter={openCharterEditor}
+          onNewSunx={() => setSunxOpen(true)}
+          onOpenArchive={() => setArchiveOpen(true)}
         />
         )}
         <PinnedSection
