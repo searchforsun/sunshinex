@@ -762,3 +762,45 @@ describe('run 行唤醒前缀配对(bg-wake 批F:唤醒 notice 不单独显示,w
     expect(s.entries[0]!.wake).toEqual(WAKE);
   });
 });
+
+describe('run 行定时唤醒前缀配对(2026-11-15 sunx P2 Task 3,fix round 2 显示接线:schedule 标记 notice 不显示,标记挂后继 run 条)', () => {
+  const schedNotice = (): SessionEvent => ev('notice', '<schedule-wake>\nScheduled wake (not a user message): check the oven', { schedule: true });
+
+  it('[notice(schedule), run]:notice 不入显示列表,schedule 挂后继 run 条,零 wake 交集', () => {
+    const s = fold([schedNotice(), ev('model-start')]);
+    expect(s.entries.map((e) => e.kind)).toEqual(['run']); // notice 被 isQuietNotice 跳过
+    expect(s.entries[0]!.schedule).toBe(true);
+    expect(s.entries[0]!.wake).toBeUndefined(); // 与任务唤醒词汇零交集
+  });
+
+  it('[notice(schedule), assistant, run]:中间隔未跳过条目作废(直接后继语义)', () => {
+    const s = fold([schedNotice(), ev('token', '正文'), ev('model-start')]);
+    expect(s.entries.map((e) => e.kind)).toEqual(['assistant', 'run']);
+    expect(s.entries.at(-1)!.schedule).toBeUndefined();
+  });
+
+  it('普通 [run]:无前驱 schedule notice → schedule 键不落(零变化)', () => {
+    const s = fold([ev('model-start')]);
+    expect('schedule' in s.entries[0]!).toBe(false);
+  });
+
+  it('同一内核态重复映射:run 条引用稳定且 schedule 不丢(缓存复用路径)', () => {
+    const s1 = fold([schedNotice(), ev('model-start')]);
+    const r1 = s1.entries[0]!;
+    const s2 = applyChatEvent(s1, ev('step', 'a'));
+    expect(s2.entries[0]).toBe(r1); // 缓存复用不换引用
+    expect(s2.entries[0]!.schedule).toBe(true); // schedule 不丢
+  });
+
+  it('快照播种同样配对:seed schedule notice + run → 显示列表无 notice,run 条带 schedule', () => {
+    const s = seedChatFromSnapshot(
+      [
+        { seq: 1, ts: 1, kind: 'notice', md: '<schedule-wake>Scheduled wake', schedule: true },
+        { seq: 2, ts: 2, kind: 'run', md: '', meta: { seconds: 4, steps: 1, tokens: 50 } },
+      ],
+      { openRun: -1, openSeg: -1 },
+    );
+    expect(s.entries.map((e) => e.kind)).toEqual(['run']); // notice 不显示
+    expect(s.entries[0]!.schedule).toBe(true);
+  });
+});

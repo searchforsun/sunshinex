@@ -56,6 +56,9 @@ export interface ChatEntry {
   /** run 专用(bg-wake 批F spec §6):直接前驱唤醒 notice 的引用——映射期配对挂载
    *  (notice 本身 isQuietNotice 跳过不显示,引用转挂后继 run 行前缀;中间隔未跳过条目即作废) */
   wake?: WakeRef[];
+  /** run 专用(2026-11-15 sunx P2 Task 3,fix round 2 显示接线):直接前驱定时唤醒 notice 的 schedule
+   *  标记——映射期同族挂载(与 wake 并立两词汇零交集;显示前缀「定时唤醒」整行静态无点击) */
+  schedule?: true;
   /** G14.100 run 专用:本轮 git 变动增量(轮尾汇总条;撤销面按 path 寻址) */
   changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
   /** 轮次 checkpoint(2026-11-10):run-open 条目 seq(端点寻址键,与 key `k<seq>` 同源)与
@@ -113,6 +116,8 @@ export interface SnapshotTranscriptEntry {
   /** notice:后台任务唤醒引用(bg-wake 批F spec §5.1;内核条目原生随档——快照=内核条目直序列化,
    *  显示归 run 行前缀,本条不显示) */
   wake?: WakeRef[];
+  /** notice:定时唤醒标记(2026-11-15 sunx P2 Task 3;内核条目原生随档,显示归 run 行前缀) */
+  schedule?: boolean;
   meta?: {
     seconds?: number;
     steps?: number;
@@ -204,8 +209,9 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
 
 /** 唤醒前缀挂载缓存(bg-wake 批F spec §6):wake 挂载在映射期生成(run 视图={...view, wake} 换引用),
  *  按内核 run 条目缓存(wake 数组引用+基视图引用双重校验)保持跨帧引用稳定——内核条目不可变 ⇒
- *  键恒有效;基视图校验防 open/seal 态翻转换新视图后仍复用旧挂载面(陈旧 streaming 态复活) */
-const wakeViewCache = new WeakMap<KernelEntry, { wake: WakeRef[]; base: ChatEntry; view: ChatEntry }>();
+ *  键恒有效;基视图校验防 open/seal 态翻转换新视图后仍复用旧挂载面(陈旧 streaming 态复活)。
+ *  fix round 2 扩两族:schedule(定时唤醒标记)同槽暂存/挂载/缓存——键={wake,schedule} 双校验 */
+const wakeViewCache = new WeakMap<KernelEntry, { wake: WakeRef[] | undefined; schedule: true | undefined; base: ChatEntry; view: ChatEntry }>();
 
 function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
   // 语言入缓存键域(2026-11-04 裁定「固定提示随 GUI 语言渲染」):切语言后 ①② 级复用失效全量
@@ -218,12 +224,14 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
   const parallel: Array<ChatEntry | null> = new Array(k.entries.length).fill(null);
   // bg-wake 批F:被跳过唤醒 notice 的引用暂存——挂直接后继 run 条(直接后继语义:
   // 任何未被跳过的条目处理完即清,中间隔条即作废);②级复用条已带上次配对的 wake(内核条目
-  // 不可变、相邻关系不变),复用时同样清暂存
+  // 不可变、相邻关系不变),复用时同样清暂存。fix round 2:schedule(定时唤醒)标记同族暂存
   let pendingWake: WakeRef[] | undefined;
+  let pendingSchedule: true | undefined;
   for (let i = 0; i < k.entries.length; i += 1) {
     const e = k.entries[i]!;
     if (e.kind === 'notice' && isQuietNotice(e.md)) {
       if (e.wake !== undefined) pendingWake = e.wake; // 唤醒引用暂存(本条照旧不显示)
+      if (e.schedule === true) pendingSchedule = true; // 定时唤醒标记暂存(同族)
       continue;
     }
     // ②部分变更帧:未变位(内核条目引用相等⇒派生标相等——不可变条目)直取上次产物
@@ -233,6 +241,7 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
         parallel[i] = reuse;
         out.push(reuse);
         pendingWake = undefined;
+        pendingSchedule = undefined;
         continue;
       }
     }
@@ -240,19 +249,24 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
     const open = e.kind === 'run' ? k.openRun === e.seq : k.openSeg === e.seq;
     const base = runBases[e.seq];
     let view = mapOne(e, open, base);
-    if (e.kind === 'run' && pendingWake !== undefined) {
+    if (e.kind === 'run' && (pendingWake !== undefined || pendingSchedule === true)) {
       const cached = wakeViewCache.get(e);
-      if (cached === undefined || cached.wake !== pendingWake || cached.base !== view) {
-        const mounted = { ...view, wake: pendingWake };
-        wakeViewCache.set(e, { wake: pendingWake, base: view, view: mounted });
+      if (cached === undefined || cached.wake !== pendingWake || cached.schedule !== pendingSchedule || cached.base !== view) {
+        const mounted = {
+          ...view,
+          ...(pendingWake !== undefined ? { wake: pendingWake } : {}),
+          ...(pendingSchedule === true ? { schedule: true as const } : {}),
+        };
+        wakeViewCache.set(e, { wake: pendingWake, schedule: pendingSchedule, base: view, view: mounted });
         view = mounted;
       } else {
-        view = cached.view; // 同 run+同 wake+同基视图:复用挂载面(引用稳定,memo 不破)
+        view = cached.view; // 同 run+同 wake/schedule+同基视图:复用挂载面(引用稳定,memo 不破)
       }
     }
     parallel[i] = view;
     out.push(view);
     pendingWake = undefined;
+    pendingSchedule = undefined;
   }
   const mapped = mergeSplitThinking(out);
   mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped, lang });

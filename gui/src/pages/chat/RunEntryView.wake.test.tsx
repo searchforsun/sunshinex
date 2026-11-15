@@ -80,3 +80,48 @@ expect(container.querySelector('.wake-name')).toBeNull(); // 无名=整行无点
     expect(getByText(/Working/)).toBeTruthy();
   });
 });
+
+describe('RunEntryView 定时唤醒前缀（2026-11-15 sunx P2 Task 3,fix round 2:文案迁显示层——scheduled 行有前缀,普通行零变化）', () => {
+  it('scheduled:前缀「Scheduled wake」整行静态（无点击元素/无任务名段）+ 既有 sealed 文案拼接 + wake-start 轮距', () => {
+    const onToggle = vi.fn();
+    const { getByText, queryByRole, container } = render(
+      <RunEntryView entry={{ ...base, seconds: 7 }} scheduled onToggle={onToggle} />,
+    );
+    expect(getByText(/Scheduled wake/)).toBeTruthy(); // 前缀在场（纯件零 i18n 钉后文案归宿=显示层）
+    expect(getByText(/Worked for/)).toBeTruthy(); // 既有 sealed 文案原样拼接
+    expect(queryByRole('button', { name: 'Scheduled wake' })).toBeNull(); // 整行静态无点击
+    expect(container.querySelector('.wake-name')).toBeNull(); // 无任务名段
+    expect(container.querySelector('.entry-run.wake-start')).not.toBeNull(); // 唤醒族轮开头同款轮距
+    expect(onToggle).not.toHaveBeenCalled(); // 前缀静态不触发折叠
+  });
+
+  it('live 态:前缀 + 「Working」拼接', () => {
+    const { getByText } = render(<RunEntryView entry={{ ...base, streaming: true }} scheduled />);
+    expect(getByText(/Scheduled wake/)).toBeTruthy();
+    expect(getByText(/Working/)).toBeTruthy();
+  });
+
+  it('zh 语言:「定时唤醒」(t() 双语,调用时求值)', () => {
+    setLanguage('zh');
+    const { getByText } = render(<RunEntryView entry={{ ...base, seconds: 2 }} scheduled />);
+    expect(getByText('定时唤醒')).toBeTruthy();
+    setLanguage('en'); // 还原（beforeEach 钉 en 防跨文件泄漏）
+  });
+
+  it('普通 run（无 wake 无 scheduled）:零前缀零变化（两态钉之对侧）', () => {
+    const { container, queryByText, getByText } = render(<RunEntryView entry={{ ...base, seconds: 5 }} />);
+    expect(container.querySelector('.wake-prefix')).toBeNull();
+    expect(container.querySelector('.entry-run.wake-start')).toBeNull();
+    expect(queryByText(/Scheduled wake/)).toBeNull();
+    expect(queryByText(/Woken by background task/)).toBeNull();
+    expect(getByText(/Worked for/)).toBeTruthy();
+  });
+
+  it('wake 与 scheduled 互斥:wake 在场时 scheduled 不双拼', () => {
+    const { container, getByText } = render(
+      <RunEntryView entry={{ ...base, seconds: 5 }} wake={[{ id: 'x1', name: '构建前端' }]} scheduled />,
+    );
+    expect(getByText(/Woken by background task/)).toBeTruthy();
+    expect(container.textContent).not.toContain('Scheduled wake'); // 一轮只属一族
+  });
+});

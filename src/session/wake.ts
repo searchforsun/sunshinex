@@ -1,7 +1,8 @@
 // bg-wake spec §5/§6：唤醒的纯函数面与控制器——判定=「终态×未 receipted×空闲」，零模型意图依赖。
 // 本模块零 IO（timer 除外），宿主（daemon/tui）经 opts 注入 busy/receipted/fire 三个接缝。
+// 值导入恒零（taskboard/leader.test 零导入钉，46fa519d——session/entry 经 GUI chat-reducer 进浏览器包，
+// 值导入链必须零 Node/UI 依赖；外观双语归显示层，不在纯件，fix round 2）。
 import type { KernelEntry, WakeRef } from './entry';
-import { t } from '../i18n';
 // 回执单点不在本模块：宿主起轮处注入 receiptOf（=receiptBody(t, 'task_wait')，Task 3 导出）——
 // wake.ts 对 harness 零依赖（session 层纯件，通知文形态由 receiptOf 抽象隔离）
 
@@ -86,16 +87,11 @@ export function buildScheduleWakeNotification(note: string, lateMs?: number): st
 }
 
 /** 定时唤醒轮判定（P2 Task 3）：run 条直接前驱为携 schedule 标记的 notice → true（写入顺序固定
- *  notice→run 同 wakeOfRun，配对零歧义）。与 wakeOfRun 并立两函数——两词汇零交集，显示前缀
- *  「定时唤醒」走本函数推导，**不混入 WakeRef** */
+ *  notice→run 同 wakeOfRun，配对零歧义）。与 wakeOfRun 并立两函数——两词汇零交集；显示前缀
+ *  「定时唤醒」的文案与拼接归显示层（GUI chat-reducer/EntryViews，fix round 2——纯件零 i18n 导入钉） */
 export function scheduledWakeOfRun(entries: readonly KernelEntry[], runIdx: number): boolean {
   const prev = entries[runIdx - 1];
   return prev !== undefined && prev.kind === 'notice' && prev.schedule === true;
-}
-
-/** 定时唤醒显示前缀（t() 双语，调用时求值——i18n 硬约束禁模块级冻结）：显示层（TUI/GUI）单点文案 */
-export function scheduledWakePrefix(): string {
-  return t('Scheduled wake', '定时唤醒');
 }
 
 // ===== 恢复唤醒轮通知文（2026-11-15 sunx P2 Task 5,R9 自动重估）=====

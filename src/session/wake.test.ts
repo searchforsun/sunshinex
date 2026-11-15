@@ -1,9 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { wakeOfRun, resolveWakeName, toWakeRefs, buildWakeNotification, WakeController, WAKE_GOAL, buildScheduleWakeNotification, scheduledWakeOfRun, scheduledWakePrefix, SCHEDULE_WAKE_TAG, buildSessionRestoredNotification, sessionRestoredOfRun, SESSION_RESTORED_TAG, RESTORED_WAKE_GOAL } from './wake';
+import { wakeOfRun, resolveWakeName, toWakeRefs, buildWakeNotification, WakeController, WAKE_GOAL, buildScheduleWakeNotification, scheduledWakeOfRun, SCHEDULE_WAKE_TAG, buildSessionRestoredNotification, sessionRestoredOfRun, SESSION_RESTORED_TAG, RESTORED_WAKE_GOAL } from './wake';
 import type { WakeControllerOpts, WakeTaskInput } from './wake';
 import { isQuietNotice } from './entry';
-import { setLanguage, getLanguage } from '../i18n';
 import type { KernelEntry } from './entry';
 
 const run = (seq: number): KernelEntry => ({ seq, ts: 1, kind: 'run', md: '' });
@@ -157,7 +156,9 @@ describe('buildSessionRestoredNotification / sessionRestoredOfRun（R9）', () =
   });
 });
 
-describe('scheduledWakeOfRun / scheduledWakePrefix', () => {
+// 显示前缀「定时唤醒」钉测随 scheduledWakePrefix 删除迁显示层（GUI chat-reducer/RunEntryView 两态钉——
+// fix round 2：纯件零 i18n 导入钉 46fa519d，文案归 UI 层）
+describe('scheduledWakeOfRun', () => {
   const notice = (seq: number, over: Partial<KernelEntry> = {}): KernelEntry => ({ seq, ts: 1, kind: 'notice', md: 'x', ...over });
   const run = (seq: number): KernelEntry => ({ seq, ts: 1, kind: 'run', md: '' });
 
@@ -167,18 +168,6 @@ describe('scheduledWakeOfRun / scheduledWakePrefix', () => {
     assert.equal(scheduledWakeOfRun([notice(1, { wake: [{ id: 'a' }] }), run(2)], 1), false, '任务唤醒 notice 不串（两词汇零交集）');
     assert.equal(scheduledWakeOfRun([notice(1, { schedule: true }), run(2), run(3)], 2), false, '中间隔条作废');
     assert.equal(scheduledWakeOfRun([run(1)], 0), false);
-  });
-
-  test('显示前缀 t() 双语（调用时求值）：en=Scheduled wake / zh=定时唤醒', () => {
-    const prev = getLanguage();
-    try {
-      setLanguage('en');
-      assert.equal(scheduledWakePrefix(), 'Scheduled wake');
-      setLanguage('zh');
-      assert.equal(scheduledWakePrefix(), '定时唤醒');
-    } finally {
-      setLanguage(prev);
-    }
   });
 });
 

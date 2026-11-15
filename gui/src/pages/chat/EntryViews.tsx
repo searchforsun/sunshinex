@@ -59,7 +59,7 @@ export function baseModelName(id: string | undefined): string {
  *  保留。memo 包裹:sealed 行 entry/tokens 双稳定→不随 token 帧重渲;tick 是组件内部 state 自驱动,
  *  memo 不影响;tokens 变化(usage 帧)仍重渲(期望行为)。种子历史无 run 条,重连后自下一轮
  *  model-start 恢复(spec §0) */
-export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle, wake, onOpenTask }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void; wake?: WakeRef[]; onOpenTask?: (ref: string) => void }): JSX.Element {
+export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle, wake, scheduled, onOpenTask }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void; wake?: WakeRef[]; scheduled?: true; onOpenTask?: (ref: string) => void }): JSX.Element {
   const [, setTick] = useState(0);
   const streaming = entry.streaming === true;
   useEffect(() => {
@@ -99,11 +99,20 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
       {first.name !== undefined && getLanguage() === 'zh' && <span className="wake-tail">唤醒</span>}
     </span>
   ) : undefined;
+  // 定时唤醒前缀(2026-11-15 sunx P2 Task 3,fix round 2 文案迁显示层):scheduled 标记行整行静态
+  // (无任务名段无点击),单行 flex 版式与 bg-wake 前缀同族;与 wake 互斥(一轮只属一族)
+  const scheduledPrefix = first === undefined && scheduled === true ? (
+    <span className="wake-prefix">
+      <span className="wake-lead">{t('Scheduled wake', '定时唤醒')}</span>
+    </span>
+  ) : undefined;
+  const runPrefix = wakePrefix ?? scheduledPrefix;
+  const wakeStart = wake !== undefined || scheduled === true;
   if (!streaming) {
     // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
     return (
       <div
-        className={`entry entry-run sealed${wake !== undefined ? ' wake-start' : ''}`}
+        className={`entry entry-run sealed${wakeStart ? ' wake-start' : ''}`}
         aria-label="run summary"
         role={onToggle !== undefined ? 'button' : undefined}
         tabIndex={onToggle !== undefined ? 0 : undefined}
@@ -120,8 +129,8 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
             : undefined
         }
       >
-        {wakePrefix}
-        {wakePrefix !== undefined && <span className="run-sep">{t(', ', '，')}</span>}
+        {runPrefix}
+        {runPrefix !== undefined && <span className="run-sep">{t(', ', '，')}</span>}
         <span className="run-status">
           {entry.stopped === true
             ? t('Stopped', '已停止')
@@ -142,7 +151,7 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   // 运行中也可折叠(2026-11-07 用户裁定):折叠留最后一条工具/思考行与最后一段正文,封段后常规折叠
   return (
     <div
-      className={`entry entry-run live${wake !== undefined ? ' wake-start' : ''}`}
+      className={`entry entry-run live${wakeStart ? ' wake-start' : ''}`}
       role={onToggle !== undefined ? 'button' : 'status'}
       aria-label="run status"
       tabIndex={onToggle !== undefined ? 0 : undefined}
@@ -159,8 +168,8 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
           : undefined
       }
     >
-      {wakePrefix}
-      {wakePrefix !== undefined && <span className="run-sep">{t(', ', '，')}</span>}
+      {runPrefix}
+      {runPrefix !== undefined && <span className="run-sep">{t(', ', '，')}</span>}
       <span className="run-status">{t('Working', '运行中')}</span>
       <span className="run-meta" aria-hidden="true">{runElapsed(elapsed)}</span>
       {onToggle !== undefined && (
