@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { DirPickerResp } from '../connection';
+import type { DirPickerResp, SunxTemplateEntry } from '../connection';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
@@ -13,13 +13,19 @@ import { DirPicker } from '../pages/DirPicker';
  * → 成功走既有 openSession 链路打开该会话并关弹窗。开合受控(open prop + onClose);关闭三径:
  * ESC/点外(遮罩)/取消钮;提交中 busy 锁禁重复提交。全局 portal 到 body(WelcomeIsoDialog
  * 同款——composer 祖先带定位上下文,内联 overlay 的 fixed 会被困住)。
+ * 模板挑选(sunx P2 Task 6):表单态顶部模板下拉(GET /settings/sunx-templates 惰拉),选中即
+ * 回填 name=模板 name、charter=章程全文(回填只是播种——用户改后以改后为准,不锁定);模板
+ * 选择器不阻塞手填:清单空/惰拉失败=选择器隐藏,表单照常可用。被遮蔽行(shadowed)不进选项
+ * (生效视图口径——同 id 被更高层级顶掉的全局行,内容已被生效版取代,入列只会重复选项)。
  */
 
-/** 连接面(收窄子集,Connection/ProjectMenuConn 均满足):弹窗只消费这两方法 */
+/** 连接面(收窄子集,Connection/ProjectMenuConn 均满足):弹窗只消费这三方法 */
 export interface NewSunxConn {
   dirpicker(path?: string): Promise<DirPickerResp>;
   /** 第 5 参 opts(2026-11-15 Task 4):kind/name/charter 透传——缺席字段省发,body 与旧形态逐字节相同 */
   newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string }>;
+  /** GET /settings/sunx-templates(sunx P2 Task 6,模板挑选数据源):弹窗打开时惰拉一次,失败静默 */
+  sunxTemplates(root?: string): Promise<{ entries: SunxTemplateEntry[]; warnings: string[] }>;
 }
 
 export interface NewSunxDialogProps {
@@ -42,6 +48,9 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   const [browse, setBrowse] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  /** 模板清单(P2 Task 6):空数组=无模板态(选择器隐藏);templateId=下拉当前选中(空串=未选) */
+  const [templates, setTemplates] = useState<SunxTemplateEntry[]>([]);
+  const [templateId, setTemplateId] = useState('');
 
   /** open 翻真即重置表单(锚=当前默认工作区;上一次的草稿不残留) */
   useEffect(() => {
@@ -53,6 +62,26 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setError('');
     setRoot(defaultRoot);
   }, [open, defaultRoot]);
+
+  /** 模板清单惰拉(P2 Task 6,Controller 裁定 5):弹窗打开取一次,root=缺省工作区锚(项目级模板
+   *  随锚装配;锚空=仅全局清单)。失败静默=无模板态——模板只服务表单挑选,error 不示出,零打扰
+   *  创建主流程;浏览改目录不重拉(裁定=打开时一次,锚定打开时刻的缺省工作区)。卸载/重开防竞态:
+   *  alive 闸过期的迟到应答 */
+  useEffect(() => {
+    if (!open) return;
+    setTemplates([]);
+    setTemplateId('');
+    let alive = true;
+    conn
+      .sunxTemplates(defaultRoot.trim() === '' ? undefined : defaultRoot)
+      .then((r) => {
+        if (alive) setTemplates(r.entries);
+      })
+      .catch(() => undefined); // 失败静默:清单保持空=选择器隐藏
+    return () => {
+      alive = false;
+    };
+  }, [open, conn, defaultRoot]);
 
   /** 关闭三径之一:ESC。busy(提交在途)拒关——fix round 1(2026-11-15 审查 Important:提交中取消
    *  仍会在 resolve 后经 .then 拽进刚取消的会话;语义=「创建中不可取消」,与取消/创建钮 disabled
@@ -136,6 +165,37 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
                 ✕
               </button>
             </header>
+            {/* 模板挑选(P2 Task 6):表单态顶部下拉;无模板数据=不渲染(选择器不阻塞手填)。
+                选中回填 name/charter 可改;shadowed 行不进选项(生效视图口径,模块头注) */}
+            {templates.length > 0 && (
+              <label className="sx-sunx-field">
+                <span>{t('Template', '模板')}</span>
+                <select
+                  aria-label={t('Template', '模板')}
+                  value={templateId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setTemplateId(id);
+                    // 取未遮蔽行（生效视图口径，与 option 列表同谓词）——同 id 双行时 find 裸查会
+                    // 命中在列序更早的全局 shadowed 行，回填被顶掉的章程
+                    const tpl = templates.find((x) => x.id === id && !x.shadowed);
+                    if (tpl) {
+                      setName(tpl.name); // ruling 3:模板 name 回填姓名
+                      setCharter(tpl.charter); // charter 章程全文回填品性(回填可改,以改后为准)
+                    }
+                  }}
+                >
+                  <option value="">{t('Select a template…', '选择模板…')}</option>
+                  {templates
+                    .filter((x) => !x.shadowed)
+                    .map((x) => (
+                      <option key={`${x.source}/${x.id}`} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
             <label className="sx-sunx-field">
               <span>{t('Name', '姓名')}</span>
               <input

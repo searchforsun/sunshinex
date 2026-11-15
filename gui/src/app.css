@@ -4159,12 +4159,12 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-page .sx-artifacts-name { cursor: pointer; } /* 产物库名称可点开预览(卡面=正文同款,2026-11-14 用户裁定「和正文一模一样」) */
 
 /* ===== 新建 Sunx 创建弹窗 + 侧栏 kind 徽标(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」
-   同级、独立弹窗;欢迎页 composer 零改动) ===== */
+   同级、独立弹窗;欢迎页 composer 零改动;P2 Task 6 增模板下拉——select 与 input/textarea 同款面) ===== */
 .sx-sunx-dialog { width: min(460px, 100%); display: flex; flex-direction: column; gap: 10px; }
 .sx-sunx-field { display: flex; flex-direction: column; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-sunx-field > span:first-child { font-size: calc(14px * var(--fz)); }
-.sx-sunx-field input, .sx-sunx-field textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
-.sx-sunx-field input:focus-visible, .sx-sunx-field textarea:focus-visible { border-color: var(--border-strong); outline: none; }
+.sx-sunx-field input, .sx-sunx-field select, .sx-sunx-field textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
+.sx-sunx-field input:focus-visible, .sx-sunx-field select:focus-visible, .sx-sunx-field textarea:focus-visible { border-color: var(--border-strong); outline: none; }
 .sx-sunx-field textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
 .sx-sunx-dir { display: flex; align-items: stretch; gap: 6px; }
 .sx-sunx-dir-path { flex: 1; min-width: 0; display: inline-flex; align-items: center; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg); overflow-wrap: anywhere; }

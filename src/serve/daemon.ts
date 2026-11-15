@@ -828,6 +828,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'GET', path: '/settings/teams', auth: true, run: async (req, res) => this.handleTeamsGet(req, res) },
     { method: 'PUT', path: '/settings/teams', auth: true, run: (req, res) => this.handleTeamsPut(req, res) },
     { method: 'GET', path: '/settings/teams/body', auth: true, run: async (req, res) => this.handleTeamsBodyGet(req, res) },
+    // sunx P2 Task 6 品性模板面：两级宽容清单只读端点（创建弹窗模板挑选数据源；无写端点——
+    // 模板由用户手编文件落盘；全程宽容口径 catalog/sunx 单点，坏档 warnings 跳过不抛死）
+    { method: 'GET', path: '/settings/sunx-templates', auth: true, run: async (req, res) => this.handleSunxTemplatesGet(req, res) },
     // 全局规范面(2026-11-05 设置页「全局规范」):全局 SUNSHINE.md 原文读写——PUT 写在 daemon 进程
     // 内,回声抑制+直发帧经 notify 注入(handleSunshinePut 薄面,watcher 'sunshine' 键同 suppress 口径)
     { method: 'GET', path: '/settings/sunshine', auth: true, run: async (_req, res) => configHandlers.handleSunshineGet(this.configIo, res) },
@@ -1316,6 +1319,10 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
 
   private handleTeamsBodyGet(req: http.IncomingMessage, res: http.ServerResponse): void {
     configHandlers.handleTeamsBodyGet(this.configIo, req, res);
+  }
+
+  private handleSunxTemplatesGet(req: http.IncomingMessage, res: http.ServerResponse): void {
+    configHandlers.handleSunxTemplatesGet(this.configIo, req, res);
   }
 
   private handleSkillsGet(req: http.IncomingMessage, res: http.ServerResponse): void {

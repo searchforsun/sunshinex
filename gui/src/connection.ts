@@ -30,6 +30,7 @@ import type {
   GlobalRulesView,
   SkillsGroup,
   SnapshotResponse,
+  SunxTemplatesView,
   TeamsOpInput,
   TeamsView,
   TreeResp,
@@ -312,6 +313,10 @@ export interface Connection {
    *  root 缺省省查询参（scope=global 忽略 root）；404（缺文件）/400（坏 id·scope=project 缺 root·
    *  畸形 frontmatter）以 HTTP 失败抛错 */
   teamBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }>;
+  /** GET /settings/sunx-templates?root=（sunx P2 Task 6，NewSunxDialog 模板挑选数据源）：品性模板
+   *  两级宽容清单（root 缺省=仅全局清单；charter 全文随行——弹窗选中即回填）。只读面无写端点；
+   *  弹窗打开时惰拉一次，失败静默=无模板态（不打扰创建主流程） */
+  sunxTemplates(root?: string): Promise<SunxTemplatesView>;
   /** GET /settings/skills?root=（T6）：三源分组固定序 project/user/learned（root 缺省 = 仅 user 组） */
   /** all=true：跨项目视图（scope=all——user 全局 + 当前项目 project 组 + 全项目学习沉淀逐项目
    *  分组，组带 project 归属名）；缺省 = 当前 root 视图（T6 原语义，composer 技能清单消费） */
@@ -921,6 +926,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
     teamBody(scope: 'project' | 'global', id: string, root?: string): Promise<{ body: string }> {
       const query = `scope=${scope}&id=${encodeURIComponent(id)}${root === undefined ? '' : `&root=${encodeURIComponent(root)}`}`;
       return getJson<{ body: string }>(`/settings/teams/body?${query}`);
+    },
+    // sunx P2 Task 6 模板清单:teamsView 同款——root 缺省省查询参(仅全局清单)
+    sunxTemplates(root?: string): Promise<SunxTemplatesView> {
+      return getJson<SunxTemplatesView>(root === undefined ? '/settings/sunx-templates' : `/settings/sunx-templates?root=${encodeURIComponent(root)}`);
     },
     skillsGroups(root?: string, all?: boolean): Promise<{ groups: SkillsGroup[] }> {
       const parts = [root === undefined ? '' : `root=${encodeURIComponent(root)}`, ...(all === true ? ['scope=all'] : [])].filter(Boolean);

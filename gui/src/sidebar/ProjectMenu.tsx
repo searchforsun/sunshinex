@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Connection, SessionRow, WorkspaceRow } from '../connection';
+import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
 import { ArrowLeft, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
@@ -52,6 +52,9 @@ export interface ProjectMenuConn {
   /** 建会话单点(attach 装壳/组内新建;sunx P1 Task 6 增第 5 参 opts——kind/name/charter 透传,
    *  缺席时 body 与旧形态逐字节相同):App 实传整只 Connection(运行时满足) */
   newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
+  /** GET /settings/sunx-templates(sunx P2 Task 6,NewSunxDialog 模板挑选数据源;只读面无写端点。
+   *  App 实传整只 Connection 运行时满足) */
+  sunxTemplates(root?: string): Promise<{ entries: SunxTemplateEntry[]; warnings: string[] }>;
   /** 建项目(G10-C11):原生选择器确认后注册/创建工作区 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
   /** 移除工作区(2026-10-23):仅摘出侧栏,数据保留;重新 create 即原地加回 */

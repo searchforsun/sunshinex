@@ -2304,6 +2304,70 @@ describe('agents-teams P1 GET /settings/teams/body 端点', () => {
   });
 });
 
+// ---------- sunx P2 Task 6:GET /settings/sunx-templates 端点(品性模板两级宽容清单——只读面,
+// 无写端点;弹窗创建挑选数据源) ----------
+
+/** GET /settings/sunx-templates 应答 entries 行(catalog listSunxTemplates 只读投影——ruling 2 行形状:
+ *  {id,name,description?,charter 正文全量,source,shadowed};无 bodyPreview 帽,弹窗回填全文) */
+interface SunxTemplateRow {
+  id: string;
+  name: string;
+  description?: string;
+  charter: string;
+  source: 'project' | 'global';
+  shadowed: boolean;
+}
+
+/** GET /settings/sunx-templates 应答整体(ruling 4:宽容视图 {entries,warnings}——与 /settings/agents
+ *  同形;无 builtins 键) */
+interface SunxTemplatesBody {
+  entries: SunxTemplateRow[];
+  warnings: string[];
+}
+
+describe('sunx P2 /settings/sunx-templates 端点', () => {
+  test('㊿ GET 两级宽容清单(层序 global→project+同 id 全局行 shadowed:true+charter 全文不截断+description 空省键)+坏档 warnings 跳过;无 token 401;无 root=仅全局', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const proj = path.join(tmp, 'proj');
+      const writeTpl = (sunxBase: string, id: string, md: string): void => {
+        fs.mkdirSync(path.join(sunxBase, id), { recursive: true });
+        fs.writeFileSync(path.join(sunxBase, id, 'sunx.md'), md, 'utf8');
+      };
+      // 项目级:shared(与全局同名→全局行 shadowed)+broken(坏档→warnings 跳过);全局级落
+      // userConfigDir=<home>/.sunshinex/sunx
+      writeTpl(path.join(proj, '.sunshinex', 'sunx'), 'shared', '---\nname: Shared P\n---\nfrom project charter');
+      writeTpl(path.join(proj, '.sunshinex', 'sunx'), 'broken', 'no frontmatter at all\n');
+      writeTpl(path.join(home, '.sunshinex', 'sunx'), 'g-tpl', '---\nname: G Tpl\ndescription: global desc\n---\nglobal charter body');
+      writeTpl(path.join(home, '.sunshinex', 'sunx'), 'shared', '---\nname: Shared G\n---\nfrom global charter');
+
+      const noAuth = await fetch(`${base}/settings/sunx-templates`);
+      assert.equal(noAuth.status, 401, '/settings/sunx-templates 无 token 401');
+
+      const r = await fetch(`${base}/settings/sunx-templates?root=${encodeURIComponent(proj)}`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as SunxTemplatesBody;
+      assert.deepEqual(body.entries, [
+        { id: 'g-tpl', name: 'G Tpl', description: 'global desc', charter: 'global charter body', source: 'global', shadowed: false },
+        { id: 'shared', name: 'Shared G', charter: 'from global charter', source: 'global', shadowed: true },
+        { id: 'shared', name: 'Shared P', charter: 'from project charter', source: 'project', shadowed: false },
+      ], '两级清单:层序 global→project(catalog listSunxTemplates 装载序同构)+同 id 全局行 shadowed:true 保留+description 空省键+charter 全文(无预览帽)');
+      assert.equal(body.warnings.length, 1, '坏档一行 warning');
+      assert.ok(body.warnings[0].includes('broken'), 'warning 指名坏档条目');
+
+      // 无 root=仅全局清单(listSunxTemplates root:null 项目级整体跳过——broken 不再出 warning)
+      const g = await fetch(`${base}/settings/sunx-templates`, { headers: AUTH });
+      assert.equal(g.status, 200);
+      const gBody = (await g.json()) as SunxTemplatesBody;
+      assert.deepEqual(
+        gBody.entries.map((e) => [e.id, e.source, e.shadowed]),
+        [['g-tpl', 'global', false], ['shared', 'global', false]],
+        '无 root 只出全局面(shared 不再被项目遮蔽)',
+      );
+      assert.deepEqual(gBody.warnings, [], '项目坏档随项目级跳过不出 warning');
+    });
+  });
+});
+
 // ---------- G8c T6:/settings/skills + /settings/memory-stats 端点(技能三源分组清单+主域记忆概览) ----------
 
 /** GET /settings/skills 应答行(skills.ts SkillsGroup 只读投影;name/description 空串不透出。

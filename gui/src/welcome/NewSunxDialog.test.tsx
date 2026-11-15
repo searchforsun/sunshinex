@@ -17,16 +17,25 @@ import type { SessionRow } from '../connection';
 const bi = (en: string, zh: string): RegExp =>
   new RegExp(`^(?:${[en, zh].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`);
 
-/** conn 桩:newSession 可 spy(载荷断言);dirpicker 可选逐次应答(DirPicker 面消费) */
+/** conn 桩:newSession 可 spy(载荷断言);dirpicker 可选逐次应答(DirPicker 面消费);
+ *  sunxTemplates 缺省空清单(选择器隐藏态),可注入模板行(模板挑选面消费) */
 type NewSessionFn = NewSunxConn['newSession'];
 type NewSessionMock = ReturnType<typeof vi.fn<NewSessionFn>>;
-function makeConn(newSessionImpl?: NewSessionFn): NewSunxConn & { newSession: NewSessionMock } {
+type SunxTemplatesFn = NewSunxConn['sunxTemplates'];
+function makeConn(
+  newSessionImpl?: NewSessionFn,
+  sunxTemplatesImpl?: SunxTemplatesFn,
+): NewSunxConn & { newSession: NewSessionMock; sunxTemplates: ReturnType<typeof vi.fn<SunxTemplatesFn>> } {
   const fallback: NewSessionMock = vi.fn(
     async (..._: Parameters<NewSessionFn>): Promise<{ sessionId: string }> => ({ sessionId: 'sx-new-1' }),
+  );
+  const fallbackTemplates: ReturnType<typeof vi.fn<SunxTemplatesFn>> = vi.fn(
+    async (..._: Parameters<SunxTemplatesFn>): Promise<{ entries: []; warnings: string[] }> => ({ entries: [], warnings: [] }),
   );
   return {
     newSession: newSessionImpl !== undefined ? vi.fn(newSessionImpl) : fallback,
     dirpicker: vi.fn(async (path?: string) => ({ path: path ?? '/home', parent: '/home', dirs: ['proj'] })),
+    sunxTemplates: sunxTemplatesImpl !== undefined ? vi.fn(sunxTemplatesImpl) : fallbackTemplates,
   };
 }
 
@@ -186,6 +195,73 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '丙' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() => expect(conn.newSession).toHaveBeenCalledWith('/home/proj', undefined, undefined, undefined, { kind: 'sunx', name: '丙' }));
+  });
+});
+
+describe('NewSunxDialog 模板挑选(sunx P2 Task 6:GET /settings/sunx-templates 惰拉→选择回填 name/charter 可改)', () => {
+  it('惰拉时机:弹窗打开取一次,root=缺省工作区锚;无模板数据=选择器不显(表单照常可用)', async () => {
+    const conn = makeConn();
+    render(<Harness conn={conn} defaultRoot="D:/tmp/sunshinex-default" />);
+    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenCalledTimes(1));
+    expect(conn.sunxTemplates).toHaveBeenCalledWith('D:/tmp/sunshinex-default'); // 锚=缺省工作区
+    await new Promise((r) => setTimeout(r, 0)); // 空清单应答沉降
+    expect(screen.queryByLabelText(bi('Template', '模板'))).toBeNull(); // 无模板=选择器隐藏
+    // 表单不被选择器阻塞:填名照常可提交
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '甲' } });
+    expect((screen.getByRole('button', { name: bi('Create', '创建') }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('惰拉失败静默=无模板态:error 不示出(零 alert)、弹窗停留、创建主流程不受扰', async () => {
+    const conn = makeConn(undefined, () => Promise.reject(new Error('/settings/sunx-templates -> 500')));
+    render(<Harness conn={conn} />);
+    await waitFor(() => expect(conn.sunxTemplates).toHaveBeenCalledTimes(1));
+    // 微任务沉降后仍零错误示出
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByLabelText(bi('Template', '模板'))).toBeNull(); // 失败=无模板态(选择器隐藏)
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '乙' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(conn.newSession).toHaveBeenCalledTimes(1)); // 主流程照常
+  });
+
+  it('选中回填:模板 name→姓名、charter 全文→品性;改后以改后为准(回填可编辑)', async () => {
+    const conn = makeConn(undefined, async () => ({
+      entries: [
+        { id: 'steward', name: '仓库管家', description: 'repo caretaker', charter: 'Be terse.\nShip small.', source: 'global', shadowed: false },
+      ],
+      warnings: [],
+    }));
+    render(<Harness conn={conn} />);
+    const select = (await screen.findByLabelText(bi('Template', '模板'))) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'steward' } });
+    expect((screen.getByLabelText(bi('Name', '姓名')) as HTMLInputElement).value).toBe('仓库管家');
+    expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).value).toBe('Be terse.\nShip small.');
+    // 用户改后以改后为准:回填只是播种,非锁定
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '改编者' } });
+    fireEvent.change(screen.getByLabelText(bi('Charter', '品性')), { target: { value: '改后章程' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(conn.newSession).toHaveBeenCalledTimes(1));
+    expect(conn.newSession).toHaveBeenCalledWith('D:/tmp/sunshinex-default', undefined, undefined, undefined, {
+      kind: 'sunx',
+      name: '改编者',
+      charter: '改后章程',
+    });
+  });
+
+  it('被遮蔽行不进选项(生效视图口径):同 id 两行只出项目生效行一个 option', async () => {
+    const conn = makeConn(undefined, async () => ({
+      entries: [
+        { id: 'shared', name: 'Shared G', charter: 'global charter', source: 'global', shadowed: true },
+        { id: 'shared', name: 'Shared P', charter: 'project charter', source: 'project', shadowed: false },
+      ],
+      warnings: [],
+    }));
+    render(<Harness conn={conn} />);
+    const select = (await screen.findByLabelText(bi('Template', '模板'))) as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBe(2)); // 占位 option + 生效行一个
+    expect(select.options[1]?.textContent).toBe('Shared P');
+    fireEvent.change(select, { target: { value: 'shared' } });
+    expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).value).toBe('project charter'); // 生效版章程
   });
 });
 

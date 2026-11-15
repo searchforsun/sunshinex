@@ -528,6 +528,26 @@ export type TeamsOpInput =
   | { op: 'delete'; scope: 'project' | 'global'; root?: string; id: string }
   | { op: 'enable' | 'disable'; scope: 'project' | 'global'; root?: string; id: string; enabled?: boolean };
 
+/** GET /settings/sunx-templates entries 行（sunx P2 Task 6，对齐 serve handleSunxTemplatesGet 只读投影
+ *  ——ruling 2 行形状）：品性模板（<root>/.sunshinex/sunx/{id}/sunx.md 两级装载，项目遮蔽全局）。
+ *  charter=章程正文全量（无 bodyPreview 帽——创建弹窗选中即全文回填，可改）；description 可选键
+ *  （frontmatter 空值/缺席省键）；shadowed=true=被更高优先同 id 遮蔽（全局行保留在列，弹窗只取未遮蔽行） */
+export interface SunxTemplateEntry {
+  id: string;
+  name: string;
+  description?: string;
+  charter: string;
+  source: 'project' | 'global';
+  shadowed: boolean;
+}
+
+/** GET /settings/sunx-templates 应答（sunx P2 Task 6，宽容视图 {entries, warnings} 直落顶层——
+ *  与 /settings/agents 同形的条目+告警两面；无 builtins 键不包 view） */
+export interface SunxTemplatesView {
+  entries: SunxTemplateEntry[];
+  warnings: string[];
+}
+
 /** 技能三源分组行（T6，对齐主仓 SkillsGroup）：source 三段 project/user/learned；组内去重沿装载
  *  序、跨组不去重（多源同名两组各在，遮蔽裁决属装配面）；无 frontmatter 的技能行只含 id。
  *  project=项目归属显示名（scope=all 跨项目视图携带——项目筛选数据面；常规视图不载）。

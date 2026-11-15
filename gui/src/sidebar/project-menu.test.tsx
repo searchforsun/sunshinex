@@ -31,6 +31,8 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
       [{ id: 'j1', firstUser: 'demo goal', updatedAt: FIXED_TS, root: 'D:/w/p1', slug: 'p1' }] as never,
     dirpicker: async () => ({ path: 'D:/w', parent: 'D:', dirs: ['p1'] }),
     newSession: async (root: string, mode?: 'acceptEdits' | 'full-access') => ({ sessionId: `new-${root}${mode ? '-m' : ''}` }),
+    // sunx P2 Task 6:模板清单桩(空清单=选择器隐藏态;ProjectMenuConn 新增面)
+    sunxTemplates: vi.fn(async () => ({ entries: [], warnings: [] })),
     createWorkspace: vi.fn(async (body: { name?: string; path?: string }) => ({
       ok: true as const,
       root: body.path ?? `D:/MyWorkStation/sunshinex/${body.name ?? 'project'}`,

@@ -36,6 +36,8 @@ import {
 // id 漏 409；team.md 装载解析 parseTeamFrontmatter 同单点）
 import { isValidTeamId, parseTeamFrontmatter } from '../harness/teams';
 import { listTeams, removeTeam, setTeamEnabled, teamsDir, upsertTeam, type TeamUpsertSpec } from '../catalog/teams';
+// sunx P2 Task 6：品性模板只读清单（catalog/sunx 单点两级宽容视图——无写面，弹窗挑选数据源）
+import { listSunxTemplates } from '../catalog/sunx';
 // Task 15 mcp 写面：单条目操作（add/remove/enable/disable）+ 两级视图读面（approval 标注进响应）
 import { listMcpServers, removeMcpServer, setMcpServerEnabled, upsertMcpServer } from '../catalog/mcp';
 import { listSkills } from '../catalog/skills';
@@ -1186,6 +1188,31 @@ export function handleTeamsBodyGet(io: ConfigHandlerIo, req: http.IncomingMessag
       if (!parseTeamFrontmatter(md).name) throw new Error('team.md frontmatter missing name');
       return md.slice(m[0].length).trim(); // 正文全文（frontmatter 闭合后 trim，清单面 200 帽不适用）
     },
+  });
+}
+
+/** GET /settings/sunx-templates?root=（sunx P2 Task 6，创建弹窗模板挑选数据源——handleTeamsGet 镜像，
+ *  形状差异两处：①应答=宽容视图 {entries, warnings} 直落顶层（ruling 4「与 /settings/agents 同形」
+ *  指条目+告警的宽容视图两面；无 builtins 键亦不包 view——弹窗消费面零嵌套取用）；②行无 bodyPreview
+ *  帽（ruling 2：charter 正文全量随行——弹窗选中即回填全文，预览键零消费面）。catalog listSunxTemplates
+ *  单点两级宽容清单（项目遮蔽全局标 shadowed、坏档入 warnings 跳过不抛死——全程宽容口径见 catalog
+ *  模块头裁定：模板只影响表单不进装配链）。无 root → root:null 直传（listSunxTemplates 接口原生可空：
+ *  项目级整体跳过只列全局——listTeams 同裁定）。只读面无写端点（模板由用户手编文件落盘，GUI 不写） */
+export function handleSunxTemplatesGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
+  const url = urlOf(req);
+  const rootParam = url.searchParams.get('root');
+  const root = rootParam !== null && rootParam.length > 0 ? path.resolve(rootParam) : null;
+  const listing = listSunxTemplates(root);
+  io.send(res, 200, {
+    entries: listing.entries.map((e) => ({
+      id: e.id,
+      name: e.name,
+      ...(e.description !== undefined ? { description: e.description } : {}),
+      charter: e.charter,
+      source: e.source,
+      shadowed: e.shadowed,
+    })),
+    warnings: listing.warnings,
   });
 }
 
