@@ -2322,11 +2322,17 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-fold.open .concise-chev { transform: rotate(90deg); } /* 2026-11-14 用户裁定:箭头 hover 才显,紧跟文字后 */
 /* 单子链 grid 0fr/1fr(2026-11-14 结构重修:折叠类挂 seg-inner 多子容器=空占位根因,改挂
    concise-body 单子链——header 在折叠体之外不受行高影响) */
-.concise-wrap { display: flex; flex-direction: column; }
 .concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-body.open { grid-template-rows: 1fr; }
 .concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
-.concise-body-inner > .seg-inner { padding-top: 2px; } /* 2026-11-14 用户裁定「展开行第一行与其它行距一致」:4→2 */
+/* 2026-11-14 用户裁定「所有工具思考行行距一致,含折叠头与折叠内第一行」:简洁段内消灭
+   -10px 负边距链(链只对相邻 entry-tool/thinking 生效=折叠头/首行漏网),统一 4px 栅格距 */
+.concise-wrap { display: flex; flex-direction: column; gap: 4px; }
+.concise-wrap .seg-inner { gap: 4px; padding-top: 0; }
+.concise-wrap .seg-inner .entry-tool + .entry-tool,
+.concise-wrap .seg-inner .entry-tool + .entry-thinking,
+.concise-wrap .seg-inner .entry-thinking + .entry-tool,
+.concise-wrap .seg-inner .entry-thinking + .entry-thinking { margin-top: 0; }
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
