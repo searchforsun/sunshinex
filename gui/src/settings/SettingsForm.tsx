@@ -208,7 +208,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
       ]), sel('terminalDock', ON_OFF)] },
       {
         title: { en: 'Paths', zh: '路径' },
-        fields: [dirPath('projectsDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')],
+        fields: [dirPath('projectsDir'), dirPath('sunxDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')], // 语义键 sunxDir（SUNSHINEX_SUNX_DIR 写槽）：容器切换对新建 Sunx 生效，既有域不迁移
       },
       { title: { en: 'Command execution', zh: '命令执行' }, fields: [filePath('shell')] },
     ],
@@ -261,13 +261,6 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
             { v: 'sqlite-vec', l: 'SQLite-vec' },
           ]),
           dirPath('kbDataDir'),
-        ],
-      },
-      {
-        title: { en: 'Sunx', zh: 'Sunx' },
-        fields: [
-          // 语义键 sunxDir（SUNSHINEX_SUNX_DIR 写槽）：容器切换对新建 Sunx 生效，既有域不迁移
-          dirPath('sunxDir'),
         ],
       },
       { title: { en: 'Embedding', zh: 'Embedding' }, fields: [text('embeddingBaseUrl'), modelCombo('embeddingModel')] },
