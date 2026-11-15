@@ -167,8 +167,17 @@ export async function handleSessionRename(io: SessionHandlerIo, req: http.Incomi
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   const journalId = session.attachedJournalId;
-  if (journalId === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  writeSessionMeta(session.dataDir, journalId, { title }); // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
+  if (journalId === undefined && session.sessionKind === 'sunx') {
+    session.ensureJournalMinted(); // 未铸档 sunx 改名：mint 即落 birth meta（title 同拍）——改名不被「零实质事件」挡
+  }
+  const jid = session.attachedJournalId;
+  if (jid === undefined) return io.send(res, 409, { error: 'no journaled session' });
+  writeSessionMeta(session.dataDir, jid, { title }); // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
+  // sunx 改名同步（2026-11-15 用户裁定「支持改名,按照你的方式」）：尾追一行进链——模型下一轮即知新名
+  // （append-only 前缀零破坏;出生名冻结层定版不重写,改名行=唯一同步通道,后到者优先）
+  if (session.sessionKind === 'sunx') {
+    session.runtime.harness.context.appendChain([{ action: 'note', observation: `[rename] The user renamed you to "${title}" — use this name from now on.` }]);
+  }
   io.send(res, 200, { ok: true, title });
 }
 

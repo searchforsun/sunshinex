@@ -58,6 +58,7 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     // sunx P3 Task 3:域枚举桩(空列=无 sunx 会话;SUNX 过滤组数据源单点)
     sunxSessions: vi.fn(async () => [] as never),
     attachSunx: vi.fn(async (journalId: string) => ({ sessionId: `sx-live-${journalId}`, root: 'D:/w/p1' })),
+    renameSession: vi.fn(async () => ({ ok: true as const, title: 'x' })),
   };
   return conn;
 }

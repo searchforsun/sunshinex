@@ -75,6 +75,8 @@ export interface ProjectMenuConn {
   sessionCharter(id: string): Promise<{ text: string | null; charterRev: number }>;
   /** POST /session/:id/charter {text}(sunx P2 Task 7 封装):品性全文替换——成功回新 rev */
   editCharter(id: string, text: string): Promise<{ ok: true; charterRev: number }>;
+  /** POST /session/:id/rename {title}(sunx 改名):显示名+尾追同步(daemon 侧) */
+  renameSession(id: string, title: string): Promise<{ ok: true; title: string }>;
   /** T6 归档/撤销(Connection 结构化子集):侧栏行归档钮落库面(归档行由服务端列表滤除) */
   archiveSession(id: string, archived: boolean): Promise<void>;
   /** 置顶档(2026-10-21 GUI 专属,GET/PUT /app/pins;userConfigDir/gui/pins.json)。kind=sunx 形态

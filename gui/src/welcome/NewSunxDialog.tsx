@@ -10,26 +10,26 @@ import { useWelcomeWorkspaces } from './use-welcome-workspaces';
 import { usePopOutsideClose } from '../use-pop-outside-close';
 
 /**
- * 「新建 Sunx」创建弹窗(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」同级、独立弹窗;
- * 欢迎页 composer 零改动)。三元组表单——姓名(必填,空禁提交)/工作目录/品性(Charter 文本域)。
- * 提交 conn.newSession(target, undefined, undefined, undefined, { kind:'sunx', name, charter? })
- * → 成功走既有 openSession 链路打开该会话并关弹窗。开合受控(open prop + onClose);关闭三径:
- * ESC/点外(遮罩)/取消钮;提交中 busy 锁禁重复提交。全局 portal 到 body(WelcomeIsoDialog
- * 同款——composer 祖先带定位上下文,内联 overlay 的 fixed 会被困住)。
+ * 「新建 Sunx」弹窗——创建/编辑双模式(sunx P1 Task 6;2026-11-15 用户裁定「编辑 Sunx 复用创建
+ * 弹窗,禁用工作区」+「编辑 Sunx 支持修改名称和品性」)。
  *
- * 工作目录(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):整体复用欢迎页
- * useWelcomeWorkspaces 单点(默认锚去重清单/壳 IPC 与浏览器态双浏览通道/DirPicker 登记/
- * config-changed 回源)+WelcomeProjectPop 弹层(筛选+默认工作区锚+浏览文件夹…项)——样式与
- * 交互同源对齐,零平行实现。picked 缺席由 hook 落默认锚('default' 字面或现存锚点行)。
+ * 创建模式(缺省):三元组表单——姓名(必填)/工作目录(欢迎页 useWelcomeWorkspaces 下拉,创建定死)/
+ * 品性(留空=仅总章程)。提交 conn.newSession(target, undefined, undefined, undefined,
+ * { kind:'sunx', name, charter? }) → 成功走既有 openSession 链路并关弹窗。
  *
- * 模板挑选(sunx P2 Task 6):打开/切换工作目录时惰拉(GET /settings/sunx-templates,锚=当前
- * picked——项目级模板随所选工作区装配),选中即回填 name=模板 name、charter=章程全文(回填只是
- * 播种——用户改后以改后为准,不锁定);清单空/惰拉失败=选择器隐藏,表单照常可用。被遮蔽行
- * (shadowed)不进选项(生效视图口径——同 id 被更高层级顶掉的全局行,内容已被生效版取代)。
+ * 编辑模式(edit prop 在场):姓名可改(meta.title 显示链+rename 尾追同步行进链——模型下一轮即知
+ * 新名)/工作目录禁用显示(创建定死不可改,域绑定语义)/品性可改(GET /session/:id/charter 预填 →
+ * editCharter 全文替换+尾追替代行)。提交=两端点按变更分派,全 settlement 后 onClose。
+ *
+ * 关闭三径:ESC/点外(遮罩)/取消钮;提交中 busy 锁禁重复提交且三关闭路径拒关(创建=「发出即必建」
+ * 不可取消;编辑=保存在途不可取消)。全局 portal 到 body(WelcomeIsoDialog 同款)。
+ *
+ * 模板挑选(创建模式,sunx P2 Task 6):表单态顶部模板下拉(GET /settings/sunx-templates 惰拉,
+ * 锚=当前 picked),选中回填 name=模板 name、charter=章程全文(回填只是播种——改后以改后为准);
+ * 清单空/惰拉失败=选择器隐藏。被遮蔽行(shadowed)不进选项(生效视图口径)。
  */
 
-/** 连接面(收窄子集,Connection/ProjectMenuConn 均满足):弹窗只消费这些方法。
- *  workspaces/createWorkspace/locateWorkspace/onConfigChanged=useWelcomeWorkspaces 数据面 */
+/** 连接面(收窄子集,Connection/ProjectMenuConn 均满足) */
 export interface NewSunxConn {
   dirpicker(path?: string): Promise<DirPickerResp>;
   workspaces(): Promise<Array<{ slug: string; root?: string; sessionCount: number }>>;
@@ -43,26 +43,46 @@ export interface NewSunxConn {
   newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string }>;
   /** GET /settings/sunx-templates(sunx P2 Task 6,模板挑选数据源):打开/切换工作目录时惰拉,失败静默 */
   sunxTemplates(root?: string): Promise<{ entries: SunxTemplateEntry[]; warnings: string[] }>;
+  /** GET /session/:id/charter(编辑模式品性预填) */
+  sessionCharter(id: string): Promise<{ text: string | null; charterRev: number }>;
+  /** POST /session/:id/charter {text}:全文替换,成功回新 rev */
+  editCharter(id: string, text: string): Promise<{ ok: true; charterRev: number }>;
+  /** POST /session/:id/rename {title}:显示名+sunx 尾追同步行(daemon 侧) */
+  renameSession(id: string, title: string): Promise<{ ok: true; title: string }>;
 }
+
 
 export interface NewSunxDialogProps {
   /** 受控开合:母体持态(false=零渲染) */
   readonly open: boolean;
   readonly onClose: () => void;
   readonly conn: NewSunxConn;
-  /** 成功后打开新会话(既有 openSession 链路;宿主侧自带抽屉收起/清单重拉等既有装配) */
-  readonly onOpenSession: (sessionId: string, root: string) => void;
+  /** 创建模式:成功后打开新会话(既有 openSession 链路);编辑模式不消费 */
+  readonly onOpenSession?: (sessionId: string, root: string) => void;
+  /** 编辑模式(2026-11-15 用户裁定「编辑 Sunx 复用创建弹窗,禁用工作区,支持改名+品性」):
+   *  sessionId 寻址;name=当前显示名(预填);提交走 rename+editCharter 双端点 */
+  readonly edit?: { sessionId: string; name: string };
+  /** 创建模式缺省工作目录锚(当前默认工作区 root;宿主 defaultWorkspaceAnchor 单点供值) */
+  readonly defaultRoot?: string;
 }
 
 export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   const { open, onClose, conn, onOpenSession } = props;
+  const edit = props.edit;
+  const isEdit = edit !== undefined;
   const [name, setName] = useState('');
   const [charter, setCharter] = useState('');
+  /** 工作目录选择面(创建模式):既有 DirPicker 整面替换表单;编辑模式整字段禁用不渲染 */
+  const [browse, setBrowse] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  /** 模板清单(P2 Task 6):空数组=无模板态(选择器隐藏);templateId=下拉当前选中(空串=未选) */
+  /** 模板清单(创建模式):空数组=无模板态(选择器隐藏);templateId=下拉当前选中(空串=未选) */
   const [templates, setTemplates] = useState<SunxTemplateEntry[]>([]);
   const [templateId, setTemplateId] = useState('');
+  /** 编辑模式品性预填(GET /session/:id/charter;失败静默锁空——替换语义空文 400 禁保存) */
+  const [charterLoaded, setCharterLoaded] = useState(false);
+  /** 编辑模式品性回源基线(GET 应答原文;提交时与现文比较——未变不重发) */
+  const [fetchedCharter, setFetchedCharter] = useState<string | null>(null);
   /** 工作目录(欢迎页 hook 单点复用):picked=选中根(空串=未锚,回源后落默认锚);
    *  projOpen=下拉弹层;dirOpen=DirPicker 登记面;hint=浏览/登记错误行 */
   const [picked, setPicked] = useState('');
@@ -79,11 +99,12 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setDirOpen,
   });
 
-  /** open 翻真即重置表单(草稿不残留;工作目录由 hook 回源落默认锚) */
+  /** open 翻真即重置表单(创建:草稿不残留;编辑:名=当前显示名,品性异步预填) */
   useEffect(() => {
     if (!open) return;
-    setName('');
+    setName(isEdit ? (edit?.name ?? '') : '');
     setCharter('');
+    setBrowse(false);
     setBusy(false);
     setError('');
     setProjOpen(false);
@@ -91,17 +112,37 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setDirOpen(false);
   }, [open]);
 
-  /** 模板清单惰拉(P2 Task 6;2026-11-15 随工作目录下拉改锚):锚=当前 picked——项目级模板随
-   *  所选工作区装配(切目录重拉,清单跟随);锚空=仅全局清单。失败静默=无模板态——模板只服务
-   *  表单挑选,error 不示出,零打扰创建主流程;alive 闸过期的迟到应答 */
+  /** 编辑模式品性预填(GET /session/:id/charter;失败静默锁空——替换语义空文 400 禁保存) */
   useEffect(() => {
-    if (!open) return;
+    if (!open || !isEdit || edit === undefined) return;
+    let alive = true;
+    conn
+      .sessionCharter(edit.sessionId)
+      .then((r) => {
+        if (!alive) return;
+        setCharter(r.text ?? '');
+        setFetchedCharter(r.text ?? '');
+        setCharterLoaded(true);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setCharter('');
+        setFetchedCharter('');
+        setCharterLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
+
+  /** 模板清单惰拉(创建模式,P2 Task 6 裁定 5):弹窗打开取一次,root=当前 picked;失败静默 */
+  useEffect(() => {
+    if (!open || isEdit) return;
     setTemplates([]);
     setTemplateId('');
     let alive = true;
-    const anchor = picked.trim() === '' ? undefined : picked.trim();
     conn
-      .sunxTemplates(anchor)
+      .sunxTemplates(picked.trim() === '' ? undefined : picked)
       .then((r) => {
         if (alive) setTemplates(r.entries);
       })
@@ -111,44 +152,40 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     };
   }, [open, conn, picked]);
 
-  /** 关闭径:ESC。busy(提交在途)拒关——fix round 1(2026-11-15 审查 Important);弹层/登记面
-   *  逐层先收(品性草稿不丢),表单面才整弹窗关 */
+  /** 关闭三径之一:ESC。busy(提交在途)拒关;浏览面先回表单(创建模式),表单面才整弹窗关 */
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
       if (busy) return;
-      if (projOpen) {
-        setProjOpen(false);
-        return;
-      }
-      if (dirOpen) {
-        setDirOpen(false);
+      if (browse) {
+        setBrowse(false);
         return;
       }
       onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, projOpen, dirOpen, busy, onClose]);
+  }, [open, browse, busy, onClose]);
 
   /** 下拉弹层点外收(弹层面+.sx-sunx-ws-bar 锚外 mousedown) */
   usePopOutsideClose(projOpen, '.proj-pop', '.sx-sunx-ws-bar', () => setProjOpen(false));
 
   if (!open) return null;
 
+  /** 提交根(创建=picked 锚定;编辑不消费) */
   const target = picked.trim() === '' ? 'default' : picked.trim();
-  /** 显示名(欢迎页同款):默认锚行=「默认工作区」,其余=目录 basename */
   const isDefaultPicked = (() => {
     const nm = pathBasename(target);
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const wsLabel = isDefaultPicked ? t('Default workspace', '默认工作区') : pathBasename(target);
   /** 姓名必填(trim 后非空)+ busy 锁(提交中禁重复提交) */
-  const canSubmit = name.trim() !== '' && !busy;
+  const canSubmit = name.trim() !== '' && !busy && (isEdit ? charterLoaded : true);
 
-  const submit = (): void => {
-    if (!canSubmit) return;
+  /** 创建提交 */
+  const submitCreate = (): void => {
+    if (!canSubmit || onOpenSession === undefined) return;
     setBusy(true);
     setError('');
     // charter 空白不落键(留空=仅总章程);非空原样透传(用户自撰物料逐字进冻结层,连接层同纪律)
@@ -172,28 +209,49 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
       );
   };
 
+  /** 编辑提交(双端点按变更分派):名称=renameSession(meta.title 显示链+daemon 尾追同步行——模型
+   *  下一轮即知新名);品性=editCharter(全文替换+尾追替代行)。全 settlement 后关弹窗 */
+  const submitEdit = (): void => {
+    if (!canSubmit || edit === undefined) return;
+    setBusy(true);
+    setError('');
+    const jobs: Array<Promise<unknown>> = [conn.renameSession(edit.sessionId, name.trim())];
+    if (charter !== (fetchedCharter ?? '')) jobs.push(conn.editCharter(edit.sessionId, charter));
+    Promise.all(jobs).then(
+      () => {
+        setBusy(false);
+        onClose();
+      },
+      (err: unknown) => {
+        setBusy(false);
+        setError(errText(err));
+      },
+    );
+  };
+
+  const submit = isEdit ? submitEdit : submitCreate;
+
   return createPortal(
     <div
       className="modal-overlay"
       onClick={() => {
-        // 点外关:busy 拒关(fix round 1 同 ESC——创建中不可取消);弹层/登记面逐层先收
+        // 点外关:busy 拒关(提交在途不可取消);浏览面先回表单(创建模式),表单面整弹窗关
         if (busy) return;
-        if (projOpen) setProjOpen(false);
-        else if (dirOpen) setDirOpen(false);
+        if (browse) setBrowse(false);
         else onClose();
       }}
     >
-      <div className="modal-body sx-sunx-dialog" role="dialog" aria-label={t('New Sunx', '新建 Sunx')} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-body sx-sunx-dialog" role="dialog" aria-label={isEdit ? t('Edit Sunx', '编辑 Sunx') : t('New Sunx', '新建 Sunx')} onClick={(e) => e.stopPropagation()}>
         <header className="dirpicker-head">
-          <span>{t('New Sunx', '新建 Sunx')}</span>
+          <span>{isEdit ? t('Edit Sunx', '编辑 Sunx') : t('New Sunx', '新建 Sunx')}</span>
           {/* ✕ 同取消钮 disabled={busy}——第三关闭路径 busy 拒关(fix round 1) */}
           <button type="button" aria-label="close sunx dialog" disabled={busy} onClick={onClose}>
             ✕
           </button>
         </header>
-        {/* 模板挑选(P2 Task 6):表单态顶部下拉;无模板数据=不渲染(选择器不阻塞手填)。
+        {/* 模板挑选(创建模式,P2 Task 6):表单态顶部下拉;无模板数据=不渲染(选择器不阻塞手填)。
             选中回填 name/charter 可改;shadowed 行不进选项(生效视图口径,模块头注) */}
-        {templates.length > 0 && (
+        {!isEdit && templates.length > 0 && (
           <label className="sx-sunx-field">
             <span>{t('Template', '模板')}</span>
             <select
@@ -298,7 +356,13 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
             {t('Cancel', '取消')}
           </button>
           <button type="button" className="primary" disabled={!canSubmit} onClick={submit}>
-            {busy ? t('Creating…', '创建中…') : t('Create', '创建')}
+            {busy
+              ? isEdit
+                ? t('Saving…', '保存中…')
+                : t('Creating…', '创建中…')
+              : isEdit
+                ? t('Save', '保存')
+                : t('Create', '创建')}
           </button>
         </footer>
       </div>

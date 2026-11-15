@@ -47,6 +47,9 @@ function makeConn(
     workspaces: vi.fn(async () => [{ slug: 'ws-sunshinex-default', root: 'D:/tmp/sunshinex-default', sessionCount: 1 }]),
     createWorkspace: vi.fn(async (body: { path?: string }) => ({ ok: true as const, root: body.path ?? '', slug: body.path ?? '' })),
     locateWorkspace: vi.fn(async () => ({ path: null })),
+    sessionCharter: vi.fn(async () => ({ text: null, charterRev: 1 })),
+    editCharter: vi.fn(async () => ({ ok: true as const, charterRev: 2 })),
+    renameSession: vi.fn(async () => ({ ok: true as const, title: 'x' })),
   };
 }
 
