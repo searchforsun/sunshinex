@@ -126,6 +126,7 @@ test('delete 门禁:未归档 409;归档态 200 且 journal/meta/gui 私有档�
     const sessionsDir = path.join(resolveDataDir(tmp), 'sessions');
     assert.equal(fs.readdirSync(sessionsDir).filter((f) => f.startsWith(`${jid}.`)).length, 0, '会话档全家清');
     assert.equal(fs.existsSync(guiSession), false, 'gui 私有档清');
+    const gone = await fetch(`${base}/session/${sessionId}/snapshot`, { headers: AUTH });
     assert.equal(gone.status, 404, 'daemon 会话出注册表');
   });
 });
