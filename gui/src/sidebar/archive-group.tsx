@@ -16,6 +16,8 @@ export interface ArchivedRow {
   title?: string;
   updatedAt: number;
   archivedAt: number;
+  /** 会话形态(sunx P2 Task 7,daemon /sessions/archived meta 读面):'sunx'=编排会话(行徽标) */
+  kind?: string;
   /** daemon 运行标注(运行中可归档,2026-11-07):仅 running 运行时才带 */
   liveSessionId?: string;
   awaiting?: boolean;
@@ -72,6 +74,8 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
           <span className="sx-archive-item-main">
             <span className="sx-archive-title-row">
               <span className="sx-archive-title">{r.title ?? r.id}</span>
+              {/* kind 徽标(sunx P2 Task 7):sunx 归档行标题旁小 chip(SessionRow 同款) */}
+              {r.kind === 'sunx' && <span className="sx-sunx-badge">Sunx</span>}
               <span className="sx-archive-time">{relTime(r.updatedAt)}</span>
             </span>
             <span className="sx-archive-slug-row">

@@ -13,6 +13,9 @@ export interface PinEntry {
   title: string;
   /** 钉时刻末次活动(行时间列) */
   updatedAt: number;
+  /** 会话形态快照(sunx P2 Task 7 透传,P1 移交义务):'sunx'=编排会话(置顶行徽标);
+   *  老钉缺省=undefined 无徽标。服务端 PUT /app/pins 同键透传(sunx 单值闭合) */
+  kind?: string;
 }
 
 /** 归一/消毒(客户端宽松口径,服务端 PUT 更严:逐条查 title/updatedAt 形态):id/root 非空串即收,
@@ -27,7 +30,13 @@ export function normalizePins(raw: unknown): PinEntry[] {
   );
 }
 
-/** 钉条目构造(自归档区行形/会话行快照取字段) */
-export function pinFromRow(row: { id: string; root: string; title?: string; updatedAt: number }): PinEntry {
-  return { id: row.id, root: row.root, title: row.title ?? row.id, updatedAt: row.updatedAt };
+/** 钉条目构造(自归档区行形/会话行快照取字段)。kind 在场才落键(老调用方/无 kind 行零新增键) */
+export function pinFromRow(row: { id: string; root: string; title?: string; updatedAt: number; kind?: string }): PinEntry {
+  return {
+    id: row.id,
+    root: row.root,
+    title: row.title ?? row.id,
+    updatedAt: row.updatedAt,
+    ...(row.kind !== undefined ? { kind: row.kind } : {}),
+  };
 }

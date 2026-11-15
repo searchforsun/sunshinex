@@ -515,6 +515,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'POST', path: '/session/:id/mode', auth: true, run: (req, res, p) => this.handleSessionMode(req, res, p.id) },
     // sunx 品性编辑（2026-11-15 sunx P1 Task 4）：尾追替代行进链+meta.charterRev 递增；非 sunx 409
     { method: 'POST', path: '/session/:id/charter', auth: true, run: (req, res, p) => this.handleSessionCharter(req, res, p.id) },
+    // sunx 品性读面（2026-11-15 sunx P2 Task 7）：GET 当前全文+rev（GUI CharterDialog 预填;只读零建档）
+    { method: 'GET', path: '/session/:id/charter', auth: true, run: async (_req, res, p) => sessionHandlers.handleSessionCharterGet(this.sessionIo, res, p.id) },
     // G14.2xx GUI 面私有态存取(标签页等;CLAUDE.md §13 持久化分层——<slug>/gui/sessions/<id>.json)
     { method: 'GET', path: '/session/:id/gui-state', auth: true, run: async (_req, res, p) => sessionHandlers.handleGuiStateGet(this.sessionIo, res, p.id) },
     { method: 'PUT', path: '/session/:id/gui-state', auth: true, run: async (req, res, p) => sessionHandlers.handleGuiStatePut(this.sessionIo, req, res, p.id) },

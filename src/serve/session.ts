@@ -222,6 +222,10 @@ export class SessionRuntime {
   /** 实例品性原文（2026-11-15 sunx §17.1）：assemble() 每次换铸透传 ContextManager 品性冻结层；
    *  reCast 唯一写点 */
   private sessionCharter: string | undefined;
+  /** 品性当前态（2026-11-15 sunx P2 Task 7 GET 读面事实源）：出生 charter 起步，编辑端点
+   *  noteCharterEdit 单点推进——charterLayer 构造即冻结不随编辑动（前缀缓存纪律+append-only
+   *  替代行语义），读面若直读冻结层，编辑后 GET 会落出生旧文（合同测试 ⑨b 红检实证） */
+  private charterCurrent: string | null;
   private opts: SessionRuntimeOpts;
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
@@ -496,6 +500,7 @@ export class SessionRuntime {
     this.sessionKind = opts.kind; // 构造入参落实例字段（2026-11-15 sunx P1 Task 4）——换铸透传不丢
     this.sessionName = opts.name;
     this.sessionCharter = opts.charter;
+    this.charterCurrent = opts.charter ?? null;
     this.currentMode = opts.mode ?? 'full-access';
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.runtimeImpl = this.assemble();
@@ -530,6 +535,7 @@ export class SessionRuntime {
     this.sessionKind = opts.kind;
     this.sessionName = opts.name;
     this.sessionCharter = opts.charter ?? undefined; // null=无品性层（装配 charter 键缺席同形）
+    this.charterCurrent = opts.charter ?? null; // 换铸随装配回 birth charter（reset 清链=替代行随旧链清，读面同拍归位）
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) {
       this.syncSessionStores();
@@ -1179,6 +1185,19 @@ export class SessionRuntime {
    *  charterRev:1）再算替代序次——替代链行 append 紧随其后,零幽灵窗;已铸档幂等 no-op */
   ensureJournalMinted(): void {
     this.ensureMintedWithBirth();
+  }
+
+  /** 品性读面（2026-11-15 sunx P2 Task 7 GET /session/:id/charter 消费）：当前品性原文，
+   *  null=无品性层。事实源=charterCurrent（出生 charter 起步、编辑端点回写推进）——非
+   *  charterLayer（构造即冻结，编辑走链上替代行不回写冻结层，直读会落出生旧文） */
+  charterText(): string | null {
+    return this.charterCurrent;
+  }
+
+  /** 品性编辑回写单点（2026-11-15 sunx P2 Task 7）：charter 编辑端点落替代链行后调——
+   *  读面与链尾替代行一致（GET 预填=当前全文，非出生旧文） */
+  noteCharterEdit(text: string): void {
+    this.charterCurrent = text;
   }
 
   /** journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):旁路帧(不经 pump 主链,

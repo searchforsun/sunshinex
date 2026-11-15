@@ -177,7 +177,7 @@ export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerRespo
 /** GET /sessions/archived(归档页数据源):跨工作区扫描各 slug 的 archived 档,archivedAt 降序;
  *  行带 slug+root(来源项目标注)——不设 isDefaultWs 过滤(项目会话同样可归档) */
 export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerResponse): void {
-  type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: true };
+  type ArchivedRow = { id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: true; kind?: string };
   const out: ArchivedRow[] = [];
   const liveByJournal = liveSessionByJournal(io.sessions); // 运行中可归档:行附运行/待确认标注(与 recent 同源)
   const awaitingSet = awaitingByJournal(io.sessions);
@@ -203,6 +203,7 @@ export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerRes
       const live = liveByJournal.get(r.id);
       out.push({
         id: r.id, slug: ent.name, root, ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.archivedAt,
+        ...(r.kind !== undefined ? { kind: r.kind } : {}), // sunx 形态透出（2026-11-15 sunx P2 Task 7,归档行徽标）
         ...(live !== undefined ? { liveSessionId: live } : {}),
         ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
       });

@@ -67,13 +67,17 @@ export interface ProjectsSectionProps {
   /** 2026-10-21 用户裁定:归档层模式——组头改题「归档会话」+X 退出,列表体整替为归档行 */
   readonly archiveMode?: boolean;
   readonly onExitArchive?: () => void;
-  /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮 */
+  /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮。
+   *  onPinRow 载荷携 kind 快照(sunx P2 Task 7 徽标透传) */
   readonly pinnedIds: ReadonlySet<string>;
-  readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number }) => void;
+  readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number; kind?: string }) => void;
+  /** 「编辑品性」行菜单(sunx P2 Task 7):仅 kind==='sunx' 行渲染菜单钮(gate 在行级);
+   *  宿主解析寻址(liveSessionId 优先)+开 CharterDialog。未配=全组零菜单钮(旧桩兼容) */
+  readonly onEditCharter?: (row: SessionRow) => void;
 }
 
 export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory, onEditCharter } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -334,8 +338,11 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
                                 onAttach(sr.root !== undefined && sr.root !== '' ? sr.root : root, sr.id, sr.updatedAt);
                               }}
                               pin={root !== undefined ? {
-                                onPin: () => onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt }),
+                                onPin: () => onPinRow({ id: sr.id, root, title: sr.title ?? sr.firstUser ?? '', updatedAt: sr.updatedAt, ...(sr.kind !== undefined ? { kind: sr.kind } : {}) }),
                               } : undefined}
+                              onEditCharter={
+                                sr.kind === 'sunx' && onEditCharter !== undefined ? () => onEditCharter(sr) : undefined
+                              }
                               confirmId={confirmId}
                               onArm={() => setConfirmId(sr.id)}
                               onConfirm={() => { setConfirmId(''); onArchiveRow(sr.id, true); }}

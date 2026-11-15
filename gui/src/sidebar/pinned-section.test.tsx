@@ -93,4 +93,17 @@ describe('PinnedSection 置顶分组(GUI 专属)', () => {
     expect(onUnpin).toHaveBeenCalledWith('j1');
     expect(onOpenSession).not.toHaveBeenCalled();
   });
+
+  it('kind 徽标透传(sunx P2 Task 7,PinEntry kind 快照):sunx 钉标题旁徽标;无 kind 老钉零徽标', () => {
+    const { container } = renderSection({
+      pins: [
+        { id: 'j1', root: 'D:/w/p1', title: '置顶会话', updatedAt: 2, kind: 'sunx' },
+        { id: 'j2', root: 'D:/w/p2', title: 'j2', updatedAt: 1 },
+      ],
+    });
+    const j1 = container.querySelector('[data-row-id="j1"]')!;
+    const j2 = container.querySelector('[data-row-id="j2"]')!;
+    expect(j1.querySelector('.sx-sunx-badge')).not.toBeNull(); // sunx 钉徽标在场
+    expect(j2.querySelector('.sx-sunx-badge')).toBeNull(); // 无 kind=零徽标(老钉兼容)
+  });
 });

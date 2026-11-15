@@ -207,7 +207,22 @@ export async function handleSessionCharter(io: SessionHandlerIo, req: http.Incom
   // 尾追替代行（裁定字面：英文单语,前缀行+空行+全文）——append-only 链行,运行中安全
   session.runtime.harness.context.appendChain([{ action: 'note', observation: `[charter v${rev}] supersedes the earlier charter; from now on follow the charter below.\n\n${text}` }]);
   writeSessionMeta(dataDir, jid, { charterRev: rev });
+  session.noteCharterEdit(text); // 读面回写单点（P2 Task 7）：GET 预填=当前全文,非出生冻结层旧文
   io.send(res, 200, { ok: true, charterRev: rev });
+}
+
+/** GET /session/:id/charter（2026-11-15 sunx P2 Task 7）：品性读面——当前全文+rev（GUI
+ *  CharterDialog 预填数据源;append-only 替代行语义=全文替换,预填空会让用户盲改）。合同与
+ *  POST 同口径：坏 id 400 / 未知会话 404 / 非 sunx 409。只读无写副作用——未铸档 sunx 不
+ *  ensureJournalMinted（rev 回落出生初版 1,text 取会话跟踪面出生原文;幽灵会话不变式不破） */
+export function handleSessionCharterGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
+  if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  if (session.sessionKind !== 'sunx') return io.send(res, 409, { error: 'not a sunx session' });
+  const jid = session.attachedJournalId;
+  const rev = jid !== undefined ? (readSessionMeta(resolveDataDir(session.root), jid).charterRev ?? 1) : 1;
+  io.send(res, 200, { text: session.charterText(), charterRev: rev });
 }
 
 

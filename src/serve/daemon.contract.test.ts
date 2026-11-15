@@ -575,6 +575,40 @@ test('⑨ charter 编辑：尾追替代行入链+charterRev 递增；空白 400�
   });
 });
 
+test('⑨b charter 读面（sunx P2 Task 7）：GET /session/:id/charter 返回当前全文+rev——出生（未铸档）读 v1 零建档；编辑后读面跟新替代行全文（非出生冻结层旧文）；非 sunx 409；未知 404', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const H = { authorization: 'Bearer test-token' };
+    const sunxRoot = tmpdir('sunshinex-serve-charter-read-root-');
+    try {
+      const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH READ-1' });
+      // 出生未铸档：GET 读 v1（出生品性即初版），且零建档（读面无写副作用——幽灵会话不变式不破）
+      const g1 = await fetch(`${ctx.http}/session/${sid}/charter`, { headers: H });
+      assert.equal(g1.status, 200);
+      assert.deepEqual(await g1.json(), { text: 'BIRTH READ-1', charterRev: 1 }, '出生品性读 v1');
+      assert.equal(ctx.daemon.get(sid)!.attachedJournalId, undefined, 'GET 零建档');
+      // 编辑后读面跟新：替代行语义=当前全文，读面必须反映编辑后文本（charterLayer 构造即冻结，
+      // 跟踪面在会话运行时——读出生旧文即本测试红）
+      const e1 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'EDITED READ-2' }) });
+      assert.equal(e1.status, 200);
+      const g2 = await fetch(`${ctx.http}/session/${sid}/charter`, { headers: H });
+      assert.equal(g2.status, 200);
+      assert.deepEqual(await g2.json(), { text: 'EDITED READ-2', charterRev: 2 }, '读面跟新（非出生旧文）');
+      // 合同面与 POST 同口径：非 sunx 409 / 未知会话 404
+      const stdSid = await ctx.newSession();
+      const g409 = await fetch(`${ctx.http}/session/${stdSid}/charter`, { headers: H });
+      assert.equal(g409.status, 409, 'standard 会话 409');
+      assert.equal(((await g409.json()) as { error: string }).error, 'not a sunx session');
+      const g404 = await fetch(`${ctx.http}/session/20261115T000000Z-none/charter`, { headers: H });
+      assert.equal(g404.status, 404, '未知会话 404');
+      // 无 token 401（auth 门同族）
+      const g401 = await fetch(`${ctx.http}/session/${sid}/charter`);
+      assert.equal(g401.status, 401);
+    } finally {
+      fs.rmSync(sunxRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 test('⑩ 换铸存活：reset 换新运行时后 sunx face 仍白名单、稳定段仍含章程、品性层仍带 charter；setMode 直切亦存活', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const sunxRoot = tmpdir('sunshinex-serve-reset-root-');
@@ -757,5 +791,29 @@ test('⑬ attach 重铸幂等：已 attach 的 sunx 会话二次 attach 走收�
     } finally {
       fs.rmSync(sunxRoot, { recursive: true, force: true });
     }
+  });
+});
+
+test('⑭ 置顶档 kind 透传（sunx P2 Task 7）：PUT /app/pins 收 kind:"sunx" 原样落档回读（置顶行徽标跨重启存活）；非 sunx kind 值弃置；无 kind 行零新增键', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
+    const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    const put = await fetch(`${ctx.http}/app/pins`, {
+      method: 'PUT',
+      headers: H,
+      body: JSON.stringify({
+        pins: [
+          { id: 'j1', root: 'D:/w/p1', title: '钉甲', updatedAt: 5, kind: 'sunx' },
+          { id: 'j2', root: 'D:/w/p2', title: '钉乙', updatedAt: 6, kind: 'standard' },
+          { id: 'j3', root: 'D:/w/p3', updatedAt: 7 },
+        ],
+      }),
+    });
+    assert.equal(put.status, 200);
+    const got = await fetch(`${ctx.http}/app/pins`, { headers: { authorization: 'Bearer test-token' } });
+    assert.equal(got.status, 200);
+    const { pins } = (await got.json()) as { pins: Array<{ id: string; kind?: string }> };
+    assert.equal(pins.find((p) => p.id === 'j1')?.kind, 'sunx', 'sunx kind 原样落档（GET 回读=跨重启存活）');
+    assert.equal(pins.find((p) => p.id === 'j2')?.kind, undefined, '非 sunx kind 值弃置（闭合枚举）');
+    assert.equal(pins.find((p) => p.id === 'j3')?.kind, undefined, '无 kind 行零新增键（老钉字节不变）');
   });
 });

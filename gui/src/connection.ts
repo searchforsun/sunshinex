@@ -60,6 +60,12 @@ export interface Connection {
   renameSession(id: string, title: string): Promise<{ ok: true; title: string }>;
   /** 自定义会话名回读(G14.16):GET /session/:id/title/get;title=undefined 即无自定义名 */
   getSessionTitle(id: string): Promise<{ title?: string }>;
+  /** GET /session/:id/charter(sunx P2 Task 7 读面):当前品性全文+rev——CharterDialog 预填数据源
+   *  (append-only 替代行语义=全文替换,预填必须反映编辑后文本,非出生冻结层旧文)。409=非 sunx */
+  sessionCharter(id: string): Promise<{ text: string | null; charterRev: number }>;
+  /** POST /session/:id/charter {text}(sunx P1 Task 4 端点;P2 Task 7 封装):品性全文替换
+   *  (append-only 替代行进链+charterRev 递增)——成功回新 rev;空白 text 400、非 sunx 409 抛错 */
+  editCharter(id: string, text: string): Promise<{ ok: true; charterRev: number }>;
   /** 建项目(G10-C11):原生文件选择器确认后注册/创建工作区。name=浏览器态(projectsRoot 下建)
    *  / path=桌面壳态(注册既有目录);同名幂等返回既有行 */
   createWorkspace(body: { name?: string; path?: string }): Promise<{ ok: true; root: string; slug: string }>;
@@ -124,9 +130,10 @@ export interface Connection {
   /** G14.2xx 应用级指针档(恢复现场入口;<projectsRoot>/gui/ui-state.json:lastRoot/lastJournalId) */
   appGuiState(): Promise<{ state: unknown }>;
   saveAppGuiState(state: object): Promise<void>;
-  /** 置顶档(GET/PUT /app/pins;2026-10-21 GUI 专属会话置顶,机器级跨工作区) */
-  appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }> }>;
-  saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void>;
+  /** 置顶档(GET/PUT /app/pins;2026-10-21 GUI 专属会话置顶,机器级跨工作区)。kind=sunx 形态快照
+   *  (sunx P2 Task 7 徽标透传;老钉缺省) */
+  appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number; kind?: string }> }>;
+  saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number; kind?: string }>): Promise<void>;
   /** 已读档(GET/PUT /app/seen;2026-10-23 已读/未读态落底层,机器级 id→最近已读 updatedAt) */
   appSeen(): Promise<{ seen: Record<string, number> }>;
   saveAppSeen(seen: Record<string, number>): Promise<void>;
@@ -219,8 +226,8 @@ export interface Connection {
   deleteSession(id: string): Promise<void>;
   /** POST /session/:id/archive {archived}:归档/撤销(运行中照常受理,不停运行) */
   archiveSession(id: string, archived: boolean): Promise<void>;
-  /** GET /sessions/archived:跨工作区归档列表(归档页数据源) */
-  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean }>>;
+  /** GET /sessions/archived:跨工作区归档列表(归档页数据源)。kind=sunx 形态透出(归档行徽标) */
+  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean; kind?: string }>>;
   /** POST /session/:id/pty {cols?,rows?,prevPtyId?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
    *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId。
    *  prevPtyId=页签盘档里已死的旧 pty(daemon 重启):daemon 以其落盘回放回种新壳滚动区 */
@@ -483,6 +490,13 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     getSessionTitle(id: string) {
       return getJson<{ title?: string }>('/session/' + encodeURIComponent(id) + '/title/get');
+    },
+    // sunx P2 Task 7 品性读写面:读=GET 当前全文+rev(CharterDialog 预填);写=POST 全文替换回新 rev
+    sessionCharter(id: string) {
+      return getJson<{ text: string | null; charterRev: number }>('/session/' + encodeURIComponent(id) + '/charter');
+    },
+    editCharter(id: string, text: string) {
+      return postJson<{ ok: true; charterRev: number }>('/session/' + encodeURIComponent(id) + '/charter', { text });
     },
     createWorkspace(body: { name?: string; path?: string }) {
       return postJson<{ ok: true; root: string; slug: string }>('/workspace/create', body);

@@ -131,13 +131,16 @@ export async function handleAppPinsPut(io: SessionHandlerIo, req: http.IncomingM
     return;
   }
   const pins = rawPins.flatMap((p) => {
-    const e = p as { id?: unknown; root?: unknown; title?: unknown; updatedAt?: unknown };
+    const e = p as { id?: unknown; root?: unknown; title?: unknown; updatedAt?: unknown; kind?: unknown };
     if (typeof e?.id !== 'string' || e.id === '' || typeof e?.root !== 'string' || e.root === '') return [];
     return [{
       id: e.id,
       root: e.root,
       ...(typeof e.title === 'string' && e.title !== '' ? { title: e.title } : {}),
       ...(typeof e.updatedAt === 'number' && Number.isFinite(e.updatedAt) ? { updatedAt: e.updatedAt } : {}),
+      // kind 透传（2026-11-15 sunx P2 Task 7）：闭合枚举单值——仅 'sunx' 随档（置顶行徽标跨重启
+      // 存活）;其他值/缺席弃置（老钉档字节不变）
+      ...(e.kind === 'sunx' ? { kind: 'sunx' as const } : {}),
     }];
   });
   const file = appPinsFile();

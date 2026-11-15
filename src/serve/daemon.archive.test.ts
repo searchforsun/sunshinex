@@ -184,6 +184,31 @@ test('列表滤除:archived 会话退出 /sessions 与 /sessions/recent;GET /ses
   });
 });
 
+test('archived 行 kind 透出（sunx P2 Task 7）：sunx 会话归档后归档行带 kind:"sunx"（归档行徽标数据源）；standard 行零 kind 键', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    const root = path.join(tmp, 'sunshinex-default');
+    fs.mkdirSync(root, { recursive: true });
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, kind: 'sunx' }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    await waitStatus(base, sessionId, 'idle');
+    const jid = fs.readdirSync(path.join(resolveDataDir(root), 'sessions')).filter((f) => f.endsWith('.jsonl'))[0]!.replace(/\.jsonl$/, '');
+    // 对照组 standard 会话（同 root）
+    const std = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root }) });
+    const stdId = ((await std.json()) as { sessionId: string }).sessionId;
+    await fetch(`${base}/session/${stdId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '标准一轮' }) });
+    await waitStatus(base, stdId, 'idle');
+    const dir = path.join(resolveDataDir(root), 'sessions');
+    const stdJid = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => f.replace(/\.jsonl$/, '')).find((id) => id !== jid)!;
+
+    await fetch(`${base}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    await fetch(`${base}/session/${stdJid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const archived = (await (await fetch(`${base}/sessions/archived`, { headers: AUTH })).json()) as Array<{ id: string; kind?: string }>;
+    assert.equal(archived.find((r) => r.id === jid)?.kind, 'sunx', 'sunx 归档行带 kind');
+    assert.equal(archived.find((r) => r.id === stdJid)?.kind, undefined, 'standard 归档行零 kind 键');
+  });
+});
+
 test('command 气泡入档:POST /command 后 journal 有命令 user 行+结果 notice 行(刷新回放双向可见)', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
     const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });

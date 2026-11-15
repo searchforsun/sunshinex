@@ -21,8 +21,10 @@ import type { SeenMap } from './project-menu-util';
 import { ProjectSearch } from './project-menu-search';
 import { ProjectsSection } from './project-menu-projects';
 import { RecentsSection } from './project-menu-recents';
+import { SunxSection } from './project-menu-sunx';
 import { ArchiveSection, type ArchivedRow } from './archive-group';
 import { PinnedSection } from './pinned-section';
+import { CharterDialog } from '../welcome/CharterDialog';
 import { pinFromRow, type PinEntry } from './pin-store';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
@@ -65,11 +67,16 @@ export interface ProjectMenuConn {
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string }>;
+  /** GET /session/:id/charter(sunx P2 Task 7 读面):当前品性全文+rev——CharterDialog 预填数据源 */
+  sessionCharter(id: string): Promise<{ text: string | null; charterRev: number }>;
+  /** POST /session/:id/charter {text}(sunx P2 Task 7 封装):品性全文替换——成功回新 rev */
+  editCharter(id: string, text: string): Promise<{ ok: true; charterRev: number }>;
   /** T6 归档/撤销(Connection 结构化子集):侧栏行归档钮落库面(归档行由服务端列表滤除) */
   archiveSession(id: string, archived: boolean): Promise<void>;
-  /** 置顶档(2026-10-21 GUI 专属,GET/PUT /app/pins;userConfigDir/gui/pins.json) */
-  appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }> }>;
-  saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void>;
+  /** 置顶档(2026-10-21 GUI 专属,GET/PUT /app/pins;userConfigDir/gui/pins.json)。kind=sunx 形态
+   *  快照(sunx P2 Task 7 徽标透传;服务端 PUT 同键闭合透传,老钉缺省) */
+  appPins(): Promise<{ pins: Array<{ id: string; root: string; title?: string; updatedAt?: number; kind?: string }> }>;
+  saveAppPins(pins: Array<{ id: string; root: string; title?: string; updatedAt?: number; kind?: string }>): Promise<void>;
   /** 已读档(2026-10-23,GET/PUT /app/seen;userConfigDir/gui/seen.json,已读/未读态落底层) */
   appSeen(): Promise<{ seen: Record<string, number> }>;
   saveAppSeen(seen: Record<string, number>): Promise<void>;
@@ -77,8 +84,9 @@ export interface ProjectMenuConn {
    *  daemon /workspace/create afterCreate 必广播(幂等登记同拍)——侧栏订阅即回源,欢迎页/
    *  他窗建的项目免切页即显。可选(旧测试桩缺名不订阅,守卫同 use-config-changed 先例) */
   onConfigChanged?(cb: (f: { resource: string }) => void): () => void;
-  /** 归档区数据面(跨工作区聚合行;GET /sessions/archived)+ 受控删除(已归档态) */
-  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean }>>;
+  /** 归档区数据面(跨工作区聚合行;GET /sessions/archived)+ 受控删除(已归档态)。kind=sunx 形态
+   *  透出(归档行徽标,sunx P2 Task 7) */
+  archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean; kind?: string }>>;
   deleteSession(id: string): Promise<void>;
 }
 
@@ -103,6 +111,9 @@ export interface ProjectMenuProps {
   readonly onComposeIn: (root: string) => void;
   /** 组头目录钮(2026-10-23 用户裁定):开当前会话/项目第一会话的目录页签(宿主解析会话+开页签) */
   readonly onOpenDirectory: (root: string) => void;
+  /** SUNX 组头看板钮(sunx P2 Task 7 留开合点,可选 guard):宿主开 Sunx 总览页——Task 8 注册
+   *  'sunxboard' 页签后 App 传 openTab 接线;未配时钮不渲染(不产死钮) */
+  readonly onOpenSunxBoard?: () => void;
   /** 2026-10-27 用户裁定:目录树入左菜单视图层——App 持状态(openProjectDirectory 落值),
    *  视图=返回+DirectoryTab 复用;文件行点击经 onOpenFileFromTree 开右侧文件标签 */
   /** locate=相对目录(posix /),打开后 DirectoryTab 逐层展开定位 */
@@ -393,6 +404,48 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     ).then((groups) => setAllSessions(groups.flat()));
   }, [searchOpen, rows, conn]);
 
+  /** SUNX 过滤组聚合(sunx P2 Task 7,spec §10+R10):视图过滤器按 /sessions 行 kind==='sunx'
+   *  跨工作区聚合——不含 visibleWorkspaces 滤除(默认锚点工作区的 sunx 会话同入组,RECENTS 同
+   *  口径),按工作区行序保序(分节 R10)。数据面同 G14.75 聚合搜索形态:每工作区一次 sessionsOf,
+   *  失败该根按空清单降级(下拍 30s/聚焦/组刷新自愈);rows 变化即重拉(30s tick/聚焦/
+   *  recentVersion bump/config-changed 全走 loadWorkspaces→rows 换引用,单一驱动点) */
+  const [sunxRows, setSunxRows] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
+  useEffect(() => {
+    const targets = (rows ?? []).filter((r) => r.root !== undefined);
+    if (targets.length === 0) {
+      setSunxRows([]);
+      return;
+    }
+    let alive = true;
+    void Promise.all(
+      targets.map((r) =>
+        conn
+          .sessionsOf(r.root as string)
+          .then((list) => list.map((x) => ({ ...x, root: r.root as string, slug: r.slug })))
+          .catch(() => []),
+      ),
+    ).then((groups) => {
+      if (alive) setSunxRows(groups.flat().filter((x) => x.kind === 'sunx'));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [rows, conn]);
+
+  /** 「编辑品性」(sunx P2 Task 7):寻址解析单点——行 liveSessionId(在座标注)优先,缺席回落
+   *  journal id(POST/GET 端点仅寻址在座 daemon 会话,不在座行装载即静默禁保存,打开会话后再编辑);
+   *  本窗 attach 映射反查(journalId→live id)补「开着但闲置」行(无 liveSessionId 标注) */
+  const [charterFor, setCharterFor] = useState<string | null>(null);
+  const openCharterEditor = useCallback(
+    (row: { id: string; liveSessionId?: string }): void => {
+      const liveByJournal = new Map<string, string>();
+      for (const [live, jid] of journalOfSession) liveByJournal.set(jid, live);
+      setCharterFor(row.liveSessionId ?? liveByJournal.get(row.id) ?? row.id);
+    },
+    [journalOfSession],
+  );
+
+
   // 30s 定时自动刷新(G10-C13)+ 窗口聚焦刷新(G14.9:回窗即见最新会话列表)。
   // 2026-10-23:展开组会话行同拍重拉——后台会话收束后 liveSessionId 卡旧列表即「已完成仍在转圈」
   // (workspaces 只刷计数/recents,组行本不在此列;他端/他页起落的运行态 30s/聚焦自愈)
@@ -488,8 +541,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  置顶即压已读戳到钉档同一时刻——与顶栏置顶同一不变量(钉组按钉档 updatedAt 判未读,
    *  侧栏路径漏压=顶栏已修「钉组恒亮蓝点」实测病的同源分叉);已读则 no-op(markSeen 自守恒) */
   const pinSessionRow = useCallback(
-    (row: { id: string; root: string; title?: string; updatedAt: number }): void => {
-      pinRow(pinFromRow(row));
+    (row: { id: string; root: string; title?: string; updatedAt: number; kind?: string }): void => {
+      pinRow(pinFromRow(row)); // kind 随行(sunx P2 Task 7 徽标快照透传)
       markSeen(row.id, row.updatedAt);
     },
     [pinRow, markSeen],
@@ -708,6 +761,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           }}
           pinnedIds={pinnedIds}
           onPinRow={pinSessionRow}
+          onEditCharter={openCharterEditor}
         />
         {/* 归档层(2026-10-21 用户裁定):整替 Projects 列表体+Recents——无独立分组,组头 X 退出 */}
         {archiveOpen ? (
@@ -723,6 +777,21 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           />
         ) : (
           <>
+            {/* SUNX 过滤组(sunx P2 Task 7):工作区组之后、RECENTS 之前——视图过滤器并存不互斥;
+                空组整块不显(SunxSection 判空);看板钮可选 guard(Task 8 接线后生效);归档层开启
+                时不渲染(归档层整替语义) */}
+            <SunxSection
+              rows={sunxRows}
+              activeSessionId={activeSessionId}
+              runningIds={runningIds}
+              journalOfSession={journalOfSession}
+              isUnseen={isUnseen}
+              busy={busy}
+              onAttach={attachJournal}
+              onArchiveRow={archiveRow}
+              onOpenBoard={props.onOpenSunxBoard}
+              onEditCharter={openCharterEditor}
+            />
             <RecentsSection
               recentsOpen={recentsOpen}
               onToggleRecents={() => {
@@ -744,6 +813,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               onArchiveRow={archiveRow}
               pinnedIds={pinnedIds}
               onPinRow={pinSessionRow}
+              onEditCharter={openCharterEditor}
             />
           </>
         )}
@@ -763,6 +833,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             defaultRoot={defaultWorkspaceAnchor(rows)}
             onOpenSession={openCreatedSunx}
           />
+        )}
+        {/* 「编辑品性」弹窗(sunx P2 Task 7):portal 到 body 同惯例;寻址由 openCharterEditor 解析 */}
+        {charterFor !== null && (
+          <CharterDialog open onClose={() => setCharterFor(null)} conn={conn} sessionId={charterFor} />
         )}
       </div>
       </>

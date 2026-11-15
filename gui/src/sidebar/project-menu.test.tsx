@@ -52,6 +52,9 @@ function makeConn(): ProjectMenuConn & { roots: string[] } {
     deleteSession: vi.fn(async () => undefined), // 受控删除(归档区红删除确认面)
     locateWorkspace: async () => ({ path: null }),
     gitBranches: async () => ({ current: '', branches: [] }),
+    // sunx P2 Task 7:品性读写面桩(CharterDialog 弹窗链;ProjectMenuConn 新增面)
+    sessionCharter: vi.fn(async () => ({ text: 'STUB CHARTER', charterRev: 1 })),
+    editCharter: vi.fn(async () => ({ ok: true as const, charterRev: 2 })),
   };
   return conn;
 }
@@ -85,7 +88,8 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     expect((document.querySelector('.sx-group-head:disabled') as HTMLButtonElement).disabled).toBe(true); // root 缺场组禁用(路径 tooltip 已退役,disabled 即缺场标记)
     // 组行点击=展开:惰拉 sessionsOf,组内会话行在场(组行/RECENTS 行/recents 去重前同文——取首个)
     fireEvent.click(await screen.findByText('p1'));
-    await waitFor(() => expect(conn.roots).toEqual(['D:/w/p1']));
+    // sunx P2 Task 7:SUNX 过滤组挂载即按根聚合(sessionsOf 每工作区一次)——惰拉断言改「含组根」
+    await waitFor(() => expect(conn.roots).toContain('D:/w/p1'));
     expect((await screen.findAllByText('demo goal'))[0]).toBeTruthy();
     // 新对话入口移至行尾 hover 钮:点击才 onComposeIn
     fireEvent.click(screen.getByLabelText('new session in p1'));
@@ -205,6 +209,7 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     renderMenu(conn);
     await screen.findByText('demo goal');
     const opensBefore = open.mock.calls.length;
+    const rootsAtMount = conn.roots.length; // sunx P2 Task 7:SUNX 过滤组挂载即按根聚合(基线截取)
     // 归档钮点击:morph 为「确认」,不触发 attach 两步(stopPropagation)
     fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
     expect(screen.queryByRole('button', { name: 'Archive j1' })).toBeNull();
@@ -215,12 +220,12 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     fireEvent.click(screen.getByRole('button', { name: 'Archive j1' }));
     expect(screen.getByRole('button', { name: 'Confirm archive j1' })).toBeDefined();
     expect(open.mock.calls.length).toBe(opensBefore);
-    expect(conn.roots).toEqual([]); // 无 sessionsOf 拉(未展开组;attach 未发生)
-    // 确认点击:落库 archived=true + 重拉(workspaces=计数/Recents;组未展开故无 sessionsOf)
+    expect(conn.roots.length).toBe(rootsAtMount); // 无新 sessionsOf 拉(未展开组;attach 未发生)
+    // 确认点击:落库 archived=true + 重拉(workspaces=计数/Recents;SUNX 过滤组随 rows 换引用
+    // 同拍重拉=新设计,attach 触发的 sessionsOf 仍为零——归档路径断言以 archiveSession 为准)
     fireEvent.click(screen.getByRole('button', { name: 'Confirm archive j1' }));
     await waitFor(() => expect(conn.archiveSession).toHaveBeenCalledWith('j1', true));
     await waitFor(() => expect(conn.workspaces).toHaveBeenCalledTimes(2)); // 挂载 1 次 + 落库后重拉
-    expect(conn.roots).toEqual([]);
     expect(open.mock.calls.length).toBe(opensBefore);
   });
 
@@ -306,5 +311,87 @@ describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6):RECENTS 头同级钮+�
     await waitFor(() => expect(conn.newSession).toHaveBeenCalledWith('default', undefined, undefined, undefined, { kind: 'sunx', name: '编排者' }));
     await waitFor(() => expect(open).toHaveBeenCalledWith('sx-1', 'default')); // 既有 openSession 链路
     expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull(); // 关弹窗
+  });
+});
+
+describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7):kind 聚合+按工作区分节+看板钮+编辑品性弹窗链', () => {
+  /** sunx 会话桩 conn:两工作区各一 sunx 会话+一 standard 会话(RECENTS 空,聚焦过滤组) */
+  function makeSunxConn(): ProjectMenuConn & { roots: string[] } {
+    const conn = makeConn();
+    conn.workspaces = vi.fn(async () => [
+      { slug: 'p1', root: 'D:/w/p1', sessionCount: 2, mtime: Date.now() },
+      { slug: 'p2', root: 'D:/w/p2', sessionCount: 1, mtime: Date.now() },
+    ] as never);
+    conn.sessionsOf = async (root: string) =>
+      (root === 'D:/w/p1'
+        ? [
+            { id: 'sx-j1', firstUser: '编排一', updatedAt: 5, kind: 'sunx' },
+            { id: 'std-j2', firstUser: '普通会话', updatedAt: 4 },
+          ]
+        : [{ id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx' }]) as never;
+    conn.recentSessions = vi.fn(async () => [] as never);
+    return conn as ProjectMenuConn & { roots: string[] };
+  }
+
+  it('组聚合:两工作区各一 sunx 小节;standard 行不入组;空组整块不显', async () => {
+    const first = renderMenu(makeSunxConn());
+    expect(await screen.findByText('SUNX')).toBeDefined(); // 组头(双语同文)
+    const list = first.container.querySelector('.sx-sunx-list')!;
+    expect(list.textContent).toContain('编排一');
+    expect(list.textContent).toContain('编排三');
+    expect(list.textContent).not.toContain('普通会话'); // kind 过滤
+    // 空组不显:全 standard 会话侧栏零 SUNX 区块
+    first.unmount();
+    const conn2 = makeConn(); // sessionsOf 全 standard
+    const second = renderMenu(conn2);
+    await second.findByText('demo goal');
+    expect(second.container.querySelector('.sx-sunx-list')).toBeNull();
+  });
+
+  it('条目点击=既有 attach 链(attachJournal 两步→onOpenSession)', async () => {
+    const conn = makeSunxConn();
+    renderMenu(conn, { onOpenSession: open });
+    fireEvent.click(await screen.findByText('编排一'));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.any(String), 'D:/w/p1', 'sx-j1')); // journalId 随行
+  });
+
+  it('组头看板钮:接线 onOpenSunxBoard 渲染+点击上抛;未接线不渲染(guard)', async () => {
+    const onOpenSunxBoard = vi.fn();
+    const first = renderMenu(makeSunxConn(), { onOpenSunxBoard });
+    const btn = await first.findByRole('button', { name: 'sunx board' });
+    expect(btn.getAttribute('data-tip')).toBe('Sunx board'); // 测试环境钉 en(本文件不钉 zh)
+    expect(btn.querySelector('title')).toBeNull(); // data-tip 禁原生 title(铁律)
+    fireEvent.click(btn);
+    expect(onOpenSunxBoard).toHaveBeenCalledTimes(1);
+    first.unmount();
+    const second = renderMenu(makeSunxConn());
+    await second.findByText('SUNX');
+    expect(second.queryByRole('button', { name: 'sunx board' })).toBeNull();
+  });
+
+  it('行菜单「编辑品性」→CharterDialog:寻址行 liveSessionId 优先,预填走 conn.sessionCharter,保存走 conn.editCharter', async () => {
+    // 行带 liveSessionId(在座标注)=live 寻址;缺席行回落 journal id(sessionsOf 桩定制两形态)
+    const conn = makeSunxConn();
+    conn.sessionsOf = async (root: string) =>
+      (root === 'D:/w/p1'
+        ? [
+            { id: 'sx-j1', firstUser: '编排一', updatedAt: 5, kind: 'sunx', liveSessionId: 's-live-1' },
+            { id: 'std-j2', firstUser: '普通会话', updatedAt: 4 },
+          ]
+        : [{ id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx' }]) as never;
+    renderMenu(conn);
+    await screen.findByText('SUNX');
+    fireEvent.click(screen.getByRole('button', { name: 'session actions sx-j1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /编辑品性|Edit charter/ }));
+    expect(await screen.findByRole('dialog', { name: /编辑品性|Edit charter/ })).toBeDefined();
+    await waitFor(() => expect(conn.sessionCharter).toHaveBeenCalledWith('s-live-1')); // live id 优先
+    fireEvent.change(await screen.findByLabelText(/品性|Charter/), { target: { value: '从侧栏改的品性' } });
+    fireEvent.click(screen.getByRole('button', { name: /保存|Save/ }));
+    await waitFor(() => expect(conn.editCharter).toHaveBeenCalledWith('s-live-1', '从侧栏改的品性'));
+    // 关闭后可对无 liveSessionId 的行按 journal id 寻址(成功提示停留 1.4s 后自动关——放宽窗)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /编辑品性|Edit charter/ })).toBeNull(), { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'session actions sx-j3' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /编辑品性|Edit charter/ }));
+    await waitFor(() => expect(conn.sessionCharter).toHaveBeenCalledWith('sx-j3')); // 无 live 行=journal id
   });
 });

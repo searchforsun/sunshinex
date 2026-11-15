@@ -102,4 +102,23 @@ describe('ArchiveSection 归档会话层(侧栏整替面)', () => {
     renderSection();
     expect(document.querySelectorAll('.sx-archive-item .sx-session-dot').length).toBe(0);
   });
+
+  it('kind 徽标透传(sunx P2 Task 7):sunx 归档行标题旁徽标;无 kind 行零徽标', () => {
+    render(
+      <ArchiveSection
+        rows={[
+          { id: 'a1', slug: 'p1', root: 'D:/w/p1', title: '已归档会话', updatedAt: 2, archivedAt: 20, kind: 'sunx' },
+          { id: 'a2', slug: 'p2', root: 'D:/w/p2', updatedAt: 1, archivedAt: 10 },
+        ]}
+        busy={false}
+        onOpenSession={() => {}}
+        onUnarchive={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    const a1 = document.querySelector('[data-row-id="a1"]')!;
+    const a2 = document.querySelector('[data-row-id="a2"]')!;
+    expect(a1.querySelector('.sx-sunx-badge')).not.toBeNull(); // sunx 归档行徽标在场
+    expect(a2.querySelector('.sx-sunx-badge')).toBeNull(); // 无 kind=零徽标
+  });
 });

@@ -4,7 +4,8 @@ import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime 
 import { t } from '../i18n';
 import { readUsageStats } from '../usage-stats';
 import { zoomScale } from '../ui-zoom';
-import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, Pin } from 'lucide-react';
+import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, MoreHorizontal, NotebookPen, Pin } from 'lucide-react';
+import { SessionRowMenu } from './session-row-menu';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -289,6 +290,9 @@ export function SessionRow(props: {
   readonly busy: boolean;
   readonly onOpen: () => void;
   readonly pin?: { onPin: () => void };
+  /** 「编辑品性」行菜单(sunx P2 Task 7):调用方仅对 kind==='sunx' 行传(gate=不传即无菜单
+   *  钮,standard 行零变化);宿主解析寻址并开 CharterDialog */
+  readonly onEditCharter?: () => void;
   readonly confirmId: string;
   readonly onArm: () => void;
   readonly onConfirm: () => void;
@@ -316,6 +320,8 @@ export function SessionRow(props: {
     hoverTimer.current = window.setTimeout(() => setHover(null), 140);
   };
   const hoverCancelClose = (): void => window.clearTimeout(hoverTimer.current);
+  /** 「编辑品性」行菜单弹层(sunx P2 Task 7):锚=行尾 ⋯ 钮右缘/下缘(projects 组头移除弹层同形) */
+  const [charterMenu, setCharterMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <li
       data-row-id={props.rowId}
@@ -364,6 +370,23 @@ export function SessionRow(props: {
       {props.kind === 'sunx' && <span className="sx-sunx-badge">Sunx</span>}
       <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
+        {/* 「编辑品性」行菜单钮(sunx P2 Task 7):onEditCharter 在场才渲染(gate),归档钮左侧同簇 */}
+        {props.onEditCharter !== undefined && (
+          <button
+            type="button"
+            className="sx-iconbtn"
+            data-tip={t('Session actions', '会话操作')}
+            aria-label={`session actions ${props.rowId}`}
+            onMouseDown={(e) => e.stopPropagation()} // 锚钮自身不触发 document 外点收(toggle 不被击穿)
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              setCharterMenu((v) => (v !== null ? null : { x: Math.round(r.right), y: Math.round(r.bottom) }));
+            }}
+          >
+            <MoreHorizontal size={14} strokeWidth={1.75} />
+          </button>
+        )}
         <ArchiveConfirmButton
           active={props.confirmId === props.rowId}
           rowId={props.rowId}
@@ -371,6 +394,21 @@ export function SessionRow(props: {
           onConfirm={props.onConfirm}
         />
       </span>
+      {charterMenu !== null && props.onEditCharter !== undefined && (
+        <SessionRowMenu
+          x={charterMenu.x}
+          y={charterMenu.y}
+          onClose={() => setCharterMenu(null)}
+          items={[
+            {
+              id: 'edit-charter',
+              label: t('Edit charter', '编辑品性'),
+              icon: <NotebookPen size={14} strokeWidth={1.75} aria-hidden="true" />,
+              onSelect: props.onEditCharter,
+            },
+          ]}
+        />
+      )}
     </li>
   );
 }
