@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
-import { ArrowLeft, Bot, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
+import { ArrowLeft, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
+import { SunxIcon } from '../sunx-icon';
 import { DirPicker } from '../pages/DirPicker';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
 import { DirectoryTab } from '../tabs/DirectoryTab';
@@ -666,7 +667,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         aria-label="new sunx"
         onClick={() => setSunxOpen(true)}
       >
-        <Bot size={16} strokeWidth={1.75} />
+        <SunxIcon size={16} strokeWidth={1.75} />
         <span>{t('New Sunx', '新建 Sunx')}</span>
       </button>) : null}
       {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
@@ -722,6 +723,22 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       {/* G14.9:单一滚动区装 PROJECTS + RECENTS;footer 贴底 */}
       <div className="sx-side-scroll" ref={sideScrollRef}>
         {/* 置顶组(2026-10-21 用户裁定):「项目」上方,不支持折叠;无钉不渲染(PinnedSection 判空) */}
+        {!archiveOpen && (
+        // SUNX 分组第一段(2026-11-15 用户裁定「SUNX 放在第一行」+「SUNX分组常驻」):空态「暂无Sunx」
+        // 归档层开启时不渲染(归档层整替语义)
+        <SunxSection
+          rows={sunxRows}
+          activeSessionId={activeSessionId}
+          runningIds={runningIds}
+          journalOfSession={journalOfSession}
+          isUnseen={isUnseen}
+          busy={busy}
+          onAttach={attachJournal}
+          onArchiveRow={archiveRow}
+          onOpenBoard={props.onOpenSunxBoard}
+          onEditCharter={openCharterEditor}
+        />
+        )}
         <PinnedSection
           pins={pins}
           busy={busy}
@@ -788,21 +805,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           />
         ) : (
           <>
-            {/* SUNX 过滤组(sunx P2 Task 7):工作区组之后、RECENTS 之前——视图过滤器并存不互斥;
-                空组整块不显(SunxSection 判空);看板钮可选 guard(Task 8 接线后生效);归档层开启
-                时不渲染(归档层整替语义) */}
-            <SunxSection
-              rows={sunxRows}
-              activeSessionId={activeSessionId}
-              runningIds={runningIds}
-              journalOfSession={journalOfSession}
-              isUnseen={isUnseen}
-              busy={busy}
-              onAttach={attachJournal}
-              onArchiveRow={archiveRow}
-              onOpenBoard={props.onOpenSunxBoard}
-              onEditCharter={openCharterEditor}
-            />
             <RecentsSection
               recentsOpen={recentsOpen}
               onToggleRecents={() => {

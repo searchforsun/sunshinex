@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Network, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
+import { SunxIcon } from '../sunx-icon';
 import { t } from '../i18n';
 import type { Connection, SessionRow } from '../connection';
 import { relTime, withMinSpin } from '../ui-util';
@@ -143,7 +144,7 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
       ))}
       {/* 「新建 Sunx」入口卡(spec §17.3:与实例卡同网格语义;复用 P1 弹窗,props 形态=侧栏接线同款) */}
       <button type="button" className="sx-sunxboard-entry" aria-label="new sunx" onClick={() => setDialogOpen(true)}>
-        <Network size={14} strokeWidth={1.75} aria-hidden="true" />
+        <SunxIcon size={14} strokeWidth={1.75} aria-hidden="true" />
         {t('New Sunx', '新建 Sunx')}
       </button>
       {dialogOpen && (
