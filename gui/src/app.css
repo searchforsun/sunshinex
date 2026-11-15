@@ -4202,7 +4202,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 侧栏会话行 kind 徽标(标题旁小 chip):文字 14px(界面文字铁律),accent 描边降存在感;
    flex:none 不挤标题省略/悬浮卡;行 hover 时段 meta 隐而徽标恒显(归属辨识常驻) */
 /* SUNX 组头数量 chip(2026-11-15 用户裁定组头簇「数量值」):sunx 行数,accent 弱描边同 kind 徽标族 */
-.sx-sunx-count { flex: none; display: inline-flex; align-items: center; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--fg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 6px; white-space: nowrap; }
+.sx-sunx-count { flex: none; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; }
 /* SUNX 组空态引导行(2026-11-15 用户裁定「SUNX分组常驻」):暗淡小字,组头恒显不整块隐 */
 .sx-sunx-empty { padding: 4px 10px 6px 34px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
 

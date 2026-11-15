@@ -141,7 +141,7 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
               type="button"
               className="sx-iconbtn"
               aria-label="archive sunx"
-              data-tip={t('Archived sessions', '归档会话')}
+              data-tip={t('Archive Sunx', '归档 Sunx')}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -171,7 +171,7 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
       </div>
       <div className={`sx-collapse sx-collapse-sunx${open ? ' open' : ''}`}>
         {sections.length === 0 ? (
-          <div className="sx-sunx-empty">{t('No Sunx yet — create one with New Sunx above.', '还没有 Sunx——点上方「新建 Sunx」创建。')}</div>
+          <div className="no-sessions">{t('No Sunx yet', '暂无Sunx')}</div>
         ) : (
         <ul className="sx-sunx-list" aria-label="sunx sessions">
           {sections.map(([slug, sec]) => (
