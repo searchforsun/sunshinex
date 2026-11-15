@@ -130,34 +130,104 @@ test('delete 门禁:未归档 409;归档态 200 且 journal/meta/gui 私有档�
     assert.equal(gone.status, 404, 'daemon 会话出注册表');
   });
 });
-test('delete 连带持久化文件夹(2026-11-15 用户裁定「归档点击删除时同时删除项目持久化文件夹」):独占域整删;共享域保留', async () => {
-  // 独占域:slug 下仅一个会话 → 归档删除后 projectsRoot/<slug> 整目录移除(记忆/任务账本/登记随域清)
-  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
-    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
-    const { sessionId } = (await created.json()) as { sessionId: string };
-    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
-    await waitStatus(base, sessionId, 'idle');
-    const slugDir = path.dirname(resolveDataDir(tmp));
-    assert.equal(fs.existsSync(slugDir), true, '前置:持久化文件夹在场');
-    await fetch(`${base}/session/${sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
-    const ok = await fetch(`${base}/session/${sessionId}/delete`, { method: 'POST', headers: AUTH });
+test('delete 域语义(P3 修复轮归一裁定 2026-11-15):sunx 删=域目录整删且同 root standard 会话档零殃及;standard 多会话删一个=项目夹保留;登记缺席(悬挂工作区)末会话删=项目夹连带', async () => {
+  // A. sunx 删=域目录整删(~/.sunshinex/sunx/<jid>/ 无条件——独占域模型)+同 root standard 会话档
+  //    零殃及(域容器物理独立于 projects/)。sunx 域容器随 HOME——本子场景自钉 HOME 隔离(真实家目录
+  //    域不可触;withDaemon 不钉 HOME,故不走它)
+  const baseA = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-arch-sunxd-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  const prevProjects = process.env.SUNSHINEX_PROJECTS_DIR;
+  let closeA: (() => Promise<void>) | undefined;
+  try {
+    const home = path.join(baseA, 'home');
+    const projects = path.join(baseA, 'projects');
+    fs.mkdirSync(home, { recursive: true });
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    process.env.SUNSHINEX_PROJECTS_DIR = projects;
+    delete process.env.SUNSHINEX_DATA_DIR;
+    const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']), staticRoot: path.join(baseA, 'dist-gui-absent') });
+    const s = await daemon.start({ port: 0, token: 'test-token' });
+    closeA = s.close;
+    const base = `http://127.0.0.1:${s.port}`;
+    const AUTH = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    const root = path.join(baseA, 'ws-a');
+    fs.mkdirSync(root, { recursive: true });
+    // 同 root 双实体:sunx(域内档)+standard(projects 区档)——删除隔离的对照场
+    const sunxNew = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, kind: 'sunx', name: '域删体' }) })).json() as { sessionId: string };
+    await fetch(`${base}/session/${sunxNew.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    const stdNew = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root }) })).json() as { sessionId: string };
+    await fetch(`${base}/session/${stdNew.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '标准一轮' }) });
+    const waitIdle = async (sid: string): Promise<void> => {
+      const deadline = Date.now() + 20_000;
+      for (;;) {
+        const r = await fetch(`${base}/session/${sid}/snapshot`, { headers: { authorization: 'Bearer test-token' } });
+        if (((await r.json()) as { status: string }).status === 'idle') return;
+        if (Date.now() > deadline) throw new Error('waitFor 超时');
+        await new Promise((rr) => setTimeout(rr, 20));
+      }
+    };
+    await waitIdle(sunxNew.sessionId);
+    await waitIdle(stdNew.sessionId);
+    const jidSunx = daemon.get(sunxNew.sessionId)!.attachedJournalId!;
+    const domainDir = path.dirname(sunxDomainDir(jidSunx));
+    const stdJid = fs.readdirSync(path.join(resolveDataDir(root), 'sessions')).filter((f) => f.endsWith('.jsonl')).map((f) => f.replace(/\.jsonl$/, ''))[0]!;
+    assert.equal(fs.existsSync(domainDir), true, '前置:sunx 域目录在场');
+    await fetch(`${base}/session/${sunxNew.sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    const ok = await fetch(`${base}/session/${sunxNew.sessionId}/delete`, { method: 'POST', headers: AUTH });
     assert.equal(ok.status, 200);
-    assert.equal(fs.existsSync(slugDir), false, '独占域整删(文件夹连带)');
-  });
-  // 共享域:同 slug 两会话 → 删其一,域与另一会话档保留(不殃及)
-  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    assert.equal(fs.existsSync(domainDir), false, 'sunx 删=域目录整删(独占域,无条件)');
+    assert.equal(fs.existsSync(path.join(resolveDataDir(root), 'sessions', `${stdJid}.jsonl`)), true, '同 root standard 会话档零殃及');
+    await daemon.get(stdNew.sessionId)!.teardown();
+  } finally {
+    await closeA?.();
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevUserProfile;
+    if (prevProjects === undefined) delete process.env.SUNSHINEX_PROJECTS_DIR;
+    else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
+    try {
+      fs.rmSync(baseA, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+  // B. standard 多会话同 root:删其一=项目夹保留(工作区登记在=项目仍在,删档不删项目)+兄弟档在。
+  //    兄弟档寻址=journal id(runtime id 不在盘面,档名=journal id——旧断言以 sessionId 对档名
+  //    startsWith,恒 false 的错配根修;此处经 daemon 注册表 attachedJournalId 精确取)
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']), async ({ base, tmp, daemon }) => {
     const s1 = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) })).json() as { sessionId: string };
     const s2 = await (await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) })).json() as { sessionId: string };
     await fetch(`${base}/session/${s1.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '一轮' }) });
     await fetch(`${base}/session/${s2.sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '两轮' }) });
     await waitStatus(base, s1.sessionId, 'idle');
     await waitStatus(base, s2.sessionId, 'idle');
+    const s2Jid = daemon.get(s2.sessionId)!.attachedJournalId!;
+    assert.equal(fs.existsSync(path.join(resolveDataDir(tmp), 'sessions', `${s2Jid}.jsonl`)), true, '前置:兄弟档在场');
     await fetch(`${base}/session/${s1.sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
     const ok = await fetch(`${base}/session/${s1.sessionId}/delete`, { method: 'POST', headers: AUTH });
     assert.equal(ok.status, 200);
-    assert.equal(fs.existsSync(path.join(resolveDataDir(tmp), 'sessions')), true, '共享域保留');
-    const jids = fs.readdirSync(path.join(resolveDataDir(tmp), 'sessions')).filter((f) => f.endsWith('.jsonl'));
-    assert.equal(jids.some((f) => f.startsWith(s2.sessionId)), true, '另一会话档未受殃及');
+    const slugDir = path.dirname(resolveDataDir(tmp));
+    assert.equal(fs.existsSync(slugDir), true, 'standard 多会话删一=项目夹保留(登记工作区不随档摘)');
+    assert.equal(fs.existsSync(path.join(resolveDataDir(tmp), 'sessions', `${s2Jid}.jsonl`)), true, '兄弟会话档未受殃及(journal id 寻址)');
+  });
+  // C. 登记缺席(悬挂工作区:workspace.json 摘除)+删后无其他 .jsonl 会话 → 项目夹连带整删
+  //    (05adfb48 用户裁定「删除时同时删除项目持久化文件夹」的存活面——条件整删收窄至此)
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
+    await waitStatus(base, sessionId, 'idle');
+    const slugDir = path.dirname(resolveDataDir(tmp));
+    const wsJson = path.join(resolveDataDir(tmp), 'workspace.json');
+    assert.equal(fs.existsSync(wsJson), true, '前置:工作区登记在场');
+    await fetch(`${base}/session/${sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    fs.rmSync(wsJson, { force: true }); // 摘登记=悬挂工作区(登记面不再认领该项目夹)
+    const ok = await fetch(`${base}/session/${sessionId}/delete`, { method: 'POST', headers: AUTH });
+    assert.equal(ok.status, 200);
+    assert.equal(fs.existsSync(slugDir), false, '悬挂工作区末会话删=项目夹连带整删');
   });
 });
 

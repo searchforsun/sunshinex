@@ -16,7 +16,7 @@ import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
-import { projectsRoot } from '../config/data-dir';
+import { projectsRoot, sunxContainerDir } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -1171,35 +1171,48 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       }
       this.sealAndKillPtyFor(sid);
     }
+    // worktree 隔离会话连带清树(2026-11-10 用户裁定):registry 按 path 反查,脏树 kept-dirty 保护照旧;
+    // 普通会话/未登记=not-worktree 静默跳过。**顺序铁律(P3 修复轮)**:必须在下方项目夹 purge 之前——
+    // registry(<dataDir>/worktrees/registry.json)在项目夹内,purge 先行会先销登记,
+    // removeWorktreeForSession 读不到 entry=not-worktree,树永不清(⑧b 回归根修)
+    if (session !== undefined) {
+      const wt = removeWorktreeForSession(session.root);
+      if (wt.kind === 'kept-dirty') console.log('[serve] worktree kept (dirty):', session.root);
+      else if (wt.kind === 'error') console.error('[serve] worktree remove failed:', wt.message);
+    }
     purgeSession(dataDir, jid);
     purgeSideJournals(dataDir, jid); // 辅助会话档连带删除(2026-11-06 用户裁定:主删则 side 全家清)
     purgeBrowserState(dataDir, jid); // 浏览器键=journalId:状态文件/输出目录/侧栏分区随会话删除
     for (const sid of sideIds) purgeBrowserState(dataDir, sid);
-    // 持久化文件夹连带删除(2026-11-15 用户裁定「归档点击删除时同时删除项目持久化文件夹」
-    // +「不用兼容,sunx 就是独占」):sunx=独占域,无条件整删(记忆/任务账本/输出归档/工作区登记
-    // 随域清);standard 共享 slug 域 → 删后无其他 .jsonl 会话才整删(共享域不殃及)。
-    // 路径==projectsRoot 守卫 paranoia;尽力而为,失败不阻断删除回执
+    // 持久化文件夹连带清理（2026-11-15 用户裁定「归档点击删除时同时删除项目持久化文件夹」
+    // +「不用兼容,sunx 就是独占」；2026-11-15 P3 修复轮两会话裁定归一，以此为准）：
+    // sunx=独占域,无条件整删其域目录（dirname(dataDir)=~/.sunshinex/sunx/<jid>/——记忆/任务账本/
+    // 输出归档随域清；域容器物理独立于 projects/,standard 会话档天然零殃及；容器内守卫 paranoia）
+    // ；standard=项目夹持久化随工作区存续（data/workspace.json 注册在=项目仍在,删会话不摘项目夹
+    // ——delete 门禁/F1 两既有测的既有契约:删档不删项目；仅当删后无其他 .jsonl 会话**且**工作区
+    // 已失登记（workspace.json 缺席=悬挂数据,登记面不再认领）才整删项目夹）。
+    // projectsRoot 直删守卫 paranoia;尽力而为,失败不阻断删除回执
     const isSunxSession = (session !== undefined ? session.sessionKind : readSessionMeta(dataDir, jid).kind) === 'sunx';
     const slugDir = path.dirname(dataDir);
-    let remainingSessions = 0;
-    try {
-      for (const f of fs.readdirSync(sessionsDir(dataDir))) if (f.endsWith('.jsonl')) remainingSessions += 1;
-    } catch {
-      remainingSessions = 0; // 目录已空/不存在:整域可移
-    }
-    if ((isSunxSession || remainingSessions === 0) && slugDir !== projectsRoot()) {
+    const purgeSlugDir = (): void => {
+      if (slugDir === projectsRoot()) return; // paranoia:绝不直删 projects 根
       try {
         fs.rmSync(slugDir, { force: true, recursive: true });
       } catch {
         /* 尽力而为 */
       }
-    }
-    // worktree 隔离会话连带清树(2026-11-10 用户裁定):registry 按 path 反查,脏树 kept-dirty 保护照旧;
-    // 普通会话/未登记=not-worktree 静默跳过
-    if (session !== undefined) {
-      const wt = removeWorktreeForSession(session.root);
-      if (wt.kind === 'kept-dirty') console.log('[serve] worktree kept (dirty):', session.root);
-      else if (wt.kind === 'error') console.error('[serve] worktree remove failed:', wt.message);
+    };
+    if (isSunxSession) {
+      if (slugDir.startsWith(sunxContainerDir() + path.sep)) purgeSlugDir(); // 域目录必在 sunx 容器内才动手术(盘面 legacy sunx-in-projects 不整删,沿 per-session 清理)
+    } else {
+      let remainingSessions = 0;
+      try {
+        for (const f of fs.readdirSync(sessionsDir(dataDir))) if (f.endsWith('.jsonl')) remainingSessions += 1;
+      } catch {
+        remainingSessions = 0; // 目录已空/不存在:无剩余会话
+      }
+      const workspaceRegistered = fs.existsSync(path.join(dataDir, 'workspace.json'));
+      if (remainingSessions === 0 && !workspaceRegistered) purgeSlugDir(); // 无剩余会话+登记缺席=悬挂数据才连带
     }
 
     this.send(res, 200, { ok: true });

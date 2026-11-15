@@ -46,7 +46,7 @@ test('handleBranch fork 写「Fork of 父显示题」子档题——meta 题优�
     const io = {
       readJson: async () => ({ ok: true, status: 200, body: { turn: 1 } }),
       send: (_res: unknown, status: number, _payload: object) => { assert.equal(status, 200); },
-      sessions: new Map([['s1', { attachedJournalId: srcId, status: () => 'idle', root } as never]]),
+      sessions: new Map([['s1', { attachedJournalId: srcId, status: () => 'idle', root, dataDir } as never]]), // dataDir:域绑定外窥面(P3 Task 3 寻址单点,真 runtime 恒有——stub 对齐)
       createSession: (_root: string) => ({ ok: true as const, value: { sessionId: 'child1', root: '' } }),
       attach: (_sid: string, jid: string) => { newJid = jid; return { ok: true as const, value: { sessionId: 'child1', root: '' } }; },
     } as never;
@@ -70,7 +70,7 @@ test('handleBranch fork 子档题兜底:父未题名取首条 user 摘要(与列
     const io = {
       readJson: async () => ({ ok: true, status: 200, body: { turn: 1 } }),
       send: (_res: unknown, status: number, _payload: object) => { assert.equal(status, 200); },
-      sessions: new Map([['s1', { attachedJournalId: srcId, status: () => 'idle', root } as never]]),
+      sessions: new Map([['s1', { attachedJournalId: srcId, status: () => 'idle', root, dataDir } as never]]), // dataDir:域绑定外窥面(P3 Task 3 寻址单点,真 runtime 恒有——stub 对齐)
       createSession: (_root: string) => ({ ok: true as const, value: { sessionId: 'child2', root: '' } }),
       attach: (_sid: string, jid: string) => { newJid = jid; return { ok: true as const, value: { sessionId: 'child2', root: '' } }; },
     } as never;
