@@ -766,7 +766,13 @@ export class SessionRuntime {
       // 继承（buildHarness/loopDeps 两路）,charter→ContextManager 品性冻结层——reset/rehomeRoot/reCast
       // 换铸走本单点,实例字段恒透传不丢;缺席=standard 字节不变
       ...(this.sessionKind !== undefined ? { kind: this.sessionKind } : {}),
-      ...(this.sessionCharter !== undefined ? { charter: this.sessionCharter } : {}),
+      // 出生名身份行（2026-11-15 用户问询裁定「让 agent 知道姓名」）：姓名与品性同拍入会话冻结层——
+      // 定版一次不重写（前缀缓存纪律：出生定版+改名尾追为预留机制,改名 UI 尚不存在）；缺席不加行
+      ...(this.sessionKind === 'sunx' && this.sessionName !== undefined && this.sessionName !== ''
+        ? { charter: `Your name: ${this.sessionName}.
+
+${this.sessionCharter ?? ''}` }
+        : this.sessionCharter !== undefined ? { charter: this.sessionCharter } : {}),
       // 持久化域透传（2026-11-15 sunx P3 Task 2 域绑定）：缺席=既有推导零变化
       ...(this.opts.dataDir !== undefined ? { dataDir: this.opts.dataDir } : {}),
       // 学习沉淀关闸（P2 遗留义务清偿,P3 Task 2 裁定）：sunx 装配 learnSkills:false——编排轮不沉淀

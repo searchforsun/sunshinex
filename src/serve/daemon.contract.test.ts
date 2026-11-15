@@ -505,7 +505,8 @@ test('⑧ sunx 出生：出生即铸档（创建即铸 journalId）+ 域目录�
       assert.equal(meta.title, '编排者甲', 'name 只写 meta.title（G14.16 既有显示链）');
       assert.equal(meta.charterRev, 1, '出生品性即初版 charterRev=1');
       // 品性层：charter 经装配透传进 ContextManager 会话冻结层
-      assert.equal(ctx.daemon.get(sid)!.runtime.harness.context.snapshotExport().sig.charter, 'CHARTER-BIRTH-1', 'charter 入冻结层');
+      // 出生名身份行与品性同拍入层（2026-11-15 用户问询裁定「让 agent 知道姓名」）：合成形态=名字行+空行+品性
+      assert.equal(ctx.daemon.get(sid)!.runtime.harness.context.snapshotExport().sig.charter, 'Your name: 编排者甲.\n\nCHARTER-BIRTH-1', 'charter 入冻结层（名字行+品性合成）');
       // projects 区零条目（域绑定——sunx 档不落 root 推导区;侧栏 SUNX 组数据源=Task 3 域枚举端点,
       // 既有 /sessions 是 projects 区清单,不再列 sunx）
       assert.equal(fs.existsSync(sessionsDir(resolveDataDir(sunxRoot))), false, 'projects 区无 sunx 档');
