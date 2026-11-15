@@ -24,18 +24,16 @@ const CONCISE_VERB: Record<string, [string, string]> = {
   task_wait: ['Waited on tasks', '等待了任务'], worktree: ['Switched worktree', '切换了工作树'],
 };
 
-/** 段级总结文案:并入面逐条映射类别动词,按首次出现排序去重;思考行=「思考」(在最后) */
+/** 段级总结文案:并入面逐条映射类别动词,按首次出现排序去重;思考行不计入总结(2026-11-14
+ *  用户裁定「思考是不用显示的」——思考随段并入但不出现在总结文案里) */
 function conciseSummary(seg: ChatEntry[]): [string, string] {
   const en: string[] = [];
   const zh: string[] = [];
-  let thought = false;
   for (const e of seg) {
-    if (e.kind === 'thinking') { thought = true; continue; }
     if (e.kind !== 'tool' || e.name === undefined || CONCISE_ESCAPE.has(e.name)) continue;
     const pair = CONCISE_VERB[e.name] ?? ['Used tools', '调用了工具'];
     if (!en.includes(pair[0])) { en.push(pair[0]); zh.push(pair[1]); }
   }
-  if (thought) { en.push('Thought'); zh.push('思考'); }
   return [en.join(' · '), zh.join(' · ')];
 }
 
@@ -240,7 +238,9 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   /** 简洁模式段级折叠(2026-11-14 用户裁定):并入面条目≥1 才加折叠层;段内全为逃逸行不折叠。
    *  运行中=现有渲染原样(既有聚合行流光+当前运行行),跑完→折叠头出现(slide-up 淡入),
    *  展开=内层既有聚合行(第二层);concise-hidden 用 grid 高度 0fr 过渡做并入动画 */
-  const foldable = concise && seg.some((e) => e.kind === 'thinking' || (e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name))));
+  // 2026-11-14 用户裁定「思考不用显示,除非只有思考;只有思考也不用进折叠」:段内须有并入面
+  // 工具行才加折叠层(纯思考段原样渲染;工具+思考混合段思考随段并入但总结不提思考)
+  const foldable = concise && seg.some((e) => e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name)));
   const anyRunning = foldable && seg.some((e) => executingOf(e));
   /** 展开态跨渲染保持 */
   const [segOpen, setSegOpen] = useState(false);
