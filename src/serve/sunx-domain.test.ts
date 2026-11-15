@@ -20,6 +20,9 @@ import { Harness } from '../harness';
  *   定时调度随域重布防（R7 补发）、续写落域内档。
  * ③standard 路径回归锚——workspace.json 注册/惰性建档/路径推导/旧 attach 链全部与今日逐字节同。
  * ④清偿项三断言——memoryStats 域缝/memory_write 接缝注入键置尾/sunx 装配 learnSkills:false。
+ * ⑤隔离验收（2026-11-15 sunx P3 Task 4 核心）——同 root 1 standard + 2 sunx：三域目录互不相同
+ *   互不包含；sunx A 真实工具面写工作区记忆 → B 域/standard 域文件系统层不存在、读面 0 笔
+ *   （记忆随域隔离）；standard 路径/注册/枚举零变化。
  */
 
 /** 轮询等待：20ms 片轮询直至 pred 为真，超时抛错（daemon.contract.test 同形） */
@@ -337,6 +340,83 @@ test('④ 清偿项：memoryStats 域缝随注入/memory_write 落盘随域（�
     await sunxSid.teardown();
   } finally {
     h?.tasks.stopAll();
+    await close?.();
+    restore();
+    try {
+      fs.rmSync(base, { recursive: true, force: true });
+    } catch {
+      // win32 目录锁迟滞不挡断言
+    }
+  }
+});
+
+// ═══════════════ ⑤隔离验收（Task 4 核心场景）：同 root 1 standard + 2 sunx 三域互斥 ═══════════════
+
+test('⑤ 隔离验收：同 root 建 1 standard + 2 sunx——三域目录互不相同互不包含；sunx A 真实工具面写工作区记忆 → B 域/standard 域文件系统层不存在、读面 0 笔；standard 路径/注册/枚举零变化', async () => {
+  const base = tmpdir('sunshinex-serve-sunxdom-e-');
+  const restore = pinSunxEnv(base);
+  let close: (() => Promise<void>) | undefined;
+  try {
+    const root = path.join(base, 'ws-shared');
+    fs.mkdirSync(root, { recursive: true });
+    const d = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), base);
+    close = d.close;
+    // 同 root 三会话：1 standard（普通路径零变化锚）+ 2 sunx（同名工作区不同实例——journalId 即域键）
+    const { sessionId: stdSid } = await newSession(d.http, { root });
+    const { sessionId: sidA } = await newSession(d.http, { root, kind: 'sunx', name: '域主甲' });
+    const { sessionId: sidB } = await newSession(d.http, { root, kind: 'sunx', name: '域主乙' });
+    const std = d.daemon.get(stdSid)!;
+    const sA = d.daemon.get(sidA)!;
+    const sB = d.daemon.get(sidB)!;
+    const jidA = sA.attachedJournalId!;
+    const jidB = sB.attachedJournalId!;
+    const domA = sunxDomainDir(jidA);
+    const domB = sunxDomainDir(jidB);
+    const domStd = std.dataDir; // standard 外窥=resolveDataDir(root) 既有推导（③ 同口径）
+    assert.equal(domStd, resolveDataDir(root), 'standard 域=projects 缺省推导（字节不变）');
+    // 出生即在：两 sunx 域出生即铸档；standard 出生 workspace.json 注册已建目录
+    assert.ok(fs.existsSync(domA), 'sunx A 域目录在场');
+    assert.ok(fs.existsSync(domB), 'sunx B 域目录在场');
+    assert.ok(fs.existsSync(domStd), 'standard 域目录在场（注册面）');
+    // 三域互不相同且互不包含（路径层互斥——验收剧本「三域目录互不相同」断言到文件系统层）
+    assert.notEqual(domA, domB, 'sunx A/B 域不同目录');
+    assert.notEqual(domA, domStd, 'sunx A/standard 域不同目录');
+    assert.notEqual(domB, domStd, 'sunx B/standard 域不同目录');
+    for (const x of [domA, domB, domStd]) {
+      for (const y of [domA, domB, domStd]) {
+        if (x !== y) assert.ok(!x.startsWith(y + path.sep) && !y.startsWith(x + path.sep), `域目录互不包含：${x} 与 ${y}`);
+      }
+    }
+    // sunx A 真实工具面写工作区记忆（既有形态 ④：harness.tools.execute + safety——域绑定注入键置尾恒胜）
+    const w = await sA.runtime.harness.tools.execute(
+      'memory_write',
+      { action: 'save', slug: 'isolation-probe', type: 'project', content: 'domain A only fact', description: 'isolation probe' },
+      sA.runtime.harness.safety,
+    );
+    assert.ok(w.ok, `sunx A memory_write 应成功：${w.ok ? '' : w.error.message}`);
+    // 文件系统层：记录落 A 域 memory/（slug 由落盘单点归一——非索引 .md 任一在档即随域）；B 域与
+    // standard 域读不存在（记忆随域隔离——「避免互相影响记忆」验收）
+    const memFilesA = fs.readdirSync(path.join(domA, 'memory')).filter((n) => n.endsWith('.md') && n !== 'MEMORY.md');
+    assert.ok(memFilesA.length >= 1, `记忆记录落 A 域（实际 ${JSON.stringify(memFilesA)}）`);
+    assert.ok(fs.existsSync(path.join(domA, 'memory', 'MEMORY.md')), 'A 域索引随写重建');
+    assert.ok(!fs.existsSync(path.join(domB, 'memory')), 'B 域无 memory 目录（文件系统层不存在）');
+    assert.ok(!fs.existsSync(path.join(domStd, 'memory')), 'standard 域无 memory 目录（读不到 A 的记忆）');
+    // 读面（memoryStats 域缝三对照）：A 1 笔、B/standard 0 笔
+    assert.equal(memoryStats(root, domA).entries, 1, 'A 域读面 1 笔');
+    assert.equal(memoryStats(root, domB).entries, 0, 'B 域读面 0 笔（隔离）');
+    assert.equal(memoryStats(root, domStd).entries, 0, 'standard 域读面 0 笔（隔离）');
+    // standard 路径/行为零变化：workspace.json 注册照旧；/workspaces 仅 standard（sunx 域零污染）；
+    // /sunx/sessions 恰两域且 standard 不入列（项目组数据源单点）
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(domStd, 'workspace.json'), 'utf8')), { root: path.resolve(root) }, 'standard workspace.json 注册照旧');
+    const wsRows = (await (await fetch(`${d.http}/workspaces`, { headers: AUTH })).json()) as Array<{ root?: string }>;
+    assert.deepEqual(wsRows.map((r) => r.root), [path.resolve(root)], '/workspaces 仅 standard 行（sunx 域不入列）');
+    const sunxRows = (await (await fetch(`${d.http}/sunx/sessions`, { headers: AUTH })).json()) as Array<{ id: string; kind: string }>;
+    assert.deepEqual([...sunxRows.map((r) => r.id)].sort(), [jidA, jidB].sort(), '/sunx/sessions 恰两域行');
+    assert.ok(sunxRows.every((r) => r.kind === 'sunx'), 'sunx 行 kind 恒 sunx');
+    await std.teardown();
+    await sA.teardown();
+    await sB.teardown();
+  } finally {
     await close?.();
     restore();
     try {

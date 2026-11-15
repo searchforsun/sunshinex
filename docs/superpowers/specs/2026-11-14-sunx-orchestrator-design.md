@@ -338,6 +338,15 @@ parameters:
 > - **挂起持久化**：journal 影子行 `pending-open` `{pid,kind:ask|approval|plan-approval,req 原件}` / `pending-resolve` `{pid,outcome 摘要}`——写面三 suspend 入口落 open 行（journal 落档先于广播不变式保持）、四 resolve/deny 出口落 resolve 行（先于 executor 恢复续跑行=审计完整）；读面单点 seglog `reducePendingRows`（按 pid 配对：open 无 resolve 对位=未决、行面字段不予信任逐条弃、孤儿 resolve 弃不伪造、旧档无行=行为不变）。**裁定修正：不复活 promise**——对上行「attach 重挂 + GUI 卡重建」设计的收窄替代：不重建挂起表、不重发挂起帧（executor 已死复活无消费者，GUI 卡不复活），未决转**恢复轮素材**（问题原文+选项+askedBy 归因）由恢复后的 Sunx 在新 run 重新处理；「executors 已死的票据标 expired」未做（素材语义替代）。
 > - **恢复唤醒轮（R9 已落地）**：attach 收尾自动重估（fire-and-forget 一次性，全序最末）——`kind==='sunx'` 且（板自愈 cancelled 打断任务（`TaskBoard.restartRecovered` 读面）或 台账孤儿标 stopped 崩溃遗留（`TaskRegistry.restartOrphans` 读面）或 存在未决挂起素材）才起轮，全无素材静默不起轮（防每次重开空转）；通知文 `<session-restored>` 裁定模板逐字：定性说明 + 打断清单节 + 未决素材节 + 重估指令收尾（空节整节省略）；显示走普通 run 行（标签入安静清单不显示）；busy 竞争用户优先（409 丢弃 + skip notice，素材保留待空闲重试）；起跑成功即消费素材（单次消费本实例语义；盘上 open 行不因消费改写、行推导幂等下次 attach 重产）。
 
+> **实施实况（2026-11-15 P3 持久化域收口回写）——一 Sunx 一持久化域模型**：
+> - **域容器与域键**：sunx 全部持久化资产落专属域 `~/.sunshinex/sunx/<journalId>/data`（推导单点 `sunxDomainDir`（`src/config/data-dir.ts`），容器根 `sunxContainerDir()=~/.sunshinex/sunx/`，物理独立于 projects/ 区）；journalId **出生即铸**（创建即建档，非惰性）且即域键——同 root 多实例各自独立域零共享。隔离验收 e2e（`src/serve/sunx-domain.test.ts` ⑤）：同 root 建 1 standard + 2 sunx，三域目录互不相同互不包含（断言到文件系统层）。
+> - **落域资产**：journal 链（`sessions/<jid>.jsonl`：header v3/ctx-snap 出生快照/链行/`wake-schedule` 调度行/`pending-open·resolve` 挂起影子行）+ 出生 meta 旁车（`sessions/<jid>.meta.json`：kind/title/charterRev:1/root + charterText 编辑文）+ 任务台账（`tasks/ledger-<jid>.jsonl`）+ 板/团队（`teams/<jid>/`）+ 记忆（`memory/`）+ write 快照/任务日志/输出归档/插件与 MCP 日志——全链经 dataDir 注入缝随域（`HarnessOptions.dataDir` 装配单点 → `KernelRuntimeOpts.dataDir` 透传 → `SessionRuntime.dataDir` 外窥 getter → serve 九端点寻址收口）；sunx 装配 `learnSkills:false`（编排轮零 learned 沉淀，standard 照旧）。
+> - **记忆随域隔离**：memory_write 判界与落盘、沉淀管线（MemoryStore/MemoryPipeline/guardMemoryWrite）全随域（接缝**注入键置尾**——工具入参覆盖不了域绑定与安全根）；sunx A 写工作区记忆 → sunx B 域与 standard 域文件系统层不存在、读面 0 笔（⑤ 验收断言——回应用户「避免互相影响记忆」）。
+> - **重开链**：POST `/sunx/attach {journalId}` 直寻址域（`attachSunxIn`）——壳出生即 sunx、链回放、调度随域重布防（R7 补发）、恢复唤醒轮（R9）全在域路径复跑；fork/rewind 换座壳经 `CreateSessionOpts.dataDir` 换座缝领养既有域（不铸新档、不注册 workspace.json）。
+> - **删除=整域清**：`handleDelete` 对 sunx 无条件整删 `dirname(dataDir)`=`~/.sunshinex/sunx/<jid>/`（记忆/台账/输出归档随域清；守卫=域目录必在 sunx 容器内才动手术；standard 项目夹语义不变、删 sunx 不触 projectsRoot、删 standard 不触 sunx 域）。
+> - **裁定（2026-11-15 用户）：无迁移无兼容**——「不用兼容，sunx 就是独占」：sunx 域跳过 workspace.json 注册、不入 /workspaces 与项目组、归档/删除不走 standard 项目夹语义，**无旧档迁移面**；standard 全路径（projects 区/惰性建档/注册/端点推导）逐字节不变。
+> - **GUI 删除入口（遗留，不属持久化域模型）**：GUI 归档页删除入口扫 `/sessions/archived`——sunx 归档行不入列，故 GUI 无 sunx 删除入口；评估裁定（2026-11-15 P3 Task 4）本轮不做 GUI 删除入口，属后续 GUI 迭代。
+
 ---
 
 ## 12. 分期落地
