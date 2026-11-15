@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { dataDirReal, projectsRoot, projectSlug, resolveDataDir, userSkillsDir } from './data-dir';
+import { dataDirReal, projectsRoot, projectSlug, resolveDataDir, sunxContainerDir, userSkillsDir } from './data-dir';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -284,5 +284,18 @@ test('userSkillsDir：缺省 = userConfigDir()/skills，SUNSHINEX_USER_SKILLS_DI
     if (prevUserProfile === undefined) delete process.env.USERPROFILE;else process.env.USERPROFILE = prevUserProfile;
     if (prevOverride === undefined) delete process.env.SUNSHINEX_USER_SKILLS_DIR;else process.env.SUNSHINEX_USER_SKILLS_DIR = prevOverride;
     fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test('sunxContainerDir：SUNSHINEX_SUNX_DIR 显式覆盖生效；缺省回落 ~/.sunshinex/sunx（惰性求值可运行期重定向）', () => {
+  const prev = process.env.SUNSHINEX_SUNX_DIR;
+  try {
+    process.env.SUNSHINEX_SUNX_DIR = 'D:/custom-sunx-home';
+    assert.equal(sunxContainerDir(), path.resolve('D:/custom-sunx-home'));
+    delete process.env.SUNSHINEX_SUNX_DIR;
+    assert.ok(sunxContainerDir().endsWith(path.join('.sunshinex', 'sunx')));
+  } finally {
+    if (prev !== undefined) process.env.SUNSHINEX_SUNX_DIR = prev;
+    else delete process.env.SUNSHINEX_SUNX_DIR;
   }
 });

@@ -766,7 +766,8 @@ test('⑪ sunx 重开链：daemon 重启后 POST /sunx/attach(journalId) 全投�
         // 上下文回种落在 sunx 运行时上（壳形态构造期定死,播种全在其后——时序铁律以更强形式成立）
         assert.ok(s.transcriptCount() > 0, 'journal 链回放存活');
         // 品性层：未编辑过——快照回种出生文（读面同文——charterText 缺席回落快照）
-        assert.equal(s.runtime.harness.context.snapshotExport().sig.charter, 'RECAST-CHARTER-1', '品性层在（sig.charter=原文）');
+        // 品性层（d420d8ae 合成口径，随 :509 同批适配——本用例漏 Adapted 补齐）：名字行+出生品性
+        assert.equal(s.runtime.harness.context.snapshotExport().sig.charter, 'Your name: 编排者乙.\n\nRECAST-CHARTER-1', '品性层在（sig.charter=名字行+原文合成）');
         // charter 编辑端点可用（域寻址随 dataDir 外窥）
         const cr = await fetch(`${http2}/session/${adopted}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'POST-REOPEN CHARTER' }) });
         assert.equal(cr.status, 200, 'charter 端点受理（非 409）');

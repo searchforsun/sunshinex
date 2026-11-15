@@ -116,7 +116,7 @@ test('① sunx 出生即铸档：创建即铸 journalId，域目录 sunx/<jid>/d
     assert.ok(header !== undefined && header.t === 'header' && header.v === 3 && header.id === jid1, '首行=header v3 id=jid');
     const snap = events.find((e) => e.t === 'ctx-snap') as { t: 'ctx-snap'; sig?: { charter?: string } } | undefined;
     assert.ok(snap !== undefined, 'ctx-snap 出生行随档');
-    assert.equal(snap!.sig?.charter, 'DOMAIN-BIRTH-1', '出生快照含品性层');
+    assert.equal(snap!.sig?.charter, 'Your name: 域主甲.\n\nDOMAIN-BIRTH-1', '出生快照=名字行+品性合成（d420d8ae 口径，与 contract :509 同构）');
     // 出生 meta 随档（域内旁车）：kind/title/charterRev:1/root（重开寻址源）
     const meta1 = readSessionMeta(domain1, jid1!);
     assert.equal(meta1.kind, 'sunx', '出生 meta kind');
@@ -199,7 +199,7 @@ test('② 重开链：新 daemon POST /sunx/attach(journalId)——壳出生即 
     assert.ok(b.transcriptCount() > 0, 'journal 链回放落在重开后运行时');
     // 品性两面（P1 ⑨c 同口径）：读面（charterCurrent）=编辑文跨重启；冻结层=快照回种出生文（编辑
     // 以链上替代行为权威——restoreSnapshot 随签名回种 charterLayer,与 reCast 链逐字节同形）
-    assert.equal(b.runtime.harness.context.snapshotExport().sig.charter, 'REOPEN-CHARTER-1', '冻结层=快照出生文（P1 回种语义）');
+    assert.equal(b.runtime.harness.context.snapshotExport().sig.charter, 'Your name: 域主丙.\n\nREOPEN-CHARTER-1', '冻结层=快照出生合成文（P1 回种语义；名字行+编辑前品性）');
     assert.ok(b.runtime.harness.tasks.list().some((t) => t.id === 'exec-old-0001'), '域内台账随档收养（孤儿行重放标 stopped）');
     const g = await fetch(`${d2.http}/session/${adopted.sessionId}/charter`, { headers: AUTH });
     assert.deepEqual(await g.json(), { text: 'REOPEN-CHARTER-2', charterRev: 2 }, 'charter 读面跟编辑文+rev 一致');

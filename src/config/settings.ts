@@ -48,6 +48,9 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   kbDataDir: 'SUNSHINEX_KB_DATA_DIR',
   projectsDir: 'SUNSHINEX_PROJECTS_DIR',
   userSkillsDir: 'SUNSHINEX_USER_SKILLS_DIR',
+  // Sunx 持久化域容器目录(2026-11-15 sunx P3):一 Sunx 一域(sunxDomainDir 单点拼),缺省
+  // ~/.sunshinex/sunx/——显式覆盖=装载链写槽,daemon 装载后新建 Sunx 落新容器(既有域不迁移)
+  sunxDir: 'SUNSHINEX_SUNX_DIR',
   embeddingBaseUrl: 'SUNSHINEX_EMBEDDING_BASE_URL',
   embeddingModel: 'SUNSHINEX_EMBEDDING_MODEL',
   websearchProvider: 'SUNSHINEX_WEBSEARCH_PROVIDER',

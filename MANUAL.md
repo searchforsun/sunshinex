@@ -169,6 +169,7 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
 
   // ── 目录覆盖（留空即用缺省，见第三节）────────────────
   "projectsDir": "",                                 // 项目数据根（各工作区分目录的父级）；留空 = ~/.sunshinex/projects，可指向任意盘
+  "sunxDir": "",                                     // Sunx 持久化域容器（一 Sunx 一子目录）；留空 = ~/.sunshinex/sunx，切换对新建 Sunx 生效
   "userSkillsDir": "",                               // 全局技能目录
   "globalSunshine": "",                              // 全局约定 SUNSHINE.md 所在目录
   "shell": "",                                       // 命令执行 shell（POSIX 兼容）；Windows 留空自动探测 Git Bash，无则 PowerShell，末位 cmd 兜底

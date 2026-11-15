@@ -45,6 +45,10 @@ export function sessionTeamsRoot(dataDir: string, journalId: string): string {
  *  扫描面用（各 `<journalId>/data` 域逐个 listSessions 归并）。与 sunxDomainDir 同根推导（后者即
  *  本单点下拼 journalId）；不 mkdir（空容器=扫描面 readdir 失败回空列，合法空态不建目录） */
 export function sunxContainerDir(): string {
+  // 显式覆盖（2026-11-15 sunx P3：SUNSHINEX_SUNX_DIR ≡ settings 语义键 sunxDir，userSkillsDir 同款
+  // 惰性求值——测试可运行期重定向）：缺省 ~/.sunshinex/sunx/；切换容器对新建 Sunx 生效，既有域不迁移
+  const override = process.env.SUNSHINEX_SUNX_DIR;
+  if (override !== undefined && override.length > 0) return path.resolve(override);
   return path.join(userConfigDir(), 'sunx');
 }
 

@@ -284,9 +284,10 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：34 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：35 键、槽名规范、密钥零进表（D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 34, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判；2026-11-07 增 disabledSkills 技能加载开关；2026-11-10 增 terminalDock 终端下栏开关）');
+  assert.equal(entries.length, 35, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判；2026-11-07 增 disabledSkills 技能加载开关；2026-11-10 增 terminalDock 终端下栏开关；2026-11-15 增 sunxDir Sunx 持久化域容器目录）');
+  assert.equal(SEMANTIC_KEYS['sunxDir'], 'SUNSHINEX_SUNX_DIR', 'Sunx 持久化域容器目录可指定（2026-11-15 sunx P3：一 Sunx 一持久化项目域）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
     assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
