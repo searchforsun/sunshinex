@@ -342,7 +342,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* entry 内 markdown 排版(react-markdown 直出,浏览器默认 p/table 边距收束;user 条 `> text`
    即 blockquote——user 卡内平铺,assistant 引用=灰竖线缩进) */.entry > :last-child { margin-bottom: 0; }.entry ul, .entry ol { margin: 10px 0; padding-left: 20px; }.entry blockquote { margin: 4px 0; padding: 0 0 0 10px; border-left: 2px solid var(--border); color: var(--fg-secondary); }.entry-user blockquote { margin: 0; padding: 0; border: none; }.entry a { color: var(--accent); }.entry code { font-family: var(--font-mono); font-size: var(--f-code, 12px); }.entry pre { margin: 4px 0; padding: 6px 8px; background: var(--surface-code); border: 1px solid var(--border); border-radius: var(--radius-md); font: var(--f-code, 12px)/var(--f-code-lh, 1.55) var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; }.entry table { margin: 10px 0; border-collapse: collapse; font-size: calc(14px * var(--fz)); }.entry th, .entry td { border: 1px solid var(--border); padding: 6px 10px; } /* 2026-11-07 二轮「表格内部不挤」2→6 */
 
-/* 工具条目(entry-tool):bg-2 行;折叠行按钮/展开缩进列/path 钮/diff 加载行。字族 2026-10-26 用户裁定进预设管线(写死等宽在衬线预设下露馅)——UI 字族,代码井/路径仍等宽 */.entry-tool { padding: 3px 6px; background: var(--surface-soft); font-family: var(--font-ui); font-size: calc(var(--f-tool, 14px) * var(--fz)); }.tool-summary { display: block; width: 100%; text-align: left; padding: 2px 4px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.tool-summary:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }.tool-detail { margin: 2px 0 4px; padding-left: 8px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; }.tool-path { align-self: flex-start; padding: 0 4px; border-radius: var(--radius-xs); color: var(--accent); }.tool-path:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); text-decoration: underline; }.diff-loading { margin: 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+/* 工具条目(entry-tool):bg-2 行;折叠行按钮/展开缩进列/path 钮/diff 加载行。字族 2026-10-26 用户裁定进预设管线(写死等宽在衬线预设下露馅)——UI 字族,代码井/路径仍等宽 */.entry-tool { padding: 3px 6px; background: var(--surface-soft); font-family: var(--font-ui); font-size: calc(var(--f-tool, 14px) * var(--fz)); }.tool-summary { display: block; width: 100%; text-align: left; padding: 2px 4px; border-radius: var(--radius-sm); color: var(--fg-secondary); }.tool-summary:hover { color: var(--fg-secondary); }.tool-detail { margin: 2px 0 4px; padding-left: 8px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; }.tool-path { align-self: flex-start; padding: 0 4px; border-radius: var(--radius-xs); color: var(--accent); }.tool-path:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); text-decoration: underline; }.diff-loading { margin: 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 
 /* 输入面贴底(G12 起 composer 卡面样式单源在 .sx-composer 段,旧 flex 席位规则退役) */
 
@@ -753,7 +753,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   padding: 2px 8px; border-radius: var(--radius-row);
   color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui);
 }
-.entry-tool.open .tool-summary, .entry-tool .tool-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); } /* 2026-11-14 统一亮度尺度:折叠 tertiary,hover/展开 secondary */
+.entry-tool.open .tool-summary, .entry-tool .tool-summary:hover { color: var(--fg-secondary); } /* 2026-11-14 用户裁定「hover 不加背景色,字色加深即可」:折叠 tertiary,hover/展开 secondary */
 /* G14.89 工具/思考轻行串收紧:相邻轻行 16px 槽位 → 视觉 6px(执行序列不纵向膨胀) */
 .chat .entry-tool + .entry-tool,
 .chat .entry-tool + .entry-thinking,.chat .entry-thinking + .entry-tool { margin-top: -10px; }.entry-tool .tool-detail { margin: 4px 0 0; padding: 8px 10px; padding-left: 10px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 6px; border-radius: 0 var(--radius-md) var(--radius-md) 0; background: var(--surface-code); }
@@ -962,7 +962,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   display: inline-flex; align-items: center; gap: 6px;
   padding: 2px 8px; border-radius: var(--radius-row);
   color: var(--fg-tertiary); font-size: calc(14px * var(--fz));
-}.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }.entry-thinking .thinking-detail {
+}.entry-thinking .thinking-summary:hover { color: var(--fg-secondary); }.entry-thinking .thinking-detail {
   margin: 4px 0 0; padding: 8px 10px;
   /* G14.211 背景/圆角上移至 .thinking-scroll(边框固定)——弧度挂滚动视口,内滚不再滚成直角 */
   font: calc(14px * var(--fz))/1.6 var(--font-ui); color: var(--fg-secondary); /* 字体预设管线:思考=正文系散文(写死等宽在衬线预设下露馅,用户截图);行高由 --f-think-lh 预设令牌接管 */
@@ -1419,7 +1419,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* write diff 面同加内滚(§2) */.entry-tool .tool-detail .diff-cols { max-height: 280px; overflow: auto; }
 /* 思考行(§3):预览尾锚定(direction:rtl 流动)+左缘渐隐;展开 grid-rows+320px 内滚吸底。
  * 选择器带 .entry-thinking 前缀(终审 Minor-1):0,2,0 同特异性,靠 G11 段后位取胜旧 G10-C3
- * 同名规则——裸 .thinking-summary (0,1,0) 落败,折叠行形态半生效 */.entry-thinking { padding: 2px 8px; }.entry-thinking .thinking-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }.entry-thinking .thinking-summary:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-secondary); }.think-chevron { flex: none; transition: transform var(--dur-basic) var(--ease-enter); }.entry-thinking.open .think-chevron { transform: rotate(180deg); }.thinking-label { flex: none; }
+ * 同名规则——裸 .thinking-summary (0,1,0) 落败,折叠行形态半生效 */.entry-thinking { padding: 2px 8px; }.entry-thinking .thinking-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }.entry-thinking .thinking-summary:hover { color: var(--fg-secondary); }.think-chevron { flex: none; transition: transform var(--dur-basic) var(--ease-enter); }.entry-thinking.open .think-chevron { transform: rotate(180deg); }.thinking-label { flex: none; }
 /* visibility 折叠尾切(T4 评审可达性补丁,同 .tool-body):折叠态内容不可聚焦/不入可达性树 */.think-body { margin: 0 8px; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s var(--dur-relaxed); }.entry-thinking.open .think-body { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: grid-template-rows var(--dur-relaxed) var(--ease-enter), opacity var(--dur-relaxed) var(--ease-enter), visibility 0s; }.think-body-inner { min-height: 0; overflow: hidden; }
 /* G14.211 思考卡=滚动视口本身:背景/圆角(边框)固定不动,内容在框内滚动——上下滑动时四角恒圆,
    不再随 pre 滚走露出方形裁切边;滚动条(全局 8px 细条)收在圆角框内 */
@@ -2326,8 +2326,9 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-body.open { grid-template-rows: 1fr; }
 .concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
+.concise-body-inner > .seg-inner { padding-top: 4px; } /* 2026-11-14 用户裁定「展开行第一行与其它行距一致」 */
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.concise-icon { flex: none; color: var(--fg-icon); } /* 显式令牌兜底:图标色恒 fg-icon,不被上层 color 染红 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
+.concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
 .bg-output {
   margin: 0; width: 100%; padding: 6px 8px;
