@@ -125,11 +125,9 @@ test('e2e teammate→lead:派生面直测 send_agent_team_message → lead.jsonl
     // 裁定(T4 计划):teammate 面工具执行不经 fake model 驱动,直测工具——deriveTeammateRegistry 同
     // harness/index.ts registryFactory 装配点同构(仅 w1 活名时排己白名单恰 ['leader']);onEvent 透传
     // 同一收集器(装配点同款)
-    const face = deriveTeammateRegistry(
-      h.tools,
-      h.taskboard,
-      makeSendMessageTool({ inbox: h.inbox, onEvent: (e) => events.push(e), knownRecipients: () => ['leader'], from: () => 'w1' }),
-    );
+    const face = deriveTeammateRegistry(h.tools, h.taskboard, {
+      messageTool: makeSendMessageTool({ inbox: h.inbox, onEvent: (e) => events.push(e), knownRecipients: () => ['leader'], from: () => 'w1' }),
+    });
     assert.ok(face.get('send_agent_team_message') !== undefined, '派生面应含 send_agent_team_message');
     const sm = await face.execute('send_agent_team_message', { to: 'leader', text: 'done with prep' }, h.safety);
     assert.ok(sm.ok && sm.value.exitCode === 0, `send_agent_team_message(to lead) 应成功:${JSON.stringify(sm)}`);
@@ -166,15 +164,13 @@ test('e2e 同队消息进接收方链;跨队拒绝;lead 可投任一存活成员
       const sp = await h.tools.execute('create_agent_teammate', { teamId, name, prompt: `worker ${name}` }, h.safety);
       assert.ok(sp.ok && sp.value.exitCode === 0, `spawn ${name} 应成功:${JSON.stringify(sp)}`);
     }
-    const face = deriveTeammateRegistry(
-      h.tools,
-      h.taskboard,
-      makeSendMessageTool({
+    const face = deriveTeammateRegistry(h.tools, h.taskboard, {
+      messageTool: makeSendMessageTool({
         inbox: h.inbox,
         from: () => 'w1',
         ...teammateSendTargets(h.team, teamAId, 'w1'),
       }),
-    );
+    });
     const cross = await face.execute('send_agent_team_message', { to: 'w9', text: 'nope' }, h.safety);
     assert.equal(cross.ok, false, '跨队应拒绝');
     assert.equal(cross.ok ? '' : cross.error.message, 'cannot send_agent_team_message across teams');

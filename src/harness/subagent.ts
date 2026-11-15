@@ -17,8 +17,11 @@ import { MemoryStore } from './memory/store';
 import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
-import { TaskRegistry, WAKE_HINT, wakeHintGate } from './tasks';
+import { TaskRegistry, WAKE_HINT, wakeHintGate, wakeHintSuffix } from './tasks';
 import { FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS } from './tools/taskboard-tools';
+import { hasCycle } from '../taskboard/model';
+import type { TaskBoardState } from '../taskboard/model';
+import type { TaskBoard } from '../taskboard/board';
 import { makeTaskWaitTool } from './tools/task-wait';
 import { makeAskQuestionTool } from './tools/builtin';
 import { parseFrontmatterKV } from './skills';
@@ -696,32 +699,87 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
   };
 }
 
-/** dispatch_task 工具工厂（2026-11-15 sunx P1 Task 3）：sunx 编排主链的分派动词——分派即返回（恒后台
- * 两段式），子智能体结论落任务日志、终态经唤醒通知回流，编排器收轮等唤醒。与 makeSpawnTool 同缝同源
- * （normalizeSpawnInput → validateSpawnInput → spawnBackground），差异仅在模型面契约：无 tools 参数
- * （spawn tools 口已封闭）、无 background 开关（分派恒后台）、prompt 槽位更名 spec（自包含简报语义）
- * 并增 tier 档位覆盖。仅 sunx 会话注册（harness/index.ts kind 分叉）；回执与 spawn 后台分支同形 */
-export function makeDispatchTool(runner: SubagentRunner): RegisteredTool {
+/* ---------- team 板通道接缝（P2 Task 2，R6 能力自举） ---------- */
+
+/** dispatch target='team' 板通道接缝（sunx 装配独占注入，harness/index.ts 装配闭包承载）：板/团册/
+ *  成员实例化三缝结构化透传——本文件零 taskboard 值依赖（type-only import，防 CJS 环）。事件发射
+ *  （team-created/teammate-created 既有形）收敛在装配闭包，工具面只走既有板 API——裁定 5「不为
+ *  team 分支另发事件」：板通道委派事件全由 board.emit 既有面承载 */
+export interface DispatchTeamSeam {
+  /** 物理板（会话单板）：建单/指派/快照——依赖校验与建单走既有 board.create/assign（INVALID_ARG 文案同源） */
+  board: TaskBoard;
+  /** 回执唤醒提示合成（bg-wake §4.2 宿主闸①×② 单点 wakeHintSuffix）；缺省无提示 */
+  tasks?: TaskRegistry;
+  /** 既有团队复用判据（R6 自举分流）：返回复用 teamId；无团队 undefined → 走 createTeam 自举 */
+  existingTeamId(): string | undefined;
+  /** 自举建队（slug 源=name，teamId 方言 team-<slug>-<4rand>；闭包内 emit 既有 team-created） */
+  createTeam(name: string): Result<{ teamId: string }>;
+  /** 成员实例化（teamAdapter.spawn 同缝：agent_id 解析角色框定+mountTeammate 全链；闭包内 emit 既有 teammate-created） */
+  spawnMember(input: SubagentSpawnInput, teamId: string): Result<{ name: string }>;
+  /** 活成员名册（按队过滤；指派路由的匹配面） */
+  aliveNames(teamId: string): string[];
+}
+
+/** team 通道成员缺省预设（R6 裁定）：agent_id 缺省按 developer 预设实例化成员 */
+const TEAM_DEFAULT_AGENT_ID = 'developer';
+
+/** team 通道 depends_on 预检（纯函数单点）：引用存在性 + hasCycle 环检测（环=INVALID_ARG）。
+ *  探针节点代表「尚未建单的新任务」（其 id 建单期才铸造）——create 路径数学上不可成环（新任务无
+ *  dependents），预检为防御守卫：板档直接事件注入/损坏档已含环时确定性拒绝（与 board.setDependency
+ *  同源 model.hasCycle、同文案）。空 dependsOn 直通（无新依赖边即无校验对象——板档既有环不阻挠
+ *  无依赖派发）。返回错误文案或 undefined */
+export function teamDependsOnError(state: TaskBoardState, dependsOn: readonly string[]): string | undefined {
+  if (dependsOn.length === 0) return undefined;
+  const unknown = dependsOn.filter((d) => state.tasks[d] === undefined);
+  if (unknown.length > 0) return `unknown dependency: ${unknown.join(', ')}`;
+  const candidate = [
+    ...Object.values(state.tasks).map((t) => ({ id: t.id, dependsOn: [...t.dependsOn] })),
+    { id: ':dispatch-prospective', dependsOn: [...dependsOn] },
+  ];
+  const cycle = hasCycle(candidate);
+  if (cycle !== null) return `dependency would create a cycle: ${cycle.join(' -> ')}`;
+  return undefined;
+}
+
+/** dispatch_task 工具工厂（2026-11-15 sunx P1 Task 3；P2 Task 2 增 target='team' 板通道）：sunx 编排
+ *  主链的分派动词——分派即返回。双通道分流（schema 闭合枚举 target，缺省 'fork'）：
+ *  - fork（缺省）：恒后台两段式 fork（spawn 家族同缝 normalizeSpawnInput → validateSpawnInput →
+ *    spawnBackground），子智能体结论落任务日志、终态经唤醒通知回流；路径行为与 P1 逐字节相同。
+ *  - team（板通道，接缝仅 sunx 装配注入 opts.team）：R6 能力自举——无既有团队 → create team（slug
+ *    源=label 或 'sunx'）+ 按 agent_id（缺省 developer 预设）经 teamAdapter.spawn 实例化 teammate；
+ *    建板任务（spec/label/depends_on）→ 指派（assignee=按 agent_id 匹配存活成员，缺省留给 claim；
+ *    实例化失败=任务留 pending+回执说明无活成员——板语义既有）→ 回执 `board task <id> created
+ *    (team <teamId>)<wakeHintSuffix>`。depends_on 校验：存在性+hasCycle 环检测（环=INVALID_ARG），
+ *    fork 通道传了即拒（板通道专用参）。仅 sunx 会话注册（harness/index.ts kind 分叉） */
+export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: DispatchTeamSeam }): RegisteredTool {
   return {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['spec', 'agent_id', 'label', 'tier', 'isolation'],
+      required: ['spec', 'agent_id', 'label', 'tier', 'isolation', 'target', 'depends_on'],
       properties: {
-        spec: { type: 'string', description: 'Self-contained task brief for the dispatched subagent: goal, key facts, paths, constraints, and ACCEPTANCE criteria (the subagent cannot see this conversation)' },
-        agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null dispatches an inline subagent' },
-        label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
-        tier: { type: ['string', 'null'], enum: ['small', 'medium', 'large', null], description: 'Optional model tier override for this dispatch only; null inherits the session tier' },
-        isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
+        spec: { type: 'string', description: 'Self-contained task brief for the dispatched executor: goal, key facts, paths, constraints, and ACCEPTANCE criteria (it cannot see this conversation)' },
+        agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null = inline subagent (fork) / developer preset member (team)' },
+        label: { type: ['string', 'null'], description: 'Short card title; null defaults to agent_id ?? subagent (fork) — on team it titles the board task and slugs the bootstrapped team' },
+        tier: { type: ['string', 'null'], enum: ['small', 'medium', 'large', null], description: 'Optional model tier override for this dispatch only (fork channel); null inherits the session tier' },
+        isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask (fork channel); null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
+        target: { type: ['string', 'null'], enum: ['fork', 'team', null], description: 'Execution channel; null = "fork". "fork" (default) = one-shot background subagent (receipt: task id + output log). "team" = agent-team board task: team + teammate for agent_id are bootstrapped on first use (default preset developer), then a living teammate claims or is assigned it (receipt: board task id + team)' },
+        depends_on: { type: ['array', 'null'], items: { type: 'string' }, description: 'team channel only: board task ids that must reach success before this task is claimable; JSON null = none. Passing it with target "fork" is rejected' },
       },
     },
     name: 'dispatch_task',
     description:
-      'Dispatch one work unit to a subagent and return immediately: the call registers a background task, the subagent runs out-of-band, and the receipt names the task id and its output log path — no report comes back in this tool result. The spec must be a self-contained brief (goal, key facts, paths, constraints, ACCEPTANCE criteria) because the subagent cannot see this conversation; agent_id references a registered agent or preset role (null = inline subagent); tier optionally overrides the model tier for this dispatch; isolation optionally requests a dedicated git worktree. After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait, or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
+      'Dispatch one work unit and return immediately. target selects the channel: "fork" (default) registers a background task — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path, no report comes back in this tool result. "team" places a board task on the agent-team board — on first use the team and a teammate for the requested agent_id (default preset: developer) are bootstrapped, then a living teammate claims or is assigned the task and the receipt names the board task id and its team; depends_on (team channel only) lists board task ids that must reach success first. In both channels the spec must be a self-contained brief (goal, key facts, paths, constraints, ACCEPTANCE criteria) because the executor cannot see this conversation; agent_id references a registered agent or preset role (null = inline subagent on fork / developer preset member on team); tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree (fork channel concerns). After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait (fork) or get_agent_team_board (team), or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown };
+      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown; target?: unknown; depends_on?: unknown };
+      // 通道归一（schema 闭合枚举外的防御）：'team' → 板通道；'fork'/缺席/null 字面 → fork（缺省路径
+      // 逐字节原样）；其余字面 → INVALID_ARG（与 isolation 同款 fail-fast，防观察行原样回流成同参重试死循环）
+      if (raw.target !== undefined && !jsonAbsent(raw.target) && raw.target !== 'fork' && raw.target !== 'team') {
+        throw new CodedToolError('INVALID_ARG', `Unknown target: ${String(raw.target)} (only 'fork' | 'team')`);
+      }
+      const target: 'fork' | 'team' = raw.target === 'team' ? 'team' : 'fork';
       const specInput: SubagentSpawnInput = {
         prompt: typeof raw.spec === 'string' && raw.spec.length > 0 ? raw.spec : undefined,
         ...(typeof raw.agent_id === 'string' && raw.agent_id.length > 0 ? { agent_id: raw.agent_id } : {}),
@@ -730,10 +788,71 @@ export function makeDispatchTool(runner: SubagentRunner): RegisteredTool {
       };
       const spec = normalizeSpawnInput(specInput);
       runner.validateSpawnInput(spec);
-      // tier 归一（schema enum 之外的防御性宽容）：非枚举/缺席/null 字面一律回缺席语义（继承会话档）
-      const tier = raw.tier === 'small' || raw.tier === 'medium' || raw.tier === 'large' ? raw.tier : undefined;
-      const started = runner.spawnBackground(spec, { tier });
-      return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
+      // depends_on 归一（板通道专用参；null/缺席=无依赖，数组项剥空/null 字面——create_agent_team_task 同款）
+      const rawDeps = raw.depends_on;
+      const dependsOn = Array.isArray(rawDeps) ? rawDeps.map(String).filter((d) => d !== '' && !jsonAbsent(d, true)) : [];
+      const depsMalformed = rawDeps !== undefined && !jsonAbsent(rawDeps) && !Array.isArray(rawDeps);
+      if (target === 'fork') {
+        if (depsMalformed || dependsOn.length > 0) {
+          throw new CodedToolError('INVALID_ARG', 'depends_on is only valid with target:"team" (fork dispatches take no dependencies)');
+        }
+        // tier 归一（schema enum 之外的防御性宽容）：非枚举/缺席/null 字面一律回缺席语义（继承会话档）
+        const tier = raw.tier === 'small' || raw.tier === 'medium' || raw.tier === 'large' ? raw.tier : undefined;
+        const started = runner.spawnBackground(spec, { tier });
+        return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
+      }
+      // ---- team 板通道（R6 自举；接缝仅 sunx 装配注入）----
+      const team = opts?.team;
+      if (team === undefined) {
+        throw new CodedToolError('NOT_SUPPORTED', 'dispatch target "team" requires the board seam (not wired in this assembly)');
+      }
+      if (depsMalformed) {
+        throw new CodedToolError('INVALID_ARG', 'depends_on must be an array of board task ids (JSON null = none)');
+      }
+      // depends_on 校验（存在性 + hasCycle 环检测，环=INVALID_ARG）——先于一切副作用（建队/建单）
+      const depErr = teamDependsOnError(team.board.snapshot(), dependsOn);
+      if (depErr !== undefined) throw new CodedToolError('INVALID_ARG', depErr);
+      const agentId = spec.agent_id ?? TEAM_DEFAULT_AGENT_ID;
+      const label = spec.label;
+      // R6 自举分流：无既有团队 → create team（slug 源=label 或 'sunx'）；有团队 → 复用
+      const teamId = team.existingTeamId() ?? (() => {
+        const created = team.createTeam(label ?? 'sunx');
+        if (!created.ok) throw new CodedToolError('INVALID_ARG', created.error.message);
+        return created.value.teamId;
+      })();
+      // 建板任务（spec/label/dependsOn）：title 缺省回落 agent_id（board.create 要求非空 title）
+      const created = team.board.create({
+        teamId,
+        title: label ?? agentId,
+        spec: spec.prompt ?? '',
+        ...(dependsOn.length > 0 ? { dependsOn } : {}),
+      });
+      if (!created.ok) throw new CodedToolError('INVALID_ARG', created.error.message);
+      const taskId = created.value.taskId;
+      // 成员自举与指派路由：按 agent_id 匹配存活成员（缺位→实例化，缺省 developer 预设）；显式
+      // agent_id 在场才指派，缺省留给 claim。实例化失败=任务留 pending+回执说明（板语义既有
+      // 「无活成员留 pending」，绝不临时 fork）
+      const notes: string[] = [];
+      if (!team.aliveNames(teamId).includes(agentId)) {
+        const spawned = team.spawnMember({ agent_id: agentId, label: agentId }, teamId);
+        if (!spawned.ok) {
+          const alone = team.aliveNames(teamId).length === 0;
+          notes.push(alone
+            ? `no living teammate (bootstrap failed: ${spawned.error.message}) — task stays pending`
+            : `teammate bootstrap failed (${spawned.error.message}) — task stays pending for claim`);
+        }
+      }
+      if (spec.agent_id !== undefined && notes.length === 0) {
+        const assigned = team.board.assign(taskId, agentId);
+        if (!assigned.ok) notes.push(`assign failed: ${assigned.error.message}`);
+      }
+      const suffix = team.tasks !== undefined ? wakeHintSuffix(team.tasks) : '';
+      return {
+        exitCode: 0,
+        stdout: [`board task ${taskId} created (team ${teamId})${suffix}`, ...notes].join('\n'),
+        stderr: '',
+        timedOut: false,
+      };
     },
   };
 }

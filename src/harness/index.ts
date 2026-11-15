@@ -59,12 +59,13 @@ import type { KnowledgeBase } from './knowledge';
 /** headless 缺省问询接缝：无交互面即视为用户跳过（观察回 dismissal，任务不因问询挂死——AskQuestion 线 D7） */
 const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
 
-/** sunx 会话主链工具面白名单（2026-11-15 sunx P1 Task 3）：常量单点——装配注册（kind==='sunx' 分叉）、
- *  内核运行时 face 派生（session/runtime createKernelRuntime 的 derive({only})）与测试三方同源。
- *  编排器不做执行（身份行即「never do the work yourself」）：只持分派（dispatch_task）/台账窥视与停止
- *  （task_status/task_stop）/问询（ask_question）/清单（todo_write）/技能（skill）/产物（report_artifacts）七件；
- *  standard 会话零消费（主链 face 基线不变量） */
-export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts'];
+/** sunx 会话主链工具面白名单（2026-11-15 sunx P1 Task 3；P2 Task 2 增板监视面）：常量单点——装配注册
+ *  （kind==='sunx' 分叉）、内核运行时 face 派生（session/runtime createKernelRuntime 的 derive({only})）
+ *  与测试三方同源。编排器不做执行（身份行即「never do the work yourself」）：只持分派（dispatch_task，
+ *  双通道 target='fork'|'team'）/台账窥视与停止（task_status/task_stop）/问询（ask_question）/清单
+ *  （todo_write）/技能（skill）/产物（report_artifacts）/板监视（get_agent_team_board——板通道的监视
+ *  伴面，随板通道一起进面）八件；standard 会话零消费（主链 face 基线不变量） */
+export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts', 'get_agent_team_board'];
 
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
@@ -502,20 +503,18 @@ export class Harness {
           // 路由 ask(P2 Task 1,fork deriveChildRegistry 同语义):装配真实接缝在座才透传——headless 装配
           // (opts.ask 缺省=工具注册面落 headlessAskStub)不透传,成员面维持剔除旧制;归因(label=成员名,
           // taskId=板任务 id)由 teammate.execute 逐任务带上,经本闭包转交 deriveTeammateRegistry
-          registryFactory: (b: ToolRegistry, askedBy?: { label: string; taskId?: string }) => deriveTeammateRegistry(
-            b,
-            this.taskboard,
-            // teammate 面 send_agent_team_message:同队存活(排己);leader 由工具恒放行。from = teammate 名
-            makeSendMessageTool({
+          // (P2 Task 2 收敛:6 位置参 → opts 对象,行为逐字节等价)
+          registryFactory: (b: ToolRegistry, askedBy?: { label: string; taskId?: string }) => deriveTeammateRegistry(b, this.taskboard, {
+            messageTool: makeSendMessageTool({
               inbox: this.inbox,
               ...(opts.onEvent ? { onEvent: opts.onEvent } : {}),
               from: () => name,
               ...teammateSendTargets(this.team, teamId, name),
             }),
-            this.tasks, // task_wait 换装 exec-only(自动转后台可等;板任务不可等)
-            opts.ask, // 路由 ask 接缝(缺席=undefined → 维持剔除旧制)
+            tasks: this.tasks, // task_wait 换装 exec-only(自动转后台可等;板任务不可等)
+            ask: opts.ask, // 路由 ask 接缝(缺席=undefined → 维持剔除旧制)
             askedBy,
-          ),
+          }),
           // kind 透传(P2 Task 1,spec §17.2):sunx 装配的成员逐任务 Reactor 稳定段与主链同面
           // (Sunx 身份行/编排章程行);缺席=standard 字节不变
           ...(opts.kind ? { kind: opts.kind } : {}),
@@ -577,12 +576,47 @@ export class Harness {
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.taskboard), display: { verb: 'TASK_STOP' } });
     // task_wait：仅 exec/spawn 台账等待（板 id 拒识点名 agent_team_task_wait）；第三参 run 信号穿透阻塞期
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
-    // sunx 工具面（2026-11-15 sunx P1 Task 3）：分派/窥视两件仅在 sunx 会话注册——普通 face 基线零变化
-    // （不变量：非 sunx 装配注册表不含 dispatch_task/task_status）。dispatch_task=分派即返回的两段式 fork
-    // （spawn 家族同缝、恒后台）；task_status=恒窥视台账查询（窥视即消费）。白名单派生消费面在
-    // createKernelRuntime（SUNX_FACE_TOOLS 单点）
+    // sunx 工具面（2026-11-15 sunx P1 Task 3；P2 Task 2 增板通道接缝）：分派/窥视两件仅在 sunx 会话
+    // 注册——普通 face 基线零变化（不变量：非 sunx 装配注册表不含 dispatch_task/task_status）。
+    // dispatch_task=分派即返回两段式；target='team' 板通道接缝在此注入（R6 能力自举：无既有团队 →
+    // 建队+按 agent_id 实例化 teammate；team-created/teammate-created 复用既有事件形——GUI 队卡/
+    // 成员栏直播同源；标准会话的八件套/板行为零变化——本缝不进 standard 装配）。task_status=恒窥视
+    // 台账查询（窥视即消费）。白名单派生消费面在 createKernelRuntime（SUNX_FACE_TOOLS 单点）
     if (opts.kind === 'sunx') {
-      this.tools.register({ ...makeDispatchTool(this.runner), display: { verb: 'DISPATCH' } });
+      this.tools.register({
+        ...makeDispatchTool(this.runner, {
+          team: {
+            board: this.taskboard,
+            tasks: this.tasks,
+            existingTeamId: () => this.agentTeams.list()[0]?.teamId,
+            // 自举建队：slug 源=传入名（label 或 'sunx'），teamId 方言 team-<slug>-<4rand>；既有 team-created
+            // 事件形随行（create_agent_team 同形载荷——GUI 队卡直播同源，非 team 分支新事件）
+            createTeam: (name) => {
+              const r = this.agentTeams.create(name);
+              if (r.ok) {
+                opts.onEvent?.({ type: 'team-created', payload: { teamId: r.value.teamId, name: r.value.name, createdAt: r.value.createdAt }, ts: Date.now() });
+              }
+              return r;
+            },
+            // 成员实例化：teamAdapter.spawn 同缝（agent_id 解析角色框定 + mountTeammate 全链——路由 ask/
+            // kind 随装配透传）；既有 teammate-created 事件形随行（create_agent_teammate 同形载荷）
+            spawnMember: (input, tid) => {
+              const r = teamAdapter.spawn(input, tid);
+              if (r.ok) {
+                const tm = this.team.get(r.value.name);
+                opts.onEvent?.({
+                  type: 'teammate-created',
+                  payload: { name: r.value.name, teamId: tid, createdAt: tm?.createdAt ?? Date.now(), busy: tm?.isBusy() ?? false },
+                  ts: Date.now(),
+                });
+              }
+              return r;
+            },
+            aliveNames: (tid) => this.team.aliveNames(tid),
+          },
+        }),
+        display: { verb: 'DISPATCH' },
+      });
       this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
     }
     // 智能体团队八件套：agentTeams 关则不注入模型面（板协调器仍构造，盘数据不删）

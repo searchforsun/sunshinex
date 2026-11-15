@@ -468,6 +468,97 @@ test('sunx 子任务路由 ask：派发子智能体 ask_question → 主对话�
   }, { kind: 'sunx' });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// sunx 板任务通道终态唤醒（2026-11-15 sunx P2 Task 2）：dispatch target='team'——R6 能力自举
+// （无既有团队 → 建队+按 agent_id 缺省 developer 预设经 teamAdapter.spawn 实例化 teammate）→
+// 成员认领消化板任务 → 台账 boardDispatch 行终态（P1 钉的 bg-wake 唤醒汇 boardDispatch 行零改动消费）
+// → 合批后单条唤醒轮。回执方言 `board task <id> created (team <teamId>)` + WAKE_HINT（宿主闸①×②）。
+// 路由：成员 own chain task 行「Task task-…」前缀唯一区分主链/成员两轨（主链 user 面=提交目标/
+// 唤醒 notice，均不带该前缀——前缀判定两轨互不串号，成员任务行必以板 id 开头）。
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** 板通道出牌参数（sunx 白名单件，target='team'）：spec=自包含简报，label=板任务标题（配 callOne 使用） */
+const dispatchTeamBoard = (spec: string, label: string): Record<string, unknown> => ({
+  spec, label, agent_id: null, tier: null, isolation: null, target: 'team', depends_on: null,
+});
+
+/** 双轨可编程适配器（SunxRoutedAdapter 变体）：user 消息以 'Task task-' 开头 → 成员队列（teammate
+ *  own chain task 行）；其余 → 主链脚本（ScriptedAdapter 语义：顺序消费、末步驻留） */
+class MemberRoutedAdapter implements ModelAdapter {
+  readonly provider = 'scripted';
+  memberCalls = 0;
+  private readonly mainState = { i: 0 };
+  private readonly memberState = { i: 0 };
+  constructor(
+    private readonly main: SunxStep[],
+    private readonly member: SunxStep[],
+  ) {}
+
+  async chat(req: ChatRequest, hooks?: UsageHooks): Promise<ChatResult> {
+    hooks?.onUsage?.(0);
+    const isMember = req.messages.some((m) => m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('Task task-'));
+    const queue = isMember ? this.member : this.main;
+    const state = isMember ? this.memberState : this.mainState;
+    if (isMember) this.memberCalls += 1;
+    const step = queue[state.i] ?? stop('script exhausted');
+    state.i = Math.min(state.i + 1, queue.length - 1);
+    return typeof step === 'function' ? await step({ taskIds: () => [] }) : step;
+  }
+
+  async chatStream(req: ChatRequest, onDelta: (t: string) => void, hooks?: UsageHooks): Promise<ChatResult> {
+    const r = await this.chat(req, hooks);
+    for (const ch of r.content) onDelta(ch);
+    return r;
+  }
+}
+
+test('sunx 板通道唤醒：dispatch target=team 自举成员消化板任务 → boardDispatch 行终态 → 单条唤醒轮', async () => {
+  const model = new MemberRoutedAdapter(
+    [
+      callOne('dispatch_task', dispatchTeamBoard('BOARD-SPEC-1', 'board work')), // 第一轮：板通道派发（R6 自举）
+      stop('standing by for the board'), // 派发轮收束（收轮等唤醒）
+      stop('woken after board task'), // 唤醒轮：终稿收束
+    ],
+    [stop('member done')], // 成员：一拍收口 → 板任务 success → 台账行 done
+  );
+  await withSession(model, async (ctx) => {
+    const ctl = ctx.session;
+    const entries = () => ctl.sessionKernel.replay();
+    assert.equal(ctl.submit('orchestrate the board').ok, true);
+    await waitFor(() => ctl.status() === 'idle', 15_000); // 主链收轮（成员在跑/已收口）
+    // 回执面：板通道方言 + WAKE_HINT（宿主闸①×②）
+    const receipts = entries().filter(
+      (e) => e.kind === 'tool' && e.result !== undefined && (e.result.full ?? e.result.text).startsWith('board task '),
+    );
+    assert.equal(receipts.length, 1, '板通道回执在转录面');
+    const text = receipts[0]!.result!.full ?? receipts[0]!.result!.text;
+    const idMatch = /^board task (task-\S+) created \(team team-\S+\)/.exec(text);
+    assert.ok(idMatch, `回执=板通道方言:${text.slice(0, 200)}`);
+    const boardTaskId = idMatch![1]!;
+    assert.ok(text.includes(WAKE_HINT), '板回执尾追 WAKE_HINT（收轮等唤醒）');
+    // 自举面：恰一队 + developer 预设成员 + 板任务被成员消化至 success
+    const h = ctl.runtime.harness;
+    assert.equal(h.agentTeams.list().length, 1, 'R6 自举恰建一队');
+    assert.ok(h.team.aliveNames().includes('developer'), 'developer 预设成员实例化');
+    await waitFor(() => h.taskboard.snapshot().tasks[boardTaskId]?.status === 'success', 15_000);
+    // 唤醒源：板任务台账 boardDispatch 行终态（P1 钉的唤醒汇，零改动消费）
+    const row = h.tasks.list().find((t) => t.boardDispatch === true && t.label === boardTaskId);
+    assert.ok(row !== undefined, '板任务台账行（boardDispatch 标）在册');
+    await waitFor(() => h.tasks.get(row!.id)?.status === 'done', 15_000);
+    await waitFor(() => wakeNotices(entries()).length > 0, 10_000);
+    await waitFor(() => ctl.status() === 'idle', 15_000);
+    const ents = entries();
+    const notices = wakeNotices(ents);
+    assert.equal(notices.length, 1, '恰一条唤醒轮');
+    assert.deepEqual(notices[0]!.wake!.map((r) => r.id), [row!.id], '唤醒引用=板任务台账行');
+    const idx = ents.indexOf(notices[0]!);
+    assert.equal(ents[idx + 1]?.kind, 'run', '转录序 notice→run');
+    assert.ok(wakeOfRun(ents, idx + 1) !== undefined, 'wakeOfRun 配对成立');
+    assert.match(notices[0]!.md, new RegExp(boardTaskId), '通知文含板任务 id（label 列）');
+    assert.ok(ents.some((e) => e.kind === 'assistant' && e.md === 'woken after board task'), '唤醒轮终稿收束');
+  }, { kind: 'sunx' });
+});
+
 test('sunx 面隔离：同一派发轨迹跑 standard 会话——dispatch_task 不在面（TOOL_NOT_FOUND），零台账零唤醒面', async () => {
   const io: SunxTestIo = { taskIds: () => [] };
   const model = new SunxRoutedAdapter(

@@ -622,7 +622,7 @@ test('teammate face 路由 ask(P2 Task 1):execute 经 registryFactory 带 askedB
       ]), []) as unknown as CountingAdapter,
       undefined,
       {
-        registryFactory: (b, askedBy) => deriveTeammateRegistry(b, rig.board, undefined, undefined, parentAsk, askedBy),
+        registryFactory: (b, askedBy) => deriveTeammateRegistry(b, rig.board, { ask: parentAsk, askedBy }),
       },
     );
     const ra = rig.board.create({ teamId: rig.teamId, title: 'A', spec: 'do A' });

@@ -44,7 +44,7 @@ describe('teammate face 路由 ask（P2 Task 1）', () => {
         seen.push(req);
         throw new Error('stop-here');
       };
-      const face = deriveTeammateRegistry(base, board, undefined, undefined, parent, { label: 'w1', taskId: 'task-1' });
+      const face = deriveTeammateRegistry(base, board, { ask: parent, askedBy: { label: 'w1', taskId: 'task-1' } });
       const ask = face.get('ask_question');
       assert.ok(ask, '路由版 ask_question 应在 teammate 面（无条件剔除已放开）');
       await assert.rejects(ask.executor({ question: '选哪个?', options: [{ label: 'A' }, { label: 'B' }] }), /stop-here/);
@@ -73,7 +73,7 @@ describe('teammate face 路由 ask（P2 Task 1）', () => {
     try {
       const base = new ToolRegistry();
       base.register(dummy('ask_question'));
-      const face = deriveTeammateRegistry(base, makeBoard(tmp), undefined, undefined, async () => ({ type: 'dismissed' }));
+      const face = deriveTeammateRegistry(base, makeBoard(tmp), { ask: async () => ({ type: 'dismissed' }) });
       assert.equal(face.get('ask_question'), undefined, '归因缺席不注册（无归因路由=身份悬空）');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

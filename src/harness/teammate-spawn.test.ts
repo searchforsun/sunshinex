@@ -64,7 +64,7 @@ test('create_agent_teammate:teammate 建成(aliveNames 含 w1),回执 teammate w
     // 注入只读对(get_agent_team_board/get_task)
     assert.ok(h.tools.get('get_agent_team_board') !== undefined, '主链面含 get_agent_team_board(板读取权在 lead)');
     assert.equal(h.tools.get('get_task'), undefined, '主链面不得有 get_task');
-    const face = deriveTeammateRegistry(h.tools, h.taskboard, undefined, h.tasks);
+    const face = deriveTeammateRegistry(h.tools, h.taskboard, { tasks: h.tasks });
     assert.ok(face.get('get_agent_team_board') !== undefined, 'teammate 面应含 get_agent_team_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
     assert.equal(face.get('spawn'), undefined, 'teammate 面不得再生子代');

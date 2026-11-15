@@ -129,7 +129,7 @@ test('teammate 面:deriveTeammateRegistry(base, board, tool) → send_agent_team
       teamId: () => 'team-a',
       recipientTeamId: (n) => (team.aliveNames().includes(n) ? 'team-a' : undefined),
     });
-    const face = deriveTeammateRegistry(base, board, msgTool);
+    const face = deriveTeammateRegistry(base, board, { messageTool: msgTool });
     assert.ok(face.get('send_agent_team_message') !== undefined, 'teammate 面应含 send_agent_team_message');
     assert.ok(face.get('get_agent_team_board') !== undefined, 'teammate 面应含 get_agent_team_board');
     assert.ok(face.get('get_task') !== undefined, 'teammate 面应含 get_task');
