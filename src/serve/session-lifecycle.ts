@@ -241,7 +241,10 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
     session.reCast({
       kind: 'sunx',
       ...(meta.title !== undefined ? { name: meta.title } : {}),
-      charter: replay.snapshot?.sig.charter ?? null,
+      // 品性原文源（fix round 1）：meta.charterText 优先（POST /charter 编辑时与 charterRev 同拍
+      // 落盘的当前全文——编辑文跨重启存活,否则重开读面回退出生文而模型面链回放含替代行跟编辑文
+      // =两窗漂移）；缺席（旧档/未编辑过）回落快照出生文,字节不变
+      charter: meta.charterText ?? replay.snapshot?.sig.charter ?? null,
     });
   }
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });

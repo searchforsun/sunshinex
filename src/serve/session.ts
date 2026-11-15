@@ -1641,6 +1641,11 @@ export class SessionRuntime {
   async reset(): Promise<void> {
     this.denyPlanPendings(); // plan 挂起卡放弃回填（阻塞 executor 凭信号收尾）
     this.current = undefined; // 有界 settle 超时后仍清锁，避免 status 假 running
+    // 品性读面随换新归位（P2 Task 7 fix round 1）：reset 换新运行时=链清空+新上下文挂出生品性层
+    // （sessionCharter 经 assemble 透传）——charterCurrent 若保留 reset 前编辑文，GET 会返回模型
+    // 已不跟的文（反向漂移）。归 birth 文（与 reCast 同拍语义；meta.charterText 不动——重启重开
+    // 时链回放含替代行,模型又跟编辑文,读面再由 attach 按 meta 归位）
+    this.charterCurrent = this.sessionCharter ?? null;
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) {

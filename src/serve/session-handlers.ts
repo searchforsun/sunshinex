@@ -206,8 +206,10 @@ export async function handleSessionCharter(io: SessionHandlerIo, req: http.Incom
   const rev = (readSessionMeta(dataDir, jid).charterRev ?? 0) + 1;
   // 尾追替代行（裁定字面：英文单语,前缀行+空行+全文）——append-only 链行,运行中安全
   session.runtime.harness.context.appendChain([{ action: 'note', observation: `[charter v${rev}] supersedes the earlier charter; from now on follow the charter below.\n\n${text}` }]);
-  writeSessionMeta(dataDir, jid, { charterRev: rev });
-  session.noteCharterEdit(text); // 读面回写单点（P2 Task 7）：GET 预填=当前全文,非出生冻结层旧文
+  // meta 同拍双键（fix round 1）：charterRev 序次 + charterText 当前全文（读面持久事实源——重启
+  // 重开 reCast 读 meta.charterText,编辑文跨重启存活;快照 sig.charter 是出生冻结层恒不随编辑动）
+  writeSessionMeta(dataDir, jid, { charterRev: rev, charterText: text });
+  session.noteCharterEdit(text); // 读面内存跟进（在座窗 GET 预填=当前全文,非出生冻结层旧文）
   io.send(res, 200, { ok: true, charterRev: rev });
 }
 

@@ -609,6 +609,65 @@ test('⑨b charter 读面（sunx P2 Task 7）：GET /session/:id/charter 返回�
   });
 });
 
+test('⑨c charter 读面跨窗一致（fix round 1）：编辑→重启→重开 GET 返回编辑文（rev 一致）；reset→GET 返回出生文；无出生 charter 的未跑会话编辑后同窗覆盖', async () => {
+  const model = new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']);
+  await withDaemon(model, async (ctx) => {
+    const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
+    const HGET = { authorization: 'Bearer test-token' };
+    const sunxRoot = tmpdir('sunshinex-serve-charter-drift-root-');
+    try {
+      // 窗 1（重启重开流）：编辑后重启重开——reCast 品性源=meta.charterText（编辑文跨重启），
+      // 非快照 sig.charter（出生冻结层恒不随编辑动——修复前读面回退出生文而模型面链回放含替代
+      // 行跟编辑文=漂移）
+      const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH DRIFT' });
+      const e1 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'EDITED DRIFT' }) });
+      assert.equal(e1.status, 200);
+      assert.deepEqual(await e1.json(), { ok: true, charterRev: 2 });
+      const jid = ctx.daemon.get(sid)!.attachedJournalId;
+      assert.ok(jid !== undefined);
+      await withRestartedDaemon(model, async (http2) => {
+        const shell = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
+        assert.equal(shell.status, 200);
+        const shellId = ((await shell.json()) as { sessionId: string }).sessionId;
+        const ar = await fetch(`${http2}/session/${shellId}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
+        assert.equal(ar.status, 200);
+        const g = await fetch(`${http2}/session/${shellId}/charter`, { headers: HGET });
+        assert.equal(g.status, 200);
+        assert.deepEqual(await g.json(), { text: 'EDITED DRIFT', charterRev: 2 }, '重开读面=编辑文+rev 一致（meta.charterText 源，非快照出生文）');
+      });
+
+      // 窗 2（软 reset 流）：reset 换新运行时=链清空+新上下文挂出生品性层——读面归出生文
+      // （修复前 charterCurrent 保留 reset 前编辑文=GET 返回模型已不跟的文）
+      const sid2 = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH RESET' });
+      const e2 = await fetch(`${ctx.http}/session/${sid2}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'EDITED RESET' }) });
+      assert.deepEqual(await e2.json(), { ok: true, charterRev: 2 });
+      const rs = await fetch(`${ctx.http}/session/${sid2}/reset`, { method: 'POST', headers: { authorization: 'Bearer test-token' } });
+      assert.equal(rs.status, 200);
+      const g2 = await fetch(`${ctx.http}/session/${sid2}/charter`, { headers: HGET });
+      assert.deepEqual(await g2.json(), { text: 'BIRTH RESET', charterRev: 2 }, 'reset 后读面=出生文（rev 计数器累计语义不变）');
+
+      // 边界（Minor 4 同源）：无出生 charter 的未跑 sunx——编辑落 meta.charterText 后重开读面=
+      // 编辑文（修复前 reCast 源=快照 sig.charter=null → GET text:null 遮蔽编辑）
+      const sid3 = await newSunxSession(ctx.http, { root: sunxRoot });
+      const e3 = await fetch(`${ctx.http}/session/${sid3}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'EDITED NO-BIRTH' }) });
+      assert.deepEqual(await e3.json(), { ok: true, charterRev: 2 });
+      const jid3 = ctx.daemon.get(sid3)!.attachedJournalId;
+      assert.ok(jid3 !== undefined);
+      await withRestartedDaemon(model, async (http2) => {
+        const shell = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
+        assert.equal(shell.status, 200);
+        const shellId = ((await shell.json()) as { sessionId: string }).sessionId;
+        const ar = await fetch(`${http2}/session/${shellId}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid3 }) });
+        assert.equal(ar.status, 200);
+        const g = await fetch(`${http2}/session/${shellId}/charter`, { headers: HGET });
+        assert.deepEqual(await g.json(), { text: 'EDITED NO-BIRTH', charterRev: 2 }, '无出生 charter：编辑文经 charterText 跨重启（快照 sig.charter=null 不遮蔽）');
+      });
+    } finally {
+      fs.rmSync(sunxRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 test('⑩ 换铸存活：reset 换新运行时后 sunx face 仍白名单、稳定段仍含章程、品性层仍带 charter；setMode 直切亦存活', async () => {
   await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async (ctx) => {
     const sunxRoot = tmpdir('sunshinex-serve-reset-root-');

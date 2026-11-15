@@ -160,16 +160,20 @@ export interface SessionSidecarMeta {
   kind?: string;
   /** 品性替代序次(改品性=尾追替代行,+1/次;缺席=初版未替代)——实例身份三元组的第三面 */
   charterRev?: number;
+  /** 品性当前全文(sunx P2 Task 7 fix round 1):POST /charter 编辑时与 charterRev 同拍落盘——
+   *  attach reCast 品性读面的事实源(charterLayer 构造即冻结恒出生文,快照 sig.charter 不随编辑动;
+   *  缺席=未编辑过,回落快照出生文——旧档/未编辑会话字节不变) */
+  charterText?: string;
 }
 
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds', 'root',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
-  'archived', 'archivedAt', 'sideCount', 'sideOf', 'sideSeq', 'rewoundTo', 'kind', 'charterRev',
+  'archived', 'archivedAt', 'sideCount', 'sideOf', 'sideSeq', 'rewoundTo', 'kind', 'charterRev', 'charterText',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流）。root（2026-11-11 根修）：
  *  写侧早已落盘、读侧漏列=按数字键校验被丢——列表行/attach 归位恒读不到真根(树会话重启回主分支/hover 主根真根因) */
-const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo', 'root', 'kind']);
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo', 'root', 'kind', 'charterText']);
 /** 布尔值键（G14.29 side 辅助会话标记 / archived 归档标记） */
 const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side', 'archived']);
 
