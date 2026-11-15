@@ -153,7 +153,36 @@ test('memory:true agent → fork 私有尾块含自有记忆索引（role < memo
   });
 });
 
-test('未声明 memory 的 agent → 无记忆行、无自有目录（目录注册制与内建预设两形态）', async () => {
+test('chain 形态 fork 种子含调度者上下文分界行（先于角色/任务行）；bare 干净种子不含（2026-11-15）', async () => {
+    await withEnv(undefined, async (tmp) => {
+      const h = (() => {
+        const root = path.join(tmp, 'root');
+        writeAgentMaterials(root);
+        return makeHarness(tmp);
+      })();
+      const scripted = new ScriptedAdapter([JSON.stringify({ done: true, reply: 'ok' })]);
+      const { model, prompts } = capturePrompts(scripted);
+      const runner = h.makeRunner(model);
+      // 父链先有现场（分界行仅在 base 非空=chain 形态注入；空链派发=等价干净种子，设计如此）
+      h.context.appendChain([{ action: 'note', observation: '调度者现场：先前已完成的调研记录' }]);
+      // chain 形态（缺省）：父链非空 → 分界行居首，先于角色行与任务行
+      await runner.runSubagent({ agent_id: 'plain', prompt: '链形态任务' });
+      const chainFrame = prompts[prompts.length - 1];
+      const boundaryPos = chainFrame.indexOf('background from the dispatching session');
+      const rolePos = chainFrame.indexOf('Your role:');
+      const taskPos = chainFrame.lastIndexOf('链形态任务');
+      assert.ok(boundaryPos >= 0, 'chain 形态帧应含分界行');
+      assert.ok(rolePos >= 0 && taskPos >= 0, '帧应含角色行与任务行');
+      assert.ok(boundaryPos < rolePos && rolePos < taskPos, `分界行应先于角色/任务行：${boundaryPos} ${rolePos} ${taskPos}`);
+      // bare 干净种子：无上文，分界行不注入（无边界可声明）
+      await runner.runSubagent({ agent_id: 'plain', prompt: 'bare 任务' }, { bare: true });
+      const bareFrame = prompts[prompts.length - 1];
+      assert.ok(!bareFrame.includes('background from the dispatching session'), 'bare 种子不得注入分界行');
+      assert.ok(bareFrame.includes('bare 任务'), 'bare 帧应含任务行');
+    });
+  });
+
+  test('未声明 memory 的 agent → 无记忆行、无自有目录（目录注册制与内建预设两形态）', async () => {
   await withEnv(undefined, async (tmp) => {
     const h = (() => {
       const root = path.join(tmp, 'root');

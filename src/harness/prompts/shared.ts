@@ -95,7 +95,7 @@ export const SUNX_IDENTITY_LINE =
 
 /** 派发纪律：简报自包含契约（goal/事实/路径/约束/验收），worker 不可见主链对话（spec §「模糊委派」教训） */
 export const SUNX_BRIEF_LINE =
-  'Make every dispatch brief self-contained: state the goal, the relevant facts, file paths, constraints, and explicit ACCEPTANCE criteria — the worker cannot see this conversation.';
+  'Make every dispatch brief self-contained: state the goal, the relevant facts, file paths, constraints, and explicit ACCEPTANCE criteria — the worker works from the brief plus a frozen snapshot of this session taken at dispatch, never from live updates.';
 
 /** 分解上限指引（防「简单任务过度分解」）：2-5 路并行为主，只沿真实依赖缝再拆 */
 export const SUNX_DECOMPOSITION_LINE =

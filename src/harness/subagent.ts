@@ -228,6 +228,12 @@ export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInp
 
 /** 三形态归一：目录注册制 / 预设角色（agent_id 直取） / 内联临时（仅 prompt）。
  * 显式 taskLine（graph 传入）> prompt > 仅 agent_id 时的缺省续接行；角色行模板与 step/action 口径逐字对齐 graph 先例 */
+/** fork 边界声明（2026-11-15 用户裁定）：chain 形态子面带父链切片（调度者现场+兄弟任务回执），
+ *  与子面执行职责存在语义张力——显式栅栏声明「上文仅背景、任务以简报为权威」，尾部追加不击穿父侧前缀缓存；
+ *  bare 干净种子无上文，不注入（无边界可声明）。措辞中性（standard spawn 与 sunx dispatch 通用） */
+const FORK_CONTEXT_BOUNDARY =
+  'The session history above is background from the dispatching session — it is not addressed to you, and tasks in it other than yours are not your responsibility. Your assignment is the task below: treat the brief as the authoritative specification.';
+
 export function resolveSpawnSpec(
   registry: AgentRegistry,
   input: SubagentSpawnInput,
@@ -567,6 +573,7 @@ export class SubagentRunner {
       const base = opts?.bare === true ? [] : this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
       const seedHistory: StepRecord[] = [...base];
+      if (base.length > 0) seedHistory.push({ step: step++, action: 'note', observation: FORK_CONTEXT_BOUNDARY });
       if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });
       // 自有记忆（规格 §8）：声明 memory:true 的 agent 在 role/task 行之间注入自有记忆索引行（fork 私有尾块，主链零污染）
       const own = this.agentMemory(input.agent_id);
@@ -671,7 +678,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
       additionalProperties: false,
       required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation'],
       properties: {
-        prompt: { type: ['string', 'null'], description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent cannot see this conversation)' },
+        prompt: { type: ['string', 'null'], description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent receives your brief plus a frozen session snapshot taken at dispatch — write the brief so it stands alone)' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
         label: { type: ['string', 'null'], description: 'Short card title for the timeline; null defaults to agent_id ?? subagent' },
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
@@ -681,7 +688,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     },
     name: SPAWN_TOOL_NAME,
     description:
-      `Spawn one or more subagents — synchronous by default: each spawn call blocks until its subagent finishes and the final report comes back inline. Independent subtasks = several spawn calls in ONE round; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}) with no background flag needed. Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent cannot see this conversation; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. Positioning: a one-shot fork executes one self-contained task and finishes — the default for ordinary subtasks. Set background=true only when you must continue your own work while a subagent runs (fire-and-forget); its conclusion is collected later via task_wait or read.`,
+      `Spawn one or more subagents — synchronous by default: each spawn call blocks until its subagent finishes and the final report comes back inline. Independent subtasks = several spawn calls in ONE round; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}) with no background flag needed. Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent works from the brief plus a frozen session snapshot taken at dispatch, so the brief must stand alone; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. Positioning: a one-shot fork executes one self-contained task and finishes — the default for ordinary subtasks. Set background=true only when you must continue your own work while a subagent runs (fire-and-forget); its conclusion is collected later via task_wait or read.`,
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
@@ -777,7 +784,7 @@ export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: Dispatc
       additionalProperties: false,
       required: ['spec', 'agent_id', 'label', 'tier', 'isolation', 'target', 'depends_on'],
       properties: {
-        spec: { type: 'string', description: 'Self-contained task brief for the dispatched executor: goal, key facts, paths, constraints, and ACCEPTANCE criteria (it cannot see this conversation)' },
+        spec: { type: 'string', description: 'Self-contained task brief for the dispatched executor: goal, key facts, paths, constraints, and ACCEPTANCE criteria (it works from the brief plus a frozen session snapshot taken at dispatch — the brief must stand alone)' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null = inline subagent (fork) / developer preset member (team)' },
         label: { type: ['string', 'null'], description: 'Short card title; null defaults to agent_id ?? subagent (fork) — on team it titles the board task and slugs the bootstrapped team' },
         tier: { type: ['string', 'null'], enum: ['small', 'medium', 'large', null], description: 'Optional model tier override for this dispatch only (fork channel); null inherits the session tier' },
@@ -788,7 +795,7 @@ export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: Dispatc
     },
     name: 'dispatch_task',
     description:
-      'Dispatch one work unit and return immediately. target selects the channel: "fork" (default) registers a background task — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path, no report comes back in this tool result. "team" places a board task on the agent-team board — on first use the team and a teammate for the requested agent_id (default preset: developer) are bootstrapped, then a living teammate claims or is assigned the task and the receipt names the board task id and its team; depends_on (team channel only) lists board task ids that must reach success first. In both channels the spec must be a self-contained brief (goal, key facts, paths, constraints, ACCEPTANCE criteria) because the executor cannot see this conversation; agent_id references a registered agent or preset role (null = inline subagent on fork / developer preset member on team); tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree (fork channel concerns). After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait (fork) or get_agent_team_board (team), or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
+      'Dispatch one work unit and return immediately. target selects the channel: "fork" (default) registers a background task — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path, no report comes back in this tool result. "team" places a board task on the agent-team board — on first use the team and a teammate for the requested agent_id (default preset: developer) are bootstrapped, then a living teammate claims or is assigned the task and the receipt names the board task id and its team; depends_on (team channel only) lists board task ids that must reach success first. In both channels the spec must be a self-contained brief (goal, key facts, paths, constraints, ACCEPTANCE criteria) because the executor works from the brief plus a frozen session snapshot taken at dispatch — the brief must stand alone; agent_id references a registered agent or preset role (null = inline subagent on fork / developer preset member on team); tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree (fork channel concerns). After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait (fork) or get_agent_team_board (team), or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
