@@ -12,9 +12,9 @@ import { wakeOfRun, scheduledWakeOfRun, sessionRestoredOfRun, SCHEDULE_WAKE_TAG,
 import { isQuietNotice } from '../session/entry';
 import { reduceWakeScheduleRows } from '../session/seglog';
 import { WAKE_HINT } from '../harness/tasks';
-import { SessionJournal, parseJournalFile } from '../tui/session-journal';
-import { resolveDataDir } from '../config/data-dir';
-import { createSessionIn, attachSessionIn } from './session-lifecycle';
+import { SessionJournal, parseJournalFile, sessionsDir } from '../tui/session-journal';
+import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
+import { createSessionIn, attachSessionIn, attachSunxIn } from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';
 
 /** 控制器级 bg-wake 端到端（bg-wake spec §9 宿主集成，批D）：不起 HTTP——直构 SessionRuntime
@@ -628,11 +628,12 @@ function scheduleNotices(ents: ReturnType<SessionRuntime['sessionKernel']['repla
   return ents.filter((e) => e.kind === 'notice' && e.schedule === true);
 }
 
-/** journal 行读口（挂档会话）：parseJournalFile → 原始行列（wake-schedule 机制行断言源） */
+/** journal 行读口（挂档会话）：parseJournalFile → 原始行列（wake-schedule 机制行断言源）。
+ *  寻址随 dataDir 外窥（P3 Task 2 域绑定：sunx 域内档/standard=resolveDataDir 既有推导） */
 function journalRows(session: SessionRuntime): Array<Record<string, unknown>> {
   const jid = session.attachedJournalId;
   if (jid === undefined) return [];
-  const file = path.join(resolveDataDir(session.root), 'sessions', `${jid}.jsonl`);
+  const file = path.join(sessionsDir(session.dataDir), `${jid}.jsonl`);
   if (!fs.existsSync(file)) return [];
   return parseJournalFile(file).events as unknown as Array<Record<string, unknown>>;
 }
@@ -849,14 +850,13 @@ test('reset 终结已落档调度：软重置落 firedAt 终态行——重启 a
     const s1AfterReset = reduceWakeScheduleRows(journalRows(a)).find((r) => r.id === 'sched-1');
     assert.notEqual(s1AfterReset?.firedAt, undefined, 'reset 落 firedAt 终态行（重启重放面跳过的闸门）');
     await a.teardown();
-    // 进程 B（fresh io=真重启）：standard 壳 → attach 全序（rearmSchedules/reCast 在列）
+    // 进程 B（fresh io=真重启）：域重开链 attachSunxIn——壳出生即 sunx（P3 Task 2 域绑定;rearmSchedules
+    // 在 attachSessionIn 全链内随域档回放）
     const ioB = makeIo(new ScriptedAdapter(['post restart reply']), []);
-    const cB = createSessionIn(ioB, root);
-    assert.ok(cB.ok);
-    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
-    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const att = attachSunxIn(ioB, jid);
+    assert.ok(att.ok, `attachSunxIn: ${att.ok ? '' : att.error.message}`);
     const b = ioB.sessions.get(att.value.sessionId)!;
-    assert.equal(b.sessionKind, 'sunx', 'attach 全序走通（reCast 链生效）');
+    assert.equal(b.sessionKind, 'sunx', 'attach 全序走通（壳出生即 sunx 形态）');
     // 跨过 fireAt+裕量再断言：若有重布防，R7 补发路径此刻必起轮（负向断言有界等待）
     const remain = fireAt + 1_500 - Date.now();
     if (remain > 0) await new Promise((r) => setTimeout(r, remain));
@@ -929,9 +929,10 @@ function restoredNotices(ents: ReturnType<SessionRuntime['sessionKernel']['repla
 
 /** 存档行落盘（「第二实例写存档行」先例——重启前旧进程既存行）三件：
  *  板事件行（打开态板任务→下轮 init 自愈 cancelled）/ 台账行（异进程 running 孤儿→重放标 stopped）/
- *  挂起行（子智能体问线 ask open 无 resolve 对位→attach 重产素材） */
-function seedRestartRows(root: string, jid: string): void {
-  const dataDir = resolveDataDir(root);
+ *  挂起行（子智能体问线 ask open 无 resolve 对位→attach 重产素材）。
+ *  dataDir 直列入参（P3 Task 2 域绑定）：sunx 传域目录（sunxDomainDir(jid)）、standard 传
+ *  resolveDataDir(root) 既有推导 */
+function seedRestartRows(dataDir: string, jid: string): void {
   const teamsDir = path.join(dataDir, 'teams', jid, 'main');
   fs.mkdirSync(teamsDir, { recursive: true });
   fs.writeFileSync(
@@ -957,24 +958,22 @@ function seedRestartRows(root: string, jid: string): void {
 
 test('R9 恢复唤醒轮：重启→attach→自动起轮（板自愈+台账孤儿+挂起素材同轮；run 配对+安静清单+消费口）', { timeout: 40_000 }, async () => {
   await withProjectsRoot(async (root) => {
-    // 进程 A：sunx 会话铸档（meta.kind='sunx' 出生落档）→ 弃壳（无实质 run——存档行全部手落）
+    // 进程 A：sunx 会话出生即铸档（P3 Task 2 域绑定——meta.kind='sunx' 落域旁车）→ 弃壳（存档行全部手落域内）
     const ioA = makeIo(new ScriptedAdapter(['x']), []);
     const cA = createSessionIn(ioA, root, { kind: 'sunx' });
     assert.ok(cA.ok, `createSessionIn: ${cA.ok ? '' : cA.error.message}`);
     const a = ioA.sessions.get(cA.value.sessionId)!;
-    a.ensureJournalMinted();
     const jid = a.attachedJournalId!;
-    seedRestartRows(root, jid);
+    seedRestartRows(sunxDomainDir(jid), jid);
     await a.teardown();
-    // 进程 B（fresh io=真重启）：standard 壳 → attach 全序（reCast/rearm/素材回种）→ 收尾自动起恢复轮
+    // 进程 B（fresh io=真重启）：域重开链 attachSunxIn（rearm/素材回种在 attachSessionIn 全链内）
+    // → 收尾自动起恢复轮
     const framesB: DaemonFrame[] = [];
     const ioB = makeIo(new ScriptedAdapter(['restored reply']), framesB);
-    const cB = createSessionIn(ioB, root);
-    assert.ok(cB.ok);
-    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
-    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const att = attachSunxIn(ioB, jid);
+    assert.ok(att.ok, `attachSunxIn: ${att.ok ? '' : att.error.message}`);
     const b = ioB.sessions.get(att.value.sessionId)!;
-    assert.equal(b.sessionKind, 'sunx', 'reCast 链生效');
+    assert.equal(b.sessionKind, 'sunx', 'attachSunx 壳出生即 sunx 形态');
     // 恢复轮自动起跑：restored notice → run 固定序
     await waitFor(() => restoredNotices(b.sessionKernel.replay()).length > 0, 10_000);
     await waitFor(() => b.status() === 'idle', 15_000);
@@ -1016,14 +1015,11 @@ test('R9 全无素材静默不起轮：sunx 干净档 attach 零恢复轮（避�
     const cA = createSessionIn(ioA, root, { kind: 'sunx' });
     assert.ok(cA.ok);
     const a = ioA.sessions.get(cA.value.sessionId)!;
-    a.ensureJournalMinted();
-    const jid = a.attachedJournalId!;
+    const jid = a.attachedJournalId!; // 出生即铸档（P3 Task 2）
     await a.teardown();
     const ioB = makeIo(new ScriptedAdapter(['y']), []);
-    const cB = createSessionIn(ioB, root);
-    assert.ok(cB.ok);
-    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
-    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const att = attachSunxIn(ioB, jid);
+    assert.ok(att.ok, `attachSunxIn: ${att.ok ? '' : att.error.message}`);
     const b = ioB.sessions.get(att.value.sessionId)!;
     assert.equal(b.sessionKind, 'sunx');
     await new Promise((r) => setTimeout(r, 1_500)); // 负向断言有界等待
@@ -1042,7 +1038,7 @@ test('R9 standard 零触发：素材/打断在也零恢复轮（素材同产但�
     const a = ioA.sessions.get(cA.value.sessionId)!;
     a.ensureJournalMinted();
     const jid = a.attachedJournalId!;
-    seedRestartRows(root, jid); // 打断任务+素材都在——standard 仍零触发
+    seedRestartRows(resolveDataDir(root), jid); // 打断任务+素材都在——standard 仍零触发（档在 projects 缺省推导区）
     await a.teardown();
     const ioB = makeIo(new ScriptedAdapter(['y']), []);
     const cB = createSessionIn(ioB, root);

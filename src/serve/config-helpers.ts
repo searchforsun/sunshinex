@@ -320,11 +320,13 @@ export function effectiveKeyRow(
  *  记录文件口径 = 主目录直属 .md 且非派生索引 MEMORY.md（agents/ 子智能体子树与 .bak-* 快照目录
  *  不是主域记录，isFile 天然排除）；entries=记录文件数，lastWriteAt=最大 mtimeMs（无记录 →
  *  {entries:0, lastWriteAt:null}）。
+ *  dataDir（2026-11-15 sunx P3 Task 2 serve 面漏网清偿）：可选注入持久化域目录——随域统计（sunx
+ *  会话记忆在 ~/.sunshinex/sunx/<jid>/data/memory）；缺席=resolveDataDir(root) 既有推导（逐字节同今日）。
  *  只读面不走 MemoryStore 构造（其 mkdirSync 副作用会让 GET 建目录）——与 list() 的口径差异：
  *  坏记录（frontmatter 畸形）按文件计——stats 是盘面概览非解析视图；枚举与 stat 间的竞态移除
  *  按已计不重扫（概览面尽力而为，同 loadSkillsFrom 姿态） */
-export function memoryStats(root: string): { entries: number; lastWriteAt: number | null } {
-  const dir = memoryDir(root);
+export function memoryStats(root: string, dataDir?: string): { entries: number; lastWriteAt: number | null } {
+  const dir = memoryDir(root, dataDir);
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });

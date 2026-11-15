@@ -5,13 +5,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { SessionRuntime } from './session';
 import type { SessionRuntimeOpts } from './session';
-import { createSessionIn, attachSessionIn } from './session-lifecycle';
+import { createSessionIn, attachSessionIn, attachSunxIn } from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { DaemonFrame } from './daemon-wire';
 import { reducePendingRows } from '../session/seglog';
-import { SessionJournal, parseJournalFile } from '../tui/session-journal';
+import { SessionJournal, parseJournalFile, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
 
 /** 挂起持久化（2026-11-15 sunx P2 Task 4）控制器级端到端（不起 HTTP——session.wake.test.ts 直构形态）：
@@ -48,7 +48,7 @@ function askCard(question: string, labels: string[]): string {
 function journalRows(session: SessionRuntime): Array<Record<string, unknown>> {
   const jid = session.attachedJournalId;
   if (jid === undefined) return [];
-  const file = path.join(resolveDataDir(session.root), 'sessions', `${jid}.jsonl`);
+  const file = path.join(sessionsDir(session.dataDir), `${jid}.jsonl`); // 寻址随 dataDir 外窥（P3 Task 2 域绑定）
   if (!fs.existsSync(file)) return [];
   return parseJournalFile(file).events as unknown as Array<Record<string, unknown>>;
 }
@@ -269,15 +269,14 @@ test('attach 回放（sunx 重启合同）：真挂起→弃壳不回填→fresh
     assert.equal(openRows.length, 1, '挂起即行落档');
     // 弃壳不回填：A teardown（abort 收口——ask 挂起无 resolve 对位=daemon 重启蒸发原样）
     await a.teardown();
-    // 进程 B（fresh io=真重启）：GUI 重开链形态——standard 出生态壳 + attach 重放（meta.kind='sunx' 触发 reCast）
+    // 进程 B（fresh io=真重启）：域重开链 attachSunxIn——壳出生即 sunx 形态（P3 Task 2 域绑定后,
+    // 旧 standard 壳+attachSessionIn 链不达域档;重铸语义由构造期 sunx 形态承载,播种全在其后）
     const framesB: DaemonFrame[] = [];
     const ioB = makeIo(new ScriptedAdapter([DONE('y')]), framesB);
-    const cB = createSessionIn(ioB, root);
-    assert.ok(cB.ok);
-    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
-    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const att = attachSunxIn(ioB, jid);
+    assert.ok(att.ok, `attachSunxIn: ${att.ok ? '' : att.error.message}`);
     const b = ioB.sessions.get(att.value.sessionId)!;
-    assert.equal(b.sessionKind, 'sunx', 'reCast 链生效（壳重铸为 sunx）');
+    assert.equal(b.sessionKind, 'sunx', 'attachSunx 壳出生即 sunx 形态');
     // 素材清单产出（接口形态逐字段：问题原文+选项 label 列,主链直问 askedBy 缺席）→ **R9 恢复轮
     // 自动起跑即消费**（2026-11-15 sunx P2 Task 5——sunx attach 收尾起恢复轮,起跑成功 clear 本实例;
     // 素材内容面转入恢复轮 notice 正文,行推导幂等二次 attach 重产=预期）。素材产出形态的逐字段

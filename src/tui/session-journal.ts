@@ -1006,6 +1006,14 @@ export class SessionJournal {
     this.startId(newSessionId(), version);
   }
 
+  /** 预铸 id 建档（2026-11-15 sunx P3 Task 2「先铸 id 再建档」缝）：sunx 出生即铸档——域目录路径依赖
+   *  journalId（sunxDomainDir 单点），id 须先于域目录存在。写面同 startId（header 立即落盘），仅 id 由
+   *  调用方给定；已建档幂等 no-op（start 同守卫）。standard 惰性建档（start）路径零变化 */
+  startWithId(id: string, version = 3): void {
+    if (this.id) return;
+    this.startId(id, version);
+  }
+
   /** 轮转（/new）：换新 id，新 header 立即写盘（旧档已在盘零改动）；v3=段级词汇单形态（P11-T2 起 TUI 档 v3） */
   rotate(id: string, version = 3): void {
     this.startId(id, version);

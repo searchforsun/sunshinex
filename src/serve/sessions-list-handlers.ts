@@ -162,7 +162,7 @@ export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerRespo
     const attached = session.attachedJournalId;
     if (attached === undefined) return io.send(res, 404, { error: 'session has no journal' });
     jid = attached;
-    dataDir = resolveDataDir(session.root);
+    dataDir = session.dataDir; // 域绑定寻址（P3 Task 2）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   } else {
     if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
     const owner = findJournalOwner(projectsRoot(), id);

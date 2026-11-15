@@ -41,6 +41,16 @@ export function sessionTeamsRoot(dataDir: string, journalId: string): string {
   return path.join(dataDir, 'teams', journalId);
 }
 
+/** sunx 持久化域目录（2026-11-15 sunx P3 Task 2 落位单点）：`~/.sunshinex/sunx/<journalId>/data`——
+ *  一 Sunx 一持久化项目域（链/转录/品性/台账/板/记忆/调度/挂起审计全落域内）；容器 `~/.sunshinex/sunx/`
+ *  独立于 projects/（workspaces 枚举/birth-only 清扫/归档边界天然不波及）。journalId 即域键（出生即铸档
+ *  先铸 id——域路径依赖它），同 root 多实体各自独立目录零共享。显式不读 SUNSHINEX_DATA_DIR/SUNSHINEX_PROJECTS_DIR
+ *  （域容器锚用户配置根——测试经 HOME 重定向），不 mkdir（写入面各自 recursive 建目录）。GUI 不感知
+ *  物理路径——端点寻址 journalId 即可 */
+export function sunxDomainDir(journalId: string): string {
+  return path.join(userConfigDir(), 'sunx', journalId, 'data');
+}
+
 /** worktree 树识别(2026-11-10):树根 .git 是**文件**(gitdir: 指针→主仓 .git/worktrees/<name>/)
  *  且旁边有 sunshinex-mainroot 标记(建树时写入主项目根)→ 返回主项目根;普通工作区/主仓(.git 是
  *  目录)undefined。resolveDataDir 据此重定向(会话档/记忆/技能归主项目),session-lifecycle 据此

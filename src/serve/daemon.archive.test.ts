@@ -6,8 +6,8 @@ import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { resolveDataDir } from '../config/data-dir';
-import { parseJournalFile } from '../tui/session-journal';
+import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
+import { parseJournalFile, readSessionMeta } from '../tui/session-journal';
 import { reduceSegRows } from '../session/seglog';
 
 /** 挂起适配器(同 daemon.gui-state.test.ts 惯例):模型调用永挂直至 signal 中止——running 409
@@ -184,15 +184,15 @@ test('列表滤除:archived 会话退出 /sessions 与 /sessions/recent;GET /ses
   });
 });
 
-test('archived 行 kind 透出（sunx P2 Task 7）：sunx 会话归档后归档行带 kind:"sunx"（归档行徽标数据源）；standard 行零 kind 键', async () => {
-  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp }) => {
+test('archived 行 kind 透出（sunx P2 Task 7）：sunx 会话归档标记落域旁车（archived+kind:"sunx" 随域档——域容器枚举归 Task 3）；standard 归档行经 /sessions/archived 聚合零 kind 键', async () => {
+  await withDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), async ({ base, tmp, daemon }) => {
     const root = path.join(tmp, 'sunshinex-default');
     fs.mkdirSync(root, { recursive: true });
     const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root, kind: 'sunx' }) });
     const { sessionId } = (await created.json()) as { sessionId: string };
     await fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: '跑一轮' }) });
     await waitStatus(base, sessionId, 'idle');
-    const jid = fs.readdirSync(path.join(resolveDataDir(root), 'sessions')).filter((f) => f.endsWith('.jsonl'))[0]!.replace(/\.jsonl$/, '');
+    const jid = daemon.get(sessionId)!.attachedJournalId!;
     // 对照组 standard 会话（同 root）
     const std = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root }) });
     const stdId = ((await std.json()) as { sessionId: string }).sessionId;
@@ -201,11 +201,18 @@ test('archived 行 kind 透出（sunx P2 Task 7）：sunx 会话归档后归档�
     const dir = path.join(resolveDataDir(root), 'sessions');
     const stdJid = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => f.replace(/\.jsonl$/, '')).find((id) => id !== jid)!;
 
-    await fetch(`${base}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    // sunx：在座路径（sessionId 寻址→session.dataDir 域旁车；journalId 磁盘寻址扫 projects 区,
+    // 域容器寻址语义=Task 3 范围）
+    await fetch(`${base}/session/${sessionId}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
     await fetch(`${base}/session/${stdJid}/archive`, { method: 'POST', headers: AUTH, body: '{}' });
+    // sunx：归档标记落域旁车（archived+kind 同档存活——P3 Task 2 域绑定；跨域枚举/徽标行=Task 3）
+    const sunxMeta = readSessionMeta(sunxDomainDir(jid), jid);
+    assert.equal(sunxMeta.archived, true, 'sunx 归档标记落域旁车');
+    assert.equal(sunxMeta.kind, 'sunx', 'sunx 归档后域旁车 kind 仍 sunx');
+    // standard：跨工作区聚合行零 kind 键（projects 区清单行为不变）
     const archived = (await (await fetch(`${base}/sessions/archived`, { headers: AUTH })).json()) as Array<{ id: string; kind?: string }>;
-    assert.equal(archived.find((r) => r.id === jid)?.kind, 'sunx', 'sunx 归档行带 kind');
     assert.equal(archived.find((r) => r.id === stdJid)?.kind, undefined, 'standard 归档行零 kind 键');
+    assert.equal(archived.some((r) => r.id === jid), false, 'sunx 域不进 projects 区归档聚合（域容器枚举=Task 3）');
   });
 });
 

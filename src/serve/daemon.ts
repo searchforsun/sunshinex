@@ -588,6 +588,11 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 2026-11-04 计划页签数据面：数据目录计划书清单（名/绝对路径/末次生成时刻，mtime 降序——PlansTab 消费）
     { method: 'GET', path: '/session/:id/plans', auth: true, run: async (req, res, p) => fileHandlers.handlePlans(this.sessionIo, req, res, p.id) },
     { method: 'POST', path: '/session/:id/attach', auth: true, run: (req, res, p) => this.handleAttach(req, res, p.id) },
+    // sunx 重开链（2026-11-15 sunx P3 Task 2）：POST /sunx/attach {journalId}——容器按 journalId 定位域
+    // 目录,壳出生即 sunx 形态+attachSessionIn 全链复用（reCast/播种/重布防/恢复轮）。INVALID_ARG→400
+    // （未知域/坏 id/根缺场）/INVALID_STATE→409（在座运行中竞争）；200 {ok,sessionId,root}（并置激活）。
+    // GUI 侧 Task 3 切数据源——本端点为 connection.attachSunx 封装的就绪面
+    { method: 'POST', path: '/sunx/attach', auth: true, run: (req, res) => this.handleSunxAttach(req, res) },
     // 2026-10-21 归档面:双寻址(daemon 会话 id 或 journalId)+ 跨工作区归档列表(归档页消费)
     { method: 'POST', path: '/session/:id/archive', auth: true, run: async (req, res, p) => {
         const parsed = await this.readJson(req);
@@ -1113,7 +1118,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         return;
       }
       jid = attached;
-      dataDir = resolveDataDir(session.root);
+      dataDir = session.dataDir; // 域绑定寻址（P3 Task 2）：sunx 随域,standard=resolveDataDir 既有推导字节不变
     } else {
       if (!validSessionId(id)) {
         this.send(res, 400, { error: 'invalid session id' });
@@ -1624,6 +1629,27 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
 
   private async handleAttach(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
     await sessionHandlers.handleAttach(this.sessionIo, req, res, id);
+  }
+
+  /** POST /sunx/attach {journalId}（2026-11-15 sunx P3 Task 2）：sunx 重开链——薄委托
+   *  lifecycle.attachSunxIn（域定位/壳铸造/attach 全链都在单点）；body 形判 400 面与 handleAttach 同口径 */
+  private async handleSunxAttach(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) {
+      this.send(res, parsed.status, { error: parsed.error });
+      return;
+    }
+    const journalId = (parsed.body as { journalId?: unknown } | null)?.journalId;
+    if (typeof journalId !== 'string' || journalId.length === 0) {
+      this.send(res, 400, { error: 'journalId must be a non-empty string' });
+      return;
+    }
+    const r = lifecycle.attachSunxIn(this.lifecycleIo, journalId);
+    if (!r.ok) {
+      this.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
+      return;
+    }
+    this.send(res, 200, { ok: true, sessionId: r.value.sessionId, root: r.value.root });
   }
 
   private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {

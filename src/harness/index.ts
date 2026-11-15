@@ -307,7 +307,10 @@ export class Harness {
       // 包一层透传 dataDir（缺席=原函数引用原样，逐字节同今日）
       memory: opts.dataDir !== undefined ? (req) => guardMemoryWrite({ ...req, dataDir: opts.dataDir }) : guardMemoryWrite,
       memoryWrite: (input) => {
-        const r = writeMemoryFact({ root: base, dataDir: opts.dataDir, ...input });
+        // 注入键置尾（2026-11-15 sunx P3 Task 2 清偿加固）：dataDir/root 展开在 input 之后——工具入参
+        // 面永远覆盖不了域绑定与安全根（此前 dataDir 在前,input 携带同名键即可静默改道落盘区）；
+        // 缺席（undefined）与缺席键同形（writeMemoryFact/MemoryStore 内 ?? 推导,逐字节同今日）
+        const r = writeMemoryFact({ ...input, root: base, dataDir: opts.dataDir });
         // 记忆清单变点直播(GUI 记忆页签主动重拉;与沉淀管线 catalog-changed 同形)
         if (r.ok) opts.onEvent?.({ type: 'catalog-changed', payload: { kind: 'memory' }, ts: Date.now() });
         return r;

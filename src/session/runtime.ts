@@ -55,6 +55,9 @@ export interface KernelRuntimeOpts {
    *  buildHarness（装配单点收编其内）；缺席=resolveDataDir(root) 既有推导（零变化）。后续任务给
    *  sunx 会话注入 ~/.sunshinex/sunx/<journalId>/data */
   dataDir?: string;
+  /** 学习沉淀开关（2026-11-15 sunx P3 Task 2）：与 HarnessOptions.learnSkills 同名同域——sunx 装配
+   *  传 false（编排轮不沉淀伪技能，P2 遗留义务清偿）；缺席=既有推导（resolveMemoryConfig）零变化 */
+  learnSkills?: boolean;
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
@@ -94,6 +97,8 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.charter !== undefined ? { charter: opts.charter } : {}),
     // 持久化域目录透传（2026-11-15 sunx P3 Task 1 注入缝）：缺席=既有推导零变化
     ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
+    // 学习沉淀开关透传（2026-11-15 sunx P3 Task 2）：缺席=既有推导零变化
+    ...(opts.learnSkills !== undefined ? { learnSkills: opts.learnSkills } : {}),
   });
   // 工具面选择（2026-11-15 sunx P1 Task 3）：sunx 会话主链 face=白名单派生单点（SUNX_FACE_TOOLS 常量，
   // 与装配注册/测试同源）——loop 主链模型面（loopDeps.registry）与 TUI 呈现表（displayMeta）同源消费

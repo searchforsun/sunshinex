@@ -8,10 +8,11 @@ import { SessionRuntime } from './session';
 import type { DaemonFrame } from './daemon-wire';
 import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
-import { SessionJournal, journalDisplayTitle, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../tui/session-journal';
+import { SessionJournal, journalDisplayTitle, newSessionId, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../tui/session-journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import type { RestoredInterrupted } from '../session/wake';
-import { projectsRoot, projectSlug, resolveDataDir, worktreeMainRootOf } from '../config/data-dir';
+import { projectsRoot, projectSlug, resolveDataDir, sunxDomainDir, worktreeMainRootOf } from '../config/data-dir';
+import { validSessionId } from './session-id';
 
 /**
  * 会话生命周期域(2026-10-27 技术债轮 自 daemon.ts 外提,D31 骨架域续批,行为零变化):
@@ -84,9 +85,13 @@ export interface CreateSessionOpts {
  * T2:出生即挂新 SessionJournal(`new SessionJournal(dataDir)` 惰性建档——首 run 首条 chain append
  *  才落盘建新档,档 id 同源 newSessionId();空会话零文件,TUI 惰性先例同构)——首 run 起链持久,
  *  后续 /sessions 列档与 attach 重开(chain 派生转录)可消费。
- * sunx 装配（2026-11-15 P1 Task 4）：kind/name/charter 三键透传 SessionRuntime 实例字段（换铸不丢）；
- *  出生 meta（kind/title/charterRev:1）由 SessionRuntime.ensureMintedWithBirth 跟既有 birth 链路
- *  落档——本面零提前建档（幽灵会话语义不变式保持）。
+ * sunx 装配（2026-11-15 P1 Task 4）：kind/name/charter 三键透传 SessionRuntime 实例字段（换铸不丢）。
+ * sunx 出生即铸档（2026-11-15 P3 Task 2 用户裁定「放弃惰性建档——持久化实体语义：出生即存在」）：
+ * journalId 先铸（域路径依赖它）→ 域目录 `~/.sunshinex/sunx/<journalId>/data` mkdir → SessionRuntime
+ * 注入 dataDir=域 → SessionJournal.startWithId 建档 header（无实质事件也建档）→ attachJournal 绑域内档
+ * → ensureSunxBirth 补出生行（ctx-snap 快照冻结起点+出生 meta kind/title/charterRev:1/root）。跳过
+ * workspace.json 注册（sunx 域不进 /workspaces——连 resolveDataDir 都不调,缺省区零副作用）。standard
+ * 惰性建档不变（出生写收口:首实质事件落档时铸造,幽灵会话语义原样）。
  */
 export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: CreateSessionOpts): Result<{ sessionId: string }> {
   const abs = root === DEFAULT_ROOT_LITERAL ? defaultScratchRoot() : path.resolve(root);
@@ -97,21 +102,35 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     return fail('INVALID_ARG', `root does not exist: ${abs}`);
   }
   if (!st.isDirectory()) return fail('INVALID_ARG', `root is not a directory: ${abs}`);
-  const dataDir = resolveDataDir(abs);
-  if (worktreeMainRootOf(abs) === undefined) {
-    // 树会话不注册工作区(2026-11-10 用户报障「树会话自立伪项目 wt-*」根修):写入会**覆写主项目
-    // workspace.json**(resolveDataDir 已重定向同目录)——/workspaces 反解出树路径,侧栏多出伪项目
-    // 且主项目行根错乱。树会话归主项目分组,注册面跳过
-    try {
-      fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root: abs }) + '\n', 'utf8');
-    } catch {
-      // 落档尽力:写失败只让 /workspaces 降级 slug-only,不影响会话装配
+  const isSunx = opts?.kind === 'sunx';
+  // standard：workspace.json 注册（树会话跳过——既有裁定原样）；sunx：整块跳过（域不进 /workspaces）
+  let dataDir: string | undefined;
+  if (!isSunx) {
+    dataDir = resolveDataDir(abs);
+    if (worktreeMainRootOf(abs) === undefined) {
+      // 树会话不注册工作区(2026-11-10 用户报障「树会话自立伪项目 wt-*」根修):写入会**覆写主项目
+      // workspace.json**(resolveDataDir 已重定向同目录)——/workspaces 反解出树路径,侧栏多出伪项目
+      // 且主项目行根错乱。树会话归主项目分组,注册面跳过
+      try {
+        fs.mkdirSync(dataDir, { recursive: true });
+        fs.writeFileSync(path.join(dataDir, 'workspace.json'), JSON.stringify({ root: abs }) + '\n', 'utf8');
+      } catch {
+        // 落档尽力:写失败只让 /workspaces 降级 slug-only,不影响会话装配
+      }
     }
   }
   // 会话 id(2026-10-23 用户裁定):sun-{项目摘要12}-{随机8}——退役 s<n> 单调草档(重启即重号、
   // 跨项目不可归因);项目段=工作区 slug 摘要尾(确定性,会话 id 即可见归属),随机段单进程防撞
   const id = mintSessionId(io.sessions, abs);
+  // sunx 出生即铸档（P3 Task 2）：journalId 先铸（纯铸造零 IO）——域目录路径=sunxDomainDir(journalId)
+  // 依赖它；域目录先于档存在（journal header 随后落域内 sessions/）
+  let domainDir: string | undefined;
+  let journalId: string | undefined;
+  if (isSunx) {
+    journalId = newSessionId();
+    domainDir = sunxDomainDir(journalId);
+    fs.mkdirSync(domainDir, { recursive: true });
+  }
   // P6 §4 挂起表下沉会话:daemon 只注入网络寻址两接缝(mintPid/broadcast)——注册/守卫(ghost 硬化
   // isAborted/manual 档位判定)/组帧/回执全部在 SessionRuntime 挂起面(suspendApproval/suspendAsk)
   const session = new SessionRuntime({
@@ -126,16 +145,23 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     ...(opts?.kind !== undefined ? { kind: opts.kind } : {}),
     ...(opts?.name !== undefined ? { name: opts.name } : {}),
     ...(opts?.charter !== undefined ? { charter: opts.charter } : {}),
+    // 域绑定（2026-11-15 sunx P3 Task 2）：dataDir=域——持久化数据面全落域,handler 寻址走 dataDir 外窥
+    ...(domainDir !== undefined ? { dataDir: domainDir } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);
   io.setActive(id);
-  // T2 出生 journal:挂载即接 onContextChange 续写链
-  session.attachJournal(new SessionJournal(dataDir));
-  // 出生写收口(2026-10-31 用户实测「幽灵会话」根因修):出生档改在**首次实质事件落档时**铸造
-  // (hookJournalSink append 分支 start 后即补 ctx-snap 出生行)——占座壳(目录视图锚定等从未
-  // 跑过事件的 newSession)不再产生可见档,侧栏无幽灵;真会话首条事件即 header→ctx-snap→chain,
-  // 快照冻结起点不变量保持(重开精确)
+  // T2 出生 journal:挂载即接 onContextChange 续写链。standard=惰性建档（首实质事件才落盘——幽灵
+  // 会话语义原样）;sunx=出生即铸档（startWithId 以预铸 id 落 header+ensureSunxBirth 补出生行——
+  // 持久化实体语义:出生即存在）
+  if (isSunx && domainDir !== undefined && journalId !== undefined) {
+    const journal = new SessionJournal(domainDir);
+    journal.startWithId(journalId, 3);
+    session.attachJournal(journal);
+    session.ensureSunxBirth();
+  } else {
+    session.attachJournal(new SessionJournal(dataDir!));
+  }
   // 任务14 双向同步:会话打开即挂项目配置监听(.sunshinex 缺失由 daemon 侧守护降级跳过——
   // 缺失目录不产告警;目录补建后下次会话打开重试即真实生效,watchXxx 幂等)
   io.watchProject(abs);
@@ -170,9 +196,9 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
           // 内存收编了,盘面 birth-only 档还在——/sessions 列表每次点击多一行「新会话」孤儿。
           // 仅零实质行档可删(birthOnlyFile 守卫从严,真档绝不触碰)
           const shellJid = shell.attachedJournalId;
-          if (shellJid !== undefined && birthOnlyFile(sessionsDir(resolveDataDir(shell.root)), `${shellJid}.jsonl`)) {
+          if (shellJid !== undefined && birthOnlyFile(sessionsDir(shell.dataDir), `${shellJid}.jsonl`)) {
             try {
-              fs.rmSync(path.join(sessionsDir(resolveDataDir(shell.root)), `${shellJid}.jsonl`), { force: true });
+              fs.rmSync(path.join(sessionsDir(shell.dataDir), `${shellJid}.jsonl`), { force: true });
             } catch {
               /* 单文件收口失败不阻塞收编(下次启动清扫兜底) */
             }
@@ -189,7 +215,7 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   // （仅 header+ctx-snap 行,零实质内容）——此类档不构成「已挂载」,放行换挂真档（否则 GUI 重开
   // 的 newSession+attach 流程被出生写全数 409）;已落实质行的档守卫照旧（防档双写）
   const prevJournalId = session.attachedJournalId;
-  if (prevJournalId !== undefined && !birthOnlyJournal(session.root, prevJournalId)) {
+  if (prevJournalId !== undefined && !birthOnlyJournal(session.dataDir, prevJournalId)) {
     return fail('INVALID_STATE', 'session already has an attached journal');
   }
   if (session.status() === 'running') return fail('INVALID_STATE', 'cannot attach while a run is in progress');
@@ -199,15 +225,16 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   // =跑在错误工作区无人察觉)。档记根在盘即重挂壳根(unwatch 旧根 refcount 守护,watch 新根幂等),
   // 装配/转录/改动面从此以真根行走;根目录已删(树被手清)则维持壳根不阻断恢复。
   // meta 一次性整读（2026-11-15 final review fix wave）：root 归位外兼读 kind/title——sunx 重铸
-  // 判据（kind）与重铸名源（title）同拍取用,零二次读盘
-  const meta = readSessionMeta(resolveDataDir(session.root), journalId);
+  // 判据（kind）与重铸名源（title）同拍取用,零二次读盘。寻址随 dataDir 外窥（P3 Task 2 域绑定：
+  // sunx 档在 ~/.sunshinex/sunx/<jid>/data——缺席=resolveDataDir(root) 既有推导,standard 字节不变）
+  const meta = readSessionMeta(session.dataDir, journalId);
   const metaRoot = meta.root;
   if (metaRoot !== undefined && metaRoot !== session.root && fs.existsSync(metaRoot)) {
     io.unwatchProject(session.root);
     session.rehomeRoot(metaRoot);
     io.watchProject(metaRoot);
   }
-  const dataDir = resolveDataDir(session.root);
+  const dataDir = session.dataDir;
   const file = path.join(sessionsDir(dataDir), `${journalId}.jsonl`);
   if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown journalId: ${journalId}`);
   const replayEvents = parseJournalFile(file).events;
@@ -341,10 +368,72 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   return ok({ sessionId: id, root: session.root });
 }
 
+/**
+ * sunx 重开链（2026-11-15 sunx P3 Task 2）：按 journalId 定位域目录（sunxDomainDir 单点推导——
+ * journalId 即域键,确定性寻址强于扫容器;容器无此域=INVALID_ARG unknown sunx session）→ 壳
+ * newSession（kind='sunx'/dataDir=域/name=meta.title/charter=meta.charterText ?? 档上出生快照
+ * sig.charter ?? null）→ attachSessionIn 既有全链复用（reCast 守卫天然跳过——壳出生即 sunx 形态；
+ * restoreSession/kernelSeed/seedTodoBatches/steerSeed/seedShadow/快照回种/rearmSchedules/
+ * seedPendingMaterials/恢复唤醒轮全在 attach 链内,域绑定后自动工作。时序铁律不可动：先重铸后播种——
+ * 壳形态在构造期定死,播种全在其后,铁律以更强形式成立）。壳根=域旁车 meta.root（出生 meta 落 root——
+ * 出生未跑也有;根已删=INVALID_ARG 不给无根装配——工作树共享面锚 root 不可空）。同 journal 已在座
+ * （含 idle——收编扩面同 attachSessionIn 裁定）早退置激活,不再造壳。attach 失败（版本拒载等）壳随
+ * 回收（出注册表+拆监听）不留幽灵座。
+ */
+export function attachSunxIn(io: SessionLifecycleIo, journalId: string): Result<{ sessionId: string; root: string }> {
+  if (!validSessionId(journalId)) return fail('INVALID_ARG', `invalid journalId: ${journalId}`);
+  const domain = sunxDomainDir(journalId);
+  const file = path.join(sessionsDir(domain), `${journalId}.jsonl`);
+  if (!fs.existsSync(file)) return fail('INVALID_ARG', `unknown sunx session: ${journalId}`);
+  // 在座收编早退：同 journal 已在座（attachSessionIn 收编裁定同源——壳弃座免铸）直接置激活返回
+  for (const [sid, s] of io.sessions) {
+    if (s.attachedJournalId === journalId) {
+      io.setActive(sid);
+      return ok({ sessionId: sid, root: s.root });
+    }
+  }
+  const meta = readSessionMeta(domain, journalId);
+  const shellRoot = meta.root;
+  if (shellRoot === undefined || !fs.existsSync(shellRoot)) {
+    return fail('INVALID_ARG', `sunx session root missing: ${journalId}`);
+  }
+  // 壳 charter 源（reCast 同口径）：meta.charterText（编辑文——POST /charter 同拍落盘）优先,
+  // 缺席（旧档/未编辑过）回落档上末条合法快照的出生文;都无=null=无品性层（构造键缺席同形）
+  const replay = reduceJournal(parseJournalFile(file).events);
+  if (replay.version !== 3) return fail('INVALID_ARG', `unsupported journal version: ${String(replay.version)} (v3 required)`);
+  const charter = meta.charterText ?? replay.snapshot?.sig.charter ?? null;
+  const id = mintSessionId(io.sessions, shellRoot);
+  const session = new SessionRuntime({
+    id,
+    root: shellRoot,
+    model: io.model,
+    ...(io.model instanceof ModelSwitcher ? { modelSwitcher: io.model } : {}),
+    nextSeq: io.nextSeq,
+    broadcast: io.broadcast,
+    kind: 'sunx',
+    ...(meta.title !== undefined ? { name: meta.title } : {}),
+    ...(charter !== null ? { charter } : {}),
+    dataDir: domain,
+    mintPid: io.mintPid,
+  });
+  io.sessions.set(id, session);
+  io.setActive(id);
+  io.watchProject(shellRoot);
+  const r = attachSessionIn(io, id, journalId);
+  if (!r.ok) {
+    // 壳回收：attach 全链失败（版本拒载/在座运行中竞争等）——出注册表+拆监听,不留幽灵座
+    io.sessions.delete(id);
+    io.unwatchProject(shellRoot);
+    return r;
+  }
+  return r;
+}
+
 /** birth-only 档判定（出生写语义的守卫面,2026-10-31 spec §2）：档仅含 header/ctx-snap 行（零实质
- *  内容）即出生档——逐行 JSON 校验,任一实质行/坏行/读失败即非 birth-only（守卫从严,不误放双挂） */
-function birthOnlyJournal(root: string, jid: string): boolean {
-  return birthOnlyFile(sessionsDir(resolveDataDir(root)), `${jid}.jsonl`);
+ *  内容）即出生档——逐行 JSON 校验,任一实质行/坏行/读失败即非 birth-only（守卫从严,不误放双挂）。
+ *  入参=持久化域目录（P3 Task 2 起随 dataDir 外窥——sunx 档在域,standard=resolveDataDir 既有推导） */
+function birthOnlyJournal(dataDir: string, jid: string): boolean {
+  return birthOnlyFile(sessionsDir(dataDir), `${jid}.jsonl`);
 }
 
 /** birth-only 文件判定（目录+文件名形态;启动清扫/收编清扫共用——单一判定面） */

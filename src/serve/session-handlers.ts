@@ -213,7 +213,7 @@ export async function handleSessionCharter(io: SessionHandlerIo, req: http.Incom
   }
   const jid = session.attachedJournalId;
   if (jid === undefined) return io.send(res, 409, { error: 'no journaled session' });
-  const dataDir = resolveDataDir(session.root);
+  const dataDir = session.dataDir; // 域绑定寻址（P3 Task 2）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   const rev = (readSessionMeta(dataDir, jid).charterRev ?? 0) + 1;
   // 尾追替代行（裁定字面：英文单语,前缀行+空行+全文）——append-only 链行,运行中安全
   session.runtime.harness.context.appendChain([{ action: 'note', observation: `[charter v${rev}] supersedes the earlier charter; from now on follow the charter below.\n\n${text}` }]);
@@ -234,7 +234,7 @@ export function handleSessionCharterGet(io: SessionHandlerIo, res: http.ServerRe
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   if (session.sessionKind !== 'sunx') return io.send(res, 409, { error: 'not a sunx session' });
   const jid = session.attachedJournalId;
-  const rev = jid !== undefined ? (readSessionMeta(resolveDataDir(session.root), jid).charterRev ?? 1) : 1;
+  const rev = jid !== undefined ? (readSessionMeta(session.dataDir, jid).charterRev ?? 1) : 1; // 域绑定寻址（P3 Task 2）
   io.send(res, 200, { text: session.charterText(), charterRev: rev });
 }
 

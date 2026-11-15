@@ -11,7 +11,7 @@ import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 import { MemoryAgentTeamStore } from '../taskboard/team-registry';
 import type { AgentTeamRegistry } from '../taskboard/team-registry';
 import { parseJournalFile, readSessionMeta, sessionsDir } from '../tui/session-journal';
-import { resolveDataDir } from '../config/data-dir';
+import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
 import { SUNX_BRIEF_LINE, SUNX_IDENTITY_LINE } from '../harness/prompts/shared';
 
 /** G1 契约收口测试（T1 会话中心迁移）：全链（submit → WS 事件序 → done → 二轮续推——① 起两轮跨会话）
@@ -483,29 +483,32 @@ async function newSunxSession(http: string, opts: { root: string; name?: string;
   return ((await r.json()) as { sessionId: string }).sessionId;
 }
 
-test('⑧ sunx 出生：meta 落 kind/title(name)/charterRev=1；/sessions 行透出 kind；standard 不落任何新键', async () => {
+test('⑧ sunx 出生：出生即铸档（创建即铸 journalId）+ 域目录随档（meta 落 kind/title(name)/charterRev=1）；standard 不落任何新键', async () => {
   const model = new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']);
   await withDaemon(model, async (ctx) => {
     const sunxRoot = tmpdir('sunshinex-serve-sunx-root-');
     try {
       const sid = await newSunxSession(ctx.http, { root: sunxRoot, name: '编排者甲', charter: 'CHARTER-BIRTH-1' });
-      // 惰性建档（出生写语义）：首实质事件（scripted 一轮）触发 mint——出生 meta 跟 birth 链路落档
+      // 出生即铸档（P3 Task 2 裁定——持久化实体语义：出生即存在）：创建即铸 journalId,
+      // 域目录 ~/.sunshinex/sunx/<jid>/data 随档（projects 区零条目——域绑定,不进 /workspaces）
+      const s = ctx.daemon.get(sid)!;
+      const jidAtBirth = s.attachedJournalId;
+      assert.ok(jidAtBirth !== undefined, '创建即铸 journalId（非惰性——standard 惰性建档不变）');
+      assert.ok(fs.existsSync(path.join(sessionsDir(sunxDomainDir(jidAtBirth!)), `${jidAtBirth}.jsonl`)), '域内 journal 出生即在');
+      // 首实质事件（scripted 一轮）续写域内档——出生 meta 跟 birth 链路落域旁车
       await ctx.post('跑一轮', sid);
       await waitFor(() => ctx.daemon.get(sid)!.status() === 'idle', 10000);
       const jid = ctx.daemon.get(sid)!.attachedJournalId;
-      assert.ok(jid !== undefined, 'sunx 会话已铸档');
-      const meta = readSessionMeta(resolveDataDir(sunxRoot), jid!);
+      assert.equal(jid, jidAtBirth, '档身份稳定（出生铸定不换）');
+      const meta = readSessionMeta(sunxDomainDir(jid!), jid!);
       assert.equal(meta.kind, 'sunx', '出生 meta 落 kind');
       assert.equal(meta.title, '编排者甲', 'name 只写 meta.title（G14.16 既有显示链）');
       assert.equal(meta.charterRev, 1, '出生品性即初版 charterRev=1');
       // 品性层：charter 经装配透传进 ContextManager 会话冻结层
       assert.equal(ctx.daemon.get(sid)!.runtime.harness.context.snapshotExport().sig.charter, 'CHARTER-BIRTH-1', 'charter 入冻结层');
-      // /sessions 行透出 kind（meta 读面）
-      const rows = (await (await fetch(`${ctx.http}/sessions?root=${encodeURIComponent(sunxRoot)}`, { headers: { authorization: 'Bearer test-token' } })).json()) as Array<{ id: string; kind?: string; title?: string }>;
-      const row = rows.find((r) => r.id === jid);
-      assert.ok(row !== undefined, '/sessions 列出 sunx 会话');
-      assert.equal(row!.kind, 'sunx', '行透出 kind');
-      assert.equal(row!.title, '编排者甲', '行透出 title');
+      // projects 区零条目（域绑定——sunx 档不落 root 推导区;侧栏 SUNX 组数据源=Task 3 域枚举端点,
+      // 既有 /sessions 是 projects 区清单,不再列 sunx）
+      assert.equal(fs.existsSync(sessionsDir(resolveDataDir(sunxRoot))), false, 'projects 区无 sunx 档');
 
       // 对照组：standard 会话（kind 缺席）——不落任何新键（零变化不变式；同 root 建——读面同 dataDir
       // 才是真对照，跨根读缺档会把断言变空转通过）
@@ -529,23 +532,24 @@ test('⑨ charter 编辑：尾追替代行入链+charterRev 递增；空白 400�
     const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
     const sunxRoot = tmpdir('sunshinex-serve-charter-root-');
     try {
-      const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH CHARTER' });
-      // 首次编辑（未跑轮=未铸档）：编辑端点先落 birth（charterRev:1）再算序次——首次编辑即 v2
-      const r1 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'FIRST EDIT CHARTER' }) });
-      assert.equal(r1.status, 200);
-      assert.deepEqual(await r1.json(), { ok: true, charterRev: 2 }, '首次编辑=birth v1 之后的 v2');
-      const jid = ctx.daemon.get(sid)!.attachedJournalId;
-      assert.ok(jid !== undefined, '编辑触发惰性建档（append 前置 mint）');
-      // 链行（模型面）含替代前缀行+全文（journal chain 行）
-      const chain = parseJournalFile(path.join(sessionsDir(resolveDataDir(sunxRoot)), `${jid!}.jsonl`)).events.find((e) => e.t === 'chain') as { t: 'chain'; steps: Array<{ action: string; observation: string }> } | undefined;
-      assert.ok(chain !== undefined, 'chain 行已落档');
-      const obs = chain!.steps.map((s) => s.observation).join('\n');
-      assert.ok(obs.includes('[charter v2] supersedes the earlier charter; from now on follow the charter below.\n\nFIRST EDIT CHARTER'), '替代行前缀+空行+全文逐字在链');
-      // 第二次编辑：旧值+1
-      const r2 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'SECOND EDIT CHARTER' }) });
-      assert.equal(r2.status, 200);
-      assert.deepEqual(await r2.json(), { ok: true, charterRev: 3 }, '旧值+1 递增');
-      assert.equal(readSessionMeta(resolveDataDir(sunxRoot), jid!).charterRev, 3, 'meta.charterRev 落盘');
+    const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH CHARTER' });
+    // 首次编辑：出生即铸档（P3 Task 2）——编辑端点 ensureJournalMinted 幂等 no-op（birth v1 已在），
+    // 序次=旧值+1 即 v2（域内 meta 读面）
+    const r1 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'FIRST EDIT CHARTER' }) });
+    assert.equal(r1.status, 200);
+    assert.deepEqual(await r1.json(), { ok: true, charterRev: 2 }, '首次编辑=birth v1 之后的 v2');
+    const jid = ctx.daemon.get(sid)!.attachedJournalId;
+    assert.ok(jid !== undefined, '编辑端点在档（出生即铸档）');
+    // 链行（模型面）含替代前缀行+全文（journal chain 行——域内档）
+    const chain = parseJournalFile(path.join(sessionsDir(sunxDomainDir(jid!)), `${jid!}.jsonl`)).events.find((e) => e.t === 'chain') as { t: 'chain'; steps: Array<{ action: string; observation: string }> } | undefined;
+    assert.ok(chain !== undefined, 'chain 行已落档');
+    const obs = chain!.steps.map((s) => s.observation).join('\n');
+    assert.ok(obs.includes('[charter v2] supersedes the earlier charter; from now on follow the charter below.\n\nFIRST EDIT CHARTER'), '替代行前缀+空行+全文逐字在链');
+    // 第二次编辑：旧值+1
+    const r2 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'SECOND EDIT CHARTER' }) });
+    assert.equal(r2.status, 200);
+    assert.deepEqual(await r2.json(), { ok: true, charterRev: 3 }, '旧值+1 递增');
+    assert.equal(readSessionMeta(sunxDomainDir(jid!), jid!).charterRev, 3, 'meta.charterRev 落盘（域旁车）');
 
       // 空白 text → 400
       for (const text of ['', '   ']) {
@@ -581,11 +585,17 @@ test('⑨b charter 读面（sunx P2 Task 7）：GET /session/:id/charter 返回�
     const sunxRoot = tmpdir('sunshinex-serve-charter-read-root-');
     try {
       const sid = await newSunxSession(ctx.http, { root: sunxRoot, charter: 'BIRTH READ-1' });
-      // 出生未铸档：GET 读 v1（出生品性即初版），且零建档（读面无写副作用——幽灵会话不变式不破）
+      // 出生即铸档（P3 Task 2）：创建即铸 journalId+birth 行（standard 惰性建档不变）。GET 读 v1
+      // （出生品性即初版）且只读无写副作用——GET 前后域档字节不变（幽灵会话不变式由出生即铸档
+      // 接管，读面零副作用不变式保留）
+      const jidBefore = ctx.daemon.get(sid)!.attachedJournalId;
+      assert.ok(jidBefore !== undefined, '出生即铸档');
+      const fileBefore = fs.readFileSync(path.join(sessionsDir(sunxDomainDir(jidBefore!)), `${jidBefore}.jsonl`), 'utf8');
       const g1 = await fetch(`${ctx.http}/session/${sid}/charter`, { headers: H });
       assert.equal(g1.status, 200);
       assert.deepEqual(await g1.json(), { text: 'BIRTH READ-1', charterRev: 1 }, '出生品性读 v1');
-      assert.equal(ctx.daemon.get(sid)!.attachedJournalId, undefined, 'GET 零建档');
+      const fileAfter = fs.readFileSync(path.join(sessionsDir(sunxDomainDir(jidBefore!)), `${jidBefore}.jsonl`), 'utf8');
+      assert.equal(fileAfter, fileBefore, 'GET 零写副作用（域档字节不变）');
       // 编辑后读面跟新：替代行语义=当前全文，读面必须反映编辑后文本（charterLayer 构造即冻结，
       // 跟踪面在会话运行时——读出生旧文即本测试红）
       const e1 = await fetch(`${ctx.http}/session/${sid}/charter`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'EDITED READ-2' }) });
@@ -625,13 +635,12 @@ test('⑨c charter 读面跨窗一致（fix round 1）：编辑→重启→重�
       assert.deepEqual(await e1.json(), { ok: true, charterRev: 2 });
       const jid = ctx.daemon.get(sid)!.attachedJournalId;
       assert.ok(jid !== undefined);
+      // 重开链（P3 Task 2 域路径）：新 daemon POST /sunx/attach(journalId)——读面=编辑文（meta.charterText 源）
       await withRestartedDaemon(model, async (http2) => {
-        const shell = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
-        assert.equal(shell.status, 200);
-        const shellId = ((await shell.json()) as { sessionId: string }).sessionId;
-        const ar = await fetch(`${http2}/session/${shellId}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
-        assert.equal(ar.status, 200);
-        const g = await fetch(`${http2}/session/${shellId}/charter`, { headers: HGET });
+        const ar = await fetch(`${http2}/sunx/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
+        assert.equal(ar.status, 200, 'attachSunx 受理');
+        const reopenedId = ((await ar.json()) as { sessionId: string }).sessionId;
+        const g = await fetch(`${http2}/session/${reopenedId}/charter`, { headers: HGET });
         assert.equal(g.status, 200);
         assert.deepEqual(await g.json(), { text: 'EDITED DRIFT', charterRev: 2 }, '重开读面=编辑文+rev 一致（meta.charterText 源，非快照出生文）');
       });
@@ -654,12 +663,10 @@ test('⑨c charter 读面跨窗一致（fix round 1）：编辑→重启→重�
       const jid3 = ctx.daemon.get(sid3)!.attachedJournalId;
       assert.ok(jid3 !== undefined);
       await withRestartedDaemon(model, async (http2) => {
-        const shell = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
-        assert.equal(shell.status, 200);
-        const shellId = ((await shell.json()) as { sessionId: string }).sessionId;
-        const ar = await fetch(`${http2}/session/${shellId}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid3 }) });
+        const ar = await fetch(`${http2}/sunx/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid3 }) });
         assert.equal(ar.status, 200);
-        const g = await fetch(`${http2}/session/${shellId}/charter`, { headers: HGET });
+        const reopenedId = ((await ar.json()) as { sessionId: string }).sessionId;
+        const g = await fetch(`${http2}/session/${reopenedId}/charter`, { headers: HGET });
         assert.deepEqual(await g.json(), { text: 'EDITED NO-BIRTH', charterRev: 2 }, '无出生 charter：编辑文经 charterText 跨重启（快照 sig.charter=null 不遮蔽）');
       });
     } finally {
@@ -718,7 +725,7 @@ async function withRestartedDaemon(model: ModelAdapter, fn: (http2: string, daem
   }
 }
 
-test('⑪ attach 重铸：daemon 重启后 GUI 重开链（壳 newSession 无 kind→attach）恢复 sunx 形态——kind/face 白名单/身份行/品性层/charter 端点/侧栏 kind 全存活', async () => {
+test('⑪ sunx 重开链：daemon 重启后 POST /sunx/attach(journalId) 全投影存活——kind/face 白名单/身份行/品性层/charter 端点全存活（域路径）', async () => {
   const base = new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']);
   const probe = { toolNames: [] as string[] };
   await withDaemon(wireProbe(base, probe), async (ctx) => {
@@ -733,45 +740,40 @@ test('⑪ attach 重铸：daemon 重启后 GUI 重开链（壳 newSession 无 ki
       const namesAfterFirstTurn = probe.toolNames.length;
       assert.ok(probe.toolNames.slice(0, namesAfterFirstTurn).includes('dispatch_task'), '出生 sunx wire face 基线含 dispatch_task（探针自检）');
 
-      // 第二拍：模拟重启——新 daemon 实例（空注册表）+ GUI 重开链（壳 newSession 无 kind → attach）
+      // 第二拍：模拟重启——新 daemon 实例（空注册表）+ 域重开链 POST /sunx/attach
+      // （P3 Task 2：域绑定后旧壳 newSession+attach 链不达域档——重开走 attachSunxIn 单点）
       await withRestartedDaemon(wireProbe(base, probe), async (http2, daemon2) => {
         const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
-        const shell = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
-        assert.equal(shell.status, 200, '重开壳 newSession（无 kind）200');
-        const shellId = ((await shell.json()) as { sessionId: string }).sessionId;
-        assert.equal(daemon2.get(shellId)!.sessionKind, undefined, '重开壳出生态=standard（修复前病灶）');
-        const ar = await fetch(`${http2}/session/${shellId}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
-        assert.equal(ar.status, 200, 'attach 受理');
+        const ar = await fetch(`${http2}/sunx/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
+        assert.equal(ar.status, 200, 'attachSunx 受理');
         const adopted = ((await ar.json()) as { sessionId: string }).sessionId;
-        assert.equal(adopted, shellId, '无在座同档会话——壳自身收编该档（非收编复用路径）');
-        const s = daemon2.get(shellId)!;
+        const s = daemon2.get(adopted)!;
 
-        // 形态面：kind 重铸 + 装配注册分支 + 身份行
-        assert.equal(s.sessionKind, 'sunx', 'attach 重铸后 sessionKind=sunx');
+        // 形态面：壳出生即 sunx（构造期定死）+ 装配注册分支 + 身份行
+        assert.equal(s.sessionKind, 'sunx', '重开壳出生即 sunx');
+        assert.equal(s.sunxName, '编排者乙', '重开姓名随域 meta.title');
         assert.ok(s.runtime.harness.tools.has('dispatch_task'), 'face 装配含 dispatch_task（standard 注册表必无）');
         assert.ok(s.runtime.harness.stableSegment().includes(SUNX_IDENTITY_LINE), '稳定段含 Sunx 身份行');
         // wire face（loop 消费的 effective face，真模型面）：探针轮含 dispatch_task 不含 exec
-        const submit = await fetch(`${http2}/session/${shellId}/submit`, { method: 'POST', headers: H, body: JSON.stringify({ goal: '重铸后探针轮' }) });
+        const submit = await fetch(`${http2}/session/${adopted}/submit`, { method: 'POST', headers: H, body: JSON.stringify({ goal: '重开探针轮' }) });
         assert.equal(submit.status, 202);
-        await waitFor(() => daemon2.get(shellId)!.status() === 'idle', 10000);
+        await waitFor(() => daemon2.get(adopted)!.status() === 'idle', 10000);
         const recastNames = probe.toolNames.slice(namesAfterFirstTurn);
         assert.ok(recastNames.length > 0, '探针轮已发');
-        assert.ok(recastNames.includes('dispatch_task'), '重铸后 wire face 含 dispatch_task');
-        assert.ok(!recastNames.includes('exec'), '重铸后 wire face 不含 exec（重获 exec=修复前病灶）');
-        // 上下文回种落在重铸后的运行时上（换铸先于 restoreSession 的序铁律）：转录非空
-        assert.ok(s.transcriptCount() > 0, 'journal 链回放落在重铸后运行时（先播种再换铸=全丢的反例不出现）');
-        // 品性层：snapshotExport sig.charter=原文
+        assert.ok(recastNames.includes('dispatch_task'), '重开后 wire face 含 dispatch_task');
+        assert.ok(!recastNames.includes('exec'), '重开后 wire face 不含 exec（重获 exec=修复前病灶）');
+        // 上下文回种落在 sunx 运行时上（壳形态构造期定死,播种全在其后——时序铁律以更强形式成立）
+        assert.ok(s.transcriptCount() > 0, 'journal 链回放存活');
+        // 品性层：未编辑过——快照回种出生文（读面同文——charterText 缺席回落快照）
         assert.equal(s.runtime.harness.context.snapshotExport().sig.charter, 'RECAST-CHARTER-1', '品性层在（sig.charter=原文）');
-        // charter 编辑端点可用（修复前 409 not a sunx session）
-        const cr = await fetch(`${http2}/session/${shellId}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'POST-RECAST CHARTER' }) });
+        // charter 编辑端点可用（域寻址随 dataDir 外窥）
+        const cr = await fetch(`${http2}/session/${adopted}/charter`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'POST-REOPEN CHARTER' }) });
         assert.equal(cr.status, 200, 'charter 端点受理（非 409）');
         assert.deepEqual(await cr.json(), { ok: true, charterRev: 2 }, 'charterRev 递增');
-        // 侧栏行 kind 仍 sunx（meta.kind 旁车读面）
-        const rows = (await (await fetch(`${http2}/sessions?root=${encodeURIComponent(sunxRoot)}`, { headers: { authorization: 'Bearer test-token' } })).json()) as Array<{ id: string; kind?: string; title?: string }>;
-        const row = rows.find((r) => r.id === jid);
-        assert.ok(row !== undefined, '/sessions 列出该会话');
-        assert.equal(row!.kind, 'sunx', '侧栏行 kind 仍 sunx');
-        assert.equal(row!.title, '编排者乙', '侧栏行 title 仍自定义名');
+        // 域旁车 meta kind/title 稳定（侧栏 SUNX 组行数据源=Task 3 域枚举端点——旁车事实源在档）
+        const meta = readSessionMeta(sunxDomainDir(jid!), jid!);
+        assert.equal(meta.kind, 'sunx', '域旁车 kind 仍 sunx');
+        assert.equal(meta.title, '编排者乙', '域旁车 title 仍自定义名');
       });
     } finally {
       fs.rmSync(sunxRoot, { recursive: true, force: true });
@@ -813,7 +815,7 @@ test('⑫ attach 重铸回归锚：standard 会话重启重开 attach 后行为�
   });
 });
 
-test('⑬ attach 重铸幂等：已 attach 的 sunx 会话二次 attach 走收编复用，不二次换铸（运行时实例恒一）', async () => {
+test('⑬ sunx 重开幂等：同 journal 二次 /sunx/attach 走收编复用，不二次造壳换铸（运行时实例恒一）', async () => {
   const model = new ScriptedAdapter(['{"done":true,"reply":"ok"}']);
   await withDaemon(model, async (ctx) => {
     const sunxRoot = tmpdir('sunshinex-serve-recast-idem-root-');
@@ -825,27 +827,23 @@ test('⑬ attach 重铸幂等：已 attach 的 sunx 会话二次 attach 走收�
       assert.ok(jid !== undefined);
       await withRestartedDaemon(model, async (http2, daemon2) => {
         const H = { authorization: 'Bearer test-token', 'content-type': 'application/json' };
-        // 第一拍：重开链 attach——壳重铸为 sunx
-        const shell1 = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
-        const shell1Id = ((await shell1.json()) as { sessionId: string }).sessionId;
-        const ar1 = await fetch(`${http2}/session/${shell1Id}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
+        // 第一拍：域重开链 attachSunx——壳出生即 sunx
+        const ar1 = await fetch(`${http2}/sunx/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
         assert.equal(ar1.status, 200);
-        const seated = daemon2.get(shell1Id)!;
-        assert.equal(seated.sessionKind, 'sunx', '首次 attach 重铸成立');
+        const seatedId = ((await ar1.json()) as { sessionId: string }).sessionId;
+        const seated = daemon2.get(seatedId)!;
+        assert.equal(seated.sessionKind, 'sunx', '首次重开形态成立');
         const rtBefore = seated.runtime;
         const countBefore = seated.transcriptCount();
-        // 第二拍：同档再开一壳 attach——收编复用路径，在座 sunx 运行时不得二次换铸
-        const shell2 = await fetch(`${http2}/session/new`, { method: 'POST', headers: H, body: JSON.stringify({ root: sunxRoot }) });
-        const shell2Id = ((await shell2.json()) as { sessionId: string }).sessionId;
-        const ar2 = await fetch(`${http2}/session/${shell2Id}/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
+        // 第二拍：同 journal 再 attachSunx——收编复用路径（在座早退），不再造壳
+        const ar2 = await fetch(`${http2}/sunx/attach`, { method: 'POST', headers: H, body: JSON.stringify({ journalId: jid }) });
         assert.equal(ar2.status, 200);
         const adoptedId = ((await ar2.json()) as { sessionId: string }).sessionId;
-        assert.equal(adoptedId, shell1Id, '收编复用：返回在座会话 id（壳弃）');
+        assert.equal(adoptedId, seatedId, '收编复用：返回在座会话 id');
         const after = daemon2.get(adoptedId)!;
         assert.equal(after.sessionKind, 'sunx', '在座形态不褪');
         assert.equal(after.runtime, rtBefore, '运行时实例恒一（二次换铸会整体换新——反例不出现）');
         assert.equal(after.transcriptCount(), countBefore, '转录投影不丢（换铸清态反例不出现）');
-        assert.ok(daemon2.get(shell2Id) === undefined, '壳随收编弃座');
       });
     } finally {
       fs.rmSync(sunxRoot, { recursive: true, force: true });

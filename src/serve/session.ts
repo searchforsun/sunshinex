@@ -179,6 +179,10 @@ export interface SessionRuntimeOpts {
   /** 实例品性原文（charter，2026-11-15 sunx §17.1 用户面=品性/代码面=charter）：assemble() 透传
    *  ContextManager 会话冻结层（全局 → 项目 → 品性）；后续编辑走 /session/:id/charter 尾追替代行 */
   charter?: string;
+  /** 持久化域目录（2026-11-15 sunx P3 Task 2 域绑定）：sunx 出生即铸档时由 createSessionIn 注入
+   *  `~/.sunshinex/sunx/<journalId>/data`——assemble() 透传 buildHarness（持久化数据面全落域），
+   *  `dataDir` 外窥供 handler 寻址；缺席（standard/TUI/CLI）=resolveDataDir(root) 既有推导逐字节不变 */
+  dataDir?: string;
 }
 
 /** 挂起表条目（P6 §4 下沉,原 daemon-wire 资产）：kind 判别联合；resolve 即回执值（interrupt/reset
@@ -223,6 +227,12 @@ export class SessionRuntime {
    *  创建名——打开即显姓名,窗口期到首条消息落 birth 为止;sessionKind 同款公开面 */
   get sunxName(): string | undefined {
     return this.sessionName;
+  }
+  /** 持久化域目录外窥（2026-11-15 sunx P3 Task 2 寻址面单点）：注入（sunx 出生即铸档）=域目录；
+   *  缺席=resolveDataDir(root) 既有推导——handler/attach 链/会话内落盘面统一改走本外窥后，
+   *  standard 字节不变、sunx 全部持久化面（journal/meta/台账/板/记忆/计划书/快照）自动随域 */
+  get dataDir(): string {
+    return this.opts.dataDir ?? resolveDataDir(this.root);
   }
   /** 实例品性原文（2026-11-15 sunx §17.1）：assemble() 每次换铸透传 ContextManager 品性冻结层；
    *  reCast 唯一写点 */
@@ -484,7 +494,7 @@ export class SessionRuntime {
     const dName = name !== '' ? name : derivePlanName(this.activeGoal);
     let path: string | undefined;
     const jid = this.journal?.currentId;
-    if (jid !== undefined) path = writePlanDoc(resolveDataDir(this.root), jid, dName, doc);
+    if (jid !== undefined) path = writePlanDoc(this.dataDir, jid, dName, doc);
     return await this.awaitPlanApproval({ name: dName, path, doc, items });
   }
 
@@ -753,10 +763,15 @@ export class SessionRuntime {
       // plan-arm 态内核闲置于 acceptEdits——替换旧 plan→dontAsk 假映射,内核档位恒三档（spec §3.2）
       mode: this.currentMode === 'plan' ? 'acceptEdits' : this.currentMode,
       // sunx 装配透传（2026-11-15 sunx P1 Task 4）：kind→稳定段身份槽/编排章程+工具白名单+fork kind
-      // 继承（buildHarness/loopDeps 两路）,charter→ContextManager 品性冻结层——reset/rehomeRoot 换铸
-      // 走本单点,实例字段恒透传不丢;缺席=standard 字节不变
+      // 继承（buildHarness/loopDeps 两路）,charter→ContextManager 品性冻结层——reset/rehomeRoot/reCast
+      // 换铸走本单点,实例字段恒透传不丢;缺席=standard 字节不变
       ...(this.sessionKind !== undefined ? { kind: this.sessionKind } : {}),
       ...(this.sessionCharter !== undefined ? { charter: this.sessionCharter } : {}),
+      // 持久化域透传（2026-11-15 sunx P3 Task 2 域绑定）：缺席=既有推导零变化
+      ...(this.opts.dataDir !== undefined ? { dataDir: this.opts.dataDir } : {}),
+      // 学习沉淀关闸（P2 遗留义务清偿,P3 Task 2 裁定）：sunx 装配 learnSkills:false——编排轮不沉淀
+      // 伪技能（域目录零 learned/ 基座）;standard 不传=既有推导逐字节不变
+      ...(this.sessionKind === 'sunx' ? { learnSkills: false } : {}),
       onEvent: (e) => this.pump(e),
       onApproval: (req) => this.suspendApproval(req),
       onAskUser: (req) => this.suspendAsk(req),
@@ -998,7 +1013,7 @@ export class SessionRuntime {
     const rel = path.relative(this.root, abs);
     if (rel.startsWith('..') || path.isAbsolute(rel)) return undefined;
     const relPosix = rel.split(path.sep).join('/');
-    const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+    const file = path.join(this.dataDir, 'sessions', `${id}.jsonl`);
     let last: SnapshotEntry | undefined;
     try {
       for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
@@ -1026,7 +1041,7 @@ export class SessionRuntime {
     if (inMemory !== undefined) return { abs: path.resolve(this.root, inMemory.path), entry: inMemory };
     const id = this.journal?.currentId;
     if (id === undefined) return undefined;
-    const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+    const file = path.join(this.dataDir, 'sessions', `${id}.jsonl`);
     let hit: SnapshotEntry | undefined;
     try {
       for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
@@ -1063,7 +1078,7 @@ export class SessionRuntime {
     if (inMemory !== undefined) return inMemory;
     const id = this.journal?.currentId;
     if (id === undefined) return undefined;
-    const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+    const file = path.join(this.dataDir, 'sessions', `${id}.jsonl`);
     let openSeq = -1;
     let hit: TurnFileChange | undefined;
     try {
@@ -1107,7 +1122,7 @@ export class SessionRuntime {
     const id = this.journal?.currentId;
     if (id !== undefined) {
       try {
-        const file = path.join(resolveDataDir(this.root), 'sessions', `${id}.jsonl`);
+        const file = path.join(this.dataDir, 'sessions', `${id}.jsonl`);
         for (const row of scanArtifactsJsonl(fs.readFileSync(file, 'utf8'))) consider(row);
       } catch {
         // 无档/读失败=仅内存面
@@ -1127,7 +1142,7 @@ export class SessionRuntime {
   private syncSessionStores(): void {
     const journalId = this.journal?.currentId;
     if (journalId === undefined) return;
-    const dataDir = resolveDataDir(this.opts.root);
+    const dataDir = this.dataDir;
     this.runtimeImpl.harness.tasks.adoptLedger(path.join(dataDir, 'tasks', `ledger-${journalId}.jsonl`));
     this.runtimeImpl.harness.adoptSessionTeams(journalId);
   }
@@ -1171,18 +1186,20 @@ export class SessionRuntime {
     this.emitJournalMinted();
   }
 
-  /** sunx 出生 meta 落档单点（2026-11-15 sunx P1 Task 4）：只在 ensureMintedWithBirth 内可达
-   *  （journalId 此刻已铸,幽灵会话「空会话零文件」不变式保持——standard/未铸档零提前写面）。
-   *  kind==='sunx' 才落三键;standard 不落任何新键(既有路径字节不变)。title=自定义名(仅进 G14.16
-   *  既有显示链,不进提示词);charterRev:1=出生品性即初版——charter 编辑端点读旧值 ?? 0 后 +1 */
+  /** sunx 出生 meta 落档单点（2026-11-15 sunx P1 Task 4；P3 Task 2 起可达面=惰性建档
+   *  ensureMintedWithBirth 与出生即铸档 ensureSunxBirth 两路）。kind==='sunx' 才落键;standard 不落
+   *  任何新键(既有路径字节不变)。title=自定义名(仅进 G14.16 既有显示链,不进提示词);charterRev:1=
+   *  出生品性即初版——charter 编辑端点读旧值 ?? 0 后 +1;root=工作区根（P3 Task 2 域旁车——attachSunx
+   *  重开壳根唯一定位源,出生未跑也有）。落盘位置随 dataDir 外窥（域绑定后=域内旁车） */
   private persistBirthMeta(): void {
     if (this.sessionKind !== 'sunx') return;
     const journalId = this.journal?.currentId;
     if (journalId === undefined) return;
-    writeSessionMeta(resolveDataDir(this.opts.root), journalId, {
+    writeSessionMeta(this.dataDir, journalId, {
       kind: 'sunx',
       ...(this.sessionName !== undefined ? { title: this.sessionName } : {}),
       charterRev: 1,
+      root: this.root, // 域旁车带 root（P3 Task 2）：attachSunx 重开壳根的唯一定位源——出生未跑也有
     });
   }
 
@@ -1190,6 +1207,20 @@ export class SessionRuntime {
    *  charterRev:1）再算替代序次——替代链行 append 紧随其后,零幽灵窗;已铸档幂等 no-op */
   ensureJournalMinted(): void {
     this.ensureMintedWithBirth();
+  }
+
+  /** sunx 出生即铸档收尾（2026-11-15 sunx P3 Task 2）：createSessionIn 已在域目录内建档（journalId
+   *  先铸——sunxDomainDir 域路径依赖它；header 经 SessionJournal.startWithId 落盘）并 attachJournal
+   *  （syncSessionStores 收养域内台账/团队）——本点补出生三面：ctx-snap 快照冻结起点（persistSnapshotRow）
+   *  + 出生 meta（persistBirthMeta——kind/title/charterRev:1/root 落域旁车）+ journal-minted 铸造帧
+   *  （GUI 即刻回填稳定身份）。持久化实体语义：出生即存在（无实质事件也建档）；standard 惰性建档
+   *  （ensureMintedWithBirth）零变化。非 sunx/档未铸（直构防御）静默 no-op */
+  ensureSunxBirth(): void {
+    if (this.sessionKind !== 'sunx') return;
+    if (this.journal?.currentId === undefined) return;
+    this.persistSnapshotRow();
+    this.persistBirthMeta();
+    this.emitJournalMinted();
   }
 
   /** 品性读面（2026-11-15 sunx P2 Task 7 GET /session/:id/charter 消费）：当前品性原文，
@@ -1252,7 +1283,7 @@ export class SessionRuntime {
     const jid = this.attachedJournalId;
     if (jid === undefined) return { events: [], cut: this.lastSeqNum };
     try {
-      const file = path.join(sessionsDir(resolveDataDir(this.root)), `${jid}.jsonl`);
+      const file = path.join(sessionsDir(this.dataDir), `${jid}.jsonl`);
       if (!fs.existsSync(file)) return { events: [], cut: this.lastSeqNum };
       const events: SessionEvent[] = [];
       for (const row of parseJournalFile(file).events) {
@@ -1544,10 +1575,10 @@ export class SessionRuntime {
         // 模型档位——列表与回溯面零重放直读（读旧值算累计,单 run 锁下无并发写面）
         const journalId = this.journal?.currentId;
         if (journalId !== undefined && outcome !== undefined) {
-          const prev = readSessionMeta(resolveDataDir(this.root), journalId);
+          const prev = readSessionMeta(this.dataDir, journalId);
           const u = this.runUsage;
           const model = this.runtimeImpl.harness.model;
-          writeSessionMeta(resolveDataDir(this.root), journalId, {
+          writeSessionMeta(this.dataDir, journalId, {
             updatedAt: endedTs,
             root: this.root,
             runs: (prev.runs ?? 0) + 1,
@@ -1769,7 +1800,7 @@ export class SessionRuntime {
   private persistSelection(patch: { model?: string; effort?: string; mode?: SessionMode }): void {
     const journalId = this.journal?.currentId;
     if (journalId === undefined) return;
-    writeSessionMeta(resolveDataDir(this.root), journalId, patch);
+    writeSessionMeta(this.dataDir, journalId, patch);
   }
 
   /** G14.83 队列重排:from → to(拖拽排序);置首=插入发送(下一轮立即注入)——P5 走内核态 */
@@ -1804,11 +1835,11 @@ export class SessionRuntime {
     if (this.forkedFromCache?.jid === jid) return this.forkedFromCache.info;
     let info: SessionSnapshot['forkedFrom'];
     try {
-      const first = fs.readFileSync(path.join(sessionsDir(resolveDataDir(this.root)), `${jid}.jsonl`), 'utf8').split('\n')[0] ?? '';
+      const first = fs.readFileSync(path.join(sessionsDir(this.dataDir), `${jid}.jsonl`), 'utf8').split('\n')[0] ?? '';
       const header = JSON.parse(first) as JournalEvent;
       const ff = header.t === 'header' ? header.forkedFrom : undefined;
       info = ff !== undefined && ff.kind === 'fork'
-        ? { sessionId: ff.sourceSessionId, title: journalDisplayTitle(resolveDataDir(this.root), ff.sourceSessionId, path.basename(this.root)) }
+        ? { sessionId: ff.sourceSessionId, title: journalDisplayTitle(this.dataDir, ff.sourceSessionId, path.basename(this.root)) }
         : undefined;
     } catch {
       info = undefined;
@@ -1856,7 +1887,7 @@ export class SessionRuntime {
       queued: this.queuedSteer(),
       todoBatches: this.todoBatches,
       archived: this.attachedJournalId !== undefined
-        ? readSessionMeta(resolveDataDir(this.root), this.attachedJournalId).archived === true
+        ? readSessionMeta(this.dataDir, this.attachedJournalId).archived === true
         : false,
       ...(this.forkedFromInfo() !== undefined ? { forkedFrom: this.forkedFromInfo() } : {}),
       team: this.runtimeImpl.harness.team.aliveNames().map((name) => {
