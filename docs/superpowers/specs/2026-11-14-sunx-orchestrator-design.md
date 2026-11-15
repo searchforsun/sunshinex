@@ -242,6 +242,14 @@ parameters:
 - 持久化：调度行落 journal（新 shadow 行 `wake-schedule`，语义与 board/delegation 行同级——凡界面可见皆落库）；attach 时重布防（daemon 级 timer registry 装载重放）。错过时段（daemon 停机跨越）策略待裁定 R7：默认「补发一次唤醒 + 注明延迟时长」。
 - 循环/周期（cron-like）：P3 视需求，MVP 只做一次性。
 
+> **实施实况（2026-11-15 P2 收口回写）**：调度原语已全量落地（2026-11-15 Task 3 + fix 两轮），对本节四处收窄/校准：
+> ①**TimerController 落 session 层**（`src/session/timer.ts`，WakeController 同居纯件）——裁定：偏离上文「daemon 级 timer registry」字面、**语义等价**（定时是会话资产随档走：journal 行随会话落盘、重布防挂 attach 逐会话回放，进程级注册表无必要；setTimeout/clearTimeout/now 三缝可注入保测试假钟）。
+> ②**journal 行词汇 `wake-schedule`** `{id,fireAt,note,taskSpec?,firedAt?}`——journal 直落（runmeta 直写先例：arm 非内核转录事件不经 kernelEventRows）；读面单点 seglog `reduceWakeScheduleRows`（按 id 末行为准、坏行整条弃、旧档无行=行为不变）；arm 落未触发态行、触发/被替换落 firedAt 终态行（存档终态审计史不被遮蔽）。
+> ③**单活跃调度位 MVP**：每会话一枚，新 arm 替换旧（被替换者落终态行）；到点 busy=排队留位、宿主轮收束补跑；plan 武装态不受理留位且计入连续唤醒上限（与任务唤醒同 chain 账本）。
+> ④**R7 已落地**：attach 重布防 `rearmSchedules`——未触发项 re-arm（回放逐记录播种 scheduleSeq 防重铸 id 撞档，fix round 1）、已触发跳过、停机跨越（fireAt 过期无终态行）补发一次并注明延迟（宽限 1s 防准点抖动误注）。
+> ⑤`schedule_wakeup/schedule_task` **仅 sunx face 装配**（timing 归一单点：二选一必填；schedule_task 到点先 fork 派发再起轮；arm 缝缺席=NOT_SUPPORTED 确定降级）；面=白名单 `SUNX_FACE_TOOLS` **十件**（P1 七件 + get_agent_team_board + schedule_wakeup + schedule_task）。
+> ⑥**「定时唤醒」显示前缀迁显示层**（fix round 2）：session/wake 纯件零 UI 依赖（zero-value import 钉），GUI chat-reducer 独立 `schedule` 标记与 run 条配对挂前缀（`t('Scheduled wake','定时唤醒')`）——**不混 WakeRef 词汇**，与 wake 前缀互斥一轮只属一族。
+
 ---
 
 ## 8. HITL
@@ -252,10 +260,11 @@ parameters:
 
 ### 8.2 子任务 HITL（2026-11-15 现状校准：fork 路由 ask 已支持）
 
-现状（2026-11-14 已落地）：父链 ask 接缝在场（daemon/TUI 交互装配）时，fork 子面注册**路由版 ask_question**——askedBy 归因（子标签+板任务 id）后直通主对话挂起卡，回答后子任务同 run 续跑；headless 装配维持剔除旧制；teammate 面（板通道）仍剔除。**Sunx 派发的 fork 子任务中途问人 P1 即可用，零新增**；挂起跨重启不保留是既有内存态缺口（P2 挂起持久化，§11）。
+现状（2026-11-14 已落地）：父链 ask 接缝在场（daemon/TUI 交互装配）时，fork 子面注册**路由版 ask_question**——askedBy 归因（子标签+板任务 id）后直通主对话挂起卡，回答后子任务同 run 续跑；headless 装配维持剔除旧制；teammate 面（板通道）已于 P2 同款放开（见下行实施实况）。**Sunx 派发的 fork 子任务中途问人 P1 即可用，零新增**；挂起跨重启不保留是既有内存态缺口（P2 挂起持久化，§11——已落地）。
 
 - **章程指引（P1）**：简报仍预置「默认决策」（defaults）指引，歧义优先自答、ask 只用于真正需要用户裁决的分叉——抑制问询风暴（业界「模糊委派」教训的对症手段仍在）。
 - **板通道（P2 裁定点）**：teammate 面是否放开路由 ask（askedBy 类型已含板任务 id 字段，路由机制现成），随板通道一起裁定。
+  > **实施实况（2026-11-15 P2 收口回写）**：**已放开**（2026-11-15 P2 Task 1 落地）——`deriveTeammateRegistry` 增 ask 接缝+归因双入参（ask + askedBy{label,taskId}），实现与 fork 同构：先无条件摘除 ask_question，接缝+归因双在场才回注册路由版 makeAskQuestionTool（`(req)=>ask({...req,askedBy})`）；teammate Reactor 逐任务带 `{label:成员名, taskId:板任务 id}` 转交装配闭包——**askedBy 板任务 id 形态与 fork 同源**。ask 缺席（headless 装配）维持剔除旧制（结论回写即应答）。成员执行板任务时问人直达主对话挂起卡，零新机制。
 - **P3（会话型执行体）**：target='session' 真子会话自带完整挂起表；「blocked 上抛 Sunx 知晓」为可选增强。
 
 ### 8.3 无人值守降级策略
@@ -303,6 +312,12 @@ parameters:
 
 跳转定位瞬跳无闪光（§13.1 规则 6）、悬浮提示 data-tip、图标钮 24px 命中盒/14px 下限、圆角体系——全部既有铁律直接适用，本设计零豁免。
 
+> **实施实况（2026-11-15 P2 收口回写）**：GUI 管理面已全量落地（2026-11-15 Task 6/7/8），四处落点：
+> ①**SUNX 分组**：侧栏视图过滤器（工作区组之后、RECENTS 之前，两组并存不互斥）——按 /sessions 行 `kind==='sunx'` 聚合、按工作区分节（R10），空组整块不显；组头「SUNX」可折叠 + 右侧看板钮（可选 guard，页签注册后接线）；行条目复用既有 SessionRow（kind 徽标既有）。
+> ②**总览页**：单例页签类型 **`sunxboard`**（应用级不绑会话——欢迎页座同渲染；registry 应用级单例 + 盘档白名单一条即得全套持久化/恢复；对 §10.2 原表「新页签类型 `sunx`」的命名校准：页签 id 不用 kind 值 'sunx' 防语义混淆）。顶部聚合条（运行中实例/在飞任务/待裁决）+ 卡片网格（按工作区分节，每卡=姓名+状态点+任务进度+最近活动+待裁决徽标，点卡进实例）+「新建 Sunx」入口卡（复用创建弹窗）+刷新钮。**懒快照视图语义**：打开/刷新各拉一次全量（逐工作区 sessionsOf + 逐 live 行 sessionSnapshot `bumpSeq:false` 只读通道防抬基线），不订阅 WS——「打开即所见，刷新即新」；未挂载行/快照失败降级不炸。§17.3 P2 增强的卡内 mini DAG 未做（留后续）。
+> ③**品性编辑**：`GET/POST /session/:id/charter` 双端点（P2 补 GET 读面；POST P1 已有）——POST 同拍双键 meta.charterRev + meta.charterText（**读面持久事实源**：重启重开 reCast 读 meta.charterText，编辑文跨重启存活；快照 sig.charter 是出生冻结层恒不随编辑动，fix round 1 裁定）。GUI 落点=SUNX 组行菜单「编辑品性」→ 编辑弹窗（打开拉预填、保存行内提示新 rev 后自动关；装载失败静默禁保存；保存在途三关闭路径拒关）。
+> ④**品性模板目录**：`GET /settings/sunx-templates`（只读面——模板由用户手编文件落盘，GUI 不写）——catalog 两级宽容清单：项目级 `<root>/.sunshinex/sunx/` 遮蔽全局级 `~/.sunshinex/sunx/`（项目遮蔽全局标 shadowed、坏档入 warnings 跳过不抛死；**对 §17.1「P2 可选」路径的校准：模板是全局目录非实例私有，无 `{id}` 层**）。创建弹窗顶部「模板」下拉惰拉（弹窗打开取一次，root=缺省工作区锚），选中即回填 name/charter——回填只是播种，用户改后以改后为准。
+
 ---
 
 ## 11. 持久化与恢复
@@ -317,6 +332,11 @@ parameters:
 | **调度项** | 无 | P2：journal `wake-schedule` 行 + attach 重布防（§7.2） |
 | **挂起票据** | 内存（现状，重启蒸发） | P2：pending 行落 journal（`pending-open/resolve` 影子行），attach 重挂 + GUI 卡重建；executors 已死的票据标 expired 由用户重投 |
 | **恢复唤醒** | 无 | P2（R9 裁定）：attach 完成后对 `kind==='sunx'` 会话注入一条恢复 notice 唤醒轮（「重启后 N 个派发任务被打断；重读板态，决定重派/放弃」），实现「重启自愈后 Sunx 自主重建」 |
+
+> **实施实况（2026-11-15 P2 收口回写）**：P2 三行已全量落地（2026-11-15 Task 3/4/5），实况与一处裁定修正：
+> - **调度项**：已落地——journal `wake-schedule` 行 + attach 重布防 `rearmSchedules`（实况见 §7.2）。
+> - **挂起持久化**：journal 影子行 `pending-open` `{pid,kind:ask|approval|plan-approval,req 原件}` / `pending-resolve` `{pid,outcome 摘要}`——写面三 suspend 入口落 open 行（journal 落档先于广播不变式保持）、四 resolve/deny 出口落 resolve 行（先于 executor 恢复续跑行=审计完整）；读面单点 seglog `reducePendingRows`（按 pid 配对：open 无 resolve 对位=未决、行面字段不予信任逐条弃、孤儿 resolve 弃不伪造、旧档无行=行为不变）。**裁定修正：不复活 promise**——对上行「attach 重挂 + GUI 卡重建」设计的收窄替代：不重建挂起表、不重发挂起帧（executor 已死复活无消费者，GUI 卡不复活），未决转**恢复轮素材**（问题原文+选项+askedBy 归因）由恢复后的 Sunx 在新 run 重新处理；「executors 已死的票据标 expired」未做（素材语义替代）。
+> - **恢复唤醒轮（R9 已落地）**：attach 收尾自动重估（fire-and-forget 一次性，全序最末）——`kind==='sunx'` 且（板自愈 cancelled 打断任务（`TaskBoard.restartRecovered` 读面）或 台账孤儿标 stopped 崩溃遗留（`TaskRegistry.restartOrphans` 读面）或 存在未决挂起素材）才起轮，全无素材静默不起轮（防每次重开空转）；通知文 `<session-restored>` 裁定模板逐字：定性说明 + 打断清单节 + 未决素材节 + 重估指令收尾（空节整节省略）；显示走普通 run 行（标签入安静清单不显示）；busy 竞争用户优先（409 丢弃 + skip notice，素材保留待空闲重试）；起跑成功即消费素材（单次消费本实例语义；盘上 open 行不因消费改写、行推导幂等下次 attach 重产）。
 
 ---
 
