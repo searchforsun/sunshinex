@@ -1720,9 +1720,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .chat .entry-thinking + .entry-assistant,
 .chat .entry-tool + .entry-assistant,
 .chat .seg-collapse + .entry-assistant { margin-top: 0; }
-/* 2026-11-14 用户实测「正文上下行距不一致」:盒距差 8px 但视觉字距差仅 ~2px(折叠行自带内距
-   吸收了大部分)——正文后段补 2px margin 对齐视觉字距 */
-.chat .entry-assistant + .seg-collapse { margin-top: 2px; }
+
 /* G14.216b 段后正文首元素收口:标题 md 首行自带 12px 顶 margin 叠加段距,思考/工具行→正文
    视觉断裂(截图实测 ~24px)——首元素顶边距归零+段后 padding-top 收口,恢复 8px 行距意图;
    用户气泡后的正文保持呼吸不动 */
@@ -4187,16 +4185,21 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 
 /* ===== 新建 Sunx 创建弹窗 + 侧栏 kind 徽标(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」
    同级、独立弹窗;欢迎页 composer 零改动;P2 Task 6 增模板下拉——select 与 input/textarea 同款面) ===== */
-.sx-sunx-dialog { width: min(460px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.sx-sunx-dialog { width: min(640px, 100%); display: flex; flex-direction: column; gap: 12px; }
 .sx-sunx-field { display: flex; flex-direction: column; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-sunx-field > span:first-child { font-size: calc(14px * var(--fz)); }
 .sx-sunx-field input, .sx-sunx-field select, .sx-sunx-field textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
 .sx-sunx-field input:focus-visible, .sx-sunx-field select:focus-visible, .sx-sunx-field textarea:focus-visible { border-color: var(--border-strong); outline: none; }
-.sx-sunx-field textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
-.sx-sunx-dir { display: flex; align-items: stretch; gap: 6px; }
-.sx-sunx-dir-path { flex: 1; min-width: 0; display: inline-flex; align-items: center; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg); overflow-wrap: anywhere; }
-.sx-sunx-dir button { flex: none; padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); font-size: calc(14px * var(--fz)); }
-.sx-sunx-dir button:hover { border-color: var(--border-strong); }
+.sx-sunx-field textarea { resize: vertical; min-height: 140px; line-height: 1.5; }
+/* 工作目录选择条(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):choose-project-bar 同款
+   选择条(样式对齐欢迎页)+anchor 相对容器使 proj-pop 向下展开(dialog 无 welcome-dock 锚);
+   hover 面补 welcome-dock 作用域外的同款(选择条是可点面,非纯文字行) */
+.sx-sunx-ws-anchor { position: relative; }
+.sx-sunx-ws-bar { width: 100%; display: inline-flex; align-items: center; gap: 8px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); font-size: calc(14px * var(--fz)); }
+.sx-sunx-ws-bar:hover { border-color: var(--border-strong); }
+.sx-sunx-ws-anchor .choose-project-bar { width: 100%; text-align: left; }
+.sx-sunx-ws-anchor .choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }
+.sx-sunx-ws-anchor .proj-pop { bottom: auto; top: calc(100% + 6px); left: 0; right: 0; width: auto; }
 /* 侧栏会话行 kind 徽标(标题旁小 chip):文字 14px(界面文字铁律),accent 描边降存在感;
    flex:none 不挤标题省略/悬浮卡;行 hover 时段 meta 隐而徽标恒显(归属辨识常驻) */
 .sx-sunx-badge { flex: none; display: inline-flex; align-items: center; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--radius-sm); padding: 0 6px; white-space: nowrap; }
