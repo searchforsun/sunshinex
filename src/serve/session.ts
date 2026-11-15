@@ -535,7 +535,7 @@ export class SessionRuntime {
     this.sessionKind = opts.kind;
     this.sessionName = opts.name;
     this.sessionCharter = opts.charter ?? undefined; // null=无品性层（装配 charter 键缺席同形）
-    this.charterCurrent = opts.charter ?? null; // 换铸随装配回 birth charter（reset 清链=替代行随旧链清，读面同拍归位）
+    this.charterCurrent = opts.charter ?? null; // 读面=调用方传文（fix round 1：attach 侧 meta.charterText 编辑文优先/缺席回落快照出生文——与链回放替代行同文,读面/模型面两窗不漂移;null=无品性层同缺席门。reset 路径另归 birth 文,见 reset() 注释）
     this.runtimeImpl = this.assemble();
     if (this.journal !== undefined) {
       this.syncSessionStores();
@@ -1648,6 +1648,13 @@ export class SessionRuntime {
     this.charterCurrent = this.sessionCharter ?? null;
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
+    // reset 终结已落档调度（终审修复波 Fix 1）：下方 disposeRuntime 的 timer.reset() 只清内存位不落盘
+    // ——盘上未触发 wake-schedule 行存活，daemon 重启 attach rearmSchedules 会把用户 /reset 丢弃的
+    // 闹钟对已清空上下文重布防起一轮定时唤醒（「软重置后调度不复活」此前只在同进程内为真）。对当前
+    // 挂起位落 firedAt 终态行（镜像 fireScheduled 链上限路径写法；与挂起面 denyPlanPendings 落
+    // resolve 行同对称处理），回放面（rearmSchedules 的 firedAt 在场跳过闸门）即不再重布防
+    const discarded = this.timer.scheduled;
+    if (discarded !== undefined) this.logScheduleRow({ ...discarded, firedAt: Date.now() });
     if (this.journal !== undefined) {
       this.hookJournalSink();
       this.syncSessionStores();
@@ -1922,8 +1929,9 @@ export class SessionRuntime {
     rt.harness.team?.stopAll();
     rt.harness.tasks.stopAll();
     this.wake.reset(); // bg-wake 收口：清合批 timer/pending/链计数（防句柄泄漏,换铸/关闭后旧批次零残留）
-    this.timer.reset(); // 定时调度收口（P2 Task 3）：清句柄/调度位（WakeController 同纪律；软重置后调度不复活
-    // ——档上未触发机制行仅在 daemon 重启 attach 重布防时重放）
+    this.timer.reset(); // 定时调度收口（P2 Task 3）：清句柄/调度位（WakeController 同纪律）。盘面分流（终审
+    // Fix 1）：reset 路径已先行落 firedAt 终态行——档上无未触发行,重启 attach 重布防零复活；teardown/close
+    // 路径不终结（调度是会话资产随档存活——daemon 停机跨越重启补发,手册「定时随档保存重启生效」口径）
     await rt.harness.pipeline.drain();
     await rt.harness.mcpClose();
   }

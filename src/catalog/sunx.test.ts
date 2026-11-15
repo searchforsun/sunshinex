@@ -77,6 +77,8 @@ test('listSunxTemplates: 坏档宽容——畸形档进 warnings 跳过不抛死
     assert.deepEqual(listing.entries.map((e) => e.id), ['ok'], '坏档不入列、好档照列');
     assert.equal(listing.warnings.length, 2, '两坏档各一行 warning');
     assert.ok(listing.warnings.every((w) => w.includes('sunx.md')), 'warning 指名坏档路径');
+    assert.ok(listing.warnings.every((w) => !w.includes('agent.md')), 'warning 文案以实际文件名落地（agent.md 语料不透传——终审修复波 Fix 4）');
+    assert.ok(listing.warnings.some((w) => w.includes('sunx.md missing frontmatter')), '缺 frontmatter 文案指名 sunx.md（Fix 4：parseAgentFrontmatter 原生文案硬编码 agent.md）');
     assert.ok(listing.warnings.some((w) => w.includes('no-fm')), 'warning 含缺 frontmatter 档');
     assert.ok(listing.warnings.some((w) => w.includes('no-name')), 'warning 含缺 name 档');
   });

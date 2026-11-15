@@ -44,6 +44,18 @@ export interface SunxTemplateEntry {
   shadowed: boolean;
 }
 
+/** parseAgentFrontmatter 包装（词法复用单点不动，只正名错误文案）：坏档 warning 以实际文件名落地——
+ *  词法单点原生文案硬编码 'agent.md missing frontmatter'/'agent.md frontmatter missing name'
+ *  （agent.md 语料口径），对 sunx.md 用户误导（终审修复波 Fix 4：warning 显示「agent.md 缺
+ *  frontmatter」而档实为 sunx.md）。同语义重抛，仅替换文件名词 */
+function parseSunxFrontmatter(text: string): ReturnType<typeof parseAgentFrontmatter> {
+  try {
+    return parseAgentFrontmatter(text);
+  } catch (e) {
+    throw new Error((e instanceof Error ? e.message : String(e)).replaceAll('agent.md', 'sunx.md'));
+  }
+}
+
 /**
  * 两级合并列举（层序=装载序：全局 → 项目，各层内按 id 字典序沿 listAgents 口径）。
  * 容错口径沿 Listing（D7）：目录缺 = 空清单不算错；单文件畸形（frontmatter 缺块/缺 name、读失败）
@@ -65,7 +77,7 @@ export function listSunxTemplates(root: string | null, globalDir?: string): List
       const file = path.join(dir, entry.name, 'sunx.md');
       if (!fs.existsSync(file)) continue;
       try {
-        const meta = parseAgentFrontmatter(fs.readFileSync(file, 'utf8'));
+        const meta = parseSunxFrontmatter(fs.readFileSync(file, 'utf8'));
         out.set(entry.name, {
           id: entry.name,
           name: meta.name,

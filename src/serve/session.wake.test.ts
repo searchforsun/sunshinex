@@ -820,6 +820,55 @@ test('attach 重布防：未触发 re-arm（R7 停机跨越补发一次注明延
   }, { kind: 'sunx' }); // sunx 装配：schedule_wakeup 在面（arm 经真实工具路径）
 });
 
+test('reset 终结已落档调度：软重置落 firedAt 终态行——重启 attach 不重布防（终审修复波 Fix 1）', { timeout: 30_000 }, async () => {
+  await withProjectsRoot(async (root) => {
+    // 时序设计：fireAt=now+3s——进程 A 武装轮+reset 在窗内收束；进程 B attach 完成后跨过 fireAt。
+    // 无终态行时 rearm 重布防过期调度 → R7 补发路径在 B 起定时唤醒轮（对已清空上下文——RED 可见）；
+    // 修复后 reset 先落 firedAt 终态行 → rearmSchedules 跳过（回放面 firedAt 在场闸门）
+    const fireAt = Date.now() + 3_000;
+    const model = new SunxRoutedAdapter(
+      { taskIds: () => [] },
+      [
+        callOne('schedule_wakeup', scheduleWakeup('alarm discarded by reset', { atIso: new Date(fireAt).toISOString() })),
+        stop('armed, ending turn'),
+      ],
+      [],
+    );
+    // 进程 A：sunx 会话武装调度（真工具路径落档）→ 软重置（用户 /reset 等价）→ 弃壳（daemon 停机）
+    const ioA = makeIo(model, []);
+    const cA = createSessionIn(ioA, root, { kind: 'sunx' });
+    assert.ok(cA.ok, `createSessionIn: ${cA.ok ? '' : cA.error.message}`);
+    const a = ioA.sessions.get(cA.value.sessionId)!;
+    const aRows = () => journalRows(a).filter((r) => r.t === 'wake-schedule');
+    assert.equal(a.submit('arm a timer').ok, true);
+    await waitFor(() => a.status() === 'idle', 15_000); // 武装轮收束（timer 在跑）
+    const jid = a.attachedJournalId!; // journal id 自铸（非会话 id——R9 同款取法）
+    assert.equal(aRows().length, 1, 'arm 机制行落档');
+    assert.equal(aRows()[0]!.firedAt, undefined, '武装态在档（未触发）');
+    await a.reset(); // 软重置：调度面此刻必须终结（RED 锚点——不落终态行则盘上未触发行存活）
+    const s1AfterReset = reduceWakeScheduleRows(journalRows(a)).find((r) => r.id === 'sched-1');
+    assert.notEqual(s1AfterReset?.firedAt, undefined, 'reset 落 firedAt 终态行（重启重放面跳过的闸门）');
+    await a.teardown();
+    // 进程 B（fresh io=真重启）：standard 壳 → attach 全序（rearmSchedules/reCast 在列）
+    const ioB = makeIo(new ScriptedAdapter(['post restart reply']), []);
+    const cB = createSessionIn(ioB, root);
+    assert.ok(cB.ok);
+    const att = attachSessionIn(ioB, cB.value.sessionId, jid);
+    assert.ok(att.ok, `attachSessionIn: ${att.ok ? '' : att.error.message}`);
+    const b = ioB.sessions.get(att.value.sessionId)!;
+    assert.equal(b.sessionKind, 'sunx', 'attach 全序走通（reCast 链生效）');
+    // 跨过 fireAt+裕量再断言：若有重布防，R7 补发路径此刻必起轮（负向断言有界等待）
+    const remain = fireAt + 1_500 - Date.now();
+    if (remain > 0) await new Promise((r) => setTimeout(r, remain));
+    assert.equal(scheduleNotices(b.sessionKernel.replay()).length, 0, '已弃调度不跨重启复活（零定时唤醒轮）');
+    assert.equal(wakeNotices(b.sessionKernel.replay()).length, 0, '零唤醒轮（任务唤醒词汇面同静默）');
+    assert.equal(b.status(), 'idle');
+    const records = reduceWakeScheduleRows(journalRows(b));
+    assert.notEqual(records.find((r) => r.id === 'sched-1')?.firedAt, undefined, '终态行跨重启在档（rearmSchedules 跳过依据）');
+    await b.teardown();
+  });
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // 恢复唤醒轮 R9（2026-11-15 sunx P2 Task 5）：attach 收尾自动重估——daemon 重启后 GUI 重开
 // （attachSessionIn 全序收尾）且 kind==='sunx' 且（存在自愈 cancelled/stopped 打断任务 或 存在
