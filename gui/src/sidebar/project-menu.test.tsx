@@ -305,7 +305,7 @@ describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6;2026-11-15 提为顶部�
     fireEvent.click(btn);
     expect(await screen.findByRole('dialog', { name: 'New Sunx' })).toBeDefined();
     // 缺省锚:工作区清单(p1/p2/harness-x)无 sunshinex-default 行 → 字面 'default'
-    expect(screen.getByText('default')).toBeDefined();
+    expect(screen.getByText(/^(?:Default workspace|默认工作区)$/)).toBeDefined(); // hook 锚字面 'default' 显示名
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '编排者' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() => expect(conn.newSession).toHaveBeenCalledWith('default', undefined, undefined, undefined, { kind: 'sunx', name: '编排者' }));
