@@ -165,7 +165,9 @@ test('fork 子代 kind 继承：sunx 装配 fork child 稳定段带 Sunx 身份�
     assert.ok(seen.prompts.length >= 3, `探针应捕获父/子两代 prompt：${seen.prompts.length}`);
     const childPrompt = seen.prompts[1] ?? '';
     assert.ok(childPrompt.includes('fork 任务'), '第 2 轮 prompt 应为 fork 子代（携带任务行）');
-    assert.ok(childPrompt.includes('You are the Sunx orchestrator'), 'fork 子代稳定段必须带 Sunx 身份行（kind 经 SubagentRunnerDeps→child Reactor 透传，缺接线即回 SunshineX 身份行）');
+    assert.ok(childPrompt.includes('You are the Sunx orchestrator'), 'fork 子代稳定段与父同面（kind 透传，§17.2 前缀缓存裁定）');
+    assert.ok(childPrompt.includes('Override: you are a WORKER dispatched by the Sunx orchestrator'), '子代段尾带 worker 覆写行（2026-11-15 严重 bug 修复：子面无 dispatch_task，编排者指令是假命题）');
+    assert.ok(childPrompt.indexOf('Override: you are a WORKER') > childPrompt.indexOf('You are the Sunx orchestrator'), '覆写行后出（废黜先行的编排者指令）');
     h.tasks.stopAll();
   } finally {
     fs.rmSync(tmp1, { recursive: true, force: true });

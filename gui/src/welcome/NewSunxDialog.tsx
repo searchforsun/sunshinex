@@ -60,10 +60,14 @@ export interface NewSunxDialogProps {
   /** 创建模式:成功后打开新会话(既有 openSession 链路);编辑模式不消费 */
   readonly onOpenSession?: (sessionId: string, root: string) => void;
   /** 编辑模式(2026-11-15 用户裁定「编辑 Sunx 复用创建弹窗,禁用工作区,支持改名+品性」):
-   *  sessionId 寻址;name=当前显示名(预填);提交走 rename+editCharter 双端点 */
-  readonly edit?: { sessionId: string; name: string };
+   *  sessionId 寻址;name=当前显示名(预填);root=工作目录(禁用显示,创建定死不可改——域绑定语义);
+   *  提交走 rename+editCharter 双端点 */
+  readonly edit?: { sessionId: string; name: string; root?: string };
   /** 创建模式缺省工作目录锚(当前默认工作区 root;宿主 defaultWorkspaceAnchor 单点供值) */
   readonly defaultRoot?: string;
+  /** 编辑模式成功回显(2026-11-15 换挂 ChatTopbar):改名落盘后宿主乐观上屏+侧栏联动
+   *  (adoptTitle 通道——弹窗自管 renameSession,通道不重发,防双尾追同步行) */
+  readonly onEdited?: (name: string) => void;
 }
 
 export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
@@ -72,7 +76,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   const isEdit = edit !== undefined;
   const [name, setName] = useState('');
   const [charter, setCharter] = useState('');
-  /** 工作目录选择面(创建模式):既有 DirPicker 整面替换表单;编辑模式整字段禁用不渲染 */
+  /** 工作目录选择面(创建模式):欢迎页同款下拉;编辑模式同字段禁用显示(只示出生根,不可改) */
   const [browse, setBrowse] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -180,6 +184,13 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     return nm === 'default' || nm.startsWith('sunshinex-default');
   })();
   const wsLabel = isDefaultPicked ? t('Default workspace', '默认工作区') : pathBasename(target);
+  /** 编辑模式工作目录显示(禁用态):会话出生根 basename;缺省/默认锚同款「默认工作区」 */
+  const editRootLabel = (() => {
+    const r = edit?.root ?? '';
+    if (r.trim() === '') return t('Default workspace', '默认工作区');
+    const nm = pathBasename(r);
+    return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
+  })();
   /** 姓名必填(trim 后非空)+ busy 锁(提交中禁重复提交) */
   const canSubmit = name.trim() !== '' && !busy && (isEdit ? charterLoaded : true);
 
@@ -210,16 +221,20 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   };
 
   /** 编辑提交(双端点按变更分派):名称=renameSession(meta.title 显示链+daemon 尾追同步行——模型
-   *  下一轮即知新名);品性=editCharter(全文替换+尾追替代行)。全 settlement 后关弹窗 */
+   *  下一轮即知新名;名未变不发,防同名双尾追行);品性=editCharter(全文替换+尾追替代行;文未变不
+   *  重发)。全 settlement 后 onEdited 回显+关弹窗 */
   const submitEdit = (): void => {
     if (!canSubmit || edit === undefined) return;
     setBusy(true);
     setError('');
-    const jobs: Array<Promise<unknown>> = [conn.renameSession(edit.sessionId, name.trim())];
+    const nextName = name.trim();
+    const jobs: Array<Promise<unknown>> = [];
+    if (nextName !== edit.name) jobs.push(conn.renameSession(edit.sessionId, nextName));
     if (charter !== (fetchedCharter ?? '')) jobs.push(conn.editCharter(edit.sessionId, charter));
     Promise.all(jobs).then(
       () => {
         setBusy(false);
+        props.onEdited?.(nextName);
         onClose();
       },
       (err: unknown) => {
@@ -296,9 +311,19 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
         </label>
         {/* 工作目录(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):choose-project-bar 同款
             选择条+WelcomeProjectPop 弹层(筛选/默认工作区锚/浏览文件夹…),登记面走 DirPicker
-            overlay(welcome 同构)。anchor 相对容器使弹层向下展开(dialog 内无 welcome-dock 锚) */}
+            overlay(welcome 同构)。anchor 相对容器使弹层向下展开(dialog 内无 welcome-dock 锚)。
+            编辑模式=禁用显示(2026-11-15 用户裁定「复用创建的弹窗,禁用工作区就可以」——创建定死
+            不可改,域绑定语义;只示出生根,无下拉无浏览) */}
         <div className="sx-sunx-field">
           <span>{t('Working directory', '工作目录')}</span>
+          {isEdit ? (
+            <div className="sx-sunx-ws-anchor">
+              <button type="button" className="choose-project-bar sx-sunx-ws-bar" aria-label={t('Working directory', '工作目录')} disabled>
+                <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                <span className="wc-pill-label">{editRootLabel}</span>
+              </button>
+            </div>
+          ) : (
           <div className="sx-sunx-ws-anchor">
             <button
               type="button"
@@ -335,6 +360,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
               </div>
             )}
           </div>
+          )}
         </div>
         <label className="sx-sunx-field">
           <span>{t('Charter', '品性')}</span>

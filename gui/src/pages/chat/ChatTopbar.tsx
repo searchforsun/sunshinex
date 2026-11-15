@@ -6,7 +6,7 @@ import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
-import { CharterDialog } from '../../welcome/CharterDialog';
+import { NewSunxDialog } from '../../welcome/NewSunxDialog';
 import { SessionRowMenu } from '../../sidebar/session-row-menu';
 import { loadSeenMap, persistSeenMap, stampSeen, suppressAutoSeen } from '../../sidebar/project-menu-util';
 import type { PinEntry } from '../../sidebar/pin-store';
@@ -97,6 +97,9 @@ export interface ChatTopbarProps {
   readonly displayTitle: string;
   /** 会话形态(sunx P2 2026-11-15:title GET 随响应透出)——'sunx' 行菜单编辑 Sunx/复制 Sunx ID 分支 */
   readonly sessionKind?: string;
+  /** 编辑 Sunx 改名回显通道(2026-11-15 双模式弹窗):弹窗自管 renameSession 落盘,本通道只做
+   *  顶栏乐观上屏+侧栏联动(useChatTitle adoptTitle——不再重发 rename,防双尾追同步行) */
+  readonly onAdoptTitle?: (title: string) => void;
   readonly sessionId: string;
   readonly tokens: number;
   readonly steps: number;
@@ -133,8 +136,9 @@ export interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
-  /** 「编辑 Sunx」→ 品性编辑弹窗(P2 Task 7 组件复用;portal 自挂,挂载点随 header 尾) */
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  /** 「编辑 Sunx」双模式弹窗编辑态(2026-11-15 用户裁定「复用创建弹窗,禁用工作区」;portal 自挂,
+   *  挂载点随 header 尾。原 CharterDialog 退役——功能并入 NewSunxDialog 编辑模式) */
   const [charterOpen, setCharterOpen] = useState(false);
   // ⋯ 会话操作菜单(2026-10-22 用户裁定:归档直连钮收敛为 ⋯ 弹窗——置顶⇄/归档⇄,运行中禁用)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -282,32 +286,39 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     }
     void conn.saveAppSeen(seen).then(onSessionsMutated, onSessionsMutated);
   };
+  // sunx 会话:置顶/归档会话两件退役(2026-11-15 用户实测裁定「置顶和编辑会话不是已经去掉了吗」
+  // ——Sunx 归档与会话归档彻底分开,唯一归档入口=侧栏 SUNX 组头归档层);standard 三件原样
+  const isSunx = sessionKind === 'sunx';
   const menuItems = [
-    {
-      id: 'pin',
-      label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
-      icon: pinned ? <PinOff size={14} strokeWidth={1.75} aria-hidden="true" /> : <Pin size={14} strokeWidth={1.75} aria-hidden="true" />,
-      // 已归档冻结置顶态(2026-10-22 用户裁定);2026-11-07 撤运行中禁用(用户裁定「运行中也能
-      // 置顶,只是切换显示位置」)
-      disabled: archived,
-      onSelect: () => {
-        // 只调 togglePin——它按服务端现态取反且落库后才上抛联动;此处再 loadPinned()
-        // 会 GET 到 PUT 落库前的旧档,把刚置的状态打回去(「第一次无效、后续反向」元凶)
-        togglePin();
-      },
-    },
-    {
-      id: 'archive',
-      label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
-      icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
-      // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行
-      disabled: false,
-      onSelect: () => {
-        if (archived) onArchive(false);
-        else setAskArchive(menu); // 二次确认弹窗(坐标沿用菜单锚点;菜单项回调里 menu 必非空)
-      },
-    },
-    { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
+    ...(!isSunx
+      ? [
+          {
+            id: 'pin',
+            label: pinned ? t('Unpin session', '取消置顶会话') : t('Pin session', '置顶会话'),
+            icon: pinned ? <PinOff size={14} strokeWidth={1.75} aria-hidden="true" /> : <Pin size={14} strokeWidth={1.75} aria-hidden="true" />,
+            // 已归档冻结置顶态(2026-10-22 用户裁定);2026-11-07 撤运行中禁用(用户裁定「运行中也能
+            // 置顶,只是切换显示位置」)
+            disabled: archived,
+            onSelect: () => {
+              // 只调 togglePin——它按服务端现态取反且落库后才上抛联动;此处再 loadPinned()
+              // 会 GET 到 PUT 落库前的旧档,把刚置的状态打回去(「第一次无效、后续反向」元凶)
+              togglePin();
+            },
+          },
+          {
+            id: 'archive',
+            label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
+            icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
+            // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行
+            disabled: false,
+            onSelect: () => {
+              if (archived) onArchive(false);
+              else setAskArchive(menu); // 二次确认弹窗(坐标沿用菜单锚点;菜单项回调里 menu 必非空)
+            },
+          },
+          { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
+        ]
+      : []),
     {
       id: 'rename',
       label: sessionKind === 'sunx' ? t('Edit Sunx', '编辑 Sunx') : t('Rename session', '重命名会话'),
@@ -500,7 +511,15 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         )}
         {/* [|] 侧栏开关退役(2026-10-23 用户裁定):全局唯一切换钮=右上窗控簇(桌面)/固定右上钮(web) */}
     </header>
-    {charterOpen && <CharterDialog open onClose={() => setCharterOpen(false)} conn={conn} sessionId={sessionId} />}
+    {charterOpen && (
+      <NewSunxDialog
+        open
+        edit={{ sessionId, name: displayTitle, root }}
+        conn={conn}
+        onClose={() => setCharterOpen(false)}
+        onEdited={onAdoptTitle} // 改名乐观上屏+侧栏联动(dialog 自管 renameSession 落盘,通道不重发)
+      />
+    )}
     </>
   );
 }

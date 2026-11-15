@@ -601,8 +601,11 @@ export class SubagentRunner {
         ...(this.deps.ledger ? { ledger: this.deps.ledger } : {}),
         ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
         // fork 子代 kind 继承（2026-11-15 sunx P1 Task 3，spec §17.2 裁定）：sunx 派发的子智能体
-        // 稳定段与父逐字节同面（Sunx 身份行/编排章程行随 Reactor kind）；缺席=standard 原样
+        // 稳定段与父逐字节同面（Sunx 身份行/编排章程行随 Reactor kind）；缺席=standard 原样。
+        // worker 覆写尾行（2026-11-15 严重 bug 修复）：子面已剔 dispatch_task/task_status，
+        // 「一切靠 dispatch/你没有执行工具」对子代是假命题——尾行废黜编排者指令（纯尾追，缓存不破）
         ...(this.deps.kind ? { kind: this.deps.kind } : {}),
+        ...(this.deps.kind === 'sunx' ? { sunxWorker: true } : {}),
         ...(this.deps.onEvent
           ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel, ...(opts && opts.taskId !== undefined ? { subagentTaskId: opts.taskId } : {}) } }) }
           : {}),

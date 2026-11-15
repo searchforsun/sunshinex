@@ -24,7 +24,6 @@ import { RecentsSection } from './project-menu-recents';
 import { SunxSection } from './project-menu-sunx';
 import { ArchiveSection, type ArchivedRow } from './archive-group';
 import { PinnedSection } from './pinned-section';
-import { CharterDialog } from '../welcome/CharterDialog';
 import { pinFromRow, type PinEntry } from './pin-store';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
@@ -432,20 +431,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     };
   }, [rows, conn]);
 
-  /** 「编辑品性」(sunx P2 Task 7):寻址解析单点——行 liveSessionId(在座标注)优先,缺席回落
-   *  journal id(POST/GET 端点仅寻址在座 daemon 会话,不在座行装载即静默禁保存,打开会话后再编辑);
-   *  本窗 attach 映射反查(journalId→live id)补「开着但闲置」行(无 liveSessionId 标注) */
-  const [charterFor, setCharterFor] = useState<string | null>(null);
-  const openCharterEditor = useCallback(
-    (row: { id: string; liveSessionId?: string }): void => {
-      const liveByJournal = new Map<string, string>();
-      for (const [live, jid] of journalOfSession) liveByJournal.set(jid, live);
-      setCharterFor(row.liveSessionId ?? liveByJournal.get(row.id) ?? row.id);
-    },
-    [journalOfSession],
-  );
-
-
   // 30s 定时自动刷新(G10-C13)+ 窗口聚焦刷新(G14.9:回窗即见最新会话列表)。
   // 2026-10-23:展开组会话行同拍重拉——后台会话收束后 liveSessionId 卡旧列表即「已完成仍在转圈」
   // (workspaces 只刷计数/recents,组行本不在此列;他端/他页起落的运行态 30s/聚焦自愈)
@@ -755,7 +740,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onAttach={(_root, journalId, updatedAt) => attachSunxJournal(journalId, updatedAt)} // P3 Task 3:条目点击=attachSunx 链(root 参数退役——journalId 直寻址重开)
           onArchiveRow={archiveRow}
           onOpenBoard={props.onOpenSunxBoard}
-          onEditCharter={openCharterEditor}
           onNewSunx={() => setSunxOpen(true)}
           onOpenArchive={() => setArchiveOpen(true)}
         />
@@ -810,7 +794,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           }}
           pinnedIds={pinnedIds}
           onPinRow={pinSessionRow}
-          onEditCharter={openCharterEditor}
         />
         {/* 归档层(2026-10-21 用户裁定):整替 Projects 列表体+Recents——无独立分组,组头 X 退出 */}
         {archiveOpen ? (
@@ -847,7 +830,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               onArchiveRow={archiveRow}
               pinnedIds={pinnedIds}
               onPinRow={pinSessionRow}
-              onEditCharter={openCharterEditor}
             />
           </>
         )}
@@ -866,10 +848,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             conn={conn}
             onOpenSession={openCreatedSunx}
           />
-        )}
-        {/* 「编辑品性」弹窗(sunx P2 Task 7):portal 到 body 同惯例;寻址由 openCharterEditor 解析 */}
-        {charterFor !== null && (
-          <CharterDialog open onClose={() => setCharterFor(null)} conn={conn} sessionId={charterFor} />
         )}
       </div>
       </>

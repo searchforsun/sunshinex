@@ -4,8 +4,7 @@ import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime 
 import { t } from '../i18n';
 import { readUsageStats } from '../usage-stats';
 import { zoomScale } from '../ui-zoom';
-import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, MoreHorizontal, NotebookPen, Pin } from 'lucide-react';
-import { SessionRowMenu } from './session-row-menu';
+import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -274,12 +273,12 @@ function SessionHoverCard(props: {
 /** 会话行（项目组行/最近会话行两组共用，D41 G6b 收敛；DOM 以 RECENTS 形为准——projects 行
  *  注释自称「与最近会话行同款」而 tooltip 落点漂在整行，归一到标题 span）：置顶钮（pin 未传
  *  =不渲染）+运行/未读状态点+标题（悬浮卡贴标题）+相对时间+归档确认 morph。open 已在
- *  调用方闭包好各自寻址形（组行 3 参/recents 2 参）与 root 缺省守卫 */
+ *  调用方闭包好各自寻址形（组行 3 参/recents 2 参）与 root 缺省守卫。
+ *  kind 徽标与行内 ⋯「会话操作」菜单退役（2026-11-15 用户实测裁定「Sunx 徽标去掉」「会话操作
+ *  这个入口应该去掉」）：行布局与最近会话完全同款，编辑 Sunx 唯一入口=顶栏 ⋯ 菜单 */
 export function SessionRow(props: {
   readonly rowId: string;
   readonly label: string;
-  /** 会话形态(sunx P1 Task 6,meta 读面):'sunx'=编排会话(标题旁小徽标);缺席=standard 无徽标 */
-  readonly kind?: string;
   readonly info: SessionRowInfo;
   readonly updatedAt: number;
   readonly active: boolean;
@@ -290,9 +289,6 @@ export function SessionRow(props: {
   readonly busy: boolean;
   readonly onOpen: () => void;
   readonly pin?: { onPin: () => void };
-  /** 「编辑品性」行菜单(sunx P2 Task 7):调用方仅对 kind==='sunx' 行传(gate=不传即无菜单
-   *  钮,standard 行零变化);宿主解析寻址并开 CharterDialog */
-  readonly onEditCharter?: () => void;
   readonly confirmId: string;
   readonly onArm: () => void;
   readonly onConfirm: () => void;
@@ -320,8 +316,6 @@ export function SessionRow(props: {
     hoverTimer.current = window.setTimeout(() => setHover(null), 140);
   };
   const hoverCancelClose = (): void => window.clearTimeout(hoverTimer.current);
-  /** 「编辑品性」行菜单弹层(sunx P2 Task 7):锚=行尾 ⋯ 钮右缘/下缘(projects 组头移除弹层同形) */
-  const [charterMenu, setCharterMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <li
       data-row-id={props.rowId}
@@ -365,28 +359,8 @@ export function SessionRow(props: {
           onCardLeave={hoverDelayClose}
         />
       )}
-      {/* kind 徽标(sunx P1 Task 6):标题旁小 chip——文字 14px(界面文字铁律),flex:none 不挤
-          标题省略;标题 span 与相对时间之间落位,行 hover 时段 meta 隐而徽标恒显 */}
-      {props.kind === 'sunx' && <span className="sx-sunx-badge">Sunx</span>}
       <span className="session-meta">{relTime(props.updatedAt)}</span>
       <span className="session-row-actions">
-        {/* 「编辑品性」行菜单钮(sunx P2 Task 7):onEditCharter 在场才渲染(gate),归档钮左侧同簇 */}
-        {props.onEditCharter !== undefined && (
-          <button
-            type="button"
-            className="sx-iconbtn"
-            data-tip={t('Session actions', '会话操作')}
-            aria-label={`session actions ${props.rowId}`}
-            onMouseDown={(e) => e.stopPropagation()} // 锚钮自身不触发 document 外点收(toggle 不被击穿)
-            onClick={(e) => {
-              e.stopPropagation();
-              const r = e.currentTarget.getBoundingClientRect();
-              setCharterMenu((v) => (v !== null ? null : { x: Math.round(r.right), y: Math.round(r.bottom) }));
-            }}
-          >
-            <MoreHorizontal size={14} strokeWidth={1.75} />
-          </button>
-        )}
         <ArchiveConfirmButton
           active={props.confirmId === props.rowId}
           rowId={props.rowId}
@@ -394,21 +368,6 @@ export function SessionRow(props: {
           onConfirm={props.onConfirm}
         />
       </span>
-      {charterMenu !== null && props.onEditCharter !== undefined && (
-        <SessionRowMenu
-          x={charterMenu.x}
-          y={charterMenu.y}
-          onClose={() => setCharterMenu(null)}
-          items={[
-            {
-              id: 'edit-charter',
-              label: t('Edit charter', '编辑品性'),
-              icon: <NotebookPen size={14} strokeWidth={1.75} aria-hidden="true" />,
-              onSelect: props.onEditCharter,
-            },
-          ]}
-        />
-      )}
     </li>
   );
 }

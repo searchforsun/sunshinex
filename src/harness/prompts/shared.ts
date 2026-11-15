@@ -117,6 +117,14 @@ export const SUNX_LOOP_LINE =
 export const SUNX_ASK_LINE =
   'Use ask_question only for decisions that change the direction of the task line; settle everything else yourself.';
 
+/** worker 覆写尾行（2026-11-15 用户实测严重 bug 修复）：fork 子代/板成员的稳定段与 Sunx 逐字节
+ *  同面（§17.2 前缀缓存裁定），身份行/编排章程随行——但子代工具面剔除 dispatch_task/task_status
+ *  （防子生孙自派发），「你没有执行工具、一切靠 dispatch」对 worker 是假命题，实测子代自认调度器
+ *  拒绝干活。覆写行随**子代**稳定段纯尾追（缓存纪律唯一合法动态通道）：首帧仍与父逐字节前缀连续，
+ *  尾行显式废黜编排者指令——worker 亲自执行、不可再分派 */
+export const SUNX_WORKER_TAIL =
+  'Override: you are a WORKER dispatched by the Sunx orchestrator, not the orchestrator itself — the orchestrator rules above do not apply to you. Execute the assigned task yourself with your own tools; you have no dispatch_task tool and must not dispatch further work.';
+
 /** 编排章程行组（stableSegmentOf 尾随追加槽位；身份行不在组内——它走槽位替换） */
 export const SUNX_CHARTER_LINES: readonly string[] = [
   SUNX_BRIEF_LINE,
@@ -145,6 +153,10 @@ export function stableSegmentOf(opts: {
   contextRoot: string;
   /** 会话形态（缺省/其余值 = standard 原样）：仅 'sunx' 触发身份槽替换与章程行尾随 */
   kind?: SessionKind;
+  /** worker 覆写尾行（sunx 分派通道专用，2026-11-15）：true=段尾追 SUNX_WORKER_TAIL——仅 fork
+   *  子代/板成员消费（subagent/teammate 装配点按父 kind==='sunx' 注入），Sunx 主链恒 false。
+   *  尾追=纯追加，主链与子代共享前缀到段尾为止，缓存纪律不破 */
+  sunxWorkerTail?: boolean;
 }): string {
   const sunx = opts.kind === 'sunx';
   return [
@@ -162,5 +174,6 @@ export function stableSegmentOf(opts: {
     FILE_PATH_LINE,
     IMAGE_PLACEMENT_LINE,
     ...(sunx ? SUNX_CHARTER_LINES : []),
+    ...(opts.sunxWorkerTail ? [SUNX_WORKER_TAIL] : []),
   ].join('\n');
 }

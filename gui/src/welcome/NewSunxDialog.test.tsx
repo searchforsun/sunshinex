@@ -341,13 +341,13 @@ function recentsProps(
   };
 }
 
-describe('RECENTS 头「新建 Sunx」钮退役 + 会话行 kind 徽标(sunx P1 Task 6;2026-11-15 入口提为顶部快捷区行)', () => {
+describe('RECENTS 头「新建 Sunx」钮退役 + 会话行零徽标(sunx P1 Task 6;2026-11-15 用户裁定「Sunx 标签去掉」)', () => {
   it('RECENTS 头不再渲染「new sunx」钮(入口唯一化到顶部快捷区,防同名可达名重复)', () => {
     render(<RecentsSection {...recentsProps([])} />);
     expect(screen.queryByRole('button', { name: 'new sunx' })).toBeNull();
   });
 
-  it('kind=sunx 行标题旁小徽标;standard 行(无 kind)无徽标', () => {
+  it('kind=sunx 行零徽标(2026-11-15 用户裁定「Sunx 标签去掉」);行布局与 standard 行完全同款', () => {
     const row = (id: string, kind?: string) =>
       ({ id, file: `${id}.jsonl`, updatedAt: 1, title: `会话 ${id}`, root: 'D:/w', slug: 'w', ...(kind !== undefined ? { kind } : {}) }) as SessionRow & { root: string; slug: string };
     const { container } = render(
@@ -355,8 +355,86 @@ describe('RECENTS 头「新建 Sunx」钮退役 + 会话行 kind 徽标(sunx P1 
     );
     const rows = container.querySelectorAll('.sx-session-row');
     expect(rows.length).toBe(2);
-    expect(rows[0].querySelector('.sx-sunx-badge')).not.toBeNull(); // sunx 徽标在场
-    expect(rows[1].querySelector('.sx-sunx-badge')).toBeNull(); // standard 无徽标
+    expect(rows[0].querySelector('.sx-sunx-badge')).toBeNull(); // 徽标退役
+    expect(rows[1].querySelector('.sx-sunx-badge')).toBeNull();
     expect(screen.getByText('会话 j1')).toBeDefined();
+  });
+});
+
+describe('NewSunxDialog 编辑模式(2026-11-15 用户裁定「编辑 Sunx 复用创建弹窗,禁用工作区」;ChatTopbar 换挂)', () => {
+  /** 编辑态宿主:edit prop 直挂(母体 ChatTopbar 同形) */
+  function EditHarness(props: { conn: NewSunxConn; onEdited?: (name: string) => void; onClose?: () => void }) {
+    const [open, setOpen] = useState(true);
+    return (
+      <NewSunxDialog
+        open={open}
+        onClose={() => {
+          props.onClose?.();
+          setOpen(false);
+        }}
+        conn={props.conn}
+        edit={{ sessionId: 'sx-1', name: '旧名', root: 'D:/tmp/proj' }}
+        onEdited={props.onEdited}
+      />
+    );
+  }
+
+  it('骨架:标题「编辑 Sunx」+姓名预填+工作目录禁用显示(出生根 basename)+品性预填(sessionCharter)+模板选择器不渲染', async () => {
+    const conn = makeConn();
+    (conn.sessionCharter as ReturnType<typeof vi.fn>).mockResolvedValue({ text: '出生章程', charterRev: 3 });
+    render(<EditHarness conn={conn} />);
+    expect(screen.getByRole('dialog', { name: 'Edit Sunx' })).toBeDefined();
+    expect((screen.getByLabelText(bi('Name', '姓名')) as HTMLInputElement).value).toBe('旧名');
+    // 工作目录=禁用条,显示出生根 basename,点击不弹层(禁用零副作用)
+    const bar = screen.getByRole('button', { name: bi('Working directory', '工作目录') }) as HTMLButtonElement;
+    expect(bar.disabled).toBe(true);
+    expect(bar.textContent).toContain('proj');
+    fireEvent.click(bar);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    // 品性预填:寻址=edit.sessionId
+    await waitFor(() => expect(conn.sessionCharter).toHaveBeenCalledWith('sx-1'));
+    await waitFor(() => expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).value).toBe('出生章程'));
+    expect(screen.queryByLabelText(bi('Template', '模板'))).toBeNull(); // 编辑态零模板
+  });
+
+  it('提交按变更分派:改名+改品性 → renameSession+editCharter 双端点;onEdited 回显新名+弹窗关', async () => {
+    const conn = makeConn();
+    (conn.sessionCharter as ReturnType<typeof vi.fn>).mockResolvedValue({ text: '出生章程', charterRev: 3 });
+    const onEdited = vi.fn();
+    const onClose = vi.fn();
+    render(<EditHarness conn={conn} onEdited={onEdited} onClose={onClose} />);
+    await waitFor(() => expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).value).toBe('出生章程'));
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '新名' } });
+    fireEvent.change(screen.getByLabelText(bi('Charter', '品性')), { target: { value: '改后章程' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(conn.renameSession).toHaveBeenCalledWith('sx-1', '新名');
+    expect(conn.editCharter).toHaveBeenCalledWith('sx-1', '改后章程');
+    expect(onEdited).toHaveBeenCalledWith('新名'); // 宿主 adoptTitle 通道(乐观上屏+侧栏联动)
+    expect(conn.newSession).not.toHaveBeenCalled(); // 编辑态零创建
+  });
+
+  it('名与品性都未变 → 两端点零调用直关(onEdited 仍回显现名,宿主上屏无副作用)', async () => {
+    const conn = makeConn();
+    (conn.sessionCharter as ReturnType<typeof vi.fn>).mockResolvedValue({ text: '出生章程', charterRev: 3 });
+    const onEdited = vi.fn();
+    render(<EditHarness conn={conn} onEdited={onEdited} />);
+    await waitFor(() => expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).value).toBe('出生章程'));
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Sunx' })).toBeNull());
+    expect(conn.renameSession).not.toHaveBeenCalled(); // 同名不重发(防双尾追同步行)
+    expect(conn.editCharter).not.toHaveBeenCalled();
+    expect(onEdited).toHaveBeenCalledWith('旧名');
+  });
+
+  it('品性预填失败静默:textarea 锁空可保存(替换语义空文即清空);仅改名分派单端点', async () => {
+    const conn = makeConn();
+    (conn.sessionCharter as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('404'));
+    render(<EditHarness conn={conn} />);
+    await waitFor(() => expect((screen.getByLabelText(bi('Name', '姓名')) as HTMLInputElement).value).toBe('旧名'));
+    fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '只改名' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(conn.renameSession).toHaveBeenCalledWith('sx-1', '只改名'));
+    expect(conn.editCharter).not.toHaveBeenCalled(); // 空文=不重发(留空=清空语义由端点替换语义承载)
   });
 });

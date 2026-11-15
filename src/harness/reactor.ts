@@ -85,6 +85,11 @@ export interface ReactorDeps {
    *  缺席/standard 前缀基线字节不变。与 HarnessOptions.kind 同名同域；loop 内 Reactor 的同源透传
    *  在装配根（createKernelRuntime LoopDeps，后续任务接线） */
   kind?: SessionKind;
+  /** worker 覆写尾行（2026-11-15 严重 bug 修复）：true=稳定段尾追 SUNX_WORKER_TAIL——子执行体
+   *  （fork/板成员）继承 sunx 同面稳定段但无 dispatch 工具，身份行「你没有执行工具」是假命题，
+   *  实测子代自认调度器拒活；尾行显式废黜编排者指令（装配点：subagent.spawn/teammate 逐任务
+   *  Reactor，父 kind==='sunx' 才注入；主链/standard 恒缺席） */
+  sunxWorker?: boolean;
   /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，config/image-history.ts 装配期解析注入）：
    *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
   imageHistoryLimit?: number;
@@ -495,11 +500,13 @@ export class Reactor {
 
   /** 稳定段（消息面）：身份/输出约定/工具政策/工作目录——逐字节冻结；薄委托 stableSegmentOf
    *  纯函数（P7 统一入口:观测面出执行器命名空间,Harness.stableSegment 同源零第二拼装）;
-   *  kind 随 deps 透传（sunx=身份槽替换+章程行尾随,2026-11-15） */
+   *  kind 随 deps 透传（sunx=身份槽替换+章程行尾随,2026-11-15）;sunxWorker=段尾追 worker 覆写行
+   *  （子执行体专用,主链恒缺席——子代首帧与父前缀连续,尾追是缓存纪律唯一合法动态通道） */
   stableSegment(): string {
     return stableSegmentOf({
       ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
       ...(this.deps.kind ? { kind: this.deps.kind } : {}),
+      ...(this.deps.sunxWorker ? { sunxWorkerTail: true } : {}),
       activeRoot: this.deps.activeRoot,
       ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
       contextRoot: this.deps.context.root,

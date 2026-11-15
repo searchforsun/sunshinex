@@ -9,10 +9,10 @@ import type { SessionRow } from '../connection';
 setLanguage('zh');
 
 /**
- * SUNX 过滤组(sunx P2 Task 7,spec §10+R10):侧栏视图过滤器——按 /sessions 行 kind==='sunx'
- * 聚合、按工作区分节,与工作区组/RECENTS 并存;空组整块不显;组头右侧看板钮(可选 guard——
- * onOpenBoard 未接线不渲染);条目点击=既有 attach 链。附会话行「编辑品性」菜单 gate
- * (仅 sunx 行渲染 ⋯ 钮,standard 行零菜单)。
+ * SUNX 过滤组(sunx P2 Task 7,spec §10;2026-11-15 用户实测裁定改版):平铺单列——工作区分节头
+ * 退役(「sunshinex-default」根标签行去掉),行布局与最近会话完全同款(recent-list/SessionRow,
+ * 左对齐含状态图标);kind 徽标与会话行 ⋯「会话操作」菜单退役;空组常驻(组头+「暂无Sunx」);
+ * 组头动作簇(数量/看板/排序/归档/新建,可选 guard);条目点击=attachSunx 链。
  */
 
 const FIXED_TS = 1_728_000_000_000;
@@ -49,25 +49,30 @@ function renderSection(
   );
 }
 
-describe('SunxSection(侧栏 SUNX 过滤组)', () => {
-  it('SUNX 分组常驻(2026-11-15 用户裁定):rows 空列=组头+空态引导行;装载中(null)瞬态零渲染', () => {
+describe('SunxSection(侧栏 SUNX 过滤组;2026-11-15 平铺改版)', () => {
+  it('SUNX 分组常驻(2026-11-15 用户裁定):rows 空列=组头+「暂无Sunx」空态行;装载中(null)瞬态零渲染', () => {
     const empty = renderSection([]);
     expect(empty.container.querySelector('.sx-side-head')).not.toBeNull(); // 组头恒显
-    expect(empty.container.querySelector('.sx-sunx-empty')).not.toBeNull(); // 空态引导行
+    expect(screen.getByText('暂无Sunx')).toBeDefined(); // 空态行(recents no-sessions 同款)
     empty.unmount();
     const loading = renderSection(null);
     expect(loading.container.querySelector('.sx-side-head')).not.toBeNull(); // 装载中瞬态不闪占位
+    expect(loading.container.querySelector('.no-sessions')).toBeNull();
   });
 
-  it('组头「SUNX」+按工作区分节(R10):两工作区各一小节头(目录名);行徽标在场', () => {
+  it('平铺单列(2026-11-15 用户裁定:工作区分节头退役):两工作区行同列直出,零根标签行/零 Sunx 徽标', () => {
     const { container } = renderSection([
       sunxRow('j1', 'D:/w/alpha', 'alpha'),
-      sunxRow('j2', 'D:/w/beta', 'beta'),
+      sunxRow('j2', 'C:/Users/x/AppData/Local/Temp/sunshinex-default', 'ws-sunshinex-default'),
     ]);
     expect(screen.getByText('SUNX')).toBeDefined();
-    expect(screen.getByText('alpha')).toBeDefined();
-    expect(screen.getByText('beta')).toBeDefined();
-    expect(container.querySelectorAll('.sx-sunx-badge').length).toBe(2); // SessionRow 徽标复用
+    // 分节头退役:工作区名(basename)不再作为行间标签出现
+    expect(screen.queryByText('alpha')).toBeNull();
+    expect(screen.queryByText('sunshinex-default')).toBeNull();
+    expect(container.querySelector('.sx-sunx-ws')).toBeNull(); // 旧分节头类名零残留
+    // 行布局与最近会话同款:同一 recent-list 容器 + SessionRow;Sunx 徽标退役
+    expect(container.querySelectorAll('.recent-list .session-row').length).toBe(2);
+    expect(container.querySelectorAll('.sx-sunx-badge').length).toBe(0);
     expect(screen.getByText('sunx 会话 j1')).toBeDefined();
     expect(screen.getByText('sunx 会话 j2')).toBeDefined();
   });
@@ -104,7 +109,6 @@ describe('SunxSection(侧栏 SUNX 过滤组)', () => {
 /** RecentsSection props 最小装配(NewSunxDialog.test 同款) */
 function recentsProps(
   recents: Array<SessionRow & { root: string; slug: string }>,
-  onEditCharter?: (row: SessionRow & { root: string }) => void,
 ): Parameters<typeof RecentsSection>[0] {
   return {
     recentsOpen: true,
@@ -123,31 +127,18 @@ function recentsProps(
     onArchiveRow: () => undefined,
     pinnedIds: new Set<string>(),
     onPinRow: () => undefined,
-    ...(onEditCharter !== undefined ? { onEditCharter } : {}),
   };
 }
 
-describe('会话行「编辑品性」菜单 gate(sunx P2 Task 7:仅 kind=sunx 行有行菜单)', () => {
-  it('sunx 行渲染 ⋯ 钮,点击出菜单「编辑品性」,选择上抛整行;standard 行零 ⋯ 钮', () => {
-    const onEditCharter = vi.fn();
+describe('会话行退役面(2026-11-15 用户裁定「Sunx 标签去掉」「会话操作这个入口应该去掉」)', () => {
+  it('sunx 行与 standard 行同款:零 ⋯ 会话操作钮、零 Sunx 徽标(编辑 Sunx 唯一入口=顶栏菜单)', () => {
     const row = (id: string, kind?: string) =>
       ({ id, file: `${id}.jsonl`, updatedAt: 1, title: `会话 ${id}`, root: 'D:/w', slug: 'w', ...(kind !== undefined ? { kind } : {}) }) as SessionRow & { root: string; slug: string };
-    render(<RecentsSection {...recentsProps([row('j1', 'sunx'), row('j2')], onEditCharter)} />);
-    // gate:仅 sunx 行有行菜单钮
-    expect(screen.getByRole('button', { name: 'session actions j1' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'session actions j2' })).toBeNull();
-    // 打开菜单→菜单项→上抛整行
-    fireEvent.click(screen.getByRole('button', { name: 'session actions j1' }));
-    const item = screen.getByRole('menuitem', { name: /编辑品性|Edit charter/ });
-    fireEvent.click(item);
-    expect(onEditCharter).toHaveBeenCalledTimes(1);
-    expect((onEditCharter.mock.calls[0]![0] as { id: string }).id).toBe('j1');
-  });
-
-  it('宿主未接线 onEditCharter:sunx 行也不渲染 ⋯ 钮(可选 guard)', () => {
-    const row = (id: string, kind?: string) =>
-      ({ id, file: `${id}.jsonl`, updatedAt: 1, title: `会话 ${id}`, root: 'D:/w', slug: 'w', ...(kind !== undefined ? { kind } : {}) }) as SessionRow & { root: string; slug: string };
-    render(<RecentsSection {...recentsProps([row('j1', 'sunx')])} />);
+    const { container } = render(<RecentsSection {...recentsProps([row('j1', 'sunx'), row('j2')])} />);
     expect(screen.queryByRole('button', { name: 'session actions j1' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'session actions j2' })).toBeNull();
+    expect(container.querySelectorAll('.sx-sunx-badge').length).toBe(0);
+    // 归档确认 morph 钮仍在(行内唯一动作,与最近会话行同款)
+    expect(screen.getAllByRole('button', { name: /^归档 / }).length).toBe(2);
   });
 });

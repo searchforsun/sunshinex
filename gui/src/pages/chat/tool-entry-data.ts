@@ -77,6 +77,10 @@ const TOOL_VERBS: Record<string, { en: string; zh: string }> = {
   send_agent_team_message: { en: 'Send team message', zh: '发送团队消息' }, get_task: { en: 'Read task', zh: '读取任务' },
   agent_team_task_stop: { en: 'Stop team task', zh: '停止团队任务' },
   task_wait: { en: 'Wait for task', zh: '等待任务' }, agent_team_task_wait: { en: 'Wait for team task', zh: '等待团队任务' },
+  // sunx 编排/调度域(2026-11-15 用户实测「分派任的工具没有加上特殊的图标样式和 i18n,其他新加的
+  // 图标都要这个问题,补上」——四件双语名,折叠行不再露原始工具名)
+  dispatch_task: { en: 'Dispatch task', zh: '分派任务' }, task_status: { en: 'Task status', zh: '任务状态' },
+  schedule_wakeup: { en: 'Schedule wake-up', zh: '定时唤醒' }, schedule_task: { en: 'Schedule task', zh: '定时分派' },
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -222,6 +226,11 @@ export const RUNNING_LABELS: Record<string, [string, string]> = {
   create_agent_team_task: ['Creating team task', '正在创建团队任务'],
   set_dependency: ['Setting dependency', '正在设置依赖'],
   assign: ['Assigning task', '正在分派任务'],
+  // sunx 编排/调度域运行态(2026-11-15 用户实测 i18n 补齐,与 TOOL_VERBS 同批)
+  dispatch_task: ['Dispatching task', '正在分派任务'],
+  task_status: ['Checking task', '正在查看任务'],
+  schedule_wakeup: ['Scheduling wake-up', '正在设置定时唤醒'],
+  schedule_task: ['Scheduling task', '正在设置定时分派'],
 };
 
 /** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，

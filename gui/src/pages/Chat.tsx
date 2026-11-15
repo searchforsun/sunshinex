@@ -410,7 +410,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     ), [conn, sessionId]);
 
   // 标题子系统 + 模型/圆环数据面(批F-6)
-  const { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle, kind } = useChatTitle({
+  const { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle, kind, adoptTitle } = useChatTitle({
     conn,
     sessionId,
     fixedTitle,
@@ -933,6 +933,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         setTitleEditing={setTitleEditing}
         displayTitle={displayTitle}
         sessionKind={kind}
+        onAdoptTitle={adoptTitle}
         sessionId={sessionId}
         tokens={chat.tokens}
         steps={chat.steps}

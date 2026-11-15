@@ -28,6 +28,9 @@ export function useChatTitle(deps: {
   displayTitle: string;
   /** 会话形态(P2 2026-11-15 title GET 随响应透出):'sunx' 菜单/欢迎语分支的数据通道 */
   kind: string | undefined;
+  /** 改名回显通道(2026-11-15 编辑 Sunx 双模式弹窗):弹窗自管 renameSession 落盘,本通道只做
+   *  顶栏乐观上屏+标题缓存+侧栏联动——不再重发 rename(双发=daemon 双尾追同步行) */
+  adoptTitle: (v: string) => void;
 } {
   const { conn, sessionId, fixedTitle, entries, onRenamed } = deps;
 /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
@@ -60,6 +63,11 @@ const applyTitle = useCallback(
   },
   [conn, sessionId],
 );
+/** 回显通道(2026-11-15):落盘已由调用方完成(renameSession 在弹窗内),这里只上屏+联动 */
+const adoptTitle = useCallback((v: string): void => {
+  setTitle(v);
+  onRenamedRef.current?.();
+}, []);
 const commitTitle = (): void => {
   setTitleEditing(false);
   const v = titleDraft.trim();
@@ -108,5 +116,5 @@ useEffect(() => {
     alive = false;
   };
 }, [conn, sessionId, firstUserText, title, titleLoaded, applyTitle]);
-  return { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle, kind };
+  return { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle, kind, adoptTitle };
 }

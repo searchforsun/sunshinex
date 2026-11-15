@@ -82,9 +82,8 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
                 <span className="sx-session-dot unseen" />
               ) : null}
               <span className="sx-pin-title">{p.title}</span>
-              {/* kind 徽标(sunx P2 Task 7,PinEntry kind 快照透传):sunx 钉标题旁小 chip;
-                  SessionRow 徽标同款复用,老钉(无 kind)零徽标 */}
-              {p.kind === 'sunx' && <span className="sx-sunx-badge">Sunx</span>}
+              {/* kind 徽标退役(2026-11-15 用户裁定「Sunx 标签去掉」):钉行与普通会话行同款零徽标;
+                  PinEntry.kind 快照保留(数据面不动) */}
               {confirmId === p.id ? (
                 // 二次确认统一形态(2026-11-09 用户裁定):归档图标原地红底 18px 盒(白 14px 图形)
                 <button

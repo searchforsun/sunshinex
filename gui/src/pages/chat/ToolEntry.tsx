@@ -1,5 +1,5 @@
 import { Fragment, memo, useEffect, useState } from 'react';
-import { FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, type LucideIcon , Package } from 'lucide-react';
+import { FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, ClipboardCheck, AlarmClock, CalendarClock, type LucideIcon , Package } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
@@ -28,6 +28,10 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   create_agent_team: UsersRound,
   create_agent_teammate: UsersRound,
   update_agent_team_task: ListChecks, get_agent_team_board: Kanban, probe: Radar,
+  // sunx 编排/调度域(2026-11-15 用户实测「分派任的工具没有加上特殊的图标样式和 i18n」):
+  // dispatch_task=Send(派发语义,与 send_agent_team_message 同族);task_status=ClipboardCheck
+  // (台账窥视,与 get_task 的 ClipboardList 区分);定时族=闹钟/日历钟
+  dispatch_task: Send, task_status: ClipboardCheck, schedule_wakeup: AlarmClock, schedule_task: CalendarClock,
   send_agent_team_message: Send,
   get_task: ClipboardList,
 };

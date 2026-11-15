@@ -74,8 +74,7 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
           <span className="sx-archive-item-main">
             <span className="sx-archive-title-row">
               <span className="sx-archive-title">{r.title ?? r.id}</span>
-              {/* kind 徽标(sunx P2 Task 7):sunx 归档行标题旁小 chip(SessionRow 同款) */}
-              {r.kind === 'sunx' && <span className="sx-sunx-badge">Sunx</span>}
+              {/* kind 徽标退役(2026-11-15 用户裁定「Sunx 标签去掉」):归档行与普通行同款零徽标 */}
               <span className="sx-archive-time">{relTime(r.updatedAt)}</span>
             </span>
             <span className="sx-archive-slug-row">

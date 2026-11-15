@@ -318,7 +318,7 @@ describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6;2026-11-15 提为顶部�
   });
 });
 
-describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向):域枚举聚合+按工作区分节+attachSunx 链+看板钮+编辑品性弹窗链', () => {
+describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;2026-11-15 平铺改版):域枚举聚合+平铺单列+attachSunx 链+看板钮', () => {
   /** sunx 会话桩 conn:两工作区各一 sunx 行(GET /sunx/sessions 域枚举;行携出生 meta root)+空 RECENTS(聚焦过滤组) */
   function makeSunxConn(): ProjectMenuConn & { roots: string[] } {
     const conn = makeConn();
@@ -336,9 +336,12 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向):�
     const conn = makeSunxConn();
     const first = renderMenu(conn);
     expect(await screen.findByText('SUNX')).toBeDefined(); // 组头(双语同文)
-    const list = first.container.querySelector('.sx-sunx-list')!;
+    const list = first.container.querySelector('ul[aria-label="sunx sessions"]')!;
     expect(list.textContent).toContain('编排一');
     expect(list.textContent).toContain('编排三');
+    // 平铺改版锚:零工作区分节头(sx-sunx-ws 退役)、零 Sunx 徽标
+    expect(first.container.querySelector('.sx-sunx-ws')).toBeNull();
+    expect(first.container.querySelectorAll('.sx-sunx-badge').length).toBe(0);
     // 数据源改向锚:挂载即拉域枚举(workspaces 回源 rows 换引用重拉同拍既有节奏),且不逐工作区
     // sessionsOf(sessionsOf 只在组展开惰拉)
     await waitFor(() => expect(conn.sunxSessions).toHaveBeenCalled());
@@ -348,8 +351,9 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向):�
     const conn2 = makeConn(); // sunxSessions 空列桩
     const second = renderMenu(conn2);
     await second.findByText('demo goal');
-    expect(second.container.querySelector('.sx-sunx-empty')).not.toBeNull(); // 空态引导行
-    expect(second.container.querySelector('.sx-sunx-list')).toBeNull(); // 列表空
+    const emptyList = second.container.querySelector('ul[aria-label="sunx sessions"]');
+    expect(emptyList).not.toBeNull(); // 列表壳常驻
+    expect(emptyList!.querySelector('.no-sessions')?.textContent).toContain('No Sunx yet'); // 空态行(本文件不钉 zh)
   });
 
   it('条目点击=attachSunx 链(journalId 寻址重开,不再 newSession(root)+attach)→ onOpenSession', async () => {
@@ -374,8 +378,7 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向):�
     expect(second.queryByRole('button', { name: 'sunx board' })).toBeNull();
   });
 
-  it('行菜单「编辑品性」→CharterDialog:寻址行 liveSessionId 优先,预填走 conn.sessionCharter,保存走 conn.editCharter', async () => {
-    // 行带 liveSessionId(在座标注)=live 寻址;缺席行回落 journal id(域枚举行桩定制两形态)
+  it('会话行 ⋯「会话操作」入口退役(2026-11-15 用户裁定):sunx 行零行菜单钮——编辑 Sunx 唯一入口=顶栏菜单', async () => {
     const conn = makeSunxConn();
     conn.sunxSessions = vi.fn(async () =>
       [
@@ -385,17 +388,7 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向):�
     );
     renderMenu(conn);
     await screen.findByText('SUNX');
-    fireEvent.click(screen.getByRole('button', { name: 'session actions sx-j1' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /编辑品性|Edit charter/ }));
-    expect(await screen.findByRole('dialog', { name: /编辑品性|Edit charter/ })).toBeDefined();
-    await waitFor(() => expect(conn.sessionCharter).toHaveBeenCalledWith('s-live-1')); // live id 优先
-    fireEvent.change(await screen.findByLabelText(/品性|Charter/), { target: { value: '从侧栏改的品性' } });
-    fireEvent.click(screen.getByRole('button', { name: /保存|Save/ }));
-    await waitFor(() => expect(conn.editCharter).toHaveBeenCalledWith('s-live-1', '从侧栏改的品性'));
-    // 关闭后可对无 liveSessionId 的行按 journal id 寻址(成功提示停留 1.4s 后自动关——放宽窗)
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: /编辑品性|Edit charter/ })).toBeNull(), { timeout: 3000 });
-    fireEvent.click(screen.getByRole('button', { name: 'session actions sx-j3' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /编辑品性|Edit charter/ }));
-    await waitFor(() => expect(conn.sessionCharter).toHaveBeenCalledWith('sx-j3')); // 无 live 行=journal id
+    expect(screen.queryByRole('button', { name: 'session actions sx-j1' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'session actions sx-j3' })).toBeNull();
   });
 });

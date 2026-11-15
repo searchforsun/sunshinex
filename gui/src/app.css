@@ -4196,6 +4196,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-anchor { position: relative; }
 .sx-sunx-ws-bar { width: 100%; display: inline-flex; align-items: center; gap: 8px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); font-size: calc(14px * var(--fz)); }
 .sx-sunx-ws-bar:hover { border-color: var(--border-strong); }
+/* 编辑 Sunx 模式禁用态(2026-11-15 用户裁定「复用创建的弹窗,禁用工作区」):出生根只读展示,
+   弱化文字+禁 hover 边框变化+default 光标(creation-bound 不可改语义的视觉承载) */
+.sx-sunx-ws-bar:disabled { color: var(--fg-tertiary); cursor: default; }
+.sx-sunx-ws-bar:disabled:hover { border-color: var(--border); background: var(--surface-soft); }
 .sx-sunx-ws-anchor .choose-project-bar { width: 100%; text-align: left; }
 .sx-sunx-ws-anchor .choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }
 .sx-sunx-ws-anchor .proj-pop { bottom: auto; top: calc(100% + 6px); left: 0; right: 0; width: auto; }
@@ -4209,13 +4213,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-badge { flex: none; display: inline-flex; align-items: center; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--radius-sm); padding: 0 6px; white-space: nowrap; }
 
 /* ===== sunx P2 Task 7:SUNX 过滤组(侧栏视图过滤器)+品性编辑弹窗 ===== */
-/* SUNX 组内工作区小节头(R10):目录名小字,与 RECENTS/PROJECTS 分区头同族但低一级(行首对齐
-   会话行文字 x=38 同栅格;可折叠组体随 sx-collapse 既有面) */
-.sx-sunx-list { list-style: none; margin: 0; padding: 0 4px 8px 4px; }
-.sx-sunx-ws { padding: 6px 0 2px 34px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sx-sunx-ws-rows { list-style: none; margin: 0; padding: 0; }
-/* 品性编辑弹窗成功提示(行内小字):保存→提示新 rev→自动关;role=status 锚定 */
-.sx-charter-saved { margin: 0 0 4px; font-size: calc(14px * var(--fz)); color: var(--accent); }
+/* SUNX 组行布局(2026-11-15 用户裁定「不参考最近会话一样的布局,左侧对齐,包括状态图标」):
+   行容器改用 .recent-list 同款(recent-list 规则族直接生效),工作区分节头族(sx-sunx-list/
+   sx-sunx-ws/sx-sunx-ws-rows)退役删除 */
 
 /* ===== sunx P2 Task 8:SUNX 总览页(spec §17.3 单例 sunxboard 页签) ===== */
 /* 聚合条数据簇:insight-bar 内左聚(flex:1 吃掉余量,刷新钮右贴);状态点几何圆(8px,绿=运行中,

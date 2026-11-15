@@ -103,7 +103,8 @@ describe('PinnedSection 置顶分组(GUI 专属)', () => {
     });
     const j1 = container.querySelector('[data-row-id="j1"]')!;
     const j2 = container.querySelector('[data-row-id="j2"]')!;
-    expect(j1.querySelector('.sx-sunx-badge')).not.toBeNull(); // sunx 钉徽标在场
-    expect(j2.querySelector('.sx-sunx-badge')).toBeNull(); // 无 kind=零徽标(老钉兼容)
+    // kind 徽标退役(2026-11-15 用户裁定「Sunx 标签去掉」):钉行与普通行同款零徽标
+    expect(j1.querySelector('.sx-sunx-badge')).toBeNull();
+    expect(j2.querySelector('.sx-sunx-badge')).toBeNull();
   });
 });

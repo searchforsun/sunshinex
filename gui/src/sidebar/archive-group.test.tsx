@@ -118,7 +118,8 @@ describe('ArchiveSection 归档会话层(侧栏整替面)', () => {
     );
     const a1 = document.querySelector('[data-row-id="a1"]')!;
     const a2 = document.querySelector('[data-row-id="a2"]')!;
-    expect(a1.querySelector('.sx-sunx-badge')).not.toBeNull(); // sunx 归档行徽标在场
-    expect(a2.querySelector('.sx-sunx-badge')).toBeNull(); // 无 kind=零徽标
+    // kind 徽标退役(2026-11-15 用户裁定「Sunx 标签去掉」):归档行与普通行同款零徽标
+    expect(a1.querySelector('.sx-sunx-badge')).toBeNull();
+    expect(a2.querySelector('.sx-sunx-badge')).toBeNull();
   });
 });
