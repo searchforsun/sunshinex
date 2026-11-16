@@ -798,7 +798,10 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           onTurnRestore={onTurnRestore}
         />
       )}
-      {footerRun !== undefined && <RunFooter text={entry.md} run={footerRun} onFork={sideChat === true ? undefined : onFork} />}
+      {/* 2026-11-16 用户裁定「意外出现暂停时,不显示复制分叉图标行」:停态轮(中断/失败收口,
+          G14.209 stopped)不渲卡点行——意外暂停后同一轮常还有后继条目(自动唤醒续跑),卡点行
+          挂在轮内末条正文上落在流中间;改动条/产物卡照常(撤销与交付面不受暂停影响) */}
+      {footerRun !== undefined && footerRun.stopped !== true && <RunFooter text={entry.md} run={footerRun} onFork={sideChat === true ? undefined : onFork} />}
     </div>
   );
 });

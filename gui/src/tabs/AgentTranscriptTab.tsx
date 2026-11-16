@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, Check, Copy } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
+import { ArrowDown, ArrowUp, Check, Copy, PenLine, X } from 'lucide-react';
 import { t } from '../i18n';
 import { chaseScrollBottom, fmtTokens } from '../ui-util';
 import type { AgentActivity } from './agent-activity';
@@ -8,6 +8,7 @@ import type { Connection } from '../connection';
 import { ChatEntryView, CollapsibleBubble, ThinkingEntryView, ToolEntryView } from '../pages/Chat';
 import { RunEntryView } from '../pages/chat/EntryViews';
 import { ToolSegBlock } from '../pages/chat/ToolGroups';
+import { ComposerCard } from '../composer/ComposerCard';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf, teamNameResolverOf } from '../pages/chat/use-chat-derived';
 import { collapsedHiddenKeys, isMidRunInsert, useAutoCollapseRuns } from '../pages/chat/use-chat-fold';
@@ -64,6 +65,89 @@ export interface AgentTranscriptTabProps {
 /** G14.2xx 转录=同源内核投影条目直渲（agent-activity 卡挂 chat: ChatState,applySubagentChatEvent
  *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
+
+/** 转录页用户气泡(目标带/轮内插入统一件):折叠气泡+气泡外右下复制钮(既有形态)+编辑钮
+ *  (2026-11-16 用户裁定「插入的用户气泡不支持编辑」)——编辑=ComposerCard 壳预填原文,
+ *  发送=作为新用户消息追加到所属会话(2026-11-13 成员报告编辑同语义;转录页无 rewind 语义
+ *  不走回退);onSend 缺席(旧装配/测试桩)不渲染编辑钮。copied/onCopy 沿页级 useCopyFeedback
+ *  单点注入,memo 保流式帧零重渲染 */
+const TranscriptUserBubble = memo(function TranscriptUserBubble({ text, insert, entryKey, copied, onCopy, onSend }: {
+  text: string;
+  insert?: boolean;
+  entryKey?: string;
+  copied: boolean;
+  onCopy: () => void;
+  onSend?: (text: string) => Promise<void> | void;
+}): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const sendEdit = (): void => {
+    const body = draft.trim();
+    if (body === '') { setEditing(false); return; } // 空文本:关卡不发(主对话编辑卡同现状)
+    const r = onSend?.(body);
+    if (r !== undefined) void r.then(() => setEditing(false), () => undefined);
+    else setEditing(false);
+  };
+  if (editing) {
+    return (
+      <div className="entry entry-user entry-user-insert" data-entry-key={entryKey}>
+        <ComposerCard
+          label="edit message"
+          value={draft}
+          placeholder={t('Edit message', '编辑消息')}
+          onChange={setDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              setEditing(false);
+            } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              sendEdit();
+            }
+          }}
+          footRight={
+            <div className="composer-pills">
+              <button type="button" className="user-edit-cancel" aria-label="cancel edit" data-tip={t('Cancel', '取消')} onClick={() => setEditing(false)}>
+                <X size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+              <button type="button" className="send tip-right" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendEdit}>
+                <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+              </button>
+            </div>
+          }
+        />
+      </div>
+    );
+  }
+  return (
+    <div className={`entry entry-user child-user-entry${insert ? ' entry-user-insert' : ''}`} data-entry-key={entryKey}>
+      <CollapsibleBubble text={text} render={(md) => <div className="child-user-text">{md}</div>} />
+      <button
+        type="button"
+        className="child-copy"
+        aria-label={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+        data-tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+        onClick={onCopy}
+      >
+        {copied ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+      </button>
+      {onSend !== undefined && (
+        <button
+          type="button"
+          className="child-copy child-edit"
+          aria-label={t('Edit', '编辑')}
+          data-tip={t('Edit', '编辑')}
+          onClick={() => {
+            setDraft(text);
+            setEditing(true);
+          }}
+        >
+          <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+});
 
 export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, task, focusTaskId, onOpenFile, onOpenDiff, onOpenAgent, onOpenLeader, onOpenTask, onInsertMain, onSideAsk }: AgentTranscriptTabProps): JSX.Element {
   const usageOn = useUsageStats(); // 用量统计开关(2026-11-14,子智能体面同口径):关=运行行隐步数+tokens
@@ -147,6 +231,9 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
   const userText = !hasUserInChat ? (activities?.taskBand ?? task ?? '') : '';
   // G14.202 复制钮:右下角,hover 行时显示(参考主对话复制钮方位);点击回显已复制(useCopyFeedback 单点)
   const { status: copied, copy: copyText } = useCopyFeedback();
+  /** 2026-11-16 用户裁定「插入的用户气泡不支持编辑」:编辑发送=作为新用户消息追加到所属会话
+   *  (sessionSubmit——运行中即 steer 排队,空闲即新开一轮;成员报告编辑 2026-11-13 同语义) */
+  const sendToSession = useCallback((text: string): Promise<void> => conn.sessionSubmit(sessionId, text), [conn, sessionId]);
   /** G14.2xx 工具/思考段 = 主对话 ToolSegBlock 同件:同类型相邻已完成工具行聚合并可平级展开
    *  (buildSegNodes 单点),非同类行/思考行天然切断;closed=轮折叠态(主对话 G14.31 同款,
    *  hiddenKeys 折叠区间内的工具/思考行进 seg-collapse 平滑容器) */
@@ -181,20 +268,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
         renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
         renderEntry={(e2) => {
           if (e2.kind === 'user') {
-            return (
-              <div key={e2.key} className="entry entry-user child-user-entry entry-user-insert" data-entry-key={e2.key}>
-                <CollapsibleBubble text={e2.md} render={(md) => <div className="child-user-text">{md}</div>} />
-                <button
-                  type="button"
-                  className="child-copy"
-                  aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-                  data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-                  onClick={() => copyText(e2.md)}
-                >
-                  {copied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
-                </button>
-              </div>
-            );
+            return <TranscriptUserBubble text={e2.md} insert entryKey={e2.key} copied={copied === 'ok'} onCopy={() => copyText(e2.md)} onSend={sendToSession} />;
           }
           return <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />;
         }}
@@ -219,18 +293,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     if (e.kind === 'user') {
       const insert = isMidRunInsert(entries, i);
       nodes.push(
-        <div key={e.key} className={`entry entry-user child-user-entry${insert ? ' entry-user-insert' : ''}`} data-entry-key={e.key}>
-          <CollapsibleBubble text={e.md} render={(md) => <div className="child-user-text">{md}</div>} />
-          <button
-            type="button"
-            className="child-copy"
-            aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-            data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')}
-            onClick={() => copyText(e.md)}
-          >
-            {copied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
-          </button>
-        </div>,
+        <TranscriptUserBubble key={e.key} text={e.md} insert={insert} entryKey={e.key} copied={copied === 'ok'} onCopy={() => copyText(e.md)} onSend={sendToSession} />,
       );
       continue;
     }
@@ -252,13 +315,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
       <SelActionsOverlay containerRef={bodyRef} onInsert={onInsertMain ?? (() => {})} onSideAsk={onSideAsk} />
       <div className="sx-agent-page-body sx-agent-thread chat" ref={bodyRef} onScroll={onScroll}>
         {userText !== '' && (
-          <div className="entry entry-user child-user-entry">
-            <CollapsibleBubble text={userText} render={(md) => <div className="child-user-text">{md}</div>} />
-            {/* G14.202b 复制钮:气泡外右下,hover 行时显示(主对话 user-actions 同款方位) */}
-            <button type="button" className="child-copy" aria-label={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={() => copyText(userText)}>
-              {copied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
-            </button>
-          </div>
+          <TranscriptUserBubble text={userText} copied={copied === 'ok'} onCopy={() => copyText(userText)} onSend={sendToSession} />
         )}
         {activities === undefined || entries.length === 0 ? (
           userText === '' ? (

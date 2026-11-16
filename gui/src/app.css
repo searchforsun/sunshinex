@@ -2363,8 +2363,11 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .user-bubble-wrap .user-bubble { max-width: none; }
 /* G14.191 浮钮组在气泡外侧右下(主对话复制钮同位语义),不遮内容;折叠态最后一行渐变隐现暗示更多 */
 .child-copy { position: absolute; right: 6px; top: 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; padding: 0 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); } /* G14.202b 气泡外右下,hover 行显 */
+/* 2026-11-16 用户裁定「插入的用户气泡不支持编辑」:转录页用户气泡补编辑钮——与 child-copy 同
+   浮现拍,排在复制钮左侧(.child-edit 右移让位);编辑卡见 AgentTranscriptTab TranscriptUserBubble */
+.child-edit { right: 32px; }
 .child-user-entry { position: relative; width: 100%; }
-.child-user-entry:hover .child-copy { opacity: 1; color: var(--fg); }
+.child-user-entry:hover .child-copy, .child-user-entry:hover .child-edit { opacity: 1; color: var(--fg); }
 .child-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ===== G14.186 侧栏菜单行 hover 统一(用户裁定):同高 28/同侧内缩 4px/同 hover 色 8%/弧度对齐主输入框(composer) ===== */
@@ -3711,9 +3714,9 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .run-footer .sx-tip:hover { color: var(--fg); }
 .entry-user .user-action { color: var(--fg-icon); }
 .entry-user .user-action:hover { color: var(--fg); }
-.child-copy { color: color-mix(in srgb, var(--fg) 85%, transparent); }
+.child-copy, .child-edit { color: color-mix(in srgb, var(--fg) 85%, transparent); }
 .run-footer .sx-tip { padding: 0; } /* UA 按钮内距(左右 ~6px)把 22px 钮内容区压到 10px,flex 收缩图标——实测 14px 被压回 10 的根因 */
-.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg,
+.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg, .child-edit svg,
 .code-head .sx-tip svg, .mermaid-actions .sx-tip svg { width: var(--icon-min); height: var(--icon-min); flex: none; }
 /* 代码块/mermaid 头部动作钮与正文回复复制行同档亮度(2026-11-09 用户裁定:原 fg-tertiary 偏浅显小) */
 .code-head .sx-tip, .mermaid-actions .sx-tip { color: var(--fg-icon); }
