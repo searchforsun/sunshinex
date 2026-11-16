@@ -207,10 +207,14 @@ export function DiffLines({
   const flat = variant === 'flat';
   // 行渲染单点(2026-11-10 用户裁定「审查 diff 与工具行统一叠加单列序号」):flat/inline 同构——色条+单序号
   // (删除行显旧号、其余显新号),差异只剩 flat 无内滚透明平铺
+  // 行号槽宽随最大位数(2026-11-14 用户实测「行号超两位数无法正常显示」:固定 30px 槽在
+  // 界面放缩/三位数下两位数字竖排换行)——digits+1ch 随内容自适应,槽内 nowrap 兜底
+  const lnDigits = rows.reduce((m, r) => Math.max(m, String(r.kind === 'del' ? r.numOld ?? 0 : r.numNew ?? 0).length), 1);
+  const lnStyle = { width: `${lnDigits + 1}ch` } as React.CSSProperties;
   const line = (r: DiffRow, i: number): JSX.Element => (
     <div key={i} className={`diff-line ${r.kind}`}>
       <span className="diff-mark" aria-hidden="true" />
-      <span className="diff-ln" aria-hidden="true">{r.kind === 'del' ? r.numOld : r.numNew}</span>
+      <span className="diff-ln" aria-hidden="true" style={lnStyle}>{r.kind === 'del' ? r.numOld : r.numNew}</span>
       <span className="diff-code">
         <code dangerouslySetInnerHTML={{ __html: highlightCode(r.text, path) }} />
       </span>
