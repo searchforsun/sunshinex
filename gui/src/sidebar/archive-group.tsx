@@ -25,6 +25,8 @@ export interface ArchivedRow {
 
 export interface ArchiveSectionProps {
   readonly rows: ArchivedRow[] | null;
+  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」):空态文案随域;缺省 'session' */
+  readonly scope?: 'session' | 'sunx';
   readonly busy: boolean;
   readonly onOpenSession: (root: string, journalId: string, updatedAt?: number) => void;
   /** 撤销归档(宿主落库+重拉归档行/组计数/展开组) */
@@ -41,7 +43,7 @@ export interface ArchiveSectionProps {
 
 export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
   useLanguage(); // memo 响应面:语言同步强制重渲染(memo bail 否则永钉启动期语言,2026-11-16 混排根修)
-  const { rows, busy, onOpenSession, onUnarchive, onDelete, activeSessionId = '', runningIds, journalOfSession } = props;
+  const { rows, busy, scope = 'session', onOpenSession, onUnarchive, onDelete, activeSessionId = '', runningIds, journalOfSession } = props;
   /** 行内删除确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消删除确认(用户裁定)
@@ -52,7 +54,9 @@ export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSection
   return (
     <ul className="recent-list sx-archive-list" aria-label="archived sessions">
       {rows === null && <li className="no-sessions">{t('Loading…', '加载中…')}</li>}
-      {rows !== null && rows.length === 0 && <li className="no-sessions">{t('No archived sessions', '暂无归档会话')}</li>}
+      {rows !== null && rows.length === 0 && (
+    <li className="no-sessions">{scope === 'sunx' ? t('No archived Sunx', '暂无归档 Sunx') : t('No archived sessions', '暂无归档会话')}</li>
+  )}
       {visible.map((r) => {
         const active = activeSessionId !== '' && (r.liveSessionId === activeSessionId || journalOfSession?.get(activeSessionId) === r.id);
         const running = rowRunning(active, activeSessionId, runningIds ?? new Set(), r.liveSessionId);

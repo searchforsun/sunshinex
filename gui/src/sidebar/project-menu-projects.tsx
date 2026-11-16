@@ -66,6 +66,8 @@ export interface ProjectsSectionProps {
   readonly onOpenArchived?: () => void;
   /** 2026-10-21 用户裁定:归档层模式——组头改题「归档会话」+X 退出,列表体整替为归档行 */
   readonly archiveMode?: boolean;
+  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」):标题随域——'sunx'=「归档 Sunx」 */
+  readonly archiveScope?: 'session' | 'sunx';
   readonly onExitArchive?: () => void;
   /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮。
    *  onPinRow 载荷携 kind 快照(PinEntry 形态字段,菜单分支消费) */
@@ -75,7 +77,7 @@ export interface ProjectsSectionProps {
 
 export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
   useLanguage(); // memo 响应面:语言同步强制重渲染(memo bail 否则永钉启动期语言,2026-11-16 混排根修)
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, archiveScope, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -95,7 +97,7 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
     return (
       <>
         <div className="sx-side-head sx-side-head-row sx-side-head-btn">
-          <span>{t('Archived sessions', '归档会话')}</span>
+          <span>{archiveScope === 'sunx' ? t('Archive Sunx', '归档 Sunx') : t('Archived sessions', '归档会话')}</span>
           <span className="sx-side-head-actions">
             <button type="button" className="sx-iconbtn sx-archive-exit" data-tip={t('Exit archive', '退出归档')}
               aria-label="exit archive"

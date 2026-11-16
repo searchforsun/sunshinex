@@ -208,7 +208,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   }, [conn]);
 
   /** 归档区簇(开合/聚合行/装载)收口 use-menu-sections(D62 批J) */
-  const { archiveOpen, archivedRows, loadArchived, openArchivedWithReload, openArchiveView, exitArchiveView } = useMenuArchive(conn);
+  const { archiveOpen, setArchiveOpen, archivedRows, loadArchived, openArchivedWithReload, exitArchiveView } = useMenuArchive(conn);
+  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx 不能和归档会话混为一谈」):SUNX 组头入口=
+   *  'sunx' 专域(标题「归档 Sunx」+行只显 sunx);项目组头入口='session'(原通用层,sunx 行滤除) */
+  const [archiveScope, setArchiveScope] = useState<'session' | 'sunx'>('session');
   /** SUNX 组行集(域枚举拉取收口 use-menu-sunx,D62 批J) */
   const sunxRows = useMenuSunx(conn, rows);
   // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
@@ -650,7 +653,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onArchiveRow={archiveRow}
           onOpenBoard={props.onOpenSunxBoard}
           onNewSunx={openNewSunxDialog}
-          onOpenArchive={openArchiveView}
+          onOpenArchive={() => {
+            setArchiveScope('sunx'); // 归档 Sunx 专域(标题/行过滤随域,2026-11-16 用户裁定)
+            loadArchived();
+            setArchiveOpen(true);
+          }}
         />
         )}
         <PinnedSection
@@ -674,6 +681,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           branchByRoot={branchByRoot}
           busy={busy}
           archiveMode={archiveOpen}
+          archiveScope={archiveScope} // 归档层标题随域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」)
           onExitArchive={exitArchiveView}
           onAddWorkspace={addWorkspaceFromHead}
           actionError={actionError}
@@ -693,14 +701,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onComposeIn={onComposeIn}
           onAttach={attachJournal}
           onArchiveRow={archiveRow}
-          onOpenArchived={openArchivedWithReload}
+          onOpenArchived={() => {
+            setArchiveScope('session'); // 通用归档层(回归会话域)
+            openArchivedWithReload();
+          }}
           pinnedIds={pinnedIds}
           onPinRow={pinSessionRow}
         />
         {/* 归档层(2026-10-21 用户裁定):整替 Projects 列表体+Recents——无独立分组,组头 X 退出 */}
         {archiveOpen ? (
           <ArchiveSection
-            rows={archivedRows}
+            rows={archivedRows === null ? null : archivedRows.filter((r) => (archiveScope === 'sunx' ? r.kind === 'sunx' : r.kind !== 'sunx'))}
+            scope={archiveScope}
             busy={busy}
             onOpenSession={attachJournal}
             onUnarchive={unarchiveArchivedRow}

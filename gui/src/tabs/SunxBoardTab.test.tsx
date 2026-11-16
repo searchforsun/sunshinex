@@ -11,7 +11,7 @@ setLanguage('zh');
 
 /**
  * SUNX 总览页直测(sunx P2 Task 8,spec §17.3;P3 Task 3 数据源改向适配):顶部聚合条(运行中
- * 实例/在飞任务/待裁决)+卡片网格(按工作区分节)+「新建 Sunx」入口卡开弹窗;卡片点击上抛开
+ * 实例/进行中任务/等待确认)+卡片网格(按工作区分节)+「新建 Sunx」入口卡开弹窗;卡片点击上抛开
  * 实例目标;刷新钮重拉;快照走 bumpSeq:false 只读通道;空态文案;快照失败行降级不炸。
  * P3 Task 3:数据源=GET /sunx/sessions(conn.sunxSessions 单点——不逐工作区 sessionsOf、不拉
  * workspaces;kind 服务端恒 'sunx',sunxRowsOf 前端 kind/root 守卫留作降级防线)。
@@ -100,25 +100,25 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     expect(calls.snapshotArgs).toHaveLength(1); // 仅 live 行拉快照
   });
 
-  it('卡片网格+聚合条:行过滤降级防线、按工作区分节(R10)、在飞/完成/待裁决计数;快照 bumpSeq:false 只读', async () => {
+  it('卡片网格+聚合条:行过滤降级防线、按工作区分节(R10)、进行中/完成/等待确认计数;快照 bumpSeq:false 只读', async () => {
     const { conn, calls } = alphaJ1();
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
-    // 聚合条:运行中 1 / 在飞任务 2 / 待裁决 2(仅 j1 挂载且带快照;卡片徽标另有「待裁决」文本,聚合条按 aria 容器定位)
+    // 聚合条:运行中 1 / 进行中任务 2 / 等待确认 2(仅 j1 挂载且带快照;卡片徽标另有「等待确认」文本,聚合条按 aria 容器定位)
     const stats = screen.getByLabelText('sunx board aggregate').textContent ?? '';
     expect(stats).toContain('运行中 1');
-    expect(stats).toContain('在飞任务 2');
-    expect(stats).toContain('待裁决 2');
-    // 卡片进度行:在飞 2 · 完成 1;未挂载行计数归零;杂散行滤除(Sunx j4 不在)
-    expect(screen.getByText(/在飞 2 · 完成 1/)).toBeDefined();
+    expect(stats).toContain('进行中任务 2');
+    expect(stats).toContain('等待确认 2');
+    // 卡片进度行:进行中 2 · 完成 1;未挂载行计数归零;杂散行滤除(Sunx j4 不在)
+    expect(screen.getByText(/进行中 2 · 完成 1/)).toBeDefined();
     expect(screen.queryByText('Sunx j4')).toBeNull();
     // 未挂载行在卡(降级零计数),快照只对 sx1 拉一次且带 bumpSeq:false
     expect(screen.getByText('Sunx j3')).toBeDefined();
     expect(calls.snapshotArgs).toHaveLength(1);
     expect(calls.snapshotArgs[0]!.id).toBe('sx1');
     expect(calls.snapshotArgs[0]!.opts).toEqual({ bumpSeq: false });
-    // 待裁决徽标在场(挂起 2)
-    expect(screen.getAllByText(/待裁决/).length).toBeGreaterThanOrEqual(2); // 聚合条+卡片徽标
+    // 等待确认徽标在场(挂起 2)
+    expect(screen.getAllByText(/等待确认/).length).toBeGreaterThanOrEqual(2); // 聚合条+卡片徽标
     // 工作区小节头(R10):wsName 走行 root basename
     expect(screen.getByText('alpha')).toBeDefined();
   });
@@ -158,7 +158,7 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     expect(screen.getByRole('button', { name: 'new sunx' })).toBeDefined();
   });
 
-  it('快照失败行降级:live 点仍在(行标注)、计数归零、无待裁决徽标,整页不炸', async () => {
+  it('快照失败行降级:live 点仍在(行标注)、计数归零、无等待确认徽标,整页不炸', async () => {
     const { conn } = stubConn({
       sunxRows: [sunxRow('j1', { liveSessionId: 'sx1' })],
       snapshotBoom: true,
@@ -166,9 +166,9 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
     expect(screen.getByText('Sunx j1').closest('button')!.querySelector('.sx-sunxboard-dot.live')).not.toBeNull();
-    expect(screen.getByText(/在飞 0 · 完成 0/)).toBeDefined();
-    // 聚合条待裁决=0(快照缺席不计);卡片无徽标——聚合条外无第二处「待裁决」
-    expect(screen.getAllByText(/待裁决/)).toHaveLength(1);
+    expect(screen.getByText(/进行中 0 · 完成 0/)).toBeDefined();
+    // 聚合条等待确认=0(快照缺席不计);卡片无徽标——聚合条外无第二处「等待确认」
+    expect(screen.getAllByText(/等待确认/)).toHaveLength(1);
   });
 
   it('sunxSessions 拉取失败:整页空卡网格降级不炸(空态文案在场)', async () => {

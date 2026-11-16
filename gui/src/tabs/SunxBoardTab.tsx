@@ -11,9 +11,9 @@ import { aggregateSunxCards, assembleSunxCards, sunxSectionsOf, sunxSnapOf, type
 
 /**
  * SUNX 总览页(sunx P2 Task 8,spec §17.3 裁定形态):单例 `sunxboard` 页签——应用级(不绑会话,
- * 欢迎页座同渲染)。顶部全局聚合条(运行中实例 n/在飞任务 n/待裁决 n,卡片数据前端推导)+
- * 卡片网格(按工作区分节 R10):每实例卡=姓名+状态点+任务进度(在飞/完成计数)+最近活动一行+
- * 待裁决徽标;点卡片 onOpenInstance 上抛(attach 两步/openSession 归 App——spec「点卡片进实例」);
+ * 欢迎页座同渲染)。顶部全局聚合条(运行中实例 n/进行中任务 n/等待确认 n,卡片数据前端推导;2026-11-16 用户裁定「在飞/待裁决」黑话换人话)+
+ * 卡片网格(按工作区分节 R10):每实例卡=姓名+状态点+任务进度(进行中/完成计数)+最近活动一行+
+ * 等待确认徽标;点卡片 onOpenInstance 上抛(attach 两步/openSession 归 App——spec「点卡片进实例」);
  * 「新建 Sunx」入口卡复用 NewSunxDialog(P1 组件,侧栏接线同款 props 形态)。
  *
  * 数据语义(controller ruling 2,懒快照视图):打开/刷新各拉一次全量(GET /sunx/sessions 域容器
@@ -91,8 +91,8 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
             <span className={`sx-sunxboard-dot${agg.running > 0 ? ' live' : ''}`} aria-hidden="true" />
             {t('Running', '运行中')} {agg.running}
           </span>
-          <span className="sx-sunxboard-stat">{t('In-flight tasks', '在飞任务')} {agg.inFlight}</span>
-          <span className="sx-sunxboard-stat">{t('Pending rulings', '待裁决')} {agg.pending}</span>
+          <span className="sx-sunxboard-stat">{t('Active tasks', '进行中任务')} {agg.inFlight}</span>
+          <span className="sx-sunxboard-stat">{t('Awaiting input', '等待确认')} {agg.pending}</span>
         </span>
         <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
           <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
@@ -124,11 +124,11 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
                     <span className="sx-sunxboard-name">{c.name === '' ? t('Untitled Sunx', '未命名 Sunx') : c.name}</span>
                     {badge && (
                       <span className="sx-sunx-badge">
-                        {c.pendingKnown && c.pending > 0 ? `${t('Pending rulings', '待裁决')} ${c.pending}` : t('Pending rulings', '待裁决')}
+                        {c.pendingKnown && c.pending > 0 ? `${t('Awaiting input', '等待确认')} ${c.pending}` : t('Awaiting input', '等待确认')}
                       </span>
                     )}
                   </span>
-                  <span className="sx-sunxboard-progress">{t('In flight', '在飞')} {c.inFlight} · {t('Done', '完成')} {c.done}</span>
+                  <span className="sx-sunxboard-progress">{t('Active', '进行中')} {c.inFlight} · {t('Done', '完成')} {c.done}</span>
                   <span className="sx-sunxboard-activity">
                     {c.lastActivity.label !== '' ? `${c.lastActivity.label} · ` : ''}
                     {relTime(c.lastActivity.ts)}
