@@ -2326,7 +2326,10 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
    展开内层既有聚合=第二层;concise-hidden=grid 0fr 高度过渡(并入动画,向上收起观感) */
 /* 2026-11-14 用户复裁定「不要用背景颜色,和之前折叠行一致」:concise-fold 与 .tool-group-head 同款(无底色/同 padding/fg-secondary 字档) */
 /* 2026-11-14 用户裁定「折叠行与思考行同灰度」:tertiary 档,hover→secondary */
-.concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 2px 8px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+/* 2026-11-16 用户实测「正文→折叠行/折叠行→内部首行行距偏窄」根修:工具/思考行垂直 slack=
+   条目 2px+摘要 2px=4px,折叠头裸按钮原 2px=两处边界各短 2px——顶 4px 对齐行 slack;
+   底 5px 另补「折叠段→正文」=5+8(.chat gap)+0.9(正文 p 半行距)≈14 基线 */
+.concise-fold { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 4px 8px 5px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; animation: concise-fold-in var(--dur-basic, 0.18s) var(--ease-enter, ease); }
 .concise-fold:hover, .concise-fold:focus-visible, .concise-fold.open { color: var(--fg-secondary); background: none; }
 .concise-fold-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .concise-fold .concise-chev { flex: none; color: inherit; opacity: 0; transition: opacity var(--dur-basic, 0.18s) var(--ease-enter, ease), transform var(--dur-basic, 0.18s) var(--ease-enter, ease); }
@@ -2334,13 +2337,15 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .concise-fold.open .concise-chev { transform: rotate(90deg); } /* 2026-11-14 用户裁定:箭头 hover 才显,紧跟文字后 */
 /* 单子链 grid 0fr/1fr(2026-11-14 结构重修:折叠类挂 seg-inner 多子容器=空占位根因,改挂
    concise-body 单子链——header 在折叠体之外不受行高影响) */
-.concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease); }
-.concise-body.open { grid-template-rows: 1fr; }
+/* 2026-11-16 幽灵 6px 根修:收起态 body 高度 0 但仍是 flex item,wrap gap 6px 照记——
+   折叠段→正文实测 16.9(基线 14)即此 6px;gap 移交 open 态 body margin-top,收起零占位 */
+.concise-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-basic, 0.18s) var(--ease-enter, ease), margin-top var(--dur-basic, 0.18s) var(--ease-enter, ease); }
+.concise-body.open { grid-template-rows: 1fr; margin-top: 5px; }
 .concise-body > .concise-body-inner { min-height: 0; overflow: hidden; }
 /* 2026-11-14 用户实测「正文/行被拦腰截断」根修:负边距上提首行+折叠体 overflow hidden=首行
-   顶边被裁。改正值槽位精确同拍——行→行既有视觉距=16px 槽位-10px 链=6px;头→首行用 wrap
-   gap 6px 直达同距(零负边距,无裁切面);首行为聚合组时保持 16px(与既有组上方距同拍) */
-.concise-wrap { display: flex; flex-direction: column; gap: 6px; }
+   顶边被裁。改正值槽位精确同拍——行→行既有视觉距=16px 槽位-10px 链=6px;头→首行用 body
+   open margin-top 5px 同距(零负边距,无裁切面);2026-11-16 gap→margin 迁移见上幽灵 6px 根修 */
+.concise-wrap { display: flex; flex-direction: column; }
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }
@@ -2632,7 +2637,11 @@ input.sx-setting-input { width: 100%; }
 .tool-group { display: flex; flex-direction: column; } /* 2026-10-26 用户裁定:聚合行原地产生,去渐入动画(逐帧 translateY 撑动上方工具/思考行上下抖动) */
 .tool-group-head {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
-  padding: 2px 8px; border-radius: var(--radius-sm); color: var(--fg-tertiary); /* 2026-11-14 统一亮度尺度:折叠 tertiary */
+  /* 2026-11-16 用户实测「折叠行→内部首行偏窄」:组头继承正文 1.6 行距(22.4px,ink slack 上 0.9/下 2.5
+     不对称)且裸按钮 pad 2px——上侧距上一行 12.9 vs 行基线 14。pad 顶 4px+行距 normal(ink slack 归零,
+     与 .tool-summary font 简写同拍)→组头上方/下方 slack 同为 4,与工具行逐像素同节奏 */
+  line-height: normal;
+  padding: 4px 8px; border-radius: var(--radius-sm); color: var(--fg-tertiary); /* 2026-11-14 统一亮度尺度:折叠 tertiary */
 }
 .tool-group-head:hover, .tool-group-head:focus-visible, .tool-group-head.open { color: var(--fg-secondary); }
 /* hover 无底色(对齐工具行现行规范:胶囊底色已退役,仅提亮文字+chevron 显现) */
