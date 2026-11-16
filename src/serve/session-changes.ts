@@ -358,41 +358,74 @@ export async function checkoutBranch(root: string, branch: string, create = fals
   return ok({ out: r.out });
 }
 
-/** 切换代价面(2026-11-10 用户裁定「切换分支弹确认,说明代价」):当前 tip → 目标 tip 的
- *  numstat 汇总(切换=工作区将被更新的文件量)+ 未提交改动数(dirty)。missing=true=目标分支
- *  不存在(新建分支确认不示数);非 git 目录 NOT_GIT(GUI 据此隐藏数字面) */
-export async function branchDiffStat(root: string, branch: string): Promise<Result<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>> {
-  if (!fs.existsSync(path.join(root, '.git'))) return fail('NOT_GIT', 'not a git repository');
-  if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
-  const cur = await git(root, ['branch', '--show-current']);
-  const current = cur.ok ? cur.out.trim() : '';
-  // 脏面代价(2026-11-10 用户裁定「提交并切换弹窗示 ±数量」):未提交改动文件数与 ±行数
-  // (listChanges 口径——untracked 计 newLines,与审查页/轮改动卡一致)
-  const dirtyLive = await listChanges(root);
-  let dirty = 0;
-  let dirtyAdded = 0;
-  let dirtyDeleted = 0;
-  if (dirtyLive.ok) {
-    dirty = dirtyLive.value.files.length;
-    for (const f of dirtyLive.value.files) {
-      dirtyAdded += f.added ?? f.newLines ?? 0;
-      dirtyDeleted += f.deleted ?? 0;
-    }
-  }
-  if (branch === current) return ok({ files: 0, added: 0, deleted: 0, dirty, dirtyAdded, dirtyDeleted, missing: false });
-  const stat = await git(root, ['diff', '--numstat', 'HEAD', branch]);
-  if (!stat.ok) return ok({ files: 0, added: 0, deleted: 0, dirty, dirtyAdded, dirtyDeleted, missing: true }); // 分支不存在(新建面):确认不示数
+/** numstat 汇总(文件数+±行数;'-'=binary 计件不计行)——branchDiffStat 单消费,解析口径与
+ *  listChanges 的逐行 regex 一致 */
+function numstatTotals(out: string): { files: number; added: number; deleted: number } {
   let files = 0;
   let added = 0;
   let deleted = 0;
-  for (const line of stat.out.split('\n')) {
+  for (const line of out.split('\n')) {
     const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line.trim());
     if (m === null) continue;
     files += 1;
     if (m[1] !== '-') added += Number(m[1]);
     if (m[2] !== '-') deleted += Number(m[2]);
   }
-  return ok({ files, added, deleted, dirty, dirtyAdded, dirtyDeleted, missing: false });
+  return { files, added, deleted };
+}
+
+/** untracked 文件行数(脏面 ± 用):512KB 封顶按字节 \n 计(不再整文件 utf8 解码——大未跟踪
+ *  文件曾是代价面拉取的隐形大头);超限计件不计行(确认面够用,审查页仍走 listChanges 全量) */
+const UNTRACKED_LINES_CAP = 512 * 1024;
+function untrackedLineCount(root: string, rel: string): number {
+  try {
+    const abs = path.join(root, rel);
+    const s = fs.statSync(abs);
+    if (!s.isFile() || s.size > UNTRACKED_LINES_CAP) return 0;
+    const buf = fs.readFileSync(abs);
+    let n = 0;
+    for (let i = buf.indexOf(10); i !== -1; i = buf.indexOf(10, i + 1)) n += 1;
+    return buf.length > 0 && buf[buf.length - 1] !== 10 ? n + 1 : n;
+  } catch {
+    return 0;
+  }
+}
+
+/** 切换代价面(2026-11-10 用户裁定「切换分支弹确认,说明代价」):当前 tip → 目标 tip 的
+ *  numstat 汇总(切换=工作区将被更新的文件量)+ 未提交改动数(dirty)。missing=true=目标分支
+ *  不存在(新建分支确认不示数);非 git 目录 NOT_GIT(GUI 据此隐藏数字面) */
+/** 2026-11-16 用户实测「加载diff非常慢」根修:原先整走 listChanges(4 git 串行+untracked 逐文件
+ *  utf8 全文解码),分支 numstat 再串行叠尾——分叉大的分支对(本仓 dev1↔main 2104 文件实测
+ *  6.7s)确认框空转半分钟观感。代价面只要三个数:status 脏清单/HEAD numstat 脏±/分支 numstat
+ *  切换±三读并发,墙钟=最慢单读;目录行(?? dir/)不计(2026-11-13 审查页同口径) */
+export async function branchDiffStat(root: string, branch: string): Promise<Result<{ files: number; added: number; deleted: number; dirty: number; dirtyAdded: number; dirtyDeleted: number; missing: boolean }>> {
+  if (!fs.existsSync(path.join(root, '.git'))) return fail('NOT_GIT', 'not a git repository');
+  if (/[^\w./-]/.test(branch) || branch.startsWith('-')) return fail('BRANCH_NAME', 'invalid branch name');
+  const [st, headNum, branchNum] = await Promise.all([
+    git(root, ['status', '--porcelain=v1']),
+    git(root, ['diff', '--numstat', 'HEAD']),
+    git(root, ['diff', '--numstat', 'HEAD', branch]),
+  ]);
+  // 脏面代价(2026-11-10 用户裁定「提交并切换弹窗示 ±数量」):tracked ±=HEAD numstat 全量汇总;
+  // untracked 计件+行数(封顶);目录行不计
+  let dirty = 0;
+  let dirtyAdded = 0;
+  let dirtyDeleted = 0;
+  const headTotals = numstatTotals(headNum.ok ? headNum.out : '');
+  dirtyAdded += headTotals.added;
+  dirtyDeleted += headTotals.deleted;
+  if (st.ok) {
+    for (const line of st.out.split('\n')) {
+      if (line.trim() === '') continue;
+      const raw = line.slice(3).trim().replace(/^"|"$/g, '').replaceAll('\\', '/');
+      if (raw === '' || (line.startsWith('??') && raw.endsWith('/'))) continue;
+      dirty += 1;
+      if (line.startsWith('??')) dirtyAdded += untrackedLineCount(root, raw);
+    }
+  }
+  if (!branchNum.ok) return ok({ files: 0, added: 0, deleted: 0, dirty, dirtyAdded, dirtyDeleted, missing: true }); // 分支不存在(新建面):确认不示数
+  const totals = numstatTotals(branchNum.out);
+  return ok({ files: totals.files, added: totals.added, deleted: totals.deleted, dirty, dirtyAdded, dirtyDeleted, missing: false });
 }
 
 /** git 切换被未提交改动阻断的报错特征(本地改动会被覆盖/请先提交或贮藏) */

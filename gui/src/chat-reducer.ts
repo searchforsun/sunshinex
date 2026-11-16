@@ -93,6 +93,16 @@ export interface ChatState {
   /** 2026-10-26 三期历史链:尾窗播种元数据——hasMore=true 时后台加载链逐页 prepend 补老;
    *  complete=头部已到;failed=连续重试败(指示器可点重试)。undefined=旧 daemon(无分页) */
   history?: { total: number; oldestSeq: number; hasMore: boolean; complete: boolean; failed?: boolean };
+  /** 快照种子指纹(2026-11-16 流畅轮,勿消费——reseed 专用):seedChatFromSnapshot 按
+   *  消息集算(条数/首尾 seq/流式游标/md 总长)。重挂载走 chatMem 缓存直渲后,reseed 快照
+   *  落定与此值同判:同=快照与缓存转录同源,免整替(零重渲零重解析,切回已看过的会话不再白屏);
+   *  异=后台确有新内容,换新。仅 seedChatFromSnapshot 写入,live 归约随 spread 透传 */
+  seedSig?: string;
+  /** chatMem 座别(2026-11-16 流畅轮,勿消费):Chat 卸载写回缓存时随写当前 sessionId——
+   *  journal 键在 daemon 侧恒同一会话(同 journal=同对话),但 attach 未收编时换座壳 id 会换;
+   *  reseed sig-skip 须同座才免整替(同 journal 键+同快照+异座=异常形态,保守换新防跨座串显,
+   *  App.test key 隔离锚)。live 归约随 spread 透传,seed 不写(换新即待本座写回) */
+  memSeat?: string;
 }
 
 export function initialChatState(): ChatState {
@@ -342,8 +352,13 @@ export function seedChatFromSnapshot(
 ): ChatState {
   // P10:status 读内核游标(openRun>=0 即 running)——快照 status 参数退役
   const status: ChatState['status'] = cursors.openRun >= 0 ? 'running' : 'idle';
+  // 种子指纹(2026-11-16 流畅轮,见 ChatState.seedSig 注):条数/首尾 seq/游标/md 总长——
+  // 后台追加/清档任一变化均翻指纹;O(n) 单趟字符计数,快照已解码,代价可忽略
+  let mdLen = 0;
+  for (const m of messages) mdLen += m.md.length;
+  const seedSig = `${messages.length}|${messages[0]?.seq ?? -1}|${messages[messages.length - 1]?.seq ?? -1}|${cursors.openRun}|${cursors.openSeg}|${mdLen}`;
   // cast 依据:快照转录档即内核条目的盘面直录(v3 seg 行=kernelEventRows 单点映射),形状契约由装载侧背书
-  const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {}, structureVersion: 1, seedGen: ++seedGenCounter };
+  const s: ChatState = { k: applySeed(initialKernelState(), messages as unknown as ReadonlyArray<KernelEntry & { seq?: number }>), entries: [], status, tokens: 0, steps: 0, cacheTokens: 0, runBases: {}, structureVersion: 1, seedGen: ++seedGenCounter, seedSig };
   s.k = { ...s.k, openRun: cursors.openRun, openSeg: cursors.openSeg };
   // P9:计数器自 run meta 在 applySeed 内重建(零推导)——G14.18 回放会话累计不从零起
   const seeded: ChatState = { ...s, tokens: s.k.stats.sessionTotalTokens, steps: s.k.stats.sessionSteps, cacheTokens: s.k.stats.sessionCacheTokens };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
@@ -73,7 +73,7 @@ export interface ProjectsSectionProps {
   readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number; kind?: string }) => void;
 }
 
-export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
+export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
   const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
@@ -371,4 +371,4 @@ export function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
         )}
     </>
   );
-}
+});

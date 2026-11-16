@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
 import { ChevronRight, KanbanSquare, SquarePen } from 'lucide-react';
@@ -35,7 +35,7 @@ export interface RecentsSectionProps {
   readonly onPinRow: (row: { id: string; root: string; title?: string; updatedAt: number; kind?: string }) => void;
 }
 
-export function RecentsSection(props: RecentsSectionProps): JSX.Element {
+export const RecentsSection = memo(function RecentsSection(props: RecentsSectionProps): JSX.Element {
   const { recentsOpen, onToggleRecents, onNewChat, onOpenSunxBoard, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
@@ -172,4 +172,4 @@ export function RecentsSection(props: RecentsSectionProps): JSX.Element {
         </div>
     </>
   );
-}
+});

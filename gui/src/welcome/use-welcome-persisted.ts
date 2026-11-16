@@ -76,15 +76,21 @@ export function useWelcomePersistedPicks({
     } catch { /* 隐私模式写失败静默 */ }
   }, [isolate]);
   const branchRestoreRef = useRef(true);
+  // 存档分支 useState 惰性初始化=严格首渲读一次(2026-11-16 实测恢复失灵根修):下方
+  // selectedBranch 写档 effect 挂载即跑(写 ''),恢复闸晚于它触发(gitBr 异步到位)——届时再读
+  // 档恒空,分支持久化恢复自出生坏死;project/isolate 无此疾(useState 初始化即读档,写档幂等自洽)
+  const [savedBranch] = useState<string>(() => {
+    try {
+      return localStorage.getItem('sx-welcome:branch') ?? '';
+    } catch {
+      return '';
+    }
+  });
   useEffect(() => {
     if (!branchRestoreRef.current || gitBr === null) return;
     branchRestoreRef.current = false;
-    let saved = '';
-    try {
-      saved = localStorage.getItem('sx-welcome:branch') ?? '';
-    } catch { /* 读档失败=无预选 */ }
-    if (saved !== '' && saved !== gitBr.current && gitBr.branches.includes(saved)) setSelBranch(saved);
-  }, [gitBr, setSelBranch]);
+    if (savedBranch !== '' && savedBranch !== gitBr.current && gitBr.branches.includes(savedBranch)) setSelBranch(savedBranch);
+  }, [gitBr, setSelBranch, savedBranch]);
 }
 
 /** 选项条窄宽隐现（2026-11-12 用户裁定「过窄自动隐现工作区/分支名,不换行不超视口」）：

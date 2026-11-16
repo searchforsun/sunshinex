@@ -1,11 +1,17 @@
 import { memo, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { Check, Copy, Maximize2, Square, WrapText } from 'lucide-react';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import remarkParse from 'remark-parse';
+import remarkRehype from 'remark-rehype';
+import { unified } from 'unified';
+import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
+import type { Components } from 'react-markdown';
 import { t } from '../../i18n';
 import { highlightFence } from '../../highlight';
 import { zoomScale } from '../../ui-zoom';
@@ -82,6 +88,62 @@ export const MD_REHYPE_PLUGINS: import('unified').PluggableList = [
     { throwOnError: false, errorColor: 'inherit', strict: 'ignore' },
   ],
 ];
+
+/** hast 级 md 渲染缓存(2026-11-16 流畅轮:切会话/回放批免重解析)。react-markdown 每次 render
+ *  重建 unified processor 并全量跑管线(remark 解析+gfm+math+raw(parse5)+sanitize+katex——
+ *  单条正文数 KB 即毫秒级);会话切换=整树重挂,80 条尾窗 × 管线 = 切换长帧主源。此处:
+ *  ①processor 模块单例(管线只装配一次);②解析产物(hast 树)按 md 原文模块级缓存——重挂载
+ *  /空闲回放批命中即只走 toJsxRuntime(只读树,零管线)。树共享安全性:管线产出即定稿
+ *  (rehype-raw 已整替 raw 节点,sanitize/katex 已内联),消费面(toJsxRuntime/自定义组件)
+ *  只读;urlTransform=keepUrl 恒等,react-markdown post 的 URL 遍历对恒等函数无值差,免跑。
+ *  流式尾块(draft)不进缓存——逐批新串只污染窗口。 */
+const mdProcessor = unified()
+  .use(remarkParse)
+  .use(MD_REMARK_PLUGINS)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(MD_REHYPE_PLUGINS);
+
+const MD_HAST_CACHE_MAX = 300;
+const mdHastCache = new Map<string, unknown>();
+
+/** 测试/主题域清缓存口(树与语言无关,当前无消费方;与 mermaidCacheClear 同形备用) */
+export function mdHastCacheClear(): void {
+  mdHastCache.clear();
+}
+
+function hastOf(md: string): unknown {
+  let tree = mdHastCache.get(md);
+  if (tree === undefined) {
+    tree = mdProcessor.runSync(mdProcessor.parse(md));
+    if (mdHastCache.size >= MD_HAST_CACHE_MAX) mdHastCache.clear(); // 超上限整体清(与 Mermaid svgCache 同口径)
+    mdHastCache.set(md, tree);
+  }
+  return tree;
+}
+
+/** 与 <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS}
+ *  urlTransform={keepUrl} components={...}> 输出逐字节同构(passNode/passKeys/ignoreInvalidStyle
+ *  同 react-markdown post() 缺省装配);缓存命中时跳过整条解析管线 */
+export function renderMdCached(md: string, components: Components): ReactNode {
+  if (md === '') return null;
+  return toJsxRuntime(hastOf(md) as Parameters<typeof toJsxRuntime>[0], toJsxOpts(components));
+}
+
+/** toJsxRuntime 装配单点:components 形.react-markdown post() 同款豁免——其 Components(ExtraProps)
+ *  形与 h2xr Options 形不完全一致,react-markdown 本体亦以 @ts-expect-error 渡过 */
+function toJsxOpts(components: Components): Parameters<typeof toJsxRuntime>[1] {
+  const opts = { Fragment, ignoreInvalidStyle: true, jsx, jsxs, passKeys: true, passNode: true } as Parameters<typeof toJsxRuntime>[1];
+  (opts as { components?: unknown }).components = components;
+  return opts;
+}
+
+/** 缓存版 Markdown 组件(Chat 转录热路径消费):memo 按 md+components,流式增量只重渲尾块;
+ *  draft=true(流式尾块)绕缓存——逐批新串不进窗口,但 processor 单例仍省装配 */
+export const MarkdownCached = memo(function MarkdownCached({ md, components, draft = false }: { md: string; components: Components; draft?: boolean }): JSX.Element {
+  if (md === '') return <></>;
+  const tree = draft ? mdProcessor.runSync(mdProcessor.parse(md)) : hastOf(md);
+  return <>{toJsxRuntime(tree as Parameters<typeof toJsxRuntime>[0], toJsxOpts(components))}</>;
+});
 
 /** md 渲染域（D32 批C-5 拆分自 Chat.tsx）：链接放行/无链接组件面单例/文件 token 显形名/
  *  用户气泡与通用 md 组件工厂/代码块卡/Mermaid 容器（lightbox 缩放平移）。Files 页与

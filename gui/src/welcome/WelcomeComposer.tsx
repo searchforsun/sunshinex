@@ -225,6 +225,9 @@ export function WelcomeComposer({
       return filePalFiles.find((f) => (pathBasename(f)) === name);
     }).trim();
     if ((g === '' && images.length === 0) || target === '' || busy) return;
+    // 切换确认弹窗在场(统计中/待确认)不重入:2026-11-16 实测回环的引信——弹窗 onSend 曾指回
+    // 本函数,拦截条件未变即重开弹窗重拉代价面,永远到不了 doSend(按钮「不可点击」观感根因)
+    if (switchPending !== null) return;
     // 分支选择落地(2026-11-10 用户裁定「选择不切换,发送时统一落地」):非隔离且选了异于当前的
     // 分支 → 先弹「切换并发送」确认(脏树带提交信息框,branchDiffStat 示代价);隔离 → worktree
     // 签出选中分支(被占 409 BRANCH_HELD → 弹「已被签出」重选/改名框);隔离但未选异于当前的
@@ -306,11 +309,20 @@ export function WelcomeComposer({
         })
         .catch((err: unknown) => {
           setBusy(false);
+          setSwitchPending(null); // 失败收弹窗:错误经 composer belowInput 回显(覆盖层之下不可见)
           setError(err instanceof Error ? err.message : String(err));
         });
       return;
     }
     proceed();
+  };
+  /** 弹窗「切换并发送」确认(2026-11-16 实测回环根修):此前 onSend 指回 send()——重开弹窗重拉
+   *  代价面,永远到不了 doSend,已填提交信息随重开被清。直进 doSend(先提交并切换再建会话);
+   *  失败时 doSend 自收弹窗,错误经 composer 错误条可见(弹窗覆盖层之下不可见) */
+  const confirmSwitchSend = (): void => {
+    const target = picked !== '' ? picked : (presetRoot ?? '');
+    if (switchPending === null || target === '' || busy) return;
+    void doSend(target, switchPending.branch, switchMsg);
   };
   sendRef.current = send;
   const baseName = pathBasename;
@@ -391,14 +403,15 @@ export function WelcomeComposer({
             </button>
           )}
         </div>
-        {/* 发送前切换确认(全局 portal):branchDiffStat 代价面;脏树=提交信息框+±数量 */}
+        {/* 发送前切换确认(全局 portal):branchDiffStat 代价面;脏树=提交信息框+±数量;
+            确认=confirmSwitchSend 直进 doSend(2026-11-16 回环根修,不再指回 send 重开弹窗) */}
         {switchPending !== null && (
           <WelcomeSwitchDialog
             pending={switchPending}
             msg={switchMsg}
             onMsg={setSwitchMsg}
             busy={busy}
-            onSend={send}
+            onSend={confirmSwitchSend}
             onClose={() => setSwitchPending(null)}
           />
         )}
@@ -781,7 +794,8 @@ export function WelcomeComposer({
                 className="send"
                 aria-label="send"
                 data-tip={`${t('Send', '发送')} · Enter`}
-                disabled={busy || (goal.trim() === '' && images.length === 0) || picked === ''}
+                // 弹窗在场(含代价面统计中)禁用:2026-11-16 实测「加载期间没有禁用发送按钮」
+                disabled={busy || switchPending !== null || (goal.trim() === '' && images.length === 0) || picked === ''}
                 onClick={() => send()}
               >
                 <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />

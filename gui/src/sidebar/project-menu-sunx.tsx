@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
 import { Archive, Check, ChevronRight, KanbanSquare, ListFilter } from 'lucide-react';
@@ -34,7 +34,7 @@ export interface SunxSectionProps {
   readonly onOpenArchive?: () => void;
 }
 
-export function SunxSection(props: SunxSectionProps): JSX.Element | null {
+export const SunxSection = memo(function SunxSection(props: SunxSectionProps): JSX.Element | null {
   const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenBoard, onNewSunx, onOpenArchive } = props;
   /** 行排序(2026-11-15 用户裁定组头簇对齐「项目」):updated=更新时间新→旧(默认)/name=名称 */
   const [sortMode, setSortMode] = useState<'updated' | 'name'>('updated');
@@ -192,4 +192,4 @@ export function SunxSection(props: SunxSectionProps): JSX.Element | null {
       </div>
     </>
   );
-}
+});

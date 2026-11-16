@@ -422,7 +422,11 @@ const h = vi.hoisted(() => {
   return { FakeConn, created };
 });
 
-vi.mock('./connection', () => ({ createConnection: (opts: ConnectionOpts) => new h.FakeConn(opts) }));
+vi.mock('./connection', () => ({
+  // SESSION_KIND_SUNX 随 Chat kind 直引补充(2026-11-16:Chat 正文按常量判 sunx 空态文案——mock 全量替换须带值面)
+  SESSION_KIND_SUNX: 'sunx',
+  createConnection: (opts: ConnectionOpts) => new h.FakeConn(opts),
+}));
 
 /** highlight.js 抛错注入桩(T1 评审回落收口测):仅含 marker 的输入抛错,其余透传真实现——
  *  既有 Files 页断言(.hljs-keyword 真高亮)不受染 */
@@ -441,7 +445,9 @@ vi.mock('highlight.js/lib/common', async (importOriginal) => {
 });
 
 /** react-markdown 透明计数桩:包装真实现并计渲染次数——条目 React.memo 的流式收敛回归依据
- *  (流式 token 帧只有流式条重渲染,稳定条目 md 解析零重跑) */
+ *  (流式 token 帧只有流式条重渲染,稳定条目 md 解析零重跑)。
+ *  2026-11-16 流畅轮:Chat 转录热路径改走 md-render 的缓存渲染面(renderMdCached/MarkdownCached,
+ *  hast 级缓存)——计数桩同挂两入口(直调真实现,语义=「进解析管线次数」) */
 const md = vi.hoisted(() => ({ renders: 0 }));
 vi.mock('react-markdown', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-markdown')>();
@@ -451,6 +457,21 @@ vi.mock('react-markdown', async (importOriginal) => {
     return <Real {...props} />;
   };
   return { default: Counting };
+});
+vi.mock('./pages/chat/md-render', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pages/chat/md-render')>();
+  const CountingCached = (props: { md: string; components: import('react-markdown').Components; draft?: boolean }): JSX.Element => {
+    md.renders += 1;
+    return <actual.MarkdownCached {...props} />; // memo 对象须走 JSX 渲染,直调用即 undefined 元素
+  };
+  return {
+    ...actual,
+    renderMdCached: (mdText: string, components: unknown): unknown => {
+      md.renders += 1;
+      return actual.renderMdCached(mdText, components as never);
+    },
+    MarkdownCached: CountingCached,
+  };
 });
 
 let ts = 0;
@@ -666,7 +687,8 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     await clickSessionRow();
     await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
     await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
-    // s2 投影独立:无 s1 条目串扰(组件级隔离——非空起步)
+    // s2 投影独立:无 s1 条目串扰(组件级隔离——非空起步;2026-11-16 流畅轮:chatMem 命中走
+    // memSeat 座别守卫,异座(attach 未收编换壳)保守换新,缓存不跨座串显)
     expect(screen.queryByText('s1 目标')).toBeNull();
     expect(screen.queryByText('s1 流内容')).toBeNull();
     type('s2 目标');
@@ -1849,7 +1871,7 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
   };
 
-  it('设置钮 → 设置态:SettingsShell 在场(导航项;顶部项目选择器已移除)、右标签栏与 Chat 退场;「← 返回」→ 回会话态(Chat 重挂)', async () => {
+  it('设置钮 → 设置态(覆盖层):SettingsShell 在场(导航项;顶部项目选择器已移除)、三栏保挂不卸;「← 返回」→ 回会话态(Chat 零重挂零重播种,2026-11-16 流畅轮——主题/外观改动即改即见,原「Chat 卸载重播种」语义退役)', async () => {
     const { unmount } = await enterChat();
     openSettings();
     // 左栏切换:SettingsShell 在场——顶部项目选择器/外观行已移除(设置重构轮:项目区分下沉到
@@ -1859,22 +1881,23 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     expect(screen.getByRole('button', { name: 'Context & limits' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Memory' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Knowledge & search' })).toBeDefined();
-    // ProjectMenu 退场(组头不在)
-    expect(screen.queryByRole('button', GROUP_HEAD)).toBeNull();
-    // 右标签栏整体不渲染 + Chat 主区不在(裁定:设置态 Chat 卸载,返回重播种同 backHome 语义)
-    expect(document.querySelector('.sx-tabstrip')).toBeNull();
-    expect(screen.queryByLabelText('message input')).toBeNull();
-    // 返回 → 回会话态:Chat 重新在场(重挂重播种,输入门落定后启用)
+    // 覆盖层语义:三栏保挂——主列(Chat)与左栏全在 DOM(盖在 z85 覆盖层下,不可交互;
+    // 页签条缺省折叠本不在场,以 .sx-main 断言中栏保挂)
+    expect(document.querySelector('.sx-settings-overlay')).not.toBeNull();
+    expect(document.querySelector('.sx-main')).not.toBeNull();
+    expect(screen.getByLabelText('message input')).toBeDefined();
+    // 返回 → 回会话态:覆盖层撤除,Chat 原样在场(零重挂——输入门不经播种窗,即刻可用)
     fireEvent.click(screen.getByRole('button', { name: 'back to sessions' }));
-    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLInputElement).disabled).toBe(false));
+    await waitFor(() => expect(document.querySelector('.sx-settings-overlay')).toBeNull());
+    expect(screen.getByLabelText('message input')).toBeDefined();
     // G14.38:缺省折叠——条不在场,返回面以输入门与 Chat 在场断言
 
-    await screen.findByRole('button', GROUP_HEAD); // ProjectMenu 重挂,组列表经 workspaces() 重拉
+    await screen.findByRole('button', GROUP_HEAD); // ProjectMenu 在场(组列表在座,未重拉)
     // 2026-11-09 用户裁定:左栏右下角齿轮=开关同位——设置态内再点即关,与返回钮同路径
     openSettings();
     expect(screen.getByRole('button', { name: 'General' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'close settings' }));
-    await waitFor(() => expect(screen.getByLabelText('message input')).toBeDefined());
+    await waitFor(() => expect(document.querySelector('.sx-settings-overlay')).toBeNull());
     unmount();
   });
 

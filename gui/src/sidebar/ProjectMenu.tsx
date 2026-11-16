@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
@@ -11,6 +12,7 @@ import { NavButtons } from '../NavButtons';
 import type { NavControls } from '../nav-history';
 import {
   autoSeenSuppressed,
+  listShallowEqual,
   loadSeenMap,
   persistSeenMap,
   RECENT_VISIBLE_DEFAULT,
@@ -134,12 +136,15 @@ export interface ProjectMenuProps {
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
 
+/** runningIds 缺省空集(2026-11-16 流畅轮:模块级单例——内联 `new Set()` 每渲染换身份击穿 memo 分区) */
+const EMPTY_RUNNING: ReadonlySet<string> = new Set();
+
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree } = props;
   const recentVersion = props.recentVersion ?? 0;
   const pins = props.pins ?? [];
   const persistPins = props.persistPins ?? ((): void => undefined);
-  const runningIds = props.runningIds ?? new Set<string>();
+  const runningIds = props.runningIds ?? EMPTY_RUNNING;
   const [rows, setRows] = useState<WorkspaceRow[] | null>(null);
   /** 2026-10-24 用户裁定:会话行 hover tooltip 附分支信息(如 dev1)——按工作区 root 拉 gitBranches
    *  current 缓存(失败落 '' 防重试风暴);ProjectsSection 消费 */
@@ -173,25 +178,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   /** 分区折叠(G10-C18):PROJECTS/RECENTS 分区头可折叠(平滑过渡) */
   const [projectsOpen, setProjectsOpen] = useState(true);
-  // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
-  // 无依赖面每次渲染重测(数据/计数变化即新节点),RO 盯滚动容器(拖栏宽度变化即重测)
-  const sideScrollRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const mark = (): void => {
-      const root = sideScrollRef.current;
-      if (root === null) return;
-      for (const el of root.querySelectorAll<HTMLElement>('.sx-ws-name, .session-summary')) {
-        if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
-        else el.removeAttribute('data-cut');
-      }
-    };
-    mark();
-    const el = sideScrollRef.current;
-    if (el === null) return;
-    const ro = new ResizeObserver(mark);
-    ro.observe(el);
-    return () => ro.disconnect();
-  });
   // G14.2xx 组内会话默认收窄:默认显 24h 内活跃(最多 10),「显示更多」放全量,「收起」复位;切组复位
   const [groupShowAll, setGroupShowAll] = useState(false);
   const groupShowAllRef = useRef(false);
@@ -204,8 +190,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 已读会话映射(2026-10-23 落底层——用户裁定:刷新/跨端不再全员未读):localStorage 即时面
    *  + /app/seen 服务端权威双写收敛;id → 最近已读 updatedAt */
   const [seenMap, setSeenMap] = useState<SeenMap>(() => loadSeenMap());
-  /** 未读判定:行 updatedAt 新于已读时刻即未读 */
-  const isUnseen = (id: string, updatedAt: number): boolean => (seenMap[id] ?? -1) < updatedAt;
+  /** 未读判定:行 updatedAt 新于已读时刻即未读(2026-11-16 流畅轮:useCallback 恒稳——memo 分区判等面) */
+  const isUnseen = useCallback((id: string, updatedAt: number): boolean => (seenMap[id] ?? -1) < updatedAt, [seenMap]);
   /** 已读档远端写(fire-and-forget):旧 daemon/测试桩未实现即静默跳过(探活口径同 sessionTasks) */
   const saveSeenRemote = useCallback((m: SeenMap): void => {
     if (typeof conn.saveAppSeen !== 'function') return;
@@ -248,18 +234,19 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     if (sr !== undefined && !autoSeenSuppressed(sr.id) && isUnseen(sr.id, sr.updatedAt)) markSeen(sr.id, sr.updatedAt);
   }, [sessions, activeSessionId, journalOfSession, isUnseen, markSeen]);
 
-  const markJournal = (sessionId: string, journalId: string): void =>
+  const markJournal = useCallback((sessionId: string, journalId: string): void =>
     setJournalOfSession((prev) => {
       if (prev.get(sessionId) === journalId) return prev;
       const next = new Map(prev);
       next.set(sessionId, journalId);
       return next;
-    });
+    }), []);
 
   const loadWorkspaces = useCallback((): void => {
     conn.workspaces().then(
       (list) => {
-        setRows(list);
+        // 2026-11-16 流畅轮:浅等守卫——30s 轮询/聚焦刷新内容未变时保旧引用,下游 memo 分区零重渲
+        setRows((prev) => (listShallowEqual(prev, list) ? prev : list));
         setListError('');
         // 分支缓存补拉:每个未缓存的 root 一次(缓存守卫防风暴;失败落空串标记已试)
         for (const w of list) {
@@ -273,7 +260,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       },
       (err: unknown) => setListError(err instanceof Error ? err.message : String(err)),
     );
-    conn.recentSessions().then(setRecents, () => setRecents([])); // Recents 静默降级:空列表即可用
+    conn.recentSessions().then(
+      (list) => setRecents((prev) => (listShallowEqual(prev, list) ? prev : list)), // Recents 静默降级:空列表即可用
+      () => setRecents([]),
+    );
   }, [conn]);
 
   /** 归档会话区(2026-10-21 用户裁定:归档视图在左侧菜单栏,非右侧主对话页):跨工作区聚合行
@@ -282,8 +272,34 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedRows, setArchivedRows] = useState<ArchivedRow[] | null>(null);
   const loadArchived = useCallback((): void => {
-    conn.archivedSessions().then(setArchivedRows, () => setArchivedRows([]));
+    conn.archivedSessions().then(
+      (list) => setArchivedRows((prev) => (listShallowEqual(prev, list) ? prev : list)),
+      () => setArchivedRows([]),
+    );
   }, [conn]);
+  /** SUNX 组行集状态(2026-11-16 流畅轮声明上移:layoutEffect deps 需要;拉取 effect 原位不动) */
+  const [sunxRows, setSunxRows] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
+  // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
+  // RO 盯滚动容器(拖栏宽度变化即重测)。2026-11-16 流畅轮:补数据依赖(原无 deps=每次渲染全量
+  // DOM 扫描+重建 RO,App 壳高频态即触发);数据引用不变时零扫描,宽变仍由 RO 兜底。
+  // 块置于全部数据声明之后(deps 求值需引用在座)
+  const sideScrollRef = useRef<HTMLDivElement>(null);
+  const markSideCut = useCallback((): void => {
+    const root = sideScrollRef.current;
+    if (root === null) return;
+    for (const el of root.querySelectorAll<HTMLElement>('.sx-ws-name, .session-summary')) {
+      if (el.scrollWidth > el.clientWidth + 1) el.setAttribute('data-cut', '');
+      else el.removeAttribute('data-cut');
+    }
+  }, []);
+  useLayoutEffect(() => {
+    markSideCut();
+    const el = sideScrollRef.current;
+    if (el === null) return;
+    const ro = new ResizeObserver(markSideCut);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [markSideCut, rows, sessions, recents, sunxRows, archivedRows, pins, openSlug, groupShowAll, recentLimit, projectsOpen, archiveOpen, searchOpen]);
 
 
 
@@ -334,7 +350,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       conn.sessionsOf(root).then(
         (list) => {
           if (openSlugRef.current !== slug) return;
-          setSessions(list);
+          // 2026-11-16 流畅轮:浅等守卫(同 loadWorkspaces——recentVersion bump/30s 重拉内容未变零重渲)
+          setSessions((prev) => (listShallowEqual(prev, list) ? prev : list));
           // 树会话行分支缓存补拉(2026-11-11):隔离会话 sr.root=工作树路径,悬浮卡分支按真根取
           for (const r of list) {
             const rt = r.root;
@@ -368,7 +385,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     [loadSessions],
   );
 
-  const toggleGroup = (row: WorkspaceRow): void => {
+  const toggleGroup = useCallback((row: WorkspaceRow): void => {
     if (row.root === undefined) return;
     if (openSlug === row.slug) {
       openSlugRef.current = null;
@@ -377,7 +394,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       return;
     }
     expandGroup(row);
-  };
+  }, [openSlug, expandGroup]);
 
   /** activeRoot 组自动展开(当前会话所属组;与手动 toggle 共用 openSlug 态) */
   useEffect(() => {
@@ -414,14 +431,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  容器全域枚举单点——宿主 /sessions 逐工作区聚合（sessionsOf 每根一拉+kind 过滤）退役。行携
    *  出生 meta root（域旁车）；slug 以 root 代（分节键=工作区根，wsName 显示走 root basename）。
    *  拉取失败按空清单降级（侧栏计数面,非权威数据;rows 变化即重拉——30s tick/聚焦/config-changed
-   *  全走 loadWorkspaces→rows 换引用,单一驱动点,与既有刷新节奏同拍） */
-  const [sunxRows, setSunxRows] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
+   *  全走 loadWorkspaces→rows 换引用,单一驱动点,与既有刷新节奏同拍;2026-11-16 流畅轮:浅等守卫,
+   *  内容未变保旧引用——30s 轮询不再换身份重渲染） */
   useEffect(() => {
     let alive = true;
     void conn
       .sunxSessions()
       .then((list) => {
-        if (alive) setSunxRows(list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' })));
+        if (!alive) return;
+        const mapped = list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' }));
+        setSunxRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
       })
       .catch(() => {
         if (alive) setSunxRows([]);
@@ -458,9 +477,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
 
   /** Attach 两步(daemon 形态对齐,Home 照搬):newSession(root) 装配壳 → attach(sessionId,
-   *  journalId) 播种恢复 → onOpenSession(sessionId, root);失败行内报错,busy 防双发 */
-  const attachJournal = (root: string, journalId: string, journalUpdatedAt?: number): void => {
-    if (busy) return;
+   *  journalId) 播种恢复 → onOpenSession(sessionId, root);失败行内报错,busy 防双发。
+   *  2026-11-16 流畅轮:useCallback+busyRef(memo 分区判等面;busy 读 ref 免依赖抖动) */
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const attachJournal = useCallback((root: string, journalId: string, journalUpdatedAt?: number): void => {
+    if (busyRef.current) return;
     setBusy(true);
     setActionError('');
     conn
@@ -479,12 +501,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           setActionError(err instanceof Error ? err.message : String(err));
         },
       );
-  };
+  }, [conn, markSeen, markJournal, onOpenSession, loadWorkspaces]);
   /** SUNX 条目点击链（sunx P3 Task 3 数据源改向）：attachSunx(journalId) 直寻址重开——域定位/
    *  壳铸造/attach 全链在 daemon 单点（不再 newSession(root)+attach 两步）。busy 防双发/已读压戳/
    *  journal 映射回填/onOpenSession 下发与 attachJournal 同拍；root 取应答真根（域旁车 meta.root） */
-  const attachSunxJournal = (journalId: string, journalUpdatedAt?: number): void => {
-    if (busy) return;
+  const attachSunxJournal = useCallback((journalId: string, journalUpdatedAt?: number): void => {
+    if (busyRef.current) return;
     setBusy(true);
     setActionError('');
     conn
@@ -499,7 +521,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         setBusy(false);
         setActionError(errText(err));
       });
-  };
+  }, [conn, markSeen, markJournal, onOpenSession, loadWorkspaces]);
   /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
    *  组列表计数 + Recents(loadWorkspaces)、归档层列表(loadArchived,置顶行归档时归档层若
    *  开着需即时回显)与展开组会话行(loadSessions,归档行由服务端列表滤除,T2c)。失败经既有
@@ -568,6 +590,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     [conn, loadArchived, loadWorkspaces, persistPins, pins],
   );
   const pinnedIds = useMemo(() => new Set(pins.map((p) => p.id)), [pins]);
+  /** 归档行 id 集(memo 单例——2026-11-16 流畅轮:内联 new Set 每渲染换身份击穿 PinnedSection memo) */
+  const archivedIds = useMemo(() => new Set((archivedRows ?? []).map((r) => r.id)), [archivedRows]);
   /** journal → daemon 运行标注(置顶组非当前会话的运行/待确认态数据源;最近会话为运行中会话的超集) */
   const liveJournals = useMemo(() => {
     const m = new Map<string, { liveSessionId: string; awaiting: boolean }>();
@@ -578,7 +602,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
    *  目录(旧按 name 在 projectsRoot 下 mkdir 的行为废除)。登记后回欢迎页预选该项目。 */
-  const pickAndAdd = (): void => {
+  const pickAndAdd = useCallback((): void => {
     setActionError('');
     const shell = window.sunshinex;
     if (typeof shell?.pickFolder === 'function') {
@@ -610,7 +634,21 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       }
       setDirOpen(true);
     });
-  };
+  }, [conn, loadWorkspaces, onComposeIn]);
+  /** 分区回调簇(2026-11-16 流畅轮:useCallback 恒稳——五 memo 分区的判等面,内联箭头每渲染
+   *  换新即全分区每帧重渲) */
+  const addWorkspaceFromHead = useCallback((e: ReactMouseEvent<HTMLButtonElement>): void => {
+    e.stopPropagation();
+    setActionError('');
+    pickAndAdd();
+  }, [pickAndAdd]);
+  const openArchivedWithReload = useCallback((): void => {
+    setArchiveOpen(true);
+    loadArchived();
+  }, [loadArchived]);
+  const attachSunxFromRow = useCallback((_root: string, journalId: string, updatedAt?: number): void => {
+    attachSunxJournal(journalId, updatedAt); // P3 Task 3:条目点击=attachSunx 链(root 参数退役——journalId 直寻址重开)
+  }, [attachSunxJournal]);
   /** DirPicker 确认:登记所选既有目录为工作区(同桌面壳后段;已登记幂等) */
   const registerFolder = (p: string): void => {
     setDirOpen(false);
@@ -629,6 +667,19 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     loadWorkspaces();
     onOpenSession(sessionId, root);
   };
+  /** 分区回调簇(2026-11-16 流畅轮:useCallback 恒稳——五 memo 分区的判等面,内联箭头每渲染
+   *  换新即全分区每帧重渲) */
+  const toggleProjects = useCallback((): void => setProjectsOpen((v) => !v), []);
+  const groupShowMore = useCallback((): void => setGroupShowAll(true), []);
+  const toggleRecents = useCallback((): void => {
+    setRecentsOpen((v) => !v);
+    setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
+  }, []);
+  const recentsShowMore = useCallback((): void => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v)), [recents]);
+  const recentsCollapse = useCallback((): void => setRecentLimit(RECENT_VISIBLE_DEFAULT), []);
+  const openNewSunxDialog = useCallback((): void => setSunxOpen(true), []);
+  const openArchiveView = useCallback((): void => setArchiveOpen(true), []);
+  const exitArchiveView = useCallback((): void => setArchiveOpen(false), []);
 
   return (
     <nav className="sx-menu" aria-label="projects">
@@ -737,11 +788,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           journalOfSession={journalOfSession}
           isUnseen={isUnseen}
           busy={busy}
-          onAttach={(_root, journalId, updatedAt) => attachSunxJournal(journalId, updatedAt)} // P3 Task 3:条目点击=attachSunx 链(root 参数退役——journalId 直寻址重开)
+          onAttach={attachSunxFromRow}
           onArchiveRow={archiveRow}
           onOpenBoard={props.onOpenSunxBoard}
-          onNewSunx={() => setSunxOpen(true)}
-          onOpenArchive={() => setArchiveOpen(true)}
+          onNewSunx={openNewSunxDialog}
+          onOpenArchive={openArchiveView}
         />
         )}
         <PinnedSection
@@ -754,29 +805,25 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onOpenSession={attachJournal}
           onUnpin={unpinRow}
           onArchiveRow={archiveRow}
-          archivedIds={new Set((archivedRows ?? []).map((r) => r.id))}
+          archivedIds={archivedIds}
           liveJournals={liveJournals}
         />
         <ProjectsSection
           projectsOpen={projectsOpen}
-          onToggleProjects={() => setProjectsOpen((v) => !v)}
+          onToggleProjects={toggleProjects}
           onRemoveWorkspace={removeWorkspace}
           onOpenDirectory={onOpenDirectory}
           branchByRoot={branchByRoot}
           busy={busy}
           archiveMode={archiveOpen}
-          onExitArchive={() => setArchiveOpen(false)}
-          onAddWorkspace={(e) => {
-            e.stopPropagation();
-            setActionError('');
-            pickAndAdd();
-          }}
+          onExitArchive={exitArchiveView}
+          onAddWorkspace={addWorkspaceFromHead}
           actionError={actionError}
           rows={rows}
           listError={listError}
           openSlug={openSlug}
           groupShowAll={groupShowAll}
-          onGroupShowMore={() => setGroupShowAll(true)}
+          onGroupShowMore={groupShowMore}
           sessions={sessions}
           sessionsError={sessionsError}
           activeRoot={activeRoot}
@@ -788,10 +835,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onComposeIn={onComposeIn}
           onAttach={attachJournal}
           onArchiveRow={archiveRow}
-          onOpenArchived={() => {
-            setArchiveOpen(true);
-            loadArchived();
-          }}
+          onOpenArchived={openArchivedWithReload}
           pinnedIds={pinnedIds}
           onPinRow={pinSessionRow}
         />
@@ -811,16 +855,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           <>
             <RecentsSection
               recentsOpen={recentsOpen}
-              onToggleRecents={() => {
-                setRecentsOpen((v) => !v);
-                setRecentLimit(RECENT_VISIBLE_DEFAULT); // G14.115 折叠再展开回默认显形
-              }}
+              onToggleRecents={toggleRecents}
               onNewChat={onNewChat}
               onOpenSunxBoard={props.onOpenSunxBoard} /* sunx P2 Task 8:RECENTS 头看板钮(SUNX 组空块不显时的常驻入口) */
               recents={recents}
               recentLimit={recentLimit}
-              onShowMore={() => setRecentLimit((v) => Math.min(v + RECENT_VISIBLE_STEP, recents?.length ?? v))}
-              onCollapse={() => setRecentLimit(RECENT_VISIBLE_DEFAULT)}
+              onShowMore={recentsShowMore}
+              onCollapse={recentsCollapse}
               activeSessionId={activeSessionId}
               runningIds={runningIds}
               journalOfSession={journalOfSession}

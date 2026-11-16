@@ -59,9 +59,3 @@ interface Window {
   /** 开机画面收尾（index.html 内联控制脚本定义；reload 跳过演时已 remove——可选调用静默无副作用） */
   __sxBootDone?: () => void;
 }
-
-/** unified 类型面(react-markdown 传递依赖,gui 未直连——MD_* 插件常量类型锚点) */
-declare module 'unified' {
-  export type Pluggable = unknown;
-  export type PluggableList = Pluggable[];
-}

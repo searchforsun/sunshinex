@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Archive, CircleHelp, PinOff } from 'lucide-react';
 import { t } from '../i18n';
 import { relTime } from '../ui-util';
@@ -30,7 +30,7 @@ export interface PinnedSectionProps {
   readonly liveJournals?: ReadonlyMap<string, { liveSessionId: string; awaiting: boolean }>;
 }
 
-export function PinnedSection(props: PinnedSectionProps): JSX.Element {
+export const PinnedSection = memo(function PinnedSection(props: PinnedSectionProps): JSX.Element {
   const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow, archivedIds, liveJournals } = props;
   /** 行内归档确认 morph:存确认中的行 id('' = 无) */
   const [confirmId, setConfirmId] = useState('');
@@ -123,4 +123,4 @@ export function PinnedSection(props: PinnedSectionProps): JSX.Element {
       </ul>
     </>
   );
-}
+});

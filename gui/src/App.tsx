@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { t } from './i18n';
 import { t as tLabel } from './i18n';
 import { GitCompare, Globe, MessageCircle, SquareTerminal, type LucideIcon } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
-import type { Connection, ConnectionState, RewindResult } from './connection';
+import type { Connection, ConnectionState, RewindResult, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
 import { upsertBoardTeam } from './projection';
@@ -93,6 +93,20 @@ declare global {
 /** 判重/单例探针(tab-state 真实现,TAB_REGISTRY 装配;模块级单例——零态闭包可安全共享) */
 const PROBE = registryProbe();
 
+/** 2026-11-16 流畅轮:零依赖恒稳回调单点(最新闭包经 ref 直取——forkLatestRef/propsRef 既有
+ *  手法收敛)。Chat/ProjectMenu/TabStrip memo 化的前提:JSX 内联箭头每渲染换身份=每帧击穿
+ *  memo(全 App 重渲染即三子树全量重渲);包装恒稳,行为=每次调用取当帧闭包,无过期闭包面 */
+function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const ref = useRef(fn);
+  ref.current = fn;
+  return useCallback((...args: A) => ref.current(...args), []) as (...args: A) => R;
+}
+/** memo 包装(模块级——组件类型身份恒定,App 每渲染不换型):三大子树对 App 壳高频态
+ *  (tabStates 草稿直写/projection 板帧/runningIds/bgTasks/recentVersion…)blast radius 收口 */
+const ProjectMenuMemo = memo(ProjectMenu);
+const TabStripMemo = memo(TabStrip);
+const ChatMemo = memo(Chat);
+
 /** 2026-10-27 欢迎页全局草稿座:无会话(欢迎页)时侧栏标签落此键——临时会话思想(2026-10-29 定版):发出去(欢迎页建席)整座继承到新会话并重获空座;开既有会话零交集 */
 
 export function App(): JSX.Element {
@@ -134,6 +148,10 @@ function AppShell(): JSX.Element {
    *  G14.2xx 持久化:盘为真相源(<slug>/gui/sessions/<会话id>.json)——附接即拉档回填,
    *  变更防抖写透;内存仅缓存/加速(CLAUDE.md §13 持久化分层) */
   const [tabStates, setTabStates] = useState<TabStates>({});
+  /** tabStates 镜像(2026-11-16 流畅轮):openTurndiffTab 等读面走 ref 免依赖——草稿直写
+   *  (patchTabMeta 每击键 setTabStates)换掉回调身份会击穿 ChatMemo/TabStripMemo */
+  const tabStatesRef = useRef<TabStates>({});
+  tabStatesRef.current = tabStates;
   const [connState, setConnState] = useState<ConnectionState>('connecting');
   const [projection, setProjection] = useState<SessionProjection>(EMPTY_PROJECTION);
   /** Chat onTodos 适配(todo_write 批整替进投影;useCallback 恒稳,消费面 JSX 不变) */
@@ -382,11 +400,11 @@ function AppShell(): JSX.Element {
    *  2026-11-04 用户裁定「发送第一条才 fork」:点开只开草稿页签(不 fork;sidechat 判重键
    *  sideId 缺='' 互判重聚焦既有——类似欢迎页临时会话,每次打开复用同一草稿页),首条发送时
    *  才 fork 主对话整档(见 upgradeSideChat) */
-  const startSideChat = (insert?: string, insertContent?: string): void => {
+  const startSideChat = useStableCallback((insert?: string, insertContent?: string): void => {
     if (openSessionId === '') return;
     // 2026-11-07 串扰根修:token 内容随 insert 同路入参(辅助面私有账本收),全局注册表仅兜底
     openTabInSession('sidechat', insert !== undefined && insert !== '' ? { insert, insertContent } : {});
-  };
+  });
   const { sideGoals, setSideGoals, upgradeSideChat, sideListing, sideReleased } = useSideChats({
     connInstance, connRef, page, openSessionId, openRoot, tabStates, setTabStates, sideSinksRef, sideParentRef, probe: PROBE,
   });
@@ -466,7 +484,7 @@ function AppShell(): JSX.Element {
   useRestoreLast({ connInstance, connState, openSession });
 
   /** 返回欢迎态的壳层清场(记录面分离:backHome 记史,导航回放经 applyNav 复用本函数) */
-  const leaveToWelcome = (): void => {
+  const leaveToWelcome = useStableCallback((): void => {
     sessionRef.current = '';
     setOpenSessionId('');
     setOpenJournalId('');
@@ -477,15 +495,15 @@ function AppShell(): JSX.Element {
         setSeededTodoBatches([]);
     // G14.2xx b 子智能体聚合不清(按会话分桶=内存缓存,重开同会话直接命中)
     setPage('welcome');
-  };
+  });
 
   /** 返回欢迎态:会话关窗(Chat 卸毁本地态;连接保持,再开经左栏重播种)+ 板投影/team 清零
    *  (无会话期无帧消费,残留即陈旧)+ 播种窗缓冲清(再开重开窗);tabStates 保留(每会话
    *  独立留存,spec §1——重开同会话标签还原) */
-  const backHome = (): void => {
+  const backHome = useStableCallback((): void => {
     leaveToWelcome();
     recordNav({ k: 'welcome' });
-  };
+  });
   /** 归档/删除当前会话回欢迎页(2026-11-04 用户裁定):事件监听挂一次,经 ref 取最新 backHome */
   const backHomeRef = useRef(backHome);
   backHomeRef.current = backHome;
@@ -509,6 +527,97 @@ function AppShell(): JSX.Element {
     setSettingsPane(undefined);
     setSettingsEpoch((v) => v + 1);
   }, []);
+
+  /** 2026-11-16 流畅轮恒稳回调簇(全部 useStableCallback——读面经当帧闭包,身份恒定):
+   *  memo 化三子树的下发面。原内联箭头逐渲染换新,击穿 memo=App 壳任一 setState 全树重渲 */
+  const toggleMenuStable = useStableCallback((): void => {
+    const opening = menuClosed;
+    setMenuClosed(!menuClosed);
+    // 两侧抽屉互斥(2026-10-24 用户裁定):开菜单抽屉即收右抽屉
+    if (opening && sidebarFloating && !tabState.collapsed) {
+      setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, true));
+    }
+  });
+  const chatSeededStable = useStableCallback((snap: SnapshotResponse): void => {
+    seedFromSnapshot(snap);
+    // todo 批次权威投影播种(daemon journal 全量派生;快照未带=旧 daemon,清空走纯派生面)
+    setSeededTodoBatches(snap.todoBatches ?? []);
+  });
+  const runInTerminalStable = useStableCallback((command: string): void => {
+    openTabInSession('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command });
+  });
+  const todoLocateStable = useStableCallback((todos: Array<{ text: string; status: string }>): void => {
+    openTabType('tasks');
+    setTodoLocateSig({ sig: todos.map((t2) => t2.text).join('\n'), nonce: Date.now() });
+  });
+  const openParentSessionStable = useStableCallback((sid: string): void => {
+    // fork 横幅回父会话(attach 两步同侧栏 attachJournal):sid=父 journal id——daemon
+    // 重启后 runtime 表按新壳 id 重挂,裸 journal id snapshot 404(实测);newSession 壳+
+    // attach 收养,返回 id 为准(在座运行中收编/换挂),journalId 随行保滚动位稳定键
+    const conn = connRef.current;
+    if (conn === null) return;
+    void conn
+      .newSession(openRoot)
+      .then(({ sessionId }) => conn.attach(sessionId, sid).then((r) => ({ sid: r.sessionId, root: r.root || openRoot })))
+      .then(({ sid: canonical, root }) => openSession(canonical, root, sid))
+      .catch(showOpError);
+  });
+  /** 菜单头导航钮对(全局史):浮窗抽屉态导航即收抽屉(会话/设置同类「选中即收」口径) */
+  const navBackStable = useStableCallback((): void => { closeMenuDrawer(); navControls.back(); });
+  const navForwardStable = useStableCallback((): void => { closeMenuDrawer(); navControls.forward(); });
+  const menuNav = useMemo(
+    () => ({ canBack: navControls.canBack, canForward: navControls.canForward, back: navBackStable, forward: navForwardStable }),
+    [navControls.canBack, navControls.canForward, navBackStable, navForwardStable],
+  );
+  const openSessionFromMenu = useStableCallback((sessionId: string, root: string, journalId?: string): void => { closeMenuDrawer(); openSession(sessionId, root, journalId); });
+  const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
+  const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
+  const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
+  const newChatFromMenu = useStableCallback((): void => {
+    closeMenuDrawer();
+    presetCompose(null);
+    setPage('welcome');
+    recordNav({ k: 'welcome' });
+  });
+  const composeInFromMenu = useStableCallback((root: string): void => {
+    closeMenuDrawer();
+    presetCompose(root);
+    setPage('welcome');
+    recordNav({ k: 'welcome' });
+  });
+  const collapseMenuStable = useStableCallback((): void => setMenuClosed(true));
+  const openProjectDirectoryStable = useStableCallback((root: string): void => { openProjectDirectory(root); });
+  /** 右栏页签条回调簇(TabStripMemo 下发面) */
+  const tabSelectStable = useStableCallback((uid: string): void => setTabStates((s) => setActive(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid)));
+  const tabReorderStable = useStableCallback((fromUid: string, toUid: string): void => setTabStates((s) => reorderTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, fromUid, toUid)));
+  const tabCloseStable = useStableCallback((uid: string): void => closeTabInSession(uid));
+  const tabOpenTypeStable = useStableCallback((t: TabTypeId): void => {
+    // G14.2xx 辅助对话特判:sidechat 需先 fork 出 side 会话(拿 sideId)再开页——
+    // 直接 openTab 只会落无 sideId 的空壳档;startSideChat 完成装配+开页一条龙
+    if (t === 'sidechat') {
+      startSideChat();
+      return;
+    }
+    if (t === 'agents' && !agentTeamsOn) return;
+    openTabInSession(t, tabEntry(t).mintParams?.());
+  });
+  const tabCycleStable = useStableCallback((d: 1 | -1): void => setTabStates((s) => cycleTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, d)));
+  const tabReopenClosedStable = useStableCallback((i: number): void => {
+    const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
+    const entry = tabStatesRef.current[seat]?.recentClosed[i];
+    if (entry?.type === 'agents' && !agentTeamsOn) return;
+    setTabStates((s) => reopenClosed(s, seat, i, PROBE));
+  });
+  const tabCloseActiveStable = useStableCallback((): void => {
+    const uid = tabStatesRef.current[isWelcome ? WELCOME_TAB_SEAT : openSessionId]?.activeUid;
+    if (uid !== null && uid !== undefined) closeTabInSession(uid);
+  });
+  /** memo 值面(2026-11-16 流畅轮):ChatMemo/TabStripMemo 下发的派生数值——useMemo 免内联重建 */
+  const bgRunningCount = useMemo(() => bgTasks.filter((r) => r.status === 'running').length, [bgTasks]);
+  const projectNameOfOpenRoot = useMemo(
+    () => (openRoot !== '' ? pathBasename(openRoot.replace(/[\/]+$/, '')) : undefined),
+    [openRoot],
+  );
 
   /** G8a 开标签(会话内):Chat write 工具 path 按钮 / 标签条「+」菜单共用——判重聚焦经
    *  tab-state(同目标重开=聚焦既有,单例类型单份)。G14.211 useCallback+sessionRef 零依赖
@@ -541,14 +650,14 @@ function AppShell(): JSX.Element {
     // 路径归一(2026-11-12):反斜杠统一+剥 ./ 前缀——'./edit-test.md' 与 'edit-test.md' 是同一文件,
     // 不归一则复用匹配打穿(实测三页签并存)
     const norm = path.replaceAll('\\', '/').replace(/^(\.\/)+/, '');
-    const seat = tabStates[openSessionId];
+    const seat = tabStatesRef.current[openSessionId];
     const existing = seat?.tabs.find((tb) => tb.type === 'turndiff' && (tb.params.path ?? '').replaceAll('\\', '/').replace(/^(\.\/)+/, '') === norm);
     if (seat !== undefined && existing !== undefined) {
       setTabStates((s) => setActive(patchTurndiffAddressing(s, openSessionId, existing.uid, { run, path: norm }), openSessionId, existing.uid));
       return;
     }
     openTabInSession('turndiff', { run, path: norm });
-  }, [openTabInSession, tabStates, openSessionId]);
+  }, [openTabInSession, openSessionId]);
   const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
   /** 成员转录 leader 链接点击(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
    *  记 {member,text,dir,nonce} 下发 Chat——主对话滚到对应消息气泡/发送工具行并闪光 */
@@ -1097,17 +1206,24 @@ function AppShell(): JSX.Element {
            空白不可拖为窄视口可接受) */
         <div className="sx-dragrail" data-drag-band aria-hidden="true" />
       )}
-      {settingsOpen && connInstance !== null ? (
-        /* G8c-T8 设置态:左栏+主栏整体切换(SettingsShell 内含左导航与所选面板),右标签栏不渲染;
-           Chat 卸载——返回重挂重播种(backHome 同语义),连接/板投影态不受扰 */
-        <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} requestedPane={settingsPane} />
-      ) : (
-        <>
+      {settingsOpen && connInstance !== null && (
+        /* G8c-T8 设置态改覆盖层(2026-11-16 流畅轮,2026-11-15 用户报障「改个主题也要重新懒加载
+           渲染」根修):设置壳整幅覆盖(fixed z85,抽屉/弹层 z80 之下、窗控簇 z90 之上),三栏
+           保挂不卸——主题/外观即改即见(CSS data-theme 切换面+Mermaid 配色缓存重渲),Chat 不再
+           卸载=返回零重播种零重渲染(旧 ternary 整替语义退役:Chat 卸载重挂=reseed 白屏+全量
+           重解析)。覆盖层吞指针事件,底层不可交互;Esc/返回钮同路径关层 */
+        <div className="sx-settings-overlay">
+          <SettingsShell conn={connInstance} root={settingsRoot} onBack={closeSettings} requestedPane={settingsPane} />
+        </div>
+      )}
+      {/* 三栏恒挂(2026-11-16 流畅轮):设置覆盖层仅浮于其上——Chat/侧栏不卸载,主题改动
+          即改即见,关设置零重播种(原「设置态整替三栏」语义退役,见覆盖层块注) */}
+      <>
           {/* 左栏:项目分组(Home 职能内化;装配中占位)。关闭态不渲染(顶栏 logo 呼出);
               浮窗抽屉态选中会话/设置/新会话/目录即自动收(各回调前挂 closeMenuDrawer) */
           }
           {!menuClosed && (connInstance !== null ? (
-            <ProjectMenu
+            <ProjectMenuMemo
               conn={connInstance}
               connState={connState}
               activeSessionId={openSessionId}
@@ -1116,32 +1232,17 @@ function AppShell(): JSX.Element {
               pins={pins}
               persistPins={persistPins}
               runningIds={runningIds}
-              nav={(() => {
-                // 菜单头钮对(全局史):浮窗抽屉态导航即收抽屉(会话/设置同类「选中即收」口径)
-                const back = (): void => { closeMenuDrawer(); navControls.back(); };
-                const forward = (): void => { closeMenuDrawer(); navControls.forward(); };
-                return { canBack: navControls.canBack, canForward: navControls.canForward, back, forward };
-              })()}
-              onOpenSession={(sessionId, root, journalId) => { closeMenuDrawer(); openSession(sessionId, root, journalId); }}
-              onOpenDirectory={(root) => { openProjectDirectory(root); }}
-              onOpenSunxBoard={() => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }} // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
+              nav={menuNav}
+              onOpenSession={openSessionFromMenu}
+              onOpenDirectory={openProjectDirectoryStable}
+              onOpenSunxBoard={openSunxBoardFromMenu}
               dirView={menuDir}
-              onCloseDirView={() => setMenuDir(null)}
+              onCloseDirView={closeDirViewStable}
               onOpenFileFromTree={openFileFromTree}
-              onOpenSettings={() => { closeMenuDrawer(); openSettings(); }}
-              onNewChat={() => {
-                closeMenuDrawer();
-                presetCompose(null);
-                setPage('welcome');
-                recordNav({ k: 'welcome' });
-              }}
-              onComposeIn={(root) => {
-                closeMenuDrawer();
-                presetCompose(root);
-                setPage('welcome');
-                recordNav({ k: 'welcome' });
-              }}
-              onCollapse={() => setMenuClosed(true)}
+              onOpenSettings={openSettingsFromMenu}
+              onNewChat={newChatFromMenu}
+              onComposeIn={composeInFromMenu}
+              onCollapse={collapseMenuStable}
             />
           ) : (
             <nav className="sx-menu" aria-label="projects">
@@ -1160,18 +1261,11 @@ function AppShell(): JSX.Element {
           {/* 中栏:Chat 恒挂(无会话=欢迎空态);归档视图已内驻左栏 ArchiveSection(2026-10-21 裁定) */}
           <main className="sx-main" ref={mainRef}>
             {page === 'chat' && connInstance !== null ? (
-              <Chat
+              <ChatMemo
                 key={openSessionId}
                 nav={navControls}
                 menuClosed={menuClosed}
-                onToggleMenu={() => {
-                  const opening = menuClosed;
-                  setMenuClosed(!menuClosed);
-                  // 两侧抽屉互斥(2026-10-24 用户裁定):开菜单抽屉即收右抽屉
-                  if (opening && sidebarFloating && !tabState.collapsed) {
-                    setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, true));
-                  }
-                }}
+                onToggleMenu={toggleMenuStable}
                 conn={connInstance}
                 sessionId={openSessionId}
                 journalId={openJournalId}
@@ -1182,32 +1276,25 @@ function AppShell(): JSX.Element {
                 connState={connState}
                 onBack={backHome}
                 sinkRef={chatSinkRef}
-                onSeeded={(snap) => {
-                  seedFromSnapshot(snap);
-                  // todo 批次权威投影播种(daemon journal 全量派生;快照未带=旧 daemon,清空走纯派生面)
-                  setSeededTodoBatches(snap.todoBatches ?? []);
-                }}
+                onSeeded={chatSeededStable}
                 onOpenFile={openFileTab}
                 onOpenDiff={openDiffTab}
                 onOpenTurnDiff={openTurndiffTab}
                 onOpenAgent={openAgentTab}
                 onOpenWeb={openWebTab}
-        onRunInTerminal={(command) => openTabInSession('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command })}
+                onRunInTerminal={runInTerminalStable}
                 onOpenTask={openTaskFocus}
                 onOpenTab={openTabType}
                 onOpenArtifacts={openArtifactsTab}
                 agentTeamsOn={agentTeamsOn}
-                bgRunning={bgTasks.filter((r) => r.status === 'running').length}
+                bgRunning={bgRunningCount}
                 board={projection.board}
                 teams={projection.teams}
                 onTodoBatches={setTodoBatches}
                 todoFocus={todoFocus}
                 leaderFocus={leaderFocus}
                 onSideAsk={startSideChat}
-                onTodoLocate={(todos) => {
-                  openTabType('tasks');
-                  setTodoLocateSig({ sig: todos.map((t2) => t2.text).join('\n'), nonce: Date.now() });
-                }}
+                onTodoLocate={todoLocateStable}
                 pendingGoal={welcomeGoal ?? undefined}
                 onPendingGoalDone={() => setWelcomeGoal(null)}
                 root={openRoot}
@@ -1220,18 +1307,7 @@ function AppShell(): JSX.Element {
                 onOpenMemory={openMemoryTab}
                 onOpenLearned={openLearnedTab}
                 onFork={onForkStable}
-                onOpenSession={(sid) => {
-                  // fork 横幅回父会话(attach 两步同侧栏 attachJournal):sid=父 journal id——daemon
-                  // 重启后 runtime 表按新壳 id 重挂,裸 journal id snapshot 404(实测);newSession 壳+
-                  // attach 收养,返回 id 为准(在座运行中收编/换挂),journalId 随行保滚动位稳定键
-                  const conn = connRef.current;
-                  if (conn === null) return;
-                  void conn
-                    .newSession(openRoot)
-                    .then(({ sessionId }) => conn.attach(sessionId, sid).then((r) => ({ sid: r.sessionId, root: r.root || openRoot })))
-                    .then(({ sid: canonical, root }) => openSession(canonical, root, sid))
-                    .catch(showOpError);
-                }}
+                onOpenSession={openParentSessionStable}
                 onOpError={showOpError}
                 onRewind={onRewindStable}
               />
@@ -1273,38 +1349,21 @@ function AppShell(): JSX.Element {
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
           {(page === 'chat' || page === 'welcome') && !tabState.collapsed && (
           <aside className="sx-sidebar" ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
-            <TabStrip
+            <TabStripMemo
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
               disabled={page !== 'chat' && page !== 'welcome'}
               welcomeOnly={isWelcome}
-              projectName={openRoot !== '' ? pathBasename(openRoot.replace(/[\/]+$/, '')) : undefined}
-              onSelect={(uid) => setTabStates((s) => setActive(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, uid))}
-              onReorder={(from, to) => setTabStates((s) => reorderTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, from, to))}
-              onClose={closeTabInSession}
-              onOpenType={(t) => {
-                // G14.2xx 辅助对话特判:sidechat 需先 fork 出 side 会话(拿 sideId)再开页——
-                // 直接 openTab 只会落无 sideId 的空壳档;startSideChat 完成装配+开页一条龙
-                if (t === 'sidechat') {
-                  startSideChat();
-                  return;
-                }
-                if (t === 'agents' && !agentTeamsOn) return;
-                openTabInSession(t, tabEntry(t).mintParams?.());
-              }}
-              onCycle={(d) => setTabStates((s) => cycleTab(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, d))}
+              projectName={projectNameOfOpenRoot}
+              onSelect={tabSelectStable}
+              onReorder={tabReorderStable}
+              onClose={tabCloseStable}
+              onOpenType={tabOpenTypeStable}
+              onCycle={tabCycleStable}
               recentClosed={tabState.recentClosed}
-              onReopenClosed={(i) => {
-                const seat = isWelcome ? WELCOME_TAB_SEAT : openSessionId;
-                const entry = tabState.recentClosed[i];
-                if (entry?.type === 'agents' && !agentTeamsOn) return;
-                setTabStates((s) => reopenClosed(s, seat, i, PROBE));
-              }}
+              onReopenClosed={tabReopenClosedStable}
               hiddenMenuIds={hiddenMenuIds}
-              onCloseActive={() => {
-                const uid = tabState.activeUid;
-                if (uid !== null) closeTabInSession(uid);
-              }}
+              onCloseActive={tabCloseActiveStable}
             />
             {(page === 'chat' || page === 'welcome') && !tabState.collapsed && connInstance !== null && (
               // 2026-10-26 二期 keep-alive:全部 open 标签常挂,非活动 display:none+inert——
@@ -1412,7 +1471,6 @@ function AppShell(): JSX.Element {
           </aside>
           )}
         </>
-      )}
       {opError !== '' && (
         <div className="sx-toast" role="alert">
           {opError}

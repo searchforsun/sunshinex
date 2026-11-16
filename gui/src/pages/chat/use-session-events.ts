@@ -93,6 +93,10 @@ export function useSessionEvents(deps: {
   const seedGenRef = useRef(0);
   /** G5 idle 清卡:前次 status 记账(ref 免 effect 重复触发)——仅 running→idle 转换清卡 */
   const prevStatusRef = useRef<ChatState['status'] | null>(null);
+  /** chat 态镜像(2026-11-16 流畅轮):reseed 是 useCallback 固定闭包,读不到渲染期 deps.chat——
+   *  缓存转录判定(chatMem 直渲态)经 ref 取现值 */
+  const chatStateRef = useRef(deps.chat);
+  chatStateRef.current = deps.chat;
   /** G4 挂起卡列表(pid 维:回执落定即移;resetSession/idle 清空) */
   const [cards, setCards] = useState<PendingCard[]>([]);
   /** onSeeded 的同步镜像(reseed 闭包经 ref 读,装配期固定免依赖数组抖动) */
@@ -120,7 +124,13 @@ export function useSessionEvents(deps: {
   /** 会话基线重建(挂载与 reset 同路径):清投影 + 缓冲 → sessionSnapshot 播种 → 种子落定后
    *  过滤缓冲(seq ≤ snapshot.lastSeq 丢)依序补投 + G7 挂起卡重建(snapshot.pending 逐项——
    *  连接层 pid 去重拦了 daemon 重发帧,快照是重连/刷新后卡内容的唯一来源;addCard pid 防重,实时
-   *  挂起帧已挂的卡不重挂);失败倒 error 条不静默 */
+   *  挂起帧已挂的卡不重挂);失败倒 error 条不静默。
+   *  2026-11-16 流畅轮(切会话不卡,缓存转录零浪费):挂载时 Chat 已从 chatMem 缓存直渲
+   *  (seedGen>0 且有条目)——reseed 不再先落空态(原 `setChat(initialChatState())` 把缓存
+   *  投影当场清掉,白屏等快照往返后全量重渲=「已在内存还要重来」的根因);快照落定按
+   *  seedSig 判同,同档免整替(setChat 不调,缓存态原样——零重渲零重解析;prepend 过的更早
+   *  历史与滚动位一并保住),异档/有缓冲重放才换新。快照失败也不再清缓存(错误条追加在
+   *  缓存转录尾,语义与旧一致且不丢正文)。 */
   const reseed = useCallback((): void => {
     const gen = ++seedGenRef.current;
     pendingRef.current = [];
@@ -128,7 +138,9 @@ export function useSessionEvents(deps: {
     // idle 清卡跳过 reseed 瞬态:initialChatState 的 running→idle 回摆不是真转换——若不豁免,
     // 重连时运行中挂起卡被瞬态清掉,而 daemon 重发被连接层 pid 去重拦下 → 卡永久丢(G4 不变式)
     prevStatusRef.current = null;
-    setChat(initialChatState());
+    // 缓存转录在场(缓存直渲挂载)则保屏不落空;冷挂载(快照权威路径)维持原空态起点
+    const cacheWarm = chatStateRef.current.seedGen > 0 && chatStateRef.current.entries.length > 0;
+    if (!cacheWarm) setChat(initialChatState());
     setSeeding(true);
     conn.sessionSnapshot(sessionId).then(
       (snap) => {
@@ -151,13 +163,29 @@ export function useSessionEvents(deps: {
         }
         // fork 分界横幅归 daemon attach 装载面合成(见 session-lifecycle:upToLine 边界 splice,内存态
         // 不落档)——快照 messages 已含横幅条目,GUI 零注入;此前 GUI 重播种追加=每次重进漂到转录底部
+        let replayed = false;
         for (const f of pendingRef.current) {
-          if (f.seq > snap.lastSeq) next = applyChatEvent(next, f.e); // ≤ 切割序:种子已含,丢(双应用防线)
+          if (f.seq > snap.lastSeq) { next = applyChatEvent(next, f.e); replayed = true; } // ≤ 切割序:种子已含,丢(双应用防线)
         }
         pendingRef.current = [];
         seedingRef.current = false;
         setSeeding(false);
-        setChat(next);
+        // seedSig 判同免整替(流畅轮,见上注):快照与缓存转录同源、同座(memSeat——journal 键
+        // 在 daemon 侧恒同一会话,但 attach 未收编换座时壳 id 会换,异座保守换新防跨座串显)且
+        // 缓存条目数 ≥ 种子条目数(差集只能是 prepend 过的更早历史页——缓存是超集,保缓存即保
+        // 历史+滚动位)。尾条 error 在场不判同(上次失败 reseed 的错误条不跨快照滞留,换新即清);
+        // 缓冲重放面不判同(已有增量)。
+        // ⚠ setChat(next) 必须在 pendingGoal 接力提交**之前**(e2e G3 冒烟锚):提交侧回显是
+        // 函数式 setChat(appendUserMessage),排队在 setChat(next) 值更新之后会被整替冲掉
+        const cached = chatStateRef.current;
+        const skip = (
+          cacheWarm && !replayed
+          && next.seedSig !== undefined && next.seedSig === cached.seedSig
+          && cached.memSeat === sessionId
+          && cached.entries.length >= next.entries.length
+          && cached.entries[cached.entries.length - 1]?.kind !== 'error'
+        );
+        if (!skip) setChat(next);
         // G10 欢迎页接力:播种落定即提交 welcome 目标(一次性——done 回调清 App 态位)。
         // G14.51:先本地回显再提交——daemon 不广播 user 事件,接力目标不回显则运行全程不可见
         const pg = pendingGoalRef.current;
@@ -185,6 +213,7 @@ export function useSessionEvents(deps: {
         pendingRef.current = []; // 无基线可滤,弃窗内帧(重连 reset/再开页会全量重放补齐)
         seedingRef.current = false;
         setSeeding(false);
+        // 缓存转录在场:保屏,错误条追加在转录尾(旧路径清空态再倒错误=缓存正文一并丢)
         setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
       },
     );

@@ -4,7 +4,10 @@ import { t } from '../i18n';
 /** D62 批E 自 WelcomeComposer 平移的三个全局 portal 对话框(2026-11-10/11 分支+隔离特性线增量):
  *  JSX 与宿主原段逐字等价,输入面全经 props 注入零闭包依赖;状态与发送编排仍宿主自持。 */
 
-/** 发送前切换确认(全局 portal):branchDiffStat 代价面;脏树=提交信息框+±数量 */
+/** 发送前切换确认(全局 portal):branchDiffStat 代价面;脏树=提交信息框+±数量。
+ *  统计中显式加载态(2026-11-16 用户实测「加载期间没有禁用发送按钮/提示未提交却不显示提交
+ *  并发送信息」):统计文案替代误导性未提交文案,确认钮待数禁用(盲确认禁令);拉取失败
+ *  (missing)不示数仍可确认——「拉不到=不示数仍确认」契约不变 */
 export function WelcomeSwitchDialog({
   pending,
   msg,
@@ -21,22 +24,26 @@ export function WelcomeSwitchDialog({
   onClose: () => void;
 }): JSX.Element {
   const switchPending = pending;
+  const stat = pending.stat; // 局部 const:布尔别名窄化在此不适用,解构后 stat === null 即全程收窄
+  const counting = stat === null;
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Switch and send', '切换并发送')} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Switch and send', '切换并发送')} aria-busy={counting} onClick={(e) => e.stopPropagation()}>
         <p className="sx-dirty-target">
           {t('Send after switching to', '发送后切换到')} <b>{switchPending.branch}</b>
         </p>
         <p className="sx-dirty-text">
-          {switchPending.stat === null || switchPending.stat.missing
-            ? t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交改动可能阻断切换；已提交历史不受影响')
-            : switchPending.stat.dirty > 0
-              ? t(`Uncommitted changes (+${switchPending.stat.dirtyAdded} −${switchPending.stat.dirtyDeleted}) will be committed first; type a message or leave empty for the default.`, `有未提交改动（+${switchPending.stat.dirtyAdded} −${switchPending.stat.dirtyDeleted}），将先提交；可输入提交信息，留空用缺省`)
-              : switchPending.stat.files === 0
-                ? t('No file differences between the branches.', '目标分支与当前无文件差异')
-                : t(`The workspace will update ${switchPending.stat.files} files (+${switchPending.stat.added} −${switchPending.stat.deleted}).`, `工作区 ${switchPending.stat.files} 个文件将被更新（+${switchPending.stat.added} −${switchPending.stat.deleted}）`)}
+          {counting
+            ? t('Counting branch differences…', '正在统计分支差异…')
+            : stat.missing
+              ? t('Uncommitted changes may block the switch; committed history is unaffected.', '未提交改动可能阻断切换；已提交历史不受影响')
+              : stat.dirty > 0
+                ? t(`Uncommitted changes (+${stat.dirtyAdded} −${stat.dirtyDeleted}) will be committed first; type a message or leave empty for the default.`, `有未提交改动（+${stat.dirtyAdded} −${stat.dirtyDeleted}），将先提交；可输入提交信息，留空用缺省`)
+                : stat.files === 0
+                  ? t('No file differences between the branches.', '目标分支与当前无文件差异')
+                  : t(`The workspace will update ${stat.files} files (+${stat.added} −${stat.deleted}).`, `工作区 ${stat.files} 个文件将被更新（+${stat.added} −${stat.deleted}）`)}
         </p>
-        {switchPending.stat !== null && !switchPending.stat.missing && switchPending.stat.dirty > 0 && (
+        {!counting && !stat.missing && stat.dirty > 0 && (
           <input
             className="sx-dirty-msg"
             aria-label={t('Commit message', '提交信息')}
@@ -55,8 +62,8 @@ export function WelcomeSwitchDialog({
           <button type="button" disabled={busy} onClick={onClose}>
             {t('Cancel', '取消')}
           </button>
-          <button type="button" className="primary" disabled={busy} onClick={onSend}>
-            {t('Switch and send', '切换并发送')}
+          <button type="button" className="primary" disabled={busy || counting} onClick={onSend}>
+            {counting ? t('Counting…', '统计中…') : t('Switch and send', '切换并发送')}
           </button>
         </div>
       </div>

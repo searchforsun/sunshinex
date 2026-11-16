@@ -22,6 +22,24 @@ export function fuzzyHit(text: string, query: string): boolean {
   return true;
 }
 
+/** 列表浅等(2026-11-16 流畅轮):30s 轮询/聚焦刷新的应答对象恒为新引用——setter 直喂
+ *  即每 30s 换掉 rows/recents 身份,ProjectMenu 及 memo 分区全量重渲。此比较逐项浅等
+ *  (同键集+基本值相等),内容未变则 setter 保旧引用=零重渲。O(n·k) 每 30s 一趟,可忽略 */
+export function listShallowEqual<T extends object>(a: readonly T[] | null, b: readonly T[]): boolean {
+  if (a === null || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i]!;
+    const y = b[i]!;
+    const xk = Object.keys(x);
+    const yk = Object.keys(y);
+    if (xk.length !== yk.length) return false;
+    for (const k of xk) {
+      if (!Object.hasOwn(y, k) || x[k as keyof T] !== y[k as keyof T]) return false;
+    }
+  }
+  return true;
+}
+
 /** 添加工作区图标(2026-10-22 用户裁定定稿):正常文件夹(带页耳)右上角截断,+ 填充缺口,
  *  + 上侧与文件夹图标上侧(页耳顶 y=3)齐平 */
 export function FolderAddIcon({ size = 16, strokeWidth = 1.75 }: { size?: number; strokeWidth?: number }): JSX.Element {

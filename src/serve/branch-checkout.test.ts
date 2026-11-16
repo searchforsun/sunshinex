@@ -134,6 +134,14 @@ test('branchDiffStat 切换代价面(2026-11-10 用户裁定「切换弹确认�
     assert.ok(dirty.ok);
     if (!dirty.ok) return;
     assert.equal(dirty.value.dirty, 1);
+    assert.equal(dirty.value.dirtyAdded, 1, '脏面 ±:tracked 走 HEAD numstat(1 增 1 删)');
+    assert.equal(dirty.value.dirtyDeleted, 1);
+    fs.writeFileSync(path.join(root, 'u.txt'), 'u\nv\n'); // untracked:计件+行数(瘦身口径,2026-11-16)
+    const dirty2 = await branchDiffStat(root, 'other');
+    assert.ok(dirty2.ok);
+    if (!dirty2.ok) return;
+    assert.equal(dirty2.value.dirty, 2, 'untracked 计入脏文件数');
+    assert.equal(dirty2.value.dirtyAdded, 3, 'untracked ±=内容行数(2)+tracked(1)');
     const missing = await branchDiffStat(root, 'nope-not-here');
     assert.ok(missing.ok && missing.value.missing, '目标分支不存在:missing=true(新建确认不示数)');
     const self = await branchDiffStat(root, 'main');

@@ -99,9 +99,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   chatRef.current = chat;
   useEffect(() => {
     return () => {
-      if (chatMem !== undefined) chatMem.put(archiveKey, chatRef.current);
+      // memSeat 随写(2026-11-16 流畅轮):journal 键在 daemon 侧恒同一会话,但 attach 未收编时
+      // 换座壳 id 会换——reseed sig-skip 须同座才免整替(防跨座串显),写回即落当前座别
+      if (chatMem !== undefined) chatMem.put(archiveKey, { ...chatRef.current, memSeat: sessionId });
     };
-  }, [archiveKey, chatMem]);
+  }, [archiveKey, chatMem, sessionId]);
 
 
   /** 2026-10-26 用户裁定:输入草稿按会话持久化(localStorage 键=journalId 优先同滚动存档口径)——

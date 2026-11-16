@@ -1,7 +1,6 @@
 import { Check, ArrowRight, Copy } from 'lucide-react';
 import { TipButton } from './RunFooter';
 import { useCopyFeedback } from '../../use-copy-feedback';
-import ReactMarkdown from 'react-markdown';
 import { t } from '../../i18n';
 import { localizeNotice } from '../../i18n-notice';
 import { highlightCommand, stripAnsi } from '../../highlight';
@@ -9,7 +8,7 @@ import { openExternalUrl } from '../../ui-util';
 import type { ChatEntry } from '../../chat-reducer';
 import type { DiffResp } from '../../connection';
 import { DiffLines } from '../../diff-lines';
-import { keepUrl, mdComponentsPlain, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
+import { mdComponentsPlain, MarkdownCached } from '../Chat';
 import { mcpToolParts, parseAskAnswer, parseAskInput, parseWebSearchOutput, withoutPurpose } from './tool-entry-data';
 import { ToolImageThumb } from './tool-entry-media';
 
@@ -146,7 +145,7 @@ export function ToolEntryBody({
   } else if (toolName === 'skill') {
     body = (
       <div className="tool-md">
-        <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>{fullResult}</ReactMarkdown>
+        <MarkdownCached md={fullResult} components={mdComponentsPlain} />
       </div>
     );
   } else if (toolName === 'ask_question' && askInput !== null) {

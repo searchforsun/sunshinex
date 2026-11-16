@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ArchiveRestore, CircleHelp, Folder, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { pathBasename, relTime } from '../ui-util';
@@ -39,7 +39,7 @@ export interface ArchiveSectionProps {
 
 /** 来源项目目录名(用户裁定「项目使用文件名」):pathBasename 单点(D34 口径),slug 折叠名太长不可读 */
 
-export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
+export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
   const { rows, busy, onOpenSession, onUnarchive, onDelete, activeSessionId = '', runningIds, journalOfSession } = props;
   /** 行内删除确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
@@ -149,4 +149,4 @@ export function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
       )}
     </ul>
   );
-}
+});

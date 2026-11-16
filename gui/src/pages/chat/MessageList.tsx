@@ -344,6 +344,9 @@ const DayGroupBlock = memo(
     && prev.onTurnRestore === next.onTurnRestore
     && prev.onFork === next.onFork
     && prev.onOpenImage === next.onOpenImage
+    // 2026-11-16 流畅轮补比(原漏比——恒稳回调后入比较零成本):onOpenWeb/onRunInTerminal
+    && prev.onOpenWeb === next.onOpenWeb
+    && prev.onRunInTerminal === next.onRunInTerminal
     && prev.root === next.root
     && prev.onOpError === next.onOpError
     && prev.onOpenArtifacts === next.onOpenArtifacts
