@@ -60,7 +60,7 @@ export function baseModelName(id: string | undefined): string {
  *  保留。memo 包裹:sealed 行 entry/tokens 双稳定→不随 token 帧重渲;tick 是组件内部 state 自驱动,
  *  memo 不影响;tokens 变化(usage 帧)仍重渲(期望行为)。种子历史无 run 条,重连后自下一轮
  *  model-start 恢复(spec §0) */
-export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle, wake, scheduled, onOpenTask }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void; wake?: WakeRef[]; scheduled?: true; onOpenTask?: (ref: string) => void }): JSX.Element {
+export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onToggle, wake, scheduled, restored, onOpenTask }: { entry: ChatEntry; collapsed?: boolean; onToggle?: (key: string) => void; wake?: WakeRef[]; scheduled?: true; restored?: true; onOpenTask?: (ref: string) => void }): JSX.Element {
   const [, setTick] = useState(0);
   const streaming = entry.streaming === true;
   useEffect(() => {
@@ -107,8 +107,16 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
       <span className="wake-lead">{t('Scheduled wake', '定时唤醒')}</span>
     </span>
   ) : undefined;
-  const runPrefix = wakePrefix ?? scheduledPrefix;
-  const wakeStart = wake !== undefined || scheduled === true;
+  // 重启自动唤醒前缀(2026-11-16 用户实测「重启自动唤醒也要和后台任务唤醒一样显示」):restored
+  // 标记行整行静态(无任务名段无点击),与 bg-wake/定时前缀同族同版式——band 由此从裸「运行中 N 秒」
+  // 变为「中断自动唤醒，运行中 N 秒 >」(run-sep 逗号既有)
+  const restoredPrefix = first === undefined && scheduled !== true && restored === true ? (
+    <span className="wake-prefix">
+      <span className="wake-lead">{t('Interrupted auto-wake', '中断自动唤醒')}</span>
+    </span>
+  ) : undefined;
+  const runPrefix = wakePrefix ?? scheduledPrefix ?? restoredPrefix;
+  const wakeStart = wake !== undefined || scheduled === true || restored === true;
   if (!streaming) {
     // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
     return (
@@ -294,7 +302,6 @@ export function ImageMissing({ name, size = 96 }: { name: string; size?: number 
       className="img-missing"
       role="img"
       aria-label={t('Image unavailable', '图片不可用')}
-      data-tip={`${t('Image unavailable', '图片不可用')}
 ${name}`}
       style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: size, height: size, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', color: 'var(--fg-secondary)', background: 'color-mix(in srgb, var(--fg-secondary) 6%, transparent)', fontSize: 10, overflow: 'hidden', padding: 4, textAlign: 'center', wordBreak: 'break-all', lineHeight: 1.2 }}
     >
@@ -485,10 +492,8 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
             onImageOpen={setEditLightbox}
             footRight={
               <div className="composer-pills">
-                <button type="button" className="user-edit-cancel" aria-label="cancel edit" data-tip={t('Cancel', '取消')} onClick={() => setEditing(false)}>
                   <X size={16} strokeWidth={2} aria-hidden="true" />
                 </button>
-                <button type="button" className="send tip-right" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendEdit}>
                   <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
                 </button>
               </div>
@@ -635,7 +640,6 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
             <button
               type="button"
               className="agent-msg-from"
-              data-tip={t('Locate in main conversation', '定位到主对话')}
               onClick={() => onOpenLeader({ from: 'leader', text: msg.text })}
             >
               {fromLabel}
@@ -644,7 +648,6 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
             <button
               type="button"
               className="agent-msg-from"
-              data-tip={t('View member', '查看成员')}
               onClick={() => onOpenAgent(msg.from, msg.from)}
             >
               {fromLabel}
@@ -699,10 +702,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           }}
           footRight={
             <div className="composer-pills">
-              <button type="button" className="user-edit-cancel" aria-label="cancel edit" data-tip={t('Cancel', '取消')} onClick={() => setNoticeEditing(false)}>
                 <X size={16} strokeWidth={2} aria-hidden="true" />
               </button>
-              <button type="button" className="send tip-right" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendNoticeEdit}>
                 <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
               </button>
             </div>

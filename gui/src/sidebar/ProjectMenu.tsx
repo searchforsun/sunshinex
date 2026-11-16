@@ -213,7 +213,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  'sunx' 专域(标题「归档 Sunx」+行只显 sunx);项目组头入口='session'(原通用层,sunx 行滤除) */
   const [archiveScope, setArchiveScope] = useState<'session' | 'sunx'>('session');
   /** SUNX 组行集(域枚举拉取收口 use-menu-sunx,D62 批J) */
-  const sunxRows = useMenuSunx(conn, rows);
+  /** SUNX 组即时重拉触发(2026-11-16 用户实测「创建后没有立刻显示到 SUNX 下」):新建成功链
+   *  setSunxReload——workspaces 未变(rows 保引用)时既有驱动点全不触发,nonce 即时缝兜底 */
+  const [sunxReload, setSunxReload] = useState(0);
+  const sunxRows = useMenuSunx(conn, rows, sunxReload);
   // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
   // RO 盯滚动容器(拖栏宽度变化即重测)。2026-11-16 流畅轮:补数据依赖(原无 deps=每次渲染全量
   // DOM 扫描+重建 RO,App 壳高频态即触发);数据引用不变时零扫描,宽变仍由 RO 兜底。
@@ -534,6 +537,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  链路打开新会话(回调用经 App 装配——抽屉态自动收抽屉,同 attach 行为) */
   const openCreatedSunx = (sessionId: string, root: string): void => {
     loadWorkspaces();
+    setSunxReload((v) => v + 1); // 新实例即时入组(2026-11-16 用户实测;不等 30s tick/手动切换)
     onOpenSession(sessionId, root);
   };
   /** 分区回调簇(2026-11-16 流畅轮:useCallback 恒稳——五 memo 分区的判等面,内联箭头每渲染

@@ -1654,7 +1654,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   display: inline-flex;
   align-items: baseline;
   min-width: 0;
-  flex: 1 1 auto;
+  /* flex-grow 0(2026-11-16 用户实测「展开>在最右侧?不是跟着字体」):1 1 auto 会把链接区撑满
+     整行把箭头顶到最右;0 1 auto 跟字排布,长列表仍靠 shrink+ellipsis 省略 */
+  flex: 0 1 auto;
   overflow: hidden;
   white-space: nowrap;
 }

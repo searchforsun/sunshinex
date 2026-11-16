@@ -59,6 +59,9 @@ export interface ChatEntry {
   /** run 专用(2026-11-15 sunx P2 Task 3,fix round 2 显示接线):直接前驱定时唤醒 notice 的 schedule
    *  标记——映射期同族挂载(与 wake 并立两词汇零交集;显示前缀「定时唤醒」整行静态无点击) */
   schedule?: true;
+  /** run 专用(2026-11-16 用户实测「重启自动唤醒也要和后台任务唤醒一样显示」):直接前驱 restored
+   *  notice 的标记——映射期同族挂载(显示前缀「中断自动唤醒」整行静态无点击,与 schedule 同族) */
+  restored?: true;
   /** G14.100 run 专用:本轮 git 变动增量(轮尾汇总条;撤销面按 path 寻址) */
   changes?: Array<{ path: string; status: string; added: number | null; deleted: number | null; newLines?: number }>;
   /** 轮次 checkpoint(2026-11-10):run-open 条目 seq(端点寻址键,与 key `k<seq>` 同源)与
@@ -221,7 +224,7 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
  *  按内核 run 条目缓存(wake 数组引用+基视图引用双重校验)保持跨帧引用稳定——内核条目不可变 ⇒
  *  键恒有效;基视图校验防 open/seal 态翻转换新视图后仍复用旧挂载面(陈旧 streaming 态复活)。
  *  fix round 2 扩两族:schedule(定时唤醒标记)同槽暂存/挂载/缓存——键={wake,schedule} 双校验 */
-const wakeViewCache = new WeakMap<KernelEntry, { wake: WakeRef[] | undefined; schedule: true | undefined; base: ChatEntry; view: ChatEntry }>();
+const wakeViewCache = new WeakMap<KernelEntry, { wake: WakeRef[] | undefined; schedule: true | undefined; restored: true | undefined; base: ChatEntry; view: ChatEntry }>();
 
 function mapEntries(k: KernelState, runBases: Record<number, { steps: number; tokens: number }>): ChatEntry[] {
   // 语言入缓存键域(2026-11-04 裁定「固定提示随 GUI 语言渲染」):切语言后 ①② 级复用失效全量
@@ -237,11 +240,13 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
   // 不可变、相邻关系不变),复用时同样清暂存。fix round 2:schedule(定时唤醒)标记同族暂存
   let pendingWake: WakeRef[] | undefined;
   let pendingSchedule: true | undefined;
+  let pendingRestored: true | undefined;
   for (let i = 0; i < k.entries.length; i += 1) {
     const e = k.entries[i]!;
     if (e.kind === 'notice' && isQuietNotice(e.md)) {
       if (e.wake !== undefined) pendingWake = e.wake; // 唤醒引用暂存(本条照旧不显示)
       if (e.schedule === true) pendingSchedule = true; // 定时唤醒标记暂存(同族)
+      if (e.restored === true) pendingRestored = true; // 重启自动唤醒标记暂存(2026-11-16 同族)
       continue;
     }
     // ②部分变更帧:未变位(内核条目引用相等⇒派生标相等——不可变条目)直取上次产物
@@ -252,6 +257,7 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
         out.push(reuse);
         pendingWake = undefined;
         pendingSchedule = undefined;
+        pendingRestored = undefined;
         continue;
       }
     }
@@ -259,24 +265,26 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
     const open = e.kind === 'run' ? k.openRun === e.seq : k.openSeg === e.seq;
     const base = runBases[e.seq];
     let view = mapOne(e, open, base);
-    if (e.kind === 'run' && (pendingWake !== undefined || pendingSchedule === true)) {
+    if (e.kind === 'run' && (pendingWake !== undefined || pendingSchedule === true || pendingRestored === true)) {
       const cached = wakeViewCache.get(e);
-      if (cached === undefined || cached.wake !== pendingWake || cached.schedule !== pendingSchedule || cached.base !== view) {
+      if (cached === undefined || cached.wake !== pendingWake || cached.schedule !== pendingSchedule || cached.restored !== pendingRestored || cached.base !== view) {
         const mounted = {
           ...view,
           ...(pendingWake !== undefined ? { wake: pendingWake } : {}),
           ...(pendingSchedule === true ? { schedule: true as const } : {}),
+          ...(pendingRestored === true ? { restored: true as const } : {}),
         };
-        wakeViewCache.set(e, { wake: pendingWake, schedule: pendingSchedule, base: view, view: mounted });
+        wakeViewCache.set(e, { wake: pendingWake, schedule: pendingSchedule, restored: pendingRestored, base: view, view: mounted });
         view = mounted;
       } else {
-        view = cached.view; // 同 run+同 wake/schedule+同基视图:复用挂载面(引用稳定,memo 不破)
+        view = cached.view; // 同 run+同 wake/schedule/restored+同基视图:复用挂载面(引用稳定,memo 不破)
       }
     }
     parallel[i] = view;
     out.push(view);
     pendingWake = undefined;
     pendingSchedule = undefined;
+    pendingRestored = undefined;
   }
   const mapped = mergeSplitThinking(out);
   mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped, lang });

@@ -180,6 +180,16 @@ export const ToolEntryView = memo(function ToolEntryView({
    *  与 task_wait G14.172 同口径）；set_dependency 额外解析 dependsOn（「任务 ← 依赖目标」双名）。
    *  缺 taskId/解析器（测试桩、种子条旧格式）不进该分型，回落默认动词行 */
   const taskOpName = taskOpNameOf(toolName, input, resultText, taskNameOf);
+  /** 分派回执解析(2026-11-16 用户实测「分派任务要和子智能体一样显示蓝色任务名和超链接」):
+   *  回执形态 task <id> started (output: <path>)——id 据此取(入参无 taskId 面);名=入参 label
+   *  (模型自拟卡名,缺省回落 agent_id) */
+  const dispatchReceipt = toolName === 'dispatch_task' ? /task (\S+) started \(output:/.exec(resultText) : null;
+  const dispatchReceiptId = dispatchReceipt !== null ? dispatchReceipt[1]! : undefined;
+  const dispatchLabel = toolName === 'dispatch_task'
+    ? (typeof input.label === 'string' && input.label !== ''
+        ? input.label
+        : typeof input.agent_id === 'string' && input.agent_id !== '' ? input.agent_id : '')
+    : '';
   const taskOpDepName = taskOpDepNameOf(input, taskNameOf);
   /** P11 全工具双态:executing 读三态 status(md 占位 `…` 判定退役)——pending/running=执行中
    *  (流光+「正在…」),done(缺省终态)=各型折叠行 */
@@ -242,7 +252,6 @@ export const ToolEntryView = memo(function ToolEntryView({
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-agent-link"
-              data-tip={t('View subagent', '查看子智能体')}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenAgent(spawnAgentName, spawnAgentName, typeof input.prompt === 'string' ? input.prompt : undefined);
@@ -262,7 +271,6 @@ export const ToolEntryView = memo(function ToolEntryView({
       role={onOpenTodos !== undefined ? 'button' : undefined}
       tabIndex={onOpenTodos !== undefined ? -1 : undefined}
       style={onOpenTodos !== undefined ? { cursor: 'pointer' } : undefined}
-      data-tip={onOpenTodos !== undefined ? t('Locate in todos tab', '定位到待办页签') : undefined}
       onClick={(e) => {
         if (onOpenTodos === undefined) return;
         e.stopPropagation();
@@ -279,7 +287,6 @@ export const ToolEntryView = memo(function ToolEntryView({
       role={onOpenArtifacts !== undefined ? 'button' : undefined}
       tabIndex={onOpenArtifacts !== undefined ? -1 : undefined}
       style={onOpenArtifacts !== undefined ? { cursor: 'pointer' } : undefined}
-      data-tip={onOpenArtifacts !== undefined ? t('Open artifacts tab', '打开产物页签') : undefined}
       onClick={(e) => {
         if (onOpenArtifacts === undefined) return;
         e.stopPropagation();
@@ -318,7 +325,6 @@ export const ToolEntryView = memo(function ToolEntryView({
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-file-link"
-              data-tip={t('Open in file tab', '在文件标签预览')}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenFile(path);
@@ -354,7 +360,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Open plan file', '打开计划文件')}
             onClick={(e) => {
               e.stopPropagation();
               onOpenFile(planFilePath);
@@ -369,7 +374,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Open plan file', '打开计划文件')}
             onClick={(e) => {
               e.stopPropagation();
               if (typeof conn.sessionPlans !== 'function') return;
@@ -391,7 +395,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Open this team', '打开该团队')}
             onClick={(e) => {
               e.stopPropagation();
               const idHit = /teamId=([^\s);,]+)/.exec(resultText);
@@ -414,7 +417,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Open this team', '打开该团队')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenTask(`team:${team.ref}`);
@@ -435,7 +437,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('Locate in agent teams', '在智能体团队中定位')}
             onClick={(e) => {
               e.stopPropagation();
               // 回执名优先形态 `task "…" created (id=task-xxx)`——按 id= 取真 id,旧形态兜底
@@ -458,7 +459,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('View subagent', '查看子智能体')}
             onClick={(e) => {
               e.stopPropagation(); // 不触发行展开
               // 2026-10-25 用户裁定:任务说明禁止截断——开签 task 兜底仍传全量 prompt(与 harness
@@ -478,7 +478,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('View member', '查看成员')}
             onClick={(e) => {
               e.stopPropagation(); // 不触发行展开
               onOpenAgent(teammateName, teammateName, typeof input.prompt === 'string' ? input.prompt : undefined); // 任务说明不截断(同 spawn,2026-10-25 裁定)
@@ -496,7 +495,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={onOpenLeader !== undefined ? t('Locate in main conversation', '在主对话中定位') : t('Open agent team', '在智能体团队中查看')}
             onClick={(e) => {
               e.stopPropagation();
               if (onOpenLeader !== undefined) onOpenLeader({ text: messageText });
@@ -510,7 +508,6 @@ export const ToolEntryView = memo(function ToolEntryView({
             role="button"
             tabIndex={-1}
             className="tool-file-base tool-agent-link"
-            data-tip={t('View member', '查看成员')}
             onClick={(e) => {
               e.stopPropagation();
               onOpenAgent(messageTo, messageTo);
@@ -532,7 +529,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Locate in background tasks', '在后台任务中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenTask(`bg:${a.id}`);
@@ -547,7 +543,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                 role="button"
                 tabIndex={-1}
                 className="tool-file-base tool-agent-link tool-link-chip"
-                data-tip={t('View subagent', '查看子智能体')}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenAgent(a.name, a.name, a.prompt);
@@ -570,7 +565,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Locate in background tasks', '在后台任务中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenTask(`bg:${task.id}`);
@@ -602,7 +596,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Locate in agent teams', '在智能体团队中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenTask(task.id);
@@ -623,6 +616,25 @@ export const ToolEntryView = memo(function ToolEntryView({
                 : t('all board tasks', '全部团队任务')}
           </span>
         )
+      ) : !hideTargetWhileRunning && toolName === 'dispatch_task' && dispatchLabel !== '' ? (
+        /* 分派回执行(2026-11-16 用户实测「分派任务要和子智能体一样显示蓝色任务名和超链接」):
+           名=入参 label 蓝链,点开后台任务页签定位(bg: 前缀=task_stop/task_wait 同族;id 取自
+           回执——入参无 taskId 面);回执全文仍在展开体(模型契约原文不动) */
+        onOpenTask !== undefined && dispatchReceiptId !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenTask(`bg:${dispatchReceiptId}`);
+            }}
+          >
+            {' '}{dispatchLabel}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">{' '}{dispatchLabel}</span>
+        )
       ) : !hideTargetWhileRunning && taskOpName !== undefined ? (
         /* G14.214 task_* 折叠行带任务名(链接开板高亮;set_dependency 双名「任务 ← 依赖目标」);多链接均分省略。
          *  task_stop=后台账本(与 task_wait 同 bg: 前缀),其余板面工具开智能体团队 */
@@ -632,7 +644,6 @@ export const ToolEntryView = memo(function ToolEntryView({
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-agent-link tool-link-chip"
-              data-tip={toolName === 'task_stop'
                 ? t('Locate in background tasks', '在后台任务中定位')
                 : t('Locate in agent teams', '在智能体团队中定位')}
               onClick={(e) => {
@@ -650,7 +661,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('Locate in agent teams', '在智能体团队中定位')}
                   onClick={(e) => {
                     e.stopPropagation();
                     const id = typeof input.dependsOn === 'string' ? input.dependsOn : taskOpDepName;
@@ -668,7 +678,6 @@ export const ToolEntryView = memo(function ToolEntryView({
                   role="button"
                   tabIndex={-1}
                   className="tool-file-base tool-agent-link tool-link-chip"
-                  data-tip={t('View member', '查看成员')}
                   onClick={(e) => {
                     e.stopPropagation();
                     onOpenAgent(input.assignee as string, input.assignee as string);

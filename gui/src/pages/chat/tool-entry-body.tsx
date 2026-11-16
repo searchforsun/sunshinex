@@ -187,7 +187,6 @@ export function ToolEntryBody({
                 role="button"
                 tabIndex={-1}
                 className="tool-file-base tool-file-link"
-                data-tip={t('Open plan file', '打开计划文件')}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenFile(planFilePath);

@@ -13,9 +13,11 @@ export interface MenuSunxConn {
  * 行携出生 meta root(域旁车);slug 以 root 代(分节键=工作区根,wsName 显示走 root basename)。
  * 拉取失败按空清单降级(侧栏计数面,非权威数据;rows 变化即重拉——30s tick/聚焦/config-changed
  * 全走 loadWorkspaces→rows 换引用,单一驱动点,与既有刷新节奏同拍;2026-11-16 流畅轮:浅等守卫,
- * 内容未变保旧引用——30s 轮询不再换身份重渲染)。
+ * 内容未变保旧引用——30s 轮询不再换身份重渲染)。reloadNonce=即时重拉触发面(2026-11-16 用户
+ * 实测「创建后没有立刻显示到 SUNX 下」:新建成功链调 setSunxReload——workspaces 未变时 rows
+ * 保引用,浅等守卫下既有驱动点全不触发,nonce 是唯一即时缝)。
  */
-export function useMenuSunx(conn: MenuSunxConn, rows: WorkspaceRow[] | null): Array<SessionRow & { root: string; slug: string }> | null {
+export function useMenuSunx(conn: MenuSunxConn, rows: WorkspaceRow[] | null, reloadNonce = 0): Array<SessionRow & { root: string; slug: string }> | null {
   const [sunxRows, setSunxRows] = useState<Array<SessionRow & { root: string; slug: string }> | null>(null);
   useEffect(() => {
     let alive = true;
@@ -32,6 +34,6 @@ export function useMenuSunx(conn: MenuSunxConn, rows: WorkspaceRow[] | null): Ar
     return () => {
       alive = false;
     };
-  }, [rows, conn]);
+  }, [rows, conn, reloadNonce]);
   return sunxRows;
 }
