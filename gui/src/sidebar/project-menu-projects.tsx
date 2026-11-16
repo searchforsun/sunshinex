@@ -2,8 +2,8 @@ import { memo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { SessionRow, WorkspaceRow } from '../connection';
 import { t } from '../i18n';
-import { Archive, Check, ChevronRight, Folder, FolderOpen, FolderTree, ListFilter, MoreHorizontal, SquarePen, X } from 'lucide-react';
-import { SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
+import { Archive, ChevronRight, Folder, FolderOpen, FolderTree, MoreHorizontal, SquarePen, X } from 'lucide-react';
+import { SessionRow as SessionRowView, SortPop, useConfirmOutsideCancel } from './project-menu-util';
 import { SessionRowMenu } from './session-row-menu';
 import { FolderAddIcon, visibleWorkspaces, wsName } from './project-menu-util';
 
@@ -130,33 +130,17 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
           />
           {/* 2026-10-21 用户裁定:归档钮挨着新项目钮右侧成簇贴右——组头 space-between 会把裸子元素撑散,包右贴容器 */}
           <span className="sx-side-head-actions">
-            {/* 排序钮(2026-10-31 用户裁定:归档左侧)+三选弹层(创建时间/更新时间/自然顺序) */}
-            {sortOpen && (
-              <>
-                {/* 全屏透明遮罩(点击即收;不挡弹层自身——z 序在弹层之下) */}
-                <div style={{ position: 'fixed', inset: 0, zIndex: 44, background: 'transparent' }} onClick={() => setSortOpen(false)} />
-                <div className="sx-menu-pop sx-ws-sort-pop" role="menu" aria-label={t('Sort projects', '项目排序')} style={{ zIndex: 45 }}>
-                  {(['created', 'updated', 'natural'] as const).map((m) => (
-                    <button key={m} type="button" role="menuitemradio" aria-checked={wsSort === m} className={`sx-menuitem${wsSort === m ? ' sx-ws-sort-active' : ''}`} onClick={() => pickSort(m)}>
-                      <span className="sx-ws-sort-name">{t(WS_SORT_LABELS[m].en, WS_SORT_LABELS[m].zh)}</span>
-                      {wsSort === m && <Check size={14} strokeWidth={2} aria-hidden="true" />}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-            <button
-              type="button"
-              className="sx-iconbtn"
-              aria-label="sort projects"
-              data-tip={t('Sort projects', '项目排序')}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSortOpen((v) => !v);
-              }}
-            >
-              <ListFilter size={14} strokeWidth={1.75} />
-            </button>
+            {/* 排序钮(2026-10-31 用户裁定:归档左侧)+三选弹层(SortPop 共用件) */}
+            <SortPop
+              open={sortOpen}
+              ariaLabel={t('Sort projects', '项目排序')}
+              buttonLabel="sort projects"
+              items={(['created', 'updated', 'natural'] as const).map((m) => ({ mode: m, label: t(WS_SORT_LABELS[m].en, WS_SORT_LABELS[m].zh) }))}
+              mode={wsSort}
+              onPick={pickSort}
+              onClose={() => setSortOpen(false)}
+              onToggle={() => setSortOpen((v) => !v)}
+            />
             {onOpenArchived !== undefined && (
               <button type="button" className="sx-iconbtn" data-tip={t('Archived sessions', '归档会话')}
                 aria-label="archived sessions"

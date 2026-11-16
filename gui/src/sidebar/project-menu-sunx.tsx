@@ -1,9 +1,9 @@
 import { memo, useMemo, useState } from 'react';
 import type { SessionRow } from '../connection';
 import { t } from '../i18n';
-import { Archive, Check, ChevronRight, KanbanSquare, ListFilter } from 'lucide-react';
+import { Archive, ChevronRight, KanbanSquare } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
-import { SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
+import { SessionRow as SessionRowView, SortPop, useConfirmOutsideCancel } from './project-menu-util';
 
 /**
  * SUNX 过滤组(sunx P2 Task 7,spec §10):侧栏 SUNX 会话聚合组(宿主挂载:ProjectsSection 工作区组
@@ -94,33 +94,21 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
               <KanbanSquare size={14} strokeWidth={1.75} />
             </button>
           )}
-          {/* 排序钮+二选弹层(更新时间/名称;PROJECTS 三选同构) */}
-          {sortOpen && (
-            <>
-              <div style={{ position: 'fixed', inset: 0, zIndex: 44, background: 'transparent' }} onClick={() => setSortOpen(false)} />
-              <div className="sx-menu-pop sx-ws-sort-pop" role="menu" aria-label={t('Sort Sunx', 'Sunx 排序')} style={{ zIndex: 45 }}>
-                {(['updated', 'name'] as const).map((m) => (
-                  <button key={m} type="button" role="menuitemradio" aria-checked={sortMode === m} className={`sx-menuitem${sortMode === m ? ' sx-ws-sort-active' : ''}`} onClick={() => { setSortMode(m); setSortOpen(false); }}>
-                    <span className="sx-ws-sort-name">{m === 'updated' ? t('By recent activity', '按最近活动') : t('By name', '按名称')}</span>
-                    {sortMode === m && <Check size={14} strokeWidth={2} aria-hidden="true" />}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          <button
-            type="button"
-            className="sx-iconbtn"
-            aria-label="sort sunx"
-            data-tip={t('Sort Sunx', 'Sunx 排序')}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSortOpen((v) => !v);
-            }}
-          >
-            <ListFilter size={14} strokeWidth={1.75} />
-          </button>
+          {/* 排序钮+二选弹层(SortPop 共用件,PROJECTS 三选同构) */}
+          <SortPop
+            open={sortOpen}
+            ariaLabel={t('Sort Sunx', 'Sunx 排序')}
+            buttonLabel="sort sunx"
+            items={[
+              { mode: 'updated', label: t('By recent activity', '按最近活动') },
+              { mode: 'name', label: t('By name', '按名称') },
+            ]}
+            mode={sortMode}
+            onPick={(m) => { setSortMode(m); setSortOpen(false); }}
+            onClose={() => setSortOpen(false)}
+            onToggle={() => setSortOpen((v) => !v)}
+            buttonMouseDown={(e) => e.stopPropagation()}
+          />
           {/* 归档入口(可选 guard):进归档层(宿主 archiveOpen 整替) */}
           {onOpenArchive !== undefined && (
             <button

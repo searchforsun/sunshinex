@@ -4,7 +4,7 @@ import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime 
 import { t } from '../i18n';
 import { readUsageStats } from '../usage-stats';
 import { zoomScale } from '../ui-zoom';
-import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, Pin } from 'lucide-react';
+import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, ListFilter, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -475,5 +475,56 @@ function CardCopy(props: { text: string; label: string }): JSX.Element {
     >
       {ok ? <Check size={14} strokeWidth={2.25} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
     </button>
+  );
+}
+
+/** 组头排序弹层 zIndex 单点（D75 收敛,2026-11-16：两处直写魔数退役）——遮罩在下、弹层在上 */
+export const SORT_OVERLAY_Z = 44;
+export const SORT_POP_Z = 45;
+
+/** 组头排序钮+radio 弹层共用件（D75 收敛,2026-11-16：sunx 二选与 projects 三选近逐字双写
+ *  收编单点）——遮罩点击即收（不挡弹层自身,z 序在弹层之下）、选中项 Check 徽标、选项面经
+ *  items 注入（label 为已 t() 化文案）。buttonMouseDown=sunx 组头同款 mousedown 截断（projects
+ *  头无此语义不传） */
+export function SortPop<M extends string>({ open, ariaLabel, buttonLabel, items, mode, onPick, onClose, onToggle, buttonMouseDown }: {
+  open: boolean;
+  ariaLabel: string;
+  buttonLabel: string;
+  items: ReadonlyArray<{ mode: M; label: string }>;
+  mode: M;
+  onPick: (m: M) => void;
+  onClose: () => void;
+  onToggle: () => void;
+  buttonMouseDown?: (e: React.MouseEvent) => void;
+}): JSX.Element {
+  return (
+    <>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: SORT_OVERLAY_Z, background: 'transparent' }} onClick={onClose} />
+          <div className="sx-menu-pop sx-ws-sort-pop" role="menu" aria-label={ariaLabel} style={{ zIndex: SORT_POP_Z }}>
+            {items.map(({ mode: m, label }) => (
+              <button key={m} type="button" role="menuitemradio" aria-checked={mode === m} className={`sx-menuitem${mode === m ? ' sx-ws-sort-active' : ''}`} onClick={() => onPick(m)}>
+                <span className="sx-ws-sort-name">{label}</span>
+                {mode === m && <Check size={14} strokeWidth={2} aria-hidden="true" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <button
+        type="button"
+        className="sx-iconbtn"
+        aria-label={buttonLabel}
+        data-tip={buttonLabel}
+        onMouseDown={buttonMouseDown}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        <ListFilter size={14} strokeWidth={1.75} />
+      </button>
+    </>
   );
 }

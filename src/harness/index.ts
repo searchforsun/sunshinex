@@ -70,6 +70,21 @@ const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
  *  承载）十件；standard 会话零消费（主链 face 基线不变量） */
 export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts', 'get_agent_team_board', 'schedule_wakeup', 'schedule_task'];
 
+/** 会话形态装配档案（D74 收敛,2026-11-16）：kind→主链 face 白名单+专属工具注册钩键控映射——
+ *  新增会话类=types 联合扩值+本表加一条；装配注册（Harness 构造期末段查表调钩）与内核 face
+ *  派生（session/runtime createKernelRuntime derive({only})）不再各自 if 分叉。standard=空档案
+ *  （主链 face 基线不变量：非 sunx 注册表不含 dispatch_task/task_status） */
+export interface SessionFaceProfile {
+  /** 主链 face 白名单（runtime 消费；undefined=主链 face 原样） */
+  faceTools?: readonly string[];
+  /** 专属工具注册钩（构造期末段调，实参=装配中的 Harness；仅本表装配钩消费） */
+  register?: (h: Harness) => void;
+}
+export const SESSION_FACE_PROFILES: Record<SessionKind, SessionFaceProfile> = {
+  standard: {},
+  sunx: { faceTools: SUNX_FACE_TOOLS, register: (h) => h.registerOrchestrationTools() },
+};
+
 export interface HarnessOptions {
   /** 问询接缝（ask_question 消费方）：缺省 headlessAskStub——headless 下工具恒在清单且诚实告知不可达 */
   ask?: AskUserSeam;
@@ -144,6 +159,10 @@ export class Harness {
   private readonly stableOutputStyle?: OutputStyle;
   /** 稳定段 kind 装配口径（2026-11-15 sunx 提示词面,构造期缓存——run 级常量）：'sunx' = 身份槽替换 + 编排章程行 */
   private readonly stableKind?: SessionKind;
+  /** 事件发射缝镜像（registerOrchestrationTools 装配钩消费——钩方法读不到构造闭包 opts） */
+  private readonly onEventOpt?: (e: SessionEvent) => void;
+  /** 定时调度 arm 缝镜像（同上；缺席=调度两件执行期 NOT_SUPPORTED 确定降级） */
+  private readonly scheduleArmOpt?: { arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string } };
   readonly skills: SkillsFacade;
   /** 团队门面（team 工具接缝；spec 2026-11-04 §3.3）：live 只读视图——每次 resolve 现读两级目录链，
    *  会中新建/停用即时可见（skills 同款惰性纪律，纯构造零副作用） */
@@ -154,6 +173,9 @@ export class Harness {
   readonly artifacts: ArtifactCollector;
   /** 子智能体执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
   readonly runner: SubagentRunner;
+  /** 板通道成员实例化缝（teamAdapter：agent_id 角色框定+mountTeammate 全链）——dispatch_task
+   *  注册钩（registerOrchestrationTools）与八件套 create_agent_teammate 执行面共用 */
+  private readonly teamAdapter: { spawn(input: SubagentSpawnInput, teamId: string): Result<{ name: string }> };
   /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
   readonly tasks: TaskRegistry;
   /** edit 先读守卫（read-guard.ts）：read 记录快照 / edit 校验，NOT_READ·STALE_READ 硬闸 */
@@ -214,6 +236,8 @@ export class Harness {
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
+    this.onEventOpt = opts.onEvent;
+    this.scheduleArmOpt = opts.schedule;
     // 持久化域单点（2026-11-15 sunx P3 Task 1 装配单点化）：构造期一次推导，下方全部持久化数据面消费点
     // 同源取本变量；缺席=resolveDataDir(base) 既有推导（零变化）。base 保持工作树共享面锚（sandbox/safePath/
     // perception/worktree），不随注入漂移
@@ -568,7 +592,7 @@ export class Harness {
       return ok({ name });
     };
     this.restoreTeammate = (rec) => mountTeammate(rec.name, rec.framing, rec.teamId, rec.createdAt);
-    const teamAdapter = {
+    this.teamAdapter = {
       spawn: (input: SubagentSpawnInput, teamId: string): Result<{ name: string }> => {
         const name = input.label ?? input.agent_id ?? 'worker';
         let framing: string;
@@ -614,54 +638,14 @@ export class Harness {
     this.tools.register({ ...makeTaskStopTool(this.tasks, this.taskboard), display: { verb: 'TASK_STOP' } });
     // task_wait：仅 exec/spawn 台账等待（板 id 拒识点名 agent_team_task_wait）；第三参 run 信号穿透阻塞期
     this.tools.register({ ...makeTaskWaitTool(this.tasks, this.taskboard, () => this.sandbox.currentRunSignal), display: { verb: 'TASK_WAIT' } });
-    // sunx 工具面（2026-11-15 sunx P1 Task 3；P2 Task 2 增板通道接缝）：分派/窥视两件仅在 sunx 会话
-    // 注册——普通 face 基线零变化（不变量：非 sunx 装配注册表不含 dispatch_task/task_status）。
+    // sunx 工具面（2026-11-15 sunx P1 Task 3；P2 Task 2 增板通道接缝）随会话形态档案表注册（D74）：
+    // 构造期查 SESSION_FACE_PROFILES 调 register 钩——sunx=编排四件（分派/窥视/定时调度两件）；
+    // standard=空档案零注册（不变量：非 sunx 装配注册表不含 dispatch_task/task_status）。
     // dispatch_task=分派即返回两段式；target='team' 板通道接缝在此注入（R6 能力自举：无既有团队 →
     // 建队+按 agent_id 实例化 teammate；team-created/teammate-created 复用既有事件形——GUI 队卡/
     // 成员栏直播同源；标准会话的八件套/板行为零变化——本缝不进 standard 装配）。task_status=恒窥视
-    // 台账查询（窥视即消费）。白名单派生消费面在 createKernelRuntime（SUNX_FACE_TOOLS 单点）
-    if (opts.kind === 'sunx') {
-      this.tools.register({
-        ...makeDispatchTool(this.runner, {
-          team: {
-            board: this.taskboard,
-            tasks: this.tasks,
-            existingTeamId: () => this.agentTeams.list()[0]?.teamId,
-            // 自举建队：slug 源=传入名（label 或 'sunx'），teamId 方言 team-<slug>-<4rand>；既有 team-created
-            // 事件形随行（create_agent_team 同形载荷——GUI 队卡直播同源，非 team 分支新事件）
-            createTeam: (name) => {
-              const r = this.agentTeams.create(name);
-              if (r.ok) {
-                opts.onEvent?.({ type: 'team-created', payload: { teamId: r.value.teamId, name: r.value.name, createdAt: r.value.createdAt }, ts: Date.now() });
-              }
-              return r;
-            },
-            // 成员实例化：teamAdapter.spawn 同缝（agent_id 解析角色框定 + mountTeammate 全链——路由 ask/
-            // kind 随装配透传）；既有 teammate-created 事件形随行（create_agent_teammate 同形载荷）
-            spawnMember: (input, tid) => {
-              const r = teamAdapter.spawn(input, tid);
-              if (r.ok) {
-                const tm = this.team.get(r.value.name);
-                opts.onEvent?.({
-                  type: 'teammate-created',
-                  payload: { name: r.value.name, teamId: tid, createdAt: tm?.createdAt ?? Date.now(), busy: tm?.isBusy() ?? false },
-                  ts: Date.now(),
-                });
-              }
-              return r;
-            },
-            aliveNames: (tid) => this.team.aliveNames(tid),
-          },
-        }),
-        display: { verb: 'DISPATCH' },
-      });
-      this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
-      // 定时调度两件（2026-11-15 sunx P2 Task 3）：宿主 TimerController arm 缝注入——接缝缺省
-      // （测试直构 Harness）执行期 NOT_SUPPORTED 确定降级；standard 装配零注册（face 基线不变）
-      const scheduleArm: ScheduleArmSeam | undefined = opts.schedule !== undefined ? { arm: opts.schedule.arm } : undefined;
-      this.tools.register({ ...makeScheduleWakeupTool(scheduleArm), display: { verb: 'SCHEDULE' } });
-      this.tools.register({ ...makeScheduleTaskTool(scheduleArm), display: { verb: 'SCHEDULE_TASK' } });
-    }
+    // 台账查询（窥视即消费）。白名单派生消费面在 createKernelRuntime（SESSION_FACE_PROFILES 单点）
+    SESSION_FACE_PROFILES[opts.kind ?? 'standard'].register?.(this);
     // 智能体团队八件套：agentTeams 关则不注入模型面（板协调器仍构造，盘数据不删）
     if (agentTeamsEnabled(base)) {
       this.tools.register({
@@ -712,7 +696,7 @@ export class Harness {
               'prompt or agent_id is required: pass a non-empty prompt with agent_id JSON null (usual), or a real registered agent_id',
             );
           }
-          const r = teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
+          const r = this.teamAdapter.spawn({ prompt, agent_id: agentId, label: name }, teamId);
           if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
           // 成员名册直播(与 create_agent_team → team-created 同形):GUI 队卡「成员」栏不靠快照轮询
           const tm = this.team.get(r.value.name);
@@ -780,6 +764,51 @@ export class Harness {
       ...this.settleHooks,
     });
     this.ledger = ledger;
+  }
+
+  /** sunx 编排专属工具面注册钩（SESSION_FACE_PROFILES.sunx.register 消费,构造期末段调用）：
+   *  dispatch_task（target='fork'|'team' 双通道,team 缝=board/tasks/自举建队/成员实例化）+
+   *  task_status 恒窥视 + 定时调度两件（宿主 TimerController arm 缝注入,接缝缺省（测试直构）
+   *  执行期 NOT_SUPPORTED 确定降级）。仅 sunx 档案消费——standard 装配零注册（face 基线不变） */
+  registerOrchestrationTools(): void {
+    this.tools.register({
+      ...makeDispatchTool(this.runner, {
+        team: {
+          board: this.taskboard,
+          tasks: this.tasks,
+          existingTeamId: () => this.agentTeams.list()[0]?.teamId,
+          // 自举建队：slug 源=传入名（label 或 'sunx'），teamId 方言 team-<slug>-<4rand>；既有 team-created
+          // 事件形随行（create_agent_team 同形载荷——GUI 队卡直播同源，非 team 分支新事件）
+          createTeam: (name) => {
+            const r = this.agentTeams.create(name);
+            if (r.ok) {
+              this.onEventOpt?.({ type: 'team-created', payload: { teamId: r.value.teamId, name: r.value.name, createdAt: r.value.createdAt }, ts: Date.now() });
+            }
+            return r;
+          },
+          // 成员实例化：teamAdapter.spawn 同缝（agent_id 解析角色框定 + mountTeammate 全链——路由 ask/
+          // kind 随装配透传）；既有 teammate-created 事件形随行（create_agent_teammate 同形载荷）
+          spawnMember: (input, tid) => {
+            const r = this.teamAdapter.spawn(input, tid);
+            if (r.ok) {
+              const tm = this.team.get(r.value.name);
+              this.onEventOpt?.({
+                type: 'teammate-created',
+                payload: { name: r.value.name, teamId: tid, createdAt: tm?.createdAt ?? Date.now(), busy: tm?.isBusy() ?? false },
+                ts: Date.now(),
+              });
+            }
+            return r;
+          },
+          aliveNames: (tid) => this.team.aliveNames(tid),
+        },
+      }),
+      display: { verb: 'DISPATCH' },
+    });
+    this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
+    const scheduleArm: ScheduleArmSeam | undefined = this.scheduleArmOpt !== undefined ? { arm: this.scheduleArmOpt.arm } : undefined;
+    this.tools.register({ ...makeScheduleWakeupTool(scheduleArm), display: { verb: 'SCHEDULE' } });
+    this.tools.register({ ...makeScheduleTaskTool(scheduleArm), display: { verb: 'SCHEDULE_TASK' } });
   }
 
   /**

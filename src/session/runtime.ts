@@ -1,5 +1,5 @@
 import type { AskUserSeam } from '../types';
-import { Harness, SUNX_FACE_TOOLS } from '../harness';
+import { Harness, SESSION_FACE_PROFILES } from '../harness';
 import { buildHarness } from '../runtime';
 import type { PermissionMode } from '../harness/security/modes';
 import type { ToolDisplayMeta } from '../harness/tools';
@@ -100,10 +100,11 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     // 学习沉淀开关透传（2026-11-15 sunx P3 Task 2）：缺席=既有推导零变化
     ...(opts.learnSkills !== undefined ? { learnSkills: opts.learnSkills } : {}),
   });
-  // 工具面选择（2026-11-15 sunx P1 Task 3）：sunx 会话主链 face=白名单派生单点（SUNX_FACE_TOOLS 常量，
-  // 与装配注册/测试同源）——loop 主链模型面（loopDeps.registry）与 TUI 呈现表（displayMeta）同源消费
-  // effective face；standard 恒 harness.tools 原样（主链 face 基线字节不变）
-  const face = opts.kind === 'sunx' ? harness.tools.derive({ only: [...SUNX_FACE_TOOLS] }) : harness.tools;
+  // 工具面选择（2026-11-15 sunx P1 Task 3；D74 收敛 2026-11-16）：主链 face=会话形态档案表白名单
+  // 派生（SESSION_FACE_PROFILES 单点,与装配注册钩同源）——loop 主链模型面（loopDeps.registry）与
+  // TUI 呈现表（displayMeta）同源消费 effective face；无白名单档案恒 harness.tools 原样（face 基线字节不变）
+  const faceTools = SESSION_FACE_PROFILES[opts.kind ?? 'standard'].faceTools;
+  const face = faceTools !== undefined ? harness.tools.derive({ only: [...faceTools] }) : harness.tools;
   // 审批注入不再限 acceptEdits(2026-11-01 用户裁定「完全访问也要弹特殊确认」):asker 只服务
   // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
   // full-access 的常规 ask 仍在 guard 层自动放行(不经 asker),注入无档位副作用
