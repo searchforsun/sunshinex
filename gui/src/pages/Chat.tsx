@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { SESSION_KIND_SUNX } from '../connection';
 import type { ReactNode } from 'react';
-import { ArrowDown, Eye, NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
+import { Eye, NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
 import { ImageLightbox } from '../ImageLightbox';
-import { MAX_IMAGES, appendImages, loadImages } from '../images';
-import { loadDraftImages, saveDraftImages } from '../draft-images';
-import { applyChatEvent, initialChatState } from '../chat-reducer';
+import { initialChatState } from '../chat-reducer';
 import type { ChatEntry, ChatState } from '../chat-reducer';
-import { ComposerCard } from '../composer/ComposerCard';
-import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
-import { CommandPalette } from '../CommandPalette';
-import { chaseScrollBottom, pathBasename, dropRefsOf, insertRefBase, insertRefToken } from '../ui-util';
-import { autoSeenSuppressed, stampSeen } from '../sidebar/project-menu-util';
+import { pathBasename } from '../ui-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
 
@@ -25,10 +19,7 @@ import { t } from '../i18n';
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
  *  App 侧经 ref 转投免闭包陈旧 */
 import { useCommandPalette } from './chat/use-command-palette';
-import { ComposerPillsLeft, ComposerPillsRight } from './chat/ComposerPills';
-import { TerminalDock, loadDockSession } from '../tabs/terminal-dock';
-import { useConfigChanged } from '../settings/use-config-changed';
-import { SteerQueue } from './chat/SteerQueue';
+import { TerminalDock } from '../tabs/terminal-dock';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
 import { flushScrollMem, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
@@ -39,34 +30,38 @@ import { useChatSubmit } from './chat/use-chat-submit';
 import { useChatComposerSide } from './chat/use-chat-composer-side';
 import { slashItemsFor } from './chat/use-command-palette';
 import { useChatFold } from './chat/use-chat-fold';
-import { MessageList } from './chat/MessageList';
 import { ChatScrollbar } from './chat/ChatScrollbar';
-import { AskDock } from './chat/AskDock';
 import { useSessionEvents } from './chat/use-session-events';
-import { SESSION_ARCHIVE_CHANGED_EVENT, type SessionArchiveChange } from '../session-events';
-import { ApprovalCard } from './chat/PendingCards';
-import { PlanCard } from './chat/PlanCard';
-import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, refContentConsume, RefPalette, renderMentionSpans, slashTokenAt } from './chat/mention';
-import { SelActionsOverlay } from './chat/SelActionsOverlay';
+import { useChatUndo } from './chat/use-chat-undo';
+import { useChatDynBlocks } from './chat/use-chat-dyn-blocks';
+import { useChatDraft } from './chat/use-chat-draft';
+import { useChatImages } from './chat/use-chat-images';
+import { useChatSeenArchive } from './chat/use-chat-seen-archive';
+import { useChatTerminalDock } from './chat/use-chat-terminal-dock';
+import { expandFileRefs, expandRefContents, renderMentionSpans, slashTokenAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
 import { DirResolverContext, MdImageContext } from './chat/md-render';
 export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
-import type { AskPick } from './chat/PendingCards';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
+import type { AskPick } from './chat/PendingCards';
 import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
-import { flatRefItems, refTokenAt, unknownRefTokens } from './chat/ref-palette';
+import { flatRefItems, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
-import { LiveChangesContext, TurnLatestContext, useLiveGitChanges, notifyGitChanged } from './chat/use-live-changes';
+import { ChatComposerDock } from './chat/chat-composer-dock';
+import { ChatTranscript } from './chat/chat-transcript';
+import { usePopOutsideClose } from '../use-pop-outside-close';
+import { useChatNotify } from './chat/use-chat-notify';
+import { LiveChangesContext, TurnLatestContext, useLiveGitChanges } from './chat/use-live-changes';
 import { TurnUndoContext, makeTurnUndoApi } from './chat/turn-undone-context';
 import { useChatLocate } from './chat/use-chat-locate';
 export { ToolEntryView } from './chat/ToolEntry';
 export type { TodoBatch } from './chat/ToolEntry';
 export type { ChatSink, ChatProps } from './chat/chat-types';
-import type { ChatProps, RewindOps, RewindRequest } from './chat/chat-types';
+import type { ChatProps } from './chat/chat-types';
 import type { ComposerEnv } from './chat/edit-composer';
 
 
@@ -106,66 +101,16 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, [archiveKey, chatMem, sessionId]);
 
 
-  /** 2026-10-26 用户裁定:输入草稿按会话持久化(localStorage 键=journalId 优先同滚动存档口径)——
-   *  切会话/重启回来都能恢复未发送文本;发送置空即清档。Chat 以 key={sessionId} 挂载,会话隔离=键隔离 */
-  const [input, setInput] = useState<string>(() => {
-    try {
-      return localStorage.getItem(`sx-draft:${archiveKey}`) ?? '';
-    } catch {
-      return '';
-    }
-  });
+  /** 2026-10-26 用户裁定:输入草稿按会话持久化(localStorage 键=journalId 优先同滚动存档口径);
+   *  草稿存档/键迁移/芯片账本回灌+首问种子收口 use-chat-draft(D62 批I) */
+  const refContentsRef = useRef(new Map<string, string>());
+  const { input, setInput } = useChatDraft({ archiveKey, refContentsRef, initialInsert, initialInsertContent });
 
   /** 2026-11-10 终端下栏:显能读 settings·terminalDock(on/off,缺省 on;use-chat-session-info
-   *  同款挂载拉取+config-changed 重拉),面板显隐本地态(入口钮切;设置翻 off 即卸载 dock) */
-  /** 终端下栏开态与会话绑定(localStorage 会话键,重启/切会话各回各档);高度全局档经 dock 上报 */
-  const [dockOpen, setDockOpen] = useState(() => loadDockSession(sessionId).open);
-  const [dockHeight, setDockHeight] = useState(260);
-  useEffect(() => { setDockOpen(loadDockSession(sessionId).open); }, [sessionId]);
-  const [dockEnabled, setDockEnabled] = useState(true);
-  const dockCfgTicks = useConfigChanged(conn);
-  useEffect(() => {
-    if (typeof conn.settings !== 'function') return; // 测试桩/旁路面:无设置面即保缺省开
-    conn.settings(root).then(
-      (view) => setDockEnabled(view.keys.find((k) => k.key === 'terminalDock')?.value !== 'off'),
-      () => undefined,
-    );
-  }, [conn, root, dockCfgTicks.settings]);
-  const terminalDockEnabled = dockEnabled && sideChat !== true;
+   *  同款挂载拉取+config-changed 重拉),面板显隐本地态(入口钮切;设置翻 off 即卸载 dock)。
+   *  开态/高度/显能簇收口 use-chat-terminal-dock(D62 批I) */
+  const { dockOpen, setDockOpen, dockHeight, setDockHeight, terminalDockEnabled } = useChatTerminalDock({ conn, sessionId, root, sideChat });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(`sx-draft:${archiveKey}`, input);
-      // 芯片内容账本随草稿同键持久化(2026-11-07 用户裁定「重启后草稿片段也要加载出来」):
-      // 文本恢复了、账本(内存态)不恢复=芯片空壳 hover/发送皆失。键变更(切会话)即换档
-      localStorage.setItem(`sx-draft-refs:${archiveKey}`, JSON.stringify([...refContentsRef.current]));
-    } catch {
-      // 隐私模式等写失败静默:草稿是尽力而为的会话便利,不入错误面
-    }
-  }, [input, archiveKey]);
-  // 草稿键迁移(2026-11-07 用户实测「欢迎页升级后点会话行,草稿被清」根修):升级链 journalId
-  // 晚到,archiveKey 由临时 sessionId 切到 journalId——新档键下草稿为空,恢复面读到空串=清稿。
-  // 键切换时把旧键草稿/芯片账本整体迁到新键(新键已有非空草稿=真换会话,不迁)
-  const draftKeyRef = useRef(archiveKey);
-  useEffect(() => {
-    if (draftKeyRef.current === archiveKey) return;
-    const oldKey = draftKeyRef.current;
-    draftKeyRef.current = archiveKey;
-    try {
-      const carried = localStorage.getItem(`sx-draft:${oldKey}`);
-      if (carried !== null && carried !== '' && (localStorage.getItem(`sx-draft:${archiveKey}`) ?? '') === '') {
-        localStorage.setItem(`sx-draft:${archiveKey}`, carried);
-        localStorage.setItem(`sx-draft-refs:${archiveKey}`, localStorage.getItem(`sx-draft-refs:${oldKey}`) ?? '[]');
-        localStorage.removeItem(`sx-draft:${oldKey}`);
-        localStorage.removeItem(`sx-draft-refs:${oldKey}`);
-        setInput(carried);
-        const refs = JSON.parse(localStorage.getItem(`sx-draft-refs:${archiveKey}`) ?? '[]') as Array<[string, string]>;
-        for (const [k, v] of refs) refContentsRef.current.set(k, v);
-      }
-    } catch {
-      // 档损坏静默:草稿尽力而为
-    }
-  }, [archiveKey]);
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新);缺省 full-access(serve 缺省档) */
   const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
@@ -213,29 +158,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   }, []);
   /** G14.126 @文件名 记账:选中面板行时 basename → 相对路径(发送期展开解析第一优先) */
   const pickRelRef = useRef(new Map<string, string>());
-  /** 元素/终端片段引用账本(2026-11-04):⟦token⟧→全量内容,发送/排队期 expandRefContents 展开 */
-  const refContentsRef = useRef(new Map<string, string>());
-  // 芯片账本回灌(2026-11-07 落地即清配套:草稿文本有 sx-draft 持久化,账本不持久则恢复的芯片
-  // 全空壳)。只补缺不清现有——insertContent 渲染期种子/事件入账不受影响。每档键只回灌一次:
-  // 渲染期同步读盘+JSON 解析,逐渲染执行=流式每帧付一次 localStorage 往返
-  const refsHydratedKeyRef = useRef<string | null>(null);
-  if (refsHydratedKeyRef.current !== archiveKey) {
-    refsHydratedKeyRef.current = archiveKey;
-    try {
-      const rawRefs = localStorage.getItem(`sx-draft-refs:${archiveKey}`);
-      if (rawRefs !== null) {
-        for (const [tk, c] of JSON.parse(rawRefs) as Array<[string, string]>) refContentsRef.current.set(tk, c);
-      }
-    } catch {
-      // 档损坏即弃:芯片失去内容是尽力而为面的失败,不入错误面
-    }
-  }
-  // 首问 token 内容入私有账本——渲染期直写(2026-11-07 实测时序根修:子组件 ComposerCard 的
-  // 规范化 effect 先于本组件 effect 执行,种子晚于改名=键对不上=回落全局注册表取到别会话内容)
-  if (initialInsert !== undefined && initialInsert !== '' && initialInsertContent !== undefined && initialInsertContent !== '') {
-    refContentsRef.current.set(initialInsert, initialInsertContent);
-    refContentConsume(initialInsert); // 落地即清共享层
-  }
   /** G14.213 IME 组合中标记:onSelect 归位在组合期跳过(防打断输入法) */
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
@@ -331,52 +253,10 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   runFooterPrevRef.current = runFooterMapOfStable(runFooterPrevRef.current, chat.entries, chat.status);
   const runFooterByEntry = runFooterPrevRef.current;
 
-  /** run 条目键→轮次序位(2026-11-04 逐轮 fork):run 在转录中的 1-based 序=daemon 轮锚点序
-   *  (每轮一 task 行),宿主按此分档——点哪轮,fork 其上全部记录。ref 镜像保引用恒稳(MessageList
-   *  组级 memo 判等不破) */
-  const chatEntriesRef = useRef(chat.entries);
-  chatEntriesRef.current = chat.entries;
-  const onForkRef = useRef(onFork);
-  onForkRef.current = onFork;
-  const onForkRun = useCallback((runKey: string): void => {
-    let n = 0;
-    for (const e of chatEntriesRef.current) {
-      if (e.kind !== 'run') continue;
-      n += 1;
-      if (e.key === runKey) {
-        onForkRef.current?.(n);
-        return;
-      }
-    }
-  }, []);
-
+  /** 回退/派生轮寻址簇(fork 序位/rewind 操作面/轮次 checkpoint 通道)收口 use-chat-undo(D62 批I) */
+  const { onForkRun, rewindOps, onTurnOpen, onTurnRestore } = useChatUndo({ conn, sessionId, chatRef, entries: chat.entries, expandRefsRef, setChat, onFork, onRewind, onOpenTurnDiff });
   /** 编辑卡输入环境:@短写记账表共享——编辑卡选中的文件在发送期(resendFrom)照样展开 */
   const composerEnv = useMemo<ComposerEnv>(() => ({ sessionId, pickRelRef }), [sessionId]);
-  /** 气泡回退操作面:用户消息按倒序寻址(转录可能只播种了尾窗,且轮内插入让 run 序≠锚点序) */
-  const onRewindRef = useRef(onRewind);
-  onRewindRef.current = onRewind;
-  const hasRewind = onRewind !== undefined;
-  const rewindOps = useMemo<RewindOps | undefined>(() => {
-    if (!hasRewind) return undefined;
-    const fromEnd = (entry: ChatEntry): { userFromEnd: number } => {
-      const users = chatEntriesRef.current.filter((e) => e.kind === 'user');
-      return { userFromEnd: users.length - 1 - users.findIndex((e) => e.key === entry.key) };
-    };
-    const rewind = (req: RewindRequest): Promise<void> => onRewindRef.current?.(req) ?? Promise.resolve();
-    return {
-      busy: () => {
-        const st = chatRef.current;
-        return st.status === 'running' || st.entries.some((en) => en.kind === 'tool' && typeof en.name === 'string' && en.name.startsWith('/') && en.result === undefined);
-      },
-      planForEntry: (entry) => conn.restorePlan(sessionId, fromEnd(entry)),
-      // 文本在此展开:引用账本属当前 Chat,回退换座后新 Chat 查不到本卡新加的 @文件/片段
-      resendFrom: (entry, text, images, restoreFiles) => rewind({
-        target: fromEnd(entry),
-        restoreFiles,
-        resend: { text: expandRefsRef.current(text), ...(images !== undefined ? { images } : {}) },
-      }),
-    };
-  }, [hasRewind, conn, sessionId]);
 
   // 滚动四 effects + 轮次折叠簇(批F-5):refs 宿主持有,行为零变化
   const { dockRef } = useChatScroll({
@@ -395,22 +275,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     chatScrollRef,
     chatStickRef,
   });
-  /** 轮次 checkpoint 通道(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」):
-   *  文件名点击 → turndiff 页签(run+path 寻址,冻结轮 diff);撤销 → turn-restore(前像回写,
-   *  staleness 逐路径回传;成功广播 git 变点同步审查页)。App 未接通道/旧档缺 runSeq 时
-   *  RunChangesBar 内部自回退审查页/git restore 语义 */
-  const onTurnOpen = useCallback((run: number, path: string) => { onOpenTurnDiff?.(run, path); }, [onOpenTurnDiff]);
-  const onTurnRestore = useCallback((run: number, paths: string[]) =>
-    conn.turnRestore(sessionId, run, paths).then(
-      (r) => {
-        if (r.results.some((x) => x.ok)) notifyGitChanged();
-        return r.results;
-      },
-      (err: unknown) => {
-        setChat((c) => applyChatEvent(c, { type: 'error', text: `${t('Revert failed', '撤销失败')}: ${err instanceof Error ? err.message : String(err)}`, ts: Date.now() }));
-        return [];
-      },
-    ), [conn, sessionId]);
 
   // 标题子系统 + 模型/圆环数据面(批F-6)
   const { titleEditing, setTitleEditing, titleDraft, setTitleDraft, commitTitle, displayTitle, kind, adoptTitle } = useChatTitle({
@@ -480,33 +344,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   /** 队列防竞态面(2026-10-31):当前会话用户条文本集(trim)——SteerQueue 立即/插入转圈直至
    *  文本命中正文;memo 随条目帧重算 */
   const entryTexts = useMemo(() => new Set(chat.entries.filter((e) => e.kind === 'user').map((e) => e.md.trim())), [chat.entries]);
-  /** Win 完成通知卡(2026-10-31 用户裁定「桌面端支持 win 的完成右下角卡片提示」):运行→收束
-   *  沿且窗口失焦/后台时弹系统通知(前台在看不弹不打扰);点击通知聚焦窗口。Notification 不
-   *  可用的环境(旧壳/权限拒绝)静默降级 */
-  const prevRunNotifRef = useRef(false);
-  useEffect(() => {
-    const prev = prevRunNotifRef.current;
-    prevRunNotifRef.current = running;
-    if (prev === running || running) return; // 只报完成沿
-    if (document.hasFocus()) return; // 前台在看=无需提醒
-    // 文案定版(2026-11-01 用户裁定):标题「运行完成」,正文「任务:{会话名称}」;点击经壳桥唤起——
-    // hide-on-close/最小化窗 window.focus() 无效,preload focusMain → 主进程 show+focus(还原最小化)
-    const name = displayTitle.trim();
-    try {
-      const n = new Notification(t('Run finished', '运行完成'), {
-        body: name !== '' ? `${t('Task', '任务')}：${name}` : t('The session task has completed.', '会话任务已完成。'),
-        silent: false,
-      });
-      n.onclick = (): void => {
-        const bridge = window.sunshinexWindow;
-        if (bridge?.focusMain !== undefined) bridge.focusMain();
-        else window.focus(); // 旧壳无桥:退化为尽力 focus
-        n.close();
-      };
-    } catch {
-      /* 无通知能力:静默 */
-    }
-  }, [running, displayTitle]);
+  // Win 完成通知卡(完成沿+窗口失焦才弹,点击聚焦窗口)收口 use-chat-notify(D62 批I)
+  useChatNotify({ running, displayTitle });
   /** G14.63 运行状态行「本轮」口径:末个流式 run 的基线差值(会话累计−轮起点);无基线回退累计 */
   /** G14.80 未决问询卡:ask 挂起时输入框变为选择题表单 */
   const askCards = cards.filter((c) => c.kind === 'ask');
@@ -523,79 +362,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  回执经 sendPlanApproval(批准落所选档自动解除,重新计划保持) */
   const planCards = cards.filter((c) => c.kind === 'plan-approval');
 
-  // 计划块在轮出现标记(plan-approval 卡在场即置,轮开始清)+ 最近两轮快照(运行→收尾时捕获)
-  const sawPlanRef = useRef(false);
-  const [runBlocksHistory, setRunBlocksHistory] = useState<Array<{ state: 'done' | 'interrupted'; blocks: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number }> }>>([]);
-  const sawPlanInRun = sawPlanRef.current ? true : false;
-  if (planCards.length > 0) sawPlanRef.current = true;
-  // 团队任务「最近一个版」计数(2026-11-11 用户裁定):最近两轮的 run 窗口内按 createdAt 归位,
-  // 取最近一个有创建的窗口的任务数(一个版=一次编排创建的一批);捕获面与显示面共用
-  const taskCount = useMemo(() => {
-    const boardTasks = board !== undefined ? Object.values(board.tasks) : [];
-    const runTsList = chat.entries.filter((e) => e.kind === 'run' && (e.ts ?? 0) > 0).map((e) => e.ts!);
-    const lastTwo = runTsList.slice(-2);
-    for (let i = lastTwo.length - 1; i >= 0; i -= 1) {
-      const from = lastTwo[i]!;
-      const to = i + 1 < lastTwo.length ? lastTwo[i + 1]! : Number.MAX_SAFE_INTEGER;
-      const c = boardTasks.filter((t) => (t.createdAt ?? 0) >= from && (t.createdAt ?? 0) < to).length;
-      if (c > 0) return c;
-    }
-    return 0;
-  }, [board, chat.entries]);
-  const wasRunningRef = useRef(false);
-  const pendingCaptureRef = useRef(false);
-  useEffect(() => {
-    if (running) {
-      if (!wasRunningRef.current) sawPlanRef.current = false; // 新轮开始清计划标记
-      wasRunningRef.current = true;
-      pendingCaptureRef.current = false;
-      return;
-    }
-    if (wasRunningRef.current) {
-      wasRunningRef.current = false;
-      // 收尾即挂起捕获:转录空壳(conn 重建快照未回)时等转录到齐的 entries effect 再落
-      pendingCaptureRef.current = true;
-    }
-  }, [running]);
-  useEffect(() => {
-    if (!pendingCaptureRef.current || running || chat.entries.length === 0 || sessionId === '') return;
-    pendingCaptureRef.current = false;
-    const lastRun = [...chat.entries].reverse().find((e) => e.kind === 'run');
-    const state: 'done' | 'interrupted' = lastRun?.stopped === true ? 'interrupted' : 'done';
-    const blocks: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number; done?: number }> = [];
-    if (todoTotal > 0) blocks.push({ kind: 'todo', count: todoTotal, done: todoTotal - todoActive });
-    if (sawPlanRef.current) blocks.push({ kind: 'plan', count: 1, done: 0 });
-    if (agentTeamsOn && taskCount > 0) blocks.push({ kind: 'task', count: taskCount, done: taskDone });
-    if (blocks.length === 0) return;
-    setRunBlocksHistory((h) => [{ state, blocks }, ...h].slice(0, 2)); // 最近两轮
-  }, [running, chat.entries, todoTotal, todoActive, taskCount, taskDone, sawPlanInRun, agentTeamsOn, sessionId]);
-  // 顶栏动态信息块(2026-11-11 用户裁定「最近两轮中最后生效块」,中断轮额外回溯一轮):
-  // 运行中=活值(转圈);收尾时把当前四类计数快照进历史(cap 2,最新在前,中断/跳过轮标记 interrupted);
-  // 每类取「最近的非零值」——运行中优先,否则最近快照;0 不显示
-  const dynBlocks = useMemo(() => {
-    // 数量=完整数量(2026-11-11 用户裁定「4 个待办就一直显示 4 个」:总数不随完成收缩);
-    // 待办/团队任务=「最近两轮的最近一个版」:团队任务按 createdAt 落进最近两轮的 run 窗口,
-    // 取最近一个有创建的窗口计数(2026-11-11 用户裁定「一个版包裹,比较好区分」);
-    // 后台任务特殊(用户裁定「只有运行中才显示,不管两轮」):有在跑的后台任务才显示,数量=在跑数
-    const live: Array<{ kind: 'todo' | 'plan' | 'task' | 'bg'; count: number; done: number; running: boolean }> = [];
-    // 待办全完成即不转圈(2026-11-11 用户裁定「全部完成显示图标就可以」):运行中且有未完成项才算跑
-    if (todoTotal > 0) live.push({ kind: 'todo', count: todoTotal, done: todoTotal - todoActive, running: running && todoActive > 0 });
-    if (sawPlanInRun) live.push({ kind: 'plan', count: 1, done: 0, running: planCards.length > 0 });
-    if (agentTeamsOn && taskCount > 0) live.push({ kind: 'task', count: taskCount, done: taskDone, running: taskRunning });
-    if (bgRunning > 0) live.push({ kind: 'bg', count: bgRunning, done: 0, running: true });
-    const byKind = new Map<string, { kind: 'todo' | 'plan' | 'task' | 'bg'; count: number; done: number; state: 'running' | 'done' }>();
-    for (const b of live) {
-      const prev = byKind.get(b.kind);
-      if (prev !== undefined && prev.state === 'running') continue; // 最近值优先,但运行态 sticky(任一快照在跑即算跑)
-      byKind.set(b.kind, { kind: b.kind, count: b.count, done: b.done, state: b.running ? 'running' : 'done' });
-    }
-    return [...byKind.values()];
-  }, [running, todoActive, todoTotal, sawPlanInRun, planCards.length, chat.entries, board, taskRunning, bgRunning, agentTeamsOn, runBlocksHistory]);
-  const lastLiveRun = running
-    ? [...chat.entries].reverse().find((e) => e.kind === 'run' && e.streaming === true)
-    : undefined;
-  const liveSteps = lastLiveRun?.stepsBase !== undefined ? Math.max(0, chat.steps - lastLiveRun.stepsBase) : chat.steps;
-  const liveTokens = lastLiveRun?.tokensBase !== undefined ? Math.max(0, chat.tokens - lastLiveRun.tokensBase) : chat.tokens;
+  // 顶栏动态信息块+最近两轮快照+轮内步数 tokens 基线差收口 use-chat-dyn-blocks(D62 批I)
+  const { dynBlocks, liveSteps, liveTokens } = useChatDynBlocks({ entries: chat.entries, board, todoTotal, todoActive, taskDone, taskRunning, planCardCount: planCards.length, bgRunning, agentTeamsOn, running, sessionId, chatSteps: chat.steps, chatTokens: chat.tokens });
   /** G14.74 回到底部钮:非贴底即显(滚动 handler 里置态,值不变时 React 自动跳过重渲染) */
   const [atBottom, setAtBottom] = useState(scrollRestoreRef.current === null); // G14.212 恢复中非贴底:跳底钮即显
   /** 等待模型待态(2026-10-27):idle 提交被接受→run-open 落地之间的空窗计时——上游首 token
@@ -613,130 +381,17 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  /** 图片附件(2026-10-26):composer 待发 dataURL 列(≤8 张)——粘贴/附件选择装载,send 发送即清;
-   *  查看浮层(lightbox)与提示条(超限/模型不支持)同挂本页 */
-  const [pendingImages, setPendingImages] = useState<string[]>([]);
-  // 草稿图持久化（用户裁定「发送前放到草稿中,和队列一样」）：按 journalId 稳定身份落 IndexedDB——
-  // 切换会话/重启回来不丢;发送即清。载入完成前跳过回写（防空初值覆盖已存档）。
-  const draftLoadedRef = useRef(false);
-  useEffect(() => {
-    draftLoadedRef.current = false;
-    let alive = true;
-    void loadDraftImages(archiveKey).then((imgs) => {
-      if (!alive) return;
-      setPendingImages(imgs);
-      draftLoadedRef.current = true;
-    });
-    return () => { alive = false; };
-  }, [archiveKey]);
-  useEffect(() => {
-    if (draftLoadedRef.current) void saveDraftImages(archiveKey, pendingImages);
-  }, [archiveKey, pendingImages]);
-  const [lightboxSrc, setLightboxSrc] = useState<string | undefined>(undefined);
-  const [imgHint, setImgHint] = useState<string | undefined>(undefined);
-  const imgHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (imgHintTimer.current !== null) clearTimeout(imgHintTimer.current);
-  }, []);
-  const showImgHint = useCallback((text: string): void => {
-    setImgHint(text);
-    if (imgHintTimer.current !== null) clearTimeout(imgHintTimer.current);
-    imgHintTimer.current = setTimeout(() => setImgHint(undefined), 2600);
-  }, []);
-  /** 当前模型图片能力(乐观缺省=支持):sessionModel choices supportsImages 显式 false 才拦 */
-  const modelSupportsImages = (() => {
-    const cur = modelInfo?.current;
-    if (cur === undefined || cur === '') return true;
-    return modelInfo?.choices.find((c) => c.id === cur)?.supportsImages !== false;
-  })();
-  /** 附件承接单点(粘贴/文件选择共用):不支持模型先拦;装载(转码)→ ≤8 张钳制→溢出提示 */
-  const addImageFiles = useCallback(
-    (files: File[]): void => {
-      if (!modelSupportsImages) {
-        showImgHint(t('Current model does not support image input', '当前模型不支持图片输入'));
-        return;
-      }
-      void loadImages(files).then((imgs) => {
-        if (imgs.length === 0) return;
-        setPendingImages((cur) => {
-          const { images, overflow } = appendImages(cur, imgs);
-          if (overflow > 0) showImgHint(t(`Up to ${MAX_IMAGES} images per message`, `每条消息最多 ${MAX_IMAGES} 张图片`));
-          return images;
-        });
-      });
-    },
-    [modelSupportsImages, showImgHint],
-  );
-
-  /** G7 write 展开的 diff 寻址键:条目 callId 直取(无 callId 面 undefined——不拉 diff,恒单列现内容) */
-  const callIdOf = (entry: ChatEntry): string | undefined => {
-    const cid = entry.callId;
-    return cid !== undefined && cid.length > 0 ? cid : undefined;
-  };
+  /** 图片附件簇(待发列/草稿图持久化/灯箱源/提示条/承接单点)收口 use-chat-images(D62 批I) */
+  const { pendingImages, setPendingImages, lightboxSrc, setLightboxSrc, imgHint, showImgHint, modelSupportsImages, addImageFiles } = useChatImages({ archiveKey, modelInfo });
 
 
 
-  /** pills/+ 面板外点收(面板内点与 + 钮自持——多选文件连续点选不闪收) */
-  useEffect(() => {
-    if (pillOpen === null) return;
-    const onDown = (e: MouseEvent): void => {
-      if (e.target instanceof Element) {
-        if (e.target.closest('.sx-plus-panel') !== null || e.target.closest('.composer-plus-btn') !== null) return;
-        if (pillOpen !== 'plus' && e.target.closest('.composer-pills') !== null) return;
-        setPillOpen(null);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [pillOpen]);
 
-  /** 归档/撤销归档(2026-10-21 T5):conn.archiveSession 落 daemon + 本地 archived 即时换面;
-   *  失败回摆(409 running 等不静默驻留假态),下次 reseed 快照再权威对齐;错误经 onOpError
-   *  (App showOpError 通道,与 fork/rewind 同一错误条)上屏——静默失败病根修复(终审 F4) */
-  const onArchive = useCallback((v: boolean): void => {
-    setArchived(v);
-    conn.archiveSession(sessionId, v).then(
-      () => onSessionsMutated?.(), // 落库后再上抛联动——落库前上抛,侧栏归档聚合读到旧档
-      (err: unknown) => {
-        setArchived(!v);
-        onOpError?.(err);
-      },
-    );
-  }, [conn, sessionId, onOpError, onSessionsMutated]);
-  // 他处入口(侧栏行/归档层撤销钮等)改归档态:顶栏徽标随事件同步。寻址 id 可能是运行时 id 或 journalId
-  useEffect(() => {
-    const onChanged = (e: Event): void => {
-      const { id, archived: v } = (e as CustomEvent<SessionArchiveChange>).detail;
-      if (id === sessionId || (journalId !== undefined && journalId !== '' && id === journalId)) setArchived(v);
-    };
-    window.addEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onChanged);
-  }, [sessionId, journalId]);
+  // pills/+ 面板外点收(面板内点与 + 钮自持)收口 usePopOutsideClose(D62 批J 共用件;D62 批I 接入)
+  usePopOutsideClose(pillOpen !== null, pillOpen === 'plus' ? '.sx-plus-panel' : '.composer-pills', pillOpen === 'plus' ? '.composer-plus-btn' : '.composer-pills', () => setPillOpen(null));
 
-  /** 运行收束即压已读(2026-10-23 用户裁定):打开中的会话跑完,流式内容已尽收眼底,不再重亮未读;
-   *  后台会话完成仍按 journal 更新时刻亮真未读(语义保留)。落库后再联动,侧栏重拉读到的才是新档 */
-  // 回调经 ref 读取、不入 effect 依赖:压读成功即上抛 → 宿主 bump → 重渲染,宿主回调身份若随渲染
-  // 变化,入依赖即「压读→重渲染→再压读」死循环(2026-11-07 实测 8.6 次/秒,主线程与连接池双占满)
-  const onSessionsMutatedRef = useRef(onSessionsMutated);
-  onSessionsMutatedRef.current = onSessionsMutated;
-  const prevRunningRef = useRef(running);
-  useEffect(() => {
-    const was = prevRunningRef.current;
-    prevRunningRef.current = running;
-    if (!was || running || journalId === undefined || journalId === '') return;
-    if (autoSeenSuppressed(journalId)) return; // 显式标记未读压制旗:蓝点亮到再次进入为止
-    const done = (): void => onSessionsMutatedRef.current?.();
-    void stampSeen(conn, journalId, Date.now()).then(done, done);
-  }, [running, journalId, conn]);
-  // journalId 到位即压已读(2026-11-07 用户实测「欢迎页升级首条完成仍亮未读」根修):升级链
-  // journalId 晚到(晚于首轮收束)——上一 effect 因 journalId 空恒跳过。本会话在座(本组件即打开面),
-  // journal 一旦寻得即刻压已读,与运行收束压读同语义。每个 journalId 只压一次
-  useEffect(() => {
-    if (journalId === undefined || journalId === '') return;
-    if (autoSeenSuppressed(journalId)) return; // 显式标记未读压制旗:蓝点亮到再次进入为止
-    const done = (): void => onSessionsMutatedRef.current?.();
-    void stampSeen(conn, journalId, Date.now()).then(done, done);
-  }, [journalId, conn]);
+  /** 归档/撤销归档+事件同步+运行收束/journalId 到位压已读簇收口 use-chat-seen-archive(D62 批I) */
+  const { onArchive } = useChatSeenArchive({ conn, sessionId, journalId, running, setArchived, onOpError, onSessionsMutated });
 
   // 提交路径 §7(批F-7a):hook 返还三件;ref 赋值留此(声明在事件 hook 前,恒取最新)
   const { submitText, send: sendRaw, interrupt } = useChatSubmit({
@@ -960,75 +615,18 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         nav={nav}
       />
 
-      {chat.history !== undefined && !chat.history.complete && (
-
-        <div className="chat-history-tip" role="status">
-
-          {chat.history.failed === true ? (
-
-            <button
-
-              type="button"
-
-              className="chat-history-retry"
-
-              onClick={() => setChat((c) => (c.history ? { ...c, history: { ...c.history, failed: false } } : c))}
-
-            >
-
-              {t('Older history failed to load — click to retry', '更早的会话加载失败——点击重试')}
-
-            </button>
-
-          ) : (
-
-            t('Loading earlier history…', '正在加载更早的会话…')
-
-          )}
-
-        </div>
-
-      )}
-
-      {/* 记忆/学习技能回显点击委托(2026-10-31 用户裁定「点击打开侧栏对应页签」):notice 行
-          data-notice-tag/ref 由 EntryViews 落 DOM,此处统一接管开页签+定位 */}
-      <div
-        style={{ display: 'contents' }}
-        onClick={(e) => {
-          const el = (e.target as HTMLElement).closest('[data-notice-tag]');
-          if (el === null) return;
-          const tag = el.getAttribute('data-notice-tag');
-          const ref = el.getAttribute('data-notice-ref') ?? '';
-          if (tag === 'memory') onOpenMemory?.(ref);
-          if (tag === 'skills') onOpenLearned?.(ref !== '' ? ref : undefined);
-        }}
-      >
-      <SelActionsOverlay
-        containerRef={chatScrollRef}
-        onInsert={(text, content) =>
-          // 2026-11-07 串扰根修:kind:'ref' 通道(token+content 同投)——主对话私有账本收,
-          // 规范化改名后 hover/展开不落全局注册表兜底(键跨会话共享会取到别会话同键内容)
-          window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token: text, content, target: 'main' } }))
-        }
-        onSideAsk={(text, content) => {
-          // 2026-11-06 用户裁定 P5:辅助会话内圈选「辅助会话提问」=插入当前侧 composer(不另开新辅助);
-          // 主对话语境=走 onSideAsk 开辅助草稿(App 路由)。
-          // 2026-11-07 串扰根修:辅助语境广播改 kind:'ref' 通道(token+content 同投,接收面写私有
-          // 账本);纯 text 广播只落文字不落账=规范化改名后 hover 落全局兜底取到别会话同键内容
-          if (sideChat === true) {
-            // sideId 作用域(2026-11-07 用户实测「A 会话截取,B 会话也多一枚」):广播只投本会话
-            window.dispatchEvent(new CustomEvent('sunshinex:insert-ref', { detail: { kind: 'ref', token: text, content, target: 'side', sideId: sessionId } }));
-            return;
-          }
-          onSideAsk?.(text, content);
-        }}
-      />
-      <MessageList
+      <ChatTranscript
+        history={chat.history}
+        setChat={setChat}
+        onOpenMemory={onOpenMemory}
+        onOpenLearned={onOpenLearned}
+        onOpenTab={onOpenTab}
+        onTodoLocate={onTodoLocate}
+        onSideAsk={onSideAsk}
         entries={chat.entries}
         structureVersion={chat.structureVersion}
         seedGen={chat.seedGen}
         hiddenKeys={hiddenKeys}
-        callIdOf={callIdOf}
         conn={conn}
         sessionId={sessionId}
         root={root}
@@ -1040,10 +638,6 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onOpenDiff={onOpenDiff}
         onOpenAgent={onOpenAgent}
         onOpenTask={onOpenTask}
-        onOpenTodos={(todos) => {
-          onOpenTab?.('tasks');
-          onTodoLocate?.(todos);
-        }}
         taskNameOf={taskNameOf}
         taskAgentOf={taskAgentOf}
         teamNameOf={teamNameOf}
@@ -1071,266 +665,93 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         liveTokens={liveTokens}
         onOpenImage={setLightboxSrc}
       />
-      </div>
-      {/* 2026-10-27 固定长纵向滚动条(用户裁定「长度应该固定,不像现在抖动分段」):仅主对话挂载
+            {/* 2026-10-27 固定长纵向滚动条(用户裁定「长度应该固定,不像现在抖动分段」):仅主对话挂载
        *  (overlay 定位于 .sx-main);侧栏 dock/其余滚动面保原生条 */}
       {sideChat !== true && <ChatScrollbar containerRef={chatScrollRef} bottomOffset={dockOpen ? dockHeight : undefined} />}
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
        *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
-      <div className="chat-dock" ref={dockRef}>
-        <div className="chat-dock-fade" aria-hidden="true" />
-      {/* G14.88 审批挂起时队列条隐藏(dock 整体让位确认框),确认/拒绝后恢复 */}
-      {queued.length > 0 && approvalCards.length === 0 && planCards.length === 0 && (
-        <SteerQueue
-          queued={queued}
-          queueFolded={queueFolded}
-          setQueueFolded={setQueueFolded}
-          setQueued={setQueued}
-          conn={conn}
-          sessionId={sessionId}
-          refreshQueued={refreshQueued}
-          pauseAndSend={pauseAndSend}
-          setInput={setInput}
-          setImages={setPendingImages}
-          entryTexts={entryTexts}
-        />
-      )}
-        {!atBottom && (
-          <button
-            type="button"
-            className="jump-down"
-            aria-label="scroll to bottom"
-            data-tip={t('Scroll to bottom', '回到底部')}
-            onClick={() => {
-              const el = chatScrollRef.current;
-              // G14.74 跳底 + 迭代校正(2026-10-27):CV 估算高一次 scrollTo 落点偏短要连点多次,追平收口
-              if (el !== null) chaseScrollBottom(el);
-            }}
-          >
-            <ArrowDown size={16} strokeWidth={2} aria-hidden="true" />
-          </button>
-        )}
-        {planCards.length > 0 ? (
-          /* 阶段三 plan-arm(spec §5.2):计划确认卡 dock(与 approval/ask 同容器形态)——批准/
-            反馈回执后移卡恢复输入框;裁决期间 composer 由 dock 顶替(同 G14.88 审批挂起口径) */
-          <div className="ask-dock">
-            {planCards.map((c) => (
-              <PlanCard key={c.pid} doc={c.req.doc} items={c.req.items} name={c.req.name} path={c.req.path} mode={sessMode} onOpenFile={onOpenFile} onDecide={(d) => sendPlanApproval(c.pid, d)} />
-            ))}
-          </div>
-        ) : approvalCards.length > 0 ? (
-          /* G14.88:审批挂起时输入框变为确认框(与 ask 同形)——Allow/Deny/Always 回执后恢复输入框 */
-          <div className="ask-dock">
-            {approvalCards.map((c) => (
-              <ApprovalCard key={c.pid} req={c.req} onDecision={(d) => sendApproval(c.pid, d)} />
-            ))}
-          </div>
-        ) : askCards.length > 0 ? (
-          <AskDock askCards={askCards} askPicks={askPicks} setAskPicks={setAskPicks} sendAsk={sendAsk} onOpenAgent={onOpenAgent} />
-        ) : (
-        <ComposerCard
-          className="chat-composer"
-          label="message input"
-          refLedger={refContentsRef}
-        images={pendingImages}
-        onRemoveImage={(i) => setPendingImages((cur) => cur.filter((_, idx) => idx !== i))}
-        onImageOpen={setLightboxSrc}
-        onPasteFiles={addImageFiles}
-        belowInput={
-          imgHint !== undefined ? (
-            <div className="sx-img-hint" role="status">{imgHint}</div>
-          ) : pendingImages.length > 0 && !modelSupportsImages ? (
-            <div className="sx-img-hint warn" role="status">{t('Current model does not support image input', '当前模型不支持图片输入')}</div>
-          ) : undefined
-        }
-        value={input}
-        rows={Math.min(6, Math.max(1, (input.match(/\n/g) ?? []).length + 1))}
-        placeholder={running ? t('Insert into the running session…', '插入运行中会话…') : sideChat === true ? t('Ask something…', '问点什么…') : t('Give Sunshinex a task…', '给 Sunshinex 一个任务…')}
-        disabled={connState !== 'open' || seeding}
-        onChange={(v) => {
-          setInput(v);
-          // G14.124 面板跟随输入(光标前 @token 即开,裸 @ 也开);无匹配=渲染面自然关闭
-          const caret = inputRef.current?.selectionStart ?? v.length;
-          const m = /@([\w./:\\-]*)$/.exec(v.slice(0, caret));
-          // agents-teams P1 §3.2 $/# 引用面板同款跟随(与 @ 互斥:同一 caret 前缀不可能同时
-          // 以 @词与 $/#词 收尾;@ 命中即收引用面板,反之亦然)
-          const rt = refTokenAt(v, caret);
-          if (m !== null) {
-            setFilePal({ query: m[1] ?? '', from: caret - (m[1]?.length ?? 0) - 1 });
-            // G14.2xx 查询变更即重置 active:残留箭头位在新命中集上会指向邻项(回车选中非目标)
-            setFilePalActive(0);
-            void loadWorkspaceFiles().then((files) => setFilePalFiles(files));
-            setRefPal(null);
-          } else if (rt !== null) {
-            setRefPal(rt);
-            setRefActive(0);
-            loadRefEntries();
-          } else {
-            if (filePal !== null) setFilePal(null);
-            if (refPal !== null) setRefPal(null);
-          }
-        }}
-        onKeyDown={composerKeys.onKeyDown}
-        onBeforeInput={composerKeys.onBeforeInput}
-        onPasteGuard={composerKeys.onPasteGuard}
-        onCompositionGuard={composerKeys.onCompositionGuard}
-        onCompositionRange={setCompRange}
-        onCompositionEndGuard={composerKeys.onCompositionEndGuard}
-        onSelectGuard={composerKeys.onSelectGuard}
-        overlays={
-          // agents-teams P1 §3.2 $/# 引用面板(链首=与 @/+/命令面板互斥;R4 插入 `$id `/`#id `
-          // 尾随空格即终态,无记账;光标钉插入 token 后沿——G14.211 同款)
-          refPal !== null && refPanelItems !== null ? (
-            <RefPalette
-              items={refPanelItems}
-              emptyHint={
-                refEntries.agents.length === 0 && refEntries.teams.length === 0
-                  ? t(
-                      'No registered sub-agents or teams yet — create them in Settings → Agents / Agent Teams, then reference here with $ or #',
-                      '尚无在册子智能体/团队 — 在 设置 → 智能体 / 智能体团队 创建后，即可在此 $ 引用 / # 拉队',
-                    )
-                  : t('No matching entry', '无匹配条目')
-              }
-              active={Math.max(0, Math.min(refActive, refPanelItems.length - 1))}
-              onHover={setRefActive}
-              onPick={(item) => {
-                const from = refPal.from;
-                const end = from + 1 + refPal.query.length;
-                // 分隔符守卫(2026-11-05):锚位前贴着 ⟧(芯片尾沿,无空白)时补半角空格——
-                // 否则 $id/#id 直接粘在芯片后,tokenizer (^|\s) 不识别=引用渲染成白文
-                setInput((prev) => {
-                  const head = prev.slice(0, from);
-                  const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
-                  return head + sep + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from));
-                });
-                setRefPal(null);
-                inputRef.current?.focus();
-                requestAnimationFrame(() => {
-                  const ta = inputRef.current;
-                  if (ta === null) return;
-                  const to = Math.min(from + item.id.length + 2, ta.value.length);
-                  ta.setSelectionRange(to, to);
-                });
-              }}
-            />
-          ) : // G14.121 @ 文件面板(此前数据链在而渲染面缺失——@ 弹窗从未出现的根因):命中才渲染;
-            // G14.211 锚点校验:@ 已被整删/程序化改写后 filePal 残留,锚位不再是 '@' 即不渲染
-            filePal !== null && input[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
-            <FilePalette
-              items={rankFileHits(filePalFiles, filePal.query)}
-              active={Math.min(filePalActive, 11)}
-              onHover={setFilePalActive}
-              onPick={(p) => {
-                // G14.126 选中只插短写 @文件名,相对路径记入账本(发送期展开)
-                const base = pathBasename(p);
-                pickRelRef.current.set(base, p);
-                const atFrom = filePal.from;
-                const atEnd = atFrom + 1 + filePal.query.length;
-                setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-                setFilePal(null);
-                inputRef.current?.focus();
-                // G14.211 光标钉在插入 token 之后(@+名+空格右沿):面板行点击前 textarea 的
-                // 旧光标位在 @query 内,focus 恢复旧位=落回 token 中间
-                requestAnimationFrame(() => {
-                  const ta = inputRef.current;
-                  if (ta === null) return;
-                  const to = Math.min(atFrom + base.length + 2, ta.value.length);
-                  ta.setSelectionRange(to, to);
-                });
-              }}
-            />
-          ) : pillOpen === 'plus' ? (
-            <ComposerPlusPanel
-              conn={conn}
-              sessionId={sessionId}
-              root={root}
-              onAttachImages={addImageFiles}
-              onInsert={(text) => {
-                // 2026-11-05 用户裁定:+面板智能体/团队区插整 token(`$id `/`#id `)——与命令/技能
-                // 行同款落文本即收,不再有裸符号触发行(引用面板交给输入触发)
-                setInput((v) => (v.trim() === '' ? text : `${v.replace(/\s+$/, '')} ${text}`));
-                setPillOpen(null);
-                inputRef.current?.focus();
-              }}
-            />
-          ) : slashPanelItems !== null ? (
-            (() => {
-              const items = slashPanelItems;
-              const active = Math.min(cmdActive, Math.max(0, items.length - 1));
-              const pick = (item: CmdItem): void => {
-                if (!item.ok) return;
-                const tok = slashTokenAt(input, input.length);
-                const from = tok !== null ? tok.from : input.length;
-                const caret = inputRef.current?.selectionStart ?? input.length;
-                // 分隔符守卫(2026-11-05):落点前贴着 ⟧(芯片尾沿,透明不显)时补半角空格——
-                // 芯片后落选 /cmd 即粘成 ⟧/cmd,tokenizer (^|\s) 不识别=「文本后面的技能
-                // 无法识别成命令蓝色」根因之二
-                const head = input.slice(0, from);
-                const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
-                setInput(head + sep + item.cmd + ' ' + input.slice(caret));
-              };
-              return <CommandPalette items={items} active={active} onHover={setCmdActive} onPick={pick} />;
-            })()
-          ) : null
-        }
+      <ChatComposerDock
+        dockRef={dockRef}
+        conn={conn}
+        sessionId={sessionId}
+        root={root}
+        sideChat={sideChat}
+        connState={connState}
+        queued={queued}
+        setQueued={setQueued}
+        queueFolded={queueFolded}
+        setQueueFolded={setQueueFolded}
+        refreshQueued={refreshQueued}
+        pauseAndSend={pauseAndSend}
+        entryTexts={entryTexts}
+        atBottom={atBottom}
+        chatScrollRef={chatScrollRef}
+        askCards={askCards}
+        approvalCards={approvalCards}
+        planCards={planCards}
+        askPicks={askPicks}
+        setAskPicks={setAskPicks}
+        sendAsk={sendAsk}
+        sendApproval={sendApproval}
+        sendPlanApproval={sendPlanApproval}
+        onOpenAgent={onOpenAgent}
+        onOpenFile={onOpenFile}
+        sessMode={sessMode}
+        setSessMode={setSessMode}
+        sessEffort={sessEffort}
+        setSessEffort={setSessEffort}
+        refContentsRef={refContentsRef}
+        pendingImages={pendingImages}
+        setPendingImages={setPendingImages}
+        setLightboxSrc={setLightboxSrc}
+        addImageFiles={addImageFiles}
+        imgHint={imgHint}
+        modelSupportsImages={modelSupportsImages}
+        input={input}
+        setInput={setInput}
         inputRef={inputRef}
-        highlight={renderHighlightSpans(input)}
+        running={running}
+        seeding={seeding}
+        composerKeys={composerKeys}
+        setCompRange={setCompRange}
+        refPal={refPal}
+        setRefPal={setRefPal}
+        refPanelItems={refPanelItems}
+        refEntries={refEntries}
+        refActive={refActive}
+        setRefActive={setRefActive}
+        filePal={filePal}
+        setFilePal={setFilePal}
+        filePalFiles={filePalFiles}
+        setFilePalFiles={setFilePalFiles}
+        filePalActive={filePalActive}
+        setFilePalActive={setFilePalActive}
+        loadWorkspaceFiles={loadWorkspaceFiles}
+        loadRefEntries={loadRefEntries}
+        pillOpen={pillOpen}
+        setPillOpen={setPillOpen}
+        pickRelRef={pickRelRef}
+        slashPanelItems={slashPanelItems}
+        cmdActive={cmdActive}
+        setCmdActive={setCmdActive}
+        renderHighlightSpans={renderHighlightSpans}
         onInputClick={onInputClick}
-        onDropFile={(rel) => {
-          // G14.144 拖入文件 → caret 处插 @短写(insertRefToken 单点;G14.211 光标钉位随单点)
-          insertRefToken(rel, { get: () => input, set: setInput, ta: () => inputRef.current, ledger: pickRelRef.current });
-        }}
-        onDropPaths={(paths) => {
-          // 外部拖拽(2026-11-14 资源管理器拖文件/文件夹进输入框):绝对路径归一 @短写(根下相对化),
-          // 与内部树拖入同语言(高亮可点,发送期 @ 展开解析)
-          for (const { base, ledger } of dropRefsOf(paths, root)) {
-            insertRefBase(base, ledger, { get: () => input, set: setInput, ta: () => inputRef.current, ledger: pickRelRef.current });
-          }
-        }}
-        footLeft={
-          <ComposerPillsLeft
-            pillOpen={pillOpen}
-            setPillOpen={setPillOpen}
-            sessMode={sessMode}
-            setSessMode={setSessMode}
-            conn={conn}
-            sessionId={sessionId}
-            terminalDockEnabled={terminalDockEnabled}
-            dockOpen={dockOpen}
-            onToggleDock={() => setDockOpen((v) => !v)}
-          />
-        }
-        footRight={
-          <ComposerPillsRight
-            pillOpen={pillOpen}
-            setPillOpen={setPillOpen}
-            conn={conn}
-            sessionId={sessionId}
-            ctxInfo={ctxInfo}
-            refreshCtx={refreshCtx}
-            runCount={runCount}
-            steps={chat.steps}
-            tokens={chat.tokens}
-            cacheTokens={chat.cacheTokens}
-            modelInfo={modelInfo}
-            setModelInfo={setModelInfo}
-            sessEffort={sessEffort}
-            setSessEffort={setSessEffort}
-            running={running}
-            input={input}
-            send={send}
-            interrupt={interrupt}
-            connState={connState}
-            seeding={seeding}
-            sendLoading={awaitModelSince !== null}
-            terminalDockEnabled={terminalDockEnabled}
-          />
-        }
-        />
-        )
-        }
-      </div>
+        terminalDockEnabled={terminalDockEnabled}
+        dockOpen={dockOpen}
+        setDockOpen={setDockOpen}
+        ctxInfo={ctxInfo}
+        refreshCtx={refreshCtx}
+        runCount={runCount}
+        steps={chat.steps}
+        tokens={chat.tokens}
+        cacheTokens={chat.cacheTokens}
+        modelInfo={modelInfo}
+        setModelInfo={setModelInfo}
+        send={send}
+        interrupt={interrupt}
+        awaitModelSince={awaitModelSince}
+      />
       {/* 2026-11-10 终端下栏改版(用户六条):主对话对等区(.sx-main 直子,非 chat-dock 内——主对话滚条
          bottom 让位不再盖进下栏)——分割线+拖动条(侧栏分割条同款横置)+页签条(侧栏页签同形条形)。
          标签 × 走 App 既有 kill 链,面板 × 只收显不 kill——重开经 ptyIdFor 同 uid 重连 replay 还原 */}
