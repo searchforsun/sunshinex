@@ -50,6 +50,7 @@ function stubConn(opts: {
   sunxRows?: SessionRow[];
   snapshot?: (id: string) => Promise<unknown>;
   snapshotBoom?: boolean;
+  tasks?: (id: string) => Promise<unknown[]>;
 }) {
   const calls = {
     snapshotArgs: [] as Array<{ id: string; opts: { bumpSeq?: boolean } | undefined }>,
@@ -65,6 +66,7 @@ function stubConn(opts: {
       if (opts.snapshotBoom) return Promise.reject(new Error('snapshot 404'));
       return Promise.resolve(opts.snapshot?.(id) ?? snapResp([]));
     },
+    sessionTasks: (id: string) => Promise.resolve(opts.tasks?.(id) ?? []),
     // NewSunxDialog 面(入口卡开弹窗才触;弹窗挂 use-welcome-workspaces 工作区下拉)
     workspaces: () => Promise.resolve([{ slug: 'alpha', root: 'D:/w/alpha', mtime: 1, sessionCount: 1 }]),
     createWorkspace: () => Promise.resolve({ ok: true as const, root: 'D:/w/alpha', slug: 'alpha' }),
@@ -79,9 +81,17 @@ function stubConn(opts: {
 const alphaJ1 = () => stubConn({
   sunxRows: [
     sunxRow('j1', { liveSessionId: 'sx1', updatedAt: 900 }),
-    sunxRow('j3', { updatedAt: 800 }), // 未挂载(无 liveSessionId):零快照
+    sunxRow('j3', { updatedAt: 800 }), // 未挂载(无 liveSessionId):零快照+零账本
     { ...sunxRow('j4', { updatedAt: 700 }), kind: undefined }, // 杂散行:sunxRowsOf 前端守卫滤除(服务端恒 sunx,降级防线)
   ],
+  // 任务账本(dispatch_task 的 spawn=kind 'subagent' 在册;后台任务页签同源):running 2/done 1/stopped 1
+  tasks: () =>
+    Promise.resolve([
+      { id: 't1', kind: 'subagent', label: '任务一', status: 'running', startedAt: 100 },
+      { id: 't2', kind: 'subagent', label: '任务二', status: 'running', startedAt: 200 },
+      { id: 't3', kind: 'subagent', label: '任务三', status: 'done', startedAt: 300, endedAt: 400 },
+      { id: 't4', kind: 'subagent', label: '任务四', status: 'stopped', startedAt: 500, endedAt: 600 },
+    ]),
   snapshot: () =>
     Promise.resolve(
       snapResp(
@@ -104,13 +114,23 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     const { conn, calls } = alphaJ1();
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
-    // 聚合条:运行中 1 / 进行中任务 2 / 等待确认 2(仅 j1 挂载且带快照;卡片徽标另有「等待确认」文本,聚合条按 aria 容器定位)
+    // 聚合条:运行中实例 1 / 账本五态(进行中任务 2·完成 1·已取消 1,等待/失败零不显)/等待确认 2
+    // (仅 j1 挂载且带快照;卡片徽标另有「等待确认」文本,聚合条按 aria 容器定位)
     const stats = screen.getByLabelText('sunx board aggregate').textContent ?? '';
     expect(stats).toContain('运行中 1');
     expect(stats).toContain('进行中任务 2');
+    expect(stats).toContain('完成 1');
+    expect(stats).toContain('已取消 1');
     expect(stats).toContain('等待确认 2');
-    // 卡片进度行:进行中 2 · 完成 1;未挂载行计数归零;杂散行滤除(Sunx j4 不在)
-    expect(screen.getByText(/进行中 2 · 完成 1/)).toBeDefined();
+    expect(stats).not.toContain('等待 1'); // 零计数 chip 不显(团队板「等待」桶零=隐)
+    // 卡片五态 chips:进行中 2/完成 1/已取消 1(账本同源计数,点=tb-status-dot 同件);未挂载零计数;杂散行滤除
+    const card = screen.getByText('Sunx j1').closest('button')!;
+    const progress = card.querySelector('.sx-sunxboard-progress')?.textContent ?? '';
+    expect(progress).toContain('进行中 2');
+    expect(progress).toContain('完成 1');
+    expect(progress).toContain('已取消 1');
+    expect(progress).not.toContain('等待'); // 「等待」桶零=不显
+    expect(card.querySelector('.sx-sunxboard-progress .tb-status-dot.task-status-running')).not.toBeNull();
     expect(screen.queryByText('Sunx j4')).toBeNull();
     // 未挂载行在卡(降级零计数),快照只对 sx1 拉一次且带 bumpSeq:false
     expect(screen.getByText('Sunx j3')).toBeDefined();
@@ -158,23 +178,28 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     expect(screen.getByRole('button', { name: 'new sunx' })).toBeDefined();
   });
 
-  it('快照失败行降级:live 点仍在(行标注)、计数归零、无等待确认徽标,整页不炸', async () => {
+  it('快照失败行降级:live 点仍在(行标注,tb-status-dot 转动环)、五态归零(暂无任务)、无等待确认徽标,整页不炸', async () => {
     const { conn } = stubConn({
       sunxRows: [sunxRow('j1', { liveSessionId: 'sx1' })],
       snapshotBoom: true,
+      tasks: () => Promise.resolve([{ id: 't1', kind: 'subagent', label: '任务一', status: 'done', startedAt: 100, endedAt: 200 }]),
     });
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
-    expect(screen.getByText('Sunx j1').closest('button')!.querySelector('.sx-sunxboard-dot.live')).not.toBeNull();
-    expect(screen.getByText(/进行中 0 · 完成 0/)).toBeDefined();
-    // 聚合条等待确认=0(快照缺席不计);卡片无徽标——聚合条外无第二处「等待确认」
-    expect(screen.getAllByText(/等待确认/)).toHaveLength(1);
+    const card = screen.getByText('Sunx j1').closest('button')!;
+    // live 点=tb-status-dot 转动环(团队板同件,2026-11-16 用户裁定图标对齐)
+    expect(card.querySelector('.tb-status-dot.task-status-running')).not.toBeNull();
+    // 快照缺席:等待确认退行级(行级 awaiting=false=0)→零徽标;账本计数照用(完成 1)
+    expect(card.textContent).toContain('完成 1');
+    // 聚合条等待确认=0(快照缺席不计)→零 chip 不显;卡片无徽标——整页零「等待确认」
+    expect(screen.queryAllByText(/等待确认/)).toHaveLength(0);
   });
 
   it('sunxSessions 拉取失败:整页空卡网格降级不炸(空态文案在场)', async () => {
     const conn = {
       sunxSessions: () => Promise.reject(new Error('503')),
       sessionSnapshot: () => Promise.reject(new Error('404')),
+      sessionTasks: () => Promise.reject(new Error('404')),
     } as unknown as Connection;
     render(<SunxBoardTab conn={conn} />);
     await waitFor(() => expect(screen.getByText(/还没有 Sunx 实例/)).toBeDefined(), { timeout: 2000 });

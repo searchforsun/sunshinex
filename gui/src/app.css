@@ -4263,3 +4263,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 「新建 Sunx」入口卡(spec §17.3):虚线边框=创建语义,与实例卡同宽栅格 */
 .sx-sunxboard-entry { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 8px 8px 4px; padding: 10px 12px; background: transparent; color: var(--fg-secondary); border: 1px dashed var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: calc(14px * var(--fz)); }
 .sx-sunxboard-entry:hover { color: var(--fg); border-color: var(--border-strong); }
+/* SUNX 总览卡五态 chips(2026-11-16 用户裁定「状态图标用项目已有的」):点=团队板 .tb-status-dot
+   同件同尺寸,布局小件本卡私有(点+词+计数的行内排布) */
+.sx-sunxboard-chip { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; white-space: nowrap; }
+.sx-sunxboard-chip .tb-status-dot { position: static; transform: none; }
