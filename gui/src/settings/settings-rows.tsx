@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Select } from './controls';
+import { Switch } from './components';
 import { t } from '../i18n';
 import { applyTheme, currentTheme, readThemePref, watchSystemTheme, watchThemeChange } from '../theme';
 import type { ThemePref } from '../theme';
@@ -271,8 +272,9 @@ function FontSizeRow({ label, desc, aria, choices, read, apply }: {
   );
 }
 
-/** 暗色面开关行(2026-11-12 用户裁定「暗色气泡/暗色代码」):亮色模式下对应面改用暗色主题色;
- *  开/关 select 同外观行口径(dark-surfaces.ts 落根 data 属性,UI 偏好双写通路) */
+/** 暗色面开关行(2026-11-12 用户裁定「暗色气泡/暗色代码」;2026-11-17 用户裁定「布尔行换胶囊
+ *  开关,与下拉框左对齐」):开/关 select 退役→Switch 统一开关(sx-switch 令牌);控件列左对齐
+ *  (sx-setting-ctl 左缘=下拉框同位);dark-surfaces.ts 落根 data 属性,UI 偏好双写通路 */
 function DarkSurfaceRow({ label, desc, aria, read, apply }: {
   label: string;
   desc: string;
@@ -290,17 +292,13 @@ function DarkSurfaceRow({ label, desc, aria, read, apply }: {
         <p className="sx-setting-desc">{desc}</p>
       </div>
       <div className="sx-setting-ctl">
-        <Select
-          ariaLabel={aria}
-          value={on ? 'on' : 'off'}
-          options={[
-            { v: 'on', l: t('On', '开') },
-            { v: 'off', l: t('Off', '关') },
-          ]}
-          onChange={(v) => {
-            setOn(v === 'on');
-            apply(v === 'on');
+        <Switch
+          on={on}
+          onToggle={() => {
+            setOn(!on);
+            apply(!on);
           }}
+          ariaLabel={aria}
         />
       </div>
     </div>

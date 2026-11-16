@@ -6,6 +6,34 @@ import { SourceBadge } from './SourceBadge';
 import type { SourceBadgeProps } from './SourceBadge';
 import { Select } from './controls';
 
+/** 统一开关(2026-11-17 用户裁定「设置页所有开关换胶囊按钮,黑白灰配色,不要绿色,稍大」):
+ *  sx-switch 令牌单点——胶囊形状(corner-shape:initial 拔出全局超椭园级联,端部正圆弧不被拉椭圆);
+ *  on=var(--fg) 黑白反色(原 --ok 绿退役),off=fg 20% 灰;40×22 较原 26×15 大一档。
+ *  设置页布尔行(DarkSurfaceRow)与各卡片头开关(MCP/插件/技能/资源卡)共用 */
+export function Switch({ on, onToggle, ariaLabel, disabled, title }: {
+  readonly on: boolean;
+  readonly onToggle: () => void;
+  readonly ariaLabel: string;
+  readonly disabled?: boolean;
+  /** env 覆盖禁编提示等(data-tip 全局单例气泡面) */
+  readonly title?: string;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={ariaLabel}
+      className={`sx-switch${on ? ' on' : ''}`}
+      onClick={onToggle}
+      disabled={disabled}
+      data-tip={title}
+    >
+      <span className="knob" aria-hidden="true" />
+    </button>
+  );
+}
+
 /**
  * Task 21 设置共享组件 kit(Phase F 六面板改版的统一消费面,T22-27 逐页verbatim消费):
  * - ScopeSelect:作用域目标选择器下拉(共享 Select 弹层控件)——资源页工具栏内联目标选择面
@@ -14,7 +42,7 @@ import { Select } from './controls';
  *   项目按项目名可选,选哪个项目五资源页就读写哪个项目的配置,不再限于当前打开的会话项目)。
  * - SearchBar:受控输入+内置 200ms 防抖(契约见 SearchBarProps 注)——列表过滤统一入口。
  * - ResourceCard:资源卡(icon/标题/副题/来源徽标/chips/开关/actions)——结构沿 sx-mcp-card
- *   现行卡片语言(surface-elevated 面+border 圆角+头部行),开关复用 .sx-mcp-switch 令牌;
+ *   现行卡片语言(surface-elevated 面+border 圆角+头部行),开关=Switch 组件(sx-switch 令牌);
  *   children=折叠详情(<details>,summary「Details/详情」)。
  * - EditorModal:居中模态编辑对话框(遮罩+居中;Cancel/右上 ×/Esc/遮罩点击=onClose,Save=
  *   onSubmit)——raw/JSON 类编辑面统一容器(2026-10-29 用户裁定:弹窗替换右滑抽屉;Esc 走
@@ -178,8 +206,8 @@ export function SearchBar({ value, placeholder, onChange }: SearchBarProps): JSX
 }
 
 /** ResourceCard props:icon 任意节点(aria-hidden 装饰位);subtitle 副题行;chips 任意 chips 行
- *  (sx-chip 令牌);badge=SourceBadgeProps 直通;enabled+onToggle 同在才渲染开关(role=switch,
- *  aria-label=`Enable {title}`——沿 McpPane 惯例,enabled 缺省 true);actions=卡尾操作钮行;
+ *  (sx-chip 令牌);badge=SourceBadgeProps 直通;enabled+onToggle 同在才渲染开关(Switch 组件,
+ *  aria-label=`Enable {title}`——enabled 缺省 true);actions=卡尾操作钮行;
  *  body=直显卡身(2026-10-31 用户裁定:描述等内容不折「详情」,直接展示);children=折叠详情
  *  (<details>,summary「Details/详情」)。根元素 <li>——置于 ul.sx-rc-list(或既有 sx-mcp-list
  *  语言)列表内消费 */
@@ -197,7 +225,7 @@ export interface ResourceCardProps {
 }
 
 /** 资源卡统一骨架(六面板改版共用):头部行(icon/标题/副题/徽标/开关)+chips 行+actions 行+
- *  body 直显行+折叠详情。开关复用 .sx-mcp-switch 令牌(on=--ok 绿) */
+ *  body 直显行+折叠详情。开关=Switch 组件(sx-switch 令牌,on=黑白反色) */
 export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onToggle, actions, body, children }: ResourceCardProps): JSX.Element {
   const on = enabled !== false;
   return (
@@ -212,16 +240,11 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
         {subtitle !== undefined && <span className="sx-rc-subtitle">{subtitle}</span>}
         {badge !== undefined && <SourceBadge {...badge} />}
         {onToggle !== undefined && (
-          <button
-            type="button"
-            role="switch"
-            aria-checked={on}
-            aria-label={`${t('Enable', '启用')} ${title}`}
-            className={`sx-mcp-switch${on ? ' on' : ''}`}
-            onClick={onToggle}
-          >
-            <span className="knob" aria-hidden="true" />
-          </button>
+          <Switch
+            on={on}
+            onToggle={onToggle}
+            ariaLabel={`${t('Enable', '启用')} ${title}`}
+          />
         )}
       </div>
       {chips !== undefined && <div className="sx-rc-chips">{chips}</div>}

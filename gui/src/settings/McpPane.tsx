@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult, McpOpInput } from '../connection';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
 
@@ -500,18 +500,13 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
                   const off = (s.disabledTools ?? []).includes(tl.name);
                   return (
                     <li key={tl.name} className="sx-mcp-tool">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={!off}
-                        aria-label={tl.name}
-                        data-tip={tl.description !== undefined && tl.description !== '' ? tl.description : undefined}
+                      <Switch
+                        on={!off}
+                        onToggle={() => toggleTool(s, tl.name)}
+                        ariaLabel={tl.name}
                         disabled={!writable || saving}
-                        className={`sx-mcp-switch${off ? '' : ' on'}`}
-                        onClick={() => toggleTool(s, tl.name)}
-                      >
-                        <span className="knob" aria-hidden="true" />
-                      </button>
+                        title={tl.description !== undefined && tl.description !== '' ? tl.description : undefined}
+                      />
                       <span className={`sx-mcp-tool-name${off ? ' off' : ''}`}>{tl.name}</span>
                     </li>
                   );

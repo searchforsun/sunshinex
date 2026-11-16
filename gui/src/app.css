@@ -2559,7 +2559,7 @@ input.sx-setting-input { width: 100%; }
 .sx-skills-filter { flex: none; width: 150px; }
 .sx-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 /* 来源 chip 退役(项目名无法区分来源,绝对路径行承担;项目名仍留 hover)——sx-skill-src 样式随行退役 */
-.sx-skill-card .sx-mcp-switch { flex: none; }
+.sx-skill-card .sx-switch { flex: none; }
 /* 分节展示(2026-11-07 用户裁定「用不同的开头分组分开展示」):项目/全局/学习沉淀各成节,节头=标签+条数 */
 .sx-skill-section { margin-top: 14px; }
 .sx-skill-section:first-of-type { margin-top: 0; }
@@ -2621,7 +2621,7 @@ input.sx-setting-input { width: 100%; }
    .tb-status-dot 另在基类挂 clip-path:circle(后台任务菱形根修)。选择器组不可混入 ::-moz-* */
 .todo-dot, .sx-session-dot, .sx-status-dot, .sx-tree-dot, .sx-api-dot, .sx-welcome-dot,
 .conn-dot, .tb-status-dot, .ctx-pop-row .ctx-dot, .ctx-ring-btn, .run-spinner,
-.sx-img-remove, .sx-pin-btn, .sx-src-badge::before, .sx-mcp-dot, .sx-mcp-switch .knob,
+.sx-img-remove, .sx-pin-btn, .sx-src-badge::before, .sx-mcp-dot, .sx-switch .knob,
 .effort-slider input[type="range"]::-webkit-slider-thumb { corner-shape: initial; }
 /* 后台/任务板状态点:盖过全局 * 超椭圆(同特异性时后写胜;再加 clip-path 双保险) */
 .tb-status-dot { corner-shape: initial; clip-path: circle(50% at 50% 50%); }
@@ -2923,15 +2923,22 @@ input.sx-setting-input { width: 100%; }
 .sx-mcp-dot.probe{border:1px solid var(--fg-tertiary)}
 .sx-mcp-dot.off{border:1px solid color-mix(in srgb,var(--fg) 34%,transparent)}
 .sx-mcp-card.disabled{opacity:0.62}
-.sx-mcp-switch{width:26px;height:15px;border-radius:8px;border:none;padding:0;cursor:pointer;flex:none;position:relative;background:color-mix(in srgb,var(--fg) 20%,transparent);transition:background var(--dur-basic) var(--ease-enter);margin-left:auto}
-.sx-mcp-switch .knob{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--surface-elevated);transition:left var(--dur-basic) var(--ease-enter)}
-.sx-mcp-switch.on{background:var(--ok)}
-.sx-mcp-switch.on .knob{left:13px}
-.sx-mcp-switch:disabled{cursor:default;opacity:0.55}
+/* ===== 统一开关(2026-11-17 用户裁定「设置页所有开关换胶囊按钮,黑白灰配色,不要绿色,稍大,不要被其他 css 影响成椭圆」) =====
+   corner-shape:initial 拔出全局超椭园级联(G14.206c)——胶囊端部=正圆弧,不再被拉成椭圆;
+   黑白灰配色:on=var(--fg) 黑白反色(亮色黑底白钮/暗色白底黑钮,原 --ok 绿退役),off=fg 20% 灰;
+   40×22 较原 26×15 大一档,knob 18px 正圆 */
+.sx-switch{width:40px;height:22px;border-radius:999px;border:none;padding:0;cursor:pointer;flex:none;position:relative;background:color-mix(in srgb,var(--fg) 20%,transparent);transition:background var(--dur-basic) var(--ease-enter);margin-left:auto;corner-shape:initial;box-sizing:border-box}
+.sx-switch .knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--surface);transition:left var(--dur-basic) var(--ease-enter);corner-shape:initial}
+.sx-switch.on{background:var(--fg)}
+.sx-switch.on .knob{left:20px}
+.sx-switch:disabled{cursor:default;opacity:0.55}
+/* 语境位:mcp 工具行左贴(原口径);设置行控件列内左对齐=下拉框左缘同位(2026-11-17 用户裁定) */
+.sx-mcp-tool .sx-switch{margin-left:0}
+.sx-setting-ctl .sx-switch{margin-left:0}
 .sx-mcp-tools{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
 .sx-mcp-tool{display:flex;align-items:center;gap:8px;padding:1px 4px;border-radius:var(--radius-sm)}
 .sx-mcp-tool:hover{background:color-mix(in srgb,var(--fg) 5%,transparent)}
-.sx-mcp-tool .sx-mcp-switch{margin-left:0}
+.sx-mcp-tool .sx-switch{margin-left:0}
 .sx-mcp-tool-name{font: calc(14px * var(--fz)) var(--font-mono);color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sx-mcp-tool-name.off{color:var(--fg-tertiary);text-decoration:line-through}
 .sx-mcp-note{margin:4px 0 0;color:var(--warn);font-size: calc(14px * var(--fz))}
@@ -3209,7 +3216,7 @@ input.sx-setting-input { width: 100%; }
 .sx-scope-btn:disabled { cursor: default; opacity: 0.5; }
 /* 搜索框(沿 sx-setting-input 令牌,只加宽度帽) */
 .sx-search-bar { max-width: 240px; }
-/* 资源卡(卡面语言沿 sx-mcp-card:surface-elevated+border 圆角;开关复用 .sx-mcp-switch 令牌) */
+/* 资源卡(卡面语言沿 sx-mcp-card:surface-elevated+border 圆角;开关=Switch 组件 sx-switch 令牌) */
 .sx-rc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .sx-rc { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .sx-rc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -3420,13 +3427,13 @@ input.sx-setting-input { width: 100%; }
 .sx-ws-sort-pop { top: calc(100% + 4px); right: 0; min-width: 128px; }
 .sx-ws-sort-pop .sx-menuitem { justify-content: space-between; }
 .sx-ws-sort-active { color: var(--fg); }
-/* 插件弹窗工具开关页(2026-10-31):行=本地化名+短名+开关(沿 sx-mcp-switch 令牌);纵列密排 */
+/* 插件弹窗工具开关页(2026-10-31):行=本地化名+短名+开关(Switch 组件 sx-switch 令牌);纵列密排 */
 .sx-plugin-tools { display: flex; flex-direction: column; }
 .sx-plugin-tool-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--border-subtle); }
 .sx-plugin-tool-row:last-child { border-bottom: none; }
 .sx-plugin-tool-name { font-size: calc(14px * var(--fz)); color: var(--fg); flex: none; min-width: 88px; }
 .sx-plugin-tool-id { font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg-tertiary); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-plugin-tool-row .sx-mcp-switch { flex: none; margin-left: auto; }
+.sx-plugin-tool-row .sx-switch { flex: none; margin-left: auto; }
 /* 资源卡 body 直显行(2026-10-31 用户裁定:描述等内容不折「详情」,直接展示) */
 .sx-rc-body { min-width: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-rc-body .sx-agent-desc { margin: 0; }

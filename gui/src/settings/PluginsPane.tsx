@@ -5,7 +5,7 @@ import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
 import { Select } from './controls';
 import { zhToolName } from '../pages/chat/ToolEntry';
-import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 
 /**
@@ -387,20 +387,15 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                   <div key={name} className="sx-plugin-tool-row">
                     <span className="sx-plugin-tool-name">{zhToolName(`mcp__${drawer.id}__${name}`)}</span>
                     <span className="sx-plugin-tool-id">{name}</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={!off}
-                      aria-label={name}
-                      className={`sx-mcp-switch${off ? '' : ' on'}`}
-                      onClick={() =>
+                    <Switch
+                      on={!off}
+                      onToggle={() =>
                         setForm((f) =>
                           f === null ? f : { ...f, disabled: off ? f.disabled.filter((x) => x !== name) : [...f.disabled, name] },
                         )
                       }
-                    >
-                      <span className="knob" aria-hidden="true" />
-                    </button>
+                      ariaLabel={name}
+                    />
                   </div>
                 );
               })}

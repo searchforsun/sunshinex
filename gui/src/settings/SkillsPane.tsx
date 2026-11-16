@@ -7,7 +7,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { SkillsGroup, SettingsView } from '../connection';
 import { Select } from './controls';
-import { SearchBar, defaultScopeOptions } from './components';
+import { SearchBar, Switch, defaultScopeOptions } from './components';
 import type { ScopeOption } from './components';
 
 /**
@@ -287,18 +287,13 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
                 )}
                 {/* 加载开关(2026-11-07 用户裁定「项目标签位置换开关,控制是否加载,默认开启」):
                     落点=sourceDir 绝对路径;env 覆盖行禁编(设置页惯例);写回=全局档 disabledSkills */}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={!off}
-                  aria-label={`${t('Load skill', '加载技能')} ${s.id}`}
-                  data-tip={envLocked ? t('Set via exported SUNSHINEX_DISABLED_SKILLS env (read-only here)', '该键被导出环境变量覆盖,此处只读') : off ? t('Disabled — not loaded', '已停用——不装载') : t('Loaded', '已装载')}
-                  className={`sx-mcp-switch${off ? '' : ' on'}`}
+                <Switch
+                  on={!off}
+                  onToggle={() => toggleSkill(s)}
+                  ariaLabel={`${t('Load skill', '加载技能')} ${s.id}`}
+                  title={envLocked ? t('Set via exported SUNSHINEX_DISABLED_SKILLS env (read-only here)', '该键被导出环境变量覆盖,此处只读') : off ? t('Disabled — not loaded', '已停用——不装载') : t('Loaded', '已装载')}
                   disabled={envLocked || busyId === s.id || s.sourceDir === undefined}
-                  onClick={() => toggleSkill(s)}
-                >
-                  <span className="knob" aria-hidden="true" />
-                </button>
+                />
               </div>
               {s.desc !== '' && (conn.skillBody !== undefined && s.sourceDir !== undefined ? (
                 <button type="button" className="sx-skill-desc sx-skill-desc-btn" data-tip={s.desc} onClick={() => openPreview(s.id, s.sourceDir!)}>
