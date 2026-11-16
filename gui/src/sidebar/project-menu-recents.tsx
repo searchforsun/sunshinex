@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import type { SessionRow } from '../connection';
-import { t } from '../i18n';
-import { ChevronRight, KanbanSquare, SquarePen } from 'lucide-react';
+import { t, useLanguage } from '../i18n';
+import { ChevronRight, SquarePen } from 'lucide-react';
 import { RECENT_VISIBLE_DEFAULT, SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
@@ -16,7 +16,6 @@ export interface RecentsSectionProps {
    *  ——宿主开 NewSunxDialog;欢迎页 composer 零改动) */
   /** 头部「Sunx 看板」钮(sunx P2 Task 8,spec §17.3):「新建 Sunx」旁开 SUNX 总览页签——
    *  与 SUNX 组头看板钮同动作(可选 guard:未接线不渲染,不产死钮;SUNX 组空块不显时本钮=常驻入口) */
-  readonly onOpenSunxBoard?: () => void;
   readonly recents: Array<SessionRow & { root: string; slug: string }> | null;
   readonly recentLimit: number;
   readonly onShowMore: () => void;
@@ -36,7 +35,8 @@ export interface RecentsSectionProps {
 }
 
 export const RecentsSection = memo(function RecentsSection(props: RecentsSectionProps): JSX.Element {
-  const { recentsOpen, onToggleRecents, onNewChat, onOpenSunxBoard, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
+  useLanguage(); // memo 响应面:语言同步强制重渲染(memo bail 否则永钉启动期语言,2026-11-16 混排根修)
+  const { recentsOpen, onToggleRecents, onNewChat, recents, recentLimit, onShowMore, onCollapse, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, pinnedIds, onPinRow } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -66,23 +66,9 @@ export const RecentsSection = memo(function RecentsSection(props: RecentsSection
           {/* 头部动作簇(sunx P1 Task 6):「新建 Sunx」与「新对话」同级同槽(PROJECTS 组头
               .sx-side-head-actions 右贴容器同款——space-between 会把裸子元素撑散,projects 行同证)。
               aria 用「new sunx」——与「new default chat」判重(测试按名定位)。
-              「Sunx 看板」钮居首(sunx P2 Task 8):可选 guard 未接线不渲染(SunxSection 组头同款) */}
+              「Sunx 看板」钮退役(2026-11-16 用户实测「最近怎么多了给 sunx 看板按钮」):SUNX 组
+              常驻后组头自带看板钮,本钮=重复入口;看板唯一入口=SUNX 组头 */}
           <span className="sx-side-head-actions">
-            {onOpenSunxBoard !== undefined && (
-              <button
-                type="button"
-                className="sx-iconbtn"
-                aria-label="sunx board"
-                data-tip={t('Sunx board', 'Sunx 看板')}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenSunxBoard();
-                }}
-              >
-                <KanbanSquare size={14} strokeWidth={1.75} />
-              </button>
-            )}
             {/* 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧;点击开默认工作区欢迎页)。
                 aria 用旧名「new default chat」——与左上 sx-new-chat 主钮区分(测试 /new chat/i 判重) */}
             <button

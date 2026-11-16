@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import type { SessionRow } from '../connection';
-import { t } from '../i18n';
+import { t, useLanguage } from '../i18n';
 import { Archive, ChevronRight, KanbanSquare } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { SessionRow as SessionRowView, SortPop, useConfirmOutsideCancel } from './project-menu-util';
@@ -35,6 +35,7 @@ export interface SunxSectionProps {
 }
 
 export const SunxSection = memo(function SunxSection(props: SunxSectionProps): JSX.Element | null {
+  useLanguage(); // memo 响应面:语言同步(en→zh)强制重渲染,区块头标签随 t() 调用时求值归位
   const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenBoard, onNewSunx, onOpenArchive } = props;
   /** 行排序(2026-11-15 用户裁定组头簇对齐「项目」):updated=更新时间新→旧(默认)/name=名称 */
   const [sortMode, setSortMode] = useState<'updated' | 'name'>('updated');

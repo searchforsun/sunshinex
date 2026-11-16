@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { ArchiveRestore, CircleHelp, Folder, Trash2 } from 'lucide-react';
-import { t } from '../i18n';
+import { t, useLanguage } from '../i18n';
 import { pathBasename, relTime } from '../ui-util';
 import { RECENT_VISIBLE_DEFAULT, RECENT_VISIBLE_STEP, rowRunning, useConfirmOutsideCancel } from './project-menu-util';
 
@@ -40,6 +40,7 @@ export interface ArchiveSectionProps {
 /** 来源项目目录名(用户裁定「项目使用文件名」):pathBasename 单点(D34 口径),slug 折叠名太长不可读 */
 
 export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSectionProps): JSX.Element {
+  useLanguage(); // memo 响应面:语言同步强制重渲染(memo bail 否则永钉启动期语言,2026-11-16 混排根修)
   const { rows, busy, onOpenSession, onUnarchive, onDelete, activeSessionId = '', runningIds, journalOfSession } = props;
   /** 行内删除确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');

@@ -715,7 +715,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
               recentsOpen={recentsOpen}
               onToggleRecents={toggleRecents}
               onNewChat={onNewChat}
-              onOpenSunxBoard={props.onOpenSunxBoard} /* sunx P2 Task 8:RECENTS 头看板钮(SUNX 组空块不显时的常驻入口) */
               recents={recents}
               recentLimit={recentLimit}
               onShowMore={recentsShowMore}

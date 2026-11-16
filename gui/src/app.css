@@ -2105,6 +2105,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* G14.141 最近会话真折叠:ul 底 padding(0fr 轨道上的 box 外溢=露第一行)改为容器 margin */
 .sx-collapse-recents { margin-bottom: 6px; }
 .sx-side-scroll .sx-collapse-recents > .recent-list { padding-bottom: 0; }
+/* SUNX 折叠体底距同步裁齐(2026-11-16 用户实测「SUNX 距离项目的行距」):recent-list 自带
+   padding-bottom 8px 在空态行下叠出一截死空间,组间节奏与 RECENTS 裁齐同款(空态行自身
+   4px 收尾保留) */
+.sx-side-scroll .sx-collapse-sunx > .recent-list { padding-bottom: 0; }
 
 /* G14.143 目录树 git 状态高亮(VSCode 同位):文件字母徽标/目录聚合圆点/名着色 */
 .sx-tree-badge {
@@ -4214,7 +4218,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    和其他组头一致」):hover/focus-within 随动作簇同拍显隐(C19 同款 opacity 门控——透明占位不
    移布局,显隐与四钮同节奏);line-height 归组头自然行高(原 18px 自定义行高是组头行距漂移的
    唯一来源,归 inherit 后与 PROJECTS/RECENTS 组头逐像素同节奏) */
-.sx-sunx-count { flex: none; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.sx-sunx-count { flex: none; margin-right: 6px; font-size: calc(14px * var(--fz)); color: color-mix(in srgb, var(--fg) 38%, transparent); white-space: nowrap; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
 /* 二轮补(2026-11-16 用户实测「点击展开后数字常驻=像没部署」):焦点态不触发——点开折叠后焦点
    留在组头上,focus-within 会让数字常驻;数字严格只随鼠标悬浮显隐(动作钮的 focus-within 是
    C19 既有键盘可达面,不动) */

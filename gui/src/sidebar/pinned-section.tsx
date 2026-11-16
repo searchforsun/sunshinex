@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { Archive, CircleHelp, PinOff } from 'lucide-react';
-import { t } from '../i18n';
+import { t, useLanguage } from '../i18n';
 import { relTime } from '../ui-util';
 import { rowRunning, useConfirmOutsideCancel } from './project-menu-util';
 import type { PinEntry } from './pin-store';
@@ -31,6 +31,7 @@ export interface PinnedSectionProps {
 }
 
 export const PinnedSection = memo(function PinnedSection(props: PinnedSectionProps): JSX.Element {
+  useLanguage(); // memo 响应面:语言同步强制重渲染(memo bail 否则永钉启动期语言,2026-11-16 混排根修)
   const { pins, busy, activeSessionId, runningIds, journalOfSession, isUnseen, onOpenSession, onUnpin, onArchiveRow, archivedIds, liveJournals } = props;
   /** 行内归档确认 morph:存确认中的行 id('' = 无) */
   const [confirmId, setConfirmId] = useState('');

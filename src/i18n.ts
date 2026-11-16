@@ -8,7 +8,7 @@
  * - pick 为模型侧文案（提示词/观察）专用别名：语义上标记「这份双语串会进入模型上下文」，
  *   便于审计提示词组装面的语言来源；行为与 t 完全一致
  */
-type Language = 'en' | 'zh';
+export type Language = 'en' | 'zh';
 
 let current: Language = 'en'; // 进程缺省 en(CLI main 先于装配显式 setLanguage——parseLanguage 未设置→zh;
 // GUI settings language 键显式设置时经 use-appearance-sync 覆写。勿留探针初值:2026-11-11 实测改 zh
@@ -20,6 +20,18 @@ export function getLanguage(): Language {
 
 export function setLanguage(lang: Language): void {
   current = lang;
+  for (const fn of languageListeners) fn();
+}
+
+/** 语言变更订阅(GUI useLanguage 响应面,2026-11-16):memo 化组件(SunxSection/ProjectsSection 等
+ *  五区块)的 props 不随语言变,memo bail 会把启动期 en→zh 同步前的标签永钉英文——订阅面让
+ *  useSyncExternalStore 在语言同步时强制重渲染。主仓 TUI 无消费方,通知空转零开销 */
+const languageListeners = new Set<() => void>();
+export function subscribeLanguage(fn: () => void): () => void {
+  languageListeners.add(fn);
+  return () => {
+    languageListeners.delete(fn);
+  };
 }
 
 /** 语言键：en/zh 双字面量就地成对（调用时求值） */
