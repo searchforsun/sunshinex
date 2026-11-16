@@ -248,8 +248,14 @@ export const TASK_OP_RUNNING: Record<string, [string, string]> = {
 };
 
 /** 文件行拆分(G14.8):basename + 所在目录(恒显,根目录 = './')——文件名后永远看得到位置 */
-export function fileLabelOf(path: string): { base: string; dir: string } {
-  const norm = path.replace(/\\/g, '/');
+export function fileLabelOf(path: string, root?: string): { base: string; dir: string } {
+  let norm = path.replace(/\\/g, '/');
+  // 根下绝对路径相对化(2026-11-14 用户问「多项目时工具行怎么显示绝对路径」:模型传绝对路径合法
+  // (read/write/edit 均允许),折叠行显示归一根相对——与 @ 面包屑同语言;根外路径保持原样)
+  if (root !== undefined && root !== '') {
+    const r = root.replace(/\\\\/g, '/').replace(/\/+$/, '');
+    if (r !== '' && norm.toLowerCase().startsWith(r.toLowerCase() + '/')) norm = norm.slice(r.length + 1);
+  }
   const base = pathBasename(norm);
   const dir = norm.slice(0, norm.length - base.length);
   return { base, dir }; // 根目录文件 dir = ''(名称即相对路径,不重复显示)

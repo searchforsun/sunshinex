@@ -39,6 +39,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenAgent,
   onOpenTodos,
   onOpenArtifacts,
+  root,
   onOpenTask,
   onOpenLeader,
   taskNameOf,
@@ -63,6 +64,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   onOpenArtifacts?: () => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
+  root?: string;
   /** 队名解析(get_agent_team_board/create_agent_team;缺省显示原 ref) */
   teamNameOf?: (ref: string) => string;
   /** 会话团队清单(get_agent_team_board 单队回落队名) */
@@ -115,7 +117,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** read 图片分型(2026-10-27):结果只是 [image] 说明——行=可折叠展开(展开体重读图片显),
    *  普通 read 文件行维持「整行=打开文件标签」既有面 */
   const isReadImage = toolName === 'read' && path !== undefined && resultText.trim().startsWith('[image]');
-  const fileLabel = path !== undefined ? fileLabelOf(path) : undefined;
+  const fileLabel = path !== undefined ? fileLabelOf(path, root) : undefined;
   const stat = isWrite ? writeStatOf(resultText) : {};
   /** G14.171 spawn 子智能体名(label ?? agent_id)——运行态文案与折叠行链接共用 */
   const spawnAgentName =

@@ -149,6 +149,7 @@ const DayGroupBlock = memo(
         conn={conn}
         sessionId={sessionId}
         callId={callIdOf(e2)}
+        root={root}
         onOpenFile={onOpenFile}
         onOpenDiff={onOpenDiff}
         onOpenAgent={onOpenAgent}
