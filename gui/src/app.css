@@ -4210,8 +4210,12 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-anchor .proj-pop { bottom: auto; top: calc(100% + 6px); left: 0; right: 0; width: auto; }
 /* 侧栏会话行 kind 徽标(标题旁小 chip):文字 14px(界面文字铁律),accent 描边降存在感;
    flex:none 不挤标题省略/悬浮卡;行 hover 时段 meta 隐而徽标恒显(归属辨识常驻) */
-/* SUNX 组头数量 chip(2026-11-15 用户裁定组头簇「数量值」):sunx 行数,accent 弱描边同 kind 徽标族 */
-.sx-sunx-count { flex: none; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; }
+/* SUNX 组头数量值(2026-11-15 组头簇「数量值」;2026-11-16 用户裁定「数字 hover 时显示」+「行距
+   和其他组头一致」):hover/focus-within 随动作簇同拍显隐(C19 同款 opacity 门控——透明占位不
+   移布局,显隐与四钮同节奏);line-height 归组头自然行高(原 18px 自定义行高是组头行距漂移的
+   唯一来源,归 inherit 后与 PROJECTS/RECENTS 组头逐像素同节奏) */
+.sx-sunx-count { flex: none; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); }
+.sx-side-head-btn:hover .sx-sunx-count, .sx-side-head-btn:focus-within .sx-sunx-count { opacity: 1; }
 /* SUNX 组空态引导行(2026-11-15 用户裁定「SUNX分组常驻」):暗淡小字,组头恒显不整块隐 */
 .sx-sunx-empty { padding: 4px 10px 6px 34px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
 
