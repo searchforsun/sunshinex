@@ -276,7 +276,7 @@ export function builtinTools(
         additionalProperties: false,
         required: ['path', 'range'],
         properties: {
-          path: { type: 'string', description: 'File path relative to the project root; prefer relative paths (absolute also works but is rarely needed — the session is bound to one project root)' },
+          path: { type: 'string', description: 'Absolute file path (required — always pass the full absolute path to avoid workspace ambiguity; the UI displays it relative to the workspace automatically)' },
           range: { type: ['string', 'null'], description: 'Optional line range, 1-based inclusive: "L100-125" lines 100-125; "L100" or "L100-" from line 100 to EOF; "L-20" first 20 lines; null reads the whole file' },
         },
       },
@@ -376,7 +376,7 @@ export function builtinTools(
         additionalProperties: false,
         required: ['path', 'content'],
         properties: {
-          path: { type: 'string', description: 'File path relative to the project root; prefer relative paths (absolute also works but is rarely needed — the session is bound to one project root)' },
+          path: { type: 'string', description: 'Absolute file path (required — always pass the full absolute path to avoid workspace ambiguity; the UI displays it relative to the workspace automatically)' },
           content: { type: 'string', description: 'Full file content to write' },
         },
       },
@@ -397,7 +397,7 @@ export function builtinTools(
         additionalProperties: false,
         required: ['path', 'oldString', 'newString', 'replaceAll'],
         properties: {
-          path: { type: 'string', description: 'File path relative to the project root; prefer relative paths (absolute also works but is rarely needed — the session is bound to one project root)' },
+          path: { type: 'string', description: 'Absolute file path (required — always pass the full absolute path to avoid workspace ambiguity; the UI displays it relative to the workspace automatically)' },
           oldString: { type: 'string', description: 'Exact current text to replace, matched literally (no regex, no fuzzy matching); it must appear exactly once in the file unless replaceAll is true' },
           newString: { type: 'string', description: 'Exact replacement text; empty string deletes the matched text' },
           replaceAll: { type: ['boolean', 'null'], description: 'Replace every occurrence instead of requiring a unique match' },
