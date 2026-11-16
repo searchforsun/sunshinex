@@ -301,3 +301,68 @@ export function parseAskAnswer(result: string):
   if (r.startsWith('custom: ')) return { kind: 'custom', text: r.slice(8).trim() };
   return { kind: 'dismissed' };
 }
+
+/** task_* 折叠行/运行态任务名解析单点（D62 批G 外提,行为零变化）：input.taskId 经 taskNameOf 链
+ *  （board 直查→转录映射→短 id 兜底,G14.214/task_wait G14.172 同口径）；task_stop 完成态优先取
+ *  回执 label（后台任务 id 不在 board/转录面）。缺 taskId/解析器（测试桩、种子条旧格式）=undefined，
+ *  调用方回落默认动词行 */
+export function taskOpNameOf(toolName: string, input: Record<string, unknown>, resultText: string, taskNameOf: ((id: string) => string | undefined) | undefined): string | undefined {
+  if (!TASK_OP_TOOLS.has(toolName)) return undefined;
+  const id = typeof input.taskId === 'string' && input.taskId !== '' ? input.taskId : undefined;
+  if (id === undefined) return undefined;
+  if (toolName === 'task_stop') {
+    const m = new RegExp(`task ${id} stopped \((.*)\)`).exec(resultText);
+    if (m !== null && m[1] !== '') return m[1]!;
+  }
+  return taskNameOf !== undefined ? taskNameOf(id) : id;
+}
+
+/** set_dependency 依赖目标名解析单点（D62 批G 外提,行为零变化）：dependsOn 经 taskNameOf 链 */
+export function taskOpDepNameOf(input: Record<string, unknown>, taskNameOf: ((id: string) => string | undefined) | undefined): string | undefined {
+  if (typeof input.dependsOn !== 'string' || input.dependsOn === '') return undefined;
+  return taskNameOf !== undefined ? taskNameOf(input.dependsOn) : input.dependsOn;
+}
+
+/** 运行态标签装配单点（D62 批G 外提,行为零变化）：ToolEntryView runningLabel IIFE 平移——分型
+ *  优先级 spawn/teammate/team/消息/板任务/skill/task 系/exit_plan/MCP/兜底 RUNNING_LABELS；
+ *  taskOpName 由调用方先经 taskOpNameOf 解出（本函数只装配文案） */
+export function runningLabelOf(deps: {
+  toolName: string;
+  input: Record<string, unknown>;
+  spawnAgentName: string;
+  teammateName: string;
+  teamName: string;
+  messageTo: string;
+  messageToLabel: string;
+  target: string | undefined;
+  taskOpName: string | undefined;
+  planName: string;
+}): string {
+  const { toolName, input } = deps;
+  // G14.166 spawn 运行态带子智能体名(label ?? agent_id);2026-11-14 用户裁定「只显示子智能体 {}」(不再分派/正在字样)
+  if (toolName === 'spawn' && deps.spawnAgentName !== '') return t(`Subagent ${deps.spawnAgentName}`, `子智能体 ${deps.spawnAgentName}`);
+  if (toolName === 'create_agent_teammate' && deps.teammateName !== '') return t(`Creating member ${deps.teammateName}`, `正在创建团队成员 ${deps.teammateName}`);
+  if (toolName === 'create_agent_team' && deps.teamName !== '') return t(`Creating team ${deps.teamName}`, `正在创建智能体团队 ${deps.teamName}`);
+  if (toolName === 'send_agent_team_message' && deps.messageTo !== '') return t(`Sending team message to ${deps.messageToLabel}`, `正在发送团队消息给 ${deps.messageToLabel}`);
+  // create_agent_team_task 运行态带任务标题——「正在创建团队任务 …」,id 不进折叠行
+  if (toolName === 'create_agent_team_task' && typeof input.title === 'string' && input.title !== '') {
+    return t(`Creating team task ${input.title}`, `正在创建团队任务 ${input.title}`);
+  }
+  // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
+  if (toolName === 'skill' && deps.target !== undefined) return t(`Loading skill ${deps.target}`, `正在加载技能 ${deps.target}`);
+  // task_* 运行态带任务名——「正在更新 架构评审」替代泛文案（taskOpName 已在场即有值）
+  const opPair = deps.taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
+  if (opPair !== undefined && deps.taskOpName !== undefined) return t(`${opPair[0]} ${deps.taskOpName}`, `${opPair[1]} ${deps.taskOpName}`);
+  // exit_plan 运行态带计划名——「正在提交计划 重构认证模块」
+  if (toolName === 'exit_plan' && deps.planName !== '') return t('Presenting plan', '正在提交计划'); // 计划名归蓝链(2026-11-04 用户裁定「只显示蓝色」——折叠行名+链双显退役)
+  // MCP 工具运行态带本地化工具名(2026-10-30 用户裁定;双语对渲染期求值)
+  const mcp = mcpToolParts(toolName);
+  if (mcp !== null) {
+    const pair = MCP_TOOL_LABELS[mcp.tool];
+    return pair !== undefined
+      ? t(`Calling ${pair.en}`, `正在调用 ${pair.zh}`)
+      : t(`Calling ${mcp.tool}`, `正在调用 ${mcp.tool}`);
+  }
+  const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
+  return t(pair[0], pair[1]);
+}

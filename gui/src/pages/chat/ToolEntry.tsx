@@ -1,66 +1,22 @@
+import { ChevronRight } from 'lucide-react';
 import { Fragment, memo, useEffect, useState } from 'react';
-import { FileText, Wrench, PenLine, FilePenLine, SquareTerminal, Search, FolderSearch, ChevronRight, Sparkles, Globe, Telescope, Brain, ListTodo, ListChecks, Kanban, Radar, GitBranch, Bot, Square, Hourglass, BookOpen, MessageCircleQuestion, NotebookPen, ListPlus, GitMerge, UserPlus, UsersRound, Puzzle, AppWindow, MousePointerClick, Send, ClipboardList, ClipboardCheck, AlarmClock, CalendarClock, type LucideIcon , Package } from 'lucide-react';
 import { t } from '../../i18n';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
 import { FileIcon } from '../../file-icon';
 import { ImageLightbox } from '../../ImageLightbox';
-import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import type { DiffResp } from '../../connection';
-import { mcpToolParts, MCP_TOOL_LABELS, zhToolName, toolTargetOf, toolPurposeOf, RUNNING_LABELS, TASK_OP_TOOLS, TASK_OP_RUNNING, fileLabelOf, writeStatOf } from './tool-entry-data';
+import { runningLabelOf, taskOpDepNameOf, taskOpNameOf, zhToolName, toolTargetOf, toolPurposeOf, fileLabelOf, writeStatOf } from './tool-entry-data';
 import { ReadImageBody } from './tool-entry-media';
+import { ToolIcon } from './tool-entry-icon';
 import { ToolEntryBody } from './tool-entry-body';
 import { isOfficeStandaloneTool, useUiMode } from '../../ui-mode';
 import { officeSingleLabel } from './office-summary';
 
 /** 工具动词 → 图标(渲染面映射;md 形态不变,未知工具通用件);智能体团队工具专属图标(去扳手默认) */
-const TOOL_ICONS: Record<string, LucideIcon> = {
-  read: FileText, write: PenLine, edit: FilePenLine, exec: SquareTerminal, grep: Search, glob: FolderSearch,
-  skill: Sparkles, webfetch: Globe, websearch: Telescope, memory: Brain, memory_write: Brain, todo_write: ListTodo,
-  worktree: GitBranch, spawn: Bot, load_subagent: Bot, task_stop: Square, agent_team_task_stop: Square, task_wait: Hourglass, agent_team_task_wait: Hourglass, kb_search: BookOpen,
-  // load_subagent 章程卡工具同 Bot(2026-11-05 更名;子智能体域,不受智能体团队控制)
-  ask_question: MessageCircleQuestion, // G14.82:问询专属图标(不用扳手)
-  exit_plan: NotebookPen, // 交稿行(2026-11-03 交稿协议):计划图标同 plan pill(2026-11-03 换 NotebookPen,与待办 ListTodo 区分)
-  report_artifacts: Package, // 产物声明(2026-11-14 kind 化):图标对齐产物页签(tab 侧 Package 同件)
-  load_agent_teams: UsersRound, // 智能体团队域(与八件套同族;同建队件;2026-11-05 更名自 team)
-  create_agent_team_task: ListPlus, set_dependency: GitMerge, assign: UserPlus,
-  // 建队/建成员同 UsersRound(2026-11-01 用户裁定:创建团队图标与创建成员一致)
-  create_agent_team: UsersRound,
-  create_agent_teammate: UsersRound,
-  update_agent_team_task: ListChecks, get_agent_team_board: Kanban, probe: Radar,
-  // sunx 编排/调度域(2026-11-15 用户实测「分派任的工具没有加上特殊的图标样式和 i18n」):
-  // dispatch_task=Send(派发语义,与 send_agent_team_message 同族);task_status=ClipboardCheck
-  // (台账窥视,与 get_task 的 ClipboardList 区分);定时族=闹钟/日历钟
-  dispatch_task: Send, task_status: ClipboardCheck, schedule_wakeup: AlarmClock, schedule_task: CalendarClock,
-  send_agent_team_message: Send,
-  get_task: ClipboardList,
-};
 
-/** 电脑控制类工具(2026-10-27 用户裁定):computer-use server 全族专属图标前缀(MousePointerClick,
- *  区别于通用 MCP 拼图件)——图标标类(含观察件),徽标标进行中的控制;特殊色只归顶栏徽标(2026-10-27
- *  二次裁定:工具行不用特殊色),className 留作语义/查询锚;前缀常量单点在 computer-use-contract
- *  (2026-10-27 技术债轮收敛,与徽标判定面/插件 manifest 三方同源,对拍钉锁镜像) */
 
-/** MCP 工具名拆解单点(2026-10-26 用户裁定:MCP 工具行显业界通用图标+短工具名,参数/返回值同其他工具):
- *  登记名 `mcp__<server>__<tool>` → { server, tool };非 MCP 名返回 null。server 段取首个 `__` 前
- *  (server 键不含 `__`——配置名即文件/清单键),tool 段为余量(可含 `__`) */
-function ToolIcon({ verb }: { verb: string }): JSX.Element {
-  // computer-use 全族=鼠标点击件(2026-10-27 二次裁定:无专属色,className 留语义/查询锚)
-  if (verb.startsWith(COMPUTER_USE_PREFIX)) {
-    return <MousePointerClick size={14} strokeWidth={1.75} className="tool-icon-controlling" aria-hidden="true" />;
-  }
-  // 浏览器操作全族(browser-use 插件,工具名 browser_*)=浏览器窗件(2026-10-31 用户裁定:
-  // 「换成浏览器相关的」——该插件即浏览器专用,通用拼图件不达意;AppWindow 与 webfetch 的
-  // Globe 区分:一个是浏览器窗,一个是网页抓取)
-  const mcp = mcpToolParts(verb);
-  if (mcp !== null && mcp.tool.startsWith('browser_')) {
-    return <AppWindow size={14} strokeWidth={1.75} className="tool-icon-browser" aria-hidden="true" />;
-  }
-  // MCP 工具=Puzzle 拼图件(业界 MCP 集成的通用视觉母题,区别于内置工具的扳手兜底)
-  if (mcp !== null) return <Puzzle size={14} strokeWidth={1.75} aria-hidden="true" />;
-  const Icon = TOOL_ICONS[verb] ?? Wrench;
-  return <Icon size={14} strokeWidth={1.75} aria-hidden="true" />;
-}
+
 
 /** G6 工具条目(折叠态一行/点击展开):write/edit 两件(call 名判定——事件 text 即
  *  注册名)展开接 G7 fetchDiff(oldStr=oldContent/newStr=newContent 双列;加载期先示右列现内容
@@ -221,56 +177,12 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** G14.214 task_* 折叠行/运行态任务名：input.taskId 经 taskNameOf 单点解析（board 直查→转录映射→短 id 兜底，
    *  与 task_wait G14.172 同口径）；set_dependency 额外解析 dependsOn（「任务 ← 依赖目标」双名）。
    *  缺 taskId/解析器（测试桩、种子条旧格式）不进该分型，回落默认动词行 */
-  const taskOpName = (() => {
-    if (!TASK_OP_TOOLS.has(toolName)) return undefined;
-    const id = typeof input.taskId === 'string' && input.taskId !== '' ? input.taskId : undefined;
-    if (id === undefined) return undefined;
-    // task_stop 完成态优先取回执 label（后台任务 id 不在 board/转录面，taskNameOf 只剩短 id 兜底——
-    // 回执行 `task <id> stopped (<label>)` 携带真实名）；未完成/无 label 落 taskNameOf 链
-    if (toolName === 'task_stop') {
-      const m = new RegExp(`task ${id} stopped \\((.*)\\)`).exec(resultText);
-      if (m !== null && m[1] !== '') return m[1]!;
-    }
-    return taskNameOf !== undefined ? taskNameOf(id) : id;
-  })();
-  const taskOpDepName = (() => {
-    if (toolName !== 'set_dependency') return undefined;
-    const id = typeof input.dependsOn === 'string' && input.dependsOn !== '' ? input.dependsOn : undefined;
-    if (id === undefined) return undefined;
-    return taskNameOf !== undefined ? taskNameOf(id) : id;
-  })();
+  const taskOpName = taskOpNameOf(toolName, input, resultText, taskNameOf);
+  const taskOpDepName = taskOpDepNameOf(input, taskNameOf);
   /** P11 全工具双态:executing 读三态 status(md 占位 `…` 判定退役)——pending/running=执行中
    *  (流光+「正在…」),done(缺省终态)=各型折叠行 */
   const executing = entry.status === 'pending' || entry.status === 'running';
-  const runningLabel = (() => {
-    // G14.166 spawn 运行态带子智能体名(label ?? agent_id);2026-11-14 用户裁定「只显示子智能体 {}」(不再分派/正在字样)
-    if (toolName === 'spawn' && spawnAgentName !== '') return t(`Subagent ${spawnAgentName}`, `子智能体 ${spawnAgentName}`); // 2026-11-14 用户裁定「不再显示分派/正在,运行中流光显示 子智能体 {}」
-    if (toolName === 'create_agent_teammate' && teammateName !== '') return t(`Creating member ${teammateName}`, `正在创建团队成员 ${teammateName}`);
-    if (toolName === 'create_agent_team' && teamName !== '') return t(`Creating team ${teamName}`, `正在创建智能体团队 ${teamName}`);
-    if (toolName === 'send_agent_team_message' && messageTo !== '') return t(`Sending team message to ${messageToLabel}`, `正在发送团队消息给 ${messageToLabel}`);
-    // create_agent_team_task 运行态带任务标题——「正在创建团队任务 …」,id 不进折叠行
-    if (toolName === 'create_agent_team_task' && typeof input.title === 'string' && input.title !== '') {
-      return t(`Creating team task ${input.title}`, `正在创建团队任务 ${input.title}`);
-    }
-    // G14.2xx skill 运行态带技能名(与完成态「加载技能 xxx」同构,回溯前后显示一致)
-    if (toolName === 'skill' && target !== undefined) return t(`Loading skill ${target}`, `正在加载技能 ${target}`);
-    // task_* 运行态带任务名——「正在更新 架构评审」替代泛文案（taskOpName 已在场即有值）
-    const opPair = taskOpName !== undefined ? TASK_OP_RUNNING[toolName] : undefined;
-    if (opPair !== undefined) return t(`${opPair[0]} ${taskOpName}`, `${opPair[1]} ${taskOpName}`);
-    // exit_plan 运行态带计划名——「正在提交计划 重构认证模块」
-    if (toolName === 'exit_plan' && planName !== '') return t('Presenting plan', '正在提交计划'); // 计划名归蓝链(2026-11-04 用户裁定「只显示蓝色」——折叠行名+链双显退役)
-    // 2026-10-26 MCP 工具运行态带本地化工具名——「正在调用 截屏」(双语对随语言切换,与完成态同口径)
-    const mcp = mcpToolParts(toolName);
-    // 运行态带本地化工具名(2026-10-30 用户裁定;双语对渲染期求值)
-    if (mcp !== null) {
-      const pair = MCP_TOOL_LABELS[mcp.tool];
-      return pair !== undefined
-        ? t(`Calling ${pair.en}`, `正在调用 ${pair.zh}`)
-        : t(`Calling ${mcp.tool}`, `正在调用 ${mcp.tool}`);
-    }
-    const pair = RUNNING_LABELS[toolName] ?? ['Running', '正在执行'];
-    return t(pair[0], pair[1]);
-  })();
+  const runningLabel = runningLabelOf({ toolName, input, spawnAgentName, teammateName, teamName, messageTo, messageToLabel, target, taskOpName, planName });
 
 
   /** 展开且可寻址(callId 在场——无 callId 面不拉)即异步拉 diff;折叠即弃在途应答

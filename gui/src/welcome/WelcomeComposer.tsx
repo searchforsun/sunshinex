@@ -10,7 +10,7 @@ import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
-import { MAX_IMAGES, appendImages, loadImages } from '../images';
+import { useWelcomeImages } from './use-welcome-images';
 import { ImageLightbox } from '../ImageLightbox';
 import { EffortChip } from '../effort-slider';
 import { PlusAddIcon } from '../sidebar/project-menu-util';
@@ -79,24 +79,12 @@ export function WelcomeComposer({
   const [dirOpen, setDirOpen] = useState(false);
   /** + 附加面板(G12 三轮):命令/技能列表浮层(卡顶同宽);文件区需会话,欢迎页不渲染 */
   const [plusOpen, setPlusOpen] = useState(false);
-  /** 待发图片附件（dataURL,≤8 张;2026-10-26 图片功能——欢迎页粘贴/+面板附件,随首条消息发送） */
-  const [images, setImages] = useState<string[]>([]);
-  /** 输入卡缩略图预览(2026-10-26 用户裁定:与主对话同口径,点击开灯箱) */
-  const [lightboxSrc, setLightboxSrc] = useState<string | undefined>(undefined);
-  const attachImages = (files: File[]): void => {
-    void loadImages(files).then((imgs) => {
-      if (imgs.length === 0) return;
-      setImages((cur) => {
-        const { images: merged, overflow } = appendImages(cur, imgs);
-        if (overflow > 0) setHint(t(`Up to ${MAX_IMAGES} images per message`, `每条消息最多 ${MAX_IMAGES} 张图片`));
-        return merged;
-      });
-    });
-  };
+  const [hint, setHint] = useState('');
+  /** 待发图片附件+灯箱源+attach 入口（useWelcomeImages 单点,D62 批G 外提;≤8 帽溢出提示经 setHint） */
+  const { images, setImages, lightboxSrc, setLightboxSrc, attachImages } = useWelcomeImages(setHint);
   /** 审批模式(G10-C16):新会话创建时带出;缺省 full-access(serve 缺省档;权限档改名对齐后端) */
   const [mode, setMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [modeOpen, setModeOpen] = useState(false);
-  const [hint, setHint] = useState('');
   /** 工作区隔离(2026-11-10 用户裁定「新会话可选 git worktree 隔离」):pill 武装态随提交下发;
    *  首次开启弹说明框(益处/代价),armed 后再点即解除。仅 git 项目可开(gitBr 在场判定);
    *  武装态持久(2026-11-12 用户裁定,同项目/分支一族) */
